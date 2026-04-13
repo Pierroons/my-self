@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SelfRecover — Demo</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel: #1e293b;
+            --text: #f1f5f9;
+            --muted: #94a3b8;
+            --accent: #f97316;
+            --success: #10b981;
+            --danger: #ef4444;
+            --border: #334155;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 24px 16px;
+            line-height: 1.5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 1.8rem;
+            color: var(--accent);
+            margin-bottom: 6px;
+        }
+        .subtitle {
+            color: var(--muted);
+            margin-bottom: 24px;
+            font-size: 0.9rem;
+        }
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 24px;
+            overflow-x: auto;
+        }
+        .tab {
+            padding: 10px 16px;
+            background: none;
+            border: none;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            white-space: nowrap;
+        }
+        .tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        .panel {
+            background: var(--panel);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+        .panel.hidden { display: none; }
+        h2 {
+            font-size: 1.1rem;
+            margin-bottom: 6px;
+        }
+        p.desc {
+            color: var(--muted);
+            font-size: 0.85rem;
+            margin-bottom: 16px;
+        }
+        .form-group {
+            margin-bottom: 12px;
+        }
+        label {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-bottom: 4px;
+        }
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+        input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        button.btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+        button.btn:hover {
+            background: #ea580c;
+        }
+        button.btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            word-break: break-all;
+        }
+        .result.success {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid var(--success);
+        }
+        .result.error {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid var(--danger);
+        }
+        .result strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+        code {
+            background: var(--bg);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            font-family: monospace;
+        }
+        .footer {
+            margin-top: 32px;
+            text-align: center;
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+        .footer a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SelfRecover</h1>
+        <p class="subtitle">Zero-email account recovery demo — test the protocol locally</p>
+
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('register')">Register</button>
+            <button class="tab" onclick="showTab('login')">Login</button>
+            <button class="tab" onclick="showTab('recoverL1')">Recover L1</button>
+            <button class="tab" onclick="showTab('recoverL2')">Recover L2</button>
+        </div>
+
+        <!-- REGISTER -->
+        <div id="panel-register" class="panel">
+            <h2>Create an account</h2>
+            <p class="desc">A diceware passphrase will be generated server-side. Your recovery word is HMAC-derived client-side — the raw word never leaves your browser.</p>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="reg-username" placeholder="alice">
+            </div>
+            <div class="form-group">
+                <label>Identifier (e.g. customer ID, Embark ID, any public label)</label>
+                <input type="text" id="reg-identifier" placeholder="Alice#1234">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="reg-password" placeholder="8 chars minimum">
+            </div>
+            <div class="form-group">
+                <label>Recovery word (your L2 secret — any word you'll remember)</label>
+                <input type="text" id="reg-recovery" placeholder="bob">
+            </div>
+            <button class="btn" onclick="doRegister()">Create account</button>
+            <div id="reg-result"></div>
+        </div>
+
+        <!-- LOGIN -->
+        <div id="panel-login" class="panel hidden">
+            <h2>Log in</h2>
+            <p class="desc">Classic authentication with username + password.</p>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="login-username">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="login-password">
+            </div>
+            <button class="btn" onclick="doLogin()">Log in</button>
+            <div id="login-result"></div>
+        </div>
+
+        <!-- RECOVER L1 -->
+        <div id="panel-recoverL1" class="panel hidden">
+            <h2>Recover — Level 1 (forgot password)</h2>
+            <p class="desc">Enter your username and the diceware passphrase you saved at registration. You'll get a new password.</p>
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" id="l1-username">
+            </div>
+            <div class="form-group">
+                <label>Passphrase (the 4 words separated by dashes)</label>
+                <input type="text" id="l1-passphrase" placeholder="ruby-amber-moon-willow">
+            </div>
+            <button class="btn" onclick="doRecoverL1()">Recover</button>
+            <div id="l1-result"></div>
+        </div>
+
+        <!-- RECOVER L2 -->
+        <div id="panel-recoverL2" class="panel hidden">
+            <h2>Recover — Level 2 (lost passphrase)</h2>
+            <p class="desc">Enter your public identifier and your recovery word. The browser will HMAC-derive it locally before sending — the raw word never reaches the server. Open your browser's DevTools console to see the derivation in action.</p>
+            <div class="form-group">
+                <label>Identifier</label>
+                <input type="text" id="l2-identifier" placeholder="Alice#1234">
+            </div>
+            <div class="form-group">
+                <label>Recovery word</label>
+                <input type="text" id="l2-recovery" placeholder="bob">
+            </div>
+            <button class="btn" onclick="doRecoverL2()">Recover</button>
+            <div id="l2-result"></div>
+        </div>
+
+        <div class="footer">
+            <a href="https://github.com/Pierroons/selfrecover">SelfRecover on GitHub</a> — MIT License
+        </div>
+    </div>
+
+    <script>
+        // === Tab switching ===
+        function showTab(name) {
+            document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('panel-' + name).classList.remove('hidden');
+            event.target.classList.add('active');
+        }
+
+        // === API helper ===
+        async function api(action, body = null) {
+            const opts = {
+                method: body ? 'POST' : 'GET',
+                headers: body ? { 'Content-Type': 'application/json' } : {},
+            };
+            if (body) opts.body = JSON.stringify(body);
+            const res = await fetch('api/index.php?action=' + action, opts);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Unknown error');
+            return data;
+        }
+
+        // === HMAC derivation (client-side) ===
+        // This is the heart of SelfRecover : the raw recovery word never leaves the browser.
+        // We derive a site-specific key using HMAC-SHA256 with domain + site_salt as key material.
+        async function hmacDerive(word, salt) {
+            const enc = new TextEncoder();
+            const domain = window.location.hostname;
+            const keyMaterial = enc.encode(domain + salt);
+            const key = await crypto.subtle.importKey(
+                'raw', keyMaterial,
+                { name: 'HMAC', hash: 'SHA-256' },
+                false, ['sign']
+            );
+            const sig = await crypto.subtle.sign('HMAC', key, enc.encode(word));
+            const hex = Array.from(new Uint8Array(sig))
+                .map(b => b.toString(16).padStart(2, '0')).join('');
+            console.log('[SelfRecover] HMAC derived for domain "' + domain + '"');
+            console.log('[SelfRecover] Raw word never leaves this browser.');
+            console.log('[SelfRecover] Derived key (first 16 chars): ' + hex.substring(0, 16) + '...');
+            return hex;
+        }
+
+        // === Display result ===
+        function showResult(elId, message, isError = false) {
+            const el = document.getElementById(elId);
+            el.innerHTML = '<div class="result ' + (isError ? 'error' : 'success') + '">' + message + '</div>';
+        }
+
+        // === Register ===
+        async function doRegister() {
+            try {
+                const username = document.getElementById('reg-username').value.trim();
+                const identifier = document.getElementById('reg-identifier').value.trim();
+                const password = document.getElementById('reg-password').value;
+                const recoveryWord = document.getElementById('reg-recovery').value.trim();
+                if (!username || !identifier || !password || !recoveryWord) {
+                    showResult('reg-result', 'All fields are required.', true);
+                    return;
+                }
+                const { salt } = await api('salt');
+                const recoveryDerivedKey = await hmacDerive(recoveryWord, salt);
+                const data = await api('register', {
+                    username, identifier, password,
+                    recovery_derived_key: recoveryDerivedKey
+                });
+                showResult('reg-result',
+                    '<strong>Account created !</strong>' +
+                    'Username: <code>' + data.username + '</code><br>' +
+                    'Passphrase: <code>' + data.passphrase + '</code><br>' +
+                    '<br><em>' + data.note + '</em>');
+            } catch (e) {
+                showResult('reg-result', e.message, true);
+            }
+        }
+
+        // === Login ===
+        async function doLogin() {
+            try {
+                const username = document.getElementById('login-username').value.trim();
+                const password = document.getElementById('login-password').value;
+                const data = await api('login', { username, password });
+                showResult('login-result', '<strong>Logged in</strong> — ' + data.message);
+            } catch (e) {
+                showResult('login-result', e.message, true);
+            }
+        }
+
+        // === Recover L1 ===
+        async function doRecoverL1() {
+            try {
+                const username = document.getElementById('l1-username').value.trim();
+                const passphrase = document.getElementById('l1-passphrase').value.trim();
+                const data = await api('recover-l1', { username, passphrase });
+                showResult('l1-result',
+                    '<strong>' + data.message + '</strong>' +
+                    'Your new password: <code>' + data.new_password + '</code><br>' +
+                    '<em>Save it — it will not be shown again.</em>');
+            } catch (e) {
+                showResult('l1-result', e.message, true);
+            }
+        }
+
+        // === Recover L2 ===
+        async function doRecoverL2() {
+            try {
+                const identifier = document.getElementById('l2-identifier').value.trim();
+                const recoveryWord = document.getElementById('l2-recovery').value.trim();
+                if (!identifier || !recoveryWord) {
+                    showResult('l2-result', 'All fields are required.', true);
+                    return;
+                }
+                const { salt } = await api('salt');
+                const recoveryKey = await hmacDerive(recoveryWord, salt);
+                const data = await api('recover-l2', { identifier, recovery_key: recoveryKey });
+                showResult('l2-result',
+                    '<strong>' + data.message + '</strong>' +
+                    'Your new password: <code>' + data.new_password + '</code><br>' +
+                    '<em>Save it — it will not be shown again.</em>');
+            } catch (e) {
+                showResult('l2-result', e.message, true);
+            }
+        }
+    </script>
+</body>
+</html>
