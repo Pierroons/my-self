@@ -3,8 +3,11 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per domain, no SMTP, no third party.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Status: Concept](https://img.shields.io/badge/status-concept%20stage-orange.svg)](#status)
-[![Production test](https://img.shields.io/badge/production%20tested-ARC%20PVE%20Hub-green.svg)](https://arc.rpi4server.ovh)
+[![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0-green.svg)](#status)
+[![Production tested](https://img.shields.io/badge/production%20tested-ARC%20PVE%20Hub-green.svg)](https://arc.rpi4server.ovh)
+[![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
+[![Self-hosted](https://img.shields.io/badge/self--hosted-Raspberry%20Pi-blue.svg)](#quickstart)
+[![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#quickstart)
 
 > **One word. Every site. No email required.**
 

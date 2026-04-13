@@ -2,6 +2,14 @@
 
 **Autonomous community moderation engine through social reasoning**
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Status: Concept](https://img.shields.io/badge/status-concept%20stage-orange.svg)](#status)
+[![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
+[![Self-hosted](https://img.shields.io/badge/self--hosted-Raspberry%20Pi-blue.svg)](#)
+[![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#)
+
+> *The most effective moderation isn't imposed. It emerges naturally when the system is well designed.*
+
 Part of [Bi-Self](../README.md) — can also be used standalone.
 
 ## What is it?

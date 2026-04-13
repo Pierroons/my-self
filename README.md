@@ -2,6 +2,15 @@
 
 **Sovereign Identity + Autonomous Community Moderation**
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![SelfRecover: v0.1.0](https://img.shields.io/badge/SelfRecover-v0.1.0-green.svg)](./selfrecover/)
+[![SelfModerate: concept](https://img.shields.io/badge/SelfModerate-concept-orange.svg)](./selfmoderate/)
+[![Self-hosted](https://img.shields.io/badge/self--hosted-Raspberry%20Pi-blue.svg)](#requirements)
+[![Production tested](https://img.shields.io/badge/production%20tested-ARC%20PVE%20Hub-green.svg)](https://arc.rpi4server.ovh)
+[![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#requirements)
+
+> *If a community can build itself, it can govern itself.*
+
 Bi-Self combines two independent modules into a self-hosted ecosystem for online communities — no cloud, no third party, no single point of authority.
 
 | Module | Purpose | Status |
