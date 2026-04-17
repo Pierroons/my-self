@@ -76,6 +76,87 @@
       font-size: 0.8rem;
     }
     header .timer.warn { color: var(--warning); }
+    header .code-toggle {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.3rem 0.7rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    header .code-toggle:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* Code viewer panel */
+    .code-viewer {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: min(560px, 100%);
+      background: var(--bg-terminal);
+      border-left: 1px solid var(--border);
+      transform: translateX(100%);
+      transition: transform 0.25s ease;
+      z-index: 100;
+      display: flex; flex-direction: column;
+    }
+    .code-viewer.open { transform: translateX(0); }
+    .code-viewer .ch {
+      padding: 0.8rem 1.1rem;
+      border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 0.5rem;
+    }
+    .code-viewer select {
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.25rem 0.4rem;
+      font-size: 0.8rem;
+      font-family: inherit;
+    }
+    .code-viewer button.close {
+      background: transparent; border: none; color: var(--text-muted);
+      font-size: 1.3rem; cursor: pointer; line-height: 1;
+    }
+    .code-viewer button.close:hover { color: var(--accent); }
+    .code-viewer pre {
+      flex: 1;
+      overflow: auto;
+      margin: 0;
+      padding: 0.8rem 1.1rem;
+      font-family: SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.75rem;
+      line-height: 1.55;
+      color: var(--text);
+      white-space: pre;
+    }
+    .code-viewer .note {
+      padding: 0.5rem 1.1rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.72rem;
+      color: var(--text-muted);
+    }
+
+    /* HMAC visualizer */
+    .hmac-viz {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.7rem 0.9rem;
+      font-family: SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      margin-top: 0.6rem;
+      color: var(--text-muted);
+    }
+    .hmac-viz .line { margin: 0.25rem 0; word-break: break-all; }
+    .hmac-viz .lbl { color: var(--crypto); }
+    .hmac-viz .val { color: var(--text); }
+    .hmac-viz .match { color: var(--success); font-weight: 600; }
+    .hmac-viz .mismatch { color: var(--danger); font-weight: 600; }
 
     /* Main split */
     main {
@@ -320,6 +401,7 @@
       <button data-mode="playground">Playground</button>
     </div>
     <span class="timer" id="timer">⌛ —:—</span>
+    <button class="code-toggle" id="btn-code-toggle">📄 Voir le code</button>
   </div>
 </header>
 
@@ -396,6 +478,63 @@
     </div>
   </div>
 
+  <!-- Étape 4 — Recovery L2 (HMAC client-side) -->
+  <div class="card-app" id="step-4">
+    <div class="step-header"><div class="num">4</div><div class="title">Récupération niveau 2 — avec ton mot de récupération</div></div>
+    <form id="form-recover-l2">
+      <div class="field">
+        <label for="r2-username">Identifiant</label>
+        <input id="r2-username" name="username" placeholder="ex: alice" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="r2-word">Mot de récupération (celui généré à l'étape 1, ou tape ton propre test)</label>
+        <input id="r2-word" name="word" placeholder="ex: 58c3ab" autocomplete="off">
+      </div>
+      <button class="btn" type="submit">Récupérer via HMAC client</button>
+    </form>
+    <div id="r2-viz"></div>
+    <div id="r2-result"></div>
+    <div class="teach tuto-only">
+      <strong>Ce qu'il se passe ici :</strong> ton navigateur calcule
+      <code>HMAC-SHA256(recovery_word, domain || site_salt)</code> <strong>localement</strong>.
+      Seule la clé dérivée est envoyée au serveur. Le mot lui-même ne traverse
+      jamais le réseau. Le serveur compare via bcrypt, accorde ou refuse.
+      Aucun email, aucun SMTP, aucun tiers.
+    </div>
+  </div>
+
+  <!-- Étape 5 — Anti-phishing sim -->
+  <div class="card-app" id="step-5">
+    <div class="step-header"><div class="num">5</div><div class="title">Simulation anti-phishing</div></div>
+    <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.8rem;">
+      Simulons qu'un phisher héberge une copie pixel-perfect de SelfRecover
+      sur <code>phishing-my-self-fr.local</code>. Tu y entres ton mot de récupération.
+      Que se passe-t-il ?
+    </p>
+    <form id="form-phishing">
+      <div class="field">
+        <label for="p-username">Identifiant</label>
+        <input id="p-username" name="username" placeholder="ex: alice" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="p-word">Mot de récupération (le même qu'à l'étape 1)</label>
+        <input id="p-word" name="word" placeholder="ex: 58c3ab" autocomplete="off">
+      </div>
+      <button class="btn" type="submit">Simuler les 2 HMAC en parallèle</button>
+    </form>
+    <div id="p-viz"></div>
+    <div id="p-result"></div>
+    <div class="teach tuto-only">
+      <strong>Ce qu'il se passe ici :</strong> on calcule
+      <code>HMAC(mot, "bi-self.my-self.fr"+salt)</code>
+      ET <code>HMAC(mot, "phishing-my-self-fr.local"+salt)</code>.
+      Le même mot, deux domaines différents → <strong>deux clés complètement différentes</strong>.
+      Seule celle du bon domaine passera bcrypt_verify. Le phisher, même s'il voit
+      passer le HMAC qu'il a obtenu, obtient une clé <strong>inutilisable ailleurs</strong>.
+      Aucun partage de mot, aucun cross-site leak possible.
+    </div>
+  </div>
+
   <!-- État user -->
   <div class="card-app" id="state-card">
     <div class="step-header"><div class="num">★</div><div class="title">État actuel</div></div>
@@ -409,9 +548,38 @@
   </div>
 
   <p class="lead" style="margin-top: 2rem; font-size: 0.8rem;">
-    Prochaines étapes (session 4) : récupération L2 (mot de récupération + HMAC
-    côté client) + simulation anti-phishing. Reste branché.
+    Prochaines étapes (sessions 5-6) : démo SelfModerate (simulation d'une
+    mini-communauté, votes, détection pack-voting, sanctions). Et démo
+    binôme (étape 7) : comment l'identité SelfRecover rend la modération
+    SelfModerate résistante aux attaques Sybil.
   </p>
+</div>
+
+<!-- Code viewer drawer -->
+<div class="code-viewer" id="code-viewer">
+  <div class="ch">
+    <div style="display: flex; align-items: center; gap: 0.5rem;">
+      <span style="color: var(--accent); font-size: 0.85rem;">📄 Code source (redacted)</span>
+      <select id="code-file">
+        <option value="register">register.php</option>
+        <option value="login">login.php</option>
+        <option value="logout">logout.php</option>
+        <option value="recover-l1">recover-l1.php</option>
+        <option value="recover-l2">recover-l2.php</option>
+        <option value="phishing-sim">phishing-sim.php</option>
+        <option value="me">me.php</option>
+        <option value="site-salt">site-salt.php</option>
+        <option value="recover_helper">lib/recover_helper.php</option>
+        <option value="session_manager">lib/session_manager.php</option>
+        <option value="logger">lib/logger.php</option>
+        <option value="rate_limit">lib/rate_limit.php</option>
+        <option value="redactor">lib/redactor.php</option>
+      </select>
+    </div>
+    <button class="close" id="code-close" title="Fermer">✕</button>
+  </div>
+  <pre id="code-content">Sélectionne un fichier pour voir son code source.</pre>
+  <div class="note" id="code-note">Open book — secrets automatiquement censurés (site_salt, tokens, paths absolus).</div>
 </div>
 
 <aside class="panel-logs">
@@ -442,14 +610,33 @@
 // ============================================================
 
 const API = {
-  session:  '/demo/api/session',
-  events:   '/demo/api/events',
-  me:       '/demo/api/recover/me',
-  register: '/demo/api/recover/register',
-  login:    '/demo/api/recover/login',
-  logout:   '/demo/api/recover/logout',
-  recoverL1:'/demo/api/recover/recover-l1',
+  session:     '/demo/api/session',
+  events:      '/demo/api/events',
+  me:          '/demo/api/recover/me',
+  register:    '/demo/api/recover/register',
+  login:       '/demo/api/recover/login',
+  logout:      '/demo/api/recover/logout',
+  recoverL1:   '/demo/api/recover/recover-l1',
+  recoverL2:   '/demo/api/recover/recover-l2',
+  phishingSim: '/demo/api/recover/phishing-sim',
+  siteSalt:    '/demo/api/recover/site-salt',
+  code:        '/demo/api/recover/code',
 };
+
+// HMAC-SHA256 calculé côté navigateur via Web Crypto API.
+// `key` devient la clé HMAC, `message` = domain||site_salt.
+async function hmacSha256(key, message) {
+  const enc = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw', enc.encode(key),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(message));
+  return Array.from(new Uint8Array(sig))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
 
 const state = {
   session: null,
@@ -730,6 +917,154 @@ $('btn-logout').addEventListener('click', async () => {
     refreshState();
   } catch (_) {}
 });
+
+// --- Étape 4 : Recovery L2 ---
+let cachedSalt = null;
+async function getSiteSalt() {
+  if (cachedSalt) return cachedSalt;
+  const r = await fetch(API.siteSalt, { credentials: 'include' });
+  const d = await r.json();
+  if (!d.ok) throw new Error('site-salt fetch failed');
+  cachedSalt = { domain: d.domain, salt: d.site_salt };
+  return cachedSalt;
+}
+
+$('form-recover-l2').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  const viz = $('r2-viz');
+  const res = $('r2-result');
+  viz.innerHTML = ''; res.innerHTML = '';
+
+  try {
+    const username = $('r2-username').value.trim();
+    const word     = $('r2-word').value.trim();
+    if (!username || !word) throw new Error('Tous les champs sont requis.');
+
+    const { domain, salt } = await getSiteSalt();
+    const message = domain + salt;
+    const derived = await hmacSha256(word, message);
+
+    viz.innerHTML = `
+      <div class="hmac-viz">
+        <div class="line"><span class="lbl">client-side:</span></div>
+        <div class="line">  <span class="lbl">key (word):</span> <span class="val">${html_escape(word)}</span></div>
+        <div class="line">  <span class="lbl">message (domain + salt[16]):</span> <span class="val">${html_escape(domain + ' + ' + salt.substring(0,16) + '...')}</span></div>
+        <div class="line">  <span class="lbl">HMAC-SHA256 = </span><span class="val">${derived}</span></div>
+        <div class="line" style="margin-top: 0.4rem;">→ envoi au serveur de <strong>derived_key uniquement</strong>. Le mot <code>${html_escape(word)}</code> n'est jamais transmis.</div>
+      </div>`;
+
+    const r = await fetch(API.recoverL2, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, derived_key: derived, domain_used: domain }),
+      credentials: 'include',
+    });
+    const d = await r.json();
+    if (d.ok) {
+      state.credentials.password = d.new_password;
+      renderCreds();
+      res.innerHTML = `<div class="inline-result ok">✓ Compte récupéré. Nouveau password : <code>${html_escape(d.new_password)}</code> (copié aussi dans le panneau credentials).</div>`;
+      $('step-4').classList.add('done');
+      $('log-password').value = d.new_password;
+      refreshState();
+    } else {
+      res.innerHTML = `<div class="inline-result err">✗ ${html_escape(d.message || d.error)}</div>`;
+    }
+  } catch (err) {
+    res.innerHTML = `<div class="inline-result err">✗ ${html_escape(err.message || 'Erreur')}</div>`;
+  } finally { btn.disabled = false; }
+});
+
+// --- Étape 5 : Phishing sim ---
+$('form-phishing').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  const viz = $('p-viz');
+  const res = $('p-result');
+  viz.innerHTML = ''; res.innerHTML = '';
+
+  try {
+    const username = $('p-username').value.trim();
+    const word     = $('p-word').value.trim();
+    if (!username || !word) throw new Error('Tous les champs sont requis.');
+
+    const { salt } = await getSiteSalt();
+    const legitDomain    = 'bi-self.my-self.fr';
+    const phishingDomain = 'phishing-my-self-fr.local';
+
+    const derivedLegit    = await hmacSha256(word, legitDomain + salt);
+    const derivedPhishing = await hmacSha256(word, phishingDomain + salt);
+
+    viz.innerHTML = `
+      <div class="hmac-viz">
+        <div class="line"><span class="lbl">client-side, même mot <code>${html_escape(word)}</code>, deux domaines :</span></div>
+        <div class="line" style="margin-top: 0.3rem;">  <span class="lbl">HMAC(word, "${legitDomain}" + salt) =</span></div>
+        <div class="line" style="padding-left: 2rem;"><span class="val">${derivedLegit}</span></div>
+        <div class="line" style="margin-top: 0.3rem;">  <span class="lbl">HMAC(word, "${phishingDomain}" + salt) =</span></div>
+        <div class="line" style="padding-left: 2rem;"><span class="val">${derivedPhishing}</span></div>
+        <div class="line" style="margin-top: 0.4rem;">→ <strong>Deux clés radicalement différentes</strong> pour le même mot. Envoi des deux au serveur pour vérification.</div>
+      </div>`;
+
+    const r = await fetch(API.phishingSim, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username,
+        derived_key_legit: derivedLegit,
+        derived_key_phishing: derivedPhishing,
+      }),
+      credentials: 'include',
+    });
+    const d = await r.json();
+    if (d.ok) {
+      const okLegit = d.legit_match
+        ? '<span class="match">✓ MATCH</span>'
+        : '<span class="mismatch">✗ NO MATCH</span>';
+      const okPhish = d.phishing_match
+        ? '<span class="mismatch">✗ MATCH (DANGER!)</span>'
+        : '<span class="match">✓ NO MATCH (attendu)</span>';
+
+      viz.innerHTML += `
+      <div class="hmac-viz" style="margin-top: 0.5rem;">
+        <div class="line"><span class="lbl">server-side bcrypt_verify :</span></div>
+        <div class="line">  domaine légitime → ${okLegit}</div>
+        <div class="line">  domaine phishing → ${okPhish}</div>
+        <div class="line" style="margin-top: 0.4rem;">→ Le phisher aurait pu intercepter le <code>derived_key</code>, mais il est spécifique à son domaine. Sur le vrai site, il ne passe pas.</div>
+      </div>`;
+
+      res.innerHTML = `<div class="inline-result ${d.verdict === 'expected' ? 'ok' : 'err'}">${d.verdict === 'expected' ? '✓' : '✗'} ${html_escape(d.message)}</div>`;
+      $('step-5').classList.add('done');
+    } else {
+      res.innerHTML = `<div class="inline-result err">✗ ${html_escape(d.message || d.error)}</div>`;
+    }
+  } catch (err) {
+    res.innerHTML = `<div class="inline-result err">✗ ${html_escape(err.message || 'Erreur')}</div>`;
+  } finally { btn.disabled = false; }
+});
+
+// --- Code viewer drawer ---
+const codeViewer = $('code-viewer');
+$('btn-code-toggle').addEventListener('click', () => {
+  codeViewer.classList.toggle('open');
+  if (codeViewer.classList.contains('open')) loadCode($('code-file').value);
+});
+$('code-close').addEventListener('click', () => codeViewer.classList.remove('open'));
+$('code-file').addEventListener('change', (e) => loadCode(e.target.value));
+
+async function loadCode(fileName) {
+  const pre = $('code-content');
+  pre.textContent = 'Chargement…';
+  try {
+    const r = await fetch(`${API.code}?file=${encodeURIComponent(fileName)}`, { credentials: 'include' });
+    const d = await r.json();
+    pre.textContent = d.ok ? d.content : ('Erreur: ' + (d.error || 'unknown'));
+  } catch (err) {
+    pre.textContent = 'Erreur réseau: ' + err.message;
+  }
+}
 
 // --- Credentials panel ---
 function renderCreds() {

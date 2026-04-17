@@ -32,7 +32,10 @@ final class RecoverHelper {
      * derived_key au serveur, comme dans le vrai protocole.
      */
     public static function deriveKey(string $recoveryWord, string $domain, string $siteSalt): string {
-        return hash_hmac('sha256', $recoveryWord, $domain . $siteSalt);
+        // Protocole SelfRecover : key = recovery_word, message = domain || site_salt
+        // PHP hash_hmac signature: hash_hmac($algo, $data, $key)
+        // Donc $data = message = domain||salt ; $key = recovery_word
+        return hash_hmac('sha256', $domain . $siteSalt, $recoveryWord);
     }
 
     /**
