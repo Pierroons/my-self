@@ -3,10 +3,12 @@
 **Autonomous community moderation engine through social reasoning**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Status: Concept](https://img.shields.io/badge/status-concept%20stage-orange.svg)](#status)
+[![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0%20whitepaper-orange.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
+[![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-Raspberry%20Pi-blue.svg)](#)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#)
+[![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
 > *The most effective moderation isn't imposed. It emerges naturally when the system is well designed.*
 
