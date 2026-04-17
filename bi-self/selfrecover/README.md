@@ -1,5 +1,7 @@
 # SelfRecover
 
+> 🇫🇷 **[Lire en français →](./README.fr.md)**
+
 **Zero-email account recovery protocol** — split knowledge, HMAC per domain, no SMTP, no third party.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

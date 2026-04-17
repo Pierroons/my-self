@@ -1,5 +1,7 @@
 # SelfInvoice
 
+> 🇫🇷 **[Lire en français →](./README.fr.md)**
+
 **Compliant invoice generator — PDF, legal mentions, zero cloud.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)

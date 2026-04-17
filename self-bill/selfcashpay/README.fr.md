@@ -1,5 +1,7 @@
 # SelfCashpay
 
+> 🇬🇧 **[Read in English →](./README.md)**
+
 **Paiements par QR-code SEPA — standard EPC069-12, zéro commission, pas d'intermédiaire.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)

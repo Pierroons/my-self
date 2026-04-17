@@ -1,5 +1,7 @@
 # SelfAct
 
+> 🇬🇧 **[Read in English →](./README.md)**
+
 **Transforme une analyse juridique en action prête à envoyer.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)

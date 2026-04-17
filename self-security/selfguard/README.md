@@ -1,5 +1,7 @@
 # SelfGuard
 
+> 🇫🇷 **[Lire en français →](./README.fr.md)**
+
 **Data vault with guaranteed destruction under coercion.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)

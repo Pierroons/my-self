@@ -1,5 +1,7 @@
 # SelfKeyGuard
 
+> 🇬🇧 **[Read in English →](./README.md)**
+
 **2FA matériel pour objets physiques — voitures, motos, maisons, tout ce qui se verrouille.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)

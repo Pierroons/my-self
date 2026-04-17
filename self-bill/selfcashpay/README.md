@@ -1,5 +1,7 @@
 # SelfCashpay
 
+> 🇫🇷 **[Lire en français →](./README.fr.md)**
+
 **SEPA QR-code payments — EPC069-12 standard, zero commission, no middleman.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)

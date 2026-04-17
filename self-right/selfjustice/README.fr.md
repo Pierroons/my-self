@@ -1,5 +1,7 @@
 # SelfJustice
 
+> 🇬🇧 **[Read in English →](./README.md)**
+
 **Pré-analyse juridique impartiale par directives lisibles par IA — servie via une API publique gratuite.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)
