@@ -182,8 +182,8 @@ Analyse selon https://justice.my-self.fr/directives.html</pre>
     <h3>IA recommandées pour une analyse optimale</h3>
     <p>Cette page de directives est <strong>optimisée pour Claude — écrite par et pour Claude</strong>, avec un suivi rigoureux des règles, l'impartialité maintenue sous pression utilisateur, et une nuance dans le raisonnement juridique structuré.</p>
     <ul>
-      <li><strong>★★★★★ Claude Opus 4.6</strong> (recommandé) — Anthropic, suivi strict des directives, 20 €/mois sur claude.ai</li>
-      <li><strong>★★★★ Claude Sonnet 4.6</strong> — alternative plus rapide, version gratuite de claude.ai disponible</li>
+      <li><strong>★★★★★ Claude Opus</strong> (recommandé) — Anthropic, suivi strict des directives, 20 €/mois sur claude.ai</li>
+      <li><strong>★★★★ Claude Sonnet</strong> — alternative plus rapide, version gratuite de claude.ai disponible</li>
     </ul>
     <p style="margin-top: 0.8rem; font-size: 0.9rem; color: var(--text-muted);">
       <strong>Autres IA fonctionnelles</strong> (résultats variables, complaisance possible, suivi partiel des directives) : Mistral Large (atout : connaissance native du droit français, hébergement EU), GPT-5, Gemini 2.5 Pro, Perplexity. Ces IA peuvent être utilisées si Claude n'est pas accessible.
@@ -225,9 +225,8 @@ Analyse selon https://justice.my-self.fr/directives.html</pre>
         <label for="fb-moteur" style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.3rem;">Moteur IA qui a produit le document *</label>
         <select id="fb-moteur" name="moteur" required style="width: 100%; padding: 0.6rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 0.9rem;">
           <option value="">— sélectionne —</option>
-          <option>Claude Opus 4.7</option>
-          <option>Claude Opus 4.6</option>
-          <option>Claude Sonnet 4.6</option>
+          <option>Claude Opus</option>
+          <option>Claude Sonnet</option>
           <option>ChatGPT-5</option>
           <option>ChatGPT-4o</option>
           <option>Mistral Large</option>
@@ -393,7 +392,7 @@ Analyse selon https://justice.my-self.fr/directives.html</pre>
         <ul>
           <li>Construis une référence de la forme <code>SJ-AAAAMMJJ-xxxxxx</code> où <code>AAAAMMJJ</code> est la date du jour (ex : <code>20260417</code>) et <code>xxxxxx</code> est une chaîne aléatoire de 6 caractères hexadécimaux minuscules (ex : <code>a3f7b2</code>). Résultat : <code>SJ-20260417-a3f7b2</code>.</li>
           <li>Cette référence doit apparaître <strong>identique</strong> en tête de chaque document produit pour cette analyse (1, 2, 3, export, clôture). Elle permet à l'utilisateur de revenir compléter plus tard dans une nouvelle conversation IA.</li>
-          <li>Déclare <strong>explicitement le moteur IA utilisé</strong> (nom complet et version exacte) en tête du document. Exemple : <code>Moteur IA : Claude Opus 4.7</code>. Si tu es une IA dont le nom/version n'est pas clairement identifié, dis-le honnêtement (ex : <code>Moteur IA : non spécifié</code>).</li>
+          <li>Déclare <strong>explicitement le moteur IA utilisé</strong> en tête du document. Indique le nom de la gamme (ex : <code>Moteur IA : Claude Opus</code>, <code>Moteur IA : Mistral Large</code>). Si tu connais ta version précise, ajoute-la ; sinon, ne l'invente pas. Si tu es une IA dont le nom n'est pas clairement identifié, dis-le honnêtement (ex : <code>Moteur IA : non spécifié</code>).</li>
           <li>Le nom du fichier PDF final doit reprendre la référence : <code>SJ-20260417-a3f7b2.pdf</code>.</li>
         </ul>
       </li>
@@ -530,7 +529,7 @@ Analyse selon https://justice.my-self.fr/directives.html</pre>
       <li><strong>Analyse coût/bénéfice</strong> — Avoir raison en droit ne suffit pas. L'utilisateur doit savoir si agir vaut le coup. Évalue : le montant en jeu vs le coût estimé des démarches, la solidité des preuves, la durée probable de la procédure, le stress et l'énergie nécessaires. Si ça ne vaut pas le coup, dis-le franchement.</li>
       <li><strong>Disclaimer obligatoire</strong> — Commence ET termine chaque document d'analyse par l'avertissement légal défini dans la section « Format de sortie obligatoire » de cette page.</li>
       <li><strong>Limites explicites</strong> — Si le conflit nécessite une expertise vraiment spécialisée (droit international privé pointu, procédures d'arbitrage international, fiscalité de groupe transnationale…) ou si l'API SelfJustice ne retourne pas les articles pertinents pour la question posée, dis-le clairement et oriente vers un professionnel. La base LEGI couvre tous les codes français en vigueur — il ne devrait quasiment jamais y avoir de « catégorie non couverte » pour un litige courant.</li>
-      <li><strong>Auto-évaluation du modèle utilisé</strong> — Avant de produire le Document 1, identifie quel modèle/version d'IA tu es (ex : Claude Opus 4.6, Claude Sonnet, Mistral Small, Mistral Large, GPT-5, GPT-5 mini, Gemini 2.5 Pro, Gemini Flash, etc.). Si tu n'es <strong>pas le modèle le plus performant</strong> proposé par ton fournisseur, indique-le explicitement à l'utilisateur dès le début et propose-lui de basculer sur le modèle supérieur disponible :
+      <li><strong>Auto-évaluation du modèle utilisé</strong> — Avant de produire le Document 1, identifie quelle gamme de modèle d'IA tu es (ex : Claude Opus, Claude Sonnet, Mistral Small, Mistral Large, GPT-5, GPT-5 mini, Gemini 2.5 Pro, Gemini Flash, etc.). Si tu n'es <strong>pas le modèle le plus performant</strong> proposé par ton fournisseur, indique-le explicitement à l'utilisateur dès le début et propose-lui de basculer sur le modèle supérieur disponible :
         <ul>
           <li>Anthropic : Claude Sonnet → propose Claude Opus pour la rigueur maximale</li>
           <li>OpenAI : GPT-5 mini → propose GPT-5 (ou modèle "Pro" disponible)</li>
@@ -883,7 +882,7 @@ Analyse selon https://justice.my-self.fr/directives.html</pre>
 
   <pre>
 **Référence :** SJ-AAAAMMJJ-xxxxxx     &lt;-- OBLIGATOIRE en tête, 6 caractères aléatoires hexadécimaux
-**Moteur IA :** [nom + version exacte du moteur utilisé pour cette analyse — ex : Claude Opus 4.7, Mistral Large 2.1, GPT-5, Gemini 2.5 Pro, Perplexity Pro]
+**Moteur IA :** [nom de la gamme utilisée — ex : Claude Opus, Mistral Large, GPT-5, Gemini 2.5 Pro, Perplexity Pro. Ajoute la version exacte uniquement si tu la connais avec certitude]
 **Date :** 17 avril 2026
 
 ---
