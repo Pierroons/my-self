@@ -48,16 +48,20 @@ echo '<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <title>Bi-Self — Bypass activé</title>
-  <meta http-equiv="refresh" content="3; url=/">
+  <meta http-equiv="refresh" content="3; url=/recover">
   <style>
     body { font-family: system-ui, sans-serif; background: #0f1419; color: #e8eaed; padding: 3rem; text-align: center; }
     h1 { color: #7ab7ff; }
     p { color: #9aa0a6; }
+    a { color: #7ab7ff; }
   </style>
 </head>
 <body>
   <h1>✓ Bypass rate-limit activé</h1>
   <p>Cookie sj_bypass posé (90 jours). Tu peux maintenant ouvrir autant de sessions que nécessaire.</p>
-  <p>Redirection vers la démo dans 3 secondes…</p>
+  <p>Redirection vers la démo SelfRecover dans 3 secondes…</p>
+  <p style="margin-top: 2rem; font-size: 0.85rem;">
+    <a href="/recover">Lancer la démo maintenant</a>  ·  <a href="/">Retour à la landing Bi-Self</a>
+  </p>
 </body>
 </html>';
