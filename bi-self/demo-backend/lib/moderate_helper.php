@@ -200,7 +200,6 @@ final class ModerateHelper {
         $log = $s->logger();
 
         if ($reputation < self::LOSE_VOTING_AT) {
-            // Perte droit de vote
             $stmt = $db->prepare('UPDATE users SET voting_rights = 0 WHERE id = :id');
             $stmt->bindValue(':id', $userId);
             $stmt->execute();
@@ -210,18 +209,22 @@ final class ModerateHelper {
         }
 
         if ($reputation <= self::BAN_AT) {
-            // Ban progressif : compter les strikes
             $stmt = $db->prepare('SELECT strikes FROM users WHERE id = :id');
             $stmt->bindValue(':id', $userId);
             $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
             $strikes = (int) ($row['strikes'] ?? 0);
 
-            $durations = [86400, 7 * 86400, 30 * 86400]; // 24h, 7j, 30j
+            // Base temporelle : simulated_time (pas time() réel) pour que les
+            // ticks de démo puissent faire avancer le temps et déclencher l'unban.
+            $simRow = $db->query('SELECT simulated_time FROM time_state WHERE id = 1')->fetchArray(SQLITE3_ASSOC);
+            $simNow = (int) ($simRow['simulated_time'] ?? time());
+
+            $durations = [86400, 7 * 86400, 30 * 86400];
             if ($strikes >= 3) {
                 $log->error('sanctions', 'Ban PERMANENT — 3 strikes cumulés', ['user_id' => $userId]);
                 $until = PHP_INT_MAX;
             } else {
-                $until = time() + $durations[$strikes];
+                $until = $simNow + $durations[$strikes];
                 $log->warning('sanctions', sprintf('Ban temporaire strike #%d — durée %s', $strikes + 1, $durations[$strikes] >= 86400 ? ($durations[$strikes] / 86400) . 'j' : '24h'), ['user_id' => $userId]);
             }
 
