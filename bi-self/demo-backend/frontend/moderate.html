@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SelfModerate — Démo live</title>
+  <meta name="robots" content="noindex,nofollow">
+  <style>
+    :root {
+      --bg: #0f1419; --bg-card: #1a2028; --bg-terminal: #0a0f14;
+      --text: #e8eaed; --text-muted: #9aa0a6;
+      --accent: #7ab7ff; --accent-dim: #5a97df;
+      --border: #2a3038;
+      --success: #7cc47c; --warning: #d4c058; --danger: #e07b7b;
+      --crypto: #a380ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; height: 100%; }
+    body { display: flex; flex-direction: column; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    header { padding: 0.9rem 1.2rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+    header .title { font-size: 1rem; color: var(--accent); font-weight: 600; }
+    header .title a { color: var(--text-muted); font-size: 0.75rem; margin-right: 0.5rem; }
+    header .controls { display: flex; gap: 0.8rem; align-items: center; font-size: 0.85rem; }
+    header .timer { color: var(--text-muted); font-family: SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; }
+    header .timer.warn { color: var(--warning); }
+    header .code-toggle { background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 0.3rem 0.7rem; border-radius: 6px; font-size: 0.8rem; cursor: pointer; }
+    header .code-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+    main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+
+    .panel-app { padding: 1.5rem; overflow-y: auto; border-right: 1px solid var(--border); }
+    @media (max-width: 900px) { .panel-app { border-right: none; border-bottom: 1px solid var(--border); } }
+    .panel-app h2 { color: var(--accent); font-size: 1.1rem; margin-bottom: 0.3rem; }
+    .panel-app .lead { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+
+    .card-app { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; margin-bottom: 1rem; }
+    .step-header { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.8rem; }
+    .step-header .num { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: 700; }
+    .step-header .title { color: var(--accent); font-weight: 600; font-size: 0.95rem; }
+
+    .field { display: flex; flex-direction: column; margin-bottom: 0.9rem; }
+    .field label { font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 0.3rem; }
+    .field input { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem 0.75rem; font-family: inherit; font-size: 0.92rem; }
+    .field input:focus { outline: none; border-color: var(--accent); }
+    .btn { display: inline-block; padding: 0.55rem 1.1rem; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--bg); font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+    .btn:hover { background: var(--accent-dim); border-color: var(--accent-dim); }
+    .btn.ghost { background: transparent; color: var(--accent); }
+    .btn.sm { padding: 0.3rem 0.6rem; font-size: 0.8rem; border-radius: 4px; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .inline-result { margin-top: 0.6rem; padding: 0.6rem 0.9rem; border-radius: 6px; font-size: 0.85rem; }
+    .inline-result.ok { background: rgba(124,196,124,0.1); border: 1px solid var(--success); color: var(--success); }
+    .inline-result.err { background: rgba(224,123,123,0.1); border: 1px solid var(--danger); color: var(--danger); }
+    .inline-result.warn { background: rgba(212,192,88,0.1); border: 1px solid var(--warning); color: var(--warning); }
+
+    /* Users grid */
+    .users { display: grid; grid-template-columns: 1fr; gap: 0.6rem; margin-top: 0.6rem; }
+    .user-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.7rem 0.9rem; display: flex; align-items: center; gap: 0.8rem; }
+    .user-card .identity { flex: 1; min-width: 0; }
+    .user-card .name { color: var(--text); font-weight: 600; font-size: 0.9rem; }
+    .user-card .profile { color: var(--text-muted); font-size: 0.72rem; margin-top: 0.1rem; }
+    .user-card .rep { font-family: SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.85rem; color: var(--accent); font-weight: 600; min-width: 34px; text-align: right; transition: color 0.3s; }
+    .user-card.toxic .rep { color: var(--danger); }
+    .user-card.banned { opacity: 0.5; }
+    .user-card .actions { display: flex; gap: 0.3rem; }
+    .user-card .actions button { background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 0.25rem 0.55rem; border-radius: 4px; font-size: 0.78rem; cursor: pointer; }
+    .user-card .actions button:hover { border-color: var(--accent); color: var(--accent); }
+    .user-card .actions button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    .teach { background: rgba(122,183,255,0.08); border-left: 3px solid var(--accent); padding: 0.85rem 1rem; border-radius: 0 6px 6px 0; font-size: 0.85rem; color: var(--text-muted); margin-top: 0.6rem; }
+    .teach strong { color: var(--accent); }
+
+    /* Logs panel (même style que recover) */
+    .panel-logs { background: var(--bg-terminal); overflow: hidden; display: flex; flex-direction: column; }
+    .panel-logs .head { padding: 0.8rem 1.2rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); }
+    .panel-logs .head .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--success); margin-right: 0.5rem; animation: pulse 2s infinite; }
+    .panel-logs .head .dot.paused { background: var(--text-muted); animation: none; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .panel-logs .head button { background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 0.15rem 0.6rem; border-radius: 4px; font-size: 0.75rem; cursor: pointer; }
+    .logs { flex: 1; overflow-y: auto; padding: 0.6rem 1rem; font-family: SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; line-height: 1.5; }
+    .log-line { margin: 0.1rem 0; word-break: break-word; }
+    .log-line .ts { color: #4a5560; margin-right: 0.6rem; }
+    .log-line .step { color: var(--text-muted); margin-right: 0.5rem; }
+    .log-line.info .msg { color: var(--text); }
+    .log-line.success .msg { color: var(--success); }
+    .log-line.warning .msg { color: var(--warning); }
+    .log-line.error .msg { color: var(--danger); }
+    .log-line.crypto .msg { color: var(--crypto); }
+    .log-line .ctx { display: block; color: var(--text-muted); padding-left: 1.4rem; font-size: 0.72rem; }
+
+    /* Code viewer (même que recover) */
+    .code-viewer { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100%); background: var(--bg-terminal); border-left: 1px solid var(--border); transform: translateX(100%); transition: transform 0.25s ease; z-index: 100; display: flex; flex-direction: column; }
+    .code-viewer.open { transform: translateX(0); }
+    .code-viewer .ch { padding: 0.8rem 1.1rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+    .code-viewer select { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 0.25rem 0.4rem; font-size: 0.8rem; font-family: inherit; }
+    .code-viewer button.close { background: transparent; border: none; color: var(--text-muted); font-size: 1.3rem; cursor: pointer; line-height: 1; }
+    .code-viewer pre { flex: 1; overflow: auto; margin: 0; padding: 0.8rem 1.1rem; font-family: SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.75rem; line-height: 1.55; color: var(--text); white-space: pre; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="title">
+    <a href="https://my-self.fr">my-self.fr</a> <a href="/">Bi-Self</a> / SelfModerate — démo live
+  </div>
+  <div class="controls">
+    <span class="timer" id="timer">⌛ —:—</span>
+    <button class="code-toggle" id="btn-code-toggle">📄 Voir le code</button>
+  </div>
+</header>
+
+<main>
+
+<div class="panel-app">
+  <h2>Démo SelfModerate</h2>
+  <p class="lead">Une mini-communauté de 5 bots + toi. Tu votes, les scores bougent, le serveur détecte les attaques coordonnées en direct.</p>
+
+  <div id="warn-container"></div>
+
+  <!-- Étape 1 — créer identité -->
+  <div class="card-app" id="step-1">
+    <div class="step-header"><div class="num">1</div><div class="title">Crée ton identité dans la communauté</div></div>
+    <form id="form-identity">
+      <div class="field">
+        <label for="id-username">Pseudo (optionnel)</label>
+        <input id="id-username" placeholder="ex: curieux42 (laisse vide pour auto)" pattern="[a-z0-9_]{3,20}" autocomplete="off">
+      </div>
+      <button class="btn" type="submit">Rejoindre la communauté</button>
+    </form>
+    <div id="identity-result"></div>
+    <div class="teach">
+      <strong>Ce qu'il se passe ici :</strong> tu entres dans une communauté déjà peuplée
+      de 5 bots aux profils variés (toxique, neutre, upvoter, pack, victime). On te crée
+      un compte avec réputation 20 et on génère des invitations avec chacun des bots
+      pour que tu puisses voter ensuite.
+    </div>
+  </div>
+
+  <!-- Étape 2 — liste des users + vote -->
+  <div class="card-app" id="step-2">
+    <div class="step-header"><div class="num">2</div><div class="title">Communauté : votes légitimes</div></div>
+    <div id="users-list" class="users"><em class="lead">Crée ton identité pour voir la liste.</em></div>
+    <div class="teach">
+      <strong>Règle :</strong> le vote est lié à une invitation acceptée. Chaque
+      <code>👍</code> ou <code>👎</code> modifie la réputation de la cible. Score capé à 30,
+      plancher à 0. Si tu downvotes <em>@alice_toxique</em>, son score baisse et, si assez
+      de monde fait pareil, elle perd son droit de vote puis est bannie.
+    </div>
+  </div>
+
+  <!-- Étape 3 — Pack voting detection -->
+  <div class="card-app" id="step-3">
+    <div class="step-header"><div class="num">3</div><div class="title">Détection pack-voting</div></div>
+    <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.6rem;">
+      Simulons une attaque coordonnée : 3 bots (@charlie, @dave, @alice) votent <code>👎</code>
+      simultanément contre la même cible. L'algorithme détecte la coordination, annule les votes,
+      restore la réputation.
+    </p>
+    <div class="field">
+      <label for="pack-target">Cible à "attaquer"</label>
+      <select id="pack-target" style="background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem;">
+        <option value="">— choisir —</option>
+      </select>
+    </div>
+    <button class="btn" id="btn-pack" type="button">Déclencher l'attaque pack-voting</button>
+    <div id="pack-result"></div>
+    <div class="teach">
+      <strong>Ce qu'il se passe ici :</strong> les 3 bots votent <code>-1</code> en
+      moins de 60s contre la même cible. L'algorithme regarde les votes récents, identifie
+      la convergence temporelle + le graph d'invitations croisées entre voters, marque
+      les votes comme <code>blocked = 1, reason = pack_voting</code>, et restore la
+      réputation de la victime. Aucune IA. Juste du SQL.
+    </div>
+  </div>
+
+  <p class="lead" style="margin-top: 2rem; font-size: 0.8rem;">
+    Étapes à venir (session 6) : escalade des sanctions (perte vote, ban 24h/7j/30j,
+    ban permanent après 3 strikes), détection upvote-farming, reset après ban purgé,
+    et démo binôme (comment SelfRecover + SelfModerate neutralisent une attaque Sybil).
+  </p>
+</div>
+
+<aside class="panel-logs">
+  <div class="head">
+    <div><span class="dot" id="sse-dot"></span>BACKEND · <span id="sse-status">connecting…</span></div>
+    <button id="btn-clear-logs">Effacer</button>
+  </div>
+  <div class="logs" id="logs">
+    <div class="log-line info"><span class="ts">—:—:—.—</span><span class="step">[init]</span><span class="msg">En attente d'ouverture de session…</span></div>
+  </div>
+</aside>
+
+</main>
+
+<div class="code-viewer" id="code-viewer">
+  <div class="ch">
+    <div style="display: flex; align-items: center; gap: 0.5rem;">
+      <span style="color: var(--accent); font-size: 0.85rem;">📄 Code source</span>
+      <select id="code-file">
+        <option value="create-identity">create-identity.php</option>
+        <option value="vote">vote.php</option>
+        <option value="users">users.php</option>
+        <option value="me">me.php</option>
+        <option value="trigger-pack">trigger-pack.php</option>
+        <option value="moderate_helper">lib/moderate_helper.php</option>
+        <option value="session_manager">lib/session_manager.php</option>
+        <option value="schema">schemas/selfmoderate.sql</option>
+      </select>
+    </div>
+    <button class="close" id="code-close" title="Fermer">✕</button>
+  </div>
+  <pre id="code-content">Sélectionne un fichier pour voir son code source.</pre>
+</div>
+
+<script>
+const API = {
+  session:        '/demo/api/session',
+  events:         '/demo/api/events',
+  me:             '/demo/api/moderate/me',
+  users:          '/demo/api/moderate/users',
+  createIdentity: '/demo/api/moderate/create-identity',
+  vote:           '/demo/api/moderate/vote',
+  triggerPack:    '/demo/api/moderate/trigger-pack',
+  code:           '/demo/api/moderate/code',
+};
+
+const state = { session: null, visitor: null, users: [], eventSource: null, sseOffset: 0 };
+
+function $(id) { return document.getElementById(id); }
+function html_escape(s) { return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtTs(iso) { const d = new Date(iso); const pad = (n,w=2) => String(n).padStart(w,'0'); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(),3)}`; }
+
+function startTimer() {
+  setInterval(() => {
+    if (!state.session) return;
+    const remaining = Math.max(0, state.session.expires_at - Math.floor(Date.now() / 1000));
+    const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
+    const ss = String(remaining % 60).padStart(2, '0');
+    const el = $('timer');
+    el.textContent = `⌛ ${mm}:${ss}`;
+    el.classList.toggle('warn', remaining < 300);
+  }, 1000);
+}
+
+function connectSSE() {
+  if (state.eventSource) state.eventSource.close();
+  const url = `${API.events}?offset=${state.sseOffset}`;
+  const es = new EventSource(url);
+  state.eventSource = es;
+  $('sse-status').textContent = 'connecting…';
+  $('sse-dot').classList.remove('paused');
+  es.addEventListener('open', () => $('sse-status').textContent = 'connected');
+  es.addEventListener('log', (e) => {
+    try { addLog(JSON.parse(e.data)); } catch (_) {}
+  });
+  es.addEventListener('ping', (e) => {
+    try { const d = JSON.parse(e.data); if (typeof d.offset === 'number') state.sseOffset = d.offset; } catch (_) {}
+  });
+  es.addEventListener('error', () => $('sse-status').textContent = 'reconnecting…');
+}
+
+function addLog(payload) {
+  const logs = $('logs');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + (payload.level || 'info');
+  const ts = payload.ts ? fmtTs(payload.ts) : fmtTs(new Date().toISOString());
+  let h = `<span class="ts">${ts}</span><span class="step">[${html_escape(payload.step || '-')}]</span><span class="msg">${html_escape(payload.msg || '')}</span>`;
+  if (payload.ctx && Object.keys(payload.ctx).length) {
+    const ctx = JSON.stringify(payload.ctx).replace(/^\{|\}$/g, '').trim();
+    if (ctx) h += `<span class="ctx">↳ ${html_escape(ctx)}</span>`;
+  }
+  line.innerHTML = h;
+  logs.appendChild(line);
+  logs.scrollTop = logs.scrollHeight;
+}
+
+$('btn-clear-logs').addEventListener('click', () => { $('logs').innerHTML = ''; });
+
+async function ensureSession() {
+  let r = await fetch(API.session, { credentials: 'include' });
+  if (r.status === 200) {
+    const d = await r.json();
+    if (d.ok && d.session.module === 'selfmoderate') {
+      state.session = d.session;
+      startSSEAndState();
+      return;
+    } else if (d.ok) {
+      // wrong module, force new
+      document.cookie = 'sj_demo_session=; path=/; domain=bi-self.my-self.fr; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    }
+  }
+  r = await fetch(API.session, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ module: 'selfmoderate' }),
+    credentials: 'include',
+  });
+  const d = await r.json();
+  if (!d.ok) { showError(d.message || d.error); return; }
+  state.session = d.session;
+  if (d.message) showWarning(d.message, d.session.warning_level >= 2);
+  startSSEAndState();
+}
+
+function startSSEAndState() {
+  connectSSE();
+  refreshUsers();
+  startTimer();
+}
+
+function showError(msg) { $('warn-container').innerHTML = `<div class="inline-result err">${html_escape(msg)}</div>`; }
+function showWarning(msg, danger=false) { $('warn-container').innerHTML = `<div class="inline-result ${danger ? 'err' : 'warn'}">${html_escape(msg)}</div>`; }
+
+async function refreshUsers() {
+  try {
+    const r1 = await fetch(API.users, { credentials: 'include' });
+    const d1 = await r1.json();
+    if (d1.ok) state.users = d1.users;
+    const r2 = await fetch(API.me, { credentials: 'include' });
+    const d2 = await r2.json();
+    if (d2.ok) state.visitor = d2.visitor;
+    renderUsers();
+  } catch (_) {}
+}
+
+function renderUsers() {
+  const container = $('users-list');
+  const select = $('pack-target');
+  if (!state.users.length) {
+    container.innerHTML = '<em class="lead">Crée ton identité pour voir la liste.</em>';
+    return;
+  }
+  container.innerHTML = state.users.map(u => {
+    const isMe = state.visitor && u.id === state.visitor.id;
+    const toxic = u.bot_profile === 'toxic' ? ' toxic' : '';
+    const banned = u.banned_until > Math.floor(Date.now()/1000) ? ' banned' : '';
+    const canVote = !isMe && state.visitor && state.visitor.voting_rights && !banned;
+    return `<div class="user-card${toxic}${banned}">
+      <div class="identity">
+        <div class="name">${html_escape(u.username)}${isMe ? ' <span style="color:var(--accent);font-size:0.7rem;">(toi)</span>' : ''}</div>
+        <div class="profile">${u.is_bot ? 'bot · ' + html_escape(u.bot_profile || '') : 'humain'} · strikes: ${u.strikes}${!u.voting_rights ? ' · sans droit de vote' : ''}${banned ? ' · BANNI' : ''}</div>
+      </div>
+      <div class="rep">${u.reputation}</div>
+      <div class="actions">
+        <button data-vote-target="${u.id}" data-vote-value="1" ${!canVote ? 'disabled' : ''} title="👍">+1</button>
+        <button data-vote-target="${u.id}" data-vote-value="-1" ${!canVote ? 'disabled' : ''} title="👎">-1</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Event delegation pour les votes
+  container.querySelectorAll('button[data-vote-target]').forEach(btn => {
+    btn.addEventListener('click', () => vote(+btn.dataset.voteTarget, +btn.dataset.voteValue));
+  });
+
+  // Options pour pack attack
+  select.innerHTML = '<option value="">— choisir —</option>' + state.users
+    .filter(u => u.username !== '@charlie_upvoter' && u.username !== '@dave_pack' && u.username !== '@alice_toxique')
+    .map(u => `<option value="${u.id}">${html_escape(u.username)} (score ${u.reputation})</option>`).join('');
+}
+
+$('form-identity').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button'); btn.disabled = true;
+  const res = $('identity-result'); res.innerHTML = '';
+  try {
+    const r = await fetch(API.createIdentity, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: $('id-username').value.trim() }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      res.innerHTML = `<div class="inline-result ok">✓ Tu es <strong>${html_escape(d.username)}</strong> (id ${d.visitor_id}) — score 20.</div>`;
+      $('step-1').classList.add('done');
+      refreshUsers();
+    } else {
+      res.innerHTML = `<div class="inline-result err">✗ ${html_escape(d.message || d.error)}</div>`;
+    }
+  } catch (err) { res.innerHTML = `<div class="inline-result err">✗ Erreur réseau.</div>`; }
+  finally { btn.disabled = false; }
+});
+
+async function vote(targetId, value) {
+  try {
+    const r = await fetch(API.vote, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_id: targetId, value, reason: value > 0 ? 'bon coéquipier' : 'comportement toxique' }),
+    });
+    const d = await r.json();
+    if (!d.ok) alert('Vote refusé : ' + (d.message || d.error));
+    refreshUsers();
+  } catch (err) {
+    alert('Erreur réseau.');
+  }
+}
+
+$('btn-pack').addEventListener('click', async () => {
+  const target = +$('pack-target').value;
+  if (!target) { $('pack-result').innerHTML = `<div class="inline-result err">Choisis une cible d'abord.</div>`; return; }
+  $('pack-result').innerHTML = '<em class="lead">Simulation en cours — les bots votent, l\'algorithme détecte…</em>';
+  try {
+    const r = await fetch(API.triggerPack, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_id: target }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      const detected = d.detection.pack_detected;
+      $('pack-result').innerHTML = `<div class="inline-result ${detected ? 'ok' : 'warn'}">${detected ? '✓' : '⚠'} ${html_escape(d.message)}</div>`;
+      $('step-3').classList.add('done');
+    } else {
+      $('pack-result').innerHTML = `<div class="inline-result err">✗ ${html_escape(d.error)}</div>`;
+    }
+    refreshUsers();
+  } catch (err) {
+    $('pack-result').innerHTML = `<div class="inline-result err">✗ Erreur réseau.</div>`;
+  }
+});
+
+// Code viewer
+const codeViewer = $('code-viewer');
+$('btn-code-toggle').addEventListener('click', () => { codeViewer.classList.toggle('open'); if (codeViewer.classList.contains('open')) loadCode($('code-file').value); });
+$('code-close').addEventListener('click', () => codeViewer.classList.remove('open'));
+$('code-file').addEventListener('change', (e) => loadCode(e.target.value));
+async function loadCode(fileName) {
+  const pre = $('code-content'); pre.textContent = 'Chargement…';
+  try { const r = await fetch(`${API.code}?file=${encodeURIComponent(fileName)}`, { credentials: 'include' }); const d = await r.json(); pre.textContent = d.ok ? d.content : ('Erreur: ' + (d.error || 'unknown')); }
+  catch (err) { pre.textContent = 'Erreur réseau.'; }
+}
+
+ensureSession();
+</script>
+
+</body>
+</html>
