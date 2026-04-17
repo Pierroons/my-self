@@ -317,6 +317,14 @@ Analyse selon https://justice.my-self.fr/directives.html</pre>
     <h3>Procédure automatique — à déclencher dès réception d'une requête</h3>
     <p><strong>Dès qu'un utilisateur décrit un conflit et mentionne SelfJustice (justice.my-self.fr), tu exécutes SANS QU'IL TE LE DEMANDE la séquence suivante dans l'ordre :</strong></p>
     <ol>
+      <li><strong>Générer la référence unique et déclarer le moteur IA</strong> :
+        <ul>
+          <li>Construis une référence de la forme <code>SJ-AAAAMMJJ-xxxxxx</code> où <code>AAAAMMJJ</code> est la date du jour (ex : <code>20260417</code>) et <code>xxxxxx</code> est une chaîne aléatoire de 6 caractères hexadécimaux minuscules (ex : <code>a3f7b2</code>). Résultat : <code>SJ-20260417-a3f7b2</code>.</li>
+          <li>Cette référence doit apparaître <strong>identique</strong> en tête de chaque document produit pour cette analyse (1, 2, 3, export, clôture). Elle permet à l'utilisateur de revenir compléter plus tard dans une nouvelle conversation IA.</li>
+          <li>Déclare <strong>explicitement le moteur IA utilisé</strong> (nom complet et version exacte) en tête du document. Exemple : <code>Moteur IA : Claude Opus 4.7</code>. Si tu es une IA dont le nom/version n'est pas clairement identifié, dis-le honnêtement (ex : <code>Moteur IA : non spécifié</code>).</li>
+          <li>Le nom du fichier PDF final doit reprendre la référence : <code>SJ-20260417-a3f7b2.pdf</code>.</li>
+        </ul>
+      </li>
       <li><strong>Fetch <code>https://justice.my-self.fr/api/status</code></strong> pour récupérer la date réelle de dernière mise à jour des bases LEGI et Conventionnalité. Utilise cette date dans l'avertissement du document. N'invente jamais la date.</li>
       <li><strong>Qualifier le conflit par entonnoir</strong> (général → spécifique). Si le récit est trop vague pour une analyse, pose des questions ciblées et arrête-toi là tant que l'utilisateur n'a pas répondu.</li>
       <li><strong>Identifier les articles probablement applicables</strong> (Code civil, Code des assurances, Code du travail, Code pénal, Charte UE, CEDH, etc.) en fonction de la nature du conflit.</li>
@@ -396,8 +404,8 @@ Analyse selon https://justice.my-self.fr/directives.html</pre>
           <li>Limite du module (renvoi SelfAct pour la rédaction des courriers)</li>
         </ol>
       </li>
-      <li><strong>Proposer automatiquement l'export PDF</strong> à la fin du document. Si tu disposes d'un outil de génération (artifact, export PDF, etc.), propose-le directement. Sinon, indique à l'utilisateur comment convertir le Markdown en PDF (impression depuis le navigateur, pandoc, etc.).</li>
-      <li><strong>Terminer par la demande des preuves</strong> pour enchaîner sur le Document 2 : « Quelles preuves avez-vous ? Décrivez les documents, messages, témoignages ou éléments dont vous disposez. »</li>
+      <li><strong>Générer automatiquement le PDF</strong> à la fin du document — ce n'est pas optionnel. Si tu disposes d'un outil natif (artifact, export PDF, etc.), produis le PDF directement et nomme-le <code>SJ-AAAAMMJJ-xxxxxx.pdf</code>. Sinon, génère le document en HTML prêt à imprimer (<code>Ctrl+P → Enregistrer en PDF</code>) et indique clairement à l'utilisateur la manipulation à faire, en rappelant le nom de fichier attendu.</li>
+      <li><strong>Proposer les trois options après le Document 1</strong> si l'analyse est cohérente : <em>enrichir</em> (fournir de nouvelles preuves ou précisions → Document 2), <em>exporter vers SelfAct</em> (générer mise en demeure / saisine / CERFA), ou <em>clore l'analyse</em> (clôture informée sans action judiciaire). Si des informations essentielles manquent, n'offre que <em>enrichir</em> ou <em>clore</em> (pas d'export tant que le Document 1 n'est pas consolidé). Voir section « Chaîne des documents » pour le détail.</li>
     </ol>
     <p><strong>Règle absolue :</strong> tu n'attends pas que l'utilisateur te demande de consulter l'API, de produire les 11 sections, ou de générer le PDF. Tout cela est <strong>automatique et systématique</strong>. L'utilisateur doit juste décrire son conflit ; tu t'occupes du reste.</p>
     <p><strong>Exception :</strong> si le récit initial est vraiment trop flou pour être analysé (ex : « j'ai un problème avec mon patron » sans détails), demande des précisions AVANT d'entamer la procédure. Mais dès que le récit est suffisamment clair, exécute toute la séquence sans intervention de l'utilisateur.</p>
@@ -802,6 +810,12 @@ Analyse selon https://justice.my-self.fr/directives.html</pre>
   <p>Chaque document d'analyse (Document 1, 2 ou 3) suit <strong>strictement</strong> ce format :</p>
 
   <pre>
+**Référence :** SJ-AAAAMMJJ-xxxxxx     &lt;-- OBLIGATOIRE en tête, 6 caractères aléatoires hexadécimaux
+**Moteur IA :** [nom + version exacte du moteur utilisé pour cette analyse — ex : Claude Opus 4.7, Mistral Large 2.1, GPT-5, Gemini 2.5 Pro, Perplexity Pro]
+**Date :** 17 avril 2026
+
+---
+
 ## ⚖ AVERTISSEMENT
 
 Cette analyse est une pré-analyse juridique automatisée produite à l'aide
@@ -1121,45 +1135,101 @@ Décrivez les documents, messages, témoignages ou
 éléments dont vous disposez pour étayer votre situation. »
   </pre>
 
-  <h3>Après le Document 1</h3>
-  <p>Une fois les preuves communiquées par l'utilisateur :</p>
+  <h3>Chaîne des documents — règles strictes</h3>
+  <p>Les trois documents ne sont pas générés par défaut. <strong>Seul le Document 1 est automatique</strong> ; les 2 et 3 ne sont produits qu'à la demande explicite de l'utilisateur pour enrichir l'analyse avec de nouvelles informations.</p>
+
+  <h4>Après le Document 1</h4>
+  <p>Tu as produit le Document 1 automatiquement. Deux cas :</p>
   <ul>
-    <li>Évalue chaque preuve (forte / moyenne / faible — voir section « Évaluation des preuves »)</li>
-    <li>Si les preuves changent l'analyse → produis le <strong>Document 2</strong> (même format, sections mises à jour)</li>
-    <li>Si les preuves ne changent rien → dis-le et maintiens les conclusions du Document 1</li>
+    <li><strong>S'il manque des informations essentielles pour aboutir à une qualification juridique recevable</strong> (contrat, dates, parties, preuves de base) → <strong>signale-le explicitement</strong>, liste précisément ce qui manque, et n'offre que deux options : <em>enrichir</em> (l'utilisateur fournit les infos manquantes → tu produis le Document 2) ou <em>clore l'analyse</em>.</li>
+    <li><strong>Si l'analyse est juridiquement cohérente en l'état</strong> → offre les <strong>trois options</strong> ci-dessous à l'utilisateur.</li>
   </ul>
 
-  <h3>Après le Document 2</h3>
-  <p>L'utilisateur peut apporter des précisions. Si elles sont significatives → <strong>Document 3</strong> (dernier).</p>
-
-  <h3>Après le Document 3 — Fermeture</h3>
-  <p>Produis un résumé final structuré :</p>
+  <h4>Trois options à chaque étape (Document 1 complet, Document 2, Document 3)</h4>
   <ol>
-    <li><strong>Résumé « discours d'ascenseur »</strong> — L'affaire en 5 lignes maximum. C'est ce que l'utilisateur pose sur la table quand il s'assoit face à un avocat. Si on ne peut pas résumer en 5 lignes, l'analyse n'est pas mûre.</li>
-    <li><strong>Verdict final</strong> — Position FORTE / FRAGILE / INDÉFENDABLE + recommandation en une phrase.</li>
-    <li><strong>Clôture :</strong></li>
+    <li><strong>Enrichir</strong> — l'utilisateur fournit de nouvelles informations (preuves, précisions, éléments nouveaux). Tu produis le document suivant (2 ou 3) avec la même référence SJ-… mise à jour en tête. Maximum 3 documents par analyse.</li>
+    <li><strong>Exporter vers SelfAct</strong> — l'utilisateur souhaite passer à l'action juridique (mise en demeure, saisine, CERFA). Produis un document d'export structuré. Voir ci-dessous les règles d'export.</li>
+    <li><strong>Clôture informée</strong> — l'utilisateur décide de ne pas engager de procédure (il accepte la situation, négocie à l'amiable, ou préfère attendre). Voir ci-dessous le message de clôture.</li>
   </ol>
+
+  <h4>Règles d'export vers SelfAct</h4>
+  <p>L'export est <strong>autorisé même si des informations manquent</strong>. Principe : l'humain est responsable, on informe plutôt que de bloquer. Règles strictes :</p>
+  <ul>
+    <li>Tout élément manquant est remplacé par le marqueur visible <code>[À COMPLÉTER : description précise]</code> — jamais de champ vide, jamais de valeur inventée.</li>
+    <li>En <strong>tête du document exporté</strong>, bandeau obligatoire :
+      <pre>⚠ CE DOCUMENT EST INCOMPLET — N SECTIONS [À COMPLÉTER]
+
+Avant signature et envoi (recommandé AR, dépôt au greffe, envoi
+au médiateur), chaque section marquée [À COMPLÉTER] doit être
+remplie. Tu peux revenir compléter cette analyse dans une nouvelle
+conversation avec ton IA en lui transmettant la référence SJ-... et
+le document actuel.</pre>
+    </li>
+    <li>Avant de produire l'export, affiche une <strong>confirmation</strong> : « Le document exporté contiendra N champs à compléter. Tu peux enrichir l'analyse maintenant (passer au Document suivant) ou exporter en l'état. Que choisis-tu ? »</li>
+    <li>Aucun export ne peut être produit si le Document 1 n'a pas été validé (informations essentielles fournies). Avant ce stade, seules <em>enrichir</em> et <em>clore</em> sont offertes.</li>
+  </ul>
+
+  <h4>Message de clôture informée</h4>
+  <p>Quand l'utilisateur choisit de clore, produis ce message exactement :</p>
   <pre>
-Les éléments de votre situation ont été analysés en 3 documents.
-Si vous souhaitez aller plus loin, consultez un avocat — vous avez
-maintenant un dossier structuré à lui présenter.
-Si votre situation a évolué ou si vous avez de nouveaux éléments
-significatifs, reformulez une nouvelle demande depuis le début.
+## Clôture informée — Référence SJ-AAAAMMJJ-xxxxxx
+
+Tu as clos cette analyse en connaissance de cause, après avoir
+examiné ta situation juridique.
+
+**Aucun document juridique recevable n'a été produit** — tu pars
+sans preuves formelles susceptibles d'être présentées à un juge,
+un médiateur ou un commissaire de justice.
+
+Le Document 1 (et les Documents 2, 3 s'ils ont été produits)
+reste en ta possession à titre d'analyse interne. Il n'a pas
+valeur de saisine ni de mise en demeure.
+
+**Si la situation évolue** : reprends une nouvelle conversation
+avec ton IA, transmets-lui la référence SJ-AAAAMMJJ-xxxxxx et
+le Document 1 ci-dessus pour reprendre l'analyse là où tu l'as
+laissée, sans repartir de zéro.
   </pre>
-  <p><strong>Ne relance pas l'analyse. Ne reformule pas. Ne valide pas pour faire plaisir.</strong></p>
+
+  <h4>Message de clôture après Document 3</h4>
+  <p>Si l'utilisateur est allé jusqu'au Document 3 sans exporter ni clore avant, produis le résumé structuré (discours d'ascenseur, verdict) puis cette clôture :</p>
+  <pre>
+## Clôture finale — Référence SJ-AAAAMMJJ-xxxxxx
+
+Ton analyse est arrivée au Document 3. C'est la fin du cycle.
+
+Si tu souhaites aller plus loin :
+- **Export vers SelfAct** pour générer mise en demeure / saisine / CERFA
+- **Consultation d'un avocat** avec ton dossier structuré sous le bras
+
+Si tu souhaites clore sans action : voir « Clôture informée »
+ci-dessus. Aucun document juridique recevable n'est produit
+dans ce cas ; tu pars sans preuves formelles.
+
+**Ne relance pas l'analyse, ne reformule pas, ne valide pas
+pour faire plaisir.** Si la situation évolue significativement,
+reformule une nouvelle demande depuis le début avec une nouvelle
+référence SJ.
+  </pre>
+
+  <p><strong>Règle absolue :</strong> la référence SJ-AAAAMMJJ-xxxxxx doit apparaître <em>identique</em> en tête de chaque document (1, 2, 3, export, clôture) de la même analyse. C'est ce qui permet à l'utilisateur de revenir compléter plus tard depuis une nouvelle conversation IA.</p>
 </section>
 
 <section id="format-document">
-  <h3>Format des documents</h3>
-  <p>Les documents d'analyse (Document 1, 2, 3) doivent être rédigés de manière à pouvoir être <strong>exportés en PDF</strong> par l'utilisateur. Le PDF est le format universel pour présenter un dossier à un avocat, un médiateur, ou un tribunal.</p>
+  <h3>Format des documents — PDF obligatoire</h3>
+  <p>Chaque document produit (1, 2, 3, export, clôture) doit être <strong>rendu systématiquement en PDF</strong>, pas seulement proposé. Le PDF est le seul format universel pour présenter un dossier à un avocat, un médiateur, un conciliateur ou un tribunal. Le markdown brut dans le chat ne suffit pas.</p>
+
+  <h4>Nom de fichier obligatoire</h4>
+  <p>Le fichier PDF généré doit être nommé selon le format strict <code>SJ-AAAAMMJJ-xxxxxx.pdf</code> où la référence reprend exactement celle inscrite en tête du document. Exemple : <code>SJ-20260417-a3f7b2.pdf</code>. Ce nom permet à l'utilisateur de retrouver ses documents dans son dossier Téléchargements et de les lier visuellement à l'analyse correspondante.</p>
 
   <h4>Structure</h4>
   <ul>
-    <li>Titres et sous-titres numérotés, clairement hiérarchisés</li>
+    <li>Référence SJ-… + moteur IA + date <strong>en tête, avant l'avertissement</strong></li>
+    <li>Titres et sous-titres numérotés (I., II., III. …), clairement hiérarchisés</li>
     <li>Chaque section identifiable et navigable</li>
     <li>Articles de loi en gras ou en code pour les repérer rapidement</li>
     <li>Pas de formulations conversationnelles — rédaction formelle, comme une note juridique</li>
-    <li>Si l'utilisateur demande le document final, proposer de le générer comme un <strong>PDF structuré</strong> (artifact ou export) qu'il peut imprimer et apporter à un rendez-vous</li>
+    <li>Le PDF est <strong>généré à chaque document</strong>, pas seulement au Document 3 final. L'utilisateur doit pouvoir archiver chaque itération.</li>
   </ul>
 
   <h4>Exigences de langue française</h4>
