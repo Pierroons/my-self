@@ -147,6 +147,44 @@
       cursor: not-allowed;
       text-decoration: line-through;
     }
+    .module .demo-live {
+      color: var(--success);
+      font-weight: 600;
+    }
+    .module .demo-live::after { content: " →"; }
+
+    .quick-access {
+      background: linear-gradient(135deg, rgba(124,196,124,0.15), rgba(122,183,255,0.1));
+      border: 1px solid var(--success);
+      border-radius: 10px;
+      padding: 1.2rem 1.5rem;
+      margin-bottom: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .quick-access .label {
+      color: var(--success);
+      text-transform: uppercase;
+      font-size: 0.72rem;
+      letter-spacing: 0.6px;
+      font-weight: 600;
+    }
+    .quick-access .text { margin-top: 0.2rem; font-size: 0.95rem; color: var(--text); }
+    .quick-access a.cta {
+      display: inline-block;
+      padding: 0.55rem 1.2rem;
+      background: var(--success);
+      color: var(--bg);
+      border-radius: 6px;
+      font-weight: 600;
+      text-decoration: none;
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+    .quick-access a.cta:hover { opacity: 0.85; text-decoration: none; }
 
     .synergy {
       background: var(--bg-card);
@@ -181,6 +219,14 @@
     <em>« Si une communauté peut se construire, elle peut se gouverner. »</em>
   </p>
 </section>
+
+<div class="quick-access">
+  <div>
+    <div class="label">🎬 Démo live disponible</div>
+    <div class="text"><strong>SelfRecover</strong> : inscription, login, récupération de compte en direct — côté frontend + côté backend simultanément.</div>
+  </div>
+  <a class="cta" href="/recover">Lancer la démo SelfRecover</a>
+</div>
 
 <div class="construction">
   <h3>⚙ Démos interactives en construction</h3>
@@ -224,7 +270,7 @@
       </p>
       <div class="actions">
         <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover" target="_blank" rel="noopener">Code &amp; README</a>
-        <a class="demo-disabled">Démo live (bientôt)</a>
+        <a class="demo-live" href="/recover">Lancer la démo</a>
       </div>
     </div>
 
