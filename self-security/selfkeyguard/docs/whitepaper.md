@@ -145,4 +145,4 @@ Open-source hardware + firmware + protocol ensures that no vendor can remotely d
 - EPC069-12 (SEPA QR, unrelated but inspiring): https://www.europeanpaymentscouncil.eu
 - Tesla relay attack analysis (KU Leuven, 2019): https://www.esat.kuleuven.be/cosic/news/tesla-key-fob-attack
 - ESP32 secure boot documentation: https://docs.espressif.com
-- SelfGuard integration spec: https://github.com/Pierroons/my-self/tree/master/self-security/selfguard
+- SelfGuard integration spec: https://github.com/Pierroons/my-self/tree/main/self-security/selfguard
