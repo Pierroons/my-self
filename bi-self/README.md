@@ -1,5 +1,7 @@
 # Bi-Self
 
+> 🇫🇷 **[Lire en français →](./README.fr.md)**
+
 **Sovereign identity + autonomous community moderation.**
 
 > *If a community can build itself, it can govern itself.*

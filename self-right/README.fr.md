@@ -1,5 +1,7 @@
 # Self-Right
 
+> 🇬🇧 **[Read in English →](./README.md)**
+
 **Accès au droit + capacité d'agir.**
 
 > *Connais tes droits, fais-les valoir.*

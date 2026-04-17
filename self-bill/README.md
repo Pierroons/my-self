@@ -1,5 +1,7 @@
 # Self-Bill
 
+> 🇫🇷 **[Lire en français →](./README.fr.md)**
+
 **Invoicing + getting paid, no middleman.**
 
 > *Bill it. Cash it. Keep all of it.*

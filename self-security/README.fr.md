@@ -1,5 +1,7 @@
 # Self-Security
 
+> 🇬🇧 **[Read in English →](./README.md)**
+
 **Protection numérique et physique.**
 
 > *Force-moi et tu n'auras rien.*

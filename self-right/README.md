@@ -1,5 +1,7 @@
 # Self-Right
 
+> 🇫🇷 **[Lire en français →](./README.fr.md)**
+
 **Access to law + capacity to act.**
 
 > *Know your rights, make them right.*
