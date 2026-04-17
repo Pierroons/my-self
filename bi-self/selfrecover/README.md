@@ -16,6 +16,14 @@
 
 ---
 
+> **The locksmith metaphor.**
+> When you change the lock on your front door, you don't hand your home address
+> to the locksmith. So why do you accept handing your email address to every
+> website just to reset a password? SelfRecover keeps the whole operation
+> inside your head.
+
+---
+
 ## The problem
 
 Every web application faces the same question: *what happens when a user forgets their password?*

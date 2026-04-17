@@ -16,6 +16,15 @@
 
 ---
 
+> **La métaphore du serrurier.**
+> Quand vous faites changer la serrure de votre porte d'entrée, vous ne
+> transmettez pas votre adresse personnelle au serrurier. Alors pourquoi
+> accepter de transmettre votre adresse mail à tous les sites juste pour
+> réinitialiser un mot de passe ? SelfRecover garde toute l'opération
+> dans votre tête.
+
+---
+
 ## Le problème
 
 Toute application web fait face à la même question : *que se passe-t-il quand un utilisateur oublie son mot de passe ?*
