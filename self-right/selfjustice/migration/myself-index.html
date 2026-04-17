@@ -3,104 +3,406 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MySelf — Site en construction</title>
-  <meta name="description" content="MySelf — Écosystème open source pour reprendre la main. Site en construction.">
-  <meta property="og:title" content="MySelf">
-  <meta property="og:description" content="Écosystème open source. Site en construction.">
+  <title>MySelf — Be yourself, for yourself</title>
+  <meta name="description" content="MySelf — Écosystème open source auto-hébergé pour reprendre la main sur son droit, son identité, sa sécurité et son économie. Quatre piliers, huit modules, zéro cloud.">
+  <meta property="og:title" content="MySelf — Be yourself, for yourself">
+  <meta property="og:description" content="Écosystème open source pour reprendre la main sur son droit, son identité, sa sécurité et son économie.">
   <meta property="og:url" content="https://my-self.fr">
   <meta property="og:type" content="website">
   <style>
     :root {
       --bg: #0f1419;
+      --bg-card: #1a2028;
+      --bg-card-hover: #222a34;
       --text: #e8eaed;
       --text-muted: #9aa0a6;
       --accent: #7ab7ff;
       --accent-dim: #5a97df;
       --border: #2a3038;
+      --success: #7cc47c;
+      --warning: #d4c058;
     }
-    * { box-sizing: border-box; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
-      height: 100%;
-      margin: 0;
-    }
-    body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 2rem;
-      line-height: 1.6;
+      line-height: 1.7;
     }
-    main {
-      max-width: 520px;
-      text-align: center;
-    }
-    h1 {
-      font-size: 3.5rem;
-      margin: 0 0 0.5rem;
+    body { padding: 2.5rem 1.5rem; }
+    main { max-width: 920px; margin: 0 auto; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .hero { text-align: center; padding: 2rem 0 3.5rem; }
+    .hero h1 {
+      font-size: clamp(3rem, 8vw, 4.5rem);
+      font-weight: 700;
+      letter-spacing: -1px;
       background: linear-gradient(135deg, var(--accent), var(--accent-dim));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
+      margin: 0;
     }
-    .status {
-      display: inline-block;
-      font-size: 0.8rem;
-      padding: 0.25rem 0.8rem;
-      border-radius: 12px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--accent-dim);
-      border: 1px solid var(--accent-dim);
-      margin-bottom: 2rem;
-    }
-    p {
+    .hero .tagline {
+      font-size: 1.3rem;
       color: var(--text-muted);
-      font-size: 1.05rem;
-      margin: 1rem 0;
+      margin-top: 0.5rem;
+      font-style: italic;
     }
-    a.cta {
-      display: inline-block;
+    .hero .pact {
       margin-top: 1.5rem;
-      padding: 0.8rem 1.6rem;
-      background: transparent;
-      color: var(--accent);
-      border: 1px solid var(--accent);
-      border-radius: 6px;
-      text-decoration: none;
-      font-weight: 500;
-      transition: background 0.2s, color 0.2s;
+      font-size: 1rem;
+      color: var(--text-muted);
+      max-width: 580px;
+      margin-left: auto;
+      margin-right: auto;
     }
-    a.cta:hover {
+    .hero .cta-row {
+      margin-top: 2rem;
+      display: flex;
+      gap: 0.8rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-block;
+      padding: 0.7rem 1.3rem;
+      border-radius: 7px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      background: transparent;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn:hover {
+      background: var(--accent);
+      color: var(--bg);
+      text-decoration: none;
+    }
+    .btn-primary {
       background: var(--accent);
       color: var(--bg);
     }
-    footer {
-      margin-top: 3rem;
+    .btn-primary:hover {
+      background: var(--accent-dim);
+      border-color: var(--accent-dim);
+      color: var(--bg);
+    }
+
+    section { margin: 3.5rem 0; }
+    h2 {
+      font-size: 1.6rem;
+      color: var(--accent);
+      margin-bottom: 1.2rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    p { margin-bottom: 1rem; }
+    p:last-child { margin-bottom: 0; }
+    .muted { color: var(--text-muted); }
+    .lead {
+      font-size: 1.05rem;
+      color: var(--text);
+    }
+    strong { color: var(--text); font-weight: 600; }
+
+    .manifesto {
+      background: var(--bg-card);
+      border-left: 3px solid var(--accent);
+      padding: 1.5rem 1.8rem;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 1.5rem;
+    }
+    .manifesto p { margin-bottom: 0.7rem; }
+    .manifesto p:last-child { margin-bottom: 0; }
+
+    .pillars {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 1.2rem;
+      margin-top: 1.5rem;
+    }
+    .pillar {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .pillar:hover {
+      border-color: var(--accent-dim);
+      background: var(--bg-card-hover);
+    }
+    .pillar h3 {
+      font-size: 1.2rem;
+      color: var(--accent);
+      margin-bottom: 0.3rem;
+    }
+    .pillar .sub {
+      font-size: 0.8rem;
       color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 0.9rem;
+    }
+    .pillar .modules {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+    .mod {
+      display: block;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.7rem 0.8rem;
+      color: var(--text);
+      font-size: 0.9rem;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .mod:hover {
+      border-color: var(--accent);
+      text-decoration: none;
+      background: var(--bg-card-hover);
+    }
+    .mod .name {
+      color: var(--accent);
+      font-weight: 600;
+      display: block;
+      margin-bottom: 0.1rem;
+    }
+    .mod .status {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 0.05rem 0.5rem;
+      border-radius: 10px;
+      margin-left: 0.4rem;
+      vertical-align: middle;
+    }
+    .mod .status.live {
+      background: rgba(124,196,124,0.15);
+      color: var(--success);
+      border: 1px solid var(--success);
+    }
+    .mod .status.draft {
+      background: rgba(212,192,88,0.15);
+      color: var(--warning);
+      border: 1px solid var(--warning);
+    }
+    .mod .status.alpha {
+      background: rgba(154,160,166,0.12);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .mod .role {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      display: block;
+    }
+
+    .author {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem 1.8rem;
+    }
+    .author p { font-size: 0.95rem; }
+
+    footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+    footer code {
+      background: var(--bg-card);
+      padding: 0.1rem 0.5rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
       font-size: 0.85rem;
     }
-    footer a {
-      color: var(--accent-dim);
-      text-decoration: none;
-    }
-    footer a:hover {
-      text-decoration: underline;
+
+    @media (max-width: 500px) {
+      .pillar .modules { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
 <main>
+
+<section class="hero">
   <h1>MySelf</h1>
-  <span class="status">Site en construction</span>
-  <p>Écosystème open source pour reprendre la main — droit, identité, sécurité, économie.</p>
-  <p>La landing officielle arrive bientôt. En attendant, le code vit sur GitHub.</p>
-  <a class="cta" href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">Voir le code sur GitHub →</a>
-  <footer>
-    Module déjà en ligne : <a href="https://justice.my-self.fr">justice.my-self.fr</a>
-  </footer>
+  <p class="tagline">Be yourself, for yourself.</p>
+  <p class="pact">
+    L'humain apporte l'entropie. La machine apporte l'impartialité.
+    Aucun des deux ne suffit seul. Ensemble, ils sont souverains.
+  </p>
+  <div class="cta-row">
+    <a class="btn btn-primary" href="https://justice.my-self.fr">Essayer SelfJustice</a>
+    <a class="btn" href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">Code sur GitHub</a>
+  </div>
+</section>
+
+<section>
+  <h2>Reprendre la main</h2>
+  <div class="manifesto">
+    <p>
+      MySelf est un <strong>écosystème open source</strong> de modules auto-hébergés
+      qui font soi-même, sans GAFAM et sans cloud, ce que l'État, les banques,
+      les assurances et les plateformes facturent cher — ou mal.
+    </p>
+    <p>
+      Pas de service central. Pas de base de données centralisée d'utilisateurs.
+      Pas de tracking. Tu télécharges, tu héberges, tu t'en sers. Le code est public,
+      les directives sont publiques, l'infrastructure est minimale (un Raspberry Pi
+      suffit).
+    </p>
+    <p>
+      Chaque module résout un problème concret de la vie quotidienne —
+      analyser un conflit juridique, récupérer un mot de passe sans email,
+      protéger ses clés physiques, encaisser sans commission — en rendant
+      à l'individu la <strong>souveraineté</strong> sur son identité, son droit,
+      ses données et sa monnaie.
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2>Les quatre piliers</h2>
+  <p class="lead muted">
+    MySelf adresse la <strong>personne complète</strong> à travers quatre binômes
+    de modules. Chaque binôme associe deux modules qui se renforcent mutuellement —
+    plus que la somme de leurs parties.
+  </p>
+
+  <div class="pillars">
+
+    <div class="pillar">
+      <h3>Bi-Self</h3>
+      <div class="sub">Identité sociale</div>
+      <p class="muted">
+        <em>« Si une communauté peut se construire, elle peut se gouverner. »</em>
+        Une identité fiable rend la modération par vote résistante aux attaques
+        Sybil. Le vote collectif crée un tissu qui survit à n'importe quel mauvais
+        acteur, y compris le fondateur.
+      </p>
+      <div class="modules">
+        <a class="mod" href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover" target="_blank" rel="noopener">
+          <span class="name">SelfRecover<span class="status draft">v0.1.0</span></span>
+          <span class="role">Récupération sans email — un mot, HMAC par domaine.</span>
+        </a>
+        <a class="mod" href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfmoderate" target="_blank" rel="noopener">
+          <span class="name">SelfModerate<span class="status draft">v0.1.0</span></span>
+          <span class="role">Modération communautaire par raisonnement social.</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="pillar">
+      <h3>Self-Right</h3>
+      <div class="sub">Droit &amp; action</div>
+      <p class="muted">
+        <em>« Connais tes droits, fais-les valoir. »</em>
+        Comprendre le droit ne suffit pas si on ne sait pas l'activer. Le binôme
+        couvre l'arc complet : diagnostic impartial (SelfJustice) puis rédaction
+        des actes (SelfAct) — mise en demeure, saisine, CERFA, délais.
+      </p>
+      <div class="modules">
+        <a class="mod" href="https://justice.my-self.fr">
+          <span class="name">SelfJustice<span class="status live">Live</span></span>
+          <span class="role">Pré-analyse juridique impartiale assistée par IA.</span>
+        </a>
+        <a class="mod" href="https://github.com/Pierroons/my-self/tree/main/self-right/selfact" target="_blank" rel="noopener">
+          <span class="name">SelfAct<span class="status alpha">alpha 0.0.1</span></span>
+          <span class="role">Courriers, CERFA, saisines — prêts à envoyer.</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="pillar">
+      <h3>Self-Security</h3>
+      <div class="sub">Protection</div>
+      <p class="muted">
+        <em>« Force-moi et tu n'auras rien. »</em>
+        Le numérique et le physique ne sont plus séparés. SelfGuard détruit ses
+        secrets sous contrainte. SelfKeyGuard applique un 2FA matériel aux
+        objets physiques. Ensemble, un périmètre où la coercition ne donne
+        qu'un leurre.
+      </p>
+      <div class="modules">
+        <a class="mod" href="https://github.com/Pierroons/my-self/tree/main/self-security/selfguard" target="_blank" rel="noopener">
+          <span class="name">SelfGuard<span class="status alpha">alpha 0.0.1</span></span>
+          <span class="role">Coffre-fort numérique avec destruction garantie.</span>
+        </a>
+        <a class="mod" href="https://github.com/Pierroons/my-self/tree/main/self-security/selfkeyguard" target="_blank" rel="noopener">
+          <span class="name">SelfKeyGuard<span class="status alpha">alpha 0.0.1</span></span>
+          <span class="role">2FA matériel pour voiture, moto, serrures.</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="pillar">
+      <h3>Self-Bill</h3>
+      <div class="sub">Économie directe</div>
+      <p class="muted">
+        <em>« Facture-le. Encaisse-le. Garde tout. »</em>
+        Facturation conforme et paiement SEPA via QR-code — le standard européen
+        EPC069-12 que les banques supportent nativement depuis 2013 et que
+        personne n'utilise. Zéro commission, zéro intermédiaire, pas d'agrément
+        bancaire requis.
+      </p>
+      <div class="modules">
+        <a class="mod" href="https://github.com/Pierroons/my-self/tree/main/self-bill/selfinvoice" target="_blank" rel="noopener">
+          <span class="name">SelfInvoice<span class="status alpha">alpha 0.0.1</span></span>
+          <span class="role">Factures PDF conformes, mentions légales, zéro cloud.</span>
+        </a>
+        <a class="mod" href="https://github.com/Pierroons/my-self/tree/main/self-bill/selfcashpay" target="_blank" rel="noopener">
+          <span class="name">SelfCashpay<span class="status alpha">alpha 0.0.1</span></span>
+          <span class="role">Paiements SEPA par QR-code, zéro commission.</span>
+        </a>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <h2>Auteur &amp; coworking</h2>
+  <div class="author">
+    <p>
+      <strong>Pierroons</strong> — un agriculteur qui code sur son temps libre.
+    </p>
+    <p>
+      <strong>Ce projet n'a pas été écrit seul.</strong> Chaque module, chaque
+      ligne, chaque whitepaper est le fruit d'un coworking continu avec
+      <strong>Claude Opus 4.7</strong> (Anthropic). Le produit est une vraie
+      collaboration humain–IA : l'humain apporte l'entropie (le vécu, la
+      direction, le bon sens agricole), la machine apporte la rigueur
+      (la structure, la relecture, la cohérence technique).
+    </p>
+    <p>
+      Le « Self pact » dont parle MySelf n'est pas théorique — c'est la méthode
+      d'écriture de l'écosystème. Ce que tu lis ici, tu pourrais le co-écrire
+      demain avec l'IA de ton choix, sur un sujet qui te tient à cœur.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <p>
+    Code source : <a href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">github.com/Pierroons/my-self</a>
+    · Licence <a href="https://github.com/Pierroons/my-self/blob/main/LICENSE" target="_blank" rel="noopener">MIT</a>
+    · Auto-hébergé sur Raspberry Pi 4
+    · <code>contact@my-self.fr</code>
+  </p>
+</footer>
+
 </main>
 </body>
 </html>
