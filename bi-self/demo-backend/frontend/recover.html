@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SelfRecover — Démo live</title>
+  <meta name="description" content="Démo interactive de SelfRecover : inscription, login, récupération de compte. Split-screen frontend/backend pour voir le protocole en direct.">
+  <meta name="robots" content="noindex,nofollow">
+  <style>
+    :root {
+      --bg: #0f1419;
+      --bg-card: #1a2028;
+      --bg-terminal: #0a0f14;
+      --text: #e8eaed;
+      --text-muted: #9aa0a6;
+      --accent: #7ab7ff;
+      --accent-dim: #5a97df;
+      --border: #2a3038;
+      --success: #7cc47c;
+      --warning: #d4c058;
+      --danger: #e07b7b;
+      --crypto: #a380ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      height: 100%;
+    }
+    body { display: flex; flex-direction: column; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Header */
+    header {
+      padding: 0.9rem 1.2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+      background: var(--bg);
+    }
+    header .title {
+      font-size: 1rem;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    header .title a { color: var(--text-muted); font-size: 0.75rem; margin-right: 0.5rem; }
+    header .controls { display: flex; gap: 0.8rem; align-items: center; font-size: 0.85rem; }
+    header .mode-switch {
+      display: inline-flex;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    header .mode-switch button {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.3rem 0.7rem;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    header .mode-switch button.active {
+      background: var(--accent);
+      color: var(--bg);
+    }
+    header .timer {
+      color: var(--text-muted);
+      font-family: SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.8rem;
+    }
+    header .timer.warn { color: var(--warning); }
+
+    /* Main split */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+    }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; grid-template-rows: auto auto; }
+    }
+
+    /* Left panel — app UI */
+    .panel-app {
+      padding: 1.5rem;
+      overflow-y: auto;
+      border-right: 1px solid var(--border);
+    }
+    @media (max-width: 900px) { .panel-app { border-right: none; border-bottom: 1px solid var(--border); } }
+
+    .panel-app h2 { color: var(--accent); font-size: 1.1rem; margin-bottom: 0.3rem; }
+    .panel-app .lead { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem; }
+
+    .step-header {
+      display: flex; align-items: center; gap: 0.6rem;
+      margin-bottom: 0.6rem;
+    }
+    .step-header .num {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--accent); color: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.8rem; font-weight: 700;
+    }
+    .step-header .title { color: var(--accent); font-weight: 600; font-size: 0.95rem; }
+
+    .card-app {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.2rem;
+      margin-bottom: 1rem;
+    }
+    .card-app.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .card-app.done { opacity: 0.55; }
+
+    .field {
+      display: flex; flex-direction: column;
+      margin-bottom: 0.9rem;
+    }
+    .field label {
+      font-size: 0.78rem; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.4px;
+      margin-bottom: 0.3rem;
+    }
+    .field input, .field textarea {
+      background: var(--bg); color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.6rem 0.75rem;
+      font-family: inherit; font-size: 0.92rem;
+    }
+    .field input:focus { outline: none; border-color: var(--accent); }
+    .btn {
+      display: inline-block;
+      padding: 0.55rem 1.1rem;
+      border-radius: 6px;
+      border: 1px solid var(--accent);
+      background: var(--accent); color: var(--bg);
+      font-size: 0.9rem; font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: var(--accent-dim); border-color: var(--accent-dim); }
+    .btn.ghost { background: transparent; color: var(--accent); }
+    .btn.ghost:hover { background: var(--accent); color: var(--bg); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .inline-result {
+      margin-top: 0.6rem;
+      padding: 0.7rem 0.9rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+    .inline-result.ok { background: rgba(124,196,124,0.1); border: 1px solid var(--success); color: var(--success); }
+    .inline-result.err { background: rgba(224,123,123,0.1); border: 1px solid var(--danger); color: var(--danger); }
+
+    /* Encart pédago */
+    .teach {
+      background: rgba(122,183,255,0.08);
+      border-left: 3px solid var(--accent);
+      padding: 0.85rem 1rem;
+      border-radius: 0 6px 6px 0;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 0.6rem;
+    }
+    .teach strong { color: var(--accent); }
+
+    /* Right panel — backend logs */
+    .panel-logs {
+      background: var(--bg-terminal);
+      overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    .panel-logs .head {
+      padding: 0.8rem 1.2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .panel-logs .head .dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--success); margin-right: 0.5rem;
+      animation: pulse 2s infinite;
+    }
+    .panel-logs .head .dot.paused { background: var(--text-muted); animation: none; }
+    @keyframes pulse {
+      0%,100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .panel-logs .head button {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-muted); padding: 0.15rem 0.6rem;
+      border-radius: 4px; font-size: 0.75rem; cursor: pointer;
+    }
+    .panel-logs .head button:hover { color: var(--text); border-color: var(--accent); }
+    .logs {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.6rem 1rem;
+      font-family: SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+    }
+    .log-line {
+      margin: 0.1rem 0;
+      word-break: break-word;
+    }
+    .log-line .ts { color: #4a5560; margin-right: 0.6rem; }
+    .log-line .step { color: var(--text-muted); margin-right: 0.5rem; }
+    .log-line.info .msg { color: var(--text); }
+    .log-line.success .msg { color: var(--success); }
+    .log-line.warning .msg { color: var(--warning); }
+    .log-line.error .msg { color: var(--danger); }
+    .log-line.crypto .msg { color: var(--crypto); }
+    .log-line .ctx {
+      display: block;
+      color: var(--text-muted);
+      padding-left: 1.4rem;
+      font-size: 0.72rem;
+    }
+
+    /* Credentials panel (sticky) */
+    .creds {
+      position: fixed;
+      bottom: 1rem; right: 1rem;
+      background: var(--bg-card);
+      border: 1px solid var(--accent-dim);
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+      min-width: 280px; max-width: 340px;
+      font-size: 0.8rem;
+      z-index: 50;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .creds h3 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--accent);
+      margin-bottom: 0.6rem;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .creds .row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin: 0.3rem 0;
+      gap: 0.5rem;
+    }
+    .creds .row label { color: var(--text-muted); font-size: 0.72rem; min-width: 70px; }
+    .creds .row code {
+      flex: 1;
+      background: var(--bg);
+      padding: 0.15rem 0.4rem;
+      border-radius: 3px;
+      font-size: 0.72rem;
+      color: var(--text);
+      border: 1px solid var(--border);
+      overflow-x: auto; white-space: nowrap;
+    }
+    .creds .row button {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 3px;
+      padding: 0.1rem 0.35rem;
+      font-size: 0.72rem;
+      cursor: pointer;
+    }
+    .creds .row button:hover { color: var(--accent); border-color: var(--accent); }
+    .creds .empty { color: var(--text-muted); font-style: italic; }
+    .creds .new-session {
+      margin-top: 0.6rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+    @media (max-width: 600px) {
+      .creds {
+        position: static; margin: 1rem; max-width: none;
+      }
+    }
+
+    /* Warnings */
+    .warn-banner {
+      background: rgba(212,192,88,0.1);
+      border: 1px solid var(--warning);
+      color: var(--warning);
+      padding: 0.7rem 1rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+    .warn-banner.danger {
+      background: rgba(224,123,123,0.1);
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="title">
+    <a href="https://my-self.fr">my-self.fr</a>
+    <a href="https://bi-self.my-self.fr">Bi-Self</a>
+    / SelfRecover — démo live
+  </div>
+  <div class="controls">
+    <div class="mode-switch" id="mode-switch">
+      <button data-mode="tuto" class="active">Tuto guidé</button>
+      <button data-mode="playground">Playground</button>
+    </div>
+    <span class="timer" id="timer">⌛ —:—</span>
+  </div>
+</header>
+
+<main>
+
+<div class="panel-app" id="panel-app">
+  <h2>Démo SelfRecover</h2>
+  <p class="lead">Tu cliques à gauche, le serveur s'exécute à droite. <strong>Pas de script.</strong> Pas de mise en scène. Ce sont les vrais logs de ton interaction.</p>
+
+  <div id="warn-container"></div>
+
+  <!-- Étape 1 — Inscription -->
+  <div class="card-app" id="step-1">
+    <div class="step-header"><div class="num">1</div><div class="title">Inscription</div></div>
+    <form id="form-register">
+      <div class="field">
+        <label for="reg-username">Identifiant public</label>
+        <input id="reg-username" name="username" minlength="3" maxlength="20" pattern="[a-z0-9]+" placeholder="ex: alice" required autocomplete="off">
+      </div>
+      <button class="btn" type="submit">Créer le compte</button>
+    </form>
+    <div id="reg-result"></div>
+    <div class="teach tuto-only">
+      <strong>Ce qu'il se passe ici :</strong> le serveur génère un password random,
+      une passphrase diceware (4 mots), et un mot de récupération. Le mot de récupération
+      est passé au HMAC-SHA256 avec <code>domain || site_salt</code>. Les trois secrets
+      sont ensuite bcrypt-hashés et stockés. Regarde la console à droite, chaque étape
+      est tracée.
+    </div>
+  </div>
+
+  <!-- Étape 2 — Login -->
+  <div class="card-app" id="step-2">
+    <div class="step-header"><div class="num">2</div><div class="title">Login normal</div></div>
+    <form id="form-login">
+      <div class="field">
+        <label for="log-username">Identifiant</label>
+        <input id="log-username" name="username" placeholder="ex: alice" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="log-password">Password (celui généré à l'étape 1)</label>
+        <input id="log-password" name="password" type="password" autocomplete="off">
+      </div>
+      <button class="btn" type="submit">Se connecter</button>
+    </form>
+    <div id="log-result"></div>
+    <div class="teach tuto-only">
+      Le login est ce qu'il y a de plus banal. <code>bcrypt_verify</code> côté serveur,
+      et si ça match, on crée une session applicative (cookie <code>sr_app_session</code>).
+      Aucune magie. Ce qui compte c'est la suite : que se passe-t-il si tu perds ton password ?
+    </div>
+  </div>
+
+  <!-- Étape 3 — Recovery L1 -->
+  <div class="card-app" id="step-3">
+    <div class="step-header"><div class="num">3</div><div class="title">Récupération niveau 1 — avec ta passphrase</div></div>
+    <form id="form-recover-l1">
+      <div class="field">
+        <label for="r1-username">Identifiant</label>
+        <input id="r1-username" name="username" placeholder="ex: alice" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="r1-passphrase">Passphrase (4 mots générés à l'étape 1)</label>
+        <input id="r1-passphrase" name="passphrase" placeholder="ex: cat river moon drift" autocomplete="off">
+      </div>
+      <button class="btn" type="submit">Récupérer mon compte</button>
+    </form>
+    <div id="r1-result"></div>
+    <div class="teach tuto-only">
+      La passphrase est ton « sceau de secours » : 4 mots mémorisables, connus de toi seul,
+      qui re-débloquent ton compte sans aucun email. <code>bcrypt_verify</code> contre le
+      hash stocké, génération d'un nouveau password, invalidation de toutes les sessions
+      précédentes. <strong>Aucun tiers impliqué, aucun SMTP, aucun délai.</strong>
+    </div>
+  </div>
+
+  <!-- État user -->
+  <div class="card-app" id="state-card">
+    <div class="step-header"><div class="num">★</div><div class="title">État actuel</div></div>
+    <div id="state-content" style="font-size: 0.88rem; color: var(--text-muted);">
+      <em>Charge…</em>
+    </div>
+    <div style="margin-top: 0.7rem; display: flex; gap: 0.6rem;">
+      <button class="btn ghost" id="btn-logout">Se déconnecter</button>
+      <button class="btn ghost" id="btn-refresh-state">↻ Rafraîchir</button>
+    </div>
+  </div>
+
+  <p class="lead" style="margin-top: 2rem; font-size: 0.8rem;">
+    Prochaines étapes (session 4) : récupération L2 (mot de récupération + HMAC
+    côté client) + simulation anti-phishing. Reste branché.
+  </p>
+</div>
+
+<aside class="panel-logs">
+  <div class="head">
+    <div><span class="dot" id="sse-dot"></span>BACKEND · <span id="sse-status">connection…</span></div>
+    <button id="btn-clear-logs">Effacer</button>
+  </div>
+  <div class="logs" id="logs">
+    <div class="log-line info"><span class="ts">—:—:—.—</span><span class="step">[init]</span><span class="msg">En attente d'ouverture de session…</span></div>
+  </div>
+</aside>
+
+</main>
+
+<div class="creds" id="creds">
+  <h3>Credentials de cette session <span class="empty" id="creds-count">vide</span></h3>
+  <div id="creds-body">
+    <p class="empty">Inscris-toi pour générer tes credentials (étape 1).</p>
+  </div>
+  <div class="new-session">
+    <a href="#" id="btn-new-session" style="font-size: 0.75rem; color: var(--text-muted);">↻ Nouvelle session</a>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// SelfRecover demo — front-end
+// ============================================================
+
+const API = {
+  session:  '/demo/api/session',
+  events:   '/demo/api/events',
+  me:       '/demo/api/recover/me',
+  register: '/demo/api/recover/register',
+  login:    '/demo/api/recover/login',
+  logout:   '/demo/api/recover/logout',
+  recoverL1:'/demo/api/recover/recover-l1',
+};
+
+const state = {
+  session: null,
+  credentials: { password: null, passphrase: null, recovery_word: null },
+  eventSource: null,
+  sseOffset: 0,
+  mode: 'tuto', // 'tuto' | 'playground'
+};
+
+// --- Utils ---
+function $(id) { return document.getElementById(id); }
+function html(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function fmtTs(iso) {
+  const d = new Date(iso);
+  const pad = (n,w=2) => String(n).padStart(w,'0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(),3)}`;
+}
+
+// --- Mode switch ---
+document.querySelectorAll('#mode-switch button').forEach(b => {
+  b.addEventListener('click', () => {
+    state.mode = b.dataset.mode;
+    document.querySelectorAll('#mode-switch button').forEach(x => x.classList.toggle('active', x === b));
+    document.querySelectorAll('.tuto-only').forEach(el => el.style.display = state.mode === 'tuto' ? '' : 'none');
+  });
+});
+
+// --- Timer ---
+function startTimer() {
+  function tick() {
+    if (!state.session) return;
+    const remaining = Math.max(0, state.session.expires_at - Math.floor(Date.now() / 1000));
+    const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
+    const ss = String(remaining % 60).padStart(2, '0');
+    const timerEl = $('timer');
+    timerEl.textContent = `⌛ ${mm}:${ss}`;
+    timerEl.classList.toggle('warn', remaining < 300);
+    if (remaining === 0) {
+      addLog({ level: 'warning', step: 'session', msg: 'Session expirée. Clique "↻ Nouvelle session" pour recommencer.' });
+    }
+  }
+  setInterval(tick, 1000);
+  tick();
+}
+
+// --- SSE ---
+function connectSSE() {
+  if (state.eventSource) state.eventSource.close();
+  const url = `${API.events}?offset=${state.sseOffset}`;
+  const es = new EventSource(url);
+  state.eventSource = es;
+  $('sse-status').textContent = 'connection…';
+  $('sse-dot').classList.remove('paused');
+
+  es.addEventListener('open', () => {
+    $('sse-status').textContent = 'connected';
+  });
+  es.addEventListener('log', (e) => {
+    try {
+      const payload = JSON.parse(e.data);
+      addLog(payload);
+      state.sseOffset += e.data.length + 12; // rough estimate; overwritten by ping
+    } catch (_) {}
+  });
+  es.addEventListener('ping', (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (typeof data.offset === 'number') state.sseOffset = data.offset;
+    } catch (_) {}
+  });
+  es.addEventListener('close', () => {
+    $('sse-status').textContent = 'closed';
+    $('sse-dot').classList.add('paused');
+    es.close();
+  });
+  es.addEventListener('error', () => {
+    $('sse-status').textContent = 'reconnecting…';
+  });
+}
+
+function addLog(payload) {
+  const logs = $('logs');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + (payload.level || 'info');
+  const ts = payload.ts ? fmtTs(payload.ts) : fmtTs(new Date().toISOString());
+  let html = `<span class="ts">${ts}</span><span class="step">[${html_escape(payload.step || '-')}]</span><span class="msg">${html_escape(payload.msg || '')}</span>`;
+  if (payload.ctx && Object.keys(payload.ctx).length) {
+    const ctx = JSON.stringify(payload.ctx, null, 0).replace(/^\{|\}$/g, '').trim();
+    if (ctx) html += `<span class="ctx">↳ ${html_escape(ctx)}</span>`;
+  }
+  line.innerHTML = html;
+  logs.appendChild(line);
+  logs.scrollTop = logs.scrollHeight;
+}
+
+function html_escape(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  })[c]);
+}
+
+$('btn-clear-logs').addEventListener('click', () => { $('logs').innerHTML = ''; });
+
+// --- Session ---
+async function ensureSession() {
+  // Try GET current
+  let r = await fetch(API.session, { credentials: 'include' });
+  if (r.status === 200) {
+    const d = await r.json();
+    if (d.ok) {
+      state.session = d.session;
+      startSSEAndState();
+      return;
+    }
+  }
+  // Create new
+  r = await fetch(API.session, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ module: 'selfrecover' }),
+    credentials: 'include',
+  });
+  const d = await r.json();
+  if (!d.ok) {
+    showError(d.message || d.error || 'Impossible d\'ouvrir une session démo.');
+    return;
+  }
+  state.session = d.session;
+  if (d.message) showWarning(d.message, d.session.warning_level >= 2);
+  startSSEAndState();
+}
+
+function startSSEAndState() {
+  connectSSE();
+  refreshState();
+  startTimer();
+}
+
+function showError(msg) {
+  const c = $('warn-container');
+  c.innerHTML = `<div class="warn-banner danger">${html_escape(msg)}</div>`;
+}
+function showWarning(msg, danger=false) {
+  const c = $('warn-container');
+  c.innerHTML = `<div class="warn-banner ${danger ? 'danger' : ''}">${html_escape(msg)}</div>`;
+}
+
+$('btn-new-session').addEventListener('click', (e) => {
+  e.preventDefault();
+  document.cookie = 'sj_demo_session=; path=/; domain=bi-self.my-self.fr; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+  document.cookie = 'sr_app_session=; path=/; domain=bi-self.my-self.fr; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+  location.reload();
+});
+
+// --- State refresh ---
+async function refreshState() {
+  try {
+    const r = await fetch(API.me, { credentials: 'include' });
+    const d = await r.json();
+    if (!d.ok) {
+      $('state-content').innerHTML = '<em>Pas de session active.</em>';
+      return;
+    }
+    const parts = [];
+    parts.push(`<strong>${d.accounts_count}</strong> compte${d.accounts_count > 1 ? 's' : ''} créé${d.accounts_count > 1 ? 's' : ''} dans cette session.`);
+    if (d.logged_in) {
+      parts.push(`Connecté en tant que <strong>${html_escape(d.username)}</strong> (id ${d.account_id}).`);
+    } else {
+      parts.push('Personne n\'est connecté.');
+    }
+    $('state-content').innerHTML = parts.join('<br>');
+  } catch (e) {
+    $('state-content').innerHTML = '<em>Erreur réseau.</em>';
+  }
+}
+$('btn-refresh-state').addEventListener('click', refreshState);
+
+// --- Forms ---
+$('form-register').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  const res = $('reg-result');
+  res.innerHTML = '';
+  try {
+    const r = await fetch(API.register, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: $('reg-username').value.trim() }),
+      credentials: 'include',
+    });
+    const d = await r.json();
+    if (d.ok) {
+      state.credentials = {
+        username: d.username,
+        password: d.credentials.password,
+        passphrase: d.credentials.passphrase,
+        recovery_word: d.credentials.recovery_word,
+      };
+      renderCreds();
+      res.innerHTML = `<div class="inline-result ok">✓ Compte <strong>${html_escape(d.username)}</strong> créé. Tes credentials sont en bas à droite.</div>`;
+      $('step-1').classList.add('done');
+      $('log-username').value = d.username;
+      $('r1-username').value = d.username;
+      refreshState();
+    } else {
+      res.innerHTML = `<div class="inline-result err">✗ ${html_escape(d.message || d.error)}</div>`;
+    }
+  } catch (err) {
+    res.innerHTML = `<div class="inline-result err">✗ Erreur réseau.</div>`;
+  } finally { btn.disabled = false; }
+});
+
+$('form-login').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  const res = $('log-result');
+  res.innerHTML = '';
+  try {
+    const r = await fetch(API.login, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: $('log-username').value.trim(),
+        password: $('log-password').value,
+      }),
+      credentials: 'include',
+    });
+    const d = await r.json();
+    if (d.ok) {
+      res.innerHTML = `<div class="inline-result ok">✓ Connecté en tant que <strong>${html_escape(d.username)}</strong>.</div>`;
+      $('step-2').classList.add('done');
+      refreshState();
+    } else {
+      res.innerHTML = `<div class="inline-result err">✗ ${html_escape(d.message || d.error)}</div>`;
+    }
+  } catch (err) {
+    res.innerHTML = `<div class="inline-result err">✗ Erreur réseau.</div>`;
+  } finally { btn.disabled = false; }
+});
+
+$('form-recover-l1').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  const res = $('r1-result');
+  res.innerHTML = '';
+  try {
+    const r = await fetch(API.recoverL1, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: $('r1-username').value.trim(),
+        passphrase: $('r1-passphrase').value.trim(),
+      }),
+      credentials: 'include',
+    });
+    const d = await r.json();
+    if (d.ok) {
+      state.credentials.password = d.new_password;
+      renderCreds();
+      res.innerHTML = `<div class="inline-result ok">✓ Nouveau password : <code>${html_escape(d.new_password)}</code> — mis à jour dans le panneau credentials. Les sessions antérieures ont été déconnectées.</div>`;
+      $('step-3').classList.add('done');
+      $('log-password').value = d.new_password;
+      refreshState();
+    } else {
+      res.innerHTML = `<div class="inline-result err">✗ ${html_escape(d.message || d.error)}</div>`;
+    }
+  } catch (err) {
+    res.innerHTML = `<div class="inline-result err">✗ Erreur réseau.</div>`;
+  } finally { btn.disabled = false; }
+});
+
+$('btn-logout').addEventListener('click', async () => {
+  try {
+    await fetch(API.logout, { method: 'POST', credentials: 'include' });
+    refreshState();
+  } catch (_) {}
+});
+
+// --- Credentials panel ---
+function renderCreds() {
+  const body = $('creds-body');
+  const count = $('creds-count');
+  const c = state.credentials;
+  const items = [];
+  if (c.username) items.push(['Identifiant', c.username]);
+  if (c.password) items.push(['Password', c.password]);
+  if (c.passphrase) items.push(['Passphrase', c.passphrase]);
+  if (c.recovery_word) items.push(['Mot récup.', c.recovery_word]);
+  if (items.length === 0) {
+    body.innerHTML = '<p class="empty">Inscris-toi pour générer tes credentials (étape 1).</p>';
+    count.textContent = 'vide';
+    return;
+  }
+  count.textContent = `${items.length} élément${items.length>1?'s':''}`;
+  body.innerHTML = items.map(([lbl, val]) =>
+    `<div class="row">
+      <label>${html_escape(lbl)}</label>
+      <code>${html_escape(val)}</code>
+      <button data-copy="${html_escape(val)}" title="Copier">📋</button>
+    </div>`
+  ).join('');
+  body.querySelectorAll('[data-copy]').forEach(b => {
+    b.addEventListener('click', () => {
+      navigator.clipboard.writeText(b.dataset.copy).then(() => {
+        const old = b.textContent;
+        b.textContent = '✓';
+        setTimeout(() => b.textContent = old, 1200);
+      });
+    });
+  });
+}
+
+// --- Start ---
+ensureSession();
+</script>
+
+</body>
+</html>
