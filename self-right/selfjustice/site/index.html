@@ -215,6 +215,75 @@ Analyse selon https://justice.my-self.fr/directives.html</pre>
   </div>
 
   <div class="card" style="margin-top: 1rem;">
+    <h3>Un document mal rendu ?</h3>
+    <p style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0;">
+      Si ton IA a produit un Document 1 / 2 / 3 dont la mise en page est ratée (tableaux cassés, numérotation illisible, caractères manquants, etc.), tu peux nous le transmettre ici. Ça sert à <strong>affiner les directives de rendu PDF</strong> selon le moteur IA utilisé. <strong>Aucune donnée du document n'est extraite</strong> — nous l'ouvrons manuellement pour comprendre ce qui a coincé visuellement, et on ajuste. Fichiers purgés automatiquement après 30 jours.
+    </p>
+
+    <form id="feedback-form" enctype="multipart/form-data" style="margin-top: 1rem;">
+      <div style="margin-bottom: 0.8rem;">
+        <label for="fb-moteur" style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.3rem;">Moteur IA qui a produit le document *</label>
+        <select id="fb-moteur" name="moteur" required style="width: 100%; padding: 0.6rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 0.9rem;">
+          <option value="">— sélectionne —</option>
+          <option>Claude Opus 4.7</option>
+          <option>Claude Opus 4.6</option>
+          <option>Claude Sonnet 4.6</option>
+          <option>ChatGPT-5</option>
+          <option>ChatGPT-4o</option>
+          <option>Mistral Large</option>
+          <option>Mistral Medium</option>
+          <option>Gemini 2.5 Pro</option>
+          <option>Gemini Flash</option>
+          <option>Perplexity Pro</option>
+          <option>Grok</option>
+          <option value="autre">Autre (préciser dans le commentaire)</option>
+        </select>
+      </div>
+      <div style="margin-bottom: 0.8rem;">
+        <label for="fb-file" style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.3rem;">Document (PDF, MD, HTML, TXT — max 5 Mo) *</label>
+        <input id="fb-file" name="document" type="file" accept=".pdf,.md,.txt,.html,application/pdf,text/plain,text/markdown,text/html" required style="width: 100%; padding: 0.5rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 0.85rem;">
+      </div>
+      <div style="margin-bottom: 0.8rem;">
+        <label for="fb-comment" style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.3rem;">Commentaire (optionnel — que s'est-il mal rendu ?)</label>
+        <textarea id="fb-comment" name="comment" rows="3" maxlength="2000" style="width: 100%; box-sizing: border-box; padding: 0.6rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 0.9rem; resize: vertical;" placeholder="Exemple : tableaux débordent, accents manquants, glossaire absent…"></textarea>
+      </div>
+      <button type="submit" id="fb-submit" style="background: var(--accent); color: var(--bg); border: none; padding: 0.6rem 1.2rem; border-radius: 6px; font-size: 0.9rem; font-weight: 600; cursor: pointer;">Envoyer le feedback</button>
+      <span id="fb-feedback" style="margin-left: 1rem; font-size: 0.9rem;"></span>
+    </form>
+
+    <script>
+      (function() {
+        var form = document.getElementById('feedback-form');
+        form.addEventListener('submit', function(ev) {
+          ev.preventDefault();
+          var fb = document.getElementById('fb-feedback');
+          var btn = document.getElementById('fb-submit');
+          fb.style.color = 'var(--text-muted)';
+          fb.textContent = 'Envoi en cours…';
+          btn.disabled = true;
+          fetch('/api/feedback', { method: 'POST', body: new FormData(form) })
+            .then(function(r) { return r.json().catch(function() { return { ok: false, error: 'Réponse illisible (code ' + r.status + ')' }; }); })
+            .then(function(data) {
+              if (data.ok) {
+                fb.style.color = 'var(--success)';
+                fb.textContent = '✓ ' + (data.message || 'Merci, feedback enregistré');
+                form.reset();
+              } else {
+                fb.style.color = 'var(--danger)';
+                fb.textContent = '✗ ' + (data.error || 'Erreur inconnue');
+              }
+            })
+            .catch(function(err) {
+              fb.style.color = 'var(--danger)';
+              fb.textContent = '✗ Erreur réseau';
+            })
+            .finally(function() { btn.disabled = false; });
+        });
+      })();
+    </script>
+  </div>
+
+  <div class="card" style="margin-top: 1rem;">
     <h3>Qui consulte SelfJustice ?</h3>
     <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0; margin-bottom: 0.8rem;">
       Consultations déclenchées par un humain qui a demandé à son IA de lire SelfJustice. Détection via User-Agent dédié (<code>Claude-User</code>, <code>ChatGPT-User</code>, <code>Perplexity-User</code>). Zéro IP, zéro cookie. Période : ~7 jours (rotation des logs nginx).
