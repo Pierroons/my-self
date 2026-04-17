@@ -222,23 +222,25 @@
 
 <div class="quick-access">
   <div>
-    <div class="label">🎬 Démo live disponible</div>
-    <div class="text"><strong>SelfRecover</strong> : inscription, login, récupération de compte en direct — côté frontend + côté backend simultanément.</div>
+    <div class="label">🎬 Trois démos live disponibles</div>
+    <div class="text">
+      Cliques côté front, vois le protocole exécuter en direct côté back.
+      <strong>Aucun script, aucun hardcode</strong> — les vrais logs de ton interaction.
+    </div>
   </div>
-  <a class="cta" href="/recover">Lancer la démo SelfRecover</a>
+  <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    <a class="cta" href="/recover">SelfRecover</a>
+    <a class="cta" href="/moderate">SelfModerate</a>
+    <a class="cta" href="/duo">Duo · Sybil</a>
+  </div>
 </div>
 
-<div class="construction">
-  <h3>⚙ Démos interactives en construction</h3>
+<div class="synergy" style="margin-top: 0; margin-bottom: 2rem;">
   <p>
-    Des démos live split-screen (UI + logs backend en temps réel) sont en
-    développement pour <strong>SelfRecover</strong> et <strong>SelfModerate</strong>. L'idée :
-    tu cliques dans l'interface, tu vois côté serveur exactement ce qui se
-    passe — HMAC dérivé, bcrypt, insertions SQLite, détection de
-    pack-voting, etc. <strong>Ni hardcode, ni simulation.</strong>
-  </p>
-  <p style="margin-top: 0.6rem; font-size: 0.85rem;">
-    Avancement &amp; spec : <a href="https://github.com/Pierroons/my-self/blob/main/bi-self/docs/demo/SPEC.md" target="_blank" rel="noopener">bi-self/docs/demo/SPEC.md</a> sur GitHub.
+    <strong>La démo <a href="/duo">Duo Sybil</a></strong> montre pourquoi SelfRecover +
+    SelfModerate ensemble neutralisent une attaque que ni l'un ni l'autre ne pourrait bloquer seul :
+    création de 5 comptes sous coût cryptographique, pack-voting coordonné, détection et annulation.
+    <em>1 + 1 = 3</em>.
   </p>
 </div>
 

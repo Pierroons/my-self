@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bi-Self Duo — Synergie SelfRecover + SelfModerate</title>
+  <meta name="robots" content="noindex,nofollow">
+  <style>
+    :root {
+      --bg: #0f1419; --bg-card: #1a2028; --bg-terminal: #0a0f14;
+      --text: #e8eaed; --text-muted: #9aa0a6;
+      --accent: #7ab7ff; --accent-dim: #5a97df;
+      --border: #2a3038;
+      --success: #7cc47c; --warning: #d4c058; --danger: #e07b7b; --crypto: #a380ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; height: 100%; }
+    body { display: flex; flex-direction: column; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    header { padding: 0.9rem 1.2rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; }
+    header .title { font-size: 1rem; color: var(--accent); font-weight: 600; }
+    header .title a { color: var(--text-muted); font-size: 0.75rem; margin-right: 0.5rem; }
+    header .timer { color: var(--text-muted); font-family: SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; }
+
+    main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+    .panel-app { padding: 1.5rem; overflow-y: auto; border-right: 1px solid var(--border); }
+    @media (max-width: 900px) { .panel-app { border-right: none; border-bottom: 1px solid var(--border); } }
+    .panel-app h2 { color: var(--accent); font-size: 1.2rem; margin-bottom: 0.3rem; }
+    .panel-app .lead { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem; }
+
+    .card-app { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; margin-bottom: 1rem; }
+
+    .btn { display: inline-block; padding: 0.7rem 1.4rem; border-radius: 6px; border: 1px solid var(--danger); background: var(--danger); color: var(--bg); font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .inline-result { margin-top: 0.8rem; padding: 0.8rem 1rem; border-radius: 6px; font-size: 0.9rem; }
+    .inline-result.ok { background: rgba(124,196,124,0.1); border: 1px solid var(--success); color: var(--success); }
+    .inline-result.err { background: rgba(224,123,123,0.1); border: 1px solid var(--danger); color: var(--danger); }
+
+    .scorecard { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem; margin-top: 0.8rem; }
+    .kpi { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.7rem; }
+    .kpi .val { color: var(--accent); font-size: 1.4rem; font-weight: 700; }
+    .kpi .lbl { color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 0.15rem; }
+
+    .field { display: flex; flex-direction: column; margin-bottom: 0.9rem; }
+    .field label { font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 0.3rem; }
+    .field select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem; font-family: inherit; font-size: 0.92rem; }
+
+    .verdict-box { margin-top: 1rem; padding: 1.2rem 1.4rem; border-radius: 10px; text-align: center; }
+    .verdict-box.defeated { background: linear-gradient(135deg, rgba(124,196,124,0.2), rgba(122,183,255,0.1)); border: 1px solid var(--success); }
+    .verdict-box h3 { color: var(--success); font-size: 1.3rem; margin-bottom: 0.5rem; }
+    .verdict-box p { color: var(--text); font-size: 0.9rem; }
+
+    /* Logs */
+    .panel-logs { background: var(--bg-terminal); overflow: hidden; display: flex; flex-direction: column; }
+    .panel-logs .head { padding: 0.8rem 1.2rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-muted); }
+    .panel-logs .head .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--success); margin-right: 0.5rem; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .logs { flex: 1; overflow-y: auto; padding: 0.6rem 1rem; font-family: SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.78rem; line-height: 1.5; }
+    .log-line { margin: 0.1rem 0; word-break: break-word; }
+    .log-line .ts { color: #4a5560; margin-right: 0.6rem; }
+    .log-line .step { color: var(--text-muted); margin-right: 0.5rem; }
+    .log-line.info .msg { color: var(--text); }
+    .log-line.success .msg { color: var(--success); font-weight: 600; }
+    .log-line.warning .msg { color: var(--warning); }
+    .log-line.error .msg { color: var(--danger); }
+    .log-line.crypto .msg { color: var(--crypto); }
+    .log-line .ctx { display: block; color: var(--text-muted); padding-left: 1.4rem; font-size: 0.72rem; }
+
+    .step-diagram { display: flex; justify-content: space-between; margin-bottom: 1.5rem; gap: 0.5rem; }
+    .step-diagram .sd { flex: 1; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem 0.8rem; text-align: center; }
+    .step-diagram .sd .num { color: var(--accent); font-weight: 700; font-size: 1.1rem; }
+    .step-diagram .sd .name { color: var(--text-muted); font-size: 0.75rem; margin-top: 0.2rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="title">
+    <a href="https://my-self.fr">my-self.fr</a> <a href="/">Bi-Self</a> / Duo — Sybil attack
+  </div>
+  <div><span class="timer" id="timer">⌛ —:—</span></div>
+</header>
+
+<main>
+
+<div class="panel-app">
+  <h2>Synergie Bi-Self : défaite de l'attaque Sybil</h2>
+  <p class="lead">
+    Un attaquant crée <strong>5 faux comptes</strong> et les utilise pour <strong>pack-voter</strong> une cible.
+    Regarde comment les deux modules, ensemble, rendent l'attaque coûteuse puis la neutralisent.
+  </p>
+
+  <div class="step-diagram">
+    <div class="sd"><div class="num">1</div><div class="name">5 comptes Sybil<br>(bcrypt × 5)</div></div>
+    <div class="sd"><div class="num">2</div><div class="name">Vote pack<br>coordonné</div></div>
+    <div class="sd"><div class="num">3</div><div class="name">Detection<br>+ annulation</div></div>
+  </div>
+
+  <div class="card-app">
+    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.8rem;">
+      Prérequis : une session SelfModerate avec identité créée et les 5 bots préchargés.
+      Si tu arrives direct ici, <a href="/moderate">crée d'abord ton identité</a>.
+    </p>
+    <div class="field">
+      <label for="target-sel">Cible de l'attaque</label>
+      <select id="target-sel"><option value="">— charge la liste —</option></select>
+    </div>
+    <button class="btn" id="btn-launch" type="button" disabled>⚔ Lancer l'attaque Sybil</button>
+    <div id="attack-result"></div>
+  </div>
+
+  <div class="card-app" id="scorecard-wrap" style="display: none;">
+    <h3 style="color: var(--accent); font-size: 1rem; margin-bottom: 0.6rem;">Résultat quantifié</h3>
+    <div class="scorecard" id="scorecard"></div>
+  </div>
+
+  <div id="verdict"></div>
+
+  <div class="card-app" style="margin-top: 1.5rem;">
+    <h3 style="color: var(--accent); font-size: 1rem; margin-bottom: 0.6rem;">Pourquoi les deux modules sont nécessaires</h3>
+    <p style="font-size: 0.9rem; color: var(--text-muted);">
+      <strong>SelfModerate seul</strong> — 5 comptes frais sans historique votent, pack-detection a assez de signaux pour détecter. Mais si l'attaquant est patient et espace ses votes sur des jours, ou s'il paie de vrais humains pour voter, la détection échoue.<br><br>
+      <strong>SelfRecover seul</strong> — identité fiable mais rien contre la manipulation coordonnée de vote.<br><br>
+      <strong>Les deux ensemble</strong> — SelfRecover impose un coût cryptographique (bcrypt cost=12 × N comptes) qui rend l'attaque linéairement coûteuse à scaler. SelfModerate détecte les patterns de coordination temporelle + graph d'invitations. Pour qu'une attaque Sybil réussisse, il faudrait : (1) payer le coût crypto N fois, (2) attendre et espacer les votes pour échapper à la détection, (3) créer un graph d'invitations "naturel" entre les faux comptes. Le coût cumulé rend ça non rentable à grande échelle.
+    </p>
+  </div>
+</div>
+
+<aside class="panel-logs">
+  <div class="head">
+    <div><span class="dot"></span>BACKEND · logs de l'attaque en direct</div>
+  </div>
+  <div class="logs" id="logs">
+    <div class="log-line info"><span class="ts">—:—:—</span><span class="step">[init]</span><span class="msg">Ouverture de session en cours…</span></div>
+  </div>
+</aside>
+
+</main>
+
+<script>
+const API = {
+  session:   '/demo/api/session',
+  events:    '/demo/api/events',
+  users:     '/demo/api/moderate/users',
+  sybilAtk:  '/demo/api/duo/sybil-attack',
+};
+const state = { session: null, eventSource: null, sseOffset: 0 };
+
+function $(id){return document.getElementById(id);}
+function h(s){return String(s).replace(/[&<>"']/g,(c)=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function fmtTs(iso){const d=new Date(iso);const pad=(n,w=2)=>String(n).padStart(w,'0');return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(),3)}`;}
+
+function startTimer() {
+  setInterval(() => {
+    if (!state.session) return;
+    const r = Math.max(0, state.session.expires_at - Math.floor(Date.now() / 1000));
+    const mm = String(Math.floor(r / 60)).padStart(2, '0');
+    const ss = String(r % 60).padStart(2, '0');
+    $('timer').textContent = `⌛ ${mm}:${ss}`;
+  }, 1000);
+}
+
+function connectSSE() {
+  if (state.eventSource) state.eventSource.close();
+  const es = new EventSource(`${API.events}?offset=${state.sseOffset}`);
+  state.eventSource = es;
+  es.addEventListener('log', (e) => { try { addLog(JSON.parse(e.data)); } catch(_) {} });
+  es.addEventListener('ping', (e) => { try { const d = JSON.parse(e.data); if (typeof d.offset === 'number') state.sseOffset = d.offset; } catch(_) {} });
+}
+
+function addLog(p) {
+  const logs = $('logs');
+  const line = document.createElement('div');
+  line.className = 'log-line ' + (p.level || 'info');
+  const ts = p.ts ? fmtTs(p.ts) : fmtTs(new Date().toISOString());
+  let html = `<span class="ts">${ts}</span><span class="step">[${h(p.step || '-')}]</span><span class="msg">${h(p.msg || '')}</span>`;
+  if (p.ctx && Object.keys(p.ctx).length) {
+    const ctx = JSON.stringify(p.ctx).replace(/^\{|\}$/g, '').trim();
+    if (ctx) html += `<span class="ctx">↳ ${h(ctx)}</span>`;
+  }
+  line.innerHTML = html;
+  logs.appendChild(line);
+  logs.scrollTop = logs.scrollHeight;
+}
+
+async function ensureSession() {
+  let r = await fetch(API.session, { credentials: 'include' });
+  if (r.status === 200) {
+    const d = await r.json();
+    if (d.ok && d.session.module === 'selfmoderate') {
+      state.session = d.session;
+      start();
+      return;
+    }
+  }
+  // Pas de session moderate existante → affiche un message d'invitation
+  addLog({ level: 'warning', step: 'init', msg: "Aucune session SelfModerate active. Va sur /moderate pour créer ton identité, puis reviens." });
+  $('btn-launch').disabled = true;
+}
+
+function start() {
+  connectSSE();
+  startTimer();
+  loadUsers();
+}
+
+async function loadUsers() {
+  try {
+    const r = await fetch(API.users, { credentials: 'include' });
+    const d = await r.json();
+    if (d.ok) {
+      const select = $('target-sel');
+      const candidates = d.users.filter(u => u.username !== '@charlie_upvoter' && u.username !== '@dave_pack' && u.username !== '@alice_toxique');
+      if (candidates.length === 0) {
+        addLog({ level: 'warning', step: 'init', msg: 'Pas de cible acceptable.' });
+        return;
+      }
+      select.innerHTML = candidates.map(u => `<option value="${u.id}">${h(u.username)} (rep ${u.reputation})</option>`).join('');
+      $('btn-launch').disabled = false;
+      addLog({ level: 'info', step: 'init', msg: "Session prête. Sélectionne une cible et lance l'attaque." });
+    }
+  } catch (e) {}
+}
+
+$('btn-launch').addEventListener('click', async () => {
+  const target = +$('target-sel').value;
+  if (!target) return;
+  const btn = $('btn-launch');
+  btn.disabled = true; btn.textContent = '⚔ Attaque en cours…';
+  $('attack-result').innerHTML = '';
+  $('scorecard-wrap').style.display = 'none';
+  $('verdict').innerHTML = '';
+  try {
+    const r = await fetch(API.sybilAtk, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_id: target }),
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      $('attack-result').innerHTML = `<div class="inline-result err">✗ ${h(d.message || d.error)}</div>`;
+    } else {
+      renderResult(d);
+    }
+  } catch (err) {
+    $('attack-result').innerHTML = `<div class="inline-result err">✗ Erreur réseau.</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '⚔ Relancer une attaque';
+  }
+});
+
+function renderResult(d) {
+  $('scorecard-wrap').style.display = '';
+  $('scorecard').innerHTML = `
+    <div class="kpi"><div class="val">${d.sybil_accounts_created}</div><div class="lbl">Comptes Sybil créés</div></div>
+    <div class="kpi"><div class="val">${d.total_bcrypt_ms} ms</div><div class="lbl">Coût bcrypt cumulé (SelfRecover)</div></div>
+    <div class="kpi"><div class="val">${d.votes_attempted}</div><div class="lbl">Votes pack tentés</div></div>
+    <div class="kpi"><div class="val">${d.votes_cancelled}</div><div class="lbl">Votes annulés (SelfModerate)</div></div>
+    <div class="kpi"><div class="val">${d.target_start_rep} → ${d.target_final_rep}</div><div class="lbl">Réputation cible (pré → post)</div></div>
+    <div class="kpi"><div class="val">${d.pack_detected ? '✓' : '✗'}</div><div class="lbl">Pack-voting détecté</div></div>
+  `;
+  if (d.verdict === 'defeated') {
+    $('verdict').innerHTML = `
+      <div class="verdict-box defeated">
+        <h3>⛨ Attaque Sybil neutralisée</h3>
+        <p>${h(d.message)}</p>
+      </div>`;
+  } else {
+    $('verdict').innerHTML = `<div class="inline-result err">Verdict inattendu (${h(d.verdict)}). ${h(d.message)}</div>`;
+  }
+}
+
+ensureSession();
+</script>
+
+</body>
+</html>
