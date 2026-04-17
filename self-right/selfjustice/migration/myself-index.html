@@ -141,6 +141,21 @@
       color: var(--accent);
       margin-bottom: 0.3rem;
     }
+    .pillar h3 a {
+      color: inherit;
+      text-decoration: none;
+      border-bottom: 1px dashed transparent;
+      transition: border-color 0.15s;
+    }
+    .pillar h3 a:hover {
+      border-bottom-color: var(--accent);
+      text-decoration: none;
+    }
+    .pillar h3 a::after {
+      content: " →";
+      opacity: 0.6;
+      font-size: 0.9em;
+    }
     .pillar .sub {
       font-size: 0.8rem;
       color: var(--text-muted);
@@ -284,7 +299,7 @@
   <div class="pillars">
 
     <div class="pillar">
-      <h3>Bi-Self</h3>
+      <h3><a href="https://bi-self.my-self.fr">Bi-Self</a></h3>
       <div class="sub">Identité sociale</div>
       <p class="muted">
         <em>« Si une communauté peut se construire, elle peut se gouverner. »</em>
