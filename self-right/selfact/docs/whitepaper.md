@@ -120,4 +120,4 @@ MIT. Contributions welcome for: additional templates, additional CERFA, addition
 - Art. 640 CPC (computation of delays)
 - Art. 242 nonies A Annexe II CGI (mandatory mentions)
 - SelfJustice API: https://justice.my-self.fr/api
-- Template library repository: https://github.com/Pierroons/my-self/tree/master/self-right/selfact
+- Template library repository: https://github.com/Pierroons/my-self/tree/main/self-right/selfact
