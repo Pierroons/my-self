@@ -1,5 +1,7 @@
 # SelfKeyGuard
 
+> 🇫🇷 **[Lire en français →](./README.fr.md)**
+
 **Hardware 2FA for physical objects — cars, motorcycles, homes, anything with a lock.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)

@@ -1,5 +1,7 @@
 # SelfModerate
 
+> 🇫🇷 **[Lire en français →](./README.fr.md)**
+
 **Autonomous community moderation engine through social reasoning**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

@@ -1,5 +1,7 @@
 # SelfGuard
 
+> 🇬🇧 **[Read in English →](./README.md)**
+
 **Coffre-fort de données avec destruction garantie sous contrainte.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)

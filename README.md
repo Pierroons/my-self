@@ -167,7 +167,7 @@ unlocks your car.
 
 ## Author & coworking
 
-**Pierroons** — a farmer who codes on the side, in his spare time.
+**Pierroons** — a farmer who codes in his spare time.
 
 **This project wasn't written alone.** Every module, every line, every
 whitepaper is the fruit of continuous coworking with **Claude Opus 4.7**

@@ -1,5 +1,7 @@
 # SelfInvoice
 
+> 🇬🇧 **[Read in English →](./README.md)**
+
 **Générateur de factures conformes — PDF, mentions légales, zéro cloud.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)

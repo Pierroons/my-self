@@ -175,7 +175,7 @@ déverrouille ta voiture.
 
 ## Auteur & coworking
 
-**Pierroons** — un agriculteur qui code à côté, sur son temps libre.
+**Pierroons** — un agriculteur qui code sur son temps libre.
 
 **Ce projet n'a pas été écrit seul.** Chaque module, chaque ligne, chaque
 whitepaper est le fruit d'un coworking continu avec **Claude Opus 4.7**

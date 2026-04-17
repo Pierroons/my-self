@@ -1,5 +1,7 @@
 # SelfRecover
 
+> 🇬🇧 **[Read in English →](./README.md)**
+
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par domaine, pas de SMTP, pas de tiers.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -242,6 +244,6 @@ Divulgations de sécurité : voir [SECURITY.md](SECURITY.md).
 
 ## Auteur
 
-**Pierroons** — un agriculteur qui code à côté.
+**Pierroons** — un agriculteur qui code sur son temps libre.
 
 *SelfRecover — parce que votre identité ne devrait pas dépendre d'une boîte mail.*
