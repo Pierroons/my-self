@@ -121,6 +121,47 @@ arsort($uas_24h);
 arsort($paths_24h);
 arsort($ia_hits);
 
+// ------------------------------------------------------------------
+// Feedback uploads (/var/lib/selfjustice/feedback)
+// ------------------------------------------------------------------
+$feedback_dir = '/var/lib/selfjustice/feedback';
+$feedback_total = 0;
+$feedback_items = [];
+
+if (is_dir($feedback_dir)) {
+    $dirs = @scandir($feedback_dir);
+    if ($dirs !== false) {
+        $entries = array_filter($dirs, function($d) use ($feedback_dir) {
+            return $d !== '.' && $d !== '..' && is_dir($feedback_dir . '/' . $d);
+        });
+        $feedback_total = count($entries);
+        rsort($entries); // noms du type YYYYMMDD-HHMMSS-xxx → tri alpha = tri chrono desc
+
+        foreach (array_slice($entries, 0, 10) as $slot) {
+            $slot_path = $feedback_dir . '/' . $slot;
+            $meta = @json_decode(@file_get_contents($slot_path . '/meta.json') ?: '', true);
+            if (!is_array($meta)) continue;
+            $comment_path = $slot_path . '/comment.txt';
+            $has_comment = is_readable($comment_path);
+            $comment = $has_comment ? trim((string) @file_get_contents($comment_path)) : '';
+            $feedback_items[] = [
+                'slot'    => $slot,
+                'date'    => $meta['received_at'] ?? '',
+                'moteur'  => $meta['moteur_ia'] ?? '—',
+                'ext'     => $meta['extension'] ?? '?',
+                'size'    => (int) ($meta['size_bytes'] ?? 0),
+                'comment' => $comment,
+            ];
+        }
+    }
+}
+
+function format_bytes(int $bytes): string {
+    if ($bytes < 1024) return $bytes . ' B';
+    if ($bytes < 1024 * 1024) return round($bytes / 1024, 1) . ' kB';
+    return round($bytes / (1024 * 1024), 1) . ' MB';
+}
+
 // Tentatives d'intrusion = requêtes vers paths suspects OU scanners connus
 $intrusion_attempts = [];
 foreach ($status_4xx as $row) {
@@ -274,6 +315,7 @@ function truncate(string $s, int $n): string { return mb_strlen($s) > $n ? mb_su
   <div><div class="val"><?= count($status_4xx) ?></div><div class="lbl">4xx</div></div>
   <div><div class="val"><?= count($status_5xx) ?></div><div class="lbl">5xx</div></div>
   <div><div class="val"><?= count($intrusion_attempts) ?></div><div class="lbl">Intrusions</div></div>
+  <div><div class="val"><?= $feedback_total ?></div><div class="lbl">Feedback uploads</div></div>
 </div>
 
 <div class="grid">
@@ -331,6 +373,36 @@ function truncate(string $s, int $n): string { return mb_strlen($s) > $n ? mb_su
           <td class="mono muted"><?= h(truncate($row['ua'], 30)) ?></td>
         </tr>
       <?php endforeach; endif; ?>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Feedback uploads — 10 plus récents (total : <?= $feedback_total ?>)</h2>
+    <p class="muted" style="font-size: 0.8rem; margin-bottom: 0.7rem;">
+      Documents transmis via <code>/api/feedback</code> pour debug mise en page. Stockés 30 jours dans <code>/var/lib/selfjustice/feedback/</code>.
+    </p>
+    <table>
+      <?php if (empty($feedback_items)): ?>
+        <tr><td class="muted">Aucun upload pour l'instant.</td></tr>
+      <?php else: ?>
+        <tr style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.4px;">
+          <th>Date</th><th>Moteur</th><th>Type</th><th style="text-align: right;">Taille</th><th>Cmt</th>
+        </tr>
+        <?php foreach ($feedback_items as $item): ?>
+          <tr>
+            <td class="mono" style="font-size: 0.75rem;"><?= h(substr((string) $item['date'], 0, 16)) ?></td>
+            <td><?= h(truncate((string) $item['moteur'], 18)) ?></td>
+            <td class="mono"><?= h((string) $item['ext']) ?></td>
+            <td class="num"><?= h(format_bytes($item['size'])) ?></td>
+            <td style="font-size: 0.75rem;" title="<?= h((string) $item['comment']) ?>">
+              <?= $item['comment'] !== '' ? '<span class="mono" style="color: var(--accent);">●</span>' : '<span class="muted">—</span>' ?>
+            </td>
+          </tr>
+          <?php if ($item['comment'] !== ''): ?>
+            <tr><td colspan="5" class="muted" style="font-size: 0.75rem; padding-left: 1rem;">↳ <?= h(truncate((string) $item['comment'], 140)) ?></td></tr>
+          <?php endif; ?>
+        <?php endforeach; ?>
+      <?php endif; ?>
     </table>
   </div>
 
