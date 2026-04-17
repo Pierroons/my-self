@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MySelf — Site en construction</title>
+  <meta name="description" content="MySelf — Écosystème open source pour reprendre la main. Site en construction.">
+  <meta property="og:title" content="MySelf">
+  <meta property="og:description" content="Écosystème open source. Site en construction.">
+  <meta property="og:url" content="https://my-self.fr">
+  <meta property="og:type" content="website">
+  <style>
+    :root {
+      --bg: #0f1419;
+      --text: #e8eaed;
+      --text-muted: #9aa0a6;
+      --accent: #7ab7ff;
+      --accent-dim: #5a97df;
+      --border: #2a3038;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+    main {
+      max-width: 520px;
+      text-align: center;
+    }
+    h1 {
+      font-size: 3.5rem;
+      margin: 0 0 0.5rem;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .status {
+      display: inline-block;
+      font-size: 0.8rem;
+      padding: 0.25rem 0.8rem;
+      border-radius: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--accent-dim);
+      border: 1px solid var(--accent-dim);
+      margin-bottom: 2rem;
+    }
+    p {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      margin: 1rem 0;
+    }
+    a.cta {
+      display: inline-block;
+      margin-top: 1.5rem;
+      padding: 0.8rem 1.6rem;
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: background 0.2s, color 0.2s;
+    }
+    a.cta:hover {
+      background: var(--accent);
+      color: var(--bg);
+    }
+    footer {
+      margin-top: 3rem;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+    footer a {
+      color: var(--accent-dim);
+      text-decoration: none;
+    }
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>MySelf</h1>
+  <span class="status">Site en construction</span>
+  <p>Écosystème open source pour reprendre la main — droit, identité, sécurité, économie.</p>
+  <p>La landing officielle arrive bientôt. En attendant, le code vit sur GitHub.</p>
+  <a class="cta" href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">Voir le code sur GitHub →</a>
+  <footer>
+    Module déjà en ligne : <a href="https://justice.my-self.fr">justice.my-self.fr</a>
+  </footer>
+</main>
+</body>
+</html>

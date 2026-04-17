@@ -1,0 +1,28 @@
+name: selfjustice/ai-bots-whitelist
+description: "Whitelist des bots IA pour permettre la consultation de SelfJustice"
+whitelist:
+  reason: "AI bots authorized for legal consultation (SelfJustice)"
+  expression:
+    # Claude / Anthropic
+    - evt.Parsed.http_user_agent contains "Claude-User"
+    - evt.Parsed.http_user_agent contains "ClaudeBot"
+    - evt.Parsed.http_user_agent contains "claude-web"
+    - evt.Parsed.http_user_agent contains "anthropic-ai"
+    # OpenAI / ChatGPT
+    - evt.Parsed.http_user_agent contains "ChatGPT-User"
+    - evt.Parsed.http_user_agent contains "OAI-SearchBot"
+    - evt.Parsed.http_user_agent contains "GPTBot"
+    # Google / Gemini
+    - evt.Parsed.http_user_agent contains "Google-Extended"
+    - evt.Parsed.http_user_agent contains "GoogleOther"
+    - evt.Parsed.http_user_agent contains "Bard"
+    # Mistral
+    - evt.Parsed.http_user_agent contains "MistralAI"
+    - evt.Parsed.http_user_agent contains "Mistral-Bot"
+    # Perplexity
+    - evt.Parsed.http_user_agent contains "PerplexityBot"
+    - evt.Parsed.http_user_agent contains "Perplexity-User"
+    # Autres
+    - evt.Parsed.http_user_agent contains "YouBot"
+    - evt.Parsed.http_user_agent contains "DuckAssistBot"
+    - evt.Parsed.http_user_agent contains "Bytespider"
