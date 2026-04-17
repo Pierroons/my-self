@@ -177,10 +177,86 @@
     </div>
   </div>
 
+  <!-- Étape 4 — Escalade des sanctions -->
+  <div class="card-app" id="step-4">
+    <div class="step-header"><div class="num">4</div><div class="title">Escalade des sanctions</div></div>
+    <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.6rem;">
+      Si un user descend sous certains seuils de réputation, les sanctions s'enchaînent
+      automatiquement : perte du droit de vote à rep&nbsp;&lt;&nbsp;5, ban temporaire à rep&nbsp;=&nbsp;0
+      (24h puis 7j puis 30j selon les strikes), ban permanent après 3 strikes.
+    </p>
+    <div class="field">
+      <label for="drain-target">Cible à "drainer" (faire descendre jusqu'à 0)</label>
+      <select id="drain-target" style="background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem;">
+        <option value="">— choisir —</option>
+      </select>
+    </div>
+    <button class="btn" id="btn-drain" type="button">Lancer l'escalade</button>
+    <div id="drain-result"></div>
+    <div class="teach">
+      <strong>Ce qu'il se passe ici :</strong> tous les autres votants appliquent
+      des <code>-1</code> successifs espacés dans le temps (pour ne pas déclencher
+      pack-voting). Tu vois la réputation baisser, le moment précis où les droits
+      de vote sont retirés, puis le ban prendre effet avec sa durée. Pure mécanique
+      d'escalade de seuils.
+    </div>
+  </div>
+
+  <!-- Étape 5 — Upvote farming -->
+  <div class="card-app" id="step-5">
+    <div class="step-header"><div class="num">5</div><div class="title">Upvote farming</div></div>
+    <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.6rem;">
+      Tentative d'upvoter la même cible 4 fois d'affilée. Les 3 premiers passent,
+      le 4e est bloqué : <code>blocked_reason = upvote_farming</code>. Règle :
+      plus de 3 upvotes mutuels en 60 jours = gaming du système.
+    </p>
+    <div class="field">
+      <label for="farm-target">Cible à upvoter frénétiquement</label>
+      <select id="farm-target" style="background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem;">
+        <option value="">— choisir —</option>
+      </select>
+    </div>
+    <button class="btn" id="btn-farm" type="button">Tenter 4 upvotes consécutifs</button>
+    <div id="farm-result"></div>
+    <div class="teach">
+      <strong>Ce qu'il se passe ici :</strong> chaque upvote est géré par
+      <code>applyVote()</code> qui compte d'abord les upvotes antérieurs du même
+      voter vers la même cible sur 60 jours. À partir du 4e, vote enregistré mais
+      marqué <code>blocked</code> — il n'impacte pas la réputation cible. Ça empêche
+      deux users complices de se "prêter" des points entre eux.
+    </div>
+  </div>
+
+  <!-- Étape 6 — Ticks temporels + reset après ban -->
+  <div class="card-app" id="step-6">
+    <div class="step-header"><div class="num">6</div><div class="title">Temps simulé + reset après ban</div></div>
+    <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.6rem;">
+      Une fois un user banni, son ban a une fin. Pour la démo on peut avancer
+      le temps simulé. Quand le temps dépasse <code>banned_until</code>, le user
+      retrouve <code>reputation = 20</code> et ses droits de vote, mais conserve
+      ses <code>strikes</code> (qui mènent à un ban plus long la prochaine fois).
+      À <strong>90 jours sans incident</strong> → reset total des strikes.
+    </p>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+      <button class="btn sm" data-tick="24" type="button">+24 h</button>
+      <button class="btn sm" data-tick="168" type="button">+7 j</button>
+      <button class="btn sm" data-tick="720" type="button">+30 j</button>
+      <button class="btn sm" data-tick="2160" type="button">+90 j (reset strikes)</button>
+    </div>
+    <div id="tick-result"></div>
+    <div class="teach">
+      <strong>Ce qu'il se passe ici :</strong> <code>tick.php</code> incrémente le
+      <code>simulated_time</code> en base, puis scanne les users avec
+      <code>banned_until &lt; simulated_time</code> et les débannit. La boucle
+      <em>faute → sanction → délai → réparation</em> est complète. Le système ne
+      punit pas à vie par défaut : il protège, puis laisse la chance de revenir.
+    </div>
+  </div>
+
   <p class="lead" style="margin-top: 2rem; font-size: 0.8rem;">
-    Étapes à venir (session 6) : escalade des sanctions (perte vote, ban 24h/7j/30j,
-    ban permanent après 3 strikes), détection upvote-farming, reset après ban purgé,
-    et démo binôme (comment SelfRecover + SelfModerate neutralisent une attaque Sybil).
+    Étape à venir (session 7) : démo binôme — <strong>comment SelfRecover + SelfModerate
+    neutralisent ensemble une attaque Sybil</strong> que ni l'un ni l'autre ne pourrait
+    bloquer seul. 1+1=3.
   </p>
 </div>
 
@@ -206,6 +282,9 @@
         <option value="users">users.php</option>
         <option value="me">me.php</option>
         <option value="trigger-pack">trigger-pack.php</option>
+        <option value="drain-reputation">drain-reputation.php</option>
+        <option value="farm-upvotes">farm-upvotes.php</option>
+        <option value="tick">tick.php</option>
         <option value="moderate_helper">lib/moderate_helper.php</option>
         <option value="session_manager">lib/session_manager.php</option>
         <option value="schema">schemas/selfmoderate.sql</option>
@@ -218,14 +297,17 @@
 
 <script>
 const API = {
-  session:        '/demo/api/session',
-  events:         '/demo/api/events',
-  me:             '/demo/api/moderate/me',
-  users:          '/demo/api/moderate/users',
-  createIdentity: '/demo/api/moderate/create-identity',
-  vote:           '/demo/api/moderate/vote',
-  triggerPack:    '/demo/api/moderate/trigger-pack',
-  code:           '/demo/api/moderate/code',
+  session:         '/demo/api/session',
+  events:          '/demo/api/events',
+  me:              '/demo/api/moderate/me',
+  users:           '/demo/api/moderate/users',
+  createIdentity:  '/demo/api/moderate/create-identity',
+  vote:            '/demo/api/moderate/vote',
+  triggerPack:     '/demo/api/moderate/trigger-pack',
+  drainReputation: '/demo/api/moderate/drain-reputation',
+  farmUpvotes:     '/demo/api/moderate/farm-upvotes',
+  tick:            '/demo/api/moderate/tick',
+  code:            '/demo/api/moderate/code',
 };
 
 const state = { session: null, visitor: null, users: [], eventSource: null, sseOffset: 0 };
@@ -357,10 +439,26 @@ function renderUsers() {
     btn.addEventListener('click', () => vote(+btn.dataset.voteTarget, +btn.dataset.voteValue));
   });
 
-  // Options pour pack attack
+  // Options pour pack attack (exclut les attaquants)
   select.innerHTML = '<option value="">— choisir —</option>' + state.users
     .filter(u => u.username !== '@charlie_upvoter' && u.username !== '@dave_pack' && u.username !== '@alice_toxique')
     .map(u => `<option value="${u.id}">${html_escape(u.username)} (score ${u.reputation})</option>`).join('');
+
+  // Options pour drain-reputation (tous les users sauf le visiteur actuel)
+  const drainSelect = $('drain-target');
+  if (drainSelect) {
+    drainSelect.innerHTML = '<option value="">— choisir —</option>' + state.users
+      .filter(u => !state.visitor || u.id !== state.visitor.id)
+      .map(u => `<option value="${u.id}">${html_escape(u.username)} (score ${u.reputation})</option>`).join('');
+  }
+
+  // Options pour farm-upvotes (bots uniquement, pas le visiteur)
+  const farmSelect = $('farm-target');
+  if (farmSelect) {
+    farmSelect.innerHTML = '<option value="">— choisir —</option>' + state.users
+      .filter(u => u.is_bot && (!state.visitor || u.id !== state.visitor.id))
+      .map(u => `<option value="${u.id}">${html_escape(u.username)} (score ${u.reputation})</option>`).join('');
+  }
 }
 
 $('form-identity').addEventListener('submit', async (e) => {
@@ -422,6 +520,84 @@ $('btn-pack').addEventListener('click', async () => {
   } catch (err) {
     $('pack-result').innerHTML = `<div class="inline-result err">✗ Erreur réseau.</div>`;
   }
+});
+
+// Étape 4 — Drain reputation
+$('btn-drain').addEventListener('click', async () => {
+  const target = +$('drain-target').value;
+  if (!target) { $('drain-result').innerHTML = `<div class="inline-result err">Choisis une cible.</div>`; return; }
+  $('drain-result').innerHTML = '<em class="lead">Escalade en cours — regarde les logs…</em>';
+  try {
+    const r = await fetch(API.drainReputation, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_id: target }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      const banned = d.final.banned_until > 0;
+      $('drain-result').innerHTML = `<div class="inline-result ${banned ? 'warn' : 'ok'}">✓ ${d.votes_applied} votes appliqués. Réputation finale : <strong>${d.final.reputation}</strong>, droit de vote : <strong>${d.final.voting_rights ? 'oui' : 'non'}</strong>, strikes : <strong>${d.final.strikes}</strong>${banned ? ', <strong>BANNI</strong>' : ''}.</div>`;
+      $('step-4').classList.add('done');
+    } else {
+      $('drain-result').innerHTML = `<div class="inline-result err">✗ ${html_escape(d.error || d.message)}</div>`;
+    }
+    refreshUsers();
+  } catch (err) {
+    $('drain-result').innerHTML = `<div class="inline-result err">✗ Erreur réseau.</div>`;
+  }
+});
+
+// Étape 5 — Farm upvotes
+$('btn-farm').addEventListener('click', async () => {
+  const target = +$('farm-target').value;
+  if (!target) { $('farm-result').innerHTML = `<div class="inline-result err">Choisis une cible.</div>`; return; }
+  $('farm-result').innerHTML = '<em class="lead">4 upvotes consécutifs en cours…</em>';
+  try {
+    const r = await fetch(API.farmUpvotes, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_id: target }),
+    });
+    const d = await r.json();
+    if (d.ok) {
+      const lines = d.attempts.map(a =>
+        `<div style="font-family: monospace; font-size: 0.75rem;">Tentative ${a.attempt} : ${a.blocked ? '<span style="color: var(--danger);">✗ BLOQUÉ (' + a.blocked_reason + ')</span>' : '<span style="color: var(--success);">✓ passé, rep → ' + a.new_reputation + '</span>'}</div>`
+      ).join('');
+      $('farm-result').innerHTML = `<div class="inline-result ok">${lines}<div style="margin-top: 0.4rem;">${html_escape(d.message)}</div></div>`;
+      $('step-5').classList.add('done');
+    } else {
+      $('farm-result').innerHTML = `<div class="inline-result err">✗ ${html_escape(d.error || d.message)}</div>`;
+    }
+    refreshUsers();
+  } catch (err) {
+    $('farm-result').innerHTML = `<div class="inline-result err">✗ Erreur réseau.</div>`;
+  }
+});
+
+// Étape 6 — Ticks temporels
+document.querySelectorAll('button[data-tick]').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const hours = +btn.dataset.tick;
+    $('tick-result').innerHTML = `<em class="lead">Avance ${hours}h simulées…</em>`;
+    try {
+      const r = await fetch(API.tick, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hours }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        const msg = `+${hours}h. Nouveau temps simulé : ${d.simulated_time_iso.slice(0,16)}. Users débannés : <strong>${d.unbanned_count}</strong>${d.strikes_reset_global ? '. <strong>Reset global des strikes.</strong>' : ''}`;
+        $('tick-result').innerHTML = `<div class="inline-result ok">✓ ${msg}</div>`;
+        $('step-6').classList.add('done');
+      } else {
+        $('tick-result').innerHTML = `<div class="inline-result err">✗ ${html_escape(d.error || d.message)}</div>`;
+      }
+      refreshUsers();
+    } catch (err) {
+      $('tick-result').innerHTML = `<div class="inline-result err">✗ Erreur réseau.</div>`;
+    }
+  });
 });
 
 // Code viewer
