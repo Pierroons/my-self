@@ -1,5 +1,7 @@
 # Self-Bill
 
+> 🇬🇧 **[Read in English →](./README.md)**
+
 **Facturer + se faire payer, sans intermédiaire.**
 
 > *Facture-le. Encaisse-le. Garde tout.*

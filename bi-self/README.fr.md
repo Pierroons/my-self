@@ -1,5 +1,7 @@
 # Bi-Self
 
+> 🇬🇧 **[Read in English →](./README.md)**
+
 **Identité souveraine + modération communautaire autonome.**
 
 > *Si une communauté peut se construire, elle peut se gouverner.*

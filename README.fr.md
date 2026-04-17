@@ -1,5 +1,7 @@
 # MySelf
 
+> 🇬🇧 **[Read this page in English →](./README.md)**
+
 **Be yourself, for yourself.**
 
 > L'humain apporte l'entropie. La machine apporte l'impartialité.
@@ -9,7 +11,6 @@
 [![Auto-hébergé](https://img.shields.io/badge/auto--hébergé-Raspberry%20Pi-blue.svg)](#prérequis)
 [![Zero cloud](https://img.shields.io/badge/cloud-zéro-brightgreen.svg)](#philosophie)
 [![Zero tracking](https://img.shields.io/badge/tracking-zéro-brightgreen.svg)](#philosophie)
-[![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
 ---
 
@@ -43,10 +44,10 @@ droits, ses données et ses biens.
 
 ---
 
-## Ensembles nommés (les trois piliers)
+## Ensembles nommés (les quatre piliers)
 
 Certains modules forment des **binômes qui se renforcent mutuellement** —
-plus que la somme de leurs parties. MySelf s'organise autour de trois
+plus que la somme de leurs parties. MySelf s'organise autour de quatre
 binômes, chacun couvrant une dimension de la souveraineté personnelle.
 
 ### Bi-Self — Identité souveraine et autonomie communautaire

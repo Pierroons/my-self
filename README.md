@@ -1,5 +1,7 @@
 # MySelf
 
+> 🇫🇷 **[Lire cette page en français →](./README.fr.md)**
+
 **Be yourself, for yourself.**
 
 > The human provides entropy. The machine provides impartiality.
@@ -9,7 +11,6 @@
 [![Self-hosted](https://img.shields.io/badge/self--hosted-Raspberry%20Pi-blue.svg)](#requirements)
 [![Zero cloud](https://img.shields.io/badge/cloud-zero-brightgreen.svg)](#philosophy)
 [![Zero tracking](https://img.shields.io/badge/tracking-zero-brightgreen.svg)](#philosophy)
-[![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
 ---
 
@@ -42,10 +43,10 @@ individual sovereign over their own identity, rights, data, and possessions.
 
 ---
 
-## Named bundles (the three pillars)
+## Named bundles (the four pillars)
 
 Some modules form **pairs that reinforce each other** — more than the sum of
-their parts. MySelf is structured around three such bundles, each covering
+their parts. MySelf is structured around four such bundles, each covering
 one dimension of personal sovereignty.
 
 ### Bi-Self — Sovereign identity & community autonomy

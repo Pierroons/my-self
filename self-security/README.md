@@ -1,5 +1,7 @@
 # Self-Security
 
+> 🇫🇷 **[Lire en français →](./README.fr.md)**
+
 **Digital and physical protection.**
 
 > *Force me and you get nothing.*
