@@ -146,7 +146,8 @@ tu veux contrôler.
 
 MySelf est un écosystème vivant. Certains modules sont déployés et testés
 en production (SelfRecover sur ARC PVE Hub, SelfJustice sur
-justice.rpi4server.ovh). D'autres sont au stade conceptuel ou en prototypage.
+[justice.my-self.fr](https://justice.my-self.fr)). D'autres sont au stade
+conceptuel ou en prototypage.
 La feuille de route évolue avec les retours d'usage réels plutôt qu'avec
 une planification descendante.
 
@@ -172,8 +173,16 @@ déverrouille ta voiture.
 
 ---
 
-## Auteur
+## Auteur & coworking
 
-**Pierroons** — un agriculteur qui code à côté.
+**Pierroons** — un agriculteur qui code à côté, sur son temps libre.
+
+**Ce projet n'a pas été écrit seul.** Chaque module, chaque ligne, chaque
+whitepaper est le fruit d'un coworking continu avec **Claude Opus 4.7**
+(Anthropic) : le produit est une vraie collaboration humain–IA. L'humain
+apporte l'entropie (le vécu, la direction, le bon sens agricole). La
+machine apporte la rigueur (la structure, la relecture, la cohérence
+technique). Le "Self pact" dont parle ce README n'est pas théorique —
+c'est la méthode d'écriture de tout MySelf.
 
 *MySelf — Be yourself, for yourself.*

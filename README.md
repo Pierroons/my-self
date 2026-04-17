@@ -165,8 +165,16 @@ unlocks your car.
 
 ---
 
-## Author
+## Author & coworking
 
-**Pierroons** — a farmer who codes on the side.
+**Pierroons** — a farmer who codes on the side, in his spare time.
+
+**This project wasn't written alone.** Every module, every line, every
+whitepaper is the fruit of continuous coworking with **Claude Opus 4.7**
+(Anthropic): the product is a genuine human–AI collaboration. The human
+brings the entropy (lived experience, direction, farmer's common sense).
+The machine brings the rigour (structure, review, technical consistency).
+The "Self pact" this README talks about isn't theoretical — it's the
+actual writing method of all MySelf.
 
 *MySelf — Be yourself, for yourself.*
