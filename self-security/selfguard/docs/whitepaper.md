@@ -166,4 +166,4 @@ The open-source nature of SelfGuard ensures that any court, any auditor, any cur
 - Encryption AEAD: RFC 5116 (AES-GCM), RFC 8439 (ChaCha20-Poly1305)
 - Forensic considerations: Carrier, *File System Forensic Analysis*, 2005
 - Duress-aware design: Katz & Lindell, *Introduction to Modern Cryptography*, Ch. 14
-- SelfKeyGuard integration: https://github.com/Pierroons/my-self/tree/main/self-security/selfkeyguard
+- SelfKeyGuard integration: https://github.com/Pierroons/my-self/tree/master/self-security/selfkeyguard

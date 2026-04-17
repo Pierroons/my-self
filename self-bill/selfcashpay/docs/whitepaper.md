@@ -180,5 +180,5 @@ For non-SEPA transactions (cross-border, non-EU currencies, card payments), comm
 
 - EPC069-12 specification (official): https://www.europeanpaymentscouncil.eu
 - SEPA Instant Credit Transfer (SCT Inst): EPC rulebook
-- Bank compatibility tests: https://github.com/Pierroons/my-self/tree/main/self-bill/selfcashpay/tests
-- SelfInvoice integration: https://github.com/Pierroons/my-self/tree/main/self-bill/selfinvoice
+- Bank compatibility tests: https://github.com/Pierroons/my-self/tree/master/self-bill/selfcashpay/tests
+- SelfInvoice integration: https://github.com/Pierroons/my-self/tree/master/self-bill/selfinvoice
