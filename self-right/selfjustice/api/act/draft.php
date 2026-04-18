@@ -111,24 +111,23 @@ header('X-Content-Type-Options: nosniff');
 <style>
   @page {
     size: A4;
-    margin: 2.5cm 2cm;
+    margin: 1.8cm 1.8cm;
   }
 
   html, body {
     margin: 0;
     padding: 0;
     font-family: "Georgia", "Times New Roman", serif;
-    font-size: 11pt;
-    line-height: 1.6;
+    font-size: 10.5pt;
+    line-height: 1.45;
     color: #000;
     background: #fff;
   }
 
-  /* Layout global */
+  /* Layout global — padding ÉCRAN only, pas à l'impression (@page gère) */
   .page {
     max-width: 720px;
     margin: 0 auto;
-    padding: 2.5cm 2cm;
     position: relative;
     background: #fff;
   }
@@ -157,14 +156,19 @@ header('X-Content-Type-Options: nosniff');
   @media print {
     .toolbar { display: none !important; }
     .watermark { position: fixed !important; }
-    body { background: #fff; }
+    body { background: #fff; padding: 0 !important; }
+    .page { padding: 0 !important; }
   }
   @media screen {
     body {
       background: #e0e0e0;
       padding: 2rem 1rem;
     }
+    /* En écran : padding + ombre pour simuler une feuille A4 */
     .page {
+      padding: 2cm 2cm;
+      margin-top: 1rem;
+      margin-bottom: 2rem;
       box-shadow: 0 4px 20px rgba(0,0,0,0.1);
       border: 1px solid #ccc;
     }
@@ -182,6 +186,28 @@ header('X-Content-Type-Options: nosniff');
   }
   .toolbar h2 { margin: 0 0 0.5rem; font-size: 1rem; color: #8a6010; }
   .toolbar p { margin: 0.3rem 0; font-size: 0.9rem; color: #333; }
+  .toolbar .print-hint {
+    margin-top: 0.8rem;
+    padding: 0.6rem 1rem;
+    background: rgba(255,255,255,0.5);
+    border: 1px solid #d4a017;
+    border-radius: 4px;
+    font-size: 0.95rem;
+    color: #333;
+    display: inline-block;
+  }
+  .toolbar .kbd {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    background: #333;
+    color: #fff;
+    border-radius: 3px;
+    font-family: "Courier New", monospace;
+    font-size: 0.85rem;
+    font-weight: bold;
+    box-shadow: 0 2px 0 #222;
+    vertical-align: baseline;
+  }
   .toolbar button {
     background: #d4a017;
     color: #fff;
@@ -203,49 +229,55 @@ header('X-Content-Type-Options: nosniff');
     color: #000;
   }
   .ref { text-align: right; font-size: 9pt; color: #666; margin-bottom: 0.3cm; }
-  .bloc-parties { margin-bottom: 0.8cm; }
-  .bloc-parties .expe { margin-bottom: 1cm; }
-  .bloc-parties .dest { margin-left: 50%; }
-  .date-lieu { margin: 0.5cm 0; }
-  .objet { font-weight: bold; margin: 0.5cm 0; }
-  .corps p { text-align: justify; margin: 0.3cm 0; }
+  .bloc-parties {
+    display: flex;
+    justify-content: space-between;
+    gap: 1cm;
+    margin-bottom: 0.3cm;
+  }
+  .bloc-parties .expe,
+  .bloc-parties .dest { flex: 1; }
+  .bloc-parties .dest { text-align: right; }
+  .date-lieu { margin: 0.2cm 0; }
+  .objet { font-weight: bold; margin: 0.3cm 0; }
+  .corps p { text-align: justify; margin: 0.15cm 0; }
   .corps h3 {
-    font-size: 11pt;
-    margin-top: 0.5cm;
-    margin-bottom: 0.2cm;
+    font-size: 10.5pt;
+    margin-top: 0.2cm;
+    margin-bottom: 0.1cm;
     font-weight: bold;
   }
-  .signature { margin-top: 1cm; text-align: right; }
+  .signature { margin-top: 0.5cm; text-align: right; }
   .articles-cites {
-    margin: 0.5cm 0;
-    padding: 0.3cm 0.5cm;
+    margin: 0.2cm 0;
+    padding: 0.15cm 0.4cm;
     background: #f9f9f9;
     border-left: 3px solid #888;
-    font-size: 10pt;
+    font-size: 9.5pt;
   }
 
   /* Section manques (checklist informations insuffisantes) */
   .manques {
-    margin-top: 1cm;
-    padding: 0.5cm 0.7cm;
+    margin-top: 0.4cm;
+    padding: 0.25cm 0.5cm;
     border: 2px solid #c72525;
     background: #fff0f0;
     page-break-inside: avoid;
   }
   .manques h3 {
     color: #c72525;
-    font-size: 11pt;
-    margin: 0 0 0.3cm;
+    font-size: 10.5pt;
+    margin: 0 0 0.15cm;
   }
-  .manques ul { margin: 0; padding-left: 1.5em; }
-  .manques li { margin: 0.1cm 0; }
+  .manques ul { margin: 0; padding-left: 1.5em; font-size: 9.5pt; }
+  .manques li { margin: 0.05cm 0; }
   .manques li::marker { content: "☐  "; color: #c72525; }
 
   /* Disclaimer bas de page */
   .disclaimer {
-    margin-top: 1cm;
-    padding: 0.3cm 0.5cm;
-    font-size: 8pt;
+    margin-top: 0.4cm;
+    padding: 0.15cm 0.3cm;
+    font-size: 7.5pt;
     color: #666;
     font-style: italic;
     border-top: 1px solid #ccc;
@@ -263,8 +295,13 @@ header('X-Content-Type-Options: nosniff');
   professionnel) avant tout envoi formel.</p>
   <p><strong>Pour l'imprimer en PDF :</strong> Ctrl+P (ou ⌘+P sur Mac) → « Enregistrer au format PDF ».
   Le filigrane reste visible à l'impression.</p>
-  <button onclick="window.print()">🖨 Imprimer / Enregistrer en PDF</button>
+  <button type="button" id="btn-print">🖨 Imprimer / Enregistrer en PDF</button>
+  <div class="print-hint" style="margin-top:0.5rem">
+    ou <span class="kbd">Ctrl</span> + <span class="kbd">P</span>
+    <span style="font-size:0.8rem;color:#666;margin-left:0.3rem">(⌘ + P sur Mac)</span>
+  </div>
 </div>
+<script src="/act/api/print.js"></script>
 
 <!-- Filigrane SVG sur toutes les pages (fixed positioning) -->
 <div class="watermark" aria-hidden="true">
@@ -281,8 +318,6 @@ header('X-Content-Type-Options: nosniff');
 
 <!-- Page du courrier -->
 <div class="page">
-  <div class="ref">Document SelfAct — NON OFFICIEL</div>
-
   <div class="bloc-parties">
     <div class="expe">
       <strong><?= h($expediteur['nom'] ?? '[Nom Prénom de l\'expéditeur]') ?></strong><br>
