@@ -390,20 +390,25 @@
         endpoints inexistants et donné un nombre de principes erroné (12 au lieu de 8).
         À utiliser avec vigilance : vérifier systématiquement les références citées.</li>
     </ul>
-    <p style="margin-bottom:0.5rem"><strong>❌ Incompatibles (pas de fetch direct) :</strong></p>
+    <p style="margin-bottom:0.5rem"><strong>🟡 Compatibles via fallback texte (copier-coller) :</strong></p>
+    <p style="font-size:0.9rem; margin-bottom:0.3rem">
+      Ces IA ne peuvent pas fetcher l'URL mais fonctionnent parfaitement avec le
+      fallback. <strong>Procédure</strong> : ouvre <a href="/act/api/directives.txt">/act/api/directives.txt</a>,
+      copie tout le contenu, colle-le dans ton IA comme contexte avant ta question.
+    </p>
     <ul style="margin: 0.3rem 0 0.5rem 1.5rem">
-      <li><strong>Mistral Le Chat</strong> — a un <code>web_search</code> (snippets Google/Bing),
-        pas de fetch HTML → ne voit pas les directives</li>
-      <li><strong>Perplexity</strong> — dit <em>« Je ne peux pas lire cette URL directement »</em>
-        (peut-être différent en mode Pro, à confirmer)</li>
-      <li><strong>DuckDuckGo AI chat (GPT-5 mini)</strong> — search only, pas de fetch</li>
-      <li><strong>Yiaho.com, Poe.com</strong> et plateformes « wrapper IA » en général —
-        sandboxées côté navigation</li>
-      <li><strong>ChatGPT gratuit sans Browse activé</strong>, IA locales sans extension web</li>
+      <li><strong>✅ Mistral Le Chat</strong> — <strong>confirmé par test</strong> :
+        applique correctement les 9 principes après copie-colle des directives.</li>
+      <li><strong>Perplexity gratuit</strong> — fetch bloqué, fallback probable (à tester)</li>
+      <li><strong>DuckDuckGo AI chat</strong> — idem</li>
+      <li><strong>ChatGPT gratuit sans Browse</strong> — idem</li>
+      <li><strong>Yiaho.com, Poe.com</strong> et wrappers — idem</li>
+      <li><strong>IA locales</strong> (Ollama, LM Studio, etc.) sans extension web — idem</li>
     </ul>
     <p style="margin-bottom:0; font-size:0.9rem">
-      Si ton IA te dit qu'elle ne peut pas lire l'URL, bascule sur <strong>Claude.ai</strong>
-      (compte gratuit possible), <strong>Gemini</strong> ou <strong>Copilot</strong>.
+      <strong>Meilleure UX</strong> : Claude.ai, Gemini ou Copilot (pas besoin de copier, l'IA fetch
+      directement). <strong>Fallback universel</strong> : tout le reste via
+      <a href="/act/api/directives.txt"><code>/act/api/directives.txt</code></a>.
     </p>
   </div>
 
