@@ -39,15 +39,14 @@ droits, ses données et ses biens.
 | [SelfAct](./self-right/selfact/) | Comment tu les fais valoir ? | idée |
 | [SelfGuard](./self-security/selfguard/) | Comment protéger tes données ? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | Comment protéger tes objets ? | concept |
-| [SelfInvoice](./self-bill/selfinvoice/) | Comment facturer tes clients ? | idée |
-| [SelfCashpay](./self-bill/selfcashpay/) | Comment encaisser ? | idée |
+| [SelfInvoice](./selfinvoice/) | Comment facturer tes clients ? | idée |
 
 ---
 
-## Ensembles nommés (les quatre piliers)
+## Ensembles nommés (les trois piliers)
 
 Certains modules forment des **binômes qui se renforcent mutuellement** —
-plus que la somme de leurs parties. MySelf s'organise autour de quatre
+plus que la somme de leurs parties. MySelf s'organise autour de trois
 binômes, chacun couvrant une dimension de la souveraineté personnelle.
 
 ### Bi-Self — Identité souveraine et autonomie communautaire
@@ -83,34 +82,33 @@ et où la présence active est requise pour déverrouiller.
 
 > *Force-moi et tu n'auras rien.*
 
-### Self-Bill — Facturer et encaisser, sans intermédiaire
-**SelfInvoice + SelfCashpay**
+---
 
-SelfInvoice génère des factures conformes (mentions légales art. L441-9
-C. com., franchise TVA art. 293 B CGI, bordereaux) — juste un PDF, aucune
-garde de fonds. SelfCashpay affiche un QR code SEPA (standard européen
-EPC069-12) : le client scanne avec son appli bancaire, le virement se
-pré-remplit, l'argent arrive direct sur ton IBAN. **Zéro commission,
-zéro intermédiaire, aucun agrément bancaire nécessaire** parce que les
-outils ne détiennent jamais de fonds. Parfait pour freelances, créateurs,
-petites associations, tips.
+## Module autonome
 
-> *Facture-le. Encaisse-le. Garde tout.*
+### SelfInvoice — facturation conforme, local-first
+
+Génère des factures conformes (mentions légales art. L441-9 C. com.,
+franchise TVA art. 293 B CGI, bordereaux) en PDF signé, sans cloud,
+sans abonnement, sans détention de fonds. Le client règle par virement
+SEPA classique vers l'IBAN affiché sur la facture.
+
+> *Ta facture. Ton template. Tes données. Terminé.*
 
 ---
 
 ## La vision d'ensemble
 
-MySelf adresse la **personne complète** à travers quatre piliers :
+MySelf adresse la **personne complète** à travers trois piliers :
 
 | Pilier | Dimension |
 |--------|-----------|
 | **Bi-Self** | Sociale — qui tu es et comment tu interagis |
 | **Self-Right** | Juridique — ce que tu peux défendre par le droit |
 | **Self-Security** | Matérielle — ce que tu protèges concrètement |
-| **Self-Bill** | Économique — comment tu gagnes ta vie sans intermédiaire |
 
-Quatre piliers, deux modules par pilier. Aucun module n'est obligatoire.
+Trois piliers, deux modules par pilier, plus le module autonome SelfInvoice.
+Aucun module n'est obligatoire.
 Tu choisis ce qui correspond à tes besoins et tu auto-héberges ce que
 tu veux contrôler.
 

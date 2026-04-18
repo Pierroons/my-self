@@ -71,7 +71,7 @@ $totalBcryptMs = 0;
 for ($i = 1; $i <= 5; $i++) {
     $username = 'sybil_' . $i . '_' . bin2hex(random_bytes(2));
     $password = RecoverHelper::generatePassword(16);
-    $diceware = DicewareWordlist::generate(4);
+    $diceware = DicewareWordlist::generate(4, 'en');
     $passphrase = implode(' ', $diceware['words']);
     $recoveryWord = bin2hex(random_bytes(3));
 

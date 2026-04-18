@@ -4,7 +4,7 @@
 
 If you find a security vulnerability in SelfRecover, **please do NOT open a public issue**. Contact the author privately instead:
 
-- **Email**: pierre.gonod@gmx.fr (with "[SelfRecover] Security" in the subject)
+- **Email**: pierroons@gmx.fr (with "[SelfRecover] Security" in the subject)
 - **Expected response time**: within 7 days
 
 Please include:

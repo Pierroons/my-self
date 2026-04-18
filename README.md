@@ -38,15 +38,14 @@ individual sovereign over their own identity, rights, data, and possessions.
 | [SelfAct](./self-right/selfact/) | How do you act on them? | idea |
 | [SelfGuard](./self-security/selfguard/) | How do you protect your data? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | How do you protect your things? | concept |
-| [SelfInvoice](./self-bill/selfinvoice/) | How do you bill clients? | idea |
-| [SelfCashpay](./self-bill/selfcashpay/) | How do you get paid? | idea |
+| [SelfInvoice](./selfinvoice/) | How do you bill clients? | idea |
 
 ---
 
-## Named bundles (the four pillars)
+## Named bundles (the three pillars)
 
 Some modules form **pairs that reinforce each other** — more than the sum of
-their parts. MySelf is structured around four such bundles, each covering
+their parts. MySelf is structured around three such bundles, each covering
 one dimension of personal sovereignty.
 
 ### Bi-Self — Sovereign identity & community autonomy
@@ -82,34 +81,33 @@ is required to unlock.
 
 > *Force me and you get nothing.*
 
-### Self-Bill — Invoicing & getting paid, no middleman
-**SelfInvoice + SelfCashpay**
+---
 
-SelfInvoice generates compliant invoices (legal mentions, VAT exemption,
-bordereaux) — just a PDF, no fund custody. SelfCashpay displays a SEPA QR
-code (EPC069-12 standard): the client scans with their banking app, the
-transfer is pre-filled, money lands directly on your IBAN. **Zero
-commission, zero intermediary, no banking license needed** because the
-tools never hold funds. Perfect for freelancers, creators, small
-associations, tips.
+## Standalone module
 
-> *Bill it. Cash it. Keep all of it.*
+### SelfInvoice — compliant invoicing, local-first
+
+Generates legally compliant PDF invoices (legal mentions, VAT exemption,
+bordereaux) — no cloud, no subscription, no fund custody. The client pays
+via a standard SEPA transfer to the IBAN displayed on the invoice.
+
+> *Your invoice. Your template. Your data. Done.*
 
 ---
 
 ## The big picture
 
-MySelf addresses the **complete person** through four pillars:
+MySelf addresses the **complete person** through three pillars:
 
 | Pillar | Dimension |
 |--------|-----------|
 | **Bi-Self** | Social — who you are and how you interact |
 | **Self-Right** | Legal — what you can defend by law |
 | **Self-Security** | Material — what you protect concretely |
-| **Self-Bill** | Economic — how you earn without middlemen |
 
-Four pillars, two modules each. No module is mandatory. You pick what
-matches your needs and self-host what you want to control.
+Three pillars, two modules each, plus the standalone SelfInvoice module.
+No module is mandatory. You pick what matches your needs and self-host
+what you want to control.
 
 ---
 

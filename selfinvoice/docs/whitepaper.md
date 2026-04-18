@@ -8,7 +8,7 @@ version: "alpha 0.0.1"
 
 # Executive summary
 
-SelfInvoice is a **local-first invoice generator** for French freelancers, associations, and small businesses. It produces legally compliant PDF invoices with all mandatory legal mentions (art. 242 nonies A Annexe II CGI), embeds a SEPA QR code via [SelfCashpay](../selfcashpay/) for one-scan payment, and handles automatic reconciliation when the virement arrives. Customer data never leaves the local machine.
+SelfInvoice is a **local-first invoice generator** for French freelancers, associations, and small businesses. It produces legally compliant PDF invoices with all mandatory legal mentions (art. 242 nonies A Annexe II CGI), prominently displays the issuer's IBAN and the invoice reference so the client can initiate a standard SEPA transfer, and handles automatic reconciliation when the virement arrives. Customer data never leaves the local machine.
 
 The goal is simple: replace the €150–350 / year stack of Stripe Invoicing + a SaaS accounting tool with a single self-hosted binary that does one job honestly.
 
@@ -54,7 +54,6 @@ Article 242 nonies A of Annexe II of the CGI defines the mandatory mentions for 
         │                                                        ▼
         │                                              ┌──────────────────┐
         │                                              │  SEPA QR code    │
-        │                                              │  (SelfCashpay)   │
         │                                              │  embedded in PDF │
         │                                              └──────────────────┘
         │
@@ -175,16 +174,17 @@ selfinvoice send FACT-2026-0042 --email jeanne@dupont.fr
 
 Runs locally on `http://localhost:8765`. Minimal Next.js or plain-HTML form. Accessible over LAN if the user wants to invoice from a tablet.
 
-# 5. Integration with SelfCashpay
+# 5. Payment section on the invoice
 
-Every generated invoice embeds an EPC069-12 QR code produced by SelfCashpay. The QR is inserted at a fixed position in the PDF template (bottom-right, visible but not intrusive). When scanned, the client's banking app pre-fills:
+Every generated invoice reserves a dedicated payment section in the PDF (bottom-right, visible but non-intrusive) listing:
 
-- IBAN (from the issuer's local config)
-- Amount (from invoice total)
-- Reference (= invoice ref, for automatic reconciliation)
 - Beneficiary name
+- Full IBAN
+- Invoice reference (to be used as the transfer reference)
+- Amount due
 
-A single scan replaces the whole "open banking app, type IBAN, type amount, type reference" dance. Payment arrives, SelfInvoice sees the matching reference via the reconciliation engine, and marks the invoice paid.
+The client reads these details in the PDF, opens their own banking app, and initiates a standard SEPA transfer — no third-party service involved. Payment arrives directly on the issuer's IBAN. SelfInvoice's reconciliation engine watches for matching references and marks the invoice as paid.
+
 
 # 6. Privacy & portability
 
@@ -195,7 +195,7 @@ A single scan replaces the whole "open banking app, type IBAN, type amount, type
 
 # 7. Roadmap
 
-**v0.1.0** — CLI for customers, invoices, lines; legal matrix for micro-entrepreneur + SASU + association; PDF generation; QR embed; manual reconciliation.
+**v0.1.0** — CLI for customers, invoices, lines; legal matrix for micro-entrepreneur + SASU + association; PDF generation; manual reconciliation.
 
 **v0.2.0** — Web UI, email sending via SMTP, IMAP-based reconciliation for BNP, Qonto, Shine, Revolut, Crédit Mutuel.
 
