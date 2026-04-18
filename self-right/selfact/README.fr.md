@@ -122,3 +122,20 @@ Voir **[whitepaper](docs/whitepaper.docx)** pour la spécification complète du 
 **Pierroons** — [github.com/Pierroons/my-self](https://github.com/Pierroons/my-self)
 
 *SelfAct — La lettre est déjà écrite. Il suffit de la signer.*
+
+---
+
+## Notes d'installation DEVSERVER
+
+Le cron `update_catalog.sh` tourne en tant qu'utilisateur `deploy` mais écrit
+dans `/var/www/selfjustice/api/act/data/` qui est owned par `www-data`.
+Permissions à appliquer une fois à l'installation :
+
+```bash
+sudo chown -R www-data:user /var/www/selfjustice/api/act/data/
+sudo chmod 775 /var/www/selfjustice/api/act/data/
+sudo chmod 664 /var/www/selfjustice/api/act/data/*.json
+```
+
+L'ownership mixte permet à `deploy` (cron) d'écrire via le groupe et à `www-data`
+(nginx/PHP-FPM) de lire normalement.
