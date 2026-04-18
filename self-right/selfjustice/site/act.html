@@ -375,23 +375,36 @@
       Les IA <em>sandboxées</em> (sans accès web) ne peuvent pas utiliser SelfAct.
       Elles te répondront : <em>« Je ne peux pas accéder aux pages web »</em>.
     </p>
-    <p style="margin-bottom:0.5rem"><strong>Compatible confirmé par test :</strong></p>
+    <p style="margin-bottom:0.5rem"><strong>Compatibles — test du 18/04/2026 :</strong></p>
     <ul style="margin: 0.3rem 0 0.5rem 1.5rem">
-      <li><strong>Claude.ai</strong> (Opus / Sonnet, gratuit + Pro) — lit intégralement le
-        HTML brut dont les sections cachées. <strong>Recommandé.</strong></li>
+      <li><strong>✅ Claude.ai</strong> (Opus / Sonnet, gratuit + Pro) — lit intégralement
+        le HTML brut dont les sections cachées. <strong>Recommandé.</strong></li>
+      <li><strong>✅ Gemini</strong> (gratuit + Advanced) — fetch correct, lit le HTML
+        dans le détail. A même repéré et signalé un bug de numérotation dans la page (!).</li>
+      <li><strong>✅ Microsoft Copilot</strong> (Bing Chat intégré) — fetch correct, parse
+        structuré.</li>
     </ul>
-    <p style="margin-bottom:0.5rem"><strong>À tester avant usage sérieux</strong> (fetch à vérifier — ces IA peuvent
-      selon leur mode avoir seulement du <em>web search</em> qui retourne des snippets, pas
-      du fetch HTML complet qui seul voit les directives) :</p>
+    <p style="margin-bottom:0.5rem"><strong>⚠ Fetch mais risque d'hallucination :</strong></p>
     <ul style="margin: 0.3rem 0 0.5rem 1.5rem">
-      <li><strong>ChatGPT Plus</strong> avec <em>Browse</em> activé</li>
-      <li><strong>Perplexity</strong> (mode Pro recommandé)</li>
-      <li><strong>Gemini Advanced</strong> avec navigation</li>
+      <li><strong>ChatGPT</strong> — a répondu au fetch mais a <em>inventé</em> des
+        endpoints inexistants et donné un nombre de principes erroné (12 au lieu de 8).
+        À utiliser avec vigilance : vérifier systématiquement les références citées.</li>
     </ul>
-    <p style="margin-bottom:0"><strong>Incompatibles confirmés :</strong> Mistral Le Chat
-      (web_search uniquement, pas de fetch URL direct), Yiaho.com, Poe.com, ChatGPT gratuit
-      sans Browse, IA locales sans extension web. Ces IA répondent typiquement : <em>« Je ne
-      peux pas accéder aux pages web via des URL »</em> — dans ce cas, bascule sur Claude.ai.</p>
+    <p style="margin-bottom:0.5rem"><strong>❌ Incompatibles (pas de fetch direct) :</strong></p>
+    <ul style="margin: 0.3rem 0 0.5rem 1.5rem">
+      <li><strong>Mistral Le Chat</strong> — a un <code>web_search</code> (snippets Google/Bing),
+        pas de fetch HTML → ne voit pas les directives</li>
+      <li><strong>Perplexity</strong> — dit <em>« Je ne peux pas lire cette URL directement »</em>
+        (peut-être différent en mode Pro, à confirmer)</li>
+      <li><strong>DuckDuckGo AI chat (GPT-5 mini)</strong> — search only, pas de fetch</li>
+      <li><strong>Yiaho.com, Poe.com</strong> et plateformes « wrapper IA » en général —
+        sandboxées côté navigation</li>
+      <li><strong>ChatGPT gratuit sans Browse activé</strong>, IA locales sans extension web</li>
+    </ul>
+    <p style="margin-bottom:0; font-size:0.9rem">
+      Si ton IA te dit qu'elle ne peut pas lire l'URL, bascule sur <strong>Claude.ai</strong>
+      (compte gratuit possible), <strong>Gemini</strong> ou <strong>Copilot</strong>.
+    </p>
   </div>
 
   <h3>IA recommandée parmi les compatibles</h3>
@@ -549,7 +562,7 @@
       </ul>
     </div>
     <div class="principle">
-      <div class="num">Principe 4 — Délais calculés avec référence</div>
+      <div class="num">Principe 6 — Délais calculés avec référence</div>
       <p>
         Toute référence à un délai doit citer l'article qui le fixe (<code>art. 640 CPC</code>,
         <code>art. 2224 C. civ.</code>, etc.). Calcule en jours francs sauf mention contraire,
@@ -558,7 +571,7 @@
       </p>
     </div>
     <div class="principle">
-      <div class="num">Principe 6 — Disclaimer obligatoire sur tout PDF filigrane</div>
+      <div class="num">Principe 7 — Disclaimer obligatoire sur tout PDF filigrane</div>
       <p>
         Chaque PDF filigrane produit porte en en-tête ou pied :
         <em>« Document généré par SelfAct, un outil de formatage d'aide à la rédaction
@@ -569,7 +582,7 @@
       </p>
     </div>
     <div class="principle">
-      <div class="num">Principe 7 — Hors scope = orientation chaleureuse</div>
+      <div class="num">Principe 8 — Hors scope = orientation chaleureuse</div>
       <p>
         Certains actes nécessitent impérativement un avocat (assignation au tribunal judiciaire,
         requête au TGI, constitution de partie civile, divorce, droit de la famille, droit pénal
