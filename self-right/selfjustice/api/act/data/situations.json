@@ -1,0 +1,240 @@
+{
+  "_meta": {
+    "version": "2026.04",
+    "last_update": "2026-04-18",
+    "source": "service-public.fr (Etalab 2.0)",
+    "comment": "Mapping situation → acte officiel. Mise à jour bimensuelle (1er + 15) via cron."
+  },
+  "situations": {
+    "impaye_commercial_loyer": {
+      "label": "Impayé commercial ou loyer en retard",
+      "acts": [
+        {
+          "type": "mise_en_demeure",
+          "status": "official",
+          "label": "Mise en demeure de paiement (LRAR)",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/R50660",
+          "fallback_note": "Si le modèle officiel ne correspond pas exactement à votre cas, SelfAct peut produire un PDF d'aide à la rédaction filigrané."
+        },
+        {
+          "type": "saisine_conciliateur",
+          "status": "info_only",
+          "label": "Saisine du conciliateur de justice (obligatoire < 5000 €)",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/F1736",
+          "fallback_note": "Pas de modèle officiel — SelfAct peut produire un PDF d'aide à la rédaction filigrané."
+        }
+      ],
+      "thresholds": {
+        "montant_max_conciliateur": 5000,
+        "art_applicable": "art. 750-1 CPC"
+      }
+    },
+    "voisinage_nuisances": {
+      "label": "Conflit de voisinage (nuisances, empiètement, bruit)",
+      "acts": [
+        {
+          "type": "signalement_nuisances",
+          "status": "simulator",
+          "label": "Simulateur officiel : signalement de nuisances répétées",
+          "url": "https://www.service-public.gouv.fr/simulateur/calcul/SignalementDeNuisancesDeVoisinageRepeteesEtDemandeIntervention"
+        },
+        {
+          "type": "saisine_conciliateur",
+          "status": "info_only",
+          "label": "Saisine du conciliateur de justice (obligatoire avant tribunal)",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/F1736",
+          "fallback_note": "Pas de modèle officiel — SelfAct peut produire un PDF d'aide filigrané."
+        }
+      ],
+      "art_applicable": "art. 1240 C. civ., art. R. 1336-5 C. santé publique, art. 544 C. civ."
+    },
+    "consommation_produit_defectueux": {
+      "label": "Produit non conforme, service mal exécuté, démarchage abusif",
+      "acts": [
+        {
+          "type": "retractation_achat_distance",
+          "status": "official",
+          "label": "Rétractation achat à distance (14 jours)",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/R15904"
+        },
+        {
+          "type": "signalement_dgccrf",
+          "status": "official",
+          "label": "Signalement DGCCRF d'un commerçant",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/R24052"
+        },
+        {
+          "type": "saisine_mediateur_conso",
+          "status": "official",
+          "label": "Saisine médiateur de la consommation",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/F1736"
+        }
+      ],
+      "art_applicable": "art. L. 112-1 C. conso., art. L. 221-18 C. conso."
+    },
+    "infraction_penale_victime": {
+      "label": "Vol, escroquerie, dégradation, menaces",
+      "acts": [
+        {
+          "type": "plainte_simple",
+          "status": "official",
+          "label": "Plainte auprès du procureur de la République",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/R11469"
+        },
+        {
+          "type": "pre_plainte_en_ligne",
+          "status": "simulator",
+          "label": "Pré-plainte en ligne (démarche simplifiée)",
+          "url": "https://www.pre-plainte-en-ligne.gouv.fr"
+        },
+        {
+          "type": "plainte_cpc",
+          "status": "lawyer_required",
+          "label": "Plainte avec constitution de partie civile (AVOCAT OBLIGATOIRE)",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/R11657"
+        }
+      ],
+      "prescription": {
+        "contravention": "1 an (art. 9 CPP)",
+        "delit": "6 ans (art. 8 CPP)",
+        "crime": "20 ans (art. 7 CPP)"
+      }
+    },
+    "discrimination": {
+      "label": "Discrimination (emploi, logement, service public)",
+      "acts": [
+        {
+          "type": "saisine_defenseur_droits",
+          "status": "simulator",
+          "label": "Saisir le Défenseur des droits (formulaire officiel)",
+          "url": "https://formulaire.defenseurdesdroits.fr/code/afficher.php?ETAPE=accueil_2016"
+        }
+      ],
+      "art_applicable": "art. 225-1 C. pénal, art. L. 1132-1 C. travail, art. L. 1134-5 C. travail"
+    },
+    "administration_non_reponse": {
+      "label": "Non-réponse administration publique > 2 mois",
+      "acts": [
+        {
+          "type": "recours_gracieux",
+          "status": "info_only",
+          "label": "Recours gracieux puis contentieux",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/F2474",
+          "fallback_note": "Modèle spécifique selon l'administration — SelfAct peut produire un PDF filigrané."
+        },
+        {
+          "type": "saisine_defenseur_droits",
+          "status": "simulator",
+          "label": "Saisir le Défenseur des droits (médiation services publics)",
+          "url": "https://formulaire.defenseurdesdroits.fr/"
+        }
+      ],
+      "art_applicable": "art. L. 231-4 CRPA (décision implicite de rejet)"
+    },
+    "force_ordre_manquement": {
+      "label": "Manquement forces de l'ordre (déontologie)",
+      "acts": [
+        {
+          "type": "saisine_defenseur_droits_deontologie",
+          "status": "simulator",
+          "label": "Saisine Défenseur des droits — déontologie de la sécurité",
+          "url": "https://formulaire.defenseurdesdroits.fr/"
+        }
+      ]
+    },
+    "enfant_en_danger": {
+      "label": "Enfant en danger",
+      "urgency": "absolute",
+      "acts": [
+        {
+          "type": "119_snated",
+          "status": "emergency_phone",
+          "label": "119 — Allô Enfance en Danger (appel immédiat, 24/7, gratuit)",
+          "url": "tel:119",
+          "priority": 1
+        },
+        {
+          "type": "crip_departementale",
+          "status": "info_only",
+          "label": "CRIP départementale (Cellule de Recueil des Informations Préoccupantes)",
+          "url": "https://solidarites.gouv.fr/les-cellules-de-recueil-des-informations-preoccupantes-crip-0"
+        },
+        {
+          "type": "pharos",
+          "status": "simulator",
+          "label": "PHAROS — signalement contenu illégal en ligne",
+          "url": "https://www.internet-signalement.gouv.fr"
+        }
+      ]
+    },
+    "cyberharcelement": {
+      "label": "Cyberharcèlement, contenu illégal en ligne",
+      "acts": [
+        {
+          "type": "3018",
+          "status": "emergency_phone",
+          "label": "3018 — e-Enfance (appel + retrait rapide de contenu)",
+          "url": "tel:3018",
+          "priority": 1
+        },
+        {
+          "type": "pharos",
+          "status": "simulator",
+          "label": "PHAROS — signaler contenu illicite",
+          "url": "https://www.internet-signalement.gouv.fr"
+        },
+        {
+          "type": "plainte_simple",
+          "status": "official",
+          "label": "Plainte au procureur (modèle officiel)",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/R11469"
+        }
+      ]
+    },
+    "resiliation_abonnement": {
+      "label": "Résiliation d'abonnement (téléphonie, internet, assurance)",
+      "acts": [
+        {
+          "type": "resiliation_telephonie_internet",
+          "status": "official",
+          "label": "Résiliation contrat téléphonie / internet",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/R18070"
+        }
+      ]
+    },
+    "mediation_bancaire": {
+      "label": "Litige bancaire",
+      "acts": [
+        {
+          "type": "saisine_mediateur_banque",
+          "status": "official",
+          "label": "Saisine du médiateur de la banque",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/R10195"
+        },
+        {
+          "type": "dedommagement_fermeture_compte",
+          "status": "official",
+          "label": "Demande de dédommagement pour fermeture de compte",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/R13155"
+        }
+      ]
+    },
+    "mediation_assurance": {
+      "label": "Litige avec un assureur",
+      "acts": [
+        {
+          "type": "saisine_mediateur_assurance",
+          "status": "official",
+          "label": "Saisine du médiateur en assurances",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/R12259"
+        },
+        {
+          "type": "bureau_central_tarification",
+          "status": "official",
+          "label": "Saisine du Bureau central de tarification (BCT)",
+          "url": "https://www.service-public.fr/particuliers/vosdroits/R16218"
+        }
+      ]
+    }
+  }
+}
