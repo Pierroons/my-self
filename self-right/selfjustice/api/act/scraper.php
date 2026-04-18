@@ -164,28 +164,90 @@ function parseCatalogPage(string $html): array {
 }
 
 /**
- * Tente de deviner la catégorie depuis le label ou l'URL.
- * Heuristique simple : match de mots-clés.
+ * Classification par règles ordonnées — classifier v2.
+ * L'ordre des règles importe : spécifique avant générique.
+ * Premier match gagne.
  */
 function guessCategory(string $label, string $url): string {
-    $label_lc = function_exists('mb_strtolower') ? mb_strtolower($label, 'UTF-8') : strtolower($label);
+    // Normalize : lowercase + retrait des accents pour matching insensible
+    $s = function_exists('mb_strtolower') ? mb_strtolower($label, 'UTF-8') : strtolower($label);
+    $s = strtr($s, [
+        'à'=>'a','â'=>'a','ä'=>'a','á'=>'a',
+        'ç'=>'c',
+        'è'=>'e','é'=>'e','ê'=>'e','ë'=>'e',
+        'î'=>'i','ï'=>'i',
+        'ô'=>'o','ö'=>'o',
+        'ù'=>'u','ú'=>'u','û'=>'u','ü'=>'u',
+        'ÿ'=>'y','ñ'=>'n',
+    ]);
+
     $rules = [
-        'logement'        => ['logement', 'bail', 'locataire', 'propriét', 'loyer', 'résili', 'voisin', 'copropri'],
-        'travail'         => ['travail', 'employeur', 'salaire', 'démission', 'licenc', 'rupture', 'paternit', 'matern', 'stage', 'syndic', 'congé', 'chômage'],
-        'sante'           => ['médical', 'santé', 'médecin', 'sécurité sociale', 'cpam', 'mutuelle', 'hôpital', 'ald'],
-        'famille'         => ['famille', 'enfant', 'mineur', 'garde', 'divorce', 'adoption', 'pension alimentaire', 'parental'],
-        'consommation'    => ['achat', 'rétract', 'consommateur', 'garantie', 'vente', 'rembourse', 'livraison', 'défectueux', 'dgccrf', 'démarchage'],
-        'finances'        => ['banque', 'compte', 'chèque', 'virement', 'carte bancaire', 'crédit', 'assurance-vie', 'prélèvement'],
-        'assurances'      => ['assur', 'sinistre', 'médiateur'],
-        'justice'         => ['plainte', 'procureur', 'avocat', 'tribunal', 'saisir', 'saisine', 'conciliat', 'média', 'jugement'],
-        'transports'      => ['train', 'sncf', 'vol', 'avion', 'bagage', 'voyage', 'retard'],
-        'citoyennete'     => ['attestation', 'honneur', 'carte identité', 'passeport', 'nationalit', 'élection', 'vote'],
-        'administration'  => ['administration', 'recours', 'préfecture', 'mairie', 'impôt', 'fisc'],
-        'etranger'        => ['visa', 'titre séjour', 'naturalis', 'étranger'],
+        'famille'         => ['enfant', 'mineur', 'parental', 'paternite', 'maternite', 'adoption',
+                              'garde d\'enfant', 'pension alimentaire', 'concubin', 'pacs',
+                              'fiancaille', 'mariage', 'epoux', 'epouse', 'divorce',
+                              'autorite parentale', 'filiation', 'naissance', 'decla. pat'],
+        'sante'           => ['medecin', 'medical', 'hopital', 'directives anticipees', 'sante publique',
+                              'cpam', 'mutuelle', 'ald', 'invalidite', 'pharmacie', 'ordonnance',
+                              'dossier medical', 'sante', 'soin'],
+        'association'     => ['association', 'loi 1901', 'buvette', 'siren asso', 'siret asso',
+                              'agrement asso', 'subvention asso'],
+        'travail'         => ['employeur', 'employe', 'salarie', 'salaire', 'demission', 'licencie',
+                              'rupture conventionnelle', 'stage', 'apprenti', 'alternance',
+                              'conge parental', 'conge paye', 'conge maternite', 'conge paternite',
+                              'fonction publique', 'fonctionnaire', 'titularisation', 'corps ', 'cadre d\'emploi',
+                              'syndical', 'prud\'homme', 'retraite', 'chomage', 'pole emploi',
+                              'heures supplementaires', 'smic', 'licenciement', 'mise a pied',
+                              'travail', 'embauche', 'cdd', 'cdi', 'contrat de travail'],
+        'transports'      => ['vol aerien', 'avion', 'aerien', 'compagnie aerienne', 'sncf', 'ratp',
+                              'bagage', 'retard de vol', 'refus d\'embarquement', 'annulation de vol',
+                              'indemnisation voyage', 'billet de train', 'carte grise', 'voyage'],
+        'auto'            => ['garagiste', 'voiture', 'vehicule', 'automobile', 'permis de conduire',
+                              'garage', 'mecanique', 'moto', 'scooter', 'carrosserie'],
+        'logement'        => ['bail', 'locataire', 'proprietaire', 'loyer', 'caution locative',
+                              'copropri', 'syndic', 'logement', 'habitation', 'immobili',
+                              'residence', 'appartement', 'maison', 'voisin', 'nuisance',
+                              'debroussaill', 'urbanisme', 'construction', 'travaux maison',
+                              'demenagement', 'depot de garantie', 'etat des lieux'],
+        'consommation'    => ['retractation', 'consommateur', 'garantie', 'vice cache',
+                              'vente a distance', 'achat a distance', 'demarchage', 'fournisseur',
+                              'operateur', 'telecom', 'internet', 'telephonie', 'abonnement',
+                              'dgccrf', 'repression des fraudes', 'teinturier', 'pressing',
+                              'depannage', 'devis', 'artisan', 'commercant', 'remboursement',
+                              'facture', 'livraison', 'produit non conforme', 'service mal execute',
+                              'facture eau', 'fuite d\'eau', 'agence immobiliere honoraires',
+                              'facture detaillee', 'honoraires', 'charte', 'renovation',
+                              'vente', 'deballage'],
+        'finances'        => ['banque', 'compte bancaire', 'cheque', 'virement', 'carte bancaire',
+                              'credit', 'pret', 'prelevement', 'decouvert', 'surendettement',
+                              'interdit bancaire', 'opposition', 'mediateur banque', 'bct',
+                              'bureau central de tarification', 'fichier fcc', 'fichier fnci',
+                              'non-paiement', 'certificat de non-paiement', 'saisir paye',
+                              'saisie', 'don manuel', 'reconnaissance de dette', 'pret entre particuliers',
+                              'taux'],
+        'assurances'      => ['assurance', 'assureur', 'sinistre', 'mediateur en assurance',
+                              'habitation assurance', 'contrat assurance', 'assurance-vie'],
+        'justice'         => ['plainte', 'procureur', 'tribunal', 'juge', 'avocat', 'magistrat',
+                              'saisine', 'partie civile', 'huissier', 'commissaire de justice',
+                              'conciliateur', 'mediateur de ', 'greffe', 'audience', 'citation',
+                              'assignation', 'requete', 'appel ', 'pourvoi', 'cassation'],
+        'citoyennete'     => ['carte d\'identite', 'passeport', 'attestation sur l\'honneur',
+                              'nationalite', 'election', 'vote', 'recensement', 'changement de nom',
+                              'changement de prenom', 'acte de naissance', 'acte de mariage',
+                              'fiche de police', 'certificat de resident', 'covoiturage',
+                              'bordereau des pieces'],
+        'administration'  => ['prefecture', 'mairie', 'impot', 'fiscal', 'tresor public',
+                              'recours gracieux', 'recours contentieux', 'decision administrative',
+                              'administration', 'defenseur des droits', 'crpa', 'urssaf', 'caf',
+                              'caisse nationale', 'allocation', 'rsa', 'prime'],
+        'etranger'        => ['visa', 'titre de sejour', 'naturalisation', 'etranger', 'schengen',
+                              'asile', 'ofpra', 'reconduite'],
+        'securite'        => ['interdit de jeux', 'jeux d\'argent', 'force de l\'ordre',
+                              'deontologie de la securite', 'fiche individuelle de police'],
     ];
+
     foreach ($rules as $cat => $kws) {
         foreach ($kws as $kw) {
-            if (str_contains($label_lc, $kw)) {
+            if (str_contains($s, $kw)) {
                 return $cat;
             }
         }
