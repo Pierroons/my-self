@@ -76,7 +76,7 @@ if ($method === 'POST') {
                 'adresse' => "17 rue des Lilas\n75011 Paris\ntél. : 06 12 34 56 78\nemail : sophie.martin.exemple@proton.me",
             ],
             'destinataire' => [
-                'nom'     => 'Monsieur le Directeur\nSARL BATIMENTS RAPIDES',
+                'nom'     => "Monsieur le Directeur\nSARL BATIMENTS RAPIDES",
                 'adresse' => "128 avenue des Artisans\nZAC du Clos Noir\n77100 Meaux",
             ],
             'objet' => "Mise en demeure de terminer les travaux de rénovation de toiture, de remettre en état les surfaces dégradées par vos équipes, et de régler les dommages consécutifs aux infiltrations d'eau constatées depuis le 14 mars 2026",
@@ -379,11 +379,11 @@ header('X-Content-Type-Options: nosniff');
 <div class="page">
   <div class="bloc-parties">
     <div class="expe">
-      <strong><?= h($expediteur['nom'] ?? '[Nom Prénom de l\'expéditeur]') ?></strong><br>
+      <strong><?= nl2br(h($expediteur['nom'] ?? '[Nom Prénom de l\'expéditeur]')) ?></strong><br>
       <?= nl2br(h($expediteur['adresse'] ?? '[Adresse complète]')) ?>
     </div>
     <div class="dest">
-      <?= h($destinataire['nom'] ?? '[Destinataire]') ?><br>
+      <?= nl2br(h($destinataire['nom'] ?? '[Destinataire]')) ?><br>
       <?= nl2br(h($destinataire['adresse'] ?? '[Adresse]')) ?>
     </div>
   </div>
