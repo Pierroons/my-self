@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SelfAct — Transforme le droit en action</title>
+  <meta name="description" content="SelfAct : générateur open-source de documents procéduraux conformes (mises en demeure, saisines, plaintes) depuis une analyse SelfJustice. Droit français.">
+  <meta name="author" content="Pierroons — MySelf Project">
+  <meta property="og:title" content="SelfAct — Du droit à l'action">
+  <meta property="og:description" content="Prolongement opérationnel de SelfJustice. Produit l'acte que l'on envoie, conforme aux exigences légales.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://justice.my-self.fr/act">
+  <style>
+    :root {
+      /* Palette MySelf cohérente avec justice.my-self.fr */
+      --bg: #0f1419;
+      --bg-card: #1a2028;
+      --text: #e8eaed;
+      --text-muted: #9aa0a6;
+      --accent: #7ab7ff;
+      --accent-dim: #5a97df;
+      --border: #2a3038;
+      --success: #7cc47c;
+      --warning: #d4c058;
+      --danger: #e07b7b;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      padding: 2.5rem 1.5rem;
+    }
+    main { max-width: 940px; margin: 0 auto; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code { background: var(--bg-card); padding: 0.1rem 0.45rem; border-radius: 4px; font-size: 0.9em; color: var(--accent); }
+
+    .crumb { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 2rem; }
+
+    .hero { text-align: center; padding: 1rem 0 2.5rem; }
+    .hero h1 {
+      font-size: clamp(2.5rem, 7vw, 3.8rem);
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero .tagline {
+      font-size: 1.2rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+      font-style: italic;
+    }
+    .hero .pact {
+      margin-top: 1.2rem;
+      font-size: 1rem;
+      color: var(--text-muted);
+      max-width: 560px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    section { margin: 2.5rem 0; }
+    h2 {
+      font-size: 1.5rem;
+      color: var(--accent);
+      margin-bottom: 1rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+    h3 {
+      font-size: 1.15rem;
+      color: var(--accent-dim);
+      margin-top: 1.4rem;
+      margin-bottom: 0.5rem;
+    }
+    h4 {
+      font-size: 1rem;
+      color: var(--text);
+      margin-top: 1rem;
+      margin-bottom: 0.4rem;
+    }
+    p { margin-bottom: 1rem; }
+    p:last-child { margin-bottom: 0; }
+    ul, ol { margin-left: 1.5rem; margin-bottom: 1rem; }
+    li { margin-bottom: 0.3rem; }
+    strong { color: var(--text); font-weight: 600; }
+    em { color: var(--text-muted); }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.3rem 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .card-accent { border-left: 3px solid var(--accent); }
+    .card-warning { border-left: 3px solid var(--warning); }
+    .card-danger { border-left: 3px solid var(--danger); }
+    .card-success { border-left: 3px solid var(--success); }
+
+    .principles { display: grid; gap: 0.8rem; margin: 1rem 0; }
+    .principle {
+      background: var(--bg-card);
+      border-left: 3px solid var(--accent);
+      padding: 0.9rem 1.2rem;
+      border-radius: 0 6px 6px 0;
+    }
+    .principle .num {
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .act-catalog {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .act {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.3rem 1.5rem;
+    }
+    .act .act-header {
+      display: flex;
+      align-items: baseline;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.6rem;
+    }
+    .act .act-header h3 {
+      margin: 0;
+      color: var(--accent);
+      font-size: 1.2rem;
+    }
+    .act .badge {
+      font-size: 0.75rem;
+      padding: 0.15rem 0.6rem;
+      border-radius: 10px;
+      background: rgba(122, 183, 255, 0.12);
+      color: var(--accent);
+      border: 1px solid var(--accent-dim);
+    }
+    .act .badge.civil { color: var(--success); border-color: var(--success); background: rgba(124,196,124,0.12); }
+    .act .badge.penal { color: var(--danger); border-color: var(--danger); background: rgba(226,106,106,0.12); }
+    .act .badge.conso { color: var(--warning); border-color: var(--warning); background: rgba(212,192,88,0.12); }
+    .act dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1rem; margin: 0.8rem 0; }
+    .act dt { color: var(--text-muted); font-weight: 600; font-size: 0.9rem; }
+    .act dd { font-size: 0.95rem; }
+
+    pre.template {
+      background: #0a0d12;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem 1.2rem;
+      overflow-x: auto;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+      line-height: 1.5;
+      color: var(--text);
+      margin: 0.8rem 0;
+    }
+    pre.template .placeholder {
+      color: var(--warning);
+      font-style: italic;
+    }
+
+    details {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.8rem 1.2rem;
+      margin-bottom: 0.5rem;
+    }
+    details summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    details[open] summary { margin-bottom: 0.6rem; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      background: var(--bg-card);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 0.7rem 0.9rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+    th {
+      background: rgba(122, 183, 255, 0.08);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    tr:last-child td { border-bottom: none; }
+
+    .disclaimer {
+      background: rgba(226, 123, 123, 0.08);
+      border: 1px solid var(--danger);
+      border-left-width: 4px;
+      border-radius: 0 8px 8px 0;
+      padding: 1.2rem 1.5rem;
+      margin: 1.5rem 0;
+    }
+    .disclaimer h4 {
+      color: var(--danger);
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 0.5rem;
+    }
+
+    footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+    }
+    footer p { margin-bottom: 0.5rem; }
+
+    /* Directives machine : invisibles pour humains, lues par IA dans le HTML brut */
+    #ai-directives, #catalog, #api {
+      display: none;
+    }
+
+    /* Zone prompt copy pour humains */
+    .copy-zone {
+      background: var(--bg-card);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 1.2rem 1.5rem;
+      margin: 1.5rem 0;
+    }
+    .copy-zone textarea {
+      width: 100%;
+      min-height: 100px;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.7rem 0.9rem;
+      font-family: inherit;
+      font-size: 0.95rem;
+      resize: vertical;
+    }
+    .copy-zone textarea:focus { outline: none; border-color: var(--accent); }
+    .copy-zone button {
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: 6px;
+      padding: 0.6rem 1.4rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 0.7rem;
+    }
+    .copy-zone button:hover { background: var(--accent-dim); }
+    .copy-zone .feedback {
+      margin-left: 0.8rem;
+      font-size: 0.9rem;
+      color: var(--success);
+      display: none;
+    }
+  </style>
+</head>
+<body>
+<main>
+
+<p class="crumb">
+  <a href="https://my-self.fr">my-self.fr</a>  ›
+  Self-Right  ›
+  <a href="https://justice.my-self.fr">SelfJustice</a>  ›
+  SelfAct
+</p>
+
+<header class="hero">
+  <h1>SelfAct</h1>
+  <p class="tagline">Du droit à l'action.</p>
+  <p class="pact">
+    SelfJustice te dit <em>quoi</em> tu as le droit de faire.
+    SelfAct produit <em>comment</em> tu le fais — acte par acte, conforme aux exigences légales.
+  </p>
+</header>
+
+<div class="disclaimer" style="margin-top: 0;">
+  <h4>⚠ Version alpha v0.1.0 — non validée par juriste</h4>
+  <p style="font-size: 0.95rem; margin-bottom: 0.5rem;">
+    Les templates produits par SelfAct sont basés sur des connaissances générales du droit
+    français. <strong>Ils n'ont pas été relus par un professionnel du droit.</strong> Avant
+    tout envoi d'un acte, il te revient de vérifier :
+  </p>
+  <ul style="font-size: 0.92rem; margin-bottom: 0.5rem;">
+    <li>Que les articles cités sont toujours en vigueur
+      (<a href="https://justice.my-self.fr">vérifier sur SelfJustice</a> ou
+      <a href="https://www.legifrance.gouv.fr" target="_blank" rel="noopener">Légifrance</a>)</li>
+    <li>Que les mentions obligatoires sont complètes pour ta situation précise</li>
+    <li>Que le destinataire (conciliateur, procureur, administration) accepte le format</li>
+  </ul>
+  <p style="font-size: 0.92rem; margin-bottom: 0;">
+    En cas de doute, consulte un avocat ou une permanence gratuite
+    (<a href="https://www.point-justice.gouv.fr" target="_blank" rel="noopener">point-justice.gouv.fr</a>,
+    maisons de justice et du droit, aide juridictionnelle selon tes ressources).
+  </p>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION HUMAINE — usage pour visiteurs                       -->
+<!-- ============================================================ -->
+
+<section id="usage">
+  <h2>Comment ça marche</h2>
+
+  <div class="card card-accent">
+    <p>
+      SelfAct produit <strong>le document que tu vas envoyer</strong> (mise en demeure,
+      saisine d'un conciliateur, plainte simple, saisine du Défenseur des droits…) en
+      s'assurant que toutes les mentions légales obligatoires sont présentes et que
+      les articles cités sont correctement formulés.
+    </p>
+    <p>
+      Tu <strong>n'utilises pas cette page directement</strong>. Tu la donnes à une IA
+      (Claude, ChatGPT, Mistral…) avec ton contexte, et l'IA lit les directives cachées
+      dans cette page pour produire ton acte conformément au cadre légal français.
+    </p>
+  </div>
+
+  <ol>
+    <li>Tu ouvres ton IA (Claude, Mistral Le Chat, ChatGPT, Perplexity — au choix)</li>
+    <li>Tu copies le prompt ci-dessous en précisant ta situation et le type d'acte désiré</li>
+    <li>Ton IA fetch cette page, lit les directives de rédaction, et te produit un courrier prêt à envoyer</li>
+  </ol>
+
+  <div class="copy-zone">
+    <label for="prompt-textarea" style="display:block; margin-bottom:0.5rem; font-weight:600; color:var(--accent);">
+      Ton prompt — décris brièvement ton besoin :
+    </label>
+    <textarea id="prompt-textarea" placeholder="Ex. : J'ai payé une prestation de chauffagiste 850 € en mars 2026, elle n'a jamais été réalisée. J'ai relancé deux fois par email, pas de réponse. Je veux envoyer une mise en demeure avant saisine du conciliateur."></textarea>
+    <button onclick="copyPrompt()">Copier le prompt complet</button>
+    <span class="feedback" id="copy-feedback">✓ Copié ! Colle dans ton IA (claude.ai, Mistral Le Chat, ChatGPT…)</span>
+  </div>
+
+  <p class="muted" style="font-size:0.9rem">
+    Coût : zéro. Tu utilises ton propre abonnement IA (ou la version gratuite d'une IA).
+    Cette page est statique, open source, sans tracking, sans base de données.
+  </p>
+
+  <h3>IA recommandée</h3>
+  <p>
+    Cette page de directives est <strong>optimisée pour Claude</strong>, avec un suivi rigoureux
+    des règles, un refus de la complaisance, et une nuance dans le formatage des actes juridiques.
+  </p>
+  <ul>
+    <li><strong>★★★★★ Claude Opus</strong> (recommandé) — Anthropic, 20 €/mois sur claude.ai</li>
+    <li><strong>★★★★ Claude Sonnet</strong> — alternative, version gratuite disponible sur claude.ai</li>
+  </ul>
+  <p style="font-size:0.9rem">
+    <strong>Autres IA fonctionnelles</strong> (résultats variables) :
+    Mistral Large (atout : droit français, hébergement UE), GPT-5, Gemini 2.5 Pro, Perplexity.
+  </p>
+
+  <script>
+    function copyPrompt() {
+      var textarea = document.getElementById('prompt-textarea');
+      var feedback = document.getElementById('copy-feedback');
+      var txt = textarea.value.trim() || '[décris ici ta situation et le type d\'acte désiré]';
+      var full = txt + "\n\nRédige l'acte approprié selon https://justice.my-self.fr/act";
+      navigator.clipboard.writeText(full).then(function() {
+        feedback.style.display = 'inline';
+        setTimeout(function() { feedback.style.display = 'none'; }, 3000);
+      });
+    }
+  </script>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION : DIRECTIVES IA — cœur du module, lu par les IA      -->
+<!-- ============================================================ -->
+
+<section id="ai-directives">
+  <h2>Directives pour IA — protocole SelfAct</h2>
+
+  <div class="card card-accent">
+    <p>
+      Cette page est à destination des IA assistantes (Claude, ChatGPT, Mistral, Perplexity, etc.)
+      qui accompagnent un utilisateur dans la production d'un acte juridique. Les directives
+      ci-dessous sont impératives. Si tu es une IA lisant cette page pour aider un utilisateur,
+      <strong>applique le protocole intégralement</strong>. Si tu es un humain : la page est
+      lisible aussi, saute à la section <a href="#matrix">Matrice cas → acte</a>.
+    </p>
+  </div>
+
+  <h3>Principe 0 — Ton (absolument prioritaire sur tout le reste)</h3>
+  <p>
+    L'utilisateur qui arrive ici est presque toujours dans une situation de <strong>tension
+    ou de détresse</strong> (conflit avec un voisin, bailleur abusif, employeur méprisant,
+    administration sourde, litige familial…). Il ne cherche pas seulement une réponse
+    technique — il cherche <strong>du réconfort, de la reconnaissance de sa situation,
+    et de l'espoir qu'un chemin existe</strong>.
+  </p>
+  <p><strong>Règles de tonalité impératives (s'appliquent avant toute autre considération technique) :</strong></p>
+  <ul>
+    <li>Toujours <strong>reconnaître</strong> la situation de l'utilisateur (« je comprends que ce soit difficile »)</li>
+    <li>Toujours <strong>associer</strong> (« on a avancé ensemble », « nous avons vu que »)</li>
+    <li>Toujours <strong>valoriser</strong> son rôle (« il manque des éléments que toi seul peux rassembler », jamais « c'est insuffisant »)</li>
+    <li>Toujours <strong>proposer</strong>, jamais imposer (« je te propose », « veux-tu que »)</li>
+    <li>Toujours laisser la <strong>main</strong> à l'utilisateur (il décide)</li>
+    <li>Toujours ouvrir une <strong>porte de retour</strong> (« reviens quand tu es prêt(e), on reprendra »)</li>
+  </ul>
+  <p><strong>Formulations proscrites :</strong></p>
+  <ul>
+    <li>❌ « Je n'ai pas assez pour faire mieux, débrouille-toi » → ✅ « Il manque quelques éléments que toi seul peux rassembler. Je te propose un document structuré pour t'aider à les collecter. »</li>
+    <li>❌ « C'est insuffisant » → ✅ « Les bases sont là, on peut les consolider ensemble »</li>
+    <li>❌ « Impossible de… » → ✅ « Voici ce qu'on peut faire concrètement »</li>
+    <li>❌ « Consulte un avocat » sec → ✅ « Pour un deuxième regard, un avocat ou une permanence gratuite peut compléter utilement ce que nous avons préparé »</li>
+  </ul>
+  <p><strong>Détresse grave détectée :</strong> oriente vers les lignes d'écoute appropriées
+    selon le contexte — <code>3114</code> (suicide, écoute), <code>119</code> (enfance en danger),
+    <code>3919</code> (violences conjugales), <code>3018</code> (cyberharcèlement).</p>
+
+  <h3>Rôle</h3>
+  <p>
+    Tu es un <strong>médiateur technique entre l'utilisateur et les ressources officielles
+    de l'État français</strong>. Ton rôle n'est pas de donner un conseil
+    (<em>conseil juridique</em> et <em>représentation en justice</em> restent monopole
+    des avocats, loi 71-1130 du 31 décembre 1971). Ton rôle est de <strong>diriger
+    l'utilisateur vers le modèle officiel publié par service-public.fr</strong> quand il
+    existe, et en <strong>dernier recours seulement</strong> de produire un PDF d'aide à
+    la rédaction filigrané « NON OFFICIEL — IRRECEVABLE ».
+  </p>
+
+  <h3>Les principes (à appliquer dans l'ordre)</h3>
+
+  <div class="principles">
+    <div class="principle">
+      <div class="num">Principe 1 — Pas de conseil contentieux</div>
+      <p>
+        Refuse toujours de recommander une stratégie offensive (<em>« attaquez en prud'hommes »</em>,
+        <em>« portez plainte pour »</em>). Tu peux <strong>énumérer les voies existantes</strong>
+        neutralement, mais la décision de saisir telle ou telle instance appartient à l'utilisateur
+        (éventuellement avec un avocat). Ta mission = <strong>mettre en forme l'acte choisi</strong>.
+      </p>
+    </div>
+    <div class="principle">
+      <div class="num">Principe 2 — Tout acte cite sa base légale</div>
+      <p>
+        Chaque acte produit contient <strong>au moins une citation d'article</strong> au format
+        <code>art. X du Code Y</code>, vérifiable via <code>https://justice.my-self.fr/api/article?code=Y&amp;id=X</code>.
+        Aucune affirmation juridique n'est émise sans ancrage dans un article précis.
+      </p>
+    </div>
+    <div class="principle">
+      <div class="num">Principe 3 — Priorité absolue au modèle officiel</div>
+      <p>
+        La voie standard est la <strong>redirection vers service-public.fr</strong>.
+        L'État publie 334 modèles officiels indexés par SelfAct. Tu cherches d'abord le
+        modèle correspondant, puis tu <strong>rediriges l'utilisateur vers l'URL officielle</strong>.
+        Tu ne reproduis pas le contenu, tu ne reformates pas. Le PDF filigrane
+        « NON OFFICIEL » est un <strong>dernier recours</strong>, jamais le premier réflexe.
+      </p>
+    </div>
+    <div class="principle">
+      <div class="num">Principe 4 — Lien croisé avec SelfJustice</div>
+      <p>
+        Si l'utilisateur te dit qu'il veut produire un acte mais <strong>ne connaît pas la base
+        légale applicable</strong>, tu dois d'abord fetcher
+        <code>https://justice.my-self.fr/</code> et appliquer le protocole SelfJustice pour
+        qualifier juridiquement sa situation. Une fois les articles identifiés avec
+        certitude, reviens à cette page pour la recherche de modèle officiel ou la
+        production du PDF filigrane.
+      </p>
+      <p>
+        Ne produis <strong>jamais</strong> un acte sur fondement flou — un flou juridique
+        devient une faiblesse dans la procédure.
+      </p>
+    </div>
+    <div class="principle">
+      <div class="num">Principe 5 — Protocole de doute et règle 3+5 ping-pongs</div>
+      <p>
+        Si l'information fournie par l'utilisateur est insuffisante pour fonder l'acte,
+        n'improvise pas. Demande explicitement ce qui manque, en catégorisant :
+      </p>
+      <ul>
+        <li><code>MISSING_FACTS</code> — dates, montants, identités manquants</li>
+        <li><code>AMBIGUOUS_QUALIFICATION</code> — plusieurs qualifications possibles, critère distinctif manquant</li>
+        <li><code>NEED_EVIDENCE</code> — affirmation sans preuve (constat, témoignage, document)</li>
+      </ul>
+      <p><strong>Règle 3+5 pour éviter de perdre l'utilisateur :</strong></p>
+      <ul>
+        <li><strong>Après 3 tours</strong> de clarification si aucune info neuve : propose déjà
+          gentiment l'option « PDF filigrane avec liste des manques » tout en continuant le
+          dialogue si l'utilisateur veut encore préciser.</li>
+        <li><strong>Après 5 tours</strong> ou si l'utilisateur exprime de la frustration :
+          bascule fermement mais chaleureusement vers la production du PDF filigrane
+          avec section « informations insuffisantes — à compléter » explicite.
+          Formulation modèle : <em>« On a déjà bien avancé ensemble. Il manque encore
+          quelques éléments que toi seul peux rassembler pour envoyer l'acte en toute
+          confiance. Je te propose un document qui reprend tout ce qu'on a construit,
+          avec une checklist claire de ce qui reste à compléter. Tu gardes la main —
+          reviens ici quand tu as les éléments, on reprendra depuis là. »</em></li>
+      </ul>
+    </div>
+    <div class="principle">
+      <div class="num">Principe 4 — Délais calculés avec référence</div>
+      <p>
+        Toute référence à un délai doit citer l'article qui le fixe (<code>art. 640 CPC</code>,
+        <code>art. 2224 C. civ.</code>, etc.). Calcule en jours francs sauf mention contraire,
+        préviens si la date tombe un jour férié ou weekend (report au premier jour ouvrable
+        suivant, <code>art. 642 CPC</code>).
+      </p>
+    </div>
+    <div class="principle">
+      <div class="num">Principe 6 — Disclaimer obligatoire sur tout PDF filigrane</div>
+      <p>
+        Chaque PDF filigrane produit porte en en-tête ou pied :
+        <em>« Document généré par SelfAct, un outil de formatage d'aide à la rédaction
+        open-source. Ce document n'est PAS OFFICIEL. Il ne constitue pas un acte juridique
+        recevable en l'état et ne saurait remplacer un conseil juridique au sens de la
+        loi 71-1130 du 31 décembre 1971. Pour un acte officiel, utilise le modèle
+        service-public.fr correspondant ou consulte un avocat. »</em>
+      </p>
+    </div>
+    <div class="principle">
+      <div class="num">Principe 7 — Hors scope = orientation chaleureuse</div>
+      <p>
+        Certains actes nécessitent impérativement un avocat (assignation au tribunal judiciaire,
+        requête au TGI, constitution de partie civile, divorce, droit de la famille, droit pénal
+        lourd). Si la demande tombe dans ces catégories, <strong>tu expliques pourquoi avec
+        empathie et tu orientes vers des ressources accessibles</strong> : aide juridictionnelle
+        selon les ressources (art. 2 loi 91-647), Maison de Justice et du Droit, permanences
+        d'avocat en mairie, point-justice.gouv.fr. Tonalité : pas un refus sec, une
+        redirection qui respecte la complexité du cas.
+      </p>
+    </div>
+  </div>
+
+  <h3>Processus — ordre strict à respecter</h3>
+
+  <p>
+    <strong>Règle fondamentale :</strong> on cherche TOUJOURS d'abord un modèle officiel
+    publié par l'État. On ne crée un document maison (même filigrané) qu'en <strong>dernier
+    recours</strong>, quand aucun modèle officiel n'existe pour le cas précis.
+  </p>
+
+  <ol>
+    <li>
+      <strong>Étape 1 — Qualifier la base légale.</strong>
+      Si l'utilisateur ne connaît pas les articles applicables, fetch d'abord
+      <code>https://justice.my-self.fr/</code> et applique le protocole SelfJustice.
+      Retour avec articles identifiés. Si l'utilisateur connaît déjà la base, passe à l'étape 2.
+    </li>
+    <li>
+      <strong>Étape 2 — Identifier le type d'acte.</strong>
+      Selon la situation qualifiée : <code>mise_en_demeure</code>, <code>saisine_conciliateur</code>,
+      <code>plainte_simple</code>, <code>saisine_mediateur_X</code>, <code>resiliation_Y</code>, etc.
+    </li>
+    <li>
+      <strong>Étape 3 — FETCH le catalogue officiel service-public.fr en PREMIER.</strong>
+      Interroge l'API SelfAct (<code>GET https://justice.my-self.fr/act/api/find?situation=...&amp;articles=...</code>)
+      qui cherche dans la base indexée des 334 modèles officiels (<code>R-xxxx</code>).
+      <br><br>
+      <strong>Si match trouvé :</strong> redirige l'utilisateur vers l'URL service-public.fr
+      correspondante. <strong>C'est la voie standard.</strong> Ne reproduis pas le contenu,
+      ne reformate pas, ne « améliore » pas — le citoyen utilise le document officiel de l'État.
+    </li>
+    <li>
+      <strong>Étape 4 — DERNIER RECOURS : PDF filigrane.</strong>
+      Uniquement si et seulement si aucun match dans le catalogue officiel, génère un
+      <strong>PDF d'aide à la rédaction</strong> via
+      <code>POST https://justice.my-self.fr/act/api/pdf-filigrane</code>.
+      Ce PDF porte un filigrane diagonal « <strong>NON OFFICIEL — IRRECEVABLE</strong> »
+      qui rend impossible son usage comme acte formel. Il sert uniquement de <em>brouillon
+      structuré</em> que l'utilisateur devra recomposer à la main ou faire rédiger par un
+      professionnel.
+    </li>
+    <li>
+      <strong>Étape 5 — Vérifier les articles cités.</strong>
+      Que le modèle vienne de service-public.fr ou d'un PDF filigrane, vérifie chaque
+      article invoqué via l'API SelfJustice
+      (<code>GET https://justice.my-self.fr/api/article?code=X&amp;id=Y</code>). Un article
+      obsolète ou renuméroté doit être signalé à l'utilisateur.
+    </li>
+    <li>
+      <strong>Étape 6 — Indiquer l'envoi.</strong>
+      Précise le canal (LRAR, formulaire en ligne, dépôt guichet), le destinataire exact
+      (nom, adresse ou URL), la preuve à conserver, et la date-butoir de réponse attendue
+      avec l'article qui la fixe.
+    </li>
+  </ol>
+
+  <div class="card card-warning" style="margin-top: 1rem;">
+    <p style="font-size: 0.95rem; margin-bottom: 0;">
+      <strong>Résumé du choix Étape 3 vs Étape 4 :</strong><br>
+      Catalogue officiel fetché → trouve ? ✅ redirection service-public.fr. <br>
+      Rien trouvé ? ⚠ PDF filigrane (dernier recours, jamais « la première idée »).
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION : CATALOGUE DES ACTES                                -->
+<!-- ============================================================ -->
+
+<section id="catalog">
+  <h2>Catalogue des actes — statut v0.1.0 → v0.2.0</h2>
+
+  <div class="card card-warning">
+    <p>
+      <strong>Cette section est en cours de refonte.</strong> La v0.1.0 proposait 4 templates
+      bricolés directement dans cette page. Ils ont été retirés car contradictoires avec le
+      Principe 3 (priorité au modèle officiel service-public.fr).
+    </p>
+    <p>
+      <strong>v0.2.0 en cours d'implémentation :</strong> indexation complète des 334 modèles
+      officiels publiés par <a href="https://www.service-public.gouv.fr" target="_blank" rel="noopener">service-public.fr</a>
+      (sous licence Etalab 2.0), accessibles via l'API SelfAct. Mise à jour bimensuelle
+      (1er + 15) alignée sur SelfJustice.
+    </p>
+    <p>
+      <strong>En attendant :</strong> pour chaque besoin d'acte, applique le processus en
+      6 étapes ci-dessus en recherchant manuellement le modèle sur service-public.fr
+      (recherche par mots-clés ou par référence <code>R-XXXX</code>). Exemples :
+    </p>
+    <ul>
+      <li>Mise en demeure paiement — chercher sur service-public.fr</li>
+      <li>Plainte procureur — <a href="https://www.service-public.fr/particuliers/vosdroits/R11469" target="_blank" rel="noopener">R11469</a></li>
+      <li>Saisine conciliateur — fiche info F1736 sur service-public.fr (pas de modèle type officiel, le PDF filigrane est approprié)</li>
+      <li>Plainte avec CPC — <a href="https://www.service-public.fr/particuliers/vosdroits/R11657" target="_blank" rel="noopener">R11657</a> (à n'utiliser qu'avec avocat)</li>
+      <li>Saisine médiateur assurance — <a href="https://www.service-public.fr/particuliers/vosdroits/R12259" target="_blank" rel="noopener">R12259</a></li>
+      <li>Saisine médiateur banque — <a href="https://www.service-public.fr/particuliers/vosdroits/R10195" target="_blank" rel="noopener">R10195</a></li>
+      <li>Saisine médiateur SNCF — <a href="https://www.service-public.fr/particuliers/vosdroits/R1829" target="_blank" rel="noopener">R1829</a></li>
+      <li>Rétractation achat à distance — <a href="https://www.service-public.fr/particuliers/vosdroits/R15904" target="_blank" rel="noopener">R15904</a></li>
+      <li>Résiliation téléphonie/internet — <a href="https://www.service-public.fr/particuliers/vosdroits/R18070" target="_blank" rel="noopener">R18070</a></li>
+      <li>Signalement DGCCRF — <a href="https://www.service-public.fr/particuliers/vosdroits/R24052" target="_blank" rel="noopener">R24052</a></li>
+    </ul>
+    <p>
+      <strong>Catalogue complet des 334 modèles :</strong>
+      <a href="https://www.service-public.gouv.fr/particuliers/recherche?rubricFilter=serviceEnLigne&amp;rubricTypeFilter=modeleLettre" target="_blank" rel="noopener">
+        service-public.gouv.fr — modèles de lettres</a>
+    </p>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION : MATRICE CAS → ACTE                                -->
+<!-- ============================================================ -->
+
+<section id="matrix">
+  <h2>Matrice : cas → acte recommandé</h2>
+  <p>
+    Aide-mémoire pour orienter la rédaction selon la situation. Si le cas n'apparaît pas,
+    consulte <a href="https://justice.my-self.fr">SelfJustice</a> pour une qualification juridique préalable.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Situation</th>
+        <th>Acte à produire</th>
+        <th>Montant / gravité</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Impayé commercial ou loyer en retard</td>
+        <td>Mise en demeure LRAR puis <a href="https://www.service-public.fr/particuliers/vosdroits/F1736" target="_blank" rel="noopener">saisine conciliateur</a></td>
+        <td>Tous montants, obligatoire &lt; 5 000 €</td>
+      </tr>
+      <tr>
+        <td>Conflit de voisinage (nuisances, empiètement)</td>
+        <td>Mise en demeure LRAR puis <a href="https://www.service-public.fr/particuliers/vosdroits/F1736" target="_blank" rel="noopener">saisine conciliateur</a></td>
+        <td>Obligatoire conciliateur avant tribunal</td>
+      </tr>
+      <tr>
+        <td>Produit non conforme, service mal exécuté</td>
+        <td>Mise en demeure LRAR + <a href="https://www.service-public.fr/particuliers/vosdroits/R24052" target="_blank" rel="noopener">signalement DGCCRF (R24052)</a></td>
+        <td>Délai de rétractation 14 j (art. L. 112-1 C. conso.)</td>
+      </tr>
+      <tr>
+        <td>Vol, escroquerie, dégradation, menaces</td>
+        <td><a href="https://www.service-public.fr/particuliers/vosdroits/R11469" target="_blank" rel="noopener">Plainte simple (R11469)</a></td>
+        <td>Prescription : 1 an (contrav.) / 6 ans (délit)</td>
+      </tr>
+      <tr>
+        <td>Discrimination (emploi, logement, service public)</td>
+        <td><a href="https://www.defenseurdesdroits.fr/saisir" target="_blank" rel="noopener">Saisine Défenseur des droits</a></td>
+        <td>Gratuit, délai 5 ans (art. L. 1134-5 C. travail)</td>
+      </tr>
+      <tr>
+        <td>Non-réponse administration publique &gt; 2 mois</td>
+        <td><a href="https://www.defenseurdesdroits.fr/saisir" target="_blank" rel="noopener">Saisine Défenseur des droits</a></td>
+        <td>Décision implicite de rejet art. L. 231-4 CRPA</td>
+      </tr>
+      <tr>
+        <td>Manquement forces de l'ordre</td>
+        <td><a href="https://www.defenseurdesdroits.fr/saisir" target="_blank" rel="noopener">Saisine Défenseur des droits</a> (déontologie)</td>
+        <td>Gratuit</td>
+      </tr>
+      <tr>
+        <td>Enfant en danger</td>
+        <td><strong>119 (SNATED) immédiatement</strong> + CRIP départementale</td>
+        <td>Urgence absolue</td>
+      </tr>
+      <tr>
+        <td>Cyberharcèlement, contenu illégal en ligne</td>
+        <td><strong>3018 (e-Enfance)</strong> + <a href="https://www.internet-signalement.gouv.fr" target="_blank" rel="noopener">PHAROS</a> + plainte</td>
+        <td>Gratuit</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION : DÉLAIS & PRESCRIPTIONS                            -->
+<!-- ============================================================ -->
+
+<section id="delays">
+  <h2>Délais et prescriptions clés</h2>
+
+  <p>
+    Tout acte produit par SelfAct doit prendre en compte les délais applicables. Ci-dessous
+    les principales prescriptions civiles et pénales à retenir.
+  </p>
+
+  <h3>Délais civils</h3>
+  <table>
+    <thead>
+      <tr><th>Nature</th><th>Délai</th><th>Article</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Prescription de droit commun civile</td><td>5 ans à compter du jour où le titulaire a connu ou aurait dû connaître les faits</td><td><code>art. 2224 C. civ.</code></td></tr>
+      <tr><td>Créance entre professionnels et consommateurs</td><td>2 ans</td><td><code>art. L. 218-2 C. conso.</code></td></tr>
+      <tr><td>Créances salariales</td><td>3 ans</td><td><code>art. L. 3245-1 C. trav.</code></td></tr>
+      <tr><td>Licenciement (contestation)</td><td>12 mois</td><td><code>art. L. 1471-1 C. trav.</code></td></tr>
+      <tr><td>Discrimination (civil)</td><td>5 ans</td><td><code>art. L. 1134-5 C. trav.</code></td></tr>
+      <tr><td>Dommage corporel</td><td>10 ans à compter de la consolidation</td><td><code>art. 2226 C. civ.</code></td></tr>
+      <tr><td>Action en garantie des vices cachés</td><td>2 ans à compter de la découverte</td><td><code>art. 1648 C. civ.</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Délais pénaux</h3>
+  <table>
+    <thead>
+      <tr><th>Nature</th><th>Prescription de l'action publique</th><th>Article</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Contravention</td><td>1 an</td><td><code>art. 9 CPP</code></td></tr>
+      <tr><td>Délit (droit commun)</td><td>6 ans</td><td><code>art. 8 CPP</code></td></tr>
+      <tr><td>Crime</td><td>20 ans</td><td><code>art. 7 CPP</code></td></tr>
+      <tr><td>Crimes sexuels sur mineurs</td><td>30 ans à partir de la majorité</td><td><code>art. 7 CPP</code></td></tr>
+      <tr><td>Diffamation publique</td><td>3 mois</td><td><code>art. 65 loi 29 juillet 1881</code></td></tr>
+      <tr><td>Injure publique</td><td>3 mois</td><td><code>art. 65 loi 29 juillet 1881</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Règles de calcul (art. 640 à 642 CPC)</h3>
+  <ul>
+    <li><strong>Point de départ :</strong> en général le jour qui suit la notification (le dies a quo ne compte pas)</li>
+    <li><strong>Jours francs :</strong> on compte en jours pleins, pas les heures</li>
+    <li><strong>Dernier jour férié ou weekend :</strong> le délai est reporté au premier jour ouvrable suivant (art. 642 CPC)</li>
+    <li><strong>Interruption :</strong> la mise en demeure, la saisine d'une juridiction, la reconnaissance de dette interrompent la prescription (art. 2240 à 2244 C. civ.)</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION : API (intégrations)                                -->
+<!-- ============================================================ -->
+
+<section id="api">
+  <h2>API SelfAct</h2>
+
+  <p>
+    SelfAct expose une API JSON minimale pour les IA ou applications tierces qui souhaitent
+    consommer les templates ou calculer des délais. L'API ne stocke rien côté serveur (stateless).
+  </p>
+
+  <details>
+    <summary>GET /api/templates</summary>
+    <p>Retourne la liste des types d'actes disponibles.</p>
+    <pre class="template">GET https://justice.my-self.fr/act/api/templates
+
+Response :
+{
+  "ok": true,
+  "templates": [
+    { "id": "mise-en-demeure",       "title": "Mise en demeure",                "category": "civil" },
+    { "id": "saisine-conciliateur",  "title": "Saisine conciliateur de justice", "category": "civil" },
+    { "id": "plainte-simple",        "title": "Plainte simple",                  "category": "penal" },
+    { "id": "saisine-defenseur-droits", "title": "Saisine Défenseur des droits", "category": "civil" }
+  ]
+}</pre>
+  </details>
+
+  <details>
+    <summary>GET /api/template?id=mise-en-demeure</summary>
+    <p>Retourne le template markdown brut pour remplissage.</p>
+  </details>
+
+  <details>
+    <summary>GET /api/deadline?type=prescription_civile&amp;start=2026-04-18</summary>
+    <p>Calcule une date-butoir depuis une date de départ et un type de délai.</p>
+    <pre class="template">GET https://justice.my-self.fr/act/api/deadline?type=prescription_civile&amp;start=2026-04-18
+
+Response :
+{
+  "ok": true,
+  "type": "prescription_civile",
+  "article_ref": "art. 2224 C. civ.",
+  "duration_days": 1826,
+  "start": "2026-04-18",
+  "deadline": "2031-04-18",
+  "rule_applied": "5 ans",
+  "is_weekend_or_holiday": false
+}</pre>
+  </details>
+
+  <details>
+    <summary>GET /api/cross-ref?act=mise-en-demeure</summary>
+    <p>Retourne la liste des articles cités dans un acte, avec liens vers SelfJustice pour vérification.</p>
+  </details>
+</section>
+
+<!-- ============================================================ -->
+<!-- SECTION : DISCLAIMER LÉGAL FORT                              -->
+<!-- ============================================================ -->
+
+<section id="disclaimer">
+  <h2>Disclaimer légal</h2>
+
+  <div class="disclaimer">
+    <h4>Ce que SelfAct N'EST PAS</h4>
+    <ul>
+      <li>Ce n'est <strong>pas un conseil juridique</strong> au sens de la loi 71-1130 du 31 décembre 1971</li>
+      <li>Ce n'est <strong>pas une consultation d'avocat</strong></li>
+      <li>Ce n'est <strong>pas une représentation en justice</strong></li>
+      <li>Ce n'est <strong>pas un service de rédaction d'actes authentiques</strong> (monopole notarial)</li>
+      <li>Ce n'est <strong>pas un substitut à un avocat</strong> pour les cas complexes, les contentieux lourds, ou toute situation urgente</li>
+    </ul>
+    <h4 style="margin-top:1rem">Ce que SelfAct EST</h4>
+    <ul>
+      <li>Un <strong>outil de formatage</strong> qui met en forme des documents non-contentieux selon les exigences légales publiques</li>
+      <li>Un <strong>générateur de templates</strong> vérifiables avec références d'articles publiques</li>
+      <li>Un <strong>rappel procédural</strong> pour éviter les oublis formels les plus fréquents</li>
+    </ul>
+    <h4 style="margin-top:1rem">Consulte un avocat quand</h4>
+    <ul>
+      <li>L'affaire est pénale grave (violences, agressions sexuelles, fraudes complexes)</li>
+      <li>Le montant en jeu dépasse ce que tu es prêt à perdre sans accompagnement expert</li>
+      <li>Tu es menacé d'une procédure contentieuse imminente</li>
+      <li>Le sujet touche au droit de la famille (divorce, garde d'enfants, succession)</li>
+      <li>Tu ne comprends pas ce que produit SelfAct ou pourquoi</li>
+    </ul>
+    <p style="margin-top:1rem">
+      Ressources gratuites d'accompagnement : <a href="https://www.point-justice.gouv.fr" target="_blank" rel="noopener">point-justice.gouv.fr</a>,
+      maisons de justice et du droit, permanences d'avocat en mairie, aide juridictionnelle
+      (<code>art. 2 loi 91-647</code>).
+    </p>
+  </div>
+</section>
+
+<footer>
+  <p>
+    <strong>SelfAct v0.1.0</strong> — module du binôme
+    <a href="https://github.com/Pierroons/my-self/tree/main/self-right">Self-Right</a>
+    de l'écosystème <a href="https://my-self.fr">MySelf</a>
+    · Licence <a href="https://github.com/Pierroons/my-self/blob/main/LICENSE" target="_blank" rel="noopener">MIT</a>
+    · <a href="https://github.com/Pierroons/my-self/tree/main/self-right/selfact" target="_blank" rel="noopener">Code source</a>
+  </p>
+  <p style="font-size:0.82rem">
+    Cadence de mise à jour législative : <strong>bimensuelle (1<sup>er</sup> + 15)</strong>
+    via <a href="https://justice.my-self.fr">SelfJustice</a>. Dernière mise à jour : 18 avril 2026.
+  </p>
+</footer>
+
+</main>
+</body>
+</html>
