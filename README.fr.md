@@ -35,7 +35,7 @@ droits, ses données et ses biens.
 |--------|------------------------------|--------|
 | [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | v0.1.0 ✅ |
 | [SelfModerate](./bi-self/selfmoderate/) | Comment tu te comportes ? | v0.1.0 (concept) |
-| [SelfJustice](./self-right/selfjustice/) | Quels sont tes droits ? | v0.1.0 ✅ |
+| [SelfJustice](https://justice.my-self.fr) | Quels sont tes droits ? | bêta v0.1.0 ✅ |
 | [SelfAct](https://justice.my-self.fr/act) | Comment tu les fais valoir ? | bêta v0.1.2 ✅ |
 | [SelfGuard](./self-security/selfguard/) | Comment protéger tes données ? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | Comment protéger tes objets ? | concept |
@@ -168,6 +168,19 @@ Chaque module a son propre `CONTRIBUTING.md`. L'esprit :
 
 [MIT](LICENSE) — fais-en ce que tu veux, mais ne me blâme pas si ton chat
 déverrouille ta voiture.
+
+---
+
+## Soutenir le projet
+
+MySelf est auto-hébergé sur un Raspberry Pi 4, sans publicité, sans tracker,
+sans sponsor commercial. Si le projet te sert ou te parle, un geste direct
+aide à le maintenir en vie.
+
+**[🙏 Soutenir via Viva Wallet](https://pay.vivawallet.com/pierroons)** — CB,
+Apple Pay, Google Pay, PayPal. Commission minimale, compte pro indépendant.
+100 % des fonds vont à Pierroons (pas d'intermédiaire qui prend sa part
+bien grasse).
 
 ---
 

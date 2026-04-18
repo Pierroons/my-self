@@ -34,7 +34,7 @@ individual sovereign over their own identity, rights, data, and possessions.
 |--------|---------------------|--------|
 | [SelfRecover](./bi-self/selfrecover/) | Who are you? | v0.1.0 ✅ |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | v0.1.0 (concept) |
-| [SelfJustice](./self-right/selfjustice/) | What are your rights? | v0.1.0 ✅ |
+| [SelfJustice](https://justice.my-self.fr) | What are your rights? | beta v0.1.0 ✅ |
 | [SelfAct](https://justice.my-self.fr/act) | How do you act on them? | beta v0.1.2 ✅ |
 | [SelfGuard](./self-security/selfguard/) | How do you protect your data? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | How do you protect your things? | concept |
@@ -153,6 +153,18 @@ Each module has its own `CONTRIBUTING.md`. The spirit:
 - Audits (security, legal, accessibility) are very welcome
 - **Forks are encouraged** — if you build a SelfHealth, SelfMoney, SelfSchool,
   open a discussion and we'll add it to the family
+
+---
+
+## Support the project
+
+MySelf is self-hosted on a Raspberry Pi 4, no ads, no trackers, no commercial
+sponsor. If the project is useful to you or speaks to you, a direct gesture
+helps keep it alive.
+
+**[🙏 Support via Viva Wallet](https://pay.vivawallet.com/pierroons)** — card,
+Apple Pay, Google Pay, PayPal. Minimal commission, independent pro account.
+100% of funds go to Pierroons (no intermediary taking their juicy share).
 
 ---
 
