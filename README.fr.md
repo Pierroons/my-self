@@ -171,6 +171,17 @@ déverrouille ta voiture.
 
 ---
 
+## Soutenir le projet
+
+MySelf est auto-hébergé sur un Raspberry Pi 4, sans publicité, sans tracker,
+sans sponsor commercial. Si le projet te sert ou te parle, un geste direct
+aide à le maintenir en vie.
+
+**[🙏 Soutenir via Viva Wallet](https://pay.vivawallet.com/pierroons)** — CB,
+Apple Pay, Google Pay, PayPal. Commission minimale, compte pro indépendant.
+
+---
+
 ## Auteur & coworking
 
 **Pierroons** — un agriculteur qui code sur son temps libre.

@@ -156,6 +156,17 @@ Each module has its own `CONTRIBUTING.md`. The spirit:
 
 ---
 
+## Support the project
+
+MySelf is self-hosted on a Raspberry Pi 4, no ads, no trackers, no commercial
+sponsor. If the project is useful to you or speaks to you, a direct gesture
+helps keep it alive.
+
+**[🙏 Support via Viva Wallet](https://pay.vivawallet.com/pierroons)** — card,
+Apple Pay, Google Pay, PayPal. Minimal commission, independent pro account.
+
+---
+
 ## License
 
 [MIT](LICENSE) — do whatever you want, but don't blame me if your cat
