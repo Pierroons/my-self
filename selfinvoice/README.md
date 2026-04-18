@@ -6,8 +6,6 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)
 [![Status: alpha 0.0.1](https://img.shields.io/badge/status-alpha%200.0.1-lightgrey.svg)](#status)
-[![Part of: Self-Bill](https://img.shields.io/badge/part%20of-Self--Bill-blue.svg)](../README.md)
-[![Companion of: SelfCashpay](https://img.shields.io/badge/companion-SelfCashpay-green.svg)](../selfcashpay/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
 > **Your invoice. Your template. Your data. Done.**
@@ -37,7 +35,7 @@ SelfInvoice is a **local-first invoice generator** with:
 - Automatic insertion of the required legal mentions based on your status.
 - PDF generation via `weasyprint` (pixel-perfect, no browser rendering dependency).
 - **Zero data leaves your machine** — the customer list is a local SQLite database.
-- Embedded [SelfCashpay](../selfcashpay/) QR code for one-scan SEPA payment.
+- IBAN and invoice reference shown prominently on the PDF for easy manual bank transfer.
 - Automatic reconciliation when a SEPA transfer matches the invoice reference.
 
 ---
@@ -58,11 +56,6 @@ SelfInvoice is a **local-first invoice generator** with:
         │                                      │  pdf             │
         │                                      └──────────────────┘
         │                                              │
-        │                                              ▼
-        │                                      ┌──────────────────┐
-        └─────────────────────────────────────→│  SEPA QR embed   │
-                                               │  (SelfCashpay)   │
-                                               └──────────────────┘
 ```
 
 Single binary deployment, runs on a laptop, phone (via Termux), or Raspberry Pi.
@@ -86,14 +79,16 @@ The matrix is **a JSON file in the repo** — auditable, forkable, patchable whe
 
 ---
 
-## Role in Self-Bill
+## Core principle — pure data, zero custody
 
-SelfInvoice generates the **compliant document**. [SelfCashpay](../selfcashpay/) generates the **payment QR code**. Together they form the full invoicing-to-cash cycle without any intermediary:
+SelfInvoice generates files (invoice PDF + a local database entry). It does not:
 
-1. SelfInvoice → PDF with all legal mentions + embedded SEPA QR (delegated to SelfCashpay).
-2. Customer scans QR on phone → banking app pre-fills the virement.
-3. Customer confirms virement → money on your IBAN in minutes.
-4. SelfInvoice monitors SEPA notifications → matches reference → marks invoice paid.
+- Hold funds
+- Open accounts at any third party
+- Require KYC
+- Process payments
+
+It produces a **compliant document** that the customer pays via a regular SEPA transfer to the issuer's IBAN. Legally, SelfInvoice is a **document formatting tool**, not a financial service. Same category as a Word template or LaTeX class.
 
 **Zero commission. Zero fund custody. Zero subscription.**
 
@@ -107,10 +102,9 @@ SelfInvoice generates the **compliant document**. [SelfCashpay](../selfcashpay/)
 - [x] Template library draft (micro-entrepreneur, SASU, association)
 - [ ] PDF renderer (weasyprint pipeline)
 - [ ] Customer/invoice SQLite schema
-- [ ] SelfCashpay integration (QR embed)
 - [ ] SEPA notification watcher (webhook or email polling)
 - [ ] v0.1.0 prototype with CLI + web UI
-- [ ] Target deployment: `bill.my-self.fr/invoice`
+- [ ] Target deployment: `invoice.my-self.fr`
 
 See **[whitepaper](docs/whitepaper.docx)** for the full legal framework, template architecture, and deployment guide.
 

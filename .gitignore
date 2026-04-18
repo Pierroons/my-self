@@ -1,0 +1,22 @@
+# MySelf — fichiers sensibles à ne jamais committer
+
+# Configuration avec données personnelles
+**/install/config.json
+**/install/legal_cache.json
+**/install/update_legal.log
+
+# Démos SQLite éphémères
+bi-self/demo-backend/sessions/
+bi-self/demo-backend/logs/
+
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Logs & runtime
+*.log
+/tmp/

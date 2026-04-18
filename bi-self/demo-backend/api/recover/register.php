@@ -61,13 +61,13 @@ if ($stmt->execute()->fetchArray()) {
 $password = RecoverHelper::generatePassword(16);
 $log->info('register', 'Password généré côté serveur (16 chars alphanum + symbols)');
 
-$diceware = DicewareWordlist::generate(4);
+$diceware = DicewareWordlist::generate(4, 'en');
 $passphrase = implode(' ', $diceware['words']);
-$log->info('register', 'Passphrase diceware générée', [
+$log->info('register', 'Passphrase diceware générée depuis la liste officielle EFF (7776 mots, CC-BY 3.0)', [
     'words_count'  => count($diceware['words']),
     'entropy_bits' => $diceware['entropy_bits'],
-    'is_demo_list' => $diceware['is_demo'],
-    'note'         => 'La vraie EFF wordlist donne 51 bits pour 4 mots. Ici 32 bits pour la démo (mots plus courts / mémorisables).',
+    'wordlist'     => 'EFF large wordlist (2016)',
+    'note'         => 'Mode avancé disponible : l\'utilisateur peut saisir ses propres 6+ mots pour monter jusqu\'à 77 bits (EFF recommandé) ou 103 bits (paranoïaque).',
 ]);
 
 // Recovery word : 6 chars alphanum, pour la démo. En vrai l'user choisit son propre mot.
