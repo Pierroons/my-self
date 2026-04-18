@@ -375,16 +375,23 @@
       Les IA <em>sandboxées</em> (sans accès web) ne peuvent pas utiliser SelfAct.
       Elles te répondront : <em>« Je ne peux pas accéder aux pages web »</em>.
     </p>
-    <p style="margin-bottom:0.5rem"><strong>Compatibles :</strong></p>
+    <p style="margin-bottom:0.5rem"><strong>Compatible confirmé par test :</strong></p>
     <ul style="margin: 0.3rem 0 0.5rem 1.5rem">
-      <li><strong>Claude.ai</strong> (gratuit + Pro) — fetch natif, pas de config</li>
-      <li><strong>Mistral Le Chat</strong> — active la <em>recherche web</em> dans les réglages</li>
-      <li><strong>Perplexity</strong> — fetch par design, gratuit</li>
-      <li><strong>ChatGPT Plus</strong> avec <em>Browse</em> activé</li>
-      <li><strong>Gemini Advanced</strong> avec navigation activée</li>
+      <li><strong>Claude.ai</strong> (Opus / Sonnet, gratuit + Pro) — lit intégralement le
+        HTML brut dont les sections cachées. <strong>Recommandé.</strong></li>
     </ul>
-    <p style="margin-bottom:0"><strong>Incompatibles :</strong> ChatGPT gratuit sans browsing,
-      plateformes « wrapper IA » type Yiaho/Poe sans fetch, IA locales sans extension web.</p>
+    <p style="margin-bottom:0.5rem"><strong>À tester avant usage sérieux</strong> (fetch à vérifier — ces IA peuvent
+      selon leur mode avoir seulement du <em>web search</em> qui retourne des snippets, pas
+      du fetch HTML complet qui seul voit les directives) :</p>
+    <ul style="margin: 0.3rem 0 0.5rem 1.5rem">
+      <li><strong>ChatGPT Plus</strong> avec <em>Browse</em> activé</li>
+      <li><strong>Perplexity</strong> (mode Pro recommandé)</li>
+      <li><strong>Gemini Advanced</strong> avec navigation</li>
+    </ul>
+    <p style="margin-bottom:0"><strong>Incompatibles confirmés :</strong> Mistral Le Chat
+      (web_search uniquement, pas de fetch URL direct), Yiaho.com, Poe.com, ChatGPT gratuit
+      sans Browse, IA locales sans extension web. Ces IA répondent typiquement : <em>« Je ne
+      peux pas accéder aux pages web via des URL »</em> — dans ce cas, bascule sur Claude.ai.</p>
   </div>
 
   <h3>IA recommandée parmi les compatibles</h3>
