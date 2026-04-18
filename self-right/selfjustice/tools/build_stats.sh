@@ -143,7 +143,7 @@ cat > "$TMP_EP" <<JSON
     "description": "Top 30 des articles juridiques les plus consultés via l'API SelfJustice. Aucune donnée personnelle, uniquement les références d'articles.",
     "updated": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
     "disclaimer": "Ces statistiques reflètent l'intérêt collectif pour certains articles — donnée d'intérêt général, sans tracking utilisateur.",
-    "github_script": "https://github.com/Pierroons/my-self/tree/main/self-right/selfjustice/tools/build_stats.sh"
+    "github_script": "https://github.com/Pierroons/my-self/blob/main/self-right/selfjustice/tools/build_stats.sh"
   },
   "top_legi_articles": $(build_json_array "$LEGI_COUNTS"),
   "top_eu_articles": $(build_json_array "$EU_COUNTS")
