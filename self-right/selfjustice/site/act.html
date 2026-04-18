@@ -355,11 +355,23 @@
 
   <div class="copy-zone">
     <label for="prompt-textarea" style="display:block; margin-bottom:0.5rem; font-weight:600; color:var(--accent);">
-      Ton prompt — décris brièvement ton besoin :
+      Ton message — décris brièvement ton besoin ou ton conflit :
     </label>
     <textarea id="prompt-textarea" placeholder="Ex. : J'ai payé une prestation de chauffagiste 850 € en mars 2026, elle n'a jamais été réalisée. J'ai relancé deux fois par email, pas de réponse. Je veux envoyer une mise en demeure avant saisine du conciliateur."></textarea>
-    <button onclick="copyPrompt()">Copier le prompt complet</button>
-    <span class="feedback" id="copy-feedback">✓ Copié ! Colle dans ton IA (claude.ai, Mistral Le Chat, ChatGPT…)</span>
+
+    <div style="margin-top: 0.8rem; display: flex; gap: 0.6rem; flex-wrap: wrap;">
+      <button type="button" id="btn-copy-prompt">📋 Copier le prompt court (IA avec fetch)</button>
+      <button type="button" id="btn-copy-fallback" style="background: var(--bg-card); color: var(--accent); border: 1px solid var(--accent-dim);">📋 Copier le prompt complet (IA sans fetch)</button>
+    </div>
+    <span class="feedback" id="copy-feedback">✓ Copié dans le presse-papier — colle dans ton IA</span>
+
+    <p class="muted" style="font-size: 0.85rem; margin-top: 0.8rem; margin-bottom: 0;">
+      <strong>Si ton IA peut lire une URL</strong> (Claude.ai, Gemini, Copilot) → utilise le
+      <em>prompt court</em>. <strong>Si ton IA ne peut pas lire la page</strong> (Mistral Le Chat,
+      Perplexity, ChatGPT gratuit, Yiaho…) → utilise le <em>prompt complet</em> : tape ton
+      message ci-dessus, clic sur le bouton, colle dans ton IA. Un long texte s'affichera avec
+      toutes les directives, et ta question à la fin. Envoie et attends la réponse.
+    </p>
   </div>
 
   <p class="muted" style="font-size:0.9rem">
@@ -426,18 +438,7 @@
     Mistral Large (atout : droit français, hébergement UE), GPT-5, Gemini 2.5 Pro, Perplexity.
   </p>
 
-  <script>
-    function copyPrompt() {
-      var textarea = document.getElementById('prompt-textarea');
-      var feedback = document.getElementById('copy-feedback');
-      var txt = textarea.value.trim() || '[décris ici ta situation et le type d\'acte désiré]';
-      var full = txt + "\n\nRédige l'acte approprié selon https://justice.my-self.fr/act";
-      navigator.clipboard.writeText(full).then(function() {
-        feedback.style.display = 'inline';
-        setTimeout(function() { feedback.style.display = 'none'; }, 3000);
-      });
-    }
-  </script>
+  <script src="/act/api/copy-prompts.js"></script>
 </section>
 
 <!-- ============================================================ -->
