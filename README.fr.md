@@ -36,7 +36,7 @@ droits, ses données et ses biens.
 | [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | v0.1.0 ✅ |
 | [SelfModerate](./bi-self/selfmoderate/) | Comment tu te comportes ? | v0.1.0 (concept) |
 | [SelfJustice](./self-right/selfjustice/) | Quels sont tes droits ? | v0.1.0 ✅ |
-| [SelfAct](./self-right/selfact/) | Comment tu les fais valoir ? | idée |
+| [SelfAct](https://justice.my-self.fr/act) | Comment tu les fais valoir ? | bêta v0.1.2 ✅ |
 | [SelfGuard](./self-security/selfguard/) | Comment protéger tes données ? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | Comment protéger tes objets ? | concept |
 | [SelfInvoice](./selfinvoice/) | Comment facturer tes clients ? | idée |

@@ -1,25 +1,29 @@
 {
     "_meta": {
         "version": "2026.04",
-        "last_sync": "2026-04-18T18:18:59+00:00",
+        "last_sync": "2026-04-18T18:37:22+00:00",
         "source": "service-public.fr (Etalab 2.0)",
         "source_url": "https://www.service-public.gouv.fr/particuliers/recherche?rubricFilter=serviceEnLigne&rubricTypeFilter=modeleLettre",
         "total": 334,
         "categories": {
-            "divers": 87,
-            "travail": 66,
-            "logement": 59,
-            "consommation": 39,
-            "finances": 31,
+            "consommation": 50,
+            "logement": 55,
+            "justice": 7,
             "assurances": 15,
-            "citoyennete": 14,
-            "famille": 11,
-            "justice": 4,
-            "transports": 4,
-            "sante": 3,
-            "administration": 1
+            "travail": 57,
+            "finances": 29,
+            "citoyennete": 11,
+            "auto": 13,
+            "divers": 53,
+            "transports": 5,
+            "famille": 22,
+            "securite": 2,
+            "association": 8,
+            "sante": 5,
+            "administration": 2
         },
-        "scraper": "SelfAct-Scraper/0.1"
+        "scraper": "SelfAct-Scraper/0.1",
+        "classifier_version": "v2-reclassify"
     },
     "models": [
         {
@@ -86,7 +90,7 @@
             "id": "R16218",
             "label": "Saisir le Bureau central de tarification (BCT) en cas de refus d'assurance de son véhicule",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16218",
-            "category": "assurances"
+            "category": "auto"
         },
         {
             "id": "R13155",
@@ -104,7 +108,7 @@
             "id": "R13321",
             "label": "Contester une opération figurant sur son relevé de compte",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R13321",
-            "category": "finances"
+            "category": "divers"
         },
         {
             "id": "R14623",
@@ -116,7 +120,7 @@
             "id": "R13625",
             "label": "Demander à renoncer à un contrat d'assurance-vie",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R13625",
-            "category": "finances"
+            "category": "assurances"
         },
         {
             "id": "R14942",
@@ -152,7 +156,7 @@
             "id": "R18423",
             "label": "Résilier son contrat de communications (internet, téléphonie, télévision) pour un motif légitime",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18423",
-            "category": "logement"
+            "category": "consommation"
         },
         {
             "id": "R16326",
@@ -170,7 +174,7 @@
             "id": "R18553",
             "label": "Résilier son abonnement télé par câble ou satellite suite à une modification de programme",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18553",
-            "category": "logement"
+            "category": "consommation"
         },
         {
             "id": "R16635",
@@ -188,19 +192,19 @@
             "id": "R16638",
             "label": "Demander le remboursement du dépôt de garantie non restitué",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16638",
-            "category": "consommation"
+            "category": "logement"
         },
         {
             "id": "R16639",
             "label": "Déclarer à son assureur un vol dans son habitation",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16639",
-            "category": "assurances"
+            "category": "logement"
         },
         {
             "id": "R18607",
             "label": "Mettre en demeure son fournisseur d'accès à internet de fournir le service promis",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18607",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R18613",
@@ -236,7 +240,7 @@
             "id": "R18810",
             "label": "Demander un découvert occasionnel pour quelques jours",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18810",
-            "category": "divers"
+            "category": "finances"
         },
         {
             "id": "R1746",
@@ -260,13 +264,13 @@
             "id": "R19008",
             "label": "Mentions à indiquer en cas d'achat d'un bien avec un crédit devant être livré immédiatement",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R19008",
-            "category": "consommation"
+            "category": "finances"
         },
         {
             "id": "R19096",
             "label": "Saisir le médiateur ou le bâtonnier pour contester les honoraires de son avocat",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R19096",
-            "category": "assurances"
+            "category": "consommation"
         },
         {
             "id": "R17891",
@@ -278,7 +282,7 @@
             "id": "R17947",
             "label": "Demander à être interdit de jeux",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R17947",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R1797",
@@ -290,13 +294,13 @@
             "id": "R18070",
             "label": "Demander la résiliation de votre contrat de téléphonie ou internet aux torts de l'opérateur",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18070",
-            "category": "logement"
+            "category": "consommation"
         },
         {
             "id": "R18078",
             "label": "Résilier son contrat de communications électroniques pour raison personnelle",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18078",
-            "category": "logement"
+            "category": "divers"
         },
         {
             "id": "R19528",
@@ -308,7 +312,7 @@
             "id": "R1829",
             "label": "Saisir le médiateur de la SNCF dans le cadre d'une contestation d'une contravention",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1829",
-            "category": "assurances"
+            "category": "transports"
         },
         {
             "id": "R18301",
@@ -326,7 +330,7 @@
             "id": "R22237",
             "label": "Demander un certificat de non-paiement",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R22237",
-            "category": "divers"
+            "category": "finances"
         },
         {
             "id": "R22230",
@@ -338,7 +342,7 @@
             "id": "R2237",
             "label": "Association : modèle de déclaration préalable d'une manifestation sur la voie publique",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2237",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R19869",
@@ -350,7 +354,7 @@
             "id": "R2336",
             "label": "Modèle de tableau de compte d'emploi annuel des ressources collectées auprès du public",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2336",
-            "category": "finances"
+            "category": "divers"
         },
         {
             "id": "R2353",
@@ -362,7 +366,7 @@
             "id": "R20004",
             "label": "Demander le remboursement d'objets perdus ou endommagés pendant son déménagement",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R20004",
-            "category": "consommation"
+            "category": "logement"
         },
         {
             "id": "R20025",
@@ -374,73 +378,73 @@
             "id": "R24052",
             "label": "Signaler à la répression des fraudes un commerçant qui n'affiche pas les prix",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24052",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R24071",
             "label": "Demander à un garagiste ayant mal effectué les réparations de les refaire",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24071",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R24072",
             "label": "Refuser de payer des réparations sur son véhicule qui n'étaient pas prévues",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24072",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R24075",
             "label": "Demander une indemnisation au teinturier qui a détérioré un vêtement",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24075",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R24078",
             "label": "Contester l'absence de remise de devis lors d'un dépannage à domicile",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24078",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R24079",
             "label": "Contester la facture trop élevée d'un dépannage à domicile",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24079",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R24080",
             "label": "Contester la facture d'un artisan en cas de dépassement du devis des travaux sans votre accord",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24080",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R20344",
             "label": "Contester l'offre d'indemnisation de son assureur pour son véhicule accidenté",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R20344",
-            "category": "assurances"
+            "category": "auto"
         },
         {
             "id": "R20365",
             "label": "Résilier son assurance à la suite de la vente de son véhicule",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R20365",
-            "category": "logement"
+            "category": "auto"
         },
         {
             "id": "R24258",
             "label": "Mettre en demeure le garagiste d'être livré de sa voiture neuve",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24258",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R24260",
             "label": "Invoquer un vice caché après avoir découvert que sa voiture achetée d'occasion a été accidentée",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24260",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R24278",
             "label": "Demander une indemnisation en cas de refus d'embarquement",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24278",
-            "category": "divers"
+            "category": "transports"
         },
         {
             "id": "R24279",
@@ -458,13 +462,13 @@
             "id": "R20741",
             "label": "Mettre fin à son engagement de caution locative",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R20741",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R2077",
             "label": "Modèle de convention de mise à disposition d'un volontaire",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2077",
-            "category": "transports"
+            "category": "divers"
         },
         {
             "id": "R20791",
@@ -476,13 +480,13 @@
             "id": "R24390",
             "label": "Demande d'ouverture d'une buvette associative temporaire dans une foire ou une exposition",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24390",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R24391",
             "label": "Demande d'ouverture d'une buvette associative temporaire à l'occasion d'une foire, d'une vente ou d'une fête publique",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24391",
-            "category": "consommation"
+            "category": "association"
         },
         {
             "id": "R20962",
@@ -494,49 +498,49 @@
             "id": "R21134",
             "label": "Dénoncer un compte joint auprès d'un cotitulaire",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21134",
-            "category": "finances"
+            "category": "divers"
         },
         {
             "id": "R2509",
             "label": "Réclamer une indemnisation après avoir été renversé par une voiture",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2509",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R2628",
             "label": "Demander des numéros Siren et Siret comme association subventionnée",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2628",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R21219",
             "label": "Résilier son contrat d'assurance en cours",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21219",
-            "category": "logement"
+            "category": "assurances"
         },
         {
             "id": "R2631",
             "label": "Exemple de statuts d'une association loi 1901",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2631",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R2689",
             "label": "Demander un relevé d'information après la résiliation de son assurance automobile",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2689",
-            "category": "logement"
+            "category": "auto"
         },
         {
             "id": "R2707",
             "label": "Modèle de règlement intérieur d'une association",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2707",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R21506",
             "label": "Désolidariser un compte joint",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21506",
-            "category": "finances"
+            "category": "divers"
         },
         {
             "id": "R22225",
@@ -548,13 +552,13 @@
             "id": "R31630",
             "label": "Demander réparation en cas de tromperie suite à l'achat d'une voiture d'occasion",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R31630",
-            "category": "consommation"
+            "category": "auto"
         },
         {
             "id": "R31641",
             "label": "Demander au garagiste la remise des pièces usagées remplacées sur le véhicule",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R31641",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R33438",
@@ -566,13 +570,13 @@
             "id": "R31642",
             "label": "Demander la réparation de sa voiture en panne et une estimation écrite au garagiste",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R31642",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R31668",
             "label": "Demander la restitution des pièces changées lors d'un dépannage à domicile",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R31668",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R31671",
@@ -638,7 +642,7 @@
             "id": "R33643",
             "label": "Résilier son contrat d'assurance à son échéance",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33643",
-            "category": "logement"
+            "category": "assurances"
         },
         {
             "id": "R33685",
@@ -650,7 +654,7 @@
             "id": "R33696",
             "label": "Demande de congé de solidarité familiale dans le secteur privé",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33696",
-            "category": "travail"
+            "category": "divers"
         },
         {
             "id": "R31806",
@@ -662,13 +666,13 @@
             "id": "R33731",
             "label": "Demander le plafonnement de votre facture d'eau suite à une fuite d'eau",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33731",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R33734",
             "label": "Demander la vérification de son compteur d'eau",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33734",
-            "category": "finances"
+            "category": "divers"
         },
         {
             "id": "R33737",
@@ -740,7 +744,7 @@
             "id": "R31951",
             "label": "Demander réparation à un artisan en cas de dégâts causés durant les travaux",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R31951",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R33753",
@@ -758,13 +762,13 @@
             "id": "R33754",
             "label": "Contester l'augmentation du prix réclamé par l'entreprise pour la construction de sa maison",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33754",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R31978",
             "label": "Informer l'organisme prêteur de votre intention de rembourser par anticipation un crédit à la consommation",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R31978",
-            "category": "consommation"
+            "category": "finances"
         },
         {
             "id": "R33756",
@@ -794,7 +798,7 @@
             "id": "R33762",
             "label": "Mettre en demeure le constructeur de terminer sa maison",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33762",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R32097",
@@ -812,19 +816,19 @@
             "id": "R32098",
             "label": "Demande de mise en disponibilité d'un fonctionnaire",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R32098",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R33765",
             "label": "Refuser de verser les honoraires réclamés par une agence immobilière",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33765",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R32099",
             "label": "Demande de détachement d'un fonctionnaire",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R32099",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R33767",
@@ -848,19 +852,19 @@
             "id": "R32166",
             "label": "Demande de congé sabbatique",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R32166",
-            "category": "travail"
+            "category": "divers"
         },
         {
             "id": "R33769",
             "label": "Obtenir le remboursement de l'acompte versé au constructeur en cas de refus de son prêt immobilier",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33769",
-            "category": "consommation"
+            "category": "logement"
         },
         {
             "id": "R32169",
             "label": "Demande initiale de congé parental dans le secteur privé",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R32169",
-            "category": "travail"
+            "category": "famille"
         },
         {
             "id": "R33775",
@@ -872,37 +876,37 @@
             "id": "R32176",
             "label": "Demander un congé de paternité et d'accueil de l'enfant",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R32176",
-            "category": "travail"
+            "category": "famille"
         },
         {
             "id": "R32325",
             "label": "Demander à transformer un contrat d'assurance-vie en euros en contrat multi-supports",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R32325",
-            "category": "finances"
+            "category": "assurances"
         },
         {
             "id": "R34366",
             "label": "Modèle de statuts d'association reconnue d'utilité publique",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R34366",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R32326",
             "label": "Demander le rachat de son contrat d'assurance-vie",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R32326",
-            "category": "consommation"
+            "category": "assurances"
         },
         {
             "id": "R32327",
             "label": "Demander des informations pour obtenir une avance sur son contrat d'assurance-vie",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R32327",
-            "category": "finances"
+            "category": "assurances"
         },
         {
             "id": "R32354",
             "label": "Demander une indemnisation suite au retard de son train",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R32354",
-            "category": "transports"
+            "category": "divers"
         },
         {
             "id": "R35386",
@@ -932,7 +936,7 @@
             "id": "R42252",
             "label": "Bordereau des pièces jointes pour un dossier de changement de nom",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42252",
-            "category": "divers"
+            "category": "citoyennete"
         },
         {
             "id": "R42265",
@@ -962,19 +966,19 @@
             "id": "R38209",
             "label": "Modèle de reconnaissance de dettes ou de prêts entre particuliers",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R38209",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R38486",
             "label": "Réclamer le maintien d'un usage d'entreprise irrégulièrement supprimé",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R38486",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R42498",
             "label": "Changement de nom pour motif légitime : modèles de publication",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42498",
-            "category": "divers"
+            "category": "citoyennete"
         },
         {
             "id": "R42551",
@@ -986,7 +990,7 @@
             "id": "R42562",
             "label": "Déclaration sur l'honneur (à joindre à la demande de PTZ)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42562",
-            "category": "citoyennete"
+            "category": "divers"
         },
         {
             "id": "R38832",
@@ -1004,7 +1008,7 @@
             "id": "R39697",
             "label": "Attestation d'hébergement",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R39697",
-            "category": "citoyennete"
+            "category": "divers"
         },
         {
             "id": "R40462",
@@ -1028,7 +1032,7 @@
             "id": "R43391",
             "label": "Résilier un contrat de carte de crédit",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R43391",
-            "category": "logement"
+            "category": "finances"
         },
         {
             "id": "R42",
@@ -1046,13 +1050,13 @@
             "id": "R45773",
             "label": "Demande d'indemnisation pour vice caché",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45773",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R45974",
             "label": "Faire une réclamation pour des objets perdus ou cassés pendant un déménagement",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45974",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R44053",
@@ -1106,7 +1110,7 @@
             "id": "R44952",
             "label": "Modèle de directives anticipées (élaboration, modification, annulation)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R44952",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R46652",
@@ -1118,13 +1122,13 @@
             "id": "R46840",
             "label": "Demande de mutation d'un fonctionnaire",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R46840",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R46971",
             "label": "Demander un congé de proche aidant",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R46971",
-            "category": "travail"
+            "category": "divers"
         },
         {
             "id": "R47020",
@@ -1148,7 +1152,7 @@
             "id": "R47460",
             "label": "Vous refusez de payer les frais réclamés par une agence immobilière",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R47460",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R47466",
@@ -1160,7 +1164,7 @@
             "id": "R49237",
             "label": "Association de locataires : modèle de désignation au bailleur de ses représentants",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49237",
-            "category": "logement"
+            "category": "association"
         },
         {
             "id": "R49377",
@@ -1208,7 +1212,7 @@
             "id": "R51271",
             "label": "Demander une attestation de Pacs pour un étranger né à l'étranger",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R51271",
-            "category": "citoyennete"
+            "category": "famille"
         },
         {
             "id": "R49885",
@@ -1220,19 +1224,19 @@
             "id": "R51507",
             "label": "Modèle d'autorisation parentale de travail pour un mineur",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R51507",
-            "category": "travail"
+            "category": "famille"
         },
         {
             "id": "R50601",
             "label": "Demander son intégration directe dans un corps ou cadre d’emplois (fonction publique)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R50601",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R50618",
             "label": "Demander un billet congé annuel SNCF",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R50618",
-            "category": "travail"
+            "category": "transports"
         },
         {
             "id": "R52172",
@@ -1250,7 +1254,7 @@
             "id": "R52487",
             "label": "Modèle d'attestation pour l'obtention d'un certificat d'immatriculation avec mention d'usage Véhicule de collection",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52487",
-            "category": "citoyennete"
+            "category": "auto"
         },
         {
             "id": "R50770",
@@ -1262,7 +1266,7 @@
             "id": "R52569",
             "label": "Demander un congé parental dans la fonction publique",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52569",
-            "category": "travail"
+            "category": "famille"
         },
         {
             "id": "R50847",
@@ -1274,7 +1278,7 @@
             "id": "R50950",
             "label": "Demander au commissaire de justice le compte détaillé des sommes qu'il vous réclame",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R50950",
-            "category": "finances"
+            "category": "justice"
         },
         {
             "id": "R50955",
@@ -1292,7 +1296,7 @@
             "id": "R54517",
             "label": "Modèle d'acceptation des membres de la famille acceptant l'habilitation ou la nomination du tuteur ou curateur",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R54517",
-            "category": "famille"
+            "category": "divers"
         },
         {
             "id": "R53301",
@@ -1310,7 +1314,7 @@
             "id": "R53535",
             "label": "Déclaration d'accident de service - accident de trajet - Fonction publique",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53535",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R55388",
@@ -1334,19 +1338,19 @@
             "id": "R53986",
             "label": "Saisir le médiateur du notariat",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53986",
-            "category": "assurances"
+            "category": "divers"
         },
         {
             "id": "R53989",
             "label": "Contester une facture de téléphonie ou d'accès à Internet",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53989",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R53990",
             "label": "Demander à son opérateur une facture détaillée de ses communications",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53990",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R53991",
@@ -1370,13 +1374,13 @@
             "id": "R53993",
             "label": "Résilier le contrat et récupérer l'argent versé si la date de livraison n'a pas été respectée",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53993",
-            "category": "logement"
+            "category": "consommation"
         },
         {
             "id": "R54021",
             "label": "Demander le report d’un congé de paternité et d'accueil de l’enfant en cas d'hospitalisation de l'enfant",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R54021",
-            "category": "travail"
+            "category": "famille"
         },
         {
             "id": "R54103",
@@ -1388,7 +1392,7 @@
             "id": "R54133",
             "label": "Demander la prime de restructuration",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R54133",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R54144",
@@ -1400,13 +1404,13 @@
             "id": "R56279",
             "label": "Modèle d'engagement réciproque - Assistante maternelle agréée",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R56279",
-            "category": "travail"
+            "category": "divers"
         },
         {
             "id": "R58646",
             "label": "Réclamer ses congés payés",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R58646",
-            "category": "travail"
+            "category": "divers"
         },
         {
             "id": "R58645",
@@ -1424,7 +1428,7 @@
             "id": "R58651",
             "label": "Demande d'accord du salarié pour le renouvellement d'une période d'essai",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R58651",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R58652",
@@ -1448,13 +1452,13 @@
             "id": "R56828",
             "label": "Demande de prise en charge des frais de changement de résidence dans la fonction publique",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R56828",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R58664",
             "label": "Modèle d'assignation sans représentation obligatoire",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R58664",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R58712",
@@ -1544,19 +1548,19 @@
             "id": "R59461",
             "label": "Déclaration sur l'honneur pour un électeur européen",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R59461",
-            "category": "citoyennete"
+            "category": "divers"
         },
         {
             "id": "R58634",
             "label": "Relevé d'heures supplémentaires",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R58634",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R58635",
             "label": "Lettre de réclamation des heures supplémentaires",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R58635",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R58637",
@@ -1568,7 +1572,7 @@
             "id": "R58643",
             "label": "Modèle de reçu pour solde de tout compte",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R58643",
-            "category": "finances"
+            "category": "divers"
         },
         {
             "id": "R58644",
@@ -1652,7 +1656,7 @@
             "id": "R608",
             "label": "Résilier son contrat de communications électroniques suite à sa modification",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R608",
-            "category": "logement"
+            "category": "divers"
         },
         {
             "id": "R62643",
@@ -1676,7 +1680,7 @@
             "id": "R64939",
             "label": "Résilier un abonnement téléphonique ou internet de la personne décédée",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R64939",
-            "category": "logement"
+            "category": "consommation"
         },
         {
             "id": "R63408",
@@ -1694,7 +1698,7 @@
             "id": "R65238",
             "label": "Modèle de demande d’organisation des visites médicales à l’employeur",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R65238",
-            "category": "travail"
+            "category": "sante"
         },
         {
             "id": "R65293",
@@ -1706,7 +1710,7 @@
             "id": "R65294",
             "label": "Convention individuelle de rupture d’un commun accord dans le cadre de l’accord collectif relatif au congé de mobilité",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R65294",
-            "category": "travail"
+            "category": "divers"
         },
         {
             "id": "R65295",
@@ -1760,7 +1764,7 @@
             "id": "R66562",
             "label": "Modèle de convention individuelle de rupture d’un commun accord dans le cadre de l’accord collectif relatif au congé de mobilité",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R66562",
-            "category": "travail"
+            "category": "divers"
         },
         {
             "id": "R66700",
@@ -1808,7 +1812,7 @@
             "id": "R71162",
             "label": "Modèle de fiche individuelle de police",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71162",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R71270",
@@ -1880,7 +1884,7 @@
             "id": "R74682",
             "label": "Lettre pour demander un délai pour payer un rappel de charges locatives important",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74682",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R72560",
@@ -1892,13 +1896,13 @@
             "id": "R72646",
             "label": "Modèle d’attestation version remplissable en ligne pour le couplage accession à la propriété/éco-PTZ",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R72646",
-            "category": "logement"
+            "category": "divers"
         },
         {
             "id": "R72647",
             "label": "Modèle d’attestation version papier pour le couplage accession à la propriété/éco-PTZ",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R72647",
-            "category": "logement"
+            "category": "divers"
         },
         {
             "id": "R72702",
@@ -1928,13 +1932,13 @@
             "id": "R75483",
             "label": "Charte d’engagement prime \"Coup de pouce Rénovation performante de bâtiment résidentiel collectif\"",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R75483",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R75562",
             "label": "Charte Coup de pouce Rénovation d’ampleur des maisons et appartements individuels",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R75562",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R75836",
@@ -1964,25 +1968,25 @@
             "id": "R76228",
             "label": "Modèle de lettre - Demande de retour anticipé à la suite d’un congé parental d’éducation à temps partiel",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R76228",
-            "category": "travail"
+            "category": "famille"
         },
         {
             "id": "R76229",
             "label": "Modèle de lettre - Demande de prolongation et/ou de transformation du congé parental d’éducation à temps partiel",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R76229",
-            "category": "travail"
+            "category": "famille"
         },
         {
             "id": "R76230",
             "label": "Modèle de lettre - Demande de retour anticipé à la suite d’un congé parental d’éducation à temps plein",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R76230",
-            "category": "travail"
+            "category": "famille"
         },
         {
             "id": "R76231",
             "label": "Modèle de lettre - Demande de prolongation et/ou de transformation du congé parental d’éducation à temps plein",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R76231",
-            "category": "travail"
+            "category": "famille"
         },
         {
             "id": "R74536",
@@ -2000,19 +2004,19 @@
             "id": "R992",
             "label": "Lettre à joindre au dossier de surendettement",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R992",
-            "category": "divers"
+            "category": "finances"
         },
         {
             "id": "R993",
             "label": "Lettre pour faire un recours contre le rejet d'un dossier de surendettement",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R993",
-            "category": "administration"
+            "category": "finances"
         },
         {
             "id": "R994",
             "label": "Demande de mise en place de mesures imposées par la commission de surendettement",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R994",
-            "category": "divers"
+            "category": "finances"
         },
         {
             "id": "R997",
@@ -2024,7 +2028,7 @@
             "id": "R998",
             "label": "Rédiger sa déclaration de concubinage",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R998",
-            "category": "divers"
+            "category": "famille"
         }
     ]
 }
