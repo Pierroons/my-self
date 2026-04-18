@@ -785,56 +785,96 @@
 <!-- ============================================================ -->
 
 <section id="api">
-  <h2>API SelfAct</h2>
+  <h2>API SelfAct — opérationnelle</h2>
 
   <p>
-    SelfAct expose une API JSON minimale pour les IA ou applications tierces qui souhaitent
-    consommer les templates ou calculer des délais. L'API ne stocke rien côté serveur (stateless).
+    SelfAct expose une API JSON accessible à toute IA ou application tierce pour
+    indexer le catalogue service-public.fr et produire des brouillons filigranés.
+    L'API est stateless (aucun stockage côté serveur), rate-limitée, et publique.
   </p>
 
-  <details>
-    <summary>GET /api/templates</summary>
-    <p>Retourne la liste des types d'actes disponibles.</p>
-    <pre class="template">GET https://justice.my-self.fr/act/api/templates
+  <details open>
+    <summary><code>GET /act/api/find?list=1</code></summary>
+    <p>Retourne la liste des situations indexées (slugs + labels + compteurs d'actes).</p>
+    <pre class="template">GET https://justice.my-self.fr/act/api/find?list=1
 
 Response :
 {
   "ok": true,
-  "templates": [
-    { "id": "mise-en-demeure",       "title": "Mise en demeure",                "category": "civil" },
-    { "id": "saisine-conciliateur",  "title": "Saisine conciliateur de justice", "category": "civil" },
-    { "id": "plainte-simple",        "title": "Plainte simple",                  "category": "penal" },
-    { "id": "saisine-defenseur-droits", "title": "Saisine Défenseur des droits", "category": "civil" }
+  "meta": { "version": "2026.04", "source": "service-public.fr (Etalab 2.0)" },
+  "situations": [
+    { "slug": "impaye_commercial_loyer", "label": "Impayé commercial ou loyer en retard", "acts_count": 2 },
+    { "slug": "voisinage_nuisances", "label": "Conflit de voisinage", "acts_count": 2 },
+    { "slug": "infraction_penale_victime", "label": "Vol, escroquerie, menaces", "acts_count": 3 },
+    ...
   ]
 }</pre>
   </details>
 
   <details>
-    <summary>GET /api/template?id=mise-en-demeure</summary>
-    <p>Retourne le template markdown brut pour remplissage.</p>
-  </details>
-
-  <details>
-    <summary>GET /api/deadline?type=prescription_civile&amp;start=2026-04-18</summary>
-    <p>Calcule une date-butoir depuis une date de départ et un type de délai.</p>
-    <pre class="template">GET https://justice.my-self.fr/act/api/deadline?type=prescription_civile&amp;start=2026-04-18
+    <summary><code>GET /act/api/find?situation=&lt;slug&gt;</code></summary>
+    <p>Retourne les actes recommandés pour une situation, classés par priorité :
+      official > simulator > info_only > lawyer_required. Les urgences (enfant en danger,
+      cyberharcèlement) remontent un numéro d'appel en premier.</p>
+    <pre class="template">GET https://justice.my-self.fr/act/api/find?situation=voisinage_nuisances
 
 Response :
 {
   "ok": true,
-  "type": "prescription_civile",
-  "article_ref": "art. 2224 C. civ.",
-  "duration_days": 1826,
-  "start": "2026-04-18",
-  "deadline": "2031-04-18",
-  "rule_applied": "5 ans",
-  "is_weekend_or_holiday": false
+  "slug": "voisinage_nuisances",
+  "label": "Conflit de voisinage (nuisances, empiètement, bruit)",
+  "acts": [
+    { "type": "signalement_nuisances", "status": "simulator", "label": "Simulateur officiel ...", "url": "https://..." },
+    { "type": "saisine_conciliateur", "status": "info_only", "label": "Saisine du conciliateur ...", "url": "https://..." }
+  ],
+  "articles": "art. 1240 C. civ., art. R. 1336-5 C. santé publique",
+  "fallback": {
+    "if_no_official_match": "Use /act/api/draft ...",
+    "draft_url": "https://justice.my-self.fr/act/api/draft"
+  }
 }</pre>
   </details>
 
   <details>
-    <summary>GET /api/cross-ref?act=mise-en-demeure</summary>
-    <p>Retourne la liste des articles cités dans un acte, avec liens vers SelfJustice pour vérification.</p>
+    <summary><code>POST /act/api/draft</code> — produit un brouillon HTML avec filigrane</summary>
+    <p>
+      Dernier recours seulement : quand aucun modèle officiel service-public.fr ne convient,
+      cet endpoint renvoie une page HTML prête à imprimer en PDF (Ctrl+P → Enregistrer
+      au format PDF). Le filigrane SVG diagonal <strong>NON OFFICIEL — IRRECEVABLE</strong>
+      reste à l'impression.
+    </p>
+    <pre class="template">POST https://justice.my-self.fr/act/api/draft
+Content-Type: application/json
+
+Body :
+{
+  "type": "mise_en_demeure",
+  "expediteur": { "nom": "...", "adresse": "..." },
+  "destinataire": { "nom": "...", "adresse": "..." },
+  "objet": "...",
+  "faits": "...",
+  "articles": ["art. 1344 C. civ."],
+  "demande": "...",
+  "delai_jours": 15,
+  "manques": ["Date précise des faits", "Montant exact"]
+}
+
+Response : text/html (à ouvrir dans navigateur, Ctrl+P)</pre>
+
+    <p><strong>Pour test rapide :</strong>
+      <a href="/act/api/draft?type=mise_en_demeure" target="_blank" rel="noopener">
+        /act/api/draft?type=mise_en_demeure
+      </a> retourne un exemple vide prêt à remplir.</p>
+  </details>
+
+  <details>
+    <summary>Mise à jour des données</summary>
+    <p>La base d'actes (<code>situations.json</code>) est mise à jour de façon bimensuelle
+    (1<sup>er</sup> + 15 de chaque mois), alignée sur la cadence SelfJustice pour
+    cohérence écosystème MySelf.</p>
+    <p>Version actuelle : <code>2026.04</code>. Nombre de situations : 12. Sources :
+    service-public.fr (Etalab 2.0), defenseurdesdroits.fr, internet-signalement.gouv.fr,
+    3018 (e-Enfance), 119 (SNATED).</p>
   </details>
 </section>
 
