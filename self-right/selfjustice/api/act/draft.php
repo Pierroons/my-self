@@ -124,9 +124,8 @@ header('X-Content-Type-Options: nosniff');
     background: #fff;
   }
 
-  /* Layout global — padding ÉCRAN only, pas à l'impression (@page gère) */
+  /* Layout global — dimensions A4 réelles en écran, auto en impression */
   .page {
-    max-width: 720px;
     margin: 0 auto;
     position: relative;
     background: #fff;
@@ -163,20 +162,24 @@ header('X-Content-Type-Options: nosniff');
     body {
       background: #e0e0e0;
       padding: 2rem 1rem;
+      overflow-x: auto;  /* scroll horizontal si viewport < 21cm */
     }
-    /* En écran : padding + ombre pour simuler une feuille A4 */
+    /* En écran : vraies dimensions A4 pour visualiser comme à l'impression */
     .page {
-      padding: 2cm 2cm;
-      margin-top: 1rem;
-      margin-bottom: 2rem;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      width: 21cm;              /* A4 largeur */
+      min-height: 29.7cm;       /* A4 hauteur */
+      padding: 1.8cm 1.8cm;     /* mêmes marges que @page pour cohérence */
+      margin: 1rem auto 2rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
       border: 1px solid #ccc;
+      box-sizing: border-box;
     }
   }
 
   /* Toolbar d'impression (écran seulement) */
   .toolbar {
-    max-width: 720px;
+    width: 21cm;
+    max-width: 100%;
     margin: 0 auto 1.5rem;
     padding: 1rem 1.5rem;
     background: #fff8dc;
