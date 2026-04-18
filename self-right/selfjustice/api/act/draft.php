@@ -66,6 +66,39 @@ if ($method === 'POST') {
         'articles' => [],
         'demande' => '[Action demandée]',
     ];
+
+    // Mode démo "long" pour visualiser un document sur 2 pages
+    if (($_GET['demo'] ?? '') === 'long') {
+        $data = [
+            'type' => $_GET['type'] ?? 'mise_en_demeure',
+            'expediteur' => [
+                'nom'     => 'Mme Sophie MARTIN',
+                'adresse' => "17 rue des Lilas\n75011 Paris\ntél. : 06 12 34 56 78\nemail : sophie.martin.exemple@proton.me",
+            ],
+            'destinataire' => [
+                'nom'     => 'Monsieur le Directeur\nSARL BATIMENTS RAPIDES',
+                'adresse' => "128 avenue des Artisans\nZAC du Clos Noir\n77100 Meaux",
+            ],
+            'objet' => "Mise en demeure de terminer les travaux de rénovation de toiture, de remettre en état les surfaces dégradées par vos équipes, et de régler les dommages consécutifs aux infiltrations d'eau constatées depuis le 14 mars 2026",
+            'faits' => "Le 2 février 2026, j'ai signé avec votre société le devis n° 2026-DV-0412 (copie ci-jointe, pièce n° 1) pour la rénovation complète de la toiture de mon habitation principale, pour un montant de 14 800 € TTC. Le chantier devait débuter le 10 février et s'achever au plus tard le 10 mars 2026 selon l'article 4 du devis.\n\nLes équipes sont effectivement arrivées le 12 février avec deux jours de retard, et ont entamé le démontage de la couverture existante sans mettre en place les bâches de protection pourtant prévues au devis (point 3.2). Dès le 14 février, une forte pluie a occasionné des infiltrations dans les combles, dégradant l'isolation, les plafonds des deux chambres de l'étage, et du matériel de musique stocké dans le grenier (constat ci-joint, pièce n° 2).\n\nJ'ai immédiatement alerté votre conducteur de travaux, M. DURAND, qui a promis l'intervention sous 48h de l'entreprise d'assainissement partenaire. Cette intervention n'a jamais eu lieu malgré trois relances téléphoniques (les 15, 18 et 22 février), toutes consignées par écrit par SMS horodatés.\n\nLe chantier a été abandonné le 6 mars 2026 alors que seules 40% des tuiles avaient été posées. Aucune explication ne m'a été fournie ni par M. DURAND ni par la direction de votre société malgré deux courriels recommandés électroniques (les 7 et 14 mars, pièces n° 4 et 5).\n\nDepuis cette date, la maison n'est plus étanche et chaque épisode pluvieux aggrave les dégâts. Mes assurances (MAIF, contrat habitation n° H2024-0991) menacent de refuser toute prise en charge si je ne démontre pas la responsabilité de votre société d'ici le 20 mai 2026.\n\nJ'ai dû engager des travaux d'urgence (bâchage provisoire et évacuation d'eau) pour 1 280 € (facture ci-jointe, pièce n° 6). Les dégâts structurels sur l'isolation en laine minérale et les plafonds BA13 sont estimés par un artisan concurrent à 5 850 € (devis comparatif pièce n° 7). Le matériel de musique endommagé (un piano droit Yamaha U1 acheté 3 400 € en 2018, une guitare classique de luthier) est en cours d'expertise par un facteur d'instruments agréé.\n\nAu-delà du préjudice matériel, le stress généré par cette situation (trois enfants en bas âge, chambres inhabitables, hébergement temporaire chez mes parents pendant 12 nuits) constitue un trouble manifeste de jouissance dont il sera demandé réparation en cas de procédure contentieuse.",
+            'articles' => [
+                'art. 1103 C. civ. (force obligatoire du contrat)',
+                'art. 1217 C. civ. (inexécution — droits du créancier)',
+                'art. 1231-1 C. civ. (dommages-intérêts pour inexécution)',
+                'art. 1344 C. civ. (mise en demeure)',
+                'art. 1792 C. civ. (garantie décennale — dommages compromettant solidité)',
+            ],
+            'demande' => "achever les travaux conformément au devis signé, procéder aux réparations des dégâts consécutifs à votre négligence (plafonds, isolation, matériel endommagé, dont le détail figure en pièce n° 3), et me régler la somme de 8 430 € au titre des préjudices immédiatement chiffrables",
+            'delai_jours' => 15,
+            'manques' => [
+                'Devis original signé non encore scanné (seule une copie photo brouillée est disponible)',
+                'Expertise indépendante de chiffrage des dégâts (devis d\'un contre-expert pas encore obtenu)',
+                'Relevés météo officiels de Meteo France pour les 14 et 15 février 2026 (à télécharger pour preuve)',
+                'Confirmation écrite du refus de l\'assureur (pour l\'instant uniquement oral au téléphone)',
+                'Photos datées des dégâts avant/après (3 photos existent mais non-horodatées par un tiers)',
+            ],
+        ];
+    }
 } else {
     http_response_code(405);
     exit;
@@ -164,15 +197,38 @@ header('X-Content-Type-Options: nosniff');
       padding: 2rem 1rem;
       overflow-x: auto;  /* scroll horizontal si viewport < 21cm */
     }
-    /* En écran : vraies dimensions A4 pour visualiser comme à l'impression */
+    /* En écran : vraies dimensions A4, avec indicateur visuel de coupure
+       toutes les 29.7 cm (là où l'impression va casser en page suivante) */
     .page {
       width: 21cm;              /* A4 largeur */
-      min-height: 29.7cm;       /* A4 hauteur */
-      padding: 1.8cm 1.8cm;     /* mêmes marges que @page pour cohérence */
+      min-height: 29.7cm;       /* A4 hauteur minimum */
+      padding: 1.8cm 1.8cm;     /* mêmes marges que @page */
       margin: 1rem auto 2rem;
       box-shadow: 0 4px 20px rgba(0,0,0,0.15);
       border: 1px solid #ccc;
       box-sizing: border-box;
+
+      /* Ligne pointillée tous les 29.7cm pour matérialiser les coupures
+         A4 à l'impression. Non imprimée (cachée par @media print). */
+      background-image: repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent calc(29.7cm - 2px),
+        #b81e1e calc(29.7cm - 2px),
+        #b81e1e 29.7cm,
+        transparent 29.7cm,
+        transparent calc(29.7cm + 18px),
+        #999 calc(29.7cm + 18px),
+        #999 calc(29.7cm + 19px),
+        transparent calc(29.7cm + 19px)
+      );
+      background-repeat: repeat-y;
+      background-size: 100% calc(29.7cm + 20px);
+    }
+  }
+  @media print {
+    .page {
+      background-image: none !important;  /* supprime la ligne de coupure à l'impression */
     }
   }
 
