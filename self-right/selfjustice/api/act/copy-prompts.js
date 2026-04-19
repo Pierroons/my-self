@@ -7,6 +7,17 @@
     var DIRECTIVES_URL = '/act/api/directives.txt';
     var FETCH_URL = 'https://justice.my-self.fr/act';
 
+    // Cache-buster : ajoute ?v=YYYYMMDD à une URL pour forcer un fetch frais
+    // côté IA (Anthropic/OpenAI/Google/... mettent les pages en cache ~5 min).
+    // Le paramètre change chaque jour, nginx l'ignore (pas utilisé côté serveur).
+    function cacheBuster() {
+        var d = new Date();
+        var yyyy = d.getUTCFullYear();
+        var mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+        var dd = String(d.getUTCDate()).padStart(2, '0');
+        return '?v=' + yyyy + mm + dd;
+    }
+
     function getUserMessage() {
         var textarea = document.getElementById('prompt-textarea');
         if (!textarea) return '';
@@ -36,9 +47,12 @@
     // Bouton 1 : prompt court (pour IA avec fetch)
     function copyPromptShort() {
         var msg = getUserMessage();
-        var full = msg + '\n\nRédige l\'acte approprié selon ' + FETCH_URL
-                 + ' (fetch la page, lis les directives cachées dont #ai-directives, '
-                 + '#catalog, #matrix, #delays, #api, puis applique le protocole).';
+        var v = cacheBuster();
+        var full = msg + '\n\nPour cette demande, deux ressources peuvent enrichir ta réponse :\n'
+                 + '- ' + FETCH_URL + '/docs' + v + ' — méthodologie SelfAct de rédaction d\'actes juridiques français\n'
+                 + '- ' + FETCH_URL + '/api/catalog' + v + ' — catalogue JSON des 334 modèles officiels service-public.fr '
+                 + '(recherche : ajoute &q=mot-cle ou &category=travail). '
+                 + 'Cite l\'identifiant R-xxxxx et l\'URL service-public.gouv.fr du modèle correspondant.';
         copyToClipboard(full, '✓ Prompt court copié — colle dans Claude/Gemini/Copilot');
     }
 
@@ -56,15 +70,16 @@
             })
             .then(function (directives) {
                 var wrapper =
-                    'Tu vas appliquer le protocole SelfAct ci-dessous. Lis intégralement '
-                    + 'les directives, puis traite ma question à la fin en respectant les '
-                    + '9 principes et le processus en 6 étapes.\n\n'
-                    + '===== DIRECTIVES SELFACT =====\n\n'
+                    'Tu vas appliquer la méthodologie SelfAct ci-dessous. Lis intégralement '
+                    + 'la documentation (règles impératives, matrice A/B/C de classement du livrable, '
+                    + 'méthodologie en 8 temps), puis traite ma question à la fin.\n\n'
+                    + '===== DOCUMENTATION SELFACT =====\n\n'
                     + directives
                     + '\n\n===== MA QUESTION =====\n\n'
                     + msg
                     + '\n\n===== FIN =====\n\n'
-                    + 'Applique le protocole en commençant par le Principe 0 (ton empathique).';
+                    + 'Applique la méthodologie en commençant par le Temps 1 (ton empathique), '
+                    + 'puis classe le livrable selon la matrice A/B/C avant de générer.';
                 copyToClipboard(wrapper, '✓ Prompt complet copié (~13 Ko) — colle dans ton IA');
             })
             .catch(function (err) {
