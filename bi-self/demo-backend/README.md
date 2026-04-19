@@ -300,8 +300,9 @@ Un dashboard admin est prévu pour agréger ça (voir roadmap SPEC.md).
 
 ## 10. Licence & contribution
 
-MIT, comme le reste du repo MySelf. Les contributions via PR GitHub sont
-bienvenues après la release de la session 7 (polish final). D'ici là,
-ouvre plutôt une issue pour les remarques — le code bouge beaucoup.
+AGPL-3.0-or-later, comme le reste du repo MySelf (bascule depuis MIT le
+19/04/2026). Les contributions via PR GitHub sont bienvenues après la
+release de la session 7 (polish final). D'ici là, ouvre plutôt une issue
+pour les remarques — le code bouge beaucoup.
 
 *Partie de [MySelf](https://github.com/Pierroons/my-self) — Be yourself, for yourself.*

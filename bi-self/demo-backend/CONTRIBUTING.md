@@ -86,4 +86,4 @@ No hot-reload — PHP-FPM picks up file changes on the next request.
 
 ## Licence
 
-MIT (see repo root). By contributing, you agree your work is distributed under MIT.
+AGPL-3.0-or-later (see repo root). By contributing, you agree your work is distributed under AGPL-3.0-or-later. Historical contributions made before 2026-04-19 remain licensed under the MIT License they were originally submitted under.

@@ -403,7 +403,7 @@ SelfRecover is not a replacement for WebAuthn. It is a complement, especially fo
 
 ## 15. Contributing
 
-SelfRecover is open source under the MIT license.
+SelfRecover is open source under the AGPL-3.0-or-later license (switched from MIT on 2026-04-19).
 
 - Security audits and penetration testing welcome
 - Implementation feedback from production deployments

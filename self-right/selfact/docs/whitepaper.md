@@ -113,7 +113,7 @@ Target deployment: `justice.my-self.fr/act` as a sub-path of the existing SelfJu
 
 # 7. License & contribution
 
-MIT. Contributions welcome for: additional templates, additional CERFA, additional jurisdictions (Belgium, Luxembourg, Québec). Legal reviewers welcome — every template should be validated by a lawyer familiar with the domain.
+AGPL-3.0-or-later (since 2026-04-19; earlier releases were MIT and remain so under their original terms). Contributions welcome for: additional templates, additional CERFA, additional jurisdictions (Belgium, Luxembourg, Québec). Legal reviewers welcome — every template should be validated by a lawyer familiar with the domain.
 
 # 8. References
 

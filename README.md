@@ -7,7 +7,7 @@
 > The human provides entropy. The machine provides impartiality.
 > Neither is enough alone. Together, they are sovereign.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-Raspberry%20Pi-blue.svg)](#requirements)
 [![Zero cloud](https://img.shields.io/badge/cloud-zero-brightgreen.svg)](#philosophy)
 [![Zero tracking](https://img.shields.io/badge/tracking-zero-brightgreen.svg)](#philosophy)
@@ -113,7 +113,7 @@ what you want to control.
 
 ## Philosophy
 
-- **Open source** (MIT) — open code, community audit, no black box
+- **Open source** (AGPL v3) — open code, community audit, no black box, and anything built on top of MySelf must stay libre too
 - **Self-hosted** — runs on a Raspberry Pi or your own server
 - **Zero cloud, zero tracking, zero centralized database**
 - **Sovereign by design** — the user keeps full control of identity, data, keys
@@ -169,8 +169,10 @@ Apple Pay, Google Pay, PayPal. Minimal commission, independent pro account.
 
 ## License
 
-[MIT](LICENSE) — do whatever you want, but don't blame me if your cat
-unlocks your car.
+[AGPL-3.0-or-later](LICENSE) — strong copyleft. You can use it, modify
+it, self-host it. If you build a service on top of MySelf and offer it
+to others, you must publish your modifications too. Historical MIT
+releases (before 2026-04-19) remain under their original terms.
 
 ---
 

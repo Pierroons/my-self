@@ -4,7 +4,7 @@
 
 **Moteur de modération communautaire autonome par raisonnement social**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0%20whitepaper-orange.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
@@ -72,7 +72,7 @@ La punition n'est pas technique — elle est sociale.
 
 ## Licence
 
-MIT
+AGPL-3.0-or-later — voir le fichier [`LICENSE`](../../LICENSE) à la racine.
 
 ## Auteur
 

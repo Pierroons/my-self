@@ -4,7 +4,7 @@
 
 **Autonomous community moderation engine through social reasoning**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0%20whitepaper-orange.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
@@ -72,7 +72,7 @@ The punishment isn't technical — it's social.
 
 ## License
 
-MIT
+AGPL-3.0-or-later — see the root [`LICENSE`](../../LICENSE).
 
 ## Author
 

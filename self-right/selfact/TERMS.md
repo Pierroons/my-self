@@ -1,6 +1,6 @@
 # SelfAct — Conditions d'utilisation
 
-Version **v0.1.0** — 18 avril 2026 · Licence MIT (code) · Données sous licence Etalab 2.0 (modèles service-public.fr)
+Version **v0.1.0** — 18 avril 2026 · Licence AGPL-3.0-or-later (code, depuis le 19/04/2026) · Données sous licence Etalab 2.0 (modèles service-public.fr)
 
 ## 1. Nature du service
 
@@ -22,7 +22,7 @@ SelfAct est un **outil d'indexation** du catalogue des modèles de lettres offic
 
 **SelfAct est un outil de formatage de données**, comparable à un moteur de recherche spécialisé ou un agrégateur de contenus publics. Il ne constitue pas un service de paiement, ne détient aucun fonds, ne traite aucune donnée personnelle de tiers, n'exige aucun agrément (DSP2, ACPR, etc.).
 
-Code source MIT, déployable par toute personne, hébergement au choix.
+Code source AGPL-3.0-or-later, déployable par toute personne, hébergement au choix.
 
 ## 3. Modèles officiels redirigés
 
@@ -66,7 +66,7 @@ Aucune garantie de disponibilité (99.x%) n'est offerte. Le service est fourni e
 
 ## 8. Licence du code SelfAct
 
-Code source sous **licence MIT** — voir [LICENSE](../../LICENSE) à la racine du repo.
+Code source sous **licence AGPL-3.0-or-later** (bascule depuis MIT le 19/04/2026) — voir [LICENSE](../../LICENSE) à la racine du repo.
 
 ## 9. Contact
 

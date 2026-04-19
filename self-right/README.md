@@ -6,7 +6,7 @@
 
 > *Know your rights, make them right.*
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
 [![SelfJustice: v0.1.0](https://img.shields.io/badge/SelfJustice-v0.1.0-green.svg)](./selfjustice/)
 [![SelfAct: alpha 0.0.1](https://img.shields.io/badge/SelfAct-alpha%200.0.1-lightgrey.svg)](./selfact/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
