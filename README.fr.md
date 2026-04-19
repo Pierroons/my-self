@@ -7,7 +7,7 @@
 > L'humain apporte l'entropie. La machine apporte l'impartialité.
 > Aucun des deux ne suffit seul. Ensemble, ils sont souverains.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Auto-hébergé](https://img.shields.io/badge/auto--hébergé-Raspberry%20Pi-blue.svg)](#prérequis)
 [![Zero cloud](https://img.shields.io/badge/cloud-zéro-brightgreen.svg)](#philosophie)
 [![Zero tracking](https://img.shields.io/badge/tracking-zéro-brightgreen.svg)](#philosophie)
@@ -116,7 +116,7 @@ tu veux contrôler.
 
 ## Philosophie
 
-- **Open source** (MIT) — code ouvert, audit communautaire, pas de boîte noire
+- **Open source** (AGPL v3) — code ouvert, audit communautaire, pas de boîte noire, et tout ce qui se construit sur MySelf doit aussi rester libre
 - **Auto-hébergé** — tourne sur un Raspberry Pi ou ton propre serveur
 - **Zéro cloud, zéro tracking, zéro base de données centralisée**
 - **Souveraineté par conception** — l'utilisateur garde le contrôle total
@@ -166,8 +166,11 @@ Chaque module a son propre `CONTRIBUTING.md`. L'esprit :
 
 ## Licence
 
-[MIT](LICENSE) — fais-en ce que tu veux, mais ne me blâme pas si ton chat
-déverrouille ta voiture.
+[AGPL-3.0-or-later](LICENSE) — copyleft fort. Tu peux l'utiliser, le
+modifier, l'auto-héberger. Si tu bâtis un service au-dessus de MySelf
+et que tu le proposes à d'autres, tu dois aussi publier tes modifications.
+Les versions historiques sous MIT (avant le 19/04/2026) restent sous
+leurs termes d'origine.
 
 ---
 

@@ -4,7 +4,7 @@
 
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par domaine, pas de SMTP, pas de tiers.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0-green.svg)](#statut)
 [![Production tested](https://img.shields.io/badge/production%20tested-ARC%20PVE%20Hub-green.svg)](https://arc.rpi4server.ovh)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
@@ -247,7 +247,7 @@ Divulgations de sécurité : voir [SECURITY.md](SECURITY.md).
 
 ## Licence
 
-[MIT](LICENSE) — fais ce que tu veux, mais ne me blâme pas si ton chat te réveille à 4h du matin.
+[AGPL-3.0-or-later](../../LICENSE) — copyleft fort. Utilise-le, modifie-le, auto-héberge-le. Si tu bâtis un service au-dessus de SelfRecover et que tu le proposes à d'autres, tu dois aussi publier tes modifications.
 
 ---
 

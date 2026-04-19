@@ -4,7 +4,7 @@
 
 **Impartial legal pre-analysis powered by AI-readable directives — served over a free public API.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0-green.svg)](#status)
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.md)
@@ -222,7 +222,7 @@ The human provides entropy (lived experience, facts). The machine provides impar
 
 ## License
 
-[MIT](../../LICENSE) — use it, fork it, host your own.
+[AGPL-3.0-or-later](../../LICENSE) — use it, fork it, host your own. If you run a modified version as a service, you must publish your modifications.
 
 ---
 

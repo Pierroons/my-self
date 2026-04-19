@@ -4,7 +4,7 @@
 
 **Zero-email account recovery protocol** — split knowledge, HMAC per domain, no SMTP, no third party.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0-green.svg)](#status)
 [![Production tested](https://img.shields.io/badge/production%20tested-ARC%20PVE%20Hub-green.svg)](https://arc.rpi4server.ovh)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
@@ -246,7 +246,7 @@ Security disclosures: see [SECURITY.md](SECURITY.md).
 
 ## License
 
-[MIT](LICENSE) — do whatever you want, but don't blame me if your cat wakes you up at 4am.
+[AGPL-3.0-or-later](../../LICENSE) — strong copyleft. Use it, modify it, self-host it. If you build a service on top of SelfRecover and offer it to others, you must publish your modifications too.
 
 ---
 

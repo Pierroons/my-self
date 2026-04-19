@@ -4,7 +4,7 @@
 
 **Pré-analyse juridique impartiale par directives lisibles par IA — servie via une API publique gratuite.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)
+[![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0-green.svg)](#statut)
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
@@ -223,7 +223,7 @@ L'humain apporte l'entropie (vécu, faits). La machine apporte l'impartialité (
 
 ## Licence
 
-[MIT](../../LICENSE) — utilisez, forkez, hébergez le vôtre.
+[AGPL-3.0-or-later](../../LICENSE) — utilisez, forkez, hébergez le vôtre. Si vous faites tourner une version modifiée en service, vous devez publier vos modifications.
 
 ---
 

@@ -30,7 +30,7 @@ Thanks for your interest! SelfRecover is at **concept stage** — the protocol i
 
 ## License of contributions
 
-By contributing, you agree that your contributions will be licensed under the MIT License (see [LICENSE](LICENSE)).
+By contributing, you agree that your contributions will be licensed under the AGPL-3.0-or-later license (see [LICENSE](../../LICENSE) at the repo root). Historical contributions made before 2026-04-19 remain licensed under the MIT License they were originally submitted under.
 
 ---
 

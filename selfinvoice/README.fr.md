@@ -4,7 +4,7 @@
 
 **Générateur de factures conformes — PDF, mentions légales, zéro cloud.**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](../../LICENSE)
+[![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: alpha 0.0.1](https://img.shields.io/badge/status-alpha%200.0.1-lightgrey.svg)](#statut)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
