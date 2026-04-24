@@ -38,7 +38,8 @@ individual sovereign over their own identity, rights, data, and possessions.
 | [SelfAct](https://justice.my-self.fr/act) | How do you act on them? | beta v0.1.2 ✅ |
 | [SelfGuard](./self-security/selfguard/) | How do you protect your data? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | How do you protect your things? | concept |
-| [SelfInvoice](./selfinvoice/) | How do you bill clients? | idea |
+| [SelfInvoice](./selfinvoice/) | How do you bill clients? | beta (Factur-X native) |
+| **[SelfFarm-Lite](https://selffarm.my-self.fr)** | **How do you run your farm?** | **v0.2 live ✅** |
 
 ---
 
@@ -87,25 +88,77 @@ is required to unlock.
 
 ### SelfInvoice — compliant invoicing, local-first
 
-Generates legally compliant PDF invoices (legal mentions, VAT exemption,
-bordereaux) — no cloud, no subscription, no fund custody. The client pays
-via a standard SEPA transfer to the IBAN displayed on the invoice.
+Generates legally compliant PDF invoices with **native Factur-X** support
+(PDF/A-3 + XML CII, EN16931 profile — mandatory in France from September
+2026 for reception, 2027-2028 for emission). Multi-regime: franchise VAT
+(art. 293 B CGI), micro-BA, réel simplifié/normal. No cloud, no subscription,
+no fund custody. The client pays via a standard SEPA transfer to the IBAN
+displayed on the invoice.
 
 > *Your invoice. Your template. Your data. Done.*
 
 ---
 
+## Application layer — SelfFarm-Lite
+
+When the three pillars hold, **applications can be built on top of them**.
+SelfFarm-Lite is the first such application: a full farm-management stack
+for young farmers (JA), new installers (NA), small operations (AGRI) and
+agri-SMEs (PME).
+
+> *When identity, law, and security are in place, individuals can build.*
+
+SelfFarm-Lite contains 7 modules that all feed **a single central
+accounting hub** (`self_agri_book`):
+
+| Module | Role |
+|--------|------|
+| `self_agri_book` | **Central accounting hub** — journal, ledger, trial balance, profit & loss, balance sheet, FEC DGFIP export (conformant with L47 A-I LPF) |
+| `self_invoice` | Factur-X native invoicing (BASIC / EN16931 / EXTENDED) — auto-writes 411/701 to the hub |
+| `self_dnja` | French young-farmer business-plan engine — 4-year forecast + official CDOA PDF |
+| `self_aid` | Public aid catalog, sourced from primary authorities (Légifrance, BOFiP, FranceAgriMer, MSA, regional portals) |
+| `self_banking` | Fake-first bank statement parsers (Société Générale done, CA/CM/Boursorama to come). Imports populate the hub with 512/411 auto-reconciliation, recurring direct debits, bank fees |
+| `self_parcelles` | Cartographic view of plots via IGN Géoportail (cadastre overlay + WFS search) |
+| `self_achats` | Supplier purchases (seeds, fuel, insurance) — 6xxx/401 to the hub |
+
+**Hub-centric architecture**: every module feeds the same
+`ecritures_comptables` SQLite table. Zero double-entry. Dedup guaranteed by
+`(source_module, source_id)` uniqueness. Single source of truth for
+accountant, tax office, and the farmer themselves.
+
+**Live demo**: https://selffarm.my-self.fr
+
+**Philosophy match**: SelfFarm-Lite uses the three MySelf pillars underneath:
+- **Bi-Self**: sign legal documents with your SelfRecover identity, contribute
+  to the shared aids catalog via SelfModerate
+- **Self-Right**: SelfJustice for agricultural litigation (sharecropping,
+  bailleur/preneur, regulatory disputes), SelfAct for CERFA forms (PAC
+  declarations, etc.)
+- **Self-Security**: SelfGuard for sensitive banking credentials, SelfKeyGuard
+  for hardware 2FA on tractors/greenhouses/warehouses
+
+The same pattern can be applied to **any other profession**: `SelfClinic-Lite`
+for independent health practitioners, `SelfCraft-Lite` for artisans,
+`SelfStore-Lite` for retail, etc. SelfFarm-Lite is the first proof that the
+three pillars are load-bearing.
+
+---
+
 ## The big picture
 
-MySelf addresses the **complete person** through three pillars:
+MySelf addresses the **complete person** through three pillars and one
+application layer:
 
-| Pillar | Dimension |
-|--------|-----------|
+| Layer | Dimension |
+|-------|-----------|
 | **Bi-Self** | Social — who you are and how you interact |
 | **Self-Right** | Legal — what you can defend by law |
 | **Self-Security** | Material — what you protect concretely |
+| **SelfFarm-Lite** (application layer) | Professional — what you build and operate |
 
-Three pillars, two modules each, plus the standalone SelfInvoice module.
+Three pillars, two modules each, plus SelfInvoice as a standalone module,
+plus SelfFarm-Lite as the first application layer on top.
+
 No module is mandatory. You pick what matches your needs and self-host
 what you want to control.
 
