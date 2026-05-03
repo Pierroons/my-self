@@ -14,37 +14,79 @@
  * Use this to understand the core protocol, not for production.
  */
 
-function generateDiceware(int $count = 4): string {
-    // Minimal diceware: 128 simple English words for the demo.
-    // In production, use a full 7776-word list (EFF, diceware).
-    $words = [
-        'apple','bread','chair','drift','eagle','flame','grain','honey',
-        'ivory','jelly','karma','lemon','mango','nylon','olive','panda',
-        'quark','raven','sugar','tiger','ultra','vivid','willow','xenon',
-        'yacht','zebra','amber','brook','cloud','drown','elm','frost',
-        'ghost','harp','ivy','jade','kite','lily','moss','niche',
-        'oak','pine','quill','rose','silk','tulip','urn','vine',
-        'wolf','yew','zeal','amber','blaze','crane','dune','echo',
-        'fern','glow','hail','iris','jolt','kiln','loom','mist',
-        'noon','orbit','pearl','quail','river','sand','torch','unit',
-        'valor','wave','xray','yarn','zest','alpha','bolt','cedar',
-        'dawn','elm','fang','grove','hush','idle','jazz','keen',
-        'lake','moon','neat','opal','path','quiet','rush','slate',
-        'twin','user','vast','wave','yogi','zing','acorn','brick',
-        'crown','delta','emerald','forest','gold','hazel','iron','jet',
-        'knight','linen','maze','nova','onyx','plum','quartz','ruby',
-        'steel','topaz','urban','velvet','willow','xerox','yellow','zipper'
-    ];
-    $arr = [];
+/**
+ * Charge la wordlist EFF officielle (7776 mots) depuis le fichier versionné.
+ * Convention MySelf : sources officielles dès le départ — pas de mini-version
+ * "pour la démo". Tronquer la wordlist dégrade silencieusement l'entropie
+ * (4,9 bits par mot perdus en passant de 7776 à 256 mots).
+ *
+ * Fichier : data/eff_large_wordlist_<lang>.txt — un mot par ligne.
+ * Source originale : https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt
+ *
+ * @param string $lang 'en' ou 'fr' (par défaut 'en')
+ * @return string[] tableau de 7776 mots
+ */
+function loadEffWordlist(string $lang = 'en'): array {
+    static $cache = [];
+    if (isset($cache[$lang])) return $cache[$lang];
+
+    $path = __DIR__ . "/../data/eff_large_wordlist_{$lang}.txt";
+    if (!is_readable($path)) {
+        throw new RuntimeException("Wordlist EFF introuvable : {$path}");
+    }
+    $words = preg_split('/\r?\n/', trim(file_get_contents($path)));
+    $words = array_values(array_filter($words, 'strlen'));
+    if (count($words) !== 7776) {
+        throw new RuntimeException(
+            "Wordlist EFF '{$lang}' invalide : " . count($words) . " mots au lieu de 7776"
+        );
+    }
+    $cache[$lang] = $words;
+    return $words;
+}
+
+/**
+ * Génère une passphrase diceware depuis la wordlist EFF officielle.
+ *
+ * Tirage aléatoire crypto-secure via random_int() + rejection sampling
+ * pour garantir une distribution uniforme sur les 7776 mots.
+ *
+ * Entropie produite (avec EFF 7776 mots) :
+ *   - 4 mots → 51,7 bits  (recommandé minimal)
+ *   - 5 mots → 64,6 bits  (recommandé courant)
+ *   - 6 mots → 77,5 bits  (sensibles : compte admin, sudo)
+ *   - 7 mots → 90,5 bits  (paranoïa raisonnable)
+ *   - 10 mots → 129,3 bits (équivalent AES-128)
+ *
+ * @param int $count nombre de mots (par défaut 4)
+ * @param string $lang 'en' ou 'fr'
+ * @param string $sep séparateur entre mots (par défaut '-')
+ * @return string passphrase générée
+ */
+function generateDiceware(int $count = 4, string $lang = 'en', string $sep = '-'): string {
+    if ($count < 3 || $count > 12) {
+        throw new InvalidArgumentException("Diceware count hors bornes (3-12) : {$count}");
+    }
+    $words = loadEffWordlist($lang);
     $size = count($words);
+    $bound = intdiv(PHP_INT_MAX, $size) * $size; // anti-biais rejection sampling
+
+    $picked = [];
     for ($i = 0; $i < $count; $i++) {
-        // Uniform distribution via rejection sampling
         do {
             $r = random_int(0, PHP_INT_MAX);
-        } while ($r >= (PHP_INT_MAX - (PHP_INT_MAX % $size)));
-        $arr[] = $words[$r % $size];
+        } while ($r >= $bound);
+        $picked[] = $words[$r % $size];
     }
-    return implode('-', $arr);
+    return implode($sep, $picked);
+}
+
+/**
+ * Calcule l'entropie en bits d'une passphrase diceware (mots EFF uniformes).
+ * Formule : count * log2(7776) ≈ count * 12,9248
+ */
+function dicewareEntropyBits(int $count): float {
+    return round($count * log(7776, 2), 2);
 }
 
 function generatePassword(int $len = 10): string {

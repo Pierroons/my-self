@@ -153,6 +153,85 @@
             color: var(--accent);
             text-decoration: none;
         }
+        .muted { color: var(--muted); font-weight: normal; }
+        .mode-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .mode-tab {
+            flex: 1;
+            min-width: 100px;
+            padding: 8px 12px;
+            background: var(--bg);
+            color: var(--muted);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            font-family: inherit;
+        }
+        .mode-tab.active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+        .mode-panel.hidden { display: none; }
+        select, input[type="range"] {
+            width: 100%;
+            padding: 8px 10px;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: inherit;
+        }
+        input[type="range"] {
+            padding: 6px 0;
+            accent-color: var(--accent);
+        }
+        .passphrase-output {
+            margin-top: 16px;
+            padding: 14px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.95rem;
+            min-height: 60px;
+            word-break: break-all;
+        }
+        .passphrase-output:empty::before {
+            content: "(la passphrase générée s'affichera ici)";
+            color: var(--muted);
+            font-style: italic;
+        }
+        .entropy-bar {
+            margin-top: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-family: -apple-system, system-ui, sans-serif;
+            font-size: 0.85rem;
+        }
+        .entropy-bar-track {
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .entropy-bar-fill {
+            height: 100%;
+            transition: width 0.3s, background-color 0.3s;
+        }
+        .entropy-meta {
+            display: flex;
+            justify-content: space-between;
+            color: var(--muted);
+            font-size: 0.75rem;
+        }
     </style>
 </head>
 <body>
@@ -165,6 +244,7 @@
             <button class="tab" onclick="showTab('login')">Login</button>
             <button class="tab" onclick="showTab('recoverL1')">Recover L1</button>
             <button class="tab" onclick="showTab('recoverL2')">Recover L2</button>
+            <button class="tab" onclick="showTab('entropy')">Entropy Lab</button>
         </div>
 
         <!-- REGISTER -->
@@ -223,6 +303,73 @@
             <div id="l1-result"></div>
         </div>
 
+        <!-- ENTROPY LAB -->
+        <div id="panel-entropy" class="panel hidden">
+            <h2>Entropy Lab — Trois modes de passphrase</h2>
+            <p class="desc">
+                Tout est calculé dans le navigateur — aucune passphrase ne quitte cette page.
+                Convention SelfRecover : wordlist EFF officielle (7 776 mots, CC-BY 3.0),
+                jamais de mini-version "pour la démo".
+            </p>
+
+            <div class="mode-tabs">
+                <button class="mode-tab active" data-mode="diceware" onclick="selectMode('diceware')">Diceware standard</button>
+                <button class="mode-tab" data-mode="free" onclick="selectMode('free')">Passphrase libre</button>
+                <button class="mode-tab" data-mode="hybrid" onclick="selectMode('hybrid')">Hybride</button>
+            </div>
+
+            <!-- Mode 1 : Diceware standard -->
+            <div id="mode-diceware" class="mode-panel">
+                <div class="form-group">
+                    <label>Langue</label>
+                    <select id="dw-lang">
+                        <option value="en">EN — EFF Large Wordlist</option>
+                        <option value="fr">FR — Liste équivalente 7776 mots</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Nombre de mots <span id="dw-count-display" class="muted">4</span></label>
+                    <input type="range" id="dw-count" min="3" max="10" value="4" class="slider">
+                </div>
+                <button class="btn" onclick="generateDicewareSample()">Générer un échantillon</button>
+                <div id="dw-output" class="passphrase-output"></div>
+            </div>
+
+            <!-- Mode 2 : Passphrase libre -->
+            <div id="mode-free" class="mode-panel hidden">
+                <div class="form-group">
+                    <label>Tape ta passphrase (analysée localement par zxcvbn — Dropbox MIT)</label>
+                    <input type="text" id="free-passphrase" placeholder="ma phrase secrète à moi 2026 !"
+                           oninput="updateFreeEntropy()">
+                </div>
+                <div id="free-output" class="passphrase-output"></div>
+            </div>
+
+            <!-- Mode 3 : Hybride -->
+            <div id="mode-hybrid" class="mode-panel hidden">
+                <p class="desc">N mots EFF + suffixe libre. L'entropie totale = entropie diceware + entropie zxcvbn du suffixe.</p>
+                <div class="form-group">
+                    <label>Mots diceware <span id="hyb-count-display" class="muted">3</span></label>
+                    <input type="range" id="hyb-count" min="2" max="6" value="3" class="slider"
+                           oninput="updateHybridEntropy()">
+                </div>
+                <div class="form-group">
+                    <label>Suffixe libre (chiffres, mots persos, ponctuation…)</label>
+                    <input type="text" id="hyb-suffix" placeholder="!42-mySecret"
+                           oninput="updateHybridEntropy()">
+                </div>
+                <button class="btn" onclick="generateHybridSample()">Générer la partie diceware</button>
+                <div id="hyb-output" class="passphrase-output"></div>
+            </div>
+
+            <p class="desc" style="margin-top:24px;font-size:0.75rem;">
+                Hypothèse de l'attaquant pour le temps de cassage : 10¹² essais/seconde
+                (cluster GPU haut de gamme, hash hors ligne). Sources :
+                <a href="https://www.eff.org/dice" target="_blank">EFF Diceware</a>,
+                <a href="https://github.com/dropbox/zxcvbn" target="_blank">zxcvbn</a>.
+            </p>
+        </div>
+
         <!-- RECOVER L2 -->
         <div id="panel-recoverL2" class="panel hidden">
             <h2>Recover — Level 2 (lost passphrase)</h2>
@@ -240,9 +387,17 @@
         </div>
 
         <div class="footer">
-            <a href="https://github.com/Pierroons/selfrecover">SelfRecover on GitHub</a> — MIT License
+            <a href="https://github.com/Pierroons/selfrecover">SelfRecover on GitHub</a> — AGPL-3.0-or-later
         </div>
     </div>
+
+    <!-- Wordlists EFF officielles 7776 mots (CC-BY 3.0) chargées en mémoire -->
+    <script src="assets/diceware-en.js"></script>
+    <script src="assets/diceware-fr.js"></script>
+    <!-- zxcvbn (Dropbox, MIT) — analyse d'entropie de passphrases libres -->
+    <script src="assets/zxcvbn.js"></script>
+    <!-- Helpers SelfRecover : tirage uniforme, calcul d'entropie, classification -->
+    <script src="assets/entropy.js"></script>
 
     <script>
         // === Tab switching ===
@@ -346,6 +501,95 @@
                 showResult('l1-result', e.message, true);
             }
         }
+
+        // === Entropy Lab ===
+        function renderEntropyBar(targetEl, bits, extraInfo) {
+            const E = window.SelfRecoverEntropy;
+            const level = E.entropyLevel(bits);
+            const widthPct = Math.min(100, (bits / 128) * 100);
+            const safeInfo = extraInfo || '';
+            targetEl.innerHTML = (targetEl.dataset.passphrase
+                ? '<div style="margin-bottom:10px;color:var(--accent);">' + targetEl.dataset.passphrase + '</div>'
+                : '') +
+                '<div class="entropy-bar">' +
+                '  <div class="entropy-bar-track">' +
+                '    <div class="entropy-bar-fill" style="width:' + widthPct.toFixed(1) + '%;background:' + level.color + ';"></div>' +
+                '  </div>' +
+                '  <div class="entropy-meta">' +
+                '    <span><strong style="color:' + level.color + ';">' + level.label + '</strong> · ' + bits.toFixed(1) + ' bits</span>' +
+                '    <span>cassage ≈ ' + E.crackTimeFromBits(bits) + '</span>' +
+                '  </div>' +
+                (safeInfo ? '<div class="entropy-meta" style="margin-top:2px;">' + safeInfo + '</div>' : '') +
+                '</div>';
+        }
+
+        function selectMode(mode) {
+            document.querySelectorAll('.mode-panel').forEach(p => p.classList.add('hidden'));
+            document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('mode-' + mode).classList.remove('hidden');
+            document.querySelector('.mode-tab[data-mode="' + mode + '"]').classList.add('active');
+        }
+
+        function generateDicewareSample() {
+            const E = window.SelfRecoverEntropy;
+            const count = parseInt(document.getElementById('dw-count').value, 10);
+            const lang = document.getElementById('dw-lang').value;
+            const passphrase = E.generateDiceware(count, lang, '-');
+            const bits = E.dicewareEntropyBits(count);
+            const out = document.getElementById('dw-output');
+            out.dataset.passphrase = passphrase;
+            renderEntropyBar(out, bits, count + ' mots × log₂(7776) ≈ ' + E.BITS_PER_DICEWARE_WORD.toFixed(2) + ' bits/mot');
+        }
+
+        function updateFreeEntropy() {
+            const E = window.SelfRecoverEntropy;
+            const passphrase = document.getElementById('free-passphrase').value;
+            const out = document.getElementById('free-output');
+            out.dataset.passphrase = passphrase;
+            if (!passphrase) { out.innerHTML = ''; return; }
+            const r = E.freeEntropyBits(passphrase);
+            if (!r) { out.innerHTML = '<em>zxcvbn non chargé</em>'; return; }
+            const labels = ['Très faible', 'Faible', 'Moyen', 'Bon', 'Excellent'];
+            renderEntropyBar(out, r.bits, 'zxcvbn score ' + r.score + '/4 (' + labels[r.score] + ') · cracker estime ≈ ' + r.crackTime);
+        }
+
+        function generateHybridSample() {
+            const E = window.SelfRecoverEntropy;
+            const count = parseInt(document.getElementById('hyb-count').value, 10);
+            const dicewarePart = E.generateDiceware(count, 'en', '-');
+            const out = document.getElementById('hyb-output');
+            out.dataset.dicewarePart = dicewarePart;
+            updateHybridEntropy();
+        }
+
+        function updateHybridEntropy() {
+            const E = window.SelfRecoverEntropy;
+            const count = parseInt(document.getElementById('hyb-count').value, 10);
+            document.getElementById('hyb-count-display').textContent = count;
+            const suffix = document.getElementById('hyb-suffix').value;
+            const out = document.getElementById('hyb-output');
+            const dicewarePart = out.dataset.dicewarePart || '';
+            const fullPassphrase = dicewarePart + (dicewarePart && suffix ? '-' : '') + suffix;
+            out.dataset.passphrase = fullPassphrase || '(génère d\'abord la partie diceware)';
+            const r = E.hybridEntropyBits(count, suffix);
+            renderEntropyBar(out, r.bits, count + ' mots EFF (' + r.dicewareBits + ' bits) + suffixe libre (' + r.freeBits + ' bits)');
+        }
+
+        // Initialisations
+        document.addEventListener('DOMContentLoaded', function () {
+            const dwCount = document.getElementById('dw-count');
+            if (dwCount) {
+                dwCount.addEventListener('input', function () {
+                    document.getElementById('dw-count-display').textContent = this.value;
+                });
+            }
+            const hybCount = document.getElementById('hyb-count');
+            if (hybCount) {
+                hybCount.addEventListener('input', function () {
+                    document.getElementById('hyb-count-display').textContent = this.value;
+                });
+            }
+        });
 
         // === Recover L2 ===
         async function doRecoverL2() {
