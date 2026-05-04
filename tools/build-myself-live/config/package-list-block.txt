@@ -1,0 +1,20 @@
+# MySelf-Live — packages EXPLICITLY blocked (reduce attack surface + image size)
+# Network drivers (air-gap by default)
+firmware-iwlwifi
+firmware-realtek
+firmware-atheros
+firmware-misc-nonfree
+bluez
+bluetooth
+# Anything that phones home
+unattended-upgrades
+needrestart
+apt-listchanges
+popularity-contest
+exim4*
+postfix*
+# Heavy stuff not needed for ceremonies
+libreoffice*
+vlc*
+totem*
+gnome-games*

@@ -232,12 +232,124 @@
             color: var(--muted);
             font-size: 0.75rem;
         }
+        .threat-banner {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(251, 191, 36, 0.08) 100%);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            border-left: 4px solid var(--accent);
+            padding: 14px 18px;
+            border-radius: 6px;
+            margin-bottom: 24px;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+        .threat-banner strong { color: var(--accent); }
+        .threat-banner a { color: var(--accent); font-weight: 600; }
+        .threat-banner-tag {
+            display: inline-block;
+            background: var(--accent);
+            color: white;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        .disclaimer-red {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--danger);
+            border-left: 4px solid var(--danger);
+            padding: 12px 14px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+        .disclaimer-red strong { color: var(--danger); }
+        .reinhold-step {
+            display: flex;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .reinhold-step:last-child { border-bottom: none; }
+        .reinhold-step-num {
+            background: var(--accent);
+            color: white;
+            font-weight: 700;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 0.85rem;
+        }
+        .reinhold-step-content { flex: 1; font-size: 0.85rem; line-height: 1.5; }
+        .reinhold-step-content strong { color: var(--accent); }
+        .download-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        .download-btn {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 14px;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.85rem;
+            text-align: center;
+            font-weight: 600;
+            transition: background-color 0.15s;
+        }
+        .download-btn:hover { background: rgba(249, 115, 22, 0.15); }
+        .roadmap-card {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.06) 0%, rgba(167, 139, 250, 0.06) 100%);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            padding: 14px;
+            border-radius: 6px;
+            margin-top: 16px;
+            font-size: 0.8rem;
+            line-height: 1.5;
+        }
+        .roadmap-card strong { color: #60a5fa; }
+        .roadmap-tag {
+            display: inline-block;
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            margin-right: 8px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>SelfRecover</h1>
         <p class="subtitle">Zero-email account recovery demo — test the protocol locally</p>
+
+        <div class="threat-banner">
+            <span class="threat-banner-tag">MODÈLE DE MENACE</span>
+            <strong>SelfRecover protège</strong> contre la compromission du serveur, le phishing,
+            les fuites de base et le brute-force online.
+            <strong>Il NE protège PAS</strong> contre la compromission du poste utilisateur
+            (keylogger, info-stealer, RAT) — c'est une limite physique de toute application web.
+            Pour les secrets sensibles (compte régalien, master key, identité de cofondation),
+            utilise une cérémonie dédiée : <a href="https://tails.net" target="_blank">Tails</a>,
+            <a href="https://www.qubes-os.org" target="_blank">Qubes OS</a>, ou
+            <strong>MySelf-Live</strong> (en développement, V0.2 été 2026).
+            <span class="roadmap-tag" style="margin-left:6px;">ROADMAP</span>
+            Distribution Linux signée et vérifiable dédiée aux cérémonies SelfRecover —
+            <a href="https://github.com/Pierroons/my-self#roadmap" target="_blank">voir roadmap</a>.
+        </div>
 
         <div class="tabs">
             <button class="tab active" onclick="showTab('register')">Register</button>
@@ -313,13 +425,89 @@
             </p>
 
             <div class="mode-tabs">
-                <button class="mode-tab active" data-mode="diceware" onclick="selectMode('diceware')">Diceware standard</button>
+                <button class="mode-tab active" data-mode="reinhold" onclick="selectMode('reinhold')">Diceware (dés physiques)</button>
+                <button class="mode-tab" data-mode="diceware" onclick="selectMode('diceware')">Auto random</button>
                 <button class="mode-tab" data-mode="free" onclick="selectMode('free')">Passphrase libre</button>
                 <button class="mode-tab" data-mode="hybrid" onclick="selectMode('hybrid')">Hybride</button>
             </div>
 
-            <!-- Mode 1 : Diceware standard -->
-            <div id="mode-diceware" class="mode-panel">
+            <!-- Mode 1 : Diceware vrai (méthode Reinhold) — tutoriel uniquement, ZÉRO saisie -->
+            <div id="mode-reinhold" class="mode-panel">
+                <h3 style="margin-bottom:8px;color:var(--accent);">Méthode officielle Reinhold (1995) — recommandée</h3>
+                <p class="desc">
+                    La méthode originelle du diceware. Les dés physiques produisent une
+                    entropie cryptographique <strong>au moins équivalente</strong> à celle
+                    d'un RNG logiciel — et <strong>supérieure en modèle de confiance</strong>,
+                    car elle ne dépend d'aucun ordinateur.
+                </p>
+
+                <div style="margin-top:16px;padding:14px;background:var(--bg);border-radius:6px;border:1px solid var(--border);">
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">1</div>
+                        <div class="reinhold-step-content">
+                            Procure-toi <strong>5 dés à 6 faces</strong> (ou 1 dé jeté 5 fois).
+                            Pas besoin de dés certifiés pour usage courant ; pour des secrets
+                            critiques, utilise des dés en métal de qualité (pondération uniforme).
+                        </div>
+                    </div>
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">2</div>
+                        <div class="reinhold-step-content">
+                            Télécharge la <strong>table EFF officielle</strong> (PDF, 7776 mots
+                            avec leurs codes 5 dés <code>11111</code> à <code>66666</code>).
+                            Imprime-la si possible.
+                        </div>
+                    </div>
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">3</div>
+                        <div class="reinhold-step-content">
+                            <strong>Lance les 5 dés.</strong> Lis les chiffres dans l'ordre des dés
+                            (gauche → droite). Tu obtiens un nombre du type <code>32145</code>.
+                            Cherche-le dans la table → tu trouves UN mot précis (ex: <code>32145 → horseshoe</code>).
+                        </div>
+                    </div>
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">4</div>
+                        <div class="reinhold-step-content">
+                            Recommence pour chaque mot suivant. <strong>Recommandation officielle :</strong>
+                            6 mots minimum (77,5 bits), 7+ pour secrets sensibles, 8+ pour root server.
+                        </div>
+                    </div>
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">5</div>
+                        <div class="reinhold-step-content">
+                            <strong>Note la passphrase sur papier</strong>, range-la dans un endroit sûr
+                            (coffre, deuxième domicile de confiance). Ne la tape JAMAIS dans une
+                            application web pour vérifier — utilise l'outil offline ci-dessous.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="download-row">
+                    <a class="download-btn" href="docs/diceware-method-en.pdf" download>⬇ Table EFF (PDF, EN)</a>
+                    <a class="download-btn" href="docs/diceware-method-fr.pdf" download>⬇ Table EFF (PDF, FR)</a>
+                    <a class="download-btn" href="offline/selfrecover-validator.html" download>⬇ Outil offline (HTML autonome)</a>
+                </div>
+
+                <div class="roadmap-card">
+                    <span class="roadmap-tag">ROADMAP V0.2</span>
+                    <strong>MySelf-Live</strong> — distribution Linux Live USB minimale, signée GPG,
+                    vérifiable, dédiée aux cérémonies SelfRecover. Boot RAM-only, zéro persistance,
+                    Tor disponible, PDF EFF embarqué, animation dés visuelle.
+                    Inspirée de Tails / Qubes OS, taille cible ~500 MB. Disponible été 2026.
+                    <a href="https://github.com/Pierroons/my-self#roadmap" target="_blank">Détails</a>.
+                </div>
+            </div>
+
+            <!-- Mode 2 : Auto random (CSPRNG navigateur) -->
+            <div id="mode-diceware" class="mode-panel hidden">
+                <p class="desc">
+                    Pas de dés sous la main ? Le navigateur peut générer une passphrase
+                    via <code>crypto.getRandomValues()</code> avec rejection sampling sur
+                    la wordlist EFF. <strong>Entropie strictement équivalente</strong> à
+                    la méthode physique sur la passphrase elle-même, sous réserve de
+                    confiance dans le RNG OS / navigateur.
+                </p>
                 <div class="form-group">
                     <label>Langue</label>
                     <select id="dw-lang">
@@ -335,18 +523,28 @@
                 <div id="dw-output" class="passphrase-output"></div>
             </div>
 
-            <!-- Mode 2 : Passphrase libre -->
+            <!-- Mode 3 : Passphrase libre -->
             <div id="mode-free" class="mode-panel hidden">
+                <div class="disclaimer-red">
+                    ⚠ <strong>Démonstration pédagogique uniquement.</strong>
+                    Ne tape jamais ta vraie passphrase ici — la frappe au clavier est exposée
+                    à tout malware présent sur ta machine. Cf. modèle de menace ci-dessus.
+                </div>
                 <div class="form-group">
-                    <label>Tape ta passphrase (analysée localement par zxcvbn — Dropbox MIT)</label>
+                    <label>Tape une passphrase de test (analysée localement par zxcvbn — Dropbox MIT)</label>
                     <input type="text" id="free-passphrase" placeholder="ma phrase secrète à moi 2026 !"
                            oninput="updateFreeEntropy()">
                 </div>
                 <div id="free-output" class="passphrase-output"></div>
             </div>
 
-            <!-- Mode 3 : Hybride -->
+            <!-- Mode 4 : Hybride -->
             <div id="mode-hybrid" class="mode-panel hidden">
+                <div class="disclaimer-red">
+                    ⚠ <strong>Démonstration pédagogique uniquement.</strong>
+                    Ne tape jamais ta vraie passphrase ici — la frappe au clavier est exposée
+                    à tout malware présent sur ta machine. Cf. modèle de menace ci-dessus.
+                </div>
                 <p class="desc">N mots EFF + suffixe libre. L'entropie totale = entropie diceware + entropie zxcvbn du suffixe.</p>
                 <div class="form-group">
                     <label>Mots diceware <span id="hyb-count-display" class="muted">3</span></label>

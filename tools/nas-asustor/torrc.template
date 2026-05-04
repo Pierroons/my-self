@@ -1,0 +1,51 @@
+# torrc — config Tor pour hidden service ADM admin sur NAS NAS
+# Généré par tor-nas.sh install — placeholder @TOR_DIR@ remplacé au runtime
+
+# ===== Identité de l'instance =====
+# On tourne en client uniquement, pas de relay, pas de bridge.
+ClientOnly 1
+
+# Pas de SOCKS proxy ouvert — on n'utilise PAS Tor pour le trafic sortant du NAS,
+# uniquement pour exposer le hidden service.
+SocksPort 0
+ControlPort 0
+
+# Daemonize gérée par tor-nas.sh (--runasdaemon 1 en CLI)
+RunAsDaemon 0
+
+# ===== Logs et données =====
+DataDirectory @TOR_DIR@/data
+Log notice file @TOR_DIR@/tor.log
+
+# ===== Hidden service v3 — ADM admin portal =====
+HiddenServiceDir @TOR_DIR@/hidden_service_adm/
+HiddenServiceVersion 3
+
+# Mappe le port HTTP du HS vers le portail ADM local (8000 = LHS NAS)
+# Si tu déplaces ADM sur un autre port, ajuste ici.
+HiddenServicePort 80 127.0.0.1:8000
+
+# Si plus tard tu veux exposer ADM HTTPS aussi, décommente :
+# HiddenServicePort 443 127.0.0.1:8001
+
+# ===== Sécurité hidden service =====
+# Limite à 1 IP introductrice par circuit (réduit la fingerprinting du HS)
+HiddenServiceEnableIntroDoSDefense 1
+
+# Refuse les hsdescs anciens (force v3)
+HiddenServiceVersion 3
+
+# ===== Misc =====
+# Pas d'IPv6 si pas configuré côté réseau
+ClientUseIPv6 0
+ClientPreferIPv6ORPort 0
+
+# Empêche Tor d'utiliser le système d'exit policy global
+# (on n'est pas relay, c'est sans effet, mais explicite c'est mieux)
+ExitRelay 0
+
+# Healthcheck via heartbeat dans les logs
+HeartbeatPeriod 6 hours
+
+# Ne jamais cacher les sockets sous /tmp (problème connu sur certains NAS)
+# CacheDirectory @TOR_DIR@/cache  # décommenter si besoin
