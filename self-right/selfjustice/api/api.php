@@ -78,7 +78,7 @@ if (empty($segments)) {
             'legi' => 'Légifrance (dump LEGI officiel DILA, MAJ bimensuelle)',
             'eu'   => 'EUR-Lex + echr.coe.int (Charte UE, TUE, TFUE, RGPD, CEDH)',
         ],
-        'license' => 'MIT',
+        'license' => 'AGPL-3.0-or-later',
         'github'  => 'https://github.com/Pierroons/my-self/tree/main/self-right/selfjustice',
     ]);
 }
