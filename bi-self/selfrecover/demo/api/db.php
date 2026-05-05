@@ -17,6 +17,26 @@ function getDB(): PDO {
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
     if ($init) {
         $pdo->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    } else {
+        // Migrations idempotentes pour SelfRecover Lite (V0.1.1)
+        // PDO::ERRMODE_EXCEPTION nécessite try/catch (le @ ne supprime pas les exceptions)
+        foreach ([
+            "ALTER TABLE users ADD COLUMN email TEXT",
+            "ALTER TABLE users ADD COLUMN memorized_word_hash TEXT",
+        ] as $migration) {
+            try { $pdo->exec($migration); } catch (Exception $e) { /* duplicate column = OK */ }
+        }
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS reset_requests (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                salt TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                used INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )");
+        } catch (Exception $e) { /* table exists = OK */ }
     }
     return $pdo;
 }

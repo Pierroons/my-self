@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SelfRecover — Comparatif sécurité (Classique vs Lite vs Full)</title>
+    <meta name="description" content="Comparaison des 3 modèles de récupération de compte : reset par email classique, SelfRecover Lite (email + mot mémorisé HMAC), SelfRecover Full (sans email, diceware).">
+    <style>
+        :root {
+            --bg: #0f172a; --panel: #1e293b; --text: #f1f5f9; --muted: #94a3b8;
+            --accent: #f97316; --success: #10b981; --danger: #ef4444; --warn: #fbbf24;
+            --info: #3b82f6; --border: #334155;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, system-ui, sans-serif;
+            background: var(--bg); color: var(--text);
+            padding: 24px 16px; line-height: 1.6;
+        }
+        a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+        a:hover { color: #fb923c; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        h1 { font-size: 1.9rem; color: var(--accent); margin-bottom: 6px; }
+        h2 { font-size: 1.3rem; margin: 30px 0 12px; color: var(--info); }
+        h3 { font-size: 1.05rem; margin-bottom: 8px; }
+        .subtitle { color: var(--muted); margin-bottom: 22px; font-size: 0.95rem; }
+        .nav { margin-bottom: 24px; font-size: 0.9rem; }
+        .nav a { margin-right: 14px; }
+
+        .intro {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(16, 185, 129, 0.08) 100%);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            padding: 18px 22px; border-radius: 8px; margin-bottom: 28px;
+            font-size: 0.92rem;
+        }
+        .intro strong { color: var(--info); }
+
+        /* 3 colonnes */
+        .grid3 {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+            margin-bottom: 30px;
+        }
+        @media (max-width: 880px) { .grid3 { grid-template-columns: 1fr; } }
+        .col {
+            background: var(--panel); border-radius: 8px;
+            padding: 18px; border: 2px solid var(--border);
+        }
+        .col.classique { border-color: rgba(239, 68, 68, 0.5); }
+        .col.lite { border-color: rgba(59, 130, 246, 0.5); }
+        .col.full { border-color: rgba(16, 185, 129, 0.5); }
+        .col-header {
+            font-size: 1.1rem; font-weight: 700;
+            padding-bottom: 8px; margin-bottom: 12px;
+            border-bottom: 1px dotted var(--border);
+        }
+        .col.classique .col-header { color: var(--danger); }
+        .col.lite .col-header { color: var(--info); }
+        .col.full .col-header { color: var(--success); }
+        .col-tag {
+            display: inline-block; font-size: 0.7rem; padding: 2px 7px;
+            border-radius: 3px; margin-left: 8px; font-weight: 700;
+        }
+        .col.classique .col-tag { background: var(--danger); color: white; }
+        .col.lite .col-tag { background: var(--info); color: white; }
+        .col.full .col-tag { background: var(--success); color: white; }
+
+        .flow {
+            font-family: 'SFMono-Regular', monospace; font-size: 0.78rem;
+            background: var(--bg); border-radius: 5px; padding: 10px 12px;
+            white-space: pre-wrap; line-height: 1.5; margin: 8px 0;
+            border: 1px solid var(--border);
+        }
+        .col-summary { margin-top: 10px; font-size: 0.85rem; color: var(--muted); }
+
+        /* Tableau */
+        table {
+            width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.88rem;
+            background: var(--panel); border-radius: 8px; overflow: hidden;
+        }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { background: rgba(59, 130, 246, 0.15); color: var(--info); font-weight: 700; }
+        td.ok { color: var(--success); font-weight: 600; }
+        td.ko { color: var(--danger); font-weight: 600; }
+        td.partial { color: var(--warn); font-weight: 600; }
+        tr:hover td { background: rgba(99, 102, 241, 0.05); }
+
+        .cta {
+            background: linear-gradient(135deg, rgba(249, 115, 22, 0.08) 0%, rgba(251, 191, 36, 0.08) 100%);
+            border: 2px solid var(--accent); border-radius: 8px;
+            padding: 18px 22px; margin: 28px 0;
+        }
+        .cta h3 { color: var(--accent); margin-bottom: 8px; }
+        .cta-buttons {
+            display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px;
+        }
+        .cta-btn {
+            padding: 10px 18px; background: var(--accent); color: white;
+            border-radius: 6px; text-decoration: none; font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .cta-btn.secondary {
+            background: transparent; border: 2px solid var(--accent); color: var(--accent);
+        }
+        .cta-btn:hover { background: #ea580c; color: white; }
+        .cta-btn.secondary:hover { background: rgba(249, 115, 22, 0.15); }
+
+        .footer { margin-top: 40px; text-align: center; color: var(--muted); font-size: 0.78rem; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📊 SelfRecover — Comparatif sécurité</h1>
+    <p class="subtitle">Trois approches de la récupération de compte, comparées côte à côte. Pour les agences d'État, opérateurs publics et services à fort enjeu.</p>
+
+    <nav class="nav">
+        <a href="/">← Démo SelfRecover Full</a>
+        <a href="lite.html">→ Démo SelfRecover Lite</a>
+        <a href="https://github.com/Pierroons/selfrecover" target="_blank">📦 GitHub</a>
+    </nav>
+
+    <div class="intro">
+        <strong>Pourquoi cette comparaison ?</strong> La fuite massive subie par une grande agence d'État
+        en avril 2026 (faille IDOR, ~12 millions de comptes exposés) a montré que la centralisation
+        d'un système de comptes citoyens — combinée à une récupération par email — multiplie la surface
+        d'attaque. SelfRecover propose <strong>deux paliers d'adoption progressive</strong> qui permettent
+        à un opérateur public de durcir son authentification <em>sans refonte totale</em>.
+    </div>
+
+    <div class="grid3">
+        <!-- CLASSIQUE -->
+        <div class="col classique">
+            <div class="col-header">Reset email classique <span class="col-tag">FRAGILE</span></div>
+            <p style="font-size:0.85rem;color:var(--muted);">L'industrie standard depuis 20 ans. Email = preuve d'identité.</p>
+            <h3>Flux</h3>
+<div class="flow">1. User clique "mdp oublié"
+2. Site génère un token unique
+3. Mail envoyé avec lien :
+   site.fr/reset/{token}
+4. User clique le lien
+5. Site affiche form "nouveau pwd"
+6. User saisit le pwd → reset</div>
+            <h3>Postulat</h3>
+            <p style="font-size:0.85rem;">Quiconque a accès à l'email du compte peut le récupérer.</p>
+            <div class="col-summary">→ Email volé / intercepté = compte volé. Pas de second facteur. Phishing facile.</div>
+        </div>
+
+        <!-- LITE -->
+        <div class="col lite">
+            <div class="col-header">SelfRecover Lite <span class="col-tag">UPGRADE</span></div>
+            <p style="font-size:0.85rem;color:var(--muted);">Conserve SMTP + ajoute un mot mémorisé HMAC. <strong>Migration progressive</strong>.</p>
+            <h3>Flux</h3>
+<div class="flow">1. User clique "mdp oublié"
+2. Site génère token (email-link)
+   + salt cryptographique (15min)
+3. Mail envoyé avec lien
+4. User clique le lien
+5. Site demande nouveau pwd
+   + MOT MÉMORISÉ
+6. Browser calcule
+   HMAC(salt, mot_mémorisé)
+7. Serveur vérifie HMAC →
+   reset OK</div>
+            <h3>Postulat</h3>
+            <p style="font-size:0.85rem;">Email seul ≠ accès. Il faut aussi le mot mémorisé (1 mot, ex: <code>bob</code>).</p>
+            <div class="col-summary">→ Email volé seul = INSUFFISANT. Phishing bloqué (HMAC dérivé du domaine). Compatibilité SMTP préservée.</div>
+        </div>
+
+        <!-- FULL -->
+        <div class="col full">
+            <div class="col-header">SelfRecover Full <span class="col-tag">CIBLE</span></div>
+            <p style="font-size:0.85rem;color:var(--muted);">Aucun email, aucun tiers. Split knowledge + diceware EFF.</p>
+            <h3>Flux</h3>
+<div class="flow">1. User saisit username
+   + passphrase diceware
+   (4-7 mots EFF officiels)
+2. Browser dérive HMAC
+   anti-phishing
+3. Serveur vérifie le hash
+   Argon2id stocké
+4. Reset effectué.
+5. Niveaux L2/L3 progressifs
+   pour récup avancée.</div>
+            <h3>Postulat</h3>
+            <p style="font-size:0.85rem;">Aucune dépendance externe. La récupération est cryptographique pure.</p>
+            <div class="col-summary">→ Zéro fournisseur SMTP. Zéro tiers. Cible idéale long terme.</div>
+        </div>
+    </div>
+
+    <h2>🛡 Sécurité comparée par adversaire</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Adversaire</th>
+                <th>Reset email classique</th>
+                <th>SelfRecover Lite</th>
+                <th>SelfRecover Full</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Email intercepté seul</td>
+                <td class="ko">❌ Compte volé direct</td>
+                <td class="ok">✓ Bloqué (manque mot mémorisé)</td>
+                <td class="ok">✓ N/A (pas d'email)</td>
+            </tr>
+            <tr>
+                <td>Phishing (faux site)</td>
+                <td class="ko">❌ Token réutilisable</td>
+                <td class="ok">✓ Bloqué (HMAC dérivé du domaine)</td>
+                <td class="ok">✓ Bloqué (HMAC dérivé du domaine)</td>
+            </tr>
+            <tr>
+                <td>Fuite base de données</td>
+                <td class="partial">~ Tokens fuités utilisables temporairement</td>
+                <td class="ok">✓ Hashes Argon2id non réversibles</td>
+                <td class="ok">✓ Hashes Argon2id non réversibles</td>
+            </tr>
+            <tr>
+                <td>Fournisseur SMTP compromis</td>
+                <td class="ko">❌ Mass compromise possible</td>
+                <td class="ok">✓ SMTP seul ne suffit pas</td>
+                <td class="ok">✓ N/A (pas de SMTP)</td>
+            </tr>
+            <tr>
+                <td>Brute-force online</td>
+                <td class="partial">~ Variable selon implem</td>
+                <td class="ok">✓ Argon2id + rate-limit</td>
+                <td class="ok">✓ Argon2id + rate-limit + escalade L1/L2/L3</td>
+            </tr>
+            <tr>
+                <td>Mot mémorisé / passphrase deviné seul</td>
+                <td class="ok">✓ N/A</td>
+                <td class="ok">✓ Bloqué (manque mail-link)</td>
+                <td class="ok">✓ Bloqué (manque identifiant public + processus L1)</td>
+            </tr>
+            <tr>
+                <td>Compromission poste utilisateur (keylogger)</td>
+                <td class="ko">❌ Hors périmètre</td>
+                <td class="ko">❌ Hors périmètre</td>
+                <td class="ko">❌ Hors périmètre — recommandation Tails / Qubes / MySelf-Live</td>
+            </tr>
+            <tr>
+                <td>Coercition physique ($5 wrench)</td>
+                <td class="ko">❌</td>
+                <td class="ko">❌</td>
+                <td class="ko">❌ Hors périmètre (pas de plausible deniability)</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>🛠 Implémentation comparée</h2>
+    <table>
+        <thead><tr><th>Critère</th><th>Classique</th><th>Lite</th><th>Full</th></tr></thead>
+        <tbody>
+            <tr><td>Migration depuis l'existant</td><td class="ok">N/A (statu quo)</td><td class="ok">Incrémentale (additif)</td><td class="partial">Refonte modérée</td></tr>
+            <tr><td>Dépendance fournisseur SMTP</td><td class="ko">Oui</td><td class="partial">Oui (mais ne suffit plus)</td><td class="ok">Aucune</td></tr>
+            <tr><td>Lignes de code (back)</td><td class="ok">~50</td><td class="ok">~250</td><td class="partial">~600</td></tr>
+            <tr><td>Lignes de code (front)</td><td class="ok">~30</td><td class="ok">~100</td><td class="partial">~400</td></tr>
+            <tr><td>Friction utilisateur</td><td class="ok">Minimale (1 click email)</td><td class="partial">Faible (1 mot à retenir)</td><td class="ko">Modérée (passphrase 4+ mots)</td></tr>
+            <tr><td>Audit cryptographique</td><td class="partial">Variable</td><td class="ok">Simple (HMAC + Argon2id)</td><td class="ok">Documenté, AGPL</td></tr>
+            <tr><td>Conformité ANSSI / RGS</td><td class="partial">À évaluer cas par cas</td><td class="ok">Compatible (HMAC + Argon2id approuvés)</td><td class="ok">Compatible</td></tr>
+        </tbody>
+    </table>
+
+    <h2>📋 Stratégie d'adoption recommandée</h2>
+    <ol style="margin: 14px 0 24px 22px;">
+        <li><strong>Phase 1 — Coexistence</strong> : déployer SelfRecover Lite comme <em>option additionnelle</em> à côté du reset email classique. Le user qui l'active saisit son mot mémorisé à l'inscription. Ceux qui ne le font pas restent sur le mode classique.</li>
+        <li><strong>Phase 2 — Migration progressive</strong> : à chaque connexion, proposer aux users existants d'activer le mot mémorisé. Mesurer l'adoption.</li>
+        <li><strong>Phase 3 — Bascule majeure</strong> : rendre Lite obligatoire pour les nouveaux comptes et les opérations sensibles. Garder le mode classique en fallback dégradé.</li>
+        <li><strong>Phase 4 — Mode Full optionnel</strong> : pour les usages les plus critiques (admin, comptes sensibles), proposer SelfRecover Full sans aucun email.</li>
+    </ol>
+
+    <div class="cta">
+        <h3>Tester maintenant</h3>
+        <p>Les deux modes (Lite et Full) sont en démo interactive directement sur ce site. Aucune inscription préalable, données effacées à chaque rafraîchissement.</p>
+        <div class="cta-buttons">
+            <a class="cta-btn" href="lite.html">→ Tester SelfRecover Lite</a>
+            <a class="cta-btn" href="/">→ Tester SelfRecover Full</a>
+            <a class="cta-btn secondary" href="https://github.com/Pierroons/selfrecover" target="_blank">📦 Code source (AGPL)</a>
+        </div>
+    </div>
+
+    <h2>📞 Pour les opérateurs publics et agences d'État</h2>
+    <p>SelfRecover est intégralement publié sous <strong>AGPL-3.0-or-later</strong>. Aucune licence commerciale n'est requise. Aucun NDA n'est demandé.</p>
+    <p>Si vous représentez une agence d'État, un opérateur public ou un service essentiel intéressé par une étude technique, audit cryptographique communautaire ou intégration pilote :</p>
+    <ul style="margin: 10px 0 18px 22px;">
+        <li>Le code complet est disponible sur <a href="https://github.com/Pierroons/selfrecover" target="_blank">github.com/Pierroons/selfrecover</a></li>
+        <li>Les whitepapers EN/FR sont dans le dépôt</li>
+        <li>L'auteur est joignable pour échange technique sans obligation contractuelle</li>
+    </ul>
+
+    <div class="footer">
+        SelfRecover — par Pierroons (Pierroons)<br>
+        AGPL-3.0-or-later · Local-first · Sans tiers · Auditable<br>
+        Ecosystème <a href="https://my-self.fr">MySelf</a> · 2026
+    </div>
+</div>
+</body>
+</html>
