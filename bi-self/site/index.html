@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bi-Self — Identité souveraine + modération communautaire</title>
+  <meta name="description" content="Bi-Self — binôme MySelf : SelfRecover (identité sans email) + SelfModerate (modération communautaire). Démos interactives en construction.">
+  <meta property="og:title" content="Bi-Self — Binôme MySelf">
+  <meta property="og:description" content="SelfRecover + SelfModerate : identité souveraine et modération autonome, pour des communautés qui se gouvernent.">
+  <meta property="og:url" content="https://bi-self.my-self.fr">
+  <style>
+    :root {
+      --bg: #0f1419;
+      --bg-card: #1a2028;
+      --bg-card-hover: #222a34;
+      --text: #e8eaed;
+      --text-muted: #9aa0a6;
+      --accent: #7ab7ff;
+      --accent-dim: #5a97df;
+      --border: #2a3038;
+      --success: #7cc47c;
+      --warning: #d4c058;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+    body { padding: 2.5rem 1.5rem; }
+    main { max-width: 880px; margin: 0 auto; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .crumb {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+    }
+
+    .hero { text-align: center; padding: 1rem 0 2.5rem; }
+    .hero h1 {
+      font-size: clamp(2.5rem, 7vw, 3.8rem);
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin: 0;
+    }
+    .hero .tagline {
+      font-size: 1.2rem;
+      color: var(--text-muted);
+      margin-top: 0.4rem;
+      font-style: italic;
+    }
+    .hero .quote {
+      margin-top: 1.5rem;
+      font-size: 1rem;
+      color: var(--text-muted);
+      max-width: 520px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    section { margin: 2.5rem 0; }
+    h2 {
+      font-size: 1.4rem;
+      color: var(--accent);
+      margin-bottom: 1rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+    p { margin-bottom: 1rem; }
+    p:last-child { margin-bottom: 0; }
+    strong { color: var(--text); font-weight: 600; }
+    .muted { color: var(--text-muted); }
+
+    .construction {
+      background: var(--bg-card);
+      border: 1px solid var(--warning);
+      border-left-width: 4px;
+      border-radius: 8px;
+      padding: 1.2rem 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .construction h3 {
+      color: var(--warning);
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+    .construction p { font-size: 0.95rem; }
+
+    .modules {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.2rem;
+      margin-top: 1rem;
+    }
+    @media (max-width: 720px) {
+      .modules { grid-template-columns: 1fr; }
+    }
+    .module {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.3rem 1.5rem;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .module:hover {
+      border-color: var(--accent-dim);
+      background: var(--bg-card-hover);
+    }
+    .module h3 {
+      color: var(--accent);
+      font-size: 1.15rem;
+      margin-bottom: 0.3rem;
+    }
+    .module .status {
+      display: inline-block;
+      font-size: 0.72rem;
+      padding: 0.1rem 0.6rem;
+      border-radius: 10px;
+      margin-left: 0.4rem;
+      vertical-align: middle;
+      background: rgba(124,196,124,0.15);
+      color: var(--success);
+      border: 1px solid var(--success);
+    }
+    .module p {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      margin-top: 0.7rem;
+      margin-bottom: 0.9rem;
+    }
+    .module .actions a {
+      display: inline-block;
+      margin-right: 0.8rem;
+      font-size: 0.88rem;
+    }
+    .module .demo-disabled {
+      color: var(--text-muted);
+      cursor: not-allowed;
+      text-decoration: line-through;
+    }
+    .module .demo-live {
+      color: var(--success);
+      font-weight: 600;
+    }
+    .module .demo-live::after { content: " →"; }
+
+    .quick-access {
+      background: linear-gradient(135deg, rgba(124,196,124,0.15), rgba(122,183,255,0.1));
+      border: 1px solid var(--success);
+      border-radius: 10px;
+      padding: 1.2rem 1.5rem;
+      margin-bottom: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .quick-access .label {
+      color: var(--success);
+      text-transform: uppercase;
+      font-size: 0.72rem;
+      letter-spacing: 0.6px;
+      font-weight: 600;
+    }
+    .quick-access .text { margin-top: 0.2rem; font-size: 0.95rem; color: var(--text); }
+    .quick-access a.cta {
+      display: inline-block;
+      padding: 0.55rem 1.2rem;
+      background: var(--success);
+      color: var(--bg);
+      border-radius: 6px;
+      font-weight: 600;
+      text-decoration: none;
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+    .quick-access a.cta:hover { opacity: 0.85; text-decoration: none; }
+
+    .synergy {
+      background: var(--bg-card);
+      border-left: 3px solid var(--accent);
+      padding: 1.2rem 1.5rem;
+      border-radius: 0 8px 8px 0;
+      margin-top: 1.2rem;
+    }
+    .synergy p { font-size: 0.95rem; }
+
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+<main>
+
+<p class="crumb">
+  <a href="https://my-self.fr">my-self.fr</a>  ›  Bi-Self
+</p>
+
+<section class="hero">
+  <h1>Bi-Self</h1>
+  <p class="tagline">Identité souveraine + modération communautaire autonome.</p>
+  <p class="quote">
+    <em>« Si une communauté peut se construire, elle peut se gouverner. »</em>
+  </p>
+</section>
+
+<div class="quick-access">
+  <div>
+    <div class="label">🎬 Trois démos live disponibles</div>
+    <div class="text">
+      Cliques côté front, vois le protocole exécuter en direct côté back.
+      <strong>Aucun script, aucun hardcode</strong> — les vrais logs de ton interaction.
+    </div>
+  </div>
+  <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    <a class="cta" href="/recover">SelfRecover Full</a>
+    <a class="cta" href="/selfrecover/lite.html">SelfRecover Lite</a>
+    <a class="cta" href="/selfrecover/comparison.html">📊 Comparatif</a>
+    <a class="cta" href="/moderate">SelfModerate</a>
+    <a class="cta" href="/duo">Duo · Sybil</a>
+  </div>
+</div>
+
+<div class="synergy" style="margin-top: 0; margin-bottom: 2rem;">
+  <p>
+    <strong>La démo <a href="/duo">Duo Sybil</a></strong> montre pourquoi SelfRecover +
+    SelfModerate ensemble neutralisent une attaque que ni l'un ni l'autre ne pourrait bloquer seul :
+    création de 5 comptes sous coût cryptographique, pack-voting coordonné, détection et annulation.
+    <em>1 + 1 = 3</em>.
+  </p>
+</div>
+
+<section>
+  <h2>Le binôme</h2>
+  <p>
+    <strong>SelfRecover</strong> règle l'identité — disponible en deux modes :
+    le <strong>Full</strong> (sans aucun email) ou le <strong>Lite</strong>
+    (compatible avec votre infrastructure email actuelle, durci par un mot
+    mémorisé). <strong>SelfModerate</strong> règle la gouvernance : la
+    communauté vote sur les comportements, les sanctions émergent de l'usage,
+    et personne — pas même le fondateur — ne peut imposer sa volonté.
+  </p>
+  <p>
+    Pris isolément, chacun est utile. <strong>Ensemble, ils se verrouillent
+    mutuellement</strong> : l'identité unique empêche les attaques Sybil qui
+    rendent le vote manipulable. Le vote collectif dépasse l'autorité
+    centrale que l'identité fiable aurait pu concentrer. 1 + 1 = 3.
+  </p>
+
+  <div class="modules">
+
+    <div class="module">
+      <h3>SelfRecover<span class="status">v0.1.1 · 2 modes</span></h3>
+      <p>
+        Récupération de compte avec deux niveaux d'adoption.
+        <strong>Mode Full</strong> : zéro email, dérivation HMAC-SHA256 d'un mot
+        de récupération choisi par l'utilisateur (anti-phishing natif).
+        <strong>Mode Lite</strong> : conserve le mail (compatibilité legacy)
+        mais ajoute un mot mémorisé HMAC — un email intercepté seul ne suffit
+        plus à compromettre le compte. Palier idéal pour les opérateurs publics
+        et services à fort enjeu.
+      </p>
+      <div class="actions">
+        <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover" target="_blank" rel="noopener">Code &amp; README</a>
+        <a class="demo-live" href="/recover">Démo Full</a>
+        <a class="demo-live" href="/selfrecover/lite.html">Démo Lite</a>
+        <a class="demo-live" href="/selfrecover/comparison.html">Comparatif</a>
+      </div>
+    </div>
+
+    <div class="module">
+      <h3>SelfModerate<span class="status">v0.1.0</span></h3>
+      <p>
+        Modération par raisonnement collectif. Chaque vote est lié à une
+        interaction réelle, chaque sanction émerge d'un score de réputation,
+        les attaques coordonnées sont détectées algorithmiquement.
+      </p>
+      <div class="actions">
+        <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfmoderate" target="_blank" rel="noopener">Code &amp; README</a>
+        <a class="demo-live" href="/moderate">Démo</a>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="synergy">
+    <p>
+      <strong>Synergie testable en direct</strong> — prochainement, la démo
+      binôme montrera comment une tentative d'attaque Sybil (créer 5 comptes
+      pour manipuler un vote) échoue simultanément côté SelfRecover (cost
+      bcrypt + entropie diceware) et côté SelfModerate (détection
+      pack-voting). Pas d'effet de manche, juste les deux algorithmes qui
+      s'activent en temps réel.
+    </p>
+  </div>
+</section>
+
+<footer>
+  Code source : <a href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">github.com/Pierroons/my-self</a>
+  ·  Licence <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">AGPL-3.0-or-later</a>
+  ·  Auto-hébergé sur Raspberry Pi 4
+  ·  <a href="https://my-self.fr">Retour à MySelf</a>
+</footer>
+
+</main>
+</body>
+</html>
