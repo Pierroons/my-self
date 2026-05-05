@@ -30,7 +30,7 @@
             position: fixed; top: 0; right: 0; bottom: 0;
             width: 380px;
             background: #0a0e14; color: #e2e8f0;
-            border-left: 2px solid #f97316;
+            border-left: 2px solid #7ab7ff;
             font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
             font-size: 11px; line-height: 1.4;
             z-index: 9999;
@@ -43,26 +43,26 @@
             #transparency-panel {
                 top: auto; left: 0; right: 0; bottom: 0;
                 width: auto; max-height: 35vh; min-height: 32px;
-                border-left: none; border-top: 2px solid #f97316;
+                border-left: none; border-top: 2px solid #7ab7ff;
                 box-shadow: 0 -4px 24px rgba(0,0,0,0.4);
             }
             #transparency-panel.collapsed { transform: translateY(calc(100% - 32px)); }
         }
         .tp-header {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 8px 12px; background: #1a1f29; border-bottom: 1px solid #334155;
+            padding: 8px 12px; background: #1a1f29; border-bottom: 1px solid #2a3038;
             cursor: pointer; flex-shrink: 0; user-select: none;
         }
-        .tp-title { font-weight: 600; color: #f97316; font-family: -apple-system, system-ui, sans-serif; font-size: 12px; }
-        .tp-title::before { content: "● "; color: #10b981; animation: tp-blink 1.5s ease-in-out infinite; }
+        .tp-title { font-weight: 600; color: #7ab7ff; font-family: -apple-system, system-ui, sans-serif; font-size: 12px; }
+        .tp-title::before { content: "● "; color: #7cc47c; animation: tp-blink 1.5s ease-in-out infinite; }
         @keyframes tp-blink { 50% { opacity: 0.3; } }
         .tp-controls { display: flex; gap: 4px; }
         .tp-controls button {
-            background: #0f172a; color: #94a3b8; border: 1px solid #334155;
+            background: #0f1419; color: #9aa0a6; border: 1px solid #2a3038;
             padding: 3px 8px; font-size: 10px; cursor: pointer; border-radius: 3px;
             font-family: inherit;
         }
-        .tp-controls button:hover { background: #1e293b; color: #e2e8f0; }
+        .tp-controls button:hover { background: #1a2028; color: #e2e8f0; }
         .tp-body {
             overflow-y: auto; padding: 6px 12px; flex: 1;
         }
@@ -82,7 +82,7 @@
         .tp-client .tp-level { background: #92400e; color: #fdba74; }
         .tp-server .tp-level { background: #4c1d95; color: #c4b5fd; }
         .tp-error  .tp-level { background: #7f1d1d; color: #fca5a5; }
-        .tp-info   .tp-level { background: #334155; color: #94a3b8; }
+        .tp-info   .tp-level { background: #2a3038; color: #9aa0a6; }
         .tp-msg { color: #e2e8f0; }
         .tp-out    .tp-msg { color: #93c5fd; }
         .tp-in     .tp-msg { color: #86efac; }

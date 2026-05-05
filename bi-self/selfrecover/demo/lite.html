@@ -7,27 +7,27 @@
     <link rel="stylesheet" href="assets/lite.css?v=1">
     <style>
         :root {
-            --bg: #0f172a;
-            --panel: #1e293b;
-            --text: #f1f5f9;
-            --muted: #94a3b8;
-            --accent: #f97316;
-            --success: #10b981;
-            --danger: #ef4444;
-            --warn: #fbbf24;
-            --border: #334155;
-            --info: #3b82f6;
+            --bg: #0f1419;
+            --panel: #1a2028;
+            --text: #e8eaed;
+            --muted: #9aa0a6;
+            --accent: #7ab7ff;
+            --success: #7cc47c;
+            --danger: #e07b7b;
+            --warn: #d4c058;
+            --border: #2a3038;
+            --info: #5a97df;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 24px 16px; line-height: 1.5; }
         a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
-        a:hover { color: #fb923c; }
+        a:hover { color: #5a97df; }
         .container { max-width: 720px; margin: 0 auto; }
         h1 { font-size: 1.7rem; color: var(--accent); margin-bottom: 4px; }
         .subtitle { color: var(--muted); margin-bottom: 20px; font-size: 0.9rem; }
         .threat-banner {
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(16, 185, 129, 0.08) 100%);
-            border: 1px solid rgba(59, 130, 246, 0.4);
+            background: linear-gradient(135deg, rgba(90,151,223, 0.08) 0%, rgba(124,196,124, 0.08) 100%);
+            border: 1px solid rgba(90,151,223, 0.4);
             border-left: 4px solid var(--info);
             padding: 14px 18px; border-radius: 6px; margin-bottom: 20px;
             font-size: 0.85rem; line-height: 1.6;
@@ -64,19 +64,19 @@
             color: white; border: none; border-radius: 6px;
             font-size: 0.95rem; font-weight: 600; cursor: pointer; margin-top: 8px; font-family: inherit;
         }
-        button.btn:hover { background: #ea580c; }
+        button.btn:hover { background: #5a97df; }
         button.btn.secondary { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
-        button.btn.secondary:hover { background: rgba(249, 115, 22, 0.15); }
+        button.btn.secondary:hover { background: rgba(122,183,255, 0.15); }
         .result { margin-top: 16px; padding: 12px; border-radius: 6px; font-size: 0.85rem; word-break: break-all; }
-        .result.success { background: rgba(16, 185, 129, 0.15); border: 1px solid var(--success); }
-        .result.error { background: rgba(239, 68, 68, 0.15); border: 1px solid var(--danger); }
+        .result.success { background: rgba(124,196,124, 0.15); border: 1px solid var(--success); }
+        .result.error { background: rgba(224,123,123, 0.15); border: 1px solid var(--danger); }
         .result strong { display: block; margin-bottom: 4px; }
         code { background: var(--bg); padding: 2px 6px; border-radius: 3px; font-size: 0.85em; font-family: monospace; }
 
         /* Boîte mail simulée */
         .inbox {
             margin-top: 18px; padding: 16px;
-            background: linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(99,102,241,0.1) 100%);
+            background: linear-gradient(135deg, rgba(90,151,223,0.1) 0%, rgba(90,151,223,0.1) 100%);
             border: 2px solid var(--info); border-radius: 8px;
         }
         .inbox-header {
@@ -95,7 +95,7 @@
             background: var(--info); color: white; border-radius: 5px;
             text-decoration: none; font-weight: 600; font-size: 0.9rem;
         }
-        .reset-link-btn:hover { background: #2563eb; color: white; }
+        .reset-link-btn:hover { background: #5a97df; color: white; }
         .footer { margin-top: 32px; text-align: center; color: var(--muted); font-size: 0.78rem; }
     </style>
 </head>
