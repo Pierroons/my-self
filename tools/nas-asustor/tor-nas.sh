@@ -30,20 +30,27 @@
 # Licence : AGPL-3.0-or-later — partie du repo MySelf
 set -eu
 
+# Force le PATH à inclure opkg (/opt/bin, /opt/sbin) pour que `command -v opkg/tor`
+# fonctionne même quand sudo a un PATH minimal restrictif.
+export PATH="/opt/bin:/opt/sbin:/usr/builtin/bin:/usr/builtin/sbin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+
 # ===================== CONFIG =====================
-TOR_DIR="/opt/tor"
-TOR_BIN="${TOR_DIR}/bin/tor"
-TOR_CONF="${TOR_DIR}/torrc"
-TOR_DATA="${TOR_DIR}/data"
-HS_DIR="${TOR_DIR}/hidden_service_adm"
-LOG_FILE="${TOR_DIR}/tor.log"
-PID_FILE="${TOR_DIR}/tor.pid"
-BACKUP_DIR="${TOR_DIR}/backups"
+# IMPORTANT — sur NAS avec opkg, /opt/ est reconstruit à chaque boot
+# uniquement avec les symlinks opkg. Donc on utilise les paths sous
+# /opt/etc/, /opt/bin/, /opt/var/ qui sont persistants (sous /usr/local/AppCentral/opkg/).
+TOR_BIN="/opt/bin/tor"
+TOR_INITD="/opt/etc/init.d/S35tor"
+TOR_CONF_DIR="/opt/etc/tor"
+TOR_CONF="${TOR_CONF_DIR}/torrc"
+HS_DIR="${TOR_CONF_DIR}/hidden_service_adm"
+LOG_FILE="${TOR_CONF_DIR}/tor.log"
+PID_FILE="/opt/var/run/tor.pid"  # default opkg
+BACKUP_DIR="${TOR_CONF_DIR}/backups"
 
 # Cible DEVSERVER (ajuste si besoin)
 DEVSERVER_HOST="user@192.0.2.10"
 DEVSERVER_USB_PATH="/mnt/usb-backup/nas-asustor/tor-backups"
-SSH_KEY="${TOR_DIR}/.ssh/nas-to-devserver"
+SSH_KEY="${TOR_CONF_DIR}/.ssh/nas-to-devserver"
 
 # ===================== HELPERS =====================
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
@@ -64,79 +71,54 @@ require_bin() {
 
 # ===================== COMMANDES =====================
 cmd_start() {
-    require_bin "$TOR_BIN"
-    require_dir "$TOR_DATA"
-
-    if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-        log "Tor already running (PID $(cat "$PID_FILE"))"
-        return 0
+    if [ -x "$TOR_INITD" ]; then
+        log "Starting Tor via $TOR_INITD..."
+        "$TOR_INITD" start || { log "ERROR: tor start failed"; exit 1; }
+    else
+        require_bin "$TOR_BIN"
+        log "Starting Tor (manual mode)..."
+        "$TOR_BIN" -f "$TOR_CONF" --runasdaemon 1 || {
+            log "ERROR: tor failed to start"; exit 1;
+        }
     fi
-
-    log "Starting Tor..."
-    "$TOR_BIN" -f "$TOR_CONF" --runasdaemon 1 \
-        --pidfile "$PID_FILE" --log "notice file ${LOG_FILE}" || {
-        log "ERROR: tor failed to start (exit $?). See $LOG_FILE"
-        exit 1
-    }
-
-    # Attente que la HS soit publiée (max 30 sec)
-    i=0
-    while [ $i -lt 30 ]; do
-        if [ -f "$HS_DIR/hostname" ]; then break; fi
-        sleep 1
-        i=$((i + 1))
-    done
-
+    sleep 3
     cmd_status
 }
 
 cmd_stop() {
-    if [ ! -f "$PID_FILE" ]; then
-        log "Tor not running (no PID file)"
-        return 0
+    if [ -x "$TOR_INITD" ]; then
+        "$TOR_INITD" stop
+        log "Tor stopped via init.d"
+    else
+        # Fallback : tuer par pkill
+        pkill -TERM -x tor 2>/dev/null
+        sleep 2
+        pkill -KILL -x tor 2>/dev/null
+        log "Tor stopped (manual)"
     fi
-    pid=$(cat "$PID_FILE")
-    if ! kill -0 "$pid" 2>/dev/null; then
-        log "Stale PID file — cleaning"
-        rm -f "$PID_FILE"
-        return 0
-    fi
-
-    log "Stopping Tor (PID $pid)..."
-    kill -TERM "$pid"
-    i=0
-    while [ $i -lt 5 ]; do
-        if ! kill -0 "$pid" 2>/dev/null; then break; fi
-        sleep 1
-        i=$((i + 1))
-    done
-
-    if kill -0 "$pid" 2>/dev/null; then
-        log "Tor still alive after 5s — SIGKILL"
-        kill -KILL "$pid"
-    fi
-
-    rm -f "$PID_FILE"
-    log "Tor stopped"
 }
 
 cmd_restart() {
-    cmd_stop || true
-    sleep 1
-    cmd_start
+    if [ -x "$TOR_INITD" ]; then
+        "$TOR_INITD" restart
+    else
+        cmd_stop
+        sleep 1
+        cmd_start
+    fi
 }
 
 cmd_status() {
-    if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
-        log "Tor running (PID $(cat "$PID_FILE"))"
+    # Cherche tor process via pgrep (PID file pas toujours fiable avec init opkg)
+    pid=$(pgrep -x tor 2>/dev/null | head -1)
+    if [ -n "$pid" ]; then
+        log "Tor running (PID $pid)"
         if [ -f "$HS_DIR/hostname" ]; then
             log "Hidden service: $(cat "$HS_DIR/hostname")"
         else
             log "WARN: no hostname file yet — wait for Tor to publish HS"
         fi
-        if command -v "$TOR_BIN" >/dev/null 2>&1; then
-            log "Tor version: $("$TOR_BIN" --version 2>&1 | head -1)"
-        fi
+        log "Tor version: $("$TOR_BIN" --version 2>&1 | head -1)"
     else
         log "Tor NOT running"
         return 1
@@ -256,22 +238,18 @@ cmd_update() {
 }
 
 cmd_install() {
-    # ===== bootstrap initial — à exécuter UNE FOIS via SSH root =====
-    log "===== MySelf NAS — Tor native install ====="
+    # ===== bootstrap initial / re-install idempotent =====
+    log "===== MySelf NAS — Tor native install (opkg persistent paths) ====="
 
     if [ "$(id -u)" != "0" ]; then
         log "ERROR: must be run as root (sudo / SSH root admin)"
         exit 1
     fi
 
-    if [ -d "$TOR_DIR" ]; then
-        log "WARN: $TOR_DIR already exists — proceeding (idempotent)"
-    fi
-
-    # 1. Structure de répertoires
-    log "Creating directory structure..."
-    mkdir -p "$TOR_DIR/bin" "$TOR_DATA" "$HS_DIR" "$BACKUP_DIR" "$TOR_DIR/.ssh"
-    chmod 700 "$TOR_DIR/.ssh" "$HS_DIR"
+    # 1. Structure de répertoires (sous /opt/etc/tor/ qui est persistant via opkg)
+    log "Creating directory structure under $TOR_CONF_DIR..."
+    mkdir -p "$HS_DIR" "$BACKUP_DIR" "${TOR_CONF_DIR}/.ssh"
+    chmod 700 "${TOR_CONF_DIR}/.ssh" "$HS_DIR"
 
     # 2. Clé SSH dédiée pour push backups vers DEVSERVER
     if [ ! -f "$SSH_KEY" ]; then
@@ -297,10 +275,16 @@ cmd_install() {
         log "Tor binary already present: $TOR_BIN"
         log "  Version: $("$TOR_BIN" --version 2>&1 | head -1)"
     else
-        if command -v opkg >/dev/null 2>&1; then
-            log "opkg detected — installing tor via opkg"
-            opkg update
-            opkg install tor
+        # Check opkg par chemin absolu (le sudo PATH n'inclut pas toujours /opt/bin)
+        OPKG_BIN=""
+        if [ -x /opt/bin/opkg ]; then OPKG_BIN="/opt/bin/opkg"
+        elif command -v opkg >/dev/null 2>&1; then OPKG_BIN="$(command -v opkg)"
+        fi
+
+        if [ -n "$OPKG_BIN" ]; then
+            log "opkg detected ($OPKG_BIN) — installing tor"
+            "$OPKG_BIN" update
+            "$OPKG_BIN" install tor
             if [ -x /opt/bin/tor ]; then
                 ln -sf /opt/bin/tor "$TOR_BIN"
             elif [ -x /opt/sbin/tor ]; then
@@ -334,57 +318,44 @@ cmd_install() {
         fi
     fi
 
-    # 4. torrc — généré depuis torrc.template (cherché à côté du script)
-    if [ ! -f "$TOR_CONF" ]; then
-        local script_dir
-        script_dir="$(cd "$(dirname "$0")" && pwd)"
-        if [ -f "${script_dir}/torrc.template" ]; then
-            log "Generating torrc from template..."
-            sed "s|@TOR_DIR@|${TOR_DIR}|g" "${script_dir}/torrc.template" > "$TOR_CONF"
-            log "torrc generated: $TOR_CONF"
-        else
-            log "WARN: torrc.template not found — generating minimal torrc"
-            cat > "$TOR_CONF" <<EOF
-DataDirectory ${TOR_DATA}
-RunAsDaemon 0
-ClientOnly 1
-SocksPort 0
+    # 4. torrc — vérifier que le HS est bien configuré
+    if [ -f "$TOR_CONF" ] && grep -q "HiddenServiceDir ${HS_DIR}" "$TOR_CONF"; then
+        log "torrc HS config already present"
+    else
+        log "Appending HiddenService config to $TOR_CONF..."
+        cat >> "$TOR_CONF" <<EOF
 
+# === MySelf hidden service v3 (added by tor-nas install) ===
 HiddenServiceDir ${HS_DIR}/
 HiddenServiceVersion 3
 HiddenServicePort 80 127.0.0.1:8000
 EOF
-        fi
+        log "HS config appended"
     fi
 
     # 5. Permissions strictes
-    chmod 700 "$HS_DIR" "$TOR_DIR/.ssh"
+    chmod 700 "$HS_DIR" "${TOR_CONF_DIR}/.ssh"
 
-    # 6. Crontab @reboot pour autostart + backup quotidien à 04:30
-    local self_path
+    # 6. Self-copy vers /opt/sbin/ (persistant opkg)
+    local self_path target_path="/opt/sbin/tor-nas.sh"
     self_path="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
-    if [ "$(realpath "$self_path" 2>/dev/null)" != "$(realpath "$TOR_DIR/bin/tor-nas.sh" 2>/dev/null)" ]; then
-        cp "$self_path" "$TOR_DIR/bin/tor-nas.sh"
-        chmod +x "$TOR_DIR/bin/tor-nas.sh"
-        log "Self-copied to $TOR_DIR/bin/tor-nas.sh"
+    if [ "$(realpath "$self_path" 2>/dev/null)" != "$(realpath "$target_path" 2>/dev/null)" ]; then
+        cp "$self_path" "$target_path"
+        chmod +x "$target_path"
+        log "Self-copied to $target_path (persistent opkg path)"
     fi
 
-    local cron_start="@reboot $TOR_DIR/bin/tor-nas.sh start >> $TOR_DIR/cron.log 2>&1"
-    local cron_backup="30 4 * * * $TOR_DIR/bin/tor-nas.sh backup >> $TOR_DIR/cron.log 2>&1"
-
-    if crontab -l 2>/dev/null | grep -qF "tor-nas.sh start"; then
-        log "Crontab @reboot already configured"
-    else
-        (crontab -l 2>/dev/null; echo "$cron_start") | crontab -
-        log "Crontab @reboot added"
-    fi
+    # 7. Crontab — backup quotidien uniquement (Tor auto-start déjà géré par
+    # opkg via /opt/etc/init.d/S35tor)
+    local cron_backup="30 4 * * * $target_path backup >> ${TOR_CONF_DIR}/cron.log 2>&1"
 
     if crontab -l 2>/dev/null | grep -qF "tor-nas.sh backup"; then
         log "Daily backup cron already configured"
     else
         (crontab -l 2>/dev/null; echo "$cron_backup") | crontab -
-        log "Daily backup cron added (04:30)"
+        log "Daily backup cron added (04:30) — script at $target_path"
     fi
+    log "Tor auto-start: handled by $TOR_INITD (opkg native, persists across reboots)"
 
     log ""
     log "===== INSTALL COMPLETE ====="

@@ -106,6 +106,11 @@ function handleRegister(): void {
     $password = $in['password'] ?? '';
     $recoveryDerivedKey = $in['recovery_derived_key'] ?? '';
 
+    addTrace(sprintf(
+        "[register] input recu — username:%dch, identifier:%dch, password:%dch, recovery_derived_key:%dch",
+        strlen($username), strlen($identifier), strlen($password), strlen($recoveryDerivedKey)
+    ));
+
     if (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', $username)) {
         jsonError('Username: 3-20 chars alphanumeric/underscore');
     }
@@ -118,24 +123,48 @@ function handleRegister(): void {
     if (!$recoveryDerivedKey) {
         jsonError('Recovery word required');
     }
+    addTrace("[register] validation OK (username pattern, longueurs)");
 
     $db = getDB();
     $stmt = $db->prepare("SELECT id FROM users WHERE username = ? OR identifier = ?");
     $stmt->execute([$username, $identifier]);
     if ($stmt->fetch()) jsonError('Username or identifier already taken');
+    addTrace("[register] DB unique check OK (no collision)");
 
-    // Generate passphrase server-side (diceware)
+    $t0 = microtime(true);
     $passphrase = generateDiceware(4);
+    addTrace(sprintf(
+        "[register] diceware generated: 4 mots EFF (51.7 bits) en %.1f ms — passphrase brute non loguee",
+        (microtime(true) - $t0) * 1000
+    ));
 
+    $t0 = microtime(true);
     $pwdHash = password_hash($password, PASSWORD_BCRYPT);
+    addTrace(sprintf(
+        "[register] bcrypt(password) en %.0f ms (hash sortie: %dch, prefix: %s)",
+        (microtime(true) - $t0) * 1000, strlen($pwdHash), substr($pwdHash, 0, 7)
+    ));
+
+    $t0 = microtime(true);
     $ppHash = password_hash($passphrase, PASSWORD_BCRYPT);
+    addTrace(sprintf(
+        "[register] bcrypt(passphrase) en %.0f ms — hash stocke, jamais en clair",
+        (microtime(true) - $t0) * 1000
+    ));
+
+    $t0 = microtime(true);
     $rcHash = password_hash($recoveryDerivedKey, PASSWORD_BCRYPT);
+    addTrace(sprintf(
+        "[register] bcrypt(recovery_derived_key) en %.0f ms — note: input deja HMAC-SHA256 cote client",
+        (microtime(true) - $t0) * 1000
+    ));
 
     $stmt = $db->prepare("
         INSERT INTO users (username, identifier, password_hash, passphrase_hash, recovery_derived_hash)
         VALUES (?, ?, ?, ?, ?)
     ");
     $stmt->execute([$username, $identifier, $pwdHash, $ppHash, $rcHash]);
+    addTrace(sprintf("[register] DB INSERT users (id=%d) — done", $db->lastInsertId()));
 
     jsonResponse([
         'message' => 'Account created',
@@ -150,13 +179,21 @@ function handleLogin(): void {
     $in = getInput();
     $username = trim($in['username'] ?? '');
     $password = $in['password'] ?? '';
+    addTrace(sprintf("[login] input recu — username:%dch, password:%dch", strlen($username), strlen($password)));
+
     if (!$username || !$password) jsonError('Username and password required');
 
     $db = getDB();
     $stmt = $db->prepare("SELECT id, username, password_hash FROM users WHERE username = ?");
     $stmt->execute([$username]);
     $user = $stmt->fetch();
-    if (!$user || !password_verify($password, $user['password_hash'])) {
+    addTrace($user ? "[login] DB SELECT users — found id=" . $user['id'] : "[login] DB SELECT users — no match");
+
+    $t0 = microtime(true);
+    $verified = $user && password_verify($password, $user['password_hash']);
+    addTrace(sprintf("[login] password_verify en %.0f ms — result: %s", (microtime(true) - $t0) * 1000, $verified ? 'OK' : 'FAIL'));
+
+    if (!$verified) {
         jsonError('Invalid credentials', 401);
     }
     jsonResponse(['message' => 'Logged in', 'username' => $user['username']]);
@@ -167,6 +204,9 @@ function handleRecoverL1(): void {
     $in = getInput();
     $username = trim($in['username'] ?? '');
     $passphrase = trim($in['passphrase'] ?? '');
+    addTrace(sprintf("[recover-l1] input recu — username:%dch, passphrase:%dch (mots: %d)",
+        strlen($username), strlen($passphrase), substr_count($passphrase, '-') + 1));
+
     if (!$username || !$passphrase) jsonError('Username and passphrase required');
 
     $db = getDB();
@@ -201,15 +241,22 @@ function handleRecoverL1(): void {
         jsonError('Too many attempts. Blocked 1 hour.', 429);
     }
 
-    if (!password_verify($passphrase, $user['passphrase_hash'])) {
+    $t0 = microtime(true);
+    $verified = password_verify($passphrase, $user['passphrase_hash']);
+    addTrace(sprintf("[recover-l1] bcrypt verify(passphrase) en %.0f ms — result: %s",
+        (microtime(true) - $t0) * 1000, $verified ? 'OK' : 'FAIL'));
+
+    if (!$verified) {
         logAttempt($db, $username, 1, false);
         jsonError('Incorrect passphrase', 401);
     }
 
     $newPwd = generatePassword();
+    addTrace("[recover-l1] new password generated (10 chars alphabet) — pas logue en clair");
     $newHash = password_hash($newPwd, PASSWORD_BCRYPT);
     $db->prepare("UPDATE users SET password_hash = ?, l1_block_count = 0, l1_blocked_until = NULL WHERE id = ?")
        ->execute([$newHash, $user['id']]);
+    addTrace(sprintf("[recover-l1] DB UPDATE users (id=%d) — pwd_hash, block_count=0, blocked_until=NULL", $user['id']));
     logAttempt($db, $username, 1, true);
 
     jsonResponse([
@@ -223,6 +270,8 @@ function handleRecoverL2(): void {
     $in = getInput();
     $identifier = trim($in['identifier'] ?? '');
     $recoveryKey = trim($in['recovery_key'] ?? ''); // Already HMAC-derived client-side
+    addTrace(sprintf("[recover-l2] input recu — identifier:%dch, recovery_key:%dch (deja HMAC client)",
+        strlen($identifier), strlen($recoveryKey)));
 
     if (!$identifier || !$recoveryKey) jsonError('Identifier and recovery key required');
 
@@ -231,11 +280,18 @@ function handleRecoverL2(): void {
     $stmt->execute([$identifier]);
     $user = $stmt->fetch();
     if (!$user) {
+        addTrace("[recover-l2] DB SELECT — no match for identifier (anti-timing: sleep 1s)");
         sleep(1);
         jsonError('Invalid credentials', 401);
     }
+    addTrace("[recover-l2] DB SELECT — found user id=" . $user['id']);
 
-    if (!password_verify($recoveryKey, $user['recovery_derived_hash'])) {
+    $t0 = microtime(true);
+    $verified = password_verify($recoveryKey, $user['recovery_derived_hash']);
+    addTrace(sprintf("[recover-l2] bcrypt verify(HMAC_recovery_key) en %.0f ms — result: %s",
+        (microtime(true) - $t0) * 1000, $verified ? 'OK' : 'FAIL'));
+
+    if (!$verified) {
         logAttempt($db, $user['username'], 2, false);
         jsonError('Incorrect recovery word', 401);
     }
@@ -244,6 +300,7 @@ function handleRecoverL2(): void {
     $newHash = password_hash($newPwd, PASSWORD_BCRYPT);
     $db->prepare("UPDATE users SET password_hash = ?, l1_block_count = 0, l1_blocked_until = NULL WHERE id = ?")
        ->execute([$newHash, $user['id']]);
+    addTrace(sprintf("[recover-l2] DB UPDATE users (id=%d) — new pwd hash, block_count reset", $user['id']));
     logAttempt($db, $user['username'], 2, true);
 
     jsonResponse([

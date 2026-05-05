@@ -23,6 +23,19 @@
             padding: 24px 16px;
             line-height: 1.5;
         }
+        /* Couleur globale des liens — visible sur fond sombre */
+        a {
+            color: var(--accent);
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+        a:hover {
+            color: #fb923c;
+            text-decoration-thickness: 2px;
+        }
+        a:visited {
+            color: #fdba74;
+        }
         .container {
             max-width: 600px;
             margin: 0 auto;
@@ -596,6 +609,8 @@
     <script src="assets/zxcvbn.js"></script>
     <!-- Helpers SelfRecover : tirage uniforme, calcul d'entropie, classification -->
     <script src="assets/entropy.js"></script>
+    <!-- Transparency Live panel : visualise en direct les requêtes et opérations crypto -->
+    <script src="assets/transparency.js"></script>
 
     <script>
         // === Tab switching ===
@@ -607,7 +622,10 @@
         }
 
         // === API helper ===
-        async function api(action, body = null) {
+        // Sur window pour permettre le monkey-patch par transparency.js (qui remplace
+        // window.api par apiTraced et logge chaque requête dans le panneau live).
+        // Si transparency.js n'est pas chargé, fallback minimal ci-dessous.
+        window.api = async function (action, body = null) {
             const opts = {
                 method: body ? 'POST' : 'GET',
                 headers: body ? { 'Content-Type': 'application/json' } : {},
@@ -617,12 +635,13 @@
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Unknown error');
             return data;
-        }
+        };
 
         // === HMAC derivation (client-side) ===
-        // This is the heart of SelfRecover : the raw recovery word never leaves the browser.
-        // We derive a site-specific key using HMAC-SHA256 with domain + site_salt as key material.
-        async function hmacDerive(word, salt) {
+        // The raw recovery word never leaves the browser.
+        // Site-specific key derived via HMAC-SHA256 with domain + site_salt.
+        // Wrappée par transparency.js (hmacDeriveTraced) si chargée.
+        window.hmacDerive = async function (word, salt) {
             const enc = new TextEncoder();
             const domain = window.location.hostname;
             const keyMaterial = enc.encode(domain + salt);
@@ -638,7 +657,10 @@
             console.log('[SelfRecover] Raw word never leaves this browser.');
             console.log('[SelfRecover] Derived key (first 16 chars): ' + hex.substring(0, 16) + '...');
             return hex;
-        }
+        };
+        // Aliases locaux pour compatibilité avec le code ci-dessous
+        const api = (...args) => window.api(...args);
+        const hmacDerive = (...args) => window.hmacDerive(...args);
 
         // === Display result ===
         function showResult(elId, message, isError = false) {

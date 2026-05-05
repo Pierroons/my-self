@@ -21,14 +21,38 @@ function getDB(): PDO {
     return $pdo;
 }
 
+/**
+ * Système de traces "transparency live".
+ * Chaque endpoint peut empiler des messages via addTrace() qui seront
+ * renvoyés au client dans le champ `_trace` de la réponse JSON.
+ *
+ * RÈGLE D'OR : ne JAMAIS pousser dans les traces une donnée sensible
+ * en clair (mot de passe, passphrase brute, mot de récupération brut,
+ * hashes Argon2id complets). Seulement des métadonnées (longueurs,
+ * durées, indices DB, codes d'erreur structurés).
+ */
+function addTrace(string $msg): void {
+    if (!isset($GLOBALS['_trace'])) {
+        $GLOBALS['_trace'] = [];
+    }
+    $GLOBALS['_trace'][] = '[' . date('H:i:s') . '] ' . $msg;
+}
+
 function jsonResponse(array $data, int $code = 200): void {
     http_response_code($code);
     header('Content-Type: application/json');
-    echo json_encode($data);
+    if (!empty($GLOBALS['_trace'])) {
+        $data['_trace'] = $GLOBALS['_trace'];
+    }
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
 function jsonError(string $message, int $code = 400): void {
+    if (!isset($GLOBALS['_trace'])) {
+        $GLOBALS['_trace'] = [];
+    }
+    $GLOBALS['_trace'][] = '[' . date('H:i:s') . '] [error] ' . $message;
     jsonResponse(['error' => $message], $code);
 }
 
