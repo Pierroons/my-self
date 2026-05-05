@@ -423,7 +423,7 @@ function handleLiteResetRequest(): void {
     addTrace(sprintf("[lite-reset-request] request inseree (request_id:32B hex, salt:32B hex, TTL 15min)"));
 
     // En production : envoi mail SMTP. Ici : URL simulée retournée dans la réponse pour la démo
-    $simulatedURL = sprintf('/lite-reset.html?id=%s&salt=%s', $requestId, $saltRequest);
+    $simulatedURL = sprintf('/selfrecover/lite-reset.html?id=%s&salt=%s', $requestId, $saltRequest);
 
     addTrace("[lite-reset-request] mail SIMULE — URL retournee directement pour la demo");
 

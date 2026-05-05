@@ -419,7 +419,7 @@ SelfRecover est open source sous licence AGPL-3.0-or-later (bascule depuis MIT l
 - Retours d'expérience de déploiements en production
 - Portages vers d'autres langages et frameworks
 
-**GitHub :** https://github.com/Pierroons/selfrecover
+**GitHub :** https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover
 
 ---
 

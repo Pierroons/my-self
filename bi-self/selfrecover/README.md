@@ -128,11 +128,25 @@ Rate limits, dispute system, and anti-abuse detection at every level.
 
 ## Quickstart — run the demo in 30 seconds
 
+### Option A — Docker (zero install except docker)
+
+```bash
+git clone https://github.com/Pierroons/my-self.git
+cd my-self/bi-self/selfrecover/demo
+docker build -t selfrecover .
+docker run -p 8080:8080 selfrecover
+# → http://localhost:8080
+```
+
+Image based on `php:8.2-cli-alpine`, ~50 MB, AGPL labels embedded (`org.opencontainers.image.licenses=AGPL-3.0-or-later`). Set `-e SELFRECOVER_FRESH_DB=1` to wipe the SQLite at each restart.
+
+### Option B — Native PHP CLI
+
 **Requirements:** PHP 8.0+ with `pdo_sqlite` (on Debian/Ubuntu: `sudo apt install php-cli php-sqlite3`).
 
 ```bash
-git clone https://github.com/Pierroons/selfrecover.git
-cd selfrecover/demo
+git clone https://github.com/Pierroons/my-self.git
+cd my-self/bi-self/selfrecover/demo
 ./run.sh
 # → http://localhost:8080
 ```

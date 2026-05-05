@@ -6,14 +6,14 @@
     <title>SelfRecover — Demo</title>
     <style>
         :root {
-            --bg: #0f172a;
-            --panel: #1e293b;
-            --text: #f1f5f9;
-            --muted: #94a3b8;
-            --accent: #f97316;
-            --success: #10b981;
-            --danger: #ef4444;
-            --border: #334155;
+            --bg: #0f1419;
+            --panel: #1a2028;
+            --text: #e8eaed;
+            --muted: #9aa0a6;
+            --accent: #7ab7ff;
+            --success: #7cc47c;
+            --danger: #e07b7b;
+            --border: #2a3038;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -30,7 +30,7 @@
             text-underline-offset: 2px;
         }
         a:hover {
-            color: #fb923c;
+            color: #5a97df;
             text-decoration-thickness: 2px;
         }
         a:visited {
@@ -124,7 +124,7 @@
             margin-top: 8px;
         }
         button.btn:hover {
-            background: #ea580c;
+            background: #5a97df;
         }
         button.btn:disabled {
             opacity: 0.5;
@@ -138,11 +138,11 @@
             word-break: break-all;
         }
         .result.success {
-            background: rgba(16, 185, 129, 0.15);
+            background: rgba(124,196,124, 0.15);
             border: 1px solid var(--success);
         }
         .result.error {
-            background: rgba(239, 68, 68, 0.15);
+            background: rgba(224,123,123, 0.15);
             border: 1px solid var(--danger);
         }
         .result strong {
@@ -246,8 +246,8 @@
             font-size: 0.75rem;
         }
         .threat-banner {
-            background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(251, 191, 36, 0.08) 100%);
-            border: 1px solid rgba(251, 191, 36, 0.3);
+            background: linear-gradient(135deg, rgba(224,123,123, 0.08) 0%, rgba(212,192,88, 0.08) 100%);
+            border: 1px solid rgba(212,192,88, 0.3);
             border-left: 4px solid var(--accent);
             padding: 14px 18px;
             border-radius: 6px;
@@ -269,7 +269,7 @@
             vertical-align: middle;
         }
         .disclaimer-red {
-            background: rgba(239, 68, 68, 0.1);
+            background: rgba(224,123,123, 0.1);
             border: 1px solid var(--danger);
             border-left: 4px solid var(--danger);
             padding: 12px 14px;
@@ -321,10 +321,10 @@
             font-weight: 600;
             transition: background-color 0.15s;
         }
-        .download-btn:hover { background: rgba(249, 115, 22, 0.15); }
+        .download-btn:hover { background: rgba(122,183,255, 0.15); }
         .roadmap-card {
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.06) 0%, rgba(167, 139, 250, 0.06) 100%);
-            border: 1px solid rgba(59, 130, 246, 0.3);
+            background: linear-gradient(135deg, rgba(90,151,223, 0.06) 0%, rgba(167, 139, 250, 0.06) 100%);
+            border: 1px solid rgba(90,151,223, 0.3);
             padding: 14px;
             border-radius: 6px;
             margin-top: 16px;
@@ -334,7 +334,7 @@
         .roadmap-card strong { color: #60a5fa; }
         .roadmap-tag {
             display: inline-block;
-            background: rgba(59, 130, 246, 0.2);
+            background: rgba(90,151,223, 0.2);
             color: #60a5fa;
             font-weight: 700;
             padding: 2px 8px;
@@ -598,7 +598,7 @@
         </div>
 
         <div class="footer">
-            <a href="https://github.com/Pierroons/selfrecover">SelfRecover on GitHub</a> — AGPL-3.0-or-later
+            <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover">SelfRecover on GitHub</a> — AGPL-3.0-or-later
             <br><br>
             Variantes disponibles :
             <a href="lite.html">SelfRecover Lite</a> (avec SMTP + mot mémorisé)
