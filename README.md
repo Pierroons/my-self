@@ -32,7 +32,7 @@ individual sovereign over their own identity, rights, data, and possessions.
 
 | Module | Question it answers | Status |
 |--------|---------------------|--------|
-| [SelfRecover](./bi-self/selfrecover/) | Who are you? | v0.1.0 ✅ |
+| [SelfRecover](./bi-self/selfrecover/) | Who are you? | **v0.1.1 ✅** — Full + [Lite](./bi-self/selfrecover/demo/lite.html) + [comparatif](./bi-self/selfrecover/demo/comparison.html) |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | v0.1.0 (concept) |
 | [SelfJustice](https://justice.my-self.fr) | What are your rights? | beta v0.1.0 ✅ |
 | [SelfAct](https://justice.my-self.fr/act) | How do you act on them? | beta v0.1.2 ✅ |

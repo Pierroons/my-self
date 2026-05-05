@@ -5,7 +5,7 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per domain, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0-green.svg)](#status)
+[![Status: v0.1.1](https://img.shields.io/badge/status-v0.1.1-green.svg)](#status)
 [![Production tested](https://img.shields.io/badge/production%20tested-ARC%20PVE%20Hub-green.svg)](https://arc.example.org)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-Raspberry%20Pi-blue.svg)](#quickstart)
@@ -13,6 +13,20 @@
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
 > **One word. Every site. No email required.**
+
+---
+
+## Two adoption modes — Full and Lite (v0.1.1)
+
+SelfRecover ships in two flavors so legacy systems can adopt it progressively
+without an all-or-nothing rewrite of their authentication stack.
+
+| Mode | Email channel | Crypto added | When to pick it |
+|------|---------------|--------------|-----------------|
+| **[Full](./demo/index.html)** | None at all | Diceware EFF passphrase + HMAC-per-domain | Greenfield projects, paranoid-by-design, post-ANTS-leak threat models |
+| **[Lite](./demo/lite.html)** 🆕 | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want phishing-resistance now and migrate to Full later |
+
+**Live demos:** [Full](https://bi-self.my-self.fr/selfrecover/) · [Lite](https://bi-self.my-self.fr/selfrecover/lite.html) · [Side-by-side comparison (8 adversaries × 3 models)](https://bi-self.my-self.fr/selfrecover/comparison.html)
 
 ---
 

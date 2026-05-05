@@ -534,11 +534,6 @@
   </div>
 
   <p class="tagline">Be yourself, for yourself.</p>
-
-  <div class="cta-row">
-    <a class="btn btn-primary" href="https://justice.my-self.fr">Essayer SelfJustice</a>
-    <a class="btn" href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">Code sur GitHub</a>
-  </div>
 </section>
 
 <section>
@@ -738,7 +733,6 @@
   </a>
   <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.7rem;">
     Via Viva Wallet — CB, Apple Pay, Google Pay, PayPal.
-    Commission minimale, compte pro indépendant.
   </p>
 </section>
 
@@ -836,6 +830,20 @@
       ctx.drawImage(tmp, 0, 0, W, H);
     };
     img.src = "/assets/descartes-hals.jpg";
+  })();
+
+  // Sur dev.my-self.fr, rewrite tous les liens vers <sous-domaine>.my-self.fr
+  // -> dev-<sous-domaine>.my-self.fr pour rester dans l'env dev
+  // (Basic Auth, branche develop, prod intacte). Convention DNS niveau 2 = tiret.
+  (function rewriteDevLinks() {
+    if (!/^dev\./i.test(location.hostname)) return;
+    var SUBS = ["bi-self", "justice", "selffarm", "stock"];
+    document.querySelectorAll('a[href*=".my-self.fr"]').forEach(function (a) {
+      SUBS.forEach(function (sub) {
+        var re = new RegExp("(https?://)" + sub + "\\.my-self\\.fr", "i");
+        if (re.test(a.href)) a.href = a.href.replace(re, "$1dev-" + sub + ".my-self.fr");
+      });
+    });
   })();
 </script>
 </body>
