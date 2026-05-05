@@ -216,7 +216,7 @@ sponsor. If the project is useful to you or speaks to you, a direct gesture
 helps keep it alive.
 
 **[🙏 Support via Viva Wallet](https://pay.vivawallet.com/pierroons)** — card,
-Apple Pay, Google Pay, PayPal. Minimal commission, independent pro account.
+Apple Pay, Google Pay, PayPal.
 
 ---
 
