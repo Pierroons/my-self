@@ -25,21 +25,32 @@
     // ===================== STYLES =====================
     function injectStyles() {
         const css = `
+        /* Split visuel ludique : panel-app gauche / panel-logs (transparency) droite */
         #transparency-panel {
-            position: fixed; bottom: 0; left: 0; right: 0;
+            position: fixed; top: 0; right: 0; bottom: 0;
+            width: 380px;
             background: #0a0e14; color: #e2e8f0;
-            border-top: 2px solid #f97316;
+            border-left: 2px solid #f97316;
             font-family: 'SFMono-Regular', Menlo, Consolas, monospace;
             font-size: 11px; line-height: 1.4;
-            z-index: 9999; max-height: 35vh; min-height: 32px;
+            z-index: 9999;
             display: flex; flex-direction: column;
-            box-shadow: 0 -4px 24px rgba(0,0,0,0.4);
+            box-shadow: -4px 0 24px rgba(0,0,0,0.4);
             transition: transform 0.18s ease;
         }
-        #transparency-panel.collapsed { transform: translateY(calc(100% - 32px)); }
+        #transparency-panel.collapsed { transform: translateX(calc(100% - 32px)); }
+        @media (max-width: 900px) {
+            #transparency-panel {
+                top: auto; left: 0; right: 0; bottom: 0;
+                width: auto; max-height: 35vh; min-height: 32px;
+                border-left: none; border-top: 2px solid #f97316;
+                box-shadow: 0 -4px 24px rgba(0,0,0,0.4);
+            }
+            #transparency-panel.collapsed { transform: translateY(calc(100% - 32px)); }
+        }
         .tp-header {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 6px 12px; background: #1a1f29; border-bottom: 1px solid #334155;
+            padding: 8px 12px; background: #1a1f29; border-bottom: 1px solid #334155;
             cursor: pointer; flex-shrink: 0; user-select: none;
         }
         .tp-title { font-weight: 600; color: #f97316; font-family: -apple-system, system-ui, sans-serif; font-size: 12px; }
@@ -78,7 +89,10 @@
         .tp-client .tp-msg { color: #fdba74; }
         .tp-server .tp-msg { color: #c4b5fd; }
         .tp-error  .tp-msg { color: #fca5a5; font-weight: 600; }
-        body { padding-bottom: 32px !important; }
+        body { padding-right: 380px !important; }
+        @media (max-width: 900px) {
+            body { padding-right: 0 !important; padding-bottom: 32px !important; }
+        }
         `;
         const el = document.createElement('style');
         el.textContent = css;
@@ -89,7 +103,8 @@
     function injectPanel() {
         panelEl = document.createElement('div');
         panelEl.id = 'transparency-panel';
-        panelEl.classList.add('collapsed');
+        // Plus de collapsed par défaut : le split frontend/backend rend le panel-logs
+        // visible en permanence (style ludique aligné sur les démos legacy).
         panelEl.innerHTML = `
             <div class="tp-header" id="tp-header" title="Cliquer pour deplier/replier">
                 <span class="tp-title">TRANSPARENCY LIVE — backend visible</span>
