@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par domaine, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0-green.svg)](#statut)
+[![Status: v0.1.1](https://img.shields.io/badge/status-v0.1.1-green.svg)](#statut)
 [![Production tested](https://img.shields.io/badge/production%20tested-ARC%20PVE%20Hub-green.svg)](https://arc.example.org)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-Raspberry%20Pi-blue.svg)](#quickstart)
@@ -13,6 +13,20 @@
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
 > **Un mot. Chaque site. Pas d'email requis.**
+
+---
+
+## Deux modes d'adoption — Full et Lite (v0.1.1)
+
+SelfRecover existe en deux variantes pour permettre une adoption progressive
+sans réécriture totale de la pile d'authentification existante.
+
+| Mode | Canal email | Crypto ajoutée | Quand le choisir |
+|------|-------------|----------------|------------------|
+| **[Full](./demo/index.html)** | Aucun | Passphrase diceware EFF + HMAC par domaine | Projets greenfield, modèles de menace post-ANTS, paranoïaques par défaut |
+| **[Lite](./demo/lite.html)** 🆕 | Conservé (lien reset SMTP) | Un mot mémorisé par l'utilisateur, dérivé HMAC côté client, jamais envoyé en clair | Stack legacy qui veut une résistance au phishing immédiate, migration vers Full plus tard |
+
+**Démos live :** [Full](https://bi-self.my-self.fr/selfrecover/) · [Lite](https://bi-self.my-self.fr/selfrecover/lite.html) · [Comparatif côte à côte (8 adversaires × 3 modèles)](https://bi-self.my-self.fr/selfrecover/comparison.html)
 
 ---
 
