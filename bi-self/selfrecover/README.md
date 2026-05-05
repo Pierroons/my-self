@@ -131,7 +131,7 @@ Rate limits, dispute system, and anti-abuse detection at every level.
 **Requirements:** PHP 8.0+ with `pdo_sqlite` (on Debian/Ubuntu: `sudo apt install php-cli php-sqlite3`).
 
 ```bash
-git clone https://github.com/Pierroons/selfrecover.git
+git clone https://github.com/Pierroons/my-self.git
 cd selfrecover/demo
 ./run.sh
 # → http://localhost:8080
