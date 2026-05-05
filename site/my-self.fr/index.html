@@ -837,6 +837,15 @@
     };
     img.src = "/assets/descartes-hals.jpg";
   })();
+
+  // Sur dev.my-self.fr, rewrite les liens vers bi-self.my-self.fr -> dev-bi-self.my-self.fr
+  // pour rester dans l'environnement dev (Basic Auth, branche develop, prod intacte)
+  (function rewriteDevLinks() {
+    if (!/^dev\./i.test(location.hostname)) return;
+    document.querySelectorAll('a[href*="bi-self.my-self.fr"]').forEach(function (a) {
+      a.href = a.href.replace(/(https?:\/\/)bi-self\.my-self\.fr/i, "$1dev-bi-self.my-self.fr");
+    });
+  })();
 </script>
 </body>
 </html>
