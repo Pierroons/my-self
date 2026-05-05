@@ -23,6 +23,19 @@
             padding: 24px 16px;
             line-height: 1.5;
         }
+        /* Couleur globale des liens — visible sur fond sombre */
+        a {
+            color: var(--accent);
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+        a:hover {
+            color: #fb923c;
+            text-decoration-thickness: 2px;
+        }
+        a:visited {
+            color: #fdba74;
+        }
         .container {
             max-width: 600px;
             margin: 0 auto;
@@ -153,6 +166,182 @@
             color: var(--accent);
             text-decoration: none;
         }
+        .muted { color: var(--muted); font-weight: normal; }
+        .mode-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .mode-tab {
+            flex: 1;
+            min-width: 100px;
+            padding: 8px 12px;
+            background: var(--bg);
+            color: var(--muted);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            font-family: inherit;
+        }
+        .mode-tab.active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+        .mode-panel.hidden { display: none; }
+        select, input[type="range"] {
+            width: 100%;
+            padding: 8px 10px;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: inherit;
+        }
+        input[type="range"] {
+            padding: 6px 0;
+            accent-color: var(--accent);
+        }
+        .passphrase-output {
+            margin-top: 16px;
+            padding: 14px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.95rem;
+            min-height: 60px;
+            word-break: break-all;
+        }
+        .passphrase-output:empty::before {
+            content: "(la passphrase générée s'affichera ici)";
+            color: var(--muted);
+            font-style: italic;
+        }
+        .entropy-bar {
+            margin-top: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-family: -apple-system, system-ui, sans-serif;
+            font-size: 0.85rem;
+        }
+        .entropy-bar-track {
+            height: 8px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .entropy-bar-fill {
+            height: 100%;
+            transition: width 0.3s, background-color 0.3s;
+        }
+        .entropy-meta {
+            display: flex;
+            justify-content: space-between;
+            color: var(--muted);
+            font-size: 0.75rem;
+        }
+        .threat-banner {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(251, 191, 36, 0.08) 100%);
+            border: 1px solid rgba(251, 191, 36, 0.3);
+            border-left: 4px solid var(--accent);
+            padding: 14px 18px;
+            border-radius: 6px;
+            margin-bottom: 24px;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+        .threat-banner strong { color: var(--accent); }
+        .threat-banner a { color: var(--accent); font-weight: 600; }
+        .threat-banner-tag {
+            display: inline-block;
+            background: var(--accent);
+            color: white;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        .disclaimer-red {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--danger);
+            border-left: 4px solid var(--danger);
+            padding: 12px 14px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+        .disclaimer-red strong { color: var(--danger); }
+        .reinhold-step {
+            display: flex;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .reinhold-step:last-child { border-bottom: none; }
+        .reinhold-step-num {
+            background: var(--accent);
+            color: white;
+            font-weight: 700;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 0.85rem;
+        }
+        .reinhold-step-content { flex: 1; font-size: 0.85rem; line-height: 1.5; }
+        .reinhold-step-content strong { color: var(--accent); }
+        .download-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        .download-btn {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 14px;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.85rem;
+            text-align: center;
+            font-weight: 600;
+            transition: background-color 0.15s;
+        }
+        .download-btn:hover { background: rgba(249, 115, 22, 0.15); }
+        .roadmap-card {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.06) 0%, rgba(167, 139, 250, 0.06) 100%);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            padding: 14px;
+            border-radius: 6px;
+            margin-top: 16px;
+            font-size: 0.8rem;
+            line-height: 1.5;
+        }
+        .roadmap-card strong { color: #60a5fa; }
+        .roadmap-tag {
+            display: inline-block;
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            margin-right: 8px;
+        }
     </style>
 </head>
 <body>
@@ -160,11 +349,27 @@
         <h1>SelfRecover</h1>
         <p class="subtitle">Zero-email account recovery demo — test the protocol locally</p>
 
+        <div class="threat-banner">
+            <span class="threat-banner-tag">MODÈLE DE MENACE</span>
+            <strong>SelfRecover protège</strong> contre la compromission du serveur, le phishing,
+            les fuites de base et le brute-force online.
+            <strong>Il NE protège PAS</strong> contre la compromission du poste utilisateur
+            (keylogger, info-stealer, RAT) — c'est une limite physique de toute application web.
+            Pour les secrets sensibles (compte régalien, master key, identité de cofondation),
+            utilise une cérémonie dédiée : <a href="https://tails.net" target="_blank">Tails</a>,
+            <a href="https://www.qubes-os.org" target="_blank">Qubes OS</a>, ou
+            <strong>MySelf-Live</strong> (en développement, V0.2 été 2026).
+            <span class="roadmap-tag" style="margin-left:6px;">ROADMAP</span>
+            Distribution Linux signée et vérifiable dédiée aux cérémonies SelfRecover —
+            <a href="https://github.com/Pierroons/my-self#roadmap" target="_blank">voir roadmap</a>.
+        </div>
+
         <div class="tabs">
             <button class="tab active" onclick="showTab('register')">Register</button>
             <button class="tab" onclick="showTab('login')">Login</button>
             <button class="tab" onclick="showTab('recoverL1')">Recover L1</button>
             <button class="tab" onclick="showTab('recoverL2')">Recover L2</button>
+            <button class="tab" onclick="showTab('entropy')">Entropy Lab</button>
         </div>
 
         <!-- REGISTER -->
@@ -223,6 +428,159 @@
             <div id="l1-result"></div>
         </div>
 
+        <!-- ENTROPY LAB -->
+        <div id="panel-entropy" class="panel hidden">
+            <h2>Entropy Lab — Trois modes de passphrase</h2>
+            <p class="desc">
+                Tout est calculé dans le navigateur — aucune passphrase ne quitte cette page.
+                Convention SelfRecover : wordlist EFF officielle (7 776 mots, CC-BY 3.0),
+                jamais de mini-version "pour la démo".
+            </p>
+
+            <div class="mode-tabs">
+                <button class="mode-tab active" data-mode="reinhold" onclick="selectMode('reinhold')">Diceware (dés physiques)</button>
+                <button class="mode-tab" data-mode="diceware" onclick="selectMode('diceware')">Auto random</button>
+                <button class="mode-tab" data-mode="free" onclick="selectMode('free')">Passphrase libre</button>
+                <button class="mode-tab" data-mode="hybrid" onclick="selectMode('hybrid')">Hybride</button>
+            </div>
+
+            <!-- Mode 1 : Diceware vrai (méthode Reinhold) — tutoriel uniquement, ZÉRO saisie -->
+            <div id="mode-reinhold" class="mode-panel">
+                <h3 style="margin-bottom:8px;color:var(--accent);">Méthode officielle Reinhold (1995) — recommandée</h3>
+                <p class="desc">
+                    La méthode originelle du diceware. Les dés physiques produisent une
+                    entropie cryptographique <strong>au moins équivalente</strong> à celle
+                    d'un RNG logiciel — et <strong>supérieure en modèle de confiance</strong>,
+                    car elle ne dépend d'aucun ordinateur.
+                </p>
+
+                <div style="margin-top:16px;padding:14px;background:var(--bg);border-radius:6px;border:1px solid var(--border);">
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">1</div>
+                        <div class="reinhold-step-content">
+                            Procure-toi <strong>5 dés à 6 faces</strong> (ou 1 dé jeté 5 fois).
+                            Pas besoin de dés certifiés pour usage courant ; pour des secrets
+                            critiques, utilise des dés en métal de qualité (pondération uniforme).
+                        </div>
+                    </div>
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">2</div>
+                        <div class="reinhold-step-content">
+                            Télécharge la <strong>table EFF officielle</strong> (PDF, 7776 mots
+                            avec leurs codes 5 dés <code>11111</code> à <code>66666</code>).
+                            Imprime-la si possible.
+                        </div>
+                    </div>
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">3</div>
+                        <div class="reinhold-step-content">
+                            <strong>Lance les 5 dés.</strong> Lis les chiffres dans l'ordre des dés
+                            (gauche → droite). Tu obtiens un nombre du type <code>32145</code>.
+                            Cherche-le dans la table → tu trouves UN mot précis (ex: <code>32145 → horseshoe</code>).
+                        </div>
+                    </div>
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">4</div>
+                        <div class="reinhold-step-content">
+                            Recommence pour chaque mot suivant. <strong>Recommandation officielle :</strong>
+                            6 mots minimum (77,5 bits), 7+ pour secrets sensibles, 8+ pour root server.
+                        </div>
+                    </div>
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">5</div>
+                        <div class="reinhold-step-content">
+                            <strong>Note la passphrase sur papier</strong>, range-la dans un endroit sûr
+                            (coffre, deuxième domicile de confiance). Ne la tape JAMAIS dans une
+                            application web pour vérifier — utilise l'outil offline ci-dessous.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="download-row">
+                    <a class="download-btn" href="docs/diceware-method-en.pdf" download>⬇ Table EFF (PDF, EN)</a>
+                    <a class="download-btn" href="docs/diceware-method-fr.pdf" download>⬇ Table EFF (PDF, FR)</a>
+                    <a class="download-btn" href="offline/selfrecover-validator.html" download>⬇ Outil offline (HTML autonome)</a>
+                </div>
+
+                <div class="roadmap-card">
+                    <span class="roadmap-tag">ROADMAP V0.2</span>
+                    <strong>MySelf-Live</strong> — distribution Linux Live USB minimale, signée GPG,
+                    vérifiable, dédiée aux cérémonies SelfRecover. Boot RAM-only, zéro persistance,
+                    Tor disponible, PDF EFF embarqué, animation dés visuelle.
+                    Inspirée de Tails / Qubes OS, taille cible ~500 MB. Disponible été 2026.
+                    <a href="https://github.com/Pierroons/my-self#roadmap" target="_blank">Détails</a>.
+                </div>
+            </div>
+
+            <!-- Mode 2 : Auto random (CSPRNG navigateur) -->
+            <div id="mode-diceware" class="mode-panel hidden">
+                <p class="desc">
+                    Pas de dés sous la main ? Le navigateur peut générer une passphrase
+                    via <code>crypto.getRandomValues()</code> avec rejection sampling sur
+                    la wordlist EFF. <strong>Entropie strictement équivalente</strong> à
+                    la méthode physique sur la passphrase elle-même, sous réserve de
+                    confiance dans le RNG OS / navigateur.
+                </p>
+                <div class="form-group">
+                    <label>Langue</label>
+                    <select id="dw-lang">
+                        <option value="en">EN — EFF Large Wordlist</option>
+                        <option value="fr">FR — Liste équivalente 7776 mots</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Nombre de mots <span id="dw-count-display" class="muted">4</span></label>
+                    <input type="range" id="dw-count" min="3" max="10" value="4" class="slider">
+                </div>
+                <button class="btn" onclick="generateDicewareSample()">Générer un échantillon</button>
+                <div id="dw-output" class="passphrase-output"></div>
+            </div>
+
+            <!-- Mode 3 : Passphrase libre -->
+            <div id="mode-free" class="mode-panel hidden">
+                <div class="disclaimer-red">
+                    ⚠ <strong>Démonstration pédagogique uniquement.</strong>
+                    Ne tape jamais ta vraie passphrase ici — la frappe au clavier est exposée
+                    à tout malware présent sur ta machine. Cf. modèle de menace ci-dessus.
+                </div>
+                <div class="form-group">
+                    <label>Tape une passphrase de test (analysée localement par zxcvbn — Dropbox MIT)</label>
+                    <input type="text" id="free-passphrase" placeholder="ma phrase secrète à moi 2026 !"
+                           oninput="updateFreeEntropy()">
+                </div>
+                <div id="free-output" class="passphrase-output"></div>
+            </div>
+
+            <!-- Mode 4 : Hybride -->
+            <div id="mode-hybrid" class="mode-panel hidden">
+                <div class="disclaimer-red">
+                    ⚠ <strong>Démonstration pédagogique uniquement.</strong>
+                    Ne tape jamais ta vraie passphrase ici — la frappe au clavier est exposée
+                    à tout malware présent sur ta machine. Cf. modèle de menace ci-dessus.
+                </div>
+                <p class="desc">N mots EFF + suffixe libre. L'entropie totale = entropie diceware + entropie zxcvbn du suffixe.</p>
+                <div class="form-group">
+                    <label>Mots diceware <span id="hyb-count-display" class="muted">3</span></label>
+                    <input type="range" id="hyb-count" min="2" max="6" value="3" class="slider"
+                           oninput="updateHybridEntropy()">
+                </div>
+                <div class="form-group">
+                    <label>Suffixe libre (chiffres, mots persos, ponctuation…)</label>
+                    <input type="text" id="hyb-suffix" placeholder="!42-mySecret"
+                           oninput="updateHybridEntropy()">
+                </div>
+                <button class="btn" onclick="generateHybridSample()">Générer la partie diceware</button>
+                <div id="hyb-output" class="passphrase-output"></div>
+            </div>
+
+            <p class="desc" style="margin-top:24px;font-size:0.75rem;">
+                Hypothèse de l'attaquant pour le temps de cassage : 10¹² essais/seconde
+                (cluster GPU haut de gamme, hash hors ligne). Sources :
+                <a href="https://www.eff.org/dice" target="_blank">EFF Diceware</a>,
+                <a href="https://github.com/dropbox/zxcvbn" target="_blank">zxcvbn</a>.
+            </p>
+        </div>
+
         <!-- RECOVER L2 -->
         <div id="panel-recoverL2" class="panel hidden">
             <h2>Recover — Level 2 (lost passphrase)</h2>
@@ -240,9 +598,24 @@
         </div>
 
         <div class="footer">
-            <a href="https://github.com/Pierroons/selfrecover">SelfRecover on GitHub</a> — MIT License
+            <a href="https://github.com/Pierroons/selfrecover">SelfRecover on GitHub</a> — AGPL-3.0-or-later
+            <br><br>
+            Variantes disponibles :
+            <a href="lite.html">SelfRecover Lite</a> (avec SMTP + mot mémorisé)
+            ·
+            <a href="comparison.html">📊 Comparatif sécurité</a>
         </div>
     </div>
+
+    <!-- Wordlists EFF officielles 7776 mots (CC-BY 3.0) chargées en mémoire -->
+    <script src="assets/diceware-en.js"></script>
+    <script src="assets/diceware-fr.js"></script>
+    <!-- zxcvbn (Dropbox, MIT) — analyse d'entropie de passphrases libres -->
+    <script src="assets/zxcvbn.js"></script>
+    <!-- Helpers SelfRecover : tirage uniforme, calcul d'entropie, classification -->
+    <script src="assets/entropy.js"></script>
+    <!-- Transparency Live panel : visualise en direct les requêtes et opérations crypto -->
+    <script src="assets/transparency.js"></script>
 
     <script>
         // === Tab switching ===
@@ -254,7 +627,10 @@
         }
 
         // === API helper ===
-        async function api(action, body = null) {
+        // Sur window pour permettre le monkey-patch par transparency.js (qui remplace
+        // window.api par apiTraced et logge chaque requête dans le panneau live).
+        // Si transparency.js n'est pas chargé, fallback minimal ci-dessous.
+        window.api = async function (action, body = null) {
             const opts = {
                 method: body ? 'POST' : 'GET',
                 headers: body ? { 'Content-Type': 'application/json' } : {},
@@ -264,12 +640,13 @@
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Unknown error');
             return data;
-        }
+        };
 
         // === HMAC derivation (client-side) ===
-        // This is the heart of SelfRecover : the raw recovery word never leaves the browser.
-        // We derive a site-specific key using HMAC-SHA256 with domain + site_salt as key material.
-        async function hmacDerive(word, salt) {
+        // The raw recovery word never leaves the browser.
+        // Site-specific key derived via HMAC-SHA256 with domain + site_salt.
+        // Wrappée par transparency.js (hmacDeriveTraced) si chargée.
+        window.hmacDerive = async function (word, salt) {
             const enc = new TextEncoder();
             const domain = window.location.hostname;
             const keyMaterial = enc.encode(domain + salt);
@@ -285,7 +662,10 @@
             console.log('[SelfRecover] Raw word never leaves this browser.');
             console.log('[SelfRecover] Derived key (first 16 chars): ' + hex.substring(0, 16) + '...');
             return hex;
-        }
+        };
+        // Aliases locaux pour compatibilité avec le code ci-dessous
+        const api = (...args) => window.api(...args);
+        const hmacDerive = (...args) => window.hmacDerive(...args);
 
         // === Display result ===
         function showResult(elId, message, isError = false) {
@@ -346,6 +726,95 @@
                 showResult('l1-result', e.message, true);
             }
         }
+
+        // === Entropy Lab ===
+        function renderEntropyBar(targetEl, bits, extraInfo) {
+            const E = window.SelfRecoverEntropy;
+            const level = E.entropyLevel(bits);
+            const widthPct = Math.min(100, (bits / 128) * 100);
+            const safeInfo = extraInfo || '';
+            targetEl.innerHTML = (targetEl.dataset.passphrase
+                ? '<div style="margin-bottom:10px;color:var(--accent);">' + targetEl.dataset.passphrase + '</div>'
+                : '') +
+                '<div class="entropy-bar">' +
+                '  <div class="entropy-bar-track">' +
+                '    <div class="entropy-bar-fill" style="width:' + widthPct.toFixed(1) + '%;background:' + level.color + ';"></div>' +
+                '  </div>' +
+                '  <div class="entropy-meta">' +
+                '    <span><strong style="color:' + level.color + ';">' + level.label + '</strong> · ' + bits.toFixed(1) + ' bits</span>' +
+                '    <span>cassage ≈ ' + E.crackTimeFromBits(bits) + '</span>' +
+                '  </div>' +
+                (safeInfo ? '<div class="entropy-meta" style="margin-top:2px;">' + safeInfo + '</div>' : '') +
+                '</div>';
+        }
+
+        function selectMode(mode) {
+            document.querySelectorAll('.mode-panel').forEach(p => p.classList.add('hidden'));
+            document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('mode-' + mode).classList.remove('hidden');
+            document.querySelector('.mode-tab[data-mode="' + mode + '"]').classList.add('active');
+        }
+
+        function generateDicewareSample() {
+            const E = window.SelfRecoverEntropy;
+            const count = parseInt(document.getElementById('dw-count').value, 10);
+            const lang = document.getElementById('dw-lang').value;
+            const passphrase = E.generateDiceware(count, lang, '-');
+            const bits = E.dicewareEntropyBits(count);
+            const out = document.getElementById('dw-output');
+            out.dataset.passphrase = passphrase;
+            renderEntropyBar(out, bits, count + ' mots × log₂(7776) ≈ ' + E.BITS_PER_DICEWARE_WORD.toFixed(2) + ' bits/mot');
+        }
+
+        function updateFreeEntropy() {
+            const E = window.SelfRecoverEntropy;
+            const passphrase = document.getElementById('free-passphrase').value;
+            const out = document.getElementById('free-output');
+            out.dataset.passphrase = passphrase;
+            if (!passphrase) { out.innerHTML = ''; return; }
+            const r = E.freeEntropyBits(passphrase);
+            if (!r) { out.innerHTML = '<em>zxcvbn non chargé</em>'; return; }
+            const labels = ['Très faible', 'Faible', 'Moyen', 'Bon', 'Excellent'];
+            renderEntropyBar(out, r.bits, 'zxcvbn score ' + r.score + '/4 (' + labels[r.score] + ') · cracker estime ≈ ' + r.crackTime);
+        }
+
+        function generateHybridSample() {
+            const E = window.SelfRecoverEntropy;
+            const count = parseInt(document.getElementById('hyb-count').value, 10);
+            const dicewarePart = E.generateDiceware(count, 'en', '-');
+            const out = document.getElementById('hyb-output');
+            out.dataset.dicewarePart = dicewarePart;
+            updateHybridEntropy();
+        }
+
+        function updateHybridEntropy() {
+            const E = window.SelfRecoverEntropy;
+            const count = parseInt(document.getElementById('hyb-count').value, 10);
+            document.getElementById('hyb-count-display').textContent = count;
+            const suffix = document.getElementById('hyb-suffix').value;
+            const out = document.getElementById('hyb-output');
+            const dicewarePart = out.dataset.dicewarePart || '';
+            const fullPassphrase = dicewarePart + (dicewarePart && suffix ? '-' : '') + suffix;
+            out.dataset.passphrase = fullPassphrase || '(génère d\'abord la partie diceware)';
+            const r = E.hybridEntropyBits(count, suffix);
+            renderEntropyBar(out, r.bits, count + ' mots EFF (' + r.dicewareBits + ' bits) + suffixe libre (' + r.freeBits + ' bits)');
+        }
+
+        // Initialisations
+        document.addEventListener('DOMContentLoaded', function () {
+            const dwCount = document.getElementById('dw-count');
+            if (dwCount) {
+                dwCount.addEventListener('input', function () {
+                    document.getElementById('dw-count-display').textContent = this.value;
+                });
+            }
+            const hybCount = document.getElementById('hyb-count');
+            if (hybCount) {
+                hybCount.addEventListener('input', function () {
+                    document.getElementById('hyb-count-display').textContent = this.value;
+                });
+            }
+        });
 
         // === Recover L2 ===
         async function doRecoverL2() {

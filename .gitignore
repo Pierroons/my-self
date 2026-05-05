@@ -8,6 +8,7 @@
 # Démos SQLite éphémères
 bi-self/demo-backend/sessions/
 bi-self/demo-backend/logs/
+bi-self/selfrecover/demo/*.sqlite
 
 # OS / éditeurs
 .DS_Store

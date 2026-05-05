@@ -229,7 +229,9 @@
     </div>
   </div>
   <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-    <a class="cta" href="/recover">SelfRecover</a>
+    <a class="cta" href="/recover">SelfRecover Full</a>
+    <a class="cta" href="/selfrecover/lite.html">SelfRecover Lite</a>
+    <a class="cta" href="/selfrecover/comparison.html">📊 Comparatif</a>
     <a class="cta" href="/moderate">SelfModerate</a>
     <a class="cta" href="/duo">Duo · Sybil</a>
   </div>
@@ -247,12 +249,12 @@
 <section>
   <h2>Le binôme</h2>
   <p>
-    <strong>SelfRecover</strong> règle l'identité : une personne, un compte,
-    un mot de récupération connu de toi seul, jamais envoyé en clair au
-    serveur, et aucune adresse email dans la boucle. <strong>SelfModerate</strong>
-    règle la gouvernance : la communauté vote sur les comportements, les
-    sanctions émergent de l'usage, et personne — pas même le fondateur —
-    ne peut imposer sa volonté.
+    <strong>SelfRecover</strong> règle l'identité — disponible en deux modes :
+    le <strong>Full</strong> (sans aucun email) ou le <strong>Lite</strong>
+    (compatible avec votre infrastructure email actuelle, durci par un mot
+    mémorisé). <strong>SelfModerate</strong> règle la gouvernance : la
+    communauté vote sur les comportements, les sanctions émergent de l'usage,
+    et personne — pas même le fondateur — ne peut imposer sa volonté.
   </p>
   <p>
     Pris isolément, chacun est utile. <strong>Ensemble, ils se verrouillent
@@ -264,15 +266,21 @@
   <div class="modules">
 
     <div class="module">
-      <h3>SelfRecover<span class="status">v0.1.0</span></h3>
+      <h3>SelfRecover<span class="status">v0.1.1 · 2 modes</span></h3>
       <p>
-        Récupération de compte sans email. Un mot choisi par l'utilisateur,
-        dérivé en HMAC-SHA256 par le navigateur, haché en bcrypt côté
-        serveur. Anti-phishing natif (la clé change selon le domaine).
+        Récupération de compte avec deux niveaux d'adoption.
+        <strong>Mode Full</strong> : zéro email, dérivation HMAC-SHA256 d'un mot
+        de récupération choisi par l'utilisateur (anti-phishing natif).
+        <strong>Mode Lite</strong> : conserve le mail (compatibilité legacy)
+        mais ajoute un mot mémorisé HMAC — un email intercepté seul ne suffit
+        plus à compromettre le compte. Palier idéal pour les opérateurs publics
+        et services à fort enjeu.
       </p>
       <div class="actions">
         <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover" target="_blank" rel="noopener">Code &amp; README</a>
-        <a class="demo-live" href="/recover">Lancer la démo</a>
+        <a class="demo-live" href="/recover">Démo Full</a>
+        <a class="demo-live" href="/selfrecover/lite.html">Démo Lite</a>
+        <a class="demo-live" href="/selfrecover/comparison.html">Comparatif</a>
       </div>
     </div>
 
@@ -285,7 +293,7 @@
       </p>
       <div class="actions">
         <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfmoderate" target="_blank" rel="noopener">Code &amp; README</a>
-        <a class="demo-live" href="/moderate">Lancer la démo</a>
+        <a class="demo-live" href="/moderate">Démo</a>
       </div>
     </div>
 
@@ -305,7 +313,7 @@
 
 <footer>
   Code source : <a href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">github.com/Pierroons/my-self</a>
-  ·  Licence AGPL-3.0-or-later
+  ·  Licence <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">AGPL-3.0-or-later</a>
   ·  Auto-hébergé sur Raspberry Pi 4
   ·  <a href="https://my-self.fr">Retour à MySelf</a>
 </footer>

@@ -17,18 +17,62 @@ function getDB(): PDO {
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
     if ($init) {
         $pdo->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+    } else {
+        // Migrations idempotentes pour SelfRecover Lite (V0.1.1)
+        // PDO::ERRMODE_EXCEPTION nécessite try/catch (le @ ne supprime pas les exceptions)
+        foreach ([
+            "ALTER TABLE users ADD COLUMN email TEXT",
+            "ALTER TABLE users ADD COLUMN memorized_word_hash TEXT",
+        ] as $migration) {
+            try { $pdo->exec($migration); } catch (Exception $e) { /* duplicate column = OK */ }
+        }
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS reset_requests (
+                id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                salt TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                used INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )");
+        } catch (Exception $e) { /* table exists = OK */ }
     }
     return $pdo;
+}
+
+/**
+ * Système de traces "transparency live".
+ * Chaque endpoint peut empiler des messages via addTrace() qui seront
+ * renvoyés au client dans le champ `_trace` de la réponse JSON.
+ *
+ * RÈGLE D'OR : ne JAMAIS pousser dans les traces une donnée sensible
+ * en clair (mot de passe, passphrase brute, mot de récupération brut,
+ * hashes Argon2id complets). Seulement des métadonnées (longueurs,
+ * durées, indices DB, codes d'erreur structurés).
+ */
+function addTrace(string $msg): void {
+    if (!isset($GLOBALS['_trace'])) {
+        $GLOBALS['_trace'] = [];
+    }
+    $GLOBALS['_trace'][] = '[' . date('H:i:s') . '] ' . $msg;
 }
 
 function jsonResponse(array $data, int $code = 200): void {
     http_response_code($code);
     header('Content-Type: application/json');
-    echo json_encode($data);
+    if (!empty($GLOBALS['_trace'])) {
+        $data['_trace'] = $GLOBALS['_trace'];
+    }
+    echo json_encode($data, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
 function jsonError(string $message, int $code = 400): void {
+    if (!isset($GLOBALS['_trace'])) {
+        $GLOBALS['_trace'] = [];
+    }
+    $GLOBALS['_trace'][] = '[' . date('H:i:s') . '] [error] ' . $message;
     jsonResponse(['error' => $message], $code);
 }
 

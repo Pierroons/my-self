@@ -39,7 +39,8 @@ droits, ses données et ses biens.
 | [SelfAct](https://justice.my-self.fr/act) | Comment tu les fais valoir ? | bêta v0.1.2 ✅ |
 | [SelfGuard](./self-security/selfguard/) | Comment protéger tes données ? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | Comment protéger tes objets ? | concept |
-| [SelfInvoice](./selfinvoice/) | Comment facturer tes clients ? | idée |
+| [SelfInvoice](./selfinvoice/) | Comment facturer tes clients ? | bêta (Factur-X natif) |
+| **[SelfFarm-Lite](https://selffarm.my-self.fr)** | **Comment piloter ton exploitation ?** | **v0.2 live ✅** |
 
 ---
 
@@ -88,26 +89,78 @@ et où la présence active est requise pour déverrouiller.
 
 ### SelfInvoice — facturation conforme, local-first
 
-Génère des factures conformes (mentions légales art. L441-9 C. com.,
-franchise TVA art. 293 B CGI, bordereaux) en PDF signé, sans cloud,
-sans abonnement, sans détention de fonds. Le client règle par virement
+Génère des factures conformes avec **Factur-X natif** (PDF/A-3 + XML CII,
+profil EN16931 — obligatoire en France à partir de septembre 2026 en
+réception, 2027-2028 en émission). Multi-régime : franchise TVA
+(art. 293 B CGI), micro-BA, réel simplifié/normal. Pas de cloud, pas
+d'abonnement, pas de détention de fonds. Le client règle par virement
 SEPA classique vers l'IBAN affiché sur la facture.
 
 > *Ta facture. Ton template. Tes données. Terminé.*
 
 ---
 
+## Étage applicatif — SelfFarm-Lite
+
+Quand les trois piliers tiennent, **on peut construire au-dessus**.
+SelfFarm-Lite est la première application concrète : un écosystème complet
+de gestion d'exploitation pour jeunes agriculteurs (JA), nouveaux installés
+(NA), exploitations en croisière (AGRI) et PME agricoles.
+
+> *Quand l'identité, le droit et la sécurité sont en place, l'individu peut construire.*
+
+SelfFarm-Lite contient 7 modules qui alimentent tous **un hub comptable
+central unique** (`self_agri_book`) :
+
+| Module | Rôle |
+|--------|------|
+| `self_agri_book` | **Hub compta central** — journal, grand livre, balance, compte de résultat, bilan, export FEC DGFIP (conforme art. L47 A-I LPF) |
+| `self_invoice` | Facturation Factur-X native (BASIC / EN16931 / EXTENDED) — auto-écriture 411/701 vers le hub |
+| `self_dnja` | Moteur prévisionnel jeune agriculteur — 4 ans + dossier PDF officiel CDOA |
+| `self_aid` | Catalogue d'aides publiques sourcées aux autorités primaires (Légifrance, BOFiP, FranceAgriMer, MSA, portails régionaux) |
+| `self_banking` | Parsers de relevés bancaires fake-first (Société Générale fait, CA/CM/Boursorama à venir). Les imports alimentent le hub avec lettrage auto 512/411, prélèvements récurrents, frais bancaires |
+| `self_parcelles` | Visualisation cartographique des parcelles via IGN Géoportail (overlay cadastre + recherche WFS) |
+| `self_achats` | Achats fournisseurs (semences, carburant, assurance) — 6xxx/401 vers le hub |
+
+**Architecture hub-centrée** : chaque module alimente la même table SQLite
+`ecritures_comptables`. Pas de double saisie. Dédup garantie par
+l'unicité `(source_module, source_id)`. Source unique de vérité pour
+l'expert-comptable, l'administration fiscale et l'exploitant lui-même.
+
+**Démo live** : https://selffarm.my-self.fr
+
+**Alignement philosophique** : SelfFarm-Lite utilise les trois piliers MySelf
+comme fondations :
+- **Bi-Self** : signer les documents légaux avec son identité SelfRecover,
+  contribuer au catalogue partagé d'aides via SelfModerate
+- **Self-Right** : SelfJustice pour les litiges agricoles (métayage,
+  bailleur/preneur, contentieux réglementaire), SelfAct pour les formulaires
+  CERFA (déclarations PAC, etc.)
+- **Self-Security** : SelfGuard pour les identifiants bancaires sensibles,
+  SelfKeyGuard pour la 2FA matérielle sur tracteurs / serres / hangars
+
+Le même pattern peut être appliqué à **n'importe quelle autre profession** :
+`SelfClinic-Lite` pour les praticiens de santé indépendants, `SelfCraft-Lite`
+pour les artisans, `SelfStore-Lite` pour le commerce, etc. SelfFarm-Lite est
+la première preuve que les trois piliers sont porteurs.
+
+---
+
 ## La vision d'ensemble
 
-MySelf adresse la **personne complète** à travers trois piliers :
+MySelf adresse la **personne complète** à travers trois piliers et un étage
+applicatif :
 
-| Pilier | Dimension |
-|--------|-----------|
+| Étage | Dimension |
+|-------|-----------|
 | **Bi-Self** | Sociale — qui tu es et comment tu interagis |
 | **Self-Right** | Juridique — ce que tu peux défendre par le droit |
 | **Self-Security** | Matérielle — ce que tu protèges concrètement |
+| **SelfFarm-Lite** (étage applicatif) | Professionnelle — ce que tu construis et exploites |
 
-Trois piliers, deux modules par pilier, plus le module autonome SelfInvoice.
+Trois piliers, deux modules par pilier, plus le module autonome SelfInvoice,
+plus SelfFarm-Lite comme premier étage applicatif au-dessus.
+
 Aucun module n'est obligatoire.
 Tu choisis ce qui correspond à tes besoins et tu auto-héberges ce que
 tu veux contrôler.

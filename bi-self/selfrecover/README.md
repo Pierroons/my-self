@@ -221,13 +221,79 @@ The protocol is currently running in production on a community platform with rea
 
 ---
 
+## Threat model
+
+SelfRecover is honest about what it protects and what it does not. Every cryptographic protocol has a frontier of guarantee.
+
+### Adversaries covered
+
+| Adversary | Coverage |
+|---|---|
+| Compromised SelfRecover server | ✅ Split knowledge + client-side HMAC: server never sees raw secrets |
+| Phishing / spoofed domain | ✅ Domain-bound HMAC: a fake domain produces a different key |
+| Network sniffer / MITM | ✅ TLS in transit + only HMAC derivation transmitted |
+| Database leak | ✅ Argon2id hashes (memory-hard, GPU-resistant) |
+| Online brute-force | ✅ Per-username rate-limit + L2/L3 progressive escalation |
+
+### Adversaries OUT OF SCOPE — explicitly assumed
+
+| Adversary | Mitigation |
+|---|---|
+| **Compromised host** (keylogger, info-stealer, RAT) | Out of scope. Use **Tails Live USB**, **Qubes OS**, or **MySelf-Live (V0.2)** for root secret ceremonies. See [Roadmap](#roadmap). |
+| Compromised browser (extension, 0-day) | Out of scope. Same mitigation. |
+| Coercion ($5 wrench attack) | Out of scope. No plausible deniability provided. |
+| Theoretical break of SHA-256 / Argon2id | Out of scope. Migration follows ANSSI/NIST guidance. |
+
+### Operational discipline
+
+The passphrase **MUST** never exist outside the user's brain (and a paper backup). It should never be typed for "verification" or "validation". Three legitimate moments only:
+
+1. Account registration (one keystroke, server stores Argon2id hash)
+2. Recovery L1 (one keystroke, proves knowledge)
+3. After recovery, the passphrase is no longer used — the regenerated password replaces it
+
+If verification of a freshly-rolled passphrase is desired, use the **standalone offline HTML tool** (`demo/offline/selfrecover-validator.html`) on an air-gapped machine.
+
+---
+
 ## Roadmap
+
+### V0.1 (current — May 2026)
 
 - [x] Protocol specification
 - [x] Reference implementation (community platform)
 - [x] Whitepapers EN + FR
 - [x] Standalone demo (this repo)
-- [ ] Security audit (community welcome)
+- [x] EFF 7776-word wordlist integrated (EN + FR)
+- [x] Three entropy modes in demo: Reinhold dice / Auto random / Free passphrase / Hybrid
+- [x] Diceware reference PDF (EN + FR) — official method
+- [x] Standalone offline HTML validator (zero external requests, verifiable by `grep`)
+
+### V0.2 — MySelf-Live (planned: summer 2026)
+
+A minimal, signed, verifiable Linux distribution for SelfRecover ceremonies:
+
+- Debian/Alpine-based Live USB, RAM-only, no persistence
+- UEFI Secure Boot with MySelf-signed kernel
+- Reproducible builds (anyone can verify image hash)
+- GPG offline signing (root key on smartcard / YubiKey)
+- Multi-channel distribution (HTTPS + IPFS + torrent + GitHub releases)
+- Pre-installed: SelfRecover daemon (localhost), Tor, Firefox ESR hardened, EFF PDF embedded
+- Network: disabled by default (air-gap mode at boot)
+- Target image size: ~500 MB
+- Inspired by Tails / Qubes OS / Whonix, focused on cryptographic ceremonies
+
+Build skeleton: see [`tools/build-myself-live/`](../../tools/build-myself-live/) (in progress).
+
+### V0.3 (planned: autumn 2026)
+
+- [ ] Community security audit
+- [ ] Reproducible build pipeline finalized
+- [ ] Anti-Evil-Maid (Heads / TPM measurements) optional
+- [ ] Localizations EN / FR / DE / ES
+
+### V1.0 (planned: 2027)
+
 - [ ] PHP library extraction (`composer require pierroons/selfrecover`)
 - [ ] JS library extraction (`npm install selfrecover`)
 - [ ] WordPress plugin

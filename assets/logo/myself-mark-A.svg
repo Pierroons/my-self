@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="MySelf">
+  <title>MySelf — sigil M&#39;</title>
+  <g fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M 36 158 L 36 70 L 100 138 L 158 50 L 158 158"></path>
+    <path d="M 158 50 L 174 28"></path>
+  </g>
+  <circle cx="180" cy="20" r="11" fill="currentColor"></circle>
+</svg>

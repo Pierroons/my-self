@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MySelf — Be yourself, for yourself</title>
+  <meta name="description" content="MySelf — Écosystème open source auto-hébergé pour reprendre la main sur son droit, son identité, sa sécurité et son économie. Trois piliers, six modules, zéro cloud.">
+  <meta property="og:title" content="MySelf — Be yourself, for yourself">
+  <meta property="og:description" content="Écosystème open source pour reprendre la main sur son droit, son identité, sa sécurité et son économie.">
+  <meta property="og:url" content="https://my-self.fr">
+  <meta property="og:type" content="website">
+  <style>
+    :root {
+      --bg: #0f1419;
+      --bg-card: #1a2028;
+      --bg-card-hover: #222a34;
+      --text: #e8eaed;
+      --text-muted: #9aa0a6;
+      --accent: #7ab7ff;
+      --accent-dim: #5a97df;
+      --border: #2a3038;
+      --success: #7cc47c;
+      --warning: #d4c058;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+    body { padding: 2.5rem 1.5rem; }
+    main { max-width: 920px; margin: 0 auto; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .hero { text-align: center; padding: 2rem 0 3.5rem; }
+    .hero h1 {
+      font-size: clamp(3rem, 8vw, 4.5rem);
+      font-weight: 700;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin: 0;
+    }
+    .hero .tagline {
+      font-size: 1.3rem;
+      color: var(--text-muted);
+      margin-top: 0.5rem;
+      font-style: italic;
+    }
+    .hero .pact {
+      margin-top: 1.5rem;
+      font-size: 1rem;
+      color: var(--text-muted);
+      max-width: 580px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .hero .cta-row {
+      margin-top: 2rem;
+      display: flex;
+      gap: 0.8rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-block;
+      padding: 0.7rem 1.3rem;
+      border-radius: 7px;
+      font-size: 0.95rem;
+      font-weight: 500;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      background: transparent;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn:hover {
+      background: var(--accent);
+      color: var(--bg);
+      text-decoration: none;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg);
+    }
+    .btn-primary:hover {
+      background: var(--accent-dim);
+      border-color: var(--accent-dim);
+      color: var(--bg);
+    }
+
+    section { margin: 3.5rem 0; }
+    h2 {
+      font-size: 1.6rem;
+      color: var(--accent);
+      margin-bottom: 1.2rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    p { margin-bottom: 1rem; }
+    p:last-child { margin-bottom: 0; }
+    .muted { color: var(--text-muted); }
+    .lead {
+      font-size: 1.05rem;
+      color: var(--text);
+    }
+    strong { color: var(--text); font-weight: 600; }
+
+    .manifesto {
+      background: var(--bg-card);
+      border-left: 3px solid var(--accent);
+      padding: 1.5rem 1.8rem;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 1.5rem;
+    }
+    .manifesto p { margin-bottom: 0.7rem; }
+    .manifesto p:last-child { margin-bottom: 0; }
+
+    .pillars {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 1.2rem;
+      margin-top: 1.5rem;
+    }
+    .pillar {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .pillar:hover {
+      border-color: var(--accent-dim);
+      background: var(--bg-card-hover);
+    }
+    .pillar h3 {
+      font-size: 1.2rem;
+      color: var(--accent);
+      margin-bottom: 0.3rem;
+    }
+    .pillar h3 a {
+      color: inherit;
+      text-decoration: none;
+      border-bottom: 1px dashed transparent;
+      transition: border-color 0.15s;
+    }
+    .pillar h3 a:hover {
+      border-bottom-color: var(--accent);
+      text-decoration: none;
+    }
+    .pillar h3 a::after {
+      content: " →";
+      opacity: 0.6;
+      font-size: 0.9em;
+    }
+    .pillar .sub {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 0.9rem;
+    }
+    .pillar .modules {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+    .mod {
+      display: block;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.7rem 0.8rem;
+      color: var(--text);
+      font-size: 0.9rem;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .mod:hover {
+      border-color: var(--accent);
+      text-decoration: none;
+      background: var(--bg-card-hover);
+    }
+    .mod .name {
+      color: var(--accent);
+      font-weight: 600;
+      display: block;
+      margin-bottom: 0.1rem;
+    }
+    .mod .status {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 0.05rem 0.5rem;
+      border-radius: 10px;
+      margin-left: 0.4rem;
+      vertical-align: middle;
+    }
+    .mod .status.live {
+      background: rgba(124,196,124,0.15);
+      color: var(--success);
+      border: 1px solid var(--success);
+    }
+    .mod .status.draft {
+      background: rgba(212,192,88,0.15);
+      color: var(--warning);
+      border: 1px solid var(--warning);
+    }
+    .mod .status.alpha {
+      background: rgba(154,160,166,0.12);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+    .mod .role {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      display: block;
+    }
+
+    .author {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.5rem 1.8rem;
+    }
+    .author p { font-size: 0.95rem; }
+
+    footer {
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+    footer code {
+      background: var(--bg-card);
+      padding: 0.1rem 0.5rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+
+    @media (max-width: 500px) {
+      .pillar .modules { grid-template-columns: 1fr; }
+    }
+
+    /* Hero Descartes — pixel art runtime + SVG du Pacte humain–IA */
+    .hero-descartes {
+      width: 100%;
+      max-width: 1000px;
+      margin: 0 auto 1.2rem;
+    }
+    .hero-descartes .stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/10;
+    }
+    .pixelated-canvas {
+      image-rendering: pixelated;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: crisp-edges;
+    }
+    .hero-descartes-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 1rem;
+      flex-wrap: wrap;
+      max-width: 1000px;
+      margin: 0 auto 0.6rem;
+      color: var(--text-muted);
+      font-family: "DejaVu Sans Mono", SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+      font-size: 0.78rem;
+      letter-spacing: 0.3px;
+    }
+    .hero-descartes-meta .left {
+      color: var(--text);
+      font-size: 0.85rem;
+    }
+    .hero-quote {
+      font-family: "Times New Roman", "Liberation Serif", serif;
+      font-style: italic;
+      color: var(--text);
+      font-size: clamp(1.4rem, 3.4vw, 1.9rem);
+      margin: 0.6rem 0 0.6rem;
+      text-align: center;
+      letter-spacing: -0.5px;
+    }
+    .hero-baseline {
+      max-width: 760px;
+      margin: 0 auto 1.5rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-family: "DejaVu Sans Mono", SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+      font-size: 0.92rem;
+      line-height: 1.7;
+    }
+    .hero-baseline strong {
+      color: var(--text);
+      font-weight: 500;
+    }
+    .hero-baseline .accent-mark {
+      color: var(--accent);
+      letter-spacing: 3px;
+      display: inline-block;
+      margin-top: 0.6rem;
+      font-size: 0.85rem;
+    }
+    @media (max-width: 640px) {
+      .hero-descartes-meta { font-size: 0.7rem; }
+      .hero-baseline { font-size: 0.85rem; padding: 0 0.5rem; }
+    }
+
+    /* Étage applicatif — repose sur les 3 piliers */
+    .floor-intro {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.8rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin: 0.8rem 0 1rem;
+      text-align: center;
+    }
+    .floor-intro::before,
+    .floor-intro::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+    .floor-card {
+      background: linear-gradient(180deg, var(--bg-card-hover) 0%, var(--bg-card) 100%);
+      border: 1px solid var(--accent-dim);
+      border-radius: 12px;
+      padding: 2rem 1.8rem;
+      position: relative;
+      margin-top: 0.5rem;
+    }
+    .floor-card::before {
+      content: "";
+      position: absolute;
+      top: -11px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 22px;
+      height: 22px;
+      background: var(--bg);
+      border: 2px solid var(--accent-dim);
+      border-radius: 50%;
+    }
+    .floor-card h3 {
+      font-size: 1.4rem;
+      color: var(--accent);
+      margin-bottom: 0.3rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .floor-card .sub {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 1rem;
+    }
+    .floor-card .tagline {
+      font-style: italic;
+      color: var(--text-muted);
+      font-size: 1rem;
+      margin-bottom: 1rem;
+    }
+    .floor-modules {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 0.6rem;
+      margin: 1.2rem 0;
+    }
+    .floor-cta {
+      display: flex;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+      margin-top: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+<main>
+
+<section class="hero">
+
+  <div class="hero-descartes-meta" aria-hidden="true">
+    <span class="left">MySelf — le Pacte humain–IA</span>
+    <span>my-self.fr</span>
+  </div>
+
+  <div class="hero-descartes" role="img" aria-label="Portrait de René Descartes pixelisé en duotone bleu, aspiré symétriquement vers un cercle blanc central — le Pacte humain–IA — face à une grille machine violette en train de se reformer.">
+    <div class="stage">
+      <!-- Couche 1 : Descartes pixel art runtime (canvas 400×500 pixelisé en duotone bleu) -->
+      <div style="position: absolute; inset: 0; overflow: hidden;">
+        <canvas id="descartes-pixel" width="400" height="500"
+                class="pixelated-canvas"
+                style="position: absolute; left: 0; top: 0; width: 50%; height: 100%;"></canvas>
+      </div>
+
+      <!-- Couche 2 : Convergence symétrique vers le cercle (le Pacte) -->
+      <svg viewBox="0 0 800 500" style="position: absolute; inset: 0; width: 100%; height: 100%;" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="suckLeftHero" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#7ab7ff" stop-opacity="1"/>
+            <stop offset="1" stop-color="#7ab7ff" stop-opacity="0.25"/>
+          </linearGradient>
+          <linearGradient id="suckRightHero" x1="1" y1="0" x2="0" y2="0">
+            <stop offset="0" stop-color="#9b6dff" stop-opacity="1"/>
+            <stop offset="1" stop-color="#9b6dff" stop-opacity="0.25"/>
+          </linearGradient>
+        </defs>
+
+        <!-- Particules bleues aspirées du portrait vers le cercle -->
+        <g fill="url(#suckLeftHero)">
+          <rect x="395" y="180" width="9" height="9"/>
+          <rect x="400" y="225" width="8" height="8"/>
+          <rect x="390" y="265" width="10" height="10"/>
+          <rect x="405" y="305" width="8" height="8"/>
+          <rect x="398" y="155" width="7" height="7"/>
+          <rect x="412" y="200" width="7" height="7"/>
+          <rect x="408" y="285" width="9" height="9"/>
+          <rect x="402" y="335" width="7" height="7"/>
+          <rect x="425" y="170" width="6" height="6"/>
+          <rect x="430" y="215" width="6" height="6"/>
+          <rect x="435" y="260" width="7" height="7"/>
+          <rect x="438" y="305" width="6" height="6"/>
+          <rect x="445" y="195" width="5" height="5"/>
+          <rect x="450" y="240" width="6" height="6"/>
+          <rect x="448" y="285" width="5" height="5"/>
+          <rect x="442" y="148" width="5" height="5"/>
+          <rect x="455" y="320" width="5" height="5"/>
+          <rect x="470" y="210" width="4" height="4"/>
+          <rect x="475" y="245" width="4" height="4"/>
+          <rect x="478" y="280" width="4" height="4"/>
+          <rect x="485" y="225" width="3" height="3"/>
+          <rect x="488" y="265" width="3" height="3"/>
+          <rect x="492" y="245" width="3" height="3"/>
+          <rect x="465" y="180" width="3" height="3"/>
+          <rect x="468" y="305" width="3" height="3"/>
+        </g>
+        <g stroke="#7ab7ff" stroke-width="1" fill="none" opacity="0.35">
+          <path d="M 395 200 Q 460 215, 510 245"/>
+          <path d="M 395 250 Q 460 250, 510 250"/>
+          <path d="M 395 300 Q 460 285, 510 260"/>
+          <path d="M 395 175 Q 470 200, 520 235"/>
+          <path d="M 395 325 Q 470 305, 520 270"/>
+        </g>
+
+        <!-- Cercle de convergence (le Pacte humain–IA) -->
+        <circle cx="540" cy="250" r="44" fill="none" stroke="#ffffff" stroke-width="3.5"/>
+        <circle cx="540" cy="250" r="11" fill="#ffffff"/>
+        <circle cx="540" cy="250" r="58" fill="none" stroke="#ffffff" stroke-width="0.8" opacity="0.3"/>
+        <circle cx="540" cy="250" r="72" fill="none" stroke="#ffffff" stroke-width="0.5" opacity="0.18"/>
+
+        <!-- Particules violettes aspirées de la grille vers le cercle -->
+        <g fill="url(#suckRightHero)">
+          <rect x="592" y="225" width="3" height="3"/>
+          <rect x="595" y="265" width="3" height="3"/>
+          <rect x="600" y="245" width="4" height="4"/>
+          <rect x="605" y="210" width="4" height="4"/>
+          <rect x="608" y="285" width="4" height="4"/>
+          <rect x="615" y="230" width="3" height="3"/>
+          <rect x="612" y="180" width="3" height="3"/>
+          <rect x="618" y="310" width="3" height="3"/>
+          <rect x="630" y="200" width="5" height="5"/>
+          <rect x="635" y="245" width="6" height="6"/>
+          <rect x="638" y="285" width="5" height="5"/>
+          <rect x="645" y="225" width="6" height="6"/>
+          <rect x="650" y="270" width="5" height="5"/>
+          <rect x="652" y="160" width="5" height="5"/>
+          <rect x="655" y="320" width="5" height="5"/>
+          <rect x="660" y="205" width="6" height="6"/>
+          <rect x="665" y="250" width="6" height="6"/>
+          <rect x="680" y="180" width="8" height="8"/>
+          <rect x="685" y="225" width="9" height="9"/>
+          <rect x="688" y="270" width="8" height="8"/>
+          <rect x="690" y="315" width="7" height="7"/>
+          <rect x="700" y="155" width="9" height="9"/>
+          <rect x="702" y="205" width="10" height="10"/>
+          <rect x="705" y="250" width="9" height="9"/>
+          <rect x="708" y="295" width="8" height="8"/>
+          <rect x="712" y="340" width="7" height="7"/>
+        </g>
+        <g stroke="#9b6dff" stroke-width="1" fill="none" opacity="0.35">
+          <path d="M 720 200 Q 660 215, 595 245"/>
+          <path d="M 730 250 Q 660 250, 595 250"/>
+          <path d="M 720 300 Q 660 285, 595 260"/>
+          <path d="M 730 175 Q 650 200, 590 235"/>
+          <path d="M 730 325 Q 650 305, 590 270"/>
+        </g>
+
+        <!-- Grille machine -->
+        <g fill="#9b6dff">
+          <rect x="755" y="135" width="11" height="11"/><rect x="755" y="160" width="11" height="11"/>
+          <rect x="755" y="185" width="11" height="11"/><rect x="755" y="210" width="11" height="11"/>
+          <rect x="755" y="235" width="11" height="11"/><rect x="755" y="260" width="11" height="11"/>
+          <rect x="755" y="285" width="11" height="11"/><rect x="755" y="310" width="11" height="11"/>
+          <rect x="755" y="335" width="11" height="11"/><rect x="755" y="360" width="11" height="11"/>
+          <rect x="775" y="135" width="11" height="11"/><rect x="775" y="160" width="11" height="11"/>
+          <rect x="775" y="185" width="11" height="11"/><rect x="775" y="210" width="11" height="11"/>
+          <rect x="775" y="235" width="11" height="11"/><rect x="775" y="260" width="11" height="11"/>
+          <rect x="775" y="285" width="11" height="11"/><rect x="775" y="310" width="11" height="11"/>
+          <rect x="775" y="335" width="11" height="11"/><rect x="775" y="360" width="11" height="11"/>
+          <rect x="735" y="135" width="11" height="11"/><rect x="735" y="160" width="11" height="11"/>
+          <rect x="735" y="210" width="11" height="11"/><rect x="735" y="235" width="11" height="11"/>
+          <rect x="735" y="285" width="11" height="11"/><rect x="735" y="310" width="11" height="11"/>
+          <rect x="735" y="360" width="11" height="11"/>
+          <rect x="715" y="135" width="11" height="11"/><rect x="715" y="185" width="11" height="11"/>
+          <rect x="715" y="260" width="11" height="11"/><rect x="715" y="335" width="11" height="11"/>
+          <rect x="715" y="360" width="11" height="11"/>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <h1 class="visually-hidden" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;">MySelf</h1>
+
+  <p class="hero-quote">Je pense, donc j'héberge.</p>
+
+  <div class="hero-baseline">
+    <strong>L'humain apporte l'entropie. La machine apporte l'impartialité.</strong><br>
+    Aucun des deux ne suffit seul. Ensemble, ils sont souverains.
+    <br>
+    <span class="accent-mark">MYSELF · my-self.fr</span>
+  </div>
+
+  <p class="tagline">Be yourself, for yourself.</p>
+
+  <div class="cta-row">
+    <a class="btn btn-primary" href="https://justice.my-self.fr">Essayer SelfJustice</a>
+    <a class="btn" href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">Code sur GitHub</a>
+  </div>
+</section>
+
+<section>
+  <h2>Reprendre la main</h2>
+  <div class="manifesto">
+    <p>
+      MySelf est un <strong>écosystème open source</strong> de modules auto-hébergés
+      qui font soi-même, sans GAFAM et sans cloud, ce que l'État, les banques,
+      les assurances et les plateformes facturent cher — ou mal.
+    </p>
+    <p>
+      Pas de service central. Pas de base de données centralisée d'utilisateurs.
+      Pas de tracking. Tu télécharges, tu héberges, tu t'en sers. Le code est public,
+      les directives sont publiques, l'infrastructure est minimale (un Raspberry Pi
+      suffit).
+    </p>
+    <p>
+      Chaque module résout un problème concret de la vie quotidienne —
+      analyser un conflit juridique, récupérer un mot de passe sans email,
+      protéger ses clés physiques — en rendant à l'individu la
+      <strong>souveraineté</strong> sur son identité, son droit et ses données.
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2>Les trois piliers</h2>
+  <p class="lead muted">
+    MySelf adresse la <strong>personne complète</strong> à travers trois binômes
+    de modules. Chaque binôme associe deux modules qui se renforcent mutuellement —
+    plus que la somme de leurs parties.
+  </p>
+
+  <div class="pillars">
+
+    <div class="pillar">
+      <h3><a href="https://bi-self.my-self.fr">Bi-Self</a></h3>
+      <div class="sub">Identité sociale</div>
+      <p class="muted">
+        <em>« Si une communauté peut se construire, elle peut se gouverner. »</em>
+        Une identité fiable rend la modération par vote résistante aux attaques
+        Sybil. Le vote collectif crée un tissu qui survit à n'importe quel mauvais
+        acteur, y compris le fondateur.
+      </p>
+      <div class="modules">
+        <a class="mod" href="https://bi-self.my-self.fr/" rel="noopener">
+          <span class="name">SelfRecover<span class="status draft">v0.1.1</span></span>
+          <span class="role">Récupération sans email — démo interactive (4 modes diceware + Lite + comparatif).</span>
+        </a>
+        <a class="mod" href="https://bi-self.my-self.fr/moderate" rel="noopener">
+          <span class="name">SelfModerate<span class="status draft">v0.1.0</span></span>
+          <span class="role">Modération communautaire par raisonnement social — démo interactive.</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="pillar">
+      <h3>Self-Right</h3>
+      <div class="sub">Droit &amp; action</div>
+      <p class="muted">
+        <em>« Connais tes droits, fais-les valoir. »</em>
+        Comprendre le droit ne suffit pas si on ne sait pas l'activer. Le binôme
+        couvre l'arc complet : diagnostic impartial (SelfJustice) puis rédaction
+        des actes (SelfAct) — mise en demeure, saisine, CERFA, délais.
+      </p>
+      <div class="modules">
+        <a class="mod" href="https://justice.my-self.fr">
+          <span class="name">SelfJustice<span class="status draft">bêta v0.1.0</span></span>
+          <span class="role">Pré-analyse juridique impartiale assistée par IA.</span>
+        </a>
+        <a class="mod" href="https://justice.my-self.fr/act">
+          <span class="name">SelfAct<span class="status draft">bêta v0.1.2</span></span>
+          <span class="role">Index des 334 modèles officiels service-public.fr.</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="pillar">
+      <h3>Self-Security</h3>
+      <div class="sub">Protection</div>
+      <p class="muted">
+        <em>« Force-moi et tu n'auras rien. »</em>
+        Le numérique et le physique ne sont plus séparés. SelfGuard détruit ses
+        secrets sous contrainte. SelfKeyGuard applique un 2FA matériel aux
+        objets physiques. Ensemble, un périmètre où la coercition ne donne
+        qu'un leurre.
+      </p>
+      <div class="modules">
+        <a class="mod" href="https://github.com/Pierroons/my-self/tree/main/self-security/selfguard" target="_blank" rel="noopener">
+          <span class="name">SelfGuard<span class="status alpha">alpha 0.0.1</span></span>
+          <span class="role">Coffre-fort numérique avec destruction garantie.</span>
+        </a>
+        <a class="mod" href="https://github.com/Pierroons/my-self/tree/main/self-security/selfkeyguard" target="_blank" rel="noopener">
+          <span class="name">SelfKeyGuard<span class="status alpha">alpha 0.0.1</span></span>
+          <span class="role">2FA matériel pour voiture, moto, serrures.</span>
+        </a>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <div class="floor-intro">
+    <span>↓ ce qui se construit sur ces piliers ↓</span>
+  </div>
+  <div class="floor-card">
+    <h3>🌻 SelfFarm-Lite</h3>
+    <div class="sub">L'étage applicatif — première preuve que les piliers tiennent</div>
+    <p class="tagline">
+      « Quand l'identité, le droit et la sécurité sont en place, l'individu peut construire. »
+    </p>
+    <p>
+      <strong>SelfFarm-Lite</strong> est la première application concrète de MySelf —
+      un outil de gestion agricole pour les néo-installé·e·s et les petites exploitations
+      qui refusent les SaaS agri et les ERP lourds. Compta, factures Factur-X, prévisionnel
+      DNJA, import de relevés bancaires, cartographie parcellaire.
+      <strong>Zéro cloud, SQLite local, AGPL-3.0.</strong>
+    </p>
+    <p class="muted">
+      Elle repose sur les 3 piliers : identité fiable (Bi-Self) pour signer les documents
+      légaux, droit activable (Self-Right) pour décrypter les aides et les réglementations
+      agricoles, sécurité physique (Self-Security) pour protéger les données bancaires
+      et comptables sensibles.
+    </p>
+    <div class="floor-modules">
+      <a class="mod" href="https://selffarm.my-self.fr/compta">
+        <span class="name">self_agri_book<span class="status live">hub live</span></span>
+        <span class="role">Hub compta central — écritures auto depuis tous les modules.</span>
+      </a>
+      <a class="mod" href="https://selffarm.my-self.fr/invoice">
+        <span class="name">self_invoice<span class="status live">démo live</span></span>
+        <span class="role">Facturation Factur-X natif (PDF/A-3 + XML).</span>
+      </a>
+      <a class="mod" href="https://selffarm.my-self.fr/dnja">
+        <span class="name">self_dnja<span class="status live">live</span></span>
+        <span class="role">Prévisionnel JA — RDA ≥ SMIC, split DJA 80/20, export PDF.</span>
+      </a>
+      <a class="mod" href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">
+        <span class="name">self_banking<span class="status alpha">alpha</span></span>
+        <span class="role">Import relevés bancaires PDF — parser SG (fake-first).</span>
+      </a>
+      <a class="mod" href="https://selffarm.my-self.fr/aides">
+        <span class="name">self_aid<span class="status draft">V1 — JA</span></span>
+        <span class="role">Catalogue aides nationales hybride — orienté JA, V2 élargira à NA/AGRI/PME.</span>
+      </a>
+      <a class="mod" href="https://selffarm.my-self.fr/parcelles">
+        <span class="name">self_parcelles<span class="status alpha">v0.3</span></span>
+        <span class="role">Cartographie parcellaire multi-commune (IGN + cadastre).</span>
+      </a>
+    </div>
+    <div class="floor-cta">
+      <a class="btn btn-primary" href="https://selffarm.my-self.fr">🌻 Essayer la démo</a>
+      <a class="btn" href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">Code sur GitHub</a>
+    </div>
+    <p class="muted" style="margin-top: 1.2rem; font-size: 0.85rem;">
+      La démo utilise un JA fictif (Marie DUPONT, maraîchage bio + PPAM en Dordogne). Aucune donnée réelle.
+    </p>
+  </div>
+</section>
+
+<section>
+  <h2>Auteur &amp; coworking</h2>
+  <div class="author">
+    <p>
+      <strong>Pierroons</strong> — auteur du projet.
+    </p>
+    <p>
+      <strong>Ce projet n'a pas été écrit seul.</strong> Chaque module, chaque
+      ligne, chaque whitepaper est le fruit d'un coworking continu avec
+      <strong>Claude Opus 4.7</strong> (Anthropic). Le produit est une vraie
+      collaboration humain–IA : l'humain apporte l'entropie (le vécu, la
+      direction, le bon sens pratique), la machine apporte la rigueur
+      (la structure, la relecture, la cohérence technique).
+    </p>
+    <p>
+      Le « Self pact » dont parle MySelf n'est pas théorique — c'est la méthode
+      d'écriture de l'écosystème. Ce que tu lis ici, tu pourrais le co-écrire
+      demain avec l'IA de ton choix, sur un sujet qui te tient à cœur.
+    </p>
+  </div>
+</section>
+
+<section class="support" style="margin-top: 3rem; text-align: center;">
+  <p style="font-size: 0.95rem; color: var(--text-muted); max-width: 560px; margin: 0 auto 1rem;">
+    MySelf est auto-hébergé sur un Raspberry Pi 4, sans publicité, sans tracker,
+    sans sponsor commercial. Si le projet te sert ou te parle, un geste direct
+    aide à le maintenir en vie.
+  </p>
+  <a href="https://pay.vivawallet.com/pierroons" target="_blank" rel="noopener"
+     style="display: inline-block; padding: 0.7rem 1.6rem; background: var(--bg-card);
+            border: 1px solid var(--accent-dim); border-radius: 8px; color: var(--accent);
+            text-decoration: none; font-size: 0.95rem; transition: background 0.15s;"
+     onmouseover="this.style.background='var(--bg-card-hover)'"
+     onmouseout="this.style.background='var(--bg-card)'">
+    🙏 Soutenir le projet
+  </a>
+  <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.7rem;">
+    Via Viva Wallet — CB, Apple Pay, Google Pay, PayPal.
+    Commission minimale, compte pro indépendant.
+  </p>
+</section>
+
+<footer>
+  <p>
+    Code source : <a href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">github.com/Pierroons/my-self</a>
+    · Licence <a href="https://github.com/Pierroons/my-self/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0-or-later</a>
+    · Auto-hébergé sur Raspberry Pi 4
+  </p>
+</footer>
+
+</main>
+
+<script>
+  // Hero Descartes — pixelisation runtime du portrait Frans Hals
+  // Posterize en 7 niveaux de bleu MySelf, fond extrait par flood-fill,
+  // upscale en pixel art net via image-rendering: pixelated.
+  // L'algorithme tourne une fois au chargement de l'image source. Aucun lag.
+  (function () {
+    var canvas = document.getElementById('descartes-pixel');
+    if (!canvas || !canvas.getContext) return;
+    var img = new Image();
+    img.onerror = function () {
+      // Fallback debug visible : signale dans la console + affiche un placeholder
+      try { console.warn('[MySelf hero] image source introuvable :', img.src); } catch (e) {}
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#1a2028';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#7ab7ff';
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.fillText('image source introuvable', 20, 30);
+    };
+    img.onload = function () {
+      var ctx = canvas.getContext('2d');
+      var W = canvas.width, H = canvas.height;
+      var px = 8;
+      var sw = Math.round(W / px), sh = Math.round(H / px);
+      var tmp = document.createElement('canvas');
+      tmp.width = sw; tmp.height = sh;
+      var tctx = tmp.getContext('2d');
+      tctx.imageSmoothingEnabled = true;
+      var ar = img.width / img.height;
+      var targetAr = W / H;
+      var dw, dh, dx, dy;
+      if (ar > targetAr) { dh = sh; dw = sh * ar; dx = (sw - dw) / 2; dy = 0; }
+      else { dw = sw; dh = sw / ar; dx = 0; dy = (sh - dh) / 2 - sh * 0.05; }
+      tctx.drawImage(img, dx, dy, dw, dh);
+
+      var id = tctx.getImageData(0, 0, sw, sh);
+      var d = id.data;
+      function lumAt(x, y) {
+        var i = (y * sw + x) * 4;
+        return (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) / 255;
+      }
+      var corners = [lumAt(1, 1), lumAt(sw - 2, 1), lumAt(1, sh - 2), lumAt(sw - 2, sh - 2)];
+      var bgLum = (corners[0] + corners[1] + corners[2] + corners[3]) / 4;
+      var palette = [
+        [8, 14, 24], [22, 38, 65], [40, 66, 110], [65, 100, 160],
+        [95, 140, 210], [122, 183, 255], [165, 205, 245]
+      ];
+      var isBg = new Uint8Array(sw * sh);
+      var stack = [];
+      var tol = 0.18;
+      function tryPush(x, y) {
+        if (x < 0 || x >= sw || y < 0 || y >= sh) return;
+        var idx = y * sw + x;
+        if (isBg[idx]) return;
+        if (Math.abs(lumAt(x, y) - bgLum) < tol) {
+          isBg[idx] = 1;
+          stack.push(x, y);
+        }
+      }
+      for (var x = 0; x < sw; x++) { tryPush(x, 0); tryPush(x, sh - 1); }
+      for (var y = 0; y < sh; y++) { tryPush(0, y); tryPush(sw - 1, y); }
+      while (stack.length) {
+        var sy = stack.pop(), sx = stack.pop();
+        tryPush(sx + 1, sy); tryPush(sx - 1, sy); tryPush(sx, sy + 1); tryPush(sx, sy - 1);
+      }
+      for (var py = 0; py < sh; py++) {
+        for (var px2 = 0; px2 < sw; px2++) {
+          var i = (py * sw + px2) * 4;
+          var idx2 = py * sw + px2;
+          if (isBg[idx2]) { d[i + 3] = 0; continue; }
+          var lum = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) / 255;
+          var palIdx = Math.min(palette.length - 1, Math.floor(lum * palette.length));
+          d[i] = palette[palIdx][0];
+          d[i + 1] = palette[palIdx][1];
+          d[i + 2] = palette[palIdx][2];
+          d[i + 3] = 255;
+        }
+      }
+      tctx.putImageData(id, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      ctx.clearRect(0, 0, W, H);
+      ctx.drawImage(tmp, 0, 0, W, H);
+    };
+    img.src = "/assets/descartes-hals.jpg";
+  })();
+</script>
+</body>
+</html>

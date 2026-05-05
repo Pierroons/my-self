@@ -1,0 +1,13 @@
+# Kernel command line for MySelf-Live boot (merged into grub + isolinux)
+quiet splash
+boot=live
+toram
+noeject
+lockdown=integrity
+modules.sig_enforce=1
+init_on_alloc=1
+init_on_free=1
+slab_nomerge
+randomize_kstack_offset=on
+mitigations=auto,nosmt
+nordrand

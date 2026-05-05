@@ -1,0 +1,22 @@
+# MySelf-Live — minimal Debian package list (base system)
+linux-image-amd64
+systemd
+systemd-sysv
+init
+locales
+sudo
+grub-efi-amd64-signed
+shim-signed
+isolinux
+xfce4
+xfce4-panel
+xfce4-session
+lightdm
+xserver-xorg
+xfonts-base
+gnupg
+pinentry-tty
+gpgv
+busybox
+coreutils
+util-linux

@@ -1,0 +1,9 @@
+# MySelf-Live — SelfRecover ceremony tools
+tor
+torbrowser-launcher
+firefox-esr
+php-cli
+php-sqlite3
+php-curl
+sqlite3
+imagemagick

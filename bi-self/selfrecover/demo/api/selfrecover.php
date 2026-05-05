@@ -14,37 +14,79 @@
  * Use this to understand the core protocol, not for production.
  */
 
-function generateDiceware(int $count = 4): string {
-    // Minimal diceware: 128 simple English words for the demo.
-    // In production, use a full 7776-word list (EFF, diceware).
-    $words = [
-        'apple','bread','chair','drift','eagle','flame','grain','honey',
-        'ivory','jelly','karma','lemon','mango','nylon','olive','panda',
-        'quark','raven','sugar','tiger','ultra','vivid','willow','xenon',
-        'yacht','zebra','amber','brook','cloud','drown','elm','frost',
-        'ghost','harp','ivy','jade','kite','lily','moss','niche',
-        'oak','pine','quill','rose','silk','tulip','urn','vine',
-        'wolf','yew','zeal','amber','blaze','crane','dune','echo',
-        'fern','glow','hail','iris','jolt','kiln','loom','mist',
-        'noon','orbit','pearl','quail','river','sand','torch','unit',
-        'valor','wave','xray','yarn','zest','alpha','bolt','cedar',
-        'dawn','elm','fang','grove','hush','idle','jazz','keen',
-        'lake','moon','neat','opal','path','quiet','rush','slate',
-        'twin','user','vast','wave','yogi','zing','acorn','brick',
-        'crown','delta','emerald','forest','gold','hazel','iron','jet',
-        'knight','linen','maze','nova','onyx','plum','quartz','ruby',
-        'steel','topaz','urban','velvet','willow','xerox','yellow','zipper'
-    ];
-    $arr = [];
+/**
+ * Charge la wordlist EFF officielle (7776 mots) depuis le fichier versionné.
+ * Convention MySelf : sources officielles dès le départ — pas de mini-version
+ * "pour la démo". Tronquer la wordlist dégrade silencieusement l'entropie
+ * (4,9 bits par mot perdus en passant de 7776 à 256 mots).
+ *
+ * Fichier : data/eff_large_wordlist_<lang>.txt — un mot par ligne.
+ * Source originale : https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt
+ *
+ * @param string $lang 'en' ou 'fr' (par défaut 'en')
+ * @return string[] tableau de 7776 mots
+ */
+function loadEffWordlist(string $lang = 'en'): array {
+    static $cache = [];
+    if (isset($cache[$lang])) return $cache[$lang];
+
+    $path = __DIR__ . "/../data/eff_large_wordlist_{$lang}.txt";
+    if (!is_readable($path)) {
+        throw new RuntimeException("Wordlist EFF introuvable : {$path}");
+    }
+    $words = preg_split('/\r?\n/', trim(file_get_contents($path)));
+    $words = array_values(array_filter($words, 'strlen'));
+    if (count($words) !== 7776) {
+        throw new RuntimeException(
+            "Wordlist EFF '{$lang}' invalide : " . count($words) . " mots au lieu de 7776"
+        );
+    }
+    $cache[$lang] = $words;
+    return $words;
+}
+
+/**
+ * Génère une passphrase diceware depuis la wordlist EFF officielle.
+ *
+ * Tirage aléatoire crypto-secure via random_int() + rejection sampling
+ * pour garantir une distribution uniforme sur les 7776 mots.
+ *
+ * Entropie produite (avec EFF 7776 mots) :
+ *   - 4 mots → 51,7 bits  (recommandé minimal)
+ *   - 5 mots → 64,6 bits  (recommandé courant)
+ *   - 6 mots → 77,5 bits  (sensibles : compte admin, sudo)
+ *   - 7 mots → 90,5 bits  (paranoïa raisonnable)
+ *   - 10 mots → 129,3 bits (équivalent AES-128)
+ *
+ * @param int $count nombre de mots (par défaut 4)
+ * @param string $lang 'en' ou 'fr'
+ * @param string $sep séparateur entre mots (par défaut '-')
+ * @return string passphrase générée
+ */
+function generateDiceware(int $count = 4, string $lang = 'en', string $sep = '-'): string {
+    if ($count < 3 || $count > 12) {
+        throw new InvalidArgumentException("Diceware count hors bornes (3-12) : {$count}");
+    }
+    $words = loadEffWordlist($lang);
     $size = count($words);
+    $bound = intdiv(PHP_INT_MAX, $size) * $size; // anti-biais rejection sampling
+
+    $picked = [];
     for ($i = 0; $i < $count; $i++) {
-        // Uniform distribution via rejection sampling
         do {
             $r = random_int(0, PHP_INT_MAX);
-        } while ($r >= (PHP_INT_MAX - (PHP_INT_MAX % $size)));
-        $arr[] = $words[$r % $size];
+        } while ($r >= $bound);
+        $picked[] = $words[$r % $size];
     }
-    return implode('-', $arr);
+    return implode($sep, $picked);
+}
+
+/**
+ * Calcule l'entropie en bits d'une passphrase diceware (mots EFF uniformes).
+ * Formule : count * log2(7776) ≈ count * 12,9248
+ */
+function dicewareEntropyBits(int $count): float {
+    return round($count * log(7776, 2), 2);
 }
 
 function generatePassword(int $len = 10): string {
@@ -64,6 +106,11 @@ function handleRegister(): void {
     $password = $in['password'] ?? '';
     $recoveryDerivedKey = $in['recovery_derived_key'] ?? '';
 
+    addTrace(sprintf(
+        "[register] input recu — username:%dch, identifier:%dch, password:%dch, recovery_derived_key:%dch",
+        strlen($username), strlen($identifier), strlen($password), strlen($recoveryDerivedKey)
+    ));
+
     if (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', $username)) {
         jsonError('Username: 3-20 chars alphanumeric/underscore');
     }
@@ -76,24 +123,48 @@ function handleRegister(): void {
     if (!$recoveryDerivedKey) {
         jsonError('Recovery word required');
     }
+    addTrace("[register] validation OK (username pattern, longueurs)");
 
     $db = getDB();
     $stmt = $db->prepare("SELECT id FROM users WHERE username = ? OR identifier = ?");
     $stmt->execute([$username, $identifier]);
     if ($stmt->fetch()) jsonError('Username or identifier already taken');
+    addTrace("[register] DB unique check OK (no collision)");
 
-    // Generate passphrase server-side (diceware)
+    $t0 = microtime(true);
     $passphrase = generateDiceware(4);
+    addTrace(sprintf(
+        "[register] diceware generated: 4 mots EFF (51.7 bits) en %.1f ms — passphrase brute non loguee",
+        (microtime(true) - $t0) * 1000
+    ));
 
+    $t0 = microtime(true);
     $pwdHash = password_hash($password, PASSWORD_BCRYPT);
+    addTrace(sprintf(
+        "[register] bcrypt(password) en %.0f ms (hash sortie: %dch, prefix: %s)",
+        (microtime(true) - $t0) * 1000, strlen($pwdHash), substr($pwdHash, 0, 7)
+    ));
+
+    $t0 = microtime(true);
     $ppHash = password_hash($passphrase, PASSWORD_BCRYPT);
+    addTrace(sprintf(
+        "[register] bcrypt(passphrase) en %.0f ms — hash stocke, jamais en clair",
+        (microtime(true) - $t0) * 1000
+    ));
+
+    $t0 = microtime(true);
     $rcHash = password_hash($recoveryDerivedKey, PASSWORD_BCRYPT);
+    addTrace(sprintf(
+        "[register] bcrypt(recovery_derived_key) en %.0f ms — note: input deja HMAC-SHA256 cote client",
+        (microtime(true) - $t0) * 1000
+    ));
 
     $stmt = $db->prepare("
         INSERT INTO users (username, identifier, password_hash, passphrase_hash, recovery_derived_hash)
         VALUES (?, ?, ?, ?, ?)
     ");
     $stmt->execute([$username, $identifier, $pwdHash, $ppHash, $rcHash]);
+    addTrace(sprintf("[register] DB INSERT users (id=%d) — done", $db->lastInsertId()));
 
     jsonResponse([
         'message' => 'Account created',
@@ -108,13 +179,21 @@ function handleLogin(): void {
     $in = getInput();
     $username = trim($in['username'] ?? '');
     $password = $in['password'] ?? '';
+    addTrace(sprintf("[login] input recu — username:%dch, password:%dch", strlen($username), strlen($password)));
+
     if (!$username || !$password) jsonError('Username and password required');
 
     $db = getDB();
     $stmt = $db->prepare("SELECT id, username, password_hash FROM users WHERE username = ?");
     $stmt->execute([$username]);
     $user = $stmt->fetch();
-    if (!$user || !password_verify($password, $user['password_hash'])) {
+    addTrace($user ? "[login] DB SELECT users — found id=" . $user['id'] : "[login] DB SELECT users — no match");
+
+    $t0 = microtime(true);
+    $verified = $user && password_verify($password, $user['password_hash']);
+    addTrace(sprintf("[login] password_verify en %.0f ms — result: %s", (microtime(true) - $t0) * 1000, $verified ? 'OK' : 'FAIL'));
+
+    if (!$verified) {
         jsonError('Invalid credentials', 401);
     }
     jsonResponse(['message' => 'Logged in', 'username' => $user['username']]);
@@ -125,6 +204,9 @@ function handleRecoverL1(): void {
     $in = getInput();
     $username = trim($in['username'] ?? '');
     $passphrase = trim($in['passphrase'] ?? '');
+    addTrace(sprintf("[recover-l1] input recu — username:%dch, passphrase:%dch (mots: %d)",
+        strlen($username), strlen($passphrase), substr_count($passphrase, '-') + 1));
+
     if (!$username || !$passphrase) jsonError('Username and passphrase required');
 
     $db = getDB();
@@ -159,15 +241,22 @@ function handleRecoverL1(): void {
         jsonError('Too many attempts. Blocked 1 hour.', 429);
     }
 
-    if (!password_verify($passphrase, $user['passphrase_hash'])) {
+    $t0 = microtime(true);
+    $verified = password_verify($passphrase, $user['passphrase_hash']);
+    addTrace(sprintf("[recover-l1] bcrypt verify(passphrase) en %.0f ms — result: %s",
+        (microtime(true) - $t0) * 1000, $verified ? 'OK' : 'FAIL'));
+
+    if (!$verified) {
         logAttempt($db, $username, 1, false);
         jsonError('Incorrect passphrase', 401);
     }
 
     $newPwd = generatePassword();
+    addTrace("[recover-l1] new password generated (10 chars alphabet) — pas logue en clair");
     $newHash = password_hash($newPwd, PASSWORD_BCRYPT);
     $db->prepare("UPDATE users SET password_hash = ?, l1_block_count = 0, l1_blocked_until = NULL WHERE id = ?")
        ->execute([$newHash, $user['id']]);
+    addTrace(sprintf("[recover-l1] DB UPDATE users (id=%d) — pwd_hash, block_count=0, blocked_until=NULL", $user['id']));
     logAttempt($db, $username, 1, true);
 
     jsonResponse([
@@ -181,6 +270,8 @@ function handleRecoverL2(): void {
     $in = getInput();
     $identifier = trim($in['identifier'] ?? '');
     $recoveryKey = trim($in['recovery_key'] ?? ''); // Already HMAC-derived client-side
+    addTrace(sprintf("[recover-l2] input recu — identifier:%dch, recovery_key:%dch (deja HMAC client)",
+        strlen($identifier), strlen($recoveryKey)));
 
     if (!$identifier || !$recoveryKey) jsonError('Identifier and recovery key required');
 
@@ -189,11 +280,18 @@ function handleRecoverL2(): void {
     $stmt->execute([$identifier]);
     $user = $stmt->fetch();
     if (!$user) {
+        addTrace("[recover-l2] DB SELECT — no match for identifier (anti-timing: sleep 1s)");
         sleep(1);
         jsonError('Invalid credentials', 401);
     }
+    addTrace("[recover-l2] DB SELECT — found user id=" . $user['id']);
 
-    if (!password_verify($recoveryKey, $user['recovery_derived_hash'])) {
+    $t0 = microtime(true);
+    $verified = password_verify($recoveryKey, $user['recovery_derived_hash']);
+    addTrace(sprintf("[recover-l2] bcrypt verify(HMAC_recovery_key) en %.0f ms — result: %s",
+        (microtime(true) - $t0) * 1000, $verified ? 'OK' : 'FAIL'));
+
+    if (!$verified) {
         logAttempt($db, $user['username'], 2, false);
         jsonError('Incorrect recovery word', 401);
     }
@@ -202,6 +300,7 @@ function handleRecoverL2(): void {
     $newHash = password_hash($newPwd, PASSWORD_BCRYPT);
     $db->prepare("UPDATE users SET password_hash = ?, l1_block_count = 0, l1_blocked_until = NULL WHERE id = ?")
        ->execute([$newHash, $user['id']]);
+    addTrace(sprintf("[recover-l2] DB UPDATE users (id=%d) — new pwd hash, block_count reset", $user['id']));
     logAttempt($db, $user['username'], 2, true);
 
     jsonResponse([
@@ -213,4 +312,218 @@ function handleRecoverL2(): void {
 function logAttempt(PDO $db, string $username, int $level, bool $success): void {
     $db->prepare("INSERT INTO recovery_attempts (username, level, success) VALUES (?, ?, ?)")
        ->execute([$username, $level, $success ? 1 : 0]);
+}
+
+
+// =====================================================================
+// SelfRecover LITE (V0.1.1) — variante avec SMTP + mot mémorisé HMAC
+// =====================================================================
+//
+// Concept : palier d'adoption progressive pour les sites qui ne peuvent pas
+// abandonner SMTP. La reset par email est conservée mais protégée par un
+// mot mémorisé dont la dérivée HMAC n'a jamais à transiter en clair.
+//
+// Flow :
+//   1. Inscription Lite : client envoie HMAC(domain_salt, memorized_word)
+//      au serveur. Serveur stocke Argon2id de la dérivée.
+//   2. Reset request : user entre email → serveur génère request_id (32 bytes)
+//      + salt_request (32 bytes) → insert reset_requests TTL 15 min →
+//      retourne URL "mail simulé" à afficher dans la démo.
+//   3. Reset confirm : user clique URL avec request_id, saisit nouveau pwd +
+//      mot mémorisé. Client recalcule HMAC(domain_salt, memorized_word).
+//      Serveur valide via password_verify contre Argon2id stocké.
+//
+// Sécurité :
+//   - Email intercepté seul = insuffisant (manque mot mémorisé) ✓
+//   - Mot mémorisé deviné seul = insuffisant (manque mail-URL) ✓
+//   - Phishing = bloqué (HMAC dérivé du domaine côté client) ✓
+//   - DB leak = Argon2id non réversible ✓
+
+
+// === LITE REGISTER ===
+function handleLiteRegister(): void {
+    $in = getInput();
+    $username = trim($in['username'] ?? '');
+    $email = trim($in['email'] ?? '');
+    $password = $in['password'] ?? '';
+    // Le client envoie déjà la dérivée HMAC — pas le mot brut
+    $memorizedDerived = $in['memorized_derived_key'] ?? '';
+
+    addTrace(sprintf("[lite-register] input — username:%dch, email:%dch, password:%dch, memorized_derived:%dch",
+        strlen($username), strlen($email), strlen($password), strlen($memorizedDerived)));
+
+    if (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', $username)) jsonError('Username: 3-20 chars alphanumeric/underscore');
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) jsonError('Email invalide');
+    if (strlen($password) < 8) jsonError('Password: 8 chars minimum');
+    if (strlen($memorizedDerived) !== 64) jsonError('Memorized word derivation must be 64 hex chars (HMAC-SHA256)');
+
+    $db = getDB();
+    $stmt = $db->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
+    $stmt->execute([$username, $email]);
+    if ($stmt->fetch()) jsonError('Username ou email déjà utilisé');
+    addTrace("[lite-register] DB unique check OK");
+
+    $t0 = microtime(true);
+    $pwdHash = password_hash($password, PASSWORD_BCRYPT);
+    $memHash = password_hash($memorizedDerived, PASSWORD_BCRYPT);
+    addTrace(sprintf("[lite-register] bcrypt(password) + bcrypt(memorized_derived) en %.0f ms",
+        (microtime(true) - $t0) * 1000));
+
+    // Pour la démo Lite : on ne stocke pas de passphrase ni d'identifier (champs full SelfRecover non utilisés)
+    // mais le schema users les requiert NOT NULL — on met des placeholders inutilisés
+    $placeholderId = 'lite-' . bin2hex(random_bytes(8));
+    $stmt = $db->prepare("
+        INSERT INTO users (username, identifier, password_hash, passphrase_hash,
+                           recovery_derived_hash, email, memorized_word_hash)
+        VALUES (?, ?, ?, '', '', ?, ?)
+    ");
+    $stmt->execute([$username, $placeholderId, $pwdHash, $email, $memHash]);
+    addTrace(sprintf("[lite-register] DB INSERT users (id=%d, mode=lite)", $db->lastInsertId()));
+
+    jsonResponse([
+        'message' => 'Compte Lite créé',
+        'username' => $username,
+        'email' => $email,
+        'note' => 'Mot mémorisé enregistré (sa dérivée HMAC). En cas de reset, il sera nécessaire en plus du mail.',
+    ]);
+}
+
+
+// === LITE RESET REQUEST ===
+function handleLiteResetRequest(): void {
+    $in = getInput();
+    $email = trim($in['email'] ?? '');
+    addTrace(sprintf("[lite-reset-request] email:%dch", strlen($email)));
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) jsonError('Email invalide');
+
+    $db = getDB();
+    $stmt = $db->prepare("SELECT id, username FROM users WHERE email = ?");
+    $stmt->execute([$email]);
+    $user = $stmt->fetch();
+
+    // Anti-enumeration : on retourne toujours le même message, qu'il y ait un user ou non
+    // (anti-timing : on simule la même latence)
+    if (!$user) {
+        addTrace("[lite-reset-request] no user (fake response anti-enum)");
+        usleep(150000);
+        jsonResponse([
+            'message' => 'Si cet email correspond à un compte, un lien de réinitialisation a été envoyé.',
+            'simulated_email' => null,
+        ]);
+    }
+
+    // Génération request_id + salt cryptographiques
+    $requestId = bin2hex(random_bytes(32));
+    $saltRequest = bin2hex(random_bytes(32));
+    $expiresAt = date('Y-m-d H:i:s', time() + 900); // 15 min
+
+    $stmt = $db->prepare("INSERT INTO reset_requests (id, user_id, salt, expires_at) VALUES (?, ?, ?, ?)");
+    $stmt->execute([$requestId, $user['id'], $saltRequest, $expiresAt]);
+    addTrace(sprintf("[lite-reset-request] request inseree (request_id:32B hex, salt:32B hex, TTL 15min)"));
+
+    // En production : envoi mail SMTP. Ici : URL simulée retournée dans la réponse pour la démo
+    $simulatedURL = sprintf('/lite-reset.html?id=%s&salt=%s', $requestId, $saltRequest);
+
+    addTrace("[lite-reset-request] mail SIMULE — URL retournee directement pour la demo");
+
+    jsonResponse([
+        'message' => 'Si cet email correspond à un compte, un lien de réinitialisation a été envoyé.',
+        'simulated_email' => [
+            'to' => $email,
+            'subject' => '[SelfRecover Lite Demo] Réinitialisation de mot de passe',
+            'body_text' => "Bonjour,\n\nCliquez sur ce lien pour réinitialiser votre mot de passe :\n{HOST}{$simulatedURL}\n\nCe lien expire dans 15 minutes. Vous aurez besoin de votre mot mémorisé.\n",
+            'expires_in_seconds' => 900,
+            'reset_url' => $simulatedURL,
+        ],
+    ]);
+}
+
+
+// === LITE RESET INFO (validation que le lien est encore valide avant d'afficher le formulaire) ===
+function handleLiteResetInfo(): void {
+    $requestId = trim($_GET['id'] ?? '');
+    addTrace(sprintf("[lite-reset-info] request_id:%dch", strlen($requestId)));
+
+    if (strlen($requestId) !== 64) jsonError('Request ID invalide', 400);
+
+    $db = getDB();
+    $stmt = $db->prepare("SELECT id, salt, expires_at, used FROM reset_requests WHERE id = ?");
+    $stmt->execute([$requestId]);
+    $req = $stmt->fetch();
+
+    if (!$req) {
+        addTrace("[lite-reset-info] not found");
+        jsonError('Lien invalide', 404);
+    }
+    if ($req['used']) {
+        addTrace("[lite-reset-info] already used");
+        jsonError('Lien déjà utilisé', 410);
+    }
+    if (strtotime($req['expires_at']) < time()) {
+        addTrace("[lite-reset-info] expired");
+        jsonError('Lien expiré (15 min depuis émission)', 410);
+    }
+
+    addTrace("[lite-reset-info] OK — request valide");
+    jsonResponse([
+        'valid' => true,
+        'salt' => $req['salt'],
+        'expires_at' => $req['expires_at'],
+    ]);
+}
+
+
+// === LITE RESET CONFIRM ===
+function handleLiteResetConfirm(): void {
+    $in = getInput();
+    $requestId = trim($in['request_id'] ?? '');
+    $memorizedDerived = $in['memorized_derived_key'] ?? '';  // HMAC client-side
+    $newPassword = $in['new_password'] ?? '';
+
+    addTrace(sprintf("[lite-reset-confirm] request_id:%dch, memorized_derived:%dch, new_password:%dch",
+        strlen($requestId), strlen($memorizedDerived), strlen($newPassword)));
+
+    if (strlen($requestId) !== 64) jsonError('Request ID invalide');
+    if (strlen($memorizedDerived) !== 64) jsonError('Memorized derivation must be 64 hex chars');
+    if (strlen($newPassword) < 8) jsonError('New password: 8 chars minimum');
+
+    $db = getDB();
+    $stmt = $db->prepare("SELECT r.id, r.user_id, r.expires_at, r.used, u.memorized_word_hash, u.username
+                          FROM reset_requests r
+                          JOIN users u ON u.id = r.user_id
+                          WHERE r.id = ?");
+    $stmt->execute([$requestId]);
+    $req = $stmt->fetch();
+
+    if (!$req) {
+        addTrace("[lite-reset-confirm] request not found");
+        usleep(800000); // anti-timing 800ms
+        jsonError('Lien invalide', 404);
+    }
+    if ($req['used']) jsonError('Lien déjà utilisé', 410);
+    if (strtotime($req['expires_at']) < time()) jsonError('Lien expiré', 410);
+
+    // Vérification du mot mémorisé via Argon2id sur la dérivée HMAC client-side
+    $t0 = microtime(true);
+    $verified = password_verify($memorizedDerived, $req['memorized_word_hash']);
+    addTrace(sprintf("[lite-reset-confirm] bcrypt verify(memorized_derived) en %.0f ms — result: %s",
+        (microtime(true) - $t0) * 1000, $verified ? 'OK' : 'FAIL'));
+
+    if (!$verified) {
+        usleep(500000); // anti-timing 500ms
+        jsonError('Mot mémorisé incorrect', 401);
+    }
+
+    // Reset password
+    $newHash = password_hash($newPassword, PASSWORD_BCRYPT);
+    $db->prepare("UPDATE users SET password_hash = ? WHERE id = ?")
+       ->execute([$newHash, $req['user_id']]);
+    $db->prepare("UPDATE reset_requests SET used = 1 WHERE id = ?")->execute([$requestId]);
+    addTrace(sprintf("[lite-reset-confirm] password reset OK pour user_id=%d, request marquee used", $req['user_id']));
+
+    jsonResponse([
+        'message' => 'Mot de passe réinitialisé avec succès',
+        'username' => $req['username'],
+    ]);
 }

@@ -1,0 +1,13 @@
+# grub2 config template — substituted at build time
+set default=0
+set timeout=3
+
+menuentry "MySelf-Live ${VERSION}" {
+    linux /live/vmlinuz quiet splash boot=live toram lockdown=integrity modules.sig_enforce=1
+    initrd /live/initrd.img
+}
+
+menuentry "MySelf-Live ${VERSION} (verbose)" {
+    linux /live/vmlinuz boot=live toram lockdown=integrity modules.sig_enforce=1
+    initrd /live/initrd.img
+}
