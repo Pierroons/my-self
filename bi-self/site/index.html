@@ -204,104 +204,6 @@
       font-size: 0.85rem;
     }
 
-    /* === Module dédié SelfRecover modes (Full / Lite / Comparatif) === */
-    .recover-modes {
-      background: linear-gradient(135deg, rgba(122,183,255,0.10), rgba(124,196,124,0.06));
-      border: 1px solid var(--accent-dim);
-      border-radius: 12px;
-      padding: 1.5rem 1.5rem 1.7rem;
-      margin: 2rem 0;
-    }
-    .recover-modes-header {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      margin-bottom: 1.2rem;
-      flex-wrap: wrap;
-    }
-    .recover-modes-tag {
-      display: inline-block;
-      background: var(--accent);
-      color: var(--bg);
-      font-weight: 700;
-      font-size: 0.72rem;
-      padding: 0.25rem 0.7rem;
-      border-radius: 14px;
-      letter-spacing: 0.4px;
-      white-space: nowrap;
-    }
-    .recover-modes-title {
-      color: var(--accent);
-      font-size: 1.25rem;
-      font-weight: 700;
-      margin: 0;
-      line-height: 1.3;
-    }
-    .recover-modes-subtitle {
-      color: var(--text-muted);
-      font-size: 0.9rem;
-      margin: 0.15rem 0 0;
-    }
-    .recover-modes-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 0.9rem;
-    }
-    @media (max-width: 720px) {
-      .recover-modes-grid { grid-template-columns: 1fr; }
-    }
-    .recover-mode-card {
-      display: flex;
-      flex-direction: column;
-      gap: 0.45rem;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      padding: 1rem 1.1rem 1.1rem;
-      color: var(--text);
-      text-decoration: none;
-      transition: border-color 0.15s, background 0.15s, transform 0.15s;
-    }
-    .recover-mode-card:hover {
-      border-color: var(--accent);
-      background: var(--bg-card-hover);
-      text-decoration: none;
-      transform: translateY(-2px);
-    }
-    .recover-mode-full { border-left: 3px solid var(--success); }
-    .recover-mode-lite { border-left: 3px solid var(--accent); }
-    .recover-mode-compare { border-left: 3px solid var(--warning); }
-    .recover-mode-name {
-      color: var(--accent);
-      font-weight: 700;
-      font-size: 1rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-    .recover-mode-desc {
-      color: var(--text-muted);
-      font-size: 0.85rem;
-      line-height: 1.45;
-      flex: 1;
-    }
-    .recover-mode-cta {
-      color: var(--success);
-      font-weight: 600;
-      font-size: 0.82rem;
-      margin-top: 0.3rem;
-    }
-    .badge-new {
-      display: inline-block;
-      background: var(--success);
-      color: var(--bg);
-      font-size: 0.62rem;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      padding: 0.1rem 0.5rem;
-      border-radius: 10px;
-      vertical-align: middle;
-    }
   </style>
 </head>
 <body>
@@ -331,34 +233,6 @@
     <a class="cta" href="/recover">SelfRecover</a>
     <a class="cta" href="/moderate">SelfModerate</a>
     <a class="cta" href="/duo">Duo · Sybil</a>
-  </div>
-</div>
-
-<!-- Module dédié SelfRecover modes : mise en avant claire de Full vs Lite vs Comparatif -->
-<div class="recover-modes">
-  <div class="recover-modes-header">
-    <div class="recover-modes-tag">🆕 v0.1.1</div>
-    <div>
-      <h3 class="recover-modes-title">SelfRecover en deux modes</h3>
-      <p class="recover-modes-subtitle">Adoption progressive selon ton infrastructure existante</p>
-    </div>
-  </div>
-  <div class="recover-modes-grid">
-    <a class="recover-mode-card recover-mode-full" href="/selfrecover/">
-      <div class="recover-mode-name">Mode Full</div>
-      <div class="recover-mode-desc">Sans email, diceware EFF, dérivation HMAC anti-phishing.</div>
-      <div class="recover-mode-cta">Lancer la démo →</div>
-    </a>
-    <a class="recover-mode-card recover-mode-lite" href="/selfrecover/lite.html">
-      <div class="recover-mode-name">Mode Lite <span class="badge-new">NEW</span></div>
-      <div class="recover-mode-desc">Conserve l'email + ajoute mot mémorisé HMAC. Compatible legacy.</div>
-      <div class="recover-mode-cta">Lancer la démo →</div>
-    </a>
-    <a class="recover-mode-card recover-mode-compare" href="/selfrecover/comparison.html">
-      <div class="recover-mode-name">📊 Comparatif</div>
-      <div class="recover-mode-desc">Tableau sécurité 8 adversaires × 3 modèles + stratégie d'adoption progressive.</div>
-      <div class="recover-mode-cta">Voir le tableau →</div>
-    </a>
   </div>
 </div>
 
