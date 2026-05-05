@@ -245,6 +245,17 @@
   </p>
 </div>
 
+<div class="synergy" style="margin-top: 0; margin-bottom: 2rem;">
+  <p>
+    <strong><a href="/recover">SelfRecover</a></strong> existe en deux variantes selon ton infrastructure.
+    Le <strong>Full</strong> retire totalement l'email du protocole : récupération par passphrase
+    diceware EFF + dérivation HMAC anti-phishing, donc zéro SMTP, zéro fuite type ANTS.
+    Le <strong>Lite</strong> conserve l'email habituel et ajoute un mot mémorisé HMACé côté client :
+    intégration plus douce sur un legacy existant, et même un attaquant qui contrôle la boîte mail
+    ne peut pas reset le compte sans connaître ce mot. <em>Adoption progressive : Lite d'abord, Full ensuite.</em>
+  </p>
+</div>
+
 <section>
   <h2>Le binôme</h2>
   <p>
