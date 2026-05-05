@@ -838,12 +838,17 @@
     img.src = "/assets/descartes-hals.jpg";
   })();
 
-  // Sur dev.my-self.fr, rewrite les liens vers bi-self.my-self.fr -> dev-bi-self.my-self.fr
-  // pour rester dans l'environnement dev (Basic Auth, branche develop, prod intacte)
+  // Sur dev.my-self.fr, rewrite tous les liens vers <sous-domaine>.my-self.fr
+  // -> dev-<sous-domaine>.my-self.fr pour rester dans l'env dev
+  // (Basic Auth, branche develop, prod intacte). Convention DNS niveau 2 = tiret.
   (function rewriteDevLinks() {
     if (!/^dev\./i.test(location.hostname)) return;
-    document.querySelectorAll('a[href*="bi-self.my-self.fr"]').forEach(function (a) {
-      a.href = a.href.replace(/(https?:\/\/)bi-self\.my-self\.fr/i, "$1dev-bi-self.my-self.fr");
+    var SUBS = ["bi-self", "justice", "selffarm", "stock"];
+    document.querySelectorAll('a[href*=".my-self.fr"]').forEach(function (a) {
+      SUBS.forEach(function (sub) {
+        var re = new RegExp("(https?://)" + sub + "\\.my-self\\.fr", "i");
+        if (re.test(a.href)) a.href = a.href.replace(re, "$1dev-" + sub + ".my-self.fr");
+      });
     });
   })();
 </script>
