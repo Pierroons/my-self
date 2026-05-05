@@ -234,7 +234,7 @@ sans sponsor commercial. Si le projet te sert ou te parle, un geste direct
 aide à le maintenir en vie.
 
 **[🙏 Soutenir via Viva Wallet](https://pay.vivawallet.com/pierroons)** — CB,
-Apple Pay, Google Pay, PayPal. Commission minimale, compte pro indépendant.
+Apple Pay, Google Pay, PayPal.
 
 ---
 
