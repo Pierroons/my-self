@@ -5,6 +5,16 @@
 
 ---
 
+## Context (May 2026)
+
+On April 15, 2026, the `moncompte.ants.gouv.fr` portal (Agence nationale des titres sécurisés — France's national agency for secure documents: ID cards, passports, driver's licenses, vehicle registrations) suffered a data breach via an IDOR (*Insecure Direct Object Reference*) vulnerability: changing an identifier in an API request granted access to another citizen's account. The Ministry of the Interior confirmed **11.7 million accounts** affected; attackers claim up to **19 million records** exfiltrated. Exposed data: civil status, contact details, identity certification status — no passwords, no biometrics.
+
+The incident raised a structural question: why does a sovereign service need to index an email channel to reset an account? As long as a third-party mailbox is in the recovery chain, its compromise becomes the dominant attack vector. SelfRecover was published under AGPL-3.0-or-later **before this incident** (April 2026, v0.1.0) precisely to offer a technical answer: make the email channel optional (**Lite** mode, v0.1.1) or remove it entirely (**Full** mode).
+
+This whitepaper describes the protocol. It is neither an ad-hoc critique of any single actor nor a post-incident claim — it is a prior open-source proposal that public and private operators may audit, integrate, or contest freely.
+
+---
+
 ## Abstract
 
 SelfRecover is a split-knowledge account recovery protocol that eliminates the dependency on email for password recovery. It relies on a HMAC-SHA256 derivation performed client-side using the current domain as key material, so the raw recovery word never leaves the browser, and a captured word is useless on any other domain (native anti-phishing). This document describes the protocol, its three-level escalation, the threat model, and mandatory deployment rules.

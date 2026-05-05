@@ -5,6 +5,16 @@
 
 ---
 
+## Contexte (mai 2026)
+
+Le 15 avril 2026, le portail `moncompte.ants.gouv.fr` (Agence nationale des titres sécurisés) a subi une fuite de données via une faille IDOR (*Insecure Direct Object Reference*) : modifier un identifiant dans une requête de l'API permettait d'accéder au compte d'un autre citoyen. Le ministère de l'Intérieur a confirmé **11,7 millions de comptes** impactés ; les attaquants revendiquent jusqu'à **19 millions d'enregistrements** exfiltrés. Données exposées : état civil, coordonnées, statut de certification d'identité — sans mot de passe ni biométrie.
+
+L'incident a posé une question structurelle : pourquoi un service régalien doit-il indexer un canal email pour réinitialiser un compte ? Tant qu'une boîte mail tierce est dans la chaîne de récupération, sa compromission devient l'angle d'attaque dominant. SelfRecover a été publié sous AGPL-3.0-or-later **avant cet incident** (avril 2026, v0.1.0) précisément pour proposer une réponse technique : rendre le canal email optionnel (mode **Lite** v0.1.1) ou le supprimer complètement (mode **Full**).
+
+Ce whitepaper décrit le protocole. Il n'est ni une critique ad hoc d'un acteur, ni une revendication post-incident — c'est une proposition open-source antérieure que les opérateurs publics et privés peuvent auditer, intégrer ou contester librement.
+
+---
+
 ## Résumé
 
 SelfRecover est un protocole de récupération de compte à connaissance partagée qui élimine la dépendance à l'email pour la réinitialisation de mot de passe. Il repose sur une dérivation HMAC-SHA256 effectuée côté client en utilisant le domaine courant comme matériau de clé : le mot de récupération brut ne quitte jamais le navigateur, et un mot capturé est inutilisable sur tout autre domaine (anti-phishing natif). Ce document décrit le protocole, son escalade en trois niveaux, son modèle de menaces, et les règles de déploiement obligatoires.
