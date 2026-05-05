@@ -204,6 +204,131 @@
       font-size: 0.85rem;
     }
 
+    /* === Bandeau alert post-ANTS === */
+    .alert-band {
+      background: linear-gradient(135deg, rgba(212,192,88,0.16), rgba(212,192,88,0.04));
+      border: 1px solid var(--warning);
+      border-left-width: 4px;
+      border-radius: 8px;
+      padding: 1rem 1.3rem;
+      margin: 1.5rem 0 2rem;
+      font-size: 0.92rem;
+      line-height: 1.55;
+    }
+    .alert-band strong { color: var(--warning); }
+    .alert-band a {
+      color: var(--accent);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* === Schéma split-knowledge === */
+    .scheme-split {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.4rem 1.5rem 1rem;
+      margin: 0 0 2rem;
+    }
+    .scheme-split-title {
+      color: var(--accent);
+      font-size: 1rem;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      margin-bottom: 0.2rem;
+    }
+    .scheme-split-sub {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+    }
+    .scheme-split svg { width: 100%; height: auto; display: block; }
+    .scheme-split-legend {
+      margin-top: 0.8rem;
+      font-size: 0.83rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+      padding-left: 0;
+      list-style: none;
+    }
+    .scheme-split-legend li { padding: 0.15rem 0; }
+    .scheme-split-legend code {
+      background: rgba(122,183,255,0.10);
+      color: var(--accent);
+      padding: 0.05rem 0.4rem;
+      border-radius: 4px;
+      font-size: 0.78rem;
+    }
+
+    /* === Cartes démos visuelles === */
+    .demo-tiles {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.9rem;
+      margin: 1.2rem 0 2.2rem;
+    }
+    @media (max-width: 720px) { .demo-tiles { grid-template-columns: 1fr; } }
+    .demo-tile {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.1rem 1.1rem;
+      color: var(--text);
+      text-decoration: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      transition: transform 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .demo-tile:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+      background: var(--bg-card-hover);
+      text-decoration: none;
+    }
+    .demo-tile-mock {
+      background: #0b1015;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      height: 84px;
+      padding: 0.5rem 0.6rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      overflow: hidden;
+      position: relative;
+    }
+    .demo-tile-mock::before {
+      content: "● ● ●";
+      color: var(--text-muted);
+      letter-spacing: 0.15em;
+      font-size: 0.6rem;
+      display: block;
+      margin-bottom: 0.35rem;
+      opacity: 0.6;
+    }
+    .demo-tile-mock .ok { color: var(--success); }
+    .demo-tile-mock .warn { color: var(--warning); }
+    .demo-tile-mock .accent { color: var(--accent); }
+    .demo-tile-name {
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 1rem;
+    }
+    .demo-tile-desc {
+      color: var(--text-muted);
+      font-size: 0.83rem;
+      line-height: 1.45;
+      flex: 1;
+    }
+    .demo-tile-cta {
+      color: var(--success);
+      font-weight: 600;
+      font-size: 0.82rem;
+      margin-top: 0.2rem;
+    }
+    .demo-tile-cta::after { content: " →"; }
+
   </style>
 </head>
 <body>
@@ -213,6 +338,13 @@
   <a href="https://my-self.fr">my-self.fr</a>  ›  Bi-Self
 </p>
 
+<div class="alert-band">
+  <strong>📢 Avril 2026 — fuite ANTS, 11,7 à 19 millions de comptes exposés.</strong>
+  Cause : un canal email mal isolé sur un service régalien. SelfRecover retire ce
+  canal du protocole de récupération (mode Full) ou le durcit cryptographiquement
+  (mode Lite). <a href="/selfrecover/comparison.html">→ Comparatif sécurité 8 adversaires</a>
+</div>
+
 <section class="hero">
   <h1>Bi-Self</h1>
   <p class="tagline">Identité souveraine + modération communautaire autonome.</p>
@@ -221,19 +353,104 @@
   </p>
 </section>
 
-<div class="quick-access">
-  <div>
-    <div class="label">🎬 Trois démos live disponibles</div>
-    <div class="text">
-      Cliques côté front, vois le protocole exécuter en direct côté back.
-      <strong>Aucun script, aucun hardcode</strong> — les vrais logs de ton interaction.
+<!-- Schéma split-knowledge : montre où le secret existe et où il n'existe jamais -->
+<div class="scheme-split">
+  <div class="scheme-split-title">SelfRecover en une figure — split-knowledge HMAC par domaine</div>
+  <div class="scheme-split-sub">Le secret brut ne quitte jamais le navigateur. Le serveur ne stocke que la dérivée.</div>
+  <svg viewBox="0 0 800 220" xmlns="http://www.w3.org/2000/svg" aria-label="Schéma split-knowledge SelfRecover">
+    <defs>
+      <linearGradient id="ssArrow" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#7ab7ff" stop-opacity="0.9"/>
+        <stop offset="1" stop-color="#7ab7ff" stop-opacity="0.4"/>
+      </linearGradient>
+      <marker id="ssHead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M0,0 L10,5 L0,10 z" fill="#7ab7ff"/>
+      </marker>
+    </defs>
+
+    <!-- Boîte 1 : Utilisateur (humain) -->
+    <g>
+      <rect x="20" y="50" width="180" height="120" rx="10" fill="#1a2028" stroke="#2a3038" stroke-width="1.5"/>
+      <text x="110" y="76" text-anchor="middle" fill="#7ab7ff" font-family="sans-serif" font-size="13" font-weight="700">👤 Utilisateur</text>
+      <text x="110" y="98" text-anchor="middle" fill="#e8eaed" font-family="ui-monospace,monospace" font-size="11">passphrase EFF</text>
+      <text x="110" y="116" text-anchor="middle" fill="#e8eaed" font-family="ui-monospace,monospace" font-size="11">+ mot mémorisé</text>
+      <text x="110" y="142" text-anchor="middle" fill="#7cc47c" font-family="sans-serif" font-size="10">🔒 reste local</text>
+      <text x="110" y="158" text-anchor="middle" fill="#9aa0a6" font-family="sans-serif" font-size="9">(navigateur uniquement)</text>
+    </g>
+
+    <!-- Flèche 1 -->
+    <line x1="200" y1="110" x2="288" y2="110" stroke="url(#ssArrow)" stroke-width="2" marker-end="url(#ssHead)"/>
+    <text x="244" y="100" text-anchor="middle" fill="#9aa0a6" font-family="ui-monospace,monospace" font-size="9">HMAC-SHA256(secret, domaine)</text>
+
+    <!-- Boîte 2 : Navigateur / dérivation -->
+    <g>
+      <rect x="290" y="50" width="180" height="120" rx="10" fill="#1a2028" stroke="#7ab7ff" stroke-width="1.5"/>
+      <text x="380" y="76" text-anchor="middle" fill="#7ab7ff" font-family="sans-serif" font-size="13" font-weight="700">🧮 Dérivation client</text>
+      <text x="380" y="98" text-anchor="middle" fill="#e8eaed" font-family="ui-monospace,monospace" font-size="10">JS dans le navigateur</text>
+      <text x="380" y="118" text-anchor="middle" fill="#9aa0a6" font-family="ui-monospace,monospace" font-size="9">k = HMAC(secret, host)</text>
+      <text x="380" y="142" text-anchor="middle" fill="#d4c058" font-family="sans-serif" font-size="10">⚙ chaque site = clé unique</text>
+      <text x="380" y="158" text-anchor="middle" fill="#9aa0a6" font-family="sans-serif" font-size="9">(anti-phishing inter-sites)</text>
+    </g>
+
+    <!-- Flèche 2 -->
+    <line x1="470" y1="110" x2="558" y2="110" stroke="url(#ssArrow)" stroke-width="2" marker-end="url(#ssHead)"/>
+    <text x="514" y="100" text-anchor="middle" fill="#9aa0a6" font-family="ui-monospace,monospace" font-size="9">k (envoyée via TLS)</text>
+
+    <!-- Boîte 3 : Serveur du site -->
+    <g>
+      <rect x="560" y="50" width="220" height="120" rx="10" fill="#1a2028" stroke="#2a3038" stroke-width="1.5"/>
+      <text x="670" y="76" text-anchor="middle" fill="#7ab7ff" font-family="sans-serif" font-size="13" font-weight="700">🖥 Serveur du site</text>
+      <text x="670" y="98" text-anchor="middle" fill="#e8eaed" font-family="ui-monospace,monospace" font-size="10">stocke bcrypt(k)</text>
+      <text x="670" y="118" text-anchor="middle" fill="#9aa0a6" font-family="ui-monospace,monospace" font-size="9">aucun email, aucun secret brut</text>
+      <text x="670" y="142" text-anchor="middle" fill="#dc2626" font-family="sans-serif" font-size="10">✗ ne peut pas réutiliser k</text>
+      <text x="670" y="158" text-anchor="middle" fill="#9aa0a6" font-family="sans-serif" font-size="9">(autre domaine = autre clé)</text>
+    </g>
+
+    <!-- Mention bas : pas de canal email = pas de fuite ANTS -->
+    <text x="400" y="200" text-anchor="middle" fill="#7cc47c" font-family="sans-serif" font-size="11" font-weight="600">Pas de canal SMTP. Pas de boîte mail à pirater. Pas de token reset à exfiltrer.</text>
+  </svg>
+  <ul class="scheme-split-legend">
+    <li>Le mot mémorisé n'apparaît jamais en clair côté serveur — uniquement <code>bcrypt(HMAC(secret, host))</code>.</li>
+    <li>Une fuite de la base d'un site ne permet pas d'attaquer les comptes du même utilisateur sur un autre site.</li>
+    <li>Mode <strong>Full</strong> : zéro email. Mode <strong>Lite</strong> : email conservé + mot mémorisé HMACé en plus du token reset.</li>
+  </ul>
+</div>
+
+<!-- Trois démos live, en cartes visuelles avec mockup terminal -->
+<div class="demo-tiles">
+  <a class="demo-tile" href="/selfrecover/">
+    <div class="demo-tile-mock">
+      <div><span class="accent">$</span> recover --mode=full</div>
+      <div>passphrase: <span class="ok">[7 mots EFF]</span></div>
+      <div>HMAC <span class="accent">→</span> serveur</div>
+      <div><span class="ok">✓</span> auth OK · pas d'email</div>
     </div>
-  </div>
-  <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-    <a class="cta" href="/recover">SelfRecover</a>
-    <a class="cta" href="/moderate">SelfModerate</a>
-    <a class="cta" href="/duo">Duo · Sybil</a>
-  </div>
+    <div class="demo-tile-name">SelfRecover · Full</div>
+    <div class="demo-tile-desc">Récupération sans aucun email. Diceware EFF + HMAC anti-phishing inter-sites.</div>
+    <div class="demo-tile-cta">Lancer la démo</div>
+  </a>
+  <a class="demo-tile" href="/selfrecover/lite.html">
+    <div class="demo-tile-mock">
+      <div><span class="accent">$</span> recover --mode=lite</div>
+      <div>email reset link <span class="warn">+</span></div>
+      <div>mot mémorisé HMAC <span class="ok">↓</span></div>
+      <div><span class="ok">✓</span> reset 2-facteurs legacy</div>
+    </div>
+    <div class="demo-tile-name">SelfRecover · Lite <span style="background:var(--success);color:var(--bg);font-size:0.6rem;padding:0.05rem 0.4rem;border-radius:8px;font-weight:700;">NEW</span></div>
+    <div class="demo-tile-desc">Conserve l'email habituel. Ajoute un mot mémorisé HMACé : un email intercepté seul ne suffit plus.</div>
+    <div class="demo-tile-cta">Lancer la démo</div>
+  </a>
+  <a class="demo-tile" href="/duo">
+    <div class="demo-tile-mock">
+      <div><span class="accent">$</span> duo --attack=sybil</div>
+      <div>5 comptes créés <span class="warn">!</span></div>
+      <div>pack-vote détecté <span class="warn">⚠</span></div>
+      <div><span class="ok">✓</span> votes annulés</div>
+    </div>
+    <div class="demo-tile-name">Duo · Sybil</div>
+    <div class="demo-tile-desc">Une attaque Sybil échoue simultanément côté SelfRecover (coût) et SelfModerate (détection). 1+1=3.</div>
+    <div class="demo-tile-cta">Lancer la démo</div>
+  </a>
 </div>
 
 <div class="synergy" style="margin-top: 0; margin-bottom: 2rem;">
