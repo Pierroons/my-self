@@ -1,0 +1,127 @@
+# SelfDataGuard
+
+> 🇫🇷 **[Lire en français →](./README.fr.md)**
+
+**Application-layer data-at-rest protection that survives a database exfiltration.**
+
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
+[![Status: concept v0.0.1](https://img.shields.io/badge/status-concept%200.0.1-lightgrey.svg)](#status)
+[![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
+[![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
+[![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
+
+> **Dump my database — and get encrypted noise.**
+
+---
+
+## The problem
+
+Every encrypted-data-at-rest product today (MySQL TDE, MongoDB CSFLE, AWS RDS encryption) answers the same threat model: **the attacker has the disk, but not the application**. The encryption key sits next to the data — in a config file, an environment variable, a key management service the application can read.
+
+That model breaks the moment the **application server is compromised**. The attacker dumps the database AND the key — the encryption was a checkbox, not a defense. Recent breaches at scale (ANTS, France, April 2026 — 11.7 to 19 million accounts exposed via a trivial IDOR) proved that personal data exposed in plain text is the dominant cost of these incidents.
+
+Current tools either skip data-at-rest encryption entirely or implement it in a way that adds zero value against a server-side compromise. SelfDataGuard picks a third path: **derive the encryption key from a secret only the user knows**, so a database dump alone yields cryptographic soup.
+
+---
+
+## Core principle: per-user envelope encryption
+
+SelfDataGuard implements **two-factor key wrapping** inspired by Bitwarden, 1Password, and ProtonMail vault designs, adapted for application-layer per-user encryption:
+
+```
+        ┌─────────────────────────────────────┐
+        │      Per-user data_master_key       │  ← random 256 bits
+        │      (never stored in plain)        │  ← in memory only when user is logged in
+        └────────────┬────────────┬───────────┘
+                     │            │
+              wrap with       wrap with
+                     │            │
+        ┌────────────▼─┐      ┌──▼─────────────┐
+        │ password_key │      │   recov_key    │
+        │ Argon2id(    │      │ HMAC-SHA256(   │
+        │   password,  │      │  memorized,    │
+        │   user_salt) │      │  user_salt+    │
+        │              │      │  "/dataguard") │
+        └──────────────┘      └────────────────┘
+```
+
+Each user has:
+
+- A unique random `user_salt` stored in plain (identifier-grade)
+- A `data_master_key_pwd_wrap`: AES-256-GCM ciphertext of the master key, encrypted with the password-derived key
+- A `data_master_key_recov_wrap`: AES-256-GCM ciphertext of the master key, encrypted with the recovery-word-derived key
+- Personal data fields encrypted field-by-field with `data_master_key`
+
+**Database dump → cryptographic soup.** No combination of plain-text values in the dump yields the master key. The attacker would need either the user's password (Argon2id-hardened, salt-isolated) or the user's recovery word (never transmitted in plain) to decrypt anything.
+
+---
+
+## Coupling with SelfRecover
+
+SelfDataGuard reuses the SelfRecover memorized-recovery-word as one of its two unwrap factors, with **strict context separation** to prevent crossover:
+
+```
+recovery_word (user secret, never transmitted in plain)
+    │
+    ├─ HMAC-SHA256(secret, domain + "/recover")  →  recover_key  (SelfRecover auth)
+    │
+    └─ HMAC-SHA256(secret, salt_user + "/dataguard")  →  data_key  (SelfDataGuard wrap)
+```
+
+Practical consequence: a user who forgets their password but remembers their recovery word can simultaneously **regain account access (via SelfRecover) and decrypt their stored data (via SelfDataGuard)**. One memorized word, two derived purposes, mathematically isolated.
+
+Without SelfRecover, SelfDataGuard still works — it falls back to a password-only wrap (single-factor recovery, weaker UX). But the natural pairing is: **SelfRecover protects authentication, SelfDataGuard protects data, the same memorized word unlocks both**.
+
+---
+
+## Three operational modes
+
+| Mode | Server access to data | Trade-off |
+|------|----------------------|-----------|
+| **Lite** *(transparent for legacy stacks)* | Server decrypts during user sessions only | Server compromise during an active session = limited fan-out (one user at a time) |
+| **Hybrid** *(default for e-commerce)* | Operational fields (`email`, `shipping_address`) wrapped with admin operational key. Sensitive fields (`tel`, `KYC_doc`) require user session | Admin can fulfill orders; sensitive data remains zero-knowledge |
+| **Full** *(zero-knowledge for high-assurance services)* | Server NEVER decrypts. All crypto runs in the browser via WebCrypto SubtleCrypto | Some workflows redesigned (no async transactional emails, push notifications instead) |
+
+Most e-commerce deployments will pick **Hybrid**. Health, banking, identity providers will pick **Full**.
+
+---
+
+## Threat model at a glance
+
+| Adversary | Without SelfDataGuard | With SelfDataGuard |
+|-----------|----------------------|---------------------|
+| SQL injection / IDOR / DB dump | Plain-text PII exposed | Encrypted soup |
+| Backup tape stolen | Plain-text PII exposed | Encrypted soup |
+| Insider DBA | Reads everything | Encrypted (cannot unwrap without user password or recovery word) |
+| Application root compromise (RCE) | Reads everything | Reads only currently active sessions (Lite) or operational fields (Hybrid). Zero (Full) |
+| Compromised user endpoint (keylogger) | User credentials harvested | User credentials harvested → that user's data only (no fan-out) |
+| Coercion of admin to decrypt | All data at admin's discretion | Admin can decrypt only operational fields (Hybrid) — for full data, they would need every user's password/recovery word |
+
+---
+
+## Status
+
+**v0.0.1 — concept stage**, May 2026.
+
+Specification draft, threat model and architecture are documented. A proof-of-concept PHP library is planned for v0.1.0 (target: ~600 lines, like SelfRecover demo). First production deployment target: a real e-commerce site as a real-world testbed ([exploitation].fr, owned by the author).
+
+This module is **not yet production-ready**. It is published in concept form to:
+
+- Invite community review of the cryptographic design before implementation
+- Allow security researchers to challenge the threat model
+- Coordinate with downstream integrators (notably SelfRecover users)
+
+---
+
+## Documentation
+
+- [Whitepaper EN (full specification)](./docs/whitepaper-en.md)
+- [Whitepaper FR (specification complète)](./docs/whitepaper-fr.md)
+
+---
+
+## License
+
+**AGPL-3.0-or-later**. See [LICENSE](../../LICENSE).
+
+Any deployment, modified or not, must publish its source code under the same license. No SaaS capture possible. Same mechanism as Nextcloud, Mastodon, ProtonMail.

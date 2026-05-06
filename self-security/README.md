@@ -9,6 +9,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
 [![SelfGuard: alpha 0.0.1](https://img.shields.io/badge/SelfGuard-alpha%200.0.1-lightgrey.svg)](./selfguard/)
 [![SelfKeyGuard: alpha 0.0.1](https://img.shields.io/badge/SelfKeyGuard-alpha%200.0.1-lightgrey.svg)](./selfkeyguard/)
+[![SelfDataGuard: concept 0.0.1](https://img.shields.io/badge/SelfDataGuard-concept%200.0.1-lightgrey.svg)](./selfdataguard/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
@@ -56,6 +57,7 @@ One module protects data. The other protects objects. The coercion resistance is
 |--------|------|--------|
 | [SelfGuard](./selfguard/) | Data vault with guaranteed destruction under coercion | alpha 0.0.1 — concept phase |
 | [SelfKeyGuard](./selfkeyguard/) | Hardware 2FA for physical objects (car, motorcycle, home) | alpha 0.0.1 — concept phase |
+| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving DB exfiltration | concept 0.0.1 — design phase |
 
 ---
 
