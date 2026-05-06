@@ -38,6 +38,7 @@ individual sovereign over their own identity, rights, data, and possessions.
 | [SelfAct](https://justice.my-self.fr/act) | How do you act on them? | beta v0.1.2 ✅ |
 | [SelfGuard](./self-security/selfguard/) | How do you protect your data? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | How do you protect your things? | concept |
+| [SelfDataGuard](./self-security/selfdataguard/) | How do you protect users data at rest? | concept 0.0.1 |
 | [SelfInvoice](./selfinvoice/) | How do you bill clients? | beta (Factur-X native) |
 | **[SelfFarm-Lite](https://selffarm.my-self.fr)** | **How do you run your farm?** | **v0.2 live ✅** |
 

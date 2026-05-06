@@ -39,6 +39,7 @@ droits, ses données et ses biens.
 | [SelfAct](https://justice.my-self.fr/act) | Comment tu les fais valoir ? | bêta v0.1.2 ✅ |
 | [SelfGuard](./self-security/selfguard/) | Comment protéger tes données ? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | Comment protéger tes objets ? | concept |
+| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données utilisateurs au repos ? | concept 0.0.1 |
 | [SelfInvoice](./selfinvoice/) | Comment facturer tes clients ? | bêta (Factur-X natif) |
 | **[SelfFarm-Lite](https://selffarm.my-self.fr)** | **Comment piloter ton exploitation ?** | **v0.2 live ✅** |
 

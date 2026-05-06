@@ -16,6 +16,14 @@
 
 ---
 
+## Companion module — SelfDataGuard (concept)
+
+For e-commerce or SaaS deployments that also need to **protect stored personal data** against database exfiltration, see the [SelfDataGuard](../../self-security/selfdataguard/) companion module. SelfDataGuard reuses the SelfRecover memorized recovery word as one of its key-wrapping factors (with a strict context separator: `/recover` for auth, `/dataguard` for data), so a user who forgets their password can simultaneously regain account access AND decrypt their stored data with the same memorized word.
+
+SelfRecover protects **authentication**. SelfDataGuard protects **data at rest**. Together they close the loop against breaches like the April 2026 ANTS leak (where both auth tokens AND personal data were exposed in plain text).
+
+---
+
 ## Two adoption modes — Full and Lite (v0.1.1)
 
 SelfRecover ships in two flavors so legacy systems can adopt it progressively
