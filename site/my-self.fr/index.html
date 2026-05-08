@@ -630,7 +630,7 @@
           <span class="name">SelfKeyGuard<span class="status alpha">alpha 0.0.1</span></span>
           <span class="role">2FA matériel pour voiture, moto, serrures.</span>
         </a>
-        <a class="mod" href="https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.1.0-beta" target="_blank" rel="noopener">
+        <a class="mod" href="https://dataguard.my-self.fr/" rel="noopener">
           <span class="name">SelfDataGuard<span class="status draft">bêta v0.1.0</span></span>
           <span class="role">Chiffrement at-rest robuste à l'exfiltration de DB — bibliothèque PHP + démo interactive.</span>
         </a>
@@ -841,7 +841,7 @@
   // (Basic Auth, branche develop, prod intacte). Convention DNS niveau 2 = tiret.
   (function rewriteDevLinks() {
     if (!/^dev\./i.test(location.hostname)) return;
-    var SUBS = ["bi-self", "justice", "selffarm", "stock"];
+    var SUBS = ["bi-self", "justice", "selffarm", "stock", "dataguard"];
     document.querySelectorAll('a[href*=".my-self.fr"]').forEach(function (a) {
       SUBS.forEach(function (sub) {
         var re = new RegExp("(https?://)" + sub + "\\.my-self\\.fr", "i");
