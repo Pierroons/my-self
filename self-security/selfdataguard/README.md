@@ -5,7 +5,8 @@
 **Application-layer data-at-rest protection that survives a database exfiltration.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: concept v0.0.1](https://img.shields.io/badge/status-concept%200.0.1-lightgrey.svg)](#status)
+[![Status: beta v0.1.0](https://img.shields.io/badge/status-beta%200.1.0-yellow.svg)](#status)
+[![Tests: 155 passing](https://img.shields.io/badge/tests-155%20passing-brightgreen.svg)](#testing)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -101,15 +102,79 @@ Most e-commerce deployments will pick **Hybrid**. Health, banking, identity prov
 
 ## Status
 
-**v0.0.1 — concept stage**, May 2026.
+**v0.1.0-beta — reference library + standalone demo**, May 8, 2026.
 
-Specification draft, threat model and architecture are documented. A proof-of-concept PHP library is planned for v0.1.0 (target: ~600 lines, like SelfRecover demo). First production deployment target: a real e-commerce site as a real-world testbed ([exploitation].fr, owned by the author).
+Whitepaper complete (specification + threat model). PHP reference library implemented (~1230 lines, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, AES-256-GCM) covered by 155 sanity tests. A clickable HTML demo is included to inspect the encrypted database in real time.
 
-This module is **not yet production-ready**. It is published in concept form to:
+This module is **not yet production-ready**. It is published as beta to:
 
-- Invite community review of the cryptographic design before implementation
-- Allow security researchers to challenge the threat model
+- Invite community review of the cryptographic design AND the implementation
+- Allow security researchers to challenge the threat model with a runnable target
 - Coordinate with downstream integrators (notably SelfRecover users)
+- First real-world deployment target: [exploitation].fr (owned by the author)
+
+A formal community cryptographic audit is planned before v1.0.0. ANSSI Visa de sécurité submission planned for the v0.3.0 milestone.
+
+---
+
+## Quick start
+
+### Run the standalone demo (no install needed)
+
+```bash
+cd demo && ./run.sh
+# open http://127.0.0.1:8081 in a browser
+```
+
+The demo lets you register a user, log in, rotate password, and inspect the raw SQLite database side by side — proving that personal fields (email, phone, IBAN, address) are never readable on disk.
+
+### Use the library in your app
+
+```php
+use Pierroons\SelfDataGuard\SelfDataGuard;
+use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+
+require 'vendor/autoload.php';
+
+$dg = new SelfDataGuard(
+    storage:  new SqliteAdapter('sqlite:/path/to/db.sqlite'),
+    blindKey: file_get_contents('/path/to/server-secret.bin')  // ≥32 bytes
+);
+
+// New user
+$session = $dg->register('alice', 'correct horse battery staple', 'sunset-river-marble');
+$dg->setFields($session, ['email' => 'a@b.c', 'iban' => 'FR76...'], indexed: ['email']);
+
+// Returning user
+$session = $dg->loginWithPassword('alice', 'correct horse battery staple');
+$fields  = $dg->getFields($session);  // ['email' => 'a@b.c', 'iban' => 'FR76...']
+
+// Recovery flow (forgot password, remembers memorized secret)
+$session = $dg->loginWithMemorized('alice', 'sunset-river-marble');
+$dg->changePassword($session, 'a-fresh-passphrase-here');
+
+// Indexed lookup, no plaintext required
+$userId = $dg->findUserByField('email', 'a@b.c');  // 'alice' or null
+```
+
+Three primary classes exposed: `SelfDataGuard` (façade), `SqliteAdapter` (storage; implement `StorageInterface` for MariaDB / Postgres), `Primitives` (raw crypto if you need to build something on top).
+
+---
+
+## Testing
+
+Five sanity test suites, runnable directly with `php` (no PHPUnit required):
+
+```bash
+php tests/sanity_primitives.php   # 27 tests — Argon2id, HMAC, AES-GCM, randomness
+php tests/sanity_vault.php        #  33 tests — register, unlock, rotation, AAD binding
+php tests/sanity_fields.php       # 25 tests — field encrypt/decrypt + blind index
+php tests/sanity_storage.php      # 36 tests — SQLite adapter, "DB dump = soup" test
+php tests/sanity_facade.php       # 34 tests — full API end-to-end
+# Total: 155 tests, 0 failures
+```
+
+The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file and verifies that no plaintext personal data appears anywhere in the binary blob — the core promise of SelfDataGuard, asserted by code.
 
 ---
 
@@ -117,6 +182,7 @@ This module is **not yet production-ready**. It is published in concept form to:
 
 - [Whitepaper EN (full specification)](./docs/whitepaper-en.md)
 - [Whitepaper FR (specification complète)](./docs/whitepaper-fr.md)
+- [Demo walkthrough](./demo/README.md)
 
 ---
 

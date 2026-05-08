@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SelfDataGuard — Demo</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <h1>SelfDataGuard <span class="version">v0.1.0-beta</span></h1>
+  <p class="tagline">Dump my database — and you get encrypted noise.</p>
+  <nav>
+    <a href="https://github.com/Pierroons/my-self/tree/main/self-security/selfdataguard" target="_blank">GitHub</a>
+    ·
+    <a href="../docs/whitepaper-en.md" target="_blank">Whitepaper EN</a>
+    ·
+    <a href="../docs/whitepaper-fr.md" target="_blank">Whitepaper FR</a>
+    · AGPL-3.0
+  </nav>
+</header>
+
+<section id="explainer">
+  <h2>How this demo works</h2>
+  <p>
+    Each user has a <strong>data master key</strong> that is never stored in
+    plaintext. It is wrapped twice — once by a key derived from their
+    <em>password</em> (Argon2id), once by a key derived from their
+    <em>memorized secret</em> (HMAC-SHA256). Their personal fields are
+    encrypted by the master key with AES-256-GCM.
+    <strong>The "Backend — raw DB view" panel on the right</strong> shows
+    exactly what is stored on disk in real time. Watch it update after each
+    action: an attacker who exfiltrates the SQLite file sees nothing more
+    than what's there.
+  </p>
+</section>
+
+<main class="split">
+
+<div class="col-frontend">
+<h2 class="col-title">Frontend — what the user does</h2>
+
+<section id="register-section">
+  <h2>1. Register</h2>
+  <p class="hint">
+    Two distinct credentials. The <strong>password</strong> is what you use to log in every day.
+    The <strong>memorized secret</strong> is a fallback to recover your account if you forget the password
+    (it's optional, but if you don't set one and lose your password, your data is gone).
+  </p>
+  <form id="register-form">
+    <label>User ID <input name="userId" placeholder="alice" required></label>
+    <label>
+      Password — daily login (≥12 characters)
+      <input name="password" type="password" placeholder="correct horse battery staple" required>
+    </label>
+    <label>
+      Memorized secret — fallback recovery (optional)
+      <input name="memorized" placeholder="sunset-river-marble">
+    </label>
+    <fieldset>
+      <legend>Personal data (will be encrypted)</legend>
+      <label>Email <input name="email" placeholder="alice@example.com" required></label>
+      <label>Phone <input name="phone" placeholder="+33 6 12 34 56 78"></label>
+      <label>Address <input name="address" placeholder="12 rue des Champs, 33220 Sainte-Foy"></label>
+      <label>IBAN <input name="iban" placeholder="FR76 1234 5678 9012 3456 7890 123"></label>
+    </fieldset>
+    <button type="submit">Register</button>
+  </form>
+  <pre class="result" id="register-result"></pre>
+</section>
+
+<section id="login-section">
+  <h2>2. Login &amp; decrypt</h2>
+  <p class="hint">
+    Choose how you want to log in. The text field below adapts to your choice — make sure to enter
+    the matching credential (password OR memorized, not both).
+  </p>
+  <form id="login-form">
+    <label>User ID <input name="userId" placeholder="alice" required></label>
+    <label>
+      Login method
+      <select name="mode" id="login-mode">
+        <option value="password">With my password (daily login)</option>
+        <option value="memorized">With my memorized secret (recovery flow)</option>
+      </select>
+    </label>
+    <label id="login-secret-label">
+      Password
+      <input name="secret" id="login-secret" type="password" placeholder="your ≥12-character password" required>
+    </label>
+    <button type="submit">Login &amp; show fields</button>
+  </form>
+  <pre class="result" id="login-result"></pre>
+</section>
+
+<section id="find-section">
+  <h2>3. Find user by indexed field (without decrypting)</h2>
+  <form id="find-form">
+    <label>Field name <input name="fieldName" value="email" required></label>
+    <label>Value <input name="value" placeholder="alice@example.com" required></label>
+    <button type="submit">Find</button>
+  </form>
+  <pre class="result" id="find-result"></pre>
+</section>
+
+<section id="rotate-section">
+  <h2>4. Rotate password (data preserved)</h2>
+  <form id="rotate-form">
+    <label>User ID <input name="userId" required></label>
+    <label>Old password <input name="oldPassword" type="password" required></label>
+    <label>New password (≥12) <input name="newPassword" type="password" required></label>
+    <button type="submit">Rotate</button>
+  </form>
+  <pre class="result" id="rotate-result"></pre>
+</section>
+
+<section id="delete-section">
+  <h2>5. Delete a user</h2>
+  <form id="delete-form">
+    <label>User ID <input name="userId" required></label>
+    <label>Password <input name="password" type="password" required></label>
+    <button type="submit" class="danger">Delete</button>
+  </form>
+  <pre class="result" id="delete-result"></pre>
+</section>
+
+</div><!-- /col-frontend -->
+
+<aside class="col-backend">
+<h2 class="col-title">🔍 Backend — raw DB view (auto-updates)</h2>
+<section id="inspect-section">
+  <p class="hint">
+    This is exactly what an attacker who exfiltrates the SQLite file sees.
+    <strong>No plaintext personal data appears anywhere</strong> — only
+    base64 ciphertext blobs (AES-256-GCM) and HMAC indexes. The view
+    refreshes automatically after every action you perform on the left.
+  </p>
+  <button id="inspect-btn" type="button">Manual refresh</button>
+  <pre class="result" id="inspect-result"></pre>
+</section>
+</aside>
+
+</main>
+
+<footer>
+  <p>
+    SelfDataGuard is a Self-Security pillar of the
+    <a href="https://github.com/Pierroons/my-self" target="_blank">MySelf</a>
+    open-source ecosystem. Released under AGPL-3.0-or-later.
+  </p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

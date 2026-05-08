@@ -1,0 +1,55 @@
+{
+    "name": "pierroons/selfdataguard",
+    "description": "Application-side at-rest data protection that survives database exfiltration. Per-user envelope encryption with two-factor key wrapping (password Argon2id + memorized HMAC).",
+    "type": "library",
+    "keywords": ["security", "encryption", "envelope-encryption", "key-wrapping", "at-rest", "argon2id", "aes-gcm", "self-security", "myself", "agpl"],
+    "license": "AGPL-3.0-or-later",
+    "homepage": "https://github.com/Pierroons/my-self",
+    "authors": [
+        {
+            "name": "Pierroons",
+            "email": "contact@my-self.fr",
+            "homepage": "https://github.com/Pierroons"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/Pierroons/my-self/issues",
+        "source": "https://github.com/Pierroons/my-self/tree/main/self-security/selfdataguard"
+    },
+    "require": {
+        "php": "^8.1",
+        "ext-sodium": "*",
+        "ext-pdo": "*",
+        "ext-pdo_sqlite": "*",
+        "ext-json": "*",
+        "ext-mbstring": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Pierroons\\SelfDataGuard\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Pierroons\\SelfDataGuard\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "beta",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true
+    },
+    "scripts": {
+        "test": "phpunit --colors=always",
+        "demo": "php -S 127.0.0.1:8081 -t demo"
+    },
+    "extra": {
+        "branch-alias": {
+            "dev-main": "0.1.x-dev"
+        }
+    }
+}

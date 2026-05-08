@@ -1,0 +1,27 @@
+# Composer
+/vendor/
+composer.lock
+
+# PHPUnit
+/.phpunit.cache/
+.phpunit.result.cache
+
+# Demo runtime — DB and server-side secrets MUST NEVER be committed
+/demo/storage/*.sqlite
+/demo/storage/*.db
+/demo/storage/*.sqlite-journal
+/demo/storage/*.sqlite-wal
+/demo/storage/*.sqlite-shm
+/demo/storage/*.bin
+/demo/storage/blindkey.*
+/demo/storage/.env
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
