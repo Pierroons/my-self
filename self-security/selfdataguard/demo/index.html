@@ -1,126 +1,126 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SelfDataGuard — Demo</title>
+<title>SelfDataGuard — Démo</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <header>
   <h1>SelfDataGuard <span class="version">v0.1.0-beta</span></h1>
-  <p class="tagline">Dump my database — and you get encrypted noise.</p>
+  <p class="tagline">Dumpez ma base de données — vous obtenez du bruit chiffré.</p>
   <nav>
     <a href="https://github.com/Pierroons/my-self/tree/main/self-security/selfdataguard" target="_blank">GitHub</a>
     ·
-    <a href="../docs/whitepaper-en.md" target="_blank">Whitepaper EN</a>
-    ·
     <a href="../docs/whitepaper-fr.md" target="_blank">Whitepaper FR</a>
+    ·
+    <a href="../docs/whitepaper-en.md" target="_blank">Whitepaper EN</a>
     · AGPL-3.0
   </nav>
 </header>
 
 <section id="explainer">
-  <h2>How this demo works</h2>
+  <h2>Comment fonctionne cette démo</h2>
   <p>
-    Each user has a <strong>data master key</strong> that is never stored in
-    plaintext. It is wrapped twice — once by a key derived from their
-    <em>password</em> (Argon2id), once by a key derived from their
-    <em>memorized secret</em> (HMAC-SHA256). Their personal fields are
-    encrypted by the master key with AES-256-GCM.
-    <strong>The "Backend — raw DB view" panel on the right</strong> shows
-    exactly what is stored on disk in real time. Watch it update after each
-    action: an attacker who exfiltrates the SQLite file sees nothing more
-    than what's there.
+    Chaque utilisateur dispose d'une <strong>clé maîtresse de données</strong> qui n'est jamais stockée en clair.
+    Elle est encapsulée deux fois — une fois par une clé dérivée de son
+    <em>mot de passe</em> (Argon2id), une fois par une clé dérivée de son
+    <em>mot mémorisé</em> (HMAC-SHA256). Les champs personnels sont chiffrés
+    par la clé maîtresse en AES-256-GCM.
+    <strong>Le panneau "Backend — vue brute de la base" à droite</strong> montre
+    exactement ce qui est stocké sur disque en temps réel. Observez sa mise à jour
+    après chaque action : un attaquant qui exfiltre le fichier SQLite ne voit rien
+    de plus que ce qui s'y trouve.
   </p>
 </section>
 
 <main class="split">
 
 <div class="col-frontend">
-<h2 class="col-title">Frontend — what the user does</h2>
+<h2 class="col-title">Frontend — ce que fait l'utilisateur</h2>
 
 <section id="register-section">
-  <h2>1. Register</h2>
+  <h2>1. Inscription</h2>
   <p class="hint">
-    Two distinct credentials. The <strong>password</strong> is what you use to log in every day.
-    The <strong>memorized secret</strong> is a fallback to recover your account if you forget the password
-    (it's optional, but if you don't set one and lose your password, your data is gone).
+    Deux identifiants distincts. Le <strong>mot de passe</strong> sert à se connecter au quotidien.
+    Le <strong>mot mémorisé</strong> est un secours pour récupérer son compte en cas d'oubli du mot de passe
+    (optionnel, mais sans lui, oublier son mot de passe = données perdues).
   </p>
   <form id="register-form">
-    <label>User ID <input name="userId" placeholder="alice" required></label>
+    <label>Identifiant <input name="userId" placeholder="alice" required></label>
     <label>
-      Password — daily login (≥12 characters)
-      <input name="password" type="password" placeholder="correct horse battery staple" required>
+      Mot de passe — connexion quotidienne (≥12 caractères)
+      <input name="password" type="password" placeholder="cheval correct agrafe batterie" required>
     </label>
     <label>
-      Memorized secret — fallback recovery (optional)
-      <input name="memorized" placeholder="sunset-river-marble">
+      Mot mémorisé — récupération en secours (optionnel)
+      <input name="memorized" placeholder="couchant-fleuve-marbre">
     </label>
     <fieldset>
-      <legend>Personal data (will be encrypted)</legend>
+      <legend>Données personnelles (seront chiffrées)</legend>
       <label>Email <input name="email" placeholder="alice@example.com" required></label>
-      <label>Phone <input name="phone" placeholder="+33 6 12 34 56 78"></label>
-      <label>Address <input name="address" placeholder="12 rue des Champs, 33220 Sainte-Foy"></label>
+      <label>Téléphone <input name="phone" placeholder="+33 6 12 34 56 78"></label>
+      <label>Adresse <input name="address" placeholder="12 rue des Champs, 33220 Sainte-Foy"></label>
       <label>IBAN <input name="iban" placeholder="FR76 1234 5678 9012 3456 7890 123"></label>
     </fieldset>
-    <button type="submit">Register</button>
+    <button type="submit">S'inscrire</button>
   </form>
   <pre class="result" id="register-result"></pre>
 </section>
 
 <section id="login-section">
-  <h2>2. Login &amp; decrypt</h2>
+  <h2>2. Connexion &amp; déchiffrement</h2>
   <p class="hint">
-    Choose how you want to log in. The text field below adapts to your choice — make sure to enter
-    the matching credential (password OR memorized, not both).
+    Choisissez votre méthode de connexion. Le champ ci-dessous s'adapte à votre choix —
+    saisissez l'identifiant correspondant (mot de passe OU mot mémorisé, pas les deux).
   </p>
   <form id="login-form">
-    <label>User ID <input name="userId" placeholder="alice" required></label>
+    <label>Identifiant <input name="userId" placeholder="alice" required></label>
     <label>
-      Login method
+      Méthode de connexion
       <select name="mode" id="login-mode">
-        <option value="password">With my password (daily login)</option>
-        <option value="memorized">With my memorized secret (recovery flow)</option>
+        <option value="password">Avec mon mot de passe (connexion quotidienne)</option>
+        <option value="memorized">Avec mon mot mémorisé (flow de récupération)</option>
       </select>
     </label>
     <label id="login-secret-label">
-      Password
-      <input name="secret" id="login-secret" type="password" placeholder="your ≥12-character password" required>
+      Mot de passe
+      <input name="secret" id="login-secret" type="password" placeholder="votre mot de passe ≥12 caractères" required>
     </label>
-    <button type="submit">Login &amp; show fields</button>
+    <button type="submit">Se connecter &amp; afficher les champs</button>
   </form>
   <pre class="result" id="login-result"></pre>
 </section>
 
 <section id="find-section">
-  <h2>3. Find user by indexed field (without decrypting)</h2>
+  <h2>3. Rechercher un utilisateur par champ indexé (sans déchiffrer)</h2>
   <form id="find-form">
-    <label>Field name <input name="fieldName" value="email" required></label>
-    <label>Value <input name="value" placeholder="alice@example.com" required></label>
-    <button type="submit">Find</button>
+    <label>Nom du champ <input name="fieldName" value="email" required></label>
+    <label>Valeur <input name="value" placeholder="alice@example.com" required></label>
+    <button type="submit">Rechercher</button>
   </form>
   <pre class="result" id="find-result"></pre>
 </section>
 
 <section id="rotate-section">
-  <h2>4. Rotate password (data preserved)</h2>
+  <h2>4. Changer de mot de passe (données préservées)</h2>
   <form id="rotate-form">
-    <label>User ID <input name="userId" required></label>
-    <label>Old password <input name="oldPassword" type="password" required></label>
-    <label>New password (≥12) <input name="newPassword" type="password" required></label>
-    <button type="submit">Rotate</button>
+    <label>Identifiant <input name="userId" required></label>
+    <label>Ancien mot de passe <input name="oldPassword" type="password" required></label>
+    <label>Nouveau mot de passe (≥12) <input name="newPassword" type="password" required></label>
+    <button type="submit">Changer</button>
   </form>
   <pre class="result" id="rotate-result"></pre>
 </section>
 
 <section id="delete-section">
-  <h2>5. Delete a user</h2>
+  <h2>5. Supprimer un utilisateur</h2>
   <form id="delete-form">
-    <label>User ID <input name="userId" required></label>
-    <label>Password <input name="password" type="password" required></label>
-    <button type="submit" class="danger">Delete</button>
+    <label>Identifiant <input name="userId" required></label>
+    <label>Mot de passe <input name="password" type="password" required></label>
+    <button type="submit" class="danger">Supprimer</button>
   </form>
   <pre class="result" id="delete-result"></pre>
 </section>
@@ -128,15 +128,15 @@
 </div><!-- /col-frontend -->
 
 <aside class="col-backend">
-<h2 class="col-title">🔍 Backend — raw DB view (auto-updates)</h2>
+<h2 class="col-title">🔍 Backend — vue brute de la base (auto-actualisée)</h2>
 <section id="inspect-section">
   <p class="hint">
-    This is exactly what an attacker who exfiltrates the SQLite file sees.
-    <strong>No plaintext personal data appears anywhere</strong> — only
-    base64 ciphertext blobs (AES-256-GCM) and HMAC indexes. The view
-    refreshes automatically after every action you perform on the left.
+    Voici exactement ce qu'un attaquant qui exfiltre le fichier SQLite verrait.
+    <strong>Aucune donnée personnelle en clair n'apparaît nulle part</strong> — uniquement
+    des blobs ciphertext base64 (AES-256-GCM) et des index HMAC. Cette vue
+    s'actualise automatiquement après chaque action effectuée à gauche.
   </p>
-  <button id="inspect-btn" type="button">Manual refresh</button>
+  <button id="inspect-btn" type="button">Actualiser manuellement</button>
   <pre class="result" id="inspect-result"></pre>
 </section>
 </aside>
@@ -145,9 +145,9 @@
 
 <footer>
   <p>
-    SelfDataGuard is a Self-Security pillar of the
-    <a href="https://github.com/Pierroons/my-self" target="_blank">MySelf</a>
-    open-source ecosystem. Released under AGPL-3.0-or-later.
+    SelfDataGuard est un pilier Self-Security de l'écosystème open-source
+    <a href="https://github.com/Pierroons/my-self" target="_blank">MySelf</a>.
+    Publié sous licence AGPL-3.0-or-later.
   </p>
 </footer>
 

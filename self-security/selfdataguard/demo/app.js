@@ -55,11 +55,11 @@ const loginInput = $('#login-secret');
 
 function syncLoginLabel() {
   if (loginMode.value === 'memorized') {
-    loginLabel.firstChild.textContent = 'Memorized secret ';
-    loginInput.placeholder = 'the recovery word(s) you set at registration';
+    loginLabel.firstChild.textContent = 'Mot mémorisé ';
+    loginInput.placeholder = 'le(s) mot(s) de récupération choisi(s) à l\'inscription';
   } else {
-    loginLabel.firstChild.textContent = 'Password ';
-    loginInput.placeholder = 'your ≥12-character password';
+    loginLabel.firstChild.textContent = 'Mot de passe ';
+    loginInput.placeholder = 'votre mot de passe ≥12 caractères';
   }
   loginInput.value = '';
 }
@@ -96,10 +96,10 @@ $('#find-form').addEventListener('submit', async (ev) => {
     el.textContent = JSON.stringify(res.data, null, 2);
   } else if (res.data.userId) {
     el.classList.add('ok');
-    el.textContent = `✅ FOUND — userId = "${res.data.userId}"\n\nFull response:\n` + JSON.stringify(res.data, null, 2);
+    el.textContent = `✅ TROUVÉ — userId = "${res.data.userId}"\n\nRéponse complète :\n` + JSON.stringify(res.data, null, 2);
   } else {
     el.classList.add('err');
-    el.textContent = `❌ NOT FOUND — no user has "${f.fieldName}" = "${f.value}" indexed.\n\nFull response:\n` + JSON.stringify(res.data, null, 2);
+    el.textContent = `❌ NON TROUVÉ — aucun utilisateur n'a "${f.fieldName}" = "${f.value}" en index.\n\nRéponse complète :\n` + JSON.stringify(res.data, null, 2);
   }
 });
 
@@ -137,7 +137,7 @@ $('#inspect-btn').addEventListener('click', refreshInspector);
 $('#delete-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const f = formData(ev.target);
-  if (!confirm(`Really delete user "${f.userId}" and all their encrypted fields?`)) return;
+  if (!confirm(`Vraiment supprimer l'utilisateur "${f.userId}" et tous ses champs chiffrés ?`)) return;
   const res = await call('delete.php', {
     userId: f.userId,
     password: f.password,
