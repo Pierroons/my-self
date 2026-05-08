@@ -231,3 +231,13 @@ footer {
   border-top: 1px solid #1E293B;
 }
 footer a { color: #60A5FA; }
+footer p { margin: 0.25rem 0; }
+footer .footer-notice {
+  font-size: 0.75rem;
+  color: #475569;
+  font-style: italic;
+}
+footer .footer-notice strong {
+  color: #94A3B8;
+  font-style: normal;
+}
