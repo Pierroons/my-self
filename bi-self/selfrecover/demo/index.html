@@ -392,6 +392,8 @@
                 <label>Recovery word (your L2 secret — any word you'll remember)</label>
                 <input type="text" id="reg-recovery" placeholder="bob">
             </div>
+            <input type="text" name="website" id="reg-website" tabindex="-1" autocomplete="off"
+                   aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
             <button class="btn" onclick="doRegister()">Create account</button>
             <div id="reg-result"></div>
         </div>
@@ -408,6 +410,8 @@
                 <label>Password</label>
                 <input type="password" id="login-password">
             </div>
+            <input type="text" name="website" id="login-website" tabindex="-1" autocomplete="off"
+                   aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
             <button class="btn" onclick="doLogin()">Log in</button>
             <div id="login-result"></div>
         </div>
@@ -424,6 +428,8 @@
                 <label>Passphrase (the 4 words separated by dashes)</label>
                 <input type="text" id="l1-passphrase" placeholder="ruby-amber-moon-willow">
             </div>
+            <input type="text" name="website" id="l1-website" tabindex="-1" autocomplete="off"
+                   aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
             <button class="btn" onclick="doRecoverL1()">Recover</button>
             <div id="l1-result"></div>
         </div>
@@ -593,6 +599,8 @@
                 <label>Recovery word</label>
                 <input type="text" id="l2-recovery" placeholder="bob">
             </div>
+            <input type="text" name="website" id="l2-website" tabindex="-1" autocomplete="off"
+                   aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
             <button class="btn" onclick="doRecoverL2()">Recover</button>
             <div id="l2-result"></div>
         </div>
@@ -688,7 +696,8 @@
                 const recoveryDerivedKey = await hmacDerive(recoveryWord, salt);
                 const data = await api('register', {
                     username, identifier, password,
-                    recovery_derived_key: recoveryDerivedKey
+                    recovery_derived_key: recoveryDerivedKey,
+                    website: document.getElementById('reg-website')?.value || ''
                 });
                 showResult('reg-result',
                     '<strong>Account created !</strong>' +
@@ -705,7 +714,10 @@
             try {
                 const username = document.getElementById('login-username').value.trim();
                 const password = document.getElementById('login-password').value;
-                const data = await api('login', { username, password });
+                const data = await api('login', {
+                    username, password,
+                    website: document.getElementById('login-website')?.value || ''
+                });
                 showResult('login-result', '<strong>Logged in</strong> — ' + data.message);
             } catch (e) {
                 showResult('login-result', e.message, true);
@@ -717,7 +729,10 @@
             try {
                 const username = document.getElementById('l1-username').value.trim();
                 const passphrase = document.getElementById('l1-passphrase').value.trim();
-                const data = await api('recover-l1', { username, passphrase });
+                const data = await api('recover-l1', {
+                    username, passphrase,
+                    website: document.getElementById('l1-website')?.value || ''
+                });
                 showResult('l1-result',
                     '<strong>' + data.message + '</strong>' +
                     'Your new password: <code>' + data.new_password + '</code><br>' +
@@ -827,7 +842,10 @@
                 }
                 const { salt } = await api('salt');
                 const recoveryKey = await hmacDerive(recoveryWord, salt);
-                const data = await api('recover-l2', { identifier, recovery_key: recoveryKey });
+                const data = await api('recover-l2', {
+                    identifier, recovery_key: recoveryKey,
+                    website: document.getElementById('l2-website')?.value || ''
+                });
                 showResult('l2-result',
                     '<strong>' + data.message + '</strong>' +
                     'Your new password: <code>' + data.new_password + '</code><br>' +

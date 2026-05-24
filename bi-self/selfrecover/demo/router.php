@@ -10,8 +10,14 @@ if (strpos($path, '/api/') === 0) {
     return true;
 }
 
-$file = __DIR__ . $path;
-if ($path !== '/' && file_exists($file) && !is_dir($file)) {
+// Anti path-traversal : on canonicalise le chemin demandé puis on vérifie
+// qu'il reste strictement à l'intérieur du dossier de la démo. Sinon on tombe
+// dans le fallback index.html (page d'accueil démo).
+$base = realpath(__DIR__);
+$file = realpath(__DIR__ . $path);
+if ($path !== '/' && $file !== false && $base !== false
+    && str_starts_with($file, $base . DIRECTORY_SEPARATOR)
+    && is_file($file)) {
     return false;
 }
 

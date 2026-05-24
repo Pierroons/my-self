@@ -35,7 +35,7 @@ function loadEffWordlist(string $lang = 'en'): array {
         throw new RuntimeException("Wordlist EFF introuvable : {$path}");
     }
     $words = preg_split('/\r?\n/', trim(file_get_contents($path)));
-    $words = array_values(array_filter($words, 'strlen'));
+    $words = array_values(array_filter($words, fn($w) => $w !== ''));
     if (count($words) !== 7776) {
         throw new RuntimeException(
             "Wordlist EFF '{$lang}' invalide : " . count($words) . " mots au lieu de 7776"
@@ -101,6 +101,7 @@ function generatePassword(int $len = 10): string {
 // === REGISTER ===
 function handleRegister(): void {
     $in = getInput();
+    securityChecks($in);
     $username = trim($in['username'] ?? '');
     $identifier = trim($in['identifier'] ?? '');
     $password = $in['password'] ?? '';
@@ -139,21 +140,21 @@ function handleRegister(): void {
     ));
 
     $t0 = microtime(true);
-    $pwdHash = password_hash($password, PASSWORD_BCRYPT);
+    $pwdHash = password_hash($password, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
     addTrace(sprintf(
         "[register] bcrypt(password) en %.0f ms (hash sortie: %dch, prefix: %s)",
         (microtime(true) - $t0) * 1000, strlen($pwdHash), substr($pwdHash, 0, 7)
     ));
 
     $t0 = microtime(true);
-    $ppHash = password_hash($passphrase, PASSWORD_BCRYPT);
+    $ppHash = password_hash($passphrase, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
     addTrace(sprintf(
         "[register] bcrypt(passphrase) en %.0f ms — hash stocke, jamais en clair",
         (microtime(true) - $t0) * 1000
     ));
 
     $t0 = microtime(true);
-    $rcHash = password_hash($recoveryDerivedKey, PASSWORD_BCRYPT);
+    $rcHash = password_hash($recoveryDerivedKey, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
     addTrace(sprintf(
         "[register] bcrypt(recovery_derived_key) en %.0f ms — note: input deja HMAC-SHA256 cote client",
         (microtime(true) - $t0) * 1000
@@ -177,6 +178,7 @@ function handleRegister(): void {
 // === LOGIN ===
 function handleLogin(): void {
     $in = getInput();
+    securityChecks($in);
     $username = trim($in['username'] ?? '');
     $password = $in['password'] ?? '';
     addTrace(sprintf("[login] input recu — username:%dch, password:%dch", strlen($username), strlen($password)));
@@ -202,6 +204,7 @@ function handleLogin(): void {
 // === RECOVER L1 ===
 function handleRecoverL1(): void {
     $in = getInput();
+    securityChecks($in);
     $username = trim($in['username'] ?? '');
     $passphrase = trim($in['passphrase'] ?? '');
     addTrace(sprintf("[recover-l1] input recu — username:%dch, passphrase:%dch (mots: %d)",
@@ -253,7 +256,7 @@ function handleRecoverL1(): void {
 
     $newPwd = generatePassword();
     addTrace("[recover-l1] new password generated (10 chars alphabet) — pas logue en clair");
-    $newHash = password_hash($newPwd, PASSWORD_BCRYPT);
+    $newHash = password_hash($newPwd, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
     $db->prepare("UPDATE users SET password_hash = ?, l1_block_count = 0, l1_blocked_until = NULL WHERE id = ?")
        ->execute([$newHash, $user['id']]);
     addTrace(sprintf("[recover-l1] DB UPDATE users (id=%d) — pwd_hash, block_count=0, blocked_until=NULL", $user['id']));
@@ -268,6 +271,7 @@ function handleRecoverL1(): void {
 // === RECOVER L2 ===
 function handleRecoverL2(): void {
     $in = getInput();
+    securityChecks($in);
     $identifier = trim($in['identifier'] ?? '');
     $recoveryKey = trim($in['recovery_key'] ?? ''); // Already HMAC-derived client-side
     addTrace(sprintf("[recover-l2] input recu — identifier:%dch, recovery_key:%dch (deja HMAC client)",
@@ -297,7 +301,7 @@ function handleRecoverL2(): void {
     }
 
     $newPwd = generatePassword();
-    $newHash = password_hash($newPwd, PASSWORD_BCRYPT);
+    $newHash = password_hash($newPwd, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
     $db->prepare("UPDATE users SET password_hash = ?, l1_block_count = 0, l1_blocked_until = NULL WHERE id = ?")
        ->execute([$newHash, $user['id']]);
     addTrace(sprintf("[recover-l2] DB UPDATE users (id=%d) — new pwd hash, block_count reset", $user['id']));
@@ -310,8 +314,70 @@ function handleRecoverL2(): void {
 }
 
 function logAttempt(PDO $db, string $username, int $level, bool $success): void {
-    $db->prepare("INSERT INTO recovery_attempts (username, level, success) VALUES (?, ?, ?)")
-       ->execute([$username, $level, $success ? 1 : 0]);
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    $fingerprint = $_SERVER['HTTP_X_CLIENT_FINGERPRINT'] ?? '';
+    $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    $db->prepare("INSERT INTO recovery_attempts (username, level, success, ip_address, fingerprint, user_agent) VALUES (?, ?, ?, ?, ?, ?)")
+       ->execute([$username, $level, $success ? 1 : 0, $ip, $fingerprint, $userAgent]);
+    if (!$success && $ip) {
+        trackSuspiciousIP($db, $ip, $fingerprint, $userAgent);
+    }
+}
+
+/**
+ * Rate limit per-IP : retourne true si l'IP est dans une fenêtre de blocage active.
+ * Stratégie : 10 tentatives ratées (toutes confondues) → blocage 24 h.
+ */
+function isBlockedIP(PDO $db, string $ip): bool {
+    if (!$ip) return false;
+    $stmt = $db->prepare("
+        SELECT blocked_until FROM suspicious_fingerprints
+        WHERE ip = ? AND blocked_until IS NOT NULL
+        ORDER BY last_seen DESC LIMIT 1
+    ");
+    $stmt->execute([$ip]);
+    $blocked = $stmt->fetchColumn();
+    return $blocked && strtotime($blocked) > time();
+}
+
+function trackSuspiciousIP(PDO $db, string $ip, string $fingerprint, string $userAgent): void {
+    if (!$ip) return;
+    $stmt = $db->prepare("SELECT id, attempt_count FROM suspicious_fingerprints WHERE ip = ? AND fingerprint = ?");
+    $stmt->execute([$ip, $fingerprint]);
+    $row = $stmt->fetch();
+    if ($row) {
+        $newCount = (int)$row['attempt_count'] + 1;
+        $blockedUntil = $newCount >= 10 ? date('Y-m-d H:i:s', time() + 86400) : null;
+        $db->prepare("UPDATE suspicious_fingerprints SET attempt_count = ?, blocked_until = ?, last_seen = CURRENT_TIMESTAMP WHERE id = ?")
+           ->execute([$newCount, $blockedUntil, $row['id']]);
+    } else {
+        $db->prepare("INSERT INTO suspicious_fingerprints (ip, fingerprint, user_agent) VALUES (?, ?, ?)")
+           ->execute([$ip, $fingerprint, $userAgent]);
+    }
+}
+
+/**
+ * Honeypot anti-bot : champ caché 'website' dans les formulaires côté client.
+ * Un humain ne le remplit jamais ; un bot scrape et le remplit.
+ * Si rempli → 3 sec de tempo (gaspille la session bot) puis erreur générique.
+ */
+function checkHoneypot(array $in): void {
+    if (!empty($in['website'])) {
+        sleep(3);
+        jsonError('Identifiants incorrects', 401);
+    }
+}
+
+/**
+ * Wrapper d'entrée pour tous les handlers : honeypot + check IP blocked.
+ * À appeler immédiatement après getInput() dans chaque endpoint.
+ */
+function securityChecks(array $in): void {
+    checkHoneypot($in);
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    if ($ip && isBlockedIP(getDB(), $ip)) {
+        jsonError('Trop de tentatives depuis votre IP. Réessayez dans 24 heures.', 429);
+    }
 }
 
 
@@ -343,6 +409,7 @@ function logAttempt(PDO $db, string $username, int $level, bool $success): void 
 // === LITE REGISTER ===
 function handleLiteRegister(): void {
     $in = getInput();
+    securityChecks($in);
     $username = trim($in['username'] ?? '');
     $email = trim($in['email'] ?? '');
     $password = $in['password'] ?? '';
@@ -364,8 +431,8 @@ function handleLiteRegister(): void {
     addTrace("[lite-register] DB unique check OK");
 
     $t0 = microtime(true);
-    $pwdHash = password_hash($password, PASSWORD_BCRYPT);
-    $memHash = password_hash($memorizedDerived, PASSWORD_BCRYPT);
+    $pwdHash = password_hash($password, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
+    $memHash = password_hash($memorizedDerived, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
     addTrace(sprintf("[lite-register] bcrypt(password) + bcrypt(memorized_derived) en %.0f ms",
         (microtime(true) - $t0) * 1000));
 
@@ -392,6 +459,7 @@ function handleLiteRegister(): void {
 // === LITE RESET REQUEST ===
 function handleLiteResetRequest(): void {
     $in = getInput();
+    securityChecks($in);
     $email = trim($in['email'] ?? '');
     addTrace(sprintf("[lite-reset-request] email:%dch", strlen($email)));
 
@@ -477,6 +545,7 @@ function handleLiteResetInfo(): void {
 // === LITE RESET CONFIRM ===
 function handleLiteResetConfirm(): void {
     $in = getInput();
+    securityChecks($in);
     $requestId = trim($in['request_id'] ?? '');
     $memorizedDerived = $in['memorized_derived_key'] ?? '';  // HMAC client-side
     $newPassword = $in['new_password'] ?? '';
@@ -516,7 +585,7 @@ function handleLiteResetConfirm(): void {
     }
 
     // Reset password
-    $newHash = password_hash($newPassword, PASSWORD_BCRYPT);
+    $newHash = password_hash($newPassword, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
     $db->prepare("UPDATE users SET password_hash = ? WHERE id = ?")
        ->execute([$newHash, $req['user_id']]);
     $db->prepare("UPDATE reset_requests SET used = 1 WHERE id = ?")->execute([$requestId]);

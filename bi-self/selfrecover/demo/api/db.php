@@ -5,7 +5,20 @@
 
 // Site salt — generated once, never changes (changing invalidates all recovery_derived_hash)
 // In production, this MUST be a cryptographically random value stored securely.
-define('SITE_SALT', 'demo-site-salt-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d');
+define('SITE_SALT', getenv('SELFRECOVER_SITE_SALT') ?: 'demo-site-salt-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d');
+
+// DEBUG_MODE — expose _trace dans les réponses JSON. true par défaut en démo, false en prod.
+define('DEBUG_MODE', filter_var(getenv('SELFRECOVER_DEBUG') ?: 'true', FILTER_VALIDATE_BOOLEAN));
+
+// ALLOWED_ORIGIN — domaine autorisé en CORS (whitelist stricte)
+define('ALLOWED_ORIGIN', getenv('SELFRECOVER_ORIGIN') ?: 'http://localhost:8080');
+
+// Argon2id options — profil OWASP 2026 (memory 64 MiB, 4 itérations, 2 threads)
+define('ARGON2_OPTIONS', [
+    'memory_cost' => 65536,
+    'time_cost'   => 4,
+    'threads'     => 2,
+]);
 
 function getDB(): PDO {
     static $pdo = null;
@@ -15,14 +28,17 @@ function getDB(): PDO {
     $pdo = new PDO('sqlite:' . $path);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
     if ($init) {
         $pdo->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     } else {
-        // Migrations idempotentes pour SelfRecover Lite (V0.1.1)
-        // PDO::ERRMODE_EXCEPTION nécessite try/catch (le @ ne supprime pas les exceptions)
+        // Migrations idempotentes (PDO::ERRMODE_EXCEPTION nécessite try/catch)
         foreach ([
             "ALTER TABLE users ADD COLUMN email TEXT",
             "ALTER TABLE users ADD COLUMN memorized_word_hash TEXT",
+            "ALTER TABLE recovery_attempts ADD COLUMN ip_address TEXT",
+            "ALTER TABLE recovery_attempts ADD COLUMN fingerprint TEXT",
+            "ALTER TABLE recovery_attempts ADD COLUMN user_agent TEXT",
         ] as $migration) {
             try { $pdo->exec($migration); } catch (Exception $e) { /* duplicate column = OK */ }
         }
@@ -36,6 +52,20 @@ function getDB(): PDO {
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )");
+        } catch (Exception $e) { /* table exists = OK */ }
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS suspicious_fingerprints (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ip TEXT NOT NULL,
+                fingerprint TEXT,
+                user_agent TEXT,
+                attempt_count INTEGER DEFAULT 1,
+                blocked_until TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                last_seen TEXT DEFAULT CURRENT_TIMESTAMP
+            )");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_susp_ip ON suspicious_fingerprints(ip)");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_susp_fp ON suspicious_fingerprints(fingerprint)");
         } catch (Exception $e) { /* table exists = OK */ }
     }
     return $pdo;
@@ -61,7 +91,8 @@ function addTrace(string $msg): void {
 function jsonResponse(array $data, int $code = 200): void {
     http_response_code($code);
     header('Content-Type: application/json');
-    if (!empty($GLOBALS['_trace'])) {
+    // _trace exposé uniquement si DEBUG_MODE=true (désactivable en prod)
+    if (DEBUG_MODE && !empty($GLOBALS['_trace'])) {
         $data['_trace'] = $GLOBALS['_trace'];
     }
     echo json_encode($data, JSON_UNESCAPED_UNICODE);

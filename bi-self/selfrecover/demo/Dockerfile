@@ -24,7 +24,13 @@ COPY . /app
 # DB init (sera recréée à chaque démarrage si SELFRECOVER_FRESH_DB=1)
 RUN sqlite3 /app/selfrecover.sqlite < /app/schema.sql && chmod 666 /app/selfrecover.sqlite
 
+# Créer un user non-root et lui attribuer /app
+RUN addgroup -S selfrecover && adduser -S -G selfrecover -h /app selfrecover \
+    && chown -R selfrecover:selfrecover /app
+
 EXPOSE 8080
+
+USER selfrecover
 
 # Le router.php mappe /api/* vers api/index.php
 CMD ["sh", "-c", "if [ \"$SELFRECOVER_FRESH_DB\" = \"1\" ]; then rm -f /app/selfrecover.sqlite && sqlite3 /app/selfrecover.sqlite < /app/schema.sql; fi; php -S 0.0.0.0:8080 -t /app /app/router.php"]

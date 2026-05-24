@@ -58,6 +58,8 @@
                 <label>Mot mémorisé (celui de ton inscription)</label>
                 <input type="text" id="memorized" autocomplete="off">
             </div>
+            <input type="text" name="website" id="confirm-website" tabindex="-1" autocomplete="off"
+                   aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
             <button class="btn" id="confirm-btn" onclick="doConfirm()">Réinitialiser le mot de passe</button>
             <div id="result"></div>
         </div>
@@ -137,7 +139,8 @@ async function doConfirm() {
             body: JSON.stringify({
                 request_id: requestId,
                 memorized_derived_key: memorizedDerived,
-                new_password: newPwd
+                new_password: newPwd,
+                website: document.getElementById('confirm-website')?.value || ''
             })
         });
         const data = await res.json();

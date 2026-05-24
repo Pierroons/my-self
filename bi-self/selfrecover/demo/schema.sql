@@ -34,9 +34,27 @@ CREATE TABLE IF NOT EXISTS recovery_attempts (
     username TEXT,
     level INTEGER NOT NULL,
     success INTEGER DEFAULT 0,
+    ip_address TEXT,
+    fingerprint TEXT,
+    user_agent TEXT,
     attempted_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Suspicious fingerprints — rate limit per-IP + tracking comportement
+CREATE TABLE IF NOT EXISTS suspicious_fingerprints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT NOT NULL,
+    fingerprint TEXT,
+    user_agent TEXT,
+    attempt_count INTEGER DEFAULT 1,
+    blocked_until TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_seen TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_identifier ON users(identifier);
 CREATE INDEX IF NOT EXISTS idx_attempts_time ON recovery_attempts(attempted_at);
+CREATE INDEX IF NOT EXISTS idx_attempts_ip ON recovery_attempts(ip_address);
+CREATE INDEX IF NOT EXISTS idx_susp_ip ON suspicious_fingerprints(ip);
+CREATE INDEX IF NOT EXISTS idx_susp_fp ON suspicious_fingerprints(fingerprint);
