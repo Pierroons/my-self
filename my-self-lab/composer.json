@@ -1,0 +1,29 @@
+{
+    "name": "pierroons/my-self-lab",
+    "description": "MySelf-Lab — forum vitrine intégrant SelfRecover (auth sans email) + SelfDataGuard (chiffrement at-rest). Terrain de démonstration pour test red team.",
+    "type": "project",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "php": "^8.1",
+        "ext-sodium": "*",
+        "ext-pdo": "*",
+        "ext-pdo_sqlite": "*",
+        "ext-json": "*",
+        "ext-mbstring": "*",
+        "pierroons/selfdataguard": "@dev"
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../self-security/selfdataguard",
+            "options": { "symlink": true }
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Pierroons\\MySelfLab\\": "lib/"
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

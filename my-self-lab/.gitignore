@@ -1,0 +1,13 @@
+# Données + secrets runtime — JAMAIS commités
+/data/
+/vendor/
+composer.lock
+
+# Secrets explicites (au cas où data/ bouge)
+*.blindkey
+*.sitesalt
+*.db
+*.sqlite
+
+# PDF générés par les outils docs/ — pas versionnés
+/docs/out/
