@@ -24,8 +24,15 @@ final class Auth
     private const COOKIE = 'lab_session';
     private const SESSION_TTL = 86400;        // 24h
     private const REGISTER_MAX_PER_IP = 5;    // max comptes créés / IP / heure
-    private const LOGIN_MAX_FAILS = 5;        // échecs avant blocage temporaire
+    private const LOGIN_MAX_FAILS = 5;        // échecs / username avant blocage temporaire
+    private const LOGIN_MAX_FAILS_PER_IP = 12; // échecs cumulés / IP / fenêtre (anti-spraying, tolère un foyer NAT)
     private const LOGIN_WINDOW = 900;         // fenêtre de comptage (15 min)
+    /**
+     * Hash bcrypt cost 12 factice, exécuté quand le compte n'existe pas, pour que
+     * password_verify prenne le même temps qu'avec un vrai compte (anti-énumération
+     * par timing). Ne correspond à aucun mot de passe réel.
+     */
+    private const DUMMY_BCRYPT = '$2y$12$U8kdsw/Okk6pxMpEUl2LVeWR3cBuwvkT2YX4teyvvvttXY93ubAb2';
 
     /** derived_key = HMAC-SHA256(recovery_word, domain || site_salt). */
     public static function deriveKey(string $recoveryWord, string $domain, string $siteSalt): string
@@ -91,6 +98,12 @@ final class Auth
         $stmt = $pdo->prepare('SELECT 1 FROM accounts WHERE username = ?');
         $stmt->execute([$username]);
         if ($stmt->fetchColumn()) {
+            // LAB-05 : une sonde d'existence consomme le quota IP au même titre qu'une création,
+            // pour casser l'énumération de masse (les usernames restent publics par nature sur un forum).
+            if ($ip !== null) {
+                $pdo->prepare('INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, 1, ?, ?)')
+                    ->execute(['__register__', $ip, time()]);
+            }
             return ['ok' => false, 'error' => 'username_taken',
                     'message' => 'Cet identifiant est déjà pris.'];
         }
@@ -141,7 +154,7 @@ final class Auth
         self::purgeExpiredSessions($pdo);
         $username = strtolower(trim($username));
 
-        // Compte les échecs récents
+        // Échecs récents par USERNAME (anti-bruteforce ciblé)
         $stmt = $pdo->prepare(
             'SELECT COUNT(*) FROM login_attempts
              WHERE username = ? AND success = 0 AND attempted_at > ?'
@@ -149,30 +162,38 @@ final class Auth
         $stmt->execute([$username, time() - self::LOGIN_WINDOW]);
         $fails = (int) $stmt->fetchColumn();
 
-        // Déjà bloqué
-        if ($fails >= self::LOGIN_MAX_FAILS) {
-            return ['ok' => false, 'status' => 'locked', 'remaining' => 0,
+        // LAB-03 : échecs récents par IP (anti-spraying — un même mot de passe testé sur
+        // de nombreux comptes ne dépasse jamais le seuil par username, mais sature le seuil IP).
+        $failsIp = 0;
+        if ($ip !== null) {
+            $stmt = $pdo->prepare(
+                'SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND success = 0 AND attempted_at > ?'
+            );
+            $stmt->execute([$ip, time() - self::LOGIN_WINDOW]);
+            $failsIp = (int) $stmt->fetchColumn();
+        }
+
+        // Déjà bloqué (compte OU IP)
+        if ($fails >= self::LOGIN_MAX_FAILS || $failsIp >= self::LOGIN_MAX_FAILS_PER_IP) {
+            return ['ok' => false, 'status' => 'locked',
                     'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
         }
 
         $stmt = $pdo->prepare('SELECT id, pw_hash FROM accounts WHERE username = ?');
         $stmt->execute([$username]);
         $acc = $stmt->fetch();
-        $ok = $acc && password_verify($password, $acc['pw_hash']);
+        // LAB-02 : toujours exécuter un bcrypt (hash factice si le compte n'existe pas) pour que
+        // le temps de réponse ne trahisse pas l'existence du compte.
+        $ok = password_verify($password, $acc ? $acc['pw_hash'] : self::DUMMY_BCRYPT) && (bool) $acc;
 
         $pdo->prepare(
             'INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, ?, ?, ?)'
         )->execute([$username, $ok ? 1 : 0, $ip, time()]);
 
         if (!$ok) {
-            $remaining = self::LOGIN_MAX_FAILS - ($fails + 1);
-            if ($remaining > 0) {
-                return ['ok' => false, 'status' => 'wrong', 'remaining' => $remaining,
-                        'message' => "Identifiant ou mot de passe incorrect. "
-                                   . "Il te reste $remaining tentative" . ($remaining > 1 ? 's' : '') . "."];
-            }
-            return ['ok' => false, 'status' => 'locked', 'remaining' => 0,
-                    'message' => 'Mot de passe incorrect. Compte bloqué 15 minutes par sécurité.'];
+            // LAB-07 : message générique, sans compteur de tentatives restantes.
+            return ['ok' => false, 'status' => 'wrong',
+                    'message' => 'Identifiant ou mot de passe incorrect.'];
         }
 
         $token = self::generateSessionToken();
@@ -181,6 +202,71 @@ final class Auth
         )->execute([(int) $acc['id'], $token, time()]);
 
         return ['ok' => true, 'token' => $token];
+    }
+
+    /**
+     * Récupération SANS email (protocole SelfRecover). username + mot de récupération
+     * → on recalcule la clé dérivée et on la vérifie contre recovery_hash. Si OK :
+     * régénère password + passphrase, invalide les sessions existantes.
+     * Retour : ['ok'=>true,'credentials'=>[...]] ou ['ok'=>false,'message'=>...].
+     */
+    public static function recover(PDO $pdo, string $username, string $recoveryWord, ?string $ip = null): array
+    {
+        self::purgeExpiredSessions($pdo);
+        $username = strtolower(trim($username));
+        $marker = 'recover:' . $username;
+
+        // Rate-limit dédié récupération : par username ET par IP (anti-spraying / anti-énumération).
+        $stmt = $pdo->prepare(
+            'SELECT COUNT(*) FROM login_attempts WHERE username = ? AND success = 0 AND attempted_at > ?'
+        );
+        $stmt->execute([$marker, time() - self::LOGIN_WINDOW]);
+        $failsUser = (int) $stmt->fetchColumn();
+        $failsIp = 0;
+        if ($ip !== null) {
+            $stmt = $pdo->prepare(
+                'SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND success = 0 AND attempted_at > ?'
+            );
+            $stmt->execute([$ip, time() - self::LOGIN_WINDOW]);
+            $failsIp = (int) $stmt->fetchColumn();
+        }
+        if ($failsUser >= self::LOGIN_MAX_FAILS || $failsIp >= self::LOGIN_MAX_FAILS_PER_IP) {
+            return ['ok' => false, 'message' => 'Trop de tentatives de récupération. Réessaie dans 15 minutes.'];
+        }
+
+        $stmt = $pdo->prepare('SELECT id, recovery_hash FROM accounts WHERE username = ?');
+        $stmt->execute([$username]);
+        $acc = $stmt->fetch();
+
+        $derived = self::deriveKey($recoveryWord, self::DOMAIN, self::siteSalt());
+        // LAB-02 : bcrypt systématique (hash factice si compte absent) pour égaliser le timing.
+        $ok = password_verify($derived, $acc ? $acc['recovery_hash'] : self::DUMMY_BCRYPT) && (bool) $acc;
+
+        $pdo->prepare('INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, ?, ?, ?)')
+            ->execute([$marker, $ok ? 1 : 0, $ip, time()]);
+
+        if (!$ok) {
+            // message non-discriminant (anti-énumération)
+            return ['ok' => false, 'message' => 'Identifiant ou mot de récupération incorrect.'];
+        }
+
+        $newPassword = self::generatePassword(16);
+        $diceware = \DicewareWordlist::generate(4, 'en');
+        $newPassphrase = implode(' ', $diceware['words']);
+
+        $pdo->prepare('UPDATE accounts SET pw_hash = ?, pass_hash = ? WHERE id = ?')->execute([
+            password_hash($newPassword, PASSWORD_BCRYPT, ['cost' => 12]),
+            password_hash($newPassphrase, PASSWORD_BCRYPT, ['cost' => 12]),
+            (int) $acc['id'],
+        ]);
+        // sécurité : on coupe toutes les sessions ouvertes du compte
+        $pdo->prepare('DELETE FROM app_sessions WHERE account_id = ?')->execute([(int) $acc['id']]);
+
+        return [
+            'ok' => true,
+            'credentials' => ['password' => $newPassword, 'passphrase' => $newPassphrase],
+            'note' => 'Nouveau mot de passe généré — copie-le maintenant. ⚠️ Si tu avais un mémo chiffré E2E : déverrouille-le avec ta PASSPHRASE de secours, puis recrée le coffre (il était chiffré avec l\'ancien mot de passe).',
+        ];
     }
 
     public static function logout(PDO $pdo, string $token): void

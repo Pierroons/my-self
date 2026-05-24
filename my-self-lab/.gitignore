@@ -11,3 +11,6 @@ composer.lock
 
 # PDF générés par les outils docs/ — pas versionnés
 /docs/out/
+
+# Prépa challenge CTF (script + flags secrets) — JAMAIS versionné
+/challenge/

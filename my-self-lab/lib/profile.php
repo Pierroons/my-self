@@ -54,12 +54,25 @@ final class Profile
             }
             $clean[$c] = $v;
         }
+        // LAB-04 : le champ « lien » ne doit accepter qu'un protocole web sûr. h() échappe les
+        // guillemets mais PAS le préfixe « javascript: » → on filtre le schéma en amont.
+        if ($clean['lien'] !== '' && !self::lienSur($clean['lien'])) {
+            return ['ok' => false, 'error' => 'lien_invalide',
+                    'message' => 'Le lien doit commencer par http:// ou https:// (ou rester vide).'];
+        }
         $ciphertext = DataGuard::encrypt(json_encode($clean, JSON_UNESCAPED_UNICODE));
         $pdo->prepare(
             'INSERT INTO profiles (account_id, ciphertext, updated_at) VALUES (?, ?, ?)
              ON CONFLICT(account_id) DO UPDATE SET ciphertext = excluded.ciphertext, updated_at = excluded.updated_at'
         )->execute([$accountId, $ciphertext, time()]);
         return ['ok' => true];
+    }
+
+    /** Schéma de lien autorisé (rejette javascript:, data:, vbscript:…). */
+    public static function lienSur(string $url): bool
+    {
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+        return in_array($scheme, ['http', 'https'], true);
     }
 
     /** Profil public d'un membre par username (déchiffré pour affichage). */

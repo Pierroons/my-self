@@ -18,6 +18,21 @@ $threads = Forum::listThreads($pdo, $cat);
 
 render_header('Forum', $account);
 ?>
+<div class="hero">
+  <svg viewBox="0 0 200 280" width="116" height="162" role="img" aria-label="MySelf · my-self.fr">
+    <g fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="square" stroke-linejoin="miter"><path d="M 36 158 L 36 70 L 100 138 L 158 50 L 158 158"/><path d="M 158 50 L 174 28"/></g>
+    <circle cx="180" cy="20" r="11" fill="currentColor"/>
+    <g fill="currentColor" text-anchor="middle" font-family="-apple-system,system-ui,'Segoe UI',sans-serif">
+      <text x="100" y="220" font-size="38" font-weight="700" letter-spacing="-0.5">MySelf</text>
+      <text x="100" y="255" font-size="16" font-weight="400" letter-spacing="3" font-family="DejaVu Sans Mono,monospace">my-self.fr</text>
+    </g>
+  </svg>
+  <p class="pitch">Forum de démonstration : <strong>attaquez-le, vos données survivent.</strong><br>Auth sans email · messages chiffrés de bout en bout · modération anti-manipulation.</p>
+  <div class="cta">
+    <a class="btn" href="/redteam.php">🛡️ Tester la sécurité</a>
+    <a class="btn btn-ghost" href="/security.php">Voir l'architecture</a>
+  </div>
+</div>
 <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px">
   <h1>Forum souveraineté numérique</h1>
   <?php if ($account): ?>

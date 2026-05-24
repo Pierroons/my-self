@@ -12,12 +12,11 @@ $password = (string) ($body['password'] ?? '');
 
 $res = Auth::login(Db::pdo(), $username, $password, client_ip());
 if (!$res['ok']) {
-    // 429 si bloqué, 401 si mauvais identifiants (avec compteur restant)
+    // 429 si bloqué, 401 si mauvais identifiants (message générique, sans compteur)
     $code = ($res['status'] ?? '') === 'locked' ? 429 : 401;
     json_out([
         'ok' => false,
         'error' => $res['status'] ?? 'invalid_credentials',
-        'remaining' => $res['remaining'] ?? 0,
         'message' => $res['message'],
     ], $code);
 }

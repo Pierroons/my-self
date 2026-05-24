@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 2 178 170" role="img" aria-label="MySelf">
+  <g fill="none" stroke="#3fb98c" stroke-width="18" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="M 36 158 L 36 70 L 100 138 L 158 50 L 158 158"/>
+    <path d="M 158 50 L 174 28"/>
+  </g>
+  <circle cx="180" cy="20" r="11" fill="#3fb98c"/>
+</svg>

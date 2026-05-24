@@ -56,7 +56,11 @@ if ($voirUsername !== null) {
         <div class="card">
           <p style="margin-top:0"><strong>Bio</strong><br><?= h($p['bio']) ?: '<span class="muted">—</span>' ?></p>
           <p><strong>Localisation</strong><br><?= h($p['localisation']) ?: '<span class="muted">—</span>' ?></p>
-          <p><strong>Lien</strong><br><?= $p['lien'] ? '<a href="' . h($p['lien']) . '" rel="noopener nofollow">' . h($p['lien']) . '</a>' : '<span class="muted">—</span>' ?></p>
+          <p><strong>Lien</strong><br><?php
+            if ($p['lien'] === '') { echo '<span class="muted">—</span>'; }
+            elseif (Profile::lienSur($p['lien'])) { echo '<a href="' . h($p['lien']) . '" rel="noopener nofollow">' . h($p['lien']) . '</a>'; }
+            else { echo h($p['lien']); /* schéma non sûr : jamais cliquable */ }
+          ?></p>
         </div>
         <script>
         function voteMembre(id, value){
@@ -87,10 +91,15 @@ $repPct = (int) round($repScore / Moderate::MAX_REPUTATION * 100);
 $repColor = $repScore >= 25 ? '#3fb98c' : ($repScore >= 15 ? '#9aa9b6' : ($repScore >= 5 ? '#d4a056' : '#d96459'));
 $repLabel = $repScore >= 25 ? 'Confiance' : ($repScore >= 15 ? 'Membre établi' : ($repScore >= 5 ? 'Réputation fragile' : 'Sous surveillance'));
 // Activité
-$nbPosts = (int) $pdo->query('SELECT COUNT(*) FROM posts WHERE account_id = ' . $myId)->fetchColumn();
-$nbThreads = (int) $pdo->query('SELECT COUNT(*) FROM threads WHERE account_id = ' . $myId)->fetchColumn();
-$nbVotesEmis = (int) $pdo->query('SELECT COUNT(*) FROM mod_votes WHERE voter_id = ' . $myId . ' AND blocked = 0')->fetchColumn();
-$nbVotesRecus = (int) $pdo->query('SELECT COUNT(*) FROM mod_votes WHERE target_author = ' . $myId . ' AND blocked = 0')->fetchColumn();
+$cnt = function (string $sql) use ($pdo, $myId): int {
+    $s = $pdo->prepare($sql);
+    $s->execute([$myId]);
+    return (int) $s->fetchColumn();
+};
+$nbPosts      = $cnt('SELECT COUNT(*) FROM posts WHERE account_id = ?');
+$nbThreads    = $cnt('SELECT COUNT(*) FROM threads WHERE account_id = ?');
+$nbVotesEmis  = $cnt('SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND blocked = 0');
+$nbVotesRecus = $cnt('SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND blocked = 0');
 [$canVote, $whyNot] = Moderate::canVote($pdo, $myId);
 
 render_header('Mon espace', $account);
@@ -127,14 +136,17 @@ render_header('Mon espace', $account);
   <p style="margin:12px 0 0"><a href="/profile.php?u=<?= h($account['username']) ?>">Voir mon profil public →</a></p>
 </div>
 
-<h2 style="margin-top:24px">✏️ Modifier mon profil</h2>
-<p class="muted">🔒 Ces champs sont chiffrés at-rest par <strong>SelfDataGuard</strong>. En base, ils n'apparaissent qu'en blob illisible.</p>
+<h2 style="margin-top:24px">✏️ Modifier mon profil <span class="cat-pill" style="color:var(--warn);border-color:var(--warn)">🌐 public</span></h2>
+<p class="muted" style="background:rgba(212,160,86,.10);border:1px solid rgba(212,160,86,.35);border-radius:8px;padding:10px 13px">
+  🌐 <strong>Profil public</strong> — bio, localisation et lien sont <strong>visibles de tous</strong> (page <code>/profile.php?u=…</code>, même sans compte).
+  Le chiffrement at-rest SelfDataGuard protège contre un <strong>vol de la base</strong>, pas contre l'affichage public : n'y mets <strong>aucune donnée sensible</strong>.
+  Pour une note privée, utilise le <strong>mémo E2E</strong> ci-dessous.</p>
 <div class="card" style="max-width:560px">
   <div id="msg"></div>
   <div class="field"><label>Bio</label><textarea id="bio" rows="3"><?= h($p['bio']) ?></textarea></div>
   <div class="field"><label>Localisation</label><input id="localisation" value="<?= h($p['localisation']) ?>"></div>
-  <div class="field"><label>Lien (site, blog…)</label><input id="lien" value="<?= h($p['lien']) ?>"></div>
-  <button class="btn" onclick="enregistrer()">Enregistrer (chiffré)</button>
+  <div class="field"><label>Lien (site, blog…)</label><input id="lien" value="<?= h($p['lien']) ?>" placeholder="https://…"></div>
+  <button class="btn" onclick="enregistrer()">Enregistrer le profil public</button>
 </div>
 
 <?php $vaultExiste = \Pierroons\MySelfLab\MemoVault::exists($pdo, $myId); ?>
@@ -146,9 +158,9 @@ render_header('Mon espace', $account);
 
   <!-- État A : aucun coffre → création -->
   <div id="memo-create" style="display:<?= $vaultExiste ? 'none' : 'block' ?>">
-    <p class="muted" style="margin-top:0">Crée ton coffre chiffré. Le <strong>mot de passe</strong> sert au quotidien ; la <strong>passphrase de secours</strong> (forte, ex. 4+ mots) te permet de récupérer si tu perds ton mot de passe.</p>
+    <p class="muted" style="margin-top:0">Crée ton coffre chiffré. Le <strong>mot de passe</strong> sert au quotidien ; la <strong>passphrase de récupération</strong> te permet de retrouver le mémo si tu perds ton mot de passe.</p>
     <div class="field"><label>Ton mot de passe</label><input type="password" id="c-pw" autocomplete="off"></div>
-    <div class="field"><label>Passphrase de secours (4+ mots)</label><input type="password" id="c-pass" autocomplete="off"></div>
+    <div class="field"><label>Passphrase de récupération <span style="text-transform:none;font-weight:400;color:var(--muted)">— réutilise celle reçue à l'inscription</span></label><input type="password" id="c-pass" autocomplete="off" placeholder="ex. correct horse battery staple"><span class="muted" style="font-size:11px">Au moins 4 mots. C'est ton unique filet si tu perds ton mot de passe — il doit être fort (idéalement ta passphrase SelfRecover).</span></div>
     <div class="field"><label>Mémo</label><textarea id="c-memo" rows="4" placeholder="Ex. FLAG-coaxis-2026 : mon RIB FR76…"></textarea></div>
     <button class="btn" onclick="memoCreer(this)">Créer le coffre (chiffrement local)</button>
   </div>
@@ -197,6 +209,11 @@ const show = (id, on) => document.getElementById(id).style.display = on ? 'block
 async function memoCreer(btn){
   const pw=document.getElementById('c-pw').value, pass=document.getElementById('c-pass').value, memo=document.getElementById('c-memo').value;
   if(!pw||!pass||!memo){ return memoMsg(false,'Mot de passe, passphrase et mémo requis.'); }
+  // Garde-fou : passphrase de récupération FORTE (≥4 mots, ≥16 car.) — c'est le wrap volable/bruteforçable offline
+  const mots = pass.trim().split(/\s+/).filter(Boolean);
+  if(mots.length < 4 || pass.trim().length < 16){
+    return memoMsg(false,'Passphrase de récupération trop faible : au moins 4 mots (réutilise celle de ton inscription). C\'est ce qui protège ton mémo si tu perds ton mot de passe.');
+  }
   btn.disabled=true; memoMsg(true,'Chiffrement local en cours…');
   try{
     const blobs = await E2EMemo.createVault(pw, pass, memo);

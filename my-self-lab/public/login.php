@@ -13,6 +13,7 @@ render_header('Connexion', Auth::currentAccount(Db::pdo()));
   <div class="field"><label>Mot de passe</label><input id="password" type="password"></div>
   <button class="btn" onclick="connecter()">Se connecter</button>
   <p class="muted" style="margin-top:12px">Pas de compte ? <a href="/register.php">En créer un</a> (sans email).</p>
+  <p class="muted" style="margin-top:4px"><a href="/recover.php">Mot de passe oublié ?</a> — récupération sans email (mot de récupération).</p>
 </div>
 <script>
 function connecter(){

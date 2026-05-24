@@ -22,6 +22,10 @@ final class Security
         header('X-Frame-Options: DENY');
         header('Referrer-Policy: strict-origin-when-cross-origin');
         header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
+        // LAB-08 : cloisonnement cross-origin (défense en profondeur ; tout est same-origin ici).
+        header('Cross-Origin-Opener-Policy: same-origin');
+        header('Cross-Origin-Resource-Policy: same-origin');
+        header('X-Permitted-Cross-Domain-Policies: none');
         if ($htmlPage) {
             // CSP stricte : pas de JS externe, pas d'inline sauf nos handlers.
             // 'unsafe-inline' toléré pour les onclick existants (MVP) — à durcir en nonce V2.

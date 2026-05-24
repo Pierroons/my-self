@@ -26,7 +26,11 @@ final class Moderate
     public const FARMING_MAX_UPVOTES = 3;
 
     // Anti-Sybil : un compte doit avoir cette ancienneté OU >=1 post pour voter
-    public const MIN_AGE_TO_VOTE_SECONDS = 86400; // 24h
+    // ⏱️ VALEUR DÉMO réduite à 120 s pour qu'un dev puisse tester sans attendre. PROD = 86400 (24 h).
+    public const MIN_AGE_TO_VOTE_SECONDS = 120;
+    // ⏱️ Durées de bannissement — VALEURS DÉMO (2/10/30 min). PROD = [86400, 604800, 2592000] (24 h / 7 j / 30 j).
+    public const BAN_DURATIONS = [120, 600, 1800];
+    public const ADMIN_BAN_SECONDS = 600; // ban manuel admin (démo 10 min ; prod : à définir)
 
     /** Crée la ligne de modération si absente. */
     public static function ensureRow(PDO $pdo, int $accountId): void
@@ -219,7 +223,7 @@ final class Moderate
             $stmt = $pdo->prepare('SELECT strikes FROM member_moderation WHERE account_id = ?');
             $stmt->execute([$accountId]);
             $strikes = (int) $stmt->fetchColumn();
-            $durations = [86400, 7 * 86400, 30 * 86400];
+            $durations = self::BAN_DURATIONS; // démo (cf constante) ; prod = 24h/7j/30j
             $until = $strikes >= 3 ? PHP_INT_MAX : time() + $durations[$strikes];
             $pdo->prepare('UPDATE member_moderation SET banned_until = ?, strikes = strikes + 1 WHERE account_id = ?')
                 ->execute([$until, $accountId]);
@@ -257,5 +261,26 @@ final class Moderate
         ');
         $stmt->execute([$limit]);
         return $stmt->fetchAll();
+    }
+
+    /**
+     * Action admin manuelle (« squizz ») — la machine pré-mâche, l'humain tranche.
+     * Bannit un compte (durée démo), retire le droit de vote, +1 strike.
+     */
+    public static function adminBan(PDO $pdo, int $accountId, int $seconds = self::ADMIN_BAN_SECONDS): void
+    {
+        self::ensureRow($pdo, $accountId);
+        $pdo->prepare(
+            'UPDATE member_moderation SET banned_until = ?, voting_rights = 0, strikes = strikes + 1, updated_at = ? WHERE account_id = ?'
+        )->execute([time() + $seconds, time(), $accountId]);
+    }
+
+    /** Grâce admin : lève le ban, restaure le droit de vote, remet la réputation initiale, strikes à 0. */
+    public static function adminPardon(PDO $pdo, int $accountId): void
+    {
+        self::ensureRow($pdo, $accountId);
+        $pdo->prepare(
+            'UPDATE member_moderation SET banned_until = 0, voting_rights = 1, reputation = ?, strikes = 0, updated_at = ? WHERE account_id = ?'
+        )->execute([self::INITIAL_REPUTATION, time(), $accountId]);
     }
 }

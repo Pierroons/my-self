@@ -20,13 +20,13 @@ render_header('Attack Simulator', $account);
 .atk-card .btn{width:100%}
 .result{margin-top:18px}
 .result.hidden{display:none}
-.narration{background:#0a0f13;border:1px solid var(--border);border-radius:8px;padding:14px 16px;font-family:ui-monospace,monospace;font-size:12.5px;margin-bottom:14px}
-.narration .step{padding:4px 0;color:var(--txt2)}
+.narration{background:#0a0f13;border:1px solid var(--border);border-radius:8px;padding:16px 18px;font-family:ui-monospace,monospace;font-size:13.5px;line-height:1.65;margin-bottom:14px}
+.narration .step{padding:5px 0;color:#c5d1db}
 .narration .step b{color:var(--txt)}
 .narration .step .res{color:var(--acc)}
 .panels{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:760px){.panels{grid-template-columns:1fr}}
-.panel{border-radius:8px;padding:14px 16px;font-size:12.5px}
+.panel{border-radius:8px;padding:14px 16px;font-size:13.5px}
 .panel.rouge{background:rgba(217,100,89,.10);border:1px solid rgba(217,100,89,.35)}
 .panel.verte{background:rgba(63,185,140,.10);border:1px solid rgba(63,185,140,.35)}
 .panel .ptitle{font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.4px;margin-bottom:8px}

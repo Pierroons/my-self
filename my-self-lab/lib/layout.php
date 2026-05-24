@@ -22,6 +22,7 @@ function render_header(string $title, ?array $account = null): void
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= h($title) ?> — MySelf-Lab</title>
 <meta name="robots" content="noindex,nofollow">
+<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
 <style>
 :root{
   --bg:#0c1014; --card:#141b22; --elev:#1b242d; --border:#243039;
@@ -68,11 +69,22 @@ h2{font-size:16px;margin:0 0 10px}
 .cats a.active{background:var(--acc2);color:#fff;border-color:var(--acc2)}
 .rep-badge{font-size:10.5px;border:1px solid;padding:0 6px;border-radius:9px;margin-left:6px;font-weight:600}
 footer{border-top:1px solid var(--border);margin-top:30px;padding:18px 20px;text-align:center;color:var(--muted);font-size:11.5px}
+.hero{text-align:center;padding:32px 20px 26px;border:1px solid var(--border);border-radius:14px;background:radial-gradient(120% 120% at 50% -10%,rgba(63,185,140,.12),transparent 65%);margin-bottom:24px}
+.hero svg{color:var(--txt)}
+.hero .pitch{max-width:560px;margin:16px auto 18px;color:var(--txt2);font-size:14px;line-height:1.6}
+.hero .pitch strong{color:var(--acc)}
+.hero .cta{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 </style>
 </head>
 <body>
 <div class="topbar">
-  <a class="brand" href="/index.php">MySelf<span class="acc">·Lab</span></a>
+  <a class="brand" href="/index.php" style="display:inline-flex;align-items:center;gap:7px">
+    <svg viewBox="20 2 178 170" width="20" height="20" aria-hidden="true" style="color:var(--acc);flex:none">
+      <g fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="square" stroke-linejoin="miter"><path d="M 36 158 L 36 70 L 100 138 L 158 50 L 158 158"/><path d="M 158 50 L 174 28"/></g>
+      <circle cx="180" cy="20" r="11" fill="currentColor"/>
+    </svg>
+    MySelf<span class="acc">·Lab</span>
+  </a>
   <span class="tag">démo · noindex</span>
   <nav>
     <a href="/index.php">Forum</a>

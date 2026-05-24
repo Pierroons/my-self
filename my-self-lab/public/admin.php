@@ -92,7 +92,8 @@ table.adm tr:last-child td{border-bottom:none}
 <!-- Comptes -->
 <div class="card">
   <h2>👥 Comptes</h2>
-  <table class="adm"><tr><th>ID</th><th>Identifiant</th><th>Réputation</th><th>Créé</th><th>Profil déchiffré</th></tr>
+  <p class="adm-warn" style="margin-top:0">⏱️ <strong>Timings réduits pour la démo</strong> (volontaire, pour test rapide) : anti-Sybil <strong>2 min</strong>, bans <strong>2 / 10 / 30 min</strong>. En production : 24 h / 24 h → 7 j → 30 j → permanent.</p>
+  <table class="adm"><tr><th>ID</th><th>Identifiant</th><th>Réputation</th><th>Créé</th><th>Profil déchiffré</th><th>Modération</th></tr>
     <?php foreach ($comptes as $c): ?>
       <tr>
         <td><?= (int) $c['id'] ?></td>
@@ -101,6 +102,10 @@ table.adm tr:last-child td{border-bottom:none}
         <td><?= $dt((int) $c['created_at']) ?></td>
         <td><button class="btn btn-ghost mini" onclick="voirProfil(<?= (int) $c['id'] ?>,this)">👁 voir (mémo)</button>
             <div id="prof-<?= (int) $c['id'] ?>"></div></td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-ghost mini" onclick="modAction(<?= (int) $c['id'] ?>,'ban')">🔨 bannir</button>
+          <button class="btn mini" onclick="modAction(<?= (int) $c['id'] ?>,'pardon')">✅ gracier</button>
+        </td>
       </tr>
     <?php endforeach; ?>
   </table>
@@ -154,6 +159,12 @@ function voirRapport(id,btn){
 function statutRapport(id,status){
   labPost('/api/admin.php',{action:'report_status',id:id,status:status}).then(d=>{
     if(d.ok){location.reload();}
+  });
+}
+function modAction(id,op){
+  if(op==='ban' && !confirm('Bannir ce compte (durée démo) ?')) return;
+  labPost('/api/admin.php',{action:'moderate',account_id:id,op:op}).then(d=>{
+    if(d.ok){ location.reload(); } else { alert(d.message||'Erreur'); }
   });
 }
 </script>
