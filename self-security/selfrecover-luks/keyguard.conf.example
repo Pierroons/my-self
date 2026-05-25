@@ -1,0 +1,15 @@
+# Configuration SelfKeyGuard-LUKS — copier en `keyguard.conf` et adapter.
+# `keyguard.conf` est ignoré par git (config propre à chaque déploiement, non publiable).
+# Toutes ces valeurs sont aussi surchargeables par variable d'environnement du même nom.
+
+# Témoins du quorum : endpoints HTTP "/part", séparés par des virgules.
+# (adresses d'exemple — remplacer par les vôtres)
+WITNESSES=http://10.0.0.2:9876/part,http://10.0.0.3:9876/part,http://10.0.0.4:9877/part
+
+# Répertoire des secrets locaux : auth_key.bin (clé HMAC des témoins) et selfrecover_salt.
+KEYGUARD_DIR=/etc/selfkeyguard
+
+# Volume LUKS à déverrouiller, nom du mapper et point de montage.
+LUKS_DEVICE=/dev/disk/by-label/cryptdata
+LUKS_MAPPER=cryptdata
+MOUNT_POINT=/mnt/cryptdata

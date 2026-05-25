@@ -2,7 +2,7 @@
 
 > 🇬🇧 **[Read in English →](./README.md)**
 
-**2FA matériel pour objets physiques — voitures, motos, maisons, tout ce qui se verrouille.**
+**SelfKeyGuard protège des clés de toutes sortes — 2FA matériel pour les objets physiques, et déverrouillage du disque d'un serveur par un quorum de témoins du foyer (avec secours SelfRecover).**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: alpha 0.0.1](https://img.shields.io/badge/status-alpha%200.0.1-lightgrey.svg)](#statut)
@@ -11,6 +11,22 @@
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
 > **La clé seule ne suffit pas. La présence, oui.**
+
+---
+
+## Une famille, deux volets
+
+*« Protéger des clés, de toutes sortes. »* SelfKeyGuard regroupe deux volets qui
+partagent la même brique (preuve cryptographique + présence) :
+
+- **keyguard-2FA** *(ce document)* — 2FA matériel pour les objets physiques
+  (voiture, moto, serrures). Prototype ESP32 ~14 €.
+- **keyguard-LUKS** — déverrouille le **disque d'un serveur** via un **quorum de
+  témoins du foyer** (parts distribuées, reconstitution Shamir), avec **secours
+  SelfRecover** : un mot de récupération mémorisé rouvre le volume — sans email ni
+  tiers — quand le quorum est indisponible. Code et tests :
+  [`../selfrecover-luks/`](../selfrecover-luks/). *Statut : validé sur banc
+  (PoC + image jetable + wrapper d'intégration).*
 
 ---
 

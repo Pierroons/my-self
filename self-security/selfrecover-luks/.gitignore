@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+# Config propre au déploiement (témoins, chemins, device) — jamais publiée
+keyguard.conf
+# Secrets locaux éventuels
+*.key
+*.bin
+selfrecover_salt

@@ -2,7 +2,7 @@
 
 > 🇫🇷 **[Lire en français →](./README.fr.md)**
 
-**Hardware 2FA for physical objects — cars, motorcycles, homes, anything with a lock.**
+**SelfKeyGuard protects keys of all kinds — hardware 2FA for physical objects, and server-disk unlock by a household quorum (with SelfRecover fallback).**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: alpha 0.0.1](https://img.shields.io/badge/status-alpha%200.0.1-lightgrey.svg)](#status)
@@ -11,6 +11,22 @@
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
 > **The key alone is not enough. Presence is.**
+
+---
+
+## A family, two arms
+
+*"Protect keys — of all kinds."* SelfKeyGuard groups two arms that share the same
+brick (cryptographic proof + presence):
+
+- **keyguard-2FA** *(this document)* — hardware 2FA for physical objects (car,
+  motorcycle, locks). ESP32 prototype ~14 €.
+- **keyguard-LUKS** — unlocks a **server's disk** through a **quorum of household
+  witnesses** (distributed shares, Shamir reconstruction), with a **SelfRecover
+  fallback**: a memorized recovery word reopens the volume — no email, no third
+  party — when the quorum is unavailable. Code and tests:
+  [`../selfrecover-luks/`](../selfrecover-luks/). *Status: validated on the bench
+  (PoC + throwaway image + integration wrapper).*
 
 ---
 
