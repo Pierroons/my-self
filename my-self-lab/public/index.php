@@ -32,6 +32,7 @@ render_header('Forum', $account);
     <a class="btn" href="/redteam.php">🛡️ Tester la sécurité</a>
     <a class="btn btn-ghost" href="/security.php">Voir l'architecture</a>
   </div>
+  <p class="muted" style="margin-top:16px;font-size:12px">Un cowork <strong>Pierroons × Claude</strong> — sécurité open source, à l'épreuve.</p>
 </div>
 <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px">
   <h1>Forum souveraineté numérique</h1>

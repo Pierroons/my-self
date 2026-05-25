@@ -117,7 +117,7 @@ function render_footer(): void
     ?>
 </div>
 <footer>
-  MySelf-Lab · vitrine écosystème <a href="https://my-self.fr">MySelf</a> · AGPL-3.0 · contenu de démonstration
+  MySelf-Lab · vitrine écosystème <a href="https://my-self.fr">MySelf</a> · co-construit par Pierroons &amp; Claude (Anthropic) · AGPL-3.0 · démonstration
 </footer>
 <script nonce="<?= nonce() ?>">
 // window.LAB_CSRF est défini dans le header (scope où le token est calculé).
