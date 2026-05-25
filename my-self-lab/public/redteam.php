@@ -39,6 +39,7 @@ render_header('Règles d\'engagement red team', $account);
 .obj-list{list-style:none;padding:0;margin:0}
 .obj-list li{padding:8px 0;border-bottom:1px solid var(--border);font-size:13.5px}
 .obj-list li:last-child{border-bottom:none}
+.ttp{display:inline-block;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:0 7px;margin-left:6px;white-space:nowrap}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:680px){.two{grid-template-columns:1fr}}
 .ok-box{background:rgba(63,185,140,.07);border:1px solid rgba(63,185,140,.3);border-radius:8px;padding:14px 16px}
@@ -93,13 +94,14 @@ render_header('Règles d\'engagement red team', $account);
   <p>Un compte de démonstration contient, dans son <strong>mémo personnel</strong>, un secret au format :</p>
   <div class="flag"><span class="lbl">FLAG-</span>… (chiffré <strong>de bout en bout côté client</strong> — AES-256-GCM, clé dérivée du secret de l'utilisateur, <strong>jamais présente sur le serveur</strong>)</div>
   <p class="muted">Le nom du compte cible te sera communiqué à l'ouverture du test. Ni un dump de la base, ni un accès administrateur, ni la prise de contrôle du serveur ne révèlent ce secret — la clé n'existe que dans le navigateur du propriétaire. Le défi est de le ramener <strong>en clair</strong>.</p>
+  <p class="muted" style="margin:0 0 4px">Réfs <strong>MITRE ATT&amp;CK</strong> / <strong>OWASP</strong> indiquées par objectif (les vulns web applicatives relèvent d'OWASP/CWE, hors périmètre ATT&amp;CK).</p>
   <ul class="obj-list">
-    <li>🎯 <strong>Exfiltrer le mémo secret</strong> du compte cible et le restituer en clair</li>
-    <li>🔓 <strong>Contourner l'authentification</strong> SelfRecover (prendre la main sur un compte sans son mot de passe)</li>
-    <li>💬 <strong>Lire un DM</strong> échangé entre deux autres membres, en clair</li>
-    <li>⚖️ <strong>Manipuler la réputation</strong> SelfModerate (enterrer un membre par faux comptes coordonnés, ou s'auto-promouvoir)</li>
-    <li>🪪 <strong>Usurper une session</strong> ou aboutir une attaque CSRF authentifiée</li>
-    <li>🧨 <strong>Escalade de privilèges</strong> : obtenir un accès administrateur (panel <code>/admin</code>)</li>
+    <li>🎯 <strong>Exfiltrer le mémo secret</strong> du compte cible et le restituer en clair <span class="ttp">objectif central</span></li>
+    <li>🔓 <strong>Contourner l'authentification</strong> SelfRecover (prendre la main sur un compte sans son mot de passe) <span class="ttp">ATT&amp;CK T1110 · T1078 · OWASP A07</span></li>
+    <li>💬 <strong>Lire un DM</strong> échangé entre deux autres membres, en clair <span class="ttp">OWASP A01</span></li>
+    <li>⚖️ <strong>Manipuler la réputation</strong> SelfModerate (enterrer un membre par faux comptes coordonnés, ou s'auto-promouvoir) <span class="ttp">CAPEC-210</span></li>
+    <li>🪪 <strong>Usurper une session</strong> ou aboutir une attaque CSRF authentifiée <span class="ttp">ATT&amp;CK T1539 · CWE-352</span></li>
+    <li>🧨 <strong>Escalade de privilèges</strong> : obtenir un accès administrateur (panel <code>/admin</code>) <span class="ttp">ATT&amp;CK T1078 · OWASP A01</span></li>
   </ul>
 </div>
 
