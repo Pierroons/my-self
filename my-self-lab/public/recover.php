@@ -13,12 +13,12 @@ render_header('Récupération', Auth::currentAccount(Db::pdo()));
   <div id="form">
     <div class="field"><label>Identifiant</label><input id="username" autocomplete="off"></div>
     <div class="field"><label>Mot de récupération</label><input id="recovery" type="password" autocomplete="off"></div>
-    <button class="btn" onclick="recuperer(this)">Récupérer mon accès</button>
+    <button class="btn" id="btn-recup">Récupérer mon accès</button>
   </div>
   <div id="result" style="display:none"></div>
 </div>
 <p class="muted" style="max-width:460px"><a href="/login.php">← Retour à la connexion</a></p>
-<script>
+<script nonce="<?= nonce() ?>">
 function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function recuperer(btn){
   const username=document.getElementById('username').value.trim();
@@ -35,11 +35,12 @@ function recuperer(btn){
       const r=document.getElementById('result');
       r.style.display='block';
       r.innerHTML='<p><strong>Copie ces identifiants maintenant</strong> (ils ne seront plus affichés) :</p>'
-        +'<div class="field"><label>Nouveau mot de passe</label><input value="'+esc(d.credentials.password)+'" readonly onclick="this.select()"></div>'
-        +'<div class="field"><label>Passphrase</label><input value="'+esc(d.credentials.passphrase)+'" readonly onclick="this.select()"></div>'
+        +'<div class="field"><label>Nouveau mot de passe</label><input value="'+esc(d.credentials.password)+'" readonly></div>'
+        +'<div class="field"><label>Passphrase</label><input value="'+esc(d.credentials.passphrase)+'" readonly></div>'
         +'<p class="muted">⚠️ '+esc(d.note||'')+'</p>'
         +'<a class="btn" href="/login.php">Aller à la connexion</a>';
     }).catch(e=>{btn.disabled=false;document.getElementById('msg').innerHTML='<div class="toast err">Erreur réseau.</div>';});
 }
+document.getElementById('btn-recup').addEventListener('click', function(){ recuperer(this); });
 </script>
 <?php render_footer(); ?>

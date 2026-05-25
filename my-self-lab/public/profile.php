@@ -47,8 +47,8 @@ if ($voirUsername !== null) {
           </div>
           <?php if ($account && !$isSelf): ?>
             <div id="vmsg"></div>
-            <button class="btn" onclick="voteMembre(<?= $memberId ?>,1)" <?= (!$canVote || $mine !== null) ? 'disabled' : '' ?> style="padding:6px 14px">▲ Soutenir</button>
-            <button class="btn btn-ghost" onclick="voteMembre(<?= $memberId ?>,-1)" <?= (!$canVote || $mine !== null) ? 'disabled' : '' ?> style="padding:6px 14px">▼ Signaler</button>
+            <button class="btn js-votembr" data-mid="<?= $memberId ?>" data-val="1" <?= (!$canVote || $mine !== null) ? 'disabled' : '' ?> style="padding:6px 14px">▲ Soutenir</button>
+            <button class="btn btn-ghost js-votembr" data-mid="<?= $memberId ?>" data-val="-1" <?= (!$canVote || $mine !== null) ? 'disabled' : '' ?> style="padding:6px 14px">▼ Signaler</button>
             <?php if ($mine !== null): ?><span class="muted" style="margin-left:8px">Tu as déjà voté (<?= $mine === 1 ? '▲' : '▼' ?>)</span><?php endif; ?>
             <?php if (!$canVote && $whyNot): ?><p class="muted" style="margin-top:8px">⚠ <?= h($whyNot) ?></p><?php endif; ?>
           <?php endif; ?>
@@ -62,13 +62,16 @@ if ($voirUsername !== null) {
             else { echo h($p['lien']); /* schéma non sûr : jamais cliquable */ }
           ?></p>
         </div>
-        <script>
+        <script nonce="<?= nonce() ?>">
         function voteMembre(id, value){
           labPost('/api/vote.php',{target_type:'member',target_id:id,value:value}).then(d=>{
             if(d.ok){ location.reload(); }
             else{ document.getElementById('vmsg').innerHTML='<div class="toast err">'+(d.message||'Erreur')+'</div>'; }
           });
         }
+        document.querySelectorAll('.js-votembr').forEach(function(b){
+          b.addEventListener('click', function(){ voteMembre(+b.dataset.mid, +b.dataset.val); });
+        });
         </script>
         <?php
     }
@@ -146,7 +149,7 @@ render_header('Mon espace', $account);
   <div class="field"><label>Bio</label><textarea id="bio" rows="3"><?= h($p['bio']) ?></textarea></div>
   <div class="field"><label>Localisation</label><input id="localisation" value="<?= h($p['localisation']) ?>"></div>
   <div class="field"><label>Lien (site, blog…)</label><input id="lien" value="<?= h($p['lien']) ?>" placeholder="https://…"></div>
-  <button class="btn" onclick="enregistrer()">Enregistrer le profil public</button>
+  <button class="btn" id="btn-saveprofil">Enregistrer le profil public</button>
 </div>
 
 <?php $vaultExiste = \Pierroons\MySelfLab\MemoVault::exists($pdo, $myId); ?>
@@ -162,29 +165,29 @@ render_header('Mon espace', $account);
     <div class="field"><label>Ton mot de passe</label><input type="password" id="c-pw" autocomplete="off"></div>
     <div class="field"><label>Passphrase de récupération <span style="text-transform:none;font-weight:400;color:var(--muted)">— réutilise celle reçue à l'inscription</span></label><input type="password" id="c-pass" autocomplete="off" placeholder="ex. correct horse battery staple"><span class="muted" style="font-size:11px">Au moins 4 mots. C'est ton unique filet si tu perds ton mot de passe — il doit être fort (idéalement ta passphrase SelfRecover).</span></div>
     <div class="field"><label>Mémo</label><textarea id="c-memo" rows="4" placeholder="Ex. FLAG-coaxis-2026 : mon RIB FR76…"></textarea></div>
-    <button class="btn" onclick="memoCreer(this)">Créer le coffre (chiffrement local)</button>
+    <button class="btn" id="btn-memocreer">Créer le coffre (chiffrement local)</button>
   </div>
 
   <!-- État B : coffre existant → déverrouillage -->
   <div id="memo-locked" style="display:<?= $vaultExiste ? 'block' : 'none' ?>">
     <p style="margin-top:0">🔒 Coffre verrouillé.</p>
     <div class="field"><label>Mot de passe</label><input type="password" id="u-pw" autocomplete="off"></div>
-    <button class="btn" onclick="memoDeverrouiller(this)">Déverrouiller</button>
-    <button class="btn btn-ghost" onclick="document.getElementById('memo-recover').style.display='block';this.style.display='none'">Mot de passe oublié ?</button>
+    <button class="btn" id="btn-memodev">Déverrouiller</button>
+    <button class="btn btn-ghost" id="btn-memoforgot">Mot de passe oublié ?</button>
     <div id="memo-recover" style="display:none;margin-top:12px">
       <div class="field"><label>Passphrase de secours</label><input type="password" id="r-pass" autocomplete="off"></div>
-      <button class="btn" onclick="memoRecuperer(this)">Récupérer avec la passphrase</button>
+      <button class="btn" id="btn-memorecup">Récupérer avec la passphrase</button>
     </div>
   </div>
 
   <!-- État C : déverrouillé → édition -->
   <div id="memo-open" style="display:none">
     <div class="field"><label>Mémo (déchiffré localement)</label><textarea id="o-memo" rows="4"></textarea></div>
-    <button class="btn" onclick="memoEnregistrer(this)">Enregistrer (re-chiffré local)</button>
-    <button class="btn btn-ghost" onclick="memoVerrouiller()">Verrouiller</button>
+    <button class="btn" id="btn-memosave">Enregistrer (re-chiffré local)</button>
+    <button class="btn btn-ghost" id="btn-memolock">Verrouiller</button>
   </div>
 </div>
-<script>
+<script nonce="<?= nonce() ?>">
 function enregistrer(){
   labPost('/api/profile_save.php',{
     bio:document.getElementById('bio').value,
@@ -196,11 +199,12 @@ function enregistrer(){
       : '<div class="toast err">'+(d.message||'Erreur')+'</div>';
   });
 }
+document.getElementById('btn-saveprofil').addEventListener('click', enregistrer);
 </script>
 
 <!-- Mémo E2E : toute la crypto est ici, côté navigateur -->
 <script src="/js/e2e-memo.js"></script>
-<script>
+<script nonce="<?= nonce() ?>">
 let _vaultKeyB64 = null; // vault_key déverrouillée, en mémoire de page uniquement
 const memoMsg = (ok, txt) => { document.getElementById('msgmemo').innerHTML =
   '<div class="toast '+(ok?'ok':'err')+'">'+txt+'</div>'; };
@@ -254,5 +258,11 @@ function memoVerrouiller(){
   _vaultKeyB64=null; document.getElementById('o-memo').value='';
   show('memo-open',false); show('memo-locked',true); memoMsg(true,'Coffre verrouillé.');
 }
+document.getElementById('btn-memocreer').addEventListener('click', function(){ memoCreer(this); });
+document.getElementById('btn-memodev').addEventListener('click', function(){ memoDeverrouiller(this); });
+document.getElementById('btn-memorecup').addEventListener('click', function(){ memoRecuperer(this); });
+document.getElementById('btn-memosave').addEventListener('click', function(){ memoEnregistrer(this); });
+document.getElementById('btn-memolock').addEventListener('click', memoVerrouiller);
+document.getElementById('btn-memoforgot').addEventListener('click', function(){ document.getElementById('memo-recover').style.display='block'; this.style.display='none'; });
 </script>
 <?php render_footer(); ?>

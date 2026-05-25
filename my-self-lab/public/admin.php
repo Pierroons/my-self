@@ -100,11 +100,11 @@ table.adm tr:last-child td{border-bottom:none}
         <td>@<?= h($c['username']) ?> <?php if ($c['is_admin']): ?><span class="tag-sm" style="color:var(--acc);border-color:var(--acc)">admin</span><?php endif; ?></td>
         <td>★ <?= (int) $c['reputation'] ?><?php if ((int) $c['banned_until'] > time()): ?> <span class="tag-sm" style="color:var(--danger);border-color:var(--danger)">banni</span><?php endif; ?></td>
         <td><?= $dt((int) $c['created_at']) ?></td>
-        <td><button class="btn btn-ghost mini" onclick="voirProfil(<?= (int) $c['id'] ?>,this)">👁 voir (mémo)</button>
+        <td><button class="btn btn-ghost mini js-voirprofil" data-id="<?= (int) $c['id'] ?>">👁 voir (mémo)</button>
             <div id="prof-<?= (int) $c['id'] ?>"></div></td>
         <td style="white-space:nowrap">
-          <button class="btn btn-ghost mini" onclick="modAction(<?= (int) $c['id'] ?>,'ban')">🔨 bannir</button>
-          <button class="btn mini" onclick="modAction(<?= (int) $c['id'] ?>,'pardon')">✅ gracier</button>
+          <button class="btn btn-ghost mini js-modaction" data-id="<?= (int) $c['id'] ?>" data-op="ban">🔨 bannir</button>
+          <button class="btn mini js-modaction" data-id="<?= (int) $c['id'] ?>" data-op="pardon">✅ gracier</button>
         </td>
       </tr>
     <?php endforeach; ?>
@@ -125,9 +125,9 @@ table.adm tr:last-child td{border-bottom:none}
         <td><span class="tag-sm" style="color:<?= $statutColor[$r['status']] ?? '#9aa9b6' ?>;border-color:<?= $statutColor[$r['status']] ?? '#9aa9b6' ?>"><?= h($r['status']) ?></span></td>
         <td><?= $dt((int) $r['created_at']) ?></td>
         <td style="white-space:nowrap">
-          <button class="btn btn-ghost mini" onclick="voirRapport(<?= (int) $r['id'] ?>,this)">🔓 lire</button>
-          <button class="btn mini" onclick="statutRapport(<?= (int) $r['id'] ?>,'valide')">✓ valider</button>
-          <button class="btn btn-ghost mini" onclick="statutRapport(<?= (int) $r['id'] ?>,'rejete')">✗</button>
+          <button class="btn btn-ghost mini js-voirrapport" data-id="<?= (int) $r['id'] ?>">🔓 lire</button>
+          <button class="btn mini js-statut" data-id="<?= (int) $r['id'] ?>" data-status="valide">✓ valider</button>
+          <button class="btn btn-ghost mini js-statut" data-id="<?= (int) $r['id'] ?>" data-status="rejete">✗</button>
           <div id="rep-<?= (int) $r['id'] ?>"></div>
         </td>
       </tr>
@@ -135,7 +135,7 @@ table.adm tr:last-child td{border-bottom:none}
   </table><?php endif; ?>
 </div>
 
-<script>
+<script nonce="<?= nonce() ?>">
 function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function voirProfil(id,btn){
   const box=document.getElementById('prof-'+id);
@@ -167,5 +167,9 @@ function modAction(id,op){
     if(d.ok){ location.reload(); } else { alert(d.message||'Erreur'); }
   });
 }
+document.querySelectorAll('.js-voirprofil').forEach(b=>b.addEventListener('click',()=>voirProfil(+b.dataset.id,b)));
+document.querySelectorAll('.js-voirrapport').forEach(b=>b.addEventListener('click',()=>voirRapport(+b.dataset.id,b)));
+document.querySelectorAll('.js-statut').forEach(b=>b.addEventListener('click',()=>statutRapport(+b.dataset.id,b.dataset.status)));
+document.querySelectorAll('.js-modaction').forEach(b=>b.addEventListener('click',()=>modAction(+b.dataset.id,b.dataset.op)));
 </script>
 <?php render_footer(); ?>

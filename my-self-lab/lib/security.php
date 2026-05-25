@@ -15,6 +15,14 @@ namespace Pierroons\MySelfLab;
 
 final class Security
 {
+    private static ?string $nonce = null;
+
+    /** Nonce CSP unique par requête : autorise nos <script> légitimes sans 'unsafe-inline'. */
+    public static function nonce(): string
+    {
+        return self::$nonce ??= base64_encode(random_bytes(16));
+    }
+
     /** Envoie les headers de sécurité. À appeler en tête de chaque page/endpoint. */
     public static function sendHeaders(bool $htmlPage = true): void
     {
@@ -27,11 +35,11 @@ final class Security
         header('Cross-Origin-Resource-Policy: same-origin');
         header('X-Permitted-Cross-Domain-Policies: none');
         if ($htmlPage) {
-            // CSP stricte : pas de JS externe, pas d'inline sauf nos handlers.
-            // 'unsafe-inline' toléré pour les onclick existants (MVP) — à durcir en nonce V2.
+            // CSP stricte : JS uniquement depuis nos <script nonce>. Pas d'inline non signé,
+            // pas de handlers onclick (tous externalisés en addEventListener). LAB-06.
             header(
                 "Content-Security-Policy: default-src 'self'; "
-                . "script-src 'self' 'unsafe-inline'; "
+                . "script-src 'self' 'nonce-" . self::nonce() . "'; "
                 . "style-src 'self' 'unsafe-inline'; "
                 . "img-src 'self' data:; "
                 . "connect-src 'self'; "

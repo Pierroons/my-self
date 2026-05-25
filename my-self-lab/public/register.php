@@ -20,11 +20,11 @@ render_header('Créer un compte', Auth::currentAccount(Db::pdo()));
       <label>Mot de récupération (tu le choisis, garde-le secret)</label>
       <input id="recovery" placeholder="ex : monchat2024" autocomplete="off">
     </div>
-    <button class="btn" onclick="creer()">Créer mon compte</button>
+    <button class="btn" id="btn-creer">Créer mon compte</button>
   </div>
 </div>
 
-<script>
+<script nonce="<?= nonce() ?>">
 function creer(){
   const username=document.getElementById('username').value.trim();
   const recovery=document.getElementById('recovery').value.trim();
@@ -35,8 +35,8 @@ function creer(){
       if(d.ok){
         document.getElementById('form').style.display='none';
         msg.innerHTML='<div class="toast ok"><strong>Compte créé !</strong> Copie ces secrets MAINTENANT (affichés une seule fois) :</div>'+
-          '<div class="field"><label>Mot de passe</label><input value="'+d.credentials.password+'" readonly onclick="this.select()"></div>'+
-          '<div class="field"><label>Passphrase de secours ('+d.credentials.entropy_bits+' bits)</label><input value="'+d.credentials.passphrase+'" readonly onclick="this.select()"></div>'+
+          '<div class="field"><label>Mot de passe</label><input value="'+d.credentials.password+'" readonly></div>'+
+          '<div class="field"><label>Passphrase de secours ('+d.credentials.entropy_bits+' bits)</label><input value="'+d.credentials.passphrase+'" readonly></div>'+
           '<p class="muted">Ton mot de récupération, tu le connais déjà. Garde les trois en lieu sûr.</p>'+
           '<a class="btn" href="/login.php">Aller à la connexion →</a>';
       }else{
@@ -44,5 +44,6 @@ function creer(){
       }
     });
 }
+document.getElementById('btn-creer').addEventListener('click', creer);
 </script>
 <?php render_footer(); ?>

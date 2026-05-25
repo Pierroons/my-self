@@ -171,7 +171,7 @@ render_header('Règles d\'engagement red team', $account);
   <div class="field"><label>Étapes de reproduction</label><textarea id="repro" rows="4" placeholder="1. … 2. … 3. …"></textarea></div>
   <div class="field"><label>Contact (optionnel, chiffré)</label><input id="contact" maxlength="200" placeholder="Mastodon, clé PGP, email jetable…"></div>
   <div class="hp"><label>Ne pas remplir</label><input id="website" tabindex="-1" autocomplete="off"></div>
-  <button class="btn" onclick="envoyerRapport()">Envoyer (chiffré)</button>
+  <button class="btn" id="btn-rtsend">Envoyer (chiffré)</button>
 </div>
 
 <div class="card rt-sec">
@@ -190,7 +190,7 @@ render_header('Règles d\'engagement red team', $account);
   <?php endif; ?>
 </div>
 
-<script>
+<script nonce="<?= nonce() ?>">
 function envoyerRapport(){
   const box=document.getElementById('rtmsg');
   const payload={
@@ -214,5 +214,6 @@ function envoyerRapport(){
       }
     }).catch(e=>{box.innerHTML='<div class="toast err">Erreur réseau : '+e.message+'</div>';});
 }
+document.getElementById('btn-rtsend').addEventListener('click', envoyerRapport);
 </script>
 <?php render_footer(); ?>

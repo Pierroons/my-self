@@ -97,7 +97,7 @@ footer{border-top:1px solid var(--border);margin-top:30px;padding:18px 20px;text
       <a href="/profile.php">Mon espace</a>
       <?php if (!empty($account['is_admin'])): ?><a href="/admin.php" style="color:var(--warn)">🛠️ Admin</a><?php endif; ?>
       <span class="user">@<?= h($account['username']) ?></span>
-      <a href="#" onclick="lab_logout();return false;" class="btn-ghost" style="padding:4px 10px">Déconnexion</a>
+      <a href="#" id="lab-logout" class="btn-ghost" style="padding:4px 10px">Déconnexion</a>
     <?php else: ?>
       <a href="/login.php">Connexion</a>
       <a href="/register.php" class="btn" style="padding:5px 12px">Créer un compte</a>
@@ -107,7 +107,7 @@ footer{border-top:1px solid var(--border);margin-top:30px;padding:18px 20px;text
 <div class="banner">
   🔬 Forum de démonstration MySelf — auth par <strong>SelfRecover</strong> (sans email), messages privés chiffrés par <strong>SelfDataGuard</strong> (résistants à l'exfiltration de la base).
 </div>
-<script>window.LAB_CSRF = <?= json_encode($csrf) ?>;</script>
+<script nonce="<?= nonce() ?>">window.LAB_CSRF = <?= json_encode($csrf) ?>;</script>
 <div class="wrap">
 <?php
 }
@@ -119,7 +119,7 @@ function render_footer(): void
 <footer>
   MySelf-Lab · vitrine écosystème <a href="https://my-self.fr">MySelf</a> · AGPL-3.0 · contenu de démonstration
 </footer>
-<script>
+<script nonce="<?= nonce() ?>">
 // window.LAB_CSRF est défini dans le header (scope où le token est calculé).
 function labPost(url, data){
   return fetch(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':window.LAB_CSRF||''},body:JSON.stringify(data||{})}).then(r=>r.json());
@@ -127,6 +127,11 @@ function labPost(url, data){
 function lab_logout(){
   fetch('/api/logout.php',{method:'POST',headers:{'X-CSRF-Token':window.LAB_CSRF||''}}).then(()=>location.href='/index.php');
 }
+// Confort global : cliquer un champ en lecture seule sélectionne son contenu (remplace les onclick="this.select()").
+document.addEventListener('click', function(e){ if (e.target && e.target.matches && e.target.matches('input[readonly]')) e.target.select(); });
+// Déconnexion (remplace l'ancien onclick inline du header).
+var _logoutLink = document.getElementById('lab-logout');
+if (_logoutLink) _logoutLink.addEventListener('click', function(e){ e.preventDefault(); lab_logout(); });
 </script>
 </body>
 </html>

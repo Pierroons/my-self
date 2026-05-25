@@ -28,7 +28,7 @@ render_header('Messages', $account);
   <div id="msg"></div>
   <div class="field"><label>Destinataire (identifiant)</label><input id="dest" placeholder="ex : libriste"></div>
   <div class="field"><label>Message</label><textarea id="contenu" rows="3"></textarea></div>
-  <button class="btn" onclick="envoyer()">Envoyer (chiffré)</button>
+  <button class="btn" id="btn-envoyer">Envoyer (chiffré)</button>
 </div>
 
 <h2 style="margin-top:24px">📥 Reçus (<?= count($inbox) ?>)</h2>
@@ -50,7 +50,7 @@ render_header('Messages', $account);
   </div>
 <?php endforeach; endif; ?>
 
-<script>
+<script nonce="<?= nonce() ?>">
 function envoyer(){
   const dest=document.getElementById('dest').value.trim();
   const contenu=document.getElementById('contenu').value.trim();
@@ -60,5 +60,6 @@ function envoyer(){
       else{document.getElementById('msg').innerHTML='<div class="toast err">'+(d.message||'Erreur')+'</div>';}
     });
 }
+document.getElementById('btn-envoyer').addEventListener('click', envoyer);
 </script>
 <?php render_footer(); ?>

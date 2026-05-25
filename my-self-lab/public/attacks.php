@@ -55,28 +55,28 @@ render_header('Attack Simulator', $account);
   <div class="atk-card">
     <h3>💾 Exfiltration de la base</h3>
     <p class="obj">Voler DM et données perso en dumpant la base.</p>
-    <button class="btn" onclick="lancer('dump',this)">Lancer l'attaque</button>
+    <button class="btn js-lancer" data-scn="dump">Lancer l'attaque</button>
   </div>
   <div class="atk-card">
     <h3>🔓 Bruteforce login</h3>
     <p class="obj">Deviner un mot de passe par force brute.</p>
-    <button class="btn" onclick="lancer('bruteforce',this)">Lancer l'attaque</button>
+    <button class="btn js-lancer" data-scn="bruteforce">Lancer l'attaque</button>
   </div>
   <div class="atk-card">
     <h3>👥 Sybil + pack-voting</h3>
     <p class="obj">Faux comptes coordonnés pour enterrer un membre.</p>
-    <button class="btn" onclick="lancer('packvoting',this)">Lancer l'attaque</button>
+    <button class="btn js-lancer" data-scn="packvoting">Lancer l'attaque</button>
   </div>
   <div class="atk-card">
     <h3>🕸️ CSRF + phishing</h3>
     <p class="obj">Forcer une action cross-site ou détourner la récupération.</p>
-    <button class="btn" onclick="lancer('csrf',this)">Lancer l'attaque</button>
+    <button class="btn js-lancer" data-scn="csrf">Lancer l'attaque</button>
   </div>
 </div>
 
 <div class="result hidden" id="result"></div>
 
-<script>
+<script nonce="<?= nonce() ?>">
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function lancer(scenario, btn){
   const box=document.getElementById('result');
@@ -104,6 +104,7 @@ function lancer(scenario, btn){
     box.scrollIntoView({behavior:'smooth',block:'start'});
   }).catch(e=>{box.innerHTML='<div class="panel rouge">Erreur : '+esc(e.message)+'</div>';});
 }
+document.querySelectorAll('.js-lancer').forEach(b=>b.addEventListener('click',()=>lancer(b.dataset.scn,b)));
 </script>
 <?php endif; ?>
 <?php render_footer(); ?>

@@ -27,9 +27,9 @@ render_header('Nouveau sujet', $account);
     </select>
   </div>
   <div class="field"><label>Premier message</label><textarea id="message" rows="6"></textarea></div>
-  <button class="btn" onclick="publier()">Publier le sujet</button>
+  <button class="btn" id="btn-publier">Publier le sujet</button>
 </div>
-<script>
+<script nonce="<?= nonce() ?>">
 function publier(){
   const titre=document.getElementById('titre').value.trim();
   const categorie=document.getElementById('categorie').value;
@@ -40,5 +40,6 @@ function publier(){
       else{document.getElementById('msg').innerHTML='<div class="toast err">'+(d.message||'Erreur')+'</div>';}
     });
 }
+document.getElementById('btn-publier').addEventListener('click', publier);
 </script>
 <?php render_footer(); ?>

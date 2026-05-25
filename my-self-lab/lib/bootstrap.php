@@ -90,3 +90,9 @@ function h(?string $s): string
 {
     return htmlspecialchars((string) $s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
+
+/** Nonce CSP de la requête courante, pour <script nonce="<?= nonce() ?>">. */
+function nonce(): string
+{
+    return \Pierroons\MySelfLab\Security::nonce();
+}

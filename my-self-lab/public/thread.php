@@ -71,9 +71,9 @@ if ($account) { [$canVote, $whyNot] = Moderate::canVote($pdo, (int) $account['id
   <div class="post">
     <div class="post-layout">
       <div class="votebox" data-post="<?= $pid ?>">
-        <button onclick="votePost(<?= $pid ?>,1)" class="<?= $mine === 1 ? 'actif' : '' ?>" <?= (!$canVote || $isAuthor || $mine !== null) ? 'disabled' : '' ?> title="<?= $isAuthor ? 'Ton propre message' : 'Vote utile' ?>">▲</button>
+        <button data-post="<?= $pid ?>" data-val="1" class="<?= $mine === 1 ? 'actif' : '' ?>" <?= (!$canVote || $isAuthor || $mine !== null) ? 'disabled' : '' ?> title="<?= $isAuthor ? 'Ton propre message' : 'Vote utile' ?>">▲</button>
         <span class="score <?= $score > 0 ? 'pos' : ($score < 0 ? 'neg' : '') ?>" id="score-<?= $pid ?>"><?= $score ?></span>
-        <button onclick="votePost(<?= $pid ?>,-1)" class="<?= $mine === -1 ? 'actif' : '' ?>" <?= (!$canVote || $isAuthor || $mine !== null) ? 'disabled' : '' ?> title="Vote négatif">▼</button>
+        <button data-post="<?= $pid ?>" data-val="-1" class="<?= $mine === -1 ? 'actif' : '' ?>" <?= (!$canVote || $isAuthor || $mine !== null) ? 'disabled' : '' ?> title="Vote négatif">▼</button>
       </div>
       <div class="post-body">
         <div class="head"><span class="auteur">@<?= h($p['auteur']) ?></span><?= rep_badge($rep) ?><span class="muted" style="margin-left:8px"><?= date('d/m/Y H:i', (int) $p['created_at']) ?></span></div>
@@ -83,7 +83,7 @@ if ($account) { [$canVote, $whyNot] = Moderate::canVote($pdo, (int) $account['id
   </div>
 <?php endforeach; ?>
 
-<script>
+<script nonce="<?= nonce() ?>">
 function votePost(postId, value){
   labPost('/api/vote.php',{target_type:'post',target_id:postId,value:value}).then(d=>{
     if(d.ok){
@@ -93,13 +93,16 @@ function votePost(postId, value){
       // désactive les 2 boutons (vote unique) + marque l'actif
       document.querySelectorAll('.votebox[data-post="'+postId+'"] button').forEach(b=>b.disabled=true);
       if(!d.blocked){
-        const btn=document.querySelector('.votebox[data-post="'+postId+'"] button[onclick*=","+value+")"]');
+        const btn=document.querySelector('.votebox[data-post="'+postId+'"] button[data-val="'+value+'"]');
         if(btn)btn.classList.add('actif');
       }
       if(d.blocked){alert(d.message);}
     } else { alert(d.message||'Erreur'); }
   });
 }
+document.querySelectorAll('.votebox button[data-val]').forEach(function(b){
+  b.addEventListener('click', function(){ votePost(+b.dataset.post, +b.dataset.val); });
+});
 </script>
 
 <?php if ($account): ?>
@@ -109,9 +112,9 @@ function votePost(postId, value){
     <div class="field">
       <textarea id="contenu" rows="4" placeholder="Ta réponse…"></textarea>
     </div>
-    <button class="btn" onclick="repondre()">Publier</button>
+    <button class="btn" id="btn-repondre">Publier</button>
   </div>
-  <script>
+  <script nonce="<?= nonce() ?>">
   function repondre(){
     const c = document.getElementById('contenu').value.trim();
     if(!c){return;}
@@ -121,6 +124,7 @@ function votePost(postId, value){
         else{document.getElementById('msg').innerHTML='<div class="toast err">'+(d.message||'Erreur')+'</div>';}
       });
   }
+  document.getElementById('btn-repondre').addEventListener('click', repondre);
   </script>
 <?php else: ?>
   <p class="muted" style="text-align:center;margin-top:18px"><a href="/login.php">Connecte-toi</a> pour répondre.</p>

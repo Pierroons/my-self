@@ -33,9 +33,9 @@ render_header('Modération', $account);
   <h2>Lancer la détection d'abus</h2>
   <p class="muted">Analyse les votes récents et annule les patterns de pack-voting détectés.</p>
   <div id="dmsg"></div>
-  <button class="btn" onclick="detecter()">🔍 Détecter les abus maintenant</button>
+  <button class="btn" id="btn-detecter">🔍 Détecter les abus maintenant</button>
 </div>
-<script>
+<script nonce="<?= nonce() ?>">
 function detecter(){
   labPost('/api/detect_abuse.php',{}).then(d=>{
     const m=document.getElementById('dmsg');
@@ -52,6 +52,7 @@ function detecter(){
     } else { m.innerHTML='<div class="toast err">'+(d.message||'Erreur')+'</div>'; }
   });
 }
+document.getElementById('btn-detecter').addEventListener('click', detecter);
 </script>
 <?php else: ?>
 <div class="card"><p class="muted"><a href="/login.php">Connecte-toi</a> pour lancer la détection d'abus.</p></div>

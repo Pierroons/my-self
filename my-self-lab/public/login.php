@@ -11,11 +11,11 @@ render_header('Connexion', Auth::currentAccount(Db::pdo()));
   <div id="msg"></div>
   <div class="field"><label>Identifiant</label><input id="username" autocomplete="off"></div>
   <div class="field"><label>Mot de passe</label><input id="password" type="password"></div>
-  <button class="btn" onclick="connecter()">Se connecter</button>
+  <button class="btn" id="btn-login">Se connecter</button>
   <p class="muted" style="margin-top:12px">Pas de compte ? <a href="/register.php">En créer un</a> (sans email).</p>
   <p class="muted" style="margin-top:4px"><a href="/recover.php">Mot de passe oublié ?</a> — récupération sans email (mot de récupération).</p>
 </div>
-<script>
+<script nonce="<?= nonce() ?>">
 function connecter(){
   const username=document.getElementById('username').value.trim();
   const password=document.getElementById('password').value;
@@ -26,5 +26,7 @@ function connecter(){
       else{document.getElementById('msg').innerHTML='<div class="toast err">'+(d.message||'Erreur')+'</div>';}
     });
 }
+document.getElementById('btn-login').addEventListener('click', connecter);
+document.getElementById('password').addEventListener('keydown', e=>{ if(e.key==='Enter') connecter(); });
 </script>
 <?php render_footer(); ?>
