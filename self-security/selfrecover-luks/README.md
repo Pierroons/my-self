@@ -1,82 +1,83 @@
 # SelfRecover-LUKS
 
-> Pont entre le protocole **SelfRecover** (récupération d'accès sans email ni tiers) et le
-> **chiffrement de disque LUKS2** : un mot de récupération mémorisé devient une clé qui ouvre
-> un volume chiffré. Couche de **récupération souveraine du disque** du stack `lnmp_my-self`.
+> 🇫🇷 **[Lire en français →](./README.fr.md)**
 
-**Statut : validé sur banc (25/05/2026)** — PoC + test sur image jetable + wrapper d'intégration
-au quorum. Intégration sur le disque réel d'une cible : à faire sur le serveur de destination.
+> Bridge between the **SelfRecover** protocol (account recovery without email or third party)
+> and **LUKS2 disk encryption**: a memorized recovery word becomes a key that opens an encrypted
+> volume. The **sovereign disk-recovery** layer of the `lnmp_my-self` stack.
 
-## Le principe
+**Status: validated on the bench (2026-05-25)** — PoC + throwaway-image test + quorum
+integration wrapper. Real-disk integration on a target: to be done on the destination server.
 
-Un mot racine mémorisé → dérivation **Argon2id** par **label** → clés filles cloisonnées :
+## The principle
 
-| label | usage |
-|-------|-------|
-| `auth` | prouver / retrouver l'accès (SelfRecover web) |
-| `data-enc` | chiffrer la donnée applicative (SelfDataGuard) |
-| `disk` | **key-file d'un slot LUKS2** (ce module) |
+One memorized root word → **Argon2id** derivation per **label** → compartmentalized child keys:
 
-Le label change le sel effectif → deux clés du même mot sont indépendantes (le serveur web
-ne peut pas dériver la clé disque). C'est le *mapping Recover⇄DataGuard* étendu au FDE.
+| label | use |
+|-------|-----|
+| `auth` | prove / recover access (SelfRecover web) |
+| `data-enc` | encrypt application data (SelfDataGuard) |
+| `disk` | **key-file for a LUKS2 slot** (this module) |
 
-**Pourquoi Argon2id et pas le HMAC de l'auth web ?** Une clé de disque est bruteforçable
-**hors-ligne** si le SSD est volé → il faut un KDF lent/memory-hard (≈63 ms + 64 MiB par essai
-dans le PoC ; à monter en prod). Le HMAC rapide convient à l'auth (protégée par rate-limit en ligne),
-pas au disque.
+The label changes the effective salt → two keys from the same word are independent (the web
+server cannot derive the disk key). This is the *Recover⇄DataGuard mapping* extended to FDE.
 
-## Place dans l'architecture
+**Why Argon2id and not the web-auth HMAC?** A disk key is brute-forceable **offline** if the SSD
+is stolen → it needs a slow, memory-hard KDF (≈63 ms + 64 MiB per attempt in the PoC; to be raised
+in production). The fast HMAC suits authentication (protected by online rate-limiting), not the disk.
 
-Le SSD `/data` d'un serveur `lnmp_my-self` est en **LUKS2** avec plusieurs slots :
+## Place in the architecture
+
+The `/data` SSD of an `lnmp_my-self` server is **LUKS2** with several slots:
 
 ```
 /data (LUKS2)
-├── slot quorum      : déverrouillage AUTO au boot (parts distribuées sur des témoins)
-├── slot SelfRecover : ce module — secours HUMAIN sans email/tiers
-└── slot air-gapped  : passphrase de secours hors-ligne (coffre)
+├── quorum slot      : AUTO unlock at boot (shares distributed across witnesses)
+├── SelfRecover slot : this module — HUMAN recovery, no email/third party
+└── air-gapped slot  : offline backup passphrase (vault)
 ```
-Par-dessus, **SelfDataGuard** chiffre les champs sensibles (lisibles même disque ouvert → anti-dump applicatif).
+On top, **SelfDataGuard** encrypts sensitive fields (readable even with the disk open → anti application-dump).
 
-**Filet croisé** : le slot quorum n'est *jamais* retiré. Si un témoin tombe, le mot SelfRecover
-ouvre le volume ; si le mot est oublié, le quorum ouvre toujours. Deux voies, un même volume.
+**Cross safety net**: the quorum slot is *never* removed. If a witness goes down, the SelfRecover
+word opens the volume; if the word is forgotten, the quorum still opens it. Two paths, one volume.
 
-## Composants
+## Components
 
-| Fichier | Rôle |
-|---------|------|
-| `selfrecover_derive.py` | dérive une clé déterministe `(mot, sel, label) → Argon2id` |
-| `keyguard-luks-unlock.py` | déverrouillage **quorum réseau**, avec **fallback SelfRecover** si le quorum est KO (boot-safe : sans TTY, sort proprement) |
-| `setup-add-selfrecover-slot.sh` | ajoute un slot SelfRecover à un volume, autorisé par une clé existante (master quorum ou passphrase) |
-| `add-slot-via-quorum.sh` | enchaîne *quorum → master tmpfs → ajout du slot → shred*. `--dry-run` reconstitue + vérifie sans rien modifier |
-| `selfrecover-unlock.sh` | déverrouillage de secours autonome (mot → `luksOpen`) |
-| `test-luks-selfrecover.sh` | PoC bout-en-bout sur **image jetable** (ajout slot, ouverture, redérivation au boot, refus mauvais mot) |
-| `test-phase2-image.sh` | valide sur **image jetable** que les deux voies (master quorum + mot SelfRecover) ouvrent le même volume |
+| File | Role |
+|------|------|
+| `selfrecover_derive.py` | derives a deterministic key `(word, salt, label) → Argon2id` |
+| `keyguard-luks-unlock.py` | **network-quorum** unlock, with **SelfRecover fallback** if the quorum is down (boot-safe: with no TTY, exits cleanly) |
+| `setup-add-selfrecover-slot.sh` | adds a SelfRecover slot to a volume, authorized by an existing key (quorum master or passphrase) |
+| `add-slot-via-quorum.sh` | chains *quorum → master in tmpfs → slot add → shred*. `--dry-run` reconstructs + verifies without changing anything |
+| `selfrecover-unlock.sh` | standalone emergency unlock (word → `luksOpen`) |
+| `test-luks-selfrecover.sh` | end-to-end PoC on a **throwaway image** (slot add, open, re-derivation at boot, wrong-word rejection) |
+| `test-phase2-image.sh` | validates on a **throwaway image** that both paths (quorum master + SelfRecover word) open the same volume |
 
 ```bash
-# dérivation seule
-python3 selfrecover_derive.py --word "<mot de récup>" --salt "<sel déploiement>" --label disk --format raw
+# derivation only
+python3 selfrecover_derive.py --word "<recovery word>" --salt "<deployment salt>" --label disk --format raw
 
-# test complet sur image jetable (aucun vrai disque touché)
+# full test on a throwaway image (no real disk touched)
 sudo apt install cryptsetup
 sudo bash test-phase2-image.sh
 ```
 
 ## Configuration
 
-Tout est externalisé (aucune valeur d'infra en dur). Copier **`keyguard.conf.example`** en
-`keyguard.conf` (ignoré par git) et renseigner les témoins, chemins et device — ou passer les
-mêmes clés en variables d'environnement (`WITNESSES`, `KEYGUARD_DIR`, `LUKS_DEVICE`, …).
+Everything is externalized (no infra value hard-coded). Copy **`keyguard.conf.example`** to
+`keyguard.conf` (git-ignored) and fill in witnesses, paths and device — or pass the same keys as
+environment variables (`WITNESSES`, `KEYGUARD_DIR`, `LUKS_DEVICE`, …).
 
-## Garde-fous
+## Safeguards
 
-- Mot de récupération **fort** (diceware) — le KDF ralentit, il ne compense pas un mot faible.
-- Le slot SelfRecover est un **secours**, pas le déverrouillage quotidien.
-- `/data` se déverrouille **post-boot** (pas l'OS) → pas d'initramfs requis, juste un service systemd.
-- Aucune destruction automatique : l'ajout de slot est explicite, les clés transitent en tmpfs et sont `shred`.
+- **Strong** recovery word (diceware) — the KDF slows attacks down, it does not compensate a weak word.
+- The SelfRecover slot is a **fallback**, not the day-to-day unlock.
+- `/data` unlocks **post-boot** (not the OS) → no initramfs required, just a systemd service.
+- No automatic destruction: slot addition is explicit, keys live in tmpfs and are `shred`-ed.
 
-## À faire
+## To do
 
-- Intégration au **boot orchestré** sur la cible (tente le déverrouillage auto, sinon prompt SelfRecover).
-- Paramètres Argon2id de **production** (`memory_cost` ↑ pour viser ~0,5–1 s/essai).
+- Integration into the **orchestrated boot** on the target (try auto-unlock, otherwise prompt SelfRecover).
+- **Production** Argon2id parameters (`memory_cost` ↑ to target ~0.5–1 s/attempt).
 
-AGPL-3.0-or-later · écosystème [MySelf](https://my-self.fr)
+AGPL-3.0-or-later · part of the [MySelf](https://my-self.fr) ecosystem
