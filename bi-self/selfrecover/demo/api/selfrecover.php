@@ -142,21 +142,21 @@ function handleRegister(): void {
     $t0 = microtime(true);
     $pwdHash = password_hash($password, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
     addTrace(sprintf(
-        "[register] bcrypt(password) en %.0f ms (hash sortie: %dch, prefix: %s)",
+        "[register] Argon2id(password) en %.0f ms (hash sortie: %dch, prefix: %s)",
         (microtime(true) - $t0) * 1000, strlen($pwdHash), substr($pwdHash, 0, 7)
     ));
 
     $t0 = microtime(true);
     $ppHash = password_hash($passphrase, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
     addTrace(sprintf(
-        "[register] bcrypt(passphrase) en %.0f ms — hash stocke, jamais en clair",
+        "[register] Argon2id(passphrase) en %.0f ms — hash stocke, jamais en clair",
         (microtime(true) - $t0) * 1000
     ));
 
     $t0 = microtime(true);
     $rcHash = password_hash($recoveryDerivedKey, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
     addTrace(sprintf(
-        "[register] bcrypt(recovery_derived_key) en %.0f ms — note: input deja HMAC-SHA256 cote client",
+        "[register] Argon2id(recovery_derived_key) en %.0f ms — note: input deja HMAC-SHA256 cote client",
         (microtime(true) - $t0) * 1000
     ));
 
@@ -246,7 +246,7 @@ function handleRecoverL1(): void {
 
     $t0 = microtime(true);
     $verified = password_verify($passphrase, $user['passphrase_hash']);
-    addTrace(sprintf("[recover-l1] bcrypt verify(passphrase) en %.0f ms — result: %s",
+    addTrace(sprintf("[recover-l1] Argon2id verify(passphrase) en %.0f ms — result: %s",
         (microtime(true) - $t0) * 1000, $verified ? 'OK' : 'FAIL'));
 
     if (!$verified) {
@@ -292,7 +292,7 @@ function handleRecoverL2(): void {
 
     $t0 = microtime(true);
     $verified = password_verify($recoveryKey, $user['recovery_derived_hash']);
-    addTrace(sprintf("[recover-l2] bcrypt verify(HMAC_recovery_key) en %.0f ms — result: %s",
+    addTrace(sprintf("[recover-l2] Argon2id verify(HMAC_recovery_key) en %.0f ms — result: %s",
         (microtime(true) - $t0) * 1000, $verified ? 'OK' : 'FAIL'));
 
     if (!$verified) {
@@ -433,7 +433,7 @@ function handleLiteRegister(): void {
     $t0 = microtime(true);
     $pwdHash = password_hash($password, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
     $memHash = password_hash($memorizedDerived, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
-    addTrace(sprintf("[lite-register] bcrypt(password) + bcrypt(memorized_derived) en %.0f ms",
+    addTrace(sprintf("[lite-register] Argon2id(password) + Argon2id(memorized_derived) en %.0f ms",
         (microtime(true) - $t0) * 1000));
 
     // Pour la démo Lite : on ne stocke pas de passphrase ni d'identifier (champs full SelfRecover non utilisés)
@@ -576,7 +576,7 @@ function handleLiteResetConfirm(): void {
     // Vérification du mot mémorisé via Argon2id sur la dérivée HMAC client-side
     $t0 = microtime(true);
     $verified = password_verify($memorizedDerived, $req['memorized_word_hash']);
-    addTrace(sprintf("[lite-reset-confirm] bcrypt verify(memorized_derived) en %.0f ms — result: %s",
+    addTrace(sprintf("[lite-reset-confirm] Argon2id verify(memorized_derived) en %.0f ms — result: %s",
         (microtime(true) - $t0) * 1000, $verified ? 'OK' : 'FAIL'));
 
     if (!$verified) {

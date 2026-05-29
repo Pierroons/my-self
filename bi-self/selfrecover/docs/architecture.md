@@ -23,9 +23,9 @@
      │                              │    identifier, password }   │
      │                              │────────────────────────────>│
      │                              │                             │
-     │                              │                bcrypt(derived_key)
+     │                              │                Argon2id(derived_key)
      │                              │                generate diceware passphrase
-     │                              │                bcrypt(passphrase)
+     │                              │                Argon2id(passphrase)
      │                              │                INSERT users
      │                              │                             │
      │                              │<────────────────────────────│
@@ -62,7 +62,7 @@ Server: password_verify(recovery_key, stored_hash)
 ## Key properties
 
 1. **The raw recovery word never leaves the browser.** Only the HMAC derivation is sent over the wire.
-2. **The server never stores the raw word.** It only stores a bcrypt hash of the derived key.
+2. **The server never stores the raw word.** It only stores an Argon2id hash of the derived key.
 3. **Domain-specific.** A phishing site like `fake-hub.example.net` will compute a completely different derived key. A captured recovery word is useless on any other domain.
 4. **Zero SMTP.** No email addresses involved, anywhere.
 5. **Zero third-party.** The user only trusts the site they're registering on.

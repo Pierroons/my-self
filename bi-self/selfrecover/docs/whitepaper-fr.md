@@ -70,9 +70,9 @@ clé_dérivée = HMAC-SHA256(mot_récupération, domaine + salt_du_site)
 
 Le serveur reçoit et stocke :
 
-- `bcrypt(mot_de_passe)` — hash classique du mot de passe
-- `bcrypt(passphrase)` — une passphrase diceware générée côté serveur (4 mots, ~51 bits d'entropie)
-- `bcrypt(clé_dérivée)` — la clé de récupération dérivée par HMAC
+- `Argon2id(mot_de_passe)` — hash classique du mot de passe
+- `Argon2id(passphrase)` — une passphrase diceware générée côté serveur (4 mots, ~51 bits d'entropie)
+- `Argon2id(clé_dérivée)` — la clé de récupération dérivée par HMAC
 
 L'utilisateur reçoit la passphrase une seule fois et doit la conserver hors ligne.
 
@@ -266,7 +266,7 @@ L'utilisateur voit un message rassurant `"Ton compte est maintenant sécurisé"`
 
 **C'est la limite la plus importante.**
 
-SelfRecover protège les données de récupération par dérivation HMAC, hachage bcrypt et connaissance partagée. Mais **aucune de ces protections ne compte si un attaquant obtient un accès root au serveur**.
+SelfRecover protège les données de récupération par dérivation HMAC, hachage Argon2id et connaissance partagée. Mais **aucune de ces protections ne compte si un attaquant obtient un accès root au serveur**.
 
 **La vulnérabilité :**
 

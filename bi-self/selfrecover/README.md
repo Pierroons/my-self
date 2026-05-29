@@ -83,7 +83,7 @@ derived_key = HMAC-SHA256(recovery_word, domain + site_salt)
 | Role | Algorithm | Parameters |
 |------|-----------|------------|
 | Client-side key derivation | HMAC-SHA256 | key = recovery_word, message = domain &#124;&#124; site_salt |
-| Server-side secret storage | bcrypt | cost = 12 (≈ 250 ms on modern server) |
+| Server-side secret storage | Argon2id | memory = 64 MiB, time = 4, threads = 2 (memory-hard) |
 | Public identifier hashing | SHA-256 | truncated to 16 bytes, then hex-encoded |
 | Passphrase generation (L1) | EFF Diceware | 4 words, ≥ 51 bits of entropy |
 | Site salt | 32 random bytes | generated at install, never rotated |
@@ -96,14 +96,14 @@ For each account, the server stores exactly three secrets:
 CREATE TABLE account (
   id           INTEGER PRIMARY KEY,
   identifier   TEXT UNIQUE,              -- public, user-chosen
-  password     TEXT,                     -- bcrypt(password)
-  pass_hash    TEXT,                     -- bcrypt(diceware_passphrase)  [L1]
-  recovery     TEXT,                     -- bcrypt(derived_key)          [L2]
+  password     TEXT,                     -- Argon2id(password)
+  pass_hash    TEXT,                     -- Argon2id(diceware_passphrase)  [L1]
+  recovery     TEXT,                     -- Argon2id(derived_key)          [L2]
   created_at   INTEGER
 );
 ```
 
-The server never sees: the raw password, the raw passphrase, the raw recovery word. Every comparison is a bcrypt verification against the client-submitted derived value.
+The server never sees: the raw password, the raw passphrase, the raw recovery word. Every comparison is an Argon2id verification against the client-submitted derived value.
 
 ### Key-stretching chain (Level 2 recovery)
 
@@ -111,14 +111,14 @@ The server never sees: the raw password, the raw passphrase, the raw recovery wo
 user input   → recovery_word
 client       → derived_key  = HMAC-SHA256(recovery_word, domain ‖ site_salt)
 wire         → POST /recover { identifier, derived_key }
-server       → verify        = bcrypt_verify(derived_key, stored_recovery_hash)
+server       → verify        = password_verify(derived_key, stored_recovery_hash)  // Argon2id
 ```
 
-The wire never carries the recovery word. The server never stores the recovery word. Even a full database dump + source code leak does not expose it — only bcrypt hashes of per-site-derived keys.
+The wire never carries the recovery word. The server never stores the recovery word. Even a full database dump + source code leak does not expose it — only Argon2id hashes of per-site-derived keys.
 
 ### Why HMAC-SHA256 (and not PBKDF2 / Argon2)
 
-HMAC is intentionally **fast** client-side because the goal is domain binding, not brute-force resistance. The brute-force resistance is provided server-side by **bcrypt** on the derived key. Splitting the roles keeps the UX instant on mobile while still imposing ≥ 250 ms per server-side verification attempt.
+HMAC is intentionally **fast** client-side because the goal is domain binding, not brute-force resistance. The brute-force resistance is provided server-side by **Argon2id** (memory-hard, 64 MiB per attempt) on the derived key. Splitting the roles keeps the UX instant on mobile while still imposing a memory-hard cost per server-side verification attempt.
 
 ---
 
@@ -189,7 +189,7 @@ No dependencies beyond PHP CLI. SQLite as database. Zero configuration.
        │   { derived_key }        │
        │─────────────────────────>│
        │                          │
-       │          [bcrypt verify] │
+       │        [Argon2id verify] │
        │                          │
        │<─────────────────────────│
        │   new password           │
@@ -204,8 +204,8 @@ The raw recovery word never leaves the browser.
 
 | Property | How it's achieved |
 |----------|------------------|
-| **Zero-knowledge server** | The server only ever sees bcrypt hashes of per-site-derived values. Compromise of the database reveals no recovery words. |
-| **Native anti-phishing** | A phishing site at `not-the-real-domain.tld` derives a different HMAC key, which fails to match any stored bcrypt record. No user training required. |
+| **Zero-knowledge server** | The server only ever sees Argon2id hashes of per-site-derived values. Compromise of the database reveals no recovery words. |
+| **Native anti-phishing** | A phishing site at `not-the-real-domain.tld` derives a different HMAC key, which fails to match any stored Argon2id record. No user training required. |
 | **Replay resistance** | Each recovery request is gated by a server-side rate limit + dispute system. L3 adds a multi-factor scoring check. |
 | **Forward secrecy against leak** | Site salt is per-deployment, never reused, never transmitted outside the server. Leaked client code alone is useless. |
 | **No central dependency** | Each deployment is autonomous. No SPOF, no vendor lock-in, no operator who can revoke accounts across the ecosystem. |
@@ -216,10 +216,10 @@ The raw recovery word never leaves the browser.
 ## Threat model at a glance
 
 **Protected against:**
-- Database compromise (bcrypt-only storage, no reversible secrets)
+- Database compromise (Argon2id-only storage, no reversible secrets)
 - Phishing (domain-bound derivation)
 - SMTP attacks, SIM swapping, email account takeover (no email in the loop)
-- Account brute force (bcrypt cost + rate limits + L3 scoring)
+- Account brute force (Argon2id memory-hard cost + rate limits + L3 scoring)
 
 **Not claimed to protect against:**
 - Malicious client code (if the attacker controls the page your browser loads, game over — true for any in-browser protocol)
@@ -237,6 +237,14 @@ Full analysis: **[docs/threat-model.md](docs/threat-model.md)**
 - **[Whitepaper (FR)](docs/whitepaper-fr.md)** — version française
 - **[Architecture](docs/architecture.md)** — detailed flow diagrams
 - **[Threat model](docs/threat-model.md)** — what SelfRecover protects against, and what it doesn't
+
+---
+
+## Beyond the web: disk unlock
+
+The same recovery word, derived per **label** with Argon2id, can also serve as a fallback key for a **LUKS2** encrypted volume — letting a host unlock its disk without email or third party when its primary mechanism (a distributed witness quorum) is unavailable. The label separates the web key from the disk key, so neither can derive the other.
+
+This is a companion module, **[`selfrecover-luks`](../../self-security/selfrecover-luks/)**, **validated on the bench** (PoC + tests on a throwaway image). Integration on a real production disk is upcoming, not yet claimed as operational.
 
 ---
 

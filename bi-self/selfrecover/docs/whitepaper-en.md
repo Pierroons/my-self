@@ -70,9 +70,9 @@ derived_key = HMAC-SHA256(recovery_word, domain + site_salt)
 
 The server receives and stores:
 
-- `bcrypt(password)` — classic password hash
-- `bcrypt(passphrase)` — a diceware passphrase generated server-side (4 words, ~51 bits of entropy)
-- `bcrypt(derived_key)` — the HMAC-derived recovery key
+- `Argon2id(password)` — classic password hash
+- `Argon2id(passphrase)` — a diceware passphrase generated server-side (4 words, ~51 bits of entropy)
+- `Argon2id(derived_key)` — the HMAC-derived recovery key
 
 The user receives the passphrase once and is asked to save it offline.
 
@@ -266,7 +266,7 @@ The user sees a reassuring "Your account is now secured" message — not a techn
 
 **This is the single most important limitation.**
 
-SelfRecover protects recovery data through HMAC derivation, bcrypt hashing, and split knowledge. However, **none of these protections matter if an attacker gains root access to the server**.
+SelfRecover protects recovery data through HMAC derivation, Argon2id hashing, and split knowledge. However, **none of these protections matter if an attacker gains root access to the server**.
 
 **The vulnerability:**
 

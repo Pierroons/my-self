@@ -59,7 +59,7 @@ A SelfRecover deployment without hardened sudo is a lock on a door with no wall.
 The HMAC per-domain design mitigates the last point, but not the first two.
 
 ### ✗ Database breaches — partially protected
-- Raw database leak → attacker only gets bcrypt hashes, which resist cracking
+- Raw database leak → attacker only gets Argon2id hashes, which resist cracking
 - BUT: if the attacker has root (see above), the protocol is already moot
 - Recommendation: encrypt database backups at rest
 
@@ -81,5 +81,5 @@ If a user forgets their password AND their passphrase AND their recovery word AN
 | Server root compromise | ✗ | Mandatory sudo hardening |
 | Stolen recovery word | ✗ | User responsibility |
 | User negligence | ✗ (partial) | HMAC per-domain limits blast radius |
-| Database breach | ✓ (partial) | bcrypt hashes, but root trumps all |
+| Database breach | ✓ (partial) | Argon2id hashes, but root trumps all |
 | Lost everything | ✗ | Admin fallback only |

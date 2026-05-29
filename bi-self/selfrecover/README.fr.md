@@ -84,7 +84,7 @@ derived_key = HMAC-SHA256(recovery_word, domain + site_salt)
 | Rôle | Algorithme | Paramètres |
 |------|-----------|------------|
 | Dérivation de clé côté client | HMAC-SHA256 | clé = recovery_word, message = domain &#124;&#124; site_salt |
-| Stockage des secrets côté serveur | bcrypt | coût = 12 (≈ 250 ms sur serveur moderne) |
+| Stockage des secrets côté serveur | Argon2id | mémoire = 64 Mio, time = 4, threads = 2 (memory-hard) |
 | Hachage de l'identifiant public | SHA-256 | tronqué à 16 octets, puis encodé en hex |
 | Génération de passphrase (L1) | EFF Diceware | 4 mots, ≥ 51 bits d'entropie |
 | Sel du site | 32 octets aléatoires | généré à l'installation, jamais rotaté |
@@ -97,14 +97,14 @@ Pour chaque compte, le serveur stocke exactement trois secrets :
 CREATE TABLE account (
   id           INTEGER PRIMARY KEY,
   identifier   TEXT UNIQUE,              -- public, choisi par l'utilisateur
-  password     TEXT,                     -- bcrypt(password)
-  pass_hash    TEXT,                     -- bcrypt(diceware_passphrase)  [L1]
-  recovery     TEXT,                     -- bcrypt(derived_key)          [L2]
+  password     TEXT,                     -- Argon2id(password)
+  pass_hash    TEXT,                     -- Argon2id(diceware_passphrase)  [L1]
+  recovery     TEXT,                     -- Argon2id(derived_key)          [L2]
   created_at   INTEGER
 );
 ```
 
-Le serveur ne voit jamais : le mot de passe brut, la passphrase brute, le mot de récupération brut. Chaque comparaison est une vérification bcrypt contre la valeur dérivée soumise par le client.
+Le serveur ne voit jamais : le mot de passe brut, la passphrase brute, le mot de récupération brut. Chaque comparaison est une vérification Argon2id contre la valeur dérivée soumise par le client.
 
 ### Chaîne de renforcement de clé (récupération niveau 2)
 
@@ -112,14 +112,14 @@ Le serveur ne voit jamais : le mot de passe brut, la passphrase brute, le mot de
 saisie user  → recovery_word
 client       → derived_key  = HMAC-SHA256(recovery_word, domain ‖ site_salt)
 réseau       → POST /recover { identifier, derived_key }
-serveur      → verify        = bcrypt_verify(derived_key, stored_recovery_hash)
+serveur      → verify        = password_verify(derived_key, stored_recovery_hash)  // Argon2id
 ```
 
-Le réseau ne transporte jamais le mot de récupération. Le serveur ne le stocke jamais. Même une fuite complète de la base de données + du code source ne l'expose pas — seulement des hachages bcrypt de clés dérivées par site.
+Le réseau ne transporte jamais le mot de récupération. Le serveur ne le stocke jamais. Même une fuite complète de la base de données + du code source ne l'expose pas — seulement des hachages Argon2id de clés dérivées par site.
 
 ### Pourquoi HMAC-SHA256 (et pas PBKDF2 / Argon2)
 
-HMAC est volontairement **rapide** côté client car l'objectif est la liaison au domaine, pas la résistance au brute-force. La résistance au brute-force est assurée côté serveur par **bcrypt** sur la clé dérivée. Séparer les rôles garde l'UX instantanée sur mobile tout en imposant quand même ≥ 250 ms par tentative de vérification côté serveur.
+HMAC est volontairement **rapide** côté client car l'objectif est la liaison au domaine, pas la résistance au brute-force. La résistance au brute-force est assurée côté serveur par **Argon2id** (memory-hard, 64 Mio par tentative) sur la clé dérivée. Séparer les rôles garde l'UX instantanée sur mobile tout en imposant un coût memory-hard par tentative de vérification côté serveur.
 
 ---
 
@@ -190,7 +190,7 @@ Aucune dépendance au-delà de PHP CLI. SQLite comme base. Configuration zéro.
        │   { derived_key }        │
        │─────────────────────────>│
        │                          │
-       │        [verif. bcrypt]   │
+       │      [verif. Argon2id]   │
        │                          │
        │<─────────────────────────│
        │   nouveau mot de passe   │
@@ -205,8 +205,8 @@ Le mot de récupération brut ne quitte jamais le navigateur.
 
 | Propriété | Comment c'est obtenu |
 |----------|------------------|
-| **Serveur à connaissance nulle** | Le serveur ne voit que des hachages bcrypt de valeurs dérivées par site. Une compromission de la base ne révèle aucun mot de récupération. |
-| **Anti-phishing natif** | Un site de phishing à `pas-le-vrai-domaine.tld` dérive une clé HMAC différente, qui échoue à correspondre à n'importe quel bcrypt stocké. Aucune formation utilisateur requise. |
+| **Serveur à connaissance nulle** | Le serveur ne voit que des hachages Argon2id de valeurs dérivées par site. Une compromission de la base ne révèle aucun mot de récupération. |
+| **Anti-phishing natif** | Un site de phishing à `pas-le-vrai-domaine.tld` dérive une clé HMAC différente, qui échoue à correspondre à n'importe quel hachage Argon2id stocké. Aucune formation utilisateur requise. |
 | **Résistance au rejeu** | Chaque requête de récupération est limitée par un rate limit côté serveur + système de litige. Le L3 ajoute un scoring multi-facteur. |
 | **Forward secrecy contre fuite** | Le sel du site est par déploiement, jamais réutilisé, jamais transmis hors du serveur. Une fuite du code client seul est inutile. |
 | **Pas de dépendance centrale** | Chaque déploiement est autonome. Pas de SPOF, pas de vendor lock-in, pas d'opérateur qui peut révoquer des comptes à travers l'écosystème. |
@@ -217,10 +217,10 @@ Le mot de récupération brut ne quitte jamais le navigateur.
 ## Modèle de menace en bref
 
 **Protège contre :**
-- Compromission de la base de données (stockage bcrypt seul, pas de secrets réversibles)
+- Compromission de la base de données (stockage Argon2id seul, pas de secrets réversibles)
 - Phishing (dérivation liée au domaine)
 - Attaques SMTP, SIM swapping, prise de contrôle de boîte mail (pas d'email dans la boucle)
-- Brute force de compte (coût bcrypt + rate limits + scoring L3)
+- Brute force de compte (coût memory-hard Argon2id + rate limits + scoring L3)
 
 **Ne prétend pas protéger contre :**
 - Code client malveillant (si l'attaquant contrôle la page que votre navigateur charge, c'est fini — vrai pour n'importe quel protocole in-browser)
@@ -238,6 +238,14 @@ Analyse complète : **[docs/threat-model.md](docs/threat-model.md)**
 - **[Whitepaper (EN)](docs/whitepaper-en.md)** — English version
 - **[Architecture](docs/architecture.md)** — diagrammes de flux détaillés
 - **[Modèle de menace](docs/threat-model.md)** — contre quoi SelfRecover protège, et contre quoi il ne protège pas
+
+---
+
+## Au-delà du web : déverrouillage de disque
+
+Le même mot de récupération, dérivé par **label** avec Argon2id, peut aussi servir de clé de secours pour un volume chiffré **LUKS2** — permettant à une machine de déverrouiller son disque sans email ni tiers, quand son mécanisme principal (un quorum de témoins distribués) est indisponible. Le label sépare la clé web de la clé disque : aucune ne permet de dériver l'autre.
+
+C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecover-luks/)**, **validé sur banc** (PoC + tests sur image jetable). L'intégration sur un disque de production réel est à venir, pas encore revendiquée comme opérationnelle.
 
 ---
 
