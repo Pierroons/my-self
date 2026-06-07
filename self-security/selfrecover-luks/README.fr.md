@@ -66,7 +66,7 @@ déployer keyscript + hook, générer le sel, ajouter les slots recover, configu
 racine (keyscript + dropbear + rootdelay) et les volumes secondaires (fichier-clé), régénérer
 l'initramfs, **tester par redémarrage avec filet**.
 
-Document d'architecture (le *pourquoi*, DOCX) : **[SelfRecover-LUKS_Whitepaper.docx](./docs/SelfRecover-LUKS_Whitepaper.docx)** — [⬇ télécharger](https://github.com/Pierroons/my-self/raw/main/self-security/selfrecover-luks/docs/SelfRecover-LUKS_Whitepaper.docx).
+Document d'architecture (le *pourquoi*) : **[SelfRecover-LUKS_Whitepaper](./docs/SelfRecover-LUKS_Whitepaper.md)** (lisible en ligne) — aussi en [DOCX à télécharger](https://github.com/Pierroons/my-self/raw/main/self-security/selfrecover-luks/docs/SelfRecover-LUKS_Whitepaper.docx).
 
 ## Garde-fous
 

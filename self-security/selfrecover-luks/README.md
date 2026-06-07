@@ -66,7 +66,7 @@ deploy keyscript + hook, generate the salt, add recovery slots, configure the ro
 (keyscript + dropbear + rootdelay) and the secondary volumes (key-file), rebuild the initramfs,
 **test by rebooting with a safety net**.
 
-Architecture document (the *why*, DOCX): **[SelfRecover-LUKS_Whitepaper.docx](./docs/SelfRecover-LUKS_Whitepaper.docx)** — [⬇ download](https://github.com/Pierroons/my-self/raw/main/self-security/selfrecover-luks/docs/SelfRecover-LUKS_Whitepaper.docx).
+Architecture document (the *why*): **[SelfRecover-LUKS_Whitepaper](./docs/SelfRecover-LUKS_Whitepaper.md)** (readable online) — also as [DOCX download](https://github.com/Pierroons/my-self/raw/main/self-security/selfrecover-luks/docs/SelfRecover-LUKS_Whitepaper.docx).
 
 ## Safeguards
 
