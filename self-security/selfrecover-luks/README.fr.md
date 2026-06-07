@@ -57,7 +57,7 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS (autorisé par une clé existante) |
 | `selfrecover-unlock.sh` | déverrouillage de secours autonome (userspace) |
 | `install.sh` | installateur semi-automatique (cf. INSTALL.md) |
-| `keyguard-luks-unlock.py`, `add-slot-via-quorum.sh`, `test-*.sh` | R&D quorum + tests sur image jetable |
+| [`quorum-rnd/`](./quorum-rnd/) | R&D : déverrouillage par quorum de témoins — **non activé en v0.3.0** |
 
 ## Installation
 

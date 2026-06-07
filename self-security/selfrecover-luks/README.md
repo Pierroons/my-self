@@ -57,7 +57,7 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | `setup-add-selfrecover-slot.sh` | adds a recovery slot to a LUKS volume (authorized by an existing key) |
 | `selfrecover-unlock.sh` | standalone emergency unlock (userspace) |
 | `install.sh` | semi-automatic installer (see INSTALL.md) |
-| `keyguard-luks-unlock.py`, `add-slot-via-quorum.sh`, `test-*.sh` | quorum R&D + throwaway-image tests |
+| [`quorum-rnd/`](./quorum-rnd/) | R&D: witness-quorum unlock — **not enabled in v0.3.0** |
 
 ## Installation
 
