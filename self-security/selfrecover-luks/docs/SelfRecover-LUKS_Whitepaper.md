@@ -1,4 +1,4 @@
-**SelfRecover-LUKS**
+# SelfRecover-LUKS
 
 Déverrouillage souverain de disques chiffrés  
 par passphrase de récupération unifiée
@@ -11,7 +11,7 @@ Licence : AGPL-3.0-or-later
 
 # Résumé
 
-SelfRecover-LUKS permet de déverrouiller l'intégralité des volumes chiffrés (LUKS2) d'un serveur à partir d'une unique passphrase de récupération, à distance et dès le démarrage, sans dépendre d'un service tiers, d'un cloud, ni d'une connexion obligatoire vers un fournisseur..
+SelfRecover-LUKS permet de déverrouiller l'intégralité des volumes chiffrés (LUKS2) d'un serveur à partir d'une unique passphrase de récupération, à distance et dès le démarrage, sans dépendre d'un service tiers, d'un cloud, ni d'une connexion obligatoire vers un fournisseur.
 
 # 1. Contexte et problème
 
