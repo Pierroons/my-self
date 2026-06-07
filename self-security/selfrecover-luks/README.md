@@ -4,7 +4,7 @@
 
 > Unlocking **LUKS2** encrypted disks — root volume **and** data volumes — with a **single
 > recovery passphrase**, remotely from boot, with no cloud and no trusted third party. The
-> sovereign FDE layer of the **MySelf** ecosystem (Self-Security pillar).
+> self-hosted FDE layer of the **MySelf** ecosystem (Self-Security pillar).
 
 **Status: validated on a LNMP Debian 13 Trixie server (2026-06-07) — v0.3.0.**
 Root (`/`) unlocked at boot (Argon2id keyscript + boot SSH) and automatic cascade of secondary

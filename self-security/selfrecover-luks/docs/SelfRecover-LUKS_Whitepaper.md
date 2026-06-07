@@ -1,6 +1,7 @@
 # SelfRecover-LUKS — Whitepaper
 
-> **Déverrouillage souverain de disques chiffrés par passphrase de récupération unifiée**
+> **Déverrouillage de disques chiffrés par passphrase de récupération unifiée**
+> *Un déverrouillage qui ne dépend d'aucun tiers — pas de cloud, pas de serveur de clés réseau.*
 > *Architecture, sécurité et déploiement*
 
 Écosystème MySelf — pilier Self-Security · Version 0.3.0 · 07 juin 2026 · AGPL-3.0-or-later
