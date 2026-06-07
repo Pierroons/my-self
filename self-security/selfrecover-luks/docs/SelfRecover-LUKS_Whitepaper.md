@@ -18,43 +18,40 @@ SelfRecover-LUKS permet de déverrouiller l'intégralité des volumes chiffrés 
 Le chiffrement intégral du disque (FDE) protège les données au repos. Il pose toutefois trois difficultés opérationnelles récurrentes :
 
 - **Accès distant —** déverrouiller un serveur à distance (machine hébergée) ;
-
 - **Multiplicité —** gérer plusieurs volumes chiffrés (racine + données) sans multiplier les secrets à retenir ;
-
 - **Résilience —** garantir la récupération après perte du secret principal ou destruction du matériel.
 
 Les solutions courantes délèguent souvent à un tiers : séquestre de clés dans le cloud, puce liée au constructeur, serveur de clés réseau. SelfRecover-LUKS répond aux trois besoins sans aucune dépendance externe.
 
 ## 2. Positionnement : une honnêteté revendiquée
 
-SelfRecover-LUKS n'invente aucune primitive cryptographique. LUKS2 et Argon2id assurent le chiffrement et la dérivation ; un serveur SSH minimal embarqué dans l'image d'amorçage assure l'accès distant. La valeur ajoutée est strictement architecturale : assembler ces briques en un protocole cohérent, entièrement auto-hébergé, où un seul secret mémorisable gouverne l'ensemble — sans cloud, sans tiers de confiance, sans connexion réseau imposée. C'est une solution de niche assumée : elle vise la souveraineté et la simplicité d'usage, non une performance cryptographique inédite.
+SelfRecover-LUKS n'invente aucune primitive cryptographique. LUKS2 et Argon2id assurent le chiffrement et la dérivation ; un serveur SSH minimal embarqué dans l'image d'amorçage assure l'accès distant. La valeur ajoutée est strictement architecturale : assembler ces briques en une configuration cohérente, entièrement auto-hébergée, où un seul secret mémorisable déverrouille l'ensemble — sans cloud, sans tiers de confiance, sans connexion réseau imposée. C'est une solution de niche assumée : elle vise la souveraineté et la simplicité d'usage, non une performance cryptographique inédite.
 
 ## 3. Vue d'ensemble de l'architecture
 
 Le flux se résume ainsi :
 
-> Passphrase de récupération (mémorisée)  
-> │  
-> ▼ dérivation Argon2id, cloisonnée par étiquette  
-> clés filles indépendantes (étiquettes : disk / auth / data-enc …)  
-> │  
-> ├──► volume RACINE : keyscript dans l'image d'amorçage  
-> │ + accès distant SSH minimal (saisie à distance)  
-> │  
-> └──► volumes SECONDAIRES : fichier-clé stocké sur la racine  
-> (chiffrée) → ouverture automatique après le pivot
+```
+Passphrase de récupération (mémorisée)
+   │  dérivation Argon2id, cloisonnée par étiquette
+   ▼  clés filles indépendantes (étiquettes : disk / auth / data-enc …)
+   ├──► volume RACINE      : keyscript dans l'image d'amorçage
+   │                          + accès distant SSH minimal (saisie à distance)
+   └──► volumes SECONDAIRES : fichier-clé stocké sur la racine chiffrée
+                              → ouverture automatique après le pivot
+```
 
 ## 4. Le secret unifié : dérivation cloisonnée par étiquette
 
 Une unique passphrase racine produit des clés filles indépendantes selon une étiquette :
 
 - **étiquette « disk » —** clé d'un slot LUKS (déverrouillage disque) ;
-
 - **étiquette « auth » —** preuve d'identité / d'accès applicatif ;
-
 - **étiquette « data-enc » —** chiffrement de données applicatives.
 
-Le sel effectif est dérivé par SHA-256(sel_de_déploiement \|\| étiquette), tronqué. Deux étiquettes issues du même secret produisent des clés non corrélées : compromettre la clé applicative ne révèle pas la clé disque. La dérivation emploie Argon2id (memory-hard), adaptée à une clé de disque exposée à une attaque hors-ligne en cas de vol du support : chaque essai est massivement ralenti.
+Le sel effectif est dérivé par `SHA-256(sel_de_déploiement || étiquette)`, tronqué. Le `sel_de_déploiement` doit être **aléatoire et unique par machine** (issu de `/dev/urandom`) : c'est lui qui sépare deux déploiements et empêche tout précalcul. Deux étiquettes issues du même secret produisent des clés non corrélées : compromettre la clé applicative ne révèle pas la clé disque.
+
+La dérivation emploie **Argon2id** (memory-hard ; paramètres `t=3`, `m=64 MiB`, `p=4`), qui rend coûteux chaque essai d'une attaque hors-ligne sur un support volé. Ce coût est un **facteur de ralentissement, pas une garantie** : la résistance au bruteforce tient **d'abord à l'entropie de la passphrase de récupération** — Argon2id renchérit chaque essai, il ne compense pas un secret faible. Les paramètres sont un compromis (un déverrouillage au démarrage qui reste praticable) et peuvent être renforcés selon le matériel.
 
 ## 5. Déverrouillage du volume racine au démarrage
 
@@ -63,7 +60,6 @@ Le volume racine est référencé dans la table de chiffrement avec un keyscript
 Deux points d'attention de déploiement, souvent sous-estimés :
 
 - **Bibliothèque d'exécution —** la fonction de dérivation, multi-thread, requiert la présence de la bibliothèque d'exécution des threads dans l'image d'amorçage (dépendance chargée dynamiquement, invisible à l'analyse statique des dépendances) ;
-
 - **Délai d'attente —** le délai d'attente du périphérique racine doit être étendu, afin de laisser le temps d'établir la connexion distante et de saisir la passphrase avant abandon.
 
 ## 6. Cascade des volumes secondaires : fichier-clé dans le coffre
@@ -72,15 +68,18 @@ Sur les systèmes d'amorçage modernes, les volumes non-racine sont pris en char
 
 Une fois la racine déverrouillée, le système monte automatiquement les volumes secondaires en lisant ce fichier-clé. Ainsi, une seule saisie de la passphrase de récupération ouvre la racine, puis tous les volumes secondaires s'ouvrent en cascade. La sécurité tient au fait que le fichier-clé réside dans le coffre chiffré : un disque volé reste illisible, car la racine chiffrée rend le fichier-clé inaccessible.
 
+À noter : sur une machine déjà démarrée, ce fichier-clé est lisible par root. C'est inhérent à tout déverrouillage automatique — le système doit lire une clé quelque part — et sans incidence sur le modèle de menace : qui détient root sur une machine allumée accède de toute façon aux données déjà montées (cf. § 7, « machine allumée » hors périmètre).
+
 ## 7. Modèle de menace
 
-| **Scénario**                             | **Traitement**                                                                                      |
-|------------------------------------------|-----------------------------------------------------------------------------------------------------|
-| **Vol / perte du support (au repos)**    | LUKS2 + Argon2id : sans la passphrase, l'attaque hors-ligne est massivement ralentie (memory-hard). |
-| **Déverrouillage à distance**            | La passphrase transite chiffrée par SSH ; elle n'est jamais stockée en clair.                       |
-| **Dépendance à un tiers**                | Aucune : pas de séquestre cloud, pas de clé confiée à un constructeur ou à un serveur externe.      |
-| **Machine allumée / déverrouillée**      | Hors périmètre : les clés sont en mémoire (vrai pour tout FDE).                                     |
-| **Altération de l'amorçage (evil-maid)** | Hors périmètre à ce stade : amorçage en clair → cf. travaux futurs (signature / intégrité).         |
+| **Scénario** | **Traitement** |
+|---|---|
+| **Vol / perte du support (au repos)** | LUKS2 + Argon2id : sans la passphrase, l'attaque hors-ligne est ralentie par le KDF, et bornée par l'entropie de la passphrase. |
+| **Déverrouillage à distance** | La passphrase transite chiffrée par SSH ; elle n'est jamais stockée en clair. |
+| **Dépendance à un tiers** | Aucune : pas de séquestre cloud, pas de clé confiée à un constructeur ou à un serveur externe. |
+| **Compromission du secret de récupération** | Donne accès à tout ce qu'il dérive (racine, volumes, clés applicatives). Choix assumé d'un secret unique : il doit être fort et n'être saisi que sur une machine de confiance. |
+| **Machine allumée / déverrouillée** | Hors périmètre : les clés sont en mémoire (vrai pour tout FDE). |
+| **Altération de l'amorçage (evil-maid)** | Hors périmètre à ce stade : amorçage en clair → cf. travaux futurs (signature / intégrité). |
 
 ## 8. Filets anti-verrouillage
 
@@ -91,33 +90,24 @@ Chaque volume conserve un slot « natif » (passphrase classique), indépendant 
 Reconstruire le système après destruction du matériel suppose de conserver, HORS du serveur, trois éléments :
 
 - **Passphrase —** la passphrase de récupération (mémorisée et/ou stockée) ;
-
 - **Sel —** le sel de déploiement, indispensable à la dérivation ;
-
 - **Sauvegardes —** les secrets d'accès aux sauvegardes (accès au dépôt distant, passphrase du dépôt chiffré).
 
 Sans le sel conservé hors-site, la dérivation est irréalisable sur du matériel neuf : la passphrase seule ne suffit pas. C'est le point critique de toute architecture de ce type, et il doit être traité explicitement, non implicitement.
 
 ## 10. Déploiement — étapes génériques
 
-1.  Installer le système en chiffrement intégral (volume racine LUKS2).
-
-2.  Déployer la fonction de dérivation et le sel de déploiement.
-
-3.  Ajouter un slot « récupération » sur chaque volume (clé dérivée, étiquette « disk »), en conservant le slot natif.
-
-4.  Volume racine : keyscript dans la table de chiffrement + serveur SSH minimal dans l'image d'amorçage.
-
-5.  Volumes secondaires : fichier-clé sur la racine + référence dans la table de chiffrement (montés après le pivot).
-
-6.  Régénérer l'image d'amorçage, sauvegarder l'image précédente, puis tester par redémarrage avec filet (slot natif + accès console).
+1. Installer le système en chiffrement intégral (volume racine LUKS2).
+2. Déployer la fonction de dérivation et le sel de déploiement.
+3. Ajouter un slot « récupération » sur chaque volume (clé dérivée, étiquette « disk »), en conservant le slot natif.
+4. Volume racine : keyscript dans la table de chiffrement + serveur SSH minimal dans l'image d'amorçage.
+5. Volumes secondaires : fichier-clé sur la racine + référence dans la table de chiffrement (montés après le pivot).
+6. Régénérer l'image d'amorçage, sauvegarder l'image précédente, puis tester par redémarrage avec filet (slot natif + accès console).
 
 ## 11. Limites et travaux futurs
 
 - **Durcissement evil-maid :** amorçage en clair → signature (démarrage sécurisé) ou mesure d'intégrité matérielle à étudier.
-
 - **Quorum distribué :** déverrouillage automatique par consensus de témoins, sans saisie, en réflexion.
-
 - **Unification des sauvegardes :** dériver les secrets de sauvegarde depuis la même passphrase racine (étiquette dédiée), pour unifier complètement le socle de confiance — en gardant à l'esprit la contrainte du sel hors-site.
 
 ## 12. Licence et écosystème
