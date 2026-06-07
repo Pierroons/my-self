@@ -22,7 +22,7 @@ Une passphrase de récupération mémorisée → dérivation **Argon2id** par **
 | `disk` | **clé d'un slot LUKS2** (ce module) |
 
 Le label change le sel effectif → deux clés du même secret sont indépendantes. Argon2id
-(memory-hard) car une clé de disque est attaquable **hors-ligne** en cas de vol du support.
+(memory-hard) car une clé de disque est attaquable **hors-ligne** en cas de vol du support. La résistance vient **d'abord de l'entropie de la passphrase** ; Argon2id ralentit chaque essai, il ne sauve pas un secret faible.
 
 ## Architecture
 

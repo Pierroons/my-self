@@ -22,7 +22,7 @@ One memorized recovery passphrase → **Argon2id** derivation per **label** → 
 | `disk` | **key for a LUKS2 slot** (this module) |
 
 The label changes the effective salt → two keys from the same secret are independent. Argon2id
-(memory-hard) because a disk key is brute-forceable **offline** if the drive is stolen.
+(memory-hard) because a disk key is brute-forceable **offline** if the drive is stolen. Resistance comes **first from the passphrase entropy**; Argon2id slows each attempt but does not offset a weak secret.
 
 ## Architecture
 
