@@ -1,0 +1,28 @@
+#!/bin/sh
+# Hook initramfs-tools — embarque la dérivation SelfRecover dans l'initrd.
+# Destination d'install : /etc/initramfs-tools/hooks/selfrecover
+#
+# Copie : le binaire de dérivation (+ libargon2.so.1 tirée auto par copy_exec),
+#         le sel du déploiement, et le keyscript appelé par cryptsetup.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "${1:-}" in prereqs) prereqs; exit 0 ;; esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+# binaire de dérivation — copy_exec embarque aussi ses libs (libargon2.so.1)
+copy_exec /etc/selfkeyguard/selfrecover_derive_c
+
+# libgcc_s.so.1 : chargée à l'EXÉCUTION par pthread (argon2 multi-thread, parallelism=4),
+# invisible à ldd → copy_exec ne la tire pas automatiquement. Sans elle : "libgcc_s.so.1
+# must be installed for pthread_exit to work" -> Aborted -> bad password au boot.
+for _LIBGCC in /lib/x86_64-linux-gnu/libgcc_s.so.1 /usr/lib/x86_64-linux-gnu/libgcc_s.so.1; do
+  [ -e "$_LIBGCC" ] && { copy_exec "$_LIBGCC"; break; }
+done
+
+# keyscript appelé par cryptsetup au boot
+copy_exec /etc/selfkeyguard/selfrecover-keyscript.sh
+
+# sel propre au déploiement (non secret, mais nécessaire à la dérivation)
+mkdir -p "$DESTDIR/etc/selfkeyguard"
+cp -a /etc/selfkeyguard/selfrecover_salt "$DESTDIR/etc/selfkeyguard/selfrecover_salt"

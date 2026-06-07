@@ -25,11 +25,11 @@ command -v cryptsetup >/dev/null || { echo "cryptsetup absent"; exit 1; }
 cryptsetup isLuks "$DEV" || { echo "$DEV n'est pas un volume LUKS"; exit 1; }
 
 echo "Ajout d'un slot SelfRecover sur $DEV"
-read -rsp "  Nouveau mot de récupération SelfRecover : " W1; echo
-read -rsp "  Confirme le mot : " W2; echo
+read -rsp "  Passphrase Recover-LUKS : " W1; echo
+read -rsp "  Confirme la passphrase : " W2; echo
 [ "$W1" = "$W2" ] || { echo "❌ les deux saisies diffèrent"; exit 1; }
 
-# mot -> Argon2id(label=disk) -> clé du nouveau slot (jamais écrite ailleurs que tmpfs)
+# passphrase -> Argon2id(label=disk) -> clé du nouveau slot (jamais écrite ailleurs que tmpfs)
 sudo -u "$RUN_AS" "$PY" "$HERE/selfrecover_derive.py" --word "$W1" --salt "$SALT" --label disk --format raw > "$TMP/sr.key"
 
 if [ -n "$EXISTING_KF" ]; then

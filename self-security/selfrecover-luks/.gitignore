@@ -6,3 +6,9 @@ keyguard.conf
 *.key
 *.bin
 selfrecover_salt
+
+# Binaire compilé (recompilable depuis le .c)
+selfrecover_derive
+# Sauvegardes horodatées
+*.bak.*
+*.bak
