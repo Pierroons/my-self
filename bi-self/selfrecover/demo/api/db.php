@@ -3,9 +3,13 @@
  * SelfRecover demo — SQLite database helper
  */
 
-// Site salt — generated once, never changes (changing invalidates all recovery_derived_hash)
-// In production, this MUST be a cryptographically random value stored securely.
+// SITE_SALT — DÉPRÉCIÉ (R9-02) : remplacé par un sel par-utilisateur (users.user_salt).
+// Plus exposé via l'API. Conservé seulement pour d'éventuels comptes legacy non migrés.
 define('SITE_SALT', getenv('SELFRECOVER_SITE_SALT') ?: 'demo-site-salt-1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d');
+
+// SERVER_SECRET — clé du sel factice anti-énumération de l'endpoint user-salt (R9-02).
+// JAMAIS exposé. En prod : valeur aléatoire forte via l'environnement.
+define('SERVER_SECRET', getenv('SELFRECOVER_SERVER_SECRET') ?: 'demo-server-secret-CHANGE-IN-PROD-9f8e7d6c5b4a3210');
 
 // DEBUG_MODE — expose _trace dans les réponses JSON. true par défaut en démo, false en prod.
 define('DEBUG_MODE', filter_var(getenv('SELFRECOVER_DEBUG') ?: 'true', FILTER_VALIDATE_BOOLEAN));
@@ -39,6 +43,10 @@ function getDB(): PDO {
             "ALTER TABLE recovery_attempts ADD COLUMN ip_address TEXT",
             "ALTER TABLE recovery_attempts ADD COLUMN fingerprint TEXT",
             "ALTER TABLE recovery_attempts ADD COLUMN user_agent TEXT",
+            "ALTER TABLE users ADD COLUMN last_login_at TEXT",
+            "ALTER TABLE users ADD COLUMN login_count INTEGER DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN banned_until TEXT",
+            "ALTER TABLE users ADD COLUMN user_salt TEXT",
         ] as $migration) {
             try { $pdo->exec($migration); } catch (Exception $e) { /* duplicate column = OK */ }
         }
@@ -67,6 +75,30 @@ function getDB(): PDO {
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_susp_ip ON suspicious_fingerprints(ip)");
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_susp_fp ON suspicious_fingerprints(fingerprint)");
         } catch (Exception $e) { /* table exists = OK */ }
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS disputes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dispute_number TEXT UNIQUE NOT NULL,
+                user_id INTEGER NOT NULL,
+                identifier TEXT,
+                status TEXT NOT NULL DEFAULT 'open',
+                refusal_count INTEGER DEFAULT 0,
+                signals_json TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS dispute_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dispute_id INTEGER NOT NULL,
+                sender TEXT NOT NULL,
+                body TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_disputes_user ON disputes(user_id)");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_disputes_number ON disputes(dispute_number)");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status)");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_dispute_msg ON dispute_messages(dispute_id)");
+        } catch (Exception $e) { /* tables exist = OK */ }
     }
     return $pdo;
 }

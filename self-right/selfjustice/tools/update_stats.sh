@@ -3,7 +3,7 @@
 # Compte les requêtes IA dans les logs nginx et met à jour le compteur dans index.html.
 #
 # À lancer via cron toutes les heures :
-#   0 * * * * /home/user/legi/update_stats.sh
+#   0 * * * * /home/deploy/legi/update_stats.sh
 
 set -e
 
@@ -11,9 +11,9 @@ LOG_FILE="/var/log/nginx/selfjustice-access.log"
 LOG_FILE_OLD="/var/log/nginx/selfjustice-access.log.1"
 COUNTER_FILE="/var/lib/selfjustice/counter.txt"
 HTML_FILE="/var/www/selfjustice/index.html"
-LEGI_DB="/home/user/legi/legi_selfjustice.sqlite"
+LEGI_DB="/home/deploy/legi/legi_selfjustice.sqlite"
 LEGI_LAST_UPDATE_FILE="/var/lib/selfjustice/legi_last_update.txt"
-EU_DB="/home/user/legi/conventionnalite.sqlite"
+EU_DB="/home/deploy/legi/conventionnalite.sqlite"
 EU_LAST_UPDATE_FILE="/var/lib/selfjustice/eu_last_update.txt"
 
 # Créer le dossier de stockage si besoin

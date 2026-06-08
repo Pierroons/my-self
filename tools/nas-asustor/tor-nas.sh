@@ -48,7 +48,7 @@ PID_FILE="/opt/var/run/tor.pid"  # default opkg
 BACKUP_DIR="${TOR_CONF_DIR}/backups"
 
 # Cible DEVSERVER (ajuste si besoin)
-DEVSERVER_HOST="user@192.0.2.10"
+DEVSERVER_HOST="deploy@192.0.2.60"
 DEVSERVER_USB_PATH="/mnt/usb-backup/nas-asustor/tor-backups"
 SSH_KEY="${TOR_CONF_DIR}/.ssh/nas-to-devserver"
 
@@ -191,7 +191,7 @@ cmd_backup() {
     else
         log "WARN: SSH key $SSH_KEY missing — backup NOT uploaded"
         log "      Run install.sh to generate it, then add the public key"
-        log "      to /home/user/.ssh/authorized_keys on the DEVSERVER."
+        log "      to /home/deploy/.ssh/authorized_keys on the DEVSERVER."
     fi
 
     # Rotation locale : garder les 3 derniers backups seulement
@@ -267,7 +267,7 @@ cmd_install() {
     log "===== ACTION REQUIRED — copy this public key to DEVSERVER ====="
     cat "${SSH_KEY}.pub"
     log ""
-    log "Append it to /home/user/.ssh/authorized_keys on the DEVSERVER (192.0.2.10)."
+    log "Append it to /home/deploy/.ssh/authorized_keys on the DEVSERVER (192.0.2.60)."
     log ""
 
     # 3. Tor binary
@@ -360,7 +360,7 @@ EOF
     log ""
     log "===== INSTALL COMPLETE ====="
     log "Next steps:"
-    log "  1. Copy SSH pubkey above to DEVSERVER /home/user/.ssh/authorized_keys"
+    log "  1. Copy SSH pubkey above to DEVSERVER /home/deploy/.ssh/authorized_keys"
     log "  2. $0 start"
     log "  3. $0 status   # wait ~30s then check .onion address"
     log "  4. $0 backup   # first backup"

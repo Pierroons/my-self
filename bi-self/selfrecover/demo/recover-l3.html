@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SelfRecover — Récupération niveau 3</title>
+    <style>
+        :root {
+            --bg:#0f1419; --panel:#1a2028; --text:#e8eaed; --muted:#9aa0a6;
+            --accent:#7ab7ff; --success:#7cc47c; --danger:#e07b7b; --warn:#d4c058;
+            --border:#2a3038; --info:#5a97df;
+        }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body { font-family:-apple-system,system-ui,sans-serif; background:var(--bg); color:var(--text); padding:24px 16px; line-height:1.5; }
+        a { color:var(--accent); }
+        .container { max-width:720px; margin:0 auto; }
+        h1 { font-size:1.7rem; color:var(--accent); margin-bottom:4px; }
+        h2 { font-size:1.1rem; margin-bottom:6px; }
+        .subtitle { color:var(--muted); margin-bottom:20px; font-size:0.9rem; }
+        .threat-banner {
+            background:linear-gradient(135deg,rgba(90,151,223,0.08),rgba(124,196,124,0.08));
+            border:1px solid rgba(90,151,223,0.4); border-left:4px solid var(--info);
+            padding:14px 18px; border-radius:6px; margin-bottom:20px; font-size:0.85rem; line-height:1.6;
+        }
+        .threat-banner strong { color:var(--info); }
+        .nav { margin-bottom:24px; font-size:0.9rem; } .nav a { margin-right:14px; }
+        .panel { background:var(--panel); border-radius:8px; padding:20px; border:1px solid var(--border); margin-bottom:16px; }
+        .panel.hidden { display:none; }
+        p.desc { color:var(--muted); font-size:0.85rem; margin-bottom:16px; }
+        .form-group { margin-bottom:12px; }
+        label { display:block; font-size:0.8rem; color:var(--muted); margin-bottom:4px; }
+        input[type="text"], input[type="number"], select {
+            width:100%; padding:10px 12px; background:var(--bg); color:var(--text);
+            border:1px solid var(--border); border-radius:6px; font-size:0.9rem; font-family:inherit;
+        }
+        input:focus, select:focus { outline:none; border-color:var(--accent); }
+        button.btn { width:100%; padding:12px; background:var(--accent); color:#fff; border:none; border-radius:6px;
+            font-size:0.95rem; font-weight:600; cursor:pointer; margin-top:8px; font-family:inherit; }
+        button.btn:hover { background:#5a97df; }
+        .result { margin-top:16px; padding:12px; border-radius:6px; font-size:0.85rem; }
+        .result.success { background:rgba(124,196,124,0.15); border:1px solid var(--success); }
+        .result.error { background:rgba(224,123,123,0.15); border:1px solid var(--danger); }
+        code { background:var(--bg); padding:2px 6px; border-radius:3px; font-family:monospace; }
+        .chat-box { background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:12px;
+            height:280px; overflow-y:auto; margin-bottom:12px; display:flex; flex-direction:column; gap:8px; }
+        .msg { padding:8px 12px; border-radius:8px; max-width:80%; font-size:0.88rem; white-space:pre-wrap; word-break:break-word; }
+        .msg.user { align-self:flex-end; background:rgba(122,183,255,0.18); border:1px solid var(--accent); }
+        .msg.admin { align-self:flex-start; background:rgba(124,196,124,0.15); border:1px solid var(--success); }
+        .msg .who { font-size:0.7rem; color:var(--muted); margin-bottom:2px; }
+        .footer { margin-top:32px; text-align:center; color:var(--muted); font-size:0.78rem; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Récupération — niveau 3</h1>
+    <p class="subtitle">Tu as perdu ta passphrase <em>et</em> ton mot de récupération. Un administrateur va t'aider.</p>
+
+    <div class="threat-banner">
+        <strong>Comment ça marche.</strong> On ne te redemande <strong>pas</strong> tes secrets oubliés.
+        Tu réponds à quelques questions de <strong>contexte</strong> (ce que seul le vrai titulaire connaît).
+        Ces réponses produisent un <strong>indice de confiance</strong> qui <em>aide</em> l'administrateur —
+        il n'ouvre rien tout seul. <strong>La décision reste humaine</strong>, via le chat ci-dessous.
+    </div>
+
+    <nav class="nav">
+        <a href="/selfrecover/">← Récupération (L1/L2)</a>
+        <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover" target="_blank">📦 GitHub</a>
+    </nav>
+
+    <!-- ÉTAPE 1 -->
+    <div id="step-id" class="panel">
+        <h2>1. Ton identifiant public</h2>
+        <p class="desc">L'identifiant que tu utilises sur ce site (pseudo public, numéro client, ID en jeu…).</p>
+        <div class="form-group">
+            <label>Identifiant</label>
+            <input type="text" id="l3-identifier" autocomplete="off" placeholder="ex. EMB-1234">
+        </div>
+        <input type="text" name="website" id="hp" tabindex="-1" autocomplete="off" aria-hidden="true"
+               style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
+        <button class="btn" onclick="startL3()">Démarrer la récupération</button>
+        <div id="step-id-result"></div>
+    </div>
+
+    <!-- ÉTAPE 2 -->
+    <div id="step-q" class="panel hidden">
+        <h2>2. Questions de contexte</h2>
+        <p class="desc">Aucun secret n'est demandé. Réponds au mieux de ta mémoire — chaque réponse correcte renforce l'indice de confiance vu par l'administrateur.</p>
+        <div id="questions"></div>
+        <button class="btn" onclick="submitL3()">Envoyer ma demande à l'administrateur</button>
+        <div id="step-q-result"></div>
+    </div>
+
+    <!-- ÉTAPE 3 -->
+    <div id="step-chat" class="panel hidden">
+        <h2>3. Litige <code id="chat-dispute"></code> — chat administrateur</h2>
+        <p class="desc">Un administrateur examine ta demande et te répond ici. Échange avec lui pour prouver ton identité.</p>
+        <div id="chat-box" class="chat-box"></div>
+        <div class="form-group">
+            <input type="text" id="chat-input" placeholder="Ton message à l'administrateur…" onkeydown="if(event.key==='Enter')sendMsg()">
+        </div>
+        <button class="btn" onclick="sendMsg()">Envoyer</button>
+    </div>
+
+    <div class="footer">
+        SelfRecover — AGPL-3.0-or-later · le niveau 3 n'ouvre jamais un compte automatiquement : un humain décide.
+    </div>
+</div>
+
+<script>
+let currentDispute = null;
+let chatTimer = null;
+
+window.api = async function(action, body) {
+    const opts = { method: body ? 'POST' : 'GET', headers: body ? {'Content-Type':'application/json'} : {} };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch('api/index.php?action=' + action, opts);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur inconnue');
+    return data;
+};
+
+function showResult(elId, html, isError) {
+    document.getElementById(elId).innerHTML =
+        '<div class="result ' + (isError ? 'error' : 'success') + '">' + html + '</div>';
+}
+
+// Empreinte navigateur simple (signal contextuel, non secret)
+function fingerprint() {
+    const s = [navigator.userAgent, navigator.language, screen.width + 'x' + screen.height,
+               Intl.DateTimeFormat().resolvedOptions().timeZone].join('|');
+    let h = 0; for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) >>> 0; }
+    return 'fp' + h.toString(16);
+}
+
+let identifier = '';
+
+async function startL3() {
+    try {
+        identifier = document.getElementById('l3-identifier').value.trim();
+        if (!identifier) { showResult('step-id-result', 'Identifiant requis.', true); return; }
+        const data = await api('recover-l3-init', {
+            identifier,
+            website: document.getElementById('hp').value || ''
+        });
+        // Render des questions
+        const box = document.getElementById('questions');
+        box.innerHTML = '';
+        (data.questions || []).forEach(q => {
+            let field;
+            if (q.type === 'select') {
+                field = '<select id="q-' + q.key + '"><option value="">—</option>' +
+                    q.options.map(o => '<option value="' + o + '">' + o + '</option>').join('') + '</select>';
+            } else {
+                const ph = q.type === 'month' ? 'MM/AAAA' : (q.type === 'year' ? 'AAAA' : '');
+                field = '<input type="text" id="q-' + q.key + '" placeholder="' + ph + '" autocomplete="off">';
+            }
+            box.innerHTML += '<div class="form-group"><label>' + q.label + '</label>' + field + '</div>';
+        });
+        document.getElementById('step-id').classList.add('hidden');
+        document.getElementById('step-q').classList.remove('hidden');
+    } catch (e) { showResult('step-id-result', e.message, true); }
+}
+
+async function submitL3() {
+    try {
+        const answers = {};
+        document.querySelectorAll('#questions [id^="q-"]').forEach(el => {
+            answers[el.id.slice(2)] = el.value.trim();
+        });
+        const data = await api('recover-l3', { identifier, answers, fingerprint: fingerprint() });
+        currentDispute = data.dispute_number;
+        document.getElementById('chat-dispute').textContent = currentDispute || '(en attente)';
+        document.getElementById('step-q').classList.add('hidden');
+        document.getElementById('step-chat').classList.remove('hidden');
+        startChatPolling();
+    } catch (e) { showResult('step-q-result', e.message, true); }
+}
+
+function renderMessages(messages) {
+    const box = document.getElementById('chat-box');
+    box.innerHTML = '';
+    if (!messages || !messages.length) {
+        box.innerHTML = '<div style="color:var(--muted);font-size:0.85rem">En attente d\'un administrateur…</div>';
+        return;
+    }
+    messages.forEach(m => {
+        const who = m.sender === 'admin' ? 'Administrateur' : 'Toi';
+        box.innerHTML += '<div class="msg ' + m.sender + '"><div class="who">' + who + ' · ' + m.created_at + '</div>' +
+            m.body.replace(/</g, '&lt;') + '</div>';
+    });
+    box.scrollTop = box.scrollHeight;
+}
+
+async function pollChat() {
+    if (!currentDispute) return;
+    try {
+        const data = await api('dispute-chat&dispute_number=' + encodeURIComponent(currentDispute));
+        renderMessages(data.messages);
+    } catch (e) { /* litige fermé/résolu : on arrête */ clearInterval(chatTimer); }
+}
+
+function startChatPolling() {
+    pollChat();
+    chatTimer = setInterval(pollChat, 3000);
+}
+
+async function sendMsg() {
+    const input = document.getElementById('chat-input');
+    const msg = input.value.trim();
+    if (!msg || !currentDispute) return;
+    input.value = '';
+    try {
+        await api('dispute-chat', { dispute_number: currentDispute, message: msg });
+        pollChat();
+    } catch (e) { input.value = msg; }
+}
+</script>
+</body>
+</html>

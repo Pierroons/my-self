@@ -7,7 +7,7 @@
 #
 # Ce script duplique les logs vers /var/lib/selfjustice/admin/access.log
 # où PHP peut les lire. À exécuter via cron toutes les 2 minutes :
-#   */2 * * * * /home/user/legi/admin_feed.sh
+#   */2 * * * * /home/deploy/legi/admin_feed.sh
 
 set -u
 

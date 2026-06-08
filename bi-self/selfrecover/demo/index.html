@@ -369,6 +369,7 @@
             <button class="tab" onclick="showTab('login')">Login</button>
             <button class="tab" onclick="showTab('recoverL1')">Recover L1</button>
             <button class="tab" onclick="showTab('recoverL2')">Recover L2</button>
+            <button class="tab" onclick="location.href='recover-l3.html'">Recover L3 · tout perdu</button>
             <button class="tab" onclick="showTab('entropy')">Entropy Lab</button>
         </div>
 
@@ -654,10 +655,14 @@
         // The raw recovery word never leaves the browser.
         // Site-specific key derived via HMAC-SHA256 with domain + site_salt.
         // Wrappée par transparency.js (hmacDeriveTraced) si chargée.
+        // R9-02 : label de service STABLE (configuré, PAS window.location.hostname) + sel par-utilisateur.
+        window.SERVICE_LABEL = 'selfrecover.my-self.fr';
+        window.genUserSalt = () => Array.from(crypto.getRandomValues(new Uint8Array(16)))
+            .map(b => b.toString(16).padStart(2, '0')).join('');
         window.hmacDerive = async function (word, salt) {
             const enc = new TextEncoder();
-            const domain = window.location.hostname;
-            const keyMaterial = enc.encode(domain + salt);
+            const label = window.SERVICE_LABEL;
+            const keyMaterial = enc.encode(label + salt);
             const key = await crypto.subtle.importKey(
                 'raw', keyMaterial,
                 { name: 'HMAC', hash: 'SHA-256' },
@@ -666,7 +671,7 @@
             const sig = await crypto.subtle.sign('HMAC', key, enc.encode(word));
             const hex = Array.from(new Uint8Array(sig))
                 .map(b => b.toString(16).padStart(2, '0')).join('');
-            console.log('[SelfRecover] HMAC derived for domain "' + domain + '"');
+            console.log('[SelfRecover] HMAC derived with service label "' + label + '" + per-user salt');
             console.log('[SelfRecover] Raw word never leaves this browser.');
             console.log('[SelfRecover] Derived key (first 16 chars): ' + hex.substring(0, 16) + '...');
             return hex;
@@ -692,11 +697,12 @@
                     showResult('reg-result', 'All fields are required.', true);
                     return;
                 }
-                const { salt } = await api('salt');
-                const recoveryDerivedKey = await hmacDerive(recoveryWord, salt);
+                const userSalt = window.genUserSalt(); // R9-02 : sel par-utilisateur généré côté client
+                const recoveryDerivedKey = await hmacDerive(recoveryWord, userSalt);
                 const data = await api('register', {
                     username, identifier, password,
                     recovery_derived_key: recoveryDerivedKey,
+                    user_salt: userSalt,
                     website: document.getElementById('reg-website')?.value || ''
                 });
                 showResult('reg-result',
@@ -840,7 +846,7 @@
                     showResult('l2-result', 'All fields are required.', true);
                     return;
                 }
-                const { salt } = await api('salt');
+                const { salt } = await api('user-salt&identifier=' + encodeURIComponent(identifier)); // R9-02 : sel du compte (anti-énum côté serveur)
                 const recoveryKey = await hmacDerive(recoveryWord, salt);
                 const data = await api('recover-l2', {
                     identifier, recovery_key: recoveryKey,

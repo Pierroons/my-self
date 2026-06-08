@@ -152,6 +152,14 @@ final class Moderate
         $pdo->prepare('UPDATE member_moderation SET reputation = ?, updated_at = ? WHERE account_id = ?')
             ->execute([$newRep, time(), $author]);
 
+        // V8-LAB-02 : détecter un pack AVANT d'appliquer les sanctions de seuil. Si le downvote
+        // courant complète un cluster coordonné, la réputation est restaurée d'abord → enforceThresholds
+        // ne pose alors NI ban NI strike injuste. detectPackVoting reste aussi appelé au sweep
+        // (/api/detect_abuse.php) comme filet, où il lève le ban/strikes a posteriori.
+        if ($value === -1) {
+            self::detectPackVoting($pdo);
+            $newRep = self::getReputation($pdo, $author)['reputation']; // après éventuelle restauration
+        }
         self::enforceThresholds($pdo, $author, $newRep);
 
         return ['ok' => true, 'blocked' => false, 'new_reputation' => $newRep,
@@ -161,54 +169,73 @@ final class Moderate
     /** Détecte les pack-voting (3+ downvotes coordonnés/60s sur même cible) → annule + restaure. */
     public static function detectPackVoting(PDO $pdo): array
     {
+        // On examine les downvotes récents puis on cherche un CLUSTER dense (>= PACK_MIN_VOTERS
+        // votants distincts dans une fenêtre GLISSANTE de PACK_WINDOW_SECONDS). Raisonner par
+        // fenêtre glissante — et non sur l'étalement global — empêche qu'un seul downvote espacé
+        // (légitime ou de camouflage) ne masque un pack coordonné, et épargne les votes hors cluster.
         $since = time() - self::PACK_WINDOW_SECONDS * 2;
-        // NB : la constante (int interne) est interpolée car un placeholder bindé
-        // en TEXT comparé à un COUNT() (numeric) est toujours faux en SQLite.
         $min = (int) self::PACK_MIN_VOTERS;
         $stmt = $pdo->prepare("
-            SELECT target_author, COUNT(*) AS c, MIN(created_at) AS min_t, MAX(created_at) AS max_t
-              FROM mod_votes
+            SELECT target_author FROM mod_votes
              WHERE value = -1 AND blocked = 0 AND created_at >= ?
-          GROUP BY target_author
-            HAVING COUNT(*) >= $min
+          GROUP BY target_author HAVING COUNT(*) >= $min
         ");
         $stmt->execute([$since]);
         $packs = [];
         $cancelled = 0;
 
         foreach ($stmt->fetchAll() as $row) {
-            $spread = (int) $row['max_t'] - (int) $row['min_t'];
-            if ($spread > self::PACK_WINDOW_SECONDS) {
-                continue; // trop étalé, pas coordonné
-            }
             $author = (int) $row['target_author'];
-            // Récupère les votes du pack
-            $vs = $pdo->prepare('
-                SELECT v.id, a.username FROM mod_votes v JOIN accounts a ON a.id = v.voter_id
-                 WHERE v.target_author = ? AND v.value = -1 AND v.blocked = 0
-                   AND v.created_at BETWEEN ? AND ?
-            ');
-            $vs->execute([$author, (int) $row['min_t'], (int) $row['max_t']]);
-            $rows = $vs->fetchAll();
-            $voteIds = array_column($rows, 'id');
-            $voters = array_column($rows, 'username');
-            if (count($voteIds) < self::PACK_MIN_VOTERS) {
+            $vs = $pdo->prepare('SELECT id, voter_id, created_at FROM mod_votes
+                                  WHERE target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?
+                                  ORDER BY created_at ASC');
+            $vs->execute([$author, $since]);
+            $votes = $vs->fetchAll();
+            $n = count($votes);
+
+            // Plus gros cluster de votes contenu dans une fenêtre de PACK_WINDOW_SECONDS.
+            $best = [];
+            for ($i = 0; $i < $n; $i++) {
+                $cluster = [];
+                for ($j = $i; $j < $n; $j++) {
+                    if ((int) $votes[$j]['created_at'] - (int) $votes[$i]['created_at'] <= self::PACK_WINDOW_SECONDS) {
+                        $cluster[] = $votes[$j];
+                    } else {
+                        break;
+                    }
+                }
+                if (count($cluster) > count($best)) {
+                    $best = $cluster;
+                }
+            }
+            // Pack = au moins PACK_MIN_VOTERS VOTANTS DISTINCTS dans la fenêtre dense.
+            $voters = array_values(array_unique(array_map('intval', array_column($best, 'voter_id'))));
+            if (count($voters) < self::PACK_MIN_VOTERS) {
                 continue;
             }
-            // Annule + restaure
+            $voteIds = array_column($best, 'id');
+
+            // Annule UNIQUEMENT les votes du cluster (les downvotes hors fenêtre sont épargnés).
             $ph = implode(',', array_fill(0, count($voteIds), '?'));
             $pdo->prepare("UPDATE mod_votes SET blocked = 1, blocked_reason = 'pack_voting' WHERE id IN ($ph)")
                 ->execute($voteIds);
             $restore = count($voteIds);
             $pdo->prepare('UPDATE member_moderation SET reputation = MIN(reputation + ?, ?), updated_at = ? WHERE account_id = ?')
                 ->execute([$restore, self::MAX_REPUTATION, time(), $author]);
-            // Restaure éventuellement le droit de vote si remonté au-dessus du seuil
+
+            // Restaure les conséquences injustes du pack annulé : droit de vote, et le ban +
+            // les strikes que enforceThresholds a pu poser pendant la chute. Le nombre de strikes
+            // retirés est borné à la taille du cluster annulé (biais en faveur de la victime).
             $rep = self::getReputation($pdo, $author);
             if ($rep['reputation'] >= self::LOSE_VOTING_AT) {
                 $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ?')->execute([$author]);
             }
+            if ($rep['reputation'] > self::BAN_AT && $rep['banned_until'] > 0) {
+                $pdo->prepare('UPDATE member_moderation SET banned_until = 0, strikes = MAX(0, strikes - ?) WHERE account_id = ?')
+                    ->execute([$restore, $author]);
+            }
             $cancelled += $restore;
-            $packs[] = ['target_author' => $author, 'voters' => $voters, 'spread_s' => $spread, 'cancelled' => $restore];
+            $packs[] = ['target_author' => $author, 'voters' => $voters, 'cancelled' => $restore];
         }
 
         return ['pack_detected' => count($packs) > 0, 'cancelled_votes' => $cancelled, 'packs' => $packs];

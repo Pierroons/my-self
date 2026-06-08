@@ -236,10 +236,10 @@
 
     async function hmacDeriveTraced(word, salt) {
         const enc = new TextEncoder();
-        const domain = window.location.hostname;
-        log('client', `CLIENT computing HMAC-SHA256(input.length=${word.length}ch, key="${domain}"+salt[${salt.length}ch])`);
+        const label = window.SERVICE_LABEL || 'selfrecover.my-self.fr'; // R9-02 : label stable, pas l'URL
+        log('client', `CLIENT computing HMAC-SHA256(input.length=${word.length}ch, key="${label}"+per-user-salt[${salt.length}ch])`);
         const t0 = performance.now();
-        const keyMaterial = enc.encode(domain + salt);
+        const keyMaterial = enc.encode(label + salt);
         const key = await crypto.subtle.importKey(
             'raw', keyMaterial,
             { name: 'HMAC', hash: 'SHA-256' },

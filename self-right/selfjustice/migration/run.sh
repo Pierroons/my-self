@@ -1,6 +1,6 @@
 #!/bin/bash
 # ===========================================================================
-# MIGRATION — justice.example.org → justice.my-self.fr + landing my-self.fr
+# MIGRATION — justice.example.com → justice.my-self.fr + landing my-self.fr
 # ===========================================================================
 # À lancer avec sudo : sudo bash /tmp/migration/run.sh
 #
@@ -132,13 +132,13 @@ test_url() {
 test_url "https://justice.my-self.fr/"                 "200"
 test_url "https://my-self.fr/"                         "200"
 test_url "https://www.my-self.fr/"                     "200"
-test_url "https://justice.example.org/"             "301"
+test_url "https://justice.example.com/"             "301"
 test_url "https://justice.my-self.fr/api/status"       "200"
 test_url "https://justice.my-self.fr/api/stats/by-ai"  "200"
 
 # Vérif que la redirection pointe bien vers le nouveau domaine
 log "7. Vérif du Location header de la redirection"
-LOCATION=$(curl -sI https://justice.example.org/ | grep -i "^location:" | tr -d '\r\n')
+LOCATION=$(curl -sI https://justice.example.com/ | grep -i "^location:" | tr -d '\r\n')
 echo "   $LOCATION"
 if echo "$LOCATION" | grep -q "justice.my-self.fr"; then
     ok "Redirection 301 vers justice.my-self.fr confirmée."
@@ -155,7 +155,7 @@ echo "  - https://justice.my-self.fr   (SelfJustice)"
 echo "  - https://justice.my-self.fr/api/status"
 echo ""
 echo "Ancienne URL (301 → nouvelle) :"
-echo "  - https://justice.example.org"
+echo "  - https://justice.example.com"
 echo ""
 echo "Backup de l'ancienne config : $BACKUP_DIR"
 echo ""

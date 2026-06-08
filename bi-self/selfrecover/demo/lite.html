@@ -219,9 +219,11 @@ window.api = async function(action, body) {
 };
 
 // === HMAC-SHA256 helper (mot mémorisé dérivé client-side) ===
+const SERVICE_LABEL = 'selfrecover.my-self.fr'; // R9-02 : label stable + sel par-utilisateur
+const genUserSalt = () => Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b=>b.toString(16).padStart(2,'0')).join('');
 async function hmacDerive(word, salt) {
     const enc = new TextEncoder();
-    const keyMat = enc.encode(salt);
+    const keyMat = enc.encode(SERVICE_LABEL + salt);
     const key = await crypto.subtle.importKey('raw', keyMat, {name:'HMAC',hash:'SHA-256'}, false, ['sign']);
     const sig = await crypto.subtle.sign('HMAC', key, enc.encode(word));
     return Array.from(new Uint8Array(sig)).map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -239,13 +241,13 @@ async function doLiteRegister() {
             return;
         }
 
-        // 1. Récupérer le salt du domaine
-        const { salt } = await api('salt');
+        // 1. R9-02 : sel par-utilisateur généré côté client (plus de sel global)
+        const userSalt = genUserSalt();
         // 2. Dériver HMAC du mot mémorisé côté client
-        const memorizedDerived = await hmacDerive(memorized, salt);
-        // 3. Inscription Lite : on envoie la dérivée, jamais le mot brut
+        const memorizedDerived = await hmacDerive(memorized, userSalt);
+        // 3. Inscription Lite : on envoie la dérivée + le sel, jamais le mot brut
         const data = await api('lite-register', {
-            username, email, password, memorized_derived_key: memorizedDerived,
+            username, email, password, memorized_derived_key: memorizedDerived, user_salt: userSalt,
             website: document.getElementById('reg-website')?.value || ''
         });
         showResult('reg-result',

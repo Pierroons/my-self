@@ -26,7 +26,7 @@ Actuellement servi par nginx sur le DEVSERVER :
 Pour publier un changement :
 
 1. Éditer `index.html` dans ce dossier
-2. Copier sur DEVSERVER : `scp index.html user@serveur-demo:/tmp/` puis
+2. Copier sur DEVSERVER : `scp index.html deploy@devserver:/tmp/` puis
    `sudo cp /tmp/index.html /var/www/my-self/index.html && sudo chown www-data:www-data /var/www/my-self/index.html`
 3. Cache nginx a `expires 1d` sur `/index.html` — ajouter un hard refresh
    navigateur (Ctrl+Shift+R) pour vérifier.

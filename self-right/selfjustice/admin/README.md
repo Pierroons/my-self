@@ -61,9 +61,9 @@ sudo nginx -t && sudo systemctl reload nginx
 PHP-FPM a `open_basedir` qui ne couvre pas `/var/log/nginx/`. Le script `admin_feed.sh` duplique les logs dans `/var/lib/selfjustice/admin/access.log` (path autorisé). À installer via cron :
 
 ```bash
-cp tools/admin_feed.sh /home/user/legi/admin_feed.sh
-chmod +x /home/user/legi/admin_feed.sh
-(crontab -l 2>/dev/null; echo "*/2 * * * * /home/user/legi/admin_feed.sh") | crontab -
+cp tools/admin_feed.sh /home/deploy/legi/admin_feed.sh
+chmod +x /home/deploy/legi/admin_feed.sh
+(crontab -l 2>/dev/null; echo "*/2 * * * * /home/deploy/legi/admin_feed.sh") | crontab -
 ```
 
 Le dashboard est désormais à jour dans un délai max de 2 minutes.

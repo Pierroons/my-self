@@ -106,10 +106,11 @@ function handleRegister(): void {
     $identifier = trim($in['identifier'] ?? '');
     $password = $in['password'] ?? '';
     $recoveryDerivedKey = $in['recovery_derived_key'] ?? '';
+    $userSalt = $in['user_salt'] ?? ''; // R9-02 : sel par-utilisateur (généré côté client)
 
     addTrace(sprintf(
-        "[register] input recu — username:%dch, identifier:%dch, password:%dch, recovery_derived_key:%dch",
-        strlen($username), strlen($identifier), strlen($password), strlen($recoveryDerivedKey)
+        "[register] input recu — username:%dch, identifier:%dch, password:%dch, recovery_derived_key:%dch, user_salt:%dch",
+        strlen($username), strlen($identifier), strlen($password), strlen($recoveryDerivedKey), strlen($userSalt)
     ));
 
     if (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', $username)) {
@@ -124,7 +125,10 @@ function handleRegister(): void {
     if (!$recoveryDerivedKey) {
         jsonError('Recovery word required');
     }
-    addTrace("[register] validation OK (username pattern, longueurs)");
+    if (!preg_match('/^[a-f0-9]{32}$/', $userSalt)) {
+        jsonError('user_salt invalide (32 hex requis)'); // R9-02
+    }
+    addTrace("[register] validation OK (username pattern, longueurs, user_salt)");
 
     $db = getDB();
     $stmt = $db->prepare("SELECT id FROM users WHERE username = ? OR identifier = ?");
@@ -161,10 +165,10 @@ function handleRegister(): void {
     ));
 
     $stmt = $db->prepare("
-        INSERT INTO users (username, identifier, password_hash, passphrase_hash, recovery_derived_hash)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO users (username, identifier, password_hash, passphrase_hash, recovery_derived_hash, user_salt)
+        VALUES (?, ?, ?, ?, ?, ?)
     ");
-    $stmt->execute([$username, $identifier, $pwdHash, $ppHash, $rcHash]);
+    $stmt->execute([$username, $identifier, $pwdHash, $ppHash, $rcHash, $userSalt]);
     addTrace(sprintf("[register] DB INSERT users (id=%d) — done", $db->lastInsertId()));
 
     jsonResponse([
@@ -198,6 +202,9 @@ function handleLogin(): void {
     if (!$verified) {
         jsonError('Invalid credentials', 401);
     }
+    // Signaux contextuels L3 : on garde trace de la dernière connexion + compteur
+    $db->prepare("UPDATE users SET last_login_at = CURRENT_TIMESTAMP, login_count = COALESCE(login_count,0) + 1 WHERE id = ?")
+       ->execute([$user['id']]);
     jsonResponse(['message' => 'Logged in', 'username' => $user['username']]);
 }
 
@@ -313,6 +320,24 @@ function handleRecoverL2(): void {
     ]);
 }
 
+// === USER-SALT (R9-02) : sel par-utilisateur pour la dérivation HMAC côté client ===
+// Le sel n'est PAS un secret (comme un sel bcrypt). Anti-énumération : si l'identifiant
+// n'existe pas, on renvoie un sel FACTICE déterministe — indistinguable d'un vrai —
+// pour ne pas révéler l'existence du compte.
+function handleUserSalt(): void {
+    $identifier = trim($_GET['identifier'] ?? '');
+    if ($identifier === '') jsonError('Identifiant requis');
+    $db = getDB();
+    $stmt = $db->prepare("SELECT user_salt FROM users WHERE identifier = ?");
+    $stmt->execute([$identifier]);
+    $row = $stmt->fetch();
+    usleep(120000); // anti-timing léger
+    $salt = ($row && !empty($row['user_salt']))
+        ? $row['user_salt']
+        : substr(hash_hmac('sha256', $identifier, SERVER_SECRET), 0, 32); // factice déterministe (32 hex)
+    jsonResponse(['salt' => $salt]);
+}
+
 function logAttempt(PDO $db, string $username, int $level, bool $success): void {
     $ip = $_SERVER['REMOTE_ADDR'] ?? '';
     $fingerprint = $_SERVER['HTTP_X_CLIENT_FINGERPRINT'] ?? '';
@@ -382,6 +407,299 @@ function securityChecks(array $in): void {
 
 
 // =====================================================================
+// SelfRecover L3 — récupération assistée (chat admin OBLIGATOIRE)
+// =====================================================================
+//
+// On arrive en L3 après échec L1 (passphrase) ET L2 (mot de récup) : ces secrets
+// sont oubliés, on ne les REDEMANDE PAS. Le L3 collecte des SIGNAUX CONTEXTUELS
+// vérifiables côté serveur (ce que le serveur sait déjà de l'utilisateur) et en
+// tire un INDICE DE CONFIANCE 0-100.
+//
+// RÈGLE ABSOLUE : l'indice n'ouvre JAMAIS le compte. Il aide seulement l'admin à
+// décider dans le chat. Toute récupération L3 passe par une décision humaine.
+
+/** Hook site-spécifique : signaux d'activité propres au site (posts, achats…).
+ *  Vide par défaut. Un site le surcharge pour enrichir le scoring (contexte
+ *  comportemental). Format : [['label'=>str, 'ok'=>bool, 'weight'=>int], …]. */
+function siteActivitySignals(array $user, array $answers, PDO $db): array {
+    return []; // démo générique : aucun signal site-spécifique
+}
+
+function getDisputeByNumber(PDO $db, string $number): ?array {
+    $stmt = $db->prepare("SELECT * FROM disputes WHERE dispute_number = ?");
+    $stmt->execute([$number]);
+    return $stmt->fetch() ?: null;
+}
+
+function getOrCreateDispute(PDO $db, array $user): array {
+    if (!empty($user['banned_until']) && strtotime($user['banned_until']) > time()) {
+        jsonError('Compte temporairement bloqué suite à un refus de litige. Réessaie plus tard.', 429);
+    }
+    $stmt = $db->prepare("SELECT * FROM disputes WHERE user_id = ? AND status IN ('open','awaiting_admin') ORDER BY created_at DESC LIMIT 1");
+    $stmt->execute([$user['id']]);
+    if ($d = $stmt->fetch()) return $d;
+
+    // R9-01 : numéro non devinable (capability secrète) — fin de l'énumération séquentielle LIT-NNNN
+    $number = 'LIT-' . strtoupper(bin2hex(random_bytes(8)));
+    $db->prepare("INSERT INTO disputes (dispute_number, user_id, identifier, status) VALUES (?, ?, ?, 'open')")
+       ->execute([$number, $user['id'], $user['identifier'] ?? '']);
+    addTrace("[L3] litige $number ouvert (user id={$user['id']})");
+    return getDisputeByNumber($db, $number);
+}
+
+/** Questions contextuelles posées à l'utilisateur — AUCUN secret. */
+function l3Questions(): array {
+    return [
+        ['key' => 'creation_year',     'label' => 'En quelle année as-tu créé ce compte ?',           'type' => 'year'],
+        ['key' => 'last_login_period', 'label' => 'À quand remonte ta dernière connexion ? (MM/AAAA)', 'type' => 'month'],
+        ['key' => 'login_freq',        'label' => 'À peu près, combien t\'es-tu connecté ?',           'type' => 'select', 'options' => ['rare', 'regulier', 'intensif']],
+    ];
+}
+
+// === RECOVER L3 INIT : identifiant → litige + questions contextuelles ===
+function handleRecoverL3Init(): void {
+    $in = getInput();
+    securityChecks($in);
+    $identifier = trim($in['identifier'] ?? '');
+    if (!$identifier) jsonError('Identifiant requis');
+
+    $db = getDB();
+    $stmt = $db->prepare("SELECT * FROM users WHERE identifier = ?");
+    $stmt->execute([$identifier]);
+    $user = $stmt->fetch();
+    usleep(300000); // anti-timing / anti-énumération
+
+    if (!$user) {
+        // Ne révèle pas l'absence du compte
+        jsonResponse([
+            'dispute_number' => null,
+            'questions' => l3Questions(),
+            'note' => 'Si cet identifiant existe, un litige sera ouvert ; un administrateur tranchera.',
+        ]);
+    }
+    $dispute = getOrCreateDispute($db, $user);
+    addTrace("[L3-init] litige {$dispute['dispute_number']} — questions contextuelles renvoyées (aucun secret demandé)");
+    jsonResponse([
+        'dispute_number' => $dispute['dispute_number'],
+        'questions' => l3Questions(),
+        'note' => 'Aucun secret ne t\'est demandé. Un administrateur examinera ta demande dans le chat.',
+    ]);
+}
+
+// === RECOVER L3 : signaux contextuels → indice de confiance → chat admin ===
+function handleRecoverL3(): void {
+    $in = getInput();
+    securityChecks($in);
+    $identifier = trim($in['identifier'] ?? '');
+    $answers = (isset($in['answers']) && is_array($in['answers'])) ? $in['answers'] : [];
+    if (!$identifier) jsonError('Identifiant requis');
+
+    $db = getDB();
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    $fp = $_SERVER['HTTP_X_CLIENT_FINGERPRINT'] ?? ($in['fingerprint'] ?? '');
+
+    $stmt = $db->prepare("SELECT * FROM users WHERE identifier = ?");
+    $stmt->execute([$identifier]);
+    $user = $stmt->fetch();
+    if (!$user) { usleep(300000); jsonResponse(['status' => 'awaiting_admin', 'message' => 'Demande enregistrée. Un administrateur te répondra.']); }
+
+    $dispute = getOrCreateDispute($db, $user);
+
+    // Cooldown 1h entre soumissions L3
+    $stmt = $db->prepare("SELECT attempted_at FROM recovery_attempts WHERE username = ? AND level = 3 ORDER BY attempted_at DESC LIMIT 1");
+    $stmt->execute([$user['username']]);
+    $last = $stmt->fetchColumn();
+    if ($last && (time() - strtotime($last)) < 3600) {
+        $min = (int)ceil((3600 - (time() - strtotime($last))) / 60);
+        jsonError("Patiente encore {$min} min avant une nouvelle soumission.", 429);
+    }
+
+    // === FAISCEAU DE SIGNAUX (preuves factuelles, PAS un score chiffré) ===
+    $signals = gatherSignals($answers, $user, $db, $ip, $fp);
+
+    $db->prepare("UPDATE disputes SET signals_json = ?, status = 'awaiting_admin', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+       ->execute([json_encode($signals, JSON_UNESCAPED_UNICODE), $dispute['id']]);
+    logAttempt($db, $user['username'], 3, false); // un L3 ne "réussit" jamais seul
+
+    addTrace("[L3] faisceau collecté ({$signals['summary']}) — litige {$dispute['dispute_number']} en attente admin (AUCUN score, AUCUN mot de passe : décision humaine)");
+    jsonResponse([
+        'dispute_number' => $dispute['dispute_number'],
+        'status' => 'awaiting_admin',
+        'message' => 'Ta demande est transmise à un administrateur. Ouvre le chat pour échanger avec lui.',
+        // Volontairement : zéro mot de passe. La décision est humaine.
+    ]);
+}
+
+/** Collecte un FAISCEAU DE PREUVES factuelles — PAS de score chiffré (biais d'ancrage évité).
+ *  Deux axes séparés pour l'admin :
+ *    - PASSIF      : constaté par le serveur, l'utilisateur ne peut pas le falsifier (IP, empreinte).
+ *    - DÉCLARATIF  : ce que l'utilisateur affirme connaître, comparé dit/réel (devinable → plus faible).
+ *  L'admin lit les faits et décide ; rien n'est agrégé en un nombre. */
+function gatherSignals(array $answers, array $user, PDO $db, string $ip, string $fp): array {
+    $passive = []; $declarative = [];
+
+    // --- PASSIF (non falsifiable par l'utilisateur) ---
+    $stmt = $db->prepare("SELECT COUNT(*) FROM recovery_attempts WHERE username = ? AND ip_address = ? AND success = 1");
+    $stmt->execute([$user['username'], $ip]);
+    $ipCount = (int)$stmt->fetchColumn();
+    $passive[] = ['label' => 'IP déjà utilisée par ce compte', 'ok' => $ipCount > 0,
+                  'detail' => $ipCount > 0 ? "$ipCount connexion(s) réussie(s) depuis cette IP" : 'IP jamais vue pour ce compte'];
+
+    $fpKnown = false;
+    if ($fp) {
+        $stmt = $db->prepare("SELECT COUNT(*) FROM recovery_attempts WHERE username = ? AND fingerprint = ?");
+        $stmt->execute([$user['username'], $fp]);
+        $fpKnown = (int)$stmt->fetchColumn() > 0;
+    }
+    $passive[] = ['label' => 'Empreinte navigateur connue', 'ok' => $fpKnown,
+                  'detail' => $fpKnown ? 'empreinte déjà observée' : 'empreinte inconnue'];
+
+    // --- DÉCLARATIF (dit / réel) ---
+    $dit = trim($answers['creation_year'] ?? '');
+    $reel = !empty($user['created_at']) ? date('Y', strtotime($user['created_at'])) : '?';
+    $declarative[] = ['label' => 'Année de création', 'dit' => $dit ?: '—', 'reel' => $reel, 'ok' => ($dit !== '' && $dit === $reel)];
+
+    $dit = trim($answers['last_login_period'] ?? '');
+    $reel = !empty($user['last_login_at']) ? date('m/Y', strtotime($user['last_login_at'])) : '?';
+    $okLast = ($dit !== '' && !empty($user['last_login_at'])
+        && ($dit === $reel || substr($dit, 0, 7) === date('Y-m', strtotime($user['last_login_at']))));
+    $declarative[] = ['label' => 'Dernière connexion (mois)', 'dit' => $dit ?: '—', 'reel' => $reel, 'ok' => $okLast];
+
+    $dit = trim($answers['login_freq'] ?? '');
+    $lc = (int)($user['login_count'] ?? 0);
+    $band = $lc < 10 ? 'rare' : ($lc < 50 ? 'regulier' : 'intensif');
+    $declarative[] = ['label' => 'Fréquence d\'usage', 'dit' => $dit ?: '—', 'reel' => "$band (~$lc connexions)", 'ok' => ($dit === $band)];
+
+    // Hook site-spécifique (déclaratif fort) : peut fournir label/dit/reel/ok
+    foreach (siteActivitySignals($user, $answers, $db) as $sig) {
+        $declarative[] = ['label' => $sig['label'] ?? 'activité site', 'dit' => $sig['dit'] ?? '—',
+                          'reel' => $sig['reel'] ?? '—', 'ok' => !empty($sig['ok'])];
+    }
+
+    $passOk = count(array_filter($passive, fn($s) => $s['ok']));
+    $declOk = count(array_filter($declarative, fn($s) => $s['ok']));
+    return [
+        'passive' => $passive,
+        'declarative' => $declarative,
+        'summary' => sprintf('%d/%d passifs · %d/%d déclaratifs concordants', $passOk, count($passive), $declOk, count($declarative)),
+        'passive_ok' => $passOk, 'passive_total' => count($passive),
+        'declarative_ok' => $declOk, 'declarative_total' => count($declarative),
+    ];
+}
+
+// === DISPUTE CHAT (user ↔ admin, polling) ===
+function handleDisputeChat(): void {
+    $isGet = $_SERVER['REQUEST_METHOD'] === 'GET';
+    $in = $isGet ? $_GET : getInput();
+    securityChecks($in); // R9-01/#3 : honeypot + IP bloquée (anti-brute du numéro de litige)
+    $number = trim($in['dispute_number'] ?? '');
+    if (!$number) jsonError('Numéro de litige requis');
+
+    $db = getDB();
+    $dispute = getDisputeByNumber($db, $number);
+    if (!$dispute || $dispute['status'] === 'closed') {
+        // R9-01 : tentative sur un numéro inexistant = suspecte (anti-énumération/brute du numéro)
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        if ($ip) trackSuspiciousIP($db, $ip, $_SERVER['HTTP_X_CLIENT_FINGERPRINT'] ?? '', $_SERVER['HTTP_USER_AGENT'] ?? '');
+        jsonError('Litige introuvable ou fermé', 404);
+    }
+
+    if ($isGet) {
+        $stmt = $db->prepare("SELECT sender, body, created_at FROM dispute_messages WHERE dispute_id = ? ORDER BY created_at ASC");
+        $stmt->execute([$dispute['id']]);
+        jsonResponse(['status' => $dispute['status'], 'messages' => $stmt->fetchAll()]);
+    }
+
+    $body = trim($in['message'] ?? '');
+    if ($body === '') jsonError('Message vide');
+    if (mb_strlen($body) > 2000) jsonError('Message trop long');
+    // L'admin (token valide) poste comme 'admin' ; sinon comme 'user'
+    $sender = 'user';
+    $adminTok = $_SERVER['HTTP_X_ADMIN_TOKEN'] ?? ($in['admin_token'] ?? '');
+    $expectedTok = adminTokenExpected(); // R9-05 : jeton via env uniquement, aucun fallback en dur
+    if ($expectedTok !== null && $adminTok !== '' && hash_equals($expectedTok, (string)$adminTok)) $sender = 'admin';
+    $db->prepare("INSERT INTO dispute_messages (dispute_id, sender, body) VALUES (?, ?, ?)")
+       ->execute([$dispute['id'], $sender, $body]);
+    jsonResponse(['sent' => true, 'sender' => $sender]);
+}
+
+// === ADMIN — litiges (auth minimale démo : header X-Admin-Token) ===
+/** Jeton admin attendu : variable d'environnement UNIQUEMENT (R9-05, fail-closed — aucun fallback en dur). */
+function adminTokenExpected(): ?string {
+    $t = getenv('SELFRECOVER_ADMIN_TOKEN');
+    return ($t === false || $t === '') ? null : $t;
+}
+
+function requireAdmin(): void {
+    $token = $_SERVER['HTTP_X_ADMIN_TOKEN'] ?? ($_GET['admin_token'] ?? '');
+    $expected = adminTokenExpected();
+    if ($expected === null) jsonError('Console admin non configurée (SELFRECOVER_ADMIN_TOKEN absent)', 503);
+    if (!hash_equals($expected, (string)$token)) jsonError('Accès admin refusé', 403);
+}
+
+function handleAdminDisputes(): void {
+    requireAdmin();
+    $db = getDB();
+    $rows = $db->query("
+        SELECT d.dispute_number, d.status, d.signals_json, d.refusal_count, d.created_at,
+               u.username, u.identifier, u.created_at AS account_created, u.last_login_at, u.login_count
+        FROM disputes d JOIN users u ON u.id = d.user_id
+        WHERE d.status != 'closed' ORDER BY d.updated_at DESC
+    ")->fetchAll();
+    foreach ($rows as &$r) { $r['signals'] = json_decode($r['signals_json'] ?? '{}', true); unset($r['signals_json']); }
+    jsonResponse(['disputes' => $rows]);
+}
+
+function handleAdminDisputeDecide(): void {
+    requireAdmin();
+    $in = getInput();
+    $number = trim($in['dispute_number'] ?? '');
+    $decision = $in['decision'] ?? ''; // 'grant' | 'refuse'
+    $db = getDB();
+    $dispute = getDisputeByNumber($db, $number);
+    if (!$dispute) jsonError('Litige introuvable', 404);
+
+    $stmt = $db->prepare("SELECT * FROM users WHERE id = ?");
+    $stmt->execute([$dispute['user_id']]);
+    $user = $stmt->fetch();
+    if (!$user) jsonError('Utilisateur introuvable', 404);
+
+    if ($decision === 'grant') {
+        $newPwd = generatePassword();
+        $hash = password_hash($newPwd, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
+        $db->prepare("UPDATE users SET password_hash = ?, l1_block_count = 0, l1_blocked_until = NULL, banned_until = NULL WHERE id = ?")
+           ->execute([$hash, $user['id']]);
+        $db->prepare("UPDATE disputes SET status = 'resolved', updated_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([$dispute['id']]);
+        $db->prepare("INSERT INTO dispute_messages (dispute_id, sender, body) VALUES (?, 'admin', ?)")
+           ->execute([$dispute['id'], "Identité confirmée. Nouveau mot de passe : $newPwd"]);
+        addTrace("[L3-admin] litige $number ACCORDÉ — reset password (décision humaine)");
+        jsonResponse(['decision' => 'granted', 'new_password' => $newPwd]);
+    }
+
+    if ($decision === 'refuse') {
+        $refusals = (int)$dispute['refusal_count'] + 1;
+        if ($refusals >= 3) {
+            $db->prepare("DELETE FROM users WHERE id = ?")->execute([$user['id']]);
+            $db->prepare("UPDATE disputes SET status = 'closed', refusal_count = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+               ->execute([$refusals, $dispute['id']]);
+            addTrace("[L3-admin] litige $number 3e REFUS → compte supprimé (identifiant libéré)");
+            jsonResponse(['decision' => 'refused', 'account_deleted' => true, 'refusal_count' => $refusals]);
+        }
+        $bannedUntil = date('Y-m-d H:i:s', time() + 86400);
+        $db->prepare("UPDATE users SET banned_until = ? WHERE id = ?")->execute([$bannedUntil, $user['id']]);
+        $db->prepare("UPDATE disputes SET status = 'refused', refusal_count = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+           ->execute([$refusals, $dispute['id']]);
+        $db->prepare("INSERT INTO dispute_messages (dispute_id, sender, body) VALUES (?, 'admin', ?)")
+           ->execute([$dispute['id'], "Preuve insuffisante. Nouvelle tentative possible dans 24h (refus $refusals/3)."]);
+        addTrace("[L3-admin] litige $number REFUSÉ ($refusals/3) — ban 24h");
+        jsonResponse(['decision' => 'refused', 'refusal_count' => $refusals, 'banned_24h' => true]);
+    }
+
+    jsonError('Décision invalide (grant|refuse)');
+}
+
+
+// =====================================================================
 // SelfRecover LITE (V0.1.1) — variante avec SMTP + mot mémorisé HMAC
 // =====================================================================
 //
@@ -415,6 +733,7 @@ function handleLiteRegister(): void {
     $password = $in['password'] ?? '';
     // Le client envoie déjà la dérivée HMAC — pas le mot brut
     $memorizedDerived = $in['memorized_derived_key'] ?? '';
+    $userSalt = $in['user_salt'] ?? ''; // R9-02
 
     addTrace(sprintf("[lite-register] input — username:%dch, email:%dch, password:%dch, memorized_derived:%dch",
         strlen($username), strlen($email), strlen($password), strlen($memorizedDerived)));
@@ -423,6 +742,7 @@ function handleLiteRegister(): void {
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) jsonError('Email invalide');
     if (strlen($password) < 8) jsonError('Password: 8 chars minimum');
     if (strlen($memorizedDerived) !== 64) jsonError('Memorized word derivation must be 64 hex chars (HMAC-SHA256)');
+    if (!preg_match('/^[a-f0-9]{32}$/', $userSalt)) jsonError('user_salt invalide (32 hex requis)');
 
     $db = getDB();
     $stmt = $db->prepare("SELECT id FROM users WHERE username = ? OR email = ?");
@@ -441,10 +761,10 @@ function handleLiteRegister(): void {
     $placeholderId = 'lite-' . bin2hex(random_bytes(8));
     $stmt = $db->prepare("
         INSERT INTO users (username, identifier, password_hash, passphrase_hash,
-                           recovery_derived_hash, email, memorized_word_hash)
-        VALUES (?, ?, ?, '', '', ?, ?)
+                           recovery_derived_hash, email, memorized_word_hash, user_salt)
+        VALUES (?, ?, ?, '', '', ?, ?, ?)
     ");
-    $stmt->execute([$username, $placeholderId, $pwdHash, $email, $memHash]);
+    $stmt->execute([$username, $placeholderId, $pwdHash, $email, $memHash, $userSalt]);
     addTrace(sprintf("[lite-register] DB INSERT users (id=%d, mode=lite)", $db->lastInsertId()));
 
     jsonResponse([
@@ -516,7 +836,8 @@ function handleLiteResetInfo(): void {
     if (strlen($requestId) !== 64) jsonError('Request ID invalide', 400);
 
     $db = getDB();
-    $stmt = $db->prepare("SELECT id, salt, expires_at, used FROM reset_requests WHERE id = ?");
+    $stmt = $db->prepare("SELECT r.id, r.salt, r.expires_at, r.used, u.user_salt
+                          FROM reset_requests r JOIN users u ON u.id = r.user_id WHERE r.id = ?");
     $stmt->execute([$requestId]);
     $req = $stmt->fetch();
 
@@ -537,6 +858,7 @@ function handleLiteResetInfo(): void {
     jsonResponse([
         'valid' => true,
         'salt' => $req['salt'],
+        'user_salt' => $req['user_salt'], // R9-02 : sel par-utilisateur pour la dérivation client
         'expires_at' => $req['expires_at'],
     ]);
 }

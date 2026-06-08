@@ -14,7 +14,7 @@ Pack de scripts pour exposer le portail admin **ADM** d'un NAS NAS uniquement vi
 
 ```
                 ┌──────────────────────────────────────┐
-                │  NAS NAS <modele> (192.0.2.20)│
+                │  NAS NAS <modele> (192.0.2.134)│
                 │                                      │
                 │   ADM portal :8000 (LHS NAS)     │
                 │            ▲                         │
@@ -46,7 +46,7 @@ Backup nightly :
 - NAS NAS <modele> avec ADM 4.x à jour
 - SSH activé temporairement sur le NAS (le temps de l'install)
 - Compte admin avec accès root via SSH
-- DEVSERVER (192.0.2.10) accessible depuis le NAS, clé USB montée à `/mnt/usb-backup/`
+- DEVSERVER (192.0.2.60) accessible depuis le NAS, clé USB montée à `/mnt/usb-backup/`
 - Sur le DEVSERVER, utilisateur `deploy` avec `~/.ssh/authorized_keys` accessible
 
 ## Étapes d'installation
@@ -63,13 +63,13 @@ Dans l'interface ADM web :
 Depuis ton poste de dev :
 
 ```bash
-scp tor-nas.sh torrc.template admin@192.0.2.20:/tmp/
+scp tor-nas.sh torrc.template admin@192.0.2.134:/tmp/
 ```
 
 ### 3. Lancer l'install
 
 ```bash
-ssh admin@192.0.2.20
+ssh admin@192.0.2.134
 sudo /tmp/tor-nas.sh install
 ```
 
@@ -87,23 +87,23 @@ Récupère la clé publique affichée par l'install, puis depuis ton poste :
 
 ```bash
 SSH_KEY_DEVSERVER="$HOME/.ssh/id_rsa_serveur"
-NAS_PUBKEY=$(ssh admin@192.0.2.20 cat /opt/tor/.ssh/nas-to-devserver.pub)
-ssh -i "$SSH_KEY_DEVSERVER" user@192.0.2.10 "echo '$NAS_PUBKEY' >> ~/.ssh/authorized_keys"
+NAS_PUBKEY=$(ssh admin@192.0.2.134 cat /opt/tor/.ssh/nas-to-devserver.pub)
+ssh -i "$SSH_KEY_DEVSERVER" deploy@192.0.2.60 "echo '$NAS_PUBKEY' >> ~/.ssh/authorized_keys"
 ```
 
 Puis prépare le dossier cible sur le DEVSERVER :
 
 ```bash
-ssh -i "$SSH_KEY_DEVSERVER" user@192.0.2.10 \
+ssh -i "$SSH_KEY_DEVSERVER" deploy@192.0.2.60 \
     "mkdir -p /mnt/usb-backup/nas-asustor/tor-backups && chmod 700 /mnt/usb-backup/nas-asustor"
 ```
 
 ### 5. Démarrer Tor et obtenir l'adresse `.onion`
 
 ```bash
-ssh admin@192.0.2.20 sudo /opt/tor/bin/tor-nas.sh start
+ssh admin@192.0.2.134 sudo /opt/tor/bin/tor-nas.sh start
 sleep 30  # le HS prend ~10-30 secondes à se publier
-ssh admin@192.0.2.20 sudo /opt/tor/bin/tor-nas.sh status
+ssh admin@192.0.2.134 sudo /opt/tor/bin/tor-nas.sh status
 ```
 
 Le `status` affiche la **vraie adresse `.onion` v3** (56 caractères + `.onion`). Note-la dans une note physique sécurisée.
@@ -111,7 +111,7 @@ Le `status` affiche la **vraie adresse `.onion` v3** (56 caractères + `.onion`)
 ### 6. Premier backup
 
 ```bash
-ssh admin@192.0.2.20 sudo /opt/tor/bin/tor-nas.sh backup
+ssh admin@192.0.2.134 sudo /opt/tor/bin/tor-nas.sh backup
 ```
 
 Crée une archive `tor-backup-<timestamp>.tar.gz` contenant :
@@ -165,11 +165,11 @@ Si tu reformates le NAS, l'adresse `.onion` est perdue **sauf si tu restaures la
 # 1. Réinstaller : sudo /tmp/tor-nas.sh install (mais NE PAS démarrer Tor)
 # 2. Récupérer le dernier backup depuis le DEVSERVER :
 scp -i "$SSH_KEY_DEVSERVER" \
-    "user@192.0.2.10:/mnt/usb-backup/nas-asustor/tor-backups/tor-backup-<latest>.tar.gz" \
+    "deploy@192.0.2.60:/mnt/usb-backup/nas-asustor/tor-backups/tor-backup-<latest>.tar.gz" \
     /tmp/
 
 # 3. Sur le NAS :
-ssh admin@192.0.2.20
+ssh admin@192.0.2.134
 sudo tar -xzf /tmp/tor-backup-<latest>.tar.gz -C /opt/tor/hidden_service_adm/
 sudo chmod 600 /opt/tor/hidden_service_adm/hs_ed25519_secret_key
 sudo chmod 700 /opt/tor/hidden_service_adm

@@ -5,7 +5,7 @@
 # dont le meta.json a un expires_at passé.
 #
 # À exécuter via cron toutes les 5 minutes :
-#   */5 * * * * /home/user/legi/cleanup_demo_sessions.sh
+#   */5 * * * * /home/deploy/legi/cleanup_demo_sessions.sh
 
 set -u
 

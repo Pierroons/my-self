@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SelfRecover — Console admin (litiges L3)</title>
+    <style>
+        :root { --bg:#0f1419; --panel:#1a2028; --text:#e8eaed; --muted:#9aa0a6; --accent:#7ab7ff;
+            --success:#7cc47c; --danger:#e07b7b; --warn:#d4c058; --border:#2a3038; --info:#5a97df; }
+        * { box-sizing:border-box; margin:0; padding:0; }
+        body { font-family:-apple-system,system-ui,sans-serif; background:var(--bg); color:var(--text); padding:24px 16px; line-height:1.5; }
+        .container { max-width:980px; margin:0 auto; }
+        h1 { font-size:1.6rem; color:var(--accent); margin-bottom:4px; }
+        .subtitle { color:var(--muted); margin-bottom:20px; font-size:0.9rem; }
+        .panel { background:var(--panel); border-radius:8px; padding:18px; border:1px solid var(--border); margin-bottom:16px; }
+        .panel.hidden { display:none; }
+        label { display:block; font-size:0.8rem; color:var(--muted); margin-bottom:4px; }
+        input[type="text"], input[type="password"] { width:100%; padding:10px 12px; background:var(--bg); color:var(--text);
+            border:1px solid var(--border); border-radius:6px; font-size:0.9rem; font-family:inherit; }
+        button.btn { padding:10px 16px; background:var(--accent); color:#fff; border:none; border-radius:6px;
+            font-size:0.9rem; font-weight:600; cursor:pointer; font-family:inherit; }
+        button.btn:hover { background:#5a97df; }
+        button.btn.grant { background:var(--success); } button.btn.refuse { background:var(--danger); }
+        button.btn.ghost { background:transparent; border:1px solid var(--border); color:var(--muted); }
+        .layout { display:grid; grid-template-columns:300px 1fr; gap:16px; }
+        @media(max-width:760px){ .layout{ grid-template-columns:1fr; } }
+        .dispute-item { padding:10px 12px; border:1px solid var(--border); border-radius:6px; margin-bottom:8px; cursor:pointer; }
+        .dispute-item:hover { border-color:var(--accent); }
+        .dispute-item.active { border-color:var(--accent); background:rgba(122,183,255,0.08); }
+        .dn { font-weight:700; color:var(--accent); }
+        .score { font-size:0.8rem; }
+        .score .bar { display:inline-block; height:8px; border-radius:4px; vertical-align:middle; }
+        .badge { display:inline-block; font-size:0.7rem; padding:1px 7px; border-radius:4px; }
+        .badge.open,.badge.awaiting_admin { background:var(--warn); color:#000; }
+        .badge.resolved { background:var(--success); color:#000; }
+        .badge.refused { background:var(--danger); color:#fff; }
+        .signals { list-style:none; font-size:0.82rem; margin:8px 0; }
+        .signals li { padding:3px 0; } .signals .ok { color:var(--success); } .signals .ko { color:var(--muted); }
+        .ctx { font-size:0.82rem; color:var(--muted); margin:8px 0; }
+        .chat-box { background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:12px;
+            height:240px; overflow-y:auto; margin:10px 0; display:flex; flex-direction:column; gap:8px; }
+        .msg { padding:7px 11px; border-radius:8px; max-width:80%; font-size:0.86rem; white-space:pre-wrap; word-break:break-word; }
+        .msg.user { align-self:flex-start; background:rgba(122,183,255,0.15); border:1px solid var(--accent); }
+        .msg.admin { align-self:flex-end; background:rgba(124,196,124,0.15); border:1px solid var(--success); }
+        .msg .who { font-size:0.68rem; color:var(--muted); margin-bottom:2px; }
+        .note { font-size:0.8rem; color:var(--warn); margin-bottom:10px; }
+        .row { display:flex; gap:8px; align-items:center; } .row > input { flex:1; }
+        .footer { margin-top:28px; text-align:center; color:var(--muted); font-size:0.78rem; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Console admin — litiges niveau 3</h1>
+    <p class="subtitle">L'indice de confiance est une <strong>aide à la décision</strong>. C'est toi qui tranches, jamais le score.</p>
+
+    <!-- AUTH -->
+    <div id="auth" class="panel">
+        <label>Jeton admin (démo : <code>demo-admin-token</code>)</label>
+        <div class="row">
+            <input type="password" id="token" placeholder="X-Admin-Token">
+            <button class="btn" onclick="connect()">Se connecter</button>
+        </div>
+        <div id="auth-err" style="color:var(--danger);font-size:0.85rem;margin-top:8px"></div>
+    </div>
+
+    <!-- CONSOLE -->
+    <div id="console" class="panel hidden">
+        <div class="layout">
+            <div>
+                <div class="row" style="margin-bottom:10px">
+                    <strong>Litiges</strong>
+                    <button class="btn ghost" onclick="loadDisputes()" style="margin-left:auto">↻</button>
+                </div>
+                <div id="dispute-list"></div>
+            </div>
+            <div id="detail">
+                <p style="color:var(--muted)">Sélectionne un litige à gauche.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">SelfRecover — console admin de démo · AGPL-3.0-or-later</div>
+</div>
+
+<script>
+let TOKEN = '';
+let current = null;
+let chatTimer = null;
+
+async function api(action, body) {
+    const opts = { method: body ? 'POST' : 'GET', headers: body ? {'Content-Type':'application/json'} : {} };
+    if (body) opts.body = JSON.stringify(body);
+    const res = await fetch('api/index.php?action=' + action, opts);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erreur');
+    return data;
+}
+
+async function connect() {
+    TOKEN = document.getElementById('token').value.trim();
+    try {
+        await api('admin-disputes&admin_token=' + encodeURIComponent(TOKEN));
+        document.getElementById('auth').classList.add('hidden');
+        document.getElementById('console').classList.remove('hidden');
+        loadDisputes();
+    } catch (e) { document.getElementById('auth-err').textContent = e.message; }
+}
+
+async function loadDisputes() {
+    const data = await api('admin-disputes&admin_token=' + encodeURIComponent(TOKEN));
+    const list = document.getElementById('dispute-list');
+    list.innerHTML = '';
+    if (!data.disputes.length) { list.innerHTML = '<p style="color:var(--muted);font-size:0.85rem">Aucun litige ouvert.</p>'; return; }
+    data.disputes.forEach(d => {
+        const sig = d.signals || {};
+        list.innerHTML += '<div class="dispute-item' + (current && current.dispute_number === d.dispute_number ? ' active' : '') +
+            '" onclick=\'select(' + JSON.stringify(JSON.stringify(d)) + ')\'>' +
+            '<div class="dn">' + d.dispute_number + '</div>' +
+            '<div class="score" style="color:var(--muted)">' + (sig.summary || 'signaux en attente') + '</div>' +
+            '<div style="font-size:0.8rem;color:var(--muted)">' + d.username + ' · <span class="badge ' + d.status + '">' + d.status + '</span></div>' +
+            '</div>';
+    });
+}
+
+function select(json) {
+    current = JSON.parse(json);
+    const d = current;
+    const sig = d.signals || {};
+    const passive = (sig.passive || []).map(s =>
+        '<li class="' + (s.ok ? 'ok' : 'ko') + '">' + (s.ok ? '✓' : '✗') + ' ' + s.label + ' <span style="color:var(--muted)">— ' + (s.detail || '') + '</span></li>').join('');
+    const declarative = (sig.declarative || []).map(s =>
+        '<li class="' + (s.ok ? 'ok' : 'ko') + '">' + (s.ok ? '✓' : '✗') + ' ' + s.label + ' <span style="color:var(--muted)">— dit « ' + (s.dit || '—') + ' » / réel « ' + (s.reel || '—') + ' »</span></li>').join('');
+    document.getElementById('detail').innerHTML =
+        '<h2 style="color:var(--accent)">' + d.dispute_number + ' — ' + d.username + '</h2>' +
+        '<div class="note">⚠️ Ces signaux sont une <strong>aide</strong>, pas un verdict. Vérifie l\'identité dans le chat avant de décider.</div>' +
+        '<div style="font-size:0.85rem;margin-bottom:4px"><strong>Signaux passifs</strong> <span style="color:var(--muted)">(non falsifiables par l\'utilisateur)</span></div>' +
+        '<ul class="signals">' + (passive || '<li class="ko">aucun</li>') + '</ul>' +
+        '<div style="font-size:0.85rem;margin:10px 0 4px"><strong>Déclaratif</strong> <span style="color:var(--muted)">(ce que l\'utilisateur affirme — devinable)</span></div>' +
+        '<ul class="signals">' + (declarative || '<li class="ko">aucun</li>') + '</ul>' +
+        '<div class="ctx">' + (sig.summary || '') + ' · identifiant <code>' + d.identifier + '</code> · créé ' + (d.account_created || '?') +
+        ' · dernière connexion ' + (d.last_login_at || '?') + ' · ' + (d.login_count || 0) + ' connexions · refus ' + (d.refusal_count || 0) + '/3</div>' +
+        '<div id="chat-box" class="chat-box"></div>' +
+        '<div class="row"><input type="text" id="chat-input" placeholder="Répondre à l\'utilisateur…" onkeydown="if(event.key===\'Enter\')reply()"><button class="btn" onclick="reply()">Envoyer</button></div>' +
+        '<div class="row" style="margin-top:12px">' +
+        '<button class="btn grant" onclick="decide(\'grant\')">✓ Accorder (reset)</button>' +
+        '<button class="btn refuse" onclick="decide(\'refuse\')">✗ Refuser (ban 24h · 3=suppr.)</button>' +
+        '</div><div id="decide-result" style="margin-top:10px;font-size:0.85rem"></div>';
+    clearInterval(chatTimer); pollChat(); chatTimer = setInterval(pollChat, 3000);
+}
+
+async function pollChat() {
+    if (!current) return;
+    try {
+        const data = await api('dispute-chat&dispute_number=' + encodeURIComponent(current.dispute_number));
+        const box = document.getElementById('chat-box'); if (!box) return;
+        box.innerHTML = data.messages.length ? '' : '<div style="color:var(--muted);font-size:0.85rem">Aucun message.</div>';
+        data.messages.forEach(m => {
+            const who = m.sender === 'admin' ? 'Toi (admin)' : current.username;
+            box.innerHTML += '<div class="msg ' + m.sender + '"><div class="who">' + who + ' · ' + m.created_at + '</div>' + m.body.replace(/</g,'&lt;') + '</div>';
+        });
+        box.scrollTop = box.scrollHeight;
+    } catch (e) { clearInterval(chatTimer); }
+}
+
+async function reply() {
+    const input = document.getElementById('chat-input'); const msg = input.value.trim();
+    if (!msg || !current) return; input.value = '';
+    try { await api('dispute-chat', { dispute_number: current.dispute_number, message: msg, admin_token: TOKEN }); pollChat(); }
+    catch (e) { input.value = msg; }
+}
+
+async function decide(decision) {
+    if (!current) return;
+    if (decision === 'refuse' && !confirm('Refuser ce litige ? (ban 24h ; au 3e refus le compte est supprimé)')) return;
+    try {
+        const data = await api('admin-dispute-decide&admin_token=' + encodeURIComponent(TOKEN), { dispute_number: current.dispute_number, decision });
+        let html = '';
+        if (data.decision === 'granted') html = '<span style="color:var(--success)">✓ Accordé. Nouveau mot de passe transmis à l\'utilisateur dans le chat.</span>';
+        else if (data.account_deleted) html = '<span style="color:var(--danger)">✗ 3e refus — compte supprimé, identifiant libéré.</span>';
+        else html = '<span style="color:var(--warn)">✗ Refusé (' + data.refusal_count + '/3) — ban 24h.</span>';
+        document.getElementById('decide-result').innerHTML = html;
+        loadDisputes();
+    } catch (e) { document.getElementById('decide-result').innerHTML = '<span style="color:var(--danger)">' + e.message + '</span>'; }
+}
+</script>
+</body>
+</html>

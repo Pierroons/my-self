@@ -10,7 +10,7 @@
 #   - endpoint consulté (article cité anonymement)
 #
 # À lancer via cron toutes les heures :
-#   0 * * * * /home/user/legi/build_stats.sh
+#   0 * * * * /home/deploy/legi/build_stats.sh
 
 # Pas de set -e : grep -c retourne 1 quand 0 match, on gère les erreurs localement
 

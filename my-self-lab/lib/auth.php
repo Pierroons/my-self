@@ -27,12 +27,14 @@ final class Auth
     private const LOGIN_MAX_FAILS = 5;        // échecs / username avant blocage temporaire
     private const LOGIN_MAX_FAILS_PER_IP = 12; // échecs cumulés / IP / fenêtre (anti-spraying, tolère un foyer NAT)
     private const LOGIN_WINDOW = 900;         // fenêtre de comptage (15 min)
+    /** Options Argon2id (R9-06, alignées sur le profil OWASP de SelfRecover). */
+    private const ARGON2 = ['memory_cost' => 65536, 'time_cost' => 4, 'threads' => 2];
     /**
-     * Hash bcrypt cost 12 factice, exécuté quand le compte n'existe pas, pour que
+     * Hash Argon2id factice (R9-06), exécuté quand le compte n'existe pas, pour que
      * password_verify prenne le même temps qu'avec un vrai compte (anti-énumération
-     * par timing). Ne correspond à aucun mot de passe réel.
+     * par timing — DOIT être du même algo que les vrais hash). Aucun mot de passe réel.
      */
-    private const DUMMY_BCRYPT = '$2y$12$U8kdsw/Okk6pxMpEUl2LVeWR3cBuwvkT2YX4teyvvvttXY93ubAb2';
+    private const DUMMY_HASH = '$argon2id$v=19$m=65536,t=4,p=2$SXQ3V2s0SHVuaEZWR003bQ$FM4OpKIf6dEQsf0BMOE6uFqG+OyWDcTRR6+tUoKpOWA';
 
     /** derived_key = HMAC-SHA256(recovery_word, domain || site_salt). */
     public static function deriveKey(string $recoveryWord, string $domain, string $siteSalt): string
@@ -114,9 +116,9 @@ final class Auth
 
         $derivedKey = self::deriveKey($recoveryWord, self::DOMAIN, self::siteSalt());
 
-        $pwHash       = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
-        $passHash     = password_hash($passphrase, PASSWORD_BCRYPT, ['cost' => 12]);
-        $recoveryHash = password_hash($derivedKey, PASSWORD_BCRYPT, ['cost' => 12]);
+        $pwHash       = password_hash($password, PASSWORD_ARGON2ID, self::ARGON2);
+        $passHash     = password_hash($passphrase, PASSWORD_ARGON2ID, self::ARGON2);
+        $recoveryHash = password_hash($derivedKey, PASSWORD_ARGON2ID, self::ARGON2);
 
         $stmt = $pdo->prepare(
             'INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at)
@@ -184,7 +186,7 @@ final class Auth
         $acc = $stmt->fetch();
         // LAB-02 : toujours exécuter un bcrypt (hash factice si le compte n'existe pas) pour que
         // le temps de réponse ne trahisse pas l'existence du compte.
-        $ok = password_verify($password, $acc ? $acc['pw_hash'] : self::DUMMY_BCRYPT) && (bool) $acc;
+        $ok = password_verify($password, $acc ? $acc['pw_hash'] : self::DUMMY_HASH) && (bool) $acc;
 
         $pdo->prepare(
             'INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, ?, ?, ?)'
@@ -194,6 +196,12 @@ final class Auth
             // LAB-07 : message générique, sans compteur de tentatives restantes.
             return ['ok' => false, 'status' => 'wrong',
                     'message' => 'Identifiant ou mot de passe incorrect.'];
+        }
+
+        // R9-06 : migration douce des anciens hash bcrypt → Argon2id à la connexion réussie.
+        if (password_needs_rehash($acc['pw_hash'], PASSWORD_ARGON2ID, self::ARGON2)) {
+            $pdo->prepare('UPDATE accounts SET pw_hash = ? WHERE id = ?')
+                ->execute([password_hash($password, PASSWORD_ARGON2ID, self::ARGON2), (int) $acc['id']]);
         }
 
         $token = self::generateSessionToken();
@@ -240,7 +248,7 @@ final class Auth
 
         $derived = self::deriveKey($recoveryWord, self::DOMAIN, self::siteSalt());
         // LAB-02 : bcrypt systématique (hash factice si compte absent) pour égaliser le timing.
-        $ok = password_verify($derived, $acc ? $acc['recovery_hash'] : self::DUMMY_BCRYPT) && (bool) $acc;
+        $ok = password_verify($derived, $acc ? $acc['recovery_hash'] : self::DUMMY_HASH) && (bool) $acc;
 
         $pdo->prepare('INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, ?, ?, ?)')
             ->execute([$marker, $ok ? 1 : 0, $ip, time()]);
@@ -255,8 +263,8 @@ final class Auth
         $newPassphrase = implode(' ', $diceware['words']);
 
         $pdo->prepare('UPDATE accounts SET pw_hash = ?, pass_hash = ? WHERE id = ?')->execute([
-            password_hash($newPassword, PASSWORD_BCRYPT, ['cost' => 12]),
-            password_hash($newPassphrase, PASSWORD_BCRYPT, ['cost' => 12]),
+            password_hash($newPassword, PASSWORD_ARGON2ID, self::ARGON2),
+            password_hash($newPassphrase, PASSWORD_ARGON2ID, self::ARGON2),
             (int) $acc['id'],
         ]);
         // sécurité : on coupe toutes les sessions ouvertes du compte

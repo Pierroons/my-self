@@ -167,10 +167,10 @@ fichier. On passe directement par `fastcgi.conf` + `SCRIPT_FILENAME` absolu.
 
 ```bash
 ssh user@devserver '
-  sudo cp /tmp/cleanup_demo_sessions.sh /home/user/legi/
-  sudo chmod +x /home/user/legi/cleanup_demo_sessions.sh
+  sudo cp /tmp/cleanup_demo_sessions.sh /home/deploy/legi/
+  sudo chmod +x /home/deploy/legi/cleanup_demo_sessions.sh
 '
-ssh user@devserver 'crontab -l; echo "*/5 * * * * /home/user/legi/cleanup_demo_sessions.sh"' | ssh user@devserver crontab -
+ssh user@devserver 'crontab -l; echo "*/5 * * * * /home/deploy/legi/cleanup_demo_sessions.sh"' | ssh user@devserver crontab -
 ```
 
 ### 4.6 Vérifier

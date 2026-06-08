@@ -21,3 +21,6 @@ Thumbs.db
 # Logs & runtime
 *.log
 /tmp/
+
+# Doc de mission pentest interne — jamais public
+my-self-lab/docs/PENTEST-MISSION.md

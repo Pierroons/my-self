@@ -3,11 +3,11 @@
 # Télécharge les nouveaux tarballs DILA et reconstruit la SQLite.
 #
 # À lancer via cron le 1er et le 15 de chaque mois :
-#   0 4 1,15 * * /home/user/legi/update_legi.sh
+#   0 4 1,15 * * /home/deploy/legi/update_legi.sh
 
 set -e
 
-LEGI_DIR="/home/user/legi"
+LEGI_DIR="/home/deploy/legi"
 TARBALLS_DIR="$LEGI_DIR/tarballs"
 DB_FILE="$LEGI_DIR/legi_selfjustice.sqlite"
 DB_BACKUP="$LEGI_DIR/legi_selfjustice.sqlite.bak"

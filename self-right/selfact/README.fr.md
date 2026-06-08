@@ -132,7 +132,7 @@ dans `/var/www/selfjustice/api/act/data/` qui est owned par `www-data`.
 Permissions à appliquer une fois à l'installation :
 
 ```bash
-sudo chown -R www-data:user /var/www/selfjustice/api/act/data/
+sudo chown -R www-data:deploy /var/www/selfjustice/api/act/data/
 sudo chmod 775 /var/www/selfjustice/api/act/data/
 sudo chmod 664 /var/www/selfjustice/api/act/data/*.json
 ```

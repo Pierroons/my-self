@@ -8,12 +8,17 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     passphrase_hash TEXT NOT NULL,
     recovery_derived_hash TEXT NOT NULL,
+    user_salt TEXT,                       -- R9-02 : sel par-utilisateur (public, non secret) pour la dérivation HMAC client
     l1_block_count INTEGER DEFAULT 0,
     l1_blocked_until TEXT,
     -- SelfRecover Lite (V0.1.1) : email + mot mémorisé pour reset 2FA-style
     email TEXT,
     memorized_word_hash TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    -- L3 : signaux contextuels + ban temporaire après refus de litige
+    last_login_at TEXT,
+    login_count INTEGER DEFAULT 0,
+    banned_until TEXT
 );
 
 -- SelfRecover Lite : table des demandes de reset par email + HMAC mot mémorisé
@@ -58,3 +63,31 @@ CREATE INDEX IF NOT EXISTS idx_attempts_time ON recovery_attempts(attempted_at);
 CREATE INDEX IF NOT EXISTS idx_attempts_ip ON recovery_attempts(ip_address);
 CREATE INDEX IF NOT EXISTS idx_susp_ip ON suspicious_fingerprints(ip);
 CREATE INDEX IF NOT EXISTS idx_susp_fp ON suspicious_fingerprints(fingerprint);
+
+-- L3 : litiges (chat admin obligatoire — le scoring n'ouvre jamais rien, il aide l'admin)
+CREATE TABLE IF NOT EXISTS disputes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dispute_number TEXT UNIQUE NOT NULL,      -- LIT-XXXX
+    user_id INTEGER NOT NULL,
+    identifier TEXT,
+    status TEXT NOT NULL DEFAULT 'open',       -- open | awaiting_admin | resolved | refused | closed
+    refusal_count INTEGER DEFAULT 0,           -- 3 refus → suppression du compte
+    signals_json TEXT,                         -- faisceau de signaux contextuels (faits bruts pour l'admin, jamais un score chiffré)
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS dispute_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dispute_id INTEGER NOT NULL,
+    sender TEXT NOT NULL,                      -- user | admin
+    body TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dispute_id) REFERENCES disputes(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_disputes_user ON disputes(user_id);
+CREATE INDEX IF NOT EXISTS idx_disputes_number ON disputes(dispute_number);
+CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status);
+CREATE INDEX IF NOT EXISTS idx_dispute_msg ON dispute_messages(dispute_id);
