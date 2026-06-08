@@ -292,7 +292,7 @@ Failure to respect any of these rules significantly degrades the guarantees. The
 
 **AGPL-3.0-or-later**. Code, documentation, and whitepapers published in the `Pierroons/my-self` repository.
 
-Any deployed version, modified or not, must publish its sources under the same license. No SaaS capture possible. Mechanism consistent with Nextcloud, Mastodon, ProtonMail, Ekylibre.
+Any deployed version, modified or not, must publish its sources under the same license. No SaaS capture possible.
 
 Author: Pierroons. Contact details accessible via the public repository.
 

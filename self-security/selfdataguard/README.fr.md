@@ -190,4 +190,4 @@ La suite `sanity_storage.php` inclut un "BIG TEST" qui dumpe le fichier SQLite e
 
 **AGPL-3.0-or-later**. Voir [LICENSE](../../LICENSE).
 
-Tout déploiement, modifié ou non, doit publier son code source sous la même licence. Aucune capture SaaS possible. Même mécanisme que Nextcloud, Mastodon, ProtonMail.
+Tout déploiement, modifié ou non, doit publier son code source sous la même licence. Aucune capture SaaS possible.
