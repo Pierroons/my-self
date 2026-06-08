@@ -174,7 +174,7 @@ php tests/sanity_facade.php       # 34 tests — full API end-to-end
 # Total: 155 tests, 0 failures
 ```
 
-The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file and verifies that no plaintext personal data appears anywhere in the binary blob — the core promise of SelfDataGuard, asserted by code.
+The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file and verifies that no plaintext personal data appears anywhere in the binary blob.
 
 ---
 
