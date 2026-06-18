@@ -45,6 +45,9 @@ switch ($action) {
     case 'recover-l3':
         handleRecoverL3();
         break;
+    case 'l3-reset': // R9-01b : re-enrôlement par le propriétaire après accord admin
+        handleL3Reset();
+        break;
     case 'dispute-chat':
         handleDisputeChat();
         break;

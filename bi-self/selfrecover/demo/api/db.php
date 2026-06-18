@@ -47,6 +47,10 @@ function getDB(): PDO {
             "ALTER TABLE users ADD COLUMN login_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN banned_until TEXT",
             "ALTER TABLE users ADD COLUMN user_salt TEXT",
+            // R9-01b : capability liée à un sésame propriétaire + TTL + signal multi-demandeur
+            "ALTER TABLE disputes ADD COLUMN claim_hash TEXT",
+            "ALTER TABLE disputes ADD COLUMN expires_at TEXT",
+            "ALTER TABLE disputes ADD COLUMN init_collisions INTEGER DEFAULT 0",
         ] as $migration) {
             try { $pdo->exec($migration); } catch (Exception $e) { /* duplicate column = OK */ }
         }
@@ -84,6 +88,9 @@ function getDB(): PDO {
                 status TEXT NOT NULL DEFAULT 'open',
                 refusal_count INTEGER DEFAULT 0,
                 signals_json TEXT,
+                claim_hash TEXT,
+                expires_at TEXT,
+                init_collisions INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )");

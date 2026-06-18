@@ -117,7 +117,8 @@ async function loadDisputes() {
             '" onclick=\'select(' + JSON.stringify(JSON.stringify(d)) + ')\'>' +
             '<div class="dn">' + d.dispute_number + '</div>' +
             '<div class="score" style="color:var(--muted)">' + (sig.summary || 'signaux en attente') + '</div>' +
-            '<div style="font-size:0.8rem;color:var(--muted)">' + d.username + ' · <span class="badge ' + d.status + '">' + d.status + '</span></div>' +
+            '<div style="font-size:0.8rem;color:var(--muted)">' + d.username + ' · <span class="badge ' + d.status + '">' + d.status + '</span>' +
+            ((d.init_collisions > 0) ? ' <span style="color:var(--danger)">⚠ multi-demandeur (' + d.init_collisions + ')</span>' : '') + '</div>' +
             '</div>';
     });
 }
@@ -133,6 +134,7 @@ function select(json) {
     document.getElementById('detail').innerHTML =
         '<h2 style="color:var(--accent)">' + d.dispute_number + ' — ' + d.username + '</h2>' +
         '<div class="note">⚠️ Ces signaux sont une <strong>aide</strong>, pas un verdict. Vérifie l\'identité dans le chat avant de décider.</div>' +
+        ((d.init_collisions > 0) ? '<div class="note" style="border-color:var(--danger);color:var(--danger)">⚠ <strong>Multi-demandeur</strong> : ' + d.init_collisions + ' tentative(s) d\'ouverture concurrente sur ce compte. Possible usurpation — redouble de prudence dans la vérification.</div>' : '') +
         '<div style="font-size:0.85rem;margin-bottom:4px"><strong>Signaux passifs</strong> <span style="color:var(--muted)">(non falsifiables par l\'utilisateur)</span></div>' +
         '<ul class="signals">' + (passive || '<li class="ko">aucun</li>') + '</ul>' +
         '<div style="font-size:0.85rem;margin:10px 0 4px"><strong>Déclaratif</strong> <span style="color:var(--muted)">(ce que l\'utilisateur affirme — devinable)</span></div>' +
@@ -142,7 +144,7 @@ function select(json) {
         '<div id="chat-box" class="chat-box"></div>' +
         '<div class="row"><input type="text" id="chat-input" placeholder="Répondre à l\'utilisateur…" onkeydown="if(event.key===\'Enter\')reply()"><button class="btn" onclick="reply()">Envoyer</button></div>' +
         '<div class="row" style="margin-top:12px">' +
-        '<button class="btn grant" onclick="decide(\'grant\')">✓ Accorder (reset)</button>' +
+        '<button class="btn grant" onclick="decide(\'grant\')">✓ Accorder (le demandeur re-définit son secret)</button>' +
         '<button class="btn refuse" onclick="decide(\'refuse\')">✗ Refuser (ban 24h · 3=suppr.)</button>' +
         '</div><div id="decide-result" style="margin-top:10px;font-size:0.85rem"></div>';
     clearInterval(chatTimer); pollChat(); chatTimer = setInterval(pollChat, 3000);
@@ -151,7 +153,7 @@ function select(json) {
 async function pollChat() {
     if (!current) return;
     try {
-        const data = await api('dispute-chat&dispute_number=' + encodeURIComponent(current.dispute_number));
+        const data = await api('dispute-chat', { dispute_number: current.dispute_number, admin_token: TOKEN });
         const box = document.getElementById('chat-box'); if (!box) return;
         box.innerHTML = data.messages.length ? '' : '<div style="color:var(--muted);font-size:0.85rem">Aucun message.</div>';
         data.messages.forEach(m => {
@@ -175,7 +177,7 @@ async function decide(decision) {
     try {
         const data = await api('admin-dispute-decide&admin_token=' + encodeURIComponent(TOKEN), { dispute_number: current.dispute_number, decision });
         let html = '';
-        if (data.decision === 'granted') html = '<span style="color:var(--success)">✓ Accordé. Nouveau mot de passe transmis à l\'utilisateur dans le chat.</span>';
+        if (data.decision === 'granted') html = '<span style="color:var(--success)">✓ Identité confirmée. Aucun mot de passe n\'est transmis : le demandeur va définir lui-même son nouveau secret depuis sa page de récupération.</span>';
         else if (data.account_deleted) html = '<span style="color:var(--danger)">✗ 3e refus — compte supprimé, identifiant libéré.</span>';
         else html = '<span style="color:var(--warn)">✗ Refusé (' + data.refusal_count + '/3) — ban 24h.</span>';
         document.getElementById('decide-result').innerHTML = html;

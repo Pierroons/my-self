@@ -431,20 +431,40 @@ function getDisputeByNumber(PDO $db, string $number): ?array {
     return $stmt->fetch() ?: null;
 }
 
-function getOrCreateDispute(PDO $db, array $user): array {
+/** Litige actif (non clos) d'un compte. R9-01b : 'granted' compte comme actif
+ *  (re-enrôlement en attente) pour empêcher l'ouverture d'un litige parallèle. */
+function getActiveDispute(PDO $db, int $userId): ?array {
+    $stmt = $db->prepare("SELECT * FROM disputes WHERE user_id = ? AND status IN ('open','awaiting_admin','granted') ORDER BY created_at DESC LIMIT 1");
+    $stmt->execute([$userId]);
+    return $stmt->fetch() ?: null;
+}
+
+/** Crée un litige avec une capability non devinable (R9-01), un sésame propriétaire
+ *  (R9-01b : claim_hash) et un TTL (R9-01b : 24h). */
+function createDispute(PDO $db, array $user, string $claimHash): array {
     if (!empty($user['banned_until']) && strtotime($user['banned_until']) > time()) {
         jsonError('Compte temporairement bloqué suite à un refus de litige. Réessaie plus tard.', 429);
     }
-    $stmt = $db->prepare("SELECT * FROM disputes WHERE user_id = ? AND status IN ('open','awaiting_admin') ORDER BY created_at DESC LIMIT 1");
-    $stmt->execute([$user['id']]);
-    if ($d = $stmt->fetch()) return $d;
-
-    // R9-01 : numéro non devinable (capability secrète) — fin de l'énumération séquentielle LIT-NNNN
-    $number = 'LIT-' . strtoupper(bin2hex(random_bytes(8)));
-    $db->prepare("INSERT INTO disputes (dispute_number, user_id, identifier, status) VALUES (?, ?, ?, 'open')")
-       ->execute([$number, $user['id'], $user['identifier'] ?? '']);
-    addTrace("[L3] litige $number ouvert (user id={$user['id']})");
+    $number = 'LIT-' . strtoupper(bin2hex(random_bytes(8)));        // R9-01 : fin de l'énumération séquentielle
+    $expires = date('Y-m-d H:i:s', time() + 86400);                 // R9-01b : capability à durée de vie limitée
+    $db->prepare("INSERT INTO disputes (dispute_number, user_id, identifier, status, claim_hash, expires_at) VALUES (?, ?, ?, 'open', ?, ?)")
+       ->execute([$number, $user['id'], $user['identifier'] ?? '', $claimHash, $expires]);
+    addTrace("[L3] litige $number ouvert (user id={$user['id']}, claim lié, TTL 24h)");
     return getDisputeByNumber($db, $number);
+}
+
+/** R9-01b : un litige expiré n'est plus accessible (capability à durée de vie limitée). */
+function disputeExpired(?array $dispute): bool {
+    return $dispute && !empty($dispute['expires_at']) && strtotime($dispute['expires_at']) < time();
+}
+
+/** R9-01b : vérifie le sésame du demandeur contre le claim_hash stocké (SHA-256).
+ *  En L3 le propriétaire n'a PAS de session (secrets perdus) : ce sésame, généré dans
+ *  SON navigateur à l'init, autorise lecture/écriture du fil — l'identifiant (semi-public)
+ *  ne suffit plus. Ferme la fuite de capability. */
+function disputeClaimValid(?array $dispute, string $claimSecret): bool {
+    if (!$dispute || $claimSecret === '' || empty($dispute['claim_hash'])) return false;
+    return hash_equals($dispute['claim_hash'], hash('sha256', $claimSecret));
 }
 
 /** Questions contextuelles posées à l'utilisateur — AUCUN secret. */
@@ -461,7 +481,9 @@ function handleRecoverL3Init(): void {
     $in = getInput();
     securityChecks($in);
     $identifier = trim($in['identifier'] ?? '');
+    $claimHash  = trim($in['claim_hash'] ?? ''); // R9-01b : SHA-256 du sésame généré côté client
     if (!$identifier) jsonError('Identifiant requis');
+    if (!preg_match('/^[a-f0-9]{64}$/', $claimHash)) jsonError('claim_hash invalide (SHA-256 hex requis)');
 
     $db = getDB();
     $stmt = $db->prepare("SELECT * FROM users WHERE identifier = ?");
@@ -477,12 +499,29 @@ function handleRecoverL3Init(): void {
             'note' => 'Si cet identifiant existe, un litige sera ouvert ; un administrateur tranchera.',
         ]);
     }
-    $dispute = getOrCreateDispute($db, $user);
-    addTrace("[L3-init] litige {$dispute['dispute_number']} — questions contextuelles renvoyées (aucun secret demandé)");
+
+    // R9-01b : un litige est déjà ouvert pour ce compte → on ne RE-DIVULGUE PAS le numéro
+    // au nouvel appelant (sinon la capability serait dérivable de l'identifiant semi-public).
+    // L'init concurrente est enregistrée comme signal « multi-demandeur » pour l'admin.
+    $existing = getActiveDispute($db, (int)$user['id']);
+    if ($existing && !disputeExpired($existing)) {
+        $db->prepare("UPDATE disputes SET init_collisions = init_collisions + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+           ->execute([$existing['id']]);
+        addTrace("[L3-init] litige déjà ouvert pour ce compte — numéro NON divulgué (anti-fuite de capability), signal multi-demandeur +1");
+        jsonResponse([
+            'dispute_number' => null,
+            'already_open' => true,
+            'questions' => l3Questions(),
+            'note' => 'Une procédure de récupération est déjà en cours pour cet identifiant. Si c\'est toi, reprends-la avec le code de suivi enregistré sur cet appareil. Sinon, un administrateur a été alerté.',
+        ]);
+    }
+
+    $dispute = createDispute($db, $user, $claimHash);
+    addTrace("[L3-init] litige {$dispute['dispute_number']} ouvert — questions contextuelles renvoyées (aucun secret demandé)");
     jsonResponse([
         'dispute_number' => $dispute['dispute_number'],
         'questions' => l3Questions(),
-        'note' => 'Aucun secret ne t\'est demandé. Un administrateur examinera ta demande dans le chat.',
+        'note' => 'Aucun secret ne t\'est demandé. Garde le code de suivi affiché : il protège ta procédure. Un administrateur examinera ta demande.',
     ]);
 }
 
@@ -490,20 +529,29 @@ function handleRecoverL3Init(): void {
 function handleRecoverL3(): void {
     $in = getInput();
     securityChecks($in);
-    $identifier = trim($in['identifier'] ?? '');
+    $number = trim($in['dispute_number'] ?? '');
+    $claim  = trim($in['claim_secret'] ?? ''); // R9-01b : sésame d'init
     $answers = (isset($in['answers']) && is_array($in['answers'])) ? $in['answers'] : [];
-    if (!$identifier) jsonError('Identifiant requis');
+    if (!$number || !$claim) jsonError('Litige et code de suivi requis (relance la procédure depuis le début).');
 
     $db = getDB();
     $ip = $_SERVER['REMOTE_ADDR'] ?? '';
     $fp = $_SERVER['HTTP_X_CLIENT_FINGERPRINT'] ?? ($in['fingerprint'] ?? '');
 
-    $stmt = $db->prepare("SELECT * FROM users WHERE identifier = ?");
-    $stmt->execute([$identifier]);
-    $user = $stmt->fetch();
-    if (!$user) { usleep(300000); jsonResponse(['status' => 'awaiting_admin', 'message' => 'Demande enregistrée. Un administrateur te répondra.']); }
+    $dispute = getDisputeByNumber($db, $number);
+    if (!$dispute || disputeExpired($dispute) || !in_array($dispute['status'], ['open','awaiting_admin'], true)) {
+        usleep(300000); jsonError('Litige introuvable ou clos', 404);
+    }
+    // R9-01b : seul le porteur du sésame d'init peut alimenter le faisceau de ce litige.
+    if (!disputeClaimValid($dispute, $claim)) {
+        if ($ip) trackSuspiciousIP($db, $ip, $fp, $_SERVER['HTTP_USER_AGENT'] ?? '');
+        usleep(300000); jsonError('Code de suivi invalide', 403);
+    }
 
-    $dispute = getOrCreateDispute($db, $user);
+    $stmt = $db->prepare("SELECT * FROM users WHERE id = ?");
+    $stmt->execute([$dispute['user_id']]);
+    $user = $stmt->fetch();
+    if (!$user) jsonError('Compte introuvable', 404);
 
     // Cooldown 1h entre soumissions L3
     $stmt = $db->prepare("SELECT attempted_at FROM recovery_attempts WHERE username = ? AND level = 3 ORDER BY attempted_at DESC LIMIT 1");
@@ -589,22 +637,34 @@ function gatherSignals(array $answers, array $user, PDO $db, string $ip, string 
 
 // === DISPUTE CHAT (user ↔ admin, polling) ===
 function handleDisputeChat(): void {
-    $isGet = $_SERVER['REQUEST_METHOD'] === 'GET';
-    $in = $isGet ? $_GET : getInput();
-    securityChecks($in); // R9-01/#3 : honeypot + IP bloquée (anti-brute du numéro de litige)
+    // R9-01b : POST uniquement — le numéro + le sésame ne transitent jamais en query-string (loggable nginx).
+    $in = getInput();
+    securityChecks($in); // honeypot + IP bloquée
     $number = trim($in['dispute_number'] ?? '');
     if (!$number) jsonError('Numéro de litige requis');
 
     $db = getDB();
     $dispute = getDisputeByNumber($db, $number);
-    if (!$dispute || $dispute['status'] === 'closed') {
-        // R9-01 : tentative sur un numéro inexistant = suspecte (anti-énumération/brute du numéro)
+    if (!$dispute || $dispute['status'] === 'closed' || disputeExpired($dispute)) {
+        // tentative sur un numéro inexistant/expiré = suspecte (anti-énumération/brute du numéro)
         $ip = $_SERVER['REMOTE_ADDR'] ?? '';
         if ($ip) trackSuspiciousIP($db, $ip, $_SERVER['HTTP_X_CLIENT_FINGERPRINT'] ?? '', $_SERVER['HTTP_USER_AGENT'] ?? '');
         jsonError('Litige introuvable ou fermé', 404);
     }
 
-    if ($isGet) {
+    // R9-01b : autorisation du fil — soit l'admin (token), soit le propriétaire (sésame d'init).
+    // L'identifiant seul (semi-public) ne donne plus accès au chat ni au verdict.
+    $adminTok = $_SERVER['HTTP_X_ADMIN_TOKEN'] ?? ($in['admin_token'] ?? '');
+    $expectedTok = adminTokenExpected(); // R9-05 : jeton via env uniquement, aucun fallback en dur
+    $isAdmin = ($expectedTok !== null && $adminTok !== '' && hash_equals($expectedTok, (string)$adminTok));
+    if (!$isAdmin && !disputeClaimValid($dispute, trim($in['claim_secret'] ?? ''))) {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        if ($ip) trackSuspiciousIP($db, $ip, $_SERVER['HTTP_X_CLIENT_FINGERPRINT'] ?? '', $_SERVER['HTTP_USER_AGENT'] ?? '');
+        jsonError('Accès au litige refusé (code de suivi invalide)', 403);
+    }
+
+    // Lecture (polling) = absence de champ 'message' ; écriture sinon.
+    if (!isset($in['message'])) {
         $stmt = $db->prepare("SELECT sender, body, created_at FROM dispute_messages WHERE dispute_id = ? ORDER BY created_at ASC");
         $stmt->execute([$dispute['id']]);
         jsonResponse(['status' => $dispute['status'], 'messages' => $stmt->fetchAll()]);
@@ -613,11 +673,7 @@ function handleDisputeChat(): void {
     $body = trim($in['message'] ?? '');
     if ($body === '') jsonError('Message vide');
     if (mb_strlen($body) > 2000) jsonError('Message trop long');
-    // L'admin (token valide) poste comme 'admin' ; sinon comme 'user'
-    $sender = 'user';
-    $adminTok = $_SERVER['HTTP_X_ADMIN_TOKEN'] ?? ($in['admin_token'] ?? '');
-    $expectedTok = adminTokenExpected(); // R9-05 : jeton via env uniquement, aucun fallback en dur
-    if ($expectedTok !== null && $adminTok !== '' && hash_equals($expectedTok, (string)$adminTok)) $sender = 'admin';
+    $sender = $isAdmin ? 'admin' : 'user';
     $db->prepare("INSERT INTO dispute_messages (dispute_id, sender, body) VALUES (?, ?, ?)")
        ->execute([$dispute['id'], $sender, $body]);
     jsonResponse(['sent' => true, 'sender' => $sender]);
@@ -641,7 +697,7 @@ function handleAdminDisputes(): void {
     requireAdmin();
     $db = getDB();
     $rows = $db->query("
-        SELECT d.dispute_number, d.status, d.signals_json, d.refusal_count, d.created_at,
+        SELECT d.dispute_number, d.status, d.signals_json, d.refusal_count, d.init_collisions, d.created_at,
                u.username, u.identifier, u.created_at AS account_created, u.last_login_at, u.login_count
         FROM disputes d JOIN users u ON u.id = d.user_id
         WHERE d.status != 'closed' ORDER BY d.updated_at DESC
@@ -665,15 +721,14 @@ function handleAdminDisputeDecide(): void {
     if (!$user) jsonError('Utilisateur introuvable', 404);
 
     if ($decision === 'grant') {
-        $newPwd = generatePassword();
-        $hash = password_hash($newPwd, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
-        $db->prepare("UPDATE users SET password_hash = ?, l1_block_count = 0, l1_blocked_until = NULL, banned_until = NULL WHERE id = ?")
-           ->execute([$hash, $user['id']]);
-        $db->prepare("UPDATE disputes SET status = 'resolved', updated_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([$dispute['id']]);
+        // R9-01b : AUCUN credential livré par le chat. L'admin confirme l'identité ;
+        // le compte n'est PAS réinitialisé ici. Le propriétaire (porteur du sésame d'init)
+        // re-définit lui-même son secret via l3-reset → le serveur ne génère ni ne diffuse de mot de passe.
+        $db->prepare("UPDATE disputes SET status = 'granted', updated_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([$dispute['id']]);
         $db->prepare("INSERT INTO dispute_messages (dispute_id, sender, body) VALUES (?, 'admin', ?)")
-           ->execute([$dispute['id'], "Identité confirmée. Nouveau mot de passe : $newPwd"]);
-        addTrace("[L3-admin] litige $number ACCORDÉ — reset password (décision humaine)");
-        jsonResponse(['decision' => 'granted', 'new_password' => $newPwd]);
+           ->execute([$dispute['id'], "Identité confirmée. Tu peux maintenant définir un nouveau mot de passe depuis ta page de récupération (bouton « Reprendre l'accès »). Aucun mot de passe n'est transmis par ce canal."]);
+        addTrace("[L3-admin] litige $number ACCORDÉ — statut 'granted' (re-enrôlement par le propriétaire ; aucun mot de passe généré ni posté dans le chat)");
+        jsonResponse(['decision' => 'granted', 'note' => 'Le demandeur va re-définir lui-même son secret. Aucun mot de passe généré ni transmis côté serveur.']);
     }
 
     if ($decision === 'refuse') {
@@ -696,6 +751,62 @@ function handleAdminDisputeDecide(): void {
     }
 
     jsonError('Décision invalide (grant|refuse)');
+}
+
+// === RECOVER L3 — RESET : re-enrôlement par le propriétaire après accord admin ===
+// R9-01b : ferme la chaîne d'ATO. Aucun mot de passe n'est généré ni diffusé par le serveur ;
+// le propriétaire — identifié par le sésame (claim_secret) de SON init — choisit lui-même un
+// nouveau secret, exactement comme à l'inscription. La capability est consommée (one-shot).
+function handleL3Reset(): void {
+    $in = getInput();
+    securityChecks($in);
+    $number   = trim($in['dispute_number'] ?? '');
+    $claim    = trim($in['claim_secret'] ?? '');
+    $password = $in['password'] ?? '';
+    $recoveryDerivedKey = $in['recovery_derived_key'] ?? ''; // déjà HMAC-dérivé côté client
+    $userSalt = $in['user_salt'] ?? '';
+
+    if (!$number || !$claim) jsonError('Litige et code de suivi requis', 400);
+    if (strlen($password) < 8) jsonError('Mot de passe : 8 caractères minimum');
+    if (!$recoveryDerivedKey) jsonError('Nouveau mot de récupération requis');
+    if (!preg_match('/^[a-f0-9]{32}$/', $userSalt)) jsonError('user_salt invalide (32 hex requis)');
+
+    $db = getDB();
+    $dispute = getDisputeByNumber($db, $number);
+    if (!$dispute || disputeExpired($dispute)) { usleep(200000); jsonError('Litige introuvable ou expiré', 404); }
+    if (!disputeClaimValid($dispute, $claim)) {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        if ($ip) trackSuspiciousIP($db, $ip, $_SERVER['HTTP_X_CLIENT_FINGERPRINT'] ?? '', $_SERVER['HTTP_USER_AGENT'] ?? '');
+        usleep(200000); jsonError('Code de suivi invalide', 403);
+    }
+    if ($dispute['status'] !== 'granted') jsonError('Cette procédure n\'a pas (encore) été accordée par un administrateur.', 409);
+
+    $stmt = $db->prepare("SELECT * FROM users WHERE id = ?");
+    $stmt->execute([$dispute['user_id']]);
+    $user = $stmt->fetch();
+    if (!$user) jsonError('Compte introuvable', 404);
+
+    // Re-enrôlement (même mécanisme que l'inscription) : secrets choisis par le propriétaire.
+    // L1 (passphrase) régénérée car perdue ; renvoyée une seule fois, jamais via le chat.
+    $newPassphrase = generateDiceware(4);
+    $pwdHash = password_hash($password, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
+    $ppHash  = password_hash($newPassphrase, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
+    $rcHash  = password_hash($recoveryDerivedKey, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
+    $db->prepare("UPDATE users SET password_hash = ?, passphrase_hash = ?, recovery_derived_hash = ?, user_salt = ?, l1_block_count = 0, l1_blocked_until = NULL, banned_until = NULL WHERE id = ?")
+       ->execute([$pwdHash, $ppHash, $rcHash, $userSalt, $user['id']]);
+
+    // Capability consommée : claim invalidé (one-shot) + litige clos.
+    $db->prepare("UPDATE disputes SET status = 'resolved', claim_hash = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([$dispute['id']]);
+    $db->prepare("INSERT INTO dispute_messages (dispute_id, sender, body) VALUES (?, 'admin', ?)")
+       ->execute([$dispute['id'], "Accès rétabli par le propriétaire (re-enrôlement). Litige clos."]);
+    logAttempt($db, $user['username'], 3, true);
+    addTrace("[L3-reset] litige $number — propriétaire a re-défini ses secrets (L1 régénérée, L2/login renouvelés). Sésame consommé (one-shot).");
+
+    jsonResponse([
+        'message' => 'Accès rétabli. Ton nouveau mot de passe est actif.',
+        'passphrase' => $newPassphrase,
+        'note' => 'Note ta nouvelle passphrase L1 — elle ne sera plus affichée. Le serveur n\'a ni généré ni diffusé de mot de passe : tu l\'as choisi toi-même.',
+    ]);
 }
 
 

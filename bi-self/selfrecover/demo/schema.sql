@@ -70,9 +70,12 @@ CREATE TABLE IF NOT EXISTS disputes (
     dispute_number TEXT UNIQUE NOT NULL,      -- LIT-XXXX
     user_id INTEGER NOT NULL,
     identifier TEXT,
-    status TEXT NOT NULL DEFAULT 'open',       -- open | awaiting_admin | resolved | refused | closed
+    status TEXT NOT NULL DEFAULT 'open',       -- open | awaiting_admin | granted | resolved | refused | closed
     refusal_count INTEGER DEFAULT 0,           -- 3 refus → suppression du compte
     signals_json TEXT,                         -- faisceau de signaux contextuels (faits bruts pour l'admin, jamais un score chiffré)
+    claim_hash TEXT,                           -- R9-01b : SHA-256 du sésame généré côté demandeur à l'init (autorise le fil, pas l'identifiant semi-public)
+    expires_at TEXT,                           -- R9-01b : TTL de la capability (défaut +24h)
+    init_collisions INTEGER DEFAULT 0,         -- R9-01b : inits concurrentes sur un litige ouvert = signal multi-demandeur pour l'admin
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id)
