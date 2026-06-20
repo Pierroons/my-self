@@ -196,9 +196,9 @@ tu veux contrôler.
 
 ## Statut
 
-MySelf est un écosystème vivant. Certains modules sont déployés et testés
-en production (SelfRecover sur une plateforme communautaire, SelfJustice sur
-[justice.my-self.fr](https://justice.my-self.fr)). D'autres sont au stade
+MySelf est un écosystème vivant. Certains modules sont en ligne (SelfJustice sur
+[justice.my-self.fr](https://justice.my-self.fr)), d'autres existent en implémentation
+de référence avec démo auto-auditée (SelfRecover), d'autres sont au stade
 conceptuel ou en prototypage.
 La feuille de route évolue avec les retours d'usage réels plutôt qu'avec
 une planification descendante.

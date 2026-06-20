@@ -2,16 +2,11 @@
 /**
  * SelfRecover demo — core protocol logic
  *
- * This is a minimalist reference implementation.
- * Compared to the production version of a community platform, this omits:
- *   - Level 3 scoring recovery
- *   - Dispute system
- *   - Push notifications
- *   - Rate limiting per IP (only per username)
- *   - Anti-bot honeypot
- *   - Suspicious fingerprint tracking
+ * Reference implementation of the full protocol: L1/L2/L3 recovery, dispute
+ * system, admin decision flow, anti-abuse (honeypot, per-IP blocking,
+ * suspicious-fingerprint tracking).
  *
- * Use this to understand the core protocol, not for production.
+ * Use this to understand the core protocol, not as-is in production.
  */
 
 /**
@@ -411,12 +406,12 @@ function securityChecks(array $in): void {
 // =====================================================================
 //
 // On arrive en L3 après échec L1 (passphrase) ET L2 (mot de récup) : ces secrets
-// sont oubliés, on ne les REDEMANDE PAS. Le L3 collecte des SIGNAUX CONTEXTUELS
-// vérifiables côté serveur (ce que le serveur sait déjà de l'utilisateur) et en
-// tire un INDICE DE CONFIANCE 0-100.
+// sont oubliés, on ne les REDEMANDE PAS. Le L3 collecte un FAISCEAU DE SIGNAUX
+// CONTEXTUELS vérifiables côté serveur (ce que le serveur sait déjà de l'utilisateur),
+// présentés à l'admin comme des FAITS BRUTS — jamais agrégés en un score chiffré.
 //
-// RÈGLE ABSOLUE : l'indice n'ouvre JAMAIS le compte. Il aide seulement l'admin à
-// décider dans le chat. Toute récupération L3 passe par une décision humaine.
+// RÈGLE ABSOLUE : ces signaux n'ouvrent JAMAIS le compte. Ils aident seulement l'admin
+// à décider dans le chat. Toute récupération L3 passe par une décision humaine.
 
 /** Hook site-spécifique : signaux d'activité propres au site (posts, achats…).
  *  Vide par défaut. Un site le surcharge pour enrichir le scoring (contexte
@@ -525,7 +520,7 @@ function handleRecoverL3Init(): void {
     ]);
 }
 
-// === RECOVER L3 : signaux contextuels → indice de confiance → chat admin ===
+// === RECOVER L3 : signaux contextuels → faisceau de faits bruts → chat admin ===
 function handleRecoverL3(): void {
     $in = getInput();
     securityChecks($in);

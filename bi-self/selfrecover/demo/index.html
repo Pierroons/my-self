@@ -613,6 +613,8 @@
             <a href="lite.html">SelfRecover Lite</a> (avec SMTP + mot mémorisé)
             ·
             <a href="comparison.html">📊 Comparatif sécurité</a>
+            ·
+            <a href="l3.html">🔑 Comment fonctionne le niveau 3</a>
         </div>
     </div>
 
@@ -653,7 +655,7 @@
 
         // === HMAC derivation (client-side) ===
         // The raw recovery word never leaves the browser.
-        // Site-specific key derived via HMAC-SHA256 with domain + site_salt.
+        // Service-specific key derived via HMAC-SHA256 keyed by service label + per-user salt.
         // Wrappée par transparency.js (hmacDeriveTraced) si chargée.
         // R9-02 : label de service STABLE (configuré, PAS window.location.hostname) + sel par-utilisateur.
         window.SERVICE_LABEL = 'selfrecover.my-self.fr';

@@ -17,7 +17,7 @@ Ce whitepaper décrit le protocole. Il n'est ni une critique ad hoc d'un acteur,
 
 ## Résumé
 
-SelfRecover est un protocole de récupération de compte à connaissance partagée qui élimine la dépendance à l'email pour la réinitialisation de mot de passe. Il repose sur une dérivation HMAC-SHA256 effectuée côté client en utilisant le domaine courant comme matériau de clé : le mot de récupération brut ne quitte jamais le navigateur, et un mot capturé est inutilisable sur tout autre domaine (anti-phishing natif). Ce document décrit le protocole, son escalade en trois niveaux, son modèle de menaces, et les règles de déploiement obligatoires.
+SelfRecover est un protocole de récupération de compte à connaissance partagée qui élimine la dépendance à l'email pour la réinitialisation de mot de passe. Il repose sur une dérivation HMAC-SHA256 effectuée côté client, clavée par un label de service stable et un sel par utilisateur : le mot de récupération brut ne quitte jamais le navigateur, et le serveur ne stocke que des hachages Argon2id de clés dérivées par service (ce qui empêche la corrélation des empreintes entre services). Ce document décrit le protocole, son escalade en trois niveaux, son modèle de menaces, et les règles de déploiement obligatoires.
 
 ---
 
@@ -65,7 +65,7 @@ C'est tout. Deux choses. Pour tous les sites. Pour toujours.
 Quand un nouveau compte est créé, le mot de récupération est immédiatement traité par dérivation HMAC-SHA256. Le mot brut n'atteint jamais le serveur.
 
 ```
-clé_dérivée = HMAC-SHA256(mot_récupération, domaine + salt_du_site)
+clé_dérivée = HMAC-SHA256(label_service ‖ sel_utilisateur, mot_récupération)
 ```
 
 Le serveur reçoit et stocke :
@@ -73,6 +73,7 @@ Le serveur reçoit et stocke :
 - `Argon2id(mot_de_passe)` — hash classique du mot de passe
 - `Argon2id(passphrase)` — une passphrase diceware générée côté serveur (4 mots, ~51 bits d'entropie)
 - `Argon2id(clé_dérivée)` — la clé de récupération dérivée par HMAC
+- `sel_utilisateur` — le sel par utilisateur (généré côté client, pas un secret)
 
 L'utilisateur reçoit la passphrase une seule fois et doit la conserver hors ligne.
 
@@ -88,7 +89,7 @@ Trois niveaux, chacun avec ses propres garanties et modes d'échec :
 |--------|--------|---------------------------|
 | **L1** | Username + passphrase diceware | Nouveau mot de passe |
 | **L2** | Identifiant + mot de récupération (dérivé HMAC) | Nouveau mot de passe |
-| **L3** | Formulaire de scoring multi-facteurs | Nouveau mot de passe ou chat admin |
+| **L3** | Identifiant public + signaux contextuels | Faits bruts pour un admin humain → ré-enrôlement par l'utilisateur en cas d'accord |
 
 ---
 
@@ -96,13 +97,13 @@ Trois niveaux, chacun avec ses propres garanties et modes d'échec :
 
 C'est l'innovation centrale de SelfRecover.
 
-Quand l'utilisateur tape son mot de récupération, le navigateur calcule une clé dérivée spécifique au site **avant que quoi que ce soit ne quitte le client** :
+Quand l'utilisateur tape son mot de récupération, le navigateur calcule une clé dérivée spécifique au service **avant que quoi que ce soit ne quitte le client** :
 
 ```javascript
-async function hmacDerive(mot, salt) {
+const SERVICE_LABEL = 'selfrecover.my-self.fr'; // label stable, configuré (pas l'URL)
+async function hmacDerive(mot, userSalt) {
     const enc = new TextEncoder();
-    const domaine = window.location.hostname;
-    const matériau = enc.encode(domaine + salt);
+    const matériau = enc.encode(SERVICE_LABEL + userSalt);
     const clé = await crypto.subtle.importKey(
         'raw', matériau,
         { name: 'HMAC', hash: 'SHA-256' },
@@ -116,15 +117,14 @@ async function hmacDerive(mot, salt) {
 
 **Propriétés clés :**
 
-- Le même input (`"bob"`) produit un output différent sur chaque site
+- Le même input produit un output différent sur chaque service
 - Le mot brut ne quitte **jamais** le navigateur
-- Le serveur ne voit jamais `"bob"` — uniquement la clé dérivée
+- Le serveur ne voit jamais le mot — uniquement la clé dérivée
 - Le résultat fait toujours 256 bits, quelle que soit la longueur de l'input
-- Un mot de 3 lettres est aussi sécurisé qu'un de 30 caractères dans le système
 - Fonctionne sur tous les appareils — mêmes maths, même résultat
-- Le domaine est obtenu automatiquement via `window.location.hostname`
+- Le label de service est une constante stable configurée (pas l'URL en direct) ; chaque compte a en plus son propre sel
 
-**L'anti-phishing est natif.** Un faux site (ex. `tartenpion-fake.fr` au lieu du vrai `tartenpion.fr`) dérive une clé complètement différente à partir du même mot. Un mot de récupération capturé est inutilisable sur tout autre domaine.
+**Résistance au phishing passif.** Un clone passif qui copie la page sans l'adapter dérive une clé inutile, et les sels par compte neutralisent la corrélation inter-comptes. La limite honnête : un site de phishing actif qui contrôle sa propre page peut reproduire la clé (hors périmètre, comme tout protocole in-browser), et un mot brut réutilisé reste réutilisable — la dérivation ne sauve pas un secret connu et réutilisé.
 
 ---
 
@@ -143,24 +143,21 @@ async function hmacDerive(mot, salt) {
 - L'utilisateur fournit : `identifiant public` + `mot de récupération` (dérivé HMAC côté client)
 - 3 tentatives avec décompte visible (1/3, 2/3, 3/3)
 - En cas de succès : nouveau mot de passe généré
-- Après 3 échecs : redirection vers L3
-- Un litige est créé automatiquement (`LIT-0001`), l'admin est notifié, toutes les tentatives sont loguées
-- Les litiges résolus automatiquement sont purgés de la BDD après 24 heures
+- Après 3 échecs : bascule vers L3 (c'est le L3 qui ouvre alors un litige)
+- Toutes les tentatives sont loguées
 
 ### 5.3 Niveau 3 — Accès totalement perdu
 
 - Entrée : lien discret `"J'ai perdu tous mes accès"` sur la page de login
-- L'utilisateur fournit d'abord son identifiant public (anti-timing : délai forcé 2-3 s)
-- L'empreinte navigateur est capturée et vérifiée contre la liste des empreintes suspectes
-- Un formulaire unique, un seul submit, plusieurs champs par catégorie :
-  - Identifiant public (4 champs, 20 points)
-  - Mot de récupération (5 champs, 25 points) — dérivé HMAC côté client
-  - Username (3 champs, 30 points)
-  - Passphrase (3 champs, 25 points)
-- Bonus passifs : IP connue (+5), empreinte connue (+5)
-- **Score ≥ 60/100** → compte récupéré
-- **Score < 60/100 après 3 tentatives** → activation du chat admin
-- Cooldown : 1 heure entre chaque tentative
+- L'utilisateur fournit son identifiant public ; son navigateur génère un **code de suivi** (sésame) dont seule l'empreinte (SHA-256) est envoyée au serveur (anti-timing : délai forcé)
+- Un litige au numéro **non devinable** (`LIT-<aléatoire>`) est ouvert. Si un litige est déjà ouvert pour ce compte, le numéro n'est **pas redivulgué** et la tentative concurrente est signalée à l'admin (« multi-demandeur »)
+- L'utilisateur répond à quelques **questions de contexte** (année de création du compte, période de dernière connexion, fréquence d'usage) — **aucun secret n'est demandé**
+- Le serveur assemble un **faisceau de signaux** présenté à l'administrateur :
+  - **Signaux passifs** (non falsifiables par l'utilisateur) : IP déjà connue du compte, empreinte navigateur déjà observée
+  - **Signaux déclaratifs** (ce que l'utilisateur affirme, comparé au réel) : année de création, mois de dernière connexion, fréquence d'usage
+- **Aucun score chiffré n'est calculé.** Les signaux sont des **faits bruts** : ils n'ouvrent **jamais** le compte automatiquement, ils aident seulement un **administrateur humain** à trancher dans le chat
+- Cooldown : 1 heure entre chaque soumission
+- Le code de suivi conditionne l'accès au fil de discussion et au rétablissement ; il expire avec le litige (TTL 24 h) et n'est utilisable qu'une fois
 
 ---
 
@@ -168,9 +165,9 @@ async function hmacDerive(mot, salt) {
 
 Chaque session de récupération échouée au-delà de L1 ouvre un litige (`LIT-XXXX`) visible dans le dashboard admin.
 
-- Chaque litige a un numéro unique, un niveau courant, des compteurs de tentatives, le meilleur score L3, et un statut (`open`, `resolved`, `closed`, `attack_confirmed`)
-- L'admin reçoit une notification push à la création du litige
-- Un chat bidirectionnel est disponible entre l'admin et l'utilisateur restreint (polling, pas de WebSocket temps réel pour rester simple)
+- Chaque litige a un numéro **non devinable**, le faisceau de signaux (faits bruts, jamais un score), des compteurs de tentatives et de refus, un compteur de tentatives concurrentes (« multi-demandeur »), et un statut (`open`, `awaiting_admin`, `granted`, `resolved`, `refused`, `closed`)
+- L'admin retrouve les litiges ouverts dans son tableau de bord
+- Un chat bidirectionnel est disponible entre l'admin et l'utilisateur, dont l'accès est conditionné par le code de suivi (polling, pas de WebSocket temps réel pour rester simple)
 - Les litiges résolus sont purgés automatiquement après 24 heures pour garder la BDD propre
 
 ### 6.1 Clôture du litige — Décision admin
@@ -180,8 +177,8 @@ Quand l'admin examine un litige, deux options existent :
 **Option 1 — Accorder la récupération (débloquer) :**
 
 - L'admin vérifie l'identité via l'échange chat
-- Le mot de passe est reset, tous les compteurs sont remis à zéro, le litige passe en `resolved`
-- L'utilisateur reçoit son nouveau mot de passe par notification push
+- Le litige passe en `granted`. **Le serveur ne génère ni ne transmet aucun mot de passe** : aucun secret ne circule dans le chat
+- L'utilisateur **re-définit lui-même** ses secrets depuis sa page de récupération (modèle de ré-enrôlement, cohérent avec le principe MySelf : le serveur ne voit jamais le mot de passe, même en récupération). Le code de suivi est alors consommé (usage unique) et le litige passe en `resolved`
 
 **Option 2 — Refuser la récupération :**
 
@@ -212,15 +209,15 @@ Chaque échec génère un code d'erreur structuré :
 ```
 SR-L1-PASS-001   Niveau 1, passphrase incorrecte, tentative 1
 SR-L2-HMAC-003   Niveau 2, validation HMAC échouée, tentative 3
-SR-L3-SCORE-042  Niveau 3, scoring terminé, score 42/100
+SR-L3-SIGN-OK    Niveau 3, faisceau de signaux transmis à l'admin
 SR-L3-FING-BLK   Niveau 3, empreinte bloquée
-SR-SYS-SALT-ERR  Erreur système, récupération du salt échouée
+SR-SYS-SALT-ERR  Erreur système, récupération du sel échouée
 ```
 
 **Ce qui EST inclus dans les rapports de diagnostic :**
 
-- Code d'erreur, version de la librairie, navigateur/OS, niveau atteint, nombre de tentatives, score
-- Hash du salt du site (pas le salt — identifie l'installation)
+- Code d'erreur, version de la librairie, navigateur/OS, niveau atteint, nombre de tentatives
+- Identifiant d'installation (ne révèle aucun secret)
 
 **Ce qui n'est JAMAIS inclus :**
 
@@ -254,7 +251,7 @@ L'utilisateur voit un message rassurant `"Ton compte est maintenant sécurisé"`
 
 ### 10.1 Menaces traitées
 
-- **Attaques par phishing** — HMAC par domaine : un faux site dérive une clé différente
+- **Phishing passif** — HMAC par service : un clone qui n'adapte pas son code dérive une clé différente (un phishing actif qui contrôle sa page est hors périmètre)
 - **Piratage de l'email** — il n'y a aucun email dans le protocole
 - **Panne du fournisseur SMTP** — pas de dépendance SMTP
 - **Confiance tiers** — seuls le site et l'utilisateur sont impliqués
@@ -312,7 +309,7 @@ SelfRecover part du principe que :
 - Le rate limiting et l'escalade L2→L3 freinent les tentatives de force brute
 - Le serveur ne peut pas compenser la négligence humaine — aucun système ne le peut
 
-**Tu fais gaffe : zéro problème. Tu t'en fous : open bar.** Ce n'est pas une faille — c'est le contrat fondamental de tout système de sécurité basé sur un secret.
+**Un secret protégé reste sûr ; un secret négligé est exposé.** Ce n'est pas une faille — c'est le contrat fondamental de tout système de sécurité basé sur un secret.
 
 ### 10.4 Autres limites (par conception)
 
@@ -399,7 +396,7 @@ SelfRecover n'est pas un remplacement pour WebAuthn. C'est un complément, surto
 ## 14. Feuille de route
 
 - [x] Spécification du protocole (v1.1)
-- [x] Implémentation de référence (plateforme communautaire, en production)
+- [x] Implémentation de référence (ce dépôt)
 - [x] Livres blancs EN + FR
 - [x] Démo standalone (L1 + L2)
 - [ ] Audit de sécurité (communauté bienvenue)

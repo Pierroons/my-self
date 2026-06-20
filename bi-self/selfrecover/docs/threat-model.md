@@ -4,8 +4,8 @@
 
 ## Threats SelfRecover protects against
 
-### ✓ Phishing attacks
-Anti-phishing is native. A fake site like `fake-hub.example.net` (instead of the real `community-hub.example.org`) will compute a completely different HMAC derivation from the same recovery word. Captured credentials are useless on any other domain.
+### ✓ Passive phishing
+The derivation is bound to a stable service label. A passive phishing clone that copies the page without adapting its code derives a useless key. The honest limit: an **active** phishing site that controls its own page (hard-coding the right label, fetching the public per-user salt) can reproduce the real key — out of scope, as for any in-browser protocol.
 
 ### ✓ Email account takeover
 The entire industry standard "reset password via email" chain is eliminated. If your Gmail gets hacked, your SelfRecover-based accounts are not automatically compromised — there's no email link to click.
@@ -32,7 +32,7 @@ Anti-timing, honeypot fields, and forced delays on L3 init make automated probin
 - Read the database and all hashes
 - Replace the `password_hash` column directly
 - Modify the code itself
-- Extract the `SITE_SALT`
+- Extract the server secret and per-user salts
 
 **Mandatory deployment rule:**
 - Remove `NOPASSWD` from sudoers on installation
@@ -45,18 +45,18 @@ A SelfRecover deployment without hardened sudo is a lock on a door with no wall.
 
 **If the recovery word is compromised** (social engineering, written down, shoulder surfing, malware), and the attacker also knows the public identifier (which is often published, like an in-game ID), they can recover the account via L2.
 
-- The HMAC derivation limits the damage to a single site (the word is useless on other domains)
+- The per-service derivation prevents correlation of *stored hashes* across services — but a known raw word that you reuse stays reusable elsewhere (the service label is public). Derivation does not save a reused secret.
 - Rate limiting and L2→L3 escalation slow down brute-force
 - **But fundamentally:** no system can protect against a stolen secret. A leaked SSH private key gives server access. A leaked seed phrase empties a wallet. A leaked recovery word opens the account. The security model is identical.
 
-**Be careful: no problem. Be careless: open bar.** This is not a flaw — it is the fundamental contract of any secret-based security system.
+**A protected secret stays safe; a neglected one is exposed.** This is not a flaw — it is the fundamental contract of any secret-based security system.
 
 ### ✗ User negligence
 - Writing the recovery word on a sticky note visible on the monitor
 - Sharing it in a chat or email "for convenience"
-- Using the same recovery word on a rogue site that then uses it elsewhere
+- Using the same recovery word on a rogue site that then replays it elsewhere
 
-The HMAC per-domain design mitigates the last point, but not the first two.
+The per-service derivation does **not** save you from reusing a secret on a rogue site — only unique secrets do. It does prevent cross-service correlation of stored hashes.
 
 ### ✗ Database breaches — partially protected
 - Raw database leak → attacker only gets Argon2id hashes, which resist cracking
@@ -64,7 +64,7 @@ The HMAC per-domain design mitigates the last point, but not the first two.
 - Recommendation: encrypt database backups at rest
 
 ### ✗ Lost everything
-If a user forgets their password AND their passphrase AND their recovery word AND fails L3 scoring, the admin is the only fallback. There is no SMTP-based "magic link" because SelfRecover rejects that model entirely. This is intentional — a system with infinite fallbacks has infinite attack surface.
+If a user forgets their password AND their passphrase AND their recovery word, the human-reviewed L3 is the only fallback. There is no SMTP-based "magic link" because SelfRecover rejects that model entirely. This is intentional — a system with infinite fallbacks has infinite attack surface.
 
 ---
 
@@ -72,7 +72,7 @@ If a user forgets their password AND their passphrase AND their recovery word AN
 
 | Threat | Protected ? | Mitigation |
 |--------|:---:|---|
-| Phishing | ✓ | HMAC per domain |
+| Passive phishing | ✓ (partial) | HMAC per service; active phishing out of scope |
 | Email account takeover | ✓ | No email used |
 | SMTP failures | ✓ | No SMTP |
 | Third-party trust | ✓ | Local only |
@@ -80,6 +80,6 @@ If a user forgets their password AND their passphrase AND their recovery word AN
 | Bot enumeration | ✓ | Honeypot + timing + forced delays |
 | Server root compromise | ✗ | Mandatory sudo hardening |
 | Stolen recovery word | ✗ | User responsibility |
-| User negligence | ✗ (partial) | HMAC per-domain limits blast radius |
+| User negligence | ✗ | Reused secrets stay reusable; only unique secrets help |
 | Database breach | ✓ (partial) | Argon2id hashes, but root trumps all |
 | Lost everything | ✗ | Admin fallback only |

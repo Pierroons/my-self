@@ -54,14 +54,14 @@ One plus one equals a self-governing community. Not three — a qualitatively di
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfRecover](./selfrecover/) | Zero-email identity & recovery | v0.1.0 ✅ — production tested on a community platform |
+| [SelfRecover](./selfrecover/) | Zero-email identity & recovery | v0.1.0 ✅ — reference implementation + self-audited demo |
 | [SelfModerate](./selfmoderate/) | Community moderation by collective reasoning | v0.1.0 (whitepaper) — prototype pending |
 
 ---
 
 ## Status
 
-SelfRecover is **deployed in production** on a community platform and handles real recovery flows every day. SelfModerate has a complete whitepaper defining the protocol; reference implementation is planned for v0.2.0 alongside a live deployment on the same platform.
+SelfRecover ships as a reference implementation with a self-audited demo (no real-world production deployment yet). SelfModerate has a complete whitepaper defining the protocol; reference implementation is planned for v0.2.0.
 
 The two modules are designed to interlock — when both are live, a community can bootstrap itself and govern itself without any central service.
 

@@ -1,6 +1,6 @@
 # Contributing to SelfRecover
 
-Thanks for your interest! SelfRecover is at **concept stage** — the protocol is defined and running in production on one app, but it hasn't been audited by the security community yet.
+Thanks for your interest! SelfRecover is at **concept stage** — the protocol is defined, with a reference implementation and a self-audited demo, but it hasn't been audited by the external security community yet.
 
 ## What we need most
 

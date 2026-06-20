@@ -109,7 +109,7 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ### Ajouté — Les 3 piliers conceptuels
 
-- **Bi-Self** — SelfRecover (récup sans email, HMAC par domaine) + SelfModerate
+- **Bi-Self** — SelfRecover (récup sans email, HMAC par service) + SelfModerate
   (modération par raisonnement social)
 - **Self-Right** — SelfJustice (directives juridiques 5 catégories droit FR) +
   SelfAct (courriers, saisines, CERFA)

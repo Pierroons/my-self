@@ -54,14 +54,14 @@ Un plus un égale une communauté auto-gouvernée. Pas trois — une chose quali
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfRecover](./selfrecover/) | Identité & récupération sans email | v0.1.0 ✅ — testé en production sur une plateforme communautaire |
+| [SelfRecover](./selfrecover/) | Identité & récupération sans email | v0.1.0 ✅ — implémentation de référence + démo auto-auditée |
 | [SelfModerate](./selfmoderate/) | Modération communautaire par raisonnement collectif | v0.1.0 (whitepaper) — prototype en attente |
 
 ---
 
 ## Statut
 
-SelfRecover est **déployé en production** sur une plateforme communautaire et gère de vrais flux de récupération tous les jours. SelfModerate dispose d'un whitepaper complet définissant le protocole ; l'implémentation de référence est prévue pour la v0.2.0 avec un déploiement live sur la même plateforme.
+SelfRecover existe en implémentation de référence avec une démo auto-auditée (pas encore de déploiement en production réelle). SelfModerate dispose d'un whitepaper complet définissant le protocole ; l'implémentation de référence est prévue pour la v0.2.0.
 
 Les deux modules sont conçus pour s'imbriquer — une fois les deux en ligne, une communauté peut se bootstraper et se gouverner elle-même sans aucun service central.
 

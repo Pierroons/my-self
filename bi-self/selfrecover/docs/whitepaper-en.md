@@ -65,7 +65,7 @@ That's it. Two things. For every site. Forever.
 When a new account is created, the recovery word is immediately processed through HMAC-SHA256 derivation. The raw word never reaches the server.
 
 ```
-derived_key = HMAC-SHA256(recovery_word, domain + site_salt)
+derived_key = HMAC-SHA256(service_label ‖ user_salt, recovery_word)
 ```
 
 The server receives and stores:
@@ -73,6 +73,7 @@ The server receives and stores:
 - `Argon2id(password)` — classic password hash
 - `Argon2id(passphrase)` — a diceware passphrase generated server-side (4 words, ~51 bits of entropy)
 - `Argon2id(derived_key)` — the HMAC-derived recovery key
+- `user_salt` — the per-user salt (client-generated, not a secret)
 
 The user receives the passphrase once and is asked to save it offline.
 
@@ -88,7 +89,7 @@ Three levels, each with its own guarantees and failure modes:
 |-------|-------|---------------------|
 | **L1** | Username + diceware passphrase | New password |
 | **L2** | Identifier + recovery word (HMAC-derived) | New password |
-| **L3** | Multi-factor scoring form | New password or admin dispute chat |
+| **L3** | Public identifier + context signals | Raw facts for a human admin → self-re-enrollment on grant |
 
 ---
 
@@ -96,13 +97,13 @@ Three levels, each with its own guarantees and failure modes:
 
 This is the core innovation of SelfRecover.
 
-When the user types their recovery word, the browser computes a site-specific derived key **before anything leaves the client**:
+When the user types their recovery word, the browser computes a service-specific derived key **before anything leaves the client**:
 
 ```javascript
-async function hmacDerive(word, salt) {
+const SERVICE_LABEL = 'selfrecover.my-self.fr'; // stable, configured label (not the URL)
+async function hmacDerive(word, userSalt) {
     const enc = new TextEncoder();
-    const domain = window.location.hostname;
-    const keyMaterial = enc.encode(domain + salt);
+    const keyMaterial = enc.encode(SERVICE_LABEL + userSalt);
     const key = await crypto.subtle.importKey(
         'raw', keyMaterial,
         { name: 'HMAC', hash: 'SHA-256' },
@@ -116,15 +117,14 @@ async function hmacDerive(word, salt) {
 
 **Key properties:**
 
-- The same input (`"bob"`) produces a different output on every site
+- The same input produces a different output on every service
 - The raw word **never** leaves the browser
-- The server never sees `"bob"` — only the derived key
+- The server never sees the word — only the derived key
 - Output is always 256 bits regardless of input length
-- A 3-letter word is as secure as a 30-character one within the system
 - Works on any device — same math, same result
-- Domain is obtained automatically via `window.location.hostname`
+- The service label is a stable configured constant (not the live URL); each account also has its own salt
 
-**Anti-phishing is native.** A fake site (e.g. `tartenpion-fake.fr` instead of the real `tartenpion.fr`) derives a completely different key from the same word. A captured recovery word is useless on any other domain.
+**Passive-phishing resistance.** A passive clone that copies the page without adapting it derives a useless key, and per-account salts defeat cross-account correlation. The honest limit: an active phishing site controlling its own page can reproduce the key (out of scope, as for any in-browser protocol), and a reused raw word stays reusable — the derivation does not save a known, reused secret.
 
 ---
 
@@ -143,24 +143,21 @@ async function hmacDerive(word, salt) {
 - User provides: `public identifier` + `recovery word` (HMAC-derived client-side)
 - 3 attempts with visible countdown (1/3, 2/3, 3/3)
 - On success: new password generated
-- On 3 failures: redirected to L3
-- A dispute is auto-created (`LIT-0001`), admin notified, all attempts tracked
-- Auto-resolved disputes are purged from the database after 24 hours
+- On 3 failures: escalation to L3 (the dispute is opened there)
+- All attempts are tracked
 
 ### 5.3 Level 3 — All Access Lost
 
 - Entry: discreet "Lost all access" link on the login page
-- User provides the public identifier first (anti-timing: forced 2-3 second delay)
-- Fingerprint is captured and checked against the suspicious fingerprints list
-- A single form, single submit, multiple fields per category:
-  - Public identifier (4 fields, 20 points)
-  - Recovery word (5 fields, 25 points) — HMAC-derived client-side
-  - Username (3 fields, 30 points)
-  - Passphrase (3 fields, 25 points)
-- Passive bonuses: known IP (+5), known fingerprint (+5)
-- **Score ≥ 60/100** → account recovered
-- **Score < 60/100 after 3 attempts** → admin chat activates
-- Cooldown: 1 hour between attempts
+- User provides their public identifier; their browser generates a **tracking code** (claim) whose fingerprint (SHA-256) alone is sent to the server (anti-timing: forced delay)
+- A dispute with a **non-guessable** number (`LIT-<random>`) is opened. If a dispute is already open for that account, the number is **not re-disclosed** and the concurrent attempt is flagged to the admin ("multi-requester")
+- The user answers a few **context questions** (account creation year, last-login period, usage frequency) — **no secret is requested**
+- The server assembles a **bundle of signals** presented to the administrator:
+  - **Passive signals** (not falsifiable by the user): IP already known to the account, browser fingerprint already seen
+  - **Declarative signals** (what the user claims, compared against reality): creation year, last-login month, usage frequency
+- **No numeric score is computed.** The signals are **raw facts**: they **never** unlock the account automatically, they only help a **human administrator** decide in the chat
+- Cooldown: 1 hour between submissions
+- The tracking code gates access to the chat thread and to the reset; it expires with the dispute (24h TTL) and is single-use
 
 ---
 
@@ -168,9 +165,9 @@ async function hmacDerive(word, salt) {
 
 Every failed recovery session above L1 opens a dispute (`LIT-XXXX`) visible in the admin dashboard.
 
-- Each dispute has a unique number, a current level, attempt counters, best L3 score, and a status (`open`, `resolved`, `closed`, `attack_confirmed`)
-- The admin receives a push notification at dispute creation
-- A bidirectional chat channel is available between admin and the restricted user (polling, not real-time WebSocket to keep it simple)
+- Each dispute has a **non-guessable** number, the bundle of signals (raw facts, never a score), attempt and refusal counters, a concurrent-attempt counter ("multi-requester"), and a status (`open`, `awaiting_admin`, `granted`, `resolved`, `refused`, `closed`)
+- The admin finds open disputes in their dashboard
+- A bidirectional chat channel is available between admin and user, with access gated by the tracking code (polling, not real-time WebSocket to keep it simple)
 - Resolved disputes are auto-purged after 24 hours to keep the database clean
 
 ### 6.1 Dispute Closure — Admin Decision
@@ -180,8 +177,8 @@ When the admin reviews a dispute, two paths exist:
 **Option 1 — Grant recovery (unblock):**
 
 - Admin verifies identity via the chat exchange
-- Password is reset, all counters cleared, dispute marked resolved
-- User receives the new password via push notification
+- The dispute moves to `granted`. **The server neither generates nor transmits any password**: no secret travels through the chat
+- The user **re-defines their own** secrets from their recovery page (re-enrollment model, consistent with the MySelf principle: the server never sees the password, even during recovery). The tracking code is then consumed (single-use) and the dispute moves to `resolved`
 
 **Option 2 — Refuse recovery:**
 
@@ -212,15 +209,15 @@ Every failure generates a structured error code:
 ```
 SR-L1-PASS-001   Level 1, passphrase mismatch, attempt 1
 SR-L2-HMAC-003   Level 2, HMAC validation failed, attempt 3
-SR-L3-SCORE-042  Level 3, scoring complete, score 42/100
+SR-L3-SIGN-OK    Level 3, signal bundle forwarded to admin
 SR-L3-FING-BLK   Level 3, fingerprint blocked
 SR-SYS-SALT-ERR  System error, salt retrieval failed
 ```
 
 **What IS included in diagnostic reports:**
 
-- Error code, library version, browser/OS, level reached, attempt count, score
-- Hash of site salt (not the salt — identifies the installation)
+- Error code, library version, browser/OS, level reached, attempt count
+- Installation identifier (reveals no secret)
 
 **What is NEVER included:**
 
@@ -254,7 +251,7 @@ The user sees a reassuring "Your account is now secured" message — not a techn
 
 ### 10.1 Threats addressed
 
-- **Phishing attacks** — HMAC per domain means a fake site derives a different key
+- **Passive phishing** — HMAC per service means a clone that doesn't adapt its code derives a different key (active phishing controlling its own page is out of scope)
 - **Email account takeover** — there's no email involved, anywhere
 - **SMTP provider failures** — no SMTP dependency
 - **Third-party trust** — only the site and the user are involved
@@ -312,7 +309,7 @@ SelfRecover assumes:
 - Rate limiting and L2→L3 escalation slow down brute-force attempts
 - The server cannot compensate for human carelessness — no system can
 
-**Be careful: no problem. Be careless: open bar.** This is not a flaw — it is the fundamental contract of any secret-based security system.
+**A protected secret stays safe; a neglected one is exposed.** This is not a flaw — it is the fundamental contract of any secret-based security system.
 
 ### 10.4 Other limitations (by design)
 
@@ -399,7 +396,7 @@ SelfRecover is not a replacement for WebAuthn. It is a complement, especially fo
 ## 14. Roadmap
 
 - [x] Protocol specification (v1.1)
-- [x] Reference implementation (community platform, production)
+- [x] Reference implementation (this repo)
 - [x] Whitepapers EN + FR
 - [x] Standalone demo (L1 + L2)
 - [ ] Security audit (community welcome)

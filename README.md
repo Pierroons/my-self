@@ -190,9 +190,9 @@ what you want to control.
 
 ## Status
 
-MySelf is a living ecosystem. Some modules are deployed and tested in
-production (SelfRecover on a community platform, SelfJustice on [justice.my-self.fr](https://justice.my-self.fr)).
-Others are at concept or prototyping stage. The roadmap evolves with real-world
+MySelf is a living ecosystem. Some modules are live (SelfJustice on [justice.my-self.fr](https://justice.my-self.fr)),
+others ship as reference implementations with self-audited demos (SelfRecover),
+and others are at concept or prototyping stage. The roadmap evolves with real-world
 feedback rather than top-down planning.
 
 ---

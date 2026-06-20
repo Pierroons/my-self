@@ -2,11 +2,10 @@
 
 > 🇫🇷 **[Lire en français →](./README.fr.md)**
 
-**Zero-email account recovery protocol** — split knowledge, HMAC per domain, no SMTP, no third party.
+**Zero-email account recovery protocol** — split knowledge, HMAC per service, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.1.1](https://img.shields.io/badge/status-v0.1.1-green.svg)](#status)
-[![Production tested](https://img.shields.io/badge/production%20tested-ARC%20PVE%20Hub-green.svg)](https://arc.example.com)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-Raspberry%20Pi-blue.svg)](#quickstart)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#quickstart)
@@ -31,7 +30,7 @@ without an all-or-nothing rewrite of their authentication stack.
 
 | Mode | Email channel | Crypto added | When to pick it |
 |------|---------------|--------------|-----------------|
-| **[Full](./demo/index.html)** | None at all | Diceware EFF passphrase + HMAC-per-domain | Greenfield projects, paranoid-by-design, post-ANTS-leak threat models |
+| **[Full](./demo/index.html)** | None at all | Diceware EFF passphrase + HMAC-per-service | Greenfield projects, high-assurance and post-ANTS-leak threat models |
 | **[Lite](./demo/lite.html)** 🆕 | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want phishing-resistance now and migrate to Full later |
 
 **Live demos:** [Full](https://bi-self.my-self.fr/selfrecover/) · [Lite](https://bi-self.my-self.fr/selfrecover/lite.html) · [Side-by-side comparison (8 adversaries × 3 models)](https://bi-self.my-self.fr/selfrecover/comparison.html)
@@ -56,15 +55,15 @@ SelfRecover is a **split-knowledge** recovery protocol:
 - **Algorithm alone** = nothing.
 - **Recovery word + algorithm** = identity proven.
 
-The user remembers **one word of their choice** (any word, any length — even `bob`). That's it.
+The user remembers **one word of their choice**. That's it.
 
-When they type it, the browser performs a **HMAC-SHA256 derivation** using the current domain as a key, producing a site-specific cryptographic key before anything leaves the client. The server never sees the raw word, and a phishing site would derive a completely different key.
+When they type it, the browser performs a **HMAC-SHA256 derivation** keyed by a stable **service label** plus a **per-user salt**, producing a service-specific key before anything leaves the client. The server never sees the raw word.
 
 ```
-derived_key = HMAC-SHA256(recovery_word, domain + site_salt)
+derived_key = HMAC-SHA256(key = service_label ‖ user_salt, message = recovery_word)
 ```
 
-**Anti-phishing is native.** **No SMTP.** **No third party.** **Same UX on every site.**
+**No SMTP.** **No third party.** **Same UX on every site.**
 
 ---
 
@@ -74,11 +73,11 @@ derived_key = HMAC-SHA256(recovery_word, domain + site_salt)
 
 | Role | Algorithm | Parameters |
 |------|-----------|------------|
-| Client-side key derivation | HMAC-SHA256 | key = recovery_word, message = domain &#124;&#124; site_salt |
+| Client-side key derivation | HMAC-SHA256 | key = service_label &#124;&#124; user_salt, message = recovery_word |
 | Server-side secret storage | Argon2id | memory = 64 MiB, time = 4, threads = 2 (memory-hard) |
 | Public identifier hashing | SHA-256 | truncated to 16 bytes, then hex-encoded |
 | Passphrase generation (L1) | EFF Diceware | 4 words, ≥ 51 bits of entropy |
-| Site salt | 32 random bytes | generated at install, never rotated |
+| Per-user salt | 16 random bytes | generated client-side at registration, stored in clear (a salt is not a secret) |
 
 ### Storage model
 
@@ -91,6 +90,7 @@ CREATE TABLE account (
   password     TEXT,                     -- Argon2id(password)
   pass_hash    TEXT,                     -- Argon2id(diceware_passphrase)  [L1]
   recovery     TEXT,                     -- Argon2id(derived_key)          [L2]
+  user_salt    TEXT,                     -- per-user salt, client-generated (not secret)
   created_at   INTEGER
 );
 ```
@@ -101,7 +101,7 @@ The server never sees: the raw password, the raw passphrase, the raw recovery wo
 
 ```
 user input   → recovery_word
-client       → derived_key  = HMAC-SHA256(recovery_word, domain ‖ site_salt)
+client       → derived_key  = HMAC-SHA256(service_label ‖ user_salt, recovery_word)
 wire         → POST /recover { identifier, derived_key }
 server       → verify        = password_verify(derived_key, stored_recovery_hash)  // Argon2id
 ```
@@ -110,7 +110,7 @@ The wire never carries the recovery word. The server never stores the recovery w
 
 ### Why HMAC-SHA256 (and not PBKDF2 / Argon2)
 
-HMAC is intentionally **fast** client-side because the goal is domain binding, not brute-force resistance. The brute-force resistance is provided server-side by **Argon2id** (memory-hard, 64 MiB per attempt) on the derived key. Splitting the roles keeps the UX instant on mobile while still imposing a memory-hard cost per server-side verification attempt.
+HMAC is intentionally **fast** client-side because the goal is service binding, not brute-force resistance. The brute-force resistance is provided server-side by **Argon2id** (memory-hard, 64 MiB per attempt) on the derived key. Splitting the roles keeps the UX instant on mobile while still imposing a memory-hard cost per server-side verification attempt.
 
 ---
 
@@ -120,9 +120,9 @@ HMAC is intentionally **fast** client-side because the goal is domain binding, n
 |-------|----------------|---------|
 | **L1** | Passphrase (diceware, 4 words) | New password |
 | **L2** | Public identifier + recovery word | New password |
-| **L3** | Multi-factor scoring form | New password or admin chat |
+| **L3** | Public identifier + context signals | Human admin decision, then self-re-enrollment |
 
-Rate limits, dispute system, and anti-abuse detection at every level.
+Rate limits, dispute system, and anti-abuse detection at every level. L3 produces **raw facts** for a human admin — never an automatic score — and on grant the user re-defines their own secret (the server issues no password).
 
 ---
 
@@ -156,10 +156,11 @@ The demo is a standalone single-page web app that lets you:
 2. **Log in** with your username + password
 3. **Recover L1** — forgot your password → enter your passphrase → new password
 4. **Recover L2** — forgot passphrase too → enter your identifier + recovery word → new password
+5. **Recover L3** — lost everything → context questions build a bundle of raw signals for a human admin (no numeric score); on grant you re-define your own secret
 
 No dependencies beyond PHP CLI. SQLite as database. Zero configuration.
 
-> **⚠ Note:** The demo only covers **Level 1 + Level 2** of the protocol. **Level 3** (multi-factor scoring recovery with admin dispute chat) is **not** included in the demo because it requires an admin interface, a dispute system, and a dashboard — too much for a standalone single-page demo. See the **full reference implementation running in production on a community platform** for L3 in action, and read the **[whitepaper](docs/whitepaper-en.md#5-three-level-recovery-escalation)** for the full L3 specification.
+> **Note:** The demo covers all three levels (L1/L2/L3), including the dispute chat and the admin decision flow. Read the **[whitepaper](docs/whitepaper-en.md#5-three-level-recovery-escalation)** for the full L3 specification.
 
 ---
 
@@ -170,10 +171,10 @@ No dependencies beyond PHP CLI. SQLite as database. Zero configuration.
 │   Browser    │           │    Server    │
 └──────┬───────┘           └──────┬───────┘
        │                          │
-       │   GET /salt              │
+       │  GET /user-salt?id=…     │
        │─────────────────────────>│
        │<─────────────────────────│
-       │   salt                   │
+       │   user_salt              │
        │                          │
        │  [derive HMAC locally]   │
        │                          │
@@ -197,9 +198,9 @@ The raw recovery word never leaves the browser.
 | Property | How it's achieved |
 |----------|------------------|
 | **Zero-knowledge server** | The server only ever sees Argon2id hashes of per-site-derived values. Compromise of the database reveals no recovery words. |
-| **Native anti-phishing** | A phishing site at `not-the-real-domain.tld` derives a different HMAC key, which fails to match any stored Argon2id record. No user training required. |
-| **Replay resistance** | Each recovery request is gated by a server-side rate limit + dispute system. L3 adds a multi-factor scoring check. |
-| **Forward secrecy against leak** | Site salt is per-deployment, never reused, never transmitted outside the server. Leaked client code alone is useless. |
+| **Passive-phishing resistance** | The derivation is bound to a stable service label, not reused across services. A passive clone that copies the page without adapting it derives a useless key. An active phishing site that controls its own page is out of scope (true for any in-browser protocol). |
+| **Replay resistance** | Each recovery request is gated by a server-side rate limit + dispute system. L3 adds a human-reviewed decision. |
+| **Leak resistance** | Each account has its own salt; the server stores only Argon2id hashes of per-service-derived keys. Leaked client code alone is useless. |
 | **No central dependency** | Each deployment is autonomous. No SPOF, no vendor lock-in, no operator who can revoke accounts across the ecosystem. |
 | **Human-memorable secret** | One word of the user's choice. Not a 24-word seed, not a passphrase you write on paper, not a QR code. |
 
@@ -209,13 +210,13 @@ The raw recovery word never leaves the browser.
 
 **Protected against:**
 - Database compromise (Argon2id-only storage, no reversible secrets)
-- Phishing (domain-bound derivation)
+- Passive phishing (service-bound derivation)
 - SMTP attacks, SIM swapping, email account takeover (no email in the loop)
-- Account brute force (Argon2id memory-hard cost + rate limits + L3 scoring)
+- Account brute force (Argon2id memory-hard cost + rate limits + human-reviewed L3)
 
 **Not claimed to protect against:**
-- Malicious client code (if the attacker controls the page your browser loads, game over — true for any in-browser protocol)
-- Weak recovery words (`password`, `123`, `bob`) — the **L3 scoring** mitigates by requiring multi-factor verification if L2 fails
+- Malicious client code / active phishing (if the attacker controls the page your browser loads, the protocol can't help — true for any in-browser protocol)
+- Weak recovery words (`password`, `123`) — mitigated by rate-limiting and escalation to a human-reviewed L3, not by the derivation itself
 - Physical coercion of the user (see SelfGuard in this ecosystem for duress-aware storage)
 - Targeted malware with keylogging
 
@@ -242,18 +243,18 @@ This is a companion module, **[`selfrecover-luks`](../../self-security/selfrecov
 
 ## Status
 
-**Concept stage — tested in production on a community platform**
+**Concept stage — reference implementation + live demo, self-audited**
 
 This repository contains:
 - The **protocol specification** (whitepapers v1.1)
-- A **standalone working demo** to try the concept locally
-- A **reference implementation** lifted from the production code of a community platform
+- A **standalone working demo** (L1/L2/L3) to try the concept locally
+- A **reference implementation** of the full protocol
 
 **What this repo is NOT (yet):**
-- An installable PHP/JS library (planned, once the protocol is battle-tested)
-- A finished product with security audits (feedback and audits are welcome)
+- An installable PHP/JS library (planned, once the protocol is independently audited)
+- A product with an external security audit (an internal adversarial audit has been run; external red-team feedback is welcome)
 
-The protocol is currently running in production on a community platform with real users. Feedback from real-world deployments will shape the future lib.
+No real-world production deployment yet. The demo and the self-audit are how you can exercise it today.
 
 ---
 
@@ -266,7 +267,7 @@ SelfRecover is honest about what it protects and what it does not. Every cryptog
 | Adversary | Coverage |
 |---|---|
 | Compromised SelfRecover server | ✅ Split knowledge + client-side HMAC: server never sees raw secrets |
-| Phishing / spoofed domain | ✅ Domain-bound HMAC: a fake domain produces a different key |
+| Passive phishing / cloned page | ✅ Service-bound HMAC: a clone that doesn't adapt its code derives a different key (active phishing controlling its own page is out of scope) |
 | Network sniffer / MITM | ✅ TLS in transit + only HMAC derivation transmitted |
 | Database leak | ✅ Argon2id hashes (memory-hard, GPU-resistant) |
 | Online brute-force | ✅ Per-username rate-limit + L2/L3 progressive escalation |
@@ -277,7 +278,7 @@ SelfRecover is honest about what it protects and what it does not. Every cryptog
 |---|---|
 | **Compromised host** (keylogger, info-stealer, RAT) | Out of scope. Use **Tails Live USB**, **Qubes OS**, or **MySelf-Live (V0.2)** for root secret ceremonies. See [Roadmap](#roadmap). |
 | Compromised browser (extension, 0-day) | Out of scope. Same mitigation. |
-| Coercion ($5 wrench attack) | Out of scope. No plausible deniability provided. |
+| Coercion (physical / rubber-hose) | Out of scope. No plausible deniability provided. |
 | Theoretical break of SHA-256 / Argon2id | Out of scope. Migration follows ANSSI/NIST guidance. |
 
 ### Operational discipline
@@ -297,7 +298,7 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 ### V0.1 (current — May 2026)
 
 - [x] Protocol specification
-- [x] Reference implementation (community platform)
+- [x] Reference implementation (this repo)
 - [x] Whitepapers EN + FR
 - [x] Standalone demo (this repo)
 - [x] EFF 7776-word wordlist integrated (EN + FR)

@@ -39,24 +39,18 @@ Then open **http://localhost:8080** in your browser.
 2. **Login** — Log in with username + password.
 3. **Recover L1** — Simulate "I forgot my password" → enter the passphrase → get a new password.
 4. **Recover L2** — Simulate "I forgot my passphrase too" → enter your identifier + recovery word → get a new password. The recovery word is HMAC-derived in the browser, never sent raw.
+5. **Recover L3** — Simulate "I lost everything" → context questions build a bundle of raw signals for a human admin (no numeric score). On grant, you re-define your own secret (the server never issues a password).
 
 ## Where's the data?
 
 A `selfrecover.sqlite` file is created in the `demo/` directory on first run. Delete it to reset the demo. `run.sh` resets it automatically on each launch.
 
-## What's missing vs production
+## Scope
 
-This demo is intentionally minimal. Compared to the reference implementation running on a community platform, this demo omits:
-
-- Level 3 multi-factor scoring recovery
-- Dispute system
-- Admin dashboard
-- Push notifications
-- Advanced anti-abuse (honeypot, timing checks, fingerprint tracking)
-- Rate limiting per IP (only per username)
+This demo implements the core protocol end-to-end: L1/L2/L3 recovery, dispute system, admin decision flow, and anti-abuse (honeypot, per-IP blocking, suspicious-fingerprint tracking). The seed data and copy are demo-grade; the cryptographic flow is the real one.
 
 Read the [whitepaper](../docs/whitepaper-en.md) for the full specification.
 
 ## Security note
 
-**This is a demo.** The `SITE_SALT` in `api/db.php` is hardcoded for convenience. In production, you MUST generate a unique cryptographically random salt per deployment and store it securely. See the [deployment security checklist](../docs/whitepaper-en.md) in the whitepaper.
+**This is a demo.** The fallback secrets in `api/db.php` are hardcoded for convenience. In production you MUST provide `SELFRECOVER_SERVER_SECRET` and `SELFRECOVER_ADMIN_TOKEN` via the environment (never commit them); each account also gets its own client-generated salt. See the [deployment security checklist](../docs/whitepaper-en.md) in the whitepaper.

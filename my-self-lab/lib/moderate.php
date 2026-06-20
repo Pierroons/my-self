@@ -2,7 +2,6 @@
 /**
  * MySelf-Lab — SelfModerate : réputation distribuée + anti-manipulation.
  *
- * Adapté de bi-self/demo-backend/lib/moderate_helper.php (SQLite3 → PDO).
  * Vote sur posts (±1, affecte la réputation de l'auteur) ET sur membres.
  * Défenses : anti-Sybil (seuils), upvote-farming, pack-voting, sanctions graduées.
  */

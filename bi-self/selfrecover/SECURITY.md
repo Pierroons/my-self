@@ -26,9 +26,9 @@ Current status: **concept stage**. The `main` branch is the only supported versi
 
 See the [whitepaper threat model](docs/whitepaper-en.md#10-threat-model--limitations) for the full analysis. Key points:
 
-- **Protected against:** phishing attacks (via HMAC per domain), email account takeover (no email at all), SMTP interception, rate limiting bypass
-- **NOT protected against:** compromised server root access (see the "CRITICAL — Server Root Access" section), social engineering of the recovery word, user negligence
-- **By design:** recovery requires either the passphrase (L1) OR the recovery word + public identifier (L2). Lose both and fail L3 scoring, and the admin is the only fallback.
+- **Protected against:** passive phishing (via HMAC per service), email account takeover (no email at all), SMTP interception, rate limiting bypass
+- **NOT protected against:** compromised server root access (see the "CRITICAL — Server Root Access" section), social engineering of the recovery word, user negligence, active phishing (a page the attacker controls)
+- **By design:** recovery requires either the passphrase (L1) OR the recovery word + public identifier (L2). Lose both, and a human-reviewed L3 is the only fallback.
 
 ## Deployment security checklist
 
