@@ -62,10 +62,10 @@ final class AttackSimulator
         $pdo->prepare('INSERT INTO accounts (username,pw_hash,pass_hash,recovery_hash,created_at) VALUES (?,?,?,?,?)')->execute(['bob', 'x', 'x', 'x', $old]);
         $bobId = (int) $pdo->lastInsertId();
 
-        $secretDM = "Mon RIB : FR76 3000 4000 0512 3456 7890 185 — règlement marché";
-        $secretBio = "Adresse réelle : 12 rue de la Mairie, [cp] [commune]";
+        $secretDM = "Mon RIB : FR76 0000 0000 0000 0000 0000 000 — règlement marché";
+        $secretBio = "Adresse réelle : 15 rue des Acacias, 33000 Bordeaux";
         DM::send($pdo, $bobId, 'alice', $secretDM);
-        Profile::save($pdo, $aliceId, ['bio' => $secretBio, 'localisation' => 'Sainte-Foy', 'lien' => '']);
+        Profile::save($pdo, $aliceId, ['bio' => $secretBio, 'localisation' => 'Gironde', 'lien' => '']);
 
         // 🔴 Attaquant : dump brut
         $dmBlob = (string) $pdo->query('SELECT ciphertext FROM dm LIMIT 1')->fetchColumn();
@@ -89,7 +89,7 @@ final class AttackSimulator
                 'lignes' => [
                     'dm.ciphertext  = ' . substr($dmBlob, 0, 64) . '…',
                     'profiles.ciphertext = ' . substr($profBlob, 0, 64) . '…',
-                    'Recherche "RIB" / "Tilleuls" dans le dump : 0 résultat',
+                    'Recherche "RIB" / "Acacias" dans le dump : 0 résultat',
                 ],
             ],
             'cote_legitime' => [

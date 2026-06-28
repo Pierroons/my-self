@@ -111,7 +111,7 @@ This module is **not yet production-ready**. It is published as beta to:
 - Invite community review of the cryptographic design AND the implementation
 - Allow security researchers to challenge the threat model with a runnable target
 - Coordinate with downstream integrators (notably SelfRecover users)
-- First real-world deployment target: [exploitation].fr (owned by the author)
+- First real-world deployment target: a small production e-commerce site
 
 A formal community cryptographic audit is planned before v1.0.0. ANSSI Visa de sécurité submission planned for the v0.3.0 milestone.
 

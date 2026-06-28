@@ -82,7 +82,7 @@ Ce changelog agrège les jalons transversaux du projet.
 ### Ajouté — Modules SelfFarm-Lite individuels
 
 - `self_dnja` — moteur prévisionnel DNJA 4 ans avec PDF CDOA
-- `self_aid` — catalogue d'aides JA departementales (V1, élargissement NA/AGRI/PME en V2)
+- `self_aid` — catalogue d'aides JA (V1, élargissement NA/AGRI/PME en V2)
 - `self_banking` — parser SG Particuliers (approche fake-first)
 - `self_agri_book` (squelette) — plan comptable + modèles Pydantic
 - `self_factur_x_agri` (squelette) — à fusionner avec `self_invoice`

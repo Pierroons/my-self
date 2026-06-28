@@ -111,7 +111,7 @@ Ce module **n'est pas encore prêt pour la production**. Il est publié en beta 
 - Inviter une revue communautaire de la conception cryptographique ET de l'implémentation
 - Permettre aux chercheurs en sécurité de challenger le modèle de menace avec une cible exécutable
 - Coordonner avec les intégrateurs en aval (notamment les utilisateurs de SelfRecover)
-- Première cible de déploiement réel : [exploitation].fr (propriété de l'auteur)
+- Première cible de déploiement réel : un petit site e-commerce de production
 
 Un audit cryptographique communautaire formel est prévu avant la v1.0.0. Soumission ANSSI Visa de sécurité prévue à l'horizon v0.3.0.
 

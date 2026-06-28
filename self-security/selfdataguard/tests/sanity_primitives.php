@@ -106,7 +106,7 @@ section('HMAC-SHA256 (deriveFromMemorized)');
 
 $mem = 'sunset-river-marble';
 $ctx1 = bin2hex($salt) . '/dataguard';
-$ctx2 = '[exploitation].fr/recover';
+$ctx2 = 'example.com/recover';
 
 $hk1 = Primitives::deriveFromMemorized($mem, $ctx1);
 $hk2 = Primitives::deriveFromMemorized($mem, $ctx1);

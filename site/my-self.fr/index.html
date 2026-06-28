@@ -541,14 +541,12 @@
   <div class="manifesto">
     <p>
       MySelf est un <strong>écosystème open source</strong> de modules auto-hébergés
-      qui font, sans GAFAM ni cloud, ce que l'État, les banques,
-      les assurances et les plateformes facturent cher — ou mal.
+      qui font, sans GAFAM ni cloud, ce que certains facturent cher — ou mal.
     </p>
     <p>
-      Pas de service central. Pas de base de données centralisée d'utilisateurs.
+      Pas de service central. Pas de collecte centralisée de tes données.
       Pas de tracking. Tu télécharges, tu héberges, tu t'en sers. Le code est public,
-      les directives sont publiques, l'infrastructure est minimale (un Raspberry Pi
-      suffit).
+      les directives sont publiques, l'infrastructure est minimale.
     </p>
     <p>
       Chaque module résout un problème concret de la vie quotidienne —
@@ -655,7 +653,8 @@
       <strong>SelfFarm-Lite</strong> est la première application concrète de MySelf —
       un outil de gestion agricole pour les néo-installé·e·s et les petites exploitations
       qui refusent les SaaS agri et les ERP lourds. Compta, factures Factur-X, prévisionnel
-      DNJA, import de relevés bancaires, cartographie parcellaire.
+      DNJA, import de relevés bancaires, cartographie parcellaire, caisse de marché et
+      sauvegarde souveraine multi-support (disque, mobile, NAS chiffré).
       <strong>Zéro cloud, SQLite local, AGPL-3.0.</strong>
     </p>
     <p class="muted">
@@ -678,7 +677,7 @@
         <span class="role">Prévisionnel JA — RDA ≥ SMIC, split DJA 80/20, export PDF.</span>
       </a>
       <a class="mod" href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">
-        <span class="name">self_banking<span class="status alpha">alpha</span></span>
+        <span class="name">self_banking<span class="status draft">bientôt</span></span>
         <span class="role">Import relevés bancaires PDF — parser SG (fake-first).</span>
       </a>
       <a class="mod" href="https://selffarm.my-self.fr/aides">
@@ -688,6 +687,14 @@
       <a class="mod" href="https://selffarm.my-self.fr/parcelles">
         <span class="name">self_parcelles<span class="status alpha">v0.3</span></span>
         <span class="role">Cartographie parcellaire multi-commune (IGN + cadastre).</span>
+      </a>
+      <a class="mod" href="https://selffarm.my-self.fr/pos/demo">
+        <span class="name">self_pos<span class="status alpha">beta</span></span>
+        <span class="role">Caisse marché PWA mobile — vente directe offline, ticket, sync compta, point de vente collectif.</span>
+      </a>
+      <a class="mod" href="https://selffarm.my-self.fr/backup">
+        <span class="name">self_backup<span class="status alpha">beta</span></span>
+        <span class="role">Sauvegarde souveraine — snapshots locaux, disque externe, NAS chiffré GPG, coffre mobile, temps-réel.</span>
       </a>
     </div>
     <div class="floor-cta">
@@ -755,7 +762,7 @@
     <p>
       <strong>Ce projet n'a pas été écrit seul.</strong> Chaque module, chaque
       ligne, chaque whitepaper est le fruit d'un coworking continu avec
-      <strong>Claude Opus 4.7</strong> (Anthropic). Le produit est une vraie
+      <strong>Claude Opus 4.8</strong> (Anthropic). Le produit est une vraie
       collaboration humain–IA : l'humain apporte l'entropie (le vécu, la
       direction, le bon sens pratique), la machine apporte la rigueur
       (la structure, la relecture, la cohérence technique).
@@ -770,7 +777,7 @@
 
 <section class="support" style="margin-top: 3rem; text-align: center;">
   <p style="font-size: 0.95rem; color: var(--text-muted); max-width: 560px; margin: 0 auto 1rem;">
-    MySelf est auto-hébergé sur un Raspberry Pi 4, sans publicité, sans tracker,
+    MySelf est auto-hébergé sur un serveur autoheberge, sans publicité, sans tracker,
     sans sponsor commercial. Si le projet te sert ou te parle, un geste direct
     aide à le maintenir en vie.
   </p>
@@ -792,7 +799,7 @@
     Code source : <a href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">github.com/Pierroons/my-self</a>
     · Licence <a href="https://github.com/Pierroons/my-self/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0-or-later</a>
     · <a href="/pentest.html">🛡️ Audit de sécurité</a>
-    · Auto-hébergé sur Raspberry Pi 4
+    · Auto-hébergé sur serveur autoheberge
   </p>
 </footer>
 
