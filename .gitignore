@@ -24,3 +24,5 @@ Thumbs.db
 
 # Doc de mission pentest interne — jamais public
 my-self-lab/docs/PENTEST-MISSION.md
+_perso/
+scripts/deploy.sh

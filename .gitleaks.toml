@@ -1,0 +1,78 @@
+# Règles gitleaks — OPSEC MySelf
+# Empêche toute donnée perso/identifiante d'entrer dans un repo public.
+# Scan : gitleaks detect (historique) | gitleaks protect --staged (avant commit)
+title = "MySelf OPSEC"
+
+[extend]
+useDefault = true   # conserve les ~150 règles natives (clés API, tokens, IBAN, etc.)
+
+# ─────────────────────────── Règles maison ───────────────────────────
+[[rules]]
+id = "myself-identite-civile"
+description = "Identité civile (RÈGLE D'OR — ne doit JAMAIS être publiée)"
+regex = '''(?i)\b[redacted]\b'''
+tags = ["opsec", "identity"]
+
+[[rules]]
+id = "myself-business-perso"
+description = "Domaine business perso (pont vers l'identité)"
+regex = '''(?i)[exploitation]'''
+tags = ["opsec"]
+
+[[rules]]
+id = "myself-localisation"
+description = "Commune / code postal / cadastre localisant l'auteur"
+regex = '''(?i)\b[commune]\b|\b[cp]\b|\b[insee]\b|rue de la Mairie'''
+tags = ["opsec", "geo"]
+
+[[rules]]
+id = "myself-email-perso"
+description = "Email perso (utiliser contact@my-self.fr)"
+regex = '''contact@my-self\.fr'''
+tags = ["opsec"]
+
+[[rules]]
+id = "myself-ip-lan"
+description = "IP LAN de l'infra perso"
+regex = '''192\.168\.1\.\d{1,3}'''
+tags = ["opsec", "infra"]
+
+[[rules]]
+id = "myself-chemin-perso"
+description = "Chemin disque perso / arborescence locale"
+regex = '''/home/user|Documents generes'''
+tags = ["opsec", "infra"]
+
+[[rules]]
+id = "myself-iban"
+description = "IBAN français (doit être fictif FR76 0000… en démo)"
+regex = '''FR\d{2}[ ]?\d{4}[ ]?\d{4}[ ]?\d{4}'''
+tags = ["opsec", "finance"]
+
+# ─────────────────────────── Faux positifs ───────────────────────────
+[allowlist]
+description = "Chemins et motifs sûrs"
+paths = [
+  '''_perso/''',                 # données perso volontairement hors-déploiement
+  '''(^|/)vendor/''',            # dépendances PHP tierces
+  '''(^|/)node_modules/''',
+  '''(^|/)\.venv/''',
+  '''__pycache__/''',            # bytecode compilé (chemins embarqués, jamais committé)
+  '''\.pyc$''',
+  '''(^|/)\.pytest_cache/''',
+  '''(^|/)\.mypy_cache/''',
+  '''(^|/)data/''',              # bases SQLite locales (gitignored)
+  '''.*wordlist.*''',            # « creuse » = mot du dico Diceware
+  '''.*diceware.*''',
+  '''eff_fr\.json''',
+  '''zxcvbn\.js''',
+  '''(^|/)\.gitleaks\.toml$''',  # ce fichier contient les motifs dans ses règles
+  '''(^|/)\.gitleaksignore$''',
+  '''(^|/)CONTRIBUTING\.md$''',  # exemples d'IP/IBAN pédagogiques
+]
+regexes = [
+  '''FR76 0000''',                       # IBAN fictif explicitement autorisé
+  '''FR76 ?1234 ?5678''',                # IBAN d'exemple des tests SelfDataGuard
+  '''192\.168\.1\.(0|10|50)\b''',        # subnet RFC1918 générique + placeholders d'exemple
+  '''correct horse battery staple''',    # mot de passe d'exemple (xkcd) dans les tests
+]

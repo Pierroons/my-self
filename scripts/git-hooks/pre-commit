@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Pre-commit OPSEC — bloque toute donnée sensible avant qu'elle entre dans git.
+# Installé via scripts/install-hooks.sh (ne dépend que de gitleaks).
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "⚠ gitleaks absent — installe-le (apt install gitleaks) pour activer la protection OPSEC."
+  exit 0   # ne bloque pas si l'outil manque, mais avertit
+fi
+
+if ! gitleaks protect --staged -c "$ROOT/.gitleaks.toml" --no-banner --redact; then
+  echo ""
+  echo "❌ COMMIT BLOQUÉ — donnée sensible détectée (identité, IP infra, IBAN réel, business perso…)."
+  echo "   → Corrige le contenu, OU si c'est un faux positif ajuste l'allowlist dans .gitleaks.toml."
+  exit 1
+fi

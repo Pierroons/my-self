@@ -1,0 +1,8 @@
+# Hook local optionnel (framework pre-commit) — feedback rapide avant commit.
+# Install : pip install --user pre-commit && pre-commit install
+# (Le hook natif scripts/git-hooks/pre-commit fait la même chose sans dépendance.)
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.16.0
+    hooks:
+      - id: gitleaks
