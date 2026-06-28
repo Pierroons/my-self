@@ -1,10 +1,12 @@
 name: gitleaks (OPSEC)
 
 # Barrière dure : refuse tout push/PR introduisant une donnée sensible
-# (identité, IP infra, IBAN réel, business perso…). Règles dans .gitleaks.toml.
+# (identité, IP infra, IBAN réel, business perso…). Règles : .gitleaks.toml,
+# faux positifs historiques : .gitleaksignore.
+# Step direct (binaire) → pas de dépendance licence/API comme gitleaks-action.
 on:
   push:
-    branches: [main]
+    branches: [develop, main]
   pull_request:
 
 jobs:
@@ -14,7 +16,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # historique complet (baseline .gitleaksignore appliqué)
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITLEAKS_CONFIG: .gitleaks.toml
+      - name: Install gitleaks
+        run: |
+          V=8.18.4
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_x64.tar.gz" | tar -xz gitleaks
+          sudo install -m755 gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+      - name: Scan secrets & données perso
+        run: gitleaks detect --source . -c .gitleaks.toml --redact --no-banner
