@@ -1,4 +1,4 @@
-# Findings historiques connus et acceptés (modèle de menace : pas de purge)
+# Findings historiques acceptés
 622adda99049801582bf8e41522ebb6b9d97aaaa:LICENSE:myself-email-perso:1
 8d86cf1f4c75575ac8ae2f989127d1ff8324f01f:tools/nas-asustor/README.md:myself-chemin-perso:89
 8d86cf1f4c75575ac8ae2f989127d1ff8324f01f:tools/nas-asustor/README.md:myself-ip-lan:104

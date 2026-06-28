@@ -15,14 +15,14 @@ tags = ["opsec", "identity"]
 
 [[rules]]
 id = "myself-business-perso"
-description = "Domaine business perso (pont vers l'identité)"
-regex = '''(?i)[exploitation]'''
+description = "Domaine / nom business perso (pont vers l'identité)"
+regex = '''(?i)[exploitation]|cannabis ?bio ?creuse'''
 tags = ["opsec"]
 
 [[rules]]
 id = "myself-localisation"
 description = "Commune / code postal / cadastre localisant l'auteur"
-regex = '''(?i)\b[commune]\b|\b[cp]\b|\b[insee]\b|rue de la Mairie'''
+regex = '''(?i)\b[commune]\b|\b[cp]\b|\b[insee]\b'''
 tags = ["opsec", "geo"]
 
 [[rules]]
