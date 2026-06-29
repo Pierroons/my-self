@@ -154,8 +154,9 @@ jalons transversaux de l'écosystème.
 
 ## Auteur
 
-[Pierroons](https://github.com/Pierroons) — développeur d'outils libres
-pour une agriculture souveraine.
+[Pierroons](https://github.com/Pierroons) — mainteneur.
+Bricole des outils libres pour l'agriculture, pour que les données poussent pas dans le cloud.
+Contact : contact@my-self.fr
 
 Co-écrit avec **Claude** (Anthropic) dans le cadre du « Self pact » humain–IA
 décrit dans le [README](./README.md).
