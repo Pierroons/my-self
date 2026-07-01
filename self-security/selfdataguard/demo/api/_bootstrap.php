@@ -20,14 +20,25 @@ use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
-const DEMO_DB_PATH        = __DIR__ . '/../storage/demo.sqlite';
-const DEMO_BLINDKEY_PATH  = __DIR__ . '/../storage/blindkey.bin';
+// DB SQLite : chemin surchargeable HORS webroot via DATAGUARD_DB_PATH (fallback local).
+// define() (et pas const) pour pouvoir lire l'env ; reste une constante utilisable
+// par tous les endpoints (inspect_db, etc.).
+define('DEMO_DB_PATH', getenv('DATAGUARD_DB_PATH')
+    ?: ($_SERVER['DATAGUARD_DB_PATH'] ?? '')
+    ?: (__DIR__ . '/../storage/demo.sqlite'));
 
-if (!is_file(DEMO_BLINDKEY_PATH)) {
-    file_put_contents(DEMO_BLINDKEY_PATH, Primitives::randomBytes(32));
-    chmod(DEMO_BLINDKEY_PATH, 0600);
+// blindKey (index aveugle) : chemin surchargeable HORS webroot via l'env
+// DATAGUARD_BLINDKEY_PATH ; fallback local pour la démo/dev. En prod, la clé
+// vit hors de l'arborescence servie par le serveur web (défense en profondeur).
+$blindKeyPath = getenv('DATAGUARD_BLINDKEY_PATH')
+    ?: ($_SERVER['DATAGUARD_BLINDKEY_PATH'] ?? '')
+    ?: (__DIR__ . '/../storage/blindkey.bin');
+
+if (!is_file($blindKeyPath)) {
+    file_put_contents($blindKeyPath, Primitives::randomBytes(32));
+    chmod($blindKeyPath, 0600);
 }
-$blindKey = file_get_contents(DEMO_BLINDKEY_PATH);
+$blindKey = file_get_contents($blindKeyPath);
 if ($blindKey === false || strlen($blindKey) < 32) {
     http_response_code(500);
     echo json_encode(['error' => 'Failed to load blindKey']);
