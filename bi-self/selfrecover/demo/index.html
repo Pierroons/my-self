@@ -376,22 +376,18 @@
         <!-- REGISTER -->
         <div id="panel-register" class="panel">
             <h2>Create an account</h2>
-            <p class="desc">A diceware passphrase will be generated server-side. Your recovery word is HMAC-derived client-side — the raw word never leaves your browser.</p>
+            <p class="desc">Une passphrase diceware (L1) est générée côté serveur. Ton mot mémorisé (L2) est HMAC-dérivé dans le navigateur — le mot brut ne quitte jamais ta machine. À la création, tu reçois <strong>10 recovery codes</strong> (facteur possession de L2), affichés <strong>une seule fois</strong>.</p>
             <div class="form-group">
                 <label>Username</label>
                 <input type="text" id="reg-username" placeholder="alice">
             </div>
             <div class="form-group">
-                <label>Identifier (e.g. customer ID, Embark ID, any public label)</label>
-                <input type="text" id="reg-identifier" placeholder="Alice#1234">
-            </div>
-            <div class="form-group">
                 <label>Password</label>
-                <input type="password" id="reg-password" placeholder="8 chars minimum">
+                <input type="password" id="reg-password" placeholder="8 caractères minimum">
             </div>
             <div class="form-group">
-                <label>Recovery word (your L2 secret — any word you'll remember)</label>
-                <input type="text" id="reg-recovery" placeholder="bob">
+                <label>Mot mémorisé (facteur connaissance de L2 — un mot que tu retiendras)</label>
+                <input type="text" id="reg-recovery" placeholder="pantoufles">
             </div>
             <input type="text" name="website" id="reg-website" tabindex="-1" autocomplete="off"
                    aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
@@ -590,19 +586,23 @@
 
         <!-- RECOVER L2 -->
         <div id="panel-recoverL2" class="panel hidden">
-            <h2>Recover — Level 2 (lost passphrase)</h2>
-            <p class="desc">Enter your public identifier and your recovery word. The browser will HMAC-derive it locally before sending — the raw word never reaches the server. Open your browser's DevTools console to see the derivation in action.</p>
+            <h2>Recover — Niveau 2 (2FA : mot mémorisé + recovery code)</h2>
+            <p class="desc">Passphrase (L1) perdue ? Récupère avec ton <strong>mot mémorisé</strong> + <strong>un recovery code</strong> — <strong>sans identifiant</strong> (le code localise ton compte). Le mot est HMAC-dérivé dans le navigateur, jamais envoyé en clair. Ouvre la console DevTools pour voir la dérivation.</p>
             <div class="form-group">
-                <label>Identifier</label>
-                <input type="text" id="l2-identifier" placeholder="Alice#1234">
+                <label>Mot mémorisé</label>
+                <input type="text" id="l2-recovery" placeholder="pantoufles">
             </div>
             <div class="form-group">
-                <label>Recovery word</label>
-                <input type="text" id="l2-recovery" placeholder="bob">
+                <label>Recovery code (un du lot — format xxxxx-xxxxx)</label>
+                <input type="text" id="l2-code" placeholder="6a0be-c7a5b">
+            </div>
+            <div class="form-group">
+                <label>Nouveau mot de passe</label>
+                <input type="password" id="l2-newpwd" placeholder="8 caractères minimum">
             </div>
             <input type="text" name="website" id="l2-website" tabindex="-1" autocomplete="off"
                    aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
-            <button class="btn" onclick="doRecoverL2()">Recover</button>
+            <button class="btn" onclick="doRecoverL2()">Récupérer</button>
             <div id="l2-result"></div>
         </div>
 
@@ -682,6 +682,39 @@
         const api = (...args) => window.api(...args);
         const hmacDerive = (...args) => window.hmacDerive(...args);
 
+        // Sel de domaine FIXE pour dériver le mot mémorisé. En L2, plus d'identifier :
+        // le recovery code localise le compte, donc pas de sel par-utilisateur à aller chercher.
+        // register et recover dérivent tous deux avec ce même sel → vérification cohérente.
+        window.DOMAIN_SALT = 'selfrecover-domain-v1';
+
+        // Affiche les recovery codes UNE SEULE FOIS + bouton de téléchargement .txt
+        window.LAST_CODES = null;
+        function renderCodes(elId, data) {
+            window.LAST_CODES = data.recovery_codes || [];
+            const codesHtml = (data.recovery_codes || [])
+                .map(c => '<code style="display:inline-block;margin:3px;padding:4px 9px;background:#0004;border-radius:5px;letter-spacing:1px;">' + c + '</code>')
+                .join('');
+            document.getElementById(elId).innerHTML =
+                '<div class="result success">' +
+                '<strong>Compte créé !</strong><br>' +
+                (data.username ? 'Username : <code>' + data.username + '</code><br>' : '') +
+                (data.passphrase ? 'Passphrase (L1) : <code>' + data.passphrase + '</code><br>' : '') +
+                '<br><strong>🔑 Tes 10 recovery codes (possession L2) — affichés UNE SEULE FOIS :</strong>' +
+                '<div style="margin:8px 0;">' + codesHtml + '</div>' +
+                '<button class="btn" style="margin-top:4px;" onclick="downloadCodes()">⬇ Télécharger (.txt)</button>' +
+                (data.note ? '<br><em>' + data.note + '</em>' : '') +
+                '</div>';
+        }
+        function downloadCodes() {
+            if (!window.LAST_CODES) return;
+            const txt = 'SelfRecover — recovery codes (garde-les hors ligne, usage unique)\n\n'
+                + window.LAST_CODES.join('\n') + '\n';
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
+            a.download = 'selfrecover-recovery-codes.txt';
+            a.click();
+        }
+
         // === Display result ===
         function showResult(elId, message, isError = false) {
             const el = document.getElementById(elId);
@@ -692,26 +725,20 @@
         async function doRegister() {
             try {
                 const username = document.getElementById('reg-username').value.trim();
-                const identifier = document.getElementById('reg-identifier').value.trim();
                 const password = document.getElementById('reg-password').value;
-                const recoveryWord = document.getElementById('reg-recovery').value.trim();
-                if (!username || !identifier || !password || !recoveryWord) {
-                    showResult('reg-result', 'All fields are required.', true);
+                const memorizedWord = document.getElementById('reg-recovery').value.trim();
+                if (!username || !password || !memorizedWord) {
+                    showResult('reg-result', 'Tous les champs sont requis.', true);
                     return;
                 }
-                const userSalt = window.genUserSalt(); // R9-02 : sel par-utilisateur généré côté client
-                const recoveryDerivedKey = await hmacDerive(recoveryWord, userSalt);
+                // Dérivation par domaine (pas d'identifier) — cohérente register / recover
+                const memorizedDerived = await hmacDerive(memorizedWord, window.DOMAIN_SALT);
                 const data = await api('register', {
-                    username, identifier, password,
-                    recovery_derived_key: recoveryDerivedKey,
-                    user_salt: userSalt,
+                    username, password,
+                    recovery_derived_key: memorizedDerived,
                     website: document.getElementById('reg-website')?.value || ''
                 });
-                showResult('reg-result',
-                    '<strong>Account created !</strong>' +
-                    'Username: <code>' + data.username + '</code><br>' +
-                    'Passphrase: <code>' + data.passphrase + '</code><br>' +
-                    '<br><em>' + data.note + '</em>');
+                renderCodes('reg-result', data);
             } catch (e) {
                 showResult('reg-result', e.message, true);
             }
@@ -839,25 +866,49 @@
             }
         });
 
-        // === Recover L2 ===
+        // === Recover L2 (2FA : mot mémorisé + recovery code, SANS identifier) ===
         async function doRecoverL2() {
             try {
-                const identifier = document.getElementById('l2-identifier').value.trim();
-                const recoveryWord = document.getElementById('l2-recovery').value.trim();
-                if (!identifier || !recoveryWord) {
-                    showResult('l2-result', 'All fields are required.', true);
+                const memorizedWord = document.getElementById('l2-recovery').value.trim();
+                const code = document.getElementById('l2-code').value.trim().toLowerCase();
+                const newPwd = document.getElementById('l2-newpwd').value;
+                if (!memorizedWord || !code || !newPwd) {
+                    showResult('l2-result', 'Tous les champs sont requis.', true);
                     return;
                 }
-                const { salt } = await api('user-salt&identifier=' + encodeURIComponent(identifier)); // R9-02 : sel du compte (anti-énum côté serveur)
-                const recoveryKey = await hmacDerive(recoveryWord, salt);
-                const data = await api('recover-l2', {
-                    identifier, recovery_key: recoveryKey,
+                const memorizedDerived = await hmacDerive(memorizedWord, window.DOMAIN_SALT);
+                const data = await api('recover-l2-code', {
+                    memorized_derived: memorizedDerived,
+                    recovery_code: code,
+                    new_password: newPwd,
                     website: document.getElementById('l2-website')?.value || ''
                 });
-                showResult('l2-result',
-                    '<strong>' + data.message + '</strong>' +
-                    'Your new password: <code>' + data.new_password + '</code><br>' +
-                    '<em>Save it — it will not be shown again.</em>');
+                document.getElementById('l2-result').innerHTML =
+                    '<div class="result success">' +
+                    '<strong>' + data.message + '</strong><br>' +
+                    'Compte : <code>' + data.username + '</code><br>' +
+                    'Codes restants : <strong>' + data.codes_remaining + '</strong>' +
+                    (data.low_codes_warning ? ' ⚠️ pense à régénérer' : '') + '<br>' +
+                    '<em>Ton nouveau mot de passe est celui que tu viens de choisir.</em><br>' +
+                    '<button class="btn" style="margin-top:6px;" onclick="doRegenerate(\'' + data.username + '\')">Régénérer mes recovery codes</button>' +
+                    '</div>';
+            } catch (e) {
+                showResult('l2-result', e.message, true);
+            }
+        }
+
+        // === Régénérer le lot (authentifié par le mot mémorisé) ===
+        async function doRegenerate(username) {
+            try {
+                const memorizedWord = document.getElementById('l2-recovery').value.trim();
+                if (!memorizedWord) { showResult('l2-result', 'Entre ton mot mémorisé pour régénérer.', true); return; }
+                const memorizedDerived = await hmacDerive(memorizedWord, window.DOMAIN_SALT);
+                const data = await api('regenerate-codes', {
+                    username, memorized_derived: memorizedDerived,
+                    website: document.getElementById('l2-website')?.value || ''
+                });
+                renderCodes('l2-result', { username, recovery_codes: data.recovery_codes,
+                    note: 'Nouveau lot — l\'ancien est invalidé. Sauvegarde-les.' });
             } catch (e) {
                 showResult('l2-result', e.message, true);
             }
