@@ -228,7 +228,7 @@
             log('error', `IN  ${res.status} ${data.error || 'Unknown'} (${dur} ms)`);
         }
 
-        if (!res.ok) throw new Error(data.error || 'Unknown error');
+        if (!res.ok) { const err = new Error(data.error || 'Unknown error'); err.data = data; throw err; }
         // Retire _trace de la donnée renvoyée pour ne pas polluer le code utilisateur
         const { _trace, ...clean } = data;
         return clean;

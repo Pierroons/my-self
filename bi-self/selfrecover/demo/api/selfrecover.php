@@ -216,7 +216,7 @@ function handleLogin(): void {
 // === RECOVER L1 ===
 function handleRecoverL1(): void {
     $in = getInput();
-    securityChecks($in);
+    checkHoneypot($in); // le blocage L1 est géré par sa propre logique (l1_blocked_until) — pas le blocage IP générique qui masquerait l'escalade
     $username = trim($in['username'] ?? '');
     $passphrase = trim($in['passphrase'] ?? '');
     addTrace(sprintf("[recover-l1] input recu — username:%dch, passphrase:%dch (mots: %d)",
@@ -236,10 +236,10 @@ function handleRecoverL1(): void {
         jsonError('Invalid credentials', 401);
     }
     if ($user['l1_block_count'] >= 3) {
-        jsonError('Too many failed attempts. Use recovery level 2.', 429);
+        jsonResponse(['error' => 'Trop d\'échecs au niveau 1. Passe au niveau 2 (mot mémorisé + recovery code).', 'escalate_l2' => true], 429);
     }
     if ($user['l1_blocked_until'] && strtotime($user['l1_blocked_until']) > time()) {
-        jsonError('Blocked. Try again later.', 429);
+        jsonResponse(['error' => 'Niveau 1 temporairement bloqué. Passe au niveau 2 (mot mémorisé + recovery code).', 'escalate_l2' => true], 429);
     }
 
     // 3 échecs dans la fenêtre → blocage (durées configurables : 30s en mode démo)
@@ -253,7 +253,7 @@ function handleRecoverL1(): void {
         $db->prepare("UPDATE users SET l1_blocked_until = datetime('now', ?), l1_block_count = l1_block_count + 1 WHERE id = ?")
            ->execute(['+' . L1_BLOCK_SEC . ' seconds', $user['id']]);
         logAttempt($db, $username, 1, false);
-        jsonError('Too many attempts. Blocked.', 429);
+        jsonResponse(['error' => 'Trop d\'échecs au niveau 1. Passe au niveau 2 (mot mémorisé + recovery code).', 'escalate_l2' => true], 429);
     }
 
     $t0 = microtime(true);
@@ -351,7 +351,19 @@ function generateRecoveryCodes(PDO $db, int $userId, int $n = 10): array {
 // est le 2e facteur. Erreur générique : ne révèle jamais lequel des deux a échoué.
 function handleRecoverL2Code(): void {
     $in = getInput();
-    securityChecks($in); // honeypot + blocage IP (éjection)
+    checkHoneypot($in);
+    $db = getDB();
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    // Escalade L2 → L3 : après 3 échecs L2 depuis cette IP dans la fenêtre, on oriente
+    // vers le niveau 3 (récupération assistée par un humain) — comme L1 → L2.
+    if ($ip) {
+        $c = $db->prepare("SELECT COUNT(*) FROM recovery_attempts WHERE level=2 AND success=0 AND ip_address=? AND datetime(attempted_at) > datetime('now', ?)");
+        $c->execute([$ip, '-' . L1_WINDOW_SEC . ' seconds']);
+        if ((int)$c->fetchColumn() >= 3) {
+            addTrace('[recover-l2-code] 3 échecs L2 → escalade niveau 3 (récupération assistée)');
+            jsonResponse(['error' => 'Trop d\'échecs au niveau 2. Passe au niveau 3 (récupération assistée par un humain).', 'escalate_l3' => true], 429);
+        }
+    }
     $memorizedDerived = trim($in['memorized_derived'] ?? ''); // HMAC(domain_salt, mot) côté client
     $codeInput        = strtolower(trim($in['recovery_code'] ?? ''));
     $newPassword      = $in['new_password'] ?? '';
@@ -363,7 +375,6 @@ function handleRecoverL2Code(): void {
     if (!preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $codeInput)) jsonError('Recovery code invalide (format xxxxx-xxxxx)');
     if (strlen($newPassword) < 8) jsonError('Nouveau mot de passe: 8 caractères minimum');
 
-    $db = getDB();
     $stmt = $db->prepare("
         SELECT rc.id AS code_id, rc.code_hash, rc.used,
                u.id AS user_id, u.username, u.recovery_derived_hash

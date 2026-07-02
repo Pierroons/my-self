@@ -649,7 +649,7 @@
             if (body) opts.body = JSON.stringify(body);
             const res = await fetch('api/index.php?action=' + action, opts);
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Unknown error');
+            if (!res.ok) { const err = new Error(data.error || 'Unknown error'); err.data = data; throw err; }
             return data;
         };
 
@@ -721,6 +721,27 @@
             el.innerHTML = '<div class="result ' + (isError ? 'error' : 'success') + '">' + message + '</div>';
         }
 
+        // Bascule de panel sans dépendre de event.target (pour les boutons d'escalade)
+        function switchPanel(name) {
+            document.querySelectorAll('.panel').forEach(p => p.classList.add('hidden'));
+            const el = document.getElementById('panel-' + name);
+            if (el) el.classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // Affiche l'erreur + un bouton d'escalade vers le niveau suivant si le serveur le signale
+        function showResultMaybeEscalate(elId, e) {
+            const esc = e.data && (e.data.escalate_l2 ? 'recoverL2' : (e.data.escalate_l3 ? 'recoverL3' : null));
+            if (esc) {
+                const label = esc === 'recoverL2' ? '→ Passer au niveau 2 (mot mémorisé + code)' : '→ Passer au niveau 3 (récupération assistée)';
+                document.getElementById(elId).innerHTML =
+                    '<div class="result error">' + e.message +
+                    '<br><button class="btn" style="margin-top:8px;" onclick="switchPanel(\'' + esc + '\')">' + label + '</button></div>';
+            } else {
+                showResult(elId, e.message, true);
+            }
+        }
+
         // === Register ===
         async function doRegister() {
             try {
@@ -773,7 +794,7 @@
                     'Your new password: <code>' + data.new_password + '</code><br>' +
                     '<em>Save it — it will not be shown again.</em>');
             } catch (e) {
-                showResult('l1-result', e.message, true);
+                showResultMaybeEscalate('l1-result', e);
             }
         }
 
@@ -893,7 +914,7 @@
                     '<button class="btn" style="margin-top:6px;" onclick="doRegenerate(\'' + data.username + '\')">Régénérer mes recovery codes</button>' +
                     '</div>';
             } catch (e) {
-                showResult('l2-result', e.message, true);
+                showResultMaybeEscalate('l2-result', e);
             }
         }
 
