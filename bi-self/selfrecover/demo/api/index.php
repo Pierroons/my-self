@@ -38,6 +38,13 @@ switch ($action) {
     case 'recover-l2':
         handleRecoverL2();
         break;
+    // L2 renforcé (2FA sans identifier) : mot mémorisé + recovery code
+    case 'recover-l2-code':
+        handleRecoverL2Code();
+        break;
+    case 'regenerate-codes':
+        handleRegenerateCodes();
+        break;
     // SelfRecover L3 — récupération assistée (chat admin obligatoire, jamais d'auto)
     case 'recover-l3-init':
         handleRecoverL3Init();

@@ -164,13 +164,19 @@ function handleRegister(): void {
         VALUES (?, ?, ?, ?, ?, ?)
     ");
     $stmt->execute([$username, $identifier, $pwdHash, $ppHash, $rcHash, $userSalt]);
-    addTrace(sprintf("[register] DB INSERT users (id=%d) — done", $db->lastInsertId()));
+    $userId = (int)$db->lastInsertId();
+    addTrace(sprintf("[register] DB INSERT users (id=%d) — done", $userId));
+
+    // Foyer possession L2 : lot de 10 recovery codes générés d'office, affichés UNE SEULE FOIS
+    $recoveryCodes = generateRecoveryCodes($db, $userId, 10);
+    addTrace(sprintf("[register] %d recovery codes générés (Argon2id + lookup HMAC) — affichés une seule fois", count($recoveryCodes)));
 
     jsonResponse([
         'message' => 'Account created',
         'username' => $username,
         'passphrase' => $passphrase,
-        'note' => 'Save your passphrase — it will never be shown again. This is your L1 recovery secret.',
+        'recovery_codes' => $recoveryCodes,
+        'note' => 'Sauvegarde ta passphrase (L1) ET tes recovery codes (possession L2) — affichés une seule fois.',
     ]);
 }
 
@@ -232,18 +238,18 @@ function handleRecoverL1(): void {
         jsonError('Blocked. Try again later.', 429);
     }
 
-    // 3 failed attempts in 15 min → block 1h + increment block count
+    // 3 échecs dans la fenêtre → blocage (durées configurables : 30s en mode démo)
     $stmt = $db->prepare("
         SELECT COUNT(*) FROM recovery_attempts
         WHERE username = ? AND level = 1 AND success = 0
-        AND datetime(attempted_at) > datetime('now', '-15 minutes')
+        AND datetime(attempted_at) > datetime('now', ?)
     ");
-    $stmt->execute([$username]);
+    $stmt->execute([$username, '-' . L1_WINDOW_SEC . ' seconds']);
     if ((int)$stmt->fetchColumn() >= 3) {
-        $db->prepare("UPDATE users SET l1_blocked_until = datetime('now', '+1 hour'), l1_block_count = l1_block_count + 1 WHERE id = ?")
-           ->execute([$user['id']]);
+        $db->prepare("UPDATE users SET l1_blocked_until = datetime('now', ?), l1_block_count = l1_block_count + 1 WHERE id = ?")
+           ->execute(['+' . L1_BLOCK_SEC . ' seconds', $user['id']]);
         logAttempt($db, $username, 1, false);
-        jsonError('Too many attempts. Blocked 1 hour.', 429);
+        jsonError('Too many attempts. Blocked.', 429);
     }
 
     $t0 = microtime(true);
@@ -315,6 +321,118 @@ function handleRecoverL2(): void {
     ]);
 }
 
+// === RECOVERY CODES (foyer possession portable de L2) ===
+// Génère un lot de N codes, stocke lookup HMAC (recherche O(1) sans identifier) +
+// Argon2id (vérif). Retourne le clair — à afficher UNE SEULE FOIS.
+function generateRecoveryCodes(PDO $db, int $userId, int $n = 10): array {
+    $db->prepare("DELETE FROM recovery_codes WHERE user_id = ?")->execute([$userId]); // purge lot précédent (régén)
+    $ins = $db->prepare("INSERT INTO recovery_codes (user_id, code_lookup, code_hash) VALUES (?, ?, ?)");
+    $codes = [];
+    for ($i = 0; $i < $n; $i++) {
+        $raw  = bin2hex(random_bytes(5));                        // 10 hex = 40 bits
+        $code = substr($raw, 0, 5) . '-' . substr($raw, 5, 5);  // format xxxxx-xxxxx
+        $ins->execute([
+            $userId,
+            hash_hmac('sha256', $code, SERVER_SECRET),               // lookup O(1) (pepper)
+            password_hash($code, PASSWORD_ARGON2ID, ARGON2_OPTIONS), // hash Argon2id
+        ]);
+        $codes[] = $code;
+    }
+    return $codes;
+}
+
+// === RECOVER L2 RENFORCÉ (2FA, SANS identifier) : mot mémorisé + recovery code ===
+// Le recovery code (possession) LOCALISE le compte via lookup HMAC (plus besoin
+// d'identifier → plus d'énumération) ET l'autorise. Le mot mémorisé (connaissance)
+// est le 2e facteur. Erreur générique : ne révèle jamais lequel des deux a échoué.
+function handleRecoverL2Code(): void {
+    $in = getInput();
+    securityChecks($in); // honeypot + blocage IP (éjection)
+    $memorizedDerived = trim($in['memorized_derived'] ?? ''); // HMAC(domain_salt, mot) côté client
+    $codeInput        = strtolower(trim($in['recovery_code'] ?? ''));
+    $newPassword      = $in['new_password'] ?? '';
+
+    addTrace(sprintf("[recover-l2-code] input — memorized_derived:%dch, recovery_code:%dch, new_password:%dch",
+        strlen($memorizedDerived), strlen($codeInput), strlen($newPassword)));
+
+    if (strlen($memorizedDerived) !== 64) jsonError('Mot mémorisé (dérivée HMAC 64 hex) requis');
+    if (!preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $codeInput)) jsonError('Recovery code invalide (format xxxxx-xxxxx)');
+    if (strlen($newPassword) < 8) jsonError('Nouveau mot de passe: 8 caractères minimum');
+
+    $db = getDB();
+    $stmt = $db->prepare("
+        SELECT rc.id AS code_id, rc.code_hash, rc.used,
+               u.id AS user_id, u.username, u.recovery_derived_hash
+        FROM recovery_codes rc JOIN users u ON u.id = rc.user_id
+        WHERE rc.code_lookup = ?
+    ");
+    $stmt->execute([hash_hmac('sha256', $codeInput, SERVER_SECRET)]);
+    $row = $stmt->fetch();
+
+    if (!$row || $row['used']) {
+        addTrace("[recover-l2-code] code inconnu ou déjà utilisé");
+        logAttempt($db, $row['username'] ?? 'unknown', 2, false); // track IP même si code inconnu (éjection)
+        usleep(500000);
+        jsonError('Recovery code ou mot mémorisé incorrect', 401);
+    }
+
+    $t0 = microtime(true);
+    $codeOk = password_verify($codeInput, $row['code_hash']);                    // possession
+    $wordOk = password_verify($memorizedDerived, $row['recovery_derived_hash']); // connaissance
+    addTrace(sprintf("[recover-l2-code] Argon2id verify — code:%s, mot mémorisé:%s (%.0f ms)",
+        $codeOk ? 'OK' : 'FAIL', $wordOk ? 'OK' : 'FAIL', (microtime(true) - $t0) * 1000));
+
+    if (!$codeOk || !$wordOk) {
+        logAttempt($db, $row['username'], 2, false);
+        usleep(500000);
+        jsonError('Recovery code ou mot mémorisé incorrect', 401); // ne dit pas lequel (2FA)
+    }
+
+    $newHash = password_hash($newPassword, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
+    $db->prepare("UPDATE users SET password_hash = ?, l1_block_count = 0, l1_blocked_until = NULL WHERE id = ?")
+       ->execute([$newHash, $row['user_id']]);
+    $db->prepare("UPDATE recovery_codes SET used = 1, used_at = CURRENT_TIMESTAMP WHERE id = ?")
+       ->execute([$row['code_id']]);
+    logAttempt($db, $row['username'], 2, true);
+
+    $stmtL = $db->prepare("SELECT COUNT(*) FROM recovery_codes WHERE user_id = ? AND used = 0");
+    $stmtL->execute([$row['user_id']]);
+    $left = (int)$stmtL->fetchColumn();
+    addTrace(sprintf("[recover-l2-code] 2FA OK — reset user_id=%d, code used, %d codes restants", $row['user_id'], $left));
+
+    jsonResponse([
+        'message'           => 'Mot de passe réinitialisé (L2 2FA : mot mémorisé + recovery code)',
+        'username'          => $row['username'],
+        'codes_remaining'   => $left,
+        'low_codes_warning' => $left <= 2,
+    ]);
+}
+
+// === REGENERATE RECOVERY CODES (user authentifié par son mot mémorisé) ===
+function handleRegenerateCodes(): void {
+    $in = getInput();
+    securityChecks($in);
+    $username         = trim($in['username'] ?? '');
+    $memorizedDerived = trim($in['memorized_derived'] ?? '');
+    if (!$username || strlen($memorizedDerived) !== 64) jsonError('Username + mot mémorisé requis');
+
+    $db = getDB();
+    $stmt = $db->prepare("SELECT id, recovery_derived_hash FROM users WHERE username = ?");
+    $stmt->execute([$username]);
+    $user = $stmt->fetch();
+    if (!$user || !password_verify($memorizedDerived, $user['recovery_derived_hash'])) {
+        logAttempt($db, $username, 2, false);
+        usleep(500000);
+        jsonError('Identifiants incorrects', 401);
+    }
+    $codes = generateRecoveryCodes($db, (int)$user['id'], 10);
+    addTrace(sprintf("[regenerate-codes] lot régénéré (user_id=%d) — ancien lot invalidé", $user['id']));
+    jsonResponse([
+        'message'        => 'Recovery codes régénérés — l\'ancien lot est invalidé',
+        'recovery_codes' => $codes,
+    ]);
+}
+
 // === USER-SALT (R9-02) : sel par-utilisateur pour la dérivation HMAC côté client ===
 // Le sel n'est PAS un secret (comme un sel bcrypt). Anti-énumération : si l'identifiant
 // n'existe pas, on renvoie un sel FACTICE déterministe — indistinguable d'un vrai —
@@ -367,7 +485,7 @@ function trackSuspiciousIP(PDO $db, string $ip, string $fingerprint, string $use
     $row = $stmt->fetch();
     if ($row) {
         $newCount = (int)$row['attempt_count'] + 1;
-        $blockedUntil = $newCount >= 10 ? date('Y-m-d H:i:s', time() + 86400) : null;
+        $blockedUntil = $newCount >= IP_THRESHOLD ? date('Y-m-d H:i:s', time() + IP_BLOCK_SEC) : null;
         $db->prepare("UPDATE suspicious_fingerprints SET attempt_count = ?, blocked_until = ?, last_seen = CURRENT_TIMESTAMP WHERE id = ?")
            ->execute([$newCount, $blockedUntil, $row['id']]);
     } else {
@@ -396,7 +514,7 @@ function securityChecks(array $in): void {
     checkHoneypot($in);
     $ip = $_SERVER['REMOTE_ADDR'] ?? '';
     if ($ip && isBlockedIP(getDB(), $ip)) {
-        jsonError('Trop de tentatives depuis votre IP. Réessayez dans 24 heures.', 429);
+        jsonError('Trop de tentatives depuis votre IP. Réessayez plus tard.', 429);
     }
 }
 

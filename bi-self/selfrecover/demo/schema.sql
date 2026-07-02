@@ -94,3 +94,17 @@ CREATE INDEX IF NOT EXISTS idx_disputes_user ON disputes(user_id);
 CREATE INDEX IF NOT EXISTS idx_disputes_number ON disputes(dispute_number);
 CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status);
 CREATE INDEX IF NOT EXISTS idx_dispute_msg ON dispute_messages(dispute_id);
+
+-- Recovery codes (foyer possession portable de L2) — lot par user, usage unique
+CREATE TABLE IF NOT EXISTS recovery_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    code_lookup TEXT NOT NULL,      -- HMAC(SERVER_SECRET, code) : recherche O(1) sans identifier, non réversible (pepper)
+    code_hash TEXT NOT NULL,        -- Argon2id(code) : vérif + résistance fuite DB
+    used INTEGER DEFAULT 0,
+    used_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_reccodes_lookup ON recovery_codes(code_lookup);
+CREATE INDEX IF NOT EXISTS idx_reccodes_user ON recovery_codes(user_id);

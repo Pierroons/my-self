@@ -24,6 +24,15 @@ define('ARGON2_OPTIONS', [
     'threads'     => 2,
 ]);
 
+// === Timings d'éjection ===
+// Mode démo : SELFRECOVER_FAST_TIMINGS=true → tout à 30s (au lieu de 15min/1h/24h)
+// pour tester les blocages sans attendre. En prod : laisser false.
+define('FAST_TIMINGS', filter_var(getenv('SELFRECOVER_FAST_TIMINGS') ?: 'false', FILTER_VALIDATE_BOOLEAN));
+define('L1_WINDOW_SEC', FAST_TIMINGS ? 30 : 900);    // fenêtre de comptage des échecs L1 (défaut 15 min)
+define('L1_BLOCK_SEC',  FAST_TIMINGS ? 30 : 3600);   // durée de blocage L1 (défaut 1 h)
+define('IP_THRESHOLD',  FAST_TIMINGS ? 3  : 10);     // nb d'échecs par IP avant blocage
+define('IP_BLOCK_SEC',  FAST_TIMINGS ? 30 : 86400);  // durée de blocage IP (défaut 24 h)
+
 function getDB(): PDO {
     static $pdo = null;
     if ($pdo !== null) return $pdo;
@@ -106,6 +115,19 @@ function getDB(): PDO {
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status)");
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_dispute_msg ON dispute_messages(dispute_id)");
         } catch (Exception $e) { /* tables exist = OK */ }
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS recovery_codes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                code_lookup TEXT NOT NULL,
+                code_hash TEXT NOT NULL,
+                used INTEGER DEFAULT 0,
+                used_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_reccodes_lookup ON recovery_codes(code_lookup)");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_reccodes_user ON recovery_codes(user_id)");
+        } catch (Exception $e) { /* table exists = OK */ }
     }
     return $pdo;
 }
