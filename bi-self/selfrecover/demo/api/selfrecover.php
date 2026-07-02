@@ -608,14 +608,14 @@ function l3Questions(): array {
 function handleRecoverL3Init(): void {
     $in = getInput();
     securityChecks($in);
-    $identifier = trim($in['identifier'] ?? '');
+    $username   = trim($in['username'] ?? '');
     $claimHash  = trim($in['claim_hash'] ?? ''); // R9-01b : SHA-256 du sésame généré côté client
-    if (!$identifier) jsonError('Identifiant requis');
+    if (!$username) jsonError('Username requis');
     if (!preg_match('/^[a-f0-9]{64}$/', $claimHash)) jsonError('claim_hash invalide (SHA-256 hex requis)');
 
     $db = getDB();
-    $stmt = $db->prepare("SELECT * FROM users WHERE identifier = ?");
-    $stmt->execute([$identifier]);
+    $stmt = $db->prepare("SELECT * FROM users WHERE username = ?");
+    $stmt->execute([$username]);
     $user = $stmt->fetch();
     usleep(300000); // anti-timing / anti-énumération
 
@@ -897,7 +897,7 @@ function handleL3Reset(): void {
     if (!$number || !$claim) jsonError('Litige et code de suivi requis', 400);
     if (strlen($password) < 8) jsonError('Mot de passe : 8 caractères minimum');
     if (!$recoveryDerivedKey) jsonError('Nouveau mot de récupération requis');
-    if (!preg_match('/^[a-f0-9]{32}$/', $userSalt)) jsonError('user_salt invalide (32 hex requis)');
+    if (!preg_match('/^[a-f0-9]{32}$/', $userSalt)) $userSalt = bin2hex(random_bytes(16)); // vestige — le mot mémorisé est dérivé par domaine côté client
 
     $db = getDB();
     $dispute = getDisputeByNumber($db, $number);
@@ -928,11 +928,14 @@ function handleL3Reset(): void {
     $db->prepare("INSERT INTO dispute_messages (dispute_id, sender, body) VALUES (?, 'admin', ?)")
        ->execute([$dispute['id'], "Accès rétabli par le propriétaire (re-enrôlement). Litige clos."]);
     logAttempt($db, $user['username'], 3, true);
-    addTrace("[L3-reset] litige $number — propriétaire a re-défini ses secrets (L1 régénérée, L2/login renouvelés). Sésame consommé (one-shot).");
+    // Nouveau lot de recovery codes : l'ancien était perdu (c'est pour ça qu'on est passé en L3)
+    $recoveryCodes = generateRecoveryCodes($db, (int)$user['id'], 10);
+    addTrace("[L3-reset] litige $number — secrets re-définis (L1 régénérée, L2/login renouvelés) + 10 nouveaux recovery codes. Sésame consommé (one-shot).");
 
     jsonResponse([
         'message' => 'Accès rétabli. Ton nouveau mot de passe est actif.',
         'passphrase' => $newPassphrase,
+        'recovery_codes' => $recoveryCodes,
         'note' => 'Note ta nouvelle passphrase L1 — elle ne sera plus affichée. Le serveur n\'a ni généré ni diffusé de mot de passe : tu l\'as choisi toi-même.',
     ]);
 }

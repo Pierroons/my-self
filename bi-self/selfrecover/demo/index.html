@@ -342,6 +342,14 @@
             font-size: 0.7rem;
             margin-right: 8px;
         }
+        /* L3 (intégré SPA) — bannière contextuelle + chat */
+        .threat-banner { background:linear-gradient(135deg,rgba(90,151,223,0.08),rgba(124,196,124,0.08)); border:1px solid rgba(90,151,223,0.4); border-left:4px solid var(--accent,#7ab7ff); padding:12px 16px; border-radius:6px; margin-bottom:16px; font-size:0.85rem; line-height:1.6; }
+        .l3-step.hidden { display:none; }
+        .chat-box { background:var(--bg,#0f1419); border:1px solid var(--border,#2a3038); border-radius:6px; padding:12px; height:260px; overflow-y:auto; margin-bottom:12px; display:flex; flex-direction:column; gap:8px; }
+        .msg { padding:8px 12px; border-radius:8px; max-width:80%; font-size:0.88rem; white-space:pre-wrap; word-break:break-word; }
+        .msg.user { align-self:flex-end; background:rgba(122,183,255,0.18); border:1px solid var(--accent,#7ab7ff); }
+        .msg.admin { align-self:flex-start; background:rgba(124,196,124,0.15); border:1px solid var(--success,#7cc47c); }
+        .msg .who { font-size:0.7rem; opacity:0.7; margin-bottom:2px; }
     </style>
 </head>
 <body>
@@ -369,7 +377,7 @@
             <button class="tab" onclick="showTab('login')">Login</button>
             <button class="tab" onclick="showTab('recoverL1')">Recover L1</button>
             <button class="tab" onclick="showTab('recoverL2')">Recover L2</button>
-            <button class="tab" onclick="location.href='recover-l3.html'">Recover L3 · tout perdu</button>
+            <button class="tab" onclick="openL3(event)">Recover L3 · tout perdu</button>
             <button class="tab" onclick="showTab('entropy')">Entropy Lab</button>
         </div>
 
@@ -604,6 +612,60 @@
                    aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
             <button class="btn" onclick="doRecoverL2()">Récupérer</button>
             <div id="l2-result"></div>
+        </div>
+
+        <!-- RECOVER L3 (intégré SPA) -->
+        <div id="panel-recoverL3" class="panel hidden">
+            <h2>Recover — Niveau 3 (tout perdu · récupération assistée)</h2>
+            <div class="threat-banner">
+                <strong>Comment ça marche.</strong> On ne te redemande <strong>pas</strong> tes secrets oubliés.
+                Tu réponds à des questions de <strong>contexte</strong> (ce que seul le vrai titulaire sait) : elles forment
+                un <strong>faisceau de signaux</strong> qui <em>aide</em> l'administrateur — aucun score, aucune ouverture
+                automatique. <strong>La décision reste humaine</strong>, via le chat.
+            </div>
+
+            <div id="l3-step-id" class="l3-step">
+                <div class="form-group">
+                    <label>Ton username</label>
+                    <input type="text" id="l3-username" autocomplete="off" placeholder="alice">
+                </div>
+                <input type="text" name="website" id="l3-hp" tabindex="-1" autocomplete="off" aria-hidden="true"
+                       style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
+                <button class="btn" onclick="startL3()">Démarrer la récupération</button>
+                <div id="l3-step-id-result"></div>
+            </div>
+
+            <div id="l3-step-q" class="l3-step hidden">
+                <p class="desc">Aucun secret demandé. Réponds au mieux de ta mémoire — chaque réponse correcte renforce le faisceau vu par l'administrateur.</p>
+                <div id="l3-questions"></div>
+                <button class="btn" onclick="submitL3()">Envoyer ma demande à l'administrateur</button>
+                <div id="l3-step-q-result"></div>
+            </div>
+
+            <div id="l3-step-chat" class="l3-step hidden">
+                <h3 style="font-size:1rem;margin-bottom:6px;">Litige <code id="l3-chat-dispute"></code> — chat administrateur</h3>
+                <p class="desc">Un administrateur examine ta demande et te répond ici. Échange avec lui pour prouver ton identité.</p>
+                <div id="l3-chat-box" class="chat-box"></div>
+                <div class="form-group">
+                    <input type="text" id="l3-chat-input" placeholder="Ton message à l'administrateur…" onkeydown="if(event.key==='Enter')sendL3Msg()">
+                </div>
+                <button class="btn" onclick="sendL3Msg()">Envoyer</button>
+            </div>
+
+            <div id="l3-step-reset" class="l3-step hidden">
+                <h3 style="font-size:1rem;margin-bottom:6px;">Reprendre l'accès</h3>
+                <p class="desc">L'administrateur a confirmé ton identité. Définis toi-même tes nouveaux secrets — le serveur ne reçoit jamais de mot de passe par le chat.</p>
+                <div class="form-group">
+                    <label>Nouveau mot de passe (8 caractères min.)</label>
+                    <input type="text" id="l3-reset-password" autocomplete="off" placeholder="ton nouveau mot de passe">
+                </div>
+                <div class="form-group">
+                    <label>Nouveau mot mémorisé (secret L2 — pour un futur recover niveau 2)</label>
+                    <input type="text" id="l3-reset-recovery" autocomplete="off" placeholder="un mot que toi seul connais">
+                </div>
+                <button class="btn" onclick="doL3Reset()">Rétablir mon accès</button>
+                <div id="l3-step-reset-result"></div>
+            </div>
         </div>
 
         <div class="footer">
@@ -933,6 +995,102 @@
             } catch (e) {
                 showResult('l2-result', e.message, true);
             }
+        }
+
+        // ================= RECOVER L3 (intégré dans l'SPA) =================
+        let l3Dispute = null, l3Claim = null, l3Timer = null, l3ResetShown = false, l3Username = '';
+
+        function l3RandomHex(bytes) { const a = new Uint8Array(bytes); crypto.getRandomValues(a); return Array.from(a).map(b => b.toString(16).padStart(2, '0')).join(''); }
+        async function l3Sha256(str) { const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''); }
+        function l3Fingerprint() { const s = [navigator.userAgent, navigator.language, screen.width + 'x' + screen.height, Intl.DateTimeFormat().resolvedOptions().timeZone].join('|'); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return 'fp' + h.toString(16); }
+
+        function l3Save() { localStorage.setItem('sr_l3', JSON.stringify({ username: l3Username, dispute: l3Dispute, claim: l3Claim })); }
+        function l3Load() { try { return JSON.parse(localStorage.getItem('sr_l3') || 'null'); } catch (e) { return null; } }
+        function l3Clear() { localStorage.removeItem('sr_l3'); }
+        function l3ShowStep(step) { ['id', 'q', 'chat', 'reset'].forEach(s => document.getElementById('l3-step-' + s).classList.add('hidden')); document.getElementById('l3-step-' + step).classList.remove('hidden'); }
+
+        // Ouverture de l'onglet L3 : reprend un litige en cours si présent sur cet appareil (localStorage)
+        function openL3(ev) {
+            switchPanel('recoverL3');
+            if (ev && ev.target) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); ev.target.classList.add('active'); }
+            const st = l3Load();
+            if (st && st.dispute && st.claim) {
+                l3Username = st.username || ''; l3Dispute = st.dispute; l3Claim = st.claim;
+                document.getElementById('l3-chat-dispute').textContent = l3Dispute;
+                l3ShowStep('chat'); startL3Polling();
+            } else {
+                l3ShowStep('id');
+            }
+        }
+
+        async function startL3() {
+            try {
+                l3Username = document.getElementById('l3-username').value.trim();
+                if (!l3Username) { showResult('l3-step-id-result', 'Username requis.', true); return; }
+                l3Claim = l3RandomHex(16);
+                const claimHash = await l3Sha256(l3Claim);
+                const data = await api('recover-l3-init', { username: l3Username, claim_hash: claimHash, website: document.getElementById('l3-hp').value || '' });
+                if (data.already_open) { showResult('l3-step-id-result', 'Une procédure est déjà en cours pour ce compte. Si c\'est toi sur un autre appareil, reprends-la là-bas. Sinon un administrateur a été alerté.', true); return; }
+                l3Dispute = data.dispute_number; l3Save();
+                const box = document.getElementById('l3-questions'); box.innerHTML = '';
+                (data.questions || []).forEach(q => {
+                    let field;
+                    if (q.type === 'select') { field = '<select id="l3q-' + q.key + '"><option value="">—</option>' + q.options.map(o => '<option value="' + o + '">' + o + '</option>').join('') + '</select>'; }
+                    else { const ph = q.type === 'month' ? 'MM/AAAA' : (q.type === 'year' ? 'AAAA' : ''); field = '<input type="text" id="l3q-' + q.key + '" placeholder="' + ph + '" autocomplete="off">'; }
+                    box.innerHTML += '<div class="form-group"><label>' + q.label + '</label>' + field + '</div>';
+                });
+                l3ShowStep('q');
+            } catch (e) { showResult('l3-step-id-result', e.message, true); }
+        }
+
+        async function submitL3() {
+            try {
+                const answers = {};
+                document.querySelectorAll('#l3-questions [id^="l3q-"]').forEach(el => { answers[el.id.slice(4)] = el.value.trim(); });
+                const data = await api('recover-l3', { dispute_number: l3Dispute, claim_secret: l3Claim, answers, fingerprint: l3Fingerprint() });
+                l3Dispute = data.dispute_number || l3Dispute; l3Save();
+                document.getElementById('l3-chat-dispute').textContent = l3Dispute || '(en attente)';
+                l3ShowStep('chat'); startL3Polling();
+            } catch (e) { showResult('l3-step-q-result', e.message, true); }
+        }
+
+        function l3RenderMessages(messages) {
+            const box = document.getElementById('l3-chat-box'); box.innerHTML = '';
+            if (!messages || !messages.length) { box.innerHTML = '<div style="opacity:0.6;font-size:0.85rem">En attente d\'un administrateur…</div>'; return; }
+            messages.forEach(m => { const who = m.sender === 'admin' ? 'Administrateur' : 'Toi'; box.innerHTML += '<div class="msg ' + m.sender + '"><div class="who">' + who + ' · ' + m.created_at + '</div>' + m.body.replace(/</g, '&lt;') + '</div>'; });
+            box.scrollTop = box.scrollHeight;
+        }
+
+        async function l3Poll() {
+            if (!l3Dispute || !l3Claim) return;
+            try {
+                const data = await api('dispute-chat', { dispute_number: l3Dispute, claim_secret: l3Claim });
+                l3RenderMessages(data.messages);
+                if (data.status === 'granted' && !l3ResetShown) { l3ResetShown = true; document.getElementById('l3-step-reset').classList.remove('hidden'); document.getElementById('l3-step-reset').scrollIntoView({ behavior: 'smooth' }); }
+                if (['resolved', 'refused', 'closed'].includes(data.status)) clearInterval(l3Timer);
+            } catch (e) { clearInterval(l3Timer); }
+        }
+        function startL3Polling() { l3Poll(); l3Timer = setInterval(l3Poll, 3000); }
+
+        async function sendL3Msg() {
+            const input = document.getElementById('l3-chat-input'); const msg = input.value.trim();
+            if (!msg || !l3Dispute) return; input.value = '';
+            try { await api('dispute-chat', { dispute_number: l3Dispute, claim_secret: l3Claim, message: msg }); l3Poll(); } catch (e) { input.value = msg; }
+        }
+
+        async function doL3Reset() {
+            try {
+                const password = document.getElementById('l3-reset-password').value;
+                const memorizedWord = document.getElementById('l3-reset-recovery').value.trim();
+                if (password.length < 8) { showResult('l3-step-reset-result', 'Mot de passe : 8 caractères minimum.', true); return; }
+                if (!memorizedWord) { showResult('l3-step-reset-result', 'Choisis un mot mémorisé.', true); return; }
+                // Dérivation par domaine (cohérente avec L2) → un futur recover L2 fonctionnera
+                const memorizedDerived = await hmacDerive(memorizedWord, window.DOMAIN_SALT);
+                const data = await api('l3-reset', { dispute_number: l3Dispute, claim_secret: l3Claim, password, recovery_derived_key: memorizedDerived });
+                clearInterval(l3Timer); l3Clear();
+                const codesHtml = (data.recovery_codes || []).map(c => '<code style="display:inline-block;margin:2px;padding:3px 7px;background:#0004;border-radius:4px;">' + c + '</code>').join('');
+                showResult('l3-step-reset-result', '✓ ' + data.message + '<br><br>Passphrase L1 (note-la, 1×) : <code>' + (data.passphrase || '') + '</code>' + '<br><br><strong>🔑 Tes 10 nouveaux recovery codes (possession L2) :</strong><br>' + codesHtml, false);
+            } catch (e) { showResult('l3-step-reset-result', e.message, true); }
         }
     </script>
 </body>
