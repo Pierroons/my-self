@@ -111,18 +111,22 @@ function handleRegister(): void {
     if (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', $username)) {
         jsonError('Username: 3-20 chars alphanumeric/underscore');
     }
-    if (strlen($identifier) < 3 || strlen($identifier) > 50) {
+    // Identifier : PLUS nécessaire côté user (le recovery code localise le compte en L2).
+    // Validé seulement s'il est fourni (compat ancien flux) ; sinon généré en interne
+    // pour satisfaire la contrainte UNIQUE NOT NULL du schéma.
+    if ($identifier !== '' && (strlen($identifier) < 3 || strlen($identifier) > 50)) {
         jsonError('Identifier: 3-50 chars');
     }
+    if ($identifier === '') $identifier = 'u-' . bin2hex(random_bytes(8));
     if (strlen($password) < 8) {
         jsonError('Password: 8 chars minimum');
     }
     if (!$recoveryDerivedKey) {
         jsonError('Recovery word required');
     }
-    if (!preg_match('/^[a-f0-9]{32}$/', $userSalt)) {
-        jsonError('user_salt invalide (32 hex requis)'); // R9-02
-    }
+    // user_salt : vestige de l'ancienne dérivation par-identifier. Le nouveau flux dérive
+    // le mot mémorisé par domaine → généré si absent (un sel n'est pas un secret).
+    if (!preg_match('/^[a-f0-9]{32}$/', $userSalt)) $userSalt = bin2hex(random_bytes(16));
     addTrace("[register] validation OK (username pattern, longueurs, user_salt)");
 
     $db = getDB();
