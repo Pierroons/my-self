@@ -1003,6 +1003,8 @@
         function l3RandomHex(bytes) { const a = new Uint8Array(bytes); crypto.getRandomValues(a); return Array.from(a).map(b => b.toString(16).padStart(2, '0')).join(''); }
         async function l3Sha256(str) { const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''); }
         function l3Fingerprint() { const s = [navigator.userAgent, navigator.language, screen.width + 'x' + screen.height, Intl.DateTimeFormat().resolvedOptions().timeZone].join('|'); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return 'fp' + h.toString(16); }
+        // created_at SQLite = UTC ("Y-m-d H:i:s") → affichage en heure locale du navigateur
+        function l3FmtTs(s) { if (!s) return ''; const d = new Date(String(s).replace(' ', 'T') + 'Z'); return isNaN(d) ? s : d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); }
 
         function l3Save() { localStorage.setItem('sr_l3', JSON.stringify({ username: l3Username, dispute: l3Dispute, claim: l3Claim })); }
         function l3Load() { try { return JSON.parse(localStorage.getItem('sr_l3') || 'null'); } catch (e) { return null; } }
@@ -1057,7 +1059,7 @@
         function l3RenderMessages(messages) {
             const box = document.getElementById('l3-chat-box'); box.innerHTML = '';
             if (!messages || !messages.length) { box.innerHTML = '<div style="opacity:0.6;font-size:0.85rem">En attente d\'un administrateur…</div>'; return; }
-            messages.forEach(m => { const who = m.sender === 'admin' ? 'Administrateur' : 'Toi'; box.innerHTML += '<div class="msg ' + m.sender + '"><div class="who">' + who + ' · ' + m.created_at + '</div>' + m.body.replace(/</g, '&lt;') + '</div>'; });
+            messages.forEach(m => { const who = m.sender === 'admin' ? 'Administrateur' : 'Toi'; box.innerHTML += '<div class="msg ' + m.sender + '"><div class="who">' + who + ' · ' + l3FmtTs(m.created_at) + '</div>' + m.body.replace(/</g, '&lt;') + '</div>'; });
             box.scrollTop = box.scrollHeight;
         }
 

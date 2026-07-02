@@ -187,6 +187,9 @@
         return res.json();
     }
 
+    // created_at/last_seen SQLite = UTC → heure locale
+    function tpFmtTs(s) { if (!s) return ''; const d = new Date(String(s).replace(' ', 'T') + 'Z'); return isNaN(d) ? s : d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); }
+
     async function tpRenderAdmin() {
         const el = document.getElementById('tp-admin-body');
         if (!el) return;
@@ -203,7 +206,7 @@
         }
         let html = '<h4>Signaux L2 (anonymes)</h4>';
         html += (sig.signals && sig.signals.length)
-            ? sig.signals.map(s => '<div class="tp-sig">⚠ ' + s.attempts + ' tentative(s) L2 · ' + escapeHtml(s.last_seen || '') + '</div>').join('')
+            ? sig.signals.map(s => '<div class="tp-sig">⚠ ' + s.attempts + ' tentative(s) L2 · ' + tpFmtTs(s.last_seen) + '</div>').join('')
             : '<div style="color:#64748b">aucun</div>';
         html += '<h4>Litiges L3</h4>';
         html += (disp.disputes && disp.disputes.length)
