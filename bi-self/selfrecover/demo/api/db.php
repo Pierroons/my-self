@@ -60,6 +60,7 @@ function getDB(): PDO {
             "ALTER TABLE disputes ADD COLUMN claim_hash TEXT",
             "ALTER TABLE disputes ADD COLUMN expires_at TEXT",
             "ALTER TABLE disputes ADD COLUMN init_collisions INTEGER DEFAULT 0",
+            "ALTER TABLE disputes ADD COLUMN source_ip TEXT", // fil rouge L2↔L3 côté serveur, JAMAIS exposé à l'admin
         ] as $migration) {
             try { $pdo->exec($migration); } catch (Exception $e) { /* duplicate column = OK */ }
         }

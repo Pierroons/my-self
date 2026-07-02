@@ -61,6 +61,9 @@ switch ($action) {
     case 'admin-disputes':
         handleAdminDisputes();
         break;
+    case 'admin-l2-signals':
+        handleAdminL2Signals();
+        break;
     case 'admin-dispute-decide':
         handleAdminDisputeDecide();
         break;

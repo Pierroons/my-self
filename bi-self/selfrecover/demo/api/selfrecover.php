@@ -575,8 +575,9 @@ function createDispute(PDO $db, array $user, string $claimHash): array {
     }
     $number = 'LIT-' . strtoupper(bin2hex(random_bytes(8)));        // R9-01 : fin de l'énumération séquentielle
     $expires = date('Y-m-d H:i:s', time() + 86400);                 // R9-01b : capability à durée de vie limitée
-    $db->prepare("INSERT INTO disputes (dispute_number, user_id, identifier, status, claim_hash, expires_at) VALUES (?, ?, ?, 'open', ?, ?)")
-       ->execute([$number, $user['id'], $user['identifier'] ?? '', $claimHash, $expires]);
+    $srcIp = $_SERVER['REMOTE_ADDR'] ?? ''; // fil rouge L2↔L3, gardé côté serveur uniquement
+    $db->prepare("INSERT INTO disputes (dispute_number, user_id, identifier, source_ip, status, claim_hash, expires_at) VALUES (?, ?, ?, ?, 'open', ?, ?)")
+       ->execute([$number, $user['id'], $user['identifier'] ?? '', $srcIp, $claimHash, $expires]);
     addTrace("[L3] litige $number ouvert (user id={$user['id']}, claim lié, TTL 24h)");
     return getDisputeByNumber($db, $number);
 }
@@ -825,13 +826,37 @@ function handleAdminDisputes(): void {
     requireAdmin();
     $db = getDB();
     $rows = $db->query("
-        SELECT d.dispute_number, d.status, d.signals_json, d.refusal_count, d.init_collisions, d.created_at,
-               u.username, u.identifier, u.created_at AS account_created, u.last_login_at, u.login_count
+        SELECT d.dispute_number, d.status, d.signals_json, d.refusal_count, d.init_collisions, d.created_at, d.source_ip,
+               u.username, u.created_at AS account_created, u.last_login_at, u.login_count
         FROM disputes d JOIN users u ON u.id = d.user_id
         WHERE d.status != 'closed' ORDER BY d.updated_at DESC
     ")->fetchAll();
-    foreach ($rows as &$r) { $r['signals'] = json_decode($r['signals_json'] ?? '{}', true); unset($r['signals_json']); }
+    $cnt = $db->prepare("SELECT COUNT(*) FROM recovery_attempts WHERE level=2 AND success=0 AND ip_address=?");
+    foreach ($rows as &$r) {
+        $r['signals'] = json_decode($r['signals_json'] ?? '{}', true);
+        unset($r['signals_json']);
+        // Corrélation OPSEC : nb d'échecs L2 depuis la même source, SANS jamais exposer l'IP
+        $cnt->execute([$r['source_ip'] ?? '']);
+        $r['l2_prior_attempts'] = (int)$cnt->fetchColumn();
+        unset($r['source_ip']); // l'IP ne sort JAMAIS vers l'admin
+    }
     jsonResponse(['disputes' => $rows]);
+}
+
+// === ADMIN — signaux L2 anonymes (échecs de recovery codes) ===
+// Regroupés par source côté serveur, mais l'IP n'est JAMAIS renvoyée (OPSEC).
+// Un cluster « gradue » en litige nominatif si l'user passe en L3 (même IP → username).
+function handleAdminL2Signals(): void {
+    requireAdmin();
+    $db = getDB();
+    $rows = $db->query("
+        SELECT COUNT(*) AS attempts, MAX(attempted_at) AS last_seen
+        FROM recovery_attempts
+        WHERE level = 2 AND success = 0 AND ip_address IS NOT NULL AND ip_address != ''
+        GROUP BY ip_address ORDER BY last_seen DESC LIMIT 50
+    ")->fetchAll();
+    // Aucune donnée identifiante en sortie : ni IP, ni pseudo. Juste des compteurs anonymes.
+    jsonResponse(['signals' => array_map(fn($r) => ['attempts' => (int)$r['attempts'], 'last_seen' => $r['last_seen']], $rows)]);
 }
 
 function handleAdminDisputeDecide(): void {
@@ -860,22 +885,16 @@ function handleAdminDisputeDecide(): void {
     }
 
     if ($decision === 'refuse') {
-        $refusals = (int)$dispute['refusal_count'] + 1;
-        if ($refusals >= 3) {
-            $db->prepare("DELETE FROM users WHERE id = ?")->execute([$user['id']]);
-            $db->prepare("UPDATE disputes SET status = 'closed', refusal_count = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-               ->execute([$refusals, $dispute['id']]);
-            addTrace("[L3-admin] litige $number 3e REFUS → compte supprimé (identifiant libéré)");
-            jsonResponse(['decision' => 'refused', 'account_deleted' => true, 'refusal_count' => $refusals]);
-        }
-        $bannedUntil = date('Y-m-d H:i:s', time() + 86400);
-        $db->prepare("UPDATE users SET banned_until = ? WHERE id = ?")->execute([$bannedUntil, $user['id']]);
-        $db->prepare("UPDATE disputes SET status = 'refused', refusal_count = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-           ->execute([$refusals, $dispute['id']]);
+        // Démo : 1 refus = clôture + suppression du compte (montre le cycle complet).
+        // (En prod, la logique de tolérance — N refus / ban — se règle ici.)
+        $db->prepare("DELETE FROM recovery_codes WHERE user_id = ?")->execute([$user['id']]);
+        $db->prepare("DELETE FROM users WHERE id = ?")->execute([$user['id']]);
+        $db->prepare("UPDATE disputes SET status = 'refused', refusal_count = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+           ->execute([$dispute['id']]);
         $db->prepare("INSERT INTO dispute_messages (dispute_id, sender, body) VALUES (?, 'admin', ?)")
-           ->execute([$dispute['id'], "Preuve insuffisante. Nouvelle tentative possible dans 24h (refus $refusals/3)."]);
-        addTrace("[L3-admin] litige $number REFUSÉ ($refusals/3) — ban 24h");
-        jsonResponse(['decision' => 'refused', 'refusal_count' => $refusals, 'banned_24h' => true]);
+           ->execute([$dispute['id'], "Preuve insuffisante. Compte clôturé et données supprimées."]);
+        addTrace("[L3-admin] litige $number REFUSÉ → compte supprimé (démo : 1 refus = suppression)");
+        jsonResponse(['decision' => 'refused', 'account_deleted' => true]);
     }
 
     jsonError('Décision invalide (grant|refuse)');
