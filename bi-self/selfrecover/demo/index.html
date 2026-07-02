@@ -1067,7 +1067,12 @@
                 const data = await api('dispute-chat', { dispute_number: l3Dispute, claim_secret: l3Claim });
                 l3RenderMessages(data.messages);
                 if (data.status === 'granted' && !l3ResetShown) { l3ResetShown = true; document.getElementById('l3-step-reset').classList.remove('hidden'); document.getElementById('l3-step-reset').scrollIntoView({ behavior: 'smooth' }); }
-                if (['resolved', 'refused', 'closed'].includes(data.status)) clearInterval(l3Timer);
+                if (['refused', 'closed'].includes(data.status)) {
+                    clearInterval(l3Timer); l3Clear();
+                    document.getElementById('l3-step-chat').innerHTML =
+                        '<div class="result error"><strong>Compte clôturé — données supprimées, compte à recréer.</strong><br>Merci d\'avoir testé Recover. 🙏</div>';
+                }
+                if (data.status === 'resolved') clearInterval(l3Timer);
             } catch (e) { clearInterval(l3Timer); }
         }
         function startL3Polling() { l3Poll(); l3Timer = setInterval(l3Poll, 3000); }
@@ -1089,7 +1094,7 @@
                 const data = await api('l3-reset', { dispute_number: l3Dispute, claim_secret: l3Claim, password, recovery_derived_key: memorizedDerived });
                 clearInterval(l3Timer); l3Clear();
                 const codesHtml = (data.recovery_codes || []).map(c => '<code style="display:inline-block;margin:2px;padding:3px 7px;background:#0004;border-radius:4px;">' + c + '</code>').join('');
-                showResult('l3-step-reset-result', '✓ ' + data.message + '<br><br>Passphrase L1 (note-la, 1×) : <code>' + (data.passphrase || '') + '</code>' + '<br><br><strong>🔑 Tes 10 nouveaux recovery codes (possession L2) :</strong><br>' + codesHtml, false);
+                showResult('l3-step-reset-result', '✓ <strong>Compte rouvert</strong> — passphrase + codes régénérés.<br><br>Passphrase L1 (note-la, 1×) : <code>' + (data.passphrase || '') + '</code>' + '<br><br><strong>🔑 Tes 10 nouveaux recovery codes (possession L2) :</strong><br>' + codesHtml + '<br><br><em>Merci d\'avoir testé Recover. 🙏</em>', false);
             } catch (e) { showResult('l3-step-reset-result', e.message, true); }
         }
     </script>

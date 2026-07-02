@@ -89,6 +89,24 @@
         .tp-client .tp-msg { color: #fdba74; }
         .tp-server .tp-msg { color: #c4b5fd; }
         .tp-error  .tp-msg { color: #fca5a5; font-weight: 600; }
+        /* Onglets Backend / Admin */
+        .tp-tabs { display: flex; border-bottom: 1px solid #2a3038; flex-shrink: 0; }
+        .tp-tab { flex: 1; background: #12161d; color: #9aa0a6; border: none; border-bottom: 2px solid transparent; padding: 6px 8px; font-size: 11px; cursor: pointer; font-family: inherit; }
+        .tp-tab.active { color: #7ab7ff; border-bottom-color: #7ab7ff; background: #1a2028; }
+        .tp-admin { overflow-y: auto; padding: 8px 10px; flex: 1; font-size: 11px; color: #e2e8f0; }
+        .tp-admin .demo-tag { background: #92400e; color: #fdba74; font-size: 9px; padding: 2px 6px; border-radius: 3px; display: inline-block; margin-bottom: 8px; }
+        .tp-admin h4 { font-size: 11px; color: #7ab7ff; margin: 10px 0 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .tp-sig { color: #fdba74; padding: 2px 0; border-bottom: 1px dotted #1a2028; }
+        .tp-disp { border: 1px solid #2a3038; border-radius: 5px; padding: 7px; margin-bottom: 8px; background: #12161d; }
+        .tp-disp .num { color: #7ab7ff; font-weight: 600; }
+        .tp-disp .meta { color: #9aa0a6; font-size: 10px; margin: 2px 0; }
+        .tp-disp .corr { color: #fca5a5; }
+        .tp-chat { background: #0a0e14; border-radius: 4px; padding: 5px; margin: 5px 0; max-height: 120px; overflow-y: auto; }
+        .tp-chat .m { padding: 2px 0; } .tp-chat .m.admin { color: #86efac; } .tp-chat .m.user { color: #93c5fd; }
+        .tp-disp input { width: 100%; background: #0f1419; color: #e2e8f0; border: 1px solid #2a3038; border-radius: 3px; padding: 4px; font-size: 11px; font-family: inherit; margin: 3px 0; }
+        .tp-disp .acts { display: flex; gap: 4px; margin-top: 4px; }
+        .tp-disp .acts button { flex: 1; padding: 4px; font-size: 10px; border: none; border-radius: 3px; cursor: pointer; font-family: inherit; }
+        .tp-disp .grant { background: #14532d; color: #86efac; } .tp-disp .refuse { background: #7f1d1d; color: #fca5a5; }
         body { padding-right: 380px !important; }
         @media (max-width: 900px) {
             body { padding-right: 0 !important; padding-bottom: 32px !important; }
@@ -107,15 +125,23 @@
         // visible en permanence (style ludique aligné sur les démos legacy).
         panelEl.innerHTML = `
             <div class="tp-header" id="tp-header" title="Cliquer pour deplier/replier">
-                <span class="tp-title">TRANSPARENCY LIVE — backend visible</span>
+                <span class="tp-title">TRANSPARENCY LIVE</span>
                 <div class="tp-controls">
                     <button id="tp-pause" title="Pause / reprise">PAUSE</button>
                     <button id="tp-clear" title="Effacer">CLEAR</button>
                     <button id="tp-export" title="Exporter le log">EXPORT</button>
                 </div>
             </div>
+            <div class="tp-tabs">
+                <button class="tp-tab active" data-view="backend">📡 Backend</button>
+                <button class="tp-tab" data-view="admin">🛡️ Admin</button>
+            </div>
             <div class="tp-body" id="tp-body">
                 <div class="tp-empty">Aucune activite. Utilise la demo (Register / Login / Recover) pour voir le backend en direct. Aucune donnee sensible n'est affichee : passphrases, mots de passe et hashes complets sont volontairement masques.</div>
+            </div>
+            <div class="tp-admin" id="tp-admin" style="display:none">
+                <span class="demo-tag">DÉMO — en prod, console séparée &amp; authentifiée</span>
+                <div id="tp-admin-body">Ouvre cet onglet pour piloter les litiges…</div>
             </div>
         `;
         document.body.appendChild(panelEl);
@@ -139,7 +165,70 @@
             e.stopPropagation();
             exportLog();
         });
+        document.querySelectorAll('.tp-tab').forEach(t => t.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('.tp-tab').forEach(x => x.classList.remove('active'));
+            t.classList.add('active');
+            const admin = t.dataset.view === 'admin';
+            document.getElementById('tp-body').style.display = admin ? 'none' : '';
+            document.getElementById('tp-admin').style.display = admin ? '' : 'none';
+            if (admin) tpAdminStart(); else tpAdminStop();
+        }));
     }
+
+    // ===================== CONSOLE ADMIN (démo — surface pédago, PAS la prod) =====================
+    const TP_ADMIN_TOKEN = 'admindemo'; // démo : doit matcher SELFRECOVER_ADMIN_TOKEN au lancement du serveur
+    let tpAdminTimer = null;
+
+    async function tpAdminApi(action, body) {
+        const opts = { method: body ? 'POST' : 'GET', headers: { 'X-Admin-Token': TP_ADMIN_TOKEN } };
+        if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+        const res = await fetch('api/index.php?action=' + action, opts);
+        return res.json();
+    }
+
+    async function tpRenderAdmin() {
+        const el = document.getElementById('tp-admin-body');
+        if (!el) return;
+        let sig = { signals: [] }, disp = { disputes: [] };
+        try { sig = await tpAdminApi('admin-l2-signals'); } catch (e) {}
+        try { disp = await tpAdminApi('admin-disputes'); } catch (e) {}
+        if (sig.error || disp.error) { el.innerHTML = '<div style="color:#fca5a5">' + escapeHtml(sig.error || disp.error) + ' (token démo « admindemo » — lance le serveur avec SELFRECOVER_ADMIN_TOKEN=admindemo)</div>'; return; }
+        // Récupère les messages de chaque litige (côté admin) pour l'afficher
+        for (const d of (disp.disputes || [])) {
+            try { const c = await tpAdminApi('dispute-chat', { dispute_number: d.dispute_number }); d._msgs = c.messages || []; d.status = c.status || d.status; } catch (e) { d._msgs = []; }
+        }
+        let html = '<h4>Signaux L2 (anonymes)</h4>';
+        html += (sig.signals && sig.signals.length)
+            ? sig.signals.map(s => '<div class="tp-sig">⚠ ' + s.attempts + ' tentative(s) L2 · ' + escapeHtml(s.last_seen || '') + '</div>').join('')
+            : '<div style="color:#64748b">aucun</div>';
+        html += '<h4>Litiges L3</h4>';
+        html += (disp.disputes && disp.disputes.length)
+            ? disp.disputes.map(tpRenderDispute).join('')
+            : '<div style="color:#64748b">aucun</div>';
+        el.innerHTML = html;
+    }
+
+    function tpRenderDispute(d) {
+        const open = ['open', 'awaiting_admin'].includes(d.status);
+        const msgs = (d._msgs || []).length
+            ? d._msgs.map(m => '<div class="m ' + m.sender + '">' + (m.sender === 'admin' ? 'Admin' : escapeHtml(d.username)) + ' : ' + escapeHtml(m.body) + '</div>').join('')
+            : '<div style="color:#64748b">…</div>';
+        const corr = d.l2_prior_attempts ? ' · <span class="corr">' + d.l2_prior_attempts + ' échec(s) L2 préalable(s) (même source)</span>' : '';
+        return '<div class="tp-disp" data-num="' + escapeHtml(d.dispute_number) + '">' +
+            '<div><span class="num">' + escapeHtml(d.dispute_number) + '</span> · <b>' + escapeHtml(d.username) + '</b></div>' +
+            '<div class="meta">statut : ' + escapeHtml(d.status) + corr + '</div>' +
+            '<div class="tp-chat">' + msgs + '</div>' +
+            (open
+                ? '<input type="text" placeholder="Répondre au demandeur…" onkeydown="if(event.key===\'Enter\'){window.SelfRecoverTP.adminChat(this.closest(\'.tp-disp\').dataset.num,this.value);this.value=\'\';}">' +
+                  '<div class="acts"><button class="grant" onclick="window.SelfRecoverTP.adminDecide(\'' + d.dispute_number + '\',\'grant\')">Accorder</button>' +
+                  '<button class="refuse" onclick="window.SelfRecoverTP.adminDecide(\'' + d.dispute_number + '\',\'refuse\')">Refuser</button></div>'
+                : '') +
+            '</div>';
+    }
+
+    function tpAdminStart() { tpRenderAdmin(); if (tpAdminTimer) clearInterval(tpAdminTimer); tpAdminTimer = setInterval(tpRenderAdmin, 3000); }
+    function tpAdminStop() { if (tpAdminTimer) { clearInterval(tpAdminTimer); tpAdminTimer = null; } }
 
     function toggle() {
         panelEl.classList.toggle('collapsed');
@@ -262,6 +351,8 @@
         export: exportLog,
         apiTraced: apiTraced,
         hmacDeriveTraced: hmacDeriveTraced,
+        adminDecide: async (num, decision) => { await tpAdminApi('admin-dispute-decide', { dispute_number: num, decision }); tpRenderAdmin(); },
+        adminChat: async (num, msg) => { if (!msg.trim()) return; await tpAdminApi('dispute-chat', { dispute_number: num, message: msg }); tpRenderAdmin(); },
     };
 
     // ===================== AUTO-INIT + MONKEY-PATCH =====================
