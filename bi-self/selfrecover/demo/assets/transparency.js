@@ -190,6 +190,9 @@
     async function tpRenderAdmin() {
         const el = document.getElementById('tp-admin-body');
         if (!el) return;
+        // Ne pas ré-render pendant que l'admin tape (sinon l'input est recréé et le texte perdu)
+        const af = document.activeElement;
+        if (af && af.tagName === 'INPUT' && af.closest && af.closest('.tp-admin')) return;
         let sig = { signals: [] }, disp = { disputes: [] };
         try { sig = await tpAdminApi('admin-l2-signals'); } catch (e) {}
         try { disp = await tpAdminApi('admin-disputes'); } catch (e) {}

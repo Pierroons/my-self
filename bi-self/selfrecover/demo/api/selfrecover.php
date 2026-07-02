@@ -472,9 +472,10 @@ function logAttempt(PDO $db, string $username, int $level, bool $success): void 
     $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
     $db->prepare("INSERT INTO recovery_attempts (username, level, success, ip_address, fingerprint, user_agent) VALUES (?, ?, ?, ?, ?, ?)")
        ->execute([$username, $level, $success ? 1 : 0, $ip, $fingerprint, $userAgent]);
-    if (!$success && $ip) {
-        trackSuspiciousIP($db, $ip, $fingerprint, $userAgent);
-    }
+    // Les échecs de récupération (L1/L2/L3) ne nourrissent PAS le blocage IP générique :
+    // chaque niveau a déjà sa limite (L1 = blocage compte ; L2 = escalade L3 ; L3 = décision humaine).
+    // Sinon un user qui fumble en L2 se retrouve bloqué sur SA propre récup L3 (24h en prod !).
+    // Le blocage IP générique reste réservé au brute-force de n° de litige / sésame (dispute-chat, l3-reset).
 }
 
 /**
