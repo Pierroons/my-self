@@ -139,20 +139,20 @@ function handleRegister(): void {
     ));
 
     if (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', $username)) {
-        jsonError('Username: 3-20 chars alphanumeric/underscore');
+        jsonError('Nom d\'utilisateur : 3-20 caractères alphanumériques ou underscore');
     }
     // Identifier : PLUS nécessaire côté user (le recovery code localise le compte en L2).
     // Validé seulement s'il est fourni (compat ancien flux) ; sinon généré en interne
     // pour satisfaire la contrainte UNIQUE NOT NULL du schéma.
     if ($identifier !== '' && (strlen($identifier) < 3 || strlen($identifier) > 50)) {
-        jsonError('Identifier: 3-50 chars');
+        jsonError('Identifiant : 3-50 caractères');
     }
     if ($identifier === '') $identifier = 'u-' . bin2hex(random_bytes(8));
     if (strlen($password) < 8) {
-        jsonError('Password: 8 chars minimum');
+        jsonError('Mot de passe : 8 caractères minimum');
     }
     if (!$recoveryDerivedKey) {
-        jsonError('Recovery word required');
+        jsonError('Mot mémorisé requis');
     }
     // user_salt : vestige de l'ancienne dérivation par-identifier. Le nouveau flux dérive
     // le mot mémorisé par domaine → généré si absent (un sel n'est pas un secret).
@@ -162,7 +162,7 @@ function handleRegister(): void {
     $db = getDB();
     $stmt = $db->prepare("SELECT id FROM users WHERE username = ? OR identifier = ?");
     $stmt->execute([$username, $identifier]);
-    if ($stmt->fetch()) jsonError('Username or identifier already taken');
+    if ($stmt->fetch()) jsonError('Nom d\'utilisateur déjà pris');
     addTrace("[register] DB unique check OK (no collision)");
 
     $t0 = microtime(true);
@@ -206,7 +206,7 @@ function handleRegister(): void {
     addTrace(sprintf("[register] %d recovery codes générés (Argon2id + lookup HMAC) — affichés une seule fois", count($recoveryCodes)));
 
     jsonResponse([
-        'message' => 'Account created',
+        'message' => 'Compte créé',
         'username' => $username,
         'passphrase' => $passphrase,
         'recovery_codes' => $recoveryCodes,
@@ -222,7 +222,7 @@ function handleLogin(): void {
     $password = $in['password'] ?? '';
     addTrace(sprintf("[login] input recu — username:%dch, password:%dch", strlen($username), strlen($password)));
 
-    if (!$username || !$password) jsonError('Username and password required');
+    if (!$username || !$password) jsonError('Nom d\'utilisateur et mot de passe requis');
 
     $db = getDB();
     $stmt = $db->prepare("SELECT id, username, password_hash FROM users WHERE username = ?");
@@ -235,12 +235,12 @@ function handleLogin(): void {
     addTrace(sprintf("[login] password_verify en %.0f ms — result: %s", (microtime(true) - $t0) * 1000, $verified ? 'OK' : 'FAIL'));
 
     if (!$verified) {
-        jsonError('Invalid credentials', 401);
+        jsonError('Identifiants incorrects', 401);
     }
     // Signaux contextuels L3 : on garde trace de la dernière connexion + compteur
     $db->prepare("UPDATE users SET last_login_at = CURRENT_TIMESTAMP, login_count = COALESCE(login_count,0) + 1 WHERE id = ?")
        ->execute([$user['id']]);
-    jsonResponse(['message' => 'Logged in', 'username' => $user['username']]);
+    jsonResponse(['message' => 'Connecté', 'username' => $user['username']]);
 }
 
 // === RECOVER L1 ===
@@ -252,7 +252,7 @@ function handleRecoverL1(): void {
     addTrace(sprintf("[recover-l1] input recu — username:%dch, passphrase:%dch (mots: %d)",
         strlen($username), strlen($passphrase), substr_count($passphrase, '-') + 1));
 
-    if (!$username || !$passphrase) jsonError('Username and passphrase required');
+    if (!$username || !$passphrase) jsonError('Nom d\'utilisateur et passphrase requis');
 
     $db = getDB();
 
@@ -263,7 +263,7 @@ function handleRecoverL1(): void {
     if (!$user) {
         logAttempt($db, $username, 1, false);
         sleep(1);
-        jsonError('Invalid credentials', 401);
+        jsonError('Identifiants incorrects', 401);
     }
     if ($user['l1_block_count'] >= 3) {
         jsonResponse(['error' => 'Trop d\'échecs au niveau 1. Passe au niveau 2 (mot mémorisé + recovery code).', 'escalate_l2' => true], 429);
@@ -293,7 +293,7 @@ function handleRecoverL1(): void {
 
     if (!$verified) {
         logAttempt($db, $username, 1, false);
-        jsonError('Incorrect passphrase', 401);
+        jsonError('Passphrase incorrecte', 401);
     }
 
     $newPwd = generatePassword();
@@ -305,7 +305,7 @@ function handleRecoverL1(): void {
     logAttempt($db, $username, 1, true);
 
     jsonResponse([
-        'message' => 'Password reset',
+        'message' => 'Mot de passe réinitialisé',
         'new_password' => $newPwd,
     ]);
 }
@@ -319,7 +319,7 @@ function handleRecoverL2(): void {
     addTrace(sprintf("[recover-l2] input recu — identifier:%dch, recovery_key:%dch (deja HMAC client)",
         strlen($identifier), strlen($recoveryKey)));
 
-    if (!$identifier || !$recoveryKey) jsonError('Identifier and recovery key required');
+    if (!$identifier || !$recoveryKey) jsonError('Identifiant et clé de récupération requis');
 
     $db = getDB();
     $stmt = $db->prepare("SELECT id, username, recovery_derived_hash FROM users WHERE identifier = ?");
@@ -328,7 +328,7 @@ function handleRecoverL2(): void {
     if (!$user) {
         addTrace("[recover-l2] DB SELECT — no match for identifier (anti-timing: sleep 1s)");
         sleep(1);
-        jsonError('Invalid credentials', 401);
+        jsonError('Identifiants incorrects', 401);
     }
     addTrace("[recover-l2] DB SELECT — found user id=" . $user['id']);
 
@@ -339,7 +339,7 @@ function handleRecoverL2(): void {
 
     if (!$verified) {
         logAttempt($db, $user['username'], 2, false);
-        jsonError('Incorrect recovery word', 401);
+        jsonError('Mot de récupération incorrect', 401);
     }
 
     $newPwd = generatePassword();
@@ -350,7 +350,7 @@ function handleRecoverL2(): void {
     logAttempt($db, $user['username'], 2, true);
 
     jsonResponse([
-        'message' => 'Password reset via L2',
+        'message' => 'Mot de passe réinitialisé via L2',
         'new_password' => $newPwd,
     ]);
 }
@@ -1024,10 +1024,10 @@ function handleLiteRegister(): void {
     addTrace(sprintf("[lite-register] input — username:%dch, email:%dch, password:%dch, memorized_derived:%dch",
         strlen($username), strlen($email), strlen($password), strlen($memorizedDerived)));
 
-    if (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', $username)) jsonError('Username: 3-20 chars alphanumeric/underscore');
+    if (!preg_match('/^[a-zA-Z0-9_]{3,20}$/', $username)) jsonError('Nom d\'utilisateur : 3-20 caractères alphanumériques ou underscore');
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) jsonError('Email invalide');
-    if (strlen($password) < 8) jsonError('Password: 8 chars minimum');
-    if (strlen($memorizedDerived) !== 64) jsonError('Memorized word derivation must be 64 hex chars (HMAC-SHA256)');
+    if (strlen($password) < 8) jsonError('Mot de passe : 8 caractères minimum');
+    if (strlen($memorizedDerived) !== 64) jsonError('La dérivée du mot mémorisé doit faire 64 caractères hex (HMAC-SHA256)');
     if (!preg_match('/^[a-f0-9]{32}$/', $userSalt)) jsonError('user_salt invalide (32 hex requis)');
 
     $db = getDB();

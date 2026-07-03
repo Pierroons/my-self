@@ -323,26 +323,6 @@
             transition: background-color 0.15s;
         }
         .download-btn:hover { background: rgba(122,183,255, 0.15); }
-        .roadmap-card {
-            background: linear-gradient(135deg, rgba(90,151,223, 0.06) 0%, rgba(167, 139, 250, 0.06) 100%);
-            border: 1px solid rgba(90,151,223, 0.3);
-            padding: 14px;
-            border-radius: 6px;
-            margin-top: 16px;
-            font-size: 0.8rem;
-            line-height: 1.5;
-        }
-        .roadmap-card strong { color: #60a5fa; }
-        .roadmap-tag {
-            display: inline-block;
-            background: rgba(90,151,223, 0.2);
-            color: #60a5fa;
-            font-weight: 700;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 0.7rem;
-            margin-right: 8px;
-        }
         /* L3 (intégré SPA) — bannière contextuelle + chat */
         .threat-banner { background:linear-gradient(135deg,rgba(90,151,223,0.08),rgba(124,196,124,0.08)); border:1px solid rgba(90,151,223,0.4); border-left:4px solid var(--accent,#7ab7ff); padding:12px 16px; border-radius:6px; margin-bottom:16px; font-size:0.85rem; line-height:1.6; }
         .l3-step.hidden { display:none; }
@@ -365,33 +345,29 @@
             <strong>Il NE protège PAS</strong> contre la compromission du poste utilisateur
             (keylogger, info-stealer, RAT) — c'est une limite physique de toute application web.
             Pour les secrets sensibles (compte régalien, master key, identité de cofondation),
-            utilise une cérémonie dédiée : <a href="https://tails.net" target="_blank">Tails</a>,
-            <a href="https://www.qubes-os.org" target="_blank">Qubes OS</a>, ou
-            <strong>MySelf-Live</strong> (en développement, V0.2 été 2026).
-            <span class="roadmap-tag" style="margin-left:6px;">ROADMAP</span>
-            Distribution Linux signée et vérifiable dédiée aux cérémonies SelfRecover —
-            <a href="https://github.com/Pierroons/my-self#roadmap" target="_blank">voir roadmap</a>.
+            utilise une cérémonie dédiée : <a href="https://tails.net" target="_blank">Tails</a>
+            ou <a href="https://www.qubes-os.org" target="_blank">Qubes OS</a>.
         </div>
 
         <div class="tabs">
-            <button class="tab active" onclick="showTab('register')">Register</button>
-            <button class="tab" onclick="showTab('login')">Login</button>
-            <button class="tab" onclick="showTab('recoverL1')">Recover L1</button>
-            <button class="tab" onclick="showTab('recoverL2')">Recover L2</button>
-            <button class="tab" onclick="openL3(event)">Recover L3 · tout perdu</button>
-            <button class="tab" onclick="showTab('entropy')">Entropy Lab</button>
+            <button class="tab active" onclick="showTab('register')">Inscription</button>
+            <button class="tab" onclick="showTab('login')">Connexion</button>
+            <button class="tab" onclick="showTab('recoverL1')">Récup L1</button>
+            <button class="tab" onclick="showTab('recoverL2')">Récup L2</button>
+            <button class="tab" onclick="openL3(event)">Récup L3 · tout perdu</button>
+            <button class="tab" onclick="showTab('entropy')">Labo entropie</button>
         </div>
 
         <!-- REGISTER -->
         <div id="panel-register" class="panel">
-            <h2>Create an account</h2>
-            <p class="desc">Une passphrase diceware (L1) est générée côté serveur. Ton mot mémorisé (L2) est HMAC-dérivé dans le navigateur — le mot brut ne quitte jamais ta machine. À la création, tu reçois <strong>10 recovery codes</strong> (facteur possession de L2), affichés <strong>une seule fois</strong>.</p>
+            <h2>Créer un compte</h2>
+            <p class="desc">Une passphrase diceware (L1) est générée côté serveur. Ton mot mémorisé (L2) est HMAC-dérivé dans le navigateur — le mot brut ne quitte jamais ta machine. À la création, tu reçois <strong>10 codes de récupération</strong> (facteur possession de L2), affichés <strong>une seule fois</strong>.</p>
             <div class="form-group">
-                <label>Username</label>
+                <label>Nom d'utilisateur</label>
                 <input type="text" id="reg-username" placeholder="alice">
             </div>
             <div class="form-group">
-                <label>Password</label>
+                <label>Mot de passe</label>
                 <input type="password" id="reg-password" placeholder="8 caractères minimum">
             </div>
             <div class="form-group">
@@ -402,47 +378,47 @@
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
                     <input type="checkbox" id="reg-device" style="width:auto;margin:0;"> Faire confiance à ce navigateur — récup L2 en 1 clic
                 </label>
-                <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:2px;">Raccourci de confort, <em>sur ce navigateur seulement</em> (protégé logiciel, effacé si tu vides le navigateur). Tes <strong>recovery codes restent le secours le plus fiable</strong> — garde-les.</span>
+                <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:2px;">Raccourci de confort, <em>sur ce navigateur seulement</em> (protégé logiciel, effacé si tu vides le navigateur). Tes <strong>codes de récupération restent le secours le plus fiable</strong> — garde-les.</span>
             </div>
             <input type="text" name="website" id="reg-website" tabindex="-1" autocomplete="off"
                    aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
-            <button class="btn" onclick="doRegister()">Create account</button>
+            <button class="btn" onclick="doRegister()">Créer le compte</button>
             <div id="reg-result"></div>
         </div>
 
         <!-- LOGIN -->
         <div id="panel-login" class="panel hidden">
-            <h2>Log in</h2>
-            <p class="desc">Classic authentication with username + password.</p>
+            <h2>Connexion</h2>
+            <p class="desc">Authentification classique : nom d'utilisateur + mot de passe.</p>
             <div class="form-group">
-                <label>Username</label>
+                <label>Nom d'utilisateur</label>
                 <input type="text" id="login-username">
             </div>
             <div class="form-group">
-                <label>Password</label>
+                <label>Mot de passe</label>
                 <input type="password" id="login-password">
             </div>
             <input type="text" name="website" id="login-website" tabindex="-1" autocomplete="off"
                    aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
-            <button class="btn" onclick="doLogin()">Log in</button>
+            <button class="btn" onclick="doLogin()">Se connecter</button>
             <div id="login-result"></div>
         </div>
 
         <!-- RECOVER L1 -->
         <div id="panel-recoverL1" class="panel hidden">
-            <h2>Recover — Level 1 (forgot password)</h2>
-            <p class="desc">Enter your username and the diceware passphrase you saved at registration. You'll get a new password.</p>
+            <h2>Récupération — Niveau 1 (mot de passe oublié)</h2>
+            <p class="desc">Saisis ton nom d'utilisateur et la passphrase diceware notée à l'inscription. Tu obtiens un nouveau mot de passe.</p>
             <div class="form-group">
-                <label>Username</label>
+                <label>Nom d'utilisateur</label>
                 <input type="text" id="l1-username">
             </div>
             <div class="form-group">
-                <label>Passphrase (the 4 words separated by dashes)</label>
+                <label>Passphrase (les 4 mots séparés par des tirets)</label>
                 <input type="text" id="l1-passphrase" placeholder="ruby-amber-moon-willow">
             </div>
             <input type="text" name="website" id="l1-website" tabindex="-1" autocomplete="off"
                    aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
-            <button class="btn" onclick="doRecoverL1()">Recover</button>
+            <button class="btn" onclick="doRecoverL1()">Récupérer</button>
             <div id="l1-result"></div>
         </div>
 
@@ -457,7 +433,7 @@
 
             <div class="mode-tabs">
                 <button class="mode-tab active" data-mode="reinhold" onclick="selectMode('reinhold')">Diceware (dés physiques)</button>
-                <button class="mode-tab" data-mode="diceware" onclick="selectMode('diceware')">Auto random</button>
+                <button class="mode-tab" data-mode="diceware" onclick="selectMode('diceware')">Aléatoire (navigateur)</button>
                 <button class="mode-tab" data-mode="free" onclick="selectMode('free')">Passphrase libre</button>
                 <button class="mode-tab" data-mode="hybrid" onclick="selectMode('hybrid')">Hybride</button>
             </div>
@@ -520,14 +496,6 @@
                     <a class="download-btn" href="offline/selfrecover-validator.html" download>⬇ Outil offline (HTML autonome)</a>
                 </div>
 
-                <div class="roadmap-card">
-                    <span class="roadmap-tag">ROADMAP V0.2</span>
-                    <strong>MySelf-Live</strong> — distribution Linux Live USB minimale, signée GPG,
-                    vérifiable, dédiée aux cérémonies SelfRecover. Boot RAM-only, zéro persistance,
-                    Tor disponible, PDF EFF embarqué, animation dés visuelle.
-                    Inspirée de Tails / Qubes OS, taille cible ~500 MB. Disponible été 2026.
-                    <a href="https://github.com/Pierroons/my-self#roadmap" target="_blank">Détails</a>.
-                </div>
             </div>
 
             <!-- Mode 2 : Auto random (CSPRNG navigateur) -->
@@ -601,14 +569,14 @@
 
         <!-- RECOVER L2 -->
         <div id="panel-recoverL2" class="panel hidden">
-            <h2>Recover — Niveau 2 (2FA : mot mémorisé + recovery code)</h2>
-            <p class="desc">Passphrase (L1) perdue ? Récupère avec ton <strong>mot mémorisé</strong> + <strong>un recovery code</strong> — <strong>sans identifiant</strong> (le code localise ton compte). Le mot est HMAC-dérivé dans le navigateur, jamais envoyé en clair. Ouvre la console DevTools pour voir la dérivation.</p>
+            <h2>Récupération — Niveau 2 (2FA : mot mémorisé + code de récupération)</h2>
+            <p class="desc">Passphrase (L1) perdue ? Récupère avec ton <strong>mot mémorisé</strong> + <strong>un code de récupération</strong> — <strong>sans identifiant</strong> (le code localise ton compte). Le mot est HMAC-dérivé dans le navigateur, jamais envoyé en clair. Ouvre la console DevTools pour voir la dérivation.</p>
             <div class="form-group">
                 <label>Mot mémorisé</label>
                 <input type="text" id="l2-recovery" placeholder="pantoufles">
             </div>
             <div class="form-group">
-                <label>Recovery code (un du lot — format xxxxx-xxxxx)</label>
+                <label>Code de récupération (un du lot — format xxxxx-xxxxx)</label>
                 <input type="text" id="l2-code" placeholder="6a0be-c7a5b">
             </div>
             <div class="form-group">
@@ -625,7 +593,7 @@
 
         <!-- RECOVER L3 (intégré SPA) -->
         <div id="panel-recoverL3" class="panel hidden">
-            <h2>Recover — Niveau 3 (tout perdu · récupération assistée)</h2>
+            <h2>Récupération — Niveau 3 (tout perdu · récupération assistée)</h2>
             <div class="threat-banner">
                 <strong>Comment ça marche.</strong> On ne te redemande <strong>pas</strong> tes secrets oubliés.
                 Tu réponds à des questions de <strong>contexte</strong> (ce que seul le vrai titulaire sait) : elles forment
@@ -635,7 +603,7 @@
 
             <div id="l3-step-id" class="l3-step">
                 <div class="form-group">
-                    <label>Ton username</label>
+                    <label>Ton nom d'utilisateur</label>
                     <input type="text" id="l3-username" autocomplete="off" placeholder="alice">
                 </div>
                 <input type="text" name="website" id="l3-hp" tabindex="-1" autocomplete="off" aria-hidden="true"
@@ -678,7 +646,7 @@
         </div>
 
         <div class="footer">
-            <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover">SelfRecover on GitHub</a> — AGPL-3.0-or-later
+            <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover">SelfRecover sur GitHub</a> — AGPL-3.0-or-later
             <br><br>
             Variantes disponibles :
             <a href="lite.html">SelfRecover Lite</a> (avec SMTP + mot mémorisé)
@@ -727,7 +695,7 @@
         };
 
         // === HMAC derivation (client-side) ===
-        // The raw recovery word never leaves the browser.
+        // Le mot de récup brut ne quitte jamais le navigateur.
         // Service-specific key derived via HMAC-SHA256 keyed by service label + per-user salt.
         // Wrappée par transparency.js (hmacDeriveTraced) si chargée.
         // R9-02 : label de service STABLE (configuré, PAS window.location.hostname) + sel par-utilisateur.
@@ -746,9 +714,9 @@
             const sig = await crypto.subtle.sign('HMAC', key, enc.encode(word));
             const hex = Array.from(new Uint8Array(sig))
                 .map(b => b.toString(16).padStart(2, '0')).join('');
-            console.log('[SelfRecover] HMAC derived with service label "' + label + '" + per-user salt');
-            console.log('[SelfRecover] Raw word never leaves this browser.');
-            console.log('[SelfRecover] Derived key (first 16 chars): ' + hex.substring(0, 16) + '...');
+            console.log('[SelfRecover] HMAC dérivé avec le label de service "' + label + '" + sel par-utilisateur');
+            console.log('[SelfRecover] Le mot brut ne quitte jamais ce navigateur.');
+            console.log('[SelfRecover] Clé dérivée (16 premiers car.) : ' + hex.substring(0, 16) + '...');
             return hex;
         };
         // Aliases locaux pour compatibilité avec le code ci-dessous
@@ -756,12 +724,12 @@
         const hmacDerive = (...args) => window.hmacDerive(...args);
 
         // Sel de domaine FIXE pour dériver le mot mémorisé. En L2, plus d'identifier :
-        // le recovery code localise le compte, donc pas de sel par-utilisateur à aller chercher.
+        // le code de récupération localise le compte, donc pas de sel par-utilisateur à aller chercher.
         // register et recover dérivent tous deux avec ce même sel → vérification cohérente.
         window.DOMAIN_SALT = 'selfrecover-domain-v1';
         let l2Fails = 0; // échecs L2 dans la session → 3 = L2 fermé, éjection L3 obligatoire
 
-        // Affiche les recovery codes UNE SEULE FOIS + bouton de téléchargement .txt
+        // Affiche les codes de récupération UNE SEULE FOIS + bouton de téléchargement .txt
         window.LAST_CODES = null;
         function renderCodes(elId, data) {
             window.LAST_CODES = data.recovery_codes || [];
@@ -771,9 +739,9 @@
             document.getElementById(elId).innerHTML =
                 '<div class="result success">' +
                 '<strong>Compte créé !</strong><br>' +
-                (data.username ? 'Username : <code>' + data.username + '</code><br>' : '') +
+                (data.username ? 'Nom d\'utilisateur : <code>' + data.username + '</code><br>' : '') +
                 (data.passphrase ? 'Passphrase (L1) : <code>' + data.passphrase + '</code><br>' : '') +
-                '<br><strong>🔑 Tes 10 recovery codes (possession L2) — affichés UNE SEULE FOIS :</strong>' +
+                '<br><strong>🔑 Tes 10 codes de récupération (possession L2) — affichés UNE SEULE FOIS :</strong>' +
                 '<div style="margin:8px 0;">' + codesHtml + '</div>' +
                 '<button class="btn" style="margin-top:4px;" onclick="downloadCodes()">⬇ Télécharger (.txt)</button>' +
                 (data.note ? '<br><em>' + data.note + '</em>' : '') +
@@ -781,7 +749,7 @@
         }
         function downloadCodes() {
             if (!window.LAST_CODES) return;
-            const txt = 'SelfRecover — recovery codes (garde-les hors ligne, usage unique)\n\n'
+            const txt = 'SelfRecover — codes de récupération (garde-les hors ligne, usage unique)\n\n'
                 + window.LAST_CODES.join('\n') + '\n';
             const a = document.createElement('a');
             a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain' }));
@@ -841,7 +809,7 @@
                         await doRegisterDevice(username, memorizedWord);
                         document.getElementById('reg-result').innerHTML += '<div class="result success" style="margin-top:8px;">🖥️ Appareil enrôlé — récup L2 possible en 1 clic (ce navigateur + mot mémorisé).</div>';
                     } catch (e) {
-                        document.getElementById('reg-result').innerHTML += '<div class="result error" style="margin-top:8px;">Appareil non enrôlé : ' + e.message + ' (les recovery codes restent ton secours).</div>';
+                        document.getElementById('reg-result').innerHTML += '<div class="result error" style="margin-top:8px;">Appareil non enrôlé : ' + e.message + ' (les codes de récupération restent ton secours).</div>';
                     }
                 }
             } catch (e) {
@@ -858,7 +826,7 @@
                     username, password,
                     website: document.getElementById('login-website')?.value || ''
                 });
-                showResult('login-result', '<strong>Logged in</strong> — ' + data.message);
+                showResult('login-result', '<strong>Connecté</strong> — ' + data.message);
             } catch (e) {
                 showResult('login-result', e.message, true);
             }
@@ -875,8 +843,8 @@
                 });
                 showResult('l1-result',
                     '<strong>' + data.message + '</strong>' +
-                    'Your new password: <code>' + data.new_password + '</code><br>' +
-                    '<em>Save it — it will not be shown again.</em>');
+                    'Ton nouveau mot de passe : <code>' + data.new_password + '</code><br>' +
+                    '<em>Note-le — il ne sera plus affiché.</em>');
             } catch (e) {
                 showResultMaybeEscalate('l1-result', e);
             }
@@ -971,7 +939,7 @@
             }
         });
 
-        // === Recover L2 (2FA : mot mémorisé + recovery code, SANS identifier) ===
+        // === Recover L2 (2FA : mot mémorisé + code de récupération, SANS identifier) ===
         async function doRecoverL2() {
             try {
                 const memorizedWord = document.getElementById('l2-recovery').value.trim();
@@ -994,8 +962,8 @@
                     'Compte : <code>' + data.username + '</code><br>' +
                     'Codes restants : <strong>' + data.codes_remaining + '</strong>' +
                     (data.low_codes_warning ? ' ⚠️ pense à régénérer' : '') + '<br>' +
-                    '<em>Connecte-toi avec le username <code>' + data.username + '</code> + le nouveau mot de passe choisi.</em><br>' +
-                    '<button class="btn" style="margin-top:6px;" onclick="doRegenerate(\'' + data.username + '\')">Régénérer mes recovery codes</button>' +
+                    '<em>Connecte-toi avec le nom d\'utilisateur <code>' + data.username + '</code> + le nouveau mot de passe choisi.</em><br>' +
+                    '<button class="btn" style="margin-top:6px;" onclick="doRegenerate(\'' + data.username + '\')">Régénérer mes codes de récupération</button>' +
                     '</div>';
                 l2Fails = 0; // succès → on remet le compteur à zéro
             } catch (e) {
@@ -1068,7 +1036,7 @@
                 const newPwd = document.getElementById('l2-newpwd').value;
                 if (!memorizedWord || !newPwd) { showResult('l2-result', 'Mot mémorisé + nouveau mot de passe requis (le champ code peut rester vide).', true); return; }
                 const rec = await idbGet('device');
-                if (!rec) { showResult('l2-result', 'Aucun appareil enrôlé sur ce navigateur. Utilise un recovery code.', true); return; }
+                if (!rec) { showResult('l2-result', 'Aucun appareil enrôlé sur ce navigateur. Utilise un code de récupération.', true); return; }
                 showResult('l2-result', '⏳ Déchiffrement local (Argon2id)…', false);
                 let pkcs8;
                 try {
@@ -1079,7 +1047,7 @@
                 const { challenge } = await api('device-auth-begin', { credential_id: rec.credentialId, website: '' });
                 const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, privKey, new TextEncoder().encode(challenge));
                 const data = await api('device-auth-finish', { credential_id: rec.credentialId, challenge, signature: bufToB64url(sig), new_password: newPwd, website: '' });
-                document.getElementById('l2-result').innerHTML = '<div class="result success"><strong>' + data.message + '</strong><br><em>Connecte-toi avec le username <code>' + data.username + '</code> + le nouveau mot de passe que tu viens de choisir.</em></div>';
+                document.getElementById('l2-result').innerHTML = '<div class="result success"><strong>' + data.message + '</strong><br><em>Connecte-toi avec le nom d\'utilisateur <code>' + data.username + '</code> + le nouveau mot de passe que tu viens de choisir.</em></div>';
             } catch (e) {
                 showResult('l2-result', e.message, true);
             }
@@ -1087,7 +1055,7 @@
 
         // Dégradation gracieuse : si le navigateur ne peut pas faire tourner l'enveloppe
         // (WASM désactivé, IndexedDB effacé, ou contexte non sécurisé — ex. Tor Browser Safer/Safest,
-        // http clearnet), on masque l'option « cet appareil » → les recovery codes couvrent la récup L2.
+        // http clearnet), on masque l'option « cet appareil » → les codes de récupération couvrent la récup L2.
         function deviceFactorAvailable() {
             return typeof WebAssembly !== 'undefined'
                 && typeof window.hashwasm !== 'undefined'
@@ -1099,7 +1067,7 @@
             const regCb = document.getElementById('reg-device');
             if (regCb) {
                 const g = regCb.closest('.form-group');
-                if (g) g.innerHTML = '<span style="display:block;font-size:0.72rem;color:var(--muted);">🔒 « Cet appareil » indisponible sur ce navigateur (WASM/stockage désactivés — ex. Tor durci). Tes <strong>recovery codes</strong> couvrent la récup L2.</span>';
+                if (g) g.innerHTML = '<span style="display:block;font-size:0.72rem;color:var(--muted);">🔒 « Cet appareil » indisponible sur ce navigateur (WASM/stockage désactivés — ex. Tor durci). Tes <strong>codes de récupération</strong> couvrent la récup L2.</span>';
             }
             const devBtn = document.getElementById('l2-device-btn');
             if (devBtn) { const sep = devBtn.previousElementSibling; if (sep) sep.remove(); devBtn.remove(); }
@@ -1224,7 +1192,7 @@
                 clearInterval(l3Timer); l3Clear(); l3Dispute = null; l3Claim = null; // sésame consommé (one-shot) → stoppe tout poll/re-submit
                 ['l3-reset-password', 'l3-reset-recovery', 'l3-reset-btn'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = true; });
                 const codesHtml = (data.recovery_codes || []).map(c => '<code style="display:inline-block;margin:2px;padding:3px 7px;background:#0004;border-radius:4px;">' + c + '</code>').join('');
-                showResult('l3-step-reset-result', '✓ <strong>Compte rouvert</strong> — passphrase + codes régénérés.<br><br>Passphrase L1 (note-la, 1×) : <code>' + (data.passphrase || '') + '</code>' + '<br><br><strong>🔑 Tes 10 nouveaux recovery codes (possession L2) :</strong><br>' + codesHtml + '<br><br><em>Merci d\'avoir testé Recover. 🙏</em>', false);
+                showResult('l3-step-reset-result', '✓ <strong>Compte rouvert</strong> — passphrase + codes régénérés.<br><br>Passphrase L1 (note-la, 1×) : <code>' + (data.passphrase || '') + '</code>' + '<br><br><strong>🔑 Tes 10 nouveaux codes de récupération (possession L2) :</strong><br>' + codesHtml + '<br><br><em>Merci d\'avoir testé Recover. 🙏</em>', false);
             } catch (e) { showResult('l3-step-reset-result', e.message, true); }
         }
     </script>

@@ -95,5 +95,5 @@ switch ($action) {
         handleLiteResetConfirm();
         break;
     default:
-        jsonError('Action not recognized', 404);
+        jsonError('Action non reconnue', 404);
 }
