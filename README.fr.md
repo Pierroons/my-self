@@ -40,7 +40,6 @@ droits, ses données et ses biens.
 | [SelfGuard](./self-security/selfguard/) | Comment protéger tes données ? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | Comment protéger tes objets ? | concept |
 | [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données utilisateurs au repos ? | bêta v0.1.0 ✅ ([démo](https://dataguard.my-self.fr)) |
-| [SelfInvoice](./selfinvoice/) | Comment facturer tes clients ? | bêta (Factur-X natif) |
 | **[SelfFarm-Lite](https://selffarm.my-self.fr)** | **Comment piloter ton exploitation ?** | **v0.2 live ✅** |
 
 ---
@@ -86,20 +85,6 @@ et où la présence active est requise pour déverrouiller.
 
 ---
 
-## Facturation Factur-X — dans SelfFarm-Lite
-
-### SelfInvoice — le module de facturation de SelfFarm-Lite
-
-Génère des factures conformes avec **Factur-X natif** (PDF/A-3 + XML CII,
-profil EN16931 — obligatoire en France à partir de septembre 2026 en
-réception, 2027-2028 en émission). Multi-régime : franchise TVA
-(art. 293 B CGI), micro-BA, réel simplifié/normal. Pas de cloud, pas
-d'abonnement, pas de détention de fonds. Le client règle par virement
-SEPA classique vers l'IBAN affiché sur la facture.
-
-> *Ta facture. Ton template. Tes données. Terminé.*
-
----
 
 ## Étage applicatif — SelfFarm-Lite
 

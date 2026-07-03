@@ -39,7 +39,6 @@ individual sovereign over their own identity, rights, data, and possessions.
 | [SelfGuard](./self-security/selfguard/) | How do you protect your data? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | How do you protect your things? | concept |
 | [SelfDataGuard](./self-security/selfdataguard/) | How do you protect users data at rest? | beta v0.1.0 ✅ ([demo](https://dataguard.my-self.fr)) |
-| [SelfInvoice](./selfinvoice/) | How do you bill clients? | beta (Factur-X native) |
 | **[SelfFarm-Lite](https://selffarm.my-self.fr)** | **How do you run your farm?** | **v0.2 live ✅** |
 
 ---
@@ -85,20 +84,6 @@ is required to unlock.
 
 ---
 
-## Factur-X invoicing — within SelfFarm-Lite
-
-### SelfInvoice — the invoicing module of SelfFarm-Lite
-
-Generates legally compliant PDF invoices with **native Factur-X** support
-(PDF/A-3 + XML CII, EN16931 profile — mandatory in France from September
-2026 for reception, 2027-2028 for emission). Multi-regime: franchise VAT
-(art. 293 B CGI), micro-BA, réel simplifié/normal. No cloud, no subscription,
-no fund custody. The client pays via a standard SEPA transfer to the IBAN
-displayed on the invoice.
-
-> *Your invoice. Your template. Your data. Done.*
-
----
 
 ## Application layer — SelfFarm-Lite
 
