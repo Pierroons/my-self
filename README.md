@@ -8,7 +8,7 @@
 > Neither is enough alone. Together, they are sovereign.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Self-hosted](https://img.shields.io/badge/self--hosted-Raspberry%20Pi-blue.svg)](#requirements)
+[![Self-hosted](https://img.shields.io/badge/self--hosted-Debian-blue.svg)](#requirements)
 [![Zero cloud](https://img.shields.io/badge/cloud-zero-brightgreen.svg)](#philosophy)
 [![Zero tracking](https://img.shields.io/badge/tracking-zero-brightgreen.svg)](#philosophy)
 
@@ -153,7 +153,7 @@ what you want to control.
 ## Philosophy
 
 - **Open source** (AGPL v3) — open code, community audit, no black box, and anything built on top of MySelf must stay libre too
-- **Self-hosted** — runs on a Raspberry Pi or your own server
+- **Self-hosted** — runs on consumer hardware (your own Debian server)
 - **Zero cloud, zero tracking, zero centralized database**
 - **Sovereign by design** — the user keeps full control of identity, data, keys
 - **Default = locked** — modules require active presence to unlock
@@ -165,20 +165,18 @@ what you want to control.
 
 ## Requirements
 
-- A Raspberry Pi 4 (or any Debian-based server)
-- PHP 8.0+ for SelfRecover/SelfModerate (others vary per module)
-- A static web server (nginx) for SelfJustice
-- Hardware components for SelfKeyGuard prototypes (~14 € for the car version)
+- A Debian server (consumer hardware is enough)
+- PHP 8.0+ for the web modules; dependencies vary per module
 - No external dependencies, no cloud services, no API subscriptions required
 
 ---
 
 ## Status
 
-MySelf is a living ecosystem. Some modules are live (SelfJustice on [justice.my-self.fr](https://justice.my-self.fr)),
-others ship as reference implementations with self-audited demos (SelfRecover),
-and others are at concept or prototyping stage. The roadmap evolves with real-world
-feedback rather than top-down planning.
+MySelf is a living ecosystem: some modules are live, others ship as reference
+implementations with demos, and others are at concept or prototyping stage.
+Each module's status is shown in the table above. The roadmap evolves with
+real-world feedback rather than top-down planning.
 
 ---
 
@@ -197,7 +195,7 @@ Each module has its own `CONTRIBUTING.md`. The spirit:
 
 ## Support the project
 
-MySelf is self-hosted on a Raspberry Pi 4, no ads, no trackers, no commercial
+MySelf is self-hosted on consumer hardware, no ads, no trackers, no commercial
 sponsor. If the project is useful to you or speaks to you, a direct gesture
 helps keep it alive.
 

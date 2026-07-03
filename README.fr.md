@@ -8,7 +8,7 @@
 > Aucun des deux ne suffit seul. Ensemble, ils sont souverains.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Auto-hébergé](https://img.shields.io/badge/auto--hébergé-Raspberry%20Pi-blue.svg)](#prérequis)
+[![Auto-hébergé](https://img.shields.io/badge/auto--hébergé-Debian-blue.svg)](#prérequis)
 [![Zero cloud](https://img.shields.io/badge/cloud-zéro-brightgreen.svg)](#philosophie)
 [![Zero tracking](https://img.shields.io/badge/tracking-zéro-brightgreen.svg)](#philosophie)
 
@@ -156,7 +156,7 @@ tu veux contrôler.
 ## Philosophie
 
 - **Open source** (AGPL v3) — code ouvert, audit communautaire, pas de boîte noire, et tout ce qui se construit sur MySelf doit aussi rester libre
-- **Auto-hébergé** — tourne sur un Raspberry Pi ou ton propre serveur
+- **Auto-hébergé** — tourne sur du matériel grand public (ton propre serveur Debian)
 - **Zéro cloud, zéro tracking, zéro base de données centralisée**
 - **Souveraineté par conception** — l'utilisateur garde le contrôle total
   de son identité, ses données, ses clés
@@ -171,22 +171,19 @@ tu veux contrôler.
 
 ## Prérequis
 
-- Un Raspberry Pi 4 (ou n'importe quel serveur basé sur Debian)
-- PHP 8.0+ pour SelfRecover/SelfModerate (les autres varient selon le module)
-- Un serveur web statique (nginx) pour SelfJustice
-- Composants matériels pour les prototypes SelfKeyGuard (~14 € pour la version voiture)
+- Un serveur Debian (du matériel grand public suffit)
+- PHP 8.0+ pour les modules web ; les dépendances varient selon le module
 - Aucune dépendance externe, aucun service cloud, aucun abonnement API requis
 
 ---
 
 ## Statut
 
-MySelf est un écosystème vivant. Certains modules sont en ligne (SelfJustice sur
-[justice.my-self.fr](https://justice.my-self.fr)), d'autres existent en implémentation
-de référence avec démo auto-auditée (SelfRecover), d'autres sont au stade
-conceptuel ou en prototypage.
-La feuille de route évolue avec les retours d'usage réels plutôt qu'avec
-une planification descendante.
+MySelf est un écosystème vivant : certains modules sont en ligne, d'autres
+existent en implémentation de référence avec démo, d'autres sont au stade
+conceptuel ou en prototypage. Le statut de chaque module figure dans le
+tableau ci-dessus. La feuille de route évolue avec les retours d'usage réels
+plutôt qu'avec une planification descendante.
 
 ---
 
@@ -215,7 +212,7 @@ leurs termes d'origine.
 
 ## Soutenir le projet
 
-MySelf est auto-hébergé sur un Raspberry Pi 4, sans publicité, sans tracker,
+MySelf est auto-hébergé sur matériel grand public, sans publicité, sans tracker,
 sans sponsor commercial. Si le projet te sert ou te parle, un geste direct
 aide à le maintenir en vie.
 
