@@ -663,7 +663,7 @@
                     <label>Nouveau mot mémorisé (secret L2 — pour un futur recover niveau 2)</label>
                     <input type="text" id="l3-reset-recovery" autocomplete="off" placeholder="un mot que toi seul connais">
                 </div>
-                <button class="btn" onclick="doL3Reset()">Rétablir mon accès</button>
+                <button class="btn" id="l3-reset-btn" onclick="doL3Reset()">Rétablir mon accès</button>
                 <div id="l3-step-reset-result"></div>
             </div>
         </div>
@@ -1018,6 +1018,8 @@
         function l3Fingerprint() { const s = [navigator.userAgent, navigator.language, screen.width + 'x' + screen.height, Intl.DateTimeFormat().resolvedOptions().timeZone].join('|'); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return 'fp' + h.toString(16); }
         // created_at SQLite = UTC ("Y-m-d H:i:s") → affichage en heure locale du navigateur
         function l3FmtTs(s) { if (!s) return ''; const d = new Date(String(s).replace(' ', 'T') + 'Z'); return isNaN(d) ? s : d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); }
+        // Masque MM/AAAA : l'user tape juste les chiffres, le / s'insère tout seul
+        function l3MonthMask(el) { let v = el.value.replace(/\D/g, '').slice(0, 6); if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2); el.value = v; }
 
         function l3Save() { localStorage.setItem('sr_l3', JSON.stringify({ username: l3Username, dispute: l3Dispute, claim: l3Claim })); }
         function l3Load() { try { return JSON.parse(localStorage.getItem('sr_l3') || 'null'); } catch (e) { return null; } }
@@ -1055,7 +1057,9 @@
                 (data.questions || []).forEach(q => {
                     let field;
                     if (q.type === 'select') { field = '<select id="l3q-' + q.key + '"><option value="">—</option>' + q.options.map(o => '<option value="' + o + '">' + o + '</option>').join('') + '</select>'; }
-                    else { const ph = q.type === 'month' ? 'MM/AAAA' : (q.type === 'year' ? 'AAAA' : ''); field = '<input type="text" id="l3q-' + q.key + '" placeholder="' + ph + '" autocomplete="off">'; }
+                    else if (q.type === 'month') { field = '<input type="text" id="l3q-' + q.key + '" placeholder="MM/AAAA" inputmode="numeric" maxlength="7" oninput="l3MonthMask(this)" autocomplete="off">'; }
+                    else if (q.type === 'year') { field = '<input type="text" id="l3q-' + q.key + '" placeholder="AAAA" inputmode="numeric" maxlength="4" oninput="this.value=this.value.replace(/\\D/g,\'\').slice(0,4)" autocomplete="off">'; }
+                    else { field = '<input type="text" id="l3q-' + q.key + '" autocomplete="off">'; }
                     box.innerHTML += '<div class="form-group"><label>' + q.label + '</label>' + field + '</div>';
                 });
                 l3ShowStep('q');
@@ -1121,7 +1125,8 @@
                 // Dérivation par domaine (cohérente avec L2) → un futur recover L2 fonctionnera
                 const memorizedDerived = await hmacDerive(memorizedWord, window.DOMAIN_SALT);
                 const data = await api('l3-reset', { dispute_number: l3Dispute, claim_secret: l3Claim, password, recovery_derived_key: memorizedDerived });
-                clearInterval(l3Timer); l3Clear();
+                clearInterval(l3Timer); l3Clear(); l3Dispute = null; l3Claim = null; // sésame consommé (one-shot) → stoppe tout poll/re-submit
+                ['l3-reset-password', 'l3-reset-recovery', 'l3-reset-btn'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = true; });
                 const codesHtml = (data.recovery_codes || []).map(c => '<code style="display:inline-block;margin:2px;padding:3px 7px;background:#0004;border-radius:4px;">' + c + '</code>').join('');
                 showResult('l3-step-reset-result', '✓ <strong>Compte rouvert</strong> — passphrase + codes régénérés.<br><br>Passphrase L1 (note-la, 1×) : <code>' + (data.passphrase || '') + '</code>' + '<br><br><strong>🔑 Tes 10 nouveaux recovery codes (possession L2) :</strong><br>' + codesHtml + '<br><br><em>Merci d\'avoir testé Recover. 🙏</em>', false);
             } catch (e) { showResult('l3-step-reset-result', e.message, true); }

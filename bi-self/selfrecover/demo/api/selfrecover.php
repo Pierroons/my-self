@@ -622,12 +622,10 @@ function handleRecoverL3Init(): void {
     usleep(300000); // anti-timing / anti-énumération
 
     if (!$user) {
-        // Ne révèle pas l'absence du compte
-        jsonResponse([
-            'dispute_number' => null,
-            'questions' => l3Questions(),
-            'note' => 'Si cet identifiant existe, un litige sera ouvert ; un administrateur tranchera.',
-        ]);
+        // Compte inexistant → on bloque AVANT d'ouvrir une procédure vide (le chat serait mort-né).
+        // L'existence d'un username est déjà divulguée par l'inscription (« déjà pris ») → pas de
+        // perte d'anti-énumération ici (modèle de menace pragmatique). L'usleep ci-dessus lisse le timing.
+        jsonError('Aucun compte à ce nom. Vérifie ton username.', 404);
     }
 
     // R9-01b : un litige est déjà ouvert pour ce compte → on ne RE-DIVULGUE PAS le numéro
