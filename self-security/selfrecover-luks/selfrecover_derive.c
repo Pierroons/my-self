@@ -19,7 +19,7 @@
 #include <stdint.h>
 /* Argon2 : prototypes déclarés à la main → on lie contre le runtime libargon2.so.1,
  * sans le paquet -dev. Signatures stables de l'implémentation de référence Argon2.
- * (C'est aussi la config du serveur autoheberge : runtime présent, pas de headers.) */
+ * (C'est aussi la config sur un desktop Debian standard : runtime présent, pas de headers.) */
 #define ARGON2_OK 0
 extern int argon2id_hash_raw(const uint32_t t_cost, const uint32_t m_cost,
         const uint32_t parallelism, const void *pwd, const size_t pwdlen,
