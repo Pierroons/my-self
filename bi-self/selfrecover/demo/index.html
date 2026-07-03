@@ -993,7 +993,7 @@
                     'Compte : <code>' + data.username + '</code><br>' +
                     'Codes restants : <strong>' + data.codes_remaining + '</strong>' +
                     (data.low_codes_warning ? ' ⚠️ pense à régénérer' : '') + '<br>' +
-                    '<em>Ton nouveau mot de passe est celui que tu viens de choisir.</em><br>' +
+                    '<em>Connecte-toi avec le username <code>' + data.username + '</code> (⚠️ sensible à la casse) + le nouveau mot de passe choisi.</em><br>' +
                     '<button class="btn" style="margin-top:6px;" onclick="doRegenerate(\'' + data.username + '\')">Régénérer mes recovery codes</button>' +
                     '</div>';
                 l2Fails = 0; // succès → on remet le compteur à zéro
@@ -1078,7 +1078,7 @@
                 const { challenge } = await api('device-auth-begin', { credential_id: rec.credentialId, website: '' });
                 const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, privKey, new TextEncoder().encode(challenge));
                 const data = await api('device-auth-finish', { credential_id: rec.credentialId, challenge, signature: bufToB64url(sig), new_password: newPwd, website: '' });
-                document.getElementById('l2-result').innerHTML = '<div class="result success"><strong>' + data.message + '</strong><br>Compte : <code>' + data.username + '</code><br><em>Ton nouveau mot de passe est actif.</em></div>';
+                document.getElementById('l2-result').innerHTML = '<div class="result success"><strong>' + data.message + '</strong><br><em>Connecte-toi avec le username <code>' + data.username + '</code> (⚠️ sensible à la casse) + le nouveau mot de passe que tu viens de choisir.</em></div>';
             } catch (e) {
                 showResult('l2-result', e.message, true);
             }
