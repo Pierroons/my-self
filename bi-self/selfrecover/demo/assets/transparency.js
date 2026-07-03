@@ -107,6 +107,10 @@
         .tp-disp .acts { display: flex; gap: 4px; margin-top: 4px; }
         .tp-disp .acts button { flex: 1; padding: 4px; font-size: 10px; border: none; border-radius: 3px; cursor: pointer; font-family: inherit; }
         .tp-disp .grant { background: #14532d; color: #86efac; } .tp-disp .refuse { background: #7f1d1d; color: #fca5a5; }
+        .tp-faisceau { background:#0a0e14; border-radius:4px; padding:6px; margin:5px 0; }
+        .fs-sum { color:#fdba74; font-weight:600; margin-bottom:3px; }
+        .fs-lbl { color:#7ab7ff; font-size:10px; margin:4px 0 2px; text-transform:uppercase; letter-spacing:0.5px; }
+        .fs-row { padding:1px 0; color:#cbd5e1; }
         body { padding-right: 380px !important; }
         @media (max-width: 900px) {
             body { padding-right: 0 !important; padding-bottom: 32px !important; }
@@ -215,6 +219,18 @@
         el.innerHTML = html;
     }
 
+    // Affiche le faisceau de signaux (questionnaire user + preuves passives) pour l'admin
+    function tpRenderSignals(s) {
+        if (!s || (!(s.passive || []).length && !(s.declarative || []).length)) return '';
+        const mark = ok => ok ? '<span style="color:#86efac">✓</span>' : '<span style="color:#fca5a5">✗</span>';
+        const pRow = o => '<div class="fs-row">' + mark(o.ok) + ' ' + escapeHtml(o.label) + ' — ' + escapeHtml(o.detail || '') + '</div>';
+        const dRow = o => '<div class="fs-row">' + mark(o.ok) + ' ' + escapeHtml(o.label) + ' — dit <b>' + escapeHtml(o.dit) + '</b> / réel <b>' + escapeHtml(o.reel) + '</b></div>';
+        let h = '<div class="tp-faisceau"><div class="fs-sum">🔎 Faisceau — ' + escapeHtml(s.summary || '') + '</div>';
+        if ((s.passive || []).length) h += '<div class="fs-lbl">Passifs (non falsifiables)</div>' + s.passive.map(pRow).join('');
+        if ((s.declarative || []).length) h += '<div class="fs-lbl">Déclaratifs (dit / réel)</div>' + s.declarative.map(dRow).join('');
+        return h + '</div>';
+    }
+
     function tpRenderDispute(d) {
         const open = ['open', 'awaiting_admin'].includes(d.status);
         const msgs = (d._msgs || []).length
@@ -224,6 +240,7 @@
         return '<div class="tp-disp" data-num="' + escapeHtml(d.dispute_number) + '">' +
             '<div><span class="num">' + escapeHtml(d.dispute_number) + '</span> · <b>' + escapeHtml(d.username) + '</b></div>' +
             '<div class="meta">statut : ' + escapeHtml(d.status) + corr + '</div>' +
+            tpRenderSignals(d.signals) +
             '<div class="tp-chat">' + msgs + '</div>' +
             (open
                 ? '<input type="text" placeholder="Répondre au demandeur…" onkeydown="if(event.key===\'Enter\'){window.SelfRecoverTP.adminChat(this.closest(\'.tp-disp\').dataset.num,this.value);this.value=\'\';}">' +
