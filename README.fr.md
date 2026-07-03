@@ -86,9 +86,9 @@ et où la présence active est requise pour déverrouiller.
 
 ---
 
-## Module autonome
+## Facturation Factur-X — dans SelfFarm-Lite
 
-### SelfInvoice — facturation conforme, local-first
+### SelfInvoice — le module de facturation de SelfFarm-Lite
 
 Génère des factures conformes avec **Factur-X natif** (PDF/A-3 + XML CII,
 profil EN16931 — obligatoire en France à partir de septembre 2026 en
@@ -159,7 +159,7 @@ applicatif :
 | **Self-Security** | Matérielle — ce que tu protèges concrètement |
 | **SelfFarm-Lite** (étage applicatif) | Professionnelle — ce que tu construis et exploites |
 
-Trois piliers, deux modules par pilier, plus le module autonome SelfInvoice,
+Trois piliers, deux modules par pilier, 
 plus SelfFarm-Lite comme premier étage applicatif au-dessus.
 
 Aucun module n'est obligatoire.

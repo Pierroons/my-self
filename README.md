@@ -85,9 +85,9 @@ is required to unlock.
 
 ---
 
-## Standalone module
+## Factur-X invoicing — within SelfFarm-Lite
 
-### SelfInvoice — compliant invoicing, local-first
+### SelfInvoice — the invoicing module of SelfFarm-Lite
 
 Generates legally compliant PDF invoices with **native Factur-X** support
 (PDF/A-3 + XML CII, EN16931 profile — mandatory in France from September
@@ -157,7 +157,7 @@ application layer:
 | **Self-Security** | Material — what you protect concretely |
 | **SelfFarm-Lite** (application layer) | Professional — what you build and operate |
 
-Three pillars, two modules each, plus SelfInvoice as a standalone module,
+Three pillars, two modules each, 
 plus SelfFarm-Lite as the first application layer on top.
 
 No module is mandatory. You pick what matches your needs and self-host
