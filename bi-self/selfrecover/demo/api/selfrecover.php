@@ -41,7 +41,7 @@ function loadEffWordlist(string $lang = 'en'): array {
 }
 
 /**
- * Génère une passphrase diceware depuis la wordlist EFF officielle.
+ * Génère une passphrase diceware depuis la wordlist (EFF officielle EN / équivalent ArthurPons FR — 7776 mots).
  *
  * Tirage aléatoire crypto-secure via random_int() + rejection sampling
  * pour garantir une distribution uniforme sur les 7776 mots.
@@ -166,7 +166,7 @@ function handleRegister(): void {
     addTrace("[register] DB unique check OK (no collision)");
 
     $t0 = microtime(true);
-    $passphrase = generateDiceware(4);
+    $passphrase = generateDiceware(4, 'fr');
     addTrace(sprintf(
         "[register] diceware generated: 4 mots EFF (51.7 bits) en %.1f ms — passphrase brute non loguee",
         (microtime(true) - $t0) * 1000
@@ -960,7 +960,7 @@ function handleL3Reset(): void {
 
     // Re-enrôlement (même mécanisme que l'inscription) : secrets choisis par le propriétaire.
     // L1 (passphrase) régénérée car perdue ; renvoyée une seule fois, jamais via le chat.
-    $newPassphrase = generateDiceware(4);
+    $newPassphrase = generateDiceware(4, 'fr');
     $pwdHash = password_hash($password, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
     $ppHash  = password_hash($newPassphrase, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
     $rcHash  = password_hash($recoveryDerivedKey, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
