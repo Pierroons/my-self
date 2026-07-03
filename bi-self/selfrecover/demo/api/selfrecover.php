@@ -751,14 +751,10 @@ function gatherSignals(array $answers, array $user, PDO $db, string $ip, string 
     $passive[] = ['label' => 'IP déjà utilisée par ce compte', 'ok' => $ipCount > 0,
                   'detail' => $ipCount > 0 ? "$ipCount connexion(s) réussie(s) depuis cette IP" : 'IP jamais vue pour ce compte'];
 
-    $fpKnown = false;
-    if ($fp) {
-        $stmt = $db->prepare("SELECT COUNT(*) FROM recovery_attempts WHERE username = ? AND fingerprint = ?");
-        $stmt->execute([$user['username'], $fp]);
-        $fpKnown = (int)$stmt->fetchColumn() > 0;
-    }
-    $passive[] = ['label' => 'Empreinte navigateur connue', 'ok' => $fpKnown,
-                  'detail' => $fpKnown ? 'empreinte déjà observée' : 'empreinte inconnue'];
+    // Empreinte navigateur RETIRÉE (03/07 — vie privée) : le fingerprinting est une technique de
+    // tracking. Un fingerprint, même haché, reste un identifiant STABLE dérivé de la config de
+    // l'utilisateur → réidentifiable/traçable. Non aligné avec MySelf. Le faisceau s'appuie sur
+    // l'IP (métadonnée de connexion inhérente, jamais exposée à l'admin) + le déclaratif + l'humain.
 
     // --- DÉCLARATIF (dit / réel) ---
     $dit = trim($answers['creation_year'] ?? '');

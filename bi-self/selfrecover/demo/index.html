@@ -1111,7 +1111,7 @@
 
         function l3RandomHex(bytes) { const a = new Uint8Array(bytes); crypto.getRandomValues(a); return Array.from(a).map(b => b.toString(16).padStart(2, '0')).join(''); }
         async function l3Sha256(str) { const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''); }
-        function l3Fingerprint() { const s = [navigator.userAgent, navigator.language, screen.width + 'x' + screen.height, Intl.DateTimeFormat().resolvedOptions().timeZone].join('|'); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return 'fp' + h.toString(16); }
+        // (empreinte navigateur retirée — vie privée : pas de fingerprinting côté client)
         // created_at SQLite = UTC ("Y-m-d H:i:s") → affichage en heure locale du navigateur
         function l3FmtTs(s) { if (!s) return ''; const d = new Date(String(s).replace(' ', 'T') + 'Z'); return isNaN(d) ? s : d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); }
         // Masque MM/AAAA : l'user tape juste les chiffres, le / s'insère tout seul
@@ -1166,7 +1166,7 @@
             try {
                 const answers = {};
                 document.querySelectorAll('#l3-questions [id^="l3q-"]').forEach(el => { answers[el.id.slice(4)] = el.value.trim(); });
-                const data = await api('recover-l3', { dispute_number: l3Dispute, claim_secret: l3Claim, answers, fingerprint: l3Fingerprint() });
+                const data = await api('recover-l3', { dispute_number: l3Dispute, claim_secret: l3Claim, answers });
                 l3Dispute = data.dispute_number || l3Dispute; l3Save();
                 document.getElementById('l3-chat-dispute').textContent = l3Dispute || '(en attente)';
                 l3ShowStep('chat'); startL3Polling();
