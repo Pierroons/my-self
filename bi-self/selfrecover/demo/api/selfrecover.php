@@ -113,6 +113,7 @@ function purgeOldDemoData(PDO $db): void {
         $db->exec("DELETE FROM recovery_attempts WHERE username IN (SELECT username FROM users WHERE id IN ($in))");
         $db->exec("DELETE FROM disputes WHERE user_id IN ($in)");
         $db->exec("DELETE FROM recovery_codes WHERE user_id IN ($in)");
+        $db->exec("DELETE FROM device_credentials WHERE user_id IN ($in)");
         $db->exec("DELETE FROM reset_requests WHERE user_id IN ($in)");
         $db->exec("DELETE FROM users WHERE id IN ($in)");
     }

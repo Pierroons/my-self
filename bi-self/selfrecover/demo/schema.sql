@@ -108,3 +108,22 @@ CREATE TABLE IF NOT EXISTS recovery_codes (
 );
 CREATE INDEX IF NOT EXISTS idx_reccodes_lookup ON recovery_codes(code_lookup);
 CREATE INDEX IF NOT EXISTS idx_reccodes_user ON recovery_codes(user_id);
+
+-- Credential « cet appareil » (foyer possession device-bound, enveloppe par le mot mémorisé)
+-- Le serveur ne détient QUE la clé publique. La privée vit chiffrée dans le navigateur.
+CREATE TABLE IF NOT EXISTS device_credentials (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    credential_id TEXT NOT NULL UNIQUE,   -- id aléatoire, localise le compte (comme un recovery code)
+    public_key TEXT NOT NULL,             -- clé publique ECDSA P-256 (SPKI DER, base64url)
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_devcred_cid ON device_credentials(credential_id);
+CREATE INDEX IF NOT EXISTS idx_devcred_user ON device_credentials(user_id);
+
+CREATE TABLE IF NOT EXISTS device_challenges (
+    challenge TEXT PRIMARY KEY,            -- base64url, usage unique, TTL court
+    credential_id TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);

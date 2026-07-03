@@ -136,6 +136,22 @@ function getDB(): PDO {
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_reccodes_lookup ON recovery_codes(code_lookup)");
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_reccodes_user ON recovery_codes(user_id)");
         } catch (Exception $e) { /* table exists = OK */ }
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS device_credentials (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                credential_id TEXT NOT NULL UNIQUE,
+                public_key TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_devcred_cid ON device_credentials(credential_id)");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_devcred_user ON device_credentials(user_id)");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS device_challenges (
+                challenge TEXT PRIMARY KEY,
+                credential_id TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )");
+        } catch (Exception $e) { /* tables exist = OK */ }
     }
     return $pdo;
 }

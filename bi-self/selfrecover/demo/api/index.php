@@ -5,6 +5,7 @@
 
 require __DIR__ . '/db.php';
 require __DIR__ . '/selfrecover.php';
+require __DIR__ . '/device_handlers.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: ' . ALLOWED_ORIGIN);
@@ -47,6 +48,16 @@ switch ($action) {
         break;
     case 'regenerate-codes':
         handleRegenerateCodes();
+        break;
+    // Facteur possession « cet appareil » (device-bound, enveloppe par le mot mémorisé)
+    case 'device-enroll':
+        handleDeviceEnroll();
+        break;
+    case 'device-auth-begin':
+        handleDeviceAuthBegin();
+        break;
+    case 'device-auth-finish':
+        handleDeviceAuthFinish();
         break;
     // SelfRecover L3 — récupération assistée (chat admin obligatoire, jamais d'auto)
     case 'recover-l3-init':

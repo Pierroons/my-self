@@ -397,6 +397,12 @@
                 <label>Mot mémorisé (facteur connaissance de L2 — un mot que tu retiendras)</label>
                 <input type="text" id="reg-recovery" placeholder="pantoufles">
             </div>
+            <div class="form-group">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                    <input type="checkbox" id="reg-device" style="width:auto;margin:0;"> Faire confiance à ce navigateur — récup L2 en 1 clic
+                </label>
+                <span style="display:block;font-size:0.72rem;color:var(--muted);margin-top:2px;">Pratique. Protégé <em>logiciel</em> (pas une puce), lié à ce navigateur → les recovery codes restent le secours.</span>
+            </div>
             <input type="text" name="website" id="reg-website" tabindex="-1" autocomplete="off"
                    aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
             <button class="btn" onclick="doRegister()">Create account</button>
@@ -611,6 +617,8 @@
             <input type="text" name="website" id="l2-website" tabindex="-1" autocomplete="off"
                    aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
             <button class="btn" id="l2-btn" onclick="doRecoverL2()">Récupérer</button>
+            <div style="text-align:center;margin:10px 0;opacity:0.6;font-size:0.8rem;">— ou, si tu as enrôlé cet appareil —</div>
+            <button class="btn" id="l2-device-btn" onclick="doRecoverL2Device()" style="background:#2d7d5a;">🖥️ Récupérer avec cet appareil (+ mot mémorisé)</button>
             <div id="l2-result"></div>
         </div>
 
@@ -689,6 +697,8 @@
     <script src="assets/entropy.js"></script>
     <!-- Transparency Live panel : visualise en direct les requêtes et opérations crypto -->
     <script src="assets/transparency.js"></script>
+    <!-- Argon2 (hash-wasm, MIT) — dérivation memory-hard du mot mémorisé pour l'enveloppe « cet appareil » -->
+    <script src="assets/hash-wasm-argon2.js"></script>
 
     <script>
         // === Tab switching ===
@@ -823,6 +833,16 @@
                     website: document.getElementById('reg-website')?.value || ''
                 });
                 renderCodes('reg-result', data);
+                // Foyer possession « cet appareil » (optionnel, en plus des codes)
+                if (document.getElementById('reg-device')?.checked) {
+                    try {
+                        document.getElementById('reg-result').innerHTML += '<div class="result" style="margin-top:8px;">⏳ Enrôlement de cet appareil (Argon2id)…</div>';
+                        await doRegisterDevice(username, memorizedWord);
+                        document.getElementById('reg-result').innerHTML += '<div class="result success" style="margin-top:8px;">🖥️ Appareil enrôlé — récup L2 possible en 1 clic (ce navigateur + mot mémorisé).</div>';
+                    } catch (e) {
+                        document.getElementById('reg-result').innerHTML += '<div class="result error" style="margin-top:8px;">Appareil non enrôlé : ' + e.message + ' (les recovery codes restent ton secours).</div>';
+                    }
+                }
             } catch (e) {
                 showResult('reg-result', e.message, true);
             }
@@ -1005,6 +1025,60 @@
                 });
                 renderCodes('l2-result', { username, recovery_codes: data.recovery_codes,
                     note: 'Nouveau lot — l\'ancien est invalidé. Sauvegarde-les.' });
+            } catch (e) {
+                showResult('l2-result', e.message, true);
+            }
+        }
+
+        // ============ Foyer possession « cet appareil » (enveloppe Argon2id, souverain, sans hardware) ============
+        function bufToB64url(buf) { const b = new Uint8Array(buf); let s = ''; for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+        function b64urlToBuf(str) { str = str.replace(/-/g, '+').replace(/_/g, '/'); while (str.length % 4) str += '='; const bin = atob(str); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer; }
+
+        // Clé AES-GCM dérivée du mot mémorisé par Argon2id (memory-hard → seul rempart contre le crack hors-ligne)
+        async function deviceWrapKey(word, saltBytes) {
+            if (!window.hashwasm) throw new Error('Argon2 (hash-wasm) non chargé');
+            const raw = await hashwasm.argon2id({ password: word, salt: saltBytes, parallelism: 1, iterations: 3, memorySize: 65536, hashLength: 32, outputType: 'binary' });
+            return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+        }
+
+        // IndexedDB : le blob de cet appareil (clé privée CHIFFRÉE + sel + iv + credentialId). Jamais la clé nue, jamais le mot.
+        function idbOpen() { return new Promise((res, rej) => { const r = indexedDB.open('selfrecover-device', 1); r.onupgradeneeded = () => r.result.createObjectStore('cred'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+        async function idbSet(k, v) { const db = await idbOpen(); return new Promise((res, rej) => { const t = db.transaction('cred', 'readwrite'); t.objectStore('cred').put(v, k); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
+        async function idbGet(k) { const db = await idbOpen(); return new Promise((res, rej) => { const t = db.transaction('cred', 'readonly'); const q = t.objectStore('cred').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+
+        // Enrôle cet appareil : paire ECDSA, privée chiffrée par le mot, blob gardé local, publique au serveur
+        async function doRegisterDevice(username, memorizedWord) {
+            const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+            const pkcs8 = await crypto.subtle.exportKey('pkcs8', kp.privateKey);
+            const spki = await crypto.subtle.exportKey('spki', kp.publicKey);
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const wrapKey = await deviceWrapKey(memorizedWord, salt);
+            const encPriv = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrapKey, pkcs8);
+            const credentialId = bufToB64url(crypto.getRandomValues(new Uint8Array(24)).buffer);
+            await idbSet('device', { credentialId, encPriv: bufToB64url(encPriv), salt: bufToB64url(salt.buffer), iv: bufToB64url(iv.buffer) });
+            await api('device-enroll', { username, credential_id: credentialId, public_key: bufToB64url(spki), website: '' });
+        }
+
+        // Récup L2 par cet appareil : déchiffre la privée avec le mot → signe le challenge → 2FA lié (appareil ET mot)
+        async function doRecoverL2Device() {
+            try {
+                const memorizedWord = document.getElementById('l2-recovery').value.trim();
+                const newPwd = document.getElementById('l2-newpwd').value;
+                if (!memorizedWord || !newPwd) { showResult('l2-result', 'Mot mémorisé + nouveau mot de passe requis (le champ code peut rester vide).', true); return; }
+                const rec = await idbGet('device');
+                if (!rec) { showResult('l2-result', 'Aucun appareil enrôlé sur ce navigateur. Utilise un recovery code.', true); return; }
+                showResult('l2-result', '⏳ Déchiffrement local (Argon2id)…', false);
+                let pkcs8;
+                try {
+                    const wrapKey = await deviceWrapKey(memorizedWord, new Uint8Array(b64urlToBuf(rec.salt)));
+                    pkcs8 = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(b64urlToBuf(rec.iv)) }, wrapKey, b64urlToBuf(rec.encPriv));
+                } catch (e) { showResult('l2-result', 'Mot mémorisé incorrect (déchiffrement local échoué).', true); return; }
+                const privKey = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+                const { challenge } = await api('device-auth-begin', { credential_id: rec.credentialId, website: '' });
+                const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, privKey, new TextEncoder().encode(challenge));
+                const data = await api('device-auth-finish', { credential_id: rec.credentialId, challenge, signature: bufToB64url(sig), new_password: newPwd, website: '' });
+                document.getElementById('l2-result').innerHTML = '<div class="result success"><strong>' + data.message + '</strong><br>Compte : <code>' + data.username + '</code><br><em>Ton nouveau mot de passe est actif.</em></div>';
             } catch (e) {
                 showResult('l2-result', e.message, true);
             }
