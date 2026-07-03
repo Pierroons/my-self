@@ -204,23 +204,6 @@
       font-size: 0.85rem;
     }
 
-    /* === Bandeau alert post-ANTS === */
-    .alert-band {
-      background: linear-gradient(135deg, rgba(212,192,88,0.16), rgba(212,192,88,0.04));
-      border: 1px solid var(--warning);
-      border-left-width: 4px;
-      border-radius: 8px;
-      padding: 1rem 1.3rem;
-      margin: 1.5rem 0 2rem;
-      font-size: 0.92rem;
-      line-height: 1.55;
-    }
-    .alert-band strong { color: var(--warning); }
-    .alert-band a {
-      color: var(--accent);
-      font-weight: 600;
-      white-space: nowrap;
-    }
 
     /* === Schéma split-knowledge === */
     .scheme-split {
@@ -338,14 +321,6 @@
   <a href="https://my-self.fr">my-self.fr</a>  ›  Bi-Self
 </p>
 
-<div class="alert-band">
-  <strong>📢 15 avril 2026 — fuite ANTS, faille IDOR sur <code style="background:rgba(212,192,88,0.18);padding:0.05rem 0.3rem;border-radius:3px;font-size:0.85em;">moncompte.ants.gouv.fr</code>.</strong>
-  <strong>11,7 millions de comptes confirmés</strong> par le ministère de l'Intérieur ;
-  jusqu'à <strong>19 millions d'enregistrements</strong> revendiqués par les attaquants.
-  SelfRecover retire le canal de récupération par email du protocole (mode Full) ou
-  le durcit cryptographiquement avec un mot mémorisé HMACé côté client (mode Lite).
-  <a href="/selfrecover/comparison.html">→ Comparatif sécurité 8 adversaires</a>
-</div>
 
 <section class="hero">
   <h1>Bi-Self</h1>
@@ -408,7 +383,7 @@
       <text x="670" y="158" text-anchor="middle" fill="#9aa0a6" font-family="sans-serif" font-size="9">(autre domaine = autre clé)</text>
     </g>
 
-    <!-- Mention bas : pas de canal email = pas de fuite ANTS -->
+    <!-- Mention bas : pas de canal email = rien à exfiltrer -->
     <text x="400" y="200" text-anchor="middle" fill="#7cc47c" font-family="sans-serif" font-size="11" font-weight="600">Pas de canal SMTP. Pas de boîte mail à pirater. Pas de token reset à exfiltrer.</text>
   </svg>
   <ul class="scheme-split-legend">
@@ -468,7 +443,7 @@
   <p>
     <strong><a href="/recover">SelfRecover</a></strong> existe en deux variantes selon ton infrastructure.
     Le <strong>Full</strong> retire totalement l'email du protocole : récupération par passphrase
-    diceware EFF + dérivation HMAC anti-phishing, donc zéro SMTP, zéro fuite type ANTS.
+    diceware EFF + dérivation HMAC anti-phishing, donc zéro SMTP, zéro token reset à exfiltrer.
     Le <strong>Lite</strong> conserve l'email habituel et ajoute un mot mémorisé HMACé côté client :
     intégration plus douce sur un legacy existant, et même un attaquant qui contrôle la boîte mail
     ne peut pas reset le compte sans connaître ce mot. <em>Adoption progressive : Lite d'abord, Full ensuite.</em>
