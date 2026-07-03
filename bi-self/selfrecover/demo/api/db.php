@@ -43,7 +43,9 @@ define('DEMO_AUTOPURGE', filter_var(getenv('SELFRECOVER_DEMO_PURGE') ?: 'true', 
 function getDB(): PDO {
     static $pdo = null;
     if ($pdo !== null) return $pdo;
-    $path = __DIR__ . '/../selfrecover.sqlite';
+    // Chemin DB configurable (prod : hors du webroot immutable → /var/lib/selfrecover/, writable).
+    // Leçon DataGuard : env OU fastcgi_param, fallback local pour la démo.
+    $path = getenv('SELFRECOVER_DB_PATH') ?: ($_SERVER['SELFRECOVER_DB_PATH'] ?? '') ?: (__DIR__ . '/../selfrecover.sqlite');
     $init = !file_exists($path);
     $pdo = new PDO('sqlite:' . $path);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
