@@ -6,14 +6,14 @@
 <title>SelfRecover -- Validateur diceware offline</title>
 <style>
 :root {
-  --bg: #0f172a;
-  --panel: #1e293b;
-  --text: #f1f5f9;
-  --muted: #94a3b8;
-  --accent: #f97316;
-  --success: #10b981;
-  --danger: #ef4444;
-  --border: #334155;
+  --bg: #0f1419;
+  --panel: #1a2028;
+  --text: #e8eaed;
+  --muted: #9aa0a6;
+  --accent: #7ab7ff;
+  --success: #7cc47c;
+  --danger: #e07b7b;
+  --border: #2a3038;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -27,7 +27,7 @@ body {
 h1 { font-size: 1.6rem; color: var(--accent); margin-bottom: 4px; }
 .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 0.9rem; }
 .airgap-banner {
-  background: rgba(16, 185, 129, 0.12);
+  background: rgba(124, 196, 124, 0.12);
   border: 1px solid var(--success);
   border-left: 4px solid var(--success);
   padding: 14px;
@@ -39,7 +39,7 @@ h1 { font-size: 1.6rem; color: var(--accent); margin-bottom: 4px; }
 .airgap-banner strong { color: var(--success); }
 .airgap-banner code { background: rgba(0,0,0,0.4); padding: 1px 5px; border-radius: 3px; }
 .warn-banner {
-  background: rgba(239, 68, 68, 0.1);
+  background: rgba(224, 123, 123, 0.1);
   border: 1px solid var(--danger);
   border-left: 4px solid var(--danger);
   padding: 14px;
@@ -84,13 +84,13 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
   cursor: pointer;
   font-family: inherit;
 }
-.btn:hover { background: #ea580c; }
+.btn:hover { background: #5a97df; }
 .btn-secondary {
   background: transparent;
   border: 1px solid var(--accent);
   color: var(--accent);
 }
-.btn-secondary:hover { background: rgba(249, 115, 22, 0.15); }
+.btn-secondary:hover { background: rgba(122, 183, 255, 0.15); }
 .result {
   margin-top: 18px;
   padding: 14px;
@@ -99,11 +99,11 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
   line-height: 1.6;
 }
 .result.ok {
-  background: rgba(16, 185, 129, 0.12);
+  background: rgba(124, 196, 124, 0.12);
   border: 1px solid var(--success);
 }
 .result.bad {
-  background: rgba(239, 68, 68, 0.12);
+  background: rgba(224, 123, 123, 0.12);
   border: 1px solid var(--danger);
 }
 .result.warn {
@@ -129,8 +129,8 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
   margin: 4px 4px 0 0;
   border-radius: 4px;
 }
-.word-item.ok { background: rgba(16, 185, 129, 0.18); border: 1px solid var(--success); color: var(--text); }
-.word-item.bad { background: rgba(239, 68, 68, 0.18); border: 1px solid var(--danger); color: var(--text); }
+.word-item.ok { background: rgba(124, 196, 124, 0.18); border: 1px solid var(--success); color: var(--text); }
+.word-item.bad { background: rgba(224, 123, 123, 0.18); border: 1px solid var(--danger); color: var(--text); }
 .code {
   background: var(--bg);
   padding: 2px 6px;
@@ -286,7 +286,7 @@ function validateInput() {
               : n < 10 ? 'Niveau secret sensible (admin, sudo)'
               : 'Niveau master / root server';
     const widthPct = Math.min(100, (parseFloat(bits) / 128) * 100);
-    const color = bits < 50 ? 'var(--danger)' : bits < 70 ? 'var(--accent)' : bits < 100 ? 'var(--success)' : '#3b82f6';
+    const color = bits < 50 ? 'var(--danger)' : bits < 70 ? 'var(--accent)' : bits < 100 ? 'var(--success)' : '#a380ff';
     html += '<div style="margin-top:14px;">';
     html += '<strong>Entropie théorique :</strong> ' + n + ' × log₂(7776) = ' + bits + ' bits';
     html += '<div class="entropy-bar-track"><div class="entropy-bar-fill" style="width:' + widthPct + '%;background:' + color + ';"></div></div>';
