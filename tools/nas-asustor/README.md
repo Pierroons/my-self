@@ -31,7 +31,7 @@ Pack de scripts pour exposer le portail admin **ADM** d'un NAS NAS uniquement vi
                              │
                              ▼ (Tor circuit)
                 ┌──────────────────────────────────────┐
-                │  Tor Browser (Pierroons / Gary)       │
+                │  Tor Browser (admins)       │
                 │  http://<onion>.onion → ADM admin    │
                 └──────────────────────────────────────┘
 
