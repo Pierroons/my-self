@@ -110,7 +110,7 @@
 <body>
 <div class="container">
     <h1>📊 SelfRecover — Comparatif sécurité</h1>
-    <p class="subtitle">Trois approches de la récupération de compte, comparées côte à côte. Pour les agences d'État, opérateurs publics et services à fort enjeu.</p>
+    <p class="subtitle">Trois approches de la récupération de compte, comparées côte à côte. Pour tout service où la sécurité des comptes compte vraiment.</p>
 
     <nav class="nav">
         <a href="/">← Démo SelfRecover Full</a>
@@ -119,11 +119,10 @@
     </nav>
 
     <div class="intro">
-        <strong>Pourquoi cette comparaison ?</strong> La fuite massive subie par une grande agence d'État
-        en avril 2026 (faille IDOR, ~12 millions de comptes exposés) a montré que la centralisation
-        d'un système de comptes citoyens — combinée à une récupération par email — multiplie la surface
-        d'attaque. SelfRecover propose <strong>deux paliers d'adoption progressive</strong> qui permettent
-        à un opérateur public de durcir son authentification <em>sans refonte totale</em>.
+        <strong>Pourquoi cette comparaison ?</strong> La récupération de compte par email est souvent le
+        maillon faible de l'authentification : un email compromis ou intercepté suffit à prendre le compte,
+        sans second facteur. SelfRecover propose <strong>deux paliers d'adoption progressive</strong> pour
+        durcir la récupération <em>sans refonte totale</em>.
     </div>
 
     <div class="grid3">
@@ -231,7 +230,7 @@
                 <td>Mot mémorisé / passphrase deviné seul</td>
                 <td class="ok">✓ N/A</td>
                 <td class="ok">✓ Bloqué (manque mail-link)</td>
-                <td class="ok">✓ Bloqué (manque identifiant public + processus L1)</td>
+                <td class="ok">✓ Bloqué (manque le username + la passphrase L1)</td>
             </tr>
             <tr>
                 <td>Compromission poste utilisateur (keylogger)</td>
@@ -254,11 +253,11 @@
         <tbody>
             <tr><td>Migration depuis l'existant</td><td class="ok">N/A (statu quo)</td><td class="ok">Incrémentale (additif)</td><td class="partial">Refonte modérée</td></tr>
             <tr><td>Dépendance fournisseur SMTP</td><td class="ko">Oui</td><td class="partial">Oui (mais ne suffit plus)</td><td class="ok">Aucune</td></tr>
-            <tr><td>Lignes de code (back)</td><td class="ok">~50</td><td class="ok">~250</td><td class="partial">~600</td></tr>
-            <tr><td>Lignes de code (front)</td><td class="ok">~30</td><td class="ok">~100</td><td class="partial">~400</td></tr>
+            <tr><td>Empreinte code (back)</td><td class="ok">Minimale</td><td class="ok">Faible</td><td class="partial">Modérée</td></tr>
+            <tr><td>Empreinte code (front)</td><td class="ok">Minimale</td><td class="ok">Faible</td><td class="partial">Modérée</td></tr>
             <tr><td>Friction utilisateur</td><td class="ok">Minimale (1 click email)</td><td class="partial">Faible (1 mot à retenir)</td><td class="ko">Modérée (passphrase 4+ mots)</td></tr>
             <tr><td>Audit cryptographique</td><td class="partial">Variable</td><td class="ok">Simple (HMAC + Argon2id)</td><td class="ok">Documenté, AGPL</td></tr>
-            <tr><td>Conformité ANSSI / RGS</td><td class="partial">À évaluer cas par cas</td><td class="ok">Compatible (HMAC + Argon2id approuvés)</td><td class="ok">Compatible</td></tr>
+            <tr><td>Primitives cryptographiques</td><td class="partial">Variable selon l'implémentation</td><td class="ok">Standard (HMAC + Argon2id)</td><td class="ok">Standard (HMAC + Argon2id + diceware EFF)</td></tr>
         </tbody>
     </table>
 
@@ -272,7 +271,7 @@
 
     <div class="cta">
         <h3>Tester maintenant</h3>
-        <p>Les deux modes (Lite et Full) sont en démo interactive directement sur ce site. Aucune inscription préalable, données effacées à chaque rafraîchissement.</p>
+        <p>Les deux modes (Lite et Full) sont en démo interactive directement sur ce site. Aucune inscription préalable, données de démo purgées automatiquement (bac à sable).</p>
         <div class="cta-buttons">
             <a class="cta-btn" href="lite.html">→ Tester SelfRecover Lite</a>
             <a class="cta-btn" href="/">→ Tester SelfRecover Full</a>
@@ -280,13 +279,13 @@
         </div>
     </div>
 
-    <h2>📞 Pour les opérateurs publics et agences d'État</h2>
-    <p>SelfRecover est intégralement publié sous <strong>AGPL-3.0-or-later</strong>. Aucune licence commerciale n'est requise. Aucun NDA n'est demandé.</p>
-    <p>Si vous représentez une agence d'État, un opérateur public ou un service essentiel intéressé par une étude technique, audit cryptographique communautaire ou intégration pilote :</p>
+    <h2>📞 Intégrer ou auditer SelfRecover</h2>
+    <p>SelfRecover est publié sous <strong>AGPL-3.0-or-later</strong>. Aucune licence commerciale, aucun NDA.</p>
+    <p>Si tu veux l'étudier, l'auditer ou l'intégrer :</p>
     <ul style="margin: 10px 0 18px 22px;">
-        <li>Le code complet est disponible sur <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover" target="_blank">github.com/Pierroons/my-self</a></li>
+        <li>Le code est publié progressivement sur <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover" target="_blank">github.com/Pierroons/my-self</a></li>
         <li>Les whitepapers EN/FR sont dans le dépôt</li>
-        <li>L'auteur est joignable pour échange technique sans obligation contractuelle</li>
+        <li>L'auteur est joignable pour échange technique, sans obligation</li>
     </ul>
 
     <div class="footer">
