@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT COLLATE NOCASE UNIQUE NOT NULL,   -- insensible à la casse (unicité + login)
+    username TEXT UNIQUE NOT NULL,
     identifier TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     passphrase_hash TEXT NOT NULL,
