@@ -358,7 +358,7 @@ function handleRecoverL2Code(): void {
     // vers le niveau 3 (récupération assistée par un humain) — comme L1 → L2.
     if ($ip) {
         $c = $db->prepare("SELECT COUNT(*) FROM recovery_attempts WHERE level=2 AND success=0 AND ip_address=? AND datetime(attempted_at) > datetime('now', ?)");
-        $c->execute([$ip, '-' . L1_WINDOW_SEC . ' seconds']);
+        $c->execute([$ip, '-' . L2_ESCALATE_WINDOW_SEC . ' seconds']);
         if ((int)$c->fetchColumn() >= 3) {
             addTrace('[recover-l2-code] 3 échecs L2 → escalade niveau 3 (récupération assistée)');
             jsonResponse(['error' => 'Trop d\'échecs au niveau 2. Passe au niveau 3 (récupération assistée par un humain).', 'escalate_l3' => true], 429);
@@ -776,9 +776,9 @@ function handleDisputeChat(): void {
     $db = getDB();
     $dispute = getDisputeByNumber($db, $number);
     if (!$dispute || $dispute['status'] === 'closed' || disputeExpired($dispute)) {
-        // tentative sur un numéro inexistant/expiré = suspecte (anti-énumération/brute du numéro)
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
-        if ($ip) trackSuspiciousIP($db, $ip, $_SERVER['HTTP_X_CLIENT_FINGERPRINT'] ?? '', $_SERVER['HTTP_USER_AGENT'] ?? '');
+        // N° de litige = 64 bits non devinables → aucun brute-force réaliste ici. On ne bloque PAS
+        // l'IP : un client légitime qui poll un litige supprimé/expiré (ex. DB vidée) tomberait
+        // sinon en boucle de 429. Simple 404 — c'est au client de nettoyer son état.
         jsonError('Litige introuvable ou fermé', 404);
     }
 

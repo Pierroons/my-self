@@ -32,6 +32,9 @@ define('L1_WINDOW_SEC', FAST_TIMINGS ? 30 : 900);    // fenêtre de comptage des
 define('L1_BLOCK_SEC',  FAST_TIMINGS ? 30 : 3600);   // durée de blocage L1 (défaut 1 h)
 define('IP_THRESHOLD',  FAST_TIMINGS ? 3  : 10);     // nb d'échecs par IP avant blocage
 define('IP_BLOCK_SEC',  FAST_TIMINGS ? 30 : 86400);  // durée de blocage IP (défaut 24 h)
+// L2 : 3 échecs dans cette fenêtre → L2 fermé, éjection OBLIGATOIRE en L3.
+// Indépendant du mode démo : ne doit PAS se réinitialiser en 30s (sinon on réessaie L2 sans fin).
+define('L2_ESCALATE_WINDOW_SEC', 600); // 10 min
 
 function getDB(): PDO {
     static $pdo = null;

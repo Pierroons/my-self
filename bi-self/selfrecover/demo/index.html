@@ -610,7 +610,7 @@
             </div>
             <input type="text" name="website" id="l2-website" tabindex="-1" autocomplete="off"
                    aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
-            <button class="btn" onclick="doRecoverL2()">Récupérer</button>
+            <button class="btn" id="l2-btn" onclick="doRecoverL2()">Récupérer</button>
             <div id="l2-result"></div>
         </div>
 
@@ -748,6 +748,7 @@
         // le recovery code localise le compte, donc pas de sel par-utilisateur à aller chercher.
         // register et recover dérivent tous deux avec ce même sel → vérification cohérente.
         window.DOMAIN_SALT = 'selfrecover-domain-v1';
+        let l2Fails = 0; // échecs L2 dans la session → 3 = L2 fermé, éjection L3 obligatoire
 
         // Affiche les recovery codes UNE SEULE FOIS + bouton de téléchargement .txt
         window.LAST_CODES = null;
@@ -975,9 +976,21 @@
                     '<em>Ton nouveau mot de passe est celui que tu viens de choisir.</em><br>' +
                     '<button class="btn" style="margin-top:6px;" onclick="doRegenerate(\'' + data.username + '\')">Régénérer mes recovery codes</button>' +
                     '</div>';
+                l2Fails = 0; // succès → on remet le compteur à zéro
             } catch (e) {
-                showResultMaybeEscalate('l2-result', e);
+                if (e.data && e.data.escalate_l3) { lockL2(); return; }
+                l2Fails++;
+                if (l2Fails >= 3) lockL2();
+                else showResultMaybeEscalate('l2-result', e);
             }
+        }
+
+        // Ferme le niveau 2 après 3 échecs — éjection OBLIGATOIRE en niveau 3
+        function lockL2() {
+            ['l2-recovery', 'l2-code', 'l2-newpwd', 'l2-btn'].forEach(id => { const el = document.getElementById(id); if (el) el.disabled = true; });
+            document.getElementById('l2-result').innerHTML =
+                '<div class="result error"><strong>Niveau 2 fermé après 3 échecs.</strong><br>Récupération assistée obligatoire.' +
+                '<br><button class="btn" style="margin-top:8px;" onclick="switchPanel(\'recoverL3\')">→ Passer au niveau 3</button></div>';
         }
 
         // === Régénérer le lot (authentifié par le mot mémorisé) ===
@@ -1012,17 +1025,21 @@
         function l3ShowStep(step) { ['id', 'q', 'chat', 'reset'].forEach(s => document.getElementById('l3-step-' + s).classList.add('hidden')); document.getElementById('l3-step-' + step).classList.remove('hidden'); }
 
         // Ouverture de l'onglet L3 : reprend un litige en cours si présent sur cet appareil (localStorage)
-        function openL3(ev) {
+        async function openL3(ev) {
             switchPanel('recoverL3');
             if (ev && ev.target) { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); ev.target.classList.add('active'); }
             const st = l3Load();
             if (st && st.dispute && st.claim) {
-                l3Username = st.username || ''; l3Dispute = st.dispute; l3Claim = st.claim;
-                document.getElementById('l3-chat-dispute').textContent = l3Dispute;
-                l3ShowStep('chat'); startL3Polling();
-            } else {
-                l3ShowStep('id');
+                // Vérifie que le litige existe ENCORE (sinon DB vidée/expiré → repart propre, pas de poll en boucle)
+                try {
+                    const data = await api('dispute-chat', { dispute_number: st.dispute, claim_secret: st.claim });
+                    l3Username = st.username || ''; l3Dispute = st.dispute; l3Claim = st.claim;
+                    document.getElementById('l3-chat-dispute').textContent = l3Dispute;
+                    l3ShowStep('chat'); l3RenderMessages(data.messages); startL3Polling();
+                    return;
+                } catch (e) { l3Clear(); l3Dispute = null; l3Claim = null; }
             }
+            l3ShowStep('id');
         }
 
         async function startL3() {
@@ -1075,14 +1092,24 @@
                         '<div class="result error"><strong>Compte clôturé — données supprimées, compte à recréer.</strong><br>Merci d\'avoir testé Recover. 🙏</div>';
                 }
                 if (data.status === 'resolved') clearInterval(l3Timer);
-            } catch (e) { clearInterval(l3Timer); }
+            } catch (e) {
+                clearInterval(l3Timer);
+                // litige disparu (supprimé/expiré, ex. DB vidée) → nettoie et repart sur une récup fraîche
+                if (/introuvable|ferm|expir/i.test(e.message || '')) { l3Clear(); l3Dispute = null; l3Claim = null; l3ResetShown = false; l3ShowStep('id'); }
+            }
         }
         function startL3Polling() { l3Poll(); l3Timer = setInterval(l3Poll, 3000); }
 
         async function sendL3Msg() {
             const input = document.getElementById('l3-chat-input'); const msg = input.value.trim();
             if (!msg || !l3Dispute) return; input.value = '';
-            try { await api('dispute-chat', { dispute_number: l3Dispute, claim_secret: l3Claim, message: msg }); l3Poll(); } catch (e) { input.value = msg; }
+            try { await api('dispute-chat', { dispute_number: l3Dispute, claim_secret: l3Claim, message: msg }); l3Poll(); }
+            catch (e) {
+                if (/introuvable|ferm|expir/i.test(e.message || '')) {
+                    clearInterval(l3Timer); l3Clear(); l3Dispute = null; l3Claim = null; l3ShowStep('id');
+                    showResult('l3-step-id-result', 'La procédure précédente a expiré ou été clôturée. Redémarre une récupération.', true);
+                } else { input.value = msg; }
+            }
         }
 
         async function doL3Reset() {
