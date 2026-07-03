@@ -94,6 +94,35 @@ function generatePassword(int $len = 10): string {
 }
 
 // === REGISTER ===
+// === Purge démo — borne la taille de la DB sous test de masse (DEMO-ONLY) ===
+// Politique : litige L3 terminé (resolved/refused/closed) → compte + chaînage purgés 1h après.
+//             tout le reste (comptes/tentatives/empreintes) → 24h max.
+// ⚠️ Supprime des comptes automatiquement → JAMAIS en prod (gate DEMO_AUTOPURGE).
+function purgeOldDemoData(PDO $db): void {
+    // Comptes à purger : litige terminé depuis >1h, OU créés depuis >24h.
+    $ids = $db->query("
+        SELECT u.id FROM users u
+        WHERE u.created_at < datetime('now', '-24 hours')
+           OR u.id IN (SELECT d.user_id FROM disputes d
+                       WHERE d.status IN ('resolved','refused','closed')
+                         AND d.updated_at < datetime('now', '-1 hour'))
+    ")->fetchAll(PDO::FETCH_COLUMN);
+    if ($ids) {
+        $in = implode(',', array_map('intval', $ids));
+        $db->exec("DELETE FROM dispute_messages WHERE dispute_id IN (SELECT id FROM disputes WHERE user_id IN ($in))");
+        $db->exec("DELETE FROM recovery_attempts WHERE username IN (SELECT username FROM users WHERE id IN ($in))");
+        $db->exec("DELETE FROM disputes WHERE user_id IN ($in)");
+        $db->exec("DELETE FROM recovery_codes WHERE user_id IN ($in)");
+        $db->exec("DELETE FROM reset_requests WHERE user_id IN ($in)");
+        $db->exec("DELETE FROM users WHERE id IN ($in)");
+    }
+    // Bruit indépendant des comptes : TTL 24h (tentatives anonymes, empreintes) ; litiges terminés orphelins : 1h.
+    $db->exec("DELETE FROM recovery_attempts WHERE attempted_at < datetime('now', '-24 hours')");
+    $db->exec("DELETE FROM suspicious_fingerprints WHERE last_seen < datetime('now', '-24 hours')");
+    $db->exec("DELETE FROM dispute_messages WHERE dispute_id IN (SELECT id FROM disputes WHERE status IN ('resolved','refused','closed') AND updated_at < datetime('now', '-1 hour'))");
+    $db->exec("DELETE FROM disputes WHERE status IN ('resolved','refused','closed') AND updated_at < datetime('now', '-1 hour')");
+}
+
 function handleRegister(): void {
     $in = getInput();
     securityChecks($in);

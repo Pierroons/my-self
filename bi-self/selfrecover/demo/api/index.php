@@ -18,6 +18,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
+// Purge amortie de la DB démo (~8% des requêtes) pour borner la taille sous test de masse (DEMO-ONLY)
+if (DEMO_AUTOPURGE) { try { if (random_int(1, 12) === 1) purgeOldDemoData(getDB()); } catch (Throwable $e) { /* non bloquant */ } }
+
 $action = $_GET['action'] ?? '';
 
 switch ($action) {

@@ -36,6 +36,10 @@ define('IP_BLOCK_SEC',  FAST_TIMINGS ? 30 : 86400);  // durée de blocage IP (d�
 // Indépendant du mode démo : ne doit PAS se réinitialiser en 30s (sinon on réessaie L2 sans fin).
 define('L2_ESCALATE_WINDOW_SEC', 600); // 10 min
 
+// Purge auto de la DB démo (borne la taille sous test de masse).
+// ⚠️ DEMO-ONLY : supprime des comptes par âge. En prod → SELFRECOVER_DEMO_PURGE=false.
+define('DEMO_AUTOPURGE', filter_var(getenv('SELFRECOVER_DEMO_PURGE') ?: 'true', FILTER_VALIDATE_BOOLEAN));
+
 function getDB(): PDO {
     static $pdo = null;
     if ($pdo !== null) return $pdo;
