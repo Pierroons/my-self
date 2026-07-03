@@ -1084,6 +1084,27 @@
             }
         }
 
+        // Dégradation gracieuse : si le navigateur ne peut pas faire tourner l'enveloppe
+        // (WASM désactivé, IndexedDB effacé, ou contexte non sécurisé — ex. Tor Browser Safer/Safest,
+        // http clearnet), on masque l'option « cet appareil » → les recovery codes couvrent la récup L2.
+        function deviceFactorAvailable() {
+            return typeof WebAssembly !== 'undefined'
+                && typeof window.hashwasm !== 'undefined'
+                && typeof window.indexedDB !== 'undefined'
+                && !!(window.crypto && window.crypto.subtle);
+        }
+        function applyDeviceFactorAvailability() {
+            if (deviceFactorAvailable()) return;
+            const regCb = document.getElementById('reg-device');
+            if (regCb) {
+                const g = regCb.closest('.form-group');
+                if (g) g.innerHTML = '<span style="display:block;font-size:0.72rem;color:var(--muted);">🔒 « Cet appareil » indisponible sur ce navigateur (WASM/stockage désactivés — ex. Tor durci). Tes <strong>recovery codes</strong> couvrent la récup L2.</span>';
+            }
+            const devBtn = document.getElementById('l2-device-btn');
+            if (devBtn) { const sep = devBtn.previousElementSibling; if (sep) sep.remove(); devBtn.remove(); }
+        }
+        document.addEventListener('DOMContentLoaded', applyDeviceFactorAvailability);
+
         // ================= RECOVER L3 (intégré dans l'SPA) =================
         let l3Dispute = null, l3Claim = null, l3Timer = null, l3ResetShown = false, l3Username = '';
 
