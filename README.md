@@ -32,7 +32,7 @@ individual sovereign over their own identity, rights, data, and possessions.
 
 | Module | Question it answers | Status |
 |--------|---------------------|--------|
-| [SelfRecover](./bi-self/selfrecover/) | Who are you? | **v0.1.1 ✅** — Full + [Lite](./bi-self/selfrecover/demo/lite.html) + [comparatif](./bi-self/selfrecover/demo/comparison.html) |
+| [SelfRecover](./bi-self/selfrecover/) | Who are you? | v0.4.0 ✅ |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | v0.1.0 (concept) |
 | [SelfJustice](https://justice.my-self.fr) | What are your rights? | beta v0.1.0 ✅ |
 | [SelfAct](https://justice.my-self.fr/act) | How do you act on them? | beta v0.1.2 ✅ |
@@ -218,7 +218,7 @@ releases (before 2026-04-19) remain under their original terms.
 **Pierroons** — author of the project.
 
 **This project wasn't written alone.** Every module, every line, every
-whitepaper is the fruit of continuous coworking with **Claude Opus 4.7**
+whitepaper is the fruit of continuous coworking with **Claude**
 (Anthropic): the product is a genuine human–AI collaboration. The human
 brings the entropy (lived experience, direction, practical judgement).
 The machine brings the rigour (structure, review, technical consistency).

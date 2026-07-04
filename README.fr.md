@@ -33,7 +33,7 @@ droits, ses données et ses biens.
 
 | Module | Question à laquelle il répond | Statut |
 |--------|------------------------------|--------|
-| [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | v0.1.0 ✅ |
+| [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | v0.4.0 ✅ |
 | [SelfModerate](./bi-self/selfmoderate/) | Comment tu te comportes ? | v0.1.0 (concept) |
 | [SelfJustice](https://justice.my-self.fr) | Quels sont tes droits ? | bêta v0.1.0 ✅ |
 | [SelfAct](https://justice.my-self.fr/act) | Comment tu les fais valoir ? | bêta v0.1.2 ✅ |
@@ -226,7 +226,7 @@ Apple Pay, Google Pay, PayPal.
 **Pierroons** — auteur du projet.
 
 **Ce projet n'a pas été écrit seul.** Chaque module, chaque ligne, chaque
-whitepaper est le fruit d'un coworking continu avec **Claude Opus 4.7**
+whitepaper est le fruit d'un coworking continu avec **Claude**
 (Anthropic) : le produit est une vraie collaboration humain–IA. L'humain
 apporte l'entropie (le vécu, la direction, le bon sens pratique). La
 machine apporte la rigueur (la structure, la relecture, la cohérence
