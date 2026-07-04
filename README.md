@@ -35,7 +35,7 @@ individual sovereign over their own identity, rights, data, and possessions.
 | [SelfRecover](./bi-self/selfrecover/) | Who are you? | v0.4.0 ✅ |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | v0.1.0 (concept) |
 | [SelfJustice](https://justice.my-self.fr) | What are your rights? | beta v0.1.0 ✅ |
-| [SelfAct](https://justice.my-self.fr/act) | How do you act on them? | beta v0.1.2 ✅ |
+| [SelfAct](./self-right/selfact/) | How do you act on them? | v0.1.2 — code, not yet online |
 | [SelfGuard](./self-security/selfguard/) | How do you protect your data? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | How do you protect your things? | concept |
 | [SelfDataGuard](./self-security/selfdataguard/) | How do you protect users data at rest? | beta v0.1.0 ✅ ([demo](https://dataguard.my-self.fr)) |
