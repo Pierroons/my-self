@@ -27,6 +27,7 @@ function su_forensic_context(): array {
     $parts = $ssh !== '' ? explode(' ', $ssh) : [];
     $argv = $GLOBALS['argv'] ?? ($_SERVER['argv'] ?? []);
     return [
+        'operator'      => getenv('SU_OPERATOR') ?: null,   // « qui » (propagé par le wrapper hôte : user@host + IP SSH)
         'unix_user'     => getenv('USER') ?: (getenv('LOGNAME') ?: '?'),
         'sudo_user'     => getenv('SUDO_USER') ?: null,
         'uid'           => function_exists('posix_getuid') ? posix_getuid() : (int)@getmyuid(),

@@ -205,7 +205,8 @@ case 'log':
         $e = json_decode($line, true);
         if (!is_array($e)) { fwrite(STDOUT, "  ⚠ ligne illisible\n"); continue; }
         $f = $e['forensic'] ?? [];
-        $who = ($f['unix_user'] ?? '?') . '@' . ($f['ssh_client_ip'] ?: 'local')
+        $who = (!empty($f['operator']) ? $f['operator'] . '  ·  ' : '')
+             . ($f['unix_user'] ?? '?') . '@' . ($f['ssh_client_ip'] ?: 'local')
              . ' tty=' . ($f['tty'] ?? '?') . ' pid=' . ($f['pid'] ?? '?');
         fwrite(STDOUT, sprintf("#%-3s %s  %s%s\n",
             $e['seq'] ?? '?', $e['ts_paris'] ?? ($e['ts_utc'] ?? '?'),
