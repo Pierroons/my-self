@@ -19,18 +19,29 @@ $cmd = $argv[1] ?? '';
 function su_fail(string $m, int $code = 1) { fwrite(STDERR, "❌ $m\n"); exit($code); }
 function su_ok(string $m): void { fwrite(STDOUT, "✅ $m\n"); }
 
-/** Auth SU : secret partagé, hors DB. Prompt, ou env SELFRECOVER_SU_SECRET_INPUT (tests). Renvoie la passphrase saisie. */
+/** Chemin du fichier secret SU (posé/modifié par change-passphrase). HORS webroot (STATE_DIR). */
+function su_secret_path(): string {
+    return getenv('SELFRECOVER_SU_SECRET_FILE')
+        ?: ((getenv('SELFRECOVER_STATE_DIR') ?: __DIR__) . '/su-secret');
+}
+/** Secret SU EFFECTIF : le FICHIER a priorité (change-passphrase) ; sinon l'ENV (bootstrap à l'install). */
+function su_expected_secret(): ?string {
+    $f = su_secret_path();
+    if (is_file($f)) { $h = trim((string)@file_get_contents($f)); if ($h !== '') return $h; }
+    $e = getenv('SELFRECOVER_SU_SECRET');
+    return ($e !== false && $e !== '') ? $e : null;
+}
+/** Auth SU : secret hors DB (fichier prioritaire, sinon env). Prompt, ou env SELFRECOVER_SU_SECRET_INPUT (tests). */
 function su_authenticate(): string {
-    $expected = getenv('SELFRECOVER_SU_SECRET');
-    if (!$expected) su_fail("SELFRECOVER_SU_SECRET non configuré — secret SU absent (à poser à l'install).", 2);
+    $expected = su_expected_secret();
+    if ($expected === null) su_fail("Secret SU non configuré (ni fichier " . su_secret_path() . ", ni env) — à poser à l'install.", 2);
     $given = getenv('SELFRECOVER_SU_SECRET_INPUT');
     if ($given === false) { fwrite(STDOUT, "Passphrase SuperUser : "); $given = trim((string)fgets(STDIN)); }
-    // Prod : SELFRECOVER_SU_SECRET = HASH Argon2/bcrypt → password_verify (le secret n'est jamais en clair dans l'env).
-    // Dev : secret en clair → hash_equals (rétrocompatible).
+    // Prod : hash Argon2/bcrypt → password_verify. Bootstrap dev : clair → hash_equals.
     $isHash = preg_match('/^\$(argon2|2y|2a|2b)/', (string)$expected) === 1;
     $ok = $isHash ? password_verify((string)$given, (string)$expected) : hash_equals((string)$expected, (string)$given);
     if (!$ok) su_fail("Secret SU invalide.", 3);
-    return (string)$given; // passphrase en clair (sert à dériver la clé de backup, label distinct)
+    return (string)$given; // passphrase en clair (dérive la clé de backup, label distinct)
 }
 
 /** Clé de chiffrement du backup, dérivée de la passphrase SU avec un LABEL DISTINCT de l'auth. */
@@ -46,8 +57,8 @@ function findUser(PDO $db, string $username): ?array {
 
 // Garde-fou prod « fail fast » : en mode prod (DEBUG_MODE=false), aucun secret de démo toléré.
 if (!DEBUG_MODE) {
-    if (getenv('SELFRECOVER_SU_SECRET') === 'demo-su-secret')
-        su_fail("SELFRECOVER_SU_SECRET = valeur démo interdite en prod (pose un hash Argon2).", 78);
+    if (su_expected_secret() === 'demo-su-secret')
+        su_fail("Secret SU = valeur démo interdite en prod (fais un change-passphrase, ou pose un hash Argon2).", 78);
     $au = getenv('SELFRECOVER_SU_AUDIT_SECRET');
     if (!$au || $au === 'dev-su-audit-secret-CHANGE-IN-PROD')
         su_fail("SELFRECOVER_SU_AUDIT_SECRET absent ou = valeur démo en prod (fixe-le à l'install).", 78);
@@ -199,6 +210,24 @@ case 'log':
     fwrite(STDOUT, "Intégrité : lance «$argv0 verify-log» pour contrôler la chaîne.\n");
     break;
 
+case 'change-passphrase':
+case 'set-passphrase':
+    su_authenticate(); // valide l'ancien secret (fichier ou env bootstrap)
+    $n1 = getenv('SELFRECOVER_SU_NEW_INPUT'); // tests non-interactifs
+    if ($n1 === false) {
+        fwrite(STDOUT, "Nouvelle passphrase SU : ");        $n1 = trim((string)fgets(STDIN));
+        fwrite(STDOUT, "Confirme la nouvelle passphrase : "); $n2 = trim((string)fgets(STDIN));
+        if ($n1 !== $n2) su_fail("Les deux saisies diffèrent — rien changé.");
+    }
+    if (strlen((string)$n1) < 8) su_fail("Passphrase trop courte (8 caractères minimum).");
+    $newHash = password_hash((string)$n1, PASSWORD_ARGON2ID);
+    $secPath = su_secret_path();
+    if (@file_put_contents($secPath, $newHash) === false) su_fail("Écriture impossible : $secPath (dossier accessible en écriture ?).");
+    @chmod($secPath, 0600);
+    su_audit_append('change-passphrase', 'SU', ['store' => basename($secPath), 'algo' => 'argon2id']); // JAMAIS la passphrase au log
+    su_ok("Passphrase SU changée — hash Argon2 stocké dans $secPath. L'ancienne (et l'env bootstrap) ne valent plus rien.");
+    break;
+
 case 'backup-log':
     $pass = su_authenticate();
     $dest = $argv[2] ?? su_fail("usage: $argv0 backup-log <fichier-destination>");
@@ -269,6 +298,7 @@ default:
     fwrite(STDOUT, "  audit                             croise admins DB ↔ log → fantômes\n");
     fwrite(STDOUT, "  show-log [N]                      affiche le log (N dernières entrées, sinon tout)\n");
     fwrite(STDOUT, "  verify-log                        intégrité de la chaîne du log\n");
+    fwrite(STDOUT, "  change-passphrase                 change la passphrase SU (hash Argon2 stocké hors DB/webroot)\n");
     fwrite(STDOUT, "  backup-log <dest>                 scelle le log (chiffré passphrase SU) → à copier hors-site\n");
     fwrite(STDOUT, "  restore-log <scellé>              déchiffre un backup scellé (affiche le log)\n");
     fwrite(STDOUT, "  reset-shell --confirm             COQUILLE VIDE (passphrase oubliée) : fige le log, révoque tous les admins, repart vierge\n\n");
