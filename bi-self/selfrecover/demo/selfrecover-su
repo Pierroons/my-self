@@ -19,6 +19,16 @@ $cmd = $argv[1] ?? '';
 function su_fail(string $m, int $code = 1) { fwrite(STDERR, "❌ $m\n"); exit($code); }
 function su_ok(string $m): void { fwrite(STDOUT, "✅ $m\n"); }
 
+/** Lit une saisie SANS l'afficher au terminal (masque la passphrase : épaule, screenshot, historique). */
+function su_prompt_hidden(string $label): string {
+    fwrite(STDOUT, $label);
+    $tty = stripos(PHP_OS, 'WIN') === false && @shell_exec('stty 2>/dev/null') !== null;
+    if ($tty) @shell_exec('stty -echo 2>/dev/null');
+    $v = rtrim((string)fgets(STDIN), "\r\n");   // ne trim QUE le saut de ligne (garde d'éventuels espaces internes)
+    if ($tty) { @shell_exec('stty echo 2>/dev/null'); fwrite(STDOUT, "\n"); }
+    return $v;
+}
+
 /** Chemin du fichier secret SU (posé/modifié par change-passphrase). HORS webroot (STATE_DIR). */
 function su_secret_path(): string {
     return getenv('SELFRECOVER_SU_SECRET_FILE')
@@ -36,7 +46,7 @@ function su_authenticate(): string {
     $expected = su_expected_secret();
     if ($expected === null) su_fail("Secret SU non configuré (ni fichier " . su_secret_path() . ", ni env) — à poser à l'install.", 2);
     $given = getenv('SELFRECOVER_SU_SECRET_INPUT');
-    if ($given === false) { fwrite(STDOUT, "Passphrase SuperUser : "); $given = trim((string)fgets(STDIN)); }
+    if ($given === false) { $given = su_prompt_hidden("Passphrase SuperUser (actuelle) : "); }
     // Prod : hash Argon2/bcrypt → password_verify. Bootstrap dev : clair → hash_equals.
     $isHash = preg_match('/^\$(argon2|2y|2a|2b)/', (string)$expected) === 1;
     $ok = $isHash ? password_verify((string)$given, (string)$expected) : hash_equals((string)$expected, (string)$given);
@@ -215,8 +225,8 @@ case 'set-passphrase':
     su_authenticate(); // valide l'ancien secret (fichier ou env bootstrap)
     $n1 = getenv('SELFRECOVER_SU_NEW_INPUT'); // tests non-interactifs
     if ($n1 === false) {
-        fwrite(STDOUT, "Nouvelle passphrase SU : ");        $n1 = trim((string)fgets(STDIN));
-        fwrite(STDOUT, "Confirme la nouvelle passphrase : "); $n2 = trim((string)fgets(STDIN));
+        $n1 = su_prompt_hidden("Nouvelle passphrase SU : ");
+        $n2 = su_prompt_hidden("Confirme la nouvelle passphrase : ");
         if ($n1 !== $n2) su_fail("Les deux saisies diffèrent — rien changé.");
     }
     if (strlen((string)$n1) < 8) su_fail("Passphrase trop courte (8 caractères minimum).");
