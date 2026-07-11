@@ -891,10 +891,10 @@
         });
 
         // === Theming AUTO : le recover détecte et adopte le thème du site hôte ===
-        // Zéro thème à coder pour l'intégrateur. Le recover (en iframe) demande au parent
-        // ses styles calculés (police, couleurs, angles) via postMessage et se calque dessus.
+        // Zéro thème à coder pour l'intégrateur. Deux modes :
+        //  - overlay iframe : le parent pousse ses styles calculés via postMessage ;
+        //  - pleine page (même origine) : le site a écrit son thème en localStorage.
         (function () {
-            if (window.parent === window) return; // standalone : on garde le thème par défaut
             function applyHostTheme(t) {
                 if (!t) return;
                 const r = document.documentElement.style;
@@ -938,10 +938,25 @@
                 }
                 try { localStorage.setItem('sr-detected-theme', JSON.stringify(t)); } catch (_) {} // partagé même-origine (ex. admin.html)
             }
-            window.addEventListener('message', function (e) {
-                if (e.data && e.data.sr === 'theme') applyHostTheme(e.data.theme);
-            });
-            try { window.parent.postMessage({ sr: 'need-theme' }, '*'); } catch (_) {}
+            if (window.parent !== window) {
+                // Overlay iframe : le site hôte pousse son thème via postMessage.
+                window.addEventListener('message', function (e) {
+                    if (e.data && e.data.sr === 'theme') applyHostTheme(e.data.theme);
+                });
+                try { window.parent.postMessage({ sr: 'need-theme' }, '*'); } catch (_) {}
+            } else {
+                // Pleine page (même origine) : le site hôte a écrit son thème en localStorage.
+                try {
+                    const saved = localStorage.getItem('sr-detected-theme');
+                    if (saved) applyHostTheme(JSON.parse(saved));
+                } catch (_) {}
+                // Re-calage si le site change de palette dans un autre onglet (event storage same-origine).
+                window.addEventListener('storage', function (e) {
+                    if (e.key === 'sr-detected-theme' && e.newValue) {
+                        try { applyHostTheme(JSON.parse(e.newValue)); } catch (_) {}
+                    }
+                });
+            }
         })();
 
         // === Recover L2 (2FA : mot mémorisé + code de récupération, SANS identifier) ===
