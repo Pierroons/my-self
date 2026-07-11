@@ -2,6 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <script>
+    // Anti-FOUC : ouvert cloisonné (?mode), on masque le contenu tant que le JS n'a pas
+    // cloisonné + appliqué le thème (sinon flash de l'UI brute pendant le chargement de l'iframe via Tor).
+    (function(){
+        if (!new URLSearchParams(location.search).get('mode')) return;
+        var st = document.createElement('style'); st.id = 'sr-fouc';
+        st.textContent = '.container{opacity:0!important}';
+        (document.head || document.documentElement).appendChild(st);
+        // filet de sécurité : révéler après 6 s SEULEMENT si le JS a crashé (sinon le cloisonnement révèle bien avant).
+        // Long exprès : sur Tor l'iframe peut mettre plusieurs secondes à charger — ne pas révéler le contenu brut avant.
+        setTimeout(function(){ var f = document.getElementById('sr-fouc'); if (f) f.remove(); }, 6000);
+    })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
     <title>SelfRecover — Demo</title>
@@ -888,6 +901,13 @@
             if (devBtn) devBtn.style.display = 'none';
             const devSep = document.getElementById('l2-device-sep');
             if (devSep) devSep.style.display = 'none';
+
+            // Anti-FOUC : contenu cloisonné → on révèle (2 frames pour laisser le thème s'appliquer), fondu doux.
+            const cont = document.querySelector('.container');
+            if (cont) cont.style.transition = 'opacity .2s';
+            requestAnimationFrame(function () { requestAnimationFrame(function () {
+                const f = document.getElementById('sr-fouc'); if (f) f.remove();
+            }); });
         });
 
         // === Theming AUTO : le recover détecte et adopte le thème du site hôte ===
