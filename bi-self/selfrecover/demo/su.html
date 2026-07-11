@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SU — console SuperUser (démo)</title>
+<style>
+  :root { --bg:#05080a; --fg:#39ff8c; --dim:#1f6b45; --amber:#ffcc55; --red:#ff6b6b; --cyan:#5ad0e0; --white:#d9ffe9; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:#000; }
+  body { font-family:"JetBrains Mono","DejaVu Sans Mono",Menlo,Consolas,monospace;
+    background:radial-gradient(ellipse at top,#0a1410,#000); color:var(--fg);
+    display:flex; align-items:center; justify-content:center; padding:16px; min-height:100%; }
+  .term { width:100%; max-width:860px; background:var(--bg); border:1px solid #0e3;
+    border-radius:8px; box-shadow:0 0 40px rgba(57,255,140,0.12), inset 0 0 60px rgba(0,40,20,0.4);
+    overflow:hidden; display:flex; flex-direction:column; height:82vh; }
+  .bar { display:flex; align-items:center; gap:8px; padding:8px 12px; background:#0a1a12; border-bottom:1px solid #0e3; }
+  .dot { width:11px; height:11px; border-radius:50%; }
+  .dot.r{background:#ff5f56} .dot.y{background:#ffbd2e} .dot.g{background:#27c93f}
+  .bar .t { margin-left:8px; color:var(--dim); font-size:12px; letter-spacing:.5px; }
+  .screen { flex:1; overflow-y:auto; padding:14px 16px; font-size:13.5px; line-height:1.55; white-space:pre-wrap; word-break:break-word; }
+  .screen::-webkit-scrollbar{width:8px} .screen::-webkit-scrollbar-thumb{background:#0e3;border-radius:4px}
+  .inl { display:flex; }
+  .prompt { color:var(--cyan); white-space:pre; }
+  #cmd { flex:1; background:transparent; border:none; outline:none; color:var(--fg);
+    font:inherit; caret-color:var(--fg); }
+  .dim{color:var(--dim)} .amber{color:var(--amber)} .red{color:var(--red)} .cyan{color:var(--cyan)} .white{color:var(--white)}
+  .blink{animation:b 1s steps(1) infinite} @keyframes b{50%{opacity:0}}
+  b{color:var(--white);font-weight:600}
+</style>
+</head>
+<body>
+<div class="term">
+  <div class="bar">
+    <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+    <span class="t">pierroons@my-self : ~/selfrecover — selfrecover-su</span>
+  </div>
+  <div class="screen" id="screen"></div>
+  <div class="inl" style="padding:0 16px 14px">
+    <span class="prompt" id="ps"></span>
+    <input id="cmd" autocomplete="off" autofocus spellcheck="false">
+  </div>
+</div>
+
+<script>
+const screen = document.getElementById('screen');
+const cmd = document.getElementById('cmd');
+const ps  = document.getElementById('ps');
+
+// ── état démo (tout est FAKE) ──────────────────────────────
+let stage = 'passphrase';          // passphrase → shell
+let seq = 1;
+const admins  = ['adminuser', 'pierroons23'];
+let requests  = [{ id: 4, from: 'adminuser', target: 'kevin_lambda', motif: 'rencontré au local, veut aider modération', at: '2026-07-10 22:41:07' }];
+const logLines = [{ seq: 1, action: 'log-archived', at: '2026-07-10 22:23:55' }];
+
+function out(txt, cls) {
+  const span = document.createElement('span');
+  if (cls) span.className = cls;
+  span.textContent = txt + '\n';
+  screen.appendChild(span);
+  screen.scrollTop = screen.scrollHeight;
+}
+function raw(html){ const d=document.createElement('div'); d.innerHTML=html; screen.appendChild(d); screen.scrollTop=screen.scrollHeight; }
+
+function setPrompt() {
+  if (stage === 'passphrase') { ps.textContent = 'Passphrase SuperUser : '; cmd.type = 'password'; }
+  else { ps.innerHTML = '<span class="cyan">su</span><span class="dim">@my-self</span> <span class="amber">#</span> '; cmd.type = 'text'; }
+}
+
+// ── bannière d'accueil ─────────────────────────────────────
+raw(`<span class="dim">┌─────────────────────────────────────────────────────────────┐
+│  </span><b>selfrecover-su</b><span class="dim">  ·  console SuperUser  ·  SU → Admin → User    │
+│  Le SU n'existe pas en base. Ni compte, ni session web.       │
+│  Auth = secret ancré serveur.  Accès = ce terminal, </span><span class="amber">rien d'autre</span><span class="dim">. │
+└─────────────────────────────────────────────────────────────┘</span>`);
+out('');
+out('$ SELFRECOVER_SU_SECRET=•••••••••  php selfrecover-su', 'dim');
+out('');
+out('Authentifie-toi pour ouvrir le shell SU.', 'white');
+out('(démo locale — données fictives — tape n\'importe quoi comme passphrase)', 'dim');
+out('');
+setPrompt();
+
+// ── commandes du shell SU (sorties fidèles au vrai CLI) ────
+const HELP =
+`selfrecover-su — commandes disponibles :
+
+  list-requests               demandes de promotion en attente
+  list-admins                 liste les admins actuels
+  approve-request <id> "obs"  valide une demande (observation obligatoire → log)
+  reject-request  <id> "obs"  refuse une demande
+  add-admin <user>            promotion directe
+  revoke-admin <user>         révoque (+ coupe ses sessions)
+  audit                       croise admins DB ↔ log → détecte les fantômes
+  show-log [N]                affiche le log (N dernières, sinon tout)
+  verify-log                  intégrité de la chaîne du log
+  backup-log <dest>           scelle le log (chiffré passphrase SU)
+  reset-shell --confirm       COQUILLE VIDE (passphrase oubliée)
+  whoami · clear · exit`;
+
+function nowStamp(){ return '2026-07-10 ' + (new Date ? '22:4' + (4+Math.floor(seq)) : '22:44') + ':1' + seq; }
+
+function forensicBlock(action, target, obs, meta) {
+  meta = meta || {};
+  seq++;
+  logLines.push({ seq, action, target, obs, requester: meta.requester, reason: meta.reason, requested_at: meta.requested_at, at: '2026-07-10 22:44:0' + seq });
+  const chain = meta.requester
+    ? `       "request_id": ${meta.request_id}, "requester": "${meta.requester}",
+       "reason": "${meta.reason}", "requested_at": "${meta.requested_at}",
+`   : '';
+  return `<span class="dim">  └─ entrée #${seq} signée & chaînée dans su-audit.log</span>
+<span class="dim">     {
+       "seq": ${seq}, "action": "${action}", "target": "${target}",
+${chain}       "su_note": "${obs}",
+       "forensic": { "unix_user":"pierroons", "ssh_client_ip":"203.0.113.42",
+                     "tty":"pts/1", "pid":${34000+seq*7}, "hostname":"my-self" },
+       "prev_hash": "a3f${seq}…9c1", "entry_hash": "7d0${seq}…b42",
+       "hmac": "e19${seq}…f8a"
+     }</span>
+<span class="dim">  └─ 🔔 ntfy → alerts.my-self.fr/secu-su  «SU: ${action} ${target}»</span>`;
+}
+
+function run(line) {
+  const parts = line.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
+  const c = (parts[0] || '').toLowerCase();
+  const arg = (parts[1] || '');
+  const obs = (parts.slice(2).join(' ') || '').replace(/^"|"$/g, '').replace(/"/g,'');
+
+  if (c === 'help' || c === '') { out(HELP, 'white'); return; }
+  if (c === 'clear') { screen.innerHTML=''; return; }
+  if (c === 'whoami') { out('SuperUser (secret serveur — hors DB, hors web). Session shell locale.', 'white'); return; }
+  if (c === 'exit') { out('Fermeture du shell SU. Le secret ne reste jamais en mémoire.', 'amber'); stage='passphrase'; setPrompt(); screen.innerHTML=''; location.reload(); return; }
+
+  if (c === 'list-requests') {
+    if (!requests.length) { out('Aucune demande en attente.', 'dim'); return; }
+    out('Demandes de promotion en attente :', 'white');
+    requests.forEach(r => raw(`  <span class="amber">#${r.id}</span>  <span class="cyan">${r.from}</span> → promouvoir <b>${r.target}</b>
+       <span class="dim">motif : ${r.motif}
+       reçue : ${r.at}</span>`));
+    return;
+  }
+  if (c === 'list-admins') {
+    out('Admins actuels (source : users.is_admin) :', 'white');
+    admins.forEach(a => out('  🛡  ' + a, 'cyan'));
+    out('  ' + admins.length + ' admin(s). Le SU n\'y figure pas (par design).', 'dim');
+    return;
+  }
+  if (c === 'approve-request') {
+    const r = requests.find(x => String(x.id) === String(arg));
+    if (!r) { out('Demande #' + arg + ' introuvable.', 'red'); return; }
+    if (!obs) { out('❌ Observation obligatoire : approve-request ' + arg + ' "ton observation"', 'red'); return; }
+    requests = requests.filter(x => x !== r);
+    admins.push(r.target);
+    out('✅ Demande #' + r.id + ' approuvée — « ' + r.target + ' » promu admin.', 'fg');
+    raw(forensicBlock('approve-request', r.target, obs, { request_id: r.id, requester: r.from, reason: r.motif, requested_at: r.at }));
+    return;
+  }
+  if (c === 'reject-request') {
+    const r = requests.find(x => String(x.id) === String(arg));
+    if (!r) { out('Demande #' + arg + ' introuvable.', 'red'); return; }
+    if (!obs) { out('❌ Observation obligatoire.', 'red'); return; }
+    requests = requests.filter(x => x !== r);
+    out('⛔ Demande #' + r.id + ' refusée (« ' + r.target + ' »).', 'amber');
+    raw(forensicBlock('reject-request', r.target, obs, { request_id: r.id, requester: r.from, reason: r.motif, requested_at: r.at }));
+    return;
+  }
+  if (c === 'add-admin') {
+    if (!arg) { out('Usage : add-admin <username>', 'red'); return; }
+    if (admins.includes(arg)) { out(arg + ' est déjà admin.', 'dim'); return; }
+    admins.push(arg);
+    out('✅ « ' + arg + ' » promu admin (direct).', 'fg');
+    raw(forensicBlock('add-admin', arg, 'promotion directe SU'));
+    return;
+  }
+  if (c === 'revoke-admin') {
+    if (!admins.includes(arg)) { out(arg + ' n\'est pas admin.', 'dim'); return; }
+    admins.splice(admins.indexOf(arg), 1);
+    out('🔻 « ' + arg + ' » révoqué — is_admin=0 + sessions coupées immédiatement.', 'amber');
+    raw(forensicBlock('revoke-admin', arg, 'révocation SU'));
+    return;
+  }
+  if (c === 'audit') {
+    out('Croisement  admins DB  ↔  log légitime …', 'white');
+    admins.forEach(a => out('  ✓ ' + a + '  — traçable dans le log', 'fg'));
+    out('Aucun admin fantôme. ✅', 'fg');
+    out('(un admin absent du log serait révoqué + mis en quarantaine automatiquement)', 'dim');
+    return;
+  }
+  if (c === 'verify-log') {
+    out('Vérification prev_hash → entry_hash → HMAC pour ' + logLines.length + ' entrées …', 'white');
+    logLines.forEach(l => out('  #' + l.seq + '  ' + l.action.padEnd(16) + '  ✓ chaîné  ✓ signé', 'dim'));
+    out('✅ Chaîne intègre — ' + logLines.length + ' entrées, aucune altération.', 'fg');
+    return;
+  }
+  if (c === 'show-log' || c === 'log') {
+    const n = arg ? Math.max(1, parseInt(arg)) : logLines.length;
+    const slice = logLines.slice(-n);
+    out('Log SU — ' + logLines.length + ' entrée(s)' + (n < logLines.length ? ' (dernières ' + n + ')' : '') + ' · su-audit.log', 'white');
+    out('────────────────────────────────────────────────────────────', 'dim');
+    slice.forEach(l => {
+      let ctx = '';
+      if (l.requester)    ctx += 'demandé par : ' + l.requester + (l.requested_at ? '  le ' + l.requested_at : '') + '\n     ';
+      if (l.reason)       ctx += 'motif : ' + l.reason + '\n     ';
+      if (l.obs)          ctx += 'obs SU : ' + l.obs + '\n     ';
+      raw(`<span class="amber">#${l.seq}</span>  <span class="dim">${l.at}</span>  <b>${l.action}</b>${l.target ? ' → ' + l.target : ''}
+<span class="dim">     ${ctx}par  : pierroons@203.0.113.42 tty=pts/1 pid=${34000 + l.seq * 7}
+     hash : ${('7d0'+l.seq).padEnd(9,'a')}…  hmac ${('e19'+l.seq).padEnd(9,'f')}…</span>`);
+    });
+    out('────────────────────────────────────────────────────────────', 'dim');
+    out('Intégrité : « verify-log » pour contrôler la chaîne.', 'dim');
+    return;
+  }
+  if (c === 'backup-log') {
+    const dest = arg || '/mnt/backup/su-audit.sealed';
+    out('Scellement AES-256-GCM (clé dérivée passphrase SU, label su-audit-backup)…', 'white');
+    out('✅ Log scellé → ' + dest + '  (magic SRSU1, ' + logLines.length + ' entrées).', 'fg');
+    out('À copier hors-site. Sans la passphrase SU, illisible.', 'dim');
+    return;
+  }
+  if (c === 'reset-shell') {
+    if (arg !== '--confirm') { out('⚠️  Destructif. Confirme : reset-shell --confirm', 'amber'); return; }
+    out('☢️  COQUILLE VIDE — passphrase SU déclarée perdue.', 'red');
+    out('  · ' + admins.length + ' admin(s) révoqué(s), sessions purgées', 'amber');
+    out('  · log figé → su-audit.log.frozen-2026-07-10 (scellé, dort)', 'amber');
+    out('  · nouveau log vierge, 1re entrée « shell-reset »', 'amber');
+    admins.length = 0; requests.length = 0;
+    logLines.length = 0; seq = 1; logLines.push({ seq:1, action:'shell-reset', at:nowStamp() });
+    out('Nouveau SU à ré-ancrer à l\'install. L\'ancien historique est réouvrable si la passphrase resurgit.', 'white');
+    return;
+  }
+  out('Commande inconnue : ' + c + '   (tape « help »)', 'red');
+}
+
+cmd.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const val = cmd.value;
+  if (stage === 'passphrase') {
+    raw('<span class="cyan">Passphrase SuperUser : </span><span class="dim">••••••••</span>');
+    if (!val) { out('Passphrase vide.', 'red'); cmd.value=''; return; }
+    out('✔ secret vérifié (hash_equals) — shell SU ouvert.', 'fg');
+    out('Tape « help » pour les commandes.  « list-requests » pour commencer.', 'dim');
+    out('');
+    stage = 'shell'; setPrompt(); cmd.value=''; return;
+  }
+  // echo la commande
+  raw(ps.innerHTML.replace('#','#') + '<span class="white">' + val.replace(/</g,'&lt;') + '</span>');
+  cmd.value = '';
+  run(val.trim());
+  out('');
+});
+document.addEventListener('click', () => cmd.focus());
+</script>
+</body>
+</html>

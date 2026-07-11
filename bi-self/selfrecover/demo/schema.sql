@@ -18,7 +18,11 @@ CREATE TABLE IF NOT EXISTS users (
     -- L3 : signaux contextuels + ban temporaire après refus de litige
     last_login_at TEXT,
     login_count INTEGER DEFAULT 0,
-    banned_until TEXT
+    banned_until TEXT,
+    -- Rôle admin (modèle SuperUser→Admin→User) : posé UNIQUEMENT par le SU via CLI.
+    -- Le SU lui-même n'est PAS en DB (ancré serveur, secret hors-DB). Un is_admin=1 sans
+    -- entrée correspondante au log SU = admin fantôme (cf audit).
+    is_admin INTEGER DEFAULT 0
 );
 
 -- SelfRecover Lite : table des demandes de reset par email + HMAC mot mémorisé
@@ -127,3 +131,32 @@ CREATE TABLE IF NOT EXISTS device_challenges (
     credential_id TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+-- === Modèle SuperUser → Admin → User ===
+
+-- Demandes de PROMOTION admin : un admin existant propose, le SU (CLI) tranche.
+-- L'admin ne promeut pas — il crée une demande ; toute la chaîne finit au log SU.
+CREATE TABLE IF NOT EXISTS admin_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    requester_username TEXT NOT NULL,      -- l'admin qui propose (traçable)
+    target_username TEXT NOT NULL,         -- le user à promouvoir
+    reason TEXT,                           -- motif de la demande
+    status TEXT NOT NULL DEFAULT 'pending',-- pending | approved | rejected
+    su_note TEXT,                          -- observation OBLIGATOIRE du SU à la décision
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    decided_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_admreq_status ON admin_requests(status);
+
+-- Sessions de login (l'admin s'authentifie par COMPTE, plus par token statique).
+-- Le jeton opaque identifie l'user + snapshot de son rôle au login.
+CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,                -- 32 bytes hex, opaque, aléatoire
+    user_id INTEGER NOT NULL,
+    is_admin INTEGER DEFAULT 0,            -- snapshot du rôle à l'ouverture de session
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);

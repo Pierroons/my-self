@@ -10,7 +10,7 @@ require __DIR__ . '/device_handlers.php';
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: ' . ALLOWED_ORIGIN);
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, X-Client-Fingerprint, X-Admin-Token');
+header('Access-Control-Allow-Headers: Content-Type, X-Client-Fingerprint, X-Session-Token');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 header('Referrer-Policy: strict-origin-when-cross-origin');
@@ -35,6 +35,9 @@ switch ($action) {
         break;
     case 'login':
         handleLogin();
+        break;
+    case 'logout':
+        handleLogout();
         break;
     case 'recover-l1':
         handleRecoverL1();
@@ -80,6 +83,9 @@ switch ($action) {
         break;
     case 'admin-dispute-decide':
         handleAdminDisputeDecide();
+        break;
+    case 'admin-request-promotion':
+        handleAdminRequestPromotion();
         break;
     // SelfRecover Lite (V0.1.1) — variante avec SMTP + mot mémorisé
     case 'lite-register':

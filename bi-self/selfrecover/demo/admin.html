@@ -53,11 +53,12 @@
     <h1>Console admin — litiges niveau 3</h1>
     <p class="subtitle">Le faisceau de signaux est une <strong>aide à la décision</strong>. C'est toi qui tranches, jamais un score.</p>
 
-    <!-- AUTH -->
+    <!-- AUTH par COMPTE (plus de jeton statique — l'admin se connecte avec son compte) -->
     <div id="auth" class="panel">
-        <label>Jeton admin (démo : <code>demo-admin-token</code>)</label>
-        <div class="row">
-            <input type="password" id="token" placeholder="X-Admin-Token">
+        <label>Connexion admin (ton compte)</label>
+        <div class="row" style="flex-wrap:wrap">
+            <input type="text" id="login-user" placeholder="nom d'utilisateur" autocomplete="username" style="flex:1 1 150px">
+            <input type="password" id="login-pass" placeholder="mot de passe" autocomplete="current-password" style="flex:1 1 150px" onkeydown="if(event.key==='Enter')connect()">
             <button class="btn" onclick="connect()">Se connecter</button>
         </div>
         <div id="auth-err" style="color:var(--danger);font-size:0.85rem;margin-top:8px"></div>
@@ -65,6 +66,10 @@
 
     <!-- CONSOLE -->
     <div id="console" class="panel hidden">
+        <div class="row" style="margin-bottom:12px;align-items:center">
+            <span style="font-size:0.85rem;color:var(--muted)">Connecté : <strong id="me-uname" style="color:var(--fg)"></strong></span>
+            <button class="btn ghost" onclick="disconnect()" style="margin-left:auto">Se déconnecter</button>
+        </div>
         <div class="layout">
             <div>
                 <div class="row" style="margin-bottom:10px">
@@ -77,18 +82,54 @@
                 <p style="color:var(--muted)">Sélectionne un litige à gauche.</p>
             </div>
         </div>
+
+        <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px;">
+            <strong style="font-size:0.9rem;">Proposer une promotion admin</strong>
+            <p style="color:var(--muted);font-size:0.8rem;margin:4px 0 8px;">L'utilisateur devient admin <em>après validation du SuperUser</em>. Toi tu proposes, le SU tranche.</p>
+            <div class="row" style="flex-wrap:wrap">
+                <input type="text" id="promo-user" placeholder="utilisateur à promouvoir" style="flex:1 1 180px">
+                <input type="text" id="promo-reason" placeholder="motif (optionnel)" style="flex:1 1 180px">
+                <button class="btn" onclick="requestPromotion()">Demander au SU</button>
+            </div>
+            <div id="promo-result" style="font-size:0.85rem;margin-top:6px"></div>
+        </div>
     </div>
 
     <div class="footer">SelfRecover — console admin de démo · AGPL-3.0-or-later</div>
 </div>
 
 <script>
-let TOKEN = '';
+// === Thème AUTO : hérite du thème détecté par le recover (localStorage même-origine) + detect si iframe ===
+(function () {
+    function applyHostTheme(t) {
+        if (!t) return;
+        const r = document.documentElement.style;
+        if (t.bg)     { r.setProperty('--bg', t.bg); r.setProperty('--panel', t.bg); }
+        if (t.text)   r.setProperty('--text', t.text);
+        if (t.accent) { r.setProperty('--accent', t.accent); r.setProperty('--success', t.accent); r.setProperty('--info', t.accent); }
+        if (t.border) r.setProperty('--border', t.border);
+        let s = document.getElementById('sr-host-theme');
+        if (!s) { s = document.createElement('style'); s.id = 'sr-host-theme'; document.head.appendChild(s); }
+        let css = 'body,body *{font-family:' + (t.font || 'inherit') + ' !important}' +
+                  '.panel,.btn,input,.dispute-item,.chat-box,.msg{border-radius:' + (t.radius || '0') + ' !important}';
+        if (t.btn) { const b = t.btn; css += '.btn{background:' + b.bg + ' !important;color:' + b.color + ' !important;border:' + b.bw + ' ' + b.bs + ' ' + b.bc + ' !important;letter-spacing:' + b.ls + ' !important;text-transform:' + b.tt + ' !important;font-weight:' + b.fw + ' !important}'; }
+        s.textContent = css;
+    }
+    try { const t = JSON.parse(localStorage.getItem('sr-detected-theme') || 'null'); if (t) applyHostTheme(t); } catch (_) {}
+    if (window.parent !== window) {
+        window.addEventListener('message', e => { if (e.data && e.data.sr === 'theme') applyHostTheme(e.data.theme); });
+        try { window.parent.postMessage({ sr: 'need-theme' }, '*'); } catch (_) {}
+    }
+})();
+
+let SESSION = '';
 let current = null;
 let chatTimer = null;
 
 async function api(action, body) {
-    const opts = { method: body ? 'POST' : 'GET', headers: body ? {'Content-Type':'application/json'} : {} };
+    const headers = body ? {'Content-Type':'application/json'} : {};
+    if (SESSION) headers['X-Session-Token'] = SESSION;
+    const opts = { method: body ? 'POST' : 'GET', headers };
     if (body) opts.body = JSON.stringify(body);
     const res = await fetch('api/index.php?action=' + action, opts);
     const data = await res.json();
@@ -97,17 +138,31 @@ async function api(action, body) {
 }
 
 async function connect() {
-    TOKEN = document.getElementById('token').value.trim();
+    const u = document.getElementById('login-user').value.trim();
+    const p = document.getElementById('login-pass').value;
+    if (!u || !p) { document.getElementById('auth-err').textContent = 'Identifiants requis.'; return; }
     try {
-        await api('admin-disputes&admin_token=' + encodeURIComponent(TOKEN));
+        const data = await api('login', { username: u, password: p });
+        if (!data.is_admin) throw new Error("Ce compte n'a pas le rôle admin.");
+        SESSION = data.session_token;
+        document.getElementById('me-uname').textContent = data.username || u;
         document.getElementById('auth').classList.add('hidden');
         document.getElementById('console').classList.remove('hidden');
         loadDisputes();
     } catch (e) { document.getElementById('auth-err').textContent = e.message; }
 }
 
+async function disconnect() {
+    try { await api('logout'); } catch (e) { /* best-effort : on nettoie côté client quoi qu'il arrive */ }
+    SESSION = '';
+    document.getElementById('login-pass').value = '';
+    document.getElementById('auth-err').textContent = '';
+    document.getElementById('console').classList.add('hidden');
+    document.getElementById('auth').classList.remove('hidden');
+}
+
 async function loadDisputes() {
-    const data = await api('admin-disputes&admin_token=' + encodeURIComponent(TOKEN));
+    const data = await api('admin-disputes');
     const list = document.getElementById('dispute-list');
     list.innerHTML = '';
     if (!data.disputes.length) { list.innerHTML = '<p style="color:var(--muted);font-size:0.85rem">Aucun litige ouvert.</p>'; return; }
@@ -153,7 +208,7 @@ function select(json) {
 async function pollChat() {
     if (!current) return;
     try {
-        const data = await api('dispute-chat', { dispute_number: current.dispute_number, admin_token: TOKEN });
+        const data = await api('dispute-chat', { dispute_number: current.dispute_number });
         const box = document.getElementById('chat-box'); if (!box) return;
         box.innerHTML = data.messages.length ? '' : '<div style="color:var(--muted);font-size:0.85rem">Aucun message.</div>';
         data.messages.forEach(m => {
@@ -167,7 +222,7 @@ async function pollChat() {
 async function reply() {
     const input = document.getElementById('chat-input'); const msg = input.value.trim();
     if (!msg || !current) return; input.value = '';
-    try { await api('dispute-chat', { dispute_number: current.dispute_number, message: msg, admin_token: TOKEN }); pollChat(); }
+    try { await api('dispute-chat', { dispute_number: current.dispute_number, message: msg }); pollChat(); }
     catch (e) { input.value = msg; }
 }
 
@@ -175,7 +230,7 @@ async function decide(decision) {
     if (!current) return;
     if (decision === 'refuse' && !confirm('Refuser ce litige ? (ban 24h ; au 3e refus le compte est supprimé)')) return;
     try {
-        const data = await api('admin-dispute-decide&admin_token=' + encodeURIComponent(TOKEN), { dispute_number: current.dispute_number, decision });
+        const data = await api('admin-dispute-decide', { dispute_number: current.dispute_number, decision });
         let html = '';
         if (data.decision === 'granted') html = '<span style="color:var(--success)">✓ Identité confirmée. Aucun mot de passe n\'est transmis : le demandeur va définir lui-même son nouveau secret depuis sa page de récupération.</span>';
         else if (data.account_deleted) html = '<span style="color:var(--danger)">✗ 3e refus — compte supprimé, identifiant libéré.</span>';
@@ -183,6 +238,19 @@ async function decide(decision) {
         document.getElementById('decide-result').innerHTML = html;
         loadDisputes();
     } catch (e) { document.getElementById('decide-result').innerHTML = '<span style="color:var(--danger)">' + e.message + '</span>'; }
+}
+
+async function requestPromotion() {
+    const u = document.getElementById('promo-user').value.trim();
+    const r = document.getElementById('promo-reason').value.trim();
+    const out = document.getElementById('promo-result');
+    if (!u) { out.innerHTML = '<span style="color:var(--danger)">Nom d\'utilisateur requis.</span>'; return; }
+    try {
+        const data = await api('admin-request-promotion', { target_username: u, reason: r });
+        out.innerHTML = '<span style="color:var(--success)">✓ ' + data.message + '</span>';
+        document.getElementById('promo-user').value = '';
+        document.getElementById('promo-reason').value = '';
+    } catch (e) { out.innerHTML = '<span style="color:var(--danger)">' + e.message + '</span>'; }
 }
 </script>
 </body>

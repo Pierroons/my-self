@@ -26,3 +26,6 @@ Thumbs.db
 my-self-lab/docs/PENTEST-MISSION.md
 _perso/
 scripts/deploy.sh
+
+# Logs SU (runtime, jamais versionnés)
+bi-self/selfrecover/demo/su-audit.log*

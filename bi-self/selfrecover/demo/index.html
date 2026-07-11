@@ -7,18 +7,19 @@
     <title>SelfRecover — Demo</title>
     <style>
         :root {
-            --bg: #0f1419;
-            --panel: #1a2028;
-            --text: #e8eaed;
-            --muted: #9aa0a6;
-            --accent: #7ab7ff;
-            --success: #7cc47c;
-            --danger: #e07b7b;
-            --border: #2a3038;
+            /* Thème le service hote — matrix vert CPC (à externaliser en theme.css au packaging) */
+            --bg: #000;
+            --panel: rgba(0,20,10,0.9);
+            --text: #33ff33;
+            --muted: #00cc55;
+            --accent: #00ff66;
+            --success: #00ff66;
+            --danger: #ff5555;
+            --border: #008833;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            font-family: -apple-system, system-ui, sans-serif;
+            font-family: 'Courier New', Courier, monospace;
             background: var(--bg);
             color: var(--text);
             padding: 24px 16px;
@@ -31,11 +32,11 @@
             text-underline-offset: 2px;
         }
         a:hover {
-            color: #5a97df;
+            color: #33ff33;
             text-decoration-thickness: 2px;
         }
         a:visited {
-            color: #fdba74;
+            color: #00cc55;
         }
         .container {
             max-width: 600px;
@@ -335,18 +336,9 @@
 </head>
 <body>
     <div class="container">
-        <h1>SelfRecover</h1>
-        <p class="subtitle">Zero-email account recovery demo — test the protocol locally</p>
-
-        <div class="threat-banner">
-            <span class="threat-banner-tag">MODÈLE DE MENACE</span>
-            <strong>SelfRecover protège</strong> contre la compromission du serveur, le phishing,
-            les fuites de base et le brute-force online.
-            <strong>Il NE protège PAS</strong> contre la compromission du poste utilisateur
-            (keylogger, info-stealer, RAT) — c'est une limite physique de toute application web.
-            Pour les secrets sensibles (compte critique, master key, identité de cofondation),
-            utilise une cérémonie dédiée : <a href="https://tails.net" target="_blank">Tails</a>
-            ou <a href="https://www.qubes-os.org" target="_blank">Qubes OS</a>.
+        <h1 id="sr-title">SelfRecover</h1>
+        <div id="sr-powered" style="display:none;font-size:0.72rem;opacity:0.6;margin:-10px 0 16px;letter-spacing:normal;text-transform:none;font-weight:400;">
+            propulsé par <a href="notice.html" target="_blank" rel="noopener" style="color:inherit;">SelfRecover</a>
         </div>
 
         <div class="tabs">
@@ -382,6 +374,7 @@
             </div>
             <input type="text" name="website" id="reg-website" tabindex="-1" autocomplete="off"
                    aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
+            <button class="btn" type="button" style="background:none;border:1px solid var(--border);margin-bottom:10px;" onclick="switchPanel('entropy')">🎲 Entropy Lab — générer ma passphrase aux dés (optionnel)</button>
             <button class="btn" onclick="doRegister()">Créer le compte</button>
             <div id="reg-result"></div>
         </div>
@@ -424,19 +417,14 @@
 
         <!-- ENTROPY LAB -->
         <div id="panel-entropy" class="panel hidden">
-            <h2>Entropy Lab — Trois modes de passphrase</h2>
+            <h2>Entropy Lab — Diceware aux dés (méthode officielle)</h2>
             <p class="desc">
                 Tout est calculé dans le navigateur — aucune passphrase ne quitte cette page.
                 Convention SelfRecover : wordlist officielle 7 776 mots, CC-BY 3.0
                 (EN = EFF Large Wordlist ; FR = équivalent ArthurPons) — jamais de mini-version "pour la démo".
             </p>
 
-            <div class="mode-tabs">
-                <button class="mode-tab active" data-mode="reinhold" onclick="selectMode('reinhold')">Diceware (dés physiques)</button>
-                <button class="mode-tab" data-mode="diceware" onclick="selectMode('diceware')">Aléatoire (navigateur)</button>
-                <button class="mode-tab" data-mode="free" onclick="selectMode('free')">Passphrase libre</button>
-                <button class="mode-tab" data-mode="hybrid" onclick="selectMode('hybrid')">Hybride</button>
-            </div>
+            <button class="btn" type="button" style="background:none;border:1px solid var(--border);margin-bottom:12px;" onclick="switchPanel('register')">&larr; Retour &agrave; l'inscription</button>
 
             <!-- Mode 1 : Diceware vrai (méthode Reinhold) — tutoriel uniquement, ZÉRO saisie -->
             <div id="mode-reinhold" class="mode-panel">
@@ -498,66 +486,6 @@
 
             </div>
 
-            <!-- Mode 2 : Auto random (CSPRNG navigateur) -->
-            <div id="mode-diceware" class="mode-panel hidden">
-                <p class="desc">
-                    Pas de dés sous la main ? Le navigateur peut générer une passphrase
-                    via <code>crypto.getRandomValues()</code> avec rejection sampling sur
-                    la wordlist EFF. <strong>Entropie strictement équivalente</strong> à
-                    la méthode physique sur la passphrase elle-même, sous réserve de
-                    confiance dans le RNG OS / navigateur.
-                </p>
-                <div class="form-group">
-                    <label>Langue</label>
-                    <select id="dw-lang">
-                        <option value="en">EN — EFF Large Wordlist</option>
-                        <option value="fr">FR — Liste équivalente 7776 mots</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Nombre de mots <span id="dw-count-display" class="muted">4</span></label>
-                    <input type="range" id="dw-count" min="3" max="10" value="4" class="slider">
-                </div>
-                <button class="btn" onclick="generateDicewareSample()">Générer un échantillon</button>
-                <div id="dw-output" class="passphrase-output"></div>
-            </div>
-
-            <!-- Mode 3 : Passphrase libre -->
-            <div id="mode-free" class="mode-panel hidden">
-                <div class="disclaimer-red">
-                    ⚠ <strong>Démonstration pédagogique uniquement.</strong>
-                    Ne tape jamais ta vraie passphrase ici — la frappe au clavier est exposée
-                    à tout malware présent sur ta machine. Cf. modèle de menace ci-dessus.
-                </div>
-                <div class="form-group">
-                    <label>Tape une passphrase de test (analysée localement par zxcvbn — Dropbox MIT)</label>
-                    <input type="text" id="free-passphrase" placeholder="ma phrase secrète à moi 2026 !"
-                           oninput="updateFreeEntropy()">
-                </div>
-                <div id="free-output" class="passphrase-output"></div>
-            </div>
-
-            <!-- Mode 4 : Hybride -->
-            <div id="mode-hybrid" class="mode-panel hidden">
-                <div class="disclaimer-red">
-                    ⚠ <strong>Démonstration pédagogique uniquement.</strong>
-                    Ne tape jamais ta vraie passphrase ici — la frappe au clavier est exposée
-                    à tout malware présent sur ta machine. Cf. modèle de menace ci-dessus.
-                </div>
-                <p class="desc">N mots EFF + suffixe libre. L'entropie totale = entropie diceware + entropie zxcvbn du suffixe.</p>
-                <div class="form-group">
-                    <label>Mots diceware <span id="hyb-count-display" class="muted">3</span></label>
-                    <input type="range" id="hyb-count" min="2" max="6" value="3" class="slider"
-                           oninput="updateHybridEntropy()">
-                </div>
-                <div class="form-group">
-                    <label>Suffixe libre (chiffres, mots persos, ponctuation…)</label>
-                    <input type="text" id="hyb-suffix" placeholder="!42-mySecret"
-                           oninput="updateHybridEntropy()">
-                </div>
-                <button class="btn" onclick="generateHybridSample()">Générer la partie diceware</button>
-                <div id="hyb-output" class="passphrase-output"></div>
-            </div>
 
             <p class="desc" style="margin-top:24px;font-size:0.75rem;">
                 Hypothèse de l'attaquant pour le temps de cassage : 10¹² essais/seconde
@@ -570,7 +498,7 @@
         <!-- RECOVER L2 -->
         <div id="panel-recoverL2" class="panel hidden">
             <h2>Récupération — Niveau 2 (2FA : mot mémorisé + code de récupération)</h2>
-            <p class="desc">Passphrase (L1) perdue ? Récupère avec ton <strong>mot mémorisé</strong> + <strong>un code de récupération</strong> — <strong>sans identifiant</strong> (le code localise ton compte). Le mot est HMAC-dérivé dans le navigateur, jamais envoyé en clair. Ouvre la console DevTools pour voir la dérivation.</p>
+            <p class="desc">Passphrase (L1) perdue ? Récupère avec ton <strong>mot mémorisé</strong> + <strong>un code de récupération</strong> — <strong>sans identifiant</strong> (le code localise ton compte). Le mot est HMAC-dérivé dans le navigateur, jamais envoyé en clair.</p>
             <div class="form-group">
                 <label>Mot mémorisé</label>
                 <input type="text" id="l2-recovery" placeholder="pantoufles">
@@ -586,7 +514,7 @@
             <input type="text" name="website" id="l2-website" tabindex="-1" autocomplete="off"
                    aria-hidden="true" style="position:absolute;left:-9999px;height:0;width:0;opacity:0">
             <button class="btn" id="l2-btn" onclick="doRecoverL2()">Récupérer</button>
-            <div style="text-align:center;margin:10px 0;opacity:0.6;font-size:0.8rem;">— ou, si tu as enrôlé cet appareil —</div>
+            <div id="l2-device-sep" style="text-align:center;margin:10px 0;opacity:0.6;font-size:0.8rem;">— ou, si tu as enrôlé cet appareil —</div>
             <button class="btn" id="l2-device-btn" onclick="doRecoverL2Device()" style="background:#2d7d5a;">🖥️ Récupérer avec cet appareil (+ mot mémorisé)</button>
             <div id="l2-result"></div>
         </div>
@@ -594,12 +522,6 @@
         <!-- RECOVER L3 (intégré SPA) -->
         <div id="panel-recoverL3" class="panel hidden">
             <h2>Récupération — Niveau 3 (tout perdu · récupération assistée)</h2>
-            <div class="threat-banner">
-                <strong>Comment ça marche.</strong> On ne te redemande <strong>pas</strong> tes secrets oubliés.
-                Tu réponds à des questions de <strong>contexte</strong> (ce que seul le vrai titulaire sait) : elles forment
-                un <strong>faisceau de signaux</strong> qui <em>aide</em> l'administrateur — aucun score, aucune ouverture
-                automatique. <strong>La décision reste humaine</strong>, via le chat.
-            </div>
 
             <div id="l3-step-id" class="l3-step">
                 <div class="form-group">
@@ -647,13 +569,6 @@
 
         <div class="footer">
             <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover">SelfRecover sur GitHub</a> — AGPL-3.0-or-later
-            <br><br>
-            Variantes disponibles :
-            <a href="lite.html">SelfRecover Lite</a> (avec SMTP + mot mémorisé)
-            ·
-            <a href="comparison.html">📊 Comparatif sécurité</a>
-            ·
-            <a href="l3.html">🔑 Comment fonctionne le niveau 3</a>
         </div>
     </div>
 
@@ -665,7 +580,10 @@
     <!-- Helpers SelfRecover : tirage uniforme, calcul d'entropie, classification -->
     <script src="assets/entropy.js"></script>
     <!-- Transparency Live panel : visualise en direct les requêtes et opérations crypto -->
-    <script src="assets/transparency.js"></script>
+    <!-- split admin/transparence retiré de la SPA user (le service hote) — l'admin est sur sa page dédiée admin.html.
+         Le moteur fonctionne sans : window.api + hmacDerive ont un fallback natif. -->
+    <!-- <script src="assets/transparency.js"></script> -->
+    <script>window.__NO_TRANSPARENCY__ = true;</script>
     <!-- Argon2 (hash-wasm, MIT) — dérivation memory-hard du mot mémorisé pour l'enveloppe « cet appareil » -->
     <script src="assets/hash-wasm-argon2.js"></script>
 
@@ -938,6 +856,93 @@
                 });
             }
         });
+
+        // === Profil intégrateur (le service hote) : deep-link + cloisonnement des onglets + tor-onion ===
+        // ?mode=reset → L1/L2 (mot de passe oublié) · lost → L3 (accès perdu) · register → inscription
+        // Cloisonnement : seuls L1↔L2 restent naviguables ensemble ; chaque autre entrée est isolée.
+        document.addEventListener('DOMContentLoaded', function () {
+            const mode = new URLSearchParams(window.location.search).get('mode');
+            if (!mode) return; // usage standalone du moteur : on ne touche à rien
+
+            // 1. Onglets visibles selon le contexte (Connexion jamais montrée : la modale du site fait le login)
+            const KEEP = { reset: ['recoverL1', 'recoverL2'], lost: [], register: ['register'] };
+            const keep = KEEP[mode] || [];
+            document.querySelectorAll('.tabs .tab').forEach(function (b) {
+                const oc = b.getAttribute('onclick') || '';
+                const m = oc.match(/showTab\('([^']+)'\)/);
+                const id = m ? m[1] : (/openL3/.test(oc) ? 'recoverL3' : '');
+                b.style.display = keep.indexOf(id) >= 0 ? '' : 'none';
+            });
+            const bar = document.querySelector('.tabs');
+            if (bar && keep.length === 0) bar.style.display = 'none'; // lost : pas de navigation, panel L3 seul
+
+            // 2. Panel de départ
+            if (mode === 'reset') switchPanel('recoverL1');
+            else if (mode === 'lost') switchPanel('recoverL3');
+            else if (mode === 'register') switchPanel('register');
+
+            // 3. Profil tor-onion : facteur « cet appareil » inutile/trompeur sur Tor → retiré (case inscription + bouton récup L2)
+            const dev = document.getElementById('reg-device');
+            if (dev) { const grp = dev.closest('.form-group'); if (grp) grp.style.display = 'none'; }
+            const devBtn = document.getElementById('l2-device-btn');
+            if (devBtn) devBtn.style.display = 'none';
+            const devSep = document.getElementById('l2-device-sep');
+            if (devSep) devSep.style.display = 'none';
+        });
+
+        // === Theming AUTO : le recover détecte et adopte le thème du site hôte ===
+        // Zéro thème à coder pour l'intégrateur. Le recover (en iframe) demande au parent
+        // ses styles calculés (police, couleurs, angles) via postMessage et se calque dessus.
+        (function () {
+            if (window.parent === window) return; // standalone : on garde le thème par défaut
+            function applyHostTheme(t) {
+                if (!t) return;
+                const r = document.documentElement.style;
+                if (t.bg)     { r.setProperty('--bg', t.bg); r.setProperty('--panel', t.bg); }
+                if (t.text)   r.setProperty('--text', t.text);
+                if (t.accent) { r.setProperty('--accent', t.accent); r.setProperty('--success', t.accent); }
+                if (t.border) r.setProperty('--border', t.border);
+                let s = document.getElementById('sr-host-theme');
+                if (!s) { s = document.createElement('style'); s.id = 'sr-host-theme'; document.head.appendChild(s); }
+                let css =
+                    'body,body *{font-family:' + (t.font || 'inherit') + ' !important}' +
+                    '.panel,.btn,.tab,input,select,textarea,.card,.dispute-item,.reinhold-step,.download-btn,[class*="result"],.passphrase-output{border-radius:' + (t.radius || '0') + ' !important}';
+                if (t.btn) {
+                    const bt = t.btn;
+                    css += '.btn,button.btn,.tab,.mode-tab,.download-btn{' +
+                        'background:' + bt.bg + ' !important;color:' + bt.color + ' !important;' +
+                        'border:' + bt.bw + ' ' + bt.bs + ' ' + bt.bc + ' !important;' +
+                        'letter-spacing:' + bt.ls + ' !important;text-transform:' + bt.tt + ' !important;' +
+                        'font-weight:' + bt.fw + ' !important}';
+                }
+                s.textContent = css;
+                // Cale le H1 sur le nom du site hôte + révèle la mention « propulsé par SelfRecover »
+                if (t.site) {
+                    const h = document.getElementById('sr-title');
+                    if (h) h.textContent = t.site;
+                    const p = document.getElementById('sr-powered');
+                    if (p) p.style.display = '';
+                    try { document.title = t.site + ' — accès'; } catch (_) {}
+                }
+                // Langue du site hôte : on cale la génération diceware + l'attribut lang.
+                // (Phase 1 : canal + wordlist. L'i18n complet des textes UI = phase 2.)
+                if (t.lang) {
+                    const lg = String(t.lang).slice(0, 2).toLowerCase();
+                    if (lg === 'fr' || lg === 'en') {
+                        window.SR_HOST_LANG = lg;
+                        try { document.documentElement.lang = lg; } catch (_) {}
+                        const dw = document.getElementById('dw-lang');
+                        if (dw && [...dw.options].some(o => o.value === lg)) dw.value = lg;
+                        try { localStorage.setItem('sr-host-lang', lg); } catch (_) {}
+                    }
+                }
+                try { localStorage.setItem('sr-detected-theme', JSON.stringify(t)); } catch (_) {} // partagé même-origine (ex. admin.html)
+            }
+            window.addEventListener('message', function (e) {
+                if (e.data && e.data.sr === 'theme') applyHostTheme(e.data.theme);
+            });
+            try { window.parent.postMessage({ sr: 'need-theme' }, '*'); } catch (_) {}
+        })();
 
         // === Recover L2 (2FA : mot mémorisé + code de récupération, SANS identifier) ===
         async function doRecoverL2() {

@@ -225,7 +225,7 @@ function handleLogin(): void {
     if (!$username || !$password) jsonError('Nom d\'utilisateur et mot de passe requis');
 
     $db = getDB();
-    $stmt = $db->prepare("SELECT id, username, password_hash FROM users WHERE username = ?");
+    $stmt = $db->prepare("SELECT id, username, password_hash, is_admin FROM users WHERE username = ?");
     $stmt->execute([$username]);
     $user = $stmt->fetch();
     addTrace($user ? "[login] DB SELECT users — found id=" . $user['id'] : "[login] DB SELECT users — no match");
@@ -240,7 +240,34 @@ function handleLogin(): void {
     // Signaux contextuels L3 : on garde trace de la dernière connexion + compteur
     $db->prepare("UPDATE users SET last_login_at = CURRENT_TIMESTAMP, login_count = COALESCE(login_count,0) + 1 WHERE id = ?")
        ->execute([$user['id']]);
-    jsonResponse(['message' => 'Connecté', 'username' => $user['username']]);
+    $sessionToken = createSession($db, $user);
+    jsonResponse([
+        'message'       => 'Connecté',
+        'username'      => $user['username'],
+        'session_token' => $sessionToken,
+        'is_admin'      => (int)$user['is_admin'],
+    ]);
+}
+
+// === ADMIN — demande de PROMOTION (un admin propose, le SU tranche via CLI) ===
+function handleAdminRequestPromotion(): void {
+    $sess = requireAdmin(); // seul un admin connecté peut proposer
+    $in = getInput();
+    $target = trim($in['target_username'] ?? '');
+    $reason = trim($in['reason'] ?? '');
+    if ($target === '') jsonError('Utilisateur cible requis');
+    $db = getDB();
+    $u = $db->prepare("SELECT id, is_admin FROM users WHERE username = ?");
+    $u->execute([$target]);
+    $tu = $u->fetch();
+    if (!$tu) jsonError('Utilisateur cible introuvable', 404);
+    if ((int)$tu['is_admin'] === 1) jsonError('Cet utilisateur est déjà admin');
+    $dup = $db->prepare("SELECT id FROM admin_requests WHERE target_username = ? AND status = 'pending'");
+    $dup->execute([$target]);
+    if ($dup->fetch()) jsonError('Une demande est déjà en attente pour cet utilisateur');
+    $db->prepare("INSERT INTO admin_requests (requester_username, target_username, reason) VALUES (?,?,?)")
+       ->execute([$sess['username'], $target, $reason ?: null]);
+    jsonResponse(['message' => 'Demande de promotion envoyée au SuperUser', 'target' => $target]);
 }
 
 // === RECOVER L1 ===
@@ -808,9 +835,9 @@ function handleDisputeChat(): void {
 
     // R9-01b : autorisation du fil — soit l'admin (token), soit le propriétaire (sésame d'init).
     // L'identifiant seul (semi-public) ne donne plus accès au chat ni au verdict.
-    $adminTok = $_SERVER['HTTP_X_ADMIN_TOKEN'] ?? ($in['admin_token'] ?? '');
-    $expectedTok = adminTokenExpected(); // R9-05 : jeton via env uniquement, aucun fallback en dur
-    $isAdmin = ($expectedTok !== null && $adminTok !== '' && hash_equals($expectedTok, (string)$adminTok));
+    // Admin détecté par la SESSION (X-Session-Token) — plus de jeton statique
+    $sess = currentSession(getDB());
+    $isAdmin = ($sess && (int)$sess['is_admin'] === 1);
     if (!$isAdmin && !disputeClaimValid($dispute, trim($in['claim_secret'] ?? ''))) {
         $ip = $_SERVER['REMOTE_ADDR'] ?? '';
         if ($ip) trackSuspiciousIP($db, $ip, $_SERVER['HTTP_X_CLIENT_FINGERPRINT'] ?? '', $_SERVER['HTTP_USER_AGENT'] ?? '');
@@ -833,18 +860,48 @@ function handleDisputeChat(): void {
     jsonResponse(['sent' => true, 'sender' => $sender]);
 }
 
-// === ADMIN — litiges (auth minimale démo : header X-Admin-Token) ===
-/** Jeton admin attendu : variable d'environnement UNIQUEMENT (R9-05, fail-closed — aucun fallback en dur). */
-function adminTokenExpected(): ?string {
-    $t = getenv('SELFRECOVER_ADMIN_TOKEN');
-    return ($t === false || $t === '') ? null : $t;
+// === ADMIN — litiges L3 (auth par session-compte, cf requireAdmin/currentSession) ===
+
+// === SESSIONS — auth admin par COMPTE (remplace le token statique ; le token = niveau SU/CLI) ===
+/** Crée une session pour un user connecté, retourne le token opaque. */
+function createSession(PDO $db, array $user): string {
+    $token = bin2hex(random_bytes(32));
+    $ttlH  = (int)(getenv('SELFRECOVER_SESSION_TTL_HOURS') ?: 12);
+    $exp   = (new DateTime("+{$ttlH} hours", new DateTimeZone('UTC')))->format('Y-m-d H:i:s');
+    $db->prepare("INSERT INTO sessions (token, user_id, is_admin, expires_at) VALUES (?,?,?,?)")
+       ->execute([$token, $user['id'], (int)($user['is_admin'] ?? 0), $exp]);
+    return $token;
 }
 
-function requireAdmin(): void {
-    $token = $_SERVER['HTTP_X_ADMIN_TOKEN'] ?? ($_GET['admin_token'] ?? '');
-    $expected = adminTokenExpected();
-    if ($expected === null) jsonError('Console admin non configurée (SELFRECOVER_ADMIN_TOKEN absent)', 503);
-    if (!hash_equals($expected, (string)$token)) jsonError('Accès admin refusé', 403);
+/** Session courante (header X-Session-Token ou ?session_token), non expirée. NULL sinon. */
+function currentSession(PDO $db): ?array {
+    $tok = $_SERVER['HTTP_X_SESSION_TOKEN'] ?? ($_GET['session_token'] ?? '');
+    if ($tok === '') return null;
+    $st = $db->prepare("SELECT s.user_id, s.expires_at, u.username, u.is_admin
+                        FROM sessions s JOIN users u ON u.id = s.user_id
+                        WHERE s.token = ? AND s.expires_at > CURRENT_TIMESTAMP");
+    $st->execute([$tok]);
+    return $st->fetch() ?: null;
+}
+
+/**
+ * Exige une session dont le COMPTE est admin.
+ * Source de vérité = users.is_admin (à jour) → un revoke-admin (CLI SU) coupe l'accès immédiatement.
+ */
+function requireAdmin(): array {
+    $db = getDB();
+    $sess = currentSession($db);
+    if (!$sess || (int)$sess['is_admin'] !== 1) jsonError('Accès admin refusé — session admin requise', 403);
+    return $sess;
+}
+
+/** Déconnexion : invalide la session courante côté serveur (le token ne vaut plus rien après). */
+function handleLogout(): void {
+    $tok = $_SERVER['HTTP_X_SESSION_TOKEN'] ?? ($_GET['session_token'] ?? '');
+    if ($tok !== '') {
+        getDB()->prepare("DELETE FROM sessions WHERE token = ?")->execute([$tok]);
+    }
+    jsonResponse(['message' => 'Déconnecté']);
 }
 
 function handleAdminDisputes(): void {

@@ -11,8 +11,8 @@ define('SITE_SALT', getenv('SELFRECOVER_SITE_SALT') ?: 'demo-site-salt-1a2b3c4d5
 // JAMAIS exposé. En prod : valeur aléatoire forte via l'environnement.
 define('SERVER_SECRET', getenv('SELFRECOVER_SERVER_SECRET') ?: 'demo-server-secret-CHANGE-IN-PROD-9f8e7d6c5b4a3210');
 
-// DEBUG_MODE — expose _trace dans les réponses JSON. true par défaut en démo, false en prod.
-define('DEBUG_MODE', filter_var(getenv('SELFRECOVER_DEBUG') ?: 'true', FILTER_VALIDATE_BOOLEAN));
+// DEBUG_MODE — expose _trace dans les réponses JSON. false par défaut (prod-safe) ; la démo pose =true.
+define('DEBUG_MODE', filter_var(getenv('SELFRECOVER_DEBUG') ?: 'false', FILTER_VALIDATE_BOOLEAN));
 
 // ALLOWED_ORIGIN — domaine autorisé en CORS (whitelist stricte)
 define('ALLOWED_ORIGIN', getenv('SELFRECOVER_ORIGIN') ?: 'http://localhost:8080');
@@ -37,8 +37,26 @@ define('IP_BLOCK_SEC',  FAST_TIMINGS ? 30 : 86400);  // durée de blocage IP (d�
 define('L2_ESCALATE_WINDOW_SEC', 600); // 10 min
 
 // Purge auto de la DB démo (borne la taille sous test de masse).
-// ⚠️ DEMO-ONLY : supprime des comptes par âge. En prod → SELFRECOVER_DEMO_PURGE=false.
-define('DEMO_AUTOPURGE', filter_var(getenv('SELFRECOVER_DEMO_PURGE') ?: 'true', FILTER_VALIDATE_BOOLEAN));
+// ⚠️ DEMO-ONLY : supprime des comptes par âge. false par défaut (prod-safe) ; la démo pose =true.
+define('DEMO_AUTOPURGE', filter_var(getenv('SELFRECOVER_DEMO_PURGE') ?: 'false', FILTER_VALIDATE_BOOLEAN));
+
+// ─── Garde-fou prod « fail fast » ──────────────────────────────────────────
+// En mode prod (DEBUG_MODE=false), refuser de tourner avec les secrets/réglages de démo.
+// Mieux vaut un service qui ne démarre pas qu'un service silencieusement affaibli.
+function fail_boot(string $why): void {
+    if (PHP_SAPI === 'cli') { fwrite(STDERR, "FATAL prod-hardening : $why\n"); exit(78); }
+    http_response_code(503);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Service mal configuré — voir les logs serveur.']);
+    exit;
+}
+if (!DEBUG_MODE) {
+    if (SERVER_SECRET === 'demo-server-secret-CHANGE-IN-PROD-9f8e7d6c5b4a3210')
+        fail_boot('SERVER_SECRET = valeur démo. Pose SELFRECOVER_SERVER_SECRET (aléatoire fort).');
+    if (DEMO_AUTOPURGE)
+        fail_boot('DEMO_AUTOPURGE actif en prod (purge auto des comptes !). Retire SELFRECOVER_DEMO_PURGE.');
+    // Secrets SU/audit : vérifiés côté CLI (le serveur web n'y touche pas).
+}
 
 function getDB(): PDO {
     static $pdo = null;
@@ -65,6 +83,7 @@ function getDB(): PDO {
             "ALTER TABLE users ADD COLUMN login_count INTEGER DEFAULT 0",
             "ALTER TABLE users ADD COLUMN banned_until TEXT",
             "ALTER TABLE users ADD COLUMN user_salt TEXT",
+            "ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0", // rôle admin (posé uniquement par le SU via CLI)
             // R9-01b : capability liée à un sésame propriétaire + TTL + signal multi-demandeur
             "ALTER TABLE disputes ADD COLUMN claim_hash TEXT",
             "ALTER TABLE disputes ADD COLUMN expires_at TEXT",
@@ -153,6 +172,29 @@ function getDB(): PDO {
                 credential_id TEXT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )");
+        } catch (Exception $e) { /* tables exist = OK */ }
+        try {
+            // Modèle SU→Admin→User : demandes de promotion + sessions de login
+            $pdo->exec("CREATE TABLE IF NOT EXISTS admin_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                requester_username TEXT NOT NULL,
+                target_username TEXT NOT NULL,
+                reason TEXT,
+                status TEXT NOT NULL DEFAULT 'pending',
+                su_note TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                decided_at TEXT
+            )");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_admreq_status ON admin_requests(status)");
+            $pdo->exec("CREATE TABLE IF NOT EXISTS sessions (
+                token TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                is_admin INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                expires_at TEXT NOT NULL
+            )");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)");
+            $pdo->exec("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)");
         } catch (Exception $e) { /* tables exist = OK */ }
     }
     return $pdo;
