@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Pierroons\SelfDataGuard;
 
 use InvalidArgumentException;
+use Pierroons\SelfDataGuard\Escrow\AdminKey;
+use Pierroons\SelfDataGuard\Escrow\EscrowFieldCrypter;
+use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
@@ -37,6 +40,7 @@ use RuntimeException;
 final class SelfDataGuard
 {
     private UserVault $vault;
+    private EscrowVault $escrow;
 
     public function __construct(
         private readonly StorageInterface $storage,
@@ -47,7 +51,8 @@ final class SelfDataGuard
                 'blindKey must be ≥32 bytes of server-side secret'
             );
         }
-        $this->vault = new UserVault();
+        $this->vault  = new UserVault();
+        $this->escrow = new EscrowVault();
     }
 
     /**
@@ -171,5 +176,114 @@ final class SelfDataGuard
     public function userExists(string $userId): bool
     {
         return $this->storage->vaultExists($userId);
+    }
+
+    // -- Escrow compartment (consented, admin-recoverable sub-vault) -----------
+
+    /**
+     * Generate a fresh admin recovery keypair, sealing the secret key under an
+     * admin passphrase (deploy-server storage, SU model). Run ONCE at setup.
+     *
+     * Persist BOTH returned values: the public key (clear, needed to enroll
+     * escrows) and the sealed secret (on the deployment server, opened only
+     * during a recovery ceremony via the passphrase).
+     *
+     * @return array{publicKey: string, sealedSecret: string} both base64
+     */
+    public static function generateAdminRecoveryKey(string $passphrase): array
+    {
+        return AdminKey::generate($passphrase);
+    }
+
+    /**
+     * Unseal the admin recovery secret key with the passphrase. Returns the raw
+     * 32-byte secret key — caller MUST sodium_memzero() it after use. Meant for
+     * the recovery-ceremony CLI, not for web request paths.
+     */
+    public static function unsealAdminRecoveryKey(string $sealedSecret, string $passphrase): string
+    {
+        return AdminKey::unseal($sealedSecret, $passphrase);
+    }
+
+    public function hasEscrow(string $userId): bool
+    {
+        return $this->storage->loadEscrow($userId) !== null;
+    }
+
+    /**
+     * Encrypt and persist escrow fields for the active user. Creates the escrow
+     * compartment on first use (sealed to $adminPublicKey); reuses it after.
+     *
+     * These fields are the CONSENTED, admin-recoverable subset (e.g.
+     * contact_secours) — kept in a sub-key distinct from the private zone.
+     *
+     * @param array<string, string> $fields field_name => plaintext
+     */
+    public function setEscrowFields(UnlockedVault $session, string $adminPublicKey, array $fields): void
+    {
+        if ($fields === []) {
+            return;
+        }
+
+        $record = $this->storage->loadEscrow($session->userId);
+        if ($record === null) {
+            $created  = $this->escrow->create($session, $adminPublicKey);
+            $record   = $created['record'];
+            $unlocked = $created['unlocked'];
+            $this->storage->saveEscrow($record);
+        } else {
+            $unlocked = $this->escrow->unlockAsUser($record, $session);
+        }
+
+        $ciphertexts = EscrowFieldCrypter::encryptBatch($unlocked, $fields);
+        $this->storage->saveEscrowFields($session->userId, $ciphertexts);
+        $unlocked->lock();
+    }
+
+    /**
+     * Decrypt escrow fields as the USER (daily access) via the active session.
+     *
+     * @param array<string> $fieldNames Empty = all escrow fields
+     * @return array<string, string>    field_name => plaintext
+     */
+    public function getEscrowFieldsAsUser(UnlockedVault $session, array $fieldNames = []): array
+    {
+        $record = $this->storage->loadEscrow($session->userId);
+        if ($record === null) {
+            return [];
+        }
+        $unlocked    = $this->escrow->unlockAsUser($record, $session);
+        $ciphertexts = $this->storage->loadEscrowFields($session->userId, $fieldNames);
+        $plain       = EscrowFieldCrypter::decryptBatch($unlocked, $ciphertexts);
+        $unlocked->lock();
+        return $plain;
+    }
+
+    /**
+     * Decrypt escrow fields as the ADMIN during a recovery ceremony, using the
+     * recovery secret key (from unsealAdminRecoveryKey) + public key.
+     *
+     * SCOPE: yields ONLY escrow fields, never the private zone. The caller
+     * (adapter/CLI) is responsible for the POLICY gates — an open litige and
+     * writing the SU audit log. This method performs no policy check itself.
+     *
+     * @param array<string> $fieldNames Empty = all escrow fields
+     * @return array<string, string>    field_name => plaintext
+     */
+    public function getEscrowFieldsAsAdmin(
+        string $userId,
+        string $adminSecretKey,
+        string $adminPublicKey,
+        array $fieldNames = []
+    ): array {
+        $record = $this->storage->loadEscrow($userId);
+        if ($record === null) {
+            throw new RuntimeException("No escrow compartment for user '{$userId}'");
+        }
+        $unlocked    = $this->escrow->unlockAsAdmin($record, $adminSecretKey, $adminPublicKey);
+        $ciphertexts = $this->storage->loadEscrowFields($userId, $fieldNames);
+        $plain       = EscrowFieldCrypter::decryptBatch($unlocked, $ciphertexts);
+        $unlocked->lock();
+        return $plain;
     }
 }

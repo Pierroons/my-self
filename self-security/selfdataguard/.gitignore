@@ -15,6 +15,17 @@ composer.lock
 /demo/storage/*.bin
 /demo/storage/blindkey.*
 /demo/storage/.env
+# Admin recovery keys (public key + passphrase-sealed private key = SECRET)
+/demo/storage/admin-recovery.*
+
+# Playground runtime — DB + server-side secrets (never committed)
+/playground/*.sqlite
+/playground/*.sqlite-journal
+/playground/*.sqlite-wal
+/playground/*.sqlite-shm
+/playground/*.bin
+/playground/*.sealed
+/playground/*.log
 
 # Editor
 .vscode/

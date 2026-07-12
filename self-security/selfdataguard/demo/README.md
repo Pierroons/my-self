@@ -28,6 +28,31 @@ Then open **<http://127.0.0.1:8081>** in your browser.
 
 To use a different port: `PORT=9000 ./run.sh`.
 
+### Member area — "Mon coffre" (escrow module)
+
+**<http://127.0.0.1:8081/coffre.html>** is the profile module demonstrating the
+**two-zone vault**: a private E2E zone (only the user reads it) and a consented
+**recovery-escrow** zone (an admin can recover it, but only after a litige).
+
+- Open a coffre (a user you registered on the main demo), read the private zone.
+- Deposit escrow fields (`contact_secours`, `indice_recup`) — note the explicit
+  consent text: accessible to an admin **only** during a recovery litige.
+- The escrow is sealed to a demo admin recovery key generated on first run
+  (`storage/admin-recovery.pub` + `.sealed`, demo passphrase
+  `demo-admin-recovery-passphrase-2026`). Recover it from the CLI:
+
+  ```bash
+  DATAGUARD_DB=storage/demo.sqlite \
+  DATAGUARD_ADMIN_PUBKEY_FILE=storage/admin-recovery.pub \
+  DATAGUARD_ADMIN_SEALED_FILE=storage/admin-recovery.sealed \
+  DATAGUARD_AUDIT_LOG=storage/escrow-audit.log \
+  DATAGUARD_AUDIT_SECRET=any-demo-secret-≥16-bytes \
+  php ../bin/escrow-ceremony.php unlock <user> <litige_id>
+  ```
+
+  (requires a `litiges` table with an open row for `<user>` — the le service hote adapter
+  wires its own; see the ceremony CLI header for details).
+
 The demo uses PHP's built-in web server, no Apache/nginx required, no `composer install` needed.
 
 ## What you can try (left column)

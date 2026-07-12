@@ -48,6 +48,21 @@ if ($blindKey === false || strlen($blindKey) < 32) {
 $storage     = new SqliteAdapter('sqlite:' . DEMO_DB_PATH);
 $dataGuard   = new SelfDataGuard($storage, $blindKey);
 
+// Clé de récupération ADMIN pour le compartiment escrow (démo). La clé PUBLIQUE
+// scelle l'escrow au dépôt ; la clé privée SCELLÉE par passphrase ne sert qu'à
+// la cérémonie de récup (bin/escrow-ceremony.php). Générée une fois, persistée
+// hors DB. En prod, elle vit sur le serveur de déploiement (VPS/NAS), scellée.
+$adminPubPath  = dirname($blindKeyPath) . '/admin-recovery.pub';
+$adminSealPath = dirname($blindKeyPath) . '/admin-recovery.sealed';
+if (!is_file($adminPubPath)) {
+    // Passphrase de démo (documentée dans README). En prod : dans la tête de l'admin.
+    $ar = SelfDataGuard::generateAdminRecoveryKey('demo-admin-recovery-passphrase-2026');
+    file_put_contents($adminPubPath, $ar['publicKey']);
+    file_put_contents($adminSealPath, $ar['sealedSecret']);
+    chmod($adminSealPath, 0600);
+}
+$adminRecoveryPubKey = trim((string) file_get_contents($adminPubPath));
+
 /**
  * Decode a JSON body, return [] if absent or malformed.
  *

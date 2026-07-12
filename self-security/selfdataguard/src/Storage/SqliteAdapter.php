@@ -8,6 +8,7 @@ use DateTimeImmutable;
 use PDO;
 use PDOException;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
+use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use RuntimeException;
 
@@ -118,6 +119,10 @@ final class SqliteAdapter implements StorageInterface
             // FK cascade handles the fields, but we delete explicitly for clarity
             $this->pdo->prepare('DELETE FROM selfdataguard_fields WHERE user_id = :uid')
                 ->execute([':uid' => $userId]);
+            $this->pdo->prepare('DELETE FROM selfdataguard_escrow_fields WHERE user_id = :uid')
+                ->execute([':uid' => $userId]);
+            $this->pdo->prepare('DELETE FROM selfdataguard_escrow WHERE user_id = :uid')
+                ->execute([':uid' => $userId]);
             $this->pdo->prepare('DELETE FROM selfdataguard_vaults WHERE user_id = :uid')
                 ->execute([':uid' => $userId]);
             $this->pdo->commit();
@@ -197,6 +202,103 @@ final class SqliteAdapter implements StorageInterface
         return $userId === false ? null : (string) $userId;
     }
 
+    // -- Escrow compartment ---------------------------------------------------
+
+    public function saveEscrow(EscrowRecord $record): void
+    {
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO selfdataguard_escrow (user_id, wrap_user, wrap_admin, created_at, updated_at)
+             VALUES (:uid, :wu, :wa, :ca, :ua)
+             ON CONFLICT(user_id) DO UPDATE SET
+               wrap_user  = excluded.wrap_user,
+               wrap_admin = excluded.wrap_admin,
+               updated_at = excluded.updated_at'
+        );
+        $stmt->execute([
+            ':uid' => $record->userId,
+            ':wu'  => $record->wrapUser->toBase64(),
+            ':wa'  => base64_encode($record->wrapAdmin),
+            ':ca'  => $record->createdAt->format('c'),
+            ':ua'  => $record->updatedAt->format('c'),
+        ]);
+    }
+
+    public function loadEscrow(string $userId): ?EscrowRecord
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT user_id, wrap_user, wrap_admin, created_at, updated_at
+             FROM selfdataguard_escrow WHERE user_id = :uid'
+        );
+        $stmt->execute([':uid' => $userId]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            return null;
+        }
+        $wrapAdmin = base64_decode((string) $row['wrap_admin'], true);
+        if ($wrapAdmin === false) {
+            throw new RuntimeException('Corrupted wrap_admin in DB (invalid base64)');
+        }
+        return new EscrowRecord(
+            userId:    (string) $row['user_id'],
+            wrapUser:  EncryptedBlob::fromBase64((string) $row['wrap_user']),
+            wrapAdmin: $wrapAdmin,
+            createdAt: new DateTimeImmutable((string) $row['created_at']),
+            updatedAt: new DateTimeImmutable((string) $row['updated_at']),
+        );
+    }
+
+    public function saveEscrowFields(string $userId, array $fields): void
+    {
+        if ($fields === []) {
+            return;
+        }
+        $now = (new DateTimeImmutable())->format('c');
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO selfdataguard_escrow_fields (user_id, field_name, ciphertext, updated_at)
+             VALUES (:uid, :fn, :ct, :ua)
+             ON CONFLICT(user_id, field_name) DO UPDATE SET
+               ciphertext = excluded.ciphertext,
+               updated_at = excluded.updated_at'
+        );
+        $this->pdo->beginTransaction();
+        try {
+            foreach ($fields as $fieldName => $ciphertext) {
+                $stmt->execute([
+                    ':uid' => $userId,
+                    ':fn'  => $fieldName,
+                    ':ct'  => $ciphertext,
+                    ':ua'  => $now,
+                ]);
+            }
+            $this->pdo->commit();
+        } catch (PDOException $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    public function loadEscrowFields(string $userId, array $fieldNames = []): array
+    {
+        if ($fieldNames === []) {
+            $stmt = $this->pdo->prepare(
+                'SELECT field_name, ciphertext FROM selfdataguard_escrow_fields WHERE user_id = :uid'
+            );
+            $stmt->execute([':uid' => $userId]);
+        } else {
+            $placeholders = implode(',', array_fill(0, count($fieldNames), '?'));
+            $stmt = $this->pdo->prepare(
+                "SELECT field_name, ciphertext FROM selfdataguard_escrow_fields
+                 WHERE user_id = ? AND field_name IN ({$placeholders})"
+            );
+            $stmt->execute(array_merge([$userId], array_values($fieldNames)));
+        }
+        $out = [];
+        while ($row = $stmt->fetch()) {
+            $out[(string) $row['field_name']] = (string) $row['ciphertext'];
+        }
+        return $out;
+    }
+
     // -------------------------------------------------------------------------
 
     private function ensureSchema(): void
@@ -226,6 +328,27 @@ final class SqliteAdapter implements StorageInterface
         $this->pdo->exec(
             'CREATE INDEX IF NOT EXISTS selfdataguard_fields_blind
              ON selfdataguard_fields(field_name, blind_index)'
+        );
+        // Escrow compartment: one envelope row + N ciphertext rows per user.
+        $this->pdo->exec(
+            'CREATE TABLE IF NOT EXISTS selfdataguard_escrow (
+                user_id     TEXT PRIMARY KEY,
+                wrap_user   TEXT NOT NULL,   -- escrow_key wrapped by master_key (base64 EncryptedBlob)
+                wrap_admin  TEXT NOT NULL,   -- escrow_key sealed to admin pubkey (base64 sealed box)
+                created_at  TEXT NOT NULL,
+                updated_at  TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES selfdataguard_vaults(user_id) ON DELETE CASCADE
+            )'
+        );
+        $this->pdo->exec(
+            'CREATE TABLE IF NOT EXISTS selfdataguard_escrow_fields (
+                user_id     TEXT NOT NULL,
+                field_name  TEXT NOT NULL,
+                ciphertext  TEXT NOT NULL,   -- escrow field encrypted with escrow_key (base64 EncryptedBlob)
+                updated_at  TEXT NOT NULL,
+                PRIMARY KEY (user_id, field_name),
+                FOREIGN KEY (user_id) REFERENCES selfdataguard_vaults(user_id) ON DELETE CASCADE
+            )'
         );
     }
 

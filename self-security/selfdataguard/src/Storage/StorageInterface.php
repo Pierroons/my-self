@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Pierroons\SelfDataGuard\Storage;
 
+use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 
 /**
@@ -71,4 +72,31 @@ interface StorageInterface
      * Returns null if no match.
      */
     public function findUserIdByBlindIndex(string $fieldName, string $blindIndex): ?string;
+
+    // -- Escrow compartment (recovery-escrow sub-vault) -----------------------
+
+    /**
+     * Insert or replace the escrow envelope (wrap_user + wrap_admin) for a user.
+     */
+    public function saveEscrow(EscrowRecord $record): void;
+
+    /**
+     * Load the escrow envelope for a user, or null if none.
+     */
+    public function loadEscrow(string $userId): ?EscrowRecord;
+
+    /**
+     * Insert or update a batch of escrow field ciphertexts for a user.
+     *
+     * @param array<string, string> $fields field_name => ciphertext (base64)
+     */
+    public function saveEscrowFields(string $userId, array $fields): void;
+
+    /**
+     * Load escrow field ciphertexts for a user.
+     *
+     * @param array<string> $fieldNames Empty = all escrow fields
+     * @return array<string, string>    field_name => ciphertext (base64)
+     */
+    public function loadEscrowFields(string $userId, array $fieldNames = []): array;
 }

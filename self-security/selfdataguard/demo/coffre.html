@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SelfDataGuard — Mon coffre</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* Module profil — spécifique au coffre (par-dessus style.css) */
+  .zone { border: 1px solid #1E293B; border-radius: 10px; padding: 1.1rem 1.25rem; margin: 1rem 0; background: #0F172A; }
+  .zone > h3 { margin: 0 0 .5rem; font-size: 1.05rem; }
+  .zone-private > h3 { color: #6EE7B7; }
+  .zone-escrow  > h3 { color: #FBBF24; }
+  .zone .zone-note { font-size: .85rem; color: #94A3B8; margin: .25rem 0 .75rem; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: .35rem .9rem; font-size: .92rem; }
+  .kv dt { color: #64748B; }
+  .kv dd { margin: 0; color: #E2E8F0; word-break: break-word; }
+  .consent-box {
+    border: 1px solid #92400E; background: rgba(251, 191, 36, .08);
+    border-radius: 8px; padding: .9rem 1rem; margin: .25rem 0 1rem; font-size: .9rem; color: #FDE68A;
+  }
+  .consent-box strong { color: #FBBF24; }
+  .badge { display: inline-block; font-size: .72rem; padding: .1rem .5rem; border-radius: 999px; vertical-align: middle; }
+  .badge-on  { background: #064E3B; color: #6EE7B7; }
+  .badge-off { background: #334155; color: #94A3B8; }
+  .hidden { display: none; }
+  .lock-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+  .muted { color: #64748B; font-size: .85rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Mon coffre <span class="version">SelfDataGuard</span></h1>
+  <p class="tagline">Espace membre — coffre chiffré à deux zones.</p>
+  <nav>
+    <a href="index.html">← Démo technique</a>
+    <a href="https://github.com/Pierroons/my-self/tree/main/self-security/selfdataguard" target="_blank" rel="noopener">⌨ Code source</a>
+    <span class="nav-license">AGPL-3.0</span>
+  </nav>
+</header>
+
+<section id="explainer">
+  <h2>Ton coffre a deux zones</h2>
+  <p>
+    La <strong>zone privée</strong> est chiffrée de bout en bout : toi seul la lis, avec ton mot de passe
+    ou ton mot de secours. <em>Personne d'autre, pas même un administrateur.</em>
+    La <strong>zone de récupération assistée</strong> (facultative) contient ce que tu acceptes qu'un admin
+    puisse consulter <em>si tu perds tes accès</em> — pour t'aider à récupérer ton compte.
+  </p>
+</section>
+
+<main>
+
+<!-- 1. Connexion -->
+<section id="open-section">
+  <h2>Ouvre ton coffre</h2>
+  <form id="open-form">
+    <label>Identifiant <input name="userId" placeholder="alice" required></label>
+    <label>
+      Méthode
+      <select name="mode" id="open-mode">
+        <option value="password">Mot de passe (connexion quotidienne)</option>
+        <option value="memorized">Mot de secours (récupération)</option>
+      </select>
+    </label>
+    <label id="open-secret-label">
+      Mot de passe
+      <input name="secret" id="open-secret" type="password" placeholder="ton mot de passe" required>
+    </label>
+    <button type="submit">Ouvrir mon coffre</button>
+  </form>
+  <pre class="result" id="open-result"></pre>
+</section>
+
+<!-- 2. Profil (affiché après ouverture) -->
+<section id="profile-section" class="hidden">
+  <div class="lock-row">
+    <h2 style="margin:0">Coffre de <span id="who"></span></h2>
+    <button type="button" id="lock-btn" class="secondary">🔒 Verrouiller</button>
+  </div>
+
+  <!-- Zone privée -->
+  <div class="zone zone-private">
+    <h3>🔐 Zone privée <span class="muted">(chiffrée de bout en bout)</span></h3>
+    <p class="zone-note">Lisible uniquement par toi. Un admin, un serveur saisi, une base exfiltrée : rien à en tirer.</p>
+    <dl class="kv" id="private-kv"></dl>
+  </div>
+
+  <!-- Zone escrow -->
+  <div class="zone zone-escrow">
+    <h3>🆘 Récupération assistée <span id="escrow-badge" class="badge badge-off">non configurée</span></h3>
+
+    <div class="consent-box">
+      <strong>Entre ici des données qui faciliteront la récupération de ton compte</strong> si tu perds tes accès.
+      Elles ne sont accessibles qu'à un <strong>administrateur</strong>, et uniquement
+      <strong>après l'ouverture d'un litige</strong> — automatique dès que tu passes en récupération niveau&nbsp;3.
+    </div>
+
+    <form id="escrow-form">
+      <label>
+        Contact de secours <span class="muted">(email / téléphone / Signal…)</span>
+        <input name="contact_secours" placeholder="moi-secours@example.org / Signal +33…">
+      </label>
+      <label>
+        Indice de récupération <span class="muted">(une question dont toi seul as la réponse)</span>
+        <input name="indice_recup" placeholder="ville de naissance de mon chat + année">
+      </label>
+      <button type="submit">Déposer / mettre à jour</button>
+    </form>
+    <pre class="result" id="escrow-result"></pre>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <p>
+    Module profil de <a href="https://github.com/Pierroons/my-self" target="_blank">SelfDataGuard</a> —
+    pilier Self-Security de l'écosystème MySelf. AGPL-3.0-or-later.
+  </p>
+  <p class="footer-notice">
+    🔄 Démo publique — données fictives, effacées chaque nuit. N'y stocke rien de réel.
+  </p>
+</footer>
+
+<script src="coffre.js"></script>
+</body>
+</html>
