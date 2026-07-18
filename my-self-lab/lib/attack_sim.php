@@ -145,7 +145,7 @@ final class AttackSimulator
                 ],
             ],
             'verdict' => 'neutralisé',
-            'defense' => 'Rate-limit applicatif (5 échecs / 15 min) + bcrypt cost 12',
+            'defense' => 'Rate-limit applicatif (5 échecs / 15 min) + Argon2id (m=64 Mo, t=4, p=2)',
             'message_cle' => "Le bruteforce est bloqué après 5 essais, mais l'utilisateur légitime se connecte sans entrave.",
         ];
     }

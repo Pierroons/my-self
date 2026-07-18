@@ -5,7 +5,7 @@
  * Modèle : compte sans email. À l'inscription, l'utilisateur choisit son
  * recovery word. Le serveur génère un password (16 chars) + une passphrase
  * diceware EFF (L1). On dérive recovery_key = HMAC(recovery_word, domain||salt)
- * et on stocke bcrypt(password), bcrypt(passphrase), bcrypt(recovery_key).
+ * et on stocke Argon2id(password), Argon2id(passphrase), Argon2id(recovery_key).
  *
  * Aucun secret n'est conservé en clair en base (version prod-like).
  */
@@ -184,7 +184,7 @@ final class Auth
         $stmt = $pdo->prepare('SELECT id, pw_hash FROM accounts WHERE username = ?');
         $stmt->execute([$username]);
         $acc = $stmt->fetch();
-        // LAB-02 : toujours exécuter un bcrypt (hash factice si le compte n'existe pas) pour que
+        // LAB-02 : toujours exécuter un Argon2id (hash factice si le compte n'existe pas) pour que
         // le temps de réponse ne trahisse pas l'existence du compte.
         $ok = password_verify($password, $acc ? $acc['pw_hash'] : self::DUMMY_HASH) && (bool) $acc;
 
@@ -247,7 +247,7 @@ final class Auth
         $acc = $stmt->fetch();
 
         $derived = self::deriveKey($recoveryWord, self::DOMAIN, self::siteSalt());
-        // LAB-02 : bcrypt systématique (hash factice si compte absent) pour égaliser le timing.
+        // LAB-02 : Argon2id systématique (hash factice si compte absent) pour égaliser le timing.
         $ok = password_verify($derived, $acc ? $acc['recovery_hash'] : self::DUMMY_HASH) && (bool) $acc;
 
         $pdo->prepare('INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, ?, ?, ?)')

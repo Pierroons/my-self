@@ -8,9 +8,9 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS accounts (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     username        TEXT UNIQUE NOT NULL,
-    pw_hash         TEXT NOT NULL,          -- bcrypt(password)
-    pass_hash       TEXT NOT NULL,          -- bcrypt(passphrase diceware L1)
-    recovery_hash   TEXT NOT NULL,          -- bcrypt(derived_key) — L2 recovery
+    pw_hash         TEXT NOT NULL,          -- Argon2id(password)
+    pass_hash       TEXT NOT NULL,          -- Argon2id(passphrase diceware L1)
+    recovery_hash   TEXT NOT NULL,          -- Argon2id(derived_key) — L2 recovery
     is_admin        INTEGER NOT NULL DEFAULT 0,  -- panel admin (promotion via promote_admin.php)
     created_at      INTEGER NOT NULL
 );

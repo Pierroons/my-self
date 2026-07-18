@@ -38,7 +38,7 @@ render_header('Architecture de sécurité', $account);
   <h2>1. Authentification — SelfRecover <span class="pill">sans email</span></h2>
   <ul>
     <li>Aucun email, aucun n° de téléphone. À l'inscription : mot de récupération choisi → <code>password</code> (16 car.) + passphrase diceware EFF générés côté serveur.</li>
-    <li>Stockage : <code>bcrypt(password)</code>, <code>bcrypt(passphrase)</code>, <code>bcrypt(clé_dérivée)</code> — coût 12. <strong>Aucun secret en clair.</strong></li>
+    <li>Stockage : <code>Argon2id(password)</code>, <code>Argon2id(passphrase)</code>, <code>Argon2id(clé_dérivée)</code> — m=64&nbsp;Mo, t=4, p=2 (profil OWASP). <strong>Aucun secret en clair.</strong></li>
     <li>Dérivation par domaine : <code>HMAC-SHA256(secret, domaine ‖ sel_du_site)</code> → un secret hameçonné sur un autre domaine ne produit pas la bonne clé.</li>
     <li>Rate-limit progressif (5 échecs / 15 min) + limite d'inscription par IP (anti-énumération, anti-spam).</li>
   </ul>

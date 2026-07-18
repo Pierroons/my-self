@@ -40,7 +40,7 @@ my-self-lab/
 | Dump de la base | Données + DM en clair | DM chiffrés AES-256-GCM (clé hors base) |
 | Bruteforce login | Illimité | Rate-limit 5 échecs / 15 min |
 | Phishing reset email | Vecteur classique | Pas d'email — recovery par dérivation HMAC isolée par domaine |
-| Secrets en base | Souvent en clair | bcrypt(cost 12) pour tout, blind key en `0600` hors webroot |
+| Secrets en base | Souvent en clair | Argon2id (m=64 Mo, t=4, p=2) pour tout, blind key en `0600` hors webroot |
 
 ## Hors V1 (roadmap)
 
