@@ -225,14 +225,31 @@ function handleLogin(): void {
     if (!$username || !$password) jsonError('Nom d\'utilisateur et mot de passe requis');
 
     $db = getDB();
+
+    // R10-SR-02 : rate-limit login applicatif (par IP) — borne l'énumération/bruteforce même sans CrowdSec réseau.
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    if ($ip) {
+        $c = $db->prepare("SELECT COUNT(*) FROM recovery_attempts WHERE level=0 AND success=0 AND ip_address=? AND datetime(attempted_at) > datetime('now', ?)");
+        $c->execute([$ip, '-' . LOGIN_RL_WINDOW_SEC . ' seconds']);
+        if ((int)$c->fetchColumn() >= LOGIN_RL_MAX) {
+            jsonError('Trop de tentatives de connexion. Réessaie dans quelques minutes.', 429);
+        }
+    }
+
     $stmt = $db->prepare("SELECT id, username, password_hash, is_admin FROM users WHERE username = ?");
     $stmt->execute([$username]);
     $user = $stmt->fetch();
     addTrace($user ? "[login] DB SELECT users — found id=" . $user['id'] : "[login] DB SELECT users — no match");
 
+    // R10-SR-02 : hash factice si compte absent → password_verify TOUJOURS exécuté (timing plat, anti-oracle).
     $t0 = microtime(true);
-    $verified = $user && password_verify($password, $user['password_hash']);
+    $pwOk = password_verify($password, $user ? $user['password_hash'] : DUMMY_PASSWORD_HASH);
+    $verified = $pwOk && $user !== false;
     addTrace(sprintf("[login] password_verify en %.0f ms — result: %s", (microtime(true) - $t0) * 1000, $verified ? 'OK' : 'FAIL'));
+
+    // Trace la tentative (level=0 = login) pour le rate-limit (purgée à 24 h comme les autres).
+    $db->prepare("INSERT INTO recovery_attempts (username, level, success, ip_address) VALUES (?, 0, ?, ?)")
+       ->execute([$username, $verified ? 1 : 0, $ip]);
 
     if (!$verified) {
         jsonError('Identifiants incorrects', 401);
@@ -273,7 +290,7 @@ function handleAdminRequestPromotion(): void {
 // === RECOVER L1 ===
 function handleRecoverL1(): void {
     $in = getInput();
-    checkHoneypot($in); // le blocage L1 est géré par sa propre logique (l1_blocked_until) — pas le blocage IP générique qui masquerait l'escalade
+    checkHoneypot($in); // R10-SR-04 : le rate-limit L1 est scopé username+IP (voir plus bas), pas le blocage IP générique
     $username = trim($in['username'] ?? '');
     $passphrase = trim($in['passphrase'] ?? '');
     addTrace(sprintf("[recover-l1] input recu — username:%dch, passphrase:%dch (mots: %d)",
@@ -284,7 +301,7 @@ function handleRecoverL1(): void {
     $db = getDB();
 
     // Check block
-    $stmt = $db->prepare("SELECT id, passphrase_hash, l1_block_count, l1_blocked_until FROM users WHERE username = ?");
+    $stmt = $db->prepare("SELECT id, passphrase_hash FROM users WHERE username = ?");
     $stmt->execute([$username]);
     $user = $stmt->fetch();
     if (!$user) {
@@ -292,23 +309,18 @@ function handleRecoverL1(): void {
         sleep(1);
         jsonError('Identifiants incorrects', 401);
     }
-    if ($user['l1_block_count'] >= 3) {
-        jsonResponse(['error' => 'Trop d\'échecs au niveau 1. Passe au niveau 2 (mot mémorisé + recovery code).', 'escalate_l2' => true], 429);
-    }
-    if ($user['l1_blocked_until'] && strtotime($user['l1_blocked_until']) > time()) {
-        jsonResponse(['error' => 'Niveau 1 temporairement bloqué. Passe au niveau 2 (mot mémorisé + recovery code).', 'escalate_l2' => true], 429);
-    }
-
-    // 3 échecs dans la fenêtre → blocage (durées configurables : 30s en mode démo)
+    // R10-SR-04 : rate-limit L1 scopé (username + IP source), SANS jamais modifier l'état du compte cible.
+    // Empêche qu'un tiers connaissant le username (semi-public) ne dégrade/verrouille le L1 de la victime :
+    // seule la source qui échoue (son IP) est orientée vers L2 ; la victime légitime (autre IP) garde son
+    // L1 intact. Fin de l'escalade permanente par-compte (l1_block_count/l1_blocked_until) exploitable.
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
     $stmt = $db->prepare("
         SELECT COUNT(*) FROM recovery_attempts
-        WHERE username = ? AND level = 1 AND success = 0
+        WHERE username = ? AND level = 1 AND success = 0 AND ip_address = ?
         AND datetime(attempted_at) > datetime('now', ?)
     ");
-    $stmt->execute([$username, '-' . L1_WINDOW_SEC . ' seconds']);
+    $stmt->execute([$username, $ip, '-' . L1_WINDOW_SEC . ' seconds']);
     if ((int)$stmt->fetchColumn() >= 3) {
-        $db->prepare("UPDATE users SET l1_blocked_until = datetime('now', ?), l1_block_count = l1_block_count + 1 WHERE id = ?")
-           ->execute(['+' . L1_BLOCK_SEC . ' seconds', $user['id']]);
         logAttempt($db, $username, 1, false);
         jsonResponse(['error' => 'Trop d\'échecs au niveau 1. Passe au niveau 2 (mot mémorisé + recovery code).', 'escalate_l2' => true], 429);
     }

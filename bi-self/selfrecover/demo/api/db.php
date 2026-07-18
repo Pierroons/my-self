@@ -36,6 +36,12 @@ define('IP_BLOCK_SEC',  FAST_TIMINGS ? 30 : 86400);  // durée de blocage IP (d�
 // Indépendant du mode démo : ne doit PAS se réinitialiser en 30s (sinon on réessaie L2 sans fin).
 define('L2_ESCALATE_WINDOW_SEC', 600); // 10 min
 
+// R10-SR-02 : rate-limit login applicatif + hash factice anti-timing (l'oracle temporel du login).
+define('LOGIN_RL_WINDOW_SEC', FAST_TIMINGS ? 30 : 900); // fenêtre de comptage des échecs login (défaut 15 min)
+define('LOGIN_RL_MAX',        FAST_TIMINGS ? 3  : 5);    // échecs login/IP tolérés avant 429
+// Hash Argon2id factice (mêmes ARGON2_OPTIONS) → password_verify s'exécute même quand le compte est absent (timing plat).
+define('DUMMY_PASSWORD_HASH', '$argon2id$v=19$m=65536,t=4,p=2$VVpTTEREeXptSVhUZDZZWA$lH3Sdr5BMh6F8X+7whAdHl8H8OdHp/ImkENlF+cGXdE');
+
 // Purge auto de la DB démo (borne la taille sous test de masse).
 // ⚠️ DEMO-ONLY : supprime des comptes par âge. false par défaut (prod-safe) ; la démo pose =true.
 define('DEMO_AUTOPURGE', filter_var(getenv('SELFRECOVER_DEMO_PURGE') ?: 'false', FILTER_VALIDATE_BOOLEAN));

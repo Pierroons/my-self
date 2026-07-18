@@ -9,7 +9,8 @@ use Pierroons\MySelfLab\Moderate;
 require_method('POST');
 require_csrf();
 $pdo = Db::pdo();
-require_auth($pdo);
+require_admin($pdo);   // R10-LAB-02 : sweep de modération réservé aux admins (était require_auth)
 
 $result = Moderate::detectPackVoting($pdo);
+$result['flagged_for_review'] = Moderate::flaggedForReview($pdo);   // R10-LAB-01 : membres à arbitrer (rep≤0 sans pack)
 json_out(['ok' => true] + $result);

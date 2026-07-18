@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS member_moderation (
     strikes        INTEGER NOT NULL DEFAULT 0,
     voting_rights  INTEGER NOT NULL DEFAULT 1,
     banned_until   INTEGER NOT NULL DEFAULT 0,
+    needs_review   INTEGER NOT NULL DEFAULT 0,   -- R10-LAB-01 : rep<=0 sans pack détecté -> revue humaine (plus de ban auto)
     updated_at     INTEGER NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );

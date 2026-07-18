@@ -23,6 +23,7 @@ final class Moderate
     public const PACK_MIN_VOTERS     = 3;
     public const FARMING_WINDOW_DAYS = 60;
     public const FARMING_MAX_UPVOTES = 3;
+    public const FARMING_MAX_DOWNVOTES = 3;   // R10-LAB-01 : plafond de downvotes voter->cible sur la fenêtre (anti slow-drip)
 
     // Anti-Sybil : un compte doit avoir cette ancienneté OU >=1 post pour voter
     // ⏱️ VALEUR DÉMO réduite à 120 s pour qu'un dev puisse tester sans attendre. PROD = 86400 (24 h).
@@ -140,6 +141,24 @@ final class Moderate
             }
         }
 
+        // R10-LAB-01 — Anti downvote-farming : limite les downvotes répétés d'un même votant vers le
+        // même auteur (membre + ses posts) sur la fenêtre longue. Casse le « slow-drip » d'un votant
+        // patient qui downvote le membre puis chacun de ses posts pour éroder sa réputation en douce.
+        if ($value === -1) {
+            $stmt = $pdo->prepare(
+                'SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?'
+            );
+            $stmt->execute([$voterId, $author, time() - self::FARMING_WINDOW_DAYS * 86400]);
+            if ((int) $stmt->fetchColumn() >= self::FARMING_MAX_DOWNVOTES) {
+                $pdo->prepare(
+                    'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, blocked, blocked_reason, created_at)
+                     VALUES (?, ?, ?, ?, ?, 1, ?, ?)'
+                )->execute([$voterId, $targetType, $targetId, $author, $value, 'downvote_farming', time()]);
+                return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'downvote_farming',
+                        'message' => 'Vote enregistré mais neutralisé : trop de downvotes répétés vers ce membre (anti-farming).'];
+            }
+        }
+
         // Insert + maj réputation
         $pdo->prepare(
             'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, created_at)
@@ -245,14 +264,14 @@ final class Moderate
         if ($reputation < self::LOSE_VOTING_AT) {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 0 WHERE account_id = ?')->execute([$accountId]);
         }
+        // R10-LAB-01 — Plus de BAN AUTOMATIQUE à rep<=0. Les packs RAPIDES sont déjà annulés et la
+        // réputation restaurée par detectPackVoting AVANT ce point ; une rep<=0 qui subsiste ici vient
+        // donc toujours d'une érosion ÉTALÉE (slow-drip malveillant ou downvotes légitimes dispersés) —
+        // trop ambiguë pour un ban auto, qui serait alors un vecteur d'escalade sans droits admin.
+        // On FLAGGE pour revue humaine ; l'exclusion reste une décision admin explicite (adminBan).
         if ($reputation <= self::BAN_AT) {
-            $stmt = $pdo->prepare('SELECT strikes FROM member_moderation WHERE account_id = ?');
-            $stmt->execute([$accountId]);
-            $strikes = (int) $stmt->fetchColumn();
-            $durations = self::BAN_DURATIONS; // démo (cf constante) ; prod = 24h/7j/30j
-            $until = $strikes >= 3 ? PHP_INT_MAX : time() + $durations[$strikes];
-            $pdo->prepare('UPDATE member_moderation SET banned_until = ?, strikes = strikes + 1 WHERE account_id = ?')
-                ->execute([$until, $accountId]);
+            $pdo->prepare('UPDATE member_moderation SET needs_review = 1 WHERE account_id = ?')
+                ->execute([$accountId]);
         }
     }
 
@@ -297,7 +316,7 @@ final class Moderate
     {
         self::ensureRow($pdo, $accountId);
         $pdo->prepare(
-            'UPDATE member_moderation SET banned_until = ?, voting_rights = 0, strikes = strikes + 1, updated_at = ? WHERE account_id = ?'
+            'UPDATE member_moderation SET banned_until = ?, voting_rights = 0, strikes = strikes + 1, needs_review = 0, updated_at = ? WHERE account_id = ?'
         )->execute([time() + $seconds, time(), $accountId]);
     }
 
@@ -306,7 +325,20 @@ final class Moderate
     {
         self::ensureRow($pdo, $accountId);
         $pdo->prepare(
-            'UPDATE member_moderation SET banned_until = 0, voting_rights = 1, reputation = ?, strikes = 0, updated_at = ? WHERE account_id = ?'
+            'UPDATE member_moderation SET banned_until = 0, voting_rights = 1, reputation = ?, strikes = 0, needs_review = 0, updated_at = ? WHERE account_id = ?'
         )->execute([self::INITIAL_REPUTATION, time(), $accountId]);
+    }
+
+    /** R10-LAB-01 — Membres dont la réputation est tombée à 0 sans pack détecté : à arbitrer par un admin. */
+    public static function flaggedForReview(PDO $pdo, int $limit = 50): array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT m.account_id, a.username, m.reputation, m.strikes
+               FROM member_moderation m JOIN accounts a ON a.id = m.account_id
+              WHERE m.needs_review = 1 ORDER BY m.updated_at DESC LIMIT ?'
+        );
+        $stmt->bindValue(1, $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
     }
 }
