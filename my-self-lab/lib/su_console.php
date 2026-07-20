@@ -61,6 +61,128 @@ final class SuConsole
         };
     }
 
+    /**
+     * Terminal SU SIMULÉ (aucun pouvoir réel). Reproduit les commandes du vrai CLI selfrecover-su
+     * sur une sandbox ::memory:. L'état (admins) est cohérent entre commandes car le client renvoie
+     * l'historique des mutations déjà validées ($mutations), rejoué avant la commande courante.
+     */
+    public static function terminal(array $mutations, string $cmd): array
+    {
+        $pdo = self::sandbox();
+        self::seed($pdo);
+        $log = [];
+        // Rejeu de l'historique (borné : anti-abus)
+        foreach (array_slice($mutations, 0, 100) as $m) {
+            self::applyMutation($pdo, (string) $m, $log);
+        }
+
+        $cmd   = trim($cmd);
+        $parts = preg_split('/\s+/', $cmd) ?: [];
+        $verb  = strtolower($parts[0] ?? '');
+        $arg   = $parts[1] ?? '';
+        $out = [];
+        $mutating = false;
+
+        switch ($verb) {
+            case '':
+                break;
+            case 'help':
+                $out = [
+                    'Commandes SU (démo — sandbox, aucun effet réel) :',
+                    '  list-admins            liste les admins',
+                    '  list-requests          demandes de promotion en attente',
+                    '  add-admin <user>       promeut un user en admin (tracé)',
+                    '  revoke-admin <user>    révoque un admin (+ coupe ses sessions)',
+                    '  audit                  intégrité du log + admins fantômes',
+                    '  show-log               journal SU (append-only + HMAC)',
+                    '  read-memo <user>       tente de lire un mémo E2E  🔒',
+                    '  whoami | help | clear',
+                    'Comptes de la sandbox : user_lambda (user), admin_demo (admin).',
+                ];
+                break;
+            case 'whoami':
+                $out = ['SuperUser (SU) — juge de dernier recours. En vrai : CLI hors-ligne, jamais sur le web.'];
+                break;
+            case 'list-admins':
+                $rows = $pdo->query('SELECT username FROM accounts WHERE is_admin = 1 ORDER BY username')->fetchAll();
+                $out[] = 'Admins (' . count($rows) . ') :';
+                foreach ($rows as $r) { $out[] = '  ● ' . $r['username']; }
+                if (!$rows) { $out[] = '  (aucun)'; }
+                break;
+            case 'list-requests':
+                $out = [
+                    'Demandes de promotion en attente :',
+                    '  #1  cible=user_lambda  proposé par=admin_demo  statut=pending',
+                    '  → approuve avec : add-admin user_lambda',
+                ];
+                break;
+            case 'add-admin':
+                if ($arg === '') { $out = ['usage: add-admin <username>']; break; }
+                $ok = self::applyMutation($pdo, "add-admin $arg", $log);
+                $out = $ok
+                    ? ["✅ « $arg » promu admin — action écrite au journal SU (HMAC)."]
+                    : ["✗ compte « $arg » introuvable dans la sandbox (essaie: user_lambda)."];
+                $mutating = $ok;
+                break;
+            case 'revoke-admin':
+                if ($arg === '') { $out = ['usage: revoke-admin <username>']; break; }
+                $ok = self::applyMutation($pdo, "revoke-admin $arg", $log);
+                $out = $ok
+                    ? ["✅ « $arg » n'est plus admin — sessions coupées, action tracée."]
+                    : ["✗ « $arg » n'était pas admin."];
+                $mutating = $ok;
+                break;
+            case 'audit':
+                $out = [
+                    '🔎 Audit SU :',
+                    '  ✅ Log intègre (' . count($log) . ' entrée(s), chaîne HMAC vérifiée)',
+                    '  ✅ Aucun admin fantôme : chaque admin en base correspond au log.',
+                ];
+                break;
+            case 'show-log':
+                $out = ['Journal SU (append-only + HMAC, hors DB/webroot) :'];
+                foreach ($log as $i => $e) { $out[] = '  ' . str_pad((string) ($i + 1), 2, '0', STR_PAD_LEFT) . '  ' . $e; }
+                if (!$log) { $out[] = '  (aucune action encore)'; }
+                break;
+            case 'read-memo':
+                if ($arg === '') { $out = ['usage: read-memo <username>']; break; }
+                $blob = base64_encode(random_bytes(48));
+                $out = [
+                    "Lecture du mémo E2E de « $arg » — ce que le serveur/SU voit :",
+                    '  ' . $blob,
+                    '  ⛔ Illisible : chiffré côté client, la clé n\'a JAMAIS touché le serveur.',
+                    '  → Même le SuperUser ne lit pas ton secret. 🔒',
+                ];
+                break;
+            case 'clear':
+                $out = ['__CLEAR__'];
+                break;
+            default:
+                $out = ["commande inconnue : « $verb » — tape « help »."];
+        }
+
+        return ['ok' => true, 'echo' => $cmd, 'output' => $out, 'mutating' => $mutating];
+    }
+
+    /** Applique une mutation (add/revoke-admin) sur la sandbox + trace au log. Retourne true si effet. */
+    private static function applyMutation(PDO $pdo, string $m, array &$log): bool
+    {
+        $p    = preg_split('/\s+/', trim($m)) ?: [];
+        $verb = strtolower($p[0] ?? '');
+        $arg  = $p[1] ?? '';
+        if ($arg === '' || !in_array($verb, ['add-admin', 'revoke-admin'], true)) {
+            return false;
+        }
+        $val  = $verb === 'add-admin' ? 1 : 0;
+        $stmt = $pdo->prepare('UPDATE accounts SET is_admin = ? WHERE username = ?');
+        $stmt->execute([$val, $arg]);
+        if ($stmt->rowCount() > 0) {
+            $log[] = "$verb $arg   (opérateur=su · HMAC ✓)";
+            return true;
+        }
+        return false;
+    }
+
     private static function viewUser(): array
     {
         return [

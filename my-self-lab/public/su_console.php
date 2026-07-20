@@ -34,6 +34,13 @@ render_header('Console SU', $account);
 .subttl{color:var(--txt2);font-size:13px;margin:-6px 0 12px}
 .spinner{color:var(--txt2);font-size:13px}
 .demo-tag{display:inline-block;background:rgba(63,185,140,.15);color:var(--acc);border-radius:5px;padding:2px 7px;font-size:11px;font-weight:600;margin-left:6px}
+.su-term{margin-top:16px;background:#080c10;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.su-term-head{background:#0d141a;padding:6px 12px;font-size:11.5px;color:var(--txt2);border-bottom:1px solid var(--border);font-family:ui-monospace,monospace}
+.su-term-out{padding:12px 14px;font-family:ui-monospace,monospace;font-size:13px;line-height:1.55;color:#c5d1db;max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word}
+.su-term-out .cmd{color:var(--acc)}.su-term-out .lock{color:#fca5a5}
+.su-term-inrow{display:flex;align-items:center;border-top:1px solid var(--border);padding:6px 12px;font-family:ui-monospace,monospace}
+.su-term-inrow .pfx{color:var(--acc);margin-right:8px;font-size:13px}
+.su-term-in{flex:1;background:transparent;border:none;outline:none;color:var(--txt);font-family:ui-monospace,monospace;font-size:13px}
 </style>
 
 <h1>🔑 Console SU — séparation des pouvoirs</h1>
@@ -90,9 +97,39 @@ function afficher(role){
     d.ne_peut_pas.lignes.forEach(l=>{h+='<li>'+esc(l)+'</li>';});
     h+='</ul></div></div>';
     h+='<div class="verdict"><div class="k">💡 '+esc(d.cle)+'</div></div>';
+    if(d.role==='su'){
+      h+='<div class="su-term">'
+        +'<div class="su-term-head">🔑 terminal SU simulé — sandbox, aucun effet réel · tape « help »</div>'
+        +'<div class="su-term-out" id="suterm-out"></div>'
+        +'<div class="su-term-inrow"><span class="pfx">su&gt;</span><input class="su-term-in" id="suterm-in" autocomplete="off" spellcheck="false" placeholder="help"></div>'
+        +'</div>';
+    }
     box.innerHTML=h;
+    if(d.role==='su') initSuTerminal();
     box.scrollIntoView({behavior:'smooth',block:'start'});
   }).catch(e=>{box.innerHTML='<div class="panel rouge">Erreur : '+esc(e.message)+'</div>';});
+}
+function initSuTerminal(){
+  const out=document.getElementById('suterm-out'), inp=document.getElementById('suterm-in');
+  if(!out||!inp) return;
+  let mutations=[]; const hist=[]; let hi=-1;
+  const pr=(t,c)=>{const d=document.createElement('div');if(c)d.className=c;d.textContent=t;out.appendChild(d);};
+  const banner=()=>{pr('SelfRecover SuperUser — console de démonstration (sandbox).');pr('Tape « help ». Aucune action réelle, aucun pouvoir.');};
+  banner(); inp.focus();
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='ArrowUp'){if(hist.length){hi=(hi<0?hist.length:hi)-1;if(hi<0)hi=0;inp.value=hist[hi]||'';}e.preventDefault();return;}
+    if(e.key==='ArrowDown'){if(hi>=0){hi++;inp.value=hist[hi]||'';if(hi>=hist.length)hi=-1;}e.preventDefault();return;}
+    if(e.key!=='Enter')return;
+    const cmd=inp.value; inp.value=''; if(cmd.trim())hist.push(cmd); hi=-1;
+    pr('su> '+cmd,'cmd');
+    labPost('/api/su_console.php',{cmd,mutations}).then(d=>{
+      if(!d.ok){pr(d.message||'erreur','lock');return;}
+      if((d.output||[])[0]==='__CLEAR__'){out.innerHTML='';banner();return;}
+      (d.output||[]).forEach(l=>pr(l,/Illisible|⛔|🔒/.test(l)?'lock':null));
+      if(d.mutating&&cmd.trim())mutations.push(cmd.trim());
+      out.scrollTop=out.scrollHeight;
+    }).catch(err=>pr('erreur: '+err.message,'lock'));
+  });
 }
 document.querySelectorAll('.js-role').forEach(b=>b.addEventListener('click',()=>{
   const role=b.dataset.role;

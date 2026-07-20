@@ -11,6 +11,14 @@ require_csrf();
 require_auth(Db::pdo());   // auth simple : tout est SANDBOX → pas de require_admin (aucun pouvoir réel)
 
 $body = json_in();
+
+// Terminal SU simulé : { cmd: "...", mutations: [...] }  (tout en sandbox, aucun effet réel)
+if (array_key_exists('cmd', $body)) {
+    $mutations = is_array($body['mutations'] ?? null) ? $body['mutations'] : [];
+    json_out(SuConsole::terminal($mutations, (string) $body['cmd']));
+}
+
+// Sélecteur de rôle : { role: "user"|"admin"|"su" }
 $role = (string) ($body['role'] ?? '');
 if (!in_array($role, SuConsole::ROLES, true)) {
     json_out(['ok' => false, 'message' => 'Rôle inconnu.'], 400);
