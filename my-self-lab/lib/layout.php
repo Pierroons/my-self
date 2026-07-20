@@ -92,6 +92,7 @@ footer{border-top:1px solid var(--border);margin-top:30px;padding:18px 20px;text
     <a href="/attacks.php">🎯 Attaques</a>
     <a href="/security.php">🔐 Sécurité</a>
     <a href="/redteam.php">🛡️ Red Team</a>
+    <a href="/su_console.php">🔑 Console SU</a>
     <?php if ($account): ?>
       <a href="/messages.php">Messages</a>
       <a href="/profile.php">Mon espace</a>
