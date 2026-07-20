@@ -181,77 +181,19 @@
     }
 
     // ===================== CONSOLE ADMIN (démo — surface pédago, PAS la prod) =====================
-    const TP_ADMIN_TOKEN = 'admindemo'; // démo : doit matcher SELFRECOVER_ADMIN_TOKEN au lancement du serveur
-    let tpAdminTimer = null;
-
-    async function tpAdminApi(action, body) {
-        const opts = { method: body ? 'POST' : 'GET', headers: { 'X-Admin-Token': TP_ADMIN_TOKEN } };
-        if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
-        const res = await fetch('api/index.php?action=' + action, opts);
-        return res.json();
-    }
-
-    // created_at/last_seen SQLite = UTC → heure locale
-    function tpFmtTs(s) { if (!s) return ''; const d = new Date(String(s).replace(' ', 'T') + 'Z'); return isNaN(d) ? s : d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }); }
-
-    async function tpRenderAdmin() {
+    // (ex-R9-05) Plus de jeton admin STATIQUE dans le front public : le pilotage des litiges L3
+    // est désormais authentifié par SESSION sur une page dédiée (/admin.html). Cet onglet ne fait
+    // plus d'appel admin depuis la page publique — il pointe vers la vraie console.
+    function tpRenderAdmin() {
         const el = document.getElementById('tp-admin-body');
         if (!el) return;
-        // Ne pas ré-render pendant que l'admin tape (sinon l'input est recréé et le texte perdu)
-        const af = document.activeElement;
-        if (af && af.tagName === 'INPUT' && af.closest && af.closest('.tp-admin')) return;
-        let sig = { signals: [] }, disp = { disputes: [] };
-        try { sig = await tpAdminApi('admin-l2-signals'); } catch (e) {}
-        try { disp = await tpAdminApi('admin-disputes'); } catch (e) {}
-        if (sig.error || disp.error) { el.innerHTML = '<div style="color:#fca5a5">' + escapeHtml(sig.error || disp.error) + ' (token démo « admindemo » — lance le serveur avec SELFRECOVER_ADMIN_TOKEN=admindemo)</div>'; return; }
-        // Récupère les messages de chaque litige (côté admin) pour l'afficher
-        for (const d of (disp.disputes || [])) {
-            try { const c = await tpAdminApi('dispute-chat', { dispute_number: d.dispute_number }); d._msgs = c.messages || []; d.status = c.status || d.status; } catch (e) { d._msgs = []; }
-        }
-        let html = '<h4>Signaux L2 (anonymes)</h4>';
-        html += (sig.signals && sig.signals.length)
-            ? sig.signals.map(s => '<div class="tp-sig">⚠ ' + s.attempts + ' tentative(s) L2 · ' + tpFmtTs(s.last_seen) + '</div>').join('')
-            : '<div style="color:#64748b">aucun</div>';
-        html += '<h4>Litiges L3</h4>';
-        html += (disp.disputes && disp.disputes.length)
-            ? disp.disputes.map(tpRenderDispute).join('')
-            : '<div style="color:#64748b">aucun</div>';
-        el.innerHTML = html;
+        el.innerHTML = '<div style="line-height:1.6">🔒 La console admin est désormais <b>séparée et authentifiée par session</b>.'
+            + '<br>Ouvre <a href="admin.html" style="color:#3fb98c;text-decoration:underline">/admin.html</a> et connecte-toi avec un compte admin pour piloter les litiges L3.'
+            + '<br><span style="color:#64748b">En prod, aucun jeton admin n\'est exposé dans le front public (fini le token statique R9-05).</span></div>';
     }
 
-    // Affiche le faisceau de signaux (questionnaire user + preuves passives) pour l'admin
-    function tpRenderSignals(s) {
-        if (!s || (!(s.passive || []).length && !(s.declarative || []).length)) return '';
-        const mark = ok => ok ? '<span style="color:#86efac">✓</span>' : '<span style="color:#fca5a5">✗</span>';
-        const pRow = o => '<div class="fs-row">' + mark(o.ok) + ' ' + escapeHtml(o.label) + ' — ' + escapeHtml(o.detail || '') + '</div>';
-        const dRow = o => '<div class="fs-row">' + mark(o.ok) + ' ' + escapeHtml(o.label) + ' — dit <b>' + escapeHtml(o.dit) + '</b> / réel <b>' + escapeHtml(o.reel) + '</b></div>';
-        let h = '<div class="tp-faisceau"><div class="fs-sum">🔎 Faisceau — ' + escapeHtml(s.summary || '') + '</div>';
-        if ((s.passive || []).length) h += '<div class="fs-lbl">Passifs (non falsifiables)</div>' + s.passive.map(pRow).join('');
-        if ((s.declarative || []).length) h += '<div class="fs-lbl">Déclaratifs (dit / réel)</div>' + s.declarative.map(dRow).join('');
-        return h + '</div>';
-    }
-
-    function tpRenderDispute(d) {
-        const open = ['open', 'awaiting_admin'].includes(d.status);
-        const msgs = (d._msgs || []).length
-            ? d._msgs.map(m => '<div class="m ' + m.sender + '">' + (m.sender === 'admin' ? 'Admin' : escapeHtml(d.username)) + ' : ' + escapeHtml(m.body) + '</div>').join('')
-            : '<div style="color:#64748b">…</div>';
-        const corr = d.l2_prior_attempts ? ' · <span class="corr">' + d.l2_prior_attempts + ' échec(s) L2 préalable(s) (même source)</span>' : '';
-        return '<div class="tp-disp" data-num="' + escapeHtml(d.dispute_number) + '">' +
-            '<div><span class="num">' + escapeHtml(d.dispute_number) + '</span> · <b>' + escapeHtml(d.username) + '</b></div>' +
-            '<div class="meta">statut : ' + escapeHtml(d.status) + corr + '</div>' +
-            tpRenderSignals(d.signals) +
-            '<div class="tp-chat">' + msgs + '</div>' +
-            (open
-                ? '<input type="text" placeholder="Répondre au demandeur…" onkeydown="if(event.key===\'Enter\'){window.SelfRecoverTP.adminChat(this.closest(\'.tp-disp\').dataset.num,this.value);this.value=\'\';}">' +
-                  '<div class="acts"><button class="grant" onclick="window.SelfRecoverTP.adminDecide(\'' + d.dispute_number + '\',\'grant\')">Accorder</button>' +
-                  '<button class="refuse" onclick="window.SelfRecoverTP.adminDecide(\'' + d.dispute_number + '\',\'refuse\')">Refuser</button></div>'
-                : '') +
-            '</div>';
-    }
-
-    function tpAdminStart() { tpRenderAdmin(); if (tpAdminTimer) clearInterval(tpAdminTimer); tpAdminTimer = setInterval(tpRenderAdmin, 3000); }
-    function tpAdminStop() { if (tpAdminTimer) { clearInterval(tpAdminTimer); tpAdminTimer = null; } }
+    function tpAdminStart() { tpRenderAdmin(); }
+    function tpAdminStop() {}
 
     function toggle() {
         panelEl.classList.toggle('collapsed');
@@ -374,8 +316,9 @@
         export: exportLog,
         apiTraced: apiTraced,
         hmacDeriveTraced: hmacDeriveTraced,
-        adminDecide: async (num, decision) => { await tpAdminApi('admin-dispute-decide', { dispute_number: num, decision }); tpRenderAdmin(); },
-        adminChat: async (num, msg) => { if (!msg.trim()) return; await tpAdminApi('dispute-chat', { dispute_number: num, message: msg }); tpRenderAdmin(); },
+        // (ex-R9-05) pilotage des litiges L3 déplacé vers /admin.html (session) — plus d'appel admin ici
+        adminDecide: async () => { tpRenderAdmin(); },
+        adminChat: async () => { tpRenderAdmin(); },
     };
 
     // ===================== AUTO-INIT + MONKEY-PATCH =====================
