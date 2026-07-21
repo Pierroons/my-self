@@ -18,14 +18,10 @@ composer.lock
 # Admin recovery keys (public key + passphrase-sealed private key = SECRET)
 /demo/storage/admin-recovery.*
 
-# Playground runtime — DB + server-side secrets (never committed)
-/playground/*.sqlite
-/playground/*.sqlite-journal
-/playground/*.sqlite-wal
-/playground/*.sqlite-shm
-/playground/*.bin
-/playground/*.sealed
-/playground/*.log
+# Playground runtime — DB + server-side secrets (never committed).
+# Dossier IGNORÉ EN ENTIER : les patterns partiels laissaient passer
+# admin-recovery.key / .pub / mini_db_escrow.php (secrets de scratch).
+/playground/
 
 # Editor
 .vscode/
