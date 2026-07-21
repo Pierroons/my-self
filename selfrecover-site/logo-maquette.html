@@ -1,0 +1,296 @@
+<title>SelfRecover — pistes de logo</title>
+<style>
+  :root{
+    --bg:#0f1419; --bg2:#0a0f13; --surface:rgba(20,27,35,.82); --border:#243040;
+    --accent:#7ab7ff; --accent2:#6cb6ff; --accent-deep:#3f74b8;
+    --teal:#3fb98c; --ink:#e8eaed; --muted:#9aa0a6; --dim:#5f6b78;
+    --glow:0 0 10px rgba(122,183,255,.55);
+    --mono:ui-monospace,"Cascadia Code","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--ink); font-family:var(--mono);
+    line-height:1.6; -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  #rain{position:fixed; inset:0; z-index:0; display:block; background:var(--bg2)}
+  /* faint CRT scanlines over the rain */
+  .veil{position:fixed; inset:0; z-index:1; pointer-events:none;
+    background:linear-gradient(rgba(10,15,19,0) 50%, rgba(10,15,19,.25) 50%);
+    background-size:100% 4px; mix-blend-mode:multiply; opacity:.5}
+  .wrap{position:relative; z-index:2; max-width:1080px; margin:0 auto; padding:64px 22px 80px}
+
+  .eyebrow{font-size:12px; letter-spacing:.32em; text-transform:uppercase; color:var(--accent);
+    margin:0 0 14px; text-shadow:var(--glow)}
+  h1{font-size:clamp(38px,7vw,68px); margin:0; font-weight:700; letter-spacing:-.01em;
+    text-wrap:balance; line-height:1.02}
+  h1 .s{color:var(--muted)} h1 .r{color:var(--accent); text-shadow:0 0 22px rgba(122,183,255,.5)}
+  .lede{max-width:60ch; color:var(--muted); margin:18px 0 0; font-size:16px}
+  .tag{display:inline-block; margin-top:22px; font-size:12px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--teal); border:1px solid #234; border-radius:999px;
+    padding:6px 14px; background:rgba(63,185,140,.06)}
+
+  .section-h{display:flex; align-items:baseline; gap:14px; margin:64px 0 22px}
+  .section-h .n{font-size:12px; letter-spacing:.3em; color:var(--dim)}
+  .section-h h2{font-size:20px; margin:0; letter-spacing:.02em; color:var(--ink)}
+  .section-h .rule{flex:1; height:1px; background:linear-gradient(90deg,var(--border),transparent)}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:18px}
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:26px 24px 22px; backdrop-filter:blur(9px); -webkit-backdrop-filter:blur(9px);
+    display:flex; flex-direction:column; gap:16px}
+  .card .idx{font-size:12px; letter-spacing:.2em; color:var(--accent); text-transform:uppercase}
+  .stage{display:flex; align-items:center; justify-content:center; height:150px;
+    border:1px solid #1c2735; border-radius:10px; background:
+      radial-gradient(120% 120% at 50% 0%, rgba(122,183,255,.08), transparent 60%), #0b1015}
+  .mark{filter:drop-shadow(0 0 7px rgba(122,183,255,.6))}
+  .card h3{margin:0; font-size:16px; color:var(--ink)}
+  .card p{margin:0; font-size:13.5px; color:var(--muted)}
+  .lockup{display:flex; align-items:center; gap:12px; padding:12px 0 2px; border-top:1px solid #1a2430}
+  .wm{font-weight:700; font-size:19px; letter-spacing:.01em}
+  .wm .a{color:var(--muted)} .wm .b{color:var(--accent)}
+  .decl{display:flex; align-items:center; gap:16px; font-size:11px; color:var(--dim);
+    letter-spacing:.12em; text-transform:uppercase}
+  .decl .chip{display:flex; align-items:center; gap:7px}
+
+  .dir{margin-top:20px; border:1px solid #2a4266; border-radius:16px; padding:26px 24px;
+    background:linear-gradient(180deg, rgba(122,183,255,.10), rgba(122,183,255,.03))}
+  .dir .badge{display:inline-block; font-size:11px; letter-spacing:.18em; text-transform:uppercase;
+    color:#0b1015; background:var(--accent); border-radius:6px; padding:5px 9px; font-weight:700; margin-bottom:16px}
+  .lock-final{display:flex; align-items:center; justify-content:center; gap:18px; flex-wrap:wrap; padding:20px 8px 24px}
+  .cle{height:66px; width:auto; filter:drop-shadow(0 0 8px rgba(122,183,255,.6))}
+  .wm-big{display:inline-flex; align-items:center; font-family:var(--mono); font-weight:700;
+    font-size:clamp(32px,7.5vw,52px); letter-spacing:.005em}
+  .wm-big .self{color:var(--muted)} .wm-big .rec{color:var(--accent)}
+  .oarc{height:.82em; width:.82em; margin:0 .02em; filter:drop-shadow(0 0 7px rgba(122,183,255,.6))}
+  .dir p{margin:0; font-size:14px; color:var(--ink); text-align:center; max-width:62ch; margin-inline:auto}
+  .dir p b{color:var(--accent)}
+
+  .brief{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:8px}
+  @media(max-width:720px){.brief{grid-template-columns:1fr}}
+  .panel{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:22px;
+    backdrop-filter:blur(9px); -webkit-backdrop-filter:blur(9px)}
+  .panel h4{margin:0 0 14px; font-size:12px; letter-spacing:.2em; text-transform:uppercase; color:var(--accent)}
+  .sw{display:flex; flex-direction:column; gap:9px}
+  .sw .row{display:flex; align-items:center; gap:12px; font-size:12.5px}
+  .sw .dot{width:24px; height:24px; border-radius:6px; border:1px solid #ffffff18; flex:none}
+  .sw code{color:var(--ink); font-size:12px} .sw .lab{color:var(--muted)}
+  .kv{font-size:13.5px; color:var(--muted)} .kv b{color:var(--ink); font-weight:600}
+  .kv .mono{color:var(--accent2)}
+  ul.dd{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:9px; font-size:13px}
+  ul.dd li{display:flex; gap:9px; color:var(--muted)}
+  ul.dd .y{color:var(--teal)} ul.dd .x{color:#d96459}
+
+  footer{margin-top:56px; padding-top:20px; border-top:1px solid var(--border);
+    font-size:12px; color:var(--dim); letter-spacing:.04em; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px}
+  @media(prefers-reduced-motion:reduce){#rain{opacity:.5}}
+</style>
+
+<canvas id="rain" aria-hidden="true"></canvas>
+<div class="veil" aria-hidden="true"></div>
+
+<main class="wrap">
+  <p class="eyebrow">MySelf · identité de module</p>
+  <h1><span class="s">Self</span><span class="r">Recover</span></h1>
+  <p class="lede">Trois pistes de logo pour le module de récupération sans email. Univers MySelf
+    (slate + bleu), pluie « Matrix » qui fait tomber les modules de l'écosystème. Maquette de travail —
+    à transmettre à Claude Design pour vectorisation & déclinaisons finales.</p>
+  <span class="tag">recovery sans email · split knowledge · souverain</span>
+
+  <div class="section-h"><span class="n">01</span><h2>Pistes de symbole</h2><span class="rule"></span></div>
+  <div class="grid">
+
+    <!-- ① Deux arcs / boucle recovery -->
+    <div class="card">
+      <span class="idx">Piste ① — recommandée</span>
+      <div class="stage">
+        <svg class="mark" width="120" height="120" viewBox="0 0 120 120" fill="none" role="img" aria-label="Deux arcs formant une boucle de récupération">
+          <path d="M75 18.7 A44 44 0 0 1 75 101.3" stroke="#7ab7ff" stroke-width="7.5" stroke-linecap="round"/>
+          <path d="M66 101.3 L81 94.4 L81 108.2 Z" fill="#7ab7ff"/>
+          <path d="M45 101.3 A44 44 0 0 1 45 18.7" stroke="#3f74b8" stroke-width="7.5" stroke-linecap="round"/>
+          <path d="M54 18.7 L39 11.8 L39 25.6 Z" fill="#3f74b8"/>
+          <circle cx="60" cy="54" r="8.5" stroke="#3fb98c" stroke-width="5" fill="none"/>
+          <path d="M60 62 L60 74" stroke="#3fb98c" stroke-width="5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h3>Deux arcs → une boucle</h3>
+      <p>Deux moitiés distinctes (bleu vif / bleu sourd) qui, réunies, ferment la boucle de
+        récupération. Séparées = incomplètes ; ensemble = accès retrouvé. Le trou de serrure central
+        = l'identité. Raconte le <em>split knowledge</em> ET le recovery d'un seul geste.</p>
+      <div class="lockup">
+        <svg width="30" height="30" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+          <path d="M75 18.7 A44 44 0 0 1 75 101.3" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+          <path d="M45 101.3 A44 44 0 0 1 45 18.7" stroke="#3f74b8" stroke-width="9" stroke-linecap="round"/>
+          <circle cx="60" cy="54" r="8.5" stroke="#3fb98c" stroke-width="6" fill="none"/><path d="M60 62 L60 74" stroke="#3fb98c" stroke-width="6" stroke-linecap="round"/>
+        </svg>
+        <span class="wm"><span class="a">Self</span><span class="b">Recover</span></span>
+      </div>
+      <div class="decl">
+        <span class="chip">◍ favicon</span><span class="chip">◐ bi-ton</span><span class="chip">○ mono OK</span>
+      </div>
+    </div>
+
+    <!-- ② S-flèche -->
+    <div class="card">
+      <span class="idx">Piste ②</span>
+      <div class="stage">
+        <svg class="mark" width="120" height="120" viewBox="0 0 120 120" fill="none" role="img" aria-label="S formé par une flèche de restauration">
+          <path d="M84 40 C84 22 56 22 56 40 C56 58 64 62 64 80 C64 98 36 98 36 80"
+                stroke="#7ab7ff" stroke-width="8" stroke-linecap="round"/>
+          <path d="M84 40 L74 33 L92 30 Z" fill="#3fb98c"/>
+          <path d="M36 80 L46 87 L28 90 Z" fill="#3fb98c"/>
+        </svg>
+      </div>
+      <h3>Le « S » qui restaure</h3>
+      <p>Le S de <em>Self</em> dessiné comme la flèche circulaire du « restaurer », pointe à chaque
+        extrémité (le cycle). Ultra-mémorisable, tient à très petite taille, très lisible en favicon.</p>
+      <div class="lockup">
+        <svg width="30" height="30" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+          <path d="M84 40 C84 22 56 22 56 40 C56 58 64 62 64 80 C64 98 36 98 36 80" stroke="#7ab7ff" stroke-width="10" stroke-linecap="round"/>
+        </svg>
+        <span class="wm"><span class="a">Self</span><span class="b">Recover</span></span>
+      </div>
+      <div class="decl"><span class="chip">◍ favicon++</span><span class="chip">○ mono OK</span></div>
+    </div>
+
+    <!-- ③ Clé-cycle -->
+    <div class="card">
+      <span class="idx">Piste ③</span>
+      <div class="stage">
+        <svg class="mark" width="120" height="120" viewBox="0 0 120 120" fill="none" role="img" aria-label="Clé dont l'anneau est une flèche de récupération, trois dents L1 L2 L3">
+          <path d="M53.2 15.2 A20 20 0 1 1 66.8 15.2" stroke="#7ab7ff" stroke-width="7" stroke-linecap="round"/>
+          <path d="M66.8 15.2 L60.5 8 L74 6 Z" fill="#7ab7ff"/>
+          <path d="M60 54 L60 100" stroke="#7ab7ff" stroke-width="7" stroke-linecap="round"/>
+          <path d="M60 80 h13" stroke="#3fb98c" stroke-width="6" stroke-linecap="round"/>
+          <path d="M60 90 h9" stroke="#3fb98c" stroke-width="6" stroke-linecap="round"/>
+          <path d="M60 100 h6" stroke="#3fb98c" stroke-width="6" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <h3>La clé-cycle</h3>
+      <p>Une clé dont l'anneau est la flèche de récupération, et dont les 3 dents évoquent les niveaux
+        <b>L1 / L2 / L3</b>. Le plus explicite (« récupérer l'accès »), un peu plus classique.</p>
+      <div class="lockup">
+        <svg width="30" height="30" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+          <path d="M53.2 15.2 A20 20 0 1 1 66.8 15.2" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+          <path d="M60 54 L60 100" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+          <path d="M60 82 h13" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/><path d="M60 95 h8" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/>
+        </svg>
+        <span class="wm"><span class="a">Self</span><span class="b">Recover</span></span>
+      </div>
+      <div class="decl"><span class="chip">◍ favicon</span><span class="chip">○ mono OK</span></div>
+    </div>
+  </div>
+
+  <div class="section-h"><span class="n">02</span><h2>Direction retenue — ③ clé + ① arcs</h2><span class="rule"></span></div>
+  <div class="dir">
+    <span class="badge">③ clé  +  ① arcs = le O</span>
+    <div class="lock-final">
+      <svg class="cle" viewBox="0 0 120 120" fill="none" role="img" aria-label="Logo SelfRecover : clé de récupération suivie du mot dont le O est formé de deux arcs">
+        <path d="M53.2 15.2 A20 20 0 1 1 66.8 15.2" stroke="#7ab7ff" stroke-width="8" stroke-linecap="round"/>
+        <path d="M66.8 15.2 L60.5 7 L74.5 5 Z" fill="#7ab7ff"/>
+        <path d="M60 54 L60 104" stroke="#7ab7ff" stroke-width="8" stroke-linecap="round"/>
+        <path d="M60 82 h14" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+        <path d="M60 93 h10" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+        <path d="M60 104 h6" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+      </svg>
+      <span class="wm-big"><span class="self">Self</span><span class="rec">Rec</span><svg class="oarc" viewBox="0 0 100 100" fill="none" role="img" aria-label="O formé de deux arcs"><path d="M50 8 A42 42 0 0 1 50 92" stroke="#7ab7ff" stroke-width="13" stroke-linecap="round"/><path d="M50 92 A42 42 0 0 1 50 8" stroke="#3f74b8" stroke-width="13" stroke-linecap="round"/></svg><span class="rec">ver</span></span>
+    </div>
+    <p>La <b>clé (③)</b> comme pictogramme de tête — ses <b>3 dents = L1 / L2 / L3</b>. Puis le mot où le
+      <b>O de rec<span style="color:var(--accent)">O</span>ver</b> est dessiné par les <b>deux arcs (①)</b>,
+      bi-ton (le <em>split knowledge</em> vit dans le mot lui-même). Le symbole-O seul peut resservir de favicon.</p>
+  </div>
+
+  <div class="section-h"><span class="n">03</span><h2>Brief pour Claude Design</h2><span class="rule"></span></div>
+  <div class="brief">
+    <div class="panel">
+      <h4>Palette — charte MySelf</h4>
+      <div class="sw">
+        <div class="row"><span class="dot" style="background:#0f1419"></span><code>#0f1419</code><span class="lab">fond terminal</span></div>
+        <div class="row"><span class="dot" style="background:#7ab7ff"></span><code>#7ab7ff</code><span class="lab">bleu — accent principal</span></div>
+        <div class="row"><span class="dot" style="background:#6cb6ff"></span><code>#6cb6ff</code><span class="lab">bleu pluie / hover</span></div>
+        <div class="row"><span class="dot" style="background:#3f74b8"></span><code>#3f74b8</code><span class="lab">bleu sourd (2ᵉ arc)</span></div>
+        <div class="row"><span class="dot" style="background:#3fb98c"></span><code>#3fb98c</code><span class="lab">teal — signature module</span></div>
+        <div class="row"><span class="dot" style="background:#e8eaed"></span><code>#e8eaed</code><span class="lab">texte / tête de goutte</span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h4>Type & construction</h4>
+      <p class="kv"><b>Wordmark</b> : monospace, <span class="mono">Self</span> en gris sourd +
+        <span class="mono">Recover</span> en bleu accent. Esprit terminal, léger interlettrage.<br><br>
+        <b>Grille</b> : symbole sur canevas 120×120, trait <span class="mono">7–8</span>, bouts ronds,
+        halo bleu léger. Cœur teal = constante partagée entre les modules Self*.<br><br>
+        <b>Déclinaisons attendues</b> : symbole seul (favicon 16/32/180), lockup horizontal, version
+        1 couleur (mono blanc & mono bleu), fond clair + fond sombre.</p>
+    </div>
+    <div class="panel">
+      <h4>Motion — signature MySelf</h4>
+      <p class="kv">Pluie « Matrix » de fond : chaque traînée <b>épelle un module</b> de l'écosystème
+        (<span class="mono">SelfRecover, SelfDataGuard, SelfModerate, SelfJustice, SelfAct, SelfFarm,
+        SelfInvoice, SelfGuard, SelfKeyGuard…</span>), tête de goutte claire, dégradé bleu MySelf.
+        Réutilisable comme motif de marque sur toutes les landings Self*. Respecte
+        <span class="mono">prefers-reduced-motion</span>.</p>
+    </div>
+    <div class="panel">
+      <h4>Do / Don't</h4>
+      <ul class="dd">
+        <li><span class="y">✓</span> garder les deux tons d'arc bien distincts (le concept en dépend)</li>
+        <li><span class="y">✓</span> bleu MySelf en accent, teal réservé au cœur/identité</li>
+        <li><span class="y">✓</span> lisible en mono &amp; à 16 px</li>
+        <li><span class="x">✕</span> pas de vert phosphore le service hote — on est sur la charte MySelf</li>
+        <li><span class="x">✕</span> pas de dégradé arc-en-ciel ni de biseau/3D</li>
+        <li><span class="x">✕</span> pas de cadenas générique (trop vu, ne dit pas « recovery »)</li>
+      </ul>
+    </div>
+  </div>
+
+  <footer>
+    <span>SelfRecover · maquette logo — écosystème MySelf</span>
+    <span>brouillon de travail → Claude Design</span>
+  </footer>
+</main>
+
+<script>
+(function(){
+  var c=document.getElementById('rain'), x=c.getContext('2d');
+  var MODULES=["SELFRECOVER","SELFDATAGUARD","SELFMODERATE","SELFJUSTICE","SELFACT",
+    "SELFFARM","SELFINVOICE","SELFAID","SELFGUARD","SELFKEYGUARD","SELFPOS","MYSELF"];
+  var F=16, cols=0, drops=[], words=[], off=[];
+  function pick(){return MODULES[(Math.random()*MODULES.length)|0];}
+  function size(){
+    c.width=innerWidth; c.height=innerHeight;
+    cols=Math.ceil(c.width/F);
+    drops=[]; words=[]; off=[];
+    for(var i=0;i<cols;i++){ drops[i]=(Math.random()*-40)|0; words[i]=pick(); off[i]=(Math.random()*40)|0; }
+  }
+  size(); addEventListener('resize',size);
+  var reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+  function frame(){
+    x.fillStyle='rgba(10,15,19,0.10)';
+    x.fillRect(0,0,c.width,c.height);
+    x.font='700 '+F+'px ui-monospace, Menlo, monospace';
+    x.textBaseline='top';
+    for(var i=0;i<cols;i++){
+      var w=words[i], row=drops[i];
+      if(row>=0){
+        var ch=w.charAt((row+off[i])%w.length);
+        var px=i*F, py=row*F;
+        // trail
+        x.fillStyle='rgba(108,182,255,0.85)';
+        x.fillText(ch,px,py);
+        // bright head
+        x.shadowColor='rgba(122,183,255,0.9)'; x.shadowBlur=8;
+        x.fillStyle='#e8eaed';
+        x.fillText(ch,px,py);
+        x.shadowBlur=0;
+        // faint teal echo just above (adds depth)
+        if(row>1){ x.fillStyle='rgba(63,185,140,0.10)'; x.fillText(w.charAt((row-2+off[i])%w.length),px,py-F); }
+      }
+      if(row*F>c.height && Math.random()>0.975){ drops[i]=(Math.random()*-20)|0; words[i]=pick(); }
+      else drops[i]=row+1;
+    }
+  }
+  if(reduce){ x.fillStyle='#0a0f13'; x.fillRect(0,0,c.width,c.height); frame(); }
+  else{ var t=0; (function loop(){ t++; if(t%4===0) frame(); requestAnimationFrame(loop); })(); }
+})();
+</script>

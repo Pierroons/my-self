@@ -1,0 +1,318 @@
+<title>SelfRecover — récupération souveraine</title>
+<style>
+  :root{
+    --bg:#0f1419; --bg2:#0a0f13; --panel:rgba(15,20,25,.92); --card:rgba(22,30,40,.72);
+    --border:#223041; --border2:#2a3a4e;
+    --accent:#7ab7ff; --accent2:#6cb6ff; --accent-deep:#3f74b8;
+    --teal:#3fb98c; --ink:#e8eaed; --muted:#9aa0a6; --dim:#61707f;
+    --glow:0 0 24px rgba(122,183,255,.35);
+    --mono:ui-monospace,"Cascadia Code","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+    --sans:var(--mono);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth} body{margin:0}
+  body{background:var(--bg); color:var(--ink); font-family:var(--mono); line-height:1.65;
+    -webkit-font-smoothing:antialiased; overflow-x:hidden}
+  a{color:inherit; text-decoration:none}
+  #rain{position:fixed; inset:0; z-index:0; display:block; background:var(--bg2)}
+  .veil{position:fixed; inset:0; z-index:1; pointer-events:none;
+    background:linear-gradient(rgba(10,15,19,0) 50%, rgba(10,15,19,.22) 50%); background-size:100% 4px;
+    mix-blend-mode:multiply; opacity:.5}
+
+  /* NAV */
+  nav{position:fixed; top:0; left:0; right:0; z-index:20; display:flex; align-items:center;
+    justify-content:space-between; padding:14px 22px; backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px); background:rgba(10,15,19,.55); border-bottom:1px solid #18232f}
+  .brand{display:inline-flex; align-items:center; gap:9px; font-weight:700; font-size:17px}
+  .brand .self{color:var(--muted)} .brand .rec{color:var(--accent)}
+  .navlinks{display:flex; gap:22px; font-size:13px; color:var(--muted); letter-spacing:.02em}
+  .navlinks a:hover{color:var(--accent)}
+  @media(max-width:640px){.navlinks{display:none}}
+
+  /* layout */
+  .hero{position:relative; z-index:2; min-height:100svh; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; padding:120px 22px 80px; gap:26px}
+  .below{position:relative; z-index:2; background:linear-gradient(180deg, transparent, var(--bg) 60px);
+    }
+  .below::before{content:""; position:absolute; inset:0; background:rgba(15,20,25,.90); z-index:-1}
+  .wrap{max-width:1000px; margin:0 auto; padding:0 22px}
+
+  .oarc{height:.82em; width:.82em; margin:0 .02em; vertical-align:middle;
+    filter:drop-shadow(0 0 6px rgba(122,183,255,.6))}
+  .lock{display:inline-flex; align-items:center; gap:16px; filter:drop-shadow(var(--glow))}
+  .lock .cle{height:74px; width:auto}
+  .wm{display:inline-flex; align-items:center; font-family:var(--mono); font-weight:700;
+    font-size:clamp(34px,8vw,58px); letter-spacing:.005em}
+  .wm .self{color:var(--muted)} .wm .rec{color:var(--accent)}
+
+  h1{font-size:clamp(28px,5.4vw,50px); margin:0; font-weight:700; line-height:1.08; letter-spacing:-.01em;
+    text-wrap:balance; max-width:16ch}
+  h1 em{font-style:normal; color:var(--accent); text-shadow:0 0 22px rgba(122,183,255,.45)}
+  .sub{max-width:60ch; color:var(--muted); font-size:clamp(15px,2.4vw,18px); margin:0}
+  .cta{display:flex; gap:14px; flex-wrap:wrap; justify-content:center; margin-top:6px}
+  .btn{font-family:var(--mono); font-size:14px; font-weight:600; padding:13px 22px; border-radius:10px;
+    border:1px solid transparent; cursor:pointer; letter-spacing:.02em; transition:transform .12s, box-shadow .2s}
+  .btn:hover{transform:translateY(-2px)}
+  .btn-p{background:var(--accent); color:#08121e; box-shadow:0 0 0 rgba(122,183,255,0)}
+  .btn-p:hover{box-shadow:0 8px 30px rgba(122,183,255,.35)}
+  .btn-g{border-color:var(--border2); color:var(--ink); background:rgba(122,183,255,.04)}
+  .btn-g:hover{border-color:var(--accent); color:var(--accent)}
+  .scroll{margin-top:14px; font-size:12px; letter-spacing:.24em; text-transform:uppercase; color:var(--dim)}
+
+  section{padding:74px 0}
+  .eyebrow{font-size:12px; letter-spacing:.3em; text-transform:uppercase; color:var(--accent);
+    margin:0 0 12px; text-shadow:0 0 14px rgba(122,183,255,.4)}
+  h2{font-size:clamp(24px,4vw,34px); margin:0 0 14px; font-weight:700; letter-spacing:-.01em; text-wrap:balance}
+  .lead{color:var(--muted); font-size:16px; max-width:64ch; margin:0}
+  em.tl{font-style:normal; color:var(--teal)}
+
+  .grid3{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-top:34px}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px 22px;
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); display:flex; flex-direction:column; gap:10px}
+  .card .ic{width:38px; height:38px; display:grid; place-items:center; border:1px solid var(--border2);
+    border-radius:9px; color:var(--accent); margin-bottom:4px}
+  .card h3{margin:0; font-size:16px; color:var(--ink)}
+  .card p{margin:0; font-size:13.5px; color:var(--muted)}
+
+  .levels{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; margin-top:34px}
+  .lvl{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:24px 22px;
+    position:relative; overflow:hidden}
+  .lvl .tag{font-family:var(--mono); font-size:12px; letter-spacing:.18em; color:var(--accent);
+    text-transform:uppercase}
+  .lvl h3{margin:8px 0 8px; font-size:19px}
+  .lvl p{margin:0; font-size:13.5px; color:var(--muted)}
+  .lvl .ghost{position:absolute; right:-6px; bottom:-18px; font-size:88px; font-weight:800;
+    color:rgba(122,183,255,.06); line-height:1; letter-spacing:-.04em}
+
+  .demo{border:1px solid var(--border2); border-radius:18px; padding:38px 30px; text-align:center;
+    background:radial-gradient(120% 130% at 50% 0%, rgba(122,183,255,.10), transparent 60%), var(--card);
+    display:flex; flex-direction:column; align-items:center; gap:16px}
+  .demo h2{margin:0} .demo p{margin:0}
+
+  .os{display:grid; grid-template-columns:1.1fr .9fr; gap:26px; align-items:center}
+  @media(max-width:720px){.os{grid-template-columns:1fr}}
+  .badges{display:flex; gap:10px; flex-wrap:wrap; margin-top:18px}
+  .pill{font-size:12px; letter-spacing:.08em; color:var(--muted); border:1px solid var(--border2);
+    border-radius:999px; padding:7px 13px; background:rgba(122,183,255,.03)}
+  .pill b{color:var(--teal)}
+
+  .forum{border:1px dashed var(--border2); border-radius:16px; padding:30px; text-align:center;
+    display:flex; flex-direction:column; gap:10px; align-items:center; background:rgba(63,185,140,.04)}
+  .forum .soon{font-size:11px; letter-spacing:.2em; text-transform:uppercase; color:var(--teal);
+    border:1px solid #244; border-radius:999px; padding:5px 12px}
+
+  footer{position:relative; z-index:2; background:var(--bg2); border-top:1px solid #18232f;
+    padding:32px 22px; }
+  .foot{max-width:1000px; margin:0 auto; display:flex; justify-content:space-between; gap:14px;
+    flex-wrap:wrap; font-size:12.5px; color:var(--dim); align-items:center}
+  .foot a:hover{color:var(--accent)} .foot .dot{color:var(--border2)}
+
+  @media(prefers-reduced-motion:reduce){#rain{opacity:.45}}
+</style>
+
+<canvas id="rain" aria-hidden="true"></canvas>
+<div class="veil" aria-hidden="true"></div>
+
+<nav>
+  <a class="brand" href="#top">
+    <svg class="cle" width="24" height="24" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+      <path d="M53.2 15.2 A20 20 0 1 1 66.8 15.2" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+      <path d="M60 54 L60 104" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+      <path d="M60 84 h13" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/><path d="M60 96 h8" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/>
+    </svg>
+    <span><span class="self">Self</span><span class="rec">Recover</span></span>
+  </a>
+  <div class="navlinks">
+    <a href="#how">Comment ça marche</a>
+    <a href="#levels">3 niveaux</a>
+    <a href="#demo">Démo</a>
+    <a href="#os">Open source</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="lock">
+    <svg class="cle" viewBox="0 0 120 120" fill="none" role="img" aria-label="SelfRecover">
+      <path d="M53.2 15.2 A20 20 0 1 1 66.8 15.2" stroke="#7ab7ff" stroke-width="8" stroke-linecap="round"/>
+      <path d="M66.8 15.2 L60.5 7 L74.5 5 Z" fill="#7ab7ff"/>
+      <path d="M60 54 L60 104" stroke="#7ab7ff" stroke-width="8" stroke-linecap="round"/>
+      <path d="M60 82 h14" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+      <path d="M60 93 h10" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+      <path d="M60 104 h6" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+    </svg>
+    <span class="wm"><span class="self">Self</span><span class="rec">Rec</span><svg class="oarc" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M50 8 A42 42 0 0 1 50 92" stroke="#7ab7ff" stroke-width="13" stroke-linecap="round"/><path d="M50 92 A42 42 0 0 1 50 8" stroke="#3f74b8" stroke-width="13" stroke-linecap="round"/></svg><span class="rec">ver</span></span>
+  </div>
+  <h1>Récupère ton compte. Sans email, sans SMS, <em>sans personne d'autre que toi.</em></h1>
+  <p class="sub">Le protocole de récupération souverain. Ton secret ne quitte jamais ta machine —
+    aucun tiers ne peut te verrouiller dehors, aucun email à pirater pour te voler l'accès.</p>
+  <div class="cta">
+    <a class="btn btn-p" href="https://bi-self.my-self.fr/selfrecover/" target="_blank" rel="noopener">Essayer la démo →</a>
+    <a class="btn btn-g" href="#how">Comment ça marche</a>
+  </div>
+  <div class="scroll">↓ défile</div>
+</header>
+
+<div class="below">
+  <!-- LE PROBLÈME -->
+  <section id="why"><div class="wrap">
+    <p class="eyebrow">Le problème</p>
+    <h2>« Mot de passe oublié ? » → on t'envoie un email.</h2>
+    <p class="lead">Sauf que l'email, c'est un <em class="tl">tiers</em>. S'il tombe, si on te le pirate,
+      si le service ferme ou te bannit — tu perds l'accès à tout ce qui dépend de lui. La récupération
+      « classique » a transformé ta boîte mail en unique point de défaillance de toute ta vie numérique.
+      SelfRecover coupe cette dépendance.</p>
+  </div></section>
+
+  <!-- COMMENT ÇA MARCHE -->
+  <section id="how"><div class="wrap">
+    <p class="eyebrow">Comment ça marche</p>
+    <h2>Ta connaissance devient ta clé.</h2>
+    <p class="lead">Trois principes, zéro boîte noire.</p>
+    <div class="grid3">
+      <div class="card">
+        <div class="ic">◐</div>
+        <h3>Split knowledge</h3>
+        <p>Le mot seul ne prouve rien. L'algorithme seul non plus. <em class="tl">Les deux réunis = toi.</em>
+          Personne ne détient une moitié suffisante pour te compromettre.</p>
+      </div>
+      <div class="card">
+        <div class="ic">⑃</div>
+        <h3>Dérivé par domaine</h3>
+        <p>Tu tapes le même mot partout ; chaque site en dérive une clé <em class="tl">unique</em>, côté client.
+          Un faux domaine produit une fausse clé — le phishing échoue tout seul.</p>
+      </div>
+      <div class="card">
+        <div class="ic">∅</div>
+        <h3>Le serveur ne voit rien</h3>
+        <p>Ton secret ne quitte jamais ton navigateur. Le serveur ne garde que des <em class="tl">empreintes</em>.
+          Une fuite de base de données ne donne rien d'exploitable.</p>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- 3 NIVEAUX -->
+  <section id="levels"><div class="wrap">
+    <p class="eyebrow">Trois niveaux d'escalade</p>
+    <h2>Un curseur différent à chaque étage.</h2>
+    <p class="lead">Pas trois fois la même chose — trois façons distinctes de prouver que c'est bien toi.</p>
+    <div class="levels">
+      <div class="lvl">
+        <span class="tag">Niveau 1</span>
+        <h3>Passphrase</h3>
+        <p>Un seul secret, mais fort — dans ta tête ou sur papier. Généré en diceware, impossible à deviner.
+          Zéro possession requise.</p>
+        <span class="ghost">L1</span>
+      </div>
+      <div class="lvl">
+        <span class="tag">Niveau 2</span>
+        <h3>Mot + code</h3>
+        <p>Un mot mémorisé <b>et</b> un code de récupération papier. Vrai 2FA : ce que tu sais + ce que tu as.</p>
+        <span class="ghost">L2</span>
+      </div>
+      <div class="lvl">
+        <span class="tag">Niveau 3</span>
+        <h3>L'humain</h3>
+        <p>Tout perdu ? Un faisceau de preuves + un échange humain. <em class="tl">Jamais</em> de reset
+          automatique — le jugement reste humain, par conception.</p>
+        <span class="ghost">L3</span>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- DÉMO -->
+  <section id="demo"><div class="wrap">
+    <div class="demo">
+      <p class="eyebrow" style="margin:0">Teste-le pour de vrai</p>
+      <h2>Une démo complète tourne déjà.</h2>
+      <p class="lead" style="text-align:center">Inscris-toi <b>sans email</b>, perds volontairement ton accès,
+        puis récupère-le par les trois niveaux. Rien de simulé — c'est le protocole en conditions réelles.</p>
+      <a class="btn btn-p" href="https://bi-self.my-self.fr/selfrecover/" target="_blank" rel="noopener">Ouvrir la démo →</a>
+    </div>
+  </div></section>
+
+  <!-- OPEN SOURCE -->
+  <section id="os"><div class="wrap">
+    <div class="os">
+      <div>
+        <p class="eyebrow">Souverain jusqu'au code</p>
+        <h2>Rien à croire. Tout à vérifier.</h2>
+        <p class="lead">SelfRecover est <b>open source</b> — auto-héberge-le, audite-le, intègre-le dans ton
+          propre service. Pas de SaaS, pas de dépendance, pas de boîte noire. Les whitepapers (FR &amp; EN)
+          décrivent le protocole ligne par ligne.</p>
+        <div class="badges">
+          <span class="pill"><b>AGPL-3.0</b> — anti-capture</span>
+          <span class="pill">Whitepapers <b>FR / EN</b></span>
+          <span class="pill">Zéro <b>tiers</b></span>
+          <span class="pill">Module <b>MySelf</b></span>
+        </div>
+        <div class="cta" style="justify-content:flex-start; margin-top:22px">
+          <a class="btn btn-g" href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">Voir le code →</a>
+        </div>
+      </div>
+      <div class="card" style="align-items:flex-start">
+        <div class="ic" style="color:var(--teal)">✓</div>
+        <h3>Ce que ça change pour toi</h3>
+        <p>• Plus de « lien de réinitialisation » qui traîne dans une boîte mail piratable.<br>
+           • Plus de numéro de téléphone confié à un service.<br>
+           • Un faux site ne peut pas récolter ta clé.<br>
+           • Et si tout casse, un humain — pas un algorithme — tranche.</p>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- FORUM TEASER -->
+  <section id="forum"><div class="wrap">
+    <div class="forum">
+      <span class="soon">Phase 2 · bientôt</span>
+      <h2 style="margin:6px 0">Le forum arrive.</h2>
+      <p class="lead" style="text-align:center">Une communauté souveraineté numérique, où l'auth SelfRecover
+        protège de <em class="tl">vrais</em> comptes. Le dogfooding ultime : le protocole tient sa propre maison.</p>
+    </div>
+  </div></section>
+</div>
+
+<footer>
+  <div class="foot">
+    <span><span class="self" style="color:var(--muted)">Self</span><span style="color:var(--accent)">Recover</span>
+      <span class="dot">·</span> écosystème <a href="https://my-self.fr" target="_blank" rel="noopener">MySelf</a></span>
+    <span>
+      <a href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">GitHub</a>
+      <span class="dot"> · </span>AGPL-3.0
+      <span class="dot"> · </span>récupération sans email
+    </span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var c=document.getElementById('rain'), x=c.getContext('2d');
+  var MODULES=["SELFRECOVER","SELFDATAGUARD","SELFMODERATE","SELFJUSTICE","SELFACT",
+    "SELFFARM","SELFINVOICE","SELFAID","SELFGUARD","SELFKEYGUARD","SELFPOS","MYSELF"];
+  var F=16, cols=0, drops=[], words=[], off=[];
+  function pick(){return MODULES[(Math.random()*MODULES.length)|0];}
+  function size(){
+    c.width=innerWidth; c.height=innerHeight; cols=Math.ceil(c.width/F);
+    drops=[]; words=[]; off=[];
+    for(var i=0;i<cols;i++){ drops[i]=(Math.random()*-40)|0; words[i]=pick(); off[i]=(Math.random()*40)|0; }
+  }
+  size(); addEventListener('resize',size);
+  var reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
+  function frame(){
+    x.fillStyle='rgba(10,15,19,0.10)'; x.fillRect(0,0,c.width,c.height);
+    x.font='700 '+F+'px ui-monospace, Menlo, monospace'; x.textBaseline='top';
+    for(var i=0;i<cols;i++){
+      var w=words[i], row=drops[i];
+      if(row>=0){
+        var ch=w.charAt((row+off[i])%w.length), px=i*F, py=row*F;
+        x.fillStyle='rgba(108,182,255,0.80)'; x.fillText(ch,px,py);
+        x.shadowColor='rgba(122,183,255,0.9)'; x.shadowBlur=8; x.fillStyle='#e8eaed'; x.fillText(ch,px,py); x.shadowBlur=0;
+        if(row>1){ x.fillStyle='rgba(63,185,140,0.09)'; x.fillText(w.charAt((row-2+off[i])%w.length),px,py-F); }
+      }
+      if(row*F>c.height && Math.random()>0.975){ drops[i]=(Math.random()*-20)|0; words[i]=pick(); }
+      else drops[i]=row+1;
+    }
+  }
+  if(reduce){ x.fillStyle='#0a0f13'; x.fillRect(0,0,c.width,c.height); frame(); }
+  else{ var t=0; (function loop(){ t++; if(t%4===0) frame(); requestAnimationFrame(loop); })(); }
+})();
+</script>
