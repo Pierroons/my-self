@@ -138,13 +138,16 @@ async function hmacDerive(word, userSalt) {
 - Rate limit: 3 attempts / 15 minutes per username, 3 blocks → ejected to L2
 - Anti-bot: honeypot field (hidden in CSS) + timing check (< 2 seconds = bot)
 
-### 5.2 Level 2 — Lost Passphrase
+### 5.2 Level 2 — Lost Passphrase (identifier-less 2FA)
 
-- User provides: `public identifier` + `recovery word` (HMAC-derived client-side)
-- 3 attempts with visible countdown (1/3, 2/3, 3/3)
-- On success: new password generated
-- On 3 failures: escalation to L3 (the dispute is opened there)
-- All attempts are tracked
+L2 is a **real 2FA** — possession **and** knowledge — **with no identifier to remember**:
+
+- **Possession**: a *recovery code* (one of the 10 issued at registration). It **locates** the account via an HMAC lookup (no more enumeration) and acts as the possession factor.
+- **Knowledge**: the *memorized word*, HMAC-derived client-side (the raw word never leaves the browser).
+
+The server verifies **both** (Argon2id) and returns a **generic error** that never reveals which one failed. On success, the user picks their new password and the code is marked used. An optional variant — the **"this device" factor** — provides a third L2 path (see §5.4).
+
+After 3 L2 failures (sliding window), automatic escalation to L3. All attempts are tracked.
 
 ### 5.3 Level 3 — All Access Lost
 
@@ -158,6 +161,20 @@ async function hmacDerive(word, userSalt) {
 - **No numeric score is computed.** The signals are **raw facts**: they **never** unlock the account automatically, they only help a **human administrator** decide in the chat
 - Cooldown: 1 hour between submissions
 - The tracking code gates access to the chat thread and to the reset; it expires with the dispute (24h TTL) and is single-use
+
+### 5.4 L2 possession factors — recovery codes & the "this device" factor
+
+L2 always combines **knowledge** (the memorized word) and **possession**. Two possession factors are offered; the user holds at least one.
+
+**Recovery codes — the universal paper factor.**
+- A batch of **10 codes** is generated at registration and shown **only once** (format `xxxxx-xxxxx`, ~40 bits each).
+- Stored twice, never in clear: `code_lookup = HMAC-SHA256(SERVER_SECRET, code)` (O(1) lookup with no identifier, *pepper* role) **and** `code_hash = Argon2id(code)` (verification + resistance to a database leak).
+- **Single-use**, regenerable on demand (the new batch replaces the old one). Universal: paper, password manager, or a second device — the user's choice.
+
+**"This device" factor — the cryptographic factor, optional.**
+- An **ECDSA P-256** keypair is generated in the browser. The private key is **encrypted at rest** by an AES-256-GCM key derived from the **memorized word** via **Argon2id** (client-side WASM), and stored in **IndexedDB**.
+- The server holds **only the public key**. Recovery means **signing a challenge** (32 bytes, 5-min TTL, single-use): the browser decrypts the private key with the word, signs, the server verifies.
+- It is a cryptographic **device + knowledge** 2FA, with no TPM or hardware. **Software** protection (assumed), device-bound. **Automatically disabled on Tor/onion profiles** (WebCrypto/IndexedDB unreliable) — the paper recovery code remains the floor.
 
 ---
 
@@ -188,6 +205,16 @@ When the admin reviews a dispute, two paths exist:
 - **At the 3rd refusal: the account is permanently deleted.** The public identifier becomes available for fresh registration.
 
 **Rationale:** a malicious actor cannot spam disputes indefinitely. Each refusal costs 24h of downtime, and three strikes erase the record completely. The legitimate owner, if blocked by mistake, can still retry after each ban window or re-register from scratch if totally locked out.
+
+### 6.2 Super-user (SU) — governing the administrators
+
+SelfRecover distinguishes three roles: **SU → Admin → User**. The administrator settles L3 disputes; the **super-user** governs the administrators themselves.
+
+**Anchoring and secret.** The SU **does not exist in the database**: it is server-anchored (server access is authorization). Its secret lives **outside the database and outside the code** — a file outside the webroot, or an environment variable. This is a **Kerckhoffs model**: security rests on the secret, never on the obscurity of a code that is public. The SU is a **command-line interface**, never exposed on the web or remotely.
+
+**Separation of powers.** An administrator **does not promote themselves**: they **propose** a promotion, the SU **decides** (mandatory note). The SU can promote/revoke administrators (a revocation cuts sessions), **audit** the state (cross-check DB rights against the log → detect **ghost admins** and put them in **automatic quarantine**), and, if its passphrase is lost, start from an "empty shell" (revoke all administrators, freeze the log).
+
+**Tamper-evident audit log.** Every SU action is logged outside the database and outside the webroot, in four layers: **append-only** at the filesystem level (`chattr +a`), a **hash chain** (any tampering breaks the chain), a **per-entry HMAC** (key derived from the SU passphrase), and **externalization** to a notification channel (action + target + time only, never the forensic context).
 
 ---
 

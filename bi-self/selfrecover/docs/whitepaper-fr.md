@@ -138,13 +138,16 @@ async function hmacDerive(mot, userSalt) {
 - Rate limit : 3 essais / 15 minutes par username, 3 blocages → éjection vers L2
 - Anti-bot : champ honeypot (caché en CSS) + vérification de timing (< 2 secondes = bot)
 
-### 5.2 Niveau 2 — Passphrase perdue
+### 5.2 Niveau 2 — Passphrase perdue (2FA sans identifiant)
 
-- L'utilisateur fournit : `identifiant public` + `mot de récupération` (dérivé HMAC côté client)
-- 3 tentatives avec décompte visible (1/3, 2/3, 3/3)
-- En cas de succès : nouveau mot de passe généré
-- Après 3 échecs : bascule vers L3 (c'est le L3 qui ouvre alors un litige)
-- Toutes les tentatives sont loguées
+Le L2 est un **vrai 2FA** — possession **et** connaissance — **sans identifiant à retenir** :
+
+- **Possession** : un *recovery code* (parmi les 10 remis à l'inscription). Il **localise** le compte via un lookup HMAC (plus d'énumération) et sert de facteur de possession.
+- **Connaissance** : le *mot mémorisé*, dérivé HMAC côté client (le mot brut ne quitte jamais le navigateur).
+
+Le serveur vérifie les **deux** (Argon2id) et renvoie une **erreur générique** ne révélant jamais lequel a échoué. En cas de succès, l'utilisateur choisit son nouveau mot de passe et le code est marqué comme utilisé. Une variante optionnelle — le **facteur « cet appareil »** — offre une troisième voie de L2 (voir §5.4).
+
+Après 3 échecs L2 (fenêtre glissante), bascule automatique vers L3. Toutes les tentatives sont loguées.
 
 ### 5.3 Niveau 3 — Accès totalement perdu
 
@@ -158,6 +161,20 @@ async function hmacDerive(mot, userSalt) {
 - **Aucun score chiffré n'est calculé.** Les signaux sont des **faits bruts** : ils n'ouvrent **jamais** le compte automatiquement, ils aident seulement un **administrateur humain** à trancher dans le chat
 - Cooldown : 1 heure entre chaque soumission
 - Le code de suivi conditionne l'accès au fil de discussion et au rétablissement ; il expire avec le litige (TTL 24 h) et n'est utilisable qu'une fois
+
+### 5.4 Les foyers de possession de L2 — recovery codes & facteur appareil
+
+Le L2 combine toujours **connaissance** (le mot mémorisé) et **possession**. Deux foyers de possession sont proposés ; l'utilisateur en dispose d'au moins un.
+
+**Recovery codes — le foyer papier universel.**
+- Un lot de **10 codes** est généré à l'inscription et affiché **une seule fois** (format `xxxxx-xxxxx`, ~40 bits chacun).
+- Stockage double, jamais en clair : `code_lookup = HMAC-SHA256(SERVER_SECRET, code)` (recherche O(1) sans identifiant, rôle de *pepper*) **et** `code_hash = Argon2id(code)` (vérification + résistance à une fuite de base).
+- **Usage unique**, régénérables à la demande (le nouveau lot remplace l'ancien). Universels : papier, gestionnaire de mots de passe ou second appareil, au choix.
+
+**Facteur « cet appareil » — le foyer cryptographique, optionnel.**
+- Une paire **ECDSA P-256** est générée dans le navigateur. La clé privée est **chiffrée au repos** par une clé AES-256-GCM dérivée du **mot mémorisé** via **Argon2id** (WASM côté client), et stockée en **IndexedDB**.
+- Le serveur ne détient **que la clé publique**. La récupération consiste à **signer un défi** (32 octets, TTL 5 min, usage unique) : le navigateur déchiffre la clé privée avec le mot, signe, le serveur vérifie.
+- C'est un 2FA cryptographique **appareil + connaissance**, sans TPM ni matériel. Protection **logicielle** (assumée), device-bound. **Désactivé automatiquement en profil Tor/onion** (WebCrypto/IndexedDB non fiables) — le recovery code papier reste le plancher.
 
 ---
 
@@ -188,6 +205,16 @@ Quand l'admin examine un litige, deux options existent :
 - **Au 3ᵉ refus : le compte est définitivement supprimé.** L'identifiant public redevient disponible pour une nouvelle inscription.
 
 **Raisonnement :** un attaquant ne peut pas spammer des litiges à l'infini. Chaque refus coûte 24 h de downtime, et trois strikes effacent l'enregistrement complètement. Le vrai propriétaire, s'il est bloqué par erreur, peut réessayer après chaque fenêtre de ban ou recommencer de zéro s'il est totalement verrouillé.
+
+### 6.2 Super-utilisateur (SU) — gouvernance des administrateurs
+
+SelfRecover distingue trois rôles : **SU → Admin → User**. L'administrateur tranche les litiges L3 ; le **super-utilisateur** gouverne les administrateurs eux-mêmes.
+
+**Ancrage et secret.** Le SU **n'existe pas en base de données** : il est ancré au serveur (l'accès au serveur vaut autorisation). Son secret est **hors base et hors code** — un fichier hors racine web, ou une variable d'environnement. C'est un **modèle de Kerckhoffs** : la sécurité repose sur le secret, jamais sur l'obscurité d'un code qui, lui, est public. Le SU est une **interface en ligne de commande**, jamais exposée sur le web ni en distant.
+
+**Séparation des pouvoirs.** Un administrateur **ne se promeut pas lui-même** : il **propose** une promotion, le SU **tranche** (observation obligatoire). Le SU peut promouvoir/révoquer des administrateurs (une révocation coupe les sessions), **auditer** l'état (croiser les droits en base avec le journal → détecter les **administrateurs fantômes** et les mettre en **quarantaine automatique**), et, si sa passphrase est perdue, repartir d'une « coquille vide » (révocation de tous les administrateurs, gel du journal).
+
+**Journal d'audit inviolable.** Chaque action du SU est journalisée hors base et hors racine web, en quatre couches : **append-only** au niveau système de fichiers (`chattr +a`), **chaîne de hachage** (toute altération casse la chaîne), **HMAC par entrée** (clé dérivée de la passphrase SU), et **externalisation** vers un canal de notification (action + cible + heure uniquement, jamais le contexte forensique).
 
 ---
 
