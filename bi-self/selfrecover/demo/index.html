@@ -20,7 +20,7 @@
     <title>SelfRecover — Demo</title>
     <style>
         :root {
-            /* Thème le service hote — matrix vert CPC (à externaliser en theme.css au packaging) */
+            /* Thème matrix vert (à externaliser en theme.css au packaging) */
             --bg: #000;
             --panel: rgba(0,20,10,0.9);
             --text: #33ff33;
@@ -593,7 +593,7 @@
     <!-- Helpers SelfRecover : tirage uniforme, calcul d'entropie, classification -->
     <script src="assets/entropy.js"></script>
     <!-- Transparency Live panel : visualise en direct les requêtes et opérations crypto -->
-    <!-- split admin/transparence retiré de la SPA user (le service hote) — l'admin est sur sa page dédiée admin.html.
+    <!-- split admin/transparence retiré de la SPA user — l'admin est sur sa page dédiée admin.html.
          Le moteur fonctionne sans : window.api + hmacDerive ont un fallback natif. -->
     <!-- <script src="assets/transparency.js"></script> -->
     <script>window.__NO_TRANSPARENCY__ = true;</script>
@@ -870,7 +870,7 @@
             }
         });
 
-        // === Profil intégrateur (le service hote) : deep-link + cloisonnement des onglets + tor-onion ===
+        // === Profil intégrateur : deep-link + cloisonnement des onglets + tor-onion ===
         // ?mode=reset → L1/L2 (mot de passe oublié) · lost → L3 (accès perdu) · register → inscription
         // Cloisonnement : seuls L1↔L2 restent naviguables ensemble ; chaque autre entrée est isolée.
         document.addEventListener('DOMContentLoaded', function () {

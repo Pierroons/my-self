@@ -33,7 +33,7 @@ without an all-or-nothing rewrite of their authentication stack.
 | **[Full](./demo/index.html)** | None at all | Diceware EFF passphrase + HMAC-per-service | Greenfield projects, high-assurance and post-ANTS-leak threat models |
 | **[Lite](./demo/lite.html)** 🆕 | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want phishing-resistance now and migrate to Full later |
 
-**Live demos:** [Full](https://bi-self.my-self.fr/selfrecover/) · [Lite](https://bi-self.my-self.fr/selfrecover/lite.html) · [Side-by-side comparison (8 adversaries × 3 models)](https://bi-self.my-self.fr/selfrecover/comparison.html)
+**Try it:** the demo (Full, Lite, comparison) is **self-hostable in 30 seconds** — see the [Quickstart](#quickstart--run-the-demo-in-30-seconds). Pages: `demo/index.html` (Full), `demo/lite.html` (Lite), `demo/comparison.html` (comparison, 8 adversaries × 3 models).
 
 ---
 
@@ -116,13 +116,69 @@ HMAC is intentionally **fast** client-side because the goal is service binding, 
 
 ## Three-level recovery escalation
 
-| Level | Secret required | Outcome |
+| Level | What you provide | Outcome |
 |-------|----------------|---------|
-| **L1** | Passphrase (diceware, 4 words) | New password |
-| **L2** | Public identifier + recovery word | New password |
-| **L3** | Public identifier + context signals | Human admin decision, then self-re-enrollment |
+| **L1** | Passphrase (EFF diceware, 4 words ≈ 51 bits) | New password |
+| **L2** | **Identifier-less 2FA**: a paper *recovery code* (possession) **+** the memorized word (knowledge) — or, optionally, a *"this device"* proof | New password |
+| **L3** | Bundle of raw facts + human exchange | Human admin decision, then re-enrollment **by the user** |
 
-Rate limits, dispute system, and anti-abuse detection at every level. L3 produces **raw facts** for a human admin — never an automatic score — and on grant the user re-defines their own secret (the server issues no password).
+- **L2 = real 2FA, with no identifier to remember.** The *recovery code* **locates** the account (via an HMAC lookup — no more enumeration) and acts as the **possession** factor; the memorized word (HMAC-derived client-side) is the **knowledge** factor. Both are verified, with a **generic error** that never reveals which one failed. See [recovery codes](#recovery-codes) and [the "this device" factor](#the-this-device-factor).
+- **L3 = human judgment.** A **bundle of raw facts** is shown to an admin — never an automatic score. Dispute access is protected by an **owner sesame** (never the semi-public identifier). On grant, the user **re-defines their own secret**: the server issues no password.
+
+Rate limits, dispute system and anti-abuse detection at every level; **automatic escalation** L1→L2→L3 after 3 failures.
+
+---
+
+## Recovery codes
+
+The **possession factor of L2**. At registration, a batch of **10 codes** is generated and **shown only once** (format `xxxxx-xxxxx`, ~40 bits each).
+
+Each code is stored **twice**, never in clear:
+
+| Column | Role |
+|---|---|
+| `code_lookup` = `HMAC-SHA256(SERVER_SECRET, code)` | **O(1) lookup with no identifier** (the code locates the account) + non-reversible *pepper* role |
+| `code_hash` = `Argon2id(code)` | verification + resistance to a database leak |
+
+- **Single-use** (marked `used` after a successful reset).
+- **Regenerable** on demand (auth = username + memorized word) — the new batch replaces the old one.
+- A `low_codes` warning fires when ≤ 2 remain.
+
+This is what enables an **identifier-less L2**: the code is both "who" and a proof of possession.
+
+---
+
+## The "this device" factor
+
+An **optional third path for L2**, entirely browser-side — a real cryptographic device + knowledge 2FA, **with no TPM or hardware**.
+
+- An **ECDSA P-256 keypair** is generated in the browser.
+- The **private key is encrypted at rest** by an AES-256-GCM key derived from the **memorized word** via **Argon2id** (client-side WASM). The encrypted blob lives in **IndexedDB** — the raw key and the word are never persisted.
+- The **server stores only the public key** (`device_credentials`), plus a random `credential_id` that locates the account (like a recovery code).
+- Recovery = **sign a challenge** (32 bytes, 5-min TTL, single-use): the browser decrypts the private key with the word, signs, the server verifies (`openssl_verify`, SHA-256).
+
+Impossible without **the device** (the blob) **AND** the **word** (to decrypt the key). **Software** protection (not TPM), device-bound, assumed as such. **Automatically disabled on Tor / onion profiles** (WebCrypto/IndexedDB unreliable) — the paper recovery code remains the universal floor.
+
+---
+
+## Super-user (SU) — the tier above admin
+
+SelfRecover distinguishes three roles: **SU → Admin → User**. An **admin** can settle L3 disputes; the **SU** governs the admins themselves.
+
+**Principles:**
+- **The SU is not in the database.** It is server-anchored: server access = authorization. Its secret is **outside the database and outside the code** — in a file outside the webroot, or an environment variable (**Kerckhoffs model**: security rests on the secret, not on the obscurity of the code, which is public).
+- **CLI only**, never exposed on the web or remotely.
+- **Separation of powers**: an admin does not promote themselves — they **propose** a promotion, the SU **decides** (with a mandatory note).
+
+**What the SU can do:** promote/revoke admins (revocation cuts sessions), approve/reject promotion requests, **audit** (cross-checks `is_admin` in the DB ↔ the log → detects **ghost admins** and puts them in **automatic quarantine**), verify log integrity, change its passphrase, seal/restore a log backup (AES-256-GCM), and an "empty shell" command (`reset-shell`) if the SU passphrase is lost (revokes all admins, freezes the log, starts clean).
+
+**Audit log** (outside the DB, outside the webroot) — four layers:
+1. **Append-only** at the filesystem level (`chattr +a` in prod)
+2. **Hash chain** (`prev_hash → entry_hash`, SHA-256) — any tampering breaks the chain
+3. **Per-entry HMAC** (key derived from the SU passphrase)
+4. **Externalization** to a notification channel (action + target + time only, **never** the forensic context)
+
+> ⚠️ The `demo/su.html` page is a **100 % client-side pedagogical simulation** ("everything is FAKE"): it replays the SU terminal experience without ever touching the API or the real database. The real SU console is the server CLI.
 
 ---
 
@@ -243,18 +299,18 @@ This is a companion module, **[`selfrecover-luks`](../../self-security/selfrecov
 
 ## Status
 
-**Concept stage — reference implementation + live demo, self-audited**
+**Deployed reference implementation + self-audited**
 
 This repository contains:
 - The **protocol specification** (whitepapers v1.1)
-- A **standalone working demo** (L1/L2/L3) to try the concept locally
-- A **reference implementation** of the full protocol
+- A **complete reference implementation**: L1/L2/L3 recovery, recovery codes, "this device" factor, super-user (SU) with audit log
+- A **standalone working demo** to try everything locally
+
+**Real deployment:** beyond the demo, the implementation runs in real conditions — notably as the **authentication backend of a messaging service** (XMPP auth via `mod_auth_http`), reusing the SelfRecover account store as-is (`users` table + Argon2id).
 
 **What this repo is NOT (yet):**
-- An installable PHP/JS library (planned, once the protocol is independently audited)
-- A product with an external security audit (an internal adversarial audit has been run; external red-team feedback is welcome)
-
-No real-world production deployment yet. The demo and the self-audit are how you can exercise it today.
+- An installable PHP/JS library (planned for V1.0)
+- A product with an **external** security audit (an internal adversarial audit has been run; external red-team feedback is welcome)
 
 ---
 
@@ -295,16 +351,16 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 
 ## Roadmap
 
-### V0.1 (current — May 2026)
+### V0.1 (July 2026)
 
-- [x] Protocol specification
-- [x] Reference implementation (this repo)
-- [x] Whitepapers EN + FR
-- [x] Standalone demo (this repo)
-- [x] EFF 7776-word wordlist integrated (EN + FR)
-- [x] Three entropy modes in demo: Reinhold dice / Auto random / Free passphrase / Hybrid
-- [x] Diceware reference PDF (EN + FR) — official method
-- [x] Standalone offline HTML validator (zero external requests, verifiable by `grep`)
+- [x] Protocol specification + whitepapers EN + FR
+- [x] Complete reference implementation (L1/L2/L3)
+- [x] Standalone demo + offline HTML validator (zero external requests, verifiable by `grep`)
+- [x] EFF 7776-word wordlist integrated (EN + FR) + diceware reference PDF
+- [x] **Recovery codes** — L2 possession factor (10 codes, HMAC lookup + Argon2id, single-use)
+- [x] **"This device" factor** — ECDSA P-256, private key under an Argon2id envelope, public key only server-side
+- [x] **Super-user (SU)** — SU→Admin→User model, append-only + hash-chained + HMAC audit log, ghost-admin detection
+- [x] **Real deployment** — authentication backend of a messaging service (XMPP auth via `mod_auth_http`)
 
 ### V0.2 — MySelf-Live (planned: summer 2026)
 

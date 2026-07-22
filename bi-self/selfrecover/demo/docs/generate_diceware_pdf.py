@@ -23,10 +23,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "..", "data")
 DOC_VERSION = "0.4.0"
 
-URL_TOOL = "https://bi-self.my-self.fr/selfrecover/offline/selfrecover-validator.html"
-URL_SELF = "https://bi-self.my-self.fr/selfrecover"
-DISP_TOOL = "bi-self.my-self.fr/selfrecover/offline/selfrecover-validator.html"
-DISP_SELF = "bi-self.my-self.fr/selfrecover"
+URL_TOOL = "https://your-instance.example/selfrecover/offline/selfrecover-validator.html"
+URL_SELF = "https://your-instance.example/selfrecover"
+DISP_TOOL = "your-instance.example/selfrecover/offline/selfrecover-validator.html"
+DISP_SELF = "your-instance.example/selfrecover"
 
 # --- Charte MySelf (RGB) : usage LEGER sur fond blanc ---
 ACCENT = (58, 125, 210)      # bleu MySelf assombri pour lisibilite/impression sur blanc

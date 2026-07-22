@@ -97,9 +97,9 @@ function su_audit_append(string $action, string $target, array $extra = []): arr
 
 /** Externalisation ntfy — MINIMALE (jamais le forensic en clair : action + cible + heure). */
 function su_audit_ntfy(array $entry): void {
-    $url = getenv('SELFRECOVER_NTFY_URL'); // ex https://alerts.my-self.fr/secu-escrow
+    $url = getenv('SELFRECOVER_NTFY_URL'); // ex https://ntfy.example/your-topic
     if (!$url) return;
-    $token = getenv('SELFRECOVER_NTFY_TOKEN') ?: ''; // requis si l'instance ntfy est deny-all (alerts.my-self.fr)
+    $token = getenv('SELFRECOVER_NTFY_TOKEN') ?: ''; // requis si l'instance ntfy est deny-all (votre serveur ntfy en deny-all)
     $msg = sprintf('[SU-AUDIT] %s : %s (seq %d · %s)', $entry['action'], $entry['target'], $entry['seq'], $entry['ts_paris']);
     $header = "Content-Type: text/plain\r\nTitle: SelfRecover SU\r\nPriority: high\r\nTags: warning,key\r\n";
     if ($token !== '') $header .= "Authorization: Bearer $token\r\n";

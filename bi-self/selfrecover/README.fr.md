@@ -33,7 +33,7 @@ sans réécriture totale de la pile d'authentification existante.
 | **[Full](./demo/index.html)** | Aucun | Passphrase diceware EFF + HMAC par service | Projets greenfield, modèles de menace exigeants et post-ANTS |
 | **[Lite](./demo/lite.html)** 🆕 | Conservé (lien reset SMTP) | Un mot mémorisé par l'utilisateur, dérivé HMAC côté client, jamais envoyé en clair | Stack legacy qui veut une résistance au phishing immédiate, migration vers Full plus tard |
 
-**Démos live :** [Full](https://bi-self.my-self.fr/selfrecover/) · [Lite](https://bi-self.my-self.fr/selfrecover/lite.html) · [Comparatif côte à côte (8 adversaires × 3 modèles)](https://bi-self.my-self.fr/selfrecover/comparison.html)
+**Essayer :** la démo (Full, Lite, comparatif) est **auto-hébergeable en 30 secondes** — voir le [Quickstart](#quickstart--lancer-la-démo-en-30-secondes). Pages : `demo/index.html` (Full), `demo/lite.html` (Lite), `demo/comparison.html` (comparatif 8 adversaires × 3 modèles).
 
 ---
 
@@ -116,13 +116,69 @@ HMAC est volontairement **rapide** côté client car l'objectif est la liaison a
 
 ## Escalade de récupération à trois niveaux
 
-| Niveau | Secret requis | Résultat |
+| Niveau | Ce qu'il faut fournir | Résultat |
 |-------|----------------|---------|
-| **L1** | Passphrase (diceware, 4 mots) | Nouveau mot de passe |
-| **L2** | Identifiant public + mot de récupération | Nouveau mot de passe |
-| **L3** | Identifiant public + signaux contextuels | Décision d'un admin humain, puis ré-enrôlement par l'utilisateur |
+| **L1** | Passphrase (diceware EFF, 4 mots ≈ 51 bits) | Nouveau mot de passe |
+| **L2** | **2FA sans identifiant** : un *recovery code* papier (possession) **+** le mot mémorisé (connaissance) — ou, en option, une preuve *« cet appareil »* | Nouveau mot de passe |
+| **L3** | Faisceau de faits bruts + échange humain | Décision d'un admin humain, puis ré-enrôlement **par l'utilisateur** |
 
-Limites de débit, système de litige, et détection d'abus à chaque niveau. Le L3 produit des **faits bruts** pour un admin humain — jamais un score automatique — et en cas d'accord l'utilisateur redéfinit lui-même son secret (le serveur n'émet aucun mot de passe).
+- **L2 = vrai 2FA, sans identifiant à retenir.** Le *recovery code* **localise** le compte (via un lookup HMAC — plus d'énumération) et fait office de facteur de **possession** ; le mot mémorisé (dérivé HMAC côté client) est le facteur de **connaissance**. Les deux sont vérifiés, avec une **erreur générique** qui ne révèle jamais lequel a échoué. Voir [recovery codes](#recovery-codes) et [facteur « cet appareil »](#facteur--cet-appareil-).
+- **L3 = jugement humain.** Un **faisceau de faits bruts** est présenté à un admin — jamais un score automatique. L'accès au litige est protégé par un **sésame propriétaire** (jamais l'identifiant semi-public). En cas d'accord, l'utilisateur **redéfinit lui-même** son secret : le serveur n'émet aucun mot de passe.
+
+Limites de débit, système de litige et détection d'abus à chaque niveau ; **escalade automatique** L1→L2→L3 après 3 échecs.
+
+---
+
+## Recovery codes
+
+Le **foyer de possession de L2**. À l'inscription, un lot de **10 codes** est généré et **affiché une seule fois** (format `xxxxx-xxxxx`, ~40 bits chacun).
+
+Chaque code est stocké **deux fois**, jamais en clair :
+
+| Colonne | Rôle |
+|---|---|
+| `code_lookup` = `HMAC-SHA256(SERVER_SECRET, code)` | recherche **O(1) sans identifiant** (le code localise le compte) + rôle de *pepper* non réversible |
+| `code_hash` = `Argon2id(code)` | vérification + résistance à une fuite de base |
+
+- **Usage unique** (marqué `used` après un reset réussi).
+- **Régénérables** à la demande (auth = username + mot mémorisé) — le nouveau lot remplace l'ancien.
+- Un avertissement `low_codes` remonte quand il en reste ≤ 2.
+
+C'est ce qui permet un **L2 sans identifiant à retenir** : le code fait à la fois « qui » et « une preuve de possession ».
+
+---
+
+## Facteur « cet appareil »
+
+Une **troisième voie optionnelle de L2**, entièrement côté navigateur — un vrai 2FA cryptographique appareil + connaissance, **sans TPM ni matériel**.
+
+- Une **paire ECDSA P-256** est générée dans le navigateur.
+- La **clé privée est chiffrée au repos** par une clé AES-256-GCM dérivée du **mot mémorisé** via **Argon2id** (WASM côté client). Le blob chiffré vit dans **IndexedDB** — la clé nue et le mot ne sont jamais persistés.
+- Le **serveur ne stocke que la clé publique** (`device_credentials`), plus un `credential_id` aléatoire qui localise le compte (comme un recovery code).
+- La récupération = **signer un challenge** (32 octets, TTL 5 min, usage unique) : le navigateur déchiffre la clé privée avec le mot, signe, le serveur vérifie (`openssl_verify`, SHA-256).
+
+Impossible sans **l'appareil** (le blob) **ET** le **mot** (pour déchiffrer la clé). Protection **logicielle** (pas TPM), device-bound, assumée comme telle. **Désactivé automatiquement sur Tor / profil onion** (WebCrypto/IndexedDB non fiables) — le recovery code papier reste le plancher universel.
+
+---
+
+## Super-utilisateur (SU) — le cran au-dessus de l'admin
+
+SelfRecover distingue trois rôles : **SU → Admin → User**. Un **admin** peut trancher les litiges L3 ; le **SU** gouverne les admins eux-mêmes.
+
+**Principes :**
+- **Le SU n'est pas en base.** Il est ancré au serveur : accès au serveur = autorisation. Son secret est **hors base et hors code** — dans un fichier hors webroot ou une variable d'environnement (**modèle Kerckhoffs** : la sécurité tient au secret, pas à l'obscurité du code, qui est public).
+- **CLI uniquement**, jamais exposé sur le web ni en distant.
+- **Séparation des pouvoirs** : un admin ne se promeut pas lui-même — il **propose** une promotion, le SU **tranche** (avec observation obligatoire).
+
+**Ce que le SU peut faire :** promouvoir/révoquer des admins (révocation = coupe les sessions), approuver/rejeter les demandes de promotion, **auditer** (croise `is_admin` en base ↔ journal → détecte les **admins fantômes** et les met en **quarantaine automatique**), vérifier l'intégrité du journal, changer sa passphrase, sceller/restaurer une sauvegarde du journal (AES-256-GCM), et une commande « coquille vide » (`reset-shell`) si la passphrase SU est perdue (révoque tous les admins, fige le journal, repart propre).
+
+**Journal d'audit** (hors base, hors webroot) — quatre couches :
+1. **Append-only** au niveau filesystem (`chattr +a` en prod)
+2. **Chaîne de hachage** (`prev_hash → entry_hash`, SHA-256) — toute altération casse la chaîne
+3. **HMAC par entrée** (clé dérivée de la passphrase SU)
+4. **Externalisation** vers un canal de notification (action + cible + heure uniquement, **jamais** le contexte forensique)
+
+> ⚠️ La page `demo/su.html` est une **simulation pédagogique 100 % côté client** (« tout est FAKE ») : elle rejoue l'expérience du terminal SU sans jamais toucher l'API ni la vraie base. La vraie console SU est le CLI serveur.
 
 ---
 
@@ -243,18 +299,18 @@ C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecove
 
 ## Statut
 
-**Phase de concept — implémentation de référence + démo live, auto-audité**
+**Implémentation de référence déployée + auto-auditée**
 
 Ce dépôt contient :
 - La **spécification du protocole** (whitepapers v1.1)
-- Une **démo autonome fonctionnelle** (L1/L2/L3) pour essayer le concept localement
-- Une **implémentation de référence** du protocole complet
+- Une **implémentation de référence complète** : récupération L1/L2/L3, recovery codes, facteur « cet appareil », super-utilisateur (SU) avec journal d'audit
+- Une **démo autonome fonctionnelle** pour tout essayer localement
+
+**Déploiement réel :** au-delà de la démo, l'implémentation tourne en conditions réelles — notamment comme **backend d'authentification d'un service de messagerie** (auth XMPP via `mod_auth_http`), qui réutilise tel quel le stockage de comptes SelfRecover (table `users` + Argon2id).
 
 **Ce que ce dépôt n'est PAS (encore) :**
-- Une bibliothèque PHP/JS installable (prévue, une fois le protocole éprouvé)
-- Un produit avec audit de sécurité externe (un audit adverse interne a été mené ; les retours red-team externes sont bienvenus)
-
-Pas encore de déploiement en production réelle. La démo et l'auto-audit sont les moyens de l'éprouver aujourd'hui.
+- Une bibliothèque PHP/JS installable (prévue en V1.0)
+- Un produit avec audit de sécurité **externe** (un audit adverse interne a été mené ; les retours red-team externes sont bienvenus)
 
 ---
 
@@ -295,16 +351,16 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 ## Roadmap
 
-### V0.1 (actuel — mai 2026)
+### V0.1 (juillet 2026)
 
-- [x] Spécification du protocole
-- [x] Implémentation de référence (ce dépôt)
-- [x] Whitepapers EN + FR
-- [x] Démo autonome (ce dépôt)
-- [x] Wordlist EFF 7776 mots intégrée (EN + FR)
-- [x] Trois modes d'entropie dans la démo : Reinhold dés / Auto random / Passphrase libre / Hybride
-- [x] PDF de référence diceware (EN + FR) — méthode officielle
-- [x] Validateur offline HTML autonome (zéro requête externe, vérifiable par `grep`)
+- [x] Spécification du protocole + whitepapers EN + FR
+- [x] Implémentation de référence complète (L1/L2/L3)
+- [x] Démo autonome + validateur offline HTML (zéro requête externe, vérifiable par `grep`)
+- [x] Wordlist EFF 7776 mots intégrée (EN + FR) + PDF de référence diceware
+- [x] **Recovery codes** — foyer de possession de L2 (10 codes, HMAC lookup + Argon2id, usage unique)
+- [x] **Facteur « cet appareil »** — ECDSA P-256, clé privée sous enveloppe Argon2id, clé publique seule côté serveur
+- [x] **Super-utilisateur (SU)** — modèle SU→Admin→User, journal d'audit append-only + hash-chaîné + HMAC, détection d'admins fantômes
+- [x] **Déploiement réel** — backend d'authentification d'un service de messagerie (auth XMPP via `mod_auth_http`)
 
 ### V0.2 — MySelf-Live (prévu : été 2026)
 

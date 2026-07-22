@@ -39,7 +39,7 @@ touch /var/lib/selfrecover/su-audit.log
 sudo chattr +a /var/lib/selfrecover/su-audit.log
 
 # ntfy : pousser les events SU hors-serveur en temps réel
-# SELFRECOVER_NTFY_URL=https://alerts.my-self.fr/secu-su
+# SELFRECOVER_NTFY_URL=https://ntfy.example/your-topic
 ```
 
 ## 4. Contrôles de mise en service

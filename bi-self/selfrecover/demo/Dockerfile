@@ -13,7 +13,7 @@ LABEL org.opencontainers.image.description="Zero-email account recovery protocol
 LABEL org.opencontainers.image.source="https://github.com/Pierroons/my-self"
 LABEL org.opencontainers.image.licenses="AGPL-3.0-or-later"
 LABEL org.opencontainers.image.documentation="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover"
-LABEL org.opencontainers.image.url="https://bi-self.my-self.fr/selfrecover/"
+LABEL org.opencontainers.image.url="https://your-instance.example/selfrecover/"
 
 # pdo_sqlite est inclus dans php:8.2-cli, sqlite3 CLI utile pour init schéma
 RUN apk add --no-cache sqlite
