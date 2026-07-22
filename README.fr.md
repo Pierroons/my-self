@@ -35,12 +35,12 @@ droits, ses données et ses biens.
 |--------|------------------------------|--------|
 | [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | v0.4.0 ✅ |
 | [SelfModerate](./bi-self/selfmoderate/) | Comment tu te comportes ? | v0.1.0 (concept) |
-| [SelfJustice](https://justice.my-self.fr) | Quels sont tes droits ? | bêta v0.1.0 ✅ |
+| [SelfJustice](https://your-instance.example) | Quels sont tes droits ? | bêta v0.1.0 ✅ |
 | [SelfAct](./self-right/selfact/) | Comment tu les fais valoir ? | v0.1.2 — code, pas encore en ligne |
 | [SelfGuard](./self-security/selfguard/) | Comment protéger tes données ? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | Comment protéger tes objets ? | concept |
-| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données utilisateurs au repos ? | bêta v0.1.0 ✅ ([démo](https://dataguard.my-self.fr)) |
-| **[SelfFarm-Lite](https://selffarm.my-self.fr)** | **Comment piloter ton exploitation ?** | **v0.2 live ✅** |
+| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données utilisateurs au repos ? | bêta v0.1.0 ✅ ([démo](https://your-instance.example)) |
+| **[SelfFarm-Lite](https://your-instance.example)** | **Comment piloter ton exploitation ?** | **v0.2 live ✅** |
 
 ---
 
@@ -113,7 +113,7 @@ central unique** (`self_agri_book`) :
 l'unicité `(source_module, source_id)`. Source unique de vérité pour
 l'expert-comptable, l'administration fiscale et l'exploitant lui-même.
 
-**Démo live** : https://selffarm.my-self.fr
+**Démo live** : https://your-instance.example
 
 **Alignement philosophique** : SelfFarm-Lite utilise les trois piliers MySelf
 comme fondations :

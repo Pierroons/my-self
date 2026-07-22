@@ -1,6 +1,6 @@
 #!/bin/bash
 # ===========================================================================
-# MIGRATION — justice.example.com → justice.my-self.fr + landing my-self.fr
+# MIGRATION — justice.example.com → your-instance.example + landing my-self.fr
 # ===========================================================================
 # À lancer avec sudo : sudo bash /tmp/migration/run.sh
 #
@@ -52,7 +52,7 @@ log "3. Préparation vhost temporaire (HTTP only) pour certbot"
 cat > /etc/nginx/sites-available/myself-root-temp <<'EOF'
 server {
     listen 80;
-    server_name my-self.fr www.my-self.fr justice.my-self.fr;
+    server_name my-self.fr www.my-self.fr your-instance.example;
     root /var/www/my-self;
     location /.well-known/acme-challenge/ {
         root /var/www/my-self;
@@ -74,16 +74,16 @@ ok "Vhost temporaire pour ACME challenge actif."
 # ---------------------------------------------------------------------------
 log "4. Obtention des certificats Let's Encrypt (certbot)"
 
-# Cert pour justice.my-self.fr
-if [ ! -d /etc/letsencrypt/live/justice.my-self.fr ]; then
+# Cert pour your-instance.example
+if [ ! -d /etc/letsencrypt/live/your-instance.example ]; then
     certbot certonly --webroot -w /var/www/my-self \
-        -d justice.my-self.fr \
+        -d your-instance.example \
         --non-interactive --agree-tos \
         -m contact@my-self.fr \
-        || die "Échec certbot pour justice.my-self.fr"
-    ok "Cert justice.my-self.fr créé."
+        || die "Échec certbot pour your-instance.example"
+    ok "Cert your-instance.example créé."
 else
-    ok "Cert justice.my-self.fr déjà présent."
+    ok "Cert your-instance.example déjà présent."
 fi
 
 # Cert pour my-self.fr (+ www)
@@ -102,7 +102,7 @@ fi
 log "5. Désactivation du vhost temporaire + installation des vhosts définitifs"
 rm -f /etc/nginx/sites-enabled/myself-root-temp
 
-# Nouveau vhost SelfJustice (avec justice.my-self.fr + redirect ancien domaine)
+# Nouveau vhost SelfJustice (avec your-instance.example + redirect ancien domaine)
 cp "$MIGDIR/nginx-selfjustice.conf" /etc/nginx/sites-available/selfjustice
 
 # Nouveau vhost racine my-self.fr
@@ -129,19 +129,19 @@ test_url() {
     fi
 }
 
-test_url "https://justice.my-self.fr/"                 "200"
+test_url "https://your-instance.example/"                 "200"
 test_url "https://my-self.fr/"                         "200"
 test_url "https://www.my-self.fr/"                     "200"
 test_url "https://justice.example.com/"             "301"
-test_url "https://justice.my-self.fr/api/status"       "200"
-test_url "https://justice.my-self.fr/api/stats/by-ai"  "200"
+test_url "https://your-instance.example/api/status"       "200"
+test_url "https://your-instance.example/api/stats/by-ai"  "200"
 
 # Vérif que la redirection pointe bien vers le nouveau domaine
 log "7. Vérif du Location header de la redirection"
 LOCATION=$(curl -sI https://justice.example.com/ | grep -i "^location:" | tr -d '\r\n')
 echo "   $LOCATION"
-if echo "$LOCATION" | grep -q "justice.my-self.fr"; then
-    ok "Redirection 301 vers justice.my-self.fr confirmée."
+if echo "$LOCATION" | grep -q "your-instance.example"; then
+    ok "Redirection 301 vers your-instance.example confirmée."
 else
     warn "Redirection 301 semble cassée, vérifier manuellement."
 fi
@@ -151,8 +151,8 @@ log "MIGRATION TERMINÉE"
 echo ""
 echo "Nouvelles URLs en prod :"
 echo "  - https://my-self.fr           (landing)"
-echo "  - https://justice.my-self.fr   (SelfJustice)"
-echo "  - https://justice.my-self.fr/api/status"
+echo "  - https://your-instance.example   (SelfJustice)"
+echo "  - https://your-instance.example/api/status"
 echo ""
 echo "Ancienne URL (301 → nouvelle) :"
 echo "  - https://justice.example.com"

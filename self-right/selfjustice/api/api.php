@@ -235,7 +235,7 @@ if ($segments[0] === 'legi') {
                     $alternatives[] = [
                         'code_id' => $cid,
                         'apercu'  => $alt_row['apercu'] ?? '',
-                        'url'     => "https://justice.my-self.fr/api/legi/article/$ref?code=$cid",
+                        'url'     => (getenv('SELFJUSTICE_BASE_URL') ?: 'https://' . ($_SERVER['HTTP_HOST'] ?? 'your-instance.example')) . "/api/legi/article/$ref?code=$cid",
                     ];
                 }
                 json_response([

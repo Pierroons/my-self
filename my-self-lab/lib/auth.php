@@ -20,7 +20,7 @@ require_once __DIR__ . '/diceware/wordlist.php';
 
 final class Auth
 {
-    public const DOMAIN = 'lab.my-self.fr';
+    public const DOMAIN = 'myself-lab.example';
     private const COOKIE = 'lab_session';
     private const SESSION_TTL = 86400;        // 24h
     private const REGISTER_MAX_PER_IP = 5;    // max comptes créés / IP / heure

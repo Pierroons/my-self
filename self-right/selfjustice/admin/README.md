@@ -1,6 +1,6 @@
 # SelfJustice — Admin Watch
 
-Endpoint privé de surveillance des accès `justice.my-self.fr`. Lecture seule, rendu HTML sobre, 24 h rolling window.
+Endpoint privé de surveillance des accès `your-instance.example`. Lecture seule, rendu HTML sobre, 24 h rolling window.
 
 ## Installation
 
@@ -23,7 +23,7 @@ TOKEN=$(openssl rand -hex 16)
 echo "$TOKEN" | sudo tee /var/lib/selfjustice/admin/token.txt > /dev/null
 sudo chown www-data:www-data /var/lib/selfjustice/admin/token.txt
 sudo chmod 600 /var/lib/selfjustice/admin/token.txt
-echo "URL d'accès : https://justice.my-self.fr/w-$TOKEN/"
+echo "URL d'accès : https://your-instance.example/w-$TOKEN/"
 ```
 
 Le token doit être conservé en lieu sûr (gestionnaire de mots de passe, Proton Pass, etc.). Pour le régénérer, relancer cette commande — l'ancien token est invalidé.
@@ -79,7 +79,7 @@ Le dashboard est désormais à jour dans un délai max de 2 minutes.
 
 ## Utilisation
 
-Ouvrir l'URL `https://justice.my-self.fr/w-<TOKEN>/` dans un navigateur.
+Ouvrir l'URL `https://your-instance.example/w-<TOKEN>/` dans un navigateur.
 
 Le dashboard affiche sur une fenêtre glissante de 24 h :
 - KPI : total requêtes, IPs uniques, UA uniques, 4xx, 5xx, tentatives d'intrusion
@@ -97,7 +97,7 @@ Si le token est compromis, régénérer :
 ```bash
 TOKEN=$(openssl rand -hex 16)
 echo "$TOKEN" | sudo tee /var/lib/selfjustice/admin/token.txt > /dev/null
-echo "Nouvelle URL : https://justice.my-self.fr/w-$TOKEN/"
+echo "Nouvelle URL : https://your-instance.example/w-$TOKEN/"
 ```
 
 L'ancien token est immédiatement invalidé (404 à la prochaine requête).

@@ -56,7 +56,7 @@ if (!is_file($dataPath)) {
     respond(503, [
         'ok'    => false,
         'error' => 'catalog_not_yet_synced',
-        'hint'  => 'Run cron/update_catalog.sh to populate the catalog. See https://justice.my-self.fr/act for documentation.',
+        'hint'  => 'Run cron/update_catalog.sh to populate the catalog. See the SelfAct documentation.',
     ]);
 }
 

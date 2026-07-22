@@ -47,7 +47,7 @@ my-self-lab/
 - SelfModerate (vote/réputation anti-Sybil)
 - Attack Simulator (`/lab/attacks/`)
 - E2E DM inter-utilisateurs (clés asymétriques)
-- Page règles d'engagement red team + hébergement `lab.my-self.fr`
+- Page règles d'engagement red team + hébergement `your-instance.example`
 
 ## Licence
 

@@ -108,6 +108,6 @@ respond(200, [
     'meta'        => $meta,
     'fallback'    => [
         'if_no_official_match' => 'Use /act/api/draft to produce an HTML draft with watermark "NON OFFICIEL — IRRECEVABLE" for printing as PDF',
-        'draft_url'            => 'https://justice.my-self.fr/act/api/draft',
+        'draft_url'            => (getenv('SELFJUSTICE_BASE_URL') ?: 'https://' . ($_SERVER['HTTP_HOST'] ?? 'your-instance.example')) . '/act/api/draft',
     ],
 ]);

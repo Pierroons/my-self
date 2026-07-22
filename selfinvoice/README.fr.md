@@ -104,7 +104,7 @@ Il produit un **document conforme** que le client règle par virement SEPA class
 - [ ] Schéma SQLite clients/factures
 - [ ] Watcher de notifications SEPA (webhook ou polling email)
 - [ ] Prototype v0.1.0 avec CLI + UI web
-- [ ] Déploiement cible : `invoice.my-self.fr`
+- [ ] Déploiement cible : `your-instance.example`
 
 Voir **[whitepaper](docs/whitepaper.docx)** pour le cadre légal complet, l'architecture des templates, et le guide de déploiement.
 

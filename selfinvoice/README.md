@@ -104,7 +104,7 @@ It produces a **compliant document** that the customer pays via a regular SEPA t
 - [ ] Customer/invoice SQLite schema
 - [ ] SEPA notification watcher (webhook or email polling)
 - [ ] v0.1.0 prototype with CLI + web UI
-- [ ] Target deployment: `invoice.my-self.fr`
+- [ ] Target deployment: `your-instance.example`
 
 See **[whitepaper](docs/whitepaper.docx)** for the full legal framework, template architecture, and deployment guide.
 

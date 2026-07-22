@@ -6,11 +6,11 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0-green.svg)](#status)
-[![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
+[![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://your-instance.example)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
-[![LEGI: 488 903 articles](https://img.shields.io/badge/LEGI-488%20903%20articles-blue.svg)](https://justice.my-self.fr/api/status)
-[![EU/CEDH: 705 articles](https://img.shields.io/badge/EU%2FCEDH-705%20articles-blue.svg)](https://justice.my-self.fr/api/status)
+[![LEGI: 488 903 articles](https://img.shields.io/badge/LEGI-488%20903%20articles-blue.svg)](https://your-instance.example/api/status)
+[![EU/CEDH: 705 articles](https://img.shields.io/badge/EU%2FCEDH-705%20articles-blue.svg)](https://your-instance.example/api/status)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
 > **How do I access justice without going broke?**
@@ -134,20 +134,20 @@ All endpoints return JSON, all are rate-limited, all are CORS-open.
 
 1. Open [claude.ai](https://claude.ai), Mistral Le Chat, ChatGPT, Gemini, Perplexity
 2. Describe your conflict in plain language
-3. Add: `analyse justice.my-self.fr`
+3. Add: `analyse your-instance.example`
 4. Receive a structured pre-analysis with official article citations
 
 ### From the command line
 
 ```bash
 # Check the database status
-curl -s https://justice.my-self.fr/api/status | jq
+curl -s https://your-instance.example/api/status | jq
 
 # Fetch a specific article
-curl -s "https://justice.my-self.fr/api/legi/article/L1152-1?code=travail" | jq
+curl -s "https://your-instance.example/api/legi/article/L1152-1?code=travail" | jq
 
 # Full-text search
-curl -s "https://justice.my-self.fr/api/legi/search?q=harcelement&limit=20" | jq
+curl -s "https://your-instance.example/api/legi/search?q=harcelement&limit=20" | jq
 ```
 
 ### Self-host
@@ -181,7 +181,7 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 
 ## Status
 
-**v0.1.0 — live in production at [justice.my-self.fr](https://justice.my-self.fr)**
+**v0.1.0 — live in production at [your-instance.example](https://your-instance.example)**
 
 - [x] System directives (7-step analysis procedure, 5 principles)
 - [x] 5 legal categories (work, neighborhood, consumer, civil, criminal)
@@ -191,7 +191,7 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 - [x] API with 705 EU/CEDH articles
 - [x] Multi-IA tested (Claude, ChatGPT crawler, OAI-SearchBot detected)
 - [x] Public stats (`/api/stats/by-ai`, `/api/stats/by-endpoint`)
-- [x] Dedicated domain [justice.my-self.fr](https://justice.my-self.fr)
+- [x] Dedicated domain [your-instance.example](https://your-instance.example)
 - [ ] Formal legal review by practicing attorney
 - [ ] Community contributions for non-covered domains
 

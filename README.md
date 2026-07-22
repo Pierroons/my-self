@@ -34,12 +34,12 @@ individual sovereign over their own identity, rights, data, and possessions.
 |--------|---------------------|--------|
 | [SelfRecover](./bi-self/selfrecover/) | Who are you? | v0.4.0 ✅ |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | v0.1.0 (concept) |
-| [SelfJustice](https://justice.my-self.fr) | What are your rights? | beta v0.1.0 ✅ |
+| [SelfJustice](https://your-instance.example) | What are your rights? | beta v0.1.0 ✅ |
 | [SelfAct](./self-right/selfact/) | How do you act on them? | v0.1.2 — code, not yet online |
 | [SelfGuard](./self-security/selfguard/) | How do you protect your data? | concept |
 | [SelfKeyGuard](./self-security/selfkeyguard/) | How do you protect your things? | concept |
-| [SelfDataGuard](./self-security/selfdataguard/) | How do you protect users data at rest? | beta v0.1.0 ✅ ([demo](https://dataguard.my-self.fr)) |
-| **[SelfFarm-Lite](https://selffarm.my-self.fr)** | **How do you run your farm?** | **v0.2 live ✅** |
+| [SelfDataGuard](./self-security/selfdataguard/) | How do you protect users data at rest? | beta v0.1.0 ✅ ([demo](https://your-instance.example)) |
+| **[SelfFarm-Lite](https://your-instance.example)** | **How do you run your farm?** | **v0.2 live ✅** |
 
 ---
 
@@ -112,7 +112,7 @@ accounting hub** (`self_agri_book`):
 `(source_module, source_id)` uniqueness. Single source of truth for
 accountant, tax office, and the farmer themselves.
 
-**Live demo**: https://selffarm.my-self.fr
+**Live demo**: https://your-instance.example
 
 **Philosophy match**: SelfFarm-Lite uses the three MySelf pillars underneath:
 - **Bi-Self**: sign legal documents with your SelfRecover identity, contribute

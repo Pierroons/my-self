@@ -5,7 +5,7 @@
     'use strict';
 
     var DIRECTIVES_URL = '/act/api/directives.txt';
-    var FETCH_URL = 'https://justice.my-self.fr/act';
+    var FETCH_URL = window.location.origin + '/act';  // auto-config : domaine de déploiement courant
 
     // Cache-buster : ajoute ?v=YYYYMMDD à une URL pour forcer un fetch frais
     // côté IA (Anthropic/OpenAI/Google/... mettent les pages en cache ~5 min).

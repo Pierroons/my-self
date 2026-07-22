@@ -111,7 +111,7 @@ Sans SelfAct, SelfJustice est une consultation qui finit sur le bureau de l'util
 - [ ] Moteur de calendrier (art. 640 CPC, règles dies a quo / dies ad quem)
 - [ ] Rendu PDF (pipeline weasyprint)
 - [ ] Adaptateur d'intégration pour la sortie API SelfJustice
-- [ ] Prototype v0.1.0 sur `justice.my-self.fr/act`
+- [ ] Prototype v0.1.0 sur `your-instance.example/act`
 
 Voir **[whitepaper](docs/whitepaper.docx)** pour la spécification complète du protocole, le plan de bibliothèque de templates, et la roadmap de déploiement.
 

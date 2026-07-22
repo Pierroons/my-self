@@ -57,7 +57,7 @@ One module protects data. The other protects objects. The coercion resistance is
 |--------|------|--------|
 | [SelfGuard](./selfguard/) | Data vault with guaranteed destruction under coercion | alpha 0.0.1 — concept phase |
 | [SelfKeyGuard](./selfkeyguard/) | Hardware 2FA for physical objects (car, motorcycle, home) | alpha 0.0.1 — concept phase |
-| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving DB exfiltration | beta 0.1.0 — démo déployée (dataguard.my-self.fr) |
+| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving DB exfiltration | beta 0.1.0 — démo déployée (your-instance.example) |
 
 ---
 

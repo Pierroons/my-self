@@ -58,7 +58,7 @@ Du brouillard du « je pense que je suis dans mes droits » au « cette lettre p
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfJustice](./selfjustice/) | Pré-analyse juridique impartiale assistée par IA | v0.1.0 ✅ — en ligne sur [justice.my-self.fr](https://justice.my-self.fr) |
+| [SelfJustice](./selfjustice/) | Pré-analyse juridique impartiale assistée par IA | v0.1.0 ✅ — en ligne sur [your-instance.example](https://your-instance.example) |
 | [SelfAct](./selfact/) | Extension opérationnelle : courriers, formulaires, délais | alpha 0.0.1 — phase de conception |
 
 ---
@@ -67,7 +67,7 @@ Du brouillard du « je pense que je suis dans mes droits » au « cette lettre p
 
 SelfJustice est **déployé en production** et sert n'importe quel agent IA (Claude, ChatGPT, Mistral, Gemini, Perplexity) avec 488 903 articles juridiques français officiels + 705 articles de traités UE/CEDH via une API HTTP ouverte. N'importe qui peut l'interroger, n'importe qui peut l'auto-héberger.
 
-SelfAct est en **phase de conception** (alpha 0.0.1). Le whitepaper définit le périmètre (mise en demeure, saisine, CERFA, délais), l'architecture (templates de prompts + formulaires CERFA XML), et l'intégration avec la sortie de SelfJustice. L'implémentation prototype est prévue pour la v0.1.0 avec un déploiement live sur le même domaine (`justice.my-self.fr/act`).
+SelfAct est en **phase de conception** (alpha 0.0.1). Le whitepaper définit le périmètre (mise en demeure, saisine, CERFA, délais), l'architecture (templates de prompts + formulaires CERFA XML), et l'intégration avec la sortie de SelfJustice. L'implémentation prototype est prévue pour la v0.1.0 avec un déploiement live sur le même domaine (`your-instance.example/act`).
 
 ---
 

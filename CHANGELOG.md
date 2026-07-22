@@ -59,7 +59,7 @@ Ce changelog agrège les jalons transversaux du projet.
 - Section "étage applicatif" au-dessus des 3 piliers
 - Module `self_agri_book` promu "hub live"
 - Module `self_invoice` promu "démo live"
-- Bouton "🌻 Essayer la démo" vers `https://selffarm.my-self.fr`
+- Bouton "🌻 Essayer la démo" vers `https://your-instance.example`
 
 ### Ajouté — Haute disponibilité DEVSERVER
 
@@ -99,7 +99,7 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ### Ajouté — Self-Right opérationnel
 
-- `SelfJustice` en prod sur `justice.my-self.fr`
+- `SelfJustice` en prod sur `your-instance.example`
 - `SelfAct` index des 334 modèles officiels service-public.fr
 - Compatibilité multi-IA testée (Kimi, DeepSeek, Grok, Mistral, Claude natif)
 

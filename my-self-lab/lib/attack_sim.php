@@ -242,7 +242,7 @@ final class AttackSimulator
         // 🔴 Phishing : dérivation sur un faux domaine vs vrai domaine
         $mot = 'monchat2024';
         $sel = bin2hex(random_bytes(16));
-        $cleVraiSite = Auth::deriveKey($mot, 'lab.my-self.fr', $sel);
+        $cleVraiSite = Auth::deriveKey($mot, Auth::DOMAIN, $sel);
         $clePhishing = Auth::deriveKey($mot, 'phishing-evil.com', $sel);
 
         return [
@@ -266,7 +266,7 @@ final class AttackSimulator
                 'label' => 'Usage légitime',
                 'lignes' => [
                     'POST avec le bon jeton CSRF : ' . ($avecBonToken ? '✓ accepté' : 'rejeté'),
-                    'Clé dérivée sur lab.my-self.fr : ' . substr($cleVraiSite, 0, 24) . '…',
+                    'Clé dérivée sur ' . Auth::DOMAIN . ' : ' . substr($cleVraiSite, 0, 24) . '…',
                     'Les deux clés diffèrent → un faux site ne peut PAS reproduire la bonne.',
                 ],
             ],
