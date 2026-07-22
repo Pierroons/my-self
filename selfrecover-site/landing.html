@@ -95,6 +95,9 @@
   .pill{font-size:12px; letter-spacing:.08em; color:var(--muted); border:1px solid var(--border2);
     border-radius:999px; padding:7px 13px; background:rgba(122,183,255,.03)}
   .pill b{color:var(--teal)}
+  a.pill:hover{border-color:var(--accent); color:var(--accent)}
+  .lnk{color:var(--accent); text-decoration:underline; text-underline-offset:3px}
+  .lnk:hover{text-shadow:0 0 10px rgba(122,183,255,.45)}
 
   .forum{border:1px dashed var(--border2); border-radius:16px; padding:30px; text-align:center;
     display:flex; flex-direction:column; gap:10px; align-items:center; background:rgba(63,185,140,.04)}
@@ -238,11 +241,14 @@
         <p class="eyebrow">Souverain jusqu'au code</p>
         <h2>Rien à croire. Tout à vérifier.</h2>
         <p class="lead">SelfRecover est <b>open source</b> — auto-héberge-le, audite-le, intègre-le dans ton
-          propre service. Pas de SaaS, pas de dépendance, pas de boîte noire. Les whitepapers (FR &amp; EN)
+          propre service. Pas de SaaS, pas de dépendance, pas de boîte noire. Les whitepapers
+          (<a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-fr.md" target="_blank" rel="noopener">FR</a>
+          &amp; <a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-en.md" target="_blank" rel="noopener">EN</a>)
           décrivent le protocole ligne par ligne.</p>
         <div class="badges">
           <span class="pill"><b>AGPL-3.0</b> — anti-capture</span>
-          <span class="pill">Whitepapers <b>FR / EN</b></span>
+          <a class="pill" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-fr.md" target="_blank" rel="noopener">Whitepaper <b>FR</b></a>
+          <a class="pill" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-en.md" target="_blank" rel="noopener">Whitepaper <b>EN</b></a>
           <span class="pill">Zéro <b>tiers</b></span>
           <span class="pill">Module <b>MySelf</b></span>
         </div>
