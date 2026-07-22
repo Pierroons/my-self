@@ -211,7 +211,7 @@ The demo is a standalone single-page web app that lets you:
 1. **Register** an account (passphrase diceware generated automatically)
 2. **Log in** with your username + password
 3. **Recover L1** — forgot your password → enter your passphrase → new password
-4. **Recover L2** — forgot passphrase too → enter your identifier + recovery word → new password
+4. **Recover L2** — forgot passphrase too → enter a recovery code + the memorized word → new password
 5. **Recover L3** — lost everything → context questions build a bundle of raw signals for a human admin (no numeric score); on grant you re-define your own secret
 
 No dependencies beyond PHP CLI. SQLite as database. Zero configuration.

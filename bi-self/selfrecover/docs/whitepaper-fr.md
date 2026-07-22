@@ -88,7 +88,7 @@ Trois niveaux, chacun avec ses propres garanties et modes d'échec :
 | Niveau | Entrée | Résultat en cas de succès |
 |--------|--------|---------------------------|
 | **L1** | Username + passphrase diceware | Nouveau mot de passe |
-| **L2** | Identifiant + mot de récupération (dérivé HMAC) | Nouveau mot de passe |
+| **L2** | Code de récupération + mot de récupération (dérivé HMAC) | Nouveau mot de passe |
 | **L3** | Identifiant public + signaux contextuels | Faits bruts pour un admin humain → ré-enrôlement par l'utilisateur en cas d'accord |
 
 ---
@@ -323,11 +323,11 @@ sudo -k && sudo -n whoami
 
 Un déploiement SelfRecover sans sudo durci, c'est un verrou sur une porte sans mur. **Cette règle est non négociable.**
 
-### 10.3 Le mot de récupération est la clé de voûte
+### 10.3 L2 exige deux facteurs — aucun ne suffit seul
 
-Si le mot de récupération est compromis (ingénierie sociale, regard par-dessus l'épaule, note négligemment écrite), un attaquant qui connaît aussi l'identifiant public peut récupérer le compte. C'est voulu et ne peut pas être corrigé sans canal de communication externe — ce que SelfRecover rejette explicitement.
+Le L2 exige **deux** facteurs : un recovery code (possession) **et** le mot mémorisé (connaissance). Le mot mémorisé seul compromis (ingénierie sociale, regard par-dessus l'épaule, note négligemment écrite) ne suffit pas — il manque encore un recovery code. Le risque réel est la compromission **simultanée** des deux facteurs (le mot **et** un recovery code, ou le mot **et** l'appareil enrôlé). C'est le modèle 2FA standard : il ne peut pas être corrigé sans canal de communication externe — ce que SelfRecover rejette explicitement.
 
-Aucun système ne protège contre un secret volé. Une clé privée SSH qui fuite donne l'accès au serveur. Une seed phrase qui fuite vide un portefeuille. Un mot de récupération qui fuite ouvre le compte. Le modèle de sécurité est identique.
+Aucun système ne protège contre le vol simultané de tous ses facteurs. Une clé privée SSH qui fuite donne l'accès au serveur. Une seed phrase qui fuite vide un portefeuille. Un recovery code **et** le mot mémorisé volés ensemble ouvrent le compte. Le modèle de sécurité est identique.
 
 SelfRecover part du principe que :
 

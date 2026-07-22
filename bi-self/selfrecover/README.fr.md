@@ -211,7 +211,7 @@ La démo est une application web à page unique autonome qui permet de :
 1. **S'inscrire** (passphrase diceware générée automatiquement)
 2. **Se connecter** avec identifiant + mot de passe
 3. **Récupérer L1** — mot de passe oublié → saisir la passphrase → nouveau mot de passe
-4. **Récupérer L2** — passphrase aussi oubliée → saisir identifiant + mot de récupération → nouveau mot de passe
+4. **Récupérer L2** — passphrase aussi oubliée → saisir un recovery code + le mot mémorisé → nouveau mot de passe
 5. **Récupérer L3** — tout perdu → des questions de contexte forment un faisceau de faits bruts pour un admin humain (aucun score) ; en cas d'accord, tu redéfinis toi-même ton secret
 
 Aucune dépendance au-delà de PHP CLI. SQLite comme base. Configuration zéro.

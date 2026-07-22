@@ -88,7 +88,7 @@ Three levels, each with its own guarantees and failure modes:
 | Level | Input | Outcome on success |
 |-------|-------|---------------------|
 | **L1** | Username + diceware passphrase | New password |
-| **L2** | Identifier + recovery word (HMAC-derived) | New password |
+| **L2** | Recovery code + recovery word (HMAC-derived) | New password |
 | **L3** | Public identifier + context signals | Raw facts for a human admin → self-re-enrollment on grant |
 
 ---
@@ -323,11 +323,11 @@ sudo -k && sudo -n whoami
 
 A SelfRecover deployment without hardened sudo is a lock on a door with no wall. **This rule is non-negotiable.**
 
-### 10.3 The Recovery Word Is the Master Key
+### 10.3 L2 Requires Two Factors — Neither Suffices Alone
 
-If the recovery word is compromised (social engineering, shoulder surfing, written down carelessly), an attacker who also knows the public identifier can recover the account. This is by design and cannot be mitigated without an external communication channel — which SelfRecover explicitly rejects.
+L2 requires **two** factors: a recovery code (possession) **and** the memorized word (knowledge). A compromised memorized word alone (social engineering, shoulder surfing, written down carelessly) is not enough — a recovery code is still missing. The real risk is the **simultaneous** compromise of both factors (the word **and** a recovery code, or the word **and** the enrolled device). This is the standard 2FA model: it cannot be mitigated without an external communication channel — which SelfRecover explicitly rejects.
 
-No system can protect against a stolen secret. A leaked SSH private key gives server access. A leaked seed phrase empties a wallet. A leaked recovery word opens the account. The security model is identical.
+No system can protect against the simultaneous theft of all its factors. A leaked SSH private key gives server access. A leaked seed phrase empties a wallet. A recovery code **and** the memorized word stolen together open the account. The security model is identical.
 
 SelfRecover assumes:
 

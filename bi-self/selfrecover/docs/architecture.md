@@ -37,24 +37,24 @@
 ## Recovery L2 flow (passphrase lost)
 
 ```
-User types identifier + recovery word
+User enters a recovery code + the memorized word
               │
               ▼
-Browser: GET /user-salt?identifier=…  (anti-enumeration: decoy salt if unknown)
-              │
+Browser: GET /user-salt?code=…   (the recovery code locates the account;
+              │                    decoy salt if unknown — no enumeration)
               ▼
 Browser computes HMAC-SHA256(service_label‖user_salt, word)
               │
               ▼
-POST /recover-l2 { identifier, recovery_key (derived) }
+POST /recover-l2 { recovery_code, recovery_key (derived) }
               │
               ▼
-Server: SELECT user WHERE identifier = ?
+Server: code_lookup = HMAC-SHA256(SERVER_SECRET, recovery_code) → locate account
               │
               ▼
-Server: password_verify(recovery_key, stored_hash)
-              │
-              ├── OK ──> Generate new password, update user
+Server: Argon2id-verify(recovery_code) AND Argon2id-verify(recovery_key)
+              │   (generic error — never reveals which factor failed)
+              ├── OK ──> Generate new password, mark code used, update account
               │          Return new password to browser
               │
               └── FAIL ─> Increment L2 attempts counter
