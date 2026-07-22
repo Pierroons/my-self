@@ -15,6 +15,10 @@ Fond `#0f1419` · accent bleu `#7ab7ff` · teal signature `#3fb98c` · texte `#e
 (esprit terminal). Motion « Matrix » qui épelle les modules — signature réutilisable. Respecte
 `prefers-reduced-motion`.
 
+## Version
+`v0.0.1` — affichée dans le footer de la landing (+ commentaire en tête du HTML).
+Convention : patch `0.0.X` libre · minor/major = accord Pierroons.
+
 ## Statut
 Maquettes validées en direction (21/07/2026), **pas encore le site final**.
 Reste : figer le logo (exports), cadrer l'archi (landing + forum), hébergement, DNS + HTTPS.
