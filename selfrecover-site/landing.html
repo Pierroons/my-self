@@ -1,5 +1,10 @@
-<!-- selfrecover.fr · landing · v0.0.1 -->
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- selfrecover.fr · landing · v0.0.2 · i18n FR/EN -->
 <title>SelfRecover — récupération souveraine</title>
+<script>/* pose la langue avant le rendu : évite le flash bilingue */
+document.documentElement.setAttribute('data-lang',(function(){try{return localStorage.getItem('sr_lang')==='en'?'en':'fr';}catch(e){return'fr';}})());</script>
 <style>
   :root{
     --bg:#0f1419; --bg2:#0a0f13; --panel:rgba(15,20,25,.92); --card:rgba(22,30,40,.72);
@@ -20,15 +25,27 @@
     background:linear-gradient(rgba(10,15,19,0) 50%, rgba(10,15,19,.22) 50%); background-size:100% 4px;
     mix-blend-mode:multiply; opacity:.5}
 
+  /* i18n : masque la langue inactive (data-lang posé avant rendu) */
+  html[data-lang="fr"] [lang="en"]{display:none}
+  html[data-lang="en"] [lang="fr"]{display:none}
+
   /* NAV */
   nav{position:fixed; top:0; left:0; right:0; z-index:20; display:flex; align-items:center;
     justify-content:space-between; padding:14px 22px; backdrop-filter:blur(10px);
     -webkit-backdrop-filter:blur(10px); background:rgba(10,15,19,.55); border-bottom:1px solid #18232f}
   .brand{display:inline-flex; align-items:center; gap:9px; font-weight:700; font-size:17px}
   .brand .self{color:var(--muted)} .brand .rec{color:var(--accent)}
-  .navlinks{display:flex; gap:22px; font-size:13px; color:var(--muted); letter-spacing:.02em}
+  .navlinks{display:flex; gap:22px; font-size:13px; color:var(--muted); letter-spacing:.02em; align-items:center}
   .navlinks a:hover{color:var(--accent)}
-  @media(max-width:640px){.navlinks{display:none}}
+  .langsw{display:inline-flex; gap:5px; align-items:center; margin-left:4px; padding-left:16px;
+    border-left:1px solid #1c2836}
+  .langsw .flag{background:none; border:0; cursor:pointer; padding:3px 4px; border-radius:5px;
+    display:inline-flex; align-items:center; line-height:0; opacity:.45; filter:grayscale(.5);
+    transition:opacity .15s, filter .15s, background .15s}
+  .langsw .flag svg{display:block; height:14px; width:auto; border-radius:2px; box-shadow:0 0 0 1px rgba(255,255,255,.14)}
+  .langsw .flag:hover{opacity:.85}
+  .langsw .flag[aria-pressed="true"]{opacity:1; filter:none; background:rgba(122,183,255,.12)}
+  @media(max-width:640px){.navlinks a{display:none} .navlinks{gap:10px} .langsw{border-left:0; padding-left:0; margin-left:0}}
 
   /* layout */
   .hero{position:relative; z-index:2; min-height:100svh; display:flex; flex-direction:column;
@@ -129,11 +146,15 @@
     <span><span class="self">Self</span><span class="rec">Recover</span></span>
   </a>
   <div class="navlinks">
-    <a href="#how">Comment ça marche</a>
-    <a href="#levels">3 niveaux</a>
-    <a href="#demo">Démo</a>
-    <a href="#duo">Écosystème</a>
+    <a href="#how" lang="fr">Comment ça marche</a><a href="#how" lang="en">How it works</a>
+    <a href="#levels" lang="fr">3 niveaux</a><a href="#levels" lang="en">3 levels</a>
+    <a href="#demo" lang="fr">Démo</a><a href="#demo" lang="en">Demo</a>
+    <a href="#duo" lang="fr">Écosystème</a><a href="#duo" lang="en">Ecosystem</a>
     <a href="#os">Open source</a>
+    <span class="langsw" role="group" aria-label="Langue / Language">
+      <button type="button" class="flag" data-set="fr" title="Français" aria-label="Français"><svg viewBox="0 0 3 2" aria-hidden="true"><rect width="3" height="2" fill="#fff"/><rect width="1" height="2" fill="#0055A4"/><rect width="1" height="2" x="2" fill="#EF4135"/></svg></button>
+      <button type="button" class="flag" data-set="en" title="English" aria-label="English"><svg viewBox="0 0 60 30" aria-hidden="true"><clipPath id="uj"><path d="M30,15 h30 v15 z v15 h-30 z h-30 v-15 z v-15 h30 z"/></clipPath><path d="M0,0 v30 h60 v-30 z" fill="#012169"/><path d="M0,0 L60,30 M60,0 L0,30" stroke="#fff" stroke-width="6"/><path d="M0,0 L60,30 M60,0 L0,30" clip-path="url(#uj)" stroke="#C8102E" stroke-width="4"/><path d="M30,0 v30 M0,15 h60" stroke="#fff" stroke-width="10"/><path d="M30,0 v30 M0,15 h60" stroke="#C8102E" stroke-width="6"/></svg></button>
+    </span>
   </div>
 </nav>
 
@@ -149,78 +170,105 @@
     </svg>
     <span class="wm"><span class="self">Self</span><span class="rec">Rec</span><svg class="oarc" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M50 8 A42 42 0 0 1 50 92" stroke="#7ab7ff" stroke-width="13" stroke-linecap="round"/><path d="M50 92 A42 42 0 0 1 50 8" stroke="#3f74b8" stroke-width="13" stroke-linecap="round"/></svg><span class="rec">ver</span></span>
   </div>
-  <h1>Récupère ton compte. Sans email, sans SMS, <em>sans personne d'autre que toi.</em></h1>
-  <p class="sub">Le protocole de récupération souverain. Ton secret ne quitte jamais ta machine —
+  <h1 lang="fr">Récupère ton compte. Sans email, sans SMS, <em>sans personne d'autre que toi.</em></h1>
+  <h1 lang="en">Recover your account. No email, no SMS, <em>no one but you.</em></h1>
+  <p class="sub" lang="fr">Le protocole de récupération souverain. Ton secret ne quitte jamais ta machine —
     aucun tiers ne peut te verrouiller dehors, aucun email à pirater pour te voler l'accès.</p>
+  <p class="sub" lang="en">The sovereign recovery protocol. Your secret never leaves your machine —
+    no third party can lock you out, no inbox to hack to steal your access.</p>
   <div class="cta">
-    <a class="btn btn-p" href="https://your-instance.example/selfrecover/" target="_blank" rel="noopener">Essayer la démo →</a>
-    <a class="btn btn-g" href="#how">Comment ça marche</a>
+    <a class="btn btn-p" href="https://your-instance.example/selfrecover/" target="_blank" rel="noopener"><span lang="fr">Essayer la démo →</span><span lang="en">Try the demo →</span></a>
+    <a class="btn btn-g" href="#how"><span lang="fr">Comment ça marche</span><span lang="en">How it works</span></a>
   </div>
-  <div class="scroll">↓ défile</div>
+  <div class="scroll"><span lang="fr">↓ défile</span><span lang="en">↓ scroll</span></div>
 </header>
 
 <div class="below">
   <!-- LE PROBLÈME -->
   <section id="why"><div class="wrap">
-    <p class="eyebrow">Le problème</p>
-    <h2>« Mot de passe oublié ? » → on t'envoie un email.</h2>
-    <p class="lead">Sauf que l'email, c'est un <em class="tl">tiers</em>. S'il tombe, si on te le pirate,
+    <p class="eyebrow"><span lang="fr">Le problème</span><span lang="en">The problem</span></p>
+    <h2 lang="fr">« Mot de passe oublié ? » → on t'envoie un email.</h2>
+    <h2 lang="en">"Forgot your password?" → we email you a link.</h2>
+    <p class="lead" lang="fr">Sauf que l'email, c'est un <em class="tl">tiers</em>. S'il tombe, si on te le pirate,
       si le service ferme ou te bannit — tu perds l'accès à tout ce qui dépend de lui. La récupération
       « classique » a transformé ta boîte mail en unique point de défaillance de toute ta vie numérique.
       SelfRecover coupe cette dépendance.</p>
+    <p class="lead" lang="en">But email is a <em class="tl">third party</em>. If it goes down, if it gets hacked,
+      if the service shuts down or bans you — you lose access to everything that depends on it. "Classic"
+      recovery turned your inbox into the single point of failure of your entire digital life.
+      SelfRecover cuts that dependency.</p>
   </div></section>
 
   <!-- COMMENT ÇA MARCHE -->
   <section id="how"><div class="wrap">
-    <p class="eyebrow">Comment ça marche</p>
-    <h2>Ta connaissance devient ta clé.</h2>
-    <p class="lead">Trois principes, zéro boîte noire.</p>
+    <p class="eyebrow"><span lang="fr">Comment ça marche</span><span lang="en">How it works</span></p>
+    <h2 lang="fr">Ta connaissance devient ta clé.</h2>
+    <h2 lang="en">Your knowledge becomes your key.</h2>
+    <p class="lead" lang="fr">Trois principes, zéro boîte noire.</p>
+    <p class="lead" lang="en">Three principles, zero black box.</p>
     <div class="grid3">
       <div class="card">
         <div class="ic">◐</div>
         <h3>Split knowledge</h3>
-        <p>Le mot seul ne prouve rien. L'algorithme seul non plus. <em class="tl">Les deux réunis = toi.</em>
+        <p lang="fr">Le mot seul ne prouve rien. L'algorithme seul non plus. <em class="tl">Les deux réunis = toi.</em>
           Personne ne détient une moitié suffisante pour te compromettre.</p>
+        <p lang="en">The word alone proves nothing. The algorithm alone, nothing either. <em class="tl">Both together = you.</em>
+          No one holds a half big enough to compromise you.</p>
       </div>
       <div class="card">
         <div class="ic">⑃</div>
-        <h3>Dérivé par domaine</h3>
-        <p>Tu tapes le même mot partout ; chaque site en dérive une clé <em class="tl">unique</em>, côté client.
+        <h3 lang="fr">Dérivé par domaine</h3>
+        <h3 lang="en">Domain-derived</h3>
+        <p lang="fr">Tu tapes le même mot partout ; chaque site en dérive une clé <em class="tl">unique</em>, côté client.
           Un faux domaine produit une fausse clé — le phishing échoue tout seul.</p>
+        <p lang="en">You type the same word everywhere; each site derives a <em class="tl">unique</em> key from it, client-side.
+          A fake domain yields a fake key — phishing fails on its own.</p>
       </div>
       <div class="card">
         <div class="ic">∅</div>
-        <h3>Le serveur ne voit rien</h3>
-        <p>Ton secret ne quitte jamais ton navigateur. Le serveur ne garde que des <em class="tl">empreintes</em>.
+        <h3 lang="fr">Le serveur ne voit rien</h3>
+        <h3 lang="en">The server sees nothing</h3>
+        <p lang="fr">Ton secret ne quitte jamais ton navigateur. Le serveur ne garde que des <em class="tl">empreintes</em>.
           Une fuite de base de données ne donne rien d'exploitable.</p>
+        <p lang="en">Your secret never leaves your browser. The server keeps only <em class="tl">fingerprints</em>.
+          A database leak yields nothing usable.</p>
       </div>
     </div>
   </div></section>
 
   <!-- 3 NIVEAUX -->
   <section id="levels"><div class="wrap">
-    <p class="eyebrow">Trois niveaux d'escalade</p>
-    <h2>Un curseur différent à chaque étage.</h2>
-    <p class="lead">Pas trois fois la même chose — trois façons distinctes de prouver que c'est bien toi.</p>
+    <p class="eyebrow"><span lang="fr">Trois niveaux d'escalade</span><span lang="en">Three escalation levels</span></p>
+    <h2 lang="fr">Un curseur différent à chaque étage.</h2>
+    <h2 lang="en">A different dial at every stage.</h2>
+    <p class="lead" lang="fr">Pas trois fois la même chose — trois façons distinctes de prouver que c'est bien toi.</p>
+    <p class="lead" lang="en">Not the same thing three times — three distinct ways to prove it's really you.</p>
     <div class="levels">
       <div class="lvl">
-        <span class="tag">Niveau 1</span>
+        <span class="tag"><span lang="fr">Niveau 1</span><span lang="en">Level 1</span></span>
         <h3>Passphrase</h3>
-        <p>Un seul secret, mais fort — dans ta tête ou sur papier. Généré en diceware, impossible à deviner.
+        <p lang="fr">Un seul secret, mais fort — dans ta tête ou sur papier. Généré en diceware, impossible à deviner.
           Zéro possession requise.</p>
+        <p lang="en">A single secret, but strong — in your head or on paper. Diceware-generated, impossible to guess.
+          Zero possession required.</p>
         <span class="ghost">L1</span>
       </div>
       <div class="lvl">
-        <span class="tag">Niveau 2</span>
-        <h3>Mot + code</h3>
-        <p>Un mot mémorisé <b>et</b> un code de récupération papier. Vrai 2FA : ce que tu sais + ce que tu as.</p>
+        <span class="tag"><span lang="fr">Niveau 2</span><span lang="en">Level 2</span></span>
+        <h3 lang="fr">Mot + code</h3>
+        <h3 lang="en">Word + code</h3>
+        <p lang="fr">Un mot mémorisé <b>et</b> un code de récupération papier. Vrai 2FA : ce que tu sais + ce que tu as.</p>
+        <p lang="en">A memorized word <b>and</b> a paper recovery code. Real 2FA: what you know + what you have.</p>
         <span class="ghost">L2</span>
       </div>
       <div class="lvl">
-        <span class="tag">Niveau 3</span>
-        <h3>L'humain</h3>
-        <p>Tout perdu ? Un faisceau de preuves + un échange humain. <em class="tl">Jamais</em> de reset
+        <span class="tag"><span lang="fr">Niveau 3</span><span lang="en">Level 3</span></span>
+        <h3 lang="fr">L'humain</h3>
+        <h3 lang="en">The human</h3>
+        <p lang="fr">Tout perdu ? Un faisceau de preuves + un échange humain. <em class="tl">Jamais</em> de reset
           automatique — le jugement reste humain, par conception.</p>
+        <p lang="en">Lost everything? A bundle of evidence + a human exchange. <em class="tl">Never</em> an automatic
+          reset — judgment stays human, by design.</p>
         <span class="ghost">L3</span>
       </div>
     </div>
@@ -229,11 +277,14 @@
   <!-- DÉMO -->
   <section id="demo"><div class="wrap">
     <div class="demo">
-      <p class="eyebrow" style="margin:0">Teste-le pour de vrai</p>
-      <h2>Une démo complète tourne déjà.</h2>
-      <p class="lead" style="text-align:center">Inscris-toi <b>sans email</b>, perds volontairement ton accès,
+      <p class="eyebrow" style="margin:0"><span lang="fr">Teste-le pour de vrai</span><span lang="en">Try it for real</span></p>
+      <h2 lang="fr">Une démo complète tourne déjà.</h2>
+      <h2 lang="en">A full demo is already live.</h2>
+      <p class="lead" style="text-align:center" lang="fr">Inscris-toi <b>sans email</b>, perds volontairement ton accès,
         puis récupère-le par les trois niveaux. Rien de simulé — c'est le protocole en conditions réelles.</p>
-      <a class="btn btn-p" href="https://your-instance.example/selfrecover/" target="_blank" rel="noopener">Ouvrir la démo →</a>
+      <p class="lead" style="text-align:center" lang="en">Sign up <b>without email</b>, lose your access on purpose,
+        then recover it through all three levels. Nothing simulated — it's the protocol in real conditions.</p>
+      <a class="btn btn-p" href="https://your-instance.example/selfrecover/" target="_blank" rel="noopener"><span lang="fr">Ouvrir la démo →</span><span lang="en">Open the demo →</span></a>
     </div>
   </div></section>
 
@@ -241,86 +292,113 @@
   <section id="os"><div class="wrap">
     <div class="os">
       <div>
-        <p class="eyebrow">Souverain jusqu'au code</p>
-        <h2>Rien à croire. Tout à vérifier.</h2>
-        <p class="lead">SelfRecover est <b>open source</b> — auto-héberge-le, audite-le, intègre-le dans ton
+        <p class="eyebrow"><span lang="fr">Souverain jusqu'au code</span><span lang="en">Sovereign down to the code</span></p>
+        <h2 lang="fr">Rien à croire. Tout à vérifier.</h2>
+        <h2 lang="en">Nothing to trust. Everything to verify.</h2>
+        <p class="lead" lang="fr">SelfRecover est <b>open source</b> — auto-héberge-le, audite-le, intègre-le dans ton
           propre service. Pas de SaaS, pas de dépendance, pas de boîte noire. Les whitepapers
           (<a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-fr.md" target="_blank" rel="noopener">FR</a>
           &amp; <a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-en.md" target="_blank" rel="noopener">EN</a>)
           décrivent le protocole ligne par ligne.</p>
+        <p class="lead" lang="en">SelfRecover is <b>open source</b> — self-host it, audit it, integrate it into your
+          own service. No SaaS, no dependency, no black box. The whitepapers
+          (<a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-fr.md" target="_blank" rel="noopener">FR</a>
+          &amp; <a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-en.md" target="_blank" rel="noopener">EN</a>)
+          describe the protocol line by line.</p>
         <div class="badges">
           <span class="pill"><b>AGPL-3.0</b> — anti-capture</span>
           <a class="pill" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-fr.md" target="_blank" rel="noopener">Whitepaper <b>FR</b></a>
           <a class="pill" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-en.md" target="_blank" rel="noopener">Whitepaper <b>EN</b></a>
-          <span class="pill">Zéro <b>tiers</b></span>
-          <span class="pill">Module <b>MySelf</b></span>
+          <span class="pill"><span lang="fr">Zéro <b>tiers</b></span><span lang="en">Zero <b>third party</b></span></span>
+          <span class="pill"><span lang="fr">Module <b>MySelf</b></span><span lang="en"><b>MySelf</b> module</span></span>
         </div>
         <div class="cta" style="justify-content:flex-start; margin-top:22px">
-          <a class="btn btn-g" href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">Voir le code →</a>
+          <a class="btn btn-g" href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener"><span lang="fr">Voir le code →</span><span lang="en">View the code →</span></a>
         </div>
       </div>
       <div class="card" style="align-items:flex-start">
         <div class="ic" style="color:var(--teal)">✓</div>
-        <h3>Ce que ça change pour toi</h3>
-        <p>• Plus de « lien de réinitialisation » qui traîne dans une boîte mail piratable.<br>
+        <h3 lang="fr">Ce que ça change pour toi</h3>
+        <h3 lang="en">What it changes for you</h3>
+        <p lang="fr">• Plus de « lien de réinitialisation » qui traîne dans une boîte mail piratable.<br>
            • Plus de numéro de téléphone confié à un service.<br>
            • Un faux site ne peut pas récolter ta clé.<br>
            • Et si tout casse, un humain — pas un algorithme — tranche.</p>
+        <p lang="en">• No more "reset link" sitting in a hackable inbox.<br>
+           • No more phone number handed to a service.<br>
+           • A fake site can't harvest your key.<br>
+           • And if all else fails, a human — not an algorithm — decides.</p>
       </div>
     </div>
   </div></section>
 
   <!-- DUO RECOVER + DATAGUARD -->
   <section id="duo"><div class="wrap">
-    <p class="eyebrow">L'écosystème MySelf · ça va par deux</p>
-    <h2>Ta clé ouvre la porte. <em>SelfDataGuard garde ce qu'il y a derrière.</em></h2>
-    <p class="lead">SelfRecover te rend l'<b>accès</b>. Son module frère <b>SelfDataGuard</b> chiffre tes
+    <p class="eyebrow"><span lang="fr">L'écosystème MySelf · ça va par deux</span><span lang="en">The MySelf ecosystem · they come in pairs</span></p>
+    <h2 lang="fr">Ta clé ouvre la porte. <em>SelfDataGuard garde ce qu'il y a derrière.</em></h2>
+    <h2 lang="en">Your key opens the door. <em>SelfDataGuard guards what's behind it.</em></h2>
+    <p class="lead" lang="fr">SelfRecover te rend l'<b>accès</b>. Son module frère <b>SelfDataGuard</b> chiffre tes
       <b>données</b> au repos — profils, messages, champs sensibles. Deux rôles, une même souveraineté :
       l'un protège <em class="tl">qui</em> tu es, l'autre <em class="tl">ce que</em> tu possèdes.</p>
+    <p class="lead" lang="en">SelfRecover gives you back <b>access</b>. Its sibling module <b>SelfDataGuard</b> encrypts your
+      <b>data</b> at rest — profiles, messages, sensitive fields. Two roles, one sovereignty:
+      one protects <em class="tl">who</em> you are, the other <em class="tl">what</em> you own.</p>
     <div class="grid3">
       <div class="card">
         <div class="ic" style="color:var(--teal)">▨</div>
-        <h3>Chiffré au repos</h3>
-        <p>Tes données sensibles sont chiffrées directement en base. Un dump SQL volé ne révèle que des
+        <h3 lang="fr">Chiffré au repos</h3>
+        <h3 lang="en">Encrypted at rest</h3>
+        <p lang="fr">Tes données sensibles sont chiffrées directement en base. Un dump SQL volé ne révèle que des
           <em class="tl">blobs illisibles</em> — pas une ligne en clair.</p>
+        <p lang="en">Your sensitive data is encrypted right in the database. A stolen SQL dump reveals only
+          <em class="tl">unreadable blobs</em> — not a single line in clear.</p>
       </div>
       <div class="card">
         <div class="ic" style="color:var(--teal)">⧉</div>
-        <h3>Enveloppe à double facteur</h3>
-        <p>La clé qui déchiffre tes données est <em class="tl">scellée</em> derrière tes facteurs.
+        <h3 lang="fr">Enveloppe à double facteur</h3>
+        <h3 lang="en">Two-factor envelope</h3>
+        <p lang="fr">La clé qui déchiffre tes données est <em class="tl">scellée</em> derrière tes facteurs.
           Pas de secret en clair qui traîne côté serveur.</p>
+        <p lang="en">The key that decrypts your data is <em class="tl">sealed</em> behind your factors.
+          No plaintext secret lying around server-side.</p>
       </div>
       <div class="card">
         <div class="ic" style="color:var(--teal)">⚷</div>
-        <h3>Le même socle</h3>
-        <p>SelfRecover = la <em class="tl">racine</em> de ton identité. SelfDataGuard = les clés dérivées
+        <h3 lang="fr">Le même socle</h3>
+        <h3 lang="en">The same foundation</h3>
+        <p lang="fr">SelfRecover = la <em class="tl">racine</em> de ton identité. SelfDataGuard = les clés dérivées
           par usage. Un seul secret, maîtrisé par toi, jamais confié à un tiers.</p>
+        <p lang="en">SelfRecover = the <em class="tl">root</em> of your identity. SelfDataGuard = keys derived
+          per use. A single secret, controlled by you, never handed to a third party.</p>
       </div>
     </div>
     <div class="cta" style="justify-content:flex-start; margin-top:22px">
-      <a class="btn btn-g" href="https://your-instance.example" target="_blank" rel="noopener">Découvrir SelfDataGuard →</a>
+      <a class="btn btn-g" href="https://your-instance.example" target="_blank" rel="noopener"><span lang="fr">Découvrir SelfDataGuard →</span><span lang="en">Discover SelfDataGuard →</span></a>
     </div>
   </div></section>
 
   <!-- FORUM TEASER -->
   <section id="forum"><div class="wrap">
     <div class="forum">
-      <span class="soon">Phase 2 · bientôt</span>
-      <h2 style="margin:6px 0">Le forum arrive.</h2>
-      <p class="lead" style="text-align:center">Une communauté souveraineté numérique, où l'auth SelfRecover
+      <span class="soon"><span lang="fr">Phase 2 · bientôt</span><span lang="en">Phase 2 · soon</span></span>
+      <h2 style="margin:6px 0" lang="fr">Le forum arrive.</h2>
+      <h2 style="margin:6px 0" lang="en">The forum is coming.</h2>
+      <p class="lead" style="text-align:center" lang="fr">Une communauté souveraineté numérique, où l'auth SelfRecover
         protège de <em class="tl">vrais</em> comptes. Le dogfooding ultime : le protocole tient sa propre maison.</p>
+      <p class="lead" style="text-align:center" lang="en">A digital-sovereignty community, where SelfRecover auth
+        protects <em class="tl">real</em> accounts. The ultimate dogfooding: the protocol runs its own house.</p>
     </div>
   </div></section>
 </div>
 
 <footer>
   <div class="foot">
-    <span><span class="self" style="color:var(--muted)">Self</span><span style="color:var(--accent)">Recover</span><span class="ver">v0.0.1</span>
-      <span class="dot">·</span> écosystème <a href="https://my-self.fr" target="_blank" rel="noopener">MySelf</a></span>
+    <span><span class="self" style="color:var(--muted)">Self</span><span style="color:var(--accent)">Recover</span><span class="ver">v0.0.2</span>
+      <span class="dot">·</span> <span lang="fr">écosystème</span><span lang="en">ecosystem</span> <a href="https://my-self.fr" target="_blank" rel="noopener">MySelf</a></span>
     <span>
       <a href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">GitHub</a>
       <span class="dot"> · </span>AGPL-3.0
-      <span class="dot"> · </span>récupération sans email
+      <span class="dot"> · </span><span lang="fr">récupération sans email</span><span lang="en">email-free recovery</span>
     </span>
   </div>
 </footer>
@@ -356,5 +434,24 @@
   }
   if(reduce){ x.fillStyle='#0a0f13'; x.fillRect(0,0,c.width,c.height); frame(); }
   else{ var t=0; (function loop(){ t++; if(t%4===0) frame(); requestAnimationFrame(loop); })(); }
+})();
+
+/* Switcher de langue FR/EN — défaut FR, mémorisé en localStorage */
+(function(){
+  var root=document.documentElement;
+  var TITLES={fr:"SelfRecover — récupération souveraine", en:"SelfRecover — sovereign account recovery"};
+  function set(l){
+    root.setAttribute('data-lang', l);
+    try{ localStorage.setItem('sr_lang', l); }catch(e){}
+    document.title = TITLES[l] || TITLES.fr;
+    var b=document.querySelectorAll('.langsw .flag');
+    for(var i=0;i<b.length;i++){ b[i].setAttribute('aria-pressed', b[i].getAttribute('data-set')===l ? 'true':'false'); }
+  }
+  var saved; try{ saved=localStorage.getItem('sr_lang'); }catch(e){}
+  set(saved==='en' ? 'en' : 'fr');
+  document.addEventListener('click', function(e){
+    var t=e.target.closest ? e.target.closest('.langsw .flag') : null;
+    if(t){ set(t.getAttribute('data-set')); }
+  });
 })();
 </script>
