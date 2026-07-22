@@ -10,7 +10,7 @@ use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 
 /**
  * Persistent state of a user's escrow compartment (the consented, admin-
- * recoverable sub-vault — cases B' in the le service hote design).
+ * recoverable sub-vault — cases B' in the integration design).
  *
  * Layout:
  *   - user_id    : opaque application identifier (same as the main vault)

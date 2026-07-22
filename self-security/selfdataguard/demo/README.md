@@ -50,7 +50,7 @@ To use a different port: `PORT=9000 ./run.sh`.
   php ../bin/escrow-ceremony.php unlock <user> <litige_id>
   ```
 
-  (requires a `litiges` table with an open row for `<user>` — the le service hote adapter
+  (requires a `litiges` table with an open row for `<user>` — the messaging service adapter
   wires its own; see the ceremony CLI header for details).
 
 The demo uses PHP's built-in web server, no Apache/nginx required, no `composer install` needed.

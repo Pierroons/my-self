@@ -7,7 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added — Escrow compartment (recovery-escrow sub-vault)
 
-Consented, admin-recoverable subset of a user's vault (le service hote design cases "B'").
+Consented, admin-recoverable subset of a user's vault (integration design cases "B'").
 Lets a locked-out user's account be recovered by an admin — without ever
 exposing the private zone.
 
@@ -40,7 +40,7 @@ exposing the private zone.
   for the user (anti-curieux), (2) the **admin passphrase** unseals the recovery
   key. Every act — success **or** refusal (`no-open-litige`, `bad-passphrase`) —
   is written to the audit log with operator + IP forensic. `verify-log`
-  subcommand. Config via env; the litige gate reads a `litiges` table (the le service hote
+  subcommand. Config via env; the litige gate reads a `litiges` table (the messaging service
   adapter wires its own). The library stays policy-free — gates live here.
 - **Sanity tests** — `sanity_audit.php` (6) chain + tamper detection;
   `sanity_ceremony.php` (14, subprocess e2e) happy path, litige gate, passphrase

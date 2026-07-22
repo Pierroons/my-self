@@ -127,7 +127,7 @@ Ce changelog agrège les jalons transversaux du projet.
 ### Ajouté — Tooling
 
 - nginx reverse proxy multi-vhosts
-- Auto-update opt-in via `version.json` (pattern le service hote)
+- Auto-update opt-in via `version.json` (pattern générique)
 - Versionnage systématique (toute app MySelf doit bumper version avant deploy)
 - Logging full + toggle console côté user
 

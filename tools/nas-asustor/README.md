@@ -38,7 +38,7 @@ Pack de scripts pour exposer le portail admin **ADM** d'un NAS NAS uniquement vi
 Backup nightly :
   /opt/tor/hidden_service_adm/{hostname,hs_ed25519_*}
   → SCP via SSH key dédiée
-  → DEVSERVER:/mnt/usb-backup/nas-asustor/tor-backups/
+  → DEVSERVER:/mnt/usb-backup/nas-nas/tor-backups/
 ```
 
 ## Pré-requis
@@ -95,7 +95,7 @@ Puis prépare le dossier cible sur le DEVSERVER :
 
 ```bash
 ssh -i "$SSH_KEY_DEVSERVER" deploy@192.0.2.60 \
-    "mkdir -p /mnt/usb-backup/nas-asustor/tor-backups && chmod 700 /mnt/usb-backup/nas-asustor"
+    "mkdir -p /mnt/usb-backup/nas-nas/tor-backups && chmod 700 /mnt/usb-backup/nas-nas"
 ```
 
 ### 5. Démarrer Tor et obtenir l'adresse `.onion`
@@ -165,7 +165,7 @@ Si tu reformates le NAS, l'adresse `.onion` est perdue **sauf si tu restaures la
 # 1. Réinstaller : sudo /tmp/tor-nas.sh install (mais NE PAS démarrer Tor)
 # 2. Récupérer le dernier backup depuis le DEVSERVER :
 scp -i "$SSH_KEY_DEVSERVER" \
-    "deploy@192.0.2.60:/mnt/usb-backup/nas-asustor/tor-backups/tor-backup-<latest>.tar.gz" \
+    "deploy@192.0.2.60:/mnt/usb-backup/nas-nas/tor-backups/tor-backup-<latest>.tar.gz" \
     /tmp/
 
 # 3. Sur le NAS :

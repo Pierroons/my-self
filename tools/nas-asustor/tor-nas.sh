@@ -22,7 +22,7 @@
 #   /opt/tor/backups/          — archives backup locales (rotation 3 dernières)
 #
 # Backup destination (sur le DEVSERVER) :
-#   /mnt/usb-backup/nas-asustor/tor-backups/
+#   /mnt/usb-backup/nas-nas/tor-backups/
 #
 # Auto-start au boot : `crontab -e` puis `@reboot /opt/tor/bin/tor-nas.sh start`
 # (ADM n'a pas systemd standard, cron est la voie portable).
@@ -49,7 +49,7 @@ BACKUP_DIR="${TOR_CONF_DIR}/backups"
 
 # Cible DEVSERVER (ajuste si besoin)
 DEVSERVER_HOST="deploy@192.0.2.60"
-DEVSERVER_USB_PATH="/mnt/usb-backup/nas-asustor/tor-backups"
+DEVSERVER_USB_PATH="/mnt/usb-backup/nas-nas/tor-backups"
 SSH_KEY="${TOR_CONF_DIR}/.ssh/nas-to-devserver"
 
 # ===================== HELPERS =====================
