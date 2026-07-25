@@ -5,14 +5,15 @@ require_once __DIR__ . '/../../lib/bootstrap.php';
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Auth;
 
-require_method('POST'); // endpoint public (comme login/register), rate-limit géré dans Auth::recover
+require_method('POST'); // endpoint public, rate-limit géré dans Auth::recoverL2Code
 
 $body = json_in();
-$r = Auth::recover(
+$r = Auth::recoverL2Code(
     Db::pdo(),
-    (string) ($body['username'] ?? ''),
+    (string) ($body['code'] ?? ''),
     // Clé dérivée du mot mémorisé (HMAC côté client) — le mot brut ne transite jamais.
-    (string) ($body['recovery_derived_key'] ?? ''),
+    (string) ($body['memorized_derived_key'] ?? ''),
     client_ip()
 );
-json_out($r, $r['ok'] ? 200 : 400);
+$code = $r['ok'] ? 200 : (($r['escalate'] ?? '') ? 429 : 400);
+json_out($r, $code);

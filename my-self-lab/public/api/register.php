@@ -8,7 +8,8 @@ use Pierroons\MySelfLab\Auth;
 require_method('POST');
 $body = json_in();
 $username = (string) ($body['username'] ?? '');
-$recoveryWord = (string) ($body['recovery_word'] ?? '');
+// Clé dérivée du mot mémorisé, calculée côté client (HMAC) — le mot brut ne transite jamais.
+$recoveryDerivedKey = (string) ($body['recovery_derived_key'] ?? '');
 
-$result = Auth::register(Db::pdo(), $username, $recoveryWord, client_ip());
+$result = Auth::register(Db::pdo(), $username, $recoveryDerivedKey, client_ip());
 json_out($result, $result['ok'] ? 201 : 400);

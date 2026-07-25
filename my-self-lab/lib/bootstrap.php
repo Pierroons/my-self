@@ -9,6 +9,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/device.php';
+require_once __DIR__ . '/recover_l3.php';
 require_once __DIR__ . '/security.php';
 
 use Pierroons\MySelfLab\Db;
@@ -32,8 +34,16 @@ function json_out(array $data, int $code = 200): never
 function json_in(): array
 {
     $raw = (string) file_get_contents('php://input');
+    if ($raw === '') {
+        return [];                       // corps vide = légitime (POST sans payload)
+    }
     $data = json_decode($raw, true);
-    return is_array($data) ? $data : [];
+    if (!is_array($data)) {
+        // R11-INFO-01 : rejeter un corps non-JSON au lieu du no-op silencieux,
+        // pour uniformiser la validation d'entrée avec le reste de l'API.
+        json_out(['ok' => false, 'error' => 'Corps JSON invalide.'], 400);
+    }
+    return $data;
 }
 
 /** Exige une méthode HTTP, sinon 405. */

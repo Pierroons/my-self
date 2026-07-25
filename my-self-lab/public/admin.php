@@ -51,6 +51,7 @@ table.adm tr:last-child td{border-bottom:none}
 </style>
 
 <h1>🛠️ Administration <span class="muted" style="font-size:13px">— @<?= h($account['username']) ?></span></h1>
+<p><a class="btn" href="/admin_disputes.php">⚖️ Récupérations assistées (litiges L3) →</a></p>
 <div class="adm-warn">
   ℹ️ <strong>Deux modèles de chiffrement coexistent.</strong> Le profil (bio/localisation/lien) est <em>at-rest serveur</em> (blind key) : un dump est neutralisé, mais un admin qui détient la clé peut déchiffrer. Le <strong>mémo perso</strong> est passé en <strong>E2E client</strong> (vault per-user) : la clé ne quitte jamais le navigateur → <strong>même l'admin ne peut pas le lire</strong>. Ce panel reste une cible d'<strong>escalade de privilèges</strong> pour la red team.
 </div>
