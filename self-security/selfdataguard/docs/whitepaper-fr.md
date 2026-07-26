@@ -3,9 +3,11 @@
 **Protection des données personnelles au repos côté application**
 *Dump ma base — et tu obtiens du bruit chiffré.*
 
+*Édition du 23 juillet 2026 — v0.0.1*
+
 ---
 
-## Contexte (mai 2026)
+## Contexte
 
 Le 15 avril 2026, le portail `moncompte.ants.gouv.fr` (Agence nationale des titres sécurisés) a subi une fuite de données via une faille IDOR : modifier un identifiant dans une requête de l'API permettait d'accéder au compte d'un autre citoyen. Le ministère de l'Intérieur a confirmé 11,7 millions de comptes impactés ; les attaquants revendiquent jusqu'à 19 millions d'enregistrements exfiltrés. Données exposées : état civil, coordonnées, statut de certification d'identité — **en clair dans la base**, sans chiffrement applicatif susceptible de les rendre inexploitables.
 
@@ -300,4 +302,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Document v0.0.1 — mai 2026. Ce whitepaper est un brouillon de spécification ouvert au commentaire avant l'implémentation de référence v0.1.0.*
+*Document v0.0.1 — édition du 23 juillet 2026. Ce whitepaper est un brouillon de spécification ouvert au commentaire avant l'implémentation de référence v0.1.0.*

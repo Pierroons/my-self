@@ -3,9 +3,11 @@
 **Protocole de récupération de compte sans email**
 *Un mot. Tous les sites. Pour toujours.*
 
+*Édition du 23 juillet 2026 — v1.1*
+
 ---
 
-## Contexte (mai 2026)
+## Contexte
 
 Le 15 avril 2026, le portail `moncompte.ants.gouv.fr` (Agence nationale des titres sécurisés) a subi une fuite de données via une faille IDOR (*Insecure Direct Object Reference*) : modifier un identifiant dans une requête de l'API permettait d'accéder au compte d'un autre citoyen. Le ministère de l'Intérieur a confirmé **11,7 millions de comptes** impactés ; les attaquants revendiquent jusqu'à **19 millions d'enregistrements** exfiltrés. Données exposées : état civil, coordonnées, statut de certification d'identité — sans mot de passe ni biométrie.
 
