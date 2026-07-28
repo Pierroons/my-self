@@ -1,18 +1,45 @@
 #!/usr/bin/env bash
-# Pre-commit OPSEC — bloque toute donnée sensible avant qu'elle entre dans git.
-# Installé via scripts/install-hooks.sh (ne dépend que de gitleaks).
+# Hook pre-commit — le moment où une fuite coûte le moins cher à réparer.
+#
+# Ce hook ne regarde que ce qui est INDEXÉ. C'est sa force : rien n'est encore
+# commité, donc corriger revient à éditer un fichier et refaire `git add`.
+# Dix secondes.
+#
+# Passé ce point, l'addition monte vite :
+#   arrêté au pre-push  → la donnée est dans l'historique local, il faut rebase
+#   passé au push       → git-filter-repo, re-signature des tags, force-push,
+#                         purge du registre d'images, ticket au support GitHub
+#                         pour la collecte des objets orphelins — et l'aveu
+#                         qu'elle a été publique entre-temps.
+#
+# Le 28 juillet 2026, cette dernière colonne a coûté une journée entière pour
+# des données entrées en quelques secondes. D'où ce hook, qui va plus loin que
+# gitleaks : il cherche aussi les données PERSONNELLES (motifs hors dépôt) et
+# les métadonnées des binaires indexés.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 
-if ! command -v gitleaks >/dev/null 2>&1; then
-  echo "⚠ gitleaks absent — installe-le (apt install gitleaks) pour activer la protection OPSEC."
-  exit 0   # ne bloque pas si l'outil manque, mais avertit
+if [ -x "$ROOT/scripts/audit-opsec.sh" ]; then
+  if ! "$ROOT/scripts/audit-opsec.sh" --staged; then
+    echo ""
+    echo "❌ COMMIT BLOQUÉ."
+    echo "   Pour passer outre en connaissance de cause : git commit --no-verify"
+    echo "   (uniquement si tu viens de vérifier toi-même — pas par réflexe)"
+    exit 1
+  fi
+  exit 0
 fi
 
+# Repli si le script d'audit est absent : au moins les secrets.
+echo "⚠ scripts/audit-opsec.sh introuvable — contrôle réduit aux secrets."
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "⚠ gitleaks absent lui aussi — aucune protection active."
+  exit 0
+fi
 if ! gitleaks protect --staged -c "$ROOT/.gitleaks.toml" --no-banner --redact; then
   echo ""
-  echo "❌ COMMIT BLOQUÉ — donnée sensible détectée (identité, IP infra, IBAN réel, business perso…)."
-  echo "   → Corrige le contenu, OU si c'est un faux positif ajuste l'allowlist dans .gitleaks.toml."
+  echo "❌ COMMIT BLOQUÉ — donnée sensible détectée."
+  echo "   → Corrige le contenu, ou ajuste l'allowlist si c'est un faux positif."
   exit 1
 fi

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Hook commit-msg — le seul endroit qu'aucun scanner ne regarde.
+#
+# Un message de commit n'est ni du code ni un fichier : gitleaks ne le lit pas,
+# les linters non plus, et il survit à toutes les corrections de contenu. Pire,
+# c'est l'endroit où l'on écrit spontanément ce qu'on vient de masquer :
+#
+#   « retire le nom <nom> de la démo »      ← publie le nom pour de bon
+#   « fixtures CP <cp reel> -> 75001 »      ← publie le code postal masqué
+#   « modele exact '<ref>' retire »         ← publie la référence retirée
+#
+# Ces trois formes sont réelles : trouvées le 28 juillet 2026 dans
+# l'historique, avec leurs valeurs en clair, alors que le contenu
+# correspondant était propre depuis des mois. Elles sont reproduites ici
+# avec des marqueurs — écrire les vraies valeurs dans le hook qui les
+# traque serait exactement l'erreur qu'il dénonce. (Le hook a d'ailleurs
+# bloqué sa propre première version pour cette raison.)
+#
+# La règle tient en une ligne : décrire ce qu'on a FAIT, jamais ce qu'on a
+# RETIRÉ. « anonymise les fixtures » suffit et n'apprend rien à personne.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+[ -x "$ROOT/scripts/audit-opsec.sh" ] || exit 0
+
+exec "$ROOT/scripts/audit-opsec.sh" --message "$1"
