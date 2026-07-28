@@ -17,8 +17,8 @@ regex = '''(?i)\b[a-z0-9._%+-]+@(gmx|gmail|googlemail|outlook|hotmail|live|msn|y
 [rules.allowlist]
 description = "Adresses de demonstration explicitement fictives"
 regexes = [
-  '''[a-z0-9._%+-]*(exemple|example|demo|test|fake)[a-z0-9._%+-]*@''',
-  '''\b(alice|bob|carol|dave|eve|mallory|sophie\.martin)@''',
+  '''(?i)(exemple|example|demo|test|fake|fictif)''',
+  '''(?i)\b(alice|bob|carol|dave|eve|mallory|sophie[._]martin)\b''',
 ]
 tags = ["opsec", "identity"]
 
@@ -99,8 +99,8 @@ regexes = [
   '''\b(10\.0\.0\.0|172\.16\.0\.0|192\.168\.0\.0)\b''',
   '''\b192\.168\.(0|1)\.(0|1|10|20|30|50|100|254)\b''',
   # Adresses de démonstration explicitement fictives.
-  '''[a-z0-9._%+-]*(exemple|example|demo|test|fake)[a-z0-9._%+-]*@''',
-  '''\b(alice|bob|carol|dave|eve|mallory|sophie\.martin)@''',
+  '''(?i)(exemple|example|demo|test|fake|fictif)''',
+  '''(?i)\b(alice|bob|carol|dave|eve|mallory|sophie[._]martin)\b''',
   # IBAN de démonstration, avec ou sans espaces.
   '''FR\d{2} ?0000''',
   '''FR\d{2} ?1234 ?5678''',
