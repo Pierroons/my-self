@@ -16,6 +16,7 @@ regex = '''(?i)\b[a-z0-9._%+-]+@(gmx|gmail|googlemail|outlook|hotmail|live|msn|y
 
 [rules.allowlist]
 description = "Adresses de demonstration explicitement fictives"
+regexTarget = "match"
 regexes = [
   '''(?i)(exemple|example|demo|test|fake|fictif)''',
   '''(?i)\b(alice|bob|carol|dave|eve|mallory|sophie[._]martin)\b''',
@@ -38,6 +39,7 @@ regex = '''\b(10(\.\d{1,3}){3}|192\.168(\.\d{1,3}){2}|172\.(1[6-9]|2\d|3[01])(\.
 
 [rules.allowlist]
 description = "Plages de documentation (RFC 5737) et adresses de reseau banales"
+regexTarget = "match"
 regexes = [
   '''\b(192\.0\.2|198\.51\.100|203\.0\.113)\.\d{1,3}\b''',
   '''\b10\.0\.0\.\d{1,3}\b''',
@@ -53,6 +55,7 @@ regex = '''/home/[a-z][a-z0-9_-]+|Documents generes'''
 
 [rules.allowlist]
 description = "Comptes systeme et generiques — n'identifient personne"
+regexTarget = "match"
 regexes = ['''/home/(user|users|deploy|myself|runner|ubuntu|debian|admin|www-data|node|app)\b''']
 tags = ["opsec", "infra"]
 
@@ -63,6 +66,7 @@ regex = '''FR\d{2}[ ]?\d{4}[ ]?\d{4}[ ]?\d{4}'''
 
 [rules.allowlist]
 description = "IBAN de demonstration"
+regexTarget = "match"
 regexes = ['''FR\d{2} ?0000''', '''FR\d{2} ?1234 ?5678''', '''FR76 ?3000 ?4000 ?0512''']
 tags = ["opsec", "finance"]
 
@@ -109,6 +113,7 @@ regexes = [
   '''FR76 ?3000 ?4000 ?0512''',
   # Mots de passe de test des suites de sécurité (alice/bob/carol).
   '''(alice|bob|carol|dave)-pwd-[0-9]+''',
+  '''vault_key_b64''',
   '''FR76 0000''',
   '''FR76 ?1234 ?5678''',
   '''contact@my-self\.fr''',
