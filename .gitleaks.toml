@@ -70,6 +70,9 @@ regexes = [
   # Plages réservées à la documentation (RFC 5737) et adresses de réseau banales.
   '''\b(192\.0\.2|198\.51\.100|203\.0\.113)\.\d{1,3}\b''',
   '''\b10\.0\.0\.\d{1,3}\b''',
+  # Notations de plage RFC1918 en documentation réseau : une plage n'est pas
+  # une adresse, elle ne désigne aucune machine.
+  '''\b(10\.0\.0\.0|172\.16\.0\.0|192\.168\.0\.0)\b''',
   '''\b192\.168\.(0|1)\.(0|1|10|20|30|50|100|254)\b''',
   # Adresses de démonstration explicitement fictives.
   '''[a-z0-9._%+-]*(exemple|example|demo|test|fake)[a-z0-9._%+-]*@''',
