@@ -23,4 +23,4 @@ jobs:
           sudo install -m755 gitleaks /usr/local/bin/gitleaks
           gitleaks version
       - name: Scan secrets & données perso
-        run: gitleaks detect --source . -c .gitleaks.toml --redact --no-banner
+        run: gitleaks detect --source . -c .gitleaks.toml --redact --no-banner -v
