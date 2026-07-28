@@ -17,8 +17,11 @@ tags = ["opsec", "identity"]
 
 [[rules]]
 id = "myself-code-postal-local"
-description = "Code postal localisant l'auteur"
-regex = '''\b23\d{3}\b'''
+description = "Code postal localisant l'auteur, en contexte d'adresse (suivi d'une commune)"
+# Le code postal SEUL produisait trop de bruit : montants, identifiants, et
+# jusqu'à des fragments hexadécimaux de vecteurs de test cryptographiques.
+# Un chiffre isolé ne localise personne ; suivi d'un nom de commune, si.
+regex = '''\b23\d{3}\s+[A-ZÀ-Ÿ][a-zà-ÿ]'''
 tags = ["opsec", "geo"]
 
 [[rules]]
@@ -61,6 +64,24 @@ paths = [
   '''(^|/)CONTRIBUTING\.md$''',
 ]
 regexes = [
+  # Comptes système et génériques : /home/<quelquechose> n'identifie personne.
+  # Seuls les logins réels doivent déclencher la règle.
+  '''/home/(user|users|deploy|myself|runner|ubuntu|debian|admin|www-data|node|app)\b''',
+  # Plages réservées à la documentation (RFC 5737) et adresses de réseau banales.
+  '''\b(192\.0\.2|198\.51\.100|203\.0\.113)\.\d{1,3}\b''',
+  '''\b10\.0\.0\.\d{1,3}\b''',
+  '''\b192\.168\.(0|1)\.(0|1|10|20|30|50|100|254)\b''',
+  # Adresses de démonstration explicitement fictives.
+  '''[a-z0-9._%+-]*(exemple|example|demo|test|fake)[a-z0-9._%+-]*@''',
+  '''\b(alice|bob|carol|dave|eve|mallory|sophie\.martin)@''',
+  # IBAN de démonstration, avec ou sans espaces.
+  '''FR\d{2} ?0000''',
+  '''FR\d{2} ?1234 ?5678''',
+  # IBAN de démonstration du simulateur d'attaque (code banque générique des
+  # exemples français, suite de chiffres manifestement séquentielle).
+  '''FR76 ?3000 ?4000 ?0512''',
+  # Mots de passe de test des suites de sécurité (alice/bob/carol).
+  '''(alice|bob|carol|dave)-pwd-[0-9]+''',
   '''FR76 0000''',
   '''FR76 ?1234 ?5678''',
   '''contact@my-self\.fr''',
