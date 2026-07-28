@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 0   # historique complet (baseline .gitleaksignore appliqué)
       - name: Install gitleaks
         run: |
-          V=8.18.4
+          V=8.30.1
           curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_x64.tar.gz" | tar -xz gitleaks
           sudo install -m755 gitleaks /usr/local/bin/gitleaks
           gitleaks version
