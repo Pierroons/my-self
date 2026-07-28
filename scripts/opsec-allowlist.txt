@@ -1,0 +1,40 @@
+# Exclusions de l'audit OPSEC — chemins écartés du grep de contenu.
+#
+# Format :   <regex du chemin>  <TAB>  <raison>
+#
+# La raison n'est pas décorative. Une exclusion sans justification devient
+# indistinguable d'un oubli, et six mois plus tard personne ne sait si le
+# fichier est légitimement là ou s'il est passé entre les mailles. Si tu
+# ajoutes une ligne ici, écris pourquoi — en une phrase.
+#
+# Ce fichier ne contient QUE des chemins. Les motifs recherchés vivent hors
+# dépôt (~/.config/selfopsec/patterns.txt) : les écrire ici les publierait.
+
+# ── Bibliothèques tierces ───────────────────────────────────────────────────
+# zxcvbn embarque un dictionnaire des mots de passe les plus courants —
+# prénoms, villes, suites de chiffres. Il matche à peu près n'importe quel
+# motif : 1500 « hits » sur un username, 237 sur un code postal. Une passe de
+# réécriture l'a déjà corrompu en y remplaçant un mot du dictionnaire.
+zxcvbn\.js$	dictionnaire de mots de passe courants (bibliothèque tierce)
+
+# ── Fichiers qui citent forcément ce qu'ils traquent ────────────────────────
+# Un fichier de règles contient les motifs qu'il cherche : il se détecte
+# lui-même. Sans cette exclusion, l'audit ne peut jamais tomber à zéro.
+^\.gitleaks\.toml$	fichier de règles : contient les motifs par construction
+^scripts/opsec-allowlist\.txt$	ce fichier
+^scripts/audit-opsec\.sh$	le script d'audit lui-même
+
+# ── Jeu de données fictives ────────────────────────────────────────────────
+# Les valeurs listées dans le CONTRIBUTING SONT les placeholders canoniques.
+# C'est là qu'on va puiser quand on écrit un exemple, précisément pour ne pas
+# attraper une donnée réelle « qu'on a sous la main ».
+^CONTRIBUTING\.md$	jeu de placeholders canonique documenté
+
+# ── Listes de mots (diceware, dictionnaires) ────────────────────────────────
+# Une wordlist française contient forcément des mots communs qui sont aussi
+# des noms propres ou des toponymes — « creuse » y est un adjectif. Le même
+# motif est un vrai marqueur dans un autre dépôt : c'est pourquoi l'allowlist
+# est par dépôt et non globale.
+eff_fr\.json$	wordlist diceware EFF française
+diceware-fr\.js$	wordlist diceware française
+eff_large_wordlist_fr\.txt$	wordlist diceware EFF française
