@@ -177,15 +177,27 @@ if command -v exiftool >/dev/null 2>&1; then
            '*.pdf' '*.docx' '*.xlsx' '*.odt' 2>/dev/null | \
          while IFS= read -r f; do
            [ -f "$ROOT/$f" ] || continue
-           # Les valeurs déjà neutres ne sont pas un défaut : « anonymous »
-           # dans un PDF de fixture est le résultat recherché, pas une fuite.
-           # Les signaler ferait crier l'audit pour un travail bien fait.
-           v=$(exiftool -s -S -Artist -Creator -Author -LastModifiedBy -Company \
-                 -Software -Comment -UserComment -XPAuthor -Copyright \
-                 -GPSPosition -HostComputer -OwnerName -SerialNumber \
-                 "$ROOT/$f" 2>/dev/null \
-               | grep -viE '^(anonymous|unknown|none|n/?a|-|0)$' \
-               | grep -v '^$' || true)
+           # Ne signaler que ce qui POSE problème, pas la simple présence
+           # d'une métadonnée. « Pierroons — MySelf ecosystem » ou le nom du
+           # script générateur sont des valeurs voulues ; crier dessus à
+           # chaque passage est le meilleur moyen de faire ignorer le jour
+           # où une position GPS ou un chemin /home/<login> apparaît.
+           brut=$(exiftool -s -S -Artist -Creator -Author -LastModifiedBy \
+                    -Company -Software -Comment -UserComment -XPAuthor \
+                    -Copyright -GPSPosition -HostComputer -OwnerName \
+                    -SerialNumber "$ROOT/$f" 2>/dev/null | grep -v '^$' || true)
+           v=""
+           while IFS= read -r ligne; do
+             [ -z "$ligne" ] && continue
+             suspect=0
+             # Un chemin absolu porte un nom de compte ; des coordonnées
+             # portent un lieu. Les deux sont des fuites quoi qu'il arrive.
+             printf '%s' "$ligne" | grep -qE '(/home/|/Users/|[A-Z]:\\|[0-9]+ deg [0-9]+)' && suspect=1
+             for m in "${MOTIFS[@]}"; do
+               printf '%s' "$ligne" | grep -qi -e "$m" && { suspect=1; break; }
+             done
+             [ "$suspect" = "1" ] && v="${v}${ligne}"$'\n'
+           done <<< "$brut"
            [ -n "$v" ] && printf '%s\n%s\n' "  $f" "$v"
          done)
   if [ -n "$META" ]; then

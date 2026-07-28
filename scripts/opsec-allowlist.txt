@@ -38,3 +38,4 @@ zxcvbn\.js$	dictionnaire de mots de passe courants (bibliothèque tierce)
 eff_fr\.json$	wordlist diceware EFF française
 diceware-fr\.js$	wordlist diceware française
 eff_large_wordlist_fr\.txt$	wordlist diceware EFF française
+selfrecover-validator\.html$	wordlist diceware embarquée dans le validateur hors-ligne
