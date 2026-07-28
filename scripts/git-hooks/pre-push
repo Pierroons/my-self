@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Hook pre-push — dernier filet avant que le contenu devienne public.
+#
+# Pourquoi un pre-push EN PLUS du pre-commit : le pre-commit ne voit que le
+# diff en cours. Il est aveugle à ce qui dort déjà dans le dépôt — une donnée
+# entrée il y a trois mois, ou reprise d'un ancien commit. Le pre-push, lui,
+# examine ce qui part réellement, et c'est le dernier moment où l'erreur reste
+# réversible : une fois poussée, il faut réécrire l'historique et demander à
+# GitHub de collecter les objets orphelins.
+#
+# Deux contrôles :
+#   1. gitleaks sur l'historique complet (pas seulement le diff)
+#   2. métadonnées des images — angle mort permanent : aucun scanner de secrets
+#      ne lit un PNG, alors qu'il peut porter un nom d'utilisateur, un chemin
+#      de fichier ou des coordonnées GPS.
+
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+echo "▸ pre-push : vérification OPSEC…"
+
+# ── 1. Secrets et données personnelles, sur tout l'historique ────────────────
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "⚠ gitleaks absent — contrôle ignoré."
+  echo "  Installe le binaire officiel (le paquet Debian est figé sur une"
+  echo "  version ancienne qui n'interprète pas les allowlists pareil) :"
+  echo "  https://github.com/gitleaks/gitleaks/releases"
+else
+  if ! gitleaks detect --source "$ROOT" -c "$ROOT/.gitleaks.toml" \
+       --no-banner --redact >/dev/null 2>&1; then
+    echo ""
+    echo "❌ PUSH BLOQUÉ — donnée sensible dans l'historique."
+    gitleaks detect --source "$ROOT" -c "$ROOT/.gitleaks.toml" \
+      --no-banner --redact -v 2>&1 | grep -E "RuleID:|File:|Line:" | head -12
+    echo ""
+    echo "   Corrige, OU ajuste l'allowlist si c'est un faux positif."
+    echo "   ⚠️  Si la donnée est déjà commitée, la corriger maintenant ne la"
+    echo "       retire PAS de l'historique — il faudra git-filter-repo."
+    exit 1
+  fi
+fi
+
+# ── 2. Métadonnées des images ───────────────────────────────────────────────
+if command -v exiftool >/dev/null 2>&1; then
+  SUSPECT=""
+  while IFS= read -r img; do
+    [ -f "$ROOT/$img" ] || continue
+    meta=$(exiftool -s -Artist -Creator -Author -Software -Comment -UserComment \
+             -XPAuthor -XPComment -Copyright -GPSPosition -HostComputer \
+             -OwnerName -SerialNumber "$ROOT/$img" 2>/dev/null | grep -v '^$' || true)
+    [ -n "$meta" ] && SUSPECT="${SUSPECT}\n  $img\n${meta//$'\n'/$'\n'}"
+  done < <(git ls-files -- '*.png' '*.jpg' '*.jpeg' '*.webp' '*.tif' '*.tiff')
+
+  if [ -n "$SUSPECT" ]; then
+    echo ""
+    echo "❌ PUSH BLOQUÉ — métadonnées identifiantes dans des images :"
+    echo -e "$SUSPECT"
+    echo ""
+    echo "   Purge : exiftool -all= <fichier>"
+    exit 1
+  fi
+else
+  echo "⚠ exiftool absent — métadonnées d'images non vérifiées."
+  echo "  sudo apt install libimage-exiftool-perl"
+fi
+
+echo "✓ pre-push : rien à signaler."
