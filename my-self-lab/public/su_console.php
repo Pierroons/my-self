@@ -71,7 +71,7 @@ render_header(t('su.title'), $account);
 <div class="result hidden" id="result"></div>
 
 <script nonce="<?= nonce() ?>">
-const SU = <?= json_encode(['running'=>t('su.js.running'),'termhead'=>t('su.js.termhead'),'banner1'=>t('su.js.banner1'),'banner2'=>t('su.js.banner2'),'prompt'=>t('su.js.prompt'),'wrongpw'=>t('su.js.wrongpw'),'error'=>t('su.js.error')], JSON_UNESCAPED_UNICODE) ?>;
+const SU = <?= json_encode(['running'=>t('su.js.running'),'termhead'=>t('su.js.termhead'),'banner1'=>t('su.js.banner1'),'banner2'=>t('su.js.banner2'),'prompt'=>t('su.js.prompt'),'wrongpw'=>t('su.js.wrongpw'),'error'=>t('su.js.error'),'inert'=>t('su.js.inert'),'confirm'=>t('su.js.confirm'),'refuse'=>t('su.js.refuse')], JSON_UNESCAPED_UNICODE) ?>;
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function afficher(role){
   const box=document.getElementById('result');
@@ -92,6 +92,33 @@ function afficher(role){
     d.ne_peut_pas.lignes.forEach(l=>{h+='<li>'+esc(l)+'</li>';});
     h+='</ul></div></div>';
     h+='<div class="verdict"><div class="k">💡 '+esc(d.cle)+'</div></div>';
+      // Aperçu du panneau d'arbitrage — données fictives, boutons inertes.
+      if(d.apercu){
+        const a=d.apercu;
+        const lig=(f,decl)=>'<li>'+(f.ok?'✅':'⬜')+' '+esc(f.label)
+          +'<span class="muted"> — '+(decl
+              ? 'déclaré <b>'+esc(f.dit)+'</b> · réel <b>'+esc(f.reel)+'</b>'
+              : esc(f.detail))+'</span></li>';
+        h+='<div class="panel" style="border-color:var(--border)">'
+          +'<div class="ptitle">🖥️ '+esc(a.label)+'</div>'
+          +'<div style="font-family:monospace;font-size:12px;margin:6px 0 10px">'
+            +'<code>'+esc(a.litige)+'</code> · @'+esc(a.compte)
+            +' · <span class="tag-sm">'+esc(a.statut)+'</span></div>'
+          +'<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px">'
+            +'<div style="flex:1;min-width:230px"><b style="color:var(--acc)">PASSIF</b>'
+              +'<span class="muted"> — constaté par le serveur</span><ul style="margin:4px 0 0;padding-left:18px">'
+              +a.passif.map(f=>lig(f,false)).join('')+'</ul></div>'
+            +'<div style="flex:1;min-width:230px"><b style="color:var(--warn)">DÉCLARATIF</b>'
+              +'<span class="muted"> — affirmé par le demandeur</span><ul style="margin:4px 0 0;padding-left:18px">'
+              +a.declaratif.map(f=>lig(f,true)).join('')+'</ul></div>'
+          +'</div>'
+          +'<p class="muted" style="font-size:12px;margin:8px 0 6px"><b>'+esc(a.resume)+'</b></p>'
+          +'<p><button class="btn btn-ghost" disabled style="padding:3px 9px;font-size:12px">'+esc(SU.confirm)+'</button> '
+            +'<button class="btn btn-ghost" disabled style="padding:3px 9px;font-size:12px">'+esc(SU.refuse)+'</button> '
+            +'<span class="muted" style="font-size:11px">'+esc(SU.inert)+'</span></p>'
+          +'<p class="muted" style="font-size:12px;margin:0">'+esc(a.note)+'</p>'
+          +'</div>';
+      }
     if(d.role==='su'){
       h+='<div class="su-term">'
         +'<div class="su-term-head">'+SU.termhead+'</div>'

@@ -231,6 +231,37 @@ final class SuConsole
                 'Lire le mémo E2E d\'un membre (blob chiffré)',
             ]],
             'cle' => 'L\'admin propose, il ne dispose pas : impossible de fabriquer de nouveaux admins seul.',
+
+            /*
+             * Aperçu du panneau d'arbitrage — DONNÉES ENTIÈREMENT FICTIVES.
+             *
+             * 🔑 Rien n'est lu de data/lab.db. Un panneau réel en lecture seule
+             * aurait exposé Admin::decryptReport, c'est-à-dire les rapports de
+             * vulnérabilités non encore corrigées : le read-only protège des
+             * écritures, or ici c'est la lecture qui est sensible.
+             *
+             * Ce qu'on montre est la seule chose qui mérite de l'être : comment
+             * un faisceau de faits se présente à celui qui décide.
+             */
+            'apercu' => [
+                'label'   => 'Ce que voit l\'admin quand un litige L3 arrive',
+                'litige'  => 'LIT-DEMO-0000000000000000',
+                'compte'  => 'demandeur_fictif',
+                'statut'  => 'awaiting_admin',
+                'passif'  => [
+                    ['ok' => false, 'label' => 'IP déjà utilisée par ce compte',
+                     'detail' => 'IP jamais vue pour ce compte'],
+                ],
+                'declaratif' => [
+                    ['ok' => true,  'label' => 'Année de création',        'dit' => '2026',     'reel' => '2026'],
+                    ['ok' => false, 'label' => 'Dernière connexion (mois)', 'dit' => '03/2024',  'reel' => 'jamais connecté'],
+                    ['ok' => false, 'label' => 'Fréquence d\'usage',        'dit' => 'intensif', 'reel' => 'rare (~0 connexions)'],
+                ],
+                'resume' => '0/1 passifs · 1/3 déclaratifs concordants',
+                'note'   => 'Aucun score n\'est calculé. Un nombre invite à l\'entériner ; '
+                          . 'des faits obligent à les lire. Et confirmer n\'ouvre pas le compte : '
+                          . 'le propriétaire repose lui-même ses secrets ensuite.',
+            ],
         ];
     }
 

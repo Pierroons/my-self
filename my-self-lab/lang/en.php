@@ -378,6 +378,9 @@ return [
     'su.js.banner2' => 'Type "help". No real action, no real power.',
     'su.js.prompt'  => '🔑 SuperUser password (PUBLIC demo: test-su)',
     'su.js.wrongpw' => 'Wrong password. Hint: it is "test-su" — public, this is a demo 🙂.',
+    'su.js.inert'   => '(buttons inert — demonstration)',
+    'su.js.confirm' => 'Confirm identity',
+    'su.js.refuse'  => 'Refuse',
     'su.js.error'   => 'Error:',
 
     // ── Profile ───────────────────────────────────────────────────────────

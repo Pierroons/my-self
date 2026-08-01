@@ -378,6 +378,9 @@ return [
     'su.js.banner2' => 'Tape « help ». Aucune action réelle, aucun pouvoir.',
     'su.js.prompt'  => '🔑 Mot de passe SuperUser (démo PUBLIC : test-su)',
     'su.js.wrongpw' => 'Mot de passe incorrect. Indice : c\'est « test-su » (public, c\'est une démo 🙂).',
+    'su.js.inert'   => '(boutons inertes — démonstration)',
+    'su.js.confirm' => 'Confirmer l\'identité',
+    'su.js.refuse'  => 'Refuser',
     'su.js.error'   => 'Erreur :',
 
     // ── Profil ────────────────────────────────────────────────────────────
