@@ -218,7 +218,7 @@ final class SuConsole
                 ['action' => 'Bannit temporairement un membre abusif', 'resultat' => 'OK — action de modération'],
                 ['action' => 'PROPOSE la promotion de user_lambda en admin', 'resultat' => 'OK — demande créée, en attente du SU'],
                 ['action' => 'Tente de s\'auto-promouvoir SU', 'resultat' => 'refusé — un admin ne se promeut pas lui-même'],
-                ['action' => 'Tente de lire le mémo E2E de user_lambda', 'resultat' => 'obtient « ' . substr($blob, 0, 24) . '… » — chiffré, illisible'],
+                ['action' => 'Tente de lire le mémo E2E de user_lambda', 'resultat' => 'chiffré, illisible', 'valeur' => substr($blob, 0, 24) . '…'],
             ],
             'peut' => ['label' => 'Ce qu\'un admin PEUT', 'lignes' => [
                 'Modérer : ban / grâce, arbitrer les litiges L3',
@@ -300,7 +300,7 @@ final class SuConsole
                 'mur' => [
                     'label' => 'Ce sur quoi l\'admin bute',
                     'lignes' => [
-                        'Mémo E2E → « ' . substr(strtr($blob, ['V' => 'k', 'P' => 'm', 'S' => 'w']), 0, 22) . '… » (illisible)',
+                        'Mémo E2E : illisible même pour lui',
                         'Mot de récupération → jamais reçu, seule sa dérivée circule',
                         'Codes de secours → Argon2id, aucun moyen de les relire',
                     ],
@@ -321,7 +321,7 @@ final class SuConsole
                 ['action' => 'Approuve la promotion de user_lambda', 'resultat' => 'OK — user_lambda devient admin (action tracée)'],
                 ['action' => 'Révoque un admin compromis', 'resultat' => 'OK — is_admin=0 + sessions coupées (tracé)'],
                 ['action' => 'Chaque action est écrite au journal', 'resultat' => 'log append-only + HMAC — infalsifiable'],
-                ['action' => 'Tente de lire le mémo E2E de user_lambda', 'resultat' => 'obtient « ' . substr($blob, 0, 24) . '… » — MÊME le SU ne le déchiffre pas'],
+                ['action' => 'Tente de lire le mémo E2E de user_lambda', 'resultat' => 'MÊME le SU ne le déchiffre pas', 'valeur' => substr($blob, 0, 24) . '…'],
             ],
             'peut' => ['label' => 'Ce que le SU PEUT', 'lignes' => [
                 'Approuver / rejeter les promotions (créer les admins)',

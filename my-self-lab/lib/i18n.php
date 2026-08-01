@@ -129,3 +129,53 @@ function lang_switch_url(string $cible): string
 
     return $chemin . '?' . http_build_query($params);
 }
+
+/**
+ * Dictionnaire de CONTENU, indexé par le texte français lui-même.
+ *
+ * Les classes qui produisent du contenu — simulateur d'attaques, console SU,
+ * modération — construisent des tableaux de phrases, pas des libellés
+ * d'interface. Leur poser une clé par phrase disperserait cent soixante
+ * chaînes dans un fichier séparé, loin du code qui les compose et qui seul
+ * leur donne un sens.
+ *
+ * On indexe donc par le texte source, comme le fait gettext. Une phrase sans
+ * traduction ressort en français : la page reste lisible, jamais trouée.
+ */
+function dictionnaireContenu(): array
+{
+    static $table = null;
+    if ($table !== null) {
+        return $table;
+    }
+    if (lang() === LANGUE_DEFAUT) {
+        return $table = [];   // le français est la source, rien à traduire
+    }
+    $f = __DIR__ . '/../lang/contenu-' . lang() . '.php';
+    return $table = is_readable($f) ? (require $f) : [];
+}
+
+/** Traduit une phrase de contenu. Repli sur le français si elle manque. */
+function tc(string $texte): string
+{
+    return dictionnaireContenu()[$texte] ?? $texte;
+}
+
+/**
+ * Traduit récursivement toutes les chaînes d'une structure.
+ *
+ * Évite de parsemer les classes de contenu d'appels à tc() : elles composent
+ * leurs tableaux en français, la traduction se fait à la sortie. Les clés ne
+ * sont jamais touchées — seules les valeurs affichées le sont.
+ */
+function tc_deep(array $donnees): array
+{
+    foreach ($donnees as $cle => $valeur) {
+        if (is_string($valeur)) {
+            $donnees[$cle] = tc($valeur);
+        } elseif (is_array($valeur)) {
+            $donnees[$cle] = tc_deep($valeur);
+        }
+    }
+    return $donnees;
+}

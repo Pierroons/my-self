@@ -60,10 +60,10 @@ final class Moderate
     {
         $rep = self::getReputation($pdo, $accountId);
         if ($rep['banned']) {
-            return [false, 'Compte temporairement suspendu.'];
+            return [false, tc('Compte temporairement suspendu.')];
         }
         if (!$rep['voting_rights']) {
-            return [false, 'Droit de vote retiré (réputation trop basse).'];
+            return [false, tc('Droit de vote retiré (réputation trop basse).')];
         }
         // Anti-Sybil : compte récent sans activité ne peut pas voter
         $stmt = $pdo->prepare('SELECT created_at FROM accounts WHERE id = ?');
@@ -75,7 +75,7 @@ final class Moderate
             $stmt->execute([$accountId]);
             $nbPosts = (int) $stmt->fetchColumn();
             if ($nbPosts < 1) {
-                return [false, 'Compte trop récent : publie au moins un message ou attends 24 h pour pouvoir voter (anti-Sybil).'];
+                return [false, tc('Compte trop récent : publie au moins un message ou attends 24 h pour pouvoir voter (anti-Sybil).')];
             }
         }
         return [true, ''];
@@ -101,7 +101,7 @@ final class Moderate
     public static function applyVote(PDO $pdo, int $voterId, string $targetType, int $targetId, int $value): array
     {
         if (!in_array($targetType, ['post', 'member'], true) || !in_array($value, [-1, 1], true)) {
-            return ['ok' => false, 'message' => 'Paramètres de vote invalides.'];
+            return ['ok' => false, 'message' => tc('Paramètres de vote invalides.')];
         }
 
         [$can, $why] = self::canVote($pdo, $voterId);
@@ -114,7 +114,7 @@ final class Moderate
             return ['ok' => false, 'message' => 'Cible introuvable.'];
         }
         if ($author === $voterId) {
-            return ['ok' => false, 'message' => 'Tu ne peux pas voter pour toi-même.'];
+            return ['ok' => false, 'message' => tc('Tu ne peux pas voter pour toi-même.')];
         }
         self::ensureRow($pdo, $author);
 
@@ -122,7 +122,7 @@ final class Moderate
         $stmt = $pdo->prepare('SELECT id FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ?');
         $stmt->execute([$voterId, $targetType, $targetId]);
         if ($stmt->fetchColumn()) {
-            return ['ok' => false, 'message' => 'Tu as déjà voté ici.'];
+            return ['ok' => false, 'message' => tc('Tu as déjà voté ici.')];
         }
 
         // Anti upvote-farming : >3 upvotes voter→author sur 60j
@@ -137,7 +137,7 @@ final class Moderate
                      VALUES (?, ?, ?, ?, ?, 1, ?, ?)'
                 )->execute([$voterId, $targetType, $targetId, $author, $value, 'upvote_farming', time()]);
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'upvote_farming',
-                        'message' => 'Vote enregistré mais neutralisé : trop d\'upvotes répétés vers ce membre (anti-farming).'];
+                        'message' => tc('Vote enregistré mais neutralisé : trop d\'upvotes répétés vers ce membre (anti-farming).')];
             }
         }
 
@@ -155,7 +155,7 @@ final class Moderate
                      VALUES (?, ?, ?, ?, ?, 1, ?, ?)'
                 )->execute([$voterId, $targetType, $targetId, $author, $value, 'downvote_farming', time()]);
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'downvote_farming',
-                        'message' => 'Vote enregistré mais neutralisé : trop de downvotes répétés vers ce membre (anti-farming).'];
+                        'message' => tc('Vote enregistré mais neutralisé : trop de downvotes répétés vers ce membre (anti-farming).')];
             }
         }
 

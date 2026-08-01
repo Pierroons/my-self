@@ -7,6 +7,11 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
+// Traduction : chargée ici et non dans layout.php, sinon elle ne serait
+// disponible que pour les pages HTML. Les points d'entrée d'API n'incluent pas
+// le gabarit, et leurs classes appellent tc() — sans cela, une fonction
+// indéfinie et une erreur fatale à chaque appel.
+require_once __DIR__ . '/i18n.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/security.php';

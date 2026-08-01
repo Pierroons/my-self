@@ -102,7 +102,10 @@ function afficher(role){
     let h='<h2 style="margin-top:0">'+esc(d.titre)+'</h2>';
     h+='<div class="subttl">'+esc(d.sous_titre)+'</div>';
     h+='<div class="narration">';
-    d.etapes.forEach((e,i)=>{h+='<div class="step"><b>'+(i+1)+'. '+esc(e.action)+'</b> → <span class="res">'+esc(e.resultat)+'</span></div>';});
+    // La valeur (blob chiffré) est affichée à part : elle change à chaque appel
+    // et ne peut donc pas faire partie d'une phrase traduisible.
+    d.etapes.forEach((e,i)=>{h+='<div class="step"><b>'+(i+1)+'. '+esc(e.action)+'</b> → <span class="res">'
+      +(e.valeur?'« <code>'+esc(e.valeur)+'</code> » — ':'')+esc(e.resultat)+'</span></div>';});
     h+='</div><div class="panels">';
     h+='<div class="panel verte"><div class="ptitle">✅ '+esc(d.peut.label)+'</div><ul>';
     d.peut.lignes.forEach(l=>{h+='<li>'+esc(l)+'</li>';});

@@ -194,24 +194,24 @@ final class AttackSimulator
             'titre' => 'Sybil + pack-voting (enterrement coordonné)',
             'objectif' => "Créer de faux comptes pour faire chuter la réputation d'un membre par un downvote coordonné.",
             'etapes' => [
-                ['action' => 'Un membre honnête soutient la cible (+1)', 'resultat' => "réputation : $repApresHonnete"],
-                ['action' => '3 faux comptes downvotent la cible en moins de 60 s', 'resultat' => "réputation chute à : $repApresAttaque"],
-                ['action' => 'Détection de pack-voting', 'resultat' => $det['cancelled_votes'] . ' votes annulés, réputation restaurée à : ' . $repApresDetection],
+                ['action' => 'Un membre honnête soutient la cible (+1)', 'resultat' => sprintf(tc('réputation : %d'), $repApresHonnete)],
+                ['action' => '3 faux comptes downvotent la cible en moins de 60 s', 'resultat' => sprintf(tc('réputation chute à : %d'), $repApresAttaque)],
+                ['action' => 'Détection de pack-voting', 'resultat' => sprintf(tc('%d votes annulés, réputation restaurée à : %d'), (int) $det['cancelled_votes'], $repApresDetection)],
                 ['action' => 'Un compte créé à l\'instant tente de voter', 'resultat' => $canVote ? 'autorisé (!)' : 'refusé — ' . $why],
             ],
             'cote_attaquant' => [
                 'label' => 'Tentative de manipulation',
                 'lignes' => [
-                    '3 downvotes coordonnés → ' . $det['cancelled_votes'] . ' annulés (pack_voting)',
-                    'Faux compte neuf → ' . ($canVote ? 'a pu voter' : 'BLOQUÉ (anti-Sybil)'),
-                    'Impact net sur la réputation : 0',
+                    sprintf(tc('3 downvotes coordonnés → %d annulés (pack_voting)'), (int) $det['cancelled_votes']),
+                    sprintf(tc('Faux compte neuf → %s'), $canVote ? tc('a pu voter') : tc('BLOQUÉ (anti-Sybil)')),
+                    sprintf(tc('Impact net sur la réputation : %d'), 0),
                 ],
             ],
             'cote_legitime' => [
                 'label' => 'Modération communautaire honnête',
                 'lignes' => [
                     'Vote du membre établi : ' . ($voteHonnete !== null ? '✓ conservé (+1)' : 'perdu'),
-                    "Réputation finale de la cible : $repApresDetection (intègre)",
+                    sprintf(tc('Réputation finale de la cible : %d (intègre)'), $repApresDetection),
                     'Les votes légitimes restent comptés, seuls les coordonnés tombent.',
                 ],
             ],
@@ -265,14 +265,14 @@ final class AttackSimulator
                 'lignes' => [
                     'POST sans jeton CSRF : ' . ($sansToken ? 'OK' : 'REJETÉ (403)'),
                     'POST avec faux jeton : ' . ($fauxToken ? 'OK' : 'REJETÉ (403)'),
-                    'Clé dérivée sur phishing-evil.com : ' . substr($clePhishing, 0, 24) . '…',
+                    sprintf(tc('Clé dérivée sur un faux site : %s'), substr($clePhishing, 0, 24) . '…'),
                 ],
             ],
             'cote_legitime' => [
                 'label' => 'Usage légitime',
                 'lignes' => [
                     'POST avec le bon jeton CSRF : ' . ($avecBonToken ? '✓ accepté' : 'rejeté'),
-                    'Clé dérivée sur lab.my-self.fr : ' . substr($cleVraiSite, 0, 24) . '…',
+                    sprintf(tc('Clé dérivée sur le vrai site : %s'), substr($cleVraiSite, 0, 24) . '…'),
                     'Les deux clés diffèrent → un faux site ne peut PAS reproduire la bonne.',
                 ],
             ],

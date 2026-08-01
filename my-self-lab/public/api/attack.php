@@ -16,5 +16,5 @@ if (!in_array($scenario, AttackSimulator::SCENARIOS, true)) {
     json_out(['ok' => false, 'message' => 'Scénario inconnu.'], 400);
 }
 
-$result = AttackSimulator::run($scenario);
+$result = tc_deep(AttackSimulator::run($scenario));
 json_out($result, $result['ok'] ? 200 : 400);
