@@ -239,11 +239,17 @@ final class AttackSimulator
         $avecBonToken = Security::verifyCsrf($sessionToken);
         unset($_SERVER['HTTP_X_CSRF_TOKEN']);
 
-        // 🔴 Phishing : dérivation sur un faux domaine vs vrai domaine
+        // 🔴 Phishing : le MÊME mot mémorisé, dérivé sous deux étiquettes de
+        // service différentes, ne donne pas la même clé.
+        //
+        // ⚠️ La dérivation appartient désormais au navigateur (cf. sr-derive.js) :
+        // le serveur n'a plus de fonction pour cela, et il ne doit pas en
+        // reprendre une — ce serait rouvrir le chemin par lequel le mot arrivait
+        // en clair. On reproduit donc ici le calcul du client, sur des étiquettes
+        // fictives, pour la seule démonstration.
         $mot = 'monchat2024';
-        $sel = bin2hex(random_bytes(16));
-        $cleVraiSite = Auth::deriveKey($mot, 'lab.my-self.fr', $sel);
-        $clePhishing = Auth::deriveKey($mot, 'phishing-evil.com', $sel);
+        $cleVraiSite = hash_hmac('sha256', 'myself-lab-domain-v1', $mot);
+        $clePhishing = hash_hmac('sha256', 'phishing-evil-com-v1', $mot);
 
         return [
             'ok' => true,
