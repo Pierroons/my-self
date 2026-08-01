@@ -34,6 +34,12 @@ final class Security
         header('Cross-Origin-Opener-Policy: same-origin');
         header('Cross-Origin-Resource-Policy: same-origin');
         header('X-Permitted-Cross-Domain-Policies: none');
+        // Pages authentifiées : jamais de cache. Sans cela le navigateur peut
+        // resservir depuis son historique une page rendue pour une session
+        // ouverte — profil, messages, ou un mémo affiché déchiffré. Rien n'est
+        // stocké par l'application ; c'est le navigateur qui conserve.
+        header('Cache-Control: no-store, no-cache, must-revalidate, private');
+        header('Pragma: no-cache');
         if ($htmlPage) {
             // CSP stricte : JS uniquement depuis nos <script nonce>. Pas d'inline non signé,
             // pas de handlers onclick (tous externalisés en addEventListener). LAB-06.

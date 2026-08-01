@@ -188,7 +188,7 @@ render_header(t('prf.title'), $account);
 
   <!-- État C : déverrouillé → édition -->
   <div id="memo-open" style="display:none">
-    <div class="field"><label><?= h(t('prf.memo.decrypted')) ?></label><textarea id="o-memo" rows="14" style="resize:vertical;min-height:220px;line-height:1.6"></textarea></div>
+    <div class="field"><label><?= h(t('prf.memo.decrypted')) ?></label><textarea id="o-memo" rows="14" autocomplete="off" autocorrect="off" spellcheck="false" style="resize:vertical;min-height:220px;line-height:1.6"></textarea></div>
     <button class="btn" id="btn-memosave"><?= h(t('prf.memo.save')) ?></button>
     <button class="btn btn-ghost" id="btn-memolock">Verrouiller</button>
   </div>
@@ -272,15 +272,30 @@ async function memoEnregistrer(btn){
     memoMsg(d.ok, d.ok ? PRF.saved2 : (d.message||'Erreur'));
   }catch(e){ memoMsg(false,e.message); } finally{ btn.disabled=false; }
 }
-function memoVerrouiller(){
-  _vaultKeyB64=null; document.getElementById('o-memo').value='';
-  show('memo-open',false); show('memo-locked',true); memoMsg(true,PRF.locked);
+function memoVerrouiller(avecMessage){
+  _vaultKeyB64 = null;
+  var o = document.getElementById('o-memo'); if (o) o.value = '';
+  var pw = document.getElementById('u-pw'); if (pw) pw.value = '';
+  show('memo-open', false); show('memo-locked', true);
+  if (avecMessage === true) { memoMsg(true, PRF.locked); }
 }
 document.getElementById('btn-memocreer').addEventListener('click', function(){ memoCreer(this); });
 document.getElementById('btn-memodev').addEventListener('click', function(){ memoDeverrouiller(this); });
 document.getElementById('btn-memorecup').addEventListener('click', function(){ memoRecuperer(this); });
 document.getElementById('btn-memosave').addEventListener('click', function(){ memoEnregistrer(this); });
-document.getElementById('btn-memolock').addEventListener('click', memoVerrouiller);
+
+// ⚠️ Remise à l'état verrouillé à CHAQUE affichage de la page.
+// La clé ne survit pas au rechargement, mais le navigateur, lui, restaure les
+// champs d'un formulaire et peut resservir la page depuis son cache arrière
+// (bfcache) avec le DOM tel qu'il était — donc un mémo déchiffré à l'écran,
+// sans mot de passe. Ce n'est pas une fuite de secret : rien n'est stocké côté
+// application. C'en est une d'affichage, ce qui suffit sur un poste partagé.
+<?php if ($vaultExiste): ?>
+memoVerrouiller();
+// pageshow couvre le retour depuis le cache arrière, que 'load' ne voit pas.
+window.addEventListener('pageshow', function(){ memoVerrouiller(); });
+<?php endif; ?>
+document.getElementById('btn-memolock').addEventListener('click', function(){ memoVerrouiller(true); });
 document.getElementById('btn-memoforgot').addEventListener('click', function(){ document.getElementById('memo-recover').style.display='block'; this.style.display='none'; });
 </script>
 <?php render_footer(); ?>
