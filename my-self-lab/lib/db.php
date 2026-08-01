@@ -65,6 +65,34 @@ final class Db
             }
         }
 
+        // recovery_codes a longtemps référencé accounts SANS cascade : toute
+        // suppression de compte échouait alors sur la contrainte. SQLite ne sait
+        // pas modifier une clé étrangère — il faut recréer la table.
+        $ddl = (string) self::$pdo->query(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='recovery_codes'"
+        )->fetchColumn();
+        if ($ddl !== '' && !str_contains($ddl, 'ON DELETE CASCADE')) {
+            self::$pdo->exec('PRAGMA foreign_keys = OFF');
+            self::$pdo->exec('
+                CREATE TABLE recovery_codes_new (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id  INTEGER NOT NULL,
+                    code_lookup TEXT NOT NULL,
+                    code_hash   TEXT NOT NULL,
+                    used        INTEGER NOT NULL DEFAULT 0,
+                    used_at     INTEGER,
+                    created_at  INTEGER NOT NULL,
+                    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+                );
+                INSERT INTO recovery_codes_new SELECT id, account_id, code_lookup, code_hash, used, used_at, created_at FROM recovery_codes;
+                DROP TABLE recovery_codes;
+                ALTER TABLE recovery_codes_new RENAME TO recovery_codes;
+                CREATE INDEX IF NOT EXISTS idx_codes_lookup ON recovery_codes(code_lookup);
+                CREATE INDEX IF NOT EXISTS idx_codes_account ON recovery_codes(account_id, used);
+            ');
+            self::$pdo->exec('PRAGMA foreign_keys = ON');
+        }
+
         // Niveau de récupération : le niveau 3 compte ses tentatives à part.
         $cols = self::$pdo->query('PRAGMA table_info(login_attempts)')->fetchAll(PDO::FETCH_COLUMN, 1);
         if (!in_array('level', $cols, true)) {

@@ -237,7 +237,12 @@ CREATE TABLE IF NOT EXISTS recovery_codes (
     used        INTEGER NOT NULL DEFAULT 0,
     used_at     INTEGER,
     created_at  INTEGER NOT NULL,
-    FOREIGN KEY (account_id) REFERENCES accounts(id)
+    -- La cascade est indispensable : sans elle, supprimer un compte viole la
+    -- contrainte et échoue. Toutes les autres tables liées à accounts la
+    -- portent ; l'oubli ici faisait échouer la suppression au refus d'un
+    -- litige, après que le message annonçant cette suppression avait déjà
+    -- été écrit dans le fil.
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_codes_lookup ON recovery_codes(code_lookup);
 CREATE INDEX IF NOT EXISTS idx_codes_account ON recovery_codes(account_id, used);

@@ -159,12 +159,19 @@ table.adm tr:last-child td{border-bottom:none}
               <strong style="color:var(--warn)">Déclaratif</strong> <span class="muted">— affirmé par le demandeur, devinable</span>
               <ul style="margin:4px 0 0;padding-left:18px">
                 <?php foreach (($sig['declarative'] ?? []) as $f): ?>
-                  <li><?= ($f['ok'] ?? false) ? '✅' : '⬜' ?> <?= h((string) ($f['label'] ?? '')) ?> <span class="muted">— <?= h((string) ($f['detail'] ?? '')) ?></span></li>
+                  <?php // Le déclaratif porte « dit » et « reel » : afficher les deux est
+                        // tout l'intérêt de cet axe — une coche seule ne se relit pas. ?>
+                  <li><?= ($f['ok'] ?? false) ? '✅' : '⬜' ?> <?= h((string) ($f['label'] ?? '')) ?>
+                    <span class="muted">— déclaré <strong><?= h((string) ($f['dit'] ?? $f['detail'] ?? '—')) ?></strong>
+                    <?php if (isset($f['reel'])): ?> · réel <strong><?= h((string) $f['reel']) ?></strong><?php endif; ?></span></li>
                 <?php endforeach; ?>
               </ul>
             </div>
           </div>
           <p class="muted" style="font-size:12px;margin:8px 0 0">
+            <?php // Un décompte de concordances, pas une note : il résume ce qui est
+                  // au-dessus sans prétendre trancher à la place du relecteur. ?>
+            <?php if (!empty($sig['summary'])): ?><strong><?= h((string) $sig['summary']) ?></strong> · <?php endif; ?>
             Échecs L2 antérieurs depuis la même connexion : <?= (int) ($d['l2_prior_attempts'] ?? 0) ?>
             · Refus déjà prononcés : <?= (int) ($d['refusal_count'] ?? 0) ?>
           </p>

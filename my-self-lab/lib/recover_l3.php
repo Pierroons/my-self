@@ -294,13 +294,27 @@ final class RecoverL3
 
         if ($decision === 'refuse') {
             // Démo : 1 refus = clôture + suppression du compte (montre le cycle complet).
-            // Ordre : on écrit le verdict SUR le litige AVANT de supprimer le compte — car la
-            // suppression du compte purge le litige en cascade (account_id ON DELETE CASCADE).
-            $pdo->prepare("UPDATE disputes SET status = 'refused', refusal_count = 1, updated_at = ? WHERE id = ?")
-                ->execute([time(), (int) $d['id']]);
-            $pdo->prepare("INSERT INTO dispute_messages (dispute_id, sender, body, created_at) VALUES (?, 'admin', ?, ?)")
-                ->execute([(int) $d['id'], "Preuve insuffisante. Compte clôturé et données supprimées.", time()]);
-            $pdo->prepare('DELETE FROM accounts WHERE id = ?')->execute([(int) $acc['id']]); // CASCADE : litige, codes, sessions…
+            //
+            // ⚠️ Le tout dans UNE transaction. Le verdict et le message doivent être
+            // écrits avant la suppression — celle-ci purge le litige en cascade — mais
+            // un échec de la suppression laisserait sinon en base un message annonçant
+            // une destruction qui n'a pas eu lieu. C'est exactement ce qui s'est produit
+            // tant que recovery_codes référençait accounts sans cascade : la contrainte
+            // rejetait le DELETE, et le fil affirmait au demandeur que son compte était
+            // supprimé alors qu'il était intact.
+            $pdo->beginTransaction();
+            try {
+                $pdo->prepare("UPDATE disputes SET status = 'refused', refusal_count = 1, updated_at = ? WHERE id = ?")
+                    ->execute([time(), (int) $d['id']]);
+                $pdo->prepare("INSERT INTO dispute_messages (dispute_id, sender, body, created_at) VALUES (?, 'admin', ?, ?)")
+                    ->execute([(int) $d['id'], "Preuve insuffisante. Compte clôturé et données supprimées.", time()]);
+                $pdo->prepare('DELETE FROM accounts WHERE id = ?')->execute([(int) $acc['id']]); // CASCADE : litige, codes, sessions…
+                $pdo->commit();
+            } catch (\Throwable $e) {
+                $pdo->rollBack();
+                return ['ok' => false, 'code' => 500,
+                        'message' => "La suppression a échoué : le compte est intact et le litige inchangé."];
+            }
             return ['ok' => true, 'decision' => 'refused', 'account_deleted' => true];
         }
 
