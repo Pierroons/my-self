@@ -279,6 +279,10 @@ function addTrace(string $msg): void {
 function jsonResponse(array $data, int $code = 200): void {
     http_response_code($code);
     header('Content-Type: application/json');
+    // Posé ici, au point d'émission, et pas seulement à l'entrée : certains
+    // chemins d'erreur répondent sans passer par index.php.
+    header('Cache-Control: no-store, no-cache, must-revalidate, private');
+    header('Pragma: no-cache');
     // _trace exposé uniquement si DEBUG_MODE=true (désactivable en prod)
     if (DEBUG_MODE && !empty($GLOBALS['_trace'])) {
         $data['_trace'] = $GLOBALS['_trace'];

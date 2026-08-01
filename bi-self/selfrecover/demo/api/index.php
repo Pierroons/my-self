@@ -14,6 +14,12 @@ header('Access-Control-Allow-Headers: Content-Type, X-Client-Fingerprint, X-Sess
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 header('Referrer-Policy: strict-origin-when-cross-origin');
+// Aucune réponse de cette API n'est cacheable : elles portent des sessions, des
+// identifiants de litige, des lots de codes de récupération. Sans cet en-tête,
+// le navigateur peut resservir une réponse depuis son historique après la
+// déconnexion — et un intermédiaire la conserver.
+header('Cache-Control: no-store, no-cache, must-revalidate, private');
+header('Pragma: no-cache');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
