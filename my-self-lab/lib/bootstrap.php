@@ -20,6 +20,9 @@ require_once __DIR__ . '/recover_l3.php';
 // ⚠️ Une classe non chargée ici ne lève pas d'erreur visible — elle produit
 // une réponse HTTP vide, silencieuse et pénible à diagnostiquer.
 require_once __DIR__ . '/device.php';
+// Alerte sortante sur rapport red team. Inactive tant que l'environnement ne
+// porte pas ses identifiants — jamais au dépôt, qui est public.
+require_once __DIR__ . '/notify.php';
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Auth;

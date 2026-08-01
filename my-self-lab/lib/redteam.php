@@ -76,7 +76,12 @@ final class Redteam
              VALUES (?, ?, ?, ?, ?, ?, ?)'
         )->execute([$handle, $severity, $target, $ciphertext, 'nouveau', $ipHash, time()]);
 
-        return ['ok' => true, 'id' => (int) $pdo->lastInsertId()];
+        $id = (int) $pdo->lastInsertId();
+        // Alerte le lecteur du panneau. Volontairement après l'écriture et sans
+        // condition de succès : un canal muet ne doit pas perdre un rapport.
+        Notify::nouveauRapport($id, (string) ($champs['severite'] ?? '?'));
+
+        return ['ok' => true, 'id' => $id];
     }
 
     /**
