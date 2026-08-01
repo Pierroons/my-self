@@ -9,6 +9,9 @@ require_once __DIR__ . '/vendor/autoload.php';
 require_once __DIR__ . '/lib/db.php';
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/forum.php';
+// Le navigateur dérive le mot mémorisé ; un script CLI n'en a pas, il refait
+// donc le même calcul (cf. lib/derive_cli.php).
+require_once __DIR__ . '/lib/derive_cli.php';
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Auth;
@@ -23,7 +26,7 @@ $comptes = [
 ];
 $ids = [];
 foreach ($comptes as [$u, $rw]) {
-    $r = Auth::register($pdo, $u, $rw);
+    $r = Auth::register($pdo, $u, sr_derive_like_browser($rw));
     if ($r['ok']) {
         $ids[$u] = $r['account_id'];
         echo "Compte $u créé (#{$r['account_id']})\n";
