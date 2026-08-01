@@ -75,6 +75,10 @@ function getDB(): PDO {
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
     $pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
+    // SQLite n'applique PAS les clés étrangères sans ce PRAGMA : sans lui, celles
+    // déclarées au schéma restent décoratives et la suppression d'un compte laisse
+    // ses codes, ses litiges et ses appareils derrière elle.
+    $pdo->exec('PRAGMA foreign_keys = ON');
     if ($init) {
         $pdo->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     } else {
@@ -106,7 +110,7 @@ function getDB(): PDO {
                 expires_at TEXT NOT NULL,
                 used INTEGER DEFAULT 0,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id)
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )");
         } catch (Exception $e) { /* table exists = OK */ }
         try {
@@ -163,6 +167,55 @@ function getDB(): PDO {
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_reccodes_lookup ON recovery_codes(code_lookup)");
             $pdo->exec("CREATE INDEX IF NOT EXISTS idx_reccodes_user ON recovery_codes(user_id)");
         } catch (Exception $e) { /* table exists = OK */ }
+
+        // ── Cascade sur les clés étrangères ───────────────────────────────
+        // Les contraintes ont longtemps été déclarées SANS cascade, et le PRAGMA
+        // qui les applique n'était pas posé : elles étaient décoratives. Les
+        // activer telles quelles ferait échouer toute suppression de compte —
+        // la contrainte rejetterait le DELETE. SQLite ne sait pas modifier une
+        // clé étrangère : chaque table concernée est recréée puis réalimentée.
+        $aCascade = function (PDO $pdo, string $table): bool {
+            $sql = (string) $pdo->query(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='" . $table . "'"
+            )->fetchColumn();
+            return $sql === '' || str_contains($sql, 'ON DELETE CASCADE');
+        };
+        $recree = [
+            'recovery_codes' => "CREATE TABLE recovery_codes__new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+                code_lookup TEXT NOT NULL, code_hash TEXT NOT NULL,
+                used INTEGER DEFAULT 0, used_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)",
+            'device_credentials' => "CREATE TABLE device_credentials__new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+                credential_id TEXT NOT NULL UNIQUE, public_key TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE)",
+            'dispute_messages' => "CREATE TABLE dispute_messages__new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, dispute_id INTEGER NOT NULL,
+                sender TEXT NOT NULL, body TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (dispute_id) REFERENCES disputes(id) ON DELETE CASCADE)",
+        ];
+        foreach ($recree as $table => $ddl) {
+            if ($aCascade($pdo, $table)) { continue; }
+            try {
+                $cols = [];
+                foreach ($pdo->query("PRAGMA table_info(" . $table . ")") as $c) { $cols[] = $c['name']; }
+                $liste = implode(', ', $cols);
+                $pdo->exec('PRAGMA foreign_keys = OFF');
+                $pdo->exec($ddl);
+                $pdo->exec("INSERT INTO " . $table . "__new (" . $liste . ") SELECT " . $liste . " FROM " . $table);
+                $pdo->exec("DROP TABLE " . $table);
+                $pdo->exec("ALTER TABLE " . $table . "__new RENAME TO " . $table);
+                $pdo->exec('PRAGMA foreign_keys = ON');
+            } catch (Exception $e) {
+                // Une migration qui échoue ne doit pas empêcher le site de servir :
+                // on repasse le PRAGMA et on laisse la table en l'état.
+                $pdo->exec('PRAGMA foreign_keys = ON');
+            }
+        }
         try {
             $pdo->exec("CREATE TABLE IF NOT EXISTS device_credentials (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

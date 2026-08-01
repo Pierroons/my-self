@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS reset_requests (
     expires_at TEXT NOT NULL,                -- TTL 15 min
     used INTEGER DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_reset_user ON reset_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_reset_expires ON reset_requests(expires_at);
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS disputes (
     init_collisions INTEGER DEFAULT 0,         -- R9-01b : inits concurrentes sur un litige ouvert = signal multi-demandeur pour l'admin
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS dispute_messages (
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS dispute_messages (
     sender TEXT NOT NULL,                      -- user | admin
     body TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (dispute_id) REFERENCES disputes(id)
+    FOREIGN KEY (dispute_id) REFERENCES disputes(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_disputes_user ON disputes(user_id);
@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS recovery_codes (
     used INTEGER DEFAULT 0,
     used_at TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_reccodes_lookup ON recovery_codes(code_lookup);
 CREATE INDEX IF NOT EXISTS idx_reccodes_user ON recovery_codes(user_id);
@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS device_credentials (
     credential_id TEXT NOT NULL UNIQUE,   -- id aléatoire, localise le compte (comme un recovery code)
     public_key TEXT NOT NULL,             -- clé publique ECDSA P-256 (SPKI DER, base64url)
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_devcred_cid ON device_credentials(credential_id);
 CREATE INDEX IF NOT EXISTS idx_devcred_user ON device_credentials(user_id);
@@ -156,7 +156,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     is_admin INTEGER DEFAULT 0,            -- snapshot du rôle à l'ouverture de session
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     expires_at TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
