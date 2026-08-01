@@ -15,6 +15,11 @@ use Pierroons\MySelfLab\Auth;
 $pdo = Db::pdo();
 $account = Auth::currentAccount($pdo);
 
+// Libellés JS partagés par les deux vues (profil d'un membre / son propre espace).
+// Une seule source : la vue publique se terminant par un exit, dupliquer la liste
+// garantissait qu'une clé ajoutée d'un côté manquerait de l'autre.
+$prfJs = json_encode(['saved'=>t('prf.js.saved'),'required'=>t('prf.js.required'),'weakpass'=>t('prf.js.weakpass'),'created'=>t('prf.js.created'),'deriving'=>t('prf.js.deriving'),'decrypted'=>t('prf.js.decrypted'),'locked'=>t('prf.js.locked'),'saved2'=>t('prf.js.saved2'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE);
+
 // Vue publique d'un membre : ?u=username
 $voirUsername = $_GET['u'] ?? null;
 if ($voirUsername !== null) {
@@ -63,7 +68,7 @@ if ($voirUsername !== null) {
           ?></p>
         </div>
         <script nonce="<?= nonce() ?>">
-const PRF = <?= json_encode(['saved'=>t('prf.js.saved'),'required'=>t('prf.js.required'),'weakpass'=>t('prf.js.weakpass'),'created'=>t('prf.js.created'),'deriving'=>t('prf.js.deriving'),'decrypted'=>t('prf.js.decrypted'),'locked'=>t('prf.js.locked'),'saved2'=>t('prf.js.saved2'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE) ?>;
+const PRF = <?= $prfJs ?>;
         function voteMembre(id, value){
           labPost('/api/vote.php',{target_type:'member',target_id:id,value:value}).then(d=>{
             if(d.ok){ location.reload(); }
@@ -189,6 +194,11 @@ render_header(t('prf.title'), $account);
   </div>
 </div>
 <script nonce="<?= nonce() ?>">
+// ⚠️ PRF était défini uniquement dans la branche « profil d'un autre membre »,
+// qui se termine par un exit. Sur son propre espace cette branche ne s'exécute
+// pas : toutes les fonctions du mémo référençaient donc un objet inexistant, et
+// la première à en avoir besoin échouait sur « PRF is not defined ».
+const PRF = <?= $prfJs ?>;
 function enregistrer(){
   labPost('/api/profile_save.php',{
     bio:document.getElementById('bio').value,
