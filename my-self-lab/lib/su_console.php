@@ -244,41 +244,48 @@ final class SuConsole
              * un faisceau de faits se présente à celui qui décide.
              */
             'apercu' => [
-                'label' => 'Ce que voit réellement un admin dans /admin.php',
+                'label' => 'Ce que voit un admin dans /admin.php',
                 'intro' => 'Reproduction fidèle, données fictives. À retenir : l\'admin déchiffre '
                          . 'profils et messages privés, mais bute sur le mémo.',
+                // Bandeau de compteurs, comme en tête du vrai panneau.
+                'kpi' => [
+                    ['n' => '7',   'l' => 'comptes'],
+                    ['n' => '2',   'l' => 'nouveaux 24h'],
+                    ['n' => '4/6', 'l' => 'sujets/posts'],
+                    ['n' => '1',   'l' => 'dm'],
+                    ['n' => '3',   'l' => 'échecs login 24h', 'ton' => 'warn'],
+                    ['n' => '1',   'l' => 'votes bloqués',    'ton' => 'warn'],
+                    ['n' => '1',   'l' => 'rapports neufs',   'ton' => 'warn'],
+                ],
                 'sections' => [
-                    ['titre' => '🔓 Échecs de login récents',
+                    ['titre' => '🔓 Échecs de login récents', 'hint' => 'bruteforce ?', 'demi' => true,
                      'colonnes' => ['Compte visé', 'IP', 'Quand'],
-                     'lignes' => [['@demandeur_fictif', '203.0.113.4', 'il y a 3 min'],
-                                  ['@demandeur_fictif', '203.0.113.4', 'il y a 4 min']],
-                     'cle' => 'Corrèle une tentative avec un litige ouvert.'],
+                     'lignes' => [['demandeur_fictif', '203.0.113.4', '01/08 15:47'],
+                                  ['demandeur_fictif', '203.0.113.4', '01/08 15:43']]],
 
-                    ['titre' => '🗳️ Votes neutralisés',
+                    ['titre' => '🗳️ Votes neutralisés', 'hint' => 'Sybil / pack', 'demi' => true,
                      'colonnes' => ['Votant', 'Cible', 'Raison', 'Quand'],
-                     'lignes' => [['@compte_a', '@compte_b', 'pack-voting (3 votes / 48 s)', 'hier']],
-                     'cle' => 'SelfModerate annule le vote et restaure la réputation — il ne bannit pas.'],
+                     'lignes' => [['compte_a', 'compte_b', 'pack-voting', 'hier']]],
 
                     ['titre' => '👥 Comptes',
-                     'colonnes' => ['ID', 'Identifiant', 'Réputation', 'Profil déchiffré', 'Modération'],
-                     'lignes' => [['42', '@membre_fictif', '21/30', 'bio : « bonjour » · ville non renseignée', 'bannir · gracier']],
+                     'colonnes' => ['ID', 'Identifiant', 'Réputation', 'Créé', 'Profil déchiffré', 'Modération'],
+                     'lignes' => [
+                        ['42', '@membre_fictif', '★ 20', '01/08 14:56', 'voir (mémo)', 'bannir · gracier'],
+                        ['41', '@demandeur_fictif', '★ 18', '01/08 14:56', 'voir (mémo)', 'bannir · gracier'],
+                     ],
                      'cle' => '⚠️ Le profil EST lisible : clé serveur, pas clé utilisateur. Limite assumée.'],
 
-                    ['titre' => '🧑‍⚖️ Litiges — niveau 3',
+                    ['titre' => '🧑‍⚖️ Litiges — récupération niveau 3', 'faisceau' => true,
                      'colonnes' => ['Litige', 'Compte revendiqué', 'Statut', 'Actions'],
                      'lignes' => [['LIT-DEMO-0042', '@demandeur_fictif', 'awaiting_admin', 'confirmer · refuser']],
-                     'faisceau' => true,
-                     'cle' => 'Aucun score. Décision humaine, qui n\'ouvre pas le compte.'],
+                     'cle' => 'Confirmer n\'ouvre aucun accès : le propriétaire repose lui-même ses secrets.'],
 
                     ['titre' => '📨 Rapports red team',
-                     'colonnes' => ['#', 'Pseudo', 'Sévérité', 'Cible', 'Statut', 'Actions'],
-                     'lignes' => [['7', '@chercheur_fictif', 'moyen', 'memo', 'nouveau', 'déchiffrer · valider']],
-                     'cle' => '⚠️ Section la plus sensible : failles non corrigées. D\'où cette reproduction fictive plutôt qu\'un accès réel.'],
+                     'colonnes' => ['#', 'Pseudo', 'Sévérité', 'Cible', 'Statut', 'Reçu', 'Actions'],
+                     'lignes' => [['7', 'chercheur_fictif', 'moyen', 'memo', 'nouveau', '01/08 11:07', 'lire · valider']],
+                     'cle' => '⚠️ Section la plus sensible : failles non corrigées. D\'où cette reproduction fictive.'],
                 ],
                 'faisceau' => [
-                    'litige' => 'LIT-DEMO-0042',
-                    'compte' => 'demandeur_fictif',
-                    'statut' => 'awaiting_admin',
                     'passif' => [
                         ['ok' => false, 'label' => 'IP déjà utilisée par ce compte',
                          'detail' => 'IP jamais vue pour ce compte'],
@@ -293,9 +300,9 @@ final class SuConsole
                 'mur' => [
                     'label' => 'Ce sur quoi l\'admin bute',
                     'lignes' => [
-                        'Mémo E2E de @membre_fictif → « ' . substr(strtr($blob, ['V' => 'k', 'P' => 'm', 'S' => 'w']), 0, 22) . '… » (illisible)',
-                        'Mot de récupération → jamais reçu : le navigateur n\'en envoie que la dérivée',
-                        'Codes de secours → Argon2id en base, aucun moyen de les relire',
+                        'Mémo E2E → « ' . substr(strtr($blob, ['V' => 'k', 'P' => 'm', 'S' => 'w']), 0, 22) . '… » (illisible)',
+                        'Mot de récupération → jamais reçu, seule sa dérivée circule',
+                        'Codes de secours → Argon2id, aucun moyen de les relire',
                     ],
                 ],
             ],

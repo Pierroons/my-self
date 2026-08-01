@@ -12,6 +12,25 @@ $account = Auth::currentAccount($pdo);
 render_header(t('su.title'), $account);
 ?>
 <style>
+/* Styles repris à l'identique de /admin.php : l'aperçu doit ressembler au
+   panneau, pas à une illustration qui s'en approcherait. Toute divergence
+   ici ferait mentir la démonstration. */
+.adm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:18px}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.kpi .n{font-size:22px;font-weight:700}
+.kpi .l{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
+.kpi.alert .n{color:var(--danger)}
+.kpi.warn .n{color:var(--warn)}
+.adm-warn{background:rgba(108,182,255,.08);border:1px solid rgba(108,182,255,.3);border-radius:8px;padding:12px 16px;font-size:12.5px;color:var(--txt2);margin-bottom:18px}
+table.adm{width:100%;border-collapse:collapse;font-size:12.5px}
+table.adm th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid var(--border);padding:6px 8px}
+table.adm td{padding:7px 8px;border-bottom:1px solid var(--border)}
+table.adm tr:last-child td{border-bottom:none}
+.tag-sm{font-size:10.5px;padding:1px 7px;border-radius:9px;border:1px solid;font-weight:600}
+.mini{padding:3px 9px;font-size:11.5px}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:760px){.cols2{grid-template-columns:1fr}}
+
 .su-intro{background:rgba(63,185,140,.07);border:1px solid var(--border);border-left:3px solid var(--acc);border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--txt2);line-height:1.55}
 .su-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:20px}
 .su-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
@@ -92,40 +111,51 @@ function afficher(role){
     d.ne_peut_pas.lignes.forEach(l=>{h+='<li>'+esc(l)+'</li>';});
     h+='</ul></div></div>';
     h+='<div class="verdict"><div class="k">💡 '+esc(d.cle)+'</div></div>';
-      // Aperçu du panneau admin — 5 sections, données fictives, actions inertes.
+      // Aperçu du panneau admin — reprend les styles réels (.kpi, table.adm, .card,
+      // .cols2, .tag-sm, .mini) plutôt que d'en inventer : c'est le panneau qu'on
+      // montre, pas une illustration qui lui ressemblerait vaguement.
       if(d.apercu){
         const a=d.apercu;
-        h+='<div class="panel" style="border-color:var(--border)">'
-          +'<div class="ptitle">🖥️ '+esc(a.label)+'</div>'
-          +'<p class="muted" style="font-size:12.5px;margin:4px 0 12px">'+esc(a.intro)+'</p>';
-        a.sections.forEach(function(sec){
-          h+='<div style="margin:0 0 16px;padding-bottom:12px;border-bottom:1px solid var(--border)">'
-            +'<b style="font-size:12.5px;letter-spacing:.2px">'+esc(sec.titre)+'</b>'
-            +'<div style="overflow-x:auto"><table class="adm" style="width:auto;margin:5px 0;font-size:12px;border-collapse:collapse"><tr>'
-            +sec.colonnes.map(c=>'<th style="padding:3px 14px 3px 0;text-align:left;white-space:nowrap">'+esc(c)+'</th>').join('')+'</tr>'
-            +sec.lignes.map(r=>'<tr>'+r.map(c=>'<td style="padding:3px 14px 3px 0;white-space:nowrap">'+esc(c)+'</td>').join('')+'</tr>').join('')
-            +'</table></div>';
-          if(sec.faisceau && a.faisceau){
-            const f=a.faisceau;
-            const lig=(x,decl)=>'<li>'+(x.ok?'✅':'⬜')+' '+esc(x.label)
-              +'<span class="muted"> — '+(decl
-                  ? 'déclaré <b>'+esc(x.dit)+'</b> · réel <b>'+esc(x.reel)+'</b>'
-                  : esc(x.detail))+'</span></li>';
-            h+='<div style="border-left:2px solid var(--border);padding-left:10px;margin:6px 0 0">'
-              +'<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px">'
-                +'<div style="flex:1;min-width:220px"><b style="color:var(--acc)">PASSIF</b>'
-                  +'<span class="muted"> — constaté, non falsifiable</span>'
-                  +'<ul style="margin:3px 0 0;padding-left:17px">'+f.passif.map(x=>lig(x,false)).join('')+'</ul></div>'
-                +'<div style="flex:1;min-width:220px"><b style="color:var(--warn)">DÉCLARATIF</b>'
-                  +'<span class="muted"> — affirmé, devinable</span>'
-                  +'<ul style="margin:3px 0 0;padding-left:17px">'+f.declaratif.map(x=>lig(x,true)).join('')+'</ul></div>'
-              +'</div>'
-              +'<p class="muted" style="font-size:11.5px;margin:6px 0 0"><b>'+esc(f.resume)+'</b> · '+esc(SU.inert)+'</p>'
-              +'</div>';
-          }
-          h+='<p class="muted" style="font-size:11px;margin:3px 0 0;opacity:.85">'+esc(sec.cle)+'</p></div>';
-        });
-        h+='<div class="panel rouge" style="margin-top:6px"><div class="ptitle">🚫 '+esc(a.mur.label)+'</div><ul>'
+        const tbl=sec=>'<table class="adm"><tr>'
+          +sec.colonnes.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr>'
+          +sec.lignes.map(r=>'<tr>'+r.map((c,i)=>'<td>'+(i===r.length-1
+              ? c.split(' · ').map(b=>'<span class="btn btn-ghost mini" style="opacity:.55;cursor:default">'+esc(b)+'</span>').join(' ')
+              : esc(c))+'</td>').join('')+'</tr>').join('')
+          +'</table>';
+        const carte=sec=>'<div class="card" style="margin:0">'
+          +'<h2 style="margin:0 0 10px;font-size:14px">'+esc(sec.titre)
+          +(sec.hint?' <span class="muted" style="font-size:11.5px;font-weight:400">('+esc(sec.hint)+')</span>':'')
+          +'</h2>'+tbl(sec)
+          +(sec.faisceau&&a.faisceau?faisc():'')
+          +(sec.cle?'<p class="muted" style="font-size:11.5px;margin:8px 0 0">'+esc(sec.cle)+'</p>':'')
+          +'</div>';
+        const faisc=()=>{
+          const f=a.faisceau;
+          const lig=(x,decl)=>'<li style="margin:2px 0">'+(x.ok?'✅':'⬜')+' '+esc(x.label)
+            +'<span class="muted"> — '+(decl?'déclaré <b>'+esc(x.dit)+'</b> · réel <b>'+esc(x.reel)+'</b>':esc(x.detail))+'</span></li>';
+          return '<div class="adm-warn" style="margin:10px 0 0">'
+            +'<div class="cols2" style="gap:16px">'
+              +'<div><b style="color:var(--acc);font-size:11px;text-transform:uppercase;letter-spacing:.3px">Passif</b>'
+                +'<span class="muted" style="font-size:11px"> — non falsifiable</span>'
+                +'<ul style="margin:4px 0 0;padding-left:18px;list-style:none">'+f.passif.map(x=>lig(x,false)).join('')+'</ul></div>'
+              +'<div><b style="color:var(--warn);font-size:11px;text-transform:uppercase;letter-spacing:.3px">Déclaratif</b>'
+                +'<span class="muted" style="font-size:11px"> — devinable</span>'
+                +'<ul style="margin:4px 0 0;padding-left:18px;list-style:none">'+f.declaratif.map(x=>lig(x,true)).join('')+'</ul></div>'
+            +'</div>'
+            +'<p style="margin:8px 0 0;font-size:11.5px"><b>'+esc(f.resume)+'</b> <span class="muted">· '+esc(SU.inert)+'</span></p>'
+            +'</div>';
+        };
+        h+='<div style="margin-top:18px">'
+          +'<div class="ptitle" style="margin-bottom:4px">🖥️ '+esc(a.label)+'</div>'
+          +'<p class="muted" style="font-size:12px;margin:0 0 12px">'+esc(a.intro)+'</p>'
+          +'<div class="adm-grid">'
+          +a.kpi.map(k=>'<div class="kpi'+(k.ton?' '+k.ton:'')+'"><div class="n">'+esc(k.n)+'</div>'
+                       +'<div class="l">'+esc(k.l)+'</div></div>').join('')
+          +'</div>';
+        const demi=a.sections.filter(s=>s.demi), pleine=a.sections.filter(s=>!s.demi);
+        if(demi.length){ h+='<div class="cols2" style="margin-bottom:14px">'+demi.map(carte).join('')+'</div>'; }
+        h+=pleine.map(s=>'<div style="margin-bottom:14px">'+carte(s)+'</div>').join('');
+        h+='<div class="panel rouge"><div class="ptitle">🚫 '+esc(a.mur.label)+'</div><ul>'
           +a.mur.lignes.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>'
           +'</div>';
       }
