@@ -10,13 +10,9 @@ CREATE TABLE IF NOT EXISTS accounts (
     username        TEXT UNIQUE NOT NULL,
     pw_hash         TEXT NOT NULL,          -- Argon2id(password)
     pass_hash       TEXT NOT NULL,          -- Argon2id(passphrase diceware L1)
-    recovery_hash   TEXT NOT NULL,          -- Argon2id(derived_key) — mot mémorisé (facteur connaissance L2)
+    recovery_hash   TEXT NOT NULL,          -- Argon2id(derived_key) — L2 recovery
     is_admin        INTEGER NOT NULL DEFAULT 0,  -- panel admin (promotion via promote_admin.php)
-    created_at      INTEGER NOT NULL,
-    -- L3 : signaux contextuels (jamais un score) + ban temporaire après refus de litige
-    last_login_at   INTEGER,
-    login_count     INTEGER NOT NULL DEFAULT 0,
-    banned_until    INTEGER NOT NULL DEFAULT 0
+    created_at      INTEGER NOT NULL
 );
 
 -- Sessions applicatives (token cookie)
@@ -29,18 +25,15 @@ CREATE TABLE IF NOT EXISTS app_sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_app_sessions_token ON app_sessions(token);
 
--- Rate-limit login + récupération (anti-bruteforce applicatif).
--- level : 0=login, 1=recover L1, 2=recover L2, 3=recover L3 (rate-limit propre par niveau).
+-- Rate-limit login (anti-bruteforce applicatif)
 CREATE TABLE IF NOT EXISTS login_attempts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     username     TEXT NOT NULL,
     success      INTEGER NOT NULL,
-    level        INTEGER NOT NULL DEFAULT 0,
     ip           TEXT,
     attempted_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_login_attempts ON login_attempts(username, attempted_at);
-CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, attempted_at);
 
 -- Forum : sujets
 CREATE TABLE IF NOT EXISTS threads (
@@ -154,85 +147,3 @@ CREATE TABLE IF NOT EXISTS memo_vault (
     updated_at   INTEGER NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
-
--- =====================================================================
--- SelfRecover — escalade L1/L2/L3 + facteurs (parité démo bi-self)
--- =====================================================================
-
--- Recovery codes (foyer POSSESSION portable de L2) — lot de 10 par compte, usage unique.
--- Le mot mémorisé (recovery_hash, connaissance) + un recovery code (possession) = vrai 2FA.
-CREATE TABLE IF NOT EXISTS recovery_codes (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    account_id  INTEGER NOT NULL,
-    code_lookup TEXT NOT NULL,          -- HMAC(SERVER_SECRET, code) : recherche O(1) sans identifiant (pepper)
-    code_hash   TEXT NOT NULL,          -- Argon2id(code) : vérif + résistance fuite DB
-    used        INTEGER NOT NULL DEFAULT 0,
-    used_at     INTEGER,
-    created_at  INTEGER NOT NULL,
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_reccodes_lookup ON recovery_codes(code_lookup);
-CREATE INDEX IF NOT EXISTS idx_reccodes_account ON recovery_codes(account_id);
-
--- Credential « cet appareil » (foyer POSSESSION device-bound). Le serveur ne détient
--- QUE la clé publique ; la privée vit chiffrée dans le navigateur (enveloppe mot mémorisé).
-CREATE TABLE IF NOT EXISTS device_credentials (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    account_id    INTEGER NOT NULL,
-    credential_id TEXT NOT NULL UNIQUE,  -- id aléatoire, localise le compte (comme un recovery code)
-    public_key    TEXT NOT NULL,         -- clé publique ECDSA P-256 (SPKI DER, base64url)
-    created_at    INTEGER NOT NULL,
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_devcred_cid ON device_credentials(credential_id);
-CREATE INDEX IF NOT EXISTS idx_devcred_account ON device_credentials(account_id);
-
-CREATE TABLE IF NOT EXISTS device_challenges (
-    challenge     TEXT PRIMARY KEY,      -- base64url, usage unique, TTL court
-    credential_id TEXT,
-    created_at    INTEGER NOT NULL
-);
-
--- L3 : litiges. Chat admin OBLIGATOIRE — le scoring n'ouvre jamais rien, il aide l'humain.
-CREATE TABLE IF NOT EXISTS disputes (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    dispute_number  TEXT UNIQUE NOT NULL,          -- LIT-XXXX (non énumérable)
-    account_id      INTEGER NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'open',  -- open|awaiting_admin|granted|resolved|refused|closed
-    refusal_count   INTEGER NOT NULL DEFAULT 0,
-    signals_json    TEXT,                          -- faisceau de faits bruts pour l'admin (jamais un score chiffré)
-    claim_hash      TEXT,                          -- SHA-256 du sésame généré côté demandeur (autorise le fil)
-    expires_at      INTEGER,                       -- TTL de la capability (défaut +24h)
-    init_collisions INTEGER NOT NULL DEFAULT 0,    -- inits concurrentes = signal multi-demandeur
-    source_ip       TEXT,
-    created_at      INTEGER NOT NULL,
-    updated_at      INTEGER NOT NULL,
-    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_disputes_account ON disputes(account_id);
-CREATE INDEX IF NOT EXISTS idx_disputes_number ON disputes(dispute_number);
-CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status);
-
-CREATE TABLE IF NOT EXISTS dispute_messages (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    dispute_id INTEGER NOT NULL,
-    sender     TEXT NOT NULL,                       -- user | admin
-    body       TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    FOREIGN KEY (dispute_id) REFERENCES disputes(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_dispute_msg ON dispute_messages(dispute_id);
-
--- Fingerprints suspects — rate-limit per-IP sur le brute-force de n° de litige / sésame
--- (jamais sur les échecs L1/L2/L3 légitimes, cf modèle de menace : bloquer la source pas la cible).
-CREATE TABLE IF NOT EXISTS suspicious_fingerprints (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    ip            TEXT NOT NULL,
-    fingerprint   TEXT,
-    user_agent    TEXT,
-    attempt_count INTEGER NOT NULL DEFAULT 1,
-    blocked_until INTEGER,
-    created_at    INTEGER NOT NULL,
-    last_seen     INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_susp_ip ON suspicious_fingerprints(ip);

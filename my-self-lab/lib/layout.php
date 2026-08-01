@@ -9,6 +9,8 @@ use Pierroons\MySelfLab\Auth;
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Security;
 
+require_once __DIR__ . '/i18n.php';
+
 function render_header(string $title, ?array $account = null): void
 {
     $account ??= Auth::currentAccount(Db::pdo());
@@ -16,7 +18,7 @@ function render_header(string $title, ?array $account = null): void
     $sessTok = $_COOKIE[Auth::cookieName()] ?? '';
     $csrf = ($account && preg_match('/^[a-f0-9]{48}$/', $sessTok)) ? Security::csrfToken($sessTok) : '';
     ?><!DOCTYPE html>
-<html lang="fr">
+<html lang="<?= lang() ?>">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -39,6 +41,9 @@ a:hover{text-decoration:underline}
 .topbar .tag{font-size:11px;color:var(--muted);border:1px solid var(--border);padding:1px 7px;border-radius:10px}
 .topbar nav{margin-left:auto;display:flex;align-items:center;gap:14px;font-size:13px}
 .topbar nav .user{color:var(--acc)}
+.lang-switch{display:flex;gap:6px;align-items:center;font-size:11px;letter-spacing:.5px;border:1px solid var(--border);border-radius:10px;padding:2px 8px}
+.lang-switch .on{color:var(--acc);font-weight:700}
+.lang-switch a{color:var(--muted)}
 .banner{background:linear-gradient(90deg,rgba(63,185,140,0.12),transparent);border-bottom:1px solid var(--border);padding:8px 20px;font-size:12px;color:var(--txt2)}
 .wrap{max-width:980px;margin:0 auto;padding:22px 20px}
 .btn{display:inline-block;padding:8px 15px;background:var(--acc2);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13.5px;font-weight:600;font-family:inherit;text-decoration:none}
@@ -85,28 +90,34 @@ footer{border-top:1px solid var(--border);margin-top:30px;padding:18px 20px;text
     </svg>
     MySelf<span class="acc">·Lab</span>
   </a>
-  <span class="tag">démo · noindex</span>
+  <span class="tag"><?= h(t('nav.demo_tag')) ?></span>
   <nav>
-    <a href="/index.php">Forum</a>
-    <a href="/moderation.php">Modération</a>
-    <a href="/attacks.php">🎯 Attaques</a>
-    <a href="/security.php">🔐 Sécurité</a>
-    <a href="/redteam.php">🛡️ Red Team</a>
-    <a href="/su_console.php">🔑 Console SU</a>
+    <a href="/index.php"><?= h(t('nav.forum')) ?></a>
+    <a href="/moderation.php"><?= h(t('nav.moderation')) ?></a>
+    <a href="/attacks.php"><?= h(t('nav.attacks')) ?></a>
+    <a href="/security.php"><?= h(t('nav.security')) ?></a>
+    <a href="/redteam.php"><?= h(t('nav.redteam')) ?></a>
+    <a href="/su_console.php"><?= h(t('nav.su')) ?></a>
     <?php if ($account): ?>
-      <a href="/messages.php">Messages</a>
-      <a href="/profile.php">Mon espace</a>
-      <?php if (!empty($account['is_admin'])): ?><a href="/admin.php" style="color:var(--warn)">🛠️ Admin</a><?php endif; ?>
+      <a href="/messages.php"><?= h(t('nav.messages')) ?></a>
+      <a href="/profile.php"><?= h(t('nav.profile')) ?></a>
+      <?php if (!empty($account['is_admin'])): ?><a href="/admin.php" style="color:var(--warn)"><?= h(t('nav.admin')) ?></a><?php endif; ?>
       <span class="user">@<?= h($account['username']) ?></span>
-      <a href="#" id="lab-logout" class="btn-ghost" style="padding:4px 10px">Déconnexion</a>
+      <a href="#" id="lab-logout" class="btn-ghost" style="padding:4px 10px"><?= h(t('nav.logout')) ?></a>
     <?php else: ?>
-      <a href="/login.php">Connexion</a>
-      <a href="/register.php" class="btn" style="padding:5px 12px">Créer un compte</a>
+      <a href="/login.php"><?= h(t('nav.login')) ?></a>
+      <a href="/register.php" class="btn" style="padding:5px 12px"><?= h(t('nav.register')) ?></a>
     <?php endif; ?>
+    <span class="lang-switch">
+      <?php foreach (LANGUES as $l): ?>
+        <?php if ($l === lang()): ?><span class="on"><?= strtoupper($l) ?></span>
+        <?php else: ?><a href="<?= h(lang_switch_url($l)) ?>"><?= strtoupper($l) ?></a><?php endif; ?>
+      <?php endforeach; ?>
+    </span>
   </nav>
 </div>
 <div class="banner">
-  🔬 Forum de démonstration MySelf — auth par <strong>SelfRecover</strong> (sans email), messages privés chiffrés par <strong>SelfDataGuard</strong> (résistants à l'exfiltration de la base).
+  <?= t('banner') ?>
 </div>
 <script nonce="<?= nonce() ?>">window.LAB_CSRF = <?= json_encode($csrf) ?>;</script>
 <div class="wrap">
@@ -118,7 +129,7 @@ function render_footer(): void
     ?>
 </div>
 <footer>
-  MySelf-Lab · vitrine écosystème <a href="https://my-self.fr">MySelf</a> · co-construit par Pierroons &amp; Claude (Anthropic) · AGPL-3.0 · démonstration
+  <?= t('footer') ?>
 </footer>
 <script nonce="<?= nonce() ?>">
 // window.LAB_CSRF est défini dans le header (scope où le token est calculé).

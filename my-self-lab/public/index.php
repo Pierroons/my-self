@@ -16,7 +16,7 @@ if ($cat !== null && !isset(Forum::CATEGORIES[$cat])) {
 }
 $threads = Forum::listThreads($pdo, $cat);
 
-render_header('Forum', $account);
+render_header(t('idx.title'), $account);
 ?>
 <div class="hero">
   <svg viewBox="0 0 200 280" width="116" height="162" role="img" aria-label="MySelf · my-self.fr">
@@ -27,43 +27,43 @@ render_header('Forum', $account);
       <text x="100" y="255" font-size="16" font-weight="400" letter-spacing="3" font-family="DejaVu Sans Mono,monospace">my-self.fr</text>
     </g>
   </svg>
-  <p class="pitch">Forum de démonstration : <strong>attaquez-le, vos données survivent.</strong><br>Auth sans email · messages chiffrés de bout en bout · modération anti-manipulation.</p>
+  <p class="pitch"><?= t('idx.pitch') ?></p>
   <div class="cta">
-    <a class="btn" href="/redteam.php">🛡️ Tester la sécurité</a>
-    <a class="btn btn-ghost" href="/security.php">Voir l'architecture</a>
+    <a class="btn" href="/redteam.php"><?= h(t('idx.cta.test')) ?></a>
+    <a class="btn btn-ghost" href="/security.php"><?= h(t('idx.cta.archi')) ?></a>
   </div>
-  <p class="muted" style="margin-top:16px;font-size:12px">Un cowork <strong>Pierroons × Claude</strong> — sécurité open source, à l'épreuve.</p>
+  <p class="muted" style="margin-top:16px;font-size:12px"><?= t('idx.credit') ?></p>
 </div>
 <div style="display:flex;align-items:center;gap:14px;margin-bottom:6px">
-  <h1>Forum souveraineté numérique</h1>
+  <h1><?= h(t('idx.h1')) ?></h1>
   <?php if ($account): ?>
-    <a href="/thread_new.php" class="btn" style="margin-left:auto">+ Nouveau sujet</a>
+    <a href="/thread_new.php" class="btn" style="margin-left:auto"><?= h(t('idx.newthread')) ?></a>
   <?php endif; ?>
 </div>
-<p class="muted" style="margin-top:0">Discussions sur le logiciel libre, le RGPD, l'auto-hébergement et le chiffrement.</p>
+<p class="muted" style="margin-top:0"><?= h(t('idx.subtitle')) ?></p>
 
 <div class="cats">
-  <a href="/index.php" class="<?= $cat === null ? 'active' : '' ?>">Tout</a>
+  <a href="/index.php" class="<?= $cat === null ? 'active' : '' ?>"><?= h(t('idx.cat.all')) ?></a>
   <?php foreach (Forum::CATEGORIES as $key => $label): ?>
-    <a href="/index.php?cat=<?= h($key) ?>" class="<?= $cat === $key ? 'active' : '' ?>"><?= h($label) ?></a>
+    <a href="/index.php?cat=<?= h($key) ?>" class="<?= $cat === $key ? 'active' : '' ?>"><?= h(t('cat.' . $key)) ?></a>
   <?php endforeach; ?>
 </div>
 
 <div class="card">
 <?php if (!$threads): ?>
-  <p class="muted" style="text-align:center;padding:24px 0">Aucun sujet<?= $cat ? ' dans cette catégorie' : '' ?> pour l'instant.<?php if (!$account): ?> <a href="/register.php">Crée un compte</a> pour lancer la discussion.<?php endif; ?></p>
+  <p class="muted" style="text-align:center;padding:24px 0"><?= h(t('idx.empty', $cat ? t('idx.empty.cat') : '')) ?><?php if (!$account): ?> <?= t('idx.empty.cta') ?><?php endif; ?></p>
 <?php else: ?>
   <?php foreach ($threads as $t): ?>
     <div class="thread-row">
       <div>
         <a href="/thread.php?id=<?= (int) $t['id'] ?>" style="font-weight:600;font-size:15px"><?= h($t['titre']) ?></a>
         <div class="muted">
-          <span class="cat-pill"><?= h(Forum::CATEGORIES[$t['categorie']] ?? $t['categorie']) ?></span>
-          par <strong>@<?= h($t['auteur']) ?></strong>
+          <span class="cat-pill"><?= h(t('cat.' . $t['categorie'])) ?></span>
+          <?= h(t('idx.by')) ?> <strong>@<?= h($t['auteur']) ?></strong>
         </div>
       </div>
       <div class="meta">
-        <?= (int) $t['nb_posts'] ?> message<?= $t['nb_posts'] > 1 ? 's' : '' ?><br>
+        <?= (int) $t['nb_posts'] ?> <?= h(t($t['nb_posts'] > 1 ? 'idx.posts.p' : 'idx.posts')) ?><br>
         <?= date('d/m/Y', (int) ($t['last_post_at'] ?? $t['created_at'])) ?>
       </div>
     </div>
@@ -73,7 +73,7 @@ render_header('Forum', $account);
 
 <?php if (!$account): ?>
 <p class="muted" style="text-align:center;margin-top:18px">
-  Lecture libre. <a href="/register.php">Crée un compte sans email</a> (SelfRecover) pour participer.
+  <?= t('idx.readonly') ?>
 </p>
 <?php endif; ?>
 <?php render_footer(); ?>

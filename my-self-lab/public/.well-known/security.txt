@@ -1,0 +1,9 @@
+# Politique de divulgation responsable — projet MySelf (open-source, AGPL)
+Contact: mailto:security@my-self.fr
+Contact: https://security.my-self.fr
+Expires: 2027-07-25T00:00:00Z
+Encryption: https://security.my-self.fr/.well-known/vdp-pubkey.asc
+Policy: https://security.my-self.fr
+Preferred-Languages: fr, en
+Canonical: https://security.my-self.fr/.well-known/security.txt
+Canonical: https://ctf.my-self.fr/.well-known/security.txt

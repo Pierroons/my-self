@@ -49,24 +49,9 @@ final class Db
     /** Migrations légères pour les bases déjà créées (CREATE IF NOT EXISTS ne modifie pas l'existant). */
     private static function migrate(): void
     {
-        $acc = self::$pdo->query('PRAGMA table_info(accounts)')->fetchAll(PDO::FETCH_COLUMN, 1);
-        if (!in_array('is_admin', $acc, true)) {
+        $cols = self::$pdo->query('PRAGMA table_info(accounts)')->fetchAll(PDO::FETCH_COLUMN, 1);
+        if (!in_array('is_admin', $cols, true)) {
             self::$pdo->exec('ALTER TABLE accounts ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
-        }
-        // SelfRecover L3 : signaux contextuels + ban après refus de litige
-        if (!in_array('last_login_at', $acc, true)) {
-            self::$pdo->exec('ALTER TABLE accounts ADD COLUMN last_login_at INTEGER');
-        }
-        if (!in_array('login_count', $acc, true)) {
-            self::$pdo->exec('ALTER TABLE accounts ADD COLUMN login_count INTEGER NOT NULL DEFAULT 0');
-        }
-        if (!in_array('banned_until', $acc, true)) {
-            self::$pdo->exec('ALTER TABLE accounts ADD COLUMN banned_until INTEGER NOT NULL DEFAULT 0');
-        }
-        // Rate-limit par niveau (0=login, 1/2/3=recover Ln)
-        $att = self::$pdo->query('PRAGMA table_info(login_attempts)')->fetchAll(PDO::FETCH_COLUMN, 1);
-        if (!in_array('level', $att, true)) {
-            self::$pdo->exec('ALTER TABLE login_attempts ADD COLUMN level INTEGER NOT NULL DEFAULT 0');
         }
     }
 }

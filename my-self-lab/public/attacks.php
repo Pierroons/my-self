@@ -9,7 +9,7 @@ use Pierroons\MySelfLab\Auth;
 $pdo = Db::pdo();
 $account = Auth::currentAccount($pdo);
 
-render_header('Attack Simulator', $account);
+render_header(t('atk.title'), $account);
 ?>
 <style>
 .atk-intro{background:rgba(217,100,89,.08);border:1px solid var(--border);border-left:3px solid var(--danger);border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--txt2)}
@@ -41,35 +41,32 @@ render_header('Attack Simulator', $account);
 .spinner{color:var(--txt2);font-size:13px}
 </style>
 
-<h1>🎯 Attack Simulator</h1>
-<div class="atk-intro">
-  Ces attaques s'exécutent <strong>réellement</strong> sur une base jetable isolée (SQLite en mémoire), via le vrai code de défense MySelf.
-  La colonne <span style="color:var(--acc)">verte</span> prouve que la donnée reste <strong>pleinement utilisable pour le légitime</strong> — la sécurité ne casse pas l'usage.
-</div>
+<h1><?= t('atk.h1') ?></h1>
+<div class="atk-intro"><?= t('atk.intro') ?></div>
 
 <?php if (!$account): ?>
-  <div class="card"><p class="muted"><a href="/login.php">Connecte-toi</a> pour lancer les simulations d'attaque.</p></div>
+  <div class="card"><p class="muted"><?= t('atk.login') ?></p></div>
 <?php else: ?>
 
 <div class="atk-grid">
   <div class="atk-card">
-    <h3>💾 Exfiltration de la base</h3>
-    <p class="obj">Voler DM et données perso en dumpant la base.</p>
-    <button class="btn js-lancer" data-scn="dump">Lancer l'attaque</button>
+    <h3><?= t('atk.dump.h3') ?></h3>
+    <p class="obj"><?= h(t('atk.dump.obj')) ?></p>
+    <button class="btn js-lancer" data-scn="dump"><?= h(t('atk.run')) ?></button>
   </div>
   <div class="atk-card">
-    <h3>🔓 Bruteforce login</h3>
-    <p class="obj">Deviner un mot de passe par force brute.</p>
+    <h3><?= t('atk.brute.h3') ?></h3>
+    <p class="obj"><?= h(t('atk.brute.obj')) ?></p>
     <button class="btn js-lancer" data-scn="bruteforce">Lancer l'attaque</button>
   </div>
   <div class="atk-card">
-    <h3>👥 Sybil + pack-voting</h3>
-    <p class="obj">Faux comptes coordonnés pour enterrer un membre.</p>
+    <h3><?= t('atk.pack.h3') ?></h3>
+    <p class="obj"><?= h(t('atk.pack.obj')) ?></p>
     <button class="btn js-lancer" data-scn="packvoting">Lancer l'attaque</button>
   </div>
   <div class="atk-card">
-    <h3>🕸️ CSRF + phishing</h3>
-    <p class="obj">Forcer une action cross-site ou détourner la récupération.</p>
+    <h3><?= t('atk.csrf.h3') ?></h3>
+    <p class="obj"><?= h(t('atk.csrf.obj')) ?></p>
     <button class="btn js-lancer" data-scn="csrf">Lancer l'attaque</button>
   </div>
 </div>
@@ -77,16 +74,17 @@ render_header('Attack Simulator', $account);
 <div class="result hidden" id="result"></div>
 
 <script nonce="<?= nonce() ?>">
+const ATK = <?= json_encode(['running'=>t('atk.js.running'),'goal'=>t('atk.js.goal'),'verdict'=>t('atk.js.verdict'),'defense'=>t('atk.js.defense'),'error'=>t('atk.js.error'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE) ?>;
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function lancer(scenario, btn){
   const box=document.getElementById('result');
   box.classList.remove('hidden');
-  box.innerHTML='<div class="spinner">⏳ Exécution de l\'attaque sur une base isolée…</div>';
+  box.innerHTML='<div class="spinner">'+ATK.running+'</div>';
   box.scrollIntoView({behavior:'smooth',block:'start'});
   labPost('/api/attack.php',{scenario}).then(d=>{
-    if(!d.ok){box.innerHTML='<div class="panel rouge">'+esc(d.message||'Erreur')+'</div>';return;}
+    if(!d.ok){box.innerHTML='<div class="panel rouge">'+esc(d.message||ATK.err)+'</div>';return;}
     let h='<h2 style="margin-top:0">'+esc(d.titre)+'</h2>';
-    h+='<p class="muted">🎯 Objectif attaquant : '+esc(d.objectif)+'</p>';
+    h+='<p class="muted">'+ATK.goal+' '+esc(d.objectif)+'</p>';
     h+='<div class="narration">';
     d.etapes.forEach((e,i)=>{h+='<div class="step"><b>'+(i+1)+'. '+esc(e.action)+'</b> → <span class="res">'+esc(e.resultat)+'</span></div>';});
     h+='</div>';
@@ -97,12 +95,12 @@ function lancer(scenario, btn){
     h+='<div class="panel verte"><div class="ptitle">🟢 '+esc(d.cote_legitime.label)+'</div><ul>';
     d.cote_legitime.lignes.forEach(l=>{h+='<li>'+esc(l)+'</li>';});
     h+='</ul></div></div>';
-    h+='<div class="verdict"><div class="v">🛡️ Attaque neutralisée — donnée conservée</div>';
-    h+='<div class="d">Défense : '+esc(d.defense)+'</div>';
+    h+='<div class="verdict"><div class="v">'+ATK.verdict+'</div>';
+    h+='<div class="d">'+ATK.defense+' '+esc(d.defense)+'</div>';
     h+='<div class="k">💡 '+esc(d.message_cle)+'</div></div>';
     box.innerHTML=h;
     box.scrollIntoView({behavior:'smooth',block:'start'});
-  }).catch(e=>{box.innerHTML='<div class="panel rouge">Erreur : '+esc(e.message)+'</div>';});
+  }).catch(e=>{box.innerHTML='<div class="panel rouge">'+ATK.error+' '+esc(e.message)+'</div>';});
 }
 document.querySelectorAll('.js-lancer').forEach(b=>b.addEventListener('click',()=>lancer(b.dataset.scn,b)));
 </script>

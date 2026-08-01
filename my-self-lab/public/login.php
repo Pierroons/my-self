@@ -4,18 +4,19 @@ require_once __DIR__ . '/../lib/bootstrap.php';
 require_once __DIR__ . '/../lib/layout.php';
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Auth;
-render_header('Connexion', Auth::currentAccount(Db::pdo()));
+render_header(t('log.title'), Auth::currentAccount(Db::pdo()));
 ?>
-<h1>Connexion</h1>
+<h1><?= h(t('log.h1')) ?></h1>
 <div class="card" style="max-width:420px">
   <div id="msg"></div>
-  <div class="field"><label>Identifiant</label><input id="username" autocomplete="off"></div>
-  <div class="field"><label>Mot de passe</label><input id="password" type="password"></div>
-  <button class="btn" id="btn-login">Se connecter</button>
-  <p class="muted" style="margin-top:12px">Pas de compte ? <a href="/register.php">En créer un</a> (sans email).</p>
-  <p class="muted" style="margin-top:4px"><a href="/recover.php">Mot de passe oublié ?</a> — récupération sans email (mot de récupération).</p>
+  <div class="field"><label><?= h(t('log.username')) ?></label><input id="username" autocomplete="off"></div>
+  <div class="field"><label><?= h(t('log.password')) ?></label><input id="password" type="password"></div>
+  <button class="btn" id="btn-login"><?= h(t('log.submit')) ?></button>
+  <p class="muted" style="margin-top:12px"><?= t('log.noaccount') ?></p>
+  <p class="muted" style="margin-top:4px"><?= t('log.forgot') ?></p>
 </div>
 <script nonce="<?= nonce() ?>">
+const LOG_ERR = <?= json_encode(t('log.error'), JSON_UNESCAPED_UNICODE) ?>;
 function connecter(){
   const username=document.getElementById('username').value.trim();
   const password=document.getElementById('password').value;
@@ -23,7 +24,7 @@ function connecter(){
     body:JSON.stringify({username,password})})
     .then(r=>r.json()).then(d=>{
       if(d.ok){location.href='/index.php';}
-      else{document.getElementById('msg').innerHTML='<div class="toast err">'+(d.message||'Erreur')+'</div>';}
+      else{document.getElementById('msg').innerHTML='<div class="toast err">'+(d.message||LOG_ERR)+'</div>';}
     });
 }
 document.getElementById('btn-login').addEventListener('click', connecter);

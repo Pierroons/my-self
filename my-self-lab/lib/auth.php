@@ -20,15 +20,13 @@ require_once __DIR__ . '/diceware/wordlist.php';
 
 final class Auth
 {
-    public const DOMAIN = 'myself-lab.example';
+    public const DOMAIN = 'lab.my-self.fr';
     private const COOKIE = 'lab_session';
     private const SESSION_TTL = 86400;        // 24h
     private const REGISTER_MAX_PER_IP = 5;    // max comptes créés / IP / heure
     private const LOGIN_MAX_FAILS = 5;        // échecs / username avant blocage temporaire
     private const LOGIN_MAX_FAILS_PER_IP = 12; // échecs cumulés / IP / fenêtre (anti-spraying, tolère un foyer NAT)
     private const LOGIN_WINDOW = 900;         // fenêtre de comptage (15 min)
-    private const RECOVER_ESCALATE = 3;       // échecs à un niveau de récup → propose le niveau suivant
-    private const RECOVERY_CODE_COUNT = 10;   // lot de recovery codes généré à l'inscription
     /** Options Argon2id (R9-06, alignées sur le profil OWASP de SelfRecover). */
     private const ARGON2 = ['memory_cost' => 65536, 'time_cost' => 4, 'threads' => 2];
     /**
@@ -55,21 +53,6 @@ final class Auth
         return trim((string) file_get_contents($f));
     }
 
-    /**
-     * Pepper serveur (SERVER_SECRET, 32 bytes) hors-DB. Sert au lookup HMAC O(1) des
-     * recovery codes : code_lookup = HMAC(serverSecret, code) → retrouve le compte sans
-     * identifiant et sans énumération, non réversible même si la DB fuite.
-     */
-    public static function serverSecret(): string
-    {
-        $f = __DIR__ . '/../data/.serversecret';
-        if (!file_exists($f)) {
-            file_put_contents($f, bin2hex(random_bytes(32)));
-            @chmod($f, 0600);
-        }
-        return trim((string) file_get_contents($f));
-    }
-
     public static function generatePassword(int $length = 16): string
     {
         $alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?@#$';
@@ -86,17 +69,11 @@ final class Auth
         return bin2hex(random_bytes(24)); // 48 hex chars
     }
 
-    /** Options Argon2id du déploiement (réutilisées par le facteur appareil). */
-    public static function argon2Options(): array
-    {
-        return self::ARGON2;
-    }
-
     /**
      * Inscription. Retourne ['ok'=>bool, ...].
      * En cas de succès : credentials (password + passphrase) à copier par l'user.
      */
-    public static function register(PDO $pdo, string $username, string $recoveryDerivedKey, ?string $ip = null): array
+    public static function register(PDO $pdo, string $username, string $recoveryWord, ?string $ip = null): array
     {
         // Anti-abus : limite la création massive de comptes par IP (anti-énumération + anti-spam)
         if ($ip !== null) {
@@ -115,12 +92,9 @@ final class Auth
             return ['ok' => false, 'error' => 'invalid_username',
                     'message' => "Identifiant : 3 à 20 caractères minuscules, chiffres ou _."];
         }
-        // La clé du mot mémorisé est dérivée CÔTÉ CLIENT (HMAC-SHA256) : le mot brut ne
-        // parvient jamais ici (promesse SelfRecover). On valide juste le format (64 hex).
-        // La force/longueur du mot est contrôlée côté navigateur.
-        if (!preg_match('/^[a-f0-9]{64}$/', $recoveryDerivedKey)) {
-            return ['ok' => false, 'error' => 'invalid_recovery',
-                    'message' => 'Mot de récupération invalide.'];
+        if (mb_strlen($recoveryWord) < 4) {
+            return ['ok' => false, 'error' => 'weak_recovery',
+                    'message' => 'Le mot de récupération doit faire au moins 4 caractères.'];
         }
 
         $stmt = $pdo->prepare('SELECT 1 FROM accounts WHERE username = ?');
@@ -140,9 +114,11 @@ final class Auth
         $diceware = \DicewareWordlist::generate(4, 'en');
         $passphrase = implode(' ', $diceware['words']);
 
+        $derivedKey = self::deriveKey($recoveryWord, self::DOMAIN, self::siteSalt());
+
         $pwHash       = password_hash($password, PASSWORD_ARGON2ID, self::ARGON2);
         $passHash     = password_hash($passphrase, PASSWORD_ARGON2ID, self::ARGON2);
-        $recoveryHash = password_hash($recoveryDerivedKey, PASSWORD_ARGON2ID, self::ARGON2);
+        $recoveryHash = password_hash($derivedKey, PASSWORD_ARGON2ID, self::ARGON2);
 
         $stmt = $pdo->prepare(
             'INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at)
@@ -151,14 +127,15 @@ final class Auth
         $stmt->execute([$username, $pwHash, $passHash, $recoveryHash, time()]);
         $accountId = (int) $pdo->lastInsertId();
 
-        // Lot de recovery codes (facteur possession de L2) — affichés UNE seule fois.
-        $recoveryCodes = self::generateRecoveryCodes($pdo, $accountId);
-
         // Trace la création pour le rate-limit IP
         if ($ip !== null) {
             $pdo->prepare('INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, 1, ?, ?)')
                 ->execute(['__register__', $ip, time()]);
         }
+
+        // Le lot de codes de récupération accompagne l'inscription : c'est le
+        // facteur de possession du niveau 2, inutile de le demander plus tard.
+        $codes = self::generateRecoveryCodes($pdo, $accountId);
 
         return [
             'ok' => true,
@@ -168,9 +145,9 @@ final class Auth
                 'password' => $password,
                 'passphrase' => $passphrase,
                 'entropy_bits' => $diceware['entropy_bits'] ?? null,
-                'recovery_codes' => $recoveryCodes,
             ],
-            'note' => 'Copie ton mot de passe, ta passphrase ET tes codes de secours maintenant — ils ne seront plus jamais affichés. Ton mot de récupération, tu le connais déjà.',
+            'recovery_codes' => $codes,
+            'note' => 'Copie ton mot de passe, ta passphrase et tes codes maintenant — ils ne seront plus jamais affichés. Ton mot de récupération, tu le connais déjà.',
         ];
     }
 
@@ -232,10 +209,6 @@ final class Auth
                 ->execute([password_hash($password, PASSWORD_ARGON2ID, self::ARGON2), (int) $acc['id']]);
         }
 
-        // Trace la dernière connexion + le compteur (signaux contextuels pour la récup L3).
-        $pdo->prepare('UPDATE accounts SET last_login_at = ?, login_count = login_count + 1 WHERE id = ?')
-            ->execute([time(), (int) $acc['id']]);
-
         $token = self::generateSessionToken();
         $pdo->prepare(
             'INSERT INTO app_sessions (account_id, token, created_at) VALUES (?, ?, ?)'
@@ -250,14 +223,11 @@ final class Auth
      * régénère password + passphrase, invalide les sessions existantes.
      * Retour : ['ok'=>true,'credentials'=>[...]] ou ['ok'=>false,'message'=>...].
      */
-    public static function recover(PDO $pdo, string $username, string $recoveryDerivedKey, ?string $ip = null): array
+    public static function recover(PDO $pdo, string $username, string $recoveryWord, ?string $ip = null): array
     {
         self::purgeExpiredSessions($pdo);
         $username = strtolower(trim($username));
         $marker = 'recover:' . $username;
-        if (!preg_match('/^[a-f0-9]{64}$/', $recoveryDerivedKey)) {
-            return ['ok' => false, 'message' => 'Identifiant ou mot de récupération incorrect.'];
-        }
 
         // Rate-limit dédié récupération : par username ET par IP (anti-spraying / anti-énumération).
         $stmt = $pdo->prepare(
@@ -281,9 +251,9 @@ final class Auth
         $stmt->execute([$username]);
         $acc = $stmt->fetch();
 
-        // Le mot mémorisé est déjà dérivé côté client → on vérifie directement contre recovery_hash.
+        $derived = self::deriveKey($recoveryWord, self::DOMAIN, self::siteSalt());
         // LAB-02 : Argon2id systématique (hash factice si compte absent) pour égaliser le timing.
-        $ok = password_verify($recoveryDerivedKey, $acc ? $acc['recovery_hash'] : self::DUMMY_HASH) && (bool) $acc;
+        $ok = password_verify($derived, $acc ? $acc['recovery_hash'] : self::DUMMY_HASH) && (bool) $acc;
 
         $pdo->prepare('INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, ?, ?, ?)')
             ->execute([$marker, $ok ? 1 : 0, $ip, time()]);
@@ -313,105 +283,51 @@ final class Auth
     }
 
     /**
-     * Échecs récents à un niveau de récupération donné, scopés username + IP.
-     * Scope conjoint (R10-SR-04) : un tiers depuis une autre IP ne peut PAS verrouiller
-     * l'escalade du titulaire légitime — chaque IP a son propre compteur pour ce compte.
+     * Récupération par PASSPHRASE (niveau L1 du protocole SelfRecover).
+     *
+     * La passphrase diceware est générée à l'inscription et stockée en
+     * `pass_hash` — elle l'était déjà, mais aucun chemin ne s'en servait :
+     * seul le mot de récupération (L2) permettait de reprendre la main. Un
+     * utilisateur ayant perdu son mot mémorisé mais conservé sa passphrase
+     * restait dehors, alors même que le serveur détenait de quoi le vérifier.
+     *
+     * Différence de nature avec L2, et c'est ce qui justifie deux chemins :
+     * la passphrase est un secret **généré** (51,7 bits, à conserver), le mot
+     * de récupération un secret **choisi** et mémorisé, potentiellement faible.
+     * Le second dépend donc entièrement du rate-limit ; le premier tient par
+     * son entropie.
+     *
+     * Aucune dérivation ici : contrairement au mot de récupération, la
+     * passphrase ne transite pas par HMAC côté client — elle est vérifiée
+     * telle quelle contre son Argon2id.
      */
-    private static function recentRecoverFails(PDO $pdo, string $username, int $level, ?string $ip): int
-    {
-        $sql = 'SELECT COUNT(*) FROM login_attempts
-                WHERE username = ? AND level = ? AND success = 0 AND attempted_at > ?';
-        $params = [$username, $level, time() - self::LOGIN_WINDOW];
-        if ($ip !== null) { $sql .= ' AND ip = ?'; $params[] = $ip; }
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        return (int) $stmt->fetchColumn();
-    }
+    /** Nombre de codes remis à l'inscription. */
+    private const RECOVERY_CODES = 10;
 
     /**
-     * L1 — récupération par PASSPHRASE diceware (secours fort). username + passphrase →
-     * vérif contre pass_hash. Succès : nouveau mot de passe (la passphrase reste valable).
-     * Après RECOVER_ESCALATE échecs (scope username+IP) → propose le niveau L2.
+     * Génère un lot de codes de récupération — le facteur de POSSESSION du L2.
+     *
+     * Retourne les codes en clair : ils ne seront plus jamais affichés. Un lot
+     * précédent est purgé, une régénération invalidant l'ancien papier.
+     *
+     * 40 bits par code (10 caractères hexadécimaux). C'est peu face à une
+     * attaque hors ligne, mais ce code ne vit jamais seul : il faut AUSSI le
+     * mot mémorisé, et le rate-limit s'applique. Sa fonction est d'être
+     * imprimable et transportable, pas d'être un secret maximal.
      */
-    public static function recoverL1(PDO $pdo, string $username, string $passphrase, ?string $ip = null): array
-    {
-        self::purgeExpiredSessions($pdo);
-        $username = strtolower(trim($username));
-
-        if (self::recentRecoverFails($pdo, $username, 1, $ip) >= self::RECOVER_ESCALATE) {
-            return ['ok' => false, 'escalate' => 'l2',
-                    'message' => 'Trop de tentatives. Utilise ta récupération par mot mémorisé + code.'];
-        }
-
-        $stmt = $pdo->prepare('SELECT id, pass_hash FROM accounts WHERE username = ?');
-        $stmt->execute([$username]);
-        $acc = $stmt->fetch();
-        // Argon2id systématique (hash factice si compte absent) : timing plat anti-énumération.
-        $ok = password_verify($passphrase, $acc ? $acc['pass_hash'] : self::DUMMY_HASH) && (bool) $acc;
-
-        $pdo->prepare('INSERT INTO login_attempts (username, success, level, ip, attempted_at) VALUES (?, ?, 1, ?, ?)')
-            ->execute([$username, $ok ? 1 : 0, $ip, time()]);
-
-        if (!$ok) {
-            $resp = ['ok' => false, 'message' => 'Identifiant ou passphrase incorrect.'];
-            if (self::recentRecoverFails($pdo, $username, 1, $ip) >= self::RECOVER_ESCALATE) {
-                $resp['escalate'] = 'l2';
-            }
-            return $resp;
-        }
-
-        // Succès : nouveau mot de passe (on ne régénère PAS la passphrase ni le mot mémorisé).
-        $newPassword = self::generatePassword(16);
-        $pdo->prepare('UPDATE accounts SET pw_hash = ? WHERE id = ?')
-            ->execute([password_hash($newPassword, PASSWORD_ARGON2ID, self::ARGON2), (int) $acc['id']]);
-        $pdo->prepare('DELETE FROM app_sessions WHERE account_id = ?')->execute([(int) $acc['id']]);
-
-        return ['ok' => true, 'credentials' => ['password' => $newPassword],
-                'note' => 'Nouveau mot de passe généré — copie-le maintenant.'];
-    }
-
-    /** Un recovery code lisible : xxxxx-xxxxx (alphabet sans caractères ambigus). */
-    private static function formatCode(): string
-    {
-        $alphabet = 'abcdefghjkmnpqrstuvwxyz23456789'; // sans i,l,o,0,1
-        $max = strlen($alphabet) - 1;
-        $s = '';
-        for ($i = 0; $i < 10; $i++) {
-            if ($i === 5) { $s .= '-'; }
-            $s .= $alphabet[random_int(0, $max)];
-        }
-        return $s;
-    }
-
-    /** Échecs récents à un niveau, scopés IP seule (L2 : le code localise le compte, pas de username). */
-    private static function recentFailsByIpLevel(PDO $pdo, int $level, ?string $ip): int
-    {
-        if ($ip === null) { return 0; }
-        $stmt = $pdo->prepare(
-            'SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND level = ? AND success = 0 AND attempted_at > ?'
-        );
-        $stmt->execute([$ip, $level, time() - self::LOGIN_WINDOW]);
-        return (int) $stmt->fetchColumn();
-    }
-
-    /**
-     * Génère (ou régénère) le lot de recovery codes d'un compte — affichés UNE fois.
-     * Stockage : code_lookup = HMAC(pepper, code) (recherche O(1) sans identifiant, non
-     * réversible) + code_hash = Argon2id(code) (vérif + résistance fuite DB). Usage unique.
-     */
-    public static function generateRecoveryCodes(PDO $pdo, int $accountId): array
+    public static function generateRecoveryCodes(PDO $pdo, int $accountId, int $n = self::RECOVERY_CODES): array
     {
         $pdo->prepare('DELETE FROM recovery_codes WHERE account_id = ?')->execute([$accountId]);
-        $pepper = self::serverSecret();
         $ins = $pdo->prepare(
             'INSERT INTO recovery_codes (account_id, code_lookup, code_hash, created_at) VALUES (?, ?, ?, ?)'
         );
         $codes = [];
-        for ($i = 0; $i < self::RECOVERY_CODE_COUNT; $i++) {
-            $code = self::formatCode();
+        for ($i = 0; $i < $n; $i++) {
+            $brut = bin2hex(random_bytes(5));
+            $code = substr($brut, 0, 5) . '-' . substr($brut, 5, 5);
             $ins->execute([
                 $accountId,
-                hash_hmac('sha256', $code, $pepper),
+                hash_hmac('sha256', $code, self::siteSalt()),
                 password_hash($code, PASSWORD_ARGON2ID, self::ARGON2),
                 time(),
             ]);
@@ -421,102 +337,149 @@ final class Auth
     }
 
     /**
-     * L2 — 2FA SANS identifiant : recovery code (POSSESSION) + mot mémorisé (CONNAISSANCE).
-     * Le code localise le compte par lookup HMAC (O(1)). On vérifie les DEUX facteurs ;
-     * l'erreur est générique (ne révèle jamais lequel a échoué). Succès : code consommé
-     * (usage unique) + nouveau mot de passe. ≥3 échecs L2/IP → propose L3.
+     * Récupération de niveau 2 conforme : code de récupération ET mot mémorisé.
+     *
+     * 🔑 **Aucun identifiant n'est demandé.** Le code retrouve le compte par son
+     * lookup HMAC — d'où la disparition de toute énumération : il n'y a plus de
+     * champ où tester si un compte existe.
+     *
+     * Deux facteurs de nature différente : le code est une **possession**
+     * (imprimable, transportable, à usage unique), le mot une **connaissance**
+     * (mémorisé, potentiellement faible). Voler le papier ne suffit pas ;
+     * connaître le mot non plus.
+     *
+     * L'erreur ne dit jamais lequel des deux a échoué — le préciser rendrait
+     * chaque facteur attaquable séparément, ce qui annulerait le bénéfice.
      */
-    public static function recoverL2Code(PDO $pdo, string $code, string $memorizedDerived, ?string $ip = null): array
+    public static function recoverByCode(PDO $pdo, string $code, string $recoveryWord, ?string $ip = null): array
     {
         self::purgeExpiredSessions($pdo);
         $code = strtolower(trim($code));
 
-        if (self::recentFailsByIpLevel($pdo, 2, $ip) >= self::RECOVER_ESCALATE) {
-            return ['ok' => false, 'escalate' => 'l3',
-                    'message' => 'Trop de tentatives. Passe par la récupération assistée.'];
-        }
-
-        $formatOk = (bool) preg_match('/^[a-z2-9]{5}-[a-z2-9]{5}$/', $code)
-                 && (bool) preg_match('/^[a-f0-9]{64}$/', $memorizedDerived);
-
-        $row = null;
-        if ($formatOk) {
+        // Le compteur porte sur l'IP seule : sans identifiant, il n'y a pas de
+        // compte à désigner tant que le code n'a pas été reconnu.
+        if ($ip !== null) {
             $stmt = $pdo->prepare(
-                'SELECT rc.id, rc.account_id, rc.code_hash, a.recovery_hash
-                   FROM recovery_codes rc JOIN accounts a ON a.id = rc.account_id
-                  WHERE rc.code_lookup = ? AND rc.used = 0'
+                'SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND success = 0 AND attempted_at > ?'
             );
-            $stmt->execute([hash_hmac('sha256', $code, self::serverSecret())]);
-            $row = $stmt->fetch() ?: null;
+            $stmt->execute([$ip, time() - self::LOGIN_WINDOW]);
+            if ((int) $stmt->fetchColumn() >= self::LOGIN_MAX_FAILS_PER_IP) {
+                return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.', 'escalate_l3' => true];
+            }
         }
 
-        // Timing plat : on exécute TOUJOURS deux Argon2id (facteurs factices si rien trouvé).
-        $codeOk = password_verify($code, $row ? $row['code_hash'] : self::DUMMY_HASH);
-        $wordOk = password_verify($memorizedDerived, $row ? $row['recovery_hash'] : self::DUMMY_HASH);
-        $ok = $row !== null && $codeOk && $wordOk;
+        if (!preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code)) {
+            return ['ok' => false, 'message' => 'Code de récupération ou mot mémorisé incorrect.'];
+        }
 
-        // On ne loggue jamais le username en L2 (le code ne le divulgue pas) : marqueur générique.
-        $pdo->prepare('INSERT INTO login_attempts (username, success, level, ip, attempted_at) VALUES (?, ?, 2, ?, ?)')
-            ->execute(['__l2__', $ok ? 1 : 0, $ip, time()]);
+        $stmt = $pdo->prepare(
+            'SELECT c.id AS code_id, c.code_hash, c.used, a.id AS account_id, a.username, a.recovery_hash
+               FROM recovery_codes c JOIN accounts a ON a.id = c.account_id
+              WHERE c.code_lookup = ?'
+        );
+        $stmt->execute([hash_hmac('sha256', $code, self::siteSalt())]);
+        $row = $stmt->fetch();
+
+        $derived = self::deriveKey($recoveryWord, self::DOMAIN, self::siteSalt());
+        // Argon2id systématiquement exécuté, même sur code inconnu : sinon le
+        // temps de réponse dirait si le code existe.
+        $codeOk = $row ? password_verify($code, $row['code_hash']) : password_verify('x', self::DUMMY_HASH);
+        $motOk  = password_verify($derived, $row ? $row['recovery_hash'] : self::DUMMY_HASH);
+
+        $ok = (bool) $row && !$row['used'] && $codeOk && $motOk;
+
+        $pdo->prepare('INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, ?, ?, ?)')
+            ->execute(['recovercode:' . ($row['username'] ?? 'inconnu'), $ok ? 1 : 0, $ip, time()]);
 
         if (!$ok) {
-            $resp = ['ok' => false, 'message' => 'Code ou mot mémorisé incorrect.']; // générique : jamais lequel
-            if (self::recentFailsByIpLevel($pdo, 2, $ip) >= self::RECOVER_ESCALATE) {
-                $resp['escalate'] = 'l3';
-            }
-            return $resp;
+            usleep(300000); // délai constant : ne pas trahir l'étape qui a échoué
+            return ['ok' => false, 'message' => 'Code de récupération ou mot mémorisé incorrect.'];
         }
 
-        // Succès : le code est consommé (usage unique), nouveau mot de passe, sessions coupées.
-        $pdo->prepare('UPDATE recovery_codes SET used = 1, used_at = ? WHERE id = ?')
-            ->execute([time(), (int) $row['id']]);
         $newPassword = self::generatePassword(16);
-        $pdo->prepare('UPDATE accounts SET pw_hash = ? WHERE id = ?')
-            ->execute([password_hash($newPassword, PASSWORD_ARGON2ID, self::ARGON2), (int) $row['account_id']]);
+        $diceware = \DicewareWordlist::generate(4, 'en');
+        $newPassphrase = implode(' ', $diceware['words']);
+
+        $pdo->prepare('UPDATE accounts SET pw_hash = ?, pass_hash = ? WHERE id = ?')->execute([
+            password_hash($newPassword, PASSWORD_ARGON2ID, self::ARGON2),
+            password_hash($newPassphrase, PASSWORD_ARGON2ID, self::ARGON2),
+            (int) $row['account_id'],
+        ]);
+        // Usage unique : un code consommé ne peut plus resservir, même volé.
+        $pdo->prepare('UPDATE recovery_codes SET used = 1, used_at = ? WHERE id = ?')
+            ->execute([time(), (int) $row['code_id']]);
         $pdo->prepare('DELETE FROM app_sessions WHERE account_id = ?')->execute([(int) $row['account_id']]);
 
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM recovery_codes WHERE account_id = ? AND used = 0');
-        $stmt->execute([(int) $row['account_id']]);
-        $remaining = (int) $stmt->fetchColumn();
+        $restants = (int) $pdo->query(
+            'SELECT COUNT(*) FROM recovery_codes WHERE account_id = ' . (int) $row['account_id'] . ' AND used = 0'
+        )->fetchColumn();
 
-        $resp = ['ok' => true, 'credentials' => ['password' => $newPassword], 'codes_remaining' => $remaining,
-                 'note' => 'Nouveau mot de passe généré — copie-le maintenant.'];
-        if ($remaining <= 2) {
-            $resp['low_codes_warning'] = "Il te reste $remaining code(s) de secours. Pense à en régénérer un lot.";
-        }
-        return $resp;
+        return [
+            'ok' => true,
+            'username' => $row['username'],
+            'credentials' => ['password' => $newPassword, 'passphrase' => $newPassphrase],
+            'codes_restants' => $restants,
+            'note' => 'Code consommé — il ne resservira pas. Il te reste ' . $restants . ' code(s) sur ce lot.',
+        ];
     }
 
-    /**
-     * Régénère le lot de recovery codes d'un compte AUTHENTIFIÉ par son mot mémorisé
-     * (connaissance). Self-service : pas besoin de mot de passe. Retourne les nouveaux codes.
-     */
-    public static function regenerateCodes(PDO $pdo, string $username, string $memorizedDerived, ?string $ip = null): array
+    public static function recoverByPassphrase(PDO $pdo, string $username, string $passphrase, ?string $ip = null): array
     {
+        self::purgeExpiredSessions($pdo);
         $username = strtolower(trim($username));
-        $marker = 'regen:' . $username;
+        // Compteur distinct de celui de L2 : épuiser un chemin ne doit pas
+        // fermer l'autre à un titulaire légitime.
+        $marker = 'recoverpp:' . $username;
 
-        // Rate-limit dédié (username+IP) pour ne pas laisser bruteforcer le mot mémorisé ici.
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM login_attempts WHERE username = ? AND success = 0 AND attempted_at > ?');
+        $stmt = $pdo->prepare(
+            'SELECT COUNT(*) FROM login_attempts WHERE username = ? AND success = 0 AND attempted_at > ?'
+        );
         $stmt->execute([$marker, time() - self::LOGIN_WINDOW]);
-        if ((int) $stmt->fetchColumn() >= self::LOGIN_MAX_FAILS) {
-            return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+        $failsUser = (int) $stmt->fetchColumn();
+        $failsIp = 0;
+        if ($ip !== null) {
+            $stmt = $pdo->prepare(
+                'SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND success = 0 AND attempted_at > ?'
+            );
+            $stmt->execute([$ip, time() - self::LOGIN_WINDOW]);
+            $failsIp = (int) $stmt->fetchColumn();
+        }
+        if ($failsUser >= self::LOGIN_MAX_FAILS || $failsIp >= self::LOGIN_MAX_FAILS_PER_IP) {
+            return ['ok' => false, 'message' => 'Trop de tentatives de récupération. Réessaie dans 15 minutes.'];
         }
 
-        $stmt = $pdo->prepare('SELECT id, recovery_hash FROM accounts WHERE username = ?');
+        $stmt = $pdo->prepare('SELECT id, pass_hash FROM accounts WHERE username = ?');
         $stmt->execute([$username]);
         $acc = $stmt->fetch();
-        $ok = password_verify($memorizedDerived, $acc ? $acc['recovery_hash'] : self::DUMMY_HASH) && (bool) $acc;
 
-        $pdo->prepare('INSERT INTO login_attempts (username, success, level, ip, attempted_at) VALUES (?, ?, 2, ?, ?)')
+        // Argon2id systématique, hash factice si le compte n'existe pas : sans
+        // cela, le temps de réponse trahirait l'existence du compte.
+        $passphrase = trim(preg_replace('/\s+/', ' ', $passphrase));
+        $ok = password_verify($passphrase, $acc ? $acc['pass_hash'] : self::DUMMY_HASH) && (bool) $acc;
+
+        $pdo->prepare('INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, ?, ?, ?)')
             ->execute([$marker, $ok ? 1 : 0, $ip, time()]);
 
         if (!$ok) {
-            return ['ok' => false, 'message' => 'Identifiant ou mot mémorisé incorrect.'];
+            return ['ok' => false, 'message' => 'Identifiant ou passphrase incorrect.'];
         }
-        $codes = self::generateRecoveryCodes($pdo, (int) $acc['id']);
-        return ['ok' => true, 'codes' => $codes,
-                'note' => 'Nouveaux codes de secours — copie-les maintenant, les anciens sont invalidés.'];
+
+        $newPassword = self::generatePassword(16);
+        $diceware = \DicewareWordlist::generate(4, 'en');
+        $newPassphrase = implode(' ', $diceware['words']);
+
+        $pdo->prepare('UPDATE accounts SET pw_hash = ?, pass_hash = ? WHERE id = ?')->execute([
+            password_hash($newPassword, PASSWORD_ARGON2ID, self::ARGON2),
+            password_hash($newPassphrase, PASSWORD_ARGON2ID, self::ARGON2),
+            (int) $acc['id'],
+        ]);
+        $pdo->prepare('DELETE FROM app_sessions WHERE account_id = ?')->execute([(int) $acc['id']]);
+
+        return [
+            'ok' => true,
+            'credentials' => ['password' => $newPassword, 'passphrase' => $newPassphrase],
+            'note' => 'Nouveau mot de passe et nouvelle passphrase générés — copie-les maintenant. Ton mot de récupération, lui, reste inchangé.',
+        ];
     }
 
     public static function logout(PDO $pdo, string $token): void

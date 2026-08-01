@@ -14,3 +14,7 @@ composer.lock
 
 # Prépa challenge CTF (script + flags secrets) — JAMAIS versionné
 /challenge/
+
+# Sauvegardes automatiques du serveur — jamais versionnées
+*.bak
+*.pre-r10.*

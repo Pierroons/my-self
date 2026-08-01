@@ -17,7 +17,8 @@ $sevColor = [
     'eleve' => '#e0824f', 'critique' => '#d96459',
 ];
 
-render_header('Règles d\'engagement red team', $account);
+$stats = \Pierroons\MySelfLab\Stats::lab($pdo);
+render_header(t('title.redteam'), $account);
 ?>
 <style>
 .rt-hero{background:linear-gradient(120deg,rgba(63,185,140,.10),rgba(217,100,89,.06));border:1px solid var(--border);border-radius:12px;padding:20px 22px;margin-bottom:20px}
@@ -53,133 +54,117 @@ render_header('Règles d\'engagement red team', $account);
 .hof .badge .sev{font-size:11px;margin-left:6px}
 .rt-form .field input,.rt-form .field textarea,.rt-form .field select{width:100%}
 .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;text-align:center}
+@media(max-width:680px){.stats-grid{grid-template-columns:repeat(2,1fr)}}
+.stats-grid > div{background:var(--elev);border:1px solid var(--border);border-radius:8px;padding:14px 8px}
+.stats-grid .n{display:block;font-size:26px;font-weight:700;color:var(--acc);font-family:ui-monospace,monospace}
+.stats-grid .n.flag{color:var(--warn)}
+.stats-grid .l{display:block;font-size:11.5px;color:var(--txt2);margin-top:4px;line-height:1.35}
 </style>
 
 <div class="rt-hero">
-  <h1>🎯 Test red team — règles d'engagement</h1>
-  <p>MySelf-Lab est une vitrine <strong>volontairement exposée à l'attaque</strong>. Inversion d'OWASP Juice Shop :
-  ici l'application est <strong>protégée par l'écosystème MySelf</strong> (SelfRecover, SelfDataGuard, SelfModerate)
-  et l'objectif est de prouver — ou de mettre en défaut — cette protection en conditions réelles.
-  Toute personne respectant les règles ci-dessous est <strong>autorisée</strong> à mener ses recherches.</p>
+  <h1><?= t('rt.hero.h1') ?></h1>
+  <p><?= t('rt.hero.p') ?></p>
 </div>
 
 <div class="card rt-sec">
-  <h2>📍 Périmètre</h2>
+  <h2><?= t('stats.h2') ?></h2>
+  <div class="stats-grid">
+    <div><span class="n"><?= (int) $stats['jours'] ?></span><span class="l"><?= h(t('stats.days')) ?></span></div>
+    <div><span class="n"><?= (int) $stats['repoussees'] ?></span><span class="l"><?= h(t('stats.repelled')) ?></span></div>
+    <div><span class="n"><?= (int) $stats['rapports'] ?></span><span class="l"><?= h(t('stats.reports')) ?></span></div>
+    <div><span class="n flag"><?= (int) $stats['flags'] ?></span><span class="l"><?= h(t($stats['flags'] > 1 ? 'stats.flags.p' : 'stats.flags')) ?></span></div>
+  </div>
+  <p class="muted" style="margin:12px 0 0;font-size:12px"><?= h(t('stats.note')) ?></p>
+</div>
+
+<div class="card rt-sec">
+  <h2><?= t('rt.scope.h2') ?></h2>
   <div class="scope">
     <div class="col in">
-      <h3>✅ Dans le périmètre</h3>
-      <ul>
-        <li>L'application web MySelf-Lab (ce site) et tous ses chemins</li>
-        <li>L'authentification <strong>SelfRecover</strong> (inscription, connexion, récupération)</li>
-        <li>Les messages privés et profils chiffrés <strong>SelfDataGuard</strong></li>
-        <li>La réputation et le vote <strong>SelfModerate</strong></li>
-        <li>Le formulaire de soumission de rapport ci-dessous</li>
-      </ul>
+      <h3><?= t('rt.scope.in.h3') ?></h3>
+      <ul><?= t('rt.scope.in') ?></ul>
     </div>
     <div class="col out">
-      <h3>⛔ Hors périmètre</h3>
-      <ul>
-        <li>Toute autre infrastructure, domaine ou service que ce site</li>
-        <li>L'hébergeur, le registrar, les fournisseurs tiers</li>
-        <li>Les comptes ou données de personnes réelles</li>
-        <li>Le poste, les comptes et la messagerie du mainteneur</li>
-      </ul>
+      <h3><?= t('rt.scope.out.h3') ?></h3>
+      <ul><?= t('rt.scope.out') ?></ul>
     </div>
   </div>
-  <p class="muted" style="margin:12px 0 0">Un périmètre étendu (autres composants MySelf) peut être convenu <strong>en privé</strong> avec une équipe retenue, sous accord écrit. Il n'est pas publié ici.</p>
+  <p class="muted" style="margin:12px 0 0"><?= t('rt.scope.note') ?></p>
 </div>
 
 <div class="card rt-sec">
-  <h2>🏁 Objectifs (capture-the-flag)</h2>
-  <p>Un compte de démonstration contient, dans son <strong>mémo personnel</strong>, un secret au format :</p>
-  <div class="flag"><span class="lbl">FLAG-</span>… (chiffré <strong>de bout en bout côté client</strong> — AES-256-GCM, clé dérivée du secret de l'utilisateur, <strong>jamais présente sur le serveur</strong>)</div>
-  <p class="muted">Le nom du compte cible te sera communiqué à l'ouverture du test. Ni un dump de la base, ni un accès administrateur, ni la prise de contrôle du serveur ne révèlent ce secret — la clé n'existe que dans le navigateur du propriétaire. Le défi est de le ramener <strong>en clair</strong>.</p>
-  <p class="muted" style="margin:0 0 4px">Réfs <strong>MITRE ATT&amp;CK</strong> / <strong>OWASP</strong> indiquées par objectif (les vulns web applicatives relèvent d'OWASP/CWE, hors périmètre ATT&amp;CK).</p>
-  <ul class="obj-list">
-    <li>🎯 <strong>Exfiltrer le mémo secret</strong> du compte cible et le restituer en clair <span class="ttp">objectif central</span></li>
-    <li>🔓 <strong>Contourner l'authentification</strong> SelfRecover (prendre la main sur un compte sans son mot de passe) <span class="ttp">ATT&amp;CK T1110 · T1078 · OWASP A07</span></li>
-    <li>💬 <strong>Lire un DM</strong> échangé entre deux autres membres, en clair <span class="ttp">OWASP A01</span></li>
-    <li>⚖️ <strong>Manipuler la réputation</strong> SelfModerate (enterrer un membre par faux comptes coordonnés, ou s'auto-promouvoir) <span class="ttp">CAPEC-210</span></li>
-    <li>🪪 <strong>Usurper une session</strong> ou aboutir une attaque CSRF authentifiée <span class="ttp">ATT&amp;CK T1539 · CWE-352</span></li>
-    <li>🧨 <strong>Escalade de privilèges</strong> : obtenir un accès administrateur (panel <code>/admin</code>) <span class="ttp">ATT&amp;CK T1078 · OWASP A01</span></li>
-  </ul>
+  <h2><?= t('rt.obj.h2') ?></h2>
+  <p><?= t('rt.obj.intro') ?></p>
+  <div class="flag"><?= t('rt.obj.flag') ?></div>
+  <p class="muted"><?= t('rt.obj.note') ?></p>
+  <p class="muted" style="margin:0 0 4px"><?= t('rt.obj.refs') ?></p>
+  <ul class="obj-list"><?= t('rt.obj.list') ?></ul>
 </div>
 
 <div class="rt-sec two">
   <div class="ok-box">
-    <h3>✅ Autorisé</h3>
-    <ul>
-      <li>Tests applicatifs web : injection (SQL, commande), XSS, IDOR, contournement d'auth, logique métier</li>
-      <li>Analyse cryptographique des blobs SelfDataGuard</li>
-      <li>Tentatives de dump de la base via une faille applicative</li>
-      <li>Fuzzing raisonné des endpoints</li>
-      <li>Interception / rejeu dans le périmètre</li>
-    </ul>
+    <h3><?= t('rt.allowed.h3') ?></h3>
+    <ul><?= t('rt.allowed') ?></ul>
   </div>
   <div class="no-box">
-    <h3>⛔ Interdit</h3>
-    <ul>
-      <li>Déni de service, flood, stress volumétrique (DoS / DDoS)</li>
-      <li>Ingénierie sociale visant des personnes réelles, le mainteneur, l'hébergeur</li>
-      <li>Attaques physiques ou sur des locaux</li>
-      <li>Pivot ou scan hors du périmètre déclaré</li>
-      <li>Destruction, chiffrement (ransomware) ou altération définitive de données</li>
-      <li>Exfiltration massive au-delà de la preuve ; spam ; contenu illégal</li>
-    </ul>
+    <h3><?= t('rt.forbidden.h3') ?></h3>
+    <ul><?= t('rt.forbidden') ?></ul>
   </div>
 </div>
 
 <div class="card rt-sec">
-  <h2>🧭 Conduite responsable</h2>
-  <ul style="margin:0;padding-left:18px;line-height:1.8">
-    <li>Sur une faille <strong>critique</strong> : stopper l'exploitation, sécuriser une preuve <em>minimale</em>, signaler sans délai.</li>
-    <li>Une preuve = un extrait minimal (une capture, un enregistrement déchiffré) — pas un dump complet.</li>
-    <li><strong>Divulgation coordonnée</strong> : pas de publication avant correction et accord mutuel. Délai de référence : <strong>90 jours</strong>.</li>
-  </ul>
+  <h2><?= t('rt.rate.h2') ?></h2>
+  <?= t('rt.rate.body') ?>
 </div>
 
 <div class="card rt-sec">
-  <h2>🛟 Safe harbor</h2>
-  <div class="safe">
-    Tant que tes recherches respectent ces règles, nous les considérons comme <strong>autorisées et menées de bonne foi</strong>.
-    Nous n'engagerons aucune action à ton encontre et nous ferons notre possible pour lever rapidement toute incertitude.
-    En cas de doute sur le périmètre ou une technique : <strong>demande avant d'agir</strong> via le formulaire ci-dessous.
-  </div>
+  <h2><?= t('rt.conduct.h2') ?></h2>
+  <ul style="margin:0;padding-left:18px;line-height:1.8"><?= t('rt.conduct.body') ?></ul>
+</div>
+
+<div class="card rt-sec">
+  <h2><?= t('rt.safe.h2') ?></h2>
+  <div class="safe"><?= t('rt.safe.body') ?></div>
 </div>
 
 <div class="card rt-sec rt-form" id="signaler" style="max-width:640px">
-  <h2>📨 Soumettre un rapport</h2>
-  <p class="muted">🔒 Le corps de ton rapport est chiffré at-rest par <strong>SelfDataGuard</strong> avant stockage : la base qui le contient ne révèle qu'un blob. Le module que tu testes protège aussi ton rapport.</p>
+  <h2><?= t('rt.form.h2') ?></h2>
+  <p class="muted"><?= t('rt.form.note') ?></p>
   <div id="rtmsg"></div>
-  <div class="field"><label>Pseudo public (hall of fame, optionnel)</label><input id="handle" maxlength="60" placeholder="ex. @nom_ou_équipe"></div>
+  <div class="field"><label><?= h(t('rt.form.handle')) ?></label><input id="handle" maxlength="60" placeholder="<?= h(t('rt.form.handle_ph')) ?>"></div>
   <div class="two" style="gap:12px">
-    <div class="field"><label>Sévérité</label>
+    <div class="field"><label><?= h(t('rt.form.severity')) ?></label>
       <select id="severity">
-        <option value="info">Info</option><option value="faible">Faible</option>
-        <option value="moyen">Moyen</option><option value="eleve">Élevé</option>
-        <option value="critique">Critique</option>
+        <option value="info"><?= h(t('rt.form.sev.info')) ?></option><option value="faible"><?= h(t('rt.form.sev.low')) ?></option>
+        <option value="moyen"><?= h(t('rt.form.sev.med')) ?></option><option value="eleve"><?= h(t('rt.form.sev.high')) ?></option>
+        <option value="critique"><?= h(t('rt.form.sev.crit')) ?></option>
       </select>
     </div>
-    <div class="field"><label>Cible</label>
+    <div class="field"><label><?= h(t('rt.form.target')) ?></label>
       <select id="target">
-        <option value="memo">Mémo secret</option><option value="auth">Auth SelfRecover</option>
-        <option value="dm">Messages privés</option><option value="moderation">Modération</option>
-        <option value="web">Web / app</option><option value="autre">Autre</option>
+        <option value="memo"><?= h(t('rt.form.tgt.memo')) ?></option><option value="auth"><?= h(t('rt.form.tgt.auth')) ?></option>
+        <option value="dm"><?= h(t('rt.form.tgt.dm')) ?></option><option value="moderation"><?= h(t('rt.form.tgt.mod')) ?></option>
+        <option value="web"><?= h(t('rt.form.tgt.web')) ?></option><option value="autre"><?= h(t('rt.form.tgt.other')) ?></option>
       </select>
     </div>
   </div>
-  <div class="field"><label>Titre *</label><input id="titre" maxlength="200" placeholder="Résumé en une ligne"></div>
-  <div class="field"><label>Description *</label><textarea id="description" rows="4" placeholder="Impact, ce que tu as obtenu…"></textarea></div>
-  <div class="field"><label>Étapes de reproduction</label><textarea id="repro" rows="4" placeholder="1. … 2. … 3. …"></textarea></div>
-  <div class="field"><label>Contact (optionnel, chiffré)</label><input id="contact" maxlength="200" placeholder="Mastodon, clé PGP, email jetable…"></div>
-  <div class="hp"><label>Ne pas remplir</label><input id="website" tabindex="-1" autocomplete="off"></div>
-  <button class="btn" id="btn-rtsend">Envoyer (chiffré)</button>
+  <div class="field"><label><?= h(t('rt.form.title')) ?></label><input id="titre" maxlength="200" placeholder="<?= h(t('rt.form.title_ph')) ?>"></div>
+  <div class="field"><label><?= h(t('rt.form.desc')) ?></label><textarea id="description" rows="4" placeholder="<?= h(t('rt.form.desc_ph')) ?>"></textarea></div>
+  <div class="field"><label><?= h(t('rt.form.repro')) ?></label><textarea id="repro" rows="4" placeholder="<?= h(t('rt.form.repro_ph')) ?>"></textarea></div>
+  <div class="field"><label><?= h(t('rt.form.contact')) ?></label><input id="contact" maxlength="200" placeholder="<?= h(t('rt.form.contact_ph')) ?>"></div>
+  <div class="hp"><label><?= h(t('rt.form.honeypot')) ?></label><input id="website" tabindex="-1" autocomplete="off"></div>
+  <button class="btn" id="btn-rtsend"><?= h(t('rt.form.send')) ?></button>
 </div>
 
 <div class="card rt-sec">
-  <h2>🏆 Hall of fame</h2>
+  <p class="muted" style="margin:0"><?= t('rt.prevalence') ?></p>
+</div>
+
+<div class="card rt-sec">
+  <h2><?= t('rt.hof.h2') ?></h2>
   <?php if (!$hof): ?>
-    <p class="muted">Aucune contribution validée pour l'instant. Sois la première personne à y figurer.</p>
+    <p class="muted"><?= t('rt.hof.empty') ?></p>
   <?php else: ?>
     <div class="hof">
       <?php foreach ($hof as $c): ?>
@@ -193,6 +178,8 @@ render_header('Règles d\'engagement red team', $account);
 </div>
 
 <script nonce="<?= nonce() ?>">
+// Messages traduits côté serveur : le JS ne connaît pas la langue courante.
+const RT_I18N = <?= json_encode(['ok' => t('rt.js.ok'), 'err' => t('rt.js.err'), 'neterr' => t('rt.js.neterr')], JSON_UNESCAPED_UNICODE) ?>;
 function envoyerRapport(){
   const box=document.getElementById('rtmsg');
   const payload={
@@ -209,12 +196,12 @@ function envoyerRapport(){
   fetch('/api/redteam_report.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
     .then(r=>r.json()).then(d=>{
       if(d.ok){
-        box.innerHTML='<div class="toast ok">Rapport reçu et chiffré. Merci — on revient vers toi.</div>';
+        box.innerHTML='<div class="toast ok">'+RT_I18N.ok+'</div>';
         ['titre','description','repro','contact'].forEach(id=>document.getElementById(id).value='');
       }else{
-        box.innerHTML='<div class="toast err">'+(d.message||'Erreur')+'</div>';
+        box.innerHTML='<div class="toast err">'+(d.message||RT_I18N.err)+'</div>';
       }
-    }).catch(e=>{box.innerHTML='<div class="toast err">Erreur réseau : '+e.message+'</div>';});
+    }).catch(e=>{box.innerHTML='<div class="toast err">'+RT_I18N.neterr+e.message+'</div>';});
 }
 document.getElementById('btn-rtsend').addEventListener('click', envoyerRapport);
 </script>

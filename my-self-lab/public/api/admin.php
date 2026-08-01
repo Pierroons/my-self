@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../lib/moderate.php';
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Admin;
+use Pierroons\MySelfLab\Dispute;
 use Pierroons\MySelfLab\Moderate;
 
 require_method('POST');
@@ -36,6 +37,22 @@ switch ($action) {
         if ($op === 'ban')    { Moderate::adminBan($pdo, $id);    json_out(['ok' => true, 'message' => 'Compte banni.']); }
         if ($op === 'pardon') { Moderate::adminPardon($pdo, $id); json_out(['ok' => true, 'message' => 'Compte gracié (réputation restaurée).']); }
         json_out(['ok' => false, 'message' => 'Opération inconnue.'], 400);
+
+    case 'dispute':
+        $d = Dispute::reveal($pdo, (int) ($body['id'] ?? 0));
+        $d ? json_out(['ok' => true, 'dispute' => $d]) : json_out(['ok' => false, 'message' => 'Litige introuvable.'], 404);
+
+    case 'dispute_decide':
+        // Accepter n'ouvre AUCUN accès : la décision est enregistrée, la remise
+        // en main se fait hors ligne. Brancher une régénération ici recréerait
+        // le chemin automatique que le niveau 3 existe pour éviter.
+        $ok = Dispute::decide(
+            $pdo,
+            (int) ($body['id'] ?? 0),
+            ($body['verdict'] ?? '') === 'accepte',
+            (string) ($body['note'] ?? '')
+        );
+        json_out(['ok' => $ok], $ok ? 200 : 400);
 
     default:
         json_out(['ok' => false, 'message' => 'Action inconnue.'], 400);

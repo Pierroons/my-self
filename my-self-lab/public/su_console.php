@@ -9,7 +9,7 @@ use Pierroons\MySelfLab\Auth;
 $pdo = Db::pdo();
 $account = Auth::currentAccount($pdo);
 
-render_header('Console SU', $account);
+render_header(t('su.title'), $account);
 ?>
 <style>
 .su-intro{background:rgba(63,185,140,.07);border:1px solid var(--border);border-left:3px solid var(--acc);border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--txt2);line-height:1.55}
@@ -43,45 +43,40 @@ render_header('Console SU', $account);
 .su-term-in{flex:1;background:transparent;border:none;outline:none;color:var(--txt);font-family:ui-monospace,monospace;font-size:13px}
 </style>
 
-<h1>🔑 Console SU — séparation des pouvoirs</h1>
-<div class="su-intro">
-  Le modèle MySelf a trois niveaux : <b>👤 User → 🛡️ Admin → 🔑 SuperUser</b>. Choisis un rôle pour voir
-  <b>ce qu'il peut et ne peut pas faire</b>. Tout tourne sur une base <b>jetable isolée</b> — aucune action réelle,
-  aucun vrai privilège. <span class="demo-tag">DÉMO</span><br>
-  Le vrai SU n'a <b>jamais</b> d'interface web : il vit en CLI, hors-ligne. Ici, le mot de passe SU est
-  <b>public et volontaire</b> (<code>test-su</code>) — c'est un clin d'œil, pas un secret.
-</div>
+<h1><?= t('su.h1') ?></h1>
+<div class="su-intro"><?= t('su.intro') ?> <span class="demo-tag">DEMO</span></div>
 
 <?php if (!$account): ?>
-  <div class="card"><p class="muted"><a href="/login.php">Connecte-toi</a> pour explorer les rôles.</p></div>
+  <div class="card"><p class="muted"><?= t('su.login') ?></p></div>
 <?php else: ?>
 
 <div class="su-grid">
   <div class="su-card">
-    <h3>👤 User</h3>
-    <p class="obj">Un membre lambda. Le socle : aucun pouvoir sur les autres.</p>
-    <button class="btn js-role" data-role="user">Voir en tant que User</button>
+    <h3><?= t('su.user.h3') ?></h3>
+    <p class="obj"><?= t('su.user.obj') ?></p>
+    <button class="btn js-role" data-role="user"><?= h(t('su.user.btn')) ?></button>
   </div>
   <div class="su-card">
-    <h3>🛡️ Admin</h3>
-    <p class="obj">Modère et <b>propose</b> des promotions — mais ne tranche pas.</p>
-    <button class="btn js-role" data-role="admin">Voir en tant qu'Admin</button>
+    <h3><?= t('su.admin.h3') ?></h3>
+    <p class="obj"><?= t('su.admin.obj') ?></p>
+    <button class="btn js-role" data-role="admin"><?= h(t('su.admin.btn')) ?></button>
   </div>
   <div class="su-card su">
-    <h3>🔑 SuperUser</h3>
-    <p class="obj">Tranche les rôles, tout est tracé. Mais ne lit pas ton E2E.</p>
-    <button class="btn js-role" data-role="su">Voir en tant que SU 🔒</button>
+    <h3><?= t('su.su.h3') ?></h3>
+    <p class="obj"><?= t('su.su.obj') ?></p>
+    <button class="btn js-role" data-role="su"><?= h(t('su.su.btn')) ?></button>
   </div>
 </div>
 
 <div class="result hidden" id="result"></div>
 
 <script nonce="<?= nonce() ?>">
+const SU = <?= json_encode(['running'=>t('su.js.running'),'termhead'=>t('su.js.termhead'),'banner1'=>t('su.js.banner1'),'banner2'=>t('su.js.banner2'),'prompt'=>t('su.js.prompt'),'wrongpw'=>t('su.js.wrongpw'),'error'=>t('su.js.error')], JSON_UNESCAPED_UNICODE) ?>;
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function afficher(role){
   const box=document.getElementById('result');
   box.classList.remove('hidden');
-  box.innerHTML='<div class="spinner">⏳ Simulation sur une base isolée…</div>';
+  box.innerHTML='<div class="spinner">'+SU.running+'</div>';
   box.scrollIntoView({behavior:'smooth',block:'start'});
   labPost('/api/su_console.php',{role}).then(d=>{
     if(!d.ok){box.innerHTML='<div class="panel rouge">'+esc(d.message||'Erreur')+'</div>';return;}
@@ -99,7 +94,7 @@ function afficher(role){
     h+='<div class="verdict"><div class="k">💡 '+esc(d.cle)+'</div></div>';
     if(d.role==='su'){
       h+='<div class="su-term">'
-        +'<div class="su-term-head">🔑 terminal SU simulé — sandbox, aucun effet réel · tape « help »</div>'
+        +'<div class="su-term-head">'+SU.termhead+'</div>'
         +'<div class="su-term-out" id="suterm-out"></div>'
         +'<div class="su-term-inrow"><span class="pfx">su&gt;</span><input class="su-term-in" id="suterm-in" autocomplete="off" spellcheck="false" placeholder="help"></div>'
         +'</div>';
@@ -107,14 +102,14 @@ function afficher(role){
     box.innerHTML=h;
     if(d.role==='su') initSuTerminal();
     box.scrollIntoView({behavior:'smooth',block:'start'});
-  }).catch(e=>{box.innerHTML='<div class="panel rouge">Erreur : '+esc(e.message)+'</div>';});
+  }).catch(e=>{box.innerHTML='<div class="panel rouge">'+SU.error+' '+esc(e.message)+'</div>';});
 }
 function initSuTerminal(){
   const out=document.getElementById('suterm-out'), inp=document.getElementById('suterm-in');
   if(!out||!inp) return;
   let mutations=[]; const hist=[]; let hi=-1;
   const pr=(t,c)=>{const d=document.createElement('div');if(c)d.className=c;d.textContent=t;out.appendChild(d);};
-  const banner=()=>{pr('SelfRecover SuperUser — console de démonstration (sandbox).');pr('Tape « help ». Aucune action réelle, aucun pouvoir.');};
+  const banner=()=>{pr(SU.banner1);pr(SU.banner2);};
   banner(); inp.focus();
   inp.addEventListener('keydown',e=>{
     if(e.key==='ArrowUp'){if(hist.length){hi=(hi<0?hist.length:hi)-1;if(hi<0)hi=0;inp.value=hist[hi]||'';}e.preventDefault();return;}
@@ -134,9 +129,9 @@ function initSuTerminal(){
 document.querySelectorAll('.js-role').forEach(b=>b.addEventListener('click',()=>{
   const role=b.dataset.role;
   if(role==='su'){
-    const p=prompt('🔑 Mot de passe SuperUser (démo PUBLIC : test-su)');
+    const p=prompt(SU.prompt);
     if(p===null) return;                 // annulé
-    if(p!=='test-su'){ alert('Mot de passe incorrect. Indice : c\'est « test-su » (public, c\'est une démo 🙂).'); return; }
+    if(p!=='test-su'){ alert(SU.wrongpw); return; }
   }
   afficher(role);
 }));

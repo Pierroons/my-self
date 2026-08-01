@@ -12,59 +12,54 @@ $pdo = Db::pdo();
 $account = Auth::currentAccount($pdo);
 $blocked = Moderate::blockedVotes($pdo, 30);
 
-render_header('Modération', $account);
+render_header(t('mod.title'), $account);
 ?>
-<h1>🛡️ Modération — SelfModerate</h1>
-<p class="muted">Modération <strong>sans autorité centrale</strong> : la communauté vote, des défenses automatiques contrent la manipulation.</p>
+<h1><?= t('mod.h1') ?></h1>
+<p class="muted"><?= t('mod.intro') ?></p>
 
 <div class="card">
-  <h2>Comment ça marche</h2>
-  <ul style="color:var(--txt2);font-size:13px;line-height:1.7;margin:0;padding-left:18px">
-    <li><strong>Réputation</strong> : chaque membre démarre à 20/30. Les votes ▲▼ sur ses posts et son profil la font évoluer.</li>
-    <li><strong>Anti-Sybil</strong> : un compte trop récent (&lt;24 h) sans aucun message ne peut pas voter.</li>
-    <li><strong>Anti upvote-farming</strong> : plus de 3 votes positifs répétés vers le même membre sur 60 jours sont neutralisés.</li>
-    <li><strong>Anti pack-voting</strong> : 3 votes négatifs coordonnés (&lt;60 s) sur une même cible sont annulés et la réputation restaurée.</li>
-    <li><strong>Sanctions graduées</strong> : réputation &lt;5 → perte du droit de vote ; ≤0 → suspension 24 h, puis 7 j, 30 j, définitive.</li>
-  </ul>
+  <h2><?= h(t('mod.how.h2')) ?></h2>
+  <ul style="color:var(--txt2);font-size:13px;line-height:1.7;margin:0;padding-left:18px"><?= t('mod.how.body') ?></ul>
 </div>
 
 <?php if ($account): ?>
 <div class="card">
-  <h2>Lancer la détection d'abus</h2>
-  <p class="muted">Analyse les votes récents et annule les patterns de pack-voting détectés.</p>
+  <h2><?= h(t('mod.detect.h2')) ?></h2>
+  <p class="muted"><?= h(t('mod.detect.note')) ?></p>
   <div id="dmsg"></div>
-  <button class="btn" id="btn-detecter">🔍 Détecter les abus maintenant</button>
+  <button class="btn" id="btn-detecter"><?= h(t('mod.detect.btn')) ?></button>
 </div>
 <script nonce="<?= nonce() ?>">
+const MOD_I18N = <?= json_encode(['cancelled'=>t('mod.js.cancelled'),'target'=>t('mod.js.target'),'spread'=>t('mod.js.spread'),'none'=>t('mod.js.none'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE) ?>;
 function detecter(){
   labPost('/api/detect_abuse.php',{}).then(d=>{
     const m=document.getElementById('dmsg');
     if(d.ok){
       if(d.pack_detected){
-        let html='<div class="toast ok">✓ '+d.cancelled_votes+' vote(s) annulé(s). Pack(s) :<ul>';
-        d.packs.forEach(p=>{html+='<li>cible #'+p.target_author+' — '+p.voters.join(', ')+' (spread '+p.spread_s+'s)</li>';});
+        let html='<div class="toast ok">✓ '+d.cancelled_votes+' '+MOD_I18N.cancelled+'<ul>';
+        d.packs.forEach(p=>{html+='<li>'+MOD_I18N.target+' #'+p.target_author+' — '+p.voters.join(', ')+' ('+MOD_I18N.spread+' '+p.spread_s+'s)</li>';});
         html+='</ul></div>';
         m.innerHTML=html;
         setTimeout(()=>location.reload(),2500);
       } else {
-        m.innerHTML='<div class="toast ok">Aucun pack-voting détecté sur la période récente.</div>';
+        m.innerHTML='<div class="toast ok">'+MOD_I18N.none+'</div>';
       }
-    } else { m.innerHTML='<div class="toast err">'+(d.message||'Erreur')+'</div>'; }
+    } else { m.innerHTML='<div class="toast err">'+(d.message||MOD_I18N.err)+'</div>'; }
   });
 }
 document.getElementById('btn-detecter').addEventListener('click', detecter);
 </script>
 <?php else: ?>
-<div class="card"><p class="muted"><a href="/login.php">Connecte-toi</a> pour lancer la détection d'abus.</p></div>
+<div class="card"><p class="muted"><?= t('mod.detect.login') ?></p></div>
 <?php endif; ?>
 
 <div class="card">
-  <h2>Votes neutralisés (<?= count($blocked) ?>)</h2>
+  <h2><?= h(t('mod.blocked.h2', count($blocked))) ?></h2>
   <?php if (!$blocked): ?>
-    <p class="muted">Aucun vote bloqué pour l'instant.</p>
+    <p class="muted"><?= h(t('mod.blocked.none')) ?></p>
   <?php else: ?>
     <table style="width:100%;border-collapse:collapse;font-size:12.5px">
-      <thead><tr style="text-align:left;color:var(--muted)"><th style="padding:6px 8px">Date</th><th>Votant</th><th>Cible</th><th>Type</th><th>Raison</th></tr></thead>
+      <thead><tr style="text-align:left;color:var(--muted)"><th style="padding:6px 8px"><?= h(t('mod.col.date')) ?></th><th><?= h(t('mod.col.voter')) ?></th><th><?= h(t('mod.col.target')) ?></th><th><?= h(t('mod.col.type')) ?></th><th><?= h(t('mod.col.reason')) ?></th></tr></thead>
       <tbody>
       <?php foreach ($blocked as $b): ?>
         <tr style="border-top:1px solid var(--border)">

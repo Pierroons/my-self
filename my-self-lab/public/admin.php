@@ -24,6 +24,7 @@ $comptes = Admin::accounts($pdo);
 $fails   = Admin::failedLogins($pdo);
 $blocked = Admin::blockedVotes($pdo);
 $reports = Admin::reports($pdo);
+$disputes = \Pierroons\MySelfLab\Dispute::pending($pdo);
 
 $sevColor = ['info' => '#9aa9b6', 'faible' => '#6cb6ff', 'moyen' => '#d4a056', 'eleve' => '#e0824f', 'critique' => '#d96459'];
 $statutColor = ['nouveau' => '#d4a056', 'valide' => '#3fb98c', 'rejete' => '#d96459'];
@@ -51,7 +52,6 @@ table.adm tr:last-child td{border-bottom:none}
 </style>
 
 <h1>🛠️ Administration <span class="muted" style="font-size:13px">— @<?= h($account['username']) ?></span></h1>
-<p><a class="btn" href="/admin_disputes.php">⚖️ Récupérations assistées (litiges L3) →</a></p>
 <div class="adm-warn">
   ℹ️ <strong>Deux modèles de chiffrement coexistent.</strong> Le profil (bio/localisation/lien) est <em>at-rest serveur</em> (blind key) : un dump est neutralisé, mais un admin qui détient la clé peut déchiffrer. Le <strong>mémo perso</strong> est passé en <strong>E2E client</strong> (vault per-user) : la clé ne quitte jamais le navigateur → <strong>même l'admin ne peut pas le lire</strong>. Ce panel reste une cible d'<strong>escalade de privilèges</strong> pour la red team.
 </div>
@@ -114,6 +114,33 @@ table.adm tr:last-child td{border-bottom:none}
 
 <!-- Rapports red team -->
 <div class="card">
+  <h2>⚖️ Litiges — récupération niveau 3</h2>
+  <p class="muted" style="margin-top:0;font-size:12.5px">Accepter n'ouvre aucun accès : la décision est tracée, la remise en main se fait hors ligne. Un bouton qui rendrait le compte serait exactement le chemin automatique que ce niveau existe pour éviter.</p>
+  <?php if (!$disputes): ?><p class="muted">Aucun litige déposé.</p><?php else: ?>
+  <table class="adm"><tr><th>#</th><th>Compte revendiqué</th><th>Statut</th><th>Déposé</th><th>Actions</th></tr>
+    <?php foreach ($disputes as $d): ?>
+      <tr>
+        <td><?= (int) $d['id'] ?></td>
+        <td>@<?= h((string) $d['username']) ?></td>
+        <td><span class="tag-sm"><?= h($d['status']) ?></span></td>
+        <td class="muted"><?= date('d/m H:i', (int) $d['created_at']) ?></td>
+        <td>
+          <button class="btn btn-ghost js-voirdispute" data-id="<?= (int) $d['id'] ?>" style="padding:3px 9px;font-size:12px">Voir</button>
+          <?php if ($d['status'] === 'ouvert'): ?>
+            <button class="btn btn-ghost js-decider" data-id="<?= (int) $d['id'] ?>" data-v="accepte" style="padding:3px 9px;font-size:12px;color:var(--acc)">Accepter</button>
+            <button class="btn btn-ghost js-decider" data-id="<?= (int) $d['id'] ?>" data-v="refuse" style="padding:3px 9px;font-size:12px;color:var(--danger)">Refuser</button>
+          <?php else: ?>
+            <span class="muted" style="font-size:12px"><?= h((string) ($d['admin_note'] ?? '')) ?></span>
+          <?php endif; ?>
+        </td>
+      </tr>
+      <tr><td colspan="5"><div id="dsp-<?= (int) $d['id'] ?>"></div></td></tr>
+    <?php endforeach; ?>
+  </table>
+  <?php endif; ?>
+</div>
+
+<div class="card">
   <h2>📨 Rapports red team</h2>
   <?php if (!$reports): ?><p class="muted">Aucun rapport reçu.</p><?php else: ?>
   <table class="adm"><tr><th>#</th><th>Pseudo</th><th>Sévérité</th><th>Cible</th><th>Statut</th><th>Reçu</th><th>Actions</th></tr>
@@ -172,5 +199,22 @@ document.querySelectorAll('.js-voirprofil').forEach(b=>b.addEventListener('click
 document.querySelectorAll('.js-voirrapport').forEach(b=>b.addEventListener('click',()=>voirRapport(+b.dataset.id,b)));
 document.querySelectorAll('.js-statut').forEach(b=>b.addEventListener('click',()=>statutRapport(+b.dataset.id,b.dataset.status)));
 document.querySelectorAll('.js-modaction').forEach(b=>b.addEventListener('click',()=>modAction(+b.dataset.id,b.dataset.op)));
+
+function voirDispute(id){
+  const box=document.getElementById('dsp-'+id);
+  labPost('/api/admin.php',{action:'dispute',id:id}).then(d=>{
+    if(!d.ok){box.innerHTML='<div class="reveal">'+esc(d.message)+'</div>';return;}
+    box.innerHTML='<div class="reveal">'+esc(d.dispute.recit)+'\n\ncontact : '+(esc(d.dispute.contact)||'—')+'</div>';
+  });
+}
+function deciderDispute(id,verdict){
+  const note=prompt(verdict==='accepte'?'Motif de l\'acceptation :':'Motif du refus :');
+  if(note===null) return;
+  labPost('/api/admin.php',{action:'dispute_decide',id:id,verdict:verdict,note:note}).then(d=>{
+    if(d.ok) location.reload();
+  });
+}
+document.querySelectorAll('.js-voirdispute').forEach(b=>b.addEventListener('click',()=>voirDispute(b.dataset.id)));
+document.querySelectorAll('.js-decider').forEach(b=>b.addEventListener('click',()=>deciderDispute(b.dataset.id,b.dataset.v)));
 </script>
 <?php render_footer(); ?>

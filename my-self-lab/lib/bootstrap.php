@@ -9,9 +9,11 @@ declare(strict_types=1);
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth.php';
-require_once __DIR__ . '/device.php';
-require_once __DIR__ . '/recover_l3.php';
 require_once __DIR__ . '/security.php';
+// Chiffres publics du lab — agrégés, sans mesure d'audience ajoutée.
+require_once __DIR__ . '/stats.php';
+// Niveau 3 de SelfRecover : escalade humaine.
+require_once __DIR__ . '/dispute.php';
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Auth;
@@ -35,12 +37,11 @@ function json_in(): array
 {
     $raw = (string) file_get_contents('php://input');
     if ($raw === '') {
-        return [];                       // corps vide = légitime (POST sans payload)
+        return [];                       // corps vide = legitime (POST sans payload)
     }
     $data = json_decode($raw, true);
     if (!is_array($data)) {
-        // R11-INFO-01 : rejeter un corps non-JSON au lieu du no-op silencieux,
-        // pour uniformiser la validation d'entrée avec le reste de l'API.
+        // R11-INFO-01 : rejeter un corps non-JSON au lieu du no-op silencieux.
         json_out(['ok' => false, 'error' => 'Corps JSON invalide.'], 400);
     }
     return $data;

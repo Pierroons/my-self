@@ -17,16 +17,16 @@ $thread = Forum::getThread($pdo, $threadId);
 
 /** Badge réputation coloré selon le niveau. */
 function rep_badge(int $rep): string {
-    if ($rep >= 25) { $c = '#3fb98c'; $lbl = 'confiance'; }
-    elseif ($rep >= 15) { $c = '#9aa9b6'; $lbl = 'membre'; }
-    elseif ($rep >= 5) { $c = '#d4a056'; $lbl = 'fragile'; }
-    else { $c = '#d96459'; $lbl = 'sous surveillance'; }
-    return '<span class="rep-badge" style="color:' . $c . ';border-color:' . $c . '" title="Réputation ' . $rep . '/30 — ' . $lbl . '">★ ' . $rep . '</span>';
+    if ($rep >= 25) { $c = '#3fb98c'; $lbl = t('thr.rep.trust'); }
+    elseif ($rep >= 15) { $c = '#9aa9b6'; $lbl = t('thr.rep.member'); }
+    elseif ($rep >= 5) { $c = '#d4a056'; $lbl = t('thr.rep.frail'); }
+    else { $c = '#d96459'; $lbl = t('thr.rep.watch'); }
+    return '<span class="rep-badge" style="color:' . $c . ';border-color:' . $c . '" title="' . h(t('thr.rep.title', $rep, $lbl)) . '">★ ' . $rep . '</span>';
 }
 
 if (!$thread) {
-    render_header('Sujet introuvable', $account);
-    echo '<div class="card"><p class="muted">Ce sujet n\'existe pas. <a href="/index.php">Retour au forum</a></p></div>';
+    render_header(t('thr.notfound.title'), $account);
+    echo '<div class="card"><p class="muted">' . t('thr.notfound') . '</p></div>';
     render_footer();
     exit;
 }
@@ -36,7 +36,7 @@ render_header($thread['titre'], $account);
 ?>
 <p class="muted"><a href="/index.php?cat=<?= h($thread['categorie']) ?>">← <?= h(Forum::CATEGORIES[$thread['categorie']] ?? 'Forum') ?></a></p>
 <h1><?= h($thread['titre']) ?></h1>
-<p class="muted">Ouvert par <strong>@<?= h($thread['auteur']) ?></strong> le <?= date('d/m/Y', (int) $thread['created_at']) ?></p>
+<p class="muted"><?= h(t('thr.openedby')) ?> <strong>@<?= h($thread['auteur']) ?></strong> le <?= date('d/m/Y', (int) $thread['created_at']) ?></p>
 
 <style>
 .rep-badge{font-size:10.5px;border:1px solid;padding:0 6px;border-radius:9px;margin-left:6px;font-weight:600}
@@ -71,9 +71,9 @@ if ($account) { [$canVote, $whyNot] = Moderate::canVote($pdo, (int) $account['id
   <div class="post">
     <div class="post-layout">
       <div class="votebox" data-post="<?= $pid ?>">
-        <button data-post="<?= $pid ?>" data-val="1" class="<?= $mine === 1 ? 'actif' : '' ?>" <?= (!$canVote || $isAuthor || $mine !== null) ? 'disabled' : '' ?> title="<?= $isAuthor ? 'Ton propre message' : 'Vote utile' ?>">▲</button>
+        <button data-post="<?= $pid ?>" data-val="1" class="<?= $mine === 1 ? 'actif' : '' ?>" <?= (!$canVote || $isAuthor || $mine !== null) ? 'disabled' : '' ?> title="<?= h(t($isAuthor ? 'thr.vote.own' : 'thr.vote.up')) ?>">▲</button>
         <span class="score <?= $score > 0 ? 'pos' : ($score < 0 ? 'neg' : '') ?>" id="score-<?= $pid ?>"><?= $score ?></span>
-        <button data-post="<?= $pid ?>" data-val="-1" class="<?= $mine === -1 ? 'actif' : '' ?>" <?= (!$canVote || $isAuthor || $mine !== null) ? 'disabled' : '' ?> title="Vote négatif">▼</button>
+        <button data-post="<?= $pid ?>" data-val="-1" class="<?= $mine === -1 ? 'actif' : '' ?>" <?= (!$canVote || $isAuthor || $mine !== null) ? 'disabled' : '' ?> title="<?= h(t('thr.vote.down')) ?>">▼</button>
       </div>
       <div class="post-body">
         <div class="head"><span class="auteur">@<?= h($p['auteur']) ?></span><?= rep_badge($rep) ?><span class="muted" style="margin-left:8px"><?= date('d/m/Y H:i', (int) $p['created_at']) ?></span></div>
@@ -97,7 +97,7 @@ function votePost(postId, value){
         if(btn)btn.classList.add('actif');
       }
       if(d.blocked){alert(d.message);}
-    } else { alert(d.message||'Erreur'); }
+    } else { alert(d.message||<?= json_encode(t('log.error')) ?>); }
   });
 }
 document.querySelectorAll('.votebox button[data-val]').forEach(function(b){
@@ -107,12 +107,12 @@ document.querySelectorAll('.votebox button[data-val]').forEach(function(b){
 
 <?php if ($account): ?>
   <div class="card" style="margin-top:18px">
-    <h2>Répondre</h2>
+    <h2><?= h(t('thr.reply.h2')) ?></h2>
     <div id="msg"></div>
     <div class="field">
-      <textarea id="contenu" rows="4" placeholder="Ta réponse…"></textarea>
+      <textarea id="contenu" rows="4" placeholder="<?= h(t('thr.reply.ph')) ?>"></textarea>
     </div>
-    <button class="btn" id="btn-repondre">Publier</button>
+    <button class="btn" id="btn-repondre"><?= h(t('thr.reply.btn')) ?></button>
   </div>
   <script nonce="<?= nonce() ?>">
   function repondre(){
@@ -127,6 +127,6 @@ document.querySelectorAll('.votebox button[data-val]').forEach(function(b){
   document.getElementById('btn-repondre').addEventListener('click', repondre);
   </script>
 <?php else: ?>
-  <p class="muted" style="text-align:center;margin-top:18px"><a href="/login.php">Connecte-toi</a> pour répondre.</p>
+  <p class="muted" style="text-align:center;margin-top:18px"><?= t('thr.reply.login') ?></p>
 <?php endif; ?>
 <?php render_footer(); ?>

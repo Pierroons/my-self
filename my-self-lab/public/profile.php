@@ -38,18 +38,18 @@ if ($voirUsername !== null) {
         ?>
         <h1>@<?= h($vue['username']) ?></h1>
         <div class="card">
-          <p style="margin-top:0"><strong>Réputation</strong> · <span style="color:<?= $repColor ?>;font-weight:700">★ <?= $repScore ?>/30</span>
-            <?php if ($rep['banned']): ?><span style="color:#d96459"> · suspendu</span><?php endif; ?>
-            <?php if (!$rep['voting_rights']): ?><span style="color:#d4a056"> · sans droit de vote</span><?php endif; ?>
+          <p style="margin-top:0"><strong><?= h(t('prf.rep')) ?></strong> · <span style="color:<?= $repColor ?>;font-weight:700">★ <?= $repScore ?>/30</span>
+            <?php if ($rep['banned']): ?><span style="color:#d96459"> · <?= h(t('prf.suspended')) ?></span><?php endif; ?>
+            <?php if (!$rep['voting_rights']): ?><span style="color:#d4a056"> · <?= h(t('prf.novote')) ?></span><?php endif; ?>
           </p>
           <div style="height:8px;background:var(--elev);border-radius:4px;overflow:hidden;margin-bottom:14px">
             <div style="height:100%;width:<?= $repPct ?>%;background:<?= $repColor ?>"></div>
           </div>
           <?php if ($account && !$isSelf): ?>
             <div id="vmsg"></div>
-            <button class="btn js-votembr" data-mid="<?= $memberId ?>" data-val="1" <?= (!$canVote || $mine !== null) ? 'disabled' : '' ?> style="padding:6px 14px">▲ Soutenir</button>
-            <button class="btn btn-ghost js-votembr" data-mid="<?= $memberId ?>" data-val="-1" <?= (!$canVote || $mine !== null) ? 'disabled' : '' ?> style="padding:6px 14px">▼ Signaler</button>
-            <?php if ($mine !== null): ?><span class="muted" style="margin-left:8px">Tu as déjà voté (<?= $mine === 1 ? '▲' : '▼' ?>)</span><?php endif; ?>
+            <button class="btn js-votembr" data-mid="<?= $memberId ?>" data-val="1" <?= (!$canVote || $mine !== null) ? 'disabled' : '' ?> style="padding:6px 14px"><?= h(t('prf.support')) ?></button>
+            <button class="btn btn-ghost js-votembr" data-mid="<?= $memberId ?>" data-val="-1" <?= (!$canVote || $mine !== null) ? 'disabled' : '' ?> style="padding:6px 14px"><?= h(t('prf.report')) ?></button>
+            <?php if ($mine !== null): ?><span class="muted" style="margin-left:8px"><?= h(t('prf.voted', $mine === 1 ? '▲' : '▼')) ?></span><?php endif; ?>
             <?php if (!$canVote && $whyNot): ?><p class="muted" style="margin-top:8px">⚠ <?= h($whyNot) ?></p><?php endif; ?>
           <?php endif; ?>
         </div>
@@ -63,10 +63,11 @@ if ($voirUsername !== null) {
           ?></p>
         </div>
         <script nonce="<?= nonce() ?>">
+const PRF = <?= json_encode(['saved'=>t('prf.js.saved'),'required'=>t('prf.js.required'),'weakpass'=>t('prf.js.weakpass'),'created'=>t('prf.js.created'),'deriving'=>t('prf.js.deriving'),'decrypted'=>t('prf.js.decrypted'),'locked'=>t('prf.js.locked'),'saved2'=>t('prf.js.saved2'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE) ?>;
         function voteMembre(id, value){
           labPost('/api/vote.php',{target_type:'member',target_id:id,value:value}).then(d=>{
             if(d.ok){ location.reload(); }
-            else{ document.getElementById('vmsg').innerHTML='<div class="toast err">'+(d.message||'Erreur')+'</div>'; }
+            else{ document.getElementById('vmsg').innerHTML='<div class="toast err">'+(d.message||PRF.err)+'</div>'; }
           });
         }
         document.querySelectorAll('.js-votembr').forEach(function(b){
@@ -92,7 +93,7 @@ $rep = Moderate::getReputation($pdo, $myId);
 $repScore = $rep['reputation'];
 $repPct = (int) round($repScore / Moderate::MAX_REPUTATION * 100);
 $repColor = $repScore >= 25 ? '#3fb98c' : ($repScore >= 15 ? '#9aa9b6' : ($repScore >= 5 ? '#d4a056' : '#d96459'));
-$repLabel = $repScore >= 25 ? 'Confiance' : ($repScore >= 15 ? 'Membre établi' : ($repScore >= 5 ? 'Réputation fragile' : 'Sous surveillance'));
+$repLabel = $repScore >= 25 ? t('prf.rep.trust') : ($repScore >= 15 ? t('prf.rep.member') : ($repScore >= 5 ? t('prf.rep.frail') : t('prf.rep.watch')));
 // Activité
 $cnt = function (string $sql) use ($pdo, $myId): int {
     $s = $pdo->prepare($sql);
@@ -105,22 +106,22 @@ $nbVotesEmis  = $cnt('SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND bloc
 $nbVotesRecus = $cnt('SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND blocked = 0');
 [$canVote, $whyNot] = Moderate::canVote($pdo, $myId);
 
-render_header('Mon espace', $account);
+render_header(t('prf.title'), $account);
 ?>
 <h1>Mon espace — @<?= h($account['username']) ?></h1>
 
 <!-- Panel modération -->
 <div class="card">
-  <h2 style="margin-top:0">⚖️ Mon état de modération</h2>
+  <h2 style="margin-top:0"><?= t('prf.mod.h2') ?></h2>
   <p style="margin:0 0 6px"><span style="color:<?= $repColor ?>;font-weight:700;font-size:18px">★ <?= $repScore ?>/30</span>
      <span class="cat-pill" style="color:<?= $repColor ?>;border-color:<?= $repColor ?>;margin-left:8px"><?= $repLabel ?></span></p>
   <div style="height:9px;background:var(--elev);border-radius:5px;overflow:hidden;margin:8px 0 14px">
     <div style="height:100%;width:<?= $repPct ?>%;background:<?= $repColor ?>"></div>
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;font-size:13px">
-    <div><span class="muted">Droit de vote</span><br><strong style="color:<?= $canVote ? 'var(--acc)' : 'var(--warn)' ?>"><?= $canVote ? '✓ actif' : '✗ '. ($rep['voting_rights'] ? 'restreint' : 'retiré') ?></strong></div>
-    <div><span class="muted">Strikes</span><br><strong><?= $rep['strikes'] ?>/3</strong></div>
-    <div><span class="muted">Statut</span><br><strong style="color:<?= $rep['banned'] ? 'var(--danger)' : 'var(--acc)' ?>"><?= $rep['banned'] ? 'suspendu' : 'actif' ?></strong></div>
+    <div><span class="muted"><?= h(t('prf.mod.right')) ?></span><br><strong style="color:<?= $canVote ? 'var(--acc)' : 'var(--warn)' ?>"><?= $canVote ? t('prf.mod.active') : '✗ '. t($rep['voting_rights'] ? 'prf.mod.limited' : 'prf.mod.removed') ?></strong></div>
+    <div><span class="muted"><?= h(t('prf.mod.strikes')) ?></span><br><strong><?= $rep['strikes'] ?>/3</strong></div>
+    <div><span class="muted"><?= h(t('prf.mod.status')) ?></span><br><strong style="color:<?= $rep['banned'] ? 'var(--danger)' : 'var(--acc)' ?>"><?= t($rep['banned'] ? 'prf.suspended' : 'prf.mod.st.active') ?></strong></div>
   </div>
   <?php if (!$canVote && $whyNot): ?>
     <p class="muted" style="margin:12px 0 0">⚠ <?= h($whyNot) ?></p>
@@ -129,21 +130,19 @@ render_header('Mon espace', $account);
 
 <!-- Panel activité -->
 <div class="card">
-  <h2 style="margin-top:0">📊 Mon activité</h2>
+  <h2 style="margin-top:0"><?= t('prf.act.h2') ?></h2>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;font-size:13px">
-    <div><span class="muted">Sujets ouverts</span><br><strong style="font-size:18px"><?= $nbThreads ?></strong></div>
-    <div><span class="muted">Messages</span><br><strong style="font-size:18px"><?= $nbPosts ?></strong></div>
-    <div><span class="muted">Votes émis</span><br><strong style="font-size:18px"><?= $nbVotesEmis ?></strong></div>
-    <div><span class="muted">Votes reçus</span><br><strong style="font-size:18px"><?= $nbVotesRecus ?></strong></div>
+    <div><span class="muted"><?= h(t('prf.act.threads')) ?></span><br><strong style="font-size:18px"><?= $nbThreads ?></strong></div>
+    <div><span class="muted"><?= h(t('prf.act.posts')) ?></span><br><strong style="font-size:18px"><?= $nbPosts ?></strong></div>
+    <div><span class="muted"><?= h(t('prf.act.given')) ?></span><br><strong style="font-size:18px"><?= $nbVotesEmis ?></strong></div>
+    <div><span class="muted"><?= h(t('prf.act.got')) ?></span><br><strong style="font-size:18px"><?= $nbVotesRecus ?></strong></div>
   </div>
-  <p style="margin:12px 0 0"><a href="/profile.php?u=<?= h($account['username']) ?>">Voir mon profil public →</a></p>
+  <p style="margin:12px 0 0"><a href="/profile.php?u=<?= h($account['username']) ?>"><?= h(t('prf.act.public')) ?></a></p>
 </div>
 
-<h2 style="margin-top:24px">✏️ Modifier mon profil <span class="cat-pill" style="color:var(--warn);border-color:var(--warn)">🌐 public</span></h2>
+<h2 style="margin-top:24px"><?= t('prf.edit.h2') ?> <span class="cat-pill" style="color:var(--warn);border-color:var(--warn)"><?= h(t('prf.edit.tag')) ?></span></h2>
 <p class="muted" style="background:rgba(212,160,86,.10);border:1px solid rgba(212,160,86,.35);border-radius:8px;padding:10px 13px">
-  🌐 <strong>Profil public</strong> — bio, localisation et lien sont <strong>visibles de tous</strong> (page <code>/profile.php?u=…</code>, même sans compte).
-  Le chiffrement at-rest SelfDataGuard protège contre un <strong>vol de la base</strong>, pas contre l'affichage public : n'y mets <strong>aucune donnée sensible</strong>.
-  Pour une note privée, utilise le <strong>mémo E2E</strong> ci-dessous.</p>
+  <?= t('prf.public.warn') ?></p>
 <div class="card" style="max-width:560px">
   <div id="msg"></div>
   <div class="field"><label>Bio</label><textarea id="bio" rows="3"><?= h($p['bio']) ?></textarea></div>
@@ -153,37 +152,36 @@ render_header('Mon espace', $account);
 </div>
 
 <?php $vaultExiste = \Pierroons\MySelfLab\MemoVault::exists($pdo, $myId); ?>
-<h2 style="margin-top:24px">🎯 Mémo perso — chiffré de bout en bout (E2E)</h2>
-<p class="muted">🔒 Chiffré <strong>dans ton navigateur</strong> par <strong>SelfDataGuard E2E</strong> : le serveur ne reçoit que des blobs, il ne détient <strong>aucune clé</strong>.
-   Même l'administrateur ne peut pas le lire. C'est le <strong>secret à exfiltrer</strong> pour la red team — un dump de la base ne donne rien sans ton mot de passe.</p>
+<h2 style="margin-top:24px"><?= t('prf.memo.h2') ?></h2>
+<p class="muted"><?= t('prf.memo.note') ?></p>
 <div class="card" style="max-width:600px;border-color:var(--danger)">
   <div id="msgmemo"></div>
 
   <!-- État A : aucun coffre → création -->
   <div id="memo-create" style="display:<?= $vaultExiste ? 'none' : 'block' ?>">
-    <p class="muted" style="margin-top:0">Crée ton coffre chiffré. Le <strong>mot de passe</strong> sert au quotidien ; la <strong>passphrase de récupération</strong> te permet de retrouver le mémo si tu perds ton mot de passe.</p>
+    <p class="muted" style="margin-top:0"><?= t('prf.memo.create') ?></p>
     <div class="field"><label>Ton mot de passe</label><input type="password" id="c-pw" autocomplete="off"></div>
-    <div class="field"><label>Passphrase de récupération <span style="text-transform:none;font-weight:400;color:var(--muted)">— réutilise celle reçue à l'inscription</span></label><input type="password" id="c-pass" autocomplete="off" placeholder="ex. correct horse battery staple"><span class="muted" style="font-size:11px">Au moins 4 mots. C'est ton unique filet si tu perds ton mot de passe — il doit être fort (idéalement ta passphrase SelfRecover).</span></div>
-    <div class="field"><label>Mémo</label><textarea id="c-memo" rows="4" placeholder="Ex. FLAG-coaxis-2026 : mon RIB FR76…"></textarea></div>
-    <button class="btn" id="btn-memocreer">Créer le coffre (chiffrement local)</button>
+    <div class="field"><label><?= h(t('prf.memo.pass')) ?> <span style="text-transform:none;font-weight:400;color:var(--muted)"><?= h(t('prf.memo.pass_hint')) ?></span></label><input type="password" id="c-pass" autocomplete="off" placeholder="<?= h(t('prf.memo.pass_ph')) ?>"><span class="muted" style="font-size:11px"><?= h(t('prf.memo.pass_note')) ?></span></div>
+    <div class="field"><label><?= h(t('prf.memo.label')) ?></label><textarea id="c-memo" rows="4" placeholder="<?= h(t('prf.memo.ph')) ?>"></textarea></div>
+    <button class="btn" id="btn-memocreer"><?= h(t('prf.memo.btncreate')) ?></button>
   </div>
 
   <!-- État B : coffre existant → déverrouillage -->
   <div id="memo-locked" style="display:<?= $vaultExiste ? 'block' : 'none' ?>">
-    <p style="margin-top:0">🔒 Coffre verrouillé.</p>
+    <p style="margin-top:0"><?= h(t('prf.memo.locked')) ?></p>
     <div class="field"><label>Mot de passe</label><input type="password" id="u-pw" autocomplete="off"></div>
-    <button class="btn" id="btn-memodev">Déverrouiller</button>
-    <button class="btn btn-ghost" id="btn-memoforgot">Mot de passe oublié ?</button>
+    <button class="btn" id="btn-memodev"><?= h(t('prf.memo.unlock')) ?></button>
+    <button class="btn btn-ghost" id="btn-memoforgot"><?= h(t('prf.memo.forgot')) ?></button>
     <div id="memo-recover" style="display:none;margin-top:12px">
       <div class="field"><label>Passphrase de secours</label><input type="password" id="r-pass" autocomplete="off"></div>
-      <button class="btn" id="btn-memorecup">Récupérer avec la passphrase</button>
+      <button class="btn" id="btn-memorecup"><?= h(t('prf.memo.recover')) ?></button>
     </div>
   </div>
 
   <!-- État C : déverrouillé → édition -->
   <div id="memo-open" style="display:none">
-    <div class="field"><label>Mémo (déchiffré localement)</label><textarea id="o-memo" rows="4"></textarea></div>
-    <button class="btn" id="btn-memosave">Enregistrer (re-chiffré local)</button>
+    <div class="field"><label><?= h(t('prf.memo.decrypted')) ?></label><textarea id="o-memo" rows="4"></textarea></div>
+    <button class="btn" id="btn-memosave"><?= h(t('prf.memo.save')) ?></button>
     <button class="btn btn-ghost" id="btn-memolock">Verrouiller</button>
   </div>
 </div>
@@ -195,7 +193,7 @@ function enregistrer(){
     lien:document.getElementById('lien').value
   }).then(d=>{
     document.getElementById('msg').innerHTML = d.ok
-      ? '<div class="toast ok">Profil enregistré (chiffré).</div>'
+      ? '<div class="toast ok">'+PRF.saved+'</div>'
       : '<div class="toast err">'+(d.message||'Erreur')+'</div>';
   });
 }
@@ -212,24 +210,24 @@ const show = (id, on) => document.getElementById(id).style.display = on ? 'block
 
 async function memoCreer(btn){
   const pw=document.getElementById('c-pw').value, pass=document.getElementById('c-pass').value, memo=document.getElementById('c-memo').value;
-  if(!pw||!pass||!memo){ return memoMsg(false,'Mot de passe, passphrase et mémo requis.'); }
+  if(!pw||!pass||!memo){ return memoMsg(false,PRF.required); }
   // Garde-fou : passphrase de récupération FORTE (≥4 mots, ≥16 car.) — c'est le wrap volable/bruteforçable offline
   const mots = pass.trim().split(/\s+/).filter(Boolean);
   if(mots.length < 4 || pass.trim().length < 16){
-    return memoMsg(false,'Passphrase de récupération trop faible : au moins 4 mots (réutilise celle de ton inscription). C\'est ce qui protège ton mémo si tu perds ton mot de passe.');
+    return memoMsg(false,PRF.weakpass);
   }
   btn.disabled=true; memoMsg(true,'Chiffrement local en cours…');
   try{
     const blobs = await E2EMemo.createVault(pw, pass, memo);
     const d = await labPost('/api/memo_vault.php', blobs);
     if(!d.ok){ throw new Error(d.message||'Erreur serveur'); }
-    memoMsg(true,'Coffre créé et chiffré localement. Le serveur n\'a reçu que des blobs.');
+    memoMsg(true,PRF.created);
     show('memo-create',false); _vaultKeyB64=null; show('memo-locked',true);
   }catch(e){ memoMsg(false,e.message); } finally{ btn.disabled=false; }
 }
 
 async function _ouvrir(secret, which, btn){
-  btn.disabled=true; memoMsg(true,'Dérivation de la clé (PBKDF2)…');
+  btn.disabled=true; memoMsg(true,PRF.deriving);
   try{
     const r = await fetch('/api/memo_vault.php').then(x=>x.json());
     if(!r.ok||!r.exists){ throw new Error('Coffre introuvable.'); }
@@ -237,7 +235,7 @@ async function _ouvrir(secret, which, btn){
     _vaultKeyB64 = out.vaultKeyB64;
     document.getElementById('o-memo').value = out.memo;
     show('memo-locked',false); show('memo-recover',false); show('memo-open',true);
-    memoMsg(true,'Déchiffré localement. La clé reste dans cette page, jamais envoyée.');
+    memoMsg(true,PRF.decrypted);
   }catch(e){
     memoMsg(false, e.message==='secret_incorrect' ? 'Secret incorrect.' : e.message);
   }finally{ btn.disabled=false; }
@@ -246,17 +244,17 @@ const memoDeverrouiller = (btn) => _ouvrir(document.getElementById('u-pw').value
 const memoRecuperer     = (btn) => _ouvrir(document.getElementById('r-pass').value,'rec',btn);
 
 async function memoEnregistrer(btn){
-  if(!_vaultKeyB64){ return memoMsg(false,'Coffre verrouillé.'); }
+  if(!_vaultKeyB64){ return memoMsg(false,PRF.locked); }
   btn.disabled=true;
   try{
     const upd = await E2EMemo.reEncryptMemo(_vaultKeyB64, document.getElementById('o-memo').value);
     const d = await labPost('/api/memo_vault.php', {action:'update_memo', memo_iv:upd.memo_iv, memo_ct:upd.memo_ct});
-    memoMsg(d.ok, d.ok ? 'Mémo re-chiffré et enregistré.' : (d.message||'Erreur'));
+    memoMsg(d.ok, d.ok ? PRF.saved2 : (d.message||'Erreur'));
   }catch(e){ memoMsg(false,e.message); } finally{ btn.disabled=false; }
 }
 function memoVerrouiller(){
   _vaultKeyB64=null; document.getElementById('o-memo').value='';
-  show('memo-open',false); show('memo-locked',true); memoMsg(true,'Coffre verrouillé.');
+  show('memo-open',false); show('memo-locked',true); memoMsg(true,PRF.locked);
 }
 document.getElementById('btn-memocreer').addEventListener('click', function(){ memoCreer(this); });
 document.getElementById('btn-memodev').addEventListener('click', function(){ memoDeverrouiller(this); });
