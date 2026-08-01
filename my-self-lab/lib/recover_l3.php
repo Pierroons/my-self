@@ -203,7 +203,9 @@ final class RecoverL3
         $declarative[] = ['label' => 'Année de création', 'dit' => $dit ?: '—', 'reel' => $reel, 'ok' => ($dit !== '' && $dit === $reel)];
 
         $dit  = trim((string) ($answers['last_login_period'] ?? ''));
-        $reel = !empty($acc['last_login_at']) ? date('m/Y', (int) $acc['last_login_at']) : '?';
+        // « ? » n'apprenait rien au relecteur : un compte jamais utilisé est un fait,
+        // et c'en est un qui pèse dans sa décision.
+        $reel = !empty($acc['last_login_at']) ? date('m/Y', (int) $acc['last_login_at']) : 'jamais connecté';
         $declarative[] = ['label' => 'Dernière connexion (mois)', 'dit' => $dit ?: '—', 'reel' => $reel,
                           'ok' => ($dit !== '' && !empty($acc['last_login_at']) && $dit === $reel)];
 

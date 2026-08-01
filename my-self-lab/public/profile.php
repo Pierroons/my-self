@@ -159,10 +159,13 @@ render_header(t('prf.title'), $account);
 
   <!-- État A : aucun coffre → création -->
   <div id="memo-create" style="display:<?= $vaultExiste ? 'none' : 'block' ?>">
+    <p style="margin:0 0 10px;padding:8px 11px;background:rgba(63,185,140,.08);border-left:3px solid var(--acc);border-radius:5px;font-size:12.5px;color:var(--txt2)"><?= t('prf.memo.create_once') ?></p>
     <p class="muted" style="margin-top:0"><?= t('prf.memo.create') ?></p>
     <div class="field"><label>Ton mot de passe</label><input type="password" id="c-pw" autocomplete="off"></div>
     <div class="field"><label><?= h(t('prf.memo.pass')) ?> <span style="text-transform:none;font-weight:400;color:var(--muted)"><?= h(t('prf.memo.pass_hint')) ?></span></label><input type="password" id="c-pass" autocomplete="off" placeholder="<?= h(t('prf.memo.pass_ph')) ?>"><span class="muted" style="font-size:11px"><?= h(t('prf.memo.pass_note')) ?></span></div>
-    <div class="field"><label><?= h(t('prf.memo.label')) ?></label><textarea id="c-memo" rows="4" placeholder="<?= h(t('prf.memo.ph')) ?>"></textarea></div>
+    <!-- Le mémo ne s'écrit PAS ici : cet écran ne fait que sceller le coffre.
+         Champ conservé masqué — createVault() attend un texte initial. -->
+    <textarea id="c-memo" style="display:none"></textarea>
     <button class="btn" id="btn-memocreer"><?= h(t('prf.memo.btncreate')) ?></button>
   </div>
 
@@ -180,7 +183,7 @@ render_header(t('prf.title'), $account);
 
   <!-- État C : déverrouillé → édition -->
   <div id="memo-open" style="display:none">
-    <div class="field"><label><?= h(t('prf.memo.decrypted')) ?></label><textarea id="o-memo" rows="4"></textarea></div>
+    <div class="field"><label><?= h(t('prf.memo.decrypted')) ?></label><textarea id="o-memo" rows="14" style="resize:vertical;min-height:220px;line-height:1.6"></textarea></div>
     <button class="btn" id="btn-memosave"><?= h(t('prf.memo.save')) ?></button>
     <button class="btn btn-ghost" id="btn-memolock">Verrouiller</button>
   </div>
@@ -210,7 +213,8 @@ const show = (id, on) => document.getElementById(id).style.display = on ? 'block
 
 async function memoCreer(btn){
   const pw=document.getElementById('c-pw').value, pass=document.getElementById('c-pass').value, memo=document.getElementById('c-memo').value;
-  if(!pw||!pass||!memo){ return memoMsg(false,PRF.required); }
+  // Le mémo n'est plus demandé ici : cet écran scelle le coffre, on écrit ensuite.
+  if(!pw||!pass){ return memoMsg(false,PRF.required); }
   // Garde-fou : passphrase de récupération FORTE (≥4 mots, ≥16 car.) — c'est le wrap volable/bruteforçable offline
   const mots = pass.trim().split(/\s+/).filter(Boolean);
   if(mots.length < 4 || pass.trim().length < 16){
@@ -219,10 +223,16 @@ async function memoCreer(btn){
   btn.disabled=true; memoMsg(true,'Chiffrement local en cours…');
   try{
     const blobs = await E2EMemo.createVault(pw, pass, memo);
+    const cle = blobs._vaultKeyB64; delete blobs._vaultKeyB64;   // ne part jamais au serveur
     const d = await labPost('/api/memo_vault.php', blobs);
     if(!d.ok){ throw new Error(d.message||'Erreur serveur'); }
     memoMsg(true,PRF.created);
-    show('memo-create',false); _vaultKeyB64=null; show('memo-locked',true);
+    // Coffre scellé → on enchaîne sur l'écriture. Redemander le mot de passe
+    // à l'instant où l'utilisateur vient de le saisir n'apporterait rien.
+    _vaultKeyB64 = cle;
+    document.getElementById('o-memo').value = '';
+    show('memo-create',false); show('memo-locked',false); show('memo-open',true);
+    document.getElementById('o-memo').focus();
   }catch(e){ memoMsg(false,e.message); } finally{ btn.disabled=false; }
 }
 
