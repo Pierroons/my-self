@@ -3,7 +3,7 @@
 /**
  * selfrecover-su — CLI SuperUser (modèle SU→Admin→User, option a : ANCRÉE SERVEUR).
  *
- * Le SU n'est PAS en DB. Auth = secret SU (SELFRECOVER_SU_SECRET, l'ex-ADMIN_TOKEN promu),
+ * Le SU n'est PAS en DB. Auth = secret SU (SELFRECOVER_SU_SECRET),
  * posé à l'install hors DB. Aucune interface distante : cette CLI s'exécute SUR le serveur.
  * Seul le SU crée/révoque des admins. Chaque action est écrite au log SU (append-only + chaîné).
  */
