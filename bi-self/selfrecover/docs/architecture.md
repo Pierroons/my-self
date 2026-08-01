@@ -61,6 +61,53 @@ Server: Argon2id-verify(recovery_code) AND Argon2id-verify(recovery_key)
                          If >= 3 → redirect to Level 3
 ```
 
+## Recovery L3 flow (everything lost)
+
+No secret is requested here — by definition the user has none left. What is
+collected is a bundle of raw facts for a human to read, never a score.
+
+```
+User types their public identifier only
+              │
+              ▼
+Browser generates a tracking code, sends SHA-256(code) as the claim
+              │            └── the code itself stays with the user: an L3
+              │                applicant has no session, so this claim is
+              ▼                what protects the case thread
+POST /recover-l3-init { identifier, claim_hash }
+              │
+              ├── case already open ──> number NOT disclosed to the caller
+              │                         (the claim must not be derivable from a
+              │                          semi-public identifier)
+              │                         → recorded as a multi-requester signal
+              ▼
+Server opens case LIT-XXXX (24h TTL), returns 3 contextual questions
+   creation year · last-login month · usage frequency
+              │
+              ▼
+POST /recover-l3 { dispute_number, claim, answers }
+              │
+              ▼
+Server assembles a BUNDLE OF SIGNALS — never a numeric score:
+   PASSIVE      has this IP connected successfully before?  (unforgeable)
+   DECLARATIVE  stated vs actual                            (guessable)
+              │
+              ▼
+status = awaiting_admin        attempt logged as a FAILURE
+              │                (an L3 never succeeds on its own)
+              ▼
+A human administrator reads the facts and confirms identity in the case chat
+              │
+              ▼
+POST /l3-reset  → the OWNER sets a new password and memorized word,
+                  plus a fresh batch of recovery codes.
+                  The tracking code is consumed (one-shot).
+
+   ⚠ The server never generates nor transmits a password at any point.
+     Wiring an automatic reset to the administrator's "accept" button would
+     rebuild the very automatic path this level exists to avoid.
+```
+
 ## Key properties
 
 1. **The raw recovery word never leaves the browser.** Only the HMAC derivation is sent over the wire.
