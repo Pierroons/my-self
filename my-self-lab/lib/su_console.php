@@ -245,44 +245,38 @@ final class SuConsole
              */
             'apercu' => [
                 'label' => 'Ce que voit réellement un admin dans /admin.php',
-                'intro' => 'Cinq sections, reproduites ici avec des données FICTIVES. '
-                         . 'Deux d\'entre elles disent l\'essentiel du modèle de menace : '
-                         . 'l\'admin déchiffre les profils et les messages privés (blind-key '
-                         . 'serveur), et bute sur le mémo (chiffré de bout en bout côté client).',
+                'intro' => 'Reproduction fidèle, données fictives. À retenir : l\'admin déchiffre '
+                         . 'profils et messages privés, mais bute sur le mémo.',
                 'sections' => [
                     ['titre' => '🔓 Échecs de login récents',
                      'colonnes' => ['Compte visé', 'IP', 'Quand'],
                      'lignes' => [['@demandeur_fictif', '203.0.113.4', 'il y a 3 min'],
                                   ['@demandeur_fictif', '203.0.113.4', 'il y a 4 min']],
-                     'cle' => 'Sert à corréler une tentative avec un litige ouvert.'],
+                     'cle' => 'Corrèle une tentative avec un litige ouvert.'],
 
-                    ['titre' => '⚖️ Votes neutralisés',
+                    ['titre' => '🗳️ Votes neutralisés',
                      'colonnes' => ['Votant', 'Cible', 'Raison', 'Quand'],
                      'lignes' => [['@compte_a', '@compte_b', 'pack-voting (3 votes / 48 s)', 'hier']],
-                     'cle' => 'SelfModerate annule, il ne bannit pas : la réputation est restaurée.'],
+                     'cle' => 'SelfModerate annule le vote et restaure la réputation — il ne bannit pas.'],
 
                     ['titre' => '👥 Comptes',
                      'colonnes' => ['ID', 'Identifiant', 'Réputation', 'Profil déchiffré', 'Modération'],
-                     'lignes' => [['42', '@membre_fictif', '21/30', 'bio : « je teste » · Quelque part', 'bannir · gracier']],
-                     'cle' => '⚠️ Le profil EST lisible par l\'admin — chiffré par une clé serveur, '
-                            . 'pas par l\'utilisateur. C\'est une limite assumée, écrite telle quelle '
-                            . 'dans la page sécurité.'],
+                     'lignes' => [['42', '@membre_fictif', '21/30', 'bio : « bonjour » · ville non renseignée', 'bannir · gracier']],
+                     'cle' => '⚠️ Le profil EST lisible : clé serveur, pas clé utilisateur. Limite assumée.'],
 
-                    ['titre' => '⚖️ Litiges — récupération niveau 3',
+                    ['titre' => '🧑‍⚖️ Litiges — niveau 3',
                      'colonnes' => ['Litige', 'Compte revendiqué', 'Statut', 'Actions'],
-                     'lignes' => [['LIT-DEMO-0000', '@demandeur_fictif', 'awaiting_admin', 'confirmer · refuser']],
+                     'lignes' => [['LIT-DEMO-0042', '@demandeur_fictif', 'awaiting_admin', 'confirmer · refuser']],
                      'faisceau' => true,
-                     'cle' => 'Aucun score : des faits, et une décision humaine qui n\'ouvre pas le compte.'],
+                     'cle' => 'Aucun score. Décision humaine, qui n\'ouvre pas le compte.'],
 
                     ['titre' => '📨 Rapports red team',
                      'colonnes' => ['#', 'Pseudo', 'Sévérité', 'Cible', 'Statut', 'Actions'],
                      'lignes' => [['7', '@chercheur_fictif', 'moyen', 'memo', 'nouveau', 'déchiffrer · valider']],
-                     'cle' => '⚠️ C\'est la section la plus sensible : elle contient des failles '
-                            . 'non encore corrigées. Raison pour laquelle ce panneau n\'est PAS '
-                            . 'exposé en lecture seule, mais reproduit ici sur des données fictives.'],
+                     'cle' => '⚠️ Section la plus sensible : failles non corrigées. D\'où cette reproduction fictive plutôt qu\'un accès réel.'],
                 ],
                 'faisceau' => [
-                    'litige' => 'LIT-DEMO-0000000000000000',
+                    'litige' => 'LIT-DEMO-0042',
                     'compte' => 'demandeur_fictif',
                     'statut' => 'awaiting_admin',
                     'passif' => [
@@ -299,7 +293,7 @@ final class SuConsole
                 'mur' => [
                     'label' => 'Ce sur quoi l\'admin bute',
                     'lignes' => [
-                        'Mémo E2E de @membre_fictif → « ' . substr($blob, 0, 28) . '… » (illisible)',
+                        'Mémo E2E de @membre_fictif → « ' . substr(strtr($blob, ['V' => 'k', 'P' => 'm', 'S' => 'w']), 0, 22) . '… » (illisible)',
                         'Mot de récupération → jamais reçu : le navigateur n\'en envoie que la dérivée',
                         'Codes de secours → Argon2id en base, aucun moyen de les relire',
                     ],

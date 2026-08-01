@@ -99,11 +99,11 @@ function afficher(role){
           +'<div class="ptitle">🖥️ '+esc(a.label)+'</div>'
           +'<p class="muted" style="font-size:12.5px;margin:4px 0 12px">'+esc(a.intro)+'</p>';
         a.sections.forEach(function(sec){
-          h+='<div style="margin-bottom:14px">'
-            +'<b style="font-size:13px">'+esc(sec.titre)+'</b>'
-            +'<div style="overflow-x:auto"><table class="adm" style="width:100%;margin:5px 0;font-size:12px"><tr>'
-            +sec.colonnes.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr>'
-            +sec.lignes.map(r=>'<tr>'+r.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>').join('')
+          h+='<div style="margin:0 0 16px;padding-bottom:12px;border-bottom:1px solid var(--border)">'
+            +'<b style="font-size:12.5px;letter-spacing:.2px">'+esc(sec.titre)+'</b>'
+            +'<div style="overflow-x:auto"><table class="adm" style="width:auto;margin:5px 0;font-size:12px;border-collapse:collapse"><tr>'
+            +sec.colonnes.map(c=>'<th style="padding:3px 14px 3px 0;text-align:left;white-space:nowrap">'+esc(c)+'</th>').join('')+'</tr>'
+            +sec.lignes.map(r=>'<tr>'+r.map(c=>'<td style="padding:3px 14px 3px 0;white-space:nowrap">'+esc(c)+'</td>').join('')+'</tr>').join('')
             +'</table></div>';
           if(sec.faisceau && a.faisceau){
             const f=a.faisceau;
@@ -123,7 +123,7 @@ function afficher(role){
               +'<p class="muted" style="font-size:11.5px;margin:6px 0 0"><b>'+esc(f.resume)+'</b> · '+esc(SU.inert)+'</p>'
               +'</div>';
           }
-          h+='<p class="muted" style="font-size:11.5px;margin:4px 0 0">'+esc(sec.cle)+'</p></div>';
+          h+='<p class="muted" style="font-size:11px;margin:3px 0 0;opacity:.85">'+esc(sec.cle)+'</p></div>';
         });
         h+='<div class="panel rouge" style="margin-top:6px"><div class="ptitle">🚫 '+esc(a.mur.label)+'</div><ul>'
           +a.mur.lignes.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>'
