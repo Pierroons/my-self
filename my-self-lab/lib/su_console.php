@@ -244,23 +244,66 @@ final class SuConsole
              * un faisceau de faits se présente à celui qui décide.
              */
             'apercu' => [
-                'label'   => 'Ce que voit l\'admin quand un litige L3 arrive',
-                'litige'  => 'LIT-DEMO-0000000000000000',
-                'compte'  => 'demandeur_fictif',
-                'statut'  => 'awaiting_admin',
-                'passif'  => [
-                    ['ok' => false, 'label' => 'IP déjà utilisée par ce compte',
-                     'detail' => 'IP jamais vue pour ce compte'],
+                'label' => 'Ce que voit réellement un admin dans /admin.php',
+                'intro' => 'Cinq sections, reproduites ici avec des données FICTIVES. '
+                         . 'Deux d\'entre elles disent l\'essentiel du modèle de menace : '
+                         . 'l\'admin déchiffre les profils et les messages privés (blind-key '
+                         . 'serveur), et bute sur le mémo (chiffré de bout en bout côté client).',
+                'sections' => [
+                    ['titre' => '🔓 Échecs de login récents',
+                     'colonnes' => ['Compte visé', 'IP', 'Quand'],
+                     'lignes' => [['@demandeur_fictif', '203.0.113.4', 'il y a 3 min'],
+                                  ['@demandeur_fictif', '203.0.113.4', 'il y a 4 min']],
+                     'cle' => 'Sert à corréler une tentative avec un litige ouvert.'],
+
+                    ['titre' => '⚖️ Votes neutralisés',
+                     'colonnes' => ['Votant', 'Cible', 'Raison', 'Quand'],
+                     'lignes' => [['@compte_a', '@compte_b', 'pack-voting (3 votes / 48 s)', 'hier']],
+                     'cle' => 'SelfModerate annule, il ne bannit pas : la réputation est restaurée.'],
+
+                    ['titre' => '👥 Comptes',
+                     'colonnes' => ['ID', 'Identifiant', 'Réputation', 'Profil déchiffré', 'Modération'],
+                     'lignes' => [['42', '@membre_fictif', '21/30', 'bio : « je teste » · Quelque part', 'bannir · gracier']],
+                     'cle' => '⚠️ Le profil EST lisible par l\'admin — chiffré par une clé serveur, '
+                            . 'pas par l\'utilisateur. C\'est une limite assumée, écrite telle quelle '
+                            . 'dans la page sécurité.'],
+
+                    ['titre' => '⚖️ Litiges — récupération niveau 3',
+                     'colonnes' => ['Litige', 'Compte revendiqué', 'Statut', 'Actions'],
+                     'lignes' => [['LIT-DEMO-0000', '@demandeur_fictif', 'awaiting_admin', 'confirmer · refuser']],
+                     'faisceau' => true,
+                     'cle' => 'Aucun score : des faits, et une décision humaine qui n\'ouvre pas le compte.'],
+
+                    ['titre' => '📨 Rapports red team',
+                     'colonnes' => ['#', 'Pseudo', 'Sévérité', 'Cible', 'Statut', 'Actions'],
+                     'lignes' => [['7', '@chercheur_fictif', 'moyen', 'memo', 'nouveau', 'déchiffrer · valider']],
+                     'cle' => '⚠️ C\'est la section la plus sensible : elle contient des failles '
+                            . 'non encore corrigées. Raison pour laquelle ce panneau n\'est PAS '
+                            . 'exposé en lecture seule, mais reproduit ici sur des données fictives.'],
                 ],
-                'declaratif' => [
-                    ['ok' => true,  'label' => 'Année de création',        'dit' => '2026',     'reel' => '2026'],
-                    ['ok' => false, 'label' => 'Dernière connexion (mois)', 'dit' => '03/2024',  'reel' => 'jamais connecté'],
-                    ['ok' => false, 'label' => 'Fréquence d\'usage',        'dit' => 'intensif', 'reel' => 'rare (~0 connexions)'],
+                'faisceau' => [
+                    'litige' => 'LIT-DEMO-0000000000000000',
+                    'compte' => 'demandeur_fictif',
+                    'statut' => 'awaiting_admin',
+                    'passif' => [
+                        ['ok' => false, 'label' => 'IP déjà utilisée par ce compte',
+                         'detail' => 'IP jamais vue pour ce compte'],
+                    ],
+                    'declaratif' => [
+                        ['ok' => true,  'label' => 'Année de création',         'dit' => '2026',     'reel' => '2026'],
+                        ['ok' => false, 'label' => 'Dernière connexion (mois)', 'dit' => '03/2024',  'reel' => 'jamais connecté'],
+                        ['ok' => false, 'label' => 'Fréquence d\'usage',        'dit' => 'intensif', 'reel' => 'rare (~0 connexions)'],
+                    ],
+                    'resume' => '0/1 passifs · 1/3 déclaratifs concordants',
                 ],
-                'resume' => '0/1 passifs · 1/3 déclaratifs concordants',
-                'note'   => 'Aucun score n\'est calculé. Un nombre invite à l\'entériner ; '
-                          . 'des faits obligent à les lire. Et confirmer n\'ouvre pas le compte : '
-                          . 'le propriétaire repose lui-même ses secrets ensuite.',
+                'mur' => [
+                    'label' => 'Ce sur quoi l\'admin bute',
+                    'lignes' => [
+                        'Mémo E2E de @membre_fictif → « ' . substr($blob, 0, 28) . '… » (illisible)',
+                        'Mot de récupération → jamais reçu : le navigateur n\'en envoie que la dérivée',
+                        'Codes de secours → Argon2id en base, aucun moyen de les relire',
+                    ],
+                ],
             ],
         ];
     }

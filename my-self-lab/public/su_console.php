@@ -92,31 +92,41 @@ function afficher(role){
     d.ne_peut_pas.lignes.forEach(l=>{h+='<li>'+esc(l)+'</li>';});
     h+='</ul></div></div>';
     h+='<div class="verdict"><div class="k">💡 '+esc(d.cle)+'</div></div>';
-      // Aperçu du panneau d'arbitrage — données fictives, boutons inertes.
+      // Aperçu du panneau admin — 5 sections, données fictives, actions inertes.
       if(d.apercu){
         const a=d.apercu;
-        const lig=(f,decl)=>'<li>'+(f.ok?'✅':'⬜')+' '+esc(f.label)
-          +'<span class="muted"> — '+(decl
-              ? 'déclaré <b>'+esc(f.dit)+'</b> · réel <b>'+esc(f.reel)+'</b>'
-              : esc(f.detail))+'</span></li>';
         h+='<div class="panel" style="border-color:var(--border)">'
           +'<div class="ptitle">🖥️ '+esc(a.label)+'</div>'
-          +'<div style="font-family:monospace;font-size:12px;margin:6px 0 10px">'
-            +'<code>'+esc(a.litige)+'</code> · @'+esc(a.compte)
-            +' · <span class="tag-sm">'+esc(a.statut)+'</span></div>'
-          +'<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px">'
-            +'<div style="flex:1;min-width:230px"><b style="color:var(--acc)">PASSIF</b>'
-              +'<span class="muted"> — constaté par le serveur</span><ul style="margin:4px 0 0;padding-left:18px">'
-              +a.passif.map(f=>lig(f,false)).join('')+'</ul></div>'
-            +'<div style="flex:1;min-width:230px"><b style="color:var(--warn)">DÉCLARATIF</b>'
-              +'<span class="muted"> — affirmé par le demandeur</span><ul style="margin:4px 0 0;padding-left:18px">'
-              +a.declaratif.map(f=>lig(f,true)).join('')+'</ul></div>'
-          +'</div>'
-          +'<p class="muted" style="font-size:12px;margin:8px 0 6px"><b>'+esc(a.resume)+'</b></p>'
-          +'<p><button class="btn btn-ghost" disabled style="padding:3px 9px;font-size:12px">'+esc(SU.confirm)+'</button> '
-            +'<button class="btn btn-ghost" disabled style="padding:3px 9px;font-size:12px">'+esc(SU.refuse)+'</button> '
-            +'<span class="muted" style="font-size:11px">'+esc(SU.inert)+'</span></p>'
-          +'<p class="muted" style="font-size:12px;margin:0">'+esc(a.note)+'</p>'
+          +'<p class="muted" style="font-size:12.5px;margin:4px 0 12px">'+esc(a.intro)+'</p>';
+        a.sections.forEach(function(sec){
+          h+='<div style="margin-bottom:14px">'
+            +'<b style="font-size:13px">'+esc(sec.titre)+'</b>'
+            +'<div style="overflow-x:auto"><table class="adm" style="width:100%;margin:5px 0;font-size:12px"><tr>'
+            +sec.colonnes.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr>'
+            +sec.lignes.map(r=>'<tr>'+r.map(c=>'<td>'+esc(c)+'</td>').join('')+'</tr>').join('')
+            +'</table></div>';
+          if(sec.faisceau && a.faisceau){
+            const f=a.faisceau;
+            const lig=(x,decl)=>'<li>'+(x.ok?'✅':'⬜')+' '+esc(x.label)
+              +'<span class="muted"> — '+(decl
+                  ? 'déclaré <b>'+esc(x.dit)+'</b> · réel <b>'+esc(x.reel)+'</b>'
+                  : esc(x.detail))+'</span></li>';
+            h+='<div style="border-left:2px solid var(--border);padding-left:10px;margin:6px 0 0">'
+              +'<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px">'
+                +'<div style="flex:1;min-width:220px"><b style="color:var(--acc)">PASSIF</b>'
+                  +'<span class="muted"> — constaté, non falsifiable</span>'
+                  +'<ul style="margin:3px 0 0;padding-left:17px">'+f.passif.map(x=>lig(x,false)).join('')+'</ul></div>'
+                +'<div style="flex:1;min-width:220px"><b style="color:var(--warn)">DÉCLARATIF</b>'
+                  +'<span class="muted"> — affirmé, devinable</span>'
+                  +'<ul style="margin:3px 0 0;padding-left:17px">'+f.declaratif.map(x=>lig(x,true)).join('')+'</ul></div>'
+              +'</div>'
+              +'<p class="muted" style="font-size:11.5px;margin:6px 0 0"><b>'+esc(f.resume)+'</b> · '+esc(SU.inert)+'</p>'
+              +'</div>';
+          }
+          h+='<p class="muted" style="font-size:11.5px;margin:4px 0 0">'+esc(sec.cle)+'</p></div>';
+        });
+        h+='<div class="panel rouge" style="margin-top:6px"><div class="ptitle">🚫 '+esc(a.mur.label)+'</div><ul>'
+          +a.mur.lignes.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>'
           +'</div>';
       }
     if(d.role==='su'){
