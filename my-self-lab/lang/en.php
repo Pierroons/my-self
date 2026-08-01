@@ -484,6 +484,28 @@ return [
     'rec.word2'   => 'Recovery word',
     'rec.l1.note' => '<strong>Level 1</strong> — the backup passphrase you received at sign-up, four generated words. A <em>strong</em> secret: its entropy is what protects you.',
 
+    // --- Level 3: contextual questions, body of signals, human decision ---
+    'dsp.h1'            => '🧑\u200d⚖️ Assisted recovery',
+    'dsp.why.h3'        => 'Why no secret is asked of you',
+    'dsp.init.submit'   => 'Open a case',
+    'dsp.q.note'        => 'These questions involve <strong>no secret</strong>. Answer from memory as best you can: this is a body of facts, not an exam — an administrator will read them.',
+    'dsp.claim.keep'    => 'Keep this device: your case passcode is stored on it. Case',
+    'dsp.q.submit'      => 'Send to an administrator',
+    'dsp.chat.note'     => 'Conversation with the administrator. Case',
+    'dsp.chat.ph'       => 'Your message…',
+    'dsp.chat.send'     => 'Send',
+    'dsp.chat.refresh'  => 'Refresh',
+    'dsp.reset.granted' => 'An administrator confirmed your identity. Setting your secrets is up to you: the server generates none.',
+    'dsp.reset.pw'      => 'New password',
+    'dsp.reset.word'    => 'New recovery word',
+    'dsp.reset.submit'  => 'Take back my account',
+    'dsp.js.required'   => 'This field is required.',
+    'dsp.js.sent'       => 'Sent to an administrator.',
+    'dsp.js.you'        => 'You',
+    'dsp.js.admin'      => 'Administrator',
+    'dsp.js.empty'      => 'No messages yet.',
+    'dsp.js.reset_done' => 'Account recovered. You can log in with your new secrets.',
+
     'reg.weak_word' => 'The recovery word must be at least 4 characters long.',
     'reg.codes'  => 'Backup codes — 10, single use (L2 recovery with your memorized word)',
 

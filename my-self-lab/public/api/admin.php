@@ -38,21 +38,10 @@ switch ($action) {
         if ($op === 'pardon') { Moderate::adminPardon($pdo, $id); json_out(['ok' => true, 'message' => 'Compte gracié (réputation restaurée).']); }
         json_out(['ok' => false, 'message' => 'Opération inconnue.'], 400);
 
-    case 'dispute':
-        $d = Dispute::reveal($pdo, (int) ($body['id'] ?? 0));
-        $d ? json_out(['ok' => true, 'dispute' => $d]) : json_out(['ok' => false, 'message' => 'Litige introuvable.'], 404);
-
-    case 'dispute_decide':
-        // Accepter n'ouvre AUCUN accès : la décision est enregistrée, la remise
-        // en main se fait hors ligne. Brancher une régénération ici recréerait
-        // le chemin automatique que le niveau 3 existe pour éviter.
-        $ok = Dispute::decide(
-            $pdo,
-            (int) ($body['id'] ?? 0),
-            ($body['verdict'] ?? '') === 'accepte',
-            (string) ($body['note'] ?? '')
-        );
-        json_out(['ok' => $ok], $ok ? 200 : 400);
+    // Les litiges passent par leurs points d'entrée dédiés
+    // (admin_disputes.php, admin_dispute_decide.php) : le niveau 3 a son propre
+    // cycle — faisceau, fil de discussion, ré-enrôlement par le propriétaire —
+    // que deux branches génériques ne couvraient pas.
 
     default:
         json_out(['ok' => false, 'message' => 'Action inconnue.'], 400);

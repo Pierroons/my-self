@@ -12,8 +12,10 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/security.php';
 // Chiffres publics du lab — agrégés, sans mesure d'audience ajoutée.
 require_once __DIR__ . '/stats.php';
-// Niveau 3 de SelfRecover : escalade humaine.
-require_once __DIR__ . '/dispute.php';
+// Niveau 3 de SelfRecover : escalade humaine. Faisceau de faits soumis à un
+// administrateur — aucun score, et sa décision n'ouvre pas le compte : le
+// propriétaire se ré-enrôle lui-même ensuite.
+require_once __DIR__ . '/recover_l3.php';
 // Appareil de confiance : facteur de possession alternatif au code, en L2.
 // ⚠️ Une classe non chargée ici ne lève pas d'erreur visible — elle produit
 // une réponse HTTP vide, silencieuse et pénible à diagnostiquer.

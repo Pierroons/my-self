@@ -12,7 +12,12 @@ CREATE TABLE IF NOT EXISTS accounts (
     pass_hash       TEXT NOT NULL,          -- Argon2id(passphrase diceware L1)
     recovery_hash   TEXT NOT NULL,          -- Argon2id(derived_key) — L2 recovery
     is_admin        INTEGER NOT NULL DEFAULT 0,  -- panel admin (promotion via promote_admin.php)
-    created_at      INTEGER NOT NULL
+    created_at      INTEGER NOT NULL,
+    -- Traces d'usage, lues par le faisceau du niveau 3 : elles disent si le
+    -- compte vivait, sans rien révéler de ses secrets.
+    last_login_at INTEGER,
+    login_count   INTEGER NOT NULL DEFAULT 0,
+    banned_until  INTEGER
 );
 
 -- Sessions applicatives (token cookie)
@@ -30,6 +35,10 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     username     TEXT NOT NULL,
     success      INTEGER NOT NULL,
+    -- Niveau de récupération concerné (0 = connexion ordinaire, 1/2/3 = L1/L2/L3).
+    -- Sépare les compteurs : le cooldown du niveau 3 ne doit pas être remis à
+    -- zéro par une tentative de connexion, ni l'inverse.
+    level        INTEGER NOT NULL DEFAULT 0,
     ip           TEXT,
     attempted_at INTEGER NOT NULL
 );
@@ -151,22 +160,61 @@ CREATE TABLE IF NOT EXISTS memo_vault (
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Litiges — niveau 3, escalade humaine.
 --
--- Les faits déclarés par le demandeur sont chiffrés ; l'IP n'est jamais stockée
--- telle quelle, seulement un HMAC. La décision de l'admin n'ouvre pas le compte :
--- elle est enregistrée, la remise en main se fait hors ligne.
+-- Aucun secret n'est demandé à ce niveau : le demandeur a tout perdu, lui en
+-- réclamer un reviendrait à exiger ce qu'il n'a plus. On collecte un faisceau
+-- de FAITS qu'un humain lit, jamais un score — un nombre invite le relecteur à
+-- l'entériner au lieu de lire.
+--
+-- claim_hash : le demandeur n'a par définition aucune session. Le SHA-256 d'un
+-- sésame généré dans SON navigateur devient la capability qui protège le fil ;
+-- l'identifiant, semi-public, ne doit pas suffire à y lire ni à y écrire.
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS disputes (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    username     TEXT NOT NULL,                    -- compte revendiqué
-    ciphertext   TEXT NOT NULL,                    -- base64(AES-256-GCM) des faits déclarés
-    status       TEXT NOT NULL DEFAULT 'ouvert',   -- ouvert | accepte | refuse
-    admin_note   TEXT,                             -- motif de la décision, en clair (pas de secret)
-    ip_hash      TEXT,                             -- HMAC de l'IP, jamais l'IP
-    created_at   INTEGER NOT NULL,
-    decided_at   INTEGER
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    dispute_number  TEXT UNIQUE NOT NULL,          -- LIT-XXXX (non énumérable)
+    account_id      INTEGER NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'open',  -- open|awaiting_admin|granted|resolved|refused|closed
+    refusal_count   INTEGER NOT NULL DEFAULT 0,
+    signals_json    TEXT,                          -- faisceau de faits bruts pour l'admin (jamais un score chiffré)
+    claim_hash      TEXT,                          -- SHA-256 du sésame généré côté demandeur (autorise le fil)
+    expires_at      INTEGER,                       -- TTL de la capability (défaut +24h)
+    init_collisions INTEGER NOT NULL DEFAULT 0,    -- inits concurrentes = signal multi-demandeur
+    source_ip       TEXT,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status, created_at);
-CREATE INDEX IF NOT EXISTS idx_disputes_user ON disputes(username, created_at);
+CREATE INDEX IF NOT EXISTS idx_disputes_account ON disputes(account_id);
+CREATE INDEX IF NOT EXISTS idx_disputes_number ON disputes(dispute_number);
+CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status);
+
+-- Fil de discussion du litige. L'admin y confirme l'identité ; sa décision
+-- n'ouvre PAS le compte, le propriétaire se ré-enrôle ensuite lui-même.
+CREATE TABLE IF NOT EXISTS dispute_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    dispute_id INTEGER NOT NULL,
+    sender     TEXT NOT NULL,                       -- user | admin
+    body       TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (dispute_id) REFERENCES disputes(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_dispute_msg ON dispute_messages(dispute_id);
+
+-- Couche anti-abus. L'empreinte a été retirée des signaux de RÉCUPÉRATION le
+-- 2026-07-03 (c'est une technique de traçage, incompatible avec le projet) ;
+-- elle subsiste ici, où elle signale un attaquant au lieu de vouer pour un
+-- propriétaire.
+CREATE TABLE IF NOT EXISTS suspicious_fingerprints (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip            TEXT NOT NULL,
+    fingerprint   TEXT,
+    user_agent    TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 1,
+    blocked_until INTEGER,
+    created_at    INTEGER NOT NULL,
+    last_seen     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_susp_ip ON suspicious_fingerprints(ip);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Codes de récupération — facteur de possession du niveau 2.

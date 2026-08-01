@@ -53,5 +53,22 @@ final class Db
         if (!in_array('is_admin', $cols, true)) {
             self::$pdo->exec('ALTER TABLE accounts ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
         }
+
+        // Traces d'usage lues par le faisceau du niveau 3.
+        foreach ([
+            'last_login_at' => 'INTEGER',
+            'login_count'   => 'INTEGER NOT NULL DEFAULT 0',
+            'banned_until'  => 'INTEGER',
+        ] as $col => $type) {
+            if (!in_array($col, $cols, true)) {
+                self::$pdo->exec("ALTER TABLE accounts ADD COLUMN $col $type");
+            }
+        }
+
+        // Niveau de récupération : le niveau 3 compte ses tentatives à part.
+        $cols = self::$pdo->query('PRAGMA table_info(login_attempts)')->fetchAll(PDO::FETCH_COLUMN, 1);
+        if (!in_array('level', $cols, true)) {
+            self::$pdo->exec('ALTER TABLE login_attempts ADD COLUMN level INTEGER NOT NULL DEFAULT 0');
+        }
     }
 }

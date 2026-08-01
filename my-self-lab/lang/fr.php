@@ -484,6 +484,28 @@ return [
     'rec.word2'   => 'Mot de récupération',
     'rec.l1.note' => '<strong>Niveau 1</strong> — la passphrase de secours reçue à l\'inscription, quatre mots générés. Secret <em>fort</em> : c\'est son entropie qui te protège.',
 
+    // --- Niveau 3 : questions contextuelles, faisceau, décision humaine ---
+    'dsp.h1'            => '🧑\u200d⚖️ Récupération assistée',
+    'dsp.why.h3'        => 'Pourquoi aucun secret ne t\'est demandé',
+    'dsp.init.submit'   => 'Ouvrir une procédure',
+    'dsp.q.note'        => 'Ces questions ne portent sur <strong>aucun secret</strong>. Réponds au mieux de ta mémoire : c\'est un faisceau de faits, pas un examen — un administrateur les lira.',
+    'dsp.claim.keep'    => 'Garde cet appareil : le code de suivi de ta procédure y est enregistré. Litige',
+    'dsp.q.submit'      => 'Envoyer à un administrateur',
+    'dsp.chat.note'     => 'Échange avec l\'administrateur. Litige',
+    'dsp.chat.ph'       => 'Ton message…',
+    'dsp.chat.send'     => 'Envoyer',
+    'dsp.chat.refresh'  => 'Actualiser',
+    'dsp.reset.granted' => 'Un administrateur a confirmé ton identité. À toi de reposer tes secrets : le serveur n\'en génère aucun.',
+    'dsp.reset.pw'      => 'Nouveau mot de passe',
+    'dsp.reset.word'    => 'Nouveau mot de récupération',
+    'dsp.reset.submit'  => 'Reprendre mon compte',
+    'dsp.js.required'   => 'Champ obligatoire.',
+    'dsp.js.sent'       => 'Transmis à un administrateur.',
+    'dsp.js.you'        => 'Toi',
+    'dsp.js.admin'      => 'Administrateur',
+    'dsp.js.empty'      => 'Aucun message pour l\'instant.',
+    'dsp.js.reset_done' => 'Compte repris. Tu peux te connecter avec tes nouveaux secrets.',
+
     'reg.weak_word' => 'Le mot de récupération doit faire au moins 4 caractères.',
     'reg.codes'  => 'Codes de secours — 10, usage unique (récupération L2 avec ton mot mémorisé)',
 

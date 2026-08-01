@@ -24,7 +24,7 @@ $comptes = Admin::accounts($pdo);
 $fails   = Admin::failedLogins($pdo);
 $blocked = Admin::blockedVotes($pdo);
 $reports = Admin::reports($pdo);
-$disputes = \Pierroons\MySelfLab\Dispute::pending($pdo);
+$disputes = \Pierroons\MySelfLab\RecoverL3::adminList($pdo)['disputes'] ?? [];
 
 $sevColor = ['info' => '#9aa9b6', 'faible' => '#6cb6ff', 'moyen' => '#d4a056', 'eleve' => '#e0824f', 'critique' => '#d96459'];
 $statutColor = ['nouveau' => '#d4a056', 'valide' => '#3fb98c', 'rejete' => '#d96459'];
@@ -117,25 +117,60 @@ table.adm tr:last-child td{border-bottom:none}
   <h2>⚖️ Litiges — récupération niveau 3</h2>
   <p class="muted" style="margin-top:0;font-size:12.5px">Accepter n'ouvre aucun accès : la décision est tracée, la remise en main se fait hors ligne. Un bouton qui rendrait le compte serait exactement le chemin automatique que ce niveau existe pour éviter.</p>
   <?php if (!$disputes): ?><p class="muted">Aucun litige déposé.</p><?php else: ?>
-  <table class="adm"><tr><th>#</th><th>Compte revendiqué</th><th>Statut</th><th>Déposé</th><th>Actions</th></tr>
+  <table class="adm"><tr><th>Litige</th><th>Compte revendiqué</th><th>Statut</th><th>Ouvert</th><th>Actions</th></tr>
     <?php foreach ($disputes as $d): ?>
       <tr>
-        <td><?= (int) $d['id'] ?></td>
+        <td><code><?= h((string) $d['dispute_number']) ?></code></td>
         <td>@<?= h((string) $d['username']) ?></td>
-        <td><span class="tag-sm"><?= h($d['status']) ?></span></td>
+        <td><span class="tag-sm"><?= h((string) $d['status']) ?></span>
+          <?php if ((int) ($d['init_collisions'] ?? 0) > 0): ?>
+            <span class="tag-sm" style="color:var(--warn)" title="Plusieurs personnes ont ouvert une procédure pour ce compte">multi-demandeur ×<?= (int) $d['init_collisions'] ?></span>
+          <?php endif; ?>
+        </td>
         <td class="muted"><?= date('d/m H:i', (int) $d['created_at']) ?></td>
         <td>
-          <button class="btn btn-ghost js-voirdispute" data-id="<?= (int) $d['id'] ?>" style="padding:3px 9px;font-size:12px">Voir</button>
-          <?php if ($d['status'] === 'ouvert'): ?>
-            <button class="btn btn-ghost js-decider" data-id="<?= (int) $d['id'] ?>" data-v="accepte" style="padding:3px 9px;font-size:12px;color:var(--acc)">Accepter</button>
-            <button class="btn btn-ghost js-decider" data-id="<?= (int) $d['id'] ?>" data-v="refuse" style="padding:3px 9px;font-size:12px;color:var(--danger)">Refuser</button>
+          <?php if (in_array($d['status'], ['open', 'awaiting_admin'], true)): ?>
+            <button class="btn btn-ghost js-decider" data-n="<?= h((string) $d['dispute_number']) ?>" data-v="grant" style="padding:3px 9px;font-size:12px;color:var(--acc)">Confirmer l'identité</button>
+            <button class="btn btn-ghost js-decider" data-n="<?= h((string) $d['dispute_number']) ?>" data-v="refuse" style="padding:3px 9px;font-size:12px;color:var(--danger)">Refuser</button>
           <?php else: ?>
-            <span class="muted" style="font-size:12px"><?= h((string) ($d['admin_note'] ?? '')) ?></span>
+            <span class="muted" style="font-size:12px">—</span>
           <?php endif; ?>
         </td>
       </tr>
-      <tr><td colspan="5"><div id="dsp-<?= (int) $d['id'] ?>"></div></td></tr>
-    <?php endforeach; ?>
+      <!--
+        Le faisceau est affiché tel quel, sans total ni note globale : agréger
+        ces faits en un chiffre ferait lire le chiffre à la place des faits.
+      -->
+      <tr><td colspan="5">
+        <?php $sig = $d['signals'] ?? []; ?>
+        <?php if (!$sig): ?>
+          <span class="muted" style="font-size:12px">Faisceau pas encore soumis.</span>
+        <?php else: ?>
+          <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px">
+            <div style="flex:1;min-width:240px">
+              <strong style="color:var(--acc)">Passif</strong> <span class="muted">— constaté par le serveur, non falsifiable</span>
+              <ul style="margin:4px 0 0;padding-left:18px">
+                <?php foreach (($sig['passive'] ?? []) as $f): ?>
+                  <li><?= ($f['ok'] ?? false) ? '✅' : '⬜' ?> <?= h((string) ($f['label'] ?? '')) ?> <span class="muted">— <?= h((string) ($f['detail'] ?? '')) ?></span></li>
+                <?php endforeach; ?>
+              </ul>
+            </div>
+            <div style="flex:1;min-width:240px">
+              <strong style="color:var(--warn)">Déclaratif</strong> <span class="muted">— affirmé par le demandeur, devinable</span>
+              <ul style="margin:4px 0 0;padding-left:18px">
+                <?php foreach (($sig['declarative'] ?? []) as $f): ?>
+                  <li><?= ($f['ok'] ?? false) ? '✅' : '⬜' ?> <?= h((string) ($f['label'] ?? '')) ?> <span class="muted">— <?= h((string) ($f['detail'] ?? '')) ?></span></li>
+                <?php endforeach; ?>
+              </ul>
+            </div>
+          </div>
+          <p class="muted" style="font-size:12px;margin:8px 0 0">
+            Échecs L2 antérieurs depuis la même connexion : <?= (int) ($d['l2_prior_attempts'] ?? 0) ?>
+            · Refus déjà prononcés : <?= (int) ($d['refusal_count'] ?? 0) ?>
+          </p>
+        <?php endif; ?>
+      </td></tr>
+      <?php endforeach; ?>
   </table>
   <?php endif; ?>
 </div>
@@ -200,21 +235,16 @@ document.querySelectorAll('.js-voirrapport').forEach(b=>b.addEventListener('clic
 document.querySelectorAll('.js-statut').forEach(b=>b.addEventListener('click',()=>statutRapport(+b.dataset.id,b.dataset.status)));
 document.querySelectorAll('.js-modaction').forEach(b=>b.addEventListener('click',()=>modAction(+b.dataset.id,b.dataset.op)));
 
-function voirDispute(id){
-  const box=document.getElementById('dsp-'+id);
-  labPost('/api/admin.php',{action:'dispute',id:id}).then(d=>{
-    if(!d.ok){box.innerHTML='<div class="reveal">'+esc(d.message)+'</div>';return;}
-    box.innerHTML='<div class="reveal">'+esc(d.dispute.recit)+'\n\ncontact : '+(esc(d.dispute.contact)||'—')+'</div>';
+function deciderDispute(num, decision){
+  // Confirmer n'ouvre AUCUN accès : la décision est enregistrée, et c'est le
+  // propriétaire qui repose ensuite ses secrets depuis son fil de litige.
+  if(!confirm(decision==='grant'
+      ? 'Confirmer l\'identité pour '+num+' ?\n\nCela n\'ouvre pas le compte : le propriétaire reposera lui-même ses secrets.'
+      : 'Refuser la demande '+num+' ?')) return;
+  labPost('/api/admin_dispute_decide.php',{dispute_number:num,decision:decision}).then(d=>{
+    if(d.ok) location.reload(); else alert(d.message||'Échec');
   });
 }
-function deciderDispute(id,verdict){
-  const note=prompt(verdict==='accepte'?'Motif de l\'acceptation :':'Motif du refus :');
-  if(note===null) return;
-  labPost('/api/admin.php',{action:'dispute_decide',id:id,verdict:verdict,note:note}).then(d=>{
-    if(d.ok) location.reload();
-  });
-}
-document.querySelectorAll('.js-voirdispute').forEach(b=>b.addEventListener('click',()=>voirDispute(b.dataset.id)));
-document.querySelectorAll('.js-decider').forEach(b=>b.addEventListener('click',()=>deciderDispute(b.dataset.id,b.dataset.v)));
+document.querySelectorAll('.js-decider').forEach(b=>b.addEventListener('click',()=>deciderDispute(b.dataset.n,b.dataset.v)));
 </script>
 <?php render_footer(); ?>
