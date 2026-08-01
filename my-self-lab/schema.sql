@@ -149,6 +149,52 @@ CREATE TABLE IF NOT EXISTS memo_vault (
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- Litiges — niveau 3, escalade humaine.
+--
+-- Les faits déclarés par le demandeur sont chiffrés ; l'IP n'est jamais stockée
+-- telle quelle, seulement un HMAC. La décision de l'admin n'ouvre pas le compte :
+-- elle est enregistrée, la remise en main se fait hors ligne.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS disputes (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    username     TEXT NOT NULL,                    -- compte revendiqué
+    ciphertext   TEXT NOT NULL,                    -- base64(AES-256-GCM) des faits déclarés
+    status       TEXT NOT NULL DEFAULT 'ouvert',   -- ouvert | accepte | refuse
+    admin_note   TEXT,                             -- motif de la décision, en clair (pas de secret)
+    ip_hash      TEXT,                             -- HMAC de l'IP, jamais l'IP
+    created_at   INTEGER NOT NULL,
+    decided_at   INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_disputes_status ON disputes(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_disputes_user ON disputes(username, created_at);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Codes de récupération — facteur de possession du niveau 2.
+--
+-- Deux colonnes pour deux métiers que l'une ne peut pas cumuler :
+--   code_lookup = HMAC(code, sel serveur)  → retrouve le compte en O(1) SANS
+--                 identifiant, ce qui retire l'oracle d'énumération
+--   code_hash   = Argon2id(code)           → résiste à une fuite de la base
+-- Argon2id seul imposerait de hacher chaque ligne à 64 Mo pour trouver la
+-- correspondance ; HMAC seul tomberait à la première attaque hors ligne.
+--
+-- ⚠️ Cette table existait en production sans figurer ici : une réinstallation
+-- depuis ce fichier produisait un lab où l'inscription plantait.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS recovery_codes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id  INTEGER NOT NULL,
+    code_lookup TEXT NOT NULL,
+    code_hash   TEXT NOT NULL,
+    used        INTEGER NOT NULL DEFAULT 0,
+    used_at     INTEGER,
+    created_at  INTEGER NOT NULL,
+    FOREIGN KEY (account_id) REFERENCES accounts(id)
+);
+CREATE INDEX IF NOT EXISTS idx_codes_lookup ON recovery_codes(code_lookup);
+CREATE INDEX IF NOT EXISTS idx_codes_account ON recovery_codes(account_id, used);
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- Appareil de confiance — facteur de possession alternatif au code, en L2.
 --
 -- Le navigateur génère une paire ECDSA P-256 à l'enrôlement : seule la clé

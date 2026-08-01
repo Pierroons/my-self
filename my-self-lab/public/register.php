@@ -24,21 +24,30 @@ render_header(t('reg.title'), Auth::currentAccount(Db::pdo()));
   </div>
 </div>
 
+<script src="/js/sr-derive.js"></script>
 <script src="/js/sr-device.js"></script>
 <script nonce="<?= nonce() ?>">
 // Libellés traduits côté serveur ; les secrets, eux, viennent du client.
 const I18N = <?= json_encode([
   'done'=>t('reg.done'),'copy'=>t('reg.copy_now'),'pw'=>t('reg.password'),
   'pp'=>t('reg.passphrase'),'keep'=>t('reg.keep_safe'),'goto'=>t('reg.goto_login'),
-  'err'=>t('log.error'),'codes'=>t('reg.codes'),
+  'err'=>t('log.error'),'codes'=>t('reg.codes'),'weakWord'=>t('reg.weak_word'),
   'devBtn'=>t('dev.enroll.btn'),'devNote'=>t('dev.enroll.note'),
   'devDoing'=>t('dev.enroll.doing'),'devOk'=>t('dev.enroll.ok'),'devFail'=>t('dev.enroll.fail'),
 ], JSON_UNESCAPED_UNICODE) ?>;
-function creer(){
+async function creer(){
   const username=document.getElementById('username').value.trim();
   const recovery=document.getElementById('recovery').value.trim();
+  if(recovery.length<4){
+    document.getElementById('msg').innerHTML='<div class="toast err">'+I18N.weakWord+'</div>';
+    return;
+  }
+  // Dérivation dans le navigateur : le mot mémorisé ne quitte jamais ce poste.
+  // Le serveur ne reçoit que HMAC(mot, label de service) et n'en stocke qu'un
+  // Argon2id — il ne peut donc pas reconstituer ce que ce mot ouvre ailleurs.
+  const recovery_derived_key = await srDerive(recovery);
   fetch('/api/register.php',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({username,recovery_word:recovery})})
+    body:JSON.stringify({username, recovery_derived_key})})
     .then(r=>r.json()).then(d=>{
       const msg=document.getElementById('msg');
       if(d.ok){

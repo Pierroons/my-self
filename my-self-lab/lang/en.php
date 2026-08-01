@@ -484,6 +484,7 @@ return [
     'rec.word2'   => 'Recovery word',
     'rec.l1.note' => '<strong>Level 1</strong> — the backup passphrase you received at sign-up, four generated words. A <em>strong</em> secret: its entropy is what protects you.',
 
+    'reg.weak_word' => 'The recovery word must be at least 4 characters long.',
     'reg.codes'  => 'Backup codes — 10, single use (L2 recovery with your memorized word)',
 
     // --- Trusted device (L2, possession factor, alternative to the code) ---

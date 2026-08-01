@@ -4,7 +4,7 @@
  *
  * Modèle : compte sans email. À l'inscription, l'utilisateur choisit son
  * recovery word. Le serveur génère un password (16 chars) + une passphrase
- * diceware EFF (L1). On dérive recovery_key = HMAC(recovery_word, domain||salt)
+ * diceware EFF (L1). La clé de récupération est dérivée DANS LE NAVIGATEUR
  * et on stocke Argon2id(password), Argon2id(passphrase), Argon2id(recovery_key).
  *
  * Aucun secret n'est conservé en clair en base (version prod-like).
@@ -50,10 +50,22 @@ final class Auth
         return self::ARGON2;
     }
 
-    /** derived_key = HMAC-SHA256(recovery_word, domain || site_salt). */
-    public static function deriveKey(string $recoveryWord, string $domain, string $siteSalt): string
+    /**
+     * Valide une clé de récupération dérivée par le navigateur.
+     *
+     * 🔑 **Le mot mémorisé n'arrive jamais ici.** Le client calcule
+     * `HMAC-SHA256(clé = mot, message = label de service)` et n'envoie que le
+     * résultat : 64 caractères hexadécimaux. Le serveur en stocke un Argon2id
+     * et ne peut donc reconstituer ni le mot, ni ce qu'il ouvrirait ailleurs.
+     *
+     * C'est la promesse centrale du protocole — la tenir suppose de refuser
+     * toute entrée qui n'a pas la forme d'une clé dérivée. Sans ce contrôle, un
+     * client resté sur l'ancienne version enverrait le mot en clair et le
+     * serveur l'accepterait sans que rien ne le signale.
+     */
+    public static function isDerivedKey(string $value): bool
     {
-        return hash_hmac('sha256', $domain . $siteSalt, $recoveryWord);
+        return (bool) preg_match('/^[0-9a-f]{64}$/', $value);
     }
 
     /** Site salt persistant (32 bytes), propre à ce déploiement. Hors webroot. */
@@ -87,7 +99,7 @@ final class Auth
      * Inscription. Retourne ['ok'=>bool, ...].
      * En cas de succès : credentials (password + passphrase) à copier par l'user.
      */
-    public static function register(PDO $pdo, string $username, string $recoveryWord, ?string $ip = null): array
+    public static function register(PDO $pdo, string $username, string $recoveryDerivedKey, ?string $ip = null): array
     {
         // Anti-abus : limite la création massive de comptes par IP (anti-énumération + anti-spam)
         if ($ip !== null) {
@@ -106,9 +118,11 @@ final class Auth
             return ['ok' => false, 'error' => 'invalid_username',
                     'message' => "Identifiant : 3 à 20 caractères minuscules, chiffres ou _."];
         }
-        if (mb_strlen($recoveryWord) < 4) {
-            return ['ok' => false, 'error' => 'weak_recovery',
-                    'message' => 'Le mot de récupération doit faire au moins 4 caractères.'];
+        // La longueur du mot est vérifiée par le navigateur, seul à le voir.
+        // Ici on ne peut contrôler que la forme de la clé dérivée.
+        if (!self::isDerivedKey($recoveryDerivedKey)) {
+            return ['ok' => false, 'error' => 'invalid_derived_key',
+                    'message' => 'Clé de récupération invalide : la dérivation doit se faire dans le navigateur.'];
         }
 
         $stmt = $pdo->prepare('SELECT 1 FROM accounts WHERE username = ?');
@@ -128,7 +142,7 @@ final class Auth
         $diceware = \DicewareWordlist::generate(4, 'en');
         $passphrase = implode(' ', $diceware['words']);
 
-        $derivedKey = self::deriveKey($recoveryWord, self::DOMAIN, self::siteSalt());
+        $derivedKey = $recoveryDerivedKey;   // déjà dérivée côté client
 
         $pwHash       = password_hash($password, PASSWORD_ARGON2ID, self::ARGON2);
         $passHash     = password_hash($passphrase, PASSWORD_ARGON2ID, self::ARGON2);
@@ -155,12 +169,16 @@ final class Auth
             'ok' => true,
             'account_id' => $accountId,
             'username' => $username,
+            // Les codes sont des secrets remis une fois, au même titre que le
+            // mot de passe et la passphrase : ils appartiennent à `credentials`.
+            // Les laisser à la racine les rendait invisibles au client, qui lit
+            // credentials — le lot était donc généré puis perdu aussitôt.
             'credentials' => [
                 'password' => $password,
                 'passphrase' => $passphrase,
                 'entropy_bits' => $diceware['entropy_bits'] ?? null,
+                'recovery_codes' => $codes,
             ],
-            'recovery_codes' => $codes,
             'note' => 'Copie ton mot de passe, ta passphrase et tes codes maintenant — ils ne seront plus jamais affichés. Ton mot de récupération, tu le connais déjà.',
         ];
     }
@@ -237,8 +255,16 @@ final class Auth
      * régénère password + passphrase, invalide les sessions existantes.
      * Retour : ['ok'=>true,'credentials'=>[...]] ou ['ok'=>false,'message'=>...].
      */
-    public static function recover(PDO $pdo, string $username, string $recoveryWord, ?string $ip = null): array
+    public static function recover(PDO $pdo, string $username, string $recoveryDerivedKey, ?string $ip = null): array
     {
+        // Refus explicite d'une entrée qui n'a pas la forme d'une clé dérivée :
+        // sans ce contrôle, un client resté sur l'ancienne version enverrait le
+        // mot mémorisé en clair et le serveur le recevrait sans rien signaler.
+        if (!self::isDerivedKey($recoveryDerivedKey)) {
+            return ['ok' => false, 'error' => 'invalid_derived_key',
+                    'message' => 'Clé de récupération invalide : la dérivation doit se faire dans le navigateur.'];
+        }
+
         self::purgeExpiredSessions($pdo);
         $username = strtolower(trim($username));
         $marker = 'recover:' . $username;
@@ -265,7 +291,7 @@ final class Auth
         $stmt->execute([$username]);
         $acc = $stmt->fetch();
 
-        $derived = self::deriveKey($recoveryWord, self::DOMAIN, self::siteSalt());
+        $derived = $recoveryDerivedKey;   // déjà dérivée côté client
         // LAB-02 : Argon2id systématique (hash factice si compte absent) pour égaliser le timing.
         $ok = password_verify($derived, $acc ? $acc['recovery_hash'] : self::DUMMY_HASH) && (bool) $acc;
 
@@ -365,8 +391,16 @@ final class Auth
      * L'erreur ne dit jamais lequel des deux a échoué — le préciser rendrait
      * chaque facteur attaquable séparément, ce qui annulerait le bénéfice.
      */
-    public static function recoverByCode(PDO $pdo, string $code, string $recoveryWord, ?string $ip = null): array
+    public static function recoverByCode(PDO $pdo, string $code, string $recoveryDerivedKey, ?string $ip = null): array
     {
+        // Refus explicite d'une entrée qui n'a pas la forme d'une clé dérivée :
+        // sans ce contrôle, un client resté sur l'ancienne version enverrait le
+        // mot mémorisé en clair et le serveur le recevrait sans rien signaler.
+        if (!self::isDerivedKey($recoveryDerivedKey)) {
+            return ['ok' => false, 'error' => 'invalid_derived_key',
+                    'message' => 'Clé de récupération invalide : la dérivation doit se faire dans le navigateur.'];
+        }
+
         self::purgeExpiredSessions($pdo);
         $code = strtolower(trim($code));
 
@@ -394,7 +428,7 @@ final class Auth
         $stmt->execute([hash_hmac('sha256', $code, self::siteSalt())]);
         $row = $stmt->fetch();
 
-        $derived = self::deriveKey($recoveryWord, self::DOMAIN, self::siteSalt());
+        $derived = $recoveryDerivedKey;   // déjà dérivée côté client
         // Argon2id systématiquement exécuté, même sur code inconnu : sinon le
         // temps de réponse dirait si le code existe.
         $codeOk = $row ? password_verify($code, $row['code_hash']) : password_verify('x', self::DUMMY_HASH);

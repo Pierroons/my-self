@@ -36,7 +36,7 @@ if (isset($body['passphrase']) && $body['passphrase'] !== '') {
     $r = Auth::recoverByCode(
         Db::pdo(),
         (string) ($body['recovery_code'] ?? ''),
-        (string) ($body['recovery_word'] ?? ''),
+        (string) ($body['recovery_derived_key'] ?? ''),
         client_ip()
     );
 }

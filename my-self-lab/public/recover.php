@@ -73,6 +73,7 @@ render_header(t('rec.title'), Auth::currentAccount(Db::pdo()));
 
 <p class="muted" style="max-width:460px"><a href="/login.php"><?= h(t('rec.back')) ?></a></p>
 
+<script src="/js/sr-derive.js"></script>
 <script src="/js/sr-device.js"></script>
 <script nonce="<?= nonce() ?>">
 const REC = <?= json_encode([
@@ -145,7 +146,7 @@ function comptesEnroles(){
   });
 })();
 
-function recuperer(btn){
+async function recuperer(btn){
   const username = document.getElementById('username').value.trim();
   const secret = niveau==='l1'
     ? document.getElementById('passphrase').value
@@ -157,9 +158,11 @@ function recuperer(btn){
   btn.disabled = true;
   // Le champ transmis désigne le niveau : le client n'indique pas lui-même
   // contre quel secret il souhaite être comparé.
+  // Au niveau 2, le mot mémorisé est dérivé ici même : seule la clé part.
   const corps = niveau==='l1'
     ? {username, passphrase: secret}
-    : {recovery_code: secret, recovery_word: document.getElementById('recovery').value};
+    : {recovery_code: secret,
+       recovery_derived_key: await srDerive(document.getElementById('recovery').value)};
   fetch('/api/recover.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(corps)})
     .then(r=>r.json()).then(d=>{
       btn.disabled = false;

@@ -484,6 +484,7 @@ return [
     'rec.word2'   => 'Mot de récupération',
     'rec.l1.note' => '<strong>Niveau 1</strong> — la passphrase de secours reçue à l\'inscription, quatre mots générés. Secret <em>fort</em> : c\'est son entropie qui te protège.',
 
+    'reg.weak_word' => 'Le mot de récupération doit faire au moins 4 caractères.',
     'reg.codes'  => 'Codes de secours — 10, usage unique (récupération L2 avec ton mot mémorisé)',
 
     // --- Appareil de confiance (L2, facteur de possession alternatif au code) ---
