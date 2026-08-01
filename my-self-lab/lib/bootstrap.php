@@ -14,6 +14,10 @@ require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/stats.php';
 // Niveau 3 de SelfRecover : escalade humaine.
 require_once __DIR__ . '/dispute.php';
+// Appareil de confiance : facteur de possession alternatif au code, en L2.
+// ⚠️ Une classe non chargée ici ne lève pas d'erreur visible — elle produit
+// une réponse HTTP vide, silencieuse et pénible à diagnostiquer.
+require_once __DIR__ . '/device.php';
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Auth;

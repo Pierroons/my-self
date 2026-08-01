@@ -483,4 +483,18 @@ return [
     'rec.code_ph' => 'xxxxx-xxxxx',
     'rec.word2'   => 'Mot de récupération',
     'rec.l1.note' => '<strong>Niveau 1</strong> — la passphrase de secours reçue à l\'inscription, quatre mots générés. Secret <em>fort</em> : c\'est son entropie qui te protège.',
+
+    'reg.codes'  => 'Codes de secours — 10, usage unique (récupération L2 avec ton mot mémorisé)',
+
+    // --- Appareil de confiance (L2, facteur de possession alternatif au code) ---
+    'dev.enroll.btn'    => '📱 Activer la récupération depuis cet appareil',
+    'dev.enroll.note'   => 'Cet appareil garde une clé privée chiffrée par ton mot mémorisé. Il ne remplace pas le mot : il remplace le code.',
+    'dev.enroll.doing'  => 'enrôlement…',
+    'dev.enroll.ok'     => 'appareil enrôlé ✔',
+    'dev.enroll.fail'   => '⚠ échec de l\'enrôlement',
+    'dev.rec.or'        => 'Ou, si tu as <strong>enrôlé cet appareil</strong> (facteur possession) :',
+    'dev.rec.btn'       => '📱 Récupérer depuis cet appareil',
+    'dev.rec.none'      => 'Aucun appareil enrôlé ici pour ce compte.',
+    'dev.rec.ok'        => 'Accès récupéré (cet appareil) ✔',
+    'dev.rec.crypto_ko' => 'Échec crypto (cet appareil).',
 ];

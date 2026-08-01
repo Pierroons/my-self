@@ -483,4 +483,18 @@ return [
     'rec.code_ph' => 'xxxxx-xxxxx',
     'rec.word2'   => 'Recovery word',
     'rec.l1.note' => '<strong>Level 1</strong> — the backup passphrase you received at sign-up, four generated words. A <em>strong</em> secret: its entropy is what protects you.',
+
+    'reg.codes'  => 'Backup codes — 10, single use (L2 recovery with your memorized word)',
+
+    // --- Trusted device (L2, possession factor, alternative to the code) ---
+    'dev.enroll.btn'    => '📱 Enable recovery from this device',
+    'dev.enroll.note'   => 'This device keeps a private key encrypted with your memorized word. It does not replace the word — it replaces the code.',
+    'dev.enroll.doing'  => 'enrolling…',
+    'dev.enroll.ok'     => 'device enrolled ✔',
+    'dev.enroll.fail'   => '⚠ enrolment failed',
+    'dev.rec.or'        => 'Or, if you have <strong>enrolled this device</strong> (possession factor):',
+    'dev.rec.btn'       => '📱 Recover from this device',
+    'dev.rec.none'      => 'No device enrolled here for this account.',
+    'dev.rec.ok'        => 'Access recovered (this device) ✔',
+    'dev.rec.crypto_ko' => 'Crypto failure (this device).',
 ];

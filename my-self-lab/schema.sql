@@ -147,3 +147,27 @@ CREATE TABLE IF NOT EXISTS memo_vault (
     updated_at   INTEGER NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Appareil de confiance — facteur de possession alternatif au code, en L2.
+--
+-- Le navigateur génère une paire ECDSA P-256 à l'enrôlement : seule la clé
+-- PUBLIQUE arrive ici. La privée est chiffrée par le mot mémorisé et ne quitte
+-- jamais l'appareil, ce qui lie les deux facteurs cryptographiquement : un
+-- appareil volé ne signe rien sans le mot.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS device_credentials (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id    INTEGER NOT NULL,
+    credential_id TEXT NOT NULL UNIQUE,  -- id aléatoire, localise le compte (comme un recovery code)
+    public_key    TEXT NOT NULL,         -- clé publique ECDSA P-256 (SPKI DER, base64url)
+    created_at    INTEGER NOT NULL,
+    FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS device_challenges (
+    challenge     TEXT PRIMARY KEY,      -- base64url, usage unique, TTL court
+    credential_id TEXT,
+    created_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_devcred_cid ON device_credentials(credential_id);
+CREATE INDEX IF NOT EXISTS idx_devcred_account ON device_credentials(account_id);

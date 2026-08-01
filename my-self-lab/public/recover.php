@@ -54,6 +54,12 @@ render_header(t('rec.title'), Auth::currentAccount(Db::pdo()));
     </div>
 
     <button class="btn" id="btn-recup"><?= h(t('rec.submit')) ?></button>
+
+    <!-- Appareil enrôlé : remplace le code (possession), pas le mot (connaissance). -->
+    <div id="dev-zone" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:none">
+      <div class="muted" style="font-size:12px"><?= t('dev.rec.or') ?></div>
+      <button class="btn btn-ghost" id="dev-btn" style="margin-top:8px"><?= h(t('dev.rec.btn')) ?></button>
+    </div>
   </div>
 
   <div id="result" style="display:none"></div>
@@ -67,6 +73,7 @@ render_header(t('rec.title'), Auth::currentAccount(Db::pdo()));
 
 <p class="muted" style="max-width:460px"><a href="/login.php"><?= h(t('rec.back')) ?></a></p>
 
+<script src="/js/sr-device.js"></script>
 <script nonce="<?= nonce() ?>">
 const REC = <?= json_encode([
     'required' => t('rec.js.required'),
@@ -77,6 +84,8 @@ const REC = <?= json_encode([
     'goto'     => t('rec.js.goto'),
     'neterr'   => t('rec.js.neterr'),
     'err'      => t('log.error'),
+    'devCryptoKo' => t('dev.rec.crypto_ko'),
+    'devNone'     => t('dev.rec.none'),
 ], JSON_UNESCAPED_UNICODE) ?>;
 
 function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
@@ -93,10 +102,48 @@ function basculer(n){
   document.getElementById('f-user').style.display = n==='l1' ? '' : 'none';
   document.getElementById('note-l1').style.display = n==='l1' ? '' : 'none';
   document.getElementById('note-l2').style.display = n==='l2' ? '' : 'none';
+  // L'appareil est un facteur du L2 et s'appuie sur le mot mémorisé, dont le
+  // champ n'existe qu'ici : l'afficher en L1 offrirait un bouton inutilisable.
+  var dz=document.getElementById('dev-zone');
+  if(dz) dz.style.display = (n==='l2' && comptesEnroles().length) ? '' : 'none';
   document.getElementById('msg').innerHTML = '';
 }
 document.getElementById('tab-l1').addEventListener('click', ()=>basculer('l1'));
 document.getElementById('tab-l2').addEventListener('click', ()=>basculer('l2'));
+
+// --- Appareil enrôlé -------------------------------------------------------
+// Les comptes enrôlés ici sont lus dans le stockage local : on ne redemande
+// donc aucun identifiant, ce qui garde la propriété du L2 — le facteur de
+// possession localise le compte tout seul.
+function comptesEnroles(){
+  var out=[];
+  for(var i=0;i<localStorage.length;i++){
+    var k=localStorage.key(i);
+    if(k && k.indexOf('srdev_')===0) out.push(k.slice(6));
+  }
+  return out;
+}
+(function initAppareil(){
+  var comptes=comptesEnroles();
+  if(!comptes.length) return;   // rien d'enrôlé ici : basculer() garde la zone masquée
+  document.getElementById('dev-btn').addEventListener('click', async function(e){
+    e.preventDefault();
+    var mot=document.getElementById('recovery').value;
+    if(!mot){ document.getElementById('msg').innerHTML='<div class="toast err">'+esc(REC.required)+'</div>'; return; }
+    var btn=this; btn.disabled=true;
+    try{
+      // Un seul compte enrôlé dans le cas courant ; sinon on essaie chacun,
+      // le mot mémorisé tranchant lequel déchiffre sa clé privée.
+      for(var i=0;i<comptes.length;i++){
+        var r=await srDeviceRecover(comptes[i], mot);
+        if(r && r.ok){ afficherSucces(r); return; }
+      }
+      document.getElementById('msg').innerHTML='<div class="toast err">'+esc(REC.devCryptoKo)+'</div>';
+    }catch(err){
+      document.getElementById('msg').innerHTML='<div class="toast err">'+esc(REC.devCryptoKo)+'</div>';
+    }finally{ btn.disabled=false; }
+  });
+})();
 
 function recuperer(btn){
   const username = document.getElementById('username').value.trim();
@@ -117,17 +164,23 @@ function recuperer(btn){
     .then(r=>r.json()).then(d=>{
       btn.disabled = false;
       if(!d.ok){document.getElementById('msg').innerHTML='<div class="toast err">'+esc(d.message||REC.err)+'</div>';return;}
-      document.getElementById('form').style.display='none';
-      document.querySelector('.rec-tabs').style.display='none';
-      document.getElementById('msg').innerHTML='<div class="toast ok">'+esc(REC.done)+'</div>';
-      const r=document.getElementById('result');
-      r.style.display='block';
-      r.innerHTML='<p>'+REC.copy+'</p>'
-        +'<div class="field"><label>'+esc(REC.newpw)+'</label><input value="'+esc(d.credentials.password)+'" readonly></div>'
-        +'<div class="field"><label>'+esc(REC.newpp)+'</label><input value="'+esc(d.credentials.passphrase)+'" readonly></div>'
-        +'<p class="muted">⚠️ '+esc(d.note||'')+'</p>'
-        +'<a class="btn" href="/login.php">'+esc(REC.goto)+'</a>';
+      afficherSucces(d);
     }).catch(e=>{btn.disabled=false;document.getElementById('msg').innerHTML='<div class="toast err">'+esc(REC.neterr)+'</div>';});
+}
+
+// Écran de succès partagé par les deux voies du L2 — le code et l'appareil
+// aboutissent au même résultat, il n'y a pas de raison d'en avoir deux copies.
+function afficherSucces(d){
+  document.getElementById('form').style.display='none';
+  document.querySelector('.rec-tabs').style.display='none';
+  document.getElementById('msg').innerHTML='<div class="toast ok">'+esc(REC.done)+'</div>';
+  const r=document.getElementById('result');
+  r.style.display='block';
+  r.innerHTML='<p>'+REC.copy+'</p>'
+    +'<div class="field"><label>'+esc(REC.newpw)+'</label><input value="'+esc(d.credentials.password)+'" readonly></div>'
+    +'<div class="field"><label>'+esc(REC.newpp)+'</label><input value="'+esc(d.credentials.passphrase)+'" readonly></div>'
+    +'<p class="muted">⚠️ '+esc(d.note||'')+'</p>'
+    +'<a class="btn" href="/login.php">'+esc(REC.goto)+'</a>';
 }
 document.getElementById('btn-recup').addEventListener('click', function(){ recuperer(this); });
 </script>

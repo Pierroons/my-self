@@ -36,6 +36,20 @@ final class Auth
      */
     private const DUMMY_HASH = '$argon2id$v=19$m=65536,t=4,p=2$SXQ3V2s0SHVuaEZWR003bQ$FM4OpKIf6dEQsf0BMOE6uFqG+OyWDcTRR6+tUoKpOWA';
 
+    /**
+     * Options Argon2id, exposées pour les modules qui reposent un mot de passe
+     * hors de cette classe (Device notamment).
+     *
+     * 🔑 Une seule source de vérité : un module qui recopierait ces valeurs
+     * finirait par diverger silencieusement le jour où on durcit le profil,
+     * et produirait des hash plus faibles que les autres sans que rien
+     * ne le signale.
+     */
+    public static function argon2Options(): array
+    {
+        return self::ARGON2;
+    }
+
     /** derived_key = HMAC-SHA256(recovery_word, domain || site_salt). */
     public static function deriveKey(string $recoveryWord, string $domain, string $siteSalt): string
     {
