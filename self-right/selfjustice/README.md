@@ -76,7 +76,7 @@ Any IA. Any citizen. Any conflict. One consistent, sourced, impartial pre-analys
 ```
 
 **Cost for the user:** zero (they use their own IA subscription).
-**Cost for the operator:** the domain name + hosting for a Raspberry Pi.
+**Cost for the operator:** the domain name + one modest machine.
 
 ---
 
@@ -123,7 +123,7 @@ All endpoints return JSON, all are rate-limited, all are CORS-open.
 | Backend | PHP-FPM 8.2 (read-only) |
 | Database | SQLite 3 (LEGI dump parsed to `legi_selfjustice.sqlite`) + SQLite (EU/CEDH) |
 | TLS | Let's Encrypt, auto-renewal |
-| Host | Raspberry Pi 4, self-hosted |
+| Host | self-hosted server (x86 or ARM) |
 | Cron | Bi-monthly LEGI sync + hourly stats rebuild |
 
 ---

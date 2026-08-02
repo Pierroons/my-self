@@ -77,7 +77,7 @@ N'importe quelle IA. N'importe quel citoyen. N'importe quel conflit. Une pré-an
 ```
 
 **Coût pour l'utilisateur :** zéro (il utilise son propre abonnement IA).
-**Coût pour l'opérateur :** le nom de domaine + l'hébergement d'un Raspberry Pi.
+**Coût pour l'opérateur :** le nom de domaine + une machine modeste.
 
 ---
 
@@ -124,7 +124,7 @@ Toutes les endpoints retournent du JSON, toutes sont rate-limitées, toutes ont 
 | Backend | PHP-FPM 8.2 (lecture seule) |
 | Base de données | SQLite 3 (dump LEGI parsé en `legi_selfjustice.sqlite`) + SQLite (UE/CEDH) |
 | TLS | Let's Encrypt, auto-renouvellement |
-| Hôte | Raspberry Pi 4, auto-hébergé |
+| Hôte | serveur auto-hébergé (x86 ou ARM) |
 | Cron | Sync LEGI bimensuelle + reconstruction des stats horaire |
 
 ---

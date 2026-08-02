@@ -15,18 +15,18 @@ Site statique de présentation de l'écosystème MySelf, déployé sur
 
 ## Déploiement
 
-Actuellement servi par nginx sur le DEVSERVER :
+Servi par nginx :
 - Vhost : `/etc/nginx/sites-enabled/myself-root`
 - Root : `/var/www/my-self/`
 - SSL : Let's Encrypt via certbot
-- DNS : `my-self.fr` + `www.my-self.fr` → IP Freebox + NAT vers DEVSERVER
+- DNS : `my-self.fr` + `www.my-self.fr` → l'hôte servant l'instance
 
 ## Modifications
 
 Pour publier un changement :
 
 1. Éditer `index.html` dans ce dossier
-2. Copier sur DEVSERVER : `scp index.html deploy@devserver:/tmp/` puis
+2. Copier sur l'hôte : `scp index.html deploy@<hote>:/tmp/` puis
    `sudo cp /tmp/index.html /var/www/my-self/index.html && sudo chown www-data:www-data /var/www/my-self/index.html`
 3. Cache nginx a `expires 1d` sur `/index.html` — ajouter un hard refresh
    navigateur (Ctrl+Shift+R) pour vérifier.

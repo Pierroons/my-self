@@ -8,7 +8,7 @@
 [![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0%20whitepaper-orange.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
-[![Self-hosted](https://img.shields.io/badge/self--hosted-Raspberry%20Pi-blue.svg)](#)
+[![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
