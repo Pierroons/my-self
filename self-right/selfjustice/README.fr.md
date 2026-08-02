@@ -10,7 +10,7 @@
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
 [![LEGI: 488 903 articles](https://img.shields.io/badge/LEGI-488%20903%20articles-blue.svg)](https://your-instance.example/api/status)
-[![EU/CEDH: 705 articles](https://img.shields.io/badge/EU%2FCEDH-705%20articles-blue.svg)](https://your-instance.example/api/status)
+[![EU/CEDH: 818 articles](https://img.shields.io/badge/EU%2FCEDH-818%20articles-blue.svg)](https://your-instance.example/api/status)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
 > **Comment accéder à la justice sans se ruiner ?**
@@ -32,7 +32,7 @@ Pendant ce temps, chaque assistant IA (Claude, ChatGPT, Mistral, Gemini, Perplex
 SelfJustice est une **page unique de directives** (HTML) plus une **API HTTP publique** que n'importe quelle IA peut interroger pour produire des pré-analyses juridiques rigoureuses et impartiales.
 
 - La page de directives dit à l'IA **comment raisonner** : impartialité, hiérarchie des normes, base légale obligatoire pour chaque affirmation, glossaire pour non-juristes, disclaimer légal obligatoire.
-- L'API dit à l'IA **ce que dit réellement le droit** : 488 903 articles juridiques français indexés (dump LEGI de la DILA) + 705 articles UE/CEDH (Charte des droits fondamentaux, TFUE, TUE, RGPD, Convention européenne des droits de l'homme).
+- L'API dit à l'IA **ce que dit réellement le droit** : 488 903 articles juridiques français indexés (dump LEGI de la DILA) + 818 articles UE/CEDH (Charte des droits fondamentaux, TFUE, TUE, RGPD, règlement IA 2024/1689, Convention européenne des droits de l'homme).
 
 N'importe quelle IA. N'importe quel citoyen. N'importe quel conflit. Une pré-analyse cohérente, sourcée, impartiale.
 
@@ -101,7 +101,7 @@ Directives machine-readable disant à l'IA comment raisonner :
 | `GET /api/status` | Total articles, date dernière sync, ventilation par source |
 | `GET /api/legi/article/{ref}?code={alias}` | Article juridique français (avec désambiguïsation par code : travail, civil, penal, consommation, sante_publique, assurances, urbanisme, route, etc.) |
 | `GET /api/legi/search?q=...&limit=...` | Recherche plein texte dans LEGI |
-| `GET /api/eu/article/{source}/{num}` | Article UE/CEDH (`source` ∈ `CEDH`, `CHARTE_UE`, `TFUE`, `TUE`, `RGPD`) |
+| `GET /api/eu/article/{source}/{num}` | Article UE/CEDH (`source` ∈ `CEDH`, `CHARTE_UE`, `TFUE`, `TUE`, `RGPD`, `AI_ACT`) |
 | `GET /api/eu/search?q=...&source=...` | Recherche dans UE/CEDH |
 | `GET /api/stats/by-ai` | Stats anonymes publiques : consultations utilisateur par famille d'IA, compte des crawlers |
 | `GET /api/stats/by-endpoint` | Top des articles consultés (anonymisés) |
@@ -189,7 +189,7 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 - [x] Template de sortie structuré avec glossaire
 - [x] Disclaimers légaux (conforme loi 71-1130)
 - [x] API avec 488 903 articles LEGI
-- [x] API avec 705 articles UE/CEDH
+- [x] API avec 818 articles UE/CEDH (dont le règlement IA 2024/1689)
 - [x] Testé multi-IA (Claude, crawler ChatGPT, OAI-SearchBot détectés)
 - [x] Stats publiques (`/api/stats/by-ai`, `/api/stats/by-endpoint`)
 - [x] Domaine dédié [your-instance.example](https://your-instance.example)
