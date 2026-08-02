@@ -53,6 +53,16 @@ SOURCES = {
         "titre": "Convention européenne des droits de l'homme (CEDH)",
         "date_debut": "1953-09-03",
     },
+    # Applicable depuis le 2 août 2026 pour l'essentiel de ses dispositions,
+    # dont l'article 50 (transparence : divulguer qu'un contenu est généré par
+    # une IA). Un texte qu'une pré-analyse juridique doit pouvoir citer aussi
+    # bien que le RGPD — d'autant qu'il régit l'outil même qui la produit.
+    "AI_ACT": {
+        "celex": "32024R1689",
+        "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/HTML/?uri=CELEX:32024R1689",
+        "titre": "Règlement (UE) 2024/1689 établissant des règles harmonisées concernant l'intelligence artificielle",
+        "date_debut": "2024-08-01",
+    },
 }
 
 

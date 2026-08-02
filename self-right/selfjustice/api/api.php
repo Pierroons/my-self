@@ -68,7 +68,7 @@ if (empty($segments)) {
         'endpoints' => [
             'GET /api/legi/article/{ref}?code={alias}' => 'Article français (ex: L1152-1 avec ?code=travail)',
             'GET /api/legi/search?q={query}'           => 'Recherche plein texte LEGI',
-            'GET /api/eu/article/{source}/{num}'       => 'Article européen (CEDH, CHARTE_UE, TUE, TFUE, RGPD)',
+            'GET /api/eu/article/{source}/{num}'       => 'Article européen (CEDH, CHARTE_UE, TUE, TFUE, RGPD, AI_ACT)',
             'GET /api/eu/search?q={query}'             => 'Recherche dans conventionnalité',
             'GET /api/status'                          => 'État des bases (nombre articles, last_update)',
             'GET /api/stats/by-ai'                     => 'Statistiques anonymes par famille d\'IA (Claude, OpenAI, etc.)',
@@ -76,7 +76,7 @@ if (empty($segments)) {
         ],
         'sources' => [
             'legi' => 'Légifrance (dump LEGI officiel DILA, MAJ bimensuelle)',
-            'eu'   => 'EUR-Lex + echr.coe.int (Charte UE, TUE, TFUE, RGPD, CEDH)',
+            'eu'   => 'EUR-Lex + echr.coe.int (Charte UE, TUE, TFUE, RGPD, AI Act, CEDH)',
         ],
         'license' => 'AGPL-3.0-or-later',
         'github'  => 'https://github.com/Pierroons/my-self/tree/main/self-right/selfjustice',
@@ -330,7 +330,7 @@ if ($segments[0] === 'eu') {
         $source = strtoupper($segments[2]);
         $num = $segments[3];
 
-        $allowed = ['CEDH', 'CHARTE_UE', 'TUE', 'TFUE', 'RGPD'];
+        $allowed = ['CEDH', 'CHARTE_UE', 'TUE', 'TFUE', 'RGPD', 'AI_ACT'];
         if (!in_array($source, $allowed, true)) {
             json_error("Source invalide. Sources autorisées : " . implode(', ', $allowed));
         }
@@ -391,7 +391,7 @@ if ($segments[0] === 'eu') {
         $numPattern = SQLite3::escapeString($q) . '%';
 
         if ($source) {
-            $allowed = ['CEDH', 'CHARTE_UE', 'TUE', 'TFUE', 'RGPD'];
+            $allowed = ['CEDH', 'CHARTE_UE', 'TUE', 'TFUE', 'RGPD', 'AI_ACT'];
             if (!in_array($source, $allowed, true)) {
                 json_error("Source invalide");
             }
