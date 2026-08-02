@@ -208,6 +208,8 @@ return [
     'rt.hof.h2'    => '🏆 Hall of fame',
     'rt.hof.empty' => 'No validated contribution yet. Be the first to appear here.',
 
+    'rt.js.encrypting' => '🔐 Encrypting your report in your browser…',
+    'rt.js.cryptoerr'  => 'Encryption failed — report NOT sent:',
     'rt.js.ok'     => 'Report received and encrypted. Thank you — we will get back to you.',
     'rt.js.err'    => 'Error',
     'rt.js.neterr' => 'Network error: ',

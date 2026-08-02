@@ -36,13 +36,20 @@ final class Redteam
      */
     public static function submit(PDO $pdo, array $champs, ?string $ip): array
     {
-        $titre = trim((string) ($champs['titre'] ?? ''));
-        $desc  = trim((string) ($champs['description'] ?? ''));
-        if ($titre === '' || $desc === '') {
-            return ['ok' => false, 'message' => 'Titre et description sont requis.'];
+        // Le contenu arrive DÉJÀ chiffré, vers une clé dont la privée n'est pas
+        // sur cette machine. Le serveur ne valide donc plus ni le titre ni la
+        // description : il ne les voit pas. C'est le prix de la garantie, et il
+        // est assumé — la longueur est bornée côté navigateur.
+        $pgp = trim((string) ($champs['pgp'] ?? ''));
+        if ($pgp === '') {
+            return ['ok' => false, 'message' => tc('Rapport vide ou chiffrement absent.')];
         }
-        if (mb_strlen($titre) > 200 || mb_strlen($desc) > 8000) {
-            return ['ok' => false, 'message' => 'Rapport trop long (titre ≤ 200, description ≤ 8000).'];
+        if (!str_starts_with($pgp, '-----BEGIN PGP MESSAGE-----')) {
+            // Un envoi en clair serait une régression silencieuse : on refuse.
+            return ['ok' => false, 'message' => tc('Le rapport doit être chiffré. Recharge la page et réessaie.')];
+        }
+        if (strlen($pgp) > 200000) {
+            return ['ok' => false, 'message' => tc('Rapport trop volumineux.')];
         }
 
         $handle = mb_substr(trim((string) ($champs['handle'] ?? '')), 0, 60);
@@ -63,13 +70,10 @@ final class Redteam
             return ['ok' => false, 'message' => 'Trop de soumissions récentes. Réessaie dans une heure.'];
         }
 
-        $corps = [
-            'titre'       => $titre,
-            'description' => $desc,
-            'repro'       => mb_substr(trim((string) ($champs['repro'] ?? '')), 0, 8000),
-            'contact'     => mb_substr(trim((string) ($champs['contact'] ?? '')), 0, 200),
-        ];
-        $ciphertext = DataGuard::encrypt(json_encode($corps, JSON_UNESCAPED_UNICODE));
+        // Stocké TEL QUEL. Aucun rechiffrement : le passer par DataGuard
+        // n'ajouterait rien et donnerait l'illusion que le serveur détient
+        // quelque chose de lisible.
+        $ciphertext = $pgp;
 
         $pdo->prepare(
             'INSERT INTO redteam_reports (handle, severity, target, ciphertext, status, ip_hash, created_at)

@@ -87,6 +87,10 @@ paths = [
   '''.*diceware.*''',
   '''eff_fr\.json''',
   '''zxcvbn\.js''',
+  # OpenPGP.js : porte le littéral « BEGIN PGP PRIVATE KEY BLOCK » parce qu'il
+  # ÉCRIT des clés, et ses primitives crypto en wasm base64. Vérifié le
+  # 2026-08-02, un bloc après l'autre : aucune clé réelle, aucun secret.
+  '''openpgp\.min\.mjs$''',
   '''(^|/)\.gitleaks\.toml$''',
   '''(^|/)\.gitleaksignore$''',
   '''(^|/)CONTRIBUTING\.md$''',

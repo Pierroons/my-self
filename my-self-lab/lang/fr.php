@@ -206,6 +206,8 @@ return [
     'rt.hof.h2'    => '🏆 Hall of fame',
     'rt.hof.empty' => 'Aucune contribution validée pour l\'instant. Sois la première personne à y figurer.',
 
+    'rt.js.encrypting' => '🔐 Chiffrement du rapport dans ton navigateur…',
+    'rt.js.cryptoerr'  => 'Chiffrement impossible — rapport NON envoyé :',
     'rt.js.ok'     => 'Rapport reçu et chiffré. Merci — on revient vers toi.',
     'rt.js.err'    => 'Erreur',
     'rt.js.neterr' => 'Erreur réseau : ',

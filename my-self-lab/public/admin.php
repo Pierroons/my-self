@@ -223,7 +223,18 @@ function voirRapport(id,btn){
   labPost('/api/admin.php',{action:'report',id:id}).then(d=>{
     if(!d.ok){box.innerHTML='<div class="reveal">'+esc(d.message)+'</div>';return;}
     const r=d.report;
-    box.innerHTML='<div class="reveal"><b>'+esc(r.titre)+'</b>\n\n'+esc(r.description)+'\n\n— repro —\n'+(esc(r.repro)||'(aucune)')+'\n\ncontact : '+(esc(r.contact)||'—')+'</div>';
+    // Le contenu n'est PAS déchiffrable ici : la clé privée n'est pas sur ce
+    // serveur, et c'est précisément la garantie faite aux chercheurs. Le panneau
+    // affiche le bloc à copier ; le déchiffrement se fait hors ligne.
+    if(!r.chiffre){ box.innerHTML='<div class="reveal">'+esc(r.pgp)+'</div>'; return; }
+    box.innerHTML='<div class="reveal" style="font-size:11px;max-height:220px;overflow:auto">'+esc(r.pgp)+'</div>'
+      +'<p class="muted" style="font-size:12px;margin:6px 0 0">Chiffré vers la clé du programme. '
+      +'Pour lire : copier le bloc puis <code>gpg -d</code> sur une machine qui détient la clé privée — jamais ici.</p>'
+      +'<p><button class="btn btn-ghost mini js-copierpgp">Copier le bloc</button></p>';
+    const cp=box.querySelector('.js-copierpgp');
+    if(cp) cp.addEventListener('click',function(){
+      navigator.clipboard.writeText(r.pgp).then(function(){ cp.textContent='Copié ✓'; });
+    });
   });
 }
 function statutRapport(id,status){

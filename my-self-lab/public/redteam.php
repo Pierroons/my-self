@@ -179,17 +179,36 @@ render_header(t('title.redteam'), $account);
 
 <script nonce="<?= nonce() ?>">
 // Messages traduits côté serveur : le JS ne connaît pas la langue courante.
-const RT_I18N = <?= json_encode(['ok' => t('rt.js.ok'), 'err' => t('rt.js.err'), 'neterr' => t('rt.js.neterr')], JSON_UNESCAPED_UNICODE) ?>;
-function envoyerRapport(){
+const RT_I18N = <?= json_encode(['ok' => t('rt.js.ok'), 'err' => t('rt.js.err'), 'neterr' => t('rt.js.neterr'),
+     'encrypting' => t('rt.js.encrypting'), 'cryptoerr' => t('rt.js.cryptoerr')], JSON_UNESCAPED_UNICODE) ?>;
+async function envoyerRapport(){
   const box=document.getElementById('rtmsg');
+  const btn=document.getElementById('btn-rtsend');
+  // Ce qui décrit la faille est chiffré DANS CE NAVIGATEUR vers la clé du
+  // programme : le serveur qu'on vous invite à compromettre ne peut pas le lire.
+  const contenu={
+    titre:document.getElementById('titre').value,
+    description:document.getElementById('description').value,
+    repro:document.getElementById('repro').value,
+    contact:document.getElementById('contact').value
+  };
+  let pgp;
+  btn.disabled=true;
+  box.innerHTML='<div class="toast">'+RT_I18N.encrypting+'</div>';
+  try{
+    const mod=await import('/js/redteam-pgp.js');
+    pgp=await mod.chiffrerRapport(contenu);
+  }catch(e){
+    btn.disabled=false;
+    box.innerHTML='<div class="toast err">'+RT_I18N.cryptoerr+' '+e.message+'</div>';
+    return;   // jamais de repli en clair : mieux vaut ne pas envoyer
+  }
+  // Seules les métadonnées de tri restent lisibles — elles ne décrivent pas la faille.
   const payload={
     handle:document.getElementById('handle').value,
     severity:document.getElementById('severity').value,
     target:document.getElementById('target').value,
-    titre:document.getElementById('titre').value,
-    description:document.getElementById('description').value,
-    repro:document.getElementById('repro').value,
-    contact:document.getElementById('contact').value,
+    pgp:pgp,
     website:document.getElementById('website').value
   };
   // Endpoint public (pas d'auth requise pour un chercheur externe) — pas de CSRF.
@@ -201,7 +220,7 @@ function envoyerRapport(){
       }else{
         box.innerHTML='<div class="toast err">'+(d.message||RT_I18N.err)+'</div>';
       }
-    }).catch(e=>{box.innerHTML='<div class="toast err">'+RT_I18N.neterr+e.message+'</div>';});
+    }).catch(e=>{btn.disabled=false;box.innerHTML='<div class="toast err">'+RT_I18N.neterr+e.message+'</div>';});
 }
 document.getElementById('btn-rtsend').addEventListener('click', envoyerRapport);
 </script>
