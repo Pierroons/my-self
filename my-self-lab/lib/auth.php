@@ -45,6 +45,11 @@ final class Auth
      * et produirait des hash plus faibles que les autres sans que rien
      * ne le signale.
      */
+    public static function dummyHash(): string
+    {
+        return self::DUMMY_HASH;
+    }
+
     public static function argon2Options(): array
     {
         return self::ARGON2;

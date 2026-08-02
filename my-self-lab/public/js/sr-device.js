@@ -36,7 +36,14 @@
     var iv   = crypto.getRandomValues(new Uint8Array(12));
     var ct   = await crypto.subtle.encrypt({name:'AES-GCM',iv:iv}, await aesKey(word,salt), privPkcs8);
     var credentialId = hex(crypto.getRandomValues(new Uint8Array(16))); // 32 hex → [A-Za-z0-9_-]{16,64}
-    var r = await post('/api/device_enroll.php', { username: username, credential_id: credentialId, public_key: b64u(pubSpki) });
+    // Le serveur exige la preuve qu'on détient le mot : sans elle, on pourrait
+    // enrôler son appareil sur le compte d'un autre. Le mot lui-même ne part
+    // pas — seule sa dérivation HMAC, comme partout ailleurs.
+    var derived = await window.srDerive(word);
+    var r = await post('/api/device_enroll.php', {
+      username: username, credential_id: credentialId,
+      public_key: b64u(pubSpki), memorized_derived_key: derived
+    });
     if (r.ok) {
       localStorage.setItem('srdev_'+username, JSON.stringify({ credentialId: credentialId, salt: hex(salt), iv: hex(iv), ct: b64u(ct) }));
     }

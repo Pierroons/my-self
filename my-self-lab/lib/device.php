@@ -21,6 +21,8 @@ use PDO;
 final class Device
 {
     private const CHALLENGE_TTL = 300; // 5 min
+    private const ENROLL_WINDOW = 900;          // fenêtre de comptage (15 min)
+    private const ENROLL_MAX_FAILS_PER_IP = 12; // aligné sur Auth::LOGIN_MAX_FAILS_PER_IP
 
     public static function b64urlEncode(string $s): string
     {
@@ -53,24 +55,75 @@ final class Device
         return "-----BEGIN PUBLIC KEY-----\n" . chunk_split(base64_encode($spkiDer), 64, "\n") . "-----END PUBLIC KEY-----\n";
     }
 
-    /** Enrôle un appareil pour un compte : stocke SA CLÉ PUBLIQUE (SPKI DER, base64url). */
-    public static function enroll(PDO $pdo, string $username, string $credentialId, string $publicKeyB64url): array
-    {
+    /**
+     * Enrôle un appareil pour un compte : stocke SA CLÉ PUBLIQUE (SPKI DER, base64url).
+     *
+     * 🔑 **L'enrôlement exige le mot mémorisé.** Sans cette preuve, n'importe qui
+     * pouvait poser SA clé publique sur le compte d'autrui — il suffisait d'en
+     * connaître le nom — puis signer un défi et récupérer un mot de passe neuf.
+     * Trois requêtes, aucun secret, tous les comptes. Corrigé le 02/08/2026.
+     *
+     * Le mot arrive déjà dérivé du navigateur (HMAC, cf `sr-derive.js`) : le
+     * serveur ne le voit jamais en clair et le compare à `recovery_hash`, le
+     * même hachage que le niveau 2 de la récupération.
+     */
+    public static function enroll(
+        PDO $pdo,
+        string $username,
+        string $credentialId,
+        string $publicKeyB64url,
+        string $recoveryDerivedKey = '',
+        ?string $ip = null
+    ): array {
+        // Message unique pour tous les refus qui suivent la validation de forme :
+        // distinguer « compte inconnu » de « mot incorrect » rendrait l'un des
+        // deux facteurs testable seul, et transformerait cet endpoint en oracle
+        // d'existence de comptes.
+        $refus = ['ok' => false, 'message' => 'Compte ou mot mémorisé incorrect.'];
+
         $username     = strtolower(trim($username));
         $credentialId = trim($credentialId);
         $publicKey    = self::b64urlDecode($publicKeyB64url);
         if (!preg_match('/^[A-Za-z0-9_-]{16,64}$/', $credentialId) || strlen($publicKey) < 50) {
             return ['ok' => false, 'message' => "Données d'enrôlement invalides."];
         }
-        $stmt = $pdo->prepare('SELECT id FROM accounts WHERE username = ?');
-        $stmt->execute([$username]);
-        $acc = $stmt->fetch();
-        if (!$acc) {
-            return ['ok' => false, 'message' => 'Compte introuvable.'];
+        if (!Auth::isDerivedKey($recoveryDerivedKey)) {
+            return ['ok' => false, 'error' => 'invalid_derived_key',
+                    'message' => 'Mot mémorisé invalide : la dérivation doit se faire dans le navigateur.'];
         }
         if (openssl_pkey_get_public(self::spkiToPem($publicKey)) === false) {
             return ['ok' => false, 'message' => 'Clé publique invalide.'];
         }
+
+        // Même compteur d'IP que la récupération : enrôler est un chemin vers le
+        // compte au même titre, il doit se fatiguer aussi vite.
+        if ($ip !== null) {
+            $stmt = $pdo->prepare(
+                'SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND success = 0 AND attempted_at > ?'
+            );
+            $stmt->execute([$ip, time() - self::ENROLL_WINDOW]);
+            if ((int) $stmt->fetchColumn() >= self::ENROLL_MAX_FAILS_PER_IP) {
+                return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+            }
+        }
+
+        $stmt = $pdo->prepare('SELECT id, recovery_hash FROM accounts WHERE username = ?');
+        $stmt->execute([$username]);
+        $acc = $stmt->fetch();
+
+        // Argon2id exécuté même sur compte inconnu : sinon le temps de réponse
+        // dirait ce que le message se garde de dire.
+        $motOk = password_verify($recoveryDerivedKey, $acc ? $acc['recovery_hash'] : Auth::dummyHash());
+        $ok    = (bool) $acc && $motOk;
+
+        $pdo->prepare('INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, ?, ?, ?)')
+            ->execute(['enroll:' . ($acc ? $username : 'inconnu'), $ok ? 1 : 0, $ip, time()]);
+
+        if (!$ok) {
+            usleep(300000);
+            return $refus;
+        }
+
         $pdo->prepare(
             'INSERT OR REPLACE INTO device_credentials (account_id, credential_id, public_key, created_at)
              VALUES (?, ?, ?, ?)'
