@@ -5,7 +5,7 @@
 # YYYYMMDD-HHMMSS-XXXXXX/ avec le document uploadé + meta.json + comment.txt.
 #
 # À exécuter via cron quotidien :
-#   5 4 * * * /home/deploy/legi/cleanup_feedback.sh
+#   5 4 * * * <install-dir>/cleanup_feedback.sh
 
 set -u
 
