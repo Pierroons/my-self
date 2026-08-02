@@ -131,6 +131,7 @@ return [
         . '<li>The report submission form below</li>',
     'rt.scope.out.h3' => '⛔ Out of scope',
     'rt.scope.out'    => '<li>Any infrastructure, domain or service other than this site</li>'
+        . '<li>The server\'s <strong>SSH</strong> service (port 22) — authentication attempts there trigger a network-level block that would also cut off your access to this site</li>'
         . '<li>The hosting provider, the registrar, third-party suppliers</li>'
         . '<li>Accounts or data belonging to real people</li>'
         . '<li>The maintainer\'s machine, accounts and mailboxes</li>',

@@ -129,6 +129,7 @@ return [
         . '<li>Le formulaire de soumission de rapport ci-dessous</li>',
     'rt.scope.out.h3' => '⛔ Hors périmètre',
     'rt.scope.out'    => '<li>Toute autre infrastructure, domaine ou service que ce site</li>'
+        . '<li>Le service <strong>SSH</strong> du serveur (port 22) — une tentative d\'authentification y déclenche un blocage au niveau réseau qui te couperait aussi l\'accès à ce site</li>'
         . '<li>L\'hébergeur, le registrar, les fournisseurs tiers</li>'
         . '<li>Les comptes ou données de personnes réelles</li>'
         . '<li>Le poste, les comptes et la messagerie du mainteneur</li>',
