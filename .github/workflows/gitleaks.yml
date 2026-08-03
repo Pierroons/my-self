@@ -4,9 +4,19 @@ name: gitleaks (OPSEC)
 # (identité, IP infra, IBAN réel, business perso…). Règles : .gitleaks.toml,
 # faux positifs historiques : .gitleaksignore.
 # Step direct (binaire) → pas de dépendance licence/API comme gitleaks-action.
+#
+# 🔑 **Aucun filtre de branche, volontairement.** Ce workflow a longtemps
+# écouté `[develop, main]` alors que la branche de travail s'appelle `dev` :
+# une branche `develop` n'a jamais existé ici. Le scan ne tournait donc que sur
+# `main`, et tout le développement arrivait sur `dev` sans jamais être vu — une
+# barrière annoncée comme dure, qui laissait passer la quasi-totalité des push.
+#
+# Lister les branches rendait la protection dépendante d'une liste à tenir à
+# jour : la faute de frappe d'origine était invisible, et le moindre renommage
+# aurait rouvert le trou en silence. Sans filtre, toute branche poussée est
+# scannée, aujourd'hui comme après le prochain renommage.
 on:
   push:
-    branches: [develop, main]
   pull_request:
 
 jobs:
