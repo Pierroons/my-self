@@ -1,17 +1,20 @@
 <?php
 /**
- * SelfAct — Scraper du catalogue service-public.fr
+ * SelfAct — Scraper du catalogue service-public.gouv.fr
  *
  * Usage : php scraper.php [--verbose] [--dry-run]
  *
- * Récupère les 334 modèles de lettres officiels publiés par service-public.fr
- * sur https://www.service-public.gouv.fr/particuliers/recherche?rubricFilter=serviceEnLigne&rubricTypeFilter=modeleLettre
+ * Indexe les ressources officielles que l'usager peut réellement envoyer ou
+ * déposer : modèles de lettres, formulaires (CERFA) et démarches en ligne.
+ * Les sources interrogées sont déclarées dans SOURCES ci-dessous.
  *
- * Produit : /var/www/selfjustice/api/act/data/catalog.json avec :
+ * Produit : <install-dir>/api/act/data/catalog.json avec :
  *   {
- *     "_meta": { "version": "AAAAMM", "last_sync": "ISO", "total": 334 },
+ *     "_meta": { "version": "AAAA.MM", "last_sync": "ISO",
+ *                "total": 1895, "types": {...}, "categories": {...} },
  *     "models": [
- *       { "id": "R10959", "label": "...", "url": "...", "category": "..." },
+ *       { "id": "R10959", "label": "...", "url": "...",
+ *         "type": "modele_lettre", "category": "logement" },
  *       ...
  *     ]
  *   }
@@ -185,97 +188,10 @@ function parseCatalogPage(string $html): array {
     return array_values($models);
 }
 
-/**
- * Classification par règles ordonnées — classifier v2.
- * L'ordre des règles importe : spécifique avant générique.
- * Premier match gagne.
- */
-function guessCategory(string $label, string $url): string {
-    // Normalize : lowercase + retrait des accents pour matching insensible
-    $s = function_exists('mb_strtolower') ? mb_strtolower($label, 'UTF-8') : strtolower($label);
-    $s = strtr($s, [
-        'à'=>'a','â'=>'a','ä'=>'a','á'=>'a',
-        'ç'=>'c',
-        'è'=>'e','é'=>'e','ê'=>'e','ë'=>'e',
-        'î'=>'i','ï'=>'i',
-        'ô'=>'o','ö'=>'o',
-        'ù'=>'u','ú'=>'u','û'=>'u','ü'=>'u',
-        'ÿ'=>'y','ñ'=>'n',
-    ]);
-
-    $rules = [
-        'famille'         => ['enfant', 'mineur', 'parental', 'paternite', 'maternite', 'adoption',
-                              'garde d\'enfant', 'pension alimentaire', 'concubin', 'pacs',
-                              'fiancaille', 'mariage', 'epoux', 'epouse', 'divorce',
-                              'autorite parentale', 'filiation', 'naissance', 'decla. pat'],
-        'sante'           => ['medecin', 'medical', 'hopital', 'directives anticipees', 'sante publique',
-                              'cpam', 'mutuelle', 'ald', 'invalidite', 'pharmacie', 'ordonnance',
-                              'dossier medical', 'sante', 'soin'],
-        'association'     => ['association', 'loi 1901', 'buvette', 'siren asso', 'siret asso',
-                              'agrement asso', 'subvention asso'],
-        'travail'         => ['employeur', 'employe', 'salarie', 'salaire', 'demission', 'licencie',
-                              'rupture conventionnelle', 'stage', 'apprenti', 'alternance',
-                              'conge parental', 'conge paye', 'conge maternite', 'conge paternite',
-                              'fonction publique', 'fonctionnaire', 'titularisation', 'corps ', 'cadre d\'emploi',
-                              'syndical', 'prud\'homme', 'retraite', 'chomage', 'pole emploi',
-                              'heures supplementaires', 'smic', 'licenciement', 'mise a pied',
-                              'travail', 'embauche', 'cdd', 'cdi', 'contrat de travail'],
-        'transports'      => ['vol aerien', 'avion', 'aerien', 'compagnie aerienne', 'sncf', 'ratp',
-                              'bagage', 'retard de vol', 'refus d\'embarquement', 'annulation de vol',
-                              'indemnisation voyage', 'billet de train', 'carte grise', 'voyage'],
-        'auto'            => ['garagiste', 'voiture', 'vehicule', 'automobile', 'permis de conduire',
-                              'garage', 'mecanique', 'moto', 'scooter', 'carrosserie'],
-        'logement'        => ['bail', 'locataire', 'proprietaire', 'loyer', 'caution locative',
-                              'copropri', 'syndic', 'logement', 'habitation', 'immobili',
-                              'residence', 'appartement', 'maison', 'voisin', 'nuisance',
-                              'debroussaill', 'urbanisme', 'construction', 'travaux maison',
-                              'demenagement', 'depot de garantie', 'etat des lieux'],
-        'consommation'    => ['retractation', 'consommateur', 'garantie', 'vice cache',
-                              'vente a distance', 'achat a distance', 'demarchage', 'fournisseur',
-                              'operateur', 'telecom', 'internet', 'telephonie', 'abonnement',
-                              'dgccrf', 'repression des fraudes', 'teinturier', 'pressing',
-                              'depannage', 'devis', 'artisan', 'commercant', 'remboursement',
-                              'facture', 'livraison', 'produit non conforme', 'service mal execute',
-                              'facture eau', 'fuite d\'eau', 'agence immobiliere honoraires',
-                              'facture detaillee', 'honoraires', 'charte', 'renovation',
-                              'vente', 'deballage'],
-        'finances'        => ['banque', 'compte bancaire', 'cheque', 'virement', 'carte bancaire',
-                              'credit', 'pret', 'prelevement', 'decouvert', 'surendettement',
-                              'interdit bancaire', 'opposition', 'mediateur banque', 'bct',
-                              'bureau central de tarification', 'fichier fcc', 'fichier fnci',
-                              'non-paiement', 'certificat de non-paiement', 'saisir paye',
-                              'saisie', 'don manuel', 'reconnaissance de dette', 'pret entre particuliers',
-                              'taux'],
-        'assurances'      => ['assurance', 'assureur', 'sinistre', 'mediateur en assurance',
-                              'habitation assurance', 'contrat assurance', 'assurance-vie'],
-        'justice'         => ['plainte', 'procureur', 'tribunal', 'juge', 'avocat', 'magistrat',
-                              'saisine', 'partie civile', 'huissier', 'commissaire de justice',
-                              'conciliateur', 'mediateur de ', 'greffe', 'audience', 'citation',
-                              'assignation', 'requete', 'appel ', 'pourvoi', 'cassation'],
-        'citoyennete'     => ['carte d\'identite', 'passeport', 'attestation sur l\'honneur',
-                              'nationalite', 'election', 'vote', 'recensement', 'changement de nom',
-                              'changement de prenom', 'acte de naissance', 'acte de mariage',
-                              'fiche de police', 'certificat de resident', 'covoiturage',
-                              'bordereau des pieces'],
-        'administration'  => ['prefecture', 'mairie', 'impot', 'fiscal', 'tresor public',
-                              'recours gracieux', 'recours contentieux', 'decision administrative',
-                              'administration', 'defenseur des droits', 'crpa', 'urssaf', 'caf',
-                              'caisse nationale', 'allocation', 'rsa', 'prime'],
-        'etranger'        => ['visa', 'titre de sejour', 'naturalisation', 'etranger', 'schengen',
-                              'asile', 'ofpra', 'reconduite'],
-        'securite'        => ['interdit de jeux', 'jeux d\'argent', 'force de l\'ordre',
-                              'deontologie de la securite', 'fiche individuelle de police'],
-    ];
-
-    foreach ($rules as $cat => $kws) {
-        foreach ($kws as $kw) {
-            if (str_contains($s, $kw)) {
-                return $cat;
-            }
-        }
-    }
-    return 'divers';
-}
+// La classification vit dans classify.php, partagée avec reclassify.php.
+// Elle a longtemps existé en deux exemplaires divergents ; c'est le genre
+// de duplication où la copie la plus pauvre finit par gagner en silence.
+require_once __DIR__ . '/classify.php';
 
 /**
  * Scraper principal : itère sur les pages du catalogue.
@@ -317,7 +233,7 @@ function scrapeCatalog(bool $verbose): array {
                 if (!isset($seen[$m['id']])) {
                     $seen[$m['id']] = true;
                     $m['type']     = $type;
-                    $m['category'] = guessCategory($m['label'], $m['url']);
+                    $m['category'] = selfact_classify($m['label'], $m['url']);
                     $models[] = $m;
                     $newCount++;
                 }

@@ -2,8 +2,9 @@
   "_meta": {
     "version": "2026.04",
     "last_update": "2026-04-18",
-    "source": "service-public.fr (Etalab 2.0)",
-    "comment": "Mapping situation → acte officiel. Mise à jour bimensuelle (1er + 15) via cron."
+    "source": "service-public.gouv.fr (Etalab 2.0) — curation manuelle",
+    "comment": "Mapping situation → acte officiel. Curation MANUELLE : les statuts juridiques, seuils et articles applicables sont vérifiés à la main et ne sont produits par aucun cron. Le catalogue (catalog.json), lui, est synchronisé automatiquement et vient compléter ces actes via catalog_hints.",
+    "last_review": "2026-08-03"
   },
   "situations": {
     "impaye_commercial_loyer": {
@@ -13,20 +14,35 @@
           "type": "mise_en_demeure",
           "status": "official",
           "label": "Mise en demeure de paiement (LRAR)",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/R50660",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R50660",
           "fallback_note": "Si le modèle officiel ne correspond pas exactement à votre cas, SelfAct peut produire un PDF d'aide à la rédaction filigrané."
         },
         {
           "type": "saisine_conciliateur",
           "status": "info_only",
           "label": "Saisine du conciliateur de justice (obligatoire < 5000 €)",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/F1736",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1736",
           "fallback_note": "Pas de modèle officiel — SelfAct peut produire un PDF d'aide à la rédaction filigrané."
         }
       ],
       "thresholds": {
         "montant_max_conciliateur": 5000,
         "art_applicable": "art. 750-1 CPC"
+      },
+      "catalog_hints": {
+        "keywords": [
+          "impaye",
+          "loyer",
+          "recouvrement",
+          "dette",
+          "mise en demeure",
+          "injonction de payer"
+        ],
+        "categories": [
+          "logement",
+          "finances",
+          "justice"
+        ]
       }
     },
     "voisinage_nuisances": {
@@ -42,11 +58,27 @@
           "type": "saisine_conciliateur",
           "status": "info_only",
           "label": "Saisine du conciliateur de justice (obligatoire avant tribunal)",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/F1736",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1736",
           "fallback_note": "Pas de modèle officiel — SelfAct peut produire un PDF d'aide filigrané."
         }
       ],
-      "art_applicable": "art. 1240 C. civ., art. R. 1336-5 C. santé publique, art. 544 C. civ."
+      "art_applicable": "art. 1240 C. civ., art. R. 1336-5 C. santé publique, art. 544 C. civ.",
+      "catalog_hints": {
+        "keywords": [
+          "voisin",
+          "nuisance",
+          "bruit",
+          "bornage",
+          "mitoyennete",
+          "servitude",
+          "empietement",
+          "haie"
+        ],
+        "categories": [
+          "logement",
+          "justice"
+        ]
+      }
     },
     "consommation_produit_defectueux": {
       "label": "Produit non conforme, service mal exécuté, démarchage abusif",
@@ -55,22 +87,37 @@
           "type": "retractation_achat_distance",
           "status": "official",
           "label": "Rétractation achat à distance (14 jours)",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/R15904"
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R15904"
         },
         {
           "type": "signalement_dgccrf",
           "status": "official",
           "label": "Signalement DGCCRF d'un commerçant",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/R24052"
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24052"
         },
         {
           "type": "saisine_mediateur_conso",
           "status": "official",
           "label": "Saisine médiateur de la consommation",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/F1736"
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1736"
         }
       ],
-      "art_applicable": "art. L. 112-1 C. conso., art. L. 221-18 C. conso."
+      "art_applicable": "art. L. 112-1 C. conso., art. L. 221-18 C. conso.",
+      "catalog_hints": {
+        "keywords": [
+          "garantie",
+          "vice cache",
+          "retractation",
+          "remboursement",
+          "livraison",
+          "produit",
+          "conformite",
+          "demarchage"
+        ],
+        "categories": [
+          "consommation"
+        ]
+      }
     },
     "infraction_penale_victime": {
       "label": "Vol, escroquerie, dégradation, menaces",
@@ -79,7 +126,7 @@
           "type": "plainte_simple",
           "status": "official",
           "label": "Plainte auprès du procureur de la République",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/R11469"
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11469"
         },
         {
           "type": "pre_plainte_en_ligne",
@@ -91,13 +138,28 @@
           "type": "plainte_cpc",
           "status": "lawyer_required",
           "label": "Plainte avec constitution de partie civile (AVOCAT OBLIGATOIRE)",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/R11657"
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11657"
         }
       ],
       "prescription": {
         "contravention": "1 an (art. 9 CPP)",
         "delit": "6 ans (art. 8 CPP)",
         "crime": "20 ans (art. 7 CPP)"
+      },
+      "catalog_hints": {
+        "keywords": [
+          "plainte",
+          "vol",
+          "escroquerie",
+          "degradation",
+          "menace",
+          "partie civile",
+          "victime"
+        ],
+        "categories": [
+          "justice",
+          "securite"
+        ]
       }
     },
     "discrimination": {
@@ -110,7 +172,19 @@
           "url": "https://formulaire.defenseurdesdroits.fr/code/afficher.php?ETAPE=accueil_2016"
         }
       ],
-      "art_applicable": "art. 225-1 C. pénal, art. L. 1132-1 C. travail, art. L. 1134-5 C. travail"
+      "art_applicable": "art. 225-1 C. pénal, art. L. 1132-1 C. travail, art. L. 1134-5 C. travail",
+      "catalog_hints": {
+        "keywords": [
+          "discrimination",
+          "defenseur des droits",
+          "egalite",
+          "harcelement"
+        ],
+        "categories": [
+          "justice",
+          "travail"
+        ]
+      }
     },
     "administration_non_reponse": {
       "label": "Non-réponse administration publique > 2 mois",
@@ -119,7 +193,7 @@
           "type": "recours_gracieux",
           "status": "info_only",
           "label": "Recours gracieux puis contentieux",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/F2474",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2474",
           "fallback_note": "Modèle spécifique selon l'administration — SelfAct peut produire un PDF filigrané."
         },
         {
@@ -129,7 +203,20 @@
           "url": "https://formulaire.defenseurdesdroits.fr/"
         }
       ],
-      "art_applicable": "art. L. 231-4 CRPA (décision implicite de rejet)"
+      "art_applicable": "art. L. 231-4 CRPA (décision implicite de rejet)",
+      "catalog_hints": {
+        "keywords": [
+          "recours gracieux",
+          "recours hierarchique",
+          "recours contentieux",
+          "silence de l administration",
+          "decision implicite"
+        ],
+        "categories": [
+          "administration",
+          "justice"
+        ]
+      }
     },
     "force_ordre_manquement": {
       "label": "Manquement forces de l'ordre (déontologie)",
@@ -140,7 +227,20 @@
           "label": "Saisine Défenseur des droits — déontologie de la sécurité",
           "url": "https://formulaire.defenseurdesdroits.fr/"
         }
-      ]
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "deontologie",
+          "police",
+          "gendarmerie",
+          "force de l ordre",
+          "igpn"
+        ],
+        "categories": [
+          "securite",
+          "justice"
+        ]
+      }
     },
     "enfant_en_danger": {
       "label": "Enfant en danger",
@@ -165,7 +265,20 @@
           "label": "PHAROS — signalement contenu illégal en ligne",
           "url": "https://www.internet-signalement.gouv.fr"
         }
-      ]
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "enfant",
+          "mineur",
+          "danger",
+          "protection de l enfance",
+          "autorite parentale",
+          "assistance educative"
+        ],
+        "categories": [
+          "famille"
+        ]
+      }
     },
     "cyberharcelement": {
       "label": "Cyberharcèlement, contenu illégal en ligne",
@@ -187,9 +300,24 @@
           "type": "plainte_simple",
           "status": "official",
           "label": "Plainte au procureur (modèle officiel)",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/R11469"
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11469"
         }
-      ]
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "harcelement",
+          "en ligne",
+          "internet",
+          "contenu illicite",
+          "pharos",
+          "diffamation",
+          "donnees personnelles"
+        ],
+        "categories": [
+          "securite",
+          "justice"
+        ]
+      }
     },
     "resiliation_abonnement": {
       "label": "Résiliation d'abonnement (téléphonie, internet, assurance)",
@@ -198,9 +326,22 @@
           "type": "resiliation_telephonie_internet",
           "status": "official",
           "label": "Résiliation contrat téléphonie / internet",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/R18070"
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18070"
         }
-      ]
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "resiliation",
+          "abonnement",
+          "operateur",
+          "telephonie",
+          "internet",
+          "contrat"
+        ],
+        "categories": [
+          "consommation"
+        ]
+      }
     },
     "mediation_bancaire": {
       "label": "Litige bancaire",
@@ -209,15 +350,29 @@
           "type": "saisine_mediateur_banque",
           "status": "official",
           "label": "Saisine du médiateur de la banque",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/R10195"
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R10195"
         },
         {
           "type": "dedommagement_fermeture_compte",
           "status": "official",
           "label": "Demande de dédommagement pour fermeture de compte",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/R13155"
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R13155"
         }
-      ]
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "banque",
+          "compte bancaire",
+          "mediateur",
+          "cheque",
+          "carte bancaire",
+          "prelevement",
+          "credit"
+        ],
+        "categories": [
+          "finances"
+        ]
+      }
     },
     "mediation_assurance": {
       "label": "Litige avec un assureur",
@@ -226,15 +381,28 @@
           "type": "saisine_mediateur_assurance",
           "status": "official",
           "label": "Saisine du médiateur en assurances",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/R12259"
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R12259"
         },
         {
           "type": "bureau_central_tarification",
           "status": "official",
           "label": "Saisine du Bureau central de tarification (BCT)",
-          "url": "https://www.service-public.fr/particuliers/vosdroits/R16218"
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16218"
         }
-      ]
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "assurance",
+          "assureur",
+          "sinistre",
+          "mediateur",
+          "indemnisation",
+          "degat des eaux"
+        ],
+        "categories": [
+          "assurances"
+        ]
+      }
     }
   }
 }

@@ -1,34 +1,35 @@
 {
     "_meta": {
         "version": "2026.08",
-        "last_sync": "2026-08-03T17:32:03+00:00",
+        "last_sync": "2026-08-03T17:58:05+00:00",
         "source": "service-public.gouv.fr (Etalab 2.0)",
         "source_url": "https://www.service-public.gouv.fr/particuliers/recherche?rubricFilter=serviceEnLigne&rubricTypeFilter={modeleLettre|formulaire|teleservice}",
         "total": 1895,
         "categories": {
-            "divers": 730,
-            "travail": 190,
-            "logement": 176,
-            "famille": 133,
-            "administration": 89,
-            "consommation": 82,
-            "sante": 80,
-            "citoyennete": 79,
-            "auto": 72,
-            "justice": 67,
-            "finances": 58,
-            "association": 44,
-            "etranger": 38,
-            "transports": 28,
-            "assurances": 25,
-            "securite": 4
+            "justice": 95,
+            "assurances": 24,
+            "travail": 213,
+            "finances": 61,
+            "citoyennete": 87,
+            "consommation": 84,
+            "logement": 208,
+            "transports": 24,
+            "auto": 99,
+            "famille": 168,
+            "securite": 16,
+            "divers": 382,
+            "administration": 216,
+            "sante": 108,
+            "association": 70,
+            "etranger": 40
         },
         "types": {
             "formulaire": 871,
             "teleservice": 685,
             "modele_lettre": 339
         },
-        "scraper": "SelfAct-Scraper/0.2"
+        "scraper": "SelfAct-Scraper/0.2",
+        "classifier_version": "v2-reclassify"
     },
     "models": [
         {
@@ -120,7 +121,7 @@
             "label": "Contester une opération figurant sur son relevé de compte (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R13321",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R14623",
@@ -316,7 +317,7 @@
             "label": "Informer la banque du décès d'un proche (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18317",
             "type": "modele_lettre",
-            "category": "finances"
+            "category": "famille"
         },
         {
             "id": "R18423",
@@ -365,7 +366,7 @@
             "label": "Modèle de convention relative à l'organisation de visite d'information en milieu professionnel (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18613",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R20025",
@@ -470,7 +471,7 @@
             "label": "Modèle de convention de mise à disposition d'un volontaire (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2077",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R20791",
@@ -911,7 +912,7 @@
             "label": "Demander le contrôle d'une déclaration de succession (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33775",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R32169",
@@ -960,7 +961,7 @@
             "label": "Demander une indemnisation suite au retard de son train (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R32354",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "transports"
         },
         {
             "id": "R35386",
@@ -981,14 +982,14 @@
             "label": "Modèle de convention relative à la formation en milieu professionnel des élèves de lycées professionnels (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33438",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R37879",
             "label": "Modèle de convention d'honoraire complémentaire en cas d'aide juridictionnelle partielle (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R37879",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R33558",
@@ -1107,7 +1108,7 @@
             "label": "Attestation d'hébergement (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R39697",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R40462",
@@ -1261,7 +1262,7 @@
             "label": "Demander sa mutation (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R46840",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R46971",
@@ -1345,7 +1346,7 @@
             "label": "Convention d'autoconsommation sans injection pour une installation de production d'électricité (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49476",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R48477",
@@ -1513,7 +1514,7 @@
             "label": "Demander l'autorisation du propriétaire pour faire des travaux d'adaptation au handicap ou à la perte d'autonomie (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53983",
             "type": "modele_lettre",
-            "category": "logement"
+            "category": "sante"
         },
         {
             "id": "R53986",
@@ -1604,7 +1605,7 @@
             "label": "Modèle d'acceptation des membres de la famille acceptant l'habilitation ou la nomination du tuteur ou curateur (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R54517",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R56828",
@@ -1793,14 +1794,14 @@
             "label": "Modèle de convention de mise en œuvre d'une mobilité (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R58748",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R58749",
             "label": "Modèle de convention de mise en œuvre d'une mobilité de 4 semaines ou moins (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R58749",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R61799",
@@ -1863,7 +1864,7 @@
             "label": "MaPrimeRénov' : modèle d'attestation sur l'honneur (Anah) (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R61337",
             "type": "modele_lettre",
-            "category": "citoyennete"
+            "category": "logement"
         },
         {
             "id": "R61654",
@@ -1933,7 +1934,7 @@
             "label": "Informer le propriétaire du décès du locataire (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R65176",
             "type": "modele_lettre",
-            "category": "logement"
+            "category": "famille"
         },
         {
             "id": "R65238",
@@ -1982,7 +1983,7 @@
             "label": "Déclaration de dérogation aux travaux interdits en vue d’accueillir des jeunes mineurs âgés d’au moins 15 ans en formation professionnelle (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R65924",
             "type": "modele_lettre",
-            "category": "famille"
+            "category": "travail"
         },
         {
             "id": "R66074",
@@ -2024,7 +2025,7 @@
             "label": "Modèle de convention individuelle de rupture d’un commun accord dans le cadre de l’accord collectif relatif au congé de mobilité (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R66562",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R66700",
@@ -2094,7 +2095,7 @@
             "label": "Demande d'accès aux enregistrements d'une caméra de surveillance (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R70749",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R71083",
@@ -2136,14 +2137,14 @@
             "label": "Modèle d’attestation version remplissable en ligne pour le couplage accession à la propriété/éco-PTZ (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R72646",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R72647",
             "label": "Modèle d’attestation version papier pour le couplage accession à la propriété/éco-PTZ (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R72647",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R72702",
@@ -2171,7 +2172,7 @@
             "label": "Modèle de certificat d’approbation du compte de gestion annuel pour un majeur protégé (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R75325",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R75336",
@@ -2206,7 +2207,7 @@
             "label": "Modèle de convention relative à l'organisation de visite d'information en milieu professionnel (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74111",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R74121",
@@ -2220,7 +2221,7 @@
             "label": "Modèle de convention relative à l'organisation de séquence d'observation en milieu professionnel en classe de seconde (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R75836",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R74220",
@@ -2353,7 +2354,7 @@
             "label": "Attestation d’adhésion Cesu + (Modèles de lettres)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R77726",
             "type": "modele_lettre",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R77822",
@@ -2416,21 +2417,21 @@
             "label": "Demande d’aide financière médico-sociale auprès de la caisse nationale militaire de sécurité sociale (CNMSS) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R12056",
             "type": "formulaire",
-            "category": "administration"
+            "category": "travail"
         },
         {
             "id": "R12059",
             "label": "Demande d'autorisation de loterie - actes de bienfaisance – encouragement des arts – financement d'activités sportives à but non lucratif (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R12059",
             "type": "formulaire",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R12060",
             "label": "Déclaration d'accident (en dehors d'une mission et hors service) à la Caisse nationale militaire de sécurité sociale (CNMSS) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R12060",
             "type": "formulaire",
-            "category": "administration"
+            "category": "travail"
         },
         {
             "id": "R12062",
@@ -2451,7 +2452,7 @@
             "label": "Demande d'attribution du titre d'évadé (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R12065",
             "type": "formulaire",
-            "category": "divers"
+            "category": "citoyennete"
         },
         {
             "id": "R12130",
@@ -2465,7 +2466,7 @@
             "label": "Demande ou renouvellement d'autorisation d'usage à des fins thérapeutiques (AUT) de substances dopantes (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R12139",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R1224",
@@ -2479,7 +2480,7 @@
             "label": "Procuration en cas de désignation d'un mandataire (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R123",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R1236",
@@ -2500,14 +2501,14 @@
             "label": "Demande de regroupement familial (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1251",
             "type": "formulaire",
-            "category": "divers"
+            "category": "etranger"
         },
         {
             "id": "R1252",
             "label": "Déclaration modèle H1 - Impôts locaux - Locaux d’habitation - Maison individuelle (et dépendances) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1252",
             "type": "formulaire",
-            "category": "logement"
+            "category": "sante"
         },
         {
             "id": "R12524",
@@ -2521,14 +2522,14 @@
             "label": "Déclaration modèle H2 - Impôts locaux - Locaux d’habitation - Appartement (et dépendances) dans un immeuble collectif (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1253",
             "type": "formulaire",
-            "category": "logement"
+            "category": "sante"
         },
         {
             "id": "R12536",
             "label": "Demander une aide ménagère à domicile à la caisse nationale militaire de sécurité sociale (CNMSS) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R12536",
             "type": "formulaire",
-            "category": "administration"
+            "category": "travail"
         },
         {
             "id": "R1254",
@@ -2626,7 +2627,7 @@
             "label": "Déclaration de succession (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R10279",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R10338",
@@ -2654,7 +2655,7 @@
             "label": "Demande d'admission préalable à l'inscription en première année de licence dans une université française pour l'année universitaire 2023-2024 (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1279",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R1281",
@@ -2675,7 +2676,7 @@
             "label": "Demande de pension de réversion et de rente d’éducation ou handicap à la suite du décès d'un fonctionnaire de l'État, d'un magistrat ou d'un militaire en activité (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R10692",
             "type": "formulaire",
-            "category": "travail"
+            "category": "famille"
         },
         {
             "id": "R1283",
@@ -2689,7 +2690,7 @@
             "label": "Demande d'attestation d'accueil (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R10751",
             "type": "formulaire",
-            "category": "divers"
+            "category": "etranger"
         },
         {
             "id": "R1286",
@@ -2752,7 +2753,7 @@
             "label": "Demande d'attribution du titre de déporté ou interné résistant (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1298",
             "type": "formulaire",
-            "category": "divers"
+            "category": "citoyennete"
         },
         {
             "id": "R10917",
@@ -2766,7 +2767,7 @@
             "label": "Demande d'attribution du titre de déporté ou interné politique (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1299",
             "type": "formulaire",
-            "category": "divers"
+            "category": "citoyennete"
         },
         {
             "id": "R10933",
@@ -2794,7 +2795,7 @@
             "label": "Demande de pension d'orphelins de militaire ou de victime civile (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1303",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R1304",
@@ -2815,14 +2816,14 @@
             "label": "Déclaration de candidature aux concours nationaux d'agrégation pour le recrutement des professeurs des universités (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11172",
             "type": "formulaire",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R1309",
             "label": "Permis bateau - Certificat d'aptitude physique (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1309",
             "type": "formulaire",
-            "category": "divers"
+            "category": "transports"
         },
         {
             "id": "R13098",
@@ -2857,7 +2858,7 @@
             "label": "Déclaration d'un séjour \"Vacances adaptées organisées - VAO\" pour personnes handicapées majeures (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1311",
             "type": "formulaire",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R11242",
@@ -2871,28 +2872,28 @@
             "label": "Déclaration concernant l'assuré à la sécurité sociale militaire (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1313",
             "type": "formulaire",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R11273",
             "label": "Exonérations de taxes foncières sur les propriétés non bâties (déclaration n° 6707-SD) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11273",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R11307",
             "label": "Modèle d'attestation de témoin (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11307",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R1137",
             "label": "Mandat pour effectuer les formalités d'immatriculation (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1137",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R1319",
@@ -2913,7 +2914,7 @@
             "label": "Candidature au concours - Emploi spécialisé de sous-officier ou d'officier marinier - École de l'armée de l'Air de Saintes (EETAA) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1321",
             "type": "formulaire",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R1323",
@@ -2934,14 +2935,14 @@
             "label": "Certificat international d'importation de matériels de guerre et matériels assimilés (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11485",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R11499",
             "label": "Demande de bourse de collège (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11499",
             "type": "formulaire",
-            "category": "divers"
+            "category": "finances"
         },
         {
             "id": "R11637",
@@ -2983,7 +2984,7 @@
             "label": "Déclaration à la Sécurité sociale des bénévoles des organismes d'intérêt général (hors organismes sociaux) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R14591",
             "type": "formulaire",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R1459",
@@ -2997,35 +2998,35 @@
             "label": "Déclaration de perte et demande de duplicata d'un permis de chasser perdu, détruit, détérioré (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1338",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R14592",
             "label": "Feuille d'accident du travail ou de maladie professionnelle (spécimen) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R14592",
             "type": "formulaire",
-            "category": "travail"
+            "category": "sante"
         },
         {
             "id": "R1339",
             "label": "Demande d'allocation de veuvage auprès de la Cnav (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1339",
             "type": "formulaire",
-            "category": "administration"
+            "category": "famille"
         },
         {
             "id": "R14593",
             "label": "Information préalable à la déclaration d'accident du travail d'un intérimaire (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R14593",
             "type": "formulaire",
-            "category": "travail"
+            "category": "sante"
         },
         {
             "id": "R1340",
             "label": "Demande d'inscription à l'examen et de délivrance du permis de chasser (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1340",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R14594",
@@ -3116,7 +3117,7 @@
             "label": "Demande d'agrément pour exercer à titre individuel l'activité de délégué aux prestations familiales (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R13604",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R1476",
@@ -3130,7 +3131,7 @@
             "label": "Cure thermale - Questionnaire de prise en charge (accompagné d'une déclaration de ressources). (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1482",
             "type": "formulaire",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R13630",
@@ -3151,7 +3152,7 @@
             "label": "Fiche plaisance eaux intérieures pour la mise en service ou la radiation d'un bateau de plaisance (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1367",
             "type": "formulaire",
-            "category": "divers"
+            "category": "transports"
         },
         {
             "id": "R1486",
@@ -3179,7 +3180,7 @@
             "label": "Déclaration de conduite accompagnée d'un bateau de plaisance à moteur (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1373",
             "type": "formulaire",
-            "category": "divers"
+            "category": "transports"
         },
         {
             "id": "R149",
@@ -3193,7 +3194,7 @@
             "label": "Déclaration d'abandon par une collectivité territoriale ou un établissement public de l'État d'arme et de munitions à l'État (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R138",
             "type": "formulaire",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R1490",
@@ -3270,7 +3271,7 @@
             "label": "Demande de carte européenne d'armes à feu : première demande, renouvellement ou modification (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1498",
             "type": "formulaire",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R1398",
@@ -3284,14 +3285,14 @@
             "label": "Demande d'autorisation d'acquisition et de détention d'armes et de munitions, de renouvellement d'autorisation et de détention (armes de catégorie B et certaines armes de catégorie A) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1499",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R13984",
             "label": "Demande d'autorisation d'un système de vidéoprotection (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R13984",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R1501",
@@ -3326,7 +3327,7 @@
             "label": "Demande d'indemnisation au FGAO par une victime d'un accident de la circulation ou de chasse (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R15103",
             "type": "formulaire",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R15226",
@@ -3340,7 +3341,7 @@
             "label": "Permis de conduire - Avis médical (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R14006",
             "type": "formulaire",
-            "category": "sante"
+            "category": "auto"
         },
         {
             "id": "R15336",
@@ -3354,7 +3355,7 @@
             "label": "Demande d'admission préalable à l'inscription dans les cycles d'études des écoles nationales supérieures d'architecture pour l'année 2026-2027 (dossier jaune) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R15643",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R15649",
@@ -3382,7 +3383,7 @@
             "label": "Dossier de demande de délivrance d’un permis de détention d’un chien catégorisé (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R15679",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R14120",
@@ -3410,14 +3411,14 @@
             "label": "Déclaration de perte ou vol d’un certificat d’immatriculation (appelé auparavant carte grise) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1417",
             "type": "formulaire",
-            "category": "transports"
+            "category": "auto"
         },
         {
             "id": "R1571",
             "label": "Déclaration de changement de situation à la Caisse nationale militaire de sécurité sociale (CNMSS) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1571",
             "type": "formulaire",
-            "category": "administration"
+            "category": "travail"
         },
         {
             "id": "R15764",
@@ -3438,14 +3439,14 @@
             "label": "Demande de mutation (évolution de la situation professionnelle entraînant un changement de régime de Sécurité sociale) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1422",
             "type": "formulaire",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R14220",
             "label": "Demande de certificat d’immatriculation (appelé auparavant carte grise) - Véhicule neuf (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R14220",
             "type": "formulaire",
-            "category": "transports"
+            "category": "auto"
         },
         {
             "id": "R15957",
@@ -3466,14 +3467,14 @@
             "label": "Demande d'inscription sur les listes électorales (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16024",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R1424",
             "label": "Demande d'accord préalable (Assurance maladie, maternité, accident du travail, maladie professionnelle) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1424",
             "type": "formulaire",
-            "category": "famille"
+            "category": "sante"
         },
         {
             "id": "R16025",
@@ -3585,28 +3586,28 @@
             "label": "Déclaration trimestrielle AAH auprès de la Caf ou MSA (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R14412",
             "type": "formulaire",
-            "category": "administration"
+            "category": "sante"
         },
         {
             "id": "R1442",
             "label": "Demande de capital décès (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1442",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R16476",
             "label": "Demande d'aide - Contrat unique d'insertion (CUI) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16476",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R1444",
             "label": "Demande d'aide juridictionnelle (formulaire) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1444",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R1448",
@@ -3627,7 +3628,7 @@
             "label": "Candidature pour le concours d'entrée sur titre pour une formation spécialisée de l'école de l'armée de l'Air de Saintes (EETAA) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16663",
             "type": "formulaire",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R14575",
@@ -3655,14 +3656,14 @@
             "label": "Avis d'arrêt de travail (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1458",
             "type": "formulaire",
-            "category": "travail"
+            "category": "sante"
         },
         {
             "id": "R14580",
             "label": "Attestation de détachement à l'étranger (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R14580",
             "type": "formulaire",
-            "category": "etranger"
+            "category": "travail"
         },
         {
             "id": "R16935",
@@ -3676,7 +3677,7 @@
             "label": "Attestation de salaire - Accident du travail ou maladie professionnelle (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R14581",
             "type": "formulaire",
-            "category": "travail"
+            "category": "sante"
         },
         {
             "id": "R16974",
@@ -3690,7 +3691,7 @@
             "label": "Déclarer un accident du travail ou de trajet (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R14587",
             "type": "formulaire",
-            "category": "travail"
+            "category": "sante"
         },
         {
             "id": "R17094",
@@ -3725,14 +3726,14 @@
             "label": "Demande de pension d'ascendants de militaire décédé, de victime civile de guerre décédée ou de victime d'acte de terrorisme décédée (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R17200",
             "type": "formulaire",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R18782",
             "label": "Demande d'indemnisation auprès de la Commission d'indemnisation des victimes d'infractions (Civi) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18782",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R17202",
@@ -3753,7 +3754,7 @@
             "label": "Demande d'indemnisation auprès du fonds d'indemnisation des victimes de l'amiante (Fiva) - Ayant droit (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1729",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R18819",
@@ -3788,7 +3789,7 @@
             "label": "Aide Habiter mieux : signature d'engagements complémentaires (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R17415",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R18906",
@@ -3802,7 +3803,7 @@
             "label": "Demande d'admission au bénéfice des rémunérations des stagiaires de la formation professionnelle (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R17426",
             "type": "formulaire",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R18914",
@@ -3823,14 +3824,14 @@
             "label": "Convention conclue entre le jeune au pair et la famille d'accueil (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18919",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R17461",
             "label": "Demande d'admission en Éhpad (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R17461",
             "type": "formulaire",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R17466",
@@ -3844,14 +3845,14 @@
             "label": "Demande d'agrément pour exercer à titre individuel l'activité mandataire judiciaire à la protection des majeurs (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1898",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R17517",
             "label": "Demande unique de retraite anticipée de base pour les assurés handicapés (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R17517",
             "type": "formulaire",
-            "category": "travail"
+            "category": "sante"
         },
         {
             "id": "R17520",
@@ -3872,14 +3873,14 @@
             "label": "Demande d'autorisation spéciale de travaux compris dans le périmètre d'une aire de mise en valeur de l'architecture et du patrimoine (AVAP) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R19161",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R19162",
             "label": "Demande d'agrément d'assistante maternelle ou assistant maternel (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R19162",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R17573",
@@ -3907,7 +3908,7 @@
             "label": "Demande d'autorisation de défrichement (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R19258",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R17771",
@@ -3956,7 +3957,7 @@
             "label": "Feuille d'accident du travail ou maladie professionnelle pour les salariés agricoles (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R19398",
             "type": "formulaire",
-            "category": "travail"
+            "category": "sante"
         },
         {
             "id": "R19408",
@@ -4054,7 +4055,7 @@
             "label": "Prise en charge administrative de cure thermale et facturation (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R19710",
             "type": "formulaire",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R18272",
@@ -4089,7 +4090,7 @@
             "label": "Demande de permis de démolir (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1980",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R19823",
@@ -4103,7 +4104,7 @@
             "label": "Demande de rectification d'une erreur ou d'une omission matérielle contenue dans un acte de l'état civil (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18387",
             "type": "formulaire",
-            "category": "divers"
+            "category": "citoyennete"
         },
         {
             "id": "R19824",
@@ -4159,28 +4160,28 @@
             "label": "Déclaration d'une manifestation sportive motorisée non chronométrée sur la voie publique (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18494",
             "type": "formulaire",
-            "category": "auto"
+            "category": "association"
         },
         {
             "id": "R19919",
             "label": "Recueil de la volonté de la victime d'être ou de ne pas être informée sur l'exécution de la peine (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R19919",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R1995",
             "label": "Déclaration préalable Installations et aménagements non soumis à permis d’aménager (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1995",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R19993",
             "label": "Demande ou renouvellement de prestations Handicap (AEEH, AAH, PCH, CMI, hébergement, Ésat...) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R19993",
             "type": "formulaire",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R19996",
@@ -4229,7 +4230,7 @@
             "label": "Formulaire de demande d’indemnisation - victime de terrorisme (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R20108",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R2028",
@@ -4264,14 +4265,14 @@
             "label": "DU OPEX Imprimé d'identification du blessé en OPEX (militaire/civil) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2409",
             "type": "formulaire",
-            "category": "administration"
+            "category": "travail"
         },
         {
             "id": "R2412",
             "label": "Demande d’indemnisation par un proche d’une victime de terrorisme (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2412",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R204",
@@ -4313,7 +4314,7 @@
             "label": "Création d'une fondation d'entreprise (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24339",
             "type": "formulaire",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R2083",
@@ -4327,7 +4328,7 @@
             "label": "Modification d'une fondation d'entreprise (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24340",
             "type": "formulaire",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R20835",
@@ -4341,7 +4342,7 @@
             "label": "Dissolution d'une fondation d'entreprise (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24341",
             "type": "formulaire",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R2436",
@@ -4355,14 +4356,14 @@
             "label": "Dossier d'inscription au diplôme d'État de professeur de musique (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2090",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R24394",
             "label": "Demande d'autorisation d'un système de vidéoprotection pour un établissement bancaire (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24394",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R2097",
@@ -4425,7 +4426,7 @@
             "label": "Formulaire de candidature à un centre Épide (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2104",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R2466",
@@ -4460,21 +4461,21 @@
             "label": "Demande de dérogation pour la capture, l'enlèvement, la destruction, la perturbation intentionnelle de spécimens d'espèces animales protégées (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2501",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R21199",
             "label": "Demande d'inscription au permis bateau à moteur option \"côtière\" ou \"eaux intérieures\" (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21199",
             "type": "formulaire",
-            "category": "divers"
+            "category": "transports"
         },
         {
             "id": "R2511",
             "label": "Déclaration de candidature aux concours de professeurs des universités - Praticiens hospitaliers (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2511",
             "type": "formulaire",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R2120",
@@ -4488,7 +4489,7 @@
             "label": "Demande de duplicata d'un permis bateau de plaisance à moteur (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21200",
             "type": "formulaire",
-            "category": "divers"
+            "category": "transports"
         },
         {
             "id": "R2579",
@@ -4502,14 +4503,14 @@
             "label": "Demande de délivrance par équivalence d'un titre de conduite des bateaux de plaisance à moteur (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21202",
             "type": "formulaire",
-            "category": "divers"
+            "category": "transports"
         },
         {
             "id": "R21220",
             "label": "Demande de bourse nationale d'études du second degré (enseignement agricole) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21220",
             "type": "formulaire",
-            "category": "divers"
+            "category": "finances"
         },
         {
             "id": "R21223",
@@ -4537,7 +4538,7 @@
             "label": "Demander la modification d’une autorisation délivrée en cours de validité ou de régularisation (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21323",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R2725",
@@ -4551,21 +4552,21 @@
             "label": "Demande de permis d'aménager (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21378",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R21646",
             "label": "Demande d'indemnisation auprès du FGAO de l'ayant droit (décès de la victime d'accident de la circulation/chasse) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21646",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R2849",
             "label": "Renonciation à succession par une personne majeure (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2849",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R21844",
@@ -4607,21 +4608,21 @@
             "label": "Attestation de cession d'animaux d'espèces non domestiques (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R22119",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R2228",
             "label": "Demande de consultation des pièces annexes d'un acte de l'état civil (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2228",
             "type": "formulaire",
-            "category": "divers"
+            "category": "citoyennete"
         },
         {
             "id": "R31191",
             "label": "Demande d'aide du Fonds départemental d'insertion (FDI) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R31191",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R31386",
@@ -4670,14 +4671,14 @@
             "label": "Demande d'aide à l'importation d'animaux vivants (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R23564",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R2365",
             "label": "Procuration sous seing privé pour signer les engagements relatifs à une demande de subvention (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2365",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R2400",
@@ -4705,7 +4706,7 @@
             "label": "Requête au juge des tutelles - Nouvel examen d'une mesure de protection judiciaire d'un majeur (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R31793",
             "type": "formulaire",
-            "category": "justice"
+            "category": "famille"
         },
         {
             "id": "R32008",
@@ -4775,7 +4776,7 @@
             "label": "Déclaration de transfert d'armes à feu et de munitions par un armurier agréé (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R34996",
             "type": "formulaire",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R32445",
@@ -4789,7 +4790,7 @@
             "label": "Annexe à la déclaration ou au permis de transfert d'armes à feu et de munitions (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R35003",
             "type": "formulaire",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R35088",
@@ -4810,7 +4811,7 @@
             "label": "Déclaration concernant une carte Vitale (Caisse nationale militaire de sécurité nationale) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R351",
             "type": "formulaire",
-            "category": "administration"
+            "category": "sante"
         },
         {
             "id": "R32743",
@@ -4852,7 +4853,7 @@
             "label": "Demande d'allocation veuvage auprès de la MSA (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R32890",
             "type": "formulaire",
-            "category": "administration"
+            "category": "famille"
         },
         {
             "id": "R36342",
@@ -4880,7 +4881,7 @@
             "label": "Demande de bourse d'études à l'École nationale supérieure maritime (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R36750",
             "type": "formulaire",
-            "category": "divers"
+            "category": "transports"
         },
         {
             "id": "R36751",
@@ -4915,7 +4916,7 @@
             "label": "Fiche d'imputation de licence individuelle d'exportation de matériels de guerre et matériels assimilés de transfert de produits liés à la défense (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R36903",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R33366",
@@ -4943,7 +4944,7 @@
             "label": "Demande d'autorisation de pêche de loisir du thon rouge (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R36975",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R33395",
@@ -4999,7 +5000,7 @@
             "label": "Demande d’effacement des données enregistrées au fichier national automatisé des empreintes génétiques (Fnaeg) - Président de la chambre de l’instruction (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33422",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R37302",
@@ -5055,7 +5056,7 @@
             "label": "Demander un permis de transfert d'armes à feu et de munitions vers un pays européen (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33700",
             "type": "formulaire",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R44563",
@@ -5069,14 +5070,14 @@
             "label": "Déclaration de plus-value sur les cessions de terrains à bâtir (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R38703",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R38861",
             "label": "Convention relative à la mise en œuvre d'une période de mise en situation en milieu professionnel (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R38861",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R39110",
@@ -5125,7 +5126,7 @@
             "label": "Demande d'agrément d'assistant(e) familial(e) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R39725",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R39936",
@@ -5139,7 +5140,7 @@
             "label": "Demande d'aide juridictionnelle dans l'Union européenne (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R39974",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R42862",
@@ -5223,7 +5224,7 @@
             "label": "Procuration pour le paiement des bourses nationales de collège et de lycée dans l’enseignement privé (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R40723",
             "type": "formulaire",
-            "category": "divers"
+            "category": "finances"
         },
         {
             "id": "R43157",
@@ -5237,7 +5238,7 @@
             "label": "Demande de bourse nationale de lycée - Année 2026-2027 (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R43243",
             "type": "formulaire",
-            "category": "divers"
+            "category": "finances"
         },
         {
             "id": "R41139",
@@ -5307,7 +5308,7 @@
             "label": "Demande de délais à une mesure d'expulsion - Requête au juge de l'exécution (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42124",
             "type": "formulaire",
-            "category": "justice"
+            "category": "logement"
         },
         {
             "id": "R42126",
@@ -5391,7 +5392,7 @@
             "label": "Requête - Déclaration judiciaire de décès (après disparition) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42403",
             "type": "formulaire",
-            "category": "justice"
+            "category": "famille"
         },
         {
             "id": "R42406",
@@ -5412,7 +5413,7 @@
             "label": "Déclaration de détention d'oiseaux dans le cadre d'un foyer d'influenza aviaire (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42501",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R47851",
@@ -5440,7 +5441,7 @@
             "label": "Notification d'un détachement de courte durée (inférieur ou égal à 90 jours) dans le cadre d'une mobilité en France (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R46148",
             "type": "formulaire",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R46206",
@@ -5468,7 +5469,7 @@
             "label": "Demander l'abattement pour la taxe foncière sur les propriétés bâties de la valeur locative des immeubles affectés à la recherche industrielle et technique (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R44811",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R46258",
@@ -5496,7 +5497,7 @@
             "label": "Demander l'exonération de taxe foncière sur les propriétés bâties (TFPB) pour les hôtels, meublés de tourisme ou chambres d'hôtes situés en zone France revitalisation rurale (ZFRR) ou ZFRR+ (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R44927",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R46623",
@@ -5545,7 +5546,7 @@
             "label": "Droits de mutation à titre gratuit (successions et donations) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45156",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R46801",
@@ -5580,21 +5581,21 @@
             "label": "Curriculum vitae - Concours nationaux d'agrégation pour le recrutement des professeurs des universités (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R453",
             "type": "formulaire",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R47004",
             "label": "Demande d'aide juridictionnelle - Personnes morales à but non lucratif (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R47004",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R45376",
             "label": "Demande d'autorisation de circulation d'un bien culturel / trésor national (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45376",
             "type": "formulaire",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R47017",
@@ -5650,7 +5651,7 @@
             "label": "Demande d'autorisation nationale de pêche (ANP) de la sole en Manche Est (CIEM VIId) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45854",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R47481",
@@ -5685,28 +5686,28 @@
             "label": "Convention relative à la mise en œuvre d'une période de mise en situation en milieu professionnel en Ésat (MISPE) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R47540",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R47566",
             "label": "Déclaration n° 6660 modèle CBD - Locaux commerciaux et biens divers (taxe foncière sur les propriétés bâties) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R47566",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R47620",
             "label": "Demande d'enregistrement pour une ou plusieurs installation(s) classée(s) pour la protection de l'environnement (cerfa n°15679) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R47620",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R47719",
             "label": "Demande d'inscription sur la liste électorale consulaire (article L30 du code électoral) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R47719",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R47720",
@@ -5720,7 +5721,7 @@
             "label": "Autorisation de sortie de territoire (AST) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R46121",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R46144",
@@ -5776,7 +5777,7 @@
             "label": "Demande d'apostille (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R47867",
             "type": "formulaire",
-            "category": "divers"
+            "category": "citoyennete"
         },
         {
             "id": "R47876",
@@ -5832,21 +5833,21 @@
             "label": "Requête au juge des tutelles aux fins d'autorisation d'un acte dans le cadre d'une administration légale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R48337",
             "type": "formulaire",
-            "category": "justice"
+            "category": "famille"
         },
         {
             "id": "R48338",
             "label": "Requête au juge des tutelles aux fins de contrôle dans le cadre d'une administration légale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R48338",
             "type": "formulaire",
-            "category": "justice"
+            "category": "famille"
         },
         {
             "id": "R48339",
             "label": "Requête au juge des tutelles en cas de désaccord sur un acte dans le cadre d'une administration légale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R48339",
             "type": "formulaire",
-            "category": "justice"
+            "category": "famille"
         },
         {
             "id": "R49486",
@@ -5860,7 +5861,7 @@
             "label": "Demande d’habilitation judiciaire aux fins de représentation du conjoint - Requête au juge des tutelles (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R48340",
             "type": "formulaire",
-            "category": "justice"
+            "category": "famille"
         },
         {
             "id": "R48348",
@@ -5923,7 +5924,7 @@
             "label": "Requête en renonciation à la succession au nom d'un majeur placé sous tutelle (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49695",
             "type": "formulaire",
-            "category": "justice"
+            "category": "famille"
         },
         {
             "id": "R48364",
@@ -5937,7 +5938,7 @@
             "label": "Déclaration d'acceptation d'une succession à concurrence de l'actif net (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49718",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R48366",
@@ -5965,35 +5966,35 @@
             "label": "Déclaration de renonciation au nom d'un majeur placé sous tutelle (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49724",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R49726",
             "label": "Déclaration de renonciation à la succession par un majeur placé sous curatelle (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49726",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R49728",
             "label": "Requête en renonciation à succession au nom d'un majeur placé sous habilitation familiale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49728",
             "type": "formulaire",
-            "category": "justice"
+            "category": "famille"
         },
         {
             "id": "R49730",
             "label": "Déclaration de renonciation à la succession au nom d'un majeur placé sous habilitation familiale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49730",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R49733",
             "label": "Requête en acceptation de la succession au nom d'un majeur placé sous protection juridique (habilitation familiale ou tutelle) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49733",
             "type": "formulaire",
-            "category": "justice"
+            "category": "famille"
         },
         {
             "id": "R49744",
@@ -6042,7 +6043,7 @@
             "label": "Formulaire de requête devant le Tribunal du stationnement payant (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49753",
             "type": "formulaire",
-            "category": "justice"
+            "category": "auto"
         },
         {
             "id": "R48714",
@@ -6105,7 +6106,7 @@
             "label": "Renonciation à succession au nom d'une personne morale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49854",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R49864",
@@ -6133,7 +6134,7 @@
             "label": "Demande d'autorisation d'une manifestation sportive motorisée chronométrée sur la voie publique (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49969",
             "type": "formulaire",
-            "category": "auto"
+            "category": "association"
         },
         {
             "id": "R49993",
@@ -6189,7 +6190,7 @@
             "label": "Demande de secours ou de prestations complémentaires à la caisse nationale militaire de sécurité sociale (CNMSS) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R51717",
             "type": "formulaire",
-            "category": "administration"
+            "category": "travail"
         },
         {
             "id": "R51669",
@@ -6238,14 +6239,14 @@
             "label": "Demande de carte de ressortissant de l'ONACGV (\"carte de veuve\") (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R51817",
             "type": "formulaire",
-            "category": "divers"
+            "category": "etranger"
         },
         {
             "id": "R52030",
             "label": "Demande de dispense de formation de professionnalisation au 1er emploi (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52030",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R50532",
@@ -6259,7 +6260,7 @@
             "label": "Demande de dispense de formation de professionnalisation au 1er emploi (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52031",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R50533",
@@ -6273,7 +6274,7 @@
             "label": "Demande de dispense de formation statutaire : poste à responsabilité (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52032",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R50534",
@@ -6287,14 +6288,14 @@
             "label": "Demande de dispense de formation d'intégration : catégories A et B (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52033",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R52034",
             "label": "Demande de dispense de formation d'intégration : catégorie C (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52034",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R50542",
@@ -6343,7 +6344,7 @@
             "label": "Dossier de demande de délivrance d’un permis provisoire de détention d’un chien catégorisé (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52224",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R50664",
@@ -6364,21 +6365,21 @@
             "label": "Demande d'autorisation de réception dans la Légion d'Honneur (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52510",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R52647",
             "label": "Demande d'autorisation de remise d'insigne de l'ordre national du Mérite (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52647",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R52694",
             "label": "Anah : engagement spécifique pour la prime d'intermédiation locative (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52694",
             "type": "formulaire",
-            "category": "administration"
+            "category": "logement"
         },
         {
             "id": "R52770",
@@ -6392,14 +6393,14 @@
             "label": "Accord préalable pour le transfert d'armes à feu et de munitions (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52896",
             "type": "formulaire",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R52898",
             "label": "Demande d'autorisation d'importation de matériels de guerre, armes et munitions (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52898",
             "type": "formulaire",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R52931",
@@ -6420,21 +6421,21 @@
             "label": "Création d'une fondation partenariale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R51351",
             "type": "formulaire",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R51354",
             "label": "Modification d'une fondation partenariale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R51354",
             "type": "formulaire",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R51358",
             "label": "Dissolution d'une fondation partenariale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R51358",
             "type": "formulaire",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R53127",
@@ -6448,21 +6449,21 @@
             "label": "Déclaration de détention d'animaux d'espèces non domestiques (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53205",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R53262",
             "label": "Demander l'abattement de 50 % de la taxe foncière sur les propriétés bâties en faveur de l'immeuble situé dans un projet d'intérêt général justifié par la pollution de l'environnement (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53262",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R53274",
             "label": "Demander le bénéfice des dispositifs en faveur de certains immeubles situés dans un bassin urbain à dynamiser pour la taxe foncière sur les propriétés bâties (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53274",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R53275",
@@ -6497,7 +6498,7 @@
             "label": "Demande de carte de collectionneur d'armes et de leurs éléments de catégorie C (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53472",
             "type": "formulaire",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R51563",
@@ -6511,7 +6512,7 @@
             "label": "Contestation de la liste électorale par un tiers (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R55236",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R55231",
@@ -6567,7 +6568,7 @@
             "label": "Demande d'autorisation européenne de pêche dans les eaux de pays tiers à l'union européenne (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R55325",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R55331",
@@ -6651,7 +6652,7 @@
             "label": "Demande d'autorisation environnementale (cerfa n°15964) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53949",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R53952",
@@ -6728,7 +6729,7 @@
             "label": "Opérations funéraires - Déclaration préalable (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R56066",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R54406",
@@ -6777,7 +6778,7 @@
             "label": "Déclaration de candidature - Conseil de la Métropole de Lyon (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R54621",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R56730",
@@ -6791,7 +6792,7 @@
             "label": "Déclaration de candidature - Conseil de la métropole de Lyon - À remplir par le candidat tête de liste (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R54622",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R56731",
@@ -6826,21 +6827,21 @@
             "label": "Certificat de conformité installation de gaz à usage collectif - Modèle 1 (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R54957",
             "type": "formulaire",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R54958",
             "label": "Certificat de conformité pour une installation individuelle de gaz - Modèle 2 (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R54958",
             "type": "formulaire",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R54959",
             "label": "Certificat de conformité - Installation de gaz de production collective de chaud, de froid et/ou d'électricité - Modèle 3 (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R54959",
             "type": "formulaire",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R54975",
@@ -6945,7 +6946,7 @@
             "label": "Demande d'admission préalable à l'inscription dans les cycles d'études des écoles nationales supérieures d'architecture pour l'année 2026-2027 (dossier bleu) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R57466",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R58896",
@@ -6966,14 +6967,14 @@
             "label": "Demande de classement d'un bien compte tenu de la réglementation sur les armes (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R57632",
             "type": "formulaire",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R59014",
             "label": "Victimes d'accidents de la circulation : saisir le Médiateur du Fonds de garantie des victimes (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R59014",
             "type": "formulaire",
-            "category": "consommation"
+            "category": "auto"
         },
         {
             "id": "R59086",
@@ -7008,7 +7009,7 @@
             "label": "Dossier de demande de subvention - Politique de la ville (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R58251",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R58266",
@@ -7036,7 +7037,7 @@
             "label": "Demande de cure thermale au titre d'une Affection Présumée Imputable au Service (APIAS) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R58493",
             "type": "formulaire",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R58553",
@@ -7120,7 +7121,7 @@
             "label": "Demande d'un second livret de famille (personne vivant à Paris uniquement) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R59993",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R60011",
@@ -7141,14 +7142,14 @@
             "label": "Demande d'autorisation d'instruction dans la famille (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R61887",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R61889",
             "label": "Déclaration sur l'honneur d'instruire majoritairement en langue française dans le cadre d'une demande d'autorisation d'instruction dans la famille (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R61889",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R60125",
@@ -7190,7 +7191,7 @@
             "label": "Demande d'indemnisation auprès de l'Oniam (préjudice lié à une vaccination obligatoire) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R60301",
             "type": "formulaire",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R62322",
@@ -7204,14 +7205,14 @@
             "label": "Demande d'autorisation de chasser accompagné (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R60514",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R60623",
             "label": "Demande de règlement des petits litiges en Europe (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R60623",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R60624",
@@ -7225,7 +7226,7 @@
             "label": "Frais de justice applicables au règlement des petits litiges en Europe (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R60625",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R60652",
@@ -7309,7 +7310,7 @@
             "label": "Demander un permis de transfert d'armes à feu et de munitions vers un pays non européen (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R62829",
             "type": "formulaire",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R61073",
@@ -7344,7 +7345,7 @@
             "label": "Demande d'aide à la vie familiale et sociale (AVFS) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R61419",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R63177",
@@ -7421,7 +7422,7 @@
             "label": "Vente d'immeuble à rénover (VIR) : demande de subvention pour travaux (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R65075",
             "type": "formulaire",
-            "category": "consommation"
+            "category": "logement"
         },
         {
             "id": "R65154",
@@ -7449,7 +7450,7 @@
             "label": "Demande de remboursement des frais de transport des stagiaires de la formation professionnelle (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R63942",
             "type": "formulaire",
-            "category": "consommation"
+            "category": "travail"
         },
         {
             "id": "R64012",
@@ -7491,7 +7492,7 @@
             "label": "Demande d’autorisation spéciale de travaux en abords de monuments historiques ou dans un site patrimonial remarquable (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R65385",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R64130",
@@ -7519,7 +7520,7 @@
             "label": "Récépissé de dépôt d’une demande d’autorisation spéciale de travaux en abords de monuments historiques ou dans un site patrimonial remarquable (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R65507",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R64137",
@@ -7582,14 +7583,14 @@
             "label": "Demande d’aides à l’autonomie à domicile pour les personnes âgées (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R64469",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R64506",
             "label": "Demande d'agrément d'une structure d'accueil et d'accompagnement des personnes sous main de justice faisant l'objet d'une mesure de placement à l'extérieur - Procédure accélérée (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R64506",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R64507",
@@ -7631,14 +7632,14 @@
             "label": "Demande d'aide familiale - Caisse nationale militaire de sécurité sociale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R64520",
             "type": "formulaire",
-            "category": "administration"
+            "category": "travail"
         },
         {
             "id": "R64521",
             "label": "Demande d'aide ménagère aux familles - Caisse nationale militaire de sécurité sociale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R64521",
             "type": "formulaire",
-            "category": "administration"
+            "category": "travail"
         },
         {
             "id": "R64526",
@@ -7680,21 +7681,21 @@
             "label": "Mon Accompagnateur Rénov' : méthodologie proposée pour l’accompagnement des ménages dans le cadre de l'agrément (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68705",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R68706",
             "label": "Mon Accompagnateur Rénov' : système qualité et contrôle interne de la structure candidate à l'agrément (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68706",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R68708",
             "label": "Mon Accompagnateur Rénov' : attestation d’engagement de transmission du rapport annuel d'activité (dans le cadre de la demande d'agrément) – Personne morale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68708",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R67066",
@@ -7708,63 +7709,63 @@
             "label": "Mon Accompagnateur Rénov' : attestation d’engagement de transmission du rapport annuel d'activité (dans le cadre de la demande d'agrément) – Personne physique (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68710",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R68716",
             "label": "Mon Accompagnateur Rénov' : liste des périmètres d’intervention demandés et des implantations territoriales (demande d'agrément) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68716",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R68717",
             "label": "Mon Accompagnateur Rénov' : attestation d’engagement de suivi du plan de formation complémentaire aux compétences requises et cohérent avec les missions de l'accompagnateur – Personne morale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68717",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R68719",
             "label": "Mon Accompagnateur Rénov' : attestation d’engagement de suivi du plan de formation complémentaire aux compétences requises et cohérent avec les missions de l'accompagnateur – Personne physique (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68719",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R68721",
             "label": "Mon Accompagnateur Rénov' : attestation sur l’honneur de non-condamnation et de situation – Personne morale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68721",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R68722",
             "label": "Mon Accompagnateur Rénov' : attestation sur l’honneur de non-condamnation et de situation – Personne physique (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68722",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R68723",
             "label": "Mon Accompagnateur Rénov’ : synthèse des pièces justificatives communiquées dans le dossier de demande d’agrément (auditeurs énergétiques, entreprises RGE « offre globale », sociétés de tiers-financement) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68723",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R68724",
             "label": "Mon Accompagnateur Rénov' : récapitulatif de la demande d'agrément comprenant une synthèse des pièces justificatives communiquées dans le dossier de demande d’agrément (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68724",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R68726",
             "label": "Mon Accompagnateur Rénov’ : synthèse des pièces justificatives communiquées dans le dossier de demande d’agrément par les collectivités territoriales ou leurs groupements (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68726",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R68754",
@@ -7792,14 +7793,14 @@
             "label": "MaPrimeRénov' : attestation d'exclusivité CEE - Rénovation d'ampleur (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68007",
             "type": "formulaire",
-            "category": "consommation"
+            "category": "logement"
         },
         {
             "id": "R69013",
             "label": "Demande d'indemnisation auprès du fonds d'indemnisation des victimes de l'amiante (Fiva) - Victime (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R69013",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R68090",
@@ -7813,7 +7814,7 @@
             "label": "MaPrimeRénov' : attestation de travaux - Rénovation d'ampleur - devis (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68091",
             "type": "formulaire",
-            "category": "consommation"
+            "category": "logement"
         },
         {
             "id": "R69214",
@@ -7827,7 +7828,7 @@
             "label": "MaPrimeRénov' : attestation de travaux - Rénovation d'ampleur - facture (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68092",
             "type": "formulaire",
-            "category": "consommation"
+            "category": "logement"
         },
         {
             "id": "R69300",
@@ -7841,7 +7842,7 @@
             "label": "MaPrimeRénov' : attestation CEE - Rénovation d'ampleur (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68093",
             "type": "formulaire",
-            "category": "consommation"
+            "category": "logement"
         },
         {
             "id": "R69302",
@@ -7855,7 +7856,7 @@
             "label": "MaPrimeRénov' : attestation de travaux - demande de paiement de prime post-travaux (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68094",
             "type": "formulaire",
-            "category": "administration"
+            "category": "logement"
         },
         {
             "id": "R69303",
@@ -7869,7 +7870,7 @@
             "label": "MaPrimeRénov' : attestation de travaux - demande de prime pré-travaux (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68095",
             "type": "formulaire",
-            "category": "administration"
+            "category": "logement"
         },
         {
             "id": "R69304",
@@ -7883,7 +7884,7 @@
             "label": "MaPrimeRénov' : part de l'activité prévisionnelle de la structure et le nombre de personne consacré à temps plein ou partiel (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68099",
             "type": "formulaire",
-            "category": "administration"
+            "category": "logement"
         },
         {
             "id": "R69305",
@@ -7897,7 +7898,7 @@
             "label": "Mon Accompagnateur Rénov' : programme d'activité prévisionnelle sur trois ans (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68100",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R69306",
@@ -7911,7 +7912,7 @@
             "label": "Mandataires MaPrimeRénov' : formulaire de création de comptes et profils mandataires (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68105",
             "type": "formulaire",
-            "category": "administration"
+            "category": "logement"
         },
         {
             "id": "R68109",
@@ -7925,21 +7926,21 @@
             "label": "MaPrimeRénov' : désignation d’un représentant unique dans le cadre de la demande de prime sur un bien en indivision (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68110",
             "type": "formulaire",
-            "category": "administration"
+            "category": "logement"
         },
         {
             "id": "R68111",
             "label": "MaPrimeRénov' : attestation de consentement à la demande de solde de la prime (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68111",
             "type": "formulaire",
-            "category": "administration"
+            "category": "logement"
         },
         {
             "id": "R68112",
             "label": "MaPrimeRénov' : attestation de consentement à la demande de prime (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68112",
             "type": "formulaire",
-            "category": "administration"
+            "category": "logement"
         },
         {
             "id": "R68114",
@@ -7988,14 +7989,14 @@
             "label": "Communes ou groupement de communes : demande de travaux effectués d'office (Anah) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68125",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R69735",
             "label": "Prêt avance mutation ne portant pas intérêt (également appelé Prêt avance rénovation - PAR +) : formulaire Emprunteur (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R69735",
             "type": "formulaire",
-            "category": "consommation"
+            "category": "travail"
         },
         {
             "id": "R68126",
@@ -8009,7 +8010,7 @@
             "label": "Prêt avance mutation ne portant pas intérêt (également appelé Prêt avance rénovation - PAR +) : formulaire Entreprise (tous travaux sauf travaux améliorant la performance énergétique globale du logement) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R69736",
             "type": "formulaire",
-            "category": "logement"
+            "category": "travail"
         },
         {
             "id": "R68127",
@@ -8030,7 +8031,7 @@
             "label": "Prêt avance mutation ne portant pas intérêt (également appelé Prêt avance rénovation - PAR +) : formulaire Entreprise Performance énergétique globale (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R69825",
             "type": "formulaire",
-            "category": "consommation"
+            "category": "travail"
         },
         {
             "id": "R68232",
@@ -8058,14 +8059,14 @@
             "label": "Demande d’agrément d’accueillant familial (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R70267",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R70268",
             "label": "Annexe « Personne remplaçante » au formulaire de demande d’agrément d’accueillant familial (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R70268",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R71411",
@@ -8100,14 +8101,14 @@
             "label": "Demande de réversion de la pension et de la retraite additionnelle à la suite du décès d’un fonctionnaire de l’État, d’un magistrat ou d’un militaire retraité (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71480",
             "type": "formulaire",
-            "category": "travail"
+            "category": "famille"
         },
         {
             "id": "R71720",
             "label": "Demande de rente temporaire d'éducation ou de rente viagère pour handicap à la suite du décès en activité d'un agent contractuel de l'État ou d'un ouvrier de l'État (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71720",
             "type": "formulaire",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R71854",
@@ -8135,14 +8136,14 @@
             "label": "Déclaration de ressources et activité salariée (orphelin d'au moins 21 ans atteint d’un handicap qui demande une pension d’invalidité à la suite du décès d'un parent militaire) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71923",
             "type": "formulaire",
-            "category": "sante"
+            "category": "famille"
         },
         {
             "id": "R70792",
             "label": "Demande de duplicata d'un permis de chasser suite à un changement d'état civil (hors nom d'usage) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R70792",
             "type": "formulaire",
-            "category": "divers"
+            "category": "citoyennete"
         },
         {
             "id": "R72198",
@@ -8163,7 +8164,7 @@
             "label": "Demander la modification d’une autorisation délivrée en cours de validité ou de régularisation (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R70975",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R70997",
@@ -8247,7 +8248,7 @@
             "label": "Demande de bulletin n°3 du casier judiciaire (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R72642",
             "type": "formulaire",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R72747",
@@ -8261,7 +8262,7 @@
             "label": "Annexe - Formulaire à remplir par le candidat tête de liste ou son représentant dans le cadre d’une déclaration de candidature au conseil de la Métropole de Lyon (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74947",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R74967",
@@ -8317,7 +8318,7 @@
             "label": "Redevance pour performance des systèmes d'assainissement (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R75237",
             "type": "formulaire",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R73270",
@@ -8338,7 +8339,7 @@
             "label": "Demande d'aide financière à l'insertion sociale et professionnelle (Afis) (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R73542",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R73714",
@@ -8359,7 +8360,7 @@
             "label": "Demande d’attestation de départ à la retraite anticipée des assurés handicapés (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R73805",
             "type": "formulaire",
-            "category": "travail"
+            "category": "sante"
         },
         {
             "id": "R75681",
@@ -8373,21 +8374,21 @@
             "label": "Faire une demande de chèque énergie par courrier (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74087",
             "type": "formulaire",
-            "category": "finances"
+            "category": "consommation"
         },
         {
             "id": "R74278",
             "label": "Déclaration d’un lieu de stationnement d’équidés (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74278",
             "type": "formulaire",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R74484",
             "label": "Déclaration de choix d'une sage-femme référente (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74484",
             "type": "formulaire",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R76415",
@@ -8408,7 +8409,7 @@
             "label": "Inscription par courrier au registre national des refus de dons d'organes (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R76828",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R74934",
@@ -8422,7 +8423,7 @@
             "label": "Déclaration de candidature pour les communes de moins de 1 000 habitants de la Polynésie Française (Formulaires)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74935",
             "type": "formulaire",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R74936",
@@ -8548,7 +8549,7 @@
             "label": "Demande en ligne d'extrait de casier judiciaire (bulletin n°3) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1264",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R10220",
@@ -8611,7 +8612,7 @@
             "label": "Service de paiement en ligne des amendes (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11026",
             "type": "teleservice",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R11193",
@@ -8625,7 +8626,7 @@
             "label": "Recourir au Médiateur national de l'énergie en ligne (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R13148",
             "type": "teleservice",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R1332",
@@ -8674,7 +8675,7 @@
             "label": "Demande de renouvellement de la déclaration d'activité d'entrepreneur de spectacles vivants (en vue d'un récépissé de licence d’entrepreneur de spectacles) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R14004",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R1405",
@@ -8695,7 +8696,7 @@
             "label": "Commander une convention collective en version numérique (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R15651",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R14213",
@@ -8751,14 +8752,14 @@
             "label": "Demande d'inscription en ligne sur les listes électorales (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16396",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R16627",
             "label": "Demande d'indemnisation au Fonds d’indemnisation des victimes de l’amiante (Fiva) - Victime (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16627",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R14534",
@@ -8828,7 +8829,7 @@
             "label": "Réclamation en cas de litige de consommation transfrontalier dans l'Union européenne (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1724",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R18897",
@@ -8856,7 +8857,7 @@
             "label": "Inscription en ligne au registre national des refus de dons d'organes (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18929",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R18974",
@@ -8884,7 +8885,7 @@
             "label": "Parcoursurp : inscription dans l'enseignement supérieur (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R19176",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R17654",
@@ -8898,14 +8899,14 @@
             "label": "Déclaration d'accident du travail ou de trajet (DAT) en ligne (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R19231",
             "type": "teleservice",
-            "category": "travail"
+            "category": "sante"
         },
         {
             "id": "R17828",
             "label": "Déclarer un arrêt de travail et demander un remboursement intempéries (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R17828",
             "type": "teleservice",
-            "category": "travail"
+            "category": "sante"
         },
         {
             "id": "R17832",
@@ -8926,14 +8927,14 @@
             "label": "Déclaration d'accident du travail et de maladie professionnelle en ligne (DAT-MSA) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R17840",
             "type": "teleservice",
-            "category": "travail"
+            "category": "sante"
         },
         {
             "id": "R17971",
             "label": "Demande de permis d'exportation et de certificat de réexportation (CITES) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R17971",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R18165",
@@ -8975,7 +8976,7 @@
             "label": "Cesu en ligne (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18364",
             "type": "teleservice",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R19842",
@@ -9045,7 +9046,7 @@
             "label": "Demande en ligne d'autorisation d'un système de vidéoprotection (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R20467",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R2054",
@@ -9066,7 +9067,7 @@
             "label": "Demande ou renouvellement d'agrément pour l'engagement de service civique (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2075",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R2089",
@@ -9080,7 +9081,7 @@
             "label": "Suivre la demande de certificat d’immatriculation (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R20907",
             "type": "teleservice",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R2577",
@@ -9122,7 +9123,7 @@
             "label": "Demande d'autorisation préalable et d'indemnisation d'activité partielle (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R31001",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R3120",
@@ -9171,7 +9172,7 @@
             "label": "Adhérer au chèque emploi service universel (Cesu) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2358",
             "type": "teleservice",
-            "category": "finances"
+            "category": "consommation"
         },
         {
             "id": "R38648",
@@ -9206,7 +9207,7 @@
             "label": "Demande d'attestation de réussite en cas de perte d'un diplôme délivré en Île-de-France (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R34136",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R34529",
@@ -9220,7 +9221,7 @@
             "label": "Demander le raccordement au réseau public de distribution d'électricité (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R32335",
             "type": "teleservice",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R34754",
@@ -9234,7 +9235,7 @@
             "label": "Candidature pour le Collège d'Europe (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R32387",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R32770",
@@ -9325,7 +9326,7 @@
             "label": "Dossier de candidature au statut national étudiant-entrepreneur (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R38354",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R33718",
@@ -9381,7 +9382,7 @@
             "label": "Consulter son dossier d'infraction routière et l’avancement de ses démarches (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R39689",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R42726",
@@ -9423,14 +9424,14 @@
             "label": "Procédure de candidature et d'attribution de la distinction Palace (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R39755",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R42838",
             "label": "Demande d'acte de décès (survenu en France) - Service gratuit (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42838",
             "type": "teleservice",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R39812",
@@ -9472,7 +9473,7 @@
             "label": "Consultation du répertoire national des certifications professionnelles (RNCP) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R40438",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R42920",
@@ -9535,14 +9536,14 @@
             "label": "Registre des Français établis hors de France - Inscription consulaire (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R43248",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R43249",
             "label": "Registre des Français établis hors de France - Actualisation (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R43249",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R41277",
@@ -9556,14 +9557,14 @@
             "label": "Registre des Français établis hors de France - Renouvellement de l'inscription consulaire (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R43250",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R43251",
             "label": "Registre des Français établis hors de France - Radiation (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R43251",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R43257",
@@ -9584,7 +9585,7 @@
             "label": "Demande d'aide Mobili-Jeune (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R41686",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R43333",
@@ -9605,7 +9606,7 @@
             "label": "Devenir réserviste dans l'armée (terre, mer...) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R43571",
             "type": "teleservice",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R43600",
@@ -9633,7 +9634,7 @@
             "label": "Avis d'amende forfaitaire : contester ou désigner une autre personne en ligne (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42185",
             "type": "teleservice",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R43745",
@@ -9661,7 +9662,7 @@
             "label": "Demander le raccordement au réseau public de distribution d'électricité (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42275",
             "type": "teleservice",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R43961",
@@ -9689,7 +9690,7 @@
             "label": "Demande de photographie en cas d'amende radar (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42350",
             "type": "teleservice",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R44056",
@@ -9724,7 +9725,7 @@
             "label": "Demande en ligne d'autorisation de défrichement - procédure en ligne (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R44607",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R46162",
@@ -9738,7 +9739,7 @@
             "label": "Déclaration en ligne de détention d'oiseaux dans le cadre d'un foyer d'influenza aviaire (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R44627",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R46256",
@@ -9864,21 +9865,21 @@
             "label": "Demande d'admission en Éhpad (demande en ligne via Trajectoire) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R46791",
             "type": "teleservice",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R46804",
             "label": "Déclarer les recettes de sa micro-entreprise (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R46804",
             "type": "teleservice",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R45178",
             "label": "Demande d'agrément d'une fédération sportive (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45178",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R46806",
@@ -9934,7 +9935,7 @@
             "label": "Demande de subvention à l'Agence nationale du Sport (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45189",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R46931",
@@ -9948,7 +9949,7 @@
             "label": "Demande d'agrément des centres de formation des clubs professionnels (CFCP) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45190",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R45268",
@@ -9962,7 +9963,7 @@
             "label": "Attestations de prise en compte de la réglementation environnementale RE 2020 et thermique RT 2012 (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R46960",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R45380",
@@ -9983,7 +9984,7 @@
             "label": "Signaler le comportement d’un agent à l’Inspection générale de la gendarmerie nationale (IGGN) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R47031",
             "type": "teleservice",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R47093",
@@ -9997,14 +9998,14 @@
             "label": "Demande d’indemnisation par une victime d’acte de terrorisme (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45565",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R45566",
             "label": "Demande en ligne d'indemnisation - Acte de terrorisme (en cas de décès) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45566",
             "type": "teleservice",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R47175",
@@ -10032,7 +10033,7 @@
             "label": "Demander ses certificats (inscription ou radiation) et sa carte consulaire (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45780",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R46083",
@@ -10060,14 +10061,14 @@
             "label": "MSA - Mon espace privé (inscription) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R50384",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R49279",
             "label": "Signaler un changement de votre situation personnelle sur le certificat d’immatriculation (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49279",
             "type": "teleservice",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R47870",
@@ -10081,7 +10082,7 @@
             "label": "Demander une nouvelle carte grise suite au changement du nom d'usage du titulaire (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49277",
             "type": "teleservice",
-            "category": "transports"
+            "category": "auto"
         },
         {
             "id": "R49287",
@@ -10102,7 +10103,7 @@
             "label": "Achat de timbres fiscaux pour le permis bateau (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R47906",
             "type": "teleservice",
-            "category": "divers"
+            "category": "transports"
         },
         {
             "id": "R49291",
@@ -10116,7 +10117,7 @@
             "label": "Refaire son certificat d’immatriculation (auparavant appelé carte grise) en cas de perte, vol ou détérioration (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R47917",
             "type": "teleservice",
-            "category": "transports"
+            "category": "auto"
         },
         {
             "id": "R49299",
@@ -10137,7 +10138,7 @@
             "label": "Demande d'acte de décès (survenu à l'étranger) - Service gratuit (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R47955",
             "type": "teleservice",
-            "category": "etranger"
+            "category": "famille"
         },
         {
             "id": "R49373",
@@ -10151,7 +10152,7 @@
             "label": "Faire un recours gracieux suite au refus de délivrance d'une carte grise (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49386",
             "type": "teleservice",
-            "category": "transports"
+            "category": "auto"
         },
         {
             "id": "R48291",
@@ -10165,7 +10166,7 @@
             "label": "Demande d'autorisation d'ouverture de débit de boissons temporaire (à Paris exclusivement) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R48296",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R49454",
@@ -10179,7 +10180,7 @@
             "label": "Enedis : faire une demande de raccordement au réseau public d'électricité (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49471",
             "type": "teleservice",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R49549",
@@ -10200,7 +10201,7 @@
             "label": "Payer le forfait de post-stationnement (FPS) sur stationnement.gouv (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49631",
             "type": "teleservice",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R49646",
@@ -10221,14 +10222,14 @@
             "label": "Demander la carte grise d'un véhicule d'occasion ayant une immatriculation française (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R48603",
             "type": "teleservice",
-            "category": "transports"
+            "category": "auto"
         },
         {
             "id": "R48607",
             "label": "Modifier l'adresse de sa carte grise (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R48607",
             "type": "teleservice",
-            "category": "transports"
+            "category": "auto"
         },
         {
             "id": "R48628",
@@ -10263,21 +10264,21 @@
             "label": "Obtenir une attestation de droits (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49811",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R49813",
             "label": "Demander une carte Vitale (régime général) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49813",
             "type": "teleservice",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R49814",
             "label": "Carte Vitale : perdue, volée ou défectueuse (régime général) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49814",
             "type": "teleservice",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R49815",
@@ -10291,7 +10292,7 @@
             "label": "Demande ou renouvellement de prestations Handicap (AAH, PCH, CMI, hébergement ...) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R48844",
             "type": "teleservice",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R49829",
@@ -10305,14 +10306,14 @@
             "label": "Attestation de paiement d'indemnités journalières (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49830",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R48961",
             "label": "Demande d'Apa à Paris (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R48961",
             "type": "teleservice",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R49831",
@@ -10375,7 +10376,7 @@
             "label": "Ajouter un co-titulaire sur la carte grise (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49166",
             "type": "teleservice",
-            "category": "transports"
+            "category": "auto"
         },
         {
             "id": "R49998",
@@ -10431,7 +10432,7 @@
             "label": "Demander une carte grise d'un véhicule faisant l'objet d'un héritage (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49259",
             "type": "teleservice",
-            "category": "transports"
+            "category": "auto"
         },
         {
             "id": "R49260",
@@ -10452,7 +10453,7 @@
             "label": "Demander la correction d'une erreur sur la carte grise (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49261",
             "type": "teleservice",
-            "category": "transports"
+            "category": "auto"
         },
         {
             "id": "R50282",
@@ -10466,7 +10467,7 @@
             "label": "Demander une carte grise suite à la transformation du véhicule (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49263",
             "type": "teleservice",
-            "category": "transports"
+            "category": "auto"
         },
         {
             "id": "R50284",
@@ -10480,7 +10481,7 @@
             "label": "Demander une carte grise suite à l'usurpation des plaques d'immatriculation (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49264",
             "type": "teleservice",
-            "category": "transports"
+            "category": "auto"
         },
         {
             "id": "R49266",
@@ -10571,7 +10572,7 @@
             "label": "S'inscrire à une mission bénévole de la réserve civique (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R50432",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R51812",
@@ -10627,7 +10628,7 @@
             "label": "Vérifier l'authenticité d'un extrait de casier judiciaire (bulletin n°3) sans mention de condamnation (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R51921",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R50510",
@@ -10669,7 +10670,7 @@
             "label": "Assistance pour les victimes de cybermalveillance - 17Cyber (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52059",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R50543",
@@ -10711,14 +10712,14 @@
             "label": "Téléservice e-APS : demande d'autorisation de transfert d'armes pour les particuliers (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52119",
             "type": "teleservice",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R52123",
             "label": "Enregistrer un drone (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52123",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R52141",
@@ -10802,7 +10803,7 @@
             "label": "Déclarer des activités bénévoles pour bénéficier du compte d’engagement citoyen (CEC) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52616",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R50828",
@@ -10816,14 +10817,14 @@
             "label": "Achat en ligne du timbre fiscal - Attestation d'accueil (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R52645",
             "type": "teleservice",
-            "category": "administration"
+            "category": "etranger"
         },
         {
             "id": "R50835",
             "label": "Demande de carte de stationnement résidentiel à Paris (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R50835",
             "type": "teleservice",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R52684",
@@ -10935,14 +10936,14 @@
             "label": "Demande en ligne d'une aide financière de l'Anah (constitution, suivi de la demande...) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R51461",
             "type": "teleservice",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R53489",
             "label": "Déclaration de détention d'animaux d'espèces non domestiques (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53489",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R55302",
@@ -10956,7 +10957,7 @@
             "label": "Contacter la gendarmerie par messagerie instantanée (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53739",
             "type": "teleservice",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R53765",
@@ -11005,14 +11006,14 @@
             "label": "Candidature à un centre Épide (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R55386",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R53869",
             "label": "Demande d'aide pour les apprenants de la Grande école du numérique (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53869",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R55392",
@@ -11061,14 +11062,14 @@
             "label": "Suivre une demande de Vignette Crit'Air (certificat qualité de l’air) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R55971",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R54101",
             "label": "Demande de bourse Prépa Talents (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R54101",
             "type": "teleservice",
-            "category": "divers"
+            "category": "finances"
         },
         {
             "id": "R54159",
@@ -11124,7 +11125,7 @@
             "label": "Démarches en ligne pour les navires de plaisance (enregistrement, changement de situation...) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R56365",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R54489",
@@ -11145,7 +11146,7 @@
             "label": "Inscription à la plateforme PIX (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R54555",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R54704",
@@ -11159,14 +11160,14 @@
             "label": "Obtenir une attestation numérique de ses diplômes (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R54868",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R54917",
             "label": "Espace numérique sécurisé de l’agent public (Ensap) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R54917",
             "type": "teleservice",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R54933",
@@ -11194,7 +11195,7 @@
             "label": "Sacem : demandes d'autorisation de diffusion de musique (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R55115",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R55162",
@@ -11215,7 +11216,7 @@
             "label": "MaPrimeRénov' : demande de prime (Anah) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R55191",
             "type": "teleservice",
-            "category": "administration"
+            "category": "logement"
         },
         {
             "id": "R57169",
@@ -11334,14 +11335,14 @@
             "label": "Déposer une demande d'autorisation environnementale - procédure en ligne (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R57779",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R57807",
             "label": "Télésisaap : demande en ligne d'autorisation de pêche de loisir du thon rouge (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R57807",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R59205",
@@ -11404,7 +11405,7 @@
             "label": "Enregistrement du pilote d'un drone (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R58193",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R58198",
@@ -11460,7 +11461,7 @@
             "label": "Inscription en classe de 6ème (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R59554",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R59631",
@@ -11495,7 +11496,7 @@
             "label": "Déposer sa candidature au service militaire volontaire (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R59925",
             "type": "teleservice",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R61804",
@@ -11516,14 +11517,14 @@
             "label": "Demander une bourse de lycée (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R60034",
             "type": "teleservice",
-            "category": "divers"
+            "category": "finances"
         },
         {
             "id": "R60054",
             "label": "Demander une bourse de collège (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R60054",
             "type": "teleservice",
-            "category": "divers"
+            "category": "finances"
         },
         {
             "id": "R61977",
@@ -11565,7 +11566,7 @@
             "label": "Adhérer au service Cesu + en ligne (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R62087",
             "type": "teleservice",
-            "category": "divers"
+            "category": "consommation"
         },
         {
             "id": "R62128",
@@ -11607,7 +11608,7 @@
             "label": "Trouver l'autorité étrangère compétente en matière d'aide juridictionnelle (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R62200",
             "type": "teleservice",
-            "category": "etranger"
+            "category": "justice"
         },
         {
             "id": "R60405",
@@ -11628,7 +11629,7 @@
             "label": "Dépôt en ligne d'une demande d'enregistrement d'ICPE (autorisation simplifiée) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R62282",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R60422",
@@ -11649,7 +11650,7 @@
             "label": "Consulter un exemplaire de bulletin n°3 du casier judiciaire (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R60519",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R62483",
@@ -11726,7 +11727,7 @@
             "label": "Demander une aide financière pour le paiement des frais d'hospitalisation (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R62617",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R62627",
@@ -11803,14 +11804,14 @@
             "label": "Registre de disponibilité des taxis : le.taxi (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R63194",
             "type": "teleservice",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R63202",
             "label": "Se préparer aux attestations de sécurité routière (ASSR1, ASSR2, ASR, AER) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R63202",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R61572",
@@ -11831,14 +11832,14 @@
             "label": "Préparer et passer les épreuves des attestations de sécurité routière sur la plateforme nationale des ASSR, ASR, AER (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R63208",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R61698",
             "label": "Espace détenteurs du système d'information sur les armes (SIA) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R61698",
             "type": "teleservice",
-            "category": "divers"
+            "category": "securite"
         },
         {
             "id": "R61758",
@@ -11852,14 +11853,14 @@
             "label": "Demande d’aide juridictionnelle en ligne (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R66463",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R65004",
             "label": "Inscription au lycée (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R65004",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R63427",
@@ -11901,7 +11902,7 @@
             "label": "Demander la recherche d'un contrat d'assurance obsèques (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R63577",
             "type": "teleservice",
-            "category": "assurances"
+            "category": "famille"
         },
         {
             "id": "R65096",
@@ -11922,7 +11923,7 @@
             "label": "Demander une copie ou un extrait d'acte d'état civil à l'Ofpra si l’on est réfugié, apatride ou sous protection subsidiaire (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R63676",
             "type": "teleservice",
-            "category": "etranger"
+            "category": "citoyennete"
         },
         {
             "id": "R65232",
@@ -12020,7 +12021,7 @@
             "label": "Inscription en master (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R64449",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R65949",
@@ -12034,7 +12035,7 @@
             "label": "Déclaration unifiée pour les ouvrages souterrains (DUPLOS) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R66079",
             "type": "teleservice",
-            "category": "divers"
+            "category": "logement"
         },
         {
             "id": "R66150",
@@ -12062,14 +12063,14 @@
             "label": "Simplimmat.gouv : application pour smartphone pour déclarer la cession d'un véhicule et demander votre nouvelle carte grise (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R66200",
             "type": "teleservice",
-            "category": "transports"
+            "category": "auto"
         },
         {
             "id": "R66252",
             "label": "Demande de permis et de certificat d'importation (CITES) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R66252",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R66317",
@@ -12090,14 +12091,14 @@
             "label": "Connexion à votre compte personnel administration étranger en France (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R64681",
             "type": "teleservice",
-            "category": "administration"
+            "category": "etranger"
         },
         {
             "id": "R66325",
             "label": "i-CITES : demande de permis et certificat d'importation et d'exportation d'espèces animales ou végétales protégées (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R66325",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R64750",
@@ -12111,14 +12112,14 @@
             "label": "Pré-demande en ligne de duplicata du permis de chasser (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R64765",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R64773",
             "label": "Pré-inscription en ligne à l'examen du permis de chasser (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R64773",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R66389",
@@ -12167,7 +12168,7 @@
             "label": "Trouver un commissariat ou une gendarmerie pour déposer plainte (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R64884",
             "type": "teleservice",
-            "category": "justice"
+            "category": "travail"
         },
         {
             "id": "R64894",
@@ -12188,7 +12189,7 @@
             "label": "Demande d'aide d'urgence pour les victimes de violence conjugale (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R66524",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R68261",
@@ -12202,7 +12203,7 @@
             "label": "Demande d'aide d'urgence aux victimes de violences conjugales - MSA (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R66552",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R68247",
@@ -12216,7 +12217,7 @@
             "label": "Demande d'aide d'urgence aux victimes de violences conjugales - Caf (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R66553",
             "type": "teleservice",
-            "category": "administration"
+            "category": "justice"
         },
         {
             "id": "R68264",
@@ -12230,7 +12231,7 @@
             "label": "Demande de médaille d'honneur départementale, régionale ou communale (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68465",
             "type": "teleservice",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R68480",
@@ -12251,7 +12252,7 @@
             "label": "Demande d’agrément pour devenir visiteur de prison (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68528",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R68531",
@@ -12321,7 +12322,7 @@
             "label": "Demande d'aide financière de l'Anah (MaPrimeAdapt', etc.) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R67121",
             "type": "teleservice",
-            "category": "administration"
+            "category": "logement"
         },
         {
             "id": "R67174",
@@ -12335,7 +12336,7 @@
             "label": "Demande de prestations MDPH (AAH, PCH, admission en Ésat, hébergement...) et renouvellement (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R67285",
             "type": "teleservice",
-            "category": "divers"
+            "category": "sante"
         },
         {
             "id": "R67335",
@@ -12370,7 +12371,7 @@
             "label": "Demander en ligne un nouveau permis de conduire à la suite d'une régularisation médicale (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R67361",
             "type": "teleservice",
-            "category": "sante"
+            "category": "auto"
         },
         {
             "id": "R68752",
@@ -12454,7 +12455,7 @@
             "label": "Demande de regroupement familial (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68987",
             "type": "teleservice",
-            "category": "divers"
+            "category": "etranger"
         },
         {
             "id": "R67929",
@@ -12503,7 +12504,7 @@
             "label": "Demande d’accès, de rectification ou d’effacement des données enregistrées au FPR, au directeur de la police nationale ou de la gendarmerie nationale (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R69154",
             "type": "teleservice",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R68070",
@@ -12559,14 +12560,14 @@
             "label": "Vérifier la validité du permis de conduire des conducteurs salariés (Vérif permis) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R69578",
             "type": "teleservice",
-            "category": "travail"
+            "category": "auto"
         },
         {
             "id": "R69802",
             "label": "Déclaration et demande d'autorisation de manifestations (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R69802",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R68188",
@@ -12622,7 +12623,7 @@
             "label": "Dépôt annuel des comptes et du rapport d'activité des fondations d'entreprise (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71293",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R71375",
@@ -12685,14 +12686,14 @@
             "label": "Déclaration des procès verbaux des fondations reconnues d'utilité publique (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71420",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R71422",
             "label": "Dépôt annuel des comptes et du rapport d'activité des fondations reconnues d'utilité publique (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71422",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R71424",
@@ -12706,7 +12707,7 @@
             "label": "Déclaration des changements dans l'administration d'une fondation reconnue d'utilité publique (déclaration des bénéficiaires effectifs) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71425",
             "type": "teleservice",
-            "category": "administration"
+            "category": "association"
         },
         {
             "id": "R71457",
@@ -12720,7 +12721,7 @@
             "label": "Déclaration et demande d'autorisation de manifestations (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R70556",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R70560",
@@ -12776,7 +12777,7 @@
             "label": "Signaler un décès à l’ircantec (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R70724",
             "type": "teleservice",
-            "category": "divers"
+            "category": "famille"
         },
         {
             "id": "R71964",
@@ -12790,14 +12791,14 @@
             "label": "Faire une demande en ligne d'apostille ou de légalisation (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71995",
             "type": "teleservice",
-            "category": "divers"
+            "category": "citoyennete"
         },
         {
             "id": "R72046",
             "label": "Demande d'indemnisation au FGTI - proche d'une victime d'acte terroriste (personne blessée) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R72046",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R70802",
@@ -12846,14 +12847,14 @@
             "label": "Déposer sa candidature pour devenir jeune sapeur-pompier à la Brigade de sapeurs-pompiers de Paris (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R70932",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R70935",
             "label": "Le Compte Asso - Demander une subvention (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R70935",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R70939",
@@ -12874,7 +12875,7 @@
             "label": "Suivre l'expédition d'un certificat d'immatriculation (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71022",
             "type": "teleservice",
-            "category": "divers"
+            "category": "auto"
         },
         {
             "id": "R71027",
@@ -12895,28 +12896,28 @@
             "label": "Demande d'identifiant au registre national des fonds et fondations (RNF) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71049",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R71050",
             "label": "Aide à l'élaboration des premiers statuts d'une fondation reconnue d'utilité publique (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71050",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R71053",
             "label": "Création d'une fondation reconnue d'utilité publique (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71053",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R71064",
             "label": "Aide à la modification des statuts d'une fondation reconnue d'utilité publique (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71064",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R72513",
@@ -12930,7 +12931,7 @@
             "label": "Modification statutaire d'une fondation reconnue d'utilité publique (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71065",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R71067",
@@ -12944,7 +12945,7 @@
             "label": "Déclaration des changements de partenaires institutionnels des fondations reconnues d'utilité publique (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71070",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R71151",
@@ -12958,28 +12959,28 @@
             "label": "Demander une attestation d'honorabilité en tant qu'assistante maternelle (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71158",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R71230",
             "label": "Devenir réserviste dans la gendarmerie (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71230",
             "type": "teleservice",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R72578",
             "label": "Agence Nationale des Titres Sécurisés - Démarches immatriculation (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R72578",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R72630",
             "label": "Demande d’indemnisation par un proche d’une victime de terrorisme (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R72630",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R72632",
@@ -12993,28 +12994,28 @@
             "label": "Création d'une fondation d'entreprise (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71286",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R71288",
             "label": "Dissolution d'une fondation d'entreprise (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71288",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R71289",
             "label": "Modification d'une fondation d'entreprise (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71289",
             "type": "teleservice",
-            "category": "divers"
+            "category": "association"
         },
         {
             "id": "R71292",
             "label": "Déclaration des changements dans l'administration d'une fondation d'entreprise (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71292",
             "type": "teleservice",
-            "category": "administration"
+            "category": "association"
         },
         {
             "id": "R77416",
@@ -13091,7 +13092,7 @@
             "label": "Demande d’accès, de rectification ou d’effacement des données enregistrées au FPR, à la Cnil (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R75319",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R75549",
@@ -13133,14 +13134,14 @@
             "label": "Demander une attestation d'honorabilité (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R75685",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R74067",
             "label": "Faire une demande de chèque énergie en ligne (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74067",
             "type": "teleservice",
-            "category": "finances"
+            "category": "consommation"
         },
         {
             "id": "R75826",
@@ -13154,7 +13155,7 @@
             "label": "Service public de la validation des acquis de l’expérience (appelé France VAE) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74199",
             "type": "teleservice",
-            "category": "divers"
+            "category": "travail"
         },
         {
             "id": "R75873",
@@ -13175,21 +13176,21 @@
             "label": "Pêche de loisir en Méditerranée : s’enregistrer sur CatchMachine (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74435",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R74444",
             "label": "Pêche de loisir en mer : s’enregistrer sur RecFishing (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74444",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R74494",
             "label": "Mon master : inscription en master (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74494",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R76523",
@@ -13203,7 +13204,7 @@
             "label": "Mes services étudiant : demande d’aide à la mobilité Parcoursup (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R76648",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R74712",
@@ -13217,7 +13218,7 @@
             "label": "Demande d'indemnisation au fonds d’indemnisation des victimes de l’amiante (FIVA) - Ayant droit (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74716",
             "type": "teleservice",
-            "category": "divers"
+            "category": "justice"
         },
         {
             "id": "R74858",
@@ -13231,21 +13232,21 @@
             "label": "Demande d’agrément pour devenir visiteur accompagnant (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74895",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R76833",
             "label": "Modifier son inscription sur le registre national du refus (en ligne) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R76833",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R76836",
             "label": "Annuler son inscription sur le registre national du refus (en ligne) (Démarches en ligne)",
             "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R76836",
             "type": "teleservice",
-            "category": "divers"
+            "category": "administration"
         },
         {
             "id": "R76869",
