@@ -1,0 +1,28 @@
+[project]
+name = "selfjustice-mcp"
+version = "0.1.0"
+description = "Serveur MCP de consultation du droit français (LEGI) et de conventionnalité (UE, CEDH, RGPD, règlement IA)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "AGPL-3.0-or-later"
+keywords = ["mcp", "droit", "legifrance", "legi", "rgpd", "ai-act"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Legal Industry",
+    "Programming Language :: Python :: 3",
+    "Topic :: Sociology :: History",
+]
+dependencies = [
+    "mcp>=2.0.0",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+selfjustice-mcp = "selfjustice_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["selfjustice_mcp"]

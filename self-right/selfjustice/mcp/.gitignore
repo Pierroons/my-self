@@ -1,0 +1,8 @@
+# Artefacts Python — le .gitignore racine ne couvre pas encore Python.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
