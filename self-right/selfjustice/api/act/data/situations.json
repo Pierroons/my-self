@@ -403,6 +403,314 @@
           "assurances"
         ]
       }
+    },
+    "licenciement_conteste": {
+      "label": "Licenciement ou rupture du contrat de travail contestée",
+      "urgency": "haute",
+      "acts": [
+        {
+          "type": "saisine_prudhommes",
+          "status": "official",
+          "label": "Requête aux fins de saisine du conseil de prud'hommes (salarié)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45128",
+          "catalog_id": "R45128",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "prescription": {
+        "duree_mois": 12,
+        "article": "art. L1471-1 al. 2 du code du travail",
+        "texte": "Toute action portant sur la rupture du contrat de travail se prescrit par douze mois à compter de la notification de la rupture.",
+        "point_de_depart": "notification de la rupture"
+      },
+      "catalog_hints": {
+        "keywords": [
+          "prud",
+          "licenciement",
+          "rupture",
+          "salarie",
+          "contrat de travail",
+          "solde de tout compte",
+          "certificat de travail"
+        ],
+        "categories": [
+          "travail",
+          "justice"
+        ]
+      }
+    },
+    "depot_garantie_non_restitue": {
+      "label": "Dépôt de garantie non restitué après un bail d'habitation",
+      "acts": [
+        {
+          "type": "mise_en_demeure",
+          "status": "official",
+          "label": "Demander le remboursement du dépôt de garantie non restitué",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16638",
+          "catalog_id": "R16638",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "depot de garantie",
+          "bail",
+          "locataire",
+          "etat des lieux",
+          "preavis",
+          "restitution"
+        ],
+        "categories": [
+          "logement"
+        ]
+      }
+    },
+    "succession_litige": {
+      "label": "Succession : accepter, renoncer ou contester",
+      "acts": [
+        {
+          "type": "formulaire_cerfa",
+          "status": "official",
+          "label": "Renonciation à succession par une personne majeure",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2849",
+          "catalog_id": "R2849",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "formulaire_cerfa",
+          "status": "official",
+          "label": "Déclaration de succession",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R10279",
+          "catalog_id": "R10279",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "courrier",
+          "status": "official",
+          "label": "Demander le contrôle d'une déclaration de succession",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33775",
+          "catalog_id": "R33775",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "succession",
+          "heritier",
+          "renonciation",
+          "notaire",
+          "deces",
+          "legs",
+          "testament",
+          "indivision"
+        ],
+        "categories": [
+          "famille",
+          "finances"
+        ]
+      }
+    },
+    "surendettement": {
+      "label": "Surendettement : déposer ou contester un dossier",
+      "urgency": "haute",
+      "acts": [
+        {
+          "type": "formulaire_cerfa",
+          "status": "official",
+          "label": "Déclaration de surendettement (Banque de France)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R17094",
+          "catalog_id": "R17094",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "courrier",
+          "status": "official",
+          "label": "Lettre à joindre au dossier de surendettement",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R992",
+          "catalog_id": "R992",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "recours",
+          "status": "official",
+          "label": "Recours contre le rejet d'un dossier de surendettement",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R993",
+          "catalog_id": "R993",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "surendettement",
+          "banque de france",
+          "dette",
+          "credit",
+          "commission de surendettement",
+          "retablissement personnel"
+        ],
+        "categories": [
+          "finances",
+          "justice"
+        ]
+      }
+    },
+    "malfacon_travaux": {
+      "label": "Malfaçon, dépassement de devis ou dégâts causés par un artisan",
+      "acts": [
+        {
+          "type": "mise_en_demeure",
+          "status": "official",
+          "label": "Contester la facture d'un artisan en cas de dépassement du devis",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24080",
+          "catalog_id": "R24080",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "mise_en_demeure",
+          "status": "official",
+          "label": "Demander réparation à un artisan pour dégâts durant les travaux",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R31951",
+          "catalog_id": "R31951",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "declaration_sinistre",
+          "status": "official",
+          "label": "Faire jouer la garantie décennale auprès de l'assurance dommages-ouvrage",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53461",
+          "catalog_id": "R53461",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "prescription": {
+        "duree_annees": 10,
+        "article": "art. 1792 et 1792-4-1 du code civil",
+        "texte": "La responsabilité décennale du constructeur est engagée de plein droit ; il en est déchargé au terme de dix ans après la réception.",
+        "point_de_depart": "réception des travaux"
+      },
+      "catalog_hints": {
+        "keywords": [
+          "artisan",
+          "devis",
+          "travaux",
+          "malfacon",
+          "garantie decennale",
+          "constructeur",
+          "reception"
+        ],
+        "categories": [
+          "logement",
+          "consommation"
+        ]
+      }
+    },
+    "accident_circulation": {
+      "label": "Accident de la circulation : indemnisation",
+      "urgency": "haute",
+      "acts": [
+        {
+          "type": "formulaire_cerfa",
+          "status": "official",
+          "label": "Demande d'indemnisation au FGAO par une victime d'accident",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R15103",
+          "catalog_id": "R15103",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "formulaire_cerfa",
+          "status": "official",
+          "label": "Demande d'indemnisation au FGAO par un ayant droit (décès)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21646",
+          "catalog_id": "R21646",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "accident de la circulation",
+          "fgao",
+          "indemnisation",
+          "victime",
+          "vehicule",
+          "constat"
+        ],
+        "categories": [
+          "auto",
+          "assurances",
+          "justice"
+        ]
+      }
+    },
+    "amende_contestation": {
+      "label": "Contester une amende forfaitaire",
+      "urgency": "haute",
+      "acts": [
+        {
+          "type": "teleservice",
+          "status": "official",
+          "label": "Contester un avis d'amende forfaitaire ou désigner un autre conducteur",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42185",
+          "catalog_id": "R42185",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "amende",
+          "contravention",
+          "radar",
+          "stationnement",
+          "exces de vitesse",
+          "conducteur"
+        ],
+        "categories": [
+          "auto",
+          "justice"
+        ]
+      }
+    },
+    "pension_alimentaire_impayee": {
+      "label": "Pension alimentaire impayée ou à faire fixer",
+      "urgency": "haute",
+      "acts": [
+        {
+          "type": "mise_en_demeure",
+          "status": "official",
+          "label": "Demander le versement de la pension alimentaire",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1894",
+          "catalog_id": "R1894",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "saisine_jaf",
+          "status": "official",
+          "label": "Requête en obligation alimentaire (juge aux affaires familiales)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42402",
+          "catalog_id": "R42402",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "saisine_jaf",
+          "status": "official",
+          "label": "Demande au juge aux affaires familiales (autorité parentale, droit de visite)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R15764",
+          "catalog_id": "R15764",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "pension alimentaire",
+          "juge aux affaires familiales",
+          "obligation alimentaire",
+          "aripa",
+          "recouvrement"
+        ],
+        "categories": [
+          "famille",
+          "justice"
+        ]
+      }
     }
   }
 }
