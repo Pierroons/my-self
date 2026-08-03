@@ -73,7 +73,7 @@ HTTP_HEADERS = {
 }
 
 
-def fetch_url(url: str, timeout: int = 60, max_retries: int = 5) -> bytes:
+def fetch_url(url: str, timeout: int = 60, max_retries: int = 10) -> bytes:
     """Télécharger une URL avec headers appropriés et retry sur HTTP 202.
 
     EUR-Lex renvoie souvent HTTP 202 (Accepted) pendant la génération
@@ -398,14 +398,33 @@ def main():
 
     sources_to_process = [args.only] if args.only else list(SOURCES.keys())
 
+    echecs = []
     for source in sources_to_process:
         if source not in SOURCES:
             print(f"Source inconnue : {source}", file=sys.stderr)
+            echecs.append(source)
             continue
         n = process_source(conn, source, SOURCES[source])
         total += n
+        if n == 0:
+            echecs.append(source)
 
     conn.close()
+
+    # 🔑 Un échec de téléchargement ne détruit rien — les insertions sont des
+    # INSERT OR REPLACE, donc une source injoignable laisse simplement ses
+    # données précédentes en place. Mais il ne doit pas passer inaperçu : le
+    # 03/08/2026, CEDH et AI_ACT ont échoué pendant que le script annonçait
+    # « Terminé ! ». La base restait juste, et la panne invisible.
+    if echecs:
+        print(f"\nATTENTION : {len(echecs)} source(s) non mise(s) à jour : "
+              f"{', '.join(echecs)}", file=sys.stderr)
+        print(f"Les données précédentes de ces sources sont conservées.",
+              file=sys.stderr)
+        print(f"Terminé avec réserves : {total} articles insérés dans {args.db}")
+        # Code 2 : la base est utilisable, mais incomplètement rafraîchie.
+        # L'appelant peut distinguer ce cas d'un échec franc (code 1).
+        sys.exit(2)
 
     print(f"\nTerminé ! {total} articles insérés dans {args.db}")
 

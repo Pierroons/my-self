@@ -10,7 +10,10 @@ set -e
 LOG_FILE="/var/log/nginx/selfjustice-access.log"
 LOG_FILE_OLD="/var/log/nginx/selfjustice-access.log.1"
 COUNTER_FILE="/var/lib/selfjustice/counter.txt"
-HTML_FILE="/var/www/selfjustice/index.html"
+# Racine du site servie par nginx — surchargeable : elle diffère selon
+# l installation. Codée en dur, elle a cessé de pointer vers quoi que ce soit
+# après la migration du 03/08/2026, et le compteur de la page a gelé en silence.
+HTML_FILE="${SELFJUSTICE_SITE_DIR:-/var/www/selfjustice}/index.html"
 LEGI_DB="${SELFJUSTICE_DB_DIR:-/var/lib/selfjustice/db}/legi_selfjustice.sqlite"
 LEGI_LAST_UPDATE_FILE="/var/lib/selfjustice/legi_last_update.txt"
 EU_DB="${SELFJUSTICE_DB_DIR:-/var/lib/selfjustice/db}/conventionnalite.sqlite"
@@ -104,6 +107,24 @@ if [ ! -f "$HTML_FILE" ]; then
     exit 1
 fi
 
+# 🔑 **Pourquoi ces valeurs sont écrites dans le HTML et pas seulement servies
+# par l'API.** SelfJustice est conçu pour être lu par une IA qui récupère la
+# page — et une IA n'exécute pas le JavaScript. Le script de la page met bien
+# ces compteurs à jour côté navigateur, mais ce que l'IA voit, c'est le HTML
+# brut. D'où cette réécriture.
+#
+# ⚠️ Sur une instance protégée par un verrou d'immutabilité (`chattr +i`),
+# l'écriture échoue. Le script lève le verrou pour ce seul fichier et le
+# remet — y compris s'il est interrompu, d'où le `trap`. Sans cette
+# restauration, une interruption laisserait un fichier de production
+# modifiable sans que rien ne le signale.
+IMMUTABLE=""
+if lsattr "$HTML_FILE" 2>/dev/null | cut -c1-20 | grep -q i; then
+    IMMUTABLE="oui"
+    trap 'chattr +i "$HTML_FILE" 2>/dev/null || true' EXIT INT TERM
+    chattr -i "$HTML_FILE" 2>/dev/null || true
+fi
+
 TMP_HTML="/tmp/selfjustice-stats-update.html"
 sudo cp "$HTML_FILE" "$TMP_HTML"
 
@@ -117,5 +138,10 @@ sudo sed -i "s|<span id=\"eu-articles\">[^<]*</span>|<span id=\"eu-articles\">${
 
 sudo cp "$TMP_HTML" "$HTML_FILE"
 sudo rm -f "$TMP_HTML"
+
+if [ -n "$IMMUTABLE" ]; then
+    chattr +i "$HTML_FILE" 2>/dev/null || true
+    trap - EXIT INT TERM
+fi
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Stats mises à jour : ${TOTAL_HITS} requêtes IA, ${LEGI_ARTICLES} articles LEGI (MAJ: ${LEGI_UPDATE_DATE})"
