@@ -6,7 +6,7 @@
 # synchronisation LEGI ont échoué proprement sans que personne ne l'entende.
 # systemd garde l'état de la dernière exécution et le journal va avec.
 Description=SelfJustice — rafraîchissement de l'index Judilibre
-Documentation=file:/opt/selfjustice/tools/update_judilibre.sh
+Documentation=file:/opt/selfjustice/bin/update_judilibre.sh
 After=network-online.target
 Wants=network-online.target
 
@@ -17,7 +17,7 @@ User=root
 # La clé PISTE ne transite ni par la ligne de commande ni par l'unité :
 # `systemctl show` et `ps` exposeraient l'une comme l'autre.
 EnvironmentFile=-/etc/selfjustice/judilibre.env
-ExecStart=/opt/selfjustice/tools/update_judilibre.sh
+ExecStart=/opt/selfjustice/bin/update_judilibre.sh
 
 # Une moisson de six semaines prend quelques minutes ; la borne évite qu'un
 # blocage réseau laisse le service en cours jusqu'au passage suivant.
