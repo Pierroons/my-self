@@ -210,14 +210,9 @@ async def _get(chemin: str, params: dict[str, Any] | None = None) -> Any:
         raise ApiIndisponible(f"{type(e).__name__} : {e}") from e
 
     if r.status_code >= 400:
-        # 🔑 Un 404 se lit de deux façons, et les confondre est dangereux.
-        #
-        # L'API répond en JSON, y compris pour dire « article introuvable » —
-        # c'est une réponse légitime dont on peut se servir. Un 404 qui rend
-        # autre chose (page HTML de nginx, proxy, portail captif) signifie que
-        # l'API n'est pas là où on croit : la traiter comme « cet article
-        # n'existe pas » ferait affirmer au modèle l'absence d'un texte qui
-        # existe peut-être. Mieux vaut avouer qu'on n'a pas pu vérifier.
+        # L'API répond en JSON, y compris pour dire « article introuvable ».
+        # Un 404 qui rend autre chose (page HTML de nginx, proxy, portail
+        # captif) signifie que l'API n'est pas là où on croit.
         try:
             corps = r.json()
         except ValueError:

@@ -4,23 +4,14 @@
 # À lancer le 1er et le 15, comme les bases LEGI et conventionnalité :
 #   0 5 1,15 * * <install-dir>/update_judilibre.sh
 #
-# ## Ce que l'index sert, et ce qu'un index périmé fait de travers
-#
-# Il répond « ce numéro de décision existe » sans appeler de service tiers. Sa
-# valeur tient entièrement à sa complétude : une décision absente de l'index se
-# lit « référence introuvable », et une référence introuvable se lit vite
-# « référence inventée ». Un index en retard accuse donc de vrais arrêts.
-#
-# 🔑 C'est pourquoi l'API ne dit jamais « n'existe pas » : elle dit
-# « introuvable dans un index arrêté au <date> ». Ce script est ce qui fait
-# avancer cette date.
-#
-# ## Recouvrement
+# L'index répond « ce numéro de décision existe » sans appeler de service
+# tiers. Une décision qui y manque ressort « introuvable » : un index en retard
+# fait donc passer de vrais arrêts pour inexistants.
 #
 # Le mode `--depuis auto` repart trente jours avant la décision la plus récente
-# connue, pas au lendemain. Judilibre publie avec du retard : une décision de
-# juillet peut apparaître en août. Sans ce recouvrement, chaque exécution
-# laisserait derrière elle un trou définitif.
+# connue, pas au lendemain : Judilibre publie avec du retard, une décision de
+# juillet peut apparaître en août. Sans ce recouvrement, le trou laissé serait
+# définitif — aucune exécution ultérieure ne repasserait dessus.
 
 set -e
 
@@ -29,17 +20,23 @@ DB_DIR="${SELFJUSTICE_DB_DIR:-/var/lib/selfjustice/db}"
 
 export JUDILIBRE_DB="${JUDILIBRE_DB:-$DB_DIR/judilibre_index.sqlite}"
 export JUDILIBRE_MARQUEUR="${JUDILIBRE_MARQUEUR:-/var/lib/selfjustice/judilibre_last_update.txt}"
-export JUDILIBRE_KEY_FILE="${JUDILIBRE_KEY_FILE:-/root/.config/judilibre/keyid}"
+# La clé vit dans /etc, pas dans /root : l'unité systemd applique
+# `ProtectHome=true`, qui rend les répertoires personnels — celui de root
+# compris — invisibles au service. L'échec ne se voit qu'à la première
+# exécution réelle.
+export JUDILIBRE_KEY_FILE="${JUDILIBRE_KEY_FILE:-/etc/selfjustice/judilibre.key}"
 
-SCRIPT="$INSTALL_DIR/tools/build_judilibre_index.py"
+# Le moissonneur est cherché à côté de ce script, pas à un chemin fixe : le
+# dépôt le range dans tools/, l'installation serveur dans bin/, et coder l'un
+# des deux casserait l'autre.
+SCRIPT="$(dirname "$(readlink -f "$0")")/build_judilibre_index.py"
 LOG_FILE="${SELFJUSTICE_LOG:-$INSTALL_DIR/update_judilibre.log}"
 SAUVEGARDE="$JUDILIBRE_DB.bak"
 
 # --- Alerte sur échec -------------------------------------------------------
 #
-# Même leçon que pour LEGI : sept exécutions de la sync LEGI ont échoué
-# proprement de mai à août 2026 sans que personne ne l'entende. Un code de
-# sortie non nul que rien ne lit ne vaut pas un signalement.
+# Sept exécutions de la sync LEGI ont échoué proprement de mai à août 2026
+# sans que personne ne l'entende.
 NTFY_URL="${SELFJUSTICE_NTFY_URL:-}"
 NTFY_TOKEN_FILE="${SELFJUSTICE_NTFY_TOKEN_FILE:-/root/.config/selfjustice-ntfy-token}"
 

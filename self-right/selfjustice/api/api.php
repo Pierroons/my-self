@@ -3,8 +3,11 @@
  * SelfJustice — API de consultation légale (lecture seule).
  *
  * Donne accès aux bases juridiques locales :
- *   - LEGI (droit français officiel, 488k+ articles)
- *   - Conventionnalité (UE + CEDH, 705 articles)
+ *   - LEGI (droit français officiel)
+ *   - Conventionnalité (UE + CEDH)
+ *   - Judilibre (jurisprudence, métadonnées seules)
+ *
+ * Volumétrie et dates de synchronisation : GET /api/status.
  *
  * Zéro stockage, zéro tracking, zéro authentification.
  * Uniquement de la lecture en SQLite.
@@ -14,6 +17,9 @@
  *   GET /api/legi/search?q={query}&limit={n}
  *   GET /api/eu/article/{source}/{num}
  *   GET /api/eu/search?q={query}&source={src}&limit={n}
+ *   GET /api/jurisprudence/verifier/{ref}?jurisdiction={cc|ca}
+ *   GET /api/jurisprudence/search?q={query}
+ *   GET /api/jurisprudence/decision/{id}
  *   GET /api/status
  */
 
@@ -34,7 +40,7 @@ const EU_DB    = '/var/lib/selfjustice/db/conventionnalite.sqlite';
 // test hors du serveur, sans symlink ni droits root.
 define('JURIS_DB', getenv('SELFJUSTICE_JURIS_DB') ?: '/var/lib/selfjustice/db/judilibre_index.sqlite');
 
-// Métadonnées de 1,19 million de décisions, sans leur texte : l'index répond
+// Métadonnées de plus d'un million de décisions, sans leur texte : l'index répond
 // « cette référence existe / n'existe pas » hors ligne, le texte intégral et la
 // recherche par thème passent par l'API amont.
 const JUDILIBRE_BASE = 'https://api.piste.gouv.fr/cassation/judilibre/v1.0';
@@ -53,8 +59,7 @@ function json_error(string $message, int $status = 400): void {
  * « Je n'ai pas pu vérifier » — à ne jamais confondre avec « cela n'existe pas ».
  *
  * La raison est répétée sous `error` parce que c'est la clé que lisent les
- * clients, MCP compris : sans elle, ils affichent un « HTTP 503 » nu et le
- * modèle enchaîne sur sa mémoire, ce qui est précisément l'accident à éviter.
+ * clients, MCP compris : sans elle, ils n'affichent qu'un « HTTP 503 » nu.
  */
 function json_indetermine(string $raison, array $extra = []): void {
     json_response(array_merge(
@@ -103,10 +108,8 @@ function legi_fts_disponible(SQLite3 $db): bool {
  * aussi banale que « L1152-1 » lève « no such column: 1 » — une saisie
  * légitime rendrait un 500.
  *
- * Chaque terme est donc entouré de guillemets, où plus rien n'a de sens
- * spécial, les guillemets internes étant doublés. Termes séparés = ET
- * implicite : « harcelement moral » trouve les articles portant les deux mots,
- * sans exiger qu'ils soient côte à côte.
+ * Termes séparés = ET implicite : « harcelement moral » trouve les articles
+ * portant les deux mots, sans exiger qu'ils soient côte à côte.
  */
 function fts5_requete(string $q): string {
     $termes = preg_split('/\s+/u', trim($q), -1, PREG_SPLIT_NO_EMPTY) ?: [];
@@ -123,9 +126,7 @@ function fts5_requete(string $q): string {
  *
  * ⚠️ Miroir exact de `normaliser()` dans tools/build_judilibre_index.py. Une
  * divergence entre les deux ne lèverait aucune erreur : elle rendrait
- * simplement tous les lookups infructueux, ce qui se lirait « cette décision
- * n'existe pas ». C'est le mode de défaillance que cet endpoint existe pour
- * empêcher, donc les deux fonctions se modifient ensemble.
+ * simplement tous les lookups infructueux.
  */
 function juris_normaliser(string $ref): string {
     return strtolower(preg_replace('/[^A-Za-z0-9]/', '', $ref));
@@ -160,9 +161,7 @@ function juris_couverture(SQLite3 $db): array {
  * Appel à l'API Judilibre. `KeyId` en en-tête suffit — pas d'OAuth.
  *
  * Toute défaillance rend un 503 portant `etat: indeterminee`, jamais une liste
- * vide : « je n'ai pas pu vérifier » et « cela n'existe pas » sont deux
- * réponses différentes, et les confondre est exactement ce que ce module
- * reproche aux blogs juridiques.
+ * vide.
  */
 function judilibre_get(string $chemin, array $params): array {
     $cle = getenv('SELFJUSTICE_JUDILIBRE_KEY') ?: '';
@@ -454,13 +453,6 @@ if ($segments[0] === 'legi') {
 
         // Deux recherches, dans cet ordre : par numéro puis dans le texte.
         //
-        // Cet endpoint ne regardait que la colonne `num`, alors qu'il s'annonce
-        // « plein texte ». Une requête ordinaire — « licenciement », « chanvre »
-        // — rendait donc zéro sur 159 615 articles en vigueur, et le client en
-        // concluait que le droit était muet sur la question. Une absence
-        // affirmée sans avoir été vérifiée : la même famille d'erreur qu'un 404
-        // d'infrastructure lu comme « article introuvable ».
-        //
         // Le numéro passe en premier parce qu'il est sans ambiguïté : qui tape
         // « 1240 » veut l'article 1240, pas les vingt articles qui le citent.
         $results = [];
@@ -659,7 +651,7 @@ if ($segments[0] === 'jurisprudence') {
     //
     // Trois états, jamais deux : « trouvee », « absente », « indeterminee ».
     // Confondre les deux derniers reviendrait à affirmer une absence sans
-    // l'avoir vérifiée — la faute même que ce module combat.
+    // l'avoir vérifiée.
     if (count($segments) >= 3 && $segments[1] === 'verifier') {
         // Un RG de cour d'appel porte un slash — `26/00027`. Selon que le
         // serveur décode ou non `%2F`, il arrive soit entier dans un segment,
@@ -752,8 +744,7 @@ if ($segments[0] === 'jurisprudence') {
             // Deux réserves distinctes, et toutes deux nécessaires : l'index a
             // une borne haute, et un périmètre. Une référence du Conseil d'État
             // n'y figurera jamais, quel que soit le rafraîchissement — la
-            // signaler comme « absente » sans le dire serait un faux négatif
-            // permanent.
+            // signaler « absente » sans le dire serait donc trompeur.
             'reserve'     => $decisions
                 ? null
                 : "Introuvable dans un index arrêté au $arret : une décision "
