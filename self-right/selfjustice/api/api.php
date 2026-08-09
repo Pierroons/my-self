@@ -55,6 +55,46 @@ function open_db(string $path): SQLite3 {
     }
 }
 
+/**
+ * L'index plein texte est-il présent dans cette base ?
+ *
+ * Il est construit par la synchronisation ; une base issue d'une version
+ * antérieure du script n'en a pas. La recherche par numéro continue alors de
+ * répondre seule, au lieu de rendre une erreur.
+ */
+function legi_fts_disponible(SQLite3 $db): bool {
+    static $present = null;
+    if ($present === null) {
+        $r = $db->querySingle(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='articles_fts'"
+        );
+        $present = ($r == 1);
+    }
+    return $present;
+}
+
+/**
+ * Transforme une saisie libre en requête FTS5 inoffensive.
+ *
+ * FTS5 a sa propre syntaxe : `-` exclut, `:` désigne une colonne, `*` tronque,
+ * `NEAR()` et `OR` sont des opérateurs. Passée telle quelle, une référence
+ * aussi banale que « L1152-1 » lève « no such column: 1 » — une saisie
+ * légitime rendrait un 500.
+ *
+ * Chaque terme est donc entouré de guillemets, où plus rien n'a de sens
+ * spécial, les guillemets internes étant doublés. Termes séparés = ET
+ * implicite : « harcelement moral » trouve les articles portant les deux mots,
+ * sans exiger qu'ils soient côte à côte.
+ */
+function fts5_requete(string $q): string {
+    $termes = preg_split('/\s+/u', trim($q), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $quotes = [];
+    foreach ($termes as $terme) {
+        $quotes[] = '"' . str_replace('"', '""', $terme) . '"';
+    }
+    return implode(' ', $quotes);
+}
+
 // Router minimaliste
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $uri = rtrim(preg_replace('#^/api#', '', $uri), '/');
@@ -286,7 +326,20 @@ if ($segments[0] === 'legi') {
             json_error("Requête trop courte (min 3 caractères)");
         }
 
-        // Recherche simple par num (pattern matching)
+        // Deux recherches, dans cet ordre : par numéro puis dans le texte.
+        //
+        // Cet endpoint ne regardait que la colonne `num`, alors qu'il s'annonce
+        // « plein texte ». Une requête ordinaire — « licenciement », « chanvre »
+        // — rendait donc zéro sur 159 615 articles en vigueur, et le client en
+        // concluait que le droit était muet sur la question. Une absence
+        // affirmée sans avoir été vérifiée : la même famille d'erreur qu'un 404
+        // d'infrastructure lu comme « article introuvable ».
+        //
+        // Le numéro passe en premier parce qu'il est sans ambiguïté : qui tape
+        // « 1240 » veut l'article 1240, pas les vingt articles qui le citent.
+        $results = [];
+        $vus = [];
+
         $pattern = '%' . SQLite3::escapeString($q) . '%';
         $stmt = $db->prepare("SELECT num, etat, code_id, date_debut
                               FROM articles
@@ -297,15 +350,58 @@ if ($segments[0] === 'legi') {
         $stmt->bindValue(':pattern', $pattern);
         $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
 
-        $results = [];
         $res = $stmt->execute();
         while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+            $cle = $row['num'] . '|' . $row['code_id'];
+            $vus[$cle] = true;
             $results[] = [
                 'reference'  => $row['num'],
                 'etat'       => $row['etat'],
                 'code_id'    => $row['code_id'],
                 'date_debut' => $row['date_debut'],
+                'match'      => 'numero',
             ];
+        }
+
+        $reste = $limit - count($results);
+        if ($reste > 0 && legi_fts_disponible($db)) {
+            $stmt = $db->prepare(
+                "SELECT a.num, a.etat, a.code_id, a.date_debut, a.code_titre,
+                        snippet(articles_fts, 0, '', '', '…', 12) AS extrait
+                 FROM articles_fts f
+                 JOIN articles a ON a.rowid = f.rowid
+                 WHERE f.articles_fts MATCH :q
+                 ORDER BY bm25(articles_fts, 10.0, 1.0, 1.0)
+                 LIMIT :limit"
+            );
+            // Chaque terme est mis entre guillemets et les guillemets internes
+            // doublés : sans cela, un tiret, un deux-points ou une parenthèse
+            // dans la requête est lu comme un opérateur FTS5 et la requête
+            // échoue — « L1152-1 » rendait « no such column: 1 », soit un 500
+            // sur une saisie parfaitement légitime.
+            $stmt->bindValue(':q', fts5_requete($q));
+            $stmt->bindValue(':limit', $reste + count($results), SQLITE3_INTEGER);
+
+            $res = $stmt->execute();
+            while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+                $cle = $row['num'] . '|' . $row['code_id'];
+                if (isset($vus[$cle])) {
+                    continue;
+                }
+                $vus[$cle] = true;
+                $results[] = [
+                    'reference'  => $row['num'],
+                    'etat'       => $row['etat'],
+                    'code_id'    => $row['code_id'],
+                    'date_debut' => $row['date_debut'],
+                    'code'       => $row['code_titre'],
+                    'extrait'    => trim($row['extrait']),
+                    'match'      => 'texte',
+                ];
+                if (count($results) >= $limit) {
+                    break;
+                }
+            }
         }
 
         json_response([

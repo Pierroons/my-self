@@ -843,7 +843,9 @@ Analyse selon /directives.html</pre>
     <ul>
       <li><strong>Article par référence :</strong> <code>GET /api/legi/article/{ref}</code><br>
         Exemples : <code>/api/legi/article/L1152-1</code>, <code>/api/legi/article/R623-2</code>, <code>/api/legi/article/1240</code></li>
-      <li><strong>Recherche par numéro :</strong> <code>GET /api/legi/search?q={query}&limit=20</code></li>
+      <li><strong>Recherche par mot ou par numéro :</strong> <code>GET /api/legi/search?q={query}&limit=20</code><br>
+        Les correspondances de numéro viennent en premier, puis celles trouvées dans le texte des articles, classées par pertinence et accompagnées d'un extrait.
+        Exemples : <code>/api/legi/search?q=harcelement</code>, <code>/api/legi/search?q=L1152</code></li>
     </ul>
     <p>Réponse type :</p>
     <pre>{

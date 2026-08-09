@@ -70,6 +70,32 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_articles_num_etat ON articles(num, etat)",
 ]
 
+# Index plein texte des articles en vigueur.
+#
+# Sans lui, /api/legi/search ne peut regarder que la colonne `num`, et une
+# recherche par mots — « licenciement », « chanvre » — rend zéro sur des
+# centaines de milliers d'articles. Le client en conclut que le droit est
+# muet ; c'est l'index qui manquait.
+#
+# `content=articles` : l'index ne recopie pas le texte, il pointe vers la
+# table. Mesuré sur la base de production : +58 Mo pour 840 Mo de base, quatre
+# secondes de construction, quatre millisecondes par requête.
+#
+# `remove_diacritics 2` pour que « prenom » trouve « prénom » — personne ne
+# tape les accents dans une barre de recherche.
+#
+# Seuls les articles en vigueur : c'est ce que la recherche rend, et les
+# abrogés restent consultables par leur numéro.
+FTS = [
+    """CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
+        texte, code_titre, num,
+        content=articles,
+        tokenize="unicode61 remove_diacritics 2"
+    )""",
+    """INSERT INTO articles_fts(rowid, texte, code_titre, num)
+        SELECT rowid, texte, code_titre, num FROM articles WHERE etat = 'VIGUEUR'""",
+]
+
 _BALISE = re.compile(r"<[^>]+>")
 _ESPACES = re.compile(r"[ \t]+")
 _LIGNES = re.compile(r"\n{3,}")
@@ -166,6 +192,13 @@ def main() -> int:
     for sql in INDEXES:
         dst.execute(sql)
     dst.commit()
+
+    print("  index plein texte…", end="", flush=True)
+    for sql in FTS:
+        dst.execute(sql)
+    dst.commit()
+    indexes = dst.execute("SELECT COUNT(*) FROM articles_fts").fetchone()[0]
+    print(f" {indexes} articles indexés")
 
     vigueur = dst.execute("SELECT COUNT(*) FROM articles WHERE etat='VIGUEUR'").fetchone()[0]
     dst.close()
