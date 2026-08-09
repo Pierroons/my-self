@@ -28,8 +28,16 @@ header('X-Content-Type-Options: nosniff');
 
 // Config — bases via symlinks dans /var/lib/selfjustice/db/
 // (accessible au user www-data de PHP-FPM)
-const LEGI_DB = '/var/lib/selfjustice/db/legi_selfjustice.sqlite';
-const EU_DB   = '/var/lib/selfjustice/db/conventionnalite.sqlite';
+const LEGI_DB  = '/var/lib/selfjustice/db/legi_selfjustice.sqlite';
+const EU_DB    = '/var/lib/selfjustice/db/conventionnalite.sqlite';
+// `define` et non `const` : un chemin surchargeable permet de rejouer le jeu de
+// test hors du serveur, sans symlink ni droits root.
+define('JURIS_DB', getenv('SELFJUSTICE_JURIS_DB') ?: '/var/lib/selfjustice/db/judilibre_index.sqlite');
+
+// Métadonnées de 1,19 million de décisions, sans leur texte : l'index répond
+// « cette référence existe / n'existe pas » hors ligne, le texte intégral et la
+// recherche par thème passent par l'API amont.
+const JUDILIBRE_BASE = 'https://api.piste.gouv.fr/cassation/judilibre/v1.0';
 
 function json_response(array $data, int $status = 200): void {
     http_response_code($status);
@@ -39,6 +47,20 @@ function json_response(array $data, int $status = 200): void {
 
 function json_error(string $message, int $status = 400): void {
     json_response(['error' => $message], $status);
+}
+
+/**
+ * « Je n'ai pas pu vérifier » — à ne jamais confondre avec « cela n'existe pas ».
+ *
+ * La raison est répétée sous `error` parce que c'est la clé que lisent les
+ * clients, MCP compris : sans elle, ils affichent un « HTTP 503 » nu et le
+ * modèle enchaîne sur sa mémoire, ce qui est précisément l'accident à éviter.
+ */
+function json_indetermine(string $raison, array $extra = []): void {
+    json_response(array_merge(
+        ['etat' => 'indeterminee', 'error' => $raison, 'raison' => $raison],
+        $extra
+    ), 503);
 }
 
 function open_db(string $path): SQLite3 {
@@ -95,6 +117,88 @@ function fts5_requete(string $q): string {
     return implode(' ', $quotes);
 }
 
+/**
+ * Normalisation d'un numéro de décision : `25-10.377` -> `2510377`,
+ * `25/01234` -> `2501234`.
+ *
+ * ⚠️ Miroir exact de `normaliser()` dans tools/build_judilibre_index.py. Une
+ * divergence entre les deux ne lèverait aucune erreur : elle rendrait
+ * simplement tous les lookups infructueux, ce qui se lirait « cette décision
+ * n'existe pas ». C'est le mode de défaillance que cet endpoint existe pour
+ * empêcher, donc les deux fonctions se modifient ensemble.
+ */
+function juris_normaliser(string $ref): string {
+    return strtolower(preg_replace('/[^A-Za-z0-9]/', '', $ref));
+}
+
+/**
+ * Bornes réelles des données par juridiction.
+ *
+ * On ne lit pas `intervalles_faits` : cette table enregistre les intervalles
+ * *demandés* à l'API — de l'an 0100 à 2027 — et ne dit rien de ce qui a
+ * réellement été reçu. Les dates aberrantes sont écartées : la base amont
+ * contient une décision de cour d'appel datée du 24 février 0201.
+ */
+function juris_couverture(SQLite3 $db): array {
+    $couverture = [];
+    $res = $db->query(
+        "SELECT jurisdiction, MIN(decision_date) AS debut, MAX(decision_date) AS fin,
+                COUNT(*) AS total
+         FROM decisions WHERE date_suspecte = 0 GROUP BY jurisdiction"
+    );
+    while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+        $couverture[$row['jurisdiction']] = [
+            'debut'     => $row['debut'],
+            'fin'       => $row['fin'],
+            'decisions' => (int) $row['total'],
+        ];
+    }
+    return $couverture;
+}
+
+/**
+ * Appel à l'API Judilibre. `KeyId` en en-tête suffit — pas d'OAuth.
+ *
+ * Toute défaillance rend un 503 portant `etat: indeterminee`, jamais une liste
+ * vide : « je n'ai pas pu vérifier » et « cela n'existe pas » sont deux
+ * réponses différentes, et les confondre est exactement ce que ce module
+ * reproche aux blogs juridiques.
+ */
+function judilibre_get(string $chemin, array $params): array {
+    $cle = getenv('SELFJUSTICE_JUDILIBRE_KEY') ?: '';
+    if ($cle === '') {
+        json_indetermine(
+            "Clé Judilibre absente de cette instance : la recherche par thème et "
+            . "le texte intégral sont indisponibles. La vérification d'une "
+            . "référence dans l'index local reste possible."
+        );
+    }
+
+    $url = JUDILIBRE_BASE . $chemin . '?' . http_build_query($params);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER     => ['KeyId: ' . $cle],
+        CURLOPT_TIMEOUT        => 15,
+    ]);
+    $corps  = curl_exec($ch);
+    $statut = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    $erreur = curl_error($ch);
+    curl_close($ch);
+
+    if ($corps === false || $statut !== 200) {
+        json_indetermine($erreur !== ''
+            ? "API Judilibre injoignable : $erreur"
+            : "API Judilibre — HTTP $statut");
+    }
+
+    $data = json_decode($corps, true);
+    if (!is_array($data)) {
+        json_indetermine("Réponse Judilibre illisible");
+    }
+    return $data;
+}
+
 // Router minimaliste
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $uri = rtrim(preg_replace('#^/api#', '', $uri), '/');
@@ -110,6 +214,9 @@ if (empty($segments)) {
             'GET /api/legi/search?q={query}'           => 'Recherche plein texte LEGI',
             'GET /api/eu/article/{source}/{num}'       => 'Article européen (CEDH, CHARTE_UE, TUE, TFUE, RGPD, AI_ACT)',
             'GET /api/eu/search?q={query}'             => 'Recherche dans conventionnalité',
+            'GET /api/jurisprudence/verifier/{ref}'     => 'Cette référence existe-t-elle ? (ex: 25-10.377, ?jurisdiction=cc|ca)',
+            'GET /api/jurisprudence/search?q={query}'   => 'Recherche de jurisprudence par thème',
+            'GET /api/jurisprudence/decision/{id}'      => 'Texte intégral d\'une décision',
             'GET /api/status'                          => 'État des bases (nombre articles, last_update)',
             'GET /api/stats/by-ai'                     => 'Statistiques anonymes par famille d\'IA (Claude, OpenAI, etc.)',
             'GET /api/stats/by-endpoint'               => 'Top articles les plus consultés (anonyme, intérêt général)',
@@ -145,7 +252,7 @@ if ($segments[0] === 'stats') {
 // /api/status
 // ============================================================
 if ($segments[0] === 'status') {
-    $result = ['legi' => null, 'eu' => null];
+    $result = ['legi' => null, 'eu' => null, 'jurisprudence' => null];
 
     try {
         $db = open_db(LEGI_DB);
@@ -174,6 +281,25 @@ if ($segments[0] === 'status') {
         $result['eu']['last_update'] = file_exists($file) ? trim(file_get_contents($file)) : null;
         $db->close();
     } catch (Exception $e) {}
+
+    // La couverture réelle vaut mieux qu'une date de synchronisation : elle dit
+    // jusqu'où l'index permet de conclure à une absence.
+    if (file_exists(JURIS_DB)) {
+        try {
+            $db = open_db(JURIS_DB);
+            $couverture = juris_couverture($db);
+            $result['jurisprudence'] = [
+                'decisions'   => array_sum(array_column($couverture, 'decisions')),
+                'couverture'  => $couverture,
+                'cle_amont'   => getenv('SELFJUSTICE_JUDILIBRE_KEY') ? 'configurée' : 'absente',
+                'last_update' => (function() {
+                    $c = @file_get_contents('/var/lib/selfjustice/judilibre_last_update.txt');
+                    return $c ? trim($c) : null;
+                })(),
+            ];
+            $db->close();
+        } catch (Exception $e) {}
+    }
 
     json_response($result);
 }
@@ -522,6 +648,179 @@ if ($segments[0] === 'eu') {
     }
 
     json_error("Endpoint EU inconnu", 404);
+}
+
+// ============================================================
+// /api/jurisprudence/...
+// ============================================================
+if ($segments[0] === 'jurisprudence') {
+
+    // /api/jurisprudence/verifier/{ref}?jurisdiction=cc|ca
+    //
+    // Trois états, jamais deux : « trouvee », « absente », « indeterminee ».
+    // Confondre les deux derniers reviendrait à affirmer une absence sans
+    // l'avoir vérifiée — la faute même que ce module combat.
+    if (count($segments) >= 3 && $segments[1] === 'verifier') {
+        // Un RG de cour d'appel porte un slash — `26/00027`. Selon que le
+        // serveur décode ou non `%2F`, il arrive soit entier dans un segment,
+        // soit découpé en deux : rejoindre puis décoder couvre les deux cas.
+        // Sans ça, `%2F` survit à la normalisation en « 2f » et toutes les
+        // références de cours d'appel ressortent « absentes ».
+        $ref  = rawurldecode(implode('/', array_slice($segments, 2)));
+        $norm = juris_normaliser($ref);
+
+        if ($norm === '') {
+            json_error("Référence vide après normalisation : « $ref »");
+        }
+
+        if (!file_exists(JURIS_DB)) {
+            json_indetermine(
+                "Index jurisprudence absent de cette instance : la vérification "
+                . "est impossible. Ne rien conclure de cette réponse, et ne citer "
+                . "aucune décision de mémoire.",
+                ['reference' => $ref]
+            );
+        }
+
+        $db          = open_db(JURIS_DB);
+        $couverture  = juris_couverture($db);
+        $juridiction = isset($_GET['jurisdiction']) ? strtolower($_GET['jurisdiction']) : null;
+
+        if ($juridiction !== null && !isset($couverture[$juridiction])) {
+            $db->close();
+            json_indetermine(
+                "Juridiction « $juridiction » hors de l'index (couvertes : "
+                . implode(', ', array_keys($couverture)) . "). La justice "
+                . "administrative — Conseil d'État, tribunaux administratifs — "
+                . "n'est pas dans Judilibre mais dans ArianeWeb.",
+                ['reference' => $ref, 'couverture' => $couverture]
+            );
+        }
+
+        $sql = "SELECT d.id, d.number, d.decision_date, d.jurisdiction, d.chamber,
+                       d.solution, d.ecli, d.type, d.date_suspecte
+                FROM numeros n JOIN decisions d ON d.id = n.decision_id
+                WHERE n.number_norm = :norm";
+        if ($juridiction !== null) {
+            $sql .= " AND d.jurisdiction = :juri";
+        }
+        $sql .= " ORDER BY d.decision_date DESC LIMIT 50";
+
+        $stmt = $db->prepare($sql);
+        $stmt->bindValue(':norm', $norm);
+        if ($juridiction !== null) {
+            $stmt->bindValue(':juri', $juridiction);
+        }
+        $res = $stmt->execute();
+
+        $decisions   = [];
+        $juridictions = [];
+        while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+            $juridictions[$row['jurisdiction']] = true;
+            $decisions[] = [
+                'id'            => $row['id'],
+                'numero'        => $row['number'],
+                'date'          => $row['date_suspecte'] ? null : $row['decision_date'],
+                'date_brute'    => $row['decision_date'],
+                'date_suspecte' => (bool) $row['date_suspecte'],
+                'juridiction'   => $row['jurisdiction'],
+                'chambre'       => $row['chamber'],
+                'solution'      => $row['solution'],
+                'ecli'          => $row['ecli'],
+                'type'          => $row['type'],
+            ];
+        }
+        $db->close();
+
+        // Borne prudente : la plus ancienne des fins de couverture retenues.
+        // Sans juridiction précisée, c'est celle qui s'arrête le plus tôt qui
+        // commande — une décision plus récente échapperait à l'index.
+        $fins   = array_column(
+            $juridiction !== null ? [$couverture[$juridiction]] : array_values($couverture),
+            'fin'
+        );
+        $arret  = $fins ? min($fins) : null;
+
+        json_response([
+            'etat'        => $decisions ? 'trouvee' : 'absente',
+            'reference'   => $ref,
+            'normalisee'  => $norm,
+            'juridiction' => $juridiction,
+            'count'       => count($decisions),
+            'decisions'   => $decisions,
+            'couverture'  => $couverture,
+            // Deux réserves distinctes, et toutes deux nécessaires : l'index a
+            // une borne haute, et un périmètre. Une référence du Conseil d'État
+            // n'y figurera jamais, quel que soit le rafraîchissement — la
+            // signaler comme « absente » sans le dire serait un faux négatif
+            // permanent.
+            'reserve'     => $decisions
+                ? null
+                : "Introuvable dans un index arrêté au $arret : une décision "
+                . "postérieure ne peut pas être exclue. Périmètre limité à la "
+                . "Cour de cassation et aux cours d'appel — la justice "
+                . "administrative (Conseil d'État, CAA, TA) relève d'ArianeWeb et "
+                . "n'y figurera jamais. Dire « introuvable », pas « n'existe pas ».",
+            'avertissement' => count($juridictions) > 1
+                ? "Plusieurs juridictions portent ce même numéro normalisé : un RG "
+                . "de cour d'appel (25/10907) et un pourvoi (25-10.907) se "
+                . "confondent une fois les séparateurs retirés. Filtrer sur la "
+                . "juridiction avant de conclure."
+                : null,
+        ]);
+    }
+
+    // /api/jurisprudence/search?q=... — par thème, via l'API amont
+    if (count($segments) >= 2 && $segments[1] === 'search') {
+        $q = trim($_GET['q'] ?? '');
+        if (mb_strlen($q) < 3) {
+            json_error("Requête trop courte (min 3 caractères)");
+        }
+
+        // Une saisie qui ressemble à un numéro partirait en plein texte et
+        // rendrait des centaines de milliers de résultats — un faux positif qui
+        // ferait conclure « la référence existe ».
+        if (preg_match('#^[A-Z]?\s?[0-9]{2}[-/.][0-9]{2}[-./]?[0-9]+$#i', $q)) {
+            json_error(
+                "« $q » ressemble à un numéro de décision. Utiliser "
+                . "/api/jurisprudence/verifier/" . rawurlencode($q) . " : en plein "
+                . "texte, ce numéro rendrait des milliers de faux positifs.",
+                400
+            );
+        }
+
+        $params = ['query' => $q, 'page_size' => min(max((int)($_GET['limit'] ?? 10), 1), 50)];
+        foreach (['jurisdiction', 'date_start', 'date_end'] as $option) {
+            if (!empty($_GET[$option])) {
+                $params[$option] = $_GET[$option];
+            }
+        }
+
+        $data = judilibre_get('/search', $params);
+        json_response([
+            'etat'    => 'trouvee',
+            'query'   => $q,
+            'total'   => $data['total'] ?? null,
+            'results' => $data['results'] ?? [],
+            'source'  => 'Judilibre (Cour de cassation) — temps réel',
+        ]);
+    }
+
+    // /api/jurisprudence/decision/{id} — texte intégral, à la demande
+    if (count($segments) >= 3 && $segments[1] === 'decision') {
+        $id = $segments[2];
+        if (!preg_match('/^[a-f0-9]{16,40}$/i', $id)) {
+            json_error("Identifiant de décision invalide : « $id »");
+        }
+        json_response(judilibre_get('/decision', ['id' => $id]));
+    }
+
+    json_error(
+        "Endpoint jurisprudence inconnu. Disponibles : "
+        . "/api/jurisprudence/verifier/{ref}, /api/jurisprudence/search?q=, "
+        . "/api/jurisprudence/decision/{id}",
+        404
+    );
 }
 
 json_error("Endpoint inconnu : /" . implode('/', $segments), 404);

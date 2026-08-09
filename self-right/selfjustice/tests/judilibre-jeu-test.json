@@ -1,0 +1,242 @@
+[
+  {
+    "number": "25-19.922",
+    "date": "2026-07-16",
+    "jurisdiction": "cc",
+    "chamber": "ordo",
+    "location": null,
+    "id": "6a586af693c619cd1f04b9cc"
+  },
+  {
+    "number": "25-14.065",
+    "date": "2026-07-09",
+    "jurisdiction": "cc",
+    "chamber": "civ3",
+    "location": null,
+    "id": "6a4f375d93c619cd1f957eac"
+  },
+  {
+    "number": "25-10.710",
+    "date": "2026-07-09",
+    "jurisdiction": "cc",
+    "chamber": "civ2",
+    "location": null,
+    "id": "6a4f380793c619cd1f95a094"
+  },
+  {
+    "number": "25-13.874",
+    "date": "2026-07-09",
+    "jurisdiction": "cc",
+    "chamber": "civ3",
+    "location": null,
+    "id": "6a4f390093c619cd1f95df2c"
+  },
+  {
+    "number": "26-00.008",
+    "date": "2026-07-09",
+    "jurisdiction": "cc",
+    "chamber": "civ2",
+    "location": null,
+    "id": "6a4f37be93c619cd1f9590be"
+  },
+  {
+    "number": "22-24.254",
+    "date": "2026-07-09",
+    "jurisdiction": "cc",
+    "chamber": "civ3",
+    "location": null,
+    "id": "6a4f374193c619cd1f957a04"
+  },
+  {
+    "number": "25-12.287",
+    "date": "2026-07-08",
+    "jurisdiction": "cc",
+    "chamber": "civ1",
+    "location": null,
+    "id": "6a4de50b93c619cd1f8433dc"
+  },
+  {
+    "number": "25-12.285",
+    "date": "2026-07-08",
+    "jurisdiction": "cc",
+    "chamber": "civ1",
+    "location": null,
+    "id": "6a4de51193c619cd1f8434a6"
+  },
+  {
+    "number": "24-16.567",
+    "date": "2026-07-08",
+    "jurisdiction": "cc",
+    "chamber": "civ1",
+    "location": null,
+    "id": "6a4de51d93c619cd1f843664"
+  },
+  {
+    "number": "24-21.041",
+    "date": "2026-07-08",
+    "jurisdiction": "cc",
+    "chamber": "soc",
+    "location": null,
+    "id": "6a4de53393c619cd1f84395c"
+  },
+  {
+    "number": "24-19.289",
+    "date": "2026-07-08",
+    "jurisdiction": "cc",
+    "chamber": "soc",
+    "location": null,
+    "id": "6a4de42193c619cd1f841229"
+  },
+  {
+    "number": "24-22.696",
+    "date": "2026-07-08",
+    "jurisdiction": "cc",
+    "chamber": "soc",
+    "location": null,
+    "id": "6a4de42e93c619cd1f8413d9"
+  },
+  {
+    "number": "24-20.184",
+    "date": "2026-07-08",
+    "jurisdiction": "cc",
+    "chamber": "soc",
+    "location": null,
+    "id": "6a4de43193c619cd1f841451"
+  },
+  {
+    "number": "25-15.693",
+    "date": "2026-07-08",
+    "jurisdiction": "cc",
+    "chamber": "soc",
+    "location": null,
+    "id": "6a4de43793c619cd1f841527"
+  },
+  {
+    "number": "25-11.689",
+    "date": "2026-07-08",
+    "jurisdiction": "cc",
+    "chamber": "soc",
+    "location": null,
+    "id": "6a4de43a93c619cd1f84159d"
+  },
+  {
+    "number": "26/00027",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "REFERES 1ER PP",
+    "location": "ca_amiens",
+    "id": "6a644e42d6da041962f23750"
+  },
+  {
+    "number": "25/00654",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "1ère Chambre",
+    "location": "ca_bourges",
+    "id": "6a644f97d6da041962f28093"
+  },
+  {
+    "number": "25/01172",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "1ère Chambre",
+    "location": "ca_bourges",
+    "id": "6a644f9bd6da041962f281c5"
+  },
+  {
+    "number": "22/00926",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "1ère Chambre",
+    "location": "ca_metz",
+    "id": "6a644eb2d6da041962f249d7"
+  },
+  {
+    "number": "26/00774",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "Rétention Administrative",
+    "location": "ca_metz",
+    "id": "6a644e98d6da041962f24596"
+  },
+  {
+    "number": "25/01241",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "2ème Chambre",
+    "location": "ca_basse_terre",
+    "id": "6a644f12d6da041962f25bd3"
+  },
+  {
+    "number": "25/01292",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "2ème Chambre",
+    "location": "ca_basse_terre",
+    "id": "6a644f1ad6da041962f25e00"
+  },
+  {
+    "number": "25/00505",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "1ère Chambre",
+    "location": "ca_bourges",
+    "id": "6a644fa7d6da041962f284d6"
+  },
+  {
+    "number": "25/01170",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "1ère Chambre",
+    "location": "ca_bourges",
+    "id": "6a644fbad6da041962f28a23"
+  },
+  {
+    "number": "25/07421",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "Jurid. Premier Président",
+    "location": "ca_lyon",
+    "id": "6a644e24d6da041962f2325e"
+  },
+  {
+    "number": "25/04839",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "5EME CHAMBRE PRUD'HOMALE",
+    "location": "ca_amiens",
+    "id": "6a644e4ed6da041962f23995"
+  },
+  {
+    "number": "24/02969",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "4eme Chambre Section 2",
+    "location": "ca_toulouse",
+    "id": "6a644e67d6da041962f23da3"
+  },
+  {
+    "number": "25/07406",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "Jurid. Premier Président",
+    "location": "ca_lyon",
+    "id": "6a644debd6da041962f228f6"
+  },
+  {
+    "number": "26/00044",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "REFERES 1ER PP",
+    "location": "ca_amiens",
+    "id": "6a644e45d6da041962f237da"
+  },
+  {
+    "number": "25/00265",
+    "date": "2026-07-24",
+    "jurisdiction": "ca",
+    "chamber": "2ème Chambre",
+    "location": "ca_basse_terre",
+    "id": "6a644f09d6da041962f25989"
+  }
+]

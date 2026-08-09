@@ -48,6 +48,7 @@ import logging
 import os
 import re
 import time
+import urllib.parse
 from typing import Any
 
 import httpx
@@ -526,6 +527,144 @@ async def rechercher_conventionnalite(requete: str, source: str | None = None) -
         f"{bandeau}\n\n{data.get('count', len(resultats))} résultat(s) pour « {requete} » :\n"
         f"{lignes}\n\n"
         "Appelle `article_europeen` sur la référence retenue pour en obtenir le texte."
+    )
+
+
+def _msg_juris_morte(detail: str) -> str:
+    """Même logique que `_msg_api_morte`, appliquée à la jurisprudence.
+
+    Le risque y est plus grand qu'ailleurs : un arrêt inventé porte un numéro
+    crédible, une chambre plausible et une solution vraisemblable. Trois sites
+    juridiques ont publié trois décisions différentes sous le même numéro sans
+    que personne ne s'en aperçoive.
+    """
+    return (
+        f"Vérification de jurisprudence impossible ({detail}).\n\n"
+        "Ne cite AUCUNE décision de mémoire, même si elle te paraît certaine. "
+        "Dis à l'utilisateur que la vérification est indisponible et renvoie-le "
+        "vers courdecassation.fr ou judilibre.io. Un numéro d'arrêt cité sans "
+        "vérification n'a aucune valeur."
+    )
+
+
+@server.tool()
+async def verifier_jurisprudence(reference: str, juridiction: str | None = None) -> str:
+    """Vérifie qu'un numéro de décision existe réellement, avant de le citer.
+
+    À appeler chaque fois qu'un numéro d'arrêt apparaît — qu'il vienne de
+    l'utilisateur, d'un site web ou de ta propre mémoire. Un numéro plausible
+    n'est pas un numéro réel.
+
+    Args:
+        reference: le numéro tel qu'il s'écrit — « 25-10.377 » pour un pourvoi,
+            « 26/00027 » pour un rôle général de cour d'appel.
+        juridiction: « cc » (Cour de cassation) ou « ca » (cours d'appel).
+            À préciser quand on la connaît : le même numéro normalisé peut
+            désigner un pourvoi et un RG de cour d'appel.
+    """
+    chemin = f"/jurisprudence/verifier/{urllib.parse.quote(reference, safe='')}"
+    params = {"jurisdiction": juridiction} if juridiction else None
+    try:
+        data = await _get(chemin, params)
+    except ApiIndisponible as e:
+        return _msg_juris_morte(str(e))
+
+    etat = data.get("etat")
+
+    if etat == "indeterminee":
+        return _msg_juris_morte(data.get("raison", "raison non précisée"))
+
+    if etat == "absente":
+        return (
+            f"« {reference} » est INTROUVABLE dans l'index.\n\n"
+            f"{data.get('reserve', '')}\n\n"
+            "Ne présente pas cette décision comme existante. Si l'utilisateur "
+            "l'a lue quelque part, dis-lui que la référence n'a pas pu être "
+            "confirmée et invite-le à vérifier sa source."
+        )
+
+    decisions = data.get("decisions", [])
+    lignes = "\n".join(
+        f"  · {d.get('numero')} — {d.get('juridiction')}"
+        + (f"/{d.get('chambre')}" if d.get("chambre") else "")
+        + f", {d.get('date') or 'date douteuse en base amont'}"
+        + (f" — {d.get('solution')}" if d.get("solution") else "")
+        + (f"\n      {d.get('ecli')}" if d.get("ecli") else "")
+        + f"\n      id : {d.get('id')}"
+        for d in decisions
+    )
+    avert = data.get("avertissement")
+    return (
+        f"« {reference} » existe — {len(decisions)} décision(s) :\n{lignes}\n\n"
+        + (f"⚠️ {avert}\n\n" if avert else "")
+        + "L'existence est confirmée, pas le contenu : appelle `texte_decision` "
+        "avec l'id avant d'affirmer ce que la décision juge."
+    )
+
+
+@server.tool()
+async def rechercher_jurisprudence(requete: str, limite: int = 10) -> str:
+    """Cherche des décisions par thème dans la base de la Cour de cassation.
+
+    Rend des références à confirmer ensuite avec `texte_decision`, qui seul
+    donne le contenu réel.
+
+    Args:
+        requete: les mots du sujet cherché (« rupture conventionnelle »).
+            Pour un numéro, utiliser `verifier_jurisprudence`.
+        limite: nombre maximum de résultats (défaut 10).
+    """
+    try:
+        data = await _get("/jurisprudence/search", {"q": requete, "limit": limite})
+    except ApiIndisponible as e:
+        return _msg_juris_morte(str(e))
+
+    resultats = data.get("results", [])
+    if not resultats:
+        return (
+            f"Aucune décision ne correspond à « {requete} ».\n\n"
+            "N'invente pas d'arrêt approchant : dis que la recherche ne rend "
+            "rien et demande à l'utilisateur de préciser son sujet."
+        )
+
+    lignes = "\n".join(
+        f"  · {r.get('number')} — {r.get('jurisdiction')}, {r.get('decision_date')}"
+        f"\n      id : {r.get('id')}"
+        for r in resultats
+    )
+    return (
+        f"{data.get('total', len(resultats))} décision(s) pour « {requete} » "
+        f"(les {len(resultats)} premières) :\n{lignes}\n\n"
+        "Appelle `texte_decision` sur l'id retenu avant de citer quoi que ce soit."
+    )
+
+
+@server.tool()
+async def texte_decision(identifiant: str) -> str:
+    """Rend le texte intégral d'une décision, à partir de son identifiant.
+
+    Args:
+        identifiant: l'`id` rendu par `verifier_jurisprudence` ou
+            `rechercher_jurisprudence`. Ce n'est pas le numéro de la décision.
+    """
+    try:
+        data = await _get(f"/jurisprudence/decision/{urllib.parse.quote(identifiant, safe='')}")
+    except ApiIndisponible as e:
+        return _msg_juris_morte(str(e))
+
+    if data.get("etat") == "indeterminee":
+        return _msg_juris_morte(data.get("raison", "raison non précisée"))
+
+    entete = (
+        f"{data.get('number')} — {data.get('jurisdiction')}"
+        + (f"/{data.get('chamber')}" if data.get("chamber") else "")
+        + f", {data.get('decision_date')}"
+    )
+    texte = data.get("text") or "(texte non fourni par la source)"
+    return (
+        f"{entete}\n{data.get('ecli', '')}\n\n{texte}\n\n"
+        "Source : Judilibre (Cour de cassation), open data. Cite la décision "
+        "telle qu'elle est écrite ici, sans la reformuler en règle générale."
     )
 
 

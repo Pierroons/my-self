@@ -1,0 +1,7 @@
+# Index Judilibre : 341 Mo, reconstructible par tools/build_judilibre_index.py
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.bak
+judilibre_last_update.txt
