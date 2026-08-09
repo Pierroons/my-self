@@ -75,7 +75,7 @@ final class Primitives
      * Derive a 256-bit key from a memorized secret via HMAC-SHA256.
      *
      * No memory-hardening (HMAC is fast). Adequate ONLY if the memorized
-     * secret has enough entropy (per whitepaper §6.2 — minimum 30 bits via
+     * secret has enough entropy (per whitepaper §7 — minimum 30 bits via
      * zxcvbn). Use the contextual separator to isolate purposes:
      *   - SelfRecover  : context = "<domain>/recover"
      *   - SelfDataGuard: context = "<user_salt>/dataguard"
