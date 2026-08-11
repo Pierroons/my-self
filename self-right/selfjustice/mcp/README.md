@@ -23,6 +23,9 @@ accompagné de la date à laquelle cette base a été synchronisée.
 | `rechercher_droit_francais` | Cherche des références par numéro ou fragment |
 | `article_europeen` | Article CEDH, Charte UE, TUE, TFUE, RGPD ou règlement IA |
 | `rechercher_conventionnalite` | Cherche dans les textes de conventionnalité |
+| `verifier_jurisprudence` | Dit si un numéro d'arrêt existe réellement, avant qu'on le cite |
+| `rechercher_jurisprudence` | Cherche des décisions par thème, avec filtre de date |
+| `texte_decision` | Texte intégral d'une décision, à partir de son identifiant |
 
 Le règlement (UE) 2024/1689 sur l'intelligence artificielle est inclus sous le
 nom `AI_ACT`. Son article 50 porte les obligations de transparence applicables
@@ -72,22 +75,26 @@ Pour Claude Code (`~/.claude.json`) ou tout autre client MCP :
 {
   "mcpServers": {
     "selfjustice": {
-      "command": "selfjustice-mcp"
+      "command": "selfjustice-mcp",
+      "env": { "SELFJUSTICE_API_URL": "https://exemple.test/api" }
     }
   }
 }
 ```
 
-Aucune clé d'API, aucun compte : le serveur interroge une API publique en
-lecture seule.
+Aucune clé d'API, aucun compte : il te faut seulement désigner l'instance à
+interroger.
+
+`SELFJUSTICE_API_URL` est **obligatoire et sans valeur par défaut**. Le serveur
+ne suppose aucune instance : coder une adresse en dur ferait porter à celui qui
+l'héberge le trafic de toutes les installations, à son insu. Sans cette
+variable, le serveur démarre, annonce ses outils, et les refuse tous.
 
 ### Variables d'environnement
 
-Toutes optionnelles.
-
 | Variable | Effet |
 |---|---|
-| `SELFJUSTICE_API_URL` | Racine de l'API à interroger — pointe-la vers ta propre instance |
+| `SELFJUSTICE_API_URL` | **Obligatoire.** Racine de l'API à interroger |
 | `SELFJUSTICE_TIMEOUT` | Délai réseau en secondes (défaut : 15) |
 | `SELFJUSTICE_NTFY_URL` | Topic ntfy prévenu quand la base est en retard |
 | `SELFJUSTICE_NTFY_TOKEN` | Jeton du topic |

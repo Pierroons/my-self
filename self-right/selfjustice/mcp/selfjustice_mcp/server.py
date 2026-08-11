@@ -126,18 +126,27 @@ def _parse_date_fr(texte: str) -> dt.date | None:
 
 
 def _derniere_echeance(aujourdhui: dt.date) -> dt.date:
-    """Dernière échéance de synchronisation passée (cadence 1er et 15).
+    """Dernière échéance de synchronisation **exigible** (cadence 1er et 15).
 
     🔑 Le contrôle porte sur la date du **contenu**, jamais sur celle de la
     dernière exécution. Un cron ponctuel qui reconstruit une base identique
     passe tous les contrôles d'exécution en servant du droit périmé — c'est
     exactement ce qui s'est produit pendant treize mois.
+
+    Le jour même d'une échéance, la synchronisation n'a pas encore tourné : à
+    00h10 le 15, une base arrêtée au 1er est normale. Exiger l'échéance du jour
+    déclenchait une alerte « retard de 14 jours » sur une base saine, deux fois
+    par mois, ntfy compris — et une alerte qui crie pour rien finit ignorée le
+    jour où elle a raison. On exige donc l'échéance précédente ce jour-là, ce
+    qui reporte la détection à J+1 : très en deçà des treize mois de la panne
+    fondatrice.
     """
-    if aujourdhui.day >= 15:
+    if aujourdhui.day > 15:
         return aujourdhui.replace(day=15)
-    if aujourdhui.day >= 1:
+    if aujourdhui.day > 1:
         return aujourdhui.replace(day=1)
-    return aujourdhui.replace(day=1)
+    # Le 1er : l'échéance exigible est le 15 du mois précédent.
+    return (aujourdhui - dt.timedelta(days=1)).replace(day=15)
 
 
 def _etat_fraicheur(last_update: str, base: str) -> tuple[str, bool]:
@@ -635,8 +644,13 @@ async def verifier_jurisprudence(reference: str, juridiction: str | None = None)
     if etat == "indeterminee":
         return _msg_juris_morte(data.get("raison", "raison non précisée"))
 
+    # 🔑 Le bandeau compte surtout ici : « introuvable » ne veut pas dire la même
+    # chose selon que l'index s'arrête au mois dernier ou date de la veille.
+    bandeau = await _bandeau("jurisprudence")
+
     if etat == "absente":
         return (
+            f"{bandeau}\n\n"
             f"« {reference} » est INTROUVABLE dans l'index.\n\n"
             f"{data.get('reserve', '')}\n\n"
             "Ne présente pas cette décision comme existante. Si l'utilisateur "
@@ -656,6 +670,7 @@ async def verifier_jurisprudence(reference: str, juridiction: str | None = None)
     )
     avert = data.get("avertissement")
     return (
+        f"{bandeau}\n\n"
         f"« {reference} » existe — {len(decisions)} décision(s) :\n{lignes}\n\n"
         + (f"⚠️ {avert}\n\n" if avert else "")
         + "L'existence est confirmée, pas le contenu : appelle `texte_decision` "
@@ -664,7 +679,13 @@ async def verifier_jurisprudence(reference: str, juridiction: str | None = None)
 
 
 @server.tool()
-async def rechercher_jurisprudence(requete: str, limite: int = 10) -> str:
+async def rechercher_jurisprudence(
+    requete: str,
+    limite: int = 10,
+    depuis: str | None = None,
+    jusqu_a: str | None = None,
+    juridiction: str | None = None,
+) -> str:
     """Cherche des décisions par thème dans la base de la Cour de cassation.
 
     Rend des références à confirmer ensuite avec `texte_decision`, qui seul
@@ -674,11 +695,27 @@ async def rechercher_jurisprudence(requete: str, limite: int = 10) -> str:
         requete: les mots du sujet cherché (« rupture conventionnelle »).
             Pour un numéro, utiliser `verifier_jurisprudence`.
         limite: nombre maximum de résultats (défaut 10).
+        depuis: date minimale, au format « 2024-01-01 ». 🔑 À renseigner dès que
+            la question porte sur l'état actuel du droit : la recherche classe
+            par score, pas par date, et rend sinon des arrêts des années 1970
+            en tête — qu'un revirement a pu priver de toute valeur.
+        jusqu_a: date maximale, même format.
+        juridiction: « cc » (Cour de cassation) ou « ca » (cours d'appel).
     """
+    params: dict[str, Any] = {"q": requete, "limit": limite}
+    if depuis:
+        params["date_start"] = depuis
+    if jusqu_a:
+        params["date_end"] = jusqu_a
+    if juridiction:
+        params["jurisdiction"] = juridiction
+
     try:
-        data = await _get("/jurisprudence/search", {"q": requete, "limit": limite})
+        data = await _get("/jurisprudence/search", params)
     except ApiIndisponible as e:
         return _msg_juris_morte(str(e))
+
+    bandeau = await _bandeau("jurisprudence")
 
     resultats = data.get("results", [])
     if not resultats:
@@ -688,15 +725,42 @@ async def rechercher_jurisprudence(requete: str, limite: int = 10) -> str:
             "rien et demande à l'utilisateur de préciser son sujet."
         )
 
-    lignes = "\n".join(
-        f"  · {r.get('number')} — {r.get('jurisdiction')}, {r.get('decision_date')}"
-        f"\n      id : {r.get('id')}"
-        for r in resultats
+    def _ligne(r: dict) -> str:
+        # 🔑 Le résumé est écrit par la Cour elle-même et fait autorité. Le taire
+        # obligeait à passer par `texte_decision` — jusqu'à 80 000 caractères,
+        # au-delà de ce qu'un client encaisse — pour une information que la
+        # recherche tenait déjà.
+        tete = (
+            f"  · {r.get('number')} — {r.get('jurisdiction')}"
+            + (f"/{r.get('chamber')}" if r.get("chamber") else "")
+            + f", {r.get('decision_date')}"
+            + (f" — {r.get('solution')}" if r.get("solution") else "")
+            + (" — publié au Bulletin" if "b" in (r.get("publication") or []) else "")
+        )
+        resume = (r.get("summary") or "").strip()
+        if resume:
+            tete += f"\n      résumé officiel : {resume[:400]}"
+            if len(resume) > 400:
+                tete += " […]"
+        return tete + f"\n      id : {r.get('id')}"
+
+    lignes = "\n".join(_ligne(r) for r in resultats)
+
+    # Sans filtre de date, le classement par score remonte volontiers des arrêts
+    # très anciens : le dire évite qu'ils passent pour l'état actuel du droit.
+    conseil = (
+        ""
+        if depuis
+        else "\n\nCes résultats sont classés par pertinence, pas par date. Si la "
+        "question porte sur le droit actuel, rappelle l'outil avec "
+        "`depuis` (par exemple « 2022-01-01 »)."
     )
     return (
+        f"{bandeau}\n\n"
         f"{data.get('total', len(resultats))} décision(s) pour « {requete} » "
-        f"(les {len(resultats)} premières) :\n{lignes}\n\n"
-        "Appelle `texte_decision` sur l'id retenu avant de citer quoi que ce soit."
+        f"(les {len(resultats)} premières) :\n{lignes}{conseil}\n\n"
+        "Le résumé dit la solution, pas le raisonnement : appelle "
+        "`texte_decision` sur l'id retenu avant de citer quoi que ce soit."
     )
 
 
@@ -716,6 +780,7 @@ async def texte_decision(identifiant: str) -> str:
     if data.get("etat") == "indeterminee":
         return _msg_juris_morte(data.get("raison", "raison non précisée"))
 
+    bandeau = await _bandeau("jurisprudence")
     entete = (
         f"{data.get('number')} — {data.get('jurisdiction')}"
         + (f"/{data.get('chamber')}" if data.get("chamber") else "")
@@ -723,7 +788,7 @@ async def texte_decision(identifiant: str) -> str:
     )
     texte = data.get("text") or "(texte non fourni par la source)"
     return (
-        f"{entete}\n{data.get('ecli', '')}\n\n{texte}\n\n"
+        f"{bandeau}\n\n{entete}\n{data.get('ecli', '')}\n\n{texte}\n\n"
         "Source : Judilibre (Cour de cassation), open data. Cite la décision "
         "telle qu'elle est écrite ici, sans la reformuler en règle générale."
     )
