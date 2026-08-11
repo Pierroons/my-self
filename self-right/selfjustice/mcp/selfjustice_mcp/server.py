@@ -380,6 +380,35 @@ def _sans_annexes(texte: str, zones: Any) -> str | None:
     return "".join(morceaux).strip() or None
 
 
+def _fin_reelle(date_fin: Any) -> str | None:
+    """Rend la date de fin, ou None quand elle n'en est pas une.
+
+    LEGI note « sans terme prévu » par une date lointaine — 2999-01-01. La
+    reprendre telle quelle donnerait une échéance à un texte qui n'en a pas, et
+    daterait un article en vigueur comme s'il expirait.
+    """
+    d = _parse_date_fr(str(date_fin or ""))
+    if d is None or d.year > dt.date.today().year + 50:
+        return None
+    return str(date_fin)
+
+
+def _msg_argument_refuse(detail: str) -> str:
+    """Message pour un argument que l'API refuse — jamais une panne.
+
+    🔑 Distinct de `_msg_api_morte` : là où celui-ci dit « impossible de
+    vérifier, va voir ailleurs », celui-ci dit « corrige et rappelle ». Les
+    confondre envoie l'utilisateur vers Légifrance quand la réponse tenait dans
+    une faute de frappe.
+    """
+    return (
+        f"Demande refusée par l'API ({detail}).\n\n"
+        "Ce n'est pas une panne : le service répond et signale un argument "
+        "invalide. Corrige-le et rappelle l'outil. N'affirme rien sur ce point "
+        "de droit tant que la vérification n'a pas abouti."
+    )
+
+
 def _msg_api_morte(detail: str) -> str:
     """🔑 Le silence est le pire résultat possible ici.
 
@@ -456,6 +485,8 @@ async def statut() -> str:
     """
     try:
         data = await _statut_cache_court()
+    except RequeteInvalide as e:
+        return _msg_argument_refuse(str(e))
     except ApiIndisponible as e:
         return _msg_api_morte(str(e))
 
@@ -535,6 +566,8 @@ async def article_francais(reference: str, code: str | None = None) -> str:
     """
     try:
         data = await _get(f"/legi/article/{reference}", {"code": code} if code else None)
+    except RequeteInvalide as e:
+        return _msg_argument_refuse(str(e))
     except ApiIndisponible as e:
         return _msg_api_morte(str(e))
 
@@ -544,9 +577,9 @@ async def article_francais(reference: str, code: str | None = None) -> str:
         return (
             f"{bandeau}\n\nArticle « {reference} » introuvable"
             + (f" dans le code « {code} »" if code else "")
-            + ".\n\nNe substitue pas un article de mémoire. Vérifie la référence "
-            "avec `rechercher_droit_francais`, ou dis à l'utilisateur que la "
-            "référence qu'il donne n'existe pas telle quelle."
+            + ".\n\nNe substitue pas un article de mémoire. Dis à l'utilisateur "
+            "que la référence qu'il donne n'existe pas telle quelle dans la "
+            "base, et demande-lui d'où il la tient."
         )
 
     # Numéro porté par plusieurs codes : l'API rend les alternatives, pas un
@@ -554,7 +587,13 @@ async def article_francais(reference: str, code: str | None = None) -> str:
     # L1152-1 existe au code du travail et au code de la défense.
     if data.get("ambiguous"):
         lignes = "\n".join(
-            f"  · code={a.get('code_id')} — « {(a.get('apercu') or '').strip()[:120]}… »"
+            f"  · code={a.get('code_id')}"
+            + (f" — {a.get('code')}" if a.get("code") else "")
+            # L'état décide souvent du choix : entre deux codes, celui qui est
+            # encore en vigueur n'est pas un détail de présentation.
+            + (f" [{a.get('etat')}" + (f", jusqu'au {a.get('date_fin')}" if a.get("date_fin") else "") + "]"
+               if a.get("etat") else "")
+            + f"\n      « {(a.get('apercu') or '').strip()[:120]}… »"
             for a in data.get("alternatives", [])
         )
         return (
@@ -565,15 +604,28 @@ async def article_francais(reference: str, code: str | None = None) -> str:
         )
 
     src = data.get("source", {})
-    vigueur = (
-        "EN VIGUEUR"
-        if data.get("en_vigueur")
-        else f"⚠️ PAS EN VIGUEUR (état : {data.get('etat', 'inconnu')})"
-    )
+
+    # La période, pas seulement le point de départ. « PAS EN VIGUEUR · en
+    # vigueur depuis le 2014-03-27 » se contredisait dans la même ligne, et
+    # `date_fin` — que l'API rend — était jetée alors qu'elle porte
+    # l'information décisive sur un article abrogé : jusqu'à quand il
+    # s'appliquait, donc à quels faits il s'applique encore.
+    debut = data.get("date_debut") or "?"
+    fin = _fin_reelle(data.get("date_fin"))
+    if data.get("en_vigueur"):
+        vigueur = f"EN VIGUEUR · depuis le {debut}"
+    else:
+        vigueur = f"⚠️ PLUS EN VIGUEUR (état : {data.get('etat', 'inconnu')})"
+        vigueur += f" · applicable du {debut} au {fin}" if fin else f" · entré en vigueur le {debut}"
+        vigueur += (
+            "\nIl reste opposable aux faits de cette période : ne le présente "
+            "ni comme le droit actuel, ni comme sans effet."
+        )
+
     return (
         f"{bandeau}\n\n"
         f"{data.get('code_titre') or data.get('code_id', '')} — article {data.get('reference', reference)}\n"
-        f"{vigueur} · en vigueur depuis le {data.get('date_debut', '?')}\n\n"
+        f"{vigueur}\n\n"
         f"{data.get('texte', '(texte absent de la base)')}\n\n"
         f"Source : {src.get('origine', 'LEGI')} — base au {src.get('last_update', '?')}\n"
         f"Légifrance : {src.get('legifrance_url', '(lien indisponible)')}"
@@ -597,6 +649,8 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
     """
     try:
         data = await _get("/legi/search", {"q": requete, "limit": limite})
+    except RequeteInvalide as e:
+        return _msg_argument_refuse(str(e))
     except ApiIndisponible as e:
         return _msg_api_morte(str(e))
 
@@ -610,15 +664,37 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
             "la recherche ne rend rien et demande-lui de préciser."
         )
 
-    lignes = "\n".join(
-        f"  · {r.get('reference')} — {r.get('code_titre') or r.get('code_id')} "
-        f"[{r.get('etat')}, depuis {r.get('date_debut')}]"
-        for r in resultats
-    )
+    def _ligne_article(r: dict) -> str:
+        # `code` est le titre lisible ; `code_titre` n'est rendu par aucune des
+        # routes et faisait retomber l'affichage sur l'identifiant technique.
+        fin = _fin_reelle(r.get("date_fin"))
+        periode = f"{r.get('date_debut')} → {fin}" if fin else f"depuis {r.get('date_debut')}"
+        ligne = (
+            f"  · {r.get('reference')} — {r.get('code') or r.get('code_id')} "
+            f"[{r.get('etat')}, {periode}]"
+        )
+        extrait = (r.get("extrait") or "").strip()
+        return ligne + (f"\n      {extrait[:160]}" if extrait else "")
+
+    # Les abrogés arrivent en dernier, jamais mêlés au droit applicable : c'est
+    # l'ordre qui porte l'avertissement, autant que la mention d'état.
+    en_vigueur = [r for r in resultats if r.get("etat") == "VIGUEUR"]
+    anciens = [r for r in resultats if r.get("etat") != "VIGUEUR"]
+
+    blocs = []
+    if en_vigueur:
+        blocs.append("\n".join(_ligne_article(r) for r in en_vigueur))
+    if anciens:
+        blocs.append(
+            "— Ne sont plus en vigueur (utiles pour des faits antérieurs, "
+            "jamais pour dire le droit d'aujourd'hui) :\n"
+            + "\n".join(_ligne_article(r) for r in anciens)
+        )
+
     return (
         f"{bandeau}\n\n{data.get('count', len(resultats))} résultat(s) pour « {requete} » :\n"
-        f"{lignes}\n\n"
-        "Appelle `article_francais` sur la référence retenue pour en obtenir le texte."
+        + "\n\n".join(blocs)
+        + "\n\nAppelle `article_francais` sur la référence retenue pour en obtenir le texte."
     )
 
 
@@ -643,6 +719,8 @@ async def article_europeen(source: str, numero: str) -> str:
 
     try:
         data = await _get(f"/eu/article/{src}/{numero}")
+    except RequeteInvalide as e:
+        return _msg_argument_refuse(str(e))
     except ApiIndisponible as e:
         return _msg_api_morte(str(e))
 
@@ -684,6 +762,8 @@ async def rechercher_conventionnalite(requete: str, source: str | None = None) -
 
     try:
         data = await _get("/eu/search", params)
+    except RequeteInvalide as e:
+        return _msg_argument_refuse(str(e))
     except ApiIndisponible as e:
         return _msg_api_morte(str(e))
 

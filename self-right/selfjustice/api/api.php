@@ -357,6 +357,20 @@ if ($segments[0] === 'legi') {
             'procedure_penale'     => 'LEGITEXT000006071154',
         ];
 
+        // Un code que ni les alias ni la base ne connaissent est signalé comme
+        // tel. Le laisser filtrer produisait « Article introuvable », qui
+        // accuse la référence pour la faute du code — et envoie corriger ce
+        // qui est juste.
+        if ($code_filter && !isset($CODE_ALIASES[strtolower($code_filter)])
+            && !preg_match('/^LEGITEXT\d+$/', $code_filter)) {
+            json_error(
+                "Code « $code_filter » inconnu. Utilise un alias ("
+                . implode(', ', array_slice(array_keys($CODE_ALIASES), 0, 8))
+                . ", …) ou un identifiant LEGITEXT. La référence « $ref » n'est "
+                . "pas en cause.",
+                400
+            );
+        }
         if ($code_filter && isset($CODE_ALIASES[strtolower($code_filter)])) {
             $code_filter = $CODE_ALIASES[strtolower($code_filter)];
         }
@@ -388,7 +402,13 @@ if ($segments[0] === 'legi') {
 
         // Si pas de filtre de code ET plusieurs codes existent pour ce num, lister tous
         if (!$code_filter) {
-            $stmt2 = $db->prepare("SELECT DISTINCT code_id FROM articles WHERE num = :ref AND etat = 'VIGUEUR'");
+            // 🔑 Aucun filtre de vigueur ici. Le limiter aux articles en vigueur
+            // éteignait l'avertissement d'ambiguïté exactement quand il compte :
+            // L122-14-3 existe au code de l'urbanisme et au code du travail, où
+            // il porte la règle historique sur la régularité de la procédure de
+            // licenciement. Les deux étant abrogés, aucun n'était signalé et
+            // l'API en servait un sans dire que l'autre existait.
+            $stmt2 = $db->prepare("SELECT DISTINCT code_id FROM articles WHERE num = :ref");
             $stmt2->bindValue(':ref', $ref);
             $codes_found = [];
             $r2 = $stmt2->execute();
@@ -399,12 +419,24 @@ if ($segments[0] === 'legi') {
                 // Article ambigu : plusieurs codes possibles — retourner la liste
                 $alternatives = [];
                 foreach ($codes_found as $cid) {
-                    $alt_stmt = $db->prepare("SELECT SUBSTR(texte, 1, 150) as apercu FROM articles WHERE num = :ref AND code_id = :cid AND etat = 'VIGUEUR' LIMIT 1");
+                    // L'état accompagne chaque alternative : choisir entre deux
+                    // codes sans savoir lequel est encore applicable n'est pas
+                    // un choix.
+                    $alt_stmt = $db->prepare(
+                        "SELECT SUBSTR(texte, 1, 150) AS apercu, etat, code_titre, date_fin
+                           FROM articles
+                          WHERE num = :ref AND code_id = :cid
+                       ORDER BY (etat = 'VIGUEUR') DESC
+                          LIMIT 1"
+                    );
                     $alt_stmt->bindValue(':ref', $ref);
                     $alt_stmt->bindValue(':cid', $cid);
                     $alt_row = $alt_stmt->execute()->fetchArray(SQLITE3_ASSOC);
                     $alternatives[] = [
                         'code_id' => $cid,
+                        'code'    => $alt_row['code_titre'] ?? '',
+                        'etat'    => $alt_row['etat'] ?? '',
+                        'date_fin' => $alt_row['date_fin'] ?? null,
                         'apercu'  => $alt_row['apercu'] ?? '',
                         'url'     => (getenv('SELFJUSTICE_BASE_URL') ?: 'https://' . ($_SERVER['HTTP_HOST'] ?? 'your-instance.example')) . "/api/legi/article/$ref?code=$cid",
                     ];
@@ -465,7 +497,7 @@ if ($segments[0] === 'legi') {
         $vus = [];
 
         $pattern = '%' . SQLite3::escapeString($q) . '%';
-        $stmt = $db->prepare("SELECT num, etat, code_id, date_debut
+        $stmt = $db->prepare("SELECT num, etat, code_id, code_titre, date_debut, date_fin
                               FROM articles
                               WHERE num LIKE :pattern
                                 AND etat = 'VIGUEUR'
@@ -482,7 +514,9 @@ if ($segments[0] === 'legi') {
                 'reference'  => $row['num'],
                 'etat'       => $row['etat'],
                 'code_id'    => $row['code_id'],
+                'code'       => $row['code_titre'],
                 'date_debut' => $row['date_debut'],
+                'date_fin'   => $row['date_fin'],
                 'match'      => 'numero',
             ];
         }
@@ -525,6 +559,48 @@ if ($segments[0] === 'legi') {
                 if (count($results) >= $limit) {
                     break;
                 }
+            }
+        }
+
+        // Troisième passe : les articles qui ne sont plus en vigueur, après les
+        // autres et jamais mélangés.
+        //
+        // 🔑 Sans elle, 365 477 des 525 092 articles étaient introuvables par
+        // la recherche alors que /legi/article les sert. Les deux outils se
+        // contredisaient, et le message d'introuvable renvoyait justement vers
+        // celui qui ne pouvait pas répondre : un faux négatif présenté comme
+        // une vérification.
+        //
+        // L'ordre porte le sens — le droit applicable d'abord, l'ancien
+        // ensuite — et `etat` accompagne chaque ligne : un article abrogé rendu
+        // sans mention serait pire que son absence.
+        $reste = $limit - count($results);
+        if ($reste > 0) {
+            $stmt = $db->prepare("SELECT num, etat, code_id, code_titre, date_debut, date_fin
+                                  FROM articles
+                                  WHERE num LIKE :pattern
+                                    AND etat <> 'VIGUEUR'
+                                  ORDER BY date_fin DESC, num
+                                  LIMIT :limit");
+            $stmt->bindValue(':pattern', $pattern);
+            $stmt->bindValue(':limit', $reste, SQLITE3_INTEGER);
+
+            $res = $stmt->execute();
+            while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+                $cle = $row['num'] . '|' . $row['code_id'];
+                if (isset($vus[$cle])) {
+                    continue;
+                }
+                $vus[$cle] = true;
+                $results[] = [
+                    'reference'  => $row['num'],
+                    'etat'       => $row['etat'],
+                    'code_id'    => $row['code_id'],
+                    'code'       => $row['code_titre'],
+                    'date_debut' => $row['date_debut'],
+                    'date_fin'   => $row['date_fin'],
+                    'match'      => 'numero_abroge',
+                ];
             }
         }
 
