@@ -297,6 +297,89 @@ async def _get(chemin: str, params: dict[str, Any] | None = None) -> Any:
         raise ApiIndisponible(f"réponse illisible : {e}") from e
 
 
+_MOTS_OUTILS = {
+    "de", "des", "du", "la", "le", "les", "un", "une", "et", "ou", "en", "au",
+    "aux", "sur", "sous", "dans", "pour", "par", "avec", "sans", "que", "qui",
+    "est", "sont", "son", "ses", "leur", "leurs", "ce", "cet", "cette",
+}
+
+
+def _couverture(requete: str, resultat: dict) -> float | None:
+    """Part des termes de la requête effectivement retrouvés dans le résultat.
+
+    🔑 Le score de l'amont ne dit rien de la pertinence : il est normalisé au
+    meilleur résultat de chaque requête. Une question absurde obtient 1 / 0,916
+    / 0,860 comme une question précise obtient 1 / 0,995 / 0,965 — aucun seuil
+    ne les sépare. Ce qui les sépare est ailleurs : la question absurde ne fait
+    correspondre que deux de ses sept mots, la précise trois sur quatre.
+
+    Les `highlights` portent cette information et n'étaient pas lus. La
+    comparaison se fait sur les cinq premières lettres, pour que « motivation »
+    reconnaisse « motivée » sans réclamer un analyseur morphologique.
+    """
+    termes = {
+        m for m in re.findall(r"\w{3,}", requete.lower())
+        if m not in _MOTS_OUTILS
+    }
+    if not termes:
+        return None
+
+    surlignes: set[str] = set()
+    for extraits in (resultat.get("highlights") or {}).values():
+        for extrait in extraits if isinstance(extraits, list) else [extraits]:
+            surlignes.update(
+                m.lower() for m in re.findall(r"<em>(.*?)</em>", str(extrait))
+            )
+    if not surlignes:
+        return None
+
+    trouves = sum(
+        1 for t in termes
+        if any(s[:5] == t[:5] for s in surlignes)
+    )
+    return trouves / len(termes)
+
+
+def _sans_annexes(texte: str, zones: Any) -> str | None:
+    """Rend le texte privé de ses moyens annexés, ou None si indéterminable.
+
+    Les moyens annexés reproduisent l'argumentation des parties : ils ne sont
+    pas la décision, et forment pourtant l'essentiel des arrêts longs. Les
+    retirer laisse le raisonnement et le dispositif entiers.
+
+    Les intervalles sont retirés un à un plutôt que coupés au premier : rien ne
+    garantit que les annexes forment un bloc unique en fin de texte, et une
+    zone peut arriver dans le désordre — `moyens` en compte trois, non triés.
+    """
+    if not isinstance(zones, dict):
+        return None
+
+    # Les bornes sont ramenées dans le texte au lieu d'être rejetées : l'amont
+    # annonce une fin à 76 373 pour un texte de 76 372 caractères, et écarter
+    # la zone pour ce caractère de trop reviendrait à garder les annexes.
+    blocs = [
+        (max(0, b["start"]), min(len(texte), b["end"]))
+        for b in (zones.get("annexes") or [])
+        if isinstance(b, dict)
+        and isinstance(b.get("start"), int)
+        and isinstance(b.get("end"), int)
+        and b["start"] < b["end"]
+        and b["start"] < len(texte)
+    ]
+    if not blocs:
+        return None
+
+    morceaux: list[str] = []
+    curseur = 0
+    for debut, fin in sorted(blocs):
+        if debut > curseur:
+            morceaux.append(texte[curseur:debut])
+        curseur = max(curseur, fin)
+    morceaux.append(texte[curseur:])
+
+    return "".join(morceaux).strip() or None
+
+
 def _msg_api_morte(detail: str) -> str:
     """🔑 Le silence est le pire résultat possible ici.
 
@@ -707,8 +790,13 @@ async def verifier_jurisprudence(reference: str, juridiction: str | None = None)
     lignes = "\n".join(
         f"  · {d.get('numero')} — {d.get('juridiction')}"
         # La cour distingue les rôles généraux entre eux : sans elle, deux
-        # décisions portant le même numéro sont impossibles à départager.
-        + (f" {d.get('cour')}" if d.get("cour") else "")
+        # décisions portant le même numéro sont impossibles à départager. Elle
+        # est préfixée du code de juridiction en base (`ca_nimes`), qu'on retire
+        # pour ne pas écrire « ca ca_nimes ».
+        + (
+            f" {str(d.get('cour')).removeprefix(str(d.get('juridiction')) + '_')}"
+            if d.get("cour") else ""
+        )
         + (f"/{d.get('chambre')}" if d.get("chambre") else "")
         + f", {d.get('date') or 'date douteuse en base amont'}"
         + (f" — {d.get('solution')}" if d.get("solution") else "")
@@ -776,6 +864,12 @@ async def rechercher_jurisprudence(
 
     try:
         data = await _get("/jurisprudence/search", params)
+    except RequeteInvalide as e:
+        return (
+            f"La recherche a été refusée par l'index ({e}).\n\n"
+            "Ce n'est pas une panne : corrige le paramètre signalé et rappelle "
+            "l'outil. N'invente aucune décision en attendant."
+        )
     except ApiIndisponible as e:
         return _msg_juris_morte(str(e))
 
@@ -783,7 +877,11 @@ async def rechercher_jurisprudence(
 
     resultats = data.get("results", [])
     if not resultats:
+        # Le bandeau compte particulièrement ici : une recherche qui ne rend
+        # rien sur un index arrêté au mois dernier ne dit pas la même chose que
+        # sur un index de la veille.
         return (
+            f"{bandeau}\n\n"
             f"Aucune décision ne correspond à « {requete} ».\n\n"
             "N'invente pas d'arrêt approchant : dis que la recherche ne rend "
             "rien et demande à l'utilisateur de préciser son sujet."
@@ -810,6 +908,22 @@ async def rechercher_jurisprudence(
 
     lignes = "\n".join(_ligne(r) for r in resultats)
 
+    # 🔑 Prévenir, jamais écarter. Depuis que les résultats portent le sommaire
+    # de la Cour et la mention « publié au Bulletin », un hors-sujet a les
+    # habits d'un arrêt de principe — une requête absurde rend 14 821 décisions
+    # d'apparence irréprochable. Le dire vaut mieux que de trier en silence :
+    # un serveur qui cache ce qu'il juge mauvais ne se vérifie plus.
+    couvertures = [c for c in (_couverture(requete, r) for r in resultats) if c is not None]
+    alerte = ""
+    if couvertures and sum(couvertures) / len(couvertures) < 0.5:
+        moyenne = round(100 * sum(couvertures) / len(couvertures))
+        alerte = (
+            f"\n\n⚠️ Ces décisions ne reprennent en moyenne que {moyenne} % des "
+            "termes de la question : la recherche a probablement accroché "
+            "quelques mots isolés, sans rapport avec le sujet. Vérifie chaque "
+            "sommaire avant d'en citer une, et reformule si aucune ne convient."
+        )
+
     # Deux conseils distincts, chacun pour un manque différent : la date parce
     # que le classement se fait par score et remonte des arrêts d'il y a
     # cinquante ans ; le champ parce qu'une recherche élargie au texte entier
@@ -831,7 +945,7 @@ async def rechercher_jurisprudence(
     return (
         f"{bandeau}\n\n"
         f"{data.get('total', len(resultats))} décision(s) pour « {requete} » "
-        f"(les {len(resultats)} premières) :\n{lignes}{conseil}\n\n"
+        f"(les {len(resultats)} premières) :\n{lignes}{alerte}{conseil}\n\n"
         "Le résumé dit la solution, pas le raisonnement : appelle "
         "`texte_decision` sur l'id retenu avant de citer quoi que ce soit."
     )
@@ -844,11 +958,12 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
     Args:
         identifiant: l'`id` rendu par `verifier_jurisprudence` ou
             `rechercher_jurisprudence`. Ce n'est pas le numéro de la décision.
-        integral: rend le texte entier. Par défaut les décisions longues sont
-            coupées : un arrêt de cassation avec ses moyens annexés dépasse
-            couramment 50 000 caractères, au-delà de ce qu'un client MCP
-            transmet. Mieux vaut un extrait annoncé comme tel qu'un texte
-            tronqué en silence — ou pas de texte du tout.
+        integral: rend le texte entier, moyens annexés compris. Par défaut, les
+            annexes sont écartées : elles pèsent l'essentiel des arrêts longs —
+            63 036 caractères sur 76 372 pour une décision mesurée — alors que
+            la décision elle-même, dispositif compris, en fait 13 337. Les
+            écarter rend l'arrêt entier au lieu d'un début coupé avant sa
+            conclusion.
     """
     try:
         data = await _get(f"/jurisprudence/decision/{urllib.parse.quote(identifiant, safe='')}")
@@ -874,15 +989,34 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
 
     texte = data.get("text") or "(texte non fourni par la source)"
     coupe = ""
+
     if not integral and len(texte) > PLAFOND_TEXTE:
-        coupe = (
-            f"\n\n[…] ⚠️ EXTRAIT — {PLAFOND_TEXTE} des {len(texte)} caractères de "
-            "la décision. Ne conclus pas sur ce qui n'est pas affiché : le "
-            "dispositif se trouve en fin de texte. Rappelle l'outil avec "
-            "`integral=True` si le client peut l'encaisser, ou lis la décision "
-            "sur courdecassation.fr."
-        )
-        texte = texte[:PLAFOND_TEXTE]
+        # L'amont rend la décision découpée en zones, avec leurs offsets. Les
+        # moyens annexés en forment l'essentiel — 82 % d'un arrêt mesuré — et
+        # ne sont pas la décision : les écarter rend le raisonnement et le
+        # dispositif entiers, là où une coupe à longueur fixe gardait
+        # l'introduction et jetait la conclusion.
+        garde = _sans_annexes(texte, data.get("zones"))
+        if garde is not None:
+            coupe = (
+                f"\n\n[…] Moyens annexés écartés — {len(texte) - len(garde)} "
+                f"caractères sur {len(texte)}. La décision est ici entière, "
+                "dispositif compris. `integral=True` rend aussi les annexes."
+            )
+            texte = garde
+        else:
+            # Sans zones exploitables, la coupe à l'aveugle reste le dernier
+            # recours : mieux vaut un extrait annoncé qu'un texte que le client
+            # ne transmettra pas.
+            coupe = (
+                f"\n\n[…] ⚠️ EXTRAIT — {PLAFOND_TEXTE} des {len(texte)} "
+                "caractères, la structure de la décision n'étant pas fournie. "
+                "Ne conclus pas sur ce qui n'est pas affiché : le dispositif se "
+                "trouve en fin de texte. Rappelle l'outil avec `integral=True` "
+                "si le client peut l'encaisser, ou lis la décision sur "
+                "courdecassation.fr."
+            )
+            texte = texte[:PLAFOND_TEXTE]
 
     return (
         f"{bandeau}\n\n{entete}\n{data.get('ecli', '')}\n\n{texte}{coupe}\n\n"

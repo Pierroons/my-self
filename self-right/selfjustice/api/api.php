@@ -821,11 +821,20 @@ if ($segments[0] === 'jurisprudence') {
         // Contrepartie assumée : seules les décisions pourvues d'un sommaire
         // ressortent, c'est-à-dire les arrêts publiés. `champ=text` rétablit la
         // recherche exhaustive quand on cherche une espèce plutôt qu'un principe.
+        // Une valeur inconnue est refusée, jamais ignorée : la laisser passer
+        // rebasculait la recherche sur le texte entier sans le dire, et le
+        // total sautait de 15 273 à 179 540 sans que rien ne l'explique.
+        $champs_valides = ['summary', 'themes', 'text', 'motivations', 'dispositif', 'visa'];
         $champ = $_GET['champ'] ?? 'summary';
-        if (in_array($champ, ['summary', 'themes', 'text', 'motivations', 'dispositif', 'visa'], true)) {
-            if ($champ !== 'text') {
-                $params['field'] = $champ;
-            }
+        if (!in_array($champ, $champs_valides, true)) {
+            json_error(
+                "Champ de recherche « $champ » inconnu. Valeurs acceptées : "
+                . implode(', ', $champs_valides) . '.',
+                400
+            );
+        }
+        if ($champ !== 'text') {
+            $params['field'] = $champ;
         }
 
         foreach (['jurisdiction', 'date_start', 'date_end'] as $option) {
