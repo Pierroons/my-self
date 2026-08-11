@@ -740,6 +740,7 @@ async def rechercher_jurisprudence(
     depuis: str | None = None,
     jusqu_a: str | None = None,
     juridiction: str | None = None,
+    champ: str = "summary",
 ) -> str:
     """Cherche des décisions par thème dans la base de la Cour de cassation.
 
@@ -750,6 +751,14 @@ async def rechercher_jurisprudence(
         requete: les mots du sujet cherché (« rupture conventionnelle »).
             Pour un numéro, utiliser `verifier_jurisprudence`.
         limite: nombre maximum de résultats (défaut 10).
+        champ: où chercher. `summary` par défaut — le sommaire rédigé par la
+            Cour, qui dit la portée de l'arrêt. Chercher dans le texte entier
+            (`text`) pondère des mots isolés et rend des milliers de décisions
+            étrangères au sujet. 🔑 `summary` ne trouve que les décisions
+            pourvues d'un sommaire, c'est-à-dire les arrêts publiés : c'est ce
+            qu'on veut pour « la jurisprudence sur X », pas pour retrouver une
+            espèce particulière. Autres valeurs : `themes`, `motivations`,
+            `dispositif`, `visa`.
         depuis: date minimale, au format « 2024-01-01 ». 🔑 À renseigner dès que
             la question porte sur l'état actuel du droit : la recherche classe
             par score, pas par date, et rend sinon des arrêts des années 1970
@@ -757,7 +766,7 @@ async def rechercher_jurisprudence(
         jusqu_a: date maximale, même format.
         juridiction: « cc » (Cour de cassation) ou « ca » (cours d'appel).
     """
-    params: dict[str, Any] = {"q": requete, "limit": limite}
+    params: dict[str, Any] = {"q": requete, "limit": limite, "champ": champ}
     if depuis:
         params["date_start"] = depuis
     if jusqu_a:
@@ -801,15 +810,24 @@ async def rechercher_jurisprudence(
 
     lignes = "\n".join(_ligne(r) for r in resultats)
 
-    # Sans filtre de date, le classement par score remonte volontiers des arrêts
-    # très anciens : le dire évite qu'ils passent pour l'état actuel du droit.
-    conseil = (
-        ""
-        if depuis
-        else "\n\nCes résultats sont classés par pertinence, pas par date. Si la "
-        "question porte sur le droit actuel, rappelle l'outil avec "
-        "`depuis` (par exemple « 2022-01-01 »)."
-    )
+    # Deux conseils distincts, chacun pour un manque différent : la date parce
+    # que le classement se fait par score et remonte des arrêts d'il y a
+    # cinquante ans ; le champ parce qu'une recherche élargie au texte entier
+    # ramène des décisions étrangères au sujet.
+    conseils = []
+    if not depuis:
+        conseils.append(
+            "Ces résultats sont classés par pertinence, pas par date : pour "
+            "l'état actuel du droit, rappelle l'outil avec `depuis` "
+            "(par exemple « 2022-01-01 »)."
+        )
+    if champ == "summary":
+        conseils.append(
+            "La recherche porte sur les sommaires, donc sur les arrêts publiés. "
+            "Si tu cherches une espèce précise plutôt qu'un principe, rappelle "
+            "l'outil avec `champ=\"text\"`."
+        )
+    conseil = ("\n\n" + " ".join(conseils)) if conseils else ""
     return (
         f"{bandeau}\n\n"
         f"{data.get('total', len(resultats))} décision(s) pour « {requete} » "

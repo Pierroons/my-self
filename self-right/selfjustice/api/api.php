@@ -811,6 +811,23 @@ if ($segments[0] === 'jurisprudence') {
         }
 
         $params = ['query' => $q, 'page_size' => min(max((int)($_GET['limit'] ?? 10), 1), 50)];
+
+        // Judilibre cherche dans le texte entier par défaut, en pondérant des
+        // mots isolés : une question de neuf mots rend des dizaines de milliers
+        // de décisions dont aucune ne porte sur le sujet. Restreindre au
+        // sommaire — le résumé rédigé par la Cour — divise le bruit par
+        // plusieurs dizaines et fait remonter les arrêts de principe.
+        //
+        // Contrepartie assumée : seules les décisions pourvues d'un sommaire
+        // ressortent, c'est-à-dire les arrêts publiés. `champ=text` rétablit la
+        // recherche exhaustive quand on cherche une espèce plutôt qu'un principe.
+        $champ = $_GET['champ'] ?? 'summary';
+        if (in_array($champ, ['summary', 'themes', 'text', 'motivations', 'dispositif', 'visa'], true)) {
+            if ($champ !== 'text') {
+                $params['field'] = $champ;
+            }
+        }
+
         foreach (['jurisdiction', 'date_start', 'date_end'] as $option) {
             if (!empty($_GET[$option])) {
                 $params[$option] = $_GET[$option];
