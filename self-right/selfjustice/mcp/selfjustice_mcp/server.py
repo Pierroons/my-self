@@ -68,6 +68,12 @@ NTFY_URL = os.environ.get("SELFJUSTICE_NTFY_URL", "")
 NTFY_TOKEN = os.environ.get("SELFJUSTICE_NTFY_TOKEN", "")
 TIMEOUT = float(os.environ.get("SELFJUSTICE_TIMEOUT", "15"))
 
+# Longueur au-delà de laquelle le texte d'une décision est coupé. Assez pour
+# rendre la plupart des arrêts entiers, assez peu pour qu'aucun ne sature le
+# client : un arrêt réel mesuré à 79 658 caractères dépassait la limite et se
+# perdait dans un fichier annexe, laissant le modèle sans rien à citer.
+PLAFOND_TEXTE = int(os.environ.get("SELFJUSTICE_PLAFOND_TEXTE", "20000"))
+
 SOURCES_UE = ("CEDH", "CHARTE_UE", "TUE", "TFUE", "RGPD", "AI_ACT")
 
 MOIS = {
@@ -226,6 +232,15 @@ class ApiIndisponible(Exception):
     """L'API n'a pas répondu — distinct d'un article introuvable."""
 
 
+class RequeteInvalide(Exception):
+    """L'API a répondu qu'elle refusait l'argument — distinct d'une panne.
+
+    🔑 Un identifiant mal recopié se corrige en un appel. Le confondre avec une
+    panne fait dire au modèle que la vérification est impossible et renvoie
+    l'utilisateur vers Légifrance, alors que la réponse était à portée d'outil.
+    """
+
+
 async def _get(chemin: str, params: dict[str, Any] | None = None) -> Any:
     if not API_URL:
         raise ApiIndisponible(
@@ -253,6 +268,20 @@ async def _get(chemin: str, params: dict[str, Any] | None = None) -> Any:
             ) from None
 
         message = str(corps.get("error", "")) if isinstance(corps, dict) else ""
+
+        # 400 : l'API a compris la demande et refuse l'argument. Ce n'est pas
+        # une panne, et le dire comme tel envoie chercher ailleurs une réponse
+        # qui tient dans une correction de frappe.
+        if r.status_code == 400:
+            raise RequeteInvalide(message or r.text[:200])
+
+        # L'amont rend « etat: indeterminee » avec un 503 : c'est une donnée —
+        # « je n'ai pas pu vérifier » — que l'appelant doit pouvoir distinguer
+        # d'une API muette. La convertir en exception ici rendait inatteignables
+        # les branches que les outils consacrent à ce cas.
+        if isinstance(corps, dict) and corps.get("etat") == "indeterminee":
+            return corps
+
         if r.status_code == 404 and message.startswith("Endpoint inconnu"):
             raise ApiIndisponible(
                 f"l'API ne connaît pas cette route ({message}) — vérifier "
@@ -636,8 +665,24 @@ async def verifier_jurisprudence(reference: str, juridiction: str | None = None)
     params = {"jurisdiction": juridiction} if juridiction else None
     try:
         data = await _get(chemin, params)
+    except RequeteInvalide as e:
+        return (
+            f"La référence « {reference} » n'a pas été acceptée par l'index ({e}).\n\n"
+            "Ce n'est pas une panne : reprends le numéro tel qu'il s'écrit "
+            "(« 25-10.377 » pour un pourvoi, « 26/00027 » pour un rôle général "
+            "de cour d'appel) et rappelle l'outil. N'affirme rien sur cette "
+            "décision tant qu'elle n'est pas vérifiée."
+        )
     except ApiIndisponible as e:
         return _msg_juris_morte(str(e))
+
+    # Une route inconnue rendrait ici « existe — 0 décision(s) » : une
+    # confirmation d'existence pour une référence introuvable, exactement le
+    # contresens que cet outil doit empêcher.
+    if data.get("__introuvable__"):
+        return _msg_juris_morte(
+            f"l'index ne connaît pas cette route ({data.get('detail', '')})"
+        )
 
     etat = data.get("etat")
 
@@ -765,20 +810,32 @@ async def rechercher_jurisprudence(
 
 
 @server.tool()
-async def texte_decision(identifiant: str) -> str:
-    """Rend le texte intégral d'une décision, à partir de son identifiant.
+async def texte_decision(identifiant: str, integral: bool = False) -> str:
+    """Rend le texte d'une décision, à partir de son identifiant.
 
     Args:
         identifiant: l'`id` rendu par `verifier_jurisprudence` ou
             `rechercher_jurisprudence`. Ce n'est pas le numéro de la décision.
+        integral: rend le texte entier. Par défaut les décisions longues sont
+            coupées : un arrêt de cassation avec ses moyens annexés dépasse
+            couramment 50 000 caractères, au-delà de ce qu'un client MCP
+            transmet. Mieux vaut un extrait annoncé comme tel qu'un texte
+            tronqué en silence — ou pas de texte du tout.
     """
     try:
         data = await _get(f"/jurisprudence/decision/{urllib.parse.quote(identifiant, safe='')}")
+    except RequeteInvalide as e:
+        return (
+            f"L'identifiant « {identifiant} » a été refusé par l'index ({e}).\n\n"
+            "Ce n'est pas une panne : l'identifiant attendu est celui rendu par "
+            "`verifier_jurisprudence` ou `rechercher_jurisprudence`, pas le "
+            "numéro de la décision. Reprends-le et rappelle l'outil."
+        )
     except ApiIndisponible as e:
         return _msg_juris_morte(str(e))
 
-    if data.get("etat") == "indeterminee":
-        return _msg_juris_morte(data.get("raison", "raison non précisée"))
+    if data.get("__introuvable__") or data.get("etat") == "indeterminee":
+        return _msg_juris_morte(data.get("raison", data.get("detail", "raison non précisée")))
 
     bandeau = await _bandeau("jurisprudence")
     entete = (
@@ -786,9 +843,21 @@ async def texte_decision(identifiant: str) -> str:
         + (f"/{data.get('chamber')}" if data.get("chamber") else "")
         + f", {data.get('decision_date')}"
     )
+
     texte = data.get("text") or "(texte non fourni par la source)"
+    coupe = ""
+    if not integral and len(texte) > PLAFOND_TEXTE:
+        coupe = (
+            f"\n\n[…] ⚠️ EXTRAIT — {PLAFOND_TEXTE} des {len(texte)} caractères de "
+            "la décision. Ne conclus pas sur ce qui n'est pas affiché : le "
+            "dispositif se trouve en fin de texte. Rappelle l'outil avec "
+            "`integral=True` si le client peut l'encaisser, ou lis la décision "
+            "sur courdecassation.fr."
+        )
+        texte = texte[:PLAFOND_TEXTE]
+
     return (
-        f"{bandeau}\n\n{entete}\n{data.get('ecli', '')}\n\n{texte}\n\n"
+        f"{bandeau}\n\n{entete}\n{data.get('ecli', '')}\n\n{texte}{coupe}\n\n"
         "Source : Judilibre (Cour de cassation), open data. Cite la décision "
         "telle qu'elle est écrite ici, sans la reformuler en règle générale."
     )

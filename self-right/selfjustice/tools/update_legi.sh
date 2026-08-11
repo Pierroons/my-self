@@ -172,7 +172,13 @@ elif [ "$EU_CODE" != "0" ]; then
     alerter "SelfJustice — echec de la base UE" \
             "build_eu_db.py a rendu le code $EU_CODE. Voir $LOG_FILE."
 fi
-date '+%-d %B %Y' | sed 's/January/janvier/; s/February/février/; s/March/mars/; s/April/avril/; s/May/mai/; s/June/juin/; s/July/juillet/; s/August/août/; s/September/septembre/; s/October/octobre/; s/November/novembre/; s/December/décembre/' \
+# Le mois vient du tableau MOIS, comme pour LEGI plus haut, et non de `date
+# '+%B'` traduit depuis l'anglais : sur une instance en locale allemande ou
+# espagnole, %B rendrait « August » ou « agosto », que le sed ne connaît pas.
+# Le client lirait une date qu'il ne sait pas analyser et annoncerait la
+# fraîcheur « indéterminée » — son avertissement le plus grave — déclenché par
+# une simple variable d'environnement.
+echo "$(date '+%-d') ${MOIS[$(( $(date +%-m) - 1 ))]} $(date +%Y)" \
     > /var/lib/selfjustice/eu_last_update.txt
 
 # 10. Propager aux statistiques publiques
