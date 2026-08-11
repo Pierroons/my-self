@@ -706,17 +706,27 @@ async def verifier_jurisprudence(reference: str, juridiction: str | None = None)
     decisions = data.get("decisions", [])
     lignes = "\n".join(
         f"  · {d.get('numero')} — {d.get('juridiction')}"
+        # La cour distingue les rôles généraux entre eux : sans elle, deux
+        # décisions portant le même numéro sont impossibles à départager.
+        + (f" {d.get('cour')}" if d.get("cour") else "")
         + (f"/{d.get('chambre')}" if d.get("chambre") else "")
         + f", {d.get('date') or 'date douteuse en base amont'}"
         + (f" — {d.get('solution')}" if d.get("solution") else "")
+        + (" — publié au Bulletin" if "b" in (d.get("publication") or "") else "")
         + (f"\n      {d.get('ecli')}" if d.get("ecli") else "")
         + f"\n      id : {d.get('id')}"
         for d in decisions
     )
+
+    total = data.get("count", len(decisions))
+    entete = f"« {reference} » existe — {total} décision(s)"
+    if data.get("tronquee"):
+        entete += f", les {len(decisions)} plus récentes affichées"
+
     avert = data.get("avertissement")
     return (
         f"{bandeau}\n\n"
-        f"« {reference} » existe — {len(decisions)} décision(s) :\n{lignes}\n\n"
+        f"{entete} :\n{lignes}\n\n"
         + (f"⚠️ {avert}\n\n" if avert else "")
         + "L'existence est confirmée, pas le contenu : appelle `texte_decision` "
         "avec l'id avant d'affirmer ce que la décision juge."

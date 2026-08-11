@@ -45,6 +45,11 @@ define('JURIS_DB', getenv('SELFJUSTICE_JURIS_DB') ?: '/var/lib/selfjustice/db/ju
 // recherche par thème passent par l'API amont.
 const JUDILIBRE_BASE = 'https://api.piste.gouv.fr/cassation/judilibre/v1.0';
 
+// Nombre de décisions ramenées pour un même numéro. Un rôle général courant en
+// compte davantage : le total exact est compté à part et rendu sous `count`,
+// pour qu'une liste tronquée se voie au lieu de passer pour exhaustive.
+const LIMITE_DECISIONS = 50;
+
 function json_response(array $data, int $status = 200): void {
     http_response_code($status);
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
@@ -690,14 +695,34 @@ if ($segments[0] === 'jurisprudence') {
             );
         }
 
+        // `location` nomme la cour d'appel. Un rôle général n'est unique qu'au
+        // sein d'une cour : sans elle, trente-deux lignes « 26/00027 » sont
+        // strictement indiscernables et le lecteur ne peut pas retrouver la
+        // sienne. La colonne est remplie à la construction de l'index depuis
+        // le début — elle n'était simplement jamais lue.
         $sql = "SELECT d.id, d.number, d.decision_date, d.jurisdiction, d.chamber,
+                       d.location, d.publication,
                        d.solution, d.ecli, d.type, d.date_suspecte
                 FROM numeros n JOIN decisions d ON d.id = n.decision_id
                 WHERE n.number_norm = :norm";
+        $sql_count = "SELECT COUNT(*)
+                      FROM numeros n JOIN decisions d ON d.id = n.decision_id
+                      WHERE n.number_norm = :norm";
         if ($juridiction !== null) {
             $sql .= " AND d.jurisdiction = :juri";
+            $sql_count .= " AND d.jurisdiction = :juri";
         }
-        $sql .= " ORDER BY d.decision_date DESC LIMIT 50";
+        $sql .= " ORDER BY d.decision_date DESC LIMIT " . LIMITE_DECISIONS;
+
+        // Le total se compte à part : `count($decisions)` saturait à la limite
+        // ci-dessus sans que rien ne le signale. Un outil dont la fonction est
+        // de dire ce qui existe annonçait un chiffre faux comme exact.
+        $stmt_count = $db->prepare($sql_count);
+        $stmt_count->bindValue(':norm', $norm);
+        if ($juridiction !== null) {
+            $stmt_count->bindValue(':juri', $juridiction);
+        }
+        $total = (int) $stmt_count->execute()->fetchArray(SQLITE3_NUM)[0];
 
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':norm', $norm);
@@ -717,7 +742,9 @@ if ($segments[0] === 'jurisprudence') {
                 'date_brute'    => $row['decision_date'],
                 'date_suspecte' => (bool) $row['date_suspecte'],
                 'juridiction'   => $row['jurisdiction'],
+                'cour'          => $row['location'],
                 'chambre'       => $row['chamber'],
+                'publication'   => $row['publication'],
                 'solution'      => $row['solution'],
                 'ecli'          => $row['ecli'],
                 'type'          => $row['type'],
@@ -739,7 +766,9 @@ if ($segments[0] === 'jurisprudence') {
             'reference'   => $ref,
             'normalisee'  => $norm,
             'juridiction' => $juridiction,
-            'count'       => count($decisions),
+            'count'       => $total,
+            'rendues'     => count($decisions),
+            'tronquee'    => $total > count($decisions),
             'decisions'   => $decisions,
             'couverture'  => $couverture,
             // Deux réserves distinctes, et toutes deux nécessaires : l'index a
