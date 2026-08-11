@@ -94,9 +94,25 @@ server = MCPServer(
 # ---------------------------------------------------------------- fraîcheur
 
 def _parse_date_fr(texte: str) -> dt.date | None:
-    """Convertit « 2 août 2026 » en date. Rend None si le format est autre."""
+    """Convertit « 2 août 2026 » ou « 2026-08-02 » en date, sinon None.
+
+    Les deux formes sont acceptées parce que l'API ne les sert pas toutes de
+    la même façon : les bases LEGI et conventionnalité rendent une date écrite
+    en toutes lettres, la jurisprudence une date ISO. Refuser l'une des deux
+    reviendrait à annoncer une fraîcheur « indéterminée » sur une date pourtant
+    parfaitement lisible — l'avertissement le plus grave du serveur, déclenché
+    par une simple différence de présentation.
+    """
     if not texte:
         return None
+
+    m = re.match(r"\s*(\d{4})-(\d{2})-(\d{2})\s*$", texte)
+    if m:
+        try:
+            return dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            return None
+
     m = re.match(r"\s*(\d{1,2})\s+([^\s]+)\s+(\d{4})\s*$", texte)
     if not m:
         return None
@@ -138,12 +154,18 @@ def _etat_fraicheur(last_update: str, base: str) -> tuple[str, bool]:
     aujourdhui = dt.date.today()
     echeance = _derniere_echeance(aujourdhui)
 
+    # La date affichée vient de la valeur parsée, jamais du texte reçu : l'API
+    # écrit la jurisprudence en ISO et les deux autres bases en toutes lettres.
+    # Recopier la chaîne telle quelle ferait cohabiter « 2 août 2026 » et
+    # « 2026-08-09 » dans le même statut.
+    lisible = _format_fr(date_base)
+
     if date_base >= echeance:
-        return (f"Base {base} synchronisée au {last_update} — à jour.", False)
+        return (f"Base {base} synchronisée au {lisible} — à jour.", False)
 
     retard = (aujourdhui - date_base).days
     return (
-        f"⚠️ RETARD — base {base} arrêtée au {last_update}, soit {retard} jours. "
+        f"⚠️ RETARD — base {base} arrêtée au {lisible}, soit {retard} jours. "
         f"L'échéance du {_format_fr(echeance)} n'a pas été honorée. Les textes "
         "rendus peuvent être abrogés ou modifiés depuis : signale-le à "
         "l'utilisateur et renvoie-le vers legifrance.gouv.fr avant tout usage "
@@ -280,8 +302,17 @@ async def _bandeau(base: str) -> str:
         statut = await _statut_cache_court()
     except ApiIndisponible:
         return ""
-    cle = "legi" if base == "LEGI" else "eu"
+    # Une correspondance explicite plutôt qu'un « sinon » : avec deux bases le
+    # raccourci passait, la troisième l'aurait fait lire le mauvais bloc et
+    # dater la jurisprudence avec la fraîcheur de la conventionnalité.
+    cle = {
+        "LEGI": "legi",
+        "conventionnalité": "eu",
+        "jurisprudence": "jurisprudence",
+    }.get(base, "")
     bloc = statut.get(cle, {})
+    if not bloc:
+        return ""
     message, retard = _etat_fraicheur(bloc.get("last_update", ""), base)
     if retard:
         await _alerter(
@@ -327,11 +358,46 @@ async def statut() -> str:
         await _alerter("SelfJustice — base UE en retard", etat_eu, "eu")
 
     sources = ", ".join(f"{k} ({v})" for k, v in sorted(eu.get("sources", {}).items()))
+
+    # La jurisprudence peut manquer : une instance plus ancienne ne sert que
+    # LEGI et la conventionnalité. Son absence se dit, elle ne s'invente pas —
+    # taire la ligne laisserait croire que la vérification des arrêts est
+    # disponible alors qu'elle ne l'est pas.
+    juris = data.get("jurisprudence", {})
+    if juris:
+        etat_juris, retard_juris = _etat_fraicheur(
+            juris.get("last_update", ""), "jurisprudence"
+        )
+        if retard_juris:
+            await _alerter(
+                "SelfJustice — index jurisprudence en retard", etat_juris, "jurisprudence"
+            )
+        # La couverture prime sur le total : un numéro hors période ne peut pas
+        # être déclaré absent, seulement indéterminé.
+        def _borne(bloc: dict) -> str:
+            fin = _parse_date_fr(bloc.get("fin", ""))
+            return _format_fr(fin) if fin else bloc.get("fin", "?")
+
+        bornes = " · ".join(
+            f"{code} jusqu'au {_borne(bloc)} ({bloc.get('decisions', '?')} décisions)"
+            for code, bloc in sorted(juris.get("couverture", {}).items())
+        )
+        ligne_juris = (
+            f"Jurisprudence : {juris.get('decisions', '?')} décisions — {bornes}.\n"
+        )
+    else:
+        etat_juris = (
+            "Index de jurisprudence absent de cette instance : aucun numéro "
+            "d'arrêt ne peut être vérifié ici."
+        )
+        ligne_juris = ""
+
     return (
-        f"{etat_legi}\n{etat_eu}\n\n"
+        f"{etat_legi}\n{etat_eu}\n{etat_juris}\n\n"
         f"Droit français (LEGI, dumps officiels DILA) : "
         f"{legi.get('articles', '?')} articles dont {legi.get('vigueur', '?')} en vigueur.\n"
-        f"Conventionnalité : {eu.get('articles', '?')} articles — {sources}.\n\n"
+        f"Conventionnalité : {eu.get('articles', '?')} articles — {sources}.\n"
+        f"{ligne_juris}\n"
         "Cadence de synchronisation annoncée : le 1er et le 15 de chaque mois."
     )
 

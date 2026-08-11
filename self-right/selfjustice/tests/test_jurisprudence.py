@@ -9,6 +9,16 @@ personne ne le verra — c'est le mode de défaillance que ce module combat.
     SELFJUSTICE_JURIS_DB=data/judilibre_index.sqlite \
         php -S 127.0.0.1:8799 -t api api/api.php &
     python3 tests/test_jurisprudence.py [http://127.0.0.1:8799]
+
+L'argument est l'hôte seul : « /api » est ajouté ici, le passer deux fois rend
+du HTML d'erreur que le décodage JSON signale d'une pile d'appels illisible.
+
+⚠️ Visé sur l'instance publique, ce contrôle fait bannir celui qui le lance :
+ses trente appels enchaînés sur des routes de vérification déclenchent le
+scénario `http-probing` de CrowdSec. Le lancer depuis le serveur lui-même, ou
+lever la décision ensuite (`cscli decisions delete --id …`). Aucune adresse
+publique n'a sa place dans l'allowlist pour contourner ça — elle changerait de
+main un jour, le contournement resterait.
 """
 
 import json

@@ -258,8 +258,9 @@ if ($segments[0] === 'status') {
         $result['legi'] = [
             'articles' => (int) $db->querySingle('SELECT COUNT(*) FROM articles'),
             'vigueur'  => (int) $db->querySingle("SELECT COUNT(*) FROM articles WHERE etat='VIGUEUR'"),
-            'last_update_file' => '/var/lib/selfjustice/legi_last_update.txt',
         ];
+        // Le chemin du marqueur reste ici : une réponse publique renseigne sur
+        // l'arborescence du serveur sans rien apporter à celui qui la lit.
         $file = '/var/lib/selfjustice/legi_last_update.txt';
         $result['legi']['last_update'] = file_exists($file) ? trim(file_get_contents($file)) : null;
         $db->close();
