@@ -34,11 +34,17 @@ jeton ntfy reviendrait à le publier. Les variables ci-dessous restent donc
 vides par défaut : seul l'exploitant de l'instance les renseigne, dans son
 environnement, pour être prévenu quand sa propre base décroche.
 
-Configuration (toutes optionnelles) :
-    SELFJUSTICE_API_URL         racine de l'API — OBLIGATOIRE, sans défaut
+Configuration :
+    SELFJUSTICE_API_URL         racine de l'API à interroger — OBLIGATOIRE,
+                                sans valeur par défaut. Sans elle, le serveur
+                                démarre, annonce ses outils, et les refuse tous.
+
+    Les suivantes sont facultatives :
     SELFJUSTICE_NTFY_URL        topic ntfy à prévenir en cas de retard
     SELFJUSTICE_NTFY_TOKEN      jeton du topic
     SELFJUSTICE_TIMEOUT         délai réseau en secondes (défaut : 15)
+    SELFJUSTICE_PLAFOND_TEXTE   longueur au-delà de laquelle le texte d'une
+                                décision est réduit (défaut : 20000)
 """
 
 from __future__ import annotations
@@ -378,6 +384,47 @@ def _sans_annexes(texte: str, zones: Any) -> str | None:
     morceaux.append(texte[curseur:])
 
     return "".join(morceaux).strip() or None
+
+
+# Les 36 cours d'appel, telles que l'index les nomme. Une table plutôt qu'une
+# transformation mécanique : celle-ci rendrait « St Denis Reunion » ou
+# « Aix Provence », approximations qui n'ont pas leur place dans une référence
+# juridique. La liste est close — le ressort des cours d'appel ne change pas
+# d'une année sur l'autre.
+COURS_APPEL = {
+    "ca_agen": "Agen", "ca_aix_provence": "Aix-en-Provence", "ca_amiens": "Amiens",
+    "ca_angers": "Angers", "ca_basse_terre": "Basse-Terre", "ca_bastia": "Bastia",
+    "ca_besancon": "Besançon", "ca_bordeaux": "Bordeaux", "ca_bourges": "Bourges",
+    "ca_caen": "Caen", "ca_cayenne": "Cayenne", "ca_chambery": "Chambéry",
+    "ca_colmar": "Colmar", "ca_dijon": "Dijon", "ca_douai": "Douai",
+    "ca_fort_de_france": "Fort-de-France", "ca_grenoble": "Grenoble",
+    "ca_limoges": "Limoges", "ca_lyon": "Lyon", "ca_metz": "Metz",
+    "ca_montpellier": "Montpellier", "ca_nancy": "Nancy", "ca_nimes": "Nîmes",
+    "ca_noumea": "Nouméa", "ca_orleans": "Orléans", "ca_papeete": "Papeete",
+    "ca_paris": "Paris", "ca_pau": "Pau", "ca_poitiers": "Poitiers",
+    "ca_reims": "Reims", "ca_rennes": "Rennes", "ca_riom": "Riom",
+    "ca_rouen": "Rouen", "ca_st_denis_reunion": "Saint-Denis de La Réunion",
+    "ca_toulouse": "Toulouse", "ca_versailles": "Versailles",
+}
+
+JURIDICTIONS = {"cc": "Cour de cassation", "ca": "Cour d'appel"}
+
+
+def _nom_juridiction(juridiction: Any, cour: Any) -> str:
+    """Rend « Cour d'appel de Nîmes » plutôt que « ca ca_nimes ».
+
+    Le code brut ne dit rien à qui lit la réponse, et le préfixe de la cour
+    répétait la juridiction. Une valeur inconnue est rendue telle quelle : mieux
+    vaut un code lisible qu'un nom inventé.
+    """
+    juri = JURIDICTIONS.get(str(juridiction), str(juridiction or ""))
+    if not cour:
+        return juri
+    nom = COURS_APPEL.get(str(cour))
+    if nom is None:
+        return f"{juri} {cour}"          # code inconnu : le rendre tel quel
+    liaison = "d'" if nom[0] in "AEIOUÉÈaeiou" else "de "
+    return f"{juri} {liaison}{nom}"
 
 
 def _fin_reelle(date_fin: Any) -> str | None:
@@ -868,16 +915,10 @@ async def verifier_jurisprudence(reference: str, juridiction: str | None = None)
 
     decisions = data.get("decisions", [])
     lignes = "\n".join(
-        f"  · {d.get('numero')} — {d.get('juridiction')}"
         # La cour distingue les rôles généraux entre eux : sans elle, deux
-        # décisions portant le même numéro sont impossibles à départager. Elle
-        # est préfixée du code de juridiction en base (`ca_nimes`), qu'on retire
-        # pour ne pas écrire « ca ca_nimes ».
-        + (
-            f" {str(d.get('cour')).removeprefix(str(d.get('juridiction')) + '_')}"
-            if d.get("cour") else ""
-        )
-        + (f"/{d.get('chambre')}" if d.get("chambre") else "")
+        # décisions portant le même numéro sont impossibles à départager.
+        f"  · {d.get('numero')} — {_nom_juridiction(d.get('juridiction'), d.get('cour'))}"
+        + (f", {d.get('chambre')}" if d.get("chambre") else "")
         + f", {d.get('date') or 'date douteuse en base amont'}"
         + (f" — {d.get('solution')}" if d.get("solution") else "")
         + (" — publié au Bulletin" if "b" in (d.get("publication") or "") else "")
