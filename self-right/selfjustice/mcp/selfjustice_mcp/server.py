@@ -1077,7 +1077,11 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
         # dispositif entiers, là où une coupe à longueur fixe gardait
         # l'introduction et jetait la conclusion.
         garde = _sans_annexes(texte, data.get("zones"))
-        if garde is not None:
+
+        # Le retrait des annexes ne suffit pas toujours : une décision aux
+        # annexes courtes et à la motivation longue repasserait au-dessus du
+        # plafond. On revérifie plutôt que de le supposer.
+        if garde is not None and len(garde) <= PLAFOND_TEXTE:
             coupe = (
                 f"\n\n[…] Moyens annexés écartés — {len(texte) - len(garde)} "
                 f"caractères sur {len(texte)}. La décision est ici entière, "
@@ -1085,18 +1089,34 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
             )
             texte = garde
         else:
-            # Sans zones exploitables, la coupe à l'aveugle reste le dernier
-            # recours : mieux vaut un extrait annoncé qu'un texte que le client
-            # ne transmettra pas.
+            # 🔑 Repli à deux bouts, jamais une coupe franche du début.
+            #
+            # Judilibre ne découpe pas les décisions anciennes : la moitié des
+            # arrêts longs arrivent sans `zones`. Ne garder que le début revenait
+            # alors à servir l'introduction et les faits, et à jeter la
+            # motivation et le dispositif — c'est-à-dire tout ce que la décision
+            # juge, et précisément ce que le message disait d'aller chercher en
+            # fin de texte.
+            #
+            # Deux tiers au début pour le raisonnement, un tiers à la fin pour le
+            # dispositif, qui y tient toujours.
+            if garde is not None:
+                texte = garde         # annexes déjà retirées, encore trop long
+            tete = (PLAFOND_TEXTE * 2) // 3
+            queue = PLAFOND_TEXTE - tete
             coupe = (
                 f"\n\n[…] ⚠️ EXTRAIT — {PLAFOND_TEXTE} des {len(texte)} "
-                "caractères, la structure de la décision n'étant pas fournie. "
-                "Ne conclus pas sur ce qui n'est pas affiché : le dispositif se "
-                "trouve en fin de texte. Rappelle l'outil avec `integral=True` "
-                "si le client peut l'encaisser, ou lis la décision sur "
+                "caractères. Le milieu de la décision manque ; le début et la "
+                "fin, dispositif compris, sont là. Ne conclus pas sur ce qui "
+                "n'est pas affiché. `integral=True` rend le texte entier si le "
+                "client peut l'encaisser, sinon lis la décision sur "
                 "courdecassation.fr."
             )
-            texte = texte[:PLAFOND_TEXTE]
+            texte = (
+                texte[:tete]
+                + "\n\n[…  partie centrale omise  …]\n\n"
+                + texte[-queue:]
+            )
 
     return (
         f"{bandeau}\n\n{entete}\n{data.get('ecli', '')}\n\n{texte}{coupe}\n\n"
