@@ -1,8 +1,4 @@
-# Artefacts Python — le .gitignore racine ne couvre pas encore Python.
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
+# Artefacts de construction propres à ce paquet. Les caches Python et les
+# environnements virtuels sont désormais couverts par le .gitignore racine.
 build/
 dist/

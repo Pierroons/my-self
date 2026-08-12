@@ -29,3 +29,12 @@ scripts/deploy.sh
 
 # Logs SU (runtime, jamais versionnés)
 bi-self/selfrecover/demo/su-audit.log*
+
+# Artefacts Python, pour tout le dépôt. La règle vivait dans le seul
+# selfjustice/mcp/ : les caches des scripts d'outillage restaient dehors, et
+# tools/__pycache__ n'attendait qu'un `git add` distrait pour entrer.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
