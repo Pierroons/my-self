@@ -346,6 +346,9 @@ def _couverture(requete: str, resultat: dict) -> float | None:
     return trouves / len(termes)
 
 
+MARQUEUR_ANNEXES = re.compile(r"\n\s*MOYENS?\s+ANNEXES?", re.IGNORECASE)
+
+
 def _sans_annexes(texte: str, zones: Any) -> str | None:
     """Rend le texte privé de ses moyens annexés, ou None si indéterminable.
 
@@ -358,7 +361,16 @@ def _sans_annexes(texte: str, zones: Any) -> str | None:
     zone peut arriver dans le désordre — `moyens` en compte trois, non triés.
     """
     if not isinstance(zones, dict):
-        return None
+        # 🔑 Judilibre ne découpe pas les décisions anciennes, et c'est
+        # justement là que les annexes pèsent le plus. Le marqueur est dans le
+        # texte : sur quinze décisions longues sans `zones`, il était présent
+        # quinze fois, et les quinze repassaient entières sous le plafond une
+        # fois coupées — 63 à 89 % du volume.
+        #
+        # Le premier marqueur, jamais le dernier : les annexes forment la fin du
+        # texte, et couper au dernier en garderait l'essentiel.
+        m = MARQUEUR_ANNEXES.search(texte)
+        return (texte[: m.start()].strip() or None) if m else None
 
     # Les bornes sont ramenées dans le texte au lieu d'être rejetées : l'amont
     # annonce une fin à 76 373 pour un texte de 76 372 caractères, et écarter
@@ -408,6 +420,12 @@ COURS_APPEL = {
 }
 
 JURIDICTIONS = {"cc": "Cour de cassation", "ca": "Cour d'appel"}
+
+# Judilibre diffuse deux bases distinctes. La provenance était écrite en dur
+# « Cour de cassation » sous toute décision, y compris une ordonnance de cour
+# d'appel : sur un serveur qui existe pour empêcher de citer de travers, la
+# ligne qui dit d'où vient le texte ne peut pas se tromper de juridiction.
+BASES_JUDILIBRE = {"jurinet": "Cour de cassation", "jurica": "cours d'appel"}
 
 
 def _nom_juridiction(juridiction: Any, cour: Any) -> str:
@@ -949,7 +967,7 @@ async def rechercher_jurisprudence(
     depuis: str | None = None,
     jusqu_a: str | None = None,
     juridiction: str | None = None,
-    champ: str = "summary",
+    champ: str | None = None,
 ) -> str:
     """Cherche des décisions par thème dans la base de la Cour de cassation.
 
@@ -960,14 +978,14 @@ async def rechercher_jurisprudence(
         requete: les mots du sujet cherché (« rupture conventionnelle »).
             Pour un numéro, utiliser `verifier_jurisprudence`.
         limite: nombre maximum de résultats (défaut 10).
-        champ: où chercher. `summary` par défaut — le sommaire rédigé par la
-            Cour, qui dit la portée de l'arrêt. Chercher dans le texte entier
-            (`text`) pondère des mots isolés et rend des milliers de décisions
-            étrangères au sujet. 🔑 `summary` ne trouve que les décisions
-            pourvues d'un sommaire, c'est-à-dire les arrêts publiés : c'est ce
-            qu'on veut pour « la jurisprudence sur X », pas pour retrouver une
-            espèce particulière. Autres valeurs : `themes`, `motivations`,
-            `dispositif`, `visa`.
+        champ: où chercher. Laissé vide, il suit la juridiction — le sommaire
+            pour la Cour de cassation, le texte entier pour les cours d'appel,
+            qui n'en rédigent pas.
+            🔑 Le sommaire dit la portée de l'arrêt et n'existe que sur les
+            décisions publiées : c'est ce qu'on veut pour « la jurisprudence sur
+            X », pas pour retrouver une espèce particulière — `text` sert alors,
+            au prix de résultats bien plus nombreux et moins ciblés.
+            Autres valeurs : `themes`, `motivations`, `dispositif`, `visa`.
         depuis: date minimale, au format « 2024-01-01 ». 🔑 À renseigner dès que
             la question porte sur l'état actuel du droit : la recherche classe
             par score, pas par date, et rend sinon des arrêts des années 1970
@@ -975,6 +993,15 @@ async def rechercher_jurisprudence(
         jusqu_a: date maximale, même format.
         juridiction: « cc » (Cour de cassation) ou « ca » (cours d'appel).
     """
+    # 🔑 Le sommaire est une pratique de la Cour de cassation : les cours
+    # d'appel n'en rédigent pas. Chercher dedans par défaut faisait répondre
+    # « aucune décision ne correspond » à toute recherche `juridiction="ca"`,
+    # là où le texte entier en rend des milliers — un faux négatif produit par
+    # le réglage lui-même. Le défaut suit donc la juridiction ; une valeur
+    # explicite est toujours respectée.
+    if champ is None:
+        champ = "text" if juridiction == "ca" else "summary"
+
     params: dict[str, Any] = {"q": requete, "limit": limite, "champ": champ}
     if depuis:
         params["date_start"] = depuis
@@ -1013,12 +1040,22 @@ async def rechercher_jurisprudence(
         # obligeait à passer par `texte_decision` — jusqu'à 80 000 caractères,
         # au-delà de ce qu'un client encaisse — pour une information que la
         # recherche tenait déjà.
+        #
+        # La moyenne absorbe l'isolé : sept arrêts pertinents et un hors sujet
+        # donnent 0,58, au-dessus du seuil global, et le hors sujet passe sans
+        # marque — avec le sommaire officiel et la mention « publié au Bulletin »
+        # pour lui. Le seuil de ligne est plus bas que celui de la moyenne :
+        # marquer à 0,5 signalerait la moitié d'une liste correcte.
+        couv = _couverture(requete, r)
+        doute = " ⚠️ hors sujet probable" if couv is not None and couv < 0.4 else ""
         tete = (
-            f"  · {r.get('number')} — {r.get('jurisdiction')}"
-            + (f"/{r.get('chamber')}" if r.get("chamber") else "")
+            f"  · {r.get('number')} — "
+            + _nom_juridiction(r.get("jurisdiction"), r.get("location"))
+            + (f", {r.get('chamber')}" if r.get("chamber") else "")
             + f", {r.get('decision_date')}"
             + (f" — {r.get('solution')}" if r.get("solution") else "")
             + (" — publié au Bulletin" if "b" in (r.get("publication") or []) else "")
+            + doute
         )
         resume = (r.get("summary") or "").strip()
         if resume:
@@ -1103,8 +1140,9 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
 
     bandeau = await _bandeau("jurisprudence")
     entete = (
-        f"{data.get('number')} — {data.get('jurisdiction')}"
-        + (f"/{data.get('chamber')}" if data.get("chamber") else "")
+        f"{data.get('number')} — "
+        + _nom_juridiction(data.get("jurisdiction"), data.get("location"))
+        + (f", {data.get('chamber')}" if data.get("chamber") else "")
         + f", {data.get('decision_date')}"
     )
 
@@ -1159,9 +1197,14 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
                 + texte[-queue:]
             )
 
+    # Une base inconnue rend « Judilibre » sans parenthèse : mieux vaut taire
+    # l'origine que d'en nommer une fausse.
+    origine = BASES_JUDILIBRE.get(str(data.get("source") or ""))
+    provenance = f"Judilibre ({origine})" if origine else "Judilibre"
+
     return (
         f"{bandeau}\n\n{entete}\n{data.get('ecli', '')}\n\n{texte}{coupe}\n\n"
-        "Source : Judilibre (Cour de cassation), open data. Cite la décision "
+        f"Source : {provenance}, open data. Cite la décision "
         "telle qu'elle est écrite ici, sans la reformuler en règle générale."
     )
 
