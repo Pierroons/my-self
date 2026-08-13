@@ -56,7 +56,7 @@ que ce serveur existe pour empêcher.
 ## Installation
 
 ```bash
-pip install selfjustice-mcp
+pip install selfright-mcp
 ```
 
 Ou depuis les sources :
@@ -75,8 +75,8 @@ Pour Claude Code (`~/.claude.json`) ou tout autre client MCP :
 {
   "mcpServers": {
     "selfjustice": {
-      "command": "selfjustice-mcp",
-      "env": { "SELFJUSTICE_API_URL": "https://exemple.test/api" }
+      "command": "selfright-mcp",
+      "env": { "SELFRIGHT_API_URL": "https://exemple.test/api" }
     }
   }
 }
@@ -85,7 +85,7 @@ Pour Claude Code (`~/.claude.json`) ou tout autre client MCP :
 Aucune clé d'API, aucun compte : il te faut seulement désigner l'instance à
 interroger.
 
-`SELFJUSTICE_API_URL` est **obligatoire et sans valeur par défaut**. Le serveur
+`SELFRIGHT_API_URL` est **obligatoire et sans valeur par défaut**. Le serveur
 ne suppose aucune instance : coder une adresse en dur ferait porter à celui qui
 l'héberge le trafic de toutes les installations, à son insu. Sans cette
 variable, le serveur démarre, annonce ses outils, et les refuse tous.
@@ -94,11 +94,11 @@ variable, le serveur démarre, annonce ses outils, et les refuse tous.
 
 | Variable | Effet |
 |---|---|
-| `SELFJUSTICE_API_URL` | **Obligatoire.** Racine de l'API à interroger |
-| `SELFJUSTICE_TIMEOUT` | Délai réseau en secondes (défaut : 15) |
-| `SELFJUSTICE_PLAFOND_TEXTE` | Longueur au-delà de laquelle le texte d'une décision est réduit (défaut : 20000). Les moyens annexés sont écartés en priorité ; à défaut, le début et la fin sont conservés |
-| `SELFJUSTICE_NTFY_URL` | Topic ntfy prévenu quand la base est en retard |
-| `SELFJUSTICE_NTFY_TOKEN` | Jeton du topic |
+| `SELFRIGHT_API_URL` | **Obligatoire.** Racine de l'API à interroger |
+| `SELFRIGHT_TIMEOUT` | Délai réseau en secondes (défaut : 15) |
+| `SELFRIGHT_PLAFOND_TEXTE` | Longueur au-delà de laquelle le texte d'une décision est réduit (défaut : 20000). Les moyens annexés sont écartés en priorité ; à défaut, le début et la fin sont conservés |
+| `SELFRIGHT_NTFY_URL` | Topic ntfy prévenu quand la base est en retard |
+| `SELFRIGHT_NTFY_TOKEN` | Jeton du topic |
 
 Les deux dernières servent à qui exploite une instance et veut être alerté
 quand sa propre base décroche. Elles sont vides par défaut, et le resteront :
@@ -108,7 +108,7 @@ inscrire un jeton dans un dépôt public reviendrait à le publier.
 
 L'API est un fichier PHP et deux bases SQLite ; le dossier parent contient les
 scripts de construction et de synchronisation. Rien n'oblige à passer par
-l'instance publique — pointe `SELFJUSTICE_API_URL` où tu veux.
+l'instance publique — pointe `SELFRIGHT_API_URL` où tu veux.
 
 ## Ce que ce serveur n'est pas
 

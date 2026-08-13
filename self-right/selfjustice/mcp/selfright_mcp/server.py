@@ -35,15 +35,15 @@ vides par défaut : seul l'exploitant de l'instance les renseigne, dans son
 environnement, pour être prévenu quand sa propre base décroche.
 
 Configuration :
-    SELFJUSTICE_API_URL         racine de l'API à interroger — OBLIGATOIRE,
+    SELFRIGHT_API_URL         racine de l'API à interroger — OBLIGATOIRE,
                                 sans valeur par défaut. Sans elle, le serveur
                                 démarre, annonce ses outils, et les refuse tous.
 
     Les suivantes sont facultatives :
-    SELFJUSTICE_NTFY_URL        topic ntfy à prévenir en cas de retard
-    SELFJUSTICE_NTFY_TOKEN      jeton du topic
-    SELFJUSTICE_TIMEOUT         délai réseau en secondes (défaut : 15)
-    SELFJUSTICE_PLAFOND_TEXTE   longueur au-delà de laquelle le texte d'une
+    SELFRIGHT_NTFY_URL        topic ntfy à prévenir en cas de retard
+    SELFRIGHT_NTFY_TOKEN      jeton du topic
+    SELFRIGHT_TIMEOUT         délai réseau en secondes (défaut : 15)
+    SELFRIGHT_PLAFOND_TEXTE   longueur au-delà de laquelle le texte d'une
                                 décision est réduit (défaut : 20000)
 """
 
@@ -70,16 +70,16 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # porter à son exploitant le trafic de toutes les installations du paquet, sans
 # qu'il l'ait choisi ni qu'aucun de ces utilisateurs ne le sache. Chacun désigne
 # l'instance qu'il interroge — la sienne, ou une qu'on lui a indiquée.
-API_URL = os.environ.get("SELFJUSTICE_API_URL", "").rstrip("/")
-NTFY_URL = os.environ.get("SELFJUSTICE_NTFY_URL", "")
-NTFY_TOKEN = os.environ.get("SELFJUSTICE_NTFY_TOKEN", "")
-TIMEOUT = float(os.environ.get("SELFJUSTICE_TIMEOUT", "15"))
+API_URL = os.environ.get("SELFRIGHT_API_URL", "").rstrip("/")
+NTFY_URL = os.environ.get("SELFRIGHT_NTFY_URL", "")
+NTFY_TOKEN = os.environ.get("SELFRIGHT_NTFY_TOKEN", "")
+TIMEOUT = float(os.environ.get("SELFRIGHT_TIMEOUT", "15"))
 
 # Longueur au-delà de laquelle le texte d'une décision est coupé. Assez pour
 # rendre la plupart des arrêts entiers, assez peu pour qu'aucun ne sature le
 # client : un arrêt réel mesuré à 79 658 caractères dépassait la limite et se
 # perdait dans un fichier annexe, laissant le modèle sans rien à citer.
-PLAFOND_TEXTE = int(os.environ.get("SELFJUSTICE_PLAFOND_TEXTE", "20000"))
+PLAFOND_TEXTE = int(os.environ.get("SELFRIGHT_PLAFOND_TEXTE", "20000"))
 
 SOURCES_UE = ("CEDH", "CHARTE_UE", "TUE", "TFUE", "RGPD", "AI_ACT")
 
@@ -251,7 +251,7 @@ class RequeteInvalide(Exception):
 async def _get(chemin: str, params: dict[str, Any] | None = None) -> Any:
     if not API_URL:
         raise ApiIndisponible(
-            "SELFJUSTICE_API_URL n'est pas défini : ce serveur ne sait pas quelle "
+            "SELFRIGHT_API_URL n'est pas défini : ce serveur ne sait pas quelle "
             "instance interroger. Renseigne-la dans la configuration du client MCP. "
             "N'invente aucun texte de loi en attendant."
         )
@@ -292,7 +292,7 @@ async def _get(chemin: str, params: dict[str, Any] | None = None) -> Any:
         if r.status_code == 404 and message.startswith("Endpoint inconnu"):
             raise ApiIndisponible(
                 f"l'API ne connaît pas cette route ({message}) — vérifier "
-                f"SELFJUSTICE_API_URL, actuellement {API_URL}"
+                f"SELFRIGHT_API_URL, actuellement {API_URL}"
             )
         if r.status_code == 404:
             return {"__introuvable__": True, "detail": message or r.text[:400]}
