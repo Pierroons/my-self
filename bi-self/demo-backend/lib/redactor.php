@@ -16,6 +16,11 @@ final class Redactor {
         '#/var/lib/selfjustice/demo-sessions/[a-f0-9-]+/#i' => '{session_dir}/',
         '#/var/lib/selfjustice/admin/#i'                     => '{admin_dir}/',
         '#/var/lib/selfjustice/#i'                           => '{state_dir}/',
+        // ⚠️ L'ordre compte : le plus spécifique d'abord, sinon un motif large
+        // consomme le début du chemin et le reste passe en clair.
+        '#/var/www/[a-z0-9_-]+/bi-self/demo-backend/api/#i'  => '{demo_api}/',
+        '#/var/www/[a-z0-9_-]+/bi-self/demo-backend/#i'      => '{document_root}/',
+        '#/var/www/[a-z0-9_-]+/bi-self/#i'                   => '{document_root}/',
         '#/var/www/bi-self/api/demo/#i'                      => '{demo_api}/',
         '#/var/www/bi-self/#i'                               => '{document_root}/',
     ];
@@ -25,6 +30,10 @@ final class Redactor {
      */
     private const SECRET_PATTERNS = [
         '#\$site_salt\s*=\s*[^;]+;#'                 => '$site_salt = [REDACTED — set at install];',
+        // define('X_SALT'|'X_SECRET'|'X_KEY'|'X_TOKEN', '…') — forme non couverte
+        // jusqu'au 13/08/2026, alors qu'elle est la plus courante en PHP.
+        '#(define\s*\(\s*[\x27"][A-Z0-9_]*(SALT|SECRET|KEY|TOKEN|PASS(WORD)?)[\x27"]\s*,\s*)[^)]+\)#i'
+            => '$1[REDACTED])',
         '#\$bypass_token\s*=\s*[^;]+;#'              => '$bypass_token = [REDACTED];',
         '#/var/lib/selfjustice/admin/token\.txt#'    => '{admin_dir}/token.txt',
         '#/var/lib/selfjustice/admin/bypass_token#'  => '{admin_dir}/bypass_token',

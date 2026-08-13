@@ -25,20 +25,27 @@ if ($s === null) {
     exit;
 }
 
+// 🔑 Les chemins se dérivent du fichier, ils ne se recopient pas.
+// Ils étaient écrits en dur vers /var/www/bi-self/ — une adresse qui n'existe
+// plus depuis un déménagement. La visionneuse répondait « file_unreadable » à
+// chaque appel, sans que rien d'autre ne le signale : une liste blanche qui
+// pointe dans le vide protège parfaitement, et ne sert plus à rien.
+$BASE = dirname(__DIR__, 2);   // .../demo-backend
+
 $ALLOWED = [
-    'register'           => '/var/www/bi-self/api/recover/register.php',
-    'login'              => '/var/www/bi-self/api/recover/login.php',
-    'logout'             => '/var/www/bi-self/api/recover/logout.php',
-    'recover-l1'         => '/var/www/bi-self/api/recover/recover-l1.php',
-    'recover-l2'         => '/var/www/bi-self/api/recover/recover-l2.php',
-    'phishing-sim'       => '/var/www/bi-self/api/recover/phishing-sim.php',
-    'me'                 => '/var/www/bi-self/api/recover/me.php',
-    'site-salt'          => '/var/www/bi-self/api/recover/site-salt.php',
-    'recover_helper'     => '/var/www/bi-self/lib/recover_helper.php',
-    'session_manager'    => '/var/www/bi-self/lib/session_manager.php',
-    'logger'             => '/var/www/bi-self/lib/logger.php',
-    'rate_limit'         => '/var/www/bi-self/lib/rate_limit.php',
-    'redactor'           => '/var/www/bi-self/lib/redactor.php',
+    'register'         => $BASE . '/api/recover/register.php',
+    'login'            => $BASE . '/api/recover/login.php',
+    'logout'           => $BASE . '/api/recover/logout.php',
+    'recover-l1'       => $BASE . '/api/recover/recover-l1.php',
+    'recover-l2'       => $BASE . '/api/recover/recover-l2.php',
+    'phishing-sim'     => $BASE . '/api/recover/phishing-sim.php',
+    'me'               => $BASE . '/api/recover/me.php',
+    'site-salt'        => $BASE . '/api/recover/site-salt.php',
+    'recover_helper'   => $BASE . '/lib/recover_helper.php',
+    'session_manager'  => $BASE . '/lib/session_manager.php',
+    'logger'           => $BASE . '/lib/logger.php',
+    'rate_limit'       => $BASE . '/lib/rate_limit.php',
+    'redactor'         => $BASE . '/lib/redactor.php',
 ];
 
 $file = (string) ($_GET['file'] ?? 'register');
