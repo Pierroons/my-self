@@ -29,6 +29,7 @@ accompagné de la date à laquelle cette base a été synchronisée.
 | `catalogue_actes` | Cherche modèles de lettres, CERFA et démarches officiels |
 | `actes_pour_situation` | Quelles démarches existent pour une situation donnée |
 | `calculer_echeance` | Calcule un délai de procédure et rend son raisonnement |
+| `gabarit_document` | Adresse d'un gabarit de courrier officiel et champs à compléter |
 
 Le règlement (UE) 2024/1689 sur l'intelligence artificielle est inclus sous le
 nom `AI_ACT`. Son article 50 porte les obligations de transparence applicables
@@ -114,16 +115,19 @@ L'API est un fichier PHP et deux bases SQLite ; le dossier parent contient les
 scripts de construction et de synchronisation. Rien n'oblige à passer par
 l'instance publique — pointe `SELFRIGHT_API_URL` où tu veux.
 
-## Trois outils de démarches, pas quatre
+## Ce que le serveur fait, et ce qu'il laisse à l'utilisateur
 
-L'API expose aussi une route qui produit un acte pré-rempli. Elle **n'est pas
-exposée ici**, et la raison est technique avant d'être juridique : son garde-fou
-est un filigrane « NON OFFICIEL — IRRECEVABLE » appliqué à une page imprimable.
-Un serveur MCP rend du texte à un modèle — le filigrane ne survivrait pas au
-passage, et le modèle recevrait un brouillon propre qu'il recopierait tel quel.
-L'exposer reviendrait à retirer sa protection en la croyant intacte.
+Il donne des outils à jour ; il ne formule pas d'avis. Il rend un article avec sa
+date de vigueur, une échéance avec le raisonnement qui y mène, l'adresse d'un
+formulaire officiel — jamais une recommandation sur ce qu'il faut faire.
 
-Ce qui est exposé indexe, oriente et calcule. `calculer_echeance` rend sa date
+`gabarit_document` illustre la limite. Il **ne rédige pas et ne rend pas le
+document** : il donne l'adresse du gabarit et la liste des champs à compléter.
+Le document s'ouvre dans un navigateur, porte une mention « non officiel » que
+rien ne retire, et laisse en crochets les faits, montants, dates et noms — ceux
+qui n'appartiennent qu'à la personne concernée et qu'aucun outil ne connaît.
+
+Le reste indexe, oriente et calcule. `calculer_echeance` rend sa date
 **avec le raisonnement article par article** qui y mène : une échéance sans ses
 règles ne se vérifie pas, et un délai de procédure manqué ne se rattrape pas.
 

@@ -1633,6 +1633,66 @@ async def calculer_echeance(
     )
 
 
+GABARITS = {
+    "mise_en_demeure": "Mise en demeure",
+    "saisine_conciliateur": "Saisine du conciliateur de justice",
+    "plainte_simple": "Dépôt de plainte simple",
+    "saisine_defenseur": "Saisine du Défenseur des droits",
+    "recours_gracieux": "Recours gracieux auprès d'une administration",
+    "resiliation": "Résiliation de contrat",
+}
+
+
+@server.tool()
+async def gabarit_document(type_document: str | None = None) -> str:
+    """Donne l'adresse d'un gabarit de courrier officiel et ses champs à remplir.
+
+    🔑 Cet outil ne rédige rien et ne rend pas le document. Il indique où
+    l'obtenir et ce qu'il restera à compléter. Le gabarit est un document à
+    trous : les faits, montants, dates et noms n'y sont jamais devinés — ils
+    n'appartiennent qu'à la personne qui l'utilise.
+
+    Le document lui-même s'ouvre dans un navigateur et s'imprime en PDF. Il
+    porte un filigrane « NON OFFICIEL — IRRECEVABLE » que rien ne retire : le
+    rendre ici en texte le perdrait.
+
+    Args:
+        type_document: l'un des gabarits disponibles. Sans argument, les liste.
+    """
+    if not ACT_URL:
+        return _msg_api_morte("SELFRIGHT_ACT_URL introuvable et non dérivable")
+
+    if not type_document:
+        liste = "\n".join(f"  · {c} — {n}" for c, n in GABARITS.items())
+        return f"{len(GABARITS)} gabarits disponibles :\n{liste}\n\nRappelle l'outil avec l'un d'eux."
+
+    cle = type_document.strip().lower()
+    if cle not in GABARITS:
+        liste = ", ".join(GABARITS)
+        return (
+            f"« {type_document} » n'est pas un gabarit connu.\n\nDisponibles : {liste}.\n\n"
+            "N'en invente pas un autre et ne rédige pas de courrier à la place : "
+            "un modèle inventé n'a aucune valeur devant l'administration."
+        )
+
+    url = f"{ACT_URL}/draft.php?type={urllib.parse.quote(cle)}"
+    return (
+        f"Gabarit « {GABARITS[cle]} »\n\n"
+        f"À ouvrir dans un navigateur, puis imprimer en PDF :\n  {url}\n\n"
+        "Champs laissés à compléter par la personne concernée :\n"
+        "  · identité et adresse de l'expéditeur et du destinataire\n"
+        "  · objet du courrier et action demandée\n"
+        "  · chronologie des faits\n"
+        "  · lieu, date et signature\n\n"
+        "⚠️ Ne recopie pas ce gabarit de mémoire et ne le reconstitue pas : "
+        "donne l'adresse. Le document porte une mention « non officiel » qui ne "
+        "survivrait pas à une restitution en texte, et une version approximative "
+        "d'un courrier type se retourne contre celui qui l'envoie.\n\n"
+        "Les faits, montants et dates ne se devinent pas : demande-les, ou "
+        "laisse les crochets en place pour que la personne les complète."
+    )
+
+
 def main() -> None:
     """Point d'entrée — transport stdio, celui qu'attend un client MCP local."""
     server.run(transport="stdio")
