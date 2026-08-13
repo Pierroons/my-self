@@ -334,6 +334,9 @@ selfact_repondre(200, [
         'art. 641 CPC' => 'Délai en jours : le jour de départ ne compte pas. Délai en mois ou années : même quantième, à défaut le dernier jour du mois.',
         'art. 642 CPC' => 'Le délai expire le dernier jour à 24 h. S\'il tombe un samedi, un dimanche ou un jour férié, il est prorogé au premier jour ouvrable suivant.',
         'source'       => 'Textes relus dans la base LEGI (dump officiel DILA), et non cités de mémoire.',
+        'mention' => "SelfAct est indépendant et n'est affilié à aucun organisme public. "
+                   . "Les formulaires et démarches officiels sont disponibles gratuitement "
+                   . "sur service-public.gouv.fr : cet outil n'est jamais nécessaire pour y accéder.",
     ],
     'avertissement' => 'Ce calcul applique une durée à une date. Il ne dit ni quelle '
                      . 'durée s\'applique à votre situation, ni à partir de quel '
