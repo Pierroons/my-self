@@ -1,717 +1,717 @@
 {
- "_meta": {
-  "version": "2026.04",
-  "last_update": "2026-04-18",
-  "source": "service-public.gouv.fr (Etalab 2.0) — curation manuelle",
-  "comment": "Mapping situation → acte officiel. Curation MANUELLE : les statuts juridiques, seuils et articles applicables sont vérifiés à la main et ne sont produits par aucun cron. Le catalogue (catalog.json), lui, est synchronisé automatiquement et vient compléter ces actes via catalog_hints.",
-  "last_review": "2026-08-03",
-  "mention": "SelfAct est indépendant et n'est affilié à aucun organisme public. Les formulaires et démarches officiels sont disponibles gratuitement sur service-public.gouv.fr : cet outil n'est jamais nécessaire pour y accéder."
- },
- "situations": {
-  "impaye_commercial_loyer": {
-   "label": "Impayé commercial ou loyer en retard",
-   "acts": [
-    {
-     "type": "mise_en_demeure",
-     "status": "official",
-     "label": "Mise en demeure de paiement (LRAR)",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R50660",
-     "fallback_note": "Si le modèle officiel ne correspond pas exactement à votre cas, SelfAct peut produire un PDF d'aide à la rédaction filigrané."
-    },
-    {
-     "type": "saisine_conciliateur",
-     "status": "info_only",
-     "label": "Saisine du conciliateur de justice (obligatoire < 5000 €)",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1736",
-     "fallback_note": "Pas de modèle officiel — SelfAct peut produire un PDF d'aide à la rédaction filigrané."
-    }
-   ],
-   "thresholds": {
-    "montant_max_conciliateur": 5000,
-    "art_applicable": "art. 750-1 CPC"
-   },
-   "catalog_hints": {
-    "keywords": [
-     "impaye",
-     "loyer",
-     "recouvrement",
-     "dette",
-     "mise en demeure",
-     "injonction de payer"
-    ],
-    "categories": [
-     "logement",
-     "finances",
-     "justice"
-    ]
-   }
+  "_meta": {
+    "version": "2026.04",
+    "last_update": "2026-04-18",
+    "source": "service-public.gouv.fr (Etalab 2.0) — curation manuelle",
+    "comment": "Mapping situation → acte officiel. Curation MANUELLE : les statuts juridiques, seuils et articles applicables sont vérifiés à la main et ne sont produits par aucun cron. Le catalogue (catalog.json), lui, est synchronisé automatiquement et vient compléter ces actes via catalog_hints.",
+    "last_review": "2026-08-03",
+    "mention": "SelfAct est indépendant et n'est affilié à aucun organisme public. Les formulaires et démarches officiels sont disponibles gratuitement sur service-public.gouv.fr : cet outil n'est jamais nécessaire pour y accéder."
   },
-  "voisinage_nuisances": {
-   "label": "Conflit de voisinage (nuisances, empiètement, bruit)",
-   "acts": [
-    {
-     "type": "signalement_nuisances",
-     "status": "simulator",
-     "label": "Simulateur officiel : signalement de nuisances répétées",
-     "url": "https://www.service-public.gouv.fr/simulateur/calcul/SignalementDeNuisancesDeVoisinageRepeteesEtDemandeIntervention"
+  "situations": {
+    "impaye_commercial_loyer": {
+      "label": "Impayé commercial ou loyer en retard",
+      "acts": [
+        {
+          "type": "mise_en_demeure",
+          "status": "official",
+          "label": "Mise en demeure de paiement (LRAR)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R50660",
+          "fallback_note": "Si le modèle officiel ne correspond pas exactement à votre cas, SelfAct peut produire un PDF d'aide à la rédaction filigrané."
+        },
+        {
+          "type": "saisine_conciliateur",
+          "status": "info_only",
+          "label": "Saisine du conciliateur de justice (obligatoire < 5000 €)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1736",
+          "fallback_note": "Pas de modèle officiel — SelfAct peut produire un PDF d'aide à la rédaction filigrané."
+        }
+      ],
+      "thresholds": {
+        "montant_max_conciliateur": 5000,
+        "art_applicable": "art. 750-1 CPC"
+      },
+      "catalog_hints": {
+        "keywords": [
+          "impaye",
+          "loyer",
+          "recouvrement",
+          "dette",
+          "mise en demeure",
+          "injonction de payer"
+        ],
+        "categories": [
+          "logement",
+          "finances",
+          "justice"
+        ]
+      }
     },
-    {
-     "type": "saisine_conciliateur",
-     "status": "info_only",
-     "label": "Saisine du conciliateur de justice (obligatoire avant tribunal)",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1736",
-     "fallback_note": "Pas de modèle officiel — SelfAct peut produire un PDF d'aide filigrané."
+    "voisinage_nuisances": {
+      "label": "Conflit de voisinage (nuisances, empiètement, bruit)",
+      "acts": [
+        {
+          "type": "signalement_nuisances",
+          "status": "simulator",
+          "label": "Simulateur officiel : signalement de nuisances répétées",
+          "url": "https://www.service-public.gouv.fr/simulateur/calcul/SignalementDeNuisancesDeVoisinageRepeteesEtDemandeIntervention"
+        },
+        {
+          "type": "saisine_conciliateur",
+          "status": "info_only",
+          "label": "Saisine du conciliateur de justice (obligatoire avant tribunal)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1736",
+          "fallback_note": "Pas de modèle officiel — SelfAct peut produire un PDF d'aide filigrané."
+        }
+      ],
+      "art_applicable": "art. 1240 C. civ., art. R. 1336-5 C. santé publique, art. 544 C. civ.",
+      "catalog_hints": {
+        "keywords": [
+          "voisin",
+          "nuisance",
+          "bruit",
+          "bornage",
+          "mitoyennete",
+          "servitude",
+          "empietement",
+          "haie"
+        ],
+        "categories": [
+          "logement",
+          "justice"
+        ]
+      }
+    },
+    "consommation_produit_defectueux": {
+      "label": "Produit non conforme, service mal exécuté, démarchage abusif",
+      "acts": [
+        {
+          "type": "retractation_achat_distance",
+          "status": "official",
+          "label": "Rétractation achat à distance (14 jours)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R15904"
+        },
+        {
+          "type": "signalement_dgccrf",
+          "status": "official",
+          "label": "Signalement DGCCRF d'un commerçant",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24052"
+        },
+        {
+          "type": "saisine_mediateur_conso",
+          "status": "official",
+          "label": "Saisine médiateur de la consommation",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1736"
+        }
+      ],
+      "art_applicable": "art. L. 112-1 C. conso., art. L. 221-18 C. conso.",
+      "catalog_hints": {
+        "keywords": [
+          "garantie",
+          "vice cache",
+          "retractation",
+          "remboursement",
+          "livraison",
+          "produit",
+          "conformite",
+          "demarchage"
+        ],
+        "categories": [
+          "consommation"
+        ]
+      }
+    },
+    "infraction_penale_victime": {
+      "label": "Vol, escroquerie, dégradation, menaces",
+      "acts": [
+        {
+          "type": "plainte_simple",
+          "status": "official",
+          "label": "Plainte auprès du procureur de la République",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11469"
+        },
+        {
+          "type": "pre_plainte_en_ligne",
+          "status": "simulator",
+          "label": "Pré-plainte en ligne (démarche simplifiée)",
+          "url": "https://www.pre-plainte-en-ligne.gouv.fr"
+        },
+        {
+          "type": "plainte_cpc",
+          "status": "lawyer_required",
+          "label": "Plainte avec constitution de partie civile (AVOCAT OBLIGATOIRE)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11657"
+        }
+      ],
+      "prescription": {
+        "contravention": "1 an (art. 9 CPP)",
+        "delit": "6 ans (art. 8 CPP)",
+        "crime": "20 ans (art. 7 CPP)"
+      },
+      "catalog_hints": {
+        "keywords": [
+          "plainte",
+          "vol",
+          "escroquerie",
+          "degradation",
+          "menace",
+          "partie civile",
+          "victime"
+        ],
+        "categories": [
+          "justice",
+          "securite"
+        ]
+      }
+    },
+    "discrimination": {
+      "label": "Discrimination (emploi, logement, service public)",
+      "acts": [
+        {
+          "type": "saisine_defenseur_droits",
+          "status": "simulator",
+          "label": "Saisir le Défenseur des droits (formulaire officiel)",
+          "url": "https://formulaire.defenseurdesdroits.fr/code/afficher.php?ETAPE=accueil_2016"
+        }
+      ],
+      "art_applicable": "art. 225-1 C. pénal, art. L. 1132-1 C. travail, art. L. 1134-5 C. travail",
+      "catalog_hints": {
+        "keywords": [
+          "discrimination",
+          "defenseur des droits",
+          "egalite",
+          "harcelement"
+        ],
+        "categories": [
+          "justice",
+          "travail"
+        ]
+      }
+    },
+    "administration_non_reponse": {
+      "label": "Non-réponse administration publique > 2 mois",
+      "acts": [
+        {
+          "type": "recours_gracieux",
+          "status": "info_only",
+          "label": "Recours gracieux puis contentieux",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2474",
+          "fallback_note": "Modèle spécifique selon l'administration — SelfAct peut produire un PDF filigrané."
+        },
+        {
+          "type": "saisine_defenseur_droits",
+          "status": "simulator",
+          "label": "Saisir le Défenseur des droits (médiation services publics)",
+          "url": "https://formulaire.defenseurdesdroits.fr/"
+        }
+      ],
+      "art_applicable": "art. L. 231-4 CRPA (décision implicite de rejet)",
+      "catalog_hints": {
+        "keywords": [
+          "recours gracieux",
+          "recours hierarchique",
+          "recours contentieux",
+          "silence de l administration",
+          "decision implicite"
+        ],
+        "categories": [
+          "administration",
+          "justice"
+        ]
+      }
+    },
+    "force_ordre_manquement": {
+      "label": "Manquement forces de l'ordre (déontologie)",
+      "acts": [
+        {
+          "type": "saisine_defenseur_droits_deontologie",
+          "status": "simulator",
+          "label": "Saisine Défenseur des droits — déontologie de la sécurité",
+          "url": "https://formulaire.defenseurdesdroits.fr/"
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "deontologie",
+          "police",
+          "gendarmerie",
+          "force de l ordre",
+          "igpn"
+        ],
+        "categories": [
+          "securite",
+          "justice"
+        ]
+      }
+    },
+    "enfant_en_danger": {
+      "label": "Enfant en danger",
+      "urgency": "absolute",
+      "acts": [
+        {
+          "type": "119_snated",
+          "status": "emergency_phone",
+          "label": "119 — Allô Enfance en Danger (appel immédiat, 24/7, gratuit)",
+          "url": "tel:119",
+          "priority": 1
+        },
+        {
+          "type": "crip_departementale",
+          "status": "info_only",
+          "label": "CRIP départementale (Cellule de Recueil des Informations Préoccupantes)",
+          "url": "https://solidarites.gouv.fr/les-cellules-de-recueil-des-informations-preoccupantes-crip-0"
+        },
+        {
+          "type": "pharos",
+          "status": "simulator",
+          "label": "PHAROS — signalement contenu illégal en ligne",
+          "url": "https://www.internet-signalement.gouv.fr"
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "enfant",
+          "mineur",
+          "danger",
+          "protection de l enfance",
+          "autorite parentale",
+          "assistance educative"
+        ],
+        "categories": [
+          "famille"
+        ]
+      }
+    },
+    "cyberharcelement": {
+      "label": "Cyberharcèlement, contenu illégal en ligne",
+      "acts": [
+        {
+          "type": "3018",
+          "status": "emergency_phone",
+          "label": "3018 — e-Enfance (appel + retrait rapide de contenu)",
+          "url": "tel:3018",
+          "priority": 1
+        },
+        {
+          "type": "pharos",
+          "status": "simulator",
+          "label": "PHAROS — signaler contenu illicite",
+          "url": "https://www.internet-signalement.gouv.fr"
+        },
+        {
+          "type": "plainte_simple",
+          "status": "official",
+          "label": "Plainte au procureur (modèle officiel)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11469"
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "harcelement",
+          "en ligne",
+          "internet",
+          "contenu illicite",
+          "pharos",
+          "diffamation",
+          "donnees personnelles"
+        ],
+        "categories": [
+          "securite",
+          "justice"
+        ]
+      }
+    },
+    "resiliation_abonnement": {
+      "label": "Résiliation d'abonnement (téléphonie, internet, assurance)",
+      "acts": [
+        {
+          "type": "resiliation_telephonie_internet",
+          "status": "official",
+          "label": "Résiliation contrat téléphonie / internet",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18070"
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "resiliation",
+          "abonnement",
+          "operateur",
+          "telephonie",
+          "internet",
+          "contrat"
+        ],
+        "categories": [
+          "consommation"
+        ]
+      }
+    },
+    "mediation_bancaire": {
+      "label": "Litige bancaire",
+      "acts": [
+        {
+          "type": "saisine_mediateur_banque",
+          "status": "official",
+          "label": "Saisine du médiateur de la banque",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R10195"
+        },
+        {
+          "type": "dedommagement_fermeture_compte",
+          "status": "official",
+          "label": "Demande de dédommagement pour fermeture de compte",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R13155"
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "banque",
+          "compte bancaire",
+          "mediateur",
+          "cheque",
+          "carte bancaire",
+          "prelevement",
+          "credit"
+        ],
+        "categories": [
+          "finances"
+        ]
+      }
+    },
+    "mediation_assurance": {
+      "label": "Litige avec un assureur",
+      "acts": [
+        {
+          "type": "saisine_mediateur_assurance",
+          "status": "official",
+          "label": "Saisine du médiateur en assurances",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R12259"
+        },
+        {
+          "type": "bureau_central_tarification",
+          "status": "official",
+          "label": "Saisine du Bureau central de tarification (BCT)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16218"
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "assurance",
+          "assureur",
+          "sinistre",
+          "mediateur",
+          "indemnisation",
+          "degat des eaux"
+        ],
+        "categories": [
+          "assurances"
+        ]
+      }
+    },
+    "licenciement_conteste": {
+      "label": "Licenciement ou rupture du contrat de travail contestée",
+      "urgency": "haute",
+      "acts": [
+        {
+          "type": "saisine_prudhommes",
+          "status": "official",
+          "label": "Requête aux fins de saisine du conseil de prud'hommes (salarié)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45128",
+          "catalog_id": "R45128",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "prescription": {
+        "duree_mois": 12,
+        "article": "art. L1471-1 al. 2 du code du travail",
+        "texte": "Toute action portant sur la rupture du contrat de travail se prescrit par douze mois à compter de la notification de la rupture.",
+        "point_de_depart": "notification de la rupture"
+      },
+      "catalog_hints": {
+        "keywords": [
+          "prud",
+          "licenciement",
+          "rupture",
+          "salarie",
+          "contrat de travail",
+          "solde de tout compte",
+          "certificat de travail"
+        ],
+        "categories": [
+          "travail",
+          "justice"
+        ]
+      }
+    },
+    "depot_garantie_non_restitue": {
+      "label": "Dépôt de garantie non restitué après un bail d'habitation",
+      "acts": [
+        {
+          "type": "mise_en_demeure",
+          "status": "official",
+          "label": "Demander le remboursement du dépôt de garantie non restitué",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16638",
+          "catalog_id": "R16638",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "depot de garantie",
+          "bail",
+          "locataire",
+          "etat des lieux",
+          "preavis",
+          "restitution"
+        ],
+        "categories": [
+          "logement"
+        ]
+      }
+    },
+    "succession_litige": {
+      "label": "Succession : accepter, renoncer ou contester",
+      "acts": [
+        {
+          "type": "formulaire_cerfa",
+          "status": "official",
+          "label": "Renonciation à succession par une personne majeure",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2849",
+          "catalog_id": "R2849",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "formulaire_cerfa",
+          "status": "official",
+          "label": "Déclaration de succession",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R10279",
+          "catalog_id": "R10279",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "courrier",
+          "status": "official",
+          "label": "Demander le contrôle d'une déclaration de succession",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33775",
+          "catalog_id": "R33775",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "succession",
+          "heritier",
+          "renonciation",
+          "notaire",
+          "deces",
+          "legs",
+          "testament",
+          "indivision"
+        ],
+        "categories": [
+          "famille",
+          "finances"
+        ]
+      }
+    },
+    "surendettement": {
+      "label": "Surendettement : déposer ou contester un dossier",
+      "urgency": "haute",
+      "acts": [
+        {
+          "type": "formulaire_cerfa",
+          "status": "official",
+          "label": "Déclaration de surendettement (Banque de France)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R17094",
+          "catalog_id": "R17094",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "courrier",
+          "status": "official",
+          "label": "Lettre à joindre au dossier de surendettement",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R992",
+          "catalog_id": "R992",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "recours",
+          "status": "official",
+          "label": "Recours contre le rejet d'un dossier de surendettement",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R993",
+          "catalog_id": "R993",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "surendettement",
+          "banque de france",
+          "dette",
+          "credit",
+          "commission de surendettement",
+          "retablissement personnel"
+        ],
+        "categories": [
+          "finances",
+          "justice"
+        ]
+      }
+    },
+    "malfacon_travaux": {
+      "label": "Malfaçon, dépassement de devis ou dégâts causés par un artisan",
+      "acts": [
+        {
+          "type": "mise_en_demeure",
+          "status": "official",
+          "label": "Contester la facture d'un artisan en cas de dépassement du devis",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24080",
+          "catalog_id": "R24080",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "mise_en_demeure",
+          "status": "official",
+          "label": "Demander réparation à un artisan pour dégâts durant les travaux",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R31951",
+          "catalog_id": "R31951",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "declaration_sinistre",
+          "status": "official",
+          "label": "Faire jouer la garantie décennale auprès de l'assurance dommages-ouvrage",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53461",
+          "catalog_id": "R53461",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "prescription": {
+        "duree_annees": 10,
+        "article": "art. 1792 et 1792-4-1 du code civil",
+        "texte": "La responsabilité décennale du constructeur est engagée de plein droit ; il en est déchargé au terme de dix ans après la réception.",
+        "point_de_depart": "réception des travaux"
+      },
+      "catalog_hints": {
+        "keywords": [
+          "artisan",
+          "devis",
+          "travaux",
+          "malfacon",
+          "garantie decennale",
+          "constructeur",
+          "reception"
+        ],
+        "categories": [
+          "logement",
+          "consommation"
+        ]
+      }
+    },
+    "accident_circulation": {
+      "label": "Accident de la circulation : indemnisation",
+      "urgency": "haute",
+      "acts": [
+        {
+          "type": "formulaire_cerfa",
+          "status": "official",
+          "label": "Demande d'indemnisation au FGAO par une victime d'accident",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R15103",
+          "catalog_id": "R15103",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "formulaire_cerfa",
+          "status": "official",
+          "label": "Demande d'indemnisation au FGAO par un ayant droit (décès)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21646",
+          "catalog_id": "R21646",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "accident de la circulation",
+          "fgao",
+          "indemnisation",
+          "victime",
+          "vehicule",
+          "constat"
+        ],
+        "categories": [
+          "auto",
+          "assurances",
+          "justice"
+        ]
+      }
+    },
+    "amende_contestation": {
+      "label": "Contester une amende forfaitaire",
+      "urgency": "haute",
+      "acts": [
+        {
+          "type": "teleservice",
+          "status": "official",
+          "label": "Contester un avis d'amende forfaitaire ou désigner un autre conducteur",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42185",
+          "catalog_id": "R42185",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "amende",
+          "contravention",
+          "radar",
+          "stationnement",
+          "exces de vitesse",
+          "conducteur"
+        ],
+        "categories": [
+          "auto",
+          "justice"
+        ]
+      }
+    },
+    "pension_alimentaire_impayee": {
+      "label": "Pension alimentaire impayée ou à faire fixer",
+      "urgency": "haute",
+      "acts": [
+        {
+          "type": "mise_en_demeure",
+          "status": "official",
+          "label": "Demander le versement de la pension alimentaire",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1894",
+          "catalog_id": "R1894",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "saisine_jaf",
+          "status": "official",
+          "label": "Requête en obligation alimentaire (juge aux affaires familiales)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42402",
+          "catalog_id": "R42402",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        },
+        {
+          "type": "saisine_jaf",
+          "status": "official",
+          "label": "Demande au juge aux affaires familiales (autorité parentale, droit de visite)",
+          "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R15764",
+          "catalog_id": "R15764",
+          "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "pension alimentaire",
+          "juge aux affaires familiales",
+          "obligation alimentaire",
+          "aripa",
+          "recouvrement"
+        ],
+        "categories": [
+          "famille",
+          "justice"
+        ]
+      }
     }
-   ],
-   "art_applicable": "art. 1240 C. civ., art. R. 1336-5 C. santé publique, art. 544 C. civ.",
-   "catalog_hints": {
-    "keywords": [
-     "voisin",
-     "nuisance",
-     "bruit",
-     "bornage",
-     "mitoyennete",
-     "servitude",
-     "empietement",
-     "haie"
-    ],
-    "categories": [
-     "logement",
-     "justice"
-    ]
-   }
-  },
-  "consommation_produit_defectueux": {
-   "label": "Produit non conforme, service mal exécuté, démarchage abusif",
-   "acts": [
-    {
-     "type": "retractation_achat_distance",
-     "status": "official",
-     "label": "Rétractation achat à distance (14 jours)",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R15904"
-    },
-    {
-     "type": "signalement_dgccrf",
-     "status": "official",
-     "label": "Signalement DGCCRF d'un commerçant",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24052"
-    },
-    {
-     "type": "saisine_mediateur_conso",
-     "status": "official",
-     "label": "Saisine médiateur de la consommation",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1736"
-    }
-   ],
-   "art_applicable": "art. L. 112-1 C. conso., art. L. 221-18 C. conso.",
-   "catalog_hints": {
-    "keywords": [
-     "garantie",
-     "vice cache",
-     "retractation",
-     "remboursement",
-     "livraison",
-     "produit",
-     "conformite",
-     "demarchage"
-    ],
-    "categories": [
-     "consommation"
-    ]
-   }
-  },
-  "infraction_penale_victime": {
-   "label": "Vol, escroquerie, dégradation, menaces",
-   "acts": [
-    {
-     "type": "plainte_simple",
-     "status": "official",
-     "label": "Plainte auprès du procureur de la République",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11469"
-    },
-    {
-     "type": "pre_plainte_en_ligne",
-     "status": "simulator",
-     "label": "Pré-plainte en ligne (démarche simplifiée)",
-     "url": "https://www.pre-plainte-en-ligne.gouv.fr"
-    },
-    {
-     "type": "plainte_cpc",
-     "status": "lawyer_required",
-     "label": "Plainte avec constitution de partie civile (AVOCAT OBLIGATOIRE)",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11657"
-    }
-   ],
-   "prescription": {
-    "contravention": "1 an (art. 9 CPP)",
-    "delit": "6 ans (art. 8 CPP)",
-    "crime": "20 ans (art. 7 CPP)"
-   },
-   "catalog_hints": {
-    "keywords": [
-     "plainte",
-     "vol",
-     "escroquerie",
-     "degradation",
-     "menace",
-     "partie civile",
-     "victime"
-    ],
-    "categories": [
-     "justice",
-     "securite"
-    ]
-   }
-  },
-  "discrimination": {
-   "label": "Discrimination (emploi, logement, service public)",
-   "acts": [
-    {
-     "type": "saisine_defenseur_droits",
-     "status": "simulator",
-     "label": "Saisir le Défenseur des droits (formulaire officiel)",
-     "url": "https://formulaire.defenseurdesdroits.fr/code/afficher.php?ETAPE=accueil_2016"
-    }
-   ],
-   "art_applicable": "art. 225-1 C. pénal, art. L. 1132-1 C. travail, art. L. 1134-5 C. travail",
-   "catalog_hints": {
-    "keywords": [
-     "discrimination",
-     "defenseur des droits",
-     "egalite",
-     "harcelement"
-    ],
-    "categories": [
-     "justice",
-     "travail"
-    ]
-   }
-  },
-  "administration_non_reponse": {
-   "label": "Non-réponse administration publique > 2 mois",
-   "acts": [
-    {
-     "type": "recours_gracieux",
-     "status": "info_only",
-     "label": "Recours gracieux puis contentieux",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2474",
-     "fallback_note": "Modèle spécifique selon l'administration — SelfAct peut produire un PDF filigrané."
-    },
-    {
-     "type": "saisine_defenseur_droits",
-     "status": "simulator",
-     "label": "Saisir le Défenseur des droits (médiation services publics)",
-     "url": "https://formulaire.defenseurdesdroits.fr/"
-    }
-   ],
-   "art_applicable": "art. L. 231-4 CRPA (décision implicite de rejet)",
-   "catalog_hints": {
-    "keywords": [
-     "recours gracieux",
-     "recours hierarchique",
-     "recours contentieux",
-     "silence de l administration",
-     "decision implicite"
-    ],
-    "categories": [
-     "administration",
-     "justice"
-    ]
-   }
-  },
-  "force_ordre_manquement": {
-   "label": "Manquement forces de l'ordre (déontologie)",
-   "acts": [
-    {
-     "type": "saisine_defenseur_droits_deontologie",
-     "status": "simulator",
-     "label": "Saisine Défenseur des droits — déontologie de la sécurité",
-     "url": "https://formulaire.defenseurdesdroits.fr/"
-    }
-   ],
-   "catalog_hints": {
-    "keywords": [
-     "deontologie",
-     "police",
-     "gendarmerie",
-     "force de l ordre",
-     "igpn"
-    ],
-    "categories": [
-     "securite",
-     "justice"
-    ]
-   }
-  },
-  "enfant_en_danger": {
-   "label": "Enfant en danger",
-   "urgency": "absolute",
-   "acts": [
-    {
-     "type": "119_snated",
-     "status": "emergency_phone",
-     "label": "119 — Allô Enfance en Danger (appel immédiat, 24/7, gratuit)",
-     "url": "tel:119",
-     "priority": 1
-    },
-    {
-     "type": "crip_departementale",
-     "status": "info_only",
-     "label": "CRIP départementale (Cellule de Recueil des Informations Préoccupantes)",
-     "url": "https://solidarites.gouv.fr/les-cellules-de-recueil-des-informations-preoccupantes-crip-0"
-    },
-    {
-     "type": "pharos",
-     "status": "simulator",
-     "label": "PHAROS — signalement contenu illégal en ligne",
-     "url": "https://www.internet-signalement.gouv.fr"
-    }
-   ],
-   "catalog_hints": {
-    "keywords": [
-     "enfant",
-     "mineur",
-     "danger",
-     "protection de l enfance",
-     "autorite parentale",
-     "assistance educative"
-    ],
-    "categories": [
-     "famille"
-    ]
-   }
-  },
-  "cyberharcelement": {
-   "label": "Cyberharcèlement, contenu illégal en ligne",
-   "acts": [
-    {
-     "type": "3018",
-     "status": "emergency_phone",
-     "label": "3018 — e-Enfance (appel + retrait rapide de contenu)",
-     "url": "tel:3018",
-     "priority": 1
-    },
-    {
-     "type": "pharos",
-     "status": "simulator",
-     "label": "PHAROS — signaler contenu illicite",
-     "url": "https://www.internet-signalement.gouv.fr"
-    },
-    {
-     "type": "plainte_simple",
-     "status": "official",
-     "label": "Plainte au procureur (modèle officiel)",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11469"
-    }
-   ],
-   "catalog_hints": {
-    "keywords": [
-     "harcelement",
-     "en ligne",
-     "internet",
-     "contenu illicite",
-     "pharos",
-     "diffamation",
-     "donnees personnelles"
-    ],
-    "categories": [
-     "securite",
-     "justice"
-    ]
-   }
-  },
-  "resiliation_abonnement": {
-   "label": "Résiliation d'abonnement (téléphonie, internet, assurance)",
-   "acts": [
-    {
-     "type": "resiliation_telephonie_internet",
-     "status": "official",
-     "label": "Résiliation contrat téléphonie / internet",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18070"
-    }
-   ],
-   "catalog_hints": {
-    "keywords": [
-     "resiliation",
-     "abonnement",
-     "operateur",
-     "telephonie",
-     "internet",
-     "contrat"
-    ],
-    "categories": [
-     "consommation"
-    ]
-   }
-  },
-  "mediation_bancaire": {
-   "label": "Litige bancaire",
-   "acts": [
-    {
-     "type": "saisine_mediateur_banque",
-     "status": "official",
-     "label": "Saisine du médiateur de la banque",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R10195"
-    },
-    {
-     "type": "dedommagement_fermeture_compte",
-     "status": "official",
-     "label": "Demande de dédommagement pour fermeture de compte",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R13155"
-    }
-   ],
-   "catalog_hints": {
-    "keywords": [
-     "banque",
-     "compte bancaire",
-     "mediateur",
-     "cheque",
-     "carte bancaire",
-     "prelevement",
-     "credit"
-    ],
-    "categories": [
-     "finances"
-    ]
-   }
-  },
-  "mediation_assurance": {
-   "label": "Litige avec un assureur",
-   "acts": [
-    {
-     "type": "saisine_mediateur_assurance",
-     "status": "official",
-     "label": "Saisine du médiateur en assurances",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R12259"
-    },
-    {
-     "type": "bureau_central_tarification",
-     "status": "official",
-     "label": "Saisine du Bureau central de tarification (BCT)",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16218"
-    }
-   ],
-   "catalog_hints": {
-    "keywords": [
-     "assurance",
-     "assureur",
-     "sinistre",
-     "mediateur",
-     "indemnisation",
-     "degat des eaux"
-    ],
-    "categories": [
-     "assurances"
-    ]
-   }
-  },
-  "licenciement_conteste": {
-   "label": "Licenciement ou rupture du contrat de travail contestée",
-   "urgency": "haute",
-   "acts": [
-    {
-     "type": "saisine_prudhommes",
-     "status": "official",
-     "label": "Requête aux fins de saisine du conseil de prud'hommes (salarié)",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45128",
-     "catalog_id": "R45128",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    }
-   ],
-   "prescription": {
-    "duree_mois": 12,
-    "article": "art. L1471-1 al. 2 du code du travail",
-    "texte": "Toute action portant sur la rupture du contrat de travail se prescrit par douze mois à compter de la notification de la rupture.",
-    "point_de_depart": "notification de la rupture"
-   },
-   "catalog_hints": {
-    "keywords": [
-     "prud",
-     "licenciement",
-     "rupture",
-     "salarie",
-     "contrat de travail",
-     "solde de tout compte",
-     "certificat de travail"
-    ],
-    "categories": [
-     "travail",
-     "justice"
-    ]
-   }
-  },
-  "depot_garantie_non_restitue": {
-   "label": "Dépôt de garantie non restitué après un bail d'habitation",
-   "acts": [
-    {
-     "type": "mise_en_demeure",
-     "status": "official",
-     "label": "Demander le remboursement du dépôt de garantie non restitué",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R16638",
-     "catalog_id": "R16638",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    }
-   ],
-   "catalog_hints": {
-    "keywords": [
-     "depot de garantie",
-     "bail",
-     "locataire",
-     "etat des lieux",
-     "preavis",
-     "restitution"
-    ],
-    "categories": [
-     "logement"
-    ]
-   }
-  },
-  "succession_litige": {
-   "label": "Succession : accepter, renoncer ou contester",
-   "acts": [
-    {
-     "type": "formulaire_cerfa",
-     "status": "official",
-     "label": "Renonciation à succession par une personne majeure",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R2849",
-     "catalog_id": "R2849",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    },
-    {
-     "type": "formulaire_cerfa",
-     "status": "official",
-     "label": "Déclaration de succession",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R10279",
-     "catalog_id": "R10279",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    },
-    {
-     "type": "courrier",
-     "status": "official",
-     "label": "Demander le contrôle d'une déclaration de succession",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33775",
-     "catalog_id": "R33775",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    }
-   ],
-   "catalog_hints": {
-    "keywords": [
-     "succession",
-     "heritier",
-     "renonciation",
-     "notaire",
-     "deces",
-     "legs",
-     "testament",
-     "indivision"
-    ],
-    "categories": [
-     "famille",
-     "finances"
-    ]
-   }
-  },
-  "surendettement": {
-   "label": "Surendettement : déposer ou contester un dossier",
-   "urgency": "haute",
-   "acts": [
-    {
-     "type": "formulaire_cerfa",
-     "status": "official",
-     "label": "Déclaration de surendettement (Banque de France)",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R17094",
-     "catalog_id": "R17094",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    },
-    {
-     "type": "courrier",
-     "status": "official",
-     "label": "Lettre à joindre au dossier de surendettement",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R992",
-     "catalog_id": "R992",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    },
-    {
-     "type": "recours",
-     "status": "official",
-     "label": "Recours contre le rejet d'un dossier de surendettement",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R993",
-     "catalog_id": "R993",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    }
-   ],
-   "catalog_hints": {
-    "keywords": [
-     "surendettement",
-     "banque de france",
-     "dette",
-     "credit",
-     "commission de surendettement",
-     "retablissement personnel"
-    ],
-    "categories": [
-     "finances",
-     "justice"
-    ]
-   }
-  },
-  "malfacon_travaux": {
-   "label": "Malfaçon, dépassement de devis ou dégâts causés par un artisan",
-   "acts": [
-    {
-     "type": "mise_en_demeure",
-     "status": "official",
-     "label": "Contester la facture d'un artisan en cas de dépassement du devis",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R24080",
-     "catalog_id": "R24080",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    },
-    {
-     "type": "mise_en_demeure",
-     "status": "official",
-     "label": "Demander réparation à un artisan pour dégâts durant les travaux",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R31951",
-     "catalog_id": "R31951",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    },
-    {
-     "type": "declaration_sinistre",
-     "status": "official",
-     "label": "Faire jouer la garantie décennale auprès de l'assurance dommages-ouvrage",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R53461",
-     "catalog_id": "R53461",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    }
-   ],
-   "prescription": {
-    "duree_annees": 10,
-    "article": "art. 1792 et 1792-4-1 du code civil",
-    "texte": "La responsabilité décennale du constructeur est engagée de plein droit ; il en est déchargé au terme de dix ans après la réception.",
-    "point_de_depart": "réception des travaux"
-   },
-   "catalog_hints": {
-    "keywords": [
-     "artisan",
-     "devis",
-     "travaux",
-     "malfacon",
-     "garantie decennale",
-     "constructeur",
-     "reception"
-    ],
-    "categories": [
-     "logement",
-     "consommation"
-    ]
-   }
-  },
-  "accident_circulation": {
-   "label": "Accident de la circulation : indemnisation",
-   "urgency": "haute",
-   "acts": [
-    {
-     "type": "formulaire_cerfa",
-     "status": "official",
-     "label": "Demande d'indemnisation au FGAO par une victime d'accident",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R15103",
-     "catalog_id": "R15103",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    },
-    {
-     "type": "formulaire_cerfa",
-     "status": "official",
-     "label": "Demande d'indemnisation au FGAO par un ayant droit (décès)",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21646",
-     "catalog_id": "R21646",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    }
-   ],
-   "catalog_hints": {
-    "keywords": [
-     "accident de la circulation",
-     "fgao",
-     "indemnisation",
-     "victime",
-     "vehicule",
-     "constat"
-    ],
-    "categories": [
-     "auto",
-     "assurances",
-     "justice"
-    ]
-   }
-  },
-  "amende_contestation": {
-   "label": "Contester une amende forfaitaire",
-   "urgency": "haute",
-   "acts": [
-    {
-     "type": "teleservice",
-     "status": "official",
-     "label": "Contester un avis d'amende forfaitaire ou désigner un autre conducteur",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42185",
-     "catalog_id": "R42185",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    }
-   ],
-   "catalog_hints": {
-    "keywords": [
-     "amende",
-     "contravention",
-     "radar",
-     "stationnement",
-     "exces de vitesse",
-     "conducteur"
-    ],
-    "categories": [
-     "auto",
-     "justice"
-    ]
-   }
-  },
-  "pension_alimentaire_impayee": {
-   "label": "Pension alimentaire impayée ou à faire fixer",
-   "urgency": "haute",
-   "acts": [
-    {
-     "type": "mise_en_demeure",
-     "status": "official",
-     "label": "Demander le versement de la pension alimentaire",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R1894",
-     "catalog_id": "R1894",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    },
-    {
-     "type": "saisine_jaf",
-     "status": "official",
-     "label": "Requête en obligation alimentaire (juge aux affaires familiales)",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42402",
-     "catalog_id": "R42402",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    },
-    {
-     "type": "saisine_jaf",
-     "status": "official",
-     "label": "Demande au juge aux affaires familiales (autorité parentale, droit de visite)",
-     "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R15764",
-     "catalog_id": "R15764",
-     "fallback_note": "Ressource officielle issue du catalogue service-public.gouv.fr, vérifiée présente à la dernière synchronisation."
-    }
-   ],
-   "catalog_hints": {
-    "keywords": [
-     "pension alimentaire",
-     "juge aux affaires familiales",
-     "obligation alimentaire",
-     "aripa",
-     "recouvrement"
-    ],
-    "categories": [
-     "famille",
-     "justice"
-    ]
-   }
   }
- }
 }
