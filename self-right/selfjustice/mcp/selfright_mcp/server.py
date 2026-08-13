@@ -71,6 +71,16 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # qu'il l'ait choisi ni qu'aucun de ces utilisateurs ne le sache. Chacun désigne
 # l'instance qu'il interroge — la sienne, ou une qu'on lui a indiquée.
 API_URL = os.environ.get("SELFRIGHT_API_URL", "").rstrip("/")
+
+# Les routes SelfAct vivent sous `/act/api/`, à côté de l'API du droit et non
+# dessous : la base se dérive donc de `SELFRIGHT_API_URL` en remplaçant son
+# dernier segment. La dérivation reste surchargeable — une instance disposée
+# autrement se déclare sans qu'on touche au code, et si rien ne permet de la
+# construire, les outils SelfAct le disent au lieu d'interroger une adresse
+# fausse.
+ACT_URL = os.environ.get("SELFRIGHT_ACT_URL", "").rstrip("/") or (
+    API_URL[: -len("/api")] + "/act/api" if API_URL.endswith("/api") else ""
+)
 NTFY_URL = os.environ.get("SELFRIGHT_NTFY_URL", "")
 NTFY_TOKEN = os.environ.get("SELFRIGHT_NTFY_TOKEN", "")
 TIMEOUT = float(os.environ.get("SELFRIGHT_TIMEOUT", "15"))
@@ -248,14 +258,19 @@ class RequeteInvalide(Exception):
     """
 
 
-async def _get(chemin: str, params: dict[str, Any] | None = None) -> Any:
-    if not API_URL:
+async def _get(
+    chemin: str,
+    params: dict[str, Any] | None = None,
+    base: str | None = None,
+) -> Any:
+    racine = API_URL if base is None else base
+    if not racine:
         raise ApiIndisponible(
             "SELFRIGHT_API_URL n'est pas défini : ce serveur ne sait pas quelle "
             "instance interroger. Renseigne-la dans la configuration du client MCP. "
             "N'invente aucun texte de loi en attendant."
         )
-    url = f"{API_URL}{chemin}"
+    url = f"{racine}{chemin}"
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
             r = await client.get(url, params=params)
@@ -1389,6 +1404,229 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
         f"{bandeau}\n\n{entete}\n{data.get('ecli', '')}\n\n{texte}{coupe}\n\n"
         f"Source : {provenance}, open data. Cite la décision "
         "telle qu'elle est écrite ici, sans la reformuler en règle générale."
+    )
+
+
+# ------------------------------------------------------------------ SelfAct
+#
+# 🔑 Trois outils, pas quatre. L'API SelfAct expose aussi `/act/api/draft`, qui
+# produit un acte pré-rempli — et qui n'est PAS exposé ici, pour une raison
+# technique avant d'être juridique : son garde-fou est un filigrane SVG
+# « NON OFFICIEL — IRRECEVABLE » appliqué à une page HTML imprimable. Un outil
+# MCP rend du texte à un modèle ; le filigrane ne survivrait pas au passage, et
+# le modèle recevrait un brouillon d'acte propre qu'il recopierait tel quel.
+# Exposer `draft` reviendrait à retirer sa protection en la croyant intacte.
+#
+# Ce qui reste — indexer, orienter, calculer — cite des sources officielles et
+# montre son raisonnement, sans jamais produire d'acte.
+
+
+async def _bandeau_catalogue(meta: Any) -> str:
+    """Ligne d'état du catalogue, lue là où elle vit.
+
+    Le catalogue ne figure pas dans `/api/status` : sa date de synchronisation
+    voyage dans `meta.last_sync` de chaque réponse. On la lit donc sur place
+    plutôt que d'ajouter un appel — et l'absence de date se dit, au lieu de
+    laisser croire à une fraîcheur qu'on n'a pas vérifiée.
+    """
+    # ⚠️ La même date porte deux noms selon la route : `last_sync` sur le
+    # catalogue, `last_update` sur les situations. Lire un seul des deux rendait
+    # « date inconnue » sur la moitié des appels — vérifié, pas supposé.
+    jour = ""
+    if isinstance(meta, dict):
+        jour = str(meta.get("last_sync") or meta.get("last_update") or "")[:10]
+    if not jour:
+        return "Catalogue SelfAct — date de synchronisation inconnue : traite les références comme à vérifier."
+    return f"Catalogue SelfAct synchronisé au {jour} (version {meta.get('version', '?')})."
+
+
+@server.tool()
+async def catalogue_actes(
+    recherche: str | None = None,
+    categorie: str | None = None,
+    type_ressource: str | None = None,
+) -> str:
+    """Cherche dans le catalogue des ressources officielles de l'administration.
+
+    Modèles de lettres, formulaires CERFA et démarches en ligne, indexés depuis
+    service-public.gouv.fr. Rend des références à ouvrir sur le site officiel :
+    ce sont des pointeurs, pas des documents.
+
+    Args:
+        recherche: mots du sujet (« congés payés », « logement insalubre »).
+        categorie: restreint à une catégorie du catalogue.
+        type_ressource: « modele », « cerfa » ou « demarche ».
+    """
+    params = {k: v for k, v in (("q", recherche), ("category", categorie), ("type", type_ressource)) if v}
+    try:
+        data = await _get("/catalog", params, base=ACT_URL)
+    except RequeteInvalide as e:
+        return _msg_argument_refuse(str(e))
+    except ApiIndisponible as e:
+        return _msg_api_morte(str(e))
+
+    bandeau = await _bandeau_catalogue(data.get("meta"))
+    modeles = data.get("models") or data.get("results") or []
+    if not modeles:
+        return (
+            f"{bandeau}\n\nAucune ressource officielle ne correspond"
+            + (f" à « {recherche} »" if recherche else "")
+            + ".\n\nNe propose pas de modèle de ton cru : oriente vers "
+            "service-public.fr ou demande à l'utilisateur de préciser."
+        )
+
+    lignes = "\n".join(
+        f"  · {m.get('label') or '(sans intitulé)'}"
+        + (f" [{m.get('type')}]" if m.get("type") else "")
+        + (f" · {m.get('category')}" if m.get("category") else "")
+        + (f"\n      {m.get('url')}" if m.get("url") else "")
+        for m in modeles[:20]
+    )
+    reste = f"\n\n({len(modeles) - 20} autres non affichées)" if len(modeles) > 20 else ""
+    return (
+        f"{bandeau}\n\n{len(modeles)} ressource(s) officielle(s) :\n{lignes}{reste}\n\n"
+        "Renvoie l'utilisateur vers l'adresse officielle. Ne recopie pas un "
+        "formulaire de mémoire et n'en rédige pas d'équivalent."
+    )
+
+
+@server.tool()
+async def actes_pour_situation(situation: str | None = None) -> str:
+    """Quelles démarches officielles existent pour une situation donnée.
+
+    Appelée sans argument, rend la liste des situations connues. Les slugs ne se
+    devinent pas : commence par la liste plutôt que par une supposition.
+
+    Args:
+        situation: identifiant d'une situation, tel qu'il figure dans la liste.
+    """
+    params = {"situation": situation} if situation else {"list": "1"}
+    try:
+        data = await _get("/find", params, base=ACT_URL)
+    except RequeteInvalide as e:
+        return _msg_argument_refuse(str(e))
+    except ApiIndisponible as e:
+        return _msg_api_morte(str(e))
+
+    bandeau = await _bandeau_catalogue(data.get("meta"))
+
+    if not situation or data.get("situations"):
+        noms = data.get("situations") or []
+        liste = "\n".join(
+            f"  · {s if isinstance(s, str) else s.get('slug', '?')}"
+            + ("" if isinstance(s, str) else f" — {s.get('label', '')}"
+               + (f" ({s.get('acts_count')} actes)" if s.get("acts_count") else ""))
+            for s in noms
+        )
+        return f"{bandeau}\n\n{len(noms)} situation(s) couverte(s) :\n{liste}\n\nRappelle l'outil avec l'une d'elles."
+
+    # L'amont répond « situation_not_found » avec un indice : le relayer plutôt
+    # que de laisser le modèle inventer un slug voisin.
+    if data.get("ok") is False:
+        return (
+            f"{bandeau}\n\nLa situation « {situation} » n'est pas couverte "
+            f"({data.get('error', 'inconnue')}).\n\nRappelle l'outil sans argument "
+            "pour obtenir la liste, et n'invente pas de démarche pour combler le trou."
+        )
+
+    actes = data.get("acts") or []
+    lignes = "\n".join(
+        f"  · {a.get('label') or '(sans intitulé)'}"
+        + (f" [{a.get('type')}]" if a.get("type") else "")
+        + (f" — {a.get('status')}" if a.get("status") else "")
+        + (f"\n      {a.get('url')}" if a.get("url") else "")
+        for a in actes
+    )
+
+    # La réponse porte plus que des démarches : les articles applicables, le
+    # délai de prescription et les seuils. Les taire obligerait le modèle à les
+    # chercher ailleurs — ou à les inventer.
+    # ⚠️ `articles` est une CHAÎNE, pas une liste — « art. 1240 C. civ.,
+    # art. R. 1336-5 C. santé publique, … ». La parcourir comme une liste
+    # affichait ses caractères un à un. Type vérifié, pas supposé.
+    articles = data.get("articles")
+    bloc_art = ""
+    if isinstance(articles, str) and articles.strip():
+        bloc_art = f"\n\nArticles cités par la fiche : {articles.strip()}"
+    elif isinstance(articles, list) and articles:
+        bloc_art = "\n\nArticles cités par la fiche :\n" + "\n".join(
+            f"  · {a if isinstance(a, str) else a.get('reference') or a.get('label') or a}"
+            for a in articles[:10]
+        )
+    presc = data.get("prescription")
+    bloc_presc = f"\n\n⚠️ Prescription : {presc}" if presc else ""
+    urgence = data.get("urgency")
+
+    return (
+        f"{bandeau}\n\n{data.get('label') or situation}"
+        + (f" — urgence : {urgence}" if urgence else "")
+        + f"\n\n{len(actes)} acte(s), les officiels d'abord :\n{lignes}"
+        + bloc_art + bloc_presc
+        + "\n\nCes démarches sont des points de départ, pas un conseil sur le cas "
+        "de l'utilisateur : les faits de son espèce ne sont pas connus ici. "
+        "Vérifie chaque article avec `article_francais` avant de le citer."
+    )
+
+
+@server.tool()
+async def calculer_echeance(
+    depart: str,
+    jours: int | None = None,
+    mois: int | None = None,
+    annees: int | None = None,
+    distance: bool = False,
+) -> str:
+    """Calcule une échéance de procédure et montre le raisonnement suivi.
+
+    Applique les articles 640 à 643 du code de procédure civile — le jour de
+    départ ne compte pas, le report tombe au premier jour ouvrable, et les
+    délais de distance s'ajoutent le cas échéant.
+
+    Args:
+        depart: date de départ au format « AAAA-MM-JJ ».
+        jours: durée en jours.
+        mois: durée en mois.
+        annees: durée en années.
+        distance: applique le délai de distance de l'article 643.
+    """
+    params: dict[str, Any] = {"start": depart}
+    for nom, valeur in (("days", jours), ("months", mois), ("years", annees)):
+        if valeur is not None:
+            params[nom] = valeur
+    if distance:
+        params["distance"] = "1"
+
+    try:
+        data = await _get("/deadline", params, base=ACT_URL)
+    except RequeteInvalide as e:
+        return _msg_argument_refuse(str(e))
+    except ApiIndisponible as e:
+        return _msg_api_morte(str(e))
+
+    if data.get("ok") is False:
+        return (
+            f"Le calcul a été refusé ({data.get('error', 'raison non précisée')}).\n\n"
+            "Vérifie le format de la date (AAAA-MM-JJ) et qu'une durée est bien "
+            "donnée. N'annonce aucune échéance tant qu'elle n'est pas calculée."
+        )
+
+    # 🔑 Le raisonnement fait la valeur de cet outil : une date sans ses règles
+    # ne se vérifie pas, et un délai de procédure manqué ne se rattrape pas.
+    etapes = "\n".join(
+        f"  · {e.get('regle', '?')} — {e.get('detail', '')}"
+        for e in (data.get("raisonnement") or [])
+        if isinstance(e, dict)
+    )
+    report = data.get("reporte")
+    return (
+        f"Départ {data.get('depart')} → **échéance le {data.get('echeance')}**"
+        + (f" ({data.get('jour')})" if data.get("jour") else "")
+        + (f"\n⚠️ Reporté : {report}" if report else "")
+        + (f"\n\nRaisonnement :\n{etapes}" if etapes else "")
+        + (f"\n\nFondement : {data.get('fondement')}" if data.get("fondement") else "")
+        + (f"\n\n⚠️ {data.get('avertissement')}" if data.get("avertissement") else "")
+        + "\n\nDonne la date AVEC son raisonnement : c'est ce qui permet à "
+        "l'utilisateur de le faire vérifier. Un délai manqué ne se rattrape pas."
     )
 
 
