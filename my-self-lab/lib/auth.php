@@ -170,10 +170,20 @@ final class Auth
         // facteur de possession du niveau 2, inutile de le demander plus tard.
         $codes = self::generateRecoveryCodes($pdo, $accountId);
 
+        // 🔑 Une session s'ouvre avec le compte. L'enrôlement d'appareil qui
+        // suit l'inscription l'exige désormais : sans elle, il faudrait
+        // rouvrir un chemin où l'on enrôle sur un compte qu'on ne prouve pas
+        // posséder — celui qui a permis une prise de compte le 13/08/2026.
+        $sessionToken = self::generateSessionToken();
+        $pdo->prepare(
+            'INSERT INTO app_sessions (account_id, token, created_at) VALUES (?, ?, ?)'
+        )->execute([(int) $accountId, $sessionToken, time()]);
+
         return [
             'ok' => true,
             'account_id' => $accountId,
             'username' => $username,
+            'token' => $sessionToken,
             // Les codes sont des secrets remis une fois, au même titre que le
             // mot de passe et la passphrase : ils appartiennent à `credentials`.
             // Les laisser à la racine les rendait invisibles au client, qui lit
