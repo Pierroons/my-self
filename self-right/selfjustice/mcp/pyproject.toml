@@ -1,7 +1,7 @@
 [project]
 name = "selfright-mcp"
-version = "0.1.0"
-description = "Serveur MCP de consultation du droit français (LEGI) et de conventionnalité (UE, CEDH, RGPD, règlement IA)"
+version = "0.3.0"
+description = "Serveur MCP de consultation du droit français (LEGI), de conventionnalité (UE, CEDH, RGPD, règlement IA), de jurisprudence (Judilibre) et des démarches administratives officielles"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "AGPL-3.0-or-later"

@@ -26,6 +26,9 @@ accompagné de la date à laquelle cette base a été synchronisée.
 | `verifier_jurisprudence` | Dit si un numéro d'arrêt existe réellement, avant qu'on le cite |
 | `rechercher_jurisprudence` | Cherche des décisions par thème, avec filtre de date |
 | `texte_decision` | Texte intégral d'une décision, à partir de son identifiant |
+| `catalogue_actes` | Cherche modèles de lettres, CERFA et démarches officiels |
+| `actes_pour_situation` | Quelles démarches existent pour une situation donnée |
+| `calculer_echeance` | Calcule un délai de procédure et rend son raisonnement |
 
 Le règlement (UE) 2024/1689 sur l'intelligence artificielle est inclus sous le
 nom `AI_ACT`. Son article 50 porte les obligations de transparence applicables
@@ -99,6 +102,7 @@ variable, le serveur démarre, annonce ses outils, et les refuse tous.
 | `SELFRIGHT_PLAFOND_TEXTE` | Longueur au-delà de laquelle le texte d'une décision est réduit (défaut : 20000). Les moyens annexés sont écartés en priorité ; à défaut, le début et la fin sont conservés |
 | `SELFRIGHT_NTFY_URL` | Topic ntfy prévenu quand la base est en retard |
 | `SELFRIGHT_NTFY_TOKEN` | Jeton du topic |
+| `SELFRIGHT_ACT_URL` | Racine des routes de démarches. Déduite de `SELFRIGHT_API_URL` en remplaçant son dernier segment par `act/api` — à renseigner seulement si ton instance les dispose autrement |
 
 Les deux dernières servent à qui exploite une instance et veut être alerté
 quand sa propre base décroche. Elles sont vides par défaut, et le resteront :
@@ -109,6 +113,19 @@ inscrire un jeton dans un dépôt public reviendrait à le publier.
 L'API est un fichier PHP et deux bases SQLite ; le dossier parent contient les
 scripts de construction et de synchronisation. Rien n'oblige à passer par
 l'instance publique — pointe `SELFRIGHT_API_URL` où tu veux.
+
+## Trois outils de démarches, pas quatre
+
+L'API expose aussi une route qui produit un acte pré-rempli. Elle **n'est pas
+exposée ici**, et la raison est technique avant d'être juridique : son garde-fou
+est un filigrane « NON OFFICIEL — IRRECEVABLE » appliqué à une page imprimable.
+Un serveur MCP rend du texte à un modèle — le filigrane ne survivrait pas au
+passage, et le modèle recevrait un brouillon propre qu'il recopierait tel quel.
+L'exposer reviendrait à retirer sa protection en la croyant intacte.
+
+Ce qui est exposé indexe, oriente et calcule. `calculer_echeance` rend sa date
+**avec le raisonnement article par article** qui y mène : une échéance sans ses
+règles ne se vérifie pas, et un délai de procédure manqué ne se rattrape pas.
 
 ## Ce que ce serveur n'est pas
 

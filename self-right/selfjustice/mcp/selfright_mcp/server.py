@@ -61,6 +61,8 @@ from typing import Any
 import httpx
 from mcp.server import MCPServer
 
+from . import __version__
+
 # httpx journalise chaque requête en INFO. Sur le transport stdio, stdout porte
 # le protocole et stderr remonte dans les logs du client : une ligne par appel
 # d'outil noie ce qui compte vraiment.
@@ -100,12 +102,13 @@ MOIS = {
 }
 
 server = MCPServer(
-    name="selfjustice",
-    title="SelfJustice — droit français et conventionnalité",
-    version="0.1.0",
+    name="selfright",
+    title="Self-Right — droit français, conventionnalité et démarches",
+    version=__version__,
     instructions=(
-        "Consulte le droit français (base LEGI, dumps officiels DILA) et les textes "
-        "de conventionnalité (CEDH, Charte UE, TUE, TFUE, RGPD, règlement IA). "
+        "Consulte le droit français (base LEGI, dumps officiels DILA), les textes "
+        "de conventionnalité (CEDH, Charte UE, TUE, TFUE, RGPD, règlement IA), la "
+        "jurisprudence judiciaire et les démarches administratives officielles. "
         "Ne cite jamais un article de mémoire : appelle `statut` puis l'outil de "
         "consultation qui convient, et reprends la date de synchronisation rendue "
         "dans ton avertissement à l'utilisateur. Si un outil signale un retard de "
