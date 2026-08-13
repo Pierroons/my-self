@@ -54,6 +54,7 @@ import logging
 import os
 import re
 import time
+import unicodedata
 import urllib.parse
 from typing import Any
 
@@ -310,8 +311,52 @@ _MOTS_OUTILS = {
 }
 
 
-def _couverture(requete: str, resultat: dict) -> float | None:
-    """Part des termes de la requête effectivement retrouvés dans le résultat.
+def _sans_accents(mot: str) -> str:
+    """Retire les diacritiques, pour comparer « harcèlement » et « harcelement »."""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", mot)
+        if not unicodedata.combining(c)
+    )
+
+
+def _mots_utiles(requete: str) -> list[str]:
+    """Les mots qui portent le sujet, sans les mots-outils ni les sigles courts."""
+    return [
+        m for m in re.findall(r"\w{3,}", requete.lower())
+        if m not in _MOTS_OUTILS
+    ]
+
+
+def _conseil_et_implicite(requete: str, resultats: int) -> str:
+    """Dit que la recherche LEGI exige TOUS les mots, quand ça se voit.
+
+    🔑 Les deux recherches de ce serveur se comportent à l'inverse l'une de
+    l'autre. Côté LEGI, les termes sont assemblés par un espace, qui est un ET
+    implicite en FTS5 : sept mots rendent un résultat, quatre en rendent six,
+    deux en rendent vingt. Côté jurisprudence, l'amont pondère et n'exige rien —
+    allonger la question y ramène plus de décisions, pas moins.
+
+    Un utilisateur qui précise sa question obtient donc davantage d'un côté et
+    presque rien de l'autre, sans qu'aucune des deux réponses ne le dise. Le
+    conseil ne se déclenche que là où il sert : une requête assez longue pour
+    que la conjonction morde, et une liste assez courte pour qu'on la croie
+    vide de droit applicable.
+    """
+    mots = _mots_utiles(requete)
+    if len(mots) < 3 or resultats >= 5:
+        return ""
+    return (
+        f"\n\nCette recherche impose que TOUS les mots figurent dans le même "
+        f"article — ici {len(mots)} : {', '.join(mots)}. C'est l'inverse de "
+        "`rechercher_jurisprudence`, où ajouter des mots élargit la réponse. "
+        "Une liste courte tient souvent à la longueur de la requête, pas à "
+        "l'absence de textes : rappelle l'outil avec les deux ou trois mots "
+        "les plus spécifiques avant de conclure."
+    )
+
+
+def _couverture(requete: str, resultat: dict) -> tuple[int, int] | None:
+    """Termes de la requête retrouvés dans le résultat, sur le total posé.
 
     🔑 Le score de l'amont ne dit rien de la pertinence : il est normalisé au
     meilleur résultat de chaque requête. Une question absurde obtient 1 / 0,916
@@ -320,13 +365,16 @@ def _couverture(requete: str, resultat: dict) -> float | None:
     correspondre que deux de ses sept mots, la précise trois sur quatre.
 
     Les `highlights` portent cette information et n'étaient pas lus. La
-    comparaison se fait sur les cinq premières lettres, pour que « motivation »
-    reconnaisse « motivée » sans réclamer un analyseur morphologique.
+    comparaison se fait sur les cinq premières lettres, accents retirés des deux
+    côtés, pour que « motivation » reconnaisse « motivée » et que
+    « harcelement » — l'amont accepte la requête sans accents et surligne le
+    texte avec — reconnaisse « harcèlement ». Sans ce pli, « harce » et
+    « harcè » divergent à la lettre près, et le terme le mieux ciblé de la
+    question compte comme absent.
+
+    Le compte est rendu brut, et non en fraction : voir `_sous_la_moitie`.
     """
-    termes = {
-        m for m in re.findall(r"\w{3,}", requete.lower())
-        if m not in _MOTS_OUTILS
-    }
+    termes = set(_mots_utiles(requete))
     if not termes:
         return None
 
@@ -339,11 +387,27 @@ def _couverture(requete: str, resultat: dict) -> float | None:
     if not surlignes:
         return None
 
-    trouves = sum(
-        1 for t in termes
-        if any(s[:5] == t[:5] for s in surlignes)
-    )
-    return trouves / len(termes)
+    debuts = {_sans_accents(s)[:5] for s in surlignes}
+    trouves = sum(1 for t in termes if _sans_accents(t)[:5] in debuts)
+    return trouves, len(termes)
+
+
+def _sous_la_moitie(trouves: int, total: int) -> bool:
+    """Vrai quand moins de la moitié des termes posés sont retrouvés.
+
+    🔑 Un seuil en fraction change de sévérité avec la longueur de la question,
+    parce qu'une fraction à petit dénominateur ne prend que quelques valeurs.
+    Le seuil « < 0,4 » qui a précédé coupait entre 1/4 et 2/4 sur quatre termes,
+    entre 1/3 et 2/3 sur trois, et laissait passer 2/5 — qui vaut 0,400
+    exactement, donc n'est pas inférieur. Deux mesures de la même liste, l'une
+    sur quatre termes et l'autre sur six, donnaient des verdicts opposés sans
+    que rien ne les départage.
+
+    Le critère est donc entier, et l'égalité épargnée : 1/3, 2/5 et 2/6 se
+    marquent, 2/4 et 3/6 non. Un produit plutôt qu'une division, pour ne pas
+    réintroduire le flottant qu'on vient d'écarter.
+    """
+    return trouves * 2 < total
 
 
 MARQUEUR_ANNEXES = re.compile(r"\n\s*MOYENS?\s+ANNEXES?", re.IGNORECASE)
@@ -421,11 +485,77 @@ COURS_APPEL = {
 
 JURIDICTIONS = {"cc": "Cour de cassation", "ca": "Cour d'appel"}
 
-# Judilibre diffuse deux bases distinctes. La provenance était écrite en dur
-# « Cour de cassation » sous toute décision, y compris une ordonnance de cour
-# d'appel : sur un serveur qui existe pour empêcher de citer de travers, la
-# ligne qui dit d'où vient le texte ne peut pas se tromper de juridiction.
-BASES_JUDILIBRE = {"jurinet": "Cour de cassation", "jurica": "cours d'appel"}
+# Les formations de la Cour de cassation, libellés repris de la taxonomie
+# Judilibre (`/taxonomy?id=chamber&context_value=cc`), abaissés en minuscule
+# initiale parce qu'ils s'écrivent en apposition — « Cour de cassation, chambre
+# mixte ». La liste est close : les onze codes ci-dessous sont exactement ceux
+# présents en base, du plus fourni (soc, 145 814 décisions) au plus rare
+# (creun, 40). `allciv` existe dans la taxonomie mais n'est qu'un agrégat de
+# recherche, jamais porté par une décision.
+#
+# 🔑 Sans cette table, une décision s'affichait « Cour de cassation, mi » — un
+# code de deux lettres à la place de la chambre mixte. Le travail avait été
+# fait pour les 36 cours d'appel et laissé pour les 11 chambres, plus courtes à
+# inventorier.
+CHAMBRES = {
+    "civ1": "première chambre civile",
+    "civ2": "deuxième chambre civile",
+    "civ3": "troisième chambre civile",
+    "comm": "chambre commerciale financière et économique",
+    "soc": "chambre sociale",
+    "cr": "chambre criminelle",
+    "mi": "chambre mixte",
+    "pl": "assemblée plénière",
+    "creun": "chambres réunies",
+    "ordo": "première présidence (ordonnance)",
+    "other": "formation non précisée",
+}
+
+# Le fonds d'où vient le texte. Il ne dit pas la juridiction : dix décisions de
+# cassation tirées au hasard portent toutes `dila`, aucune `jurinet`. La table
+# bâtie sur ce champ pour nommer la juridiction ne reconnaissait donc presque
+# rien — elle avait été écrite sur la seule valeur rencontrée. La juridiction se
+# lit désormais sur `jurisdiction`, renseigné partout ; le fonds n'est plus
+# qu'un complément.
+FONDS_JUDILIBRE = {
+    "jurinet": "fonds Jurinet",
+    "jurica": "fonds JuriCA",
+    "dila": "diffusion DILA",
+}
+
+
+def _nom_chambre(chambre: Any) -> str:
+    """Nomme la formation, ou rend le code tel quel s'il est inconnu."""
+    code = str(chambre or "")
+    return CHAMBRES.get(code.lower(), code)
+
+
+DATE_ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _intervalle_couvert(couverture: Any, juridiction: Any) -> tuple[str, str] | None:
+    """Bornes de dates réellement indexées, ou None si indéterminables.
+
+    Sans juridiction précisée, c'est l'intersection des couvertures qui
+    commande : une date couverte par une seule des deux bases laisse l'autre
+    hors de portée, et l'index ne peut alors rien affirmer.
+
+    Les dates sont des chaînes ISO, dont l'ordre lexicographique est l'ordre
+    chronologique — aucune conversion n'est nécessaire pour les comparer.
+    """
+    if not isinstance(couverture, dict) or not couverture:
+        return None
+    retenues = (
+        [couverture[str(juridiction)]] if str(juridiction) in couverture
+        else list(couverture.values())
+    )
+    bornes = [
+        (c["debut"], c["fin"]) for c in retenues
+        if isinstance(c, dict) and c.get("debut") and c.get("fin")
+    ]
+    if not bornes:
+        return None
+    return max(d for d, _ in bornes), min(f for _, f in bornes)
 
 
 def _nom_juridiction(juridiction: Any, cour: Any) -> str:
@@ -707,6 +837,11 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
 
     Les accents sont facultatifs : « prenom » trouve « prénom ».
 
+    ⚠️ Tous les mots posés doivent figurer dans le même article : la recherche
+    les assemble par un ET. Une question longue restreint donc la réponse —
+    c'est l'inverse de `rechercher_jurisprudence`. Deux ou trois mots
+    spécifiques valent mieux qu'une phrase.
+
     Args:
         requete: mots du sujet cherché (« harcèlement moral », « chanvre »)
             ou fragment de numéro (« L1152 », « 1240 »).
@@ -724,9 +859,10 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
 
     if not resultats:
         return (
-            f"{bandeau}\n\nAucun article ne correspond à « {requete} ».\n\n"
-            "N'invente pas de référence approchante : dis à l'utilisateur que "
-            "la recherche ne rend rien et demande-lui de préciser."
+            f"{bandeau}\n\nAucun article ne correspond à « {requete} »."
+            + _conseil_et_implicite(requete, 0)
+            + "\n\nN'invente pas de référence approchante : dis à l'utilisateur "
+            "que la recherche ne rend rien et demande-lui de préciser."
         )
 
     def _ligne_article(r: dict) -> str:
@@ -759,6 +895,7 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
     return (
         f"{bandeau}\n\n{data.get('count', len(resultats))} résultat(s) pour « {requete} » :\n"
         + "\n\n".join(blocs)
+        + _conseil_et_implicite(requete, len(resultats))
         + "\n\nAppelle `article_francais` sur la référence retenue pour en obtenir le texte."
     )
 
@@ -875,7 +1012,11 @@ def _msg_juris_morte(detail: str) -> str:
 
 
 @server.tool()
-async def verifier_jurisprudence(reference: str, juridiction: str | None = None) -> str:
+async def verifier_jurisprudence(
+    reference: str,
+    juridiction: str | None = None,
+    date: str | None = None,
+) -> str:
     """Vérifie qu'un numéro de décision existe réellement, avant de le citer.
 
     À appeler chaque fois qu'un numéro d'arrêt apparaît — qu'il vienne de
@@ -888,6 +1029,10 @@ async def verifier_jurisprudence(reference: str, juridiction: str | None = None)
         juridiction: « cc » (Cour de cassation) ou « ca » (cours d'appel).
             À préciser quand on la connaît : le même numéro normalisé peut
             désigner un pourvoi et un RG de cour d'appel.
+        date: la date attribuée à la décision, au format « AAAA-MM-JJ », quand
+            la référence en porte une. Elle change la réponse en cas d'échec :
+            une date couverte par l'index rend le « introuvable » ferme, là où
+            il reste prudent sans elle.
     """
     chemin = f"/jurisprudence/verifier/{urllib.parse.quote(reference, safe='')}"
     params = {"jurisdiction": juridiction} if juridiction else None
@@ -922,10 +1067,38 @@ async def verifier_jurisprudence(reference: str, juridiction: str | None = None)
     bandeau = await _bandeau("jurisprudence")
 
     if etat == "absente":
+        # 🔑 La réserve de l'amont est écrite sans connaître la date visée : elle
+        # laisse toujours ouverte l'hypothèse d'une décision postérieure à
+        # l'index. Quand la date est donnée et qu'elle tombe dans la période
+        # couverte, cette hypothèse est fausse — et c'est précisément le cas où
+        # la fermeté vaut mieux que la prudence, puisqu'une référence datée et
+        # plausible est celle qu'on recopie sans vérifier.
+        reserve = data.get("reserve") or ""
+        note = ""
+        if date:
+            jour = date.strip()
+            bornes = _intervalle_couvert(data.get("couverture"), data.get("juridiction"))
+            if not DATE_ISO.fullmatch(jour):
+                note = (
+                    f"\n\n(La date « {date} » n'a pas été comprise — format "
+                    "attendu : AAAA-MM-JJ. La réserve ci-dessus reste donc "
+                    "prudente par défaut.)"
+                )
+            elif bornes and bornes[0] <= jour <= bornes[1]:
+                reserve = (
+                    f"La date avancée ({jour}) tombe à l'intérieur de la période "
+                    f"indexée ({bornes[0]} → {bornes[1]}) : si cette décision "
+                    "existait, elle y figurerait. Ni l'antériorité ni la "
+                    "nouveauté n'expliquent son absence. Seul le périmètre reste "
+                    "réservé — Cour de cassation et cours d'appel uniquement, la "
+                    "justice administrative (Conseil d'État, CAA, TA) relevant "
+                    "d'ArianeWeb. Hors ce cas, dis sans détour que la référence "
+                    "n'existe pas."
+                )
         return (
             f"{bandeau}\n\n"
             f"« {reference} » est INTROUVABLE dans l'index.\n\n"
-            f"{data.get('reserve', '')}\n\n"
+            f"{reserve}{note}\n\n"
             "Ne présente pas cette décision comme existante. Si l'utilisateur "
             "l'a lue quelque part, dis-lui que la référence n'a pas pu être "
             "confirmée et invite-le à vérifier sa source."
@@ -936,7 +1109,7 @@ async def verifier_jurisprudence(reference: str, juridiction: str | None = None)
         # La cour distingue les rôles généraux entre eux : sans elle, deux
         # décisions portant le même numéro sont impossibles à départager.
         f"  · {d.get('numero')} — {_nom_juridiction(d.get('juridiction'), d.get('cour'))}"
-        + (f", {d.get('chambre')}" if d.get("chambre") else "")
+        + (f", {_nom_chambre(d.get('chambre'))}" if d.get("chambre") else "")
         + f", {d.get('date') or 'date douteuse en base amont'}"
         + (f" — {d.get('solution')}" if d.get("solution") else "")
         + (" — publié au Bulletin" if "b" in (d.get("publication") or "") else "")
@@ -1042,16 +1215,18 @@ async def rechercher_jurisprudence(
         # recherche tenait déjà.
         #
         # La moyenne absorbe l'isolé : sept arrêts pertinents et un hors sujet
-        # donnent 0,58, au-dessus du seuil global, et le hors sujet passe sans
+        # restent au-dessus du seuil global, et le hors sujet passerait sans
         # marque — avec le sommaire officiel et la mention « publié au Bulletin »
-        # pour lui. Le seuil de ligne est plus bas que celui de la moyenne :
-        # marquer à 0,5 signalerait la moitié d'une liste correcte.
+        # pour lui. D'où une marque par ligne, au même critère que l'ensemble.
         couv = _couverture(requete, r)
-        doute = " ⚠️ hors sujet probable" if couv is not None and couv < 0.4 else ""
+        doute = (
+            " ⚠️ hors sujet probable"
+            if couv is not None and _sous_la_moitie(*couv) else ""
+        )
         tete = (
             f"  · {r.get('number')} — "
             + _nom_juridiction(r.get("jurisdiction"), r.get("location"))
-            + (f", {r.get('chamber')}" if r.get("chamber") else "")
+            + (f", {_nom_chambre(r.get('chamber'))}" if r.get("chamber") else "")
             + f", {r.get('decision_date')}"
             + (f" — {r.get('solution')}" if r.get("solution") else "")
             + (" — publié au Bulletin" if "b" in (r.get("publication") or []) else "")
@@ -1073,8 +1248,10 @@ async def rechercher_jurisprudence(
     # un serveur qui cache ce qu'il juge mauvais ne se vérifie plus.
     couvertures = [c for c in (_couverture(requete, r) for r in resultats) if c is not None]
     alerte = ""
-    if couvertures and sum(couvertures) / len(couvertures) < 0.5:
-        moyenne = round(100 * sum(couvertures) / len(couvertures))
+    trouves = sum(t for t, _ in couvertures)
+    poses = sum(n for _, n in couvertures)
+    if poses and _sous_la_moitie(trouves, poses):
+        moyenne = round(100 * trouves / poses)
         alerte = (
             f"\n\n⚠️ Ces décisions ne reprennent en moyenne que {moyenne} % des "
             "termes de la question : la recherche a probablement accroché "
@@ -1087,7 +1264,10 @@ async def rechercher_jurisprudence(
     # cinquante ans ; le champ parce qu'une recherche élargie au texte entier
     # ramène des décisions étrangères au sujet.
     conseils = []
-    if not depuis:
+    # Les deux bornes se consultent, pas seulement `depuis` : qui borne à
+    # `jusqu_a` cherche explicitement de l'ancien, et s'entendait quand même
+    # conseiller de viser « l'état actuel du droit ».
+    if not depuis and not jusqu_a:
         conseils.append(
             "Ces résultats sont classés par pertinence, pas par date : pour "
             "l'état actuel du droit, rappelle l'outil avec `depuis` "
@@ -1142,7 +1322,7 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
     entete = (
         f"{data.get('number')} — "
         + _nom_juridiction(data.get("jurisdiction"), data.get("location"))
-        + (f", {data.get('chamber')}" if data.get("chamber") else "")
+        + (f", {_nom_chambre(data.get('chamber'))}" if data.get("chamber") else "")
         + f", {data.get('decision_date')}"
     )
 
@@ -1197,10 +1377,13 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
                 + texte[-queue:]
             )
 
-    # Une base inconnue rend « Judilibre » sans parenthèse : mieux vaut taire
-    # l'origine que d'en nommer une fausse.
-    origine = BASES_JUDILIBRE.get(str(data.get("source") or ""))
-    provenance = f"Judilibre ({origine})" if origine else "Judilibre"
+    # La juridiction commande, le fonds complète : `source` vaut `dila` sur
+    # toutes les décisions mesurées et ne permet pas de dire d'où vient le
+    # texte. Un champ inconnu se tait plutôt que de nommer une origine fausse.
+    juri = JURIDICTIONS.get(str(data.get("jurisdiction") or ""))
+    fonds = FONDS_JUDILIBRE.get(str(data.get("source") or "").lower())
+    detail = ", ".join(x for x in (juri, fonds) if x)
+    provenance = f"Judilibre ({detail})" if detail else "Judilibre"
 
     return (
         f"{bandeau}\n\n{entete}\n{data.get('ecli', '')}\n\n{texte}{coupe}\n\n"
