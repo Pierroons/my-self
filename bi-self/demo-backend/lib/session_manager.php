@@ -20,7 +20,24 @@ require_once __DIR__ . '/logger.php';
 require_once __DIR__ . '/rate_limit.php';
 
 final class DemoSession {
-    public const BASE_DIR      = '/var/lib/selfjustice/demo-sessions';
+    /**
+     * Répertoire des sessions de démonstration.
+     *
+     * 🔑 Surchargeable par SELFRECOVER_SESSIONS_DIR. Le chemin était écrit en
+     * dur, ce qui rendait ce service **intestable ailleurs qu'en production** :
+     * aucune session ne pouvait s'ouvrir sur un poste de développement, donc
+     * aucun parcours ne pouvait être éprouvé avant déploiement. Un correctif
+     * qu'on ne peut pas tester n'est pas un correctif.
+     *
+     * La valeur par défaut reste celle de production : rien ne change pour
+     * l'installation existante.
+     */
+    public const BASE_DIR_DEFAUT = '/var/lib/selfjustice/demo-sessions';
+
+    public static function baseDir(): string {
+        $v = getenv('SELFRECOVER_SESSIONS_DIR');
+        return is_string($v) && $v !== '' ? rtrim($v, '/') : self::BASE_DIR_DEFAUT;
+    }
     public const COOKIE_NAME   = 'sj_demo_session';
     public const TTL_SECONDS   = 30 * 60;
     private const SQLITE_FILE  = 'demo.sqlite';
@@ -38,7 +55,7 @@ final class DemoSession {
 
     private function __construct(string $id, string $module) {
         $this->id = $id;
-        $this->dir = self::BASE_DIR . '/' . $id;
+        $this->dir = self::baseDir() . '/' . $id;
         $this->module = $module;
         $this->logger = new DemoLogger($this->dir);
         $meta = self::readMeta($this->dir);
@@ -94,7 +111,7 @@ final class DemoSession {
         if (!preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/', $id)) {
             return null;
         }
-        $dir = self::BASE_DIR . '/' . $id;
+        $dir = self::baseDir() . '/' . $id;
         if (!is_dir($dir) || !is_readable($dir . '/meta.json')) {
             return null;
         }
@@ -124,7 +141,7 @@ final class DemoSession {
 
         // UUID v4
         $id = self::uuidV4();
-        $dir = self::BASE_DIR . '/' . $id;
+        $dir = self::baseDir() . '/' . $id;
 
         if (!@mkdir($dir, 0770, true)) {
             return ['ok' => false, 'session' => null, 'error' => 'mkdir_failed', 'warning_level' => 0];
@@ -225,8 +242,22 @@ final class DemoSession {
             [
                 'expires'  => time() + self::TTL_SECONDS,
                 'path'     => '/',
-                'domain'   => 'bi-self.my-self.fr',
-                'secure'   => true,
+                // 🔑 Surchargeable par SELFRECOVER_COOKIE_DOMAIN, vide compris.
+                // Écrit en dur, ce domaine faisait refuser le cookie par tout
+                // client hors production — donc aucune session ne pouvait
+                // s'ouvrir sur un poste de développement, et aucun parcours
+                // n'était éprouvable avant déploiement. Second chemin en dur du
+                // même fichier, après celui des répertoires de session.
+                'domain'   => (static function (): string {
+                    $v = getenv('SELFRECOVER_COOKIE_DOMAIN');
+                    return $v === false ? 'bi-self.my-self.fr' : (string) $v;
+                })(),
+                // ⚠️ `true` par défaut, et l'exception doit être demandée
+                // explicitement : une détection automatique de HTTPS se trompe
+                // derrière un proxy et retirerait l'attribut en production sans
+                // que personne le voie. SELFRECOVER_COOKIE_INSECURE=1 ne sert
+                // qu'aux essais locaux en clair.
+                'secure'   => getenv('SELFRECOVER_COOKIE_INSECURE') !== '1',
                 'httponly' => true,
                 'samesite' => 'Lax',
             ]
