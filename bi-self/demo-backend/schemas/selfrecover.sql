@@ -40,9 +40,9 @@ CREATE INDEX IF NOT EXISTS idx_login_attempts ON login_attempts(username, attemp
 --   code_lookup : HMAC(code, secret du service) → retrouve le compte en O(1)
 --                 SANS identifiant. C'est ce qui fait disparaître l'énumération :
 --                 il n'y a plus de champ où tester si un compte existe.
---   code_hash   : Argon2id(code) → vérifie, et résiste à une fuite de la base.
+--   code_hash   : bcrypt(code) → vérifie, et résiste à une fuite de la base.
 --
--- Un lookup HMAC seul serait rejouable si la base fuitait ; un Argon2id seul
+-- Un lookup HMAC seul serait rejouable si la base fuitait ; un bcrypt seul
 -- imposerait de parcourir toute la table à chaque tentative. Les deux ensemble
 -- donnent la recherche immédiate ET la résistance.
 --
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS recovery_codes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     account_id  INTEGER NOT NULL,
     code_lookup TEXT NOT NULL,           -- HMAC-SHA256, recherche sans identifiant
-    code_hash   TEXT NOT NULL,           -- Argon2id, vérification
+    code_hash   TEXT NOT NULL,           -- bcrypt, vérification
     used        INTEGER NOT NULL DEFAULT 0,
     used_at     INTEGER,
     created_at  INTEGER NOT NULL,

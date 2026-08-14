@@ -358,6 +358,48 @@
     }
     .creds .row button:hover { color: var(--accent); border-color: var(--accent); }
     .creds .empty { color: var(--text-muted); font-style: italic; }
+    .creds .codes {
+      margin-top: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border);
+    }
+    .creds .codes .hdr {
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      margin-bottom: 0.35rem;
+      display: flex; justify-content: space-between; gap: 0.5rem;
+    }
+    .creds .codes .hdr button {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 3px;
+      padding: 0.1rem 0.35rem;
+      font-size: 0.72rem;
+      cursor: pointer;
+    }
+    .creds .codes .hdr button:hover { color: var(--accent); border-color: var(--accent); }
+    .creds .codes .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.2rem 0.4rem;
+    }
+    .creds .codes code {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 0.12rem 0.3rem;
+      font-size: 0.7rem;
+      color: var(--text);
+      text-align: center;
+    }
+    /* Un code consommé reste affiché, barré : la démo montre qu'il a servi
+       une fois et ne resservira pas. Le retirer effacerait la démonstration. */
+    .creds .codes code.used {
+      color: var(--text-muted);
+      text-decoration: line-through;
+      opacity: 0.55;
+    }
     .creds .new-session {
       margin-top: 0.6rem;
       padding-top: 0.5rem;
@@ -503,6 +545,46 @@
     </div>
   </div>
 
+  <!-- Étape 4b — Recovery L2 par code de secours (sans identifiant) -->
+  <div class="card-app" id="step-4b">
+    <div class="step-header"><div class="num">4b</div><div class="title">Récupération niveau 2 — par code de secours, sans identifiant</div></div>
+    <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 0.8rem;">
+      Même niveau, autre porte. Ici on ne te demande <strong>aucun identifiant</strong> :
+      le code retrouve le compte à lui seul. Regarde le formulaire — il n'y a pas de
+      champ où saisir un nom d'utilisateur, donc pas d'endroit où tester si un compte existe.
+    </p>
+    <form id="form-recover-l2-code">
+      <div class="field">
+        <label for="r2c-code">Code de secours (un des 10 remis à l'étape 1)</label>
+        <input id="r2c-code" name="code" placeholder="ex: a1b2c-3d4e5" autocomplete="off" required>
+      </div>
+      <div class="field">
+        <label for="r2c-word">Mot de récupération (le second facteur, jamais transmis)</label>
+        <input id="r2c-word" name="word" placeholder="ex: 58c3ab" autocomplete="off" required>
+      </div>
+      <div class="field">
+        <label for="r2c-password">Nouveau mot de passe (8 caractères minimum)</label>
+        <input id="r2c-password" name="new_password" minlength="8" placeholder="celui que tu veux" autocomplete="off" required>
+      </div>
+      <button class="btn" type="submit">Récupérer avec code + mot</button>
+    </form>
+    <div id="r2c-viz"></div>
+    <div id="r2c-result"></div>
+    <div class="teach tuto-only">
+      <strong>Ce qu'il se passe ici :</strong> le serveur calcule
+      <code>HMAC-SHA256(code, sel du service)</code> et s'en sert comme index — une seule
+      requête retrouve le compte, sans identifiant. Le code est ensuite vérifié par bcrypt,
+      et le mot de récupération par le même HMAC client qu'à l'étape 4.
+      <strong>Les deux sont exigés</strong> : un code trouvé sur un papier ne suffit pas,
+      le mot seul non plus.
+      <br><br>
+      Essaie de te tromper volontairement sur l'un des deux : le message d'erreur est
+      identique dans les deux cas, et le temps de réponse aussi. Dire lequel a échoué
+      rendrait chaque facteur attaquable séparément. Essaie ensuite de rejouer un code
+      déjà utilisé — il est consommé, et un code inconnu reçoit exactement la même réponse.
+    </div>
+  </div>
+
   <!-- Étape 5 — Anti-phishing sim -->
   <div class="card-app" id="step-5">
     <div class="step-header"><div class="num">5</div><div class="title">Simulation anti-phishing</div></div>
@@ -566,6 +648,7 @@
         <option value="logout">logout.php</option>
         <option value="recover-l1">recover-l1.php</option>
         <option value="recover-l2">recover-l2.php</option>
+        <option value="recover-l2-code">recover-l2-code.php</option>
         <option value="phishing-sim">phishing-sim.php</option>
         <option value="me">me.php</option>
         <option value="site-salt">site-salt.php</option>
@@ -618,6 +701,7 @@ const API = {
   logout:      '/demo/api/recover/logout',
   recoverL1:   '/demo/api/recover/recover-l1',
   recoverL2:   '/demo/api/recover/recover-l2',
+  recoverL2Code: '/demo/api/recover/recover-l2-code',
   phishingSim: '/demo/api/recover/phishing-sim',
   siteSalt:    '/demo/api/recover/site-salt',
   code:        '/demo/api/recover/code',
@@ -640,7 +724,10 @@ async function hmacSha256(key, message) {
 
 const state = {
   session: null,
-  credentials: { password: null, passphrase: null, recovery_word: null },
+  credentials: { password: null, passphrase: null, recovery_word: null, recovery_codes: [] },
+  // Suivi local des codes consommés : le serveur, lui, ne peut plus les
+  // réafficher — il n'en garde qu'un HMAC et un bcrypt.
+  usedCodes: new Set(),
   eventSource: null,
   sseOffset: 0,
   mode: 'tuto', // 'tuto' | 'playground'
@@ -835,7 +922,9 @@ $('form-register').addEventListener('submit', async (e) => {
         password: d.credentials.password,
         passphrase: d.credentials.passphrase,
         recovery_word: d.credentials.recovery_word,
+        recovery_codes: d.credentials.recovery_codes || [],
       };
+      state.usedCodes = new Set();
       renderCreds();
       res.innerHTML = `<div class="inline-result ok">✓ Compte <strong>${html_escape(d.username)}</strong> créé. Tes credentials sont en bas à droite.</div>`;
       $('step-1').classList.add('done');
@@ -977,6 +1066,62 @@ $('form-recover-l2').addEventListener('submit', async (e) => {
   } finally { btn.disabled = false; }
 });
 
+// --- Étape 4b : Recovery L2 par code de secours ---
+//
+// Le corps de la requête ne porte pas de nom d'utilisateur, et c'est le point
+// de la démonstration : le visiteur voit dans la visualisation ci-dessous
+// exactement ce qui part sur le réseau. Ajouter l'identifiant « pour aider le
+// serveur » rouvrirait l'énumération que le mécanisme ferme.
+$('form-recover-l2-code').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = e.target.querySelector('button');
+  btn.disabled = true;
+  const viz = $('r2c-viz');
+  const res = $('r2c-result');
+  viz.innerHTML = ''; res.innerHTML = '';
+
+  try {
+    const code        = $('r2c-code').value.trim().toLowerCase();
+    const word        = $('r2c-word').value.trim();
+    const newPassword = $('r2c-password').value;
+    if (!code || !word || !newPassword) throw new Error('Tous les champs sont requis.');
+
+    const { domain, salt } = await getSiteSalt();
+    const derived = await hmacSha256(word, domain + salt);
+
+    viz.innerHTML = `
+      <div class="hmac-viz">
+        <div class="line"><span class="lbl">client-side:</span></div>
+        <div class="line">  <span class="lbl">HMAC-SHA256(mot, domain+salt) = </span><span class="val">${derived}</span></div>
+        <div class="line" style="margin-top: 0.4rem;">→ le corps envoyé contient <strong>le code, la clé dérivée, le nouveau mot de passe</strong>.</div>
+        <div class="line">→ <strong>aucun identifiant</strong> : le serveur retrouve le compte par le seul code.</div>
+      </div>`;
+
+    const r = await fetch(API.recoverL2Code, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ recovery_code: code, memorized_derived: derived, new_password: newPassword }),
+      credentials: 'include',
+    });
+    const d = await r.json();
+    if (d.ok) {
+      state.credentials.password = newPassword;
+      state.usedCodes.add(code);
+      renderCreds();
+      res.innerHTML = `<div class="inline-result ok">✓ Compte <strong>${html_escape(d.username)}</strong> récupéré sans l'avoir nommé. `
+        + `Le code vient d'être consommé — il en reste ${d.codes_restants}.</div>`;
+      $('step-4b').classList.add('done');
+      $('log-username').value = d.username;
+      $('log-password').value = newPassword;
+      refreshState();
+    } else {
+      res.innerHTML = `<div class="inline-result err">✗ ${html_escape(d.message || d.error)}</div>`;
+    }
+  } catch (err) {
+    res.innerHTML = `<div class="inline-result err">✗ ${html_escape(err.message || 'Erreur')}</div>`;
+  } finally { btn.disabled = false; }
+});
+
 // --- Étape 5 : Phishing sim ---
 $('form-phishing').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -1067,6 +1212,27 @@ async function loadCode(fileName) {
 }
 
 // --- Credentials panel ---
+//
+// Les codes de secours ne sont affichés qu'ici, et une seule fois : le serveur
+// n'en détient aucune forme réversible, il ne pourra pas les redonner. Recharger
+// la page perd les codes de la session en cours — c'est la contrainte réelle du
+// mécanisme, pas un défaut de la démo.
+function renderCodes() {
+  const codes = state.credentials.recovery_codes || [];
+  if (codes.length === 0) return '';
+  const restants = codes.filter(c => !state.usedCodes.has(c)).length;
+  const grille = codes.map(c =>
+    `<code class="${state.usedCodes.has(c) ? 'used' : ''}">${html_escape(c)}</code>`
+  ).join('');
+  return `<div class="codes">
+    <div class="hdr">
+      <span>Codes de secours — ${restants}/${codes.length} valides</span>
+      <button data-copy="${html_escape(codes.join('\n'))}" title="Copier les ${codes.length} codes">📋</button>
+    </div>
+    <div class="grid">${grille}</div>
+  </div>`;
+}
+
 function renderCreds() {
   const body = $('creds-body');
   const count = $('creds-count');
@@ -1088,7 +1254,7 @@ function renderCreds() {
       <code>${html_escape(val)}</code>
       <button data-copy="${html_escape(val)}" title="Copier">📋</button>
     </div>`
-  ).join('');
+  ).join('') + renderCodes();
   body.querySelectorAll('[data-copy]').forEach(b => {
     b.addEventListener('click', () => {
       navigator.clipboard.writeText(b.dataset.copy).then(() => {

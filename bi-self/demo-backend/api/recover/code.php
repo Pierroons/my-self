@@ -38,6 +38,7 @@ $ALLOWED = [
     'logout'           => $BASE . '/api/recover/logout.php',
     'recover-l1'       => $BASE . '/api/recover/recover-l1.php',
     'recover-l2'       => $BASE . '/api/recover/recover-l2.php',
+    'recover-l2-code'  => $BASE . '/api/recover/recover-l2-code.php',
     'phishing-sim'     => $BASE . '/api/recover/phishing-sim.php',
     'me'               => $BASE . '/api/recover/me.php',
     'site-salt'        => $BASE . '/api/recover/site-salt.php',
