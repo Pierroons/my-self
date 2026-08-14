@@ -67,7 +67,7 @@ final class Redactor {
         $out = [];
         foreach ($ctx as $k => $v) {
             if (is_string($v)) {
-                // Tronque les chaînes hex longues (bcrypt, HMAC) après 16 chars
+                // Tronque les chaînes hex longues (hash, HMAC) après 16 chars
                 if (preg_match('/^[a-f0-9]{32,}$/i', $v)) {
                     $out[$k] = substr($v, 0, 16) . '…truncated';
                 } elseif (strlen($v) > 200) {

@@ -377,7 +377,7 @@
     <g>
       <rect x="560" y="50" width="220" height="120" rx="10" fill="#1a2028" stroke="#2a3038" stroke-width="1.5"/>
       <text x="670" y="76" text-anchor="middle" fill="#7ab7ff" font-family="sans-serif" font-size="13" font-weight="700">🖥 Serveur du site</text>
-      <text x="670" y="98" text-anchor="middle" fill="#e8eaed" font-family="ui-monospace,monospace" font-size="10">stocke bcrypt(k)</text>
+      <text x="670" y="98" text-anchor="middle" fill="#e8eaed" font-family="ui-monospace,monospace" font-size="10">stocke Argon2id(k)</text>
       <text x="670" y="118" text-anchor="middle" fill="#9aa0a6" font-family="ui-monospace,monospace" font-size="9">aucun email, aucun secret brut</text>
       <text x="670" y="142" text-anchor="middle" fill="#dc2626" font-family="sans-serif" font-size="10">✗ ne peut pas réutiliser k</text>
       <text x="670" y="158" text-anchor="middle" fill="#9aa0a6" font-family="sans-serif" font-size="9">(autre domaine = autre clé)</text>
@@ -387,7 +387,7 @@
     <text x="400" y="200" text-anchor="middle" fill="#7cc47c" font-family="sans-serif" font-size="11" font-weight="600">Pas de canal SMTP. Pas de boîte mail à pirater. Pas de token reset à exfiltrer.</text>
   </svg>
   <ul class="scheme-split-legend">
-    <li>Le mot mémorisé n'apparaît jamais en clair côté serveur — uniquement <code>bcrypt(HMAC(secret, host))</code>.</li>
+    <li>Le mot mémorisé n'apparaît jamais en clair côté serveur — uniquement <code>Argon2id(HMAC(secret, host))</code>.</li>
     <li>Une fuite de la base d'un site ne permet pas d'attaquer les comptes du même utilisateur sur un autre site.</li>
     <li>Mode <strong>Full</strong> : zéro email. Mode <strong>Lite</strong> : email conservé + mot mémorisé HMACé en plus du token reset.</li>
   </ul>
@@ -507,8 +507,8 @@
     <p>
       <strong>Synergie testable en direct</strong> — prochainement, la démo
       binôme montrera comment une tentative d'attaque Sybil (créer 5 comptes
-      pour manipuler un vote) échoue simultanément côté SelfRecover (cost
-      bcrypt + entropie diceware) et côté SelfModerate (détection
+      pour manipuler un vote) échoue simultanément côté SelfRecover (coût
+      Argon2id + entropie diceware) et côté SelfModerate (détection
       pack-voting). Pas d'effet de manche, juste les deux algorithmes qui
       s'activent en temps réel.
     </p>

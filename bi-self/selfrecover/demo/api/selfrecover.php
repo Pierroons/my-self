@@ -526,7 +526,7 @@ function handleRegenerateCodes(): void {
 }
 
 // === USER-SALT (R9-02) : sel par-utilisateur pour la dérivation HMAC côté client ===
-// Le sel n'est PAS un secret (comme un sel bcrypt). Anti-énumération : si l'identifiant
+// Le sel n'est PAS un secret (comme tout sel de hachage). Anti-énumération : si l'identifiant
 // n'existe pas, on renvoie un sel FACTICE déterministe — indistinguable d'un vrai —
 // pour ne pas révéler l'existence du compte.
 function handleUserSalt(): void {

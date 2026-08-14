@@ -12,7 +12,7 @@
  *
  * Pédagogie : le visiteur voit en direct que deux HMAC du même mot avec
  * deux domaines différents produisent des clés complètement différentes,
- * et que seule celle qui utilise le bon domaine passe le bcrypt_verify.
+ * et que seule celle qui utilise le bon domaine passe l'argon2id_verify.
  */
 
 declare(strict_types=1);
@@ -69,10 +69,10 @@ if (!is_array($account)) {
 $legitMatch    = password_verify($derivedKeyLegit, $account['recovery_hash']);
 $phishingMatch = password_verify($derivedKeyPhishing, $account['recovery_hash']);
 
-$log->crypto('phishing-sim', 'bcrypt_verify(derived_key_legit, recovery_hash)', [
+$log->crypto('phishing-sim', 'argon2id_verify(derived_key_legit, recovery_hash)', [
     'result' => $legitMatch ? 'match ✓' : 'no_match',
 ]);
-$log->crypto('phishing-sim', 'bcrypt_verify(derived_key_phishing, recovery_hash)', [
+$log->crypto('phishing-sim', 'argon2id_verify(derived_key_phishing, recovery_hash)', [
     'result' => $phishingMatch ? 'match (PROBLÈME!)' : 'no_match ✓',
 ]);
 

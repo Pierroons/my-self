@@ -6,7 +6,7 @@
  *   body: { "username": "alice" }
  *   → génère password random + passphrase diceware + recovery word random
  *   → HMAC-SHA256 sur le recovery word (côté serveur pour démo)
- *   → bcrypt triplet (password, passphrase, derived_key)
+ *   → Argon2id triplet (password, passphrase, derived_key)
  *   → INSERT accounts
  *   → retourne les credentials en clair pour que l'user les copie
  *
@@ -90,21 +90,21 @@ $log->crypto('register', 'derived_key = HMAC(recovery_word, domain || site_salt)
     'derived_key' => $derivedKey, // sera tronqué par le Redactor
 ]);
 
-// Bcrypt des trois secrets
+// Argon2id des trois secrets
 $t0 = microtime(true);
-$pwHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
+$pwHash = RecoverHelper::hash($password);
 $t1 = microtime(true);
-$log->crypto('register', 'bcrypt(password, cost=12)', ['duration_ms' => (int) (($t1 - $t0) * 1000)]);
+$log->crypto('register', 'argon2id(password) — m=64 Mo, t=4, p=2', ['duration_ms' => (int) (($t1 - $t0) * 1000)]);
 
 $t2 = microtime(true);
-$passHash = password_hash($passphrase, PASSWORD_BCRYPT, ['cost' => 12]);
+$passHash = RecoverHelper::hash($passphrase);
 $t3 = microtime(true);
-$log->crypto('register', 'bcrypt(passphrase, cost=12)', ['duration_ms' => (int) (($t3 - $t2) * 1000)]);
+$log->crypto('register', 'argon2id(passphrase) — m=64 Mo, t=4, p=2', ['duration_ms' => (int) (($t3 - $t2) * 1000)]);
 
 $t4 = microtime(true);
-$recoveryHash = password_hash($derivedKey, PASSWORD_BCRYPT, ['cost' => 12]);
+$recoveryHash = RecoverHelper::hash($derivedKey);
 $t5 = microtime(true);
-$log->crypto('register', 'bcrypt(derived_key, cost=12)', ['duration_ms' => (int) (($t5 - $t4) * 1000)]);
+$log->crypto('register', 'argon2id(derived_key) — m=64 Mo, t=4, p=2', ['duration_ms' => (int) (($t5 - $t4) * 1000)]);
 
 // INSERT
 $stmt = $db->prepare('
@@ -143,7 +143,7 @@ for ($i = 0; $i < 10; $i++) {
     $insCode->reset();
     $insCode->bindValue(':a', $accountId, SQLITE3_INTEGER);
     $insCode->bindValue(':l', hash_hmac('sha256', $code, $siteSalt));
-    $insCode->bindValue(':h', password_hash($code, PASSWORD_BCRYPT));
+    $insCode->bindValue(':h', RecoverHelper::hash($code));
     $insCode->bindValue(':t', time(), SQLITE3_INTEGER);
     $insCode->execute();
     $codes[] = $code;
@@ -151,7 +151,7 @@ for ($i = 0; $i < 10; $i++) {
 $log->crypto('register', '10 codes de secours générés', [
     'duration_ms' => (int) ((microtime(true) - $tCodes) * 1000),
     'entropie'    => '40 bits chacun (5 octets aléatoires)',
-    'stockage'    => 'HMAC-SHA256 pour la recherche sans identifiant + bcrypt pour la vérification',
+    'stockage'    => 'HMAC-SHA256 pour la recherche sans identifiant + Argon2id pour la vérification',
     'note'        => "Le serveur ne peut pas les réafficher : il n'en détient aucune forme réversible.",
 ]);
 
@@ -167,5 +167,5 @@ echo json_encode([
         'recovery_word'  => $recoveryWord,
         'recovery_codes' => $codes,
     ],
-    'note' => 'Copie tes credentials ET tes 10 codes de secours maintenant. Le serveur ne les montrera plus en clair. Pour les bcrypt hashés, regarde les logs.',
+    'note' => 'Copie tes credentials ET tes 10 codes de secours maintenant. Le serveur ne les montrera plus en clair. Pour les hash Argon2id, regarde les logs.',
 ], JSON_UNESCAPED_UNICODE);

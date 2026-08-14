@@ -96,7 +96,7 @@
   </p>
 
   <div class="step-diagram">
-    <div class="sd"><div class="num">1</div><div class="name">5 comptes Sybil<br>(bcrypt × 5)</div></div>
+    <div class="sd"><div class="num">1</div><div class="name">5 comptes Sybil<br>(Argon2id × 15)</div></div>
     <div class="sd"><div class="num">2</div><div class="name">Vote pack<br>coordonné</div></div>
     <div class="sd"><div class="num">3</div><div class="name">Detection<br>+ annulation</div></div>
   </div>
@@ -126,7 +126,7 @@
     <p style="font-size: 0.9rem; color: var(--text-muted);">
       <strong>SelfModerate seul</strong> — 5 comptes frais sans historique votent, pack-detection a assez de signaux pour détecter. Mais si l'attaquant est patient et espace ses votes sur des jours, ou s'il paie de vrais humains pour voter, la détection échoue.<br><br>
       <strong>SelfRecover seul</strong> — identité fiable mais rien contre la manipulation coordonnée de vote.<br><br>
-      <strong>Les deux ensemble</strong> — SelfRecover impose un coût cryptographique (bcrypt cost=12 × N comptes) qui rend l'attaque linéairement coûteuse à scaler. SelfModerate détecte les patterns de coordination temporelle + graph d'invitations. Pour qu'une attaque Sybil réussisse, il faudrait : (1) payer le coût crypto N fois, (2) attendre et espacer les votes pour échapper à la détection, (3) créer un graph d'invitations "naturel" entre les faux comptes. Le coût cumulé rend ça non rentable à grande échelle.
+      <strong>Les deux ensemble</strong> — SelfRecover impose un coût cryptographique (trois Argon2id à 64 Mo par compte) qui rend l'attaque linéairement coûteuse à multiplier — en mémoire autant qu'en temps. SelfModerate détecte les patterns de coordination temporelle + graph d'invitations. Pour qu'une attaque Sybil réussisse, il faudrait : (1) payer le coût crypto N fois, (2) attendre et espacer les votes pour échapper à la détection, (3) créer un graph d'invitations "naturel" entre les faux comptes. Le coût cumulé rend ça non rentable à grande échelle.
     </p>
   </div>
 </div>
@@ -258,7 +258,7 @@ function renderResult(d) {
   $('scorecard-wrap').style.display = '';
   $('scorecard').innerHTML = `
     <div class="kpi"><div class="val">${d.sybil_accounts_created}</div><div class="lbl">Comptes Sybil créés</div></div>
-    <div class="kpi"><div class="val">${d.total_bcrypt_ms} ms</div><div class="lbl">Coût bcrypt cumulé (SelfRecover)</div></div>
+    <div class="kpi"><div class="val">${d.total_argon2_ms} ms</div><div class="lbl">Coût Argon2id cumulé (SelfRecover)</div></div>
     <div class="kpi"><div class="val">${d.votes_attempted}</div><div class="lbl">Votes pack tentés</div></div>
     <div class="kpi"><div class="val">${d.votes_cancelled}</div><div class="lbl">Votes annulés (SelfModerate)</div></div>
     <div class="kpi"><div class="val">${d.target_start_rep} → ${d.target_final_rep}</div><div class="lbl">Réputation cible (pré → post)</div></div>

@@ -17,7 +17,7 @@ A visitor who opens `/recover` or `/moderate` in the browser gets:
 
 1. An ephemeral **session** (UUID v4, 30 min TTL) with a private SQLite file.
 2. A **live log feed** via Server-Sent Events showing every backend step
-   (HMAC derivation, bcrypt, SQL queries, vote scoring, etc.) in real time,
+   (HMAC derivation, Argon2id, SQL queries, vote scoring, etc.) in real time,
    on the right half of a split-screen UI.
 3. Rate-limit protection: max 10 concurrent sessions site-wide, 3 sessions
    per IP per hour before warnings, 6+ = 30-day IP ban logged for CrowdSec.

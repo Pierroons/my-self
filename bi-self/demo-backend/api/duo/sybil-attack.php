@@ -8,8 +8,13 @@
  * une partie de l'attaque. Ensemble, ils la neutralisent :
  *
  *   - SelfRecover : chaque compte nécessite une passphrase diceware distincte
- *     et un bcrypt cost=12 (~250ms × 5 = ~1.25s de ralentissement). Ça ne
- *     bloque pas totalement mais rend l'attaque coûteuse à scaler.
+ *     et trois hachages Argon2id (password, passphrase, clé dérivée). Ça ne
+ *     bloque pas l'attaque, ça la rend coûteuse à multiplier — le cumul réel
+ *     est mesuré pendant la démo et rendu dans `total_argon2_ms`.
+ *
+ *     🔑 Le frein n'est pas seulement le temps : Argon2id occupe 64 Mo par
+ *     hachage. Créer cent comptes en parallèle demande donc de la mémoire en
+ *     proportion — c'est ce qui rend la multiplication coûteuse.
  *   - SelfModerate : les 5 votes coordonnés déclenchent pack-voting
  *     detection → votes annulés, réputation restaurée.
  *
@@ -66,7 +71,7 @@ $log->warning('sybil', '⚔ ATTAQUE SYBIL SIMULÉE contre ' . $target['username'
 $log->info('sybil', 'Phase 1/3 — L\'attaquant tente de créer 5 faux comptes SelfRecover');
 
 $sybilAccounts = [];
-$totalBcryptMs = 0;
+$totalArgon2Ms = 0;
 
 for ($i = 1; $i <= 5; $i++) {
     $username = 'sybil_' . $i . '_' . bin2hex(random_bytes(2));
@@ -80,15 +85,15 @@ for ($i = 1; $i <= 5; $i++) {
     $derivedKey = RecoverHelper::deriveKey($recoveryWord, $domain, $siteSalt);
 
     $t0 = microtime(true);
-    $pwHash = password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);
-    $passHash = password_hash($passphrase, PASSWORD_BCRYPT, ['cost' => 12]);
-    $recoveryHash = password_hash($derivedKey, PASSWORD_BCRYPT, ['cost' => 12]);
-    $totalBcryptMs += (int) ((microtime(true) - $t0) * 1000);
+    $pwHash = RecoverHelper::hash($password);
+    $passHash = RecoverHelper::hash($passphrase);
+    $recoveryHash = RecoverHelper::hash($derivedKey);
+    $totalArgon2Ms += (int) ((microtime(true) - $t0) * 1000);
 
     // Dans ce schéma moderate, pas de stockage SelfRecover — on log juste la tentative.
     $log->crypto('sybil', "Compte Sybil #{$i} généré : {$username}", [
         'passphrase_entropy_bits' => $diceware['entropy_bits'],
-        'cumulative_bcrypt_ms'    => $totalBcryptMs,
+        'cumulative_argon2_ms'    => $totalArgon2Ms,
     ]);
 
     // Création de l'user côté SelfModerate (comme s'il avait enregistré)
@@ -100,8 +105,8 @@ for ($i = 1; $i <= 5; $i++) {
     $sybilAccounts[] = ['id' => (int) $sybilId, 'username' => '@' . $username];
 }
 
-$log->warning('sybil', sprintf('Phase 1 terminée — 5 comptes créés avec %d ms de bcrypt cumulé (ralentissement SelfRecover)', $totalBcryptMs));
-$log->info('sybil', 'SelfRecover ne bloque pas l\'attaque, mais impose un coût cryptographique. À 100 comptes → ~25 secondes de crunch.');
+$log->warning('sybil', sprintf('Phase 1 terminée — 5 comptes créés avec %d ms d\'Argon2id cumulé (ralentissement SelfRecover)', $totalArgon2Ms));
+$log->info('sybil', 'SelfRecover ne bloque pas l\'attaque, mais impose un coût cryptographique : 15 hachages Argon2id à 64 Mo pour 5 comptes, et autant de mémoire à mobiliser en parallèle.');
 
 // ------------------------------------------------------------
 // Phase 2 : Les 5 Sybils votent -1 coordonnés contre la cible
@@ -169,7 +174,7 @@ echo json_encode([
     'ok'                    => true,
     'verdict'               => $verdict,
     'sybil_accounts_created'=> count($sybilAccounts),
-    'total_bcrypt_ms'       => $totalBcryptMs,
+    'total_argon2_ms'       => $totalArgon2Ms,
     'votes_attempted'       => $appliedVotes,
     'pack_detected'         => $detection['pack_detected'],
     'votes_cancelled'       => $detection['cancelled_votes'],
@@ -177,6 +182,6 @@ echo json_encode([
     'target_final_rep'      => $finalRep,
     'sybils'                => $sybilAccounts,
     'message' => $verdict === 'defeated'
-        ? "Synergie Bi-Self : SelfRecover a ralenti (coût bcrypt cumulé), SelfModerate a détecté et annulé. L'attaque échoue."
+        ? "Synergie Bi-Self : SelfRecover a ralenti (coût Argon2id cumulé), SelfModerate a détecté et annulé. L'attaque échoue."
         : "Résultat inattendu — bug démo.",
 ]);

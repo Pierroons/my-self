@@ -4,7 +4,7 @@
  *
  * POST /demo/api/recover/login
  *   body: { "username": "alice", "password": "..." }
- *   → bcrypt_verify → crée app_session → cookie sr_app_session
+ *   → argon2id_verify → crée app_session → cookie sr_app_session
  *
  * Rate-limit interne par username : après 5 tentatives échouées en 5 min,
  * on simule un lockout de 60 s.
@@ -77,7 +77,7 @@ $stmt->bindValue(':t', time());
 $stmt->execute();
 
 if (!$success) {
-    $log->warning('login', 'bcrypt_verify KO', ['username' => $username]);
+    $log->warning('login', 'argon2id_verify KO', ['username' => $username]);
     // Delai constant pour éviter timing attack (au moins ~200 ms)
     usleep(200000);
     http_response_code(401);
@@ -85,7 +85,7 @@ if (!$success) {
     exit;
 }
 
-$log->crypto('login', 'bcrypt_verify(password, stored_hash) → true');
+$log->crypto('login', 'argon2id_verify(password, stored_hash) → true');
 
 // Create app session
 $token = RecoverHelper::generateSessionToken();

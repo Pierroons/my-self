@@ -250,7 +250,8 @@ final class Auth
                     'message' => 'Identifiant ou mot de passe incorrect.'];
         }
 
-        // R9-06 : migration douce des anciens hash bcrypt → Argon2id à la connexion réussie.
+        // R9-06 : réencodage à la connexion réussie — un hash produit avec des paramètres
+        // Argon2id périmés est refait avec le profil courant, sans que l'utilisateur agisse.
         if (password_needs_rehash($acc['pw_hash'], PASSWORD_ARGON2ID, self::ARGON2)) {
             $pdo->prepare('UPDATE accounts SET pw_hash = ? WHERE id = ?')
                 ->execute([password_hash($password, PASSWORD_ARGON2ID, self::ARGON2), (int) $acc['id']]);

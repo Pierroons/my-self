@@ -10,7 +10,7 @@
  * délibérément pour que le navigateur puisse calculer le HMAC et montrer à
  * l'utilisateur exactement ce qui se passe côté client. En prod, le client
  * fait le HMAC avec juste le domaine comme sel public, la vraie diversification
- * est faite côté serveur via un salt additionnel avant le bcrypt.
+ * est faite côté serveur via un salt additionnel avant le hachage Argon2id.
  *
  * Ce compromis est nécessaire pour que la démo soit vraiment pédagogique —
  * l'utilisateur voit le HMAC se calculer dans son navigateur.

@@ -76,7 +76,7 @@ $log->crypto('recover-l2-code', 'HMAC-SHA256(code, sel du service) → index de 
     'lookup'  => $lookup,
     'pourquoi' => "Le HMAC sert d'index : il retrouve la ligne en une requête, sans nom d'utilisateur. "
                 . "Stocker le code en clair permettrait la même recherche, mais une fuite de la base "
-                . "livrerait tous les codes — le hachage bcrypt ci-dessous couvre ce risque, et le "
+                . "livrerait tous les codes — le hachage Argon2id ci-dessous couvre ce risque, et le "
                 . "HMAC couvre la recherche. Aucun des deux ne remplace l'autre.",
 ]);
 
@@ -131,7 +131,7 @@ if (!$codeOk || !$wordOk) {
 
 $db->exec('BEGIN IMMEDIATE');
 $up = $db->prepare('UPDATE accounts SET pw_hash = :h WHERE id = :i');
-$up->bindValue(':h', password_hash($newPassword, PASSWORD_BCRYPT));
+$up->bindValue(':h', RecoverHelper::hash($newPassword));
 $up->bindValue(':i', (int) $row['account_id'], SQLITE3_INTEGER);
 $up->execute();
 

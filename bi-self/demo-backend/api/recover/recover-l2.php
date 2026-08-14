@@ -4,12 +4,12 @@
  *
  * POST /demo/api/recover/recover-l2
  *   body: { "username": "alice", "derived_key": "4e7a9f...", "domain_used": "bi-self.my-self.fr" }
- *   → bcrypt_verify(derived_key, stored recovery_hash)
+ *   → argon2id_verify(derived_key, stored recovery_hash)
  *
  * Le recovery_word N'EST JAMAIS ENVOYÉ. Seul le derived_key (HMAC-SHA256
  * calculé par le navigateur) arrive au serveur. Si un phishing site pousse
  * le client à calculer le HMAC avec son propre domaine, le derived_key
- * sera complètement différent et le bcrypt_verify échouera → auth rejetée.
+ * sera complètement différent et l'argon2id_verify échouera → auth rejetée.
  *
  * On log domain_used en clair pour la pédagogie : tu vois que c'est bien
  * le domaine qu'a vu le navigateur qui a été utilisé pour le HMAC.
@@ -75,7 +75,7 @@ $t0 = microtime(true);
 $ok = password_verify($derivedKey, $account['recovery_hash']);
 $t1 = microtime(true);
 
-$log->crypto('recover-l2', 'bcrypt_verify(derived_key_received, stored_recovery_hash)', [
+$log->crypto('recover-l2', 'argon2id_verify(derived_key_received, stored_recovery_hash)', [
     'duration_ms' => (int) (($t1 - $t0) * 1000),
     'result'      => $ok ? 'match' : 'no_match',
     'legit_domain' => 'bi-self.my-self.fr',
@@ -104,9 +104,9 @@ $newPassword = RecoverHelper::generatePassword(16);
 $log->info('recover-l2', 'Nouveau password généré (remplace l\'ancien)');
 
 $t2 = microtime(true);
-$newHash = password_hash($newPassword, PASSWORD_BCRYPT, ['cost' => 12]);
+$newHash = RecoverHelper::hash($newPassword);
 $t3 = microtime(true);
-$log->crypto('recover-l2', 'bcrypt(new_password, cost=12)', ['duration_ms' => (int) (($t3 - $t2) * 1000)]);
+$log->crypto('recover-l2', 'argon2id(new_password) — m=64 Mo, t=4, p=2', ['duration_ms' => (int) (($t3 - $t2) * 1000)]);
 
 $stmt = $db->prepare('UPDATE accounts SET pw_hash = :h WHERE id = :id');
 $stmt->bindValue(':h', $newHash);

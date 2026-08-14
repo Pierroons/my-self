@@ -4,7 +4,7 @@
  *
  * POST /demo/api/recover/recover-l1
  *   body: { "username": "alice", "passphrase": "four words here plz" }
- *   → bcrypt_verify(passphrase, pass_hash) → génère nouveau password → update
+ *   → argon2id_verify(passphrase, pass_hash) → génère nouveau password → update
  */
 
 declare(strict_types=1);
@@ -57,7 +57,7 @@ if (!is_array($account)) {
 $t0 = microtime(true);
 $ok = password_verify($passphrase, $account['pass_hash']);
 $t1 = microtime(true);
-$log->crypto('recover-l1', 'bcrypt_verify(passphrase, stored_pass_hash)', [
+$log->crypto('recover-l1', 'argon2id_verify(passphrase, stored_pass_hash)', [
     'duration_ms' => (int) (($t1 - $t0) * 1000),
     'result'      => $ok ? 'match' : 'no_match',
 ]);
@@ -74,9 +74,9 @@ $newPassword = RecoverHelper::generatePassword(16);
 $log->info('recover-l1', 'Nouveau password généré (remplace l\'ancien)');
 
 $t2 = microtime(true);
-$newHash = password_hash($newPassword, PASSWORD_BCRYPT, ['cost' => 12]);
+$newHash = RecoverHelper::hash($newPassword);
 $t3 = microtime(true);
-$log->crypto('recover-l1', 'bcrypt(new_password, cost=12)', ['duration_ms' => (int) (($t3 - $t2) * 1000)]);
+$log->crypto('recover-l1', 'argon2id(new_password) — m=64 Mo, t=4, p=2', ['duration_ms' => (int) (($t3 - $t2) * 1000)]);
 
 $stmt = $db->prepare('UPDATE accounts SET pw_hash = :h WHERE id = :id');
 $stmt->bindValue(':h', $newHash);

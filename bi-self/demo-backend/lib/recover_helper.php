@@ -10,6 +10,31 @@ require_once __DIR__ . '/diceware/wordlist.php';
 
 final class RecoverHelper {
     /**
+     * Profil Argon2id du projet — OWASP 2026 : 64 MiB de mémoire, 4 itérations,
+     * 2 fils. Les mêmes valeurs que le lab et que l'implémentation de référence.
+     *
+     * 🔑 Un seul endroit, appelé partout. Les paramètres recopiés à chaque appel
+     * divergent au premier oubli, et un secret haché plus faiblement que ses
+     * voisins ne se voit pas : rien dans la base ne distingue un hash à 4
+     * itérations d'un hash à 2.
+     */
+    public const ARGON2 = [
+        'memory_cost' => 65536,
+        'time_cost'   => 4,
+        'threads'     => 2,
+    ];
+
+    /**
+     * Hache un secret destiné à être stocké.
+     *
+     * ⚠️ Le coût mémoire est le paramètre qui compte : 64 Mo à mobiliser par
+     * hachage, ce qui rend l'attaque par GPU coûteuse à paralléliser.
+     */
+    public static function hash(string $secret): string {
+        return password_hash($secret, PASSWORD_ARGON2ID, self::ARGON2);
+    }
+
+    /**
      * Génère un password random (16 chars alphanum + quelques symboles mémorisables).
      */
     public static function generatePassword(int $length = 16): string {

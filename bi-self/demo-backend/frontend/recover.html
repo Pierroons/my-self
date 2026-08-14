@@ -470,7 +470,7 @@
       <strong>Ce qu'il se passe ici :</strong> le serveur génère un password random,
       une passphrase diceware (4 mots), et un mot de récupération. Le mot de récupération
       est passé au HMAC-SHA256 avec <code>domain || site_salt</code>. Les trois secrets
-      sont ensuite bcrypt-hashés et stockés. Regarde la console à droite, chaque étape
+      sont ensuite hachés en Argon2id et stockés. Regarde la console à droite, chaque étape
       est tracée.
     </div>
   </div>
@@ -491,7 +491,7 @@
     </form>
     <div id="log-result"></div>
     <div class="teach tuto-only">
-      Le login est ce qu'il y a de plus banal. <code>bcrypt_verify</code> côté serveur,
+      Le login est ce qu'il y a de plus banal. <code>argon2id_verify</code> côté serveur,
       et si ça match, on crée une session applicative (cookie <code>sr_app_session</code>).
       Aucune magie. Ce qui compte c'est la suite : que se passe-t-il si tu perds ton password ?
     </div>
@@ -514,7 +514,7 @@
     <div id="r1-result"></div>
     <div class="teach tuto-only">
       La passphrase est ton « sceau de secours » : 4 mots mémorisables, connus de toi seul,
-      qui re-débloquent ton compte sans aucun email. <code>bcrypt_verify</code> contre le
+      qui re-débloquent ton compte sans aucun email. <code>argon2id_verify</code> contre le
       hash stocké, génération d'un nouveau password, invalidation de toutes les sessions
       précédentes. <strong>Aucun tiers impliqué, aucun SMTP, aucun délai.</strong>
     </div>
@@ -540,7 +540,7 @@
       <strong>Ce qu'il se passe ici :</strong> ton navigateur calcule
       <code>HMAC-SHA256(recovery_word, domain || site_salt)</code> <strong>localement</strong>.
       Seule la clé dérivée est envoyée au serveur. Le mot lui-même ne traverse
-      jamais le réseau. Le serveur compare via bcrypt, accorde ou refuse.
+      jamais le réseau. Le serveur compare via Argon2id, accorde ou refuse.
       Aucun email, aucun SMTP, aucun tiers.
     </div>
   </div>
@@ -573,7 +573,7 @@
     <div class="teach tuto-only">
       <strong>Ce qu'il se passe ici :</strong> le serveur calcule
       <code>HMAC-SHA256(code, sel du service)</code> et s'en sert comme index — une seule
-      requête retrouve le compte, sans identifiant. Le code est ensuite vérifié par bcrypt,
+      requête retrouve le compte, sans identifiant. Le code est ensuite vérifié par Argon2id,
       et le mot de récupération par le même HMAC client qu'à l'étape 4.
       <strong>Les deux sont exigés</strong> : un code trouvé sur un papier ne suffit pas,
       le mot seul non plus.
@@ -611,7 +611,7 @@
       <code>HMAC(mot, "bi-self.my-self.fr"+salt)</code>
       ET <code>HMAC(mot, "phishing-my-self-fr.local"+salt)</code>.
       Le même mot, deux domaines différents → <strong>deux clés complètement différentes</strong>.
-      Seule celle du bon domaine passera bcrypt_verify. Le phisher, même s'il voit
+      Seule celle du bon domaine passera argon2id_verify. Le phisher, même s'il voit
       passer le HMAC qu'il a obtenu, obtient une clé <strong>inutilisable ailleurs</strong>.
       Aucun partage de mot, aucun cross-site leak possible.
     </div>
@@ -726,7 +726,7 @@ const state = {
   session: null,
   credentials: { password: null, passphrase: null, recovery_word: null, recovery_codes: [] },
   // Suivi local des codes consommés : le serveur, lui, ne peut plus les
-  // réafficher — il n'en garde qu'un HMAC et un bcrypt.
+  // réafficher — il n'en garde qu'un HMAC et un Argon2id.
   usedCodes: new Set(),
   eventSource: null,
   sseOffset: 0,
@@ -1174,7 +1174,7 @@ $('form-phishing').addEventListener('submit', async (e) => {
 
       viz.innerHTML += `
       <div class="hmac-viz" style="margin-top: 0.5rem;">
-        <div class="line"><span class="lbl">server-side bcrypt_verify :</span></div>
+        <div class="line"><span class="lbl">server-side argon2id_verify :</span></div>
         <div class="line">  domaine légitime → ${okLegit}</div>
         <div class="line">  domaine phishing → ${okPhish}</div>
         <div class="line" style="margin-top: 0.4rem;">→ Le phisher aurait pu intercepter le <code>derived_key</code>, mais il est spécifique à son domaine. Sur le vrai site, il ne passe pas.</div>
