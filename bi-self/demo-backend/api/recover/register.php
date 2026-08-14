@@ -121,7 +121,41 @@ $stmt->execute();
 $accountId = $db->lastInsertRowID();
 
 $log->info('register', "INSERT INTO accounts", ['id' => $accountId, 'username' => $username]);
-$log->success('register', 'HTTP 201 — compte créé', ['account_id' => $accountId]);
+
+// ── Lot de codes de secours — le facteur de possession portable du niveau 2 ──
+//
+// 🔑 Générés d'office, jamais à la demande. Un utilisateur qui doit penser à
+// les créer ne les a pas le jour où il en a besoin — et ce jour-là, il ne peut
+// plus se connecter pour les demander. Les remettre à l'inscription est le seul
+// moment où l'on est sûr qu'il y a quelqu'un pour les lire.
+//
+// ⚠️ Affichés une seule fois. Le serveur n'en garde qu'un HMAC (pour retrouver
+// le compte) et un Argon2id (pour vérifier) : il est incapable de les réafficher,
+// et c'est voulu.
+$codes   = [];                      // $siteSalt est déjà dérivé plus haut
+$insCode = $db->prepare(
+    'INSERT INTO recovery_codes (account_id, code_lookup, code_hash, created_at) VALUES (:a, :l, :h, :t)'
+);
+$tCodes = microtime(true);
+for ($i = 0; $i < 10; $i++) {
+    $brut = bin2hex(random_bytes(5));                                  // 40 bits
+    $code = substr($brut, 0, 5) . '-' . substr($brut, 5, 5);           // xxxxx-xxxxx
+    $insCode->reset();
+    $insCode->bindValue(':a', $accountId, SQLITE3_INTEGER);
+    $insCode->bindValue(':l', hash_hmac('sha256', $code, $siteSalt));
+    $insCode->bindValue(':h', password_hash($code, PASSWORD_BCRYPT));
+    $insCode->bindValue(':t', time(), SQLITE3_INTEGER);
+    $insCode->execute();
+    $codes[] = $code;
+}
+$log->crypto('register', '10 codes de secours générés', [
+    'duration_ms' => (int) ((microtime(true) - $tCodes) * 1000),
+    'entropie'    => '40 bits chacun (5 octets aléatoires)',
+    'stockage'    => 'HMAC-SHA256 pour la recherche sans identifiant + bcrypt pour la vérification',
+    'note'        => "Le serveur ne peut pas les réafficher : il n'en détient aucune forme réversible.",
+]);
+
+$log->success('register', 'HTTP 201 — compte créé', ['account_id' => $accountId, 'codes' => 10]);
 
 echo json_encode([
     'ok'          => true,
@@ -131,6 +165,7 @@ echo json_encode([
         'password'       => $password,
         'passphrase'     => $passphrase,
         'recovery_word'  => $recoveryWord,
+        'recovery_codes' => $codes,
     ],
-    'note' => 'Copie tes credentials maintenant. Le serveur ne les montrera plus en clair. Pour les bcrypt hashés, regarde les logs.',
+    'note' => 'Copie tes credentials ET tes 10 codes de secours maintenant. Le serveur ne les montrera plus en clair. Pour les bcrypt hashés, regarde les logs.',
 ], JSON_UNESCAPED_UNICODE);
