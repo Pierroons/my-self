@@ -79,7 +79,7 @@ $dg->userExists('user-cosmo') ? ok('userExists → true after register') : ko('u
 !$dg->userExists('nobody') ? ok('userExists → false for unknown user') : ko('userExists false positive');
 
 $dg->setFields($session, [
-    'email'   => 'pierre@example.com',
+    'email'   => 'alice@example.com',
     'phone'   => '+33612345678',
     'address' => '12 rue des Champs, 33220 Sainte-Foy',
     'iban'    => 'FR7612345678901234567890123',
@@ -106,7 +106,7 @@ ok('loginWithPassword OK');
 
 $plain = $dg->getFields($session2);
 count($plain) === 4 ? ok('getFields returns all 4 stored fields') : ko('field count: got ' . count($plain));
-$plain['email'] === 'pierre@example.com' ? ok('email decrypted') : ko('email wrong: ' . ($plain['email'] ?? 'null'));
+$plain['email'] === 'alice@example.com' ? ok('email decrypted') : ko('email wrong: ' . ($plain['email'] ?? 'null'));
 $plain['iban']  === 'FR7612345678901234567890123' ? ok('iban decrypted') : ko('iban wrong');
 
 // Subset
@@ -129,7 +129,7 @@ section('Login by memorized (recovery flow)');
 
 $sessionRec = $dg->loginWithMemorized('user-cosmo', 'sunset-river-marble');
 $recPlain = $dg->getFields($sessionRec);
-$recPlain['email'] === 'pierre@example.com'
+$recPlain['email'] === 'alice@example.com'
     ? ok('memorized recovery unlocks SAME data')
     : ko('memorized recovery returned different data');
 
@@ -145,7 +145,7 @@ try {
 
 section('Find user by indexed field');
 
-$found = $dg->findUserByField('email', 'pierre@example.com');
+$found = $dg->findUserByField('email', 'alice@example.com');
 $found === 'user-cosmo' ? ok('findUserByField → user-cosmo by email') : ko("got: " . var_export($found, true));
 
 $foundPhone = $dg->findUserByField('phone', '+33612345678');
@@ -171,7 +171,7 @@ $dg->setFields($bobSession, [
 $bobFound = $dg->findUserByField('email', 'bob@example.com');
 $bobFound === 'user-bob' ? ok('blind index isolates users (bob found)') : ko('multi-user lookup wrong');
 
-$cosmoStill = $dg->findUserByField('email', 'pierre@example.com');
+$cosmoStill = $dg->findUserByField('email', 'alice@example.com');
 $cosmoStill === 'user-cosmo' ? ok('cosmo still findable after bob registered') : ko('cosmo lost from index');
 
 // -----------------------------------------------------------------------------
@@ -182,7 +182,7 @@ $dg->changePassword($session2, 'new-much-stronger-passphrase');
 
 $sessionNew = $dg->loginWithPassword('user-cosmo', 'new-much-stronger-passphrase');
 $plain2 = $dg->getFields($sessionNew);
-$plain2['email'] === 'pierre@example.com'
+$plain2['email'] === 'alice@example.com'
     ? ok('after changePassword, data still readable')
     : ko('rotation broke data');
 
@@ -201,7 +201,7 @@ $dg->changeMemorized($sessionNew, 'autumn-leaves-quiet');
 
 $sessionMem = $dg->loginWithMemorized('user-cosmo', 'autumn-leaves-quiet');
 $plain3 = $dg->getFields($sessionMem);
-$plain3['email'] === 'pierre@example.com'
+$plain3['email'] === 'alice@example.com'
     ? ok('after changeMemorized, recovery flow still works')
     : ko('memorized rotation broke recovery');
 
@@ -222,15 +222,15 @@ ok('password still works after memorized removed');
 
 section('Field upsert + add new fields later');
 
-$dg->setFields($sessionPwdAfter, ['email' => 'pierre.new@example.com'], indexed: ['email']);
+$dg->setFields($sessionPwdAfter, ['email' => 'alice.new@example.com'], indexed: ['email']);
 $updated = $dg->getFields($sessionPwdAfter, ['email']);
-$updated['email'] === 'pierre.new@example.com' ? ok('field upserted via setFields') : ko('upsert via façade failed');
+$updated['email'] === 'alice.new@example.com' ? ok('field upserted via setFields') : ko('upsert via façade failed');
 
 // Old index should miss now
-$missOld = $dg->findUserByField('email', 'pierre@example.com');
+$missOld = $dg->findUserByField('email', 'alice@example.com');
 $missOld === null ? ok('old indexed value no longer resolves') : ko('stale index still hits');
 
-$hitNew = $dg->findUserByField('email', 'pierre.new@example.com');
+$hitNew = $dg->findUserByField('email', 'alice.new@example.com');
 $hitNew === 'user-cosmo' ? ok('new indexed value resolves') : ko('new index broken');
 
 // Add a brand-new field
