@@ -64,6 +64,45 @@ trap 'alerter "SelfJustice — sync LEGI en echec" "Arret ligne $LINENO. Base se
 
 journal() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
 
+# --- Une seule instance à la fois -------------------------------------------
+#
+# 🔑 **Deux exécutions simultanées se détruisent mutuellement.** Constaté le
+# 15/08/2026 : deux passages lancés à la même seconde, tout le journal en
+# double, et les deux téléchargements en concurrence sur le même dossier de
+# tarballs. L'un renommait le `.part` que l'autre attendait —
+# `FileNotFoundError: LEGI_20260803….tar.gz.part -> ….tar.gz` — pendant que le
+# FTP de la DILA expirait sous les deux connexions.
+#
+# Le verrou est posé AVANT la première ligne de journal : c'est ce doublon-là,
+# « === Début mise à jour LEGI === » écrit deux fois à la même seconde, qui a
+# mis sur la piste. Une garde placée plus bas laisserait la trace ambiguë.
+#
+# `flock` plutôt qu'un `mkdir` ou un fichier de PID : le noyau libère le verrou
+# tout seul, sans rien à nettoyer. Un verrou par fichier, lui, survit à la panne
+# qu'il aurait dû protéger, et il faut le retirer à la main — souvent en
+# découvrant qu'on ne synchronise plus depuis des semaines.
+#
+# 🔑 Le verrou tient tant qu'un processus ayant hérité du descripteur 9 est
+# vivant, pas seulement ce script. Mesuré le 16/08/2026 : ce script tué par
+# `kill -9`, son enfant survivant gardait le verrou ; la libération n'est venue
+# qu'à la mort de ce dernier.
+#
+# C'est exactement ce qu'on veut ici. Si le pilote meurt alors que
+# `legi.download` télécharge encore, le verrou couvre le travail réel et non le
+# script qui l'a lancé — un second passage ne viendra pas écrire dans le dossier
+# de tarballs qu'une instance orpheline remplit toujours.
+#
+# ⚠️ Le descripteur 9 reste ouvert jusqu'à la fin du script : c'est lui qui
+# porte le verrou. Ne pas le refermer, ne pas le réutiliser.
+LOCK_FILE="$LEGI_DIR/update_legi.lock"
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+    journal "Instance déjà en cours (verrou $LOCK_FILE) — ce passage s'arrête"
+    alerter "SelfJustice — sync LEGI déjà en cours" \
+            "Un second lancement a ete refuse par le verrou. La synchronisation en cours n a pas ete perturbee, mais un doublon de planification est probable : verifier /etc/cron.d/selfjustice et la crontab root."
+    exit 0
+fi
+
 cd "$LEGI_DIR"
 journal "=== Début mise à jour LEGI ==="
 
