@@ -15,6 +15,15 @@ set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 
+# Rappel du jugement, que l'audit ci-dessous ne fait pas : il cherche des motifs,
+# pas une phrase de vie privée dans une description de PR.
+#
+# Conditionné à l'existence de la commande, qui vit hors du dépôt : sans cette
+# garde, quiconque clone verrait un rappel vers quelque chose qu'il n'a pas.
+if [ -f "$HOME/.claude/commands/pre-push.md" ]; then
+  echo "↪ /pre-push passé sur ce diff ? (l'audit ci-dessous est mécanique)"
+fi
+
 if [ -x "$ROOT/scripts/audit-opsec.sh" ]; then
   if ! "$ROOT/scripts/audit-opsec.sh"; then
     echo ""

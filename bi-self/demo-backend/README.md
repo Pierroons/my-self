@@ -242,6 +242,7 @@ echo json_encode(['ok' => true]);
 ### 6.2 Bypass
 
 Deux mécanismes indépendants :
+
 - **LAN** : IP dans `votre plage LAN privée`, `10.x`, `127.x`, `::1`, `fe80::…` → bypass automatique.
 - **Cookie `sj_bypass`** : contient un token comparé avec hash_equals
   au contenu de `bypass_token.txt`. Obtenu via `/bypass/<token>/`.
@@ -250,6 +251,7 @@ Deux mécanismes indépendants :
 
 Avant qu'un log ou un extrait de code atteigne le frontend, `Redactor::redactLog`
 et `Redactor::redactSource` remplacent :
+
 - Les paths absolus sensibles par des placeholders : `/var/lib/…/` →
   `{session_dir}/`, `{admin_dir}/`, `{state_dir}/`
 - Les secrets inline : `$site_salt = "…"` → `$site_salt = [REDACTED — set at install]`

@@ -38,3 +38,11 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+
+# Configuration Claude Code. Seuls les agents publics sont versionnés — ils
+# décrivent des commandes de lint et des règles de publication, utiles à qui
+# reprend le dépôt. Le reste de `.claude/` est local par nature : sessions,
+# journaux, et les fichiers volontairement défectueux qui servent à vérifier
+# que les agents voient encore quelque chose.
+.claude/*
+!.claude/agents/
