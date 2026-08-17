@@ -182,7 +182,7 @@ La suite `sanity_storage.php` inclut un "BIG TEST" qui dumpe le fichier SQLite e
 
 - [Whitepaper FR (spécification complète)](./docs/whitepaper-fr.md)
 - [Whitepaper EN (full specification)](./docs/whitepaper-en.md)
-- [Walkthrough de la démo](./demo/README.md)
+- [Walkthrough de la démo](../../demo/selfdataguard/README.md)
 
 ---
 

@@ -1,0 +1,16 @@
+# Runtime de la démo — base et secrets côté serveur, JAMAIS versionnés.
+#
+# Ces règles vivaient dans self-security/selfdataguard/.gitignore et visaient
+# `/demo/storage/`. Le rangement du 17/08/2026 a déplacé la démo hors du module :
+# les règles y sont devenues orphelines et ces fichiers ont cessé d'être ignorés
+# sans que rien ne le signale. Elles vivent désormais avec ce qu'elles protègent.
+storage/*.sqlite
+storage/*.db
+storage/*.sqlite-journal
+storage/*.sqlite-wal
+storage/*.sqlite-shm
+storage/*.bin
+storage/blindkey.*
+storage/.env
+# Clés de recouvrement admin (publique + privée scellée par passphrase = SECRET)
+storage/admin-recovery.*

@@ -8,7 +8,7 @@ version: "alpha 0.0.1"
 
 # Executive summary
 
-SelfKeyGuard introduces **two-factor authentication to physical objects** (cars, motorcycles, homes, safes, storage boxes) using a cheap ESP32-based module and a paired phone running [SelfGuard](../selfguard/). A physical possession token (optional NFC badge) combined with a live cryptographic challenge-response from the paired phone is required to unlock or start the object.
+SelfKeyGuard introduces **two-factor authentication to physical objects** (cars, motorcycles, homes, safes, storage boxes) using a cheap ESP32-based module and a paired phone running [SelfGuard](../../selfguard/). A physical possession token (optional NFC badge) combined with a live cryptographic challenge-response from the paired phone is required to unlock or start the object.
 
 No object-side persistent secret. No cloud. No vendor. Under user coercion, SelfGuard wipes its shared keys and the object rejects all subsequent authentications — yielding a brick to the attacker.
 

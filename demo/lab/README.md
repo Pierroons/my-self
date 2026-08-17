@@ -4,8 +4,8 @@ Forum vitrine de l'écosystème **MySelf** — terrain de démonstration et de t
 
 Un forum réaliste sur le thème de la **souveraineté numérique**, qui intègre les modules MySelf entre eux dans une application concrète :
 
-- **Authentification sans email** via [SelfRecover](../bi-self/selfrecover/) — l'utilisateur choisit un mot de récupération, le serveur génère mot de passe + passphrase diceware. Dérivation `HMAC(mot_récup, domaine‖sel_du_site)`, résistante au phishing par isolation de domaine.
-- **Messages privés chiffrés at-rest** via [SelfDataGuard](../self-security/selfdataguard/) — AES-256-GCM, clé serveur (blind key) hors base. Une exfiltration de la base ne révèle que des blobs illisibles.
+- **Authentification sans email** via [SelfRecover](../../bi-self/selfrecover/) — l'utilisateur choisit un mot de récupération, le serveur génère mot de passe + passphrase diceware. Dérivation `HMAC(mot_récup, domaine‖sel_du_site)`, résistante au phishing par isolation de domaine.
+- **Messages privés chiffrés at-rest** via [SelfDataGuard](../../self-security/selfdataguard/) — AES-256-GCM, clé serveur (blind key) hors base. Une exfiltration de la base ne révèle que des blobs illisibles.
 
 ## Stack
 

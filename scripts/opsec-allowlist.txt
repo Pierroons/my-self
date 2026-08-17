@@ -37,6 +37,7 @@ zxcvbn\.js$	dictionnaire de mots de passe courants (bibliothèque tierce)
 # est par dépôt et non globale.
 eff_fr\.json$	wordlist diceware EFF française
 diceware-fr\.js$	wordlist diceware française
-eff_large_wordlist_fr\.txt$	wordlist diceware EFF française
-selfrecover-validator\.html$	wordlist diceware embarquée dans le validateur hors-ligne
+eff_large_wordlist_fr\.txt$	wordlist diceware EFF française (fichier supprimé avec la démo le 17/08/2026 — exclusion conservée pour l'historique)
+selfrecover-validator\.html$	wordlist diceware embarquée dans le validateur hors-ligne (nom d'avant le rangement du 17/08/2026 — conservé : l'audit lit tout l'historique)
+offline-validator/index\.html$	wordlist diceware embarquée dans le validateur hors-ligne (nom actuel)
 openpgp\.min\.mjs$	OpenPGP.js minifié — ses tables de constantes cryptographiques produisent par hasard des suites de chiffres (un code postal est apparu à cheval sur deux entiers : ...2393238008,367...). Vérifié 02/08/2026 : aucune donnée réelle.

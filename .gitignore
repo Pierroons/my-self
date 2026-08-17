@@ -6,9 +6,8 @@
 **/install/update_legal.log
 
 # Démos SQLite éphémères
-bi-self/demo-backend/sessions/
-bi-self/demo-backend/logs/
-bi-self/selfrecover/demo/*.sqlite
+demo/bi-self-duo/sessions/
+demo/bi-self-duo/logs/
 
 # OS / éditeurs
 .DS_Store
@@ -23,12 +22,11 @@ Thumbs.db
 /tmp/
 
 # Doc de mission pentest interne — jamais public
-my-self-lab/docs/PENTEST-MISSION.md
+demo/lab/docs/PENTEST-MISSION.md
 _perso/
 scripts/deploy.sh
 
 # Logs SU (runtime, jamais versionnés)
-bi-self/selfrecover/demo/su-audit.log*
 
 # Artefacts Python, pour tout le dépôt. La règle vivait dans le seul
 # selfjustice/mcp/ : les caches des scripts d'outillage restaient dehors, et

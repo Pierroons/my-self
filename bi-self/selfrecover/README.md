@@ -30,10 +30,10 @@ without an all-or-nothing rewrite of their authentication stack.
 
 | Mode | Email channel | Crypto added | When to pick it |
 |------|---------------|--------------|-----------------|
-| **[Full](./demo/index.html)** | None at all | Diceware EFF passphrase + HMAC-per-service | Greenfield projects, high-assurance and post-ANTS-leak threat models |
-| **[Lite](./demo/lite.html)** 🆕 | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want phishing-resistance now and migrate to Full later |
+| **Full** | None at all | Diceware EFF passphrase + HMAC-per-service | Greenfield projects, high-assurance and post-ANTS-leak threat models |
+| **Lite** 🆕 | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want phishing-resistance now and migrate to Full later |
 
-**Try it:** the demo (Full, Lite, comparison) is **self-hostable in 30 seconds** — see the [Quickstart](#quickstart--run-the-demo-in-30-seconds). Pages: `demo/index.html` (Full), `demo/lite.html` (Lite), `tools/comparison.html` (comparison, 8 adversaries × 3 models).
+**Try it:** see [Trying SelfRecover](#trying-selfrecover). The method comparison (8 adversaries × 3 models) is a standalone page: `tools/comparison.html`.
 
 ---
 
@@ -182,43 +182,14 @@ SelfRecover distinguishes three roles: **SU → Admin → User**. An **admin** c
 
 ---
 
-## Quickstart — run the demo in 30 seconds
+## Trying SelfRecover
 
-### Option A — Docker (zero install except docker)
+The protocol has no standalone demo in this repository. Two ways to see it at work:
 
-```bash
-git clone https://github.com/Pierroons/my-self.git
-cd my-self/bi-self/selfrecover/demo
-docker build -t selfrecover .
-docker run -p 8080:8080 selfrecover
-# → http://localhost:8080
-```
+- **Served demo** — `demo/bi-self-duo/` hosts the demonstration backend (recovery, moderation, and their combination). That is what gets deployed.
+- **Standalone pages** — `tools/entropy-lab/`, `tools/offline-validator/` and `tools/comparison.html` open straight from disk, with no server and no network request.
 
-Image based on `php:8.2-cli-alpine`, ~50 MB, AGPL labels embedded (`org.opencontainers.image.licenses=AGPL-3.0-or-later`). Set `-e SELFRECOVER_FRESH_DB=1` to wipe the SQLite at each restart.
-
-### Option B — Native PHP CLI
-
-**Requirements:** PHP 8.0+ with `pdo_sqlite` (on Debian/Ubuntu: `sudo apt install php-cli php-sqlite3`).
-
-```bash
-git clone https://github.com/Pierroons/my-self.git
-cd my-self/bi-self/selfrecover/demo
-./run.sh
-# → http://localhost:8080
-```
-
-The demo is a standalone single-page web app that lets you:
-1. **Register** an account (passphrase diceware generated automatically)
-2. **Log in** with your username + password
-3. **Recover L1** — forgot your password → enter your passphrase → new password
-4. **Recover L2** — forgot passphrase too → enter a recovery code + the memorized word → new password
-5. **Recover L3** — lost everything → context questions build a bundle of raw signals for a human admin (no numeric score); on grant you re-define your own secret
-
-No dependencies beyond PHP CLI. SQLite as database. Zero configuration.
-
-> **Note:** The demo covers all three levels (L1/L2/L3), including the dispute chat and the admin decision flow. Read the **[whitepaper](docs/whitepaper-en.md#5-three-level-recovery-escalation)** for the full L3 specification.
-
----
+The standalone PHP demo that lived under `demo/` has been removed: its recovery code was obsolete and no longer served. The tools it hosted were kept under `tools/`.
 
 ## Architecture
 

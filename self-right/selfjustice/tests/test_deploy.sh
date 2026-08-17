@@ -24,7 +24,10 @@ set -uo pipefail
 
 ICI="$(cd "$(dirname "$0")" && pwd)"
 MODULE="$(cd "$ICI/.." && pwd)"
-DEPLOY="$MODULE/deploy/deploy.sh"
+RACINE="$(cd "$MODULE/../.." && pwd)"
+# deploy.sh vit sous deploy/selfjustice/ depuis le rangement ; le module ne garde
+# que son site et ses tests.
+DEPLOY="$RACINE/deploy/selfjustice/deploy.sh"
 DOMAINE="justice.example.org"
 
 TMP="$(mktemp -d)"

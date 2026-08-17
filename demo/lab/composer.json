@@ -15,7 +15,7 @@
     "repositories": [
         {
             "type": "path",
-            "url": "../self-security/selfdataguard",
+            "url": "../../self-security/selfdataguard",
             "options": { "symlink": true }
         }
     ],

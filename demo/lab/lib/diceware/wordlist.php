@@ -32,7 +32,9 @@ final class DicewareWordlist {
         if (isset(self::$cache[$lang])) {
             return self::$cache[$lang];
         }
-        $path = __DIR__ . "/eff_{$lang}.json";
+        // Source unique : bi-self/selfrecover/assets/. Une copie par module divergerait
+        // en silence — un chargement raté lève ici, il ne se devine pas.
+        $path = __DIR__ . "/../../../../bi-self/selfrecover/assets/eff_{$lang}.json";
         $raw = @file_get_contents($path);
         if ($raw === false) {
             throw new RuntimeException("Impossible de charger la liste: $path");

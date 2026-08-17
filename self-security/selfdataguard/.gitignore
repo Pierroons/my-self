@@ -6,17 +6,9 @@ composer.lock
 /.phpunit.cache/
 .phpunit.result.cache
 
-# Demo runtime — DB and server-side secrets MUST NEVER be committed
-/demo/storage/*.sqlite
-/demo/storage/*.db
-/demo/storage/*.sqlite-journal
-/demo/storage/*.sqlite-wal
-/demo/storage/*.sqlite-shm
-/demo/storage/*.bin
-/demo/storage/blindkey.*
-/demo/storage/.env
-# Admin recovery keys (public key + passphrase-sealed private key = SECRET)
-/demo/storage/admin-recovery.*
+# Le runtime de la démo (base, clés, escrow) est ignoré par
+# demo/selfdataguard/.gitignore depuis le rangement du 17/08/2026 :
+# les règles vivent avec les fichiers qu'elles protègent.
 
 # Playground runtime — DB + server-side secrets (never committed).
 # Dossier IGNORÉ EN ENTIER : les patterns partiels laissaient passer
