@@ -95,6 +95,10 @@ if (!is_array($row) || (int) $row['used'] === 1) {
     $log->warning('recover-l2-code', is_array($row)
         ? 'Code déjà consommé — refus (usage unique)'
         : 'Aucun code ne correspond à cet index');
+    // Deux vérifications, comme le chemin nominal juste en dessous : le code puis
+    // le mot. N'en imiter qu'une laisserait la moitié de l'écart en place.
+    password_verify($code, RecoverHelper::dummyHash());
+    password_verify($derivedKey, RecoverHelper::dummyHash());
     usleep(400000);
     http_response_code(401);
     echo json_encode(['ok'=>false,'error'=>'bad_credentials',

@@ -65,7 +65,8 @@ $account = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
 if (!is_array($account)) {
     $log->warning('recover-l2', 'Compte introuvable', ['username' => $username]);
-    usleep(200000);
+    // Voir recover-l1 : on paie le hachage plutôt que d'attendre un délai fixe.
+    password_verify($derivedKey, RecoverHelper::dummyHash());
     http_response_code(401);
     echo json_encode(['ok'=>false,'error'=>'bad_credentials','message'=>'Mot de récupération incorrect ou compte inconnu.']);
     exit;

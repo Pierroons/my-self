@@ -65,10 +65,15 @@ $account = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
 $log->info('login', 'SELECT account', ['found' => is_array($account)]);
 
-$success = false;
-if (is_array($account) && password_verify($password, $account['pw_hash'])) {
-    $success = true;
-}
+// ⚠️ Le hachage tourne même sans compte. Écrit en `is_array($account) &&
+// password_verify(...)`, le court-circuit de `&&` sautait la vérification : un
+// identifiant inconnu répondait sans jamais payer le coût d'un Argon2id, et le
+// délai fixe plus bas ne rattrapait pas l'écart puisqu'il s'applique aux deux.
+$verified = password_verify(
+    $password,
+    is_array($account) ? $account['pw_hash'] : RecoverHelper::dummyHash()
+);
+$success = is_array($account) && $verified;
 
 $stmt = $db->prepare('INSERT INTO login_attempts (username, success, attempted_at) VALUES (:u, :s, :t)');
 $stmt->bindValue(':u', $username);

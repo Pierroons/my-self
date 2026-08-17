@@ -48,7 +48,10 @@ $account = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
 if (!is_array($account)) {
     $log->warning('recover-l1', 'Compte introuvable', ['username' => $username]);
-    usleep(200000); // timing defense
+    // Le même travail que sur un compte réel. C'est le coût du hachage qui
+    // égalise le temps de réponse, jamais un délai fixe : celui-ci se distingue
+    // d'un Argon2id, qui varie, et il était ici plus long que lui.
+    password_verify($passphrase, RecoverHelper::dummyHash());
     http_response_code(401);
     echo json_encode(['ok'=>false,'error'=>'bad_credentials','message'=>'Passphrase incorrecte ou compte inconnu.']);
     exit;

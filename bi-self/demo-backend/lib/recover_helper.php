@@ -35,6 +35,27 @@ final class RecoverHelper {
     }
 
     /**
+     * Hash Argon2id factice, à vérifier quand le compte ou le code n'existe pas.
+     *
+     * 🔑 Sans lui, le chemin « identifiant inconnu » ne calcule rien et répond
+     * plus vite — ou, quand un délai fixe le compense, plus lentement mais de
+     * façon parfaitement régulière. Dans les deux cas le temps de réponse
+     * distingue ce que le message refuse de dire, et trier des comptes existants
+     * ne demande qu'une requête et un chronomètre.
+     *
+     * ⚠️ Il DOIT porter les mêmes paramètres que les vrais hash : c'est leur coût
+     * qu'on imite, pas leur existence. Un profil plus faible se verrait au temps.
+     * Aucun secret réel ne correspond à cette empreinte, et aucune vérification
+     * contre elle ne doit réussir — elle n'est là que pour brûler le même temps.
+     */
+    private const DUMMY_HASH =
+        '$argon2id$v=19$m=65536,t=4,p=2$bmJrdDNvVlNHYlZKaktvOQ$5rrXLA5A2HcsuydGvvacn80ulh5dLCAuqWjd5t3F+Bw';
+
+    public static function dummyHash(): string {
+        return self::DUMMY_HASH;
+    }
+
+    /**
      * Génère un password random (16 chars alphanum + quelques symboles mémorisables).
      */
     public static function generatePassword(int $length = 16): string {
