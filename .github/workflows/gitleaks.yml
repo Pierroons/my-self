@@ -23,7 +23,12 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Épinglé au SHA, pas au tag : un tag se repointe en silence chez son
+      # propriétaire, et c'est ce qui a servi de vecteur aux compromissions
+      # de trivy-action et kics-github-action. Le SHA, lui, ne bouge pas.
+      # 11d5960a = v4.4.0 (16/07/2026). Relever la version demande de
+      # remplacer le SHA et de mettre le commentaire à jour dans le même geste.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           fetch-depth: 0   # historique complet (baseline .gitleaksignore appliqué)
       - name: Install gitleaks
