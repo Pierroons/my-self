@@ -7,12 +7,26 @@ Instructions pour les agents de code travaillant sur MySelf. Lire aussi
 
 | module | contenu |
 |---|---|
-| `bi-self/` | SelfRecover (recovery sans email/SMS), SelfModerate, le site du pilier, `deploy/` |
+| `bi-self/` | SelfRecover (recovery sans email/SMS), SelfModerate |
 | `self-right/` | SelfJustice (consultation du droit français et européen), SelfAct |
 | `self-security/` | SelfDataGuard (chiffrement enveloppé), SelfGuard, SelfKeyGuard, SelfRecover-LUKS |
-| `selfinvoice/` | génération de factures conformes, sans cloud |
-| `site/`, `my-self-lab/` | vitrines |
+| `demo/` | ce qui se lance pour montrer : `bi-self-duo/`, `selfdataguard/`, `lab/` |
+| `web/` | ce qui est servi statiquement, un dossier par domaine |
+| `deploy/` | nginx et systemd, un dossier par cible |
 | `tools/`, `scripts/` | outillage transverse |
+
+Quatre règles décident où va un fichier. Un **module** porte la spécification,
+la documentation et le code de référence — rien qui se lance. `demo/` porte ce
+qui se lance, et **consomme** un module au lieu de le réimplémenter. `web/`
+porte ce qui est servi. `deploy/` porte la configuration de service.
+
+Une cinquième les complète, et elle ne parle pas de rangement : **le dépôt et
+l'instance disent la même chose, dans les deux sens** — rien de servi hors du
+dépôt, rien de corrigé qui ne soit déployé. Un correctif appliqué à un seul
+exemplaire d'un mécanisme dupliqué a déjà coûté 11 jours d'exposition, puis 70.
+
+SelfInvoice ne vit plus ici : il n'avait pas de code dans ce dépôt, et sa
+documentation a rejoint `selffarm-lite`, qui porte l'implémentation.
 
 Chaque module porte son README. La structure interne varie : `api/` là où une
 API est servie, `tests/` là où il en existe. SelfJustice est le seul à porter

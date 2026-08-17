@@ -29,7 +29,7 @@ What actually happened. Include error messages, screenshots, console logs.
 - OS: [e.g. Ubuntu 22.04, macOS 14]
 - PHP version: [e.g. 8.2]
 - Browser: [e.g. Firefox 122, Chrome 120]
-- Module concerned (SelfRecover, SelfDataGuard, SelfInvoice…) and version / commit:
+- Module concerned (SelfRecover, SelfDataGuard, SelfJustice…) and version / commit:
 
 ## Additional context
 

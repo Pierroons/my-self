@@ -17,7 +17,7 @@ assessment of the impact, and a suggested fix if you have one.
 ## Scope
 
 This repository holds the MySelf ecosystem: SelfRecover, SelfDataGuard,
-SelfInvoice, SelfJustice, SelfAct and their siblings. Report against the module
+SelfJustice, SelfAct and their siblings. Report against the module
 concerned and name it — the modules share a codebase but not a threat model.
 
 A dedicated red team environment is available at <https://ctf.my-self.fr>, with
