@@ -1,0 +1,35 @@
+[Unit]
+# Rafraîchissement de l'index de jurisprudence.
+#
+# Un service ponctuel piloté par judilibre-update.timer. Le cron aurait suffi,
+# mais il ne remonte rien : de mai à août 2026, sept exécutions de la
+# synchronisation LEGI ont échoué proprement sans que personne ne l'entende.
+# systemd garde l'état de la dernière exécution et le journal va avec.
+Description=SelfJustice — rafraîchissement de l'index Judilibre
+Documentation=file:/opt/selfjustice/bin/update_judilibre.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+
+# La clé PISTE ne transite ni par la ligne de commande ni par l'unité :
+# `systemctl show` et `ps` exposeraient l'une comme l'autre.
+EnvironmentFile=-/etc/selfjustice/judilibre.env
+ExecStart=/opt/selfjustice/bin/update_judilibre.sh
+
+# Une moisson de six semaines prend quelques minutes ; la borne évite qu'un
+# blocage réseau laisse le service en cours jusqu'au passage suivant.
+TimeoutStartSec=45min
+
+# Le service écrit dans la base servie et dans /var/lib : tout le reste est
+# en lecture seule pour lui.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/selfjustice /opt/selfjustice
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

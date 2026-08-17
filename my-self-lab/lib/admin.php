@@ -107,7 +107,19 @@ final class Admin
     }
 
     /** Corps déchiffré d'un rapport. */
-    public static function decryptReport(PDO $pdo, int $id): ?array
+    /**
+     * Rend un rapport pour lecture — **sans le déchiffrer**.
+     *
+     * 🔑 Le contenu est chiffré vers la clé du programme, dont la privée n'est
+     * pas sur ce serveur. Ce n'est pas une limite technique à contourner, c'est
+     * la garantie : un attaquant qui prendrait cette machine ne lirait aucun
+     * rapport, pas même celui d'un autre participant.
+     *
+     * Le panneau affiche donc le bloc PGP à copier ; le déchiffrement se fait
+     * hors ligne, avec `gpg -d`. Ajouter une clé privée ici pour « rendre le
+     * panneau pratique » annulerait tout l'intérêt.
+     */
+    public static function readReport(PDO $pdo, int $id): ?array
     {
         $stmt = $pdo->prepare('SELECT handle, severity, target, status, ciphertext, created_at FROM redteam_reports WHERE id = ?');
         $stmt->execute([$id]);
@@ -115,13 +127,10 @@ final class Admin
         if (!$r) {
             return null;
         }
-        try {
-            $corps = json_decode(DataGuard::decrypt($r['ciphertext']), true);
-        } catch (\Throwable) {
-            $corps = ['titre' => '(déchiffrement impossible)', 'description' => '', 'repro' => '', 'contact' => ''];
-        }
+        $r['pgp'] = (string) $r['ciphertext'];
+        $r['chiffre'] = str_starts_with($r['pgp'], '-----BEGIN PGP MESSAGE-----');
         unset($r['ciphertext']);
-        return $r + (is_array($corps) ? $corps : []);
+        return $r;
     }
 
     /** Change le statut d'un rapport (nouveau|valide|rejete). */

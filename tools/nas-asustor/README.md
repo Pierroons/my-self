@@ -1,6 +1,6 @@
 # NAS NAS — Tor hidden service natif
 
-Pack de scripts pour exposer le portail admin **ADM** d'un NAS NAS uniquement via un **hidden service Tor v3**, avec backup automatique des clés cryptographiques sur la clé USB du DEVSERVER.
+Pack de scripts pour exposer le portail admin **ADM** d'un NAS NAS uniquement via un **hidden service Tor v3**, avec backup automatique des clés cryptographiques sur la clé USB du serveur de sauvegarde.
 
 ## Composants
 
@@ -38,7 +38,7 @@ Pack de scripts pour exposer le portail admin **ADM** d'un NAS NAS uniquement vi
 Backup nightly :
   /opt/tor/hidden_service_adm/{hostname,hs_ed25519_*}
   → SCP via SSH key dédiée
-  → DEVSERVER:/mnt/usb-backup/nas-nas/tor-backups/
+  → serveur de sauvegarde:/mnt/usb-backup/nas-nas/tor-backups/
 ```
 
 ## Pré-requis
@@ -46,8 +46,8 @@ Backup nightly :
 - NAS NAS avec ADM 4.x à jour
 - SSH activé temporairement sur le NAS (le temps de l'install)
 - Compte admin avec accès root via SSH
-- DEVSERVER (192.0.2.60) accessible depuis le NAS, clé USB montée à `/mnt/usb-backup/`
-- Sur le DEVSERVER, utilisateur `deploy` avec `~/.ssh/authorized_keys` accessible
+- serveur de sauvegarde (192.0.2.60) accessible depuis le NAS, clé USB montée à `/mnt/usb-backup/`
+- Sur le serveur de sauvegarde, utilisateur `deploy` avec `~/.ssh/authorized_keys` accessible
 
 ## Étapes d'installation
 
@@ -75,26 +75,26 @@ sudo /tmp/tor-nas.sh install
 
 L'install :
 1. Crée `/opt/tor/{bin,data,hidden_service_adm,backups,.ssh}`
-2. Génère une clé SSH dédiée Ed25519 dans `/opt/tor/.ssh/nas-to-devserver` et **affiche la clé publique à copier sur le DEVSERVER**
+2. Génère une clé SSH dédiée Ed25519 dans `/opt/tor/.ssh/nas-to-backup` et **affiche la clé publique à copier sur le serveur de sauvegarde**
 3. Installe Tor (via opkg si dispo, sinon affiche les instructions manuelles)
 4. Génère `/opt/tor/torrc` depuis `torrc.template`
 5. Crée les entrées crontab : `@reboot` pour autostart + `30 4 * * *` pour backup quotidien à 04:30
 6. Ne démarre PAS Tor (à faire manuellement à l'étape 5)
 
-### 4. Autoriser le NAS à pousser les backups sur le DEVSERVER
+### 4. Autoriser le NAS à pousser les backups sur le serveur de sauvegarde
 
 Récupère la clé publique affichée par l'install, puis depuis ton poste :
 
 ```bash
-SSH_KEY_DEVSERVER="$HOME/.ssh/id_rsa_serveur"
-NAS_PUBKEY=$(ssh admin@192.0.2.134 cat /opt/tor/.ssh/nas-to-devserver.pub)
-ssh -i "$SSH_KEY_DEVSERVER" deploy@192.0.2.60 "echo '$NAS_PUBKEY' >> ~/.ssh/authorized_keys"
+SSH_KEY_BACKUP="$HOME/.ssh/id_rsa_serveur"
+NAS_PUBKEY=$(ssh admin@192.0.2.134 cat /opt/tor/.ssh/nas-to-backup.pub)
+ssh -i "$SSH_KEY_BACKUP" deploy@192.0.2.60 "echo '$NAS_PUBKEY' >> ~/.ssh/authorized_keys"
 ```
 
-Puis prépare le dossier cible sur le DEVSERVER :
+Puis prépare le dossier cible sur le serveur de sauvegarde :
 
 ```bash
-ssh -i "$SSH_KEY_DEVSERVER" deploy@192.0.2.60 \
+ssh -i "$SSH_KEY_BACKUP" deploy@192.0.2.60 \
     "mkdir -p /mnt/usb-backup/nas-nas/tor-backups && chmod 700 /mnt/usb-backup/nas-nas"
 ```
 
@@ -121,7 +121,7 @@ Crée une archive `tor-backup-<timestamp>.tar.gz` contenant :
 - `torrc`
 - `manifest.txt` (timestamp, hashes SHA256, version Tor, instructions de restauration)
 
-L'archive est uploadée par SCP sur le DEVSERVER. La copie locale est conservée dans `/opt/tor/backups/` (rotation des 3 derniers).
+L'archive est uploadée par SCP sur le serveur de sauvegarde. La copie locale est conservée dans `/opt/tor/backups/` (rotation des 3 derniers).
 
 ### 7. Test depuis Tor Browser
 
@@ -163,8 +163,8 @@ Si tu reformates le NAS, l'adresse `.onion` est perdue **sauf si tu restaures la
 
 ```bash
 # 1. Réinstaller : sudo /tmp/tor-nas.sh install (mais NE PAS démarrer Tor)
-# 2. Récupérer le dernier backup depuis le DEVSERVER :
-scp -i "$SSH_KEY_DEVSERVER" \
+# 2. Récupérer le dernier backup depuis le serveur de sauvegarde :
+scp -i "$SSH_KEY_BACKUP" \
     "deploy@192.0.2.60:/mnt/usb-backup/nas-nas/tor-backups/tor-backup-<latest>.tar.gz" \
     /tmp/
 

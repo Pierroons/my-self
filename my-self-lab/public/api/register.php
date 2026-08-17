@@ -12,4 +12,12 @@ $username = (string) ($body['username'] ?? '');
 $recoveryDerivedKey = (string) ($body['recovery_derived_key'] ?? '');
 
 $result = Auth::register(Db::pdo(), $username, $recoveryDerivedKey, client_ip());
+
+// La session est posée côté client, et le jeton retiré de la réponse : il vit
+// dans un cookie HttpOnly, pas dans du JSON que le navigateur pourrait relire.
+if (!empty($result['ok']) && !empty($result['token'])) {
+    Auth::setSessionCookie((string) $result['token']);
+    unset($result['token']);
+}
+
 json_out($result, $result['ok'] ? 201 : 400);

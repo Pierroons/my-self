@@ -29,3 +29,20 @@ scripts/deploy.sh
 
 # Logs SU (runtime, jamais versionnés)
 bi-self/selfrecover/demo/su-audit.log*
+
+# Artefacts Python, pour tout le dépôt. La règle vivait dans le seul
+# selfjustice/mcp/ : les caches des scripts d'outillage restaient dehors, et
+# tools/__pycache__ n'attendait qu'un `git add` distrait pour entrer.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Configuration Claude Code. Seuls les agents publics sont versionnés — ils
+# décrivent des commandes de lint et des règles de publication, utiles à qui
+# reprend le dépôt. Le reste de `.claude/` est local par nature : sessions,
+# journaux, et les fichiers volontairement défectueux qui servent à vérifier
+# que les agents voient encore quelque chose.
+.claude/*
+!.claude/agents/

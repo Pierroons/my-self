@@ -22,6 +22,33 @@ from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 
+# Nombre d'articles que chaque texte comporte réellement. Sert de garde-fou à
+# la construction : un écart important signale que le parseur a ramassé autre
+# chose que le texte visé — les protocoles annexés, typiquement.
+ARTICLES_ATTENDUS = {
+    "CHARTE_UE": 54,
+    "TUE": 55,
+    "TFUE": 358,
+    "RGPD": 99,
+    "AI_ACT": 113,
+    # La CEDH en compte 59, mais le chemin PDF conserve aussi les articles de
+    # ses protocoles en les préfixant — c'est justement ce qui la protège de la
+    # collision qui a corrompu les traités. Le total attendu les inclut.
+    "CEDH": 114,
+}
+
+# Articles témoins : leur contenu est vérifié après construction. Trois
+# assertions attrapent une substitution que dix contrôles de fraîcheur laissent
+# passer — la base peut être datée du jour et servir le mauvais texte.
+TEMOINS = {
+    ("TUE", "50"): "peut décider, conformément à ses règles",   # retrait de l'Union
+    ("TUE", "2"): "dignité humaine",                            # valeurs de l'Union
+    ("TFUE", "45"): "libre circulation des travailleurs",
+    ("TFUE", "18"): "domaine d'application des traités",        # non-discrimination
+    ("CHARTE_UE", "8"): "données à caractère personnel",
+    ("CEDH", "8"): "vie privée",
+}
+
 SOURCES = {
     "CHARTE_UE": {
         "celex": "12016P/TXT",
@@ -53,6 +80,16 @@ SOURCES = {
         "titre": "Convention européenne des droits de l'homme (CEDH)",
         "date_debut": "1953-09-03",
     },
+    # Applicable depuis le 2 août 2026 pour l'essentiel de ses dispositions,
+    # dont l'article 50 (transparence : divulguer qu'un contenu est généré par
+    # une IA). Un texte qu'une pré-analyse juridique doit pouvoir citer aussi
+    # bien que le RGPD — d'autant qu'il régit l'outil même qui la produit.
+    "AI_ACT": {
+        "celex": "32024R1689",
+        "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/HTML/?uri=CELEX:32024R1689",
+        "titre": "Règlement (UE) 2024/1689 établissant des règles harmonisées concernant l'intelligence artificielle",
+        "date_debut": "2024-08-01",
+    },
 }
 
 
@@ -63,7 +100,7 @@ HTTP_HEADERS = {
 }
 
 
-def fetch_url(url: str, timeout: int = 60, max_retries: int = 5) -> bytes:
+def fetch_url(url: str, timeout: int = 60, max_retries: int = 10) -> bytes:
     """Télécharger une URL avec headers appropriés et retry sur HTTP 202.
 
     EUR-Lex renvoie souvent HTTP 202 (Accepted) pendant la génération
@@ -248,7 +285,25 @@ def parse_articles(html_bytes, source: str) -> list[dict]:
     # EUR-Lex utilise deux types de ti-art :
     #   - ceux qui contiennent "Article X" = début d'article
     #   - ceux qui contiennent un titre (ex: "Dignité humaine") = titre du dernier article
-    all_ti_arts = tree.xpath('//p[contains(@class, "ti-art")]')
+    #
+    # 🔑 La collecte s'arrête aux protocoles. Le document consolidé ne contient
+    # pas que le traité : ses protocoles et déclarations le suivent, chacun
+    # repartant à « Article 1 ». Les prendre à plat puis insérer en
+    # INSERT OR REPLACE faisait écraser le traité par ses annexes — le TUE
+    # devenait intégralement inaccessible, et les 64 premiers articles du TFUE
+    # rendaient le statut de la Cour de justice. Mesuré : 269 articles de
+    # protocoles pour 55 (TUE) et 358 (TFUE) articles réels.
+    #
+    # `parse_articles_from_plaintext` protège déjà le chemin PDF de la même
+    # collision — d'où une CEDH saine. La protection manquait ici.
+    frontiere = re.compile(r"^\s*(PROTOCOLES?|ANNEXES?|D[ÉE]CLARATIONS?)\b", re.IGNORECASE)
+    all_ti_arts = []
+    for p in tree.xpath('//p[contains(@class, "ti-art")] | //p[contains(@class, "doc-ti")]'):
+        classe = p.get("class", "") or ""
+        if "doc-ti" in classe and frontiere.match(p.text_content().strip()):
+            break                       # le traité s'arrête ici
+        if "ti-art" in classe:
+            all_ti_arts.append(p)
 
     # Identifier les débuts d'article (ceux qui COMMENCENT par "Article X")
     # Accepte "Article 1", "Article 1er", "Article premier", "Article 1 bis",
@@ -362,6 +417,20 @@ def process_source(conn: sqlite3.Connection, source: str, info: dict) -> int:
 
     print(f"[{source}] {len(articles)} articles extraits")
 
+    # 🔑 Le compte est un garde-fou, pas une statistique. Une base qui sert les
+    # protocoles à la place du traité affiche des chiffres crédibles — 366 pour
+    # le TFUE quand il en compte 358 ressemble à des articles *bis*, pas à une
+    # substitution. Un écart au-delà de la tolérance arrête la construction :
+    # mieux vaut une base non rafraîchie qu'une base fausse d'apparence saine.
+    attendu = ARTICLES_ATTENDUS.get(source)
+    if attendu and abs(len(articles) - attendu) > max(5, attendu // 20):
+        raise ValueError(
+            f"{source} : {len(articles)} articles extraits pour ~{attendu} attendus. "
+            "Un compte très supérieur signale que les protocoles annexés ont été "
+            "collectés avec le traité ; très inférieur, que la structure du "
+            "document a changé. Vérifier parse_articles avant d'insérer."
+        )
+
     for art in articles:
         conn.execute("""
             INSERT OR REPLACE INTO articles
@@ -388,15 +457,67 @@ def main():
 
     sources_to_process = [args.only] if args.only else list(SOURCES.keys())
 
+    echecs = []
     for source in sources_to_process:
         if source not in SOURCES:
             print(f"Source inconnue : {source}", file=sys.stderr)
+            echecs.append(source)
             continue
         n = process_source(conn, source, SOURCES[source])
         total += n
+        if n == 0:
+            echecs.append(source)
 
     conn.close()
 
+    # 🔑 Un échec de téléchargement ne détruit rien — les insertions sont des
+    # INSERT OR REPLACE, donc une source injoignable laisse simplement ses
+    # données précédentes en place. Mais il ne doit pas passer inaperçu : le
+    # 03/08/2026, CEDH et AI_ACT ont échoué pendant que le script annonçait
+    # « Terminé ! ». La base restait juste, et la panne invisible.
+    if echecs:
+        print(f"\nATTENTION : {len(echecs)} source(s) non mise(s) à jour : "
+              f"{', '.join(echecs)}", file=sys.stderr)
+        print(f"Les données précédentes de ces sources sont conservées.",
+              file=sys.stderr)
+        print(f"Terminé avec réserves : {total} articles insérés dans {args.db}")
+        # Code 2 : la base est utilisable, mais incomplètement rafraîchie.
+        # L'appelant peut distinguer ce cas d'un échec franc (code 1).
+        sys.exit(2)
+
+    # 🔑 Dernier contrôle, sur le contenu et non sur les comptes. Le défaut le
+    # plus grave qu'ait connu cette base — les protocoles servis à la place des
+    # traités — affichait des chiffres crédibles et une date du jour. Seule la
+    # lecture d'un article connu pouvait le révéler.
+    # Connexion rouverte : la précédente est fermée plus haut, et le contrôle
+    # doit porter sur la base telle qu'elle sera lue, pas sur une transaction
+    # encore ouverte.
+    verif = sqlite3.connect(args.db)
+    manques = []
+    for (source, num), attendu in TEMOINS.items():
+        texte = verif.execute(
+            "SELECT texte FROM articles WHERE source = ? AND num = ?", (source, num)
+        ).fetchone()
+        if texte is None:
+            manques.append(f"{source} art. {num} : absent de la base")
+        elif attendu.lower() not in (texte[0] or "").lower():
+            manques.append(
+                f"{source} art. {num} : ne contient pas « {attendu} » — "
+                f"début du texte : « {(texte[0] or '')[:70].strip()}… »"
+            )
+
+    verif.close()
+
+    if manques:
+        print("\nÉCHEC — le contenu ne correspond pas aux articles attendus :",
+              file=sys.stderr)
+        for m in manques:
+            print(f"  · {m}", file=sys.stderr)
+        print("\nLa base sert probablement un texte pour un autre. Ne pas la "
+              "déployer en l'état.", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"\nContrôle du contenu : {len(TEMOINS)} articles témoins conformes.")
     print(f"\nTerminé ! {total} articles insérés dans {args.db}")
 
 

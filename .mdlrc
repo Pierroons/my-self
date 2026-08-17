@@ -1,0 +1,4 @@
+# Configuration markdownlint (mdl) — voir .mdl_style.rb pour les règles.
+# Le chemin est résolu depuis ce fichier, pour que mdl marche quel que soit
+# le répertoire d'où on le lance.
+style "#{File.dirname(File.expand_path(__FILE__))}/.mdl_style.rb"

@@ -144,7 +144,7 @@ try {
 section('Fields — saveFields + loadFields round trip');
 
 $plaintexts = [
-    'email'   => 'pierre@example.com',
+    'email'   => 'alice@example.com',
     'phone'   => '+33612345678',
     'address' => '12 rue des Champs, 33220 Sainte-Foy',
     'iban'    => 'FR7612345678901234567890123',
@@ -232,16 +232,16 @@ section('THE BIG TEST — DB dump = soup');
 $dump = file_get_contents($dbPath);
 $dumpLen = strlen($dump);
 
-// The plaintext email "pierre@example.com" was originally encrypted, then
+// The plaintext email "alice@example.com" was originally encrypted, then
 // we updated to "new@example.com" then "bob@example.com" was added.
 // Let's verify NONE of these plaintexts appear anywhere in the raw DB file.
-$hasOriginal = str_contains($dump, 'pierre@example.com');
+$hasOriginal = str_contains($dump, 'alice@example.com');
 $hasNew      = str_contains($dump, 'new@example.com');
 $hasBob      = str_contains($dump, 'bob@example.com');
 $hasIban     = str_contains($dump, 'FR7612345678901234567890123');
 $hasAddr     = str_contains($dump, 'rue des Champs');
 
-!$hasOriginal ? ok('dump does NOT contain "pierre@example.com"') : ko('LEAK: original email visible in DB dump');
+!$hasOriginal ? ok('dump does NOT contain "alice@example.com"') : ko('LEAK: original email visible in DB dump');
 !$hasNew      ? ok('dump does NOT contain "new@example.com"')    : ko('LEAK: updated email visible');
 !$hasBob      ? ok('dump does NOT contain "bob@example.com"')    : ko('LEAK: bob email visible');
 !$hasIban     ? ok('dump does NOT contain IBAN plaintext')        : ko('LEAK: IBAN visible');

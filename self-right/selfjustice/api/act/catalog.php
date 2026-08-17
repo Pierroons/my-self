@@ -2,7 +2,8 @@
 /**
  * SelfAct API — /act/api/catalog
  *
- * Expose le catalogue indexé des 334 modèles officiels service-public.fr.
+ * Expose le catalogue indexé des ressources officielles service-public.gouv.fr :
+ * modèles de lettres, formulaires (CERFA) et démarches en ligne.
  *
  * GET /act/api/catalog
  *   → Retourne le catalogue complet (meta + models)
@@ -10,7 +11,14 @@
  * GET /act/api/catalog?category=<cat>
  *   → Filtrer par catégorie : logement, travail, sante, famille,
  *     consommation, finances, assurances, justice, transports,
- *     citoyennete, administration, etranger, divers
+ *     citoyennete, administration, association, etranger, auto,
+ *     securite, divers
+ *
+ * GET /act/api/catalog?type=<type>
+ *   → Filtrer par nature du document : modele_lettre, formulaire, teleservice.
+ *     C'est ce filtre qui distingue « la lettre que je rédige » du « CERFA que
+ *     je dépose » — une distinction qui porte la procédure, pas seulement la
+ *     présentation.
  *
  * GET /act/api/catalog?q=<keyword>
  *   → Recherche full-text dans les labels (case insensitive, accent insensitive)
@@ -18,7 +26,7 @@
  * GET /act/api/catalog?id=<RXXXX>
  *   → Détail d'un modèle précis par sa référence R-xxxx
  *
- * Combinaisons possibles : category + q
+ * Combinaisons possibles : category + type + q
  *
  * Source : api/act/data/catalog.json (mise à jour bimensuelle via cron).
  */
@@ -82,12 +90,27 @@ if (!empty($_GET['id'])) {
 
 // --- Filtre catégorie + recherche ---
 $category = trim((string) ($_GET['category'] ?? ''));
+$type     = trim((string) ($_GET['type'] ?? ''));
 $query    = trim((string) ($_GET['q'] ?? ''));
 $queryNorm = $query !== '' ? normalize($query) : '';
+
+// Un type inconnu rendrait une liste vide, indiscernable d'un « rien ne
+// correspond » légitime. Mieux vaut nommer les valeurs acceptées.
+$typesConnus = ['modele_lettre', 'formulaire', 'teleservice'];
+if ($type !== '' && !in_array($type, $typesConnus, true)) {
+    respond(400, [
+        'ok'    => false,
+        'error' => 'unknown_type',
+        'hint'  => 'Types acceptés : ' . implode(', ', $typesConnus),
+    ]);
+}
 
 $filtered = [];
 foreach ($models as $m) {
     if ($category !== '' && ($m['category'] ?? '') !== $category) {
+        continue;
+    }
+    if ($type !== '' && ($m['type'] ?? '') !== $type) {
         continue;
     }
     if ($queryNorm !== '') {
@@ -103,6 +126,7 @@ respond(200, [
     'meta'     => $meta,
     'filters'  => [
         'category' => $category ?: null,
+        'type'     => $type ?: null,
         'query'    => $query ?: null,
     ],
     'total'    => count($filtered),

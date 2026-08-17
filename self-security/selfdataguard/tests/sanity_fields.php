@@ -61,20 +61,20 @@ ok('user registered and unlocked');
 
 section('FieldCrypter — round trip on individual fields');
 
-$emailCipher = FieldCrypter::encrypt($unlocked, 'email', 'pierre@example.com');
+$emailCipher = FieldCrypter::encrypt($unlocked, 'email', 'alice@example.com');
 $phoneCipher = FieldCrypter::encrypt($unlocked, 'phone', '+33612345678');
 
 is_string($emailCipher) ? ok('encrypt returns string') : ko('encrypt return type');
-$emailCipher !== 'pierre@example.com' ? ok('ciphertext is not plaintext') : ko('encrypt = plaintext (CRITICAL)');
+$emailCipher !== 'alice@example.com' ? ok('ciphertext is not plaintext') : ko('encrypt = plaintext (CRITICAL)');
 
 $emailPlain = FieldCrypter::decrypt($unlocked, 'email', $emailCipher);
-$emailPlain === 'pierre@example.com' ? ok('email round-trip identity') : ko('email round-trip failed');
+$emailPlain === 'alice@example.com' ? ok('email round-trip identity') : ko('email round-trip failed');
 
 $phonePlain = FieldCrypter::decrypt($unlocked, 'phone', $phoneCipher);
 $phonePlain === '+33612345678' ? ok('phone round-trip identity') : ko('phone round-trip failed');
 
 // Two encryptions of the same value produce different ciphertexts (random nonce)
-$emailCipher2 = FieldCrypter::encrypt($unlocked, 'email', 'pierre@example.com');
+$emailCipher2 = FieldCrypter::encrypt($unlocked, 'email', 'alice@example.com');
 $emailCipher !== $emailCipher2 ? ok('same plaintext → different ciphertext (nonce randomness)') : ko('nonce reuse detected (CRITICAL)');
 
 // -----------------------------------------------------------------------------
@@ -109,7 +109,7 @@ try {
 section('FieldCrypter — batch operations');
 
 $plaintextFields = [
-    'email'   => 'pierre@example.com',
+    'email'   => 'alice@example.com',
     'phone'   => '+33612345678',
     'address' => '12 rue des Champs, 33220 Sainte-Foy',
     'iban'    => 'FR7612345678901234567890123',
@@ -154,8 +154,8 @@ section('BlindIndex — deterministic equality lookup');
 
 $blindKey = Primitives::randomBytes(32);
 
-$idx1 = BlindIndex::compute('pierre@example.com', $blindKey, 'email');
-$idx2 = BlindIndex::compute('pierre@example.com', $blindKey, 'email');
+$idx1 = BlindIndex::compute('alice@example.com', $blindKey, 'email');
+$idx2 = BlindIndex::compute('alice@example.com', $blindKey, 'email');
 $idx3 = BlindIndex::compute('different@example.com', $blindKey, 'email');
 
 is_string($idx1) ? ok('compute returns string') : ko('compute wrong return type');
@@ -169,8 +169,8 @@ BlindIndex::equals($idx1, $idx2) ? ok('equals matches identical indexes') : ko('
 
 section('BlindIndex — per-field key separation');
 
-$emailIdx = BlindIndex::compute('pierre@example.com', $blindKey, 'email');
-$phoneIdx = BlindIndex::compute('pierre@example.com', $blindKey, 'phone');
+$emailIdx = BlindIndex::compute('alice@example.com', $blindKey, 'email');
+$phoneIdx = BlindIndex::compute('alice@example.com', $blindKey, 'phone');
 
 $emailIdx !== $phoneIdx
     ? ok('same value, different field → different index (key separation works)')
@@ -199,8 +199,8 @@ try {
 section('BlindIndex — different blindKeys produce different indexes');
 
 $blindKey2 = Primitives::randomBytes(32);
-$idxA = BlindIndex::compute('pierre@example.com', $blindKey, 'email');
-$idxB = BlindIndex::compute('pierre@example.com', $blindKey2, 'email');
+$idxA = BlindIndex::compute('alice@example.com', $blindKey, 'email');
+$idxB = BlindIndex::compute('alice@example.com', $blindKey2, 'email');
 
 $idxA !== $idxB
     ? ok('different blindKey → different index (key rotation safe)')
@@ -213,14 +213,14 @@ section('Realistic e-commerce scenario — encrypted DB row + blind index lookup
 // Simulate a `users` table row written for cosmo, then a "find by email" query
 $row = [
     'user_id'       => 'user-cosmo',
-    'email_cipher'  => FieldCrypter::encrypt($unlocked, 'email', 'pierre@example.com'),
-    'email_index'   => BlindIndex::compute('pierre@example.com', $blindKey, 'email'),
+    'email_cipher'  => FieldCrypter::encrypt($unlocked, 'email', 'alice@example.com'),
+    'email_index'   => BlindIndex::compute('alice@example.com', $blindKey, 'email'),
     'phone_cipher'  => FieldCrypter::encrypt($unlocked, 'phone', '+33612345678'),
     'iban_cipher'   => FieldCrypter::encrypt($unlocked, 'iban', 'FR7612345678901234567890123'),
 ];
 
 // Simulated lookup: does this email exist in the DB without decrypting any row?
-$lookupIndex = BlindIndex::compute('pierre@example.com', $blindKey, 'email');
+$lookupIndex = BlindIndex::compute('alice@example.com', $blindKey, 'email');
 $lookupIndex === $row['email_index']
     ? ok('blind-index lookup finds the row (without decrypting it)')
     : ko('blind-index lookup failed');
@@ -233,7 +233,7 @@ $missIndex !== $row['email_index']
 
 // Once we've found the row, we can decrypt it
 $cosmoEmail = FieldCrypter::decrypt($unlocked, 'email', $row['email_cipher']);
-$cosmoEmail === 'pierre@example.com' ? ok('after lookup, decrypt the row contents') : ko('decrypt lookup row');
+$cosmoEmail === 'alice@example.com' ? ok('after lookup, decrypt the row contents') : ko('decrypt lookup row');
 
 // -----------------------------------------------------------------------------
 

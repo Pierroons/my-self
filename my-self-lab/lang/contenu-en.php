@@ -243,4 +243,9 @@ return [
     'Compte temporairement suspendu.' => 'Account temporarily suspended.',
     'Droit de vote retiré (réputation trop basse).' => 'Voting rights withdrawn (reputation too low).',
 
+    // ── Red team report encryption ───────────────────────────────────────
+    'Rapport vide ou chiffrement absent.' => 'Empty report, or encryption missing.',
+    'Le rapport doit être chiffré. Recharge la page et réessaie.'
+        => 'Reports must be encrypted. Reload the page and try again.',
+    'Rapport trop volumineux.' => 'Report too large.',
 ];

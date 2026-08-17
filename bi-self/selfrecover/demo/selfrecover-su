@@ -47,7 +47,7 @@ function su_authenticate(): string {
     if ($expected === null) su_fail("Secret SU non configuré (ni fichier " . su_secret_path() . ", ni env) — à poser à l'install.", 2);
     $given = getenv('SELFRECOVER_SU_SECRET_INPUT');
     if ($given === false) { $given = su_prompt_hidden("Passphrase SuperUser (actuelle) : "); }
-    // Prod : hash Argon2/bcrypt → password_verify. Bootstrap dev : clair → hash_equals.
+    // Prod : hash Argon2id → password_verify. Bootstrap dev : clair → hash_equals.
     $isHash = preg_match('/^\$(argon2|2y|2a|2b)/', (string)$expected) === 1;
     $ok = $isHash ? password_verify((string)$given, (string)$expected) : hash_equals((string)$expected, (string)$given);
     if (!$ok) su_fail("Secret SU invalide.", 3);

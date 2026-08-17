@@ -23,7 +23,7 @@ switch ($action) {
         $p ? json_out(['ok' => true, 'profile' => $p]) : json_out(['ok' => false, 'message' => 'Compte introuvable.'], 404);
 
     case 'report':
-        $r = Admin::decryptReport($pdo, (int) ($body['id'] ?? 0));
+        $r = Admin::readReport($pdo, (int) ($body["id"] ?? 0));
         $r ? json_out(['ok' => true, 'report' => $r]) : json_out(['ok' => false, 'message' => 'Rapport introuvable.'], 404);
 
     case 'report_status':

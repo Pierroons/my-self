@@ -37,6 +37,24 @@ sur toute convention générale.
 Si une validation ne peut pas être lancée, l'écrire : la commande, la raison,
 et le risque qui subsiste.
 
+### Agents de vérification
+
+`.claude/agents/` porte deux agents qui lancent ces validations et relisent ce
+que le dépôt donne à voir :
+
+| agent | ce qu'il fait |
+|---|---|
+| `lint-syntaxe` | lance le tableau ci-dessus sur les fichiers modifiés et rapporte les sorties telles quelles |
+| `vitrine-depot` | relit README, docs, structure, ton et versioning ; sur un dépôt tiers, vérifie sa politique avant d'écrire |
+
+Aucun des deux ne modifie de fichier : ils rendent des constats.
+
+Deux autres agents complètent le dispositif — un audit de code adossé à
+`REVIEW.md`, et une recherche de données personnelles avant publication. Ils
+vivent **hors du dépôt**, dans la configuration locale de leur auteur, parce
+qu'ils nomment des incidents et des motifs qui n'ont pas à être publiés. Leur
+absence de ce dossier est voulue ; le dispositif n'est pas incomplet.
+
 ## Conventions
 
 - Langue : suivre celle du module. `self-security/` est en anglais — code crypto

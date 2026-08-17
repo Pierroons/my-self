@@ -1,0 +1,4 @@
+# Artefacts de construction propres à ce paquet. Les caches Python et les
+# environnements virtuels sont désormais couverts par le .gitignore racine.
+build/
+dist/

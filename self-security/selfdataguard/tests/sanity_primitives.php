@@ -120,7 +120,7 @@ hash_equals($hk1, $hk2) ? ok('HMAC deterministic with same input') : ko('HMAC no
 
 section('AES-256-GCM (round trip + tamper detection)');
 
-$plaintext = 'pierre@example.com';
+$plaintext = 'alice@example.com';
 $key = Primitives::randomBytes(Primitives::KEY_LEN);
 $aad  = 'user_id:42';
 

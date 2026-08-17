@@ -205,9 +205,17 @@ function handleRegister(): void {
     $recoveryCodes = generateRecoveryCodes($db, $userId, 10);
     addTrace(sprintf("[register] %d recovery codes générés (Argon2id + lookup HMAC) — affichés une seule fois", count($recoveryCodes)));
 
+    // 🔑 Une session s'ouvre avec le compte : l'enrôlement d'appareil qui suit
+    // l'exige désormais. Sans elle, il faudrait rouvrir le chemin où l'on
+    // enrôle sur un compte qu'on ne prouve pas posséder — celui qui permettait
+    // une prise de compte sans aucun secret (constaté le 13/08/2026).
+    $sessionToken = createSession($db, ['id' => $userId, 'is_admin' => 0]);
+    addTrace('[register] session ouverte — l\'enrôlement d\'appareil la requiert');
+
     jsonResponse([
         'message' => 'Compte créé',
         'username' => $username,
+        'session_token' => $sessionToken,
         'passphrase' => $passphrase,
         'recovery_codes' => $recoveryCodes,
         'note' => 'Sauvegarde ta passphrase (L1) ET tes recovery codes (possession L2) — affichés une seule fois.',
@@ -518,7 +526,7 @@ function handleRegenerateCodes(): void {
 }
 
 // === USER-SALT (R9-02) : sel par-utilisateur pour la dérivation HMAC côté client ===
-// Le sel n'est PAS un secret (comme un sel bcrypt). Anti-énumération : si l'identifiant
+// Le sel n'est PAS un secret (comme tout sel de hachage). Anti-énumération : si l'identifiant
 // n'existe pas, on renvoie un sel FACTICE déterministe — indistinguable d'un vrai —
 // pour ne pas révéler l'existence du compte.
 function handleUserSalt(): void {

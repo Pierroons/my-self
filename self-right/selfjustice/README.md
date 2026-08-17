@@ -10,7 +10,7 @@
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
 [![LEGI: 488 903 articles](https://img.shields.io/badge/LEGI-488%20903%20articles-blue.svg)](https://your-instance.example/api/status)
-[![EU/CEDH: 705 articles](https://img.shields.io/badge/EU%2FCEDH-705%20articles-blue.svg)](https://your-instance.example/api/status)
+[![EU/CEDH: 818 articles](https://img.shields.io/badge/EU%2FCEDH-818%20articles-blue.svg)](https://your-instance.example/api/status)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
 > **How do I access justice without going broke?**
@@ -32,7 +32,7 @@ Meanwhile, every IA assistant (Claude, ChatGPT, Mistral, Gemini, Perplexity) is 
 SelfJustice is a **single authoritative directives page** (HTML) plus a **public HTTP API** that any IA can fetch to produce rigorous, impartial legal pre-analyses.
 
 - The directives page tells the IA **how to reason**: impartiality, hierarchy of norms, mandatory legal basis for every claim, glossary for non-lawyers, mandatory legal disclaimer.
-- The API tells the IA **what the law actually says**: 488,903 indexed French legal articles (LEGI dump from DILA) + 705 EU/CEDH articles (Charter of Fundamental Rights, TFEU, TEU, GDPR, European Convention of Human Rights).
+- The API tells the IA **what the law actually says**: 488,903 indexed French legal articles (LEGI dump from DILA) + 818 EU/CEDH articles (Charter of Fundamental Rights, TFEU, TEU, GDPR, AI Act 2024/1689, European Convention of Human Rights).
 
 Any IA. Any citizen. Any conflict. One consistent, sourced, impartial pre-analysis.
 
@@ -76,7 +76,7 @@ Any IA. Any citizen. Any conflict. One consistent, sourced, impartial pre-analys
 ```
 
 **Cost for the user:** zero (they use their own IA subscription).
-**Cost for the operator:** the domain name + hosting for a Raspberry Pi.
+**Cost for the operator:** the domain name + one modest machine.
 
 ---
 
@@ -100,7 +100,7 @@ Machine-readable directives telling the IA how to reason:
 | `GET /api/status` | Total articles, last sync date, per-source breakdown |
 | `GET /api/legi/article/{ref}?code={alias}` | French legal article (with code disambiguation: travail, civil, penal, consommation, sante_publique, assurances, urbanisme, route, etc.) |
 | `GET /api/legi/search?q=...&limit=...` | Full-text search across LEGI |
-| `GET /api/eu/article/{source}/{num}` | EU/CEDH article (`source` ∈ `CEDH`, `CHARTE_UE`, `TFUE`, `TUE`, `RGPD`) |
+| `GET /api/eu/article/{source}/{num}` | EU/CEDH article (`source` ∈ `CEDH`, `CHARTE_UE`, `TFUE`, `TUE`, `RGPD`, `AI_ACT`) |
 | `GET /api/eu/search?q=...&source=...` | Search in EU/CEDH |
 | `GET /api/stats/by-ai` | Public anonymous stats: user consultations by IA family, crawler counts |
 | `GET /api/stats/by-endpoint` | Top consulted articles (anonymized) |
@@ -123,7 +123,7 @@ All endpoints return JSON, all are rate-limited, all are CORS-open.
 | Backend | PHP-FPM 8.2 (read-only) |
 | Database | SQLite 3 (LEGI dump parsed to `legi_selfjustice.sqlite`) + SQLite (EU/CEDH) |
 | TLS | Let's Encrypt, auto-renewal |
-| Host | Raspberry Pi 4, self-hosted |
+| Host | self-hosted server (x86 or ARM) |
 | Cron | Bi-monthly LEGI sync + hourly stats rebuild |
 
 ---
@@ -188,7 +188,7 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 - [x] Structured output template with glossary
 - [x] Legal disclaimers (loi 71-1130 compliant)
 - [x] API with 488,903 LEGI articles
-- [x] API with 705 EU/CEDH articles
+- [x] API with 818 EU/CEDH articles (including AI Act 2024/1689)
 - [x] Multi-IA tested (Claude, ChatGPT crawler, OAI-SearchBot detected)
 - [x] Public stats (`/api/stats/by-ai`, `/api/stats/by-endpoint`)
 - [x] Dedicated domain [your-instance.example](https://your-instance.example)

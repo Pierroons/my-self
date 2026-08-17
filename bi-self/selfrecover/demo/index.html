@@ -613,14 +613,22 @@
         // Sur window pour permettre le monkey-patch par transparency.js (qui remplace
         // window.api par apiTraced et logge chaque requête dans le panneau live).
         // Si transparency.js n'est pas chargé, fallback minimal ci-dessous.
+        // Jeton de session, gardé en mémoire seulement : il disparaît au
+        // rechargement, comme le reste de cette démonstration.
+        window.sessionToken = null;
+
         window.api = async function (action, body = null) {
             const opts = {
                 method: body ? 'POST' : 'GET',
                 headers: body ? { 'Content-Type': 'application/json' } : {},
             };
+            // L'enrôlement d'un appareil exige une session : sans ce jeton, il
+            // se ferait sur un compte qu'on ne prouve pas posséder.
+            if (window.sessionToken) { opts.headers['X-Session-Token'] = window.sessionToken; }
             if (body) opts.body = JSON.stringify(body);
             const res = await fetch('api/index.php?action=' + action, opts);
             const data = await res.json();
+            if (data && data.session_token) { window.sessionToken = data.session_token; }
             if (!res.ok) { const err = new Error(data.error || 'Unknown error'); err.data = data; throw err; }
             return data;
         };

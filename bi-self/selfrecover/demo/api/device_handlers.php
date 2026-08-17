@@ -32,21 +32,47 @@ function spki_to_pem(string $spkiDer): string {
     return "-----BEGIN PUBLIC KEY-----\n" . chunk_split(base64_encode($spkiDer), 64, "\n") . "-----END PUBLIC KEY-----\n";
 }
 
-// === ENROLL : enrôle cet appareil pour le compte fraîchement créé (case cochée) ===
+// === ENROLL : enrôle cet appareil pour le compte CONNECTÉ ===
+//
+// 🔑 Session obligatoire, et le compte visé est celui de la session.
+//
+// Sans ces deux contraintes, la chaîne enroll → auth-begin → auth-finish
+// permettait de prendre n'importe quel compte SANS AUCUN SECRET : il suffisait
+// de nommer sa victime, d'enrôler sa propre clé publique sur son compte, de
+// signer le défi avec sa clé privée, et `auth-finish` réécrivait le mot de
+// passe. Le message de succès annonçait « appareil + mot, liés
+// cryptographiquement » alors qu'aucun mot n'était vérifié.
+//
+// Le correctif équivalent avait été appliqué au lab le 02/08/2026 et jamais
+// ici — sur l'instance publique, celle qui sert de vitrine. Constaté le
+// 13/08/2026.
+//
+// ⚠️ Enrôler n'est pas récupérer. Qui a perdu son accès passe par L1
+// (passphrase), L2 (code + mot) ou L3 (décision humaine).
 function handleDeviceEnroll(): void {
     $in = getInput();
     checkHoneypot($in);
-    $username     = trim($in['username'] ?? '');
+    $db = getDB();
+
+    $session = currentSession($db);
+    if ($session === null) {
+        jsonError('Connecte-toi pour enrôler un appareil.', 401);
+    }
+
     $credentialId = trim($in['credential_id'] ?? '');
     $publicKey    = dev_b64url_decode($in['public_key'] ?? ''); // SPKI DER
-    if (!$username || !preg_match('/^[A-Za-z0-9_-]{16,64}$/', $credentialId) || strlen($publicKey) < 50) {
+    if (!preg_match('/^[A-Za-z0-9_-]{16,64}$/', $credentialId) || strlen($publicKey) < 50) {
         jsonError('Données d\'enrôlement invalides');
     }
-    $db = getDB();
-    $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
-    $stmt->execute([$username]);
-    $user = $stmt->fetch();
-    if (!$user) jsonError('Compte introuvable', 404);
+
+    // Le nom vient de la session, jamais de la requête. Un envoi divergent se
+    // refuse plutôt que d'être corrigé en silence : un client qui se trompe de
+    // compte doit l'apprendre.
+    $demande = trim($in['username'] ?? '');
+    if ($demande !== '' && $demande !== (string) $session['username']) {
+        jsonError("Un appareil ne s'enrôle que sur le compte connecté.", 403);
+    }
+    $user = ['id' => $session['user_id']];
     if (openssl_pkey_get_public(spki_to_pem($publicKey)) === false) jsonError('Clé publique invalide');
     $db->prepare("INSERT OR REPLACE INTO device_credentials (user_id, credential_id, public_key) VALUES (?, ?, ?)")
        ->execute([(int)$user['id'], $credentialId, dev_b64url_encode($publicKey)]);

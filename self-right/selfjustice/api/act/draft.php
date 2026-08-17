@@ -7,23 +7,21 @@
  * par CSS média print. Le filigrane couvre chaque page imprimée du document.
  *
  * Usage :
- *   POST /act/api/draft.php    (Content-Type: application/json)
- *     Body :
- *       {
- *         "type": "mise_en_demeure",
- *         "expediteur": { "nom": "...", "adresse": "..." },
- *         "destinataire": { "nom": "...", "adresse": "..." },
- *         "objet": "...",
- *         "faits": "...",
- *         "articles": ["art. 1344 C. civ."],
- *         "demande": "...",
- *         "delai_jours": 15,
- *         "manques": ["Date précise des faits", "Montant exact"]  // optionnel
- *       }
- *     Response : text/html (à ouvrir dans navigateur → Ctrl+P → PDF)
+ *   GET /act/api/draft.php?type=mise_en_demeure
+ *     Rend le gabarit à trous. Les crochets sont rendus éditables dans le
+ *     navigateur par remplir.js : la personne complète sur place, imprime, et
+ *     rien ne quitte sa machine.
  *
- *   GET /act/api/draft.php?type=mise_en_demeure (retourne un exemple vide
- *     prêt à être rempli à la main, pour test/démo)
+ * 🔑 POST refusé (405), volontairement.
+ *   Le remplissage se fait dans le navigateur, et nulle part ailleurs. Recevoir
+ *   ces données — identité, adresse, récit d'un litige — ferait de SelfAct un
+ *   traitement de données personnelles sensibles, avec base légale,
+ *   minimisation, conservation et sous-traitance à porter. Le corps de la
+ *   requête n'est même pas lu : une route qui accepte finit par recevoir.
+ *
+ *   Ce que le service fait : mettre en forme ce que la personne fournit.
+ *   Ce qu'il ne fait pas : deviner un champ, suggérer un article, formuler une
+ *   demande à partir d'un récit. C'est la frontière de la loi 71-1130.
  *
  * Philosophie :
  * - Zéro dépendance externe. Pur PHP + HTML + CSS + SVG.
@@ -47,15 +45,22 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $data = [];
 
 if ($method === 'POST') {
-    $raw = file_get_contents('php://input');
-    $parsed = $raw !== false ? json_decode($raw, true) : null;
-    if (!is_array($parsed)) {
-        http_response_code(400);
-        header('Content-Type: application/json');
-        echo json_encode(['ok' => false, 'error' => 'invalid_json']);
-        exit;
-    }
-    $data = $parsed;
+    // 🔑 Le remplissage se fait dans le navigateur, et nulle part ailleurs.
+    // Accepter des données ici ferait de SelfAct un traitement de données
+    // personnelles sensibles — identité, adresse, récit d'un litige — avec base
+    // légale, minimisation, conservation et sous-traitance à porter. Le corps
+    // n'est même pas lu : une route qui accepte finit par recevoir.
+    http_response_code(405);
+    header('Content-Type: application/json');
+    header('Allow: GET');
+    echo json_encode([
+        'ok'    => false,
+        'error' => 'remplissage_local_uniquement',
+        'detail' => "Ce service ne reçoit aucune donnée. Ouvre le gabarit en GET "
+                  . "et complète-le dans ton navigateur : rien n'est transmis, "
+                  . "rien n'est conservé.",
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
 } elseif ($method === 'GET') {
     $data = [
         'type' => $_GET['type'] ?? 'document',
@@ -183,6 +188,25 @@ header('X-Content-Type-Options: nosniff');
     fill: rgba(200, 30, 30, 0.25);
     font-family: "Arial Black", sans-serif;
     font-weight: 900;
+  }
+
+  /* Remplissage local — voir remplir.js. Le bandeau guide à l'écran et
+     disparaît à l'impression ; les champs perdent leur fond mais gardent leur
+     texte, pour que le document imprimé soit propre. */
+  .bandeau-remplissage {
+    max-width: 21cm; margin: 12px auto; padding: 12px 16px;
+    background: #eef4ff; border: 1px solid #b9cdf0; border-radius: 6px;
+    font: 14px/1.5 system-ui, sans-serif; color: #12325c;
+  }
+  .champ-a-remplir {
+    background: #fff6d5; outline: 1px dashed #c9a227; padding: 0 2px;
+    border-radius: 2px; cursor: text; min-width: 3em; display: inline-block;
+  }
+  .champ-a-remplir:focus { background: #fffdf0; outline: 2px solid #c9a227; }
+
+  @media print {
+    .bandeau-remplissage { display: none !important; }
+    .champ-a-remplir { background: none !important; outline: none !important; }
   }
 
   @media print {
@@ -361,6 +385,7 @@ header('X-Content-Type-Options: nosniff');
   </div>
 </div>
 <script src="/act/api/print.js"></script>
+<script src="/act/api/remplir.js"></script>
 
 <!-- Filigrane SVG sur toutes les pages (fixed positioning) -->
 <div class="watermark" aria-hidden="true">
@@ -466,6 +491,12 @@ header('X-Content-Type-Options: nosniff');
     Il ne constitue pas un acte juridique recevable en l'état. Il ne saurait remplacer un
     conseil juridique au sens de la loi 71-1130 du 31 décembre 1971. Pour un acte officiel,
     utilise le modèle service-public.fr correspondant ou consulte un avocat.
+    <br><br>
+    <strong>SelfAct est indépendant et n'est affilié à aucun organisme public ou
+    gouvernemental.</strong> Les formulaires, modèles de lettres et démarches officiels
+    sont disponibles <strong>gratuitement</strong> sur
+    <a href="https://www.service-public.gouv.fr">service-public.gouv.fr</a> :
+    tu n'as jamais besoin de cet outil pour y accéder.
   </div>
 </div>
 

@@ -125,7 +125,7 @@ Voir **[whitepaper](docs/whitepaper.docx)** pour la spécification complète du 
 
 ---
 
-## Notes d'installation DEVSERVER
+## Notes d'installation
 
 Le cron `update_catalog.sh` tourne en tant qu'utilisateur `deploy` mais écrit
 dans `/var/www/selfjustice/api/act/data/` qui est owned par `www-data`.

@@ -4,16 +4,31 @@ name: gitleaks (OPSEC)
 # (identité, IP infra, IBAN réel, business perso…). Règles : .gitleaks.toml,
 # faux positifs historiques : .gitleaksignore.
 # Step direct (binaire) → pas de dépendance licence/API comme gitleaks-action.
+#
+# 🔑 **Aucun filtre de branche, volontairement.** Ce workflow a longtemps
+# écouté `[develop, main]` alors que la branche de travail s'appelle `dev` :
+# une branche `develop` n'a jamais existé ici. Le scan ne tournait donc que sur
+# `main`, et tout le développement arrivait sur `dev` sans jamais être vu — une
+# barrière annoncée comme dure, qui laissait passer la quasi-totalité des push.
+#
+# Lister les branches rendait la protection dépendante d'une liste à tenir à
+# jour : la faute de frappe d'origine était invisible, et le moindre renommage
+# aurait rouvert le trou en silence. Sans filtre, toute branche poussée est
+# scannée, aujourd'hui comme après le prochain renommage.
 on:
   push:
-    branches: [develop, main]
   pull_request:
 
 jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Épinglé au SHA, pas au tag : un tag se repointe en silence chez son
+      # propriétaire, et c'est ce qui a servi de vecteur aux compromissions
+      # de trivy-action et kics-github-action. Le SHA, lui, ne bouge pas.
+      # 11d5960a = v4.4.0 (16/07/2026). Relever la version demande de
+      # remplacer le SHA et de mettre le commentaire à jour dans le même geste.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           fetch-depth: 0   # historique complet (baseline .gitleaksignore appliqué)
       - name: Install gitleaks

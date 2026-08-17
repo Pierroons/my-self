@@ -62,7 +62,7 @@ Le contenu éventuellement saisi dans le corps POST de `/act/api/draft` est trai
 
 Le catalogue (`/act/api/catalog`) est mis à jour de façon **bimensuelle** (1<sup>er</sup> et 15 de chaque mois) depuis service-public.fr, via un scraper open-source auto-hébergé.
 
-Aucune garantie de disponibilité (99.x%) n'est offerte. Le service est fourni en l'état, auto-hébergé sur un Raspberry Pi 4. En cas d'indisponibilité, l'utilisateur peut accéder directement aux modèles via service-public.fr.
+Aucune garantie de disponibilité (99.x%) n'est offerte. Le service est fourni en l'état, auto-hébergé sur une infrastructure modeste. En cas d'indisponibilité, l'utilisateur peut accéder directement aux modèles via service-public.fr.
 
 ## 8. Licence du code SelfAct
 

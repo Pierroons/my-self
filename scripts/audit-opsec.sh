@@ -14,15 +14,24 @@
 # brief privé orphelin, un code postal publié par le message qui le masquait,
 # et un nom de domaine dans un corps de commit.
 #
-# ── Trois modes, et pourquoi le plus précoce est le plus important ──────────
+# ── Quatre modes, et pourquoi le plus précoce est le plus important ─────────
 #
-#   (aucun)     audit complet — tout l'historique. Appelé par le pre-push.
+#   --worktree  ce qui est écrit sur le disque, pas encore indexé. Aucun hook
+#               ne l'appelle : c'est le mode de la relecture avant commit.
 #   --staged    fichiers indexés seulement. Appelé par le pre-commit.
 #   --message F motifs dans le fichier de message. Appelé par le commit-msg.
+#   (aucun)     audit complet — tout l'historique. Appelé par le pre-push.
 #
-# L'écart de coût entre les deux premiers est le vrai sujet. Une donnée
-# arrêtée au pre-commit se corrige en dix secondes : le fichier n'est même
-# pas commité. La même donnée arrêtée au pre-push est déjà dans l'historique
+# --worktree existe parce qu'un fichier écrit mais pas encore ajouté n'était vu
+# par AUCUN des trois autres. Un agent de relecture a dû appliquer les motifs à
+# la main sur onze fichiers le 14/08/2026 : ce qui marche une fois et ne marche
+# plus le jour où personne n'y pense. Un contrôle qui dépend de la vigilance de
+# celui qui le lance n'est pas un contrôle.
+#
+# L'écart de coût entre ces modes est le vrai sujet. Une donnée arrêtée au
+# worktree se corrige d'un coup d'éditeur — elle n'est même pas indexée. Une
+# donnée arrêtée au pre-commit se corrige en dix secondes : le fichier n'est
+# même pas commité. La même donnée arrêtée au pre-push est déjà dans l'historique
 # local — il faut un rebase. Et si elle est passée, il faut git-filter-repo,
 # re-signer les tags, force-pusher, purger le registre d'images et demander
 # à GitHub de collecter les objets orphelins. Le rapport est de un à mille.
@@ -57,10 +66,34 @@ MODE="full"
 MSGFILE=""
 VERBOSE=0
 case "${1:-}" in
-  --staged)  MODE="staged" ;;
-  --message) MODE="message"; MSGFILE="${2:-}" ;;
-  --verbose) VERBOSE=1 ;;
+  --staged)   MODE="staged" ;;
+  --worktree) MODE="worktree" ;;
+  --message)  MODE="message"; MSGFILE="${2:-}" ;;
+  --verbose)  VERBOSE=1 ;;
+  "")         ;;
+  # Sans ce refus, une faute de frappe tombait en mode complet et rendait un
+  # vert : « ✓ Rien à signaler » sur un audit qui n'était pas celui demandé.
+  # Mesuré le 14/08/2026 avec --worktree avant qu'il existe.
+  # printf et non red() : les fonctions d'affichage sont définies plus bas.
+  *)          printf '\033[31m✗ Argument inconnu : %s\033[0m\n' "$1" >&2
+              echo "  Modes : --worktree | --staged | --message <fichier> | (aucun)" >&2
+              exit 2 ;;
 esac
+
+# Ce qui sépare vraiment les modes n'est pas leur nom : c'est de travailler sur
+# une LISTE DE FICHIERS ou sur l'HISTORIQUE. Les contrôles 4 et 5 (messages,
+# orphelins) n'ont de sens que dans le second cas.
+case "$MODE" in staged|worktree) PAR_CIBLES=1 ;; *) PAR_CIBLES=0 ;; esac
+
+# D'où vient le contenu d'une cible. En mode staged c'est l'index — ce qui est
+# sur le disque n'y est pas forcément. Partout ailleurs, le disque.
+contenu() {
+  if [ "$MODE" = "staged" ]; then
+    git -C "$ROOT" show ":$1" 2>/dev/null
+  else
+    cat "$ROOT/$1" 2>/dev/null
+  fi
+}
 
 FOUND=0
 red()  { printf '\033[31m%s\033[0m\n' "$1"; }
@@ -140,6 +173,21 @@ if [ "$MODE" = "staged" ]; then
   echo "▸ Audit OPSEC (fichiers indexés) — ${#MOTIFS[@]} motifs"
   mapfile -t CIBLES < <(git -C "$ROOT" diff --cached --name-only --diff-filter=ACMR)
   [ ${#CIBLES[@]} -eq 0 ] && { ok "rien d'indexé"; exit 0; }
+elif [ "$MODE" = "worktree" ]; then
+  echo "▸ Audit OPSEC (travail en cours) — ${#MOTIFS[@]} motifs"
+  # Tout ce qui n'est pas encore poussé : modifié, indexé, ou jamais tracké.
+  # Un fichier peut figurer dans deux listes — un ajout partiel diffère de sa
+  # version disque — d'où le sort -u.
+  mapfile -t CIBLES < <(
+    {
+      git -C "$ROOT" diff --name-only --diff-filter=ACMR
+      git -C "$ROOT" diff --cached --name-only --diff-filter=ACMR
+      git -C "$ROOT" ls-files --others --exclude-standard
+    } | sort -u | grep .
+  )
+  # Un working tree propre n'est pas un audit réussi : c'est un audit sans
+  # objet. Le dire, plutôt que rendre un vert obtenu sur une liste vide.
+  [ ${#CIBLES[@]} -eq 0 ] && { ok "aucun fichier modifié ni intracké — rien à auditer"; exit 0; }
 else
   echo "▸ Audit OPSEC — ${#MOTIFS[@]} motifs, ${#EXCLUDES[@]} exclusions"
 fi
@@ -158,6 +206,18 @@ elif [ "$MODE" = "staged" ]; then
   else
     warn "secret dans l'index — détail : gitleaks protect --staged -v"
   fi
+elif [ "$MODE" = "worktree" ]; then
+  # `protect --staged` ne lit que l'index : sur un fichier jamais indexé il
+  # rendrait un vert alors qu'il n'a rien regardé — l'alarme morte, dans le
+  # script écrit pour la traquer. `detect --no-git` est le seul mode qui
+  # regarde un fichier tel qu'il est sur le disque, d'où le passage un par un.
+  SEC=0
+  for f in "${CIBLES[@]}"; do
+    [ -f "$ROOT/$f" ] || continue
+    gitleaks detect --no-git --source "$ROOT/$f" -c "$ROOT/.gitleaks.toml" \
+      --no-banner --redact >/dev/null 2>&1 || { warn "$f — secret détecté"; SEC=1; }
+  done
+  [ "$SEC" = "0" ] && ok "aucun secret dans les ${#CIBLES[@]} fichier(s) en cours"
 else
   if gitleaks detect --source "$ROOT" -c "$ROOT/.gitleaks.toml" \
        --no-banner --redact >/dev/null 2>&1; then
@@ -169,23 +229,27 @@ fi
 
 # ── 2. Données personnelles dans le contenu ────────────────────────────────
 echo
-if [ "$MODE" = "staged" ]; then
-  echo "2. Données personnelles — contenu indexé"
+if [ "$PAR_CIBLES" = "1" ]; then
+  if [ "$MODE" = "staged" ]; then
+    echo "2. Données personnelles — contenu indexé"
+  else
+    echo "2. Données personnelles — contenu sur le disque"
+  fi
   C2=0
   for f in "${CIBLES[@]}"; do
     exclu "$f" && continue
     # Binaire : le grep n'a pas de sens, le contrôle 3 s'en charge.
-    git -C "$ROOT" show ":$f" 2>/dev/null | grep -qI . || continue
+    contenu "$f" | grep -qI . || continue
     for m in "${MOTIFS[@]}"; do
-      if git -C "$ROOT" show ":$f" 2>/dev/null | grep -qi -e "$m"; then
+      if contenu "$f" | grep -qi -e "$m"; then
         warn "$f — contient « $m »"
-        git -C "$ROOT" show ":$f" 2>/dev/null | grep -in -e "$m" | head -2 | sed 's/^/       /'
+        contenu "$f" | grep -in -e "$m" | head -2 | sed 's/^/       /'
         C2=1
         break
       fi
     done
   done
-  [ "$C2" = "0" ] && ok "aucun motif dans les ${#CIBLES[@]} fichier(s) indexés"
+  [ "$C2" = "0" ] && ok "aucun motif dans les ${#CIBLES[@]} fichier(s) examinés"
 else
   # On scanne TOUS les commits, pas le HEAD : corriger un fichier ne retire
   # pas ce qu'il contenait hier. C'est ce qui distingue ce contrôle de gitleaks.
@@ -214,7 +278,7 @@ echo "3. Métadonnées des fichiers binaires"
 if ! command -v exiftool >/dev/null 2>&1; then
   warn "exiftool absent — sudo apt install libimage-exiftool-perl"
 else
-  if [ "$MODE" = "staged" ]; then
+  if [ "$PAR_CIBLES" = "1" ]; then
     mapfile -t BINS < <(printf '%s\n' "${CIBLES[@]}" | grep -iE '\.(png|jpe?g|webp|tiff?|pdf|docx|xlsx|odt)$' || true)
   else
     mapfile -t BINS < <(git -C "$ROOT" ls-files -- \
@@ -243,7 +307,7 @@ else
 fi
 
 # ── 4 et 5 : historique seulement ──────────────────────────────────────────
-if [ "$MODE" != "staged" ]; then
+if [ "$PAR_CIBLES" = "0" ]; then
   echo
   echo "4. Messages de commit (sujets et corps)"
   C4=0
@@ -292,9 +356,12 @@ if [ "$FOUND" = "0" ]; then
 fi
 red "✗ Audit en échec — voir ci-dessus."
 echo
-if [ "$MODE" = "staged" ]; then
+if [ "$MODE" = "worktree" ]; then
+  echo "  Rien n'est indexé ni commité : corrige le fichier, c'est tout."
+  echo "  C'est le moment le moins cher de toute la chaîne."
+elif [ "$MODE" = "staged" ]; then
   echo "  Rien n'est encore commité : corrige le fichier et refais git add."
-  echo "  C'est le moment où la correction coûte le moins cher."
+  echo "  ⚠ --staged lit l'index : après correction, refais git add."
 else
   echo "  Un motif trouvé dans le CONTENU ou les MESSAGES ne se corrige pas"
   echo "  au HEAD : il faut réécrire l'historique (git-filter-repo), re-signer"

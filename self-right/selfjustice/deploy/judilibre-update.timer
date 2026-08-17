@@ -1,0 +1,23 @@
+[Unit]
+Description=SelfJustice — cadence bimensuelle de l'index Judilibre
+Documentation=file:/opt/selfjustice/deploy/judilibre-update.service
+
+[Timer]
+# Le 1er et le 15, comme LEGI et la base de conventionnalité : la cadence
+# annoncée aux utilisateurs par /api/status doit être celle qui tourne
+# réellement. Une heure après LEGI, pour ne pas charger la machine deux fois
+# en même temps.
+OnCalendar=*-*-01,15 05:00:00
+
+# Une machine éteinte à l'heure dite rattrape au démarrage. Sans ça, un
+# redémarrage mal placé décale l'index d'une quinzaine entière sans que rien
+# ne l'indique.
+Persistent=true
+
+# Les deux instances ne partiraient pas à la même seconde de toute façon, mais
+# une dispersion évite de taper l'API amont à l'instant précis où tout le monde
+# le fait.
+RandomizedDelaySec=20min
+
+[Install]
+WantedBy=timers.target
