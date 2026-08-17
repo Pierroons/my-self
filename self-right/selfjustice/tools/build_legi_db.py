@@ -171,7 +171,7 @@ def main():
     conn.commit()
     conn.close()
 
-    print(f"\nTerminé !")
+    print("\nTerminé !")
     print(f"  Codes trouvés : {codes_count}")
     print(f"  Articles extraits : {articles_count}")
     print(f"  Base SQLite : {args.db}")

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Inspecter la structure d'un article sur EUR-Lex pour comprendre où est le contenu."""
-import sys
 from urllib.request import Request, urlopen
 from lxml import html as lhtml
 

@@ -1,0 +1,17 @@
+# Configuration ruff — voir AGENTS.md pour le tableau de validation complet.
+#
+# Longueur de ligne portée à 120, contre 88 par défaut dans l'outil. Le seuil
+# vient d'une mesure du dépôt, pas d'une préférence : au 17 août 2026, sur les
+# fichiers Python suivis, la médiane est à 38 caractères, le 95e centile à 93,
+# le maximum à 147. À 88, ruff rendait 286 constats de longueur pour 6 défauts
+# réels ; à 120 il en reste 4, et les 6 défauts redeviennent lisibles.
+#
+# Un linter qui crie en permanence ne protège de rien : on cesse de le lire au
+# troisième constat, et les vrais défauts partent avec le bruit. Si ce seuil se
+# met à sauter souvent, le recalibrer sur une nouvelle mesure.
+#
+# Écrit à la racine, et sans section [lint] : cette syntaxe est la seule que
+# comprennent à la fois les versions anciennes de ruff et les récentes. Aucune
+# configuration plus proche ne la masque — self-right/selfjustice/mcp/
+# pyproject.toml ne déclare pas de section ruff.
+line-length = 120

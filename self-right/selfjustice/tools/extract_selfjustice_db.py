@@ -116,7 +116,7 @@ def en_texte_brut(html: str | None) -> str:
     t = unescape(t)
     t = _ESPACES.sub(" ", t)
     t = _LIGNES.sub("\n\n", t)
-    return "\n".join(l.strip() for l in t.split("\n")).strip()
+    return "\n".join(ligne.strip() for ligne in t.split("\n")).strip()
 
 
 def main() -> int:

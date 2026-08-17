@@ -4,7 +4,8 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from weasyprint import HTML
-import os, sys
+import os
+import sys
 
 MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
         "août", "septembre", "octobre", "novembre", "décembre"]

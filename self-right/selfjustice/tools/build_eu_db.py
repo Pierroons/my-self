@@ -478,7 +478,7 @@ def main():
     if echecs:
         print(f"\nATTENTION : {len(echecs)} source(s) non mise(s) à jour : "
               f"{', '.join(echecs)}", file=sys.stderr)
-        print(f"Les données précédentes de ces sources sont conservées.",
+        print("Les données précédentes de ces sources sont conservées.",
               file=sys.stderr)
         print(f"Terminé avec réserves : {total} articles insérés dans {args.db}")
         # Code 2 : la base est utilisable, mais incomplètement rafraîchie.
