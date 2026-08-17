@@ -35,7 +35,37 @@ if [ ! -d "$DEST" ]; then
     exit 1
 fi
 
-SRC="$(cd "$(dirname "$0")/.." && pwd)"
+# 🔑 La racine du module se reconnaît à ce qu'elle contient, jamais à sa distance
+# du script. Un `dirname "$0"/..` code en dur la profondeur : déplacer ce fichier
+# vers un dossier `deploy/` commun fait pointer le `..` sur la racine du dépôt, et
+# tout ce qui suit travaille alors sur une source qui n'existe pas.
+#
+# On essaie donc les emplacements possibles et on retient le premier qui porte le
+# marqueur. Remonter de parent en parent ne suffirait pas : depuis
+# `deploy/selfjustice/`, le module est dans une branche voisine, pas au-dessus.
+ICI="$(cd "$(dirname "$0")" && pwd)"
+SRC=""
+for candidat in "$ICI/.." "$ICI/../../self-right/selfjustice"; do
+    if [ -f "$candidat/site/index.html" ]; then
+        SRC="$(cd "$candidat" && pwd)"
+        break
+    fi
+done
+
+# ⚠️ Et si elle reste introuvable, on s'arrête ici. Sans cette sortie, le script
+# continue avec une racine absente : la boucle plus bas ne trouve aucun fichier,
+# n'écrit rien, et le contrôle final ne voit aucun placeholder dans une
+# destination déjà substituée — donc il affiche « OK » et sort en 0. Un
+# déploiement qui n'a rien déployé et qui l'annonce comme un succès est pire
+# qu'un déploiement qui échoue.
+if [ -z "$SRC" ]; then
+    echo "erreur : racine du module SelfJustice introuvable depuis $ICI." >&2
+    echo "         Aucun des emplacements essayés ne contient site/index.html :" >&2
+    echo "           $ICI/.." >&2
+    echo "           $ICI/../../self-right/selfjustice" >&2
+    exit 1
+fi
+
 PLACEHOLDER="your-instance.example"
 
 # ⚠️ Garde-fou indispensable : `sed source > destination` tronque la destination
@@ -43,7 +73,12 @@ PLACEHOLDER="your-instance.example"
 # est détruit — et le serveur continue de répondre 200 avec des pages vides,
 # donc rien ne le signale. C'est arrivé le 02/08/2026 en lançant ce script
 # depuis la copie déployée : index.html et act.html sont tombés à 0 octet.
-if [ "$(cd "$SRC/site" 2>/dev/null && pwd)" = "$(cd "$DEST" && pwd)" ]; then
+#
+# La comparaison ci-dessous n'a de sens que parce que `$SRC/site` est garanti
+# exister : tant que son absence était avalée par un `2>/dev/null`, la
+# substitution rendait une chaîne vide, l'égalité était fausse quoi qu'il arrive,
+# et ce garde-fou ne pouvait plus se déclencher.
+if [ "$(cd "$SRC/site" && pwd)" = "$(cd "$DEST" && pwd)" ]; then
     echo "erreur : la source et la destination sont le même répertoire." >&2
     echo "         Lancez ce script depuis le dépôt, pas depuis l'instance déployée." >&2
     exit 1
@@ -51,14 +86,26 @@ fi
 
 echo "SelfJustice — déploiement vers $DEST (domaine : $DOMAINE)"
 
-# Les fichiers servis directement au navigateur.
+# Les fichiers servis directement au navigateur. `act.html` et `act-docs.html`
+# peuvent légitimement manquer selon les modules activés, d'où le `continue` ;
+# `index.html` non, mais on compte plutôt que de le traiter à part.
+traites=0
 for f in site/index.html site/act.html site/act-docs.html; do
     [ -f "$SRC/$f" ] || continue
     cible="$DEST/$(basename "$f")"
     sed "s|$PLACEHOLDER|$DOMAINE|g" "$SRC/$f" > "$cible"
     n=$(grep -c "$DOMAINE" "$cible" || true)
     echo "  $(basename "$f") : $n occurrence(s) substituée(s)"
+    traites=$((traites + 1))
 done
+
+# ⚠️ Zéro fichier traité n'est pas un cas nominal : c'est le symptôme d'une
+# source vide ou mal située. Sans cette sortie, le contrôle final rendrait « OK »
+# sur une destination que ce passage n'a pas touchée.
+if [ "$traites" -eq 0 ]; then
+    echo "erreur : aucun fichier servi trouvé sous $SRC/site — rien n'a été déployé." >&2
+    exit 1
+fi
 
 # Contrôle : aucun placeholder ne doit survivre dans ce qui est servi.
 if grep -rq "$PLACEHOLDER" "$DEST" 2>/dev/null; then
