@@ -401,7 +401,7 @@ composer require pierroons/selfrecover   # future lib PHP
 npm install selfrecover                  # future lib JS
 ```
 
-Pas encore publiées. Voir la [démo](../demo/) pour une implémentation standalone fonctionnelle à étudier.
+Pas encore publiées. Voir [MySelf-Lab](../../../demo/lab/) pour une implémentation de référence à étudier, et [les outils autonomes](../tools/) pour les pages qui ne dépendent d'aucun serveur.
 
 ---
 

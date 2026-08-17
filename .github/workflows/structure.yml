@@ -1,0 +1,78 @@
+# Contrôle de structure — ce qu'un déplacement casse.
+#
+# 🔑 **Pourquoi ce workflow existe.** Le rangement du 17/08/2026 a déplacé plus de
+# deux cents fichiers. Rien, dans ce dépôt, ne vérifiait qu'un chemin cité quelque
+# part avait encore sa cible : ni le dépôt ni la CI. Les défauts trouvés ce jour-là
+# — un script de déploiement qui affichait OK sans rien déployer, une exclusion
+# OPSEC devenue orpheline, une règle .gitignore qui avait cessé de protéger une
+# base de démonstration et deux artefacts cryptographiques — se ressemblent tous :
+# ils ne cassent rien de visible.
+#
+# Les trois sondes lancées ici sont des **tests de garde-fou**, pas des tests
+# fonctionnels. Quand un test fonctionnel échoue, une page blanche finit par
+# alerter quelqu'un. Quand un garde-fou lâche, tout continue de fonctionner et
+# personne ne le voit — c'est la catégorie qui ne survit pas à l'absence de CI.
+name: structure
+
+on:
+  push:
+    branches: [main, dev, develop]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  structure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: sodium, pdo_sqlite, mbstring, json
+          coverage: none
+
+      # ── Syntaxe ────────────────────────────────────────────────────────────
+      - name: Syntaxe PHP, Python et shell
+        run: |
+          set -e
+          for f in $(git ls-files '*.php'); do php -l "$f" > /dev/null; done
+          echo "✓ PHP — $(git ls-files '*.php' | wc -l) fichiers"
+          for f in $(git ls-files '*.py'); do python3 -m ast "$f" > /dev/null; done
+          echo "✓ Python — $(git ls-files '*.py' | wc -l) fichiers"
+          for f in $(git ls-files '*.sh'); do bash -n "$f"; done
+          echo "✓ Shell — $(git ls-files '*.sh' | wc -l) fichiers"
+
+      # ── Chemins ────────────────────────────────────────────────────────────
+      # Le contrôle que le rangement a rendu nécessaire : liens Markdown, règles
+      # .gitignore et chemins de workflow, confrontés à ce qui existe.
+      - name: Chemins cités
+        run: bash scripts/check-paths.sh
+
+      # ── Garde-fous ─────────────────────────────────────────────────────────
+      # Priorité sur le reste : ce sont eux qui échouent en silence.
+      - name: Garde-fou — déploiement SelfJustice
+        run: bash self-right/selfjustice/tests/test_deploy.sh
+
+      - name: Garde-fou — coût constant du hash factice (bi-self-duo)
+        run: php demo/bi-self-duo/tests/sanity_timing.php
+
+      - name: Préparer l'autoload du lab
+        working-directory: demo/lab
+        run: composer install --no-interaction --no-progress
+
+      - name: Garde-fou — coût constant du hash factice (lab)
+        run: php demo/lab/tests/sanity_timing.php
+
+      # ── Suites de module ───────────────────────────────────────────────────
+      - name: SelfDataGuard — sanity
+        run: |
+          set -e
+          for t in self-security/selfdataguard/tests/sanity_*.php; do
+            echo "→ $(basename "$t")"
+            php "$t"
+          done
