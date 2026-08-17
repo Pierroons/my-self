@@ -61,8 +61,26 @@ $account = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
 if (!is_array($account)) {
     $log->warning('phishing-sim', 'Compte introuvable', ['username' => $username]);
-    http_response_code(404);
-    echo json_encode(['ok'=>false,'error'=>'account_not_found']);
+    // Deux vérifications factices, comme le chemin nominal juste en dessous : le
+    // HMAC légitime puis celui du domaine de phishing. Sans elles, un compte
+    // absent répond sans avoir rien calculé, et le temps de réponse trie les
+    // comptes existants.
+    //
+    // 🔑 Le code et le message s'alignent aussi sur les autres endpoints du
+    // dossier. Un 404 nommant `account_not_found` disait à lui seul ce que le
+    // hachage vient de taire — et cet endpoint est servi au visiteur par la
+    // visionneuse de code : il enseigne autant qu'il fonctionne.
+    // ⚠️ Ce qui subsiste, et qui n'est pas traité ici : le chemin nominal rend
+    // 200 avec un verdict, celui-ci rend 401. La distinction est structurelle —
+    // une simulation ne peut pas analyser un compte absent — et la fermer
+    // demanderait d'exiger que le compte soit celui de la session, ce qui change
+    // le contrat de l'endpoint. Sans objet tant que la base est isolée par
+    // session : le visiteur n'y trouve que les comptes qu'il a lui-même créés.
+    password_verify($derivedKeyLegit, RecoverHelper::dummyHash());
+    password_verify($derivedKeyPhishing, RecoverHelper::dummyHash());
+    http_response_code(401);
+    echo json_encode(['ok'=>false,'error'=>'bad_credentials',
+        'message'=>'Mot de récupération incorrect ou compte inconnu.']);
     exit;
 }
 

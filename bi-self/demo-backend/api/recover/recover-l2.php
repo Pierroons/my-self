@@ -63,12 +63,23 @@ $stmt = $db->prepare('SELECT id, recovery_hash FROM accounts WHERE username = :u
 $stmt->bindValue(':u', $username);
 $account = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
+// 🔑 L'explication anti-phishing se calcule ici, avant même de savoir si le
+// compte existe : elle ne dépend que du domaine annoncé par le client. La
+// produire plus bas, dans la seule branche « compte connu », allongeait la
+// réponse d'environ 250 caractères pour ce cas-là et pour lui seul — la longueur
+// disait alors ce que le message et le temps s'appliquent à taire.
+$hint = '';
+if ($domainUsed !== 'bi-self.my-self.fr') {
+    $hint = " Le navigateur a calculé le HMAC avec le domaine '" . $domainUsed . "' au lieu de 'bi-self.my-self.fr' → la clé dérivée est donc complètement différente de celle stockée. C'est exactement comme ça que SelfRecover bloque le phishing.";
+}
+
 if (!is_array($account)) {
     $log->warning('recover-l2', 'Compte introuvable', ['username' => $username]);
     // Voir recover-l1 : on paie le hachage plutôt que d'attendre un délai fixe.
     password_verify($derivedKey, RecoverHelper::dummyHash());
     http_response_code(401);
-    echo json_encode(['ok'=>false,'error'=>'bad_credentials','message'=>'Mot de récupération incorrect ou compte inconnu.']);
+    echo json_encode(['ok'=>false,'error'=>'bad_credentials',
+        'message'=>'Mot de récupération incorrect ou compte inconnu.' . $hint]);
     exit;
 }
 
@@ -84,9 +95,7 @@ $log->crypto('recover-l2', 'argon2id_verify(derived_key_received, stored_recover
 ]);
 
 if (!$ok) {
-    $hint = '';
-    if ($domainUsed !== 'bi-self.my-self.fr') {
-        $hint = " Le navigateur a calculé le HMAC avec le domaine '" . $domainUsed . "' au lieu de 'bi-self.my-self.fr' → la clé dérivée est donc complètement différente de celle stockée. C'est exactement comme ça que SelfRecover bloque le phishing.";
+    if ($hint !== '') {
         $log->warning('recover-l2', "Domain mismatch — phishing bloqué" . $hint);
     } else {
         $log->warning('recover-l2', 'derived_key KO même avec le bon domaine → mot de récupération incorrect');
@@ -95,7 +104,8 @@ if (!$ok) {
     echo json_encode([
         'ok'      => false,
         'error'   => 'bad_credentials',
-        'message' => 'Mot de récupération incorrect.' . $hint,
+        // Même phrase que sur le chemin « compte inconnu », au mot près.
+        'message' => 'Mot de récupération incorrect ou compte inconnu.' . $hint,
     ]);
     exit;
 }

@@ -68,7 +68,10 @@ $log->crypto('recover-l1', 'argon2id_verify(passphrase, stored_pass_hash)', [
 if (!$ok) {
     $log->warning('recover-l1', 'Passphrase KO', ['username' => $username]);
     http_response_code(401);
-    echo json_encode(['ok'=>false,'error'=>'bad_credentials','message'=>'Passphrase incorrecte.']);
+    // ⚠️ Même phrase que sur le chemin « compte inconnu », au mot près. Égaliser
+    // le temps de réponse ne sert à rien si le corps distingue les deux cas :
+    // il suffirait alors d'un grep là où il fallait un chronomètre.
+    echo json_encode(['ok'=>false,'error'=>'bad_credentials','message'=>'Passphrase incorrecte ou compte inconnu.']);
     exit;
 }
 
