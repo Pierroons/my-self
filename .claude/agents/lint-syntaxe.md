@@ -79,13 +79,20 @@ contenir.
 |---|---|
 | `.php` | `php -l` |
 | `.sh` | `bash -n` **et** `shellcheck` |
-| `.py` | `python3 -m ast` puis `ruff check` |
+| `.py` | `python3 -m ast` puis `ruff check --no-cache` |
 | `.js` | `eslint --no-eslintrc --parser-options=ecmaVersion:2022,sourceType:module` |
 | `.json` | `jq empty` |
 | `.yml`, `.yaml` | `yamllint -f parsable` |
 | `.html` | `tidy -eq` |
 | `.sql` | `sqlfluff lint --dialect sqlite` |
 | `.md` | `mdl` |
+
+⚠️ `--no-cache` n'est pas un détail de confort. Sans lui, `ruff` dépose un
+`.ruff_cache/` à côté de sa cible : tu écris dans ce que tu audites, ce que ta
+première règle t'interdit. Sur un dépôt il passe inaperçu — l'outil y glisse un
+`.gitignore` qui masque son propre cache — mais hors dépôt il reste, et il gonfle
+le périmètre des passages suivants. Mesuré le 17 août 2026 sur un dossier de
+quatre fichiers : `semgrep` y a compté sept cibles au passage d'après.
 
 Le binaire du linter Markdown s'appelle `mdl`, pas `markdownlint` — c'est le nom
 du paquet qui porte le second. Chercher le mauvais nom rendrait un « outil
