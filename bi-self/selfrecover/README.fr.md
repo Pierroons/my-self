@@ -33,7 +33,7 @@ sans réécriture totale de la pile d'authentification existante.
 | **[Full](./demo/index.html)** | Aucun | Passphrase diceware EFF + HMAC par service | Projets greenfield, modèles de menace exigeants et post-ANTS |
 | **[Lite](./demo/lite.html)** 🆕 | Conservé (lien reset SMTP) | Un mot mémorisé par l'utilisateur, dérivé HMAC côté client, jamais envoyé en clair | Stack legacy qui veut une résistance au phishing immédiate, migration vers Full plus tard |
 
-**Essayer :** la démo (Full, Lite, comparatif) est **auto-hébergeable en 30 secondes** — voir le [Quickstart](#quickstart--lancer-la-démo-en-30-secondes). Pages : `demo/index.html` (Full), `demo/lite.html` (Lite), `demo/comparison.html` (comparatif 8 adversaires × 3 modèles).
+**Essayer :** la démo (Full, Lite, comparatif) est **auto-hébergeable en 30 secondes** — voir le [Quickstart](#quickstart--lancer-la-démo-en-30-secondes). Pages : `demo/index.html` (Full), `demo/lite.html` (Lite), `tools/comparison.html` (comparatif 8 adversaires × 3 modèles).
 
 ---
 
@@ -345,7 +345,7 @@ La passphrase **DOIT** ne jamais exister hors du cerveau de l'utilisateur (et pa
 2. Récupération L1 (une frappe, prouve la connaissance)
 3. Après récupération, la passphrase n'est plus utilisée — le mot de passe régénéré la remplace
 
-Si la vérification d'une passphrase fraîchement tirée est souhaitée, utiliser **l'outil HTML autonome offline** (`demo/offline/selfrecover-validator.html`) sur une machine déconnectée.
+Si la vérification d'une passphrase fraîchement tirée est souhaitée, utiliser **l'outil HTML autonome offline** (`tools/offline-validator/index.html`) sur une machine déconnectée.
 
 ---
 

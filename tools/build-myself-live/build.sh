@@ -73,7 +73,7 @@ log "Stage 3 — embed SelfRecover"
 #   Copies into chroot/opt/selfrecover/ :
 #     - bi-self/selfrecover/ (current repo state)
 #     - demo/docs/diceware-method-{en,fr}.pdf (preinstalled in /home/myself/Documents/)
-#     - demo/offline/selfrecover-validator.html (in /home/myself/tools/)
+#     - selfrecover/tools/offline-validator/index.html (in /home/myself/tools/)
 #   Sets a desktop launcher for SelfRecover daemon.
 
 # ---------------------------------------------------------------------------

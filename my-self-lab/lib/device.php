@@ -63,6 +63,13 @@ final class Device
      * connaître le nom — puis signer un défi et récupérer un mot de passe neuf.
      * Trois requêtes, aucun secret, tous les comptes. Corrigé le 02/08/2026.
      *
+     * Le même correctif n'a atteint la démo publique que le 13/08/2026 : onze
+     * jours pendant lesquels la vitrine a porté le défaut déjà fermé ici. Deux
+     * implémentations du même protocole, un correctif appliqué à une seule —
+     * c'est ce que la bibliothèque partagée doit rendre impossible. Noté ici
+     * parce que le fichier qui portait cette chronologie a été supprimé avec la
+     * démo, et que c'est ce dossier qu'on relit avant de toucher au mécanisme.
+     *
      * Le mot arrive déjà dérivé du navigateur (HMAC, cf `sr-derive.js`) : le
      * serveur ne le voit jamais en clair et le compare à `recovery_hash`, le
      * même hachage que le niveau 2 de la récupération.

@@ -33,7 +33,7 @@ without an all-or-nothing rewrite of their authentication stack.
 | **[Full](./demo/index.html)** | None at all | Diceware EFF passphrase + HMAC-per-service | Greenfield projects, high-assurance and post-ANTS-leak threat models |
 | **[Lite](./demo/lite.html)** 🆕 | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want phishing-resistance now and migrate to Full later |
 
-**Try it:** the demo (Full, Lite, comparison) is **self-hostable in 30 seconds** — see the [Quickstart](#quickstart--run-the-demo-in-30-seconds). Pages: `demo/index.html` (Full), `demo/lite.html` (Lite), `demo/comparison.html` (comparison, 8 adversaries × 3 models).
+**Try it:** the demo (Full, Lite, comparison) is **self-hostable in 30 seconds** — see the [Quickstart](#quickstart--run-the-demo-in-30-seconds). Pages: `demo/index.html` (Full), `demo/lite.html` (Lite), `tools/comparison.html` (comparison, 8 adversaries × 3 models).
 
 ---
 
@@ -345,7 +345,7 @@ The passphrase **MUST** never exist outside the user's brain (and a paper backup
 2. Recovery L1 (one keystroke, proves knowledge)
 3. After recovery, the passphrase is no longer used — the regenerated password replaces it
 
-If verification of a freshly-rolled passphrase is desired, use the **standalone offline HTML tool** (`demo/offline/selfrecover-validator.html`) on an air-gapped machine.
+If verification of a freshly-rolled passphrase is desired, use the **standalone offline HTML tool** (`tools/offline-validator/index.html`) on an air-gapped machine.
 
 ---
 

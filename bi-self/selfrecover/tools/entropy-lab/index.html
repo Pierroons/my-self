@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Entropy Lab — Diceware aux dés (SelfRecover)</title>
+    <style>
+        :root {
+            --bg: #000;
+            --panel: rgba(0,20,10,0.9);
+            --text: #33ff33;
+            --muted: #00cc55;
+            --accent: #00ff66;
+            --border: #008833;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background: var(--bg);
+            color: var(--text);
+            padding: 24px 16px;
+            line-height: 1.5;
+        }
+        a {
+            color: var(--accent);
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+        a:hover { color: #33ff33; text-decoration-thickness: 2px; }
+        a:visited { color: #00cc55; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .panel {
+            background: var(--panel);
+            border-radius: 8px;
+            padding: 20px;
+            border: 1px solid var(--border);
+        }
+        h1 { font-size: 1.3rem; color: var(--accent); margin-bottom: 16px; }
+        h2 { font-size: 1.1rem; margin-bottom: 6px; }
+        h3 { font-size: 0.95rem; }
+        .desc { color: var(--muted); font-size: 0.85rem; margin-bottom: 10px; }
+        .reinhold-step {
+            display: flex;
+            gap: 12px;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .reinhold-step:last-child { border-bottom: none; }
+        .reinhold-step-num {
+            background: var(--accent);
+            color: #000;
+            font-weight: 700;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 0.85rem;
+        }
+        .reinhold-step-content { flex: 1; font-size: 0.85rem; line-height: 1.5; }
+        .reinhold-step-content strong { color: var(--accent); }
+        .download-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        .download-btn {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 14px;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.85rem;
+            text-align: center;
+            font-weight: 600;
+            transition: background-color 0.15s;
+        }
+        .download-btn:hover { background: rgba(0,255,102,0.15); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="panel">
+            <h1>Entropy Lab</h1>
+            <h2>Diceware aux dés (méthode officielle)</h2>
+            <p class="desc">
+                Page autonome : elle ne charge rien, n'envoie rien, et fonctionne
+                hors ligne. Convention SelfRecover : wordlist officielle 7 776 mots,
+                CC-BY 3.0 (EN = EFF Large Wordlist ; FR = équivalent ArthurPons) —
+                jamais de mini-version « pour la démo ».
+            </p>
+
+            <div id="mode-reinhold">
+                <h3 style="margin-bottom:8px;color:var(--accent);">Méthode officielle Reinhold (1995) — recommandée</h3>
+                <p class="desc">
+                    La méthode originelle du diceware. Les dés physiques produisent une
+                    entropie cryptographique <strong>au moins équivalente</strong> à celle
+                    d'un RNG logiciel — et <strong>supérieure en modèle de confiance</strong>,
+                    car elle ne dépend d'aucun ordinateur.
+                </p>
+
+                <div style="margin-top:16px;padding:14px;background:var(--bg);border-radius:6px;border:1px solid var(--border);">
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">1</div>
+                        <div class="reinhold-step-content">
+                            Procure-toi <strong>5 dés à 6 faces</strong> (ou 1 dé jeté 5 fois).
+                            Pas besoin de dés certifiés pour usage courant ; pour des secrets
+                            critiques, utilise des dés en métal de qualité (pondération uniforme).
+                        </div>
+                    </div>
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">2</div>
+                        <div class="reinhold-step-content">
+                            Télécharge la <strong>table diceware</strong> (PDF, 7776 mots
+                            avec leurs codes 5 dés <code>11111</code> à <code>66666</code>) —
+                            EFF pour l'EN, ArthurPons pour le FR. Imprime-la si possible.
+                        </div>
+                    </div>
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">3</div>
+                        <div class="reinhold-step-content">
+                            <strong>Lance les 5 dés.</strong> Lis les chiffres dans l'ordre des dés
+                            (gauche → droite). Tu obtiens un nombre du type <code>32145</code>.
+                            Cherche-le dans la table → tu trouves UN mot précis (ex: <code>32145 → horseshoe</code>).
+                        </div>
+                    </div>
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">4</div>
+                        <div class="reinhold-step-content">
+                            Recommence pour chaque mot suivant. <strong>Recommandation officielle :</strong>
+                            6 mots minimum (77,5 bits), 7+ pour secrets sensibles, 8+ pour root server.
+                        </div>
+                    </div>
+                    <div class="reinhold-step">
+                        <div class="reinhold-step-num">5</div>
+                        <div class="reinhold-step-content">
+                            <strong>Note la passphrase sur papier</strong>, range-la dans un endroit sûr
+                            (coffre, deuxième domicile de confiance). Ne la tape JAMAIS dans une
+                            application web pour vérifier — utilise l'outil offline ci-dessous.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="download-row">
+                    <a class="download-btn" href="docs/diceware-method-en.pdf" download>⬇ Table EFF (PDF, EN)</a>
+                    <a class="download-btn" href="docs/diceware-method-fr.pdf" download>⬇ Table diceware FR (ArthurPons, PDF)</a>
+                    <a class="download-btn" href="../offline-validator/index.html" download>⬇ Outil offline (HTML autonome)</a>
+                </div>
+            </div>
+
+            <p class="desc" style="margin-top:24px;font-size:0.75rem;">
+                Hypothèse de l'attaquant pour le temps de cassage : 10¹² essais/seconde
+                (cluster GPU haut de gamme, hash hors ligne). Sources :
+                <a href="https://www.eff.org/dice" target="_blank" rel="noopener">EFF Diceware</a>,
+                <a href="https://github.com/dropbox/zxcvbn" target="_blank" rel="noopener">zxcvbn</a>.
+            </p>
+        </div>
+    </div>
+</body>
+</html>
