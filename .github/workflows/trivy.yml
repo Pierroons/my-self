@@ -1,0 +1,68 @@
+name: trivy (dépendances)
+
+# Cherche les vulnérabilités connues des dépendances déclarées — composer.lock,
+# pyproject.toml — et non celles du code lui-même, que d'autres contrôles
+# couvrent. Une bibliothèque vulnérable ne se voit ni à la relecture ni au test :
+# elle s'annonce dans une base de CVE publiée après coup.
+#
+# 🔑 **Seulement les failles corrigeables.** `--ignore-unfixed` écarte celles
+# sans correctif publié : les signaler ne mène à aucune action, et un rapport où
+# l'on ne peut rien faire cesse d'être lu. Conséquence à connaître pour lire le
+# résultat — « aucune faille » veut dire « aucune faille corrigeable », pas
+# « aucune vulnérabilité ».
+#
+# 🔑 **Aucun filtre de branche**, pour la raison écrite dans gitleaks.yml : une
+# liste de branches à tenir à jour finit par diverger du nom réel de la branche
+# de travail, et le trou est invisible.
+#
+# ⚠️ Binaire téléchargé plutôt qu'action tierce, même choix que gitleaks : une
+# action ajoute un dépôt à qui l'on confie l'exécution, et une version à suivre.
+# La version est épinglée ici pour qu'un même commit rende toujours le même
+# verdict — un scanner qui se met à jour tout seul fait rougir la CI sur du code
+# qui n'a pas changé, et on apprend alors à ignorer le rouge.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  dependances:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      - name: Installer trivy
+        run: |
+          # Même version que la veille quotidienne de l'instance : deux
+          # scanners de versions différentes rendent des verdicts différents sur
+          # le même dépôt, et on passe le temps à réconcilier au lieu de corriger.
+          # La 0.74.0 existe — on suit l'instance, pas la dernière parue.
+          VERSION=0.73.0
+          curl -fsSL -o trivy.tar.gz \
+            "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/trivy_${VERSION}_Linux-64bit.tar.gz"
+          tar xzf trivy.tar.gz trivy
+          ./trivy --version
+
+      - name: Scanner les dépendances déclarées
+        run: |
+          ./trivy fs \
+            --scanners vuln \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --exit-code 1 \
+            --no-progress \
+            .
+
+      # Le scan précédent s'arrête au premier verdict rouge. Celui-ci rend la
+      # liste complète même quand tout va bien : sans elle, on ne sait pas si
+      # zéro faille signifie « rien trouvé » ou « rien cherché » — un scanner
+      # qui n'a lu aucun fichier de dépendances rend le même vert qu'un dépôt
+      # sain.
+      - name: Ce qui a réellement été lu
+        if: always()
+        run: |
+          ./trivy fs --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+            --no-progress --format table . || true
