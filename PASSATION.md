@@ -17,7 +17,7 @@ endroit. Et comme ce fichier est public : rien qui n'irait pas dans un commit.
 
 ---
 
-**Dernier passage : 19 août 2026 — 21:40**
+**Dernier passage : 19 août 2026 — 22:05**
 
 ## À faire
 
@@ -30,13 +30,20 @@ endroit. Et comme ce fichier est public : rien qui n'irait pas dans un commit.
 
 ## En attente de décision
 
-*(rien)*
+- Une règle sudoers est prête pour le watchdog d'un projet voisin, à poser à la
+  main faute de droits : elle est décrite hors dépôt, avec sa commande de pose
+  et son contrôle. Sans elle, le watchdog signale correctement qu'il ne peut
+  pas relancer — mais ne relance pas.
 
 ## Pièges actifs
 
 - **Les sept cibles supprimées en production le 19/08 n'ont plus de filet
   applicatif.** Retour arrière par l'archive datée du jour sur la machine, ou
   par la sauvegarde chiffrée. Le `sed` inverse sur les vhosts ne suffit plus.
+- **Deux fichiers d'état voisins ont des sens de défaillance opposés.** Celui
+  des volumes, perdu, rend le contrôle muet — il se fusionne, jamais il ne
+  s'écrase. Celui du silence de notification, perdu, fait envoyer une alerte de
+  trop — c'est voulu. Ne pas uniformiser leur traitement.
 - **Le déploiement a deux destinations** depuis le 19/08 : le code servi par le
   frontal, et les outils que le planificateur exécute. Une modification d'outil
   qui n'atteint pas la seconde ne s'exécute jamais, sans que rien ne le dise.
