@@ -94,6 +94,12 @@ paths = [
   '''(^|/)\.gitleaks\.toml$''',
   '''(^|/)\.gitleaksignore$''',
   '''(^|/)CONTRIBUTING\.md$''',
+  # Les deux suivants sont gitignorés : ils ne partent ni sur GitHub ni, depuis
+  # le filtre .gitignore du rsync, en production. Sans cette exclusion, gitleaks
+  # rend 1 à chaque passage et deploy.sh s'annule systématiquement — une alarme
+  # qui bloque tout finit contournée, et l'audit ne sert plus à rien.
+  '''(^|/)demo/lab/challenge/''',   # flags du CTF : les credentials SONT le contenu
+  '''(^|/)scripts/deploy\.sh$''',   # porte l'adresse LAN du serveur de destination
 ]
 regexes = [
   # Comptes système et génériques : /home/<quelquechose> n'identifie personne.

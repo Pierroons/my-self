@@ -9,10 +9,10 @@
   <meta property="og:title" content="SelfAct — Du droit à l'action">
   <meta property="og:description" content="Prolongement opérationnel de SelfJustice. Produit l'acte que l'on envoie, conforme aux exigences légales.">
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://your-instance.example/act">
+  <meta property="og:url" content="https://justice.example.org/act">
   <style>
     :root {
-      /* Palette MySelf cohérente avec your-instance.example */
+      /* Palette MySelf cohérente avec justice.example.org */
       --bg: #0f1419;
       --bg-card: #1a2028;
       --text: #e8eaed;
@@ -288,7 +288,7 @@
 <p class="crumb">
   <a href="https://my-self.fr">my-self.fr</a>  ›
   Self-Right  ›
-  <a href="https://your-instance.example">SelfJustice</a>  ›
+  <a href="https://justice.example.org">SelfJustice</a>  ›
   <a href="/act">SelfAct</a>  ›
   Documentation méthodologique
 </p>
@@ -446,7 +446,7 @@
   <p>
     Les affirmations juridiques sont <strong>ancrées dans un article précis</strong>, au format
     <code>art. X du Code Y</code>. Les articles sont toujours récupérés via l'API SelfJustice
-    (<code>GET https://your-instance.example/api/article?code=X&amp;id=Y</code>), connectée à
+    (<code>GET https://justice.example.org/api/article?code=X&amp;id=Y</code>), connectée à
     Légifrance. Vérification systématique à la source.
   </p>
   <p>
@@ -455,7 +455,7 @@
   </p>
   <p>
     Si l'utilisateur ne connaît pas la base légale applicable à sa situation, la ressource
-    <code>https://your-instance.example/</code> documente la méthodologie SelfJustice d'analyse
+    <code>https://justice.example.org/</code> documente la méthodologie SelfJustice d'analyse
     juridique pour qualifier juridiquement la situation. Retour à SelfAct avec les articles
     identifiés pour la recherche de modèle officiel ou la production du livrable.
   </p>
@@ -464,7 +464,7 @@
   <p>La voie standard :</p>
   <ol>
     <li><strong>Chercher</strong> dans le catalogue via l'API :
-      <code>GET https://your-instance.example/act/api/catalog?q=...</code>
+      <code>GET https://justice.example.org/act/api/catalog?q=...</code>
       (ou <code>?category=...</code>).</li>
     <li>Si un modèle existe : <strong>reproduire fidèlement sa structure</strong>
       (en-têtes, formules consacrées, articles cités, emplacement signature) dans un document
@@ -559,7 +559,7 @@ Sur les faits :
   </ol>
 
   <p><strong>Production du PDF</strong> — le livrable est généré via
-    <code>POST https://your-instance.example/act/api/draft</code>. Le filigrane diagonal rouge
+    <code>POST https://justice.example.org/act/api/draft</code>. Le filigrane diagonal rouge
     est appliqué uniquement au cas C (voir <a href="#matrice-abc">matrice A/B/C</a>) ;
     les cas A et B sont produits sans filigrane.</p>
 
@@ -607,7 +607,7 @@ Sur les faits :
   <h2>Matrice : cas → acte recommandé</h2>
   <p>
     Aide-mémoire pour orienter la rédaction selon la situation. Si le cas n'apparaît pas,
-    consulte <a href="https://your-instance.example">SelfJustice</a> pour une qualification juridique préalable.
+    consulte <a href="https://justice.example.org">SelfJustice</a> pour une qualification juridique préalable.
   </p>
 
   <table>
@@ -736,7 +736,7 @@ Sur les faits :
   <details open>
     <summary><code>GET /act/api/find?list=1</code></summary>
     <p>Retourne la liste des situations indexées (slugs + labels + compteurs d'actes).</p>
-    <pre class="template">GET https://your-instance.example/act/api/find?list=1
+    <pre class="template">GET https://justice.example.org/act/api/find?list=1
 
 Response :
 {
@@ -756,7 +756,7 @@ Response :
     <p>Retourne les actes recommandés pour une situation, classés par priorité :
       official > simulator > info_only > lawyer_required. Les urgences (enfant en danger,
       cyberharcèlement) remontent un numéro d'appel en premier.</p>
-    <pre class="template">GET https://your-instance.example/act/api/find?situation=voisinage_nuisances
+    <pre class="template">GET https://justice.example.org/act/api/find?situation=voisinage_nuisances
 
 Response :
 {
@@ -770,7 +770,7 @@ Response :
   "articles": "art. 1240 C. civ., art. R. 1336-5 C. santé publique",
   "fallback": {
     "if_no_official_match": "Use /act/api/draft ...",
-    "draft_url": "https://your-instance.example/act/api/draft"
+    "draft_url": "https://justice.example.org/act/api/draft"
   }
 }</pre>
   </details>
@@ -783,7 +783,7 @@ Response :
       au format PDF). Le filigrane SVG diagonal <strong>NON OFFICIEL — IRRECEVABLE</strong>
       reste à l'impression.
     </p>
-    <pre class="template">POST https://your-instance.example/act/api/draft
+    <pre class="template">POST https://justice.example.org/act/api/draft
 Content-Type: application/json
 
 Body :
@@ -866,7 +866,7 @@ Response : text/html (à ouvrir dans navigateur, Ctrl+P)</pre>
   </p>
   <p style="font-size:0.82rem">
     Cadence de mise à jour législative : <strong>bimensuelle (1<sup>er</sup> + 15)</strong>
-    via <a href="https://your-instance.example">SelfJustice</a>. Dernière mise à jour : 18 avril 2026.
+    via <a href="https://justice.example.org">SelfJustice</a>. Dernière mise à jour : 18 avril 2026.
   </p>
 </footer>
 
