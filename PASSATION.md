@@ -35,9 +35,9 @@ endroit. Et comme ce fichier est public : rien qui n'irait pas dans un commit.
   et son contrôle. Sans elle, le watchdog signale correctement qu'il ne peut
   pas relancer — mais ne relance pas.
 
-- Un service hérité tourne encore — vhost, base vide, sauvegarde quotidienne —
-  sans plus aucune fréquentation. Rien d'urgent : le garder ou le fermer se
-  décide à froid, mais la question mérite d'être posée une fois.
+- Un service sans fréquentation tourne encore, base vide. **Il est conservé
+  volontairement** : il servira de terrain d'essai pour un site en clair à
+  l'automne. Ne pas le fermer au motif qu'il paraît mort.
 
 ## Pièges actifs
 
