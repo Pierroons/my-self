@@ -5,11 +5,18 @@ CREATE TABLE IF NOT EXISTS accounts (
     username        TEXT UNIQUE NOT NULL,
     pw_hash         TEXT NOT NULL,          -- Argon2id du password
     pass_hash       TEXT NOT NULL,          -- Argon2id de la passphrase L1
-    recovery_hash   TEXT NOT NULL,          -- Argon2id(derived_key) — L2
-    recovery_word   TEXT,                   -- conservé en clair DANS LA DEMO
-                                            -- pour pouvoir comparer avec le HMAC
-                                            -- saisi par l'user (visibilité pédago).
-                                            -- JAMAIS en prod.
+    -- Argon2id(derived_key) — facteur de connaissance du niveau 2.
+    --
+    -- ⚠️ Argon2id ralentit ici, il ne protège pas : le mot fait 24 bits
+    -- (bin2hex(random_bytes(3))), soit 16,7 millions de possibilités. Qui
+    -- détient cette base et le site_salt les épuise en quelques heures.
+    --
+    -- Ce qui protège réellement ce facteur, c'est le secret du site_salt — et
+    -- cette démo l'expose délibérément par /api/recover/site-salt, pour que le
+    -- HMAC se calcule dans le navigateur sous les yeux du visiteur. En
+    -- production le sel reste côté serveur, et c'est lui le rempart, pas la
+    -- longueur du mot.
+    recovery_hash   TEXT NOT NULL,
     created_at      INTEGER NOT NULL
 );
 

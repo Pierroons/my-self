@@ -108,14 +108,13 @@ $log->crypto('register', 'argon2id(derived_key) — m=64 Mo, t=4, p=2', ['durati
 
 // INSERT
 $stmt = $db->prepare('
-    INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, recovery_word, created_at)
-    VALUES (:u, :pw, :pass, :rec, :word, :t)
+    INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at)
+    VALUES (:u, :pw, :pass, :rec, :t)
 ');
 $stmt->bindValue(':u',    $username);
 $stmt->bindValue(':pw',   $pwHash);
 $stmt->bindValue(':pass', $passHash);
 $stmt->bindValue(':rec',  $recoveryHash);
-$stmt->bindValue(':word', $recoveryWord);
 $stmt->bindValue(':t',    time());
 $stmt->execute();
 $accountId = $db->lastInsertRowID();
