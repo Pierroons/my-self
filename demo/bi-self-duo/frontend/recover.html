@@ -523,7 +523,7 @@
   <!-- Étape 4 — Recovery L2 (HMAC client-side) -->
   <div class="card-app" id="step-4">
     <div class="step-header"><div class="num">4</div><div class="title">Récupération niveau 2 — avec ton mot de récupération</div></div>
-    <form id="form-recover-l2">
+    <form id="form-phishing-check">
       <div class="field">
         <label for="r2-username">Identifiant</label>
         <input id="r2-username" name="username" placeholder="ex: alice" autocomplete="off">
@@ -563,9 +563,7 @@
         <input id="r2c-word" name="word" placeholder="ex: 58c3ab" autocomplete="off" required>
       </div>
       <div class="field">
-        <label for="r2c-password">Nouveau mot de passe (8 caractères minimum)</label>
-        <input id="r2c-password" name="new_password" minlength="8" placeholder="celui que tu veux" autocomplete="off" required>
-      </div>
+              </div>
       <button class="btn" type="submit">Récupérer avec code + mot</button>
     </form>
     <div id="r2c-viz"></div>
@@ -647,7 +645,7 @@
         <option value="login">login.php</option>
         <option value="logout">logout.php</option>
         <option value="recover-l1">recover-l1.php</option>
-        <option value="recover-l2">recover-l2.php</option>
+        <option value="phishing-check">phishing-check.php</option>
         <option value="recover-l2-code">recover-l2-code.php</option>
         <option value="phishing-sim">phishing-sim.php</option>
         <option value="me">me.php</option>
@@ -700,7 +698,7 @@ const API = {
   login:       '/demo/api/recover/login',
   logout:      '/demo/api/recover/logout',
   recoverL1:   '/demo/api/recover/recover-l1',
-  recoverL2:   '/demo/api/recover/recover-l2',
+  phishingCheck: '/demo/api/recover/phishing-check',
   recoverL2Code: '/demo/api/recover/recover-l2-code',
   phishingSim: '/demo/api/recover/phishing-sim',
   siteSalt:    '/demo/api/recover/site-salt',
@@ -986,9 +984,14 @@ $('form-recover-l1').addEventListener('submit', async (e) => {
     });
     const d = await r.json();
     if (d.ok) {
-      state.credentials.password = d.new_password;
+      // La passphrase a servi : elle est consommée et remplacée. L'afficher
+      // n'est pas un détail — sans elle, l'utilisateur perd son niveau 1.
+      state.credentials.password   = d.new_password;
+      state.credentials.passphrase = d.passphrase;
       renderCreds();
-      res.innerHTML = `<div class="inline-result ok">✓ Nouveau password : <code>${html_escape(d.new_password)}</code> — mis à jour dans le panneau credentials. Les sessions antérieures ont été déconnectées.</div>`;
+      res.innerHTML = `<div class="inline-result ok">✓ Nouveau password : <code>${html_escape(d.new_password)}</code><br>`
+        + `✓ Nouvelle passphrase : <code>${html_escape(d.passphrase)}</code><br>`
+        + `L'ancienne vient d'être consommée et ne fonctionnera plus. Les deux sont dans le panneau credentials ; les sessions antérieures ont été déconnectées.</div>`;
       $('step-3').classList.add('done');
       $('log-password').value = d.new_password;
       refreshState();
@@ -1018,7 +1021,7 @@ async function getSiteSalt() {
   return cachedSalt;
 }
 
-$('form-recover-l2').addEventListener('submit', async (e) => {
+$('form-phishing-check').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = e.target.querySelector('button');
   btn.disabled = true;
@@ -1044,7 +1047,7 @@ $('form-recover-l2').addEventListener('submit', async (e) => {
         <div class="line" style="margin-top: 0.4rem;">→ envoi au serveur de <strong>derived_key uniquement</strong>. Le mot <code>${html_escape(word)}</code> n'est jamais transmis.</div>
       </div>`;
 
-    const r = await fetch(API.recoverL2, {
+    const r = await fetch(API.phishingCheck, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, derived_key: derived, domain_used: domain }),
@@ -1083,8 +1086,7 @@ $('form-recover-l2-code').addEventListener('submit', async (e) => {
   try {
     const code        = $('r2c-code').value.trim().toLowerCase();
     const word        = $('r2c-word').value.trim();
-    const newPassword = $('r2c-password').value;
-    if (!code || !word || !newPassword) throw new Error('Tous les champs sont requis.');
+    if (!code || !word) throw new Error('Tous les champs sont requis.');
 
     const { domain, salt } = await getSiteSalt();
     const derived = await hmacSha256(word, domain + salt);
@@ -1093,26 +1095,29 @@ $('form-recover-l2-code').addEventListener('submit', async (e) => {
       <div class="hmac-viz">
         <div class="line"><span class="lbl">client-side:</span></div>
         <div class="line">  <span class="lbl">HMAC-SHA256(mot, domain+salt) = </span><span class="val">${derived}</span></div>
-        <div class="line" style="margin-top: 0.4rem;">→ le corps envoyé contient <strong>le code, la clé dérivée, le nouveau mot de passe</strong>.</div>
+        <div class="line" style="margin-top: 0.4rem;">→ le corps envoyé contient <strong>le code et la clé dérivée</strong>, rien d'autre.</div>
         <div class="line">→ <strong>aucun identifiant</strong> : le serveur retrouve le compte par le seul code.</div>
       </div>`;
 
     const r = await fetch(API.recoverL2Code, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recovery_code: code, memorized_derived: derived, new_password: newPassword }),
+      body: JSON.stringify({ recovery_code: code, memorized_derived: derived }),
       credentials: 'include',
     });
     const d = await r.json();
     if (d.ok) {
-      state.credentials.password = newPassword;
+      // Les deux secrets viennent du serveur : le protocole les émet, on ne les choisit pas.
+      state.credentials.password   = d.new_password;
+      state.credentials.passphrase = d.passphrase;
       state.usedCodes.add(code);
       renderCreds();
       res.innerHTML = `<div class="inline-result ok">✓ Compte <strong>${html_escape(d.username)}</strong> récupéré sans l'avoir nommé. `
-        + `Le code vient d'être consommé — il en reste ${d.codes_restants}.</div>`;
+        + `Le code vient d'être consommé — il en reste ${d.codes_restants}. `
+        + `Ton mot de passe <strong>et</strong> ta passphrase ont été renouvelés : note-les.</div>`;
       $('step-4b').classList.add('done');
       $('log-username').value = d.username;
-      $('log-password').value = newPassword;
+      $('log-password').value = d.new_password;
       refreshState();
     } else {
       res.innerHTML = `<div class="inline-result err">✗ ${html_escape(d.message || d.error)}</div>`;

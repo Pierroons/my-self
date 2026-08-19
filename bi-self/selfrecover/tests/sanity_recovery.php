@@ -111,6 +111,33 @@ for ($i = 0; $i < 5; $i++) { $rec->parPassphrase('alice', 'faux faux faux faux',
 verifier('cinq échecs bloquent le compte',
     str_contains($rec->parPassphrase('alice', $PHR, '10.0.0.3', $now)['message'], 'Trop de tentatives'));
 
+echo "\n→ Atomicité\n";
+
+/** Stockage qui échoue à la dernière écriture d'une récupération réussie. */
+final class StockageQuiCasse extends StockageMemoire
+{
+    public function revoquerSessions(int $compteId): void
+    {
+        throw new RuntimeException('panne simulée après consommation du code');
+    }
+}
+
+$stC = new StockageQuiCasse();
+$stC->comptes['alice']     = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
+$stC->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash($PHR)];
+$recC  = new Recovery($stC, $SEL, delaiRefusUs: 0);
+$codesC = $recC->emettreCodes(1, 3, $now);
+
+$leve = false;
+try {
+    $recC->parCode($codesC[0], $MOT, null, $now);
+} catch (RuntimeException $e) {
+    $leve = true;
+}
+verifier('une panne en cours de récupération remonte', $leve);
+verifier('le code n\'est pas consommé si la suite échoue', $stC->compterCodesRestants(1) === 3);
+verifier('aucune empreinte n\'a été laissée à moitié écrite', !isset($stC->empreintes[1]));
+
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Récupération SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 echo str_repeat('=', 63) . "\n\n";

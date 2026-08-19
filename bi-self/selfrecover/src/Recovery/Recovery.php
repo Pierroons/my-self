@@ -89,12 +89,21 @@ final class Recovery
         // l'utilisateur croirait son accès rendu alors qu'il resterait partagé.
         $motDePasse     = Device::engendrerMotDePasse();
         $nouvellePhrase = implode(' ', Wordlist::generate(4, 'en')['words']);
-        $this->stockage->remplacerEmpreintes(
-            (int) $compte['id'],
-            Hashing::hash($motDePasse),
-            Hashing::hash($nouvellePhrase),
-        );
-        $this->stockage->revoquerSessions((int) $compte['id']);
+
+        $this->stockage->commencerTransaction();
+        try {
+            $this->stockage->remplacerEmpreintes(
+                (int) $compte['id'],
+                Hashing::hash($motDePasse),
+                Hashing::hash($nouvellePhrase),
+            );
+            $this->stockage->revoquerSessions((int) $compte['id']);
+            $this->stockage->validerTransaction();
+        } catch (\Throwable $e) {
+            $this->stockage->annulerTransaction();
+
+            throw $e;
+        }
 
         return [
             'ok'           => true,
@@ -161,20 +170,28 @@ final class Recovery
             return $refus;
         }
 
-        $this->stockage->consommerCode((int) $trouve['code_id'], $maintenant);
+        $this->stockage->commencerTransaction();
+        try {
+            $this->stockage->consommerCode((int) $trouve['code_id'], $maintenant);
 
         // Rendre l'accès renouvelle les deux secrets, pas seulement le mot de
         // passe : qui a dû récupérer ne sait pas ce qui a fuité. Laisser
         // l'ancienne passphrase valable garderait ouverte une porte dont on
         // ignore si elle est connue.
-        $motDePasse     = Device::engendrerMotDePasse();
-        $nouvellePhrase = implode(' ', Wordlist::generate(4, 'en')['words']);
-        $this->stockage->remplacerEmpreintes(
-            (int) $trouve['compte_id'],
-            Hashing::hash($motDePasse),
-            Hashing::hash($nouvellePhrase),
-        );
-        $this->stockage->revoquerSessions((int) $trouve['compte_id']);
+            $motDePasse     = Device::engendrerMotDePasse();
+            $nouvellePhrase = implode(' ', Wordlist::generate(4, 'en')['words']);
+            $this->stockage->remplacerEmpreintes(
+                (int) $trouve['compte_id'],
+                Hashing::hash($motDePasse),
+                Hashing::hash($nouvellePhrase),
+            );
+            $this->stockage->revoquerSessions((int) $trouve['compte_id']);
+            $this->stockage->validerTransaction();
+        } catch (\Throwable $e) {
+            $this->stockage->annulerTransaction();
+
+            throw $e;
+        }
 
         return [
             'ok'             => true,

@@ -42,65 +42,44 @@ if (!preg_match('/^[a-z0-9]{3,20}$/', $username) || strlen($passphrase) < 4) {
 }
 
 $db = $s->db();
-$stmt = $db->prepare('SELECT id, pass_hash FROM accounts WHERE username = :u');
-$stmt->bindValue(':u', $username);
-$account = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
-if (!is_array($account)) {
-    $log->warning('recover-l1', 'Compte introuvable', ['username' => $username]);
-    // Le même travail que sur un compte réel. C'est le coût du hachage qui
-    // égalise le temps de réponse, jamais un délai fixe : celui-ci se distingue
-    // d'un Argon2id, qui varie, et il était ici plus long que lui.
-    password_verify($passphrase, RecoverHelper::dummyHash());
-    http_response_code(401);
-    echo json_encode(['ok'=>false,'error'=>'bad_credentials','message'=>'Passphrase incorrecte ou compte inconnu.']);
-    exit;
-}
+require_once __DIR__ . '/../../lib/StockageSelfRecover.php';
+$recovery = new Pierroons\SelfRecover\Recovery\Recovery(new StockageSelfRecover($db), RecoverHelper::siteSalt($s));
+
+// 🔑 Le protocole n'est pas réimplémenté ici : il vit dans
+// `bi-self/selfrecover/src`, avec le lab pour second consommateur. Cet endpoint
+// n'est plus qu'une porte HTTP — c'est ce qui garantit qu'un correctif de
+// récupération ne peut plus s'appliquer à une démo et pas à l'autre.
+//
+// L'origine n'est pas transmise : cette démo freine par session (RateLimit,
+// plus haut), et sa table `login_attempts` ne porte pas de colonne `ip`.
+$log->info('recover-l1', 'Vérification déléguée à Pierroons\SelfRecover\Recovery::parPassphrase');
 
 $t0 = microtime(true);
-$ok = password_verify($passphrase, $account['pass_hash']);
-$t1 = microtime(true);
-$log->crypto('recover-l1', 'argon2id_verify(passphrase, stored_pass_hash)', [
-    'duration_ms' => (int) (($t1 - $t0) * 1000),
-    'result'      => $ok ? 'match' : 'no_match',
+$r  = $recovery->parPassphrase($username, $passphrase, null);
+$ms = (int) ((microtime(true) - $t0) * 1000);
+
+$log->crypto('recover-l1', 'argon2id — m=64 Mo, t=4, p=2, exécuté même sur compte inconnu', [
+    'duration_ms' => $ms,
+    'note'        => "C'est le coût du hachage qui égalise le temps de réponse, jamais un délai fixe : celui-ci se distinguerait d'un Argon2id, qui varie.",
 ]);
 
-if (!$ok) {
-    $log->warning('recover-l1', 'Passphrase KO', ['username' => $username]);
+if (!$r['ok']) {
+    $log->warning('recover-l1', 'Refus — le message ne dit pas si le compte existe');
     http_response_code(401);
-    // ⚠️ Même phrase que sur le chemin « compte inconnu », au mot près. Égaliser
-    // le temps de réponse ne sert à rien si le corps distingue les deux cas :
-    // il suffirait alors d'un grep là où il fallait un chronomètre.
-    echo json_encode(['ok'=>false,'error'=>'bad_credentials','message'=>'Passphrase incorrecte ou compte inconnu.']);
+    echo json_encode(['ok' => false, 'error' => 'bad_credentials', 'message' => $r['message']]);
     exit;
 }
 
-// Génère un nouveau password
-$newPassword = RecoverHelper::generatePassword(16);
-$log->info('recover-l1', 'Nouveau password généré (remplace l\'ancien)');
-
-$t2 = microtime(true);
-$newHash = RecoverHelper::hash($newPassword);
-$t3 = microtime(true);
-$log->crypto('recover-l1', 'argon2id(new_password) — m=64 Mo, t=4, p=2', ['duration_ms' => (int) (($t3 - $t2) * 1000)]);
-
-$stmt = $db->prepare('UPDATE accounts SET pw_hash = :h WHERE id = :id');
-$stmt->bindValue(':h', $newHash);
-$stmt->bindValue(':id', $account['id']);
-$stmt->execute();
-$log->info('recover-l1', 'UPDATE accounts SET pw_hash = ? WHERE id = ?', ['account_id' => $account['id']]);
-
-// Invalider les app_sessions existantes (tokens actifs révoqués)
-$stmt = $db->prepare('DELETE FROM app_sessions WHERE account_id = :id');
-$stmt->bindValue(':id', $account['id']);
-$stmt->execute();
-$log->info('recover-l1', 'Toutes les app_sessions précédentes ont été invalidées', ['revoked' => $db->changes()]);
-
-$log->success('recover-l1', 'HTTP 200 — nouveau password livré à l\'user');
+$log->info('recover-l1', 'Mot de passe ET passphrase renouvelés, sessions révoquées', [
+    'note' => "La passphrase est consommée par son usage : la laisser valable ferait d'un papier volé une porte permanente.",
+]);
+$log->success('recover-l1', 'HTTP 200 — nouveaux secrets livrés à l\'user');
 
 echo json_encode([
     'ok'           => true,
     'username'     => $username,
-    'new_password' => $newPassword,
-    'note'         => "Note ton nouveau password. Tu dois te reconnecter explicitement avec. Toutes tes anciennes sessions ouvertes ont été déconnectées automatiquement.",
+    'new_password' => $r['mot_de_passe'],
+    'passphrase'   => $r['passphrase'],
+    'note'         => "Note ton nouveau password ET ta nouvelle passphrase : l'ancienne vient d'être consommée et ne fonctionnera plus. Toutes tes sessions ouvertes ont été déconnectées.",
 ]);

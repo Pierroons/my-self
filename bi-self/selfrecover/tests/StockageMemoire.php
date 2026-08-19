@@ -13,7 +13,9 @@ use Pierroons\SelfRecover\Storage\StorageInterface;
  * Il tient lieu de second consommateur : si le contrat ne se satisfaisait que
  * d'une base SQLite, il resterait taillé pour un seul appelant.
  */
-final class StockageMemoire implements StorageInterface
+// Non `final` : les sondes en dérivent pour simuler une panne au milieu d'une
+// écriture, ce qui est le seul moyen de vérifier qu'une transaction annule.
+class StockageMemoire implements StorageInterface
 {
     /** @var array<string, array{id: int, empreinte_mot: string}> */
     public array $comptes = [];
@@ -180,5 +182,40 @@ final class StockageMemoire implements StorageInterface
             $this->codes,
             static fn (array $c): bool => $c['compte_id'] === $compteId && !$c['utilise'],
         ));
+    }
+
+    // ── Atomicité ──────────────────────────────────────────────────────────
+    //
+    // Adaptateur en mémoire : la transaction copie l'état et le restaure en cas
+    // d'annulation. Grossier, mais suffisant pour que la sonde puisse vérifier
+    // qu'un échec en cours de route ne laisse rien à moitié écrit.
+
+    /** @var array<string, mixed>|null */
+    private ?array $avant = null;
+
+    public function commencerTransaction(): void
+    {
+        $this->avant = [
+            'comptes' => $this->comptes, 'appareils' => $this->appareils,
+            'defis' => $this->defis, 'tentatives' => $this->tentatives,
+            'empreintes' => $this->empreintes, 'sessionsRevoquees' => $this->sessionsRevoquees,
+            'passphrases' => $this->passphrases, 'codes' => $this->codes,
+        ];
+    }
+
+    public function validerTransaction(): void
+    {
+        $this->avant = null;
+    }
+
+    public function annulerTransaction(): void
+    {
+        if ($this->avant === null) {
+            return;
+        }
+        foreach ($this->avant as $champ => $valeur) {
+            $this->$champ = $valeur;
+        }
+        $this->avant = null;
     }
 }

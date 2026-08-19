@@ -40,7 +40,6 @@ if (!RateLimit::checkAndIncrementActions($s->dir)) {
 $body = json_decode((string) file_get_contents('php://input'), true);
 $code        = is_array($body) ? strtolower(trim((string) ($body['recovery_code'] ?? ''))) : '';
 $derivedKey  = is_array($body) ? (string) ($body['memorized_derived'] ?? '') : '';
-$newPassword = is_array($body) ? (string) ($body['new_password'] ?? '') : '';
 
 $log = $s->logger();
 $log->info('recover-l2-code', 'POST /demo/api/recover/recover-l2-code');
@@ -62,106 +61,55 @@ if (!preg_match('/^[a-f0-9]{64}$/', $derivedKey)) {
     echo json_encode(['ok'=>false,'error'=>'invalid_derived_key']);
     exit;
 }
-if (strlen($newPassword) < 8) {
-    $log->warning('recover-l2-code', 'Nouveau mot de passe trop court');
-    http_response_code(400);
-    echo json_encode(['ok'=>false,'error'=>'password_too_short']);
-    exit;
-}
 
-$db     = $s->db();
-$lookup = hash_hmac('sha256', $code, RecoverHelper::siteSalt($s));
+$db = $s->db();
 
+require_once __DIR__ . '/../../lib/StockageSelfRecover.php';
+$recovery = new Pierroons\SelfRecover\Recovery\Recovery(new StockageSelfRecover($db), RecoverHelper::siteSalt($s));
+
+// 🔑 Le protocole vit dans `bi-self/selfrecover/src`, partagé avec le lab. Cet
+// endpoint n'est plus qu'une porte HTTP. Ce qu'il ne fait plus lui-même :
+// calculer l'index de recherche, vérifier les deux facteurs, consommer le code
+// et remplacer les secrets dans une même transaction.
 $log->crypto('recover-l2-code', 'HMAC-SHA256(code, sel du service) → index de recherche', [
-    'lookup'  => $lookup,
-    'pourquoi' => "Le HMAC sert d'index : il retrouve la ligne en une requête, sans nom d'utilisateur. "
-                . "Stocker le code en clair permettrait la même recherche, mais une fuite de la base "
-                . "livrerait tous les codes — le hachage Argon2id ci-dessous couvre ce risque, et le "
-                . "HMAC couvre la recherche. Aucun des deux ne remplace l'autre.",
+    'note' => "Le code localise le compte sans qu'aucun identifiant soit demandé : il n'existe donc aucun champ où éprouver l'existence d'un compte.",
 ]);
-
-$stmt = $db->prepare(
-    'SELECT rc.id AS code_id, rc.code_hash, rc.used,
-            a.id AS account_id, a.username, a.recovery_hash
-       FROM recovery_codes rc JOIN accounts a ON a.id = rc.account_id
-      WHERE rc.code_lookup = :l'
-);
-$stmt->bindValue(':l', $lookup);
-$row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
-
-// ⚠️ Code inconnu et code déjà consommé donnent la même réponse, au même
-// rythme : les distinguer dirait à un attaquant qu'il a trouvé un vrai code.
-if (!is_array($row) || (int) $row['used'] === 1) {
-    $log->warning('recover-l2-code', is_array($row)
-        ? 'Code déjà consommé — refus (usage unique)'
-        : 'Aucun code ne correspond à cet index');
-    // Deux vérifications, comme le chemin nominal juste en dessous : le code puis
-    // le mot. N'en imiter qu'une laisserait la moitié de l'écart en place.
-    password_verify($code, RecoverHelper::dummyHash());
-    password_verify($derivedKey, RecoverHelper::dummyHash());
-    usleep(400000);
-    http_response_code(401);
-    echo json_encode(['ok'=>false,'error'=>'bad_credentials',
-        'message'=>'Code de secours ou mot mémorisé incorrect.']);
-    exit;
-}
 
 $t0 = microtime(true);
-$codeOk = password_verify($code, (string) $row['code_hash']);            // possession
-$wordOk = password_verify($derivedKey, (string) $row['recovery_hash']);  // connaissance
-$t1 = microtime(true);
+$r  = $recovery->parCode($code, $derivedKey, null);
+$ms = (int) ((microtime(true) - $t0) * 1000);
 
-$log->crypto('recover-l2-code', 'Vérification des DEUX facteurs', [
-    'duration_ms'  => (int) (($t1 - $t0) * 1000),
-    'code'         => $codeOk ? 'match' : 'no_match',
-    'mot_memorise' => $wordOk ? 'match' : 'no_match',
-    'compte'       => $row['username'],
-    'note'         => "Les deux sont vérifiés même si le premier échoue : s'arrêter au premier "
-                    . "raté donnerait, par le temps de réponse, l'information que le message refuse de dire.",
+$log->crypto('recover-l2-code', 'Vérification des DEUX facteurs — possession et connaissance', [
+    'duration_ms' => $ms,
+    'note'        => "Les deux sont vérifiés quoi qu'il arrive : s'arrêter au premier échoué dirait, par le temps, lequel a échoué.",
 ]);
 
-if (!$codeOk || !$wordOk) {
-    $log->warning('recover-l2-code', 'Refus — au moins un facteur incorrect', [
-        'compte' => $row['username'],
-        'note'   => "Le message rendu ne dit pas lequel : le préciser rendrait chaque facteur "
-                  . "attaquable séparément, et ferait du code de secours un oracle.",
-    ]);
-    usleep(400000);
+if (!$r['ok']) {
+    $log->warning('recover-l2-code', 'Refus — le message ne dit pas lequel des deux facteurs a échoué');
     http_response_code(401);
-    echo json_encode(['ok'=>false,'error'=>'bad_credentials',
-        'message'=>'Code de secours ou mot mémorisé incorrect.']);
+    echo json_encode([
+        'ok'      => false,
+        'error'   => $r['error'] ?? 'bad_credentials',
+        'message' => $r['message'],
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-$db->exec('BEGIN IMMEDIATE');
-$up = $db->prepare('UPDATE accounts SET pw_hash = :h WHERE id = :i');
-$up->bindValue(':h', RecoverHelper::hash($newPassword));
-$up->bindValue(':i', (int) $row['account_id'], SQLITE3_INTEGER);
-$up->execute();
-
-// Usage unique : consommé dans la même transaction que le changement de mot de
-// passe. Séparer les deux laisserait une fenêtre où le code sert deux fois.
-$used = $db->prepare('UPDATE recovery_codes SET used = 1, used_at = :t WHERE id = :i');
-$used->bindValue(':t', time(), SQLITE3_INTEGER);
-$used->bindValue(':i', (int) $row['code_id'], SQLITE3_INTEGER);
-$used->execute();
-$db->exec('COMMIT');
-
-$reste = (int) $db->querySingle(
-    'SELECT COUNT(*) FROM recovery_codes WHERE account_id = ' . (int) $row['account_id'] . ' AND used = 0'
-);
-
-$log->success('recover-l2-code', 'Mot de passe réinitialisé — niveau 2 par code de secours', [
-    'compte'         => $row['username'],
+$reste = $r['codes_restants'];
+$log->info('recover-l2-code', 'Code consommé, secrets remplacés et sessions révoquées — dans une seule transaction', [
     'codes_restants' => $reste,
-    'note'           => "Le code vient d'être consommé et ne resservira pas. "
-                      . ($reste === 0 ? "C'était le dernier : sans nouveau lot, il ne reste que la passphrase (L1) ou le niveau 3."
-                                      : "Il en reste $reste."),
 ]);
+$log->success('recover-l2-code', 'HTTP 200 — nouveaux secrets livrés');
 
 echo json_encode([
     'ok'             => true,
-    'username'       => $row['username'],
+    'username'       => $r['compte'],
+    'new_password'   => $r['mot_de_passe'],
+    'passphrase'     => $r['passphrase'],
     'codes_restants' => $reste,
-    'message'        => 'Mot de passe réinitialisé. Ce code de secours ne peut plus servir.',
+    'message'        => 'Mot de passe et passphrase renouvelés. Ce code de secours ne peut plus servir.',
+    'note'           => "Le code vient d'être consommé et ne resservira pas. "
+                      . ($reste === 0
+                          ? "C'était le dernier : sans nouveau lot, il ne reste que la passphrase (L1) ou le niveau 3."
+                          : "Il en reste {$reste}."),
 ], JSON_UNESCAPED_UNICODE);

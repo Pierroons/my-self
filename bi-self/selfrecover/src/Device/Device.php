@@ -174,9 +174,19 @@ final class Device
             return ['ok' => false, 'message' => 'Appareil ou mot mémorisé incorrect.'];
         }
 
+        // Le défi a déjà été consommé plus haut, hors transaction : il doit
+        // l'être même si ce qui suit échoue.
         $motDePasse = self::engendrerMotDePasse();
-        $this->stockage->remplacerEmpreinteMotDePasse($appareil->compteId, Hashing::hash($motDePasse));
-        $this->stockage->revoquerSessions($appareil->compteId);
+        $this->stockage->commencerTransaction();
+        try {
+            $this->stockage->remplacerEmpreinteMotDePasse($appareil->compteId, Hashing::hash($motDePasse));
+            $this->stockage->revoquerSessions($appareil->compteId);
+            $this->stockage->validerTransaction();
+        } catch (\Throwable $e) {
+            $this->stockage->annulerTransaction();
+
+            throw $e;
+        }
 
         return [
             'ok'           => true,

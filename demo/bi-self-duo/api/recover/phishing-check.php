@@ -1,18 +1,26 @@
 <?php
 /**
- * SelfRecover demo — Recovery L2 (mot de récupération + HMAC client-side).
+ * SelfRecover demo — démonstration de la résistance au phishing.
  *
- * POST /demo/api/recover/recover-l2
- *   body: { "username": "alice", "derived_key": "4e7a9f...", "domain_used": "bi-self.my-self.fr" }
- *   → argon2id_verify(derived_key, stored recovery_hash)
+ * POST /demo/api/recover/phishing-check
+ *   body: { "username": "alice", "derived_key": "4e7a9f…", "domain_used": "…" }
+ *   → dit si le HMAC calculé par le navigateur correspond à celui du compte.
  *
- * Le recovery_word N'EST JAMAIS ENVOYÉ. Seul le derived_key (HMAC-SHA256
- * calculé par le navigateur) arrive au serveur. Si un phishing site pousse
- * le client à calculer le HMAC avec son propre domaine, le derived_key
- * sera complètement différent et l'argon2id_verify échouera → auth rejetée.
+ * 🔑 **Cet endpoint ne rend aucun accès, et c'est le point.** Il s'appelait
+ * `recover-l2` et réinitialisait le mot de passe sur un seul secret, avec un
+ * identifiant en entrée. Or le niveau 2 du protocole est défini par l'inverse :
+ * « 2FA sans identifiant », un code de possession et un mot de connaissance, le
+ * code localisant le compte par index de recherche. Une démonstration qui
+ * contredit la spécification qu'elle illustre enseigne le contraire d'elle-même.
  *
- * On log domain_used en clair pour la pédagogie : tu vois que c'est bien
- * le domaine qu'a vu le navigateur qui a été utilisé pour le HMAC.
+ * Ce qu'il montre, en revanche, mérite d'exister : le mot de récupération n'est
+ * jamais envoyé. Seul le `derived_key` — HMAC-SHA256 calculé par le navigateur
+ * sur `domain || site_salt` — arrive au serveur. Si un site de phishing pousse
+ * le client à dériver avec son propre domaine, la clé obtenue est différente et
+ * la comparaison échoue. On journalise `domain_used` en clair pour que le
+ * visiteur voie que c'est bien le domaine vu par son navigateur qui a servi.
+ *
+ * La récupération réelle, elle, passe par `recover-l1` ou `recover-l2-code`.
  */
 
 declare(strict_types=1);
@@ -37,8 +45,8 @@ $derivedKey  = is_array($body) ? (string) ($body['derived_key'] ?? '') : '';
 $domainUsed  = is_array($body) ? (string) ($body['domain_used'] ?? '') : '';
 
 $log = $s->logger();
-$log->info('recover-l2', 'POST /demo/api/recover/recover-l2');
-$log->info('recover-l2', 'Body parsed', [
+$log->info('phishing-check', 'POST /demo/api/recover/phishing-check');
+$log->info('phishing-check', 'Body parsed', [
     'username'    => $username,
     'derived_key' => $derivedKey,
     'domain_used' => $domainUsed,
@@ -46,13 +54,13 @@ $log->info('recover-l2', 'Body parsed', [
 ]);
 
 if (!preg_match('/^[a-z0-9]{3,20}$/', $username)) {
-    $log->warning('recover-l2', 'Username invalide');
+    $log->warning('phishing-check', 'Username invalide');
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'invalid_username']);
     exit;
 }
 if (!preg_match('/^[a-f0-9]{64}$/', $derivedKey)) {
-    $log->warning('recover-l2', 'derived_key mal formé (attendu: 64 chars hex SHA-256)', ['received' => $derivedKey]);
+    $log->warning('phishing-check', 'derived_key mal formé (attendu: 64 chars hex SHA-256)', ['received' => $derivedKey]);
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'invalid_derived_key']);
     exit;
@@ -74,7 +82,7 @@ if ($domainUsed !== 'bi-self.my-self.fr') {
 }
 
 if (!is_array($account)) {
-    $log->warning('recover-l2', 'Compte introuvable', ['username' => $username]);
+    $log->warning('phishing-check', 'Compte introuvable', ['username' => $username]);
     // Voir recover-l1 : on paie le hachage plutôt que d'attendre un délai fixe.
     password_verify($derivedKey, RecoverHelper::dummyHash());
     http_response_code(401);
@@ -87,7 +95,7 @@ $t0 = microtime(true);
 $ok = password_verify($derivedKey, $account['recovery_hash']);
 $t1 = microtime(true);
 
-$log->crypto('recover-l2', 'argon2id_verify(derived_key_received, stored_recovery_hash)', [
+$log->crypto('phishing-check', 'argon2id_verify(derived_key_received, stored_recovery_hash)', [
     'duration_ms' => (int) (($t1 - $t0) * 1000),
     'result'      => $ok ? 'match' : 'no_match',
     'legit_domain' => 'bi-self.my-self.fr',
@@ -96,9 +104,9 @@ $log->crypto('recover-l2', 'argon2id_verify(derived_key_received, stored_recover
 
 if (!$ok) {
     if ($hint !== '') {
-        $log->warning('recover-l2', "Domain mismatch — phishing bloqué" . $hint);
+        $log->warning('phishing-check', "Domain mismatch — phishing bloqué" . $hint);
     } else {
-        $log->warning('recover-l2', 'derived_key KO même avec le bon domaine → mot de récupération incorrect');
+        $log->warning('phishing-check', 'derived_key KO même avec le bon domaine → mot de récupération incorrect');
     }
     http_response_code(401);
     echo json_encode([
@@ -110,30 +118,19 @@ if (!$ok) {
     exit;
 }
 
-// Génère nouveau password + reset sessions app
-$newPassword = RecoverHelper::generatePassword(16);
-$log->info('recover-l2', 'Nouveau password généré (remplace l\'ancien)');
-
-$t2 = microtime(true);
-$newHash = RecoverHelper::hash($newPassword);
-$t3 = microtime(true);
-$log->crypto('recover-l2', 'argon2id(new_password) — m=64 Mo, t=4, p=2', ['duration_ms' => (int) (($t3 - $t2) * 1000)]);
-
-$stmt = $db->prepare('UPDATE accounts SET pw_hash = :h WHERE id = :id');
-$stmt->bindValue(':h', $newHash);
-$stmt->bindValue(':id', $account['id']);
-$stmt->execute();
-
-$stmt = $db->prepare('DELETE FROM app_sessions WHERE account_id = :id');
-$stmt->bindValue(':id', $account['id']);
-$stmt->execute();
-$log->info('recover-l2', 'Toutes les app_sessions ont été invalidées', ['revoked' => $db->changes()]);
-
-$log->success('recover-l2', 'HTTP 200 — compte récupéré via L2 (HMAC client)');
+// 🔑 Ici s'arrêtait la démonstration et commençait la récupération : mot de
+// passe régénéré, sessions révoquées, accès rendu — sur la foi d'un seul secret
+// et d'un identifiant. Ce chemin a été retiré le 19/08/2026. Ce qui suit dit ce
+// que la vérification a donné, et rien de plus.
+$log->success('phishing-check', 'HTTP 200 — dérivation conforme, aucun accès délivré');
 
 echo json_encode([
-    'ok'           => true,
-    'username'     => $username,
-    'new_password' => $newPassword,
-    'note'         => "Le mot de récupération n'a jamais quitté ton navigateur. Seule la clé HMAC dérivée est arrivée au serveur. Même si quelqu'un avait sniffé cette requête, il aurait juste un hash spécifique à bi-self.my-self.fr — inutilisable ailleurs.",
-]);
+    'ok'          => true,
+    'match'       => true,
+    'username'    => $username,
+    'domain_used' => $domainUsed,
+    'message'     => 'Le HMAC calculé par ton navigateur correspond à celui du compte.',
+    'note'        => "Cette page démontre la dérivation, elle ne rend pas l'accès : "
+                   . "un seul secret ne suffit pas. Pour récupérer, il faut la passphrase "
+                   . "(niveau 1) ou un code de secours accompagné du mot mémorisé (niveau 2).",
+], JSON_UNESCAPED_UNICODE);

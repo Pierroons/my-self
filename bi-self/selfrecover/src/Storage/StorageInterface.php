@@ -116,4 +116,23 @@ interface StorageInterface
 
     /** Combien de codes restent utilisables pour ce compte. */
     public function compterCodesRestants(int $compteId): int;
+
+    // ── Atomicité ──────────────────────────────────────────────────────────
+    //
+    // 🔑 Une récupération réussie touche plusieurs lignes : le secret consommé,
+    // les empreintes remplacées, les sessions révoquées. Les écrire séparément
+    // laisse des fenêtres — celle où le code est déjà marqué utilisé alors que
+    // le mot de passe n'a pas changé rend le compte inaccessible par ce code
+    // sans qu'il ait servi.
+    //
+    // ⚠️ Ce qui doit survivre à un échec ne va pas dans la transaction. Le défi
+    // du facteur « cet appareil » est consommé avant la vérification de
+    // signature, exprès : un défi rejouable annule l'intérêt de le tirer au
+    // hasard, échec compris.
+
+    public function commencerTransaction(): void;
+
+    public function validerTransaction(): void;
+
+    public function annulerTransaction(): void;
 }
