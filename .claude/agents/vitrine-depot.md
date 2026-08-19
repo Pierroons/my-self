@@ -104,6 +104,22 @@ pas à un contributeur de passage.
 **L'identité git du dépôt se respecte** : garde l'adresse configurée, ne la
 surcharge pas.
 
+## ⚠️ Avant de conclure qu'un contrôle est vert
+
+Tu vérifies des choses mécaniquement — qu'un chemin cité existe, qu'un domaine
+d'exemple ne résout pas, qu'un fichier annoncé est bien là. Ces contrôles ont
+tous le même mode de défaillance : **rendre « tout va bien » parce qu'ils n'ont
+rien regardé**.
+
+Un `test -e` lancé depuis le mauvais répertoire déclare morts des liens vivants ;
+lancé sur un chemin déjà résolu, il déclare vivants des liens morts. Dans les deux
+cas la sortie est franche et fausse.
+
+Alors avant de retenir un résultat négatif, **fais répondre ta sonde sur un cas où
+elle doit dire l'inverse** : un chemin dont tu sais qu'il existe, un lien dont tu
+sais qu'il est mort. Si elle ne sait pas les distinguer, elle ne prouve rien, et
+son silence non plus.
+
 ## Ce que tu rends
 
 Un constat = `fichier:ligne` ou nom du document, ce qui cloche, et la
