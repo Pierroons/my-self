@@ -77,6 +77,12 @@ $r2 = $rec->parCode($codes[0], $MOT, '10.0.0.2', $now);
 verifier('code et mot corrects rendent l\'accès', $r2['ok'] === true && isset($r2['mot_de_passe']));
 verifier('aucun identifiant n\'a été demandé', ($r2['compte'] ?? '') === 'alice');
 verifier('il reste neuf codes', ($r2['codes_restants'] ?? -1) === 9);
+verifier('la passphrase est renouvelée aussi',
+    isset($r2['passphrase']) && $r2['passphrase'] !== $PHR);
+verifier('l\'ancienne passphrase ne resert pas après un niveau 2',
+    $rec->parPassphrase('alice', $PHR, null, $now)['ok'] === false);
+verifier('la passphrase rendue fonctionne',
+    $rec->parPassphrase('alice', $r2['passphrase'], null, $now)['ok'] === true);
 verifier('un code ne resert pas', $rec->parCode($codes[0], $MOT, null, $now)['ok'] === false);
 
 [$st, $rec] = neuf($MOT, $PHR, $SEL);
@@ -85,6 +91,8 @@ $sansMot  = $rec->parCode($codes[1], str_repeat('b2', 32), null, $now);
 $sansCode = $rec->parCode('00000-00000', $MOT, null, $now);
 verifier('code seul refusé', $sansMot['ok'] === false);
 verifier('mot seul refusé', $sansCode['ok'] === false);
+verifier('un code mal formé est refusé sans chercher',
+    $rec->parCode('pas-un-code', $MOT, null, $now)['ok'] === false);
 verifier('le refus ne dit pas lequel a échoué',
     $sansMot['message'] === $sansCode['message'], $sansMot['message']);
 verifier('un mot non dérivé est refusé pour sa forme',

@@ -24,6 +24,9 @@
 
 declare(strict_types=1);
 
+// Le profil de hachage vient désormais de la bibliothèque partagée : sans
+// l'autoload, Auth::argon2Options() ne trouve plus rien à déléguer.
+require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../lib/auth.php';
 
 use Pierroons\MySelfLab\Auth;

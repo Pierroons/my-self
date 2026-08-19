@@ -110,6 +110,28 @@ verifier('les clés étrangères sont actives',
 verifier('les tentatives sont tracées',
     (int) $pdo->query('SELECT COUNT(*) FROM login_attempts')->fetchColumn() > 0);
 
+echo "\n→ Parcours complet par la façade Auth\n";
+require_once __DIR__ . '/../lib/db.php';
+require_once __DIR__ . '/../lib/auth.php';
+
+$pdo2 = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$pdo2->exec((string) file_get_contents(__DIR__ . '/../schema.sql'));
+
+$insc = \Pierroons\MySelfLab\Auth::register($pdo2, 'bob', $MOT, '10.0.0.1');
+verifier('inscription : dix codes remis une fois',
+    ($insc['ok'] ?? false) && count($insc['credentials']['recovery_codes'] ?? []) === 10);
+
+$niv2 = \Pierroons\MySelfLab\Auth::recoverByCode($pdo2, $insc['credentials']['recovery_codes'][0], $MOT, '10.0.0.2');
+verifier('niveau 2 : code consommé, neuf restants', ($niv2['codes_restants'] ?? -1) === 9);
+verifier('niveau 2 : la forme du retour est préservée',
+    isset($niv2['credentials']['password'], $niv2['credentials']['passphrase'], $niv2['note']));
+
+$niv1 = \Pierroons\MySelfLab\Auth::recoverByPassphrase($pdo2, 'bob', $niv2['credentials']['passphrase'], '10.0.0.3');
+verifier('niveau 1 : la passphrase rendue au niveau 2 fonctionne', ($niv1['ok'] ?? false) === true);
+
+$conn = \Pierroons\MySelfLab\Auth::login($pdo2, 'bob', $niv1['credentials']['password'], '10.0.0.4');
+verifier('connexion avec le mot de passe rendu', ($conn['ok'] ?? false) === true);
+
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Équivalence lab ⨯ SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 echo str_repeat('=', 63) . "\n\n";

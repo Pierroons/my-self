@@ -132,6 +132,14 @@ final class Recovery
             return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
         }
 
+        // Forme validée avant le moindre calcul : un code qui n'a pas la forme
+        // d'un code n'a pas à coûter un HMAC, encore moins un Argon2id.
+        if (!preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code)) {
+            usleep($this->delaiRefusUs);
+
+            return $refus;
+        }
+
         $trouve = $this->stockage->trouverCodeParIndex($this->indexRecherche($code));
 
         // Les deux vérifications sont menées quoi qu'il arrive : s'arrêter à la
@@ -155,14 +163,24 @@ final class Recovery
 
         $this->stockage->consommerCode((int) $trouve['code_id'], $maintenant);
 
-        $motDePasse = Device::engendrerMotDePasse();
-        $this->stockage->remplacerEmpreinteMotDePasse((int) $trouve['compte_id'], Hashing::hash($motDePasse));
+        // Rendre l'accès renouvelle les deux secrets, pas seulement le mot de
+        // passe : qui a dû récupérer ne sait pas ce qui a fuité. Laisser
+        // l'ancienne passphrase valable garderait ouverte une porte dont on
+        // ignore si elle est connue.
+        $motDePasse     = Device::engendrerMotDePasse();
+        $nouvellePhrase = implode(' ', Wordlist::generate(4, 'en')['words']);
+        $this->stockage->remplacerEmpreintes(
+            (int) $trouve['compte_id'],
+            Hashing::hash($motDePasse),
+            Hashing::hash($nouvellePhrase),
+        );
         $this->stockage->revoquerSessions((int) $trouve['compte_id']);
 
         return [
             'ok'             => true,
-            'message'        => 'Accès rendu.',
+            'message'        => 'Accès rendu. Le mot de récupération, lui, ne change pas.',
             'mot_de_passe'   => $motDePasse,
+            'passphrase'     => $nouvellePhrase,
             'compte'         => $trouve['nom_compte'],
             'codes_restants' => $this->stockage->compterCodesRestants((int) $trouve['compte_id']),
         ];
