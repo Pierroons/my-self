@@ -50,6 +50,9 @@ jobs:
       # ── Chemins ────────────────────────────────────────────────────────────
       # Le contrôle que le rangement a rendu nécessaire : liens Markdown, règles
       # .gitignore et chemins de workflow, confrontés à ce qui existe.
+      - name: Le profil de hachage n'est défini qu'une fois
+        run: bash scripts/check-profil-unique.sh
+
       - name: Chemins cités
         run: bash scripts/check-paths.sh
 

@@ -6,23 +6,25 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/session_manager.php';
+// La bibliothèque n'est pas installée par Composer ici : son autoload suffit,
+// et il évite d'imposer une étape d'installation à une démo qu'on déploie par
+// simple copie.
+require_once __DIR__ . '/../../../bi-self/selfrecover/src/autoload.php';
 require_once __DIR__ . '/diceware/wordlist.php';
+
+use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\Device\Device as Protocole;
 
 final class RecoverHelper {
     /**
-     * Profil Argon2id du projet — OWASP 2026 : 64 MiB de mémoire, 4 itérations,
-     * 2 fils. Les mêmes valeurs que le lab et que l'implémentation de référence.
+     * Profil Argon2id du projet.
      *
-     * 🔑 Un seul endroit, appelé partout. Les paramètres recopiés à chaque appel
-     * divergent au premier oubli, et un secret haché plus faiblement que ses
-     * voisins ne se voit pas : rien dans la base ne distingue un hash à 4
-     * itérations d'un hash à 2.
+     * 🔑 Sa définition vit dans `Pierroons\SelfRecover\Crypto\Hashing`, une
+     * seule fois pour tous les consommateurs. Le recopier ici le ferait diverger
+     * au premier ajustement sans qu'aucune erreur ne survienne : c'est ce qui a
+     * laissé cette démo soixante-dix jours derrière le lab, du 08/06 au 17/08/2026.
      */
-    public const ARGON2 = [
-        'memory_cost' => 65536,
-        'time_cost'   => 4,
-        'threads'     => 2,
-    ];
+    public const ARGON2 = Hashing::ARGON2;
 
     /**
      * Hache un secret destiné à être stocké.
@@ -31,7 +33,7 @@ final class RecoverHelper {
      * hachage, ce qui rend l'attaque par GPU coûteuse à paralléliser.
      */
     public static function hash(string $secret): string {
-        return password_hash($secret, PASSWORD_ARGON2ID, self::ARGON2);
+        return Hashing::hash($secret);
     }
 
     /**
@@ -48,11 +50,9 @@ final class RecoverHelper {
      * Aucun secret réel ne correspond à cette empreinte, et aucune vérification
      * contre elle ne doit réussir — elle n'est là que pour brûler le même temps.
      */
-    private const DUMMY_HASH =
-        '$argon2id$v=19$m=65536,t=4,p=2$bmJrdDNvVlNHYlZKaktvOQ$5rrXLA5A2HcsuydGvvacn80ulh5dLCAuqWjd5t3F+Bw';
 
     public static function dummyHash(): string {
-        return self::DUMMY_HASH;
+        return Hashing::dummyHash();
     }
 
     /**
