@@ -35,6 +35,10 @@ endroit. Et comme ce fichier est public : rien qui n'irait pas dans un commit.
   et son contrôle. Sans elle, le watchdog signale correctement qu'il ne peut
   pas relancer — mais ne relance pas.
 
+- Un service hérité tourne encore — vhost, base vide, sauvegarde quotidienne —
+  sans plus aucune fréquentation. Rien d'urgent : le garder ou le fermer se
+  décide à froid, mais la question mérite d'être posée une fois.
+
 ## Pièges actifs
 
 - **Les sept cibles supprimées en production le 19/08 n'ont plus de filet
