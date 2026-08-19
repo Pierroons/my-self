@@ -1,0 +1,41 @@
+{
+    "name": "pierroons/selfrecover",
+    "description": "Récupération de compte sans email ni SMS : passphrase diceware, mot mémorisé dérivé côté client, appareil de confiance. Bibliothèque de référence du protocole SelfRecover.",
+    "type": "library",
+    "keywords": ["authentication", "account-recovery", "diceware", "argon2id", "passwordless", "bi-self", "myself", "agpl"],
+    "license": "AGPL-3.0-or-later",
+    "homepage": "https://github.com/Pierroons/my-self",
+    "authors": [
+        {
+            "name": "Pierroons",
+            "email": "contact@my-self.fr",
+            "homepage": "https://github.com/Pierroons"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/Pierroons/my-self/issues",
+        "source": "https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover"
+    },
+    "require": {
+        "php": "^8.1",
+        "ext-json": "*",
+        "ext-mbstring": "*",
+        "ext-openssl": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Pierroons\\SelfRecover\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Pierroons\\SelfRecover\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "optimize-autoloader": true
+    }
+}
