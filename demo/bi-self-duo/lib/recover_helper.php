@@ -58,14 +58,16 @@ final class RecoverHelper {
     /**
      * Génère un password random (16 chars alphanum + quelques symboles mémorisables).
      */
+    /**
+     * Mot de passe temporaire rendu à l'utilisateur après une récupération.
+     *
+     * 🔑 Délégué à la bibliothèque, dont l'alphabet exclut `l 1 I O 0`. Ce mot
+     * est fait pour être recopié depuis un écran : une ambiguïté de glyphe y
+     * coûte plus cher que les 3,8 bits qu'elle fait gagner — 93 bits restent
+     * hors de portée, un `1` pris pour un `l` bloque l'utilisateur tout de suite.
+     */
     public static function generatePassword(int $length = 16): string {
-        $alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?@#$';
-        $max = strlen($alphabet) - 1;
-        $out = '';
-        for ($i = 0; $i < $length; $i++) {
-            $out .= $alphabet[random_int(0, $max)];
-        }
-        return $out;
+        return Protocole::engendrerMotDePasse($length);
     }
 
     /**
