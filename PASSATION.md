@@ -17,7 +17,7 @@ endroit. Et comme ce fichier est public : rien qui n'irait pas dans un commit.
 
 ---
 
-**Dernier passage : 19 août 2026 — 22:26**
+**Dernier passage : 19 août 2026 — 22:38**
 
 ## À faire
 
@@ -42,6 +42,13 @@ endroit. Et comme ce fichier est public : rien qui n'irait pas dans un commit.
 
 ## Pièges actifs
 
+- **Le déploiement copie l'arbre de travail, pas le dépôt.** Ce qui n'est pas
+  commité part quand même, et ce qui est servi peut donc être en avance sur ce
+  qui est versionné — sans que rien ne le dise. Le contrôle d'écart compare
+  l'arbre à l'instance : les deux s'accordent pendant que le dépôt reste en
+  retard. Constaté le 19/08, une classe partie complète en production alors que
+  le dépôt en portait une version qui ne satisfaisait plus son interface.
+  Vérifier `git status` avant de déployer, pas seulement après.
 - **Renommer un fichier servi ne le retire pas de la production.** Le `rsync`
   est sans `--delete` : l'ancien nom continue d'être servi après le
   déploiement, et un endpoint retiré du dépôt reste joignable. Constaté le
