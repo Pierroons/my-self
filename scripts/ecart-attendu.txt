@@ -1,0 +1,13 @@
+# Écarts légitimes entre le dépôt et l'instance — lus par ecart-instance.sh.
+#
+# Format :   <regex du chemin>  <TAB>  <raison>
+#
+# La raison n'est pas décorative, même règle que l'allowlist OPSEC : une
+# exception sans justification devient indistinguable d'un oubli, et six mois
+# plus tard personne ne sait si l'écart est voulu ou s'il est passé au travers.
+#
+# ⚠️ Un écart déclaré ici reste affiché, en ATTENDU. On ne le masque pas — on
+# dit qu'on le connaît. Masquer un écart, c'est se préparer à ne plus le voir
+# le jour où il change de nature.
+
+^self-right/selfjustice/site/index\.html$	Compteurs d'articles réécrits en production par update_stats.sh — la version servie est plus fraîche que la versionnée, et chaque déploiement la fait régresser jusqu'au prochain passage du cron.
