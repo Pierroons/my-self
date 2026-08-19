@@ -17,7 +17,7 @@ endroit. Et comme ce fichier est public : rien qui n'irait pas dans un commit.
 
 ---
 
-**Dernier passage : 19 août 2026 — 22:50**
+**Dernier passage : 19 août 2026 — 23:05**
 
 ## À faire
 
@@ -41,7 +41,3 @@ endroit. Et comme ce fichier est public : rien qui n'irait pas dans un commit.
 - **Les sept cibles supprimées en production le 19/08 n'ont plus de filet
   applicatif.** Retour arrière par l'archive datée du jour sur la machine, ou
   par la sauvegarde chiffrée. Le `sed` inverse sur les vhosts ne suffit plus.
-- **Le script de déploiement conclut par un succès inconditionnel** : un
-  transfert en échec le laisse afficher « Déployé ». Corrigé le 17/08 sur son
-  homologue, resté dans ce second exemplaire. Il vit hors dépôt, donc son
-  correctif ne se verra dans aucun commit.

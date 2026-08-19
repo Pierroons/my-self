@@ -85,6 +85,12 @@ absence de ce dossier est voulue ; le dispositif n'est pas incomplet.
 Le script de déploiement vit hors dépôt : ses correctifs n'apparaissent dans
 aucun commit, et ces règles sont le seul endroit où elles se lisent.
 
+**Un transfert en échec fait échouer le déploiement** depuis le 19/08 : le code
+de sortie était auparavant celui du verrouillage final, qui réussit toujours, et
+le script concluait « Déployé » sur une copie partielle. Le verrouillage a lieu
+quoi qu'il arrive — sortir avant lui laisserait la production modifiable en
+silence.
+
 **Il copie l'arbre de travail, pas le dépôt.** Ce qui n'est pas commité part
 quand même. Le contrôle d'écart compare l'arbre à l'instance : les deux
 s'accordent pendant que le dépôt reste en retard, sans que rien ne le dise.
