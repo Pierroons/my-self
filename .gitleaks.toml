@@ -13,6 +13,7 @@ useDefault = true   # ~150 règles natives (clés API, tokens, IBAN, etc.)
 id = "myself-email-perso"
 description = "Email personnel grand public (utiliser un alias, ex contact@my-self.fr)"
 regex = '''(?i)\b[a-z0-9._%+-]+@(gmx|gmail|googlemail|outlook|hotmail|live|msn|yahoo|ymail|proton|protonmail|pm\.me|laposte|orange|free|sfr|wanadoo|bbox|numericable)\.[a-z]{2,}\b'''
+tags = ["opsec", "identity"]
 
 [rules.allowlist]
 description = "Adresses de demonstration explicitement fictives"
@@ -21,7 +22,6 @@ regexes = [
   '''(?i)(exemple|example|demo|test|fake|fictif)''',
   '''(?i)\b(alice|bob|carol|dave|eve|mallory|sophie[._]martin)\b''',
 ]
-tags = ["opsec", "identity"]
 
 [[rules]]
 id = "myself-code-postal-local"
@@ -36,6 +36,7 @@ tags = ["opsec", "geo"]
 id = "myself-ip-lan"
 description = "IP LAN d'infra perso (RFC1918)"
 regex = '''\b(10(\.\d{1,3}){3}|192\.168(\.\d{1,3}){2}|172\.(1[6-9]|2\d|3[01])(\.\d{1,3}){2})\b'''
+tags = ["opsec", "infra"]
 
 [rules.allowlist]
 description = "Plages de documentation (RFC 5737) et adresses de reseau banales"
@@ -46,29 +47,28 @@ regexes = [
   '''\b(10\.0\.0\.0|172\.16\.0\.0|192\.168\.0\.0)\b''',
   '''\b192\.168\.(0|1)\.(0|1|10|20|30|50|100|254)\b''',
 ]
-tags = ["opsec", "infra"]
 
 [[rules]]
 id = "myself-chemin-perso"
 description = "Chemin disque perso / arborescence locale"
-regex = '''/home/[a-z][a-z0-9_-]+|Documents generes'''
+regex = '''\bhome/[a-z][a-z0-9_-]+|Documents generes'''
+tags = ["opsec", "infra"]
 
 [rules.allowlist]
 description = "Comptes systeme et generiques — n'identifient personne"
 regexTarget = "match"
-regexes = ['''/home/(user|users|deploy|myself|runner|ubuntu|debian|admin|www-data|node|app)\b''']
-tags = ["opsec", "infra"]
+regexes = ['''/?home/(user|users|deploy|myself|runner|ubuntu|debian|admin|www-data|node|app)\b''']
 
 [[rules]]
 id = "myself-iban"
 description = "IBAN francais (doit etre fictif FR76 0000... en demo)"
 regex = '''FR\d{2}[ ]?\d{4}[ ]?\d{4}[ ]?\d{4}'''
+tags = ["opsec", "finance"]
 
 [rules.allowlist]
 description = "IBAN de demonstration"
 regexTarget = "match"
 regexes = ['''FR\d{2} ?0000''', '''FR\d{2} ?1234 ?5678''', '''FR76 ?3000 ?4000 ?0512''']
-tags = ["opsec", "finance"]
 
 # ─────────────────────────── Faux positifs ───────────────────────────
 [allowlist]
@@ -104,7 +104,7 @@ paths = [
 regexes = [
   # Comptes système et génériques : /home/<quelquechose> n'identifie personne.
   # Seuls les logins réels doivent déclencher la règle.
-  '''/home/(user|users|deploy|myself|runner|ubuntu|debian|admin|www-data|node|app)\b''',
+  '''/?home/(user|users|deploy|myself|runner|ubuntu|debian|admin|www-data|node|app)\b''',
   # Plages réservées à la documentation (RFC 5737) et adresses de réseau banales.
   '''\b(192\.0\.2|198\.51\.100|203\.0\.113)\.\d{1,3}\b''',
   '''\b10\.0\.0\.\d{1,3}\b''',
@@ -112,8 +112,11 @@ regexes = [
   # une adresse, elle ne désigne aucune machine.
   '''\b(10\.0\.0\.0|172\.16\.0\.0|192\.168\.0\.0)\b''',
   '''\b192\.168\.(0|1)\.(0|1|10|20|30|50|100|254)\b''',
-  # Adresses de démonstration explicitement fictives.
-  '''(?i)(exemple|example|demo|test|fake|fictif)''',
+  # Adresses de démonstration explicitement fictives. Le motif générique
+  # (exemple|example|demo|test|…) vivait ici : appliqué globalement, sans ancrage
+  # et sans regexTarget, il ciblait la VALEUR de toute détection et éteignait les
+  # ~150 règles natives dès qu'un secret contenait « test » ou « demo ». Il reste
+  # là où il a été écrit d'abord, scopé sur myself-email-perso.
   '''(?i)\b(alice|bob|carol|dave|eve|mallory|sophie[._]martin)\b''',
   # IBAN de démonstration, avec ou sans espaces.
   '''FR\d{2} ?0000''',
@@ -127,7 +130,7 @@ regexes = [
   '''FR76 0000''',
   '''FR76 ?1234 ?5678''',
   '''contact@my-self\.fr''',
-  '''/home/user\b''',
+  '''/?home/user\b''',
   '''192\.168\.1\.(0|10|50)\b''',
   '''correct horse battery staple''',
 ]
