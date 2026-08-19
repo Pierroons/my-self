@@ -193,4 +193,27 @@ final class StockageSelfRecover implements StorageInterface
 
         return (int) $st->fetchColumn();
     }
+
+    // ── Atomicité ──────────────────────────────────────────────────────────
+
+    public function commencerTransaction(): void
+    {
+        if (!$this->pdo->inTransaction()) {
+            $this->pdo->beginTransaction();
+        }
+    }
+
+    public function validerTransaction(): void
+    {
+        if ($this->pdo->inTransaction()) {
+            $this->pdo->commit();
+        }
+    }
+
+    public function annulerTransaction(): void
+    {
+        if ($this->pdo->inTransaction()) {
+            $this->pdo->rollBack();
+        }
+    }
 }
