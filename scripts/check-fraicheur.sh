@@ -188,18 +188,49 @@ echo "$RAPPORT" | sed '/^ALERTE\|^OK$/d'
 ETAT=$(echo "$RAPPORT" | grep -E "^(ALERTE|OK)" | head -1)
 
 case "$ETAT" in
-    OK) [ -n "$VERBEUX" ] && echo "OK — toutes les bases sont à jour." ; exit 0 ;;
+    OK) rm -f "${CHECK_FRAICHEUR_SILENCE_FICHIER:-$HOME/.check-fraicheur.dernier-cri}"
+        [ -n "$VERBEUX" ] && echo "OK — toutes les bases sont à jour." ; exit 0 ;;
 esac
 
 MESSAGE=${ETAT#ALERTE }
 logger -t check-fraicheur "$MESSAGE"
 echo "RETARD : $MESSAGE"
 
+# 🔑 **Le même fait ne se notifie qu'une fois.** Une source figée reste figée
+# plusieurs jours — la cadence de publication de certaines bases les laisse
+# immobiles jusqu'à deux semaines. Sans garde, le contrôle envoyait une alerte
+# chaque matin pour un seul événement, et un canal qui répète devient un canal
+# qu'on n'ouvre plus. Le journal local, lui, garde chaque passage : c'est la
+# notification qu'on espace, pas la mesure.
+#
+# ⚠️ La signature ignore le nombre de jours écoulés, sinon elle changerait à
+# chaque passage — « soit 2 jours », « soit 3 jours » — et n'empêcherait rien.
+# On ne retient que ce qui décrit le fait : la source et sa date d'arrêt.
+#
+# Cet état sert à se taire, pas à mesurer : le perdre fait envoyer une alerte de
+# trop, jamais une de moins. C'est le bon sens de la défaillance — l'inverse de
+# l'état de volume, dont la perte rend le contrôle muet.
+SIGNATURE=$(printf '%s' "$MESSAGE" | sed -E 's/, soit [0-9]+ jours?//g')
+SILENCE_FICHIER="${CHECK_FRAICHEUR_SILENCE_FICHIER:-$HOME/.check-fraicheur.dernier-cri}"
+SILENCE_SECONDES=${CHECK_FRAICHEUR_SILENCE:-86400}
+
+DEJA=""; QUAND=0
+[ -r "$SILENCE_FICHIER" ] && IFS='|' read -r QUAND DEJA < "$SILENCE_FICHIER"
+MAINTENANT=$(date +%s)
+if [ "$SIGNATURE" = "$DEJA" ] && [ $((MAINTENANT - ${QUAND:-0})) -lt "$SILENCE_SECONDES" ]; then
+    [ -n "$VERBEUX" ] && echo "  (déjà notifié, silence en cours)"
+    exit 0
+fi
+
 if [ -n "$NTFY_URL" ]; then
     curl -s -m 10 -H "Authorization: Bearer $NTFY_TOKEN" \
          -H "Title: Self-Right — base en retard" -H "Priority: high" \
          -d "$MESSAGE" "$NTFY_URL" >/dev/null 2>&1 \
-      && echo "  alerte envoyée" || echo "  ⚠️ envoi de l'alerte en échec"
+      && { echo "  alerte envoyée"
+           # La signature n'est retenue qu'après un envoi réussi : un canal
+           # muet ne doit pas déclencher le silence du lendemain.
+           printf '%s|%s\n' "$MAINTENANT" "$SIGNATURE" > "$SILENCE_FICHIER"; } \
+      || echo "  ⚠️ envoi de l'alerte en échec"
 else
     echo "  (aucun canal configuré : créer ~/.check-fraicheur.env avec NTFY_URL et NTFY_TOKEN)"
 fi
