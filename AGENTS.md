@@ -80,6 +80,41 @@ absence de ce dossier est voulue ; le dispositif n'est pas incomplet.
   le message de commit.
 - SQL sans commentaire à l'intérieur des requêtes.
 
+## Déployer
+
+Le script de déploiement vit hors dépôt : ses correctifs n'apparaissent dans
+aucun commit, et ces règles sont le seul endroit où elles se lisent.
+
+**Il copie l'arbre de travail, pas le dépôt.** Ce qui n'est pas commité part
+quand même. Le contrôle d'écart compare l'arbre à l'instance : les deux
+s'accordent pendant que le dépôt reste en retard, sans que rien ne le dise.
+Vérifier `git status` avant de déployer, pas seulement après.
+
+**Le transfert vers la production est sans `--delete`.** Renommer un fichier
+servi ne retire donc pas l'ancien nom : un endpoint supprimé du dépôt reste
+joignable. Après tout renommage, vérifier l'ancien nom, pas seulement le
+nouveau — une porte de récupération a survécu à sa propre suppression jusqu'à
+un retrait manuel.
+
+**Il a deux destinations** : le code servi par le frontal, et les outils que le
+planificateur exécute, qui ne vivent pas au même endroit. Une modification
+d'outil qui n'atteint que la première ne s'exécute jamais.
+
+**La liste blanche des routes vit dans le vhost**, que le déploiement ne touche
+pas. Renommer un endpoint demande deux gestes, dans cet ordre : élargir la liste
+avant de déployer, la resserrer après. L'inverse interrompt le service.
+
+**Un dossier ne se laisse pas remplacer par un lien.** Quand le déploiement veut
+poser un lien là où un dossier existe, le transfert échoue sur ce point seul et
+le reste passe — une vitrine a tourné trois mois sur une dépendance périmée, à
+côté du module à jour.
+
+**Les fichiers d'état des contrôles n'ont pas tous le même sens de
+défaillance.** Celui qui mémorise des volumes, perdu, rend le contrôle muet : il
+se fusionne, jamais il ne s'écrase. Celui qui mémorise un silence de
+notification, perdu, fait envoyer une alerte de trop : c'est acceptable, et
+voulu. Ne pas uniformiser leur traitement.
+
 ## Zones sensibles
 
 Ces changements demandent une note explicite dans la description de PR :
