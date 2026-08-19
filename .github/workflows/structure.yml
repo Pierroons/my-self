@@ -61,6 +61,9 @@ jobs:
       - name: Garde-fou — facteur « cet appareil » (dont la prise de compte du 02/08)
         run: php bi-self/selfrecover/tests/sanity_device.php
 
+      - name: Garde-fou — récupération niveaux 1 et 2
+        run: php bi-self/selfrecover/tests/sanity_recovery.php
+
       - name: Garde-fou — déploiement SelfJustice
         run: bash self-right/selfjustice/tests/test_deploy.sh
 

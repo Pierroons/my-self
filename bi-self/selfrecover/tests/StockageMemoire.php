@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Pierroons\SelfRecover\Tests;
 
 use Pierroons\SelfRecover\Device\Appareil;
-use Pierroons\SelfRecover\Device\StorageInterface;
+use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
  * Adaptateur en mémoire — sert les sondes, jamais la production.
@@ -90,5 +90,95 @@ final class StockageMemoire implements StorageInterface
     public function revoquerSessions(int $compteId): void
     {
         $this->sessionsRevoquees[] = $compteId;
+    }
+
+    // ── Récupération ───────────────────────────────────────────────────────
+
+    /** @var array<string, array{id: int, empreinte_passphrase: string}> */
+    public array $passphrases = [];
+    /** @var list<array{id: int, compte_id: int, index: string, empreinte: string, utilise: bool}> */
+    public array $codes = [];
+    private int $prochainCodeId = 1;
+
+    public function compterEchecsCompte(string $nomCompte, int $depuis): int
+    {
+        return count(array_filter(
+            $this->tentatives,
+            static fn (array $t): bool => $t['etiquette'] === $nomCompte && !$t['succes'] && $t['quand'] > $depuis,
+        ));
+    }
+
+    public function trouverComptePourPassphrase(string $nomCompte): ?array
+    {
+        return $this->passphrases[$nomCompte] ?? null;
+    }
+
+    public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase): void
+    {
+        $this->empreintes[$compteId] = $empreinteMotDePasse;
+        foreach ($this->passphrases as $nom => $p) {
+            if ($p['id'] === $compteId) {
+                $this->passphrases[$nom]['empreinte_passphrase'] = $empreintePassphrase;
+            }
+        }
+    }
+
+    public function purgerCodes(int $compteId): void
+    {
+        $this->codes = array_values(array_filter(
+            $this->codes,
+            static fn (array $c): bool => $c['compte_id'] !== $compteId,
+        ));
+    }
+
+    public function enregistrerCode(int $compteId, string $indexRecherche, string $empreinteCode, int $quand): void
+    {
+        $this->codes[] = [
+            'id'         => $this->prochainCodeId++,
+            'compte_id'  => $compteId,
+            'index'      => $indexRecherche,
+            'empreinte'  => $empreinteCode,
+            'utilise'    => false,
+        ];
+    }
+
+    public function trouverCodeParIndex(string $indexRecherche): ?array
+    {
+        foreach ($this->codes as $c) {
+            if (!hash_equals($c['index'], $indexRecherche)) {
+                continue;
+            }
+            $nom = '';
+            $mot = '';
+            foreach ($this->comptes as $cle => $compte) {
+                if ($compte['id'] === $c['compte_id']) { $nom = $cle; $mot = $compte['empreinte_mot']; break; }
+            }
+
+            return [
+                'code_id'        => $c['id'],
+                'empreinte_code' => $c['empreinte'],
+                'deja_utilise'   => $c['utilise'],
+                'compte_id'      => $c['compte_id'],
+                'nom_compte'     => $nom,
+                'empreinte_mot'  => $mot,
+            ];
+        }
+
+        return null;
+    }
+
+    public function consommerCode(int $codeId, int $quand): void
+    {
+        foreach ($this->codes as $i => $c) {
+            if ($c['id'] === $codeId) { $this->codes[$i]['utilise'] = true; }
+        }
+    }
+
+    public function compterCodesRestants(int $compteId): int
+    {
+        return count(array_filter(
+            $this->codes,
+            static fn (array $c): bool => $c['compte_id'] === $compteId && !$c['utilise'],
+        ));
     }
 }

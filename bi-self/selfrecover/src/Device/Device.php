@@ -6,6 +6,7 @@ namespace Pierroons\SelfRecover\Device;
 
 use Pierroons\SelfRecover\Crypto\Encoding;
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
  * Facteur de possession « cet appareil » — enrôlement, défi, vérification.

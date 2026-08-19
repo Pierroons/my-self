@@ -2,10 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Pierroons\SelfRecover\Device;
+namespace Pierroons\SelfRecover\Storage;
+
+use Pierroons\SelfRecover\Device\Appareil;
 
 /**
- * Contrat de persistance du facteur « cet appareil ».
+ * Contrat de persistance du protocole SelfRecover.
  *
  * 🔑 **Pourquoi une interface et non du SQL.** Les consommateurs de cette
  * bibliothèque n'ont pas le même schéma : l'un nomme sa colonne `recovery_hash`,
@@ -66,4 +68,52 @@ interface StorageInterface
      * pas le compte : elle le partage avec qui l'occupait.
      */
     public function revoquerSessions(int $compteId): void;
+
+    // ── Récupération de niveau 1 : passphrase diceware ──────────────────────
+
+    /** Échecs récents visant ce compte précis, en plus du compteur par IP. */
+    public function compterEchecsCompte(string $nomCompte, int $depuis): int;
+
+    /**
+     * Empreinte de la passphrase pour ce compte.
+     *
+     * @return array{id: int, empreinte_passphrase: string}|null
+     */
+    public function trouverComptePourPassphrase(string $nomCompte): ?array;
+
+    /**
+     * Remplace mot de passe ET passphrase en une fois.
+     *
+     * 🔑 Une récupération de niveau 1 consomme la passphrase : la laisser
+     * valable après usage ferait d'un vol de papier une porte permanente.
+     */
+    public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase): void;
+
+    // ── Récupération de niveau 2 : code de récupération + mot mémorisé ──────
+
+    /** Efface les codes du compte — une régénération périme l'ancien papier. */
+    public function purgerCodes(int $compteId): void;
+
+    /**
+     * Enregistre un code : son index de recherche et son empreinte.
+     *
+     * ⚠️ `indexRecherche` n'est pas un secret mais ne doit pas être réversible :
+     * c'est un HMAC du code sous le sel du déploiement. Il retrouve le compte
+     * sans qu'aucun identifiant soit demandé — donc sans champ où éprouver
+     * l'existence d'un compte.
+     */
+    public function enregistrerCode(int $compteId, string $indexRecherche, string $empreinteCode, int $quand): void;
+
+    /**
+     * Retrouve un code non consommé par son index de recherche.
+     *
+     * @return array{code_id: int, empreinte_code: string, deja_utilise: bool, compte_id: int, nom_compte: string, empreinte_mot: string}|null
+     */
+    public function trouverCodeParIndex(string $indexRecherche): ?array;
+
+    /** Marque le code consommé. Un code de récupération ne sert qu'une fois. */
+    public function consommerCode(int $codeId, int $quand): void;
+
+    /** Combien de codes restent utilisables pour ce compte. */
+    public function compterCodesRestants(int $compteId): int;
 }
