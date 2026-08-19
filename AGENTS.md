@@ -103,6 +103,14 @@ jeu de défauts plantés vit hors dépôt pour cet usage — la question posée 
 sonde neuve n'est pas « est-ce que ça passe », c'est « est-ce que ça échoue quand
 ça doit ».
 
+🔑 **Une recherche rend une liste, jamais une absence.** Un résultat court se lit
+comme « il ne reste rien » tant que trois choses ne l'accompagnent pas : le
+périmètre parcouru, le motif cherché, et ce que l'outil n'a pas pu lire. Quatre
+inventaires successifs ont rendu quatre listes courtes le 19/08 — un périmètre
+qui omettait la racine servie, `grep -r` qui ne suit pas les liens et n'a montré
+qu'un vhost sur dix-neuf, un motif qui couvrait un sous-domaine sur quatre.
+Chacun a répondu exactement à la question posée.
+
 ## Conventions
 
 - Langue : suivre celle du module. `self-security/` est en anglais — code crypto
