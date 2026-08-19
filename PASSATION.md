@@ -36,6 +36,12 @@ endroit. Et comme ce fichier est public : rien qui n'irait pas dans un commit.
   volontairement** : il servira de terrain d'essai pour un site en clair à
   l'automne. Ne pas le fermer au motif qu'il paraît mort.
 
+- **L'équipe de contrôle a grossi le 19/08** et sa description vit dans
+  `AGENTS.md`, section « Agents de vérification » : un troisième agent dans le
+  dépôt, cinq scripts de mesure, et un plugin d'analyse côté poste. Y jeter un
+  œil avant de relancer une revue — appeler deux fois le même contrôle sous deux
+  noms fait perdre plus de temps que de n'en appeler aucun.
+
 ## Pièges actifs
 
 - **Les sept cibles supprimées en production le 19/08 n'ont plus de filet

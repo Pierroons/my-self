@@ -53,21 +53,55 @@ et le risque qui subsiste.
 
 ### Agents de vérification
 
-`.claude/agents/` porte deux agents qui lancent ces validations et relisent ce
+`.claude/agents/` porte trois agents qui lancent ces validations et relisent ce
 que le dépôt donne à voir :
 
-| agent | ce qu'il fait |
-|---|---|
-| `lint-syntaxe` | lance le tableau ci-dessus sur les fichiers modifiés et rapporte les sorties telles quelles |
-| `vitrine-depot` | relit README, docs, structure, ton et versioning ; sur un dépôt tiers, vérifie sa politique avant d'écrire |
+| agent | ce qu'il fait | quand l'appeler |
+|---|---|---|
+| `lint-syntaxe` | lance le tableau ci-dessus sur les fichiers modifiés, rapporte les sorties telles quelles | avant un commit ou un push |
+| `vitrine-depot` | relit README, docs, structure, ton, versioning ; sur un dépôt tiers, lit sa politique avant d'écrire | avant une publication ou une release |
+| `bruit-commentaires` | relit les commentaires **ajoutés par le diff** : archéologie, auto-justification, anticipation, redite, chiffres qui évoluent | après avoir écrit ou remanié du code |
 
-Aucun des deux ne modifie de fichier : ils rendent des constats.
+Aucun des trois ne modifie de fichier : ils rendent des constats.
+
+`bruit-commentaires` a une contrainte que les deux autres n'ont pas — il propose,
+il ne réécrit pas. Deux lectures ne valent que si la seconde peut contredire la
+première, ce qui suppose que chaque constat porte de quoi le contredire : le
+commentaire cité, le signe retenu, et ce que le code fait à cet endroit. Il
+écarte explicitement les commentaires qui signalent un piège, même longs — le
+critère qu'il applique est « si ce commentaire disparaissait, quelqu'un
+risquerait-il de casser quelque chose ? ».
 
 Deux autres agents complètent le dispositif — un audit de code adossé à
 `REVIEW.md`, et une recherche de données personnelles avant publication. Ils
 vivent **hors du dépôt**, dans la configuration locale de leur auteur, parce
 qu'ils nomment des incidents et des motifs qui n'ont pas à être publiés. Leur
 absence de ce dossier est voulue ; le dispositif n'est pas incomplet.
+
+Un plugin d'analyse de vulnérabilités s'ajoute à eux, installé côté poste de
+travail. Il cherche ce qu'aucun des cinq ne cherche : injections, désérialisation
+non sûre, primitives mal employées. À l'inverse, il ne saura jamais qu'un script
+de déploiement annonce un succès qu'il n'a pas obtenu. Les deux familles se
+complètent, elles ne se remplacent pas.
+
+### Contrôles outillés
+
+Les agents jugent ; ces scripts mesurent. Ils rendent un code de sortie, donc ils
+tiennent en intégration continue.
+
+| script | ce qu'il mesure |
+|---|---|
+| `scripts/check-paths.sh` | un chemin cité quelque part a-t-il encore sa cible — liens Markdown, règles d'exclusion, chemins de workflow |
+| `scripts/check-profil-unique.sh` | le profil de hachage est-il défini à un seul endroit ; ⚠️ son périmètre est l'index git, pas le disque |
+| `scripts/ecart-instance.sh` | ce qui est versionné et ce qui est servi disent-ils la même chose, sur chaque destination |
+| `scripts/check-fraicheur.sh` | les bases consultées sont-elles à jour, et leur volume progresse-t-il |
+| `scripts/audit-opsec.sh` | les angles morts du détecteur de secrets |
+
+🔑 **Chacun doit avoir été vu rougir.** Un contrôle qu'on n'a jamais fait échouer
+ne se distingue pas d'un contrôle qui ne mesure rien : les deux rendent vert. Un
+jeu de défauts plantés vit hors dépôt pour cet usage — la question posée à toute
+sonde neuve n'est pas « est-ce que ça passe », c'est « est-ce que ça échoue quand
+ça doit ».
 
 ## Conventions
 
