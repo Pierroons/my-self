@@ -1,3 +1,32 @@
+<?php
+/**
+ * Les compteurs du corpus sont rendus ici, côté serveur, et nulle part ailleurs.
+ *
+ * 🔑 SelfJustice est lu par des IA, et une IA n'exécute pas le JavaScript : un
+ * chiffre inséré après coup par le navigateur n'existe pas pour son premier
+ * public. Il doit donc être dans le HTML que le serveur rend.
+ *
+ * La version précédente l'y mettait autrement — un script de cron réécrivait ce
+ * fichier sur place, ce qui obligeait à lever le verrou d'immutabilité de la
+ * production et laissait des chiffres dans le dépôt. Chaque déploiement les
+ * faisait alors régresser jusqu'au passage suivant : le 19/08/2026, la page a
+ * annoncé une synchronisation d'avril pendant neuf minutes. Elle était juste
+ * entre deux accidents.
+ *
+ * Ici, le fichier versionné ne porte aucun chiffre et le cron n'écrit que dans
+ * ses propres données.
+ */
+$corpus = [];
+$fichier = getenv('SELFJUSTICE_STATS_DIR') ?: '/var/lib/selfjustice/stats';
+if (is_readable("$fichier/corpus.json")) {
+    $corpus = json_decode(file_get_contents("$fichier/corpus.json"), true) ?: [];
+}
+/** Un tiret plutôt qu'un zéro : une valeur absente se voit, une valeur fausse non. */
+function chiffre(array $corpus, string $cle): string {
+    $v = $corpus[$cle] ?? null;
+    return ($v === null || $v === '') ? '—' : htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+}
+?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -299,7 +328,7 @@
 <div class="disclaimer" style="margin-top: 0;">
   <h4>⚠ Version bêta v0.1.2 — catalogue opérationnel, non validé par juriste</h4>
   <p style="font-size: 0.95rem; margin-bottom: 0.5rem;">
-    SelfAct indexe <strong><span id="act-catalog-total">1 895</span> ressources
+    SelfAct indexe <strong><span id="act-catalog-total"><?= chiffre($corpus, "act_catalogue") ?></span> ressources
     officielles</strong> publiées par service-public.gouv.fr — modèles de lettres,
     formulaires CERFA et démarches en ligne (licence Etalab 2.0) — et redirige vers
     les URLs officielles de l'État. Il n'édite pas lui-même les modèles. <strong>Le service n'a pas encore fait l'objet d'une

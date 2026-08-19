@@ -224,6 +224,7 @@ if (empty($segments)) {
             'GET /api/status'                          => 'État des bases (nombre articles, last_update)',
             'GET /api/stats/by-ai'                     => 'Statistiques anonymes par famille d\'IA (Claude, OpenAI, etc.)',
             'GET /api/stats/by-endpoint'               => 'Top articles les plus consultés (anonyme, intérêt général)',
+            'GET /api/stats/corpus'                    => 'Volumétrie des bases et date de dernière synchronisation',
         ],
         'sources' => [
             'legi' => 'Légifrance (dump LEGI officiel DILA, MAJ bimensuelle)',
@@ -235,13 +236,15 @@ if (empty($segments)) {
 }
 
 // ============================================================
-// /api/stats/by-ai et /api/stats/by-endpoint
+// /api/stats/by-ai, /api/stats/by-endpoint et /api/stats/corpus
 // ============================================================
 if ($segments[0] === 'stats') {
-    if (count($segments) >= 2 && in_array($segments[1], ['by-ai', 'by-endpoint'], true)) {
-        $file = $segments[1] === 'by-ai'
-            ? '/var/lib/selfjustice/stats/by-ai.json'
-            : '/var/lib/selfjustice/stats/by-endpoint.json';
+    if (count($segments) >= 2 && in_array($segments[1], ['by-ai', 'by-endpoint', 'corpus'], true)) {
+        // corpus : volumétrie des bases et date de synchronisation, écrites
+        // par le cron horaire. Les pages les rendent côté serveur ; cet
+        // endpoint les expose pour qui veut la donnée sans la page.
+        // Le nom vient de la liste fermée ci-dessus, jamais du chemin brut.
+        $file = '/var/lib/selfjustice/stats/' . $segments[1] . '.json';
         if (!file_exists($file)) {
             json_error("Statistiques non encore générées (cron horaire).", 503);
         }
@@ -249,7 +252,7 @@ if ($segments[0] === 'stats') {
         echo file_get_contents($file);
         exit;
     }
-    json_error("Endpoint stats inconnu. Disponibles : /api/stats/by-ai, /api/stats/by-endpoint", 404);
+    json_error("Endpoint stats inconnu. Disponibles : /api/stats/by-ai, /api/stats/by-endpoint, /api/stats/corpus", 404);
 }
 
 // ============================================================

@@ -1,6 +1,6 @@
 #!/bin/bash
 # SelfJustice — Mise à jour des statistiques de la page d'accueil.
-# Compte les requêtes IA dans les logs nginx et met à jour le compteur dans index.html.
+# Compte les requêtes IA dans les logs nginx et publie les compteurs du corpus.
 #
 # À lancer via cron toutes les heures :
 #   0 * * * * <install-dir>/update_stats.sh
@@ -13,8 +13,6 @@ COUNTER_FILE="/var/lib/selfjustice/counter.txt"
 # Racine du site servie par nginx — surchargeable : elle diffère selon
 # l installation. Codée en dur, elle a cessé de pointer vers quoi que ce soit
 # après la migration du 03/08/2026, et le compteur de la page a gelé en silence.
-HTML_FILE="${SELFJUSTICE_SITE_DIR:-/var/www/selfjustice}/index.html"
-ACT_HTML="${SELFJUSTICE_SITE_DIR:-/var/www/selfjustice}/act.html"
 # Catalogue SelfAct : il vit à côté de l'API, pas dans le dossier du site.
 ACT_CATALOG="${SELFACT_CATALOG:-$(dirname "${SELFJUSTICE_SITE_DIR:-/var/www/selfjustice}")/api/act/data/catalog.json}"
 LEGI_DB="${SELFJUSTICE_DB_DIR:-/var/lib/selfjustice/db}/legi_selfjustice.sqlite"
@@ -127,68 +125,46 @@ fi
 # 3. Mettre à jour le HTML
 # ============================================================
 
-if [ ! -f "$HTML_FILE" ]; then
-    echo "ERREUR : index.html introuvable : $HTML_FILE" >&2
-    exit 1
-fi
-
-# 🔑 **Pourquoi ces valeurs sont écrites dans le HTML et pas seulement servies
-# par l'API.** SelfJustice est conçu pour être lu par une IA qui récupère la
-# page — et une IA n'exécute pas le JavaScript. Le script de la page met bien
-# ces compteurs à jour côté navigateur, mais ce que l'IA voit, c'est le HTML
-# brut. D'où cette réécriture.
+# 🔑 **Pourquoi ces valeurs sortent dans un fichier et non dans le HTML.**
+# SelfJustice est lu par des IA, et une IA n'exécute pas le JavaScript : les
+# chiffres doivent être dans le HTML que le serveur rend, pas ajoutés après
+# coup par le navigateur. Ils y sont — mais insérés par la page elle-même au
+# moment où elle est servie, pas écrits dans un fichier versionné.
 #
-# ⚠️ Sur une instance protégée par un verrou d'immutabilité (`chattr +i`),
-# l'écriture échoue. Le script lève le verrou pour ce seul fichier et le
-# remet — y compris s'il est interrompu, d'où le `trap`. Sans cette
-# restauration, une interruption laisserait un fichier de production
-# modifiable sans que rien ne le signale.
-RELOCK=""
-trap 'for f in $RELOCK; do chattr +i "$f" 2>/dev/null || true; done' EXIT INT TERM
-
-# Écrit des couples id/valeur dans les <span> d'une page, en levant puis en
-# remettant le verrou d'immutabilité si la page en porte un.
+# La version précédente réécrivait index.html sur place. Le dépôt portait donc
+# des chiffres, et chaque déploiement les faisait régresser jusqu'au passage
+# suivant : mesuré le 19/08/2026, la page annonçait 488 903 articles et une
+# synchronisation d'avril pendant neuf minutes, avant que ce script ne la
+# répare. La page était juste par accident, entre deux accidents.
 #
-# ⚠️ Le fichier à reverrouiller est enregistré dans RELOCK *avant* que le
-# verrou ne soit levé : si le script meurt entre les deux, le trap le remet.
-# L'ordre inverse laisserait une page de production modifiable en silence.
-patcher_page() {
-    local fichier="$1"; shift
-    [ -f "$fichier" ] || { echo "  (absent, ignoré : $fichier)"; return 0; }
+# Conséquence directe : plus aucun `chattr -i` ici. Ce script n'écrit plus dans
+# le code de production, seulement dans ses données.
+# Même emplacement que les autres sorties de statistiques, produites par
+# build_stats.sh — un seul dossier à servir, un seul à sauvegarder.
+STATS_DIR="${SELFJUSTICE_STATS_DIR:-/var/lib/selfjustice/stats}"
+CORPUS="$STATS_DIR/corpus.json"
+mkdir -p "$STATS_DIR" 2>/dev/null || true
 
-    if lsattr "$fichier" 2>/dev/null | cut -c1-20 | grep -q i; then
-        RELOCK="$RELOCK $fichier"
-        chattr -i "$fichier" 2>/dev/null || true
-    fi
+# ⚠️ Une source momentanément illisible ne doit pas effacer sa valeur — mieux
+# vaut un compteur qui date qu'un compteur disparu. Les valeurs vides sont donc
+# reprises de l'écriture précédente, comme le faisait le sed d'avant.
+php -r '
+    $sortie  = $argv[1];
+    $ancien  = is_readable($sortie) ? (json_decode(file_get_contents($sortie), true) ?: []) : [];
+    $cles    = ["requetes_ia", "legi_articles", "legi_maj", "eu_articles", "eu_maj", "act_catalogue"];
+    $valeurs = array_slice($argv, 2);
+    $sortant = [];
+    foreach ($cles as $i => $cle) {
+        $v = $valeurs[$i] ?? "";
+        $sortant[$cle] = ($v !== "") ? $v : ($ancien[$cle] ?? null);
+    }
+    $sortant["genere_le"] = date("c");
+    $tmp = $sortie . ".tmp";
+    file_put_contents($tmp, json_encode($sortant, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "\n");
+    rename($tmp, $sortie);
+' "$CORPUS" \
+    "$TOTAL_HITS" "$LEGI_ARTICLES" "$LEGI_UPDATE_DATE" \
+    "$EU_ARTICLES" "$EU_UPDATE_DATE" "$ACT_TOTAL"
 
-    local tmp
-    tmp=$(mktemp /tmp/selfjustice-stats-XXXXXX.html)
-    sudo cp "$fichier" "$tmp"
-    while [ "$#" -ge 2 ]; do
-        # Une valeur vide n'écrase rien : mieux vaut un compteur qui date qu'un
-        # compteur effacé parce qu'une source était momentanément illisible.
-        if [ -n "$2" ]; then
-            sudo sed -i "s|<span id=\"$1\">[^<]*</span>|<span id=\"$1\">$2</span>|g" "$tmp"
-        fi
-        shift 2
-    done
-    sudo cp "$tmp" "$fichier"
-    sudo rm -f "$tmp"
-}
-
-patcher_page "$HTML_FILE" \
-    "header-counter" "$TOTAL_HITS" \
-    "legi-update"    "$LEGI_UPDATE_DATE" \
-    "legi-articles"  "$LEGI_ARTICLES" \
-    "eu-update"      "$EU_UPDATE_DATE" \
-    "eu-articles"    "$EU_ARTICLES"
-
-patcher_page "$ACT_HTML" \
-    "act-catalog-total" "$ACT_TOTAL"
-
-# Reverrouiller maintenant plutôt que d'attendre la sortie du script.
-for f in $RELOCK; do chattr +i "$f" 2>/dev/null || true; done
-RELOCK=""
-trap - EXIT INT TERM
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Stats mises à jour : ${TOTAL_HITS} requêtes IA, ${LEGI_ARTICLES} articles LEGI (MAJ: ${LEGI_UPDATE_DATE}), catalogue SelfAct ${ACT_TOTAL:-inchangé}"

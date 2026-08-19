@@ -1,3 +1,32 @@
+<?php
+/**
+ * Les compteurs du corpus sont rendus ici, côté serveur, et nulle part ailleurs.
+ *
+ * 🔑 SelfJustice est lu par des IA, et une IA n'exécute pas le JavaScript : un
+ * chiffre inséré après coup par le navigateur n'existe pas pour son premier
+ * public. Il doit donc être dans le HTML que le serveur rend.
+ *
+ * La version précédente l'y mettait autrement — un script de cron réécrivait ce
+ * fichier sur place, ce qui obligeait à lever le verrou d'immutabilité de la
+ * production et laissait des chiffres dans le dépôt. Chaque déploiement les
+ * faisait alors régresser jusqu'au passage suivant : le 19/08/2026, la page a
+ * annoncé une synchronisation d'avril pendant neuf minutes. Elle était juste
+ * entre deux accidents.
+ *
+ * Ici, le fichier versionné ne porte aucun chiffre et le cron n'écrit que dans
+ * ses propres données.
+ */
+$corpus = [];
+$fichier = getenv('SELFJUSTICE_STATS_DIR') ?: '/var/lib/selfjustice/stats';
+if (is_readable("$fichier/corpus.json")) {
+    $corpus = json_decode(file_get_contents("$fichier/corpus.json"), true) ?: [];
+}
+/** Un tiret plutôt qu'un zéro : une valeur absente se voit, une valeur fausse non. */
+function chiffre(array $corpus, string $cle): string {
+    $v = $corpus[$cle] ?? null;
+    return ($v === null || $v === '') ? '—' : htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+}
+?>
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -111,7 +140,7 @@
     </div>
     <div style="background: var(--bg-card); border: 1px solid var(--accent); border-radius: 8px; padding: 0.6rem 1rem; text-align: center; min-width: 120px;">
       <div style="font-size: 1.6rem; font-weight: bold; color: var(--accent); line-height: 1;">
-        <span id="header-counter">—</span>
+        <span id="header-counter"><?= chiffre($corpus, "requetes_ia") ?></span>
       </div>
       <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 0.2rem;">
         consultations
@@ -197,15 +226,15 @@ Analyse selon /directives.html</pre>
     <p style="font-size: 0.95rem; margin: 0;">
       <strong>Droit français :</strong> Légifrance — dump LEGI officiel de la DILA<br>
       <span style="color: var(--text-muted); font-size: 0.85rem;">
-        <span id="legi-articles">488 903</span> articles indexés,
-        dernière synchronisation : <span id="legi-update">15 avril 2026</span>
+        <span id="legi-articles"><?= chiffre($corpus, "legi_articles") ?></span> articles indexés,
+        dernière synchronisation : <span id="legi-update"><?= chiffre($corpus, "legi_maj") ?></span>
       </span>
     </p>
     <p style="font-size: 0.95rem; margin: 0.6rem 0 0 0;">
       <strong>Conventionnalité (droit supérieur à la loi française) :</strong> EUR-Lex + CEDH<br>
       <span style="color: var(--text-muted); font-size: 0.85rem;">
-        Charte des droits fondamentaux UE (54 art.), TUE, TFUE, RGPD, CEDH — <span id="eu-articles">~1 200</span> articles indexés,
-        dernière synchronisation : <span id="eu-update">16 avril 2026</span>
+        Charte des droits fondamentaux UE (54 art.), TUE, TFUE, RGPD, CEDH — <span id="eu-articles"><?= chiffre($corpus, "eu_articles") ?></span> articles indexés,
+        dernière synchronisation : <span id="eu-update"><?= chiffre($corpus, "eu_maj") ?></span>
       </span>
     </p>
     <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.6rem;">
