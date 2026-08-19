@@ -10,13 +10,23 @@
         "ext-pdo_sqlite": "*",
         "ext-json": "*",
         "ext-mbstring": "*",
-        "pierroons/selfdataguard": "@dev"
+        "pierroons/selfdataguard": "@dev",
+        "pierroons/selfrecover": "@dev"
     },
     "repositories": [
         {
             "type": "path",
             "url": "../../self-security/selfdataguard",
-            "options": { "symlink": true }
+            "options": {
+                "symlink": true
+            }
+        },
+        {
+            "type": "path",
+            "url": "../../bi-self/selfrecover",
+            "options": {
+                "symlink": true
+            }
         }
     ],
     "autoload": {

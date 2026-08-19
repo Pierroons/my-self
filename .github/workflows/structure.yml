@@ -74,6 +74,9 @@ jobs:
         working-directory: demo/lab
         run: composer install --no-interaction --no-progress
 
+      - name: Garde-fou — la bibliothèque sur le schéma réel du lab
+        run: php demo/lab/tests/equivalence_selfrecover.php
+
       - name: Garde-fou — coût constant du hash factice (lab)
         run: php demo/lab/tests/sanity_timing.php
 
