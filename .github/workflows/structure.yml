@@ -58,6 +58,9 @@ jobs:
       - name: Garde-fou — socle SelfRecover (profil de hachage, encodage, diceware)
         run: php bi-self/selfrecover/tests/sanity_socle.php
 
+      - name: Garde-fou — facteur « cet appareil » (dont la prise de compte du 02/08)
+        run: php bi-self/selfrecover/tests/sanity_device.php
+
       - name: Garde-fou — déploiement SelfJustice
         run: bash self-right/selfjustice/tests/test_deploy.sh
 
