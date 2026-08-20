@@ -55,8 +55,10 @@ secondaires en cascade.
 
 ## Les modules
 
-Chaque module répond à une question, se déploie seul, et documente son propre
-modèle de menace — ce qu'il protège et ce qu'il ne protège pas.
+Chaque module répond à une question et se déploie seul. Ceux qui portent du code
+de sécurité documentent leur propre modèle de menace : ce qu'ils protègent, et ce
+qu'ils ne protègent pas. SelfJustice et SelfAct n'en ont pas — ce sont des bases
+de droit tenues à jour, pas des dispositifs de protection.
 
 | Module | Question | État |
 |---|---|---|
@@ -122,7 +124,8 @@ php -S 127.0.0.1:8090 -t public
 Relecture de code bienvenue. Audits — sécurité, droit, accessibilité — très
 bienvenus : signale ce qui cloche, y compris dans cette page.
 
-Chaque module a son `CONTRIBUTING.md`. Traductions bienvenues, forks encouragés.
+Le [CONTRIBUTING.md](./CONTRIBUTING.md) du dépôt vaut pour tous les modules ;
+SelfRecover a le sien en complément. Traductions bienvenues, forks encouragés.
 
 ---
 

@@ -53,8 +53,10 @@ One entry at boot opens the root volume, then the secondary volumes in cascade.
 
 ## The modules
 
-Each module answers one question, deploys on its own, and documents its own
-threat model — what it protects and what it does not.
+Each module answers one question and deploys on its own. Those carrying security
+code document their own threat model: what they protect, and what they do not.
+SelfJustice and SelfAct have none — they are law databases kept up to date, not
+protection mechanisms.
 
 | Module | Question | Status |
 |---|---|---|
@@ -119,8 +121,8 @@ php -S 127.0.0.1:8090 -t public
 Code review is welcome. Audits — security, legal, accessibility — very welcome:
 tell us what's wrong, including on this page.
 
-Each module has its own `CONTRIBUTING.md`. Translations welcome, forks
-encouraged.
+The repository's [CONTRIBUTING.md](./CONTRIBUTING.md) covers every module;
+SelfRecover has its own on top. Translations welcome, forks encouraged.
 
 ---
 
