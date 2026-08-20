@@ -9,7 +9,7 @@ servi en production ; tout s'ouvre depuis un disque.
 | `entropy-lab/` | méthode Diceware aux dés, tables imprimables | page statique |
 | `offline-validator/` | vérification d'une passphrase hors ligne | autonome, zéro requête |
 | `comparison.html` | comparatif des méthodes de récupération | page statique |
-| `reference/` | deux implémentations conservées pour lecture | non exécuté |
+| `reference/` | une implémentation conservée pour lecture | non exécuté |
 
 ## entropy-lab
 
@@ -44,14 +44,19 @@ défendable pour vérifier une passphrase qu'on garde sur papier.
 
 ## reference
 
-`device_handlers.php` et `su_audit.php` viennent de la démo supprimée. Ils ne
-sont ni servis, ni chargés, ni testés.
+`device_handlers.php` vient de la démo supprimée. Il n'est ni servi, ni chargé,
+ni testé.
 
-Ils portent le flux d'enrôlement d'appareil en deux temps — défi de 32 octets à
-usage unique, vérification de signature ECDSA P-256. `my-self-lab/lib/device.php`
+Il porte le flux d'enrôlement d'appareil en deux temps — défi de 32 octets à
+usage unique, vérification de signature ECDSA P-256. `demo/lab/lib/device.php`
 implémente le même mécanisme, plus complètement et à jour ; c'est **lui** la
-référence. Ces deux fichiers sont gardés pour comparaison le jour où le protocole
+référence. Ce fichier est gardé pour comparaison le jour où le protocole
 remontera dans une bibliothèque partagée, et pour aucun autre usage.
 
-La chronologie du correctif d'enrôlement qu'ils documentaient a été reportée dans
-`my-self-lab/lib/device.php`, à l'endroit où on la relira.
+`su_audit.php` a quitté ce dossier le 20/08/2026 : le journal SU redevient du
+code vivant, dans `demo/lab/lib/su_audit.php`. Il n'en reste pas de copie ici —
+une implémentation figée à côté d'une corrigée finit par être reprise à la place
+de la bonne.
+
+La chronologie du correctif d'enrôlement qu'il documentait a été reportée dans
+`demo/lab/lib/device.php`, à l'endroit où on la relira.

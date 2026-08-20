@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     pw_hash         TEXT NOT NULL,          -- Argon2id(password)
     pass_hash       TEXT NOT NULL,          -- Argon2id(passphrase diceware L1)
     recovery_hash   TEXT NOT NULL,          -- Argon2id(derived_key) — L2 recovery
-    is_admin        INTEGER NOT NULL DEFAULT 0,  -- panel admin (promotion via promote_admin.php)
+    is_admin        INTEGER NOT NULL DEFAULT 0,  -- panel admin (promotion par `selfrecover-su`, jamais en base directement)
     created_at      INTEGER NOT NULL,
     -- Traces d'usage, lues par le faisceau du niveau 3 : elles disent si le
     -- compte vivait, sans rien révéler de ses secrets.
@@ -270,3 +270,22 @@ CREATE TABLE IF NOT EXISTS device_challenges (
 );
 CREATE INDEX IF NOT EXISTS idx_devcred_cid ON device_credentials(credential_id);
 CREATE INDEX IF NOT EXISTS idx_devcred_account ON device_credentials(account_id);
+
+-- Demandes de promotion admin. Un admin ne se promeut pas lui-même : il propose,
+-- le SU tranche avec observation obligatoire (`selfrecover-su approve-request`).
+--
+-- Les comptes sont désignés par leur nom, sans clé étrangère, contrairement au
+-- reste du schéma : une décision de gouvernance doit rester lisible après la
+-- suppression du compte concerné. La promotion elle-même reste sûre —
+-- `approve-request` résout le nom dans `accounts` et échoue s'il a disparu.
+CREATE TABLE IF NOT EXISTS admin_requests (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    requester_username TEXT NOT NULL,
+    target_username    TEXT NOT NULL,
+    reason             TEXT,
+    status             TEXT NOT NULL DEFAULT 'pending',  -- pending|approved|rejected
+    su_note            TEXT,                             -- observation du SU, obligatoire à la décision
+    created_at         INTEGER NOT NULL,
+    decided_at         INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_admin_requests_status ON admin_requests(status);

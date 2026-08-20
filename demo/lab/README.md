@@ -24,7 +24,7 @@ Ouvrir http://127.0.0.1:8090
 ## Structure
 
 ```
-my-self-lab/
+demo/lab/
 ├── composer.json     # require pierroons/selfdataguard (path local)
 ├── schema.sql        # accounts, app_sessions, threads, posts, dm
 ├── seed.php          # données de démonstration

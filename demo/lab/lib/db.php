@@ -13,8 +13,21 @@ final class Db
 {
     private static ?PDO $pdo = null;
 
+    /**
+     * `LAB_DB_PATH` déroute la base, comme `SELFRECOVER_STATE_DIR` déroute
+     * l'état du SU : sans cette prise, aucun contrôle ne peut s'exécuter
+     * ailleurs que sur la base réelle.
+     */
     public static function path(): string
     {
+        $override = getenv('LAB_DB_PATH');
+        if ($override) {
+            $dir = dirname($override);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0750, true);
+            }
+            return $override;
+        }
         $dir = __DIR__ . '/../data';
         if (!is_dir($dir)) {
             mkdir($dir, 0750, true);

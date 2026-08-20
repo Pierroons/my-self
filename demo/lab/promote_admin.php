@@ -1,11 +1,11 @@
 <?php
 /**
- * Promotion / rétrogradation admin — usage CLI uniquement.
- *   php promote_admin.php <username>        → promeut en admin
- *   php promote_admin.php <username> off     → retire l'admin
+ * Promotion admin — déplacée vers `selfrecover-su`.
  *
- * Le username admin n'est volontairement nulle part dans le code (OPSEC) :
- * il est désigné ici, à la main, sur le déploiement.
+ * Ce script promouvait et rétrogradait depuis un shell, sans authentification et
+ * sans trace : exactement ce que le modèle SU→Admin→User existe pour empêcher.
+ * Il ne promeut plus, et il le dit — un chemin qui disparaît en silence laisse
+ * quelqu'un devant un outil muet.
  */
 
 declare(strict_types=1);
@@ -15,25 +15,25 @@ if (PHP_SAPI !== 'cli') {
     exit;
 }
 
-require_once __DIR__ . '/lib/db.php';
+$username = trim($argv[1] ?? '');
+$off      = (($argv[2] ?? '') === 'off');
+$verbe    = $off ? 'revoke-admin' : 'add-admin';
+$cible    = $username !== '' ? $username : '<username>';
 
-use Pierroons\MySelfLab\Db;
+fwrite(STDERR, <<<TXT
+    Ce script ne promeut plus. La promotion passe par le super-utilisateur, qui
+    l'authentifie et l'inscrit au journal chaîné avant de l'appliquer :
 
-$username = strtolower(trim($argv[1] ?? ''));
-$off = (($argv[2] ?? '') === 'off');
+        ./selfrecover-su $verbe $cible
 
-if ($username === '') {
-    fwrite(STDERR, "Usage: php promote_admin.php <username> [off]\n");
-    exit(1);
-}
+    Le SU a besoin de deux choses, posées une fois à l'installation, hors de
+    l'arborescence servie :
 
-$pdo = Db::pdo();
-$stmt = $pdo->prepare('UPDATE accounts SET is_admin = ? WHERE username = ?');
-$stmt->execute([$off ? 0 : 1, $username]);
+        export SELFRECOVER_STATE_DIR=/var/lib/myself-lab
+        export SELFRECOVER_SU_AUDIT_SECRET="\$(openssl rand -hex 32)"
+        ./selfrecover-su change-passphrase
 
-if ($stmt->rowCount() > 0) {
-    echo $off ? "✓ @$username n'est plus admin.\n" : "✓ @$username est désormais admin.\n";
-    exit(0);
-}
-fwrite(STDERR, "✗ Compte '$username' introuvable.\n");
+    Sans elles, la console refuse de démarrer plutôt que de gouverner sans trace.
+
+    TXT);
 exit(1);

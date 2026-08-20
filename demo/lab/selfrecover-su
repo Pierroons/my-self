@@ -1,0 +1,565 @@
+#!/usr/bin/env php
+<?php
+/**
+ * selfrecover-su — console SuperUser du lab (modèle SU→Admin→User).
+ *
+ * Le SU n'existe pas en base : son secret vit hors base et hors code, et cette
+ * console ne s'exécute que sur le serveur. Accès au serveur = autorisation ;
+ * il n'y a aucune interface distante à attaquer.
+ *
+ * Seul le SU crée et révoque des administrateurs, et chaque décision est écrite
+ * au journal chaîné avant d'être appliquée en base. Un `is_admin = 1` sans
+ * entrée correspondante est un fantôme, que `audit` révoque et met en
+ * quarantaine.
+ */
+
+declare(strict_types=1);
+
+if (PHP_SAPI !== 'cli') {
+    fwrite(STDERR, "CLI uniquement.\n");
+    exit(1);
+}
+
+require __DIR__ . '/lib/db.php';
+require __DIR__ . '/lib/su_audit.php';
+require __DIR__ . '/lib/diceware/wordlist.php';
+
+use Pierroons\MySelfLab\Db;
+use Pierroons\MySelfLab\SuAudit;
+
+const SU_DEMO_SECRET = 'demo-su-secret';
+
+$argv0 = 'selfrecover-su';
+$cmd   = $argv[1] ?? '';
+
+function su_fail(string $m, int $code = 1): void
+{
+    fwrite(STDERR, "❌ $m\n");
+    exit($code);
+}
+
+function su_ok(string $m): void
+{
+    fwrite(STDOUT, "✅ $m\n");
+}
+
+/** Saisie non affichée : protège la passphrase de l'épaule, du screenshot et de l'historique. */
+function su_prompt_hidden(string $label): string
+{
+    fwrite(STDOUT, $label);
+    $tty = stripos(PHP_OS, 'WIN') === false && @shell_exec('stty 2>/dev/null') !== null;
+    if ($tty) {
+        @shell_exec('stty -echo 2>/dev/null');
+    }
+    $v = rtrim((string) fgets(STDIN), "\r\n");
+    if ($tty) {
+        @shell_exec('stty echo 2>/dev/null');
+        fwrite(STDOUT, "\n");
+    }
+
+    return $v;
+}
+
+function su_secret_path(): string
+{
+    return getenv('SELFRECOVER_SU_SECRET_FILE')
+        ?: ((getenv('SELFRECOVER_STATE_DIR') ?: SuAudit::stateFallback()) . '/su-secret');
+}
+
+/** Le fichier prime sur l'environnement : `change-passphrase` écrit le premier, l'install pose le second. */
+function su_expected_secret(): ?string
+{
+    $f = su_secret_path();
+    if (is_file($f)) {
+        $h = trim((string) @file_get_contents($f));
+        if ($h !== '') {
+            return $h;
+        }
+    }
+    $e = getenv('SELFRECOVER_SU_SECRET');
+
+    return ($e !== false && $e !== '') ? $e : null;
+}
+
+/**
+ * @return string la passphrase en clair — nécessaire pour dériver la clé de
+ *                sauvegarde, à effacer dès que le dérivé est obtenu.
+ */
+function su_authenticate(): string
+{
+    $expected = su_expected_secret();
+    if ($expected === null) {
+        su_fail('Secret SU non configuré (ni ' . su_secret_path() . ', ni SELFRECOVER_SU_SECRET) — à poser à l\'installation.', 2);
+    }
+    $given = getenv('SELFRECOVER_SU_SECRET_INPUT');
+    if ($given === false) {
+        $given = su_prompt_hidden('Passphrase SuperUser : ');
+    }
+    $isHash = preg_match('/^\$(argon2|2y|2a|2b)/', (string) $expected) === 1;
+    $ok = $isHash
+        ? password_verify((string) $given, (string) $expected)
+        : hash_equals((string) $expected, (string) $given);
+    if (!$ok) {
+        su_fail('Secret SU invalide.', 3);
+    }
+
+    return (string) $given;
+}
+
+/** Efface une valeur sensible de la mémoire, avec le repli de `Primitives::zeroize()`. */
+function su_zeroize(string &$v): void
+{
+    if (function_exists('sodium_memzero')) {
+        sodium_memzero($v);
+
+        return;
+    }
+    $v = str_repeat("\0", strlen($v));
+}
+
+/**
+ * Une passphrase qui sert de CLÉ doit résister hors ligne, où aucun compteur
+ * d'essais ne s'applique. Deux voies mesurables, sans estimateur maison :
+ * quatre mots de la liste EFF (≈ 51,7 bits), ou une longueur qui ne se devine
+ * pas. Le seuil de huit caractères de l'ancienne console tombait en secondes.
+ */
+function su_check_passphrase(string $p): void
+{
+    $words = preg_split('/\s+/', trim($p), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    if (count($words) >= 4) {
+        $inList = true;
+        foreach ($words as $w) {
+            if (!DicewareWordlist::contains(strtolower($w), 'en') && !DicewareWordlist::contains(strtolower($w), 'fr')) {
+                $inList = false;
+                break;
+            }
+        }
+        if ($inList) {
+            return;
+        }
+    }
+    if (mb_strlen($p) >= 20) {
+        return;
+    }
+    su_fail(
+        "Passphrase trop faible pour chiffrer une sauvegarde.\n"
+        . "   → soit 4 mots ou plus de la liste diceware EFF (« cheval agrafe pile batterie »),\n"
+        . '   → soit 20 caractères au minimum.'
+    );
+}
+
+function su_find_account(PDO $db, string $username): ?array
+{
+    $st = $db->prepare('SELECT id, username, is_admin FROM accounts WHERE username = ?');
+    $st->execute([$username]);
+
+    return $st->fetch() ?: null;
+}
+
+/**
+ * Clé de chiffrement de la sauvegarde, dérivée de la passphrase SU par Argon2id
+ * avec un sel propre à chaque fichier.
+ *
+ * L'ancienne dérivation était un SHA-256 sans sel, sur un fichier que la console
+ * elle-même destine au hors-site : une passphrase courte y tombait en secondes,
+ * et l'absence de sel rendait les sauvegardes de déployeurs différents
+ * attaquables d'un seul calcul. Le sel voyage dans l'en-tête `SRSU2`.
+ */
+function su_backup_key(string $passphrase, string $salt): string
+{
+    return sodium_crypto_pwhash(
+        32,
+        $passphrase,
+        $salt,
+        SODIUM_CRYPTO_PWHASH_OPSLIMIT_MODERATE,
+        SODIUM_CRYPTO_PWHASH_MEMLIMIT_MODERATE,
+        SODIUM_CRYPTO_PWHASH_ALG_ARGON2ID13
+    );
+}
+
+/** Dérivation de l'ancien format, conservée en lecture seule pour rouvrir les sauvegardes déjà produites. */
+function su_backup_key_legacy(string $passphrase): string
+{
+    return hash('sha256', $passphrase . '|su-audit-backup', true);
+}
+
+// ─── Garde-fou de démarrage ──────────────────────────────────────────────────
+// Le régime strict est le défaut : contourner demande un geste conscient, parce
+// qu'un déploiement qui ne pose rien ne doit pas hériter des valeurs de démonstration.
+if (!SuAudit::devMode()) {
+    if (su_expected_secret() === SU_DEMO_SECRET) {
+        su_fail('Secret SU = valeur de démonstration. Lance `change-passphrase`, ou pose un hash Argon2id.', 78);
+    }
+    if (SuAudit::secret() === SuAudit::DEMO_SECRET) {
+        su_fail('SELFRECOVER_SU_AUDIT_SECRET absent ou laissé à sa valeur de démonstration — à fixer à l\'installation.', 78);
+    }
+    $state = dirname(su_secret_path());
+    if (is_dir($state) && str_starts_with(realpath($state) ?: $state, realpath(__DIR__) ?: __DIR__)) {
+        su_fail(
+            "Le secret SU vit sous l'arborescence du module ($state), donc potentiellement sous une racine web.\n"
+            . '   → pose SELFRECOVER_STATE_DIR sur un dossier hors du site.',
+            78
+        );
+    }
+}
+
+switch ($cmd) {
+    case 'add-admin':
+        su_authenticate();
+        $u   = $argv[2] ?? su_fail("usage: $argv0 add-admin <username>");
+        $db  = Db::pdo();
+        $acc = su_find_account($db, $u) ?: su_fail("Compte « $u » introuvable.");
+        if ((int) $acc['is_admin'] === 1) {
+            su_fail("« $u » est déjà administrateur.");
+        }
+        SuAudit::append(SuAudit::ACTION_ADD_ADMIN, $u);
+        $db->prepare('UPDATE accounts SET is_admin = 1 WHERE id = ?')->execute([$acc['id']]);
+        su_ok("« $u » promu administrateur (journalisé).");
+        break;
+
+    case 'revoke-admin':
+        su_authenticate();
+        $u   = $argv[2] ?? su_fail("usage: $argv0 revoke-admin <username>");
+        $db  = Db::pdo();
+        $acc = su_find_account($db, $u) ?: su_fail("Compte « $u » introuvable.");
+        if ((int) $acc['is_admin'] !== 1) {
+            su_fail("« $u » n'est pas administrateur.");
+        }
+        SuAudit::append(SuAudit::ACTION_REVOKE_ADMIN, $u);
+        $db->prepare('UPDATE accounts SET is_admin = 0 WHERE id = ?')->execute([$acc['id']]);
+        $db->prepare('DELETE FROM app_sessions WHERE account_id = ?')->execute([$acc['id']]);
+        su_ok("« $u » révoqué — sessions coupées, journalisé.");
+        break;
+
+    case 'list-admins':
+        su_authenticate();
+        $rows = Db::pdo()->query('SELECT username FROM accounts WHERE is_admin = 1 ORDER BY username')->fetchAll();
+        if (!$rows) {
+            fwrite(STDOUT, "Aucun administrateur.\n");
+            break;
+        }
+        fwrite(STDOUT, 'Administrateurs (' . count($rows) . ") :\n");
+        foreach ($rows as $r) {
+            fwrite(STDOUT, "  · {$r['username']}\n");
+        }
+        break;
+
+    case 'list-requests':
+        su_authenticate();
+        $rows = Db::pdo()->query(
+            "SELECT id, requester_username, target_username, reason, created_at
+               FROM admin_requests WHERE status = 'pending' ORDER BY id"
+        )->fetchAll();
+        if (!$rows) {
+            fwrite(STDOUT, "Aucune demande en attente.\n");
+            break;
+        }
+        fwrite(STDOUT, "Demandes en attente :\n");
+        foreach ($rows as $r) {
+            fwrite(STDOUT, sprintf(
+                "  #%d  %s → promouvoir %s%s  [%s]\n",
+                $r['id'],
+                $r['requester_username'],
+                $r['target_username'],
+                $r['reason'] ? "  ({$r['reason']})" : '',
+                date('Y-m-d H:i', (int) $r['created_at'])
+            ));
+        }
+        break;
+
+    case 'approve-request':
+        su_authenticate();
+        $id   = $argv[2] ?? su_fail("usage: $argv0 approve-request <id> \"<observation>\"");
+        $note = $argv[3] ?? su_fail('Observation obligatoire : le SU dit pourquoi il tranche.');
+        $db   = Db::pdo();
+        $st   = $db->prepare("SELECT * FROM admin_requests WHERE id = ? AND status = 'pending'");
+        $st->execute([$id]);
+        $req = $st->fetch() ?: su_fail("Demande #$id introuvable ou déjà traitée.");
+        $acc = su_find_account($db, $req['target_username'])
+            ?: su_fail("Cible « {$req['target_username']} » introuvable — le compte a disparu depuis la demande.");
+
+        SuAudit::append(SuAudit::ACTION_APPROVE_REQUEST, $req['target_username'], [
+            'request_id'   => (int) $id,
+            'requester'    => $req['requester_username'],
+            'reason'       => $req['reason'],
+            'requested_at' => (int) $req['created_at'],
+            'su_note'      => $note,
+        ]);
+        $db->beginTransaction();
+        $db->prepare('UPDATE accounts SET is_admin = 1 WHERE id = ?')->execute([$acc['id']]);
+        $db->prepare("UPDATE admin_requests SET status = 'approved', su_note = ?, decided_at = ? WHERE id = ?")
+            ->execute([$note, time(), $id]);
+        $db->commit();
+        su_ok("Demande #$id approuvée — « {$req['target_username']} » promu administrateur.");
+        break;
+
+    case 'reject-request':
+        su_authenticate();
+        $id   = $argv[2] ?? su_fail("usage: $argv0 reject-request <id> \"<observation>\"");
+        $note = $argv[3] ?? su_fail('Observation obligatoire.');
+        $db   = Db::pdo();
+        $st   = $db->prepare("SELECT * FROM admin_requests WHERE id = ? AND status = 'pending'");
+        $st->execute([$id]);
+        $req = $st->fetch() ?: su_fail("Demande #$id introuvable ou déjà traitée.");
+
+        SuAudit::append(SuAudit::ACTION_REJECT_REQUEST, $req['target_username'], [
+            'request_id'   => (int) $id,
+            'requester'    => $req['requester_username'],
+            'reason'       => $req['reason'],
+            'requested_at' => (int) $req['created_at'],
+            'su_note'      => $note,
+        ]);
+        $db->prepare("UPDATE admin_requests SET status = 'rejected', su_note = ?, decided_at = ? WHERE id = ?")
+            ->execute([$note, time(), $id]);
+        su_ok("Demande #$id refusée (journalisé).");
+        break;
+
+    case 'audit':
+        su_authenticate();
+        $dryRun = in_array('--dry-run', $argv, true);
+        $db     = Db::pdo();
+        $admins = array_column($db->query('SELECT username FROM accounts WHERE is_admin = 1')->fetchAll(), 'username');
+
+        $legit = [];
+        foreach (SuAudit::read() as $e) {
+            $t = $e['target'] ?? null;
+            if (!$t) {
+                continue;
+            }
+            if (in_array($e['action'], SuAudit::GRANTING, true)) {
+                $legit[$t] = true;
+            } elseif (in_array($e['action'], SuAudit::REVOKING, true)) {
+                unset($legit[$t]);
+            }
+        }
+        $ghosts = array_values(array_diff($admins, array_keys($legit)));
+
+        $ver = SuAudit::verify();
+        fwrite(STDOUT, 'Journal : ' . ($ver['ok']
+            ? "✅ intègre ({$ver['count']} entrées)"
+            : "🚨 ROMPU à l'entrée {$ver['break_at']} — {$ver['reason']}") . "\n");
+
+        if ($ghosts) {
+            fwrite(STDOUT, "🚨 ADMINISTRATEUR(S) FANTÔME(S) — is_admin = 1 sans entrée de création :\n");
+            foreach ($ghosts as $g) {
+                if ($dryRun) {
+                    fwrite(STDOUT, "   ⚠️  $g  (--dry-run : non bloqué)\n");
+                    continue;
+                }
+                SuAudit::append(SuAudit::ACTION_QUARANTINE, $g, ['reason' => 'is_admin=1 sans entrée de création au journal']);
+                $db->prepare('UPDATE accounts SET is_admin = 0 WHERE username = ?')->execute([$g]);
+                $db->prepare('DELETE FROM app_sessions WHERE account_id = (SELECT id FROM accounts WHERE username = ?)')
+                    ->execute([$g]);
+                fwrite(STDOUT, "   🔒 $g → quarantaine (droits révoqués, sessions coupées, journalisé)\n");
+            }
+            exit(4);
+        }
+        fwrite(STDOUT, '✅ Aucun fantôme : les ' . count($admins) . " administrateur(s) en base correspondent au journal.\n");
+        break;
+
+    case 'verify-log':
+        su_authenticate();
+        $ver = SuAudit::verify();
+        if (!$ver['ok']) {
+            su_fail("🚨 Chaîne ROMPUE à l'entrée {$ver['break_at']} : {$ver['reason']}", 4);
+        }
+        su_ok("Chaîne intègre — {$ver['count']} entrées, aucune altération.");
+        break;
+
+    case 'show-log':
+    case 'log':
+        su_authenticate();
+        $logPath = SuAudit::logPath();
+        if (!file_exists($logPath)) {
+            su_fail("Aucun journal ($logPath).");
+        }
+        $lines = file($logPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $limit = isset($argv[2]) ? max(1, (int) $argv[2]) : count($lines);
+        $slice = array_slice($lines, -$limit);
+
+        fwrite(STDOUT, 'Journal SU — ' . count($lines) . ' entrée(s)'
+            . ($limit < count($lines) ? " (dernières $limit)" : '') . " · $logPath\n");
+        fwrite(STDOUT, str_repeat('─', 60) . "\n");
+        foreach ($slice as $line) {
+            $e = json_decode($line, true);
+            if (!is_array($e)) {
+                fwrite(STDOUT, "  ⚠ ligne illisible\n");
+                continue;
+            }
+            $f   = $e['forensic'] ?? [];
+            $who = ($f['mode'] ?? '') === 'minimal'
+                ? 'contexte réduit'
+                : (!empty($f['operator']) ? $f['operator'] . '  ·  ' : '')
+                    . ($f['unix_user'] ?? '?') . '@' . ($f['ssh_client_ip'] ?: 'local')
+                    . ' tty=' . ($f['tty'] ?? '?') . ' pid=' . ($f['pid'] ?? '?');
+
+            fwrite(STDOUT, sprintf(
+                "#%-3s %s  %s%s\n",
+                $e['seq'] ?? '?',
+                $e['ts_paris'] ?? ($e['ts_utc'] ?? '?'),
+                $e['action'] ?? '?',
+                isset($e['target']) && $e['target'] !== '' ? " → {$e['target']}" : ''
+            ));
+            foreach (($e['extra'] ?? []) as $k => $v) {
+                if (is_scalar($v)) {
+                    fwrite(STDOUT, "     $k : $v\n");
+                }
+            }
+            fwrite(STDOUT, "     par  : $who\n");
+            fwrite(STDOUT, '     hash : ' . substr($e['entry_hash'] ?? '', 0, 12) . '…  hmac '
+                . substr($e['hmac'] ?? '', 0, 12) . "…\n");
+        }
+        fwrite(STDOUT, str_repeat('─', 60) . "\n");
+        fwrite(STDOUT, "Intégrité : `$argv0 verify-log` contrôle la chaîne.\n");
+        break;
+
+    case 'change-passphrase':
+    case 'set-passphrase':
+        su_authenticate();
+        $n1 = getenv('SELFRECOVER_SU_NEW_INPUT');
+        if ($n1 === false) {
+            $n1 = su_prompt_hidden('Nouvelle passphrase SU : ');
+            $n2 = su_prompt_hidden('Confirme la nouvelle passphrase : ');
+            if ($n1 !== $n2) {
+                su_fail('Les deux saisies diffèrent — rien changé.');
+            }
+        }
+        su_check_passphrase((string) $n1);
+        $secPath = su_secret_path();
+        if (!is_dir(dirname($secPath)) && !@mkdir(dirname($secPath), 0700, true)) {
+            su_fail('Dossier d\'état introuvable et non créable : ' . dirname($secPath));
+        }
+        $newHash = password_hash((string) $n1, PASSWORD_ARGON2ID);
+        if (@file_put_contents($secPath, $newHash) === false) {
+            su_fail("Écriture impossible : $secPath.");
+        }
+        @chmod($secPath, 0600);
+        SuAudit::append(SuAudit::ACTION_CHANGE_PASS, 'SU', ['store' => basename($secPath), 'algo' => 'argon2id']);
+        su_ok("Passphrase SU changée — hash Argon2id dans $secPath. L'ancienne ne vaut plus rien.");
+        break;
+
+    case 'backup-log':
+        $pass    = su_authenticate();
+        $dest    = $argv[2] ?? su_fail("usage: $argv0 backup-log <fichier-destination>");
+        $logPath = SuAudit::logPath();
+        if (!file_exists($logPath)) {
+            su_fail("Aucun journal à sauvegarder ($logPath).");
+        }
+        su_check_passphrase($pass);
+
+        $salt   = random_bytes(SODIUM_CRYPTO_PWHASH_SALTBYTES);
+        $key    = su_backup_key($pass, $salt);
+        su_zeroize($pass);
+        $iv     = random_bytes(12);
+        $tag    = '';
+        $cipher = openssl_encrypt(
+            (string) file_get_contents($logPath),
+            'aes-256-gcm',
+            $key,
+            OPENSSL_RAW_DATA,
+            $iv,
+            $tag
+        );
+        su_zeroize($key);
+        if ($cipher === false) {
+            su_fail('Chiffrement échoué.');
+        }
+        $sealed = "SRSU2\n" . base64_encode($salt) . "\n" . base64_encode($iv) . "\n"
+            . base64_encode($tag) . "\n" . base64_encode($cipher) . "\n";
+        if (@file_put_contents($dest, $sealed) === false) {
+            su_fail("Écriture $dest impossible.");
+        }
+        @chmod($dest, 0600);
+        SuAudit::append(SuAudit::ACTION_BACKUP_LOG, basename($dest));
+        su_ok("Journal scellé → $dest (AES-256-GCM, clé Argon2id salée).");
+        fwrite(STDOUT, "   → à copier hors-site. Restauration : $argv0 restore-log $dest\n");
+        break;
+
+    case 'restore-log':
+        $pass = su_authenticate();
+        $src  = $argv[2] ?? su_fail("usage: $argv0 restore-log <fichier-scellé>");
+        if (!file_exists($src)) {
+            su_fail("Fichier introuvable : $src.");
+        }
+        $lines  = file($src, FILE_IGNORE_NEW_LINES);
+        $format = $lines[0] ?? '';
+        if ($format === 'SRSU2') {
+            $key    = su_backup_key($pass, base64_decode($lines[1] ?? ''));
+            $iv     = base64_decode($lines[2] ?? '');
+            $tag    = base64_decode($lines[3] ?? '');
+            $cipher = base64_decode($lines[4] ?? '');
+        } elseif ($format === 'SRSU1') {
+            // Sauvegardes produites avant le salage. Lisibles, jamais réécrites
+            // dans cet ancien format : `backup-log` ne produit plus que du SRSU2.
+            $key    = su_backup_key_legacy($pass);
+            $iv     = base64_decode($lines[1] ?? '');
+            $tag    = base64_decode($lines[2] ?? '');
+            $cipher = base64_decode($lines[3] ?? '');
+            fwrite(STDERR, "⚠️  Format SRSU1 (clé non salée) — rescelle ce journal avec `backup-log`.\n");
+        } else {
+            su_fail('Format scellé inconnu.');
+        }
+        su_zeroize($pass);
+        $plain = openssl_decrypt($cipher, 'aes-256-gcm', $key, OPENSSL_RAW_DATA, $iv, $tag);
+        su_zeroize($key);
+        if ($plain === false) {
+            su_fail('Déchiffrement échoué (mauvaise passphrase ou fichier altéré).', 4);
+        }
+        fwrite(STDOUT, $plain);
+        break;
+
+    case 'forgot-passphrase':
+    case 'reset-shell':
+        // Coquille vide : la passphrase est perdue, donc elle ne peut pas être
+        // exigée. L'accès au serveur fait autorisation — choix assumé, borné par
+        // ce qu'il ne peut pas faire : il ne promeut personne, et l'ancien
+        // journal est figé et renommé, jamais détruit.
+        if (!in_array('--confirm', $argv, true)) {
+            fwrite(STDOUT, "⚠️  COQUILLE VIDE (passphrase SU perdue) — action destructive :\n");
+            fwrite(STDOUT, "   • tous les administrateurs perdent leurs droits\n");
+            fwrite(STDOUT, "   • toutes les sessions sont coupées, les demandes en attente tombent\n");
+            fwrite(STDOUT, "   • le journal courant est figé et rangé (rouvrable via une sauvegarde scellée)\n");
+            fwrite(STDOUT, "   • un journal vierge démarre — pose ensuite une nouvelle passphrase\n\n");
+            fwrite(STDOUT, "   Relance avec --confirm pour exécuter.\n");
+            exit(1);
+        }
+        $db = Db::pdo();
+        $n  = $db->exec('UPDATE accounts SET is_admin = 0 WHERE is_admin = 1');
+        $db->exec('DELETE FROM app_sessions');
+        $db->exec("DELETE FROM admin_requests WHERE status = 'pending'");
+
+        $logPath = SuAudit::logPath();
+        $frozen  = null;
+        if (file_exists($logPath)) {
+            $frozen = $logPath . '.frozen-' . (new DateTime('now', new DateTimeZone('UTC')))->format('Ymd-His');
+            @rename($logPath, $frozen);
+        }
+        SuAudit::append(SuAudit::ACTION_RESET_SHELL, 'ALL-ADMINS', [
+            'revoked_admins' => (int) $n,
+            'frozen_log'     => $frozen ? basename($frozen) : null,
+        ]);
+        su_ok("Coquille vide : $n administrateur(s) révoqué(s), sessions coupées, demandes purgées.");
+        if ($frozen) {
+            fwrite(STDOUT, '   Ancien journal figé → ' . basename($frozen) . "\n");
+        }
+        fwrite(STDOUT, "   ⚠️  Pose maintenant une nouvelle passphrase SU avant toute promotion.\n");
+        break;
+
+    default:
+        fwrite(STDOUT, "selfrecover-su — console SuperUser (SU→Admin→User)\n\n");
+        fwrite(STDOUT, "  add-admin <username>           promeut un compte en administrateur\n");
+        fwrite(STDOUT, "  revoke-admin <username>        révoque un administrateur et coupe ses sessions\n");
+        fwrite(STDOUT, "  list-admins                    liste les administrateurs\n");
+        fwrite(STDOUT, "  list-requests                  demandes de promotion en attente\n");
+        fwrite(STDOUT, "  approve-request <id> \"<obs>\"   valide une demande, observation obligatoire\n");
+        fwrite(STDOUT, "  reject-request  <id> \"<obs>\"   refuse une demande\n");
+        fwrite(STDOUT, "  audit [--dry-run]              croise base et journal, met les fantômes en quarantaine\n");
+        fwrite(STDOUT, "  show-log [N]                   affiche le journal\n");
+        fwrite(STDOUT, "  verify-log                     contrôle l'intégrité de la chaîne\n");
+        fwrite(STDOUT, "  change-passphrase              change la passphrase SU\n");
+        fwrite(STDOUT, "  backup-log <dest>              scelle le journal pour le hors-site\n");
+        fwrite(STDOUT, "  restore-log <scellé>           relit une sauvegarde scellée\n");
+        fwrite(STDOUT, "  reset-shell --confirm          coquille vide (passphrase perdue)\n\n");
+        fwrite(STDOUT, "État hors site servi : SELFRECOVER_STATE_DIR. Secret du journal : SELFRECOVER_SU_AUDIT_SECRET.\n");
+        break;
+}
