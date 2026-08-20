@@ -24,8 +24,23 @@ if [ -f "$HOME/.claude/commands/pre-push.md" ]; then
   echo "↪ /pre-push passé sur ce diff ? (l'audit ci-dessous est mécanique)"
 fi
 
+# Ce que cet envoi AJOUTE, et non tout ce que le dépôt contient. Un motif entré
+# il y a quatre mois est déjà public : aucun envoi ne l'aggrave, aucun envoi ne
+# le corrige, et le blocage n'a d'autre effet que d'apprendre à contourner le
+# hook. Ce qui reste dans le passé se traite par git-filter-repo, pas ici.
+# Sans amont — première publication d'une branche — on retombe sur l'audit
+# complet : c'est le cas où rien n'a encore été vu par personne.
+ARGS=()
+if UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
+  ARGS=(--range "$UPSTREAM..HEAD")
+  N=$(git rev-list --count "$UPSTREAM..HEAD")
+  echo "▸ Périmètre : $N commit(s) à publier ($UPSTREAM..HEAD)"
+else
+  echo "▸ Périmètre : historique complet (aucune branche amont)"
+fi
+
 if [ -x "$ROOT/scripts/audit-opsec.sh" ]; then
-  if ! "$ROOT/scripts/audit-opsec.sh"; then
+  if ! "$ROOT/scripts/audit-opsec.sh" "${ARGS[@]}"; then
     echo ""
     echo "❌ PUSH BLOQUÉ."
     echo "   Si la donnée est déjà commitée, la corriger maintenant ne la"

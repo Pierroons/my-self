@@ -64,19 +64,26 @@ ALLOWLIST="$ROOT/scripts/opsec-allowlist.txt"
 
 MODE="full"
 MSGFILE=""
+RANGE=""
 VERBOSE=0
 case "${1:-}" in
   --staged)   MODE="staged" ;;
   --worktree) MODE="worktree" ;;
   --message)  MODE="message"; MSGFILE="${2:-}" ;;
   --verbose)  VERBOSE=1 ;;
+  # Borne les contrôles d'historique (2, 4, 5) aux commits d'une plage, au lieu
+  # de tout le dépôt. Sans lui, le pre-push rougissait sur un passé DÉJÀ publié,
+  # qu'aucun envoi ne peut ni aggraver ni corriger : l'audit bloquait chaque
+  # envoi jusqu'à réécriture de l'historique, donc on le contournait.
+  --range)    RANGE="${2:-}"
+              [ -n "$RANGE" ] || { printf '\033[31m✗ --range attend une plage (ex. @{u}..HEAD)\033[0m\n' >&2; exit 2; } ;;
   "")         ;;
   # Sans ce refus, une faute de frappe tombait en mode complet et rendait un
   # vert : « ✓ Rien à signaler » sur un audit qui n'était pas celui demandé.
   # Mesuré le 14/08/2026 avec --worktree avant qu'il existe.
   # printf et non red() : les fonctions d'affichage sont définies plus bas.
   *)          printf '\033[31m✗ Argument inconnu : %s\033[0m\n' "$1" >&2
-              echo "  Modes : --worktree | --staged | --message <fichier> | (aucun)" >&2
+              echo "  Modes : --worktree | --staged | --message <fichier> | --range <plage> | (aucun)" >&2
               exit 2 ;;
 esac
 
@@ -288,10 +295,22 @@ if [ "$PAR_CIBLES" = "1" ]; then
 else
   # On scanne TOUS les commits, pas le HEAD : corriger un fichier ne retire
   # pas ce qu'il contenait hier. C'est ce qui distingue ce contrôle de gitleaks.
-  echo "2. Données personnelles — contenu de l'historique complet"
-  mapfile -t REVS < <(git -C "$ROOT" rev-list --all)
+  if [ -n "$RANGE" ]; then
+    echo "2. Données personnelles — contenu des commits à publier ($RANGE)"
+    mapfile -t REVS < <(git -C "$ROOT" rev-list "$RANGE")
+  else
+    echo "2. Données personnelles — contenu de l'historique complet"
+    mapfile -t REVS < <(git -C "$ROOT" rev-list --all)
+  fi
+  # Une plage vide ne se mesure pas : le dire, plutôt que rendre un vert que
+  # rien ne distingue d'un vert obtenu sur des commits réellement lus.
+  if [ "${#REVS[@]}" = "0" ]; then
+    ok "aucun commit dans le périmètre — rien n'a été lu"
+    REVS=()
+  fi
   C2=0
   for m in "${MOTIFS[@]}"; do
+    [ "${#REVS[@]}" = "0" ] && break
     hits=$(git -C "$ROOT" grep -Iil -e "$m" "${REVS[@]}" | cut -d: -f2- | sort -u)
     rc=${PIPESTATUS[0]}
     if [ "$rc" -gt 1 ]; then
@@ -309,7 +328,9 @@ else
     n=$(printf '%s' "$reste" | grep -c . || true)
     [ "${n:-0}" != "0" ] && { warn "« $m » — $n fichier(s)"; C2=1; }
   done
-  [ "$C2" = "0" ] && ok "aucun motif dans le contenu"
+  # Muet si la plage est vide : le « rien n'a été lu » plus haut suffit, et
+  # deux verts de suite dont l'un affirme plus que l'autre finissent mal lus.
+  [ "$C2" = "0" ] && [ "${#REVS[@]}" != "0" ] && ok "aucun motif dans le contenu"
 fi
 
 # ── 3. Métadonnées des binaires ────────────────────────────────────────────
@@ -352,9 +373,14 @@ fi
 # ── 4 et 5 : historique seulement ──────────────────────────────────────────
 if [ "$PAR_CIBLES" = "0" ]; then
   echo
-  echo "4. Messages de commit (sujets et corps)"
+  if [ -n "$RANGE" ]; then
+    echo "4. Messages de commit à publier ($RANGE)"
+    MESSAGES=$(git -C "$ROOT" log "$RANGE" --format='%s%n%b')
+  else
+    echo "4. Messages de commit (sujets et corps)"
+    MESSAGES=$(git -C "$ROOT" log --all --format='%s%n%b')
+  fi
   C4=0
-  MESSAGES=$(git -C "$ROOT" log --all --format='%s%n%b')
   for m in "${MOTIFS[@]}"; do
     n=$(printf '%s' "$MESSAGES" | grep -ic -e "$m"); rc=$?
     if [ "$rc" -gt 1 ]; then
