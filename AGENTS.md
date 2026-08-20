@@ -130,6 +130,25 @@ Chacun a répondu exactement à la question posée.
   le message de commit.
 - SQL sans commentaire à l'intérieur des requêtes.
 
+🔑 **Un vérificateur peut être rapide ; une clé, jamais.** Tout secret mémorisé
+par un humain qui sert à **chiffrer** — et non à contrôler un accès — passe par
+une KDF mémoire-dure avec sel, ou se combine à un facteur absent de la base
+(pepper hors base, TPM). Hors ligne, un tag AEAD est un oracle de validité
+gratuit : aucun compteur d'essais ne s'applique, et le coût par essai est tout
+ce qui reste.
+
+Le motif s'est produit deux fois, dans deux modules écrits séparément, chaque
+fois de la même façon : le chemin d'authentification correctement durci en
+Argon2id, et le chemin de chiffrement laissé sur un hachage simple, à quelques
+lignes d'écart. Deux occurrences indépendantes ne sont pas deux oublis. Devant
+un `hash()` ou un `hash_hmac()`, la question est donc : est-ce que sa sortie
+finit en paramètre de clé d'un `openssl_encrypt` ou d'un `sodium_crypto_aead_*` ?
+
+Corollaire quand plusieurs enveloppes protègent la même clé de données : la
+sécurité de l'ensemble est celle de la moins chère à ouvrir, pas de la plus
+solide. Une KDF coûteuse sur un chemin ne protège rien si un second chemin mène
+à la même clé plus vite.
+
 ## Déployer
 
 Le script de déploiement vit hors dépôt : ses correctifs n'apparaissent dans
