@@ -5,8 +5,8 @@
 **Application-layer data-at-rest protection that survives a database exfiltration.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: beta v0.1.0](https://img.shields.io/badge/status-beta%200.1.0-yellow.svg)](#status)
-[![Tests: 155 passing](https://img.shields.io/badge/tests-155%20passing-brightgreen.svg)](#testing)
+[![Status: v0.1.0 in service](https://img.shields.io/badge/status-v0.1.0%20in%20service-brightgreen.svg)](#status)
+[![Tests: 191 passing](https://img.shields.io/badge/tests-191%20passing-brightgreen.svg)](#testing)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -104,7 +104,7 @@ Most e-commerce deployments will pick **Hybrid**. Health, banking, identity prov
 
 **v0.1.0-beta — reference library + standalone demo**, May 8, 2026.
 
-Whitepaper complete (specification + threat model). PHP reference library implemented (~1230 lines, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, AES-256-GCM) covered by 155 sanity tests. A clickable HTML demo is included to inspect the encrypted database in real time.
+Whitepaper complete (specification + threat model). PHP reference library implemented (~1230 lines, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, AES-256-GCM) covered by 191 sanity tests. A clickable HTML demo is included to inspect the encrypted database in real time.
 
 This module is **not yet production-ready**. It is published as beta to:
 
@@ -171,7 +171,7 @@ php tests/sanity_vault.php        #  33 tests — register, unlock, rotation, AA
 php tests/sanity_fields.php       # 25 tests — field encrypt/decrypt + blind index
 php tests/sanity_storage.php      # 36 tests — SQLite adapter, "DB dump = soup" test
 php tests/sanity_facade.php       # 34 tests — full API end-to-end
-# Total: 155 tests, 0 failures
+# Total: 191 tests, 0 failures
 ```
 
 The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file and verifies that no plaintext personal data appears anywhere in the binary blob.
