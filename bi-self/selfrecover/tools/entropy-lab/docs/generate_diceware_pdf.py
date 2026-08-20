@@ -14,19 +14,20 @@ pas les cartouches couleur. Liens cliquables (outil offline + projet SelfRecover
 Regenere docs/diceware-method-{en,fr}.pdf depuis data/eff_large_wordlist_{en,fr}.txt.
 Usage : python3 generate_diceware_pdf.py
 """
+import json
 import os
 from datetime import datetime
 from fpdf import FPDF
 from fpdf.enums import XPos, YPos
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.join(HERE, "..", "data")
+DATA = os.path.join(HERE, "..", "..", "..", "assets")
 DOC_VERSION = "0.4.0"
 
-URL_TOOL = "https://your-instance.example/selfrecover/offline/selfrecover-validator.html"
-URL_SELF = "https://your-instance.example/selfrecover"
-DISP_TOOL = "your-instance.example/selfrecover/offline/selfrecover-validator.html"
-DISP_SELF = "your-instance.example/selfrecover"
+# Aucune URL : ce document est imprimé, et une instance auto-hébergée n'a pas
+# d'adresse commune. On donne le chemin dans le dépôt, qui ne bouge qu'avec lui.
+DISP_TOOL = "tools/entropy-lab/index.html"
+DISP_SELF = "SelfRecover — MySelf"
 
 # --- Charte MySelf (RGB) : usage LEGER sur fond blanc ---
 ACCENT = (58, 125, 210)      # bleu MySelf assombri pour lisibilite/impression sur blanc
@@ -39,7 +40,7 @@ CODE_CLR = (36, 40, 48)      # code des : noir (impression)
 
 LANGS = {
     "en": {
-        "wordfile": "eff_large_wordlist_en.txt",
+        "wordfile": "eff_en.json",
         "kicker": "SELFRECOVER  //  DICEWARE",
         "title": "Diceware Reference",
         "listname": "EFF Large Wordlist  -  7776 words",
@@ -80,7 +81,7 @@ LANGS = {
         "runhdr": "SelfRecover  //  Diceware  //  EN",
     },
     "fr": {
-        "wordfile": "eff_large_wordlist_fr.txt",
+        "wordfile": "eff_fr.json",
         "kicker": "SELFRECOVER  //  DICEWARE",
         "title": "Reference Diceware",
         "listname": "Liste ArthurPons  -  equivalent francais  -  7776 mots",
@@ -198,8 +199,10 @@ def index_to_code(i: int) -> str:
 
 
 def load_words(path: str) -> list:
+    # Même fichier que le moteur JS et le protocole : une seule source, pas de
+    # copie .txt à tenir à jour en parallèle.
     with open(path, encoding="utf-8") as f:
-        words = [w.strip() for w in f if w.strip()]
+        words = [str(w).strip() for w in json.load(f) if str(w).strip()]
     if len(words) != 7776:
         raise SystemExit(f"Wordlist invalide : {len(words)} mots au lieu de 7776 ({path})")
     return words
@@ -241,7 +244,7 @@ class DicewarePDF(FPDF):
         self.set_xy(-58, 9)
         self.set_font(self.body, "", 8)
         self.set_text_color(*SUBINK)
-        self.cell(46, 5, DISP_SELF, align="R", link=URL_SELF)
+        self.cell(46, 5, DISP_SELF, align="R")
         self.set_draw_color(*ACCENT)
         self.set_line_width(0.4)
         self.line(12, 16.5, 198, 16.5)
@@ -325,7 +328,7 @@ def cover(pdf, cfg):
     pdf.set_text_color(*SUBINK)
     pdf.cell(pdf.get_string_width(cfg["learn"]) + 2, 5, cfg["learn"])
     pdf.set_text_color(*ACCENT)
-    pdf.cell(0, 5, " " + DISP_SELF, link=URL_SELF)
+    pdf.cell(0, 5, " " + DISP_SELF)
 
     # meta bas
     date = datetime.now().strftime("%d/%m/%Y")
@@ -369,7 +372,7 @@ def content(pdf, cfg, words):
     pdf.set_xy(19, ty + 16)
     pdf.set_font(pdf.body, "B", 8.5)
     pdf.set_text_color(*ACCENT)
-    pdf.cell(0, 5, DISP_TOOL, link=URL_TOOL)
+    pdf.cell(0, 5, DISP_TOOL)
     pdf.ln(10)
 
     # table entropie
