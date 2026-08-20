@@ -135,6 +135,10 @@ SelfRecover a le sien en complément. Traductions bienvenues, forks encouragés.
 l'héberger. Si tu bâtis un service dessus et que tu l'ouvres à d'autres, tu
 publies tes modifications aussi.
 
+Avant le 19 avril 2026, MySelf était sous licence MIT : les versions publiées
+à cette date restent disponibles sous leurs termes d'origine. Détail dans
+[COPYRIGHT](./COPYRIGHT).
+
 ---
 
 ## Auteur

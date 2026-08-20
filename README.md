@@ -132,6 +132,10 @@ SelfRecover has its own on top. Translations welcome, forks encouraged.
 self-host it. If you build a service on top of it and offer it to others, you
 publish your modifications too.
 
+Before 19 April 2026, MySelf was licensed under MIT: releases published up to
+that date remain available under their original terms. Details in
+[COPYRIGHT](./COPYRIGHT).
+
 ---
 
 ## Author
