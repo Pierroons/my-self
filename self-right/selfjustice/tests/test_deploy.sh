@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Contrôle de deploy.sh — quatre cas, dont deux qui doivent échouer.
 #
+# ⚠️ Les pages d'accueil sont en .php depuis le 19/08/2026 : les compteurs du
+# corpus sont rendus côté serveur. Ce test ne copiait que les .html, donc il
+# éprouvait le déploiement sur un module amputé de ses deux pages principales.
+#
 # 🔑 Les deux cas d'échec sont le cœur du test. Un script de déploiement qui
 # marche se vérifie tout seul, la première fois qu'on s'en sert ; un script qui
 # échoue en silence ne se voit jamais. Les cas C et D sont donc les seuls dont
@@ -49,10 +53,10 @@ fi
 
 # ── B — déplacé dans deploy/selfjustice/ : doit déployer aussi ──────────────
 mkdir -p "$TMP/b/depot/deploy/selfjustice" "$TMP/b/depot/self-right/selfjustice/site" "$TMP/b/dest"
-cp "$MODULE"/site/*.html "$TMP/b/depot/self-right/selfjustice/site/" 2>/dev/null
+cp "$MODULE"/site/*.html "$MODULE"/site/*.php "$TMP/b/depot/self-right/selfjustice/site/" 2>/dev/null
 cp "$DEPLOY" "$TMP/b/depot/deploy/selfjustice/"
 if bash "$TMP/b/depot/deploy/selfjustice/deploy.sh" "$DOMAINE" "$TMP/b/dest" >/dev/null 2>&1 \
-   && [ "$(find "$TMP/b/dest" -name '*.html' | wc -l)" -gt 0 ]; then
+   && [ "$(find "$TMP/b/dest" -name 'index.php' | wc -l)" -gt 0 ]; then
     ok "B — déplacé dans deploy/selfjustice/ : déploie"
 else
     nok "B — déplacé dans deploy/selfjustice/ : n'a rien déployé, ou a échoué"
@@ -72,16 +76,16 @@ fi
 
 # ── D — source == destination : le garde-fou doit refuser ───────────────────
 mkdir -p "$TMP/d/site" "$TMP/d/deploy"
-cp "$MODULE"/site/*.html "$TMP/d/site/" 2>/dev/null
+cp "$MODULE"/site/*.html "$MODULE"/site/*.php "$TMP/d/site/" 2>/dev/null
 cp "$DEPLOY" "$TMP/d/deploy/"
-avant=$(stat -c%s "$TMP/d/site/index.html")
+avant=$(stat -c%s "$TMP/d/site/index.php")
 bash "$TMP/d/deploy/deploy.sh" "$DOMAINE" "$TMP/d/site" >/dev/null 2>&1
 code=$?
-apres=$(stat -c%s "$TMP/d/site/index.html")
+apres=$(stat -c%s "$TMP/d/site/index.php")
 if [ "$code" -ne 0 ] && [ "$avant" -eq "$apres" ]; then
-    ok "D — source == destination : refuse (code $code), index.html intact ($apres o)"
+    ok "D — source == destination : refuse (code $code), index.php intact ($apres o)"
 else
-    nok "D — source == destination : code $code, index.html $avant → $apres o"
+    nok "D — source == destination : code $code, index.php $avant → $apres o"
 fi
 
 echo

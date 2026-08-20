@@ -46,7 +46,7 @@ fi
 ICI="$(cd "$(dirname "$0")" && pwd)"
 SRC=""
 for candidat in "$ICI/.." "$ICI/../../self-right/selfjustice"; do
-    if [ -f "$candidat/site/index.html" ]; then
+    if [ -f "$candidat/site/index.php" ]; then
         SRC="$(cd "$candidat" && pwd)"
         break
     fi
@@ -60,7 +60,7 @@ done
 # qu'un déploiement qui échoue.
 if [ -z "$SRC" ]; then
     echo "erreur : racine du module SelfJustice introuvable depuis $ICI." >&2
-    echo "         Aucun des emplacements essayés ne contient site/index.html :" >&2
+    echo "         Aucun des emplacements essayés ne contient site/index.php :" >&2
     echo "           $ICI/.." >&2
     echo "           $ICI/../../self-right/selfjustice" >&2
     exit 1
@@ -72,7 +72,7 @@ PLACEHOLDER="your-instance.example"
 # AVANT que sed n'ouvre la source. Si les deux sont le même fichier, le contenu
 # est détruit — et le serveur continue de répondre 200 avec des pages vides,
 # donc rien ne le signale. C'est arrivé le 02/08/2026 en lançant ce script
-# depuis la copie déployée : index.html et act.html sont tombés à 0 octet.
+# depuis la copie déployée : les deux pages d'accueil sont tombées à 0 octet.
 #
 # La comparaison ci-dessous n'a de sens que parce que `$SRC/site` est garanti
 # exister : tant que son absence était avalée par un `2>/dev/null`, la
@@ -86,11 +86,18 @@ fi
 
 echo "SelfJustice — déploiement vers $DEST (domaine : $DOMAINE)"
 
-# Les fichiers servis directement au navigateur. `act.html` et `act-docs.html`
+# Les fichiers servis directement au navigateur. `act.php` et `act-docs.html`
 # peuvent légitimement manquer selon les modules activés, d'où le `continue` ;
-# `index.html` non, mais on compte plutôt que de le traiter à part.
+# `index.php` non, mais on compte plutôt que de le traiter à part.
+#
+# ⚠️ Deux extensions, et ce n'est pas un oubli : les compteurs du corpus sont
+# rendus côté serveur depuis le 19/08/2026, ce qui a fait passer index et act
+# en .php ; act-docs reste une page statique. Ce script cherchait encore les
+# trois en .html, donc ne trouvait plus la racine du module et ne déployait
+# rien — en le disant, au moins. La production n'en dépendait pas, elle est
+# servie par un autre chemin ; toute autre instance de SelfJustice, si.
 traites=0
-for f in site/index.html site/act.html site/act-docs.html; do
+for f in site/index.php site/act.php site/act-docs.html; do
     [ -f "$SRC/$f" ] || continue
     cible="$DEST/$(basename "$f")"
     sed "s|$PLACEHOLDER|$DOMAINE|g" "$SRC/$f" > "$cible"
