@@ -53,7 +53,7 @@ et le risque qui subsiste.
 
 ### Agents de vérification
 
-`.claude/agents/` porte trois agents qui lancent ces validations et relisent ce
+`.claude/agents/` porte quatre agents qui lancent ces validations et relisent ce
 que le dépôt donne à voir :
 
 | agent | ce qu'il fait | quand l'appeler |
@@ -61,8 +61,9 @@ que le dépôt donne à voir :
 | `lint-syntaxe` | lance le tableau ci-dessus sur les fichiers modifiés, rapporte les sorties telles quelles | avant un commit ou un push |
 | `vitrine-depot` | relit README, docs, structure, ton, versioning ; sur un dépôt tiers, lit sa politique avant d'écrire | avant une publication ou une release |
 | `bruit-commentaires` | relit les commentaires **ajoutés par le diff** : archéologie, auto-justification, anticipation, redite, chiffres qui évoluent | après avoir écrit ou remanié du code |
+| `bruit-redaction` | relit la prose **modifiée** destinée à être lue de l'extérieur, et propose une réécriture pour les phrases qui portent du ton sans porter d'information | avant une publication, une release ou une PR |
 
-Aucun des trois ne modifie de fichier : ils rendent des constats.
+Aucun des quatre ne modifie de fichier : ils rendent des constats.
 
 `bruit-commentaires` a une contrainte que les deux autres n'ont pas — il propose,
 il ne réécrit pas. Deux lectures ne valent que si la seconde peut contredire la
@@ -71,6 +72,15 @@ commentaire cité, le signe retenu, et ce que le code fait à cet endroit. Il
 écarte explicitement les commentaires qui signalent un piège, même longs — le
 critère qu'il applique est « si ce commentaire disparaissait, quelqu'un
 risquerait-il de casser quelque chose ? ».
+
+`bruit-redaction` applique le même partage sur la prose, avec son propre critère :
+« retire la phrase, le lecteur a-t-il perdu une information ? ». Il se distingue
+de `vitrine-depot`, qui juge ce que le dépôt dit — statuts exacts, liens vivants,
+promesses tenues — là où lui ne juge que la manière de le dire. Deux gardes le
+bornent : ne jamais signaler sur la forme seule, et ne pas confondre une voix
+d'auteur avec du bruit. Il s'éprouve sur des paragraphes anciens du dépôt avant
+de rendre sa liste ; s'il les signale, son seuil est trop bas et il le dit au
+lieu de conclure.
 
 Deux autres agents complètent le dispositif — un audit de code adossé à
 `REVIEW.md`, et une recherche de données personnelles avant publication. Ils
