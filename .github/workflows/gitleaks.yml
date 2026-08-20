@@ -20,7 +20,14 @@ on:
   pull_request:
 
 jobs:
-  scan:
+  # 🔑 Le nom du job EST le nom du contrôle exigé par la protection de `main`
+  # (`required_status_checks: ["gitleaks"]`). Il s'est appelé `scan` de sa
+  # création au 20/08/2026, si bien que la règle attendait un contrôle
+  # qu'aucun workflow ne produisait : `main` refusait tout push, sans que rien
+  # n'indique pourquoi ailleurs que dans le message de refus.
+  #
+  # Le renommer ici rouvre la branche ; le renommer à nouveau la referme.
+  gitleaks:
     runs-on: ubuntu-latest
     steps:
       # Épinglé au SHA, pas au tag : un tag se repointe en silence chez son
