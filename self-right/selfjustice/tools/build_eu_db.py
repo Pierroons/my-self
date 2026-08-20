@@ -431,6 +431,16 @@ def process_source(conn: sqlite3.Connection, source: str, info: dict) -> int:
             "document a changé. Vérifier parse_articles avant d'insérer."
         )
 
+    # 🔑 Purge de la seule source qu'on vient d'extraire, et seulement une fois
+    # son compte validé plus haut. INSERT OR REPLACE n'écrase que les numéros
+    # qui coïncident : quand une source rétrécit — TUE 72 → 55 en cessant
+    # d'avaler les protocoles annexés — les articles en trop survivent à toutes
+    # les reconstructions suivantes. Mesuré le 20/08/2026 : extraction juste
+    # (55 et 358), base restée à 818 avec TUE 72 et TFUE 366.
+    # La purge ne touche pas les sources absentes de `extraits` : une source
+    # injoignable conserve ses données, ce qui reste l'intention d'origine.
+    conn.execute("DELETE FROM articles WHERE source = ?", (source,))
+
     for art in articles:
         conn.execute("""
             INSERT OR REPLACE INTO articles
