@@ -11,15 +11,50 @@ Sources :
 
 Usage :
     python3 build_eu_db.py --db /path/to/conventionnalite.sqlite
+    python3 build_eu_db.py --db … --only CEDH     # une seule source
+
+Configuration :
+    SELFJUSTICE_SOURCES_DIR   Répertoire des copies déposées à la main, servies
+                              quand la source publique est inatteignable.
+                              Défaut : /var/lib/selfjustice/sources
+                              Un fichier par source, nommé d'après elle :
+                              CEDH.pdf, CEDH.html… Le format est reconnu à la
+                              signature du contenu, pas à l'extension. Chaque
+                              copie utilisée est annoncée avec son empreinte
+                              SHA-256 et sa date de dépôt ; au-delà de 180
+                              jours, la construction se termine en code 2.
+
+Codes de sortie :
+    0   toutes les sources rafraîchies depuis leur origine publique
+    1   contenu non conforme aux articles témoins — ne pas déployer
+    2   base utilisable, mais une source n'a pas été rafraîchie ou provient
+        d'une copie locale devenue ancienne
 """
 
 import argparse
+import hashlib
+import os
 import re
 import sqlite3
 import sys
+from datetime import date, datetime
 from pathlib import Path
 from urllib.request import Request, urlopen
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
+
+# Copies déposées à la main, servies quand la source publique est inatteignable.
+# Le 20/08/2026, le Conseil de l'Europe a placé son domaine derrière un
+# challenge anti-bot : la Convention reste publique et lisible au navigateur,
+# mais aucun client HTTP ne l'obtient. Sans repli, une base par ailleurs saine
+# se serait dégradée à chaque reconstruction faute d'une seule de ses six
+# sources.
+SOURCES_LOCALES = Path(os.environ.get(
+    "SELFJUSTICE_SOURCES_DIR", "/var/lib/selfjustice/sources"))
+
+# Au-delà, une copie locale mérite d'être revérifiée à la main. Un traité ne
+# bouge pas en six mois ; passé ce délai, c'est l'absence de vérification qui
+# devient l'anomalie, pas le texte.
+AGE_COPIE_ACCEPTABLE = 180
 
 
 # Nombre d'articles que chaque texte comporte réellement. Sert de garde-fou à
@@ -122,6 +157,33 @@ def fetch_url(url: str, timeout: int = 60, max_retries: int = 10) -> bytes:
                     time.sleep(wait)
                     continue
                 return data
+        except HTTPError as e:
+            # 🔑 Un refus n'est pas une panne. Le 20/08/2026, la CEDH a rejoué
+            # dix fois un 403 pendant deux minutes avant de conclure « erreur
+            # réseau » : un serveur qui refuse ne change pas d'avis parce qu'on
+            # insiste, et un document retiré ne réapparaît pas. Le diagnostic
+            # rendu désignait le réseau là où il fallait lire « accès bloqué »
+            # ou « URL morte » — deux causes qui appellent des gestes opposés.
+            # C'est le défaut que ce module existe pour empêcher, retourné
+            # contre ses propres sources : « je n'ai pas pu vérifier » et « ça
+            # n'existe pas » ne sont pas la même phrase.
+            # HTTPError hérite de URLError : ce bloc doit rester au-dessus.
+            definitifs = {
+                400: "requête refusée — URL malformée ?",
+                401: "accès refusé — authentification exigée",
+                403: "accès refusé par le serveur — protection anti-bot probable",
+                404: "introuvable — l'URL a changé ou le document a été retiré",
+                405: "méthode refusée",
+                410: "document définitivement retiré",
+                451: "accès refusé pour raisons juridiques",
+            }
+            if e.code in definitifs:
+                print(f"  HTTP {e.code} — {definitifs[e.code]}. "
+                      "Réessayer n'y changerait rien.", file=sys.stderr)
+                return b""
+            wait = 2 * (attempt + 1)
+            print(f"  HTTP {e.code} — retry dans {wait}s ({attempt+1}/{max_retries})")
+            time.sleep(wait)
         except URLError as e:
             wait = 2 * (attempt + 1)
             print(f"  Erreur réseau : {e} — retry dans {wait}s ({attempt+1}/{max_retries})")
@@ -384,10 +446,56 @@ def create_db(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+# Sources servies depuis une copie locale au cours de cette exécution. Rempli
+# par copie_locale, lu par main : une copie qui remplace une source publique
+# doit se voir à chaque construction, sinon elle vieillit sans que personne le
+# sache — et c'est le seul endroit où on peut encore le dire.
+REPLIS = {}
+
+
+def copie_locale(source: str) -> bytes:
+    """Rendre la copie déposée à la main pour cette source, ou b'' s'il n'y en a pas.
+
+    Le fichier porte le nom de la source, quelle que soit son extension —
+    `CEDH.pdf`, `CEDH.html`. Le format est reconnu plus loin à la signature du
+    contenu, jamais au nom du fichier.
+    """
+    if not SOURCES_LOCALES.is_dir():
+        return b""
+    candidats = sorted(SOURCES_LOCALES.glob(f"{source}.*"))
+    if not candidats:
+        return b""
+
+    fichier = candidats[0]
+    data = fichier.read_bytes()
+    if not data:
+        print(f"[{source}] copie locale vide, ignorée : {fichier}", file=sys.stderr)
+        return b""
+
+    empreinte = hashlib.sha256(data).hexdigest()
+    depot = datetime.fromtimestamp(fichier.stat().st_mtime).date()
+    age = (date.today() - depot).days
+    REPLIS[source] = {
+        "detail": (f"{fichier.name} — sha256 {empreinte[:16]}…, "
+                   f"déposée le {depot.isoformat()}, {age} jours"),
+        "age": age,
+    }
+    print(f"[{source}] copie locale utilisée : {fichier.name}, déposée le "
+          f"{depot.isoformat()} ({age} j), sha256 {empreinte[:16]}…")
+    return data
+
+
 def process_source(conn: sqlite3.Connection, source: str, info: dict) -> int:
     """Télécharger et parser une source, retourne le nombre d'articles insérés."""
     print(f"[{source}] Téléchargement : {info['url']}")
     raw = fetch_url(info["url"])
+
+    # 🔑 Le repli ne se substitue jamais à un téléchargement réussi : il n'est
+    # tenté qu'après son échec, et il s'annonce. Une copie servie en silence
+    # serait pire que l'absence — la base afficherait une date du jour pour un
+    # texte figé, exactement le trompe-l'œil que ce script combat ailleurs.
+    if not raw:
+        raw = copie_locale(source)
 
     if not raw:
         print(f"[{source}] Téléchargement échoué — passe à la source suivante")
@@ -485,6 +593,15 @@ def main():
     # données précédentes en place. Mais il ne doit pas passer inaperçu : le
     # 03/08/2026, CEDH et AI_ACT ont échoué pendant que le script annonçait
     # « Terminé ! ». La base restait juste, et la panne invisible.
+    # Le repli s'affiche avant tout le reste : c'est l'information qu'on perdrait
+    # le plus facilement, et la seule qui dise de quel texte la base est faite.
+    if REPLIS:
+        print("\nSOURCES SERVIES DEPUIS UNE COPIE LOCALE :")
+        for source, repli in sorted(REPLIS.items()):
+            print(f"  · {source} — {repli['detail']}")
+        print(f"Copies lues dans {SOURCES_LOCALES}. Le texte servi est celui de "
+              "la copie, pas celui de la source publique.")
+
     if echecs:
         print(f"\nATTENTION : {len(echecs)} source(s) non mise(s) à jour : "
               f"{', '.join(echecs)}", file=sys.stderr)
@@ -529,6 +646,22 @@ def main():
 
     print(f"\nContrôle du contenu : {len(TEMOINS)} articles témoins conformes.")
     print(f"\nTerminé ! {total} articles insérés dans {args.db}")
+
+    # 🔑 Une copie locale est un pansement, et un pansement se change. Servie
+    # sans limite de temps, elle deviendrait la base elle-même : le texte
+    # cesserait d'être vérifié sans que rien ne le signale — le mode de
+    # défaillance des treize mois, à l'échelle d'une source. Le seuil ne
+    # bloque pas la construction, qui est valide ; il refuse seulement de la
+    # déclarer sans réserve.
+    vieilles = [s for s, r in REPLIS.items() if r["age"] > AGE_COPIE_ACCEPTABLE]
+    if vieilles:
+        print(f"\nATTENTION : copie(s) locale(s) de plus de "
+              f"{AGE_COPIE_ACCEPTABLE} jours : {', '.join(sorted(vieilles))}.",
+              file=sys.stderr)
+        print("La base est utilisable, mais ce texte n'a pas été confronté à sa "
+              "source depuis longtemps. Retenter le téléchargement, ou déposer "
+              "une copie fraîche.", file=sys.stderr)
+        sys.exit(2)
 
 
 if __name__ == "__main__":
