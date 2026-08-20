@@ -503,8 +503,27 @@ def process_source(conn: sqlite3.Connection, source: str, info: dict) -> int:
 
     # Si c'est du PDF (CEDH), utiliser pdftotext pour convertir
     if raw[:4] == b"%PDF":
+        import shutil
         import subprocess
         import tempfile
+
+        # 🔑 Une dépendance externe absente se dit, elle ne se jette pas en
+        # trace d'appels. Le 20/08/2026, pdftotext manquait sur le serveur de
+        # production : le script est mort sur un FileNotFoundError au milieu de
+        # sa construction, code 1 — celui qui signifie « contenu non conforme,
+        # ne pas déployer ». Deux causes opposées sous un même code.
+        # Ce trou est resté invisible tant que le téléchargement échouait avant
+        # d'y arriver : la source CEDH n'a jamais été construite sur cette
+        # machine, et l'échec réseau en portait seul le blâme. Réparer le
+        # premier défaut a révélé le second — raison de plus pour que
+        # celui-ci parle.
+        if shutil.which("pdftotext") is None:
+            print(f"[{source}] pdftotext est introuvable — le PDF ne peut pas "
+                  "être converti. Installer poppler-utils sur cette machine. "
+                  "La source est ignorée, ses données précédentes sont "
+                  "conservées.", file=sys.stderr)
+            return 0
+
         print(f"[{source}] PDF détecté — conversion via pdftotext")
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
             f.write(raw)
