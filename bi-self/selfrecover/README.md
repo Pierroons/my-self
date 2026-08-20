@@ -277,7 +277,7 @@ This repository contains:
 - A **complete reference implementation**: L1/L2/L3 recovery, recovery codes, "this device" factor, super-user (SU) with audit log
 - A **standalone working demo** to try everything locally
 
-**Real deployment:** beyond the demo, the implementation runs in real conditions — notably as the **authentication backend of a messaging service** (XMPP auth via `mod_auth_http`), reusing the SelfRecover account store as-is (`users` table + Argon2id).
+**Real deployment:** beyond the demo, the implementation runs in real conditions — notably as the **authentication backend of a messaging service**, reusing the SelfRecover account store as-is (Argon2id).
 
 **What this repo is NOT (yet):**
 - An installable PHP/JS library (planned for V1.0)
@@ -331,7 +331,7 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 - [x] **Recovery codes** — L2 possession factor (10 codes, HMAC lookup + Argon2id, single-use)
 - [x] **"This device" factor** — ECDSA P-256, private key under an Argon2id envelope, public key only server-side
 - [x] **Super-user (SU)** — SU→Admin→User model, append-only + hash-chained + HMAC audit log, ghost-admin detection
-- [x] **Real deployment** — authentication backend of a messaging service (XMPP auth via `mod_auth_http`)
+- [x] **Real deployment** — authentication backend of a messaging service
 
 ### V0.2 — MySelf-Live (planned: summer 2026)
 

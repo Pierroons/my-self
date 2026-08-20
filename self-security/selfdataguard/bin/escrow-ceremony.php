@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * escrow-ceremony — CLI de récupération escrow (couche déploiement d'un service de messagerie).
+ * escrow-ceremony — CLI de récupération escrow (couche déploiement de l'application appelante).
  *
  * Déverrouille les champs escrow d'un user EN CAS DE RÉCUP, sous conditions
  * cumulées, façon `su-cli` de SelfRecover :

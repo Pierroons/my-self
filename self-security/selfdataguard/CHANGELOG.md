@@ -40,8 +40,8 @@ exposing the private zone.
   for the user (anti-curieux), (2) the **admin passphrase** unseals the recovery
   key. Every act — success **or** refusal (`no-open-litige`, `bad-passphrase`) —
   is written to the audit log with operator + IP forensic. `verify-log`
-  subcommand. Config via env; the litige gate reads a `litiges` table (the messaging service
-  adapter wires its own). The library stays policy-free — gates live here.
+  subcommand. Config via env; the litige gate reads a `litiges` table (the calling application
+  wires its own). The library stays policy-free — gates live here.
 - **Sanity tests** — `sanity_audit.php` (6) chain + tamper detection;
   `sanity_ceremony.php` (14, subprocess e2e) happy path, litige gate, passphrase
   gate, audit logging, `verify-log`, tamper caught.

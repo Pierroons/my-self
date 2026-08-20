@@ -116,14 +116,6 @@ Ce changelog agrège les jalons transversaux du projet.
 - **Self-Security** — SelfGuard (destruction garantie sous contrainte) +
   SelfKeyGuard (2FA matérielle objets physiques)
 
-### Ajouté — Infrastructure
-
-- Hébergement Raspberry Pi 4 (hors cloud)
-- Cloudflare Tunnels pour exposition (stock, justice, arc, bi-self, my-self)
-- Let's Encrypt via certbot
-- CrowdSec + UFW
-- service de voix + portail Tor (projet annexe)
-
 ### Ajouté — Tooling
 
 - nginx reverse proxy multi-vhosts

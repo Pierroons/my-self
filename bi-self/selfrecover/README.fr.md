@@ -277,7 +277,7 @@ Ce dépôt contient :
 - Une **implémentation de référence complète** : récupération L1/L2/L3, recovery codes, facteur « cet appareil », super-utilisateur (SU) avec journal d'audit
 - Une **démo autonome fonctionnelle** pour tout essayer localement
 
-**Déploiement réel :** au-delà de la démo, l'implémentation tourne en conditions réelles — notamment comme **backend d'authentification d'un service de messagerie** (auth XMPP via `mod_auth_http`), qui réutilise tel quel le stockage de comptes SelfRecover (table `users` + Argon2id).
+**Déploiement réel :** au-delà de la démo, l'implémentation tourne en conditions réelles — notamment comme **backend d'authentification d'un service de messagerie**, qui réutilise tel quel le stockage de comptes SelfRecover (Argon2id).
 
 **Ce que ce dépôt n'est PAS (encore) :**
 - Une bibliothèque PHP/JS installable (prévue en V1.0)
@@ -331,7 +331,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 - [x] **Recovery codes** — foyer de possession de L2 (10 codes, HMAC lookup + Argon2id, usage unique)
 - [x] **Facteur « cet appareil »** — ECDSA P-256, clé privée sous enveloppe Argon2id, clé publique seule côté serveur
 - [x] **Super-utilisateur (SU)** — modèle SU→Admin→User, journal d'audit append-only + hash-chaîné + HMAC, détection d'admins fantômes
-- [x] **Déploiement réel** — backend d'authentification d'un service de messagerie (auth XMPP via `mod_auth_http`)
+- [x] **Déploiement réel** — backend d'authentification d'un service de messagerie
 
 ### V0.2 — MySelf-Live (prévu : été 2026)
 
