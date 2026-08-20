@@ -1212,6 +1212,20 @@ async def rechercher_jurisprudence(
     except ApiIndisponible as e:
         return _msg_juris_morte(str(e))
 
+    # 🔑 Un 404 propre de l'amont rend le sentinelle, pas une liste vide. Sans
+    # ce test, `data.get("results", [])` valait [] et l'outil annonçait « aucune
+    # décision ne correspond » — c'est-à-dire l'instruction de conclure à
+    # l'absence, là où l'index n'avait tout simplement pas répondu. Le faux
+    # négatif silencieux que ce module existe pour empêcher, sur l'outil par
+    # lequel on cherche.
+    # Les six autres outils faisaient déjà ce test ; celui-ci était le seul à
+    # ne pas l'avoir, et le protocole du constat d'origine ne visait que
+    # /verifier et /decision.
+    if data.get("__introuvable__"):
+        return _msg_juris_morte(
+            f"l'index ne connaît pas cette route ({data.get('detail', '')})"
+        )
+
     bandeau = await _bandeau("jurisprudence")
 
     resultats = data.get("results", [])
