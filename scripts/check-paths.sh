@@ -16,7 +16,7 @@
 # Sortie : 0 si tout résout, 1 sinon.
 
 set -uo pipefail
-cd "$(git rev-parse --show-toplevel)"
+cd "$(git rev-parse --show-toplevel)" || exit 1
 
 echec=0
 
