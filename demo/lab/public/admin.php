@@ -24,6 +24,7 @@ $comptes = Admin::accounts($pdo);
 $fails   = Admin::failedLogins($pdo);
 $blocked = Admin::blockedVotes($pdo);
 $reports = Admin::reports($pdo);
+$demandes = Admin::pendingRequests($pdo);
 $disputes = \Pierroons\MySelfLab\RecoverL3::adminList($pdo)['disputes'] ?? [];
 
 $sevColor = ['info' => '#9aa9b6', 'faible' => '#6cb6ff', 'moyen' => '#d4a056', 'eleve' => '#e0824f', 'critique' => '#d96459'];
@@ -110,6 +111,42 @@ table.adm tr:last-child td{border-bottom:none}
       </tr>
     <?php endforeach; ?>
   </table>
+</div>
+
+<!-- Promotions : proposer, pas promouvoir -->
+<div class="card">
+  <h2>🔑 Promotions administrateur</h2>
+  <p class="adm-warn" style="margin-top:0">
+    Cette page <strong>ne promeut personne</strong>. Un administrateur propose, le
+    super-utilisateur tranche depuis le serveur — il n'a pas d'interface distante,
+    et son accord s'inscrit au journal avant d'être appliqué.
+    Décision&nbsp;: <code>selfrecover-su approve-request &lt;id&gt; "&lt;observation&gt;"</code>.
+  </p>
+
+  <?php if ($demandes): ?>
+    <table class="adm"><tr><th>#</th><th>Demandeur</th><th>Cible</th><th>Motif</th><th>Déposée</th></tr>
+      <?php foreach ($demandes as $d): ?>
+        <tr>
+          <td><?= (int) $d['id'] ?></td>
+          <td>@<?= h($d['requester_username']) ?></td>
+          <td>@<?= h($d['target_username']) ?></td>
+          <td><?= h((string) $d['reason']) ?></td>
+          <td><?= $dt((int) $d['created_at']) ?></td>
+        </tr>
+      <?php endforeach; ?>
+    </table>
+  <?php else: ?>
+    <p class="muted">Aucune demande en attente.</p>
+  <?php endif; ?>
+
+  <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
+    <input id="promo-cible" type="text" placeholder="identifiant du compte" autocomplete="off"
+           style="flex:0 0 190px;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:inherit">
+    <input id="promo-motif" type="text" placeholder="pourquoi ce compte doit être promu"
+           style="flex:1 1 280px;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:inherit">
+    <button class="btn" id="promo-envoi">Déposer la demande</button>
+  </div>
+  <div id="promo-retour" class="muted" style="font-size:12.5px;margin-top:8px"></div>
 </div>
 
 <!-- Rapports red team -->
@@ -263,6 +300,19 @@ function deciderDispute(num, decision){
     if(d.ok) location.reload(); else alert(d.message||'Échec');
   });
 }
+function deposerPromotion(){
+  var cible = document.getElementById('promo-cible').value.trim();
+  var motif = document.getElementById('promo-motif').value.trim();
+  var out = document.getElementById('promo-retour');
+  out.textContent = '…';
+  labPost('/api/admin_request_promotion.php',{target:cible,reason:motif}).then(d=>{
+    out.textContent = d.message || (d.ok ? 'Demande déposée.' : 'Échec.');
+    out.style.color = d.ok ? 'var(--ok, #3fb98c)' : 'var(--danger)';
+    if(d.ok) setTimeout(()=>location.reload(), 1200);
+  });
+}
+document.getElementById('promo-envoi').addEventListener('click', deposerPromotion);
+
 document.querySelectorAll('.js-decider').forEach(b=>b.addEventListener('click',()=>deciderDispute(b.dataset.n,b.dataset.v)));
 </script>
 <?php render_footer(); ?>

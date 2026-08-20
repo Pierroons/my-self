@@ -24,7 +24,7 @@ require_once __DIR__ . '/../lib/su_audit.php';
 use Pierroons\MySelfLab\SuAudit;
 
 $echecs = 0;
-$total  = 6;
+$total  = 7;
 function ok(string $m): void  { echo "  ✓ $m\n"; }
 function nok(string $m): void { global $echecs; fwrite(STDERR, "  ✗ $m\n"); $echecs++; }
 
@@ -138,6 +138,41 @@ $inconnues = array_diff($rejouees, $connues);
 $inconnues === []
     ? ok('les ' . count($rejouees) . ' actions rejouées par `audit` sont toutes des constantes déclarées')
     : nok('action rejouée sans constante correspondante : ' . implode(', ', $inconnues));
+
+// ── 7. Un administrateur ne dépose pas sa propre promotion ──────────────────
+// ⚠️ Ce contrôle vérifie le **code d'erreur**, pas seulement le refus, et c'est
+// délibéré : le dépôt exige `require_admin`, donc un demandeur est déjà
+// administrateur et `already_admin` refuserait de toute façon. Retirer la garde
+// `self_promotion` laisserait donc le refus en place, avec le mauvais motif —
+// jusqu'au jour où le dépôt s'ouvrirait aux comptes ordinaires, où plus rien
+// n'empêcherait quelqu'un de déposer sa propre promotion.
+//
+// Mesuré : garde retirée, le contrôle rougit sur `already_admin`.
+require_once __DIR__ . '/../lib/db.php';
+require_once __DIR__ . '/../lib/admin.php';
+
+$dbTest = sys_get_temp_dir() . '/sanity_su_db_' . bin2hex(random_bytes(6)) . '.sqlite';
+putenv("LAB_DB_PATH=$dbTest");
+register_shutdown_function(static fn () => @unlink($dbTest));
+
+$pdo = \Pierroons\MySelfLab\Db::pdo();
+$pdo->prepare('INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, is_admin, created_at)
+               VALUES (?, ?, ?, ?, 1, ?)')->execute(['alice', 'x', 'x', 'x', time()]);
+$pdo->prepare('INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, is_admin, created_at)
+               VALUES (?, ?, ?, ?, 0, ?)')->execute(['bob', 'x', 'x', 'x', time()]);
+
+$soi   = \Pierroons\MySelfLab\Admin::requestPromotion($pdo, 'alice', 'alice', 'motif suffisamment long pour passer');
+$autre = \Pierroons\MySelfLab\Admin::requestPromotion($pdo, 'alice', 'bob', 'motif suffisamment long pour passer');
+
+if (!empty($soi['ok'])) {
+    nok('un administrateur a pu déposer sa propre promotion');
+} elseif (($soi['error'] ?? '') !== 'self_promotion') {
+    nok("l'auto-promotion est refusée, mais pour une autre raison : " . ($soi['error'] ?? '?'));
+} elseif (empty($autre['ok'])) {
+    nok('une demande légitime est refusée : ' . ($autre['message'] ?? '?'));
+} else {
+    ok('auto-promotion refusée, demande vers un tiers acceptée');
+}
 
 echo "\n";
 if ($echecs === 0) {

@@ -143,4 +143,72 @@ final class Admin
         $stmt->execute([$status, $id]);
         return $stmt->rowCount() > 0;
     }
+
+    /** Demandes de promotion en attente de décision du super-utilisateur. */
+    public static function pendingRequests(PDO $pdo): array
+    {
+        return $pdo->query(
+            "SELECT id, requester_username, target_username, reason, created_at
+               FROM admin_requests WHERE status = 'pending' ORDER BY id DESC"
+        )->fetchAll();
+    }
+
+    /**
+     * Dépose une demande de promotion. Un administrateur propose, le
+     * super-utilisateur tranche — l'un ne peut pas faire le travail de l'autre.
+     *
+     * Cette méthode n'accorde aucun droit et n'écrit rien au journal SU : elle
+     * range une demande. Le journal enregistre les franchissements de frontière,
+     * c'est-à-dire la décision, avec le demandeur et son motif recopiés dedans.
+     *
+     * @return array{ok: bool, error?: string, message?: string, id?: int}
+     */
+    public static function requestPromotion(PDO $pdo, string $requester, string $target, string $reason): array
+    {
+        $target = strtolower(trim($target));
+        $reason = trim($reason);
+
+        if ($target === '') {
+            return ['ok' => false, 'error' => 'target_missing', 'message' => 'Indique le compte à promouvoir.'];
+        }
+        // Aujourd'hui redondante — le dépôt exige déjà `require_admin`, donc un
+        // demandeur est toujours administrateur et bute sur `already_admin`.
+        // Elle est là pour le refus explicite, et parce qu'elle devient la seule
+        // barrière le jour où le dépôt s'ouvre aux comptes ordinaires : la
+        // séparation des pouvoirs reposerait alors sur elle seule.
+        if ($target === strtolower($requester)) {
+            return ['ok' => false, 'error' => 'self_promotion',
+                    'message' => 'On ne propose pas sa propre promotion.'];
+        }
+        if (mb_strlen($reason) < 10) {
+            return ['ok' => false, 'error' => 'reason_too_short',
+                    'message' => 'Explique en une phrase pourquoi ce compte doit être promu : le super-utilisateur décide sur ce motif.'];
+        }
+
+        $stmt = $pdo->prepare('SELECT id, is_admin FROM accounts WHERE username = ?');
+        $stmt->execute([$target]);
+        $acc = $stmt->fetch();
+        if (!$acc) {
+            return ['ok' => false, 'error' => 'unknown_account', 'message' => "Compte « $target » introuvable."];
+        }
+        if ((int) $acc['is_admin'] === 1) {
+            return ['ok' => false, 'error' => 'already_admin', 'message' => "« $target » est déjà administrateur."];
+        }
+
+        $stmt = $pdo->prepare("SELECT id FROM admin_requests WHERE target_username = ? AND status = 'pending'");
+        $stmt->execute([$target]);
+        if ($stmt->fetch()) {
+            return ['ok' => false, 'error' => 'already_pending',
+                    'message' => "Une demande est déjà en attente pour « $target »."];
+        }
+
+        $stmt = $pdo->prepare(
+            'INSERT INTO admin_requests (requester_username, target_username, reason, created_at)
+             VALUES (?, ?, ?, ?)'
+        );
+        $stmt->execute([strtolower($requester), $target, $reason, time()]);
+
+        return ['ok' => true, 'id' => (int) $pdo->lastInsertId(),
+                'message' => "Demande déposée pour « $target ». Le super-utilisateur tranchera."];
+    }
 }
