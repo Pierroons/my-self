@@ -21,6 +21,19 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
-[ -x "$ROOT/scripts/audit-opsec.sh" ] || exit 0
+
+# Sortait en 0 sans un mot quand le script manquait ou n'était pas exécutable.
+# Ce hook est la SEULE lecture des messages de commit — aucun autre outil ne les
+# regarde — donc son silence ne se rattrape nulle part en aval.
+if [ ! -x "$ROOT/scripts/audit-opsec.sh" ]; then
+  echo "❌ COMMIT BLOQUÉ — le contrôle des messages n'a pas pu s'exécuter."
+  if [ -f "$ROOT/scripts/audit-opsec.sh" ]; then
+    echo "   Le script est présent mais non exécutable : scripts/install-hooks.sh"
+  else
+    echo "   scripts/audit-opsec.sh est introuvable."
+  fi
+  echo "   Passer outre en connaissance de cause : git commit --no-verify"
+  exit 1
+fi
 
 exec "$ROOT/scripts/audit-opsec.sh" --message "$1"

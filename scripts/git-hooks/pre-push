@@ -36,8 +36,20 @@ if [ -x "$ROOT/scripts/audit-opsec.sh" ]; then
   exit 0
 fi
 
-# Repli si le script d'audit est absent : au moins les secrets et les images.
-echo "⚠ scripts/audit-opsec.sh introuvable — contrôle réduit."
+# Repli si l'audit ne peut pas tourner : au moins les secrets et les images.
+#
+# Le test porte sur le bit d'exécution, pas sur l'existence — le message disait
+# « introuvable » dans les deux cas. Un dépôt restauré d'une archive, une copie
+# passée par un partage qui ne conserve pas les bits, ou scripts/install-hooks.sh
+# jamais lancé (c'est lui qui fait le chmod +x) donnent un script bien présent et
+# non exécutable. Nommer la vraie condition, sinon on cherche au mauvais endroit.
+if [ -f "$ROOT/scripts/audit-opsec.sh" ]; then
+  echo "⚠ scripts/audit-opsec.sh présent mais non exécutable."
+  echo "  → scripts/install-hooks.sh pose le bit d'exécution."
+else
+  echo "⚠ scripts/audit-opsec.sh introuvable."
+fi
+echo "  Contrôle réduit aux secrets et aux images."
 if command -v gitleaks >/dev/null 2>&1; then
   if ! gitleaks detect --source "$ROOT" -c "$ROOT/.gitleaks.toml" \
        --no-banner --redact >/dev/null 2>&1; then
@@ -50,3 +62,13 @@ else
   echo "⚠ gitleaks absent — installe le binaire officiel :"
   echo "  https://github.com/gitleaks/gitleaks/releases"
 fi
+
+# 🔑 Un repli n'est pas la barrière annoncée. Le script se terminait ici sur un
+# echo, donc en 0 sous `set -e` : le même verdict qu'un audit complet réussi,
+# alors que trois contrôles sur quatre n'avaient pas tourné.
+echo ""
+echo "❌ BLOQUÉ — l'audit complet n'a pas pu s'exécuter."
+echo "   Les messages de commit, les orphelins et le contenu de l'historique"
+echo "   n'ont PAS été examinés. Répare, ou passe outre en connaissance de"
+echo "   cause avec l'option --no-verify."
+exit 1

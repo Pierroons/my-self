@@ -95,10 +95,34 @@ contenu() {
   fi
 }
 
+# Une cible vit dans l'index en mode staged, sur le disque ailleurs.
+lisible() {
+  if [ "$MODE" = "staged" ]; then
+    git -C "$ROOT" cat-file -e ":$1" 2>/dev/null
+  else
+    [ -r "$ROOT/$1" ]
+  fi
+}
+
 FOUND=0
 red()  { printf '\033[31m%s\033[0m\n' "$1"; }
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 warn() { printf '  \033[31m✗\033[0m %s\n' "$1"; FOUND=1; }
+
+# grep rend 0 s'il trouve, 1 s'il ne trouve pas, et 2 ou plus si le motif est
+# invalide ou la lecture impossible. Tester « rc != 0 » confond donc « rien
+# trouvé » avec « pas pu chercher », et un motif refusé rend le même vert qu'un
+# dépôt propre. Une raison sociale avec une parenthèse, un nom terminé par une
+# barre inverse, un crochet ouvert : trois formes qui font sortir grep en 2.
+cherche() {                       # cherche <motif> ; lit stdin ; 0 = trouvé
+  local m="$1" rc
+  grep -qi -e "$m"; rc=$?
+  [ "$rc" -le 1 ] && return "$rc"
+  echo >&2
+  red "✗ Motif inutilisable : « $m » — grep sort en $rc." >&2
+  echo "  Un motif que grep refuse ne protège rien. Corrige $PATTERNS." >&2
+  exit 2
+}
 
 # ── Motifs ──────────────────────────────────────────────────────────────────
 if [ ! -f "$PATTERNS" ]; then
@@ -136,7 +160,7 @@ suspecte() {
   printf '%s' "$1" | grep -qE '(/home/|/Users/|[A-Z]:\\|[0-9]+ deg [0-9]+)' && return 0
   local m
   for m in "${MOTIFS[@]}"; do
-    printf '%s' "$1" | grep -qi -e "$m" && return 0
+    printf '%s' "$1" | cherche "$m" && return 0
   done
   return 1
 }
@@ -152,7 +176,7 @@ if [ "$MODE" = "message" ]; then
   # Ignorer les lignes de commentaire que git ajoute lui-même.
   CORPS=$(grep -v '^#' "$MSGFILE" 2>/dev/null || true)
   for m in "${MOTIFS[@]}"; do
-    if printf '%s' "$CORPS" | grep -qi -e "$m"; then
+    if printf '%s' "$CORPS" | cherche "$m"; then
       echo ""
       red "❌ COMMIT BLOQUÉ — le message contient « $m »."
       printf '%s' "$CORPS" | grep -i -e "$m" | head -3 | sed 's/^/     /'
@@ -171,7 +195,7 @@ fi
 # ════════════════════════════════════════════════════════════════════════════
 if [ "$MODE" = "staged" ]; then
   echo "▸ Audit OPSEC (fichiers indexés) — ${#MOTIFS[@]} motifs"
-  mapfile -t CIBLES < <(git -C "$ROOT" diff --cached --name-only --diff-filter=ACMR)
+  mapfile -t CIBLES < <(git -c core.quotepath=false -C "$ROOT" diff --cached --name-only --diff-filter=ACMR)
   [ ${#CIBLES[@]} -eq 0 ] && { ok "rien d'indexé"; exit 0; }
 elif [ "$MODE" = "worktree" ]; then
   echo "▸ Audit OPSEC (travail en cours) — ${#MOTIFS[@]} motifs"
@@ -180,9 +204,9 @@ elif [ "$MODE" = "worktree" ]; then
   # version disque — d'où le sort -u.
   mapfile -t CIBLES < <(
     {
-      git -C "$ROOT" diff --name-only --diff-filter=ACMR
-      git -C "$ROOT" diff --cached --name-only --diff-filter=ACMR
-      git -C "$ROOT" ls-files --others --exclude-standard
+      git -c core.quotepath=false -C "$ROOT" diff --name-only --diff-filter=ACMR
+      git -c core.quotepath=false -C "$ROOT" diff --cached --name-only --diff-filter=ACMR
+      git -c core.quotepath=false -C "$ROOT" ls-files --others --exclude-standard
     } | sort -u | grep .
   )
   # Un working tree propre n'est pas un audit réussi : c'est un audit sans
@@ -236,12 +260,22 @@ if [ "$PAR_CIBLES" = "1" ]; then
     echo "2. Données personnelles — contenu sur le disque"
   fi
   C2=0
+  EXAMINES=0
   for f in "${CIBLES[@]}"; do
     exclu "$f" && continue
+    # Un fichier qu'on ne peut pas ouvrir n'est pas un fichier propre. Sans ce
+    # test, une cible illisible tombait dans le `continue` du binaire et
+    # rejoignait le compte des examinés sans avoir été lue une seule fois.
+    if ! lisible "$f"; then
+      warn "$f — illisible, NON audité"
+      C2=1
+      continue
+    fi
     # Binaire : le grep n'a pas de sens, le contrôle 3 s'en charge.
     contenu "$f" | grep -qI . || continue
+    EXAMINES=$((EXAMINES + 1))
     for m in "${MOTIFS[@]}"; do
-      if contenu "$f" | grep -qi -e "$m"; then
+      if contenu "$f" | cherche "$m"; then
         warn "$f — contient « $m »"
         contenu "$f" | grep -in -e "$m" | head -2 | sed 's/^/       /'
         C2=1
@@ -249,15 +283,23 @@ if [ "$PAR_CIBLES" = "1" ]; then
       fi
     done
   done
-  [ "$C2" = "0" ] && ok "aucun motif dans les ${#CIBLES[@]} fichier(s) examinés"
+  # Le compte est celui des lectures réussies, jamais celui de la liste.
+  [ "$C2" = "0" ] && ok "aucun motif dans les $EXAMINES fichier(s) réellement lus"
 else
   # On scanne TOUS les commits, pas le HEAD : corriger un fichier ne retire
   # pas ce qu'il contenait hier. C'est ce qui distingue ce contrôle de gitleaks.
   echo "2. Données personnelles — contenu de l'historique complet"
-  REVS=$(git -C "$ROOT" rev-list --all)
+  mapfile -t REVS < <(git -C "$ROOT" rev-list --all)
   C2=0
   for m in "${MOTIFS[@]}"; do
-    hits=$(git -C "$ROOT" grep -Iil -e "$m" $REVS 2>/dev/null | cut -d: -f2- | sort -u)
+    hits=$(git -C "$ROOT" grep -Iil -e "$m" "${REVS[@]}" | cut -d: -f2- | sort -u)
+    rc=${PIPESTATUS[0]}
+    if [ "$rc" -gt 1 ]; then
+      echo
+      red "✗ Motif inutilisable : « $m » — git grep sort en $rc."
+      echo "  Un motif que git grep refuse ne protège rien. Corrige $PATTERNS." >&2
+      exit 2
+    fi
     [ -z "$hits" ] && continue
     reste=""
     while IFS= read -r f; do
@@ -287,7 +329,8 @@ else
   fi
   META=""
   for f in "${BINS[@]:-}"; do
-    [ -n "${f:-}" ] && [ -f "$ROOT/$f" ] || continue
+    [ -n "${f:-}" ] || continue
+    [ -f "$ROOT/$f" ] || continue
     brut=$(exiftool -s -S -Artist -Creator -Author -LastModifiedBy -Company \
              -Software -Comment -UserComment -XPAuthor -Copyright \
              -GPSPosition -HostComputer -OwnerName -SerialNumber \
@@ -313,7 +356,13 @@ if [ "$PAR_CIBLES" = "0" ]; then
   C4=0
   MESSAGES=$(git -C "$ROOT" log --all --format='%s%n%b')
   for m in "${MOTIFS[@]}"; do
-    n=$(printf '%s' "$MESSAGES" | grep -ic -e "$m" || true)
+    n=$(printf '%s' "$MESSAGES" | grep -ic -e "$m"); rc=$?
+    if [ "$rc" -gt 1 ]; then
+      echo
+      red "✗ Motif inutilisable : « $m » — grep sort en $rc."
+      echo "  Un motif que grep refuse ne protège rien. Corrige $PATTERNS." >&2
+      exit 2
+    fi
     if [ "${n:-0}" != "0" ]; then
       warn "« $m » — $n ligne(s)"
       C4=1
@@ -335,13 +384,22 @@ if [ "$PAR_CIBLES" = "0" ]; then
     while IFS= read -r f; do
       [ -z "$f" ] && continue
       exclu "$f" && continue
-      blob=$(git -C "$ROOT" rev-list --all --objects | grep -F " $f" | head -1 | cut -d' ' -f1)
-      [ -z "$blob" ] && continue
-      git -C "$ROOT" cat-file -p "$blob" 2>/dev/null | grep -qI . || continue
-      for m in "${MOTIFS[@]}"; do
-        if git -C "$ROOT" cat-file -p "$blob" 2>/dev/null | grep -qiI -e "$m"; then
-          warn "$f — contient « $m »"; C5=1; break
-        fi
+      # TOUS les blobs de ce chemin. Un fichier sali, nettoyé, puis supprimé
+      # garde son blob sale dans l'historique : `head -1` n'en retenait qu'un,
+      # souvent le propre. Et la comparaison porte sur le chemin ENTIER — un
+      # `grep -F " brief.md"` non ancré matche « mon brief.md » et fait juger
+      # l'orphelin sur le contenu d'un autre fichier.
+      mapfile -t BLOBS < <(git -C "$ROOT" rev-list --all --objects \
+        | awk -v p="$f" 'index($0, " ") > 0 && substr($0, index($0, " ") + 1) == p { print $1 }' \
+        | sort -u)
+      [ ${#BLOBS[@]} -eq 0 ] && continue
+      for blob in "${BLOBS[@]}"; do
+        git -C "$ROOT" cat-file -p "$blob" 2>/dev/null | grep -qI . || continue
+        for m in "${MOTIFS[@]}"; do
+          if git -C "$ROOT" cat-file -p "$blob" 2>/dev/null | cherche "$m"; then
+            warn "$f — contient « $m » (blob ${blob:0:8})"; C5=1; break 2
+          fi
+        done
       done
     done <<< "$ORPH"
   fi

@@ -31,11 +31,23 @@ if [ -x "$ROOT/scripts/audit-opsec.sh" ]; then
   exit 0
 fi
 
-# Repli si le script d'audit est absent : au moins les secrets.
-echo "⚠ scripts/audit-opsec.sh introuvable — contrôle réduit aux secrets."
+# Repli si l'audit ne peut pas tourner : au moins les secrets.
+# Même remarque que dans l'autre hook — le test porte sur le bit d'exécution.
+if [ -f "$ROOT/scripts/audit-opsec.sh" ]; then
+  echo "⚠ scripts/audit-opsec.sh présent mais non exécutable."
+  echo "  → scripts/install-hooks.sh pose le bit d'exécution."
+else
+  echo "⚠ scripts/audit-opsec.sh introuvable."
+fi
+echo "  Contrôle réduit aux secrets."
 if ! command -v gitleaks >/dev/null 2>&1; then
-  echo "⚠ gitleaks absent lui aussi — aucune protection active."
-  exit 0
+  # 🔑 « aucune protection active » suivi d'exit 0 : le hook annonçait lui-même
+  # qu'il ne protégeait rien, et laissait passer. Une alarme qui se sait morte
+  # et le dit sans rien empêcher est le pire des trois états.
+  echo "❌ COMMIT BLOQUÉ — gitleaks absent lui aussi, aucune protection active."
+  echo "   https://github.com/gitleaks/gitleaks/releases"
+  echo "   Passer outre en connaissance de cause : git commit --no-verify"
+  exit 1
 fi
 if ! gitleaks protect --staged -c "$ROOT/.gitleaks.toml" --no-banner --redact; then
   echo ""
@@ -43,3 +55,13 @@ if ! gitleaks protect --staged -c "$ROOT/.gitleaks.toml" --no-banner --redact; t
   echo "   → Corrige le contenu, ou ajuste l'allowlist si c'est un faux positif."
   exit 1
 fi
+
+# 🔑 gitleaks n'a rien trouvé — mais gitleaks ne cherche pas les données
+# personnelles ni les métadonnées des binaires, qui sont l'objet même de
+# l'audit absent. Sortir en 0 ici rendait le verdict d'un contrôle complet
+# pour un contrôle partiel.
+echo ""
+echo "❌ COMMIT BLOQUÉ — seuls les secrets ont été examinés."
+echo "   Les données personnelles et les métadonnées des binaires ne l'ont"
+echo "   PAS été. Répare, ou passe outre : git commit --no-verify"
+exit 1
