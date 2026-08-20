@@ -65,7 +65,7 @@ que le dépôt donne à voir :
 
 Aucun des quatre ne modifie de fichier : ils rendent des constats.
 
-`bruit-commentaires` a une contrainte que les deux autres n'ont pas — il propose,
+`bruit-commentaires` a une contrainte que les trois autres n'ont pas — il propose,
 il ne réécrit pas. Deux lectures ne valent que si la seconde peut contredire la
 première, ce qui suppose que chaque constat porte de quoi le contredire : le
 commentaire cité, le signe retenu, et ce que le code fait à cet endroit. Il
@@ -82,14 +82,20 @@ d'auteur avec du bruit. Il s'éprouve sur des paragraphes anciens du dépôt ava
 de rendre sa liste ; s'il les signale, son seuil est trop bas et il le dit au
 lieu de conclure.
 
-Deux autres agents complètent le dispositif — un audit de code adossé à
-`REVIEW.md`, et une recherche de données personnelles avant publication. Ils
-vivent **hors du dépôt**, dans la configuration locale de leur auteur, parce
-qu'ils nomment des incidents et des motifs qui n'ont pas à être publiés. Leur
-absence de ce dossier est voulue ; le dispositif n'est pas incomplet.
+Trois autres agents complètent le dispositif — un audit de code adossé à
+`REVIEW.md`, une recherche de données personnelles avant publication, et une
+recette qui rejoue un corpus de non-régression contre un serveur MCP. Ils vivent
+**hors du dépôt**, dans la configuration locale de leur auteur, parce qu'ils
+nomment des incidents, des motifs et des chemins qui n'ont pas à être publiés.
+Leur absence de ce dossier est voulue ; le dispositif n'est pas incomplet.
+
+Le dernier couvre l'angle qu'aucun des six autres n'atteint : **il fait parler le
+serveur**. Les six lisent du code ; lui appelle un outil et regarde ce qui
+revient. Les défauts qu'il rejoue ont tous été trouvés en observant un
+comportement, jamais en relisant une ligne.
 
 Un plugin d'analyse de vulnérabilités s'ajoute à eux, installé côté poste de
-travail. Il cherche ce qu'aucun des cinq ne cherche : injections, désérialisation
+travail. Il cherche ce qu'aucun des sept ne cherche : injections, désérialisation
 non sûre, primitives mal employées. À l'inverse, il ne saura jamais qu'un script
 de déploiement annonce un succès qu'il n'a pas obtenu. Les deux familles se
 complètent, elles ne se remplacent pas.
