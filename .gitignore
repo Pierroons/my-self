@@ -32,6 +32,15 @@ scripts/deploy.sh
 # selfjustice/mcp/ : les caches des scripts d'outillage restaient dehors, et
 # tools/__pycache__ n'attendait qu'un `git add` distrait pour entrer.
 __pycache__/
+# Les caches d'outillage Python étaient excusés par `.gitleaks.toml` sans être
+# exclus d'ici : l'audit se taisait sur eux pendant que le transfert vers la
+# production les aurait emportés — avec les chemins absolus qu'ils stockent.
+# Une exclusion d'audit sans exclusion de transfert est un piège, pas une
+# tolérance. Mesuré le 20/08 : 22 détections dans `.ruff_cache`, déploiement
+# annulé, et le dossier n'était couvert nulle part.
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
 *.py[cod]
 *.egg-info/
 .venv/
