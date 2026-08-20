@@ -44,7 +44,6 @@ echo "▸ Chemins cités — règles .gitignore"
 python3 - <<'PY' || echec=1
 import pathlib, subprocess, sys
 suspects = []
-suivis = set(subprocess.run(["git","ls-files"],capture_output=True,text=True).stdout.split())
 tous = {p.as_posix() for p in pathlib.Path(".").rglob("*") if ".git/" not in p.as_posix()}
 for gi in subprocess.run(["git","ls-files","*.gitignore",".gitignore"],capture_output=True,text=True).stdout.split():
     base = pathlib.Path(gi).parent
@@ -59,7 +58,22 @@ for gi in subprocess.run(["git","ls-files","*.gitignore",".gitignore"],capture_o
         if (base / cible).exists(): continue
         feuille = cible.rsplit("/", 1)[-1]
         if feuille and any(t.endswith("/" + feuille) for t in tous):
-            suspects.append(f"{gi}:{n}  {s}  (une cible de ce nom existe ailleurs)")
+            # 🔑 Le discriminant qui manquait, et sans lui ce contrôle rougit
+            # sur son fonctionnement normal. Une cible absente est le cas
+            # ORDINAIRE d'une règle efficace : le fichier vit sur la machine et
+            # n'est pas versionné, donc il ne se trouve pas dans un clone frais.
+            # La CI n'en voit jamais aucun. Le 20/08/2026, `scripts/deploy.sh`
+            # et `demo/lab/data/` — deux règles qui protègent des fichiers bien
+            # présents — ont fait échouer `main` pour cette seule raison.
+            # Un déplacement, lui, laisse une trace : git a connu ce chemin.
+            # Jamais suivi = garde-fou préventif, pas orphelin.
+            connu = subprocess.run(
+                ["git", "log", "--all", "--oneline", "-1", "--", (base / cible).as_posix()],
+                capture_output=True, text=True).stdout.strip()
+            if not connu:
+                continue
+            suspects.append(f"{gi}:{n}  {s}  (a existé dans l'historique, "
+                            "et une cible de ce nom existe ailleurs)")
 if suspects:
     print("  ✗ " + str(len(suspects)) + " règle(s) probablement orpheline(s)")
     for x in suspects: print("     " + x)
