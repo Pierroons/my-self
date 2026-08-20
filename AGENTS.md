@@ -97,6 +97,14 @@ tiennent en intégration continue.
 | `scripts/check-fraicheur.sh` | les bases consultées sont-elles à jour, et leur volume progresse-t-il |
 | `scripts/audit-opsec.sh` | les angles morts du détecteur de secrets |
 
+**Deux d'entre eux tournent en intégration continue** (`structure.yml`) : les
+chemins cités et l'unicité du profil de hachage. Les trois autres ne le peuvent
+pas, et ce n'est pas un oubli — l'écart d'instance a besoin d'un accès à la
+machine, la fraîcheur des bases a besoin de ses API, et l'audit OPSEC a besoin
+de motifs qui vivent hors dépôt exprès. Leur place est une tâche planifiée sur
+la machine, et leur code de sortie n'est lu que là. En conséquence, un `git
+push` vert ne dit rien de ces trois-là.
+
 🔑 **Chacun doit avoir été vu rougir.** Un contrôle qu'on n'a jamais fait échouer
 ne se distingue pas d'un contrôle qui ne mesure rien : les deux rendent vert. Un
 jeu de défauts plantés vit hors dépôt pour cet usage — la question posée à toute

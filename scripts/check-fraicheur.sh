@@ -217,9 +217,13 @@ SILENCE_SECONDES=${CHECK_FRAICHEUR_SILENCE:-86400}
 DEJA=""; QUAND=0
 [ -r "$SILENCE_FICHIER" ] && IFS='|' read -r QUAND DEJA < "$SILENCE_FICHIER"
 MAINTENANT=$(date +%s)
+# 🔑 Le silence porte sur la NOTIFICATION, pas sur le verdict. Il sortait en 0,
+# donc une base arrêtée depuis vingt jours rendait vert à partir du deuxième
+# passage : toute supervision branchée sur le code de sortie voyait le retard
+# disparaître pendant qu'il durait. Le canal se tait, le code de sortie non.
 if [ "$SIGNATURE" = "$DEJA" ] && [ $((MAINTENANT - ${QUAND:-0})) -lt "$SILENCE_SECONDES" ]; then
-    [ -n "$VERBEUX" ] && echo "  (déjà notifié, silence en cours)"
-    exit 0
+    [ -n "$VERBEUX" ] && echo "  (déjà notifié, silence en cours — le retard dure)"
+    exit 1
 fi
 
 if [ -n "$NTFY_URL" ]; then

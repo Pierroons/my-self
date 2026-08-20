@@ -19,6 +19,13 @@
 #   FIGÉ       versionné, hors périmètre, et pourtant présent → à décider
 #   ABSENT     versionné, jamais arrivé                       → parfois normal
 #   ORPHELIN   présent là-bas, absent du dépôt                → à lire
+#
+# 🔑 **Une destination injoignable n'est pas une destination sans écart.** Le
+# `continue` qui la sautait n'incrémentait aucun compteur : si toutes étaient
+# sautées, la fin rendait « Rien ne diverge » et sortait en 0 — le script écrit
+# pour attraper le faux vert en produisait un. Cas réel : une ligne `sert` qui
+# pointe un chemin renommé côté instance. Sort en 2, comme toute configuration
+# qui empêche de mesurer.
 set -uo pipefail
 
 CONFIG="${MYSELF_INSTANCE:-$HOME/.config/selfopsec/instance.map}"
@@ -40,7 +47,7 @@ DOMAINES="${MYSELF_DOMAINES:-$HOME/.config/selfopsec/domaines.map}"
 AIDE
 exit 1; }
 
-HOTE=""; PREFIXES=(); CIBLES=()
+HOTE=""; PREFIXES=(); CIBLES=(); SAUTEES=0
 while read -r cle a b _; do
     case "$cle" in ''|'#'*) continue;; esac
     case "$cle" in
@@ -119,7 +126,8 @@ for i in "${!PREFIXES[@]}"; do
         while IFS= read -r f; do
             if [ -f \"\$f\" ]; then sha256sum -- \"\$f\"; else echo \"ABSENT  \$f\"; fi
         done" < "$TMP/relatifs" > "$TMP/distant" 2>/dev/null; then
-        echo "   ⚠ injoignable, ou ${cible} inexistant — destination sautée"
+        echo "   ⚠ injoignable, ou ${cible} inexistant — destination NON comparée"
+        SAUTEES=$((SAUTEES + 1))
         continue
     fi
     printf '   %s fichier(s) comparé(s)\n' "$nb"
@@ -174,5 +182,12 @@ printf '── %s divergent(s) · %s figé(s) · %s absent(s) · %s orphelin(s)\
 if [ "$divergents" -gt 0 ]; then
     echo "✗ Le dépôt et l'instance ne disent pas la même chose."
     exit 1
+fi
+# Le verdict ne porte que sur ce qui a été comparé. Le dire avant de conclure,
+# sinon zéro divergence sur zéro comparaison se lit comme zéro divergence.
+if [ "$SAUTEES" -gt 0 ]; then
+    printf '✗ %s destination(s) non comparée(s) — verdict incomplet.\n' "$SAUTEES"
+    echo "  Vérifie l'hôte et les chemins de $CONFIG."
+    exit 2
 fi
 echo "✓ Rien ne diverge. Figés, absences et orphelins se lisent, ils ne se corrigent pas d'office."
