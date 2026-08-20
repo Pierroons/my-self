@@ -62,7 +62,15 @@ endroit. Et comme ce fichier est public : rien qui n'irait pas dans un commit.
   | Mot de passe (démo SelfDataGuard) | 12 caractères | `demo/selfdataguard/api/change_password.php` |
   | `blindKey` | ≥32 octets | `demo/selfdataguard/api/_bootstrap.php` |
   | Argon2id | opslimit 3, memlimit 64 Mio | `self-security/selfdataguard/src/Crypto/Primitives.php` |
+  | Passphrase du super-utilisateur | 4 mots diceware **ou** 20 caractères | `demo/lab/selfrecover-su` — `su_check_passphrase()` |
   | Entropie du secret mémorisé | **aucun contrôle** | annoncée « ≥30 bits » en commentaire, jamais mesurée |
+
+  ⚠️ La ligne du super-utilisateur est arrivée **après** cet inventaire, le 20/08
+  au soir : la reconstruction du SU a relevé son minimum de 8 caractères à quatre
+  mots diceware, en s'appuyant sur `DicewareWordlist`. C'est un durcissement,
+  donc compatible avec le plancher — mais c'est un sixième littéral dispersé,
+  écrit pendant qu'on inventoriait les cinq autres. Il illustre le besoin plus
+  qu'il ne le contredit.
 
   Deux constats de cet inventaire valent indépendamment de l'assistant : le
   minimum de mot de passe **diverge déjà** (8 / 12) sans que ce soit un choix, et
