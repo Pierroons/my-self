@@ -2,235 +2,140 @@
 
 > 🇬🇧 **[Read this page in English →](./README.md)**
 
-**Be yourself, for yourself.**
+**Récupérer un compte sans email, sans SMS, sans tiers.**
 
-> L'humain apporte l'entropie. La machine apporte l'impartialité.
-> Aucun des deux ne suffit seul. Ensemble, ils sont souverains.
+Aujourd'hui, « mot de passe oublié » veut dire « on envoie un lien à ton adresse
+email ». Ta boîte mail devient la clé de tous tes comptes. Et si tu la perds, tu
+perds tout le reste avec.
 
-[![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Auto-hébergé](https://img.shields.io/badge/auto--hébergé-Debian-blue.svg)](#prérequis)
-[![Zero cloud](https://img.shields.io/badge/cloud-zéro-brightgreen.svg)](#philosophie)
-[![Zero tracking](https://img.shields.io/badge/tracking-zéro-brightgreen.svg)](#philosophie)
-
----
-
-## Le pacte Self
-
-MySelf est un écosystème open source de modules fondé sur un principe unique :
-**la complicité entre l'humain et la machine**. Chaque module résout un
-problème concret du quotidien **sans dépendre d'aucun tiers** — pas de
-GAFAM, pas de service cloud, pas d'autorité centrale.
-
-Les humains apportent l'entropie : leur vécu, leurs choix, leurs secrets.
-Les machines apportent l'impartialité : analyse structurée, garanties
-cryptographiques, processus déterministes. Aucun des deux ne suffit seul.
-Ensemble, ils rendent l'individu souverain sur sa propre identité, ses
-droits, ses données et ses biens.
+MySelf est un ensemble de modules qui explorent l'autre voie : identité, données,
+droit et outils métier, sans canal externe dans la boucle. Le code est libre, il
+tourne sur ta propre machine, et il est fait pour être lu.
 
 ---
 
-## Modules
+## D'où vient l'aléa
 
-| Module | Question à laquelle il répond | Statut |
-|--------|------------------------------|--------|
-| [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | v0.4.0 ✅ |
-| [SelfModerate](./bi-self/selfmoderate/) | Comment tu te comportes ? | v0.1.0 (concept) |
-| [SelfJustice](https://your-instance.example) | Quels sont tes droits ? | bêta v0.1.0 ✅ |
-| [SelfAct](./self-right/selfact/) | Comment tu les fais valoir ? | v0.1.2 — code, pas encore en ligne |
-| [SelfGuard](./self-security/selfguard/) | Comment protéger tes données ? | concept |
-| [SelfKeyGuard](./self-security/selfkeyguard/) | Comment protéger tes objets ? | concept |
-| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données utilisateurs au repos ? | bêta v0.1.0 ✅ ([démo](https://your-instance.example)) |
-| **[SelfFarm-Lite](https://your-instance.example)** | **Comment piloter ton exploitation ?** | **v0.2 live ✅** |
+Cinq dés, une liste de 7776 mots — soit exactement 6⁵.
 
----
+| Passphrase | Entropie |
+|---|---|
+| 1 mot (5 dés) | 12,9 bits |
+| 4 mots | 51,7 bits |
+| 6 mots | 77,5 bits |
 
-## Ensembles nommés (les trois piliers)
+C'est mesurable et non reproductible. Un générateur logiciel produit une suite
+calculable à partir de son état interne ; les dés n'ont pas d'état.
 
-Certains modules forment des **binômes qui se renforcent mutuellement** —
-plus que la somme de leurs parties. MySelf s'organise autour de trois
-binômes, chacun couvrant une dimension de la souveraineté personnelle.
-
-### Bi-Self — Identité souveraine et autonomie communautaire
-**SelfRecover + SelfModerate**
-
-Une identité fiable rend la modération par vote résistante aux attaques
-Sybil. La modération collective protège contre les comportements toxiques.
-Ensemble, ils permettent l'auto-gouvernance d'une communauté en ligne sans
-dépendre d'une autorité centrale ou d'une plateforme corporate.
-
-> *Si une communauté peut se construire elle-même, elle peut se gouverner elle-même.*
-
-### Self-Right — Accès au droit et capacité d'agir
-**SelfJustice + SelfAct**
-
-Connaître ses droits ne suffit pas si on ne sait pas comment les faire
-valoir. Ce binôme couvre l'arc complet de l'auto-émancipation juridique :
-du diagnostic (SelfJustice — que dit le droit dans ta situation ?) à
-l'action (SelfAct — comment rédiger le courrier recommandé, remplir
-le formulaire CERFA, calculer le délai ?).
-
-> *Connais tes droits, fais-les valoir.*
-
-### Self-Security — Protection numérique et physique
-**SelfGuard + SelfKeyGuard**
-
-Le numérique et le physique ne sont plus des domaines séparés. SelfGuard
-protège tes données par destruction garantie (force-moi et tu perds tout,
-même moi). SelfKeyGuard protège tes objets physiques par 2FA matérielle
-(la voiture ne démarre que si ton téléphone est présent). Ensemble, ils
-forment un périmètre de sécurité où le **mode par défaut est verrouillé**
-et où la présence active est requise pour déverrouiller.
-
-> *Force-moi et tu n'auras rien.*
+La liste anglaise est celle de l'EFF. La liste française est une traduction
+communautaire : il n'existe pas de liste officielle en français, celle-ci s'est
+imposée par l'usage. Les deux comptent 7776 entrées, donc les chiffres ci-dessus
+valent dans les deux langues.
+[La méthode papier est documentée pas à pas](./bi-self/selfrecover/tools/entropy-lab/docs/diceware-method-fr.pdf).
 
 ---
 
+## Un secret, trois usages cloisonnés
 
-## Étage applicatif — SelfFarm-Lite
+C'est ce qui fait de MySelf un ensemble plutôt qu'une collection. Une seule
+passphrase mémorisée sert à trois choses, par un **label** distinct qui change le
+sel effectif : deux clés issues du même secret restent indépendantes, et
+compromettre l'une n'ouvre pas les autres.
 
-Quand les trois piliers tiennent, **on peut construire au-dessus**.
-SelfFarm-Lite est la première application concrète : un écosystème complet
-de gestion d'exploitation pour jeunes agriculteurs (JA), nouveaux installés
-(NA), exploitations en croisière (AGRI) et PME agricoles.
+| Label | Usage | Module |
+|---|---|---|
+| `auth` | retrouver l'accès à un compte | SelfRecover |
+| `disk` | ouvrir un slot LUKS2 | SelfRecover-LUKS |
+| `data-enc` | chiffrer la donnée applicative | SelfDataGuard |
 
-> *Quand l'identité, le droit et la sécurité sont en place, l'individu peut construire.*
-
-SelfFarm-Lite contient 7 modules qui alimentent tous **un hub comptable
-central unique** (`self_agri_book`) :
-
-| Module | Rôle |
-|--------|------|
-| `self_agri_book` | **Hub compta central** — journal, grand livre, balance, compte de résultat, bilan, export FEC DGFIP (conforme art. L47 A-I LPF) |
-| `self_invoice` | Facturation Factur-X native (BASIC / EN16931 / EXTENDED) — auto-écriture 411/701 vers le hub |
-| `self_dnja` | Moteur prévisionnel jeune agriculteur — 4 ans + dossier PDF officiel CDOA |
-| `self_aid` | Catalogue d'aides publiques sourcées aux autorités primaires (Légifrance, BOFiP, FranceAgriMer, MSA, portails régionaux) |
-| `self_banking` | Parsers de relevés bancaires fake-first (Société Générale fait, CA/CM/Boursorama à venir). Les imports alimentent le hub avec lettrage auto 512/411, prélèvements récurrents, frais bancaires |
-| `self_parcelles` | Visualisation cartographique des parcelles via IGN Géoportail (overlay cadastre + recherche WFS) |
-| `self_achats` | Achats fournisseurs (semences, carburant, assurance) — 6xxx/401 vers le hub |
-
-**Architecture hub-centrée** : chaque module alimente la même table SQLite
-`ecritures_comptables`. Pas de double saisie. Dédup garantie par
-l'unicité `(source_module, source_id)`. Source unique de vérité pour
-l'expert-comptable, l'administration fiscale et l'exploitant lui-même.
-
-**Démo live** : https://your-instance.example
-
-**Alignement philosophique** : SelfFarm-Lite utilise les trois piliers MySelf
-comme fondations :
-- **Bi-Self** : signer les documents légaux avec son identité SelfRecover,
-  contribuer au catalogue partagé d'aides via SelfModerate
-- **Self-Right** : SelfJustice pour les litiges agricoles (métayage,
-  bailleur/preneur, contentieux réglementaire), SelfAct pour les formulaires
-  CERFA (déclarations PAC, etc.)
-- **Self-Security** : SelfGuard pour les identifiants bancaires sensibles,
-  SelfKeyGuard pour la 2FA matérielle sur tracteurs / serres / hangars
-
-Le même pattern peut être appliqué à **n'importe quelle autre profession** :
-`SelfClinic-Lite` pour les praticiens de santé indépendants, `SelfCraft-Lite`
-pour les artisans, `SelfStore-Lite` pour le commerce, etc. SelfFarm-Lite est
-la première preuve que les trois piliers sont porteurs.
+Une seule saisie au démarrage ouvre le volume racine, puis les volumes
+secondaires en cascade.
 
 ---
 
-## La vision d'ensemble
+## Les modules
 
-MySelf adresse la **personne complète** à travers trois piliers et un étage
-applicatif :
+Chaque module répond à une question, se déploie seul, et documente son propre
+modèle de menace — ce qu'il protège et ce qu'il ne protège pas.
 
-| Étage | Dimension |
-|-------|-----------|
-| **Bi-Self** | Sociale — qui tu es et comment tu interagis |
-| **Self-Right** | Juridique — ce que tu peux défendre par le droit |
-| **Self-Security** | Matérielle — ce que tu protèges concrètement |
-| **SelfFarm-Lite** (étage applicatif) | Professionnelle — ce que tu construis et exploites |
+| Module | Question | État |
+|---|---|---|
+| [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | **v0.4.0** — utilisable, démo locale |
+| [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.3.0** — installé et documenté |
+| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.1.0** — en service, 191 tests |
+| [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.1.0 bêta** |
+| [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — code, pas encore en ligne |
+| [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | concept |
+| [SelfGuard](./self-security/selfguard/) | Destruction sous contrainte | concept — whitepaper, pas de code |
+| [SelfKeyGuard](./self-security/selfkeyguard/) | 2FA matérielle | concept |
 
-Trois piliers, deux modules par pilier, 
-plus SelfFarm-Lite comme premier étage applicatif au-dessus.
+Les modules marqués « concept » sont des documents de conception, sans code.
 
-Aucun module n'est obligatoire.
-Tu choisis ce qui correspond à tes besoins et tu auto-héberges ce que
-tu veux contrôler.
-
----
-
-## Philosophie
-
-- **Open source** (AGPL v3) — code ouvert, audit communautaire, pas de boîte noire, et tout ce qui se construit sur MySelf doit aussi rester libre
-- **Auto-hébergé** — tourne sur du matériel grand public (ton propre serveur Debian)
-- **Zéro cloud, zéro tracking, zéro base de données centralisée**
-- **Souveraineté par conception** — l'utilisateur garde le contrôle total
-  de son identité, ses données, ses clés
-- **Mode par défaut = verrouillé** — les modules nécessitent la présence
-  active pour se déverrouiller
-- **Résistance à la contrainte** — codes sous contrainte, destruction
-  garantie, racines de confiance matérielles
-- **Émancipation, pas dépendance** — chaque module renforce la dignité
-  et l'autonomie de la personne face aux systèmes
+Pas de lien vers une démo hébergée : tout s'auto-héberge depuis ce dépôt.
 
 ---
 
-## Prérequis
+## Sous le capot
 
-- Un serveur Debian (du matériel grand public suffit)
-- PHP 8.0+ pour les modules web ; les dépendances varient selon le module
-- Aucune dépendance externe, aucun service cloud, aucun abonnement API requis
+Ce que tu trouveras en ouvrant `src/`, et qui vaut mieux qu'un paragraphe de
+présentation :
+
+| Fichier | Ce qu'il y a dedans |
+|---|---|
+| [`Primitives.php`](./self-security/selfdataguard/src/Crypto/Primitives.php) | AAD lié au `userId`, `zeroize()` avec repli si `sodium_memzero` manque, `hash_equals`, classe finale à constructeur privé |
+| [`entropy.js`](./bi-self/selfrecover/tools/entropy-lab/engine/entropy.js) | Rejection sampling sur `crypto.getRandomValues` |
+| [`Recovery.php`](./bi-self/selfrecover/src/Recovery/Recovery.php) | Rate-limit scopé `username + IP`, empreinte factice contre l'oracle temporel |
+
+Les bibliothèques embarquées (`zxcvbn.js`, `hash-wasm-argon2.js`, liste EFF) sont
+les vraies, pas des remplaçantes de démonstration.
 
 ---
 
-## Statut
+## Essayer
 
-MySelf est un écosystème vivant : certains modules sont en ligne, d'autres
-existent en implémentation de référence avec démo, d'autres sont au stade
-conceptuel ou en prototypage. Le statut de chaque module figure dans le
-tableau ci-dessus. La feuille de route évolue avec les retours d'usage réels
-plutôt qu'avec une planification descendante.
+Tout tourne en local, sans compte à créer. Il te faut PHP 8.1 ou plus récent,
+avec `sodium`, `pdo_sqlite` et `mbstring`.
+
+**Voir la base chiffrée en direct** — écran partagé : l'application d'un côté, le
+contenu brut de la base de l'autre.
+
+```bash
+git clone https://github.com/Pierroons/my-self.git
+cd my-self/demo/selfdataguard
+./run.sh
+```
+
+**Voir les modules travailler ensemble** — un forum où l'inscription passe par
+SelfRecover et où les messages privés sont chiffrés par SelfDataGuard.
+
+```bash
+cd my-self/demo/lab
+composer install
+php seed.php
+php -S 127.0.0.1:8090 -t public
+```
 
 ---
 
 ## Contribuer
 
-Chaque module a son propre `CONTRIBUTING.md`. L'esprit :
+Relecture de code bienvenue. Audits — sécurité, droit, accessibilité — très
+bienvenus : signale ce qui cloche, y compris dans cette page.
 
-- Les revues de code sont les bienvenues
-- Les traductions sont les bienvenues (FR/EN déjà disponibles, les autres aussi)
-- Le prototypage matériel est bienvenu (notamment pour SelfKeyGuard)
-- Les audits (sécurité, juridiques, accessibilité) sont très bienvenus
-- **Les forks sont encouragés** — si tu construis un SelfHealth, SelfMoney,
-  SelfSchool, ouvre une discussion et on l'ajoutera à la famille
+Chaque module a son `CONTRIBUTING.md`. Traductions bienvenues, forks encouragés.
 
 ---
 
 ## Licence
 
-[AGPL-3.0-or-later](LICENSE) — copyleft fort. Tu peux l'utiliser, le
-modifier, l'auto-héberger. Si tu bâtis un service au-dessus de MySelf
-et que tu le proposes à d'autres, tu dois aussi publier tes modifications.
-Les versions historiques sous MIT (avant le 19/04/2026) restent sous
-leurs termes d'origine.
+[AGPL-3.0-or-later](./LICENSE) — copyleft fort. Tu peux l'utiliser, le modifier,
+l'héberger. Si tu bâtis un service dessus et que tu l'ouvres à d'autres, tu
+publies tes modifications aussi.
 
 ---
 
-## Soutenir le projet
+## Auteur
 
-MySelf est auto-hébergé sur matériel grand public, sans publicité, sans tracker,
-sans sponsor commercial. Si le projet te sert ou te parle, un geste direct
-aide à le maintenir en vie.
-
-**[🙏 Soutenir via Viva Wallet](https://pay.vivawallet.com/pierroons)** — CB,
-Apple Pay, Google Pay, PayPal.
-
----
-
-## Auteur & coworking
-
-**Pierroons** — auteur du projet.
-
-**Ce projet n'a pas été écrit seul.** Chaque module, chaque ligne, chaque
-whitepaper est le fruit d'un coworking continu avec **Claude**
-(Anthropic) : le produit est une vraie collaboration humain–IA. L'humain
-apporte l'entropie (le vécu, la direction, le bon sens pratique). La
-machine apporte la rigueur (la structure, la relecture, la cohérence
-technique). Le "Self pact" dont parle ce README n'est pas théorique —
-c'est la méthode d'écriture de tout MySelf.
-
-*MySelf — Be yourself, for yourself.*
+Écrit en binôme continu avec un assistant IA. La direction,
+l'expérience de terrain et les arbitrages sont humains ; la structure et la
+relecture sont partagées.
