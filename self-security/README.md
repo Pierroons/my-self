@@ -2,14 +2,13 @@
 
 > 🇫🇷 **[Lire en français →](./README.fr.md)**
 
-**Digital and physical protection.**
+**Encrypt what is stored, and keep it encrypted when the rest gives way.**
 
-> *Force me and you get nothing.*
+> *Dump my database — and get encrypted noise.*
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfGuard: alpha 0.0.1](https://img.shields.io/badge/SelfGuard-alpha%200.0.1-lightgrey.svg)](./selfguard/)
-[![SelfKeyGuard: alpha 0.0.1](https://img.shields.io/badge/SelfKeyGuard-alpha%200.0.1-lightgrey.svg)](./selfkeyguard/)
 [![SelfDataGuard: v0.2.0](https://img.shields.io/badge/SelfDataGuard-v0.2.0-brightgreen.svg)](./selfdataguard/)
+[![SelfRecover-LUKS: v0.3.0](https://img.shields.io/badge/SelfRecover--LUKS-v0.3.0-green.svg)](./selfrecover-luks/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
@@ -17,37 +16,38 @@
 
 ## The tension it addresses
 
-Security products today defend against a single attacker model: **the remote attacker who doesn't have you in front of them**. They assume you're willing to hand over the key, just slowly. This model is broken in two directions:
+Two assumptions hold up most application security, and both give way on the same day:
 
-1. **Digital coercion is real.** An officer, a burglar, or an abusive partner can force you to unlock your phone, your laptop, your cloud. "Enter your PIN or I break your fingers" has no technical answer if your data exists in a directly accessible form. Biometrics make it worse — they eliminate plausible deniability.
-2. **Physical objects still use 1970s security.** Your car starts with a piece of stamped metal or a cloned NFC key. Your motorcycle is gone in 90 seconds. The correlation between "I have the key" and "I am the owner" no longer holds.
+1. **"The database will not leave."** It does — a forgotten backup, a provider's dump, an SQL injection, a resold drive. Full-disk encryption protects nothing here: the machine is running, the volume is mounted, the rows read in plain.
+2. **"The disk is encrypted, so the machine is protected."** Cold, yes. And the passphrase that opens it is usually a *second* secret to remember, written down somewhere — which makes it the weak link rather than the strong one.
 
-Self-Security addresses both dimensions with the same principle: **the default state is locked, presence is required to unlock, coercion yields nothing**.
+Self-Security takes the two surfaces apart: **data is encrypted before it reaches the database**, and **the volume opens with a secret you already memorize**.
 
 ---
 
 ## Why the two modules reinforce each other
 
-**SelfGuard alone** is a data vault with duress protection. Good, but your phone is still a digital object — what about the physical world? Your car, your scooter, your house?
+**SelfDataGuard alone** keeps application data unreadable even if the whole database is exfiltrated — the key is derived from a secret only the user knows, so a dump on its own yields nothing. But it runs on a machine, and that machine has a disk.
 
-**SelfKeyGuard alone** is hardware 2FA for objects. Good, but the keys that authenticate those objects still live somewhere — on your phone, in your drawer — vulnerable to the same coercion attacks.
+**SelfRecover-LUKS alone** keeps that disk unreadable while the machine is off. But the moment it boots, the volumes are mounted and the database reads in plain.
 
-**Together**, the security perimeter closes:
+**Together**, both states are covered — cold by LUKS2, warm by application-layer encryption — and they draw on one memorized passphrase, derived under two distinct labels:
 
-- SelfGuard stores the keys (to cars, houses, objects) in a storage that self-destructs under coercion (duress passphrase, panic button).
-- SelfKeyGuard uses those keys to authenticate physical objects, with **nothing persistent on the object itself** — the object checks for a proof of presence that only SelfGuard can produce.
-- Forcing you to unlock SelfGuard destroys the keys. The object can no longer be authenticated. The attacker gets a brick.
+| Label | Opens | Module |
+|---|---|---|
+| `disk` | a LUKS2 slot | SelfRecover-LUKS |
+| `data-enc` | application data | SelfDataGuard |
 
-One module protects data. The other protects objects. The coercion resistance is the same: **under stress, the system destroys itself, not betrays its owner**.
+The label changes the effective salt, so two keys from the same secret stay independent: compromising one does not open the other.
 
 ---
 
-## Cross-module workflows
+## What each one does when something goes wrong
 
-- **Traffic stop, phone seized** → SelfGuard asked for passphrase. Owner enters duress passphrase. Visible data = decoy profile (a few photos, mainstream apps). Real data + car key = wiped. Officer gets nothing beyond a normal-looking phone.
-- **Burglar at home with phone** → Same mechanism. Safe opening codes, crypto keys, SelfKeyGuard auth tokens = destroyed. Safe remains closed, car doesn't start.
-- **Lost phone, not stolen** → Normal unlock = everything intact. Passive finder gets zero data because the phone is locked normally. No difference in visible UX, massive difference in coercion resistance.
-- **Car theft attempt** → Keyless entry defeated via relay attack? Doesn't matter, SelfKeyGuard requires live proof-of-presence from SelfGuard. No SelfGuard available = car won't start even if the door opens.
+- **Database dumped and published** → fields encrypted by SelfDataGuard stay noise. Each user's master key is wrapped twice — once by an Argon2id key derived from their password, once by an HMAC-SHA256 key derived from their recovery word — and neither derivation input is in the dump.
+- **Machine off, drive seized or resold** → the LUKS2 volume is closed. Secondary volumes open from a key-file kept *inside* the encrypted root, so a stolen drive stays unreadable on its own.
+- **Server rebooted remotely** → a dropbear SSH server embedded in the initramfs takes the passphrase; the root volume opens, then the secondary volumes cascade without a second entry.
+- **Keyscript fails** → every volume keeps a native LUKS slot with a classic passphrase, never removed. A broken keyscript costs a manual unlock, not the data.
 
 ---
 
@@ -55,17 +55,31 @@ One module protects data. The other protects objects. The coercion resistance is
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfGuard](./selfguard/) | Data vault with guaranteed destruction under coercion | alpha 0.0.1 — concept phase |
-| [SelfKeyGuard](./selfkeyguard/) | Hardware 2FA for physical objects (car, motorcycle, home) | alpha 0.0.1 — concept phase |
-| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving DB exfiltration | v0.2.0 — in service, demo at dataguard.my-self.fr |
+| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.2.0** — in service, 191 checks across 8 suites |
+| [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.3.0** — validated on a Debian 13 LNMP server, reproducible install |
 
 ---
 
 ## Status
 
-SelfGuard and SelfKeyGuard are in **concept phase** (alpha 0.0.1): whitepapers only, no code. They define the threat models, the cryptographic design and the hardware requirements. SelfKeyGuard is the most specified of the two — the whitepaper details a ~14 € ESP32 prototype securing a motorcycle ignition with hardware 2FA, down to the bill of materials. SelfDataGuard is the module of this pillar that ships code.
+Both modules run. SelfDataGuard is deployed and its eight suites pass; SelfRecover-LUKS was validated over full reboot cycles — root volume plus cascading secondary volumes — and its install is documented step by step in [INSTALL.md](./selfrecover-luks/INSTALL.md).
 
-A first implementation is planned after an independent security audit and a physical-world trial period. This is security-critical code and hardware; speed is not a virtue here.
+Neither has been audited by an external cryptographer. Their design is verified today by their author and by the readers of this repository, and by no one else. Audits are welcome — see [SECURITY.md](../SECURITY.md).
+
+---
+
+## Published designs
+
+Two designs in this pillar have **no module of their own to run**. They state a threat model, a cryptographic design and, for one of them, a hardware bill of materials. They are published so the reasoning can be read and argued with — not because anything is ready to install.
+
+| Design | Question | Document |
+|---|---|---|
+| [SelfGuard](./selfguard/) | What survives coercion? | [whitepaper](./selfguard/docs/whitepaper.md) |
+| [SelfKeyGuard](./selfkeyguard/) | Can a physical object require hardware 2FA? | [whitepaper](./selfkeyguard/docs/whitepaper.md) |
+
+SelfKeyGuard describes **two arms**, and only the first is document-only. Its second arm — unlocking a disk through a quorum of household witnesses, with a SelfRecover fallback — has working R&D code, kept under [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) and validated on throwaway images. It is deliberately **not enabled in v0.3.0**, which unlocks by keyscript and keyfile instead.
+
+A first implementation would follow an independent security audit and a physical trial period. This is security-critical code and hardware; speed is not a virtue here.
 
 ---
 
@@ -73,4 +87,4 @@ A first implementation is planned after an independent security audit and a phys
 
 **Pierroons** — [github.com/Pierroons/my-self](https://github.com/Pierroons/my-self)
 
-*Self-Security — The only password worth having is the one that destroys itself.*
+*Self-Security — one passphrase, two states, readable in neither.*

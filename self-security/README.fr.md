@@ -2,13 +2,13 @@
 
 > 🇬🇧 **[Read in English →](./README.md)**
 
-**Protection numérique et physique.**
+**Chiffrer ce qui est stocké, et le garder chiffré quand le reste cède.**
 
-> *Force-moi et tu n'auras rien.*
+> *Prends ma base — tu auras du bruit.*
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfGuard: alpha 0.0.1](https://img.shields.io/badge/SelfGuard-alpha%200.0.1-lightgrey.svg)](./selfguard/)
-[![SelfKeyGuard: alpha 0.0.1](https://img.shields.io/badge/SelfKeyGuard-alpha%200.0.1-lightgrey.svg)](./selfkeyguard/)
+[![SelfDataGuard : v0.2.0](https://img.shields.io/badge/SelfDataGuard-v0.2.0-brightgreen.svg)](./selfdataguard/)
+[![SelfRecover-LUKS : v0.3.0](https://img.shields.io/badge/SelfRecover--LUKS-v0.3.0-green.svg)](./selfrecover-luks/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
@@ -16,37 +16,38 @@
 
 ## La tension qu'il adresse
 
-Les produits de sécurité actuels défendent contre un seul modèle d'attaquant : **l'attaquant distant qui ne vous a pas en face**. Ils supposent que vous êtes prêt à donner la clé, juste lentement. Ce modèle est cassé dans deux directions :
+Deux croyances tiennent la sécurité de la plupart des applications, et elles cèdent le même jour :
 
-1. **La coercition numérique est réelle.** Un fonctionnaire, un cambrioleur, un conjoint violent peut vous forcer à déverrouiller votre téléphone, votre ordinateur, votre cloud. « Saisis ton code PIN ou je te casse les doigts » n'a aucune réponse technique si votre donnée existe sous forme directement accessible. La biométrie aggrave le problème — elle élimine tout déni plausible.
-2. **Les objets physiques utilisent encore une sécurité des années 1970.** Votre voiture démarre avec un bout de métal emboutit ou une clé NFC clonée. Votre moto disparaît en 90 secondes. La corrélation entre « j'ai la clé » et « je suis le propriétaire » ne tient plus.
+1. **« La base ne sortira pas. »** Elle sort : une sauvegarde oubliée, le dump d'un prestataire, une injection SQL, un disque revendu. Le chiffrement de disque n'y change rien — la machine tourne, le volume est monté, les lignes se lisent en clair.
+2. **« Le disque est chiffré, donc le poste est protégé. »** À froid seulement. Et la phrase qui l'ouvre est presque toujours un *second* secret à retenir, noté quelque part : c'est ce qui en fait le maillon faible plutôt que le maillon fort.
 
-Self-Security traite les deux dimensions avec le même principe : **l'état par défaut est verrouillé, la présence est requise pour déverrouiller, la coercition ne donne rien**.
-
----
-
-## Pourquoi les deux modules se renforcent mutuellement
-
-**SelfGuard seul** est un coffre-fort de données avec protection contre la contrainte. Bien, mais votre téléphone est encore un objet numérique — et le monde physique ? Votre voiture, votre trottinette, votre maison ?
-
-**SelfKeyGuard seul** est du 2FA matériel pour objets. Bien, mais les clés qui authentifient ces objets vivent toujours quelque part — sur votre téléphone, dans votre tiroir — vulnérables aux mêmes attaques de coercition.
-
-**Ensemble**, le périmètre de sécurité se ferme :
-
-- SelfGuard stocke les clés (voitures, maisons, objets) dans un stockage qui s'auto-détruit sous contrainte (passphrase de contrainte, bouton panique).
-- SelfKeyGuard utilise ces clés pour authentifier les objets physiques, **avec rien de persistant sur l'objet lui-même** — l'objet vérifie une preuve de présence que seul SelfGuard peut produire.
-- Vous forcer à déverrouiller SelfGuard détruit les clés. L'objet ne peut plus être authentifié. L'attaquant obtient une brique.
-
-Un module protège les données. L'autre protège les objets. La résistance à la coercition est la même : **sous pression, le système s'auto-détruit plutôt que de trahir son propriétaire**.
+Self-Security sépare les deux surfaces : **la donnée est chiffrée avant d'atteindre la base**, et **le volume s'ouvre avec un secret déjà mémorisé**.
 
 ---
 
-## Workflows croisés
+## Pourquoi les deux modules se renforcent
 
-- **Contrôle routier, téléphone saisi** → SelfGuard demande la passphrase. Le propriétaire saisit la passphrase de contrainte. Données visibles = profil leurre (quelques photos, apps mainstream). Vraies données + clé voiture = effacées. Le fonctionnaire obtient un téléphone d'apparence normale sans rien dessus.
-- **Cambrioleur chez vous avec le téléphone** → Même mécanisme. Codes d'ouverture du coffre, clés crypto, tokens SelfKeyGuard = détruits. Le coffre reste fermé, la voiture ne démarre pas.
-- **Téléphone perdu, pas volé** → Déverrouillage normal = tout intact. Celui qui le trouve n'obtient aucune donnée car le téléphone est juste verrouillé normalement. Aucune différence en UX visible, différence massive en résistance à la coercition.
-- **Tentative de vol de voiture** → Keyless entry défait via attaque par relais ? Peu importe, SelfKeyGuard exige une preuve de présence live depuis SelfGuard. Pas de SelfGuard disponible = la voiture ne démarre pas même si la portière s'ouvre.
+**SelfDataGuard seul** garde la donnée applicative illisible même si la base entière est exfiltrée : la clé se dérive d'un secret que seul l'utilisateur connaît, un dump seul ne donne rien. Mais il tourne sur une machine, et cette machine a un disque.
+
+**SelfRecover-LUKS seul** garde ce disque illisible tant que la machine est éteinte. Mais dès qu'elle démarre, les volumes sont montés et la base se lit en clair.
+
+**Ensemble**, les deux états sont couverts — à froid par LUKS2, à chaud par le chiffrement applicatif — et tous deux partent d'une seule phrase mémorisée, dérivée sous deux étiquettes distinctes :
+
+| Étiquette | Ouvre | Module |
+|---|---|---|
+| `disk` | un slot LUKS2 | SelfRecover-LUKS |
+| `data-enc` | les données applicatives | SelfDataGuard |
+
+L'étiquette change le sel effectif : deux clés issues du même secret restent indépendantes, et compromettre l'une n'ouvre pas l'autre.
+
+---
+
+## Ce que chacun fait le jour où ça tourne mal
+
+- **Base dumpée et publiée** → les champs chiffrés par SelfDataGuard restent du bruit. La clé maîtresse de chaque utilisateur est emballée deux fois — par une clé Argon2id dérivée de son mot de passe, et par une clé HMAC-SHA256 dérivée de son mot de récupération — et aucune de ces deux entrées ne figure dans le dump.
+- **Machine éteinte, disque saisi ou revendu** → le volume LUKS2 est fermé. Les volumes secondaires s'ouvrent depuis un fichier-clé rangé *à l'intérieur* de la racine chiffrée : un disque volé seul reste illisible.
+- **Redémarrage à distance** → un serveur SSH dropbear embarqué dans l'initramfs reçoit la phrase ; la racine s'ouvre, puis les volumes secondaires suivent en cascade, sans seconde saisie.
+- **Le keyscript casse** → chaque volume conserve un slot LUKS natif à phrase classique, jamais retiré. Un keyscript cassé coûte un déverrouillage à la main, pas les données.
 
 ---
 
@@ -54,17 +55,31 @@ Un module protège les données. L'autre protège les objets. La résistance à 
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfGuard](./selfguard/) | Coffre-fort de données avec destruction garantie sous contrainte | alpha 0.0.1 — phase concept |
-| [SelfKeyGuard](./selfkeyguard/) | 2FA matériel pour objets physiques (voiture, moto, maison) | alpha 0.0.1 — phase concept |
-| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, survivant à l'exfiltration de la base | v0.2.0 — en service, démo sur dataguard.my-self.fr |
+| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, qui survit au dump de la base | **v0.2.0** — en service, 191 contrôles sur 8 suites |
+| [SelfRecover-LUKS](./selfrecover-luks/) | Racine LUKS2 **et** volumes de données ouverts par une seule phrase de récupération | **v0.3.0** — validé sur un serveur Debian 13 LNMP, installation reproductible |
 
 ---
 
 ## Statut
 
-SelfGuard et SelfKeyGuard sont en **phase concept** (alpha 0.0.1) : whitepapers seuls, pas de code. Ils définissent les modèles de menace, la conception cryptographique et les exigences matérielles. SelfKeyGuard est le plus spécifié des deux — le whitepaper détaille un prototype ESP32 à ~14 € sécurisant un allumage de moto en 2FA matérielle, jusqu'à la nomenclature. SelfDataGuard est le module de ce pilier qui livre du code.
+Les deux modules tournent. SelfDataGuard est déployé et ses huit suites passent ; SelfRecover-LUKS a été validé sur des cycles de redémarrage complets — racine puis volumes secondaires en cascade — et son installation est documentée pas à pas dans [INSTALL.md](./selfrecover-luks/INSTALL.md).
 
-Une première implémentation est prévue après un audit de sécurité indépendant et une période d'essai physique. C'est du code et du matériel critiques pour la sécurité ; la vitesse n'est pas une vertu ici.
+Aucun des deux n'a été audité par un cryptographe extérieur. Leur conception est vérifiée aujourd'hui par leur auteur et par les lecteurs de ce dépôt, par personne d'autre. Les audits sont bienvenus — voir [SECURITY.md](../SECURITY.md).
+
+---
+
+## Conceptions publiées
+
+Deux conceptions de ce pilier n'ont **pas de module à elles pour tourner**. Elles posent un modèle de menace, une conception cryptographique et, pour l'une, une nomenclature matérielle. Elles sont publiées pour que le raisonnement soit lu et discuté, pas parce que quelque chose serait prêt à installer.
+
+| Conception | Question | Document |
+|---|---|---|
+| [SelfGuard](./selfguard/) | Que reste-t-il sous la contrainte ? | [whitepaper](./selfguard/docs/whitepaper.md) |
+| [SelfKeyGuard](./selfkeyguard/) | Un objet physique peut-il exiger une 2FA matérielle ? | [whitepaper](./selfkeyguard/docs/whitepaper.md) |
+
+SelfKeyGuard décrit **deux bras**, et seul le premier se limite à un document. Son second bras — ouvrir un disque par un quorum de témoins du foyer, avec secours SelfRecover — a du code de R&D qui tourne, rangé sous [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) et validé sur images jetables. Il est volontairement **non activé en v0.3.0**, qui ouvre par keyscript et fichier-clé.
+
+Une première implémentation viendrait après un audit de sécurité indépendant et une période d'essai physique. C'est du code et du matériel critiques pour la sécurité ; la vitesse n'est pas une vertu ici.
 
 ---
 
@@ -72,4 +87,4 @@ Une première implémentation est prévue après un audit de sécurité indépen
 
 **Pierroons** — [github.com/Pierroons/my-self](https://github.com/Pierroons/my-self)
 
-*Self-Security — Le seul mot de passe qui vaille est celui qui se détruit tout seul.*
+*Self-Security — une phrase, deux états, lisible dans aucun des deux.*
