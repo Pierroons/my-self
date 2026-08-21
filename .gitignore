@@ -53,3 +53,4 @@ venv/
 # que les agents voient encore quelque chose.
 .claude/*
 !.claude/agents/
+deploy/my-self/dist/

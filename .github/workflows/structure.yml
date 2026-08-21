@@ -91,6 +91,9 @@ jobs:
       - name: Garde-fou — quel catalogue SelfAct est servi
         run: bash self-right/selfjustice/tests/test_chemin_catalogue.sh
 
+      - name: Garde-fou — ce que le déploiement de l'arbre emporte
+        run: bash deploy/my-self/tests/test_deploy.sh
+
       - name: Garde-fou — coût constant du hash factice (bi-self-duo)
         run: php demo/bi-self-duo/tests/sanity_timing.php
 
