@@ -131,6 +131,11 @@ FOUND=0
 red()  { printf '\033[31m%s\033[0m\n' "$1"; }
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 warn() { printf '  \033[31m✗\033[0m %s\n' "$1"; FOUND=1; }
+# Ni vert ni rouge : ce qui doit se voir sans faire échouer. Un audit sans objet
+# n'est pas une fuite, mais il ne mérite pas la coche d'une passe complète — et
+# le signaler en ✗ interdirait de commiter les fichiers que l'allowlist écarte,
+# à commencer par ce script.
+note() { printf '  \033[33m•\033[0m %s\n' "$1"; }
 
 # grep rend 0 s'il trouve, 1 s'il ne trouve pas, et 2 ou plus si le motif est
 # invalide ou la lecture impossible. Tester « rc != 0 » confond donc « rien
@@ -285,7 +290,12 @@ if [ "$PAR_CIBLES" = "1" ]; then
   C2=0
   EXAMINES=0
   for f in "${CIBLES[@]}"; do
-    exclu "$f" && continue
+    # L'exclusion se dit, comme le saut d'un binaire : une cible qui quitte le
+    # compte en silence ne se distingue pas d'une cible lue et propre.
+    if exclu "$f"; then
+      echo "       ↷ $f — écarté par l'allowlist"
+      continue
+    fi
     # Un fichier qu'on ne peut pas ouvrir n'est pas un fichier propre. Sans ce
     # test, une cible illisible tombait dans le `continue` du binaire et
     # rejoignait le compte des examinés sans avoir été lue une seule fois.
@@ -311,8 +321,16 @@ if [ "$PAR_CIBLES" = "1" ]; then
       fi
     done
   done
-  # Le compte est celui des lectures réussies, jamais celui de la liste.
-  [ "$C2" = "0" ] && ok "aucun motif dans les $EXAMINES fichier(s) réellement lus"
+  # Le compte est celui des lectures réussies, jamais celui de la liste. Et zéro
+  # lecture n'est pas un audit réussi : c'est un audit sans objet, qui doit se
+  # lire comme tel plutôt que sous la même coche verte qu'une passe complète.
+  if [ "$C2" = "0" ]; then
+    if [ "$EXAMINES" = "0" ]; then
+      note "aucun fichier lu — toutes les cibles ont été écartées ou sont binaires"
+    else
+      ok "aucun motif dans les $EXAMINES fichier(s) réellement lus"
+    fi
+  fi
 else
   # On scanne TOUS les commits, pas le HEAD : corriger un fichier ne retire
   # pas ce qu'il contenait hier. C'est ce qui distingue ce contrôle de gitleaks.
