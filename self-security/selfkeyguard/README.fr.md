@@ -105,11 +105,11 @@ SelfKeyGuard est le **bras matériel** de Self-Security : il étend la résistan
 
 ## Statut
 
-**alpha 0.0.1 — phase prototype.**
+**alpha 0.0.1 — phase concept : whitepaper seul, pas de code.**
 
 - [x] Conception du protocole
 - [x] Nomenclature matérielle
-- [x] Firmware ESP32 de référence (cas d'usage moto, testé sur la bécane de l'auteur)
+- [ ] Firmware ESP32 de référence (conception de référence moto)
 - [ ] App compagnon téléphone (iOS + Android)
 - [ ] API d'intégration SelfGuard
 - [ ] Audit de sécurité formel

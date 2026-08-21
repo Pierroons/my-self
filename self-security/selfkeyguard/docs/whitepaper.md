@@ -125,7 +125,7 @@ K is stored inside SelfGuard's real-data vault (not the decoy). Under normal ope
 
 # 6. Roadmap
 
-**v0.1.0 (first milestone)** — Motorcycle reference design validated on author's bike, install guide, firmware source, SelfGuard integration.
+**v0.1.0 (first milestone)** — Motorcycle reference design validated on a test vehicle, install guide, firmware source, SelfGuard integration.
 
 **v0.2.0** — Car integration (CAN bus, common models), NFC badge support, phone companion apps (iOS + Android).
 

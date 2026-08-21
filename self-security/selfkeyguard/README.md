@@ -105,11 +105,11 @@ SelfKeyGuard is **the hardware arm** of Self-Security: it extends the coercion-r
 
 ## Status
 
-**alpha 0.0.1 — prototype phase.**
+**alpha 0.0.1 — concept phase: whitepaper only, no code.**
 
 - [x] Protocol design
 - [x] Hardware bill of materials
-- [x] ESP32 reference firmware (motorcycle use case, tested on author's bike)
+- [ ] ESP32 reference firmware (motorcycle reference design)
 - [ ] Phone companion app (iOS + Android)
 - [ ] SelfGuard integration API
 - [ ] Formal security audit

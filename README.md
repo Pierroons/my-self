@@ -65,13 +65,9 @@ protection mechanisms.
 | [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.1.0** — in service, 191 tests |
 | [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.1.0 beta** |
 | [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.2** — code, not online yet |
-| [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | concept |
-| [SelfGuard](./self-security/selfguard/) | Destruction under coercion | concept — whitepaper, no code |
-| [SelfKeyGuard](./self-security/selfkeyguard/) | Hardware 2FA | concept |
 
-Modules marked "concept" are design documents, with no code.
-
-No link to a hosted demo: everything self-hosts from this repository.
+Every line above links to code you can read and run. No link to a hosted demo:
+everything self-hosts from this repository.
 
 ---
 
@@ -113,6 +109,18 @@ composer install
 php seed.php
 php -S 127.0.0.1:8090 -t public
 ```
+
+---
+
+## Published designs
+
+Three more modules exist as documents only, with no code yet.
+
+| Design | Question | Document |
+|---|---|---|
+| SelfGuard | Destruction under coercion | [whitepaper](./self-security/selfguard/docs/whitepaper.md) |
+| SelfKeyGuard | Hardware 2FA | [whitepaper](./self-security/selfkeyguard/docs/whitepaper.md) |
+| SelfModerate | How do you behave? | [README](./bi-self/selfmoderate/README.md) |
 
 ---
 

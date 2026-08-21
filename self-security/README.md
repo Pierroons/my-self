@@ -63,9 +63,9 @@ One module protects data. The other protects objects. The coercion resistance is
 
 ## Status
 
-Both modules are in **concept phase** (alpha 0.0.1). The whitepapers define the threat models, the cryptographic design, and the hardware requirements. SelfKeyGuard is particularly concrete: a ~14 € ESP32 prototype can secure a motorcycle ignition with hardware 2FA, tested and documented.
+SelfGuard and SelfKeyGuard are in **concept phase** (alpha 0.0.1): whitepapers only, no code. They define the threat models, the cryptographic design and the hardware requirements. SelfKeyGuard is the most specified of the two — the whitepaper details a ~14 € ESP32 prototype securing a motorcycle ignition with hardware 2FA, down to the bill of materials. SelfDataGuard is the module of this pillar that ships code.
 
-Production deployment is planned after an independent security audit and a physical-world trial period on the author's own vehicles. This is security-critical code and hardware; speed is not a virtue here.
+A first implementation is planned after an independent security audit and a physical-world trial period. This is security-critical code and hardware; speed is not a virtue here.
 
 ---
 

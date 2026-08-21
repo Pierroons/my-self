@@ -67,13 +67,9 @@ de droit tenues à jour, pas des dispositifs de protection.
 | [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.1.0** — en service, 191 tests |
 | [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.1.0 bêta** |
 | [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — code, pas encore en ligne |
-| [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | concept |
-| [SelfGuard](./self-security/selfguard/) | Destruction sous contrainte | concept — whitepaper, pas de code |
-| [SelfKeyGuard](./self-security/selfkeyguard/) | 2FA matérielle | concept |
 
-Les modules marqués « concept » sont des documents de conception, sans code.
-
-Pas de lien vers une démo hébergée : tout s'auto-héberge depuis ce dépôt.
+Chaque ligne ci-dessus mène à du code lisible et exécutable. Pas de lien vers une
+démo hébergée : tout s'auto-héberge depuis ce dépôt.
 
 ---
 
@@ -116,6 +112,18 @@ composer install
 php seed.php
 php -S 127.0.0.1:8090 -t public
 ```
+
+---
+
+## Conceptions publiées
+
+Trois autres modules n'existent qu'à l'état de document, sans code.
+
+| Conception | Question | Document |
+|---|---|---|
+| SelfGuard | Destruction sous contrainte | [whitepaper](./self-security/selfguard/docs/whitepaper.md) |
+| SelfKeyGuard | 2FA matérielle | [whitepaper](./self-security/selfkeyguard/docs/whitepaper.md) |
+| SelfModerate | Comment se comporte-t-on ? | [README](./bi-self/selfmoderate/README.fr.md) |
 
 ---
 

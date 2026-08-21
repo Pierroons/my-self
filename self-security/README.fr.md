@@ -56,14 +56,15 @@ Un module protège les données. L'autre protège les objets. La résistance à 
 |--------|------|--------|
 | [SelfGuard](./selfguard/) | Coffre-fort de données avec destruction garantie sous contrainte | alpha 0.0.1 — phase concept |
 | [SelfKeyGuard](./selfkeyguard/) | 2FA matériel pour objets physiques (voiture, moto, maison) | alpha 0.0.1 — phase concept |
+| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, survivant à l'exfiltration de la base | beta 0.1.0 — démo déployée (dataguard.my-self.fr) |
 
 ---
 
 ## Statut
 
-Les deux modules sont en **phase concept** (alpha 0.0.1). Les whitepapers définissent les modèles de menace, la conception cryptographique, et les exigences matérielles. SelfKeyGuard est particulièrement concret : un prototype ESP32 à ~14 € peut sécuriser un allumage de moto avec 2FA matériel, testé et documenté.
+SelfGuard et SelfKeyGuard sont en **phase concept** (alpha 0.0.1) : whitepapers seuls, pas de code. Ils définissent les modèles de menace, la conception cryptographique et les exigences matérielles. SelfKeyGuard est le plus spécifié des deux — le whitepaper détaille un prototype ESP32 à ~14 € sécurisant un allumage de moto en 2FA matérielle, jusqu'à la nomenclature. SelfDataGuard est le module de ce pilier qui livre du code.
 
-Le déploiement en production est prévu après un audit de sécurité indépendant et une période d'essai physique sur les véhicules de l'auteur. C'est du code et du matériel critiques pour la sécurité ; la vitesse n'est pas une vertu ici.
+Une première implémentation est prévue après un audit de sécurité indépendant et une période d'essai physique. C'est du code et du matériel critiques pour la sécurité ; la vitesse n'est pas une vertu ici.
 
 ---
 
