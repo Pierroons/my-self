@@ -36,7 +36,9 @@ SERVEUR = pathlib.Path(__file__).resolve().parent.parent / "mcp" / "selfright_mc
 
 VOULUES = {
     "_etat_fraicheur", "_derniere_echeance", "_parse_date_fr", "_format_fr",
-    "MOIS", "DATE_ISO",
+    # La table des noms de juridiction sert à dire les bornes de couverture :
+    # sans elle, le chargement rend un NameError au premier cas qui en porte.
+    "_NOM_JURIDICTION_COURT", "_PERIMETRE", "MOIS", "DATE_ISO",
 }
 
 # Un vendredi ordinaire, postérieur à l'échéance du 15 : c'est la configuration
@@ -90,18 +92,19 @@ def main() -> int:
         # 🔑 Le cas de la fausse alerte : la synchronisation du 15 a tourné, le
         # contenu porte la date du dernier diff de l'amont, antérieure.
         ({"last_update": "14 août 2026", "last_sync": "2026-08-15"},
-         False, ["synchronisée le 15 août 2026", "contenu daté du 14 août 2026", "à jour"],
+         False, ["synchronisée le 15 août 2026", "contenu : 14 août 2026 (7 jours)",
+          "synchronisation à jour"],
          ["RETARD", "⚠️"],
          "synchro à l'échéance, contenu d'amont antérieur → silence"),
 
         ({"last_update": "14 août 2026", "last_sync": "2026-08-21"},
-         False, ["à jour"], ["RETARD"],
+         False, ["synchronisation à jour"], ["RETARD"],
          "synchro du jour même → silence"),
 
         # Le cron n'a pas tourné le 15 : là, le retard est réel.
         ({"last_update": "14 août 2026", "last_sync": "2026-08-01"},
          True, ["⚠️ RETARD", "n'a pas tourné depuis le 1 août 2026",
-                "l'échéance du 15 août 2026", "contenu servi date du 14 août 2026",
+                "l'échéance du 15 août 2026", "Contenu servi : 14 août 2026 (7 jours)",
                 "legifrance.gouv.fr"],
          [],
          "synchro antérieure à l'échéance → retard, les deux dates nommées"),
@@ -113,7 +116,7 @@ def main() -> int:
                  "impossible de dire si elle est à jour"],
          # ⚠️ « à jour » tout court se trouve aussi dans « impossible de dire si
          # elle est à jour » : c'est la forme AFFIRMATIVE qu'on interdit ici.
-         ["RETARD", "— à jour."],
+         ["RETARD", "synchronisation à jour"],
          "sans last_sync → incertitude énoncée, pas d'alarme"),
 
         ({"last_update": "14 août 2026", "last_sync": ""},
@@ -124,7 +127,7 @@ def main() -> int:
         # l'amont qui s'est tu. Le client le montre, l'exploitant est alerté de
         # son côté — ce n'est pas au client de crier sur ce qu'il ne sait pas.
         ({"last_update": "2 février 2026", "last_sync": "2026-08-15"},
-         False, ["contenu daté du 2 février 2026"], ["RETARD"],
+         False, ["contenu : 2 février 2026 (200 jours)"], ["RETARD"],
          "amont silencieux, synchro à l'heure → le contenu se dit, sans alarme"),
 
         ({"last_update": "pas une date", "last_sync": "2026-08-15"},
@@ -133,9 +136,38 @@ def main() -> int:
 
         # La jurisprudence date en ISO, les autres bases en toutes lettres.
         ({"last_update": "2026-08-15", "last_sync": "2026-08-15"},
-         False, ["contenu daté du 15 août 2026"], ["RETARD"],
+         False, ["contenu : 15 août 2026 (6 jours)"], ["RETARD"],
          "date ISO → lue et reformatée comme les autres"),
     ]
+
+    # 🔑 Le cas du 21/08/2026 : la jurisprudence publie sa COUVERTURE, et son
+    # `last_update` n'est qu'un marqueur de passage. Étiqueté « contenu daté
+    # du », il annonçait le 15 août quand la Cour de cassation n'allait que
+    # jusqu'au 30 juillet — faux de seize jours, sur chaque réponse de chaque
+    # outil touchant cette base.
+    couvert = {
+        "last_update": "2026-08-15",
+        "last_sync": "2026-08-15",
+        "couverture": {
+            "cc": {"debut": "1860-08-01", "fin": "2026-07-30"},
+            "ca": {"debut": "1996-03-25", "fin": "2026-08-05"},
+        },
+    }
+    cas.append((
+        couvert, False,
+        ["Cour de cassation jusqu'au 30 juillet 2026",
+         "cours d'appel jusqu'au 5 août 2026", "(22 jours)"],
+        ["contenu : 15 août 2026"],
+        "une base qui publie sa couverture → ses bornes, pas son marqueur",
+    ))
+    # ⚠️ L'âge se compte sur la borne la PLUS ANCIENNE : c'est elle qui limite
+    # ce qu'on peut affirmer absent.
+    cas.append((
+        {"last_update": "2026-08-15", "last_sync": "2026-08-15",
+         "couverture": {"cc": {"fin": "2026-08-20"}}},
+        False, ["Cour de cassation jusqu'au 20 août 2026", "(1 jour)"], [],
+        "une seule juridiction couverte → une seule borne dite",
+    ))
 
     print("▸ Ce que le serveur annonce, selon les deux dates")
     for bloc, retard_attendu, exiges, interdits, libelle in cas:
@@ -149,6 +181,21 @@ def main() -> int:
             + (f" — manque {manquants}" if manquants else "")
             + (f" — contient à tort {indus}" if indus else ""),
         )
+
+    print("\n▸ L'avertissement de périmètre")
+    # ⚠️ Ce cas éprouve le CONTENU de la table, pas son branchement : le
+    # raccordement à `_bandeau` demande le réseau et se vérifie en recette. Il
+    # empêche au moins qu'on la vide sans s'en apercevoir — c'est son absence
+    # sur la recherche qui a fait servir 37 159 arrêts civils à une question de
+    # droit administratif, sans un mot.
+    perimetre = charger()["_PERIMETRE"]
+    texte = perimetre.get("jurisprudence", "")
+    for attendu in ("JUDICIAIRE", "Conseil d'État", "tribunaux", "ArianeWeb"):
+        verdict(attendu in texte, f"le périmètre nomme « {attendu} »")
+    verdict(
+        "jurisprudence" in perimetre,
+        "la clé est celle du bloc de statut, pas un nom d'outil",
+    )
 
     print()
     if echecs:

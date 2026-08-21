@@ -175,6 +175,12 @@ def _derniere_echeance(aujourdhui: dt.date) -> dt.date:
     return (aujourdhui - dt.timedelta(days=1)).replace(day=15)
 
 
+# Les codes de juridiction tels que l'index les publie. Table close et courte —
+# la même information écrite en toutes lettres ailleurs dans ce fichier vaut
+# pour l'affichage d'une décision, pas pour une borne de couverture.
+_NOM_JURIDICTION_COURT = {"cc": "Cour de cassation", "ca": "cours d'appel"}
+
+
 def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
     """Rend (message lisible, retard constaté).
 
@@ -217,26 +223,60 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
     # « 2026-08-09 » dans le même statut.
     contenu = _format_fr(date_contenu)
 
+    # 🔑 **Le marqueur de passage n'est pas une date de contenu.** Pour LEGI,
+    # `last_update` porte la date du dump DILA — donc bien du contenu. Pour la
+    # jurisprudence, il porte la date où NOTRE moisson a tourné, et l'index
+    # s'arrête ailleurs : mesuré le 21/08/2026, le marqueur disait le 15 août
+    # quand la Cour de cassation n'allait que jusqu'au 30 juillet. Annoncer
+    # « contenu daté du 15 août » était faux de seize jours, sur chaque réponse
+    # de chaque outil touchant la jurisprudence.
+    #
+    # Quand la base publie sa couverture, c'est elle qui dit jusqu'où va le
+    # contenu — et elle le dit par juridiction, ce qu'aucune date unique ne peut.
+    couverture = bloc.get("couverture")
+    if isinstance(couverture, dict) and couverture:
+        bornes = {
+            code: _parse_date_fr(str((b or {}).get("fin") or ""))
+            for code, b in couverture.items()
+        }
+        bornes = {c: d for c, d in bornes.items() if d}
+        if bornes:
+            contenu = ", ".join(
+                f"{_NOM_JURIDICTION_COURT.get(c, c)} jusqu'au {_format_fr(d)}"
+                for c, d in sorted(bornes.items())
+            )
+            date_contenu = min(bornes.values())
+
     # ⚠️ Une instance qui n'annonce pas sa date de synchronisation ne permet pas
     # de distinguer un cron mort d'un amont silencieux. On le DIT, plutôt que de
     # trancher au hasard : une alerte permanente vaut moins qu'une incertitude
     # énoncée, et une absence d'alerte tromperait dans l'autre sens.
+    aujourdhui = dt.date.today()
+    # ⚠️ L'âge se dit, sans être jugé. « À jour » ne parle que de notre tuyau :
+    # la synchronisation a eu lieu quand elle devait. Il ne dit rien de l'âge du
+    # droit servi, et le taire laissait lire un verdict sur le droit là où il n'y
+    # en a pas — le 31 août, une base arrêtée au 14 s'annonçait « à jour » sans
+    # que rien ne signale les dix-sept jours. Le chiffre est un fait ; en faire
+    # une alarme rouvrirait la fausse alerte qu'on vient de retirer.
+    age = (aujourdhui - date_contenu).days
+    vieillesse = f" ({age} jour{'s' if age > 1 else ''})" if age > 0 else ""
+
     if date_synchro is None:
         return (
-            f"Base {base} — contenu daté du {contenu}. Cette instance n'annonce "
-            "pas la date de sa dernière synchronisation : impossible de dire si "
-            "elle est à jour. Signale-le si la réponse a des conséquences.",
+            f"Base {base} — contenu : {contenu}{vieillesse}. Cette instance "
+            "n'annonce pas la date de sa dernière synchronisation : impossible "
+            "de dire si elle est à jour. Signale-le si la réponse a des "
+            "conséquences.",
             False,
         )
 
-    aujourdhui = dt.date.today()
     echeance = _derniere_echeance(aujourdhui)
     synchro = _format_fr(date_synchro)
 
     if date_synchro >= echeance:
         return (
-            f"Base {base} synchronisée le {synchro}, contenu daté du {contenu} "
-            "— à jour.",
+            f"Base {base} synchronisée le {synchro} · contenu : "
+            f"{contenu}{vieillesse} — synchronisation à jour.",
             False,
         )
 
@@ -244,10 +284,11 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
     return (
         f"⚠️ RETARD — la synchronisation de la base {base} n'a pas tourné depuis "
         f"le {synchro}, soit {retard} jours, et l'échéance du "
-        f"{_format_fr(echeance)} n'a pas été honorée. Le contenu servi date du "
-        f"{contenu} : les textes rendus peuvent être abrogés ou modifiés depuis. "
-        "Signale-le à l'utilisateur et renvoie-le vers legifrance.gouv.fr avant "
-        "tout usage ayant des conséquences (saisine, courrier, décision).",
+        f"{_format_fr(echeance)} n'a pas été honorée. Contenu servi : "
+        f"{contenu}{vieillesse} — les textes rendus peuvent être abrogés ou "
+        "modifiés depuis. Signale-le à l'utilisateur et renvoie-le vers "
+        "legifrance.gouv.fr avant tout usage ayant des conséquences (saisine, "
+        "courrier, décision).",
         True,
     )
 
@@ -833,7 +874,30 @@ async def _bandeau(base: str) -> str:
             f"Consultation MCP : {message}",
             cle,
         )
-    return message
+    return message + _PERIMETRE.get(cle, "")
+
+
+# 🔑 **L'avertissement de périmètre doit accompagner l'outil qu'on APPELLE.**
+# Il existait, mais seulement dans `verifier_jurisprudence` — jamais sur la
+# recherche. Mesuré le 21/08/2026 par un essai extérieur : « excès de pouvoir
+# arrêt du Conseil d'État » rendait 37 159 décisions de la Cour de cassation,
+# dont un arrêt de 1965 dont le sommaire commence par « L'ARRÊT DU CONSEIL
+# D'ÉTAT QUI ANNULE UN DÉCRET POUR EXCÈS DE POUVOIR ». Du matériau réel,
+# vérifiable, et hors sujet : la pire combinaison pour fabriquer une réponse
+# fausse et confiante. Rien ne disait que la justice administrative n'est pas
+# dans la base.
+#
+# Placé dans le bandeau, il accompagne tous les outils de la base d'un coup —
+# écrit outil par outil, il aurait manqué le suivant.
+_PERIMETRE = {
+    "jurisprudence": (
+        "\nPérimètre : justice JUDICIAIRE seulement. La justice administrative "
+        "— Conseil d'État, cours administratives d'appel, tribunaux "
+        "administratifs — n'est pas dans cette base : si la question en relève, "
+        "dis-le et renvoie vers ArianeWeb plutôt que de servir un arrêt civil "
+        "qui parle du même mot."
+    ),
+}
 
 
 # -------------------------------------------------------------------- outils
@@ -1922,6 +1986,20 @@ async def calculer_echeance(
         for e in (data.get("raisonnement") or [])
         if isinstance(e, dict)
     )
+    # 🔑 L'API rend un lien d'agenda dérivé des paramètres qui ont servi au
+    # calcul ; cet outil ne l'affichait nulle part. Le correctif du 21/08/2026 —
+    # qui a réparé un lien menant deux mois avant la date annoncée — était donc
+    # invisible à qui passe par le serveur MCP. Un essai extérieur l'a vu :
+    # « aucun export .ics dans les treize outils ».
+    #
+    # Le chemin est relatif à la racine des démarches : on le rend absolu ici,
+    # sans quoi il ne mène nulle part chez le lecteur.
+    ics = data.get("ics")
+    agenda = (
+        f"\n\nAjouter à un agenda : {ACT_URL}/deadline{ics}"
+        if isinstance(ics, str) and ics.startswith("?") else ""
+    )
+
     # Le fondement arrive en table — un article par clé, plus la source et la
     # mention d'indépendance. Interpolé tel quel, il rendait la représentation
     # Python du dictionnaire, accolades et guillemets compris.
@@ -1945,6 +2023,7 @@ async def calculer_echeance(
         + (f"\n\nRaisonnement :\n{etapes}" if etapes else "")
         + (f"\n\nFondement :\n{fondement}" if fondement else "")
         + (f"\n\n⚠️ {data.get('avertissement')}" if data.get("avertissement") else "")
+        + agenda
         + "\n\nDonne la date AVEC son raisonnement : c'est ce qui permet à "
         "l'utilisateur de le faire vérifier. Un délai manqué ne se rattrape pas."
     )
