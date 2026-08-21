@@ -24,18 +24,24 @@ SelfModerate is a moderation engine that lets online communities self-regulate w
 
 ## How it works
 
+> **This page describes the target design.** The code exists — in
+> [`demo/bi-self-duo/`](../../demo/bi-self-duo/) and [`demo/lab/`](../../demo/lab/) —
+> and covers only part of it. What is missing is marked *not implemented yet*;
+> what is half-kept, *partial*.
+
+
 ### Vote system
-- Votes are tied to **accepted invitations** (real interactions, not anonymous reports)
-- 👍 (+1) or 👎 (-1) with a mandatory reason
+- Votes are tied to **accepted invitations** (real interactions, not anonymous reports) — *partial: the lab is a forum and has no invitations*
+- 👍 (+1) or 👎 (-1) with a mandatory reason — *partial: the duo demo never validates the reason, and the lab has no such field*
 - Voting is a **recommendation, not an obligation** — it helps recognize good teammates or flag problematic behavior
-- Configurable reasons per platform (toxic, no-show, cheating, good teammate, skilled...)
-- Anonymous votes: the target sees their score and reasons, not who voted
+- Configurable reasons per platform (toxic, no-show, cheating, good teammate, skilled...) — *not implemented yet*
+- Anonymous votes: the target sees their score and reasons, not who voted — *partial: anonymity holds, but no screen returns their reasons to the target*
 
 ### Reputation score
 - Every user starts at **20** (configurable)
 - Score is capped at **30** (configurable) — no hoarding social credit
-- Going up is slow, going down is fast
-- Passive regeneration: +1/week if score drops below 5
+- Going up is slow, going down is fast — *not implemented yet: a vote is worth ±1 either way*
+- Passive regeneration: +1/week if score drops below 5 — *not implemented yet*
 
 ### Self-regulating loop
 ```
@@ -52,23 +58,24 @@ The punishment isn't technical — it's social.
 - Score = 0 → **temporary ban** (24h → 7d → 30d, progressive)
 - 3 temporary bans executed → **permanent ban**
 - After a served ban: score resets to 20 (second chance), strike count preserved
-- 3 months clean: full reset (score + strikes)
+- 3 months clean: full reset (score + strikes) — *partial: the duo demo clears everyone's strikes at once, the lab does not do it at all*
 
 ### Anti-manipulation
-- **Anti-Sybil**: SelfRecover integration (optional) + 7-day cooldown on new accounts
-- **Pack voting**: cross-reference invitations and votes to detect coordinated downvotes
+- **Anti-Sybil**: SelfRecover integration (optional) + 7-day cooldown on new accounts — *partial: anti-Sybil is there, the cooldown is not*
+- **Pack voting**: cross-reference invitations and votes to detect coordinated downvotes — *not implemented yet: detection rests on a time threshold, without checking that the voters know each other*
 - **Upvote farming**: mutual positive votes blocked after 3 occurrences in 2 months
-- **Cross-voting**: A vs B and B vs A on same invitation → both cancelled
-- **Victim protection**: flagged abuse suspends the ban for admin review
+- **Cross-voting**: A vs B and B vs A on same invitation → both cancelled — *not implemented yet*
+- **Victim protection**: flagged abuse suspends the ban for admin review — *not implemented yet*
 
 ## Documentation
 
-- [Technical whitepaper (FR)](./docs/) — coming soon (DOCX available)
-- Threat model — coming soon
+- Technical whitepaper (FR) — written, not yet published in this repository
+- Threat model — to be written
 
 ## Status
 
-🟡 **Concept phase** — whitepaper written, demo in development.
+🟡 **Concept phase** — whitepaper written. The code lives in the repository's demos
+and covers part of the design; the module directory does not carry it yet.
 
 ## License
 

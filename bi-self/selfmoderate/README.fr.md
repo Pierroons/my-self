@@ -24,18 +24,24 @@ SelfModerate est un moteur de modération qui permet aux communautés en ligne d
 
 ## Comment ça marche
 
+> **Cette page décrit la conception cible.** Le code existe — dans
+> [`demo/bi-self-duo/`](../../demo/bi-self-duo/) et [`demo/lab/`](../../demo/lab/) —
+> et n'en couvre qu'une partie. Ce qui manque est marqué *pas encore codé* ;
+> ce qui n'est tenu qu'à moitié, *partiel*.
+
+
 ### Système de vote
-- Les votes sont liés aux **invitations acceptées** (vraies interactions, pas reports anonymes)
-- 👍 (+1) ou 👎 (-1) avec une raison obligatoire
+- Les votes sont liés aux **invitations acceptées** (vraies interactions, pas reports anonymes) — *partiel : le lab est un forum, il n'a pas d'invitations*
+- 👍 (+1) ou 👎 (-1) avec une raison obligatoire — *partiel : la raison n'est jamais validée dans la démo duo, et le lab n'en a pas de champ*
 - Voter est une **recommandation, pas une obligation** — ça aide à reconnaître les bons coéquipiers ou signaler les comportements problématiques
-- Raisons configurables par plateforme (toxique, no-show, triche, bon coéquipier, habile…)
-- Votes anonymes : la cible voit son score et les raisons, pas qui a voté
+- Raisons configurables par plateforme (toxique, no-show, triche, bon coéquipier, habile…) — *pas encore codé*
+- Votes anonymes : la cible voit son score et les raisons, pas qui a voté — *partiel : l'anonymat est tenu, aucun écran ne rend ses raisons à la cible*
 
 ### Score de réputation
 - Chaque utilisateur démarre à **20** (configurable)
 - Score plafonné à **30** (configurable) — pas d'accumulation de crédit social
-- Monter est lent, descendre est rapide
-- Régénération passive : +1/semaine si le score tombe sous 5
+- Monter est lent, descendre est rapide — *pas encore codé : un vote vaut ±1 dans les deux sens*
+- Régénération passive : +1/semaine si le score tombe sous 5 — *pas encore codé*
 
 ### Boucle auto-régulatrice
 ```
@@ -52,23 +58,25 @@ La punition n'est pas technique — elle est sociale.
 - Score = 0 → **ban temporaire** (24 h → 7 j → 30 j, progressif)
 - 3 bans temporaires exécutés → **ban permanent**
 - Après un ban purgé : score reset à 20 (seconde chance), compte de strikes préservé
-- 3 mois clean : reset total (score + strikes)
+- 3 mois clean : reset total (score + strikes) — *partiel : la démo duo remet les strikes à zéro pour tout le monde d'un coup, le lab ne le fait pas*
 
 ### Anti-manipulation
-- **Anti-Sybil** : intégration SelfRecover (optionnel) + cooldown 7 jours sur les nouveaux comptes
-- **Pack voting** : recoupement invitations / votes pour détecter les downvotes coordonnés
+- **Anti-Sybil** : intégration SelfRecover (optionnel) + cooldown 7 jours sur les nouveaux comptes — *partiel : l'anti-Sybil est là, le cooldown non*
+- **Pack voting** : recoupement invitations / votes pour détecter les downvotes coordonnés — *pas encore codé : la détection repose sur un seuil de temps, sans vérifier que les votants se connaissent*
 - **Upvote farming** : votes positifs mutuels bloqués après 3 occurrences en 2 mois
-- **Cross-voting** : A vs B et B vs A sur la même invitation → les deux annulés
-- **Protection des victimes** : un abus signalé suspend le ban pour revue admin
+- **Cross-voting** : A vs B et B vs A sur la même invitation → les deux annulés — *pas encore codé*
+- **Protection des victimes** : un abus signalé suspend le ban pour revue admin — *pas encore codé*
 
 ## Documentation
 
-- [Whitepaper technique (FR)](./docs/) — bientôt (DOCX disponible)
-- Modèle de menace — bientôt
+- Whitepaper technique (FR) — rédigé, pas encore publié dans le dépôt
+- Modèle de menace — à écrire
 
 ## Statut
 
-🟡 **Phase whitepaper (v0.1.0)** — protocole complet rédigé, démo en développement.
+🟡 **Phase whitepaper (v0.1.0)** — protocole complet rédigé. Le code vit dans les
+démos du dépôt et couvre une partie de la conception ; le dossier de module ne le
+porte pas encore.
 
 ## Licence
 

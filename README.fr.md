@@ -117,13 +117,15 @@ php -S 127.0.0.1:8090 -t public
 
 ## Conceptions publiées
 
-Trois autres modules n'existent qu'à l'état de document, sans code.
+SelfGuard et SelfKeyGuard n'existent qu'à l'état de document. SelfModerate, lui,
+a du code — il tourne dans les démos ci-dessus — mais son dossier de module ne le
+porte pas encore.
 
-| Conception | Question | Document |
-|---|---|---|
-| SelfGuard | Destruction sous contrainte | [whitepaper](./self-security/selfguard/docs/whitepaper.md) |
-| SelfKeyGuard | 2FA matérielle | [whitepaper](./self-security/selfkeyguard/docs/whitepaper.md) |
-| SelfModerate | Comment se comporte-t-on ? | [README](./bi-self/selfmoderate/README.fr.md) |
+| Conception | Question | Document | Code |
+|---|---|---|---|
+| SelfGuard | Destruction sous contrainte | [whitepaper](./self-security/selfguard/docs/whitepaper.md) | — |
+| SelfKeyGuard | 2FA matérielle | [whitepaper](./self-security/selfkeyguard/docs/whitepaper.md) | — |
+| SelfModerate | Comment se comporte-t-on ? | [README](./bi-self/selfmoderate/README.fr.md) | [démo duo](./demo/bi-self-duo/), [lab](./demo/lab/) |
 
 ---
 

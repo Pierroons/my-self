@@ -114,13 +114,14 @@ php -S 127.0.0.1:8090 -t public
 
 ## Published designs
 
-Three more modules exist as documents only, with no code yet.
+SelfGuard and SelfKeyGuard exist as documents only. SelfModerate does have code —
+it runs in the demos above — but its module directory does not carry it yet.
 
-| Design | Question | Document |
-|---|---|---|
-| SelfGuard | Destruction under coercion | [whitepaper](./self-security/selfguard/docs/whitepaper.md) |
-| SelfKeyGuard | Hardware 2FA | [whitepaper](./self-security/selfkeyguard/docs/whitepaper.md) |
-| SelfModerate | How do you behave? | [README](./bi-self/selfmoderate/README.md) |
+| Design | Question | Document | Code |
+|---|---|---|---|
+| SelfGuard | Destruction under coercion | [whitepaper](./self-security/selfguard/docs/whitepaper.md) | — |
+| SelfKeyGuard | Hardware 2FA | [whitepaper](./self-security/selfkeyguard/docs/whitepaper.md) | — |
+| SelfModerate | How do you behave? | [README](./bi-self/selfmoderate/README.md) | [duo demo](./demo/bi-self-duo/), [lab](./demo/lab/) |
 
 ---
 
