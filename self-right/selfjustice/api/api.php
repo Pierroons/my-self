@@ -17,8 +17,8 @@
  *   GET /api/legi/search?q={query}&limit={n}
  *   GET /api/eu/article/{source}/{num}
  *   GET /api/eu/search?q={query}&source={src}&limit={n}
- *   GET /api/jurisprudence/verifier/{ref}?jurisdiction={cc|ca}
- *   GET /api/jurisprudence/search?q={query}
+ *   GET /api/jurisprudence/verifier/{ref}?jurisdiction={cc|ca}&date={AAAA-MM-JJ}
+ *   GET /api/jurisprudence/search?q={query}&champ={summary|text|...}&jurisdiction={cc|ca}
  *   GET /api/jurisprudence/decision/{id}
  *   GET /api/status
  */
@@ -103,6 +103,59 @@ function legi_fts_disponible(SQLite3 $db): bool {
         $present = ($r == 1);
     }
     return $present;
+}
+
+/**
+ * Quel champ chercher, et que faut-il dire à l'appelant.
+ *
+ * 🔑 Les sommaires sont rédigés par la Cour de cassation pour ses propres
+ * arrêts : une décision de cour d'appel n'en a pas. Chercher dans le sommaire
+ * avec `jurisdiction=ca` est donc structurellement vide — mesuré le
+ * 20/08/2026 : 0 résultat, contre 117 731 sur le même index en `champ=text`.
+ * L'amont préfère répondre plutôt que refuser, et rend ce zéro sans réserve ;
+ * un client en conclut qu'aucune cour d'appel ne s'est jamais prononcée.
+ *
+ * Un défaut se remplace, un choix se respecte : sans `champ`, on bascule sur le
+ * texte ; avec `champ=summary` écrit à la main, on rend le zéro demandé et on
+ * dit pourquoi il était joué d'avance.
+ *
+ * @return array{0: string, 1: ?string} le champ à interroger, et la réserve.
+ */
+function champ_juris(?string $champ_demande, ?string $jurisdiction): array {
+    $champ = $champ_demande ?? 'summary';
+    if (strtolower($jurisdiction ?? '') !== 'ca' || $champ !== 'summary') {
+        return [$champ, null];
+    }
+    if ($champ_demande === null) {
+        return ['text', "Recherche basculée sur le texte intégral : les décisions "
+            . "de cour d'appel n'ont pas de sommaire, et le champ par défaut "
+            . "n'aurait rien pu rendre."];
+    }
+    return ['summary', "Les décisions de cour d'appel n'ont pas de sommaire : "
+        . "cette combinaison ne peut rien rendre. Rappeler avec champ=text pour "
+        . "chercher dans le texte intégral."];
+}
+
+/**
+ * Une requête de recherche contient-elle de quoi chercher ?
+ *
+ * 🔑 Le contrôle ne vise pas l'injection SQL : les requêtes préparées la
+ * repoussent déjà, et `'; DROP TABLE articles;--` rend une liste vide sans que
+ * rien ne soit tombé. Il vise ce que ces entrées produisent quand même. FTS5
+ * tokenise `' OR 1=1--` en « or » et « 1 », retrouve trois articles réels du
+ * Code de la sécurité sociale, et l'appelant reçoit du droit en réponse à une
+ * chaîne qui n'en demandait pas. Côté jurisprudence, `1=1` rend 20 921
+ * décisions, et `' OR 1=1--` part jusqu'à Judilibre qui le refuse — le 403 de
+ * l'amont revient alors en 503, c'est-à-dire « notre service est indisponible »
+ * quand c'est la requête qui ne l'était pas.
+ *
+ * Deux façons légitimes de chercher, donc deux façons de passer : un mot d'au
+ * moins trois lettres, ou un nombre d'au moins deux chiffres — la recherche par
+ * numéro d'article (« 1240 », « L122-14 ») n'a aucun mot.
+ */
+function requete_cherchable(string $q): bool {
+    return preg_match('/\p{L}{3,}/u', $q) === 1
+        || preg_match('/\d{2,}/', $q) === 1;
 }
 
 /**
@@ -492,6 +545,11 @@ if ($segments[0] === 'legi') {
             json_error("Requête trop courte (min 3 caractères)");
         }
 
+        if (!requete_cherchable($q)) {
+            json_error("« $q » ne contient aucun mot cherchable. Il faut un mot "
+                . "d'au moins trois lettres, ou un numéro d'article.");
+        }
+
         // Deux recherches, dans cet ordre : par numéro puis dans le texte.
         //
         // Le numéro passe en premier parce qu'il est sans ambiguïté : qui tape
@@ -683,6 +741,11 @@ if ($segments[0] === 'eu') {
             json_error("Requête trop courte (min 3 caractères)");
         }
 
+        if (!requete_cherchable($q)) {
+            json_error("« $q » ne contient aucun mot cherchable. Il faut un mot "
+                . "d'au moins trois lettres, ou un numéro d'article.");
+        }
+
         $sql = "SELECT source, num, titre, SUBSTR(texte, 1, 200) as apercu, date_debut
                 FROM articles
                 WHERE (titre LIKE :pattern OR texte LIKE :pattern OR num LIKE :numPattern)";
@@ -763,6 +826,13 @@ if ($segments[0] === 'jurisprudence') {
         $couverture  = juris_couverture($db);
         $juridiction = isset($_GET['jurisdiction']) ? strtolower($_GET['jurisdiction']) : null;
 
+        // Date à laquelle l'appelant situe la décision. Facultative, mais c'est
+        // elle qui rend l'absence opposable — voir la réserve, plus bas.
+        $date_annoncee = isset($_GET['date']) ? trim($_GET['date']) : null;
+        if ($date_annoncee !== null && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_annoncee)) {
+            json_error("Date « $date_annoncee » invalide. Format attendu : 2024-03-12.");
+        }
+
         if ($juridiction !== null && !isset($couverture[$juridiction])) {
             $db->close();
             json_indetermine(
@@ -834,11 +904,33 @@ if ($segments[0] === 'jurisprudence') {
         // Borne prudente : la plus ancienne des fins de couverture retenues.
         // Sans juridiction précisée, c'est celle qui s'arrête le plus tôt qui
         // commande — une décision plus récente échapperait à l'index.
-        $fins   = array_column(
-            $juridiction !== null ? [$couverture[$juridiction]] : array_values($couverture),
-            'fin'
-        );
+        $retenues = $juridiction !== null
+            ? [$couverture[$juridiction]]
+            : array_values($couverture);
+        $fins   = array_column($retenues, 'fin');
+        $debuts = array_column($retenues, 'debut');
         $arret  = $fins ? min($fins) : null;
+        $ouvre  = $debuts ? max($debuts) : null;
+
+        // 🔑 La réserve de borne haute n'est vraie que si l'appelant n'a pas dit
+        // à quelle date il situe la décision. Sur le scénario le plus dangereux
+        // de la recette — une référence inventée, présentée comme lue, et datée
+        // — « une décision postérieure ne peut pas être exclue » désarme la
+        // seule réponse qui devait être ferme : si la décision existait à la
+        // date annoncée et que cette date est couverte, elle serait là.
+        $reserve_borne = $decisions ? null : match (true) {
+            $date_annoncee === null   => "Introuvable dans un index arrêté au $arret : "
+                . "une décision postérieure ne peut pas être exclue.",
+            $arret !== null && $date_annoncee > $arret => "Introuvable, mais la date "
+                . "annoncée ($date_annoncee) est postérieure à l'arrêt de l'index "
+                . "($arret) : cette absence ne prouve rien.",
+            $ouvre !== null && $date_annoncee < $ouvre => "Introuvable, mais la date "
+                . "annoncée ($date_annoncee) précède le début de l'index ($ouvre) : "
+                . "cette absence ne prouve rien.",
+            default => "Introuvable, et la date annoncée ($date_annoncee) est couverte "
+                . "par l'index ($ouvre → $arret) : si cette décision existait à cette "
+                . "date, elle y figurerait.",
+        };
 
         json_response([
             'etat'        => $decisions ? 'trouvee' : 'absente',
@@ -856,8 +948,7 @@ if ($segments[0] === 'jurisprudence') {
             // signaler « absente » sans le dire serait donc trompeur.
             'reserve'     => $decisions
                 ? null
-                : "Introuvable dans un index arrêté au $arret : une décision "
-                . "postérieure ne peut pas être exclue. Périmètre limité à la "
+                : $reserve_borne . " Périmètre limité à la "
                 . "Cour de cassation et aux cours d'appel — la justice "
                 . "administrative (Conseil d'État, CAA, TA) relève d'ArianeWeb et "
                 . "n'y figurera jamais. Dire « introuvable », pas « n'existe pas ».",
@@ -875,6 +966,11 @@ if ($segments[0] === 'jurisprudence') {
         $q = trim($_GET['q'] ?? '');
         if (mb_strlen($q) < 3) {
             json_error("Requête trop courte (min 3 caractères)");
+        }
+
+        if (!requete_cherchable($q)) {
+            json_error("« $q » ne contient aucun mot cherchable. Il faut un mot "
+                . "d'au moins trois lettres, ou un numéro d'article.");
         }
 
         // Une saisie qui ressemble à un numéro partirait en plein texte et
@@ -904,16 +1000,13 @@ if ($segments[0] === 'jurisprudence') {
         // rebasculait la recherche sur le texte entier sans le dire, et le
         // total sautait de 15 273 à 179 540 sans que rien ne l'explique.
         $champs_valides = ['summary', 'themes', 'text', 'motivations', 'dispositif', 'visa'];
-        $champ = $_GET['champ'] ?? 'summary';
-        if (!in_array($champ, $champs_valides, true)) {
+        $champ_demande = $_GET['champ'] ?? null;
+        if ($champ_demande !== null && !in_array($champ_demande, $champs_valides, true)) {
             json_error(
-                "Champ de recherche « $champ » inconnu. Valeurs acceptées : "
+                "Champ de recherche « $champ_demande » inconnu. Valeurs acceptées : "
                 . implode(', ', $champs_valides) . '.',
                 400
             );
-        }
-        if ($champ !== 'text') {
-            $params['field'] = $champ;
         }
 
         foreach (['jurisdiction', 'date_start', 'date_end'] as $option) {
@@ -922,12 +1015,20 @@ if ($segments[0] === 'jurisprudence') {
             }
         }
 
+        [$champ, $bascule] = champ_juris($champ_demande, $params['jurisdiction'] ?? null);
+
+        if ($champ !== 'text') {
+            $params['field'] = $champ;
+        }
+
         $data = judilibre_get('/search', $params);
         json_response([
             'etat'    => 'trouvee',
             'query'   => $q,
+            'champ'   => $champ,
             'total'   => $data['total'] ?? null,
             'results' => $data['results'] ?? [],
+            'reserve' => $bascule,
             'source'  => 'Judilibre (Cour de cassation) — temps réel',
         ]);
     }

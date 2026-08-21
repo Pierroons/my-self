@@ -73,6 +73,9 @@ jobs:
       - name: Garde-fou — déploiement SelfJustice
         run: bash self-right/selfjustice/tests/test_deploy.sh
 
+      - name: Garde-fou — entrées acceptées par l'API SelfJustice
+        run: php self-right/selfjustice/tests/sanity_entree_api.php
+
       - name: Garde-fou — coût constant du hash factice (bi-self-duo)
         run: php demo/bi-self-duo/tests/sanity_timing.php
 
