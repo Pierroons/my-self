@@ -396,7 +396,10 @@ verifier() {
 
     echo "▸ Ce qui doit répondre"
     for u in "${adresses[@]}"; do
-        code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$u")
+        # Un frontal peut se tenir devant ces domaines : sans anti-cache, une
+        # vérification lancée juste après une pose lit l'état d'avant.
+        code=$(curl -s -o /dev/null -w "%{http_code}" -H "Cache-Control: no-cache" \
+               --max-time 15 "$u?verif=$RANDOM")
         if [ "$code" = "200" ]; then printf "  ✓  %-48s %s\n" "$u" "$code"
         else printf "  ✗  %-48s %s\n" "$u" "$code"; souci=1; fi
     done

@@ -13,23 +13,17 @@ Site statique de présentation de l'écosystème MySelf, déployé sur
   - Section auteur & coworking (Pierroons + Claude)
   - Support Viva Quickpay
 
-## Déploiement
+## Servir cette page
 
-Servi par nginx :
-- Vhost : `/etc/nginx/sites-enabled/myself-root`
-- Root : `/var/www/my-self/`
-- SSL : Let's Encrypt via certbot
-- DNS : `my-self.fr` + `www.my-self.fr` → l'hôte servant l'instance
+Une page statique, sans dépendance : n'importe quel serveur web la rend telle
+quelle. Pointe la racine de ton vhost sur ce dossier, et sers `index.html`.
 
-## Modifications
+Pour la publier depuis le dépôt, `deploy/my-self/deploy.sh` assemble l'arbre et
+substitue les noms de domaine ; voir sa table pour déclarer le tien.
 
-Pour publier un changement :
-
-1. Éditer `index.html` dans ce dossier
-2. Copier sur l'hôte : `scp index.html deploy@<hote>:/tmp/` puis
-   `sudo cp /tmp/index.html /var/www/my-self/index.html && sudo chown www-data:www-data /var/www/my-self/index.html`
-3. Cache nginx a `expires 1d` sur `/index.html` — ajouter un hard refresh
-   navigateur (Ctrl+Shift+R) pour vérifier.
+Si ton serveur pose un `expires` sur `index.html`, un changement peut mettre un
+moment à se voir — un rechargement forcé du navigateur (Ctrl+Shift+R) tranche
+entre « pas déployé » et « en cache ».
 
 ## Design
 

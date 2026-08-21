@@ -1,0 +1,15 @@
+# Fichiers non-web délibérément servis — écartés de check-surface-servie.sh.
+#
+# Format :   <regex de l'URL>  <TAB>  <raison>
+#
+# La raison n'est pas décorative. Une exclusion sans justification devient
+# indistinguable d'un oubli : six mois plus tard, personne ne sait si le fichier
+# est là exprès ou s'il est passé entre les mailles. Si tu ajoutes une ligne,
+# écris pourquoi — en une phrase.
+#
+# ⚠️ N'écris ici que ce qu'un `location` du serveur sert NOMMÉMENT. Un fichier
+# qui répond 200 parce qu'il traîne sous une racine n'est pas une exception,
+# c'est le défaut que cette sonde cherche.
+
+/act/api/directives\.md$	Servi par un `location =` nommé : c'est le contrat que les assistants lisent pour utiliser SelfJustice.
+/act/api/directives\.txt$	Même fichier sous une seconde extension, servi par alias pour les clients qui refusent le type markdown.
