@@ -99,7 +99,7 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ### Ajouté — Self-Right opérationnel
 
-- `SelfJustice` en prod sur `your-instance.example`
+- `SelfJustice` en prod sur `justice.my-self.fr`
 - `SelfAct` index des 334 modèles officiels service-public.fr
 - Compatibilité multi-IA testée (Kimi, DeepSeek, Grok, Mistral, Claude natif)
 

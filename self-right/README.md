@@ -58,7 +58,7 @@ From the fog of "I think I'm in my rights" to "this letter is in the post on Mon
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfJustice](./selfjustice/) | Impartial legal pre-analysis powered by IA | v0.1.0 ✅ — live at [your-instance.example](https://your-instance.example) |
+| [SelfJustice](./selfjustice/) | Impartial legal pre-analysis powered by IA | v0.1.0 ✅ — live at [justice.my-self.fr](https://justice.my-self.fr) |
 | [SelfAct](./selfact/) | Operational extension: letters, forms, procedural deadlines | alpha 0.0.1 — design phase |
 
 ---
@@ -67,7 +67,7 @@ From the fog of "I think I'm in my rights" to "this letter is in the post on Mon
 
 SelfJustice is **deployed in production** and serves any IA agent (Claude, ChatGPT, Mistral, Gemini, Perplexity) with 488,903 official French legal articles + 705 EU/CEDH treaty articles through an open HTTP API. Anyone can query it, anyone can self-host it.
 
-SelfAct is in **design phase** (alpha 0.0.1). The whitepaper defines the scope (mise en demeure, saisine, CERFA, deadlines), the architecture (prompt templates + CERFA XML forms), and the integration with SelfJustice output. Prototype implementation is planned for v0.1.0 alongside a live deployment on the same domain (`your-instance.example/act`).
+SelfAct is in **design phase** (alpha 0.0.1). The whitepaper defines the scope (mise en demeure, saisine, CERFA, deadlines), the architecture (prompt templates + CERFA XML forms), and the integration with SelfJustice output. Prototype implementation is planned for v0.1.0 alongside a live deployment on the same domain (`justice.my-self.fr/act`).
 
 ---
 

@@ -6,11 +6,11 @@
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0-green.svg)](#statut)
-[![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://your-instance.example)
+[![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
-[![LEGI: 488 903 articles](https://img.shields.io/badge/LEGI-488%20903%20articles-blue.svg)](https://your-instance.example/api/status)
-[![EU/CEDH: 818 articles](https://img.shields.io/badge/EU%2FCEDH-818%20articles-blue.svg)](https://your-instance.example/api/status)
+[![LEGI: 488 903 articles](https://img.shields.io/badge/LEGI-488%20903%20articles-blue.svg)](https://justice.my-self.fr/api/status)
+[![EU/CEDH: 818 articles](https://img.shields.io/badge/EU%2FCEDH-818%20articles-blue.svg)](https://justice.my-self.fr/api/status)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
 > **Comment accéder à la justice sans se ruiner ?**
@@ -48,7 +48,7 @@ N'importe quelle IA. N'importe quel citoyen. N'importe quel conflit. Une pré-an
        │                           │                            │
        │  « mon patron me          │                            │
        │   harcèle, analyse        │                            │
-       │   your-instance.example »    │                            │
+       │   justice.my-self.fr »    │                            │
        │──────────────────────────>│                            │
        │                           │  GET /directives.html      │
        │                           │───────────────────────────>│
@@ -135,20 +135,20 @@ Toutes les endpoints retournent du JSON, toutes sont rate-limitées, toutes ont 
 
 1. Ouvrir [claude.ai](https://claude.ai), Mistral Le Chat, ChatGPT, Gemini, Perplexity
 2. Décrire son conflit en langage courant
-3. Ajouter : `analyse your-instance.example`
+3. Ajouter : `analyse justice.my-self.fr`
 4. Recevoir une pré-analyse structurée avec citations d'articles officiels
 
 ### Depuis la ligne de commande
 
 ```bash
 # Vérifier le statut de la base
-curl -s https://your-instance.example/api/status | jq
+curl -s https://justice.my-self.fr/api/status | jq
 
 # Récupérer un article spécifique
-curl -s "https://your-instance.example/api/legi/article/L1152-1?code=travail" | jq
+curl -s "https://justice.my-self.fr/api/legi/article/L1152-1?code=travail" | jq
 
 # Recherche plein texte
-curl -s "https://your-instance.example/api/legi/search?q=harcelement&limit=20" | jq
+curl -s "https://justice.my-self.fr/api/legi/search?q=harcelement&limit=20" | jq
 ```
 
 ### Auto-héberger
@@ -182,7 +182,7 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 
 ## Statut
 
-**v0.1.0 — en production sur [your-instance.example](https://your-instance.example)**
+**v0.1.0 — en production sur [justice.my-self.fr](https://justice.my-self.fr)**
 
 - [x] Directives système (procédure d'analyse en 7 étapes, 5 principes)
 - [x] 5 catégories juridiques (travail, voisinage, consommation, civil, pénal)
@@ -192,7 +192,7 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 - [x] API avec 818 articles UE/CEDH (dont le règlement IA 2024/1689)
 - [x] Testé multi-IA (Claude, crawler ChatGPT, OAI-SearchBot détectés)
 - [x] Stats publiques (`/api/stats/by-ai`, `/api/stats/by-endpoint`)
-- [x] Domaine dédié [your-instance.example](https://your-instance.example)
+- [x] Domaine dédié [justice.my-self.fr](https://justice.my-self.fr)
 - [ ] Relecture formelle par avocat praticien
 - [ ] Contributions communautaires pour domaines non couverts
 

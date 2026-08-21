@@ -8,7 +8,7 @@ version: "alpha 0.0.1"
 
 # Executive summary
 
-SelfAct is the companion of [SelfJustice](https://your-instance.example) that closes the gap between *"you understand your rights"* and *"your formal notice is signed and sent"*. It takes the structured JSON output of a SelfJustice analysis and produces a packaged dossier: mises en demeure, saisines, pre-filled CERFA forms, and a procedural calendar (iCal).
+SelfAct is the companion of [SelfJustice](https://justice.my-self.fr) that closes the gap between *"you understand your rights"* and *"your formal notice is signed and sent"*. It takes the structured JSON output of a SelfJustice analysis and produces a packaged dossier: mises en demeure, saisines, pre-filled CERFA forms, and a procedural calendar (iCal).
 
 No cloud. No third party. No legal fee. The tool runs locally, the documents are yours, and the deadlines land in your calendar.
 
@@ -101,7 +101,7 @@ WeasyPrint is used to render Jinja-filled HTML templates into pixel-perfect PDFs
 
 SelfJustice exposes a `/api/analyze` endpoint that returns the structured JSON above. SelfAct reads this JSON and produces the dossier. The two can be chained from the SelfJustice web interface (`Analyse → Act on it`) or used independently — you can feed any manually written JSON to SelfAct.
 
-Target deployment: `your-instance.example/act` as a sub-path of the existing SelfJustice site.
+Target deployment: `justice.my-self.fr/act` as a sub-path of the existing SelfJustice site.
 
 # 6. Roadmap
 
@@ -119,5 +119,5 @@ AGPL-3.0-or-later (since 2026-04-19; earlier releases were MIT and remain so und
 
 - Art. 640 CPC (computation of delays)
 - Art. 242 nonies A Annexe II CGI (mandatory mentions)
-- SelfJustice API: https://your-instance.example/api
+- SelfJustice API: https://justice.my-self.fr/api
 - Template library repository: https://github.com/Pierroons/my-self/tree/main/self-right/selfact

@@ -3,11 +3,11 @@
 > **Usage** : copie-colle ce fichier complet dans ton IA (Mistral Le Chat, Perplexity,
 > Yiaho, ChatGPT gratuit, IA locales sans navigation web, etc.) avant ta question. L'IA
 > applique alors la méthodologie SelfAct sans avoir besoin de fetcher
-> `https://your-instance.example/act/docs`.
+> `https://justice.my-self.fr/act/docs`.
 >
 > **Version 2026.04 — bêta v0.1.2** — alignée sur la page HTML publique live.
 > Si ton IA peut fetcher les URLs (Claude.ai, Gemini, Microsoft Copilot), inutile
-> de copier ce texte : donne-lui simplement `https://your-instance.example/act/docs`.
+> de copier ce texte : donne-lui simplement `https://justice.my-self.fr/act/docs`.
 
 ---
 
@@ -93,14 +93,14 @@ soutien, et l'espoir qu'un chemin existe**.
 
 Les affirmations juridiques sont **ancrées dans un article précis**, au format
 `art. X du Code Y`. Les articles sont toujours récupérés via l'API SelfJustice
-(`GET https://your-instance.example/api/article?code=X&id=Y`), connectée à Légifrance.
+(`GET https://justice.my-self.fr/api/article?code=X&id=Y`), connectée à Légifrance.
 Vérification systématique à la source.
 
 Un article obsolète ou renuméroté est signalé à l'utilisateur avec la référence à
 jour correspondante.
 
 Si l'utilisateur ne connaît pas la base légale applicable à sa situation, la
-ressource `https://your-instance.example/` documente la méthodologie SelfJustice
+ressource `https://justice.my-self.fr/` documente la méthodologie SelfJustice
 d'analyse juridique pour qualifier juridiquement la situation.
 
 ### Temps 3 — Priorité au modèle officiel R-xxxx
@@ -108,7 +108,7 @@ d'analyse juridique pour qualifier juridiquement la situation.
 La voie standard :
 
 1. **Chercher** dans le catalogue via l'API :
-   `GET https://your-instance.example/act/api/catalog?q=...` (ou `&category=...`).
+   `GET https://justice.my-self.fr/act/api/catalog?q=...` (ou `&category=...`).
 2. Si un modèle existe : **reproduire fidèlement sa structure** (en-têtes, formules
    consacrées, articles cités, emplacement signature) dans un document complet,
    en y **injectant les données utilisateur** (identité, coordonnées, faits,
@@ -196,7 +196,7 @@ déterminent le cas :
    consacrées, délai, menace de saisine) ou est-ce un simple courrier amiable ?
 
 **Production du PDF** — le livrable est généré via
-`POST https://your-instance.example/act/api/draft`. Le filigrane diagonal rouge est
+`POST https://justice.my-self.fr/act/api/draft`. Le filigrane diagonal rouge est
 appliqué **uniquement au cas C** (voir matrice A/B/C) ; les cas A et B sont
 produits sans filigrane.
 
@@ -240,12 +240,12 @@ refus sec, une redirection qui respecte la complexité du cas.
 
 ## Références API SelfAct
 
-- **Catalogue officiel** : `GET https://your-instance.example/act/api/catalog`
+- **Catalogue officiel** : `GET https://justice.my-self.fr/act/api/catalog`
   (paramètres : `?q=mot-cle`, `?category=travail`)
-- **Recherche situation** : `GET https://your-instance.example/act/api/find?situation=<slug>`
-- **Production PDF filigrane (cas C)** : `POST https://your-instance.example/act/api/draft`
+- **Recherche situation** : `GET https://justice.my-self.fr/act/api/find?situation=<slug>`
+- **Production PDF filigrane (cas C)** : `POST https://justice.my-self.fr/act/api/draft`
 - **Vérification article** (via SelfJustice) :
-  `GET https://your-instance.example/api/article?code=X&id=Y`
+  `GET https://justice.my-self.fr/api/article?code=X&id=Y`
 
 ---
 

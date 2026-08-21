@@ -1,11 +1,12 @@
 #!/bin/bash
 # SelfJustice — déploiement d'une instance.
 #
-# 🔑 **Pourquoi ce script existe.** Le dépôt est anonyme par règle : aucun
-# domaine réel n'y figure, seulement le placeholder `your-instance.example`.
-# Les fichiers PHP s'en accommodent seuls — ils lisent `SELFJUSTICE_BASE_URL`
-# ou, à défaut, l'en-tête `Host`. Le HTML statique, lui, ne le peut pas : le
-# placeholder y est écrit en dur et serait servi tel quel.
+# 🔑 **Pourquoi ce script existe.** SelfJustice se déploie sur le domaine de
+# celui qui l'installe, pas sur le nôtre : le HTML servi porte donc le
+# placeholder `your-instance.example`, à substituer ici. Les fichiers PHP s'en
+# passent — ils lisent `SELFJUSTICE_BASE_URL` ou, à défaut, l'en-tête `Host`.
+# Le HTML statique, lui, ne le peut pas : le placeholder y est écrit en dur et
+# serait servi tel quel.
 #
 # Sans substitution au déploiement, une instance affiche donc à ses visiteurs
 # « analyse your-instance.example » — une consigne inutilisable. C'est arrivé le
