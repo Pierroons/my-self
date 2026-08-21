@@ -378,6 +378,15 @@ async def _get(
 
         message = str(corps.get("error", "")) if isinstance(corps, dict) else ""
 
+        # 🔑 L'API joint souvent la liste des valeurs acceptées ; la jeter oblige
+        # l'appelant à la deviner. Mesuré le 21/08/2026 : « type inconnu » se
+        # relayait nu, et la seule valeur valide ne se découvrait qu'en lisant
+        # une étiquette dans une réponse précédente. Relayer l'indication est le
+        # seul correctif qui reste juste quand l'énumération évolue — corriger
+        # la notice à la main la fait diverger au premier ajout.
+        if isinstance(corps, dict) and corps.get("hint"):
+            message = f"{message} — {corps['hint']}" if message else str(corps["hint"])
+
         # 400 : l'API a compris la demande et refuse l'argument. Ce n'est pas
         # une panne, et le dire comme tel envoie chercher ailleurs une réponse
         # qui tient dans une correction de frappe.
@@ -969,13 +978,34 @@ async def statut() -> str:
         )
         ligne_juris = ""
 
+    # 🔑 **Cet outil doit couvrir tout ce qui sera consulté.** Il s'annonce comme
+    # l'état des bases et la consigne dit de l'appeler avant toute consultation —
+    # mais le catalogue des démarches n'y figurait pas, alors qu'il a sa propre
+    # cadence et décrochait de dix-huit jours sans que `statut` en dise un mot.
+    # Une vue d'ensemble qui oublie une source n'est pas une vue d'ensemble.
+    #
+    # Il vit sous une autre racine : son absence ne doit pas faire échouer le
+    # reste, elle doit se dire.
+    try:
+        meta = (await _get("/catalog", {"limit": 1}, base=ACT_URL)).get("meta") or {}
+        ligne_catalogue = await _bandeau_catalogue(meta) + (
+            f"\nDémarches officielles : {meta.get('total', '?')} ressources."
+        )
+    except (ApiIndisponible, RequeteInvalide) as e:
+        ligne_catalogue = (
+            f"Catalogue des démarches injoignable ({e}) : `catalogue_actes` et "
+            "`actes_pour_situation` ne répondront pas non plus."
+        )
+
     return (
-        f"{etat_legi}\n{etat_eu}\n{etat_juris}\n\n"
+        f"{etat_legi}\n{etat_eu}\n{etat_juris}\n{ligne_catalogue}\n\n"
         f"Droit français (LEGI, dumps officiels DILA) : "
         f"{legi.get('articles', '?')} articles dont {legi.get('vigueur', '?')} en vigueur.\n"
         f"Conventionnalité : {eu.get('articles', '?')} articles — {sources}.\n"
         f"{ligne_juris}\n"
-        "Cadence de synchronisation annoncée : le 1er et le 15 de chaque mois."
+        "Cadence de synchronisation annoncée : le 1er et le 15 de chaque mois. "
+        "⚠️ Le rapprochement situation → acte est curé à la main, sans cadence : "
+        "sa date ne se lit pas comme un retard."
     )
 
 
@@ -1805,7 +1835,13 @@ async def catalogue_actes(
     Args:
         recherche: mots du sujet (« congés payés », « logement insalubre »).
         categorie: restreint à une catégorie du catalogue.
-        type_ressource: « modele », « cerfa » ou « demarche ».
+        type_ressource: « modele_lettre », « formulaire » ou « teleservice ».
+            🔑 Ce sont les valeurs de l'index, pas des mots choisis pour la
+            documentation. Trois valeurs plus courtes y figuraient — « modele »,
+            « cerfa », « demarche » — et l'API les refusait toutes les trois :
+            le paramètre était inutilisable en suivant sa propre notice, et la
+            seule valeur qui marchait ne se découvrait qu'en lisant une étiquette
+            dans une réponse.
     """
     params = {k: v for k, v in (("q", recherche), ("category", categorie), ("type", type_ressource)) if v}
     try:

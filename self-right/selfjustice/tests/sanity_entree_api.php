@@ -32,7 +32,8 @@ if ($src === false) {
     fwrite(STDERR, "api/api.php illisible\n");
     exit(2);
 }
-foreach (['requete_cherchable', 'champ_juris', 'mots_cherchables', 'chercher_conventionnalite'] as $nom) {
+foreach (['requete_cherchable', 'champ_juris', 'mots_cherchables', 'chercher_conventionnalite',
+          'juridiction_valide', 'message_juridiction_inconnue'] as $nom) {
     if (!preg_match('/^function ' . $nom . '\(.*?^}$/ms', $src, $m)) {
         fwrite(STDERR, "$nom introuvable dans api/api.php\n");
         exit(2);
@@ -82,6 +83,25 @@ $attendus = [
 foreach ($attendus as [$demande, $juri, $champ_attendu, $reserve_attendue, $libelle]) {
     [$champ, $reserve] = champ_juris($demande, $juri);
     verdict($champ === $champ_attendu && (($reserve !== null) === $reserve_attendue), $libelle);
+}
+
+echo "\n▸ Une juridiction inconnue est refusée, pas filtrée vers le vide\n";
+
+// 🔑 `jurisdiction` partait tel quel vers l'amont, qui rendait un 400 — et le
+// client l'affichait « Aucune décision ne correspond ». Une erreur de paramètre
+// prenait l'apparence d'un constat de fond, alors que la même requête sans
+// filtre rendait 37 159 décisions. « ce » est la tentation naturelle de qui
+// cherche le Conseil d'État.
+// ⚠️ On interroge la fonction du code, jamais une copie de sa règle : une
+// première version rejouait le `in_array` dans le test, et aurait donc été
+// verte quel que soit le comportement réel de l'API.
+foreach ([['cc', 'cc'], [' CA ', 'ca'], ['ce', null], ['ta', null], ['xx', null]] as [$j, $attendu]) {
+    $obtenu = juridiction_valide($j);
+    verdict($obtenu === $attendu, "« $j » → " . ($obtenu ?? 'refusée'));
+}
+$msg = message_juridiction_inconnue('ce');
+foreach (['cc', 'ca', "Conseil d'État", 'ArianeWeb'] as $attendu) {
+    verdict(str_contains($msg, $attendu), "le refus nomme « $attendu »");
 }
 
 echo "\n▸ Quelles formes une requête fait-elle chercher\n";

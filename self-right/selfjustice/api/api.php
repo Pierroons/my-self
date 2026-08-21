@@ -272,6 +272,36 @@ function chercher_conventionnalite(SQLite3 $db, string $q, ?string $source, int 
     return [$total, $results, $mots];
 }
 
+/**
+ * La juridiction normalisée, ou null si l'index ne la couvre pas.
+ *
+ * 🔑 **Un argument refusé ne doit jamais ressembler à une réponse.** Ce
+ * paramètre partait tel quel vers l'amont, qui rendait un 400 — et le client
+ * l'affichait « Aucune décision ne correspond ». Mesuré le 21/08/2026 :
+ * `jurisdiction=ce` faisait passer une erreur de paramètre pour un constat de
+ * fond sur le droit, alors que la même requête sans filtre rendait 37 159
+ * décisions.
+ *
+ * Une fonction plutôt qu'un test en ligne : la règle vit alors à un seul
+ * endroit, et un garde-fou peut l'interroger au lieu de la réécrire.
+ */
+function juridiction_valide(string $brute): ?string {
+    $j = strtolower(trim($brute));
+    return in_array($j, ['cc', 'ca'], true) ? $j : null;
+}
+
+/**
+ * Le refus nomme les valeurs admises ET l'exclusion : « ce » est la tentation
+ * naturelle de qui cherche le Conseil d'État, et cette base ne couvre pas la
+ * justice administrative.
+ */
+function message_juridiction_inconnue(string $brute): string {
+    return "Juridiction « " . trim($brute) . " » inconnue. Valeurs acceptées : "
+        . "cc (Cour de cassation), ca (cours d'appel). Cette base ne couvre que "
+        . "la justice judiciaire : la justice administrative — Conseil d'État, "
+        . "CAA, TA — relève d'ArianeWeb et n'y figure pas.";
+}
+
 function requete_cherchable(string $q): bool {
     return preg_match('/\p{L}{3,}/u', $q) === 1
         || preg_match('/\d{2,}/', $q) === 1;
@@ -1135,6 +1165,25 @@ if ($segments[0] === 'jurisprudence') {
             if (!empty($_GET[$option])) {
                 $params[$option] = $_GET[$option];
             }
+        }
+
+        // 🔑 **Un argument refusé ne doit jamais ressembler à une réponse.**
+        // `jurisdiction` partait tel quel vers l'amont, qui rendait un 400 — et
+        // le client l'affichait « Aucune décision ne correspond ». Mesuré le
+        // 21/08/2026 : `jurisdiction=ce` faisait passer une erreur de paramètre
+        // pour un constat de fond sur le droit, alors que la même requête sans
+        // filtre rendait 37 159 décisions. La route du catalogue nomme déjà ses
+        // valeurs acceptées en cas de refus ; celle-ci ne disait rien.
+        //
+        // Le message nomme aussi l'exclusion : « ce » est la tentation
+        // naturelle de qui cherche le Conseil d'État, et cette base ne couvre
+        // pas la justice administrative.
+        if (isset($params['jurisdiction'])) {
+            $normalisee = juridiction_valide($params['jurisdiction']);
+            if ($normalisee === null) {
+                json_error(message_juridiction_inconnue($params['jurisdiction']), 400);
+            }
+            $params['jurisdiction'] = $normalisee;
         }
 
         [$champ, $bascule] = champ_juris($champ_demande, $params['jurisdiction'] ?? null);
