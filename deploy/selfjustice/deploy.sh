@@ -67,7 +67,14 @@ if [ -z "$SRC" ]; then
     exit 1
 fi
 
-PLACEHOLDER="your-instance.example"
+# 🔑 Ce nom doit être celui qu'on lit RÉELLEMENT dans site/, jamais celui qu'on
+# croit y avoir mis. Il valait « your-instance.example » alors que les trois
+# pages en portent 22 occurrences de « justice.example.org » : le sed ne
+# trouvait rien, recopiait les fichiers tels quels, et un déploiement aurait
+# publié un domaine mort — y compris dans la ligne qui dit à l'utilisateur quoi
+# taper à son assistant. Le compteur affichait « 0 occurrence(s) substituée(s) »
+# et le script continuait.
+PLACEHOLDER="justice.example.org"
 
 # ⚠️ Garde-fou indispensable : `sed source > destination` tronque la destination
 # AVANT que sed n'ouvre la source. Si les deux sont le même fichier, le contenu
@@ -103,15 +110,43 @@ echo "SelfJustice — déploiement vers $DEST (domaine : $DOMAINE)"
 SERVIS="index.php act.php act-docs.html"
 
 traites=0
+substituees=0
 for nom in $SERVIS; do
     f="site/$nom"
     [ -f "$SRC/$f" ] || continue
     cible="$DEST/$(basename "$f")"
-    sed "s|$PLACEHOLDER|$DOMAINE|g" "$SRC/$f" > "$cible"
-    n=$(grep -c "$DOMAINE" "$cible" || true)
-    echo "  $(basename "$f") : $n occurrence(s) substituée(s)"
+    attendues=$(grep -c "$PLACEHOLDER" "$SRC/$f" || true)
+
+    # ⚠️ On écrit d'abord à côté. Un contrôle qui se fait après avoir écrasé la
+    # page servie constate le dégât au lieu de l'empêcher.
+    provisoire="$cible.en-cours-$$"
+    sed "s|$PLACEHOLDER|$DOMAINE|g" "$SRC/$f" > "$provisoire"
+    restantes=$(grep -c "$PLACEHOLDER" "$provisoire" || true)
+
+    # Le cas où l'instance s'appelle vraiment comme le gabarit : la substitution
+    # est l'identité, et le placeholder subsiste légitimement.
+    if [ "$DOMAINE" != "$PLACEHOLDER" ] && [ "$restantes" -ne 0 ]; then
+        rm -f "$provisoire"
+        echo "erreur : $(basename "$f") garde $restantes occurrence(s) de $PLACEHOLDER après substitution." >&2
+        echo "         Page servie inchangée. Rien d'autre ne sera déployé." >&2
+        exit 1
+    fi
+
+    mv "$provisoire" "$cible"
+    echo "  $(basename "$f") : $attendues occurrence(s) substituée(s)"
+    substituees=$((substituees + attendues))
     traites=$((traites + 1))
 done
+
+# ⚠️ Aucune substitution sur l'ensemble des pages ne peut pas être un cas
+# nominal : les pages nomment leur instance. Zéro signifie que le gabarit
+# cherché n'est plus celui qu'elles portent — le défaut ne se voit nulle part
+# ailleurs, puisque des fichiers ont bien été copiés et que tout répond 200.
+if [ "$traites" -gt 0 ] && [ "$substituees" -eq 0 ] && [ "$DOMAINE" != "$PLACEHOLDER" ]; then
+    echo "erreur : $traites fichier(s) copié(s), aucune occurrence de $PLACEHOLDER substituée." >&2
+    echo "         Les pages déployées nomment une instance qui n'est pas $DOMAINE." >&2
+    exit 1
+fi
 
 # 🔑 Un transfert fichier par fichier n'efface rien : un nom retiré de la source
 # survit indéfiniment à la destination. Le renommage du 19/08/2026 l'a montré —

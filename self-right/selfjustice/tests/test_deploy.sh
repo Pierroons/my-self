@@ -22,7 +22,7 @@
 # le fichier n'a pas changé de taille.
 #
 # Usage : bash tests/test_deploy.sh
-# Sortie : 0 si les six cas se comportent comme attendu.
+# Sortie : 0 si les huit cas se comportent comme attendu.
 
 set -uo pipefail
 
@@ -32,7 +32,14 @@ RACINE="$(cd "$MODULE/../.." && pwd)"
 # deploy.sh vit sous deploy/selfjustice/ depuis le rangement ; le module ne garde
 # que son site et ses tests.
 DEPLOY="$RACINE/deploy/selfjustice/deploy.sh"
-DOMAINE="justice.example.org"
+# 🔑 Ce domaine doit être IMPOSSIBLE à trouver dans les pages sources. Il valait
+# « justice.example.org », c'est-à-dire exactement le gabarit qu'elles portent :
+# une substitution réussie et une substitution qui n'a rien fait rendaient donc
+# le même fichier, et aucun cas ne pouvait les distinguer. Le gabarit cherché
+# par deploy.sh a divergé de celui des sources sans qu'un seul test rougisse.
+# `.invalid` est réservé par la RFC 2606 : aucune page ne le nommera par hasard.
+DOMAINE="justice.instance-de-test.invalid"
+GABARIT="justice.example.org"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -116,10 +123,44 @@ else
     nok "F — destination propre : $bruit avertissement(s) sur ce que le script vient d'écrire"
 fi
 
+# ── G — le nom de l'instance est réellement substitué ───────────────────────
+# Le seul contrôle qui distingue une page déployée d'une page recopiée.
+mkdir -p "$TMP/g"
+bash "$DEPLOY" "$DOMAINE" "$TMP/g" >/dev/null 2>&1
+# `grep -c` imprime 0 ET sort en 1 quand il ne trouve rien : un `|| echo 0`
+# concatène les deux zéros et rend « 0\n0 », que `[` refuse de comparer.
+reste=$(grep -c "$GABARIT" "$TMP/g/index.php" 2>/dev/null || true); reste=${reste:-0}
+pose=$(grep -c "$DOMAINE" "$TMP/g/index.php" 2>/dev/null || true); pose=${pose:-0}
+if [ "$reste" -eq 0 ] && [ "$pose" -gt 0 ]; then
+    ok "G — index.php : $pose occurrence(s) portent $DOMAINE, plus aucune $GABARIT"
+else
+    nok "G — index.php : $pose occurrence(s) du domaine, $reste du gabarit — page recopiée sans substitution"
+fi
+
+# ── H — un gabarit que la source ne porte pas : refuser, sans écrire ────────
+# Le défaut réel du 21/08/2026 : deploy.sh cherchait « your-instance.example »
+# quand les pages portaient « justice.example.org ». Ici on rejoue la divergence
+# en changeant la source plutôt que le script.
+mkdir -p "$TMP/h/depot/deploy/selfjustice" "$TMP/h/depot/self-right/selfjustice/site" "$TMP/h/dest"
+cp "$MODULE"/site/*.html "$MODULE"/site/*.php "$TMP/h/depot/self-right/selfjustice/site/" 2>/dev/null
+cp "$DEPLOY" "$TMP/h/depot/deploy/selfjustice/"
+sed -i "s|$GABARIT|un-autre-gabarit.invalid|g" "$TMP/h/depot/self-right/selfjustice/site"/*.php \
+                                                "$TMP/h/depot/self-right/selfjustice/site"/*.html 2>/dev/null
+echo "<p>témoin</p>" > "$TMP/h/dest/index.php"
+temoin=$(stat -c%s "$TMP/h/dest/index.php")
+bash "$TMP/h/depot/deploy/selfjustice/deploy.sh" "$DOMAINE" "$TMP/h/dest" >/dev/null 2>&1
+code=$?
+apres=$(stat -c%s "$TMP/h/dest/index.php")
+if [ "$code" -ne 0 ]; then
+    ok "H — gabarit absent de la source : refuse (code $code)"
+else
+    nok "H — gabarit absent de la source : code $code, page servie remplacée ($temoin → $apres o) sans substitution"
+fi
+
 echo
 if [ "$echecs" -eq 0 ]; then
-    echo "OK — 6/6 cas conformes."
+    echo "OK — 8/8 cas conformes."
     exit 0
 fi
-echo "ÉCHEC — $echecs cas sur 6." >&2
+echo "ÉCHEC — $echecs cas sur 8." >&2
 exit 1
