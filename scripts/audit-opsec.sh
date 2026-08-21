@@ -111,6 +111,22 @@ lisible() {
   fi
 }
 
+# Un binaire n'a pas de contenu à greper — encore faut-il le dire de façon
+# stable. `grep -I` sur un PIPE juge sur le premier bloc qu'il reçoit : une
+# séquence UTF-8 coupée à la frontière du buffer suffit à lui faire déclarer
+# binaire un fichier de texte, et le verdict change avec l'ordonnancement du
+# producteur. Mesuré le 21 août 2026 sur les deux fichiers de langue du lab, les
+# plus riches en accents : zéro, un ou deux fichiers sautés d'une exécution à
+# l'autre, à contenu rigoureusement identique. Un audit qui écarte au hasard les
+# fichiers les plus chargés en texte rédigé est un faux vert.
+# On applique donc le critère de git lui-même, qui ne dépend d'aucun buffer :
+# un octet NUL dans les huit premiers kilo-octets.
+binaire() {
+  local n
+  n=$(contenu "$1" | head -c 8000 | tr -dc '\000' | wc -c)
+  [ "${n:-0}" -gt 0 ]
+}
+
 FOUND=0
 red()  { printf '\033[31m%s\033[0m\n' "$1"; }
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
@@ -278,8 +294,13 @@ if [ "$PAR_CIBLES" = "1" ]; then
       C2=1
       continue
     fi
-    # Binaire : le grep n'a pas de sens, le contrôle 3 s'en charge.
-    contenu "$f" | grep -qI . || continue
+    # Binaire : le grep n'a pas de sens, le contrôle 3 s'en charge. Le saut se
+    # dit — un fichier qui disparaît du compte sans être nommé ne se distingue
+    # pas d'un fichier lu et propre.
+    if binaire "$f"; then
+      echo "       ↷ $f — binaire, contenu non grepé (voir contrôle 3)"
+      continue
+    fi
     EXAMINES=$((EXAMINES + 1))
     for m in "${MOTIFS[@]}"; do
       if contenu "$f" | cherche "$m"; then
