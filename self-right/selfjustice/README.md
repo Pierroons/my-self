@@ -9,8 +9,8 @@
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
-[![LEGI: 488 903 articles](https://img.shields.io/badge/LEGI-488%20903%20articles-blue.svg)](https://justice.my-self.fr/api/status)
-[![EU/CEDH: 818 articles](https://img.shields.io/badge/EU%2FCEDH-818%20articles-blue.svg)](https://justice.my-self.fr/api/status)
+[![LEGI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fjustice.my-self.fr%2Fapi%2Fstatus&query=%24.legi.articles&label=LEGI&suffix=%20articles&color=blue)](https://justice.my-self.fr/api/status)
+[![EU/CEDH](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fjustice.my-self.fr%2Fapi%2Fstatus&query=%24.eu.articles&label=EU%2FCEDH&suffix=%20articles&color=blue)](https://justice.my-self.fr/api/status)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
 > **How do I access justice without going broke?**
@@ -21,20 +21,20 @@
 
 Legal advice in France costs 50–300 € per consultation. Most citizens facing everyday conflicts — unfair dismissal, noisy neighbors, refused insurance claims, consumer disputes — either give up or act blindly without understanding their rights.
 
-Meanwhile, every IA assistant (Claude, ChatGPT, Mistral, Gemini, Perplexity) is eager to answer legal questions, but without structured guidance they hallucinate citations, miss the hierarchy of norms, fail to stay impartial, and skip the mandatory disclaimers.
+Meanwhile, every AI assistant (Claude, ChatGPT, Mistral, Gemini, Perplexity) is eager to answer legal questions, but without structured guidance they hallucinate citations, miss the hierarchy of norms, fail to stay impartial, and skip the mandatory disclaimers.
 
-**What if the legal framework itself was machine-readable — and the IA was told exactly how to reason about it?**
+**What if the legal framework itself was machine-readable — and the AI was told exactly how to reason about it?**
 
 ---
 
 ## The solution
 
-SelfJustice is a **single authoritative directives page** (HTML) plus a **public HTTP API** that any IA can fetch to produce rigorous, impartial legal pre-analyses.
+SelfJustice is a **single authoritative directives page** (HTML) plus a **public HTTP API** that any AI can fetch to produce rigorous, impartial legal pre-analyses.
 
-- The directives page tells the IA **how to reason**: impartiality, hierarchy of norms, mandatory legal basis for every claim, glossary for non-lawyers, mandatory legal disclaimer.
-- The API tells the IA **what the law actually says**: 488,903 indexed French legal articles (LEGI dump from DILA) + 818 EU/CEDH articles (Charter of Fundamental Rights, TFEU, TEU, GDPR, AI Act 2024/1689, European Convention of Human Rights).
+- The directives page tells the AI **how to reason**: impartiality, hierarchy of norms, mandatory legal basis for every claim, glossary for non-lawyers, mandatory legal disclaimer.
+- The API tells the AI **what the law actually says**: the whole indexed French legal corpus (LEGI dump from DILA, over 500,000 articles) plus the EU/ECHR texts (Charter of Fundamental Rights, TFEU, TEU, GDPR, AI Act 2024/1689, European Convention on Human Rights). Live counts: [`/api/status`](https://justice.my-self.fr/api/status).
 
-Any IA. Any citizen. Any conflict. One consistent, sourced, impartial pre-analysis.
+Any AI. Any citizen. Any conflict. One consistent, sourced, impartial pre-analysis.
 
 ---
 
@@ -75,7 +75,7 @@ Any IA. Any citizen. Any conflict. One consistent, sourced, impartial pre-analys
        │  glossary, disclaimer.    │                            │
 ```
 
-**Cost for the user:** zero (they use their own IA subscription).
+**Cost for the user:** zero (they use their own AI subscription).
 **Cost for the operator:** the domain name + one modest machine.
 
 ---
@@ -84,7 +84,7 @@ Any IA. Any citizen. Any conflict. One consistent, sourced, impartial pre-analys
 
 ### 1. Directives page (`site/index.html`)
 
-Machine-readable directives telling the IA how to reason:
+Machine-readable directives telling the AI how to reason:
 
 - **Role**: pre-analyst, not lawyer. Loi n° 71-1130 du 31 décembre 1971 boundary strictly respected.
 - **Principles**: impartiality (both parties analyzed), legal basis mandatory, no strategic advice, disclaimer in entry and exit, explicit hors-scope detection.
@@ -102,7 +102,7 @@ Machine-readable directives telling the IA how to reason:
 | `GET /api/legi/search?q=...&limit=...` | Full-text search across LEGI |
 | `GET /api/eu/article/{source}/{num}` | EU/CEDH article (`source` ∈ `CEDH`, `CHARTE_UE`, `TFUE`, `TUE`, `RGPD`, `AI_ACT`) |
 | `GET /api/eu/search?q=...&source=...` | Search in EU/CEDH |
-| `GET /api/stats/by-ai` | Public anonymous stats: user consultations by IA family, crawler counts |
+| `GET /api/stats/by-ai` | Public anonymous stats: user consultations by AI family, crawler counts |
 | `GET /api/stats/by-endpoint` | Top consulted articles (anonymized) |
 
 All endpoints return JSON, all are rate-limited, all are CORS-open.
@@ -130,7 +130,7 @@ All endpoints return JSON, all are rate-limited, all are CORS-open.
 
 ## Try it
 
-### From any IA chat interface
+### From any AI chat interface
 
 1. Open [claude.ai](https://claude.ai), Mistral Le Chat, ChatGPT, Gemini, Perplexity
 2. Describe your conflict in plain language
@@ -187,9 +187,9 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 - [x] 5 legal categories (work, neighborhood, consumer, civil, criminal)
 - [x] Structured output template with glossary
 - [x] Legal disclaimers (loi 71-1130 compliant)
-- [x] API with 488,903 LEGI articles
-- [x] API with 818 EU/CEDH articles (including AI Act 2024/1689)
-- [x] Multi-IA tested (Claude, ChatGPT crawler, OAI-SearchBot detected)
+- [x] API serving the full LEGI corpus
+- [x] API serving the EU/ECHR corpus (including AI Act 2024/1689)
+- [x] Multi-AI tested (Claude, ChatGPT crawler, OAI-SearchBot detected)
 - [x] Public stats (`/api/stats/by-ai`, `/api/stats/by-endpoint`)
 - [x] Dedicated domain [justice.my-self.fr](https://justice.my-self.fr)
 - [ ] Formal legal review by practicing attorney

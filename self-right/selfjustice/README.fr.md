@@ -9,8 +9,8 @@
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
-[![LEGI: 488 903 articles](https://img.shields.io/badge/LEGI-488%20903%20articles-blue.svg)](https://justice.my-self.fr/api/status)
-[![EU/CEDH: 818 articles](https://img.shields.io/badge/EU%2FCEDH-818%20articles-blue.svg)](https://justice.my-self.fr/api/status)
+[![LEGI](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fjustice.my-self.fr%2Fapi%2Fstatus&query=%24.legi.articles&label=LEGI&suffix=%20articles&color=blue)](https://justice.my-self.fr/api/status)
+[![EU/CEDH](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fjustice.my-self.fr%2Fapi%2Fstatus&query=%24.eu.articles&label=EU%2FCEDH&suffix=%20articles&color=blue)](https://justice.my-self.fr/api/status)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
 > **Comment accéder à la justice sans se ruiner ?**
@@ -32,7 +32,7 @@ Pendant ce temps, chaque assistant IA (Claude, ChatGPT, Mistral, Gemini, Perplex
 SelfJustice est une **page unique de directives** (HTML) plus une **API HTTP publique** que n'importe quelle IA peut interroger pour produire des pré-analyses juridiques rigoureuses et impartiales.
 
 - La page de directives dit à l'IA **comment raisonner** : impartialité, hiérarchie des normes, base légale obligatoire pour chaque affirmation, glossaire pour non-juristes, disclaimer légal obligatoire.
-- L'API dit à l'IA **ce que dit réellement le droit** : 488 903 articles juridiques français indexés (dump LEGI de la DILA) + 818 articles UE/CEDH (Charte des droits fondamentaux, TFUE, TUE, RGPD, règlement IA 2024/1689, Convention européenne des droits de l'homme).
+- L'API dit à l'IA **ce que dit réellement le droit** : tout le corpus juridique français indexé (dump LEGI de la DILA, plus de 500 000 articles) et les textes UE/CEDH (Charte des droits fondamentaux, TFUE, TUE, RGPD, règlement IA 2024/1689, Convention européenne des droits de l'homme). Compteurs en direct : [`/api/status`](https://justice.my-self.fr/api/status).
 
 N'importe quelle IA. N'importe quel citoyen. N'importe quel conflit. Une pré-analyse cohérente, sourcée, impartiale.
 
@@ -188,8 +188,8 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 - [x] 5 catégories juridiques (travail, voisinage, consommation, civil, pénal)
 - [x] Template de sortie structuré avec glossaire
 - [x] Disclaimers légaux (conforme loi 71-1130)
-- [x] API avec 488 903 articles LEGI
-- [x] API avec 818 articles UE/CEDH (dont le règlement IA 2024/1689)
+- [x] API servant tout le corpus LEGI
+- [x] API servant le corpus UE/CEDH (dont le règlement IA 2024/1689)
 - [x] Testé multi-IA (Claude, crawler ChatGPT, OAI-SearchBot détectés)
 - [x] Stats publiques (`/api/stats/by-ai`, `/api/stats/by-endpoint`)
 - [x] Domaine dédié [justice.my-self.fr](https://justice.my-self.fr)
