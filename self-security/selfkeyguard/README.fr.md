@@ -5,7 +5,7 @@
 **SelfKeyGuard protège des clés de toutes sortes — 2FA matériel pour les objets physiques, et déverrouillage du disque d'un serveur par un quorum de témoins du foyer (avec secours SelfRecover).**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: alpha 0.0.1](https://img.shields.io/badge/status-alpha%200.0.1-lightgrey.svg)](#statut)
+[![Statut : whitepaper seul](https://img.shields.io/badge/statut-whitepaper%20seul-lightgrey.svg)](#statut)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.fr.md)
 [![Companion of: SelfGuard](https://img.shields.io/badge/companion-SelfGuard-green.svg)](../selfguard/)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)

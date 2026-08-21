@@ -5,7 +5,7 @@
 **SelfKeyGuard protects keys of all kinds — hardware 2FA for physical objects, and server-disk unlock by a household quorum (with SelfRecover fallback).**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: alpha 0.0.1](https://img.shields.io/badge/status-alpha%200.0.1-lightgrey.svg)](#status)
+[![Status: whitepaper only](https://img.shields.io/badge/status-whitepaper%20only-lightgrey.svg)](#status)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfGuard](https://img.shields.io/badge/companion-SelfGuard-green.svg)](../selfguard/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)

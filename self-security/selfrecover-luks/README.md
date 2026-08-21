@@ -2,6 +2,12 @@
 
 > 🇫🇷 **[Lire en français →](./README.fr.md)**
 
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
+[![Status: v0.3.0](https://img.shields.io/badge/status-v0.3.0-green.svg)](./INSTALL.md)
+[![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
+[![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
+[![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
+
 > Unlocking **LUKS2** encrypted disks — root volume **and** data volumes — with a **single
 > recovery passphrase**, remotely from boot, with no cloud and no trusted third party. The
 > self-hosted FDE layer of the **MySelf** ecosystem (Self-Security pillar).

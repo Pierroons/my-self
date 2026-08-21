@@ -5,7 +5,7 @@
 **Pré-analyse juridique impartiale par directives lisibles par IA — servie via une API publique gratuite.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0-green.svg)](#statut)
+[![Statut : v0.1.0 bêta](https://img.shields.io/badge/statut-v0.1.0%20b%C3%AAta-green.svg)](#statut)
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
