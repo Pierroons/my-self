@@ -79,6 +79,9 @@ jobs:
       - name: Garde-fou — mots comptés par le score de pertinence (MCP)
         run: python3 self-right/selfjustice/tests/sanity_pertinence.py
 
+      - name: Garde-fou — calcul d'échéance de procédure (art. 640-643 CPC)
+        run: bash self-right/selfjustice/tests/test_echeance.sh
+
       - name: Garde-fou — coût constant du hash factice (bi-self-duo)
         run: php demo/bi-self-duo/tests/sanity_timing.php
 

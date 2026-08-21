@@ -289,7 +289,12 @@ if ($jours > 3650 || $mois > 120 || $annees > 10) {
     ]);
 }
 
-$distance = strtolower(trim((string) ($_GET['distance'] ?? 'metropole')));
+// 🔑 Un paramètre présent et vide vaut absent : c'est ce que produit un
+// formulaire dont le champ n'a pas été rempli. `?? 'metropole'` ne le voyait
+// pas — seul `distance` complètement omis retombait sur le défaut, et
+// `?distance=` recevait un refus pour n'avoir rien choisi.
+$distance = strtolower(trim((string) ($_GET['distance'] ?? '')));
+if ($distance === '') { $distance = 'metropole'; }
 if (!in_array($distance, ['metropole', 'outremer', 'etranger'], true)) {
     selfact_repondre(400, [
         'ok'    => false,
@@ -305,10 +310,25 @@ if ($annees) { $duree[] = "$annees an(s)"; }
 if ($mois)   { $duree[] = "$mois mois"; }
 if ($jours)  { $duree[] = "$jours jour(s)"; }
 $dureeTxt = implode(' et ', $duree);
-$resume = 'Échéance SelfAct : ' . $dureeTxt . ' à compter du ' . $d->format('d/m/Y');
+
+// 🔑 Les paramètres du lien se dérivent de ceux qui ont servi au calcul, et non
+// d'une liste réécrite à la main. `distance` y manquait : l'agenda recevait une
+// échéance antérieure de un ou deux mois à celle affichée dans la même réponse,
+// et son résumé annonçait une durée qui n'était pas celle demandée. Un
+// paramètre ajouté demain retomberait dans le même trou.
+$parametres = ['start' => $d->format('Y-m-d')];
+if ($jours)  { $parametres['days'] = $jours; }
+if ($mois)   { $parametres['months'] = $mois; }
+if ($annees) { $parametres['years'] = $annees; }
+if ($distance !== 'metropole') { $parametres['distance'] = $distance; }
+
+$dureeDistance = ['outremer' => ' + 1 mois de distance (art. 643)',
+                  'etranger' => ' + 2 mois de distance (art. 643)'][$distance] ?? '';
+$resume = 'Échéance SelfAct : ' . $dureeTxt . $dureeDistance . ' à compter du ' . $d->format('d/m/Y');
 
 if (strtolower((string) ($_GET['format'] ?? '')) === 'ics') {
-    $description = "Delai de $dureeTxt courant a compter du " . $d->format('d/m/Y') . ".\n"
+    $description = "Delai de $dureeTxt" . strtr($dureeDistance, ['é' => 'e', 'à' => 'a'])
+                 . " courant a compter du " . $d->format('d/m/Y') . ".\n"
                  . "Calcul selon les articles 640 a 642 du code de procedure civile.\n"
                  . "Le delai expire le " . $res['echeance'] . " a 24h00.\n"
                  . "Verifiez que ce delai est bien celui qui s'applique a votre situation.";
@@ -343,7 +363,5 @@ selfact_repondre(200, [
                      . 'événement elle court — ces deux questions relèvent de la '
                      . 'qualification juridique. Vérifiez-les avant de vous fier à '
                      . 'cette échéance.',
-    'ics' => '?start=' . $d->format('Y-m-d')
-           . ($jours ? "&days=$jours" : '') . ($mois ? "&months=$mois" : '')
-           . ($annees ? "&years=$annees" : '') . '&format=ics',
+    'ics' => '?' . http_build_query($parametres + ['format' => 'ics']),
 ]);

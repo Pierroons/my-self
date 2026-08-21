@@ -1628,7 +1628,7 @@ async def calculer_echeance(
     jours: int | None = None,
     mois: int | None = None,
     annees: int | None = None,
-    distance: bool = False,
+    distance: str = "metropole",
 ) -> str:
     """Calcule une échéance de procédure et montre le raisonnement suivi.
 
@@ -1641,14 +1641,33 @@ async def calculer_echeance(
         jours: durée en jours.
         mois: durée en mois.
         annees: durée en années.
-        distance: applique le délai de distance de l'article 643.
+        distance: où demeure la personne — « metropole » (défaut), « outremer »
+            ou « etranger ». L'article 643 augmente le délai d'un mois pour
+            l'outre-mer et de deux mois pour l'étranger, et seulement pour les
+            délais de comparution, d'appel, d'opposition, de tierce opposition,
+            de recours en révision et de pourvoi en cassation.
     """
+    # 🔑 Trois états, pas deux. Ce paramètre a d'abord été un booléen, qui ne
+    # pouvait pas exprimer la différence entre un mois et deux — et qui ne
+    # marchait pas non plus : l'index attend le nom du lieu, si bien qu'un
+    # « oui » partait en « 1 » et revenait refusé. Le paramètre documenté ne
+    # rendait jamais de résultat.
+    lieux = ("metropole", "outremer", "etranger")
+    lieu = str(distance).strip().lower()
+    if lieu not in lieux:
+        return (
+            f"« {distance} » n'est pas un lieu connu pour l'article 643.\n\n"
+            f"Valeurs acceptées : {', '.join(lieux)}. L'augmentation vaut un mois "
+            "pour l'outre-mer et deux mois pour l'étranger ; sans précision, le "
+            "calcul suppose la France métropolitaine. N'annonce aucune échéance "
+            "tant que le calcul n'a pas abouti."
+        )
     params: dict[str, Any] = {"start": depart}
     for nom, valeur in (("days", jours), ("months", mois), ("years", annees)):
         if valeur is not None:
             params[nom] = valeur
-    if distance:
-        params["distance"] = "1"
+    if lieu != "metropole":
+        params["distance"] = lieu
 
     try:
         data = await _get("/deadline", params, base=ACT_URL)
@@ -1671,13 +1690,28 @@ async def calculer_echeance(
         for e in (data.get("raisonnement") or [])
         if isinstance(e, dict)
     )
-    report = data.get("reporte")
+    # Le fondement arrive en table — un article par clé, plus la source et la
+    # mention d'indépendance. Interpolé tel quel, il rendait la représentation
+    # Python du dictionnaire, accolades et guillemets compris.
+    fondement = data.get("fondement")
+    if isinstance(fondement, dict):
+        articles = "\n".join(
+            f"  · {cle} — {val}" for cle, val in fondement.items() if cle.startswith("art.")
+        )
+        reste = "\n".join(
+            str(fondement[cle]) for cle in ("source", "mention") if fondement.get(cle)
+        )
+        fondement = "\n\n".join(bloc for bloc in (articles, reste) if bloc)
+    elif fondement is not None:
+        fondement = str(fondement)
+
     return (
         f"Départ {data.get('depart')} → **échéance le {data.get('echeance')}**"
         + (f" ({data.get('jour')})" if data.get("jour") else "")
-        + (f"\n⚠️ Reporté : {report}" if report else "")
+        + ("\n⚠️ Échéance reportée : la date obtenue par le calcul n'était pas "
+           "un jour ouvrable." if data.get("reporte") else "")
         + (f"\n\nRaisonnement :\n{etapes}" if etapes else "")
-        + (f"\n\nFondement : {data.get('fondement')}" if data.get("fondement") else "")
+        + (f"\n\nFondement :\n{fondement}" if fondement else "")
         + (f"\n\n⚠️ {data.get('avertissement')}" if data.get("avertissement") else "")
         + "\n\nDonne la date AVEC son raisonnement : c'est ce qui permet à "
         "l'utilisateur de le faire vérifier. Un délai manqué ne se rattrape pas."
