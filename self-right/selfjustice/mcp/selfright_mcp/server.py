@@ -462,6 +462,20 @@ def _couverture(requete: str, resultat: dict) -> tuple[int, int] | None:
 
     Le compte est rendu brut, et non en fraction : voir `_sous_la_moitie`.
     """
+    repris = _termes_repris(requete, resultat)
+    if repris is None:
+        return None
+    trouves, termes = repris
+    return len(trouves), len(termes)
+
+
+def _termes_repris(requete: str, resultat: dict) -> tuple[set[str], set[str]] | None:
+    """(termes de la question surlignés dans ce résultat, termes posés).
+
+    Les comptes de `_couverture` en dérivent : le rapprochement des mots ne
+    s'écrit qu'ici. Écrit deux fois, il divergerait au premier ajustement — et
+    c'est le rapprochement lui-même qui porte la subtilité des préfixes.
+    """
     termes = set(_mots_utiles(requete))
     if not termes:
         return None
@@ -476,8 +490,74 @@ def _couverture(requete: str, resultat: dict) -> tuple[int, int] | None:
         return None
 
     debuts = {_sans_accents(s)[:5] for s in surlignes}
-    trouves = sum(1 for t in termes if _sans_accents(t)[:5] in debuts)
-    return trouves, len(termes)
+    return {t for t in termes if _sans_accents(t)[:5] in debuts}, termes
+
+
+def _termes_jamais_repris(requete: str, resultats: list) -> list[str]:
+    """Les termes de la question qu'AUCUN résultat ne surligne.
+
+    🔑 C'est le collectif qui compte : un terme repris par un seul arrêt de la
+    liste est repris. Mesuré le 21/08/2026 — « puis-je contester une amende de
+    stationnement reçue par erreur » n'obtient que 28 % en moyenne par arrêt,
+    mais quatre de ses cinq termes apparaissent quelque part dans la liste. La
+    moyenne dit que chaque décision n'en couvre qu'une partie ; celle-ci dit ce
+    que la liste entière laisse de côté. Ce sont deux informations, et seule la
+    seconde permet de nommer un terme à l'utilisateur.
+    """
+    repris: set[str] = set()
+    poses: set[str] = set()
+    for r in resultats:
+        paire = _termes_repris(requete, r)
+        if paire is not None:
+            repris |= paire[0]
+            poses |= paire[1]
+    return sorted(poses - repris)
+
+
+# Au-delà de ce nombre, on cesse d'interroger l'index terme à terme : quatre
+# absences suffisent à expliquer une liste, et chaque terme coûte un aller-retour.
+PLAFOND_TERMES_SONDES = 4
+
+
+async def _termes_absents(termes: list[str]) -> tuple[list[str], int]:
+    """Ceux de ces termes qui n'apparaissent dans AUCUNE décision de l'index.
+
+    🔑 **« Hors sujet » ne s'infère pas d'un faible recouvrement lexical ; « ce
+    mot n'existe pas dans l'index » se mesure.** L'ancienne alerte affirmait que
+    la recherche avait « accroché quelques mots isolés, sans rapport avec le
+    sujet ». Mesuré le 21/08/2026 sur seize questions : la moyenne des termes
+    repris valait 28 % pour « puis-je contester une amende de stationnement » et
+    25 % pour « est-ce que ma banane peut saxophoner pendant un tracteur nuage ».
+    Aucun seuil ne les sépare, parce que la jurisprudence n'emploie simplement
+    pas les mots de celui qui la cherche.
+
+    La fréquence des termes semblait offrir le discriminant qui manquait — les
+    questions ordinaires plancher à 138 décisions par terme, les absurdes
+    plafonnaient à 5. Éprouvé sur huit questions juridiques au vocabulaire
+    récent, il s'est effondré : `cryptoactifs`, `trottinette`, `webcam`,
+    `algorithme` et `deepfake` valent tous 0. Cinq vraies questions sur huit
+    auraient été traitées d'absurdes.
+
+    Ce qui reste vrai des deux côtés, c'est le fait lui-même — et il est utile
+    des deux côtés. Que « saxophoner » n'apparaisse nulle part explique la
+    liste ; que « cryptoactifs » n'apparaisse nulle part est peut-être la
+    réponse que l'utilisateur cherchait.
+
+    Rend (termes absents, nombre de termes réellement interrogés).
+    """
+    absents: list[str] = []
+    sondes = 0
+    for terme in termes[:PLAFOND_TERMES_SONDES]:
+        try:
+            data = await _get("/jurisprudence/search", {"q": terme, "limit": 1})
+        except ApiIndisponible:
+            # Une sonde muette ne doit pas transformer un terme en « absent » :
+            # on rend ce qu'on a pu mesurer, et le compte le dit.
+            break
+        sondes += 1
+        if isinstance(data, dict) and data.get("total") == 0:
+            absents.append(terme)
+    return absents, sondes
 
 
 def _sous_la_moitie(trouves: int, total: int) -> bool:
@@ -1324,13 +1404,17 @@ async def rechercher_jurisprudence(
         # au-delà de ce qu'un client encaisse — pour une information que la
         # recherche tenait déjà.
         #
-        # La moyenne absorbe l'isolé : sept arrêts pertinents et un hors sujet
-        # restent au-dessus du seuil global, et le hors sujet passerait sans
-        # marque — avec le sommaire officiel et la mention « publié au Bulletin »
-        # pour lui. D'où une marque par ligne, au même critère que l'ensemble.
+        # La moyenne absorbe l'isolé : sept arrêts qui reprennent la question et
+        # un qui n'en reprend rien restent au-dessus du seuil global, et le
+        # dernier passerait sans marque — avec le sommaire officiel et la
+        # mention « publié au Bulletin » pour lui. D'où une marque par ligne,
+        # au même critère que l'ensemble.
         couv = _couverture(requete, r)
+        # ⚠️ Un compte, pas un verdict. « hors sujet probable » affirmait une
+        # pertinence que le recouvrement lexical ne permet pas de juger : la
+        # jurisprudence n'emploie pas les mots de celui qui la cherche.
         doute = (
-            " ⚠️ hors sujet probable"
+            f" ⚠️ {couv[0]}/{couv[1]} termes repris"
             if couv is not None and _sous_la_moitie(*couv) else ""
         )
         tete = (
@@ -1362,11 +1446,37 @@ async def rechercher_jurisprudence(
     poses = sum(n for _, n in couvertures)
     if poses and _sous_la_moitie(trouves, poses):
         moyenne = round(100 * trouves / poses)
+
+        jamais = _termes_jamais_repris(requete, resultats)
+        absents, sondes = await _termes_absents(jamais)
+
         alerte = (
-            f"\n\n⚠️ Ces décisions ne reprennent en moyenne que {moyenne} % des "
-            "termes de la question : la recherche a probablement accroché "
-            "quelques mots isolés, sans rapport avec le sujet. Vérifie chaque "
-            "sommaire avant d'en citer une, et reformule si aucune ne convient."
+            f"\n\n⚠️ Ces décisions ne reprennent que {moyenne} % des termes de "
+            "la question."
+        )
+        if jamais:
+            alerte += (
+                "\n   Aucune ne surligne : " + ", ".join(f"« {t} »" for t in jamais) + "."
+            )
+        if absents:
+            alerte += (
+                "\n   Et " + ", ".join(f"« {t} »" for t in absents)
+                + (" n'apparaît" if len(absents) == 1 else " n'apparaissent")
+                + " dans AUCUNE décision de l'index : la jurisprudence indexée "
+                "n'emploie pas ce vocabulaire. Ce n'est pas forcément une "
+                "erreur de la question — le sujet peut n'avoir donné lieu à "
+                "aucune décision publiée."
+            )
+        if len(jamais) > sondes:
+            # ⚠️ Ne jamais laisser croire que tout a été vérifié : le plafond
+            # existe, il se dit.
+            alerte += (
+                f"\n   ({len(jamais) - sondes} autre(s) terme(s) non vérifié(s) "
+                "dans l'index.)"
+            )
+        alerte += (
+            "\n   Vérifie chaque sommaire avant d'en citer une, et reformule "
+            "avec le vocabulaire des décisions si aucune ne convient."
         )
 
     # Deux conseils distincts, chacun pour un manque différent : la date parce

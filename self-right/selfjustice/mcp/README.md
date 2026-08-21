@@ -69,6 +69,28 @@ trancher au hasard.
 Quand la base décroche vraiment, le texte le signale avant de donner l'article,
 et demande au modèle de te le répercuter.
 
+## Ce que la recherche dit d'elle-même
+
+Une liste de décisions a toujours l'air pertinente : le sommaire est rédigé par
+la Cour, la mention « publié au Bulletin » l'accompagne, et une requête sans
+queue ni tête rend des arrêts d'apparence irréprochable.
+
+L'outil mesure donc la part des termes de ta question que les décisions
+reprennent, et **la dit sans conclure**. Il annonçait auparavant « hors sujet
+probable » ; c'était une affirmation qu'un recouvrement de mots ne permet pas —
+mesuré sur douze questions réelles et six absurdes, « une amende de
+stationnement reçue par erreur » obtenait 28 % et « ma banane peut-elle
+saxophoner » 25 %. Aucun seuil ne les sépare, parce que la jurisprudence
+n'emploie pas les mots de celui qui la cherche.
+
+Ce qui se mesure vraiment, ce sont deux faits : la proportion reprise, et les
+termes qu'**aucune** décision de la liste ne surligne. De ceux-là, l'outil
+demande à l'index s'ils y figurent — et « saxophoner » n'apparaît dans aucune
+décision. Le fait sert dans les deux sens : que « cryptoactifs » n'y figure pas
+non plus est peut-être la réponse que tu cherchais.
+
+Ce contrôle ne coûte des requêtes que lorsqu'il a quelque chose à dire.
+
 Quand l'API est injoignable, l'outil ne rend pas une erreur discrète : il
 demande explicitement au modèle de ne rien citer de mémoire et de te renvoyer
 vers Légifrance. Une erreur silencieuse produirait exactement l'hallucination

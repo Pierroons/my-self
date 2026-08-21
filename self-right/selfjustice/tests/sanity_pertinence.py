@@ -8,16 +8,19 @@ dénominateur comptait tout le vocabulaire de la question — « mon », « mes 
 « puis », « quels », « combien » — qu'aucun arrêt ne surligne jamais.
 
 Une question de droit posée en langue courante en est à moitié faite. Mesuré le
-21/08/2026 sur neuf questions réelles interrogeant l'index de production, cinq
-déclenchaient l'alerte de pertinence, au même niveau que des chaînes de mots
-sans rapport entre eux : « puis-je contester une amende de stationnement reçue
-par erreur » obtenait 23 %, « est-ce que ma banane peut saxophoner pendant un
-tracteur nuage » 35 %. L'avertissement destiné à signaler une liste hors sujet
-se déclenchait donc surtout sur les questions bien posées.
+21/08/2026 sur douze questions réelles interrogeant l'index de production,
+plusieurs déclenchaient l'alerte au même niveau que des chaînes de mots sans
+rapport entre eux : « puis-je contester une amende de stationnement reçue par
+erreur » obtenait 28 %, « est-ce que ma banane peut saxophoner pendant un
+tracteur nuage » 25 %. Aucun seuil ne les sépare — la jurisprudence n'emploie
+simplement pas les mots de celui qui la cherche.
 
-Ce module éprouve la partie qui se mesure sans réseau : le tri des mots et le
-seuil. La séparation entre question pertinente et chaîne absurde, elle, dépend
-de l'index et se mesure en recette.
+L'alerte a donc cessé d'affirmer « hors sujet », qui ne s'infère pas d'un
+recouvrement lexical, pour dire deux faits : la proportion de termes repris, et
+les termes qu'aucune décision ne surligne. Ce module éprouve la partie qui se
+mesure sans réseau — le tri des mots, le seuil, et le rapprochement des termes
+avec les surlignages. La présence d'un terme dans l'index, elle, demande une
+requête et se mesure en recette.
 
     python3 tests/sanity_pertinence.py
 """
@@ -32,7 +35,10 @@ SERVEUR = pathlib.Path(__file__).resolve().parent.parent / "mcp" / "selfright_mc
 
 # Charger les quatre définitions utiles sans importer le module : `server.py`
 # dépend du paquet `mcp`, absent de l'environnement de CI.
-VOULUES = {"_MOTS_OUTILS", "_sans_accents", "_mots_utiles", "_sous_la_moitie"}
+VOULUES = {
+    "_MOTS_OUTILS", "_sans_accents", "_mots_utiles", "_sous_la_moitie",
+    "_termes_repris", "_termes_jamais_repris", "_couverture",
+}
 
 
 def charger() -> dict:
@@ -52,7 +58,7 @@ def charger() -> dict:
     if trouves != VOULUES:
         print(f"✗ manquant dans server.py : {sorted(VOULUES - trouves)}", file=sys.stderr)
         raise SystemExit(2)
-    espace: dict = {"re": re, "unicodedata": unicodedata}
+    espace: dict = {"re": re, "unicodedata": unicodedata, "Any": object}
     exec(compile(ast.Module(body=gardes, type_ignores=[]), str(SERVEUR), "exec"), espace)
     return espace
 
@@ -109,6 +115,54 @@ def main() -> int:
             sous_la_moitie(trouves, total) is attendu,
             f"{trouves}/{total} → {'marqué' if attendu else 'épargné'}",
         )
+
+    print("\n▸ Ce que la liste entière laisse de côté")
+    # 🔑 C'est le collectif qui compte : un terme repris par un SEUL arrêt de la
+    # liste est repris. Sans ce pli, la moyenne — basse dès qu'aucune décision
+    # ne couvre tout — ferait nommer à l'utilisateur des termes pourtant
+    # présents, et l'alerte perdrait le seul contenu qui l'intéresse.
+    jamais, repris, couverture = (
+        ns["_termes_jamais_repris"], ns["_termes_repris"], ns["_couverture"]
+    )
+
+    def arret(*mots):
+        """Un résultat de contrefaçon, ne surlignant que ces mots-là."""
+        return {"highlights": {"text": ["".join(f"<em>{m}</em> " for m in mots)]}}
+
+    q = "harcèlement moral au travail"   # → harcèlement, moral, travail
+    cas = [
+        ([arret("harcelement"), arret("moral"), arret("travail")], [],
+         "trois arrêts, un terme chacun → la liste ne laisse rien de côté"),
+        ([arret("harcelement"), arret("harcelement")], ["moral", "travail"],
+         "un seul terme repris partout → les deux autres sont nommés"),
+        ([arret("harcelement", "moral", "travail")], [],
+         "un arrêt qui reprend tout → rien à signaler"),
+        # ⚠️ Sans résultat, il n'y a rien à mesurer : nommer les trois termes
+        # laisserait croire qu'on les a cherchés dans quelque chose. L'outil ne
+        # passe d'ailleurs jamais ici — une liste vide sort plus tôt, avec son
+        # propre message.
+        ([], [], "aucun arrêt → rien d'affirmé, il n'y avait rien à mesurer"),
+        ([{"highlights": {}}], [],
+         "un arrêt sans surlignage → non mesurable, donc rien d'affirmé"),
+    ]
+    for resultats, attendu, libelle in cas:
+        obtenu = jamais(q, resultats)
+        verdict(obtenu == attendu, f"{libelle} — {obtenu}")
+
+    print("\n▸ Les accents ne font pas rater un terme")
+    # L'amont accepte la requête sans accents et surligne le texte avec : sans
+    # le pli sur les préfixes, le terme le mieux ciblé compterait comme absent.
+    for surligne, attendu_vide in [("harcèlement", True), ("harcelement", True),
+                                   ("harcelant", True), ("licenciement", False)]:
+        obtenu = repris("harcèlement", arret(surligne))
+        trouve = bool(obtenu and obtenu[0])
+        verdict(
+            trouve is attendu_vide,
+            f"« harcèlement » face à « {surligne} » → "
+            + ("reconnu" if trouve else "non reconnu"),
+        )
+    verdict(couverture("harcèlement moral", arret("harcelement")) == (1, 2),
+            "la couverture dérive du même rapprochement : 1/2")
 
     print()
     if echecs:
