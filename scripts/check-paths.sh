@@ -100,4 +100,33 @@ if morts:
 print("  \u2713 tous les chemins de workflow résolvent")
 EOF
 
+# ── Copies qui doivent rester identiques ────────────────────────────────────
+#
+# 🔑 Un texte de licence se copie — c'est un document légal verbatim, et l'AGPL
+# demande qu'une copie accompagne chaque programme distribué. Un paquet Python
+# publié doit donc porter le sien. Mais deux copies peuvent diverger, et
+# personne ne relit 34 000 octets : la duplication n'est acceptable que
+# surveillée.
+#
+# ⚠️ Un lien symbolique aurait évité la copie. Il casse la construction : la
+# sdist le stocke tel quel, et l'extraction refuse un lien pointant hors de
+# l'archive. Mesuré le 21/08/2026.
+echo "▸ Copies verbatim — le texte de licence"
+# Chaque paquet distribuable indépendamment porte sa copie ; la liste grandit
+# avec eux.
+COPIES_LICENCE=(
+    self-right/selfjustice/mcp/LICENSE
+)
+for copie in "${COPIES_LICENCE[@]}"; do
+    if [ ! -f "$copie" ]; then
+        echo "  ✗ $copie manque — le paquet publié n'emporterait pas sa licence" >&2
+        echec=1
+    elif cmp -s LICENSE "$copie"; then
+        echo "  ✓ $copie identique à LICENSE"
+    else
+        echo "  ✗ $copie a divergé de LICENSE" >&2
+        echec=1
+    fi
+done
+
 exit $echec
