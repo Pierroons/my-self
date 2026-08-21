@@ -28,7 +28,8 @@
  *
  * Combinaisons possibles : category + type + q
  *
- * Source : api/act/data/catalog.json (mise à jour bimensuelle via cron).
+ * Source : le catalogue synchronisé (1er et 15). Son emplacement est résolu par
+ * chemins.php : il vit hors de l'arbre du code, pour n'avoir qu'un écrivain.
  */
 
 declare(strict_types=1);
@@ -59,7 +60,8 @@ function normalize(string $s): string {
     return strtr($s, $trans);
 }
 
-$dataPath = __DIR__ . '/data/catalog.json';
+require_once __DIR__ . '/chemins.php';
+$dataPath = selfact_chemin_catalogue();
 if (!is_file($dataPath)) {
     respond(503, [
         'ok'    => false,

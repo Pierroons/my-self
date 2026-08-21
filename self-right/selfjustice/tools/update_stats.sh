@@ -13,8 +13,14 @@ COUNTER_FILE="/var/lib/selfjustice/counter.txt"
 # Racine du site servie par nginx — surchargeable : elle diffère selon
 # l installation. Codée en dur, elle a cessé de pointer vers quoi que ce soit
 # après la migration du 03/08/2026, et le compteur de la page a gelé en silence.
-# Catalogue SelfAct : il vit à côté de l'API, pas dans le dossier du site.
-ACT_CATALOG="${SELFACT_CATALOG:-$(dirname "${SELFJUSTICE_SITE_DIR:-/var/www/selfjustice}")/api/act/data/catalog.json}"
+# Catalogue SelfAct : depuis le 21/08/2026 il vit dans l'état de l'instance, et
+# non plus dans l'arbre du code — un transfert du dépôt y reposait une copie
+# périmée par-dessus la fraîche. Le chemin du dépôt reste en dernier recours,
+# pour une instance qui n'aurait pas encore migré.
+ACT_CATALOG="${SELFACT_CATALOG:-${SELFJUSTICE_VAR_DIR:-/var/lib/selfjustice}/catalog.json}"
+if [ ! -f "$ACT_CATALOG" ]; then
+    ACT_CATALOG="$(dirname "${SELFJUSTICE_SITE_DIR:-/var/www/selfjustice}")/api/act/data/catalog.json"
+fi
 LEGI_DB="${SELFJUSTICE_DB_DIR:-/var/lib/selfjustice/db}/legi_selfjustice.sqlite"
 LEGI_LAST_UPDATE_FILE="/var/lib/selfjustice/legi_last_update.txt"
 EU_DB="${SELFJUSTICE_DB_DIR:-/var/lib/selfjustice/db}/conventionnalite.sqlite"

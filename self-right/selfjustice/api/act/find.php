@@ -28,7 +28,8 @@
  * l'information qui compte — savoir ce qui a été relu par un humain.
  *
  * Sources : api/act/data/situations.json (curation manuelle, pas de cron)
- *           api/act/data/catalog.json    (synchronisé les 1er et 15)
+ *           le catalogue synchronisé les 1er et 15 — hors de l'arbre du code,
+ *           voir chemins.php
  */
 
 declare(strict_types=1);
@@ -113,7 +114,7 @@ $acts = $entry['acts'] ?? [];
  * suggestions autrement que par la curation manuelle qui les a demandées.
  */
 function selfact_meta_catalogue(): array {
-    $path = __DIR__ . '/data/catalog.json';
+    $path = selfact_chemin_catalogue();
     if (!is_file($path)) { return []; }
     $cat = json_decode((string) @file_get_contents($path), true);
     return is_array($cat) && isset($cat['_meta']) && is_array($cat['_meta'])
@@ -122,7 +123,7 @@ function selfact_meta_catalogue(): array {
 }
 
 function suggestFromCatalog(array $hints, int $limite = 12): array {
-    $path = __DIR__ . '/data/catalog.json';
+    $path = selfact_chemin_catalogue();
     if (!is_file($path)) { return []; }
     $cat = json_decode((string) @file_get_contents($path), true);
     if (!is_array($cat) || !isset($cat['models'])) { return []; }
@@ -170,6 +171,7 @@ function suggestFromCatalog(array $hints, int $limite = 12): array {
 }
 
 require_once __DIR__ . '/classify.php';   // pour selfact_normalize()
+require_once __DIR__ . '/chemins.php';    // pour selfact_chemin_catalogue()
 $suggestions = suggestFromCatalog($entry['catalog_hints'] ?? []);
 
 // Tri par priorité : official > simulator > info_only > lawyer_required > emergency_phone en premier

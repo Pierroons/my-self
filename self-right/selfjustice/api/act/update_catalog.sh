@@ -19,7 +19,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PHP_BIN="${PHP_BIN:-/usr/bin/php}"
-CATALOG="$SCRIPT_DIR/data/catalog.json"
+# 🔑 Le chemin est DEMANDÉ au résolveur, jamais réécrit ici. Producteur et
+# consommateurs doivent viser le même fichier ; deux formulations de la même
+# règle finissent par diverger, et la divergence ne se voit qu'au moment où
+# l'un écrit là où l'autre ne lit plus.
+CATALOG="$("$PHP_BIN" -r "require '$SCRIPT_DIR/chemins.php'; echo selfact_chemin_catalogue();" 2>/dev/null)"
+if [ -z "$CATALOG" ]; then
+    echo "erreur : chemins.php n'a pas rendu d'emplacement pour le catalogue." >&2
+    exit 1
+fi
+mkdir -p "$(dirname "$CATALOG")"
 
 # Au-delà de ce nombre de jours, le catalogue a manqué une échéance bimensuelle.
 PEREMPTION_JOURS="${SELFACT_PEREMPTION_JOURS:-20}"
@@ -109,7 +118,7 @@ if [ -n "$LAST_SYNC" ]; then
     AGE=$(( ( $(date +%s) - $(date -d "$LAST_SYNC" +%s) ) / 86400 ))
     if [ "$AGE" -gt "$PEREMPTION_JOURS" ]; then
         alerter "SelfAct — catalogue perime" \
-                "Le catalogue date de $AGE jours alors que la synchronisation vient de tourner. Verifier que le scraper ecrit bien dans data/catalog.json."
+                "Le catalogue date de $AGE jours alors que la synchronisation vient de tourner. Verifier que le scraper ecrit bien dans $CATALOG."
     fi
 else
     alerter "SelfAct — catalogue sans date" \

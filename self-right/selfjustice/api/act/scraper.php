@@ -8,7 +8,7 @@
  * déposer : modèles de lettres, formulaires (CERFA) et démarches en ligne.
  * Les sources interrogées sont déclarées dans SOURCES ci-dessous.
  *
- * Produit : <install-dir>/api/act/data/catalog.json avec :
+ * Produit : le catalogue, à l'emplacement que résout chemins.php, avec :
  *   {
  *     "_meta": { "version": "AAAA.MM", "last_sync": "ISO",
  *                "total": 1895, "types": {...}, "categories": {...} },
@@ -192,6 +192,7 @@ function parseCatalogPage(string $html): array {
 // Elle a longtemps existé en deux exemplaires divergents ; c'est le genre
 // de duplication où la copie la plus pauvre finit par gagner en silence.
 require_once __DIR__ . '/classify.php';
+require_once __DIR__ . '/chemins.php';
 
 /**
  * Scraper principal : itère sur les pages du catalogue.
@@ -314,7 +315,7 @@ if ($dryRun) {
     exit(0);
 }
 
-$outPath = __DIR__ . '/data/catalog.json';
+$outPath = selfact_chemin_catalogue();
 
 // 🔑 **Garde-fou : ne jamais remplacer un catalogue complet par un tronqué.**
 // Si service-public change son HTML ou coupe une source, le scraper rend une

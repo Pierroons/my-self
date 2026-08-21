@@ -4,7 +4,7 @@
  *
  * Usage : php reclassify.php [--dry-run]
  *
- * Ne re-fetche PAS service-public.fr. Relit data/catalog.json, applique la
+ * Ne re-fetche PAS service-public.fr. Relit le catalogue en place, applique la
  * nouvelle classification, réécrit le fichier.
  */
 
@@ -17,9 +17,10 @@ $dryRun = in_array('--dry-run', $argv, true);
  * L'ordre est important : règles spécifiques en premier, génériques en dernier.
  */
 require_once __DIR__ . '/classify.php';
+require_once __DIR__ . '/chemins.php';
 
 // --- Main ---
-$path = __DIR__ . '/data/catalog.json';
+$path = selfact_chemin_catalogue();
 $raw = file_get_contents($path);
 $data = json_decode($raw, true);
 
