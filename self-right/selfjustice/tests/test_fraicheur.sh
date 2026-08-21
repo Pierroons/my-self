@@ -200,6 +200,80 @@ else
     nok "une baisse de volume n'est pas signalée : ${sortie//$'\n'/ }"
 fi
 
+# 🔑 Le cas mesuré le 21/08/2026 : le catalogue a été resynchronisé et a rendu
+# 1 895 modèles — exactement le compte de la copie du 3 août qu'il remplaçait,
+# alors que douze de ses seize catégories avaient changé. La règle du
+# trompe-l'œil ne comparait que le total ; elle a crié sur une synchronisation
+# bien réelle, le soir même où l'on venait de la corriger de ses fausses alertes.
+echo
+echo "▸ Le trompe-l'œil regarde tous les compteurs, pas seulement le total"
+
+repartition() { # repartition <date> <total> <travail> <logement>
+    python3 - "$1" "$2" "$3" "$4" <<'PY' > "$BAC/catalog.json"
+import json, sys
+d, t, a, b = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
+print(json.dumps({"meta": {"last_sync": d, "total": t,
+                           "categories": {"travail": a, "logement": b}}}))
+PY
+}
+
+etat_avec_empreinte() { # <date> <total> <travail> <logement> <vu_le>
+    python3 - "$1" "$2" "$3" "$4" "$5" "$ATTENDU" <<'PY' > "$BAC/etat.json"
+import json, sys
+d, t, a, b, vu, sain = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), sys.argv[5], sys.argv[6]
+print(json.dumps({
+    "catalogue SelfAct": {"date": d, "volume": t, "vu_le": vu,
+                          "empreinte": {"total": t, "categories.travail": a,
+                                        "categories.logement": b}},
+    "LEGI": {"date": sain, "volume": 525441, "vu_le": sain,
+             "empreinte": {"articles": 525441}},
+    "conventionnalité": {"date": sain, "volume": 793, "vu_le": sain,
+                         "empreinte": {"articles": 793}},
+    "jurisprudence": {"date": sain, "volume": 1191177, "vu_le": sain,
+                      "empreinte": {"decisions": 1191177}},
+}))
+PY
+}
+
+lancer() {
+    HOME="$BAC" \
+    SELFRIGHT_API_URL="http://127.0.0.1:$PORT" \
+    SELFRIGHT_ACT_URL="http://127.0.0.1:$PORT" \
+    CHECK_FRAICHEUR_ETAT="$BAC/etat.json" \
+    CHECK_FRAICHEUR_SILENCE_FICHIER="$BAC/silence" \
+    bash "$SONDE" --verbeux 2>&1
+}
+
+python3 - "$ATTENDU" <<'PY' > "$BAC/status.json"
+import json, sys
+sain = sys.argv[1]
+print(json.dumps({
+    "legi": {"articles": 525441, "last_update": sain},
+    "eu": {"articles": 793, "last_update": sain},
+    "jurisprudence": {"decisions": 1191177, "last_update": sain},
+}))
+PY
+
+# Même total, répartition différente : la base a bougé.
+etat_avec_empreinte "$AVANT" 1895 213 208 "$AVANT"
+repartition "$ATTENDU" 1895 211 207
+sortie=$(lancer)
+if grep -q "trompe-l" <<<"$sortie"; then
+    nok "total identique mais répartition changée → trompe-l'œil crié à tort"
+else
+    ok "total identique, 2 catégories déplacées → silence, la base a bougé"
+fi
+
+# Rien n'a bougé du tout : là, le marqueur ment.
+etat_avec_empreinte "$AVANT" 1895 213 208 "$AVANT"
+repartition "$ATTENDU" 1895 213 208
+sortie=$(lancer)
+if grep -q "trompe-l" <<<"$sortie"; then
+    ok "aucun compteur déplacé → trompe-l'œil signalé"
+else
+    nok "une base strictement immobile à date avancée passe inaperçue"
+fi
+
 echo
 echo "▸ Une source injoignable reste un retard"
 kill "$SERVEUR" 2>/dev/null; SERVEUR=""

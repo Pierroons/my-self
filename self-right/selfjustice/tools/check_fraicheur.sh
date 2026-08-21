@@ -80,13 +80,37 @@ def volume(bloc):
             return bloc[cle]
     return None
 
-sources, volumes, erreurs = {}, {}, []
+
+def empreinte(bloc, prefixe=""):
+    """Tous les compteurs entiers du bloc, sous-comptes compris.
+
+    🔑 Le total seul ne suffit pas à dire qu'une base n'a pas bougé. Le
+    21/08/2026, le catalogue SelfAct a été resynchronisé et a rendu 1 895
+    modèles — exactement le compte de la copie du 3 août qu'il remplaçait, alors
+    que douze de ses seize catégories avaient changé. La règle du trompe-l'œil,
+    qui ne comparait que le total, a donc crié sur une synchronisation réelle.
+    Ce qu'elle doit chercher est l'immobilité complète, pas l'égalité d'un seul
+    nombre.
+    """
+    plat = {}
+    for cle, val in (bloc or {}).items():
+        chemin = f"{prefixe}{cle}"
+        if isinstance(val, bool):
+            continue
+        if isinstance(val, int):
+            plat[chemin] = val
+        elif isinstance(val, dict):
+            plat.update(empreinte(val, chemin + "."))
+    return plat or None
+
+sources, volumes, empreintes, erreurs = {}, {}, {}, []
 try:
     st = lire(f"{API}/status")
     for cle, nom in (("legi", "LEGI"), ("eu", "conventionnalité"), ("jurisprudence", "jurisprudence")):
         bloc = st.get(cle) or {}
         sources[nom] = bloc.get("last_update")
         volumes[nom] = volume(bloc)
+        empreintes[nom] = empreinte(bloc)
 except Exception as e:
     erreurs.append(f"/status injoignable ({type(e).__name__})")
 
@@ -96,6 +120,7 @@ try:
     # last_update sur les situations. Vérifié, pas supposé.
     sources["catalogue SelfAct"] = meta.get("last_sync") or meta.get("last_update")
     volumes["catalogue SelfAct"] = volume(meta)
+    empreintes["catalogue SelfAct"] = empreinte(meta)
 except Exception as e:
     erreurs.append(f"/act/api/catalog injoignable ({type(e).__name__})")
 
@@ -125,6 +150,7 @@ for nom in sources:
     etat_courant[nom] = {
         "date": date_brute,
         "volume": volumes.get(nom),
+        "empreinte": empreintes.get(nom),
         "vu_le": veille["vu_le"] if inchangee else today.isoformat(),
     }
 
@@ -180,7 +206,13 @@ for nom, courant in etat_courant.items():
     if not veille or courant["volume"] is None or veille.get("volume") is None:
         continue
     d_now, d_old = parse(courant["date"]), parse(veille.get("date"))
-    if d_now and d_old and d_now > d_old and courant["volume"] == veille["volume"]:
+    # L'égalité porte sur TOUS les compteurs, sous-comptes compris : le total
+    # peut retomber sur le même nombre pendant que la répartition change. Un
+    # état d'avant l'empreinte n'en a pas — on retombe alors sur le total seul,
+    # le temps d'un passage.
+    e_now, e_old = courant.get("empreinte"), veille.get("empreinte")
+    fige = (e_now == e_old) if (e_now and e_old) else (courant["volume"] == veille["volume"])
+    if d_now and d_old and d_now > d_old and fige:
         retards.append(
             f"{nom} : date avancée au {d_now.isoformat()} sans aucun ajout "
             f"({courant['volume']} inchangé) — synchronisation en trompe-l'œil"
