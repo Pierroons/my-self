@@ -97,14 +97,40 @@ echo "SelfJustice — déploiement vers $DEST (domaine : $DOMAINE)"
 # trois en .html, donc ne trouvait plus la racine du module et ne déployait
 # rien — en le disant, au moins. La production n'en dépendait pas, elle est
 # servie par un autre chemin ; toute autre instance de SelfJustice, si.
+# La liste fait autorité pour les deux boucles qui suivent : celle qui copie, et
+# celle qui signale ce qui traîne à la destination sans plus venir d'ici. Écrite
+# deux fois, un renommage n'en corrigerait qu'une.
+SERVIS="index.php act.php act-docs.html"
+
 traites=0
-for f in site/index.php site/act.php site/act-docs.html; do
+for nom in $SERVIS; do
+    f="site/$nom"
     [ -f "$SRC/$f" ] || continue
     cible="$DEST/$(basename "$f")"
     sed "s|$PLACEHOLDER|$DOMAINE|g" "$SRC/$f" > "$cible"
     n=$(grep -c "$DOMAINE" "$cible" || true)
     echo "  $(basename "$f") : $n occurrence(s) substituée(s)"
     traites=$((traites + 1))
+done
+
+# 🔑 Un transfert fichier par fichier n'efface rien : un nom retiré de la source
+# survit indéfiniment à la destination. Le renommage du 19/08/2026 l'a montré —
+# `act.html` répondait encore en 200 des jours plus tard, figé à sa dernière
+# version, à côté de l'`act.php` qui le remplace. Les deux coïncidaient ce
+# jour-là ; ils divergent au premier changement de contenu, et rien ne le dit.
+#
+# Signalé, jamais supprimé : effacer un fichier servi au public est une décision
+# humaine, et ce script ne sait pas si la page orpheline est un résidu ou un
+# chemin que quelqu'un a délibérément posé là.
+for ancien in "$DEST"/*.html "$DEST"/*.php; do
+    [ -e "$ancien" ] || continue
+    nom=$(basename "$ancien")
+    orphelin=1
+    for servi in $SERVIS; do
+        [ "$nom" = "$servi" ] && orphelin=0
+    done
+    [ "$orphelin" -eq 1 ] || continue
+    echo "  ⚠️  $nom est servi mais n'est plus produit par la source — résidu probable, à retirer à la main" >&2
 done
 
 # ⚠️ Zéro fichier traité n'est pas un cas nominal : c'est le symptôme d'une

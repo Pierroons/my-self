@@ -22,7 +22,7 @@
 # le fichier n'a pas changé de taille.
 #
 # Usage : bash tests/test_deploy.sh
-# Sortie : 0 si les quatre cas se comportent comme attendu.
+# Sortie : 0 si les six cas se comportent comme attendu.
 
 set -uo pipefail
 
@@ -88,10 +88,38 @@ else
     nok "D — source == destination : code $code, index.php $avant → $apres o"
 fi
 
+# ── E — un nom retiré de la source survit à la destination ──────────────────
+# Le transfert copie fichier par fichier et n'efface rien. Le renommage du
+# 19/08/2026 l'a montré : `act.html` répondait encore en 200 des jours plus
+# tard, figé, à côté de l'`act.php` qui le remplace. Le script doit le dire —
+# et ne pas le supprimer, parce qu'effacer une page servie au public est une
+# décision humaine.
+mkdir -p "$TMP/e"
+echo "<p>résidu figé</p>" > "$TMP/e/act.html"
+echo "<p>vieille page</p>" > "$TMP/e/ancien-module.php"
+signale=$(bash "$DEPLOY" "$DOMAINE" "$TMP/e" 2>&1 | grep -c "n'est plus produit par la source")
+survit=0
+[ -f "$TMP/e/act.html" ] && [ -f "$TMP/e/ancien-module.php" ] && survit=1
+if [ "$signale" -eq 2 ] && [ "$survit" -eq 1 ]; then
+    ok "E — résidus de la destination : 2 signalés, 2 conservés"
+else
+    nok "E — résidus : $signale signalé(s), conservés=$survit — un orphelin muet, ou une suppression automatique"
+fi
+
+# ── F — une destination sans résidu ne doit rien signaler ───────────────────
+# Un avertissement qui se déclenche sur le cas nominal cesse d'être lu.
+mkdir -p "$TMP/f"
+bruit=$(bash "$DEPLOY" "$DOMAINE" "$TMP/f" 2>&1 | grep -c "n'est plus produit par la source")
+if [ "$bruit" -eq 0 ]; then
+    ok "F — destination propre : aucun avertissement"
+else
+    nok "F — destination propre : $bruit avertissement(s) sur ce que le script vient d'écrire"
+fi
+
 echo
 if [ "$echecs" -eq 0 ]; then
-    echo "OK — 4/4 cas conformes."
+    echo "OK — 6/6 cas conformes."
     exit 0
 fi
-echo "ÉCHEC — $echecs cas sur 4." >&2
+echo "ÉCHEC — $echecs cas sur 6." >&2
 exit 1
