@@ -8,9 +8,9 @@ Today, "forgot my password" means "we've sent a link to your email address".
 Your inbox becomes the key to every account you own. And if you lose it, you
 lose everything else with it.
 
-MySelf is a set of modules exploring the other route: identity, data, law and
-trade tools, with no external channel in the loop. The code is free software, it
-runs on your own machine, and it is written to be read.
+MySelf is a set of modules exploring the other route: tools for identity, data,
+law and community life, with no external channel in the loop. The code is free
+software, it runs on your own machine, and it is written to be read.
 
 ---
 
@@ -64,7 +64,7 @@ protection mechanisms.
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | What if the disk is stolen? | **v0.3.0** — deployed and documented |
 | [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.2.0** — in service, 191 checks |
 | [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.1.0 beta** |
-| [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.2** — code, not online yet |
+| [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.2** — live, 1,895 official procedures |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.3.0** — linked-voter cross-referencing, recovery, vote reason; 16 checks; 2 mechanisms missing |
 
 Every line above links to code you can read and run. No link to a hosted demo:

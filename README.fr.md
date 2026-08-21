@@ -8,9 +8,10 @@ Aujourd'hui, « mot de passe oublié » veut dire « on envoie un lien à ton ad
 email ». Ta boîte mail devient la clé de tous tes comptes. Et si tu la perds, tu
 perds tout le reste avec.
 
-MySelf est un ensemble de modules qui explorent l'autre voie : identité, données,
-droit et outils métier, sans canal externe dans la boucle. Le code est libre, il
-tourne sur ta propre machine, et il est fait pour être lu.
+MySelf est un ensemble de modules qui explorent l'autre voie : des outils pour
+l'identité, les données, le droit et la vie collective, sans canal externe dans
+la boucle. Le code est libre, il tourne sur ta propre machine, et il est fait
+pour être lu.
 
 ---
 
@@ -66,7 +67,7 @@ de droit tenues à jour, pas des dispositifs de protection.
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.3.0** — installé et documenté |
 | [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.2.0** — en service, 191 contrôles |
 | [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.1.0 bêta** |
-| [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — code, pas encore en ligne |
+| [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — en ligne, 1 895 démarches officielles |
 | [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.3.0** — recoupement des votants liés, convalescence, motif de vote ; 16 contrôles ; 2 mécanismes manquent |
 
 Chaque ligne ci-dessus mène à du code lisible et exécutable. Pas de lien vers une

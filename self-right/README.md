@@ -7,8 +7,8 @@
 > *Know your rights, make them right.*
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfJustice: v0.1.0](https://img.shields.io/badge/SelfJustice-v0.1.0-green.svg)](./selfjustice/)
-[![SelfAct: alpha 0.0.1](https://img.shields.io/badge/SelfAct-alpha%200.0.1-lightgrey.svg)](./selfact/)
+[![SelfJustice: v0.1.0 beta](https://img.shields.io/badge/SelfJustice-v0.1.0%20beta-green.svg)](./selfjustice/)
+[![SelfAct: v0.1.2](https://img.shields.io/badge/SelfAct-v0.1.2-yellow.svg)](./selfact/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
@@ -34,7 +34,7 @@ Self-Right tackles the full arc in two complementary modules: **understand the l
 
 **SelfJustice alone** produces an impartial legal analysis with citations — but leaves you with a document. You know what the law says. Now what? Nothing, unless you know how to draft a formal notice, identify the competent court, fill a CERFA form, respect a procedural deadline. For 90 % of citizens, this gap is the wall.
 
-**SelfAct alone** would be a template library — useful, but dangerous without context. A formal notice with the wrong legal basis is worse than no letter at all.
+**SelfAct alone** is a template library — useful, but dangerous without context. A formal notice with the wrong legal basis is worse than no letter at all.
 
 **Together**, the chain is complete:
 
@@ -58,16 +58,25 @@ From the fog of "I think I'm in my rights" to "this letter is in the post on Mon
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfJustice](./selfjustice/) | Impartial legal pre-analysis powered by IA | v0.1.0 ✅ — live at [justice.my-self.fr](https://justice.my-self.fr) |
-| [SelfAct](./selfact/) | Operational extension: letters, forms, procedural deadlines | alpha 0.0.1 — design phase |
+| [SelfJustice](./selfjustice/) | Machine-readable legal directives + an open law API | **v0.1.0 beta** — live at [justice.my-self.fr](https://justice.my-self.fr) |
+| [SelfAct](./selfact/) | Letters, forms and procedural deadlines built on that analysis | **v0.1.2** — API, catalogue and pages running; ~3,960 lines living under [`selfjustice/`](./selfjustice/) |
 
 ---
 
 ## Status
 
-SelfJustice is **deployed in production** and serves any IA agent (Claude, ChatGPT, Mistral, Gemini, Perplexity) with 488,903 official French legal articles + 705 EU/CEDH treaty articles through an open HTTP API. Anyone can query it, anyone can self-host it.
+SelfJustice is **deployed in production** and serves any AI agent (Claude, ChatGPT, Mistral, Gemini, Perplexity) with the full indexed French legal corpus plus the EU/ECHR texts, through an open HTTP API. Anyone can query it, anyone can self-host it. Live counts: [`/api/status`](https://justice.my-self.fr/api/status).
 
-SelfAct is in **design phase** (alpha 0.0.1). The whitepaper defines the scope (mise en demeure, saisine, CERFA, deadlines), the architecture (prompt templates + CERFA XML forms), and the integration with SelfJustice output. Prototype implementation is planned for v0.1.0 alongside a live deployment on the same domain (`justice.my-self.fr/act`).
+SelfAct **runs as well** — worth stating plainly, because its own folder does not show it. The `selfact/` directory holds the licence, the whitepaper and the presentation; the working code lives under `selfjustice/`, because SelfAct is its operational extension:
+
+| Piece | Where | What it does |
+|---|---|---|
+| Catalogue | [`api/act/`](./selfjustice/api/act/) | 1,895 official resources harvested from service-public.gouv.fr — 871 forms, 685 online procedures, 339 letter templates, in 16 categories. Refreshed on the 1st and 15th. |
+| Situation matching | `api/act/find.php` | 20 hand-curated situations: "I am being laid off" → the step, the article, the form. |
+| Deadline computation | `api/act/deadline.php` | The one piece that computes rather than retrieves, with calendar export. |
+| Letter drafting | `api/act/draft.php` | Formal notice, saisine (conciliateur, Défenseur des droits), contestation, termination, recours — each with a "NON OFFICIEL — IRRECEVABLE" watermark that cannot be removed at print time. |
+
+Four of the twelve SelfRight MCP tools are SelfAct's. About 3,960 lines in all. Moving that code under `selfact/` is pending, and until it happens the folder reads far emptier than the module is.
 
 ---
 

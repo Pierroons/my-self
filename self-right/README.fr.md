@@ -7,8 +7,8 @@
 > *Connais tes droits, fais-les valoir.*
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfJustice: v0.1.0](https://img.shields.io/badge/SelfJustice-v0.1.0-green.svg)](./selfjustice/)
-[![SelfAct: alpha 0.0.1](https://img.shields.io/badge/SelfAct-alpha%200.0.1-lightgrey.svg)](./selfact/)
+[![SelfJustice : v0.1.0 bêta](https://img.shields.io/badge/SelfJustice-v0.1.0%20b%C3%AAta-green.svg)](./selfjustice/)
+[![SelfAct : v0.1.2](https://img.shields.io/badge/SelfAct-v0.1.2-yellow.svg)](./selfact/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
@@ -34,7 +34,7 @@ Self-Right prend en charge l'arc complet en deux modules complémentaires : **co
 
 **SelfJustice seul** produit une analyse juridique impartiale avec citations — mais vous laisse avec un document. Vous savez ce que dit la loi. Et maintenant ? Rien, sauf si vous savez rédiger une mise en demeure, identifier le tribunal compétent, remplir un CERFA, respecter un délai procédural. Pour 90 % des citoyens, c'est là qu'est le mur.
 
-**SelfAct seul** serait une bibliothèque de modèles — utile, mais dangereux sans contexte. Une mise en demeure avec la mauvaise base légale est pire qu'une absence de courrier.
+**SelfAct seul** est une bibliothèque de modèles — utile, mais dangereux sans contexte. Une mise en demeure avec la mauvaise base légale est pire qu'une absence de courrier.
 
 **Ensemble**, la chaîne est complète :
 
@@ -58,16 +58,25 @@ Du brouillard du « je pense que je suis dans mes droits » au « cette lettre p
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfJustice](./selfjustice/) | Pré-analyse juridique impartiale assistée par IA | v0.1.0 ✅ — en ligne sur [justice.my-self.fr](https://justice.my-self.fr) |
-| [SelfAct](./selfact/) | Extension opérationnelle : courriers, formulaires, délais | alpha 0.0.1 — phase de conception |
+| [SelfJustice](./selfjustice/) | Directives juridiques lisibles par machine + API ouverte du droit | **v0.1.0 bêta** — en ligne sur [justice.my-self.fr](https://justice.my-self.fr) |
+| [SelfAct](./selfact/) | Courriers, formulaires et délais bâtis sur cette analyse | **v0.1.2** — API, catalogue et pages en service ; ~3 960 lignes sous [`selfjustice/`](./selfjustice/) |
 
 ---
 
 ## Statut
 
-SelfJustice est **déployé en production** et sert n'importe quel agent IA (Claude, ChatGPT, Mistral, Gemini, Perplexity) avec 488 903 articles juridiques français officiels + 705 articles de traités UE/CEDH via une API HTTP ouverte. N'importe qui peut l'interroger, n'importe qui peut l'auto-héberger.
+SelfJustice est **déployé en production** et sert n'importe quel agent IA (Claude, ChatGPT, Mistral, Gemini, Perplexity) avec tout le corpus juridique français indexé et les textes UE/CEDH, via une API HTTP ouverte. N'importe qui peut l'interroger, n'importe qui peut l'auto-héberger. Compteurs en direct : [`/api/status`](https://justice.my-self.fr/api/status).
 
-SelfAct est en **phase de conception** (alpha 0.0.1). Le whitepaper définit le périmètre (mise en demeure, saisine, CERFA, délais), l'architecture (templates de prompts + formulaires CERFA XML), et l'intégration avec la sortie de SelfJustice. L'implémentation prototype est prévue pour la v0.1.0 avec un déploiement live sur le même domaine (`justice.my-self.fr/act`).
+SelfAct **tourne aussi** — il faut le dire franchement, parce que son dossier ne le montre pas. Le répertoire `selfact/` porte la licence, le whitepaper et la présentation ; le code qui travaille vit sous `selfjustice/`, parce que SelfAct en est le prolongement opérationnel :
+
+| Brique | Où | Ce qu'elle fait |
+|---|---|---|
+| Catalogue | [`api/act/`](./selfjustice/api/act/) | 1 895 ressources officielles moissonnées sur service-public.gouv.fr — 871 formulaires, 685 téléservices, 339 modèles de lettre, rangés en 16 catégories. Rafraîchi les 1er et 15. |
+| Aiguillage | `api/act/find.php` | 20 situations curées à la main : « je me fais licencier » → l'acte, l'article, le formulaire. |
+| Calcul de délai | `api/act/deadline.php` | Le seul endroit qui calcule au lieu de restituer, avec export agenda. |
+| Gabarit de courrier | `api/act/draft.php` | Mise en demeure, saisine (conciliateur, Défenseur des droits), contestation, résiliation, recours — chacun avec un filigrane « NON OFFICIEL — IRRECEVABLE » non supprimable à l'impression. |
+
+Quatre des douze outils MCP SelfRight sont ceux de SelfAct. Environ 3 960 lignes au total. Remonter ce code sous `selfact/` reste à faire ; d'ici là, le dossier paraît bien plus vide que le module ne l'est.
 
 ---
 
