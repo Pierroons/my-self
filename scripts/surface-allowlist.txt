@@ -10,6 +10,13 @@
 # ⚠️ N'écris ici que ce qu'un `location` du serveur sert NOMMÉMENT. Un fichier
 # qui répond 200 parce qu'il traîne sous une racine n'est pas une exception,
 # c'est le défaut que cette sonde cherche.
+#
+# 🔑 **Ce fichier est versionné, donc public.** Les exceptions propres à une
+# instance — un nom de service, un chemin qui n'existe que chez elle — n'y
+# ont pas leur place : elles vont dans `~/.surface-allowlist.local`, que la
+# sonde lit en plus de celui-ci. Même format, même exigence de raison.
+# L'audit OPSEC a bloqué un premier essai qui nommait ici un service privé ;
+# il avait raison, et c'est ce qui a fait apparaître la séparation.
 
 /act/api/directives\.md$	Servi par un `location =` nommé : c'est le contrat que les assistants lisent pour utiliser SelfJustice.
 /act/api/directives\.txt$	Même fichier sous une seconde extension, servi par alias pour les clients qui refusent le type markdown.

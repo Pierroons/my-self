@@ -26,6 +26,13 @@
 set -uo pipefail
 
 ICI="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# 🔑 Le canal d'alerte est celui de la sonde de fraîcheur, lu dans le même
+# fichier de configuration : un contrôle planifié qui n'écrit que dans un
+# journal n'alerte personne. Le fichier reste hors dépôt — il porte le jeton.
+[ -r "$HOME/.check-fraicheur.env" ] && . "$HOME/.check-fraicheur.env"
+NTFY_URL="${NTFY_URL:-}"
+NTFY_TOKEN="${NTFY_TOKEN:-}"
 VHOSTS="${SURFACE_VHOSTS:-/etc/nginx/sites-enabled}"
 ALLOWLIST="${SURFACE_ALLOWLIST:-$ICI/surface-allowlist.txt}"
 PLAFOND="${SURFACE_PLAFOND:-300}"
@@ -37,10 +44,30 @@ VERBEUX=""
 # est un autre défaut, que cette sonde ne prétend pas couvrir.
 WEB="html|htm|php|css|js|mjs|map|json|webmanifest|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|eot|txt|xml|pdf|mp4|webm|wasm"
 
+# 🔑 **Certains répertoires ne sont jamais du contenu web, quelle que soit
+# l'extension.** Le 21/08/2026, cette sonde a signalé 86 fichiers `.md` sous des
+# répertoires de dépendances — et manqué le seul qui compte vraiment :
+# `vendor/composer/installed.json`, l'inventaire complet des bibliothèques avec
+# leurs versions exactes. Il portait l'extension `.json`, donc du contenu web
+# légitime, donc rien à dire. La configuration refusait pourtant déjà
+# `composer.json` et `composer.lock` à la racine : la porte d'entrée était
+# fermée, celle de service ouverte.
+#
+# Un `vendor/` est chargé depuis le disque par l'application ; aucun navigateur
+# n'a de raison d'y entrer.
+JAMAIS_WEB="(^|/)(vendor|node_modules|\.git|\.svn|tests?|spec)/"
+
 [ -d "$VHOSTS" ] || { echo "répertoire de vhosts introuvable : $VHOSTS" >&2; exit 2; }
 [ -r "$ALLOWLIST" ] || { echo "allowlist introuvable : $ALLOWLIST" >&2; exit 2; }
 
-mapfile -t EXCEPTIONS < <(grep -vE '^\s*(#|$)' "$ALLOWLIST" | cut -f1)
+# La liste du dépôt porte ce qui vaut pour toute instance ; la liste locale
+# porte ce qui n'appartient qu'à celle-ci. Deux fichiers parce que le premier
+# est publié et le second non — pas par goût de la séparation.
+LOCALE="${SURFACE_ALLOWLIST_LOCALE:-$HOME/.surface-allowlist.local}"
+mapfile -t EXCEPTIONS < <(
+    grep -vE '^\s*(#|$)' "$ALLOWLIST" | cut -f1
+    [ -r "$LOCALE" ] && grep -vE '^\s*(#|$)' "$LOCALE" | cut -f1
+)
 
 # ── Les couples (nom servi, racine) que le serveur déclare ──────────────────
 #
@@ -85,8 +112,47 @@ while IFS=$'\t' read -r nom racine; do
         continue
     fi
 
+    # ── Les répertoires qui ne sont jamais du contenu web ────────────────────
+    #
+    # 🔑 On sonde le RÉPERTOIRE, pas ses fichiers. Énumérer un `vendor/` fait
+    # 2 165 requêtes pour apprendre une seule chose — qu'il est lisible — et un
+    # contrôle qui dure des minutes ne tournera jamais en tâche planifiée.
+    # Une ligne par répertoire exposé dit ce qu'il y a à faire ; mille lignes
+    # de fichiers ne le disent pas mieux.
+    dossier=""; n_fichiers=""; temoin=""; rel=""
+    while IFS= read -r dossier; do
+        [ -z "$dossier" ] && continue
+        rel="${dossier#"$racine"/}"
+        # ⚠️ **Plusieurs témoins, jamais un seul.** Une première version prenait
+        # le premier fichier venu : elle est tombée sur un `composer.json`, que
+        # la configuration refusait déjà nommément, et a déclaré fermé un
+        # répertoire de 1 100 fichiers parfaitement lisibles. Un témoin refusé
+        # ne prouve rien sur ses voisins.
+        code=""
+        while IFS= read -r temoin; do
+            [ -z "$temoin" ] && continue
+            c=$(curl -s -o /dev/null -w "%{http_code}" -H "Cache-Control: no-cache" \
+                --max-time 10 "https://$nom/$rel/$temoin?sonde=$RANDOM")
+            testes=$((testes + 1))
+            if [ "$c" = "200" ]; then code=200; break; fi
+        done < <(find "$dossier" -type f -printf '%P\n' 2>/dev/null | shuf -n 6 2>/dev/null \
+                 || find "$dossier" -type f -printf '%P\n' 2>/dev/null | head -6)
+        [ "$code" = "200" ] || continue
+        if exempte "/$rel/"; then
+            ecartes=$((ecartes + 1))
+            [ -n "$VERBEUX" ] && printf "  ·  %s/ — servi délibérément\n" "$rel"
+            continue
+        fi
+        n_fichiers=$(find "$dossier" -type f 2>/dev/null | wc -l)
+        printf "  ✗  %-46s RÉPERTOIRE ENTIER lisible (%s fichiers)\n" \
+               "https://$nom/$rel/" "$n_fichiers" >&2
+        trouves=$((trouves + 1))
+    done < <(find "$racine" -type d 2>/dev/null | grep -E "$JAMAIS_WEB?$" || true)
+
+    # ── Les fichiers isolés, hors de ces répertoires ─────────────────────────
     mapfile -t candidats < <(
         find "$racine" -type f 2>/dev/null \
+        | grep -vE "$JAMAIS_WEB" \
         | grep -vE "\.($WEB)$" \
         | sed "s|^$racine/||" | sort
     )
@@ -128,8 +194,35 @@ echo "  $testes fichier(s) interrogé(s), $ecartes écarté(s) par l'allowlist"
 
 if [ "$trouves" -eq 0 ]; then
     echo "✓ aucune surface inattendue."
+    # Le silence se lève quand la surface se referme : le prochain décrochage
+    # doit pouvoir crier tout de suite.
+    rm -f "${SURFACE_SILENCE_FICHIER:-$HOME/.check-surface.dernier-cri}"
     exit 0
 fi
 echo "✗ $trouves fichier(s) hors contenu web répondent 200." >&2
 echo "  Soit le serveur ne doit plus les servir, soit ils entrent à l'allowlist AVEC leur raison." >&2
+
+# ⚠️ **Le même fait ne se notifie qu'une fois.** Une surface ouverte le reste
+# jusqu'à ce qu'on la ferme : sans garde, ce contrôle enverrait une alerte
+# chaque matin pour un seul événement, et un canal qui répète devient un canal
+# qu'on n'ouvre plus. La signature ne retient que ce qui décrit le fait.
+SIGNATURE=$(printf '%s' "$trouves surfaces")
+SILENCE_FICHIER="${SURFACE_SILENCE_FICHIER:-$HOME/.check-surface.dernier-cri}"
+SILENCE_SECONDES=${SURFACE_SILENCE:-86400}
+DEJA=""; QUAND=0
+[ -r "$SILENCE_FICHIER" ] && IFS='|' read -r QUAND DEJA < "$SILENCE_FICHIER"
+MAINTENANT=$(date +%s)
+if [ "$SIGNATURE" = "$DEJA" ] && [ $((MAINTENANT - ${QUAND:-0})) -lt "$SILENCE_SECONDES" ]; then
+    [ -n "$VERBEUX" ] && echo "  (déjà notifié, silence en cours)"
+    exit 1
+fi
+if [ -n "$NTFY_URL" ]; then
+    curl -s -m 10 -H "Authorization: Bearer $NTFY_TOKEN" \
+         -H "Title: Surface servie — fichiers hors contenu web" -H "Priority: high" \
+         -d "$trouves fichier(s) ou répertoire(s) du dépôt répondent 200. Lancer check-surface-servie.sh pour le détail." \
+         "$NTFY_URL" >/dev/null 2>&1 \
+      && { echo "  alerte envoyée"
+           printf '%s|%s\n' "$MAINTENANT" "$SIGNATURE" > "$SILENCE_FICHIER"; } \
+      || echo "  ⚠️ envoi de l'alerte en échec" >&2
+fi
 exit 1
