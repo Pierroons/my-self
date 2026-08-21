@@ -5,7 +5,7 @@
 **Moteur de modération communautaire autonome par raisonnement social**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0%20whitepaper-orange.svg)](#statut)
+[![Status: v0.2.0](https://img.shields.io/badge/status-v0.2.0-yellow.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#)
@@ -24,10 +24,10 @@ SelfModerate est un moteur de modération qui permet aux communautés en ligne d
 
 ## Comment ça marche
 
-> **Cette page décrit la conception cible.** Le code existe — dans
-> [`demo/bi-self-duo/`](../../demo/bi-self-duo/) et [`demo/lab/`](../../demo/lab/) —
-> et n'en couvre qu'une partie. Ce qui manque est marqué *pas encore codé* ;
-> ce qui n'est tenu qu'à moitié, *partiel*.
+> **Cette page décrit la conception cible.** Le moteur vit dans
+> [`src/Moderate.php`](./src/Moderate.php) et couvre une partie de ce qui suit ;
+> [`demo/lab/`](../../demo/lab/) l'importe et s'en sert. Ce qui manque est marqué
+> *pas encore codé* ; ce qui n'est tenu qu'à moitié, *partiel*.
 
 
 ### Système de vote
@@ -74,9 +74,13 @@ La punition n'est pas technique — elle est sociale.
 
 ## Statut
 
-🟡 **Phase whitepaper (v0.1.0)** — protocole complet rédigé. Le code vit dans les
-démos du dépôt et couvre une partie de la conception ; le dossier de module ne le
-porte pas encore.
+🟢 **v0.2.0** — le moteur est ici, dans `src/`, et le lab l'importe comme il
+importe SelfRecover et SelfDataGuard. Six mécanismes du protocole restent à
+écrire : ils sont marqués dans les listes ci-dessus.
+
+Contrôles : [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
+— huit, chacun vu rougir. Ils vivent encore côté lab parce qu'ils ont besoin d'un
+schéma de base ; ils rejoindront `tests/` quand le module portera le sien.
 
 ## Licence
 

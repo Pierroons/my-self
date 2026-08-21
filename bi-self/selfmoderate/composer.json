@@ -1,0 +1,17 @@
+{
+    "name": "pierroons/selfmoderate",
+    "description": "SelfModerate — réputation distribuée et anti-manipulation, sans modérateur dédié.",
+    "type": "library",
+    "license": "AGPL-3.0-or-later",
+    "require": {
+        "php": "^8.1",
+        "ext-pdo": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Pierroons\\SelfModerate\\": "src/"
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

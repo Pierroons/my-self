@@ -65,6 +65,7 @@ protection mechanisms.
 | [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.1.0** — in service, 191 tests |
 | [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.1.0 beta** |
 | [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.2** — code, not online yet |
+| [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.2.0** — installable engine, 8 checks; 6 protocol mechanisms missing |
 
 Every line above links to code you can read and run. No link to a hosted demo:
 everything self-hosts from this repository.
@@ -114,14 +115,12 @@ php -S 127.0.0.1:8090 -t public
 
 ## Published designs
 
-SelfGuard and SelfKeyGuard exist as documents only. SelfModerate does have code —
-it runs in the demos above — but its module directory does not carry it yet.
+Two designs exist as documents only.
 
-| Design | Question | Document | Code |
-|---|---|---|---|
-| SelfGuard | Destruction under coercion | [whitepaper](./self-security/selfguard/docs/whitepaper.md) | — |
-| SelfKeyGuard | Hardware 2FA | [whitepaper](./self-security/selfkeyguard/docs/whitepaper.md) | — |
-| SelfModerate | How do you behave? | [README](./bi-self/selfmoderate/README.md) | [duo demo](./demo/bi-self-duo/), [lab](./demo/lab/) |
+| Design | Question | Document |
+|---|---|---|
+| SelfGuard | Destruction under coercion | [whitepaper](./self-security/selfguard/docs/whitepaper.md) |
+| SelfKeyGuard | Hardware 2FA | [whitepaper](./self-security/selfkeyguard/docs/whitepaper.md) |
 
 ---
 

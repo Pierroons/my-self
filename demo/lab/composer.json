@@ -11,7 +11,8 @@
         "ext-json": "*",
         "ext-mbstring": "*",
         "pierroons/selfdataguard": "@dev",
-        "pierroons/selfrecover": "@dev"
+        "pierroons/selfrecover": "@dev",
+        "pierroons/selfmoderate": "@dev"
     },
     "repositories": [
         {
@@ -24,6 +25,13 @@
         {
             "type": "path",
             "url": "../../bi-self/selfrecover",
+            "options": {
+                "symlink": true
+            }
+        },
+        {
+            "type": "path",
+            "url": "../../bi-self/selfmoderate",
             "options": {
                 "symlink": true
             }

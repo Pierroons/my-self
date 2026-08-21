@@ -67,6 +67,7 @@ de droit tenues à jour, pas des dispositifs de protection.
 | [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.1.0** — en service, 191 tests |
 | [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.1.0 bêta** |
 | [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — code, pas encore en ligne |
+| [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.2.0** — moteur installable, 8 contrôles ; 6 mécanismes du protocole manquent |
 
 Chaque ligne ci-dessus mène à du code lisible et exécutable. Pas de lien vers une
 démo hébergée : tout s'auto-héberge depuis ce dépôt.
@@ -117,15 +118,12 @@ php -S 127.0.0.1:8090 -t public
 
 ## Conceptions publiées
 
-SelfGuard et SelfKeyGuard n'existent qu'à l'état de document. SelfModerate, lui,
-a du code — il tourne dans les démos ci-dessus — mais son dossier de module ne le
-porte pas encore.
+Deux conceptions n'existent qu'à l'état de document.
 
-| Conception | Question | Document | Code |
-|---|---|---|---|
-| SelfGuard | Destruction sous contrainte | [whitepaper](./self-security/selfguard/docs/whitepaper.md) | — |
-| SelfKeyGuard | 2FA matérielle | [whitepaper](./self-security/selfkeyguard/docs/whitepaper.md) | — |
-| SelfModerate | Comment se comporte-t-on ? | [README](./bi-self/selfmoderate/README.fr.md) | [démo duo](./demo/bi-self-duo/), [lab](./demo/lab/) |
+| Conception | Question | Document |
+|---|---|---|
+| SelfGuard | Destruction sous contrainte | [whitepaper](./self-security/selfguard/docs/whitepaper.md) |
+| SelfKeyGuard | 2FA matérielle | [whitepaper](./self-security/selfkeyguard/docs/whitepaper.md) |
 
 ---
 

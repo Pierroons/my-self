@@ -5,7 +5,7 @@
 **Autonomous community moderation engine through social reasoning**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.1.0](https://img.shields.io/badge/status-v0.1.0%20whitepaper-orange.svg)](#status)
+[![Status: v0.2.0](https://img.shields.io/badge/status-v0.2.0-yellow.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#)
@@ -24,10 +24,10 @@ SelfModerate is a moderation engine that lets online communities self-regulate w
 
 ## How it works
 
-> **This page describes the target design.** The code exists — in
-> [`demo/bi-self-duo/`](../../demo/bi-self-duo/) and [`demo/lab/`](../../demo/lab/) —
-> and covers only part of it. What is missing is marked *not implemented yet*;
-> what is half-kept, *partial*.
+> **This page describes the target design.** The engine lives in
+> [`src/Moderate.php`](./src/Moderate.php) and covers part of what follows;
+> [`demo/lab/`](../../demo/lab/) imports and uses it. What is missing is marked
+> *not implemented yet*; what is half-kept, *partial*.
 
 
 ### Vote system
@@ -74,8 +74,13 @@ The punishment isn't technical — it's social.
 
 ## Status
 
-🟡 **Concept phase** — whitepaper written. The code lives in the repository's demos
-and covers part of the design; the module directory does not carry it yet.
+🟢 **v0.2.0** — the engine is here, under `src/`, and the lab imports it the way
+it imports SelfRecover and SelfDataGuard. Six protocol mechanisms remain to be
+written; they are marked in the lists above.
+
+Checks: [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
+— eight, each seen failing first. They still live on the lab side because they
+need a database schema; they will move to `tests/` once the module carries one.
 
 ## License
 
