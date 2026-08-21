@@ -56,7 +56,7 @@ Un module protège les données. L'autre protège les objets. La résistance à 
 |--------|------|--------|
 | [SelfGuard](./selfguard/) | Coffre-fort de données avec destruction garantie sous contrainte | alpha 0.0.1 — phase concept |
 | [SelfKeyGuard](./selfkeyguard/) | 2FA matériel pour objets physiques (voiture, moto, maison) | alpha 0.0.1 — phase concept |
-| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, survivant à l'exfiltration de la base | beta 0.1.0 — démo déployée (dataguard.my-self.fr) |
+| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, survivant à l'exfiltration de la base | v0.2.0 — en service, démo sur dataguard.my-self.fr |
 
 ---
 

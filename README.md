@@ -62,7 +62,7 @@ protection mechanisms.
 |---|---|---|
 | [SelfRecover](./bi-self/selfrecover/) | Who are you? | **v0.4.0** — usable, local demo |
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | What if the disk is stolen? | **v0.3.0** — deployed and documented |
-| [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.1.0** — in service, 191 tests |
+| [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.2.0** — in service, 191 checks |
 | [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.1.0 beta** |
 | [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.2** — code, not online yet |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.2.0** — installable engine, 8 checks; 6 protocol mechanisms missing |

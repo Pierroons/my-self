@@ -5,7 +5,7 @@
 **Application-layer data-at-rest protection that survives a database exfiltration.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.1.0 in service](https://img.shields.io/badge/status-v0.1.0%20in%20service-brightgreen.svg)](#status)
+[![Status: v0.2.0 in service](https://img.shields.io/badge/status-v0.2.0%20in%20service-brightgreen.svg)](#status)
 [![Tests: 191 passing](https://img.shields.io/badge/tests-191%20passing-brightgreen.svg)](#testing)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
@@ -102,16 +102,13 @@ Most e-commerce deployments will pick **Hybrid**. Health, banking, identity prov
 
 ## Status
 
-**v0.1.0-beta — reference library + standalone demo**, May 8, 2026.
+**v0.2.0 — reference library, escrow compartment, standalone demo**, 21 August 2026.
 
-Whitepaper complete (specification + threat model). PHP reference library implemented (~1230 lines, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, AES-256-GCM) covered by 191 sanity tests. A clickable HTML demo is included to inspect the encrypted database in real time.
+Whitepaper complete (specification + threat model). PHP reference library implemented (2 249 lines across 17 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, AES-256-GCM) covered by **191 checks across 8 suites**, all passing. A clickable HTML demo is included to inspect the encrypted database in real time.
 
-This module is **not yet production-ready**. It is published as beta to:
+The module runs on real deployments. It has **not been audited by an external cryptographer**: its design is verified today by its author and by the readers of this repository, and by no one else.
 
-- Invite community review of the cryptographic design AND the implementation
-- Allow security researchers to challenge the threat model with a runnable target
-- Coordinate with downstream integrators (notably SelfRecover users)
-- First real-world deployment target: a small production e-commerce site
+Reviews are wanted, on the design and on the implementation alike — security researchers get a runnable target rather than a specification to argue with. Downstream integrators, SelfRecover users in particular, should read the threat model before wiring it in.
 
 A formal community cryptographic audit is planned before v1.0.0. ANSSI Visa de sécurité submission planned for the v0.3.0 milestone.
 

@@ -64,7 +64,7 @@ de droit tenues à jour, pas des dispositifs de protection.
 |---|---|---|
 | [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | **v0.4.0** — utilisable, démo locale |
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.3.0** — installé et documenté |
-| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.1.0** — en service, 191 tests |
+| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.2.0** — en service, 191 contrôles |
 | [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.1.0 bêta** |
 | [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — code, pas encore en ligne |
 | [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.2.0** — moteur installable, 8 contrôles ; 6 mécanismes du protocole manquent |

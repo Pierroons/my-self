@@ -97,7 +97,7 @@ Reload the page — you'll get a clean DB and a fresh server-side blind key. The
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  SelfDataGuard v0.1.0-beta — Dump my database — and you get encrypted noise  │
+│  SelfDataGuard v0.2.0 — Dump my database — and you get encrypted noise       │
 │  GitHub · Whitepaper EN · Whitepaper FR · AGPL-3.0                           │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ How this demo works (full-width explainer)                                   │

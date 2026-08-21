@@ -5,7 +5,7 @@
 **Protection des données au repos côté application, qui survit à une exfiltration de base de données.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.1.0 en service](https://img.shields.io/badge/statut-v0.1.0%20en%20service-brightgreen.svg)](#statut)
+[![Statut : v0.2.0 en service](https://img.shields.io/badge/statut-v0.2.0%20en%20service-brightgreen.svg)](#statut)
 [![Tests : 191 passants](https://img.shields.io/badge/tests-191%20passants-brightgreen.svg)](#tests)
 [![Pilier : Self-Security](https://img.shields.io/badge/pilier-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
@@ -102,16 +102,13 @@ La majorité des déploiements e-commerce choisiront **Hybrid**. Santé, banque,
 
 ## Statut
 
-**v0.1.0-beta — bibliothèque de référence + démo standalone**, 8 mai 2026.
+**v0.2.0 — bibliothèque de référence, compartiment escrow, démo standalone**, 21 août 2026.
 
-Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (~1230 lignes, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, AES-256-GCM) couvertes par 191 tests sanity. Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
+Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (2 249 lignes réparties sur 17 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, AES-256-GCM) couvertes par **191 contrôles répartis sur 8 suites**, tous passants. Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
 
-Ce module **n'est pas encore prêt pour la production**. Il est publié en beta pour :
+Le module tourne sur des déploiements réels. Il **n'a pas été audité par un cryptographe extérieur** : sa conception n'est vérifiée à ce jour que par son auteur et par les lecteurs de ce dépôt.
 
-- Inviter une revue communautaire de la conception cryptographique ET de l'implémentation
-- Permettre aux chercheurs en sécurité de challenger le modèle de menace avec une cible exécutable
-- Coordonner avec les intégrateurs en aval (notamment les utilisateurs de SelfRecover)
-- Première cible de déploiement réel : un petit site e-commerce de production
+Les revues sont recherchées, sur la conception comme sur l'implémentation — les chercheurs en sécurité disposent d'une cible exécutable plutôt que d'une spécification à contester. Les intégrateurs en aval, en particulier les utilisateurs de SelfRecover, lisent le modèle de menace avant de le brancher.
 
 Un audit cryptographique communautaire formel est prévu avant la v1.0.0. Soumission ANSSI Visa de sécurité prévue à l'horizon v0.3.0.
 
