@@ -30,17 +30,74 @@ fi
 # hook. Ce qui reste dans le passé se traite par git-filter-repo, pas ici.
 # Sans amont — première publication d'une branche — on retombe sur l'audit
 # complet : c'est le cas où rien n'a encore été vu par personne.
+#
+# 🔑 Le périmètre se lit sur STDIN, pas sur `@{u}`. Git y écrit une ligne par
+# référence réellement poussée : « <ref locale> <sha local> <ref distante>
+# <sha distant> ». La branche de suivi ne dit QUE la destination habituelle.
+#
+# Mesuré le 21/08/2026 : une avance de `main` depuis `dev` a publié treize
+# commits pendant que le hook mesurait `origin/dev..HEAD`, soit zéro. L'audit
+# a rendu « ✓ Rien à signaler » sans avoir rien lu — et c'est la manœuvre
+# employée à CHAQUE publication vers `main`. La ligne « aucun commit dans le
+# périmètre — rien n'a été lu » a sauvé l'honnêteté du verdict ; elle n'a pas
+# empêché l'envoi.
+ZERO='0000000000000000000000000000000000000000'
+PLAGES=()
+COMPLET=0
+LIGNES=0
+while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
+  [ -z "${LOCAL_REF:-}" ] && continue
+  LIGNES=$((LIGNES + 1))
+  # Suppression d'une référence distante : rien de nouveau n'est publié.
+  [ "$LOCAL_SHA" = "$ZERO" ] && continue
+  if [ "$REMOTE_SHA" = "$ZERO" ]; then
+    # La référence n'existe pas encore en face : tout est neuf pour elle, donc
+    # personne n'a jamais rien vu. C'est le cas où l'audit complet est le bon.
+    COMPLET=1
+  else
+    PLAGES+=("$REMOTE_SHA..$LOCAL_SHA")
+  fi
+done
+
 ARGS=()
-if UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
-  ARGS=(--range "$UPSTREAM..HEAD")
-  N=$(git rev-list --count "$UPSTREAM..HEAD")
-  echo "▸ Périmètre : $N commit(s) à publier ($UPSTREAM..HEAD)"
-else
-  echo "▸ Périmètre : historique complet (aucune branche amont)"
+if [ "$LIGNES" = "0" ]; then
+  # Appelé à la main, hors d'un envoi : pas de stdin. On retombe sur la branche
+  # de suivi, en le disant — un périmètre deviné n'est pas un périmètre lu.
+  if UPSTREAM=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
+    ARGS=(--range "$UPSTREAM..HEAD")
+    echo "▸ Périmètre : $(git rev-list --count "$UPSTREAM..HEAD") commit(s) — déduit de la branche amont ($UPSTREAM..HEAD), aucun envoi en cours"
+  else
+    echo "▸ Périmètre : historique complet (aucune branche amont)"
+  fi
+elif [ "$COMPLET" = "1" ]; then
+  echo "▸ Périmètre : historique complet (référence distante nouvelle)"
+elif [ ${#PLAGES[@]} -eq 0 ]; then
+  echo "▸ Périmètre : suppression de référence, rien à publier"
+  exit 0
 fi
 
+# Une plage par référence poussée : un envoi peut en viser deux d'un coup, et
+# n'en auditer qu'une laisserait passer l'autre en silence.
+if [ ${#PLAGES[@]} -gt 0 ] && [ "$COMPLET" = "0" ]; then
+  for PLAGE in "${PLAGES[@]}"; do
+    echo "▸ Périmètre : $(git rev-list --count "$PLAGE") commit(s) à publier ($PLAGE)"
+  done
+fi
+
+# Rend 0 si l'audit ÉCHOUE, pour se lire « if echec_audit; then bloquer ».
+echec_audit() {
+  if [ ${#PLAGES[@]} -gt 0 ] && [ "$COMPLET" = "0" ]; then
+    for PLAGE in "${PLAGES[@]}"; do
+      "$ROOT/scripts/audit-opsec.sh" --range "$PLAGE" || return 0
+    done
+    return 1
+  fi
+  "$ROOT/scripts/audit-opsec.sh" "${ARGS[@]}" || return 0
+  return 1
+}
+
 if [ -x "$ROOT/scripts/audit-opsec.sh" ]; then
-  if ! "$ROOT/scripts/audit-opsec.sh" "${ARGS[@]}"; then
+  if echec_audit; then
     echo ""
     echo "❌ PUSH BLOQUÉ."
     echo "   Si la donnée est déjà commitée, la corriger maintenant ne la"
