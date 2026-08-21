@@ -322,10 +322,37 @@ async def _get(
         raise ApiIndisponible(f"réponse illisible : {e}") from e
 
 
+# 🔑 Les mots qui ne portent aucun sujet, et qu'un score de pertinence ne doit
+# donc pas compter. La liste tenait d'abord aux seuls articles et prépositions,
+# ce qui laissait passer tout le vocabulaire de la question — « mon », « mes »,
+# « puis », « quels », « combien ». Une vraie question de droit posée en langue
+# courante en contient la moitié, et la couverture la punissait à ce titre :
+# mesuré le 21/08/2026 sur neuf questions réelles, cinq déclenchaient l'alerte
+# de pertinence au même niveau que des chaînes de mots sans rapport. Avec cette
+# liste, trois. Le chevauchement se resserre sans disparaître.
+#
+# Les entrées s'écrivent sans accent : la comparaison se fait sur la forme
+# désaccentuée, sinon « même » et « été » échappent à la liste qui les nomme.
 _MOTS_OUTILS = {
+    # articles, prépositions, conjonctions
     "de", "des", "du", "la", "le", "les", "un", "une", "et", "ou", "en", "au",
     "aux", "sur", "sous", "dans", "pour", "par", "avec", "sans", "que", "qui",
-    "est", "sont", "son", "ses", "leur", "leurs", "ce", "cet", "cette",
+    "ce", "cet", "cette", "ces", "celui", "celle", "ceux", "dont", "mais",
+    "donc", "car", "comme", "chez", "vers", "entre", "contre", "apres",
+    "avant", "depuis", "pendant", "alors", "ainsi", "cela", "ceci",
+    # pronoms et possessifs
+    "son", "ses", "leur", "leurs", "mon", "ton", "mes", "tes", "nos", "vos",
+    "notre", "votre", "moi", "toi", "lui", "elle", "elles", "ils", "eux",
+    # auxiliaires et verbes support
+    "est", "sont", "suis", "etes", "etre", "ete", "etait", "etaient", "sera",
+    "seront", "avoir", "peut", "peux", "puis", "peuvent", "pouvez", "dois",
+    "doit", "doivent", "fait", "faire", "faut", "agit",
+    # vocabulaire de la question
+    "quel", "quelle", "quels", "quelles", "quoi", "comment", "pourquoi",
+    "combien", "quand", "lequel", "laquelle", "lesquels",
+    # quantifieurs et adverbes
+    "pas", "plus", "tout", "tous", "toute", "toutes", "meme", "aussi", "tres",
+    "bien",
 }
 
 
@@ -341,7 +368,7 @@ def _mots_utiles(requete: str) -> list[str]:
     """Les mots qui portent le sujet, sans les mots-outils ni les sigles courts."""
     return [
         m for m in re.findall(r"\w{3,}", requete.lower())
-        if m not in _MOTS_OUTILS
+        if _sans_accents(m) not in _MOTS_OUTILS
     ]
 
 
@@ -1053,7 +1080,17 @@ async def verifier_jurisprudence(
             il reste prudent sans elle.
     """
     chemin = f"/jurisprudence/verifier/{urllib.parse.quote(reference, safe='')}"
-    params = {"jurisdiction": juridiction} if juridiction else None
+    # La date n'est transmise que bien formée : mal formée, l'index la refuse en
+    # 400, ce qui ferait passer une réponse sur la date pour une réponse sur la
+    # référence. Le format fautif se dit plus bas, où il ne coûte rien.
+    params = {
+        cle: val
+        for cle, val in (
+            ("jurisdiction", juridiction),
+            ("date", date.strip() if date and DATE_ISO.fullmatch(date.strip()) else None),
+        )
+        if val
+    } or None
     try:
         data = await _get(chemin, params)
     except RequeteInvalide as e:

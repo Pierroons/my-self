@@ -76,6 +76,9 @@ jobs:
       - name: Garde-fou — entrées acceptées par l'API SelfJustice
         run: php self-right/selfjustice/tests/sanity_entree_api.php
 
+      - name: Garde-fou — mots comptés par le score de pertinence (MCP)
+        run: python3 self-right/selfjustice/tests/sanity_pertinence.py
+
       - name: Garde-fou — coût constant du hash factice (bi-self-duo)
         run: php demo/bi-self-duo/tests/sanity_timing.php
 
