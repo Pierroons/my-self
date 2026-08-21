@@ -250,5 +250,23 @@ echo "$(date '+%-d') ${MOIS[$(( $(date +%-m) - 1 ))]} $(date +%Y)" \
 # zéro. Le 03/08/2026, ce nettoyage a obligé à re-télécharger 389 archives.
 # 2,7 Go conservés valent mieux qu'une journée de re-téléchargement.
 DISK=$(du -sh "$TARBALLS_DIR" | cut -f1)
+
+# 🔑 **La date du CONTENU et celle de la SYNCHRONISATION sont deux choses.**
+# `legi_last_update.txt` porte la date du dernier diff que la DILA a publié :
+# elle précède forcément notre passage, et n'avance plus jusqu'au suivant. Les
+# deux autres bases écrivaient, elles, leur date d'exécution sous le même nom.
+#
+# Trois bases, deux sémantiques, un seul nom de champ — et un client incapable
+# de trancher. Constaté le 21/08/2026 : le serveur MCP annonçait « RETARD —
+# base LEGI arrêtée au 14 août, l'échéance du 15 n'a pas été honorée » dans
+# CHAQUE réponse, alors que la synchronisation du 15 avait tourné et pris le
+# dernier diff disponible. Les deux autres bases passaient par accident.
+#
+# Ces marqueurs-ci ne disent qu'une chose : notre synchronisation a réussi ce
+# jour-là. C'est ce qu'il faut pour juger d'un cron mort, et c'est tout ce que
+# le client ne peut pas déduire seul.
+date +%F > /var/lib/selfjustice/legi_last_sync.txt
+date +%F > /var/lib/selfjustice/eu_last_sync.txt
+
 journal "Mise à jour réussie : $NB_ARTICLES articles LEGI, $EU_ARTICLES UE, tarballs $DISK"
 journal "=== Fin mise à jour LEGI ==="

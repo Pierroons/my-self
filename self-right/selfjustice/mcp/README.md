@@ -47,10 +47,27 @@ publique a servi le droit au 13 juillet 2025 pendant treize mois. La
 synchronisation tournait à l'heure tous les 1er et 15 ; c'est son résultat qui
 était mort, et aucun contrôle portant sur l'exécution ne pouvait le voir.
 
-Chaque réponse de chaque outil porte donc un état de fraîcheur calculé sur la
-date du **contenu**, comparée à la dernière échéance de synchronisation
-attendue. Quand la base décroche, le texte le dit avant de donner l'article, et
-demande au modèle de te le répercuter.
+Chaque réponse de chaque outil porte donc un état de fraîcheur, et cet état
+repose sur **deux dates que l'instance expose séparément** :
+
+- `last_sync` — quand la synchronisation de l'instance a réussi ;
+- `last_update` — jusqu'où va le contenu qu'elle sert.
+
+Le retard se juge sur la première, le contenu se dit avec la seconde. Les
+confondre a un coût : la date du contenu est fixée par l'amont, pas par
+l'instance. Celle de LEGI est celle du dernier diff publié par la DILA — elle
+précède forcément la synchronisation et n'avance plus jusqu'à la suivante. La
+comparer au calendrier des synchronisations la condamne à ne jamais l'atteindre,
+et le serveur annonce alors un retard permanent sur une base parfaitement à
+jour. Un outil qui crie au loup à chaque réponse cesse d'être lu au moment où il
+a raison.
+
+Une instance qui n'annonce pas `last_sync` ne permet pas de distinguer une
+synchronisation morte d'un amont silencieux. Le serveur le dit, plutôt que de
+trancher au hasard.
+
+Quand la base décroche vraiment, le texte le signale avant de donner l'article,
+et demande au modèle de te le répercuter.
 
 Quand l'API est injoignable, l'outil ne rend pas une erreur discrète : il
 demande explicitement au modèle de ne rien citer de mémoire et de te renvoyer

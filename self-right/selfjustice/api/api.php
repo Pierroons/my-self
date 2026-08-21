@@ -153,6 +153,30 @@ function champ_juris(?string $champ_demande, ?string $jurisdiction): array {
  * moins trois lettres, ou un nombre d'au moins deux chiffres — la recherche par
  * numéro d'article (« 1240 », « L122-14 ») n'a aucun mot.
  */
+/**
+ * Un marqueur de l'état de l'instance, ou null s'il n'existe pas.
+ *
+ * 🔑 **Deux marqueurs par base, et ils ne disent pas la même chose.**
+ * `<base>_last_update` porte la date du CONTENU — pour LEGI, celle du dernier
+ * diff publié par la DILA, qui précède forcément notre passage et n'avance plus
+ * jusqu'au suivant. `<base>_last_sync` porte la date où NOTRE synchronisation a
+ * réussi.
+ *
+ * Les confondre a un coût mesuré : jusqu'au 21/08/2026 les trois bases
+ * exposaient leur date sous le même nom, avec deux sémantiques selon la base,
+ * et le client MCP — qui ne peut pas trancher — annonçait « RETARD, l'échéance
+ * n'a pas été honorée » dans chaque réponse sur une base parfaitement à jour.
+ * Seul l'exploitant sait quand son cron a tourné ; c'est donc à l'instance de
+ * le dire, pas au client de le deviner.
+ *
+ * Le chemin reste ici plutôt que dans la réponse : une réponse publique
+ * renseignerait sur l'arborescence du serveur sans rien apporter à qui la lit.
+ */
+function marqueur(string $nom): ?string {
+    $c = @file_get_contents("/var/lib/selfjustice/$nom.txt");
+    return ($c !== false && trim($c) !== '') ? trim($c) : null;
+}
+
 function requete_cherchable(string $q): bool {
     return preg_match('/\p{L}{3,}/u', $q) === 1
         || preg_match('/\d{2,}/', $q) === 1;
@@ -274,7 +298,7 @@ if (empty($segments)) {
             'GET /api/jurisprudence/verifier/{ref}'     => 'Cette référence existe-t-elle ? (ex: 25-10.377, ?jurisdiction=cc|ca)',
             'GET /api/jurisprudence/search?q={query}'   => 'Recherche de jurisprudence par thème',
             'GET /api/jurisprudence/decision/{id}'      => 'Texte intégral d\'une décision',
-            'GET /api/status'                          => 'État des bases (nombre articles, last_update)',
+            'GET /api/status'                          => 'État des bases : volumétrie, date du contenu (last_update) et de la dernière synchronisation (last_sync)',
             'GET /api/stats/by-ai'                     => 'Statistiques anonymes par famille d\'IA (Claude, OpenAI, etc.)',
             'GET /api/stats/by-endpoint'               => 'Top articles les plus consultés (anonyme, intérêt général)',
             'GET /api/stats/corpus'                    => 'Volumétrie des bases et date de dernière synchronisation',
@@ -322,8 +346,8 @@ if ($segments[0] === 'status') {
         ];
         // Le chemin du marqueur reste ici : une réponse publique renseigne sur
         // l'arborescence du serveur sans rien apporter à celui qui la lit.
-        $file = '/var/lib/selfjustice/legi_last_update.txt';
-        $result['legi']['last_update'] = file_exists($file) ? trim(file_get_contents($file)) : null;
+        $result['legi']['last_update'] = marqueur('legi_last_update');
+        $result['legi']['last_sync']   = marqueur('legi_last_sync');
         $db->close();
     } catch (Exception $e) {}
 
@@ -338,8 +362,8 @@ if ($segments[0] === 'status') {
             'articles' => (int) $db->querySingle('SELECT COUNT(*) FROM articles'),
             'sources'  => $sources,
         ];
-        $file = '/var/lib/selfjustice/eu_last_update.txt';
-        $result['eu']['last_update'] = file_exists($file) ? trim(file_get_contents($file)) : null;
+        $result['eu']['last_update'] = marqueur('eu_last_update');
+        $result['eu']['last_sync']   = marqueur('eu_last_sync');
         $db->close();
     } catch (Exception $e) {}
 
@@ -353,10 +377,8 @@ if ($segments[0] === 'status') {
                 'decisions'   => array_sum(array_column($couverture, 'decisions')),
                 'couverture'  => $couverture,
                 'cle_amont'   => getenv('SELFJUSTICE_JUDILIBRE_KEY') ? 'configurée' : 'absente',
-                'last_update' => (function() {
-                    $c = @file_get_contents('/var/lib/selfjustice/judilibre_last_update.txt');
-                    return $c ? trim($c) : null;
-                })(),
+                'last_update' => marqueur('judilibre_last_update'),
+                'last_sync'   => marqueur('judilibre_last_sync'),
             ];
             $db->close();
         } catch (Exception $e) {}
@@ -525,7 +547,8 @@ if ($segments[0] === 'legi') {
             'source'     => [
                 'base'         => 'LEGI',
                 'origine'      => 'Légifrance — dump officiel DILA',
-                'last_update'  => (function() { $c = @file_get_contents('/var/lib/selfjustice/legi_last_update.txt'); return $c ? trim($c) : null; })(),
+                'last_update'  => marqueur('legi_last_update'),
+                'last_sync'    => marqueur('legi_last_sync'),
                 'legifrance_url' => sprintf(
                     'https://www.legifrance.gouv.fr/codes/article_lc/%s',
                     substr($row['id'], 0, 30)
@@ -726,7 +749,8 @@ if ($segments[0] === 'eu') {
             'meta'       => [
                 'base'        => 'Conventionnalité',
                 'origine'     => $row['source'] === 'CEDH' ? 'echr.coe.int' : 'EUR-Lex',
-                'last_update' => (function() { $c = @file_get_contents('/var/lib/selfjustice/eu_last_update.txt'); return $c ? trim($c) : null; })(),
+                'last_update' => marqueur('eu_last_update'),
+                'last_sync'   => marqueur('eu_last_sync'),
             ],
         ]);
     }

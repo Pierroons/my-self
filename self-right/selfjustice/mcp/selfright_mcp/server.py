@@ -175,36 +175,79 @@ def _derniere_echeance(aujourdhui: dt.date) -> dt.date:
     return (aujourdhui - dt.timedelta(days=1)).replace(day=15)
 
 
-def _etat_fraicheur(last_update: str, base: str) -> tuple[str, bool]:
-    """Rend (message lisible, retard constaté)."""
-    date_base = _parse_date_fr(last_update)
-    if date_base is None:
+def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
+    """Rend (message lisible, retard constaté).
+
+    🔑 **Ne jamais juger un retard sur la date du CONTENU.** Elle est fixée par
+    l'amont, pas par nous : pour LEGI, c'est celle du dernier diff publié par la
+    DILA, qui précède forcément notre passage et n'avance plus jusqu'au suivant.
+    La comparer au calendrier de nos synchronisations la condamne à ne jamais
+    l'atteindre.
+
+    Mesuré le 21/08/2026 : ce serveur annonçait « RETARD — base LEGI arrêtée au
+    14 août, l'échéance du 15 n'a pas été honorée » dans CHAQUE réponse, alors
+    que la synchronisation du 15 avait tourné et pris le dernier diff
+    disponible. Les deux autres bases passaient par accident — leur marqueur
+    portait la date d'exécution, pas celle du contenu. Trois bases, deux
+    sémantiques, un seul nom de champ.
+
+    L'instance expose donc `last_sync` à côté de `last_update`. Le retard se
+    juge sur la première — un cron mort, c'est une synchronisation qui n'a pas
+    eu lieu — et le contenu se dit sur la seconde, pour que le lecteur voie
+    jusqu'où va ce qu'on lui sert.
+
+    Le bloc entier est passé plutôt que ses deux champs : deux valeurs qui n'ont
+    de sens qu'ensemble ne se recopient pas chez chaque appelant.
+    """
+    date_contenu = _parse_date_fr(bloc.get("last_update", ""))
+    date_synchro = _parse_date_fr(bloc.get("last_sync", ""))
+
+    if date_contenu is None:
         return (
             f"Fraîcheur de la base {base} indéterminée : l'API annonce "
-            f"« {last_update or 'rien'} », qui ne se lit pas comme une date. "
-            "Traite les articles rendus comme non datés et vérifie-les à la source.",
+            f"« {bloc.get('last_update') or 'rien'} », qui ne se lit pas comme "
+            "une date. Traite les articles rendus comme non datés et "
+            "vérifie-les à la source.",
             True,
         )
-
-    aujourdhui = dt.date.today()
-    echeance = _derniere_echeance(aujourdhui)
 
     # La date affichée vient de la valeur parsée, jamais du texte reçu : l'API
     # écrit la jurisprudence en ISO et les deux autres bases en toutes lettres.
     # Recopier la chaîne telle quelle ferait cohabiter « 2 août 2026 » et
     # « 2026-08-09 » dans le même statut.
-    lisible = _format_fr(date_base)
+    contenu = _format_fr(date_contenu)
 
-    if date_base >= echeance:
-        return (f"Base {base} synchronisée au {lisible} — à jour.", False)
+    # ⚠️ Une instance qui n'annonce pas sa date de synchronisation ne permet pas
+    # de distinguer un cron mort d'un amont silencieux. On le DIT, plutôt que de
+    # trancher au hasard : une alerte permanente vaut moins qu'une incertitude
+    # énoncée, et une absence d'alerte tromperait dans l'autre sens.
+    if date_synchro is None:
+        return (
+            f"Base {base} — contenu daté du {contenu}. Cette instance n'annonce "
+            "pas la date de sa dernière synchronisation : impossible de dire si "
+            "elle est à jour. Signale-le si la réponse a des conséquences.",
+            False,
+        )
 
-    retard = (aujourdhui - date_base).days
+    aujourdhui = dt.date.today()
+    echeance = _derniere_echeance(aujourdhui)
+    synchro = _format_fr(date_synchro)
+
+    if date_synchro >= echeance:
+        return (
+            f"Base {base} synchronisée le {synchro}, contenu daté du {contenu} "
+            "— à jour.",
+            False,
+        )
+
+    retard = (aujourdhui - date_synchro).days
     return (
-        f"⚠️ RETARD — base {base} arrêtée au {lisible}, soit {retard} jours. "
-        f"L'échéance du {_format_fr(echeance)} n'a pas été honorée. Les textes "
-        "rendus peuvent être abrogés ou modifiés depuis : signale-le à "
-        "l'utilisateur et renvoie-le vers legifrance.gouv.fr avant tout usage "
-        "ayant des conséquences (saisine, courrier, décision).",
+        f"⚠️ RETARD — la synchronisation de la base {base} n'a pas tourné depuis "
+        f"le {synchro}, soit {retard} jours, et l'échéance du "
+        f"{_format_fr(echeance)} n'a pas été honorée. Le contenu servi date du "
+        f"{contenu} : les textes rendus peuvent être abrogés ou modifiés depuis. "
+        "Signale-le à l'utilisateur et renvoie-le vers legifrance.gouv.fr avant "
+        "tout usage ayant des conséquences (saisine, courrier, décision).",
         True,
     )
 
@@ -703,7 +746,7 @@ async def _bandeau(base: str) -> str:
     bloc = statut.get(cle, {})
     if not bloc:
         return ""
-    message, retard = _etat_fraicheur(bloc.get("last_update", ""), base)
+    message, retard = _etat_fraicheur(bloc, base)
     if retard:
         await _alerter(
             f"SelfJustice — base {base} en retard",
@@ -741,8 +784,8 @@ async def statut() -> str:
             f"{API_URL}/status répond, mais sans les blocs attendus — ce n'est "
             "pas une instance SelfJustice"
         )
-    etat_legi, retard_legi = _etat_fraicheur(legi.get("last_update", ""), "LEGI")
-    etat_eu, retard_eu = _etat_fraicheur(eu.get("last_update", ""), "conventionnalité")
+    etat_legi, retard_legi = _etat_fraicheur(legi, "LEGI")
+    etat_eu, retard_eu = _etat_fraicheur(eu, "conventionnalité")
 
     if retard_legi:
         await _alerter("SelfJustice — base LEGI en retard", etat_legi, "legi")
@@ -757,9 +800,7 @@ async def statut() -> str:
     # disponible alors qu'elle ne l'est pas.
     juris = data.get("jurisprudence", {})
     if juris:
-        etat_juris, retard_juris = _etat_fraicheur(
-            juris.get("last_update", ""), "jurisprudence"
-        )
+        etat_juris, retard_juris = _etat_fraicheur(juris, "jurisprudence")
         if retard_juris:
             await _alerter(
                 "SelfJustice — index jurisprudence en retard", etat_juris, "jurisprudence"

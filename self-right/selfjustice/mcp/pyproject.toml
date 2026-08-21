@@ -5,6 +5,11 @@ description = "Serveur MCP de consultation du droit français (LEGI), de convent
 readme = "README.md"
 requires-python = ">=3.11"
 license = "AGPL-3.0-or-later"
+# 🔑 Déclarer la licence ne suffit pas : l'AGPL demande qu'une copie de son
+# texte accompagne le programme. Sans cette ligne, le paquet publié portait
+# l'identifiant SPDX dans ses métadonnées et aucun texte de licence.
+# Le fichier est un lien vers celui du dépôt — une seconde copie divergerait.
+license-files = ["LICENSE"]
 keywords = ["mcp", "droit", "legifrance", "legi", "rgpd", "ai-act"]
 classifiers = [
     "Development Status :: 3 - Alpha",

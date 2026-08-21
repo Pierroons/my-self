@@ -93,4 +93,12 @@ if [ "$apres" -le "$avant" ]; then
 fi
 
 rm -f "$SAUVEGARDE"
+
+# 🔑 Ce marqueur ne dit qu'une chose : la synchronisation a réussi ce jour-là.
+# Il ne se confond pas avec `judilibre_last_update.txt`, qui porte la fenêtre
+# moissonnée. Le client a besoin des deux pour distinguer un cron mort d'un
+# amont silencieux — sans quoi il crie au retard sur une base à jour, ce qu'il
+# a fait sur LEGI jusqu'au 21/08/2026.
+date +%F > "${JUDILIBRE_MARQUEUR%_last_update.txt}_last_sync.txt"
+
 journal "=== Terminé ==="
