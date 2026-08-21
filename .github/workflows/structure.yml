@@ -85,6 +85,9 @@ jobs:
       - name: Garde-fou — fraîcheur annoncée du catalogue SelfAct
         run: python3 self-right/selfjustice/tests/sanity_fraicheur_catalogue.py
 
+      - name: Garde-fou — ce que la sentinelle appelle un retard
+        run: bash self-right/selfjustice/tests/test_fraicheur.sh
+
       - name: Garde-fou — coût constant du hash factice (bi-self-duo)
         run: php demo/bi-self-duo/tests/sanity_timing.php
 
