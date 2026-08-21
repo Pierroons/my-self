@@ -63,9 +63,35 @@ La punition n'est pas technique — elle est sociale.
 - Après un ban purgé : score reset à 20 (seconde chance), compte de strikes préservé
 - 3 mois clean : reset total (score + strikes) — *partiel : la démo duo remet les strikes à zéro pour tout le monde d'un coup, le lab ne le fait pas*
 
+### Escalade pour les votants d'une meute
+Le rang appartient au **votant**, pas à la cible. Compté sur la cible, un groupe
+qui change de proie resterait au premier palier indéfiniment, et une victime
+visée par plusieurs groupes ferait punir des gens dont c'est le premier écart.
+
+| Épisode | Ce qu'il en coûte |
+|---|---|
+| 1er | **Rien** — les votes sont annulés, comme à tous les paliers, et le votant est averti |
+| 2e | Droit de vote **suspendu 7 jours** |
+| 3e | Suspendu **30 jours** et **5 points** de réputation en moins |
+| 4e et suivants | Suspension maintenue et **revue humaine** — aucune exclusion automatique |
+
+- Le premier épisode ne coûte rien parce que le critère de meute est le message
+  privé réciproque : **deux amis qui réagissent de bonne foi au même message
+  pénible le remplissent**. Annuler leurs votes se défait et protège la victime ;
+  leur retirer le droit de vote, non. C'est la récidive qui fait la peine
+- La suspension vit dans son **propre compteur**, pas dans le droit de vote lié à
+  la réputation : sinon la convalescence la lèverait au bout de quelques jours
+  calmes, et la peine ne durerait pas ce qu'elle annonce
+- Un votant ne monte **qu'un seul rang par 24 heures**. Sans cette borne, un
+  groupe qui frappe trois personnes dans le même passage franchirait trois
+  paliers d'un coup et personne ne verrait jamais l'avertissement. Les cibles
+  supplémentaires sont enregistrées quand même : l'admin voit l'ampleur
+- Le rang est visible **sur son propre profil seulement**. Une pastille publique
+  serait une peine de plus, que personne n'a décidée
+
 ### Anti-manipulation
-- **Anti-Sybil** : intégration SelfRecover (optionnel) + cooldown 7 jours sur les nouveaux comptes — *partiel : l'anti-Sybil est là, le cooldown non*
-- **Meute** : deux votants **liés entre eux** qui frappent la même cible sur 30 jours → leurs votes sont annulés et la réputation restituée. Le lien se propage par transitivité — A–B et B–C liés forment une meute de trois, car une meute a un meneur
+- **Anti-Sybil** : intégration SelfRecover (optionnel) + cooldown **24 h** sur les nouveaux comptes, aligné sur la période d'échauffement décrite par [Bi-Self](../README.fr.md) — *partiel : l'anti-Sybil est là ; le lab abaisse le cooldown à 120 s pour rester testable*
+- **Meute** : deux votants **liés entre eux** qui frappent la même cible sur 30 jours → leurs votes sont annulés, la réputation restituée, et les votants entrent dans l'escalade décrite plus haut. Le lien se propage par transitivité — A–B et B–C liés forment une meute de trois, car une meute a un meneur
 - Ce qui lie deux comptes dépend de la plateforme. Sur un forum : un **message privé dans chaque sens**, l'équivalent le plus proche d'une invitation acceptée. Exiger la réciprocité empêche un spammeur de se rendre invulnérable en écrivant à tout le monde. Le contenu des messages n'est **jamais lu** — seulement qui a écrit à qui
 - **Salve rapide** : plusieurs votants **sans aucun lien** dans la même minute. Ce n'est pas une meute, c'est le plus souvent la même réaction au même message : rien n'est annulé, la cible part en revue humaine. Annuler ici protégerait un message d'autant mieux qu'il choque plus de monde à la fois
 - **Ce que ni l'une ni l'autre ne voit** : une coordination organisée ailleurs, entre comptes qui ne se sont jamais écrit sur la plateforme. Elle tombe en salve rapide — donc signalée, jamais annulée
@@ -84,12 +110,16 @@ La punition n'est pas technique — elle est sociale.
 importe SelfRecover et SelfDataGuard.
 
 Cette version livre le recoupement des votants liés, la convalescence et le motif
-de vote. **Deux mécanismes restent à écrire** — cross-voting et protection des
-victimes — plus trois tenus à moitié, tous marqués dans les listes ci-dessus.
+de vote. L'escalade qui suit — ce que la meute coûte à ceux qui la forment — est
+codée et attend une version. **Deux mécanismes restent à écrire** — cross-voting
+et protection des victimes — plus trois tenus à moitié, tous marqués dans les
+listes ci-dessus.
 
 Contrôles : [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
-— seize, chacun vu rougir : le mécanisme est neutralisé, la mesure refaite, le
-code restauré. Les quatre règles du motif sont éprouvées **séparément**, chaque
+— vingt-quatre, chacun vu rougir : le mécanisme est neutralisé, la mesure
+refaite, le code restauré. L'un d'eux ne mesurait rien à sa première mutation —
+il calculait son attendu depuis la constante qu'il surveillait, et se décalait
+donc avec elle ; il lit maintenant une valeur en clair. Les quatre règles du motif sont éprouvées **séparément**, chaque
 cas n'en violant qu'une : sinon la défense en profondeur rattrape le trou, le
 contrôle reste vert, et on ne sait plus laquelle mesure encore quelque chose.
 Ils vivent encore côté lab parce qu'ils ont besoin d'un schéma de base ; ils

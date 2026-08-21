@@ -10,6 +10,41 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfModerate — l'escalade pour les votants d'une meute — 22 août 2026
+
+**Ajouté — une meute démasquée ne coûtait rien à ceux qui la formaient.** La
+détection annulait leurs votes et restituait la réputation de la cible, sans
+jamais rien écrire sur les votants : même réputation, même droit de vote, libres
+de recommencer le lendemain. Le seul coût de l'attaque était qu'elle échoue.
+
+- **Le rang appartient au votant**, pas à la cible. Compté sur la cible, un
+  groupe changeant de proie resterait au premier palier indéfiniment, et une victime visée par plusieurs groupes ferait punir des gens
+  dont c'était le premier écart
+- **Quatre paliers** — 1er : rien, hors l'annulation des votes et un
+  avertissement ; 2e : droit de vote suspendu 7 jours ; 3e : 30 jours et 5 points
+  de moins ; 4e et suivants : suspension maintenue et revue humaine. Aucune
+  exclusion automatique, à aucun rang
+- **Le premier épisode est gratuit** parce que le critère de meute est le message
+  privé réciproque : deux amis réagissant de bonne foi au même message pénible le
+  remplissent. Annuler leurs votes se défait ; leur retirer le droit de vote, non
+- **La suspension a son propre compteur** (`vote_muted_until`) et ne passe pas
+  par `voting_rights` : sinon la convalescence la lèverait dès 5 points, et la
+  peine ne durerait pas ce qu'elle annonce
+- **Un rang par 24 heures et par votant** — sans cette borne, un groupe frappant
+  trois cibles dans le même passage de détection franchirait trois paliers d'un
+  coup et l'avertissement ne serait jamais vu. Les cibles supplémentaires sont
+  tout de même enregistrées
+- **Corrigé au passage** — la remontée de réputation à 20 effaçait `needs_review`
+  quelle qu'en soit la cause. Une récidive de meute disparaissait donc du tableau
+  de l'admin en attendant simplement quelques jours calmes. Seul le signalement
+  provoqué par la chute (`reputation_zero`) s'en va désormais avec elle
+- **Corrigé au passage** — au quatrième épisode, aucune suspension n'était posée :
+  le pire récidiviste retrouvait son droit de vote pendant que l'admin regardait.
+  Trouvé par le contrôle n° 22, pas par relecture
+- Contrôles portés de 16 à 24, chacun vu rougir. Le n° 19 ne mesurait rien à sa
+  première mutation : il calculait son attendu depuis `MEUTE_PENALTY_3`, la
+  constante même qu'il surveillait, et se décalait avec elle
+
 ### SelfModerate v0.3.0 — 21 août 2026
 
 **Corrigé — la détection de meute avait le sens inverse.** Le moteur annulait les

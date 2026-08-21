@@ -80,6 +80,26 @@ final class Admin
         return $stmt->fetchAll();
     }
 
+    /**
+     * Épisodes de meute, du plus récent au plus ancien. Une ligne par votant et
+     * par cible : un même épisode en laisse plusieurs quand le groupe a frappé
+     * plusieurs personnes le même jour, et c'est voulu — le rang ne dit pas
+     * l'ampleur, seulement le nombre de fois où l'on a recommencé.
+     */
+    public static function packEpisodes(PDO $pdo, int $limit = 20): array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT f.rang, f.action, f.detected_at,
+                    v.username AS votant, c.username AS cible
+               FROM mod_pack_flags f
+               JOIN accounts v ON v.id = f.voter_id
+               JOIN accounts c ON c.id = f.target_author
+              ORDER BY f.detected_at DESC, f.id DESC LIMIT ?'
+        );
+        $stmt->execute([$limit]);
+        return $stmt->fetchAll();
+    }
+
     /** Profil déchiffré d'un compte (inclut le mémo perso — défi CTF). */
     public static function profile(PDO $pdo, int $accountId): ?array
     {

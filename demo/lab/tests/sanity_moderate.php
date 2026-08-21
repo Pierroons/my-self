@@ -33,7 +33,7 @@ use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Moderate;
 
 $echecs = 0;
-$total  = 16;
+$total  = 24;
 function ok(string $m): void  { echo "  ✓ $m\n"; }
 function nok(string $m): void { global $echecs; fwrite(STDERR, "  ✗ $m\n"); $echecs++; }
 
@@ -116,6 +116,50 @@ function messagePrive(PDO $pdo, int $de, int $vers): void
 {
     $pdo->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (?, ?, ?, ?)')
         ->execute([$de, $vers, 'chiffre', time() - 3600]);
+}
+
+/**
+ * Un épisode complet : des votants liés entre eux frappent la même cible.
+ * Rend l'identifiant de la cible, qui est neuve à chaque appel — l'index unique
+ * de mod_votes interdit de rejouer un vote sur le même message.
+ */
+function episodeMeute(PDO $pdo, array $votants, string $nom): int
+{
+    $cible = membre($pdo, $nom);
+    $post  = message($pdo, $cible, 'fil-' . $nom);
+    for ($i = 0; $i < count($votants); $i++) {
+        for ($j = $i + 1; $j < count($votants); $j++) {
+            echangePrive($pdo, $votants[$i], $votants[$j]);
+        }
+    }
+    foreach ($votants as $v) {
+        Moderate::applyVote($pdo, $v, 'post', $post, -1, motif(), 'agressif');
+    }
+    return $cible;
+}
+
+/**
+ * Recule tout ce qui retient un votant : ses épisodes sortent du cooldown, et
+ * sa suspension expire. Sans ça, un votant suspendu ne peut plus voter — c'est
+ * précisément l'effet recherché, mais il empêche d'éprouver le palier suivant.
+ */
+function vieillirSanctions(PDO $pdo, array $votants, int $recul): void
+{
+    foreach ($votants as $v) {
+        $pdo->prepare('UPDATE mod_pack_flags SET detected_at = detected_at - ? WHERE voter_id = ?')
+            ->execute([$recul, $v]);
+        $pdo->prepare('UPDATE member_moderation SET vote_muted_until = MAX(0, vote_muted_until - ?) WHERE account_id = ?')
+            ->execute([$recul, $v]);
+    }
+}
+
+/** Vote inséré directement : sert à constituer un passage de détection en une fois. */
+function voteBrut(PDO $pdo, int $votant, int $post, int $auteur): void
+{
+    $pdo->prepare(
+        'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, created_at)
+         VALUES (?, ?, ?, ?, -1, ?, ?, ?)'
+    )->execute([$votant, 'post', $post, $auteur, motif(), 'agressif', time()]);
 }
 
 // ── 1. Un downvote retire un point à l'auteur du message ────────────────────
@@ -360,6 +404,127 @@ $fuite = array_intersect($colonnes, ['voter_id', 'voter', 'username', 'id', 'cre
 count($recus) === 3 && !$fuite && in_array('jour', $colonnes, true)
     ? ok('les ' . count($recus) . ' motifs reçus sortent sans votant ni horodatage fin (' . implode(', ', $colonnes) . ')')
     : nok('fuite dans les motifs rendus : ' . implode(', ', $fuite) . ' — colonnes ' . implode(', ', $colonnes));
+
+// ── 17. Premier épisode : les votes tombent, les votants ne paient rien ─────
+// Le critère de meute est le message privé réciproque : deux amis qui réagissent
+// de bonne foi au même message pénible le remplissent. Annuler leurs votes se
+// défait et protège la victime ; leur retirer le droit de vote, non. Le premier
+// épisode ne coûte donc que ses votes.
+$a = membre($pdo, 'meute-a');
+$b = membre($pdo, 'meute-b');
+$c1 = episodeMeute($pdo, [$a, $b], 'victime-1');
+
+$rangA = Moderate::rangDe($pdo, $a);
+$modA  = Moderate::getReputation($pdo, $a);
+[$peutVoter, ] = Moderate::canVote($pdo, $a);
+$rangA === 1 && $modA['vote_muted_until'] === 0 && $peutVoter
+    && reputation($pdo, $c1) === Moderate::INITIAL_REPUTATION
+    ? ok('premier épisode : rang 1, aucune peine, droit de vote intact, victime restaurée')
+    : nok('premier épisode mal traité : rang=' . $rangA . ' ' . json_encode($modA) . ' vote=' . var_export($peutVoter, true));
+
+// ── 18. Deuxième épisode : le droit de vote est suspendu, avec une échéance ──
+vieillirSanctions($pdo, [$a, $b], 2 * 86400);
+$c2 = episodeMeute($pdo, [$a, $b], 'victime-2');
+
+$modA = Moderate::getReputation($pdo, $a);
+[$peutVoter, $raison] = Moderate::canVote($pdo, $a);
+$attendu = time() + Moderate::MEUTE_MUTE_2;
+Moderate::rangDe($pdo, $a) === 2
+    && abs($modA['vote_muted_until'] - $attendu) <= 5
+    && !$peutVoter && str_contains($raison, date('d/m/Y', $modA['vote_muted_until']))
+    ? ok('deuxième épisode : vote suspendu 7 jours, le refus porte la date du ' . date('d/m/Y', $modA['vote_muted_until']))
+    : nok('suspension absente ou muette : ' . json_encode($modA) . ' raison=' . $raison);
+
+// ── 19. Troisième épisode : 30 jours et cinq points ─────────────────────────
+vieillirSanctions($pdo, [$a, $b], 8 * 86400);
+$repAvant = reputation($pdo, $a);
+$c3 = episodeMeute($pdo, [$a, $b], 'victime-3');
+
+$modA = Moderate::getReputation($pdo, $a);
+$attendu = time() + Moderate::MEUTE_MUTE_3;
+// 5 en clair, et non Moderate::MEUTE_PENALTY_3 : un contrôle qui calcule son
+// attendu depuis la constante qu'il mesure se décale avec elle. Mise à 0, la
+// pénalité disparaissait sans que rien ne rougisse — mesuré, pas supposé.
+Moderate::rangDe($pdo, $a) === 3
+    && abs($modA['vote_muted_until'] - $attendu) <= 5
+    && $modA['reputation'] === $repAvant - 5
+    ? ok('troisième épisode : 30 jours de suspension et 5 points de moins (' . $repAvant . ' → ' . $modA['reputation'] . ')')
+    : nok('palier 3 mal appliqué : ' . json_encode($modA) . ' avant=' . $repAvant);
+
+// ── 20. Quatrième épisode : la main passe à l'humain, aucun bannissement ────
+// R10-LAB-01 vaut aussi pour l'agresseur récidiviste : exclure reste un geste
+// humain, y compris quand il l'a bien cherché.
+vieillirSanctions($pdo, [$a, $b], 31 * 86400);
+$c4 = episodeMeute($pdo, [$a, $b], 'victime-4');
+
+$modA = Moderate::getReputation($pdo, $a);
+Moderate::rangDe($pdo, $a) === 4 && $modA['needs_review']
+    && $modA['review_reason'] === 'meute_recidive' && $modA['banned_until'] === 0
+    ? ok('quatrième épisode : revue humaine (meute_recidive), aucun bannissement automatique')
+    : nok('palier 4 mal appliqué : ' . json_encode($modA));
+
+// ── 21. 🔑 Trois cibles dans le même passage ne valent qu'un seul rang ──────
+// detectPackVoting traite toutes les cibles d'un même appel. Sans le cooldown,
+// un groupe qui a frappé trois personnes franchirait trois paliers d'un coup, et
+// l'avertissement du premier rang ne serait jamais vu par personne. Les votes
+// sont insérés directement pour que la détection les découvre en une seule fois.
+$d = membre($pdo, 'salve-d');
+$e = membre($pdo, 'salve-e');
+echangePrive($pdo, $d, $e);
+foreach (['triple-1', 'triple-2', 'triple-3'] as $nom) {
+    $v = membre($pdo, $nom);
+    $post = message($pdo, $v, 'fil-' . $nom);
+    voteBrut($pdo, $d, $post, $v);
+    voteBrut($pdo, $e, $post, $v);
+}
+Moderate::detectPackVoting($pdo);
+
+$lignes = (int) $pdo->query('SELECT COUNT(*) FROM mod_pack_flags WHERE voter_id = ' . $d)->fetchColumn();
+$modD   = Moderate::getReputation($pdo, $d);
+Moderate::rangDe($pdo, $d) === 1 && $lignes === 3 && $modD['vote_muted_until'] === 0
+    ? ok('trois cibles en un passage : rang 1, ' . $lignes . ' épisodes tracés, aucune peine')
+    : nok('le cooldown ne tient pas : rang=' . Moderate::rangDe($pdo, $d) . ' lignes=' . $lignes . ' ' . json_encode($modD));
+
+// ── 22. 🔑 La suspension survit à la remontée de réputation ─────────────────
+// La réputation dit ce qu'on vaut, la suspension ce qu'on a fait. Si la peine
+// tenait dans voting_rights, la convalescence la rendrait au bout de quelques
+// jours calmes — c'est pour ça qu'elle vit dans sa propre colonne.
+$pdo->prepare(
+    'UPDATE member_moderation SET reputation = 2, convalescent = 1, last_regen_at = ? WHERE account_id = ?'
+)->execute([time() - 10 * 86400, $a]);
+$modA = Moderate::getReputation($pdo, $a);      // déclenche la convalescence
+[$peutVoter, $raison] = Moderate::canVote($pdo, $a);
+$modA['reputation'] === 12 && !$peutVoter && str_contains($raison, 'meute')
+    ? ok('la réputation remonte à ' . $modA['reputation'] . ' et la suspension tient : « ' . $raison . ' »')
+    : nok('la remontée a effacé la peine : rep=' . $modA['reputation'] . ' vote=' . var_export($peutVoter, true) . ' ' . $raison);
+
+// ── 23. 🔑 Le compteur appartient au votant, pas à la cible ─────────────────
+// Compté sur la cible, le second groupe hériterait du rang laissé par le
+// premier et prendrait une peine pour sa première meute.
+$victime = membre($pdo, 'visee-deux-fois');
+$g = membre($pdo, 'groupe-g'); $h = membre($pdo, 'groupe-h');
+echangePrive($pdo, $g, $h);
+$p1 = message($pdo, $victime, 'fil-visee-1');
+Moderate::applyVote($pdo, $g, 'post', $p1, -1, motif(), 'agressif');
+Moderate::applyVote($pdo, $h, 'post', $p1, -1, motif(), 'agressif');
+
+$i = membre($pdo, 'groupe-i'); $j = membre($pdo, 'groupe-j');
+echangePrive($pdo, $i, $j);
+$p2 = message($pdo, $victime, 'fil-visee-2');
+Moderate::applyVote($pdo, $i, 'post', $p2, -1, motif(), 'agressif');
+Moderate::applyVote($pdo, $j, 'post', $p2, -1, motif(), 'agressif');
+
+$modI = Moderate::getReputation($pdo, $i);
+Moderate::rangDe($pdo, $g) === 1 && Moderate::rangDe($pdo, $i) === 1 && $modI['vote_muted_until'] === 0
+    ? ok('deux groupes distincts sur la même victime : chacun au rang 1, aucun n\'hérite de l\'autre')
+    : nok('le rang suit la cible : g=' . Moderate::rangDe($pdo, $g) . ' i=' . Moderate::rangDe($pdo, $i) . ' ' . json_encode($modI));
+
+// ── 24. La victime est protégée à tous les paliers ──────────────────────────
+// La sanction du votant est venue après l'annulation, et n'y a rien changé.
+$restaurees = array_map(static fn (int $id): int => reputation($pdo, $id), [$c1, $c2, $c3, $c4]);
+count(array_unique($restaurees)) === 1 && $restaurees[0] === Moderate::INITIAL_REPUTATION
+    ? ok('les quatre victimes sont revenues à ' . Moderate::INITIAL_REPUTATION . ', du premier palier au dernier')
+    : nok('une victime n\'a pas été restaurée : ' . implode(', ', $restaurees));
 
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"

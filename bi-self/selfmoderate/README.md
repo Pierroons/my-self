@@ -63,9 +63,35 @@ The punishment isn't technical — it's social.
 - After a served ban: score resets to 20 (second chance), strike count preserved
 - 3 months clean: full reset (score + strikes) — *partial: the duo demo clears everyone's strikes at once, the lab does not do it at all*
 
+### Escalation for pack voters
+The rank belongs to the **voter**, not to the target. Counted on the target, a
+group switching prey would stay at the first tier forever, and a victim hit by
+several groups would get first-time offenders punished.
+
+| Episode | What it costs |
+|---|---|
+| 1st | **Nothing** — the votes are cancelled, as at every tier, and the voter is warned |
+| 2nd | Voting rights **suspended for 7 days** |
+| 3rd | Suspended for **30 days** and **5 reputation points** off |
+| 4th and beyond | Suspension kept and **human review** — no automatic exclusion |
+
+- The first episode costs nothing because the pack criterion is the reciprocal
+  private message: **two friends reacting in good faith to the same obnoxious
+  post meet it**. Cancelling their votes is reversible and protects the target;
+  taking their voting rights away is not. Repetition is what earns the penalty
+- The suspension lives in **its own counter**, not in the reputation-driven
+  voting right: otherwise recovery would lift it after a few quiet days, and the
+  penalty would not last what it announces
+- A voter climbs **one rank per 24 hours at most**. Without that bound, a group
+  hitting three people in the same sweep would cross three tiers at once and
+  nobody would ever see the warning. The extra targets are still recorded: the
+  admin needs to see the scale
+- The rank is visible **on one's own profile only**. A public badge would be one
+  more penalty, decided by no one
+
 ### Anti-manipulation
-- **Anti-Sybil**: SelfRecover integration (optional) + 7-day cooldown on new accounts — *partial: anti-Sybil is there, the cooldown is not*
-- **Pack**: two voters **linked to each other** hitting the same target within 30 days → their votes are cancelled and the reputation restored. Linkage propagates transitively — A–B and B–C linked form a pack of three, because a pack has a ringleader
+- **Anti-Sybil**: SelfRecover integration (optional) + **24-hour** cooldown on new accounts, matching the warm-up period described by [Bi-Self](../README.md) — *partial: anti-Sybil is there; the lab lowers the cooldown to 120 s to stay testable*
+- **Pack**: two voters **linked to each other** hitting the same target within 30 days → their votes are cancelled, the reputation restored, and the voters enter the escalation described above. Linkage propagates transitively — A–B and B–C linked form a pack of three, because a pack has a ringleader
 - What links two accounts depends on the platform. On a forum: a **private message in each direction**, the closest equivalent to an accepted invitation. Requiring reciprocity stops a spammer from becoming invulnerable by writing to everyone. Message contents are **never read** — only who wrote to whom
 - **Fast burst**: several voters with **no link at all** within the same minute. That is not a pack, it is most often the same reaction to the same post: nothing is cancelled, the target goes to human review. Cancelling here would protect a post all the better for shocking more people at once
 - **What neither one sees**: coordination organised elsewhere, between accounts that never wrote to each other on the platform. It lands as a fast burst — flagged, never cancelled
@@ -84,12 +110,15 @@ The punishment isn't technical — it's social.
 it imports SelfRecover and SelfDataGuard.
 
 This version ships linked-voter cross-referencing, recovery, and the vote reason.
-**Two mechanisms remain to be written** — cross-voting and victim protection —
-plus three half-kept, all marked in the lists above.
+The escalation that follows — what a pack costs those who form it — is written
+and awaiting a version. **Two mechanisms remain to be written** — cross-voting
+and victim protection — plus three half-kept, all marked in the lists above.
 
 Checks: [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
-— sixteen, each seen failing first: the mechanism is disabled, the measurement
-retaken, the code restored. The four reason rules are exercised **separately**,
+— twenty-four, each seen failing first: the mechanism is disabled, the
+measurement retaken, the code restored. One of them measured nothing at its
+first mutation — it computed its expectation from the very constant it watched,
+and drifted along with it; it now reads a literal value. The four reason rules are exercised **separately**,
 each case breaking only one: otherwise defence in depth catches the hole, the
 check stays green, and nobody knows which rule still measures anything. They
 still live on the lab side because they need a database schema; they will move

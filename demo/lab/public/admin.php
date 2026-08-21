@@ -23,6 +23,7 @@ $stats   = Admin::stats($pdo);
 $comptes = Admin::accounts($pdo);
 $fails   = Admin::failedLogins($pdo);
 $blocked = Admin::blockedVotes($pdo);
+$episodes = Admin::packEpisodes($pdo);
 $reports = Admin::reports($pdo);
 $demandes = Admin::pendingRequests($pdo);
 $disputes = \Pierroons\MySelfLab\RecoverL3::adminList($pdo)['disputes'] ?? [];
@@ -89,6 +90,20 @@ table.adm tr:last-child td{border-bottom:none}
       <?php endforeach; ?>
     </table><?php endif; ?>
   </div>
+</div>
+
+<!-- Épisodes de meute -->
+<div class="card">
+  <h2>🐺 Épisodes de meute <span class="muted" style="font-size:12px">(rang par votant, pas par cible)</span></h2>
+  <?php if (!$episodes): ?><p class="muted">Aucun épisode enregistré.</p><?php else: ?>
+  <table class="adm"><tr><th>Votant</th><th>Cible</th><th>Rang</th><th>Suite donnée</th><th>Quand</th></tr>
+    <?php foreach ($episodes as $e): ?>
+      <tr><td><?= h((string) $e['votant']) ?></td><td><?= h((string) $e['cible']) ?></td>
+          <td><?= (int) $e['rang'] ?></td>
+          <td><?= h((string) $e['action']) ?></td>
+          <td><?= $dt((int) $e['detected_at']) ?></td></tr>
+    <?php endforeach; ?>
+  </table><?php endif; ?>
 </div>
 
 <!-- Comptes -->

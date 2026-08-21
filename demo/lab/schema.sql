@@ -101,6 +101,8 @@ CREATE TABLE IF NOT EXISTS member_moderation (
     review_reason  TEXT,                        -- 'reputation_zero' | 'salve_rapide' — deux causes, deux gestes
     convalescent   INTEGER NOT NULL DEFAULT 0,  -- posé sous LOSE_VOTING_AT, levé à INITIAL_REPUTATION
     last_regen_at  INTEGER NOT NULL DEFAULT 0,
+    vote_muted_until INTEGER NOT NULL DEFAULT 0, -- suspension du droit de vote, à échéance : séparée de
+                                                 -- voting_rights, que la convalescence rendrait dès 5 points
     updated_at     INTEGER NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
@@ -123,6 +125,22 @@ CREATE TABLE IF NOT EXISTS mod_votes (
 CREATE INDEX IF NOT EXISTS idx_modvotes_target ON mod_votes(target_type, target_id);
 CREATE INDEX IF NOT EXISTS idx_modvotes_author ON mod_votes(target_author, created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_modvotes_unique ON mod_votes(voter_id, target_type, target_id);
+
+-- SelfModerate — épisodes de meute, un enregistrement par votant et par cible.
+-- Le rang porte l'escalade : il appartient au VOTANT, pas à la cible. Compté sur
+-- la cible, un groupe changeant de proie resterait éternellement au palier 1, et
+-- une victime visée par plusieurs groupes ferait punir des primo-délinquants.
+CREATE TABLE IF NOT EXISTS mod_pack_flags (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    voter_id      INTEGER NOT NULL,
+    target_author INTEGER NOT NULL,
+    rang          INTEGER NOT NULL,   -- palier atteint par ce votant lors de cet épisode
+    action        TEXT NOT NULL,      -- 'avertissement' | 'suspension_7j' | 'suspension_30j' | 'revue_admin'
+    vote_ids      TEXT,               -- JSON des votes annulés, pour que l'admin voie sur quoi on s'appuie
+    detected_at   INTEGER NOT NULL,
+    FOREIGN KEY (voter_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_packflags_voter ON mod_pack_flags(voter_id, detected_at);
 
 -- Rapports red team — soumis via formulaire public. Le corps du rapport
 -- (titre, description, repro, contact) est CHIFFRÉ at-rest via SelfDataGuard :

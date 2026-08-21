@@ -115,9 +115,10 @@ final class Db
         // SelfModerate — cause du signalement, et convalescence (remontée passive).
         $cols = self::$pdo->query('PRAGMA table_info(member_moderation)')->fetchAll(PDO::FETCH_COLUMN, 1);
         foreach ([
-            'review_reason' => 'TEXT',
-            'convalescent'  => 'INTEGER NOT NULL DEFAULT 0',
-            'last_regen_at' => 'INTEGER NOT NULL DEFAULT 0',
+            'review_reason'    => 'TEXT',
+            'convalescent'     => 'INTEGER NOT NULL DEFAULT 0',
+            'last_regen_at'    => 'INTEGER NOT NULL DEFAULT 0',
+            'vote_muted_until' => 'INTEGER NOT NULL DEFAULT 0',
         ] as $col => $type) {
             if (!in_array($col, $cols, true)) {
                 self::$pdo->exec("ALTER TABLE member_moderation ADD COLUMN $col $type");

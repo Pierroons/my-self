@@ -143,6 +143,20 @@ render_header(t('prf.title'), $account);
       <p class="muted" style="margin:4px 0 0;font-size:13px"><?= h(sprintf(t('prf.mod.conv.txt'), Moderate::REGEN_EXIT_AT)) ?></p>
     </div>
   <?php endif; ?>
+  <?php
+  // Visible sur son propre profil seulement : ailleurs, une pastille « a fait
+  // partie d'une meute » serait une peine publique que personne n'a décidée.
+  $rangMeute = Moderate::rangDe($pdo, $myId);
+  if ($rangMeute > 0): ?>
+    <div style="margin:14px 0 0;padding:10px 12px;border-left:3px solid #d96459;background:var(--elev);border-radius:0 6px 6px 0">
+      <strong style="color:#d96459"><?= h(t('prf.mod.meute.h')) ?></strong>
+      <p class="muted" style="margin:4px 0 0;font-size:13px">
+        <?= h($rep['vote_muted']
+            ? sprintf(t('prf.mod.meute.mute'), date('d/m/Y', $rep['vote_muted_until']))
+            : t('prf.mod.meute.warn')) ?>
+      </p>
+    </div>
+  <?php endif; ?>
 </div>
 
 <?php $motifs = Moderate::reasonsFor($pdo, $myId); ?>
