@@ -60,7 +60,22 @@ alerter() {
         -d "$message" "$NTFY_URL" > /dev/null 2>&1 || true
 }
 
-trap 'alerter "SelfJustice — sync LEGI en echec" "Arret ligne $LINENO. Base servie inchangee, voir $LOG_FILE."' ERR
+# 🔑 Le piège est gardé dans une variable parce qu'il faut savoir le remettre.
+# `set +e` empêche le script de s'arrêter, mais **ne désarme pas le piège ERR** :
+# une commande dont on tolère l'échec le déclenche quand même. Mesuré le
+# 15/08/2026 — la synchronisation a réussi, 525 441 articles insérés, et une
+# alerte « sync LEGI en echec. Base servie inchangee » est partie une seconde
+# avant le « Mise à jour réussie » du même passage. Deux messages contraires
+# dans la même minute, dont le faux porte la priorité haute.
+#
+# Le message nomme la commande plutôt que la ligne : `$LINENO` lu depuis un
+# piège rend le numéro de la ligne courante de l'interpréteur, pas celui de la
+# commande fautive — la même alerte du 15/08 désignait la ligne 162, qui lit une
+# date dans SQLite et n'avait rien à voir avec l'échec.
+PIEGE_ERR='alerter "SelfJustice — sync LEGI en echec" "Arret sur : $BASH_COMMAND. Base servie inchangee, voir $LOG_FILE."'
+# shellcheck disable=SC2064  # expansion voulue : on installe la chaîne, dont
+# le contenu est en apostrophes et reste donc différé au déclenchement.
+trap "$PIEGE_ERR" ERR
 
 journal() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
 
@@ -198,8 +213,12 @@ fi
 # synchronisation LEGI qui vient de réussir, mais ça doit se savoir.
 journal "Reconstruction de la base de conventionnalité"
 set +e
+trap - ERR
 "$VENV" "$LEGI_DIR/bin/build_eu_db.py" --db "$EU_DB" >> "$LOG_FILE" 2>&1
 EU_CODE=$?
+# shellcheck disable=SC2064  # expansion voulue : on installe la chaîne, dont
+# le contenu est en apostrophes et reste donc différé au déclenchement.
+trap "$PIEGE_ERR" ERR
 set -e
 EU_ARTICLES=$(sqlite3 "$EU_DB" "SELECT COUNT(*) FROM articles" 2>/dev/null || echo 0)
 chown www-data:www-data "$EU_DB"
