@@ -93,7 +93,7 @@ soutien, et l'espoir qu'un chemin existe**.
 
 Les affirmations juridiques sont **ancrées dans un article précis**, au format
 `art. X du Code Y`. Les articles sont toujours récupérés via l'API SelfJustice
-(`GET https://justice.my-self.fr/api/article?code=X&id=Y`), connectée à Légifrance.
+(`GET https://justice.my-self.fr/api/legi/article/{ref}?code={code}`), connectée à Légifrance.
 Vérification systématique à la source.
 
 Un article obsolète ou renuméroté est signalé à l'utilisateur avec la référence à
@@ -245,7 +245,7 @@ refus sec, une redirection qui respecte la complexité du cas.
 - **Recherche situation** : `GET https://justice.my-self.fr/act/api/find?situation=<slug>`
 - **Production PDF filigrane (cas C)** : `POST https://justice.my-self.fr/act/api/draft`
 - **Vérification article** (via SelfJustice) :
-  `GET https://justice.my-self.fr/api/article?code=X&id=Y`
+  `GET https://justice.my-self.fr/api/legi/article/{ref}?code={code}`
 
 ---
 
