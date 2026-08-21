@@ -5,7 +5,7 @@
 **Turn legal analysis into ready-to-send action.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: alpha 0.0.1](https://img.shields.io/badge/status-alpha%200.0.1-lightgrey.svg)](#status)
+[![Status: v0.1.2](https://img.shields.io/badge/status-v0.1.2-yellow.svg)](#status)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.md)
 [![Companion of: SelfJustice](https://img.shields.io/badge/companion-SelfJustice-green.svg)](../selfjustice/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -103,15 +103,22 @@ Without SelfAct, SelfJustice is a consultation that ends on the user's desk. Wit
 
 ## Status
 
-**alpha 0.0.1 — design phase.**
+**v0.1.2 — running at `justice.my-self.fr/act`.**
+
+The code lives under [`../selfjustice/api/act/`](../selfjustice/api/act/), because
+SelfAct is SelfJustice's operational extension. This folder holds the licence, the
+whitepaper and this page.
 
 - [x] Concept paper
-- [ ] Template library (mise en demeure × 8 scenarios, saisines × 12 jurisdictions)
-- [ ] CERFA matching and XML pre-fill
-- [ ] Calendar engine (art. 640 CPC, dies a quo / dies ad quem rules)
-- [ ] PDF renderer (weasyprint pipeline)
-- [ ] Integration adapter for SelfJustice API output
-- [ ] v0.1.0 prototype on `justice.my-self.fr/act`
+- [x] Resource catalogue — 1,895 official resources in 16 categories, harvested from service-public.gouv.fr, refreshed on the 1st and 15th
+- [x] Situation matching — 20 hand-curated situations, each mapped to a step, an article and a form
+- [x] Deadline engine — art. 640-643 CPC, mainland / overseas / abroad, with calendar export, covered by a CI guard
+- [x] Letter templates — formal notice, saisine, contestation, termination, recours, each carrying a "NON OFFICIEL — IRRECEVABLE" watermark that survives printing
+- [x] Printing — browser-side, so no draft ever leaves the machine
+- [x] Exposed through the SelfRight MCP server (4 of its 12 tools)
+- [ ] CERFA XML pre-fill
+- [ ] Wider template coverage — more scenarios, more jurisdictions
+- [ ] Move the code under `selfact/`, where this page tells readers to look
 
 See **[whitepaper](docs/whitepaper.docx)** for the full protocol specification, template library plan, and deployment roadmap.
 

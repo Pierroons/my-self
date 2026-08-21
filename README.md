@@ -113,17 +113,6 @@ php -S 127.0.0.1:8090 -t public
 
 ---
 
-## Published designs
-
-Two designs exist as documents only.
-
-| Design | Question | Document |
-|---|---|---|
-| SelfGuard | Destruction under coercion | [whitepaper](./self-security/selfguard/docs/whitepaper.md) |
-| SelfKeyGuard | Hardware 2FA | [whitepaper](./self-security/selfkeyguard/docs/whitepaper.md) |
-
----
-
 ## Contributing
 
 Code review is welcome. Audits — security, legal, accessibility — very welcome:

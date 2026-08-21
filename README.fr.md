@@ -117,17 +117,6 @@ php -S 127.0.0.1:8090 -t public
 
 ---
 
-## Conceptions publiées
-
-Deux conceptions n'existent qu'à l'état de document.
-
-| Conception | Question | Document |
-|---|---|---|
-| SelfGuard | Destruction sous contrainte | [whitepaper](./self-security/selfguard/docs/whitepaper.md) |
-| SelfKeyGuard | 2FA matérielle | [whitepaper](./self-security/selfkeyguard/docs/whitepaper.md) |
-
----
-
 ## Contribuer
 
 Relecture de code bienvenue. Audits — sécurité, droit, accessibilité — très

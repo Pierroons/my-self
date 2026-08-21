@@ -64,22 +64,9 @@ L'étiquette change le sel effectif : deux clés issues du même secret restent 
 
 Les deux modules tournent. SelfDataGuard est déployé et ses huit suites passent ; SelfRecover-LUKS a été validé sur des cycles de redémarrage complets — racine puis volumes secondaires en cascade — et son installation est documentée pas à pas dans [INSTALL.md](./selfrecover-luks/INSTALL.md).
 
-Aucun des deux n'a été audité par un cryptographe extérieur. Leur conception est vérifiée aujourd'hui par leur auteur et par les lecteurs de ce dépôt, par personne d'autre. Les audits sont bienvenus — voir [SECURITY.md](../SECURITY.md).
+Une piste de recherche est volontairement laissée de côté : ouvrir un volume par un **quorum de témoins du foyer** (parts de Shamir, avec secours SelfRecover quand le quorum est injoignable). Son code est rangé sous [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) et a été validé sur images jetables, mais il n'est **pas activé** en v0.3.0, qui ouvre par keyscript et fichier-clé.
 
----
-
-## Conceptions publiées
-
-Deux conceptions de ce pilier n'ont **pas de module à elles pour tourner**. Elles posent un modèle de menace, une conception cryptographique et, pour l'une, une nomenclature matérielle. Elles sont publiées pour que le raisonnement soit lu et discuté, pas parce que quelque chose serait prêt à installer.
-
-| Conception | Question | Document |
-|---|---|---|
-| [SelfGuard](./selfguard/) | Que reste-t-il sous la contrainte ? | [whitepaper](./selfguard/docs/whitepaper.md) |
-| [SelfKeyGuard](./selfkeyguard/) | Un objet physique peut-il exiger une 2FA matérielle ? | [whitepaper](./selfkeyguard/docs/whitepaper.md) |
-
-SelfKeyGuard décrit **deux bras**, et seul le premier se limite à un document. Son second bras — ouvrir un disque par un quorum de témoins du foyer, avec secours SelfRecover — a du code de R&D qui tourne, rangé sous [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) et validé sur images jetables. Il est volontairement **non activé en v0.3.0**, qui ouvre par keyscript et fichier-clé.
-
-Une première implémentation viendrait après un audit de sécurité indépendant et une période d'essai physique. C'est du code et du matériel critiques pour la sécurité ; la vitesse n'est pas une vertu ici.
+Aucun des deux modules n'a été audité par un cryptographe extérieur. Leur conception est vérifiée aujourd'hui par leur auteur et par les lecteurs de ce dépôt, par personne d'autre. Les audits sont bienvenus — voir [SECURITY.md](../SECURITY.md).
 
 ---
 

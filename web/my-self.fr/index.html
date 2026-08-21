@@ -613,25 +613,21 @@
       <h3>Self-Security</h3>
       <div class="sub">Protection</div>
       <p class="muted">
-        <em>« Force-moi et tu n'auras rien. »</em>
-        Le numérique et le physique ne sont plus séparés. SelfGuard détruit ses
-        secrets sous contrainte. SelfKeyGuard protège les clés : 2FA matériel pour
-        les objets physiques, et déverrouillage de disque par quorum de témoins du
-        foyer, avec récupération SelfRecover sans tiers. SelfDataGuard rend une fuite de base de données
-        techniquement inutile pour l'attaquant.
+        <em>« Prends ma base — tu auras du bruit. »</em>
+        Une base sort toujours un jour : sauvegarde oubliée, dump d'un prestataire,
+        disque revendu. SelfDataGuard chiffre la donnée avant qu'elle atteigne la
+        base, si bien qu'une exfiltration ne rend rien de lisible. SelfRecover-LUKS
+        couvre l'autre état : la racine chiffrée du serveur et ses volumes de données
+        s'ouvrent avec la seule phrase déjà mémorisée, à distance depuis le démarrage.
       </p>
       <div class="modules">
-        <a class="mod" href="https://github.com/Pierroons/my-self/tree/main/self-security/selfguard" target="_blank" rel="noopener">
-          <span class="name">SelfGuard<span class="status alpha">alpha · MVP</span></span>
-          <span class="role">Coffre-fort numérique avec destruction garantie.</span>
-        </a>
-        <a class="mod" href="https://github.com/Pierroons/my-self/tree/main/self-security/selfkeyguard" target="_blank" rel="noopener">
-          <span class="name">SelfKeyGuard<span class="status alpha">alpha · MVP fonctionnel</span></span>
-          <span class="role">2FA matériel des objets (voiture, moto, serrures) + déverrouillage de disque par quorum, secours SelfRecover.</span>
-        </a>
         <a class="mod" href="https://dataguard.example.org/" rel="noopener">
-          <span class="name">SelfDataGuard<span class="status live">bêta v0.1.0 · en prod</span></span>
+          <span class="name">SelfDataGuard<span class="status live">v0.2.0 · en service</span></span>
           <span class="role">Chiffrement at-rest robuste à l'exfiltration de DB — bibliothèque PHP + démo interactive.</span>
+        </a>
+        <a class="mod" href="https://github.com/Pierroons/my-self/tree/main/self-security/selfrecover-luks" target="_blank" rel="noopener">
+          <span class="name">SelfRecover-LUKS<span class="status live">v0.3.0 · déployé</span></span>
+          <span class="role">Racine LUKS2 et volumes de données ouverts par une seule phrase de récupération.</span>
         </a>
       </div>
     </div>

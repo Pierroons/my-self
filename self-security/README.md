@@ -64,22 +64,9 @@ The label changes the effective salt, so two keys from the same secret stay inde
 
 Both modules run. SelfDataGuard is deployed and its eight suites pass; SelfRecover-LUKS was validated over full reboot cycles — root volume plus cascading secondary volumes — and its install is documented step by step in [INSTALL.md](./selfrecover-luks/INSTALL.md).
 
-Neither has been audited by an external cryptographer. Their design is verified today by their author and by the readers of this repository, and by no one else. Audits are welcome — see [SECURITY.md](../SECURITY.md).
+One research path is deliberately left off: unlocking a volume through a **quorum of household witnesses** (Shamir shares, with a SelfRecover fallback when the quorum is unreachable). Its code sits under [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) and was validated on throwaway images, but it is **not enabled** in v0.3.0, which unlocks by keyscript and keyfile instead.
 
----
-
-## Published designs
-
-Two designs in this pillar have **no module of their own to run**. They state a threat model, a cryptographic design and, for one of them, a hardware bill of materials. They are published so the reasoning can be read and argued with — not because anything is ready to install.
-
-| Design | Question | Document |
-|---|---|---|
-| [SelfGuard](./selfguard/) | What survives coercion? | [whitepaper](./selfguard/docs/whitepaper.md) |
-| [SelfKeyGuard](./selfkeyguard/) | Can a physical object require hardware 2FA? | [whitepaper](./selfkeyguard/docs/whitepaper.md) |
-
-SelfKeyGuard describes **two arms**, and only the first is document-only. Its second arm — unlocking a disk through a quorum of household witnesses, with a SelfRecover fallback — has working R&D code, kept under [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) and validated on throwaway images. It is deliberately **not enabled in v0.3.0**, which unlocks by keyscript and keyfile instead.
-
-A first implementation would follow an independent security audit and a physical trial period. This is security-critical code and hardware; speed is not a virtue here.
+Neither module has been audited by an external cryptographer. Their design is verified today by their author and by the readers of this repository, and by no one else. Audits are welcome — see [SECURITY.md](../SECURITY.md).
 
 ---
 

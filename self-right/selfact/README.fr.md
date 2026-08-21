@@ -5,7 +5,7 @@
 **Transforme une analyse juridique en action prête à envoyer.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: alpha 0.0.1](https://img.shields.io/badge/status-alpha%200.0.1-lightgrey.svg)](#statut)
+[![Status: v0.1.2](https://img.shields.io/badge/status-v0.1.2-yellow.svg)](#statut)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfJustice](https://img.shields.io/badge/companion-SelfJustice-green.svg)](../selfjustice/)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -103,15 +103,22 @@ Sans SelfAct, SelfJustice est une consultation qui finit sur le bureau de l'util
 
 ## Statut
 
-**alpha 0.0.1 — phase de conception.**
+**v0.1.2 — en service sur `justice.my-self.fr/act`.**
 
-- [x] Concept paper
-- [ ] Bibliothèque de templates (mise en demeure × 8 scénarios, saisines × 12 juridictions)
-- [ ] Matching CERFA et pré-remplissage XML
-- [ ] Moteur de calendrier (art. 640 CPC, règles dies a quo / dies ad quem)
-- [ ] Rendu PDF (pipeline weasyprint)
-- [ ] Adaptateur d'intégration pour la sortie API SelfJustice
-- [ ] Prototype v0.1.0 sur `justice.my-self.fr/act`
+Le code vit sous [`../selfjustice/api/act/`](../selfjustice/api/act/), parce que
+SelfAct est le prolongement opérationnel de SelfJustice. Ce dossier porte la
+licence, le whitepaper et cette page.
+
+- [x] Note de conception
+- [x] Catalogue de ressources — 1 895 ressources officielles en 16 catégories, moissonnées sur service-public.gouv.fr, rafraîchies les 1er et 15
+- [x] Aiguillage par situation — 20 situations curées à la main, chacune reliée à un acte, un article et un formulaire
+- [x] Moteur d'échéance — art. 640-643 CPC, métropole / outre-mer / étranger, avec export agenda, couvert par un garde-fou en CI
+- [x] Gabarits de courrier — mise en demeure, saisine, contestation, résiliation, recours, chacun avec un filigrane « NON OFFICIEL — IRRECEVABLE » qui survit à l'impression
+- [x] Impression côté navigateur : aucun brouillon ne quitte la machine
+- [x] Exposé par le serveur MCP SelfRight (4 de ses 12 outils)
+- [ ] Pré-remplissage XML des CERFA
+- [ ] Couverture de gabarits plus large — plus de scénarios, plus de juridictions
+- [ ] Remonter le code sous `selfact/`, là où cette page dit d'aller le chercher
 
 Voir **[whitepaper](docs/whitepaper.docx)** pour la spécification complète du protocole, le plan de bibliothèque de templates, et la roadmap de déploiement.
 
