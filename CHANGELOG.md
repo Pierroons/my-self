@@ -8,6 +8,36 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ---
 
+## [Non publié]
+
+### SelfModerate v0.3.0 — 21 août 2026
+
+**Corrigé — la détection de meute avait le sens inverse.** Le moteur annulait les
+downvotes dès que trois votants frappaient la même cible en moins d'une minute,
+sans jamais vérifier qu'ils se connaissaient. Trois personnes réagissant
+indépendamment au même message voyaient leurs votes annulés, la réputation de
+l'auteur restituée, son bannissement levé et ses strikes retirés — un message
+était donc d'autant mieux protégé qu'il choquait plus de monde à la fois.
+
+- **Meute** — deux votants liés entre eux sur 30 jours ; le lien se propage par
+  transitivité. Sur un forum, « liés » signifie un message privé dans chaque
+  sens ; le contenu n'est jamais lu, seulement qui a écrit à qui
+- **Salve rapide** — plusieurs votants sans lien dans la même minute : plus
+  aucune annulation, la cible part en revue humaine avec sa cause (`review_reason`)
+- **Convalescence** — sous 5, le score remonte d'un point par intervalle de calme
+  jusqu'à 20, son point de départ. Un **état**, pas un seuil : le conditionner à
+  « score < 5 » arrêterait la remontée pile au seuil qui rend le droit de vote.
+  Visible sur le profil, des deux côtés
+- **Motif de vote** — obligatoire au downvote, facultatif à l'upvote, validé par
+  cinq règles anti-remplissage, rendu à la personne visée sans identité de votant
+  et daté au jour
+- Contrôles portés de 8 à 16, chacun vu rougir ; les quatre règles du motif sont
+  éprouvées séparément, chaque cas n'en violant qu'une
+
+**Corrigé — deux seuils SQL comparés à des chaînes.** `HAVING COUNT(...) >= ?`
+avec un paramètre PDO : SQLite range tout INTEGER avant tout TEXT, donc la
+comparaison était toujours fausse et aucune meute n'aurait été détectée.
+
 ## [v0.3.0] — 24-25 avril 2026
 
 ### Ajouté — Étage applicatif SelfFarm-Lite complet

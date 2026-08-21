@@ -170,10 +170,16 @@
     <div id="pack-result"></div>
     <div class="teach">
       <strong>Ce qu'il se passe ici :</strong> les 3 bots votent <code>-1</code> en
-      moins de 60s contre la même cible. L'algorithme regarde les votes récents, identifie
-      la convergence temporelle + le graph d'invitations croisées entre voters, marque
-      les votes comme <code>blocked = 1, reason = pack_voting</code>, et restore la
-      réputation de la victime. Aucune IA. Juste du SQL.
+      moins de 60s contre la même cible. Cette démo ne regarde que la convergence
+      temporelle : elle marque les votes <code>blocked = 1, reason = pack_voting</code>
+      et restore la réputation de la victime. Aucune IA. Juste du SQL.
+      <br><br>
+      <strong>Sa limite :</strong> trois personnes qui réagissent au même message dans
+      la même minute déclenchent exactement la même chose, sans s'être jamais parlé —
+      et un message est alors d'autant mieux protégé qu'il choque plus de monde à la
+      fois. Le moteur du module <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfmoderate">SelfModerate</a>
+      sépare les deux cas : il n'annule que si les votants sont <em>liés entre eux</em>,
+      et se contente de signaler la salve sans lien.
     </div>
   </div>
 

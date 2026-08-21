@@ -5,7 +5,7 @@
 **Autonomous community moderation engine through social reasoning**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.2.0](https://img.shields.io/badge/status-v0.2.0-yellow.svg)](#status)
+[![Status: v0.3.0](https://img.shields.io/badge/status-v0.3.0-yellow.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#)
@@ -32,16 +32,19 @@ SelfModerate is a moderation engine that lets online communities self-regulate w
 
 ### Vote system
 - Votes are tied to **accepted invitations** (real interactions, not anonymous reports) — *partial: the lab is a forum and has no invitations*
-- 👍 (+1) or 👎 (-1) with a mandatory reason — *partial: the duo demo never validates the reason, and the lab has no such field*
+- 👍 (+1) or 👎 (-1) with a reason — **mandatory on a downvote, optional on an upvote**: a reason exists so the sanctioned person knows what they are faulted for, and a thumbs-up sanctions nobody
+- The reason must **say something**: 40 characters, 3 distinct words, no word repeated more than twice, at least 12 different characters, no run of one character. Five rules because a single one is worked around — you reach any length by holding a key down
 - Voting is a **recommendation, not an obligation** — it helps recognize good teammates or flag problematic behavior
-- Configurable reasons per platform (toxic, no-show, cheating, good teammate, skilled...) — *not implemented yet*
-- Anonymous votes: the target sees their score and reasons, not who voted — *partial: anonymity holds, but no screen returns their reasons to the target*
+- Configurable reasons per platform through `setReasonCodes()`; the default set fits a forum (off-topic, aggressive, misinformation, helpful to others, useful contribution, other)
+- Anonymous votes: the target sees their score and reasons, not who voted. Reasons come back **dated to the day**, in a non-chronological order — to the second, cross-referenced with who was online, they would name their author. A limit no ordering lifts: on a single downvote received, the person often guesses who sent it
 
 ### Reputation score
 - Every user starts at **20** (configurable)
 - Score is capped at **30** (configurable) — no hoarding social credit
-- Going up is slow, going down is fast — *not implemented yet: a vote is worth ±1 either way*
-- Passive regeneration: +1/week if score drops below 5 — *not implemented yet*
+- Going up is slow, going down is fast: a downvote takes a point immediately, passive recovery gives one back per quiet interval
+- **Recovery**: below 5 the state is set and the score climbs back on its own **up to 20**, its starting point — never beyond. Voting rights return at 5, the state lifts at 20
+- The state is **visible**, on one's own profile and on the one others see: it announces that something went wrong, and that the score moves with patience rather than merit
+- It is a **state, not a threshold**. Gating recovery on "score < 5" stops it exactly at the threshold that restores voting rights, leaving the account permanently on a knife edge
 
 ### Self-regulating loop
 ```
@@ -62,7 +65,10 @@ The punishment isn't technical — it's social.
 
 ### Anti-manipulation
 - **Anti-Sybil**: SelfRecover integration (optional) + 7-day cooldown on new accounts — *partial: anti-Sybil is there, the cooldown is not*
-- **Pack voting**: cross-reference invitations and votes to detect coordinated downvotes — *not implemented yet: detection rests on a time threshold, without checking that the voters know each other*
+- **Pack**: two voters **linked to each other** hitting the same target within 30 days → their votes are cancelled and the reputation restored. Linkage propagates transitively — A–B and B–C linked form a pack of three, because a pack has a ringleader
+- What links two accounts depends on the platform. On a forum: a **private message in each direction**, the closest equivalent to an accepted invitation. Requiring reciprocity stops a spammer from becoming invulnerable by writing to everyone. Message contents are **never read** — only who wrote to whom
+- **Fast burst**: several voters with **no link at all** within the same minute. That is not a pack, it is most often the same reaction to the same post: nothing is cancelled, the target goes to human review. Cancelling here would protect a post all the better for shocking more people at once
+- **What neither one sees**: coordination organised elsewhere, between accounts that never wrote to each other on the platform. It lands as a fast burst — flagged, never cancelled
 - **Upvote farming**: mutual positive votes blocked after 3 occurrences in 2 months
 - **Cross-voting**: A vs B and B vs A on same invitation → both cancelled — *not implemented yet*
 - **Victim protection**: flagged abuse suspends the ban for admin review — *not implemented yet*
@@ -74,13 +80,20 @@ The punishment isn't technical — it's social.
 
 ## Status
 
-🟢 **v0.2.0** — the engine is here, under `src/`, and the lab imports it the way
-it imports SelfRecover and SelfDataGuard. Six protocol mechanisms remain to be
-written; they are marked in the lists above.
+🟢 **v0.3.0** — the engine is here, under `src/`, and the lab imports it the way
+it imports SelfRecover and SelfDataGuard.
+
+This version ships linked-voter cross-referencing, recovery, and the vote reason.
+**Two mechanisms remain to be written** — cross-voting and victim protection —
+plus three half-kept, all marked in the lists above.
 
 Checks: [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
-— eight, each seen failing first. They still live on the lab side because they
-need a database schema; they will move to `tests/` once the module carries one.
+— sixteen, each seen failing first: the mechanism is disabled, the measurement
+retaken, the code restored. The four reason rules are exercised **separately**,
+each case breaking only one: otherwise defence in depth catches the hole, the
+check stays green, and nobody knows which rule still measures anything. They
+still live on the lab side because they need a database schema; they will move
+to `tests/` once the module carries one.
 
 ## License
 

@@ -8,7 +8,7 @@
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../LICENSE)
 [![SelfRecover: v0.1.0](https://img.shields.io/badge/SelfRecover-v0.1.0-green.svg)](./selfrecover/)
-[![SelfModerate: v0.1.0](https://img.shields.io/badge/SelfModerate-v0.1.0-orange.svg)](./selfmoderate/)
+[![SelfModerate: v0.3.0](https://img.shields.io/badge/SelfModerate-v0.3.0-yellow.svg)](./selfmoderate/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
@@ -55,13 +55,13 @@ Un plus un égale une communauté auto-gouvernée. Pas trois — une chose quali
 | Module | Rôle | Statut |
 |--------|------|--------|
 | [SelfRecover](./selfrecover/) | Identité & récupération sans email | v0.1.0 ✅ — implémentation de référence + démo auto-auditée |
-| [SelfModerate](./selfmoderate/) | Modération communautaire par raisonnement collectif | v0.1.0 (whitepaper) — prototype en attente |
+| [SelfModerate](./selfmoderate/) | Modération communautaire par raisonnement collectif | v0.3.0 — moteur installable, 16 contrôles ; 2 mécanismes du protocole manquent |
 
 ---
 
 ## Statut
 
-SelfRecover existe en implémentation de référence avec une démo auto-auditée (pas encore de déploiement en production réelle). SelfModerate dispose d'un whitepaper complet définissant le protocole ; l'implémentation de référence est prévue pour la v0.2.0.
+SelfRecover existe en implémentation de référence avec une démo auto-auditée (pas encore de déploiement en production réelle). SelfModerate dispose d'un whitepaper complet définissant le protocole ; l'implémentation de référence vit dans [`selfmoderate/src/`](./selfmoderate/src/) et le lab s'en sert. Deux mécanismes du protocole restent à écrire, marqués dans son README.
 
 Les deux modules sont conçus pour s'imbriquer — une fois les deux en ligne, une communauté peut se bootstraper et se gouverner elle-même sans aucun service central.
 

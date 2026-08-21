@@ -126,7 +126,7 @@
     <p style="font-size: 0.9rem; color: var(--text-muted);">
       <strong>SelfModerate seul</strong> — 5 comptes frais sans historique votent, pack-detection a assez de signaux pour détecter. Mais si l'attaquant est patient et espace ses votes sur des jours, ou s'il paie de vrais humains pour voter, la détection échoue.<br><br>
       <strong>SelfRecover seul</strong> — identité fiable mais rien contre la manipulation coordonnée de vote.<br><br>
-      <strong>Les deux ensemble</strong> — SelfRecover impose un coût cryptographique (trois Argon2id à 64 Mo par compte) qui rend l'attaque linéairement coûteuse à multiplier — en mémoire autant qu'en temps. SelfModerate détecte les patterns de coordination temporelle + graph d'invitations. Pour qu'une attaque Sybil réussisse, il faudrait : (1) payer le coût crypto N fois, (2) attendre et espacer les votes pour échapper à la détection, (3) créer un graph d'invitations "naturel" entre les faux comptes. Le coût cumulé rend ça non rentable à grande échelle.
+      <strong>Les deux ensemble</strong> — SelfRecover impose un coût cryptographique (trois Argon2id à 64 Mo par compte) qui rend l'attaque linéairement coûteuse à multiplier — en mémoire autant qu'en temps. SelfModerate détecte la coordination : cette démo sur la convergence temporelle seule, le module sur le lien entre les votants. Pour qu'une attaque Sybil réussisse, il faudrait : (1) payer le coût crypto N fois, (2) attendre et espacer les votes pour échapper à la détection, (3) tisser entre les faux comptes des échanges réciproques assez naturels pour ne pas se trahir. Le coût cumulé rend ça non rentable à grande échelle.
     </p>
   </div>
 </div>

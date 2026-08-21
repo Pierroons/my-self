@@ -5,7 +5,7 @@
 **Moteur de modération communautaire autonome par raisonnement social**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.2.0](https://img.shields.io/badge/status-v0.2.0-yellow.svg)](#statut)
+[![Status: v0.3.0](https://img.shields.io/badge/status-v0.3.0-yellow.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#)
@@ -32,16 +32,19 @@ SelfModerate est un moteur de modération qui permet aux communautés en ligne d
 
 ### Système de vote
 - Les votes sont liés aux **invitations acceptées** (vraies interactions, pas reports anonymes) — *partiel : le lab est un forum, il n'a pas d'invitations*
-- 👍 (+1) ou 👎 (-1) avec une raison obligatoire — *partiel : la raison n'est jamais validée dans la démo duo, et le lab n'en a pas de champ*
+- 👍 (+1) ou 👎 (-1) avec une raison — **obligatoire au downvote, facultative à l'upvote** : une raison existe pour que la personne sanctionnée sache ce qu'on lui reproche, et un pouce en l'air ne sanctionne personne
+- La raison doit **dire quelque chose** : 40 caractères, 3 mots distincts, aucun mot répété plus de deux fois, au moins 12 caractères différents, pas de rafale d'un même caractère. Cinq règles parce qu'une seule se contourne — on atteint n'importe quelle longueur en bloquant une touche
 - Voter est une **recommandation, pas une obligation** — ça aide à reconnaître les bons coéquipiers ou signaler les comportements problématiques
-- Raisons configurables par plateforme (toxique, no-show, triche, bon coéquipier, habile…) — *pas encore codé*
-- Votes anonymes : la cible voit son score et les raisons, pas qui a voté — *partiel : l'anonymat est tenu, aucun écran ne rend ses raisons à la cible*
+- Raisons configurables par plateforme via `setReasonCodes()` ; le jeu par défaut convient à un forum (hors-sujet, agressif, désinformation, entraide, contribution utile, autre)
+- Votes anonymes : la cible voit son score et les raisons, pas qui a voté. Les raisons lui sont rendues **datées au jour**, dans un ordre non chronologique — à la seconde près, recoupées avec les présences, elles désigneraient leur auteur. Limite qu'aucun tri ne lève : sur un unique downvote reçu, la personne devine souvent qui l'a émis
 
 ### Score de réputation
 - Chaque utilisateur démarre à **20** (configurable)
 - Score plafonné à **30** (configurable) — pas d'accumulation de crédit social
-- Monter est lent, descendre est rapide — *pas encore codé : un vote vaut ±1 dans les deux sens*
-- Régénération passive : +1/semaine si le score tombe sous 5 — *pas encore codé*
+- Monter est lent, descendre est rapide : un downvote retire un point immédiatement, la remontée passive en rend un par intervalle de calme
+- **Convalescence** : sous 5, l'état est posé et le score remonte tout seul **jusqu'à 20**, son point de départ — jamais au-delà. Le droit de vote revient à 5, l'état se lève à 20
+- L'état est **visible**, sur son propre profil et sur celui que voient les autres : il annonce qu'il y a eu bêtise, et que le score varie par la patience, pas par le mérite
+- C'est un **état**, pas un seuil. Conditionner la remontée à « score < 5 » l'arrête pile au seuil qui rend le droit de vote, et laisse le compte à vie sur le fil du rasoir
 
 ### Boucle auto-régulatrice
 ```
@@ -62,7 +65,10 @@ La punition n'est pas technique — elle est sociale.
 
 ### Anti-manipulation
 - **Anti-Sybil** : intégration SelfRecover (optionnel) + cooldown 7 jours sur les nouveaux comptes — *partiel : l'anti-Sybil est là, le cooldown non*
-- **Pack voting** : recoupement invitations / votes pour détecter les downvotes coordonnés — *pas encore codé : la détection repose sur un seuil de temps, sans vérifier que les votants se connaissent*
+- **Meute** : deux votants **liés entre eux** qui frappent la même cible sur 30 jours → leurs votes sont annulés et la réputation restituée. Le lien se propage par transitivité — A–B et B–C liés forment une meute de trois, car une meute a un meneur
+- Ce qui lie deux comptes dépend de la plateforme. Sur un forum : un **message privé dans chaque sens**, l'équivalent le plus proche d'une invitation acceptée. Exiger la réciprocité empêche un spammeur de se rendre invulnérable en écrivant à tout le monde. Le contenu des messages n'est **jamais lu** — seulement qui a écrit à qui
+- **Salve rapide** : plusieurs votants **sans aucun lien** dans la même minute. Ce n'est pas une meute, c'est le plus souvent la même réaction au même message : rien n'est annulé, la cible part en revue humaine. Annuler ici protégerait un message d'autant mieux qu'il choque plus de monde à la fois
+- **Ce que ni l'une ni l'autre ne voit** : une coordination organisée ailleurs, entre comptes qui ne se sont jamais écrit sur la plateforme. Elle tombe en salve rapide — donc signalée, jamais annulée
 - **Upvote farming** : votes positifs mutuels bloqués après 3 occurrences en 2 mois
 - **Cross-voting** : A vs B et B vs A sur la même invitation → les deux annulés — *pas encore codé*
 - **Protection des victimes** : un abus signalé suspend le ban pour revue admin — *pas encore codé*
@@ -74,13 +80,20 @@ La punition n'est pas technique — elle est sociale.
 
 ## Statut
 
-🟢 **v0.2.0** — le moteur est ici, dans `src/`, et le lab l'importe comme il
-importe SelfRecover et SelfDataGuard. Six mécanismes du protocole restent à
-écrire : ils sont marqués dans les listes ci-dessus.
+🟢 **v0.3.0** — le moteur est ici, dans `src/`, et le lab l'importe comme il
+importe SelfRecover et SelfDataGuard.
+
+Cette version livre le recoupement des votants liés, la convalescence et le motif
+de vote. **Deux mécanismes restent à écrire** — cross-voting et protection des
+victimes — plus trois tenus à moitié, tous marqués dans les listes ci-dessus.
 
 Contrôles : [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
-— huit, chacun vu rougir. Ils vivent encore côté lab parce qu'ils ont besoin d'un
-schéma de base ; ils rejoindront `tests/` quand le module portera le sien.
+— seize, chacun vu rougir : le mécanisme est neutralisé, la mesure refaite, le
+code restauré. Les quatre règles du motif sont éprouvées **séparément**, chaque
+cas n'en violant qu'une : sinon la défense en profondeur rattrape le trou, le
+contrôle reste vert, et on ne sait plus laquelle mesure encore quelque chose.
+Ils vivent encore côté lab parce qu'ils ont besoin d'un schéma de base ; ils
+rejoindront `tests/` quand le module portera le sien.
 
 ## Licence
 
