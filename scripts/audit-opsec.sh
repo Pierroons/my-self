@@ -400,9 +400,26 @@ if [ "$PAR_CIBLES" = "0" ]; then
   # Le filtre le plus utile de tous : c'est là que dorment les documents de
   # travail, briefs privés et captures qu'on a « rangés » d'un git rm.
   echo
-  echo "5. Fichiers orphelins (dans l'historique, absents du HEAD)"
+  # Le périmètre de ce contrôle suit --range comme les contrôles 2 et 4. Sans
+  # lui, le pre-push rougissait sur des blobs publiés depuis des mois, qu'aucun
+  # envoi ne peut ni aggraver ni corriger : il bloquait TOUT jusqu'à la
+  # réécriture de l'historique, donc il se contournait — et un garde-fou qu'on
+  # contourne par habitude ne garde plus rien. Le commentaire de --range
+  # annonçait déjà ce bornage ; le code ne l'appliquait pas (mesuré le 21/08).
+  #
+  # Borné, il attrape ce qu'un envoi AJOUTE vraiment : un fichier sali puis
+  # supprimé dans la même série de commits laisse son blob dans l'historique
+  # poussé. L'audit complet, sans --range, continue de voir tout le passé —
+  # c'est lui qui sert au chantier de réécriture, et c'est sa place.
+  if [ -n "$RANGE" ]; then
+    echo "5. Fichiers orphelins supprimés par les commits à publier ($RANGE)"
+    PORTEE=("$RANGE")
+  else
+    echo "5. Fichiers orphelins (dans l'historique, absents du HEAD)"
+    PORTEE=(--all)
+  fi
   ORPH=$(comm -23 \
-    <(git -C "$ROOT" log --all --diff-filter=D --name-only --format='' | sort -u | grep . ) \
+    <(git -C "$ROOT" log "${PORTEE[@]}" --diff-filter=D --name-only --format='' | sort -u | grep . ) \
     <(git -C "$ROOT" ls-files | sort -u) || true)
   ORPH_N=$(printf '%s' "$ORPH" | grep -c . || true)
   C5=0
@@ -415,7 +432,7 @@ if [ "$PAR_CIBLES" = "0" ]; then
       # souvent le propre. Et la comparaison porte sur le chemin ENTIER — un
       # `grep -F " brief.md"` non ancré matche « mon brief.md » et fait juger
       # l'orphelin sur le contenu d'un autre fichier.
-      mapfile -t BLOBS < <(git -C "$ROOT" rev-list --all --objects \
+      mapfile -t BLOBS < <(git -C "$ROOT" rev-list "${PORTEE[@]}" --objects \
         | awk -v p="$f" 'index($0, " ") > 0 && substr($0, index($0, " ") + 1) == p { print $1 }' \
         | sort -u)
       [ ${#BLOBS[@]} -eq 0 ] && continue
