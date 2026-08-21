@@ -108,6 +108,19 @@ $acts = $entry['acts'] ?? [];
  * ressource s'applique au cas, ni qu'elle est la bonne voie procédurale — d'où
  * le champ `confidence` rendu au client, et la séparation d'avec `acts`.
  */
+/**
+ * Les métadonnées du catalogue synchronisé, pour que le client puisse dater les
+ * suggestions autrement que par la curation manuelle qui les a demandées.
+ */
+function selfact_meta_catalogue(): array {
+    $path = __DIR__ . '/data/catalog.json';
+    if (!is_file($path)) { return []; }
+    $cat = json_decode((string) @file_get_contents($path), true);
+    return is_array($cat) && isset($cat['_meta']) && is_array($cat['_meta'])
+        ? $cat['_meta']
+        : [];
+}
+
 function suggestFromCatalog(array $hints, int $limite = 12): array {
     $path = __DIR__ . '/data/catalog.json';
     if (!is_file($path)) { return []; }
@@ -193,7 +206,13 @@ respond(200, [
         'count'      => count($suggestions),
         'items'      => $suggestions,
     ],
-    'meta'        => $meta,
+    // 🔑 Cette route sert deux jeux de données : le rapprochement curé à la main
+    // (`situations.json`, sans cadence) et le catalogue synchronisé
+    // (`catalog.json`, les 1er et 15). Ne rendre que le premier masquait tout
+    // retard du second, alors que les suggestions en viennent — le client
+    // annonçait une curation d'avril sans voir qu'un catalogue de trois semaines
+    // avait servi à composer sa réponse.
+    'meta'        => $meta + ['catalogue' => selfact_meta_catalogue()],
     'fallback'    => [
         'if_no_official_match' => 'Use /act/api/draft to produce an HTML draft with watermark "NON OFFICIEL — IRRECEVABLE" for printing as PDF',
         'draft_url'            => (getenv('SELFJUSTICE_BASE_URL') ?: 'https://' . ($_SERVER['HTTP_HOST'] ?? 'your-instance.example')) . '/act/api/draft',

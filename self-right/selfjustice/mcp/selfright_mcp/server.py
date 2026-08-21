@@ -1483,15 +1483,58 @@ async def _bandeau_catalogue(meta: Any) -> str:
     plutôt que d'ajouter un appel — et l'absence de date se dit, au lieu de
     laisser croire à une fraîcheur qu'on n'a pas vérifiée.
     """
-    # ⚠️ La même date porte deux noms selon la route : `last_sync` sur le
-    # catalogue, `last_update` sur les situations. Lire un seul des deux rendait
-    # « date inconnue » sur la moitié des appels — vérifié, pas supposé.
-    jour = ""
-    if isinstance(meta, dict):
-        jour = str(meta.get("last_sync") or meta.get("last_update") or "")[:10]
-    if not jour:
-        return "Catalogue SelfAct — date de synchronisation inconnue : traite les références comme à vérifier."
-    return f"Catalogue SelfAct synchronisé au {jour} (version {meta.get('version', '?')})."
+    # ⚠️ Les deux noms ne désignent pas la même chose, et c'est tout l'objet de
+    # cette fonction. `last_sync` date une synchronisation automatique, de
+    # cadence bimensuelle comme les bases de textes — elle peut donc être en
+    # retard, et le retard se dit. `last_update` date la curation manuelle du
+    # rapprochement situation → acte : rien ne la synchronise, aucune échéance
+    # ne lui est opposable, et l'annoncer « synchronisée » ferait conclure à une
+    # panne de cron devant une date simplement ancienne.
+    if not isinstance(meta, dict):
+        return ("Catalogue SelfAct — date inconnue : traite les références "
+                "comme à vérifier.")
+
+    version = meta.get("version", "?")
+    # Les dates arrivent en ISO, parfois horodatées (« 2026-08-03T17:58:05+00:00 »).
+    # La troncature sert à isoler le jour, pas à décrire la valeur reçue : le
+    # message d'erreur, lui, cite la valeur entière, sans quoi il ferait chercher
+    # un défaut dans dix caractères choisis par nous.
+    brut_synchro = str(meta.get("last_sync") or "")
+    synchro = brut_synchro[:10]
+    curation = str(meta.get("last_update") or "")[:10]
+
+    if synchro:
+        date_base = _parse_date_fr(synchro)
+        if date_base is None:
+            return (f"Catalogue SelfAct — l'index annonce « {brut_synchro} », qui ne "
+                    "se lit pas comme une date : traite les références comme à vérifier.")
+        echeance = _derniere_echeance(dt.date.today())
+        if date_base >= echeance:
+            return f"Catalogue SelfAct synchronisé au {synchro} (version {version})."
+        retard = (dt.date.today() - date_base).days
+        return (
+            f"⚠️ RETARD — catalogue SelfAct arrêté au {synchro} (version "
+            f"{version}), soit {retard} jours. L'échéance du "
+            f"{_format_fr(echeance)} n'a pas été honorée : une démarche ou un "
+            "formulaire peut avoir changé de référence depuis. Renvoie vers "
+            "service-public.gouv.fr avant tout usage."
+        )
+
+    if curation:
+        ligne = (f"Rapprochement situation → acte, curé à la main le {curation} "
+                 f"(version {version}). Aucune synchronisation automatique ne "
+                 "s'y applique : une date ancienne n'y signale pas de retard.")
+        # Les suggestions de cette route viennent du catalogue synchronisé, dont
+        # le retard ne se voyait nulle part ici : la date de curation n'en dit
+        # rien, et c'est pourtant lui qui a composé la moitié de la réponse.
+        sous_catalogue = meta.get("catalogue")
+        if isinstance(sous_catalogue, dict) and sous_catalogue.get("last_sync"):
+            second = await _bandeau_catalogue(sous_catalogue)
+            if second.startswith("⚠️"):
+                return f"{ligne}\n{second}"
+        return ligne
+
+    return "Catalogue SelfAct — date inconnue : traite les références comme à vérifier."
 
 
 @server.tool()
