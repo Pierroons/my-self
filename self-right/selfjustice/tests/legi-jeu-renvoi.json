@@ -1,0 +1,132 @@
+[
+  {
+    "id": "LEGIARTI000032040777",
+    "num": "1103",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Les contrats légalement formés tiennent lieu de loi à ceux qui les ont faits."
+  },
+  {
+    "id": "LEGIARTI000006437044",
+    "num": "1240",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le paiement fait de bonne foi à celui qui est en possession de la créance est valable, encore que le possesseur en soit par la suite évincé."
+  },
+  {
+    "id": "LEGIARTI000032041571",
+    "num": "1240",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Tout fait quelconque de l'homme, qui cause à autrui un dommage, oblige celui par la faute duquel il est arrivé à le réparer."
+  },
+  {
+    "id": "LEGIARTI000006438819",
+    "num": "1382",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Tout fait quelconque de l'homme, qui cause à autrui un dommage, oblige celui par la faute duquel il est arrivé à le réparer."
+  },
+  {
+    "id": "LEGIARTI000032042379",
+    "num": "1382",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Les présomptions qui ne sont pas établies par la loi, sont laissées à l'appréciation du juge, qui ne doit les admettre que si elles sont graves, précises et concordantes, et dans les cas seulement où la loi admet la preuve par tout moyen."
+  },
+  {
+    "id": "LEGIARTI000006646880",
+    "num": "L122-14",
+    "etat": "ABROGE",
+    "date_debut": "1973-11-23",
+    "date_fin": "1974-09-29",
+    "code_id": "LEGITEXT000006072050",
+    "code_titre": "Code du travail",
+    "texte": "Les dispositions des articles précédents sont applicables même au cas où le salarié est lié par des contrats de louage de services à plusieurs employeurs."
+  },
+  {
+    "id": "LEGIARTI000006646881",
+    "num": "L122-14",
+    "etat": "MODIFIE",
+    "date_debut": "1975-01-04",
+    "date_fin": "1986-07-04",
+    "code_id": "LEGITEXT000006072050",
+    "code_titre": "Code du travail",
+    "texte": "L'employeur, ou son représentant, qui envisage de licencier un salarié doit, avant toute décision, convoquer l'intéressé par lettre recommandée en lui indiquant l'objet de la convocation. Au cours de l'entretien, l'employeur est tenu d'indiquer le ou les motifs de la décision envisagée et de recueillir les explications du salarié.\n\nLors de cette audition, le salarié peut se faire assister par une personne de son choix appartenant au personnel de l'entreprise.\n\nEn cas de licenciement pour motif économique, la demande d'autorisation mentionnée à l'article L. 321-7 ne peut être adressée par l'employeur à l'autorité administrative compétente qu'après l'entretien visé au premier alinéa ci-dessus."
+  },
+  {
+    "id": "LEGIARTI000006646882",
+    "num": "L122-14",
+    "etat": "MODIFIE",
+    "date_debut": "1986-07-04",
+    "date_fin": "1986-12-31",
+    "code_id": "LEGITEXT000006072050",
+    "code_titre": "Code du travail",
+    "texte": "L'employeur, ou son représentant, qui envisage de licencier un salarié doit, avant toute décision, convoquer l'intéressé par lettre recommandée en lui indiquant l'objet de la convocation. Au cours de l'entretien, l'employeur est tenu d'indiquer le ou les motifs de la décision envisagée et de recueillir les explications du salarié.\n\nLors de cette audition, le salarié peut se faire assister par une personne de son choix appartenant au personnel de l'entreprise."
+  },
+  {
+    "id": "LEGIARTI000006646883",
+    "num": "L122-14",
+    "etat": "MODIFIE",
+    "date_debut": "1986-12-31",
+    "date_fin": "1989-08-08",
+    "code_id": "LEGITEXT000006072050",
+    "code_titre": "Code du travail",
+    "texte": "L'employeur, ou son représentant, qui envisage de licencier un salarié doit, avant toute décision, convoquer l'intéressé par lettre recommandée ou par lettre remise en main propre contre décharge en lui indiquant l'objet de la convocation. Au cours de l'entretien, l'employeur est tenu d'indiquer le ou les motifs de la décision envisagée et de recueillir les explications du salarié.\n\nLors de cette audition, le salarié peut se faire assister par une personne de son choix appartenant au personnel de l'entreprise.\n\nLes dispositions des alinéas précédents ne sont pas applicables en cas de licenciement pour motif économique de dix salariés et plus dans une même période de trente jours."
+  },
+  {
+    "id": "LEGIARTI000006646884",
+    "num": "L122-14",
+    "etat": "MODIFIE",
+    "date_debut": "1989-08-08",
+    "date_fin": "1991-01-20",
+    "code_id": "LEGITEXT000006072050",
+    "code_titre": "Code du travail",
+    "texte": "L'employeur, ou son représentant, qui envisage de licencier un salarié doit, avant toute décision, convoquer l'intéressé par lettre recommandée ou par lettre remise en main propre contre décharge en lui indiquant l'objet de la convocation. Au cours de l'entretien, l'employeur est tenu d'indiquer le ou les motifs de la décision envisagée et de recueillir les explications du salarié.\n\nLors de cette audition, le salarié peut se faire assister par une personne de son choix appartenant au personnel de l'entreprise. Lorsqu'il n'y a pas d'institutions représentatives du personnel dans l'entreprise, le salarié peut se faire assister par une personne de son choix, inscrite sur une liste dressée par le représentant de l'Etat dans le département après consultation des organisations représentatives visées à l'article L. 136-1 dans des conditions fixées par décret. Mention doit être faite de cette faculté dans la lettre de convocation prévue au premier alinéa du présent article.\n\nLes dispositions des alinéas qui précèdent ne sont pas applicables en cas de licenciement pour motif économique de dix salariés et plus dans une même période de trente jours lorsqu'il existe un comité d'entreprise ou des délégués du personnel dans l'entreprise."
+  },
+  {
+    "id": "LEGIARTI000006646885",
+    "num": "L122-14",
+    "etat": "MODIFIE",
+    "date_debut": "1991-01-20",
+    "date_fin": "2004-06-26",
+    "code_id": "LEGITEXT000006072050",
+    "code_titre": "Code du travail",
+    "texte": "L'employeur, ou son représentant, qui envisage de licencier un salarié doit, avant toute décision, convoquer l'intéressé par lettre recommandée ou par lettre remise en main propre contre décharge en lui indiquant l'objet de la convocation. En l'absence d'institutions représentatives du personnel dans l'entreprise, le salarié a la faculté de se faire assister par un conseiller de son choix et l'entretien préalable ne peut avoir lieu moins de cinq jours ouvrables après la présentation au salarié de la lettre recommandée de convocation ou sa remise en main propre. Au cours de l'entretien, l'employeur est tenu d'indiquer le ou les motifs de la décision envisagée et de recueillir les explications du salarié.\n\nLors de cette audition, le salarié peut se faire assister par une personne de son choix appartenant au personnel de l'entreprise. Lorsqu'il n'y a pas d'institutions représentatives du personnel dans l'entreprise, le salarié peut se faire assister par un conseiller de son choix, inscrit sur une liste dressée par le représentant de l'Etat dans le département après consultation des organisations représentatives visées à l'article L. 136-1 dans des conditions fixées par décret. Cette liste comporte notamment le nom, l'adresse, la profession ainsi que l'appartenance syndicale éventuelle des conseillers. Elle ne peut comporter de conseillers prud'hommes en activité. Mention doit être faite de cette faculté dans la lettre de convocation prévue au premier alinéa du présent article, qui, en outre, précise l'adresse des services où la liste des conseillers est tenue à la disposition des salariés.\n\nLes dispositions des alinéas qui précèdent ne sont pas applicables en cas de licenciement pour motif économique de dix salariés et plus dans une même période de trente jours lorsqu'il existe un comité d'entreprise ou des délégués du personnel dans l'entreprise."
+  },
+  {
+    "id": "LEGIARTI000006646886",
+    "num": "L122-14",
+    "etat": "ABROGE",
+    "date_debut": "2004-06-26",
+    "date_fin": "2008-05-01",
+    "code_id": "LEGITEXT000006072050",
+    "code_titre": "Code du travail",
+    "texte": "L'employeur ou son représentant qui envisage de licencier un salarié doit, avant toute décision, convoquer l'intéressé par lettre recommandée ou par lettre remise en main propre contre décharge en lui indiquant l'objet de la convocation. L'entretien préalable ne peut avoir lieu moins de cinq jours ouvrables après la présentation de la lettre recommandée ou la remise en main propre de la lettre de convocation. Au cours de l'entretien, l'employeur est tenu d'indiquer les motifs de la décision envisagée et de recueillir les explications du salarié.\n\nLors de cette audition, le salarié peut se faire assister par une personne de son choix appartenant au personnel de l'entreprise. Lorsqu'il n'y a pas d'institutions représentatives du personnel dans l'entreprise, le salarié peut se faire assister par un conseiller de son choix, inscrit sur une liste dressée par le représentant de l'Etat dans le département après consultation des organisations représentatives visées à l'article L. 136-1 dans des conditions fixées par décret. Cette liste comporte notamment le nom, l'adresse, la profession ainsi que l'appartenance syndicale éventuelle des conseillers. Elle ne peut comporter de conseillers prud'hommes en activité. Mention doit être faite de cette faculté dans la lettre de convocation prévue au premier alinéa du présent article, qui, en outre, précise l'adresse des services où la liste des conseillers est tenue à la disposition des salariés.\n\nLes dispositions des alinéas qui précèdent ne sont pas applicables en cas de licenciement pour motif économique de dix salariés et plus dans une même période de trente jours lorsqu'il existe un comité d'entreprise ou des délégués du personnel dans l'entreprise."
+  },
+  {
+    "id": "LEGIARTI000006901000",
+    "num": "L1232-2",
+    "etat": "VIGUEUR",
+    "date_debut": "2008-05-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006072050",
+    "code_titre": "Code du travail",
+    "texte": "L'employeur qui envisage de licencier un salarié le convoque, avant toute décision, à un entretien préalable.\nLa convocation est effectuée par lettre recommandée ou par lettre remise en main propre contre décharge. Cette lettre indique l'objet de la convocation.\nL'entretien préalable ne peut avoir lieu moins de cinq jours ouvrables après la présentation de la lettre recommandée ou la remise en main propre de la lettre de convocation."
+  }
+]

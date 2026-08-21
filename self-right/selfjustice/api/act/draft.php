@@ -136,7 +136,31 @@ $type_labels = [
     'resiliation'            => 'Résiliation de contrat',
     'document'               => 'Projet de courrier',
 ];
-$type_label = $type_labels[$type] ?? 'Projet de courrier';
+// 🔑 Le refus d'un type inconnu existait, mais dans l'outil MCP seulement.
+// L'URL, elle, est publiée à l'utilisateur : appelée avec `type=inexistant_xyz`
+// elle rendait un 200 et un « Projet de courrier » vide, c'est-à-dire un
+// document d'apparence normale pour une demande qui n'avait pas de sens. Un
+// garde-fou posé chez l'appelant ne protège que l'appelant qui le porte.
+// Mesuré le 22/08/2026 par un contrôle extérieur.
+//
+// Absent vaut défaut, présent et inconnu vaut refus — c'est déjà le régime de
+// `distance` dans deadline.php, pour la même raison : une valeur mal
+// orthographiée ne doit pas retomber en silence sur autre chose.
+if (isset($_GET['type']) && !isset($type_labels[$_GET['type']])) {
+    http_response_code(400);
+    header('Content-Type: application/json; charset=utf-8');
+    header('X-Content-Type-Options: nosniff');
+    echo json_encode([
+        'ok'       => false,
+        'error'    => 'type_inconnu',
+        'detail'   => "Type de document « {$_GET['type']} » inconnu. Rien n'a été "
+                    . "produit : un gabarit générique aurait ressemblé à une réponse.",
+        'acceptes' => array_keys($type_labels),
+    ], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    exit;
+}
+
+$type_label = $type_labels[$type];
 
 header('Content-Type: text/html; charset=utf-8');
 header('X-Content-Type-Options: nosniff');

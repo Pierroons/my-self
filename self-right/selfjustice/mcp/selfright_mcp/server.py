@@ -751,31 +751,6 @@ def _nom_chambre(chambre: Any) -> str:
 DATE_ISO = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
-def _intervalle_couvert(couverture: Any, juridiction: Any) -> tuple[str, str] | None:
-    """Bornes de dates réellement indexées, ou None si indéterminables.
-
-    Sans juridiction précisée, c'est l'intersection des couvertures qui
-    commande : une date couverte par une seule des deux bases laisse l'autre
-    hors de portée, et l'index ne peut alors rien affirmer.
-
-    Les dates sont des chaînes ISO, dont l'ordre lexicographique est l'ordre
-    chronologique — aucune conversion n'est nécessaire pour les comparer.
-    """
-    if not isinstance(couverture, dict) or not couverture:
-        return None
-    retenues = (
-        [couverture[str(juridiction)]] if str(juridiction) in couverture
-        else list(couverture.values())
-    )
-    bornes = [
-        (c["debut"], c["fin"]) for c in retenues
-        if isinstance(c, dict) and c.get("debut") and c.get("fin")
-    ]
-    if not bornes:
-        return None
-    return max(d for d, _ in bornes), min(f for _, f in bornes)
-
-
 def _nom_juridiction(juridiction: Any, cour: Any) -> str:
     """Rend « Cour d'appel de Nîmes » plutôt que « ca ca_nimes ».
 
@@ -1077,10 +1052,20 @@ async def article_francais(reference: str, code: str | None = None) -> str:
             "ni comme le droit actuel, ni comme sans effet."
         )
 
+    # 🔑 Un numéro recyclé est plus piégeux qu'un article mort : il rend un
+    # texte en vigueur, exact et correctement daté, mais sans rapport avec ce
+    # qu'on cherchait. L'article 1382 du code civil porte les présomptions
+    # judiciaires depuis 2016, quand la responsabilité délictuelle qu'on y vise
+    # est passée au 1240. L'avertissement se place AVANT le texte : après, il
+    # arrive une fois la lecture faite et la citation déjà formée.
+    renvoi = data.get("renvoi") or {}
+    alerte = f"{renvoi['message']}\n\n" if renvoi.get("message") else ""
+
     return (
         f"{bandeau}\n\n"
         f"{data.get('code_titre') or data.get('code_id', '')} — article {data.get('reference', reference)}\n"
         f"{vigueur}\n\n"
+        f"{alerte}"
         f"{data.get('texte', '(texte absent de la base)')}\n\n"
         f"Source : {src.get('origine', 'LEGI')} — base au {src.get('last_update', '?')}\n"
         f"Légifrance : {src.get('legifrance_url', '(lien indisponible)')}"
@@ -1375,34 +1360,26 @@ async def verifier_jurisprudence(
     bandeau = await _bandeau("jurisprudence")
 
     if etat == "absente":
-        # 🔑 La réserve de l'amont est écrite sans connaître la date visée : elle
-        # laisse toujours ouverte l'hypothèse d'une décision postérieure à
-        # l'index. Quand la date est donnée et qu'elle tombe dans la période
-        # couverte, cette hypothèse est fausse — et c'est précisément le cas où
-        # la fermeté vaut mieux que la prudence, puisqu'une référence datée et
-        # plausible est celle qu'on recopie sans vérifier.
+        # 🔑 **La réserve se lit, elle ne se recalcule pas.** Ce bloc la
+        # reconstruisait à partir de `couverture` et de la date, et écrasait
+        # celle que l'index venait de rendre — deux raisonnements sur la même
+        # question, dont celui-ci est le moins informé : depuis le 22/08/2026 la
+        # route interroge aussi la base amont quand la date sort de la plage
+        # locale, et ce résultat-là ne se devine pas d'ici. Le module aurait
+        # continué d'annoncer « une décision postérieure ne peut pas être
+        # exclue » alors que l'amont venait de trancher.
         reserve = data.get("reserve") or ""
         note = ""
-        if date:
-            jour = date.strip()
-            bornes = _intervalle_couvert(data.get("couverture"), data.get("juridiction"))
-            if not DATE_ISO.fullmatch(jour):
-                note = (
-                    f"\n\n(La date « {date} » n'a pas été comprise — format "
-                    "attendu : AAAA-MM-JJ. La réserve ci-dessus reste donc "
-                    "prudente par défaut.)"
-                )
-            elif bornes and bornes[0] <= jour <= bornes[1]:
-                reserve = (
-                    f"La date avancée ({jour}) tombe à l'intérieur de la période "
-                    f"indexée ({bornes[0]} → {bornes[1]}) : si cette décision "
-                    "existait, elle y figurerait. Ni l'antériorité ni la "
-                    "nouveauté n'expliquent son absence. Seul le périmètre reste "
-                    "réservé — Cour de cassation et cours d'appel uniquement, la "
-                    "justice administrative (Conseil d'État, CAA, TA) relevant "
-                    "d'ArianeWeb. Hors ce cas, dis sans détour que la référence "
-                    "n'existe pas."
-                )
+        # La date n'est transmise que bien formée (voir plus haut) : mal formée,
+        # l'index ne l'a pas vue et sa réserve est restée prudente sans savoir
+        # pourquoi. C'est le seul endroit où le client sait quelque chose que
+        # l'index ignore, donc le seul qu'il ait à dire.
+        if date and not DATE_ISO.fullmatch(date.strip()):
+            note = (
+                f"\n\n(La date « {date} » n'a pas été comprise — format "
+                "attendu : AAAA-MM-JJ. Elle n'a donc pas été transmise à "
+                "l'index, et la réserve ci-dessus reste prudente par défaut.)"
+            )
         return (
             f"{bandeau}\n\n"
             f"« {reference} » est INTROUVABLE dans l'index.\n\n"
@@ -1432,10 +1409,15 @@ async def verifier_jurisprudence(
         entete += f", les {len(decisions)} plus récentes affichées"
 
     avert = data.get("avertissement")
+    # Une décision retrouvée en amont mais pas encore dans l'index local porte
+    # une réserve ici aussi. Sans elle, un second appel sur la même référence
+    # semblerait démentir le premier.
+    reserve = data.get("reserve")
     return (
         f"{bandeau}\n\n"
         f"{entete} :\n{lignes}\n\n"
         + (f"⚠️ {avert}\n\n" if avert else "")
+        + (f"{reserve}\n\n" if reserve else "")
         + "L'existence est confirmée, pas le contenu : appelle `texte_decision` "
         "avec l'id avant d'affirmer ce que la décision juge."
     )

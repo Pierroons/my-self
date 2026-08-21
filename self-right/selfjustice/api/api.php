@@ -34,16 +34,22 @@ header('X-Content-Type-Options: nosniff');
 
 // Config — bases via symlinks dans /var/lib/selfjustice/db/
 // (accessible au user www-data de PHP-FPM)
-const LEGI_DB  = '/var/lib/selfjustice/db/legi_selfjustice.sqlite';
-const EU_DB    = '/var/lib/selfjustice/db/conventionnalite.sqlite';
 // `define` et non `const` : un chemin surchargeable permet de rejouer le jeu de
-// test hors du serveur, sans symlink ni droits root.
+// test hors du serveur, sans symlink ni droits root. Les trois bases le sont,
+// pour que ce qui les interroge soit également éprouvable.
+define('LEGI_DB',  getenv('SELFJUSTICE_LEGI_DB')  ?: '/var/lib/selfjustice/db/legi_selfjustice.sqlite');
+define('EU_DB',    getenv('SELFJUSTICE_EU_DB')    ?: '/var/lib/selfjustice/db/conventionnalite.sqlite');
 define('JURIS_DB', getenv('SELFJUSTICE_JURIS_DB') ?: '/var/lib/selfjustice/db/judilibre_index.sqlite');
 
 // Métadonnées de plus d'un million de décisions, sans leur texte : l'index répond
 // « cette référence existe / n'existe pas » hors ligne, le texte intégral et la
 // recherche par thème passent par l'API amont.
-const JUDILIBRE_BASE = 'https://api.piste.gouv.fr/cassation/judilibre/v1.0';
+// Surchargeable pour la même raison que JURIS_DB juste au-dessus : sans cela,
+// la sonde amont de `verifier` ne peut être éprouvée que contre la vraie API,
+// c'est-à-dire jamais dans un garde-fou. Une sonde qu'on ne peut pas faire
+// rougir ne prouve rien quand elle est verte.
+define('JUDILIBRE_BASE', getenv('SELFJUSTICE_JUDILIBRE_BASE')
+    ?: 'https://api.piste.gouv.fr/cassation/judilibre/v1.0');
 
 // Nombre de décisions ramenées pour un même numéro. Un rôle général courant en
 // compte davantage : le total exact est compté à part et rendu sous `count`,
@@ -340,6 +346,91 @@ function juris_normaliser(string $ref): string {
 }
 
 /**
+ * Un numéro d'article a-t-il changé de contenu, ou son texte a-t-il déménagé ?
+ *
+ * 🔑 **Sur un article mort le module crie ; sur un numéro recyclé il se
+ * taisait.** Un contrôle extérieur l'a mesuré le 21/08/2026 sur l'article 1382
+ * du code civil : depuis 2016 ce numéro porte les présomptions judiciaires, et
+ * la responsabilité délictuelle qu'on y cherche est passée au 1240. La réponse
+ * était en vigueur, exacte, correctement datée — et hors sujet, sans un signal.
+ * C'est le cas où l'on est le plus sûr de soi en se trompant le plus, puisque
+ * toutes les marques de fiabilité sont réunies.
+ *
+ * Rien n'est codé à la main ici, et c'est voulu : la recodification de 2016 a
+ * déplacé des centaines d'articles, celle du code du travail des milliers. Une
+ * table écrite à la main serait fausse par omission le jour de sa naissance. La
+ * base sait déjà tout : il suffit de demander si le texte qu'un numéro portait
+ * autrefois vit aujourd'hui sous un autre numéro du même code.
+ *
+ * Le signal est rare — 73 numéros pour tout le code civil, mesuré le 22/08/2026
+ * — donc il informe au lieu de bruiter. La requête coûte 7 ms quand elle
+ * trouve, 52 ms quand elle ne trouve pas (525 441 articles).
+ *
+ * ⚠️ Ce que cette déduction NE couvre pas : un successeur dont le texte a été
+ * réécrit en même temps qu'il changeait de numéro. C'est le cas de L122-14 du
+ * code du travail, devenu L1232-2 le 2008-05-01 avec une rédaction retouchée :
+ * l'égalité de texte échoue, et rien ici ne le rattrape. Ce raccord-là ne
+ * s'établit qu'avec la table de concordance officielle DILA, qui n'est pas dans
+ * le dump. Mieux vaut ne rien dire que deviner un renvoi juridique.
+ */
+function article_renvoi(SQLite3 $db, array $row): ?array {
+    // Deux questions selon l'état de l'article rendu, une seule requête : le
+    // texte cherché est celui des autres versions du numéro quand l'article
+    // rendu est vivant, et le sien propre quand il est mort.
+    $vivant = $row['etat'] === 'VIGUEUR';
+
+    $sql = $vivant
+        ? "SELECT anc.date_fin AS bascule, v.num AS ailleurs
+             FROM articles anc
+             JOIN articles v ON v.code_id = anc.code_id AND v.etat = 'VIGUEUR'
+                            AND v.texte = anc.texte AND v.num <> anc.num
+            WHERE anc.num = :ref AND anc.code_id = :code
+              AND anc.etat <> 'VIGUEUR' AND anc.texte <> :texte
+            ORDER BY anc.date_fin DESC LIMIT 1"
+        : "SELECT :date_fin AS bascule, v.num AS ailleurs
+             FROM articles v
+            WHERE v.code_id = :code AND v.etat = 'VIGUEUR'
+              AND v.texte = :texte AND v.num <> :ref
+            LIMIT 1";
+
+    $stmt = $db->prepare($sql);
+    $stmt->bindValue(':ref',   $row['num']);
+    $stmt->bindValue(':code',  $row['code_id']);
+    $stmt->bindValue(':texte', (string) ($row['texte'] ?? ''));
+    if (!$vivant) {
+        $stmt->bindValue(':date_fin', $row['date_fin']);
+    }
+    $trouve = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    if (!$trouve || !$trouve['ailleurs']) {
+        return null;
+    }
+
+    return $vivant
+        ? [
+            'nature'  => 'numero_recycle',
+            'article' => $trouve['ailleurs'],
+            'depuis'  => $trouve['bascule'],
+            'message' => "⚠️ Ce numéro a changé de contenu. Jusqu'au "
+                . "{$trouve['bascule']}, l'article {$row['num']} portait le texte "
+                . "qui figure aujourd'hui à l'article {$trouve['ailleurs']} du même "
+                . "code. Le texte ci-dessous est bien celui qui porte ce numéro "
+                . "aujourd'hui, mais une référence tirée d'une source antérieure à "
+                . "cette date, ou de mémoire, vise très probablement "
+                . "l'article {$trouve['ailleurs']}. Vérifie lequel des deux est "
+                . "voulu avant de citer.",
+        ]
+        : [
+            'nature'  => 'texte_deplace',
+            'article' => $trouve['ailleurs'],
+            'depuis'  => $trouve['bascule'],
+            'message' => "Le texte de cet article, qui n'est plus en vigueur sous ce "
+                . "numéro, figure aujourd'hui à l'article {$trouve['ailleurs']} du "
+                . "même code. Pour les faits postérieurs, c'est celui-là qu'il faut "
+                . "citer.",
+        ];
+}
+
+/**
  * Bornes réelles des données par juridiction.
  *
  * On ne lit pas `intervalles_faits` : cette table enregistre les intervalles
@@ -367,17 +458,17 @@ function juris_couverture(SQLite3 $db): array {
 /**
  * Appel à l'API Judilibre. `KeyId` en en-tête suffit — pas d'OAuth.
  *
- * Toute défaillance rend un 503 portant `etat: indeterminee`, jamais une liste
- * vide.
+ * Rend le corps décodé, ou une CHAÎNE décrivant l'échec. L'appelant décide de
+ * ce qu'il en fait : `judilibre_get()` en meurt, la sonde de `verifier` s'en
+ * passe. Il n'y a qu'une implémentation réseau, et donc qu'un endroit où le
+ * timeout, l'en-tête et le décodage sont écrits.
  */
-function judilibre_get(string $chemin, array $params): array {
+function judilibre_tenter(string $chemin, array $params, int $timeout = 15): array|string {
     $cle = getenv('SELFJUSTICE_JUDILIBRE_KEY') ?: '';
     if ($cle === '') {
-        json_indetermine(
-            "Clé Judilibre absente de cette instance : la recherche par thème et "
+        return "Clé Judilibre absente de cette instance : la recherche par thème et "
             . "le texte intégral sont indisponibles. La vérification d'une "
-            . "référence dans l'index local reste possible."
-        );
+            . "référence dans l'index local reste possible.";
     }
 
     $url = JUDILIBRE_BASE . $chemin . '?' . http_build_query($params);
@@ -385,7 +476,7 @@ function judilibre_get(string $chemin, array $params): array {
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_HTTPHEADER     => ['KeyId: ' . $cle],
-        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_TIMEOUT        => $timeout,
     ]);
     $corps  = curl_exec($ch);
     $statut = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
@@ -393,16 +484,28 @@ function judilibre_get(string $chemin, array $params): array {
     curl_close($ch);
 
     if ($corps === false || $statut !== 200) {
-        json_indetermine($erreur !== ''
+        return $erreur !== ''
             ? "API Judilibre injoignable : $erreur"
-            : "API Judilibre — HTTP $statut");
+            : "API Judilibre — HTTP $statut";
     }
 
     $data = json_decode($corps, true);
     if (!is_array($data)) {
-        json_indetermine("Réponse Judilibre illisible");
+        return "Réponse Judilibre illisible";
     }
     return $data;
+}
+
+/**
+ * Même appel, mais l'échec est terminal : 503 portant `etat: indeterminee`,
+ * jamais une liste vide. Pour les routes dont l'amont EST la réponse.
+ */
+function judilibre_get(string $chemin, array $params): array {
+    $reponse = judilibre_tenter($chemin, $params);
+    if (is_string($reponse)) {
+        json_indetermine($reponse);
+    }
+    return $reponse;
 }
 
 // Router minimaliste
@@ -663,6 +766,7 @@ if ($segments[0] === 'legi') {
         $result = [
             'reference'  => $row['num'],
             'etat'       => $row['etat'],
+            'renvoi'     => $has_texte ? article_renvoi($db, $row) : null,
             'en_vigueur' => $row['etat'] === 'VIGUEUR',
             'date_debut' => $row['date_debut'],
             'date_fin'   => $row['date_fin'],
@@ -1064,18 +1168,93 @@ if ($segments[0] === 'jurisprudence') {
         $arret  = $fins ? min($fins) : null;
         $ouvre  = $debuts ? max($debuts) : null;
 
+        // 🔑 **Deux corpus portent le même nom, et ils ne s'arrêtent pas au même
+        // jour.** Cette route lit l'index local ; `search` et `decision` servent
+        // l'amont Judilibre, qui va plus loin dans le temps. Un contrôle
+        // extérieur a mesuré le 21/08/2026 trois références sur trois dont
+        // `decision` rendait le texte intégral, signé, et que cette route
+        // déclarait absentes : l'outil chargé d'empêcher l'invention démentait
+        // celui qui venait de servir la pièce.
+        //
+        // L'index local n'est pas fautif — il s'arrête où il s'arrête et il le
+        // dit. Ce qui manquait, c'était d'aller regarder ailleurs quand on sait
+        // qu'on regarde trop court. La sonde ne part donc que là : rien
+        // localement, une date annoncée, et cette date au-delà de la borne.
+        // Partout ailleurs l'index local suffit et rien ne change.
+        $amont       = null;   // liste filtrée, ou null si la sonde n'a pas eu lieu
+        $amont_echec = null;   // raison, si elle a eu lieu sans aboutir
+
+        if (!$decisions && $date_annoncee !== null && $arret !== null && $date_annoncee > $arret) {
+            // `search` refuse une requête qui ressemble à un numéro : en plein
+            // texte il rendrait des milliers de faux positifs. Ici le numéro ne
+            // décide de rien — il borne la requête à un seul jour, et c'est la
+            // normalisation qui tranche, sur la règle exacte de l'index.
+            $sonde = ['query' => $ref, 'date_start' => $date_annoncee,
+                      'date_end' => $date_annoncee, 'page_size' => 50];
+            if ($juridiction !== null) {
+                $sonde['jurisdiction'] = $juridiction;
+            }
+            // Huit secondes, pas quinze : la réponse locale est déjà acquise et
+            // l'appelant attend. Un amont lent rend la réserve prudente, pas une
+            // page blanche.
+            $reponse = judilibre_tenter('/search', $sonde, 8);
+
+            if (is_string($reponse)) {
+                $amont_echec = $reponse;
+            } else {
+                $amont = [];
+                foreach ($reponse['results'] ?? [] as $r) {
+                    // Une décision porte son numéro principal et parfois d'autres
+                    // — c'est déjà ce que l'index enregistre à la construction.
+                    $numeros = array_merge([$r['number'] ?? null],
+                        is_array($r['numbers'] ?? null) ? $r['numbers'] : []);
+                    foreach ($numeros as $n) {
+                        if ($n === null || juris_normaliser((string) $n) !== $norm) {
+                            continue;
+                        }
+                        $amont[] = [
+                            'id'            => $r['id'] ?? null,
+                            'numero'        => $r['number'] ?? null,
+                            'date'          => $r['decision_date'] ?? null,
+                            'date_brute'    => $r['decision_date'] ?? null,
+                            'date_suspecte' => false,
+                            'juridiction'   => $r['jurisdiction'] ?? null,
+                            'cour'          => $r['location'] ?? null,
+                            'chambre'       => $r['chamber'] ?? null,
+                            // L'amont rend `publication` tantôt en chaîne tantôt
+                            // en liste. Ne pas la remonter plutôt que la
+                            // remonter dans un format que le client lira de
+                            // travers : on ne sait pas, on ne prétend pas.
+                            'publication'   => null,
+                            'solution'      => $r['solution'] ?? null,
+                            'ecli'          => $r['ecli'] ?? null,
+                            'type'          => $r['type'] ?? null,
+                        ];
+                        continue 2;
+                    }
+                }
+            }
+        }
+
         // 🔑 La réserve de borne haute n'est vraie que si l'appelant n'a pas dit
         // à quelle date il situe la décision. Sur le scénario le plus dangereux
         // de la recette — une référence inventée, présentée comme lue, et datée
         // — « une décision postérieure ne peut pas être exclue » désarme la
         // seule réponse qui devait être ferme : si la décision existait à la
         // date annoncée et que cette date est couverte, elle serait là.
-        $reserve_borne = $decisions ? null : match (true) {
+        $reserve_borne = ($decisions || $amont) ? null : match (true) {
+            $amont === [] => "Introuvable dans l'index local, arrêté au $arret. La base "
+                . "amont Judilibre, interrogée directement au $date_annoncee, ne rend "
+                . "rien non plus sous ce numéro : l'absence ne tient pas au retard de "
+                . "l'index, elle est opposable.",
+            $amont_echec !== null => "Introuvable, et la date annoncée ($date_annoncee) "
+                . "est postérieure à l'arrêt de l'index local ($arret) : cette absence "
+                . "ne prouve rien. La base amont, qui aurait tranché, n'a pas répondu — "
+                . "$amont_echec",
+            $arret === null => "Introuvable, et cet index ne déclare aucune couverture : "
+                . "rien ne peut se conclure de cette absence.",
             $date_annoncee === null   => "Introuvable dans un index arrêté au $arret : "
                 . "une décision postérieure ne peut pas être exclue.",
-            $arret !== null && $date_annoncee > $arret => "Introuvable, mais la date "
-                . "annoncée ($date_annoncee) est postérieure à l'arrêt de l'index "
-                . "($arret) : cette absence ne prouve rien.",
             $ouvre !== null && $date_annoncee < $ouvre => "Introuvable, mais la date "
                 . "annoncée ($date_annoncee) précède le début de l'index ($ouvre) : "
                 . "cette absence ne prouve rien.",
@@ -1084,26 +1263,49 @@ if ($segments[0] === 'jurisprudence') {
                 . "date, elle y figurerait.",
         };
 
+        // Ce qui est rendu vient de l'index local, ou de la sonde amont quand
+        // elle a retrouvé ce que l'index n'avait pas encore. Le lecteur doit
+        // savoir lequel des deux : ils ne s'arrêtent pas au même jour, et c'est
+        // exactement ce qui faisait se contredire deux outils du même module.
+        $issues       = $decisions ?: ($amont ?: []);
+        $depuis_amont = !$decisions && (bool) $amont;
+
+        if ($depuis_amont) {
+            $juridictions = [];
+            foreach ($issues as $d) {
+                $juridictions[$d['juridiction']] = true;
+            }
+        }
+
         json_response([
-            'etat'        => $decisions ? 'trouvee' : 'absente',
+            'etat'        => $issues ? 'trouvee' : 'absente',
             'reference'   => $ref,
             'normalisee'  => $norm,
             'juridiction' => $juridiction,
-            'count'       => $total,
-            'rendues'     => count($decisions),
-            'tronquee'    => $total > count($decisions),
-            'decisions'   => $decisions,
+            'source'      => $depuis_amont ? 'amont Judilibre' : 'index local',
+            'count'       => $depuis_amont ? count($issues) : $total,
+            'rendues'     => count($issues),
+            'tronquee'    => !$depuis_amont && $total > count($decisions),
+            'decisions'   => $issues,
             'couverture'  => $couverture,
-            // Deux réserves distinctes, et toutes deux nécessaires : l'index a
-            // une borne haute, et un périmètre. Une référence du Conseil d'État
-            // n'y figurera jamais, quel que soit le rafraîchissement — la
-            // signaler « absente » sans le dire serait donc trompeur.
-            'reserve'     => $decisions
+            // Trois réserves, une par situation. Trouvée en amont, ce n'est
+            // pas une prudence mais un constat : l'index local a du retard, et
+            // le dire évite qu'un prochain appel sur la même référence paraisse
+            // se contredire tout seul. Absente, il en faut deux — l'index a une
+            // borne haute ET un périmètre : une référence du Conseil d'État n'y
+            // figurera jamais, quel que soit le rafraîchissement, et la signaler
+            // « absente » sans le dire serait trompeur.
+            'reserve'     => $depuis_amont
+                ? "Cette décision ne figure pas encore dans l'index local, arrêté "
+                . "au $arret : elle a été retrouvée dans la base amont Judilibre à "
+                . "la date annoncée ($date_annoncee). Son existence est établie — "
+                . "c'est l'index qui est en retard, pas la référence qui est fausse."
+                : ($issues
                 ? null
                 : $reserve_borne . " Périmètre limité à la "
                 . "Cour de cassation et aux cours d'appel — la justice "
                 . "administrative (Conseil d'État, CAA, TA) relève d'ArianeWeb et "
-                . "n'y figurera jamais. Dire « introuvable », pas « n'existe pas ».",
+                . "n'y figurera jamais. Dire « introuvable », pas « n'existe pas »."),
             'avertissement' => count($juridictions) > 1
                 ? "Plusieurs juridictions portent ce même numéro normalisé : un RG "
                 . "de cour d'appel (25/10907) et un pourvoi (25-10.907) se "

@@ -25,9 +25,10 @@
  * que l'erreur est irrattrapable : un recours déposé un jour trop tard est
  * irrecevable, quel que soit le fond du dossier.
  *
- * Les textes appliqués ici ont été relus dans la base LEGI (articles 640, 641,
- * 642 et 643 CPC, version en vigueur au 2 août 2026) plutôt que cités de
- * mémoire — c'est la règle même du module.
+ * Les articles 640 à 643 du CPC ont été relus dans la base LEGI plutôt que
+ * cités de mémoire — c'est la règle même du module. La version retenue est
+ * datée par `CPC_VERSION_LEGI` ci-dessous, et c'est la seule fois qu'elle est
+ * écrite : le fondement rendu à l'appelant la reprend de là.
  *
  * ⚠️ **Ce que ce calcul ne fait pas.** Il applique une durée à une date. Il ne
  * dit pas quelle durée s'applique à votre cas, ni à partir de quel événement
@@ -38,6 +39,12 @@
  */
 
 declare(strict_types=1);
+
+// Version LEGI des articles 640 à 643 d'après laquelle les règles ci-dessous
+// ont été codées. Elle est servie à l'appelant : une règle du CPC qui changerait
+// rendrait ce calcul faux en silence, et cette date est ce qui permet de le
+// voir. À rapprocher de la cadence de vérification législative du module.
+const CPC_VERSION_LEGI = '2026-08-02';
 
 /**
  * Dimanche de Pâques (calendrier grégorien), algorithme de Meeus/Jones/Butcher.
@@ -353,7 +360,18 @@ selfact_repondre(200, [
         'art. 640 CPC' => 'Point de départ : la date de l\'acte, de l\'événement, de la décision ou de la notification.',
         'art. 641 CPC' => 'Délai en jours : le jour de départ ne compte pas. Délai en mois ou années : même quantième, à défaut le dernier jour du mois.',
         'art. 642 CPC' => 'Le délai expire le dernier jour à 24 h. S\'il tombe un samedi, un dimanche ou un jour férié, il est prorogé au premier jour ouvrable suivant.',
-        'source'       => 'Textes relus dans la base LEGI (dump officiel DILA), et non cités de mémoire.',
+        // 🔑 Cette ligne disait « Textes relus dans la base LEGI (dump officiel
+        // DILA), et non cités de mémoire ». Au passé composé et sans sujet, dans
+        // le résultat d'un appel, elle se lisait comme la provenance de CETTE
+        // réponse — un contrôle extérieur l'a recopiée le 21/08/2026 comme une
+        // déclaration sur son propre travail. Or ce fichier n'ouvre aucune base :
+        // il applique des règles écrites à la main d'après une version datée.
+        // Décrire l'écriture, pas l'exécution.
+        'source'       => 'Règles codées à la main d\'après les articles 640 à 643 du '
+                        . 'CPC, version LEGI du ' . CPC_VERSION_LEGI . '. Ce calcul est '
+                        . 'arithmétique : il ne consulte aucune base pendant son '
+                        . 'exécution, et ne suivra donc pas tout seul une réforme de '
+                        . 'ces articles.',
         'mention' => "SelfAct est indépendant et n'est affilié à aucun organisme public. "
                    . "Les formulaires et démarches officiels sont disponibles gratuitement "
                    . "sur service-public.gouv.fr : cet outil n'est jamais nécessaire pour y accéder.",

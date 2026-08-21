@@ -94,6 +94,12 @@ jobs:
       - name: Garde-fou — quel catalogue SelfAct est servi
         run: bash self-right/selfjustice/tests/test_chemin_catalogue.sh
 
+      - name: Garde-fou — la sonde amont de la vérification de référence
+        run: bash self-right/selfjustice/tests/test_sonde_amont.sh
+
+      - name: Garde-fou — un numéro d'article qui a changé de contenu
+        run: bash self-right/selfjustice/tests/test_renvoi_article.sh
+
       - name: Garde-fou — ce que le déploiement de l'arbre emporte
         run: bash deploy/my-self/tests/test_deploy.sh
 
