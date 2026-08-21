@@ -83,9 +83,11 @@ if ($account) { [$canVote, $whyNot] = Moderate::canVote($pdo, (int) $account['id
   </div>
 <?php endforeach; ?>
 
+<?php if ($account && $canVote) { render_vote_reason_dialog(); } ?>
+
 <script nonce="<?= nonce() ?>">
-function votePost(postId, value){
-  labPost('/api/vote.php',{target_type:'post',target_id:postId,value:value}).then(d=>{
+function votePost(postId, value, reason, code){
+  labPost('/api/vote.php',{target_type:'post',target_id:postId,value:value,reason:reason||null,reason_code:code||null}).then(d=>{
     if(d.ok){
       const s=document.getElementById('score-'+postId);
       s.textContent=d.score;
@@ -100,8 +102,14 @@ function votePost(postId, value){
     } else { alert(d.message||<?= json_encode(t('log.error')) ?>); }
   });
 }
+// Le ▲ part directement : un vote positif ne sanctionne personne, il n'a donc
+// personne à qui rendre des comptes. Le ▼ demande d'abord ce qu'on reproche.
 document.querySelectorAll('.votebox button[data-val]').forEach(function(b){
-  b.addEventListener('click', function(){ votePost(+b.dataset.post, +b.dataset.val); });
+  b.addEventListener('click', function(){
+    const post = +b.dataset.post, val = +b.dataset.val;
+    if (val === 1 || typeof demanderMotif !== 'function') { votePost(post, val); return; }
+    demanderMotif(function(texte, code){ votePost(post, -1, texte, code); });
+  });
 });
 </script>
 

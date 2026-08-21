@@ -46,6 +46,7 @@ if ($voirUsername !== null) {
           <p style="margin-top:0"><strong><?= h(t('prf.rep')) ?></strong> · <span style="color:<?= $repColor ?>;font-weight:700">★ <?= $repScore ?>/30</span>
             <?php if ($rep['banned']): ?><span style="color:#d96459"> · <?= h(t('prf.suspended')) ?></span><?php endif; ?>
             <?php if (!$rep['voting_rights']): ?><span style="color:#d4a056"> · <?= h(t('prf.novote')) ?></span><?php endif; ?>
+            <?php if ($rep['convalescent']): ?><span style="color:#d4a056"> · <?= h(t('prf.convalescent')) ?></span><?php endif; ?>
           </p>
           <div style="height:8px;background:var(--elev);border-radius:4px;overflow:hidden;margin-bottom:14px">
             <div style="height:100%;width:<?= $repPct ?>%;background:<?= $repColor ?>"></div>
@@ -67,16 +68,21 @@ if ($voirUsername !== null) {
             else { echo h($p['lien']); /* schéma non sûr : jamais cliquable */ }
           ?></p>
         </div>
+        <?php if ($account && !$isSelf && $canVote) { render_vote_reason_dialog(); } ?>
         <script nonce="<?= nonce() ?>">
 const PRF = <?= $prfJs ?>;
-        function voteMembre(id, value){
-          labPost('/api/vote.php',{target_type:'member',target_id:id,value:value}).then(d=>{
+        function voteMembre(id, value, reason, code){
+          labPost('/api/vote.php',{target_type:'member',target_id:id,value:value,reason:reason||null,reason_code:code||null}).then(d=>{
             if(d.ok){ location.reload(); }
             else{ document.getElementById('vmsg').innerHTML='<div class="toast err">'+(d.message||PRF.err)+'</div>'; }
           });
         }
         document.querySelectorAll('.js-votembr').forEach(function(b){
-          b.addEventListener('click', function(){ voteMembre(+b.dataset.mid, +b.dataset.val); });
+          b.addEventListener('click', function(){
+            const mid = +b.dataset.mid, val = +b.dataset.val;
+            if (val === 1 || typeof demanderMotif !== 'function') { voteMembre(mid, val); return; }
+            demanderMotif(function(texte, code){ voteMembre(mid, -1, texte, code); });
+          });
         });
         </script>
         <?php
@@ -130,6 +136,30 @@ render_header(t('prf.title'), $account);
   </div>
   <?php if (!$canVote && $whyNot): ?>
     <p class="muted" style="margin:12px 0 0">⚠ <?= h($whyNot) ?></p>
+  <?php endif; ?>
+  <?php if ($rep['convalescent']): ?>
+    <div style="margin:14px 0 0;padding:10px 12px;border-left:3px solid #d4a056;background:var(--elev);border-radius:0 6px 6px 0">
+      <strong style="color:#d4a056"><?= h(t('prf.mod.conv.h')) ?></strong>
+      <p class="muted" style="margin:4px 0 0;font-size:13px"><?= h(sprintf(t('prf.mod.conv.txt'), Moderate::REGEN_EXIT_AT)) ?></p>
+    </div>
+  <?php endif; ?>
+</div>
+
+<?php $motifs = Moderate::reasonsFor($pdo, $myId); ?>
+<div class="card">
+  <h2 style="margin-top:0"><?= t('prf.reasons.h2') ?></h2>
+  <p class="muted" style="margin:0 0 12px;font-size:13px"><?= h(t('prf.reasons.anon')) ?></p>
+  <?php if (!$motifs): ?>
+    <p class="muted" style="margin:0"><?= h(t('prf.reasons.empty')) ?></p>
+  <?php else: ?>
+    <?php foreach ($motifs as $m): ?>
+      <div style="padding:8px 0;border-top:1px solid var(--border)">
+        <span style="color:<?= (int) $m['value'] === 1 ? 'var(--acc)' : 'var(--warn)' ?>"><?= (int) $m['value'] === 1 ? '▲' : '▼' ?></span>
+        <?php if ($m['reason_code']): ?><span class="cat-pill"><?= h(t('vote.reason.' . $m['reason_code'])) ?></span><?php endif; ?>
+        <span class="muted" style="font-size:12px;margin-left:6px"><?= h((string) $m['jour']) ?></span>
+        <p style="margin:6px 0 0"><?= h((string) $m['reason']) ?></p>
+      </div>
+    <?php endforeach; ?>
   <?php endif; ?>
 </div>
 

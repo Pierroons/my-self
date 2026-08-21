@@ -149,3 +149,66 @@ if (_logoutLink) _logoutLink.addEventListener('click', function(e){ e.preventDef
 </html>
 <?php
 }
+
+/**
+ * Le dialogue qui demande un motif avant un vote négatif.
+ *
+ * Rendu une fois par page, appelé par `demanderMotif(cb)` : le fil et le profil
+ * portent tous deux un bouton de vote négatif, et deux copies du même formulaire
+ * divergeraient au premier changement de règle.
+ */
+function render_vote_reason_dialog(): void
+{
+    $codes = \Pierroons\MySelfLab\Moderate::reasonCodes();
+    $min = (int) \Pierroons\MySelfLab\Moderate::REASON_MIN_CHARS;
+    ?>
+<dialog id="dlg-motif" style="max-width:520px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);color:var(--txt);padding:18px">
+  <h3 style="margin:0 0 4px"><?= h(t('thr.reason.h2')) ?></h3>
+  <p class="muted" style="margin:0 0 14px;font-size:13px"><?= h(t('thr.reason.aide')) ?></p>
+  <label class="muted" style="font-size:13px" for="motif-code"><?= h(t('thr.reason.motif')) ?></label>
+  <select id="motif-code" style="width:100%;margin:4px 0 12px;padding:7px;background:var(--elev);color:var(--txt);border:1px solid var(--border);border-radius:6px">
+    <?php foreach ($codes as $code): ?>
+      <option value="<?= h($code) ?>"><?= h(t('vote.reason.' . $code)) ?></option>
+    <?php endforeach; ?>
+  </select>
+  <label class="muted" style="font-size:13px" for="motif-texte"><?= h(t('thr.reason.texte')) ?></label>
+  <textarea id="motif-texte" rows="4" style="width:100%;margin:4px 0 6px;padding:8px;background:var(--elev);color:var(--txt);border:1px solid var(--border);border-radius:6px"></textarea>
+  <p class="muted" style="margin:0 0 14px;font-size:12px"><span id="motif-compteur">0</span>/<?= $min ?> <?= h(t('thr.reason.compteur')) ?></p>
+  <div style="display:flex;gap:8px;justify-content:flex-end">
+    <button type="button" id="motif-annuler"><?= h(t('thr.reason.annuler')) ?></button>
+    <button type="button" id="motif-envoyer" disabled><?= h(t('thr.reason.envoyer')) ?></button>
+  </div>
+</dialog>
+<script nonce="<?= nonce() ?>">
+(function(){
+  const dlg = document.getElementById('dlg-motif');
+  const champ = document.getElementById('motif-texte');
+  const compteur = document.getElementById('motif-compteur');
+  const envoyer = document.getElementById('motif-envoyer');
+  const MIN = <?= $min ?>;
+  let suite = null;
+
+  champ.addEventListener('input', function(){
+    compteur.textContent = champ.value.trim().length;
+    // Le client ne mesure que la longueur. Les règles de fond — mots distincts,
+    // caractères répétés — restent au serveur, seul endroit où on ne les
+    // contourne pas en éditant la page.
+    envoyer.disabled = champ.value.trim().length < MIN;
+  });
+  document.getElementById('motif-annuler').addEventListener('click', function(){ dlg.close(); });
+  envoyer.addEventListener('click', function(){
+    dlg.close();
+    if (suite) { suite(champ.value.trim(), document.getElementById('motif-code').value); }
+  });
+
+  window.demanderMotif = function(cb){
+    suite = cb;
+    champ.value = '';
+    compteur.textContent = '0';
+    envoyer.disabled = true;
+    dlg.showModal();
+  };
+})();
+</script>
+    <?php
+}

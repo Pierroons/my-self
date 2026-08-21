@@ -97,7 +97,10 @@ CREATE TABLE IF NOT EXISTS member_moderation (
     strikes        INTEGER NOT NULL DEFAULT 0,
     voting_rights  INTEGER NOT NULL DEFAULT 1,
     banned_until   INTEGER NOT NULL DEFAULT 0,
-    needs_review   INTEGER NOT NULL DEFAULT 0,   -- R10-LAB-01 : rep<=0 sans pack détecté -> revue humaine (plus de ban auto)
+    needs_review   INTEGER NOT NULL DEFAULT 0,   -- signalé à un admin : plus aucun ban n'est automatique
+    review_reason  TEXT,                        -- 'reputation_zero' | 'salve_rapide' — deux causes, deux gestes
+    convalescent   INTEGER NOT NULL DEFAULT 0,  -- posé sous LOSE_VOTING_AT, levé à INITIAL_REPUTATION
+    last_regen_at  INTEGER NOT NULL DEFAULT 0,
     updated_at     INTEGER NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
@@ -110,6 +113,8 @@ CREATE TABLE IF NOT EXISTS mod_votes (
     target_id      INTEGER NOT NULL,        -- post.id ou account.id
     target_author  INTEGER NOT NULL,        -- account dont la réputation est affectée
     value          INTEGER NOT NULL CHECK (value IN (-1, 1)),
+    reason         TEXT,                     -- motif rédigé — obligatoire au downvote
+    reason_code    TEXT,                     -- code de la liste de la plateforme
     blocked        INTEGER NOT NULL DEFAULT 0,
     blocked_reason TEXT,
     created_at     INTEGER NOT NULL,
