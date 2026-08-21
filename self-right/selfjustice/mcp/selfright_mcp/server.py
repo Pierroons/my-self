@@ -1138,11 +1138,39 @@ async def rechercher_conventionnalite(requete: str, source: str | None = None) -
     bandeau = await _bandeau("conventionnalité")
     resultats = data.get("results", []) if not data.get("__introuvable__") else []
 
+    # 🔑 Les formes réellement cherchées. Les textes écrivent « données à
+    # caractère personnel » et jamais « données personnelles » : la recherche
+    # retombe donc sur « personnel ». Le taire rendrait la réponse
+    # inexplicable — et le silence sur ce point a coûté cher, puisque la
+    # recherche ne trouvait auparavant que les citations verbatim et rendait
+    # zéro sur la formulation la plus courante du RGPD.
+    # L'API rend des couples [mot posé, forme cherchée] ; seuls les couples qui
+    # DIFFÈRENT valent d'être dits. Une première version comparait la forme à la
+    # requête entière : « personnel » y étant contenu — c'est un préfixe de
+    # « personnelles » — la transformation la plus utile restait invisible.
+    changees = [
+        (pose, forme)
+        for couple in (data.get("mots_cherches") or [])
+        if isinstance(couple, list) and len(couple) == 2
+        for pose, forme in [couple]
+        if pose != forme
+    ]
+    note_formes = (
+        "\n\nCherché « " + " », « ".join(f"{f} » pour « {p}" for p, f in changees)
+        + " » : les textes n'emploient pas toujours le mot au genre ou au nombre "
+        "où on le pose."
+        if changees else ""
+    )
+
     if not resultats:
         return (
             f"{bandeau}\n\nAucun résultat pour « {requete} »"
             + (f" dans {params.get('source')}" if source else "")
-            + ".\n\nN'invente pas de référence : dis-le à l'utilisateur."
+            + "."
+            + note_formes
+            + "\n\nN'invente pas de référence : dis-le à l'utilisateur. "
+            "Si le sujet devrait s'y trouver, reformule avec les mots des "
+            "textes plutôt qu'avec les tiens."
         )
 
     # Les titres sont souvent vides dans la base UE : l'aperçu est alors le
@@ -1153,10 +1181,20 @@ async def rechercher_conventionnalite(requete: str, source: str | None = None) -
         + (f"\n      « {(r.get('apercu') or '').strip()[:140]}… »" if r.get("apercu") else "")
         for r in resultats
     )
+    # ⚠️ Le compte rendu et le compte total ne se confondent pas : « 20
+    # résultats » là où il y en a 83 fait croire qu'on a tout vu.
+    montres = data.get("count", len(resultats))
+    total = data.get("total")
+    entete = (
+        f"{montres} résultat(s) sur {total} pour « {requete} » :"
+        if isinstance(total, int) and total > montres
+        else f"{montres} résultat(s) pour « {requete} » :"
+    )
     return (
-        f"{bandeau}\n\n{data.get('count', len(resultats))} résultat(s) pour « {requete} » :\n"
-        f"{lignes}\n\n"
-        "Appelle `article_europeen` sur la référence retenue pour en obtenir le texte."
+        f"{bandeau}\n\n{entete}\n{lignes}"
+        + note_formes
+        + "\n\nAppelle `article_europeen` sur la référence retenue pour en "
+        "obtenir le texte."
     )
 
 

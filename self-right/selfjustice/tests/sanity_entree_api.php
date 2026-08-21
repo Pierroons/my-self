@@ -32,7 +32,7 @@ if ($src === false) {
     fwrite(STDERR, "api/api.php illisible\n");
     exit(2);
 }
-foreach (['requete_cherchable', 'champ_juris'] as $nom) {
+foreach (['requete_cherchable', 'champ_juris', 'mots_cherchables', 'chercher_conventionnalite'] as $nom) {
     if (!preg_match('/^function ' . $nom . '\(.*?^}$/ms', $src, $m)) {
         fwrite(STDERR, "$nom introuvable dans api/api.php\n");
         exit(2);
@@ -83,6 +83,71 @@ foreach ($attendus as [$demande, $juri, $champ_attendu, $reserve_attendue, $libe
     [$champ, $reserve] = champ_juris($demande, $juri);
     verdict($champ === $champ_attendu && (($reserve !== null) === $reserve_attendue), $libelle);
 }
+
+echo "\n▸ Quelles formes une requête fait-elle chercher\n";
+
+// 🔑 « personnelles » ne se trouve que dans 4 articles de la base quand
+// « personnel » est dans 93 : les textes écrivent « données à caractère
+// personnel », jamais « données personnelles ». Le plancher de six lettres est
+// mesuré — à cinq, « traitant » devient « trait » et attrape « traitement ».
+$formes = [
+    ['données personnelles', [['données','donnée'], ['personnelles','personnel']], 'le pluriel féminin retombe sur la forme des textes'],
+    ['sous-traitant',        [['sous','sous'], ['traitant','traita']],             'six lettres, pas cinq : « traita » et non « trait »'],
+    ['transfert hors UE',    [['transfert','transf'], ['hors','hors']],            'un mot de deux lettres ne porte rien, il tombe'],
+    // 11 lettres → max(6, 8) = 8. La coupe compte des CARACTÈRES : « harcèlem »
+    // fait bien huit lettres, là où huit octets tomberaient au milieu du « è ».
+    ['harcèlement',          [['harcèlement','harcèlem']],                         'la coupe compte les lettres, pas les octets'],
+    ['art 8',                [['art','art']],                                      'les chiffres isolés tombent, la référence est cherchée à part'],
+    ['portabilité',          [['portabilité','portabil']],                         'un mot long garde huit lettres sur onze'],
+];
+foreach ($formes as [$q, $attendu, $libelle]) {
+    $obtenu = mots_cherchables($q);
+    $vu = implode(' · ', array_map(fn($c) => $c[0] === $c[1] ? $c[0] : "{$c[0]}→{$c[1]}", $obtenu));
+    verdict($obtenu === $attendu, "« $q » → $vu — $libelle");
+}
+
+echo "\n▸ De bout en bout, sur une base de contrefaçon\n";
+
+// Les textes réels de la base emploient « données à caractère personnel ».
+// Une recherche qui ne trouve que les citations verbatim les manque tous.
+$db = new SQLite3(':memory:');
+$db->exec('CREATE TABLE articles (id TEXT, source TEXT, num TEXT, titre TEXT, texte TEXT, date_debut TEXT)');
+$inserts = [
+    ['RGPD', '4',  'Définitions', 'On entend par « données à caractère personnel » toute information se rapportant à une personne physique identifiée.'],
+    ['RGPD', '28', 'Sous-traitant', 'Le traitement par un sous-traitant est régi par un contrat.'],
+    ['RGPD', '17', 'Droit à l\'effacement', 'La personne concernée a le droit d\'obtenir l\'effacement, dit droit à l\'oubli.'],
+    ['CEDH', '8',  'Vie privée', 'Toute personne a droit au respect de sa vie privée et familiale.'],
+];
+foreach ($inserts as $i => [$src, $num, $titre, $texte]) {
+    $st = $db->prepare('INSERT INTO articles VALUES (:id, :s, :n, :t, :x, "2016-04-27")');
+    $st->bindValue(':id', "a$i"); $st->bindValue(':s', $src); $st->bindValue(':n', $num);
+    $st->bindValue(':t', $titre); $st->bindValue(':x', $texte);
+    $st->execute();
+}
+
+$cas = [
+    ['données personnelles', null, 1, '« données personnelles » retrouve « données à caractère personnel »'],
+    ['sous-traitant',        null, 1, '« sous-traitant » ne ramène pas tout ce qui parle de traitement'],
+    ['droit oubli',          null, 1, 'deux mots épars dans la phrase se retrouvent quand même'],
+    ['vie privée',           null, 1, 'une locution présente telle quelle se retrouve aussi'],
+    ['banane saxophone',     null, 0, 'des mots absents ne ramènent rien — le zéro reste possible'],
+    ['données personnelles', 'CEDH', 0, 'le filtre de source s\'applique après la recherche'],
+    ['8',                    null, 1, 'un numéro seul passe par la référence, pas par les mots'],
+];
+foreach ($cas as [$q, $src, $attendu, $libelle]) {
+    [$total, $res, $mots] = chercher_conventionnalite($db, $q, $src, 20);
+    verdict(
+        $total === $attendu && count($res) === min($attendu, 20),
+        "$libelle — total=$total (attendu $attendu), formes : "
+        . implode(' · ', array_map(fn($c) => $c[1], $mots))
+    );
+}
+
+// ⚠️ `total` compte ce qui existe, `count` ce qu'on rend. Les confondre faisait
+// passer une limite d'affichage pour une réponse.
+[$total, $res, ] = chercher_conventionnalite($db, 'personne', null, 2);
+verdict($total === 3 && count($res) === 2,
+        "la limite borne l'affichage, pas le compte — total=$total, rendus=" . count($res));
 
 echo "\n";
 if ($echecs > 0) {

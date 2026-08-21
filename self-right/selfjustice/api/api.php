@@ -177,6 +177,101 @@ function marqueur(string $nom): ?string {
     return ($c !== false && trim($c) !== '') ? trim($c) : null;
 }
 
+/**
+ * Les formes à chercher pour cette requête — un mot par entrée.
+ *
+ * 🔑 **Raccourcir n'est pas décoratif.** « personnelles » ne se trouve que dans
+ * 4 articles de la base de conventionnalité quand « personnel » est dans 93 :
+ * les textes écrivent « données à caractère personnel », jamais « données
+ * personnelles ». Sans raccourcissement, la requête la plus courante sur le
+ * RGPD rendait 3 résultats marginaux — un quasi-zéro qui a l'air d'une réponse.
+ *
+ * ⚠️ Le plancher de six lettres est mesuré, pas choisi. À cinq, « traitant »
+ * devient « trait » et attrape « traitement » : « sous-traitant » passait de 41
+ * à 87 articles. À six, « traita » en rend 41, et « personnelles » donne
+ * toujours « personnel ».
+ *
+ * `mb_substr`, jamais `substr` : couper « données » au sixième OCTET
+ * tronquerait un caractère accentué en son milieu.
+ *
+ * Rend des couples `[mot posé, forme cherchée]` : l'appelant doit pouvoir dire
+ * à l'utilisateur qu'on a cherché « personnel » là où il a écrit
+ * « personnelles ». Rendre les seules formes obligerait à redécouper la requête
+ * pour retrouver les mots d'origine — la règle s'écrirait alors deux fois.
+ */
+function mots_cherchables(string $q): array {
+    $mots = [];
+    foreach (preg_split('/[^\p{L}\p{N}]+/u', $q, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $mot) {
+        if (mb_strlen($mot) < 3) { continue; }
+        $mots[] = [$mot, mb_substr($mot, 0, max(6, mb_strlen($mot) - 3))];
+    }
+    return $mots;
+}
+
+/**
+ * Cherche dans la base de conventionnalité. Rend [total, résultats, formes].
+ *
+ * 🔑 **Chercher des MOTS, pas la chaîne entière.** Cette recherche faisait
+ * `texte LIKE '%<toute la requête>%'` : elle ne trouvait que les citations
+ * verbatim. Mesuré le 21/08/2026 sur dix formulations courantes du RGPD, quatre
+ * rendaient zéro — dont « données personnelles », la plus employée de toutes,
+ * parce que les textes écrivent « données à caractère personnel » et jamais
+ * autrement. Le zéro partait sans réserve, et le modèle annonçait alors à
+ * l'utilisateur que le règlement ne dit rien sur le sujet.
+ *
+ * La recherche entière tient dans cette fonction, et non dans la route, pour
+ * qu'un garde-fou puisse l'interroger sur une base de contrefaçon — le
+ * défaut vivait dans du SQL qu'aucun test ne pouvait atteindre.
+ */
+function chercher_conventionnalite(SQLite3 $db, string $q, ?string $source, int $limit): array {
+    $mots = mots_cherchables($q);
+
+    $conditions = [];
+    $valeurs = [];
+    foreach ($mots as $i => [, $forme]) {
+        $conditions[] = "(titre LIKE :m$i OR texte LIKE :m$i)";
+        $valeurs[":m$i"] = '%' . $forme . '%';
+    }
+    // Un numéro d'article se cherche tel quel : c'est une référence, pas une
+    // suite de mots.
+    $valeurs[':numPattern'] = $q . '%';
+    $ou = $conditions
+        ? '((' . implode(' AND ', $conditions) . ') OR num LIKE :numPattern)'
+        : '(num LIKE :numPattern)';
+
+    $where = "WHERE $ou";
+    if ($source) {
+        $where .= " AND source = :source";
+        $valeurs[':source'] = $source;
+    }
+
+    // ⚠️ Le compte total se demande à part. Sans lui, l'appelant lit
+    // « 20 résultats » là où il y en a 83 et croit avoir tout vu — la limite
+    // d'affichage se déguisait en réponse.
+    $cnt = $db->prepare("SELECT COUNT(*) as n FROM articles $where");
+    foreach ($valeurs as $cle => $val) { $cnt->bindValue($cle, $val); }
+    $total = (int) ($cnt->execute()->fetchArray(SQLITE3_ASSOC)['n'] ?? 0);
+
+    $stmt = $db->prepare(
+        "SELECT source, num, titre, SUBSTR(texte, 1, 200) as apercu, date_debut
+         FROM articles $where LIMIT :limit"
+    );
+    foreach ($valeurs as $cle => $val) { $stmt->bindValue($cle, $val); }
+    $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
+
+    $results = [];
+    $res = $stmt->execute();
+    while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+        $results[] = [
+            'source'    => $row['source'],
+            'reference' => $row['num'],
+            'titre'     => $row['titre'],
+            'apercu'    => $row['apercu'],
+        ];
+    }
+    return [$total, $results, $mots];
+}
+
 function requete_cherchable(string $q): bool {
     return preg_match('/\p{L}{3,}/u', $q) === 1
         || preg_match('/\d{2,}/', $q) === 1;
@@ -770,43 +865,46 @@ if ($segments[0] === 'eu') {
                 . "d'au moins trois lettres, ou un numéro d'article.");
         }
 
-        $sql = "SELECT source, num, titre, SUBSTR(texte, 1, 200) as apercu, date_debut
-                FROM articles
-                WHERE (titre LIKE :pattern OR texte LIKE :pattern OR num LIKE :numPattern)";
-        $pattern = '%' . SQLite3::escapeString($q) . '%';
-        $numPattern = SQLite3::escapeString($q) . '%';
-
+        // 🔑 **Chercher des MOTS, pas la chaîne entière.** Cette recherche
+        // faisait `texte LIKE '%<toute la requête>%'` : elle ne trouvait que
+        // les citations verbatim. Mesuré le 21/08/2026 sur dix formulations
+        // courantes du RGPD, quatre rendaient zéro — dont « données
+        // personnelles », la plus employée de toutes, parce que les textes
+        // écrivent « données à caractère personnel » et jamais autrement. Le
+        // zéro partait sans réserve : le modèle annonçait alors à l'utilisateur
+        // que le règlement ne dit rien sur le sujet.
+        //
+        // ⚠️ Le raccourcissement n'est pas décoratif. « personnelles » ne se
+        // trouve que dans 4 articles quand « personnel » est dans 93 : sans lui,
+        // le ET sur les mots entiers laissait « données personnelles » à 3
+        // résultats marginaux — un quasi-zéro qui a l'air d'une réponse.
+        //
+        // Le plancher de six lettres a été mesuré, pas choisi. À cinq,
+        // « traitant » devient « trait » et attrape « traitement » : la
+        // recherche « sous-traitant » passait de 41 à 87 articles. À six,
+        // « traita » en rend 41, et « personnelles » donne toujours
+        // « personnel ».
         if ($source) {
             $allowed = ['CEDH', 'CHARTE_UE', 'TUE', 'TFUE', 'RGPD', 'AI_ACT'];
             if (!in_array($source, $allowed, true)) {
                 json_error("Source invalide");
             }
-            $sql .= " AND source = :source";
         }
-        $sql .= " LIMIT :limit";
-
-        $stmt = $db->prepare($sql);
-        $stmt->bindValue(':pattern', $pattern);
-        $stmt->bindValue(':numPattern', $numPattern);
-        if ($source) $stmt->bindValue(':source', $source);
-        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
-
-        $results = [];
-        $res = $stmt->execute();
-        while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
-            $results[] = [
-                'source'    => $row['source'],
-                'reference' => $row['num'],
-                'titre'     => $row['titre'],
-                'apercu'    => $row['apercu'],
-            ];
-        }
+        [$total, $results, $mots] = chercher_conventionnalite($db, $q, $source, $limit);
 
         json_response([
             'query'   => $q,
             'source'  => $source,
+            // `count` est ce qu'on rend, `total` ce qui existe. Les confondre
+            // faisait passer une limite d'affichage pour une réponse.
             'count'   => count($results),
+            'total'   => $total,
             'limit'   => $limit,
+            // Les formes réellement cherchées : l'appelant doit pouvoir dire à
+            // l'utilisateur qu'on a cherché « personnel » quand il a écrit
+            // « personnelles », sans quoi un résultat inattendu reste
+            // inexplicable.
+            'mots_cherches' => $mots,
             'results' => $results,
         ]);
     }
