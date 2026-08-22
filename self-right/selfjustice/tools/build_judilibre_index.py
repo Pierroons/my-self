@@ -67,6 +67,9 @@ DATE_FIN = "2027-12-31"
 # 5 août, et clos la fenêtre. Les décisions du 6 au 15, publiées depuis, ne
 # seraient jamais revenues — l'index se serait arrêté au 5 août pour toujours.
 #
+# Le script l'avait pourtant crié le jour même : « Aucune decision ajoutee.
+# Verifier la fenetre de reprise. » L'alerte est partie, personne ne l'a lue.
+#
 # Soixante jours couvrent 99,8 % des publications observées. En deçà, une fenêtre
 # se remoissonne à chaque passage : `INSERT OR REPLACE` rend l'opération
 # idempotente, le seul coût est le temps de la retélécharger.
