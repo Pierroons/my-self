@@ -220,7 +220,18 @@ def strip_html(html: str) -> str:
         .replace("&#8230;", "…")
     )
     # Nettoyer les espaces
+    #
+    # 🔑 L'insécable d'abord, et ce n'est pas un détail : `[ \t]+` ne le voit
+    # pas. EUR-Lex sépare le numéro d'alinéa de son texte par trois `\xa0`
+    # — « 1.\xa0\xa0\xa0La personne concernée … » — qui traversaient donc la
+    # normalisation intacts. Mesuré le 22/08/2026 : 258 articles sur 793 en
+    # portaient, et l'article 22 du RGPD comptait 49 % de blancs.
+    #
+    # ⚠️ L'API nettoie aussi à la lecture (`texte_propre`), pour les bases déjà
+    # construites. Les deux sont idempotents : ce qui est propre le reste.
+    html = html.replace("\xa0", " ")
     html = re.sub(r"[ \t]+", " ", html)
+    html = re.sub(r"[ \t]+$", "", html, flags=re.M)
     html = re.sub(r"\n{3,}", "\n\n", html)
     return html.strip()
 

@@ -346,6 +346,47 @@ function juris_normaliser(string $ref): string {
 }
 
 /**
+ * Rend lisible un texte extrait d'EUR-Lex ou d'un PDF.
+ *
+ * 🔑 Le texte servi portait la mise en forme de sa source, pas la sienne. Mesuré
+ * le 22/08/2026 par un contrôle extérieur : l'article 22 du RGPD comptait 49 %
+ * de blancs et 38 séquences de dix caractères d'espacement ou plus, la plus
+ * longue de trente-six ; l'article P1-1 de la CEDH se terminait par « 34 35 »,
+ * deux numéros de page du PDF d'origine. 258 articles sur 793 sont touchés.
+ *
+ * Trois artefacts, trois origines distinctes :
+ *   · `\xa0` — EUR-Lex sépare le numéro d'alinéa du texte par trois espaces
+ *     insécables ; c'est ce qui gonflait le compte des blancs ;
+ *   · des lignes de blancs seuls — les cellules vides des tableaux HTML ;
+ *   · des nombres isolés en fin de texte — la pagination du PDF.
+ *
+ * ⚠️ Le nettoyage est volontairement timide. Il ne touche ni aux sauts de ligne
+ * qui structurent les alinéas, ni aux chiffres à l'intérieur du texte : un
+ * montant, un délai ou un numéro d'article y ressemblent. Seule la dernière
+ * ligne est examinée, et seulement si elle ne contient QUE des nombres courts.
+ */
+function texte_propre(?string $t): ?string {
+    if ($t === null || $t === '') {
+        return $t;
+    }
+    // Les insécables d'EUR-Lex deviennent des espaces ordinaires, puis les
+    // répétitions se réduisent — sans toucher aux retours à la ligne.
+    $t = str_replace("\xc2\xa0", ' ', $t);
+    $t = preg_replace('/[ \t]{2,}/u', ' ', $t);
+    $t = preg_replace('/[ \t]+$/mu', '', $t);
+    // Les cellules vides des tableaux laissent des lignes de rien.
+    $t = preg_replace('/\n{3,}/u', "\n\n", $t);
+
+    // La pagination du PDF : une dernière ligne faite de un à quatre nombres de
+    // trois chiffres au plus, rien d'autre. Sur un texte trop court, on
+    // s'abstient : l'article pourrait n'être qu'un renvoi numéroté.
+    if (mb_strlen($t) > 200) {
+        $t = preg_replace('/\n\s*\d{1,3}(?:\s+\d{1,3}){0,3}\s*$/u', '', $t);
+    }
+    return trim($t);
+}
+
+/**
  * Un numéro d'article a-t-il changé de contenu, ou son texte a-t-il déménagé ?
  *
  * 🔑 **Sur un article mort le module crie ; sur un numéro recyclé il se
@@ -402,7 +443,7 @@ function article_renvoi(SQLite3 $db, array $row): ?array {
     }
     $trouve = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
     if (!$trouve || !$trouve['ailleurs']) {
-        return null;
+        return $vivant ? article_texte_precedent($db, $row) : null;
     }
 
     return $vivant
@@ -428,6 +469,83 @@ function article_renvoi(SQLite3 $db, array $row): ?array {
                 . "même code. Pour les faits postérieurs, c'est celui-là qu'il faut "
                 . "citer.",
         ];
+}
+
+/**
+ * Ce numéro portait-il un autre texte avant, et lequel ?
+ *
+ * 🔑 **Quand on ne sait pas où le texte est parti, on peut encore montrer d'où
+ * il vient.** La déduction par identité ne couvre que les articles transposés
+ * mot pour mot — 1382 → 1240. L'ordonnance de 2016 a réécrit la plupart des
+ * autres en même temps qu'elle les renumérotait : 1147, 1134, 1315 lui
+ * échappent. Un contrôle extérieur l'a mesuré le 22/08/2026 — deux cas couverts
+ * sur dix — en concluant qu'un lecteur demandant l'article 1147 reçoit un texte
+ * sur l'incapacité de contracter, sans un mot, là où il cherchait la
+ * responsabilité contractuelle.
+ *
+ * ⚠️ La ressemblance des textes ne sert à rien pour trancher : mesurée sur les
+ * 1 398 paires du code civil, elle donne 0,63 à l'article 1382 — dont les deux
+ * versions n'ont aucun rapport — et 0,22 à 1384. Deux textes juridiques
+ * français partagent trop de vocabulaire pour qu'un ratio les sépare.
+ *
+ * Ce qui tranche, c'est le lecteur : on lui rend le début de l'ancien texte, il
+ * reconnaît en une seconde si c'est ce qu'il cherchait. Aucune table, aucun
+ * seuil de similarité, rien à deviner.
+ *
+ * Reste à ne pas crier pour un mot changé. Un amendement ordinaire touche deux
+ * ou trois articles le même jour — médiane mesurée sur le code civil comme sur
+ * le code du travail ; une réforme en touche vingt à deux cent trente. Le seuil
+ * sépare donc les deux, et le nombre est rendu pour que le lecteur juge de
+ * l'ampleur lui-même.
+ */
+const REFORME_MINIMUM = 20;
+
+function article_texte_precedent(SQLite3 $db, array $row): ?array {
+    $stmt = $db->prepare(
+        "SELECT anc.date_fin AS bascule, anc.texte AS avant,
+                (SELECT COUNT(*) FROM articles v2
+                  WHERE v2.etat = 'VIGUEUR' AND v2.code_id = anc.code_id
+                    AND v2.date_debut = anc.date_fin
+                    AND EXISTS (SELECT 1 FROM articles x
+                                 WHERE x.num = v2.num AND x.code_id = v2.code_id
+                                   AND x.etat <> 'VIGUEUR' AND x.texte <> v2.texte
+                                   AND x.date_fin = v2.date_debut)) AS ampleur
+           FROM articles anc
+          WHERE anc.num = :ref AND anc.code_id = :code AND anc.etat <> 'VIGUEUR'
+            AND anc.date_fin = :debut AND anc.texte <> :texte
+          LIMIT 1"
+    );
+    $stmt->bindValue(':ref',   $row['num']);
+    $stmt->bindValue(':code',  $row['code_id']);
+    $stmt->bindValue(':debut', $row['date_debut']);
+    $stmt->bindValue(':texte', (string) ($row['texte'] ?? ''));
+    $t = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+
+    if (!$t || (int) $t['ampleur'] < REFORME_MINIMUM) {
+        return null;
+    }
+
+    // 🔑 L'extrait est coupé sur une frontière de caractère, pas d'octet :
+    // `substr` à 160 tranche « données » au milieu de son « é ». Mesuré le
+    // 21/08/2026 sur une autre route du même fichier.
+    $extrait = trim((string) $t['avant']);
+    if (mb_strlen($extrait) > 160) {
+        $extrait = mb_substr($extrait, 0, 160) . '…';
+    }
+
+    return [
+        'nature'  => 'contenu_remplace',
+        'article' => null,
+        'depuis'  => $t['bascule'],
+        'ampleur' => (int) $t['ampleur'],
+        'avant'   => $extrait,
+        'message' => "⚠️ Ce numéro portait un AUTRE texte jusqu'au {$t['bascule']}, "
+            . "lors d'une réforme qui a modifié {$t['ampleur']} articles de ce code "
+            . "le même jour. Le texte d'alors commençait par : « {$extrait} » — si "
+            . "c'est celui que tu cherchais, la référence ne vise plus ce numéro et "
+            . "l'index ne sait pas dire où il est passé. Demande à l'utilisateur "
+            . "d'où il tient sa référence avant de citer.",
+    ];
 }
 
 /**
@@ -971,7 +1089,7 @@ if ($segments[0] === 'eu') {
             'source'     => $row['source'],
             'reference'  => $row['num'],
             'titre'      => $row['titre'],
-            'texte'      => $row['texte'],
+            'texte'      => texte_propre($row['texte']),
             'etat'       => $row['etat'],
             'date_debut' => $row['date_debut'],
             'url_source' => $row['url_source'],

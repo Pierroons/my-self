@@ -1,5 +1,55 @@
 [
   {
+    "id": "LEGIARTI000006436086",
+    "num": "1101",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le contrat est une convention par laquelle une ou plusieurs personnes s'obligent, envers une ou plusieurs autres, à donner, à faire ou à ne pas faire quelque chose."
+  },
+  {
+    "id": "LEGIARTI000032040787",
+    "num": "1101",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le contrat est un accord de volontés entre deux ou plusieurs personnes destiné à créer, modifier, transmettre ou éteindre des obligations."
+  },
+  {
+    "id": "LEGIARTI000006436087",
+    "num": "1102",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le contrat est synallagmatique ou bilatéral lorsque les contractants s'obligent réciproquement les uns envers les autres."
+  },
+  {
+    "id": "LEGIARTI000032040782",
+    "num": "1102",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Chacun est libre de contracter ou de ne pas contracter, de choisir son cocontractant et de déterminer le contenu et la forme du contrat dans les limites fixées par la loi.\nLa liberté contractuelle ne permet pas de déroger aux règles qui intéressent l'ordre public."
+  },
+  {
+    "id": "LEGIARTI000006436088",
+    "num": "1103",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Il est unilatéral lorsqu'une ou plusieurs personnes sont obligées envers une ou plusieurs autres, sans que de la part de ces dernières il y ait d'engagement."
+  },
+  {
     "id": "LEGIARTI000032040777",
     "num": "1103",
     "etat": "VIGUEUR",
@@ -8,6 +58,316 @@
     "code_id": "LEGITEXT000006070721",
     "code_titre": "Code civil",
     "texte": "Les contrats légalement formés tiennent lieu de loi à ceux qui les ont faits."
+  },
+  {
+    "id": "LEGIARTI000006436089",
+    "num": "1104",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Il est commutatif lorsque chacune des parties s'engage à donner ou à faire une chose qui est regardée comme l'équivalent de ce qu'on lui donne, ou de ce qu'on fait pour elle.\n\nLorsque l'équivalent consiste dans la chance de gain ou de perte pour chacune des parties, d'après un événement incertain, le contrat est aléatoire."
+  },
+  {
+    "id": "LEGIARTI000032040772",
+    "num": "1104",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Les contrats doivent être négociés, formés et exécutés de bonne foi.\n\nCette disposition est d'ordre public."
+  },
+  {
+    "id": "LEGIARTI000006436090",
+    "num": "1105",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le contrat de bienfaisance est celui dans lequel l'une des parties procure à l'autre un avantage purement gratuit."
+  },
+  {
+    "id": "LEGIARTI000032040767",
+    "num": "1105",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Les contrats, qu'ils aient ou non une dénomination propre, sont soumis à des règles générales, qui sont l'objet du présent sous-titre.\n\nLes règles particulières à certains contrats sont établies dans les dispositions propres à chacun d'eux.\n\nLes règles générales s'appliquent sous réserve de ces règles particulières."
+  },
+  {
+    "id": "LEGIARTI000006436098",
+    "num": "1106",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le contrat à titre onéreux est celui qui assujettit chacune des parties à donner ou à faire quelque chose."
+  },
+  {
+    "id": "LEGIARTI000032040762",
+    "num": "1106",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le contrat est synallagmatique lorsque les contractants s'obligent réciproquement les uns envers les autres.\n\nIl est unilatéral lorsqu'une ou plusieurs personnes s'obligent envers une ou plusieurs autres sans qu'il y ait d'engagement réciproque de celles-ci."
+  },
+  {
+    "id": "LEGIARTI000006436107",
+    "num": "1107",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Les contrats, soit qu'ils aient une dénomination propre, soit qu'ils n'en aient pas, sont soumis à des règles générales, qui sont l'objet du présent titre.\n\nLes règles particulières à certains contrats sont établies sous les titres relatifs à chacun d'eux ; et les règles particulières aux transactions commerciales sont établies par les lois relatives au commerce."
+  },
+  {
+    "id": "LEGIARTI000032040757",
+    "num": "1107",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le contrat est à titre onéreux lorsque chacune des parties reçoit de l'autre un avantage en contrepartie de celui qu'elle procure.\nIl est à titre gratuit lorsque l'une des parties procure à l'autre un avantage sans attendre ni recevoir de contrepartie."
+  },
+  {
+    "id": "LEGIARTI000006436117",
+    "num": "1108",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Quatre conditions sont essentielles pour la validité d'une convention :\n\nLe consentement de la partie qui s'oblige ;\n\nSa capacité de contracter ;\n\nUn objet certain qui forme la matière de l'engagement ;\n\nUne cause licite dans l'obligation."
+  },
+  {
+    "id": "LEGIARTI000032040752",
+    "num": "1108",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le contrat est commutatif lorsque chacune des parties s'engage à procurer à l'autre un avantage qui est regardé comme l'équivalent de celui qu'elle reçoit.\n\nIl est aléatoire lorsque les parties acceptent de faire dépendre les effets du contrat, quant aux avantages et aux pertes qui en résulteront, d'un événement incertain."
+  },
+  {
+    "id": "LEGIARTI000006436120",
+    "num": "1109",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Il n'y a point de consentement valable si le consentement n'a été donné que par erreur ou s'il a été extorqué par violence ou surpris par dol."
+  },
+  {
+    "id": "LEGIARTI000032040747",
+    "num": "1109",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le contrat est consensuel lorsqu'il se forme par le seul échange des consentements quel qu'en soit le mode d'expression.\n\nLe contrat est solennel lorsque sa validité est subordonnée à des formes déterminées par la loi.\n\nLe contrat est réel lorsque sa formation est subordonnée à la remise d'une chose."
+  },
+  {
+    "id": "LEGIARTI000006436123",
+    "num": "1111",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La violence exercée contre celui qui a contracté l'obligation est une cause de nullité, encore qu'elle ait été exercée par un tiers autre que celui au profit duquel la convention a été faite."
+  },
+  {
+    "id": "LEGIARTI000032040737",
+    "num": "1111",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le contrat cadre est un accord par lequel les parties conviennent des caractéristiques générales de leurs relations contractuelles futures. Des contrats d'application en précisent les modalités d'exécution."
+  },
+  {
+    "id": "LEGIARTI000006436132",
+    "num": "1113",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La violence est une cause de nullité du contrat, non seulement lorsqu'elle a été exercée sur la partie contractante, mais encore lorsqu'elle l'a été sur son époux ou sur son épouse, sur ses descendants ou ses ascendants."
+  },
+  {
+    "id": "LEGIARTI000032040896",
+    "num": "1113",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le contrat est formé par la rencontre d'une offre et d'une acceptation par lesquelles les parties manifestent leur volonté de s'engager.\n\nCette volonté peut résulter d'une déclaration ou d'un comportement non équivoque de son auteur."
+  },
+  {
+    "id": "LEGIARTI000006436141",
+    "num": "1114",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La seule crainte révérencielle envers le père, la mère, ou autre ascendant, sans qu'il y ait eu de violence exercée, ne suffit point pour annuler le contrat."
+  },
+  {
+    "id": "LEGIARTI000032040891",
+    "num": "1114",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "L'offre, faite à personne déterminée ou indéterminée, comprend les éléments essentiels du contrat envisagé et exprime la volonté de son auteur d'être lié en cas d'acceptation. A défaut, il y a seulement invitation à entrer en négociation."
+  },
+  {
+    "id": "LEGIARTI000006436148",
+    "num": "1115",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Un contrat ne peut plus être attaqué pour cause de violence, si, depuis que la violence a cessé, ce contrat a été approuvé soit expressément, soit tacitement, soit en laissant passer le temps de la restitution fixé par la loi."
+  },
+  {
+    "id": "LEGIARTI000032040886",
+    "num": "1115",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Elle peut être librement rétractée tant qu'elle n'est pas parvenue à son destinataire."
+  },
+  {
+    "id": "LEGIARTI000006436149",
+    "num": "1116",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le dol est une cause de nullité de la convention lorsque les manoeuvres pratiquées par l'une des parties sont telles, qu'il est évident que, sans ces manoeuvres, l'autre partie n'aurait pas contracté.\n\nIl ne se présume pas et doit être prouvé."
+  },
+  {
+    "id": "LEGIARTI000032040881",
+    "num": "1116",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Elle ne peut être rétractée avant l'expiration du délai fixé par son auteur ou, à défaut, l'issue d'un délai raisonnable.\n\nLa rétractation de l'offre en violation de cette interdiction empêche la conclusion du contrat.\n\nElle engage la responsabilité extracontractuelle de son auteur dans les conditions du droit commun sans l'obliger à compenser la perte des avantages attendus du contrat."
+  },
+  {
+    "id": "LEGIARTI000006436151",
+    "num": "1118",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La lésion ne vicie les conventions que dans certains contrats ou à l'égard de certaines personnes, ainsi qu'il sera expliqué en la même section."
+  },
+  {
+    "id": "LEGIARTI000032040871",
+    "num": "1118",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "L'acceptation est la manifestation de volonté de son auteur d'être lié dans les termes de l'offre.\n\nTant que l'acceptation n'est pas parvenue à l'offrant, elle peut être librement rétractée, pourvu que la rétractation parvienne à l'offrant avant l'acceptation.\n\nL'acceptation non conforme à l'offre est dépourvue d'effet, sauf à constituer une offre nouvelle."
+  },
+  {
+    "id": "LEGIARTI000006436152",
+    "num": "1119",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "On ne peut, en général, s'engager, ni stipuler en son propre nom, que pour soi-même."
+  },
+  {
+    "id": "LEGIARTI000032040866",
+    "num": "1119",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Les conditions générales invoquées par une partie n'ont effet à l'égard de l'autre que si elles ont été portées à la connaissance de celle-ci et si elle les a acceptées.\n\nEn cas de discordance entre des conditions générales invoquées par l'une et l'autre des parties, les clauses incompatibles sont sans effet.\n\nEn cas de discordance entre des conditions générales et des conditions particulières, les secondes l'emportent sur les premières."
+  },
+  {
+    "id": "LEGIARTI000006436298",
+    "num": "1134",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Les conventions légalement formées tiennent lieu de loi à ceux qui les ont faites.\n\nElles ne peuvent être révoquées que de leur consentement mutuel, ou pour les causes que la loi autorise.\n\nElles doivent être exécutées de bonne foi."
+  },
+  {
+    "id": "LEGIARTI000032041008",
+    "num": "1134",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "L'erreur sur les qualités essentielles du cocontractant n'est une cause de nullité que dans les contrats conclus en considération de la personne."
+  },
+  {
+    "id": "LEGIARTI000006436401",
+    "num": "1147",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le débiteur est condamné, s'il y a lieu, au paiement de dommages et intérêts, soit à raison de l'inexécution de l'obligation, soit à raison du retard dans l'exécution, toutes les fois qu'il ne justifie pas que l'inexécution provient d'une cause étrangère qui ne peut lui être imputée, encore qu'il n'y ait aucune mauvaise foi de sa part."
+  },
+  {
+    "id": "LEGIARTI000032041060",
+    "num": "1147",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "L'incapacité de contracter est une cause de nullité relative."
+  },
+  {
+    "id": "LEGIARTI000032010123",
+    "num": "1231-1",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le débiteur est condamné, s'il y a lieu, au paiement de dommages et intérêts soit à raison de l'inexécution de l'obligation, soit à raison du retard dans l'exécution, s'il ne justifie pas que l'exécution a été empêchée par la force majeure."
   },
   {
     "id": "LEGIARTI000006437044",
@@ -30,6 +390,26 @@
     "texte": "Tout fait quelconque de l'homme, qui cause à autrui un dommage, oblige celui par la faute duquel il est arrivé à le réparer."
   },
   {
+    "id": "LEGIARTI000006437049",
+    "num": "1241",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le paiement fait au créancier n'est point valable s'il était incapable de le recevoir, à moins que le débiteur ne prouve que la chose payée a tourné au profit du créancier."
+  },
+  {
+    "id": "LEGIARTI000032041565",
+    "num": "1241",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Chacun est responsable du dommage qu'il a causé non seulement par son fait, mais encore par sa négligence ou par son imprudence."
+  },
+  {
     "id": "LEGIARTI000006438819",
     "num": "1382",
     "etat": "MODIFIE",
@@ -48,6 +428,456 @@
     "code_id": "LEGITEXT000006070721",
     "code_titre": "Code civil",
     "texte": "Les présomptions qui ne sont pas établies par la loi, sont laissées à l'appréciation du juge, qui ne doit les admettre que si elles sont graves, précises et concordantes, et dans les cas seulement où la loi admet la preuve par tout moyen."
+  },
+  {
+    "id": "LEGIARTI000006438829",
+    "num": "1383",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Chacun est responsable du dommage qu'il a causé non seulement par son fait, mais encore par sa négligence ou par son imprudence."
+  },
+  {
+    "id": "LEGIARTI000032042374",
+    "num": "1383",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "L'aveu est la déclaration par laquelle une personne reconnaît pour vrai un fait de nature à produire contre elle des conséquences juridiques.\nIl peut être judiciaire ou extrajudiciaire."
+  },
+  {
+    "id": "LEGIARTI000006441202",
+    "num": "1578",
+    "etat": "MODIFIE",
+    "date_debut": "1966-02-01",
+    "date_fin": "1986-07-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "A la dissolution du régime matrimonial, si les parties ne s'accordent pas pour procéder à la liquidation par convention, l'une d'elles peut demander au tribunal qu'il y soit procédé en justice.\n\nSont applicables à cette demande, en tant que de raison, les règles prescrites pour arriver au partage judiciaire des successions et communautés.\n\nLes parties sont tenues de se communiquer réciproquement, et de communiquer aux experts désignés par le juge, tous renseignements et documents utiles à la liquidation.\n\nL'action en liquidation se prescrit par trois ans à compter de la dissolution du régime matrimonial. Les actions ouvertes contre les tiers en vertu de l'article précédent se prescrivent par deux ans à compter de la clôture de la liquidation."
+  },
+  {
+    "id": "LEGIARTI000006441203",
+    "num": "1578",
+    "etat": "MODIFIE",
+    "date_debut": "1986-07-01",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "A la dissolution du régime matrimonial, si les parties ne s'accordent pas pour procéder à la liquidation par convention, l'une d'elles peut demander au tribunal qu'il y soit procédé en justice.\n\nSont applicables à cette demande, en tant que de raison, les règles prescrites pour arriver au partage judiciaire des successions et communautés.\n\nLes parties sont tenues de se communiquer réciproquement, et de communiquer aux experts désignés par le juge, tous renseignements et documents utiles à la liquidation.\n\nL'action en liquidation se prescrit par trois ans à compter de la dissolution du régime matrimonial. Les actions ouvertes contre les tiers en vertu de l'article 1167 se prescrivent par deux ans à compter de la clôture de la liquidation."
+  },
+  {
+    "id": "LEGIARTI000032042630",
+    "num": "1578",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "A la dissolution du régime matrimonial, si les parties ne s'accordent pas pour procéder à la liquidation par convention, l'une d'elles peut demander au tribunal qu'il y soit procédé en justice.\nSont applicables à cette demande, en tant que de raison, les règles prescrites pour arriver au partage judiciaire des successions et communautés.\nLes parties sont tenues de se communiquer réciproquement, et de communiquer aux experts désignés par le juge, tous renseignements et documents utiles à la liquidation.\nL'action en liquidation se prescrit par trois ans à compter de la dissolution du régime matrimonial. Les actions ouvertes contre les tiers en vertu de l'article 1341-2 se prescrivent par deux ans à compter de la clôture de la liquidation."
+  },
+  {
+    "id": "LEGIARTI000006442486",
+    "num": "1689",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Dans le transport d'une créance, d'un droit ou d'une action sur un tiers, la délivrance s'opère entre le cédant et le cessionnaire par la remise du titre."
+  },
+  {
+    "id": "LEGIARTI000032042638",
+    "num": "1689",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Dans le transport d'un droit ou d'une action sur un tiers, la délivrance s'opère entre le cédant et le cessionnaire par la remise du titre."
+  },
+  {
+    "id": "LEGIARTI000006442505",
+    "num": "1693",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Celui qui vend une créance ou autre droit incorporel doit en garantir l'existence au temps du transport, quoiqu'il soit fait sans garantie."
+  },
+  {
+    "id": "LEGIARTI000032042653",
+    "num": "1693",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Celui qui vend un droit incorporel doit en garantir l'existence au temps du transport, quoiqu'il soit fait sans garantie."
+  },
+  {
+    "id": "LEGIARTI000006445078",
+    "num": "1924",
+    "etat": "MODIFIE",
+    "date_debut": "1948-02-22",
+    "date_fin": "1980-07-13",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Lorsque le dépôt, étant au-dessus de 50 F, n'est point prouvé par écrit, celui qui est attaqué comme dépositaire, en est cru sur sa déclaration, soit pour le fait même du dépôt, soit pour la chose qui en faisait l'objet, soit pour le fait de sa restitution."
+  },
+  {
+    "id": "LEGIARTI000006445079",
+    "num": "1924",
+    "etat": "MODIFIE",
+    "date_debut": "1980-07-13",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Lorsque le dépôt étant au-dessus du chiffre prévu à l'article 1341 n'est point prouvé par écrit, celui qui est attaqué comme dépositaire en est cru sur sa déclaration soit pour le fait même du dépôt, soit pour la chose qui en faisait l'objet, soit pour le fait de sa restitution."
+  },
+  {
+    "id": "LEGIARTI000032042664",
+    "num": "1924",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Lorsque le dépôt étant au-dessus du chiffre prévu à l'article 1359 n'est point prouvé par écrit, celui qui est attaqué comme dépositaire en est cru sur sa déclaration soit pour le fait même du dépôt, soit pour la chose qui en faisait l'objet, soit pour le fait de sa restitution."
+  },
+  {
+    "id": "LEGIARTI000006445164",
+    "num": "1950",
+    "etat": "MODIFIE",
+    "date_debut": "1948-02-22",
+    "date_fin": "1980-07-13",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La preuve par témoins peut être reçue pour le dépôt nécessaire, même quand il s'agit d'une valeur au-dessus de 50 F."
+  },
+  {
+    "id": "LEGIARTI000006445165",
+    "num": "1950",
+    "etat": "MODIFIE",
+    "date_debut": "1980-07-13",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La preuve par témoins peut être reçue pour le dépôt nécessaire, même quand il s'agit d'une valeur supérieure au chiffre prévu à l'article 1341."
+  },
+  {
+    "id": "LEGIARTI000032042660",
+    "num": "1950",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La preuve par témoins peut être reçue pour le dépôt nécessaire, même quand il s'agit d'une valeur supérieure au chiffre prévu à l'article 1359."
+  },
+  {
+    "id": "LEGIARTI000006447470",
+    "num": "2238",
+    "etat": "TRANSFERE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2008-06-19",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Néanmoins, les personnes énoncées dans les articles 2236 et 2237 peuvent prescrire, si le titre de leur possession se trouve interverti, soit par une cause venant d'un tiers, soit par la contradiction qu'elles ont opposée au droit du propriétaire."
+  },
+  {
+    "id": "LEGIARTI000019017353",
+    "num": "2238",
+    "etat": "MODIFIE",
+    "date_debut": "2008-06-19",
+    "date_fin": "2011-09-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La prescription est suspendue à compter du jour où, après la survenance d'un litige, les parties conviennent de recourir à la médiation ou à la conciliation ou, à défaut d'accord écrit, à compter du jour de la première réunion de médiation ou de conciliation.\n\nLe délai de prescription recommence à courir, pour une durée qui ne peut être inférieure à six mois, à compter de la date à laquelle soit l'une des parties ou les deux, soit le médiateur ou le conciliateur déclarent que la médiation ou la conciliation est terminée."
+  },
+  {
+    "id": "LEGIARTI000023276656",
+    "num": "2238",
+    "etat": "MODIFIE",
+    "date_debut": "2011-09-01",
+    "date_fin": "2015-08-08",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La prescription est suspendue à compter du jour où, après la survenance d'un litige, les parties conviennent de recourir à la médiation ou à la conciliation ou, à défaut d'accord écrit, à compter du jour de la première réunion de médiation ou de conciliation. La prescription est également suspendue à compter de la conclusion d'une convention de procédure participative.\n\nLe délai de prescription recommence à courir, pour une durée qui ne peut être inférieure à six mois, à compter de la date à laquelle soit l'une des parties ou les deux, soit le médiateur ou le conciliateur déclarent que la médiation ou la conciliation est terminée. En cas de convention de procédure participative, le délai de prescription recommence à courir à compter du terme de la convention, pour une durée qui ne peut être inférieure à six mois."
+  },
+  {
+    "id": "LEGIARTI000031012866",
+    "num": "2238",
+    "etat": "MODIFIE",
+    "date_debut": "2015-08-08",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La prescription est suspendue à compter du jour où, après la survenance d'un litige, les parties conviennent de recourir à la médiation ou à la conciliation ou, à défaut d'accord écrit, à compter du jour de la première réunion de médiation ou de conciliation. La prescription est également suspendue à compter de la conclusion d'une convention de procédure participative ou à compter de l'accord du débiteur constaté par l'huissier de justice pour participer à la procédure prévue à l'article 1244-4.\n\nLe délai de prescription recommence à courir, pour une durée qui ne peut être inférieure à six mois, à compter de la date à laquelle soit l'une des parties ou les deux, soit le médiateur ou le conciliateur déclarent que la médiation ou la conciliation est terminée. En cas de convention de procédure participative, le délai de prescription recommence à courir à compter du terme de la convention, pour une durée qui ne peut être inférieure à six mois. En cas d'échec de la procédure prévue au même article 1244-4, le délai de prescription recommence à courir à compter de la date du refus du débiteur, constaté par l'huissier, pour une durée qui ne peut être inférieure à six mois."
+  },
+  {
+    "id": "LEGIARTI000032042671",
+    "num": "2238",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La prescription est suspendue à compter du jour où, après la survenance d'un litige, les parties conviennent de recourir à la médiation ou à la conciliation ou, à défaut d'accord écrit, à compter du jour de la première réunion de médiation ou de conciliation. La prescription est également suspendue à compter de la conclusion d'une convention de procédure participative ou à compter de l'accord du débiteur constaté par l'huissier de justice pour participer à la procédure prévue à l'article L. 125-1 du code des procédures civiles d'exécution.\nLe délai de prescription recommence à courir, pour une durée qui ne peut être inférieure à six mois, à compter de la date à laquelle soit l'une des parties ou les deux, soit le médiateur ou le conciliateur déclarent que la médiation ou la conciliation est terminée. En cas de convention de procédure participative, le délai de prescription recommence à courir à compter du terme de la convention, pour une durée qui ne peut être inférieure à six mois. En cas d'échec de la procédure prévue au même article, le délai de prescription recommence à courir à compter de la date du refus du débiteur, constaté par l'huissier, pour une durée qui ne peut être inférieure à six mois."
+  },
+  {
+    "id": "LEGIARTI000006450726",
+    "num": "2513",
+    "etat": "MODIFIE",
+    "date_debut": "2006-03-24",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le livre foncier est constitué des registres destinés à la publicité des droits sur les immeubles.\n\nLe livre foncier est tenu par le service de la conservation de la propriété immobilière. Il peut être tenu, par ce service, sous forme électronique dans les conditions définies par l'article 1316-1."
+  },
+  {
+    "id": "LEGIARTI000032042677",
+    "num": "2513",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le livre foncier est constitué des registres destinés à la publicité des droits sur les immeubles.\nLe livre foncier est tenu par le service de la conservation de la propriété immobilière. Il peut être tenu, par ce service, sous forme électronique dans les conditions définies par l'article 1366."
+  },
+  {
+    "id": "LEGIARTI000006427533",
+    "num": "402",
+    "etat": "MODIFIE",
+    "date_debut": "1965-06-15",
+    "date_fin": "2002-03-05",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Lorsqu'il n'a pas été choisi de tuteur par le dernier mourant des père et mère, la tutelle de l'enfant légitime est déférée à celui des ascendants qui est du degré le plus rapproché."
+  },
+  {
+    "id": "LEGIARTI000006427534",
+    "num": "402",
+    "etat": "MODIFIE",
+    "date_debut": "2002-03-05",
+    "date_fin": "2009-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Lorsqu'il n'a pas été choisi de tuteur par le dernier mourant des père et mère, la tutelle de l'enfant est déférée à celui des ascendants qui est du degré le plus rapproché."
+  },
+  {
+    "id": "LEGIARTI000006427535",
+    "num": "402",
+    "etat": "MODIFIE",
+    "date_debut": "2009-01-01",
+    "date_fin": "2015-10-17",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Les délibérations du conseil de famille sont nulles lorsqu'elles ont été surprises par dol ou fraude ou que des formalités substantielles ont été omises.\n\nLa nullité est couverte par une nouvelle délibération valant confirmation selon l'article 1338.\n\nL'action en nullité peut être exercée par le tuteur, le subrogé tuteur, les autres membres du conseil de famille et le procureur de la République dans les deux années de la délibération ainsi que par le mineur devenu majeur ou émancipé dans les deux années de sa majorité ou de son émancipation. La prescription ne court pas s'il y a eu dol ou fraude tant que le fait qui en est à l'origine n'est pas découvert.\n\nLes actes accomplis en vertu d'une délibération annulée sont annulables de la même manière. Le délai court toutefois de l'acte et non de la délibération."
+  },
+  {
+    "id": "LEGIARTI000031345389",
+    "num": "402",
+    "etat": "MODIFIE",
+    "date_debut": "2015-10-17",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Les délibérations du conseil de famille sont nulles lorsqu'elles ont été surprises par dol ou fraude ou que des formalités substantielles ont été omises.\n\nLa nullité est couverte par une nouvelle délibération valant confirmation selon l'article 1338.\n\nL'action en nullité peut être exercée par le tuteur, le subrogé tuteur, les autres membres du conseil de famille et le procureur de la République dans les deux années de la délibération ainsi que par le mineur devenu majeur ou émancipé dans les deux années de sa majorité ou de son émancipation. La prescription ne court pas s'il y a eu dol ou fraude tant que le fait qui en est à l'origine n'est pas découvert.\n\nLes actes accomplis en vertu d'une délibération annulée sont annulables de la même manière. Le délai court toutefois de l'acte et non de la délibération."
+  },
+  {
+    "id": "LEGIARTI000032042593",
+    "num": "402",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Les délibérations du conseil de famille sont nulles lorsqu'elles ont été surprises par dol ou fraude ou que des formalités substantielles ont été omises.\nLa nullité est couverte par une nouvelle délibération valant confirmation selon l'article 1182.\nL'action en nullité peut être exercée par le tuteur, le subrogé tuteur, les autres membres du conseil de famille et le procureur de la République dans les deux années de la délibération ainsi que par le mineur devenu majeur ou émancipé dans les deux années de sa majorité ou de son émancipation. La prescription ne court pas s'il y a eu dol ou fraude tant que le fait qui en est à l'origine n'est pas découvert.\nLes actes accomplis en vertu d'une délibération annulée sont annulables de la même manière. Le délai court toutefois de l'acte et non de la délibération."
+  },
+  {
+    "id": "LEGIARTI000006427987",
+    "num": "414-2",
+    "etat": "MODIFIE",
+    "date_debut": "2009-01-01",
+    "date_fin": "2016-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "De son vivant, l'action en nullité n'appartient qu'à l'intéressé.\n\nAprès sa mort, les actes faits par lui, autres que la donation entre vifs et le testament, ne peuvent être attaqués par ses héritiers, pour insanité d'esprit, que dans les cas suivants :\n\n1° Si l'acte porte en lui-même la preuve d'un trouble mental ;\n\n2° S'il a été fait alors que l'intéressé était placé sous sauvegarde de justice ;\n\n3° Si une action a été introduite avant son décès aux fins d'ouverture d'une curatelle ou d'une tutelle ou si effet a été donné au mandat de protection future.\n\nL'action en nullité s'éteint par le délai de cinq ans prévu à l'article 1304."
+  },
+  {
+    "id": "LEGIARTI000031345520",
+    "num": "414-2",
+    "etat": "MODIFIE",
+    "date_debut": "2016-01-01",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "De son vivant, l'action en nullité n'appartient qu'à l'intéressé.\n\nAprès sa mort, les actes faits par lui, autres que la donation entre vifs et le testament, ne peuvent être attaqués par ses héritiers, pour insanité d'esprit, que dans les cas suivants :\n\n1° Si l'acte porte en lui-même la preuve d'un trouble mental ;\n\n2° S'il a été fait alors que l'intéressé était placé sous sauvegarde de justice ;\n\n3° Si une action a été introduite avant son décès aux fins d'ouverture d'une curatelle ou d'une tutelle ou aux fins d'habilitation familiale ou si effet a été donné au mandat de protection future.\n\nL'action en nullité s'éteint par le délai de cinq ans prévu à l'article 1304."
+  },
+  {
+    "id": "LEGIARTI000032042614",
+    "num": "414-2",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "De son vivant, l'action en nullité n'appartient qu'à l'intéressé.\nAprès sa mort, les actes faits par lui, autres que la donation entre vifs et le testament, ne peuvent être attaqués par ses héritiers, pour insanité d'esprit, que dans les cas suivants :\n1° Si l'acte porte en lui-même la preuve d'un trouble mental ;\n2° S'il a été fait alors que l'intéressé était placé sous sauvegarde de justice ;\n3° Si une action a été introduite avant son décès aux fins d'ouverture d'une curatelle ou d'une tutelle ou aux fins d'habilitation familiale ou si effet a été donné au mandat de protection future.\nL'action en nullité s'éteint par le délai de cinq ans prévu à l'article 2224."
+  },
+  {
+    "id": "LEGIARTI000006427605",
+    "num": "435",
+    "etat": "ABROGE",
+    "date_debut": "1804-03-21",
+    "date_fin": "1965-06-15",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "(article abrogé)."
+  },
+  {
+    "id": "LEGIARTI000006427606",
+    "num": "435",
+    "etat": "MODIFIE",
+    "date_debut": "2009-01-01",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La personne placée sous sauvegarde de justice conserve l'exercice de ses droits. Toutefois, elle ne peut, à peine de nullité, faire un acte pour lequel un mandataire spécial a été désigné en application de l'article 437.\n\nLes actes qu'elle a passés et les engagements qu'elle a contractés pendant la durée de la mesure peuvent être rescindés pour simple lésion ou réduits en cas d'excès alors même qu'ils pourraient être annulés en vertu de l'article 414-1. Les tribunaux prennent notamment en considération l'utilité ou l'inutilité de l'opération, l'importance ou la consistance du patrimoine de la personne protégée et la bonne ou mauvaise foi de ceux avec qui elle a contracté.\n\nL'action en nullité, en rescision ou en réduction n'appartient qu'à la personne protégée et, après sa mort, à ses héritiers. Elle s'éteint par le délai de cinq ans prévu à l'article 1304."
+  },
+  {
+    "id": "LEGIARTI000032042607",
+    "num": "435",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La personne placée sous sauvegarde de justice conserve l'exercice de ses droits. Toutefois, elle ne peut, à peine de nullité, faire un acte pour lequel un mandataire spécial a été désigné en application de l'article 437.\nLes actes qu'elle a passés et les engagements qu'elle a contractés pendant la durée de la mesure peuvent être rescindés pour simple lésion ou réduits en cas d'excès alors même qu'ils pourraient être annulés en vertu de l'article 414-1. Les tribunaux prennent notamment en considération l'utilité ou l'inutilité de l'opération, l'importance ou la consistance du patrimoine de la personne protégée et la bonne ou mauvaise foi de ceux avec qui elle a contracté.\nL'action en nullité, en rescision ou en réduction n'appartient qu'à la personne protégée et, après sa mort, à ses héritiers. Elle s'éteint par le délai de cinq ans prévu à l'article 2224."
+  },
+  {
+    "id": "LEGIARTI000006427783",
+    "num": "465",
+    "etat": "MODIFIE",
+    "date_debut": "1965-06-15",
+    "date_fin": "2007-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le tuteur ne peut, sans l'autorisation du conseil de famille, introduire une demande de partage au nom du mineur ; mais il pourra, sans cette autorisation, répondre à une demande en partage dirigée contre le mineur, ou s'adjoindre à la requête collective à fin de partage, présentée par tous les intéressés selon l'article 822."
+  },
+  {
+    "id": "LEGIARTI000006427784",
+    "num": "465",
+    "etat": "MODIFIE",
+    "date_debut": "2007-01-01",
+    "date_fin": "2009-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le tuteur ne peut, sans l'autorisation du conseil de famille, introduire une demande de partage au nom du mineur ; mais il pourra, sans cette autorisation, répondre à une demande en partage dirigée contre le mineur, ou s'adjoindre à la requête collective à fin de partage, présentée par tous les intéressés."
+  },
+  {
+    "id": "LEGIARTI000006427785",
+    "num": "465",
+    "etat": "MODIFIE",
+    "date_debut": "2009-01-01",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "A compter de la publicité du jugement d'ouverture, l'irrégularité des actes accomplis par la personne protégée ou par la personne chargée de la protection est sanctionnée dans les conditions suivantes :\n\n1° Si la personne protégée a accompli seule un acte qu'elle pouvait faire sans l'assistance ou la représentation de la personne chargée de sa protection, l'acte reste sujet aux actions en rescision ou en réduction prévues à l'article 435 comme s'il avait été accompli par une personne placée sous sauvegarde de justice, à moins qu'il ait été expressément autorisé par le juge ou par le conseil de famille s'il a été constitué ;\n\n2° Si la personne protégée a accompli seule un acte pour lequel elle aurait dû être assistée, l'acte ne peut être annulé que s'il est établi que la personne protégée a subi un préjudice ;\n\n3° Si la personne protégée a accompli seule un acte pour lequel elle aurait dû être représentée, l'acte est nul de plein droit sans qu'il soit nécessaire de justifier d'un préjudice ;\n\n4° Si le tuteur ou le curateur a accompli seul un acte qui aurait dû être fait par la personne protégée soit seule, soit avec son assistance ou qui ne pouvait être accompli qu'avec l'autorisation du juge ou du conseil de famille s'il a été constitué, l'acte est nul de plein droit sans qu'il soit nécessaire de justifier d'un préjudice.\n\nLe curateur ou le tuteur peut, avec l'autorisation du juge ou du conseil de famille s'il a été constitué, engager seul l'action en nullité, en rescision ou en réduction des actes prévus aux 1°, 2° et 3°.\n\nDans tous les cas, l'action s'éteint par le délai de cinq ans prévu à l'article 1304.\n\nPendant ce délai et tant que la mesure de protection est ouverte, l'acte prévu au 4° peut être confirmé avec l'autorisation du juge ou du conseil de famille s'il a été constitué."
+  },
+  {
+    "id": "LEGIARTI000032042597",
+    "num": "465",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "A compter de la publicité du jugement d'ouverture, l'irrégularité des actes accomplis par la personne protégée ou par la personne chargée de la protection est sanctionnée dans les conditions suivantes :\n1° Si la personne protégée a accompli seule un acte qu'elle pouvait faire sans l'assistance ou la représentation de la personne chargée de sa protection, l'acte reste sujet aux actions en rescision ou en réduction prévues à l'article 435 comme s'il avait été accompli par une personne placée sous sauvegarde de justice, à moins qu'il ait été expressément autorisé par le juge ou par le conseil de famille s'il a été constitué ;\n2° Si la personne protégée a accompli seule un acte pour lequel elle aurait dû être assistée, l'acte ne peut être annulé que s'il est établi que la personne protégée a subi un préjudice ;\n3° Si la personne protégée a accompli seule un acte pour lequel elle aurait dû être représentée, l'acte est nul de plein droit sans qu'il soit nécessaire de justifier d'un préjudice ;\n4° Si le tuteur ou le curateur a accompli seul un acte qui aurait dû être fait par la personne protégée soit seule, soit avec son assistance ou qui ne pouvait être accompli qu'avec l'autorisation du juge ou du conseil de famille s'il a été constitué, l'acte est nul de plein droit sans qu'il soit nécessaire de justifier d'un préjudice.\nLe curateur ou le tuteur peut, avec l'autorisation du juge ou du conseil de famille s'il a été constitué, engager seul l'action en nullité, en rescision ou en réduction des actes prévus aux 1°, 2° et 3°.\nDans tous les cas, l'action s'éteint par le délai de cinq ans prévu à l'article 2224.\nPendant ce délai et tant que la mesure de protection est ouverte, l'acte prévu au 4° peut être confirmé avec l'autorisation du juge ou du conseil de famille s'il a été constitué."
+  },
+  {
+    "id": "LEGIARTI000006428073",
+    "num": "488",
+    "etat": "MODIFIE",
+    "date_debut": "1974-07-07",
+    "date_fin": "2009-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La majorité est fixée à dix-huit ans accomplis ; à cet âge, on est capable de tous les actes de la vie civile.\n\nEst néanmoins protégé par la loi, soit à l'occasion d'un acte particulier, soit d'une manière continue, le majeur qu'une altération de ses facultés personnelles met dans l'impossibilité de pourvoir seul à ses intérêts.\n\nPeut pareillement être protégé le majeur qui, par sa prodigalité, son intempérance ou son oisiveté, s'expose à tomber dans le besoin ou compromet l'exécution de ses obligations familiales."
+  },
+  {
+    "id": "LEGIARTI000006428074",
+    "num": "488",
+    "etat": "MODIFIE",
+    "date_debut": "2009-01-01",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Les actes passés et les engagements contractés par une personne faisant l'objet d'un mandat de protection future mis à exécution, pendant la durée du mandat, peuvent être rescindés pour simple lésion ou réduits en cas d'excès alors même qu'ils pourraient être annulés en vertu de l'article 414-1. Les tribunaux prennent notamment en considération l'utilité ou l'inutilité de l'opération, l'importance ou la consistance du patrimoine de la personne protégée et la bonne ou mauvaise foi de ceux avec qui elle a contracté.\n\nL'action n'appartient qu'à la personne protégée et, après sa mort, à ses héritiers. Elle s'éteint par le délai de cinq ans prévu à l'article 1304."
+  },
+  {
+    "id": "LEGIARTI000032042602",
+    "num": "488",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Les actes passés et les engagements contractés par une personne faisant l'objet d'un mandat de protection future mis à exécution, pendant la durée du mandat, peuvent être rescindés pour simple lésion ou réduits en cas d'excès alors même qu'ils pourraient être annulés en vertu de l'article 414-1. Les tribunaux prennent notamment en considération l'utilité ou l'inutilité de l'opération, l'importance ou la consistance du patrimoine de la personne protégée et la bonne ou mauvaise foi de ceux avec qui elle a contracté.\nL'action n'appartient qu'à la personne protégée et, après sa mort, à ses héritiers. Elle s'éteint par le délai de cinq ans prévu à l'article 2224."
+  },
+  {
+    "id": "LEGIARTI000006428040",
+    "num": "492-1",
+    "etat": "MODIFIE",
+    "date_debut": "2009-01-01",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le mandat n'acquiert date certaine que dans les conditions de l'article 1328."
+  },
+  {
+    "id": "LEGIARTI000032042622",
+    "num": "492-1",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Le mandat n'acquiert date certaine que dans les conditions de l'article 1377."
+  },
+  {
+    "id": "LEGIARTI000006431640",
+    "num": "794",
+    "etat": "MODIFIE",
+    "date_debut": "1804-03-21",
+    "date_fin": "2007-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "Cette déclaration n'a d'effet qu'autant qu'elle est précédée ou suivie d'un inventaire fidèle et exact des biens de la succession, dans les formes réglées par les lois sur la procédure, et dans les délais qui seront ci-après déterminés."
+  },
+  {
+    "id": "LEGIARTI000006431641",
+    "num": "794",
+    "etat": "MODIFIE",
+    "date_debut": "2007-01-01",
+    "date_fin": "2016-10-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La déclaration de l'aliénation ou de la conservation d'un ou de plusieurs biens est faite dans les quinze jours au tribunal qui en assure la publicité.\n\nSans préjudice des droits réservés aux créanciers munis de sûretés, tout créancier successoral peut contester devant le juge, dans un délai de trois mois après la publicité mentionnée au premier alinéa, la valeur du bien conservé ou, lorsque la vente a été faite à l'amiable, le prix de l'aliénation en prouvant que la valeur du bien est supérieure.\n\nLorsque la demande du créancier est accueillie, l'héritier est tenu du complément sur ses biens personnels, sauf à restituer à la succession le bien conservé et sans préjudice de l'action prévue à l'article 1167."
+  },
+  {
+    "id": "LEGIARTI000032042634",
+    "num": "794",
+    "etat": "VIGUEUR",
+    "date_debut": "2016-10-01",
+    "date_fin": "2999-01-01",
+    "code_id": "LEGITEXT000006070721",
+    "code_titre": "Code civil",
+    "texte": "La déclaration de l'aliénation ou de la conservation d'un ou de plusieurs biens est faite dans les quinze jours au tribunal qui en assure la publicité.\nSans préjudice des droits réservés aux créanciers munis de sûretés, tout créancier successoral peut contester devant le juge, dans un délai de trois mois après la publicité mentionnée au premier alinéa, la valeur du bien conservé ou, lorsque la vente a été faite à l'amiable, le prix de l'aliénation en prouvant que la valeur du bien est supérieure.\nLorsque la demande du créancier est accueillie, l'héritier est tenu du complément sur ses biens personnels, sauf à restituer à la succession le bien conservé et sans préjudice de l'action prévue à l'article 1341-2."
   },
   {
     "id": "LEGIARTI000006646880",

@@ -106,12 +106,48 @@ texte=$(curl -s "$BASE/1382?code=civil" | python3 -c 'import json,sys; print(jso
     || nok "1382 sert « $texte »"
 
 echo
-echo "▸ Un article ordinaire ne déclenche rien"
-# Sans ce cas, un renvoi qui se poserait sur tout passerait pour un succès.
-attendu "1103 civil, jamais déplacé → aucun renvoi" \
-    "1103?code=civil" "-" "AUCUN"
-attendu "1240 civil, destination du texte → aucun renvoi" \
-    "1240?code=civil" "-" "AUCUN"
+echo "▸ Quand le successeur est indéduisible, l'ancien texte est montré"
+# 🔑 La déduction par identité ne couvre que les textes transposés mot pour mot.
+# L'ordonnance de 2016 a réécrit la plupart des autres en même temps qu'elle les
+# renumérotait : deux cas sur dix étaient couverts, mesuré par un contrôle
+# extérieur le 22/08/2026. Un lecteur demandant l'article 1147 recevait un texte
+# sur l'incapacité de contracter, sans un mot, là où il cherchait la
+# responsabilité contractuelle.
+#
+# Faute de savoir OÙ le texte est parti, on montre D'OÙ il vient : le lecteur
+# reconnaît en une seconde. Aucune table, aucun seuil de similarité — celui-ci
+# ne discrimine rien, mesuré à 0,63 pour l'article 1382 dont les deux versions
+# n'ont aucun rapport.
+attendu "1147 civil, réécrit en 2016 → nature contenu_remplace" \
+    "1147?code=civil" "nature" "contenu_remplace"
+# `article` vaut null, que la lecture rend « None » : c'est l'absence de
+# successeur, pas une chaîne vide. Comparer à «  » cherchait une valeur que
+# l'API n'écrit jamais.
+attendu "1147 civil → aucun successeur n'est inventé" \
+    "1147?code=civil" "article" "None"
+if renvoi "1147?code=civil" "message" | grep -q "portait un AUTRE texte"; then
+    ok "1147 civil → l'ancien texte est cité"
+else
+    nok "1147 civil → l'ancien texte n'est pas montré"
+fi
+# 🔑 Le piège existe en miroir : 1240 est la DESTINATION du texte de 1382, mais
+# il portait lui-même autre chose avant — le paiement de bonne foi. Une
+# référence à « 1240 » tirée d'une source d'avant 2016 vise donc ce texte-là.
+attendu "1240 civil, destination ET numéro recyclé → signalé aussi" \
+    "1240?code=civil" "nature" "contenu_remplace"
+
+echo
+echo "▸ Un simple amendement ne déclenche rien"
+# Le seuil sépare la réforme de la retouche : un amendement ordinaire touche deux
+# ou trois articles le même jour, une réforme vingt à deux cent trente. Sans lui,
+# un mot changé en 2019 vaudrait le même avertissement qu'une recodification.
+if renvoi "1147?code=civil" "ampleur" | grep -qE '^[0-9]+$'; then
+    n=$(renvoi "1147?code=civil" "ampleur")
+    [ "$n" -ge 20 ] && ok "l'ampleur de la réforme est rendue ($n articles)" \
+                    || nok "ampleur $n sous le seuil, le renvoi n'aurait pas dû partir"
+else
+    nok "l'ampleur n'est pas rendue — le lecteur ne peut pas juger"
+fi
 
 echo
 echo "▸ Ce que la déduction ne sait pas faire, elle ne l'invente pas"

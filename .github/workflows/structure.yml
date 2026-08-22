@@ -103,6 +103,9 @@ jobs:
       - name: Garde-fou — un numéro d'article qui a changé de contenu
         run: bash self-right/selfjustice/tests/test_renvoi_article.sh
 
+      - name: Garde-fou — le texte porte sa mise en forme, pas celle de sa source
+        run: bash self-right/selfjustice/tests/test_texte_propre.sh
+
       - name: Garde-fou — le pont vers les démarches officielles
         run: bash self-right/selfact/tests/test_gabarits_officiels.sh
 
