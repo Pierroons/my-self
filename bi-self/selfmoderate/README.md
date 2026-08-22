@@ -109,10 +109,10 @@ several groups would get first-time offenders punished.
 🟢 **v0.3.0** — the engine is here, under `src/`, and the lab imports it the way
 it imports SelfRecover and SelfDataGuard.
 
-This version ships linked-voter cross-referencing, recovery, and the vote reason.
-The escalation that follows — what a pack costs those who form it — is written
-and awaiting a version. **Two mechanisms remain to be written** — cross-voting
-and victim protection — plus three half-kept, all marked in the lists above.
+This version ships linked-voter cross-referencing, recovery, the vote reason, and
+the escalation that makes a pack cost those who form it. **Two mechanisms remain
+to be written** — cross-voting and victim protection — plus three half-kept, all
+marked in the lists above.
 
 Checks: [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
 — twenty-four, each seen failing first: the mechanism is disabled, the

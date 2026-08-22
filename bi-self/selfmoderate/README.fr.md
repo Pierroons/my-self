@@ -109,11 +109,10 @@ visée par plusieurs groupes ferait punir des gens dont c'est le premier écart.
 🟢 **v0.3.0** — le moteur est ici, dans `src/`, et le lab l'importe comme il
 importe SelfRecover et SelfDataGuard.
 
-Cette version livre le recoupement des votants liés, la convalescence et le motif
-de vote. L'escalade qui suit — ce que la meute coûte à ceux qui la forment — est
-codée et attend une version. **Deux mécanismes restent à écrire** — cross-voting
-et protection des victimes — plus trois tenus à moitié, tous marqués dans les
-listes ci-dessus.
+Cette version livre le recoupement des votants liés, la convalescence, le motif
+de vote, et l'escalade qui fait payer la meute à ceux qui la forment. **Deux
+mécanismes restent à écrire** — cross-voting et protection des victimes — plus
+trois tenus à moitié, tous marqués dans les listes ci-dessus.
 
 Contrôles : [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
 — vingt-quatre, chacun vu rougir : le mécanisme est neutralisé, la mesure
