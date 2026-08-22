@@ -2,7 +2,7 @@
 # SelfAct — wrapper cron pour scraper.php.
 #
 # Ajout crontab (bimensuel 1er + 15 à 03:30 Europe/Paris, cohérent SelfJustice) :
-#   30 3 1,15 * * <install-dir>/api/act/update_catalog.sh >> /var/log/selfact-catalog.log 2>&1
+#   30 3 1,15 * * <install-dir>/api/update_catalog.sh >> /var/log/selfact-catalog.log 2>&1
 #
 # ## Pourquoi ce script alerte désormais
 #

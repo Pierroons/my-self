@@ -94,20 +94,22 @@ fi
 
 echo "SelfJustice — déploiement vers $DEST (domaine : $DOMAINE)"
 
-# Les fichiers servis directement au navigateur. `act.php` et `act-docs.html`
-# peuvent légitimement manquer selon les modules activés, d'où le `continue` ;
-# `index.php` non, mais on compte plutôt que de le traiter à part.
+# Les fichiers servis directement au navigateur.
 #
-# ⚠️ Deux extensions, et ce n'est pas un oubli : les compteurs du corpus sont
-# rendus côté serveur depuis le 19/08/2026, ce qui a fait passer index et act
-# en .php ; act-docs reste une page statique. Ce script cherchait encore les
-# trois en .html, donc ne trouvait plus la racine du module et ne déployait
-# rien — en le disant, au moins. La production n'en dépendait pas, elle est
-# servie par un autre chemin ; toute autre instance de SelfJustice, si.
+# 🔑 `act.php` et `act-docs.html` ont quitté cette liste le 22/08/2026 : SelfAct
+# est un module à part, avec son propre `deploy/selfact/deploy.sh`. Déployer
+# SelfJustice ne déploie donc plus SelfAct — c'est le comportement voulu, et une
+# instance qui veut les deux lance les deux scripts.
+#
+# ⚠️ L'extension compte : les compteurs du corpus sont rendus côté serveur depuis
+# le 19/08/2026, ce qui a fait passer `index` en `.php`. Ce script le cherchait
+# encore en `.html`, ne trouvait plus la racine du module et ne déployait rien —
+# en le disant, au moins.
+#
 # La liste fait autorité pour les deux boucles qui suivent : celle qui copie, et
 # celle qui signale ce qui traîne à la destination sans plus venir d'ici. Écrite
 # deux fois, un renommage n'en corrigerait qu'une.
-SERVIS="index.php act.php act-docs.html"
+SERVIS="index.php"
 
 traites=0
 substituees=0
@@ -157,6 +159,13 @@ fi
 # Signalé, jamais supprimé : effacer un fichier servi au public est une décision
 # humaine, et ce script ne sait pas si la page orpheline est un résidu ou un
 # chemin que quelqu'un a délibérément posé là.
+#
+# ⚠️ **Un module voisin n'est pas un résidu.** Depuis que SelfAct a son propre
+# script, `act.php` et `act-docs.html` ne sont plus produits ici — mais sur une
+# instance qui sert les deux modules depuis la même racine, ils sont légitimes.
+# Les traiter comme des orphelins ferait supprimer un module en suivant le
+# conseil de ce script. Ils sont donc nommés à part, avec le geste qui convient.
+VOISINS="act.php act-docs.html"
 for ancien in "$DEST"/*.html "$DEST"/*.php; do
     [ -e "$ancien" ] || continue
     nom=$(basename "$ancien")
@@ -165,7 +174,15 @@ for ancien in "$DEST"/*.html "$DEST"/*.php; do
         [ "$nom" = "$servi" ] && orphelin=0
     done
     [ "$orphelin" -eq 1 ] || continue
-    echo "  ⚠️  $nom est servi mais n'est plus produit par la source — résidu probable, à retirer à la main" >&2
+    voisin=0
+    for v in $VOISINS; do
+        [ "$nom" = "$v" ] && voisin=1
+    done
+    if [ "$voisin" -eq 1 ]; then
+        echo "  ·  $nom appartient à SelfAct — déployé par deploy/selfact/deploy.sh, à ne pas retirer" >&2
+    else
+        echo "  ⚠️  $nom est servi mais n'est plus produit par la source — résidu probable, à retirer à la main" >&2
+    fi
 done
 
 # ⚠️ Zéro fichier traité n'est pas un cas nominal : c'est le symptôme d'une

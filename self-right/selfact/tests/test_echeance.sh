@@ -20,7 +20,7 @@
 set -uo pipefail
 
 ICI="$(cd "$(dirname "$0")" && pwd)"
-API="$(cd "$ICI/../api/act" && pwd)"
+API="$(cd "$ICI/../api" && pwd)"
 command -v php >/dev/null || { echo "php introuvable" >&2; exit 1; }
 [ -f "$API/deadline.php" ] || { echo "deadline.php introuvable : $API" >&2; exit 1; }
 

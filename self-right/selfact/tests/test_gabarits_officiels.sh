@@ -19,7 +19,7 @@
 set -uo pipefail
 
 ICI="$(cd "$(dirname "$0")" && pwd)"
-ACT="$(cd "$ICI/../api/act" && pwd)"
+ACT="$(cd "$ICI/../api" && pwd)"
 command -v php >/dev/null || { echo "php introuvable" >&2; exit 1; }
 
 SERVEUR=""; BASE=""

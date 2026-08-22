@@ -8,7 +8,7 @@
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../LICENSE)
 [![SelfJustice : v0.1.0 bêta](https://img.shields.io/badge/SelfJustice-v0.1.0%20b%C3%AAta-green.svg)](./selfjustice/)
-[![SelfAct : v0.1.2](https://img.shields.io/badge/SelfAct-v0.1.2-yellow.svg)](./selfact/)
+[![SelfAct : v0.1.2](https://img.shields.io/badge/SelfAct-v0.1.2-brightgreen.svg)](./selfact/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
@@ -59,7 +59,7 @@ Du brouillard du « je pense que je suis dans mes droits » au « cette lettre p
 | Module | Rôle | Statut |
 |--------|------|--------|
 | [SelfJustice](./selfjustice/) | Directives juridiques lisibles par machine + API ouverte du droit | **v0.1.0 bêta** — en ligne sur [justice.my-self.fr](https://justice.my-self.fr) |
-| [SelfAct](./selfact/) | Courriers, formulaires et délais bâtis sur cette analyse | **v0.1.2** — API, catalogue et pages en service ; ~3 960 lignes sous [`selfjustice/`](./selfjustice/) |
+| [SelfAct](./selfact/) | Courriers, formulaires et délais bâtis sur cette analyse | **v0.1.2** — API, catalogue et pages en service |
 
 ---
 
@@ -67,16 +67,16 @@ Du brouillard du « je pense que je suis dans mes droits » au « cette lettre p
 
 SelfJustice est **déployé en production** et sert n'importe quel agent IA (Claude, ChatGPT, Mistral, Gemini, Perplexity) avec tout le corpus juridique français indexé et les textes UE/CEDH, via une API HTTP ouverte. N'importe qui peut l'interroger, n'importe qui peut l'auto-héberger. Compteurs en direct : [`/api/status`](https://justice.my-self.fr/api/status).
 
-SelfAct **tourne aussi** — il faut le dire franchement, parce que son dossier ne le montre pas. Le répertoire `selfact/` porte la licence, le whitepaper et la présentation ; le code qui travaille vit sous `selfjustice/`, parce que SelfAct en est le prolongement opérationnel :
+SelfAct **tourne aussi**, et son dossier le montre : [`selfact/`](./selfact/) porte son code, ses données, ses garde-fous, son déploiement, son whitepaper et sa licence.
 
 | Brique | Où | Ce qu'elle fait |
 |---|---|---|
-| Catalogue | [`api/act/`](./selfjustice/api/act/) | 1 895 ressources officielles moissonnées sur service-public.gouv.fr — 871 formulaires, 685 téléservices, 339 modèles de lettre, rangés en 16 catégories. Rafraîchi les 1er et 15. |
-| Aiguillage | `api/act/find.php` | 20 situations curées à la main : « je me fais licencier » → l'acte, l'article, le formulaire. |
-| Calcul de délai | `api/act/deadline.php` | Le seul endroit qui calcule au lieu de restituer, avec export agenda. |
-| Gabarit de courrier | `api/act/draft.php` | Mise en demeure, saisine (conciliateur, Défenseur des droits), contestation, résiliation, recours — chacun avec un filigrane « NON OFFICIEL — IRRECEVABLE » non supprimable à l'impression. |
+| Catalogue | [`selfact/api/`](./selfact/api/) | 1 895 ressources officielles moissonnées sur service-public.gouv.fr — 871 formulaires, 685 téléservices, 339 modèles de lettre, rangés en 16 catégories. Rafraîchi les 1er et 15. |
+| Aiguillage | [`selfact/api/find.php`](./selfact/api/find.php) | 20 situations curées à la main : « je me fais licencier » → l'acte, l'article, le formulaire. |
+| Calcul de délai | [`selfact/api/deadline.php`](./selfact/api/deadline.php) | Le seul endroit qui calcule au lieu de restituer, avec export agenda. |
+| Gabarit de courrier | [`selfact/api/draft.php`](./selfact/api/draft.php) | Mise en demeure, saisine (conciliateur, Défenseur des droits), contestation, résiliation, recours — chacun avec un filigrane « NON OFFICIEL — IRRECEVABLE » non supprimable à l'impression, et les ressources officielles correspondantes. |
 
-Quatre des douze outils MCP SelfRight sont ceux de SelfAct. Environ 3 960 lignes au total. Remonter ce code sous `selfact/` reste à faire ; d'ici là, le dossier paraît bien plus vide que le module ne l'est.
+Quatre des douze outils MCP SelfRight sont ceux de SelfAct. Les deux modules sont servis par le même domaine — `justice.my-self.fr/act` — et n'échangent aucun appel : SelfJustice dit le droit, SelfAct fait la démarche.
 
 ---
 

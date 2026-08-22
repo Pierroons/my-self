@@ -112,7 +112,7 @@ EXCLUS_MOTIF=(
 # `location` nommé. Une exclusion en bloc le ferait disparaître sans bruit — et
 # le contrôle des références du serveur, plus bas, est ce qui l'a montré.
 GARDES=(
-    "self-right/selfjustice/api/act/directives.md"
+    "self-right/selfact/api/directives.md"
     "demo/selfdataguard/storage/.gitkeep"
 )
 

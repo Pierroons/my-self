@@ -5,7 +5,7 @@
 **Turn legal analysis into ready-to-send action.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.1.2](https://img.shields.io/badge/status-v0.1.2-yellow.svg)](#status)
+[![Status: v0.1.2 running](https://img.shields.io/badge/status-v0.1.2%20running-brightgreen.svg)](#status)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.md)
 [![Companion of: SelfJustice](https://img.shields.io/badge/companion-SelfJustice-green.svg)](../selfjustice/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -105,9 +105,10 @@ Without SelfAct, SelfJustice is a consultation that ends on the user's desk. Wit
 
 **v0.1.2 — running at `justice.my-self.fr/act`.**
 
-The code lives under [`../selfjustice/api/act/`](../selfjustice/api/act/), because
-SelfAct is SelfJustice's operational extension. This folder holds the licence, the
-whitepaper and this page.
+Everything is here: [`api/`](api/) the service and its data, [`site/`](site/) the
+pages, [`tests/`](tests/) the guards, [`docs/`](docs/) the whitepaper. SelfAct is
+served from the same domain as SelfJustice — `justice.my-self.fr/act` — and
+exchanges no calls with it: SelfJustice states the law, SelfAct performs the step.
 
 - [x] Concept paper
 - [x] Resource catalogue — 1,895 official resources in 16 categories, harvested from service-public.gouv.fr, refreshed on the 1st and 15th
@@ -118,7 +119,6 @@ whitepaper and this page.
 - [x] Exposed through the SelfRight MCP server (4 of its 12 tools)
 - [ ] CERFA XML pre-fill
 - [ ] Wider template coverage — more scenarios, more jurisdictions
-- [ ] Move the code under `selfact/`, where this page tells readers to look
 
 See **[whitepaper](docs/whitepaper.docx)** for the full protocol specification, template library plan, and deployment roadmap.
 

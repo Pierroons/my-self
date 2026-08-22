@@ -18,6 +18,11 @@
  * l'exception restée dans l'arbre du code. En l'en sortant, il n'y a plus de
  * collision à détecter — il n'y en a plus de possible.
  *
+ * Depuis le 22/08/2026, l'état de SelfAct porte son propre nom :
+ * `/var/lib/selfact/`. Les bases de SelfJustice restent chez elles. Un
+ * répertoire qui dit à qui appartient ce qu'il contient s'inspecte sans avoir à
+ * demander.
+ *
  * `situations.json` reste au dépôt : il est curé à la main, versionné à bon
  * droit, et n'a qu'un seul écrivain.
  */
@@ -27,10 +32,26 @@ declare(strict_types=1);
 /**
  * Le répertoire d'état de l'instance — ce que la machine produit, par
  * opposition à ce que le dépôt transporte.
+ *
+ * 🔑 Le repli sur `/var/lib/selfjustice` n'est pas une hésitation : il porte la
+ * migration. Une instance déjà en service y a son `catalog.json`, et le code
+ * arrive toujours avant que l'exploitant n'ait déplacé quoi que ce soit. Sans
+ * ce repli, la première requête après la mise à jour lirait un répertoire vide
+ * et retomberait sur la copie du dépôt — celle, précisément, qu'on a passé une
+ * journée à cesser de servir.
+ *
+ * Le repli s'efface de lui-même : dès que `/var/lib/selfact/` existe, il gagne.
+ * Il pourra disparaître d'ici quand plus aucune instance connue ne portera
+ * l'ancien nom.
  */
 function selfact_repertoire_etat(): string {
-    $var = getenv('SELFJUSTICE_VAR_DIR');
-    return $var !== false && $var !== '' ? rtrim($var, '/') : '/var/lib/selfjustice';
+    foreach (['SELFACT_VAR_DIR', 'SELFJUSTICE_VAR_DIR'] as $nom) {
+        $var = getenv($nom);
+        if ($var !== false && $var !== '') {
+            return rtrim($var, '/');
+        }
+    }
+    return is_dir('/var/lib/selfact') ? '/var/lib/selfact' : '/var/lib/selfjustice';
 }
 
 /**

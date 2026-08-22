@@ -5,7 +5,7 @@
 **Transforme une analyse juridique en action prête à envoyer.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.1.2](https://img.shields.io/badge/status-v0.1.2-yellow.svg)](#statut)
+[![Statut : v0.1.2 en service](https://img.shields.io/badge/statut-v0.1.2%20en%20service-brightgreen.svg)](#statut)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfJustice](https://img.shields.io/badge/companion-SelfJustice-green.svg)](../selfjustice/)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -105,9 +105,11 @@ Sans SelfAct, SelfJustice est une consultation qui finit sur le bureau de l'util
 
 **v0.1.2 — en service sur `justice.my-self.fr/act`.**
 
-Le code vit sous [`../selfjustice/api/act/`](../selfjustice/api/act/), parce que
-SelfAct est le prolongement opérationnel de SelfJustice. Ce dossier porte la
-licence, le whitepaper et cette page.
+Tout est ici : [`api/`](api/) le service et ses données, [`site/`](site/) les
+pages, [`tests/`](tests/) les garde-fous, [`docs/`](docs/) le whitepaper. SelfAct
+est servi par le même domaine que SelfJustice — `justice.my-self.fr/act` — et
+n'échange aucun appel avec lui : SelfJustice dit le droit, SelfAct fait la
+démarche.
 
 - [x] Note de conception
 - [x] Catalogue de ressources — 1 895 ressources officielles en 16 catégories, moissonnées sur service-public.gouv.fr, rafraîchies les 1er et 15
@@ -118,7 +120,6 @@ licence, le whitepaper et cette page.
 - [x] Exposé par le serveur MCP SelfRight (4 de ses 12 outils)
 - [ ] Pré-remplissage XML des CERFA
 - [ ] Couverture de gabarits plus large — plus de scénarios, plus de juridictions
-- [ ] Remonter le code sous `selfact/`, là où cette page dit d'aller le chercher
 
 Voir **[whitepaper](docs/whitepaper.docx)** pour la spécification complète du protocole, le plan de bibliothèque de templates, et la roadmap de déploiement.
 
@@ -134,15 +135,17 @@ Voir **[whitepaper](docs/whitepaper.docx)** pour la spécification complète du 
 
 ## Notes d'installation
 
-Le cron `update_catalog.sh` tourne en tant qu'utilisateur `deploy` mais écrit
-dans `/var/www/selfjustice/api/act/data/` qui est owned par `www-data`.
-Permissions à appliquer une fois à l'installation :
+Le catalogue synchronisé ne vit **pas** dans l'arbre du code : `update_catalog.sh`
+l'écrit dans `/var/lib/selfact/`, et l'API l'y lit. Deux écrivains ne partagent
+pas un chemin — le cron moissonne les 1er et 15, le dépôt est poussé depuis un
+poste qui, lui, ne moissonne rien. Tant que les deux visaient `api/data/`, le
+dernier qui écrivait gagnait, et c'était le plus vieux.
 
 ```bash
-sudo chown -R www-data:deploy /var/www/selfjustice/api/act/data/
-sudo chmod 775 /var/www/selfjustice/api/act/data/
-sudo chmod 664 /var/www/selfjustice/api/act/data/*.json
+sudo install -d -o www-data -g deploy -m 775 /var/lib/selfact
 ```
 
-L'ownership mixte permet à `deploy` (cron) d'écrire via le groupe et à `www-data`
-(nginx/PHP-FPM) de lire normalement.
+L'appartenance mixte laisse le cron écrire par le groupe et `www-data`
+(nginx/PHP-FPM) lire normalement. `api/data/situations.json` et
+`api/data/gabarits.json` restent versionnés : ils sont curés à la main et n'ont
+qu'un seul écrivain.

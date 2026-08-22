@@ -42,7 +42,7 @@ monter() { # monter  → reconstruit un dépôt neuf dans $BAC/depot
     rm -rf "$BAC/depot" "$BAC/dist" "$BAC/www" "$BAC/vhosts"
     mkdir -p "$BAC/depot/deploy/my-self" "$BAC/depot/web/my-self.fr" \
              "$BAC/depot/self-right/selfjustice/site" \
-             "$BAC/depot/self-right/selfjustice/api/act" \
+             "$BAC/depot/self-right/selfact/api" \
              "$BAC/depot/self-right/selfjustice/tests" \
              "$BAC/depot/tools" "$BAC/depot/demo/selfdataguard/storage" \
              "$BAC/www" "$BAC/vhosts"
@@ -60,9 +60,9 @@ monter() { # monter  → reconstruit un dépôt neuf dans $BAC/depot
 <a href="https://farm.example.org">Farm</a>
 HTML
     echo "<p>site</p>" > "$BAC/depot/self-right/selfjustice/site/index.php"
-    echo "# directives" > "$BAC/depot/self-right/selfjustice/api/act/directives.md"
+    echo "# directives" > "$BAC/depot/self-right/selfact/api/directives.md"
     echo "<?php \$h = \$_SERVER['HTTP_HOST'] ?? 'your-instance.example';" \
-        > "$BAC/depot/self-right/selfjustice/api/act/find.php"
+        > "$BAC/depot/self-right/selfact/api/find.php"
     echo "test" > "$BAC/depot/self-right/selfjustice/tests/sanity.php"
     echo "outil" > "$BAC/depot/tools/build.sh"
     echo "# lisez-moi" > "$BAC/depot/README.md"
@@ -87,10 +87,10 @@ HTML
 server {
     root  $BAC/www/web/my-self.fr;
     location = /act/api/directives.md {
-        alias $BAC/www/self-right/selfjustice/api/act/directives.md;
+        alias $BAC/www/self-right/selfact/api/directives.md;
     }
     location ~ ^/act/api/(find)\.php\$ {
-        fastcgi_param SCRIPT_FILENAME $BAC/www/self-right/selfjustice/api/act/\$1.php;
+        fastcgi_param SCRIPT_FILENAME $BAC/www/self-right/selfact/api/\$1.php;
     }
 }
 VHOST
@@ -164,7 +164,7 @@ echo
 echo "▸ « your-instance.example » traverse intact"
 monter
 lancer assembler --dest "$BAC/dist" >/dev/null
-if grep -q "your-instance.example" "$BAC/dist/self-right/selfjustice/api/act/find.php" 2>/dev/null; then
+if grep -q "your-instance.example" "$BAC/dist/self-right/selfact/api/find.php" 2>/dev/null; then
     ok "repli conservé — c'est un défaut d'exécution, pas un nom d'instance"
 else
     nok "le repli a été substitué : le nom de l'instance est gravé dans un message d'erreur"
@@ -187,7 +187,7 @@ echo
 echo "▸ Ce que le filtre ne doit pas emporter"
 monter
 lancer assembler --dest "$BAC/dist" >/dev/null
-if [ -f "$BAC/dist/self-right/selfjustice/api/act/directives.md" ]; then
+if [ -f "$BAC/dist/self-right/selfact/api/directives.md" ]; then
     ok "directives.md gardé, malgré l'exclusion des *.md"
 else
     nok "directives.md filtré alors qu'un vhost le sert"
@@ -256,7 +256,7 @@ echo
 echo "▸ Le serveur nomme, le déploiement doit apporter"
 monter
 lancer assembler --dest "$BAC/dist" >/dev/null
-rm -f "$BAC/dist/self-right/selfjustice/api/act/directives.md"
+rm -f "$BAC/dist/self-right/selfact/api/directives.md"
 # ⚠️ Sans `--appliquer`, exprès. Avec, le refus pouvait venir de « demande
 # root » — ce banc ne tourne pas en root — et le cas restait vert alors qu'on
 # venait de retirer le contrôle des références. Un refus n'est une preuve que
@@ -287,8 +287,8 @@ echo
 echo "▸ Le plan n'écrit pas"
 monter
 lancer assembler --dest "$BAC/dist" >/dev/null
-rm -rf "$BAC/www"; mkdir -p "$BAC/www/web/my-self.fr" "$BAC/www/self-right/selfjustice/api/act"
-touch "$BAC/www/self-right/selfjustice/api/act/directives.md"
+rm -rf "$BAC/www"; mkdir -p "$BAC/www/web/my-self.fr" "$BAC/www/self-right/selfact/api"
+touch "$BAC/www/self-right/selfact/api/directives.md"
 avant=$(find "$BAC/www" -type f | wc -l)
 sortie=$(lancer poser "$BAC/dist" --racine "$BAC/www")
 apres=$(find "$BAC/www" -type f | wc -l)

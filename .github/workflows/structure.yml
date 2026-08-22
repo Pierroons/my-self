@@ -80,7 +80,7 @@ jobs:
         run: python3 self-right/selfjustice/tests/sanity_pertinence.py
 
       - name: Garde-fou — calcul d'échéance de procédure (art. 640-643 CPC)
-        run: bash self-right/selfjustice/tests/test_echeance.sh
+        run: bash self-right/selfact/tests/test_echeance.sh
 
       - name: Garde-fou — fraîcheur annoncée du catalogue SelfAct
         run: python3 self-right/selfjustice/tests/sanity_fraicheur_catalogue.py
@@ -92,7 +92,7 @@ jobs:
         run: bash self-right/selfjustice/tests/test_fraicheur.sh
 
       - name: Garde-fou — quel catalogue SelfAct est servi
-        run: bash self-right/selfjustice/tests/test_chemin_catalogue.sh
+        run: bash self-right/selfact/tests/test_chemin_catalogue.sh
 
       - name: Garde-fou — la sonde amont de la vérification de référence
         run: bash self-right/selfjustice/tests/test_sonde_amont.sh
@@ -101,10 +101,13 @@ jobs:
         run: bash self-right/selfjustice/tests/test_renvoi_article.sh
 
       - name: Garde-fou — le pont vers les démarches officielles
-        run: bash self-right/selfjustice/tests/test_gabarits_officiels.sh
+        run: bash self-right/selfact/tests/test_gabarits_officiels.sh
 
       - name: Garde-fou — ce que le déploiement de l'arbre emporte
         run: bash deploy/my-self/tests/test_deploy.sh
+
+      - name: Garde-fou — le déploiement d'une instance SelfAct
+        run: bash deploy/selfact/tests/test_deploy.sh
 
       - name: Garde-fou — coût constant du hash factice (bi-self-duo)
         run: php demo/bi-self-duo/tests/sanity_timing.php

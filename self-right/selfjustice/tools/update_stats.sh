@@ -17,9 +17,26 @@ COUNTER_FILE="/var/lib/selfjustice/counter.txt"
 # non plus dans l'arbre du code — un transfert du dépôt y reposait une copie
 # périmée par-dessus la fraîche. Le chemin du dépôt reste en dernier recours,
 # pour une instance qui n'aurait pas encore migré.
-ACT_CATALOG="${SELFACT_CATALOG:-${SELFJUSTICE_VAR_DIR:-/var/lib/selfjustice}/catalog.json}"
-if [ ! -f "$ACT_CATALOG" ]; then
-    ACT_CATALOG="$(dirname "${SELFJUSTICE_SITE_DIR:-/var/www/selfjustice}")/api/act/data/catalog.json"
+# 🔑 **Une source introuvable doit crier.** Ce bloc essayait deux chemins et se
+# taisait si aucun ne répondait : la statistique gardait alors sa valeur de la
+# veille et la page publique annonçait un chiffre périmé, indéfiniment. Constaté
+# le 22/08/2026 — les deux chemins pointaient vers des fichiers absents depuis
+# que le catalogue avait quitté l'arbre du code, et le journal se contentait de
+# « catalogue SelfAct inchangé » une fois par heure, ce que personne ne lit.
+#
+# L'ordre suit celui de `selfact/api/chemins.php`, et il n'y a qu'une raison de
+# le répéter ici : ce script est du shell, il ne peut pas appeler la fonction
+# PHP qui fait autorité. Toute modification là-bas se reporte ici.
+for candidat in \
+    "${SELFACT_CATALOG:-}" \
+    "${SELFACT_VAR_DIR:-/var/lib/selfact}/catalog.json" \
+    "${SELFJUSTICE_VAR_DIR:-/var/lib/selfjustice}/catalog.json" \
+    "$(dirname "$(dirname "${SELFJUSTICE_SITE_DIR:-/var/www/myself/self-right/selfjustice/site}")")/selfact/api/data/catalog.json"
+do
+    [ -n "$candidat" ] && [ -f "$candidat" ] && ACT_CATALOG="$candidat" && break
+done
+if [ -z "${ACT_CATALOG:-}" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ALERTE : catalogue SelfAct introuvable — la statistique publique va rester figée sur sa valeur précédente." >&2
 fi
 LEGI_DB="${SELFJUSTICE_DB_DIR:-/var/lib/selfjustice/db}/legi_selfjustice.sqlite"
 LEGI_LAST_UPDATE_FILE="/var/lib/selfjustice/legi_last_update.txt"
@@ -104,7 +121,7 @@ fi
 # date de synchronisation figée treize mois : une valeur recopiée à la main ne
 # suit jamais la donnée qu'elle prétend décrire.
 ACT_TOTAL=""
-if [ -f "$ACT_CATALOG" ]; then
+if [ -n "${ACT_CATALOG:-}" ] && [ -f "$ACT_CATALOG" ]; then
     ACT_TOTAL=$(python3 -c "
 import json, sys
 try:

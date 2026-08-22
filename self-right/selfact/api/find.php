@@ -27,7 +27,7 @@
  * Les fondre dans une liste unique aurait résolu la visibilité en détruisant
  * l'information qui compte — savoir ce qui a été relu par un humain.
  *
- * Sources : api/act/data/situations.json (curation manuelle, pas de cron)
+ * Sources : api/data/situations.json (curation manuelle, pas de cron)
  *           le catalogue synchronisé les 1er et 15 — hors de l'arbre du code,
  *           voir chemins.php
  */

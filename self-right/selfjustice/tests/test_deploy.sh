@@ -51,8 +51,11 @@ nok() { echo "  ✗ $1" >&2; echecs=$((echecs + 1)); }
 [ -f "$DEPLOY" ] || { echo "deploy.sh introuvable : $DEPLOY" >&2; exit 1; }
 
 # ── A — emplacement actuel : doit déployer ──────────────────────────────────
+# 🔑 Le critère porte sur `index.php`, la page du module — pas sur « au moins un
+# .html ». C'était `act-docs.html` qui satisfaisait ce test, et il a suivi
+# SelfAct dans son propre module le 22/08/2026 : le cas mesurait un voisin.
 mkdir -p "$TMP/a"
-if bash "$DEPLOY" "$DOMAINE" "$TMP/a" >/dev/null 2>&1 && [ "$(find "$TMP/a" -name '*.html' | wc -l)" -gt 0 ]; then
+if bash "$DEPLOY" "$DOMAINE" "$TMP/a" >/dev/null 2>&1 && [ -f "$TMP/a/index.php" ]; then
     ok "A — emplacement actuel : déploie"
 else
     nok "A — emplacement actuel : aurait dû déployer"
@@ -60,7 +63,7 @@ fi
 
 # ── B — déplacé dans deploy/selfjustice/ : doit déployer aussi ──────────────
 mkdir -p "$TMP/b/depot/deploy/selfjustice" "$TMP/b/depot/self-right/selfjustice/site" "$TMP/b/dest"
-cp "$MODULE"/site/*.html "$MODULE"/site/*.php "$TMP/b/depot/self-right/selfjustice/site/" 2>/dev/null
+cp "$MODULE"/site/*.php "$TMP/b/depot/self-right/selfjustice/site/" 2>/dev/null
 cp "$DEPLOY" "$TMP/b/depot/deploy/selfjustice/"
 if bash "$TMP/b/depot/deploy/selfjustice/deploy.sh" "$DOMAINE" "$TMP/b/dest" >/dev/null 2>&1 \
    && [ "$(find "$TMP/b/dest" -name 'index.php' | wc -l)" -gt 0 ]; then
@@ -104,13 +107,20 @@ fi
 mkdir -p "$TMP/e"
 echo "<p>résidu figé</p>" > "$TMP/e/act.html"
 echo "<p>vieille page</p>" > "$TMP/e/ancien-module.php"
-signale=$(bash "$DEPLOY" "$DOMAINE" "$TMP/e" 2>&1 | grep -c "n'est plus produit par la source")
+# 🔑 Et une page de SelfAct, qui n'est PAS un résidu : depuis le 22/08/2026 elle
+# est déployée par `deploy/selfact/`, mais une instance peut légitimement servir
+# les deux modules depuis la même racine. La signaler « à retirer à la main »
+# ferait supprimer un module en suivant le conseil du script.
+echo "<?php // page SelfAct" > "$TMP/e/act.php"
+sortie_e=$(bash "$DEPLOY" "$DOMAINE" "$TMP/e" 2>&1)
+signale=$(printf '%s' "$sortie_e" | grep -c "n'est plus produit par la source")
+voisin=$(printf '%s' "$sortie_e" | grep -c "appartient à SelfAct")
 survit=0
-[ -f "$TMP/e/act.html" ] && [ -f "$TMP/e/ancien-module.php" ] && survit=1
-if [ "$signale" -eq 2 ] && [ "$survit" -eq 1 ]; then
-    ok "E — résidus de la destination : 2 signalés, 2 conservés"
+[ -f "$TMP/e/act.html" ] && [ -f "$TMP/e/ancien-module.php" ] && [ -f "$TMP/e/act.php" ] && survit=1
+if [ "$signale" -eq 2 ] && [ "$voisin" -eq 1 ] && [ "$survit" -eq 1 ]; then
+    ok "E — 2 résidus signalés, 1 voisin nommé à part, 3 conservés"
 else
-    nok "E — résidus : $signale signalé(s), conservés=$survit — un orphelin muet, ou une suppression automatique"
+    nok "E — résidus : $signale signalé(s), voisin : $voisin, conservés=$survit — un orphelin muet, un voisin pris pour un résidu, ou une suppression automatique"
 fi
 
 # ── F — une destination sans résidu ne doit rien signaler ───────────────────

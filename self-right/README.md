@@ -8,7 +8,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
 [![SelfJustice: v0.1.0 beta](https://img.shields.io/badge/SelfJustice-v0.1.0%20beta-green.svg)](./selfjustice/)
-[![SelfAct: v0.1.2](https://img.shields.io/badge/SelfAct-v0.1.2-yellow.svg)](./selfact/)
+[![SelfAct: v0.1.2](https://img.shields.io/badge/SelfAct-v0.1.2-brightgreen.svg)](./selfact/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
@@ -59,7 +59,7 @@ From the fog of "I think I'm in my rights" to "this letter is in the post on Mon
 | Module | Role | Status |
 |--------|------|--------|
 | [SelfJustice](./selfjustice/) | Machine-readable legal directives + an open law API | **v0.1.0 beta** — live at [justice.my-self.fr](https://justice.my-self.fr) |
-| [SelfAct](./selfact/) | Letters, forms and procedural deadlines built on that analysis | **v0.1.2** — API, catalogue and pages running; ~3,960 lines living under [`selfjustice/`](./selfjustice/) |
+| [SelfAct](./selfact/) | Letters, forms and procedural deadlines built on that analysis | **v0.1.2** — API, catalogue and pages running |
 
 ---
 
@@ -67,16 +67,16 @@ From the fog of "I think I'm in my rights" to "this letter is in the post on Mon
 
 SelfJustice is **deployed in production** and serves any AI agent (Claude, ChatGPT, Mistral, Gemini, Perplexity) with the full indexed French legal corpus plus the EU/ECHR texts, through an open HTTP API. Anyone can query it, anyone can self-host it. Live counts: [`/api/status`](https://justice.my-self.fr/api/status).
 
-SelfAct **runs as well** — worth stating plainly, because its own folder does not show it. The `selfact/` directory holds the licence, the whitepaper and the presentation; the working code lives under `selfjustice/`, because SelfAct is its operational extension:
+SelfAct **runs as well**, and its folder shows it: [`selfact/`](./selfact/) holds its code, its data, its guards, its deployment, its whitepaper and its licence.
 
 | Piece | Where | What it does |
 |---|---|---|
-| Catalogue | [`api/act/`](./selfjustice/api/act/) | 1,895 official resources harvested from service-public.gouv.fr — 871 forms, 685 online procedures, 339 letter templates, in 16 categories. Refreshed on the 1st and 15th. |
-| Situation matching | `api/act/find.php` | 20 hand-curated situations: "I am being laid off" → the step, the article, the form. |
-| Deadline computation | `api/act/deadline.php` | The one piece that computes rather than retrieves, with calendar export. |
-| Letter drafting | `api/act/draft.php` | Formal notice, saisine (conciliateur, Défenseur des droits), contestation, termination, recours — each with a "NON OFFICIEL — IRRECEVABLE" watermark that cannot be removed at print time. |
+| Catalogue | [`selfact/api/`](./selfact/api/) | 1,895 official resources harvested from service-public.gouv.fr — 871 forms, 685 online procedures, 339 letter templates, in 16 categories. Refreshed on the 1st and 15th. |
+| Situation matching | [`selfact/api/find.php`](./selfact/api/find.php) | 20 hand-curated situations: "I am being laid off" → the step, the article, the form. |
+| Deadline computation | [`selfact/api/deadline.php`](./selfact/api/deadline.php) | The one piece that computes rather than retrieves, with calendar export. |
+| Letter drafting | [`selfact/api/draft.php`](./selfact/api/draft.php) | Formal notice, saisine (conciliateur, Défenseur des droits), contestation, termination, recours — each with a "NON OFFICIEL — IRRECEVABLE" watermark that cannot be removed at print time, plus the matching official resources. |
 
-Four of the twelve SelfRight MCP tools are SelfAct's. About 3,960 lines in all. Moving that code under `selfact/` is pending, and until it happens the folder reads far emptier than the module is.
+Four of the twelve SelfRight MCP tools are SelfAct's. Both modules are served from the same domain — `justice.my-self.fr/act` — and exchange no calls: SelfJustice states the law, SelfAct performs the step.
 
 ---
 
