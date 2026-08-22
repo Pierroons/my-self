@@ -302,6 +302,54 @@ else
     nok "sans --appliquer : $avant → $apres, et rien n'annonce un plan — le mode a disparu"
 fi
 
+# ── 9 — un domaine protégé n'est pas un domaine en panne ────────────────────
+#
+# 🔑 Ces cas existent parce que `verifier` exigeait 200 partout, `lab` compris,
+# alors que `lab` est derrière une authentification Basic et répond 401. La sonde
+# sortait donc en échec à chaque pose — indéfiniment, sur un défaut inexistant.
+#
+# ⚠️ Le cas qui compte n'est pas celui où `lab` rend 401 : c'est celui où il rend
+# 200. Une sonde qui accepterait les deux ne mesurerait plus rien, et la
+# disparition de la Basic Auth passerait pour une bonne nouvelle.
+echo
+echo "▸ Le code attendu, par domaine"
+monter
+
+# Un faux sondeur : le réseau ne peut pas mentir au script, une variable si.
+cat > "$BAC/faux-sonde" <<'SONDE'
+#!/bin/bash
+hote="${1#https://}"; hote="${hote%%/*}"
+while read -r h c; do
+    [ "$h" = "$hote" ] && { echo "$c"; exit 0; }
+done <<< "$FAUX_CODES"
+echo 200
+SONDE
+chmod +x "$BAC/faux-sonde"
+
+sonder() { FAUX_CODES="$1" MYSELF_SONDE="$BAC/faux-sonde" \
+           bash "$BAC/depot/deploy/my-self/deploy.sh" verifier 2>&1; }
+
+sortie=$(sonder "lab.test.invalid 401"); code=$?
+if [ "$code" -eq 0 ] && grep -q "401 — protégé" <<<"$sortie"; then
+    ok "lab répond 401 : accepté, et dit protégé"
+else
+    nok "lab répond 401 mais la sonde n'est pas satisfaite (sortie $code)"
+fi
+
+sortie=$(sonder "lab.test.invalid 200"); code=$?
+if [ "$code" -ne 0 ] && grep -q "attendu 401" <<<"$sortie"; then
+    ok "lab répond 200 : REFUSÉ — la protection aurait sauté"
+else
+    nok "lab répond 200 sans que la sonde bronche : elle n'éprouve plus la Basic Auth"
+fi
+
+sortie=$(sonder "justice.test.invalid 502"); code=$?
+if [ "$code" -ne 0 ] && grep -q "attendu 200" <<<"$sortie"; then
+    ok "un domaine ordinaire en 502 : refusé"
+else
+    nok "un 502 sur justice passe inaperçu"
+fi
+
 echo
 total=$((reussites + echecs))
 if [ "$echecs" -eq 0 ]; then

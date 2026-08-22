@@ -405,8 +405,44 @@ poser() {
 # d'elle : un module qu'on inscrit pour la substitution entre du même geste dans
 # le contrôle. Une seconde liste écrite à la main finirait par ne plus décrire
 # la première — c'est le défaut que ce script tout entier existe pour empêcher.
+# ── Ce que chaque domaine doit répondre ─────────────────────────────────────
+#
+# 🔑 **Un domaine protégé n'est pas un domaine en panne.** `lab` est derrière une
+# authentification Basic : il répond 401, et c'est son bon fonctionnement. Tant
+# que la sonde exigeait 200 partout, elle sortait en échec à chaque pose — donc
+# pour toujours, sur un défaut qui n'existait pas. Une alarme qui hurle sans
+# discontinuer cesse d'être lue, et le jour où un vrai service tombe, son rouge
+# ressemble au rouge de la veille.
+#
+# Attendre le 401 fait mieux que taire le bruit : la sonde éprouve désormais la
+# protection elle-même. Si `lab` répondait 200, c'est CELA qu'il faudrait
+# signaler — la Basic Auth aurait sauté.
+lire_codes() {
+    cat <<'CODES'
+lab.my-self.fr    401
+CODES
+}
+
+code_attendu() { # code_attendu <hôte> → le code HTTP attendu, 200 par défaut
+    local hote code
+    while read -r hote code; do
+        [ "$hote" = "$1" ] && { echo "$code"; return; }
+    done < <(lire_codes)
+    echo 200
+}
+
+# Surchargeable : un garde-fou ne peut éprouver cette fonction qu'en lui mentant
+# sur ce que le réseau répond.
+sonde_http() { # sonde_http <url> → écrit le code HTTP obtenu
+    # Un frontal peut se tenir devant ces domaines : sans anti-cache, une
+    # vérification lancée juste après une pose lit l'état d'avant.
+    curl -s -o /dev/null -w "%{http_code}" -H "Cache-Control: no-cache" \
+         --max-time 15 "$1?verif=$RANDOM"
+}
+
 verifier() {
-    local souci=0 code u domaine adresses=("https://my-self.fr/")
+    local souci=0 code attendu u domaine hote adresses=("https://my-self.fr/")
+    local sonde="${MYSELF_SONDE:-sonde_http}"
     while read -r _ domaine; do
         [ -n "$domaine" ] && adresses+=("https://$domaine/")
     done < <(lire_table)
@@ -414,14 +450,18 @@ verifier() {
     # extension aurait fait filtrer.
     adresses+=("https://justice.my-self.fr/act/api/directives.md")
 
-    echo "▸ Ce qui doit répondre"
+    echo "▸ Ce que chaque domaine doit répondre"
     for u in "${adresses[@]}"; do
-        # Un frontal peut se tenir devant ces domaines : sans anti-cache, une
-        # vérification lancée juste après une pose lit l'état d'avant.
-        code=$(curl -s -o /dev/null -w "%{http_code}" -H "Cache-Control: no-cache" \
-               --max-time 15 "$u?verif=$RANDOM")
-        if [ "$code" = "200" ]; then printf "  ✓  %-48s %s\n" "$u" "$code"
-        else printf "  ✗  %-48s %s\n" "$u" "$code"; souci=1; fi
+        hote="${u#https://}"; hote="${hote%%/*}"
+        attendu=$(code_attendu "$hote")
+        code=$("$sonde" "$u")
+        if [ "$code" != "$attendu" ]; then
+            printf "  ✗  %-48s %s (attendu %s)\n" "$u" "$code" "$attendu"; souci=1
+        elif [ "$attendu" = 200 ]; then
+            printf "  ✓  %-48s %s\n" "$u" "$code"
+        else
+            printf "  ✓  %-48s %s — protégé, c'est l'attendu\n" "$u" "$code"
+        fi
     done
     return $souci
 }
