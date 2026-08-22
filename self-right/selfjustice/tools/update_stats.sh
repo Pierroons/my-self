@@ -7,9 +7,16 @@
 
 set -e
 
-LOG_FILE="/var/log/nginx/selfjustice-access.log"
-LOG_FILE_OLD="/var/log/nginx/selfjustice-access.log.1"
-COUNTER_FILE="/var/lib/selfjustice/counter.txt"
+# Chemins surchargeables : un banc d'essai doit pouvoir rejouer une séquence de
+# rotations sans /var/log ni droits root, sinon le seul contrôle possible porte
+# sur des fonctions isolées — et le défaut d'origine était dans leur assemblage.
+VAR_DIR="${SELFJUSTICE_VAR_DIR:-/var/lib/selfjustice}"
+LOG_FILE="${SELFJUSTICE_LOG:-/var/log/nginx/selfjustice-access.log}"
+LOG_FILE_OLD="${SELFJUSTICE_LOG_OLD:-${LOG_FILE}.1}"
+COUNTER_FILE="$VAR_DIR/counter.txt"
+ETAT_ROTATION="$VAR_DIR/rotation.txt"
+
+. "$(dirname "$0")/lib_journal.sh"
 # Racine du site servie par nginx — surchargeable : elle diffère selon
 # l installation. Codée en dur, elle a cessé de pointer vers quoi que ce soit
 # après la migration du 03/08/2026, et le compteur de la page a gelé en silence.
@@ -44,78 +51,109 @@ if [ -z "${ACT_CATALOG:-}" ]; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ALERTE : catalogue SelfAct introuvable (chemins.php : ${CHEMINS}) — la statistique publique va rester figée sur sa valeur précédente." >&2
 fi
 LEGI_DB="${SELFJUSTICE_DB_DIR:-/var/lib/selfjustice/db}/legi_selfjustice.sqlite"
-LEGI_LAST_UPDATE_FILE="/var/lib/selfjustice/legi_last_update.txt"
+LEGI_LAST_UPDATE_FILE="$VAR_DIR/legi_last_update.txt"
 EU_DB="${SELFJUSTICE_DB_DIR:-/var/lib/selfjustice/db}/conventionnalite.sqlite"
-EU_LAST_UPDATE_FILE="/var/lib/selfjustice/eu_last_update.txt"
+EU_LAST_UPDATE_FILE="$VAR_DIR/eu_last_update.txt"
 
 # Créer le dossier de stockage si besoin
-sudo mkdir -p /var/lib/selfjustice
-sudo chown deploy:deploy /var/lib/selfjustice 2>/dev/null || true
+mkdir -p "$VAR_DIR" 2>/dev/null || sudo mkdir -p "$VAR_DIR"
 
 # ============================================================
 # 1. Compter les requêtes IA dans les logs
 # ============================================================
 
-# User-Agents qui correspondent à des fetches d'IA (et non des visiteurs humains)
+# User-Agents des fetches d'IA (et non des visiteurs humains)
 AI_PATTERNS='(Claude-User|Claude-Web|claudebot|anthropic|ChatGPT|GPTBot|OAI-SearchBot|MistralAI|Mistral-Bot|Google-Extended|GoogleOther|GeminiBot|PerplexityBot|Perplexity-User|Bytespider|YouBot|DuckAssistBot)'
 
-# Compter les hits actuels dans les logs (incluant rotation)
-# 🔑 **`grep -c` affiche `0` ET sort en 1 quand il ne trouve rien.** Le
-# `|| echo 0` ajoutait donc un SECOND zéro : la substitution rendait « 0\n0 »,
-# et l'arithmétique refusait — « erreur de syntaxe dans l'expression ». Chaque
-# heure, dans un journal que personne ne lit. Le compte des consultations
-# repartait alors de zéro sans que rien ne le dise.
-#
-# `entier` ramène toute sortie à un nombre : vide ou non numérique valent 0.
-#
 # ⚠️ `head -1` AVANT le filtre, et ce n'est pas décoratif : sans lui, « 12\n34 »
 # devient « 1234 », un nombre que rien n'a jamais compté. Une valeur inventée est
 # pire qu'une valeur absente — elle ne se distingue pas d'une vraie.
+#
+# 🔑 **`grep -c` affiche `0` ET sort en 1 quand il ne trouve rien.** Le
+# `|| echo 0` d'avant ajoutait donc un SECOND zéro : la substitution rendait
+# « 0\n0 » et l'arithmétique refusait, chaque heure, dans un journal que personne
+# ne lit. `entier` ramène toute sortie à un nombre : vide ou non numérique valent 0.
 entier() { printf '%s' "${1:-}" | head -1 | tr -dc '0-9' | head -c 18 | grep . || printf 0; }
 
-HITS_NOW=0
-if [ -f "$LOG_FILE" ]; then
-    HITS_NOW=$(entier "$(sudo grep -ciE "$AI_PATTERNS" "$LOG_FILE" 2>/dev/null | head -1)")
-fi
+# Le motif se cherche dans le User-Agent — voir `lib_journal.sh`, qui porte la
+# règle pour les deux scripts de statistiques.
+compter_ia() {
+    entier "$(journal_contenu "$1" | journal_user_agents | grep -ciE "$AI_PATTERNS" | head -1)"
+}
 
-# Si log rotation active, ajouter aussi l'ancien log (du jour)
-HITS_OLD=0
-if [ -f "$LOG_FILE_OLD" ]; then
-    HITS_OLD=$(entier "$(sudo grep -ciE "$AI_PATTERNS" "$LOG_FILE_OLD" 2>/dev/null | head -1)")
-fi
+# $1 cumul · $2 inode pivoté vu au passage précédent · $3 ses hits · $4 inode
+# pivoté courant.
+#
+# 🔑 **Verser au cumul une valeur encore visible la compte deux fois.** Ce bloc
+# repérait la rotation à la baisse du total (`courant + pivoté < dernier relevé`)
+# puis versait ce dernier relevé. Or il contenait le journal COURANT, qui après
+# rotation devient le pivoté : toujours dans la fenêtre, toujours compté. Une
+# journée entière de consultations partait en double, à chaque rotation.
+#
+# Seul le pivoté sort de la fenêtre. C'est lui, et lui seul, qu'on verse — et la
+# rotation se constate sur son inode, pas sur une variation de compte : deux
+# jours de trafic croissant masquaient la baisse et la rotation passait inaperçue.
+#
+# Deux limites, écrites parce qu'elles ne se voient pas : deux rotations entre
+# deux passages perdent le journal intermédiaire (il y faudrait 24 h de tâche
+# muette, la rotation étant quotidienne et la tâche horaire) ; et un pivoté qui
+# disparaîtrait puis reviendrait avec le MÊME inode serait versé deux fois.
+cumul_apres_rotation() {
+    if [ -n "$2" ] && [ "$2" != "$4" ]; then
+        printf '%s' "$(( $1 + $3 ))"
+    else
+        printf '%s' "$1"
+    fi
+}
 
-CURRENT_HITS=$((HITS_NOW + HITS_OLD))
+# Rend le total, ou sort en 1 sans rien écrire quand la mesure n'a pas eu lieu.
+#
+# 🔑 **Une source introuvable doit crier.** Le bloc catalogue et le bloc LEGI de
+# ce fichier émettent tous deux une ALERTE quand leur source manque ; celui-ci
+# était le seul des trois à rendre `0` pour « pas de journal » comme pour « pas
+# de correspondance ». Un chemin de journal qui bouge — c'est arrivé le
+# 03/08/2026 — versait alors le pivoté une fois, puis publiait ce total gelé
+# toutes les heures, indéfiniment, sans une ligne sur `stderr`.
+#
+# Une fonction, et non du code en ligne, pour qu'un banc d'essai puisse rejouer
+# une séquence de rotations complète : le défaut d'origine n'était pas dans le
+# calcul mais dans l'assemblage — quelle valeur va dans quel fichier d'état.
+recompter_ia() {
+    local hits_now hits_old inode_pivote cumul vu_inode vu_hits
 
-# Lire le compteur historique (cumul depuis le début)
-# ⚠️ Ces fichiers étaient VIDES en production le 22/08/2026 — une écriture
-# interrompue, ou un `> fichier` qui n'a jamais été suivi de son contenu. Un
-# `cat` rend alors la chaîne vide, que la comparaison plus bas refuse. Passer
-# par `entier` rend l'absence et le vide indiscernables d'un zéro, ce qu'ils
-# sont pour un compteur.
-PREVIOUS_TOTAL=0
-if [ -f "$COUNTER_FILE" ]; then
-    PREVIOUS_TOTAL=$(entier "$(cat "$COUNTER_FILE")")
-fi
+    if [ ! -e "$LOG_FILE" ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] ALERTE : journal $LOG_FILE introuvable — le compteur de consultations va rester figé sur sa valeur précédente." >&2
+        return 1
+    fi
 
-# Lire le dernier hit count enregistré (pour calculer le delta avant rotation)
-LAST_HITS_FILE="/var/lib/selfjustice/last_hits.txt"
-LAST_HITS=0
-if [ -f "$LAST_HITS_FILE" ]; then
-    LAST_HITS=$(entier "$(cat "$LAST_HITS_FILE")")
-fi
+    hits_now=$(compter_ia "$LOG_FILE")
+    hits_old=$(compter_ia "$LOG_FILE_OLD")
+    inode_pivote=$([ -f "$LOG_FILE_OLD" ] && stat -c %i "$LOG_FILE_OLD" 2>/dev/null || printf 'absent')
 
-# Si CURRENT_HITS < LAST_HITS = rotation des logs → on ajoute les hits oubliés
-if [ "$CURRENT_HITS" -lt "$LAST_HITS" ]; then
-    # On considère que LAST_HITS représentait le total du jour précédent
-    PREVIOUS_TOTAL=$((PREVIOUS_TOTAL + LAST_HITS))
-fi
+    # ⚠️ Ces fichiers étaient VIDES en production le 22/08/2026 — une écriture
+    # interrompue, ou un `> fichier` jamais suivi de son contenu. Un `cat` rend
+    # alors la chaîne vide, que la comparaison refuse. `entier` rend l'absence et
+    # le vide indiscernables d'un zéro, ce qu'ils sont pour un compteur.
+    cumul=0
+    [ -f "$COUNTER_FILE" ] && cumul=$(entier "$(cat "$COUNTER_FILE")")
 
-# Total = historique + hits du jour actuel
-TOTAL_HITS=$((PREVIOUS_TOTAL + CURRENT_HITS))
+    vu_inode='' ; vu_hits=0
+    if [ -f "$ETAT_ROTATION" ]; then
+        read -r vu_inode vu_hits < "$ETAT_ROTATION" || true
+        vu_hits=$(entier "$vu_hits")
+    fi
 
-# Sauvegarder pour la prochaine exécution
-echo "$PREVIOUS_TOTAL" > "$COUNTER_FILE"
-echo "$CURRENT_HITS" > "$LAST_HITS_FILE"
+    cumul=$(cumul_apres_rotation "$cumul" "$vu_inode" "$vu_hits" "$inode_pivote")
+
+    echo "$cumul" > "$COUNTER_FILE"
+    printf '%s %s\n' "$inode_pivote" "$hits_old" > "$ETAT_ROTATION"
+
+    printf '%s' "$((cumul + hits_now + hits_old))"
+}
+
+# Vide quand la mesure n'a pas eu lieu : le PHP plus bas reprend alors la valeur
+# précédente, et l'ALERTE dit pourquoi.
+TOTAL_HITS=$(recompter_ia) || TOTAL_HITS=""
 
 # ============================================================
 # 2. Récupérer la date de dernière mise à jour LEGI
@@ -199,7 +237,7 @@ fi
 # le code de production, seulement dans ses données.
 # Même emplacement que les autres sorties de statistiques, produites par
 # build_stats.sh — un seul dossier à servir, un seul à sauvegarder.
-STATS_DIR="${SELFJUSTICE_STATS_DIR:-/var/lib/selfjustice/stats}"
+STATS_DIR="${SELFJUSTICE_STATS_DIR:-$VAR_DIR/stats}"
 CORPUS="$STATS_DIR/corpus.json"
 mkdir -p "$STATS_DIR" 2>/dev/null || true
 
@@ -225,4 +263,4 @@ php -r '
     "$EU_ARTICLES" "$EU_UPDATE_DATE" "$ACT_TOTAL"
 
 
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Stats mises à jour : ${TOTAL_HITS} requêtes IA, ${LEGI_ARTICLES} articles LEGI (MAJ: ${LEGI_UPDATE_DATE}), catalogue SelfAct ${ACT_TOTAL:-inchangé}"
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Stats mises à jour : ${TOTAL_HITS:-non mesuré} requêtes IA, ${LEGI_ARTICLES} articles LEGI (MAJ: ${LEGI_UPDATE_DATE}), catalogue SelfAct ${ACT_TOTAL:-inchangé}"

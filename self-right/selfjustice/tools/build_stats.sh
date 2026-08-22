@@ -14,9 +14,12 @@
 
 # Pas de set -e : grep -c retourne 1 quand 0 match, on gère les erreurs localement
 
-STATS_DIR="/var/lib/selfjustice/stats"
-LOG_CURRENT="/var/log/nginx/selfjustice-access.log"
-LOG_OLD="/var/log/nginx/selfjustice-access.log.1"
+VAR_DIR="${SELFJUSTICE_VAR_DIR:-/var/lib/selfjustice}"
+STATS_DIR="${SELFJUSTICE_STATS_DIR:-$VAR_DIR/stats}"
+LOG_CURRENT="${SELFJUSTICE_LOG:-/var/log/nginx/selfjustice-access.log}"
+LOG_OLD="${SELFJUSTICE_LOG_OLD:-${LOG_CURRENT}.1}"
+
+. "$(dirname "$0")/lib_journal.sh"
 
 mkdir -p "$STATS_DIR" 2>/dev/null || true
 
@@ -26,15 +29,32 @@ mkdir -p "$STATS_DIR" 2>/dev/null || true
 
 TMP_AI="$STATS_DIR/by-ai.json.tmp"
 
-# Concaténer les logs courants et rotés
-# deploy est membre du groupe adm et les logs sont world-readable (-rw-r--r--), pas besoin de sudo
-LOGS_CONTENT=$( { cat "$LOG_CURRENT" 2>/dev/null; cat "$LOG_OLD" 2>/dev/null; } )
+# 🔑 **Deux affirmations fausses tenaient ce bloc debout.** Le commentaire d'avant
+# disait les journaux « world-readable (-rw-r--r--) » — ils sont en `-rw-r-----
+# www-data:adm` — et invoquait un compte `deploy` qui n'existe pas sur l'instance.
+# Le script ne fonctionne que parce que la tâche planifiée le lance en root.
+# Lancé autrement, `cat` échouait en silence, la variable était vide, et ce
+# fichier publiait des zéros partout sans qu'une erreur soit émise. `journal_contenu`
+# crie désormais sur un journal présent et illisible.
+LOGS_CONTENT=$(journal_contenu "$LOG_CURRENT" "$LOG_OLD") || {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ALERTE : journaux illisibles — statistiques publiques non regénérées." >&2
+    exit 1
+}
+
+# 🔑 **Le motif se cherche dans le User-Agent, pas dans la ligne entière.** Ce
+# script publie sur `/api/stats/by-ai` un JSON dont la description affirme
+# distinguer les consultations par User-Agent. Il cherchait pourtant `Claude-User`
+# ou `GPTBot` sur toute la ligne, URL et référent compris : `GET /?q=ChatGPT`
+# valait une consultation, sur un compteur public donc forgeable. La règle
+# d'extraction vit dans `lib_journal.sh`, partagée avec `update_stats.sh` — un
+# correctif appliqué à un seul des deux compteurs ne vaut rien.
+UA_CONTENT=$(printf '%s\n' "$LOGS_CONTENT" | journal_user_agents)
 
 count_ua() {
     # $1 = pattern regex insensible à la casse
     # grep -c retourne exit 1 quand 0 match, donc on capture proprement
     local count
-    count=$(echo "$LOGS_CONTENT" | grep -cEi "$1") || count=0
+    count=$(printf '%s\n' "$UA_CONTENT" | grep -cEi "$1") || count=0
     echo "$count"
 }
 
@@ -69,7 +89,14 @@ CRAWLER_TOTAL=$((CRAWLER_CLAUDE + CRAWLER_OPENAI + CRAWLER_MISTRAL + CRAWLER_GOO
 # Total toutes requêtes confondues
 TOTAL=$(echo -n "$LOGS_CONTENT" | grep -c '^' 2>/dev/null) || TOTAL=0
 OTHER=$((TOTAL - USER_TOTAL - CRAWLER_TOTAL))
-if [ "$OTHER" -lt 0 ]; then OTHER=0; fi
+
+# ⚠️ Un `OTHER` négatif signifie qu'un User-Agent a été compté dans deux familles.
+# Il était ramené à zéro sans un mot : le seul signal que les familles se
+# recouvrent disparaissait, et le JSON public restait cohérent en apparence.
+if [ "$OTHER" -lt 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ALERTE : $((-OTHER)) requête(s) comptée(s) dans deux familles d'IA — les motifs se recouvrent." >&2
+    OTHER=0
+fi
 
 cat > "$TMP_AI" <<JSON
 {
