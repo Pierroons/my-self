@@ -40,6 +40,10 @@ Configuration :
                                 démarre, annonce ses outils, et les refuse tous.
 
     Les suivantes sont facultatives :
+    SELFRIGHT_ACT_URL         racine des routes de démarches. Déduite de
+                                SELFRIGHT_API_URL en remplaçant son dernier
+                                segment par « act/api » — à renseigner seulement
+                                si l'instance les dispose autrement.
     SELFRIGHT_NTFY_URL        topic ntfy à prévenir en cas de retard
     SELFRIGHT_NTFY_TOKEN      jeton du topic
     SELFRIGHT_TIMEOUT         délai réseau en secondes (défaut : 15)

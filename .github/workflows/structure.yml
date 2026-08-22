@@ -100,6 +100,9 @@ jobs:
       - name: Garde-fou — une fenêtre de moisson récente n'est jamais complète
         run: python3 self-right/selfjustice/tests/test_sedimentation.py
 
+      - name: Garde-fou — toute variable d'environnement lue est documentée
+        run: python3 self-right/selfjustice/tests/sanity_variables_documentees.py
+
       - name: Garde-fou — un numéro d'article qui a changé de contenu
         run: bash self-right/selfjustice/tests/test_renvoi_article.sh
 
