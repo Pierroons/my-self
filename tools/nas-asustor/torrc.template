@@ -1,4 +1,4 @@
-# torrc — config Tor pour hidden service ADM admin sur NAS NAS
+# torrc — config Tor pour hidden service ADM admin sur NAS
 # Généré par tor-nas.sh install — placeholder @TOR_DIR@ remplacé au runtime
 
 # ===== Identité de l'instance =====
@@ -21,7 +21,7 @@ Log notice file @TOR_DIR@/tor.log
 HiddenServiceDir @TOR_DIR@/hidden_service_adm/
 HiddenServiceVersion 3
 
-# Mappe le port HTTP du HS vers le portail ADM local (8000 = LHS NAS)
+# Mappe le port HTTP du HS vers le portail ADM local (8000 = port ADM par défaut)
 # Si tu déplaces ADM sur un autre port, ajuste ici.
 HiddenServicePort 80 127.0.0.1:8000
 

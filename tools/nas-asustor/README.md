@@ -1,6 +1,6 @@
-# NAS NAS — Tor hidden service natif
+# NAS — Tor hidden service natif
 
-Pack de scripts pour exposer le portail admin **ADM** d'un NAS NAS uniquement via un **hidden service Tor v3**, avec backup automatique des clés cryptographiques sur la clé USB du serveur de sauvegarde.
+Pack de scripts pour exposer le portail admin **ADM** d'un NAS uniquement via un **hidden service Tor v3**, avec backup automatique des clés cryptographiques sur la clé USB du serveur de sauvegarde.
 
 ## Composants
 
@@ -14,9 +14,9 @@ Pack de scripts pour exposer le portail admin **ADM** d'un NAS NAS uniquement vi
 
 ```
                 ┌──────────────────────────────────────┐
-                │  NAS NAS (192.0.2.134)│
+                │  NAS (192.0.2.134)                   │
                 │                                      │
-                │   ADM portal :8000 (LHS NAS)     │
+                │   ADM portal :8000                   │
                 │            ▲                         │
                 │            │ 127.0.0.1:8000          │
                 │            │                         │
@@ -43,7 +43,7 @@ Backup nightly :
 
 ## Pré-requis
 
-- NAS NAS avec ADM 4.x à jour
+- NAS avec ADM 4.x à jour
 - SSH activé temporairement sur le NAS (le temps de l'install)
 - Compte admin avec accès root via SSH
 - serveur de sauvegarde (192.0.2.60) accessible depuis le NAS, clé USB montée à `/mnt/usb-backup/`

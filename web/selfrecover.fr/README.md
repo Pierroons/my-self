@@ -16,7 +16,7 @@ Fond `#0f1419` · accent bleu `#7ab7ff` · teal signature `#3fb98c` · texte `#e
 `prefers-reduced-motion`.
 
 ## Version
-`v0.0.1` — affichée dans le footer de la landing (+ commentaire en tête du HTML).
+`v0.0.2` — affichée dans le footer de la landing (+ commentaire en tête du HTML).
 Convention : patch `0.0.X` libre · minor/major = accord Pierroons.
 
 ## Statut

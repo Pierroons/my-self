@@ -1,5 +1,5 @@
 #!/bin/sh
-# tor-nas.sh — gestionnaire Tor hidden service pour NAS NAS (ADM)
+# tor-nas.sh — gestionnaire Tor hidden service pour NAS (ADM)
 #
 # Sous-commandes :
 #   install   — bootstrap initial (structure dirs, clé SSH backup, torrc, cron @reboot)
@@ -370,7 +370,7 @@ EOF
 
 cmd_help() {
     cat <<EOF
-tor-nas.sh — gestionnaire Tor hidden service NAS NAS
+tor-nas.sh — gestionnaire Tor hidden service NAS
 
 Usage: $0 {install|start|stop|restart|status|backup|update|help}
 
