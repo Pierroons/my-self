@@ -106,7 +106,18 @@ Sans le sel conservé hors-site, la dérivation est irréalisable sur du matéri
 
 ## 11. Limites et travaux futurs
 
-- **Durcissement evil-maid :** amorçage en clair → signature (démarrage sécurisé) ou mesure d'intégrité matérielle à étudier.
+- **Durcissement evil-maid :** l'amorçage reste en clair. Le démarrage sécurisé est la
+  seule parade réellement envisagée, et son coût a été mesuré :
+  - **signer le noyau ne suffit pas.** L'initramfs porte le keyscript, le binaire de
+    dérivation et le sel ; il n'est pas couvert par la signature du noyau seul. Il
+    faut une **image unifiée** (noyau + initramfs + ligne de commande en un seul
+    binaire signé), donc changer de chaîne d'amorçage ;
+  - le **verrouillage du noyau** qui accompagne le démarrage sécurisé **supprime
+    l'hibernation** — l'image de veille prolongée n'étant pas vérifiable, elle est
+    refusée. C'est un renoncement fonctionnel, pas un réglage ;
+  - à recommander par défaut **sur poste fixe**, où l'hibernation ne manque pas ;
+    sur portable, l'arbitrage revient à l'utilisateur.
+- **Mesure d'intégrité matérielle** (TPM) : à étudier, non instruite à ce jour.
 - **Quorum distribué :** déverrouillage automatique par consensus de témoins, sans saisie, en réflexion.
 - **Unification des sauvegardes :** dériver les secrets de sauvegarde depuis la même passphrase racine (étiquette dédiée), pour unifier complètement le socle de confiance — en gardant à l'esprit la contrainte du sel hors-site.
 

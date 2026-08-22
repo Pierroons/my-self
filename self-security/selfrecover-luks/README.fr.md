@@ -64,8 +64,10 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS (autorisé par une clé existante) |
 | `selfrecover-unlock.sh` | déverrouillage de secours autonome (userspace) |
 | `install.sh` | installateur semi-automatique (cf. INSTALL.md) |
-| `kernel-postinst-verifie-selfrecover` | garde-fou : vérifie les six pièces de l'initramfs après chaque mise à jour de noyau |
+| `genere-passphrase.py` | tire une passphrase diceware, affiche les deux formes et leur longueur |
+| `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces **et le sel** après chaque génération d'initramfs |
 | [`quorum-rnd/`](./quorum-rnd/) | R&D : déverrouillage par quorum de témoins — **non activé en v0.3.0** |
+| [`fido2-banc-essai/`](./fido2-banc-essai/) | banc d'essai : FIDO2 dans l'initramfs — **voie non soutenue**, incompatible avec le keyscript |
 
 ## Installation
 
@@ -75,6 +77,25 @@ racine (keyscript + dropbear + rootdelay) et les volumes secondaires (fichier-cl
 l'initramfs, **tester par redémarrage avec filet**.
 
 Document d'architecture (le *pourquoi*) : **[SelfRecover-LUKS_Whitepaper](./docs/SelfRecover-LUKS_Whitepaper.md)** — aussi en [DOCX à télécharger](https://github.com/Pierroons/my-self/raw/main/self-security/selfrecover-luks/docs/SelfRecover-LUKS_Whitepaper.docx).
+
+## Ce que ce module n'apporte PAS
+
+Il remplace une passphrase par une autre, dérivée. C'est un gain d'**ergonomie et
+d'unification** — un seul secret pour plusieurs volumes et plusieurs machines — pas
+un gain de résistance.
+
+- **La force du volume reste celle de son slot le plus faible.** Le slot natif
+  demeure, et c'est voulu : il est le filet. Un attaquant attaque le plus faible des
+  deux, jamais le plus fort.
+- **Argon2id ne compense pas un secret court.** Le KDF ralentit chaque essai ; il ne
+  crée pas d'entropie. Sept mots diceware, pas trois.
+- **Rien n'est protégé contre quelqu'un qui a la machine allumée et déverrouillée.**
+  Le chiffrement au repos ne dit rien de la machine en marche.
+- **Le sel n'est pas un secret.** Il vit en clair dans l'initramfs, sur une partition
+  `/boot` non chiffrée. Il sépare les clés filles, il ne les protège pas.
+- **Le coût réel est ailleurs** : chaque pièce ajoutée au chemin d'amorçage est une
+  pièce qui peut manquer après une mise à jour. C'est pour ça que le module livre un
+  garde-fou plutôt qu'une promesse.
 
 ## Garde-fous
 
@@ -90,6 +111,9 @@ Document d'architecture (le *pourquoi*) : **[SelfRecover-LUKS_Whitepaper](./docs
   régénération d'initramfs, et le manque ne se voit qu'au démarrage suivant.
 - **Récupération catastrophe** : conserver hors-site (gestionnaire de mots de passe) la passphrase,
   le **sel de déploiement** et les secrets de sauvegarde — sans le sel, pas de re-dérivation sur matériel neuf.
+- **Le sel existe en trois exemplaires, et c'est délibéré** : dans `/etc/selfkeyguard/`, dans
+  l'initramfs, et hors-site. Les deux premiers disparaissent avec le disque ; seul le troisième
+  survit à un incendie. Un sel perdu rend la passphrase inutile — elle ne dérive plus rien.
 - Aucune destruction automatique : ajout de slot explicite, clés en tmpfs.
 
 AGPL-3.0-or-later · écosystème [MySelf](https://my-self.fr)

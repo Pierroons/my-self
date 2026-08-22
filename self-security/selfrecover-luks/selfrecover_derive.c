@@ -10,7 +10,8 @@
  *
  * SHA256 implémenté inline → seule dépendance externe = libargon2 (initramfs minimal).
  *
- * Compil :  cc -O2 -Wall -o selfrecover_derive selfrecover_derive.c -largon2
+ * Compil :  cc -O2 -Wall -o selfrecover_derive selfrecover_derive.c -l:libargon2.so.1
+ *           (et non -largon2 — voir la note sur le runtime plus bas)
  * Usage  :  printf '%s' "ma passphrase" | ./selfrecover_derive --salt-file /etc/selfkeyguard/selfrecover_salt --label disk --format raw
  */
 #include <stdio.h>
@@ -21,6 +22,11 @@
  * sans le paquet -dev. Signatures stables de l'implémentation de référence Argon2.
  * (C'est aussi la config sur un desktop Debian standard : runtime présent, pas de headers.) */
 #define ARGON2_OK 0
+/* argon2id_hash_raw n'expose PAS la version : elle emploie le defaut de la
+ * bibliotheque, ARGON2_VERSION_NUMBER = 0x13 depuis 2016 — et argon2-cffi, cote
+ * Python, a le meme defaut. Si un jour l'un des deux changeait, les cles
+ * divergeraient en silence et les slots enroles deviendraient inouvrables. C'est
+ * le vecteur de reference d'INSTALL.md §1 qui protege de ca. */
 extern int argon2id_hash_raw(const uint32_t t_cost, const uint32_t m_cost,
         const uint32_t parallelism, const void *pwd, const size_t pwdlen,
         const void *salt, const size_t saltlen, void *hash, const size_t hashlen);
@@ -50,17 +56,13 @@ static void sha256_init(sha256_ctx *c) {
 }
 
 static void sha256_block(sha256_ctx *c, const uint8_t *p) {
-  uint32_t w[64], a,b,d,e,f,g,h,t1,t2,s0,s1,ch,maj;
+  uint32_t w[64], t1,t2,s0,s1,ch,maj;
   for (int i=0;i<16;i++) w[i]=(p[i*4]<<24)|(p[i*4+1]<<16)|(p[i*4+2]<<8)|p[i*4+3];
   for (int i=16;i<64;i++){
     s0=ROR(w[i-15],7)^ROR(w[i-15],18)^(w[i-15]>>3);
     s1=ROR(w[i-2],17)^ROR(w[i-2],19)^(w[i-2]>>10);
     w[i]=w[i-16]+s0+w[i-7]+s1;
   }
-  a=c->h[0]; b=c->h[1]; d=c->h[2]; e=c->h[3]; f=c->h[4]; g=c->h[5]; h=c->h[6]; t2=c->h[7];
-  /* note: 'd' here is c (3rd state var), 't2' holds 8th to keep names short */
-  uint32_t cc=d, hh=t2; d=cc; (void)d;
-  /* re-map cleanly */
   uint32_t A=c->h[0],B=c->h[1],C=c->h[2],D=c->h[3],E=c->h[4],F=c->h[5],G=c->h[6],H=c->h[7];
   for (int i=0;i<64;i++){
     s1=ROR(E,6)^ROR(E,11)^ROR(E,25); ch=(E&F)^((~E)&G); t1=H+s1+ch+K[i]+w[i];
@@ -68,7 +70,6 @@ static void sha256_block(sha256_ctx *c, const uint8_t *p) {
     H=G; G=F; F=E; E=D+t1; D=C; C=B; B=A; A=t1+t2;
   }
   c->h[0]+=A; c->h[1]+=B; c->h[2]+=C; c->h[3]+=D; c->h[4]+=E; c->h[5]+=F; c->h[6]+=G; c->h[7]+=H;
-  (void)a;(void)b;(void)e;(void)f;(void)g;(void)h;(void)cc;(void)hh;
 }
 
 static void sha256_update(sha256_ctx *c, const uint8_t *p, size_t n) {
@@ -135,6 +136,9 @@ int main(int argc, char **argv) {
   if (!strcmp(fmt,"raw")) { fwrite(out,1,(size_t)len,stdout); }
   else { for (long i=0;i<len;i++) printf("%02x",out[i]); }
 
-  memset(word,0,sizeof(word)); memset(out,0,(size_t)len); free(out);
+  /* explicit_bzero et non memset : sur une variable qui n'est plus lue ensuite,
+   * l'optimiseur a le droit de supprimer un memset — la passphrase resterait en
+   * memoire. explicit_bzero (glibc >= 2.25) ne peut pas etre elidee. */
+  explicit_bzero(word,sizeof(word)); explicit_bzero(out,(size_t)len); free(out);
   return 0;
 }

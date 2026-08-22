@@ -25,7 +25,13 @@ def derive(word: str, salt: str, label: str, length: int = 32,
     """word + salt + label -> clé déterministe (Argon2id)."""
     # sel effectif = SHA256(salt || label) tronqué -> le label sépare les clés filles
     eff_salt = hashlib.sha256(f"{salt}:{label}".encode("utf-8")).digest()[:16]
+    # 19 (0x13) en litteral, et NON `version=ARGON2_VERSION` : cette constante EST le
+    # defaut de hash_secret_raw, l'ecrire ne fige donc rien — si argon2-cffi changeait
+    # de defaut, la constante changerait avec, et les cles suivraient. Un litteral
+    # tient bon tout seul : le C, lui, herite du defaut de libargon2, et la moindre
+    # divergence entre les deux fait rougir le vecteur de reference d'INSTALL.md §1.
     return hash_secret_raw(
+        version=19,
         secret=word.encode("utf-8"),
         salt=eff_salt,
         time_cost=time_cost,
@@ -65,7 +71,10 @@ if __name__ == "__main__":
     # Sel : --salt ou --salt-file, comme le clone C.
     if a.salt_file:
         with open(a.salt_file, "r", encoding="utf-8") as f:
-            salt = f.readline().strip()
+            # Meme lecture que le clone C : tout le fichier, sans les seuls sauts
+            # de ligne finaux. `readline().strip()` en differait sur un sel a
+            # espaces de tete ou sur deux lignes — deux cles pour un meme fichier.
+            salt = f.read().rstrip("\r\n")
     elif a.salt is not None:
         salt = a.salt
     else:

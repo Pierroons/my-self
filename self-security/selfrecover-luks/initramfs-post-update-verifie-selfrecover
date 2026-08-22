@@ -1,0 +1,101 @@
+#!/bin/sh
+# /etc/initramfs/post-update.d/zz-verifie-selfrecover
+#
+# S'execute apres CHAQUE generation d'initramfs. Verifie que les pieces
+# SelfRecover y sont, et que le sel embarque est bien celui du disque. Sans ce
+# controle, une regression du hook produit un initramfs muet : l'echec
+# n'apparait qu'au redemarrage, sur une machine devenue non amorcable.
+#
+# post-update.d et non kernel/postinst.d : update-initramfs est declenche par une
+# mise a jour de noyau, mais aussi par cryptsetup-initramfs, busybox,
+# initramfs-tools, ou a la main. Seul post-update.d couvre tous ces chemins, et
+# c'est justement une mise a jour de cryptsetup-initramfs qui casserait ce module.
+#
+# run-parts fournit : $1 = version du noyau, $2 = chemin de l'image generee.
+set -e
+VER="${1:?version attendue}"
+INITRD="${2:-/boot/initrd.img-$VER}"
+SKG=/etc/selfkeyguard
+
+[ -f "$INITRD" ] || exit 0
+grep -q "keyscript=.*selfrecover" /etc/crypttab 2>/dev/null || exit 0   # module non actif
+
+# AVERTISSEMENT — NE PAS ajouter `set -o pipefail` a ce script.
+# La boucle ci-dessous fait `lsinitramfs | grep -q`. Quand grep -q trouve, il
+# s'arrete aussitot et lsinitramfs prend un SIGPIPE. Sous pipefail, le pipeline
+# rendrait donc l'echec de l'amont au lieu du succes de grep : le test
+# s'inverserait en silence, et le garde-fou declarerait "absent" une piece
+# presente. Avec `set -e` seul, le pipeline rend le code de grep : correct.
+PIECES="selfkeyguard/selfrecover_derive_c:binaire de derivation
+selfkeyguard/selfrecover_salt:sel de deploiement
+selfkeyguard/selfrecover-keyscript:keyscript
+libargon2:libargon2
+libgcc_s:libgcc_s
+usr/sbin/cryptsetup:cryptsetup"
+
+MANQUE=""
+PRESENTES=""
+OLDIFS=$IFS; IFS='
+'
+for piece in $PIECES; do
+  motif="${piece%%:*}"; nom="${piece#*:}"
+  if lsinitramfs "$INITRD" 2>/dev/null | grep -q "$motif"; then
+    PRESENTES="$PRESENTES, $nom"
+  else
+    MANQUE="$MANQUE
+    - $nom"
+  fi
+done
+IFS=$OLDIFS
+
+# Le sel embarque doit etre CELUI DU DISQUE. Un sel present mais perime derive une
+# autre cle : le volume ne s'ouvre plus, et un controle de simple presence aurait
+# affiche "complet". C'est le cas qui survient quand /etc/selfkeyguard/ est
+# regenere sans que l'initramfs le soit.
+SEL_ECART=""
+if [ -r "$SKG/selfrecover_salt" ] && command -v unmkinitramfs >/dev/null 2>&1; then
+  TMP=$(mktemp -d) || TMP=""
+  if [ -n "$TMP" ]; then
+    if unmkinitramfs "$INITRD" "$TMP" >/dev/null 2>&1 \
+       && [ -f "$TMP/etc/selfkeyguard/selfrecover_salt" ]; then
+      A=$(sha256sum < "$SKG/selfrecover_salt" | cut -d' ' -f1)
+      B=$(sha256sum < "$TMP/etc/selfkeyguard/selfrecover_salt" | cut -d' ' -f1)
+      [ "$A" = "$B" ] || SEL_ECART="oui"
+    fi
+    rm -rf "$TMP"
+  fi
+fi
+
+if [ -n "$MANQUE" ] || [ -n "$SEL_ECART" ]; then
+  cat >&2 <<MSG
+
+  ############################################################
+  ##  ALERTE SelfRecover-LUKS — NE PAS REDEMARRER           ##
+  ############################################################
+
+  Image concernee : $INITRD
+MSG
+  [ -n "$MANQUE" ] && printf '\n  Pieces absentes :%s\n' "$MANQUE" >&2
+  [ -n "$SEL_ECART" ] && printf '\n  Le sel embarque DIFFERE de %s/selfrecover_salt.\n  La derivation ne reproduira pas la cle du slot.\n' "$SKG" >&2
+  cat >&2 <<MSG
+
+  Le keyscript est actif dans /etc/crypttab : au prochain demarrage,
+  le volume racine ne pourra pas etre deverrouille.
+
+  A FAIRE AVANT DE REDEMARRER :
+    1. verifier /etc/initramfs-tools/hooks/selfrecover et $SKG/
+    2. relancer : update-initramfs -u -k $VER
+    3. relancer ce controle
+  Repli : demarrer sur un initrd .pre-selfrecover, ou retirer keyscript=
+          de /etc/crypttab depuis un systeme de secours (le slot natif
+          ouvre toujours le volume).
+
+  ############################################################
+
+MSG
+  exit 1
+fi
+
+# La liste vient de la boucle, pas d'une seconde ecriture a la main : ajouter une
+# piece ci-dessus suffit, le message suit.
+echo "SelfRecover-LUKS : initramfs $VER complet (${PRESENTES#, })."

@@ -16,9 +16,25 @@ copy_exec /etc/selfkeyguard/selfrecover_derive_c
 # libgcc_s.so.1 : chargée à l'EXÉCUTION par pthread (argon2 multi-thread, parallelism=4),
 # invisible à ldd → copy_exec ne la tire pas automatiquement. Sans elle : "libgcc_s.so.1
 # must be installed for pthread_exit to work" -> Aborted -> bad password au boot.
-for _LIBGCC in /lib/x86_64-linux-gnu/libgcc_s.so.1 /usr/lib/x86_64-linux-gnu/libgcc_s.so.1; do
-  [ -e "$_LIBGCC" ] && { copy_exec "$_LIBGCC"; break; }
-done
+# libgcc_s est chargee par dlopen depuis libargon2 : ldd ne la voit pas, copy_exec
+# ne la tire donc pas. Sans elle, l'amorcage rend « libgcc_s.so.1 must be installed
+# for pthread_exit » puis « bad password ».
+# Le chemin depend de l'architecture : ldconfig d'abord, chemins connus ensuite. Un
+# chemin amd64 code en dur ne trouvait rien sur arm64 — sans un mot, l'image se
+# construisait quand meme, et la machine ne redemarrait plus.
+_LIBGCC=$(ldconfig -p 2>/dev/null | awk '/libgcc_s\.so\.1 /{print $NF; exit}')
+if [ -z "$_LIBGCC" ] || [ ! -e "$_LIBGCC" ]; then
+  for _C in /lib/*/libgcc_s.so.1 /usr/lib/*/libgcc_s.so.1 /lib/libgcc_s.so.1; do
+    [ -e "$_C" ] && { _LIBGCC="$_C"; break; }
+  done
+fi
+if [ -n "$_LIBGCC" ] && [ -e "$_LIBGCC" ]; then
+  copy_exec "$_LIBGCC"
+else
+  # Echouer ici plutot que produire une image qui ne demarrera pas.
+  echo "selfrecover: libgcc_s.so.1 introuvable — image non amorcable, arret." >&2
+  exit 1
+fi
 
 # keyscript appelé par cryptsetup au boot
 copy_exec /etc/selfkeyguard/selfrecover-keyscript.sh

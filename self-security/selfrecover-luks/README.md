@@ -62,7 +62,9 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | `initramfs-hook-selfrecover` | embeds binary + libargon2 + **libgcc** + salt + keyscript in the initrd |
 | `setup-add-selfrecover-slot.sh` | adds a recovery slot to a LUKS volume (authorized by an existing key) |
 | `selfrecover-unlock.sh` | standalone emergency unlock (userspace) |
-| `kernel-postinst-verifie-selfrecover` | guard: checks the six initramfs pieces after every kernel upgrade |
+| `genere-passphrase.py` | draws a diceware passphrase, printing both forms and their lengths |
+| `initramfs-post-update-verifie-selfrecover` | guard: checks the six pieces **and the salt** after every initramfs build |
+| `fido2-banc-essai/` | research bench: FIDO2 in the initramfs — not a supported path |
 | `install.sh` | semi-automatic installer (see INSTALL.md) |
 | [`quorum-rnd/`](./quorum-rnd/) | R&D: witness-quorum unlock — **not enabled in v0.3.0** |
 

@@ -264,7 +264,7 @@ Full analysis: **[docs/threat-model.md](docs/threat-model.md)**
 
 The same recovery word, derived per **label** with Argon2id, can also serve as a fallback key for a **LUKS2** encrypted volume — letting a host unlock its disk without email or third party when its primary mechanism (a distributed witness quorum) is unavailable. The label separates the web key from the disk key, so neither can derive the other.
 
-This is a companion module, **[`selfrecover-luks`](../../self-security/selfrecover-luks/)**, **validated on the bench** (PoC + tests on a throwaway image). Integration on a real production disk is upcoming, not yet claimed as operational.
+This is a companion module, **[`selfrecover-luks`](../../self-security/selfrecover-luks/)**, **deployed**: LNMP server (2026-06-07) then encrypted laptop (2026-08-22), with a two-path install guide, not yet claimed as operational.
 
 ---
 

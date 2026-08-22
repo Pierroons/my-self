@@ -16,7 +16,17 @@ TMP="$(mktemp -d)"
 cleanup(){ cryptsetup status "$MAP" >/dev/null 2>&1 && cryptsetup luksClose "$MAP" || true; rm -f "$IMG"; rm -rf "$TMP"; }
 trap cleanup EXIT
 
-derive(){ sudo -u "$RUN_AS" "$PY" "$HERE/selfrecover_derive.py" --word "$1" --salt "$SALT" --label disk --format raw; }
+# --stdin et non --word : la dérivation passe par `sudo -u`, donc la ligne de commande
+# complète part dans auth.log — et donc dans les sauvegardes — pendant que tout processus
+# local peut lire /proc/<pid>/cmdline le temps de l'exécution.
+#
+# --format hex et non raw : cryptsetup lit une clé sur STDIN jusqu'au premier saut de
+# ligne, mais lit un FICHIER en entier. Une clé brute de 32 octets a 11,8 % de chance de
+# contenir un 0x0A ; elle s'enrôle alors correctement par fichier (étape 2) et se retrouve
+# tronquée au démarrage, qui passe par stdin (étape 4). L'hexadécimal ne peut pas contenir
+# de saut de ligne : les deux chemins lisent la même chose.
+derive(){ printf '%s' "$1" | sudo -u "$RUN_AS" "$PY" "$HERE/../selfrecover_derive.py" \
+            --stdin --salt "$SALT" --label disk --format hex; }
 
 command -v cryptsetup >/dev/null || { echo "cryptsetup absent : sudo apt install cryptsetup"; exit 1; }
 derive x >/dev/null || { echo "selfrecover_derive KO (argon2 ?)"; exit 1; }

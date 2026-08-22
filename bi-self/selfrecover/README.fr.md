@@ -264,7 +264,7 @@ Analyse complète : **[docs/threat-model.md](docs/threat-model.md)**
 
 Le même mot de récupération, dérivé par **label** avec Argon2id, peut aussi servir de clé de secours pour un volume chiffré **LUKS2** — permettant à une machine de déverrouiller son disque sans email ni tiers, quand son mécanisme principal (un quorum de témoins distribués) est indisponible. Le label sépare la clé web de la clé disque : aucune ne permet de dériver l'autre.
 
-C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecover-luks/)**, **validé sur banc** (PoC + tests sur image jetable). L'intégration sur un disque de production réel est à venir, pas encore revendiquée comme opérationnelle.
+C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecover-luks/)**, **déployé** : serveur LNMP (07/06/2026) puis poste portable chiffré (22/08/2026), avec son guide d'installation à deux parcours. Son guide d'installation couvre deux parcours, serveur et poste de travail.
 
 ---
 

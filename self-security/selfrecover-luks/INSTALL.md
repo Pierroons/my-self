@@ -150,6 +150,16 @@ Trois choses à savoir, et elles comptent autant que la commande :
 de la passphrase recover. **Autorisé par une passphrase existante** (le slot natif).
 Utilise **la même passphrase recover** pour tous les volumes (c'est le secret unifié).
 
+Pour tirer la passphrase :
+
+```bash
+python3 genere-passphrase.py        # 7 mots par défaut ; passe un nombre pour en avoir plus
+```
+
+Il affiche les deux formes — avec et sans espaces — et **la longueur en caractères de
+chacune**. À lancer dans un vrai terminal : la passphrase s'affiche à l'écran et
+n'est écrite nulle part.
+
 > **⚠️ Fixe la convention d'espacement AVANT d'enrôler, et note-la.** La dérivation
 > ne normalise rien : `sept mots separes` et `septmotssepares` donnent deux clés
 > différentes. Une hésitation sur ce point rend le slot inouvrable **sans que rien ne
@@ -159,6 +169,14 @@ Utilise **la même passphrase recover** pour tous les volumes (c'est le secret u
 > la **longueur en caractères** à côté de la passphrase sur son support : c'est ce
 > qui permet de vérifier, au moment de l'enrôlement, qu'on saisit bien ce qu'on a
 > écrit.
+>
+> **Une nuance qui compte** : le guide dit que la *dérivation* ne normalise rien,
+> et c'est exact. Mais les deux chemins de saisie du keyscript, eux, ne se valent
+> pas — `/lib/cryptsetup/askpass` transmet la frappe telle quelle, tandis que le
+> repli passe par `read`, qui **supprime les blancs de tête et de queue**. Une
+> passphrase saisie avec une espace finale ouvrira donc par un chemin et pas par
+> l'autre. Raison de plus pour n'avoir aucune espace en bordure, et pour noter la
+> longueur en caractères.
 >
 > Et surtout : **ne normalise jamais les espaces dans la dérivation** pour corriger
 > une hésitation. Ce serait le correctif évident, et il romprait tout slot déjà
@@ -181,17 +199,63 @@ Le slot vient d'être créé, mais rien ne prouve encore que la dérivation le
 reproduira. Le vérifier maintenant coûte dix secondes ; le découvrir au
 redémarrage coûte une session de secours.
 
+Il faut le vérifier **par le chemin qu'empruntera le démarrage**, et pas par un
+chemin voisin — voir l'encadré ci-dessous, qui explique pourquoi les deux ne sont
+pas équivalents.
+
 ```bash
-printf '%s' "<ta passphrase recover>" \
+read -rs -p "Passphrase recover : " P; echo        # jamais en argv, jamais dans l'historique
+
+# 1. LE contrôle qui compte : par STDIN, exactement comme au démarrage
+printf '%s' "$P" \
+  | "$SKG/selfrecover_derive_c" --salt-file "$SKG/selfrecover_salt" --label disk --format raw \
+  | cryptsetup open --test-passphrase --key-file=- "$ROOT_DEV" \
+  && echo "✅ le slot ouvre le volume PAR LE CHEMIN DU BOOT"
+
+# 2. Par fichier, comme l'enrôlement — utile seulement pour comparer les deux
+printf '%s' "$P" \
   | "$SKG/selfrecover_derive_c" --salt-file "$SKG/selfrecover_salt" --label disk --format raw \
   > /run/sr-test.key
-cryptsetup open --test-passphrase --key-file /run/sr-test.key "$ROOT_DEV" && echo "✅ le slot recover ouvre le volume"
-shred -u /run/sr-test.key
+cryptsetup open --test-passphrase --key-file /run/sr-test.key "$ROOT_DEV" \
+  && echo "   (par fichier : ouvre aussi)"
+rm -f /run/sr-test.key; unset P
 ```
 
 `--test-passphrase` ne monte rien et ne modifie rien : il répond seulement « cette
-clé ouvre-t-elle ce volume ». Tant que cette commande n'a pas répondu oui,
+clé ouvre-t-elle ce volume ». Tant que **le contrôle n° 1** n'a pas répondu oui,
 **ne branche pas le keyscript** : l'amorçage dépendrait d'une dérivation non prouvée.
+
+> **⚠️ Si le n° 2 réussit et que le n° 1 échoue, arrête-toi : ne branche pas le
+> keyscript.** Ce n'est pas une bizarrerie de la commande, c'est le défaut décrit
+> juste en dessous, et il rendrait la machine non amorçable.
+
+### 🔑 Pourquoi stdin et fichier ne sont pas équivalents
+
+`cryptsetup(8)`, section *Passphrase processing for LUKS* :
+
+> **From stdin**: LUKS will read passphrases from stdin **up to the first newline
+> character** […]
+> **From key file**: The complete keyfile is read […] **Newline characters do not
+> terminate the input.**
+
+La clé dérivée fait 32 octets **bruts**. Chaque octet a une chance sur 256 de valoir
+`0x0A`, c'est-à-dire un saut de ligne — soit **11,8 % de chance qu'au moins un des 32
+en soit un** (mesuré sur 200 000 tirages : 11,73 %).
+
+Or les deux chemins ne lisent pas pareil :
+
+| Moment | Comment cryptsetup reçoit la clé | Ce qu'il lit |
+|---|---|---|
+| Enrôlement (§5) | `luksAddKey … fichier` | les 32 octets |
+| Vérification par fichier | `--key-file fichier` | les 32 octets |
+| **Démarrage** | keyscript → stdout → `--key-file=-` | **jusqu'au premier `0x0A`** |
+
+Une clé contenant un `0x0A` s'enrôle donc parfaitement, se vérifie parfaitement par
+fichier, et **échoue définitivement au démarrage** — avec un `bad password` qui
+oriente vers la mauvaise piste, puisque tout le reste est en place.
+
+C'est pour ça que le contrôle n° 1 passe par un tube et non par un fichier : il doit
+reproduire le chemin du démarrage, pas un chemin qui lui ressemble.
 
 Vérifie aussi les paramètres du nouveau slot :
 
@@ -392,14 +456,22 @@ après une régénération d'initramfs — et le manque ne se voit qu'au redéma
 une machine devenue non amorçable.
 
 ```bash
-install -m 0755 kernel-postinst-verifie-selfrecover /etc/kernel/postinst.d/zz-verifie-selfrecover
+install -m 0755 initramfs-post-update-verifie-selfrecover \
+        /etc/initramfs/post-update.d/zz-verifie-selfrecover
 ```
 
-Il s'exécute après la génération de l'initramfs lors d'une mise à jour de noyau,
-vérifie les six pièces (binaire, sel, keyscript, `libargon2`, `libgcc_s`,
-`cryptsetup`), et **échoue bruyamment avec la marche à suivre** si l'une manque. Il
-reste inerte tant que `keyscript=` n'est pas dans `/etc/crypttab` : tu peux
-l'installer avant même d'avoir branché le module.
+**`/etc/initramfs/post-update.d/` et non `/etc/kernel/postinst.d/`** : `update-initramfs`
+est déclenché par une mise à jour de noyau, mais aussi par `cryptsetup-initramfs`,
+`busybox`, `initramfs-tools`, ou à la main. Seul `post-update.d` couvre tous ces
+chemins — et c'est justement une mise à jour de `cryptsetup-initramfs` qui casserait
+ce module sans qu'aucun noyau ne change.
+
+Il vérifie les six pièces (binaire, sel, keyscript, `libargon2`, `libgcc_s`,
+`cryptsetup`) **et compare le sel embarqué à celui du disque** : un sel présent mais
+périmé dérive une autre clé, et un contrôle de simple présence afficherait
+« complet » sur une machine qui ne redémarrera pas. Il **échoue bruyamment avec la
+marche à suivre**, et reste inerte tant que `keyscript=` n'est pas dans
+`/etc/crypttab` : tu peux l'installer avant même d'avoir branché le module.
 
 Éprouve-le dans les deux sens — un garde-fou qu'on n'a jamais vu refuser ne prouve
 rien :
@@ -475,9 +547,70 @@ de passe** (pas sur la machine) :
 |----------|-------|--------|
 | `libgcc_s.so.1 must be installed for pthread_exit` → `Aborted` | libgcc absente de l'initramfs | le hook doit la copier (§3) ; régénère l'initramfs |
 | `gave up waiting for root file system device` | délai trop court | `rootdelay=60` (§8b) |
-| Prompt natif « Please unlock disk » sur un volume **secondaire** | systemd-cryptsetup ignore le keyscript | passe ce volume en **fichier-clé** (§11) |
-| Le boot bloque sur un volume secondaire | `x-initrd.attach` + échec | retire `x-initrd.attach` ; fichier-clé post-pivot (§11) |
-| `bad password` alors que la passphrase est juste | binaire/sel/lib manquant dans l'initramfs | vérifie `lsinitramfs` (§11) |
+| Prompt natif « Please unlock disk » sur un volume **secondaire** | systemd-cryptsetup ignore le keyscript | passe ce volume en **fichier-clé** (§9) |
+| Le boot bloque sur un volume secondaire | `x-initrd.attach` + échec | retire `x-initrd.attach` ; fichier-clé post-pivot (§9) |
+| `bad password` alors que la passphrase est juste | binaire/sel/lib manquant dans l'initramfs | vérifie `lsinitramfs` (§10) |
+| `bad password`, mais le §6 répondait ✅ **par fichier** | clé brute contenant un `0x0A`, tronquée sur stdin | refais le §6 par **stdin** ; s'il échoue, migre le slot en hex (§6) |
+
+---
+
+## 15. Migrer un déploiement antérieur — passage de la clé brute à l'hexadécimal
+
+**Concerne les installations faites avant ce changement**, où le keyscript produisait
+`--format raw`. Le §6 explique le défaut : une clé brute contenant un `0x0A` est
+tronquée au démarrage parce que `cryptsetup` lit stdin jusqu'au premier saut de
+ligne, alors qu'il lit un fichier en entier.
+
+### Faut-il migrer ?
+
+**Si la machine démarre aujourd'hui, sa clé ne contient pas de `0x0A`** — sinon elle
+ne démarrerait pas. Il n'y a donc rien d'urgent. Ce qui change :
+
+- une **réinstallation** ou un **nouveau volume** avec l'ancien format a 11,8 % de
+  chance de produire une machine non amorçable ;
+- le keyscript livré désormais produit de l'**hexadécimal** : le remplacer sur une
+  machine dont le slot est en brut rendra ce slot inouvrable.
+
+> **⚠️ Ne remplace jamais le keyscript sans migrer le slot.** Le nouveau keyscript et
+> l'ancien slot ne se parlent pas. C'est le seul geste de cette page qui peut rendre
+> une machine en service non amorçable.
+
+### La migration, dans cet ordre
+
+Le slot natif reste ouvrable pendant toute l'opération : c'est lui le filet.
+
+```bash
+# 0. Sauvegarde de l'en-tête AVANT (§4) — elle contient les slots
+cryptsetup luksHeaderBackup "$ROOT_DEV" --header-backup-file entete-avant-migration.img
+
+# 1. Ajouter un SECOND slot recover, en hexadécimal, sans toucher à l'ancien
+SELFRECOVER_SALT="$(cat $SKG/selfrecover_salt)" ./setup-add-selfrecover-slot.sh "$ROOT_DEV"
+
+# 2. Le prouver PAR LE CHEMIN DU BOOT (§6) — c'est l'étape qui décide
+read -rs -p "Passphrase recover : " P; echo
+printf '%s' "$P" \
+  | "$SKG/selfrecover_derive_c" --salt-file "$SKG/selfrecover_salt" --label disk --format hex \
+  | cryptsetup open --test-passphrase --key-file=- "$ROOT_DEV" \
+  && echo "✅ le slot hex ouvre le volume par stdin"
+
+# 3. Seulement alors : déployer le nouveau keyscript et régénérer
+install -m 0755 selfrecover-keyscript.sh "$SKG/selfrecover-keyscript.sh"
+update-initramfs -u
+
+# 4. REDÉMARRER et vérifier que le déverrouillage fonctionne. Ne passe pas à
+#    l'étape 5 avant d'avoir redémarré avec succès.
+
+# 5. Une fois le redémarrage réussi : retirer l'ancien slot brut
+cryptsetup luksDump "$ROOT_DEV" | grep -E "^\s+[0-9]+: luks2"   # repère son numéro
+cryptsetup luksKillSlot "$ROOT_DEV" <numéro-de-l-ancien-slot>
+unset P
+```
+
+**L'étape 4 n'est pas facultative.** Retirer l'ancien slot avant d'avoir redémarré,
+c'est supprimer le filet avant de savoir si le nouveau tient.
+
+Et refais la sauvegarde d'en-tête **après** la migration : celle de l'étape 0
+ressusciterait l'ancien slot brut si on la restaurait (§4).
 
 ---
 
@@ -490,6 +623,7 @@ de passe** (pas sur la machine) :
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript |
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS |
 | `selfrecover_derive.py` | implémentation de référence (Python) pour usage userspace |
-| `kernel-postinst-verifie-selfrecover` | garde-fou : vérifie les six pièces de l'initramfs après chaque mise à jour de noyau (§11) |
+| `genere-passphrase.py` | tire une passphrase diceware et affiche les deux formes avec leur longueur (§5) |
+| `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces **et le sel** après chaque génération d'initramfs (§11) |
 
 *SelfRecover-LUKS — MySelf / Self-Security — AGPL-3.0-or-later.*

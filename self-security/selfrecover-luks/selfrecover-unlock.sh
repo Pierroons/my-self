@@ -44,7 +44,7 @@ RUN_AS="${SUDO_USER:-$USER}"
 for (( i=1; i<=MAX_ESSAIS; i++ )); do
   read -rsp "Mot de récupération SelfRecover (essai $i/$MAX_ESSAIS) : " WORD; echo
   if sudo -u "$RUN_AS" python3 "$HERE/selfrecover_derive.py" \
-         --word "$WORD" --salt "$SALT" --label disk --format raw \
+         --stdin --salt "$SALT" --label disk --format hex \
      | cryptsetup luksOpen "$DEV" "$MAP" --key-file=-
   then
     unset WORD
