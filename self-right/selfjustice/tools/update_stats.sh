@@ -55,30 +55,48 @@ sudo chown deploy:deploy /var/lib/selfjustice 2>/dev/null || true
 AI_PATTERNS='(Claude-User|Claude-Web|claudebot|anthropic|ChatGPT|GPTBot|OAI-SearchBot|MistralAI|Mistral-Bot|Google-Extended|GoogleOther|GeminiBot|PerplexityBot|Perplexity-User|Bytespider|YouBot|DuckAssistBot)'
 
 # Compter les hits actuels dans les logs (incluant rotation)
+# 🔑 **`grep -c` affiche `0` ET sort en 1 quand il ne trouve rien.** Le
+# `|| echo 0` ajoutait donc un SECOND zéro : la substitution rendait « 0\n0 »,
+# et l'arithmétique refusait — « erreur de syntaxe dans l'expression ». Chaque
+# heure, dans un journal que personne ne lit. Le compte des consultations
+# repartait alors de zéro sans que rien ne le dise.
+#
+# `entier` ramène toute sortie à un nombre : vide ou non numérique valent 0.
+#
+# ⚠️ `head -1` AVANT le filtre, et ce n'est pas décoratif : sans lui, « 12\n34 »
+# devient « 1234 », un nombre que rien n'a jamais compté. Une valeur inventée est
+# pire qu'une valeur absente — elle ne se distingue pas d'une vraie.
+entier() { printf '%s' "${1:-}" | head -1 | tr -dc '0-9' | head -c 18 | grep . || printf 0; }
+
 HITS_NOW=0
 if [ -f "$LOG_FILE" ]; then
-    HITS_NOW=$(sudo grep -ciE "$AI_PATTERNS" "$LOG_FILE" 2>/dev/null || echo 0)
+    HITS_NOW=$(entier "$(sudo grep -ciE "$AI_PATTERNS" "$LOG_FILE" 2>/dev/null | head -1)")
 fi
 
 # Si log rotation active, ajouter aussi l'ancien log (du jour)
 HITS_OLD=0
 if [ -f "$LOG_FILE_OLD" ]; then
-    HITS_OLD=$(sudo grep -ciE "$AI_PATTERNS" "$LOG_FILE_OLD" 2>/dev/null || echo 0)
+    HITS_OLD=$(entier "$(sudo grep -ciE "$AI_PATTERNS" "$LOG_FILE_OLD" 2>/dev/null | head -1)")
 fi
 
 CURRENT_HITS=$((HITS_NOW + HITS_OLD))
 
 # Lire le compteur historique (cumul depuis le début)
+# ⚠️ Ces fichiers étaient VIDES en production le 22/08/2026 — une écriture
+# interrompue, ou un `> fichier` qui n'a jamais été suivi de son contenu. Un
+# `cat` rend alors la chaîne vide, que la comparaison plus bas refuse. Passer
+# par `entier` rend l'absence et le vide indiscernables d'un zéro, ce qu'ils
+# sont pour un compteur.
 PREVIOUS_TOTAL=0
 if [ -f "$COUNTER_FILE" ]; then
-    PREVIOUS_TOTAL=$(cat "$COUNTER_FILE")
+    PREVIOUS_TOTAL=$(entier "$(cat "$COUNTER_FILE")")
 fi
 
 # Lire le dernier hit count enregistré (pour calculer le delta avant rotation)
 LAST_HITS_FILE="/var/lib/selfjustice/last_hits.txt"
 LAST_HITS=0
 if [ -f "$LAST_HITS_FILE" ]; then
-    LAST_HITS=$(cat "$LAST_HITS_FILE")
+    LAST_HITS=$(entier "$(cat "$LAST_HITS_FILE")")
 fi
 
 # Si CURRENT_HITS < LAST_HITS = rotation des logs → on ajoute les hits oubliés
