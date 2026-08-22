@@ -272,7 +272,12 @@ function chercher_conventionnalite(SQLite3 $db, string $q, ?string $source, int 
             'source'    => $row['source'],
             'reference' => $row['num'],
             'titre'     => $row['titre'],
-            'apercu'    => $row['apercu'],
+            // 🔑 L'aperçu passe par le même nettoyage que le texte entier. Il ne
+            // l'avait pas : la route de l'article était traitée, celle de la
+            // recherche non — et c'est elle qui rend des extraits de 200
+            // caractères dont la moitié pouvait être du blanc de tableau.
+            // Un correctif appliqué à un seul exemplaire d'un mécanisme dupliqué.
+            'apercu'    => texte_propre($row['apercu']),
         ];
     }
     return [$total, $results, $mots];
@@ -348,11 +353,9 @@ function juris_normaliser(string $ref): string {
 /**
  * Rend lisible un texte extrait d'EUR-Lex ou d'un PDF.
  *
- * 🔑 Le texte servi portait la mise en forme de sa source, pas la sienne. Mesuré
- * le 22/08/2026 par un contrôle extérieur : l'article 22 du RGPD comptait 49 %
- * de blancs et 38 séquences de dix caractères d'espacement ou plus, la plus
- * longue de trente-six ; l'article P1-1 de la CEDH se terminait par « 34 35 »,
- * deux numéros de page du PDF d'origine. 258 articles sur 793 sont touchés.
+ * 🔑 Le texte servi portait la mise en forme de sa source, pas la sienne : au
+ * 22/08/2026, un tiers des articles en base — dont l'article 22 du RGPD, à 49 %
+ * de blancs, et l'article P1-1 de la CEDH, terminé par deux numéros de page.
  *
  * Trois artefacts, trois origines distinctes :
  *   · `\xa0` — EUR-Lex sépare le numéro d'alinéa du texte par trois espaces

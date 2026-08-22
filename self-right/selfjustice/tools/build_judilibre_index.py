@@ -67,9 +67,6 @@ DATE_FIN = "2027-12-31"
 # 5 août, et clos la fenêtre. Les décisions du 6 au 15, publiées depuis, ne
 # seraient jamais revenues — l'index se serait arrêté au 5 août pour toujours.
 #
-# Le script l'avait pourtant crié le jour même : « Aucune decision ajoutee.
-# Verifier la fenetre de reprise. » L'alerte est partie, personne ne l'a lue.
-#
 # Soixante jours couvrent 99,8 % des publications observées. En deçà, une fenêtre
 # se remoissonne à chaque passage : `INSERT OR REPLACE` rend l'opération
 # idempotente, le seul coût est le temps de la retélécharger.
@@ -280,7 +277,7 @@ def moissonner_intervalle(conn, juri, debut, fin, etat):
             conn.execute("INSERT OR REPLACE INTO intervalles_faits VALUES (?,?,?,?,?)",
                          (juri, debut, fin, 0, datetime.now(timezone.utc).isoformat()))
             conn.commit()
-        return True
+        return True  # rien reçu : aucune décision à valider ici
 
     if total > FENETRE_MAX:
         if d1 >= d2:
@@ -312,10 +309,17 @@ def moissonner_intervalle(conn, juri, debut, fin, etat):
             break
         lot += 1
 
+    # 🔑 **Les décisions se valident toujours, la fenêtre seulement si elle est
+    # close.** Ce `commit` était le seul du chemin : en le plaçant sous la
+    # condition de sédimentation, on perdait TOUT le moissonnage d'une fenêtre
+    # récente — c'est-à-dire exactement celui qu'on venait de rendre possible.
+    # Mesuré le 22/08/2026 : 7 753 décisions reçues, aucune écrite, `update_date`
+    # maximum figée au 14 août. Le correctif avait créé un défaut pire que celui
+    # qu'il corrigeait, et sans bruit : le journal annonçait ses 7 753 reçues.
     if fenetre_definitive(fin):
         conn.execute("INSERT OR REPLACE INTO intervalles_faits VALUES (?,?,?,?,?)",
                      (juri, debut, fin, recus, datetime.now(timezone.utc).isoformat()))
-        conn.commit()
+    conn.commit()
 
     etat["recus"] += recus
     etat["tranches"] += 1

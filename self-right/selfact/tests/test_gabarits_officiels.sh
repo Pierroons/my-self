@@ -143,9 +143,12 @@ fi
 # être la seule à porter « Action demandée ». Sans ce cas, une table qui
 # déclarerait les mêmes champs partout passerait le contrôle ci-dessus le jour
 # où quelqu'un ajouterait le crochet aux sept documents.
+# ⚠️ La liste vient de la route, pas d'une énumération écrite ici : un huitième
+# gabarit portant « Action demandée » ne serait jamais examiné, et le contrôle
+# dont ce commentaire dit qu'il « donne son sens au précédent » resterait vert.
 avec=0
-for type in mise_en_demeure saisine_conciliateur plainte_simple saisine_defenseur \
-            recours_gracieux resiliation document; do
+for type in $(curl -s "$BASE/gabarits.php" | python3 -c '
+import json,sys; print(" ".join(json.load(sys.stdin)["gabarits"]))'); do
     curl -s "$BASE/draft.php?type=$type" | grep -q "Action demandée" && avec=$((avec + 1))
 done
 [ "$avec" -eq 1 ] \

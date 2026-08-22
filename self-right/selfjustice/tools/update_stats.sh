@@ -24,19 +24,24 @@ COUNTER_FILE="/var/lib/selfjustice/counter.txt"
 # que le catalogue avait quitté l'arbre du code, et le journal se contentait de
 # « catalogue SelfAct inchangé » une fois par heure, ce que personne ne lit.
 #
-# L'ordre suit celui de `selfact/api/chemins.php`, et il n'y a qu'une raison de
-# le répéter ici : ce script est du shell, il ne peut pas appeler la fonction
-# PHP qui fait autorité. Toute modification là-bas se reporte ici.
-for candidat in \
-    "${SELFACT_CATALOG:-}" \
-    "${SELFACT_VAR_DIR:-/var/lib/selfact}/catalog.json" \
-    "${SELFJUSTICE_VAR_DIR:-/var/lib/selfjustice}/catalog.json" \
-    "$(dirname "$(dirname "${SELFJUSTICE_SITE_DIR:-/var/www/myself/self-right/selfjustice/site}")")/selfact/api/data/catalog.json"
-do
-    [ -n "$candidat" ] && [ -f "$candidat" ] && ACT_CATALOG="$candidat" && break
-done
+# 🔑 **Le chemin se demande, il ne se réécrit pas.** Ce bloc répétait en shell
+# l'ordre de résolution de `selfact/api/chemins.php`, avec un commentaire
+# promettant qu'ils restaient synchronisés. Ils ne l'étaient pas : `${VAR:-défaut}`
+# substitue le défaut immédiatement, si bien que `/var/lib/selfact` passait AVANT
+# un `SELFJUSTICE_VAR_DIR` explicitement posé. Et le PHP tranche sur l'existence
+# du RÉPERTOIRE quand le shell exigeait le FICHIER : sur une instance fraîche,
+# l'API lisait un fichier absent pendant que ce script publiait le total de la
+# copie du dépôt. Deux chiffres, aucune erreur.
+#
+# `update_catalog.sh` demandait déjà le chemin à la fonction PHP. Ce script fait
+# de même : une seule autorité, plus de miroir à tenir.
+CHEMINS="$(dirname "$(dirname "${SELFJUSTICE_SITE_DIR:-/var/www/myself/self-right/selfjustice/site}")")/selfact/api/chemins.php"
+if [ -r "$CHEMINS" ] && command -v php >/dev/null 2>&1; then
+    candidat="$(php -r "require '$CHEMINS'; echo selfact_chemin_catalogue();" 2>/dev/null)"
+    [ -n "$candidat" ] && [ -f "$candidat" ] && ACT_CATALOG="$candidat"
+fi
 if [ -z "${ACT_CATALOG:-}" ]; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ALERTE : catalogue SelfAct introuvable — la statistique publique va rester figée sur sa valeur précédente." >&2
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ALERTE : catalogue SelfAct introuvable (chemins.php : ${CHEMINS}) — la statistique publique va rester figée sur sa valeur précédente." >&2
 fi
 LEGI_DB="${SELFJUSTICE_DB_DIR:-/var/lib/selfjustice/db}/legi_selfjustice.sqlite"
 LEGI_LAST_UPDATE_FILE="/var/lib/selfjustice/legi_last_update.txt"
@@ -116,17 +121,29 @@ echo "$CURRENT_HITS" > "$LAST_HITS_FILE"
 # 2. Récupérer la date de dernière mise à jour LEGI
 # ============================================================
 
-LEGI_UPDATE_DATE="15 avril 2026"
-LEGI_ARTICLES="488 903"
+# 🔑 **Un échec ne rend pas un résultat.** Ces deux valeurs étaient écrites en
+# dur — « 15 avril 2026 » et « 488 903 » — et servaient de repli à un `sqlite3`
+# absent ou à une base verrouillée. La page publique annonçait alors un chiffre
+# d'avril comme s'il venait d'être compté, dans le fichier même dont un
+# commentaire plus bas dénonce « une valeur recopiée à la main qui ne suit
+# jamais la donnée qu'elle prétend décrire ».
+#
+# Rien ne remplace une mesure qui n'a pas eu lieu : la variable reste vide, et
+# la page saura qu'elle ne sait pas.
+LEGI_UPDATE_DATE=""
+LEGI_ARTICLES=""
 
 if [ -f "$LEGI_LAST_UPDATE_FILE" ]; then
     LEGI_UPDATE_DATE=$(cat "$LEGI_LAST_UPDATE_FILE")
 fi
 
 if [ -f "$LEGI_DB" ]; then
-    NB_ARTICLES=$(sqlite3 "$LEGI_DB" "SELECT COUNT(*) FROM articles" 2>/dev/null || echo "488903")
+    NB_ARTICLES=$(entier "$(sqlite3 "$LEGI_DB" "SELECT COUNT(*) FROM articles" 2>/dev/null)")
     # Formater avec espaces fines comme séparateurs de milliers
-    LEGI_ARTICLES=$(printf "%'d" "$NB_ARTICLES" | tr ',' ' ')
+    [ "$NB_ARTICLES" -gt 0 ] && LEGI_ARTICLES=$(printf "%'d" "$NB_ARTICLES" | tr ',' ' ')
+fi
+if [ -z "$LEGI_ARTICLES" ] || [ -z "$LEGI_UPDATE_DATE" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ALERTE : volumétrie ou date LEGI non mesurée (base : $LEGI_DB) — la page n'affichera pas de chiffre plutôt qu'un chiffre faux." >&2
 fi
 
 # ============================================================
@@ -153,12 +170,12 @@ fi
 
 # Base UE/CEDH
 EU_UPDATE_DATE="16 avril 2026"
-EU_ARTICLES="1 200"
+EU_ARTICLES=""
 if [ -f "$EU_LAST_UPDATE_FILE" ]; then
     EU_UPDATE_DATE=$(cat "$EU_LAST_UPDATE_FILE")
 fi
 if [ -f "$EU_DB" ]; then
-    NB_EU=$(sqlite3 "$EU_DB" "SELECT COUNT(*) FROM articles" 2>/dev/null || echo "1200")
+    NB_EU=$(entier "$(sqlite3 "$EU_DB" "SELECT COUNT(*) FROM articles" 2>/dev/null)")
     EU_ARTICLES=$(printf "%'d" "$NB_EU" | tr ',' ' ')
 fi
 

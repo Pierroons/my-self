@@ -42,6 +42,11 @@ PHP
     echo "<?php \$h = \$_SERVER['HTTP_HOST'] ?? 'your-instance.example';" \
         > "$BAC/module/self-right/selfact/api/find.php"
     echo "<?php // service" > "$BAC/module/self-right/selfact/api/catalog.php"
+    # 🔑 Un script exécutable : le glob `*.sh` du déploiement n'était exercé par
+    # aucun cas, et `sed > fichier` crée en 644. Le cron que le script documente
+    # lui-même échouait alors au premier passage, dans un journal de cron.
+    printf '#!/bin/sh\n# moisson\n' > "$BAC/module/self-right/selfact/api/update_catalog.sh"
+    chmod 755 "$BAC/module/self-right/selfact/api/update_catalog.sh"
     echo "# directives" > "$BAC/module/self-right/selfact/api/directives.md"
     echo '{"situations":[]}' > "$BAC/module/self-right/selfact/api/data/situations.json"
     echo '{"gabarits":{}}'   > "$BAC/module/self-right/selfact/api/data/gabarits.json"
@@ -57,6 +62,14 @@ if [ "$code" -eq 0 ] && grep -q "act.test.invalid" "$BAC/site/act.php" \
     ok "les pages nomment l'instance, plus le gabarit"
 else
     nok "substitution incomplète (code $code) : $(grep -c 'justice.example.org' "$BAC/site/act.php" 2>/dev/null) gabarit(s) survivant(s)"
+fi
+
+echo
+echo "▸ Un script déployé reste exécutable"
+if [ -x "$BAC/api/update_catalog.sh" ]; then
+    ok "update_catalog.sh garde son bit exécutable"
+else
+    nok "update_catalog.sh est arrivé en $(stat -c %a "$BAC/api/update_catalog.sh" 2>/dev/null) — le cron échouera"
 fi
 
 echo

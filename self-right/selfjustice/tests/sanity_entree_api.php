@@ -32,8 +32,12 @@ if ($src === false) {
     fwrite(STDERR, "api/api.php illisible\n");
     exit(2);
 }
-foreach (['requete_cherchable', 'champ_juris', 'mots_cherchables', 'chercher_conventionnalite',
-          'juridiction_valide', 'message_juridiction_inconnue'] as $nom) {
+// ⚠️ `texte_propre` est ici parce que `chercher_conventionnalite` l'appelle sur
+// chaque aperçu. Une fonction manquante ne fait pas rougir un cas : elle tue le
+// banc au milieu, et le message parle d'`eval` plutôt que du défaut.
+foreach (['requete_cherchable', 'champ_juris', 'mots_cherchables', 'texte_propre',
+          'chercher_conventionnalite', 'juridiction_valide',
+          'message_juridiction_inconnue'] as $nom) {
     if (!preg_match('/^function ' . $nom . '\(.*?^}$/ms', $src, $m)) {
         fwrite(STDERR, "$nom introuvable dans api/api.php\n");
         exit(2);

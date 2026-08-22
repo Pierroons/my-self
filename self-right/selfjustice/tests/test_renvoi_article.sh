@@ -143,8 +143,14 @@ echo "▸ Un simple amendement ne déclenche rien"
 # un mot changé en 2019 vaudrait le même avertissement qu'une recodification.
 if renvoi "1147?code=civil" "ampleur" | grep -qE '^[0-9]+$'; then
     n=$(renvoi "1147?code=civil" "ampleur")
-    [ "$n" -ge 20 ] && ok "l'ampleur de la réforme est rendue ($n articles)" \
-                    || nok "ampleur $n sous le seuil, le renvoi n'aurait pas dû partir"
+    # 🔑 Le seuil se lit dans le code, il ne se recopie pas : porté à 30, un
+    # « 20 » écrit ici laisserait le banc vert sur un renvoi qui ne doit plus
+    # partir.
+    seuil=$(grep -oE 'REFORME_MINIMUM = [0-9]+' "$ICI/../api/api.php" | grep -oE '[0-9]+')
+    [ -n "$seuil" ] || nok "REFORME_MINIMUM introuvable dans api.php"
+    [ "$n" -ge "${seuil:-999}" ] \
+        && ok "l'ampleur de la réforme est rendue ($n articles, seuil $seuil)" \
+        || nok "ampleur $n sous le seuil $seuil, le renvoi n'aurait pas dû partir"
 else
     nok "l'ampleur n'est pas rendue — le lecteur ne peut pas juger"
 fi

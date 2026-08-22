@@ -7,9 +7,7 @@ un. Relevé par un contrôle extérieur le 22/08/2026, avec ce qui rend le défa
 sérieux : c'est l'information dont le module dit lui-même qu'« un délai manqué
 ne se rattrape pas ».
 
-Le remède était déjà écrit six lignes plus haut du code fautif, pour le champ
-voisin `articles` — « Type vérifié, pas supposé ». Il n'avait pas été appliqué
-au voisin. Ce banc existe pour que la leçon ne dépende plus de qui relit.
+Ce banc existe pour que la leçon ne dépende plus de qui relit.
 
 Deux formes existent dans les données et une troisième est possible : une durée
 unique avec son fondement, plusieurs durées selon la qualification, et tout ce

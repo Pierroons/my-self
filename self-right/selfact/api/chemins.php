@@ -18,10 +18,8 @@
  * l'exception restée dans l'arbre du code. En l'en sortant, il n'y a plus de
  * collision à détecter — il n'y en a plus de possible.
  *
- * Depuis le 22/08/2026, l'état de SelfAct porte son propre nom :
- * `/var/lib/selfact/`. Les bases de SelfJustice restent chez elles. Un
- * répertoire qui dit à qui appartient ce qu'il contient s'inspecte sans avoir à
- * demander.
+ * L'état de SelfAct vit sous `/var/lib/selfact/` ; les bases de SelfJustice
+ * restent chez elles.
  *
  * `situations.json` reste au dépôt : il est curé à la main, versionné à bon
  * droit, et n'a qu'un seul écrivain.
@@ -37,12 +35,9 @@ declare(strict_types=1);
  * migration. Une instance déjà en service y a son `catalog.json`, et le code
  * arrive toujours avant que l'exploitant n'ait déplacé quoi que ce soit. Sans
  * ce repli, la première requête après la mise à jour lirait un répertoire vide
- * et retomberait sur la copie du dépôt — celle, précisément, qu'on a passé une
- * journée à cesser de servir.
+ * et retomberait sur la copie du dépôt.
  *
  * Le repli s'efface de lui-même : dès que `/var/lib/selfact/` existe, il gagne.
- * Il pourra disparaître d'ici quand plus aucune instance connue ne portera
- * l'ancien nom.
  */
 function selfact_repertoire_etat(): string {
     foreach (['SELFACT_VAR_DIR', 'SELFJUSTICE_VAR_DIR'] as $nom) {

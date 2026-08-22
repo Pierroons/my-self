@@ -1,10 +1,9 @@
 #!/bin/bash
 # Garde-fou — le texte servi porte sa mise en forme, pas celle de sa source.
 #
-# 🔑 Mesuré le 22/08/2026 par un contrôle extérieur : l'article 22 du RGPD
-# comptait 49 % de blancs et 38 séquences de dix caractères d'espacement ou
-# plus ; l'article P1-1 de la CEDH se terminait par « 34 35 », deux numéros de
-# page du PDF d'origine. 258 articles sur 793 sont touchés.
+# 🔑 Au 22/08/2026, un tiers des articles en base portaient la mise en forme de
+# leur source : l'article 22 du RGPD comptait 49 % de blancs, l'article P1-1 de
+# la CEDH se terminait par deux numéros de page du PDF d'origine.
 #
 # ⚠️ Ce banc éprouve autant ce que le nettoyage NE doit PAS faire : les sauts de
 # ligne qui séparent les alinéas restent, et les chiffres à l'intérieur du texte
@@ -61,16 +60,45 @@ nok() { echo "  ✗ $1" >&2; echecs=$((echecs + 1)); }
 texte() { curl -s "$BASE/$1" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("texte") or "")'; }
 
 echo "▸ Ce que la source impose disparaît"
+# ⚠️ Le comptage se fait en Python. `grep -oP '\xc2\xa0'` cherche DEUX
+# caractères — U+00C2 puis U+00A0 — et non la séquence d'octets d'un insécable :
+# il rend zéro sur un texte qui en est plein, et la condition `-eq 0` ne peut
+# alors jamais être fausse. Vérifié : la même sonde affichait « ✓ ni insécable »
+# sur un texte à 49 % de blancs, avec 16 insécables intacts.
 for a in "RGPD/22" "RGPD/9" "AI_ACT/14"; do
-    t=$(texte "$a")
-    nb=$(printf '%s' "$t" | grep -oP '\xc2\xa0' 2>/dev/null | wc -l)
-    esp=$(printf '%s' "$t" | grep -cE '   ' || true)
-    if [ "$nb" -eq 0 ] && [ "$esp" -eq 0 ]; then
+    mesure=$(texte "$a" | python3 -c '
+import re, sys
+t = sys.stdin.read()
+print(t.count("\xa0"), len(re.findall(r"[ \t]{3,}", t)))')
+    set -- $mesure
+    if [ "${1:-1}" -eq 0 ] && [ "${2:-1}" -eq 0 ]; then
         ok "$a — ni insécable, ni colonne d'espaces"
     else
-        nok "$a — $nb insécable(s), $esp ligne(s) à 3 espaces ou plus"
+        nok "$a — ${1:-?} insécable(s), ${2:-?} colonne(s) de 3 espaces ou plus"
     fi
 done
+
+echo
+echo "▸ L'aperçu de la recherche est nettoyé lui aussi"
+# 🔑 Deux routes servent ces textes : l'article entier, et l'extrait de 200
+# caractères que rend la recherche. Le nettoyage n'était posé que sur la
+# première — un correctif appliqué à un seul exemplaire d'un mécanisme dupliqué.
+# C'est la seconde que voit un agent qui cherche par mot-clé.
+RECHERCHE="${BASE%/article}/search"
+sale=$(curl -s "$RECHERCHE?q=automatis&limit=5" | python3 -c '
+import json, re, sys
+d = json.load(sys.stdin)
+n = c = 0
+for r in d.get("results") or []:
+    a = r.get("apercu") or ""
+    n += a.count("\xa0"); c += len(re.findall(r"[ \t]{3,}", a))
+print(n, c)')
+set -- $sale
+if [ "${1:-1}" -eq 0 ] && [ "${2:-1}" -eq 0 ]; then
+    ok "les aperçus ne portent ni insécable ni colonne d'espaces"
+else
+    nok "aperçus : ${1:-?} insécable(s), ${2:-?} colonne(s) — la recherche échappe au nettoyage"
+fi
 
 echo
 echo "▸ La pagination du PDF ne se lit pas comme du droit"

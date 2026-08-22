@@ -54,3 +54,10 @@ venv/
 .claude/*
 !.claude/agents/
 deploy/my-self/dist/
+
+# 🔑 Le catalogue est moissonné par la machine les 1er et 15 ; il vit dans
+# `/var/lib/selfact/`, hors de l'arbre du code. Versionné, il redevenait ce qu'on
+# avait passé une journée à supprimer : une copie qu'un poste de travail pousse
+# par-dessus celle que le cron vient d'écrire. Le fichier suivi datait du 3 août
+# quand l'instance en servait un du 21.
+self-right/selfact/api/data/catalog.json

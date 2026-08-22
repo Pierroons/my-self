@@ -274,17 +274,9 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
     synchro = _format_fr(date_synchro)
 
     if date_synchro >= echeance:
-        # 🔑 **« Synchronisation à jour » se lisait « données à jour ».** La
-        # formule était vraie au sens de la cadence — le cron a tourné quand il
-        # devait — et fausse au sens que tout lecteur lui donne. Un contrôle
-        # extérieur l'a relevé le 22/08/2026 : elle s'affichait en tête de
-        # réponses servant des arrêts du 10 août, au-dessus d'une borne annoncée
-        # au 5. Ce que la phrase certifie, c'est le passage du cron ; ce que le
-        # lecteur en retient, c'est la fraîcheur du contenu. Les deux se
-        # séparent, et c'est le contenu qui décide de ce qu'on peut affirmer.
-        #
-        # Elle dit donc maintenant ce qu'elle sait : la cadence est tenue, et
-        # voici l'âge de ce qui est servi. Le lecteur tranche.
+        # 🔑 Cette ligne certifie la CADENCE du cron, jamais la fraîcheur du
+        # contenu : ne pas y réécrire « à jour », que le lecteur porterait sur
+        # les données. L'âge du contenu se dit à côté, et il tranche.
         return (
             f"Base {base} synchronisée le {synchro} — cadence tenue · "
             f"contenu : {contenu}{vieillesse}.",
@@ -1878,8 +1870,9 @@ def _formater_prescription(presc: Any) -> str:
     ce qui rend le défaut sérieux : c'est l'information dont ce module dit
     lui-même qu'« un délai manqué ne se rattrape pas ».
 
-    Le remède était déjà écrit six lignes plus haut, pour `articles` : « Type
-    vérifié, pas supposé. » Il n'avait pas été appliqué au voisin.
+    Le champ voisin `articles` porte le même remède — son type est vérifié avant
+    d'être lu, parce qu'une chaîne parcourue comme une liste s'affichait caractère
+    par caractère. Ce qui vaut pour lui vaut ici.
 
     Deux formes existent dans les données, et rien ne garantit qu'il n'y en aura
     pas une troisième — d'où le repli qui rend les paires telles quelles plutôt
@@ -2200,13 +2193,10 @@ async def gabarit_document(type_document: str | None = None) -> str:
               f"catalogue : {', '.join(perdus)}. La liste ci-dessus est donc "
               f"incomplète.)\n\n") if perdus else ""
 
-    # 🔑 **Les champs viennent du gabarit, plus d'une liste écrite ici.** Les
-    # mêmes quatre étaient annoncés pour les sept, dont « action demandée » —
-    # présent dans un seul, la mise en demeure. Un contrôle extérieur l'a mesuré
-    # le 22/08/2026 en ouvrant les sept documents : six sont un squelette
-    # identique à deux lignes près, et l'outil promettait la même chose pour
-    # tous. Une description qui ne vient pas de ce qu'elle décrit finit toujours
-    # par le démentir.
+    # 🔑 Les champs viennent du gabarit, jamais d'une liste écrite ici : une
+    # description qui ne vient pas de ce qu'elle décrit finit par le démentir.
+    # Ils diffèrent d'un type à l'autre — seule la mise en demeure demande une
+    # action et un délai.
     liste_champs = g.get("champs") or []
     if liste_champs:
         champs = ("Champs laissés à compléter par la personne concernée :\n"

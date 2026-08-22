@@ -91,12 +91,9 @@ def main() -> int:
     cas = [
         # 🔑 Le cas de la fausse alerte : la synchronisation du 15 a tourné, le
         # contenu porte la date du dernier diff de l'amont, antérieure.
-        # 🔑 Ce que la ligne certifie, c'est la CADENCE, jamais la fraîcheur du
-        # contenu. Elle disait « synchronisation à jour », que tout lecteur lit
-        # « données à jour » — relevé par un contrôle extérieur le 22/08/2026,
-        # affiché au-dessus d'arrêts plus récents que la borne annoncée. Les
-        # deux notions sont donc séparées dans la phrase, et « à jour » sous sa
-        # forme affirmative est interdit ici comme il l'est plus bas.
+        # « à jour » sous sa forme affirmative est interdit ici, comme plus bas :
+        # le lecteur le porterait sur les données, quand la ligne ne certifie
+        # que la cadence.
         ({"last_update": "14 août 2026", "last_sync": "2026-08-15"},
          False, ["synchronisée le 15 août 2026", "cadence tenue",
                  "contenu : 14 août 2026 (7 jours)"],

@@ -96,15 +96,12 @@ echo "SelfJustice — déploiement vers $DEST (domaine : $DOMAINE)"
 
 # Les fichiers servis directement au navigateur.
 #
-# 🔑 `act.php` et `act-docs.html` ont quitté cette liste le 22/08/2026 : SelfAct
-# est un module à part, avec son propre `deploy/selfact/deploy.sh`. Déployer
-# SelfJustice ne déploie donc plus SelfAct — c'est le comportement voulu, et une
-# instance qui veut les deux lance les deux scripts.
+# 🔑 `act.php` et `act-docs.html` ne sont pas ici : SelfAct est un module à part,
+# déployé par `deploy/selfact/deploy.sh`. Une instance qui veut les deux lance
+# les deux scripts.
 #
-# ⚠️ L'extension compte : les compteurs du corpus sont rendus côté serveur depuis
-# le 19/08/2026, ce qui a fait passer `index` en `.php`. Ce script le cherchait
-# encore en `.html`, ne trouvait plus la racine du module et ne déployait rien —
-# en le disant, au moins.
+# ⚠️ `index` est en `.php`, pas en `.html` : les compteurs du corpus sont rendus
+# côté serveur. Chercher la mauvaise extension fait manquer la racine du module.
 #
 # La liste fait autorité pour les deux boucles qui suivent : celle qui copie, et
 # celle qui signale ce qui traîne à la destination sans plus venir d'ici. Écrite

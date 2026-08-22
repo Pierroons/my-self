@@ -1,12 +1,7 @@
 #!/bin/bash
 # SelfAct — déploiement d'une instance.
 #
-# 🔑 **Pourquoi ce script existe.** SelfAct était déployé par celui de
-# SelfJustice, parce que son code y vivait. Depuis le 22/08/2026 c'est un module
-# à part entière : il porte son code, ses données, ses garde-fous — et son
-# déploiement. Un module qui ne sait pas s'installer n'a pas ce dont il a besoin.
-#
-# Comme pour SelfJustice, les pages portent le gabarit `justice.example.org`,
+# Les pages portent le gabarit `justice.example.org`,
 # substitué ici par le domaine de l'instance. Les fichiers PHP s'en passent : ils
 # lisent `SELFJUSTICE_BASE_URL` ou, à défaut, l'en-tête `Host`.
 #
@@ -88,6 +83,13 @@ poser() {
         echo "erreur : $(basename "$src") porte encore $PLACEHOLDER après substitution." >&2
         exit 1
     fi
+    # 🔑 Le mode de la source, pas celui du parapluie. `sed > fichier` crée en
+    # 644 : `update_catalog.sh` arrivait non exécutable, et le cron que ce script
+    # documente lui-même échouait au premier passage — dans un journal de cron,
+    # c'est-à-dire nulle part.
+    # ⚠️ Sur le TEMPORAIRE, avant la bascule : posé sur la destination, le `mv`
+    # qui suit l'écrase aussitôt.
+    chmod --reference="$src" "$tmp" 2>/dev/null || chmod 644 "$tmp"
     mv "$tmp" "$dest"
     traites=$((traites + 1))
     substituees=$((substituees + attendues))
