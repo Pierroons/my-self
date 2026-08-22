@@ -34,8 +34,12 @@ SKG=/etc/selfkeyguard          # répertoire d'installation
 
 ```bash
 apt update
-apt install -y cryptsetup cryptsetup-initramfs dropbear-initramfs build-essential libargon2-1
+apt install -y cryptsetup cryptsetup-initramfs dropbear-initramfs build-essential \
+               libargon2-1 python3-argon2
 # libargon2-1 = runtime. Le binaire se lie au runtime : pas besoin de libargon2-dev.
+# python3-argon2 = argon2-cffi, dont dépend selfrecover_derive.py (§5). Sans lui,
+# l'ajout de slot échoue en ModuleNotFoundError sur une Debian fraîche.
+# Sur un poste de travail sans accès distant au démarrage, dropbear-initramfs est inutile.
 ```
 
 ---
@@ -57,12 +61,40 @@ Vérifie l'unique dépendance :
 ldd "$SKG/selfrecover_derive_c" | grep argon2     # -> libargon2.so.1
 ```
 
-## 2. Générer le sel de déploiement
+### Vecteur de référence — le C et le Python doivent s'accorder
 
-Sel **unique** à ta machine, indispensable à toute dérivation (à **sauvegarder hors-site**, cf. §9).
+Deux implémentations dérivent la même clé : le C, qui tourne dans l'initramfs, et le
+Python, qui ajoute le slot. Si elles divergent, le slot enrôlé par l'un ne s'ouvrira
+jamais par l'autre — et on ne s'en aperçoit qu'au redémarrage.
+
+Valeurs de test publiques, sans rapport avec un déploiement réel :
 
 ```bash
-head -c 16 /dev/urandom | xxd -p > "$SKG/selfrecover_salt"
+printf '0011223344556677\n' > /tmp/sel-test
+printf '%s' 'correct horse battery staple' \
+  | "$SKG/selfrecover_derive_c" --salt-file /tmp/sel-test --label disk --format hex
+printf '%s' 'correct horse battery staple' \
+  | python3 selfrecover_derive.py --stdin --salt-file /tmp/sel-test --label disk --format hex
+```
+
+Les deux doivent afficher :
+
+```
+5c32c300f2af84d83bd4db0dd668692f44b692143cdb2cd909a688c49a60a5d6
+```
+
+Une différence signale une divergence d'implémentation — paramètres Argon2, encodage
+du sel, ou traitement de la fin de ligne. **Ne va pas plus loin tant qu'elles ne
+s'accordent pas.**
+
+## 2. Générer le sel de déploiement
+
+Sel **unique** à ta machine, indispensable à toute dérivation (à **sauvegarder hors-site**, cf. §12).
+
+```bash
+# od et non xxd : depuis Debian 13, xxd est un paquet distinct, absent aussi bien
+# d'une installation minimale que d'un bureau GNOME. od vient de coreutils.
+head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$SKG/selfrecover_salt"
 chmod 0400 "$SKG/selfrecover_salt"
 ```
 
@@ -81,11 +113,56 @@ install -m 0755 initramfs-hook-selfrecover      /etc/initramfs-tools/hooks/selfr
 > explicitement**. Sans elle : `libgcc_s.so.1 must be installed for pthread_exit to work`
 > → `Aborted` → `bad password` au démarrage. (Déjà géré dans le hook.)
 
-## 4. Ajouter le slot « récupération » sur chaque volume
+## 4. Sauvegarder l'en-tête LUKS — **avant** de toucher aux slots
+
+L'étape suivante écrit dans l'en-tête du volume. Une sauvegarde de l'initramfs ou
+du `crypttab` ne protège pas de ça : elles couvrent l'**amorçage**, pas la
+**corruption de l'en-tête**. En-tête perdu, aucun slot n'ouvre plus rien, quel que
+soit l'initrd sur lequel on démarre.
+
+```bash
+cryptsetup luksHeaderBackup "$ROOT_DEV" --header-backup-file entete-luks-$(date +%Y%m%d).img
+chmod 400 entete-luks-*.img
+```
+
+Vérifie que la sauvegarde porte bien les slots attendus :
+
+```bash
+cryptsetup luksDump --header entete-luks-*.img | grep -cE "^\s+[0-9]+: luks2"
+```
+
+Trois choses à savoir, et elles comptent autant que la commande :
+
+1. **Rangée sur le volume chiffré, cette sauvegarde ne sert à rien** — au moment où
+   on en a besoin, on ne peut plus la lire. Support externe, hors de la machine.
+2. **Elle contient les slots.** Quiconque l'obtient peut attaquer les passphrases
+   hors ligne, **sans disposer du disque**. À protéger comme le disque lui-même :
+   jamais dans une archive, jamais dans un dépôt, jamais en pièce jointe.
+3. **Restaurer une sauvegarde ressuscite les slots révoqués depuis.** Une sauvegarde
+   antérieure à un `luksKillSlot` réintroduit la clé qu'on croyait supprimée.
+   Refaire la sauvegarde après chaque changement de slot, et détruire l'ancienne.
+
+---
+
+## 5. Ajouter le slot « récupération » sur chaque volume
 
 `setup-add-selfrecover-slot.sh` ajoute un slot LUKS dont la clé = dérivation (label `disk`)
 de la passphrase recover. **Autorisé par une passphrase existante** (le slot natif).
 Utilise **la même passphrase recover** pour tous les volumes (c'est le secret unifié).
+
+> **⚠️ Fixe la convention d'espacement AVANT d'enrôler, et note-la.** La dérivation
+> ne normalise rien : `sept mots separes` et `septmotssepares` donnent deux clés
+> différentes. Une hésitation sur ce point rend le slot inouvrable **sans que rien ne
+> le signale** — la double saisie ne valide que la répétition, pas l'exactitude.
+>
+> Le déploiement de référence enrôle les mots **concaténés, sans séparateur**. Note
+> la **longueur en caractères** à côté de la passphrase sur son support : c'est ce
+> qui permet de vérifier, au moment de l'enrôlement, qu'on saisit bien ce qu'on a
+> écrit.
+>
+> Et surtout : **ne normalise jamais les espaces dans la dérivation** pour corriger
+> une hésitation. Ce serait le correctif évident, et il romprait tout slot déjà
+> enrôlé — y compris ceux des machines qu'on n'a pas sous la main.
 
 ```bash
 SELFRECOVER_SALT="$(cat $SKG/selfrecover_salt)" ./setup-add-selfrecover-slot.sh "$ROOT_DEV"
@@ -98,9 +175,43 @@ Vérifie (le nouveau slot apparaît) :
 cryptsetup luksDump "$ROOT_DEV" | grep -E "^\s+[0-9]+: luks2"
 ```
 
-## 5. Volume racine — keyscript + accès distant (dropbear)
+## 6. Vérifier le slot **avant** d'en dépendre pour démarrer
 
-### 5a. Référencer le keyscript dans `/etc/crypttab`
+Le slot vient d'être créé, mais rien ne prouve encore que la dérivation le
+reproduira. Le vérifier maintenant coûte dix secondes ; le découvrir au
+redémarrage coûte une session de secours.
+
+```bash
+printf '%s' "<ta passphrase recover>" \
+  | "$SKG/selfrecover_derive_c" --salt-file "$SKG/selfrecover_salt" --label disk --format raw \
+  > /run/sr-test.key
+cryptsetup open --test-passphrase --key-file /run/sr-test.key "$ROOT_DEV" && echo "✅ le slot recover ouvre le volume"
+shred -u /run/sr-test.key
+```
+
+`--test-passphrase` ne monte rien et ne modifie rien : il répond seulement « cette
+clé ouvre-t-elle ce volume ». Tant que cette commande n'a pas répondu oui,
+**ne branche pas le keyscript** : l'amorçage dépendrait d'une dérivation non prouvée.
+
+Vérifie aussi les paramètres du nouveau slot :
+
+```bash
+cryptsetup luksDump "$ROOT_DEV" | grep -A6 "^  1: luks2"
+```
+
+`cryptsetup` **recalibre le PBKDF à chaque `luksAddKey`**, selon la mémoire libre du
+moment : deux slots du même volume peuvent afficher des `Memory` très différents —
+209 MiB et 155 MiB sur le déploiement de référence, sans aucune intention. Ce n'est
+pas un défaut, mais retiens que **le déverrouillage exige la mémoire inscrite dans le
+slot** : un slot créé sur une machine au repos peut devenir difficile à ouvrir dans
+un environnement plus contraint. Ne fige pas `--pbkdf-memory` pour autant : le faire
+à la baisse affaiblit le slot, et c'est le geste d'« optimisation » qui coûte le plus.
+
+---
+
+## 7. Volume racine — keyscript + accès distant (dropbear)
+
+### 7a. Référencer le keyscript dans `/etc/crypttab`
 
 Ajoute `keyscript=` aux options de la ligne du volume racine (garde `x-initrd.attach`) :
 
@@ -109,7 +220,7 @@ Ajoute `keyscript=` aux options de la ligne du volume racine (garde `x-initrd.at
 <root_name> UUID=<UUID-ROOT> none luks,discard,x-initrd.attach,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh
 ```
 
-### 5b. Accès SSH au démarrage (dropbear)
+### 7b. Accès SSH au démarrage (dropbear)
 
 ```bash
 # réseau dans l'initramfs
@@ -139,7 +250,7 @@ echo 'DROPBEAR_OPTIONS="-p 2222 -s -j -k -I 300"' > /etc/dropbear/initramfs/drop
 > update-grub
 > ```
 
-### 5c. (Optionnel) Prompt explicite côté dropbear
+### 7c. (Optionnel) Prompt explicite côté dropbear
 
 Par défaut `cryptroot-unlock` affiche « Please unlock disk ». Pour annoncer la recover :
 
@@ -149,7 +260,7 @@ sed -i 's|Please unlock disk $CRYPTTAB_NAME: |Passphrase Recover-LUKS ($CRYPTTAB
 # Cosmétique. Réécrit par une mise à jour du paquet cryptsetup -> à ré-appliquer le cas échéant.
 ```
 
-## 6. Volumes secondaires — cascade par fichier-clé
+## 8. Volumes secondaires — cascade par fichier-clé
 
 > **Piège n°3 — systemd-cryptsetup ignore `keyscript`.** Les volumes **non-racine** sont gérés
 > par `systemd-cryptsetup`, qui **ne supporte pas** le champ `keyscript` (seul le volume racine,
@@ -185,7 +296,7 @@ cryptsetup luksAddKey "$DATA_DEV" /etc/keys/<data>.key
 **Sécurité** : le fichier-clé est dans le coffre racine chiffré → disque volé = racine chiffrée
 = fichier-clé inaccessible. Il n'affaiblit pas la protection.
 
-## 7. Régénérer l'image d'amorçage (avec filet)
+## 9. Régénérer l'image d'amorçage (avec filet)
 
 ```bash
 cp -a /boot/initrd.img-$(uname -r) /boot/initrd.img-$(uname -r).bak    # FILET : retour arrière
@@ -195,7 +306,66 @@ update-initramfs -u
 lsinitramfs /boot/initrd.img-$(uname -r) | grep -E "selfrecover-keyscript|selfrecover_derive_c|libargon2|libgcc|sbin/dropbear"
 ```
 
-## 8. Test au redémarrage
+### Valider un hook modifié sans toucher à l'image de production
+
+Si tu as changé le hook, ne régénère pas l'initramfs pour voir : construis une image
+de test à part. `mkinitramfs -d` lit une configuration alternative, l'image de
+production n'est jamais remplacée, et le risque de rendre la machine non amorçable
+est nul.
+
+```bash
+T=$(mktemp -d); cp -a /etc/initramfs-tools "$T/itconf"
+install -m 0755 mon-hook "$T/itconf/hooks/mon-hook"
+mkinitramfs -d "$T/itconf" -o "$T/test-initrd.img" "$(uname -r)"
+lsinitramfs "$T/test-initrd.img" | grep -E "ce-que-tu-attends"
+```
+
+### ⚠️ Une bibliothèque chargée dynamiquement ne se révèle jamais toute seule
+
+`copy_exec` suit les dépendances qu'`ldd` déclare. Une bibliothèque ouverte à
+l'exécution par `dlopen` n'y figure pas : l'initramfs se construit **sans erreur**,
+et l'échec n'apparaît qu'au démarrage, sans message exploitable.
+
+Le module a rencontré ce motif deux fois — `libgcc_s.so.1`, tirée par la
+bibliothèque Argon2, et `libfido2.so.1`, que `libsystemd-shared` charge par `dlopen`
+précisément pour éviter une dépendance dure. Dans les deux cas, `ldd` ne montre rien.
+
+**Règle : toute bibliothèque chargée dynamiquement se copie à la main dans le hook.**
+L'analyse des dépendances ne la révélera pas, et aucun test de construction ne la
+signalera. Le seul contrôle qui vaut est `lsinitramfs | grep`, sur l'image produite.
+
+---
+
+## 10. Garde-fou — vérifier l'initramfs après chaque mise à jour de noyau
+
+Le coût réel de ce module n'est pas cryptographique : c'est le **nombre de pièces
+dans le chemin d'amorçage**. Chaque pièce ajoutée est une pièce qui peut manquer
+après une régénération d'initramfs — et le manque ne se voit qu'au redémarrage, sur
+une machine devenue non amorçable.
+
+```bash
+install -m 0755 kernel-postinst-verifie-selfrecover /etc/kernel/postinst.d/zz-verifie-selfrecover
+```
+
+Il s'exécute après la génération de l'initramfs lors d'une mise à jour de noyau,
+vérifie les six pièces (binaire, sel, keyscript, `libargon2`, `libgcc_s`,
+`cryptsetup`), et **échoue bruyamment avec la marche à suivre** si l'une manque. Il
+reste inerte tant que `keyscript=` n'est pas dans `/etc/crypttab` : tu peux
+l'installer avant même d'avoir branché le module.
+
+Éprouve-le dans les deux sens — un garde-fou qu'on n'a jamais vu refuser ne prouve
+rien :
+
+```bash
+/etc/kernel/postinst.d/zz-verifie-selfrecover "$(uname -r)"   # doit rendre 0 et une ligne verte
+```
+
+Puis recommence sur un initrd volontairement incomplet : il doit rendre 1 et lister
+ce qui manque.
+
+---
+
+## 11. Test au redémarrage
 
 ```bash
 reboot
@@ -215,7 +385,7 @@ cryptsetup open "$ROOT_DEV" <root_name>   # -> passphrase native -> exit -> le b
 
 En dernier recours : remets l'image `.bak` (`mv …​.bak …`) depuis un live/secours.
 
-## 9. Récupération après catastrophe — secrets HORS-SITE
+## 12. Récupération après catastrophe — secrets HORS-SITE
 
 Pour tout reconstruire après destruction du matériel, conserve dans un **gestionnaire de mots
 de passe** (pas sur la machine) :
@@ -229,15 +399,15 @@ de passe** (pas sur la machine) :
 > Le `selfrecover_salt` est le point le plus oublié : **sans lui hors-site, la passphrase seule
 > ne suffit pas** à régénérer les clés.
 
-## 10. Dépannage
+## 13. Dépannage
 
 | Symptôme | Cause | Remède |
 |----------|-------|--------|
 | `libgcc_s.so.1 must be installed for pthread_exit` → `Aborted` | libgcc absente de l'initramfs | le hook doit la copier (§3) ; régénère l'initramfs |
-| `gave up waiting for root file system device` | délai trop court | `rootdelay=60` (§5b) |
-| Prompt natif « Please unlock disk » sur un volume **secondaire** | systemd-cryptsetup ignore le keyscript | passe ce volume en **fichier-clé** (§6) |
-| Le boot bloque sur un volume secondaire | `x-initrd.attach` + échec | retire `x-initrd.attach` ; fichier-clé post-pivot (§6) |
-| `bad password` alors que la passphrase est juste | binaire/sel/lib manquant dans l'initramfs | vérifie `lsinitramfs` (§7) |
+| `gave up waiting for root file system device` | délai trop court | `rootdelay=60` (§7b) |
+| Prompt natif « Please unlock disk » sur un volume **secondaire** | systemd-cryptsetup ignore le keyscript | passe ce volume en **fichier-clé** (§8) |
+| Le boot bloque sur un volume secondaire | `x-initrd.attach` + échec | retire `x-initrd.attach` ; fichier-clé post-pivot (§8) |
+| `bad password` alors que la passphrase est juste | binaire/sel/lib manquant dans l'initramfs | vérifie `lsinitramfs` (§9) |
 
 ---
 
@@ -250,5 +420,6 @@ de passe** (pas sur la machine) :
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript |
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS |
 | `selfrecover_derive.py` | implémentation de référence (Python) pour usage userspace |
+| `kernel-postinst-verifie-selfrecover` | garde-fou : vérifie les six pièces de l'initramfs après chaque mise à jour de noyau (§10) |
 
 *SelfRecover-LUKS — MySelf / Self-Security — AGPL-3.0-or-later.*

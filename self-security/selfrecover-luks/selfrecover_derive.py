@@ -38,14 +38,40 @@ def derive(word: str, salt: str, label: str, length: int = 32,
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Dérive une clé SelfRecover (Argon2id).")
-    ap.add_argument("--word", required=True, help="mot de récupération (à garder fort)")
-    ap.add_argument("--salt", required=True, help="sel propre au déploiement (ex. site_salt)")
+    ap.add_argument("--word", help="mot de récupération — DÉCONSEILLÉ : visible dans "
+                                   "/proc/<pid>/cmdline pendant l'exécution. Réservé aux tests.")
+    ap.add_argument("--stdin", action="store_true",
+                    help="lit le mot de récupération sur stdin (1re ligne) — voie recommandée")
+    ap.add_argument("--salt", help="sel propre au déploiement (ex. site_salt)")
+    ap.add_argument("--salt-file", help="fichier contenant le sel (comme le clone C)")
     ap.add_argument("--label", default="disk", help="disk | auth | data-enc | ...")
     ap.add_argument("--len", type=int, default=32, help="taille de la clé en octets")
     ap.add_argument("--format", choices=["hex", "raw"], default="hex",
                     help="hex (texte, sûr en pipe) ou raw (octets bruts)")
     a = ap.parse_args()
-    key = derive(a.word, a.salt, a.label, a.len)
+
+    # Mot de récupération : stdin par défaut, argv seulement si explicitement demandé.
+    if a.stdin:
+        word = sys.stdin.readline().rstrip("\n")
+    elif a.word is not None:
+        print("selfrecover_derive: AVERTISSEMENT — --word expose la passphrase dans "
+              "/proc/<pid>/cmdline. Préférez --stdin.", file=sys.stderr)
+        word = a.word
+    else:
+        ap.error("il faut --stdin (recommandé) ou --word")
+    if not word:
+        ap.error("passphrase vide")
+
+    # Sel : --salt ou --salt-file, comme le clone C.
+    if a.salt_file:
+        with open(a.salt_file, "r", encoding="utf-8") as f:
+            salt = f.readline().strip()
+    elif a.salt is not None:
+        salt = a.salt
+    else:
+        ap.error("il faut --salt ou --salt-file")
+
+    key = derive(word, salt, a.label, a.len)
     if a.format == "raw":
         sys.stdout.buffer.write(key)            # octets bruts (pas de newline)
     else:

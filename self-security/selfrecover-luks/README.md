@@ -62,6 +62,7 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | `initramfs-hook-selfrecover` | embeds binary + libargon2 + **libgcc** + salt + keyscript in the initrd |
 | `setup-add-selfrecover-slot.sh` | adds a recovery slot to a LUKS volume (authorized by an existing key) |
 | `selfrecover-unlock.sh` | standalone emergency unlock (userspace) |
+| `kernel-postinst-verifie-selfrecover` | guard: checks the six initramfs pieces after every kernel upgrade |
 | `install.sh` | semi-automatic installer (see INSTALL.md) |
 | [`quorum-rnd/`](./quorum-rnd/) | R&D: witness-quorum unlock — **not enabled in v0.3.0** |
 

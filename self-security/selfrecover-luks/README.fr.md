@@ -12,7 +12,8 @@
 > par une **unique passphrase de récupération**, à distance dès le démarrage, sans cloud ni
 > tiers de confiance. Couche FDE auto-hébergée de l'écosystème **MySelf** (pilier Self-Security).
 
-**Statut : validé sur serveur LNMP Debian 13 Trixie (07/06/2026) — v0.3.0.**
+**Statut : validé sur serveur LNMP Debian 13 Trixie (07/06/2026), puis sur poste portable
+chiffré (22/08/2026) — v0.3.0.**
 Déverrouillage du `/` au boot (keyscript Argon2id + SSH d'amorçage) et cascade automatique des
 volumes secondaires (fichier-clé), redémarrages reproductibles. Installation documentée et
 reproductible → **[INSTALL.md](./INSTALL.md)**.
@@ -63,6 +64,7 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS (autorisé par une clé existante) |
 | `selfrecover-unlock.sh` | déverrouillage de secours autonome (userspace) |
 | `install.sh` | installateur semi-automatique (cf. INSTALL.md) |
+| `kernel-postinst-verifie-selfrecover` | garde-fou : vérifie les six pièces de l'initramfs après chaque mise à jour de noyau |
 | [`quorum-rnd/`](./quorum-rnd/) | R&D : déverrouillage par quorum de témoins — **non activé en v0.3.0** |
 
 ## Installation
@@ -78,6 +80,14 @@ Document d'architecture (le *pourquoi*) : **[SelfRecover-LUKS_Whitepaper](./docs
 
 - Passphrase recover **forte** (diceware) — le KDF ralentit, il ne compense pas un secret faible.
 - **Slot natif conservé** sur chaque volume + sauvegarde de l'initramfs avant régénération.
+- **Sauvegarde de l'en-tête LUKS avant tout ajout de slot.** Les sauvegardes d'initramfs et de
+  `crypttab` couvrent l'amorçage, pas la corruption de l'en-tête — en-tête perdu, plus aucun
+  slot n'ouvre rien.
+- **Le slot se prouve avant qu'on en dépende** : `--test-passphrase` entre l'ajout du slot et le
+  branchement du keyscript. Ce qui n'a pas été vérifié se découvre au redémarrage.
+- **Garde-fou après mise à jour de noyau** : le coût réel du module n'est pas cryptographique,
+  c'est le nombre de pièces dans le chemin d'amorçage. Chacune peut manquer après une
+  régénération d'initramfs, et le manque ne se voit qu'au démarrage suivant.
 - **Récupération catastrophe** : conserver hors-site (gestionnaire de mots de passe) la passphrase,
   le **sel de déploiement** et les secrets de sauvegarde — sans le sel, pas de re-dérivation sur matériel neuf.
 - Aucune destruction automatique : ajout de slot explicite, clés en tmpfs.
