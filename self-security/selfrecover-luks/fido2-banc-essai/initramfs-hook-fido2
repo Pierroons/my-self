@@ -1,0 +1,37 @@
+#!/bin/sh
+# Hook initramfs-tools — embarque le necessaire au deverrouillage FIDO2 de la racine.
+# Destination : /etc/initramfs-tools/hooks/fido2
+#
+# PIEGE CENTRAL : le greffon libcryptsetup-token-systemd-fido2.so ne LIE PAS
+# libfido2. C'est libsystemd-shared qui la charge par dlopen a l'execution.
+# `ldd` ne la voit donc pas, et copy_exec ne la tire pas. Il faut la copier
+# explicitement — meme classe de piege que libgcc_s.so.1 pour Argon2id.
+PREREQ="cryptroot"
+prereqs() { echo "$PREREQ"; }
+case "${1:-}" in prereqs) prereqs; exit 0 ;; esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+LIBDIR=/usr/lib/x86_64-linux-gnu
+
+# 1. Le greffon de token externe. copy_exec preserve le chemin, donc il
+#    atterrit dans le repertoire ou cryptsetup ira le chercher.
+copy_exec "$LIBDIR/cryptsetup/libcryptsetup-token-systemd-fido2.so"
+
+# 2. libfido2 et sa dependance libcbor — INVISIBLES a ldd (cf. en-tete).
+for _L in "$LIBDIR/libfido2.so.1" "$LIBDIR/libcbor.so.0.10"; do
+  [ -e "$_L" ] && copy_exec "$_L"
+done
+
+# 3. Regle udev qui identifie les cles FIDO parmi les peripheriques hidraw.
+if [ -e /usr/lib/udev/rules.d/60-fido-id.rules ]; then
+  mkdir -p "$DESTDIR/usr/lib/udev/rules.d"
+  cp -a /usr/lib/udev/rules.d/60-fido-id.rules "$DESTDIR/usr/lib/udev/rules.d/"
+  [ -x /usr/lib/udev/fido_id ] && copy_exec /usr/lib/udev/fido_id
+fi
+
+# 4. Modules HID. Deja presents si MODULES=most, mais on ne suppose pas :
+#    en MODULES=dep ils manqueraient et la cle ne serait jamais enumeree.
+for _M in hid usbhid hid-generic; do
+  manual_add_modules "$_M"
+done

@@ -15,11 +15,13 @@ INITRD="/boot/initrd.img-$VER"
 [ -f "$INITRD" ] || exit 0
 grep -q "keyscript=.*selfrecover" /etc/crypttab 2>/dev/null || exit 0   # module non actif
 
-# `lsinitramfs | grep -q` : grep s'arrete au premier match, lsinitramfs recoit un
-# SIGPIPE. Sans `set -o pipefail`, le pipeline rend le code de grep et le test est
-# juste. NE PAS ajouter pipefail a ce script : le test s'inverserait en silence, et
-# un initramfs incomplet passerait pour complet. Ce mecanisme exact a deja retourne
-# un controle d'exclusion tar pendant ce deploiement.
+# AVERTISSEMENT — NE PAS ajouter `set -o pipefail` a ce script.
+# La boucle ci-dessous fait `lsinitramfs | grep -q`. Quand grep -q trouve, il
+# s'arrete aussitot et lsinitramfs prend un SIGPIPE. Sous pipefail, le pipeline
+# rendrait donc l'echec de l'amont au lieu du succes de grep : le test
+# s'inverserait en silence, et le garde-fou declarerait "absent" une piece
+# presente. Ce piege s'est produit lors du deploiement, sur un controle
+# d'exclusion tar. Avec `set -e` seul, le pipeline rend le code de grep : correct.
 MANQUE=""
 for piece in \
   "selfkeyguard/selfrecover_derive_c:binaire de derivation" \

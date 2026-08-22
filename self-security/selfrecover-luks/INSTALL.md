@@ -89,7 +89,7 @@ s'accordent pas.**
 
 ## 2. Générer le sel de déploiement
 
-Sel **unique** à ta machine, indispensable à toute dérivation (à **sauvegarder hors-site**, cf. §12).
+Sel **unique** à ta machine, indispensable à toute dérivation (à **sauvegarder hors-site**, cf. §13).
 
 ```bash
 # od et non xxd : depuis Debian 13, xxd est un paquet distinct, absent aussi bien
@@ -209,9 +209,33 @@ un environnement plus contraint. Ne fige pas `--pbkdf-memory` pour autant : le f
 
 ---
 
-## 7. Volume racine — keyscript + accès distant (dropbear)
+## 7. Deux parcours — choisis le tien
 
-### 7a. Référencer le keyscript dans `/etc/crypttab`
+Tout ce qui précède est commun : la dérivation, le sel, le slot recover et sa
+vérification ne dépendent pas de la machine. **Ce qui suit diverge.**
+
+| | **Parcours SERVEUR** | **Parcours POSTE DE TRAVAIL** |
+|---|---|---|
+| Qui tape la passphrase | personne sur place → **SSH d'amorçage** | toi, au clavier |
+| Volumes secondaires | fréquents → **cascade par fichier-clé** | souvent aucun |
+| Paquet `dropbear-initramfs` | requis | **inutile** |
+| Surface exposée au démarrage | un serveur SSH dans l'initramfs | aucune |
+| Sections à suivre | **§8 en entier**, puis §9 | **§8a seulement**, puis saute §9 |
+
+Le parcours poste est le plus court : le clavier étant devant la machine, tout
+l'appareillage d'accès distant disparaît — et avec lui deux des trois pièges que ce
+guide documente.
+
+> **Ne monte pas dropbear « au cas où » sur un poste.** C'est un serveur SSH qui
+> écoute avant que le disque soit déverrouillé, avec sa propre clé d'hôte et sa
+> propre surface. Sur une machine dont tu tapes la passphrase au clavier, il
+> n'apporte rien et ajoute tout.
+
+---
+
+## 8. Volume racine — le keyscript, et l'accès distant si tu en as besoin
+
+### 8a. Référencer le keyscript dans `/etc/crypttab` — **les deux parcours**
 
 Ajoute `keyscript=` aux options de la ligne du volume racine (garde `x-initrd.attach`) :
 
@@ -220,7 +244,7 @@ Ajoute `keyscript=` aux options de la ligne du volume racine (garde `x-initrd.at
 <root_name> UUID=<UUID-ROOT> none luks,discard,x-initrd.attach,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh
 ```
 
-### 7b. Accès SSH au démarrage (dropbear)
+### 8b. Accès SSH au démarrage (dropbear) — **parcours SERVEUR uniquement**
 
 ```bash
 # réseau dans l'initramfs
@@ -250,7 +274,7 @@ echo 'DROPBEAR_OPTIONS="-p 2222 -s -j -k -I 300"' > /etc/dropbear/initramfs/drop
 > update-grub
 > ```
 
-### 7c. (Optionnel) Prompt explicite côté dropbear
+### 8c. (Optionnel) Prompt explicite côté dropbear — **parcours SERVEUR**
 
 Par défaut `cryptroot-unlock` affiche « Please unlock disk ». Pour annoncer la recover :
 
@@ -260,7 +284,7 @@ sed -i 's|Please unlock disk $CRYPTTAB_NAME: |Passphrase Recover-LUKS ($CRYPTTAB
 # Cosmétique. Réécrit par une mise à jour du paquet cryptsetup -> à ré-appliquer le cas échéant.
 ```
 
-## 8. Volumes secondaires — cascade par fichier-clé
+## 9. Volumes secondaires — cascade par fichier-clé — **parcours SERVEUR**
 
 > **Piège n°3 — systemd-cryptsetup ignore `keyscript`.** Les volumes **non-racine** sont gérés
 > par `systemd-cryptsetup`, qui **ne supporte pas** le champ `keyscript` (seul le volume racine,
@@ -296,7 +320,7 @@ cryptsetup luksAddKey "$DATA_DEV" /etc/keys/<data>.key
 **Sécurité** : le fichier-clé est dans le coffre racine chiffré → disque volé = racine chiffrée
 = fichier-clé inaccessible. Il n'affaiblit pas la protection.
 
-## 9. Régénérer l'image d'amorçage (avec filet)
+## 10. Régénérer l'image d'amorçage (avec filet)
 
 ```bash
 cp -a /boot/initrd.img-$(uname -r) /boot/initrd.img-$(uname -r).bak    # FILET : retour arrière
@@ -330,13 +354,37 @@ Le module a rencontré ce motif deux fois — `libgcc_s.so.1`, tirée par la
 bibliothèque Argon2, et `libfido2.so.1`, que `libsystemd-shared` charge par `dlopen`
 précisément pour éviter une dépendance dure. Dans les deux cas, `ldd` ne montre rien.
 
+### Le symétrique : vérifier qu'un outil dont on dépend est bien là
+
+La règle ci-dessus dit de copier ce qu'`ldd` ne révèle pas. Son symétrique vaut
+autant : **avant de faire dépendre un script d'une commande, vérifier qu'elle existe
+là où le script tourne.**
+
+Le repli du keyscript coupe l'écho par `stty -echo 2>/dev/null`. Ce `2>/dev/null` est
+commode — et c'est exactement ce qui masquerait l'absence de `stty` : l'écho
+resterait actif et la passphrase s'afficherait, sans le moindre message. Vérifié :
+
+```bash
+lsinitramfs /boot/initrd.img-$(uname -r) | grep -E "bin/stty|bin/busybox"
+```
+
+`stty` est présent sous forme d'applet busybox dans un initramfs Debian standard. Le
+comportement est en outre dégradé proprement : hors terminal, `stty` échoue mais
+`read` aboutit quand même — on perd la coupure d'écho, pas la saisie.
+
+**Éprouve les chemins de repli en les EXÉCUTANT.** Un repli n'est emprunté que
+lorsque le chemin nominal a échoué, c'est-à-dire jamais pendant les essais. Ni
+`dash -n` ni `checkbashisms` ne voient une commande valide qui échoue à
+l'exécution — c'est ainsi qu'un `read -rs`, syntaxiquement irréprochable, a
+neutralisé ce repli sans qu'aucun contrôle ne bronche.
+
 **Règle : toute bibliothèque chargée dynamiquement se copie à la main dans le hook.**
 L'analyse des dépendances ne la révélera pas, et aucun test de construction ne la
 signalera. Le seul contrôle qui vaut est `lsinitramfs | grep`, sur l'image produite.
 
 ---
 
-## 10. Garde-fou — vérifier l'initramfs après chaque mise à jour de noyau
+## 11. Garde-fou — vérifier l'initramfs après chaque mise à jour de noyau
 
 Le coût réel de ce module n'est pas cryptographique : c'est le **nombre de pièces
 dans le chemin d'amorçage**. Chaque pièce ajoutée est une pièce qui peut manquer
@@ -365,7 +413,22 @@ ce qui manque.
 
 ---
 
-## 11. Test au redémarrage
+## 12. Test au redémarrage
+
+### Parcours POSTE DE TRAVAIL
+
+```bash
+reboot
+```
+
+À l'écran : `Passphrase Recover-LUKS (<root_name>) :`. Saisis la passphrase recover —
+**dans la forme exacte que tu as enrôlée** (§5). La racine s'ouvre, le démarrage
+continue.
+
+Rien d'autre à faire : pas de fenêtre réseau à attendre, pas de volume secondaire à
+surveiller.
+
+### Parcours SERVEUR
 
 ```bash
 reboot
@@ -376,8 +439,10 @@ cryptroot-unlock        # -> saisis la PASSPHRASE RECOVER
 # Le(s) volume(s) secondaire(s) s'ouvre(nt) automatiquement via le fichier-clé.
 ```
 
-**Filet anti-verrouillage** : si le keyscript échoue, ouvre la racine au slot **natif** sans
-passer par lui — dans le shell dropbear :
+### Filet anti-verrouillage — les deux parcours
+
+Si le keyscript échoue, ouvre la racine au slot **natif** sans passer par lui : au
+clavier sur un poste, dans le shell dropbear sur un serveur.
 
 ```bash
 cryptsetup open "$ROOT_DEV" <root_name>   # -> passphrase native -> exit -> le boot continue
@@ -385,7 +450,12 @@ cryptsetup open "$ROOT_DEV" <root_name>   # -> passphrase native -> exit -> le b
 
 En dernier recours : remets l'image `.bak` (`mv …​.bak …`) depuis un live/secours.
 
-## 12. Récupération après catastrophe — secrets HORS-SITE
+> **Prépare ce filet avant d'en avoir besoin.** Sur un poste, une entrée de secours
+> dans le chargeur d'amorçage, pointant sur l'initrd `.bak`, évite d'aller chercher
+> une clé USB live à froid. Elle fige en revanche une version de noyau : à retirer
+> après la première mise à jour, sinon elle devient trompeuse plutôt qu'utile.
+
+## 13. Récupération après catastrophe — secrets HORS-SITE
 
 Pour tout reconstruire après destruction du matériel, conserve dans un **gestionnaire de mots
 de passe** (pas sur la machine) :
@@ -399,15 +469,15 @@ de passe** (pas sur la machine) :
 > Le `selfrecover_salt` est le point le plus oublié : **sans lui hors-site, la passphrase seule
 > ne suffit pas** à régénérer les clés.
 
-## 13. Dépannage
+## 14. Dépannage
 
 | Symptôme | Cause | Remède |
 |----------|-------|--------|
 | `libgcc_s.so.1 must be installed for pthread_exit` → `Aborted` | libgcc absente de l'initramfs | le hook doit la copier (§3) ; régénère l'initramfs |
-| `gave up waiting for root file system device` | délai trop court | `rootdelay=60` (§7b) |
-| Prompt natif « Please unlock disk » sur un volume **secondaire** | systemd-cryptsetup ignore le keyscript | passe ce volume en **fichier-clé** (§8) |
-| Le boot bloque sur un volume secondaire | `x-initrd.attach` + échec | retire `x-initrd.attach` ; fichier-clé post-pivot (§8) |
-| `bad password` alors que la passphrase est juste | binaire/sel/lib manquant dans l'initramfs | vérifie `lsinitramfs` (§9) |
+| `gave up waiting for root file system device` | délai trop court | `rootdelay=60` (§8b) |
+| Prompt natif « Please unlock disk » sur un volume **secondaire** | systemd-cryptsetup ignore le keyscript | passe ce volume en **fichier-clé** (§11) |
+| Le boot bloque sur un volume secondaire | `x-initrd.attach` + échec | retire `x-initrd.attach` ; fichier-clé post-pivot (§11) |
+| `bad password` alors que la passphrase est juste | binaire/sel/lib manquant dans l'initramfs | vérifie `lsinitramfs` (§11) |
 
 ---
 
@@ -420,6 +490,6 @@ de passe** (pas sur la machine) :
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript |
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS |
 | `selfrecover_derive.py` | implémentation de référence (Python) pour usage userspace |
-| `kernel-postinst-verifie-selfrecover` | garde-fou : vérifie les six pièces de l'initramfs après chaque mise à jour de noyau (§10) |
+| `kernel-postinst-verifie-selfrecover` | garde-fou : vérifie les six pièces de l'initramfs après chaque mise à jour de noyau (§11) |
 
 *SelfRecover-LUKS — MySelf / Self-Security — AGPL-3.0-or-later.*
