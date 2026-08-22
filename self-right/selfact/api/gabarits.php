@@ -86,6 +86,11 @@ foreach ($table['gabarits'] as $cle => $g) {
     $sortie[$cle] = [
         'label'     => $g['label'] ?? $cle,
         'officiels' => $resolus,
+        // Les champs viennent de la table, et la table est confrontée au document
+        // réel par le garde-fou : l'outil MCP les écrivait à la main, les mêmes
+        // pour les sept, dont un qui n'existait que dans la mise en demeure.
+        'champs'    => $g['champs'] ?? [],
+        'date_prerenseignee' => (bool) ($g['date_prerenseignee'] ?? false),
         'reserve'   => $g['reserve'] ?? null,
     ];
     if ($inconnus) {

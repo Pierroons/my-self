@@ -95,6 +95,64 @@ for cible in "gabarits.php?type=zzz_inexistant" "draft.php?type=zzz_inexistant";
 done
 
 echo
+echo "▸ Les champs annoncés sont ceux que le document porte"
+# 🔑 L'outil MCP annonçait les mêmes quatre champs pour les sept gabarits, dont
+# « action demandée » — qui n'existe que dans la mise en demeure. Six documents
+# sur sept sont un squelette identique à deux lignes près, et rien ne le disait.
+# Mesuré le 22/08/2026 par un contrôle extérieur, en ouvrant les sept.
+#
+# Ce cas confronte la table au document RÉEL : il relève les crochets que
+# `draft.php` rend, et vérifie que la déclaration ne promet ni plus ni moins.
+# Une table peut mentir ; elle ne peut pas mentir longtemps.
+# ⚠️ Toute la comparaison se fait en Python : `grep -oE` sur un intervalle
+# accentué (« À-ÿ ») échoue en UTF-8 — « Fin d'intervalle invalide » — et rendait
+# une liste VIDE, donc un écart maximal et faux. `comm`, lui, exige deux tris de
+# la même collation, que Python et le shell ne partagent pas. Deux outils, deux
+# pièges, aucun bruit : le cas rougissait pour une raison qui n'était pas la
+# sienne.
+ecarts=$(python3 - "$BASE" <<'PYEOF'
+import json, re, sys, urllib.request
+
+base = sys.argv[1]
+def lire(chemin):
+    with urllib.request.urlopen(base + chemin, timeout=20) as r:
+        return r.read().decode("utf-8", "replace")
+
+types = list(json.loads(lire("/gabarits.php"))["gabarits"])
+crochet = re.compile(r"\[[^\[\]]{3,40}\]")
+ecarts = []
+for t in types:
+    reels = {c for c in crochet.findall(lire(f"/draft.php?type={t}"))}
+    g = json.loads(lire(f"/gabarits.php?type={t}"))["gabarits"][t]
+    declares = set(crochet.findall(" ".join(g.get("champs") or [])))
+    manque, invente = sorted(reels - declares), sorted(declares - reels)
+    if manque or invente:
+        ecarts.append(f"    {t} — non annoncé : {manque or '—'} · "
+                      f"annoncé mais absent : {invente or '—'}")
+print("\n".join(ecarts))
+PYEOF
+)
+if [ -z "$ecarts" ]; then
+    ok "les sept gabarits déclarent exactement leurs crochets"
+else
+    nok "écart entre ce qui est annoncé et ce que le document porte :
+$ecarts"
+fi
+
+# 🔑 Et le contrôle qui donne son sens au précédent : la mise en demeure DOIT
+# être la seule à porter « Action demandée ». Sans ce cas, une table qui
+# déclarerait les mêmes champs partout passerait le contrôle ci-dessus le jour
+# où quelqu'un ajouterait le crochet aux sept documents.
+avec=0
+for type in mise_en_demeure saisine_conciliateur plainte_simple saisine_defenseur \
+            recours_gracieux resiliation document; do
+    curl -s "$BASE/draft.php?type=$type" | grep -q "Action demandée" && avec=$((avec + 1))
+done
+[ "$avec" -eq 1 ] \
+    && ok "« Action demandée » n'est dans qu'un seul document sur sept" \
+    || nok "« Action demandée » dans $avec document(s) — la déclaration doit suivre"
+
+echo
 echo "▸ Un renvoi mort ne se tait pas"
 # 🔑 On en fabrique un : sans cette épreuve, le premier contrôle serait vert
 # parce que la table est juste aujourd'hui, pas parce que le code sait détecter.

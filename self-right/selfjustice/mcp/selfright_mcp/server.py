@@ -274,9 +274,20 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
     synchro = _format_fr(date_synchro)
 
     if date_synchro >= echeance:
+        # 🔑 **« Synchronisation à jour » se lisait « données à jour ».** La
+        # formule était vraie au sens de la cadence — le cron a tourné quand il
+        # devait — et fausse au sens que tout lecteur lui donne. Un contrôle
+        # extérieur l'a relevé le 22/08/2026 : elle s'affichait en tête de
+        # réponses servant des arrêts du 10 août, au-dessus d'une borne annoncée
+        # au 5. Ce que la phrase certifie, c'est le passage du cron ; ce que le
+        # lecteur en retient, c'est la fraîcheur du contenu. Les deux se
+        # séparent, et c'est le contenu qui décide de ce qu'on peut affirmer.
+        #
+        # Elle dit donc maintenant ce qu'elle sait : la cadence est tenue, et
+        # voici l'âge de ce qui est servi. Le lecteur tranche.
         return (
-            f"Base {base} synchronisée le {synchro} · contenu : "
-            f"{contenu}{vieillesse} — synchronisation à jour.",
+            f"Base {base} synchronisée le {synchro} — cadence tenue · "
+            f"contenu : {contenu}{vieillesse}.",
             False,
         )
 
@@ -1858,6 +1869,58 @@ async def catalogue_actes(
     )
 
 
+def _formater_prescription(presc: Any) -> str:
+    """Rend le délai de prescription en français, quelle que soit sa forme.
+
+    🔑 Le délai sortait en `repr` Python — « {'duree_mois': 12, 'article': 'art.
+    L1471-1 al. 2 du code du travail', … } » — sur les trois seules situations
+    qui en portent un. Un contrôle extérieur l'a relevé le 22/08/2026, en notant
+    ce qui rend le défaut sérieux : c'est l'information dont ce module dit
+    lui-même qu'« un délai manqué ne se rattrape pas ».
+
+    Le remède était déjà écrit six lignes plus haut, pour `articles` : « Type
+    vérifié, pas supposé. » Il n'avait pas été appliqué au voisin.
+
+    Deux formes existent dans les données, et rien ne garantit qu'il n'y en aura
+    pas une troisième — d'où le repli qui rend les paires telles quelles plutôt
+    que de perdre l'information.
+    """
+    if not presc:
+        return ""
+    if isinstance(presc, str):
+        return f"\n\n⚠️ Prescription : {presc.strip()}"
+    if not isinstance(presc, dict):
+        return f"\n\n⚠️ Prescription : {presc}"
+
+    # Forme datée : une durée, son fondement, son point de départ.
+    duree = None
+    if presc.get("duree_mois"):
+        n = presc["duree_mois"]
+        duree = f"{n} mois"
+    elif presc.get("duree_annees"):
+        n = presc["duree_annees"]
+        duree = f"{n} an{'s' if n > 1 else ''}"
+    if duree:
+        lignes = [f"\n\n⚠️ Prescription : {duree}"]
+        if presc.get("point_de_depart"):
+            lignes.append(f" à compter de : {presc['point_de_depart']}")
+        if presc.get("article"):
+            lignes.append(f"\n   Fondement : {presc['article']}")
+        if presc.get("texte"):
+            lignes.append(f"\n   « {str(presc['texte']).strip()} »")
+        lignes.append("\n   Un délai manqué ne se rattrape pas : vérifie le point de "
+                      "départ dans le cas de l'utilisateur avant de conclure.")
+        return "".join(lignes)
+
+    # Forme par gravité : plusieurs délais, un par qualification.
+    lignes = ["\n\n⚠️ Prescription, selon la qualification des faits :"]
+    for cle, valeur in presc.items():
+        lignes.append(f"\n   · {str(cle).replace('_', ' ')} : {valeur}")
+    lignes.append("\n   La qualification n'est pas connue ici : ne choisis pas le délai "
+                  "à la place de l'utilisateur, donne-les et dis ce qui les sépare.")
+    return "".join(lignes)
+
+
 @server.tool()
 async def actes_pour_situation(situation: str | None = None) -> str:
     """Quelles démarches officielles existent pour une situation donnée.
@@ -1921,8 +1984,7 @@ async def actes_pour_situation(situation: str | None = None) -> str:
             f"  · {a if isinstance(a, str) else a.get('reference') or a.get('label') or a}"
             for a in articles[:10]
         )
-    presc = data.get("prescription")
-    bloc_presc = f"\n\n⚠️ Prescription : {presc}" if presc else ""
+    bloc_presc = _formater_prescription(data.get("prescription"))
     urgence = data.get("urgency")
 
     return (
@@ -2138,17 +2200,33 @@ async def gabarit_document(type_document: str | None = None) -> str:
               f"catalogue : {', '.join(perdus)}. La liste ci-dessus est donc "
               f"incomplète.)\n\n") if perdus else ""
 
+    # 🔑 **Les champs viennent du gabarit, plus d'une liste écrite ici.** Les
+    # mêmes quatre étaient annoncés pour les sept, dont « action demandée » —
+    # présent dans un seul, la mise en demeure. Un contrôle extérieur l'a mesuré
+    # le 22/08/2026 en ouvrant les sept documents : six sont un squelette
+    # identique à deux lignes près, et l'outil promettait la même chose pour
+    # tous. Une description qui ne vient pas de ce qu'elle décrit finit toujours
+    # par le démentir.
+    liste_champs = g.get("champs") or []
+    if liste_champs:
+        champs = ("Champs laissés à compléter par la personne concernée :\n"
+                  + "\n".join(f"  · {c}" for c in liste_champs) + "\n\n")
+    else:
+        champs = ("L'instance ne déclare pas les champs de ce gabarit : ouvre-le "
+                  "pour voir ce qu'il attend, ne les devine pas.\n\n")
+    # La date n'est pas un champ : le document la porte au jour où il est produit.
+    # L'annoncer « à compléter » envoyait chercher un trou qui n'existe pas.
+    if g.get("date_prerenseignee"):
+        champs += ("La date est pré-remplie au jour de la génération — dis-le à "
+                   "l'utilisateur s'il imprime aujourd'hui pour envoyer plus tard.\n\n")
+
     url = f"{ACT_URL}/draft.php?type={urllib.parse.quote(cle)}"
     return (
         f"Gabarit « {g.get('label', cle)} »\n\n"
         f"{bloc}{reserve}{manque}"
         f"Gabarit à trous, à ouvrir dans un navigateur puis imprimer en PDF :\n"
         f"  {url}\n\n"
-        "Champs laissés à compléter par la personne concernée :\n"
-        "  · identité et adresse de l'expéditeur et du destinataire\n"
-        "  · objet du courrier et action demandée\n"
-        "  · chronologie des faits\n"
-        "  · lieu, date et signature\n\n"
+        f"{champs}"
         "⚠️ Ne recopie pas ce gabarit de mémoire et ne le reconstitue pas : "
         "donne l'adresse. Le document porte une mention « non officiel » qui ne "
         "survivrait pas à une restitution en texte, et une version approximative "

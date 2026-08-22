@@ -1337,7 +1337,23 @@ if ($segments[0] === 'jurisprudence') {
                 ? ($homonymes ? "Les " . count($homonymes) . " autre(s) décision(s) "
                     . "portant ce numéro à d'autres dates ne sont pas celle-ci : un "
                     . "rôle général n'est unique qu'au sein d'une cour. Voir "
-                    . "« homonymes »." : null)
+                    . "« homonymes »."
+                // 🔑 **Une liste sans date est une liste bornée qui l'ignore.**
+                // Sans date annoncée, la sonde amont ne part pas — elle n'a rien
+                // sur quoi interroger — et la réponse rend les seules décisions
+                // que l'index local connaît. Elle était alors muette : un
+                // contrôle extérieur a mesuré le 22/08/2026 que « 24/00627 »
+                // rendait 26 homonymes, la plus récente de mai, sans que rien ne
+                // dise que celle d'août ne pouvait pas y être.
+                //
+                // Trouver n'exonère pas de dire jusqu'où on a cherché.
+                : ($date_annoncee === null && $arret !== null
+                    ? "Cette liste vient du seul index local, arrêté au $arret. Une "
+                    . "décision portant ce numéro à une date postérieure n'y figure "
+                    . "pas et n'apparaîtra pas ci-dessus. Rappelle l'outil avec la "
+                    . "date de la décision cherchée : elle déclenche l'interrogation "
+                    . "de la base amont, qui va plus loin."
+                    : null))
                 : ($homonymes ? "Ce numéro existe — " . count($homonymes)
                     . " décision(s) le portent — mais aucune n'est datée du "
                     . "$date_annoncee. Un rôle général n'est unique qu'au sein d'une "

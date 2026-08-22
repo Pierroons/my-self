@@ -97,11 +97,17 @@ jobs:
       - name: Garde-fou — la sonde amont de la vérification de référence
         run: bash self-right/selfjustice/tests/test_sonde_amont.sh
 
+      - name: Garde-fou — une fenêtre de moisson récente n'est jamais complète
+        run: python3 self-right/selfjustice/tests/test_sedimentation.py
+
       - name: Garde-fou — un numéro d'article qui a changé de contenu
         run: bash self-right/selfjustice/tests/test_renvoi_article.sh
 
       - name: Garde-fou — le pont vers les démarches officielles
         run: bash self-right/selfact/tests/test_gabarits_officiels.sh
+
+      - name: Garde-fou — le délai de prescription se lit, il ne se sérialise pas
+        run: python3 self-right/selfjustice/tests/sanity_prescription.py
 
       - name: Garde-fou — ce que le déploiement de l'arbre emporte
         run: bash deploy/my-self/tests/test_deploy.sh

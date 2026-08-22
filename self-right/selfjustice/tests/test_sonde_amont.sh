@@ -203,6 +203,24 @@ controle "homonymes locaux, date couverte, aucune correspondance → absente" \
     "etat:absente" "reserve:~aucune n'est datée du 2025-06-01"
 
 echo
+echo "▸ Sans date, la liste dit jusqu'où elle a cherché"
+# 🔑 Mesuré en production le 22/08/2026 : « 24/00627 » sans date rendait 26
+# homonymes, le plus récent de mai, sans un mot sur le fait que l'index s'arrête
+# en août et qu'une décision postérieure ne pouvait pas y figurer. Trouver
+# n'exonère pas de dire jusqu'où on a cherché.
+controle "trouvée sans date → la borne de l'index est nommée" \
+    "23%2F03077?jurisdiction=ca" \
+    "etat:trouvee" "source:index local" "reserve:~arrêté au"
+controle "trouvée sans date → l'outil dit comment aller plus loin" \
+    "23%2F03077?jurisdiction=ca" \
+    "reserve:~Rappelle l'outil avec la date"
+# Avec une date, cette réserve-là n'a plus lieu d'être : la sonde a fait son
+# travail et la réponse porte sa propre explication.
+controle "trouvée AVEC date → pas de réserve de borne, celle de l'amont suffit" \
+    "23%2F03077?jurisdiction=ca&date=2026-08-12" \
+    "etat:trouvee" "reserve:~c'est l'index qui est en retard"
+
+echo
 echo "▸ La décision rendue par l'amont est complète"
 # Sur le JSON décodé : `json_encode` échappe les slashes, et « 23/03077 » ne se
 # trouve pas tel quel dans le corps brut.

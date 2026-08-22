@@ -91,15 +91,21 @@ def main() -> int:
     cas = [
         # 🔑 Le cas de la fausse alerte : la synchronisation du 15 a tourné, le
         # contenu porte la date du dernier diff de l'amont, antérieure.
+        # 🔑 Ce que la ligne certifie, c'est la CADENCE, jamais la fraîcheur du
+        # contenu. Elle disait « synchronisation à jour », que tout lecteur lit
+        # « données à jour » — relevé par un contrôle extérieur le 22/08/2026,
+        # affiché au-dessus d'arrêts plus récents que la borne annoncée. Les
+        # deux notions sont donc séparées dans la phrase, et « à jour » sous sa
+        # forme affirmative est interdit ici comme il l'est plus bas.
         ({"last_update": "14 août 2026", "last_sync": "2026-08-15"},
-         False, ["synchronisée le 15 août 2026", "contenu : 14 août 2026 (7 jours)",
-          "synchronisation à jour"],
-         ["RETARD", "⚠️"],
-         "synchro à l'échéance, contenu d'amont antérieur → silence"),
+         False, ["synchronisée le 15 août 2026", "cadence tenue",
+                 "contenu : 14 août 2026 (7 jours)"],
+         ["RETARD", "⚠️", "synchronisation à jour", "à jour."],
+         "synchro à l'échéance, contenu d'amont antérieur → cadence dite, contenu daté"),
 
         ({"last_update": "14 août 2026", "last_sync": "2026-08-21"},
-         False, ["synchronisation à jour"], ["RETARD"],
-         "synchro du jour même → silence"),
+         False, ["cadence tenue"], ["RETARD", "synchronisation à jour"],
+         "synchro du jour même → cadence dite, aucune promesse sur le contenu"),
 
         # Le cron n'a pas tourné le 15 : là, le retard est réel.
         ({"last_update": "14 août 2026", "last_sync": "2026-08-01"},

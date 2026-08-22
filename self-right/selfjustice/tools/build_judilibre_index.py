@@ -24,7 +24,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 BASE = "https://api.piste.gouv.fr/cassation/judilibre/v1.0"
 # Les deux chemins se surchargent par l'environnement : sur le serveur, la clé
@@ -55,6 +55,35 @@ FENETRE_MAX = 10000
 # module répondrait « inexistante » à une décision pourtant présente en base.
 DATE_DEBUT = "0100-01-01"
 DATE_FIN = "2027-12-31"
+
+# 🔑 **Une fenêtre récente n'est jamais complète.** Judilibre publie une décision
+# de cour d'appel douze jours après qu'elle a été rendue, en médiane, et jusqu'à
+# soixante-douze. Mesuré le 22/08/2026 sur 25 215 décisions de 2026 : 76 % entre
+# 7 et 14 jours, 21 % entre 15 et 29, une seule sous 7 jours.
+#
+# Moissonner une fenêtre qui se termine aujourd'hui, puis l'inscrire comme faite,
+# revient donc à graver un trou. Le passage du 15/08/2026 l'a fait : il a demandé
+# 2026-06-30 → 2026-08-15, reçu 7 160 décisions dont la plus récente datait du
+# 5 août, et clos la fenêtre. Les décisions du 6 au 15, publiées depuis, ne
+# seraient jamais revenues — l'index se serait arrêté au 5 août pour toujours.
+#
+# Le script l'avait pourtant crié le jour même : « Aucune decision ajoutee.
+# Verifier la fenetre de reprise. » L'alerte est partie, personne ne l'a lue.
+#
+# Soixante jours couvrent 99,8 % des publications observées. En deçà, une fenêtre
+# se remoissonne à chaque passage : `INSERT OR REPLACE` rend l'opération
+# idempotente, le seul coût est le temps de la retélécharger.
+SEDIMENTATION = 60
+
+
+def fenetre_definitive(fin: str) -> bool:
+    """La fenêtre est-elle assez ancienne pour que l'amont l'ait publiée en entier ?"""
+    try:
+        return (date.today() - datetime.strptime(fin, "%Y-%m-%d").date()).days >= SEDIMENTATION
+    except ValueError:
+        # Une borne illisible ne se déclare pas définitive : la refaire coûte du
+        # temps, la clore à tort coûte des décisions.
+        return False
 
 
 def cle():
@@ -245,9 +274,12 @@ def moissonner_intervalle(conn, juri, debut, fin, etat):
 
     total = d.get("total") or 0
     if total == 0:
-        conn.execute("INSERT OR REPLACE INTO intervalles_faits VALUES (?,?,?,?,?)",
-                     (juri, debut, fin, 0, datetime.now(timezone.utc).isoformat()))
-        conn.commit()
+        # Une fenêtre vide et récente ne prouve rien : l'amont n'a peut-être pas
+        # encore publié. Vide et ancienne, elle est vide pour de bon.
+        if fenetre_definitive(fin):
+            conn.execute("INSERT OR REPLACE INTO intervalles_faits VALUES (?,?,?,?,?)",
+                         (juri, debut, fin, 0, datetime.now(timezone.utc).isoformat()))
+            conn.commit()
         return True
 
     if total > FENETRE_MAX:
@@ -280,9 +312,10 @@ def moissonner_intervalle(conn, juri, debut, fin, etat):
             break
         lot += 1
 
-    conn.execute("INSERT OR REPLACE INTO intervalles_faits VALUES (?,?,?,?,?)",
-                 (juri, debut, fin, recus, datetime.now(timezone.utc).isoformat()))
-    conn.commit()
+    if fenetre_definitive(fin):
+        conn.execute("INSERT OR REPLACE INTO intervalles_faits VALUES (?,?,?,?,?)",
+                     (juri, debut, fin, recus, datetime.now(timezone.utc).isoformat()))
+        conn.commit()
 
     etat["recus"] += recus
     etat["tranches"] += 1
@@ -298,6 +331,19 @@ def moissonner(conn, juri):
     stats = appel("stats", {"jurisdiction": juri})
     total = (stats or {}).get("results", {}).get("total_decisions", 0)
     journal(f"{juri} : {total:,} décisions annoncées".replace(",", " "))
+
+    # 🔑 Les fenêtres closes avant leur sédimentation sont rouvertes. Sans cette
+    # purge, le correctif ne vaudrait que pour l'avenir : celles déjà inscrites
+    # resteraient « faites » à jamais, avec leur trou. Deux existaient le
+    # 22/08/2026, posées le 15 — d'où l'index arrêté au 5 août.
+    rouvertes = conn.execute(
+        "DELETE FROM intervalles_faits WHERE jurisdiction=? AND "
+        "julianday(substr(maj,1,10)) - julianday(date_fin) < ?",
+        (juri, SEDIMENTATION)).rowcount
+    if rouvertes:
+        conn.commit()
+        journal(f"{juri} : {rouvertes} tranche(s) rouverte(s) — closes avant que "
+                f"l'amont n'ait fini de publier")
 
     deja = conn.execute(
         "SELECT COUNT(*) FROM intervalles_faits WHERE jurisdiction=?",
