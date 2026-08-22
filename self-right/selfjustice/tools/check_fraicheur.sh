@@ -124,6 +124,32 @@ try:
 except Exception as e:
     erreurs.append(f"/act/api/catalog injoignable ({type(e).__name__})")
 
+# 🔑 **Un renvoi peut mourir sans que rien ne change de date.** Le rapprochement
+# gabarit → ressource officielle est curé à la main contre le catalogue d'un
+# jour donné ; celui-ci se resynchronise les 1er et 15, et une ressource retirée
+# par l'administration laisse un renvoi vers rien. Mesuré le 22/08/2026 :
+# R48318 « Demande de conciliation » figurait au catalogue du 3 août, plus à
+# celui du 21.
+#
+# Le banc du dépôt ne peut pas voir cette dérive — il mesure contre la copie
+# versionnée du catalogue, qui est justement celle d'avant. Seule une sonde qui
+# interroge l'instance le peut, et c'est ici. La route nomme déjà les
+# identifiants qu'elle ne résout plus : il suffit de les lire.
+try:
+    orphelins = {
+        cle: g["inconnus"]
+        for cle, g in (lire(f"{ACT}/gabarits").get("gabarits") or {}).items()
+        if g.get("inconnus")
+    }
+    if orphelins:
+        detail = "; ".join(f"{c} → {', '.join(ids)}" for c, ids in sorted(orphelins.items()))
+        erreurs.append(
+            f"renvois officiels morts dans data/gabarits.json ({detail}) : "
+            "la démarche paraît sans équivalent officiel alors qu'elle en a"
+        )
+except Exception as e:
+    erreurs.append(f"/act/api/gabarits injoignable ({type(e).__name__})")
+
 today = dt.date.today()
 attendu = derniere_echeance(today)
 retards, lignes = [], []

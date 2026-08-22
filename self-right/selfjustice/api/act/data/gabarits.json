@@ -3,7 +3,7 @@
     "version": "2026.08",
     "last_update": "2026-08-22",
     "source": "service-public.gouv.fr (Etalab 2.0) — rapprochement MANUEL",
-    "comment": "Rapprochement gabarit → ressource officielle. Curation À LA MAIN, comme situations.json et pour la même raison : un rapprochement par mots-clés rend « attestation sur l'honneur » pour « conciliateur » et rien du tout pour « Défenseur des droits ». Un renvoi juridique deviné est pire que pas de renvoi. Les identifiants sont ceux de service-public (R<nombre>), résolus au catalogue à l'exécution : ni le libellé ni l'URL ne sont recopiés ici, ils vieilliraient à part.",
+    "comment": "R48318 « Demande de conciliation » a été retiré le 22/08/2026 : il figurait au catalogue du 3 août et plus à celui du 21. Une ressource officielle peut disparaître entre deux synchronisations, et c'est la route qui l'a signalé sous « inconnus » — le banc, lui, mesure contre la copie versionnée du catalogue et ne peut pas voir cette dérive. Rapprochement gabarit → ressource officielle. Curation À LA MAIN, comme situations.json et pour la même raison : un rapprochement par mots-clés rend « attestation sur l'honneur » pour « conciliateur » et rien du tout pour « Défenseur des droits ». Un renvoi juridique deviné est pire que pas de renvoi. Les identifiants sont ceux de service-public (R<nombre>), résolus au catalogue à l'exécution : ni le libellé ni l'URL ne sont recopiés ici, ils vieilliraient à part.",
     "mention": "SelfAct est indépendant et n'est affilié à aucun organisme public. Les formulaires et démarches officiels sont disponibles gratuitement sur service-public.gouv.fr : cet outil n'est jamais nécessaire pour y accéder."
   },
   "gabarits": {
@@ -20,7 +20,6 @@
       "label": "Saisine du conciliateur de justice",
       "officiels": [
         { "id": "R73714", "quand": "saisine d'un conciliateur de justice — formulaire officiel" },
-        { "id": "R48318", "quand": "demande de conciliation" },
         { "id": "R42340", "quand": "locataire, litige avec le bailleur : commission départementale de conciliation" },
         { "id": "R11457", "quand": "propriétaire, litige avec le locataire : même commission" }
       ],
