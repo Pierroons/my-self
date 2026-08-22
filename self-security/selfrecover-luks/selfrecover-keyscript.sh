@@ -36,12 +36,15 @@ else
   printf '\n' >&2
 fi
 
-# --format hex, et NON raw. La cle brute fait 32 octets ; chacun a 1 chance sur 256
-# de valoir 0x0A. Or cryptsetup lit une cle sur STDIN « up to the first newline
-# character » (cryptsetup(8), Passphrase processing) alors qu'il lit un FICHIER en
-# entier. Le keyscript ecrit sur stdout -> le script Debian passe --key-file=- ->
-# stdin : une cle brute contenant un 0x0A serait tronquee au demarrage, alors que
-# l'enrolement, qui passe par un fichier, l'aurait acceptee entiere. 11,8 % des
-# cles sont dans ce cas. L'hexadecimal ne peut pas contenir 0x0A : les deux
-# chemins lisent alors la meme chose.
+# --format hex, pour la PORTABILITE. Le demarrage Debian passe toujours par
+# --key-file=-, qui est une lecture de keyfile : le flux est lu en entier, sauts de
+# ligne compris. Une cle brute y passe donc sans dommage. Mais une cle lue en tant
+# que PASSPHRASE — sans --key-file — s'arrete au premier 0x0A, et 11,8 % des cles
+# brutes de 32 octets en contiennent un. L'hex survit aux deux lectures : secours
+# tape a la main, cryptsetup open sans --key-file, amorceur non Debian.
+# Mesure et matrice : docs/cryptsetup-lecture-cle.md
+#
+# printf '%s' et non echo, ici comme dans le derivateur : un \n FINAL ferait partie
+# du keyfile et changerait la cle. C'est le seul mode de defaillance, et il vaut
+# pour l'hex autant que pour le brut. Garde par tests/test_lecture_keyfile.sh.
 printf '%s' "$PASS" | "$BIN" --salt-file "$SALT" --label disk --format hex

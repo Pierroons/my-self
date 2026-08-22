@@ -57,7 +57,7 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 
 | Fichier | Rôle |
 |---------|------|
-| `selfrecover_derive.c` | dérivation Argon2id (clone C autonome pour l'initramfs ; stdin → clé brute) |
+| `selfrecover_derive.c` | dérivation Argon2id (clone C autonome pour l'initramfs ; stdin → clé hex) |
 | `selfrecover_derive.py` | implémentation de référence (Python, usage userspace) |
 | `selfrecover-keyscript.sh` | keyscript du volume racine (dérive la passphrase recover) |
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript dans l'initrd |
@@ -66,6 +66,8 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | `install.sh` | installateur semi-automatique (cf. INSTALL.md) |
 | `genere-passphrase.py` | tire une passphrase diceware, affiche les deux formes et leur longueur |
 | `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces **et le sel** après chaque génération d'initramfs |
+| [`tests/test_lecture_keyfile.sh`](./tests/test_lecture_keyfile.sh) | garde-fou : les quatre lectures, et le `\n` final qui casse la clé |
+| [`docs/cryptsetup-lecture-cle.md`](./docs/cryptsetup-lecture-cle.md) | note de mesure : comment `cryptsetup` lit une clé selon le chemin emprunté |
 | [`quorum-rnd/`](./quorum-rnd/) | R&D : déverrouillage par quorum de témoins — **non activé en v0.3.0** |
 | [`fido2-banc-essai/`](./fido2-banc-essai/) | banc d'essai : FIDO2 dans l'initramfs — **voie non soutenue**, incompatible avec le keyscript |
 

@@ -134,11 +134,18 @@ fi
 # ---------- 5. crypttab racine : keyscript ----------
 say "5. Volume racine : keyscript dans /etc/crypttab"
 cp -a /etc/crypttab "/etc/crypttab.bak.$(date +%s)"
+# keyfile-size=64 va avec le keyscript, et n'a de sens qu'avec lui : c'est la taille
+# de la clé hex qu'il produit. cryptsetup honore l'option pour un keyfile, «-» compris,
+# et ne l'ignore que pour du plain dm-crypt. Elle borne la lecture, donc un \n final
+# glissé un jour dans le keyscript ne changerait plus la clé présentée — sans dispenser
+# du printf '%s'. Mesure : docs/cryptsetup-lecture-cle.md
 if grep -q "^${ROOT_NAME}.*keyscript=" /etc/crypttab; then
   ok "keyscript déjà présent sur $ROOT_NAME"
+  grep -q "^${ROOT_NAME}.*keyfile-size=" /etc/crypttab \
+    || warn "pense à ajouter keyfile-size=64 à la ligne $ROOT_NAME (borne la lecture de la clé)"
 else
-  confirm "Ajouter keyscript= à la ligne $ROOT_NAME ?"
-  sed -i "/^${ROOT_NAME}[[:space:]]/s|\$|,keyscript=$SKG/selfrecover-keyscript.sh|" /etc/crypttab
+  confirm "Ajouter keyscript= et keyfile-size=64 à la ligne $ROOT_NAME ?"
+  sed -i "/^${ROOT_NAME}[[:space:]]/s|\$|,keyscript=$SKG/selfrecover-keyscript.sh,keyfile-size=64|" /etc/crypttab
   ok "keyscript ajouté"
 fi
 grep "^${ROOT_NAME}" /etc/crypttab | sed 's/^/    /'

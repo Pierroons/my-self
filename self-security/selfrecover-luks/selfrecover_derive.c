@@ -12,7 +12,7 @@
  *
  * Compil :  cc -O2 -Wall -o selfrecover_derive selfrecover_derive.c -l:libargon2.so.1
  *           (et non -largon2 — voir la note sur le runtime plus bas)
- * Usage  :  printf '%s' "ma passphrase" | ./selfrecover_derive --salt-file /etc/selfkeyguard/selfrecover_salt --label disk --format raw
+ * Usage  :  printf '%s' "ma passphrase" | ./selfrecover_derive --salt-file /etc/selfkeyguard/selfrecover_salt --label disk --format hex
  */
 #include <stdio.h>
 #include <stdlib.h>

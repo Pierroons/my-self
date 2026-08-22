@@ -46,8 +46,8 @@ read -rsp "  Confirme la passphrase : " W2; echo
 # Execution en root : python3-argon2 doit etre installe a l'echelle du systeme
 # (paquet Debian), et non par utilisateur via pip.
 # --format hex : voir la note dans selfrecover-keyscript.sh. La cle enrolee DOIT
-# etre celle que le keyscript produira au demarrage, et le demarrage passe par
-# stdin, qui tronque au premier saut de ligne.
+# etre CELLE QUE LE KEYSCRIPT PRODUIRA au demarrage — un slot enrole en brut n'est
+# pas ouvert par un keyscript qui rend de l'hex.
 printf '%s' "$W1" | "$PY" "$HERE/selfrecover_derive.py" --stdin --salt "$SALT" --label disk --format hex > "$TMP/sr.key"
 
 if [ -n "$EXISTING_KF" ]; then
@@ -68,10 +68,12 @@ PROMPT
   cryptsetup luksAddKey "$DEV" "$TMP/sr.key"
 fi
 
-# Le succes de luksAddKey ne dit pas que la cle OUVRE le volume, et surtout pas
-# qu'elle l'ouvrira par le chemin du demarrage — cryptsetup lit stdin jusqu'au
-# premier saut de ligne, un fichier en entier. On le prouve donc par un tube,
-# exactement comme le keyscript le fera au boot.
+# Le succes de luksAddKey ne dit pas que la cle OUVRE le volume. On le prouve par un
+# tube, comme le keyscript le fera au boot.
+#
+# Ce controle ne voit PAS un \n parasite : l'enrolement et la verification appellent
+# le meme derivateur, donc les deux porteraient le meme octet en trop et
+# s'accorderaient. C'est tests/test_lecture_keyfile.sh qui garde cette propriete.
 if printf '%s' "$W1" | "$PY" "$HERE/selfrecover_derive.py" --stdin --salt "$SALT" \
      --label disk --format hex \
    | cryptsetup open --test-passphrase --key-file=- "$DEV"; then

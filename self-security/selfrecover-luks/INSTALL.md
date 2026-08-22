@@ -200,21 +200,20 @@ reproduira. Le vérifier maintenant coûte dix secondes ; le découvrir au
 redémarrage coûte une session de secours.
 
 Il faut le vérifier **par le chemin qu'empruntera le démarrage**, et pas par un
-chemin voisin — voir l'encadré ci-dessous, qui explique pourquoi les deux ne sont
-pas équivalents.
+chemin voisin — voir l'encadré plus bas.
 
 ```bash
 read -rs -p "Passphrase recover : " P; echo        # jamais en argv, jamais dans l'historique
 
 # 1. LE contrôle qui compte : par STDIN, exactement comme au démarrage
 printf '%s' "$P" \
-  | "$SKG/selfrecover_derive_c" --salt-file "$SKG/selfrecover_salt" --label disk --format raw \
+  | "$SKG/selfrecover_derive_c" --salt-file "$SKG/selfrecover_salt" --label disk --format hex \
   | cryptsetup open --test-passphrase --key-file=- "$ROOT_DEV" \
   && echo "✅ le slot ouvre le volume PAR LE CHEMIN DU BOOT"
 
 # 2. Par fichier, comme l'enrôlement — utile seulement pour comparer les deux
 printf '%s' "$P" \
-  | "$SKG/selfrecover_derive_c" --salt-file "$SKG/selfrecover_salt" --label disk --format raw \
+  | "$SKG/selfrecover_derive_c" --salt-file "$SKG/selfrecover_salt" --label disk --format hex \
   > /run/sr-test.key
 cryptsetup open --test-passphrase --key-file /run/sr-test.key "$ROOT_DEV" \
   && echo "   (par fichier : ouvre aussi)"
@@ -225,37 +224,29 @@ rm -f /run/sr-test.key; unset P
 clé ouvre-t-elle ce volume ». Tant que **le contrôle n° 1** n'a pas répondu oui,
 **ne branche pas le keyscript** : l'amorçage dépendrait d'une dérivation non prouvée.
 
-> **⚠️ Si le n° 2 réussit et que le n° 1 échoue, arrête-toi : ne branche pas le
-> keyscript.** Ce n'est pas une bizarrerie de la commande, c'est le défaut décrit
-> juste en dessous, et il rendrait la machine non amorçable.
+### 🔑 Pourquoi le n° 1 passe par un tube
 
-### 🔑 Pourquoi stdin et fichier ne sont pas équivalents
+Les deux lectures rendent aujourd'hui le même verdict, y compris en cas d'échec. Le
+n° 1 reste le contrôle qui compte parce qu'il emprunte le chemin de l'amorçage,
+dérivateur compris, au lieu d'un chemin qui lui ressemble.
 
-`cryptsetup(8)`, section *Passphrase processing for LUKS* :
+Le démarrage passe **toujours** par `--key-file=-` : sous Debian,
+`unlock_mapping()` reçoit la sortie du keyscript par un tube et n'a pas d'autre mode.
+La section « from stdin » de `cryptsetup(8)` vise un autre cas : ici, ce n'est pas la
+lecture d'une *passphrase* mais celle d'un *keyfile* dont la source est stdin, et le
+flux y est lu **en entier**, sauts de ligne compris. Une clé binaire contenant un `0x0A` y passe donc
+intacte.
 
-> **From stdin**: LUKS will read passphrases from stdin **up to the first newline
-> character** […]
-> **From key file**: The complete keyfile is read […] **Newline characters do not
-> terminate the input.**
+Ce qui casse, en revanche, c'est un saut de ligne **final** : un `echo` au lieu d'un
+`printf '%s'` fait 65 caractères au lieu de 64, et la clé présentée n'est plus celle
+qui a été enrôlée. Le n° 1 le voit, le n° 2 aussi — mais seul le n° 1 reproduit la
+chaîne complète, dérivateur compris, telle que l'amorçage la rejouera.
 
-La clé dérivée fait 32 octets **bruts**. Chaque octet a une chance sur 256 de valoir
-`0x0A`, c'est-à-dire un saut de ligne — soit **11,8 % de chance qu'au moins un des 32
-en soit un** (mesuré sur 200 000 tirages : 11,73 %).
-
-Or les deux chemins ne lisent pas pareil :
-
-| Moment | Comment cryptsetup reçoit la clé | Ce qu'il lit |
-|---|---|---|
-| Enrôlement (§5) | `luksAddKey … fichier` | les 32 octets |
-| Vérification par fichier | `--key-file fichier` | les 32 octets |
-| **Démarrage** | keyscript → stdout → `--key-file=-` | **jusqu'au premier `0x0A`** |
-
-Une clé contenant un `0x0A` s'enrôle donc parfaitement, se vérifie parfaitement par
-fichier, et **échoue définitivement au démarrage** — avec un `bad password` qui
-oriente vers la mauvaise piste, puisque tout le reste est en place.
-
-C'est pour ça que le contrôle n° 1 passe par un tube et non par un fichier : il doit
-reproduire le chemin du démarrage, pas un chemin qui lui ressemble.
+> **La matrice complète est mesurée dans [`docs/cryptsetup-lecture-cle.md`](docs/cryptsetup-lecture-cle.md)**,
+> et gardée par [`tests/test_lecture_keyfile.sh`](tests/test_lecture_keyfile.sh). Ce
+> document existe parce que le guide a affirmé le contraire, le 22 août 2026 :
+> que `cryptsetup` tronquait au premier `0x0A` sur ce chemin, et qu'une installation
+> sur huit devenait non amorçable. La mesure l'a démenti.
 
 Vérifie aussi les paramètres du nouveau slot :
 
@@ -301,12 +292,22 @@ guide documente.
 
 ### 8a. Référencer le keyscript dans `/etc/crypttab` — **les deux parcours**
 
-Ajoute `keyscript=` aux options de la ligne du volume racine (garde `x-initrd.attach`) :
+Ajoute `keyscript=` et `keyfile-size=64` aux options de la ligne du volume racine
+(garde `x-initrd.attach`) :
 
 ```
 # /etc/crypttab  (exemple — adapte le nom et l'UUID)
-<root_name> UUID=<UUID-ROOT> none luks,discard,x-initrd.attach,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh
+<root_name> UUID=<UUID-ROOT> none luks,discard,x-initrd.attach,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh,keyfile-size=64
 ```
+
+`keyfile-size=64` borne la lecture à la longueur exacte de la clé hex. C'est une
+ceinture : si un jour un `echo` remplaçait un `printf '%s'` dans le keyscript, le `\n`
+final serait ignoré au lieu de rendre la machine non amorçable. L'option est honorée
+pour un keyfile — `-` compris — et ignorée seulement pour du plain dm-crypt
+([`crypttab(5)`](https://manpages.debian.org/crypttab.5), et la mesure dans
+[`docs/cryptsetup-lecture-cle.md`](docs/cryptsetup-lecture-cle.md)).
+
+> Si tu restes en `--format raw`, la valeur est **32**, pas 64.
 
 ### 8b. Accès SSH au démarrage (dropbear) — **parcours SERVEUR uniquement**
 
@@ -550,26 +551,28 @@ de passe** (pas sur la machine) :
 | Prompt natif « Please unlock disk » sur un volume **secondaire** | systemd-cryptsetup ignore le keyscript | passe ce volume en **fichier-clé** (§9) |
 | Le boot bloque sur un volume secondaire | `x-initrd.attach` + échec | retire `x-initrd.attach` ; fichier-clé post-pivot (§9) |
 | `bad password` alors que la passphrase est juste | binaire/sel/lib manquant dans l'initramfs | vérifie `lsinitramfs` (§10) |
-| `bad password`, mais le §6 répondait ✅ **par fichier** | clé brute contenant un `0x0A`, tronquée sur stdin | refais le §6 par **stdin** ; s'il échoue, migre le slot en hex (§6) |
+| `bad password`, alors que le §6 répondait ✅ | le slot enrôlé et le keyscript livré n'ont pas le même format | compare : `luksDump` pour le slot, `--format` dans le keyscript ; migre (§15) |
+| `bad password` juste après avoir touché au keyscript | un `echo` a glissé à la place d'un `printf '%s'` : un `\n` final change la clé | `bash tests/test_lecture_keyfile.sh` le montre en dix secondes |
 
 ---
 
 ## 15. Migrer un déploiement antérieur — passage de la clé brute à l'hexadécimal
 
 **Concerne les installations faites avant ce changement**, où le keyscript produisait
-`--format raw`. Le §6 explique le défaut : une clé brute contenant un `0x0A` est
-tronquée au démarrage parce que `cryptsetup` lit stdin jusqu'au premier saut de
-ligne, alors qu'il lit un fichier en entier.
+`--format raw`.
 
 ### Faut-il migrer ?
 
-**Si la machine démarre aujourd'hui, sa clé ne contient pas de `0x0A`** — sinon elle
-ne démarrerait pas. Il n'y a donc rien d'urgent. Ce qui change :
+**Rien ne presse : une machine en `raw` qui démarre aujourd'hui continuera de
+démarrer.** L'hexadécimal a été retenu pour la portabilité — une clé hex survit aussi
+à une lecture *en tant que passphrase*, ce que ne fait pas une clé brute contenant un
+`0x0A` (§6 et [`docs/cryptsetup-lecture-cle.md`](docs/cryptsetup-lecture-cle.md)).
+Cela couvre un secours tapé à la main, un `cryptsetup open` sans `--key-file=-`, un
+amorceur qui ne serait pas celui de Debian.
 
-- une **réinstallation** ou un **nouveau volume** avec l'ancien format a 11,8 % de
-  chance de produire une machine non amorçable ;
-- le keyscript livré désormais produit de l'**hexadécimal** : le remplacer sur une
-  machine dont le slot est en brut rendra ce slot inouvrable.
+Ce qui n'attend pas, en revanche : **le keyscript livré désormais produit de
+l'hexadécimal**. Le déposer sur une machine dont le slot est en brut rendra ce slot
+inouvrable, quel que soit le motif du changement de format.
 
 > **⚠️ Ne remplace jamais le keyscript sans migrer le slot.** Le nouveau keyscript et
 > l'ancien slot ne se parlent pas. C'est le seul geste de cette page qui peut rendre
@@ -618,7 +621,7 @@ ressusciterait l'ancien slot brut si on la restaurait (§4).
 
 | Fichier | Rôle |
 |---------|------|
-| `selfrecover_derive.c` | dérivation Argon2id (clone C, stdin → clé brute) |
+| `selfrecover_derive.c` | dérivation Argon2id (clone C, stdin → clé hex) |
 | `selfrecover-keyscript.sh` | keyscript du volume racine (dérive la recover) |
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript |
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS |

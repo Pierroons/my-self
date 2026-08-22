@@ -26,42 +26,14 @@ trap cleanup EXIT
 # complète part dans auth.log — et donc dans les sauvegardes — pendant que tout processus
 # local peut lire /proc/<pid>/cmdline le temps de l'exécution.
 #
-# --format hex et non raw : cryptsetup lit une clé sur STDIN jusqu'au premier saut de
-# ligne, mais lit un FICHIER en entier. Une clé brute de 32 octets a 11,8 % de chance de
-# contenir un 0x0A ; elle s'enrôle alors correctement par fichier (étape 4) et se retrouve
-# tronquée au démarrage, qui passe par stdin (étape 5). L'hexadécimal ne peut pas contenir
-# de saut de ligne : les deux chemins lisent la même chose.
+# --format hex : voir la note dans ../selfrecover-keyscript.sh. La cle enrolee doit
+# etre celle que le keyscript produira.
 derive() {   # $1 = sel, $2 = mot -> clé hex sur stdout
   printf '%s' "$2" | "${DERIVE[@]}" --stdin --salt "$1" --label disk --format hex
 }
 
-# Les octets de la clé BRUTE, en hex séparés par des espaces (encadrés d'un espace pour
-# que le premier et le dernier octet se cherchent comme les autres).
-octets_cle_brute() {   # $1 = sel
-  printf ' %s ' "$(printf '%s' "$WORD" | "${DERIVE[@]}" --stdin --salt "$1" --label disk \
-                    --format raw | od -An -tx1 | tr '\n' ' ')"
-}
-
-# Un test qui n'éprouve qu'une valeur ne mesure que cette valeur : une clé SANS 0x0A
-# s'ouvre par fichier comme par tube, y compris en --format raw, et ne distingue donc
-# jamais les deux lectures de cryptsetup. Le seul cas qui les sépare est une clé brute
-# CONTENANT un 0x0A. On en fabrique un en cherchant un sel qui produit une telle clé, et
-# on lui fait subir le scénario complet : sans ce sel, le PoC déclare bon un format que
-# le démarrage tronquerait. La recherche est déterministe (Argon2id l'est), donc le sel
-# témoin est le même à chaque exécution.
-cherche_sel_0a() {
-  local i sel
-  for ((i = 1; i <= 100; i++)); do
-    sel="sel-temoin-0a-$i"
-    case "$(octets_cle_brute "$sel")" in
-      *" 0a "*) printf '%s' "$sel"; return 0 ;;
-    esac
-  done
-  return 1
-}
-
-# Le scénario complet, rejoué tel quel sur chaque sel : c'est la comparaison entre
-# l'étape 4 (fichier) et l'étape 5 (tube) qui porte la valeur du test.
+# Ce que le PoC établit : la chaîne passphrase → Argon2id → slot LUKS se referme. Pas
+# comment cryptsetup lit une clé — cette question-là a son banc, ../tests/test_lecture_keyfile.sh.
 eprouve_sel() {
   local SALT="$1" ETIQUETTE="$2"
   echo
@@ -101,18 +73,10 @@ eprouve_sel() {
 }
 
 command -v cryptsetup >/dev/null || { echo "❌ cryptsetup absent : sudo apt install cryptsetup"; exit 1; }
-command -v od >/dev/null || { echo "❌ od absent (coreutils)"; exit 1; }
 derive y x >/dev/null || { echo "❌ argon2-cffi indispo pour $RUN_AS"; exit 1; }
 
-echo "0) recherche d'un sel dont la clé brute contient un 0x0A"
-SEL_0A="$(cherche_sel_0a)" || {
-  echo "❌ aucun sel témoin trouvé en 100 essais — le test resterait aveugle au 0x0A, on s'arrête"
-  exit 1
-}
-echo "   sel témoin retenu : $SEL_0A"
-
-eprouve_sel "site-salt-example" "clé brute sans 0x0A — le cas ordinaire"
-eprouve_sel "$SEL_0A" "clé brute AVEC 0x0A — le cas qui sépare fichier et stdin"
+eprouve_sel "site-salt-example" "premier sel"
+eprouve_sel "sel-temoin-second" "second sel"
 
 echo
 echo "PoC terminé sur 2 sels — images et clés détruites automatiquement (trap)."

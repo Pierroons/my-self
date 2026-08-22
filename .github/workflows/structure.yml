@@ -109,6 +109,9 @@ jobs:
       - name: Garde-fou — le texte porte sa mise en forme, pas celle de sa source
         run: bash self-right/selfjustice/tests/test_texte_propre.sh
 
+      - name: Garde-fou — le compteur d'IA lit le User-Agent, pas la ligne
+        run: bash self-right/selfjustice/tests/test_compteur_ia.sh
+
       - name: Garde-fou — le pont vers les démarches officielles
         run: bash self-right/selfact/tests/test_gabarits_officiels.sh
 
@@ -120,6 +123,17 @@ jobs:
 
       - name: Garde-fou — le déploiement d'une instance SelfAct
         run: bash deploy/selfact/tests/test_deploy.sh
+
+      # cryptsetup n'est pas sur le runner, et argon2 non plus : les installer coûte
+      # quelques secondes et rend ce banc exécutable ici. Il ne demande pas root — le
+      # conteneur LUKS2 est un fichier, aucune activation device-mapper.
+      - name: Outils du banc SelfRecover-LUKS
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cryptsetup-bin python3-argon2
+
+      - name: Garde-fou — comment cryptsetup lit une clé selon le chemin emprunté
+        run: bash self-security/selfrecover-luks/tests/test_lecture_keyfile.sh
 
       - name: Garde-fou — coût constant du hash factice (bi-self-duo)
         run: php demo/bi-self-duo/tests/sanity_timing.php

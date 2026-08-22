@@ -56,7 +56,7 @@ Recovery passphrase (entered once, remotely via boot SSH)
 
 | File | Role |
 |------|------|
-| `selfrecover_derive.c` | Argon2id derivation (self-contained C clone for the initramfs; stdin → raw key) |
+| `selfrecover_derive.c` | Argon2id derivation (self-contained C clone for the initramfs; stdin → hex key) |
 | `selfrecover_derive.py` | reference implementation (Python, userspace) |
 | `selfrecover-keyscript.sh` | root-volume keyscript (derives the recovery passphrase) |
 | `initramfs-hook-selfrecover` | embeds binary + libargon2 + **libgcc** + salt + keyscript in the initrd |
@@ -64,6 +64,8 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | `selfrecover-unlock.sh` | standalone emergency unlock (userspace) |
 | `genere-passphrase.py` | draws a diceware passphrase, printing both forms and their lengths |
 | `initramfs-post-update-verifie-selfrecover` | guard: checks the six pieces **and the salt** after every initramfs build |
+| [`tests/test_lecture_keyfile.sh`](./tests/test_lecture_keyfile.sh) | guard: the four read paths, and the trailing `\n` that breaks the key |
+| [`docs/cryptsetup-lecture-cle.md`](./docs/cryptsetup-lecture-cle.md) | measurement note (French): how `cryptsetup` reads a key depending on the path taken |
 | `fido2-banc-essai/` | research bench: FIDO2 in the initramfs — not a supported path |
 | `install.sh` | semi-automatic installer (see INSTALL.md) |
 | [`quorum-rnd/`](./quorum-rnd/) | R&D: witness-quorum unlock — **not enabled in v0.3.0** |
