@@ -14,7 +14,8 @@
 # nommer par hasard.
 #
 # Usage : bash deploy/my-self/tests/test_deploy.sh
-# Sortie : 0 si les dix propriétés tiennent.
+# Sortie : 0 si toutes les propriétés tiennent. Leur nombre se compte à
+#          l'exécution — l'écrire ici le ferait mentir au prochain ajout.
 
 set -uo pipefail
 
@@ -25,8 +26,12 @@ SCRIPT="$ICI/../deploy.sh"
 BAC=$(mktemp -d)
 trap 'rm -rf "$BAC"' EXIT
 
-echecs=0
-ok()  { echo "  ✓ $1"; }
+# 🔑 Le total se compte, il ne s'écrit pas. Il était en dur — « 10/10 » — à deux
+# endroits, et il y est resté quand deux cas se sont ajoutés le 22/08/2026 : le
+# banc annonçait dix propriétés en en éprouvant douze. Un chiffre recopié à côté
+# de ce qu'il décrit finit toujours par le démentir.
+echecs=0 reussites=0
+ok()  { echo "  ✓ $1"; reussites=$((reussites + 1)); }
 nok() { echo "  ✗ $1" >&2; echecs=$((echecs + 1)); }
 
 # ── Un faux dépôt, un faux serveur ──────────────────────────────────────────
@@ -64,6 +69,18 @@ HTML
     # Le répertoire d'état doit exister à la destination sans que son contenu
     # parte : seul le témoin de présence est gardé.
     touch "$BAC/depot/demo/selfdataguard/storage/.gitkeep"
+
+    # Les secrets du lab et les réponses de son CTF. Aucun n'est suivi par git,
+    # et c'est exactement pourquoi ils doivent être posés ici : `.gitignore` ne
+    # retient pas un `rsync`, donc le banc doit reproduire un disque, pas un
+    # dépôt. Sans ces cinq fichiers, le cas 5 ter mesurerait le vide.
+    mkdir -p "$BAC/depot/demo/lab/data" "$BAC/depot/demo/lab/challenge"
+    echo "sel-de-l-instance"  > "$BAC/depot/demo/lab/data/.sitesalt"
+    echo "cle-de-chiffrement" > "$BAC/depot/demo/lab/data/.blindkey"
+    echo "secret-serveur"     > "$BAC/depot/demo/lab/data/.serversecret"
+    echo "FLAG{reponses}"     > "$BAC/depot/demo/lab/challenge/flags.txt"
+    echo "<?php // outillage" > "$BAC/depot/demo/lab/challenge/prepare.php"
+    echo "<?php // le lab"    > "$BAC/depot/demo/lab/index.php"
     echo "donnée vivante de l'instance" > "$BAC/depot/demo/selfdataguard/storage/demo.sqlite"
 
     cat > "$BAC/vhosts/faux.conf" <<VHOST
@@ -196,6 +213,44 @@ else
     nok "storage/ : $(ls "$BAC/dist/demo/selfdataguard/storage" 2>/dev/null | paste -sd' ') — la donnée du poste écraserait celle de l'instance"
 fi
 
+# ── 5 ter — les secrets du lab ne voyagent pas ──────────────────────────────
+echo
+echo "▸ Les secrets d'un lab public"
+# 🔑 Mesuré le 22/08/2026 : l'assemblage emportait `.blindkey`, `.sitesalt` et
+# `.serversecret` de `demo/lab/data/`, que le code du lab décrit lui-même comme
+# « propre à ce déploiement ». Les poser aurait remplacé le sel qui vérifie les
+# mots de passe et la clé qui chiffre les coffres — plus personne ne se connecte,
+# et ce qui était chiffré devient illisible. `flags.txt` aurait changé les
+# réponses du CTF sous les joueurs d'une partie en cours.
+#
+# Le cas éprouve les deux protections, parce qu'elles ne se valent pas :
+# l'exclusion évite, et l'interdiction ARRÊTE si le fichier revient par un autre
+# chemin. Une exclusion seule laisserait passer le prochain module.
+emporte=""
+for f in demo/lab/data/.sitesalt demo/lab/data/.blindkey          demo/lab/data/.serversecret demo/lab/challenge/flags.txt          demo/lab/challenge/prepare.php; do
+    [ -e "$BAC/dist/$f" ] && emporte="$emporte $f"
+done
+if [ -z "$emporte" ] && [ -f "$BAC/dist/demo/lab/index.php" ]; then
+    ok "lab : le code part, les secrets et les drapeaux restent"
+else
+    nok "lab : dist/ emporte$emporte$([ -f "$BAC/dist/demo/lab/index.php" ] || echo ' — et le code du lab manque')"
+fi
+
+# 🔑 Les bretelles, seules. Un secret déposé AILLEURS que dans le répertoire
+# exclu doit arrêter l'assemblage, sinon la correction du 22/08 ne protège que
+# le chemin d'hier. `*.key` ne capture pas `.blindkey`, faute de point : c'est
+# précisément le trou que ce cas garde fermé.
+monter
+echo "cle-egaree" > "$BAC/depot/web/my-self.fr/.blindkey"
+sortie=$(lancer assembler --dest "$BAC/dist"); code=$?
+if [ "$code" -ne 0 ] && [ ! -d "$BAC/dist" ]; then
+    ok "un .blindkey hors du lab arrête l'assemblage"
+else
+    nok "un .blindkey hors du lab a franchi le filtre (code $code)"
+fi
+monter
+lancer assembler --dest "$BAC/dist" >/dev/null 2>&1
+
 # ── 6 — une référence du serveur sans fichier fait refuser la pose ──────────
 echo
 echo "▸ Le serveur nomme, le déploiement doit apporter"
@@ -248,9 +303,10 @@ else
 fi
 
 echo
+total=$((reussites + echecs))
 if [ "$echecs" -eq 0 ]; then
-    echo "OK — 10/10 propriétés tiennent."
+    echo "OK — $reussites/$total propriétés tiennent."
     exit 0
 fi
-echo "ÉCHEC — $echecs propriété(s) sur 10." >&2
+echo "ÉCHEC — $echecs propriété(s) sur $total." >&2
 exit 1

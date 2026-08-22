@@ -1184,7 +1184,28 @@ if ($segments[0] === 'jurisprudence') {
         $amont       = null;   // liste filtrée, ou null si la sonde n'a pas eu lieu
         $amont_echec = null;   // raison, si elle a eu lieu sans aboutir
 
-        if (!$decisions && $date_annoncee !== null && $arret !== null && $date_annoncee > $arret) {
+        // 🔑 **« Ce numéro existe » ne répond pas à « CETTE décision existe ».**
+        // Un rôle général n'est unique qu'au sein d'une cour : `23/03077` est
+        // porté par Montpellier, Toulouse et une douzaine d'autres. Interrogée
+        // sur celui de Versailles du 12 août 2026, la route rendait huit
+        // décisions — aucune n'étant celle-là — et concluait « trouvée ». Le
+        // contrôle du 21/08/2026 l'avait nommé : une liste crédible et bien
+        // formée, qui ne dit jamais que la référence soumise n'y figure pas.
+        //
+        // Quand l'appelant date sa décision, c'est elle qu'il fait vérifier, pas
+        // son numéro. L'absence de correspondance vaut donc absence, et c'est
+        // elle qui décide de la suite.
+        // Sans date, tout ce qui porte le numéro répond. Avec une date, le reste
+        // n'est pas la décision cherchée : ce sont des homonymes, et les laisser
+        // dans la même liste est ce qui faisait passer une absence pour une
+        // trouvaille.
+        $a_la_date = $date_annoncee === null ? $decisions : array_values(array_filter(
+            $decisions, fn($d) => ($d['date_brute'] ?? null) === $date_annoncee));
+        $homonymes = $date_annoncee === null ? [] : array_values(array_filter(
+            $decisions, fn($d) => ($d['date_brute'] ?? null) !== $date_annoncee));
+        $correspond = (bool) $a_la_date;
+
+        if (!$correspond && $date_annoncee !== null && $arret !== null && $date_annoncee > $arret) {
             // `search` refuse une requête qui ressemble à un numéro : en plein
             // texte il rendrait des milliers de faux positifs. Ici le numéro ne
             // décide de rien — il borne la requête à un seul jour, et c'est la
@@ -1242,7 +1263,10 @@ if ($segments[0] === 'jurisprudence') {
         // — « une décision postérieure ne peut pas être exclue » désarme la
         // seule réponse qui devait être ferme : si la décision existait à la
         // date annoncée et que cette date est couverte, elle serait là.
-        $reserve_borne = ($decisions || $amont) ? null : match (true) {
+        // 🔑 `$a_la_date`, pas `$decisions` : des homonymes à d'autres dates ne
+        // valent pas trouvaille. C'est ce raccourci qui rendait « trouvée » sur
+        // huit décisions dont aucune n'était la bonne.
+        $reserve_borne = ($a_la_date || $amont) ? null : match (true) {
             $amont === [] => "Introuvable dans l'index local, arrêté au $arret. La base "
                 . "amont Judilibre, interrogée directement au $date_annoncee, ne rend "
                 . "rien non plus sous ce numéro : l'absence ne tient pas au retard de "
@@ -1267,8 +1291,11 @@ if ($segments[0] === 'jurisprudence') {
         // elle a retrouvé ce que l'index n'avait pas encore. Le lecteur doit
         // savoir lequel des deux : ils ne s'arrêtent pas au même jour, et c'est
         // exactement ce qui faisait se contredire deux outils du même module.
-        $issues       = $decisions ?: ($amont ?: []);
-        $depuis_amont = !$decisions && (bool) $amont;
+        // L'amont prime quand il a trouvé la décision datée : ce que l'index
+        // local porte sous le même numéro concerne d'autres affaires, et les
+        // mélanger rendrait la vraie introuvable au milieu des homonymes.
+        $depuis_amont = (bool) $amont;
+        $issues       = $depuis_amont ? $amont : $a_la_date;
 
         if ($depuis_amont) {
             $juridictions = [];
@@ -1283,9 +1310,14 @@ if ($segments[0] === 'jurisprudence') {
             'normalisee'  => $norm,
             'juridiction' => $juridiction,
             'source'      => $depuis_amont ? 'amont Judilibre' : 'index local',
-            'count'       => $depuis_amont ? count($issues) : $total,
+            // `count` répond à la question posée. Sans date c'est le total du
+            // numéro ; avec une date c'est ce qui porte cette date, et les autres
+            // sont comptés à part sous « homonymes ».
+            'count'       => ($depuis_amont || $date_annoncee !== null)
+                             ? count($issues) : $total,
             'rendues'     => count($issues),
-            'tronquee'    => !$depuis_amont && $total > count($decisions),
+            'tronquee'    => !$depuis_amont && $date_annoncee === null
+                             && $total > count($decisions),
             'decisions'   => $issues,
             'couverture'  => $couverture,
             // Trois réserves, une par situation. Trouvée en amont, ce n'est
@@ -1295,14 +1327,23 @@ if ($segments[0] === 'jurisprudence') {
             // borne haute ET un périmètre : une référence du Conseil d'État n'y
             // figurera jamais, quel que soit le rafraîchissement, et la signaler
             // « absente » sans le dire serait trompeur.
+            'homonymes'   => $homonymes,
             'reserve'     => $depuis_amont
                 ? "Cette décision ne figure pas encore dans l'index local, arrêté "
                 . "au $arret : elle a été retrouvée dans la base amont Judilibre à "
                 . "la date annoncée ($date_annoncee). Son existence est établie — "
                 . "c'est l'index qui est en retard, pas la référence qui est fausse."
                 : ($issues
-                ? null
-                : $reserve_borne . " Périmètre limité à la "
+                ? ($homonymes ? "Les " . count($homonymes) . " autre(s) décision(s) "
+                    . "portant ce numéro à d'autres dates ne sont pas celle-ci : un "
+                    . "rôle général n'est unique qu'au sein d'une cour. Voir "
+                    . "« homonymes »." : null)
+                : ($homonymes ? "Ce numéro existe — " . count($homonymes)
+                    . " décision(s) le portent — mais aucune n'est datée du "
+                    . "$date_annoncee. Un rôle général n'est unique qu'au sein d'une "
+                    . "cour : la décision cherchée n'est pas celles-là. Voir "
+                    . "« homonymes ». " : "")
+                . $reserve_borne . " Périmètre limité à la "
                 . "Cour de cassation et aux cours d'appel — la justice "
                 . "administrative (Conseil d'État, CAA, TA) relève d'ArianeWeb et "
                 . "n'y figurera jamais. Dire « introuvable », pas « n'existe pas »."),

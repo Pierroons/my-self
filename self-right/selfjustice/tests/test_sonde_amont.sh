@@ -45,8 +45,15 @@ CREATE TABLE numeros (number_norm TEXT NOT NULL, decision_id TEXT NOT NULL,
   PRIMARY KEY (number_norm, decision_id));
 INSERT INTO decisions VALUES
   ('aaaa000000000001','22/00111','2026-06-10','ca','soc','ca_nimes','f','','casse','ECLI:A','ar','2026-06-11',0),
-  ('aaaa000000000002','21-11.222','2026-07-31','cc','soc',NULL,'f','b','rejet','ECLI:B','ar','2026-08-01',0);
-INSERT INTO numeros VALUES ('2200111','aaaa000000000001'), ('2111222','aaaa000000000002');
+  ('aaaa000000000002','21-11.222','2026-07-31','cc','soc',NULL,'f','b','rejet','ECLI:B','ar','2026-08-01',0),
+  -- Deux HOMONYMES de la décision que le faux amont porte au 2026-08-12 : même
+  -- numéro normalisé, d'autres cours, d'autres dates. Un rôle général n'est
+  -- unique qu'au sein d'une cour, et c'est le cas de terrain — mesuré sur la
+  -- production le 22/08/2026, où « 23/03077 » en comptait huit.
+  ('aaaa000000000003','23/03077','2025-04-10','ca','soc','ca_montpellier','f','','other','ECLI:D','ar','2025-04-11',0),
+  ('aaaa000000000004','23/03077','2025-02-06','ca','soc','ca_toulouse','f','','other','ECLI:E','ar','2025-02-07',0);
+INSERT INTO numeros VALUES ('2200111','aaaa000000000001'), ('2111222','aaaa000000000002'),
+  ('2303077','aaaa000000000003'), ('2303077','aaaa000000000004');
 SQL
 
 # ── Le faux amont ───────────────────────────────────────────────────────────
@@ -165,6 +172,35 @@ controle "hors plage, l'amont l'a → trouvée, et le retard est nommé" \
 controle "hors plage, l'amont ne l'a pas → absence opposable" \
     "23%2F04444?jurisdiction=ca&date=2026-08-12" \
     "etat:absente" "reserve:~elle est opposable"
+
+echo
+echo "▸ Un numéro porté par plusieurs cours"
+# 🔑 Le piège mesuré sur la production le 22/08/2026, et que la première version
+# de la sonde laissait passer : l'index porte bien « 23/03077 », mais à
+# Montpellier en 2025 et à Toulouse en 2024 — jamais à Versailles le 12 août
+# 2026. La sonde ne partait que si l'index ne rendait RIEN ; ici il rendait huit
+# décisions, aucune n'étant la bonne, et la route concluait « trouvée ».
+# Répondre « ce numéro existe » à qui demande « cette décision existe-t-elle »
+# est la forme la plus crédible du faux positif.
+controle "homonymes locaux + amont l'a → c'est la datée qui est rendue" \
+    "23%2F03077?jurisdiction=ca&date=2026-08-12" \
+    "etat:trouvee" "source:amont Judilibre" "count:1"
+corps=$(curl -s "$BASE/23%2F03077?jurisdiction=ca&date=2026-08-12")
+cour=$(printf '%s' "$corps" | python3 -c 'import json,sys; print(json.load(sys.stdin)["decisions"][0]["cour"])')
+[ "$cour" = "ca_versailles" ] \
+    && ok "la décision rendue est celle de Versailles, pas un homonyme" \
+    || nok "la décision rendue vient de « $cour »"
+nb=$(printf '%s' "$corps" | python3 -c 'import json,sys; print(len(json.load(sys.stdin).get("homonymes") or []))')
+[ "$nb" = "2" ] \
+    && ok "les 2 homonymes sont rendus à part, pas mélangés" \
+    || nok "$nb homonyme(s) séparé(s), attendu 2"
+
+# 🔑 Et sans amont pour trancher : le numéro existe, la décision non. La réponse
+# doit être « absente », pas « trouvée — 2 décisions ». Date DANS la plage, donc
+# aucune sonde ne part et l'index est seul juge.
+controle "homonymes locaux, date couverte, aucune correspondance → absente" \
+    "23%2F03077?jurisdiction=ca&date=2025-06-01" \
+    "etat:absente" "reserve:~aucune n'est datée du 2025-06-01"
 
 echo
 echo "▸ La décision rendue par l'amont est complète"

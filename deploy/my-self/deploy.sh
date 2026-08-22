@@ -78,6 +78,11 @@ EXCLUS=(
     # `.gitignore` n'a jamais retenu un `rsync`.
     "/self-security/selfdataguard/playground/"
     "/self-right/selfjustice/data/"
+    # 🔑 Rien de ce répertoire n'est suivi par git — ni `flags.txt`, ni
+    # `prepare.php`, ni `gen-vault.cjs`. Ce sont les réponses du CTF et
+    # l'outillage qui les pose. Déployées depuis un poste, elles changeraient les
+    # drapeaux sous les joueurs d'une partie en cours.
+    "/demo/lab/challenge/"
 )
 
 # ⚠️ **L'état de l'instance ne se déploie pas.** `storage/` porte ce que la
@@ -85,7 +90,18 @@ EXCLUS=(
 # données vivantes par celles d'un développeur — la même erreur que le
 # catalogue SelfAct, corrigée le 21/08/2026 en déplaçant le fichier. Ici le
 # répertoire doit exister à la destination, mais son contenu lui appartient.
-ETAT_INSTANCE=( "storage/*" )
+# 🔑 `demo/lab/data/` relève du même régime, et l'oubli s'est vu le 22/08/2026 :
+# l'assemblage y prenait `.blindkey`, `.sitesalt` et `.serversecret`, que le code
+# du lab décrit lui-même comme « propre à ce déploiement » (lib/auth.php). Les
+# poser depuis un poste aurait remplacé le sel qui vérifie les mots de passe et
+# la clé qui chiffre les coffres : plus personne ne se connecte, et ce qui était
+# chiffré devient illisible. Le répertoire est nommé ici plutôt que dans EXCLUS
+# parce que ce n'est pas de l'outillage — c'est de la donnée vivante.
+#
+# La leçon vaut au-delà de ces deux lignes : une exclusion nommée répertoire par
+# répertoire se périme dès qu'un module naît. Les INTERDITS plus bas sont ce qui
+# rattrape l'oubli suivant.
+ETAT_INSTANCE=( "storage/*" "/demo/lab/data/*" )
 EXCLUS_MOTIF=(
     "*.md" "*.pyc" "composer.json" "composer.lock" "package.json"
     "package-lock.json" ".gitignore" ".gitattributes" ".gitleaks.toml"
@@ -104,7 +120,11 @@ GARDES=(
 #
 # La ceinture, en plus des bretelles : si un jour un secret entre au dépôt, il
 # ne doit pas atteindre une racine servie au public par-dessus le marché.
-INTERDITS=( ".env" ".env.*" "*.key" "*.pem" "id_rsa*" "id_ed25519*" "*.sqlite" "*.p12" )
+# ⚠️ Les motifs sont des globs de nom de fichier : `*.key` ne capture PAS
+# `.blindkey`, faute de point. Les trois secrets du lab sont donc nommés en
+# entier — mesuré le 22/08/2026, où la ceinture avait un trou exactement là.
+INTERDITS=( ".env" ".env.*" "*.key" "*.pem" "id_rsa*" "id_ed25519*" "*.sqlite" "*.p12"
+    ".blindkey" ".sitesalt" ".serversecret" )
 
 rouge() { printf '\033[31m%s\033[0m\n' "$*" >&2; }
 vert()  { printf '\033[32m%s\033[0m\n' "$*"; }
