@@ -2047,24 +2047,20 @@ async def calculer_echeance(
     )
 
 
-GABARITS = {
-    "mise_en_demeure": "Mise en demeure",
-    "saisine_conciliateur": "Saisine du conciliateur de justice",
-    "plainte_simple": "Dépôt de plainte simple",
-    "saisine_defenseur": "Saisine du Défenseur des droits",
-    "recours_gracieux": "Recours gracieux auprès d'une administration",
-    "resiliation": "Résiliation de contrat",
-}
 
 
 @server.tool()
 async def gabarit_document(type_document: str | None = None) -> str:
-    """Donne l'adresse d'un gabarit de courrier officiel et ses champs à remplir.
+    """Donne l'adresse d'un gabarit de courrier et les ressources officielles.
 
     🔑 Cet outil ne rédige rien et ne rend pas le document. Il indique où
     l'obtenir et ce qu'il restera à compléter. Le gabarit est un document à
     trous : les faits, montants, dates et noms n'y sont jamais devinés — ils
     n'appartiennent qu'à la personne qui l'utilise.
+
+    Il nomme surtout les modèles, formulaires et démarches OFFICIELS qui
+    couvrent la même chose. Quand il en existe un, il vaut mieux que le
+    gabarit : c'est une pièce que l'administration reconnaît.
 
     Le document lui-même s'ouvre dans un navigateur et s'imprime en PDF. Il
     porte un filigrane « NON OFFICIEL — IRRECEVABLE » que rien ne retire : le
@@ -2076,23 +2072,78 @@ async def gabarit_document(type_document: str | None = None) -> str:
     if not ACT_URL:
         return _msg_api_morte("SELFRIGHT_ACT_URL introuvable et non dérivable")
 
+    # 🔑 La liste vient de l'instance, elle n'est plus écrite ici. Elle l'était,
+    # à côté de celle de `draft.php` : deux tables pour une seule vérité, qui
+    # divergeaient déjà d'une entrée.
+    try:
+        data = await _get("/gabarits.php", None, base=ACT_URL)
+    except RequeteInvalide as e:
+        return _msg_argument_refuse(str(e))
+    except ApiIndisponible as e:
+        return _msg_api_morte(str(e))
+
+    gabarits = data.get("gabarits") or {}
+    if not gabarits:
+        return _msg_api_morte("l'instance ne déclare aucun gabarit")
+
     if not type_document:
-        liste = "\n".join(f"  · {c} — {n}" for c, n in GABARITS.items())
-        return f"{len(GABARITS)} gabarits disponibles :\n{liste}\n\nRappelle l'outil avec l'un d'eux."
+        liste = "\n".join(
+            f"  · {cle} — {g.get('label', cle)}"
+            + (f" ({len(g.get('officiels') or [])} ressource(s) officielle(s))"
+               if g.get("officiels") else "")
+            for cle, g in gabarits.items()
+        )
+        return (
+            f"{len(gabarits)} gabarits disponibles :\n{liste}\n\n"
+            "Rappelle l'outil avec l'un d'eux."
+        )
 
     cle = type_document.strip().lower()
-    if cle not in GABARITS:
-        liste = ", ".join(GABARITS)
+    if cle not in gabarits:
         return (
-            f"« {type_document} » n'est pas un gabarit connu.\n\nDisponibles : {liste}.\n\n"
+            f"« {type_document} » n'est pas un gabarit connu.\n\n"
+            f"Disponibles : {', '.join(gabarits)}.\n\n"
             "N'en invente pas un autre et ne rédige pas de courrier à la place : "
             "un modèle inventé n'a aucune valeur devant l'administration."
         )
 
+    g = gabarits[cle]
+    officiels = g.get("officiels") or []
+
+    if officiels:
+        lignes = "\n".join(
+            f"  · {o.get('titre')}\n    {o.get('url')}"
+            + (f"\n    → {o['quand']}" if o.get("quand") else "")
+            for o in officiels
+        )
+        bloc = (
+            f"Ressources OFFICIELLES pour cette démarche ({len(officiels)}) :\n"
+            f"{lignes}\n\n"
+            "Propose-les EN PREMIER : ce sont les pièces que l'administration "
+            "reconnaît. Le gabarit ci-dessous ne sert qu'à préparer le récit des "
+            "faits, ou quand aucune ne correspond.\n\n"
+        )
+    else:
+        bloc = (
+            "Aucune ressource officielle ne correspond à ce gabarit au "
+            "catalogue. Dis-le plutôt que de laisser croire qu'il n'en existe "
+            "pas ailleurs.\n\n"
+        )
+
+    reserve = f"⚠️ {g['reserve']}\n\n" if g.get("reserve") else ""
+    # Un renvoi que le catalogue ne connaît plus se dit : il vaut mieux savoir
+    # qu'une ressource manque à l'appel que la croire inexistante.
+    perdus = g.get("inconnus") or []
+    manque = (f"({len(perdus)} renvoi(s) de cette démarche ne sont plus au "
+              f"catalogue : {', '.join(perdus)}. La liste ci-dessus est donc "
+              f"incomplète.)\n\n") if perdus else ""
+
     url = f"{ACT_URL}/draft.php?type={urllib.parse.quote(cle)}"
     return (
-        f"Gabarit « {GABARITS[cle]} »\n\n"
-        f"À ouvrir dans un navigateur, puis imprimer en PDF :\n  {url}\n\n"
+        f"Gabarit « {g.get('label', cle)} »\n\n"
+        f"{bloc}{reserve}{manque}"
+        f"Gabarit à trous, à ouvrir dans un navigateur puis imprimer en PDF :\n"
+        f"  {url}\n\n"
         "Champs laissés à compléter par la personne concernée :\n"
         "  · identité et adresse de l'expéditeur et du destinataire\n"
         "  · objet du courrier et action demandée\n"

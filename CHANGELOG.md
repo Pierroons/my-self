@@ -10,6 +10,75 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfJustice / SelfAct — ce que le module affirme de lui-même — 22 août 2026
+
+**Serveur MCP `selfright-mcp` 0.4.0.** Un contrôle extérieur mené le 21 août a
+mesuré que le module était rigoureux sur ce qu'il affirme du texte, et faible
+sur ce qu'il affirme de lui-même. Quatre défauts, tous corrigés et tous mis en
+production.
+
+- **Deux corpus portaient le même nom.** La vérification d'une référence lisait
+  un index local ; la recherche et le texte intégral venaient d'une base amont
+  qui va plus loin dans le temps. Trois arrêts sur trois étaient servis
+  intégralement par un outil et déclarés absents par celui dont la fonction est
+  d'empêcher l'invention. La vérification interroge désormais l'amont dans le
+  seul cas où elle sait regarder trop court, et distingue quatre issues — dont
+  l'amont muet, qui garde la réserve prudente au lieu de conclure sur la foi
+  d'un réseau coupé
+- **« Ce numéro existe » ne répondait pas à « cette décision existe ».** Un rôle
+  général n'est unique qu'au sein d'une cour : interrogé sur l'arrêt d'une cour
+  d'appel daté, le module rendait huit décisions du même numéro rendues
+  ailleurs, et concluait « trouvée ». Les homonymes sortent à part, et l'absence
+  de correspondance vaut absence. Mesuré en production, après la pose du
+  correctif précédent qui n'en traitait que la moitié
+- **Un numéro d'article recyclé ne se signalait pas.** Sur un article abrogé le
+  module crie ; sur l'article 1382 du code civil — qui porte les présomptions
+  judiciaires depuis 2016, quand la responsabilité délictuelle qu'on y cherche
+  est passée au 1240 — il rendait un texte en vigueur, exact, daté, et hors
+  sujet. Le renvoi se déduit de la base plutôt que d'une table écrite à la main :
+  le texte qu'un numéro portait autrefois vit-il sous un autre numéro du même
+  code ? Rare — 73 cas pour tout le code civil — donc informatif. Ce que la
+  déduction ne sait pas faire, elle ne l'invente pas : un successeur réécrit lui
+  échappe, et c'est éprouvé
+- **Le service affirmait une provenance qu'il n'avait pas.** Le calcul de délai
+  rendait « Textes relus dans la base LEGI, et non cités de mémoire » sans
+  ouvrir aucune base : au passé composé et sans sujet, la phrase décrivait le
+  travail d'écriture et se lisait comme la provenance de la réponse. Le
+  contrôleur l'a recopiée comme une déclaration sur son propre processus. Elle
+  décrit maintenant ce que le code fait, et la version LEGI retenue est devenue
+  une constante — elle était écrite à deux endroits
+- **Un type de document inconnu rendait 200** et un gabarit générique. Le refus
+  n'existait que dans l'outil MCP, alors que l'adresse est publiée à
+  l'utilisateur : un garde-fou posé chez l'appelant ne protège que l'appelant
+  qui le porte
+
+**Ajouté — SelfAct nomme le modèle officiel au lieu d'envoyer le chercher.** Le
+pied de chaque gabarit disait « utilise le modèle service-public.fr
+correspondant » sans jamais dire lequel, alors que le module indexe 1 895
+ressources officielles dont 340 modèles de lettre.
+
+- Six gabarits sur sept portent désormais leurs ressources officielles, chacune
+  avec le cas qu'elle vise. Pour la saisine du conciliateur, le catalogue porte
+  un **formulaire officiel** : il vaut mieux que tout ce que ce module peut
+  produire, et l'outil le met en tête
+- **Curé à la main**, comme le rapprochement situation → acte et pour la même
+  raison : par mots-clés, « conciliateur » rend une attestation sur l'honneur et
+  « Défenseur des droits » ne rend rien. Un renvoi juridique deviné coûte plus
+  qu'un renvoi absent
+- Deux réserves dites plutôt que tues : le Défenseur des droits n'a **aucun**
+  modèle de lettre au catalogue, et il faut commencer par vérifier sa compétence
+  — une saisine mal adressée ne suspend aucun délai ; aucun modèle générique de
+  mise en demeure n'existe, les trois proposés visant des situations précises
+- La table ne porte que des identifiants, résolus au catalogue à chaque appel.
+  Un identifiant qu'il ne connaît plus est **nommé**, pas tu : sans quoi une
+  ressource disparue passerait pour une démarche sans équivalent
+- La liste des gabarits était écrite à deux endroits et divergeait déjà d'une
+  entrée. Une seule table, servie par `/act/api/gabarits`
+
+Garde-fous portés de 15 à 21, dont trois neufs, chacun vu rougir avant d'être
+cru. Le banc du déploiement annonçait « 10/10 » depuis un chiffre écrit en dur :
+il en éprouvait douze, il en compte quatorze.
+
 ### SelfModerate — l'escalade pour les votants d'une meute — 22 août 2026
 
 **Ajouté — une meute démasquée ne coûtait rien à ceux qui la formaient.** La

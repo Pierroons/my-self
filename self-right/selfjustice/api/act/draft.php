@@ -127,15 +127,21 @@ $mois_fr = [
 ];
 $date = strtr($date, $mois_fr);
 
-$type_labels = [
-    'mise_en_demeure'        => 'Mise en demeure',
-    'saisine_conciliateur'   => 'Saisine du conciliateur de justice',
-    'plainte_simple'         => 'Dépôt de plainte',
-    'saisine_defenseur'      => 'Saisine du Défenseur des droits',
-    'recours_gracieux'       => 'Recours gracieux',
-    'resiliation'            => 'Résiliation de contrat',
-    'document'               => 'Projet de courrier',
-];
+// 🔑 Les intitulés viennent de `data/gabarits.json`, comme ceux que sert
+// `/act/api/gabarits` et que lit l'outil MCP. Ils étaient écrits ici ET là-bas :
+// deux tables pour une seule vérité, qui divergeaient déjà d'une entrée — « Dépôt
+// de plainte » d'un côté, « Dépôt de plainte simple » de l'autre.
+//
+// Le repli couvre le cas où le fichier manque : un gabarit sans intitulé vaut
+// mieux qu'une page blanche, et le seul type alors accepté est le neutre.
+$table = json_decode((string) @file_get_contents(__DIR__ . '/data/gabarits.json'), true);
+$type_labels = [];
+foreach (($table['gabarits'] ?? []) as $cle => $g) {
+    $type_labels[$cle] = $g['label'] ?? $cle;
+}
+if (!$type_labels) {
+    $type_labels = ['document' => 'Projet de courrier'];
+}
 // 🔑 Le refus d'un type inconnu existait, mais dans l'outil MCP seulement.
 // L'URL, elle, est publiée à l'utilisateur : appelée avec `type=inexistant_xyz`
 // elle rendait un 200 et un « Projet de courrier » vide, c'est-à-dire un

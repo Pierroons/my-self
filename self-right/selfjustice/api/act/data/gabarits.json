@@ -1,0 +1,76 @@
+{
+  "_meta": {
+    "version": "2026.08",
+    "last_update": "2026-08-22",
+    "source": "service-public.gouv.fr (Etalab 2.0) — rapprochement MANUEL",
+    "comment": "Rapprochement gabarit → ressource officielle. Curation À LA MAIN, comme situations.json et pour la même raison : un rapprochement par mots-clés rend « attestation sur l'honneur » pour « conciliateur » et rien du tout pour « Défenseur des droits ». Un renvoi juridique deviné est pire que pas de renvoi. Les identifiants sont ceux de service-public (R<nombre>), résolus au catalogue à l'exécution : ni le libellé ni l'URL ne sont recopiés ici, ils vieilliraient à part.",
+    "mention": "SelfAct est indépendant et n'est affilié à aucun organisme public. Les formulaires et démarches officiels sont disponibles gratuitement sur service-public.gouv.fr : cet outil n'est jamais nécessaire pour y accéder."
+  },
+  "gabarits": {
+    "mise_en_demeure": {
+      "label": "Mise en demeure",
+      "officiels": [
+        { "id": "R74538", "quand": "abandon de poste d'un salarié" },
+        { "id": "R31677", "quand": "bien ou service non livré, pour annuler la vente" },
+        { "id": "R71287", "quand": "convocation d'une assemblée générale de copropriétaires" }
+      ],
+      "reserve": "Aucun modèle officiel générique de mise en demeure n'existe au catalogue : les trois ci-dessus visent des situations précises. Si l'une est la tienne, elle vaut mieux que ce gabarit."
+    },
+    "saisine_conciliateur": {
+      "label": "Saisine du conciliateur de justice",
+      "officiels": [
+        { "id": "R73714", "quand": "saisine d'un conciliateur de justice — formulaire officiel" },
+        { "id": "R48318", "quand": "demande de conciliation" },
+        { "id": "R42340", "quand": "locataire, litige avec le bailleur : commission départementale de conciliation" },
+        { "id": "R11457", "quand": "propriétaire, litige avec le locataire : même commission" }
+      ],
+      "reserve": "Le formulaire officiel R73714 couvre directement cette démarche. Le gabarit ci-dessous ne sert qu'à préparer le récit des faits avant de le remplir."
+    },
+    "plainte_simple": {
+      "label": "Dépôt de plainte",
+      "officiels": [
+        { "id": "R11469", "quand": "plainte auprès du procureur de la République — modèle officiel" },
+        { "id": "R11657", "quand": "plainte avec constitution de partie civile" },
+        { "id": "R19620", "quand": "dépôt en ligne, pour les faits qui l'admettent" },
+        { "id": "R64884", "quand": "trouver le commissariat ou la gendarmerie où déposer" }
+      ],
+      "reserve": "Le modèle officiel R11469 couvre le cas courant. Préfère-le à ce gabarit."
+    },
+    "saisine_defenseur": {
+      "label": "Saisine du Défenseur des droits",
+      "officiels": [
+        { "id": "R68670", "quand": "vérifier d'abord si le Défenseur est compétent pour ce problème" },
+        { "id": "R20689", "quand": "saisine en ligne" },
+        { "id": "R73317", "quand": "discrimination ou harcèlement" }
+      ],
+      "reserve": "Le catalogue ne porte AUCUN modèle de lettre officiel pour cette saisine — seulement des démarches en ligne. Commence par R68670 : une saisine adressée à une autorité incompétente ne suspend aucun délai."
+    },
+    "recours_gracieux": {
+      "label": "Recours gracieux auprès d'une administration",
+      "officiels": [
+        { "id": "R46120", "quand": "autorisation d'urbanisme accordée à un tiers" },
+        { "id": "R49386", "quand": "refus de délivrance d'une carte grise" },
+        { "id": "R45186", "quand": "refus de délivrance de qualification, recours gracieux" },
+        { "id": "R45187", "quand": "le même, en recours hiérarchique" }
+      ],
+      "reserve": "Aucun modèle officiel générique : le recours gracieux prend la forme d'une lettre libre. Attention au délai — il court à compter de la notification de la décision contestée, et `calculer_echeance` ne le devine pas."
+    },
+    "resiliation": {
+      "label": "Résiliation de contrat",
+      "officiels": [
+        { "id": "R21219", "quand": "contrat d'assurance en cours" },
+        { "id": "R33643", "quand": "contrat d'assurance, à son échéance" },
+        { "id": "R18078", "quand": "communications électroniques, pour raison personnelle" },
+        { "id": "R608", "quand": "communications électroniques, après modification du contrat" },
+        { "id": "R43391", "quand": "contrat de carte de crédit" },
+        { "id": "R46652", "quand": "assurance habitation, en cas de déménagement" }
+      ],
+      "reserve": "Seize modèles officiels couvrent la résiliation, chacun pour un type de contrat. Les six ci-dessus sont les plus courants ; cherche le tien avec `catalogue_actes` avant d'écrire une lettre libre."
+    },
+    "document": {
+      "label": "Projet de courrier",
+      "officiels": [],
+      "reserve": "Gabarit neutre, sans démarche officielle correspondante. Utilise-le seulement si aucun des six autres ne convient."
+    }
+  }
+}
