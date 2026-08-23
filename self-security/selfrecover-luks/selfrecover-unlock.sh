@@ -43,7 +43,11 @@ esac
 RUN_AS="${SUDO_USER:-$USER}"
 for (( i=1; i<=MAX_ESSAIS; i++ )); do
   read -rsp "Mot de récupération SelfRecover (essai $i/$MAX_ESSAIS) : " WORD; echo
-  if sudo -u "$RUN_AS" python3 "$HERE/selfrecover_derive.py" \
+  # printf et non --word : en argv la passphrase serait lisible dans /proc/<pid>/cmdline.
+  # Sans ce printf, --stdin lit le terminal : le script attend une saisie alors que
+  # l'echo vient d'etre retabli par la fin du read -rs, et la passphrase s'affiche.
+  if printf '%s' "$WORD" \
+     | sudo -u "$RUN_AS" python3 "$HERE/selfrecover_derive.py" \
          --stdin --salt "$SALT" --label disk --format hex \
      | cryptsetup luksOpen "$DEV" "$MAP" --key-file=-
   then
