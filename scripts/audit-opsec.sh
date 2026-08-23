@@ -275,11 +275,20 @@ elif [ "$MODE" = "worktree" ]; then
   done
   [ "$SEC" = "0" ] && ok "aucun secret dans les ${#CIBLES[@]} fichier(s) en cours"
 else
+  # Le périmètre de ce contrôle suit --range, comme les contrôles 2, 4 et 5.
+  # Sans --log-opts, `detect` scanne l'historique COMPLET pendant que le reste du
+  # rapport annonce une plage : il rendait rouge sur une plage propre, à cause de
+  # secrets antérieurs déjà publiés. Un contrôle bloquant qui crie pour autre chose
+  # que ce qu'il annonce s'apprend par cœur, puis se contourne. Mesuré le 23/08/2026
+  # sur origin/main..dev — gitleaks disait « no leaks found », le rapport disait
+  # « secret détecté ».
+  GL_PORTEE=()
+  [ -n "$RANGE" ] && GL_PORTEE=(--log-opts "$RANGE")
   if gitleaks detect --source "$ROOT" -c "$ROOT/.gitleaks.toml" \
-       --no-banner --redact >/dev/null 2>&1; then
-    ok "aucun secret"
+       "${GL_PORTEE[@]}" --no-banner --redact >/dev/null 2>&1; then
+    ok "aucun secret${RANGE:+ dans les commits à publier ($RANGE)}"
   else
-    warn "secret détecté — détail : gitleaks detect -v"
+    warn "secret détecté — détail : gitleaks detect${RANGE:+ --log-opts \"$RANGE\"} -v"
   fi
 fi
 
