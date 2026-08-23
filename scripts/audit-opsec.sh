@@ -448,7 +448,25 @@ if [ "$PAR_CIBLES" = "0" ]; then
       [ "$VERBOSE" = "1" ] && printf '%s' "$MESSAGES" | grep -i -e "$m" | head -3 | sed 's/^/       /'
     fi
   done
-  [ "$C4" = "0" ] && ok "aucun motif dans les messages"
+  # Les motifs ci-dessus cherchent des données NOMINATIVES. Un secret, lui,
+  # n'a aucune forme reconnaissable — sauf sa longueur. Le 17/04/2026, un jeton
+  # de 32 hex est parti dans un sujet de commit ; il y est resté quatre mois,
+  # actif sur le serveur, pendant que gitleaks rendait vert : il lit les
+  # patchs, jamais les messages. Personne ne regardait cette surface.
+  #
+  # Une chaîne hexadécimale de 32 ou 64 caractères est soit un identifiant
+  # d'objet git — parfaitement légitime dans un message — soit un secret. Git
+  # sait dire lequel : on lui demande.
+  while read -r cand; do
+    [ -z "$cand" ] && continue
+    git -C "$ROOT" cat-file -e "$cand" 2>/dev/null && continue   # objet git connu
+    warn "chaîne de ${#cand} caractères hexadécimaux dans un message, inconnue de git"
+    echo "       ${cand:0:6}… — si c'est un secret, il est publié : tourne-le."
+    echo "       Le message ne se corrige que par réécriture d'historique."
+    C4=1
+  done < <(printf '%s' "$MESSAGES" | grep -ioE '\b[0-9a-f]{32}\b|\b[0-9a-f]{64}\b' | sort -u)
+
+  [ "$C4" = "0" ] && ok "aucun motif ni secret dans les messages"
 
   # Le filtre le plus utile de tous : c'est là que dorment les documents de
   # travail, briefs privés et captures qu'on a « rangés » d'un git rm.
