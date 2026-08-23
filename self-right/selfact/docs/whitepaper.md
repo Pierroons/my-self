@@ -3,7 +3,7 @@ title: "SelfAct — Whitepaper"
 subtitle: "Operational extension of SelfJustice: compliant legal documents, one analysis away"
 author: "Pierroons — MySelf ecosystem"
 date: "April 2026"
-version: "alpha 0.0.1"
+version: "0.1.2"
 ---
 
 # Executive summary
