@@ -71,7 +71,7 @@ SelfAct **runs as well**, and its folder shows it: [`selfact/`](./selfact/) hold
 
 | Piece | Where | What it does |
 |---|---|---|
-| Catalogue | [`selfact/api/`](./selfact/api/) | 1,895 official resources harvested from service-public.gouv.fr — 871 forms, 685 online procedures, 339 letter templates, in 16 categories. Refreshed on the 1st and 15th. |
+| Catalogue | [`selfact/api/`](./selfact/api/) | 1,895 official resources harvested from service-public.gouv.fr, in 16 categories — the per-type breakdown is served live by `/act/api/catalog.php?stats=1`. Refreshed on the 1st and 15th. |
 | Situation matching | [`selfact/api/find.php`](./selfact/api/find.php) | 20 hand-curated situations: "I am being laid off" → the step, the article, the form. |
 | Deadline computation | [`selfact/api/deadline.php`](./selfact/api/deadline.php) | The one piece that computes rather than retrieves, with calendar export. |
 | Letter drafting | [`selfact/api/draft.php`](./selfact/api/draft.php) | Formal notice, saisine (conciliateur, Défenseur des droits), contestation, termination, recours — each with a "NON OFFICIEL — IRRECEVABLE" watermark that cannot be removed at print time, plus the matching official resources. |
