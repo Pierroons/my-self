@@ -128,6 +128,10 @@ binaire() {
 }
 
 FOUND=0
+# `note` dit qu'un contrôle n'a rien pu mesurer. Ça ne vaut pas ✗ — ça
+# interdirait de commiter ce que l'allowlist écarte volontairement — mais ça ne
+# vaut pas ✓ non plus : le verdict final doit pouvoir le distinguer.
+SANS_OBJET=0
 red()  { printf '\033[31m%s\033[0m\n' "$1"; }
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 warn() { printf '  \033[31m✗\033[0m %s\n' "$1"; FOUND=1; }
@@ -327,6 +331,7 @@ if [ "$PAR_CIBLES" = "1" ]; then
   if [ "$C2" = "0" ]; then
     if [ "$EXAMINES" = "0" ]; then
       note "aucun fichier lu — toutes les cibles ont été écartées ou sont binaires"
+      SANS_OBJET=1
     else
       ok "aucun motif dans les $EXAMINES fichier(s) réellement lus"
     fi
@@ -490,8 +495,14 @@ fi
 
 # ── Verdict ─────────────────────────────────────────────────────────────────
 echo
-if [ "$FOUND" = "0" ]; then
+if [ "$FOUND" = "0" ] && [ "$SANS_OBJET" = "0" ]; then
   printf '\033[32m✓ Rien à signaler.\033[0m\n'
+  exit 0
+fi
+if [ "$FOUND" = "0" ]; then
+  printf '\033[33m• Audit sans objet — aucun contenu n'"'"'a été lu.\033[0m\n'
+  echo "  Le vert ci-dessus ne porte sur rien : vérifie les lignes ↷ et, si une"
+  echo "  entrée d'allowlist écarte plus large que sa raison, resserre-la."
   exit 0
 fi
 red "✗ Audit en échec — voir ci-dessus."

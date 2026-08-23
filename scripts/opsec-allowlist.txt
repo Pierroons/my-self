@@ -44,4 +44,3 @@ eff_large_wordlist_fr\.txt$	wordlist diceware EFF française (fichier supprimé 
 selfrecover-validator\.html$	wordlist diceware embarquée dans le validateur hors-ligne (nom d'avant le rangement du 17/08/2026 — conservé : l'audit lit tout l'historique)
 offline-validator/index\.html$	wordlist diceware embarquée dans le validateur hors-ligne (nom actuel)
 openpgp\.min\.mjs$	OpenPGP.js minifié — ses tables de constantes cryptographiques produisent par hasard des suites de chiffres (un code postal est apparu à cheval sur deux entiers : ...2393238008,367...). Vérifié 02/08/2026 : aucune donnée réelle.
-^tools/nas-asustor/	outil générique de mise en service caché Tor pour NAS sous ADM — le nom du constructeur est celui du produit documenté, pas une machine de l'auteur ; les adresses citées sont du bloc de documentation RFC 5737

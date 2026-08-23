@@ -193,9 +193,9 @@ de recommencer le lendemain. Le seul coût de l'attaque était qu'elle échoue.
 - Module `self_invoice` promu "démo live"
 - Bouton "🌻 Essayer la démo" vers `https://your-instance.example`
 
-### Ajouté — Haute disponibilité DEVSERVER
+### Ajouté — Haute disponibilité du serveur
 
-- Watchdog matériel SOC activé avec timeout 14s
+- Watchdog matériel activé avec timeout 14 s
 - Démon `watchdog` userspace installé + configuré
 - Reboot automatique garanti en < 30 s si kernel panic ou driver réseau figé
 - Test de non-régression passé (kill -STOP daemon → reboot auto effectif)

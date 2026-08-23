@@ -1,5 +1,11 @@
-# torrc — config Tor pour hidden service ADM admin sur NAS
-# Généré par tor-nas.sh install — placeholder @TOR_DIR@ remplacé au runtime
+# torrc — config Tor de référence pour un hidden service ADM sur NAS
+#
+# Ce fichier n'est PAS lu par tor-nas.sh : `install` se contente d'ajouter son
+# bloc HiddenService au torrc que pose opkg, pour ne rien écraser. Cette
+# config-ci est la version complète et commentée — copie-la à la main sur
+# /opt/etc/tor/torrc si tu veux tout ce qu'elle contient.
+#
+# Les chemins sont ceux d'opkg, où /opt/etc est persistant au reboot.
 
 # ===== Identité de l'instance =====
 # On tourne en client uniquement, pas de relay, pas de bridge.
@@ -10,15 +16,16 @@ ClientOnly 1
 SocksPort 0
 ControlPort 0
 
-# Daemonize gérée par tor-nas.sh (--runasdaemon 1 en CLI)
+# Daemonize gérée par tor-nas.sh (--runasdaemon 1 en CLI) ou par le service
+# opkg S35tor selon le chemin de démarrage.
 RunAsDaemon 0
 
 # ===== Logs et données =====
-DataDirectory @TOR_DIR@/data
-Log notice file @TOR_DIR@/tor.log
+DataDirectory /opt/etc/tor/data
+Log notice file /opt/etc/tor/tor.log
 
-# ===== Hidden service v3 — ADM admin portal =====
-HiddenServiceDir @TOR_DIR@/hidden_service_adm/
+# ===== Hidden service v3 — portail admin ADM =====
+HiddenServiceDir /opt/etc/tor/hidden_service_adm/
 HiddenServiceVersion 3
 
 # Mappe le port HTTP du HS vers le portail ADM local (8000 = port ADM par défaut)
@@ -29,23 +36,20 @@ HiddenServicePort 80 127.0.0.1:8000
 # HiddenServicePort 443 127.0.0.1:8001
 
 # ===== Sécurité hidden service =====
-# Limite à 1 IP introductrice par circuit (réduit la fingerprinting du HS)
+# Défense anti-DoS aux points d'introduction : limite le débit des requêtes
+# d'introduction qu'un client peut adresser au HS.
 HiddenServiceEnableIntroDoSDefense 1
-
-# Refuse les hsdescs anciens (force v3)
-HiddenServiceVersion 3
 
 # ===== Misc =====
 # Pas d'IPv6 si pas configuré côté réseau
 ClientUseIPv6 0
 ClientPreferIPv6ORPort 0
 
-# Empêche Tor d'utiliser le système d'exit policy global
-# (on n'est pas relay, c'est sans effet, mais explicite c'est mieux)
+# Sans effet en ClientOnly ; posé pour que rien ne dépende du défaut.
 ExitRelay 0
 
 # Healthcheck via heartbeat dans les logs
 HeartbeatPeriod 6 hours
 
-# Ne jamais cacher les sockets sous /tmp (problème connu sur certains NAS)
-# CacheDirectory @TOR_DIR@/cache  # décommenter si besoin
+# Cache hors /tmp si /tmp est en RAM ou purgé au boot — décommenter si besoin :
+# CacheDirectory /opt/etc/tor/cache

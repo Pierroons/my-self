@@ -5,27 +5,25 @@
 #   install   — bootstrap initial (structure dirs, clé SSH backup, torrc, cron @reboot)
 #               À exécuter UNE FOIS via SSH root sur le NAS, après quoi SSH peut être désactivé
 #   start     — démarre le démon Tor en mode daemon
-#   stop      — arrête proprement Tor (SIGTERM puis SIGKILL après 5 sec)
+#   stop      — arrête proprement Tor (init.d du gestionnaire ; sinon SIGTERM puis SIGKILL à 2 s)
 #   restart   — stop puis start
 #   status    — affiche l'état + l'adresse .onion v3 du hidden service
 #   backup    — zippe les artefacts critiques (clés + hostname + manifest)
-#               + push SCP sur la clé USB du DEVSERVER
+#               + push SCP sur la clé USB du serveur de sauvegarde
 #   update    — met à jour le binaire Tor (opkg si dispo, sinon binaire pinned)
 #
-# Conventions :
-#   /opt/tor/                  — racine de l'install Tor (survit aux MAJ ADM)
-#   /opt/tor/bin/tor           — binaire Tor
-#   /opt/tor/torrc             — config Tor (générée par install.sh)
-#   /opt/tor/data/             — données Tor (DNS cache, descriptors)
-#   /opt/tor/hidden_service_adm/  — clés Ed25519 + hostname du HS
-#   /opt/tor/.ssh/nas-to-devserver  — clé SSH dédiée pour push backups → DEVSERVER
-#   /opt/tor/backups/          — archives backup locales (rotation 3 dernières)
+# Conventions — tout est sous les chemins persistants d'opkg (cf. bloc CONFIG) :
+#   /opt/bin/tor                       — binaire Tor
+#   /opt/sbin/tor-nas.sh               — ce script, recopié par `install`
+#   /opt/etc/tor/torrc                 — config Tor ; `install` y ajoute le bloc HS
+#   /opt/etc/tor/hidden_service_adm/   — clés Ed25519 + hostname du HS
+#   /opt/etc/tor/.ssh/nas-to-backup    — clé SSH dédiée au push des backups
+#   /opt/etc/tor/backups/              — archives locales (rotation 3 dernières)
 #
-# Backup destination (sur le DEVSERVER) :
-#   /mnt/usb-backup/nas-nas/tor-backups/
+# Backup destination, sur le serveur de sauvegarde :
+#   /mnt/usb-backup/nas-tor/tor-backups/
 #
-# Auto-start au boot : `crontab -e` puis `@reboot /opt/tor/bin/tor-nas.sh start`
-# (ADM n'a pas systemd standard, cron est la voie portable).
+# Auto-start au boot : assuré par le service init.d du gestionnaire /opt/etc/init.d/S35tor.
 #
 # Licence : AGPL-3.0-or-later — partie du repo MySelf
 set -eu
@@ -36,35 +34,33 @@ export PATH="/opt/bin:/opt/sbin:/usr/builtin/bin:/usr/builtin/sbin:/usr/sbin:/us
 
 # ===================== CONFIG =====================
 # IMPORTANT — sur NAS avec opkg, /opt/ est reconstruit à chaque boot
-# uniquement avec les symlinks opkg. Donc on utilise les paths sous
-# /opt/etc/, /opt/bin/, /opt/var/ qui sont persistants (sous /usr/local/AppCentral/opkg/).
+# uniquement avec les symlinks du gestionnaire. Donc on utilise les paths sous
+# /opt/etc/, /opt/bin/, /opt/var/ qui sont persistants (sous le répertoire AppCentral du gestionnaire de paquets).
 TOR_BIN="/opt/bin/tor"
 TOR_INITD="/opt/etc/init.d/S35tor"
 TOR_CONF_DIR="/opt/etc/tor"
 TOR_CONF="${TOR_CONF_DIR}/torrc"
 HS_DIR="${TOR_CONF_DIR}/hidden_service_adm"
-LOG_FILE="${TOR_CONF_DIR}/tor.log"
-PID_FILE="/opt/var/run/tor.pid"  # default opkg
 BACKUP_DIR="${TOR_CONF_DIR}/backups"
 
-# Cible DEVSERVER (ajuste si besoin)
-DEVSERVER_HOST="deploy@192.0.2.60"
-DEVSERVER_USB_PATH="/mnt/usb-backup/nas-nas/tor-backups"
-SSH_KEY="${TOR_CONF_DIR}/.ssh/nas-to-devserver"
+# Serveur de sauvegarde — destination du push nocturne (ajuste si besoin)
+BACKUP_HOST="deploy@192.0.2.60"
+BACKUP_PATH="/mnt/usb-backup/nas-tor/tor-backups"
+SSH_KEY="${TOR_CONF_DIR}/.ssh/nas-to-backup"
 
 # ===================== HELPERS =====================
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 
 require_dir() {
     if [ ! -d "$1" ]; then
-        log "ERROR: missing directory $1 — run install.sh first"
+        log "ERROR: missing directory $1 — run '$0 install' first"
         exit 2
     fi
 }
 
 require_bin() {
     if [ ! -x "$1" ]; then
-        log "ERROR: missing binary $1 — run install.sh first"
+        log "ERROR: missing binary $1 — run '$0 install' first"
         exit 2
     fi
 }
@@ -109,7 +105,7 @@ cmd_restart() {
 }
 
 cmd_status() {
-    # Cherche tor process via pgrep (PID file pas toujours fiable avec init opkg)
+    # Cherche tor process via pgrep (PID file pas toujours fiable avec init du gestionnaire)
     pid=$(pgrep -x tor 2>/dev/null | head -1)
     if [ -n "$pid" ]; then
         log "Tor running (PID $pid)"
@@ -175,27 +171,30 @@ cmd_backup() {
 
     log "Local backup: $archive_path ($(du -h "$archive_path" | awk '{print $1}'))"
 
-    # Push vers DEVSERVER via scp (clé SSH dédiée)
+    # Push vers le serveur de sauvegarde via scp (clé SSH dédiée)
     if [ -f "$SSH_KEY" ]; then
-        log "Pushing to DEVSERVER via scp..."
+        log "Pushing to backup server via scp..."
         # Crée le dossier distant si absent
         ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new \
-            "$DEVSERVER_HOST" "mkdir -p $DEVSERVER_USB_PATH && chmod 700 $DEVSERVER_USB_PATH" \
+            "$BACKUP_HOST" "mkdir -p $BACKUP_PATH && chmod 700 $BACKUP_PATH" \
             || log "WARN: could not ensure remote dir"
 
-        scp -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new \
-            "$archive_path" \
-            "${DEVSERVER_HOST}:${DEVSERVER_USB_PATH}/${archive_name}" \
-            && log "Backup uploaded: ${DEVSERVER_HOST}:${DEVSERVER_USB_PATH}/${archive_name}" \
-            || log "ERROR: scp failed — backup NOT uploaded (kept locally)"
+        if scp -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new \
+               "$archive_path" \
+               "${BACKUP_HOST}:${BACKUP_PATH}/${archive_name}"; then
+            log "Backup uploaded: ${BACKUP_HOST}:${BACKUP_PATH}/${archive_name}"
+        else
+            log "ERROR: scp failed — backup NOT uploaded (kept locally)"
+        fi
     else
         log "WARN: SSH key $SSH_KEY missing — backup NOT uploaded"
-        log "      Run install.sh to generate it, then add the public key"
-        log "      to /home/deploy/.ssh/authorized_keys on the DEVSERVER."
+        log "      Run '$0 install' to generate it, then add the public key"
+        log "      to ~deploy/.ssh/authorized_keys on the backup server."
     fi
 
-    # Rotation locale : garder les 3 derniers backups seulement
-    # (le DEVSERVER garde TOUS les backups historiques, lui)
+    # Rotation locale : garder les 3 derniers backups seulement.
+    # Le serveur de sauvegarde, lui, garde tout l'historique — la rétention
+    # longue est de son côté, pas de celui du NAS.
     if command -v ls >/dev/null 2>&1; then
         ls -t "$BACKUP_DIR"/tor-backup-*.tar.gz 2>/dev/null | tail -n +4 | while read -r f; do
             log "Rotating out: $f"
@@ -207,7 +206,7 @@ cmd_backup() {
 cmd_update() {
     log "Checking for Tor update..."
 
-    # Tentative 1 : opkg (opkg) si présent
+    # Tentative 1 : opkg si présent
     if command -v opkg >/dev/null 2>&1; then
         log "opkg detected — using opkg"
         opkg update
@@ -251,9 +250,9 @@ cmd_install() {
     mkdir -p "$HS_DIR" "$BACKUP_DIR" "${TOR_CONF_DIR}/.ssh"
     chmod 700 "${TOR_CONF_DIR}/.ssh" "$HS_DIR"
 
-    # 2. Clé SSH dédiée pour push backups vers DEVSERVER
+    # 2. Clé SSH dédiée pour push backups vers le serveur de sauvegarde
     if [ ! -f "$SSH_KEY" ]; then
-        log "Generating SSH key for backup push to DEVSERVER..."
+        log "Generating SSH key for backup push..."
         ssh-keygen -t ed25519 -f "$SSH_KEY" -N "" \
             -C "tor-nas-backup-$(hostname)-$(date +%Y%m%d)"
         chmod 600 "$SSH_KEY"
@@ -264,10 +263,10 @@ cmd_install() {
     fi
 
     log ""
-    log "===== ACTION REQUIRED — copy this public key to DEVSERVER ====="
+    log "===== ACTION REQUIRED — copy this public key to the backup server ====="
     cat "${SSH_KEY}.pub"
     log ""
-    log "Append it to /home/deploy/.ssh/authorized_keys on the DEVSERVER (192.0.2.60)."
+    log "Append it to ~deploy/.ssh/authorized_keys on the backup server (192.0.2.60)."
     log ""
 
     # 3. Tor binary
@@ -294,7 +293,7 @@ cmd_install() {
         else
             log ""
             log "===== ACTION REQUIRED — install Tor binary manually ====="
-            log "opkg (opkg) not detected. Three paths possible:"
+            log "opkg not detected. Three paths possible:"
             log ""
             log "  Path A (preferred) — install opkg via NAS App Central"
             log "    1. Open ADM → App Central → search 'opkg'"
@@ -309,9 +308,9 @@ cmd_install() {
             log "  Path C — compile from source (on a Debian dev box, then SCP)"
             log "    1. apt install build-essential libssl-dev libevent-dev"
             log "    2. Download Tor source from torproject.org, verify GPG"
-            log "    3. ./configure --prefix=/opt/tor --disable-system-torrc"
+            log "    3. ./configure --prefix=/usr/local/tor-static --disable-system-torrc"
             log "    4. make && make install"
-            log "    5. SCP /opt/tor/bin/tor to NAS:$TOR_BIN"
+            log "    5. SCP /usr/local/tor-static/bin/tor to NAS:$TOR_BIN"
             log ""
             log "Re-run $0 install once binary is in place."
             return 2
@@ -337,7 +336,7 @@ EOF
     chmod 700 "$HS_DIR" "${TOR_CONF_DIR}/.ssh"
 
     # 6. Self-copy vers /opt/sbin/ (persistant opkg)
-    local self_path target_path="/opt/sbin/tor-nas.sh"
+    target_path="/opt/sbin/tor-nas.sh"
     self_path="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
     if [ "$(realpath "$self_path" 2>/dev/null)" != "$(realpath "$target_path" 2>/dev/null)" ]; then
         cp "$self_path" "$target_path"
@@ -347,7 +346,7 @@ EOF
 
     # 7. Crontab — backup quotidien uniquement (Tor auto-start déjà géré par
     # opkg via /opt/etc/init.d/S35tor)
-    local cron_backup="30 4 * * * $target_path backup >> ${TOR_CONF_DIR}/cron.log 2>&1"
+    cron_backup="30 4 * * * $target_path backup >> ${TOR_CONF_DIR}/cron.log 2>&1"
 
     if crontab -l 2>/dev/null | grep -qF "tor-nas.sh backup"; then
         log "Daily backup cron already configured"
@@ -360,7 +359,7 @@ EOF
     log ""
     log "===== INSTALL COMPLETE ====="
     log "Next steps:"
-    log "  1. Copy SSH pubkey above to DEVSERVER /home/deploy/.ssh/authorized_keys"
+    log "  1. Copy SSH pubkey above to the backup server ~deploy/.ssh/authorized_keys"
     log "  2. $0 start"
     log "  3. $0 status   # wait ~30s then check .onion address"
     log "  4. $0 backup   # first backup"
@@ -370,17 +369,17 @@ EOF
 
 cmd_help() {
     cat <<EOF
-tor-nas.sh — gestionnaire Tor hidden service NAS
+tor-nas.sh — gestionnaire Tor hidden service NAS (ADM)
 
 Usage: $0 {install|start|stop|restart|status|backup|update|help}
 
 Commands:
   install   First-time bootstrap (mkdir, ssh-keygen, torrc, cron). Run as root.
-  start     Start Tor daemon (writes PID to $PID_FILE)
-  stop      Gracefully stop Tor (SIGTERM, then SIGKILL after 5s)
+  start     Start Tor daemon (via l'init.d du gestionnaire, else --runasdaemon)
+  stop      Gracefully stop Tor (init.d; fallback SIGTERM then SIGKILL at 2s)
   restart   stop + start
   status    Show running state + .onion address + Tor version
-  backup    Snapshot HS keys + manifest, upload to DEVSERVER USB drive
+  backup    Snapshot HS keys + manifest, upload to backup server USB drive
   update    Update Tor binary (opkg if available, else manual procedure)
   help      This message
 
