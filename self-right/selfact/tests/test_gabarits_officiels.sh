@@ -22,6 +22,31 @@ ICI="$(cd "$(dirname "$0")" && pwd)"
 ACT="$(cd "$ICI/../api" && pwd)"
 command -v php >/dev/null || { echo "php introuvable" >&2; exit 1; }
 
+# 🔑 **Le banc lit un extrait versionné, pas le catalogue de la machine.**
+# Le catalogue complet vit dans l'état de l'instance depuis le 21/08/2026 et
+# `.gitignore` l'écarte du dépôt. Ce banc passait donc au vert sur les postes où
+# une copie non versionnée traînait, et rouge en intégration continue : le
+# 22/08 à 19:00, `catalogue non lu — les renvois ne prouvent rien`. Un banc dont
+# le résultat dépend de ce qui n'est PAS dans le dépôt ne mesure pas le dépôt.
+#
+# L'extrait est filtré depuis le catalogue réel par les identifiants que les
+# gabarits citent (`gen_catalog_fixture.py`) : un identifiant inventé n'y entre
+# pas, faute d'exister en amont. Ce que l'extrait ne voit plus — une ressource
+# qui meurt côté service-public — revient à `sanity_fraicheur_catalogue.py`, qui
+# interroge le vrai catalogue.
+FIXTURE="$ICI/catalog-fixture.json"
+if [ ! -r "$FIXTURE" ]; then
+    echo "ÉCHEC : $FIXTURE absent — régénérer avec tests/gen_catalog_fixture.py" >&2
+    exit 1
+fi
+cites=$(grep -oE '\bR[0-9]{3,6}\b' "$ACT/data/gabarits.json" | sort -u | wc -l)
+portes=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["models"]))' "$FIXTURE")
+if [ "$portes" -lt "$cites" ]; then
+    echo "ÉCHEC : l'extrait porte $portes ressources pour $cites citées — régénérer." >&2
+    exit 1
+fi
+export SELFACT_CATALOG="$FIXTURE"
+
 SERVEUR=""; BASE=""
 trap '[ -n "$SERVEUR" ] && kill "$SERVEUR" 2>/dev/null' EXIT
 for _ in 1 2 3; do

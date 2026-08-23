@@ -1,0 +1,180 @@
+{
+ "_meta": {
+  "role": "extrait de test — les seules ressources citées par gabarits.json",
+  "source": "service-public.gouv.fr (Etalab 2.0)",
+  "catalogue_last_sync": "2026-08-03T17:58:05+00:00",
+  "catalogue_total": 1895,
+  "total": 24,
+  "regenerer": "python3 self-right/selfact/tests/gen_catalog_fixture.py"
+ },
+ "models": [
+  {
+   "id": "R11657",
+   "label": "Porter plainte avec constitution de partie civile (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11657",
+   "type": "modele_lettre",
+   "category": "justice"
+  },
+  {
+   "id": "R11457",
+   "label": "Propriétaire : saisir la commission départementale de conciliation d'une demande de réévaluation de loyer (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11457",
+   "type": "modele_lettre",
+   "category": "logement"
+  },
+  {
+   "id": "R11469",
+   "label": "Porter plainte auprès du procureur de la République (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R11469",
+   "type": "modele_lettre",
+   "category": "justice"
+  },
+  {
+   "id": "R18078",
+   "label": "Résilier son contrat de communications électroniques pour raison personnelle (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R18078",
+   "type": "modele_lettre",
+   "category": "divers"
+  },
+  {
+   "id": "R21219",
+   "label": "Résilier son contrat d'assurance en cours (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R21219",
+   "type": "modele_lettre",
+   "category": "assurances"
+  },
+  {
+   "id": "R31677",
+   "label": "Annuler la vente si le bien ou le service n'a pas été livré après une mise en demeure (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R31677",
+   "type": "modele_lettre",
+   "category": "consommation"
+  },
+  {
+   "id": "R33643",
+   "label": "Résilier son contrat d'assurance à son échéance (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R33643",
+   "type": "modele_lettre",
+   "category": "assurances"
+  },
+  {
+   "id": "R43391",
+   "label": "Résilier un contrat de carte de crédit (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R43391",
+   "type": "modele_lettre",
+   "category": "finances"
+  },
+  {
+   "id": "R42340",
+   "label": "Locataire : saisir la commission départementale de conciliation en cas de demande de réévaluation de loyer (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R42340",
+   "type": "modele_lettre",
+   "category": "logement"
+  },
+  {
+   "id": "R46652",
+   "label": "Résilier un contrat d'assurance habitation si vous déménagez (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R46652",
+   "type": "modele_lettre",
+   "category": "logement"
+  },
+  {
+   "id": "R46120",
+   "label": "Exercer un recours gracieux contre l'autorisation d'urbanisme accordée à son voisin (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R46120",
+   "type": "modele_lettre",
+   "category": "logement"
+  },
+  {
+   "id": "R608",
+   "label": "Résilier son contrat de communications électroniques suite à sa modification (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R608",
+   "type": "modele_lettre",
+   "category": "divers"
+  },
+  {
+   "id": "R71287",
+   "label": "Mise en demeure de convoquer une assemblée générale des copropriétaires (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R71287",
+   "type": "modele_lettre",
+   "category": "logement"
+  },
+  {
+   "id": "R74538",
+   "label": "Modèle de lettre de mise en demeure pour abandon de poste (Modèles de lettres)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R74538",
+   "type": "modele_lettre",
+   "category": "divers"
+  },
+  {
+   "id": "R45186",
+   "label": "Recours administratif gracieux contre le refus de délivrance de qualification ou de diplôme dans le champ de l'animation et du sport (Formulaires)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45186",
+   "type": "formulaire",
+   "category": "divers"
+  },
+  {
+   "id": "R45187",
+   "label": "Recours administratif hiérarchique contre le refus de délivrance de qualifications ou de diplômes dans le champ de l'animation et du sport (Formulaires)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R45187",
+   "type": "formulaire",
+   "category": "divers"
+  },
+  {
+   "id": "R48318",
+   "label": "Demande de conciliation (Formulaires)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R48318",
+   "type": "formulaire",
+   "category": "divers"
+  },
+  {
+   "id": "R73714",
+   "label": "Demande de conciliation par un conciliateur de justice (Formulaires)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R73714",
+   "type": "formulaire",
+   "category": "justice"
+  },
+  {
+   "id": "R19620",
+   "label": "Plainte en ligne (Démarches en ligne)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R19620",
+   "type": "teleservice",
+   "category": "justice"
+  },
+  {
+   "id": "R20689",
+   "label": "Saisir en ligne le Défenseur des droits (Démarches en ligne)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R20689",
+   "type": "teleservice",
+   "category": "administration"
+  },
+  {
+   "id": "R49386",
+   "label": "Faire un recours gracieux suite au refus de délivrance d'une carte grise (Démarches en ligne)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R49386",
+   "type": "teleservice",
+   "category": "auto"
+  },
+  {
+   "id": "R64884",
+   "label": "Trouver un commissariat ou une gendarmerie pour déposer plainte (Démarches en ligne)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R64884",
+   "type": "teleservice",
+   "category": "travail"
+  },
+  {
+   "id": "R68670",
+   "label": "Savoir si le Défenseur des droits est compétent pour votre problème (Démarches en ligne)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R68670",
+   "type": "teleservice",
+   "category": "administration"
+  },
+  {
+   "id": "R73317",
+   "label": "Saisir le Défenseur des droits d’un cas de discrimination ou de harcèlement (Démarches en ligne)",
+   "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R73317",
+   "type": "teleservice",
+   "category": "administration"
+  }
+ ]
+}
