@@ -401,14 +401,37 @@ else
       '*.png' '*.jpg' '*.jpeg' '*.webp' '*.tif' '*.tiff' \
       '*.pdf' '*.docx' '*.xlsx' '*.odt' 2>/dev/null)
   fi
+  # `ls-files` ne voit que le HEAD. Un binaire retiré il y a six mois garde ses
+  # métadonnées dans l'historique, et c'est justement là que dorment les
+  # captures d'écran et les documents de travail. En mode complet on parcourt
+  # donc les blobs de l'historique, dédoublonnés, extraits en temporaire.
+  TMPMETA=""
+  if [ "$PAR_CIBLES" = "0" ]; then
+    TMPMETA=$(mktemp -d)
+    trap 'rm -rf "$TMPMETA"' EXIT
+    mapfile -t BINS < <(
+      git -C "$ROOT" rev-list --objects --all 2>/dev/null \
+        | awk 'NF>=2 {sha=$1; $1=""; sub(/^ /,""); print sha"\t"$0}' \
+        | grep -iE '\.(png|jpe?g|webp|tiff?|pdf|docx|xlsx|odt)$' \
+        | sort -u -t$'\t' -k1,1)
+  fi
   META=""
   for f in "${BINS[@]:-}"; do
     [ -n "${f:-}" ] || continue
-    [ -f "$ROOT/$f" ] || continue
+    if [ -n "$TMPMETA" ]; then
+      blob="${f%%$'\t'*}"; chemin="${f#*$'\t'}"
+      exclu "$chemin" && continue
+      cible="$TMPMETA/${blob}.${chemin##*.}"
+      git -C "$ROOT" cat-file blob "$blob" > "$cible" 2>/dev/null || continue
+      f="$chemin"
+    else
+      [ -f "$ROOT/$f" ] || continue
+      cible="$ROOT/$f"
+    fi
     brut=$(exiftool -s -S -Artist -Creator -Author -LastModifiedBy -Company \
              -Software -Comment -UserComment -XPAuthor -Copyright \
              -GPSPosition -HostComputer -OwnerName -SerialNumber \
-             "$ROOT/$f" 2>/dev/null | grep -v '^$' || true)
+             "$cible" 2>/dev/null | grep -v '^$' || true)
     while IFS= read -r ligne; do
       [ -z "$ligne" ] && continue
       suspecte "$ligne" && META="${META}  $f : ${ligne}"$'\n'
@@ -489,9 +512,15 @@ if [ "$PAR_CIBLES" = "0" ]; then
     echo "5. Fichiers orphelins (dans l'historique, absents du HEAD)"
     PORTEE=(--all)
   fi
+  # `ls-files` ne lit que l'index de la branche courante : sur un dépôt à
+  # plusieurs branches, un fichier vivant sur `develop` était compté orphelin —
+  # et surtout l'inverse, un vrai orphelin passait pour vivant. On compare à
+  # l'union de toutes les refs locales, seule définition juste de « encore là ».
   ORPH=$(comm -23 \
     <(git -C "$ROOT" log "${PORTEE[@]}" --diff-filter=D --name-only --format='' | sort -u | grep . ) \
-    <(git -C "$ROOT" ls-files | sort -u) || true)
+    <(git -C "$ROOT" for-each-ref --format='%(refname)' refs/heads refs/remotes \
+        | while IFS= read -r r; do git -C "$ROOT" ls-tree -r --name-only "$r"; done \
+        | sort -u) || true)
   ORPH_N=$(printf '%s' "$ORPH" | grep -c . || true)
   C5=0
   if [ "${ORPH_N:-0}" != "0" ]; then
@@ -518,6 +547,122 @@ if [ "$PAR_CIBLES" = "0" ]; then
     done <<< "$ORPH"
   fi
   [ "$C5" = "0" ] && ok "$ORPH_N orphelin(s), aucun ne porte de motif"
+fi
+
+# ── 6 : le TEXTE des documents, sur tout l'historique ──────────────────────
+#
+# L'étape 2 lit le contenu avec `git grep -I`, qui saute les binaires par
+# construction. L'étape 3 lit les métadonnées, et seulement celles des fichiers
+# du HEAD. Entre les deux, un trou : le CORPS d'un document bureautique, dans
+# l'historique. Mesuré le 24/08/2026 sur un dépôt privé — deux DOCX y portaient
+# un nom de domaine d'infrastructure et un chemin serveur, invisibles aux cinq
+# étages. Un « ✓ métadonnées » ne dit rien de ce qui est écrit dans la page.
+#
+# Dédoublonné par blob : un document présent dans quarante commits s'extrait
+# une fois.
+if [ "$PAR_CIBLES" = "0" ]; then
+  echo
+  echo "6. Texte des documents bureautiques (historique complet)"
+  DOCS=$(git -C "$ROOT" rev-list --objects "${PORTEE[@]}" 2>/dev/null \
+         | awk 'NF>=2 {sha=$1; $1=""; sub(/^ /,""); print sha"\t"$0}' \
+         | grep -iE '\.(docx|odt|pptx|xlsx|pdf)$' | sort -u -t$'\t' -k1,1 || true)
+  DOC_N=$(printf '%s' "$DOCS" | grep -c . || true)
+  C6=0
+  if [ "${DOC_N:-0}" = "0" ]; then
+    ok "aucun document bureautique dans l'historique"
+  else
+    while IFS=$'\t' read -r blob chemin; do
+      [ -z "$blob" ] && continue
+      exclu "$chemin" && continue
+      texte=$(git -C "$ROOT" cat-file blob "$blob" 2>/dev/null | python3 -c '
+import sys, zipfile, io, re, subprocess
+brut = sys.stdin.buffer.read()
+try:
+    if brut[:4] == b"%PDF":
+        p = subprocess.run(["pdftotext", "-", "-"], input=brut,
+                           capture_output=True, timeout=30)
+        sys.stdout.write(p.stdout.decode("utf-8", "ignore"))
+    else:
+        z = zipfile.ZipFile(io.BytesIO(brut))
+        out = []
+        for n in z.namelist():
+            if n.endswith(".xml") or n.endswith(".rels"):
+                out.append(re.sub(r"<[^>]+>", " ", z.read(n).decode("utf-8", "ignore")))
+        sys.stdout.write(" ".join(out))
+except Exception:
+    pass
+' 2>/dev/null || true)
+      if [ -z "$texte" ]; then
+        warn "$chemin (blob ${blob:0:8}) — texte non extractible, NON contrôlé"
+        C6=1; continue
+      fi
+      for m in "${MOTIFS[@]}"; do
+        if printf '%s' "$texte" | grep -qi -e "$m"; then
+          warn "$chemin — contient « $m » (blob ${blob:0:8})"
+          C6=1; break
+        fi
+      done
+    done <<< "$DOCS"
+    [ "$C6" = "0" ] && ok "$DOC_N document(s) lu(s), aucun ne porte de motif"
+  fi
+fi
+
+# ── 7 : les surfaces de la forge, hors de git ───────────────────────────────
+#
+# Un corps de release, un titre, une description de dépôt : du texte libre,
+# publié, indexé, et dans AUCUN dépôt. Aucun étage ci-dessus ne peut le voir —
+# ils lisent tous des objets git. Mesuré le 24/08/2026 : un corps de release
+# nommait un répertoire d'infrastructure, un autre décrivait le métier de
+# l'auteur avec assez de précision pour réduire l'ensemble d'anonymat.
+#
+# Étage réseau : sans `gh` ou sans accès, il le DIT plutôt que de rendre vert.
+if [ "$PAR_CIBLES" = "0" ]; then
+  echo
+  echo "7. Surfaces de la forge (releases, description, topics)"
+  # Ne dériver un dépôt QUE d'une URL github.com. Sans ce test, un remote local
+  # produisait un « dépôt » qui est un chemin disque, et les appels échouaient.
+  ORIG=$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)
+  case "$ORIG" in
+    *github.com[:/]*) DEPOT=$(printf '%s' "$ORIG" | sed -E 's#^.*github\.com[:/]##; s#\.git$##') ;;
+    *) DEPOT="" ;;
+  esac
+  if ! command -v gh >/dev/null 2>&1; then
+    note "gh absent — surfaces de la forge NON contrôlées"
+    SANS_OBJET=1
+  elif [ -z "$DEPOT" ]; then
+    note "pas de remote GitHub — cet étage ne s'applique pas ici"
+  else
+    # ⚠️ `gh api` en échec écrit son JSON d'erreur sur STDOUT. Sans tester le
+    # code de retour, l'étage comptait « 13 lignes de texte libre » qui étaient
+    # treize lignes de « Not Found » — un vert obtenu sur une erreur. Chaque
+    # appel est donc gardé, et un seul échec rend l'étage sans objet.
+    LIBRE=""
+    APPELS_OK=0
+    for req in "repos/$DEPOT/releases|.[] | .name, .body, (.assets[]?.name)" \
+               "repos/$DEPOT|.description, .homepage, (.topics[]?)" \
+               "repos/$DEPOT/issues?state=all|.[] | .title, .body"; do
+      chemin="${req%%|*}"; filtre="${req#*|}"
+      if out=$(gh api "$chemin" --jq "$filtre" 2>/dev/null); then
+        LIBRE="${LIBRE}${out}"$'\n'
+        APPELS_OK=$((APPELS_OK + 1))
+      fi
+    done
+    if [ "$APPELS_OK" = "0" ]; then LIBRE=""; fi
+    if [ -z "$LIBRE" ]; then
+      note "aucun texte libre récupéré — vérifie l'accès réseau et gh auth"
+      SANS_OBJET=1
+    else
+      C7=0
+      for m in "${MOTIFS[@]}"; do
+        if printf '%s' "$LIBRE" | grep -qi -e "$m"; then
+          warn "« $m » dans une release, une issue ou la description de $DEPOT"
+          warn "  → ces textes s'éditent sans réécriture : gh release edit / gh repo edit"
+          C7=1
+        fi
+      done
+      [ "$C7" = "0" ] && ok "$(printf '%s' "$LIBRE" | grep -c .) ligne(s) de texte libre, aucun motif"
+    fi
+  fi
 fi
 
 # ── Verdict ─────────────────────────────────────────────────────────────────
