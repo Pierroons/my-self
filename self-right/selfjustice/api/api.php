@@ -100,6 +100,61 @@ function open_db(string $path): SQLite3 {
  * antérieure du script n'en a pas. La recherche par numéro continue alors de
  * répondre seule, au lieu de rendre une erreur.
  */
+/**
+ * Slug d'un titre de code, tel qu'un appelant l'écrirait.
+ *
+ * « Code de l'artisanat » → artisanat · « Code du travail » → travail
+ * « Code de procédure civile » → procedure_civile
+ */
+function code_slug(string $titre): string {
+    $t = mb_strtolower(trim($titre), 'UTF-8');
+    $t = strtr($t, [
+        'à'=>'a','â'=>'a','ä'=>'a','ç'=>'c','é'=>'e','è'=>'e','ê'=>'e','ë'=>'e',
+        'î'=>'i','ï'=>'i','ô'=>'o','ö'=>'o','ù'=>'u','û'=>'u','ü'=>'u','ÿ'=>'y','œ'=>'oe',
+    ]);
+    // On retire le mot « code » et l'article qui le suit : c'est ce que
+    // l'appelant omet toujours en écrivant ?code=travail.
+    $t = preg_replace('/^code\s+(de\s+la\s+|de\s+l\s*\x27|du\s+|des\s+|de\s+|d\s*\x27)?/u', '', $t);
+    $t = preg_replace('/[^a-z0-9]+/', '_', $t);
+    return trim($t, '_');
+}
+
+/**
+ * Les codes réellement servis, indexés par slug.
+ *
+ * 🔑 La table d'alias écrite à la main en portait 16. La base en sert 108,
+ * mesuré le 25/08/2026 : 92 codes existaient sans qu'aucun nom ne permette de
+ * les atteindre. « Code de l'artisanat » sortait dans les résultats de
+ * /legi/search pendant que ?code=artisanat rendait « Code inconnu » — la
+ * réponse accusait l'appelant d'une lacune de la table.
+ *
+ * Un alias tenu à côté de la base diverge d'elle, et la divergence est muette.
+ * Les alias se dérivent donc de ce qui est servi. La table manuelle reste en
+ * surcouche : ses raccourcis (« construction » pour le code de la construction
+ * et de l'habitation) ne se dérivent pas d'un titre, et ils sont entrés dans
+ * des configurations clientes qu'on ne casse pas.
+ *
+ * Coût : une requête d'agrégation, 0,2 s mesuré sur 525 441 articles. Elle ne
+ * s'exécute QUE lorsque la table manuelle a échoué, c'est-à-dire là où le
+ * guichet rendait une erreur. Le chemin nominal ne ralentit pas.
+ */
+function codes_en_base(SQLite3 $db): array {
+    static $cache = null;
+    if ($cache !== null) return $cache;
+    $cache = [];
+    $res = @$db->query(
+        "SELECT code_id, MIN(code_titre) AS titre FROM articles "
+        . "WHERE code_titre != '' GROUP BY code_id"
+    );
+    while ($res && ($r = $res->fetchArray(SQLITE3_ASSOC))) {
+        $slug = code_slug($r['titre'] ?? '');
+        // Premier arrivé, premier servi : une collision de slug ne doit pas
+        // faire changer de code un alias qui répondait déjà.
+        if ($slug !== '' && !isset($cache[$slug])) $cache[$slug] = $r['code_id'];
+    }
+    return $cache;
+}
+
 function legi_fts_disponible(SQLite3 $db): bool {
     static $present = null;
     if ($present === null) {
@@ -788,18 +843,33 @@ if ($segments[0] === 'legi') {
         // tel. Le laisser filtrer produisait « Article introuvable », qui
         // accuse la référence pour la faute du code — et envoie corriger ce
         // qui est juste.
-        if ($code_filter && !isset($CODE_ALIASES[strtolower($code_filter)])
-            && !preg_match('/^LEGITEXT\d+$/', $code_filter)) {
-            json_error(
-                "Code « $code_filter » inconnu. Utilise un alias ("
-                . implode(', ', array_slice(array_keys($CODE_ALIASES), 0, 8))
-                . ", …) ou un identifiant LEGITEXT. La référence « $ref » n'est "
-                . "pas en cause.",
-                400
-            );
-        }
-        if ($code_filter && isset($CODE_ALIASES[strtolower($code_filter)])) {
-            $code_filter = $CODE_ALIASES[strtolower($code_filter)];
+        if ($code_filter && !preg_match('/^LEGITEXT\d+$/', $code_filter)) {
+            $demande = code_slug($code_filter);
+            $connus  = codes_en_base($db);
+            $resolu  = $CODE_ALIASES[strtolower($code_filter)]
+                    ?? $connus[strtolower($code_filter)]
+                    ?? $connus[$demande]
+                    ?? null;
+            if ($resolu === null) {
+                // Suggérer se mesure : on ne propose que des slugs assez
+                // proches pour qu'une faute de frappe les explique.
+                $proches = [];
+                foreach (array_keys($connus) as $slug) {
+                    if ($demande !== '' && levenshtein($demande, $slug) <= 3) $proches[] = $slug;
+                }
+                sort($proches);
+                json_error(
+                    "Code « $code_filter » inconnu. "
+                    . ($proches
+                        ? "Vouliez-vous : " . implode(', ', array_slice($proches, 0, 5)) . " ? "
+                        : "")
+                    . count($connus) . " codes sont servis, nommables par leur titre sans "
+                    . "le mot « code » (artisanat, travail, procedure_civile…), ou par un "
+                    . "identifiant LEGITEXT. La référence « $ref » n'est pas en cause.",
+                    400
+                );
+            }
+            $code_filter = $resolu;
         }
 
         // Chercher d'abord la version en VIGUEUR
@@ -871,7 +941,7 @@ if ($segments[0] === 'legi') {
                 json_response([
                     'reference' => $ref,
                     'ambiguous' => true,
-                    'message'   => "L'article $ref existe dans plusieurs codes. Précisez le code via ?code=XXX (alias : travail, civil, penal, consommation, sante_publique, assurances, urbanisme, etc.).",
+                    'message'   => "L'article $ref existe dans plusieurs codes. Précisez le code via ?code=XXX — le titre du code sans le mot « code » (travail, artisanat, procedure_civile…) ou l'identifiant LEGITEXT rendu ci-dessous.",
                     'alternatives' => $alternatives,
                 ]);
             }
