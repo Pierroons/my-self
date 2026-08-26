@@ -141,6 +141,6 @@ Avant le 19 avril 2026, MySelf était sous licence MIT : les versions publiées
 
 ## Auteur
 
-Écrit en binôme continu avec un assistant IA. La direction,
-l'expérience de terrain et les arbitrages sont humains ; la structure et la
-relecture sont partagées.
+Écrit en binôme continu avec un assistant IA. La direction, l'expérience de
+terrain et les arbitrages sont humains ; la structure et la relecture sont
+partagées.

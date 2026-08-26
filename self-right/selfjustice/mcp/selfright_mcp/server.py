@@ -500,6 +500,40 @@ def _conseil_et_implicite(requete: str, resultats: int) -> str:
     )
 
 
+def _conseil_couverture(requete: str, resultats: int) -> str:
+    """Dit que le vide peut venir de la base, quand la requête ne peut plus être en cause.
+
+    🔑 Symétrique de `_conseil_et_implicite`, et c'est son angle mort. Ce
+    conseil-là se tait sous trois mots utiles — or c'est précisément la forme
+    qu'a une requête qui bute sur la COUVERTURE et non sur la conjonction. Un
+    mot, zéro résultat, aucun message : l'appelant conclut que le droit est
+    muet sur son sujet.
+
+    Mesuré le 25/08/2026, cette base ne porte que les CODES consolidés :
+      · « exutoire »   → 0 résultat, alors que le mot est partout dans le
+                          règlement de sécurité contre l'incendie ;
+      · « désenfumage » → 1 résultat, un simple renvoi du CCH, quand les
+                          articles DF, GN et R du même règlement se comptent
+                          par dizaines ;
+      · « cri séditieux » → 0, alors que c'est l'article 24 de la loi du
+                          29 juillet 1881, en vigueur et jamais codifiée.
+
+    Le vide rend `✓` : la recherche a répondu, rien ne signale que le domaine
+    entier manque. C'est un faux vert, et il fabrique des conclusions fausses
+    avec des sources vraies.
+    """
+    mots = _mots_utiles(requete)
+    if len(mots) > 2 or resultats > 2:
+        return ""
+    return (
+        "\n\nPeu de mots posés, presque aucun résultat : la conjonction n'y est "
+        "pour rien. Cette base ne porte que les CODES — un sujet réglementé par "
+        "une loi non codifiée, un décret ou un arrêté n'y figure pas, et rend "
+        "le même vide qu'un sujet sans règle. Va vérifier sur Légifrance avant "
+        "de conclure à l'absence de droit applicable."
+    )
+
+
 def _couverture(requete: str, resultat: dict) -> tuple[int, int] | None:
     """Termes de la requête retrouvés dans le résultat, sur le total posé.
 
@@ -881,6 +915,13 @@ async def _bandeau(base: str) -> str:
 # Placé dans le bandeau, il accompagne tous les outils de la base d'un coup —
 # écrit outil par outil, il aurait manqué le suivant.
 _PERIMETRE = {
+    "legi": (
+        "\nPérimètre : les CODES consolidés seulement. Les textes non codifiés "
+        "— lois, décrets, arrêtés, circulaires — ne sont pas dans cette base. Un "
+        "domaine qu'ils portent (sécurité incendie, ERP, installations classées) "
+        "y paraît vide sans l'être : ne conclus jamais à l'absence de règle sur "
+        "un silence de cette base."
+    ),
     "jurisprudence": (
         "\nPérimètre : justice JUDICIAIRE seulement. La justice administrative "
         "— Conseil d'État, cours administratives d'appel, tribunaux "
@@ -997,9 +1038,11 @@ async def article_francais(reference: str, code: str | None = None) -> str:
 
     Args:
         reference: numéro de l'article, ex. « L1152-1 », « R4127-1 », « 1240 ».
-        code: code concerné, en clair (« travail », « civil », « penal ») ou par
-            identifiant LEGITEXT. Sans ce filtre, un numéro porté par plusieurs
-            codes rend la liste des codes possibles plutôt qu'un texte au hasard.
+        code: le titre du code sans le mot « code » (« travail », « artisanat »,
+            « procedure_civile ») ou un identifiant LEGITEXT. Les 108 codes
+            servis sont nommables ainsi. Sans ce filtre, un numéro porté par
+            plusieurs codes rend la liste des codes possibles plutôt qu'un
+            texte au hasard.
     """
     try:
         data = await _get(f"/legi/article/{reference}", {"code": code} if code else None)
@@ -1035,9 +1078,9 @@ async def article_francais(reference: str, code: str | None = None) -> str:
         )
         return (
             f"{bandeau}\n\nL'article {reference} existe dans plusieurs codes. "
-            "Rappelle `article_francais` avec l'argument `code` (alias en clair "
-            "acceptés : travail, civil, penal, consommation, sante_publique, "
-            f"assurances, urbanisme…) :\n{lignes}"
+            "Rappelle `article_francais` avec l'argument `code` : le titre du "
+            "code sans le mot « code » (travail, artisanat, procedure_civile…) "
+            f"ou l'identifiant LEGITEXT rendu ci-dessous.\n{lignes}"
         )
 
     src = data.get("source", {})
@@ -1089,6 +1132,10 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
 
     Les accents sont facultatifs : « prenom » trouve « prénom ».
 
+    ⚠️ Périmètre : les CODES seulement. Les lois non codifiées, décrets et
+    arrêtés n'y sont pas — leur absence se lit comme un vide de droit alors
+    qu'elle n'est qu'un vide de base.
+
     ⚠️ Tous les mots posés doivent figurer dans le même article : la recherche
     les assemble par un ET. Une question longue restreint donc la réponse —
     c'est l'inverse de `rechercher_jurisprudence`. Deux ou trois mots
@@ -1113,6 +1160,7 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
         return (
             f"{bandeau}\n\nAucun article ne correspond à « {requete} »."
             + _conseil_et_implicite(requete, 0)
+            + _conseil_couverture(requete, 0)
             + "\n\nN'invente pas de référence approchante : dis à l'utilisateur "
             "que la recherche ne rend rien et demande-lui de préciser."
         )
@@ -1148,6 +1196,7 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
         f"{bandeau}\n\n{data.get('count', len(resultats))} résultat(s) pour « {requete} » :\n"
         + "\n\n".join(blocs)
         + _conseil_et_implicite(requete, len(resultats))
+        + _conseil_couverture(requete, len(resultats))
         + "\n\nAppelle `article_francais` sur la référence retenue pour en obtenir le texte."
     )
 

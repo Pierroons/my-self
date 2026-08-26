@@ -137,5 +137,5 @@ that date remain available under their original terms. Details in
 
 ## Author
 
-Written in continuous coworking with an AI assistant. Direction,
-field experience and judgement calls are human; structure and review are shared.
+Written in continuous coworking with an AI assistant. Direction, hands-on
+experience and judgement calls are human; structure and review are shared.
