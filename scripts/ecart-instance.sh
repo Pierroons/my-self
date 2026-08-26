@@ -17,7 +17,7 @@
 # Quatre écarts, qui n'ont pas la même gravité :
 #   DIVERGENT  présent des deux côtés, contenu différent      → sort en 1
 #   FIGÉ       versionné, hors périmètre, et pourtant présent → à décider
-#   ABSENT     versionné, jamais arrivé                       → parfois normal
+#   ABSENT     versionné, jamais arrivé                       → sort en 1
 #   ORPHELIN   présent là-bas, absent du dépôt                → à lire
 #
 # 🔑 **Une destination injoignable n'est pas une destination sans écart.** Le
@@ -61,9 +61,89 @@ done < "$CONFIG"
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
-# Mêmes exclusions que le déploiement. ⚠️ `--exclude=tools` sans barre matche
-# tout dossier de ce nom, à tout niveau — pas seulement à la racine.
-EXCLUS='(^|/)(\.github|_perso|tools|scripts|\.claude|deploy|node_modules)(/|$)'
+# ── Le périmètre se lit chez le déploiement, il ne se recopie pas ────────────
+#
+# 🔑 Cette liste était écrite ici en dur, sous un commentaire qui affirmait
+# « mêmes exclusions que le déploiement ». Elle en portait sept motifs sur
+# trente et un : ni `tests`, ni `docs`, ni `mcp`, ni surtout `*.md`. La sonde
+# comparait 337 fichiers là où l'assemblage en pose 216, et rendait 103 lignes
+# d'écart dont pas une ne décrivait un problème — mesuré le 24/08/2026. Un
+# rapport que personne ne peut lire ne protège rien.
+#
+# `deploy/my-self/deploy.sh` est l'autorité. Ses quatre tableaux sont lus ici,
+# jamais recopiés : le jour où une exclusion y naît, la sonde la connaît.
+DEPLOY="$(git rev-parse --show-toplevel)/deploy/my-self/deploy.sh"
+[ -r "$DEPLOY" ] || { echo "❌ Script de déploiement illisible : $DEPLOY" >&2; exit 1; }
+
+lire_tableau() {   # lire_tableau <NOM> → les chaînes entre guillemets du tableau
+    awk -v nom="$1" '
+        index($0, nom "=(") == 1 { dedans = 1 }
+        dedans {
+            ligne = $0; sub(/#.*/, "", ligne)
+            while (match(ligne, /"[^"]*"/)) {
+                print substr(ligne, RSTART + 1, RLENGTH - 2)
+                ligne = substr(ligne, RSTART + RLENGTH)
+            }
+            if (ligne ~ /\)/) dedans = 0
+        }
+    ' "$DEPLOY"
+}
+
+# Un motif rsync devient un fragment d'expression régulière. Trois formes, et
+# c'est toute la sémantique employée ici : un nom simple vaut à n'importe quel
+# niveau, un motif ouvert par une barre part de la racine, `*` ne franchit pas
+# de barre. Vérifié contre l'assemblage réel, qui pose les mêmes 216 fichiers.
+motif_vers_regex() {
+    local m="$1" r
+    r=$(printf '%s' "$m" | sed -e 's|\.|\\.|g' -e 's|\*|[^/]*|g')
+    case "$m" in
+        /*)   printf '^%s' "${r#/}" ;;
+        */*)  printf '(^|/)%s' "$r" ;;
+        *)    printf '(^|/)%s(/|$)' "$r" ;;
+    esac
+}
+
+# ⚠️ Chaque tableau se contrôle pour lui-même. Un plancher global laissait
+# disparaître le plus petit sans un mot : `ETAT_INSTANCE` renommé, ce sont
+# `storage/*` et `/demo/lab/data/*` qui rentrent dans le périmètre — donc les
+# sels et clés propres au déploiement du lab, comparés comme des fichiers
+# ordinaires. Vingt-neuf motifs sur trente et un passaient le seuil.
+FRAGMENTS=()
+for tableau in EXCLUS ETAT_INSTANCE EXCLUS_MOTIF; do
+    lus=0
+    while IFS= read -r motif; do
+        [ -n "$motif" ] || continue
+        FRAGMENTS+=("$(motif_vers_regex "$motif")"); lus=$((lus + 1))
+    done < <(lire_tableau "$tableau")
+    [ "$lus" -gt 0 ] || {
+        echo "❌ Tableau $tableau vide ou introuvable dans $DEPLOY — lecture en échec." >&2
+        exit 1; }
+done
+
+# ⚠️ Une lecture qui échoue ne doit pas passer pour un périmètre. Zéro motif
+# donnerait un regex vide, que `grep -vE` accepte en ne filtrant rien : le
+# dépôt entier redeviendrait le périmètre et la sonde crierait sur 421 fichiers.
+# Le défaut symétrique — un regex qui attrape tout — viderait le périmètre et
+# rendrait vert sans avoir rien comparé. Les deux se voient ici.
+[ "${#FRAGMENTS[@]}" -ge 20 ] || {
+    echo "❌ ${#FRAGMENTS[@]} motif(s) d'exclusion lus dans $DEPLOY — lecture en échec." >&2
+    exit 1; }
+EXCLUS="$(IFS='|'; printf '%s' "${FRAGMENTS[*]}")"
+
+# Les gardes reviennent dans le périmètre malgré une exclusion : `directives.md`
+# tombe sous `*.md`, et le serveur le sert pourtant par un `location` nommé.
+GARDES_FRAGMENTS=()
+while IFS= read -r garde; do
+    [ -n "$garde" ] && GARDES_FRAGMENTS+=("^${garde//./\\.}$")
+done < <(lire_tableau GARDES)
+# ⚠️ Aucune garde lue ne veut pas dire « aucune garde ». Le repli silencieux sur
+# un motif impossible sortait `directives.md` du périmètre : le fichier que le
+# serveur sert par un `location` nommé cessait d'être comparé, et sa divergence
+# passait de rouge à vert. Les deux gardes existent, leur absence est une panne.
+[ "${#GARDES_FRAGMENTS[@]}" -gt 0 ] || {
+    echo "❌ Tableau GARDES vide ou introuvable dans $DEPLOY — lecture en échec." >&2
+    exit 1; }
+GARDES_RE="$(IFS='|'; printf '%s' "${GARDES_FRAGMENTS[*]}")"
 ATTENDU="$(git rev-parse --show-toplevel)/scripts/ecart-attendu.txt"
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
@@ -102,8 +182,10 @@ for i in "${!PREFIXES[@]}"; do
     echo "▸ ${prefixe} → ${cible}"
 
     if [ "$prefixe" = "." ]; then
-        grep -vE "$EXCLUS" "$TMP/versionnes" > "$TMP/couverts"
-        grep -E  "$EXCLUS" "$TMP/versionnes" > "$TMP/hors-perimetre"
+        grep -vE "$EXCLUS" "$TMP/versionnes" > "$TMP/couverts" || true
+        grep -E  "$GARDES_RE" "$TMP/versionnes" >> "$TMP/couverts" || true
+        sort -u -o "$TMP/couverts" "$TMP/couverts"
+        grep -E  "$EXCLUS" "$TMP/versionnes" | grep -vE "$GARDES_RE" > "$TMP/hors-perimetre" || true
     else
         # Une destination explicite l'emporte sur les exclusions : si on la
         # déclare, c'est qu'on veut la vérifier, exclue du rsync ou non.
@@ -111,7 +193,14 @@ for i in "${!PREFIXES[@]}"; do
         : > "$TMP/hors-perimetre"
     fi
     nb="$(wc -l < "$TMP/couverts")"
-    [ "$nb" -gt 0 ] || { echo "   aucun fichier versionné sous ce préfixe"; continue; }
+    # ⚠️ Zéro fichier sous le préfixe n'est pas « rien ne diverge », c'est « rien
+    # n'a été mesuré ». Une faute de frappe dans instance.map, ou un dossier
+    # renommé dans le dépôt, éteignait la destination et le verdict restait vert
+    # — le défaut exact corrigé pour la destination injoignable le 20/08/2026,
+    # à deux lignes d'ici, et laissé entier à cet endroit.
+    [ "$nb" -gt 0 ] || {
+        echo "   ⚠ aucun fichier versionné sous ce préfixe — destination NON comparée"
+        SAUTEES=$((SAUTEES + 1)); continue; }
 
     # Chemin relatif à la destination : le sous-dossier du dépôt disparaît.
     : > "$TMP/relatifs"; : > "$TMP/local"
@@ -139,8 +228,19 @@ for i in "${!PREFIXES[@]}"; do
         h_dist="${ligne_d%%  *}"
         if [ "$prefixe" = "." ]; then origine="$rel"; else origine="${prefixe%/}/$rel"; fi
         if [ "$h_dist" = "ABSENT" ]; then
-            absents=$((absents + 1))
-            printf 'ABSENT     %s → %s\n' "$origine" "$cible" >> "$TMP/rapport"
+            # 🔑 Une absence n'est pas moins grave qu'une divergence : le fichier
+            # versionné que la destination devrait porter n'y est pas, donc ce qui
+            # est servi n'est plus ce qui est versionné. Le verdict la rangeait
+            # pourtant parmi ce qui « se lit » et sortait en 0. Durcie le
+            # 24/08/2026, au moment où le compteur venait de tomber à zéro : une
+            # absence voulue se déclare comme une divergence voulue, dans
+            # ecart-attendu.txt, et elle reste affichée.
+            if grep -qE -f "$TMP/motifs-attendus" <<< "$origine"; then
+                printf 'ATTENDU    %s → %s (absent, déclaré)\n' "$origine" "$cible" >> "$TMP/rapport"
+            else
+                absents=$((absents + 1))
+                printf 'ABSENT     %s → %s\n' "$origine" "$cible" >> "$TMP/rapport"
+            fi
         elif [ "$h_local" != "$h_dist" ]; then
             if grep -qE -f "$TMP/motifs-attendus" <<< "$origine"; then
                 printf 'ATTENDU    %s → %s\n' "$origine" "$cible" >> "$TMP/rapport"
@@ -162,24 +262,34 @@ for i in "${!PREFIXES[@]}"; do
     fi
 
     # Le sens inverse : ce que la destination porte et que le dépôt ignore.
+    #
+    # 🔑 Se comparer au seul périmètre comptait douze fichiers deux fois — une
+    # fois FIGÉ, une fois ORPHELIN. Un test versionné qu'un ancien déploiement a
+    # laissé sur la machine n'est pas inconnu du dépôt : il en sort, et c'est
+    # « figé » qui le décrit. Un orphelin est ce dont le dépôt n'a aucune trace.
+    cat "$TMP/relatifs" "$TMP/hors-perimetre" 2>/dev/null | sort -u > "$TMP/connus"
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         orphelins=$((orphelins + 1)); printf 'ORPHELIN   %s → %s\n' "$f" "$cible" >> "$TMP/rapport"
     done < <(ssh -o ConnectTimeout=10 "$HOTE" "find '$cible' -type f \
-        \\( -name '*.php' -o -name '*.html' -o -name '*.js' -o -name '*.sql' -o -name '*.sh' -o -name '*.py' \\) \
-        -printf '%P\n' 2>/dev/null" 2>/dev/null | sort | comm -23 - "$TMP/relatifs" | head -40)
+        \\( -name '*.php' -o -name '*.html' -o -name '*.js' -o -name '*.sql' -o -name '*.sh' -o -name '*.py' \\
+           -o -name '.env*' -o -name '.htaccess' -o -name '*.conf' -o -name '*.ini' -o -name '*.yml' -o -name '*.yaml' \\) \\
+        -printf '%P\n' 2>/dev/null" 2>/dev/null | sort | comm -23 - "$TMP/connus")
 done
 
 echo
 sort "$TMP/rapport" 2>/dev/null | grep -v '^ORPHELIN' || true
 grep '^ORPHELIN' "$TMP/rapport" 2>/dev/null | head -20 || true
+# ⚠️ Une liste coupée sans le dire se lit comme une liste complète. Le `head`
+# garde le rapport lisible ; la ligne ci-dessous garde le compte honnête.
+[ "$orphelins" -gt 20 ] && printf '           … et %s orphelin(s) non affiché(s).\n' "$((orphelins - 20))"
 [ -s "$TMP/rapport" ] || echo "Aucun écart."
 
 echo
 printf '── %s divergent(s) · %s figé(s) · %s absent(s) · %s orphelin(s)\n' \
     "$divergents" "$figes" "$absents" "$orphelins"
 
-if [ "$divergents" -gt 0 ]; then
+if [ "$divergents" -gt 0 ] || [ "$absents" -gt 0 ]; then
     echo "✗ Le dépôt et l'instance ne disent pas la même chose."
     exit 1
 fi
@@ -190,4 +300,4 @@ if [ "$SAUTEES" -gt 0 ]; then
     echo "  Vérifie l'hôte et les chemins de $CONFIG."
     exit 2
 fi
-echo "✓ Rien ne diverge. Figés, absences et orphelins se lisent, ils ne se corrigent pas d'office."
+echo "✓ Rien ne diverge, rien ne manque. Figés et orphelins se lisent, ils ne se corrigent pas d'office."

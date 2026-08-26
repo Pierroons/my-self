@@ -38,6 +38,16 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           fetch-depth: 0   # historique complet (baseline .gitleaksignore appliqué)
+
+      # `fetch-depth: 0` récupère les branches et les tags — PAS les refs/pull/*
+      # que la forge maintient pour chaque pull request. Mesuré le 24/08/2026 :
+      # le même dépôt rendait « no leaks found » sur 419 commits sans ces refs,
+      # et 50 fuites sur 514 avec. La barrière était verte sur un corpus plus
+      # petit que ce que le distant sert publiquement. On les ramène.
+      - name: Fetch les refs/pull que checkout ne prend pas
+        run: |
+          git fetch --no-tags origin '+refs/pull/*/head:refs/remotes/pull/*' || true
+          echo "refs/pull récupérées : $(git for-each-ref refs/remotes/pull | wc -l)"
       - name: Install gitleaks
         run: |
           V=8.30.1

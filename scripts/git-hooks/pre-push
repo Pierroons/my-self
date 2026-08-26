@@ -15,6 +15,23 @@ set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 
+# ═══ Gel des envois ═══════════════════════════════════════════════════════════
+# Un gel annoncé et non appliqué n'est qu'un souhait : plusieurs sessions
+# travaillent dans ce dépôt et aucune ne lit les messages des autres. La
+# contrainte vit donc ici, où elle s'oppose au geste.
+#
+# Le motif est dans un FICHIER, pas dans ce hook : lever le gel doit être un
+# geste explicite et visible (`rm`), jamais une édition du garde-fou — on
+# n'apprend pas à contourner sa propre alarme.
+GEL="$ROOT/.git/PUSH-GEL"
+if [ -f "$GEL" ]; then
+  printf '\n\033[31m✗ Envoi refusé — les envois sont gelés.\033[0m\n\n' >&2
+  sed 's/^/  /' "$GEL" >&2
+  printf '\n  Lever le gel :  rm %s\n\n' "$GEL" >&2
+  exit 1
+fi
+
+
 # Rappel du jugement, que l'audit ci-dessous ne fait pas : il cherche des motifs,
 # pas une phrase de vie privée dans une description de PR.
 #
@@ -43,9 +60,10 @@ fi
 # empêché l'envoi.
 ZERO='0000000000000000000000000000000000000000'
 PLAGES=()
-# Références neuves n'apportant aucun commit — un tag sur du déjà-publié. Leur
-# seul contenu inédit est leur propre message, qui est audité comme tel.
-NEUVES_SANS_COMMIT=()
+# Références n'apportant aucun commit que le distant n'ait déjà — un tag posé
+# ou déplacé sur du déjà-publié. Leur seul contenu inédit est leur propre
+# message, qui est audité comme tel.
+SANS_COMMIT_NOUVEAU=()
 COMPLET=0
 LIGNES=0
 while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
@@ -68,12 +86,23 @@ while read -r LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
     # En cas de doute (rev-list muet), on retombe sur l'audit complet : le
     # défaut de mesure ne doit pas se traduire par un relâchement.
     if [ "$(git rev-list --count "$LOCAL_SHA" --not --remotes=origin 2>/dev/null || echo 1)" = "0" ]; then
-      NEUVES_SANS_COMMIT+=("$LOCAL_REF|$LOCAL_SHA")
+      SANS_COMMIT_NOUVEAU+=("$LOCAL_REF|$LOCAL_SHA")
     else
       COMPLET=1
     fi
   else
-    PLAGES+=("$REMOTE_SHA..$LOCAL_SHA")
+    # Une référence DÉPLACÉE mérite la même mesure qu'une référence neuve. Le
+    # raisonnement ci-dessus vaut mot pour mot ici, et il n'y était pas :
+    # mesuré le 23/08/2026, le repointage de cinq tags sur des commits déjà
+    # présents dans main a été compté « 64 à 131 commits à publier », alors
+    # qu'aucun des cinq n'apportait un seul objet nouveau. L'audit a rougi sur
+    # un passé que cet envoi ne pouvait ni aggraver ni corriger, et la seule
+    # issue restante était --no-verify.
+    if [ "$(git rev-list --count "$LOCAL_SHA" --not --remotes=origin 2>/dev/null || echo 1)" = "0" ]; then
+      SANS_COMMIT_NOUVEAU+=("$LOCAL_REF|$LOCAL_SHA")
+    else
+      PLAGES+=("$REMOTE_SHA..$LOCAL_SHA")
+    fi
   fi
 done
 
@@ -89,13 +118,13 @@ if [ "$LIGNES" = "0" ]; then
   fi
 elif [ "$COMPLET" = "1" ]; then
   echo "▸ Périmètre : historique complet (référence distante nouvelle)"
-elif [ ${#PLAGES[@]} -eq 0 ] && [ ${#NEUVES_SANS_COMMIT[@]} -eq 0 ]; then
+elif [ ${#PLAGES[@]} -eq 0 ] && [ ${#SANS_COMMIT_NOUVEAU[@]} -eq 0 ]; then
   echo "▸ Périmètre : suppression de référence, rien à publier"
   exit 0
 fi
 
-for ENTREE in "${NEUVES_SANS_COMMIT[@]}"; do
-  echo "▸ Périmètre : ${ENTREE%%|*} — référence neuve sur un historique déjà publié, 0 commit ; seul son message est inédit"
+for ENTREE in "${SANS_COMMIT_NOUVEAU[@]}"; do
+  echo "▸ Périmètre : ${ENTREE%%|*} — sur un historique déjà publié, 0 commit nouveau ; seul son message est inédit"
 done
 
 # Une plage par référence poussée : un envoi peut en viser deux d'un coup, et
@@ -112,7 +141,7 @@ echec_audit() {
   # même quand la référence n'apporte aucun commit. Sans ça, la correction du
   # périmètre ouvrirait un trou là où elle ferme une alarme morte.
   if [ "$COMPLET" = "0" ]; then
-    for ENTREE in "${NEUVES_SANS_COMMIT[@]}"; do
+    for ENTREE in "${SANS_COMMIT_NOUVEAU[@]}"; do
       SHA="${ENTREE##*|}"
       [ "$(git cat-file -t "$SHA" 2>/dev/null)" = "tag" ] || continue
       TMP=$(mktemp)
@@ -132,7 +161,7 @@ echec_audit() {
   fi
   # Uniquement des références neuves sans commit : leurs messages viennent
   # d'être audités, il n'y a pas d'autre contenu à lire.
-  if [ "$COMPLET" = "0" ] && [ ${#NEUVES_SANS_COMMIT[@]} -gt 0 ]; then
+  if [ "$COMPLET" = "0" ] && [ ${#SANS_COMMIT_NOUVEAU[@]} -gt 0 ]; then
     return 1
   fi
   "$ROOT/scripts/audit-opsec.sh" "${ARGS[@]}" || return 0

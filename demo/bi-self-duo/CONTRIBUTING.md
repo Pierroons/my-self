@@ -5,7 +5,7 @@ Short guide for anyone wanting to contribute to the live interactive demos.
 ## Philosophy & constraints
 
 - **Zero external dependencies.** No composer, no npm, no framework. Pure PHP 8.2+, vanilla JS (Web Crypto API where needed), SQLite.
-- **Self-hosted.** Runs on a Raspberry Pi 4. Think in MB of RAM, not GB.
+- **Self-hosted.** Runs on a single-board computer. Think in MB of RAM, not GB.
 - **Open book.** Every secret is either user-provided (passphrase, recovery word) or session-scoped (UUID, site_salt). The Redactor censors anything remaining before it reaches the browser.
 - **Transparent by design.** No hidden state. If it happens, it's in the logs.
 

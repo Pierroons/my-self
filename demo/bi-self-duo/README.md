@@ -263,11 +263,22 @@ et `Redactor::redactSource` remplacent :
 
 Si le token fuit (screenshot partagé, PC compromis, doute général) :
 
+Le jeton se génère **sur le serveur**, et ne transite jamais par le poste :
+
 ```bash
-NEW_TOKEN=$(openssl rand -hex 16)
-ssh <hôte> "echo '$NEW_TOKEN' | sudo tee /var/lib/selfjustice/admin/bypass_token.txt"
-echo "New URL: https://bi-self.my-self.fr/bypass/$NEW_TOKEN/"
+ssh <hôte> "openssl rand -hex 16 | sudo tee /var/lib/selfjustice/admin/bypass_token.txt >/dev/null \
+            && sudo chmod 600 /var/lib/selfjustice/admin/bypass_token.txt \
+            && sudo chown www-data:www-data /var/lib/selfjustice/admin/bypass_token.txt"
+
+# le relire quand on en a besoin, plutôt que de le garder quelque part :
+ssh <hôte> "sudo cat /var/lib/selfjustice/admin/bypass_token.txt"
 ```
+
+⚠️ **Ne fais pas transiter le jeton par ton poste.** La version précédente de
+cette procédure le générait localement, le passait en argument et l'affichait :
+il entrait alors dans l'historique du shell, puis dans un presse-papier, puis —
+c'est arrivé le 17/04/2026 — dans un message de commit publié. Un jeton généré
+sur la machine qui l'utilise ne connaît qu'un seul chemin.
 
 L'ancien token est invalidé **immédiatement** à la prochaine requête — aucun
 redémarrage nécessaire. Les cookies `sj_bypass` déjà posés deviennent caducs

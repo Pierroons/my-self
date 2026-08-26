@@ -1,13 +1,13 @@
 # SelfAct — Conditions d'utilisation
 
-Version **v0.1.0** — 18 avril 2026 · Licence AGPL-3.0-or-later (code, depuis le 19/04/2026) · Données sous licence Etalab 2.0 (modèles service-public.fr)
+Version **v0.1.2** — en vigueur depuis le 18 avril 2026, révisée le 23 août 2026 · Licence AGPL-3.0-or-later (code, depuis le 19/04/2026) · Données sous licence Etalab 2.0 (modèles service-public.fr)
 
 ## 1. Nature du service
 
 SelfAct est un **outil d'indexation** du catalogue des modèles de lettres officiels publiés par l'administration française (service-public.fr), couplé à un **générateur de brouillons d'aide à la rédaction** clairement identifiés comme non officiels.
 
 **Ce que SelfAct EST :**
-- Un **index sémantique** consultable via API des 334 modèles de lettres officiels publiés par service-public.fr sous licence Etalab 2.0
+- Un **index sémantique** consultable via API des modèles de lettres officiels publiés par service-public.fr sous licence Etalab 2.0 — le nombre exact varie à chaque moisson bimensuelle et est servi par `/act/api/catalog.php?stats=1`
 - Un **outil de redirection** vers les URLs officielles service-public.fr
 - Un **générateur de brouillons HTML** filigranés « NON OFFICIEL — IRRECEVABLE » pour aider à la rédaction quand aucun modèle officiel ne convient
 

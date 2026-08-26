@@ -110,7 +110,7 @@ tiennent en intégration continue.
 | `scripts/check-paths.sh` | un chemin cité quelque part a-t-il encore sa cible — liens Markdown, règles d'exclusion, chemins de workflow |
 | `scripts/check-profil-unique.sh` | le profil de hachage est-il défini à un seul endroit ; ⚠️ son périmètre est l'index git, pas le disque |
 | `scripts/ecart-instance.sh` | ce qui est versionné et ce qui est servi disent-ils la même chose, sur chaque destination |
-| `scripts/check-fraicheur.sh` | les bases consultées sont-elles à jour, et leur volume progresse-t-il |
+| `self-right/selfjustice/tools/check_fraicheur.sh` | les bases consultées sont-elles à jour, et leur volume progresse-t-il — c'est la copie que l'instance exécute, et celle que la CI éprouve |
 | `scripts/audit-opsec.sh` | les angles morts du détecteur de secrets |
 
 **Deux d'entre eux tournent en intégration continue** (`structure.yml`) : les

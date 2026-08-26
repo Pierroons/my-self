@@ -71,7 +71,7 @@ SelfAct **tourne aussi**, et son dossier le montre : [`selfact/`](./selfact/) po
 
 | Brique | Où | Ce qu'elle fait |
 |---|---|---|
-| Catalogue | [`selfact/api/`](./selfact/api/) | 1 895 ressources officielles moissonnées sur service-public.gouv.fr — 871 formulaires, 685 téléservices, 339 modèles de lettre, rangés en 16 catégories. Rafraîchi les 1er et 15. |
+| Catalogue | [`selfact/api/`](./selfact/api/) | 1 895 ressources officielles moissonnées sur service-public.gouv.fr, rangées en 16 catégories — la ventilation par type est servie en direct par `/act/api/catalog.php?stats=1`. Rafraîchi les 1er et 15. |
 | Aiguillage | [`selfact/api/find.php`](./selfact/api/find.php) | 20 situations curées à la main : « je me fais licencier » → l'acte, l'article, le formulaire. |
 | Calcul de délai | [`selfact/api/deadline.php`](./selfact/api/deadline.php) | Le seul endroit qui calcule au lieu de restituer, avec export agenda. |
 | Gabarit de courrier | [`selfact/api/draft.php`](./selfact/api/draft.php) | Mise en demeure, saisine (conciliateur, Défenseur des droits), contestation, résiliation, recours — chacun avec un filigrane « NON OFFICIEL — IRRECEVABLE » non supprimable à l'impression, et les ressources officielles correspondantes. |

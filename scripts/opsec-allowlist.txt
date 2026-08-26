@@ -44,3 +44,4 @@ eff_large_wordlist_fr\.txt$	wordlist diceware EFF française (fichier supprimé 
 selfrecover-validator\.html$	wordlist diceware embarquée dans le validateur hors-ligne (nom d'avant le rangement du 17/08/2026 — conservé : l'audit lit tout l'historique)
 offline-validator/index\.html$	wordlist diceware embarquée dans le validateur hors-ligne (nom actuel)
 openpgp\.min\.mjs$	OpenPGP.js minifié — ses tables de constantes cryptographiques produisent par hasard des suites de chiffres (un code postal est apparu à cheval sur deux entiers : ...2393238008,367...). Vérifié 02/08/2026 : aucune donnée réelle.
+diceware-method-(en|fr)\.pdf$	wordlist diceware imprimée dans le PDF pédagogique — « mumble » y figure entre « multitude » et « mumbling », avec ses index de dés. Trouvé le 24/08/2026 par le nouvel étage 6, qui lit le TEXTE des documents : même bruit que les wordlists ci-dessus, sous un format que rien ne lisait avant.

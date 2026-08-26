@@ -10,4 +10,13 @@
 # dit qu'on le connaît. Masquer un écart, c'est se préparer à ne plus le voir
 # le jour où il change de nature.
 
-^self-right/selfjustice/site/index\.html$	Compteurs d'articles réécrits en production par update_stats.sh — la version servie est plus fraîche que la versionnée, et chaque déploiement la fait régresser jusqu'au prochain passage du cron.
+# 🔑 Retiré le 24/08/2026 : `^self-right/selfjustice/site/index\.html$`, unique
+# entrée du fichier, et orpheline deux fois. Elle visait `index.html` quand le
+# fichier versionné s'appelle `index.php` — aucun fichier ne pouvait lui
+# correspondre. Et le phénomène qu'elle décrivait n'existe plus : `update_stats.sh`
+# a cessé le 19/08 d'écrire dans le code de production, il ne touche que ses
+# données, et la page compose ses chiffres au moment où elle est servie.
+#
+# Une exception survit à ce qu'elle excuse sans que rien ne le signale. Celle-ci
+# a tenu cinq jours après la disparition de son motif, et un renommage de plus.
+# Un fichier sans entrée est un fichier honnête : la sonde n'excuse rien.

@@ -279,7 +279,7 @@ jalons transversaux de l'écosystème.
 ## Auteur
 
 [Pierroons](https://github.com/Pierroons) — mainteneur.
-Bricole des outils libres pour l'agriculture, pour que les données poussent pas dans le cloud.
+Outils libres pour l'agriculture, pour que les données ne poussent pas dans le cloud.
 Contact : contact@my-self.fr
 
 Co-écrit avec **Claude** (Anthropic) dans le cadre du « Self pact » humain–IA

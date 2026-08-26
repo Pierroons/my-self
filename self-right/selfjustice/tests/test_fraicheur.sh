@@ -183,6 +183,33 @@ else
 fi
 
 echo
+echo "▸ Un retard qui dure ne redevient pas vert"
+# 🔑 La fenêtre de silence existe pour ne pas renotifier le même fait chaque
+# jour, et ce raisonnement est juste. Mais elle sortait aussi en 0 : une base
+# arrêtée depuis vingt jours rendait vert dès le deuxième passage, et une
+# supervision branchée sur le code de sortie voyait le retard disparaître
+# pendant qu'il durait. Le canal se tait, le verdict non.
+#
+# Le fichier de silence n'est écrit qu'après un envoi réussi, et le banc n'a pas
+# de canal : on l'arme donc à la main, avec le message que le premier passage
+# vient de produire — c'est exactement ce que la sonde y aurait écrit.
+sortie=$(jouer "$AVANT" 525441 "$AVANT" 1890 "$(etat "$AVANT" 525441 "$AVANT")")
+message=$(sed -n 's/^RETARD : //p' <<<"$sortie" | head -1)
+if [ -z "$message" ]; then
+    nok "le premier passage n'a pas crié : le silence reste inéprouvé"
+else
+    printf '%s|%s\n' "$(date +%s)" "$message" > "$BAC/silence"
+    second=$(jouer "$AVANT" 525441 "$AVANT" 1890 "$(etat "$AVANT" 525441 "$AVANT")")
+    code=$?
+    rm -f "$BAC/silence"
+    if [ "$code" -ne 0 ] && grep -q "le retard dure" <<<"$second"; then
+        ok "second passage, même retard → canal muet mais RC=$code"
+    else
+        nok "un retard qui dure rend RC=$code au second passage : ${second//$'\n'/ }"
+    fi
+fi
+
+echo
 echo "▸ Les contrôles de volume tiennent toujours"
 # Marqueur avancé, volume identique : la synchronisation en trompe-l'œil.
 sortie=$(jouer "$APRES" 525441 "$ATTENDU" 1890 "$(etat "$ATTENDU" 525441 "$ATTENDU")")
