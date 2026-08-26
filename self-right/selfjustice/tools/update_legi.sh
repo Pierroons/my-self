@@ -141,12 +141,15 @@ journal "Application des diffs (legi.tar2sqlite)"
 # 4. Aplatir vers le schéma de l'API, dans un fichier temporaire
 journal "Extraction vers le schéma de l'API"
 "$VENV" "$LEGI_DIR/bin/extract_selfjustice_db.py" \
-    --source "$FULL_DB" --dest "$API_DB.nouveau" >> "$LOG_FILE" 2>&1
+    --source "$FULL_DB" --dest "$API_DB.nouveau" \
+    --reference "$API_DB" >> "$LOG_FILE" 2>&1
 
 # 5. Contrôler avant de servir
 #
-# Le script d'extraction refuse déjà de produire moins de 100 000 articles ;
-# ce second contrôle porte sur le fichier réellement destiné à l'API.
+# Le script d'extraction refuse déjà deux choses : moins de 100 000 articles,
+# et moins de 80 % de ce que porte `--reference`, c'est-à-dire la base servie.
+# Ce contrôle-ci porte sur le fichier réellement destiné à l'API — il attrape ce
+# que les deux autres ne peuvent pas voir, un fichier produit puis abîmé.
 NB_ARTICLES=$(sqlite3 "$API_DB.nouveau" "SELECT COUNT(*) FROM articles" 2>/dev/null || echo 0)
 if [ "$NB_ARTICLES" -lt 100000 ]; then
     rm -f "$API_DB.nouveau"
