@@ -509,16 +509,22 @@ def _conseil_couverture(requete: str, resultats: int) -> str:
     mot, zéro résultat, aucun message : l'appelant conclut que le droit est
     muet sur son sujet.
 
-    Mesuré le 25/08/2026, cette base ne porte que les CODES consolidés :
-      · « exutoire »   → 0 résultat, alors que le mot est partout dans le
-                          règlement de sécurité contre l'incendie ;
-      · « désenfumage » → 1 résultat, un simple renvoi du CCH, quand les
-                          articles DF, GN et R du même règlement se comptent
-                          par dizaines ;
-      · « cri séditieux » → 0, alors que c'est l'article 24 de la loi du
-                          29 juillet 1881, en vigueur et jamais codifiée.
+    Il est né d'un trou de couverture — la base ne servait que les codes, et
+    « exutoire » rendait zéro quand le mot est partout dans le règlement de
+    sécurité contre l'incendie. Ce trou est comblé depuis le 26/08/2026 : les
+    arrêtés, décrets et lois sont servis, et « exutoire » rend 59 résultats.
 
-    Le vide rend `✓` : la recherche a répondu, rien ne signale que le domaine
+    Le conseil reste, parce que sa cause reste. Deux choses continuent de
+    produire un vide qui n'est pas un vide de droit :
+
+      · la forme du mot — la recherche ne rapproche pas le singulier du
+        pluriel. Mesuré le 26/08 : « cri séditieux » rend 0, « cris séditieux »
+        rend l'article 24 de la loi du 29 juillet 1881. Le même texte, à une
+        lettre près ;
+      · le périmètre qui subsiste — conventions collectives, circulaires,
+        textes locaux, normes NF et EN vivent hors de cette base.
+
+    Le vide rend `✓` : la recherche a répondu, rien ne signale que le sujet
     entier manque. C'est un faux vert, et il fabrique des conclusions fausses
     avec des sources vraies.
     """
@@ -527,10 +533,13 @@ def _conseil_couverture(requete: str, resultats: int) -> str:
         return ""
     return (
         "\n\nPeu de mots posés, presque aucun résultat : la conjonction n'y est "
-        "pour rien. Cette base ne porte que les CODES — un sujet réglementé par "
-        "une loi non codifiée, un décret ou un arrêté n'y figure pas, et rend "
-        "le même vide qu'un sujet sans règle. Va vérifier sur Légifrance avant "
-        "de conclure à l'absence de droit applicable."
+        "pour rien. Deux causes restent, et aucune ne dit « le droit est muet ». "
+        "La forme du mot d'abord — le singulier ne trouve pas le pluriel, « cri "
+        "séditieux » rend zéro là où « cris séditieux » rend l'article 24 de la "
+        "loi de 1881 : réessaie avec l'autre forme. Le périmètre ensuite — "
+        "conventions collectives, circulaires, textes locaux et normes NF ou EN "
+        "ne sont pas dans cette base. Écarte la première avant de conclure, et "
+        "dis laquelle des deux tu as écartée."
     )
 
 
@@ -914,13 +923,36 @@ async def _bandeau(base: str) -> str:
 #
 # Placé dans le bandeau, il accompagne tous les outils de la base d'un coup —
 # écrit outil par outil, il aurait manqué le suivant.
+def _titre_court(titre: str, limite: int = 76) -> str:
+    """Raccourcit le titre d'un texte porteur, pour une liste de résultats.
+
+    🔑 Les titres de codes tiennent en 32 caractères de moyenne. Ceux des
+    arrêtés en font 192, et jusqu'à 1 232 — mesuré le 26/08/2026, le jour où la
+    base a cessé de ne servir que des codes. Vingt résultats rendus entiers,
+    c'est vingt fois « portant approbation des dispositions générales du
+    règlement de sécurité contre les risques d'incendie et de panique dans les
+    établissements recevant du public » : la liste devient illisible au moment
+    précis où elle devient utile.
+
+    Ce qui identifie un texte tient à son début — sa nature et sa date. La
+    coupe tombe sur une frontière de mot, et seule la LISTE coupe : l'article
+    servi seul garde son titre entier, puisque c'est là qu'on le cite.
+    """
+    titre = (titre or "").strip()
+    if len(titre) <= limite:
+        return titre
+    return titre[:limite].rsplit(" ", 1)[0] + "…"
+
+
 _PERIMETRE = {
     "legi": (
-        "\nPérimètre : les CODES consolidés seulement. Les textes non codifiés "
-        "— lois, décrets, arrêtés, circulaires — ne sont pas dans cette base. Un "
-        "domaine qu'ils portent (sécurité incendie, ERP, installations classées) "
-        "y paraît vide sans l'être : ne conclus jamais à l'absence de règle sur "
-        "un silence de cette base."
+        "\nPérimètre : le droit national publié au Journal officiel — codes, "
+        "lois, ordonnances, décrets, arrêtés — dans sa version consolidée. "
+        "Restent dehors, parce que ce sont d'autres bases : les conventions "
+        "collectives, les circulaires et instructions, les textes locaux "
+        "(préfecture, mairie), et les normes techniques NF ou EN, qui ne sont "
+        "pas du droit publié. Un sujet qu'elles portent paraît vide ici sans "
+        "l'être."
     ),
     "jurisprudence": (
         "\nPérimètre : justice JUDICIAIRE seulement. La justice administrative "
@@ -1038,11 +1070,17 @@ async def article_francais(reference: str, code: str | None = None) -> str:
 
     Args:
         reference: numéro de l'article, ex. « L1152-1 », « R4127-1 », « 1240 ».
+            Les numéros à espace en font partie — « GN 13 », « DF 10 »,
+            « 10 GA bis » : reprends la référence telle que la recherche la
+            rend, sans en retirer l'espace.
         code: le titre du code sans le mot « code » (« travail », « artisanat »,
-            « procedure_civile ») ou un identifiant LEGITEXT. Les 108 codes
-            servis sont nommables ainsi. Sans ce filtre, un numéro porté par
-            plusieurs codes rend la liste des codes possibles plutôt qu'un
-            texte au hasard.
+            « procedure_civile »), ou un identifiant LEGITEXT ou JORFTEXT tel
+            que la recherche le rend. Les 108 codes sont nommables en clair ;
+            un arrêté, un décret ou une loi se désigne par son identifiant.
+            Sans ce filtre, la recherche ne regarde QUE les codes — 147 870
+            textes portent un article « 1 », et en servir un au hasard serait
+            la pire réponse possible. Pour un texte non codifié, passe donc par
+            `rechercher_droit_francais`, qui rend l'identifiant à reprendre ici.
     """
     try:
         data = await _get(f"/legi/article/{reference}", {"code": code} if code else None)
@@ -1054,12 +1092,24 @@ async def article_francais(reference: str, code: str | None = None) -> str:
     bandeau = await _bandeau("LEGI")
 
     if data.get("__introuvable__"):
-        return (
-            f"{bandeau}\n\nArticle « {reference} » introuvable"
+        # 🔑 L'API sait souvent POURQUOI, et n'était pas écoutée.
+        #
+        # « GN 13 » n'est porté par aucun code mais par l'arrêté du 25 juin
+        # 1980 : le 404 le disait, et nommait la route pour y arriver. Ce
+        # message-ci le remplaçait par « introuvable » tout court — la seule
+        # formulation qui n'aide personne, et celle qui pousse à inventer.
+        #
+        # Le constat vient donc de l'API quand elle en fait un ; la consigne
+        # anti-invention, elle, reste ici et vaut dans les deux cas.
+        constat = (data.get("detail") or "").strip() or (
+            f"Article « {reference} » introuvable"
             + (f" dans le code « {code} »" if code else "")
-            + ".\n\nNe substitue pas un article de mémoire. Dis à l'utilisateur "
-            "que la référence qu'il donne n'existe pas telle quelle dans la "
-            "base, et demande-lui d'où il la tient."
+            + "."
+        )
+        return (
+            f"{bandeau}\n\n{constat}\n\nNe substitue pas un article de mémoire. "
+            "Dis à l'utilisateur que la référence qu'il donne n'existe pas telle "
+            "quelle dans la base, et demande-lui d'où il la tient."
         )
 
     # Numéro porté par plusieurs codes : l'API rend les alternatives, pas un
@@ -1132,9 +1182,14 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
 
     Les accents sont facultatifs : « prenom » trouve « prénom ».
 
-    ⚠️ Périmètre : les CODES seulement. Les lois non codifiées, décrets et
-    arrêtés n'y sont pas — leur absence se lit comme un vide de droit alors
-    qu'elle n'est qu'un vide de base.
+    ⚠️ Périmètre : le droit national publié au Journal officiel — codes, lois,
+    ordonnances, décrets, arrêtés. Restent dehors les conventions collectives,
+    les circulaires, les textes locaux et les normes NF ou EN : leur absence se
+    lit comme un vide de droit alors qu'elle n'est qu'un vide de base.
+
+    ⚠️ Le singulier ne trouve pas le pluriel. « cri séditieux » rend zéro,
+    « cris séditieux » rend l'article 24 de la loi du 29 juillet 1881 — le même
+    texte, à une lettre près. Devant un vide, essaie l'autre forme du mot.
 
     ⚠️ Tous les mots posés doivent figurer dans le même article : la recherche
     les assemble par un ET. Une question longue restreint donc la réponse —
@@ -1171,7 +1226,8 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
         fin = _fin_reelle(r.get("date_fin"))
         periode = f"{r.get('date_debut')} → {fin}" if fin else f"depuis {r.get('date_debut')}"
         ligne = (
-            f"  · {r.get('reference')} — {r.get('code') or r.get('code_id')} "
+            f"  · {r.get('reference')} — "
+            f"{_titre_court(r.get('code') or '') or r.get('code_id')} "
             f"[{r.get('etat')}, {periode}]"
         )
         extrait = (r.get("extrait") or "").strip()

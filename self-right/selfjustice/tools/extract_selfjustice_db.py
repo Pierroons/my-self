@@ -32,10 +32,18 @@ au format qu'attend `api/api.php`.
 
 ## Périmètre
 
-Seuls les articles rattachés à un **code** sont retenus, comme le faisait
-`build_legi_db.py` en ne lisant que les chemins `code_en_vigueur`. Le JORF et
-les textes non codifiés sont écartés : l'API les référence par `?code=`, ils
-n'auraient pas de sens ici.
+Tout le droit national consolidé que porte la base amont : les codes, mais aussi
+les arrêtés, décrets, lois et ordonnances. `--natures` sert à restreindre ; il ne
+restreint plus rien par défaut.
+
+Ce défaut a longtemps valu `CODE`, et il coûtait cher sans le dire. Le règlement
+de sécurité contre l'incendie — arrêté du 25 juin 1980, articles DF, GN, R — était
+sur la machine et jeté ici. Une recherche « exutoire » rendait zéro, « désenfumage »
+un seul renvoi, et ce vide s'affichait comme une réponse. Mesuré le 26/08/2026 :
+159 602 articles en vigueur avec le filtre, 678 853 sans.
+
+Restent dehors, parce qu'elles sont d'autres bases DILA : les conventions
+collectives (KALI), les circulaires, les textes locaux.
 
 Usage :
     python3 extract_selfjustice_db.py --source legi-full.sqlite \\
@@ -59,15 +67,27 @@ CREATE TABLE IF NOT EXISTS articles (
     date_fin TEXT,
     code_id TEXT,
     code_titre TEXT,
+    nature TEXT,
     texte TEXT
 )
 """
+
+# Les colonnes sont nommées, jamais positionnelles : l'ajout de `nature` aurait
+# sinon décalé `texte` d'un cran sans qu'aucune erreur ne le signale.
+INSERT = """INSERT OR REPLACE INTO articles
+    (id, num, etat, date_debut, date_fin, code_id, code_titre, nature, texte)
+    VALUES (?,?,?,?,?,?,?,?,?)"""
 
 INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_articles_num ON articles(num)",
     "CREATE INDEX IF NOT EXISTS idx_articles_etat ON articles(etat)",
     "CREATE INDEX IF NOT EXISTS idx_articles_code ON articles(code_id)",
     "CREATE INDEX IF NOT EXISTS idx_articles_num_etat ON articles(num, etat)",
+    # L'API s'en sert pour deux questions qui n'ont de sens que depuis que la
+    # base porte autre chose que des codes : nommer les codes en clair, et
+    # désambiguïser un numéro d'article sans noyer l'appelant. 147 870 textes
+    # portent un article « 1 » ; 111 seulement sont des codes.
+    "CREATE INDEX IF NOT EXISTS idx_articles_nature ON articles(nature)",
 ]
 
 # Index plein texte des articles en vigueur.
@@ -124,8 +144,17 @@ def main() -> int:
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--source", required=True, help="base produite par legi.py")
     p.add_argument("--dest", required=True, help="base plate pour l'API")
-    p.add_argument("--natures", default="CODE",
-                   help="natures de textes retenues (défaut : CODE)")
+    # La base servie n'est jamais `--dest` en production : `update_legi.sh`
+    # écrit dans un fichier neuf puis renomme, pour qu'une extraction à demi
+    # faite ne soit jamais servie. Sans cette option, la garde de non-régression
+    # ci-dessous ne verrait donc rien à comparer — et ne se déclencherait
+    # jamais là où elle protège quelque chose.
+    p.add_argument("--reference", default=None,
+                   help="base servie à comparer pour la garde de non-régression "
+                        "(défaut : --dest, si elle existe)")
+    p.add_argument("--natures", default="",
+                   help="natures de textes retenues, séparées par des virgules "
+                        "(défaut : toutes)")
     args = p.parse_args()
 
     if not Path(args.source).exists():
@@ -145,20 +174,26 @@ def main() -> int:
     dst.execute(SCHEMA)
 
     natures = tuple(n.strip() for n in args.natures.split(",") if n.strip())
-    placeholders = ",".join("?" * len(natures))
+    if natures:
+        filtre = "WHERE nature IN (" + ",".join("?" * len(natures)) + ")"
+        libelle = "de nature " + ", ".join(natures)
+    else:
+        filtre = ""
+        libelle = "de toutes natures"
 
     # Un cid peut avoir plusieurs versions ; on retient le titre de la version
-    # en vigueur, à défaut la plus récente.
-    print(f"Lecture des textes de nature {natures}...")
+    # en vigueur, à défaut la plus récente. La nature, elle, ne varie pas d'une
+    # version à l'autre — elle qualifie le texte, pas son état.
+    print(f"Lecture des textes {libelle}...")
     titres = {}
     for r in src.execute(
-        f"""SELECT cid, titrefull, etat, date_debut
+        f"""SELECT cid, titrefull, nature, etat, date_debut
               FROM textes_versions
-             WHERE nature IN ({placeholders})
+             {filtre}
              ORDER BY (etat = 'VIGUEUR') ASC, date_debut ASC""",
         natures,
     ):
-        titres[r["cid"]] = r["titrefull"]
+        titres[r["cid"]] = (r["titrefull"], r["nature"])
     print(f"  {len(titres)} textes retenus")
 
     if not titres:
@@ -173,18 +208,19 @@ def main() -> int:
         """SELECT id, num, etat, date_debut, date_fin, cid, bloc_textuel
              FROM articles"""
     ):
-        titre = titres.get(r["cid"])
-        if titre is None:
+        meta = titres.get(r["cid"])
+        if meta is None:
             continue  # article hors des natures retenues
+        titre, nature = meta
         lot.append((r["id"], r["num"], r["etat"], r["date_debut"], r["date_fin"],
-                    r["cid"], titre, en_texte_brut(r["bloc_textuel"])))
+                    r["cid"], titre, nature, en_texte_brut(r["bloc_textuel"])))
         if len(lot) >= 5000:
-            dst.executemany("INSERT OR REPLACE INTO articles VALUES (?,?,?,?,?,?,?,?)", lot)
+            dst.executemany(INSERT, lot)
             n += len(lot)
             lot.clear()
             print(f"  {n} articles...", end="\r", flush=True)
     if lot:
-        dst.executemany("INSERT OR REPLACE INTO articles VALUES (?,?,?,?,?,?,?,?)", lot)
+        dst.executemany(INSERT, lot)
         n += len(lot)
 
     print(f"  {n} articles extraits" + " " * 20)
@@ -197,19 +233,53 @@ def main() -> int:
     for sql in FTS:
         dst.execute(sql)
     dst.commit()
-    indexes = dst.execute("SELECT COUNT(*) FROM articles_fts").fetchone()[0]
-    print(f" {indexes} articles indexés")
 
+    # 🔑 Ce compte vient de la table source, pas de `articles_fts`.
+    #
+    # L'index est déclaré `content=articles` : il ne stocke pas les documents,
+    # il pointe vers la table. `COUNT(*)` sur une telle table FTS5 interroge
+    # donc la SOURCE, et rend le nombre total d'articles — là où l'index n'en
+    # porte que les articles en vigueur. Le message annonçait 525 441 articles
+    # indexés pour 159 602 réels, et 1 820 519 pour 678 853 sur la base élargie.
+    # Un chiffre de contrôle qui ne mesurait pas ce qu'il nommait.
+    #
+    # Ce que l'INSERT du FTS a réellement inséré, c'est ceci — une seule source
+    # pour les deux usages, ce message et le bilan final.
     vigueur = dst.execute("SELECT COUNT(*) FROM articles WHERE etat='VIGUEUR'").fetchone()[0]
+    print(f" {vigueur} articles indexés")
     dst.close()
     src.close()
 
-    # Garde-fou : une extraction qui rendrait une base vide ou ridicule ne doit
-    # pas remplacer une base qui fonctionne.
+    # Deux garde-fous : une extraction qui rendrait une base vide ou ridicule ne
+    # doit pas remplacer une base qui fonctionne.
     if n < 100000:
         print(f"ERREUR : seulement {n} articles, la base précédente est conservée",
               file=sys.stderr)
+        Path(tmp).unlink(missing_ok=True)
         return 1
+
+    # Le second est le seul qui protège vraiment depuis que le périmètre s'élargit.
+    #
+    # Un plancher absolu ne voit pas la régression qui compte : repasser en
+    # CODE-only rendrait 525 441 articles là où la base servie en porte
+    # 1 820 519 — au-dessus de tout plancher raisonnable, et pourtant les deux
+    # tiers du droit disparus. La garde se mesure donc contre ce qui est servi,
+    # et elle ne se déclenche que lorsqu'on s'apprête à écraser quelque chose :
+    # une extraction vers un fichier neuf reste libre.
+    reference = args.reference or args.dest
+    if Path(reference).exists():
+        anc = sqlite3.connect(f"file:{reference}?mode=ro", uri=True)
+        try:
+            precedent = anc.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
+        except sqlite3.Error:
+            precedent = 0
+        anc.close()
+        if precedent and n < precedent * 0.8:
+            print(f"ERREUR : {n} articles contre {precedent} servis "
+                  f"({100 * n // precedent} %). La base précédente est conservée.",
+                  file=sys.stderr)
+            Path(tmp).unlink(missing_ok=True)
+            return 1
 
     Path(tmp).replace(args.dest)
     print(f"Terminé : {n} articles ({vigueur} en vigueur) → {args.dest}")
