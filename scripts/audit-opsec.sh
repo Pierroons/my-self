@@ -77,6 +77,7 @@ case "${1:-}" in
   # envoi jusqu'à réécriture de l'historique, donc on le contournait.
   --range)    RANGE="${2:-}"
               [ -n "$RANGE" ] || { printf '\033[31m✗ --range attend une plage (ex. @{u}..HEAD)\033[0m\n' >&2; exit 2; } ;;
+              # La validité de la plage est mesurée plus bas, une fois ROOT connu.
   "")         ;;
   # Sans ce refus, une faute de frappe tombait en mode complet et rendait un
   # vert : « ✓ Rien à signaler » sur un audit qui n'était pas celui demandé.
@@ -86,6 +87,25 @@ case "${1:-}" in
               echo "  Modes : --worktree | --staged | --message <fichier> | --range <plage> | (aucun)" >&2
               exit 2 ;;
 esac
+
+# 🔑 Une plage INVALIDE ne vaut pas une plage vide, et rien ne les distinguait.
+#
+# Après une réécriture d'historique, le SHA que porte le distant n'existe plus
+# ici : `git rev-list <distant>..HEAD` sort en « Invalid revision range », la
+# liste de commits reste vide, et les contrôles 2, 4 et 5 annonçaient alors
+# « aucun commit dans le périmètre » suivi d'un vert. Autrement dit l'audit se
+# taisait exactement au moment du force-push — le seul où TOUT est nouveau pour
+# le distant et doit être relu en entier. Mesuré le 26/08/2026 sur ce dépôt.
+#
+# On mesure donc la plage avant de s'en servir. Invalide, on ne rend pas vert :
+# on retombe sur l'historique complet, ce qui est précisément le bon périmètre
+# quand le distant ne partage plus rien avec nous, et on le DIT.
+if [ -n "$RANGE" ] && ! git -C "$ROOT" rev-list "$RANGE" >/dev/null 2>&1; then
+  printf '\033[1;33m!\033[0m plage « %s » inutilisable ici — le distant ne la partage plus.\n' "$RANGE"
+  echo "  Historique réécrit : tout est nouveau pour le distant. Audit COMPLET."
+  echo
+  RANGE=""
+fi
 
 # Ce qui sépare vraiment les modes n'est pas leur nom : c'est de travailler sur
 # une LISTE DE FICHIERS ou sur l'HISTORIQUE. Les contrôles 4 et 5 (messages,
