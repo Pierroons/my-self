@@ -142,9 +142,13 @@ function codes_en_base(SQLite3 $db): array {
     static $cache = null;
     if ($cache !== null) return $cache;
     $cache = [];
+    // Seuls les codes. Sur la base élargie, dériver un slug de chaque texte
+    // porteur en produirait 149 020 au lieu de 108 — dont « arrete_du_25_juin_1980 »
+    // et ses milliers de frères, qui ne sont pas des noms qu'on tape.
+    $filtre = legi_a_nature($db) ? "AND nature = 'CODE' " : "";
     $res = @$db->query(
         "SELECT code_id, MIN(code_titre) AS titre FROM articles "
-        . "WHERE code_titre != '' GROUP BY code_id"
+        . "WHERE code_titre != '' $filtre GROUP BY code_id"
     );
     while ($res && ($r = $res->fetchArray(SQLITE3_ASSOC))) {
         $slug = code_slug($r['titre'] ?? '');
@@ -153,6 +157,67 @@ function codes_en_base(SQLite3 $db): array {
         if ($slug !== '' && !isset($cache[$slug])) $cache[$slug] = $r['code_id'];
     }
     return $cache;
+}
+
+/** La base porte-t-elle la nature de ses textes ?
+ *
+ * La colonne est arrivée avec l'élargissement du périmètre : jusque-là tout
+ * était un code, et la question ne se posait pas. Elle se pose maintenant à
+ * chaque appel qui doit distinguer un code d'un arrêté — et l'API doit pouvoir
+ * être déployée avant la base élargie sans rien casser. D'où cette sonde, sur
+ * le modèle de `legi_fts_disponible()` : sans colonne, on retombe exactement
+ * sur le comportement d'avant.
+ */
+function legi_a_nature(SQLite3 $db): bool {
+    static $present = null;
+    if ($present !== null) return $present;
+    $present = false;
+    $res = @$db->query("PRAGMA table_info(articles)");
+    while ($res && ($col = $res->fetchArray(SQLITE3_ASSOC))) {
+        if ($col['name'] === 'nature') { $present = true; break; }
+    }
+    return $present;
+}
+
+/** Cherche des articles par numéro, en trois marches.
+ *
+ * 🔑 `num LIKE '%q%'` ne peut utiliser aucun index : c'est un balayage de toute
+ * la table, et il était payé par CHAQUE recherche — y compris « désenfumage »,
+ * qui n'a aucune chance de ressembler à un numéro d'article. Mesuré à chaud sur
+ * la base élargie :
+ *
+ *     exact    num = 'L1152-1'         0 à 2 ms   (index)
+ *     préfixe  num LIKE 'L1152-1%'      270 ms    (index)
+ *     contient num LIKE '%L1152-1%'   2 500 ms    (balayage)
+ *
+ * Soit 2,5 s avant même de commencer le plein texte. On descend donc l'escalier
+ * marche par marche, et on s'arrête à la première qui rend quelque chose. La
+ * passe entière est sautée quand la requête ne porte aucun chiffre : un numéro
+ * d'article en contient toujours un.
+ *
+ * Les deux passes par numéro — le droit applicable, puis l'ancien — partagent
+ * cette fonction : la stratégie est écrite une fois, et la seconde ne peut plus
+ * rester en arrière de la première sans que rien ne le signale.
+ */
+function legi_par_numero(SQLite3 $db, string $q, int $limit, bool $en_vigueur): array {
+    if (!preg_match('/\d/', $q)) return [];
+    $etat  = $en_vigueur ? "etat = 'VIGUEUR'" : "etat <> 'VIGUEUR'";
+    $ordre = $en_vigueur ? "num" : "date_fin DESC, num";
+    foreach ([$q, $q . '%', '%' . $q . '%'] as $i => $valeur) {
+        $operateur = ($i === 0) ? '=' : 'LIKE';
+        $stmt = $db->prepare("SELECT num, etat, code_id, code_titre, date_debut, date_fin
+                              FROM articles
+                              WHERE num $operateur :p AND $etat
+                              ORDER BY $ordre
+                              LIMIT :limit");
+        $stmt->bindValue(':p', $valeur);
+        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
+        $r = $stmt->execute();
+        $lignes = [];
+        while ($ligne = $r->fetchArray(SQLITE3_ASSOC)) $lignes[] = $ligne;
+        if ($lignes) return $lignes;
+    }
+    return [];
 }
 
 function legi_fts_disponible(SQLite3 $db): bool {
@@ -799,9 +864,33 @@ if ($segments[0] === 'legi') {
 
     // /api/legi/article/{ref}
     if (count($segments) >= 3 && $segments[1] === 'article') {
-        $ref = $segments[2];
-        if (!preg_match('/^[A-Z]?[0-9][0-9A-Za-z\-]*$/', $ref)) {
-            json_error("Référence d'article invalide");
+        // Décodé : un numéro d'article porte des espaces — « GN 13 », « 10 GA
+        // bis » — et l'URL les transporte encodés. Sans ce décodage, la
+        // référence arrive en « GN%2013 » et échoue à la validation ci-dessous.
+        $ref = rawurldecode($segments[2]);
+
+        // 🔑 Tous les numéros d'articles ne ressemblent pas à « L1152-1 ».
+        //
+        // L'ancienne forme — une majuscule optionnelle, puis un chiffre
+        // obligatoire, puis de l'alphanumérique — rejetait 14 339 des 117 651
+        // numéros en vigueur, soit 12,2 %, et parmi eux TOUS ceux du règlement
+        // de sécurité contre l'incendie : « GN 13 », « DF 10 », « R 19 ». La
+        // route rendait « Référence d'article invalide » sur des références
+        // parfaitement valides, et accusait l'appelant de sa propre étroitesse.
+        //
+        // Les caractères admis sont ceux réellement présents dans la base,
+        // comptés avant d'écrire la règle : espace (25 099 occurrences), point,
+        // astérisque, virgule, barre oblique, parenthèses, degré, deux-points,
+        // apostrophe, lettres accentuées. Reste 0,03 % de rejets — la chaîne
+        // vide et sept « (suite N) », qui ne se demandent pas seuls.
+        //
+        // Cette forme n'est pas une protection SQL : la valeur est liée en
+        // paramètre. Elle borne la longueur et écarte les caractères qu'aucun
+        // numéro ne porte.
+        if (!preg_match('/^[0-9A-Za-zÀ-ÿ][0-9A-Za-zÀ-ÿ .,*\/()°:\'’-]{0,49}$/u', $ref)) {
+            json_error("Référence d'article invalide : « $ref ». Un numéro "
+                     . "d'article commence par une lettre ou un chiffre et ne "
+                     . "dépasse pas 50 caractères.");
         }
 
         // Vérifier si la colonne texte existe (nouveau schéma)
@@ -813,6 +902,7 @@ if ($segments[0] === 'legi') {
         $columns = $has_texte
             ? "id, num, etat, date_debut, date_fin, code_id, texte"
             : "id, num, etat, date_debut, date_fin, code_id";
+        if (legi_a_nature($db)) $columns .= ", nature";
 
         // Filtre optionnel par code (code_id ou nom clair)
         // Ex : ?code=LEGITEXT000006072050 ou ?code=travail
@@ -843,7 +933,12 @@ if ($segments[0] === 'legi') {
         // tel. Le laisser filtrer produisait « Article introuvable », qui
         // accuse la référence pour la faute du code — et envoie corriger ce
         // qui est juste.
-        if ($code_filter && !preg_match('/^LEGITEXT\d+$/', $code_filter)) {
+        // Deux préfixes, mesurés sur la base : LEGITEXT porte les 3 486 textes
+        // consolidés « pérennes » — dont les 108 codes — et JORFTEXT les
+        // 145 492 autres, arrêtés et décrets en tête. N'accepter que le premier
+        // rendait « Code inconnu » sur l'identifiant que la recherche venait
+        // elle-même de servir : l'API refusait sa propre réponse.
+        if ($code_filter && !preg_match('/^(?:LEGITEXT|JORFTEXT)\d+$/', $code_filter)) {
             $demande = code_slug($code_filter);
             $connus  = codes_en_base($db);
             $resolu  = $CODE_ALIASES[strtolower($code_filter)]
@@ -872,10 +967,21 @@ if ($segments[0] === 'legi') {
             $code_filter = $resolu;
         }
 
+        // Sans code désigné, seuls les codes répondent.
+        //
+        // 🔑 Depuis que la base porte tout le droit national, 147 870 textes
+        // portent un article « 1 » quand 111 seulement sont des codes. En
+        // choisir un « par date la plus récente » revient à tirer au sort, et
+        // les lister tous noie l'appelant sous un écran d'identifiants. Le
+        // droit codifié reste donc la réponse par défaut ; un texte non
+        // codifié se demande par son identifiant, que la recherche plein
+        // texte rend à côté de chaque résultat.
+        $aux_codes = ($code_filter || !legi_a_nature($db)) ? '' : " AND nature = 'CODE'";
+
         // Chercher d'abord la version en VIGUEUR
         $sql = "SELECT $columns FROM articles WHERE num = :ref AND etat = 'VIGUEUR'";
         if ($code_filter) $sql .= " AND code_id = :code";
-        $sql .= " ORDER BY date_debut DESC LIMIT 1";
+        $sql .= $aux_codes . " ORDER BY date_debut DESC LIMIT 1";
 
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':ref', $ref);
@@ -886,7 +992,7 @@ if ($segments[0] === 'legi') {
             // Fallback : toutes les versions
             $sql2 = "SELECT $columns FROM articles WHERE num = :ref";
             if ($code_filter) $sql2 .= " AND code_id = :code";
-            $sql2 .= " ORDER BY date_debut DESC LIMIT 1";
+            $sql2 .= $aux_codes . " ORDER BY date_debut DESC LIMIT 1";
             $stmt = $db->prepare($sql2);
             $stmt->bindValue(':ref', $ref);
             if ($code_filter) $stmt->bindValue(':code', $code_filter);
@@ -894,7 +1000,27 @@ if ($segments[0] === 'legi') {
         }
 
         if (!$row) {
-            json_error("Article introuvable : $ref" . ($code_filter ? " (code $code_filter)" : ''), 404);
+            // Introuvable dans les codes ne veut pas dire introuvable. Le dire,
+            // sinon le 404 accuse la référence pour le périmètre de la requête.
+            $indice = '';
+            if ($aux_codes !== '') {
+                $st = $db->prepare("SELECT COUNT(DISTINCT code_id) FROM articles "
+                                 . "WHERE num = :ref AND nature <> 'CODE'");
+                $st->bindValue(':ref', $ref);
+                $ailleurs = (int) ($st->execute()->fetchArray(SQLITE3_NUM)[0] ?? 0);
+                if ($ailleurs > 0) {
+                    // Sans nommer de route : ce message est lu aussi bien par un
+                    // client HTTP que par le guichet MCP, où « /api/legi/search »
+                    // ne désigne rien que l'appelant puisse invoquer.
+                    $indice = " Aucun code ne le porte, mais $ailleurs texte(s) non "
+                            . "codifié(s) — arrêté, décret, loi — le portent. "
+                            . "Retrouve-le par une recherche plein texte, puis "
+                            . "redemande cet article en précisant le code : "
+                            . "l'identifiant rendu à côté du résultat.";
+                }
+            }
+            json_error("Article introuvable : $ref"
+                . ($code_filter ? " (code $code_filter)" : '') . $indice, 404);
         }
 
         // Si pas de filtre de code ET plusieurs codes existent pour ce num, lister tous
@@ -905,7 +1031,8 @@ if ($segments[0] === 'legi') {
             // il porte la règle historique sur la régularité de la procédure de
             // licenciement. Les deux étant abrogés, aucun n'était signalé et
             // l'API en servait un sans dire que l'autre existait.
-            $stmt2 = $db->prepare("SELECT DISTINCT code_id FROM articles WHERE num = :ref");
+            $stmt2 = $db->prepare("SELECT DISTINCT code_id FROM articles "
+                                . "WHERE num = :ref" . $aux_codes);
             $stmt2->bindValue(':ref', $ref);
             $codes_found = [];
             $r2 = $stmt2->execute();
@@ -963,14 +1090,29 @@ if ($segments[0] === 'legi') {
             'date_fin'   => $row['date_fin'],
             'code_id'    => $row['code_id'],
             'code_titre' => $code_titre,
+            // `code_id` et `code_titre` portent désormais des arrêtés, des
+            // décrets et des lois. Leurs noms datent du temps où la base ne
+            // servait que des codes ; les renommer casserait l'API publique et
+            // le client MCP pour un gain de vocabulaire. `nature` dit ce que
+            // c'est réellement.
+            'nature'     => $row['nature'] ?? null,
             'texte'      => $has_texte ? ($row['texte'] ?? null) : null,
             'source'     => [
                 'base'         => 'LEGI',
                 'origine'      => 'Légifrance — dump officiel DILA',
                 'last_update'  => marqueur('legi_last_update'),
                 'last_sync'    => marqueur('legi_last_sync'),
+                // Légifrance range les codes sous /codes/ et les textes non
+                // codifiés — lois, ordonnances, décrets, arrêtés — sous /loda/.
+                // Servir la première forme pour un arrêté produisait un lien
+                // qui ne mène pas au texte qu'on vient de citer.
+                //
+                // ⚠️ Non vérifié à la mesure : Légifrance rend 403 à toute
+                // requête automatisée, quel que soit l'agent. La distinction
+                // vient de la structure du site, pas d'un appel réussi.
                 'legifrance_url' => sprintf(
-                    'https://www.legifrance.gouv.fr/codes/article_lc/%s',
+                    'https://www.legifrance.gouv.fr/%s/article_lc/%s',
+                    (($row['nature'] ?? 'CODE') === 'CODE') ? 'codes' : 'loda',
                     substr($row['id'], 0, 30)
                 ),
             ],
@@ -1000,18 +1142,9 @@ if ($segments[0] === 'legi') {
         $results = [];
         $vus = [];
 
-        $pattern = '%' . SQLite3::escapeString($q) . '%';
-        $stmt = $db->prepare("SELECT num, etat, code_id, code_titre, date_debut, date_fin
-                              FROM articles
-                              WHERE num LIKE :pattern
-                                AND etat = 'VIGUEUR'
-                              ORDER BY num
-                              LIMIT :limit");
-        $stmt->bindValue(':pattern', $pattern);
-        $stmt->bindValue(':limit', $limit, SQLITE3_INTEGER);
+        $lignes_num = legi_par_numero($db, $q, $limit, true);
 
-        $res = $stmt->execute();
-        while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+        foreach ($lignes_num as $row) {
             $cle = $row['num'] . '|' . $row['code_id'];
             $vus[$cle] = true;
             $results[] = [
@@ -1080,17 +1213,7 @@ if ($segments[0] === 'legi') {
         // sans mention serait pire que son absence.
         $reste = $limit - count($results);
         if ($reste > 0) {
-            $stmt = $db->prepare("SELECT num, etat, code_id, code_titre, date_debut, date_fin
-                                  FROM articles
-                                  WHERE num LIKE :pattern
-                                    AND etat <> 'VIGUEUR'
-                                  ORDER BY date_fin DESC, num
-                                  LIMIT :limit");
-            $stmt->bindValue(':pattern', $pattern);
-            $stmt->bindValue(':limit', $reste, SQLITE3_INTEGER);
-
-            $res = $stmt->execute();
-            while ($row = $res->fetchArray(SQLITE3_ASSOC)) {
+            foreach (legi_par_numero($db, $q, $reste, false) as $row) {
                 $cle = $row['num'] . '|' . $row['code_id'];
                 if (isset($vus[$cle])) {
                     continue;

@@ -131,7 +131,19 @@ done
 # n'en auditer qu'une laisserait passer l'autre en silence.
 if [ ${#PLAGES[@]} -gt 0 ] && [ "$COMPLET" = "0" ]; then
   for PLAGE in "${PLAGES[@]}"; do
-    echo "▸ Périmètre : $(git rev-list --count "$PLAGE") commit(s) à publier ($PLAGE)"
+    # 🔑 La plage peut être INUTILISABLE ici : après une réécriture d'historique,
+    # le SHA que porte le distant n'existe plus dans ce dépôt. `rev-list` sortait
+    # alors en « Invalid revision range » — une ligne `fatal` au milieu du
+    # rapport, suivie d'un compte vide, et l'audit continuait comme si de rien
+    # n'était. On mesure d'abord, et on annonce le repli plutôt qu'un chiffre
+    # absent. L'audit fait le même constat de son côté et bascule en complet.
+    if N=$(git rev-list --count "$PLAGE" 2>/dev/null); then
+      echo "▸ Périmètre : $N commit(s) à publier ($PLAGE)"
+    else
+      echo "▸ Périmètre : plage inutilisable — le distant ne partage plus cet"
+      echo "              historique. L'audit relira TOUT, ce qui est le bon"
+      echo "              périmètre pour un envoi forcé après réécriture."
+    fi
   done
 fi
 
