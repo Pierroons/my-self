@@ -13,7 +13,12 @@ $recoveryDerivedKey = (string) ($body['recovery_derived_key'] ?? '');
 // Le sel qui a servi à cette dérivation, engendré par le navigateur lui aussi.
 // Il n'est pas secret : il rend l'empreinte propre à ce compte, pour qu'une table
 // précalculée ne serve pas pour tout le service.
-$recoverySalt = strtolower(trim((string) ($body['recovery_salt'] ?? '')));
+// ⚠️ `trim` seulement, jamais `strtolower` : `srDerive` REFUSE un sel en
+// majuscules, et le normaliser ici accepterait en silence un client qui a
+// dérivé avec l'autre casse — son empreinte ne serait alors reproductible par
+// personne, et rien ne le dirait. Mesuré le 27/08/2026 : la garde existait,
+// et la route la contournait.
+$recoverySalt = trim((string) ($body['recovery_salt'] ?? ''));
 
 $result = Auth::register(Db::pdo(), $username, $recoveryDerivedKey, $recoverySalt, client_ip());
 

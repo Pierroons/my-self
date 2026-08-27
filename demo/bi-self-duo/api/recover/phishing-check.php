@@ -3,7 +3,7 @@
  * SelfRecover demo — démonstration de la résistance au phishing.
  *
  * POST /demo/api/recover/phishing-check
- *   body: { "username": "alice", "derived_key": "4e7a9f…", "domain_used": "…" }
+ *   body: { "username": "alice", "derived_key": "4e7a9f…" }
  *   → dit si le HMAC calculé par le navigateur correspond à celui du compte.
  *
  * 🔑 **Cet endpoint ne rend aucun accès, et c'est le point.** Il s'appelait
@@ -14,11 +14,18 @@
  * contredit la spécification qu'elle illustre enseigne le contraire d'elle-même.
  *
  * Ce qu'il montre, en revanche, mérite d'exister : le mot de récupération n'est
- * jamais envoyé. Seul le `derived_key` — HMAC-SHA256 calculé par le navigateur
- * sur `domain || site_salt` — arrive au serveur. Si un site de phishing pousse
- * le client à dériver avec son propre domaine, la clé obtenue est différente et
- * la comparaison échoue. On journalise `domain_used` en clair pour que le
- * visiteur voie que c'est bien le domaine vu par son navigateur qui a servi.
+ * jamais envoyé. Seul le `derived_key` arrive au serveur — `HMAC(clé = mot,
+ * message = hostname|v2 + sel)`, où le `hostname` est celui que le navigateur a
+ * LU. Une page servie sous un autre nom d'hôte fait dériver une autre clé, et
+ * la comparaison échoue.
+ *
+ * ⚠️ **Le serveur ne sait pas quel nom d'hôte a servi, et ne doit pas prétendre
+ * le savoir.** Cette route recevait un champ `domain_used` et le contrôlait :
+ * un champ que le client déclare, donc qu'une page de hameçonnage remplit
+ * comme elle veut. Il a été retiré le 27/08/2026. Ce que le serveur constate
+ * est plus simple, et vrai : la clé correspond, ou elle ne correspond pas.
+ * Le seul à savoir sous quel nom d'hôte la dérivation s'est faite est le
+ * navigateur — c'est lui qui l'affiche.
  *
  * La récupération réelle, elle, passe par `recover-l1` ou `recover-l2-code`.
  */
@@ -42,15 +49,13 @@ if (!RateLimit::checkAndIncrementActions($s->dir)) {
 $body = json_decode((string) file_get_contents('php://input'), true);
 $username    = is_array($body) ? (string) ($body['username'] ?? '') : '';
 $derivedKey  = is_array($body) ? (string) ($body['derived_key'] ?? '') : '';
-$domainUsed  = is_array($body) ? (string) ($body['domain_used'] ?? '') : '';
 
 $log = $s->logger();
 $log->info('phishing-check', 'POST /demo/api/recover/phishing-check');
 $log->info('phishing-check', 'Body parsed', [
     'username'    => $username,
     'derived_key' => $derivedKey,
-    'domain_used' => $domainUsed,
-    'note'        => "Le recovery_word brut n'est pas dans le body — seulement la clé HMAC dérivée par le navigateur. Le serveur n'a aucun moyen de le reconstituer.",
+    'note'        => "Le recovery_word brut n'est pas dans le body — seulement la clé HMAC dérivée par le navigateur. Le serveur n'a aucun moyen de le reconstituer, ni de savoir sous quel nom d'hôte elle a été calculée.",
 ]);
 
 if (!preg_match('/^[a-z0-9]{3,20}$/', $username)) {
@@ -71,23 +76,13 @@ $stmt = $db->prepare('SELECT id, recovery_hash FROM accounts WHERE username = :u
 $stmt->bindValue(':u', $username);
 $account = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
 
-// 🔑 L'explication anti-phishing se calcule ici, avant même de savoir si le
-// compte existe : elle ne dépend que du domaine annoncé par le client. La
-// produire plus bas, dans la seule branche « compte connu », allongeait la
-// réponse d'environ 250 caractères pour ce cas-là et pour lui seul — la longueur
-// disait alors ce que le message et le temps s'appliquent à taire.
-$hint = '';
-if ($domainUsed !== 'bi-self.my-self.fr') {
-    $hint = " Le navigateur a calculé le HMAC avec le domaine '" . $domainUsed . "' au lieu de 'bi-self.my-self.fr' → la clé dérivée est donc complètement différente de celle stockée. C'est exactement comme ça que SelfRecover bloque le phishing.";
-}
-
 if (!is_array($account)) {
     $log->warning('phishing-check', 'Compte introuvable', ['username' => $username]);
     // Voir recover-l1 : on paie le hachage plutôt que d'attendre un délai fixe.
     password_verify($derivedKey, RecoverHelper::dummyHash());
     http_response_code(401);
     echo json_encode(['ok'=>false,'error'=>'bad_credentials',
-        'message'=>'Mot de récupération incorrect ou compte inconnu.' . $hint]);
+        'message'=>'Mot de récupération incorrect ou compte inconnu.']);
     exit;
 }
 
@@ -98,22 +93,20 @@ $t1 = microtime(true);
 $log->crypto('phishing-check', 'argon2id_verify(derived_key_received, stored_recovery_hash)', [
     'duration_ms' => (int) (($t1 - $t0) * 1000),
     'result'      => $ok ? 'match' : 'no_match',
-    'legit_domain' => 'bi-self.my-self.fr',
-    'domain_used_by_client' => $domainUsed,
 ]);
 
 if (!$ok) {
-    if ($hint !== '') {
-        $log->warning('phishing-check', "Domain mismatch — phishing bloqué" . $hint);
-    } else {
-        $log->warning('phishing-check', 'derived_key KO même avec le bon domaine → mot de récupération incorrect');
-    }
+    // Une seule branche, et c'est voulu : le serveur ne peut pas distinguer un
+    // mot erroné d'une dérivation faite ailleurs, et s'il le pouvait il ne
+    // devrait pas le dire — ce serait un oracle. Le navigateur, lui, sait sous
+    // quel nom d'hôte il a calculé, et c'est à lui de l'afficher.
+    $log->warning('phishing-check', "La clé dérivée reçue ne correspond pas à celle du compte");
     http_response_code(401);
     echo json_encode([
         'ok'      => false,
         'error'   => 'bad_credentials',
         // Même phrase que sur le chemin « compte inconnu », au mot près.
-        'message' => 'Mot de récupération incorrect ou compte inconnu.' . $hint,
+        'message' => 'Mot de récupération incorrect ou compte inconnu.',
     ]);
     exit;
 }
@@ -128,7 +121,6 @@ echo json_encode([
     'ok'          => true,
     'match'       => true,
     'username'    => $username,
-    'domain_used' => $domainUsed,
     'message'     => 'Le HMAC calculé par ton navigateur correspond à celui du compte.',
     'note'        => "Cette page démontre la dérivation, elle ne rend pas l'accès : "
                    . "un seul secret ne suffit pas. Pour récupérer, il faut la passphrase "

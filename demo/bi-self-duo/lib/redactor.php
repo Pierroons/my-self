@@ -29,7 +29,12 @@ final class Redactor {
      * Patterns de secrets inline à censurer dans le code ou les logs.
      */
     private const SECRET_PATTERNS = [
-        '#\$site_salt\s*=\s*[^;]+;#'                 => '$site_salt = [REDACTED — set at install];',
+        // ⚠️ Ce motif cherchait `$site_salt`, que ce code n'a jamais écrit — il
+        // dit `$siteSalt`. Il n'a donc jamais rien censuré, tout en donnant
+        // l'apparence d'une protection. Corrigé le 27/08/2026 ; il n'attrape
+        // toujours rien aujourd'hui, mais il attrapera le jour où quelqu'un
+        // posera un sel en dur, ce qui est précisément le cas qu'il vise.
+        '#\$site_?[Ss]alt\s*=\s*[\'"][^;]+;#'         => '$siteSalt = [REDACTED — set at install];',
         // define('X_SALT'|'X_SECRET'|'X_KEY'|'X_TOKEN', '…') — forme non couverte
         // jusqu'au 13/08/2026, alors qu'elle est la plus courante en PHP.
         '#(define\s*\(\s*[\x27"][A-Z0-9_]*(SALT|SECRET|KEY|TOKEN|PASS(WORD)?)[\x27"]\s*,\s*)[^)]+\)#i'

@@ -67,6 +67,24 @@ jobs:
       - name: Garde-fou — récupération niveaux 1 et 2
         run: php bi-self/selfrecover/tests/sanity_recovery.php
 
+      # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
+      # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les
+      # vecteurs étaient figés, et ne gardaient rien. Cinq implémentations
+      # pouvaient diverger sans qu'un seul rouge apparaisse.
+      - name: Garde-fou — les vecteurs de dérivation, côté PHP
+        run: php bi-self/selfrecover/tests/derivation.php
+
+      - name: Garde-fou — les vecteurs de dérivation, sur la bibliothèque livrée
+        run: |
+          node --version
+          node bi-self/selfrecover/tests/derivation.js
+
+      # Une démo qui recopierait la bibliothèque au lieu d'y pointer redeviendrait
+      # le duplicata que ce lien existe pour supprimer — et le fichier recopié
+      # aurait l'air correct le jour où il est posé.
+      - name: Garde-fou — les démos pointent vers la bibliothèque, sans la copier
+        run: bash scripts/check-liens-bibliotheque.sh
+
       - name: Garde-fou — la bibliothèque sur le schéma de bi-self-duo
         run: php demo/bi-self-duo/tests/equivalence_selfrecover.php
 

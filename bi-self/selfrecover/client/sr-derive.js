@@ -7,8 +7,17 @@
  * empreinte transite. Le serveur en range un Argon2id ; il ne peut pas remonter
  * au mot, même s'il le voulait.
  *
- * Le secret va en CLÉ, jamais en message. C'est le sens d'un HMAC, et l'inverse
- * exposerait le secret aux attaques par extension de longueur.
+ * Le secret va en CLÉ, jamais en message — et il faut être exact sur la raison,
+ * parce que ce fichier a d'abord porté la mauvaise. Ce n'est PAS une question
+ * d'extension de longueur : HMAC est précisément construit pour y résister, son
+ * hachage externe la ferme quel que soit le contenu du message. Les deux sens
+ * coûtent d'ailleurs autant à qui veut deviner le mot, puisque tout le reste est
+ * public — c'est Argon2id, côté serveur, qui porte ce coût-là.
+ *
+ * La raison est ailleurs, et elle suffit : c'est le contrat d'usage de HMAC, et
+ * c'est ce que font les implémentations et les vecteurs figés de ce dépôt. Une
+ * formule d'interopérabilité se choisit une fois, se documente, et ne se rediscute
+ * plus — la rediscuter ici recréerait la divergence que ce fichier vient fermer.
  *
  * ── Pourquoi ce fichier existe ──────────────────────────────────────────────
  *

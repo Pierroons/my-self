@@ -382,7 +382,8 @@ final class Auth
      * On rend TOUJOURS un sel : pour un code inconnu, un sel fabriqué,
      * déterministe, de même longueur, stable si le code est retenté.
      *
-     * Deux raffinements repris de RN2C, qui a écrit ce patron en premier :
+     * Deux raffinements repris de l'implémentation qui a écrit ce patron en
+     * premier :
      * la normalisation est celle de `parCode` — sinon un code en majuscules
      * obtiendrait un faux sel ici et serait accepté là-bas — et le `WHERE` ne
      * filtre pas `used = 0`, sans quoi la route dirait « ce compte vient d'être
