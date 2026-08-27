@@ -27,6 +27,9 @@ const doc = JSON.parse(fs.readFileSync(path.join(__dirname, 'vecteurs-derivation
 globalThis.location = { hostname: '' };
 require(path.join(racine, 'client', 'sr-derive.js'));
 
+/** Un sel valide, pour les contrôles qui n'éprouvent pas le sel. */
+const SEL = 'a1'.repeat(16);
+
 let echecs = 0;
 const verdict = (quoi, ok, detail = '') => {
     console.log(`  ${ok ? 'ok    ' : 'RATE  '} ${quoi}${detail ? ' — ' + detail : ''}`);
@@ -57,11 +60,22 @@ const verdict = (quoi, ok, detail = '') => {
             verdict(quoi, true, e.message.slice(0, 52) + '…');
         }
     };
-    await leve('sans options du tout',      () => srDerive('mot', 'sel'));
-    await leve('avec un objet vide',        () => srDerive('mot', 'sel', {}));
-    await leve('avec un mode inconnu',      () => srDerive('mot', 'sel', { mode: 'domaine' }));
-    await leve("mode label sans label",     () => srDerive('mot', 'sel', { mode: 'label' }));
-    await leve('mode label vide',           () => srDerive('mot', 'sel', { mode: 'label', label: '' }));
+    await leve('sans options du tout',      () => srDerive('mot', SEL));
+    await leve('avec un objet vide',        () => srDerive('mot', SEL, {}));
+    await leve('avec un mode inconnu',      () => srDerive('mot', SEL, { mode: 'domaine' }));
+    await leve("mode label sans label",     () => srDerive('mot', SEL, { mode: 'label' }));
+    await leve('mode label vide',           () => srDerive('mot', SEL, { mode: 'label', label: '' }));
+
+    console.log('\n── Ce que le dériveur doit REFUSER ──────────────────────');
+    // 🔑 Un jeu de vecteurs qui ne contient que des cas valides n'éprouve jamais
+    // qu'une chose se ferme. La première version du dériveur tolérait un sel vide
+    // — `(sel || '')` — et rendait une empreinte parfaitement valide, non conforme
+    // à la spécification, sans un mot. Ces cas-là sont la sonde de ce défaut.
+    for (const r of doc.refus) {
+        globalThis.location.hostname = r.materiel;
+        const opts = r.mode === 'hostname' ? { mode: 'hostname' } : { mode: 'label', label: r.materiel };
+        await leve(r.quoi, () => srDerive(r.mot, r.sel, opts));
+    }
 
     console.log('\n── Le mode hostname LIT le navigateur, il ne le reçoit pas ─');
     // 🔑 Le cœur de l'anti-hameçonnage, et le défaut exact trouvé dans une des
@@ -69,20 +83,20 @@ const verdict = (quoi, ok, detail = '') => {
     // N'IMPORTE QUEL serveur peut fournir — celui d'une page qui vous imite
     // compris. On vérifie donc qu'aucune option ne permet de l'imposer.
     globalThis.location.hostname = 'vrai.test';
-    const attendu = await srDerive('mot', 'sel', { mode: 'hostname' });
-    const tente = await srDerive('mot', 'sel', { mode: 'hostname', label: 'imitateur.test' });
+    const attendu = await srDerive('mot', SEL, { mode: 'hostname' });
+    const tente = await srDerive('mot', SEL, { mode: 'hostname', label: 'imitateur.test' });
     verdict('🔑 un label fourni NE PEUT PAS remplacer le hostname', attendu === tente,
         'sinon un site hostile imposerait le matériel de sa cible');
 
     globalThis.location.hostname = 'imitateur.test';
-    const ailleurs = await srDerive('mot', 'sel', { mode: 'hostname' });
+    const ailleurs = await srDerive('mot', SEL, { mode: 'hostname' });
     verdict("🔑 changer d'hôte change l'empreinte", attendu !== ailleurs,
         'la propriété entière');
 
     console.log("\n── Sans navigateur, le mode hostname refuse ─────────────");
     const sauve = globalThis.location;
     globalThis.location = undefined;
-    await leve('hors contexte navigateur', () => srDerive('mot', 'sel', { mode: 'hostname' }));
+    await leve('hors contexte navigateur', () => srDerive('mot', SEL, { mode: 'hostname' }));
     globalThis.location = sauve;
 
     console.log('\n── Le sel ────────────────────────────────────────────────');

@@ -108,12 +108,31 @@
    * Dérive le mot mémorisé. Rend (Promise) 64 caractères hexadécimaux.
    *
    * @param {string} mot    le mot mémorisé — ne sort pas de cette fonction
-   * @param {string} sel    le sel du compte, 32 hexadécimaux
+   * @param {string} sel    le sel du compte, 32 hexadécimaux — OBLIGATOIRE
    * @param {{mode: 'hostname'|'label', label?: string}} options
    */
   async function srDerive(mot, sel, options) {
     const opts = options || {};
-    const message = materiel(opts.mode, opts.label) + '|' + VERSION + (sel || '');
+
+    // 🔑 Le sel est EXIGÉ, pas toléré. La première version de ce fichier écrivait
+    // `(sel || '')` : un appel sans sel passait en silence et rendait une
+    // empreinte parfaitement valide, non conforme à la spécification, sans qu'un
+    // mot le signale. C'était le défaut même que ce fichier existe pour fermer —
+    // le mode exigé et levant juste au-dessus, le sel documenté et facultatif
+    // deux lignes plus bas.
+    //
+    // Sans sel, deux personnes qui choisissent le même mot mémorisé produisent la
+    // même empreinte, et une table précalculée sert alors pour tout le service.
+    // Un sel par SITE ne suffit pas : il déplace la constante au lieu de saler.
+    if (typeof sel !== 'string' || !/^[0-9a-f]{32}$/.test(sel)) {
+        throw new Error(
+          'srDerive : sel obligatoire — 32 caractères hexadécimaux, un par compte, ' +
+          'engendré par le navigateur (srEngendrerSel). Il n\'est pas secret ; sans ' +
+          'lui, le même mot mémorisé donne la même empreinte pour tout le monde.',
+        );
+    }
+
+    const message = materiel(opts.mode, opts.label) + '|' + VERSION + sel;
 
     const cle = await global.crypto.subtle.importKey(
       'raw', new TextEncoder().encode(mot),
