@@ -325,8 +325,16 @@ final class RecoverL3
 
     /** RESET — après accord admin, le PROPRIÉTAIRE (sésame) re-choisit ses secrets. Le serveur
      *  ne génère ni ne diffuse de mot de passe : il est choisi par l'utilisateur. Capability one-shot. */
-    public static function reset(PDO $pdo, string $number, string $claimSecret, string $password, string $recoveryDerivedKey): array
+    public static function reset(PDO $pdo, string $number, string $claimSecret, string $password, string $recoveryDerivedKey, string $recoverySalt): array
     {
+        // Le sel est exigé et sa forme validée, comme à l'inscription et comme
+        // dans `srDerive`. Une réinitialisation qui range un sel vide rendrait le
+        // compte irrécupérable au tour suivant.
+        if (!preg_match('/^[0-9a-f]{32}$/', $recoverySalt)) {
+            return ['ok' => false, 'code' => 400, 'error' => 'invalid_salt',
+                    'message' => 'Sel de dérivation invalide.'];
+        }
+
         $d = self::byNumber($pdo, $number);
         if (!$d || self::expired($d)) {
             usleep(200000);
@@ -357,11 +365,16 @@ final class RecoverL3
         $diceware = \DicewareWordlist::generate(4, 'en');
         $passphrase = implode(' ', $diceware['words']);
         $opts = Auth::argon2Options();
-        $pdo->prepare('UPDATE accounts SET pw_hash = ?, pass_hash = ?, recovery_hash = ?, banned_until = 0 WHERE id = ?')
+        // 🔑 Le sel part avec l'empreinte. L'oublier ici laisserait le compte avec une
+        // empreinte neuve et l'ANCIEN sel : toute dérivation future serait
+        // incohérente, et personne ne le verrait — la récupération refuserait sans
+        // jamais dire lequel des deux facteurs a échoué.
+        $pdo->prepare('UPDATE accounts SET pw_hash = ?, pass_hash = ?, recovery_hash = ?, recovery_salt = ?, banned_until = 0 WHERE id = ?')
             ->execute([
                 password_hash($password, PASSWORD_ARGON2ID, $opts),
                 password_hash($passphrase, PASSWORD_ARGON2ID, $opts),
                 password_hash($recoveryDerivedKey, PASSWORD_ARGON2ID, $opts),
+                $recoverySalt,
                 (int) $acc['id'],
             ]);
         $pdo->prepare('DELETE FROM app_sessions WHERE account_id = ?')->execute([(int) $acc['id']]);

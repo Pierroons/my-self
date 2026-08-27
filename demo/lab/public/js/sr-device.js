@@ -39,7 +39,11 @@
     // Le serveur exige la preuve qu'on détient le mot : sans elle, on pourrait
     // enrôler son appareil sur le compte d'un autre. Le mot lui-même ne part
     // pas — seule sa dérivation HMAC, comme partout ailleurs.
-    var derived = await window.srDerive(word);
+    // Le sel du compte, que la session identifie : l'enrôlement n'a pas de code
+    // de secours sous la main, mais il sait déjà qui il est.
+    var rs = await fetch('/api/sel.php', {method:'POST', credentials:'include',
+      headers:{'Content-Type':'application/json'}, body:'{}'}).then(function(r){ return r.json(); });
+    var derived = await window.srDerive(word, rs.sel, { mode: 'hostname' });
     var r = await post('/api/device_enroll.php', {
       username: username, credential_id: credentialId,
       public_key: b64u(pubSpki), memorized_derived_key: derived

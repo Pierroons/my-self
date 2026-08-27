@@ -67,6 +67,14 @@ final class Db
             self::$pdo->exec('ALTER TABLE accounts ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');
         }
 
+        // 🔑 Le sel de dérivation. Vide = compte créé avant le 27/08/2026, quand le
+        // lab dérivait sans sel : son empreinte n'est plus reproductible par le
+        // client actuel, et la colonne vide est ce qui permet de le reconnaître
+        // au lieu de le croire salé.
+        if (!in_array('recovery_salt', $cols, true)) {
+            self::$pdo->exec("ALTER TABLE accounts ADD COLUMN recovery_salt TEXT NOT NULL DEFAULT ''");
+        }
+
         // Traces d'usage lues par le faisceau du niveau 3.
         foreach ([
             'last_login_at' => 'INTEGER',

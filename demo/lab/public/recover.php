@@ -159,10 +159,21 @@ async function recuperer(btn){
   // Le champ transmis désigne le niveau : le client n'indique pas lui-même
   // contre quel secret il souhaite être comparé.
   // Au niveau 2, le mot mémorisé est dérivé ici même : seule la clé part.
-  const corps = niveau==='l1'
-    ? {username, passphrase: secret}
-    : {recovery_code: secret,
-       recovery_derived_key: await srDerive(document.getElementById('recovery').value)};
+  // Au niveau 2, le sel du compte se demande AVANT de dériver : c'est le code qui
+  // identifie le compte, et la dérivation en dépend. Le service en rend un même
+  // quand le code n'existe pas — sinon cette route dirait quels codes sont
+  // valides, et on pourrait les chercher sans rien payer.
+  let corps;
+  if (niveau === 'l1') {
+    corps = {username, passphrase: secret};
+  } else {
+    const rs = await fetch('/api/sel.php', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({recovery_code: secret})}).then(r=>r.json());
+    corps = {recovery_code: secret,
+             recovery_derived_key: await srDerive(
+               document.getElementById('recovery').value, rs.sel, { mode: 'hostname' })};
+  }
   fetch('/api/recover.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(corps)})
     .then(r=>r.json()).then(d=>{
       btn.disabled = false;

@@ -17,6 +17,9 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../vendor/autoload.php';
+// `sr_sel_aleatoire()` — le miroir de `srEngendrerSel()` pour ce qui n'a pas de
+// navigateur. Le sel est exigé depuis le 27/08 : sans lui, l'inscription refuse.
+require_once __DIR__ . '/../lib/derive_cli.php';
 require __DIR__ . '/../lib/StockageSelfRecover.php';
 
 use Pierroons\MySelfLab\StockageSelfRecover;
@@ -117,7 +120,7 @@ require_once __DIR__ . '/../lib/auth.php';
 $pdo2 = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $pdo2->exec((string) file_get_contents(__DIR__ . '/../schema.sql'));
 
-$insc = \Pierroons\MySelfLab\Auth::register($pdo2, 'bob', $MOT, '10.0.0.1');
+$insc = \Pierroons\MySelfLab\Auth::register($pdo2, 'bob', $MOT, sr_sel_aleatoire(), '10.0.0.1');
 verifier('inscription : dix codes remis une fois',
     ($insc['ok'] ?? false) && count($insc['credentials']['recovery_codes'] ?? []) === 10);
 

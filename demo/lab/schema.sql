@@ -11,6 +11,12 @@ CREATE TABLE IF NOT EXISTS accounts (
     pw_hash         TEXT NOT NULL,          -- Argon2id(password)
     pass_hash       TEXT NOT NULL,          -- Argon2id(passphrase diceware L1)
     recovery_hash   TEXT NOT NULL,          -- Argon2id(derived_key) — L2 recovery
+    -- 🔑 Le sel de dérivation, propre à ce compte, engendré par le NAVIGATEUR à
+    -- l'inscription. Il n'est pas secret. Sans lui, deux personnes qui
+    -- choisissent le même mot mémorisé produisent la même empreinte, et une
+    -- table précalculée sert alors pour tout le service — ce que le whitepaper
+    -- exige depuis toujours (`user_salt`, §68) et que ce lab n'avait pas.
+    recovery_salt   TEXT NOT NULL DEFAULT '',
     is_admin        INTEGER NOT NULL DEFAULT 0,  -- panel admin (promotion par `selfrecover-su`, jamais en base directement)
     created_at      INTEGER NOT NULL,
     -- Traces d'usage, lues par le faisceau du niveau 3 : elles disent si le

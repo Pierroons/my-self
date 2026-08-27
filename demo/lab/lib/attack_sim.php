@@ -110,7 +110,7 @@ final class AttackSimulator
     private static function runBruteforce(): array
     {
         $pdo = self::sandbox();
-        $r = Auth::register($pdo, 'victime', 'motrecup2024');
+        $r = Auth::register($pdo, 'victime', 'motrecup2024', sr_sel_aleatoire());
         $vraiPassword = $r['credentials']['password'];
 
         $seq = [];
@@ -122,7 +122,7 @@ final class AttackSimulator
         // 🟢 Légitime : la vraie victime avec son bon password — mais elle est aussi bloquée
         // par le rate-limit (5 échecs atteints). On démontre sur une IP/fenêtre propre :
         $pdo2 = self::sandbox();
-        $r2 = Auth::register($pdo2, 'victime', 'motrecup2024');
+        $r2 = Auth::register($pdo2, 'victime', 'motrecup2024', sr_sel_aleatoire());
         $okLogin = Auth::login($pdo2, 'victime', $r2['credentials']['password'], '1.2.3.4');
 
         return [
