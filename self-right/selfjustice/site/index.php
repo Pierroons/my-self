@@ -226,14 +226,14 @@ Analyse selon /directives.html</pre>
     <p style="font-size: 0.95rem; margin: 0;">
       <strong>Droit français :</strong> Légifrance — dump LEGI officiel de la DILA<br>
       <span style="color: var(--text-muted); font-size: 0.85rem;">
-        <span id="legi-articles"><?= chiffre($corpus, "legi_articles") ?></span> articles indexés,
+        <span id="legi-articles"><?= chiffre($corpus, "legi_articles") ?></span> articles,
         dernière synchronisation : <span id="legi-update"><?= chiffre($corpus, "legi_maj") ?></span>
       </span>
     </p>
     <p style="font-size: 0.95rem; margin: 0.6rem 0 0 0;">
       <strong>Conventionnalité (droit supérieur à la loi française) :</strong> EUR-Lex + CEDH<br>
       <span style="color: var(--text-muted); font-size: 0.85rem;">
-        Charte des droits fondamentaux UE (54 art.), TUE, TFUE, RGPD, CEDH — <span id="eu-articles"><?= chiffre($corpus, "eu_articles") ?></span> articles indexés,
+        Charte des droits fondamentaux UE (54 art.), TUE, TFUE, RGPD, CEDH — <span id="eu-articles"><?= chiffre($corpus, "eu_articles") ?></span> articles,
         dernière synchronisation : <span id="eu-update"><?= chiffre($corpus, "eu_maj") ?></span>
       </span>
     </p>
@@ -858,8 +858,8 @@ Analyse selon /directives.html</pre>
     <h3>0. Étape préalable — Obtenir la date réelle de dernière MAJ des bases</h3>
     <p>Avant toute analyse, interroge <code>GET /api/status</code> pour récupérer la date officielle de dernière synchronisation des bases LEGI et Conventionnalité. Utilise cette date (et non la date du jour, ni une date supposée) dans l'avertissement légal et les citations. Exemple de réponse :</p>
     <pre>{
-  "legi": {"articles": 488903, "vigueur": 161303, "last_update": "15 avril 2026"},
-  "eu":   {"articles": 705, "last_update": "16 avril 2026"}
+  "legi": {"articles": &lt;nombre&gt;, "vigueur": &lt;nombre&gt;, "last_update": "&lt;date&gt;", "last_sync": "&lt;AAAA-MM-JJ&gt;"},
+  "eu":   {"articles": &lt;nombre&gt;, "last_update": "&lt;date&gt;", "last_sync": "&lt;AAAA-MM-JJ&gt;"}
 }</pre>
     <p>Dans l'avertissement du document, écrire par exemple : « articles vérifiés contre la base LEGI officielle (DILA) au {last_update de la réponse} ». Ne jamais inventer ou supposer une date.</p>
   </section>
@@ -868,7 +868,7 @@ Analyse selon /directives.html</pre>
     <h3>1. Bases locales (priorité absolue)</h3>
     <p>Deux bases SQLite sont exposées en lecture seule via l'API SelfJustice. Elles sont synchronisées les 1<sup>er</sup> et 15 de chaque mois avec les sources officielles.</p>
 
-    <h4>Base LEGI — droit français (488 903 articles)</h4>
+    <h4>Base LEGI — droit français (plus de 500 000 articles)</h4>
     <ul>
       <li><strong>Article par référence :</strong> <code>GET /api/legi/article/{ref}</code><br>
         Exemples : <code>/api/legi/article/L1152-1</code>, <code>/api/legi/article/R623-2</code>, <code>/api/legi/article/1240</code></li>
@@ -881,18 +881,18 @@ Analyse selon /directives.html</pre>
   "reference": "L1152-1",
   "etat": "VIGUEUR",
   "en_vigueur": true,
-  "date_debut": "2010-02-26",
-  "code_id": "LEGITEXT000006072665",
+  "date_debut": "2008-05-01",
+  "code_id": "LEGITEXT000006072050",
   "source": {
     "base": "LEGI",
     "origine": "Légifrance — dump officiel DILA",
-    "last_update": "15 avril 2026",
-    "legifrance_url": "https://www.legifrance.gouv.fr/codes/article_lc/..."
+    "last_update": "&lt;date&gt;",
+    "legifrance_url": "https://www.legifrance.gouv.fr/..."
   }
 }</pre>
-    <p><strong>Couverture :</strong> tous les 76 codes français (civil, pénal, travail, commerce, santé publique, urbanisme, route, assurances, transport, propriété intellectuelle, consommation, construction, etc.) — pas de limite par domaine juridique.</p>
+    <p><strong>Couverture :</strong> plus de 100 codes français (civil, pénal, travail, commerce, santé publique, urbanisme, route, assurances, transport, propriété intellectuelle, consommation, construction, etc.) — pas de limite par domaine juridique.</p>
 
-    <h4>Base Conventionnalité — droit UE et CEDH (705 articles)</h4>
+    <h4>Base Conventionnalité — droit UE et CEDH (plus de 700 articles)</h4>
     <ul>
       <li><strong>Article par source et numéro :</strong> <code>GET /api/eu/article/{source}/{num}</code><br>
         Sources autorisées : <code>CEDH</code>, <code>CHARTE_UE</code>, <code>TUE</code>, <code>TFUE</code>, <code>RGPD</code>.<br>
