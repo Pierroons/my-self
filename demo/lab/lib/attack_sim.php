@@ -242,14 +242,27 @@ final class AttackSimulator
         // 🔴 Phishing : le MÊME mot mémorisé, dérivé sous deux étiquettes de
         // service différentes, ne donne pas la même clé.
         //
-        // ⚠️ La dérivation appartient désormais au navigateur (cf. sr-derive.js) :
-        // le serveur n'a plus de fonction pour cela, et il ne doit pas en
-        // reprendre une — ce serait rouvrir le chemin par lequel le mot arrivait
-        // en clair. On reproduit donc ici le calcul du client, sur des étiquettes
-        // fictives, pour la seule démonstration.
-        $mot = 'monchat2024';
-        $cleVraiSite = hash_hmac('sha256', 'myself-lab-domain-v1', $mot);
-        $clePhishing = hash_hmac('sha256', 'phishing-evil-com-v1', $mot);
+        // ⚠️ La dérivation appartient au navigateur (cf. sr-derive.js) : le serveur
+        // n'a plus de fonction pour cela et ne doit pas en reprendre une — ce
+        // serait rouvrir le chemin par lequel le mot arrivait en clair. Les deux
+        // lignes ci-dessous recopient le calcul du client, sur un mot et un sel
+        // écrits ici : aucune saisie n'y entre.
+        //
+        // 🔑 **Ce que cette illustration montre, et ce qu'elle ne montre pas.**
+        // Elle montre que le même mot, dérivé sous deux noms d'hôte, donne deux
+        // clés sans rapport. Elle ne PROUVE pas l'anti-hameçonnage : c'est ce
+        // code qui choisit les deux noms d'hôte, alors que la propriété tient
+        // précisément au fait que le navigateur LIT le sien. Seule une page
+        // servie sous une autre adresse en apporterait la preuve.
+        //
+        // La forme, elle, est celle du protocole — `<hôte>|<version><sel>` — et
+        // pas une étiquette inventée : ce fichier est lu, et une formule
+        // approximative se recopie aussi bien qu'une juste.
+        $mot  = 'monchat2024';
+        $sel  = str_repeat('a1b2c3d4', 4);          // 32 hex, comme srEngendrerSel
+        $hote = strtolower((string) (getenv('SR_DERIVE_HOTE') ?: 'localhost'));
+        $cleVraiSite = hash_hmac('sha256', $hote . '|v2' . $sel, $mot);
+        $clePhishing = hash_hmac('sha256', 'phishing-' . str_replace('.', '-', $hote) . '.local|v2' . $sel, $mot);
 
         return [
             'ok' => true,
@@ -273,12 +286,12 @@ final class AttackSimulator
                 'lignes' => [
                     'POST avec le bon jeton CSRF : ' . ($avecBonToken ? '✓ accepté' : 'rejeté'),
                     sprintf(tc('Clé dérivée sur le vrai site : %s'), substr($cleVraiSite, 0, 24) . '…'),
-                    'Les deux clés diffèrent tant que le faux site ne recopie pas le vrai label ; avec ce label en dur, il reproduit la bonne.',
+                    "Les deux clés diffèrent parce que le nom d'hôte entre dans la dérivation, et qu'un clone est servi sous le sien. Il ne peut pas le recopier : son navigateur lit l'adresse, il ne la reçoit pas.",
                 ],
             ],
             'verdict' => 'neutralisé',
-            'defense' => 'CSRF token HMAC par session + dérivation par service SelfRecover',
-            'message_cle' => "L'action légitime passe ; l'attaquant cross-site échoue, et un clone qui ne recopie pas le vrai label dérive une clé inutile.",
+            'defense' => "CSRF token HMAC par session + dérivation liée au nom d'hôte (SelfRecover, mode hostname)",
+            'message_cle' => "L'action légitime passe ; l'attaquant cross-site échoue, et un clone servi sous une autre adresse dérive une clé inutilisable ici — sans que l'utilisateur ait eu la moindre adresse à reconnaître.",
         ];
     }
 }

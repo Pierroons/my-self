@@ -43,7 +43,7 @@ $threads = [
     ['libriste', 'Pourquoi AGPL plutôt que MIT pour un SaaS souverain ?', 'libre',
      "La licence AGPL impose la réciprocité même pour les services en réseau. Contrairement à MIT, un acteur ne peut pas prendre votre code, le mettre derrière une API et fermer ses modifications. Pour un projet de souveraineté numérique, c'est le bouclier anti-capture par excellence."],
     ['vieprivee', 'Recovery sans email : comment ça tient face au phishing ?', 'crypto',
-     "Le protocole dérive la clé de récupération via HMAC(mot_de_récup, domaine || sel_du_site). Un site de phishing aurait un domaine et un sel différents → la clé dérivée ne correspondrait pas. Pas d'email = pas de vecteur de reset détourné."],
+     "Le protocole dérive la clé de récupération via HMAC(clé = mot_de_récup, message = nom d'hôte + \"|v2\" + sel du compte), le nom d'hôte étant lu par le navigateur. Le sel n'est pas secret et un faux site peut obtenir le même : c'est l'adresse qui diffère → la clé dérivée ne correspondrait pas. Pas d'email = pas de vecteur de reset détourné."],
     ['autohebergeur', "Retour d'expérience : 2 ans d'auto-hébergement sur Raspberry Pi", 'autohebergement',
      "Nextcloud + Vaultwarden + un reverse proxy, le tout derrière un tunnel. La vraie difficulté n'est pas technique mais la résilience : sauvegardes chiffrées hors-site et plan de récupération. Sans ça, un disque mort = tout perdu."],
     ['vieprivee', 'RGPD : minimisation des données, on en parle ?', 'rgpd',

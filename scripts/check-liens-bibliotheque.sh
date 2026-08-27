@@ -93,16 +93,33 @@ else
     echo "  ✓ aucune réimplémentation"
 fi
 
-echo "▸ Formule de dérivation citée dans la documentation"
-# Non bloquant : un whitepaper n'est pas un composant. Mais ses extraits sont le
-# premier endroit qu'un intégrateur recopie, et une formule périmée y survit plus
-# longtemps que dans du code, faute de quoi que ce soit qui l'exécute.
-docs=$(git grep -lE "HMAC-SHA256\((key = )?(service_label|label_service)" -- '*.md' || true)
+echo "▸ Formule de dérivation citée dans les textes"
+# Les extraits d'un document sont le premier endroit qu'un intégrateur recopie, et
+# une formule périmée y survit plus longtemps que dans du code, faute de quoi que
+# ce soit qui l'exécute.
+#
+# ⚠️ La première version de ce contrôle ne cherchait que `service_label` dans les
+# `*.md`. Elle rendait vert le jour où elle a été écrite : le dépôt n'emploie pas
+# cette graphie, et cinq de ses porteurs vivaient en `.php` ou `.html`. Un motif
+# qui ne peut rien attraper ne se distingue pas d'une ligne absente — c'est le
+# défaut que ce script existe pour fermer, et il l'avait chez lui.
+#
+# Ce qui est cherché : le mot mémorisé en MESSAGE plutôt qu'en clé, un matériel
+# annoncé comme un label ou un domaine alors que la formule livrée lit le nom
+# d'hôte, et le sel de site — qui ne participe plus à la dérivation.
+MOTIF_FORMULE="HMAC[^)]{0,40}(label.?de.?service|label_de_service|service_label|label_service|domaine ?‖|domain ?\|\||sel_du_site|site_salt)"
+# Et la forme inversée, qui met le SEL en clé et le mot en message : elle ne
+# contient aucun des mots ci-dessus, et c'est pourtant la plus fausse des deux.
+MOTIF_INVERSE="HMAC(-SHA256)?\((salt|sel|user_salt|recovery_salt)[,, ]"
+docs=$(git grep -lniE "$MOTIF_FORMULE|$MOTIF_INVERSE" -- '*.md' '*.php' '*.html' '*.js' \
+    | grep -vE "vecteurs-derivation|^scripts/check-liens-bibliotheque\.sh$" || true)
 if [ -n "$docs" ]; then
-    echo "  ⚠ formule décrite avec le mot en MESSAGE, alors que le code le met en CLÉ :"
+    echo "  ✗ formule périmée : le mot en message, ou un label/sel de site là où la"
+    echo "    dérivation lit le nom d'hôte —"
     echo "$docs" | sed 's/^/     /'
+    echec=1
 else
-    echo "  ✓ la documentation décrit la formule livrée"
+    echo "  ✓ les textes décrivent la formule livrée"
 fi
 
 exit $echec

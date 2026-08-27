@@ -200,7 +200,7 @@ final class Device
      * Le mot mémorisé a-t-il la forme d'une clé dérivée ?
      *
      * 🔑 **Le mot lui-même n'arrive jamais ici.** Le client calcule
-     * `HMAC-SHA256(clé = mot, message = label de service)` et n'envoie que le
+     * `HMAC-SHA256(clé = mot, message = matériel | version + sel)` et n'envoie que le
      * résultat : 64 caractères hexadécimaux. Refuser toute autre forme est ce
      * qui tient la promesse — sans ce contrôle, un client resté sur une version
      * antérieure enverrait le mot en clair et le serveur l'accepterait sans que

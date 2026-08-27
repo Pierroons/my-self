@@ -120,6 +120,13 @@ final class RecoverHelper {
      * chaque visiteur est seul dans sa base SQLite, pour trente minutes. Il
      * n'énumérerait que ses propres codes. En déploiement réel, le sel de
      * déploiement est un secret serveur, et alors seulement la garde mord.
+     *
+     * ⚠️ **Et la porte d'à côté reste ouverte** : `api/recover/register.php`
+     * répond `409 username_taken` sur un identifiant pris. La question que
+     * cette route refuse de trancher, l'inscription y répond gratuitement. Ici
+     * c'est assumé — la démo veut montrer un conflit d'identifiant — mais qui
+     * copie cette garde doit se demander ce que ses AUTRES routes disent du
+     * même compte. Un garde-fou branché ne vaut que par ce qui l'entoure.
      */
     public static function selDeDerivation(DemoSession $session, string $code, string $username = ''): string {
         $code     = strtolower(trim($code));

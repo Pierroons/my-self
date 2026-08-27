@@ -612,13 +612,12 @@
     <div id="p-viz"></div>
     <div id="p-result"></div>
     <div class="teach tuto-only">
-      <strong>Ce qu'il se passe ici :</strong> on calcule
-      <code>HMAC(mot, "bi-self.my-self.fr"+salt)</code>
-      ET <code>HMAC(mot, "phishing-my-self-fr.local"+salt)</code>.
-      Le même mot, deux domaines différents → <strong>deux clés complètement différentes</strong>.
-      Seule celle du bon domaine passera argon2id_verify. Le phisher, même s'il voit
-      passer le HMAC qu'il a obtenu, obtient une clé <strong>inutilisable ailleurs</strong>.
-      Aucun partage de mot, aucun cross-site leak possible.
+      <strong>Ce qu'il se passe ici :</strong> ton navigateur dérive deux fois le même
+      mot — une fois sous le nom d'hôte qu'il <strong>lit</strong> dans sa barre d'adresse,
+      une fois sous un nom d'hôte imité. Deux clés sans aucun rapport.
+      Seule la première passera argon2id_verify. Une page qui copie celle-ci est servie
+      sous son propre nom d'hôte : la clé qu'elle récolte est
+      <strong>inutilisable ici</strong>, et tu n'as eu aucune adresse à reconnaître.
     </div>
   </div>
 
@@ -735,7 +734,6 @@ const state = {
 
 // --- Utils ---
 function $(id) { return document.getElementById(id); }
-function html(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 function fmtTs(iso) {
   const d = new Date(iso);
   const pad = (n,w=2) => String(n).padStart(w,'0');
@@ -873,8 +871,11 @@ function showWarning(msg, danger=false) {
 
 $('btn-new-session').addEventListener('click', (e) => {
   e.preventDefault();
-  document.cookie = 'sj_demo_session=; path=/; domain=bi-self.my-self.fr; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-  document.cookie = 'sr_app_session=; path=/; domain=bi-self.my-self.fr; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+  // Pas d'attribut `domain` : un domaine en dur qui ne correspond pas à l'origine
+  // fait rejeter la suppression EN SILENCE. Les deux cookies survivaient alors au
+  // bouton « nouvelle session » partout ailleurs que sur l'instance de production.
+  document.cookie = 'sj_demo_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+  document.cookie = 'sr_app_session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
   location.reload();
 });
 
@@ -911,6 +912,13 @@ $('form-register').addEventListener('submit', async (e) => {
   try {
     const word = $('reg-word').value.trim();
     if (!word) throw new Error('Choisis un mot mémorisé.');
+    // Sans ce contrôle, l'absence de /js/sr-derive.js se présente comme un
+    // `ReferenceError` que le `catch` traduisait en « Erreur réseau. » — un
+    // diagnostic faux, pour une panne qui n'a rien de réseau.
+    if (typeof srDerive !== 'function' || typeof srEngendrerSel !== 'function') {
+      throw new Error("La bibliothèque de dérivation n'est pas chargée (/js/sr-derive.js). "
+                    + "Rien n'a été envoyé : ton mot n'a pas quitté cette page.");
+    }
 
     // 🔑 Le sel est engendré ICI, par le navigateur, et il est propre à ce
     // compte. Le serveur ne fait que le ranger : il n'est pas secret, mais sans
@@ -949,7 +957,10 @@ $('form-register').addEventListener('submit', async (e) => {
       res.innerHTML = `<div class="inline-result err">✗ ${html_escape(d.message || d.error)}</div>`;
     }
   } catch (err) {
-    res.innerHTML = `<div class="inline-result err">✗ Erreur réseau.</div>`;
+    // Le message de l'erreur, et non « Erreur réseau » : bibliothèque absente,
+    // contexte non sécurisé (`crypto.subtle` indéfini) ou refus de `srDerive`
+    // arrivent tous ici, et aucun n'est un problème de réseau.
+    res.innerHTML = `<div class="inline-result err">✗ ${html_escape(err.message || 'Erreur inattendue.')}</div>`;
   } finally { btn.disabled = false; }
 });
 
@@ -978,7 +989,10 @@ $('form-login').addEventListener('submit', async (e) => {
       res.innerHTML = `<div class="inline-result err">✗ ${html_escape(d.message || d.error)}</div>`;
     }
   } catch (err) {
-    res.innerHTML = `<div class="inline-result err">✗ Erreur réseau.</div>`;
+    // Le message de l'erreur, et non « Erreur réseau » : bibliothèque absente,
+    // contexte non sécurisé (`crypto.subtle` indéfini) ou refus de `srDerive`
+    // arrivent tous ici, et aucun n'est un problème de réseau.
+    res.innerHTML = `<div class="inline-result err">✗ ${html_escape(err.message || 'Erreur inattendue.')}</div>`;
   } finally { btn.disabled = false; }
 });
 
@@ -1015,7 +1029,10 @@ $('form-recover-l1').addEventListener('submit', async (e) => {
       res.innerHTML = `<div class="inline-result err">✗ ${html_escape(d.message || d.error)}</div>`;
     }
   } catch (err) {
-    res.innerHTML = `<div class="inline-result err">✗ Erreur réseau.</div>`;
+    // Le message de l'erreur, et non « Erreur réseau » : bibliothèque absente,
+    // contexte non sécurisé (`crypto.subtle` indéfini) ou refus de `srDerive`
+    // arrivent tous ici, et aucun n'est un problème de réseau.
+    res.innerHTML = `<div class="inline-result err">✗ ${html_escape(err.message || 'Erreur inattendue.')}</div>`;
   } finally { btn.disabled = false; }
 });
 
@@ -1139,6 +1156,11 @@ $('form-recover-l2-code').addEventListener('submit', async (e) => {
       // Les deux secrets viennent du serveur : le protocole les émet, on ne les choisit pas.
       state.credentials.password   = d.new_password;
       state.credentials.passphrase = d.passphrase;
+      // L'identifiant vient du serveur : le niveau 2 a retrouvé le compte sans
+      // qu'on le nomme, et c'est justement ce que le panneau doit montrer. Sans
+      // cette ligne, une récupération faite sur une page rechargée affichait un
+      // mot de passe sans dire à quel compte il appartient.
+      state.credentials.username   = d.username;
       state.usedCodes.add(code);
       renderCreds();
       res.innerHTML = `<div class="inline-result ok">✓ Compte <strong>${html_escape(d.username)}</strong> récupéré sans l'avoir nommé. `
