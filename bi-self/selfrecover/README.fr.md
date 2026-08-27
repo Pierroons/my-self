@@ -31,7 +31,7 @@ sans réécriture totale de la pile d'authentification existante.
 | Mode | Canal email | Crypto ajoutée | Quand le choisir |
 |------|-------------|----------------|------------------|
 | **Full** | Aucun | Passphrase diceware EFF + HMAC par service | Projets greenfield, modèles de menace exigeants et post-ANTS |
-| **Lite** 🆕 | Conservé (lien reset SMTP) | Un mot mémorisé par l'utilisateur, dérivé HMAC côté client, jamais envoyé en clair | Stack legacy qui veut une résistance au phishing immédiate, migration vers Full plus tard |
+| **Lite** 🆕 | Conservé (lien reset SMTP) | Un mot mémorisé par l'utilisateur, dérivé HMAC côté client, jamais envoyé en clair | Stack legacy qui veut un secret de secours qui ne circule jamais en clair, migration vers Full plus tard |
 
 **Essayer :** voir [Essayer SelfRecover](#essayer-selfrecover). Le comparatif des méthodes (8 adversaires × 3 modèles) est une page autonome : `tools/comparison.html`.
 
