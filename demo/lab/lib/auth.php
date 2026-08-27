@@ -72,15 +72,44 @@ final class Auth
         return Protocole::estCleDerivee($value);
     }
 
-    /** Site salt persistant (32 bytes), propre à ce déploiement. Hors webroot. */
+    /**
+     * Site salt persistant (32 bytes), propre à ce déploiement. Hors webroot.
+     *
+     * 🔑 **Il ne peut pas être vide, et l'échec doit être bruyant.** Ce sel
+     * porte deux propriétés à lui seul : il localise les codes émis
+     * (`Recovery::indexRecherche`) et il fabrique le faux sel rendu aux codes
+     * inconnus (`selDeDerivation`). Vide, les index deviennent calculables et
+     * le faux sel se distingue d'un vrai par simple recalcul — l'oracle que
+     * cette route ferme se rouvre entier.
+     *
+     * La version précédente laissait exactement cela arriver : répertoire
+     * absent, `file_put_contents` en échec, `file_get_contents` rendant
+     * `false`, sel vide, et deux avertissements PHP que rien ne lit. Observé
+     * le 27/08/2026 en lançant la sonde d'équivalence.
+     */
     public static function siteSalt(): string
     {
-        $f = __DIR__ . '/../data/.sitesalt';
+        // Le chemin est surchargeable : un déploiement peut vouloir ce sel hors
+        // de l'arborescence servie, et la sonde l'éprouve sans toucher au sel
+        // de l'instance — dont un remplacement rendrait introuvables tous les
+        // codes déjà émis.
+        $f = getenv('LAB_SITESALT_PATH') ?: __DIR__ . '/../data/.sitesalt';
         if (!file_exists($f)) {
-            file_put_contents($f, bin2hex(random_bytes(32)));
+            $dossier = dirname($f);
+            if (!is_dir($dossier) && !@mkdir($dossier, 0700, true) && !is_dir($dossier)) {
+                throw new \RuntimeException("Sel de site : {$dossier} introuvable et non créable.");
+            }
+            if (@file_put_contents($f, bin2hex(random_bytes(32))) === false) {
+                throw new \RuntimeException("Sel de site : écriture impossible dans {$f}.");
+            }
             @chmod($f, 0600);
         }
-        return trim((string) file_get_contents($f));
+        $sel = trim((string) @file_get_contents($f));
+        if (strlen($sel) < 32) {
+            throw new \RuntimeException("Sel de site vide ou tronqué ({$f}) — refus de servir.");
+        }
+
+        return $sel;
     }
 
     /** Mot de passe temporaire rendu après une récupération. */
