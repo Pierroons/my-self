@@ -97,11 +97,14 @@ Machine-readable directives telling the AI how to reason:
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/status` | Total articles, last sync date, per-source breakdown |
+| `GET /api/status` | Volume and sync date for all three bases: LEGI, conventionality, case law |
 | `GET /api/legi/article/{ref}?code={alias}` | French legal article (with code disambiguation: travail, civil, penal, consommation, sante_publique, assurances, urbanisme, route, etc.) |
 | `GET /api/legi/search?q=...&limit=...` | Full-text search across LEGI |
 | `GET /api/eu/article/{source}/{num}` | EU/CEDH article (`source` ∈ `CEDH`, `CHARTE_UE`, `TFUE`, `TUE`, `RGPD`, `AI_ACT`) |
 | `GET /api/eu/search?q=...&source=...` | Search in EU/CEDH |
+| `GET /api/jurisprudence/verifier/{numero}` | Whether a ruling number actually exists |
+| `GET /api/jurisprudence/search?q=...` | Search decisions by topic |
+| `GET /api/jurisprudence/decision/{id}` | Full text of a decision |
 | `GET /api/stats/by-ai` | Public anonymous stats: user consultations by AI family, crawler counts |
 | `GET /api/stats/by-endpoint` | Top consulted articles (anonymized) |
 
@@ -152,7 +155,7 @@ curl -s "https://justice.my-self.fr/api/legi/search?q=harcelement&limit=20" | jq
 
 ### Self-host
 
-Clone the repo, point nginx to `site/`, configure `api/api.php` against your LEGI SQLite dump, done. Full installation guide in `deploy/`.
+Clone the repo, point nginx to `site/`, configure `api/api.php` against your LEGI SQLite dump. `deploy/selfjustice/` carries the nginx vhost, the deployment script and the systemd sync units — the reference configuration, not a step-by-step guide.
 
 ---
 
@@ -202,7 +205,7 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 - **v0.1.0 (current)** — Core directives + 5 categories + LEGI/EU API
 - **v0.2.0** — Family law (divorce, custody, alimony) + housing law (leases, eviction)
 - **v0.3.0** — Administrative law (disputes with public services)
-- **v0.4.0** — Jurisprudence integration (Cass., CE, Conseil constitutionnel)
+- **v0.4.0** — Administrative case law (Conseil d'État, CAA, administrative courts) — **judicial** case law (Cour de cassation, courts of appeal) already ships and is served
 - **v1.0.0** — Peer-reviewed directives + SelfAct integration
 
 ---

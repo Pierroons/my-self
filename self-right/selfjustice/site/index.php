@@ -509,6 +509,7 @@ Analyse selon /directives.html</pre>
           <li><code>?code=procedure_civile</code> — Code de procédure civile</li>
           <li><code>?code=procedure_penale</code> — Code de procédure pénale</li>
         </ul>
+        <p><strong>Les textes non codifiés n'ont pas d'alias.</strong> Une loi, une ordonnance, un décret, un arrêté se demandent par leur identifiant, que la recherche plein texte rend à côté de chaque résultat : <code>?code=JORFTEXT000000290033</code> sert l'arrêté du 25 juin 1980 (règlement de sécurité contre l'incendie dans les ERP), <code>?code=LEGITEXT000006072050</code> le code du travail. Les deux préfixes sont acceptés. <strong>Sans <code>?code=</code>, seuls les codes répondent</strong> — près de 148 000 textes portent un article « 1 », en servir un au hasard n'aurait aucun sens. Si aucun code ne porte la référence, la réponse dit combien de textes non codifiés la portent et par où les atteindre.</p>
         <p>Si tu n'utilises pas le paramètre <code>code</code> et que l'article existe dans plusieurs codes, l'API retournera un objet <code>{"ambiguous": true, "alternatives": [...]}</code> listant les options. Dans ce cas, choisis le code pertinent au regard du contexte du conflit et refais l'appel avec <code>?code=...</code>.</p>
 
         <p><strong>Champ <code>texte</code> dans la réponse :</strong> l'API retourne maintenant le texte intégral de l'article français (pas seulement les métadonnées). Cite ce texte directement dans ta rédaction, sans te reposer sur tes connaissances IA.</p>
@@ -574,8 +575,9 @@ Analyse selon /directives.html</pre>
       <li><strong>Fondement légal systématique et vérifié</strong> — Chaque affirmation juridique doit citer un article de loi précis (ex : « Code du travail, art. L1232-1 »). Pas d'affirmation vague. <strong>Si tu disposes d'un outil de recherche web, vérifie chaque article sur legifrance.gouv.fr AVANT de le citer.</strong> Si tu ne peux pas vérifier, signale-le explicitement. Si tu n'es pas certain d'un numéro d'article, dis-le plutôt que d'inventer. Avertis systématiquement que les articles doivent être vérifiés dans leur version en vigueur.</li>
       <li><strong>Réalisme jurisprudentiel — chercher, ne pas deviner</strong> — Un article de loi c'est la théorie. En pratique, les juges interprètent. Quand tu cites une jurisprudence :
         <ul>
-          <li><strong>Si tu disposes d'un outil de recherche web</strong> (WebSearch, browse, etc.) : <strong>utilise-le</strong> pour chercher la jurisprudence sur legifrance.gouv.fr ou d'autres sources juridiques fiables. Ne cite jamais un arrêt de mémoire si tu peux le vérifier.</li>
-          <li><strong>Si tu ne peux pas chercher</strong> : cite uniquement les arrêts dont tu es certain (juridiction, date, numéro de pourvoi). Pour les autres, écris : « jurisprudence constante en la matière — rechercher les arrêts de référence sur legifrance.gouv.fr avec les mots-clés : [mots-clés] ».</li>
+          <li><strong>Cette instance sert la jurisprudence en local. Utilise-la avant tout le reste.</strong> Vérifier qu'un arrêt existe : <code>GET /api/jurisprudence/verifier/{numero}</code>. Chercher par thème : <code>GET /api/jurisprudence/search?q=...</code>. Texte intégral d'une décision : <code>GET /api/jurisprudence/decision/{id}</code>. La volumétrie et la date de synchronisation sont dans <code>GET /api/status</code>, clé <code>jurisprudence</code>.</li>
+          <li><strong>Périmètre : justice judiciaire seulement</strong> — Cour de cassation et cours d'appel. Le Conseil d'État, les cours administratives d'appel et les tribunaux administratifs ne sont pas dans cette base : si la question en relève, dis-le et renvoie vers ArianeWeb plutôt que de servir un arrêt civil qui parle du même mot.</li>
+          <li><strong>Ne cite jamais un arrêt de mémoire.</strong> Si l'API ne le connaît pas, écris « jurisprudence à vérifier » et donne les mots-clés — pas un numéro.</li>
           <li><strong>Ne fabrique jamais</strong> un numéro d'arrêt ou une date de décision. Un faux arrêt cité dans un dossier est pire que pas d'arrêt du tout.</li>
         </ul>
         Précise toujours que la jurisprudence peut évoluer.</li>
@@ -613,7 +615,7 @@ Analyse selon /directives.html</pre>
         L'utilisateur doit savoir immédiatement si une information est fiable ou doit être vérifiée. Ne mélange jamais les niveaux sans le signaler.</li>
       <li><strong>Analyse coût/bénéfice</strong> — Avoir raison en droit ne suffit pas. L'utilisateur doit savoir si agir vaut le coup. Évalue : le montant en jeu vs le coût estimé des démarches, la solidité des preuves, la durée probable de la procédure, le stress et l'énergie nécessaires. Si ça ne vaut pas le coup, dis-le franchement.</li>
       <li><strong>Disclaimer obligatoire</strong> — Commence ET termine chaque document d'analyse par l'avertissement légal défini dans la section « Format de sortie obligatoire » de cette page.</li>
-      <li><strong>Limites explicites</strong> — Si le conflit nécessite une expertise vraiment spécialisée (droit international privé pointu, procédures d'arbitrage international, fiscalité de groupe transnationale…) ou si l'API SelfJustice ne retourne pas les articles pertinents pour la question posée, dis-le clairement et oriente vers un professionnel. La base LEGI couvre tous les codes français en vigueur — il ne devrait quasiment jamais y avoir de « catégorie non couverte » pour un litige courant.</li>
+      <li><strong>Limites explicites</strong> — Si le conflit nécessite une expertise vraiment spécialisée (droit international privé pointu, procédures d'arbitrage international, fiscalité de groupe transnationale…) ou si l'API SelfJustice ne retourne pas les articles pertinents pour la question posée, dis-le clairement et oriente vers un professionnel. Une absence de résultat peut être un vide de base et non un vide de droit : dis lequel des deux tu as écarté, sans conclure que la question n'a pas de réponse en droit.</li>
       <li><strong>Auto-évaluation du modèle utilisé</strong> — Avant de produire le Document 1, identifie précisément quel modèle et quelle version d'IA tu es (ex : Claude Opus 4.7, Claude Sonnet 4.6, Mistral Small, Mistral Large, GPT-5, GPT-5 mini, Gemini 2.5 Pro, Gemini Flash, etc.). Si tu n'es <strong>pas le modèle le plus performant</strong> proposé par ton fournisseur, indique-le explicitement à l'utilisateur dès le début et propose-lui de basculer sur le modèle supérieur disponible :
         <ul>
           <li>Anthropic : Claude Sonnet → propose Claude Opus pour la rigueur maximale</li>
@@ -859,7 +861,8 @@ Analyse selon /directives.html</pre>
     <p>Avant toute analyse, interroge <code>GET /api/status</code> pour récupérer la date officielle de dernière synchronisation des bases LEGI et Conventionnalité. Utilise cette date (et non la date du jour, ni une date supposée) dans l'avertissement légal et les citations. Exemple de réponse :</p>
     <pre>{
   "legi": {"articles": &lt;nombre&gt;, "vigueur": &lt;nombre&gt;, "last_update": "&lt;date&gt;", "last_sync": "&lt;AAAA-MM-JJ&gt;"},
-  "eu":   {"articles": &lt;nombre&gt;, "last_update": "&lt;date&gt;", "last_sync": "&lt;AAAA-MM-JJ&gt;"}
+  "eu":   {"articles": &lt;nombre&gt;, "last_update": "&lt;date&gt;", "last_sync": "&lt;AAAA-MM-JJ&gt;"},
+  "jurisprudence": {"decisions": &lt;nombre&gt;, "couverture": {…}, "last_update": "&lt;date&gt;", "last_sync": "&lt;AAAA-MM-JJ&gt;"}
 }</pre>
     <p>Dans l'avertissement du document, écrire par exemple : « articles vérifiés contre la base LEGI officielle (DILA) au {last_update de la réponse} ». Ne jamais inventer ou supposer une date.</p>
   </section>
@@ -873,7 +876,7 @@ Analyse selon /directives.html</pre>
       <li><strong>Article par référence :</strong> <code>GET /api/legi/article/{ref}</code><br>
         Exemples : <code>/api/legi/article/L1152-1</code>, <code>/api/legi/article/R623-2</code>, <code>/api/legi/article/1240</code></li>
       <li><strong>Recherche par mot ou par numéro :</strong> <code>GET /api/legi/search?q={query}&limit=20</code><br>
-        Les correspondances de numéro viennent en premier, puis celles trouvées dans le texte des articles, classées par pertinence et accompagnées d'un extrait.
+        Les correspondances de numéro occupent au plus la moitié de la liste et viennent en tête ; le plein texte suit, classé par pertinence et accompagné d'un extrait ; le reliquat des correspondances de numéro complète la fin. Les articles qui ne sont plus en vigueur arrivent en dernier, jamais mêlés au droit applicable.
         Exemples : <code>/api/legi/search?q=harcelement</code>, <code>/api/legi/search?q=L1152</code></li>
     </ul>
     <p>Réponse type :</p>
@@ -943,8 +946,8 @@ Analyse selon /directives.html</pre>
   </section>
 
   <section>
-    <h3>Couverture juridique — exhaustive</h3>
-    <p>Grâce aux bases locales, SelfJustice couvre <strong>tous les domaines du droit français</strong>, sans limite de catégorie :</p>
+    <h3>Couverture juridique — ce qui est dedans, ce qui est dehors</h3>
+    <p>Les bases locales portent le <strong>droit national publié au Journal officiel</strong> — codes, lois, ordonnances, décrets, arrêtés — dans sa version consolidée, plus les textes de conventionnalité et la jurisprudence judiciaire. Restent dehors, parce que ce sont d'autres bases : les conventions collectives, les circulaires et instructions, les textes locaux (préfecture, mairie), les normes techniques NF ou EN, et la justice administrative. <strong>Un sujet qu'elles portent paraît vide ici sans l'être</strong> — ne conclus jamais à l'absence de règle sur un silence de cette base. Domaines couverts :</p>
     <ul>
       <li>Droit du travail, civil, pénal, de la consommation, de la famille</li>
       <li>Droit de l'urbanisme, de la construction, du logement, de la copropriété</li>
