@@ -98,7 +98,7 @@ final class Auth
      * Inscription. Retourne ['ok'=>bool, ...].
      * En cas de succès : credentials (password + passphrase) à copier par l'user.
      */
-    public static function register(PDO $pdo, string $username, string $recoveryDerivedKey, ?string $ip = null): array
+    public static function register(PDO $pdo, string $username, string $recoveryDerivedKey, string $recoverySalt, ?string $ip = null): array
     {
         // Anti-abus : limite la création massive de comptes par IP (anti-énumération + anti-spam)
         if ($ip !== null) {
@@ -136,6 +136,16 @@ final class Auth
             return ['ok' => false, 'error' => 'username_taken',
                     'message' => 'Cet identifiant est déjà pris.'];
         }
+        // 🔑 Le sel est EXIGÉ et sa forme validée, comme dans `srDerive`. Le
+        // tolérer vide ici rouvrirait exactement ce que le sel ferme : deux
+        // personnes au même mot mémorisé, une seule empreinte. Le client
+        // l'engendre (`srEngendrerSel`), le serveur ne fait que le ranger — il
+        // n'est pas secret, mais il doit exister.
+        if (!preg_match('/^[0-9a-f]{32}$/', $recoverySalt)) {
+            return ['ok' => false, 'error' => 'invalid_salt',
+                    'message' => 'Sel de dérivation invalide : 32 caractères hexadécimaux attendus.'];
+        }
+
 
         $password = self::generatePassword(16);
         $diceware = \DicewareWordlist::generate(4, 'en');
@@ -148,10 +158,10 @@ final class Auth
         $recoveryHash = Hashing::hash($derivedKey);
 
         $stmt = $pdo->prepare(
-            'INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at)
-             VALUES (?, ?, ?, ?, ?)'
+            'INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, recovery_salt, created_at)
+             VALUES (?, ?, ?, ?, ?, ?)'
         );
-        $stmt->execute([$username, $pwHash, $passHash, $recoveryHash, time()]);
+        $stmt->execute([$username, $pwHash, $passHash, $recoveryHash, $recoverySalt, time()]);
         $accountId = (int) $pdo->lastInsertId();
 
         // Trace la création pour le rate-limit IP
@@ -329,6 +339,54 @@ final class Auth
             maxEchecsCompte: self::LOGIN_MAX_FAILS,
             maxEchecsIp: self::LOGIN_MAX_FAILS_PER_IP,
         );
+    }
+
+    /**
+     * Le sel de dérivation d'un compte, trouvé par l'un de ses codes de secours.
+     *
+     * Au niveau 2 le navigateur doit dériver AVANT que le compte soit identifié :
+     * c'est le code qui l'identifie. Il lui faut donc le sel d'abord.
+     *
+     * 🔑 NE DOIT PAS DEVENIR UN ORACLE. Répondre pour un code valide et refuser
+     * pour un code inconnu permettrait d'énumérer les codes sans payer un seul
+     * Argon2id — donc de contourner le coût sur lequel repose tout le niveau 2.
+     * On rend TOUJOURS un sel : pour un code inconnu, un sel fabriqué,
+     * déterministe, de même longueur, stable si le code est retenté.
+     *
+     * Deux raffinements repris de RN2C, qui a écrit ce patron en premier :
+     * la normalisation est celle de `parCode` — sinon un code en majuscules
+     * obtiendrait un faux sel ici et serait accepté là-bas — et le `WHERE` ne
+     * filtre pas `used = 0`, sans quoi la route dirait « ce compte vient d'être
+     * récupéré ».
+     */
+    public static function selDeDerivation(PDO $pdo, string $code): string
+    {
+        $code = strtolower(trim($code));
+
+        // Sans code : celui du compte de la session. L'enrôlement d'appareil en a
+        // besoin et n'a pas de code sous la main — il sait déjà QUI il est, la
+        // session le prouve. Aucun oracle : on ne rend que son propre sel.
+        if ($code === '') {
+            $compte = self::currentAccount($pdo);
+            if ($compte !== null && ($compte['recovery_salt'] ?? '') !== '') {
+                return (string) $compte['recovery_salt'];
+            }
+        }
+
+        if (preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code)) {
+            $st = $pdo->prepare(
+                'SELECT a.recovery_salt FROM recovery_codes c
+                   JOIN accounts a ON a.id = c.account_id
+                  WHERE c.code_lookup = ?'
+            );
+            $st->execute([self::protocole($pdo)->indexRecherche($code)]);
+            $trouve = $st->fetchColumn();
+            if ($trouve !== false && $trouve !== '') {
+                return (string) $trouve;
+            }
+        }
+
+        return substr(hash_hmac('sha256', 'sel-absent:' . $code, self::siteSalt()), 0, 32);
     }
 
     public static function logout(PDO $pdo, string $token): void

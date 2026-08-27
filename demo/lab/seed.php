@@ -26,7 +26,8 @@ $comptes = [
 ];
 $ids = [];
 foreach ($comptes as [$u, $rw]) {
-    $r = Auth::register($pdo, $u, sr_derive_like_browser($rw));
+    $sel = sr_sel_aleatoire();
+    $r = Auth::register($pdo, $u, sr_derive_like_browser($rw, $sel), $sel);
     if ($r['ok']) {
         $ids[$u] = $r['account_id'];
         echo "Compte $u créé (#{$r['account_id']})\n";
