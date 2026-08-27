@@ -27,7 +27,14 @@ CREATE TABLE IF NOT EXISTS accounts (
     -- chose — sans lui, deux personnes qui choisissent le même mot mémorisé
     -- produisent la même empreinte, et une table précalculée sert alors pour
     -- tout le service.
-    recovery_salt   TEXT NOT NULL DEFAULT '',
+    --
+    -- 🔑 Exigé, et vérifié PAR LA BASE. `DEFAULT ''` laissait passer une ligne
+    -- sans sel, que `selDeDerivation` traite ensuite comme « compte inconnu » :
+    -- le compte devient irrécupérable au niveau 2, en silence. La contrainte
+    -- rend ce cas bruyant au lieu de muet — la garde applicative existe déjà
+    -- dans `register.php`, celle-ci la rend indispensable à contourner.
+    -- Sans risque ici : la base est recréée depuis ce fichier à chaque session.
+    recovery_salt   TEXT NOT NULL CHECK (length(recovery_salt) = 32),
     created_at      INTEGER NOT NULL
 );
 

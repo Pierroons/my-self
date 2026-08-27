@@ -53,7 +53,7 @@ return [
     'sec.1.body' => '<ul>'
         . '<li>Aucun email, aucun n° de téléphone. À l\'inscription : mot de récupération choisi → <code>password</code> (16 car.) + passphrase diceware EFF générés côté serveur.</li>'
         . '<li>Stockage : <code>Argon2id(password)</code>, <code>Argon2id(passphrase)</code>, <code>Argon2id(clé_dérivée)</code> — m=64&nbsp;Mo, t=4, p=2 (profil OWASP). <strong>Aucun secret en clair.</strong></li>'
-        . '<li>Dérivation par domaine : <code>HMAC-SHA256(secret, domaine ‖ sel_du_site)</code> → un secret hameçonné sur un autre domaine ne produit pas la bonne clé.</li>'
+        . '<li>Dérivation liée au nom d\'hôte, lu par le navigateur : <code>HMAC-SHA256(clé = mot mémorisé, message = nom d\'hôte ‖ "|v2" ‖ sel du compte)</code> → un mot hameçonné sur une autre adresse ne produit pas la bonne clé.</li>'
         . '<li>Rate-limit progressif (5 échecs / 15 min) + limite d\'inscription par IP (anti-énumération, anti-spam).</li>'
         . '</ul>',
 

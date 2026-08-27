@@ -140,6 +140,16 @@ echo "\n→ Le sel exigé à l'inscription — les cas de refus\n";
 // lue, pas mesurée. Un `preg_match` que personne ne fait jamais échouer ne se
 // distingue pas d'une ligne absente. Chacun des quatre cas ci-dessous a été
 // vu rougir en retirant la garde de `Auth::register`.
+//
+// ⚠️ Ils ne gardent que CETTE couche. Le défaut réellement rencontré le
+// 27/08/2026 vivait un étage plus haut : `public/api/register.php` et
+// `public/api/recover_l3_reset.php` normalisaient le sel en minuscules AVANT
+// d'appeler la garde, si bien que le cas « en majuscules » ci-dessous n'y était
+// jamais atteint. Ces quatre contrôles restaient verts.
+//
+// La route est éprouvée à part, en HTTP, avec `LAB_DB_PATH` sur une base neuve
+// — sans quoi le quota d'inscriptions par IP rend des refus qu'on prend pour
+// ceux de la garde. Le canari y rougit sur le seul cas « majuscules ».
 $avant = (int) $pdo2->query('SELECT COUNT(*) FROM accounts')->fetchColumn();
 
 $refus = [

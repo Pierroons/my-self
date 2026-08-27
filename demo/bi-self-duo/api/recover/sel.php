@@ -18,6 +18,16 @@
  *
  * La logique — et surtout la garde anti-oracle qui la rend délicate — vit dans
  * `RecoverHelper::selDeDerivation()`. Cette route ne fait que l'exposer.
+ *
+ * ⚠️ **Pas de quota d'actions ici, et c'est délibéré** — c'est la seule route de
+ * récupération dans ce cas, alors que c'est celle qu'un énumérateur viserait.
+ * Deux raisons : elle doit être appelée avant CHAQUE dérivation, y compris les
+ * tentatives légitimes, et lui faire consommer le quota des cinquante actions
+ * ferait échouer un parcours normal ; et la garde anti-oracle rend l'énumération
+ * sans objet, puisqu'un code inconnu rend un sel comme un autre.
+ *
+ * Un déploiement réel devrait quand même la compter : là-bas les comptes se
+ * partagent une base, et le coût d'une requête indexée finit par se voir.
  */
 
 declare(strict_types=1);

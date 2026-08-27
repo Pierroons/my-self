@@ -48,21 +48,36 @@ HOTE=$(printf '%s' "$BASE" | sed -E 's#^[a-z]+://##; s#[:/].*$##' | tr 'A-Z' 'a-
 # navigateur ici. Une recopie ne vaut que si on la confronte : le contrôle qui
 # suit la compare à un vecteur figé de la bibliothèque, et rougit si l'une des
 # deux bouge sans l'autre.
-derive() {  # derive <mot> <sel> <matériel>
+derive() {  # derive <mot> <sel> <matériel> [mode=hostname]
     python3 -c "import hashlib,hmac,sys
-mot,sel,mat = sys.argv[1], sys.argv[2], sys.argv[3]
-print(hmac.new(mot.encode(), (mat.lower()+'|v2'+sel).encode(), hashlib.sha256).hexdigest())" "$1" "$2" "$3"
+mot,sel,mat,mode = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+# ⚠️ La minuscule ne s'applique QU'AU mode hostname. La première version de ce
+# miroir l'appliquait toujours, et divergeait donc sur un label capitalisé —
+# sans que rien ne rougisse, parce que le contrôle ci-dessous ne regardait qu'un
+# seul vecteur, en mode hostname. Un garde-fou qui n'éprouve qu'un cas ne garde
+# que ce cas.
+m = mat.lower() if mode == 'hostname' else mat
+print(hmac.new(mot.encode(), (m+'|v2'+sel).encode(), hashlib.sha256).hexdigest())" "$1" "$2" "$3" "${4:-hostname}"
 }
 
 VECTEURS="$(dirname "$0")/../../../bi-self/selfrecover/tests/vecteurs-derivation.json"
 if [ -r "$VECTEURS" ]; then
-    v_mot=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['vecteurs'][0]['mot'])" "$VECTEURS")
-    v_sel=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['vecteurs'][0]['sel'])" "$VECTEURS")
-    v_mat=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['vecteurs'][0]['materiel'])" "$VECTEURS")
-    v_att=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['vecteurs'][0]['empreinte'])" "$VECTEURS")
-    [ "$(derive "$v_mot" "$v_sel" "$v_mat")" = "$v_att" ] \
-        && pass "la formule de ce script retrouve le vecteur figé de la bibliothèque" \
-        || fail "formule de dérivation" "elle a divergé de client/sr-derive.js"
+    # TOUS les vecteurs, pas le premier : les modes et les casses se répartissent
+    # entre eux, et n'en éprouver qu'un laisse passer une formule fausse ailleurs.
+    n_vect=$(python3 -c "import json,sys;print(len(json.load(open(sys.argv[1]))['vecteurs']))" "$VECTEURS")
+    diverge=0
+    i=0
+    while [ "$i" -lt "$n_vect" ]; do
+        read -r v_mot v_sel v_mat v_mode v_att <<< "$(python3 -c "
+import json,sys
+v = json.load(open(sys.argv[1]))['vecteurs'][int(sys.argv[2])]
+print(v['mot'], v['sel'], v['materiel'], v['mode'], v['empreinte'])" "$VECTEURS" "$i")"
+        [ "$(derive "$v_mot" "$v_sel" "$v_mat" "$v_mode")" = "$v_att" ] || diverge=$((diverge + 1))
+        i=$((i + 1))
+    done
+    [ "$diverge" -eq 0 ] \
+        && pass "la formule de ce script retrouve les $n_vect vecteurs figés de la bibliothèque" \
+        || fail "formule de dérivation" "$diverge vecteur(s) sur $n_vect divergent de client/sr-derive.js"
 else
     fail "vecteurs de dérivation" "introuvables — la formule ci-dessous n'est confrontée à rien"
 fi

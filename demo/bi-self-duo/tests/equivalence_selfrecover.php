@@ -35,10 +35,11 @@ $PHR = 'cheval agrafe batterie correct';
 $now = 1_700_000_000;
 
 $st = $db->prepare(
-    'INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (:u,:pw,:pa,:re,:t)'
+    'INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, recovery_salt, created_at)
+     VALUES (:u,:pw,:pa,:re,:sel,:t)'
 );
 foreach ([':u' => 'alice', ':pw' => Hashing::hash('initial'), ':pa' => Hashing::hash($PHR),
-          ':re' => Hashing::hash($MOT), ':t' => $now] as $k => $v) {
+          ':re' => Hashing::hash($MOT), ':sel' => bin2hex(random_bytes(16)), ':t' => $now] as $k => $v) {
     $st->bindValue($k, $v);
 }
 $st->execute();
@@ -140,8 +141,15 @@ verifier('la version du document est celle que la formule emploie', ($doc['versi
     (string) ($doc['version'] ?? '?'));
 
 echo "\n→ La route de sel ne doit pas devenir un oracle\n";
-// Éprouvée par la façade, sur une vraie session de démo : c'est ce chemin-là
-// qu'un visiteur emprunte, et la garde y vit.
+// ⚠️ Ces contrôles appellent `RecoverHelper::selDeDerivation` EN DIRECT, sur une
+// vraie session de démo. Ce n'est PAS la façade : le visiteur passe par
+// `api/recover/sel.php`, qui n'est pas exercée ici. Une normalisation ajoutée
+// dans cette route, ou ses deux derniers arguments intervertis, laisserait les
+// contrôles ci-dessous verts.
+//
+// C'est exactement la leçon que ce dépôt vient de tirer du lab, et il ne suffit
+// pas de l'écrire : la façade est éprouvée par `tests/integration.sh`, qui la
+// frappe en HTTP. Ce fichier garde l'unité, celui-là garde la route.
 $racineSessions = sys_get_temp_dir() . '/duo-sonde-' . getmypid();
 @mkdir($racineSessions, 0700, true);
 putenv('SELFRECOVER_SESSIONS_DIR=' . $racineSessions);
@@ -176,9 +184,11 @@ try {
     verifier('idem par un code inventé', strlen($c1) === 32 && $c1 === $c2);
     verifier('un code inventé et un compte inconnu ne rendent pas le même sel', $c1 !== $faux1);
 
-    // Contre-témoin : sans lui, une méthode qui rendrait TOUJOURS un faux sel
-    // passerait les cinq contrôles ci-dessus.
-    verifier('contre-témoin : le vrai sel reste distinct de tous les faux',
+    // Le contre-témoin de cette série, c'est « un compte connu rend SON sel »
+    // plus haut : une méthode qui rendrait toujours un faux sel y échouerait la
+    // première. Étiqueter celui-ci comme tel serait se tromper de garde-fou —
+    // et ne pas le remplacer le jour où on casse le vrai.
+    verifier('les deux familles de faux sels ne se confondent pas avec le vrai',
         $selVrai !== $faux1 && $selVrai !== $c1);
 } finally {
     putenv('SELFRECOVER_SESSIONS_DIR');

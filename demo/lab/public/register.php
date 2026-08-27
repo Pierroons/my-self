@@ -43,8 +43,9 @@ async function creer(){
     return;
   }
   // Dérivation dans le navigateur : le mot mémorisé ne quitte jamais ce poste.
-  // Le serveur ne reçoit que HMAC(mot, label de service) et n'en stocke qu'un
-  // Argon2id — il ne peut donc pas reconstituer ce que ce mot ouvre ailleurs.
+  // Le serveur ne reçoit que HMAC(clé = mot, message = nom d'hôte + « |v2 » +
+  // sel) et n'en stocke qu'un Argon2id — il ne peut donc pas reconstituer ce
+  // que ce mot ouvre ailleurs.
   // Le sel accompagne la dérivation : il est engendré ici, part avec l'empreinte,
   // et le serveur ne fait que le ranger. Il n'est pas secret — il empêche que
   // deux personnes au même mot mémorisé produisent la même empreinte.

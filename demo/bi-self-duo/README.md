@@ -86,14 +86,27 @@ bi-self/demo-backend/
     └── cleanup_demo_sessions.sh  ← cron toutes les 5 min
 ```
 
-Sur le le serveur en prod :
+Sur le serveur en prod :
+
+⚠️ **L'arborescence du dépôt est PRÉSERVÉE sous la racine de déploiement** —
+`demo/bi-self-duo/frontend/` sert les pages, `demo/bi-self-duo/api/` sert les
+routes, et `bi-self/selfrecover/` vit à côté. Ce n'est pas un détail
+d'organisation : `frontend/js/sr-derive.js` est un **lien symbolique** qui
+remonte quatre crans pour atteindre `bi-self/selfrecover/client/`. Une
+disposition qui aplatirait `frontend/` à la racine, ou qui déplacerait la
+bibliothèque, poserait un lien mort — `/js/sr-derive.js` en 404, `srDerive`
+indéfini, inscription et récupération cassées sans qu'aucun log ne le dise.
+
+Déployer la bibliothèque **avant ou en même temps** que les pages, jamais après.
 
 ```
-/var/www/bi-self/
-├── index.html                    ← landing bi-self.my-self.fr
-├── lib/                          ← miroir de bi-self/demo-backend/lib/
-├── api/                          ← miroir de bi-self/demo-backend/api/
-└── schemas/                      ← miroir de bi-self/demo-backend/schemas/
+<racine>/
+├── demo/bi-self-duo/frontend/    ← pages servies (root du vhost)
+│   └── js/sr-derive.js           ← lien → ../../../../bi-self/selfrecover/client/
+├── demo/bi-self-duo/api/         ← routes PHP
+├── demo/bi-self-duo/lib/
+├── demo/bi-self-duo/schemas/
+└── bi-self/selfrecover/client/   ← la cible du lien
 
 /var/lib/selfjustice/
 ├── admin/
@@ -192,6 +205,22 @@ timeout 5 curl -b /tmp/c.txt -N https://bi-self.my-self.fr/demo/api/events
 Attendu : HTTP 201 avec UUID v4 bien formé `xxxxxxxx-xxxx-4xxx-[89ab]xxx-xxxxxxxxxxxx`,
 puis HTTP 200 en GET, puis stream SSE avec l'événement `session opened`.
 
+Puis le parcours complet, qui est le seul contrôle à emprunter les routes réelles
+de bout en bout :
+
+```bash
+BASE=https://bi-self.my-self.fr bash tests/integration.sh
+```
+
+Il crée un compte, dérive sous le nom d'hôte lu, puis sous un nom d'hôte imité, et
+**exige que le second soit refusé** — c'est la propriété anti-hameçonnage, mesurée
+plutôt qu'affirmée. Il confronte aussi sa propre formule aux vecteurs figés de
+`bi-self/selfrecover/tests/vecteurs-derivation.json` : une recopie qui dérive
+rougit avant tout le reste.
+
+⚠️ Aucun job de CI ne le lance — il lui faut une instance qui répond. C'est un
+contrôle de déploiement, à passer après chaque envoi.
+
 ---
 
 ## 5. Ajouter un nouveau module démo
@@ -256,7 +285,7 @@ et `Redactor::redactSource` remplacent :
 
 - Les paths absolus sensibles par des placeholders : `/var/lib/…/` →
   `{session_dir}/`, `{admin_dir}/`, `{state_dir}/`
-- Les secrets inline : `$site_salt = "…"` → `$site_salt = [REDACTED — set at install]`
+- Les secrets inline : `$siteSalt = "…"` → `$siteSalt = [REDACTED — set at install]`
 - Les hash longs : tronqués à 16 chars avec suffixe `…truncated`
 
 ---

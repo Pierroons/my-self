@@ -9,13 +9,14 @@
  *
  * Les scripts de peuplement (seed, préparation du challenge) n'ont pas de
  * navigateur pour le faire à leur place. Ils reproduisent donc ici le calcul de
- * `public/js/sr-derive.js`, à l'identique — mêmes paramètres, même label — pour
- * que les comptes qu'ils créent soient récupérables depuis l'interface comme
- * n'importe quel autre.
+ * `public/js/sr-derive.js`, à l'identique — mêmes paramètres, même nom d'hôte —
+ * pour que les comptes qu'ils créent soient récupérables depuis l'interface
+ * comme n'importe quel autre.
  *
- * 🔑 Si le label change dans sr-derive.js, il doit changer ici aussi : deux
- * valeurs divergentes produiraient des comptes de démonstration impossibles à
- * récupérer, et le symptôme n'apparaîtrait qu'au moment d'une récupération.
+ * 🔑 Si le format du message ou le nom d'hôte change dans sr-derive.js, il doit
+ * changer ici aussi : deux valeurs divergentes produiraient des comptes de
+ * démonstration impossibles à récupérer, et le symptôme n'apparaîtrait qu'au
+ * moment d'une récupération.
  */
 
 declare(strict_types=1);
@@ -37,8 +38,9 @@ const SR_DERIVE_HOTE = 'localhost';
 const SR_DERIVE_VERSION = 'v2';
 
 /**
- * Reproduit `window.srDerive(word)` : HMAC-SHA256 avec le mot pour clé et le
- * label de service pour message, rendu en hexadécimal minuscule (64 car.).
+ * Reproduit `window.srDerive(mot, sel, { mode: 'hostname' })` : HMAC-SHA256
+ * avec le mot pour clé et `<nom d'hôte>|<version>` suivi du sel pour message,
+ * rendu en hexadécimal minuscule (64 car.).
  */
 function sr_derive_like_browser(string $word, string $sel, ?string $hote = null): string
 {
