@@ -135,6 +135,63 @@ verifier('niveau 1 : la passphrase rendue au niveau 2 fonctionne', ($niv1['ok'] 
 $conn = \Pierroons\MySelfLab\Auth::login($pdo2, 'bob', $niv1['credentials']['password'], '10.0.0.4');
 verifier('connexion avec le mot de passe rendu', ($conn['ok'] ?? false) === true);
 
+echo "\n→ Le sel exigé à l'inscription — les cas de refus\n";
+// 🔑 Ces contrôles existent parce que la garde n'en avait aucun : elle était
+// lue, pas mesurée. Un `preg_match` que personne ne fait jamais échouer ne se
+// distingue pas d'une ligne absente. Chacun des quatre cas ci-dessous a été
+// vu rougir en retirant la garde de `Auth::register`.
+$avant = (int) $pdo2->query('SELECT COUNT(*) FROM accounts')->fetchColumn();
+
+$refus = [
+    'vide'              => '',
+    'trop court'        => str_repeat('a', 16),
+    'non hexadécimal'   => str_repeat('a', 31) . 'z',
+    'en majuscules'     => strtoupper(sr_sel_aleatoire()),
+];
+$n = 0;
+foreach ($refus as $intitule => $sel) {
+    $r = \Pierroons\MySelfLab\Auth::register($pdo2, 'refus' . (++$n), $MOT, $sel, null);
+    verifier("sel {$intitule} : inscription refusée",
+        ($r['ok'] ?? true) === false && ($r['error'] ?? '') === 'invalid_salt',
+        'error=' . ($r['error'] ?? 'aucune'));
+}
+
+// Le refus doit être total : rendre `ok => false` tout en ayant inséré la
+// ligne laisserait un compte dont le mot mémorisé n'est dérivable par personne.
+verifier('aucun compte créé par les quatre refus',
+    (int) $pdo2->query('SELECT COUNT(*) FROM accounts')->fetchColumn() === $avant);
+
+// Contre-témoin : sans lui, une garde qui refuserait TOUT rendrait les cinq
+// contrôles ci-dessus verts. Un faux rouge tue une sonde autant qu'un faux vert.
+$ok = \Pierroons\MySelfLab\Auth::register($pdo2, 'carol', $MOT, sr_sel_aleatoire(), null);
+verifier('contre-témoin : un sel valide passe toujours', ($ok['ok'] ?? false) === true);
+
+echo "\n→ Le sel de site refuse de servir vide\n";
+// 🔑 Ce sel porte deux propriétés : il localise les codes émis et il fabrique
+// le faux sel rendu aux codes inconnus. Vide, les index deviennent calculables
+// et l'oracle du sel se rouvre — sans qu'aucune erreur ne survienne. Le
+// répertoire absent suffisait à produire ce cas, observé le 27/08/2026.
+$tmp = sys_get_temp_dir() . '/lab-sitesalt-sonde-' . getmypid();
+putenv('LAB_SITESALT_PATH=' . $tmp);
+try {
+    foreach (['vide' => '', 'tronqué' => 'abcd'] as $intitule => $contenu) {
+        file_put_contents($tmp, $contenu);
+        $leve = false;
+        try { \Pierroons\MySelfLab\Auth::siteSalt(); } catch (\RuntimeException $e) { $leve = true; }
+        verifier("sel de site {$intitule} : refus de servir", $leve);
+    }
+    // Contre-témoin : une garde qui lèverait toujours passerait les deux
+    // contrôles ci-dessus sans rien mesurer.
+    unlink($tmp);
+    $engendre = \Pierroons\MySelfLab\Auth::siteSalt();
+    verifier('sel de site absent : engendré, et de longueur pleine', strlen($engendre) === 64);
+    verifier('sel de site stable entre deux appels',
+        $engendre === \Pierroons\MySelfLab\Auth::siteSalt());
+} finally {
+    putenv('LAB_SITESALT_PATH');
+    @unlink($tmp);
+}
+
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Équivalence lab ⨯ SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 echo str_repeat('=', 63) . "\n\n";
