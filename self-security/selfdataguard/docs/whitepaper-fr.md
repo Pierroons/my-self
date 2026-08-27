@@ -284,8 +284,9 @@ Le non-respect d'une de ces règles dégrade significativement les garanties. La
 
 ### 8.2 Roadmap
 
-- **v0.1.0** (Q3 2026) : implémentation de référence en PHP, ~600 lignes auditables, intégration trait Eloquent / Doctrine via adapter
-- **v0.2.0** (Q4 2026) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
+- **v0.1.0** (livrée, Q3 2026) : implémentation de référence en PHP — 2 249 lignes auditables sur 17 fichiers, intégration trait Eloquent / Doctrine via adapter
+- **v0.2.0** (livrée le 21/08/2026, Q3) : compartiment escrow, cérémonie de clés, journal d'audit
+- **v0.3.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
 - **v0.3.0** (2027) : audit cryptographique communautaire formel, soumission ANSSI Visa de sécurité (industries@ssi.gouv.fr), publication d'un test vector pack
 
 ---
@@ -302,4 +303,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Document v0.0.1 — édition du 23 juillet 2026. Ce whitepaper est un brouillon de spécification ouvert au commentaire avant l'implémentation de référence v0.1.0.*
+*Document v0.0.1 — édition du 23 juillet 2026, roadmap actualisée le 27/08/2026. La spécification décrite ici est implémentée : v0.1.0 et v0.2.0 sont livrées et testées (191 contrôles, 8 suites).*

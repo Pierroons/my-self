@@ -58,7 +58,7 @@ SelfAct lit une **analyse SelfJustice JSON** en entrée. L'analyse contient :
 1. Sélectionne les **templates de document** correspondants (mise en demeure + saisine médiateur).
 2. Les remplit avec les parties, les faits, la base légale.
 3. Calcule le **calendrier procédural** depuis le délai extrait.
-4. Génère des PDF signés (via `weasyprint` ou `pdfkit`) avec XML CERFA le cas échéant.
+4. Génère le brouillon du courrier via `api/draft.php`, avec XML CERFA le cas échéant.
 5. Sort un **pack dossier** : `dossier-2026-0042.zip` contenant tous les documents, un readme pour l'utilisateur, et un plan d'action.
 
 ---
