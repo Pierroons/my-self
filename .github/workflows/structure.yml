@@ -85,6 +85,15 @@ jobs:
       - name: Garde-fou — les démos pointent vers la bibliothèque, sans la copier
         run: bash scripts/check-liens-bibliotheque.sh
 
+      # Les gabarits de vhost n'étaient validés par rien : un fichier cassé se
+      # découvrait sur la machine, au rechargement. `nginx -t` a besoin du binaire,
+      # pas du service — et le test tourne sans privilège, dans un préfixe jetable.
+      - name: Installer nginx (pour valider les gabarits de vhost)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq nginx-light
+
+      - name: Garde-fou — les gabarits de vhost sont syntaxiquement valides
+        run: bash scripts/check-vhost.sh
+
       - name: Garde-fou — la bibliothèque sur le schéma de bi-self-duo
         run: php demo/bi-self-duo/tests/equivalence_selfrecover.php
 
