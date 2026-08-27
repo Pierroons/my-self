@@ -13,9 +13,12 @@
     "enregistrées chez tous les consommateurs en dépendent.",
     "",
     "Message haché : <matériel>|v2<sel>, le mot mémorisé en CLÉ.",
-    "`materiel` est fourni TEL QUEL à l'implémentation ; en mode hostname elle",
-    "le normalise en minuscules, en mode label elle n'y touche pas. Deux",
-    "vecteurs éprouvent précisément cette différence."
+    "`materiel` est fourni TEL QUEL ; en mode hostname l'implémentation le",
+    "normalise en minuscules, en mode label elle n'y touche pas. Deux vecteurs",
+    "éprouvent cette différence.",
+    "",
+    "`refus` porte ce que le dériveur doit REFUSER. Un jeu de vecteurs qui ne",
+    "contient que des cas valides n'éprouve jamais qu'une chose se ferme."
   ],
   "version": "v2",
   "vecteurs": [
@@ -36,7 +39,7 @@
       "empreinte": "167292d634794f43d15cadfc758bccb53c54c4b4a4cf84b924f5d0be67da18eb"
     },
     {
-      "quoi": "le même mot, le même hôte, un autre sel",
+      "quoi": "🔑 le même mot, le même hôte, un autre sel — doit différer aussi",
       "mot": "chaise-nuage-tambour",
       "mode": "hostname",
       "materiel": "exemple.test",
@@ -50,14 +53,6 @@
       "materiel": "mon-service-v1",
       "sel": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
       "empreinte": "6a09c70a22fc7847a77f7e4925d4b7814199cc0f507b25d5dadd99e87a2c9dd3"
-    },
-    {
-      "quoi": "sel vide — accepté, la forme reste valable",
-      "mot": "chaise-nuage-tambour",
-      "mode": "hostname",
-      "materiel": "exemple.test",
-      "sel": "",
-      "empreinte": "ddfb39ab2a639935831d31b1ad78b6d910d303bd1fc9c0fdb9ad6bde15b4fb12"
     },
     {
       "quoi": "un mot accentué, en UTF-8",
@@ -82,6 +77,36 @@
       "materiel": "Mon-Service-V1",
       "sel": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
       "empreinte": "1f5c4f1bbb377dab494b4fb675cbe241cecb6e8606bc12bb542c52b14e8c90f4"
+    }
+  ],
+  "refus": [
+    {
+      "quoi": "sel vide",
+      "mot": "chaise-nuage-tambour",
+      "mode": "hostname",
+      "materiel": "exemple.test",
+      "sel": ""
+    },
+    {
+      "quoi": "sel trop court",
+      "mot": "chaise-nuage-tambour",
+      "mode": "hostname",
+      "materiel": "exemple.test",
+      "sel": "a1b2c3"
+    },
+    {
+      "quoi": "sel non hexadécimal",
+      "mot": "chaise-nuage-tambour",
+      "mode": "hostname",
+      "materiel": "exemple.test",
+      "sel": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+    },
+    {
+      "quoi": "sel en MAJUSCULES — la forme exige des minuscules",
+      "mot": "chaise-nuage-tambour",
+      "mode": "hostname",
+      "materiel": "exemple.test",
+      "sel": "A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1"
     }
   ]
 }

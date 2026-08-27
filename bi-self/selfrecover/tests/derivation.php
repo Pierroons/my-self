@@ -69,6 +69,17 @@ foreach ($doc['vecteurs'] as $v) {
         $obtenu === $v['empreinte'] ? '' : substr($obtenu, 0, 16) . '… attendu ' . substr($v['empreinte'], 0, 16) . '…');
 }
 
+echo "\n── Les cas de refus portent-ils bien des sels invalides ?\n";
+// L'oracle PHP ne refuse rien — il calcule. Ce qu'il peut vérifier, c'est que le
+// jeu de refus éprouve réellement quelque chose : un cas de refus dont le sel
+// serait valide ne mesurerait rien, et la sonde JS passerait au vert en croyant
+// avoir constaté un refus.
+foreach ($doc['refus'] as $r) {
+    verdict('« ' . $r['quoi'] . " » porte un sel que la forme rejette",
+        !preg_match('/^[0-9a-f]{32}$/', $r['sel']),
+        $r['sel'] === '' ? '(vide)' : substr($r['sel'], 0, 12) . '…');
+}
+
 echo "\n── Ce que les vecteurs doivent prouver entre eux ──────\n";
 
 // 🔑 Sans ceci, un jeu de vecteurs tous identiques passerait au vert. On vérifie
@@ -77,7 +88,7 @@ $par = [];
 foreach ($doc['vecteurs'] as $v) {
     $par[$v['quoi']] = $v['empreinte'];
 }
-$hote     = $par['mode hostname, sel ordinaire'] ?? '';
+$hote      = $par['mode hostname, sel ordinaire'] ?? '';
 $imitateur = $par["🔑 le MÊME mot sur un autre hôte — doit différer du premier"] ?? '';
 $majuscule = $par["🔑 un hôte en MAJUSCULES rend l'empreinte du minuscule"] ?? '';
 
