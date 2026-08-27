@@ -23,9 +23,10 @@ require_once __DIR__ . '/../lib/su_audit.php';
 
 use Pierroons\MySelfLab\SuAudit;
 
-$echecs = 0;
-$total  = 7;
-function ok(string $m): void  { echo "  ✓ $m\n"; }
+// 🔑 Le total se compte, il ne s'écrit pas — même raison que dans
+// `sanity_moderate.php` et `deploy/my-self/tests/test_deploy.sh`.
+$echecs = 0; $reussites = 0;
+function ok(string $m): void  { global $reussites; echo "  ✓ $m\n"; $reussites++; }
 function nok(string $m): void { global $echecs; fwrite(STDERR, "  ✗ $m\n"); $echecs++; }
 
 // Bac à sable : le journal réel n'est jamais touché.
@@ -175,6 +176,7 @@ if (!empty($soi['ok'])) {
 }
 
 echo "\n";
+$total = $reussites + $echecs;
 if ($echecs === 0) {
     echo "OK — $total/$total contrôles conformes.\n";
     exit(0);

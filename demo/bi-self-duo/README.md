@@ -20,7 +20,9 @@ A visitor who opens `/recover` or `/moderate` in the browser gets:
    (HMAC derivation, Argon2id, SQL queries, vote scoring, etc.) in real time,
    on the right half of a split-screen UI.
 3. Rate-limit protection: max 10 concurrent sessions site-wide, 3 sessions
-   per IP per hour before warnings, 6+ = 30-day IP ban logged for CrowdSec.
+   per IP per hour before warnings, 7th request = 30-day IP ban logged for
+   CrowdSec. API request throttling is enforced by nginx, per IP — see
+   `deploy/bi-self/nginx-bi-self.conf`, not this README.
 
 Nothing is persisted beyond 30 minutes. The cleanup cron runs every 5 minutes.
 

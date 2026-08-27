@@ -55,7 +55,7 @@ One plus one equals a self-governing community. Not three — a qualitatively di
 | Module | Role | Status |
 |--------|------|--------|
 | [SelfRecover](./selfrecover/) | Zero-email identity & recovery | **v0.4.0** — reference implementation, self-audited local demo |
-| [SelfModerate](./selfmoderate/) | Community moderation by collective reasoning | v0.3.0 — installable engine, 16 checks; 2 protocol mechanisms missing |
+| [SelfModerate](./selfmoderate/) | Community moderation by collective reasoning | v0.3.0 — installable engine, 24 checks; 2 protocol mechanisms missing |
 
 ---
 
