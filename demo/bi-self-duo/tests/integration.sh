@@ -40,17 +40,52 @@ http_code=$(curl -s -o /dev/null -w "%{http_code}" -b "$COOKIES" "$BASE/demo/api
 title "SelfRecover E2E"
 # ===================================================================
 
+# Le nom d'hôte est celui que le navigateur LIRAIT : on l'extrait de $BASE au
+# lieu de l'écrire, sinon ce script ne saurait éprouver qu'une seule instance.
+HOTE=$(printf '%s' "$BASE" | sed -E 's#^[a-z]+://##; s#[:/].*$##' | tr 'A-Z' 'a-z')
+
+# ⚠️ Cette fonction RECOPIE la formule de `client/sr-derive.js`, faute de
+# navigateur ici. Une recopie ne vaut que si on la confronte : le contrôle qui
+# suit la compare à un vecteur figé de la bibliothèque, et rougit si l'une des
+# deux bouge sans l'autre.
+derive() {  # derive <mot> <sel> <matériel>
+    python3 -c "import hashlib,hmac,sys
+mot,sel,mat = sys.argv[1], sys.argv[2], sys.argv[3]
+print(hmac.new(mot.encode(), (mat.lower()+'|v2'+sel).encode(), hashlib.sha256).hexdigest())" "$1" "$2" "$3"
+}
+
+VECTEURS="$(dirname "$0")/../../../bi-self/selfrecover/tests/vecteurs-derivation.json"
+if [ -r "$VECTEURS" ]; then
+    v_mot=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['vecteurs'][0]['mot'])" "$VECTEURS")
+    v_sel=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['vecteurs'][0]['sel'])" "$VECTEURS")
+    v_mat=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['vecteurs'][0]['materiel'])" "$VECTEURS")
+    v_att=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1]))['vecteurs'][0]['empreinte'])" "$VECTEURS")
+    [ "$(derive "$v_mot" "$v_sel" "$v_mat")" = "$v_att" ] \
+        && pass "la formule de ce script retrouve le vecteur figé de la bibliothèque" \
+        || fail "formule de dérivation" "elle a divergé de client/sr-derive.js"
+else
+    fail "vecteurs de dérivation" "introuvables — la formule ci-dessous n'est confrontée à rien"
+fi
+
 username="test$(openssl rand -hex 2)"
+word="mot-memorise-$(openssl rand -hex 3)"
+sel=$(openssl rand -hex 16)
+derived=$(derive "$word" "$sel" "$HOTE")
+
 http_code=$(curl -s -o /tmp/body.json -w "%{http_code}" -X POST \
     -H "Content-Type: application/json" \
-    -d "{\"username\":\"$username\"}" \
+    -d "{\"username\":\"$username\",\"recovery_derived_key\":\"$derived\",\"recovery_salt\":\"$sel\"}" \
     -b "$COOKIES" -c "$COOKIES" "$BASE/demo/api/recover/register")
 [ "$http_code" = "200" ] && pass "register → 200" || fail "register" "HTTP $http_code"
 
 password=$(python3 -c "import json;print(json.load(open('/tmp/body.json'))['credentials']['password'])" 2>/dev/null)
 passphrase=$(python3 -c "import json;print(json.load(open('/tmp/body.json'))['credentials']['passphrase'])" 2>/dev/null)
-word=$(python3 -c "import json;print(json.load(open('/tmp/body.json'))['credentials']['recovery_word'])" 2>/dev/null)
-[ -n "$password" ] && pass "credentials retournés (password, passphrase, word)" || fail "credentials" "missing"
+[ -n "$password" ] && pass "credentials retournés (password, passphrase)" || fail "credentials" "missing"
+
+# Le mot mémorisé ne doit PAS revenir : le serveur ne l'a jamais reçu.
+python3 -c "import json,sys;sys.exit(0 if 'recovery_word' not in json.load(open('/tmp/body.json'))['credentials'] else 1)" \
+    && pass "le serveur ne renvoie pas le mot mémorisé" \
+    || fail "fuite du mot mémorisé" "la réponse porte recovery_word"
 
 http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
     -H "Content-Type: application/json" \
@@ -64,17 +99,39 @@ http_code=$(curl -s -o /tmp/body.json -w "%{http_code}" -X POST \
     -b "$COOKIES" -c "$COOKIES" "$BASE/demo/api/recover/recover-l1")
 [ "$http_code" = "200" ] && pass "recover-l1 → 200" || fail "recover-l1" "HTTP $http_code"
 
-# L2 avec HMAC client (Python simulate)
-salt=$(curl -s -b "$COOKIES" "$BASE/demo/api/recover/site-salt" | python3 -c "import json,sys;print(json.load(sys.stdin)['site_salt'])")
-hmac_legit=$(python3 -c "import hashlib, hmac; print(hmac.new('$word'.encode(), ('bi-self.my-self.fr' + '$salt').encode(), hashlib.sha256).hexdigest())")
+# La route de sel : elle doit rendre CELUI du compte, et jamais d'erreur.
+salt_rendu=$(curl -s -X POST -H "Content-Type: application/json" \
+    -d "{\"username\":\"$username\"}" \
+    -b "$COOKIES" "$BASE/demo/api/recover/sel" \
+    | python3 -c "import json,sys;print(json.load(sys.stdin).get('sel',''))" 2>/dev/null)
+[ "$salt_rendu" = "$sel" ] && pass "sel → celui du compte" || fail "sel" "rendu=$salt_rendu attendu=$sel"
+
+# Anti-oracle : un compte inconnu doit rendre un sel lui aussi, deux fois le même.
+faux1=$(curl -s -X POST -H "Content-Type: application/json" -d '{"username":"nexistepas"}' \
+    -b "$COOKIES" "$BASE/demo/api/recover/sel" | python3 -c "import json,sys;print(json.load(sys.stdin).get('sel',''))" 2>/dev/null)
+faux2=$(curl -s -X POST -H "Content-Type: application/json" -d '{"username":"nexistepas"}' \
+    -b "$COOKIES" "$BASE/demo/api/recover/sel" | python3 -c "import json,sys;print(json.load(sys.stdin).get('sel',''))" 2>/dev/null)
+{ [ ${#faux1} -eq 32 ] && [ "$faux1" = "$faux2" ] && [ "$faux1" != "$sel" ]; } \
+    && pass "sel → un compte inconnu rend un faux sel, stable, distinct du vrai" \
+    || fail "anti-oracle de /sel" "faux1=$faux1 faux2=$faux2"
+
+# La dérivation faite sous le VRAI nom d'hôte est reconnue.
+hmac_legit=$(derive "$word" "$sel" "$HOTE")
 http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
     -H "Content-Type: application/json" \
-    -d "{\"username\":\"$username\",\"derived_key\":\"$hmac_legit\",\"domain_used\":\"bi-self.my-self.fr\"}" \
-    -b "$COOKIES" -c "$COOKIES" "$BASE/demo/api/recover/recover-l2")
-[ "$http_code" = "200" ] && pass "recover-l2 (HMAC legit) → 200" || fail "recover-l2" "HTTP $http_code"
+    -d "{\"username\":\"$username\",\"derived_key\":\"$hmac_legit\"}" \
+    -b "$COOKIES" -c "$COOKIES" "$BASE/demo/api/recover/phishing-check")
+[ "$http_code" = "200" ] && pass "phishing-check (nom d'hôte réel) → 200" || fail "phishing-check" "HTTP $http_code"
+
+# Celle faite sous un autre nom d'hôte doit être refusée : c'est l'anti-hameçonnage.
+hmac_phish=$(derive "$word" "$sel" "phishing-$(printf '%s' "$HOTE" | tr '.' '-').local")
+http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"$username\",\"derived_key\":\"$hmac_phish\"}" \
+    -b "$COOKIES" -c "$COOKIES" "$BASE/demo/api/recover/phishing-check")
+[ "$http_code" = "401" ] && pass "phishing-check (autre nom d'hôte) → 401" || fail "anti-hameçonnage" "HTTP $http_code au lieu de 401"
 
 # Phishing sim
-hmac_phish=$(python3 -c "import hashlib, hmac; print(hmac.new('$word'.encode(), ('phishing-my-self-fr.local' + '$salt').encode(), hashlib.sha256).hexdigest())")
 verdict=$(curl -s -X POST \
     -H "Content-Type: application/json" \
     -d "{\"username\":\"$username\",\"derived_key_legit\":\"$hmac_legit\",\"derived_key_phishing\":\"$hmac_phish\"}" \

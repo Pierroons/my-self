@@ -13,6 +13,6 @@ $r = RecoverL3::reset(
     (string) ($body['claim_secret'] ?? ''),
     (string) ($body['password'] ?? ''),                 // choisi par l'utilisateur
     (string) ($body['recovery_derived_key'] ?? ''),     // nouveau mot mémorisé, dérivé côté client
-    strtolower(trim((string) ($body['recovery_salt'] ?? '')))  // et le sel neuf qui a servi
+    trim((string) ($body['recovery_salt'] ?? ''))  // et le sel neuf, sans normalisation : cf. register.php
 );
 json_out($r, $r['ok'] ? 200 : (int) ($r['code'] ?? 400));

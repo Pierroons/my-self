@@ -3,16 +3,20 @@
  * SelfRecover demo — Inscription.
  *
  * POST /demo/api/recover/register
- *   body: { "username": "alice" }
- *   → génère password random + passphrase diceware + recovery word random
- *   → HMAC-SHA256 sur le recovery word (côté serveur pour démo)
+ *   body: { "username": "alice", "recovery_derived_key": "<64 hex>", "recovery_salt": "<32 hex>" }
+ *   → génère password random + passphrase diceware
  *   → Argon2id triplet (password, passphrase, derived_key)
  *   → INSERT accounts
  *   → retourne les credentials en clair pour que l'user les copie
  *
- * En vrai SelfRecover : le recovery word est choisi par l'user, le HMAC est fait
- * côté client. Ici pour la démo on simule tout côté serveur pour pouvoir montrer
- * les logs détaillés (on refait l'exercice côté client lors de l'étape recover-L2).
+ * 🔑 **Le mot mémorisé n'arrive pas ici, et c'est le sujet.** Le navigateur le
+ * garde, en dérive `HMAC(clé = mot, message = hostname|v2 + sel)` par
+ * `srDerive`, et n'envoie que l'empreinte. Le serveur en range un Argon2id ; il
+ * ne peut pas remonter au mot, même s'il le voulait.
+ *
+ * Jusqu'au 27/08/2026 cette route recevait le mot en clair et dérivait
+ * elle-même, « pour la démo ». Ce que la démo montrait alors, c'est le geste
+ * qu'il ne faut pas copier — et elle affirmait à l'écran le contraire.
  */
 
 declare(strict_types=1);
@@ -32,13 +36,36 @@ if (!RateLimit::checkAndIncrementActions($s->dir)) {
 }
 
 $body = json_decode((string) file_get_contents('php://input'), true);
-$username = is_array($body) ? (string) ($body['username'] ?? '') : '';
+$username     = is_array($body) ? (string) ($body['username'] ?? '') : '';
+$derivedKey   = is_array($body) ? strtolower(trim((string) ($body['recovery_derived_key'] ?? ''))) : '';
+$recoverySalt = is_array($body) ? trim((string) ($body['recovery_salt'] ?? '')) : '';
 
 // Validation username
 if (!preg_match('/^[a-z0-9]{3,20}$/', $username)) {
     $s->logger()->error('register', 'Username invalide', ['username' => $username]);
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'invalid_username','message'=>"L'identifiant doit faire 3 à 20 caractères minuscules alphanumériques."]);
+    exit;
+}
+
+// 🔑 La forme de la clé dérivée est la seule chose que le serveur puisse
+// contrôler, et elle est ce qui tient la promesse : sans ce refus, un client
+// resté sur une version antérieure enverrait le mot en clair et le serveur
+// l'accepterait sans que rien ne le signale.
+if (!RecoverHelper::isDerivedKey($derivedKey)) {
+    $s->logger()->error('register', 'Clé dérivée invalide — le mot doit être dérivé dans le navigateur');
+    http_response_code(400);
+    echo json_encode(['ok'=>false,'error'=>'invalid_derived_key','message'=>"La dérivation doit se faire dans ton navigateur : 64 caractères hexadécimaux attendus."]);
+    exit;
+}
+
+// Le sel est EXIGÉ. Le tolérer vide rouvrirait ce qu'il ferme : deux personnes
+// au même mot mémorisé, une seule empreinte, et une table précalculée qui sert
+// pour tout le service. Il n'est pas secret, mais il doit exister.
+if (!preg_match('/^[0-9a-f]{32}$/', $recoverySalt)) {
+    $s->logger()->error('register', 'Sel de dérivation invalide');
+    http_response_code(400);
+    echo json_encode(['ok'=>false,'error'=>'invalid_salt','message'=>"Sel de dérivation invalide : 32 caractères hexadécimaux attendus."]);
     exit;
 }
 
@@ -70,24 +97,11 @@ $log->info('register', 'Passphrase diceware générée depuis la liste officiell
     'note'         => 'Mode avancé disponible : l\'utilisateur peut saisir ses propres 6+ mots pour monter jusqu\'à 77 bits (EFF recommandé) ou 103 bits (paranoïaque).',
 ]);
 
-// Recovery word : 6 chars alphanum, pour la démo. En vrai l'user choisit son propre mot.
-$recoveryWord = bin2hex(random_bytes(3)); // 6 hex chars
-$log->info('register', 'Recovery word généré côté serveur pour la démo', [
-    'recovery_word' => $recoveryWord,
-    'note'          => "Dans le vrai SelfRecover, c'est TOI qui choisis ce mot. On le génère ici pour montrer le flux.",
-]);
-
-// Calcul HMAC côté serveur (simulation)
-$domain = 'bi-self.my-self.fr';
-$siteSalt = RecoverHelper::siteSalt($s);
-$log->crypto('register', 'HMAC-SHA256 derivation', [
-    'input'     => $recoveryWord,
-    'key_material' => $domain . '[SITE_SALT]',
-    'note'      => 'Le site_salt est propre à chaque déploiement. Il change tout : un phishing site aurait un autre salt et donc une autre dérivée.',
-]);
-$derivedKey = RecoverHelper::deriveKey($recoveryWord, $domain, $siteSalt);
-$log->crypto('register', 'derived_key = HMAC(recovery_word, domain || site_salt)', [
-    'derived_key' => $derivedKey, // sera tronqué par le Redactor
+$log->crypto('register', 'Le mot mémorisé est arrivé DÉJÀ dérivé', [
+    'derived_key' => $derivedKey,       // sera tronqué par le Redactor
+    'sel_du_compte' => $recoverySalt,
+    'formule'     => 'HMAC-SHA256(clé = mot mémorisé, message = hostname|v2 + sel)',
+    'note'        => "Le mot lui-même n'a pas traversé le réseau : ton navigateur l'a gardé. Le hostname employé est celui qu'IL a lu — une page qui imite ce service porte un autre nom d'hôte, donc elle fait dériver une autre clé.",
 ]);
 
 // Argon2id des trois secrets
@@ -108,13 +122,14 @@ $log->crypto('register', 'argon2id(derived_key) — m=64 Mo, t=4, p=2', ['durati
 
 // INSERT
 $stmt = $db->prepare('
-    INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at)
-    VALUES (:u, :pw, :pass, :rec, :t)
+    INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, recovery_salt, created_at)
+    VALUES (:u, :pw, :pass, :rec, :sel, :t)
 ');
 $stmt->bindValue(':u',    $username);
 $stmt->bindValue(':pw',   $pwHash);
 $stmt->bindValue(':pass', $passHash);
 $stmt->bindValue(':rec',  $recoveryHash);
+$stmt->bindValue(':sel',  $recoverySalt);
 $stmt->bindValue(':t',    time());
 $stmt->execute();
 $accountId = $db->lastInsertRowID();
@@ -131,7 +146,7 @@ $log->info('register', "INSERT INTO accounts", ['id' => $accountId, 'username' =
 // ⚠️ Affichés une seule fois. Le serveur n'en garde qu'un HMAC (pour retrouver
 // le compte) et un Argon2id (pour vérifier) : il est incapable de les réafficher,
 // et c'est voulu.
-$codes   = [];                      // $siteSalt est déjà dérivé plus haut
+$codes   = [];
 $insCode = $db->prepare(
     'INSERT INTO recovery_codes (account_id, code_lookup, code_hash, created_at) VALUES (:a, :l, :h, :t)'
 );
@@ -141,7 +156,7 @@ for ($i = 0; $i < 10; $i++) {
     $code = substr($brut, 0, 5) . '-' . substr($brut, 5, 5);           // xxxxx-xxxxx
     $insCode->reset();
     $insCode->bindValue(':a', $accountId, SQLITE3_INTEGER);
-    $insCode->bindValue(':l', hash_hmac('sha256', $code, $siteSalt));
+    $insCode->bindValue(':l', RecoverHelper::indexCode($s, $code));
     $insCode->bindValue(':h', RecoverHelper::hash($code));
     $insCode->bindValue(':t', time(), SQLITE3_INTEGER);
     $insCode->execute();
@@ -163,8 +178,9 @@ echo json_encode([
     'credentials' => [
         'password'       => $password,
         'passphrase'     => $passphrase,
-        'recovery_word'  => $recoveryWord,
         'recovery_codes' => $codes,
     ],
+    // Le mot mémorisé ne figure pas dans cette réponse, et ne le peut pas : le
+    // serveur ne l'a jamais reçu. C'est ton navigateur qui te l'affiche.
     'note' => 'Copie tes credentials ET tes 10 codes de secours maintenant. Le serveur ne les montrera plus en clair. Pour les hash Argon2id, regarde les logs.',
 ], JSON_UNESCAPED_UNICODE);

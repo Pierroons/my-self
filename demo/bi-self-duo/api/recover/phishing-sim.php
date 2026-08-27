@@ -4,15 +4,21 @@
  *
  * POST /demo/api/recover/phishing-sim
  *   body: { "username": "alice",
- *           "derived_key_legit": "4e7a...",     // HMAC calculé avec bi-self.my-self.fr
- *           "derived_key_phishing": "9f3b..." } // HMAC calculé avec phishing-my-self-fr.local
+ *           "derived_key_legit": "4e7a...",     // dérivée sous le nom d'hôte réel
+ *           "derived_key_phishing": "9f3b..." } // dérivée sous un nom d'hôte imité
  *
  *   → Compare les deux clés au stored recovery_hash et renvoie :
  *     { legit_match: true, phishing_match: false, ... }
  *
- * Pédagogie : le visiteur voit en direct que deux HMAC du même mot avec
- * deux domaines différents produisent des clés complètement différentes,
- * et que seule celle qui utilise le bon domaine passe l'argon2id_verify.
+ * Pédagogie : le visiteur voit en direct que le même mot mémorisé, dérivé sous
+ * deux noms d'hôte différents, produit deux clés sans rapport — et qu'une seule
+ * passe l'argon2id_verify.
+ *
+ * 🔑 Le serveur ne sait pas, et n'a pas à savoir, sous quels noms d'hôte ces
+ * deux clés ont été calculées : il reçoit deux empreintes et en vérifie deux.
+ * C'est le navigateur qui lit son propre nom d'hôte (`location.hostname`) et
+ * qui l'affiche — s'il fallait le croire sur parole, la démonstration ne
+ * démontrerait rien.
  */
 
 declare(strict_types=1);
@@ -51,7 +57,7 @@ if (!preg_match('/^[a-z0-9]{3,20}$/', $username) ||
 $log->info('phishing-sim', 'Deux derivées reçues — une légitime, une de phishing', [
     'derived_key_legit'    => $derivedKeyLegit,
     'derived_key_phishing' => $derivedKeyPhishing,
-    'note'                 => 'Les deux sont le HMAC du même mot, mais l\'un utilise bi-self.my-self.fr comme domaine, l\'autre utilise phishing-my-self-fr.local. Leur output est radicalement différent : c\'est l\'effet domain binding.',
+    'note'                 => 'Les deux sont le HMAC du même mot mémorisé, calculés sous deux noms d\'hôte différents. Leur sortie n\'a aucun rapport : c\'est tout l\'anti-hameçonnage, et il tient au fait que le navigateur LIT ce nom au lieu de le recevoir.',
 ]);
 
 $db = $s->db();
@@ -96,11 +102,11 @@ $log->crypto('phishing-sim', 'argon2id_verify(derived_key_phishing, recovery_has
 
 $verdict = $legitMatch && !$phishingMatch ? 'expected' : 'unexpected';
 $msg = $verdict === 'expected'
-    ? "Comportement attendu : le bon domaine passe, le phishing échoue. C'est le domain binding natif de SelfRecover — aucune formation utilisateur nécessaire."
+    ? "Comportement attendu : la clé dérivée sous le vrai nom d'hôte passe, l'autre échoue. C'est ce que SelfRecover appelle l'anti-hameçonnage — il ne demande à l'utilisateur de reconnaître aucune adresse : son navigateur le fait pour lui."
     : "Comportement inattendu — ça ne devrait pas arriver. Bug de la démo ?";
 
 if ($verdict === 'expected') {
-    $log->success('phishing-sim', 'Anti-phishing démontré : seul le bon domaine a validé');
+    $log->success('phishing-sim', "Anti-hameçonnage démontré : seule la clé dérivée sous le vrai nom d'hôte a validé");
 } else {
     $log->error('phishing-sim', 'Résultat inattendu', ['legit' => $legitMatch, 'phishing' => $phishingMatch]);
 }

@@ -1,0 +1,1 @@
+../../../../bi-self/selfrecover/client/sr-derive.js

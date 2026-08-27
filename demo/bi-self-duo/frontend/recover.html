@@ -463,15 +463,21 @@
         <label for="reg-username">Identifiant public</label>
         <input id="reg-username" name="username" minlength="3" maxlength="20" pattern="[a-z0-9]+" placeholder="ex: alice" required autocomplete="off">
       </div>
+      <div class="field">
+        <label for="reg-word">Mot mémorisé</label>
+        <input id="reg-word" name="recovery_word" minlength="4" placeholder="celui que tu retiendras" required autocomplete="off">
+        <div class="hint">Choisis-le toi-même. Il ne quittera pas cette page : ton navigateur
+        en dérive une empreinte et n'envoie qu'elle.</div>
+      </div>
       <button class="btn" type="submit">Créer le compte</button>
     </form>
     <div id="reg-result"></div>
     <div class="teach tuto-only">
-      <strong>Ce qu'il se passe ici :</strong> le serveur génère un password random,
-      une passphrase diceware (4 mots), et un mot de récupération. Le mot de récupération
-      est passé au HMAC-SHA256 avec <code>domain || site_salt</code>. Les trois secrets
-      sont ensuite hachés en Argon2id et stockés. Regarde la console à droite, chaque étape
-      est tracée.
+      <strong>Ce qu'il se passe ici :</strong> ton navigateur engendre le sel de ton
+      compte et calcule <code>HMAC-SHA256(clé = ton mot, message = nom d'hôte |v2 + sel)</code>.
+      Il n'envoie que l'empreinte : <strong>le mot lui-même ne part jamais</strong>. Le serveur,
+      lui, engendre un password et une passphrase diceware, puis hache les trois en Argon2id.
+      Regarde la console à droite, chaque étape est tracée — et vois ce qui ne s'y trouve pas.
     </div>
   </div>
 
@@ -538,10 +544,11 @@
     <div id="r2-result"></div>
     <div class="teach tuto-only">
       <strong>Ce qu'il se passe ici :</strong> ton navigateur calcule
-      <code>HMAC-SHA256(recovery_word, domain || site_salt)</code> <strong>localement</strong>.
-      Seule la clé dérivée est envoyée au serveur. Le mot lui-même ne traverse
-      jamais le réseau. Le serveur compare via Argon2id, accorde ou refuse.
-      Aucun email, aucun SMTP, aucun tiers.
+      <code>HMAC-SHA256(clé = ton mot, message = nom d'hôte |v2 + sel)</code> <strong>localement</strong>.
+      Le nom d'hôte est celui qu'<strong>il lit</strong> dans sa barre d'adresse, jamais un
+      que le serveur lui donnerait — c'est là tout l'anti-hameçonnage. Seule la clé dérivée
+      part ; le mot ne traverse jamais le réseau. Le serveur compare via Argon2id, accorde
+      ou refuse. Aucun email, aucun SMTP, aucun tiers.
     </div>
   </div>
 
@@ -649,7 +656,7 @@
         <option value="recover-l2-code">recover-l2-code.php</option>
         <option value="phishing-sim">phishing-sim.php</option>
         <option value="me">me.php</option>
-        <option value="site-salt">site-salt.php</option>
+        <option value="sel">sel.php</option>
         <option value="recover_helper">lib/recover_helper.php</option>
         <option value="session_manager">lib/session_manager.php</option>
         <option value="logger">lib/logger.php</option>
@@ -660,7 +667,7 @@
     <button class="close" id="code-close" title="Fermer">✕</button>
   </div>
   <pre id="code-content">Sélectionne un fichier pour voir son code source.</pre>
-  <div class="note" id="code-note">Open book — secrets automatiquement censurés (site_salt, tokens, paths absolus).</div>
+  <div class="note" id="code-note">Open book — secrets automatiquement censurés (sel de déploiement, tokens, chemins absolus).</div>
 </div>
 
 <aside class="panel-logs">
@@ -685,6 +692,10 @@
   </div>
 </div>
 
+<!-- La dérivation du mot mémorisé vient de la bibliothèque, pas d'ici. Cette
+     page en a longtemps porté sa propre version, avec un nom d'hôte reçu du
+     serveur : elle affichait un anti-hameçonnage qu'elle n'avait pas. -->
+<script src="/js/sr-derive.js"></script>
 <script>
 // ============================================================
 // SelfRecover demo — front-end
@@ -701,24 +712,15 @@ const API = {
   phishingCheck: '/demo/api/recover/phishing-check',
   recoverL2Code: '/demo/api/recover/recover-l2-code',
   phishingSim: '/demo/api/recover/phishing-sim',
-  siteSalt:    '/demo/api/recover/site-salt',
+  sel:         '/demo/api/recover/sel',
   code:        '/demo/api/recover/code',
 };
 
-// HMAC-SHA256 calculé côté navigateur via Web Crypto API.
-// `key` devient la clé HMAC, `message` = domain||site_salt.
-async function hmacSha256(key, message) {
-  const enc = new TextEncoder();
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw', enc.encode(key),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false, ['sign']
-  );
-  const sig = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(message));
-  return Array.from(new Uint8Array(sig))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
-}
+// `srDerive` et `srEngendrerSel` viennent de /js/sr-derive.js, qui est un lien
+// vers le composant livré par la bibliothèque. Le mode est passé explicitement à
+// chaque appel : la bibliothèque refuse de choisir à notre place, parce que ce
+// choix décide de la présence ou non de l'anti-hameçonnage.
+const MODE_DERIVATION = { mode: 'hostname' };
 
 const state = {
   session: null,
@@ -907,10 +909,23 @@ $('form-register').addEventListener('submit', async (e) => {
   const res = $('reg-result');
   res.innerHTML = '';
   try {
+    const word = $('reg-word').value.trim();
+    if (!word) throw new Error('Choisis un mot mémorisé.');
+
+    // 🔑 Le sel est engendré ICI, par le navigateur, et il est propre à ce
+    // compte. Le serveur ne fait que le ranger : il n'est pas secret, mais sans
+    // lui deux personnes au même mot auraient la même empreinte.
+    const recovery_salt = srEngendrerSel();
+    const recovery_derived_key = await srDerive(word, recovery_salt, MODE_DERIVATION);
+
     const r = await fetch(API.register, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: $('reg-username').value.trim() }),
+      body: JSON.stringify({
+        username: $('reg-username').value.trim(),
+        recovery_derived_key,
+        recovery_salt,
+      }),
       credentials: 'include',
     });
     const d = await r.json();
@@ -919,7 +934,8 @@ $('form-register').addEventListener('submit', async (e) => {
         username: d.username,
         password: d.credentials.password,
         passphrase: d.credentials.passphrase,
-        recovery_word: d.credentials.recovery_word,
+        // Le serveur ne le renvoie pas, et ne le peut pas : il ne l'a jamais reçu.
+        recovery_word: word,
         recovery_codes: d.credentials.recovery_codes || [],
       };
       state.usedCodes = new Set();
@@ -1011,14 +1027,23 @@ $('btn-logout').addEventListener('click', async () => {
 });
 
 // --- Étape 4 : Recovery L2 ---
-let cachedSalt = null;
-async function getSiteSalt() {
-  if (cachedSalt) return cachedSalt;
-  const r = await fetch(API.siteSalt, { credentials: 'include' });
+// Le sel du compte, demandé avant de pouvoir dériver quoi que ce soit. Il n'est
+// pas secret et la route le rend toujours — y compris, fabriqué, pour un compte
+// qui n'existe pas : sans cela, la demander suffirait à savoir qui existe.
+//
+// ⚠️ Aucun cache : deux comptes ont deux sels. L'ancien code en gardait un seul
+// pour toute la page, parce qu'il était de SITE — le mettre en cache ici
+// donnerait au second compte le sel du premier.
+async function selDuCompte(critere) {
+  const r = await fetch(API.sel, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(critere),
+    credentials: 'include',
+  });
   const d = await r.json();
-  if (!d.ok) throw new Error('site-salt fetch failed');
-  cachedSalt = { domain: d.domain, salt: d.site_salt };
-  return cachedSalt;
+  if (!d.ok) throw new Error('sel indisponible');
+  return d.sel;
 }
 
 $('form-phishing-check').addEventListener('submit', async (e) => {
@@ -1034,33 +1059,33 @@ $('form-phishing-check').addEventListener('submit', async (e) => {
     const word     = $('r2-word').value.trim();
     if (!username || !word) throw new Error('Tous les champs sont requis.');
 
-    const { domain, salt } = await getSiteSalt();
-    const message = domain + salt;
-    const derived = await hmacSha256(word, message);
+    const salt    = await selDuCompte({ username });
+    const derived = await srDerive(word, salt, MODE_DERIVATION);
 
     viz.innerHTML = `
       <div class="hmac-viz">
-        <div class="line"><span class="lbl">client-side:</span></div>
-        <div class="line">  <span class="lbl">key (word):</span> <span class="val">${html_escape(word)}</span></div>
-        <div class="line">  <span class="lbl">message (domain + salt[16]):</span> <span class="val">${html_escape(domain + ' + ' + salt.substring(0,16) + '...')}</span></div>
+        <div class="line"><span class="lbl">dans ton navigateur :</span></div>
+        <div class="line">  <span class="lbl">clé (le mot) :</span> <span class="val">${html_escape(word)}</span></div>
+        <div class="line">  <span class="lbl">message :</span> <span class="val">${html_escape(location.hostname)}|v2 + <span class="val">${html_escape(salt.substring(0,16))}...</span></div>
         <div class="line">  <span class="lbl">HMAC-SHA256 = </span><span class="val">${derived}</span></div>
-        <div class="line" style="margin-top: 0.4rem;">→ envoi au serveur de <strong>derived_key uniquement</strong>. Le mot <code>${html_escape(word)}</code> n'est jamais transmis.</div>
+        <div class="line" style="margin-top: 0.4rem;">→ le serveur ne reçoit que la <strong>clé dérivée</strong>. Le mot <code>${html_escape(word)}</code> ne quitte pas cette page.</div>
+        <div class="line">→ le nom d'hôte employé est <code>${html_escape(location.hostname)}</code>, <strong>lu par ton navigateur</strong> — pas reçu du serveur. C'est ce qui rend la clé inutilisable ailleurs.</div>
       </div>`;
 
     const r = await fetch(API.phishingCheck, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, derived_key: derived, domain_used: domain }),
+      body: JSON.stringify({ username, derived_key: derived }),
       credentials: 'include',
     });
     const d = await r.json();
     if (d.ok) {
-      state.credentials.password = d.new_password;
-      renderCreds();
-      res.innerHTML = `<div class="inline-result ok">✓ Compte récupéré. Nouveau password : <code>${html_escape(d.new_password)}</code> (copié aussi dans le panneau credentials).</div>`;
+      // Cette étape ne récupère rien, et ne le peut pas : la route a cessé de
+      // rendre un accès le 19/08/2026 — un seul secret n'y suffit pas. Le code
+      // qui suivait affichait encore un « nouveau password » qu'elle ne renvoyait
+      // plus : le visiteur lisait « undefined ».
+      res.innerHTML = `<div class="inline-result ok">✓ ${html_escape(d.message || 'Dérivation conforme.')}<br><span class="muted">${html_escape(d.note || '')}</span></div>`;
       $('step-4').classList.add('done');
-      $('log-password').value = d.new_password;
-      refreshState();
     } else {
       res.innerHTML = `<div class="inline-result err">✗ ${html_escape(d.message || d.error)}</div>`;
     }
@@ -1088,13 +1113,17 @@ $('form-recover-l2-code').addEventListener('submit', async (e) => {
     const word        = $('r2c-word').value.trim();
     if (!code || !word) throw new Error('Tous les champs sont requis.');
 
-    const { domain, salt } = await getSiteSalt();
-    const derived = await hmacSha256(word, domain + salt);
+    // Le sel se demande par le CODE, jamais par un identifiant : c'est ce qui
+    // permet à ce niveau de fonctionner sans en réclamer un. La route rend
+    // toujours un sel, même pour un code inventé — sinon la demander suffirait
+    // à éprouver des codes sans jamais payer un Argon2id.
+    const salt    = await selDuCompte({ recovery_code: code });
+    const derived = await srDerive(word, salt, MODE_DERIVATION);
 
     viz.innerHTML = `
       <div class="hmac-viz">
-        <div class="line"><span class="lbl">client-side:</span></div>
-        <div class="line">  <span class="lbl">HMAC-SHA256(mot, domain+salt) = </span><span class="val">${derived}</span></div>
+        <div class="line"><span class="lbl">dans ton navigateur :</span></div>
+        <div class="line">  <span class="lbl">HMAC-SHA256(mot, ${html_escape(location.hostname)}|v2 + sel du compte) = </span><span class="val">${derived}</span></div>
         <div class="line" style="margin-top: 0.4rem;">→ le corps envoyé contient <strong>le code et la clé dérivée</strong>, rien d'autre.</div>
         <div class="line">→ <strong>aucun identifiant</strong> : le serveur retrouve le compte par le seul code.</div>
       </div>`;
@@ -1141,21 +1170,29 @@ $('form-phishing').addEventListener('submit', async (e) => {
     const word     = $('p-word').value.trim();
     if (!username || !word) throw new Error('Tous les champs sont requis.');
 
-    const { salt } = await getSiteSalt();
-    const legitDomain    = 'bi-self.my-self.fr';
-    const phishingDomain = 'phishing-my-self-fr.local';
+    const salt = await selDuCompte({ username });
 
-    const derivedLegit    = await hmacSha256(word, legitDomain + salt);
-    const derivedPhishing = await hmacSha256(word, phishingDomain + salt);
+    // 🔑 La clé légitime est dérivée par le chemin RÉEL : `mode: 'hostname'`, le
+    // nom d'hôte que ce navigateur lit lui-même. Rien n'est écrit en dur ici —
+    // cette démonstration comparait autrefois deux noms qu'elle fabriquait, donc
+    // elle ne mesurait qu'elle-même.
+    const hoteReel  = location.hostname;
+    const hoteImite = 'phishing-' + hoteReel.replace(/\./g, '-') + '.local';
+
+    const derivedLegit = await srDerive(word, salt, MODE_DERIVATION);
+    // Le mode `label` sert exactement à cela : fournir un matériel arbitraire.
+    // C'est ce qu'obtiendrait une page servie sous un AUTRE nom d'hôte, sans
+    // qu'on ait à en héberger une pour le montrer.
+    const derivedPhishing = await srDerive(word, salt, { mode: 'label', label: hoteImite });
 
     viz.innerHTML = `
       <div class="hmac-viz">
-        <div class="line"><span class="lbl">client-side, même mot <code>${html_escape(word)}</code>, deux domaines :</span></div>
-        <div class="line" style="margin-top: 0.3rem;">  <span class="lbl">HMAC(word, "${legitDomain}" + salt) =</span></div>
+        <div class="line"><span class="lbl">même mot <code>${html_escape(word)}</code>, deux noms d'hôte :</span></div>
+        <div class="line" style="margin-top: 0.3rem;">  <span class="lbl">sous <code>${html_escape(hoteReel)}</code> — celui que ton navigateur a LU :</span></div>
         <div class="line" style="padding-left: 2rem;"><span class="val">${derivedLegit}</span></div>
-        <div class="line" style="margin-top: 0.3rem;">  <span class="lbl">HMAC(word, "${phishingDomain}" + salt) =</span></div>
+        <div class="line" style="margin-top: 0.3rem;">  <span class="lbl">sous <code>${html_escape(hoteImite)}</code> — ce qu'obtiendrait une page qui imite celle-ci :</span></div>
         <div class="line" style="padding-left: 2rem;"><span class="val">${derivedPhishing}</span></div>
-        <div class="line" style="margin-top: 0.4rem;">→ <strong>Deux clés radicalement différentes</strong> pour le même mot. Envoi des deux au serveur pour vérification.</div>
+        <div class="line" style="margin-top: 0.4rem;">→ <strong>Deux clés sans rapport</strong> pour le même mot. Les deux partent au serveur, qui va les vérifier sans savoir laquelle vient d'où.</div>
       </div>`;
 
     const r = await fetch(API.phishingSim, {
@@ -1180,9 +1217,9 @@ $('form-phishing').addEventListener('submit', async (e) => {
       viz.innerHTML += `
       <div class="hmac-viz" style="margin-top: 0.5rem;">
         <div class="line"><span class="lbl">server-side argon2id_verify :</span></div>
-        <div class="line">  domaine légitime → ${okLegit}</div>
-        <div class="line">  domaine phishing → ${okPhish}</div>
-        <div class="line" style="margin-top: 0.4rem;">→ Le phisher aurait pu intercepter le <code>derived_key</code>, mais il est spécifique à son domaine. Sur le vrai site, il ne passe pas.</div>
+        <div class="line">  dérivée sous <code>${html_escape(hoteReel)}</code> → ${okLegit}</div>
+        <div class="line">  dérivée sous <code>${html_escape(hoteImite)}</code> → ${okPhish}</div>
+        <div class="line" style="margin-top: 0.4rem;">→ Une page qui imite celle-ci est servie sous son propre nom d'hôte. Ton navigateur dérive donc avec CE nom-là, et la clé qu'elle récolte ne vaut rien ici. Tu n'as aucune adresse à reconnaître : le navigateur l'a fait.</div>
       </div>`;
 
       res.innerHTML = `<div class="inline-result ${d.verdict === 'expected' ? 'ok' : 'err'}">${d.verdict === 'expected' ? '✓' : '✗'} ${html_escape(d.message)}</div>`;

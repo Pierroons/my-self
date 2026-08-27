@@ -9,14 +9,25 @@ CREATE TABLE IF NOT EXISTS accounts (
     --
     -- ⚠️ Argon2id ralentit ici, il ne protège pas : le mot fait 24 bits
     -- (bin2hex(random_bytes(3))), soit 16,7 millions de possibilités. Qui
-    -- détient cette base et le site_salt les épuise en quelques heures.
+    -- détient cette base les épuise en quelques heures. C'est un mot de
+    -- démonstration, engendré par le serveur pour montrer le flux ; dans un
+    -- vrai déploiement l'utilisateur choisit le sien, et sa longueur est ce
+    -- qui décide du coût.
     --
-    -- Ce qui protège réellement ce facteur, c'est le secret du site_salt — et
-    -- cette démo l'expose délibérément par /api/recover/site-salt, pour que le
-    -- HMAC se calcule dans le navigateur sous les yeux du visiteur. En
-    -- production le sel reste côté serveur, et c'est lui le rempart, pas la
-    -- longueur du mot.
+    -- 🔑 Ce qui protège du HAMEÇONNAGE est ailleurs, et cette démo l'a
+    -- longtemps mal dit : c'est le nom d'hôte que le NAVIGATEUR lit, entré tel
+    -- quel dans la dérivation (`srDerive`, mode `hostname`). Une page qui imite
+    -- ce service est servie sous un autre nom d'hôte, donc elle fait dériver
+    -- une autre clé, inutilisable ici. Le sel, lui, ne protège de rien de tout
+    -- cela — il n'est même pas secret.
     recovery_hash   TEXT NOT NULL,
+    -- 🔑 Le sel de dérivation, propre à ce compte, engendré par le NAVIGATEUR
+    -- (`srEngendrerSel`) et rangé tel quel. Il n'est pas secret : la route
+    -- `/api/recover/sel` le rend à qui le demande. Ce qu'il ferme est autre
+    -- chose — sans lui, deux personnes qui choisissent le même mot mémorisé
+    -- produisent la même empreinte, et une table précalculée sert alors pour
+    -- tout le service.
+    recovery_salt   TEXT NOT NULL DEFAULT '',
     created_at      INTEGER NOT NULL
 );
 

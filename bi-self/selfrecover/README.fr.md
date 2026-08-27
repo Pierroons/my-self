@@ -57,11 +57,24 @@ SelfRecover est un protocole de récupération à **connaissance partagée** :
 
 L'utilisateur se souvient d'**un mot de son choix**. C'est tout.
 
-Quand il le saisit, le navigateur effectue une **dérivation HMAC-SHA256** clavée par un **label de service** stable et un **sel par utilisateur**, produisant une clé spécifique au service avant que quoi que ce soit quitte le client. Le serveur ne voit jamais le mot brut.
+Quand il le saisit, le navigateur effectue une **dérivation HMAC-SHA256**. Le mot mémorisé entre en **clé** ; le message porte le **matériel de dérivation**, la version du format et le **sel du compte**. Il en sort une empreinte de 64 caractères hexadécimaux minuscules, et c'est la seule chose qui quitte le client. Le serveur ne voit jamais le mot brut.
 
 ```
-derived_key = HMAC-SHA256(clé = service_label ‖ user_salt, message = recovery_word)
+derived_key = HMAC-SHA256(clé = recovery_word, message = matériel + "|v2" + user_salt)
 ```
+
+L'implémentation livrée est [`client/sr-derive.js`](client/sr-derive.js) — la charger plutôt que la réécrire. Les vecteurs figés que toute réimplémentation doit retrouver vivent dans [`tests/vecteurs-derivation.json`](tests/vecteurs-derivation.json).
+
+### Matériel de dérivation — un mode à choisir, sans défaut
+
+Le `matériel` est ce qui lie une empreinte à un service, et la bibliothèque **refuse de dériver sans mode explicite**. Un défaut serait un choix imposé à tous les intégrateurs sans le dire, alors qu'il dépend de la façon dont le service est servi et de ce qu'on accepte de perdre.
+
+| Mode | Le `matériel` vaut… | Ce qu'il apporte | Ce qu'il coûte |
+|------|--------------------|------------------|----------------|
+| `'hostname'` | `location.hostname`, **lu dans le navigateur**, mis en minuscules | Anti-hameçonnage réel : un clone de la page servi ailleurs dérive de **sa propre** adresse, donc l'empreinte qu'il produit ne vaut rien contre le vrai serveur — et il n'a besoin d'aucune adaptation pour échouer | L'empreinte est liée au nom d'hôte. Perdre ou changer l'adresse, c'est perdre la récupération L2 de tous les comptes existants |
+| `'label'` | une étiquette stable fournie par l'intégrateur, prise **telle quelle** | Les comptes survivent à un changement d'adresse | **Aucun anti-hameçonnage.** Une copie servie ailleurs avec le même label dérive exactement l'empreinte que le vrai serveur a enregistrée |
+
+Le matériel doit être **lu** dans le navigateur, jamais reçu du réseau. Un matériel que le serveur fournit est un matériel que **n'importe quel** serveur peut fournir, y compris celui qui imite le vrai service.
 
 **Pas de SMTP.** **Pas de tiers.** **Même UX sur chaque site.**
 
@@ -73,11 +86,12 @@ derived_key = HMAC-SHA256(clé = service_label ‖ user_salt, message = recovery
 
 | Rôle | Algorithme | Paramètres |
 |------|-----------|------------|
-| Dérivation de clé côté client | HMAC-SHA256 | clé = service_label &#124;&#124; user_salt, message = recovery_word |
+| Dérivation de clé côté client | HMAC-SHA256 | clé = recovery_word, message = matériel + "&#124;v2" + user_salt |
+| Matériel de dérivation | `'hostname'` ou `'label'` | obligatoire — la bibliothèque n'a pas de défaut et lève si le mode manque |
 | Stockage des secrets côté serveur | Argon2id | mémoire = 64 Mio, time = 4, threads = 2 (memory-hard) |
 | Hachage de l'identifiant public | SHA-256 | tronqué à 16 octets, puis encodé en hex |
 | Génération de passphrase (L1) | EFF Diceware | 4 mots, ≥ 51 bits d'entropie |
-| Sel par utilisateur | 16 octets aléatoires | généré côté client à l'inscription, stocké en clair (un sel n'est pas un secret) |
+| Sel du compte | 16 octets aléatoires, rendus en 32 hexadécimaux minuscules | un par compte, engendré par le navigateur à l'inscription (`srEngendrerSel`), stocké en clair (un sel n'est pas un secret) — obligatoire, la bibliothèque refuse toute autre forme |
 
 ### Modèle de stockage
 
@@ -101,7 +115,7 @@ Le serveur ne voit jamais : le mot de passe brut, la passphrase brute, le mot de
 
 ```
 saisie user  → recovery_word
-client       → derived_key  = HMAC-SHA256(service_label ‖ user_salt, recovery_word)
+client       → derived_key  = HMAC-SHA256(clé = recovery_word, message = matériel + "|v2" + user_salt)
 réseau       → POST /recover { identifier, derived_key }
 serveur      → verify        = password_verify(derived_key, stored_recovery_hash)  // Argon2id
 ```
@@ -198,10 +212,13 @@ La démo PHP autonome qui vivait sous `demo/` a été retirée : son code de ré
 │  Navigateur  │           │    Serveur   │
 └──────┬───────┘           └──────┬───────┘
        │                          │
-       │  GET /user-salt?id=…     │
+       │  POST /user-salt         │
+       │  { recovery_code }       │
        │─────────────────────────>│
        │<─────────────────────────│
-       │   user_salt              │
+       │   user_salt — TOUJOURS,  │
+       │   un leurre si inconnu   │
+       │   (pas d'énumération)    │
        │                          │
        │  [dérive HMAC local]     │
        │                          │
@@ -225,7 +242,7 @@ Le mot de récupération brut ne quitte jamais le navigateur.
 | Propriété | Comment c'est obtenu |
 |----------|------------------|
 | **Serveur à connaissance nulle** | Le serveur ne voit que des hachages Argon2id de valeurs dérivées par site. Une compromission de la base ne révèle aucun mot de récupération. |
-| **Résistance au phishing passif** | La dérivation est liée à un label de service stable, non réutilisé d'un service à l'autre. Un clone passif qui copie la page sans l'adapter dérive une clé inutile. Un site de phishing actif qui contrôle sa propre page est hors périmètre (vrai pour tout protocole in-browser). |
+| **Résistance au phishing passif** | **En mode `'hostname'` seulement.** Le matériel est lu dans le navigateur : un clone qui copie la page dérive de sa propre adresse et produit une clé que le vrai serveur ne détient pas. En mode `'label'`, il n'y en a aucune — la copie porte le même label. Un site de phishing actif qui contrôle sa propre page reste hors périmètre dans les deux cas (vrai pour tout protocole in-browser). |
 | **Résistance au rejeu** | Chaque requête de récupération est limitée par un rate limit côté serveur + système de litige. Le L3 ajoute une décision revue par un humain. |
 | **Résistance à la fuite** | Chaque compte a son propre sel ; le serveur ne stocke que des hachages Argon2id de clés dérivées par service. Une fuite du code client seul est inutile. |
 | **Pas de dépendance centrale** | Chaque déploiement est autonome. Pas de SPOF, pas de vendor lock-in, pas d'opérateur qui peut révoquer des comptes à travers l'écosystème. |
@@ -237,7 +254,7 @@ Le mot de récupération brut ne quitte jamais le navigateur.
 
 **Protège contre :**
 - Compromission de la base de données (stockage Argon2id seul, pas de secrets réversibles)
-- Phishing passif (dérivation liée au service)
+- Phishing passif — **en mode `'hostname'` seulement** ; le mode `'label'` n'en offre aucun
 - Attaques SMTP, SIM swapping, prise de contrôle de boîte mail (pas d'email dans la boucle)
 - Brute force de compte (coût memory-hard Argon2id + rate limits + L3 revu par un humain)
 
@@ -294,7 +311,7 @@ SelfRecover est honnête sur ce qu'il protège et ce qu'il ne protège pas. Tout
 | Adversaire | Couverture |
 |---|---|
 | Serveur SelfRecover compromis | ✅ Connaissance partagée + HMAC client : le serveur ne voit jamais les secrets bruts |
-| Phishing passif / page clonée | ✅ HMAC lié au service : un clone qui n'adapte pas son code dérive une clé différente (un phishing actif contrôlant sa page est hors périmètre) |
+| Phishing passif / page clonée | ✅ en mode `'hostname'` — un clone dérive de sa propre adresse ; ❌ rien en mode `'label'` (un phishing actif contrôlant sa page est hors périmètre dans les deux cas) |
 | Sniffeur réseau / MITM | ✅ TLS en transit + seule la dérivation HMAC est transmise |
 | Fuite de base de données | ✅ Hashes Argon2id (memory-hard, GPU-resistant) |
 | Brute-force online | ✅ Rate-limit par username + escalade L2/L3 progressive |

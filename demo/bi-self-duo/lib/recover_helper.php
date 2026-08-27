@@ -11,9 +11,13 @@ require_once __DIR__ . '/session_manager.php';
 // simple copie.
 require_once __DIR__ . '/../../../bi-self/selfrecover/src/autoload.php';
 require_once __DIR__ . '/diceware/wordlist.php';
+// L'adaptateur du duo, dont `selDeDerivation` a besoin pour monter le protocole.
+// Il vit hors autoload : la bibliothèque ne connaît que ses propres classes.
+require_once __DIR__ . '/StockageSelfRecover.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device as Protocole;
+use Pierroons\SelfRecover\Recovery\Recovery;
 
 final class RecoverHelper {
     /**
@@ -70,27 +74,103 @@ final class RecoverHelper {
         return Protocole::engendrerMotDePasse($length);
     }
 
-    /**
-     * Calcule derived_key = HMAC-SHA256(recovery_word, domain || site_salt).
-     *
-     * Dans le vrai protocole SelfRecover le HMAC est calculé côté client (JS).
-     * Pour la démo on le fait aussi côté serveur pour la simulation du flux
-     * inscription (où le serveur génère tout pour pédagogie). Pour la récupération
-     * L2 (session 4), le frontend calculera le HMAC lui-même et n'enverra que le
-     * derived_key au serveur, comme dans le vrai protocole.
-     */
-    public static function deriveKey(string $recoveryWord, string $domain, string $siteSalt): string {
-        // Protocole SelfRecover : key = recovery_word, message = domain || site_salt
-        // PHP hash_hmac signature: hash_hmac($algo, $data, $key)
-        // Donc $data = message = domain||salt ; $key = recovery_word
-        return hash_hmac('sha256', $domain . $siteSalt, $recoveryWord);
+    /** Le mot mémorisé doit arriver dérivé — cf. la bibliothèque. */
+    public static function isDerivedKey(string $value): bool {
+        return Protocole::estCleDerivee($value);
     }
 
     /**
-     * Site salt de la session démo. Pour la prod, 32 bytes random persistants.
-     * Ici, dérivé de l'UUID de session pour qu'il soit stable dans la durée
-     * de la session et différent entre sessions (montre que chaque déploiement
-     * aurait son propre salt).
+     * L'index de recherche d'un code de secours.
+     *
+     * 🔑 Délégué à la bibliothèque, qui normalise avant de hacher. Cette démo
+     * calculait le même HMAC à la main, sans la normalisation : les deux
+     * concordaient parce que les codes sont engendrés en minuscules, donc par
+     * accident. Le jour où un code arrive autrement, l'index posé et l'index
+     * cherché cessent de se répondre, et la récupération échoue sans qu'aucune
+     * erreur ne le dise.
+     */
+    public static function indexCode(DemoSession $session, string $code): string {
+        return self::protocole($session)->indexRecherche($code);
+    }
+
+    /**
+     * Le sel de dérivation d'un compte, trouvé par l'un de ses codes de secours.
+     *
+     * 🔑 **NE DOIT PAS DEVENIR UN ORACLE.** Répondre pour un code valide et
+     * refuser pour un code inconnu permettrait d'énumérer les codes sans payer
+     * un seul Argon2id — donc de contourner le coût sur lequel repose tout le
+     * niveau 2. On rend **TOUJOURS** un sel : pour un code inconnu, un sel
+     * fabriqué, déterministe, de même longueur, et stable si le code est
+     * retenté.
+     *
+     * Deux raffinements repris des deux implémentations qui ont écrit ce patron
+     * en premier : la normalisation est celle de la vérification — sinon un code
+     * en majuscules obtiendrait un faux sel ici et serait accepté là-bas — et
+     * le `WHERE` ne filtre pas les codes consommés, sans quoi la route dirait
+     * « ce compte vient d'être récupéré ».
+     *
+     * ⚠️ **Dans CETTE démo, la garde est démonstrative, pas effective**, et il
+     * faut le dire à qui copierait ce code. Le faux sel repose sur
+     * `siteSalt()`, dont l'open book publie la formule
+     * (`hash('sha256', 'demo-salt|' . $session->id)`) et dont l'ingrédient —
+     * l'identifiant de session — est dans le cookie du visiteur. Il peut donc
+     * recalculer ses faux sels et les distinguer des vrais.
+     *
+     * Ce qui rend la chose sans conséquence n'est pas la garde : c'est que
+     * chaque visiteur est seul dans sa base SQLite, pour trente minutes. Il
+     * n'énumérerait que ses propres codes. En déploiement réel, le sel de
+     * déploiement est un secret serveur, et alors seulement la garde mord.
+     */
+    public static function selDeDerivation(DemoSession $session, string $code, string $username = ''): string {
+        $code     = strtolower(trim($code));
+        $username = strtolower(trim($username));
+
+        // Par identifiant : l'étape qui démontre la dérivation en désigne un, et
+        // n'a pas de code sous la main. Même garde — un identifiant inconnu rend
+        // un sel fabriqué, jamais une erreur, sinon cette route dirait qui existe.
+        if ($code === '' && preg_match('/^[a-z0-9]{3,20}$/', $username)) {
+            $stmt = $session->db()->prepare('SELECT recovery_salt FROM accounts WHERE username = :u');
+            $stmt->bindValue(':u', $username);
+            $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+            if (is_array($row) && ($row['recovery_salt'] ?? '') !== '') {
+                return (string) $row['recovery_salt'];
+            }
+        }
+
+        if (preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code)) {
+            $stmt = $session->db()->prepare(
+                'SELECT a.recovery_salt FROM recovery_codes c
+                   JOIN accounts a ON a.id = c.account_id
+                  WHERE c.code_lookup = :l'
+            );
+            $stmt->bindValue(':l', self::indexCode($session, $code));
+            $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+            if (is_array($row) && ($row['recovery_salt'] ?? '') !== '') {
+                return (string) $row['recovery_salt'];
+            }
+        }
+
+        return substr(hash_hmac('sha256', 'sel-absent:' . $code . '|' . $username, self::siteSalt($session)), 0, 32);
+    }
+
+    /** Le protocole monté sur la base de cette session de démo. */
+    private static function protocole(DemoSession $session): Recovery {
+        return new Recovery(new StockageSelfRecover($session->db()), self::siteSalt($session));
+    }
+
+    /**
+     * Le sel de déploiement de cette session de démo.
+     *
+     * Il ne sert plus à la dérivation du mot mémorisé — c'est le rôle du sel
+     * par compte, engendré par le navigateur. Il lui reste deux usages, tous
+     * deux internes au serveur : indexer les codes de secours
+     * (`Recovery::indexRecherche`) et fabriquer le faux sel rendu aux codes
+     * inconnus (`selDeDerivation`). À ce titre il ne sort plus, alors que
+     * cette démo l'exposait par une route dédiée.
+     *
+     * Dérivé de l'UUID de session : stable pendant les trente minutes qu'elle
+     * vit, et différent d'un visiteur à l'autre — ce qui montre au passage que
+     * chaque déploiement aurait le sien.
      */
     public static function siteSalt(DemoSession $session): string {
         return hash('sha256', 'demo-salt|' . $session->id);
