@@ -205,9 +205,14 @@ document.getElementById('btn-reset').addEventListener('click', async function(){
   try{
     // Le nouveau mot mémorisé est dérivé ici : comme partout ailleurs, il ne
     // quitte pas ce navigateur.
-    const d = await post('/api/recover_l3_reset.php', {
+    // Un sel NEUF : le mot mémorisé est remplacé, donc son sel n'a aucune raison
+      // d'être réutilisé. Le garder laisserait deux empreintes successives du
+      // même compte partager leur matériau.
+      const selNeuf = srEngendrerSel();
+      const d = await post('/api/recover_l3_reset.php', {
       dispute_number: etat.num, claim_secret: etat.sesame,
-      password: pw, recovery_derived_key: await srDerive(mot)
+      password: pw, recovery_salt: selNeuf,
+        recovery_derived_key: await srDerive(mot, selNeuf, { mode: 'hostname' })
     });
     if(!d.ok){ toast(d.message || DSP.err); return; }
     localStorage.removeItem('l3_case');

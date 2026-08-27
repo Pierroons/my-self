@@ -58,7 +58,7 @@ SelfAct lit une **analyse SelfJustice JSON** en entrée. L'analyse contient :
 1. Sélectionne les **templates de document** correspondants (mise en demeure + saisine médiateur).
 2. Les remplit avec les parties, les faits, la base légale.
 3. Calcule le **calendrier procédural** depuis le délai extrait.
-4. Génère des PDF signés (via `weasyprint` ou `pdfkit`) avec XML CERFA le cas échéant.
+4. Génère le brouillon du courrier via `api/draft.php`, avec XML CERFA le cas échéant.
 5. Sort un **pack dossier** : `dossier-2026-0042.zip` contenant tous les documents, un readme pour l'utilisateur, et un plan d'action.
 
 ---
@@ -112,7 +112,7 @@ n'échange aucun appel avec lui : SelfJustice dit le droit, SelfAct fait la
 démarche.
 
 - [x] Note de conception
-- [x] Catalogue de ressources — 1 895 ressources officielles en 16 catégories, moissonnées sur service-public.gouv.fr, rafraîchies les 1er et 15
+- [x] Catalogue de ressources — plus de 1 800 ressources officielles en 16 catégories, moissonnées sur service-public.gouv.fr, rafraîchies les 1er et 15 (compte exact : `/act/api/catalog.php?stats=1`)
 - [x] Aiguillage par situation — 20 situations curées à la main, chacune reliée à un acte, un article et un formulaire
 - [x] Moteur d'échéance — art. 640-643 CPC, métropole / outre-mer / étranger, avec export agenda, couvert par un garde-fou en CI
 - [x] Gabarits de courrier — mise en demeure, saisine, contestation, résiliation, recours, chacun avec un filigrane « NON OFFICIEL — IRRECEVABLE » qui survit à l'impression

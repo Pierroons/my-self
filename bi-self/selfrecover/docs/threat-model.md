@@ -4,8 +4,14 @@
 
 ## Threats SelfRecover protects against
 
-### ✓ Passive phishing
-The derivation is bound to a stable service label. A passive phishing clone that copies the page without adapting its code derives a useless key. The honest limit: an **active** phishing site that controls its own page (hard-coding the right label, fetching the public per-user salt) can reproduce the real key — out of scope, as for any in-browser protocol.
+### ✓ Passive phishing — in `'hostname'` mode only
+The derivation binds the fingerprint to a per-service *material*, and which material is used is a mandatory, explicit mode (see [architecture](architecture.md#the-derivation-material--mandatory-mode-no-default)).
+
+In `'hostname'` mode the material is `location.hostname`, **read in the browser**. A passive phishing clone that copies the page also copies the library, which then reads the clone's own hostname: the key it derives is useless against the real server, with no adaptation needed on the defender's side.
+
+In `'label'` mode there is **no protection at all**. The label travels with the copy, so a clone served elsewhere derives exactly the fingerprint the real server stored. A deployment in `'label'` mode must not be described as phishing-resistant.
+
+The honest limit, in both modes: an **active** phishing site that controls its own page harvests the raw word from its own form and derives whatever it needs afterwards — out of scope, as for any in-browser protocol.
 
 ### ✓ Email account takeover
 The entire industry standard "reset password via email" chain is eliminated. If your Gmail gets hacked, your SelfRecover-based accounts are not automatically compromised — there's no email link to click.
@@ -72,7 +78,7 @@ If a user forgets their password AND their passphrase AND their recovery word, t
 
 | Threat | Protected ? | Mitigation |
 |--------|:---:|---|
-| Passive phishing | ✓ (partial) | HMAC per service; active phishing out of scope |
+| Passive phishing | ✓ in `'hostname'` mode / ✗ in `'label'` mode | Material read in the browser; active phishing out of scope in both |
 | Email account takeover | ✓ | No email used |
 | SMTP failures | ✓ | No SMTP |
 | Third-party trust | ✓ | Local only |

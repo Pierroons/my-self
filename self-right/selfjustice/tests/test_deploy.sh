@@ -44,8 +44,8 @@ GABARIT="justice.example.org"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-echecs=0
-ok()  { echo "  ✓ $1"; }
+echecs=0 reussites=0
+ok()  { echo "  ✓ $1"; reussites=$((reussites + 1)); }
 nok() { echo "  ✗ $1" >&2; echecs=$((echecs + 1)); }
 
 [ -f "$DEPLOY" ] || { echo "deploy.sh introuvable : $DEPLOY" >&2; exit 1; }
@@ -167,10 +167,15 @@ else
     nok "H — gabarit absent de la source : code $code, page servie remplacée ($temoin → $apres o) sans substitution"
 fi
 
+# 🔑 Le total se compte, il ne s'écrit pas. Son jumeau
+# `deploy/my-self/tests/test_deploy.sh` l'a corrigé le 22/08/2026 — « le banc
+# annonçait dix propriétés en en éprouvant douze » — et le remède n'avait pas
+# traversé. Le « 8 » était écrit à deux endroits, à trois lignes l'un de l'autre.
+total=$((reussites + echecs))
 echo
 if [ "$echecs" -eq 0 ]; then
-    echo "OK — 8/8 cas conformes."
+    echo "OK — $total/$total cas conformes."
     exit 0
 fi
-echo "ÉCHEC — $echecs cas sur 8." >&2
+echo "ÉCHEC — $echecs cas sur $total." >&2
 exit 1

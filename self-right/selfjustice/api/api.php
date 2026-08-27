@@ -134,17 +134,21 @@ function code_slug(string $titre): string {
  * et de l'habitation) ne se dérivent pas d'un titre, et ils sont entrés dans
  * des configurations clientes qu'on ne casse pas.
  *
- * Coût : une requête d'agrégation, 0,2 s mesuré sur 525 441 articles. Elle ne
- * s'exécute QUE lorsque la table manuelle a échoué, c'est-à-dire là où le
- * guichet rendait une erreur. Le chemin nominal ne ralentit pas.
+ * Coût : une requête d'agrégation sur toute la table. Elle ne s'exécute que si
+ * la table manuelle a échoué — la chaîne de `??` chez l'appelant ne l'évalue
+ * pas autrement — c'est-à-dire là où le guichet rendait une erreur. Le chemin
+ * nominal ne la paie pas.
  */
 function codes_en_base(SQLite3 $db): array {
     static $cache = null;
     if ($cache !== null) return $cache;
     $cache = [];
     // Seuls les codes. Sur la base élargie, dériver un slug de chaque texte
-    // porteur en produirait 149 020 au lieu de 108 — dont « arrete_du_25_juin_1980 »
+    // porteur en produirait 148 978 au lieu de 108 — dont « arrete_du_25_juin_1980 »
     // et ses milliers de frères, qui ne sont pas des noms qu'on tape.
+    // (148 978 identifiants distincts dans `articles`, mesuré le 27/08/2026 ;
+    // à ne pas confondre avec les 149 020 textes de la base amont, dont 42
+    // ne portent aucun article.)
     $filtre = legi_a_nature($db) ? "AND nature = 'CODE' " : "";
     $res = @$db->query(
         "SELECT code_id, MIN(code_titre) AS titre FROM articles "
@@ -186,14 +190,17 @@ function legi_a_nature(SQLite3 $db): bool {
  * qui n'a aucune chance de ressembler à un numéro d'article. Mesuré à chaud sur
  * la base élargie :
  *
- *     exact    num = 'L1152-1'         0 à 2 ms   (index)
- *     préfixe  num LIKE 'L1152-1%'      270 ms    (index)
- *     contient num LIKE '%L1152-1%'   2 500 ms    (balayage)
+ *     exact    num = 'L1152-1'         index
+ *     préfixe  num LIKE 'L1152-1%'     index
+ *     contient num LIKE '%L1152-1%'    balayage ← le seul
  *
- * Soit 2,5 s avant même de commencer le plein texte. On descend donc l'escalier
- * marche par marche, et on s'arrête à la première qui rend quelque chose. La
- * passe entière est sautée quand la requête ne porte aucun chiffre : un numéro
- * d'article en contient toujours un.
+ * On descend donc marche par marche, et on s'arrête à la première qui rend
+ * quelque chose. La passe entière est sautée quand la requête ne porte aucun
+ * chiffre : un numéro d'article en contient toujours un.
+ *
+ * ⚠️ Une requête qui porte un chiffre sans être un numéro — « arrêté du 25 juin
+ * 1980 », « loi de 1881 » — descend les trois marches et paie le balayage.
+ * L'escalier borne le cas courant, il ne supprime pas le pire.
  *
  * Les deux passes par numéro — le droit applicable, puis l'ancien — partagent
  * cette fonction : la stratégie est écrite une fois, et la seconde ne peut plus
@@ -201,11 +208,42 @@ function legi_a_nature(SQLite3 $db): bool {
  */
 function legi_par_numero(SQLite3 $db, string $q, int $limit, bool $en_vigueur): array {
     if (!preg_match('/\d/', $q)) return [];
+
+    // Au-delà de trois mots, ce n'est plus un numéro d'article.
+    //
+    // « arrêté du 25 juin 1980 » et « loi de 1881 » portent un chiffre, passent
+    // donc le filtre ci-dessus, et descendent les trois marches jusqu'au
+    // balayage — deux fois, une par passe. Mesuré : 1,2 s rendu par une requête
+    // dont aucune marche ne pouvait rien trouver, puisque aucun `num` ne contient
+    // une phrase.
+    //
+    // Trois mots couvrent 664 543 des 665 659 numéros indexés, soit 99,83 %
+    // (mesuré le 27/08/2026 : 642 451 à un mot, 18 002 à deux, 4 090 à trois).
+    // Les 1 116 restants sont des libellés d'annexes — « Annexe I, II, III » —
+    // que personne ne tape dans une barre de recherche. Le plein texte, lui,
+    // continue de les chercher.
+    $mots = count(preg_split('/\s+/', trim($q), -1, PREG_SPLIT_NO_EMPTY));
+    if ($mots > 3) return [];
+
+    // Et la marche du balayage ne se descend que sur un mot unique.
+    //
+    // Elle ne sert qu'à un usage : retrouver un fragment au MILIEU d'un numéro
+    // — « 1152 » pour atteindre « L1152-1 », que le préfixe ne trouve pas. Cet
+    // usage est toujours un mot seul. « loi de 1881 » tenait dans les trois mots
+    // et payait quand même le balayage, deux fois, pour 1,2 s et rien à trouver.
+    $marches = ($mots === 1) ? [$q, $q . '%', '%' . $q . '%'] : [$q, $q . '%'];
+    $nat   = legi_a_nature($db);
+    $cols  = "num, etat, code_id, code_titre, date_debut, date_fin" . ($nat ? ", nature" : "");
     $etat  = $en_vigueur ? "etat = 'VIGUEUR'" : "etat <> 'VIGUEUR'";
-    $ordre = $en_vigueur ? "num" : "date_fin DESC, num";
-    foreach ([$q, $q . '%', '%' . $q . '%'] as $i => $valeur) {
+    // Les codes d'abord. Un numéro peu discriminant est porté par des dizaines
+    // de textes — « 100 » vit dans 118 textes en vigueur, dont 3 codes — et
+    // `ORDER BY num` seul est une égalité totale : l'ordre rendu était celui du
+    // plan de requête, c'est-à-dire aucun.
+    $rang  = $nat ? "(nature = 'CODE') DESC, " : "";
+    $ordre = $en_vigueur ? $rang . "num" : $rang . "date_fin DESC, num";
+    foreach ($marches as $i => $valeur) {
         $operateur = ($i === 0) ? '=' : 'LIKE';
-        $stmt = $db->prepare("SELECT num, etat, code_id, code_titre, date_debut, date_fin
+        $stmt = $db->prepare("SELECT $cols
                               FROM articles
                               WHERE num $operateur :p AND $etat
                               ORDER BY $ordre
@@ -527,8 +565,7 @@ function texte_propre(?string $t): ?string {
  * autrefois vit aujourd'hui sous un autre numéro du même code.
  *
  * Le signal est rare — 73 numéros pour tout le code civil, mesuré le 22/08/2026
- * — donc il informe au lieu de bruiter. La requête coûte 7 ms quand elle
- * trouve, 52 ms quand elle ne trouve pas (525 441 articles).
+ * — donc il informe au lieu de bruiter.
  *
  * ⚠️ Ce que cette déduction NE couvre pas : un successeur dont le texte a été
  * réécrit en même temps qu'il changeait de numéro. C'est le cas de L122-14 du
@@ -933,19 +970,21 @@ if ($segments[0] === 'legi') {
         // tel. Le laisser filtrer produisait « Article introuvable », qui
         // accuse la référence pour la faute du code — et envoie corriger ce
         // qui est juste.
-        // Deux préfixes, mesurés sur la base : LEGITEXT porte les 3 486 textes
+        // Deux préfixes, mesurés le 27/08/2026 : LEGITEXT porte 3 486 textes
         // consolidés « pérennes » — dont les 108 codes — et JORFTEXT les
         // 145 492 autres, arrêtés et décrets en tête. N'accepter que le premier
         // rendait « Code inconnu » sur l'identifiant que la recherche venait
         // elle-même de servir : l'API refusait sa propre réponse.
         if ($code_filter && !preg_match('/^(?:LEGITEXT|JORFTEXT)\d+$/', $code_filter)) {
             $demande = code_slug($code_filter);
-            $connus  = codes_en_base($db);
+            // `??` n'évalue la suite que si la gauche est nulle : un alias de la
+            // table manuelle ne déclenche pas l'agrégation sur toute la table.
             $resolu  = $CODE_ALIASES[strtolower($code_filter)]
-                    ?? $connus[strtolower($code_filter)]
-                    ?? $connus[$demande]
+                    ?? codes_en_base($db)[strtolower($code_filter)]
+                    ?? codes_en_base($db)[$demande]
                     ?? null;
             if ($resolu === null) {
+                $connus = codes_en_base($db);
                 // Suggérer se mesure : on ne propose que des slugs assez
                 // proches pour qu'une faute de frappe les explique.
                 $proches = [];
@@ -960,7 +999,8 @@ if ($segments[0] === 'legi') {
                         : "")
                     . count($connus) . " codes sont servis, nommables par leur titre sans "
                     . "le mot « code » (artisanat, travail, procedure_civile…), ou par un "
-                    . "identifiant LEGITEXT. La référence « $ref » n'est pas en cause.",
+                    . "identifiant LEGITEXT ou JORFTEXT. La référence « $ref » n'est pas "
+                    . "en cause.",
                     400
                 );
             }
@@ -970,7 +1010,9 @@ if ($segments[0] === 'legi') {
         // Sans code désigné, seuls les codes répondent.
         //
         // 🔑 Depuis que la base porte tout le droit national, 147 870 textes
-        // portent un article « 1 » quand 111 seulement sont des codes. En
+        // portent un article « 1 » quand 108 seulement sont des codes (mesuré
+        // le 27/08/2026 ; le 111 écrit ici la veille comptait des LIGNES de
+        // `textes_versions`, pas des textes distincts). En
         // choisir un « par date la plus récente » revient à tirer au sort, et
         // les lister tous noie l'appelant sous un écran d'identifiants. Le
         // droit codifié reste donc la réponse par défaut ; un texte non
@@ -1144,24 +1186,46 @@ if ($segments[0] === 'legi') {
 
         $lignes_num = legi_par_numero($db, $q, $limit, true);
 
-        foreach ($lignes_num as $row) {
-            $cle = $row['num'] . '|' . $row['code_id'];
-            $vus[$cle] = true;
-            $results[] = [
-                'reference'  => $row['num'],
-                'etat'       => $row['etat'],
-                'code_id'    => $row['code_id'],
-                'code'       => $row['code_titre'],
-                'date_debut' => $row['date_debut'],
-                'date_fin'   => $row['date_fin'],
-                'match'      => 'numero',
-            ];
-        }
+        // 🔑 La passe par numéro ne prend que la moitié de la place.
+        //
+        // Depuis que la base porte tout le droit national, un numéro peu
+        // discriminant est porté par des dizaines de textes : « 100 » existe
+        // dans 118 textes en vigueur, dont 3 codes seulement. Sans plafond, la
+        // passe remplissait la limite de vingt lignes toutes numérotées pareil,
+        // `$reste` tombait à zéro, et la recherche plein texte n'était jamais
+        // exécutée. La requête rendait vingt fois le même numéro et rien de ce
+        // qu'on cherchait — sur les 108 codes d'hier, le même numéro ne pouvait
+        // pas saturer la liste.
+        //
+        // Le reliquat n'est pas jeté : il complète la fin de liste une fois que
+        // le plein texte a eu sa part.
+        $reserve = array_splice($lignes_num, (int) ceil($limit / 2));
+
+        $verser = function (array $lignes) use (&$results, &$vus, $limit): void {
+            foreach ($lignes as $row) {
+                if (count($results) >= $limit) return;
+                $cle = $row['num'] . '|' . $row['code_id'];
+                if (isset($vus[$cle])) continue;
+                $vus[$cle] = true;
+                $results[] = [
+                    'reference'  => $row['num'],
+                    'etat'       => $row['etat'],
+                    'code_id'    => $row['code_id'],
+                    'code'       => $row['code_titre'],
+                    'nature'     => $row['nature'] ?? null,
+                    'date_debut' => $row['date_debut'],
+                    'date_fin'   => $row['date_fin'],
+                    'match'      => 'numero',
+                ];
+            }
+        };
+        $verser($lignes_num);
 
         $reste = $limit - count($results);
         if ($reste > 0 && legi_fts_disponible($db)) {
+            $col_nature = legi_a_nature($db) ? ", a.nature" : "";
             $stmt = $db->prepare(
-                "SELECT a.num, a.etat, a.code_id, a.date_debut, a.code_titre,
+                "SELECT a.num, a.etat, a.code_id, a.date_debut, a.code_titre$col_nature,
                         snippet(articles_fts, 0, '', '', '…', 12) AS extrait
                  FROM articles_fts f
                  JOIN articles a ON a.rowid = f.rowid
@@ -1190,6 +1254,7 @@ if ($segments[0] === 'legi') {
                     'code_id'    => $row['code_id'],
                     'date_debut' => $row['date_debut'],
                     'code'       => $row['code_titre'],
+                    'nature'     => $row['nature'] ?? null,
                     'extrait'    => trim($row['extrait']),
                     'match'      => 'texte',
                 ];
@@ -1199,10 +1264,14 @@ if ($segments[0] === 'legi') {
             }
         }
 
+        // Le reliquat de la passe par numéro, maintenant que le plein texte a
+        // pris sa part.
+        $verser($reserve);
+
         // Troisième passe : les articles qui ne sont plus en vigueur, après les
         // autres et jamais mélangés.
         //
-        // 🔑 Sans elle, 365 477 des 525 092 articles étaient introuvables par
+        // 🔑 Sans elle, la moitié de la base était introuvable par
         // la recherche alors que /legi/article les sert. Les deux outils se
         // contredisaient, et le message d'introuvable renvoyait justement vers
         // celui qui ne pouvait pas répondre : un faux négatif présenté comme
@@ -1224,6 +1293,7 @@ if ($segments[0] === 'legi') {
                     'etat'       => $row['etat'],
                     'code_id'    => $row['code_id'],
                     'code'       => $row['code_titre'],
+                    'nature'     => $row['nature'] ?? null,
                     'date_debut' => $row['date_debut'],
                     'date_fin'   => $row['date_fin'],
                     'match'      => 'numero_abroge',

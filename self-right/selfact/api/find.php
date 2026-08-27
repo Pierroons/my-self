@@ -13,17 +13,21 @@
  *
  * ## Deux sources, deux niveaux de confiance
  *
- * `acts` vient de situations.json : douze situations curées à la main, avec
- * statut juridique, seuils et articles applicables. C'est vérifié, c'est peu
- * nombreux, et ça prime.
+ * `acts` vient de situations.json : une vingtaine de situations curées à la
+ * main, avec statut juridique, seuils et articles applicables. C'est vérifié,
+ * c'est peu nombreux, et ça prime. Le compte exact se demande —
+ * `/act/api/find?list=1` rend la liste : il a doublé le 03/08/2026 sans que
+ * le « douze » écrit ici bouge, et il a survécu à deux réécritures de ce
+ * docblock.
  *
  * `catalog_suggestions` vient de catalog.json : près de deux mille ressources
  * officielles synchronisées automatiquement, rapprochées de la situation par
  * mots-clés. C'est large et non vérifié pièce à pièce.
  *
  * 🔑 **Les deux ne sont pas mélangées, et c'est le point.** Le catalogue était
- * jusqu'ici invisible depuis cet endpoint : douze situations donnaient accès à
- * une trentaine d'actes, et les 1 895 entrées indexées ne servaient à rien.
+ * jusqu'ici invisible depuis cet endpoint : les situations curées donnaient
+ * accès à quelques dizaines d'actes, et les milliers d'entrées indexées ne
+ * servaient à rien.
  * Les fondre dans une liste unique aurait résolu la visibilité en détruisant
  * l'information qui compte — savoir ce qui a été relu par un humain.
  *

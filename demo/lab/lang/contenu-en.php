@@ -201,8 +201,8 @@ return [
     'Usage légitime' => 'Legitimate use',
     'POST avec le bon jeton CSRF : ✓ accepté' => 'POST with the correct CSRF token: ✓ accepted',
     'Clé dérivée sur le vrai site : %s' => 'Key derived on the real site: %s',
-    'Les deux clés diffèrent → un faux site ne peut PAS reproduire la bonne.'
-        => 'The two keys differ → a fake site CANNOT reproduce the right one.',
+    'Les deux clés diffèrent tant que le faux site ne recopie pas le vrai label ; avec ce label en dur, il reproduit la bonne.'
+        => 'The two keys differ as long as the fake site does not copy the real label; with that label hard-coded, it reproduces the right one.',
 
     // ── Attack simulator: remaining strings ──────────────────────────────
     'Recherche "RIB" / "Acacias" dans le dump : 0 résultat'
@@ -216,8 +216,8 @@ return [
     'Vote du membre établi : ✓ conservé (+1)' => 'Established member\'s vote: ✓ kept (+1)',
     'La manipulation coordonnée est annulée et la réputation restaurée, sans toucher aux votes honnêtes.'
         => 'Coordinated manipulation is cancelled and the reputation restored, without touching honest votes.',
-    'L\'action légitime (bon jeton, vrai domaine) passe ; l\'attaquant cross-site et le phishing échouent.'
-        => 'The legitimate action (right token, real site) goes through; the cross-site attacker and the phishing site both fail.',
+    'L\'action légitime passe ; l\'attaquant cross-site échoue, et un clone qui ne recopie pas le vrai label dérive une clé inutile.'
+        => 'The legitimate action goes through; the cross-site attacker fails, and a clone that does not copy the real label derives a useless key.',
 
     // ── Remaining content strings ────────────────────────────────────────
     '3 downvotes coordonnés → %d annulés (pack_voting)' => '3 coordinated downvotes → %d cancelled (pack voting)',

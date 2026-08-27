@@ -160,15 +160,18 @@ Three primary classes exposed: `SelfDataGuard` (façade), `SqliteAdapter` (stora
 
 ## Testing
 
-Five sanity test suites, runnable directly with `php` (no PHPUnit required):
+Eight sanity test suites, runnable directly with `php` (no PHPUnit required):
 
 ```bash
 php tests/sanity_primitives.php   # 27 tests — Argon2id, HMAC, AES-GCM, randomness
-php tests/sanity_vault.php        #  33 tests — register, unlock, rotation, AAD binding
+php tests/sanity_vault.php        # 33 tests — register, unlock, rotation, AAD binding
 php tests/sanity_fields.php       # 25 tests — field encrypt/decrypt + blind index
 php tests/sanity_storage.php      # 36 tests — SQLite adapter, "DB dump = soup" test
 php tests/sanity_facade.php       # 34 tests — full API end-to-end
-# Total: 191 tests, 0 failures
+php tests/sanity_audit.php        #  6 tests — audit log
+php tests/sanity_ceremony.php     # 14 tests — key ceremony
+php tests/sanity_escrow.php       # 16 tests — escrow compartment
+# Total: 191 tests, 0 failures — counted by running them, 2026-08-27
 ```
 
 The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file and verifies that no plaintext personal data appears anywhere in the binary blob.

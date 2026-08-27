@@ -35,10 +35,11 @@ $PHR = 'cheval agrafe batterie correct';
 $now = 1_700_000_000;
 
 $st = $db->prepare(
-    'INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (:u,:pw,:pa,:re,:t)'
+    'INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, recovery_salt, created_at)
+     VALUES (:u,:pw,:pa,:re,:sel,:t)'
 );
 foreach ([':u' => 'alice', ':pw' => Hashing::hash('initial'), ':pa' => Hashing::hash($PHR),
-          ':re' => Hashing::hash($MOT), ':t' => $now] as $k => $v) {
+          ':re' => Hashing::hash($MOT), ':sel' => bin2hex(random_bytes(16)), ':t' => $now] as $k => $v) {
     $st->bindValue($k, $v);
 }
 $st->execute();
@@ -106,6 +107,93 @@ $stockage->consommerCode($id, $now);
 $stockage->validerTransaction();
 verifier('une transaction validée écrit bien',
     (int) $db->querySingle('SELECT COUNT(*) FROM recovery_codes WHERE used = 1') === $avant + 1);
+
+echo "\n→ Le sel de dérivation, par compte\n";
+// 🔑 Le schéma doit porter la colonne, sinon l'inscription range le sel nulle
+// part et le compte devient irrécupérable — sans qu'aucune erreur ne survienne.
+$colonnes = [];
+$q = $db->query('PRAGMA table_info(accounts)');
+while ($c = $q->fetchArray(SQLITE3_ASSOC)) { $colonnes[] = $c['name']; }
+verifier('accounts porte recovery_salt', in_array('recovery_salt', $colonnes, true),
+    implode(', ', $colonnes));
+
+echo "\n→ La formule de dérivation, confrontée aux vecteurs figés\n";
+// Ce miroir PHP existe parce que cette sonde n'a pas de navigateur. Il ne vaut
+// que confronté : sans les vecteurs, il validerait sa propre copie.
+$fichierVecteurs = __DIR__ . '/../../../bi-self/selfrecover/tests/vecteurs-derivation.json';
+$doc = json_decode((string) file_get_contents($fichierVecteurs), true);
+verifier('les vecteurs de la bibliothèque sont lisibles', is_array($doc['vecteurs'] ?? null),
+    $fichierVecteurs);
+$miroir = static function (string $mot, string $sel, string $mode, string $mat): string {
+    $m = $mode === 'hostname' ? strtolower($mat) : $mat;
+
+    return hash_hmac('sha256', $m . '|v2' . $sel, $mot);
+};
+$divergents = 0;
+foreach (($doc['vecteurs'] ?? []) as $v) {
+    if (!hash_equals($v['empreinte'], $miroir($v['mot'], $v['sel'], $v['mode'], $v['materiel']))) {
+        $divergents++;
+    }
+}
+verifier(sprintf('les %d vecteurs sont retrouvés', count($doc['vecteurs'] ?? [])), $divergents === 0,
+    $divergents > 0 ? "{$divergents} divergent(s)" : '');
+verifier('la version du document est celle que la formule emploie', ($doc['version'] ?? '') === 'v2',
+    (string) ($doc['version'] ?? '?'));
+
+echo "\n→ La route de sel ne doit pas devenir un oracle\n";
+// ⚠️ Ces contrôles appellent `RecoverHelper::selDeDerivation` EN DIRECT, sur une
+// vraie session de démo. Ce n'est PAS la façade : le visiteur passe par
+// `api/recover/sel.php`, qui n'est pas exercée ici. Une normalisation ajoutée
+// dans cette route, ou ses deux derniers arguments intervertis, laisserait les
+// contrôles ci-dessous verts.
+//
+// C'est exactement la leçon que ce dépôt vient de tirer du lab, et il ne suffit
+// pas de l'écrire : la façade est éprouvée par `tests/integration.sh`, qui la
+// frappe en HTTP. Ce fichier garde l'unité, celui-là garde la route.
+$racineSessions = sys_get_temp_dir() . '/duo-sonde-' . getmypid();
+@mkdir($racineSessions, 0700, true);
+putenv('SELFRECOVER_SESSIONS_DIR=' . $racineSessions);
+try {
+    require_once __DIR__ . '/../lib/recover_helper.php';
+    // `create` rend un tableau : la session est dans sa clé, pas à la racine.
+    $ouverture = DemoSession::create('selfrecover');
+    verifier('une session de démo s\'ouvre', ($ouverture['ok'] ?? false) === true,
+        (string) ($ouverture['error'] ?? ''));
+    $sess = $ouverture['session'];
+
+    $selVrai = bin2hex(random_bytes(16));
+    $ins = $sess->db()->prepare(
+        "INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, recovery_salt, created_at)
+         VALUES ('carol', 'x', 'y', 'z', :s, :t)"
+    );
+    $ins->bindValue(':s', $selVrai);
+    $ins->bindValue(':t', time());
+    $ins->execute();
+
+    verifier('un compte connu rend SON sel',
+        RecoverHelper::selDeDerivation($sess, '', 'carol') === $selVrai);
+
+    $faux1 = RecoverHelper::selDeDerivation($sess, '', 'personne');
+    $faux2 = RecoverHelper::selDeDerivation($sess, '', 'personne');
+    verifier('un compte inconnu rend quand même un sel', strlen($faux1) === 32, $faux1);
+    verifier('deux fois le même — donc pas de bruit qui trahirait', $faux1 === $faux2);
+    verifier('et distinct du vrai', $faux1 !== $selVrai);
+
+    $c1 = RecoverHelper::selDeDerivation($sess, 'aaaaa-bbbbb');
+    $c2 = RecoverHelper::selDeDerivation($sess, 'aaaaa-bbbbb');
+    verifier('idem par un code inventé', strlen($c1) === 32 && $c1 === $c2);
+    verifier('un code inventé et un compte inconnu ne rendent pas le même sel', $c1 !== $faux1);
+
+    // Le contre-témoin de cette série, c'est « un compte connu rend SON sel »
+    // plus haut : une méthode qui rendrait toujours un faux sel y échouerait la
+    // première. Étiqueter celui-ci comme tel serait se tromper de garde-fou —
+    // et ne pas le remplacer le jour où on casse le vrai.
+    verifier('les deux familles de faux sels ne se confondent pas avec le vrai',
+        $selVrai !== $faux1 && $selVrai !== $c1);
+} finally {
+    putenv('SELFRECOVER_SESSIONS_DIR');
+    exec('rm -rf ' . escapeshellarg($racineSessions));
+}
 
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Équivalence bi-self-duo ⨯ SelfRecover — %d passés, %d échoués\n", $passes, $echecs);

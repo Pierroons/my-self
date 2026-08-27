@@ -43,11 +43,16 @@ async function creer(){
     return;
   }
   // Dérivation dans le navigateur : le mot mémorisé ne quitte jamais ce poste.
-  // Le serveur ne reçoit que HMAC(mot, label de service) et n'en stocke qu'un
-  // Argon2id — il ne peut donc pas reconstituer ce que ce mot ouvre ailleurs.
-  const recovery_derived_key = await srDerive(recovery);
+  // Le serveur ne reçoit que HMAC(clé = mot, message = nom d'hôte + « |v2 » +
+  // sel) et n'en stocke qu'un Argon2id — il ne peut donc pas reconstituer ce
+  // que ce mot ouvre ailleurs.
+  // Le sel accompagne la dérivation : il est engendré ici, part avec l'empreinte,
+  // et le serveur ne fait que le ranger. Il n'est pas secret — il empêche que
+  // deux personnes au même mot mémorisé produisent la même empreinte.
+  const recovery_salt = srEngendrerSel();
+  const recovery_derived_key = await srDerive(recovery, recovery_salt, { mode: 'hostname' });
   fetch('/api/register.php',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({username, recovery_derived_key})})
+    body:JSON.stringify({username, recovery_derived_key, recovery_salt})})
     .then(r=>r.json()).then(d=>{
       const msg=document.getElementById('msg');
       if(d.ok){

@@ -67,8 +67,8 @@ de droit tenues à jour, pas des dispositifs de protection.
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.3.0** — installé et documenté |
 | [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.2.0** — en service, 191 contrôles |
 | [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.1.0 bêta** |
-| [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — en ligne, 1 895 démarches officielles |
-| [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.3.0** — recoupement des votants liés, convalescence, motif de vote ; 16 contrôles ; 2 mécanismes manquent |
+| [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — en ligne, plus de 1 800 démarches officielles |
+| [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.3.0** — recoupement des votants liés, convalescence, motif de vote ; 24 contrôles ; 2 mécanismes manquent |
 
 Chaque ligne ci-dessus mène à du code lisible et exécutable. Pas de lien vers une
 démo hébergée : tout s'auto-héberge depuis ce dépôt.

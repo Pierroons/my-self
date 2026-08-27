@@ -17,7 +17,7 @@ This whitepaper describes the protocol. It is neither an ad-hoc critique of any 
 
 ## Abstract
 
-SelfRecover is a split-knowledge account recovery protocol that eliminates the dependency on email for password recovery. It relies on a HMAC-SHA256 derivation performed client-side using the current domain as key material, so the raw recovery word never leaves the browser, and a captured word is useless on any other domain (native anti-phishing). This document describes the protocol, its three-level escalation, the threat model, and mandatory deployment rules.
+SelfRecover is a split-knowledge account recovery protocol that eliminates the dependency on email for password recovery. It relies on a HMAC-SHA256 derivation performed client-side, keyed by the recovery word itself, with the derivation material, the format version and the account salt carried in the message: the raw recovery word never leaves the browser, and the server stores only Argon2id hashes of per-service derived keys, which prevents correlating stored fingerprints across services. This document describes the protocol, its three-level escalation, the threat model, and mandatory deployment rules.
 
 ---
 
@@ -65,15 +65,17 @@ That's it. Two things. For every site. Forever.
 When a new account is created, the recovery word is immediately processed through HMAC-SHA256 derivation. The raw word never reaches the server.
 
 ```
-derived_key = HMAC-SHA256(service_label ‖ user_salt, recovery_word)
+derived_key = HMAC-SHA256(key = recovery_word, message = material + "|v2" + account_salt)
 ```
+
+`material` depends on a mandatory derivation mode, described in §4. The output is 64 lowercase hex characters.
 
 The server receives and stores:
 
 - `Argon2id(password)` — classic password hash
 - `Argon2id(passphrase)` — a diceware passphrase generated server-side (4 words, ~51 bits of entropy)
 - `Argon2id(derived_key)` — the HMAC-derived recovery key
-- `user_salt` — the per-user salt (client-generated, not a secret)
+- `account_salt` — the account salt: 16 random bytes rendered as 32 lowercase hex characters, one per account, browser-generated, not a secret
 
 The user receives the passphrase once and is asked to save it offline.
 
@@ -97,19 +99,31 @@ Three levels, each with its own guarantees and failure modes:
 
 This is the core innovation of SelfRecover.
 
-When the user types their recovery word, the browser computes a service-specific derived key **before anything leaves the client**:
+When the user types their recovery word, the browser computes a service-specific derived key **before anything leaves the client**. The shipped component that performs this computation is `client/sr-derive.js`; the frozen vectors any reimplementation must reproduce live in `tests/vecteurs-derivation.json`.
 
 ```javascript
-const SERVICE_LABEL = 'selfrecover.my-self.fr'; // stable, configured label (not the URL)
-async function hmacDerive(word, userSalt) {
+// The form shipped by client/sr-derive.js. The memorized word is the KEY, never the message.
+const VERSION = 'v2';
+
+function material(mode, label) {
+    // Read in the browser, never received from the network.
+    if (mode === 'hostname') return location.hostname.toLowerCase();
+    if (mode === 'label')    return label;            // taken verbatim
+    throw new Error("mode is mandatory: 'hostname' or 'label' — there is no default");
+}
+
+async function srDerive(word, salt, { mode, label }) {
+    if (!/^[0-9a-f]{32}$/.test(salt)) {
+        throw new Error('salt is mandatory — 32 hex characters, one per account');
+    }
     const enc = new TextEncoder();
-    const keyMaterial = enc.encode(SERVICE_LABEL + userSalt);
+    const message = material(mode, label) + '|' + VERSION + salt;
     const key = await crypto.subtle.importKey(
-        'raw', keyMaterial,
+        'raw', enc.encode(word),
         { name: 'HMAC', hash: 'SHA-256' },
         false, ['sign']
     );
-    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(word));
+    const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message));
     return Array.from(new Uint8Array(sig))
         .map(b => b.toString(16).padStart(2, '0')).join('');
 }
@@ -122,9 +136,21 @@ async function hmacDerive(word, userSalt) {
 - The server never sees the word — only the derived key
 - Output is always 256 bits regardless of input length
 - Works on any device — same math, same result
-- The service label is a stable configured constant (not the live URL); each account also has its own salt
+- The version lives **inside the message**: during a migration a service can derive under two versions and accept both
+- Each account has its own salt, browser-generated and not secret: it prevents two people who chose the same word from producing the same fingerprint
 
-**Passive-phishing resistance.** A passive clone that copies the page without adapting it derives a useless key, and per-account salts defeat cross-account correlation. The honest limit: an active phishing site controlling its own page can reproduce the key (out of scope, as for any in-browser protocol), and a reused raw word stays reusable — the derivation does not save a known, reused secret.
+### 4.1 The derivation mode — mandatory, no default
+
+`material` decides what the fingerprint is bound to, and the trade-off depends on how the service is served. The library does not settle it on the integrator's behalf, and above all not through a default: a default is chosen by everyone, so it is settling the question without saying so. A call without a mode throws.
+
+| Mode | `material` is… | What it buys | What it costs |
+|------|---------------|--------------|---------------|
+| `'hostname'` | `location.hostname`, **read in the browser**, lowercased | Real anti-phishing: a page imitating the service gets a fingerprint derived from **its own** address, worthless against the real server | Losing the address means losing L2 recovery for every account. The price is not the same everywhere: on the ordinary web a domain expires, lapses, gets re-registered; on a v3 hidden service the address **is** the service's public key and depends on no registrar |
+| `'label'` | a stable label supplied by the integrator, taken **verbatim** | Survives a change of address | **No anti-phishing at all.** A copy served elsewhere, with the same label, produces exactly the fingerprint the server stored |
+
+The material must be **read** in the browser, never received from the network: material that a server supplies is material that any server can supply, including that of a page imitating the service.
+
+**Passive-phishing resistance — in `'hostname'` mode only.** The clone copies the page, therefore copies the library, which then reads the clone's own address: the resulting key is worthless against the real server, and the clone had to do nothing wrong for that to happen. In `'label'` mode this resistance does not exist — the label travels with the copy. The honest limit, in both modes: an active phishing site controlling its own page harvests the raw word and derives whatever it wants afterwards (out of scope, as for any in-browser protocol), and a raw word reused elsewhere stays reusable — the derivation does not save a known, reused secret.
 
 ---
 
@@ -278,7 +304,7 @@ The user sees a reassuring "Your account is now secured" message — not a techn
 
 ### 10.1 Threats addressed
 
-- **Passive phishing** — HMAC per service means a clone that doesn't adapt its code derives a different key (active phishing controlling its own page is out of scope)
+- **Passive phishing** — in `'hostname'` mode, a clone derives from its own address and gets a different key. In `'label'` mode, no protection. Active phishing controlling its own page is out of scope in both cases
 - **Email account takeover** — there's no email involved, anywhere
 - **SMTP provider failures** — no SMTP dependency
 - **Third-party trust** — only the site and the user are involved
@@ -332,7 +358,7 @@ No system can protect against the simultaneous theft of all its factors. A leake
 SelfRecover assumes:
 
 - The user treats the recovery word like a house key — not written on a sticky note, not shared in a chat
-- The HMAC derivation limits damage to a single site (the word is useless on other domains)
+- In `'hostname'` mode, the derivation limits damage to the single hostname involved (the fingerprint is useless elsewhere); in `'label'` mode it only limits damage to services that do not share the same label
 - Rate limiting and L2→L3 escalation slow down brute-force attempts
 - The server cannot compensate for human carelessness — no system can
 
@@ -367,7 +393,7 @@ SelfRecover cannot protect accounts if the server hosting it is insecure. The fo
 
 ### 11.3 Application
 
-- [ ] HTTPS mandatory — HMAC derivation uses the domain, HTTP would expose it to MITM
+- [ ] HTTPS mandatory — in `'hostname'` mode the derivation reads the hostname, and without TLS nothing guarantees the page served actually comes from that service
 - [ ] Rate limiting on all recovery endpoints (nginx `limit_req` or application-level)
 - [ ] Security headers: CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
 - [ ] PHP: `disable_functions`, `open_basedir`, `expose_php off`
@@ -411,7 +437,7 @@ Not yet published. See the [MySelf-Lab](../../../demo/lab/) for a working standa
 | No third party | ✗ | ✗ (vendor lock-in) | ✓ |
 | Works on any device | ✓ | ~ (device-bound) | ✓ |
 | Recovery is offline-possible | ✗ | ✗ | ~ (user holds the secret) |
-| Anti-phishing by design | ✗ | ✓ | ✓ |
+| Anti-phishing by design | ✗ | ✓ | ~ (passive only, and in `'hostname'` mode only — §4.1) |
 | Per-site isolation | ✓ | ✓ | ✓ |
 | Zero user cost | ✓ | ✓ | ✓ |
 | Implementation complexity | high (SMTP) | high (FIDO2) | low |

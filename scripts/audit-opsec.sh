@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# audit-opsec.sh — les quatre angles morts de gitleaks.
+# audit-opsec.sh — les six angles morts de gitleaks.
 #
 # gitleaks cherche des SECRETS (clés, tokens, mots de passe) et le fait bien.
 # Il ne cherche pas les données PERSONNELLES, et surtout il ne regarde pas :
@@ -8,11 +8,15 @@
 #   2. les messages de commit                — aucun scanner ne les lit
 #   3. les fichiers disparus du HEAD         — ils dorment dans l'historique
 #   4. les métadonnées de documents          — DOCX et PDF portent un auteur
+#   5. le CORPS d'un document bureautique    — `git grep -I` saute les binaires
+#   6. les surfaces de la forge              — release, description : hors git
 #
-# Ce sont exactement les quatre endroits où dormaient les fuites de l'audit
-# du 28 juillet 2026 : un username système dans six fichiers d'historique, un
+# Les quatre premiers sont les endroits où dormaient les fuites de l'audit du
+# 28 juillet 2026 : un username système dans six fichiers d'historique, un
 # brief privé orphelin, un code postal publié par le message qui le masquait,
-# et un nom de domaine dans un corps de commit.
+# et un nom de domaine dans un corps de commit. Les deux derniers sont arrivés
+# le 24/08/2026, avec leurs propres mesures — et l'en-tête ne les avait jamais
+# vus : il annonçait quatre angles morts pour sept étages implémentés.
 #
 # ── Quatre modes, et pourquoi le plus précoce est le plus important ─────────
 #

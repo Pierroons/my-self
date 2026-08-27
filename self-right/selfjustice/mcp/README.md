@@ -98,11 +98,7 @@ que ce serveur existe pour empêcher.
 
 ## Installation
 
-```bash
-pip install selfright-mcp
-```
-
-Ou depuis les sources :
+Il n'y a pas encore de paquet PyPI — l'installation se fait depuis les sources :
 
 ```bash
 git clone https://github.com/Pierroons/my-self

@@ -75,7 +75,9 @@ No hot-reload — PHP-FPM picks up file changes on the next request.
 
 - Title : short, imperative, plain text — `"Add SelfGuard demo backend"`, not `feat(guard): ...`.
 - Body : explain **why** the change matters more than **what** changed. The diff already shows what.
-- Co-author the machine partner when applicable: `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
+- Co-author the machine partner when applicable, naming the model **you** used:
+  `Co-Authored-By: <model> <noreply@anthropic.com>`. Don't copy a version from
+  this file — it was two releases behind the repository's own commits.
 
 ## What we don't accept
 

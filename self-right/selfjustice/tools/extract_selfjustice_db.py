@@ -98,14 +98,26 @@ INDEXES = [
 # muet ; c'est l'index qui manquait.
 #
 # `content=articles` : l'index ne recopie pas le texte, il pointe vers la
-# table. Mesuré sur la base de production : +58 Mo pour 840 Mo de base, quatre
-# secondes de construction, quatre millisecondes par requête.
+# table. Son coût en place est une fraction de la base, pas un doublement.
 #
 # `remove_diacritics 2` pour que « prenom » trouve « prénom » — personne ne
 # tape les accents dans une barre de recherche.
 #
 # Seuls les articles en vigueur : c'est ce que la recherche rend, et les
 # abrogés restent consultables par leur numéro.
+#
+# 🔑 Et seuls ceux qui PORTENT un numéro.
+#
+# Un article sans numéro n'est pas adressable : `/legi/article/{ref}` cherche
+# par `num`, et une ligne de résultat sans référence ne peut être ni citée ni
+# rouverte. Le guichet dit pourtant « appelle `article_francais` sur la
+# référence retenue » — sur une ligne vide, c'est une impasse présentée comme
+# une piste.
+#
+# Ils sont 6 tant que la base ne porte que des codes. Elle en compte 13 194 dès
+# qu'elle porte les arrêtés (mesuré le 27/08/2026) : ce sont leurs annexes, dont
+# beaucoup ne font que renvoyer au fac-similé. Le contenu n'est pas perdu, il
+# n'est simplement plus proposé comme une réponse qu'on pourrait citer.
 FTS = [
     """CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
         texte, code_titre, num,
@@ -113,7 +125,8 @@ FTS = [
         tokenize="unicode61 remove_diacritics 2"
     )""",
     """INSERT INTO articles_fts(rowid, texte, code_titre, num)
-        SELECT rowid, texte, code_titre, num FROM articles WHERE etat = 'VIGUEUR'""",
+        SELECT rowid, texte, code_titre, num FROM articles
+         WHERE etat = 'VIGUEUR' AND num IS NOT NULL AND num != ''""",
 ]
 
 _BALISE = re.compile(r"<[^>]+>")
@@ -245,8 +258,11 @@ def main() -> int:
     #
     # Ce que l'INSERT du FTS a réellement inséré, c'est ceci — une seule source
     # pour les deux usages, ce message et le bilan final.
+    indexes = dst.execute(
+        "SELECT COUNT(*) FROM articles "
+        "WHERE etat = 'VIGUEUR' AND num IS NOT NULL AND num != ''").fetchone()[0]
     vigueur = dst.execute("SELECT COUNT(*) FROM articles WHERE etat='VIGUEUR'").fetchone()[0]
-    print(f" {vigueur} articles indexés")
+    print(f" {indexes} articles indexés ({vigueur} en vigueur)")
     dst.close()
     src.close()
 

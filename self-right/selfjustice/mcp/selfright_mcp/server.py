@@ -1075,7 +1075,7 @@ async def article_francais(reference: str, code: str | None = None) -> str:
             rend, sans en retirer l'espace.
         code: le titre du code sans le mot « code » (« travail », « artisanat »,
             « procedure_civile »), ou un identifiant LEGITEXT ou JORFTEXT tel
-            que la recherche le rend. Les 108 codes sont nommables en clair ;
+            que la recherche le rend. Les codes sont nommables en clair ;
             un arrêté, un décret ou une loi se désigne par son identifiant.
             Sans ce filtre, la recherche ne regarde QUE les codes — 147 870
             textes portent un article « 1 », et en servir un au hasard serait
@@ -1230,6 +1230,22 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
             f"{_titre_court(r.get('code') or '') or r.get('code_id')} "
             f"[{r.get('etat')}, {periode}]"
         )
+
+        # 🔑 L'identifiant, pour les textes qui ne sont pas des codes.
+        #
+        # Sans lui, la chaîne complète était rompue au milieu. La recherche
+        # rendait « DF 4 — Arrêté du 25 juin 1980 portant approbation… », le
+        # 404 de `article_francais` répondait « reprends l'identifiant rendu à
+        # côté du résultat » — et cet identifiant n'était nulle part. Le titre
+        # tronqué ne sert pas de clé : passé en `code=`, il rend « Code inconnu ».
+        #
+        # Un code garde sa ligne nue : son titre EST sa clé (« travail »,
+        # « artisanat »), et l'afficher pour les 108 codes alourdirait chaque
+        # liste sans rien apporter. Sur une base qui ne porte pas encore la
+        # nature, `nature` est absent et rien ne s'affiche — comme avant.
+        if (r.get("nature") or "CODE") != "CODE":
+            ligne += f"\n      code={r.get('code_id')}"
+
         extrait = (r.get("extrait") or "").strip()
         return ligne + (f"\n      {extrait[:160]}" if extrait else "")
 

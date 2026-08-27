@@ -326,4 +326,7 @@ refus sec, une redirection qui respecte la complexité du cas.
 
 *SelfAct v0.1.2 — module du binôme Self-Right de l'écosystème MySelf · Licence AGPL-3.0-or-later*
 *Cadence de mise à jour législative : bimensuelle (1er + 15) via SelfJustice.*
-*Dernière mise à jour : 19 avril 2026.*
+*Contenu aligné sur `act.php` et `act-docs.html`, qui font foi : ce fichier
+n'en est que la forme lisible par une IA. Pour dater la dernière révision,
+voir l'historique du dépôt plutôt qu'une date recopiée ici — il y en avait une,
+elle annonçait avril 2026 pour un contenu corrigé en août.*
