@@ -31,7 +31,7 @@ without an all-or-nothing rewrite of their authentication stack.
 | Mode | Email channel | Crypto added | When to pick it |
 |------|---------------|--------------|-----------------|
 | **Full** | None at all | Diceware EFF passphrase + HMAC-per-service | Greenfield projects, high-assurance and post-ANTS-leak threat models |
-| **Lite** 🆕 | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want phishing-resistance now and migrate to Full later |
+| **Lite** 🆕 | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want a recovery secret that never travels in clear, and migrate to Full later |
 
 **Try it:** see [Trying SelfRecover](#trying-selfrecover). The method comparison (8 adversaries × 3 models) is a standalone page: `tools/comparison.html`.
 

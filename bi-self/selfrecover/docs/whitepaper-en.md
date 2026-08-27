@@ -17,7 +17,7 @@ This whitepaper describes the protocol. It is neither an ad-hoc critique of any 
 
 ## Abstract
 
-SelfRecover is a split-knowledge account recovery protocol that eliminates the dependency on email for password recovery. It relies on a HMAC-SHA256 derivation performed client-side using the current domain as key material, so the raw recovery word never leaves the browser, and a captured word is useless on any other domain (native anti-phishing). This document describes the protocol, its three-level escalation, the threat model, and mandatory deployment rules.
+SelfRecover is a split-knowledge account recovery protocol that eliminates the dependency on email for password recovery. It relies on a HMAC-SHA256 derivation performed client-side, keyed by a stable service label and a per-user salt: the raw recovery word never leaves the browser, and the server stores only Argon2id hashes of per-service derived keys, which prevents correlating stored fingerprints across services. This document describes the protocol, its three-level escalation, the threat model, and mandatory deployment rules.
 
 ---
 
@@ -411,7 +411,7 @@ Not yet published. See the [MySelf-Lab](../../../demo/lab/) for a working standa
 | No third party | ✗ | ✗ (vendor lock-in) | ✓ |
 | Works on any device | ✓ | ~ (device-bound) | ✓ |
 | Recovery is offline-possible | ✗ | ✗ | ~ (user holds the secret) |
-| Anti-phishing by design | ✗ | ✓ | ✓ |
+| Anti-phishing by design | ✗ | ✓ | ~ (passive only — §10) |
 | Per-site isolation | ✓ | ✓ | ✓ |
 | Zero user cost | ✓ | ✓ | ✓ |
 | Implementation complexity | high (SMTP) | high (FIDO2) | low |

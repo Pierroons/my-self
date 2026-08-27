@@ -273,12 +273,12 @@ final class AttackSimulator
                 'lignes' => [
                     'POST avec le bon jeton CSRF : ' . ($avecBonToken ? '✓ accepté' : 'rejeté'),
                     sprintf(tc('Clé dérivée sur le vrai site : %s'), substr($cleVraiSite, 0, 24) . '…'),
-                    'Les deux clés diffèrent → un faux site ne peut PAS reproduire la bonne.',
+                    'Les deux clés diffèrent tant que le faux site ne recopie pas le vrai label ; avec ce label en dur, il reproduit la bonne.',
                 ],
             ],
             'verdict' => 'neutralisé',
-            'defense' => 'CSRF token HMAC par session + isolation de domaine SelfRecover',
-            'message_cle' => "L'action légitime (bon jeton, vrai domaine) passe ; l'attaquant cross-site et le phishing échouent.",
+            'defense' => 'CSRF token HMAC par session + dérivation par service SelfRecover',
+            'message_cle' => "L'action légitime passe ; l'attaquant cross-site échoue, et un clone qui ne recopie pas le vrai label dérive une clé inutile.",
         ];
     }
 }

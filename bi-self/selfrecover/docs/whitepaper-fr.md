@@ -413,7 +413,7 @@ Pas encore publiées. Voir [MySelf-Lab](../../../demo/lab/) pour une implémenta
 | Pas de tiers | ✗ | ✗ (vendor lock-in) | ✓ |
 | Fonctionne sur tous les appareils | ✓ | ~ (lié à l'appareil) | ✓ |
 | Récupération possible hors ligne | ✗ | ✗ | ~ (le user détient le secret) |
-| Anti-phishing par conception | ✗ | ✓ | ✓ |
+| Anti-phishing par conception | ✗ | ✓ | ~ (passif seulement — §10) |
 | Isolation par site | ✓ | ✓ | ✓ |
 | Coût zéro pour l'utilisateur | ✓ | ✓ | ✓ |
 | Complexité d'implémentation | haute (SMTP) | haute (FIDO2) | faible |
