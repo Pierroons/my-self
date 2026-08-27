@@ -970,7 +970,7 @@ if ($segments[0] === 'legi') {
         // tel. Le laisser filtrer produisait « Article introuvable », qui
         // accuse la référence pour la faute du code — et envoie corriger ce
         // qui est juste.
-        // Deux préfixes, mesurés sur la base : LEGITEXT porte les 3 486 textes
+        // Deux préfixes, mesurés le 27/08/2026 : LEGITEXT porte 3 486 textes
         // consolidés « pérennes » — dont les 108 codes — et JORFTEXT les
         // 145 492 autres, arrêtés et décrets en tête. N'accepter que le premier
         // rendait « Code inconnu » sur l'identifiant que la recherche venait
@@ -1010,7 +1010,9 @@ if ($segments[0] === 'legi') {
         // Sans code désigné, seuls les codes répondent.
         //
         // 🔑 Depuis que la base porte tout le droit national, 147 870 textes
-        // portent un article « 1 » quand 111 seulement sont des codes. En
+        // portent un article « 1 » quand 108 seulement sont des codes (mesuré
+        // le 27/08/2026 ; le 111 écrit ici la veille comptait des LIGNES de
+        // `textes_versions`, pas des textes distincts). En
         // choisir un « par date la plus récente » revient à tirer au sort, et
         // les lister tous noie l'appelant sous un écran d'identifiants. Le
         // droit codifié reste donc la réponse par défaut ; un texte non
