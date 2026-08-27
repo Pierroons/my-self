@@ -236,6 +236,13 @@ final class DemoSession {
     }
 
     private static function setCookie(string $id): void {
+        // En CLI il n'y a pas de réponse HTTP : `setcookie` y émet un
+        // avertissement que rien ne lit, et qui noie les sondes. Le contrôle
+        // porte sur le SAPI, pas sur « les en-têtes sont-ils déjà partis » —
+        // cette seconde forme masquerait un vrai défaut en production.
+        if (PHP_SAPI === 'cli') {
+            return;
+        }
         setcookie(
             self::COOKIE_NAME,
             $id,

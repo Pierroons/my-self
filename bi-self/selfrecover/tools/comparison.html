@@ -155,12 +155,13 @@
 5. Site demande nouveau pwd
    + MOT MÉMORISÉ
 6. Browser calcule
-   HMAC(salt, mot_mémorisé)
+   HMAC(clé = mot_mémorisé,
+        message = salt)
 7. Serveur vérifie HMAC →
    reset OK</div>
             <h3>Postulat</h3>
             <p style="font-size:0.85rem;">Email seul ≠ accès. Il faut aussi le mot mémorisé (1 mot, ex: <code>bob</code>).</p>
-            <div class="col-summary">→ Email volé seul = INSUFFISANT. Phishing bloqué (HMAC dérivé du domaine). Compatibilité SMTP préservée.</div>
+            <div class="col-summary">→ Email volé seul = INSUFFISANT. Le sel vient du jeton de reset, pas de l'adresse : la dérivation n'apporte ici aucun anti-hameçonnage. Compatibilité SMTP préservée.</div>
         </div>
 
         <!-- FULL -->
@@ -172,7 +173,7 @@
    + passphrase diceware
    (4-7 mots EFF officiels)
 2. Browser dérive HMAC
-   anti-phishing
+   sur le nom d'hôte lu
 3. Serveur vérifie le hash
    Argon2id stocké
 4. Reset effectué.
@@ -204,8 +205,8 @@
             <tr>
                 <td>Phishing (faux site)</td>
                 <td class="ko">❌ Token réutilisable</td>
-                <td class="ok">✓ Bloqué (HMAC dérivé du domaine)</td>
-                <td class="ok">✓ Bloqué (HMAC dérivé du domaine)</td>
+                <td class="partial">~ Non couvert par la dérivation (sel du jeton, pas d'adresse)</td>
+                <td class="ok">✓ Bloqué en mode <code>hostname</code> (adresse lue par le navigateur)</td>
             </tr>
             <tr>
                 <td>Fuite base de données</td>

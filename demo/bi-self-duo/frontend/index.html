@@ -332,7 +332,7 @@
 
 <!-- Schéma split-knowledge : montre où le secret existe et où il n'existe jamais -->
 <div class="scheme-split">
-  <div class="scheme-split-title">SelfRecover en une figure — split-knowledge HMAC par service</div>
+  <div class="scheme-split-title">SelfRecover en une figure — split-knowledge, dérivation liée au nom d'hôte</div>
   <div class="scheme-split-sub">Le secret brut ne quitte jamais le navigateur. Le serveur ne stocke que la dérivée.</div>
   <svg viewBox="0 0 800 220" xmlns="http://www.w3.org/2000/svg" aria-label="Schéma split-knowledge SelfRecover">
     <defs>
@@ -357,16 +357,16 @@
 
     <!-- Flèche 1 -->
     <line x1="200" y1="110" x2="288" y2="110" stroke="url(#ssArrow)" stroke-width="2" marker-end="url(#ssHead)"/>
-    <text x="244" y="100" text-anchor="middle" fill="#9aa0a6" font-family="ui-monospace,monospace" font-size="9">HMAC-SHA256(secret, domaine)</text>
+    <text x="244" y="100" text-anchor="middle" fill="#9aa0a6" font-family="ui-monospace,monospace" font-size="9">mot mémorisé (clé HMAC)</text>
 
     <!-- Boîte 2 : Navigateur / dérivation -->
     <g>
       <rect x="290" y="50" width="180" height="120" rx="10" fill="#1a2028" stroke="#7ab7ff" stroke-width="1.5"/>
       <text x="380" y="76" text-anchor="middle" fill="#7ab7ff" font-family="sans-serif" font-size="13" font-weight="700">🧮 Dérivation client</text>
       <text x="380" y="98" text-anchor="middle" fill="#e8eaed" font-family="ui-monospace,monospace" font-size="10">JS dans le navigateur</text>
-      <text x="380" y="118" text-anchor="middle" fill="#9aa0a6" font-family="ui-monospace,monospace" font-size="9">k = HMAC(secret, host)</text>
-      <text x="380" y="142" text-anchor="middle" fill="#d4c058" font-family="sans-serif" font-size="10">⚙ chaque site = clé unique</text>
-      <text x="380" y="158" text-anchor="middle" fill="#9aa0a6" font-family="sans-serif" font-size="9">(anti-phishing inter-sites)</text>
+      <text x="380" y="118" text-anchor="middle" fill="#9aa0a6" font-family="ui-monospace,monospace" font-size="9">k = HMAC(clé=mot, hôte+sel)</text>
+      <text x="380" y="142" text-anchor="middle" fill="#d4c058" font-family="sans-serif" font-size="10">⚙ hôte lu par le navigateur</text>
+      <text x="380" y="158" text-anchor="middle" fill="#9aa0a6" font-family="sans-serif" font-size="9">(anti-hameçonnage réel)</text>
     </g>
 
     <!-- Flèche 2 -->
@@ -380,15 +380,16 @@
       <text x="670" y="98" text-anchor="middle" fill="#e8eaed" font-family="ui-monospace,monospace" font-size="10">stocke Argon2id(k)</text>
       <text x="670" y="118" text-anchor="middle" fill="#9aa0a6" font-family="ui-monospace,monospace" font-size="9">aucun email, aucun secret brut</text>
       <text x="670" y="142" text-anchor="middle" fill="#dc2626" font-family="sans-serif" font-size="10">✗ ne peut pas réutiliser k</text>
-      <text x="670" y="158" text-anchor="middle" fill="#9aa0a6" font-family="sans-serif" font-size="9">(autre domaine = autre clé)</text>
+      <text x="670" y="158" text-anchor="middle" fill="#9aa0a6" font-family="sans-serif" font-size="9">(autre nom d'hôte = autre clé)</text>
     </g>
 
     <!-- Mention bas : pas de canal email = rien à exfiltrer -->
     <text x="400" y="200" text-anchor="middle" fill="#7cc47c" font-family="sans-serif" font-size="11" font-weight="600">Pas de canal SMTP. Pas de boîte mail à pirater. Pas de token reset à exfiltrer.</text>
   </svg>
   <ul class="scheme-split-legend">
-    <li>Le mot mémorisé n'apparaît jamais en clair côté serveur — uniquement <code>Argon2id(HMAC(secret, host))</code>.</li>
-    <li>Une fuite de la base d'un site ne permet pas d'attaquer les comptes du même utilisateur sur un autre site.</li>
+    <li>Le mot mémorisé sert de <strong>clé</strong> HMAC et ne quitte jamais le navigateur — le serveur ne range qu'un <code>Argon2id</code> de l'empreinte.</li>
+    <li>Le nom d'hôte entre dans le message, et le navigateur le lit lui-même : une page qui imite le service dérive une empreinte inutilisable ici, et la base d'un autre site n'en donne aucune.</li>
+    <li>Le sel accompagne le nom d'hôte : un par compte, engendré par le navigateur, non secret — il évite que deux mots identiques donnent la même empreinte.</li>
     <li>Mode <strong>Full</strong> : zéro email. Mode <strong>Lite</strong> : email conservé + mot mémorisé HMACé en plus du token reset.</li>
   </ul>
 </div>
@@ -403,7 +404,7 @@
       <div><span class="ok">✓</span> auth OK · pas d'email</div>
     </div>
     <div class="demo-tile-name">SelfRecover · Full</div>
-    <div class="demo-tile-desc">Récupération sans aucun email. Diceware EFF + HMAC anti-phishing inter-sites.</div>
+    <div class="demo-tile-desc">Récupération sans aucun email. Diceware EFF + HMAC lié au nom d'hôte.</div>
     <div class="demo-tile-cta">Lancer la démo</div>
   </a>
   <a class="demo-tile" href="/selfrecover/lite.html">
@@ -443,7 +444,8 @@
   <p>
     <strong><a href="/recover">SelfRecover</a></strong> existe en deux variantes selon ton infrastructure.
     Le <strong>Full</strong> retire totalement l'email du protocole : récupération par passphrase
-    diceware EFF + dérivation HMAC anti-phishing, donc zéro SMTP, zéro token reset à exfiltrer.
+    diceware EFF + dérivation HMAC liée au nom d'hôte que le navigateur lit, donc zéro SMTP,
+    zéro token reset à exfiltrer.
     Le <strong>Lite</strong> conserve l'email habituel et ajoute un mot mémorisé HMACé côté client :
     intégration plus douce sur un legacy existant, et même un attaquant qui contrôle la boîte mail
     ne peut pas reset le compte sans connaître ce mot. <em>Adoption progressive : Lite d'abord, Full ensuite.</em>
@@ -473,8 +475,9 @@
       <h3>SelfRecover<span class="status">v0.4.0 · 2 modes</span></h3>
       <p>
         Récupération de compte avec deux niveaux d'adoption.
-        <strong>Mode Full</strong> : zéro email, dérivation HMAC-SHA256 d'un mot
-        de récupération choisi par l'utilisateur (anti-phishing natif).
+        <strong>Mode Full</strong> : zéro email, le mot de récupération choisi par
+        l'utilisateur sert de clé HMAC-SHA256, avec le nom d'hôte lu par le
+        navigateur (anti-hameçonnage).
         <strong>Mode Lite</strong> : conserve le mail (compatibilité legacy)
         mais ajoute un mot mémorisé HMAC — un email intercepté seul ne suffit
         plus à compromettre le compte. Palier idéal pour tout service

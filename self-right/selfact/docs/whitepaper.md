@@ -65,24 +65,18 @@ All packaged into a single ZIP archive named `dossier-{ref}-{date}.zip`.
 | Civil général (dette, RC) | 5 | TJ, proximité | 13505*10 |
 | Pénal (plainte simple) | 3 | Procureur, commissariat | — |
 
-Each template is a Jinja2 file stored in `selfact/templates/`. The template engine fills in parties, facts, legal basis, amounts, reference numbers.
+Templates live in `selfact/api/data/gabarits.json` and are rendered server-side by `api/draft.php`, which fills in parties, facts, legal basis, amounts and reference numbers. The count is served by `/act/api/gabarits`.
 
 ## 3.3 Procedural calendar engine
 
-Article 640 CPC defines the French dies a quo / dies ad quem rules. SelfAct implements these as a small Python library:
+Article 640 CPC defines the French dies a quo / dies ad quem rules. SelfAct implements these in `api/deadline.php`, served over HTTP:
 
-```python
-from selfact.calendar import compute_deadline
-
-# Mise en demeure sent on 17 April 2026, standard 15-day clause
-deadline = compute_deadline(
-    start="2026-04-17",
-    duration_days=15,
-    rule="art_640_cpc",   # includes weekend/holiday roll-over
-    jurisdiction="FR"
-)
-# → date(2026, 5, 2)  (Friday, with no overflow)
 ```
+GET /act/api/deadline?start=2026-04-17&days=15
+```
+
+The response carries the computed date along with the roll-over applied when the
+term falls on a weekend or a public holiday.
 
 The output is injected into the generated calendar (.ics).
 

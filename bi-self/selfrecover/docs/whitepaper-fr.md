@@ -19,7 +19,7 @@ Ce whitepaper décrit le protocole. Il n'est ni une critique ad hoc d'un acteur,
 
 ## Résumé
 
-SelfRecover est un protocole de récupération de compte à connaissance partagée qui élimine la dépendance à l'email pour la réinitialisation de mot de passe. Il repose sur une dérivation HMAC-SHA256 effectuée côté client, clavée par un label de service stable et un sel par utilisateur : le mot de récupération brut ne quitte jamais le navigateur, et le serveur ne stocke que des hachages Argon2id de clés dérivées par service (ce qui empêche la corrélation des empreintes entre services). Ce document décrit le protocole, son escalade en trois niveaux, son modèle de menaces, et les règles de déploiement obligatoires.
+SelfRecover est un protocole de récupération de compte à connaissance partagée qui élimine la dépendance à l'email pour la réinitialisation de mot de passe. Il repose sur une dérivation HMAC-SHA256 effectuée côté client, clavée par le mot de récupération lui-même, dont le message porte le matériel de dérivation, la version du format et le sel du compte : le mot de récupération brut ne quitte jamais le navigateur, et le serveur ne stocke que des hachages Argon2id de clés dérivées par service (ce qui empêche la corrélation des empreintes entre services). Ce document décrit le protocole, son escalade en trois niveaux, son modèle de menaces, et les règles de déploiement obligatoires.
 
 ---
 
@@ -67,15 +67,17 @@ C'est tout. Deux choses. Pour tous les sites. Pour toujours.
 Quand un nouveau compte est créé, le mot de récupération est immédiatement traité par dérivation HMAC-SHA256. Le mot brut n'atteint jamais le serveur.
 
 ```
-clé_dérivée = HMAC-SHA256(label_service ‖ sel_utilisateur, mot_récupération)
+clé_dérivée = HMAC-SHA256(clé = mot_récupération, message = matériel + "|v2" + sel_compte)
 ```
+
+Le `matériel` dépend d'un mode de dérivation obligatoire, décrit en §4. La sortie fait 64 caractères hexadécimaux minuscules.
 
 Le serveur reçoit et stocke :
 
 - `Argon2id(mot_de_passe)` — hash classique du mot de passe
 - `Argon2id(passphrase)` — une passphrase diceware générée côté serveur (4 mots, ~51 bits d'entropie)
 - `Argon2id(clé_dérivée)` — la clé de récupération dérivée par HMAC
-- `sel_utilisateur` — le sel par utilisateur (généré côté client, pas un secret)
+- `sel_compte` — le sel du compte : 16 octets aléatoires rendus en 32 hexadécimaux minuscules, un par compte, engendré par le navigateur, pas un secret
 
 L'utilisateur reçoit la passphrase une seule fois et doit la conserver hors ligne.
 
@@ -99,19 +101,31 @@ Trois niveaux, chacun avec ses propres garanties et modes d'échec :
 
 C'est l'innovation centrale de SelfRecover.
 
-Quand l'utilisateur tape son mot de récupération, le navigateur calcule une clé dérivée spécifique au service **avant que quoi que ce soit ne quitte le client** :
+Quand l'utilisateur tape son mot de récupération, le navigateur calcule une clé dérivée spécifique au service **avant que quoi que ce soit ne quitte le client**. Le composant livré qui porte ce calcul est `client/sr-derive.js` ; les vecteurs figés que toute réimplémentation doit retrouver vivent dans `tests/vecteurs-derivation.json`.
 
 ```javascript
-const SERVICE_LABEL = 'selfrecover.my-self.fr'; // label stable, configuré (pas l'URL)
-async function hmacDerive(mot, userSalt) {
+// Forme livrée par client/sr-derive.js. Le mot mémorisé va en CLÉ, jamais en message.
+const VERSION = 'v2';
+
+function matériel(mode, label) {
+    // Lu dans le navigateur, jamais reçu du réseau.
+    if (mode === 'hostname') return location.hostname.toLowerCase();
+    if (mode === 'label')    return label;            // pris tel quel
+    throw new Error("mode obligatoire : 'hostname' ou 'label' — il n'y a pas de défaut");
+}
+
+async function srDerive(mot, sel, { mode, label }) {
+    if (!/^[0-9a-f]{32}$/.test(sel)) {
+        throw new Error('sel obligatoire — 32 hexadécimaux, un par compte');
+    }
     const enc = new TextEncoder();
-    const matériau = enc.encode(SERVICE_LABEL + userSalt);
+    const message = matériel(mode, label) + '|' + VERSION + sel;
     const clé = await crypto.subtle.importKey(
-        'raw', matériau,
+        'raw', enc.encode(mot),
         { name: 'HMAC', hash: 'SHA-256' },
         false, ['sign']
     );
-    const sig = await crypto.subtle.sign('HMAC', clé, enc.encode(mot));
+    const sig = await crypto.subtle.sign('HMAC', clé, enc.encode(message));
     return Array.from(new Uint8Array(sig))
         .map(b => b.toString(16).padStart(2, '0')).join('');
 }
@@ -124,9 +138,21 @@ async function hmacDerive(mot, userSalt) {
 - Le serveur ne voit jamais le mot — uniquement la clé dérivée
 - Le résultat fait toujours 256 bits, quelle que soit la longueur de l'input
 - Fonctionne sur tous les appareils — mêmes maths, même résultat
-- Le label de service est une constante stable configurée (pas l'URL en direct) ; chaque compte a en plus son propre sel
+- La version vit **dans le message** : pendant une bascule, un service peut dériver sous deux versions et accepter les deux
+- Chaque compte a son propre sel, engendré par le navigateur et non secret : il empêche que deux personnes ayant choisi le même mot produisent la même empreinte
 
-**Résistance au phishing passif.** Un clone passif qui copie la page sans l'adapter dérive une clé inutile, et les sels par compte neutralisent la corrélation inter-comptes. La limite honnête : un site de phishing actif qui contrôle sa propre page peut reproduire la clé (hors périmètre, comme tout protocole in-browser), et un mot brut réutilisé reste réutilisable — la dérivation ne sauve pas un secret connu et réutilisé.
+### 4.1 Le mode de dérivation — obligatoire, sans défaut
+
+Le `matériel` décide de ce à quoi l'empreinte est liée, et l'arbitrage dépend du transport. La bibliothèque ne le tranche pas à la place de l'intégrateur, et surtout pas par un défaut : un défaut est choisi par tout le monde, donc c'est trancher sans le dire. Un appel sans mode lève.
+
+| Mode | Le `matériel` vaut… | Ce qu'il apporte | Ce qu'il coûte |
+|------|--------------------|------------------|----------------|
+| `'hostname'` | `location.hostname`, **lu dans le navigateur**, mis en minuscules | Anti-hameçonnage réel : une page qui imite le service obtient une empreinte dérivée de **sa propre** adresse, sans valeur contre le vrai serveur | Perdre l'adresse, c'est perdre la récupération L2 de tous les comptes. Le prix n'est pas le même partout : sur le web ordinaire un domaine s'expire, se perd, se rachète ; sur un service caché v3 l'adresse **est** la clé publique du service, elle ne dépend d'aucun registrar |
+| `'label'` | une étiquette stable fournie par l'intégrateur, prise **telle quelle** | Survit à un changement d'adresse | **Aucun anti-hameçonnage.** Une copie servie ailleurs, avec le même label, produit exactement l'empreinte que le serveur a enregistrée |
+
+Le matériel doit être **lu** dans le navigateur, jamais reçu du réseau : un matériel que le serveur fournit est un matériel que n'importe quel serveur peut fournir, y compris celui d'une page qui imite le service.
+
+**Résistance au phishing passif — en mode `'hostname'` seulement.** Le clone recopie la page, donc recopie la bibliothèque, qui lit alors l'adresse du clone : la clé obtenue ne vaut rien contre le vrai serveur, et le clone n'a rien fait de mal pour cela. En mode `'label'` cette résistance n'existe pas — le label voyage avec la copie. La limite honnête, valable dans les deux modes : un site de phishing actif qui contrôle sa propre page récolte le mot brut et dérive ensuite ce qu'il veut (hors périmètre, comme tout protocole in-browser) ; et un mot brut réutilisé ailleurs reste réutilisable — la dérivation ne sauve pas un secret connu et réutilisé.
 
 ---
 
@@ -280,7 +306,7 @@ L'utilisateur voit un message rassurant `"Ton compte est maintenant sécurisé"`
 
 ### 10.1 Menaces traitées
 
-- **Phishing passif** — HMAC par service : un clone qui n'adapte pas son code dérive une clé différente (un phishing actif qui contrôle sa page est hors périmètre)
+- **Phishing passif** — en mode `'hostname'` : un clone dérive de sa propre adresse et obtient une clé différente. En mode `'label'`, aucune protection. Un phishing actif qui contrôle sa page est hors périmètre dans les deux cas
 - **Piratage de l'email** — il n'y a aucun email dans le protocole
 - **Panne du fournisseur SMTP** — pas de dépendance SMTP
 - **Confiance tiers** — seuls le site et l'utilisateur sont impliqués
@@ -334,7 +360,7 @@ Aucun système ne protège contre le vol simultané de tous ses facteurs. Une cl
 SelfRecover part du principe que :
 
 - L'utilisateur traite son mot de récupération comme une clé de maison — pas sur un post-it, pas partagée dans un chat
-- La dérivation HMAC limite les dégâts à un seul site (le mot est inutilisable sur d'autres domaines)
+- En mode `'hostname'`, la dérivation limite les dégâts au seul nom d'hôte concerné (l'empreinte est inutilisable ailleurs) ; en mode `'label'`, elle ne les limite qu'aux services qui ne partagent pas le même label
 - Le rate limiting et l'escalade L2→L3 freinent les tentatives de force brute
 - Le serveur ne peut pas compenser la négligence humaine — aucun système ne le peut
 
@@ -369,7 +395,7 @@ SelfRecover ne peut pas protéger les comptes si le serveur qui l'héberge est m
 
 ### 11.3 Application
 
-- [ ] HTTPS obligatoire — la dérivation HMAC utilise le domaine, HTTP exposerait à une attaque MITM
+- [ ] HTTPS obligatoire — en mode `'hostname'` la dérivation lit le nom d'hôte, et sans TLS rien ne garantit que la page servie vient bien de ce service
 - [ ] Rate limiting sur tous les endpoints de recovery (nginx `limit_req` ou applicatif)
 - [ ] Headers de sécurité : CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
 - [ ] PHP : `disable_functions`, `open_basedir`, `expose_php off`
@@ -413,7 +439,7 @@ Pas encore publiées. Voir [MySelf-Lab](../../../demo/lab/) pour une implémenta
 | Pas de tiers | ✗ | ✗ (vendor lock-in) | ✓ |
 | Fonctionne sur tous les appareils | ✓ | ~ (lié à l'appareil) | ✓ |
 | Récupération possible hors ligne | ✗ | ✗ | ~ (le user détient le secret) |
-| Anti-phishing par conception | ✗ | ✓ | ✓ |
+| Anti-phishing par conception | ✗ | ✓ | ~ (passif seulement, et en mode `'hostname'` seulement — §4.1) |
 | Isolation par site | ✓ | ✓ | ✓ |
 | Coût zéro pour l'utilisateur | ✓ | ✓ | ✓ |
 | Complexité d'implémentation | haute (SMTP) | haute (FIDO2) | faible |

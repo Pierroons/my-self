@@ -29,8 +29,9 @@ SelfInvoice ne vit plus ici : il n'avait pas de code dans ce dépôt, et sa
 documentation a rejoint `selffarm-lite`, qui porte l'implémentation.
 
 Chaque module porte son README. La structure interne varie : `api/` là où une
-API est servie, `tests/` là où il en existe. SelfJustice est le seul à porter
-les quatre.
+API est servie, `site/` là où une page est servie, `tests/` là où il en existe,
+`tools/` là où l'outillage est propre au module. SelfJustice est le seul à
+porter les quatre.
 
 ## Avant de modifier
 
@@ -112,14 +113,15 @@ tiennent en intégration continue.
 | `scripts/ecart-instance.sh` | ce qui est versionné et ce qui est servi disent-ils la même chose, sur chaque destination |
 | `self-right/selfjustice/tools/check_fraicheur.sh` | les bases consultées sont-elles à jour, et leur volume progresse-t-il — c'est la copie que l'instance exécute, et celle que la CI éprouve |
 | `scripts/audit-opsec.sh` | les angles morts du détecteur de secrets |
+| `scripts/check-surface-servie.sh` | ce qu'un serveur donne réellement à voir, répertoire par répertoire |
 
 **Deux d'entre eux tournent en intégration continue** (`structure.yml`) : les
-chemins cités et l'unicité du profil de hachage. Les trois autres ne le peuvent
-pas, et ce n'est pas un oubli — l'écart d'instance a besoin d'un accès à la
-machine, la fraîcheur des bases a besoin de ses API, et l'audit OPSEC a besoin
-de motifs qui vivent hors dépôt exprès. Leur place est une tâche planifiée sur
-la machine, et leur code de sortie n'est lu que là. En conséquence, un `git
-push` vert ne dit rien de ces trois-là.
+chemins cités et l'unicité du profil de hachage. Les quatre autres ne le peuvent
+pas, et ce n'est pas un oubli — l'écart d'instance et la surface servie ont
+besoin d'un accès à la machine, la fraîcheur des bases a besoin de ses API, et
+l'audit OPSEC a besoin de motifs qui vivent hors dépôt exprès. Leur place est
+une tâche planifiée sur la machine, et leur code de sortie n'est lu que là. En
+conséquence, un envoi vert ne dit rien de ces quatre-là.
 
 🔑 **Chacun doit avoir été vu rougir.** Un contrôle qu'on n'a jamais fait échouer
 ne se distingue pas d'un contrôle qui ne mesure rien : les deux rendent vert. Un

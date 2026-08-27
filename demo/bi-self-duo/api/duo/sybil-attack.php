@@ -78,11 +78,12 @@ for ($i = 1; $i <= 5; $i++) {
     $password = RecoverHelper::generatePassword(16);
     $diceware = DicewareWordlist::generate(4, 'en');
     $passphrase = implode(' ', $diceware['words']);
-    $recoveryWord = bin2hex(random_bytes(3));
-
-    $domain = 'bi-self.my-self.fr';
-    $siteSalt = RecoverHelper::siteSalt($s);
-    $derivedKey = RecoverHelper::deriveKey($recoveryWord, $domain, $siteSalt);
+    // Ce que cette simulation mesure, c'est le COÛT que l'attaquant paye : trois
+    // Argon2id par compte. La clé dérivée n'est jamais stockée ici — n'importe
+    // quelle valeur de la bonne forme donne le même chiffre. La fabriquer sur
+    // place évite de convoquer une dérivation qui, côté attaquant, se ferait
+    // dans son propre navigateur et ne regarde pas ce serveur.
+    $derivedKey = bin2hex(random_bytes(32));
 
     $t0 = microtime(true);
     $pwHash = RecoverHelper::hash($password);

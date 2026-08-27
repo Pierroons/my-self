@@ -17,6 +17,9 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../vendor/autoload.php';
+// `sr_sel_aleatoire()` — le miroir de `srEngendrerSel()` pour ce qui n'a pas de
+// navigateur. Le sel est exigé depuis le 27/08 : sans lui, l'inscription refuse.
+require_once __DIR__ . '/../lib/derive_cli.php';
 require __DIR__ . '/../lib/StockageSelfRecover.php';
 
 use Pierroons\MySelfLab\StockageSelfRecover;
@@ -117,7 +120,7 @@ require_once __DIR__ . '/../lib/auth.php';
 $pdo2 = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $pdo2->exec((string) file_get_contents(__DIR__ . '/../schema.sql'));
 
-$insc = \Pierroons\MySelfLab\Auth::register($pdo2, 'bob', $MOT, '10.0.0.1');
+$insc = \Pierroons\MySelfLab\Auth::register($pdo2, 'bob', $MOT, sr_sel_aleatoire(), '10.0.0.1');
 verifier('inscription : dix codes remis une fois',
     ($insc['ok'] ?? false) && count($insc['credentials']['recovery_codes'] ?? []) === 10);
 
@@ -131,6 +134,73 @@ verifier('niveau 1 : la passphrase rendue au niveau 2 fonctionne', ($niv1['ok'] 
 
 $conn = \Pierroons\MySelfLab\Auth::login($pdo2, 'bob', $niv1['credentials']['password'], '10.0.0.4');
 verifier('connexion avec le mot de passe rendu', ($conn['ok'] ?? false) === true);
+
+echo "\n→ Le sel exigé à l'inscription — les cas de refus\n";
+// 🔑 Ces contrôles existent parce que la garde n'en avait aucun : elle était
+// lue, pas mesurée. Un `preg_match` que personne ne fait jamais échouer ne se
+// distingue pas d'une ligne absente. Chacun des quatre cas ci-dessous a été
+// vu rougir en retirant la garde de `Auth::register`.
+//
+// ⚠️ Ils ne gardent que CETTE couche. Le défaut réellement rencontré le
+// 27/08/2026 vivait un étage plus haut : `public/api/register.php` et
+// `public/api/recover_l3_reset.php` normalisaient le sel en minuscules AVANT
+// d'appeler la garde, si bien que le cas « en majuscules » ci-dessous n'y était
+// jamais atteint. Ces quatre contrôles restaient verts.
+//
+// La route est éprouvée à part, en HTTP, avec `LAB_DB_PATH` sur une base neuve
+// — sans quoi le quota d'inscriptions par IP rend des refus qu'on prend pour
+// ceux de la garde. Le canari y rougit sur le seul cas « majuscules ».
+$avant = (int) $pdo2->query('SELECT COUNT(*) FROM accounts')->fetchColumn();
+
+$refus = [
+    'vide'              => '',
+    'trop court'        => str_repeat('a', 16),
+    'non hexadécimal'   => str_repeat('a', 31) . 'z',
+    'en majuscules'     => strtoupper(sr_sel_aleatoire()),
+];
+$n = 0;
+foreach ($refus as $intitule => $sel) {
+    $r = \Pierroons\MySelfLab\Auth::register($pdo2, 'refus' . (++$n), $MOT, $sel, null);
+    verifier("sel {$intitule} : inscription refusée",
+        ($r['ok'] ?? true) === false && ($r['error'] ?? '') === 'invalid_salt',
+        'error=' . ($r['error'] ?? 'aucune'));
+}
+
+// Le refus doit être total : rendre `ok => false` tout en ayant inséré la
+// ligne laisserait un compte dont le mot mémorisé n'est dérivable par personne.
+verifier('aucun compte créé par les quatre refus',
+    (int) $pdo2->query('SELECT COUNT(*) FROM accounts')->fetchColumn() === $avant);
+
+// Contre-témoin : sans lui, une garde qui refuserait TOUT rendrait les cinq
+// contrôles ci-dessus verts. Un faux rouge tue une sonde autant qu'un faux vert.
+$ok = \Pierroons\MySelfLab\Auth::register($pdo2, 'carol', $MOT, sr_sel_aleatoire(), null);
+verifier('contre-témoin : un sel valide passe toujours', ($ok['ok'] ?? false) === true);
+
+echo "\n→ Le sel de site refuse de servir vide\n";
+// 🔑 Ce sel porte deux propriétés : il localise les codes émis et il fabrique
+// le faux sel rendu aux codes inconnus. Vide, les index deviennent calculables
+// et l'oracle du sel se rouvre — sans qu'aucune erreur ne survienne. Le
+// répertoire absent suffisait à produire ce cas, observé le 27/08/2026.
+$tmp = sys_get_temp_dir() . '/lab-sitesalt-sonde-' . getmypid();
+putenv('LAB_SITESALT_PATH=' . $tmp);
+try {
+    foreach (['vide' => '', 'tronqué' => 'abcd'] as $intitule => $contenu) {
+        file_put_contents($tmp, $contenu);
+        $leve = false;
+        try { \Pierroons\MySelfLab\Auth::siteSalt(); } catch (\RuntimeException $e) { $leve = true; }
+        verifier("sel de site {$intitule} : refus de servir", $leve);
+    }
+    // Contre-témoin : une garde qui lèverait toujours passerait les deux
+    // contrôles ci-dessus sans rien mesurer.
+    unlink($tmp);
+    $engendre = \Pierroons\MySelfLab\Auth::siteSalt();
+    verifier('sel de site absent : engendré, et de longueur pleine', strlen($engendre) === 64);
+    verifier('sel de site stable entre deux appels',
+        $engendre === \Pierroons\MySelfLab\Auth::siteSalt());
+} finally {
+    putenv('LAB_SITESALT_PATH');
+    @unlink($tmp);
+}
 
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Équivalence lab ⨯ SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
