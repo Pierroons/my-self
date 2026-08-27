@@ -98,11 +98,14 @@ Directives machine-readable disant à l'IA comment raisonner :
 
 | Endpoint | Usage |
 |----------|-------|
-| `GET /api/status` | Total articles, date dernière sync, ventilation par source |
+| `GET /api/status` | Volumétrie et date de synchronisation des trois bases : LEGI, conventionnalité, jurisprudence |
 | `GET /api/legi/article/{ref}?code={alias}` | Article juridique français (avec désambiguïsation par code : travail, civil, penal, consommation, sante_publique, assurances, urbanisme, route, etc.) |
 | `GET /api/legi/search?q=...&limit=...` | Recherche plein texte dans LEGI |
 | `GET /api/eu/article/{source}/{num}` | Article UE/CEDH (`source` ∈ `CEDH`, `CHARTE_UE`, `TFUE`, `TUE`, `RGPD`, `AI_ACT`) |
 | `GET /api/eu/search?q=...&source=...` | Recherche dans UE/CEDH |
+| `GET /api/jurisprudence/verifier/{numero}` | Dit si un numéro d'arrêt existe réellement |
+| `GET /api/jurisprudence/search?q=...` | Cherche des décisions par thème |
+| `GET /api/jurisprudence/decision/{id}` | Texte intégral d'une décision |
 | `GET /api/stats/by-ai` | Stats anonymes publiques : consultations utilisateur par famille d'IA, compte des crawlers |
 | `GET /api/stats/by-endpoint` | Top des articles consultés (anonymisés) |
 
@@ -153,7 +156,7 @@ curl -s "https://justice.my-self.fr/api/legi/search?q=harcelement&limit=20" | jq
 
 ### Auto-héberger
 
-Cloner le repo, pointer nginx sur `site/`, configurer `api/api.php` contre votre dump SQLite LEGI, terminé. Guide d'installation complet dans `deploy/`.
+Cloner le repo, pointer nginx sur `site/`, configurer `api/api.php` contre votre dump SQLite LEGI. `deploy/selfjustice/` porte le vhost nginx, le script de déploiement et les unités systemd de synchronisation — la configuration de référence, pas un guide pas-à-pas.
 
 ---
 
@@ -203,7 +206,7 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 - **v0.1.0 (actuelle)** — Directives cœur + 5 catégories + API LEGI/UE
 - **v0.2.0** — Droit de la famille (divorce, garde, pension) + droit du logement (baux, expulsion)
 - **v0.3.0** — Droit administratif (litiges avec services publics)
-- **v0.4.0** — Intégration jurisprudence (Cass., CE, Conseil constitutionnel)
+- **v0.4.0** — Jurisprudence administrative (Conseil d'État, CAA, tribunaux administratifs) — la jurisprudence **judiciaire** (Cour de cassation, cours d'appel) est livrée et servie
 - **v1.0.0** — Directives peer-reviewed + intégration SelfAct
 
 ---
