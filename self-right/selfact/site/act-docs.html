@@ -809,10 +809,13 @@ Response : text/html (à ouvrir dans navigateur, Ctrl+P)</pre>
 
   <details>
     <summary>Mise à jour des données</summary>
-    <p>La base d'actes (<code>situations.json</code>) est mise à jour de façon bimensuelle
-    (1<sup>er</sup> + 15 de chaque mois), alignée sur la cadence SelfJustice pour
-    cohérence écosystème MySelf.</p>
-    <p>Version actuelle : <code>2026.04</code>. Nombre de situations : 12. Sources :
+    <p>La base d'actes (<code>situations.json</code>) est curée <strong>à la main</strong> :
+    les statuts juridiques, les seuils et les articles applicables sont vérifiés un par un
+    et ne sont produits par aucune tâche planifiée. Le catalogue de ressources, lui, est
+    synchronisé automatiquement les 1<sup>er</sup> et 15 de chaque mois, sur la cadence
+    SelfJustice.</p>
+    <p>Une vingtaine de situations — le compte exact est servi par
+    <code>/act/api/find?list=1</code>. Sources :
     service-public.fr (Etalab 2.0), defenseurdesdroits.fr, internet-signalement.gouv.fr,
     3018 (e-Enfance), 119 (SNATED).</p>
   </details>

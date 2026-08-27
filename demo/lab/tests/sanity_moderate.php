@@ -32,9 +32,15 @@ require_once __DIR__ . '/../lib/moderate.php';
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Moderate;
 
-$echecs = 0;
-$total  = 24;
-function ok(string $m): void  { echo "  ✓ $m\n"; }
+// 🔑 Le total se compte, il ne s'écrit pas.
+//
+// `deploy/my-self/tests/test_deploy.sh` a supprimé ce défaut le 22/08/2026 en
+// calculant le sien : « le banc annonçait dix propriétés en en éprouvant
+// douze ». Le remède n'avait pas voyagé jusqu'ici. Un chiffre recopié à côté de
+// ce qu'il décrit finit toujours par le démentir — et un banc qui se trompe sur
+// son propre compte est mal placé pour en corriger d'autres.
+$echecs = 0; $reussites = 0;
+function ok(string $m): void  { global $reussites; echo "  ✓ $m\n"; $reussites++; }
 function nok(string $m): void { global $echecs; fwrite(STDERR, "  ✗ $m\n"); $echecs++; }
 
 // Bac à sable : la base réelle du lab n'est jamais touchée.
@@ -526,6 +532,7 @@ count(array_unique($restaurees)) === 1 && $restaurees[0] === Moderate::INITIAL_R
     ? ok('les quatre victimes sont revenues à ' . Moderate::INITIAL_REPUTATION . ', du premier palier au dernier')
     : nok('une victime n\'a pas été restaurée : ' . implode(', ', $restaurees));
 
+$total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"
     : "❌ $echecs échec(s) sur $total\n");

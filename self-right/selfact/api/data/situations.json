@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "version": "2026.04",
-    "last_update": "2026-04-18",
+    "version": "2026.08",
+    "last_update": "2026-08-03",
     "source": "service-public.gouv.fr (Etalab 2.0) — curation manuelle",
     "comment": "Mapping situation → acte officiel. Curation MANUELLE : les statuts juridiques, seuils et articles applicables sont vérifiés à la main et ne sont produits par aucun cron. Le catalogue (catalog.json), lui, est synchronisé automatiquement et vient compléter ces actes via catalog_hints.",
     "last_review": "2026-08-03",

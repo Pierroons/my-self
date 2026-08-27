@@ -55,7 +55,7 @@ Un plus un égale une communauté auto-gouvernée. Pas trois — une chose quali
 | Module | Rôle | Statut |
 |--------|------|--------|
 | [SelfRecover](./selfrecover/) | Identité & récupération sans email | **v0.4.0** — implémentation de référence, démo locale auto-auditée |
-| [SelfModerate](./selfmoderate/) | Modération communautaire par raisonnement collectif | v0.3.0 — moteur installable, 16 contrôles ; 2 mécanismes du protocole manquent |
+| [SelfModerate](./selfmoderate/) | Modération communautaire par raisonnement collectif | v0.3.0 — moteur installable, 24 contrôles ; 2 mécanismes du protocole manquent |
 
 ---
 

@@ -11,7 +11,7 @@
  * Produit : le catalogue, à l'emplacement que résout chemins.php, avec :
  *   {
  *     "_meta": { "version": "AAAA.MM", "last_sync": "ISO",
- *                "total": 1895, "types": {...}, "categories": {...} },
+ *                "total": <nombre>, "types": {...}, "categories": {...} },
  *     "models": [
  *       { "id": "R10959", "label": "...", "url": "...",
  *         "type": "modele_lettre", "category": "logement" },

@@ -111,7 +111,7 @@ served from the same domain as SelfJustice — `justice.my-self.fr/act` — and
 exchanges no calls with it: SelfJustice states the law, SelfAct performs the step.
 
 - [x] Concept paper
-- [x] Resource catalogue — 1,895 official resources in 16 categories, harvested from service-public.gouv.fr, refreshed on the 1st and 15th
+- [x] Resource catalogue — over 1,800 official resources in 16 categories, harvested from service-public.gouv.fr, refreshed on the 1st and 15th (exact count: `/act/api/catalog.php?stats=1`)
 - [x] Situation matching — 20 hand-curated situations, each mapped to a step, an article and a form
 - [x] Deadline engine — art. 640-643 CPC, mainland / overseas / abroad, with calendar export, covered by a CI guard
 - [x] Letter templates — formal notice, saisine, contestation, termination, recours, each carrying a "NON OFFICIEL — IRRECEVABLE" watermark that survives printing

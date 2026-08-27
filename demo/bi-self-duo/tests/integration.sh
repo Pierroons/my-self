@@ -111,12 +111,21 @@ pack=$(echo "$pack_raw" | python3 -c "import json,sys;print(json.load(sys.stdin)
 # ===================================================================
 title "Duo synergy (test manuel)"
 # ===================================================================
-# L'endpoint sybil-attack déclenche 14+ opérations internes rapides qui se
-# heurtent systématiquement au rate-limit nginx `biself_demo 30r/m burst=10`
-# quand on l'enchaîne après tous les tests ci-dessus (qui consomment déjà
-# ~12 slots du burst). Il se teste manuellement via le navigateur sur
-# https://bi-self.my-self.fr/duo (ou en curl isolé après 30s de pause).
-pass "sybil-attack à tester manuellement via /duo"
+# ⚠️ CE CAS N'EST PAS COUVERT — et il ne l'était pas davantage avant.
+#
+# Cette ligne rendait `pass` depuis toujours, en s'appuyant sur un chiffre qui
+# n'existe pas : elle invoquait « le rate-limit nginx `biself_demo 30r/m
+# burst=10` » et « ~12 slots du burst » pour justifier de ne rien éprouver. Le
+# vhost versionné (`deploy/bi-self/nginx-bi-self.conf:5,28`) déclare
+# `zone=biself rate=10r/s burst=20`, sur `$binary_remote_addr` — 600 requêtes
+# par minute, vingt fois ce qui était écrit, et par IP plutôt que par session.
+# Ni le nom de zone, ni le débit, ni le burst, ni la granularité ne
+# correspondaient.
+#
+# Un `pass` qui n'éprouve rien est un faux vert : il compte dans le total et
+# rend la suite plus verte qu'elle n'est. Le cas se teste à la main via
+# https://bi-self.my-self.fr/duo, et le banc le DIT au lieu de le compter.
+echo "  ⚠ sybil-attack : non couvert par ce banc — à éprouver à la main via /duo" 
 
 # ===================================================================
 rm -f "$COOKIES" /tmp/body.json

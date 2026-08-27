@@ -7,8 +7,18 @@
  *  - Cookie sj_bypass avec token valide bypass systématique
  *  - Max 10 sessions concurrentes totales
  *  - Max 3 sessions par IP / heure = OK
- *  - 4ᵉ = warning jaune, 5ᵉ = rouge, 6ᵉ+ = blacklist 30 jours (log CrowdSec)
- *  - Max 50 actions par session, max 30 requêtes API / minute / session
+ *  - 4ᵉ = warning jaune, 5ᵉ = rouge, 7ᵉ = blacklist 30 jours (log CrowdSec)
+ *  - Max 50 actions par session
+ *
+ * ⚠️ Les paliers se comptent en sessions DÉJÀ ouvertes dans l'heure, pas en
+ * demandes. Le ban tombe quand `$count` atteint 6, c'est-à-dire à la 7ᵉ
+ * demande — la documentation disait « 6ᵉ », d'un cran trop tôt.
+ *
+ * Le débit d'API n'est PAS appliqué ici : c'est nginx qui le porte, par IP
+ * et non par session (`deploy/bi-self/nginx-bi-self.conf`, `zone=biself
+ * rate=10r/s burst=20`). Ne pas recopier un chiffre de débit dans ce fichier :
+ * il y en avait un, il valait vingt fois moins que le vrai, et un banc de test
+ * s'en servait pour justifier de ne rien éprouver.
  *
  * Stockage : fichiers texte dans /var/lib/selfjustice/demo-sessions/.counters/
  */
@@ -21,7 +31,8 @@ final class RateLimit {
     private const CROWDSEC_ALERT  = '/var/log/selfjustice-demo-abuse.log';
     private const BYPASS_TOKEN    = '/var/lib/selfjustice/admin/bypass_token.txt';
     private const MAX_CONCURRENT  = 10;
-    private const MAX_PER_IP_HOUR = 3;
+    private const MAX_PER_IP_HOUR = 3;   // au-delà : warning
+    private const BAN_SEUIL_HEURE = 6;   // sessions déjà ouvertes → ban à la suivante
     private const BAN_DURATION_S  = 30 * 86400; // 30 jours
 
     public static function clientIp(): string {
@@ -87,13 +98,15 @@ final class RateLimit {
 
         // Compteur par IP / heure glissante
         $count = self::countSessionsForIpLastHour($ip);
-        if ($count >= 6) {
+        // Les seuils viennent des constantes, jamais de littéraux : `MAX_PER_IP_HOUR`
+        // était déclarée puis ignorée, et deux valeurs vivaient pour un seul fait.
+        if ($count >= self::BAN_SEUIL_HEURE) {
             self::banIp($ip);
             return ['ok' => false, 'reason' => 'abuse_banned', 'warning_level' => 0, 'bypass' => false];
         }
         $warning = 0;
-        if ($count >= 3) $warning = 1; // jaune
-        if ($count >= 4) $warning = 2; // rouge
+        if ($count >= self::MAX_PER_IP_HOUR)     $warning = 1; // jaune
+        if ($count >= self::MAX_PER_IP_HOUR + 1) $warning = 2; // rouge
         return ['ok' => true, 'reason' => 'quota_ok', 'warning_level' => $warning, 'bypass' => false];
     }
 
