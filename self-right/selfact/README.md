@@ -58,7 +58,7 @@ From that, SelfAct:
 1. Selects the matching **document templates** (mise en demeure + saisine médiateur).
 2. Fills them with the parties, facts, legal basis.
 3. Calculates the **procedural calendar** from the extracted deadline.
-4. Generates signed PDFs (via `weasyprint` or `pdfkit`) with CERFA XML where applicable.
+4. Generates the draft letter through `api/draft.php`, with CERFA XML where applicable.
 5. Outputs a **dossier package**: `dossier-2026-0042.zip` containing all documents, a readme for the user, and an action plan.
 
 ---
