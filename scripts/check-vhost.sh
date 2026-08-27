@@ -67,6 +67,26 @@ rm -f "$D/nginx.conf"
 P80=18080
 P443=18443
 
+# Certbot pose `options-ssl-nginx.conf` sur une machine qui sert du TLS, et les
+# gabarits l'incluent. Il n'existe pas sur un runner d'intégration : le test y
+# échouait sur un fichier absent, en accusant le gabarit. On le fabrique, avec le
+# contenu que certbot y met — ainsi le contrôle ne dépend plus de ce qui est
+# installé sur la machine qui l'exécute.
+mkdir -p "$D/letsencrypt"
+cat > "$D/letsencrypt/options-ssl-nginx.conf" <<'SSLOPT'
+ssl_session_cache shared:le_nginx_SSL:10m;
+ssl_session_timeout 1440m;
+ssl_session_tickets off;
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_prefer_server_ciphers off;
+ssl_ciphers "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384";
+SSLOPT
+# 2048 bits : OpenSSL 3 refuse plus court (« dh key too small ») et le test
+# échouait alors sur SA propre clé, pas sur le gabarit. `-dsaparam` rend la
+# génération quasi instantanée — ces paramètres ne sont pas un secret, ils ne
+# servent qu'à faire démarrer le test.
+openssl dhparam -dsaparam -out "$D/letsencrypt/ssl-dhparams.pem" 2048 >/dev/null 2>&1 || true
+
 openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
     -keyout "$D/certs/k.pem" -out "$D/certs/c.pem" \
     -subj "/CN=gabarit.test" >/dev/null 2>&1 || { echo "openssl indisponible"; exit 2; }
@@ -79,6 +99,8 @@ sed -E "s#/etc/letsencrypt/live/[^/]+/fullchain\.pem#$D/certs/c.pem#g;
         s#/etc/letsencrypt/live/[^/]+/chain\.pem#$D/certs/c.pem#g;
         s#your-instance\.example#gabarit.test#g;
         s#/var/log/nginx/#$D/logs/#g;
+        s#/etc/letsencrypt/options-ssl-nginx\.conf#$D/letsencrypt/options-ssl-nginx.conf#g;
+        s#/etc/letsencrypt/ssl-dhparams\.pem#$D/letsencrypt/ssl-dhparams.pem#g;
         s#(listen[[:space:]]+([^;]*[[:space:]])?)80([[:space:];])#\\1${P80}\\3#g;
         s#(listen[[:space:]]+([^;]*[[:space:]])?)443([[:space:];])#\\1${P443}\\3#g;
         s#(listen[[:space:]]+\[::\]:)80([[:space:];])#\\1${P80}\\2#g;
