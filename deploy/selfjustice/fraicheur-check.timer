@@ -1,0 +1,15 @@
+[Unit]
+Description=Contrôle quotidien de la fraîcheur des bases Self-Right
+
+[Timer]
+# Après la moisson LEGI (04:00 les 1er et 15) et après la veille CVE (06:30),
+# pour que le rapport du matin porte l'état d'après la nuit.
+OnCalendar=*-*-* 07:00:00
+RandomizedDelaySec=300
+# La machine dort ou redémarre : le contrôle manqué se rattrape au réveil, il ne
+# se saute pas. Une sonde qui ne tourne pas ressemble à une sonde qui rassure —
+# celle-ci n'était ordonnancée nulle part jusqu'au 30/08/2026.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

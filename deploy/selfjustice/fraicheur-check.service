@@ -1,0 +1,24 @@
+[Unit]
+Description=Fraîcheur des bases Self-Right (LEGI, conventionnalité, jurisprudence, catalogue)
+Documentation=file:/opt/selfjustice/bin/check_fraicheur.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+# Le canal d'alerte et les adresses de l'instance vivent hors du dépôt : le
+# script versionné ne connaît qu'un domaine d'exemple, pour échouer bruyamment
+# plutôt que de mesurer la mauvaise cible. Le tiret rend le fichier facultatif —
+# sans lui, le contrôle tourne et échoue en le disant, ce qui est le
+# comportement voulu.
+EnvironmentFile=-/etc/selfjustice/fraicheur.env
+# L'état de la veille à côté des autres états du module, pas dans un répertoire
+# personnel : c'est lui qui permet de voir une date qui avance pendant qu'un
+# volume stagne.
+Environment=CHECK_FRAICHEUR_ETAT=/var/lib/selfjustice/check-fraicheur.state
+ExecStart=/opt/selfjustice/bin/check_fraicheur.sh
+# Le script sort en 1 quand une base est en retard, et pousse alors lui-même sur
+# ntfy — une fois par fait, pas à chaque passage. Ce code de sortie n'est pas
+# une panne du service : il est le message.
+SuccessExitStatus=0 1
