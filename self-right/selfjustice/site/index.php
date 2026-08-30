@@ -893,7 +893,7 @@ Analyse selon /directives.html</pre>
     "legifrance_url": "https://www.legifrance.gouv.fr/..."
   }
 }</pre>
-    <p><strong>Couverture :</strong> plus de 100 codes français (civil, pénal, travail, commerce, santé publique, urbanisme, route, assurances, transport, propriété intellectuelle, consommation, construction, etc.) — pas de limite par domaine juridique.</p>
+    <p><strong>Couverture :</strong> le droit national publié au Journal officiel — codes, lois, ordonnances, décrets, arrêtés — dans sa version consolidée. Restent dehors, parce que ce sont d'autres bases : les conventions collectives, les circulaires et instructions, les textes locaux (préfecture, mairie), et les normes techniques NF ou EN, qui ne sont pas du droit publié. Un sujet qu'elles portent paraît vide ici sans l'être. Le nombre d'articles servis est rendu par <code>/api/status</code>.</p>
 
     <h4>Base Conventionnalité — droit UE et CEDH (plus de 700 articles)</h4>
     <ul>
