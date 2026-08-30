@@ -17,10 +17,13 @@ sur `origin/master`, et une mise à jour amont demande `git pull --rebase`.
    version amont ne connaît pas et traite donc comme un chemin de texte. Le
    correctif le compte et le nomme en fin de traitement, sans l'appliquer.
 
-   L'appliquer est l'objet de la PR 91 amont, éprouvée le 10/08 sur un banc :
-   sur 184 archives rejouées, elle aurait supprimé 5 articles résiduels, et
-   n'avait rien à faire 119 fois sur 121. Elle n'a pas été adoptée pour ce
-   rapport-là.
+   L'appliquer est l'objet de la PR 91 amont, et elle n'est pas adoptée pour
+   une raison de fond : mesuré sur 184 archives, ce fichier annonce un
+   CHANGEMENT DE BRANCHE, pas une suppression — 310 cas sur 310, le contenu
+   étant republié au nouveau chemin dans la même archive. legi.py traite déjà
+   ce cas sans lui, par la colonne `dossier`. Appliquer les suppressions
+   effacerait donc du contenu republié ailleurs, et le garde-fou que la PR
+   propose bloquerait 80 des 184 archives, dès la première.
 
 2. Un chemin d'archive de moins de trois segments — `parts[2]` lève une
    IndexError et l'extraction entière s'arrête. Le chemin est compté comme
