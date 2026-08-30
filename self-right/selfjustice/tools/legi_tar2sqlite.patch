@@ -7,7 +7,9 @@ une lignes ci-dessous sans le dire, et la mise à jour LEGI suivante s'arrête s
 le premier article que le troisième correctif épargne.
 
 Base : legi.py `master` @ 64c2c49 (Merge pull request #86).
-Appliqué le 03/08/2026, éprouvé par les mises à jour du 03/08 et du 15/08.
+Appliqué le 03/08/2026, éprouvé par les mises à jour du 03/08 et du 15/08,
+puis commité dans le clone le 30/08/2026 — `master` y a donc un commit d'avance
+sur `origin/master`, et une mise à jour amont demande `git pull --rebase`.
 
 ## Ce qu'il corrige, dans l'ordre du fichier
 
