@@ -113,15 +113,18 @@ tiennent en intégration continue.
 | `scripts/ecart-instance.sh` | ce qui est versionné et ce qui est servi disent-ils la même chose, sur chaque destination |
 | `self-right/selfjustice/tools/check_fraicheur.sh` | les bases consultées sont-elles à jour, et leur volume progresse-t-il — c'est la copie que l'instance exécute, et celle que la CI éprouve |
 | `scripts/audit-opsec.sh` | les angles morts du détecteur de secrets |
+| `scripts/check-vhost.sh` | les gabarits de vhost sont-ils syntaxiquement valides — sur nginx local, ou par SSH sur un hôte nommé |
 | `scripts/check-surface-servie.sh` | ce qu'un serveur donne réellement à voir, répertoire par répertoire |
+| `scripts/check-patch-legi.sh` | un hôte porte-t-il encore les correctifs locaux sur `legi.py`, à l'identique du patch versionné |
 
-**Deux d'entre eux tournent en intégration continue** (`structure.yml`) : les
-chemins cités et l'unicité du profil de hachage. Les quatre autres ne le peuvent
-pas, et ce n'est pas un oubli — l'écart d'instance et la surface servie ont
-besoin d'un accès à la machine, la fraîcheur des bases a besoin de ses API, et
-l'audit OPSEC a besoin de motifs qui vivent hors dépôt exprès. Leur place est
-une tâche planifiée sur la machine, et leur code de sortie n'est lu que là. En
-conséquence, un envoi vert ne dit rien de ces quatre-là.
+**Trois d'entre eux tournent en intégration continue** (`structure.yml`) : les
+chemins cités, l'unicité du profil de hachage et les gabarits de vhost — ce
+dernier parce que le job installe nginx pour lui. Les autres ne le peuvent pas,
+et ce n'est pas un oubli — l'écart d'instance, la surface servie et les
+correctifs de `legi.py` ont besoin d'un accès à la machine, la fraîcheur des
+bases a besoin de ses API, et l'audit OPSEC a besoin de motifs qui vivent hors
+dépôt exprès. Leur place est une tâche planifiée sur la machine, et leur code de
+sortie n'est lu que là. En conséquence, un envoi vert ne dit rien de ceux-là.
 
 🔑 **Chacun doit avoir été vu rougir.** Un contrôle qu'on n'a jamais fait échouer
 ne se distingue pas d'un contrôle qui ne mesure rien : les deux rendent vert. Un

@@ -1,0 +1,109 @@
+Correctifs locaux sur legi.py — legi/tar2sqlite.py
+
+Ce patch vit ici parce qu'il ne vit nulle part ailleurs. Il est appliqué à la
+main sur le clone de legi.py qu'utilise l'instance, dans un dépôt dont l'arbre
+de travail n'est versionné par rien : un `git pull` dedans efface les trente et
+une lignes ci-dessous sans le dire, et la mise à jour LEGI suivante s'arrête sur
+le premier article que le troisième correctif épargne.
+
+Base : legi.py `master` @ 64c2c49 (Merge pull request #86).
+Appliqué le 03/08/2026, éprouvé par les mises à jour du 03/08 et du 15/08.
+
+## Ce qu'il corrige, dans l'ordre du fichier
+
+1. `liste_suppression_legi_dossier.dat` — mécanisme ajouté par DILA, que la
+   version amont ne connaît pas et traite donc comme un chemin de texte. Le
+   correctif le compte et le nomme en fin de traitement, sans l'appliquer.
+
+   L'appliquer est l'objet de la PR 91 amont, éprouvée le 10/08 sur un banc :
+   sur 184 archives rejouées, elle aurait supprimé 5 articles résiduels, et
+   n'avait rien à faire 119 fois sur 121. Elle n'a pas été adoptée pour ce
+   rapport-là.
+
+2. Un chemin d'archive de moins de trois segments — `parts[2]` lève une
+   IndexError et l'extraction entière s'arrête. Le chemin est compté comme
+   inconnu, ce qu'il est.
+
+3. `CONTEXTE/TEXTE` sans attribut `cid`. DILA en publie (LEGIARTI000006433126,
+   rattaché à un texte JORF), et l'assertion amont les traite en incohérence.
+   Le cid du chemin d'archive fait foi ; la vérification ne porte plus que sur
+   un attribut présent. C'est le correctif sans lequel une mise à jour échoue.
+
+## Réappliquer
+
+    git -C <clone> apply <ce fichier>
+
+`scripts/check-patch-legi.sh` vérifie qu'un hôte le porte encore.
+
+diff --git a/legi/tar2sqlite.py b/legi/tar2sqlite.py
+index 53dd8e7..74edb75 100755
+--- a/legi/tar2sqlite.py
++++ b/legi/tar2sqlite.py
+@@ -193,6 +193,7 @@ def process_archive(db, archive_path, raw, process_links=True, check_html=True):
+     skipped = 0
+     unknown_folders = {}
+     liste_suppression = []
++    liste_suppression_dossier = []
+     xml = etree.XMLParser(remove_blank_text=True)
+     with tqdm(total=os.stat(archive_path).st_size, unit='bytes') as pbar, \
+          open(archive_path, 'rb') as file, \
+@@ -207,6 +208,21 @@ def process_archive(db, archive_path, raw, process_links=True, check_html=True):
+             if parts[-1] == 'liste_suppression_legi.dat':
+                 liste_suppression += b''.join(entry.get_blocks()).decode('ascii').split()
+                 continue
++            if parts[-1] == 'liste_suppression_legi_dossier.dat':
++                # Mecanisme ajoute par DILA : suppression de dossiers entiers
++                # (un texte et tous ses articles), au format « chemin \n D ».
++                # Non applique pour l instant : on le compte pour ne pas
++                # l ignorer en silence.
++                liste_suppression_dossier += [
++                    l for l in b''.join(entry.get_blocks()).decode('ascii').split()
++                    if l != 'D'
++                ]
++                continue
++            if len(parts) < 3:
++                # Garde-fou : un chemin trop court n a rien d exploitable.
++                # Sans lui, parts[2] leve une IndexError et tout s arrete.
++                unknown_folders[path] = unknown_folders.get(path, 0) + 1
++                continue
+             if parts[1] == 'legi':
+                 path = path[len(parts[0])+1:]
+                 parts = parts[1:]
+@@ -302,7 +318,12 @@ def process_archive(db, archive_path, raw, process_links=True, check_html=True):
+                 assert nature == 'Article'
+                 assert table == 'articles'
+                 contexte = root.find('CONTEXTE/TEXTE')
+-                assert attr(contexte, 'cid') == row_cid
++                # DILA publie des articles dont CONTEXTE/TEXTE ne porte pas
++                # d'attribut cid (ex. LEGIARTI000006433126, rattache a un texte
++                # JORF). L'absence n'est pas une incoherence : le cid du chemin
++                # d'archive fait foi. On ne verifie que si l'attribut existe.
++                _cid_xml = attr(contexte, 'cid')
++                assert _cid_xml is None or _cid_xml == row_cid
+                 sections = contexte.findall('.//TITRE_TM')
+                 if sections:
+                     attrs['section'] = attr(sections[-1], 'id')
+@@ -314,7 +335,12 @@ def process_archive(db, archive_path, raw, process_links=True, check_html=True):
+                 scrape_tags(attrs, root, SECTION_TA_TAGS)
+                 section_id = row_id
+                 contexte = root.find('CONTEXTE/TEXTE')
+-                assert attr(contexte, 'cid') == row_cid
++                # DILA publie des articles dont CONTEXTE/TEXTE ne porte pas
++                # d'attribut cid (ex. LEGIARTI000006433126, rattache a un texte
++                # JORF). L'absence n'est pas une incoherence : le cid du chemin
++                # d'archive fait foi. On ne verifie que si l'attribut existe.
++                _cid_xml = attr(contexte, 'cid')
++                assert _cid_xml is None or _cid_xml == row_cid
+                 parents = contexte.findall('.//TITRE_TM')
+                 if parents:
+                     attrs['parent'] = attr(parents[-1], 'id')
+@@ -469,6 +495,9 @@ def process_archive(db, archive_path, raw, process_links=True, check_html=True):
+ 
+     if liste_suppression:
+         suppress(get_table, db, liste_suppression)
++    if liste_suppression_dossier:
++        print("  NOTE:", len(liste_suppression_dossier),
++              "dossier(s) marques pour suppression par DILA, non appliques")
+ 
+     if not raw:
+         remove_detected_soft_hyphens(db, soft_hyphens)

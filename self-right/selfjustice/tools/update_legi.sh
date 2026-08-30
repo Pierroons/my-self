@@ -131,6 +131,27 @@ fi
 journal "Téléchargement des dumps DILA"
 "$VENV" -m legi.download "$TARBALLS_DIR" >> "$LOG_FILE" 2>&1
 
+# 2 bis. Le clone de legi.py porte-t-il encore ses correctifs locaux ?
+#
+# 🔑 `legi/tar2sqlite.py` est modifié à la main dans un dépôt tiers dont l'arbre
+# de travail n'est versionné par rien. Un `git pull` dedans efface ces
+# modifications sans le dire, et l'étape 3 s'arrête alors sur le premier article
+# dont `CONTEXTE/TEXTE` ne déclare pas de `cid` — après le téléchargement, à
+# 4 h du matin, avec un `AssertionError` pour seule explication.
+#
+# On ne vérifie ici que la PRÉSENCE du delta, pas son contenu : le cas redouté
+# est l'effacement, pas la retouche. Le contenu se contrôle depuis le dépôt, par
+# `scripts/check-patch-legi.sh`, contre `tools/legi_tar2sqlite.patch`.
+if [ -d "$LEGI_DIR/legi.py/.git" ]; then
+    if [ -z "$(git -C "$LEGI_DIR/legi.py" -c safe.directory="$LEGI_DIR/legi.py" \
+                   status --porcelain -- legi/tar2sqlite.py 2>/dev/null)" ]; then
+        journal "legi/tar2sqlite.py ne porte plus de correctif local — arrêt avant l'étape 3"
+        alerter "SelfJustice — correctifs legi.py perdus" \
+                "Le clone legi.py ne porte plus les correctifs locaux sur tar2sqlite.py. La moisson est arretee avant d appliquer les diffs, la base servie est intacte. Reappliquer : git -C /opt/selfjustice/legi.py apply <legi_tar2sqlite.patch>"
+        exit 1
+    fi
+fi
+
 # 3. Les appliquer à la base de travail
 #
 # ⚠️ C'est l'étape que l'ancien script n'avait pas. Sans elle, les diffs
