@@ -100,8 +100,23 @@ def empreinte(bloc, prefixe=""):
         if isinstance(val, int):
             plat[chemin] = val
         elif isinstance(val, dict):
-            plat.update(empreinte(val, chemin + "."))
+            # ⚠️ `or {}` obligatoire : la fonction rend None quand elle n'a
+            # trouvé aucun entier, et `plat.update(None)` lève un TypeError qui
+            # remonte jusqu'au try du /status — la sonde annonce alors « /status
+            # injoignable » et ne mesure plus AUCUNE base. Il a suffi d'ajouter à
+            # /api/status un sous-objet fait de chaînes (la provenance des
+            # textes, 01/09/2026) pour que tout le contrôle s'éteigne en silence.
+            # Le défaut dormait ici depuis le début, sans sous-objet pour le
+            # réveiller. Trouvé au banc, avant déploiement.
+            plat.update(empreinte(val, chemin + ".") or {})
     return plat or None
+
+# Une base peut dire d'où vient chacun de ses textes : « reseau » quand la
+# source publique a répondu, « copie_locale » quand elle a fallu se rabattre sur
+# une copie déposée à la main. Seule la conventionnalité l'expose aujourd'hui.
+# Vide = la base ne le dit pas ; on ne peut alors rien en conclure, ni dans un
+# sens ni dans l'autre.
+provenances = {}
 
 sources, volumes, empreintes, erreurs = {}, {}, {}, []
 try:
@@ -111,6 +126,7 @@ try:
         sources[nom] = bloc.get("last_update")
         volumes[nom] = volume(bloc)
         empreintes[nom] = empreinte(bloc)
+        provenances[nom] = bloc.get("provenance") or {}
 except Exception as e:
     erreurs.append(f"/status injoignable ({type(e).__name__})")
 
@@ -239,16 +255,102 @@ for nom, courant in etat_courant.items():
     e_now, e_old = courant.get("empreinte"), veille.get("empreinte")
     fige = (e_now == e_old) if (e_now and e_old) else (courant["volume"] == veille["volume"])
     if d_now and d_old and d_now > d_old and fige:
-        retards.append(
-            f"{nom} : date avancée au {d_now.isoformat()} sans aucun ajout "
-            f"({courant['volume']} inchangé) — synchronisation en trompe-l'œil"
-        )
-        lignes.append(f"  ✗ {nom:20} date +1 · volume figé à {courant['volume']}")
+        # 🔑 **Une base figée n'est un trompe-l'œil que si l'immobilité n'est
+        # pas expliquée.** Mesuré le 01/09/2026 : la conventionnalité a crié
+        # « synchronisation en trompe-l'œil » sur une reconstruction complète et
+        # correcte — ses six sources avaient été relues, aucun des six traités
+        # n'avait bougé. Pour un corpus qui ne change qu'à la ratification d'un
+        # protocole, l'immobilité EST l'état sain, et l'alerte ne pouvait que se
+        # répéter indéfiniment jusqu'à devenir du bruit.
+        #
+        # Ce que la règle cherche vraiment, c'est du mouvement affiché sans
+        # travail derrière. Quand la base dit avoir confronté toutes ses sources
+        # à leur amont, le travail a eu lieu et l'immobilité est celle de
+        # l'amont. Quand elle ne le dit pas, ou qu'une source vient d'une copie,
+        # le doute demeure et l'alerte tient — en nommant la source en cause.
+        # Une base qui dit d'où vient chacun de ses textes n'a pas besoin de
+        # cette règle-ci : deux contrôles plus précis prennent le relais plus
+        # bas — une source non reconstruite au dernier passage, une copie locale
+        # devenue trop vieille. Tous deux NOMMENT la source et tiennent quel que
+        # soit le volume, là où le trompe-l'œil ne sait dire que « quelque chose
+        # ne va pas » et se répéterait à chaque quinzaine pour un état connu.
+        if provenances.get(nom):
+            lignes.append(
+                f"  ✓ {nom:20} figé à {courant['volume']} — "
+                f"{len(provenances[nom])} sources déclarées, voir leur provenance"
+            )
+        else:
+            retards.append(
+                f"{nom} : date avancée au {d_now.isoformat()} sans aucun ajout "
+                f"({courant['volume']} inchangé) — synchronisation en trompe-l'œil"
+            )
+            lignes.append(f"  ✗ {nom:20} date +1 · volume figé à {courant['volume']}")
     elif courant["volume"] < veille["volume"]:
         retards.append(
             f"{nom} : volume en BAISSE, {veille['volume']} → {courant['volume']}"
         )
         lignes.append(f"  ✗ {nom:20} volume en baisse ({veille['volume']} → {courant['volume']})")
+
+# 🔑 **Une copie locale est un pansement, et un pansement s'oublie.** Depuis le
+# 20/08/2026, le Conseil de l'Europe rend 403 à tout client HTTP : la CEDH est
+# servie depuis un PDF déposé à la main, et la base reste parfaitement juste. Ce
+# qui manquait, c'est que ce fait ne vivait que sur la sortie du script de
+# construction, lisible le jour où il tourne et invisible tous les autres. Une
+# copie peut ainsi devenir la base elle-même sans que personne le décide.
+#
+# Le seuil est celui de build_eu_db.py, qui refuse de déclarer sa construction
+# sans réserve au-delà. Les deux doivent bouger ensemble.
+AGE_REPLI_ACCEPTABLE = 90
+
+# 🔑 **Le trompe-l'œil, dit source par source.** Chaque source porte la date de
+# la construction qui l'a écrite, et celle qui a échoué garde la sienne : ses
+# articles sont restés en place, sa ligne n'a pas été retouchée. Une source dont
+# la date est en retard sur la plus récente n'a donc pas été refaite au dernier
+# passage — pendant que la base, elle, avançait sa date de synchronisation.
+#
+# C'est exactement ce que cherchait la règle du volume figé, mais celle-ci ne
+# pouvait le dire que par un total immobile : muette dès qu'une autre source
+# compensait, et bruyante chaque quinzaine quand l'amont ne publiait rien.
+for nom, prov in sorted(provenances.items()):
+    dates = {src: parse((info or {}).get("construite_le")) for src, info in (prov or {}).items()}
+    connues = [d for d in dates.values() if d]
+    if connues:
+        derniere = max(connues)
+        en_retard = sorted(src for src, d in dates.items() if d and d < derniere)
+        if en_retard:
+            retards.append(
+                f"{nom} : {', '.join(en_retard)} pas reconstruite(s) au dernier passage "
+                f"du {derniere.isoformat()} — la base a avancé sa date sans elle(s)"
+            )
+            for src in en_retard:
+                lignes.append(f"  ✗ {nom:20} {src} : construite le {dates[src].isoformat()}, "
+                              f"la base le {derniere.isoformat()}")
+
+for nom, prov in sorted(provenances.items()):
+    for src, info in sorted((prov or {}).items()):
+        if info.get("origine") != "copie_locale":
+            continue
+        depose = parse(info.get("depose_le"))
+        if depose is None:
+            retards.append(
+                f"{nom} : {src} servie depuis une copie locale sans date de dépôt lisible "
+                f"— impossible de dire depuis quand ce texte n'est plus confronté à sa source"
+            )
+            lignes.append(f"  ✗ {nom:20} {src} : copie locale, date de dépôt illisible")
+            continue
+        age = (today - depose).days
+        lignes.append(
+            f"  {'✗' if age > AGE_REPLI_ACCEPTABLE else '·'} {nom:20} "
+            f"{src} : copie locale du {depose.isoformat()} ({age} j)"
+        )
+        # ⚠️ Pas de compte de jours dans le message envoyé : il change chaque
+        # matin pour un fait unique, et la garde de silence compare les
+        # messages tels quels. La date de dépôt, elle, est stable.
+        if age > AGE_REPLI_ACCEPTABLE:
+            retards.append(
+                f"{nom} : {src} servie depuis une copie locale déposée le "
+                f"{depose.isoformat()}, jamais reconfrontée à sa source publique depuis"
+            )
 
 # 🔑 **Une sonde qui échoue ne doit pas effacer sa mémoire.** Le 19/08/2026,
 # une coupure réseau a rendu toutes les sources injoignables : `etat_courant`

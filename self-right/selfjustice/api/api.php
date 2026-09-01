@@ -870,6 +870,36 @@ if ($segments[0] === 'status') {
         ];
         $result['eu']['last_update'] = marqueur('eu_last_update');
         $result['eu']['last_sync']   = marqueur('eu_last_sync');
+
+        // D'où vient chaque texte servi. Une source du Conseil de l'Europe ou
+        // d'EUR-Lex peut être injoignable au moment de la construction ; la
+        // base reste alors juste, servie depuis une copie déposée à la main.
+        // Sans ce champ, rien ne distingue à la lecture un texte confronté à
+        // son amont d'un texte qui ne l'a plus été depuis des mois.
+        //
+        // ⚠️ Que des chaînes ici, jamais un âge en jours. La sonde de
+        // fraîcheur aplatit tous les entiers de ce bloc pour décider si la
+        // base a bougé : un entier qui s'incrémente chaque matin la rendrait
+        // aveugle au trompe-l'œil. L'âge se recalcule depuis `depose_le`.
+        //
+        // Table absente = base construite avant elle : le champ manque plutôt
+        // que d'affirmer une origine qu'on ne connaît pas.
+        try {
+            $provenance = [];
+            $stmt = $db->query('SELECT source, origine, fichier, depose_le, construite_le FROM provenance');
+            while ($row = $stmt->fetchArray(SQLITE3_ASSOC)) {
+                $bloc = ['origine' => $row['origine']];
+                foreach (['fichier', 'depose_le', 'construite_le'] as $champ) {
+                    if ($row[$champ] !== null) { $bloc[$champ] = $row[$champ]; }
+                }
+                $provenance[$row['source']] = $bloc;
+            }
+            if ($provenance) {
+                ksort($provenance);
+                $result['eu']['provenance'] = $provenance;
+            }
+        } catch (Exception $e) {}
+
         $db->close();
     } catch (Exception $e) {}
 

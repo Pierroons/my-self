@@ -51,10 +51,13 @@ from urllib.error import HTTPError, URLError
 SOURCES_LOCALES = Path(os.environ.get(
     "SELFJUSTICE_SOURCES_DIR", "/var/lib/selfjustice/sources"))
 
-# Au-delà, une copie locale mérite d'être revérifiée à la main. Un traité ne
-# bouge pas en six mois ; passé ce délai, c'est l'absence de vérification qui
-# devient l'anomalie, pas le texte.
-AGE_COPIE_ACCEPTABLE = 180
+# Au-delà, une copie locale mérite d'être redéposée à la main. Le seuil était
+# de six mois quand le repli passait pour un accident. Il ne l'est pas :
+# mesuré le 01/09/2026, tout coe.int rend 403 à un client HTTP — quatre URL
+# officielles (echr.coe.int en HTML et en PDF, rm.coe.int, conventions.coe.int),
+# deux user-agents dont celui d'un navigateur. La copie est donc le mode normal
+# de cette source, et un pansement permanent se change au trimestre.
+AGE_COPIE_ACCEPTABLE = 90
 
 
 # Nombre d'articles que chaque texte comporte réellement. Sert de garde-fou à
@@ -450,6 +453,27 @@ def create_db(db_path: str) -> sqlite3.Connection:
             url_source TEXT
         )
     """)
+    # 🔑 **D'où vient chaque texte, écrit dans la base qui le sert.** Le repli
+    # sur copie locale ne vivait que sur la sortie du script : lisible le jour
+    # de la construction, invisible tous les autres. Une sonde qui interroge
+    # l'API voyait donc une base à jour sans pouvoir savoir qu'une de ses six
+    # sources n'avait pas été confrontée à son amont.
+    #
+    # ⚠️ Aucune colonne entière ici, et surtout pas l'âge en jours. La sonde
+    # `check_fraicheur.sh` aplatit tous les entiers du bloc pour décider si une
+    # base a bougé : un âge qui s'incrémente chaque matin rendrait l'empreinte
+    # différente tous les jours, et la règle du trompe-l'œil ne pourrait plus
+    # jamais se déclencher. L'âge se recalcule depuis `depose_le`.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS provenance (
+            source        TEXT PRIMARY KEY,
+            origine       TEXT NOT NULL,
+            fichier       TEXT,
+            depose_le     TEXT,
+            empreinte     TEXT,
+            construite_le TEXT NOT NULL
+        )
+    """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_source ON articles(source)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_num ON articles(num)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_source_num ON articles(source, num)")
@@ -490,6 +514,11 @@ def copie_locale(source: str) -> bytes:
         "detail": (f"{fichier.name} — sha256 {empreinte[:16]}…, "
                    f"déposée le {depot.isoformat()}, {age} jours"),
         "age": age,
+        # Séparés du texte libre : la table `provenance` les rend lisibles par
+        # l'API, et l'âge s'y recalcule depuis la date plutôt que de s'y figer.
+        "depose_le": depot.isoformat(),
+        "empreinte": empreinte[:16],
+        "fichier": fichier.name,
     }
     print(f"[{source}] copie locale utilisée : {fichier.name}, déposée le "
           f"{depot.isoformat()} ({age} j), sha256 {empreinte[:16]}…")
@@ -594,6 +623,34 @@ def process_source(conn: sqlite3.Connection, source: str, info: dict) -> int:
     return len(articles)
 
 
+def enregistrer_provenance(db_path: str, traitees: list, echecs: list) -> None:
+    """Inscrire dans la base d'où vient chaque source réellement reconstruite.
+
+    Une source en échec n'est pas touchée : ses articles sont restés en place,
+    donc sa provenance d'avant est encore la bonne. L'effacer dirait « origine
+    inconnue » d'un texte dont on sait très bien d'où il vient.
+    """
+    conn = sqlite3.connect(db_path)
+    aujourdhui = date.today().isoformat()
+    for source in traitees:
+        if source in echecs:
+            continue
+        repli = REPLIS.get(source)
+        conn.execute(
+            "INSERT OR REPLACE INTO provenance "
+            "(source, origine, fichier, depose_le, empreinte, construite_le) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (source,
+             "copie_locale" if repli else "reseau",
+             repli["fichier"] if repli else None,
+             repli["depose_le"] if repli else None,
+             repli["empreinte"] if repli else None,
+             aujourdhui),
+        )
+    conn.commit()
+    conn.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Construction base conventionnalité UE+CEDH")
     parser.add_argument("--db", required=True, help="Chemin vers la base SQLite de sortie")
@@ -617,6 +674,7 @@ def main():
             echecs.append(source)
 
     conn.close()
+    enregistrer_provenance(args.db, sources_to_process, echecs)
 
     # 🔑 Un échec de téléchargement ne détruit rien — les insertions sont des
     # INSERT OR REPLACE, donc une source injoignable laisse simplement ses

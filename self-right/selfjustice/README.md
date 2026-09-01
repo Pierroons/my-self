@@ -97,7 +97,7 @@ Machine-readable directives telling the AI how to reason:
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/status` | Volume and sync date for all three bases: LEGI, conventionality, case law |
+| `GET /api/status` | Volume and sync date for all three bases: LEGI, conventionality, case law. For conventionality, `provenance` states per source whether the text was re-read from its publisher or served from a hand-deposited copy |
 | `GET /api/legi/article/{ref}?code={alias}` | French legal article (with code disambiguation: travail, civil, penal, consommation, sante_publique, assurances, urbanisme, route, etc.) |
 | `GET /api/legi/search?q=...&limit=...` | Full-text search across LEGI |
 | `GET /api/eu/article/{source}/{num}` | EU/CEDH article (`source` ∈ `CEDH`, `CHARTE_UE`, `TFUE`, `TUE`, `RGPD`, `AI_ACT`) |
