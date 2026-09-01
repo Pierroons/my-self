@@ -302,6 +302,138 @@ else
 fi
 
 echo
+echo "▸ D'où vient le texte, et depuis combien de temps"
+
+# 🔑 Le 01/09/2026, la sentinelle a crié « synchronisation en trompe-l'œil » sur
+# une reconstruction complète et correcte : ses six sources avaient été relues,
+# aucun des six traités n'avait bougé. Pour un corpus qui ne change qu'à la
+# ratification d'un protocole, l'immobilité EST l'état sain — l'alerte ne
+# pouvait que se répéter jusqu'à devenir du bruit.
+#
+# La base dit maintenant, source par source, d'où vient son texte et quelle
+# construction l'a écrit. Deux règles précises remplacent le volume figé : une
+# source restée en arrière n'a pas été refaite, une copie locale trop vieille
+# n'est plus confrontée à rien. Toutes deux nomment la source.
+RECENTE=$(date -d '-12 days' +%Y-%m-%d)
+PERIMEE=$(date -d '-200 days' +%Y-%m-%d)
+HIER=$(date -d '-1 day' +%Y-%m-%d)
+AUJ=$(date +%Y-%m-%d)
+
+conv_figee() { # conv_figee <provenance JSON du bloc eu, ou vide>
+    python3 - "$ATTENDU" "$1" <<'PY' > "$BAC/status.json"
+import json, sys
+sain, prov = sys.argv[1], sys.argv[2]
+eu = {"articles": 793, "sources": {"CEDH": 114, "TUE": 55}, "last_update": sain}
+if prov:
+    eu["provenance"] = json.loads(prov)
+print(json.dumps({
+    "legi": {"articles": 525441, "last_update": sain},
+    "eu": eu,
+    "jurisprudence": {"decisions": 1191177, "last_update": sain},
+}))
+PY
+    python3 - "$ATTENDU" <<'PY' > "$BAC/catalog.json"
+import json, sys
+print(json.dumps({"meta": {"last_sync": sys.argv[1], "total": 1890}}))
+PY
+    # Conventionnalité datée de la veille, volume et empreinte identiques : la
+    # date avance, rien ne bouge. Les autres bases sont tenues saines.
+    python3 - "$AVANT" "$ATTENDU" <<'PY' > "$BAC/etat.json"
+import json, sys
+avant, sain = sys.argv[1], sys.argv[2]
+print(json.dumps({
+    "conventionnalité": {"date": avant, "volume": 793, "vu_le": avant,
+                         "empreinte": {"articles": 793, "sources.CEDH": 114,
+                                       "sources.TUE": 55}},
+    "LEGI": {"date": sain, "volume": 525441, "vu_le": sain,
+             "empreinte": {"articles": 525441}},
+    "catalogue SelfAct": {"date": sain, "volume": 1890, "vu_le": sain,
+                          "empreinte": {"total": 1890}},
+    "jurisprudence": {"date": sain, "volume": 1191177, "vu_le": sain,
+                      "empreinte": {"decisions": 1191177}},
+}))
+PY
+    lancer
+}
+
+# Toutes reconstruites le même jour, toutes venues de leur éditeur.
+SAINE="{\"CEDH\":{\"origine\":\"reseau\",\"construite_le\":\"$AUJ\"},\"TUE\":{\"origine\":\"reseau\",\"construite_le\":\"$AUJ\"}}"
+
+sortie=$(conv_figee "$SAINE")
+if grep -q "trompe-l" <<<"$sortie"; then
+    nok "toutes sources confrontées, amont immobile → trompe-l'œil crié à tort"
+else
+    ok "toutes sources confrontées, amont immobile → silence"
+fi
+if grep -q "sources déclarées" <<<"$sortie"; then
+    ok "et le verbeux dit pourquoi elle se tait"
+else
+    nok "silence sans explication : indistinguable d'un contrôle qui n'a rien vu"
+fi
+
+# 🔑 Une copie locale récente est un état connu, documenté et surveillé par son
+# âge. La signaler comme un trompe-l'œil ferait crier la sentinelle à chaque
+# quinzaine pour un fait que personne n'a besoin qu'on lui rappelle.
+COPIE_FRAICHE="{\"CEDH\":{\"origine\":\"copie_locale\",\"depose_le\":\"$RECENTE\",\"construite_le\":\"$AUJ\"},\"TUE\":{\"origine\":\"reseau\",\"construite_le\":\"$AUJ\"}}"
+sortie=$(conv_figee "$COPIE_FRAICHE")
+if grep -qE "RETARD" <<<"$sortie"; then
+    nok "copie locale récente et fraîchement reconstruite → alerte à tort : ${sortie//$'\n'/ }"
+else
+    ok "copie locale récente, reconstruite → silence"
+fi
+if grep -q "copie locale du" <<<"$sortie"; then
+    ok "mais le verbeux la nomme, avec son âge"
+else
+    nok "une copie locale ne se voit nulle part"
+fi
+
+# 🔑 Le vrai trompe-l'œil, dit source par source : la base a avancé sa date
+# pendant qu'une de ses sources restait à la construction précédente.
+EN_RETARD="{\"CEDH\":{\"origine\":\"copie_locale\",\"depose_le\":\"$RECENTE\",\"construite_le\":\"$HIER\"},\"TUE\":{\"origine\":\"reseau\",\"construite_le\":\"$AUJ\"}}"
+sortie=$(conv_figee "$EN_RETARD")
+if grep -q "CEDH pas reconstruite(s) au dernier passage" <<<"$sortie"; then
+    ok "source restée en arrière → signalée, et nommée"
+else
+    nok "une source non reconstruite passe inaperçue : ${sortie//$'\n'/ }"
+fi
+
+# Le seuil est celui de build_eu_db.py — les deux doivent bouger ensemble.
+sortie=$(conv_figee "{\"CEDH\":{\"origine\":\"copie_locale\",\"depose_le\":\"$PERIMEE\",\"construite_le\":\"$AUJ\"},\"TUE\":{\"origine\":\"reseau\",\"construite_le\":\"$AUJ\"}}")
+if grep -q "jamais reconfrontée à sa source publique" <<<"$sortie"; then
+    ok "copie de 200 jours → péremption signalée"
+else
+    nok "une copie de 200 jours passe pour fraîche"
+fi
+
+sortie=$(conv_figee "{\"CEDH\":{\"origine\":\"copie_locale\",\"construite_le\":\"$AUJ\"},\"TUE\":{\"origine\":\"reseau\",\"construite_le\":\"$AUJ\"}}")
+if grep -q "sans date de dépôt lisible" <<<"$sortie"; then
+    ok "copie sans date de dépôt → signalée, pas tenue pour fraîche"
+else
+    nok "une copie sans date passe pour récente"
+fi
+
+# Non-régression : une base qui ne dit pas d'où viennent ses textes ne gagne
+# aucune indulgence. C'est le cas de LEGI, de la jurisprudence et du catalogue.
+sortie=$(conv_figee '')
+if grep -q "trompe-l" <<<"$sortie"; then
+    ok "aucune provenance exposée → trompe-l'œil comme avant"
+else
+    nok "une base muette sur ses sources échappe au contrôle de volume"
+fi
+
+# 🔑 **Le cas qui compte le plus.** L'empreinte aplatit tous les entiers du bloc
+# pour décider si une base a bougé ; sa récursion rendait None sur un sous-objet
+# sans aucun entier, et `plat.update(None)` levait un TypeError qui remontait
+# jusqu'au try du /status. Ajouter un sous-objet fait de chaînes — la provenance
+# — éteignait donc la mesure de TOUTES les bases derrière un « /status
+# injoignable ». Trouvé au banc le 01/09/2026, avant déploiement.
+sortie=$(conv_figee "$SAINE")
+if grep -q "injoignable" <<<"$sortie"; then
+    nok "un sous-objet de chaînes éteint la mesure : ${sortie//$'\n'/ }"
+else
+    ok "un sous-objet sans entier ne casse pas la mesure"
+fi
+echo
 echo "▸ Une source injoignable reste un retard"
 kill "$SERVEUR" 2>/dev/null; SERVEUR=""
 sortie=$(jouer "$ATTENDU" 525441 "$ATTENDU" 1890 "$(etat "$ATTENDU" 525441 "$ATTENDU")")

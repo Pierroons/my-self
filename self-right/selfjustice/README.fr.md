@@ -98,7 +98,7 @@ Directives machine-readable disant à l'IA comment raisonner :
 
 | Endpoint | Usage |
 |----------|-------|
-| `GET /api/status` | Volumétrie et date de synchronisation des trois bases : LEGI, conventionnalité, jurisprudence |
+| `GET /api/status` | Volumétrie et date de synchronisation des trois bases : LEGI, conventionnalité, jurisprudence. Pour la conventionnalité, `provenance` dit source par source si le texte a été relu chez son éditeur ou servi depuis une copie déposée à la main |
 | `GET /api/legi/article/{ref}?code={alias}` | Article juridique français (avec désambiguïsation par code : travail, civil, penal, consommation, sante_publique, assurances, urbanisme, route, etc.) |
 | `GET /api/legi/search?q=...&limit=...` | Recherche plein texte dans LEGI |
 | `GET /api/eu/article/{source}/{num}` | Article UE/CEDH (`source` ∈ `CEDH`, `CHARTE_UE`, `TFUE`, `TUE`, `RGPD`, `AI_ACT`) |

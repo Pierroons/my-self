@@ -7,8 +7,15 @@ Description=Contrôle quotidien de la fraîcheur des bases Self-Right
 OnCalendar=*-*-* 07:00:00
 RandomizedDelaySec=300
 # La machine dort ou redémarre : le contrôle manqué se rattrape au réveil, il ne
-# se saute pas. Une sonde qui ne tourne pas ressemble à une sonde qui rassure —
-# celle-ci n'était ordonnancée nulle part jusqu'au 30/08/2026.
+# se saute pas.
+#
+# ⚠️ **Un seul déclencheur, et il est ici.** Ce timer a été posé le 30/08/2026
+# en croyant la sonde orpheline : `/etc/cron.d`, `/etc/crontab` et les unités
+# avaient été inspectés, pas les crontabs utilisateur. Elle tournait depuis le
+# 13/08 par `crontab -l` de l'exploitant, qui a donc alerté en double les 30 et
+# 31 août — deux états, deux fichiers de silence, deux messages identiques à
+# quatorze minutes d'écart le 01/09. La ligne de crontab a été retirée ce
+# jour-là. Chercher un ordonnancement veut dire lire aussi `crontab -l`.
 Persistent=true
 
 [Install]

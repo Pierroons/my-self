@@ -861,10 +861,12 @@ Analyse selon /directives.html</pre>
     <p>Avant toute analyse, interroge <code>GET /api/status</code> pour récupérer la date officielle de dernière synchronisation des bases LEGI et Conventionnalité. Utilise cette date (et non la date du jour, ni une date supposée) dans l'avertissement légal et les citations. Exemple de réponse :</p>
     <pre>{
   "legi": {"articles": &lt;nombre&gt;, "vigueur": &lt;nombre&gt;, "last_update": "&lt;date&gt;", "last_sync": "&lt;AAAA-MM-JJ&gt;"},
-  "eu":   {"articles": &lt;nombre&gt;, "last_update": "&lt;date&gt;", "last_sync": "&lt;AAAA-MM-JJ&gt;"},
+  "eu":   {"articles": &lt;nombre&gt;, "last_update": "&lt;date&gt;", "last_sync": "&lt;AAAA-MM-JJ&gt;",
+           "provenance": {"&lt;SOURCE&gt;": {"origine": "reseau|copie_locale", "depose_le": "&lt;AAAA-MM-JJ&gt;"}}},
   "jurisprudence": {"decisions": &lt;nombre&gt;, "couverture": {…}, "last_update": "&lt;date&gt;", "last_sync": "&lt;AAAA-MM-JJ&gt;"}
 }</pre>
     <p>Dans l'avertissement du document, écrire par exemple : « articles vérifiés contre la base LEGI officielle (DILA) au {last_update de la réponse} ». Ne jamais inventer ou supposer une date.</p>
+    <p><strong>Provenance des textes européens.</strong> Chaque source de conventionnalité dit d'où elle vient. <code>reseau</code> : le texte a été relu chez son éditeur lors de la dernière construction. <code>copie_locale</code> : l'éditeur était injoignable et le texte provient d'une copie déposée à la main, dont <code>depose_le</code> donne la date — c'est le cas de la CEDH depuis que le Conseil de l'Europe refuse les clients HTTP. Le texte reste celui du traité ; ce qui change, c'est la date à laquelle il a été confronté à sa source, et c'est cette date-là qu'il faut citer pour cette source.</p>
   </section>
 
   <section>
