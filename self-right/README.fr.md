@@ -72,9 +72,9 @@ SelfAct **tourne aussi**, et son dossier le montre : [`selfact/`](./selfact/) po
 | Brique | Où | Ce qu'elle fait |
 |---|---|---|
 | Catalogue | [`selfact/api/`](./selfact/api/) | plus de 1 800 ressources officielles moissonnées sur service-public.gouv.fr, rangées en 16 catégories — le compte exact et la ventilation par type sont servis en direct par `/act/api/catalog.php?stats=1`. Rafraîchi les 1er et 15. |
-| Aiguillage | [`selfact/api/find.php`](./selfact/api/find.php) | 20 situations curées à la main : « je me fais licencier » → l'acte, l'article, le formulaire. |
+| Aiguillage | [`selfact/api/find.php`](./selfact/api/find.php) | une vingtaine de situations curées à la main : « je me fais licencier » → l'acte, l'article, le formulaire. |
 | Calcul de délai | [`selfact/api/deadline.php`](./selfact/api/deadline.php) | Le seul endroit qui calcule au lieu de restituer, avec export agenda. |
-| Gabarit de courrier | [`selfact/api/draft.php`](./selfact/api/draft.php) | Mise en demeure, saisine (conciliateur, Défenseur des droits), contestation, résiliation, recours — chacun avec un filigrane « NON OFFICIEL — IRRECEVABLE » non supprimable à l'impression, et les ressources officielles correspondantes. |
+| Gabarit de courrier | [`selfact/api/draft.php`](./selfact/api/draft.php) | Mise en demeure, saisine (conciliateur, Défenseur des droits), contestation, résiliation, recours — chacun portant la mention « NON OFFICIEL » dans le corps quand il imite la forme d'un acte, et le rappel en pied dans tous les cas, et les ressources officielles correspondantes. |
 
 Quatre des douze outils MCP SelfRight sont ceux de SelfAct. Les deux modules sont servis par le même domaine — `justice.my-self.fr/act` — et n'échangent aucun appel : SelfJustice dit le droit, SelfAct fait la démarche.
 

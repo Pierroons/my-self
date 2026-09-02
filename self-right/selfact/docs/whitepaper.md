@@ -82,9 +82,11 @@ the legal basis and the facts, which the reader supplies:
 | `recours_gracieux` | Administrative appeal to the issuing authority |
 | `resiliation` | Contract termination |
 | `document` | Free-form letter |
+| `directives_donnees_post_mortem` | Directives on personal data after death |
 
 They live in `api/data/gabarits.json`, and `/act/api/gabarits` serves the current
-count. Each carries a `NON OFFICIEL — IRRECEVABLE` watermark that survives
+count. Each carries a `NON OFFICIEL` notice in the body when it imitates the form of a
+legal act, and a footer reminder in every case, which survives
 printing: an official model, when one exists, always takes precedence, and
 `/act/api/find` returns it first.
 

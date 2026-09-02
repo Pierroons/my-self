@@ -112,9 +112,9 @@ exchanges no calls with it: SelfJustice states the law, SelfAct performs the ste
 
 - [x] Concept paper
 - [x] Resource catalogue — over 1,800 official resources in 16 categories, harvested from service-public.gouv.fr, refreshed on the 1st and 15th (exact count: `/act/api/catalog.php?stats=1`)
-- [x] Situation matching — 20 hand-curated situations, each mapped to a step, an article and a form
+- [x] Situation matching — around twenty hand-curated situations, each mapped to a step, an article and a form
 - [x] Deadline engine — art. 640-643 CPC, mainland / overseas / abroad, with calendar export, covered by a CI guard
-- [x] Letter templates — formal notice, saisine, contestation, termination, recours, each carrying a "NON OFFICIEL — IRRECEVABLE" watermark that survives printing
+- [x] Letter templates — formal notice, saisine, contestation, termination, recours, each carrying a "NON OFFICIEL" notice in the body when it imitates the form of a legal act, and a footer reminder in every case
 - [x] Printing — browser-side, so no draft ever leaves the machine
 - [x] Exposed through the SelfRight MCP server (4 of its 12 tools)
 - [ ] CERFA XML pre-fill

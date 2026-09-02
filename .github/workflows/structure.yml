@@ -142,6 +142,9 @@ jobs:
       - name: Garde-fou — le pont vers les démarches officielles
         run: bash self-right/selfact/tests/test_gabarits_officiels.sh
 
+      - name: Garde-fou — situations.json, que rien d'autre ne charge
+        run: bash self-right/selfact/tests/test_situations.sh
+
       - name: Garde-fou — le délai de prescription se lit, il ne se sérialise pas
         run: python3 self-right/selfjustice/tests/sanity_prescription.py
 
@@ -158,6 +161,12 @@ jobs:
 
       - name: Garde-fou — ce que le MCP rend vraiment d'une fiche de situation
         run: python3 self-right/selfjustice/tests/test_mcp_situation.py
+
+      # Deux modules décrivent le même avertissement : SelfAct le pose sur le
+      # document, le MCP l'annonce au modèle. Rien ne les tenait ensemble, et
+      # corriger l'un sans l'autre inverse simplement le sens de l'écart.
+      - name: Garde-fou — le MCP ne décrit pas un avertissement disparu
+        run: python3 self-right/selfjustice/tests/sanity_mcp_decrit_le_document.py
 
       - name: Garde-fou — ce que le déploiement de l'arbre emporte
         run: bash deploy/my-self/tests/test_deploy.sh

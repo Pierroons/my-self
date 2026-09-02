@@ -9,7 +9,7 @@ SelfAct est un **outil d'indexation** du catalogue des modèles de lettres offic
 **Ce que SelfAct EST :**
 - Un **index sémantique** consultable via API des modèles de lettres officiels publiés par service-public.fr sous licence Etalab 2.0 — le nombre exact varie à chaque moisson bimensuelle et est servi par `/act/api/catalog.php?stats=1`
 - Un **outil de redirection** vers les URLs officielles service-public.fr
-- Un **générateur de brouillons HTML** filigranés « NON OFFICIEL — IRRECEVABLE » pour aider à la rédaction quand aucun modèle officiel ne convient
+- Un **générateur de brouillons HTML** portant la mention « NON OFFICIEL » dans le corps quand le document imite la forme d'un acte, et le rappel en pied dans tous les cas, pour aider à la rédaction quand aucun modèle officiel ne convient
 
 **Ce que SelfAct N'EST PAS :**
 - ❌ Un service de conseil juridique (monopole avocat, loi 71-1130 du 31 décembre 1971)
@@ -30,11 +30,11 @@ SelfAct indexe les modèles de lettres publiés par **service-public.fr** (gouve
 
 L'utilisateur qui accède à un modèle officiel via SelfAct est redirigé vers le site officiel service-public.fr et utilise ce dernier sous ses conditions propres.
 
-## 4. PDF filigrane — dernier recours uniquement
+## 4. Brouillon d'aide à la rédaction — dernier recours uniquement
 
 Quand aucun modèle officiel ne couvre précisément la situation, SelfAct produit un **document HTML imprimable en PDF** comportant :
 
-- Un **filigrane SVG diagonal** « NON OFFICIEL — IRRECEVABLE » non-supprimable sans réécriture complète
+- La **mention « NON OFFICIEL »** en tête et au milieu du corps sur les documents qui imitent la forme d'un acte, et le rappel en pied sur tous
 - Un **disclaimer légal** rappelant l'absence de valeur officielle
 - Une **section « informations insuffisantes »** (optionnelle) listant les éléments manquants à collecter
 
@@ -54,9 +54,9 @@ SelfAct **ne collecte aucune donnée personnelle**. En particulier :
 - Pas de cookies de session
 - Pas d'analytics ou de tracking tiers
 - Pas de journal d'accès nominatif au-delà des logs nginx standards (IP rotés 7 jours, aucun enrichissement)
-- Le générateur de PDF filigrane ne conserve aucune trace du contenu traité
+- Le générateur de brouillon ne conserve aucune trace du contenu traité
 
-Le contenu éventuellement saisi dans le corps POST de `/act/api/draft` est traité en mémoire et renvoyé immédiatement. Aucune persistence serveur.
+`/act/api/draft` ne reçoit aucune donnée : elle rend un gabarit à trous, et le remplissage a lieu dans le navigateur. Un POST est refusé en 405. Rien de ce que tu écris ne quitte ta machine, donc rien n'est persisté côté serveur.
 
 ## 7. Disponibilité et mise à jour
 

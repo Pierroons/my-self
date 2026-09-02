@@ -3,7 +3,7 @@
 #
 # 🔑 Le pied de chaque gabarit disait « pour un acte officiel, utilise le modèle
 # service-public.fr correspondant » sans jamais dire lequel, alors que le module
-# en indexe 1 895. Le rapprochement est désormais curé dans data/gabarits.json.
+# en indexe plus de 1 800. Le rapprochement est désormais curé dans data/gabarits.json.
 #
 # ⚠️ Curé, donc faillible autrement : un identifiant que le catalogue ne connaît
 # plus donne un renvoi vers rien. C'est le défaut que ce banc cherche en
@@ -93,7 +93,8 @@ g = json.load(sys.stdin)["gabarits"]
 avec = sum(1 for x in g.values() if x["officiels"])
 print(f"{avec}/{len(g)}")')
 avec="${total%%/*}"
-# Six des sept : « document » est le gabarit neutre, il n'a pas de démarche.
+# Une borne, pas un compte : les gabarits neutres — « document », et tout gabarit
+# dont le sujet n'a aucune démarche officielle — n'en portent aucune.
 [ "$avec" -ge 6 ] && ok "$total gabarits portent au moins une ressource officielle" \
                   || nok "$total seulement — le pont ne sert presque rien"
 
@@ -121,10 +122,10 @@ done
 
 echo
 echo "▸ Les champs annoncés sont ceux que le document porte"
-# 🔑 L'outil MCP annonçait les mêmes quatre champs pour les sept gabarits, dont
-# « action demandée » — qui n'existe que dans la mise en demeure. Six documents
-# sur sept sont un squelette identique à deux lignes près, et rien ne le disait.
-# Mesuré le 22/08/2026 par un contrôle extérieur, en ouvrant les sept.
+# 🔑 L'outil MCP annonçait les mêmes quatre champs pour tous les gabarits, dont
+# « action demandée » — qui n'existe que dans la mise en demeure. Presque tous les
+# documents sont un squelette identique à deux lignes près, et rien ne le disait.
+# Mesuré le 22/08/2026 par un contrôle extérieur, en les ouvrant un à un.
 #
 # Ce cas confronte la table au document RÉEL : il relève les crochets que
 # `draft.php` rend, et vérifie que la déclaration ne promet ni plus ni moins.
@@ -158,7 +159,7 @@ print("\n".join(ecarts))
 PYEOF
 )
 if [ -z "$ecarts" ]; then
-    ok "les sept gabarits déclarent exactement leurs crochets"
+    ok "chaque gabarit déclare exactement ses crochets"
 else
     nok "écart entre ce qui est annoncé et ce que le document porte :
 $ecarts"
@@ -167,7 +168,7 @@ fi
 # 🔑 Et le contrôle qui donne son sens au précédent : la mise en demeure DOIT
 # être la seule à porter « Action demandée ». Sans ce cas, une table qui
 # déclarerait les mêmes champs partout passerait le contrôle ci-dessus le jour
-# où quelqu'un ajouterait le crochet aux sept documents.
+# où quelqu'un ajouterait le crochet à tous les documents.
 # ⚠️ La liste vient de la route, pas d'une énumération écrite ici : un huitième
 # gabarit portant « Action demandée » ne serait jamais examiné, et le contrôle
 # dont ce commentaire dit qu'il « donne son sens au précédent » resterait vert.
@@ -177,7 +178,7 @@ import json,sys; print(" ".join(json.load(sys.stdin)["gabarits"]))'); do
     curl -s "$BASE/draft.php?type=$type" | grep -q "Action demandée" && avec=$((avec + 1))
 done
 [ "$avec" -eq 1 ] \
-    && ok "« Action demandée » n'est dans qu'un seul document sur sept" \
+    && ok "« Action demandée » n'est que dans un seul document" \
     || nok "« Action demandée » dans $avec document(s) — la déclaration doit suivre"
 
 echo
@@ -199,6 +200,57 @@ cp "$TMP/sauvegarde.json" "$ACT/data/gabarits.json"
 [ "$signale" = "R00000" ] \
     && ok "un identifiant absent du catalogue est nommé, pas ignoré" \
     || nok "un identifiant absent n'a rien déclenché (signalé : « $signale »)"
+
+echo
+echo "▸ L'avertissement suit la classe du gabarit, pas l'humeur du demandeur"
+
+# 🔑 La mention « NON OFFICIEL » ne couvre que le cas C — les documents qui
+# imitent la forme d'un acte juridique. Elle était posée sur tous, y compris sur
+# un courrier amiable qui n'imite rien : un avertissement qui se répète là où il
+# n'a pas lieu d'être finit par ne plus être lu là où il compte.
+#
+# ⚠️ Ce que ce banc vérifie aussi, et qui compte autant : le bloc `.disclaimer`
+# du pied reste sur TOUS les documents. Le texte de la loi 71-1130 est soudé
+# dans la chaîne des mentions ; les conditionner en retire deux porteurs, et
+# c'est le pied qui doit rattraper. Un cas B sans mention ET sans disclaimer
+# serait un document nu.
+ecarts=""
+for cle in $(python3 -c '
+import json; print(" ".join(json.load(open("'"$ACT"'/data/gabarits.json"))["gabarits"]))'); do
+    cas=$(python3 -c '
+import json,sys; print(json.load(open("'"$ACT"'/data/gabarits.json"))["gabarits"][sys.argv[1]]["cas"])' "$cle")
+    page=$(curl -s "$BASE/draft.php?type=$cle")
+    vues=$(printf '%s' "$page" | grep -c 'class="mention"')
+    pied=$(printf '%s' "$page" | grep -c 'class="disclaimer"')
+    attendu=0; [ "$cas" = "C" ] && attendu=2
+    [ "$vues" = "$attendu" ] || ecarts="$ecarts $cle(cas $cas: $vues mention(s), $attendu attendue(s))"
+    [ "$pied" = "1" ]        || ecarts="$ecarts $cle(pied absent)"
+done
+[ -z "$ecarts" ] \
+    && ok "les 8 gabarits marquent selon leur classe, et gardent tous leur pied" \
+    || nok "l'avertissement ne suit pas la classe :$ecarts"
+
+# Contre-témoin dans les deux sens : sans lui, un rendu qui ne marquerait
+# jamais rien — ou qui marquerait tout — passerait la boucle ci-dessus dès que
+# la table des classes lui donnerait raison par hasard.
+cp "$ACT/data/gabarits.json" "$TMP/avant-bascule.json"
+python3 - "$ACT/data/gabarits.json" <<'BASCULE'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p))
+d["gabarits"]["mise_en_demeure"]["cas"] = "B"     # un C déclassé
+d["gabarits"]["recours_gracieux"]["cas"] = "C"    # un B promu
+json.dump(d, open(p, "w"), ensure_ascii=False, indent=2)
+BASCULE
+bascule_c=$(curl -s "$BASE/draft.php?type=mise_en_demeure"  | grep -c 'class="mention"')
+bascule_b=$(curl -s "$BASE/draft.php?type=recours_gracieux" | grep -c 'class="mention"')
+cp "$TMP/avant-bascule.json" "$ACT/data/gabarits.json"
+[ "$bascule_c" = "0" ] \
+    && ok "un C déclassé en B perd sa mention — le rendu lit bien la table" \
+    || nok "un C déclassé garde $bascule_c mention(s) : le marquage ne vient pas de la classe"
+[ "$bascule_b" = "2" ] \
+    && ok "un B promu en C la gagne" \
+    || nok "un B promu n'a que $bascule_b mention(s) : le rendu ne marque jamais rien"
 
 echo
 totalp=$((reussites + echecs))

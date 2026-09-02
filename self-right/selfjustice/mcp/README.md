@@ -158,8 +158,9 @@ formulaire officiel — jamais une recommandation sur ce qu'il faut faire.
 
 `gabarit_document` illustre la limite. Il **ne rédige pas et ne rend pas le
 document** : il donne l'adresse du gabarit et la liste des champs à compléter.
-Le document s'ouvre dans un navigateur, porte une mention « non officiel » que
-rien ne retire, et laisse en crochets les faits, montants, dates et noms — ceux
+Le document s'ouvre dans un navigateur, porte ses avertissements — la mention
+« NON OFFICIEL » dans le corps quand il imite la forme d'un acte, le rappel en
+pied dans tous les cas — et laisse en crochets les faits, montants, dates et noms — ceux
 qui n'appartiennent qu'à la personne concernée et qu'aucun outil ne connaît.
 
 Le reste indexe, oriente et calcule. `calculer_echeance` rend sa date

@@ -9,6 +9,7 @@
   "gabarits": {
     "mise_en_demeure": {
       "label": "Mise en demeure",
+      "cas": "C",
       "officiels": [
         {
           "id": "R74538",
@@ -36,6 +37,7 @@
     },
     "saisine_conciliateur": {
       "label": "Saisine du conciliateur de justice",
+      "cas": "B",
       "officiels": [
         {
           "id": "R73714",
@@ -62,6 +64,7 @@
     },
     "plainte_simple": {
       "label": "Dépôt de plainte",
+      "cas": "B",
       "officiels": [
         {
           "id": "R11469",
@@ -92,6 +95,7 @@
     },
     "saisine_defenseur": {
       "label": "Saisine du Défenseur des droits",
+      "cas": "B",
       "officiels": [
         {
           "id": "R68670",
@@ -118,6 +122,7 @@
     },
     "recours_gracieux": {
       "label": "Recours gracieux auprès d'une administration",
+      "cas": "B",
       "officiels": [
         {
           "id": "R46120",
@@ -148,6 +153,7 @@
     },
     "resiliation": {
       "label": "Résiliation de contrat",
+      "cas": "C",
       "officiels": [
         {
           "id": "R21219",
@@ -186,6 +192,7 @@
     },
     "document": {
       "label": "Projet de courrier",
+      "cas": "B",
       "officiels": [],
       "reserve": "Gabarit neutre, sans démarche officielle correspondante. Utilise-le seulement si aucun des six autres ne convient.",
       "champs": [
@@ -193,6 +200,23 @@
         "identité et adresse du destinataire — [Destinataire], [Adresse]",
         "objet du courrier — [Objet de la lettre]",
         "chronologie des faits — [Chronologie des faits]",
+        "lieu et signature — [Ville], [Signature]"
+      ],
+      "date_prerenseignee": true
+    },
+    "directives_donnees_post_mortem": {
+      "label": "Directives sur mes données après mon décès",
+      "cas": "C",
+      "officiels": [],
+      "reserve": "Au 01/09/2026, le catalogue ne porte aucune ressource officielle sur ce sujet : ni modèle de lettre, ni formulaire, ni téléservice. Ce gabarit est adossé au texte de l'article 85 de la loi n° 78-17, relu en base LEGI, et non au catalogue. Il ne vaut pas testament : un document dactylographié signé à la main est nul comme testament (art. 970 du code civil).",
+      "champs": [
+        "identité et adresse de l'auteur des directives — [Nom Prénom], [Adresse complète]",
+        "service ou plateforme destinataire — [Destinataire], [Adresse]",
+        "objet du courrier — [Objet de la lettre]",
+        "traitement visé par les directives — [Service concerné]",
+        "sort demandé pour les données — [Sort demandé pour les données]",
+        "personne chargée de l'exécution — [Personne chargée de l'exécution]",
+        "comptes et contexte — [Chronologie des faits]",
         "lieu et signature — [Ville], [Signature]"
       ],
       "date_prerenseignee": true

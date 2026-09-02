@@ -85,7 +85,7 @@ def main() -> int:
 
     print()
     print("▸ L'absence reste silencieuse")
-    # Les 17 situations sans prescription ne doivent pas gagner un bandeau vide.
+    # Les situations sans prescription ne doivent pas gagner un bandeau vide.
     for vide in (None, "", {}, 0):
         verdict(formater(vide) == "", f"« {vide!r} » → aucune ligne")
 
