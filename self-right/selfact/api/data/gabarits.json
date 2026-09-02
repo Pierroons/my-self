@@ -207,6 +207,7 @@
     "directives_donnees_post_mortem": {
       "label": "Directives sur mes données après mon décès",
       "cas": "C",
+      "titre_faits": "Comptes et contexte",
       "officiels": [],
       "reserve": "Au 01/09/2026, le catalogue ne porte aucune ressource officielle sur ce sujet : ni modèle de lettre, ni formulaire, ni téléservice. Ce gabarit est adossé au texte de l'article 85 de la loi n° 78-17, relu en base LEGI, et non au catalogue. Il ne vaut pas testament : un document dactylographié signé à la main est nul comme testament (art. 970 du code civil).",
       "champs": [
