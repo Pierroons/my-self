@@ -45,12 +45,12 @@ function neuf(string $mot, string $phrase, string $sel): array
 // ── Niveau 1 ───────────────────────────────────────────────────────────────
 echo "\n→ Niveau 1 — passphrase\n";
 [$st, $rec] = neuf($MOT, $PHR, $SEL);
-$r = $rec->parPassphrase('alice', $PHR, '10.0.0.1', $now);
+$r = $rec->parPassphrase('alice', $PHR, '192.0.2.1', $now);
 verifier('la bonne passphrase rend l\'accès', $r['ok'] === true && isset($r['mot_de_passe']));
 verifier('une passphrase neuve est émise',
     isset($r['passphrase']) && $r['passphrase'] !== $PHR, $r['passphrase'] ?? '—');
 verifier('l\'ancienne passphrase ne resert pas',
-    $rec->parPassphrase('alice', $PHR, '10.0.0.1', $now)['ok'] === false);
+    $rec->parPassphrase('alice', $PHR, '192.0.2.1', $now)['ok'] === false);
 verifier('les sessions sont révoquées', $st->sessionsRevoquees === [1]);
 
 [$st, $rec] = neuf($MOT, $PHR, $SEL);
@@ -73,7 +73,7 @@ verifier('aucun code n\'est stocké en clair',
     !in_array($codes[0], array_column($st->codes, 'empreinte'), true)
     && !in_array($codes[0], array_column($st->codes, 'index'), true));
 
-$r2 = $rec->parCode($codes[0], $MOT, '10.0.0.2', $now);
+$r2 = $rec->parCode($codes[0], $MOT, '192.0.2.2', $now);
 verifier('code et mot corrects rendent l\'accès', $r2['ok'] === true && isset($r2['mot_de_passe']));
 verifier('aucun identifiant n\'a été demandé', ($r2['compte'] ?? '') === 'alice');
 verifier('il reste neuf codes', ($r2['codes_restants'] ?? -1) === 9);
@@ -107,9 +107,9 @@ verifier('le nouveau lot fonctionne', $rec->parCode($second[0], $MOT, null, $now
 
 echo "\n→ Freins\n";
 [$st, $rec] = neuf($MOT, $PHR, $SEL);
-for ($i = 0; $i < 5; $i++) { $rec->parPassphrase('alice', 'faux faux faux faux', '10.0.0.3', $now); }
+for ($i = 0; $i < 5; $i++) { $rec->parPassphrase('alice', 'faux faux faux faux', '192.0.2.3', $now); }
 verifier('cinq échecs bloquent le compte',
-    str_contains($rec->parPassphrase('alice', $PHR, '10.0.0.3', $now)['message'], 'Trop de tentatives'));
+    str_contains($rec->parPassphrase('alice', $PHR, '192.0.2.3', $now)['message'], 'Trop de tentatives'));
 
 echo "\n→ Atomicité\n";
 

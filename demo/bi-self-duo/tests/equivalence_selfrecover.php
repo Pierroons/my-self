@@ -87,7 +87,7 @@ try {
 }
 
 try {
-    $stockage->compterEchecsIp('10.0.0.1', 0);
+    $stockage->compterEchecsIp('192.0.2.1', 0);
     verifier('le compteur par IP refuse au lieu de rendre 0', false);
 } catch (RuntimeException $e) {
     verifier('le compteur par IP refuse au lieu de rendre 0', str_contains($e->getMessage(), 'RateLimit'));

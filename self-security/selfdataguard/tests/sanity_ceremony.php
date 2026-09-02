@@ -25,7 +25,7 @@ function ko(string $l, string $d = ''): void { global $failures; $failures++; ec
 function section(string $t): void { echo "\n→ {$t}\n"; }
 
 const ADMIN_PASS  = 'ceremonie-admin-recuperation-tres-longue-2026';
-const CONTACT     = 'pierroons-secours@example.org';
+const CONTACT     = 'alice-secours@example.org';
 
 // ── Workspace jetable ────────────────────────────────────────────────────────
 $ws = sys_get_temp_dir() . '/dg_ceremony_' . getmypid();
@@ -43,13 +43,13 @@ $admin   = SelfDataGuard::generateAdminRecoveryKey(ADMIN_PASS);
 file_put_contents($pubFile, $admin['publicKey']);
 file_put_contents($sealFile, $admin['sealedSecret']);
 
-$session = $dg->register('pierroons', 'motdepasse-fort', 'sentier-brume-rocher');
+$session = $dg->register('alice', 'motdepasse-fort', 'sentier-brume-rocher');
 $dg->setEscrowFields($session, $admin['publicKey'], ['contact_secours' => CONTACT]);
 
 $pdo = new PDO("sqlite:{$db}");
 $pdo->exec('CREATE TABLE litiges (id TEXT PRIMARY KEY, user_id TEXT, status TEXT)');
-$pdo->exec("INSERT INTO litiges VALUES ('L3-open','pierroons','open')");
-$pdo->exec("INSERT INTO litiges VALUES ('L3-closed','pierroons','closed')");
+$pdo->exec("INSERT INTO litiges VALUES ('L3-open','alice','open')");
+$pdo->exec("INSERT INTO litiges VALUES ('L3-closed','alice','closed')");
 
 // ── Harnais subprocess ───────────────────────────────────────────────────────
 $env = [
@@ -59,7 +59,7 @@ $env = [
     'DATAGUARD_ADMIN_SEALED_FILE' => $sealFile,
     'DATAGUARD_AUDIT_LOG'         => $auditLog,
     'DATAGUARD_AUDIT_SECRET'      => $auditSecret,
-    'DATAGUARD_OPERATOR'          => 'pierroons@testhost',
+    'DATAGUARD_OPERATOR'          => 'operator@testhost',
 ];
 
 function run(array $args, string $stdin, array $env): array
@@ -81,17 +81,17 @@ function run(array $args, string $stdin, array $env): array
 
 section('Happy path — open litige + correct passphrase');
 
-$r = run(['unlock', 'pierroons', 'L3-open'], ADMIN_PASS . "\n", $env);
+$r = run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", $env);
 $r['code'] === 0 ? ok('exit 0') : ko('exit code', (string) $r['code'] . ' err=' . trim($r['err']));
 str_contains($r['out'], CONTACT) ? ok('escrow contact_secours revealed to admin') : ko('secret not in output', $r['out']);
 
 $audit = new AuditLog($auditLog, $auditSecret);
 $entries = $audit->readAll();
 $last = end($entries);
-$last['event']['action'] === 'escrow-unlock' && $last['event']['target'] === 'pierroons'
+$last['event']['action'] === 'escrow-unlock' && $last['event']['target'] === 'alice'
     ? ok('success written to audit log (action=escrow-unlock)') : ko('audit entry wrong', json_encode($last));
 in_array('contact_secours', $last['event']['fields'] ?? [], true) ? ok('audit records which fields were opened') : ko('fields not logged');
-$last['event']['operator'] === 'pierroons@testhost' ? ok('audit records the operator (forensic)') : ko('operator not logged');
+$last['event']['operator'] === 'operator@testhost' ? ok('audit records the operator (forensic)') : ko('operator not logged');
 
 // -----------------------------------------------------------------------------
 
@@ -105,7 +105,7 @@ $r['code'] === 0 && str_contains($r['out'], 'intègre') ? ok('verify-log → exi
 section('Anti-curieux — closed litige is refused');
 
 $before = count((new AuditLog($auditLog, $auditSecret))->readAll());
-$r = run(['unlock', 'pierroons', 'L3-closed'], ADMIN_PASS . "\n", $env);
+$r = run(['unlock', 'alice', 'L3-closed'], ADMIN_PASS . "\n", $env);
 $r['code'] === 2 ? ok('exit 2 (refused)') : ko('should refuse closed litige', (string) $r['code']);
 str_contains($r['err'], 'Refusé') ? ok('stderr says Refusé') : ko('no refusal message');
 $denyEntries = (new AuditLog($auditLog, $auditSecret))->readAll();
@@ -117,14 +117,14 @@ $deny['event']['action'] === 'escrow-unlock-denied' && $deny['event']['reason'] 
 
 section('Anti-curieux — unknown litige is refused');
 
-$r = run(['unlock', 'pierroons', 'L3-does-not-exist'], ADMIN_PASS . "\n", $env);
+$r = run(['unlock', 'alice', 'L3-does-not-exist'], ADMIN_PASS . "\n", $env);
 $r['code'] === 2 ? ok('unknown litige → exit 2') : ko('should refuse unknown litige');
 
 // -----------------------------------------------------------------------------
 
 section('Passphrase gate — wrong passphrase is refused + logged');
 
-$r = run(['unlock', 'pierroons', 'L3-open'], "mauvaise-passphrase\n", $env);
+$r = run(['unlock', 'alice', 'L3-open'], "mauvaise-passphrase\n", $env);
 $r['code'] === 2 ? ok('wrong passphrase → exit 2') : ko('should refuse wrong passphrase', (string) $r['code']);
 !str_contains($r['out'], CONTACT) ? ok('no secret leaked on wrong passphrase') : ko('LEAK on wrong passphrase');
 $badEntries = (new AuditLog($auditLog, $auditSecret))->readAll();
