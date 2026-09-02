@@ -145,6 +145,20 @@ jobs:
       - name: Garde-fou — le délai de prescription se lit, il ne se sérialise pas
         run: python3 self-right/selfjustice/tests/sanity_prescription.py
 
+      # Le banc voisin extrait une fonction et l'exécute seule ; celui-ci lance le
+      # vrai serveur MCP et l'interroge en JSON-RPC, parce que le défaut qu'il
+      # attrape était une fonction ABSENTE du rendu — rien à extraire, rien à voir.
+      # Les deux dépendances coûtent quelques secondes, comme cryptsetup plus bas.
+      # Versions épinglées, comme les actions le sont par leur SHA : ce workflow
+      # tourne aussi sur `pull_request`, et une dépendance flottante y entrerait
+      # sans relecture. Le plancher déclaré par pyproject.toml est celui qu'on
+      # éprouve — mcp 2.1.1 passe aussi, mesuré le 02/09/2026.
+      - name: Dépendances du banc MCP
+        run: pip install --quiet 'mcp==2.0.0' 'httpx==0.28.1'
+
+      - name: Garde-fou — ce que le MCP rend vraiment d'une fiche de situation
+        run: python3 self-right/selfjustice/tests/test_mcp_situation.py
+
       - name: Garde-fou — ce que le déploiement de l'arbre emporte
         run: bash deploy/my-self/tests/test_deploy.sh
 

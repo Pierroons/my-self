@@ -97,6 +97,11 @@ TIMEOUT = float(os.environ.get("SELFRIGHT_TIMEOUT", "15"))
 # perdait dans un fichier annexe, laissant le modèle sans rien à citer.
 PLAFOND_TEXTE = int(os.environ.get("SELFRIGHT_PLAFOND_TEXTE", "20000"))
 
+# Nombre d'articles d'une fiche de situation rendus en clair. Le reste est
+# COMPTÉ, jamais tu en silence : une liste d'articles tronquée sans le dire
+# ressemble exactement à une fiche qui n'en cite pas davantage.
+PLAFOND_ARTICLES_FICHE = 10
+
 SOURCES_UE = ("CEDH", "CHARTE_UE", "TUE", "TFUE", "RGPD", "AI_ACT")
 
 MOIS = {
@@ -2039,6 +2044,40 @@ def _formater_prescription(presc: Any) -> str:
     return "".join(lignes)
 
 
+def _formater_seuils(seuils: Any) -> str:
+    """Rend les seuils chiffrés d'une situation — plafonds, planchers, montants.
+
+    🔑 Le rendu de `actes_pour_situation` promettait ces seuils depuis l'origine
+    et disait lui-même ce que coûte leur absence : « les taire obligerait le
+    modèle à les chercher ailleurs — ou à les inventer ». Aucune ligne ne les
+    affichait. Relevé le 02/09/2026 par un contrôle extérieur au
+    chantier. Un plafond de compétence tu, c'est la juridiction
+    choisie de travers.
+
+    Les clés sont libres côté données et se rendent telles quelles, tirets bas
+    remplacés — pas de table de correspondance, qui périmerait à la première
+    situation ajoutée. Même repli que le voisin `_formater_prescription`, pour
+    la même raison : rien ne garantit qu'une troisième forme n'arrivera pas.
+    """
+    if not seuils:
+        return ""
+    if isinstance(seuils, str):
+        return f"\n\nSeuils applicables : {seuils.strip()}"
+    if not isinstance(seuils, dict):
+        return f"\n\nSeuils applicables : {seuils}"
+
+    # ⚠️ Aucune unité n'est ajoutée ici. Les données portent des nombres nus
+    # (« montant_max_conciliateur: 5000 ») : écrire « € » serait une supposition
+    # du lecteur, pas une information de la fiche. Si l'unité doit apparaître,
+    # elle s'ajoute à l'amont, dans `situations.json`.
+    lignes = ["\n\nSeuils applicables :"]
+    for cle, valeur in seuils.items():
+        lignes.append(f"\n   · {str(cle).replace('_', ' ')} : {valeur}")
+    lignes.append("\n   Un seuil décide souvent de la juridiction ou de la procédure : "
+                  "rapproche-le du montant réel du cas avant d'orienter l'utilisateur.")
+    return "".join(lignes)
+
+
 @server.tool()
 async def actes_pour_situation(situation: str | None = None) -> str:
     """Quelles démarches officielles existent pour une situation donnée.
@@ -2078,6 +2117,12 @@ async def actes_pour_situation(situation: str | None = None) -> str:
             "pour obtenir la liste, et n'invente pas de démarche pour combler le trou."
         )
 
+    # 🔑 `catalog_suggestions` n'est PAS rendu, et c'est un choix. La réponse
+    # porte deux niveaux de confiance : `acts`, curé à la main, et des
+    # rapprochements que l'amont qualifie lui-même d'« heuristiques, sans
+    # vérification pièce à pièce ». Un modèle ne distingue pas les deux une fois
+    # le texte à plat — il citerait la piste comme la démarche. Ce silence est
+    # écrit ici parce que, non écrit, il était indistinguable d'un oubli.
     actes = data.get("acts") or []
     lignes = "\n".join(
         f"  · {a.get('label') or '(sans intitulé)'}"
@@ -2090,18 +2135,30 @@ async def actes_pour_situation(situation: str | None = None) -> str:
     # La réponse porte plus que des démarches : les articles applicables, le
     # délai de prescription et les seuils. Les taire obligerait le modèle à les
     # chercher ailleurs — ou à les inventer.
-    # ⚠️ `articles` est une CHAÎNE, pas une liste — « art. 1240 C. civ.,
-    # art. R. 1336-5 C. santé publique, … ». La parcourir comme une liste
-    # affichait ses caractères un à un. Type vérifié, pas supposé.
+    # ⚠️ `articles` porte DEUX formes dans les mêmes données : une chaîne
+    # d'énumération (« art. 1240 C. civ., art. R. 1336-5 C. santé publique, … »)
+    # et une liste d'objets qui portent chacun sa `reference` et son `code`.
+    # Parcourir la chaîne comme une liste affichait ses caractères un à un. Type
+    # vérifié, pas supposé — les deux branches restent tant que l'amont n'a pas
+    # tranché laquelle fait foi.
     articles = data.get("articles")
     bloc_art = ""
     if isinstance(articles, str) and articles.strip():
         bloc_art = f"\n\nArticles cités par la fiche : {articles.strip()}"
     elif isinstance(articles, list) and articles:
+        montres = articles[:PLAFOND_ARTICLES_FICHE]
         bloc_art = "\n\nArticles cités par la fiche :\n" + "\n".join(
             f"  · {a if isinstance(a, str) else a.get('reference') or a.get('label') or a}"
-            for a in articles[:10]
+            for a in montres
         )
+        # Le silence serait pire que la coupe : un modèle qui reçoit dix
+        # articles sans mention d'un reste conclut que la fiche en cite dix.
+        reste = len(articles) - len(montres)
+        if reste:
+            bloc_art += (f"\n  … et {reste} autre(s), non affiché(s) ici : ce rendu "
+                         f"s'arrête à {PLAFOND_ARTICLES_FICHE}. La fiche en cite "
+                         f"{len(articles)} au total.")
+    bloc_seuils = _formater_seuils(data.get("thresholds"))
     bloc_presc = _formater_prescription(data.get("prescription"))
     urgence = data.get("urgency")
 
@@ -2109,7 +2166,7 @@ async def actes_pour_situation(situation: str | None = None) -> str:
         f"{bandeau}\n\n{data.get('label') or situation}"
         + (f" — urgence : {urgence}" if urgence else "")
         + f"\n\n{len(actes)} acte(s), les officiels d'abord :\n{lignes}"
-        + bloc_art + bloc_presc
+        + bloc_art + bloc_seuils + bloc_presc
         + "\n\nCes démarches sont des points de départ, pas un conseil sur le cas "
         "de l'utilisateur : les faits de son espèce ne sont pas connus ici. "
         "Vérifie chaque article avec `article_francais` avant de le citer."
