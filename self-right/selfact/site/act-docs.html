@@ -365,7 +365,7 @@
         <td>Oui</td>
       </tr>
       <tr>
-        <td><strong>Filigrane diagonal rouge</strong></td>
+        <td><strong>Mention « NON OFFICIEL » répétée</strong></td>
         <td>Non</td>
         <td>Non</td>
         <td><strong>Oui, obligatoire</strong></td>
@@ -374,7 +374,7 @@
         <td><strong>Disclaimer loi 71-1130 en pied</strong></td>
         <td>Oui</td>
         <td>Oui</td>
-        <td>Oui (+ filigrane)</td>
+        <td>Oui</td>
       </tr>
       <tr>
         <td><strong>Exemple</strong></td>
@@ -390,8 +390,9 @@
       <li><strong>Modèle officiel <code>R-xxxx</code> trouvé →</strong> structure reproduite
         + données utilisateur injectées. SelfAct produit le document complet
         (voir <a href="#matrice-abc">cas A</a>).</li>
-      <li><strong>Filigrane diagonal rouge « NON OFFICIEL — IRRECEVABLE » = cas C uniquement</strong>
-        (voir <a href="#matrice-abc">matrice A/B/C</a>) : acte juridique imité sans modèle officiel.</li>
+      <li><strong>Mention « NON OFFICIEL » en tête et au milieu = cas C uniquement</strong>
+        (voir <a href="#matrice-abc">matrice A/B/C</a>). Le rappel en pied, lui, est sur
+        tous les documents.</li>
       <li><strong>Demande utilisateur « document non officiel » =</strong>
         éditer le document en PDF et suivre les directives <a href="#matrice-abc">cas B</a>
         (courrier amiable).</li>
@@ -558,10 +559,11 @@ Sur les faits :
       délai, menace de saisine) ou est-ce un simple courrier amiable ?</li>
   </ol>
 
-  <p><strong>Production du PDF</strong> — le livrable est généré via
-    <code>POST https://justice.example.org/act/api/draft</code>. Le filigrane diagonal rouge
-    est appliqué uniquement au cas C (voir <a href="#matrice-abc">matrice A/B/C</a>) ;
-    les cas A et B sont produits sans filigrane.</p>
+  <p><strong>Production du document</strong> — le livrable est généré via
+    <code>GET https://justice.example.org/act/api/draft?type=&lt;gabarit&gt;</code>. La mention
+    « NON OFFICIEL » est répétée en tête et au milieu du corps, sur les <strong>cas C</strong>
+    uniquement ; le rappel en pied de page est sur tous les documents. La classe vient du
+    gabarit, jamais de la requête.</p>
 
   <h3>Temps 6 — Neutralité sur les voies contentieuses</h3>
   <p>
@@ -589,7 +591,7 @@ Sur les faits :
     <em>« Document généré par SelfAct, outil de formatage d'aide à la rédaction open-source.
     Ce document n'est pas un acte juridique recevable en l'état et ne saurait remplacer un
     conseil juridique au sens de la loi 71-1130 du 31 décembre 1971. »</em>
-    Le filigrane (cas B) et le disclaimer sont cumulés.
+    Le disclaimer en pied est sur tous les cas ; sur un cas C, il se cumule avec la mention du corps.
   </p>
   <p>
     <strong>Orientation hors scope</strong> — certains actes nécessitent impérativement un
@@ -729,7 +731,7 @@ Sur les faits :
 
   <p>
     SelfAct expose une API JSON accessible à toute IA ou application tierce pour
-    indexer le catalogue service-public.fr et produire des brouillons filigranés.
+    indexer le catalogue service-public.fr et produire des brouillons d'aide à la rédaction.
     L'API est stateless (aucun stockage côté serveur), rate-limitée, et publique.
   </p>
 
@@ -776,30 +778,22 @@ Response :
   </details>
 
   <details>
-    <summary><code>POST /act/api/draft</code> — produit un brouillon HTML avec filigrane</summary>
+    <summary><code>GET /act/api/draft</code> — produit un brouillon HTML</summary>
     <p>
       Dernier recours seulement : quand aucun modèle officiel service-public.fr ne convient,
       cet endpoint renvoie une page HTML prête à imprimer en PDF (Ctrl+P → Enregistrer
-      au format PDF). Le filigrane SVG diagonal <strong>NON OFFICIEL — IRRECEVABLE</strong>
-      reste à l'impression.
+      au format PDF). Sur un document de <strong>cas C</strong>, la mention
+      <strong>NON OFFICIEL</strong> est répétée en tête et au milieu ; sur tous, le rappel
+      en pied. L'un comme l'autre restent à l'impression.
     </p>
-    <pre class="template">POST https://justice.example.org/act/api/draft
-Content-Type: application/json
+    <pre class="template">GET https://justice.example.org/act/api/draft?type=mise_en_demeure
 
-Body :
-{
-  "type": "mise_en_demeure",
-  "expediteur": { "nom": "...", "adresse": "..." },
-  "destinataire": { "nom": "...", "adresse": "..." },
-  "objet": "...",
-  "faits": "...",
-  "articles": ["art. 1344 C. civ."],
-  "demande": "...",
-  "delai_jours": 15,
-  "manques": ["Date précise des faits", "Montant exact"]
-}
+Response : text/html (à ouvrir dans navigateur, Ctrl+P)
 
-Response : text/html (à ouvrir dans navigateur, Ctrl+P)</pre>
+La route ne reçoit AUCUNE donnée : elle rend un gabarit à trous, et le
+remplissage a lieu dans le navigateur, sur le poste de l'utilisateur. Un
+POST est refusé en 405 — les faits, montants, dates et noms ne quittent
+jamais la machine de celui qui les écrit.</pre>
 
     <p><strong>Pour test rapide :</strong>
       <a href="/act/api/draft?type=mise_en_demeure" target="_blank" rel="noopener">

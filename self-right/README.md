@@ -72,9 +72,9 @@ SelfAct **runs as well**, and its folder shows it: [`selfact/`](./selfact/) hold
 | Piece | Where | What it does |
 |---|---|---|
 | Catalogue | [`selfact/api/`](./selfact/api/) | over 1,800 official resources harvested from service-public.gouv.fr, in 16 categories — the exact count and per-type breakdown are served live by `/act/api/catalog.php?stats=1`. Refreshed on the 1st and 15th. |
-| Situation matching | [`selfact/api/find.php`](./selfact/api/find.php) | 20 hand-curated situations: "I am being laid off" → the step, the article, the form. |
+| Situation matching | [`selfact/api/find.php`](./selfact/api/find.php) | Around twenty hand-curated situations: "I am being laid off" → the step, the article, the form. |
 | Deadline computation | [`selfact/api/deadline.php`](./selfact/api/deadline.php) | The one piece that computes rather than retrieves, with calendar export. |
-| Letter drafting | [`selfact/api/draft.php`](./selfact/api/draft.php) | Formal notice, saisine (conciliateur, Défenseur des droits), contestation, termination, recours — each with a "NON OFFICIEL — IRRECEVABLE" watermark that cannot be removed at print time, plus the matching official resources. |
+| Letter drafting | [`selfact/api/draft.php`](./selfact/api/draft.php) | Formal notice, saisine (conciliateur, Défenseur des droits), contestation, termination, recours — each carrying a "NON OFFICIEL" notice in the body when it imitates the form of a legal act, and a footer reminder in every case, plus the matching official resources. |
 
 Four of the twelve SelfRight MCP tools are SelfAct's. Both modules are served from the same domain — `justice.my-self.fr/act` — and exchange no calls: SelfJustice states the law, SelfAct performs the step.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Extrait du catalogue réel les seules ressources que les gabarits citent.
 
-Le catalogue complet — 1 895 entrées moissonnées les 1er et 15 — a quitté l'arbre
+Le catalogue complet — plus de 1 800 entrées moissonnées les 1er et 15 — a quitté l'arbre
 du code le 21/08/2026 : il vit dans l'état de l'instance, et `.gitignore` l'y
 tient. Le garde-fou `test_gabarits_officiels.sh` en a pourtant besoin pour
 répondre à sa question : « chaque renvoi curé pointe-t-il vers une ressource qui

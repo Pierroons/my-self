@@ -1862,12 +1862,17 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
 # ------------------------------------------------------------------ SelfAct
 #
 # 🔑 Trois outils, pas quatre. L'API SelfAct expose aussi `/act/api/draft`, qui
-# produit un acte pré-rempli — et qui n'est PAS exposé ici, pour une raison
-# technique avant d'être juridique : son garde-fou est un filigrane SVG
-# « NON OFFICIEL — IRRECEVABLE » appliqué à une page HTML imprimable. Un outil
-# MCP rend du texte à un modèle ; le filigrane ne survivrait pas au passage, et
-# le modèle recevrait un brouillon d'acte propre qu'il recopierait tel quel.
-# Exposer `draft` reviendrait à retirer sa protection en la croyant intacte.
+# produit un brouillon d'acte pré-rempli — et qui n'est PAS exposé ici. Le motif
+# a changé de nature le 02/09/2026 sans que la conclusion bouge, et il vaut
+# d'être relu : son garde-fou était un filigrane SVG « NON OFFICIEL —
+# IRRECEVABLE » recouvrant la page, qui ne survivait pas au passage en texte.
+# C'est désormais la mention « NON OFFICIEL » répétée en tête, au milieu et en
+# pied — du texte, qui survivrait donc au passage.
+#
+# La raison de ne pas exposer `draft` en sort renforcée, pas levée. Une mention
+# textuelle se recopie encore plus facilement SANS elle qu'un filigrane ne se
+# retire : un modèle à qui l'on rend le corps du brouillon rend un acte
+# d'apparence propre, et l'avertissement reste dans ce qu'il n'a pas recopié.
 #
 # Ce qui reste — indexer, orienter, calculer — cite des sources officielles et
 # montre son raisonnement, sans jamais produire d'acte.
@@ -2299,9 +2304,11 @@ async def gabarit_document(type_document: str | None = None) -> str:
     couvrent la même chose. Quand il en existe un, il vaut mieux que le
     gabarit : c'est une pièce que l'administration reconnaît.
 
-    Le document lui-même s'ouvre dans un navigateur et s'imprime en PDF. Il
-    porte un filigrane « NON OFFICIEL — IRRECEVABLE » que rien ne retire : le
-    rendre ici en texte le perdrait.
+    Le document lui-même s'ouvre dans un navigateur et s'imprime en PDF. Quand
+    le gabarit imite la forme d'un acte juridique, il porte en outre la mention
+    « NON OFFICIEL » dans son corps ; tous portent le rappel en pied. C'est
+    pourquoi cet outil rend son adresse et non son contenu : un corps recopié
+    sans ce qui l'entoure redevient un acte d'apparence propre.
 
     Args:
         type_document: l'un des gabarits disponibles. Sans argument, les liste.
@@ -2399,10 +2406,15 @@ async def gabarit_document(type_document: str | None = None) -> str:
         f"Gabarit à trous, à ouvrir dans un navigateur puis imprimer en PDF :\n"
         f"  {url}\n\n"
         f"{champs}"
+        # ⚠️ Ne pas écrire ici que l'avertissement « ne survivrait pas à une
+        # restitution en texte » : c'était vrai du filigrane SVG, faux de la
+        # mention en clair qui l'a remplacé le 02/09/2026. Une mention textuelle
+        # survit très bien au passage — le risque est qu'elle se recopie SANS
+        # elle, ce qui est pire, et c'est ce que dit la phrase ci-dessous.
         "⚠️ Ne recopie pas ce gabarit de mémoire et ne le reconstitue pas : "
-        "donne l'adresse. Le document porte une mention « non officiel » qui ne "
-        "survivrait pas à une restitution en texte, et une version approximative "
-        "d'un courrier type se retourne contre celui qui l'envoie.\n\n"
+        "donne l'adresse. Le document est encadré d'avertissements que rien "
+        "n'oblige un copiste à reprendre, et une version approximative d'un "
+        "courrier type se retourne contre celui qui l'envoie.\n\n"
         "Les faits, montants et dates ne se devinent pas : demande-les, ou "
         "laisse les crochets en place pour que la personne les complète."
     )

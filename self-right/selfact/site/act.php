@@ -333,7 +333,7 @@ function chiffre(array $corpus, string $cle): string {
     formulaires CERFA et démarches en ligne (licence Etalab 2.0) — et redirige vers
     les URLs officielles de l'État. Il n'édite pas lui-même les modèles. <strong>Le service n'a pas encore fait l'objet d'une
     validation formelle par un professionnel du droit</strong>, et le générateur de
-    brouillons filigranés (dernier recours) n'a pas été testé avec un large panel
+    brouillons d'aide à la rédaction (dernier recours) n'a pas été testé avec un large panel
     d'utilisateurs. Avant tout envoi d'un acte, vérifie :
   </p>
   <ul style="font-size: 0.92rem; margin-bottom: 0.5rem;">
@@ -519,8 +519,8 @@ function chiffre(array $corpus, string $cle): string {
           <td>Gratuit anonyme</td>
           <td>📋 Fallback copier-coller</td>
           <td>✅ Testé</td>
-          <td>P0 OK, MISSING_FACTS structuré, propose modèle service-public.fr d'abord, mention
-            filigrane "NON OFFICIEL". Light sur les articles (1 seul cité).</td>
+          <td>P0 OK, MISSING_FACTS structuré, propose modèle service-public.fr d'abord,
+            mention "NON OFFICIEL" sur les cas C. Light sur les articles (1 seul cité).</td>
         </tr>
         <tr>
           <td><strong>Claude.ai Max</strong><br><small>Opus (via <code>/act/docs</code>)</small></td>

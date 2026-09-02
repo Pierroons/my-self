@@ -178,7 +178,7 @@ require_once __DIR__ . '/classify.php';   // pour selfact_normalize()
 require_once __DIR__ . '/chemins.php';    // pour selfact_chemin_catalogue()
 $suggestions = suggestFromCatalog($entry['catalog_hints'] ?? []);
 
-// Tri par priorité : official > simulator > info_only > lawyer_required > emergency_phone en premier
+// Tri par priorité : emergency_phone > official > simulator > info_only > lawyer_required
 $priority = [
     'emergency_phone'  => 0,
     'official'         => 1,
@@ -220,7 +220,7 @@ respond(200, [
     // avait servi à composer sa réponse.
     'meta'        => $meta + ['catalogue' => selfact_meta_catalogue()],
     'fallback'    => [
-        'if_no_official_match' => 'Use /act/api/draft to produce an HTML draft with watermark "NON OFFICIEL — IRRECEVABLE" for printing as PDF',
+        'if_no_official_match' => 'Use /act/api/draft to produce an HTML draft; it carries a "NON OFFICIEL" notice in the body when the template imitates a legal act, and a footer reminder in every case. Print to PDF from the browser.',
         'draft_url'            => (getenv('SELFJUSTICE_BASE_URL') ?: 'https://' . ($_SERVER['HTTP_HOST'] ?? 'your-instance.example')) . '/act/api/draft',
     ],
 ]);

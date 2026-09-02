@@ -1,10 +1,10 @@
 {
   "_meta": {
-    "version": "2026.08",
-    "last_update": "2026-08-03",
+    "version": "2026.09",
+    "last_update": "2026-09-01",
     "source": "service-public.gouv.fr (Etalab 2.0) — curation manuelle",
     "comment": "Mapping situation → acte officiel. Curation MANUELLE : les statuts juridiques, seuils et articles applicables sont vérifiés à la main et ne sont produits par aucun cron. Le catalogue (catalog.json), lui, est synchronisé automatiquement et vient compléter ces actes via catalog_hints.",
-    "last_review": "2026-08-03",
+    "last_review": "2026-09-01",
     "mention": "SelfAct est indépendant et n'est affilié à aucun organisme public. Les formulaires et démarches officiels sont disponibles gratuitement sur service-public.gouv.fr : cet outil n'est jamais nécessaire pour y accéder."
   },
   "situations": {
@@ -16,14 +16,14 @@
           "status": "official",
           "label": "Mise en demeure de paiement (LRAR)",
           "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/R50660",
-          "fallback_note": "Si le modèle officiel ne correspond pas exactement à votre cas, SelfAct peut produire un PDF d'aide à la rédaction filigrané."
+          "fallback_note": "Si le modèle officiel ne correspond pas exactement à votre cas, SelfAct peut produire un brouillon d'aide à la rédaction."
         },
         {
           "type": "saisine_conciliateur",
           "status": "info_only",
           "label": "Saisine du conciliateur de justice (obligatoire < 5000 €)",
           "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1736",
-          "fallback_note": "Pas de modèle officiel — SelfAct peut produire un PDF d'aide à la rédaction filigrané."
+          "fallback_note": "Pas de modèle officiel — SelfAct peut produire un brouillon d'aide à la rédaction."
         }
       ],
       "thresholds": {
@@ -60,7 +60,7 @@
           "status": "info_only",
           "label": "Saisine du conciliateur de justice (obligatoire avant tribunal)",
           "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1736",
-          "fallback_note": "Pas de modèle officiel — SelfAct peut produire un PDF d'aide filigrané."
+          "fallback_note": "Pas de modèle officiel — SelfAct peut produire un brouillon d'aide à la rédaction."
         }
       ],
       "art_applicable": "art. 1240 C. civ., art. R. 1336-5 C. santé publique, art. 544 C. civ.",
@@ -195,7 +195,7 @@
           "status": "info_only",
           "label": "Recours gracieux puis contentieux",
           "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F2474",
-          "fallback_note": "Modèle spécifique selon l'administration — SelfAct peut produire un PDF filigrané."
+          "fallback_note": "Modèle spécifique selon l'administration — SelfAct peut produire un brouillon d'aide à la rédaction."
         },
         {
           "type": "saisine_defenseur_droits",
@@ -706,6 +706,60 @@
           "obligation alimentaire",
           "aripa",
           "recouvrement"
+        ],
+        "categories": [
+          "famille",
+          "justice"
+        ]
+      }
+    },
+    "directives_donnees_post_mortem": {
+      "label": "Directives sur le sort de ses données personnelles après son décès",
+      "urgency": "normal",
+      "acts": [
+        {
+          "type": "directives_donnees_post_mortem",
+          "status": "info_only",
+          "label": "Rédiger ses directives particulières, service par service",
+          "url": "https://www.cnil.fr/fr/mort-numerique-effacement-informations-personne-decedee",
+          "fallback_note": "Aucun modèle officiel n'existe : le catalogue service-public.gouv.fr ne porte aucune ressource sur ce sujet. Situation adossée au texte de loi plutôt qu'au catalogue, faute de ressource correspondante au 01/09/2026."
+        },
+        {
+          "type": "depot_notarial",
+          "status": "lawyer_required",
+          "label": "Faire consigner ses directives générales par un notaire",
+          "url": "https://www.notaires.fr",
+          "fallback_note": "Le tiers de confiance numérique certifié par la CNIL n'existe pas : le décret en Conseil d'État prévu au I de l'article 85 n'a jamais été publié. La CNIL désigne le notaire comme voie de consignation praticable (cahier IP n°10, octobre 2025)."
+        }
+      ],
+      "art_applicable": [
+        {
+          "reference": "art. 85 de la loi n° 78-17 du 6 janvier 1978",
+          "num": "85",
+          "code": "JORFTEXT000000886460",
+          "verifie_le": "2026-09-01"
+        },
+        {
+          "reference": "art. 970 du code civil",
+          "num": "970",
+          "code": "civil",
+          "verifie_le": "2026-09-01"
+        },
+        {
+          "reference": "art. 1025 du code civil",
+          "num": "1025",
+          "code": "civil",
+          "verifie_le": "2026-09-01"
+        }
+      ],
+      "catalog_hints": {
+        "keywords": [
+          "donnees personnelles",
+          "deces",
+          "directives",
+          "notaire",
+          "testament",
+          "succession"
         ],
         "categories": [
           "famille",

@@ -7,7 +7,7 @@
  *
  * 🔑 **Pourquoi cette route existe.** Le pied de chaque gabarit disait « pour un
  * acte officiel, utilise le modèle service-public.fr correspondant » — sans
- * jamais dire lequel, alors que le module en indexe 1 895. Il envoyait chercher
+ * jamais dire lequel, alors que le module en indexe plus de 1 800. Il envoyait chercher
  * ce qu'il avait sous la main.
  *
  * ⚠️ Le rapprochement est curé à la main dans `data/gabarits.json`, jamais
@@ -22,7 +22,7 @@
  * démarche.
  *
  * Usage :
- *   GET /act/api/gabarits            → les sept gabarits
+ *   GET /act/api/gabarits            → les gabarits
  *   GET /act/api/gabarits?type=plainte_simple → un seul
  */
 
