@@ -142,6 +142,11 @@ $date = strtr($date, $mois_fr);
 $table = json_decode((string) @file_get_contents(__DIR__ . '/data/gabarits.json'), true);
 $type_labels = [];
 $type_cas    = [];
+$type_titre_faits = [];
+// Sept gabarits sur huit mettent des faits dans le champ `faits` ; les
+// directives post-mortem y font lister des comptes. Le titre par défaut vaut
+// donc pour la règle, et le gabarit dit l'exception.
+$titre_faits_defaut = 'Rappel des faits';
 foreach (($table['gabarits'] ?? []) as $cle => $g) {
     $type_labels[$cle] = $g['label'] ?? $cle;
     // 🔑 La classe A/B/C vient du GABARIT, jamais de la requête. Un `?cas=B`
@@ -150,6 +155,11 @@ foreach (($table['gabarits'] ?? []) as $cle => $g) {
     // est « C » — un gabarit non classé est traité comme le plus exposé, pas
     // comme le moins.
     $type_cas[$cle] = ($g['cas'] ?? 'C') === 'B' ? 'B' : 'C';
+    // 🔑 Le titre vient du GABARIT, comme la classe — et pour la même raison :
+    // ce que le document imprime doit être ce que le gabarit annonce. `champs`
+    // est exposé au modèle par `gabarits.php`, donc l'écart traverse l'API
+    // avant de se voir à l'impression.
+    $type_titre_faits[$cle] = $g['titre_faits'] ?? $titre_faits_defaut;
 }
 if (!$type_labels) {
     $type_labels = ['document' => 'Projet de courrier'];
@@ -187,6 +197,7 @@ $type_label = $type_labels[$type];
 // être lu là où il compte. Le bloc `.disclaimer` du pied, lui, reste sur TOUS
 // les documents : c'est lui qui porte le fond sur les cas B.
 $porte_mention = ($type_cas[$type] ?? 'C') === 'C';
+$titre_faits   = $type_titre_faits[$type] ?? $titre_faits_defaut;
 
 header('Content-Type: text/html; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -509,7 +520,7 @@ header('X-Content-Type-Options: nosniff');
     <?php endif; ?>
 
     <?php if ($faits): ?>
-      <h3>Rappel des faits</h3>
+      <h3><?= h($titre_faits) ?></h3>
       <p><?= nl2br(h($faits)) ?></p>
     <?php endif; ?>
 
