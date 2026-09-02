@@ -94,9 +94,10 @@ class Client:
     """Le vrai serveur, lancé en stdio, interrogé en JSON-RPC."""
 
     def __init__(self, act_url: str):
-        # ⚠️ PYTHONPATH vise le DÉPÔT. Un venv installé porte une COPIE du
-        # serveur, figée à sa date d'installation : sans cette ligne, le banc
-        # éprouverait un autre code que celui qu'on relit.
+        # ⚠️ PYTHONPATH vise l'arbre COURANT, celui d'où ce fichier est lu.
+        # Le venv est installé en editable vers l'arbre PRINCIPAL : sans cette
+        # ligne, le banc éprouverait `dev` depuis n'importe quel arbre de
+        # travail, et rendrait vert sur du code que personne n'a écrit ici.
         env = dict(os.environ,
                    PYTHONPATH=str(MCP),
                    SELFRIGHT_API_URL="http://127.0.0.1:1/api",

@@ -253,6 +253,52 @@ cp "$TMP/avant-bascule.json" "$ACT/data/gabarits.json"
     || nok "un B promu n'a que $bascule_b mention(s) : le rendu ne marque jamais rien"
 
 echo
+echo "▸ Le titre de la section des faits suit le gabarit"
+
+# 🔑 Sept gabarits sur huit mettent bien des faits dans le champ `faits` ; les
+# directives post-mortem y font lister des comptes, et leur `champs` l'annonce
+# — « comptes et contexte ». Le document titrait pourtant « Rappel des faits »
+# pour les huit, un vocabulaire de litige sur un document qui n'en est pas un.
+#
+# ⚠️ `gabarits.php` expose `champs` au modèle : l'écart entre ce que le gabarit
+# annonce et ce que le document imprime traversait l'API avant de se voir à
+# l'impression. Un banc qui ne regarde que la page ne l'aurait pas montré.
+ecarts=""
+for cle in $(python3 -c '
+import json; print(" ".join(json.load(open("'"$ACT"'/data/gabarits.json"))["gabarits"]))'); do
+    attendu=$(python3 -c '
+import json,sys
+g = json.load(open("'"$ACT"'/data/gabarits.json"))["gabarits"][sys.argv[1]]
+print(g.get("titre_faits", "Rappel des faits"))' "$cle")
+    vu=$(curl -s "$BASE/draft.php?type=$cle" | grep -c "<h3>$attendu</h3>")
+    [ "$vu" = "1" ] || ecarts="$ecarts $cle(titre « $attendu » absent)"
+done
+[ -z "$ecarts" ] \
+    && ok "les 8 gabarits titrent la section des faits comme ils l'annoncent" \
+    || nok "le titre ne suit pas le gabarit :$ecarts"
+
+# Contre-témoin dans les deux sens : un titre resté en dur passerait la boucle
+# ci-dessus aussi longtemps qu'aucun gabarit ne réclame autre chose que le
+# défaut — c'est-à-dire exactement l'état d'avant le correctif.
+cp "$ACT/data/gabarits.json" "$TMP/avant-titre.json"
+python3 - "$ACT/data/gabarits.json" <<'TITRE'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["gabarits"]["mise_en_demeure"]["titre_faits"] = "Temoin du banc"   # un défaut remplacé
+del d["gabarits"]["directives_donnees_post_mortem"]["titre_faits"]   # une clé retirée
+json.dump(d, open(sys.argv[1], "w"), ensure_ascii=False, indent=2)
+TITRE
+titre_pose=$(curl -s "$BASE/draft.php?type=mise_en_demeure" | grep -c '<h3>Temoin du banc</h3>')
+titre_ote=$(curl -s "$BASE/draft.php?type=directives_donnees_post_mortem" | grep -c '<h3>Rappel des faits</h3>')
+cp "$TMP/avant-titre.json" "$ACT/data/gabarits.json"
+[ "$titre_pose" = "1" ] \
+    && ok "un titre posé dans le gabarit sort dans le document" \
+    || nok "le titre posé n'apparaît pas : il est encore en dur"
+[ "$titre_ote" = "1" ] \
+    && ok "une clé retirée retombe sur « Rappel des faits »" \
+    || nok "sans clé, le titre par défaut ne revient pas"
+
+echo
 totalp=$((reussites + echecs))
 if [ "$echecs" -eq 0 ]; then
     echo "OK — $reussites/$totalp propriétés tiennent."
