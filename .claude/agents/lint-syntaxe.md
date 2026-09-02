@@ -204,5 +204,34 @@ vide ressemble trait pour trait à un zéro obtenu sur le dépôt entier.
 Verdict : **PASS**, ou **FAIL** avec la liste. Jamais de PASS pour une
 vérification non lancée.
 
+## 🔑 Un constat hors des lignes modifiées se rapporte, il ne fait pas échouer
+
+Situe chaque constat avant de conclure : `git diff -U0 -- <chemins> | grep -E
+'^@@'` donne les hunks, et une ligne qui n'y tombe pas **préexistait au
+changement**. Ceux-là vont dans une section **« Préexistants — hors des lignes
+modifiées »**, avec la même exigence de citation et de commande, et **ne
+comptent pas dans le verdict**. Le mandat est de dire si ce qui vient d'être
+écrit tient, pas de juger ce que le fichier contenait déjà : un FAIL qui ne
+dépend pas du changement se répète à chaque passage sur le même fichier, et une
+alarme qui crie toujours cesse d'être lue.
+
+Comptent au verdict : les constats dans les lignes ajoutées ou modifiées, et
+toute vérification qui n'a pas pu tourner.
+
+⚠️ Jamais pour écarter un constat que le changement met en vigueur. Une fonction
+dangereuse préexistante que le diff se met à appeler est dans le périmètre, même
+si sa ligne de définition n'a pas bougé — ce qui compte est ce que le changement
+rend atteignable, pas la date de la ligne.
+
+Mesuré le 02/09/2026, sur ce qui a motivé cette règle : `semgrep --config=auto`
+sur six suites de tests PHP rend 4 constats bloquants — `exec('rm -rf ' .
+escapeshellarg(…))` qui efface un répertoire jetable créé par le test, deux
+`unlink($tmp)` sur un fichier que le test vient d'écrire, un `proc_open` qui
+lance précisément la CLI que le test éprouve. Aucun dans un hunk ; le diff ne
+faisait que substituer des données d'exemple. Les taire dans le code du dépôt
+n'aurait pas été juste non plus : il n'utilise pas semgrep — ni CI, ni
+`.semgrepignore`, ni un seul `nosemgrep` — et le plier à un outil qui ne le
+concerne pas déplace le défaut au lieu de le qualifier.
+
 Ton rapport est local. Il ne va jamais dans un corps de PR, une issue, un message
 de commit ni un fichier versionné.
