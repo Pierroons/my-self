@@ -23,7 +23,10 @@ ROOT="$(git rev-parse --show-toplevel)"
 # Le motif est dans un FICHIER, pas dans ce hook : lever le gel doit être un
 # geste explicite et visible (`rm`), jamais une édition du garde-fou — on
 # n'apprend pas à contourner sa propre alarme.
-GEL="$ROOT/.git/PUSH-GEL"
+# 🔑 Le répertoire git COMMUN, et non `$ROOT/.git` : dans un arbre de travail
+# secondaire `.git` est un fichier, le test `-f` y serait faux en silence et le
+# gel ne s'opposerait à rien. Commun, un seul fichier couvre tous les arbres.
+GEL="$(git rev-parse --path-format=absolute --git-common-dir)/PUSH-GEL"
 if [ -f "$GEL" ]; then
   printf '\n\033[31m✗ Envoi refusé — les envois sont gelés.\033[0m\n\n' >&2
   sed 's/^/  /' "$GEL" >&2
