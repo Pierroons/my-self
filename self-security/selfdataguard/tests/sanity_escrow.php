@@ -55,6 +55,15 @@ $dg       = new SelfDataGuard($storage, $blindKey);
 
 const ADMIN_PASS = 'ceremonie-admin-recuperation-tres-longue-2026';
 
+// The escrow plaintexts live here and nowhere else. The at-rest leak check
+// below searches the ciphertext for these very values: copied by hand, they
+// drift, and a witness that no longer exists in the plaintext turns that
+// check green by construction rather than by encryption.
+const ESCROW_PLAINTEXT = [
+    'contact_secours' => 'alice-secours@example.org',
+    'indice_recup'    => 'ville de naissance de mon chat',
+];
+
 // -----------------------------------------------------------------------------
 
 section('Admin recovery key generation + passphrase seal');
@@ -84,17 +93,14 @@ $session = $dg->register('alice', 'motdepasse-fort', 'sentier-brume-rocher-menth
 // Private zone (untouched behaviour)
 $dg->setFields($session, ['notes' => 'note privée', 'mots_de_passe' => 'forum:hunter2'], []);
 // Escrow zone (consented, admin-recoverable)
-$dg->setEscrowFields($session, $admin['publicKey'], [
-    'contact_secours' => 'alice-secours@example.org',
-    'indice_recup'    => 'ville de naissance de mon chat',
-]);
+$dg->setEscrowFields($session, $admin['publicKey'], ESCROW_PLAINTEXT);
 
 $dg->hasEscrow('alice') ? ok('hasEscrow() true after enrollment') : ko('hasEscrow should be true');
 $dg->hasEscrow('inconnu') ? ko('hasEscrow(inconnu) should be false') : ok('hasEscrow(unknown) false');
 
 $asUser = $dg->getEscrowFieldsAsUser($session, ['contact_secours', 'indice_recup']);
-$asUser['contact_secours'] === 'alice-secours@example.org' ? ok('user reads own escrow (contact_secours)') : ko('user escrow read wrong');
-$asUser['indice_recup'] === 'ville de naissance de mon chat' ? ok('user reads own escrow (indice_recup)') : ko('user escrow read wrong');
+$asUser['contact_secours'] === ESCROW_PLAINTEXT['contact_secours'] ? ok('user reads own escrow (contact_secours)') : ko('user escrow read wrong');
+$asUser['indice_recup'] === ESCROW_PLAINTEXT['indice_recup'] ? ok('user reads own escrow (indice_recup)') : ko('user escrow read wrong');
 
 // -----------------------------------------------------------------------------
 
@@ -102,7 +108,7 @@ section('2FA path: memorized unlock also opens the escrow');
 
 $viaMemorized = $dg->loginWithMemorized('alice', 'sentier-brume-rocher-menthe-fusain');
 $escViaMem = $dg->getEscrowFieldsAsUser($viaMemorized, ['contact_secours']);
-$escViaMem['contact_secours'] === 'alice-secours@example.org'
+$escViaMem['contact_secours'] === ESCROW_PLAINTEXT['contact_secours']
     ? ok('escrow readable via memorized-secret session (2FA)') : ko('escrow not readable via memorized');
 
 // -----------------------------------------------------------------------------
@@ -111,7 +117,7 @@ section('Admin recovery: unseal → open escrow (same data as the user)');
 
 $sk = SelfDataGuard::unsealAdminRecoveryKey($admin['sealedSecret'], ADMIN_PASS);
 $asAdmin = $dg->getEscrowFieldsAsAdmin('alice', $sk, $admin['publicKey'], ['contact_secours']);
-$asAdmin['contact_secours'] === 'alice-secours@example.org'
+$asAdmin['contact_secours'] === ESCROW_PLAINTEXT['contact_secours']
     ? ok('admin opens escrow with recovery key → same contact_secours') : ko('admin escrow read wrong');
 
 // -----------------------------------------------------------------------------
@@ -153,13 +159,24 @@ try {
 section('At-rest: escrow ciphertext leaks no plaintext');
 
 $rawEscrow = $storage->loadEscrowFields('alice');
-$leak = false;
-foreach ($rawEscrow as $ct) {
-    if (str_contains($ct, 'proton.me') || str_contains($ct, 'chat')) {
-        $leak = true;
+
+// Nothing to read is not the same as nothing to find: an empty set would walk
+// the loop below without a single comparison and still report opacity.
+count($rawEscrow) === count(ESCROW_PLAINTEXT)
+    ? ok('at-rest inspection has every enrolled field to read (' . count($rawEscrow) . ')')
+    : ko('nothing to inspect at rest', count($rawEscrow) . ' stored vs ' . count(ESCROW_PLAINTEXT) . ' enrolled');
+
+$leaked = [];
+foreach ($rawEscrow as $field => $ct) {
+    foreach (ESCROW_PLAINTEXT as $plaintext) {
+        if (str_contains($ct, $plaintext)) {
+            $leaked[] = $field;
+        }
     }
 }
-$leak ? ko('escrow plaintext leaked at rest') : ok('escrow fields are opaque at rest (no plaintext)');
+$leaked === []
+    ? ok('escrow fields are opaque at rest (no plaintext)')
+    : ko('escrow plaintext leaked at rest', implode(', ', array_unique($leaked)));
 
 // -----------------------------------------------------------------------------
 
