@@ -55,7 +55,7 @@ $device   = new Device($stockage, delaiRefusUs: 0);
 $recovery = new Recovery($stockage, 'sel-du-lab-pour-la-sonde', delaiRefusUs: 0);
 
 echo "\n→ Niveau 1 sur le schéma réel\n";
-$r = $recovery->parPassphrase('alice', $PHR, '10.0.0.1', $now);
+$r = $recovery->parPassphrase('alice', $PHR, '192.0.2.1', $now);
 verifier('la passphrase rend l\'accès', $r['ok'] === true);
 $st = $pdo->query('SELECT pw_hash, pass_hash FROM accounts WHERE id = ' . $compteId)->fetch(PDO::FETCH_ASSOC);
 verifier('la colonne pw_hash porte le mot de passe rendu', Hashing::verify($r['mot_de_passe'], $st['pw_hash']));
@@ -65,7 +65,7 @@ echo "\n→ Niveau 2 sur le schéma réel\n";
 $codes = $recovery->emettreCodes($compteId, 10, $now);
 verifier('les codes sont écrits dans recovery_codes',
     (int) $pdo->query('SELECT COUNT(*) FROM recovery_codes')->fetchColumn() === 10);
-$r2 = $recovery->parCode($codes[0], $MOT, '10.0.0.2', $now);
+$r2 = $recovery->parCode($codes[0], $MOT, '192.0.2.2', $now);
 verifier('code et mot rendent l\'accès', $r2['ok'] === true, $r2['compte'] ?? '');
 verifier('le code est marqué consommé',
     (int) $pdo->query('SELECT COUNT(*) FROM recovery_codes WHERE used = 1')->fetchColumn() === 1);
@@ -79,7 +79,7 @@ $spki = base64_decode(implode('', array_filter(
 $pub = rtrim(strtr(base64_encode($spki), '+/', '-_'), '=');
 $credId = 'cred' . str_repeat('E', 20);
 
-$e = $device->enroler('alice', $credId, $pub, $MOT, '10.0.0.3', $now);
+$e = $device->enroler('alice', $credId, $pub, $MOT, '192.0.2.3', $now);
 verifier('enrôlement écrit dans device_credentials',
     $e['ok'] === true && (int) $pdo->query('SELECT COUNT(*) FROM device_credentials')->fetchColumn() === 1);
 
@@ -102,7 +102,7 @@ verifier('le défi est consommé',
     (int) $pdo->query('SELECT COUNT(*) FROM device_challenges')->fetchColumn() === 0);
 
 echo "\n→ L'attaque du 02/08 sur le schéma réel\n";
-$att = $device->enroler('alice', 'cred' . str_repeat('F', 20), $pub, str_repeat('99', 32), '10.0.0.9', $now);
+$att = $device->enroler('alice', 'cred' . str_repeat('F', 20), $pub, str_repeat('99', 32), '192.0.2.9', $now);
 verifier('enrôlement sans le mot mémorisé refusé', $att['ok'] === false);
 verifier('aucun appareil supplémentaire posé',
     (int) $pdo->query('SELECT COUNT(*) FROM device_credentials')->fetchColumn() === 1);
@@ -120,19 +120,19 @@ require_once __DIR__ . '/../lib/auth.php';
 $pdo2 = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
 $pdo2->exec((string) file_get_contents(__DIR__ . '/../schema.sql'));
 
-$insc = \Pierroons\MySelfLab\Auth::register($pdo2, 'bob', $MOT, sr_sel_aleatoire(), '10.0.0.1');
+$insc = \Pierroons\MySelfLab\Auth::register($pdo2, 'bob', $MOT, sr_sel_aleatoire(), '192.0.2.1');
 verifier('inscription : dix codes remis une fois',
     ($insc['ok'] ?? false) && count($insc['credentials']['recovery_codes'] ?? []) === 10);
 
-$niv2 = \Pierroons\MySelfLab\Auth::recoverByCode($pdo2, $insc['credentials']['recovery_codes'][0], $MOT, '10.0.0.2');
+$niv2 = \Pierroons\MySelfLab\Auth::recoverByCode($pdo2, $insc['credentials']['recovery_codes'][0], $MOT, '192.0.2.2');
 verifier('niveau 2 : code consommé, neuf restants', ($niv2['codes_restants'] ?? -1) === 9);
 verifier('niveau 2 : la forme du retour est préservée',
     isset($niv2['credentials']['password'], $niv2['credentials']['passphrase'], $niv2['note']));
 
-$niv1 = \Pierroons\MySelfLab\Auth::recoverByPassphrase($pdo2, 'bob', $niv2['credentials']['passphrase'], '10.0.0.3');
+$niv1 = \Pierroons\MySelfLab\Auth::recoverByPassphrase($pdo2, 'bob', $niv2['credentials']['passphrase'], '192.0.2.3');
 verifier('niveau 1 : la passphrase rendue au niveau 2 fonctionne', ($niv1['ok'] ?? false) === true);
 
-$conn = \Pierroons\MySelfLab\Auth::login($pdo2, 'bob', $niv1['credentials']['password'], '10.0.0.4');
+$conn = \Pierroons\MySelfLab\Auth::login($pdo2, 'bob', $niv1['credentials']['password'], '192.0.2.4');
 verifier('connexion avec le mot de passe rendu', ($conn['ok'] ?? false) === true);
 
 echo "\n→ Le sel exigé à l'inscription — les cas de refus\n";

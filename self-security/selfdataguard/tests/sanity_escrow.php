@@ -80,29 +80,29 @@ try {
 
 section('User enrolls escrow fields + reads them back');
 
-$session = $dg->register('pierroons', 'motdepasse-fort', 'sentier-brume-rocher-menthe-fusain');
+$session = $dg->register('alice', 'motdepasse-fort', 'sentier-brume-rocher-menthe-fusain');
 // Private zone (untouched behaviour)
 $dg->setFields($session, ['notes' => 'note privée', 'mots_de_passe' => 'forum:hunter2'], []);
 // Escrow zone (consented, admin-recoverable)
 $dg->setEscrowFields($session, $admin['publicKey'], [
-    'contact_secours' => 'pierroons-secours@example.org',
+    'contact_secours' => 'alice-secours@example.org',
     'indice_recup'    => 'ville de naissance de mon chat',
 ]);
 
-$dg->hasEscrow('pierroons') ? ok('hasEscrow() true after enrollment') : ko('hasEscrow should be true');
+$dg->hasEscrow('alice') ? ok('hasEscrow() true after enrollment') : ko('hasEscrow should be true');
 $dg->hasEscrow('inconnu') ? ko('hasEscrow(inconnu) should be false') : ok('hasEscrow(unknown) false');
 
 $asUser = $dg->getEscrowFieldsAsUser($session, ['contact_secours', 'indice_recup']);
-$asUser['contact_secours'] === 'pierroons-secours@example.org' ? ok('user reads own escrow (contact_secours)') : ko('user escrow read wrong');
+$asUser['contact_secours'] === 'alice-secours@example.org' ? ok('user reads own escrow (contact_secours)') : ko('user escrow read wrong');
 $asUser['indice_recup'] === 'ville de naissance de mon chat' ? ok('user reads own escrow (indice_recup)') : ko('user escrow read wrong');
 
 // -----------------------------------------------------------------------------
 
 section('2FA path: memorized unlock also opens the escrow');
 
-$viaMemorized = $dg->loginWithMemorized('pierroons', 'sentier-brume-rocher-menthe-fusain');
+$viaMemorized = $dg->loginWithMemorized('alice', 'sentier-brume-rocher-menthe-fusain');
 $escViaMem = $dg->getEscrowFieldsAsUser($viaMemorized, ['contact_secours']);
-$escViaMem['contact_secours'] === 'pierroons-secours@example.org'
+$escViaMem['contact_secours'] === 'alice-secours@example.org'
     ? ok('escrow readable via memorized-secret session (2FA)') : ko('escrow not readable via memorized');
 
 // -----------------------------------------------------------------------------
@@ -110,8 +110,8 @@ $escViaMem['contact_secours'] === 'pierroons-secours@example.org'
 section('Admin recovery: unseal → open escrow (same data as the user)');
 
 $sk = SelfDataGuard::unsealAdminRecoveryKey($admin['sealedSecret'], ADMIN_PASS);
-$asAdmin = $dg->getEscrowFieldsAsAdmin('pierroons', $sk, $admin['publicKey'], ['contact_secours']);
-$asAdmin['contact_secours'] === 'pierroons-secours@example.org'
+$asAdmin = $dg->getEscrowFieldsAsAdmin('alice', $sk, $admin['publicKey'], ['contact_secours']);
+$asAdmin['contact_secours'] === 'alice-secours@example.org'
     ? ok('admin opens escrow with recovery key → same contact_secours') : ko('admin escrow read wrong');
 
 // -----------------------------------------------------------------------------
@@ -119,13 +119,13 @@ $asAdmin['contact_secours'] === 'pierroons-secours@example.org'
 section('COMPARTMENTALISATION: escrow_key cannot read the private zone');
 
 // Obtain the escrow_key the way the admin does, then try it on a private field.
-$escrowRecord = $storage->loadEscrow('pierroons');
+$escrowRecord = $storage->loadEscrow('alice');
 $unlockedEscrow = (new EscrowVault())->unlockAsAdmin($escrowRecord, $sk, $admin['publicKey']);
 $escrowKey = $unlockedEscrow->getEscrowKey();
 
-$privCipher = $storage->loadFields('pierroons', ['mots_de_passe'])['mots_de_passe'];
+$privCipher = $storage->loadFields('alice', ['mots_de_passe'])['mots_de_passe'];
 try {
-    Primitives::aesGcmDecrypt(EncryptedBlob::fromBase64($privCipher), $escrowKey, aad: 'pierroons|mots_de_passe');
+    Primitives::aesGcmDecrypt(EncryptedBlob::fromBase64($privCipher), $escrowKey, aad: 'alice|mots_de_passe');
     ko('escrow_key decrypted a private field — COMPARTMENTALISATION BROKEN (CRITICAL)');
 } catch (RuntimeException) {
     ok('escrow_key cannot decrypt private field (mots_de_passe) — private zone out of admin reach');
@@ -137,7 +137,7 @@ sodium_memzero($sk);
 
 section('Cold seizure: wrong admin key cannot open the sealed escrow');
 
-$escrowRecord = $storage->loadEscrow('pierroons');
+$escrowRecord = $storage->loadEscrow('alice');
 $attackerKp   = sodium_crypto_box_keypair();
 $attackerSk   = sodium_crypto_box_secretkey($attackerKp);
 $attackerPk   = base64_encode(sodium_crypto_box_publickey($attackerKp));
@@ -152,7 +152,7 @@ try {
 
 section('At-rest: escrow ciphertext leaks no plaintext');
 
-$rawEscrow = $storage->loadEscrowFields('pierroons');
+$rawEscrow = $storage->loadEscrowFields('alice');
 $leak = false;
 foreach ($rawEscrow as $ct) {
     if (str_contains($ct, 'proton.me') || str_contains($ct, 'chat')) {
@@ -165,9 +165,9 @@ $leak ? ko('escrow plaintext leaked at rest') : ok('escrow fields are opaque at 
 
 section('Delete cascade removes escrow');
 
-$dg->delete('pierroons');
-$storage->loadEscrow('pierroons') === null ? ok('deleteVault() cascades to escrow envelope') : ko('escrow envelope survived delete');
-$storage->loadEscrowFields('pierroons') === [] ? ok('deleteVault() cascades to escrow fields') : ko('escrow fields survived delete');
+$dg->delete('alice');
+$storage->loadEscrow('alice') === null ? ok('deleteVault() cascades to escrow envelope') : ko('escrow envelope survived delete');
+$storage->loadEscrowFields('alice') === [] ? ok('deleteVault() cascades to escrow fields') : ko('escrow fields survived delete');
 
 // -----------------------------------------------------------------------------
 

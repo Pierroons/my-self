@@ -66,7 +66,7 @@ $dev = new Device($st, delaiRefusUs: 0);
 $credId = 'cred' . str_repeat('A', 20);
 
 echo "\n→ Parcours nominal\n";
-$r = $dev->enroler('alice', $credId, $publique, $MOT, '10.0.0.1', $now);
+$r = $dev->enroler('alice', $credId, $publique, $MOT, '192.0.2.1', $now);
 verifier('enrôlement avec le bon mot', $r['ok'] === true);
 
 $d = $dev->ouvrirDefi($credId, $now);
@@ -86,12 +86,12 @@ $st2->comptes['victime'] = ['id' => 7, 'empreinte_mot' => Hashing::hash('bb' . s
 $dev2 = new Device($st2, delaiRefusUs: 0);
 [$priveeAtt, $publiqueAtt] = engendrerPaire();
 
-$att = $dev2->enroler('victime', 'cred' . str_repeat('B', 20), $publiqueAtt, $MOT, '10.0.0.9', $now);
+$att = $dev2->enroler('victime', 'cred' . str_repeat('B', 20), $publiqueAtt, $MOT, '192.0.2.9', $now);
 verifier('enrôlement refusé sans le mot mémorisé', $att['ok'] === false);
 verifier('aucun appareil n\'a été posé sur le compte', $st2->appareils === []);
 verifier('le mot de passe de la victime est intact', !isset($st2->empreintes[7]));
 
-$inconnu = $dev2->enroler('nexiste-pas', 'cred' . str_repeat('C', 20), $publiqueAtt, $MOT, '10.0.0.9', $now);
+$inconnu = $dev2->enroler('nexiste-pas', 'cred' . str_repeat('C', 20), $publiqueAtt, $MOT, '192.0.2.9', $now);
 verifier('compte inconnu et mot faux rendent le même message',
     $inconnu['message'] === $att['message'], $att['message']);
 verifier('la trace ne nomme pas le compte inexistant',
