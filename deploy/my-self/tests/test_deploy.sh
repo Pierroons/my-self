@@ -56,7 +56,7 @@ monter() { # monter  → reconstruit un dépôt neuf dans $BAC/depot
 
     cat > "$BAC/depot/web/my-self.fr/index.html" <<'HTML'
 <a href="https://justice.example.org">Justice</a>
-<a href="https://lab.example.org">Lab</a>
+<a href="https://ctf.example.org">Lab</a>
 <a href="https://farm.example.org">Farm</a>
 HTML
     echo "<p>site</p>" > "$BAC/depot/self-right/selfjustice/site/index.php"
