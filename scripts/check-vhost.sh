@@ -33,6 +33,30 @@ if [ -z "$gabarits" ]; then
     exit 0
 fi
 
+# 🔑 Les snippets que les gabarits incluent vivent dans le DÉPÔT, pas dans le
+# `/etc/nginx` de la machine de test. Sans eux, un `include snippets/X.conf;`
+# fait échouer le gabarit sur un fichier manquant — le rouge qui accuse le
+# gabarit au lieu de la recette, contre lequel la copie plus bas met déjà en
+# garde. Les trois gabarits ont cassé ainsi le jour où l'include a été câblé.
+#
+# Ils voyagent avec le gabarit, encodés : la recette part aussi par SSH, où rien
+# du dépôt local n'est lisible.
+snippets=$(git ls-files 'deploy/*/snippets/*.conf')
+# Ils sont mis à plat dans un seul répertoire, parce que c'est ainsi qu'un vhost
+# les inclut. Deux fichiers de même nom s'y masqueraient, et le gabarit serait
+# validé contre le mauvais — un vert qui ne mesure pas ce qu'il annonce.
+doublons=$(printf '%s\n' "$snippets" | xargs -r -n1 basename | sort | uniq -d)
+if [ -n "$doublons" ]; then
+    echo "▸ Gabarits de vhost"
+    echo "  ✗ deux snippets portent le même nom : $(printf '%s' "$doublons" | tr '\n' ' ')"
+    echo "    Mis à plat, l'un masquerait l'autre et le gabarit serait validé"
+    echo "    contre le mauvais fichier."
+    exit 1
+fi
+SNIPPETS_B64=$(for f in $snippets; do
+    printf '%s %s\n' "$(basename "$f")" "$(base64 -w0 < "$f")"
+done | base64 -w0)
+
 # Le corps du test, joué tel quel ici ou à distance.
 #
 # ⚠️ Le gabarit y est EMBARQUÉ en base64, il n'arrive pas par l'entrée standard.
@@ -42,6 +66,7 @@ fi
 # seule entrée standard.
 recette() {
 printf 'GABARIT_B64=%s\n' "$(base64 -w0 < "$1")"
+printf 'SNIPPETS_B64=%s\n' "$SNIPPETS_B64"
 cat <<'RECETTE'
 set -u
 D=$(mktemp -d /tmp/vhost-test-XXXXXX) || exit 2
@@ -56,6 +81,14 @@ for f in /etc/nginx/*.conf /etc/nginx/*_params /etc/nginx/mime.types; do
     [ -r "$f" ] && cp "$f" "$D/" 2>/dev/null
 done
 [ -d /etc/nginx/snippets ] && cp -r /etc/nginx/snippets "$D/" 2>/dev/null
+# Ceux du dépôt priment : un gabarit versionné doit être validé contre le
+# snippet que le dépôt fournit, jamais contre l'homonyme qu'une machine de test
+# porterait par hasard.
+mkdir -p "$D/snippets"
+printf '%s' "$SNIPPETS_B64" | base64 -d | while read -r nom contenu; do
+    [ -n "$nom" ] || continue
+    printf '%s' "$contenu" | base64 -d > "$D/snippets/$nom"
+done
 # `nginx.conf` du système n'a rien à faire ici : c'est le nôtre qui pilote.
 rm -f "$D/nginx.conf" 
 
