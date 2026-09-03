@@ -285,7 +285,7 @@ python3 - "$ACT/data/gabarits.json" <<'TITRE'
 import json, sys
 d = json.load(open(sys.argv[1]))
 d["gabarits"]["mise_en_demeure"]["titre_faits"] = "Temoin du banc"   # un défaut remplacé
-del d["gabarits"]["directives_donnees_post_mortem"]["titre_faits"]   # une clé retirée
+d["gabarits"]["directives_donnees_post_mortem"].pop("titre_faits", None)   # une clé retirée
 json.dump(d, open(sys.argv[1], "w"), ensure_ascii=False, indent=2)
 TITRE
 titre_pose=$(curl -s "$BASE/draft.php?type=mise_en_demeure" | grep -c '<h3>Temoin du banc</h3>')
@@ -297,6 +297,63 @@ cp "$TMP/avant-titre.json" "$ACT/data/gabarits.json"
 [ "$titre_ote" = "1" ] \
     && ok "une clé retirée retombe sur « Rappel des faits »" \
     || nok "sans clé, le titre par défaut ne revient pas"
+
+echo
+echo "▸ L'amorce de saisie suit le gabarit, comme le titre"
+
+# 🔑 Le titre corrigé et l'amorce laissée en dur, le document se contredisait sur
+# deux lignes qui se suivent : « Comptes et contexte » au-dessus d'un
+# « [Chronologie des faits] ». Le contrôle des crochets plus haut ne pouvait pas
+# le voir — les deux moitiés de `champs` divergeaient, mais son crochet à lui
+# correspondait. Relevé le 03/09/2026 en ouvrant le PDF, pas en lisant le code.
+ecarts=""
+for cle in $(python3 -c '
+import json; print(" ".join(json.load(open("'"$ACT"'/data/gabarits.json"))["gabarits"]))'); do
+    attendu=$(python3 -c '
+import json,sys
+g = json.load(open("'"$ACT"'/data/gabarits.json"))["gabarits"][sys.argv[1]]
+print(g.get("placeholder_faits", "[Chronologie des faits]"))' "$cle")
+    vu=$(curl -s "$BASE/draft.php?type=$cle" | grep -cF "$attendu")
+    [ "$vu" -ge 1 ] || ecarts="$ecarts $cle(amorce « $attendu » absente)"
+done
+[ -z "$ecarts" ] \
+    && ok "les 8 gabarits amorcent la saisie des faits comme ils l'annoncent" \
+    || nok "l'amorce ne suit pas le gabarit :$ecarts"
+
+# 🔑 Et le contrôle qui l'accompagne : titre et amorce doivent parler du même
+# champ. Le gabarit qui déclare l'un sans l'autre est précisément l'état d'où
+# vient le défaut, et rien dans le rendu ne le trahirait.
+depareilles=$(python3 -c '
+import json
+g = json.load(open("'"$ACT"'/data/gabarits.json"))["gabarits"]
+print(" ".join(c for c, v in g.items()
+               if ("titre_faits" in v) != ("placeholder_faits" in v)))')
+[ -z "$depareilles" ] \
+    && ok "aucun gabarit ne déclare le titre sans son amorce, ni l'inverse" \
+    || nok "titre et amorce dépareillés : $depareilles"
+
+# Contre-témoin dans les deux sens, comme pour le titre. Le retrait est
+# tolérant à l'absence : un `del` sur une clé déjà partie interromprait le
+# script AVANT l'écriture, et le contre-témoin rougirait en accusant le code
+# d'être en dur alors qu'il n'a rien été posé du tout.
+cp "$ACT/data/gabarits.json" "$TMP/avant-amorce.json"
+python3 - "$ACT/data/gabarits.json" <<'AMORCE'
+import json, sys
+d = json.load(open(sys.argv[1]))
+d["gabarits"]["mise_en_demeure"]["placeholder_faits"] = "[Temoin du banc]"   # un défaut remplacé
+d["gabarits"]["directives_donnees_post_mortem"].pop("placeholder_faits", None)  # une clé retirée
+json.dump(d, open(sys.argv[1], "w"), ensure_ascii=False, indent=2)
+AMORCE
+amorce_posee=$(curl -s "$BASE/draft.php?type=mise_en_demeure" | grep -cF '[Temoin du banc]')
+amorce_otee=$(curl -s "$BASE/draft.php?type=directives_donnees_post_mortem" \
+    | grep -cF '[Chronologie des faits]')
+cp "$TMP/avant-amorce.json" "$ACT/data/gabarits.json"
+[ "$amorce_posee" -ge 1 ] \
+    && ok "une amorce posée dans le gabarit sort dans le document" \
+    || nok "l'amorce posée n'apparaît pas : elle est encore en dur"
+[ "$amorce_otee" -ge 1 ] \
+    && ok "une clé retirée retombe sur « [Chronologie des faits] »" \
+    || nok "sans clé, l'amorce par défaut ne revient pas"
 
 echo
 totalp=$((reussites + echecs))
