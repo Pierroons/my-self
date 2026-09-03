@@ -215,10 +215,16 @@ un avertissement qui se répète là où il n'a pas lieu d'être finit par ne pl
 de `data/gabarits.json` ; un `?cas=B` accepté ferait de l'avertissement une
 option du demandeur.
 
-⚠️ Le titre de la section des faits vient du gabarit lui aussi : `draft.php` lit
-la clé optionnelle `titre_faits`, et titre « Rappel des faits » à défaut. Un seul
-gabarit s'en écarte — les directives post-mortem, où ce champ fait lister des
-comptes et non des faits, et dont le `champs` annonce « comptes et contexte ».
+⚠️ Le titre de la section des faits vient du gabarit lui aussi, et l'amorce de
+saisie qu'elle contient avec lui : `draft.php` lit les clés optionnelles
+`titre_faits` et `placeholder_faits`, et retombe sur « Rappel des faits » et
+« [Chronologie des faits] » à défaut. Un seul gabarit s'en écarte — les
+directives post-mortem, où ce champ fait lister des comptes et non des faits.
+
+Les deux clés bougent ensemble. Corriger le titre seul laissait le document se
+contredire sur deux lignes qui se suivent : « Comptes et contexte » au-dessus
+d'un « [Chronologie des faits] ». Et `champs` porte le même crochet que le
+document rend — c'est cette égalité que le banc mesure.
 
 ### Temps 6 — Neutralité sur les voies contentieuses
 
