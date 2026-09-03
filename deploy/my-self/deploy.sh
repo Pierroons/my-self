@@ -49,6 +49,14 @@ VHOSTS="${MYSELF_VHOSTS:-/etc/nginx/sites-enabled}"
 # La table est donc écrite, et l'inventaire de ce que les sources portent
 # vraiment la précède : `grep -rhoE '[a-z0-9.-]*\.example\.org'`.
 #
+# 🔑 `lab` et `ctf` servent le même forum sur deux instances distinctes, et les
+# deux lignes sont nécessaires : `lab` est fermé au public derrière une Basic
+# Auth, `ctf` est l'instance ouverte que les pages publiques citent. `lab` reste
+# dans la table même si plus aucune source ne le porte — `verifier()` construit
+# ses adresses à partir d'ici, et l'en retirer supprimerait la sonde qui éprouve
+# cette Basic Auth. Mesuré le 03/09/2026 : `lab` rend 401, `ctf` rend 200 sur
+# les six pages que la page d'accueil cite.
+#
 # ⚠️ `your-instance.example` n'y figure pas et ne doit pas y figurer. Il
 # apparaît dans `api/act/find.php` et `api/api.php` comme repli d'exécution
 # quand `HTTP_HOST` est absent — un défaut, pas un gabarit. Y substituer le nom
@@ -57,6 +65,7 @@ lire_table() {
     cat <<'TABLE'
 justice.example.org    justice.my-self.fr
 lab.example.org        lab.my-self.fr
+ctf.example.org        ctf.my-self.fr
 bi-self.example.org    bi-self.my-self.fr
 dataguard.example.org  dataguard.my-self.fr
 farm.example.org       selffarm.my-self.fr
