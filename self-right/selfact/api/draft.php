@@ -45,6 +45,47 @@ function h(string $s): string {
     return htmlspecialchars($s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 }
 
+// 🔑 Les intitulés viennent de `data/gabarits.json`, comme ceux que sert
+// `/act/api/gabarits` et que lit l'outil MCP. Ils étaient écrits ici ET là-bas :
+// deux tables pour une seule vérité, qui divergeaient déjà d'une entrée — « Dépôt
+// de plainte » d'un côté, « Dépôt de plainte simple » de l'autre.
+//
+// Le repli couvre le cas où le fichier manque : un gabarit sans intitulé vaut
+// mieux qu'une page blanche, et le seul type alors accepté est le neutre.
+$table = json_decode((string) @file_get_contents(__DIR__ . '/data/gabarits.json'), true);
+$type_labels = [];
+$type_cas    = [];
+$type_titre_faits = [];
+$type_placeholder_faits = [];
+// Sept gabarits sur huit mettent des faits dans le champ `faits` ; les
+// directives post-mortem y font lister des comptes. Le titre de la section et
+// l'amorce de saisie qu'elle contient valent donc pour la règle, et le gabarit
+// dit l'exception.
+$titre_faits_defaut = 'Rappel des faits';
+$placeholder_faits_defaut = '[Chronologie des faits]';
+foreach (($table['gabarits'] ?? []) as $cle => $g) {
+    $type_labels[$cle] = $g['label'] ?? $cle;
+    // 🔑 La classe A/B/C vient du GABARIT, jamais de la requête. Un `?cas=B`
+    // accepté ici ferait de l'avertissement une option du demandeur : il
+    // suffirait de le réclamer pour obtenir un document sans mention. Le défaut
+    // est « C » — un gabarit non classé est traité comme le plus exposé, pas
+    // comme le moins.
+    $type_cas[$cle] = ($g['cas'] ?? 'C') === 'B' ? 'B' : 'C';
+    // 🔑 Le titre vient du GABARIT, comme la classe — et pour la même raison :
+    // ce que le document imprime doit être ce que le gabarit annonce. `champs`
+    // est exposé au modèle par `gabarits.php`, donc l'écart traverse l'API
+    // avant de se voir à l'impression.
+    $type_titre_faits[$cle] = $g['titre_faits'] ?? $titre_faits_defaut;
+    // Et l'amorce de saisie va avec : un titre qui annonce des comptes posé
+    // au-dessus d'un « [Chronologie des faits] » se contredit sur deux lignes
+    // qui se suivent. `champs` porte le même crochet, et le banc confronte
+    // cette déclaration aux crochets réellement rendus.
+    $type_placeholder_faits[$cle] = $g['placeholder_faits'] ?? $placeholder_faits_defaut;
+}
+if (!$type_labels) {
+    $type_labels = ['document' => 'Projet de courrier'];
+}
+
 // Récupération des données : GET (exemple vide) ou POST (JSON)
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $data = [];
@@ -67,12 +108,17 @@ if ($method === 'POST') {
     ], JSON_UNESCAPED_UNICODE);
     exit;
 } elseif ($method === 'GET') {
+    // Le squelette se compose APRÈS la lecture de la table : l'amorce du champ
+    // `faits` appartient au gabarit, elle ne peut pas être écrite avant de
+    // savoir lequel est demandé. Un type inconnu retombe sur le défaut ici et
+    // se fait refuser plus bas, où le refus a son message.
+    $type_voulu = $_GET['type'] ?? 'document';
     $data = [
-        'type' => $_GET['type'] ?? 'document',
+        'type' => $type_voulu,
         'expediteur' => ['nom' => '[Nom Prénom]', 'adresse' => '[Adresse complète]'],
         'destinataire' => ['nom' => '[Destinataire]', 'adresse' => '[Adresse]'],
         'objet' => '[Objet de la lettre]',
-        'faits' => '[Chronologie des faits]',
+        'faits' => $type_placeholder_faits[$type_voulu] ?? $placeholder_faits_defaut,
         'articles' => [],
         'demande' => '[Action demandée]',
     ];
@@ -132,38 +178,6 @@ $mois_fr = [
 ];
 $date = strtr($date, $mois_fr);
 
-// 🔑 Les intitulés viennent de `data/gabarits.json`, comme ceux que sert
-// `/act/api/gabarits` et que lit l'outil MCP. Ils étaient écrits ici ET là-bas :
-// deux tables pour une seule vérité, qui divergeaient déjà d'une entrée — « Dépôt
-// de plainte » d'un côté, « Dépôt de plainte simple » de l'autre.
-//
-// Le repli couvre le cas où le fichier manque : un gabarit sans intitulé vaut
-// mieux qu'une page blanche, et le seul type alors accepté est le neutre.
-$table = json_decode((string) @file_get_contents(__DIR__ . '/data/gabarits.json'), true);
-$type_labels = [];
-$type_cas    = [];
-$type_titre_faits = [];
-// Sept gabarits sur huit mettent des faits dans le champ `faits` ; les
-// directives post-mortem y font lister des comptes. Le titre par défaut vaut
-// donc pour la règle, et le gabarit dit l'exception.
-$titre_faits_defaut = 'Rappel des faits';
-foreach (($table['gabarits'] ?? []) as $cle => $g) {
-    $type_labels[$cle] = $g['label'] ?? $cle;
-    // 🔑 La classe A/B/C vient du GABARIT, jamais de la requête. Un `?cas=B`
-    // accepté ici ferait de l'avertissement une option du demandeur : il
-    // suffirait de le réclamer pour obtenir un document sans mention. Le défaut
-    // est « C » — un gabarit non classé est traité comme le plus exposé, pas
-    // comme le moins.
-    $type_cas[$cle] = ($g['cas'] ?? 'C') === 'B' ? 'B' : 'C';
-    // 🔑 Le titre vient du GABARIT, comme la classe — et pour la même raison :
-    // ce que le document imprime doit être ce que le gabarit annonce. `champs`
-    // est exposé au modèle par `gabarits.php`, donc l'écart traverse l'API
-    // avant de se voir à l'impression.
-    $type_titre_faits[$cle] = $g['titre_faits'] ?? $titre_faits_defaut;
-}
-if (!$type_labels) {
-    $type_labels = ['document' => 'Projet de courrier'];
-}
 // 🔑 Le refus d'un type inconnu existait, mais dans l'outil MCP seulement.
 // L'URL, elle, est publiée à l'utilisateur : appelée avec `type=inexistant_xyz`
 // elle rendait un 200 et un « Projet de courrier » vide, c'est-à-dire un

@@ -208,6 +208,7 @@
       "label": "Directives sur mes données après mon décès",
       "cas": "C",
       "titre_faits": "Comptes et contexte",
+      "placeholder_faits": "[Comptes concernés et contexte]",
       "officiels": [],
       "reserve": "Au 01/09/2026, le catalogue ne porte aucune ressource officielle sur ce sujet : ni modèle de lettre, ni formulaire, ni téléservice. Ce gabarit est adossé au texte de l'article 85 de la loi n° 78-17, relu en base LEGI, et non au catalogue. Il ne vaut pas testament : un document dactylographié signé à la main est nul comme testament (art. 970 du code civil).",
       "champs": [
@@ -217,7 +218,7 @@
         "traitement visé par les directives — [Service concerné]",
         "sort demandé pour les données — [Sort demandé pour les données]",
         "personne chargée de l'exécution — [Personne chargée de l'exécution]",
-        "comptes et contexte — [Chronologie des faits]",
+        "comptes et contexte — [Comptes concernés et contexte]",
         "lieu et signature — [Ville], [Signature]"
       ],
       "date_prerenseignee": true
