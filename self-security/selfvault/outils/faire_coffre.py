@@ -49,7 +49,7 @@ leur conservation, y compris si un proche demande le contraire.
 --- OÙ SE TROUVE LE COFFRE ---
 
 Le fichier chiffré est conservé en trois exemplaires : sur mon ordinateur personnel,
-sur un disque externe rangé au domicile, et dans les codes-barres du pli déposé
+sur un disque externe rangé au domicile, et dans les QR codes du pli déposé
 à l'étude. Les trois portent le même contenu.
 """
 

@@ -84,8 +84,13 @@ jobs:
       # réelle découpée en QR codes. Cette dernière était le seul des trois
       # porteurs du format que rien n'éprouvait : on pouvait y planter trois
       # défauts cryptographiques sans qu'aucun contrôle ne bouge.
-      - name: Garde-fou — le format SELFVAULT2, sur ses deux lecteurs
+      # `zbar-tools`, `poppler-utils` et `weasyprint` sont là pour la boucle
+      # papier : rendre le pli, le rasteriser, relire ses QR codes, reconstituer.
+      # Sans eux le banc la saute — et le dit — mais ce serait un zéro plus étroit
+      # que ce que son nom laisse croire.
+      - name: Garde-fou — le format SELFVAULT2 et sa boucle papier
         run: |
+          sudo apt-get install -y -qq zbar-tools poppler-utils weasyprint
           python3 -m pip install --quiet --disable-pip-version-check cryptography
           bash self-security/selfvault/tests/banc.sh
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compose le pli à déposer : instructions, code, notice, et les fichiers en codes-barres."""
+"""Compose le pli à déposer : instructions, code, notice, et les fichiers en QR codes."""
 import base64, hashlib, os, json, re, sys, qrcode
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from selfvault import BITS_MIN
@@ -12,7 +12,7 @@ RACINE = os.path.dirname(SD)
 PLI    = os.path.join(RACINE, "pli")
 SORTIE = os.path.join(RACINE, "sortie")
 QRD    = os.path.join(SORTIE, "qr"); os.makedirs(QRD, exist_ok=True)
-CHARGE = 1600            # octets de texte par code-barres, correction Q comprise
+CHARGE = 1600            # octets de texte par QR code, correction Q comprise
 
 # Le préfixe versionne le DÉCOUPAGE du pli, pas le format du coffre. Les deux
 # évoluent séparément : un coffre SELFVAULT2 se découpe exactement comme un
@@ -20,7 +20,7 @@ CHARGE = 1600            # octets de texte par code-barres, correction Q compris
 PREFIXE = "PLI1"
 
 def decouper(nom_court, chemin):
-    """Un fichier → une suite de codes-barres numérotés, chacun autonome."""
+    """Un fichier → une suite de QR codes numérotés, chacun autonome."""
     brut = open(chemin, "rb").read()
     txt  = base64.b64encode(brut).decode()
     parts = [txt[i:i+CHARGE] for i in range(0, len(txt), CHARGE)]
@@ -94,5 +94,5 @@ if restants:
 open(os.path.join(SORTIE, "pli.html"), "w").write(rendu)
 print(f"  pli rendu : sortie/pli.html — {len(rendu)} octets")
 for c, p in pieces.items():
-    print(f"  {p['fichier']:22s} {p['octets']:6d} o → {p['n']} code(s)-barres   sha256 {p['sha'][:16]}…")
-print(f"  total : {len(tous)} codes-barres, version QR max {max(c['version'] for c in tous)}")
+    print(f"  {p['fichier']:22s} {p['octets']:6d} o → {p['n']} QR code(s)   sha256 {p['sha'][:16]}…")
+print(f"  total : {len(tous)} QR codes, version QR max {max(c['version'] for c in tous)}")

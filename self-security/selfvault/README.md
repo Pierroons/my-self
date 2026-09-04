@@ -2,7 +2,7 @@
 
 > 🇫🇷 **[Lire en français →](./README.fr.md)**
 
-**A post-mortem directives vault with two independent locks, printable as barcodes and lodgeable with a notary.**
+**A post-mortem directives vault with two independent locks, printable as QR codes and lodgeable with a notary.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: format settled, not yet lodged](https://img.shields.io/badge/status-format%20settled%2C%20not%20lodged-orange.svg)](#status)
@@ -43,16 +43,19 @@ This is SelfDataGuard's scheme (`data_master_key_pwd_wrap` / `_recov_wrap`); onl
 | `pli/selfvault.html` | the standalone decipherer — no dependency, works offline |
 | `pli/gabarit-pli.html` | the envelope template, token-based |
 | `outils/selfvault.py` | the format: construction, canonical serialisation, entropy floor |
-| `outils/faire_coffre.py` · `outils/faire_pli.py` | the chain: vault, barcodes, rendered envelope |
+| `outils/faire_coffre.py` · `outils/faire_pli.py` | the chain: vault, QR codes, rendered envelope |
+| `outils/lire_pli.py` | the reader: scanned envelope → reconstituted files |
 | `outils/test_webcrypto.mjs` | an independent reimplementation, written from the printed notice |
-| `tests/banc.sh` · `tests/defauts.py` · `tests/pilote_app.mjs` | the test bench, its defective vaults, and the application driver |
+| `tests/banc.sh` · `tests/banc_papier.sh` | the format bench, and the paper-loop bench |
+| `tests/defauts.py` · `tests/pilote_app.mjs` | the defective vaults, and the application driver |
 | `docs/conception-fr.md` | the reasoning: what was chosen, rejected, measured (French) |
 
 `sortie/` holds what the chain produces and is **not versioned**: a real run writes a real recovery code there.
 
 ```
 python3 outils/faire_coffre.py [version]   # vault + secrets into outils/secrets/
-python3 outils/faire_pli.py                # barcodes + rendered envelope
+python3 outils/faire_pli.py                # QR codes + rendered envelope
+python3 outils/lire_pli.py scanned.pdf     # reconstitute from the scanned envelope
 bash tests/banc.sh                         # the bench, against both readers
 ```
 
@@ -66,4 +69,6 @@ The canonical header is passed as additional authenticated data to every AES-GCM
 
 Format settled on 4 September 2026. **The envelope has not yet been presented to a notary**, and the module is deployed nowhere. `tests/banc.sh` exercises every control against the defect it claims to catch, each with its counter-witness, on both readers; it runs in continuous integration and prints its own count.
 
-Still open: the envelope reader — the program that ingests the scanned PDF and reconstitutes the files, without which page 1's verification instructions cannot be carried out — and the paper loop on the bench: rasterise, re-read the barcodes, measure the resolution floor.
+The paper loop is measured end to end: the envelope rendered, rasterised, re-read, reconstituted **byte for byte**, and the vault reopened with the code printed on its page 2. `outils/lire_pli.py` names every missing QR code, writes no partial file, and refuses to conclude when it has no reference fingerprint to compare against. **Resolution floor re-measured on 2026-09-04: 200 dots per inch pass, 150 fail** — hence the 300 minimum printed on the envelope.
+
+Still open: the conditions of release, to be written into the deed of deposit — page 1 currently refers to an agreement the successor notary will not know about.
