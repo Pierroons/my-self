@@ -202,10 +202,46 @@ qui tolère un quart de dégradation par QR code.</p>
 
 </div>
 <div class="saut"></div>
-<h1>Le coffre et son déchiffreur</h1>
-<p class="chapeau">{{NQR_APP}} QR codes pour le déchiffreur, {{NQR_COFFRE}} pour le coffre.</p>
+<h1>Le coffre et son déchiffreur — exemplaire 1</h1>
+<p class="chapeau">{{NQR_APP}} QR codes pour le déchiffreur, {{NQR_COFFRE}} pour le coffre.
+Les deux pages qui suivent portent <strong>exactement les mêmes</strong> codes : l'une des deux
+suffit. Si une page est perdue, déchirée ou tachée, l'autre rend le pli entier.</p>
 <div class="grille">
 {{GRILLE_QR}}
 </div>
+
+<div class="saut"></div>
+<h1>Le coffre et son déchiffreur — exemplaire 2</h1>
+<p class="chapeau">Copie conforme de la page précédente. Ne pas la séparer du pli.</p>
+<div class="grille">
+{{GRILLE_QR}}
+</div>
+
+<div class="saut"></div>
+<h1>Relire les QR codes sans aucun logiciel de ce dispositif</h1>
+<p class="chapeau">Quatre commandes, sur n'importe quel ordinateur sous Linux.</p>
+
+<p>Cette page existe pour que le pli ne dépende d'aucun programme qui nous survivrait mal. Elle
+n'emploie que deux outils publics et anciens — <code>poppler-utils</code> pour transformer les
+pages en images, <code>zbar-tools</code> pour lire les QR codes — et des commandes présentes sur
+tout système Unix. Numérisez les deux pages de QR codes à 300 points par pouce au moins, placez
+les images dans un répertoire vide, et lancez :</p>
+
+<pre id="procedure">zbarimg --raw -q ./*.png &gt; codes.txt || true   # pages sans QR code : normal
+grep '^PLI1|A|' codes.txt | sort -u | sort -t'|' -k3,3n | cut -d'|' -f4- | tr -d '\n' | base64 -d &gt; selfvault.html
+grep '^PLI1|V|' codes.txt | sort -u | sort -t'|' -k3,3n | cut -d'|' -f4- | tr -d '\n' | base64 -d &gt; coffre.selfvault
+sha256sum selfvault.html coffre.selfvault</pre>
+
+<p>La première ligne se termine par <code>|| true</code> parce que l'outil signale une erreur
+sur chaque page qui ne porte aucun QR code — les pages de texte du pli. C'est attendu et sans
+conséquence : seules les pages de codes comptent.</p>
+
+<p>La dernière commande affiche deux empreintes. Leurs <strong>32 premiers caractères</strong>
+doivent être identiques à celles de la page 1 — c'est la vérification que cette page-là demande.
+Si elles concordent, ouvrez <code>selfvault.html</code> dans un navigateur et chargez-y
+<code>coffre.selfvault</code>.</p>
+
+<p>Si l'une des empreintes diffère, ne vous servez d'aucun des deux fichiers : un QR code a été
+mal lu. Rescannez à une résolution plus élevée, ou servez-vous de l'autre exemplaire.</p>
 <p class="pied">Déchiffreur sous licence AGPL-3.0-or-later. Ce pli peut être réimprimé à l'identique
 à partir de ces QR codes.</p>

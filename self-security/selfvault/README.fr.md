@@ -69,6 +69,10 @@ L'en-tête canonique est passé en données authentifiées associées de chaque 
 
 Format arrêté le 4 septembre 2026. **Le pli n'a pas encore été présenté à un notaire**, et le module n'est déployé nulle part. `tests/banc.sh` éprouve chaque contrôle sur le défaut qu'il prétend attraper, avec son contre-témoin, sur les deux lecteurs ; il tourne en intégration continue et imprime son propre décompte.
 
+**Le pli ne dépend d'aucun de ces programmes.** Il porte une page « Relire les QR codes sans aucun logiciel de ce dispositif » : quatre commandes shell n'employant que `zbar-tools` et des outils Unix ordinaires. Le banc les **extrait du pli rendu et les exécute telles quelles** — une procédure imprimée sur un document opposable qu'on n'a jamais lancée est une affirmation, pas une mesure.
+
+Chaque QR code est imprimé **deux fois**, sur deux pages distinctes. Perdre, déchirer ou tacher une page ne coûte rien ; le banc vérifie que chaque exemplaire suffit seul. Le lecteur refuse quand deux lectures d'un même rang divergent, plutôt que de laisser la dernière lue gagner en silence.
+
 La boucle papier est mesurée de bout en bout : le pli rendu, rastérisé, relu, reconstitué **octet pour octet**, et le coffre rouvert avec le code imprimé sur sa page 2. `outils/lire_pli.py` nomme tous les QR codes manquants, n'écrit aucun fichier partiel, et refuse de conclure quand il n'a pas d'empreinte de référence à comparer. **Plancher de résolution re-mesuré le 04/09/2026 : 200 points par pouce passent, 150 échouent** — d'où le minimum de 300 inscrit sur le pli.
 
 Reste ouvert : les conditions de remise, à écrire dans l'acte de dépôt — la page 1 renvoie aujourd'hui à un accord dont le notaire successeur n'aura pas connaissance.

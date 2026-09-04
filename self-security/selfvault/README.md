@@ -69,6 +69,10 @@ The canonical header is passed as additional authenticated data to every AES-GCM
 
 Format settled on 4 September 2026. **The envelope has not yet been presented to a notary**, and the module is deployed nowhere. `tests/banc.sh` exercises every control against the defect it claims to catch, each with its counter-witness, on both readers; it runs in continuous integration and prints its own count.
 
+**The envelope depends on none of these programs.** It carries a page titled "reading the QR codes without any software from this system": four shell commands using only `zbar-tools` and ordinary Unix tools. The bench **extracts them from the rendered envelope and runs them verbatim** — a procedure printed on a legally lodged document and never executed is a claim, not a measurement.
+
+Every QR code is printed **twice**, on two separate pages. Losing, tearing or staining one page costs nothing; the bench verifies that either copy suffices on its own. The reader refuses when two readings of the same rank diverge, rather than letting the last one read win silently.
+
 The paper loop is measured end to end: the envelope rendered, rasterised, re-read, reconstituted **byte for byte**, and the vault reopened with the code printed on its page 2. `outils/lire_pli.py` names every missing QR code, writes no partial file, and refuses to conclude when it has no reference fingerprint to compare against. **Resolution floor re-measured on 2026-09-04: 200 dots per inch pass, 150 fail** — hence the 300 minimum printed on the envelope.
 
 Still open: the conditions of release, to be written into the deed of deposit — page 1 currently refers to an agreement the successor notary will not know about.
