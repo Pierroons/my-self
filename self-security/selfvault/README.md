@@ -69,7 +69,9 @@ The canonical header is passed as additional authenticated data to every AES-GCM
 
 Format settled on 4 September 2026. **The envelope has not yet been presented to a notary**, and the module is deployed nowhere. `tests/banc.sh` exercises every control against the defect it claims to catch, each with its counter-witness, on both readers; it runs in continuous integration and prints its own count.
 
-**The envelope depends on none of these programs.** It carries a page titled "reading the QR codes without any software from this system": four shell commands using only `zbar-tools` and ordinary Unix tools. The bench **extracts them from the rendered envelope and runs them verbatim** — a procedure printed on a legally lodged document and never executed is a claim, not a measurement.
+**The envelope depends on none of these programs.** It carries a "reading the QR codes" page with two paths. **On Windows, installing nothing**: the Snipping Tool decodes a QR code and returns its text; the vault is only three codes, and the decipherer reassembles them itself — there is a box for that. **On Linux or macOS**: four shell commands using only `zbar-tools` and ordinary Unix tools, which the bench **extracts from the rendered envelope and runs verbatim** — a procedure printed on a legally lodged document and never executed is a claim, not a measurement.
+
+The envelope formally forbids online QR readers: these codes **are** the vault, and uploading them hands a copy to a stranger.
 
 Every QR code is printed **twice**, on two separate pages. Losing, tearing or staining one page costs nothing; the bench verifies that either copy suffices on its own. The reader refuses when two readings of the same rank diverge, rather than letting the last one read win silently.
 
