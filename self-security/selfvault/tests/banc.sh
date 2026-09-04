@@ -167,6 +167,24 @@ else
   echo "  ✗ WebCrypto absent — mjs : ${a%%$'\n'*} | app : ${b%%$'\n'*}"; echec=1
 fi
 
+# ── La boucle papier ─────────────────────────────────────────────────────────
+# Elle vit à part parce qu'elle exige des outils système que le format n'exige
+# pas. Quand ils manquent, on le DIT : un contrôle sauté en silence ressemble
+# trait pour trait à un contrôle passé.
 echo
-if [ $echec -eq 0 ]; then echo "✓ Banc conforme — $n contrôles."; else echo "✗ Banc en échec — $n contrôles."; fi
+manquants=""
+for o in pdftoppm pdftotext zbarimg weasyprint; do
+  command -v "$o" >/dev/null || manquants="$manquants $o"
+done
+if [ -n "$manquants" ]; then
+  echo "⚠ Boucle papier NON MESURÉE — absent(s) :$manquants"
+  echo "  (apt install poppler-utils zbar-tools weasyprint)"
+else
+  bash "$MODULE/tests/banc_papier.sh" || echec=1
+  # Le banc papier régénère le coffre et le pli dans `sortie/`, qui n'est pas
+  # versionné. Les secrets de `outils/secrets/` changent donc aussi.
+fi
+
+echo
+if [ $echec -eq 0 ]; then echo "✓ Banc conforme — $n contrôles de format."; else echo "✗ Banc en échec."; fi
 exit $echec

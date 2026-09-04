@@ -169,14 +169,15 @@ pas établi. Les deux décisions ne se séparent pas.
 
 Reste à faire :
 
-- [ ] **Le lecteur de pli** — un programme qui avale le PDF scanné et reconstitue les fichiers
-      d'un coup. Il existe sous forme de script jetable dans les mesures ci-dessus ; il n'est
-      pas écrit proprement. **C'est la pièce manquante côté utilisateur.**
+- [x] **Le lecteur de pli** — `outils/lire_pli.py`, écrit le 04/09/2026. Il avale un PDF, une
+      image ou un répertoire d'images, nomme **tous** les QR codes manquants, n'écrit aucun
+      fichier partiel, et refuse de conclure quand il n'a pas d'empreinte de référence à
+      comparer. Dépendances système seulement : poppler-utils et zbar-tools.
 - [x] **Somme de contrôle du code L1 réellement vérifiée** — faite le 04/09/2026. Elle ne se
       déclenche que si la saisie ressemble à un code, et reste un indice : elle change le
       message, jamais la décision d'essayer.
-- [ ] **Message de manque plus complet** : quand plusieurs QR manquent, le script n'en nomme
-      qu'un seul. Le notaire doit voir la liste entière.
+- [x] **Message de manque plus complet** — la liste entière est nommée, et `tests/banc_papier.sh`
+      l'éprouve sur deux QR codes effacés.
 - [x] **Où vit le module** — `self-security/selfvault/`, à côté de SelfDataGuard dont il
       reprend le schéma. Tranché le 04/09/2026.
 - [~] **Un banc au dépôt** — `tests/banc.sh` éprouve chaque contrôle sur le défaut qu'il

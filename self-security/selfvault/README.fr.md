@@ -2,7 +2,7 @@
 
 > 🇬🇧 **[Read in English →](./README.md)**
 
-**Un coffre de directives post-mortem à deux serrures indépendantes, imprimable en codes-barres et déposable chez un notaire.**
+**Un coffre de directives post-mortem à deux serrures indépendantes, imprimable en QR codes et déposable chez un notaire.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
 [![Statut : format arrêté, non déposé](https://img.shields.io/badge/statut-format%20arr%C3%AAt%C3%A9%2C%20non%20d%C3%A9pos%C3%A9-orange.svg)](#statut)
@@ -43,16 +43,19 @@ C'est le schéma de SelfDataGuard (`data_master_key_pwd_wrap` / `_recov_wrap`) ;
 | `pli/selfvault.html` | le déchiffreur autonome, sans dépendance, hors ligne |
 | `pli/gabarit-pli.html` | le gabarit du pli, à jetons |
 | `outils/selfvault.py` | le format : fabrique, sérialisation canonique, plancher d'entropie |
-| `outils/faire_coffre.py` · `outils/faire_pli.py` | la chaîne : coffre, codes-barres, pli rendu |
+| `outils/faire_coffre.py` · `outils/faire_pli.py` | la chaîne : coffre, QR codes, pli rendu |
+| `outils/lire_pli.py` | le lecteur : pli scanné → fichiers reconstitués |
 | `outils/test_webcrypto.mjs` | une réimplémentation indépendante, écrite depuis la notice |
-| `tests/banc.sh` · `tests/defauts.py` · `tests/pilote_app.mjs` | le banc, ses coffres défectueux, et le pilote de l'application |
+| `tests/banc.sh` · `tests/banc_papier.sh` | le banc du format, et celui de la boucle papier |
+| `tests/defauts.py` · `tests/pilote_app.mjs` | les coffres défectueux, et le pilote de l'application |
 | `docs/conception-fr.md` | les raisons : ce qui a été retenu, écarté, mesuré |
 
 `sortie/` porte ce que la chaîne produit et **n'est pas versionné** : un tirage réel y écrit un vrai code de récupération.
 
 ```
 python3 outils/faire_coffre.py [version]   # coffre + secrets dans outils/secrets/
-python3 outils/faire_pli.py                # codes-barres + pli rendu
+python3 outils/faire_pli.py                # QR codes + pli rendu
+python3 outils/lire_pli.py pli-scanne.pdf  # reconstitue depuis le pli scanné
 bash tests/banc.sh                         # le banc, sur les deux lecteurs
 ```
 
@@ -66,4 +69,6 @@ L'en-tête canonique est passé en données authentifiées associées de chaque 
 
 Format arrêté le 4 septembre 2026. **Le pli n'a pas encore été présenté à un notaire**, et le module n'est déployé nulle part. `tests/banc.sh` éprouve chaque contrôle sur le défaut qu'il prétend attraper, avec son contre-témoin, sur les deux lecteurs ; il tourne en intégration continue et imprime son propre décompte.
 
-Restent ouverts : le lecteur de pli — le programme qui avale le PDF scanné et reconstitue les fichiers, sans lequel les instructions de vérification de la page 1 ne sont pas exécutables — et la boucle papier au banc : rasteriser, relire les codes-barres, mesurer le plancher de résolution.
+La boucle papier est mesurée de bout en bout : le pli rendu, rastérisé, relu, reconstitué **octet pour octet**, et le coffre rouvert avec le code imprimé sur sa page 2. `outils/lire_pli.py` nomme tous les QR codes manquants, n'écrit aucun fichier partiel, et refuse de conclure quand il n'a pas d'empreinte de référence à comparer. **Plancher de résolution re-mesuré le 04/09/2026 : 200 points par pouce passent, 150 échouent** — d'où le minimum de 300 inscrit sur le pli.
+
+Reste ouvert : les conditions de remise, à écrire dans l'acte de dépôt — la page 1 renvoie aujourd'hui à un accord dont le notaire successeur n'aura pas connaissance.
