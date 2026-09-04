@@ -36,7 +36,7 @@ pre { font-family:"DejaVu Sans Mono",monospace; font-size:8.5pt; line-height:1.3
 figure { margin:0; text-align:center; }
 figure img { width:5cm; height:5cm; display:block; }
 figcaption { font:700 9pt "DejaVu Sans Mono",monospace; color:#333; margin-top:.05cm; }
-.pied { margin-top:1cm; font:9pt Lato,sans-serif; color:#777; border-top:1px solid #ddd; padding-top:.3cm; }
+.pied { margin-top:1cm; break-before:avoid; font:9pt Lato,sans-serif; color:#777; border-top:1px solid #ddd; padding-top:.3cm; }
 </style>
 
 <h1>Pli de dépôt — coffre de directives</h1>
@@ -81,15 +81,18 @@ d'aucun abonnement. Rien de ce qu'il contient ne cesse de fonctionner si l'édit
 <div class="bloc">
 <h2>Vérifier que le pli est complet</h2>
 <p>Le premier point se vérifie à l'œil, à tout moment. Les trois suivants demandent un
-ordinateur muni d'un lecteur de QR codes : on numérise la dernière page, on relit les codes,
-on recolle les fragments dans l'ordre de leur rang et on recalcule les deux empreintes. La
-page « Notice du format » décrit ce recollage assez précisément pour qu'un informaticien
-l'écrive en quelques lignes ; un programme tout fait est par ailleurs distribué avec ce
-dispositif. Ces trois points se font une fois, au dépôt, et se refont si le pli a été
-photocopié ou abîmé.</p>
+ordinateur : on numérise les pages de QR codes, on les relit, on recolle les fragments et on
+recalcule les deux empreintes. <strong>La page « Relire les QR codes » explique comment le
+faire</strong>, sous Windows sans rien installer comme sous Linux. Ces trois points se font une
+fois, au dépôt, et se refont si le pli a été photocopié ou abîmé.</p>
 <ol>
   <li>Le pied de chaque page indique son rang et le nombre total. Vérifier qu'aucune ne manque.</li>
-  <li>{{TOTAL_QR}} QR codes sur la dernière page, étiquetés <code>A1/{{NQR_APP}}</code> à <code>A{{NQR_APP}}/{{NQR_APP}}</code> et <code>V1/{{NQR_COFFRE}}</code> à <code>V{{NQR_COFFRE}}/{{NQR_COFFRE}}</code>. Aucun ne doit manquer, aucun ne doit être déchiré.</li>
+  <li>{{TOTAL_QR}} QR codes, étiquetés <code>A1/{{NQR_APP}}</code> à
+      <code>A{{NQR_APP}}/{{NQR_APP}}</code> et <code>V1/{{NQR_COFFRE}}</code> à
+      <code>V{{NQR_COFFRE}}/{{NQR_COFFRE}}</code>. Ils sont imprimés <strong>deux fois</strong>,
+      dans deux exemplaires de deux pages chacun. Les deux exemplaires portent exactement les
+      mêmes codes : <strong>l'un des deux suffit</strong>. Si une page est perdue, déchirée ou
+      tachée, l'autre exemplaire rend le pli entier.</li>
   <li><strong>Numériser à 300 points par pouce au moins</strong>, en niveaux de gris — le réglage
       courant d'un copieur. Éprouvé sur ce pli : à 200 points la lecture passe encore, à 150 elle échoue.</li>
   <li>Après lecture, les deux empreintes recalculées doivent être <strong>identiques</strong> à celles de l'encadré ci-dessus. Une seule différence signifie que le contenu est abîmé.</li>
@@ -123,7 +126,8 @@ photocopié ou abîmé.</p>
 <ol>
   <li>Vérifier la version : un coffre plus récent ne s'ouvre pas avec un ancien code.</li>
   <li>Vérifier les caractères ambigus de la liste ci-dessus.</li>
-  <li>Vérifier que les {{TOTAL_QR}} QR codes ont bien été lus, et les empreintes recalculées.</li>
+  <li>Vérifier que les {{TOTAL_QR}} QR codes ont bien été lus — au besoin en reprenant le second
+      exemplaire — et les empreintes recalculées.</li>
 </ol>
 
 <div class="saut"></div>
@@ -180,12 +184,12 @@ ces cinq caractères peut donc distinguer une faute de recopie d'un mauvais code
 <h2>Pourquoi deux serrures</h2>
 <p>La clé maîtresse est tirée au sort et n'est stockée nulle part en clair. Elle est enfermée
 plusieurs fois, une par serrure. Chacune s'ouvre indépendamment des autres, avec son propre
-secret : celui que la titulaire garde de son vivant, et celui de la page 2. Ajouter ou retirer
+secret : celui que la titulaire garde de son vivant, et le code de récupération de ce pli. Ajouter ou retirer
 une serrure ne touche ni au contenu, ni aux autres serrures.</p>
 
 <p>Puisque chaque serrure ouvre seule, le coffre
 vaut ce que vaut <em>sa serrure la plus faible</em>, jamais la plus forte. C'est pourquoi les
-deux secrets sont <strong>tirés au sort</strong> et non choisis : le code de la page 2 vaut
+deux secrets sont <strong>tirés au sort</strong> et non choisis : le code de récupération vaut
 98 bits, la phrase de la titulaire au moins {{BITS_MIN}}, et l'outil qui fabrique le coffre refuse
 d'enfermer la clé derrière une phrase inventée. Un fichier chiffré confié à un tiers peut être
 attaqué hors ligne, sans limite d'essais : là, seul le coût de chaque essai protège encore, et
@@ -204,15 +208,17 @@ qui tolère un quart de dégradation par QR code.</p>
 <div class="saut"></div>
 <h1>Le coffre et son déchiffreur — exemplaire 1</h1>
 <p class="chapeau">{{NQR_APP}} QR codes pour le déchiffreur, {{NQR_COFFRE}} pour le coffre.
-Les deux pages qui suivent portent <strong>exactement les mêmes</strong> codes : l'une des deux
-suffit. Si une page est perdue, déchirée ou tachée, l'autre rend le pli entier.</p>
+Ce pli en porte <strong>deux exemplaires identiques</strong> : celui-ci, et le suivant.
+<strong>L'un des deux suffit.</strong> Si une page est perdue, déchirée ou tachée, l'autre
+exemplaire rend le pli entier.</p>
 <div class="grille">
 {{GRILLE_QR}}
 </div>
 
 <div class="saut"></div>
 <h1>Le coffre et son déchiffreur — exemplaire 2</h1>
-<p class="chapeau">Copie conforme de la page précédente. Ne pas la séparer du pli.</p>
+<p class="chapeau">Copie conforme de l'exemplaire 1. Ne pas la séparer du pli — c'est elle qui
+rend le pli lisible si l'autre exemplaire est abîmé.</p>
 <div class="grille">
 {{GRILLE_QR}}
 </div>
@@ -250,8 +256,8 @@ imprimée ici.</p>
 
 <h2>Sur Linux ou macOS — quatre commandes</h2>
 <p>N'emploie que deux outils publics et anciens : <code>poppler-utils</code> pour transformer les
-pages en images, <code>zbar-tools</code> pour lire les QR codes. Numérisez les deux pages de QR
-codes, placez les images dans un répertoire vide, et lancez :</p>
+pages en images, <code>zbar-tools</code> pour lire les QR codes. Numérisez les pages de QR codes — celles d'un seul exemplaire suffisent — et placez
+les images dans un répertoire vide, et lancez :</p>
 
 <pre id="procedure">zbarimg --raw -q ./*.png &gt; codes.txt || true   # pages sans QR code : normal
 grep '^PLI1|A|' codes.txt | sort -u | sort -t'|' -k3,3n | cut -d'|' -f4- | tr -d '\n' | base64 -d &gt; selfvault.html
@@ -268,5 +274,5 @@ conséquence.</p>
 et chargez-y le coffre. Si l'une diffère, ne vous servez d'aucun des deux fichiers : un QR code a
 été mal lu. Reprenez à une résolution plus élevée, ou servez-vous du second exemplaire.</p>
 
-<p class="pied">Déchiffreur sous licence AGPL-3.0-or-later. Ce pli peut être réimprimé à l'identique
-à partir de ces QR codes.</p>
+<p class="pied" style="break-inside:avoid">Déchiffreur sous licence AGPL-3.0-or-later.
+Ce pli peut être réimprimé à l'identique à partir de ses QR codes.</p>
