@@ -69,7 +69,9 @@ L'en-tête canonique est passé en données authentifiées associées de chaque 
 
 Format arrêté le 4 septembre 2026. **Le pli n'a pas encore été présenté à un notaire**, et le module n'est déployé nulle part. `tests/banc.sh` éprouve chaque contrôle sur le défaut qu'il prétend attraper, avec son contre-témoin, sur les deux lecteurs ; il tourne en intégration continue et imprime son propre décompte.
 
-**Le pli ne dépend d'aucun de ces programmes.** Il porte une page « Relire les QR codes sans aucun logiciel de ce dispositif » : quatre commandes shell n'employant que `zbar-tools` et des outils Unix ordinaires. Le banc les **extrait du pli rendu et les exécute telles quelles** — une procédure imprimée sur un document opposable qu'on n'a jamais lancée est une affirmation, pas une mesure.
+**Le pli ne dépend d'aucun de ces programmes.** Il porte une page « Relire les QR codes » avec deux chemins. **Sur Windows, sans rien installer** : l'Outil Capture d'écran décode un QR code et rend son texte ; le coffre n'en compte que trois, et le déchiffreur les recolle lui-même — une case prévue pour ça. **Sur Linux ou macOS** : quatre commandes shell n'employant que `zbar-tools` et des outils Unix ordinaires, que le banc **extrait du pli rendu et exécute telles quelles** — une procédure imprimée sur un document opposable qu'on n'a jamais lancée est une affirmation, pas une mesure.
+
+Le pli interdit formellement les lecteurs de QR codes en ligne : ces codes **sont** le coffre, les téléverser revient à en remettre une copie à un inconnu.
 
 Chaque QR code est imprimé **deux fois**, sur deux pages distinctes. Perdre, déchirer ou tacher une page ne coûte rien ; le banc vérifie que chaque exemplaire suffit seul. Le lecteur refuse quand deux lectures d'un même rang divergent, plutôt que de laisser la dernière lue gagner en silence.
 

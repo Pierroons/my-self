@@ -21,10 +21,11 @@ const MODULE = dirname(dirname(fileURLToPath(import.meta.url)));
 const page = readFileSync(join(MODULE, 'pli', 'selfvault.html'), 'utf8');
 const script = page.slice(page.indexOf('<script>') + 8, page.lastIndexOf('</script>'));
 
-// Le DOM minimal dont la page se sert : cinq éléments, quatre propriétés.
+// Le DOM minimal dont la page se sert : sept éléments, quatre propriétés.
 const faire = () => ({ textContent: '', className: '', disabled: false, value: '',
                        style: {}, onchange: null, onclick: null, files: null });
-const elements = Object.fromEntries(['#etat', '#f', '#c', '#go', '#sortie'].map(s => [s, faire()]));
+const elements = Object.fromEntries(
+  ['#etat', '#f', '#c', '#go', '#sortie', '#q', '#recoller'].map(s => [s, faire()]));
 const document = { querySelector: s => elements[s] ?? faire() };
 
 // La page sonde `self.crypto` au chargement ; Node n'expose pas `self`.
@@ -42,8 +43,15 @@ if (elements['#f'].disabled) {
 const [, , chemin, secret] = process.argv;
 const contenu = readFileSync(chemin, 'utf8');
 
-// 1 — le dépositaire choisit le fichier.
-await elements['#f'].onchange({ target: { files: [{ text: async () => contenu }] } });
+// 1 — le dépositaire fournit le coffre. Deux chemins, tous deux dans la page :
+// le fichier, ou les lignes lues sur les QR codes et collées à la main — le seul
+// chemin qui ne demande rien d'autre qu'un navigateur, sur Windows comme ailleurs.
+if (chemin.endsWith('.lignes')) {
+  elements['#q'].value = contenu;
+  elements['#recoller'].onclick();
+} else {
+  await elements['#f'].onchange({ target: { files: [{ text: async () => contenu }] } });
+}
 if (elements['#go'].disabled) {
   console.log('ÉCHEC — ' + elements['#etat'].textContent);
   process.exit(1);

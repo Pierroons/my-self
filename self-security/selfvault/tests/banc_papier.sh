@@ -56,6 +56,7 @@ find "$S/qr" -name '*.png' | shuf | while read -r f; do
   cp "$f" "$T/desordre/p$RANDOM.png"
 done
 EA=$(python3 -c "import json;print(json.load(open('$S/pli.json'))['pieces']['A']['sha'][:32])")
+NA=$(python3 -c "import json;print(json.load(open('$S/pli.json'))['pieces']['A']['n'])")
 EV=$(python3 -c "import json;print(json.load(open('$S/pli.json'))['pieces']['V']['sha'][:32])")
 
 n=$((n+1))
@@ -112,6 +113,35 @@ else
   echo "  ✗ la procédure imprimée ne reproduit pas les fichiers"; echec=1
 fi
 
+# ── Le chemin Windows : lire les QR codes un par un, coller dans la page ─────
+# L'Outil Capture d'écran de Windows décode un QR code et rend son texte. Le
+# coffre n'en compte que trois : le recollage se fait donc dans le déchiffreur
+# lui-même, sans installation, sans ligne de commande, et sans téléverser le
+# coffre chez un tiers — ce dernier point étant rédhibitoire.
+zbarimg --raw -q "$S/qr"/V*.png > "$T/coffre.lignes" 2>/dev/null
+
+n=$((n+1))
+if node "$MODULE/tests/pilote_app.mjs" "$T/coffre.lignes" "$L1" 2>&1 | grep -q '^OUVERT'; then
+  echo "  ✓ les lignes des QR codes, collées dans la page, rouvrent le coffre"
+else
+  echo "  ✗ le recollage par collage échoue"; echec=1
+fi
+
+colle(){ # colle <fichier de lignes> <fragment attendu> <intitulé>
+  n=$((n+1))
+  local s
+  s=$(node "$MODULE/tests/pilote_app.mjs" "$1" "$L1" 2>&1)
+  if [[ "$s" == OUVERT* ]]; then echo "  ✗ $3 — s'est OUVERT alors qu'il devait refuser"; echec=1
+  elif [[ "$s" != *"$2"* ]]; then echo "  ✗ $3 — a refusé sans nommer : ${s%%$'\n'*}"; echec=1
+  else echo "  ✓ $3"; fi
+}
+head -2 "$T/coffre.lignes" > "$T/manque.lignes"
+colle "$T/manque.lignes" "Il manque" "une ligne manquante — le rang est nommé"
+{ cat "$T/coffre.lignes"; head -1 "$T/coffre.lignes" | sed 's/|V|1\/3|./|V|1\/3|X/'; } > "$T/div.lignes"
+colle "$T/div.lignes" "ne donnent pas la même chose" "deux lectures divergentes d'un même rang"
+zbarimg --raw -q "$S/qr"/A01.png > "$T/faux.lignes" 2>/dev/null
+colle "$T/faux.lignes" "sont le déchiffreur, pas le coffre" "lignes du déchiffreur collées par erreur"
+
 echo "▸ Ce qui doit refuser, et ne rien écrire"
 rouge(){ # rouge <répertoire de sortie> <fragment attendu> <intitulé> — commande dans $CMD
   n=$((n+1))
@@ -128,7 +158,7 @@ rouge(){ # rouge <répertoire de sortie> <fragment attendu> <intitulé> — comm
 mkdir -p "$T/troue"
 cp "$S/qr"/*.png "$T/troue/"; rm -f "$T/troue/A02.png" "$T/troue/A05.png"
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/troue" -o "$T/s1" --empreinte-app "$EA" --empreinte-coffre "$EV")
-rouge "$T/s1" "A2/10, A5/10" "deux QR codes manquants, tous deux nommés"
+rouge "$T/s1" "A2/$NA, A5/$NA" "deux QR codes manquants, tous deux nommés"
 
 # Une empreinte de référence fausse.
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/desordre" -o "$T/s2" --empreinte-app "00000000000000000000000000000000" --empreinte-coffre "$EV")
@@ -142,11 +172,15 @@ rouge "$T/s3" "AUCUNE empreinte de référence" "sans référence, le lecteur re
 # et le lecteur doit le nommer plutôt que rendre un fichier tronqué.
 mkdir -p "$T/troue2"
 cp "$T"/pages/p-*.png "$T/troue2/"
-echo "$avecqr" | while read -r f; do
-  [ "$(zbarimg --raw -q "$f" 2>/dev/null | grep -c '^PLI1|')" -le 2 ] && rm -f "$T/troue2/$(basename "$f")"
-done
+# La même page dans chaque exemplaire porte les mêmes rangs : retirer les deux
+# fait disparaître ces rangs du pli entier, quelle que soit la mise en page.
+rm -f "$T/troue2/$(basename "$(echo "$avecqr" | head -n "$moitie" | tail -1)")"
+rm -f "$T/troue2/$(basename "$(echo "$avecqr" | tail -n "$moitie" | tail -1)")"
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/troue2" -o "$T/s5" --empreinte-app "$EA" --empreinte-coffre "$EV")
-rouge "$T/s5" "il manque" "un rang absent des deux exemplaires — nommé, rien d'écrit"
+# Les deux pages retirées portent la pièce V en entier : le lecteur doit nommer
+# la pièce, pas énumérer ses rangs. Le cas « quelques rangs manquants » est
+# éprouvé plus haut, sur des QR codes retirés un à un.
+rouge "$T/s5" "entièrement absente" "une pièce absente des deux exemplaires — nommée, rien d'écrit"
 
 # Deux lectures divergentes d'un même rang : deux plis différents mêlés. La
 # dernière lue gagnerait en silence, et rien ne dirait laquelle est la bonne.

@@ -10,7 +10,9 @@ p.sous{color:#555;margin:0 0 2rem;font-size:.95rem}
 fieldset{border:1px solid var(--l);border-radius:6px;padding:1.1rem;margin:0 0 1.2rem}
 legend{padding:0 .4rem;font-weight:700;font-size:.9rem}
 label{display:block;margin:.6rem 0 .25rem;font-size:.9rem}
-input[type=file],input[type=text]{width:100%;box-sizing:border-box;padding:.55rem;border:1px solid var(--l);border-radius:4px;font:inherit;font-family:ui-monospace,monospace}
+input[type=file],input[type=text],textarea{width:100%;box-sizing:border-box;padding:.55rem;border:1px solid var(--l);border-radius:4px;font:inherit;font-family:ui-monospace,monospace}
+textarea{resize:vertical;font-size:.8rem}
+#recoller{margin-top:.6rem;background:#555;font-size:.9rem;padding:.4rem 1rem}
 button{background:var(--a);color:#fff;border:0;border-radius:4px;padding:.6rem 1.3rem;font:inherit;cursor:pointer}
 button:disabled{background:#999;cursor:default}
 #etat{margin:1rem 0;padding:.7rem .9rem;border-radius:4px;font-size:.92rem;display:none}
@@ -24,7 +26,10 @@ footer{margin-top:3rem;border-top:1px solid var(--l);padding-top:1rem;font-size:
 <p class="sous">Cette page fonctionne hors ligne. Rien n'est envoyé nulle part : le déchiffrement a lieu dans ce navigateur.</p>
 <fieldset><legend>1 — le coffre</legend>
 <label for="f">Fichier <code>.selfvault</code></label>
-<input type="file" id="f" accept=".selfvault,.json,application/json"></fieldset>
+<input type="file" id="f" accept=".selfvault,.json,application/json">
+<label for="q">…ou les lignes lues sur les QR codes du coffre, collées ici (une par ligne)</label>
+<textarea id="q" rows="3" spellcheck="false" placeholder="PLI1|V|1/3|eyJmb3JtYXQi…"></textarea>
+<button id="recoller" type="button">Recoller le coffre</button></fieldset>
 <fieldset><legend>2 — le code</legend>
 <label for="c">Code de récupération, ou mot de passe</label>
 <input type="text" id="c" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false" autocapitalize="none" autocorrect="off">
@@ -133,6 +138,41 @@ $('#f').onchange=async e=>{
        +"après l'ouverture, une fois authentifiées.",'ok');
     $('#go').disabled=false;
   }catch(err){ coffre=null; $('#go').disabled=true; dis('Fichier illisible : '+err.message,'ko'); }
+};
+
+// Recoller le coffre depuis les lignes des QR codes, sans aucun outil externe.
+// Sur Windows, l'outil Capture d'écran décode un QR code et rend son texte : le
+// coffre n'en compte que trois, donc trois collages suffisent. C'est le seul
+// chemin qui ne demande ni installation, ni ligne de commande, ni envoi du
+// fichier à un service tiers — ce dernier étant exclu, le coffre étant l'objet
+// même qu'on protège.
+$('#recoller').onclick=()=>{
+  const lignes=$('#q').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const parts=new Map(); let total=0, divergent=null;
+  for(const l of lignes){
+    const m=/^PLI1\|V\|(\d+)\/(\d+)\|(.*)$/.exec(l);
+    if(!m) continue;
+    const rang=+m[1]; total=+m[2];
+    if(parts.has(rang)&&parts.get(rang)!==m[3]) divergent=rang;
+    parts.set(rang,m[3]);
+  }
+  if(!total) return dis("Aucune ligne de coffre reconnue. Chaque ligne commence par « PLI1|V| » "
+                      +"— celles en « PLI1|A| » sont le déchiffreur, pas le coffre.",'ko');
+  if(divergent!==null) return dis("Deux lectures du QR code V"+divergent+"/"+total+" ne donnent pas "
+                      +"la même chose. L'une des deux copies est abîmée.",'ko');
+  const absents=[];
+  for(let i=1;i<=total;i++) if(!parts.has(i)) absents.push("V"+i+"/"+total);
+  if(absents.length) return dis("Il manque "+absents.length+" QR code(s) : "+absents.join(", ")
+                      +". Rien n'a été recollé.",'ko');
+  let texte=""; for(let i=1;i<=total;i++) texte+=parts.get(i);
+  try{
+    coffre=JSON.parse(new TextDecoder().decode(b64(texte)));
+    verifierEntete(coffre);
+  }catch(err){ coffre=null; $('#go').disabled=true;
+    return dis("Les lignes se recollent mal : "+err.message,'ko'); }
+  $('#go').disabled=false;
+  dis("Coffre recollé depuis "+total+" QR code(s) — "+coffre.serrures.length+" serrure(s). "
+     +"Version et date seront affichées après l'ouverture, une fois authentifiées.",'ok');
 };
 
 $('#go').onclick=async()=>{
