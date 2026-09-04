@@ -53,7 +53,7 @@ def fragments(images):
     Le rang vit DANS les données : un pli scanné en désordre, ou dont les pages
     ont été mélangées, se reconstitue quand même.
     """
-    lus, inconnus = {}, 0
+    lus, inconnus, divergents = {}, 0, []
     motif = re.compile(r"^%s\|([A-Z])\|(\d+)/(\d+)\|(.*)$" % PREFIXE, re.S)
     for img in images:
         sortie = subprocess.run([outil("zbarimg"), "--raw", "-q", img],
@@ -68,11 +68,17 @@ def fragments(images):
                 continue
             piece, rang, total, donnees = m.group(1), int(m.group(2)), int(m.group(3)), m.group(4)
             lus.setdefault(piece, {"total": total, "parts": {}})
+            # Le pli imprime chaque QR code DEUX fois, sur deux pages. Deux
+            # lectures d'un même rang doivent donc porter les mêmes octets. Si
+            # elles divergent, la dernière lue gagnerait en silence — et rien ne
+            # dirait laquelle est la bonne.
+            if rang in lus[piece]["parts"] and lus[piece]["parts"][rang] != donnees:
+                divergents.append("%s%d/%d" % (piece, rang, total))
             lus[piece]["parts"][rang] = donnees
             if lus[piece]["total"] != total:
                 sys.exit("Le pli mélange deux tirages : la pièce %s s'annonce tantôt en %d "
                          "QR codes, tantôt en %d." % (piece, lus[piece]["total"], total))
-    return lus, inconnus
+    return lus, inconnus, sorted(set(divergents))
 
 
 def empreintes_imprimees(source):
@@ -108,7 +114,13 @@ def main():
         if not images:
             sys.exit("Rien à lire dans « %s »." % opt.source)
         print("▸ %d page(s) à scruter" % len(images))
-        lus, inconnus = fragments(images)
+        lus, inconnus, divergents = fragments(images)
+        if divergents:
+            print("\n✗ Deux lectures d'un même QR code ne donnent pas la même chose : %s"
+                  % ", ".join(divergents))
+            print("   L'une des deux copies est abîmée. Rescanne, ou retire la page douteuse.")
+            print("   Rien n'a été écrit.")
+            return 1
         if inconnus:
             print("  %d QR code(s) lisibles mais étrangers à ce pli — ignorés" % inconnus)
 

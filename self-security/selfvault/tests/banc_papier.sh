@@ -66,6 +66,52 @@ else
   echo "  ✗ pages mélangées — la reconstitution a échoué"; echec=1
 fi
 
+# ── Les deux exemplaires ─────────────────────────────────────────────────────
+# Le pli imprime chaque QR code deux fois, sur deux pages. Chaque exemplaire doit
+# suffire à lui seul, sans quoi la page supplémentaire ne paie pas son prix.
+mkdir -p "$T/pages"
+pdftoppm -r 300 -gray -png "$T/pli.pdf" "$T/pages/p" 2>/dev/null
+avecqr=$(for f in "$T"/pages/p-*.png; do
+           [ "$(zbarimg --raw -q "$f" 2>/dev/null | grep -c '^PLI1|')" -gt 0 ] && echo "$f"
+         done)
+moitie=$(( $(echo "$avecqr" | wc -l) / 2 ))
+mkdir -p "$T/ex1" "$T/ex2"
+echo "$avecqr" | head -n "$moitie" | xargs -I{} cp {} "$T/ex1/"
+echo "$avecqr" | tail -n "$moitie" | xargs -I{} cp {} "$T/ex2/"
+
+for ex in ex1 ex2; do
+  n=$((n+1))
+  if lire "$T/$ex" -o "$T/o-$ex" --empreinte-app "$EA" --empreinte-coffre "$EV" >/dev/null 2>&1 \
+     && cmp -s "$T/o-$ex/coffre.selfvault" "$S/coffre.selfvault"; then
+    echo "  ✓ l'exemplaire ${ex#ex} seul suffit — l'autre peut être perdu"
+  else
+    echo "  ✗ l'exemplaire ${ex#ex} seul ne reconstitue pas"; echec=1
+  fi
+done
+
+# ── La procédure imprimée, exécutée telle quelle ─────────────────────────────
+# 🔑 Elle est EXTRAITE du pli rendu, pas recopiée ici. Une procédure imprimée sur
+# un document opposable qu'on n'a jamais lancée est une affirmation, pas une
+# mesure — et elle dérive du code au premier remaniement.
+n=$((n+1))
+mkdir -p "$T/manuel"
+cp "$T"/pages/p-*.png "$T/manuel/"
+python3 - "$S/pli.html" "$T/manuel/procedure.sh" <<'EXTRAIT'
+import html, io, re, sys
+t = io.open(sys.argv[1], encoding="utf-8").read()
+m = re.search(r'<pre id="procedure">(.*?)</pre>', t, re.S)
+if not m:
+    sys.exit("le pli rendu ne porte pas de procédure identifiée")
+io.open(sys.argv[2], "w", encoding="utf-8").write("set -e\n" + html.unescape(m.group(1)) + "\n")
+EXTRAIT
+if ( cd "$T/manuel" && bash procedure.sh >/dev/null 2>&1 ) \
+   && cmp -s "$T/manuel/selfvault.html" "$MODULE/pli/selfvault.html" \
+   && cmp -s "$T/manuel/coffre.selfvault" "$S/coffre.selfvault"; then
+  echo "  ✓ la procédure imprimée sur le pli, lancée telle quelle, rend les deux fichiers"
+else
+  echo "  ✗ la procédure imprimée ne reproduit pas les fichiers"; echec=1
+fi
+
 echo "▸ Ce qui doit refuser, et ne rien écrire"
 rouge(){ # rouge <répertoire de sortie> <fragment attendu> <intitulé> — commande dans $CMD
   n=$((n+1))
@@ -91,6 +137,25 @@ rouge "$T/s2" "la page 1 annonce" "empreinte de référence non concordante"
 # Aucune empreinte de référence : la comparaison de la page 1 n'a pas eu lieu.
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/desordre" -o "$T/s3")
 rouge "$T/s3" "AUCUNE empreinte de référence" "sans référence, le lecteur refuse au lieu de conclure"
+
+# Le même rang absent des DEUX exemplaires : la duplication ne rattrape plus rien,
+# et le lecteur doit le nommer plutôt que rendre un fichier tronqué.
+mkdir -p "$T/troue2"
+cp "$T"/pages/p-*.png "$T/troue2/"
+echo "$avecqr" | while read -r f; do
+  [ "$(zbarimg --raw -q "$f" 2>/dev/null | grep -c '^PLI1|')" -le 2 ] && rm -f "$T/troue2/$(basename "$f")"
+done
+CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/troue2" -o "$T/s5" --empreinte-app "$EA" --empreinte-coffre "$EV")
+rouge "$T/s5" "il manque" "un rang absent des deux exemplaires — nommé, rien d'écrit"
+
+# Deux lectures divergentes d'un même rang : deux plis différents mêlés. La
+# dernière lue gagnerait en silence, et rien ne dirait laquelle est la bonne.
+mkdir -p "$T/melee"
+cp "$S/qr"/V*.png "$T/melee/"
+python3 "$MODULE/outils/faire_coffre.py" >/dev/null && python3 "$MODULE/outils/faire_pli.py" >/dev/null
+cp "$S/qr"/V01.png "$T/melee/autre-V01.png"
+CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/melee" -o "$T/s6")
+rouge "$T/s6" "ne donnent pas la même chose" "deux tirages mêlés — divergence nommée"
 
 # Le plancher de résolution. 300 dpi passe (contre-témoin ci-dessus), 100 échoue.
 mkdir -p "$T/basse"
