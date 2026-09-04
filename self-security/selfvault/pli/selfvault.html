@@ -1,0 +1,202 @@
+<!doctype html><html lang="fr"><meta charset="utf-8">
+<title>SelfVault — ouverture d'un coffre</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root{--f:#111;--b:#fbfbf9;--a:#7a1f1f;--l:#ddd}
+body{margin:0;font:16px/1.55 Georgia,serif;color:var(--f);background:var(--b)}
+main{max-width:44rem;margin:0 auto;padding:2rem 1.2rem 4rem}
+h1{font-size:1.5rem;margin:0 0 .2rem}
+p.sous{color:#555;margin:0 0 2rem;font-size:.95rem}
+fieldset{border:1px solid var(--l);border-radius:6px;padding:1.1rem;margin:0 0 1.2rem}
+legend{padding:0 .4rem;font-weight:700;font-size:.9rem}
+label{display:block;margin:.6rem 0 .25rem;font-size:.9rem}
+input[type=file],input[type=text]{width:100%;box-sizing:border-box;padding:.55rem;border:1px solid var(--l);border-radius:4px;font:inherit;font-family:ui-monospace,monospace}
+button{background:var(--a);color:#fff;border:0;border-radius:4px;padding:.6rem 1.3rem;font:inherit;cursor:pointer}
+button:disabled{background:#999;cursor:default}
+#etat{margin:1rem 0;padding:.7rem .9rem;border-radius:4px;font-size:.92rem;display:none}
+.ok{background:#e8f3e8;border:1px solid #b7d6b7;display:block!important}
+.ko{background:#f7e9e9;border:1px solid #dcb4b4;display:block!important}
+#sortie{white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:.85rem;background:#fff;border:1px solid var(--l);border-radius:4px;padding:1rem;margin-top:1rem;display:none}
+footer{margin-top:3rem;border-top:1px solid var(--l);padding-top:1rem;font-size:.82rem;color:#666}
+</style>
+<main>
+<h1>Ouverture d'un coffre SelfVault</h1>
+<p class="sous">Cette page fonctionne hors ligne. Rien n'est envoyé nulle part : le déchiffrement a lieu dans ce navigateur.</p>
+<fieldset><legend>1 — le coffre</legend>
+<label for="f">Fichier <code>.selfvault</code></label>
+<input type="file" id="f" accept=".selfvault,.json,application/json"></fieldset>
+<fieldset><legend>2 — le code</legend>
+<label for="c">Code de récupération, ou mot de passe</label>
+<input type="text" id="c" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false" autocapitalize="none" autocorrect="off">
+</fieldset>
+<button id="go" disabled>Ouvrir</button>
+<div id="etat"></div><div id="sortie"></div>
+<footer>SelfVault — AGPL-3.0-or-later. Format documenté : la notice imprimée jointe au coffre
+permet de réécrire ce déchiffreur sans cette page.</footer>
+</main>
+<script>
+const $=s=>document.querySelector(s), b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const b64e=u=>btoa(String.fromCharCode(...u));
+const FORMAT='SELFVAULT2';
+const ALPHABET='23456789ABCDEFGHJKMNPQRSTVWXYZ';
+// Bornes du nombre d'itérations. Il est lu dans le fichier : sans plancher, un
+// coffre retouché à `1` se dérive instantanément ; sans plafond, un milliard
+// d'itérations fige le navigateur sans rien dire.
+const ITER_MIN=100000, ITER_MAX=10000000;
+let coffre=null;
+function dis(t,k){const e=$('#etat');e.textContent=t;e.className=k}
+
+// Cette page ne sait rien faire sans WebCrypto. Le dire au chargement plutôt que
+// de laisser la boucle des serrures avaler l'erreur et rendre « vérifie ta
+// saisie » à quelqu'un qui tient le bon code.
+if(!(self.crypto&&self.crypto.subtle)){
+  dis("Ce navigateur ne sait pas déchiffrer : WebCrypto est indisponible. Ouvre cette page "
+     +"depuis un fichier local ou en HTTPS, ou utilise un navigateur plus récent. Le coffre "
+     +"n'est pas en cause.",'ko');
+  $('#f').disabled=true; $('#c').disabled=true;
+}
+
+// L'en-tête sous forme canonique — l'AAD de chaque opération AES-GCM. Une ligne
+// par champ, séparateur `\n`, en UTF-8. La notice imprimée doit permettre de
+// reconstruire cette chaîne exactement ; c'est pourquoi ce n'est pas du JSON
+// canonique, dont l'échappement et l'ordre des clés ne se réimplémentent pas
+// juste du premier coup.
+function enteteCanonique(c){
+  const l=[c.format,'version='+c.version,'date='+c.date,'engagement='+c.engagement];
+  for(const s of c.serrures) l.push('serrure='+s.nom+'|'+s.sel+'|'+s.iterations);
+  return new TextEncoder().encode(l.join('\n'));
+}
+
+const leve=m=>{throw new Error(m)};
+const B64=/^[A-Za-z0-9+/]+={0,2}$/, DATE=/^\d{4}-\d{2}-\d{2}$/;
+// 🔑 L'encodage de l'AAD doit être INJECTIF. Interdire « | » dans le seul nom de
+// serrure ne suffit pas : `date` et `sel` y entrent aussi, et un « \n » glissé
+// dans l'un d'eux referme une ligne et en ouvre une autre. On fabrique alors deux
+// coffres de dates différentes ayant le même AAD, tous deux authentifiés. Chaque
+// champ est donc contraint à une forme qui exclut les deux caractères structurants.
+function verifierEntete(c){
+  if(c.format!==FORMAT) leve('format inconnu : '+c.format);
+  if(!Number.isInteger(c.version)||c.version<1) leve('version : entier positif attendu, reçu '+c.version);
+  if(typeof c.date!=='string'||!DATE.test(c.date)) leve('date : AAAA-MM-JJ attendu');
+  if(typeof c.engagement!=='string'||!B64.test(c.engagement)) leve("en-tête sans engagement de clé valide");
+  if(!Array.isArray(c.serrures)||!c.serrures.length) leve('coffre sans serrure');
+  for(const s of c.serrures){
+    if(typeof s.nom!=='string'||s.nom.includes('|')||s.nom.includes('\n'))
+      leve("nom de serrure invalide : « | » et le retour à la ligne y sont interdits");
+    if(typeof s.sel!=='string'||!B64.test(s.sel)) leve('sel de « '+s.nom+' » : base64 attendu');
+    if(typeof s.nonce!=='string'||!B64.test(s.nonce)) leve('nonce de « '+s.nom+' » : base64 attendu');
+    if(typeof s.enveloppe!=='string'||!B64.test(s.enveloppe)) leve('enveloppe de « '+s.nom+' » : base64 attendu');
+    if(!Number.isInteger(s.iterations)||s.iterations<ITER_MIN||s.iterations>ITER_MAX)
+      leve("nombre d'itérations hors bornes ("+s.iterations+") — attendu entre "
+           +ITER_MIN+" et "+ITER_MAX+". Le fichier a été modifié.");
+  }
+  if(typeof c.nonce!=='string'||!B64.test(c.nonce)) leve('nonce du coffre : base64 attendu');
+  if(typeof c.contenu!=='string'||!B64.test(c.contenu)) leve('contenu : base64 attendu');
+}
+
+// Les cinq derniers caractères d'un code de récupération en sont la somme de
+// contrôle. Elle ne s'applique QU'À un code : un mot de passe mémorisé n'en a
+// pas, et le vérifier systématiquement rejetterait les saisies légitimes de la
+// serrure L2. Et elle reste un indice — elle change le message, jamais la
+// décision d'essayer.
+const ressembleAUnCode=s=>s.length===25&&[...s].every(c=>ALPHABET.includes(c));
+// Le pli avertit que la casse compte, et l'alphabet est en majuscules. Un code
+// saisi en minuscules n'était donc reconnu comme un code par personne : la somme
+// de contrôle n'était jamais évaluée, et le message renvoyait le lecteur vers les
+// tirets — la seule chose qui n'ait aucune importance.
+const casseSeule=s=>s!==s.toUpperCase()&&ressembleAUnCode(s.toUpperCase());
+async function controle(corps){
+  const h=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(corps)));
+  return [...h.slice(0,5)].map(b=>ALPHABET[b%ALPHABET.length]).join('');
+}
+
+// AES-GCM n'engage pas sa clé : un chiffré peut s'authentifier sous deux clés et
+// rendre deux clairs. Une serrure qui rend une clé maîtresse qui n'est pas celle
+// du coffre est rejetée ici, nommément, au lieu d'échouer plus loin sur le
+// contenu sans qu'on sache pourquoi.
+async function engagementTenu(brut,attendu){
+  const k=await crypto.subtle.importKey('raw',brut,{name:'HMAC',hash:'SHA-256'},false,['sign']);
+  const sig=new Uint8Array(await crypto.subtle.sign('HMAC',k,new TextEncoder().encode(FORMAT+'/engagement')));
+  return b64e(sig)===attendu;
+}
+
+$('#f').onchange=async e=>{
+  const fi=e.target.files[0]; if(!fi)return;
+  try{
+    coffre=JSON.parse(await fi.text());
+    verifierEntete(coffre);
+    // Rien de l'en-tête n'est affiché ici : à ce stade il n'est pas encore
+    // authentifié. La version et la date apparaissent après l'ouverture, quand
+    // l'AAD a prouvé qu'elles n'ont pas bougé — c'est sur ce numéro que le pli
+    // demande au dépositaire de se fier pour savoir quel coffre est le plus récent.
+    dis('Coffre lu — '+coffre.serrures.length+' serrure(s). Version et date seront affichées '
+       +"après l'ouverture, une fois authentifiées.",'ok');
+    $('#go').disabled=false;
+  }catch(err){ coffre=null; $('#go').disabled=true; dis('Fichier illisible : '+err.message,'ko'); }
+};
+
+$('#go').onclick=async()=>{
+  // Forme canonique : lettres et chiffres seuls. Un code recopié à la main perd
+  // ses tirets ou les remplace par des espaces ; la ponctuation ne porte aucun secret.
+  const code=[...$('#c').value].filter(c=>/[\p{L}\p{N}]/u.test(c)).join('');
+  if(!code||!coffre)return;
+  $('#go').disabled=true; $('#sortie').style.display='none';
+  dis('Dérivation de la clé en cours (quelques secondes)…','ok');
+  await new Promise(r=>setTimeout(r,30));
+  try{
+    const aad=enteteCanonique(coffre);
+    let maitresse=null, brute=null, ouverte=null;
+    for(const s of coffre.serrures){
+      let brut;
+      try{
+        const km=await crypto.subtle.deriveKey(
+          {name:'PBKDF2',salt:b64(s.sel),iterations:s.iterations,hash:'SHA-256'},
+          await crypto.subtle.importKey('raw',new TextEncoder().encode(code),'PBKDF2',false,['deriveKey']),
+          {name:'AES-GCM',length:256},false,['decrypt']);
+        brut=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64(s.nonce),additionalData:aad},km,b64(s.enveloppe));
+      }catch(err){
+        // Seul l'échec d'authentification veut dire « ce n'est pas cette
+        // serrure ». Tout le reste — WebCrypto absent, base64 illisible, mémoire
+        // épuisée — remonte, au lieu d'être maquillé en erreur de saisie.
+        if(err&&err.name==='OperationError') continue;
+        throw err;
+      }
+      if(!await engagementTenu(brut,coffre.engagement)){
+        throw new Error("la serrure « "+s.nom+" » s'ouvre mais rend une clé qui n'est pas celle "
+                       +"de ce coffre. Le fichier a été fabriqué ou assemblé.");
+      }
+      brute=brut; ouverte=s.nom;
+      maitresse=await crypto.subtle.importKey('raw',brut,{name:'AES-GCM'},false,['decrypt']);
+      break;
+    }
+    if(!maitresse){
+      let msg="Aucune serrure ne s'ouvre.";
+      const maj=code.toUpperCase();
+      if(casseSeule(code)&&await controle(maj.slice(0,20))===maj.slice(20))
+        msg+=" Le code a été saisi en minuscules : il s'écrit tout en majuscules.";
+      else if(ressembleAUnCode(code)&&await controle(code.slice(0,20))!==code.slice(20))
+        msg+=" Les cinq derniers caractères ne concordent pas avec les vingt premiers : "
+            +"c'est une faute de recopie, pas un mauvais code.";
+      else msg+=" Soit le secret saisi n'est pas le bon, soit l'en-tête du fichier a été "
+              +"modifié depuis sa fabrication — les deux se ressemblent, c'est voulu.";
+      $('#go').disabled=false; return dis(msg,'ko');
+    }
+    let clair;
+    try{
+      clair=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64(coffre.nonce),additionalData:aad},maitresse,b64(coffre.contenu));
+    }catch(err){
+      if(err&&err.name==='OperationError')
+        throw new Error("la serrure « "+ouverte+" » s'est ouverte, mais le contenu n'est pas "
+                       +"celui de cet en-tête. Le fichier est abîmé, ou il a été assemblé "
+                       +"à partir de deux coffres différents.");
+      throw err;
+    }
+    dis('Serrure « '+ouverte+' » ouverte — coffre version '+coffre.version
+       +', du '+coffre.date+'. En-tête authentifié.','ok');
+    $('#sortie').textContent=new TextDecoder().decode(clair); $('#sortie').style.display='block';
+  }catch(err){
+    dis('Ouverture impossible : '+(err&&err.message?err.message:err),'ko');
+  }
+  $('#go').disabled=false;
+};
+</script>

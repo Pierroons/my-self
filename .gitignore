@@ -61,3 +61,18 @@ deploy/my-self/dist/
 # par-dessus celle que le cron vient d'écrire. Le fichier suivi datait du 3 août
 # quand l'instance en servait un du 21.
 self-right/selfact/api/data/catalog.json
+
+# SelfVault — les secrets de la démonstration. Le générateur écrit le code L1 et
+# le mot L2 en clair à côté du coffre qu'il vient de fabriquer : c'est le seul
+# moyen de rejouer la chaîne, et c'est aussi ce qui ne doit jamais partir sur
+# GitHub. Le hook gitleaks ne les attrape pas — un code de récupération
+# ressemble à une référence de produit, pas à un motif de secret. La règle porte
+# sur le RÉPERTOIRE où ils tombent, pas sur leurs noms : elle couvre aussi ce
+# qu'un générateur futur y écrira.
+self-security/selfvault/outils/secrets/
+
+# SelfVault — tout ce que la chaîne produit : le coffre, les QR, le pli rendu.
+# Le rendu du pli porte le code de récupération en clair ; le gabarit versionné,
+# lui, ne porte qu'un jeton. Versionner un répertoire de sortie revient donc à
+# faire entrer un secret dans l'historique, où il survit à sa propre suppression.
+self-security/selfvault/sortie/

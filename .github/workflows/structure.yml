@@ -79,6 +79,16 @@ jobs:
           node --version
           node bi-self/selfrecover/tests/derivation.js
 
+      # SelfVault — le format d'un coffre destiné à un dépôt notarial. Le banc
+      # pilote les DEUX lecteurs : la réimplémentation Node et l'application
+      # réelle découpée en QR codes. Cette dernière était le seul des trois
+      # porteurs du format que rien n'éprouvait : on pouvait y planter trois
+      # défauts cryptographiques sans qu'aucun contrôle ne bouge.
+      - name: Garde-fou — le format SELFVAULT2, sur ses deux lecteurs
+        run: |
+          python3 -m pip install --quiet --disable-pip-version-check cryptography
+          bash self-security/selfvault/tests/banc.sh
+
       # Une démo qui recopierait la bibliothèque au lieu d'y pointer redeviendrait
       # le duplicata que ce lien existe pour supprimer — et le fichier recopié
       # aurait l'air correct le jour où il est posé.
