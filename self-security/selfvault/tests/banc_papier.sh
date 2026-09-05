@@ -21,6 +21,12 @@ trap nettoyer EXIT
 for o in pdftoppm pdftotext zbarimg weasyprint; do
   command -v "$o" >/dev/null || { echo "✗ « $o » absent — boucle papier non mesurée"; exit 1; }
 done
+# Les modules Python comptent autant que les binaires. Sans ce contrôle, leur
+# absence tombe en trace d'exception au milieu du banc, et il faut la lire pour
+# comprendre qu'il manquait une dépendance.
+for m in qrcode PIL cryptography; do
+  python3 -c "import $m" 2>/dev/null || { echo "✗ module Python « $m » absent — boucle papier non mesurée"; exit 1; }
+done
 
 echec=0; n=0
 lire(){ python3 "$MODULE/outils/lire_pli.py" "$@" 2>&1; }

@@ -184,8 +184,10 @@ Reste à faire :
       prétend attraper, et pilote **les deux lecteurs** : la réimplémentation Node et
       l'application réelle. Il imprime son propre décompte plutôt que de le faire recopier
       ailleurs. Reste à y joindre la boucle papier : rasteriser, relire les QR, mesurer le
-      plancher de résolution. Dépendances : `zbar-tools`, `poppler-utils`, `python3-qrcode`,
-      `weasyprint`, `node`.
+      plancher de résolution. **Dépendances dérivées des imports, pas recopiées** : binaires
+      `zbar-tools`, `poppler-utils`, `weasyprint`, `node` ; modules Python `cryptography`,
+      `qrcode` et `pillow` — ce dernier parce que `qrcode` en a besoin pour écrire un PNG.
+      Le banc vérifie les sept avant de mesurer quoi que ce soit, et nomme celui qui manque.
 - [ ] **Versionner le pli** : la page 1 porte un numéro de version, désormais authentifié
       par l'AAD et repris du coffre. Rien ne vérifie encore qu'un coffre régénéré incrémente
       ce numéro, ni que le dépositaire soit averti que son ancien code est mort.
