@@ -1,146 +1,207 @@
 <!-- GABARIT du pli. Les jetons en doubles accolades sont substitués par
      `outils/faire_pli.py`, qui rend `sortie/pli.html`. Un jeton qui survit à la
-     substitution fait échouer le rendu : une page 1 qui annonce une empreinte
-     n'a le droit de mentir sur rien. Une valeur écrite en dur ici échappe à ce
-     garde-fou par construction — le pied de page l'a fait pendant un temps. -->
+     substitution fait échouer le rendu : une page qui annonce une empreinte n'a
+     le droit de mentir sur rien. Une valeur écrite en dur ici échappe à ce
+     garde-fou par construction — le pied de page l'a fait pendant un temps.
+
+     🔑 TROIS PARTIES, TROIS LECTEURS. La partie A est pour le notaire et pour
+     lui seul : aucun chiffre technique, aucune commande, aucun geste
+     informatique. La partie B s'adresse à qui ouvrira le coffre. La partie C
+     n'est qu'une annexe d'images. Tout ce qui ressemble à du code appartient à
+     B — un document qu'un notaire n'ose pas lire, il ne le conserve pas
+     volontiers.
+
+     Les sauts de page ne sont posés qu'aux frontières des parties. Un saut avant
+     chaque titre laissait des demi-pages blanches.
+
+     Couleurs : celles de MySelf, mesurées sur papier blanc. La palette du site
+     est faite pour un fond sombre — `--accent` #7ab7ff n'y rend que 2,09:1 et
+     serait illisible à l'impression. Seul `--accent-deep` #3f74b8 passe
+     (4,77:1), et `--bg` #0f1419 devient l'encre (18,5:1). L'inversion reste dans
+     la palette ; le rouge d'avant n'y était pas. -->
 <!doctype html><html lang="fr"><meta charset="utf-8">
-<title>Pli de dépôt — coffre de directives</title>
+<title>Pli de dépôt — directives et accès numériques</title>
 <style>
-@page { size:A4; margin:1.7cm 1.9cm 1.4cm; 
-  @bottom-center { content:"Pli de dépôt — coffre de directives · version {{VERSION}} du {{DATE_LONGUE}} · page " counter(page) " / " counter(pages);
-                    font:9pt Lato,sans-serif; color:#777; } }
-body { font:10.5pt/1.42 "Bitstream Charter",Charter,Georgia,serif; color:#161616; }
-h1 { font:700 19pt Lato,sans-serif; margin:0 0 .1cm; }
-h2 { font:700 12.5pt Lato,sans-serif; margin:.6cm 0 .2cm; break-after:avoid; padding-bottom:.1cm;
-      border-bottom:1px solid #c9c2b6; }
-.chapeau { font:10.5pt Lato,sans-serif; color:#555; margin:0 0 .8cm; }
+:root { --encre:#0f1419; --bleu:#3f74b8; --gris:#5a6570; --fond:#f4f8fd; --filet:#cfdcec; }
+@page { size:A4; margin:1.5cm 1.9cm 1.2cm;
+  @bottom-center { content:"Pli de dépôt · {{TITULAIRE}} · version {{VERSION}} du {{DATE_LONGUE}} · page " counter(page) " / " counter(pages);
+                    font:8.5pt Lato,sans-serif; color:#5a6570; } }
+body { font:10.5pt/1.42 "Bitstream Charter",Charter,Georgia,serif; color:var(--encre); background:#fff; }
+h1 { font:700 18pt Lato,sans-serif; margin:0 0 .1cm; color:var(--bleu); }
+h2 { font:700 12pt Lato,sans-serif; margin:.45cm 0 .15cm; break-after:avoid; color:var(--encre);
+      padding-bottom:.08cm; border-bottom:1px solid var(--filet); }
+.chapeau { font:10.5pt Lato,sans-serif; color:var(--gris); margin:0 0 .5cm; }
 .saut { break-before:page; }
-.serre li { margin:.1cm 0; }
 .bloc { break-inside:avoid; }
-.serre p { margin:.25cm 0; }
-.carte { border:1.2px solid #8a7f6d; border-radius:3px; padding:.4cm .5cm; margin:.4cm 0; background:#faf8f4; }
-.carte dt { font:700 9.5pt Lato,sans-serif; color:#5a5346; text-transform:uppercase; letter-spacing:.04em; }
-.carte dd { margin:0 0 .35cm; font-family:"DejaVu Sans Mono",monospace; font-size:9.5pt; word-break:break-all; }
-.code { text-align:center; border:2.5px solid #7a1f1f; border-radius:4px; padding:.7cm .4cm; margin:.5cm 0; }
-.code b { display:block; font-family:"DejaVu Sans Mono",monospace; font-size:21pt; letter-spacing:.06em; color:#7a1f1f; }
-.code span { display:block; font:9.5pt Lato,sans-serif; color:#666; margin-top:.35cm; }
-.avert { border-left:3px solid #7a1f1f; padding:.3cm .5cm; background:#faf1f1; font-size:10.5pt; }
-ol,ul { padding-left:1.1em; } li { margin:.12cm 0; }
-table { border-collapse:collapse; width:100%; font-size:10pt; margin:.4cm 0; }
-th,td { border:1px solid #ccc5b8; padding:.18cm .3cm; text-align:left; vertical-align:top; }
-th { background:#f2efe8; font:700 9.5pt Lato,sans-serif; }
-code { font-family:"DejaVu Sans Mono",monospace; font-size:9.5pt; background:#f2efe8; padding:0 .12em; }
-pre { font-family:"DejaVu Sans Mono",monospace; font-size:8.5pt; line-height:1.35;
-       background:#f7f5f0; border:1px solid #ddd6c8; border-radius:3px; padding:.35cm .45cm; white-space:pre-wrap; }
+p { margin:.24cm 0; }
+.carte { border:1px solid var(--filet); border-radius:3px; padding:.3cm .45cm; margin:.3cm 0;
+      background:var(--fond); display:grid; grid-template-columns:auto 1fr; gap:.1cm .5cm; }
+.carte dt { font:700 9pt Lato,sans-serif; color:var(--bleu); text-transform:uppercase; letter-spacing:.04em; }
+.carte dd { margin:0; font-size:10pt; }
+.code { text-align:center; border:2px solid var(--bleu); border-radius:4px; padding:.6cm .4cm;
+      margin:.4cm 0; background:var(--fond); }
+.code b { display:block; font-family:"DejaVu Sans Mono",monospace; font-size:20pt; letter-spacing:.06em; color:var(--bleu); }
+.code span { display:block; font:9.5pt Lato,sans-serif; color:var(--gris); margin-top:.3cm; }
+.avert { border-left:3px solid var(--bleu); padding:.25cm .45cm; background:var(--fond); }
+.signature { margin-top:.5cm; display:grid; grid-template-columns:1fr 1fr; gap:.8cm; break-inside:avoid; }
+.signature div { border-top:1px solid var(--gris); padding-top:.15cm; font:9.5pt Lato,sans-serif;
+      color:var(--gris); min-height:1.9cm; }
+.lieu { margin-top:.5cm; font-size:10.5pt; }
+ol,ul { padding-left:1.1em; margin:.2cm 0; } li { margin:.1cm 0; }
+table { border-collapse:collapse; width:100%; font-size:10pt; margin:.35cm 0; }
+th,td { border:1px solid var(--filet); padding:.13cm .26cm; text-align:left; vertical-align:top; }
+th { background:var(--fond); font:700 9.5pt Lato,sans-serif; color:var(--bleu); }
+code { font-family:"DejaVu Sans Mono",monospace; font-size:9.5pt; background:var(--fond); padding:0 .12em; }
+pre { font-family:"DejaVu Sans Mono",monospace; font-size:8pt; line-height:1.3; color:var(--encre);
+       background:var(--fond); border:1px solid var(--filet); border-radius:3px; padding:.3cm .4cm; white-space:pre-wrap; }
+.emp { font-family:"DejaVu Sans Mono",monospace; font-size:9.5pt; word-break:break-all; }
 .grille { display:flex; flex-wrap:wrap; gap:.45cm; justify-content:flex-start; }
 figure { margin:0; text-align:center; }
-figure img { width:5cm; height:5cm; display:block; }
-figcaption { font:700 9pt "DejaVu Sans Mono",monospace; color:#333; margin-top:.05cm; }
-.pied { margin-top:1cm; break-before:avoid; font:9pt Lato,sans-serif; color:#777; border-top:1px solid #ddd; padding-top:.3cm; }
+figure img { width:4.2cm; height:4.2cm; display:block; }
+figcaption { font:700 9pt "DejaVu Sans Mono",monospace; color:var(--gris); margin-top:.05cm; }
+.pied { margin-top:.7cm; font:8.5pt Lato,sans-serif; color:var(--gris); border-top:1px solid var(--filet); padding-top:.25cm; }
 </style>
 
-<h1>Pli de dépôt — coffre de directives</h1>
-<p class="chapeau">Document destiné au dépositaire. À conserver sous pli fermé.</p>
+<h1>Pli de dépôt — directives et accès numériques</h1>
+<p class="chapeau">À conserver sous pli fermé. <strong>Une seule page vous concerne : celle-ci.</strong></p>
 
 <dl class="carte">
-  <dt>Version</dt><dd>{{VERSION}} — établie le {{DATE_LONGUE}}</dd>
   <dt>Titulaire</dt><dd>{{TITULAIRE}}</dd>
-  <dt>Empreinte du déchiffreur ({{OCTETS_APP}} octets, {{NQR_APP}} QR codes)</dt><dd>{{EMPREINTE_APP}}</dd>
-  <dt>Empreinte du coffre ({{OCTETS_COFFRE}} octets, {{NQR_COFFRE}} QR codes)</dt><dd>{{EMPREINTE_COFFRE}}</dd>
-  <dt>Calcul des empreintes</dt><dd>SHA-256 du fichier, 32 premiers caractères hexadécimaux, groupés par quatre</dd>
+  <dt>Née le</dt><dd>{{NAISSANCE}}</dd>
+  <dt>Référence</dt><dd>{{REFERENCE}}</dd>
+  <dt>Version</dt><dd>{{VERSION}} — établie le {{DATE_LONGUE}}</dd>
 </dl>
 
-<h2>Ce que vous tenez</h2>
-<p>Un coffre numérique chiffré, imprimé sous forme de QR codes, et le code qui l'ouvre.
-Le coffre contient les instructions de la titulaire sur le sort de ses comptes et de ses
-données après son décès. Il complète ses directives écrites, sans les remplacer :
-<strong>les directives disent ce qu'il faut faire, le coffre donne les moyens de le faire.</strong></p>
+<h2>Ce que vous conservez</h2>
+<p>Les instructions de la titulaire sur le sort de ses comptes et de ses données personnelles
+après son décès, sous forme chiffrée, et le code qui permet de les lire. Elles complètent ses
+directives écrites sans les remplacer : <strong>les directives disent ce qu'il faut faire, ce pli
+donne les moyens de le faire.</strong></p>
 
-<p>Ce pli est <strong>autonome</strong>. Il ne dépend d'aucun site, d'aucune entreprise et
-d'aucun abonnement. Rien de ce qu'il contient ne cesse de fonctionner si l'éditeur du logiciel disparaît.</p>
+<p>Il est autonome : il ne dépend d'aucun site, d'aucune entreprise et d'aucun abonnement, et
+peut être réimprimé à l'identique — le papier n'est pas l'original.</p>
 
-<div class="avert">
-  <p style="margin:.1cm 0"><strong>Ce que ce pli permet :</strong> la personne qui détient ce pli
-  complet peut ouvrir les données. Le code de récupération et les QR codes suffisent.
-  C'est un choix assumé de la titulaire, qui repose sur la même confiance que le dépôt
-  d'un testament.</p>
+<div class="avert bloc">
+  <p style="margin:.1cm 0"><strong>Ce que ce pli permet.</strong> La personne qui détient ce pli
+  complet peut lire les données. Le code et les images qui l'accompagnent y suffisent. C'est un
+  choix assumé de la titulaire, qui repose sur la même confiance que le dépôt d'un testament.</p>
 </div>
 
 <h2>Ce qu'il faut faire, et quand</h2>
 <table>
 <tr><th style="width:38%">Situation</th><th>Geste</th></tr>
 <tr><td>La titulaire est vivante</td><td>Rien. Le pli reste fermé.</td></tr>
+<tr><td>Elle vous redemande son pli de son vivant</td>
+    <td>Restitution à elle-même, sur justification de son identité. Le pli lui appartient.</td></tr>
 <tr><td>Elle est décédée, et une personne désignée dans ses directives se présente</td>
-    <td>Remise du pli selon les conditions inscrites dans l'acte de dépôt.</td></tr>
+    <td>Remise selon les conditions inscrites dans l'acte de dépôt.</td></tr>
 <tr><td>Elle vous remet une nouvelle version</td>
-    <td>La version la plus récente remplace celle-ci. Détruire l'ancienne : son code n'ouvre plus rien.</td></tr>
+    <td>La plus récente remplace celle-ci. Détruire l'ancienne : son code n'ouvre plus rien.</td></tr>
 <tr><td>Votre étude cesse ou transmet ses dossiers</td>
-    <td>Le pli suit. Il peut être <strong>réimprimé à l'identique</strong> après lecture des QR codes : le papier n'est pas l'original.</td></tr>
+    <td>Le pli suit, sans traitement particulier.</td></tr>
 </table>
 
-<div class="bloc">
-<h2>Vérifier que le pli est complet</h2>
-<p>Le premier point se vérifie à l'œil, à tout moment. Les trois suivants demandent un
-ordinateur : on numérise les pages de QR codes, on les relit, on recolle les fragments et on
-recalcule les deux empreintes. <strong>La page « Relire les QR codes » explique comment le
-faire</strong>, sous Windows sans rien installer comme sous Linux. Ces trois points se font une
-fois, au dépôt, et se refont si le pli a été photocopié ou abîmé.</p>
-<ol>
-  <li>Le pied de chaque page indique son rang et le nombre total. Vérifier qu'aucune ne manque.</li>
-  <li>{{TOTAL_QR}} QR codes, étiquetés <code>A1/{{NQR_APP}}</code> à
-      <code>A{{NQR_APP}}/{{NQR_APP}}</code> et <code>V1/{{NQR_COFFRE}}</code> à
-      <code>V{{NQR_COFFRE}}/{{NQR_COFFRE}}</code>. Ils sont imprimés <strong>deux fois</strong>,
-      dans deux exemplaires de deux pages chacun. Les deux exemplaires portent exactement les
-      mêmes codes : <strong>l'un des deux suffit</strong>. Si une page est perdue, déchirée ou
-      tachée, l'autre exemplaire rend le pli entier.</li>
-  <li><strong>Numériser à 300 points par pouce au moins</strong>, en niveaux de gris — le réglage
-      courant d'un copieur. Éprouvé sur ce pli : à 200 points la lecture passe encore, à 150 elle échoue.</li>
-  <li>Après lecture, les deux empreintes recalculées doivent être <strong>identiques</strong> à celles de l'encadré ci-dessus. Une seule différence signifie que le contenu est abîmé.</li>
-</ol>
+<p style="margin-top:.5cm"><strong>Les pages suivantes ne vous sont pas destinées</strong> : elles
+forment un dossier technique à l'usage de la personne qui ouvrira le coffre. Elles ne vous demandent
+rien — ni vérification, ni manipulation, ni logiciel. La titulaire déclare avoir vérifié elle-même,
+avant le dépôt, que ce pli est complet et lisible.</p>
+
+<p class="lieu">Fait à ……………………………………………………, le ………………………………………</p>
+
+<div class="signature">
+  <div>La titulaire — signature</div>
+  <div>Le dépositaire — signature et cachet</div>
 </div>
 
 <div class="saut"></div>
-<h1>Le code de récupération</h1>
-<p class="chapeau">À ne pas séparer du reste du pli.</p>
+<h1>Dossier technique</h1>
+<p class="chapeau">À la personne chargée d'ouvrir le coffre. Le notaire n'a rien à faire de ces
+pages : il les conserve, c'est tout.</p>
 
-<div class="code">
+<div class="code bloc">
   <b>{{CODE_L1}}</b>
-  <span>Vingt caractères tirés au sort, plus cinq de contrôle.</span>
+  <span>Le code d'ouverture. Vingt caractères tirés au sort, plus cinq de contrôle.</span>
 </div>
 
 <h2>Recopier ce code sans se tromper</h2>
 <ul>
-  <li>L'alphabet <strong>exclut</strong> les caractères qui se confondent : ni <code>I</code>, ni <code>L</code>, ni <code>O</code>, ni <code>U</code>, ni le chiffre <code>0</code>, ni le chiffre <code>1</code>. Le zéro et la lettre O sont tous les deux absents de ce code. Un caractère qui vous fait penser à l'un ou à l'autre est donc forcément un autre caractère : regardez-le à nouveau.</li>
-  <li>Les tirets et les espaces <strong>ne comptent pas</strong>. Le code fonctionne avec, sans, ou avec des espaces à la place.</li>
-  <li>La casse, en revanche, compte : tout est en majuscules.</li>
-  <li>Les cinq derniers caractères sont une <strong>somme de contrôle</strong>. Un outil qui lit ce code peut donc dire « vous avez fait une faute de recopie » au lieu de « mot de passe incorrect ».</li>
+  <li>L'alphabet exclut les caractères qui se confondent : ni <code>I</code>, ni <code>L</code>, ni
+      <code>O</code>, ni <code>U</code>, ni le chiffre <code>0</code>, ni le chiffre <code>1</code>.
+      Un caractère qui vous fait penser à un zéro ou à un O est donc forcément autre chose :
+      regardez-le à nouveau.</li>
+  <li>Les tirets et les espaces ne comptent pas. Le code fonctionne avec, sans, ou avec des espaces
+      à la place. <strong>La casse, en revanche, compte : tout est en majuscules.</strong></li>
+  <li>Les cinq derniers caractères sont une somme de contrôle. Un outil qui lit ce code sait donc
+      dire « vous avez fait une faute de recopie » au lieu de « mot de passe incorrect ».</li>
+  <li>Ce code n'ouvre que le coffre de ce pli, dans sa version {{VERSION}}. Il ne donne accès à
+      aucun compte, aucune banque, aucun service en ligne, et ne vaut rien sans les images du
+      coffre.</li>
 </ul>
 
-<div class="avert">
-  <p style="margin:.1cm 0">Ce code n'ouvre <strong>que</strong> le coffre de ce pli, dans sa
-  version {{VERSION}}. Il ne donne accès à aucun compte, aucune banque, aucun service en ligne.
-  Il ne vaut rien seul, sans les QR codes du coffre.</p>
+<h2>Vérifier que rien n'a été abîmé</h2>
+<p>Les planches en fin de pli portent {{TOTAL_QR}} images de données, étiquetées
+<code>A1/{{NQR_APP}}</code> à <code>A{{NQR_APP}}/{{NQR_APP}}</code> et
+<code>V1/{{NQR_COFFRE}}</code> à <code>V{{NQR_COFFRE}}/{{NQR_COFFRE}}</code>. Elles sont imprimées
+<strong>deux fois</strong>, en deux exemplaires identiques : <strong>l'un des deux suffit</strong>.
+Si une planche est perdue, déchirée ou tachée, l'autre rend le pli entier.</p>
+
+<p>Numérisez à <strong>300 points par pouce au moins</strong>, en niveaux de gris — le réglage
+courant d'un copieur. Éprouvé sur ce pli : à 200 points la lecture passe encore, à 150 elle échoue.
+Après reconstitution, les deux empreintes doivent être identiques à celles-ci :</p>
+
+<dl class="carte">
+  <dt>Déchiffreur</dt><dd class="emp">{{EMPREINTE_APP}}</dd>
+  <dt>Coffre</dt><dd class="emp">{{EMPREINTE_COFFRE}}</dd>
+  <dt>Calcul</dt><dd>SHA-256 du fichier, 32 premiers caractères hexadécimaux, groupés par quatre</dd>
+</dl>
+
+<p>Une seule différence signifie qu'une image a été mal lue. Ne vous servez alors d'aucun des deux
+fichiers : reprenez à une résolution plus élevée, ou servez-vous du second exemplaire.</p>
+
+<h2>Relire les images — sur Windows, sans rien installer</h2>
+
+<div class="avert bloc">
+  <p style="margin:.1cm 0"><strong>Une interdiction, et une seule.</strong> Ne déposez jamais ces
+  images sur un site de lecture de codes en ligne. Ces images <em>sont</em> le coffre : les
+  téléverser revient à en remettre une copie à un inconnu. Tout ce qui suit se fait sur votre poste,
+  hors ligne.</p>
 </div>
 
-<h2>Si le code est refusé</h2>
+<p>Windows sait lire ces images tout seul, et il n'y en a que {{NQR_COFFRE}} à lire pour le coffre :
+celles marquées <code>V1/{{NQR_COFFRE}}</code> à <code>V{{NQR_COFFRE}}/{{NQR_COFFRE}}</code>.</p>
 <ol>
-  <li>Vérifier la version : un coffre plus récent ne s'ouvre pas avec un ancien code.</li>
-  <li>Vérifier les caractères ambigus de la liste ci-dessus.</li>
-  <li>Vérifier que les {{TOTAL_QR}} QR codes ont bien été lus — au besoin en reprenant le second
-      exemplaire — et les empreintes recalculées.</li>
+  <li>Numérisez une planche, ou photographiez-la, à 300 points par pouce au moins.</li>
+  <li>Ouvrez l'application <strong>Outil Capture d'écran</strong>, puis le menu « … » et « Ouvrir un
+      fichier ». Choisissez l'image.</li>
+  <li>Cliquez l'icône de code, en bas à droite. Windows affiche le texte : copiez-le.</li>
+  <li>Ouvrez <code>selfvault.html</code> dans votre navigateur et collez ce texte dans la case
+      prévue. Recommencez pour chacune des {{NQR_COFFRE}} images <code>V</code>.</li>
+  <li>Cliquez « Recoller le coffre ». La page vous dira s'il en manque une, et laquelle.</li>
 </ol>
+<p>Le déchiffreur <code>selfvault.html</code> occupe à lui seul {{NQR_APP}} images. Vous l'avez
+normalement déjà, sur le support remis avec ce pli. S'il a disparu, la notice du format permet à un
+informaticien de le réécrire en une vingtaine de lignes.</p>
 
 <div class="saut"></div>
 <h1>Notice du format</h1>
-<p class="chapeau">De quoi réécrire le déchiffreur si plus aucun logiciel ne subsiste.</p>
+<p class="chapeau">De quoi réécrire le déchiffreur si plus aucun logiciel ne subsiste.
+<strong>Cette partie s'adresse à un développeur.</strong></p>
 
-<p>Les QR codes de ce pli contiennent un programme prêt à l'emploi, mais un programme vieillit. La description qui suit,
-elle, permet à n'importe quel développeur de réécrire un déchiffreur en une vingtaine de lignes,
-avec les outils de son époque. Elle n'emploie que des algorithmes publics et normalisés.</p>
+<h2>Sur Linux ou macOS — quatre commandes</h2>
+<p>N'emploie que deux outils publics et anciens : <code>poppler-utils</code> et
+<code>zbar-tools</code>. Numérisez les planches — celles d'un seul exemplaire suffisent — placez les
+images dans un répertoire vide, et lancez :</p>
 
-<div class="serre">
+<pre id="procedure">zbarimg --raw -q ./*.png &gt; codes.txt || true   # pages sans image de données : normal
+grep '^PLI1|A|' codes.txt | sort -u | sort -t'|' -k3,3n | cut -d'|' -f4- | tr -d '\n' | base64 -d &gt; selfvault.html
+grep '^PLI1|V|' codes.txt | sort -u | sort -t'|' -k3,3n | cut -d'|' -f4- | tr -d '\n' | base64 -d &gt; coffre.selfvault
+sha256sum selfvault.html coffre.selfvault</pre>
+
+<p>La première ligne se termine par <code>|| true</code> parce que l'outil signale une erreur sur
+chaque page qui ne porte aucune image de données. C'est attendu et sans conséquence.</p>
+
 <h2>Structure du coffre</h2>
-<p>Le coffre est un fichier texte au format JSON. Tous les champs binaires sont encodés en Base64.</p>
+<p>Fichier texte au format JSON, champs binaires en Base64.</p>
 <pre>{
  "format"      : "SELFVAULT2",
  "version"     : {{VERSION}},
@@ -152,127 +213,76 @@ avec les outils de son époque. Elle n'emploie que des algorithmes publics et no
 }</pre>
 
 <h2>L'en-tête authentifié</h2>
-<p>Les champs de l'en-tête ne sont pas seulement lus : ils sont <strong>authentifiés</strong>.
-Chaque opération de déchiffrement — celle d'une enveloppe comme celle du contenu — reçoit
-en <em>données authentifiées associées</em> (AAD) la chaîne suivante, construite ligne à ligne,
-séparateur retour à la ligne, encodée en UTF-8 :</p>
+<p>Les champs de l'en-tête ne sont pas seulement lus, ils sont <strong>authentifiés</strong>. Chaque
+déchiffrement — enveloppe comme contenu — reçoit en données authentifiées associées (AAD) la chaîne
+suivante, une ligne par champ, séparateur retour à la ligne, encodée en UTF-8 :</p>
 <pre>SELFVAULT2
 version=&lt;version&gt;
 date=&lt;date&gt;
 engagement=&lt;engagement&gt;
 serrure=&lt;nom&gt;|&lt;sel&gt;|&lt;iterations&gt;      ← une ligne par serrure, dans l'ordre du fichier</pre>
-<p>Toute retouche d'un de ces champs fait échouer l'ouverture au lieu de passer inaperçue.
-Le caractère <code>|</code> et le retour à la ligne sont interdits dans un nom de serrure.</p>
+<p>Toute retouche d'un de ces champs fait échouer l'ouverture au lieu de passer inaperçue. Le
+caractère <code>|</code> et le retour à la ligne sont interdits dans chacun d'eux.</p>
 
 <h2>Comment on ouvre</h2>
 <ol>
-  <li>Normaliser le code : <strong>ne garder que les lettres et les chiffres</strong>, en conservant la casse.</li>
-  <li>Pour chaque serrure, dériver une clé de 256 bits : <code>PBKDF2-HMAC-SHA256(code, sel, iterations)</code>. Les paramètres sont dans la serrure elle-même — aucune valeur n'est à deviner.</li>
-  <li>Refuser un <code>iterations</code> inférieur à 100 000 ou supérieur à 10 000 000 : cette valeur vient du fichier, et un fichier peut avoir été modifié.</li>
-  <li>Déchiffrer <code>enveloppe</code> en <code>AES-256-GCM</code> avec cette clé, le <code>nonce</code> de la serrure et l'AAD ci-dessus. On obtient la <strong>clé maîtresse</strong> de 32 octets. Si l'authentification échoue, ce n'est pas la bonne serrure : passer à la suivante.</li>
-  <li>Vérifier que <code>HMAC-SHA256(clé maîtresse, "SELFVAULT2/engagement")</code> vaut bien le champ <code>engagement</code>. Sinon, refuser : la serrure rend une clé qui n'est pas celle de ce coffre.</li>
-  <li>Déchiffrer <code>contenu</code> en <code>AES-256-GCM</code> avec la clé maîtresse, le <code>nonce</code> du coffre et la même AAD. Le résultat est du texte UTF-8.</li>
+  <li>Normaliser le code : ne garder que les lettres et les chiffres, en conservant la casse.</li>
+  <li>Pour chaque serrure, dériver une clé de 256 bits :
+      <code>PBKDF2-HMAC-SHA256(code, sel, iterations)</code>. Les paramètres sont dans la serrure —
+      aucune valeur n'est à deviner.</li>
+  <li>Refuser un <code>iterations</code> inférieur à 100 000 ou supérieur à 10 000 000 : cette
+      valeur vient du fichier, et un fichier peut avoir été modifié.</li>
+  <li>Déchiffrer <code>enveloppe</code> en <code>AES-256-GCM</code> avec cette clé, le
+      <code>nonce</code> de la serrure et l'AAD ci-dessus. On obtient la clé maîtresse de 32 octets.
+      Si l'authentification échoue, ce n'est pas la bonne serrure : passer à la suivante.</li>
+  <li>Vérifier que <code>HMAC-SHA256(clé maîtresse, "SELFVAULT2/engagement")</code> vaut le champ
+      <code>engagement</code>. Sinon refuser : la serrure rend une clé qui n'est pas celle de ce
+      coffre.</li>
+  <li>Déchiffrer <code>contenu</code> avec la clé maîtresse, le <code>nonce</code> du coffre et la
+      même AAD. Le résultat est du texte UTF-8.</li>
 </ol>
 
 <h2>La somme de contrôle du code</h2>
-<p>Les vingt premiers caractères du code sont tirés au sort ; les cinq derniers s'en déduisent.
-On prend l'empreinte <code>SHA-256</code> des vingt premiers, pris comme texte, et pour chacun
-des cinq premiers octets de cette empreinte on retient le caractère de rang <code>octet modulo
-30</code> dans l'alphabet <code>23456789ABCDEFGHJKMNPQRSTVWXYZ</code>. Un outil qui recalcule
-ces cinq caractères peut donc distinguer une faute de recopie d'un mauvais code.</p>
+<p>Les vingt premiers caractères sont tirés au sort, les cinq derniers s'en déduisent : empreinte
+<code>SHA-256</code> des vingt premiers pris comme texte, puis pour chacun des cinq premiers octets,
+le caractère de rang <code>octet modulo 30</code> dans l'alphabet
+<code>23456789ABCDEFGHJKMNPQRSTVWXYZ</code>.</p>
 
 <h2>Pourquoi deux serrures</h2>
-<p>La clé maîtresse est tirée au sort et n'est stockée nulle part en clair. Elle est enfermée
-plusieurs fois, une par serrure. Chacune s'ouvre indépendamment des autres, avec son propre
-secret : celui que la titulaire garde de son vivant, et le code de récupération de ce pli. Ajouter ou retirer
-une serrure ne touche ni au contenu, ni aux autres serrures.</p>
-
-<p>Puisque chaque serrure ouvre seule, le coffre
-vaut ce que vaut <em>sa serrure la plus faible</em>, jamais la plus forte. C'est pourquoi les
-deux secrets sont <strong>tirés au sort</strong> et non choisis : le code de récupération vaut
-98 bits, la phrase de la titulaire au moins {{BITS_MIN}}, et l'outil qui fabrique le coffre refuse
-d'enfermer la clé derrière une phrase inventée. Un fichier chiffré confié à un tiers peut être
-attaqué hors ligne, sans limite d'essais : là, seul le coût de chaque essai protège encore, et
+<p>La clé maîtresse est tirée au sort et n'est stockée nulle part en clair. Elle est enfermée une
+fois par serrure, et chacune s'ouvre indépendamment : celle que la titulaire garde de son vivant, et
+le code de ce dossier. Ajouter ou retirer une serrure ne touche ni au contenu, ni aux autres.</p>
+<p>Puisque chaque serrure ouvre seule, le coffre vaut ce que vaut <em>sa serrure la plus faible</em>,
+jamais la plus forte. C'est pourquoi les deux secrets sont <strong>tirés au sort</strong> et non
+choisis : le code vaut 98 bits, la phrase de la titulaire au moins {{BITS_MIN}}, et l'outil qui
+fabrique le coffre refuse d'enfermer la clé derrière une phrase inventée. Un fichier confié à un
+tiers s'attaque hors ligne, sans limite d'essais : seul le coût de chaque essai protège encore, et
 il ne rattrape pas un secret trop court.</p>
 
-<h2>Les QR codes</h2>
-<p>Chaque QR code suit la norme ISO/IEC 18004. Il contient du texte
-de la forme <code>PLI1|X|i/n|données</code> — où <code>X</code> vaut <code>A</code> pour le
-déchiffreur et <code>V</code> pour le coffre, <code>i/n</code> est le rang, et les données sont
-un fragment de Base64. Concaténer les fragments dans l'ordre des rangs, décoder le Base64 :
-on retrouve le fichier, octet pour octet. <strong>L'ordre est inscrit dans les données</strong> :
-les QR codes peuvent donc être lus dans n'importe quel ordre. La correction d'erreur est réglée au niveau Q,
-qui tolère un quart de dégradation par QR code.</p>
+<h2>Les images de données</h2>
+<p>Chaque image suit la norme ISO/IEC 18004, correction d'erreur de niveau Q, qui tolère un quart de
+dégradation. Elle contient du texte de la forme <code>PLI1|X|i/n|données</code> — <code>X</code>
+valant <code>A</code> pour le déchiffreur et <code>V</code> pour le coffre, <code>i/n</code> le rang,
+les données un fragment de Base64. Concaténer les fragments dans l'ordre des rangs et décoder le
+Base64 rend le fichier octet pour octet. <strong>L'ordre est inscrit dans les données</strong> : les
+images peuvent donc être lues dans n'importe quel ordre.</p>
 
-</div>
 <div class="saut"></div>
-<h1>Le coffre et son déchiffreur — exemplaire 1</h1>
-<p class="chapeau">{{NQR_APP}} QR codes pour le déchiffreur, {{NQR_COFFRE}} pour le coffre.
-Ce pli en porte <strong>deux exemplaires identiques</strong> : celui-ci, et le suivant.
-<strong>L'un des deux suffit.</strong> Si une page est perdue, déchirée ou tachée, l'autre
-exemplaire rend le pli entier.</p>
+<h1>Planche des données — exemplaire 1</h1>
+<p class="chapeau">{{NQR_APP}} images pour le déchiffreur, {{NQR_COFFRE}} pour le coffre. Ce pli en
+porte <strong>deux exemplaires identiques</strong> : celui-ci, et le suivant.
+<strong>L'un des deux suffit.</strong></p>
 <div class="grille">
 {{GRILLE_QR}}
 </div>
 
 <div class="saut"></div>
-<h1>Le coffre et son déchiffreur — exemplaire 2</h1>
-<p class="chapeau">Copie conforme de l'exemplaire 1. Ne pas la séparer du pli — c'est elle qui
-rend le pli lisible si l'autre exemplaire est abîmé.</p>
+<h1>Planche des données — exemplaire 2</h1>
+<p class="chapeau">Copie conforme de l'exemplaire 1. Ne pas la séparer du pli : c'est elle qui rend
+le pli lisible si l'autre est abîmé.</p>
 <div class="grille">
 {{GRILLE_QR}}
 </div>
-
-<div class="saut"></div>
-<h1>Relire les QR codes</h1>
-<p class="chapeau">Deux chemins. Aucun ne demande d'acheter, d'installer ou de télécharger
-quoi que ce soit auprès de nous.</p>
-
-<div class="avert">
-  <p style="margin:.1cm 0"><strong>Une interdiction, et une seule.</strong> Ne déposez jamais ces
-  images sur un site de lecture de QR codes en ligne. Ces codes <em>sont</em> le coffre : les
-  téléverser revient à en remettre une copie à un inconnu. Tout ce qui suit se fait sur votre
-  poste, hors ligne.</p>
-</div>
-
-<h2>Sur Windows — sans rien installer</h2>
-<p>Windows sait lire un QR code tout seul. Il n'y a que <strong>{{NQR_COFFRE}} codes</strong> à
-lire pour le coffre : ceux marqués <code>V1/{{NQR_COFFRE}}</code> à
-<code>V{{NQR_COFFRE}}/{{NQR_COFFRE}}</code>.</p>
-<ol>
-  <li>Numérisez une page de QR codes, ou photographiez-la, à 300 points par pouce au moins.</li>
-  <li>Ouvrez l'application <strong>Outil Capture d'écran</strong>, puis le menu « … » et
-      « Ouvrir un fichier ». Choisissez l'image.</li>
-  <li>Cliquez l'icône de QR code, en bas à droite. Windows affiche le texte du code : copiez-le.</li>
-  <li>Ouvrez <code>selfvault.html</code> dans votre navigateur, et collez ce texte dans la case
-      « ou les lignes lues sur les QR codes ». Recommencez pour chacun des
-      {{NQR_COFFRE}} codes <code>V</code>, une ligne par code.</li>
-  <li>Cliquez « Recoller le coffre ». La page vous dira s'il en manque un, et lequel.</li>
-</ol>
-<p>Le déchiffreur <code>selfvault.html</code> lui-même occupe {{NQR_APP}} QR codes. Vous l'avez
-normalement déjà, sur le support déposé avec ce pli. S'il a disparu, la page « Notice du format »
-permet à un informaticien de le réécrire en une vingtaine de lignes — c'est pour cela qu'elle est
-imprimée ici.</p>
-
-<h2>Sur Linux ou macOS — quatre commandes</h2>
-<p>N'emploie que deux outils publics et anciens : <code>poppler-utils</code> pour transformer les
-pages en images, <code>zbar-tools</code> pour lire les QR codes. Numérisez les pages de QR codes — celles d'un seul exemplaire suffisent — et placez
-les images dans un répertoire vide, et lancez :</p>
-
-<pre id="procedure">zbarimg --raw -q ./*.png &gt; codes.txt || true   # pages sans QR code : normal
-grep '^PLI1|A|' codes.txt | sort -u | sort -t'|' -k3,3n | cut -d'|' -f4- | tr -d '\n' | base64 -d &gt; selfvault.html
-grep '^PLI1|V|' codes.txt | sort -u | sort -t'|' -k3,3n | cut -d'|' -f4- | tr -d '\n' | base64 -d &gt; coffre.selfvault
-sha256sum selfvault.html coffre.selfvault</pre>
-
-<p>La première ligne se termine par <code>|| true</code> parce que l'outil signale une erreur sur
-chaque page qui ne porte aucun QR code — les pages de texte de ce pli. C'est attendu et sans
-conséquence.</p>
-
-<h2>Dans les deux cas</h2>
-<p>Les empreintes obtenues doivent avoir leurs <strong>32 premiers caractères identiques</strong>
-à celles de la page 1. Si elles concordent, ouvrez <code>selfvault.html</code> dans un navigateur
-et chargez-y le coffre. Si l'une diffère, ne vous servez d'aucun des deux fichiers : un QR code a
-été mal lu. Reprenez à une résolution plus élevée, ou servez-vous du second exemplaire.</p>
 
 <p class="pied" style="break-inside:avoid">Déchiffreur sous licence AGPL-3.0-or-later.
-Ce pli peut être réimprimé à l'identique à partir de ses QR codes.</p>
+Ce pli peut être réimprimé à l'identique à partir de ses images de données.</p>

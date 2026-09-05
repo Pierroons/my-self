@@ -162,7 +162,7 @@ rouge "$T/s1" "A2/$NA, A5/$NA" "deux QR codes manquants, tous deux nommés"
 
 # Une empreinte de référence fausse.
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/desordre" -o "$T/s2" --empreinte-app "00000000000000000000000000000000" --empreinte-coffre "$EV")
-rouge "$T/s2" "la page 1 annonce" "empreinte de référence non concordante"
+rouge "$T/s2" "le pli annonce" "empreinte de référence non concordante"
 
 # Aucune empreinte de référence : la comparaison de la page 1 n'a pas eu lieu.
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/desordre" -o "$T/s3")

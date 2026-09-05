@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Reconstitue le déchiffreur et le coffre à partir du pli scanné.
 
-C'est la seule pièce que le dépositaire utilisera vraiment. Sans elle, la page 1
-du pli lui demande de recalculer deux empreintes sans nommer d'outil pour le
-faire : un ordre sans instrument.
+C'est la seule pièce que le destinataire du coffre utilisera vraiment. Sans elle,
+le pli demande de recalculer deux empreintes sans nommer d'outil pour le faire :
+un ordre sans instrument.
 
   python3 lire_pli.py pli-scanne.pdf                 # ou un répertoire d'images
   python3 lire_pli.py pli-scanne.pdf -o /tmp/sorti
@@ -16,8 +16,8 @@ Dépendances système : `poppler-utils` (pdftoppm, pdftotext) et `zbar-tools`
 - il nomme **tous** les QR codes manquants, pas le premier ;
 - il n'écrit **aucun fichier partiel** : sans la totalité des fragments et sans
   concordance des empreintes, rien n'est posé sur le disque ;
-- quand il ne peut PAS vérifier une empreinte contre celle de la page 1, il le
-  dit et sort en échec. Un lecteur qui rend « reconstitué » sans avoir comparé
+- quand il ne peut PAS vérifier une empreinte contre celle qu'annonce le pli, il
+  le dit et sort en échec. Un lecteur qui rend « reconstitué » sans avoir comparé
   ressemble trait pour trait à un lecteur qui a comparé.
 """
 import argparse, base64, hashlib, os, re, shutil, subprocess, sys, tempfile
@@ -25,7 +25,7 @@ import argparse, base64, hashlib, os, re, shutil, subprocess, sys, tempfile
 PREFIXE = "PLI1"
 PIECES = {"A": "selfvault.html", "V": "coffre.selfvault"}
 DPI = 300          # plancher mesuré : 200 passe, 150 échoue
-EMPREINTE_CAR = 32  # ce que la page 1 imprime : SHA-256 tronqué
+EMPREINTE_CAR = 32  # ce que le pli imprime : SHA-256 tronqué
 
 
 def outil(nom):
@@ -82,19 +82,23 @@ def fragments(images):
 
 
 def empreintes_imprimees(source):
-    """Les empreintes de la page 1, si le PDF porte encore sa couche texte.
+    """Les empreintes annoncées par le pli, si le PDF porte encore sa couche texte.
 
     Un pli réellement scanné n'en a pas : il faudra alors les donner à la main.
     Ne jamais deviner à leur place — c'est la comparaison qui a de la valeur.
+
+    Le document entier est parcouru, pas sa première page : les empreintes ont
+    déménagé le jour où le pli a été scindé en trois parties, et un `-l 1` les a
+    silencieusement perdues.
     """
     if not source.lower().endswith(".pdf"):
         return {}
-    texte = subprocess.run([outil("pdftotext"), "-l", "1", source, "-"],
+    texte = subprocess.run([outil("pdftotext"), source, "-"],
                            capture_output=True, text=True).stdout
     trouve = {}
-    for piece, motif in (("A", r"Empreinte du déchiffreur.*?\n\s*([0-9a-f][0-9a-f ]{30,})"),
-                         ("V", r"Empreinte du coffre.*?\n\s*([0-9a-f][0-9a-f ]{30,})")):
-        m = re.search(motif, texte, re.S | re.I)
+    for piece, motif in (("A", r"^\s*Déchiffreur\s*\n\s*([0-9a-f][0-9a-f ]{30,})"),
+                         ("V", r"^\s*Coffre\s*\n\s*([0-9a-f][0-9a-f ]{30,})")):
+        m = re.search(motif, texte, re.M | re.I)
         if m:
             trouve[piece] = m.group(1).replace(" ", "").strip()[:EMPREINTE_CAR]
     return trouve
@@ -104,8 +108,8 @@ def main():
     a = argparse.ArgumentParser(description="Reconstitue un coffre SelfVault depuis son pli.")
     a.add_argument("source", help="le pli scanné : un PDF, une image, ou un répertoire d'images")
     a.add_argument("-o", "--sortie", default=".", help="où écrire les fichiers reconstitués")
-    a.add_argument("--empreinte-app", help="empreinte du déchiffreur, lue en page 1 du pli")
-    a.add_argument("--empreinte-coffre", help="empreinte du coffre, lue en page 1 du pli")
+    a.add_argument("--empreinte-app", help="empreinte du déchiffreur, lue sur le pli")
+    a.add_argument("--empreinte-coffre", help="empreinte du coffre, lue sur le pli")
     opt = a.parse_args()
 
     travail = tempfile.mkdtemp(prefix="lire-pli-")
@@ -147,7 +151,7 @@ def main():
         # ── Reconstitution en mémoire, écriture seulement à la fin ───────────
         attendues = empreintes_imprimees(opt.source)
         if attendues:
-            print("  empreintes lues sur la page 1 du pli lui-même")
+            print("  empreintes lues sur le pli lui-même")
         for piece, valeur in (("A", opt.empreinte_app), ("V", opt.empreinte_coffre)):
             if valeur:
                 attendues[piece] = re.sub(r"[^0-9a-f]", "", valeur.lower())[:EMPREINTE_CAR]
@@ -167,17 +171,17 @@ def main():
             groupe = " ".join(court[i:i + 4] for i in range(0, EMPREINTE_CAR, 4))
             if piece not in attendues:
                 print("✗ %s : %d octets, empreinte %s" % (PIECES[piece], len(brut), groupe))
-                print("   AUCUNE empreinte de référence — la comparaison de la page 1 n'a pas "
-                      "eu lieu. Relance avec --empreinte-%s."
+                print("   AUCUNE empreinte de référence — la comparaison annoncée par le pli "
+                      "n'a pas eu lieu. Relance avec --empreinte-%s."
                       % ("app" if piece == "A" else "coffre"))
                 echec = True
             elif attendues[piece] != court:
-                print("✗ %s : empreinte %s, la page 1 annonce %s"
+                print("✗ %s : empreinte %s, le pli annonce %s"
                       % (PIECES[piece], groupe,
                          " ".join(attendues[piece][i:i + 4] for i in range(0, len(attendues[piece]), 4))))
                 echec = True
             else:
-                print("✓ %s : %d octets, empreinte %s — concorde avec la page 1"
+                print("✓ %s : %d octets, empreinte %s — concorde avec le pli"
                       % (PIECES[piece], len(brut), groupe))
                 reconstitues[piece] = brut
 

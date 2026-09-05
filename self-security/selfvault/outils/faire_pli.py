@@ -74,6 +74,8 @@ jetons = {
     "DATE": coffre_json["date"],
     "DATE_LONGUE": "%d %s %d" % (jour, MOIS[mois - 1], an),
     "TITULAIRE": meta["titulaire"],
+    "NAISSANCE": meta["naissance"],
+    "REFERENCE": meta["reference"],
     "CODE_L1": code_l1,
     "OCTETS_APP": str(pieces["A"]["octets"]),
     "NQR_APP": str(pieces["A"]["n"]),
