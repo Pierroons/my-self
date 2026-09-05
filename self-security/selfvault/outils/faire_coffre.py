@@ -72,8 +72,13 @@ open(os.path.join(SECRETS, "code_L1.txt"), "w").write(code_notaire + "\n")
 open(os.path.join(SECRETS, "mot_L2.txt"), "w").write(MOT_UTILISATEUR + "\n")
 # Le nom de la titulaire n'entre pas dans le coffre en clair : il vit à côté,
 # pour la page 1 du pli, qui l'imprime.
-json.dump({"titulaire": "Sophie MARTIN"}, open(os.path.join(SORTIE, "meta.json"), "w"),
-          ensure_ascii=False)
+# L'identité n'entre pas dans le coffre en clair : elle vit à côté, pour la
+# première page du pli. Un dépôt réel demande plus qu'un nom — un notaire
+# identifie une personne, pas une chaîne de caractères.
+json.dump({"titulaire": "Sophie MARTIN",
+           "naissance": "12 mars 1961 à Bordeaux (Gironde)",
+           "reference": "SV-2026-0001"},
+          open(os.path.join(SORTIE, "meta.json"), "w"), ensure_ascii=False)
 print(f"version : {VERSION} — du {DATE}")
 print(f"coffre  : {os.path.getsize(chemin)} octets — {FORMAT}")
 print(f"clair   : {len(CONTENU)} octets")
