@@ -23,6 +23,7 @@
 <title>Pli de dépôt — directives et accès numériques</title>
 <style>
 :root { --encre:#0f1419; --bleu:#3f74b8; --gris:#5a6570; --fond:#f4f8fd; --filet:#cfdcec; }
+@page planche { size:A4; margin:1.1cm 1.4cm 1.2cm; }
 @page { size:A4; margin:1.5cm 1.9cm 1.2cm;
   @bottom-center { content:"Pli de dépôt · {{TITULAIRE}} · version {{VERSION}} du {{DATE_LONGUE}} · page " counter(page) " / " counter(pages);
                     font:8.5pt Lato,sans-serif; color:#5a6570; } }
@@ -55,9 +56,13 @@ code { font-family:"DejaVu Sans Mono",monospace; font-size:9.5pt; background:var
 pre { font-family:"DejaVu Sans Mono",monospace; font-size:8pt; line-height:1.3; color:var(--encre);
        background:var(--fond); border:1px solid var(--filet); border-radius:3px; padding:.3cm .4cm; white-space:pre-wrap; }
 .emp { font-family:"DejaVu Sans Mono",monospace; font-size:9.5pt; word-break:break-all; }
-.grille { display:flex; flex-wrap:wrap; gap:.45cm; justify-content:flex-start; }
+.planche { page:planche; }
+.planche h1 { font-size:14pt; margin:0 0 .05cm; }
+.planche .chapeau { margin:0 0 .3cm; font-size:9.5pt; }
+.grille { display:flex; flex-wrap:wrap; gap:.4cm; justify-content:flex-start; }
 figure { margin:0; text-align:center; }
 figure img { width:4.2cm; height:4.2cm; display:block; }
+figcaption { line-height:1.1; }
 figcaption { font:700 9pt "DejaVu Sans Mono",monospace; color:var(--gris); margin-top:.05cm; }
 .pied { margin-top:.7cm; font:8.5pt Lato,sans-serif; color:var(--gris); border-top:1px solid var(--filet); padding-top:.25cm; }
 </style>
@@ -267,22 +272,22 @@ les données un fragment de Base64. Concaténer les fragments dans l'ordre des r
 Base64 rend le fichier octet pour octet. <strong>L'ordre est inscrit dans les données</strong> : les
 images peuvent donc être lues dans n'importe quel ordre.</p>
 
-<div class="saut"></div>
-<h1>Planche des données — exemplaire 1</h1>
-<p class="chapeau">{{NQR_APP}} images pour le déchiffreur, {{NQR_COFFRE}} pour le coffre. Ce pli en
-porte <strong>deux exemplaires identiques</strong> : celui-ci, et le suivant.
-<strong>L'un des deux suffit.</strong></p>
+<div class="saut planche">
+<h1>Planche des données — exemplaire 1 sur 2</h1>
+<p class="chapeau">{{NQR_APP}} images pour le déchiffreur, {{NQR_COFFRE}} pour le coffre. La planche
+suivante en est la copie conforme : <strong>l'une des deux suffit.</strong></p>
 <div class="grille">
 {{GRILLE_QR}}
 </div>
+</div>
 
-<div class="saut"></div>
-<h1>Planche des données — exemplaire 2</h1>
-<p class="chapeau">Copie conforme de l'exemplaire 1. Ne pas la séparer du pli : c'est elle qui rend
+<div class="saut planche">
+<h1>Planche des données — exemplaire 2 sur 2</h1>
+<p class="chapeau">Copie conforme de la précédente. Ne pas la séparer du pli : c'est elle qui rend
 le pli lisible si l'autre est abîmé.</p>
 <div class="grille">
 {{GRILLE_QR}}
 </div>
-
 <p class="pied" style="break-inside:avoid">Déchiffreur sous licence AGPL-3.0-or-later.
 Ce pli peut être réimprimé à l'identique à partir de ses images de données.</p>
+</div>
