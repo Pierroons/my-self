@@ -92,7 +92,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq zbar-tools poppler-utils weasyprint
-          python3 -m pip install --quiet --disable-pip-version-check cryptography
+          python3 -m pip install --quiet --disable-pip-version-check cryptography qrcode pillow
           bash self-security/selfvault/tests/banc.sh
 
       # Une démo qui recopierait la bibliothèque au lieu d'y pointer redeviendrait
