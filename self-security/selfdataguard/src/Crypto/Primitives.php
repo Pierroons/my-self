@@ -17,9 +17,29 @@ use SodiumException;
  *
  * Per whitepaper §5:
  *   - Password derivation : Argon2id (m=64 MiB, t=3) — RFC 9106 / OWASP / ANSSI
- *   - Memorized derivation: HMAC-SHA256 (no memory-hardening — entropy comes from the secret)
+ *   - Memorized derivation: Argon2id, same profile — see below
  *   - Encryption          : AES-256-GCM (NIST, hardware-accelerated, AEAD)
  *   - Randomness          : random_bytes (PHP CSPRNG)
+ *
+ * 🔑 Both human secrets go through the SAME cost. Until 0.2.0 the memorized
+ * secret was derived with a single HMAC-SHA256 pass, on the stated assumption
+ * that "entropy comes from the secret". Measured on the dev host, that made the
+ * two doors 78 100 times apart: 213.7 ms per Argon2id attempt against 0.0027 ms
+ * per HMAC attempt. Both doors open the same data_master_key, and a wrapped key
+ * is attacked offline with no attempt counter — so the security of the pair was
+ * that of the cheaper door, whatever the other one cost.
+ *
+ * A salt defeats precomputation; it adds no bit against one targeted person. An
+ * AEAD tag tells an attacker which guess was right; it slows nothing. Only the
+ * cost per attempt buys time, and it buys a MULTIPLIER, never entropy.
+ *
+ * ⚠️ Which is why this change is necessary and not sufficient. The library
+ * enforces NO entropy floor on the memorized secret: a weak word stays weak, and
+ * ~13 bits of guessing plus ~13 bits of added cost is still ~26 bits of work on a
+ * database dump. Whether a floor belongs here — and what it would cost, since a
+ * floor high enough to matter ends the "one memorized word, two uses" pairing
+ * with SelfRecover — is an open question, stated as such in whitepaper §7. It is
+ * not a question this file may answer on its own.
  */
 final class Primitives
 {
@@ -72,25 +92,65 @@ final class Primitives
     }
 
     /**
-     * Derive a 256-bit key from a memorized secret via HMAC-SHA256.
+     * Derive a 256-bit key from a memorized secret using Argon2id.
      *
-     * No memory-hardening (HMAC is fast). Adequate ONLY if the memorized
-     * secret has enough entropy (per whitepaper §7 — minimum 30 bits via
-     * zxcvbn). Use the contextual separator to isolate purposes:
-     *   - SelfRecover  : context = "<domain>/recover"
+     * Same cost profile as deriveFromPassword: the two keys unwrap the same
+     * data_master_key, so the pair is only as strong as its cheaper derivation.
+     *
+     * The context string carries domain separation and is of free length:
      *   - SelfDataGuard: context = "<user_salt>/dataguard"
+     * Argon2id wants exactly SODIUM_CRYPTO_PWHASH_SALTBYTES, so the context is
+     * condensed into the salt. A salt is not a secret — it only has to be unique
+     * per target, and the context already carries the per-user salt.
      *
      * @param string $memorized Plain-text memorized secret
      * @param string $context   Domain separation string (non-empty)
      * @return string 32 raw bytes
      */
-    public static function deriveFromMemorized(string $memorized, string $context): string
-    {
+    public static function deriveFromMemorized(
+        string $memorized,
+        string $context,
+        int $opslimit = self::ARGON2_OPSLIMIT,
+        int $memlimit = self::ARGON2_MEMLIMIT
+    ): string {
         if ($memorized === '') {
             throw new InvalidArgumentException('Memorized secret must not be empty');
         }
         if ($context === '') {
             throw new InvalidArgumentException('Context separator must not be empty');
+        }
+
+        $salt = substr(
+            hash(self::HMAC_ALGO, $context, true),
+            0,
+            SODIUM_CRYPTO_PWHASH_SALTBYTES
+        );
+
+        return sodium_crypto_pwhash(
+            self::KEY_LEN,
+            $memorized,
+            $salt,
+            $opslimit,
+            $memlimit,
+            SODIUM_CRYPTO_PWHASH_ALG_ARGON2ID13
+        );
+    }
+
+    /**
+     * The pre-0.2.0 derivation: one HMAC-SHA256 pass.
+     *
+     * ⚠️ DIAGNOSTIC ONLY. This must never gate access to anything. It exists so
+     * that a recovery wrap sealed by an older version can be RECOGNISED and
+     * named — "this vault predates the Argon2id recovery derivation, re-seal it"
+     * — instead of failing as "invalid memorized secret", which would send
+     * someone hunting for a typo in a secret that is perfectly correct.
+     *
+     * A wrap it opens is not a wrap the caller may use. UserVault throws.
+     */
+    public static function deriveFromMemorizedLegacyV1(string $memorized, string $context): string
+    {
+        if ($memorized === '' || $context === '') {
+            throw new InvalidArgumentException('Legacy derivation needs both arguments');
         }
         return hash_hmac(self::HMAC_ALGO, $context, $memorized, true);
     }

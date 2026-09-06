@@ -91,7 +91,7 @@ ok('setFields with indexing on email + phone');
 section('Duplicate registration');
 
 try {
-    $dg->register('user-cosmo', 'another-pwd');
+    $dg->register('user-cosmo', 'another-password');
     ko('duplicate register should throw');
 } catch (RuntimeException) {
     ok('duplicate register throws');

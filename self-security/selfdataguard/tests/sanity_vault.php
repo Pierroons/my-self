@@ -17,6 +17,7 @@ require __DIR__ . '/../src/autoload.php';
 use Pierroons\SelfDataGuard\Vault\UserVault;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
+use Pierroons\SelfDataGuard\Crypto\Primitives;
 
 $failures = 0;
 $passes = 0;
@@ -231,13 +232,58 @@ try {
 section('userId mismatch protection');
 
 $otherUnlocked = $vault->unlockWithPassword($rotated, 'new-much-stronger-passphrase');
-$bobRecord = $vault->register(userId: 'bob', password: 'bobs-password')['record'];
+$bobRecord = $vault->register(userId: 'bob', password: 'bobs-long-password')['record'];
 
 try {
-    $vault->changePassword($bobRecord, $otherUnlocked, 'pwd');
+    $vault->changePassword($bobRecord, $otherUnlocked, 'un-mot-de-passe-assez-long');
     ko('changePassword with mismatched userId → should throw');
 } catch (InvalidArgumentException) {
     ok('changePassword with mismatched userId → throws');
+}
+
+// -----------------------------------------------------------------------------
+
+section('What the library refuses, and what it deliberately does not')
+;
+
+// 🔑 Ce qui n'est PAS contrôlé, et c'est un choix : la lib n'impose AUCUN plancher
+// d'entropie au mot mémorisé. Argon2id multiplie le coût par essai, il n'ajoute pas
+// d'entropie — un mot faible reste un mot faible, 13 bits + le coût. La question de
+// savoir si ce plancher doit exister est ouverte et écrite comme telle dans le
+// whitepaper §7. Aucune sonde ne peut la trancher à la place de qui décide.
+
+// The promise that lived only in the whitepaper until 0.2.0.
+try {
+    $vault->register(userId: 'user-short', password: 'onze-caract');
+    ko('an 11-byte password was accepted');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'Length is not entropy')
+        ? ok('password under 12 bytes refused, and the message does not oversell it')
+        : ko('short password refused without the caveat', $e->getMessage());
+}
+
+// A vault sealed by the pre-0.2.0 derivation must be NAMED, not reported as a
+// wrong secret — otherwise someone hunts for a typo in a correct secret.
+$legacyMem   = 'un-secret-parfaitement-correct';
+$legacyBuild = $vault->register(userId: 'user-legacy', password: 'correct horse battery staple');
+$legacyRec   = $legacyBuild['record'];
+$legacyKey   = Primitives::deriveFromMemorizedLegacyV1(
+    $legacyMem,
+    $legacyRec->userSalt . UserVault::HMAC_CONTEXT_SUFFIX
+);
+$legacyWrap  = Primitives::aesGcmEncrypt(
+    $legacyBuild['unlocked']->getMasterKey(),
+    $legacyKey,
+    aad: $legacyRec->userId
+);
+$legacyRec = $legacyRec->withWrapRecov($legacyWrap, new DateTimeImmutable());
+try {
+    $vault->unlockWithMemorized($legacyRec, $legacyMem);
+    ko('a legacy HMAC wrap was OPENED — the weak derivation still grants access');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'predates the Argon2id')
+        ? ok('legacy wrap refused AND named — not passed off as a wrong secret')
+        : ko('legacy wrap refused as a wrong secret — the zone is silent', $e->getMessage());
 }
 
 // -----------------------------------------------------------------------------

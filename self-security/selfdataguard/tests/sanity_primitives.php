@@ -102,7 +102,7 @@ try {
 
 // -----------------------------------------------------------------------------
 
-section('HMAC-SHA256 (deriveFromMemorized)');
+section('deriveFromMemorized (Argon2id since 0.2.0) — shape and domain separation');
 
 $mem = 'sunset-river-marble';
 $ctx1 = bin2hex($salt) . '/dataguard';
@@ -112,9 +112,9 @@ $hk1 = Primitives::deriveFromMemorized($mem, $ctx1);
 $hk2 = Primitives::deriveFromMemorized($mem, $ctx1);
 $hk3 = Primitives::deriveFromMemorized($mem, $ctx2);
 
-strlen($hk1) === 32 ? ok('HMAC output is 32 bytes') : ko('HMAC wrong length');
-hash_equals($hk1, $hk2) ? ok('HMAC deterministic with same input') : ko('HMAC non-deterministic');
-!hash_equals($hk1, $hk3) ? ok('HMAC contextual separation works') : ko('HMAC collision across contexts (CRITICAL)');
+strlen($hk1) === 32 ? ok('derived key is 32 bytes') : ko('derived key wrong length');
+hash_equals($hk1, $hk2) ? ok('deterministic with same input') : ko('non-deterministic');
+!hash_equals($hk1, $hk3) ? ok('contextual separation works') : ko('collision across contexts (CRITICAL)');
 
 // -----------------------------------------------------------------------------
 
@@ -197,6 +197,40 @@ section('Memory hygiene (zeroize)');
 $secret = 'super-secret-master-key';
 Primitives::zeroize($secret);
 $secret === '' ? ok('zeroize wipes string variable') : ko('zeroize did not wipe', "got: '{$secret}'");
+
+// -----------------------------------------------------------------------------
+
+section('Memorized derivation is memory-hard (the whole point of 0.2.0)');
+
+// Exact witness: the hardened derivation and the legacy one must not agree. If
+// someone puts the HMAC back, these two become equal and this line goes red.
+$ctx  = str_repeat("\x11", 16) . '/dataguard';
+$hard = Primitives::deriveFromMemorized('a-drawn-passphrase-of-some-length', $ctx);
+$weak = Primitives::deriveFromMemorizedLegacyV1('a-drawn-passphrase-of-some-length', $ctx);
+$hard !== $weak
+    ? ok('deriveFromMemorized no longer equals the pre-0.2.0 HMAC')
+    : ko('deriveFromMemorized IS the legacy HMAC — the hardening is gone');
+strlen($hard) === Primitives::KEY_LEN
+    ? ok('hardened derivation still returns ' . Primitives::KEY_LEN . ' bytes')
+    : ko('hardened derivation wrong length', (string) strlen($hard));
+
+// Second witness, on cost rather than on value. The bound is deliberately loose
+// — a hundredth of what Argon2id costs on the slowest machine we deploy on, and
+// still four orders of magnitude above a bare HMAC. It measures the presence of
+// a cost, not its exact size.
+$t0 = hrtime(true);
+Primitives::deriveFromMemorized('another-drawn-passphrase', $ctx);
+$ms = (hrtime(true) - $t0) / 1e6;
+$ms > 2.0
+    ? ok(sprintf('one attempt costs %.1f ms — a cost exists', $ms))
+    : ko(sprintf('one attempt costs %.4f ms — that is a bare hash, not a KDF', $ms));
+
+// Same secret, different context → different key. Domain separation survived the
+// move from HMAC to Argon2id, where the context became the salt.
+Primitives::deriveFromMemorized('same-secret-both-times', $ctx)
+  !== Primitives::deriveFromMemorized('same-secret-both-times', $ctx . '-other')
+    ? ok('context still separates domains')
+    : ko('two contexts give the same key — domain separation is gone');
 
 // -----------------------------------------------------------------------------
 

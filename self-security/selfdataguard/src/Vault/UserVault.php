@@ -18,7 +18,7 @@ use RuntimeException;
  *     data_master_key  ←  random(256 bits)
  *
  *     password_key     ←  Argon2id(password, user_salt)
- *     recov_key        ←  HMAC-SHA256(memorized, user_salt || "/dataguard")
+ *     recov_key        ←  Argon2id(memorized, sha256(user_salt || "/dataguard"))
  *
  *     wrap_pwd         ←  AES-256-GCM-encrypt(data_master_key, password_key)
  *     wrap_recov       ←  AES-256-GCM-encrypt(data_master_key, recov_key)
@@ -28,8 +28,20 @@ use RuntimeException;
  */
 final class UserVault
 {
-    /** Whitepaper §3.1 — domain separator for SelfDataGuard usage of the memorized secret. */
+    /** Domain separator for SelfDataGuard usage of the memorized secret. */
     public const HMAC_CONTEXT_SUFFIX = '/dataguard';
+
+    /**
+     * Minimum password length, as promised by whitepaper §7.
+     *
+     * Length is NOT entropy — twelve identical letters clear this bar. It is a
+     * floor against the worst, not a measure. What actually protects wrap_pwd is
+     * Argon2id, plus the fact that the integrations generate the password rather
+     * than letting someone pick it. The promise was in the whitepaper and in no
+     * line of code until 0.2.0; a rule that only exists in a document is not a
+     * rule, and reads as one.
+     */
+    public const PASSWORD_MIN_LEN = 12;
 
     public function __construct(
         private readonly ?\DateTimeImmutable $clock = null
@@ -51,9 +63,7 @@ final class UserVault
         if ($userId === '') {
             throw new InvalidArgumentException('userId must not be empty');
         }
-        if ($password === '') {
-            throw new InvalidArgumentException('password must not be empty');
-        }
+        self::assertPasswordLength($password);
         if ($memorized !== null && $memorized === '') {
             throw new InvalidArgumentException('memorized, if provided, must not be empty');
         }
@@ -152,6 +162,21 @@ final class UserVault
             );
         } catch (RuntimeException $e) {
             Primitives::zeroize($recovKey);
+            // Before answering "wrong secret", find out whether this wrap was
+            // sealed by the pre-0.2.0 HMAC derivation. If the legacy key opens
+            // it, the secret is RIGHT and the vault is old — a different problem
+            // and a different sentence. Silence here would send someone hunting
+            // for a typo in a secret that is perfectly correct.
+            if ($this->wrapIsLegacyV1($record, $memorized)) {
+                throw new RuntimeException(
+                    'This vault predates the Argon2id recovery derivation '
+                    . '(SelfDataGuard < 0.2.0). The memorized secret is correct; '
+                    . 'unlock by password and call changeMemorized() to re-seal. '
+                    . 'Access is refused here on purpose: the legacy derivation is '
+                    . 'about 78 000 times cheaper to attack.',
+                    previous: $e
+                );
+            }
             throw new RuntimeException(
                 'Invalid memorized secret — could not unwrap vault',
                 previous: $e
@@ -176,9 +201,7 @@ final class UserVault
         UnlockedVault $unlocked,
         string $newPassword
     ): VaultRecord {
-        if ($newPassword === '') {
-            throw new InvalidArgumentException('newPassword must not be empty');
-        }
+        self::assertPasswordLength($newPassword, 'newPassword');
         if ($unlocked->userId !== $record->userId) {
             throw new InvalidArgumentException('UnlockedVault userId does not match record');
         }
@@ -220,6 +243,46 @@ final class UserVault
         Primitives::zeroize($newRecovKey);
 
         return $record->withWrapRecov($newWrap, $this->now());
+    }
+
+    /**
+     * Does this recovery wrap open under the pre-0.2.0 HMAC derivation?
+     *
+     * Diagnosis only — the master key obtained here is discarded immediately and
+     * never handed to a caller. Its single purpose is to tell "your secret is
+     * wrong" apart from "your vault is old", which look identical from outside.
+     */
+    private function wrapIsLegacyV1(VaultRecord $record, string $memorized): bool
+    {
+        $legacy = Primitives::deriveFromMemorizedLegacyV1(
+            $memorized,
+            $record->userSalt . self::HMAC_CONTEXT_SUFFIX
+        );
+        try {
+            $probe = Primitives::aesGcmDecrypt($record->wrapRecov, $legacy, aad: $record->userId);
+            Primitives::zeroize($probe);
+            return true;
+        } catch (RuntimeException) {
+            return false;
+        } finally {
+            Primitives::zeroize($legacy);
+        }
+    }
+
+    private static function assertPasswordLength(string $password, string $name = 'password'): void
+    {
+        if ($password === '') {
+            throw new InvalidArgumentException($name . ' must not be empty');
+        }
+        if (strlen($password) < self::PASSWORD_MIN_LEN) {
+            throw new InvalidArgumentException(sprintf(
+                '%s must be at least %d bytes; got %d. Length is not entropy, but '
+                . 'below this the Argon2id cost is beside the point.',
+                $name,
+                self::PASSWORD_MIN_LEN,
+                strlen($password)
+            ));
+        }
     }
 
     private function now(): DateTimeImmutable

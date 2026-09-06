@@ -69,8 +69,8 @@ Conséquences directes :
     user_salt        ← random(128 bits)        # stocké en clair dans la base
 
 Étape 3 — Dérivation des deux clés d'encapsulage :
-    password_key     ← Argon2id(password, user_salt, m=65536, t=3, p=4)
-    recov_key        ← HMAC-SHA256(mot_memorise, user_salt || "/dataguard")
+    password_key     ← Argon2id(password, user_salt, m=65536, t=3, p=1)
+    recov_key        ← Argon2id(mot_memorise, sha256(user_salt || "/dataguard")[0:16], m=65536, t=3, p=1)
 
 Étape 4 — Encapsulage de la clé maîtresse par chacune des deux clés :
     wrap_pwd         ← AES-256-GCM-encrypt(data_master_key, key=password_key, nonce=random_96)
@@ -105,7 +105,7 @@ Conséquences directes :
 ```
 1. Le serveur reçoit (username, mot_memorise) sur HTTPS
 2. Il récupère user_salt et wrap_recov depuis la base
-3. recov_key       ← HMAC-SHA256(mot_memorise, user_salt || "/dataguard")
+3. recov_key       ← Argon2id(mot_memorise, sha256(user_salt || "/dataguard")[0:16])
 4. data_master_key ← AES-256-GCM-decrypt(wrap_recov, key=recov_key)
 5. L'utilisateur peut accéder à ses données et redéfinir un nouveau password
 6. Régénération du wrap_pwd avec la nouvelle password_key (sans re-chiffrer les données)
@@ -123,9 +123,31 @@ Un attaquant qui exfiltre la table utilisateurs obtient :
 
 Pour déchiffrer, il a deux voies :
 
-1. **Bruteforcer le mot de passe** d'un utilisateur ciblé → coût Argon2id par tentative (~250 ms sur GPU haut de gamme avec les paramètres recommandés). Pour un mot de passe à 8 caractères aléatoires : ~10^14 tentatives × 0.25 s = ~10^6 années en parallèle massif. Pour un mot de passe faible (`123456` ou similaire), ça reste faisable. **Recommandation** : la lib refuse les mots de passe en dessous de 12 caractères ou présents dans les blocklists.
+1. **Bruteforcer le mot de passe** d'un utilisateur ciblé → coût Argon2id par tentative (~250 ms sur GPU haut de gamme avec les paramètres recommandés). Pour un mot de passe à 8 caractères aléatoires : ~10^14 tentatives × 0.25 s = ~10^6 années en parallèle massif. Pour un mot de passe faible (`123456` ou similaire), ça reste faisable. **Appliqué depuis 0.2.0** : `UserVault::register()` refuse les mots de passe de moins de 12 octets (`PASSWORD_MIN_LEN`). ⚠️ La longueur n'est pas de l'entropie — douze lettres identiques franchissent cette barre. C'est un plancher contre le pire, pas une mesure. **Aucune blocklist n'est embarquée** : une version antérieure de ce paragraphe annonçait un refus par listes de breach qu'aucune ligne de code n'appliquait, et une promesse sans mécanisme derrière est pire que pas de promesse.
 
-2. **Bruteforcer le mot mémorisé** → HMAC-SHA256 est rapide (~10^9 / s sur GPU), mais l'espace de recherche dépend du mot. Si le mot mémorisé est un mot du dictionnaire (~30 000 mots français usuels), bruteforce trivial. **Recommandation** : le mot mémorisé doit être une combinaison d'au moins deux mots ou un mot rare (entropie ≥ 30 bits). À documenter dans l'UX d'inscription.
+2. **Bruteforcer le mot mémorisé** → depuis 0.2.0, même coût que la voie mot de passe : Argon2id, ~250 ms par tentative.
+
+   > **Corrigé le 06/09/2026.** Jusqu'à 0.2.0, `recov_key` était dérivée par un seul passage de HMAC-SHA256, sur l'hypothèse écrite ici même que « l'entropie du mot mémorisé doit être suffisante par construction », avec un plancher recommandé de 30 bits. Mesuré sur une machine de déploiement : **213,7 ms par tentative Argon2id contre 0,0027 ms par tentative HMAC, soit un facteur 78 100**. Les deux clés déballent la MÊME `data_master_key`, et `wrap_recov` s'attaque hors ligne, sans compteur d'essais : la sécurité de la paire était donc celle de la porte la moins chère, quel que soit le coût de l'autre. Un sel interdit le précalcul mais n'ajoute **aucun bit** contre une personne ciblée ; le tag AEAD dit à l'attaquant quelle tentative était la bonne, il ne le ralentit pas. Seul le coût par essai achète du temps, et il achète un facteur, jamais de l'entropie.
+
+   ⚠️ **Nécessaire, pas suffisant — et la bibliothèque n'impose AUCUN plancher d'entropie.**
+   Argon2id multiplie le coût par essai ; il n'ajoute pas d'entropie. Un mot faible reste un mot
+   faible : ~13 bits de devinette plus ~13 bits de coût ajouté font ~26 bits de travail sur un
+   dump, ce qui reste atteignable. La recommandation « ≥ 30 bits » des versions précédentes n'était
+   appliquée par aucune ligne de code, et elle ne l'est toujours pas — la différence est qu'elle ne
+   se présente plus comme une garantie.
+
+   **Question ouverte, et elle est de nature produit, pas technique.** Un plancher assez haut pour
+   compter (77 bits, soit six mots sur une liste diceware longue) mettrait fin à la propriété que ce
+   document vend par ailleurs : *« un seul mot mémorisé, deux usages »*. Le mot mémorisé de
+   SelfRecover est **choisi** et protégé par un second facteur et un compteur d'essais ; celui-ci
+   est **seul** et s'attaque hors ligne. Les deux ne peuvent pas être soumis aux mêmes exigences.
+   Trancher revient à choisir entre la commodité du couplage et la solidité de `wrap_recov` — c'est
+   une décision de conception, pas un réglage, et elle n'est pas prise à ce jour.
+
+   Il faut noter, enfin, qu'aucune inspection d'une chaîne ne dit si elle a été tirée au sort :
+   « maison-maison-maison-maison-maison-maison » est composé de six mots d'une liste de 7 776 et ne
+   vaut que 12,9 bits. Un plancher, le jour où il serait posé, devrait donc se prouver à la source
+   et non se mesurer à l'arrivée.
 
 Une fuite ne donne donc **rien d'exploitable directement**. Le coût de bruteforce est par utilisateur (impossible de bruteforcer la base entière en parallèle puisque chaque user a son propre `user_salt`).
 
@@ -142,15 +164,16 @@ secret_brut = mot_memorise_utilisateur
               (jamais transmis en clair, jamais stocké)
 
          ┌──────────────────────────────────────────────────────┐
-         │     HMAC-SHA256(secret_brut, domaine + "/recover")  │  →  recover_key  (SelfRecover)
+         │     HMAC-SHA256(secret_brut, domaine + "|v2" + sel) │  →  recover_key  (SelfRecover)
          ├──────────────────────────────────────────────────────┤
-         │     HMAC-SHA256(secret_brut, salt + "/dataguard")    │  →  data_key    (SelfDataGuard)
+         │     Argon2id(secret_brut, sha256(salt+"/dataguard")) │  →  data_key    (SelfDataGuard)
          └──────────────────────────────────────────────────────┘
 ```
 
 Propriétés cryptographiques :
 
-- **Indépendance** : la connaissance de `recover_key` ne donne aucune information sur `data_key`, et inversement (HMAC-SHA256 est une PRF, ses sorties sur des labels différents sont indistinguables d'aléatoires)
+- **Indépendance** : la connaissance de `recover_key` ne donne aucune information sur `data_key`, et inversement — les deux dérivations partent du même secret mais avec des fonctions et des sels distincts, et aucune des deux sorties ne permet de retrouver l'entrée.
+- ⚠️ **Les deux chemins ne portent pas le même risque et ne se durcissent pas pareil.** `recover_key` contrôle un ACCÈS : un serveur compte les essais, et SelfRecover exige en plus un recovery code — deux facteurs. `data_key` déchiffre des DONNÉES : elle s'attaque hors ligne sur un dump, à un seul facteur, sans compteur. Le même mot mémorisé ne peut donc pas être soumis aux mêmes exigences des deux côtés.
 - **Pas de crossover** : une fuite côté SelfRecover (par exemple compromission du store des hashes Argon2id) n'expose pas SelfDataGuard, et inversement
 - **UX simplifiée** : l'utilisateur mémorise un seul secret, en dérive deux usages
 
@@ -220,8 +243,8 @@ La majorité des sites e-commerce devraient choisir **Hybrid**. Les services à 
 
 | Usage | Primitive | Rationale |
 |-------|-----------|-----------|
-| Dérivation depuis mot de passe | **Argon2id** (m=65536 KiB, t=3, p=4) | Memory-hard, résistant aux GPU et ASICs. Standard moderne (RFC 9106) |
-| Dérivation depuis mot mémorisé | **HMAC-SHA256** | Rapide (compatible UX), PRF prouvée. Pas de memory-hardening parce que l'entropie du mot mémorisé doit être suffisante par construction |
+| Dérivation depuis mot de passe | **Argon2id** (m=65536 KiB, t=3, p=1) | Memory-hard, résistant aux GPU et ASICs. Standard moderne (RFC 9106). ⚠️ `p=1` et non `p=4` : `sodium_crypto_pwhash` **n'expose pas** de paramètre de parallélisme — signature `length, password, salt, opslimit, memlimit, algo`. Les versions antérieures de ce tableau annonçaient un paramètre que l'API choisie ne peut pas porter |
+| Dérivation depuis mot mémorisé | **Argon2id** (mêmes paramètres) | Même coût que la voie mot de passe, parce que les deux ouvrent la même clé de données et que la paire ne vaut que sa porte la moins chère. Cf. §7 pour la mesure qui a motivé le changement |
 | Chiffrement par enveloppe | **AES-256-GCM** | Authenticated encryption, accélération matérielle universelle, standard NIST |
 | Chiffrement de champs | **AES-256-GCM** avec nonce aléatoire 96 bits par champ | Idem |
 | Indexation de recherche | **HMAC-SHA256(field, server_blind_key)** | Permet `WHERE field_hash = HMAC(query)` sans déchiffrer. Trade-off : recherche par égalité uniquement, pas full-text |
@@ -261,8 +284,12 @@ Conformément aux bonnes pratiques recommandées par l'ANSSI en matière de tran
 
 Pour qu'un déploiement SelfDataGuard apporte effectivement les garanties listées, il doit respecter :
 
-1. **Politique de mot de passe** : minimum 12 caractères, refus des mots de passe présents dans les listes de breach (HaveIBeenPwned, top 10000 communs)
-2. **Politique de mot mémorisé** : minimum 2 mots ou un mot rare (entropie ≥ 30 bits estimée par zxcvbn)
+1. **Politique de mot de passe** : minimum 12 octets, **appliqué par la lib** (`UserVault::PASSWORD_MIN_LEN`). Le refus par listes de breach reste à la charge de l'intégrateur — la lib n'embarque aucune liste et ne prétend plus le faire
+2. **Politique de mot mémorisé** : **à la charge de l'intégrateur — la bibliothèque n'impose
+   rien**. Elle a durci le coût par essai (Argon2id depuis 0.2.0) ; elle ne mesure pas l'entropie et
+   ne prétend pas le faire. Un intégrateur qui branche `loginWithMemorized()` sur un mot choisi par
+   l'utilisateur doit savoir que `wrap_recov` s'attaque alors hors ligne, sans compteur, sur ce seul
+   secret. Cf. §7, question ouverte
 3. **TLS obligatoire** : aucune dégradation HTTP autorisée (HSTS strict)
 4. **Sessions courtes** : `data_master_key` purgée de la session après inactivité (15 min recommandé pour Hybrid, 5 min pour Full)
 5. **Pas de logging sensible** : `password_key`, `recov_key`, `data_master_key` ne doivent jamais apparaître dans les logs (même en niveau debug)
