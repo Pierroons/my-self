@@ -101,7 +101,9 @@ peut être réimprimé à l'identique — le papier n'est pas l'original.</p>
 <tr><td>Elle est décédée, et une personne désignée dans ses directives se présente</td>
     <td>Remise selon les conditions inscrites dans l'acte de dépôt.</td></tr>
 <tr><td>Elle vous remet une nouvelle version</td>
-    <td>La plus récente remplace celle-ci. Détruire l'ancienne : son code n'ouvre plus rien.</td></tr>
+    <td>La plus récente remplace celle-ci. Détruire l'ancienne <strong>entièrement</strong> :
+        rien ne périme un code, et l'ancien continue d'ouvrir l'ancien coffre tant qu'il en
+        subsiste une copie.</td></tr>
 <tr><td>Votre étude cesse ou transmet ses dossiers</td>
     <td>Le pli suit, sans traitement particulier.</td></tr>
 </table>
@@ -127,6 +129,21 @@ pages : il les conserve, c'est tout.</p>
   <b>{{CODE_L1}}</b>
   <span>Le code d'ouverture. Vingt caractères tirés au sort, plus cinq de contrôle.</span>
 </div>
+
+<div class="code bloc">
+  <b>{{EMPREINTE_SCEAU}}</b>
+  <span>Le sceau du coffre. Il ne s'agit pas d'un second code&nbsp;: il ne sert pas à ouvrir.</span>
+</div>
+
+<h2>À quoi sert le sceau</h2>
+<p>Le programme d'ouverture affiche le sceau du fichier qu'on lui donne, dans cette même forme.
+<strong>Comparez-le à celui ci-dessus</strong>, ou recopiez-le dans la case prévue&nbsp;: le
+programme comparera pour vous. Les espaces et les majuscules n'ont pas d'importance.</p>
+<p>S'ils diffèrent, <strong>le fichier qu'on vous a remis n'est pas celui qui a été déposé ici</strong>.
+Ne vous en servez pas : reconstituez le coffre depuis les images des dernières pages, qui sont, elles,
+dans ce pli.</p>
+<p>Cette vérification est facultative — sans elle le coffre s'ouvre quand même. Elle répond à la
+seule question que le programme ne peut pas trancher tout seul : ce fichier vient-il bien d'ici.</p>
 
 <h2>Recopier ce code sans se tromper</h2>
 <ul>
@@ -162,6 +179,10 @@ Après reconstitution, les deux empreintes doivent être identiques à celles-ci
 
 <p>Une seule différence signifie qu'une image a été mal lue. Ne vous servez alors d'aucun des deux
 fichiers : reprenez à une résolution plus élevée, ou servez-vous du second exemplaire.</p>
+<p>Ces deux empreintes-ci ne répondent pas à la même question que le sceau. Elles disent
+<em>« la lecture des images est-elle exacte&nbsp;? »</em> ; le sceau dit <em>« ce coffre est-il celui
+qui a été déposé&nbsp;? »</em>. Les premières changent si l'on réécrit le fichier autrement, le sceau
+non.</p>
 
 <h2>Relire les images — sur Windows, sans rien installer</h2>
 
@@ -208,39 +229,92 @@ chaque page qui ne porte aucune image de données. C'est attendu et sans conséq
 <h2>Structure du coffre</h2>
 <p>Fichier texte au format JSON, champs binaires en Base64.</p>
 <pre>{
- "format"      : "SELFVAULT2",
+ "format"      : "{{FORMAT}}",
  "version"     : {{VERSION}},
  "date"        : "{{DATE}}",
- "engagement"  : HMAC-SHA256(clé maîtresse, "SELFVAULT2/engagement"), en Base64,
+ "engagement"  : HMAC-SHA256(clé maîtresse, "{{FORMAT}}/engagement"), en Base64,
+ "cle_publique": point P-256 non compressé, 65 octets préfixés de 0x04, en Base64,
  "serrures"    : [ { "nom", "sel", "iterations", "nonce", "enveloppe" }, … ],
  "nonce"       : nonce du contenu,
- "contenu"     : contenu chiffré
+ "contenu"     : contenu chiffré,
+ "signature"   : ECDSA P-256 / SHA-256, r et s sur 32 octets chacun, en Base64
 }</pre>
 
 <h2>L'en-tête authentifié</h2>
 <p>Les champs de l'en-tête ne sont pas seulement lus, ils sont <strong>authentifiés</strong>. Chaque
 déchiffrement — enveloppe comme contenu — reçoit en données authentifiées associées (AAD) la chaîne
-suivante, une ligne par champ, séparateur retour à la ligne, encodée en UTF-8 :</p>
-<pre>SELFVAULT2
-version=&lt;version&gt;
+suivante, une ligne par champ, encodée en UTF-8. Le séparateur est <strong>un seul octet
+<code>0x0A</code></strong> — jamais <code>CR&nbsp;LF</code> — et <strong>la chaîne ne se termine pas
+par un séparateur</strong> :</p>
+<pre>{{FORMAT}}
+version=&lt;version&gt;                     ← entier décimal de 1 à {{VERSION_MAX}}, sans zéro de tête
 date=&lt;date&gt;
 engagement=&lt;engagement&gt;
+cle_publique=&lt;cle_publique&gt;
 serrure=&lt;nom&gt;|&lt;sel&gt;|&lt;iterations&gt;      ← une ligne par serrure, dans l'ordre du fichier</pre>
 <p>Toute retouche d'un de ces champs fait échouer l'ouverture au lieu de passer inaperçue. Le
 caractère <code>|</code> et le retour à la ligne sont interdits dans chacun d'eux.</p>
 
+<h2>Le sceau</h2>
+<p>L'AAD est arrêté <strong>avant</strong> les chiffrements, puisqu'il leur sert d'entrée : il ne
+peut donc pas porter les chiffrés eux-mêmes. Or le contenu n'est authentifié que par la clé
+maîtresse, et <strong>toute serrure rend la clé maîtresse</strong> — sans autre protection, qui
+détient une serrure peut réécrire ce que l'autre lira, sans que rien ne le signale.</p>
+<p>La fabrique tire donc une paire de clés ECDSA P-256, publie la publique dans l'en-tête, signe,
+puis <strong>détruit la privée</strong> : elle n'est écrite nulle part et remise à personne.
+<strong>Ce coffre-ci ne peut plus être modifié par personne.</strong> Amender, c'est en fabriquer un
+nouveau, de version supérieure.</p>
+<p>⚠️ Le sceau prouve qu'un coffre n'a pas bougé depuis sa fabrication — il ne prouve pas
+<em>qui</em> l'a fabriqué : la clé publique naît dans le coffre et ne renvoie à rien d'extérieur.
+Quelqu'un qui connaîtrait le code d'ouverture pourrait donc fabriquer un coffre entièrement neuf,
+scellé et cohérent. <strong>Ce qui rattache un coffre à ce pli-ci, c'est l'empreinte imprimée
+page&nbsp;3</strong> — et, avant elle, l'identification du déposant par l'étude.</p>
+<p>Le message signé prolonge l'AAD, dans le même style — une ligne par champ, séparateur
+<code>0x0A</code>, sans séparateur final, UTF-8 :</p>
+<pre>&lt;les lignes de l'AAD ci-dessus&gt;
+nonce=&lt;nonce&gt;
+contenu=&lt;contenu&gt;
+scelle=&lt;nonce&gt;|&lt;enveloppe&gt;            ← une ligne par serrure, dans l'ordre du fichier</pre>
+<p>Ces trois champs doivent être du Base64, dont l'alphabet exclut <code>|</code> et le retour à
+la ligne : c'est <strong>ce contrôle</strong>, et non la structure, qui rend l'encodage sans
+ambiguïté. Un fichier hostile qui glisserait l'un de ces deux caractères dans un champ non contrôlé
+fabriquerait deux coffres différents rendant la même chaîne.</p>
+
 <h2>Comment on ouvre</h2>
 <ol>
+  <li><strong>Comparer d'abord l'empreinte</strong> <code>SHA-256</code> du fichier à celle
+      imprimée page&nbsp;3 de ce pli. C'est la seule étape qui rattache le fichier qu'on a en main
+      à celui qui a été déposé ici ; toutes les suivantes ne parlent que de sa cohérence interne.</li>
+  <li><strong>Vérifier le sceau</strong> : <code>ECDSA P-256 / SHA-256</code>, signature
+      <code>signature</code>, clé <code>cle_publique</code>, message ci-dessus. S'il ne tient pas,
+      refuser sans essayer aucune serrure — le fichier n'est pas celui qui a été déposé. Cette
+      vérification ne demande aucun secret et coûte une milliseconde.</li>
+  <li><strong>Contrôler la forme avant tout calcul</strong> : <code>format</code>, <code>date</code>
+      (quatre chiffres <code>0-9</code>, tiret, deux, tiret, deux), <code>version</code> entier
+      décimal, et <strong>tous</strong> les champs binaires — <code>engagement</code>,
+      <code>cle_publique</code>, <code>signature</code>, <code>nonce</code>, <code>contenu</code>,
+      et par serrure <code>sel</code>, <code>nonce</code>, <code>enveloppe</code> — conformes à
+      <code>[A-Za-z0-9+/]+={0,2}</code>. Refuser un <code>nom</code> de serrure portant
+      <code>|</code> ou un retour à la ligne. Sans ces contrôles, les deux chaînes canoniques
+      ci-dessus cessent d'être sans ambiguïté. <strong>Refuser aussi tout champ absent de la
+      structure ci-dessus</strong> : le sceau ne signe que les champs que les deux chaînes
+      nomment, et ce qu'elles ne nomment pas n'est couvert par rien.</li>
   <li>Normaliser le code : ne garder que les lettres et les chiffres, en conservant la casse.</li>
   <li>Pour chaque serrure, dériver une clé de 256 bits :
       <code>PBKDF2-HMAC-SHA256(code, sel, iterations)</code>. Les paramètres sont dans la serrure —
       aucune valeur n'est à deviner.</li>
-  <li>Refuser un <code>iterations</code> inférieur à 100 000 ou supérieur à 10 000 000 : cette
+  <li>Refuser un <code>iterations</code> inférieur à {{ITER_MIN}} ou supérieur à {{ITER_MAX}} : cette
       valeur vient du fichier, et un fichier peut avoir été modifié.</li>
+  <li>Refuser un coffre portant plus de <strong>{{SERRURES_MAX}} serrures</strong>, et une <code>version</code>
+      hors de 1 à {{VERSION_MAX}}. Ces deux nombres viennent du fichier eux aussi : chaque serrure se dérive
+      avant qu'on sache si elle est la bonne, et un numéro de version trop grand ne se lit pas
+      pareil d'un langage à l'autre.</li>
   <li>Déchiffrer <code>enveloppe</code> en <code>AES-256-GCM</code> avec cette clé, le
-      <code>nonce</code> de la serrure et l'AAD ci-dessus. On obtient la clé maîtresse de 32 octets.
+      <code>nonce</code> de la serrure — <strong>12&nbsp;octets</strong> — et l'AAD ci-dessus.
+      L'étiquette d'authentification fait <strong>128&nbsp;bits et se trouve concaténée à la fin du
+      chiffré</strong> ; certaines bibliothèques l'attendent à part. On obtient la clé maîtresse de 32 octets.
       Si l'authentification échoue, ce n'est pas la bonne serrure : passer à la suivante.</li>
-  <li>Vérifier que <code>HMAC-SHA256(clé maîtresse, "SELFVAULT2/engagement")</code> vaut le champ
+  <li>Vérifier que <code>HMAC-SHA256(clé maîtresse, "{{FORMAT}}/engagement")</code> vaut le champ
       <code>engagement</code>. Sinon refuser : la serrure rend une clé qui n'est pas celle de ce
       coffre.</li>
   <li>Déchiffrer <code>contenu</code> avec la clé maîtresse, le <code>nonce</code> du coffre et la
@@ -250,7 +324,7 @@ caractère <code>|</code> et le retour à la ligne sont interdits dans chacun d'
 <h2>La somme de contrôle du code</h2>
 <p>Les vingt premiers caractères sont tirés au sort, les cinq derniers s'en déduisent : empreinte
 <code>SHA-256</code> des vingt premiers pris comme texte, puis pour chacun des cinq premiers octets,
-le caractère de rang <code>octet modulo 30</code> dans l'alphabet
+le caractère de rang <code>octet modulo {{TAILLE_ALPHABET}}</code> dans l'alphabet
 <code>23456789ABCDEFGHJKMNPQRSTVWXYZ</code>.</p>
 
 <h2>Pourquoi deux serrures</h2>
@@ -259,7 +333,7 @@ fois par serrure, et chacune s'ouvre indépendamment : celle que la titulaire ga
 le code de ce dossier. Ajouter ou retirer une serrure ne touche ni au contenu, ni aux autres.</p>
 <p>Puisque chaque serrure ouvre seule, le coffre vaut ce que vaut <em>sa serrure la plus faible</em>,
 jamais la plus forte. C'est pourquoi les deux secrets sont <strong>tirés au sort</strong> et non
-choisis : le code vaut 98 bits, la phrase de la titulaire au moins {{BITS_MIN}}, et l'outil qui
+choisis : le code vaut {{BITS_L1}} bits, la phrase de la titulaire au moins {{BITS_MIN}}, et l'outil qui
 fabrique le coffre refuse d'enfermer la clé derrière une phrase inventée. Un fichier confié à un
 tiers s'attaque hors ligne, sans limite d'essais : seul le coût de chaque essai protège encore, et
 il ne rattrape pas un secret trop court.</p>

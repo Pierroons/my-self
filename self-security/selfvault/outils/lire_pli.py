@@ -54,7 +54,10 @@ def fragments(images):
     ont été mélangées, se reconstitue quand même.
     """
     lus, inconnus, divergents = {}, 0, []
-    motif = re.compile(r"^%s\|([A-Z])\|(\d+)/(\d+)\|(.*)$" % PREFIXE, re.S)
+    # `\d` désigne en Python TOUS les chiffres d'Unicode : « PLI1|V|١/٣| » se
+    # laissait lire, et `int("١")` vaut 1. Le déchiffreur JavaScript, lui, ne
+    # reconnaît que `[0-9]` et rendait `null` sur la même ligne.
+    motif = re.compile(r"^%s\|([A-Z])\|([0-9]+)/([0-9]+)\|(.*)$" % PREFIXE, re.S)
     for img in images:
         sortie = subprocess.run([outil("zbarimg"), "--raw", "-q", img],
                                 capture_output=True, text=True).stdout

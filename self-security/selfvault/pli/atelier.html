@@ -1,0 +1,573 @@
+<!doctype html><html lang="fr"><meta charset="utf-8">
+<title>Atelier SelfVault — fabriquer et ouvrir un coffre</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+{{AVERTISSEMENT}}
+<style>
+:root{--f:#0f1419;--b:#f7f9fc;--a:#3f74b8;--l:#cfdcec;--g:#5a6570;--m:#9aa6b2}
+body{margin:0;font:16px/1.55 Georgia,serif;color:var(--f);background:var(--b)}
+main{max-width:44rem;margin:0 auto;padding:2rem 1.2rem 4rem}
+h1{font-size:1.5rem;margin:0 0 .2rem}
+h2{font-size:1.2rem;margin:0 0 .3rem}
+p.sous{color:var(--g);margin:0 0 1.4rem;font-size:.95rem}
+p.aide{font-size:.88rem;color:var(--g);margin:.7rem 0 .2rem}
+fieldset{border:1px solid var(--l);border-radius:6px;padding:1.1rem 1.2rem 1.3rem;margin:0 0 1.2rem}
+legend{padding:0 .4rem;font-weight:700;font-size:.9rem;color:var(--g)}
+label{display:block;margin:.9rem 0 .25rem;font-size:.95rem}
+input[type=file],input[type=text],input[type=number],textarea{width:100%;box-sizing:border-box;padding:.55rem;border:1px solid var(--l);border-radius:4px;font:inherit}
+input[type=text],textarea,input[type=number]{font-family:ui-monospace,monospace}
+input[type=number]{width:6rem}
+textarea{resize:vertical;font-size:.82rem;line-height:1.5}
+label.ligne{display:block;margin:.5rem 0;font-size:.95rem}
+label.ligne input{width:auto;margin-right:.5rem}
+button{background:var(--a);color:#fff;border:0;border-radius:4px;padding:.6rem 1.3rem;font:inherit;cursor:pointer}
+button.doux{background:#fff;color:var(--f);border:1px solid var(--m)}
+button:disabled{background:#dfe7f0;color:var(--g);cursor:default}
+.barre{display:flex;gap:.6rem;align-items:center;margin-top:1.4rem}
+.msg{margin:1rem 0;padding:.7rem .9rem;border-radius:4px;font-size:.92rem;display:none}
+.ok{background:#e8f3e8;border:1px solid #b7d6b7;display:block!important}
+.ko{background:#f7e9e9;border:1px solid #dcb4b4;display:block!important}
+.avert{margin:0 0 1.8rem;padding:.9rem 1.1rem;border-left:3px solid var(--a);background:#fff;font-size:.92rem}
+.fil{display:flex;flex-wrap:wrap;gap:.5rem;list-style:none;padding:0;margin:0 0 1.4rem;font-size:.82rem;color:var(--g)}
+.fil li{padding:.15rem .6rem;border-radius:999px;border:1px solid var(--l)}
+.fil li.ici{color:#fff;background:var(--a);border-color:var(--a)}
+.fil li.fait{color:var(--a);border-color:#a8c2e0}
+.recap{background:#fff;border:1px solid var(--l);border-radius:4px;padding:.9rem 1.1rem;margin:.4rem 0 0}
+.recap dl{display:grid;grid-template-columns:auto 1fr;gap:.35rem .9rem;margin:0;font-size:.92rem}
+.recap dt{color:var(--g)}
+.recap dd{margin:0}
+.secret{font-family:ui-monospace,monospace;font-size:1.15rem;letter-spacing:.02em;background:#fff;border:1px solid var(--m);border-radius:4px;padding:.9rem 1rem;margin:.5rem 0 .2rem;word-break:break-word;line-height:1.7}
+.mesure{font-size:.78rem;color:var(--g);margin:0 0 .9rem}
+.discret{font-size:.82rem;color:var(--g);margin:1rem 0 0}
+.discret a{color:var(--g)}
+#osortie,#vsortie{white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:.85rem;background:#fff;border:1px solid var(--l);border-radius:4px;padding:1rem;margin-top:1rem;display:none}
+details{margin-top:2.5rem;border-top:1px solid var(--l);padding-top:1.2rem}
+summary{cursor:pointer;font-size:.95rem;color:var(--g)}
+footer{margin-top:3rem;border-top:1px solid var(--l);padding-top:1rem;font-size:.82rem;color:var(--g)}
+</style>
+<main>
+<h1>Atelier SelfVault</h1>
+<p class="sous">Préparer le coffre que vous déposerez chez le notaire.</p>
+
+<div class="avert">
+<b>Avant de commencer.</b> Enregistrez cette page sur votre ordinateur et ouvrez-la depuis
+le fichier, connexion coupée. Les deux secrets que l'atelier va tirer s'afficheront
+<b>une seule fois</b> : ayez de quoi les recopier à la main. Évitez la capture d'écran,
+qui part souvent toute seule vers un espace de stockage en ligne.
+</div>
+
+<ol class="fil">
+<li id="f1" class="ici">1. La personne</li>
+<li id="f2">2. Vos volontés</li>
+<li id="f3">3. Le dépôt</li>
+<li id="f4">4. Vérification</li>
+</ol>
+
+<section id="e1">
+<fieldset><legend>1 sur 4</legend>
+<h2>De qui s'agit-il&nbsp;?</h2>
+<p class="aide">Ce que le notaire lira sur la première page.</p>
+<label for="tit">Nom et prénom</label>
+<input type="text" id="tit" autocomplete="off" placeholder="MARTIN Sophie">
+<label for="nai">Date et lieu de naissance</label>
+<input type="text" id="nai" autocomplete="off" placeholder="12 mars 1961 à Sainte-Foy (33220)">
+<label for="ref">Une référence, si l'étude vous en a donné une</label>
+<input type="text" id="ref" autocomplete="off" placeholder="facultatif">
+<div class="barre"><button id="v1">Continuer</button></div>
+</fieldset>
+</section>
+
+<section id="e2" hidden>
+<fieldset><legend>2 sur 4</legend>
+<h2>Que voulez-vous qu'on fasse&nbsp;?</h2>
+<p class="aide">C'est le seul texte qui sera chiffré. Le modèle ci-dessous est là pour être
+écrasé : remplacez ce qui est entre crochets, supprimez ce qui ne vous concerne pas.</p>
+<textarea id="txt" rows="20" spellcheck="true">{{MODELE}}</textarea>
+<p class="aide" id="jauge"></p>
+<div class="barre"><button id="v2">Continuer</button><button id="r2b" class="doux">Retour</button></div>
+</fieldset>
+</section>
+
+<section id="e3" hidden>
+<fieldset><legend>3 sur 4</legend>
+<h2>Est-ce un premier dépôt&nbsp;?</h2>
+<label class="ligne"><input type="radio" name="dep" id="dep1" checked> Oui, c'est la première fois</label>
+<label class="ligne"><input type="radio" name="dep" id="dep2"> Non, je remplace un coffre déjà déposé</label>
+<div id="brem" hidden>
+<label for="ver">Numéro du coffre précédent, augmenté de un</label>
+<input type="number" id="ver" min="2" step="1" value="2">
+<p class="aide">Le notaire détruira l'ancien exemplaire d'après ce numéro, et l'ancien code
+cessera d'ouvrir quoi que ce soit.</p>
+</div>
+<div class="barre"><button id="v3">Continuer</button><button id="r3b" class="doux">Retour</button></div>
+</fieldset>
+</section>
+
+<section id="e4" hidden>
+<fieldset><legend>4 sur 4</legend>
+<h2>Vérifiez avant de créer</h2>
+<div class="recap"><dl>
+<dt>Au nom de</dt><dd id="cnom"></dd>
+<dt>Né(e) le</dt><dd id="cnai"></dd>
+<dt>Coffre</dt><dd id="cver"></dd>
+<dt>Contenu</dt><dd id="clen"></dd>
+</dl></div>
+<p class="aide">En créant le coffre, l'atelier tire deux secrets au sort : une phrase que vous
+retiendrez, et un code que le notaire gardera. <b>Chacun ouvre le coffre à lui seul.</b>
+Ils s'afficheront une seule fois.</p>
+<div class="barre"><button id="faire">Créer le coffre</button><button id="r4b" class="doux">Retour</button></div>
+<div id="etatf" class="msg"></div>
+</fieldset>
+</section>
+
+<div id="resultat" hidden>
+
+<section id="s1">
+<fieldset><legend>À retenir</legend>
+<h2>La phrase que vous retenez</h2>
+<div class="secret" id="sL2"></div>
+<p class="mesure" id="mL2"></p>
+<p class="aide">Recopiez-la sur un papier, apprenez-la. Rangez cette copie <b>ailleurs que
+chez le notaire</b> : celui qui tient les deux tient le coffre.</p>
+<div class="barre"><button id="ok1">Je l'ai recopiée</button></div>
+</fieldset>
+</section>
+
+<section id="s2" hidden>
+<fieldset><legend>Pour le notaire</legend>
+<h2>Le code que le notaire gardera</h2>
+<div class="secret" id="sL1"></div>
+<p class="mesure" id="mL1"></p>
+<p class="aide">Il s'imprimera sur le pli. Tout en majuscules ; les tirets ne comptent pas.
+Il n'y a ni <b>I</b>, ni <b>L</b>, ni <b>O</b>, ni <b>U</b>, ni <b>zéro</b>, ni <b>un</b> —
+c'est voulu, pour qu'aucun caractère ne se confonde avec un autre à la lecture.</p>
+<div class="barre"><button id="ok2">Je l'ai recopié</button></div>
+</fieldset>
+</section>
+
+<section id="s3" hidden>
+<fieldset><legend>Le fichier</legend>
+<h2>Enregistrez le coffre</h2>
+<p class="aide">Gardez-en plusieurs exemplaires : sur votre ordinateur, sur une clé USB.
+Il est chiffré — le perdre serait ennuyeux, le laisser traîner ne l'est pas.</p>
+<div class="barre"><button id="tele">Enregistrer coffre.selfvault</button></div>
+<p class="discret"><a href="#" id="lbrut">L'enregistrement n'a rien fait&nbsp;?</a></p>
+<div id="zbrut" hidden>
+<label for="brut">Sélectionnez tout ce cadre, copiez, et collez-le dans un fichier texte
+nommé <code>coffre.selfvault</code>.</label>
+<textarea id="brut" rows="6" spellcheck="false" readonly></textarea>
+</div>
+
+<h2>Et le second fichier, pour imprimer le pli</h2>
+<p class="aide">Il ne porte que votre nom, votre naissance et la référence — ce qui s'imprime
+en première page du pli et qui n'a rien à faire dans le coffre. Sans lui, le pli ne peut pas
+être composé.</p>
+<div class="barre"><button id="tmeta" class="doux">Enregistrer meta.json</button></div>
+<p class="discret"><a href="#" id="lmeta">L'enregistrement n'a rien fait&nbsp;?</a></p>
+<div id="zmeta" hidden>
+<label for="meta">Sélectionnez tout ce cadre, copiez, et collez-le dans un fichier texte
+nommé <code>meta.json</code>, à côté du coffre.</label>
+<textarea id="meta" rows="4" spellcheck="false" readonly></textarea>
+</div>
+<p class="aide" style="margin-top:1.1rem">Le sceau de votre coffre — il s'imprimera sur le pli,
+et le programme d'ouverture l'affichera. Il ne sert pas à ouvrir : il sert à reconnaître.</p>
+<div class="secret" id="semp">…</div>
+<div class="barre"><button id="ok3">Les deux sont enregistrés</button></div>
+</fieldset>
+</section>
+
+<section id="s4" hidden>
+<fieldset><legend>Dernière étape</legend>
+<h2>Essayez d'ouvrir votre coffre</h2>
+<p class="aide">Saisissez l'un des deux secrets. Si votre texte réapparaît, tout est en ordre —
+et vous savez que vous l'avez bien recopié.</p>
+<input type="text" id="vc" placeholder="la phrase, ou le code" autocomplete="off" spellcheck="false" autocapitalize="none" autocorrect="off">
+<div class="barre"><button id="vgo">Ouvrir</button></div>
+<div id="vetat" class="msg"></div><div id="vsortie"></div>
+</fieldset>
+</section>
+
+</div>
+
+<details>
+<summary>Ouvrir un coffre déjà fabriqué</summary>
+<p class="aide">Le même déchiffreur que celui imprimé dans le pli, mot pour mot.</p>
+<label for="of">Le fichier <code>coffre.selfvault</code></label>
+<input type="file" id="of" accept=".selfvault,.json,application/json">
+<label for="oq">…ou les lignes lues sur les QR codes du coffre, une par ligne</label>
+<textarea id="oq" rows="3" spellcheck="false" placeholder="PLI1|V|1/3|eyJmb3JtYXQi…"></textarea>
+<div class="barre"><button id="orecoller" class="doux">Assembler</button></div>
+<label for="oc">Le code du notaire, ou la phrase mémorisée</label>
+<input type="text" id="oc" autocomplete="off" spellcheck="false" autocapitalize="none" autocorrect="off">
+<div class="barre"><button id="ogo" disabled>Ouvrir</button></div>
+<div id="oetat" class="msg"></div><div id="osortie"></div>
+</details>
+
+<footer>SelfVault — AGPL-3.0-or-later. Cette page n'est jamais imprimée dans le pli :
+le pli ne porte que ce qui <i>ouvre</i>, et personne n'a besoin de fabriquer un coffre
+à partir de lui.</footer>
+</main>
+<script>
+{{NOYAU}}
+
+/* === FABRIQUE — début ============================================================
+   Ce que `outils/selfvault.py` fait côté Python, avec les mêmes primitives, les
+   mêmes bornes et les mêmes refus. Le banc éprouve les deux sens : un coffre
+   fabriqué ici s'ouvre en Python, un coffre fabriqué en Python s'ouvre ici. */
+const MOTS = {{MOTS}};
+const ITER = {{ITER}};
+const BITS_MIN = {{BITS_MIN}};
+const MOTS_DEFAUT = {{MOTS_DEFAUT}};
+const MOTS_MAX = {{MOTS_MAX}};
+// 🔑 Une panne du générateur d'aléa ne s'observe pas dans ce qu'il rend. Un
+// `getRandomValues` qui ne remplit rien — la forme exacte d'une extension bancale
+// ou d'un portage raté — laisse un tableau de zéros, et la page annonce alors
+// sa mesure pour une phrase qui n'en porte aucun. Pire : la clé maîtresse, les
+// sels et les nonces sortent du même robinet, si bien que deux coffres tirés de
+// suite partagent clé et nonce, et que le XOR de leurs chiffrés rend leurs clairs.
+//
+// On ne peut pas prouver qu'un hasard est bon. On peut FALSIFIER le cas où il n'y
+// en a pas : un bloc honnête de seize octets a une chance sur 2¹²⁰ d'être constant.
+const ALEA = u => {
+  crypto.getRandomValues(u);
+  if(u.length>=8&&u.every(v=>v===u[0]))
+    leve("le générateur d'aléa de ce navigateur a rendu "+u.length+" octets tous "
+        +"identiques. Rien de ce qui serait tiré ici ne vaudrait ce qu'on en dirait.");
+  return u;
+};
+// Le contrôle au chargement, qui attrape le générateur mort avant qu'il ne serve :
+// deux tirages honnêtes de 32 octets ont une chance sur 2²⁵⁶ de coïncider.
+function sourceFiable(){
+  try{
+    const a=ALEA(new Uint8Array(32)), b=ALEA(new Uint8Array(32));
+    return !a.every((v,i)=>v===b[i]);
+  }catch(e){ return false; }
+}
+
+// La liste doit être une liste. Aucun seuil de taille : c'est le plancher en bits
+// qui décide, et lui se mesure. Ce qui est vérifié ici, c'est ce dont le calcul
+// d'entropie dépend — des entrées non vides et sans doublon. `length` compte les
+// ENTRÉES : 7 776 lignes portant toutes le même mot feraient annoncer
+// l'entropie de 7 776 mots pour un seul.
+function verifierListe(mots){
+  if(!Array.isArray(mots)||!mots.length) leve("la liste de mots est vide");
+  if(!mots.every(m=>typeof m==='string'&&m.trim()))
+    leve("la liste de mots porte des entrées vides ou non textuelles");
+  // 🔑 La distinction se mesure APRÈS `normaliser()`, la forme que la dérivation
+  // reçoit. Deux entrées qui ne diffèrent que par un tiret ou une apostrophe —
+  // `au-delà` et `audelà` — sont un seul mot pour la clé. Une liste de 2 592
+  // racines en trois variantes annonçait 90,5 bits pour 79,4 réels.
+  const d=mots.length-new Set(mots.map(normaliser)).size;
+  if(d) leve("la liste de mots porte "+d+" doublon(s) une fois normalisés : l'entropie se "
+            +"calcule sur ce que la dérivation reçoit, et elle ne reçoit ni tiret ni apostrophe");
+  // Le tirage se fait sur 16 bits : au-delà de 65 536 entrées, `65536 % length`
+  // vaut 65 536, la borne de rejet tombe à ZÉRO et la boucle ne sort jamais.
+  // L'onglet se figeait sur le message « quelques secondes… ».
+  if(mots.length>MOTS_MAX)
+    leve("la liste porte "+mots.length+" mots : le tirage sans biais en accepte "
+        +MOTS_MAX+" au plus");
+  return mots;
+}
+
+// 🔑 `alea` est un paramètre parce qu'un rejet ne s'observe pas. Deux tirages, l'un
+// avec rejet et l'autre sans, se ressemblent trait pour trait quand on les regarde
+// sortir. Le banc injecte ici un générateur qui rend TOUTES les valeurs possibles
+// une fois chacune, et compte : c'est le seul moyen d'éprouver que le rejet a lieu.
+//
+// Un caractère de l'alphabet, sans biais : `octet % 30` favorise les seize
+// premières lettres, 256 n'étant pas un multiple de 30.
+function tirerLettre(alea){
+  const limite=256-(256%ALPHABET.length), u=new Uint8Array(1);
+  for(;;){ alea(u); if(u[0]<limite) return ALPHABET[u[0]%ALPHABET.length]; }
+}
+
+// Un mot de la liste, sans biais. 65 536 n'est pas un multiple de 7 776 : sans
+// rejet, les 2 368 premiers mots de la liste sortiraient une fois de plus que
+// les autres.
+function tirerMot(mots,alea){
+  const limite=65536-(65536%mots.length), u=new Uint16Array(1);
+  for(;;){ alea(u); if(u[0]<limite) return mots[u[0]%mots.length]; }
+}
+
+// 🔑 Un secret tiré porte sa mesure. C'est le pendant de `PhraseTiree` côté
+// Python : l'entropie est une propriété du TIRAGE, pas de la chaîne, et aucune
+// inspection d'un texte ne dit s'il a été tiré au sort. Une chaîne nue arrivant
+// dans `fabriquer()` est donc refusée, quels que soient ses mots.
+async function tirerCode(alea){
+  let corps=''; for(let i=0;i<20;i++) corps+=tirerLettre(alea||ALEA);
+  if(new Set(corps).size===1)
+    leve("les vingt caractères tirés sont identiques — le générateur d'aléa est en "
+        +"panne. Probabilité d'un tirage honnête : 2⁻⁹³.");
+  const plein=corps+await controle(corps);
+  return {secret:plein.replace(/(.{5})(?=.)/g,'$1-'),
+          bits:20*Math.log2(ALPHABET.length), mots:null};
+}
+
+function tirerPhrase(n,mots,alea){
+  const l=verifierListe(mots||MOTS), bits=n*Math.log2(l.length);
+  if(bits<BITS_MIN)
+    leve(n+" mots sur une liste de "+l.length+" n'en font que "+bits.toFixed(1)
+        +" bits — plancher "+BITS_MIN+". Sur cette liste il en faut "
+        +Math.ceil(BITS_MIN/Math.log2(l.length))+".");
+  const out=[]; for(let i=0;i<n;i++) out.push(tirerMot(l,alea||ALEA));
+  if(n>1&&new Set(out).size===1)
+    leve("les "+n+" mots tirés sont identiques — le générateur d'aléa est en panne. "
+        +"Probabilité d'un tirage honnête : 2⁻"+Math.round((n-1)*Math.log2(l.length))+".");
+  return {secret:out.join('-'), bits:bits, mots:n};
+}
+
+// Fabrique un coffre. `serrures` est une liste de { nom, tirage }, où `tirage` est
+// ce que rendent `tirerCode` ou `tirerPhrase` — jamais une chaîne.
+async function fabriquer(contenu,serrures,version,date,iterations,alea){
+  if(!Number.isInteger(version)||version<1)
+    leve('version : entier positif attendu, reçu '+version);
+  if(!DATE.test(String(date))) leve('date : AAAA-MM-JJ attendu, reçu '+date);
+  for(const s of serrures){
+    const t=s.tirage;
+    if(!t||typeof t.bits!=='number')
+      leve("serrure « "+s.nom+" » : tirage non établi. Une phrase reçue sous forme de "
+          +"chaîne n'est pas mesurable, quels que soient ses mots.");
+    if(t.bits<BITS_MIN)
+      leve("serrure « "+s.nom+" » : "+t.bits.toFixed(1)+" bits, plancher "+BITS_MIN);
+  }
+  const al=alea||ALEA;
+  const octets=n=>{const u=new Uint8Array(n);al(u);return u};
+  const maitresse=octets(32);
+  // 🔑 La paire de signature naît ici et meurt à la fin de cette fonction.
+  // `extractable` à false : le navigateur REFUSE d'exporter la clé privée, elle
+  // ne peut donc pas être écrite, ni copiée, ni remise à quiconque. C'est ce qui
+  // rend le coffre immuable — plus personne, pas même la titulaire, ne pourra en
+  // sceller une autre version. Pour amender, on fabrique un nouveau coffre.
+  const paire=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},
+                                              false,['sign','verify']);
+  const clePublique=b64e(new Uint8Array(await crypto.subtle.exportKey('raw',paire.publicKey)));
+  // L'en-tête est arrêté AVANT tout chiffrement : il est l'AAD des enveloppes
+  // comme du contenu.
+  const coffre={
+    format:FORMAT, version:version, date:date,
+    engagement:await engagement(maitresse),
+    cle_publique:clePublique,
+    serrures:serrures.map(s=>({nom:s.nom, sel:b64e(octets(16)),
+                               iterations:iterations||ITER, nonce:b64e(octets(12))})),
+    nonce:b64e(octets(12))
+  };
+  const aad=enteteCanonique(coffre), enc=new TextEncoder();
+  for(let i=0;i<serrures.length;i++){
+    const c=coffre.serrures[i];
+    const km=await crypto.subtle.deriveKey(
+      {name:'PBKDF2',salt:b64(c.sel),iterations:c.iterations,hash:'SHA-256'},
+      await crypto.subtle.importKey('raw',enc.encode(normaliser(serrures[i].tirage.secret)),
+                                    'PBKDF2',false,['deriveKey']),
+      {name:'AES-GCM',length:256},false,['encrypt']);
+    c.enveloppe=b64e(new Uint8Array(await crypto.subtle.encrypt(
+      {name:'AES-GCM',iv:b64(c.nonce),additionalData:aad},km,maitresse)));
+  }
+  const km=await crypto.subtle.importKey('raw',maitresse,{name:'AES-GCM'},false,['encrypt']);
+  coffre.contenu=b64e(new Uint8Array(await crypto.subtle.encrypt(
+    {name:'AES-GCM',iv:b64(coffre.nonce),additionalData:aad},km,enc.encode(contenu))));
+  // Le sceau vient en dernier : il couvre l'en-tête ET les chiffrés, que l'AAD
+  // ne peut pas couvrir puisqu'il leur sert d'entrée.
+  coffre.signature=b64e(new Uint8Array(await crypto.subtle.sign(
+    {name:'ECDSA',hash:'SHA-256'},paire.privateKey,messageSigne(coffre))));
+  // Ce qu'on vient d'écrire doit franchir la porte d'entrée du déchiffreur. Un
+  // coffre que sa propre fabrique ne relirait pas se découvrirait chez le notaire.
+  verifierEntete(coffre);
+  if(!await sceauTenu(coffre)) leve("le sceau que cette page vient d'apposer ne se "
+    +"vérifie pas — le coffre ne serait pas ouvrable. Rien n'a été écrit.");
+  return coffre;
+}
+/* === FABRIQUE — fin ============================================================ */
+
+// --- Le câblage de cette page-ci ---------------------------------------------
+const $=s=>document.querySelector(s);
+const dis=(sel,t,k)=>{const e=$(sel);e.textContent=t;e.className='msg '+k};
+const CHARGE=1600;      // caractères de base64 par QR code — voir outils/faire_pli.py
+const QR_BAVARD=8;      // au-delà, le texte coûte assez de papier pour le dire
+let coffre=null;
+
+if(!(self.crypto&&self.crypto.subtle)){
+  dis('#etatf',"Ce navigateur ne sait ni chiffrer ni déchiffrer : WebCrypto est indisponible. "
+     +"Enregistrez cette page et ouvrez-la depuis le fichier, ou utilisez un navigateur plus "
+     +"récent.",'ko');
+  $('#faire').disabled=true; $('#of').disabled=true; $('#oc').disabled=true;
+}else if(!sourceFiable()){
+  // L'ouverture reste permise : déchiffrer ne tire rien. C'est fabriquer qui est
+  // interdit, parce qu'un coffre fabriqué ici porterait des secrets sans valeur
+  // en affichant leur mesure.
+  dis('#etatf',"Le générateur d'aléa de ce navigateur ne fonctionne pas : il rend deux fois "
+     +"la même chose. Les secrets tirés ici n'en seraient pas. Ouvrir un coffre existant "
+     +"reste possible ; en fabriquer un, non.",'ko');
+  $('#faire').disabled=true;
+}
+
+const d=new Date(), zz=n=>String(n).padStart(2,'0');
+const AUJOURD=d.getFullYear()+'-'+zz(d.getMonth()+1)+'-'+zz(d.getDate());
+
+// ── Une étape à la fois ──────────────────────────────────────────────────────
+// On ne montre que ce qu'il y a à remplir maintenant : la quantité à saisir est
+// la même, la page visible ne l'est pas.
+function etape(n){
+  for(let i=1;i<=4;i++){
+    $('#e'+i).hidden = i!==n;
+    $('#f'+i).className = i===n ? 'ici' : (i<n ? 'fait' : '');
+  }
+}
+const version=()=>$('#dep2').checked ? Math.max(2,+$('#ver').value||2) : 1;
+
+$('#v1').onclick=()=>{
+  if(!$('#tit').value.trim())
+    return dis('#etatf',"Il manque le nom : le notaire dépose au nom de quelqu'un.",'ko');
+  etape(2);
+};
+$('#r2b').onclick=()=>etape(1);
+$('#v2').onclick=()=>{ if($('#txt').value.trim()) etape(3); };
+$('#r3b').onclick=()=>etape(2);
+$('#r4b').onclick=()=>etape(3);
+
+// Ce qu'un texte coûtera en papier. Silencieuse tant que tout va bien : une jauge
+// qui parle en permanence ne se lit plus quand elle a quelque chose à dire.
+function jauger(){
+  const clair=new TextEncoder().encode($('#txt').value).length;
+  const octets=780+Math.ceil((clair+16)/3)*4;
+  const qr=Math.max(1,Math.ceil(Math.ceil(octets/3)*4/CHARGE));
+  $('#jauge').textContent = qr>QR_BAVARD
+    ? "Votre texte est long : il ajoutera "+qr+" carrés à imprimer sur le pli. Rien ne "
+      +"l'interdit, mais un texte plus court se relit plus sûrement le jour venu."
+    : "";
+}
+$('#txt').oninput=jauger; jauger();
+
+function depot(){ $('#brem').hidden=!$('#dep2').checked; }
+$('#dep1').onclick=depot; $('#dep2').onclick=depot; depot();
+
+$('#v3').onclick=()=>{
+  $('#cnom').textContent=$('#tit').value.trim();
+  $('#cnai').textContent=$('#nai').value.trim()||"non précisé";
+  $('#cver').textContent=version()===1
+    ? "premier dépôt, daté du "+AUJOURD
+    : "version "+version()+", daté du "+AUJOURD+" — remplace le précédent";
+  $('#clen').textContent=$('#txt').value.trim().split(/\n/).length+" lignes, "
+    +new TextEncoder().encode($('#txt').value).length+" caractères";
+  etape(4);
+};
+
+// ── La fabrication ───────────────────────────────────────────────────────────
+$('#faire').onclick=async()=>{
+  const tit=$('#tit').value.trim(), txt=$('#txt').value;
+  if(!tit) return dis('#etatf',"Il manque le nom : le notaire dépose au nom de quelqu'un.",'ko');
+  if(!txt.trim()) return dis('#etatf',"Le coffre est vide.",'ko');
+  $('#faire').disabled=true;
+  dis('#etatf',"Tirage des secrets et chiffrement en cours (quelques secondes)…",'ok');
+  await new Promise(r=>setTimeout(r,30));
+  try{
+    const phrase=tirerPhrase(MOTS_DEFAUT), code=await tirerCode();
+    // L'ordre compte : l'ouverture essaie les serrures dans l'ordre du fichier, et
+    // le dépositaire est le seul dont on soit sûr qu'il ouvrira un jour.
+    coffre=await fabriquer(txt,
+      [{nom:'L1 — dépositaire', tirage:code},
+       {nom:'L2 — titulaire', tirage:phrase}],
+      version(), AUJOURD, ITER);
+    $('#sL2').textContent=phrase.secret;
+    $('#mL2').textContent=phrase.mots+" mots tirés au sort sur "+MOTS.length
+      +" — "+phrase.bits.toFixed(0)+" bits";
+    $('#sL1').textContent=code.secret;
+    $('#mL1').textContent="20 caractères tirés au sort, plus 5 de contrôle — "
+      +code.bits.toFixed(0)+" bits";
+    $('#brut').value=JSON.stringify(coffre,null,1);
+    // 🔑 L'identité ne va PAS dans le coffre : elle s'imprime en page 1 du pli, en
+    // clair, et le coffre est chiffré. Elle vit donc à côté, dans le format que
+    // `outils/faire_pli.py` attend. L'atelier la collectait à l'étape 1 et ne
+    // l'écrivait nulle part : la chaîne « fabriquer ici, imprimer ensuite » était
+    // rompue, et rien ne le disait.
+    $('#semp').textContent=await empreinteSceau(coffre);
+    $('#meta').value=JSON.stringify({
+      titulaire: tit,
+      naissance: $('#nai').value.trim(),
+      reference: $('#ref').value.trim()}, null, 1);
+    $('#e4').hidden=true; $('#f4').className='fait';
+    $('#resultat').hidden=false;
+    dis('#etatf','','');
+  }catch(err){
+    dis('#etatf',"Fabrication impossible : "+(err&&err.message?err.message:err),'ko');
+  }
+  $('#faire').disabled=false;
+};
+
+// ── Une chose à la fois, après la fabrication ────────────────────────────────
+const suivant=(bouton,cible)=>{ $(bouton).onclick=()=>{ $(cible).hidden=false; }; };
+suivant('#ok1','#s2'); suivant('#ok2','#s3'); suivant('#ok3','#s4');
+
+// Les deux fichiers se remettent de la même façon : un enregistrement, et un
+// cadre à recopier quand l'enregistrement reste inerte — ce qui arrive dans
+// certains contextes sans qu'aucune erreur ne soit levée.
+const remettre=(bouton,champ,nom)=>{ $(bouton).onclick=()=>{
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([$(champ).value],{type:'application/json'}));
+  a.download=nom; a.click();
+  URL.revokeObjectURL(a.href);
+}; };
+const repli=(lien,zone)=>{ $(lien).onclick=e=>{ e.preventDefault(); $(zone).hidden=false; }; };
+remettre('#tele','#brut','coffre.selfvault');
+remettre('#tmeta','#meta','meta.json');
+repli('#lbrut','#zbrut'); repli('#lmeta','#zmeta');
+
+// Vérifier son propre coffre sans le recharger : il est déjà là, en mémoire. Lui
+// faire rouvrir un fichier qu'elle vient d'enregistrer ajouterait une manipulation
+// au seul moment où elle a besoin d'être rassurée.
+$('#vgo').onclick=async()=>{
+  if(!coffre||!normaliser($('#vc').value))return;
+  $('#vgo').disabled=true; $('#vsortie').style.display='none';
+  dis('#vetat','Vérification en cours (quelques secondes)…','ok');
+  await new Promise(r=>setTimeout(r,30));
+  try{
+    const r=await ouvrir(coffre,$('#vc').value);
+    if(r.echec){ $('#vgo').disabled=false; return dis('#vetat',r.echec,'ko'); }
+    dis('#vetat',"C'est bon : votre coffre s'ouvre avec ce secret, et voici ce qu'il contient.",'ok');
+    $('#vsortie').textContent=r.clair; $('#vsortie').style.display='block';
+  }catch(err){
+    dis('#vetat',"Ouverture impossible : "+(err&&err.message?err.message:err),'ko');
+  }
+  $('#vgo').disabled=false;
+};
+
+// ── Ouvrir un coffre déjà fabriqué, sur le même noyau que le pli ─────────────
+let ancien=null;
+const APRES="Version et date seront affichées après l'ouverture, une fois authentifiées.";
+
+$('#of').onchange=async e=>{
+  const fi=e.target.files[0]; if(!fi)return;
+  try{
+    ancien=JSON.parse(await fi.text());
+    verifierEntete(ancien);
+    dis('#oetat','Coffre lu — '+ancien.serrures.length+' serrure(s). '+APRES,'ok');
+    $('#ogo').disabled=false;
+  }catch(err){ ancien=null; $('#ogo').disabled=true; dis('#oetat','Fichier illisible : '+err.message,'ko'); }
+};
+
+$('#orecoller').onclick=()=>{
+  let r;
+  try{ r=recoller($('#oq').value); }
+  catch(err){ ancien=null; $('#ogo').disabled=true; return dis('#oetat',err.message,'ko'); }
+  ancien=r.coffre;
+  $('#ogo').disabled=false;
+  dis('#oetat',"Coffre assemblé depuis "+r.total+" QR code(s) — "+ancien.serrures.length
+     +" serrure(s). "+APRES,'ok');
+};
+
+$('#ogo').onclick=async()=>{
+  const saisie=$('#oc').value;
+  if(!normaliser(saisie)||!ancien)return;
+  $('#ogo').disabled=true; $('#osortie').style.display='none';
+  dis('#oetat','Dérivation de la clé en cours (quelques secondes)…','ok');
+  await new Promise(r=>setTimeout(r,30));
+  try{
+    const r=await ouvrir(ancien,saisie);
+    if(r.echec){ $('#ogo').disabled=false; return dis('#oetat',r.echec,'ko'); }
+    dis('#oetat','Serrure « '+r.serrure+' » ouverte — coffre version '+ancien.version
+       +', du '+ancien.date+'. Sceau intact : non modifié depuis sa fabrication.','ok');
+    $('#osortie').textContent=r.clair; $('#osortie').style.display='block';
+  }catch(err){
+    dis('#oetat','Ouverture impossible : '+(err&&err.message?err.message:err),'ko');
+  }
+  $('#ogo').disabled=false;
+};
+</script>

@@ -1,0 +1,42 @@
+DIRECTIVES ET ACCÈS — [vos nom et prénom]
+
+À la personne qui lit ces lignes : ce coffre accompagne mes directives sur le sort
+de mes données personnelles après mon décès (article 85 de la loi n° 78-17).
+Les directives disent CE QU'IL FAUT FAIRE ; ce coffre donne LES MOYENS DE LE FAIRE.
+
+--- COMPTES ET SERVICES ---
+
+Reprenez ce bloc autant de fois que nécessaire, et supprimez ceux qui ne vous
+concernent pas.
+
+1. Messagerie principale — [votre adresse]
+   Sort demandé : [fermeture définitive / transmission / conservation]
+   Personne chargée : [nom de la personne]
+
+2. Hébergement de fichiers — [service, identifiant]
+   Sort demandé : [ce que vous voulez qu'on en fasse]
+   Personne chargée : [nom]
+
+3. Réseau social — [service, nom du compte]
+   Sort demandé : [fermeture / mise en mémorial / rien publié en mon nom]
+
+4. Banque en ligne — [établissement]
+   [Si vous ne transmettez aucun accès, dites-le : la succession suit sa voie
+   ordinaire, et le silence se lirait comme un oubli.]
+
+5. Gestionnaire de mots de passe — [service]
+   [S'il dispose de son propre accès d'urgence, dites-le ici plutôt que d'y
+   recopier vos identifiants.]
+
+--- CE QUE JE DEMANDE EXPRESSÉMENT ---
+
+[Écrivez ici ce qui ne se déduit d'aucune liste de comptes. Par exemple : qu'aucune
+donnée ne soit publiée ni transmise à un tiers commercial ; que les messages privés
+ne soient lus par personne ; que leur effacement prime sur leur conservation, y
+compris si un proche demande le contraire.]
+
+--- OÙ SE TROUVE LE COFFRE ---
+
+[Nommez les exemplaires et leurs emplacements. Par exemple : sur mon ordinateur
+personnel, sur un disque externe rangé au domicile, et dans les QR codes du pli
+déposé à l'étude. Les trois portent le même contenu.]

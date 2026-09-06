@@ -2,36 +2,57 @@
 <title>SelfVault — ouverture d'un coffre</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-:root{--f:#111;--b:#fbfbf9;--a:#7a1f1f;--l:#ddd}
+:root{--f:#0f1419;--b:#f7f9fc;--a:#3f74b8;--l:#cfdcec;--g:#5a6570;--m:#9aa6b2}
 body{margin:0;font:16px/1.55 Georgia,serif;color:var(--f);background:var(--b)}
 main{max-width:44rem;margin:0 auto;padding:2rem 1.2rem 4rem}
 h1{font-size:1.5rem;margin:0 0 .2rem}
-p.sous{color:#555;margin:0 0 2rem;font-size:.95rem}
+p.sous{color:var(--g);margin:0 0 2rem;font-size:.95rem}
 fieldset{border:1px solid var(--l);border-radius:6px;padding:1.1rem;margin:0 0 1.2rem}
 legend{padding:0 .4rem;font-weight:700;font-size:.9rem}
 label{display:block;margin:.6rem 0 .25rem;font-size:.9rem}
 input[type=file],input[type=text],textarea{width:100%;box-sizing:border-box;padding:.55rem;border:1px solid var(--l);border-radius:4px;font:inherit;font-family:ui-monospace,monospace}
 textarea{resize:vertical;font-size:.8rem}
-#recoller{margin-top:.6rem;background:#555;font-size:.9rem;padding:.4rem 1rem}
+#recoller{margin-top:.6rem;background:var(--g);font-size:.9rem;padding:.4rem 1rem}
+.choix{background:#fff;color:var(--f);border:1px solid var(--m);margin:.2rem .4rem .2rem 0}
+.choix[aria-pressed=true]{background:var(--a);color:#fff;border-color:var(--a)}
+p.aide{font-size:.88rem;color:var(--g);margin:.7rem 0 .2rem}
 button{background:var(--a);color:#fff;border:0;border-radius:4px;padding:.6rem 1.3rem;font:inherit;cursor:pointer}
-button:disabled{background:#999;cursor:default}
+button:disabled{background:#dfe7f0;color:var(--g);cursor:default}
+#sceau{border:1px solid var(--l);border-left:3px solid var(--a);border-radius:4px;background:#fff;padding:.8rem 1rem;margin:0 0 1.2rem;font-size:.92rem}
+#emp{font-family:ui-monospace,monospace;font-size:1.05rem;letter-spacing:.04em}
 #etat{margin:1rem 0;padding:.7rem .9rem;border-radius:4px;font-size:.92rem;display:none}
 .ok{background:#e8f3e8;border:1px solid #b7d6b7;display:block!important}
 .ko{background:#f7e9e9;border:1px solid #dcb4b4;display:block!important}
 #sortie{white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:.85rem;background:#fff;border:1px solid var(--l);border-radius:4px;padding:1rem;margin-top:1rem;display:none}
-footer{margin-top:3rem;border-top:1px solid var(--l);padding-top:1rem;font-size:.82rem;color:#666}
+footer{margin-top:3rem;border-top:1px solid var(--l);padding-top:1rem;font-size:.82rem;color:var(--g)}
 </style>
 <main>
-<h1>Ouverture d'un coffre SelfVault</h1>
-<p class="sous">Cette page fonctionne hors ligne. Rien n'est envoyé nulle part : le déchiffrement a lieu dans ce navigateur.</p>
-<fieldset><legend>1 — le coffre</legend>
-<label for="f">Fichier <code>.selfvault</code></label>
+<h1>Ouvrir un coffre SelfVault</h1>
+<p class="sous">Cette page fonctionne hors ligne, et rien n'en sort : tout se passe dans ce navigateur.</p>
+<fieldset><legend>1 — qu'avez-vous en main&nbsp;?</legend>
+<button id="vfichier" class="choix" type="button" aria-pressed="false">Un fichier sur un ordinateur</button>
+<button id="vpapier" class="choix" type="button" aria-pressed="false">Des feuilles de papier</button>
+<div id="pfichier" hidden>
+<p class="aide">Il se nomme <code>coffre.selfvault</code>.</p>
 <input type="file" id="f" accept=".selfvault,.json,application/json">
-<label for="q">…ou les lignes lues sur les QR codes du coffre, collées ici (une par ligne)</label>
-<textarea id="q" rows="3" spellcheck="false" placeholder="PLI1|V|1/3|eyJmb3JtYXQi…"></textarea>
-<button id="recoller" type="button">Recoller le coffre</button></fieldset>
-<fieldset><legend>2 — le code</legend>
-<label for="c">Code de récupération, ou mot de passe</label>
+</div>
+<div id="ppapier" hidden>
+<p class="aide">Sur le pli, les dernières pages portent des carrés noirs et blancs. Ceux dont
+l'étiquette commence par <b>V</b> sont le coffre. Décodez-les un par un — la page « Relire les
+QR codes » du pli explique comment — et collez chaque texte obtenu ici, un par ligne.</p>
+<textarea id="q" rows="4" spellcheck="false" placeholder="PLI1|V|1/3|eyJmb3JtYXQi…"></textarea>
+<button id="recoller" type="button">Assembler le coffre</button>
+</div></fieldset>
+<div id="sceau" hidden>
+<p style="margin:0 0 .5rem">Ce coffre porte le sceau <b id="emp">…</b></p>
+<label for="ep">Si vous avez le pli sous les yeux, recopiez ici le sceau imprimé en tête du
+dossier technique. <b>C'est facultatif</b>&nbsp;: sans lui le coffre s'ouvre quand même, mais
+rien ne dira qu'il vient bien de ce pli-là.</label>
+<input type="text" id="ep" autocomplete="off" spellcheck="false" autocapitalize="none"
+       autocorrect="off" placeholder="xxxx xxxx xxxx xxxx xxxx xxxx xxxx xxxx">
+</div>
+<fieldset><legend>2 — le secret</legend>
+<label for="c">Le code imprimé sur le pli, ou la phrase que la personne avait retenue.</label>
 <input type="text" id="c" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false" autocapitalize="none" autocorrect="off">
 </fieldset>
 <button id="go" disabled>Ouvrir</button>
@@ -40,26 +61,33 @@ footer{margin-top:3rem;border-top:1px solid var(--l);padding-top:1rem;font-size:
 permet de réécrire ce déchiffreur sans cette page.</footer>
 </main>
 <script>
-const $=s=>document.querySelector(s), b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
-const b64e=u=>btoa(String.fromCharCode(...u));
-const FORMAT='SELFVAULT2';
+/* === NOYAU SELFVAULT3 — début ===================================================
+   Tout ce qui lit, vérifie et ouvre un coffre. Aucune ligne d'ici ne touche à la
+   page : ni `document`, ni `$`, ni message affiché. C'est cette propriété qui
+   permet à l'atelier de fabrication d'embarquer ce bloc TEL QUEL au lieu d'en
+   réécrire une seconde version. `outils/faire_atelier.py` l'extrait entre ces deux
+   marqueurs, et le banc vérifie que l'atelier assemblé en porte une copie exacte. */
+const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+// Par tranches : `String.fromCharCode(...u)` sur un tableau de plusieurs dizaines
+// de milliers d'octets dépasse la pile d'arguments. Le déchiffreur n'encode que
+// des empreintes de 32 octets, mais l'atelier encode des fichiers entiers.
+const b64e=u=>{let s='';for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode(...u.subarray(i,i+0x8000));return btoa(s)};
+const FORMAT='SELFVAULT3';
 const ALPHABET='23456789ABCDEFGHJKMNPQRSTVWXYZ';
 // Bornes du nombre d'itérations. Il est lu dans le fichier : sans plancher, un
 // coffre retouché à `1` se dérive instantanément ; sans plafond, un milliard
 // d'itérations fige le navigateur sans rien dire.
 const ITER_MIN=100000, ITER_MAX=10000000;
-let coffre=null;
-function dis(t,k){const e=$('#etat');e.textContent=t;e.className=k}
-
-// Cette page ne sait rien faire sans WebCrypto. Le dire au chargement plutôt que
-// de laisser la boucle des serrures avaler l'erreur et rendre « vérifie ta
-// saisie » à quelqu'un qui tient le bon code.
-if(!(self.crypto&&self.crypto.subtle)){
-  dis("Ce navigateur ne sait pas déchiffrer : WebCrypto est indisponible. Ouvre cette page "
-     +"depuis un fichier local ou en HTTPS, ou utilise un navigateur plus récent. Le coffre "
-     +"n'est pas en cause.",'ko');
-  $('#f').disabled=true; $('#c').disabled=true;
-}
+// JSON n'a pas d'entiers. Au-delà de 2⁵³, JavaScript rend `version` en flottant :
+// `9007199254740993` et `…992` s'écrivent pareil dans l'AAD, et `10²¹` s'écrit
+// `1e+21` comme ses voisins. Trois fichiers différents, un seul AAD, trois
+// « en-tête authentifié » — sur le champ même dont le pli se sert pour désigner
+// le coffre à détruire.
+const VERSION_MAX=99999;
+// `ITER_MAX` borne le coût d'UNE serrure, jamais leur nombre, et l'ouverture
+// dérive chacune avant de savoir si elle est la bonne. 200 serrures à `ITER_MAX`
+// figent l'onglet cinq minutes, et le fichier tient dans les QR codes d'un pli.
+const SERRURES_MAX=8;
 
 // L'en-tête sous forme canonique — l'AAD de chaque opération AES-GCM. Une ligne
 // par champ, séparateur `\n`, en UTF-8. La notice imprimée doit permettre de
@@ -67,25 +95,78 @@ if(!(self.crypto&&self.crypto.subtle)){
 // canonique, dont l'échappement et l'ordre des clés ne se réimplémentent pas
 // juste du premier coup.
 function enteteCanonique(c){
-  const l=[c.format,'version='+c.version,'date='+c.date,'engagement='+c.engagement];
+  const l=[c.format,'version='+c.version,'date='+c.date,'engagement='+c.engagement,
+           'cle_publique='+c.cle_publique];
   for(const s of c.serrures) l.push('serrure='+s.nom+'|'+s.sel+'|'+s.iterations);
   return new TextEncoder().encode(l.join('\n'));
 }
 
 const leve=m=>{throw new Error(m)};
+
+// 🔑 Ce que le sceau couvre : l'AAD, PLUS ce que l'AAD ne peut pas couvrir.
+//
+// L'AAD est arrêté AVANT tout chiffrement — il leur sert d'entrée. Il ne peut
+// donc pas porter les chiffrés. Or le contenu n'est authentifié que par la clé
+// maîtresse, et TOUTE serrure rend la clé maîtresse : le dépositaire ouvre la
+// sienne, rechiffre ce qu'il veut sous cette même clé avec le même AAD, et
+// l'écran affichait « en-tête authentifié » au-dessus d'un texte que la
+// titulaire n'a jamais écrit. La relation était symétrique.
+//
+// Le message signé prolonge l'AAD dans le même style : une ligne par champ. Les
+// trois champs ajoutés sont du base64, dont la forme exclut déjà « | » et le
+// retour à la ligne — l'encodage reste injectif par la même raison.
+function messageSigne(c){
+  const l=[new TextDecoder().decode(enteteCanonique(c)),
+           'nonce='+c.nonce,'contenu='+c.contenu];
+  for(const s of c.serrures) l.push('scelle='+s.nonce+'|'+s.enveloppe);
+  return new TextEncoder().encode(l.join('\n'));
+}
+
+// La clé privée qui a produit cette signature a été détruite à la fabrication :
+// elle n'a jamais été écrite, ni remise à personne. Plus personne au monde ne
+// peut sceller une autre version de ce coffre.
+async function sceauTenu(c){
+  const cle=await crypto.subtle.importKey('raw',b64(c.cle_publique),
+             {name:'ECDSA',namedCurve:'P-256'},false,['verify']);
+  return await crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'},cle,
+             b64(c.signature),messageSigne(c));
+}
 const B64=/^[A-Za-z0-9+/]+={0,2}$/, DATE=/^\d{4}-\d{2}-\d{2}$/;
 // 🔑 L'encodage de l'AAD doit être INJECTIF. Interdire « | » dans le seul nom de
 // serrure ne suffit pas : `date` et `sel` y entrent aussi, et un « \n » glissé
 // dans l'un d'eux referme une ligne et en ouvre une autre. On fabrique alors deux
 // coffres de dates différentes ayant le même AAD, tous deux authentifiés. Chaque
 // champ est donc contraint à une forme qui exclut les deux caractères structurants.
+// Le sceau signe une PROJECTION du fichier — les champs que les deux chaînes
+// canoniques nomment —, pas le JSON. Une clé qu'il ne nomme pas ne serait couverte
+// par rien : on refuse donc ce qu'on ne nomme pas. Étendre le format, c'est le
+// renuméroter.
+const CHAMPS=['format','version','date','engagement','cle_publique','serrures',
+              'nonce','contenu','signature'];
+const CHAMPS_SERRURE=['nom','sel','iterations','nonce','enveloppe'];
 function verifierEntete(c){
   if(c.format!==FORMAT) leve('format inconnu : '+c.format);
-  if(!Number.isInteger(c.version)||c.version<1) leve('version : entier positif attendu, reçu '+c.version);
+  for(const k of Object.keys(c)) if(!CHAMPS.includes(k))
+    leve("champ inconnu dans l'en-tête : "+k+". Ce format ne porte que "+CHAMPS.join(', ')+'.');
+  if(!Number.isInteger(c.version)||c.version<1||c.version>VERSION_MAX)
+    leve('version : entier de 1 à '+VERSION_MAX+' attendu, reçu '+c.version);
   if(typeof c.date!=='string'||!DATE.test(c.date)) leve('date : AAAA-MM-JJ attendu');
   if(typeof c.engagement!=='string'||!B64.test(c.engagement)) leve("en-tête sans engagement de clé valide");
+  // 65 octets préfixés de 0x04 : un point P-256 non compressé, la forme que
+  // `exportKey('raw')` rend et que `importKey` reprend.
+  if(typeof c.cle_publique!=='string'||!B64.test(c.cle_publique)) leve('cle_publique : base64 attendu');
+  const cp=b64(c.cle_publique);
+  if(cp.length!==65||cp[0]!==4)
+    leve('cle_publique : point P-256 non compressé attendu (65 octets, préfixe 0x04), reçu '+cp.length);
+  if(typeof c.signature!=='string'||!B64.test(c.signature)) leve('signature : base64 attendu');
+  if(b64(c.signature).length!==64) leve('signature : 64 octets attendus (r et s sur 32 chacun)');
   if(!Array.isArray(c.serrures)||!c.serrures.length) leve('coffre sans serrure');
+  if(c.serrures.length>SERRURES_MAX)
+    leve(c.serrures.length+" serrures : le format en accepte "+SERRURES_MAX+" au plus. "
+        +"Chacune coûte une dérivation complète avant qu'on sache si elle est la bonne.");
   for(const s of c.serrures){
+    for(const k of Object.keys(s)) if(!CHAMPS_SERRURE.includes(k))
+      leve('champ inconnu dans une serrure : '+k);
     if(typeof s.nom!=='string'||s.nom.includes('|')||s.nom.includes('\n'))
       leve("nom de serrure invalide : « | » et le retour à la ligne y sont interdits");
     if(typeof s.sel!=='string'||!B64.test(s.sel)) leve('sel de « '+s.nom+' » : base64 attendu');
@@ -98,6 +179,11 @@ function verifierEntete(c){
   if(typeof c.nonce!=='string'||!B64.test(c.nonce)) leve('nonce du coffre : base64 attendu');
   if(typeof c.contenu!=='string'||!B64.test(c.contenu)) leve('contenu : base64 attendu');
 }
+
+// Forme canonique d'un secret : lettres et chiffres seuls. Un code recopié à la
+// main perd ses tirets ou les remplace par des espaces ; la ponctuation ne porte
+// aucun secret, l'entropie vient de l'alphabet.
+const normaliser=s=>[...s].filter(c=>/[\p{L}\p{N}]/u.test(c)).join('');
 
 // Les cinq derniers caractères d'un code de récupération en sont la somme de
 // contrôle. Elle ne s'applique QU'À un code : un mot de passe mémorisé n'en a
@@ -117,28 +203,40 @@ async function controle(corps){
 
 // AES-GCM n'engage pas sa clé : un chiffré peut s'authentifier sous deux clés et
 // rendre deux clairs. Une serrure qui rend une clé maîtresse qui n'est pas celle
-// du coffre est rejetée ici, nommément, au lieu d'échouer plus loin sur le
-// contenu sans qu'on sache pourquoi.
-async function engagementTenu(brut,attendu){
+// du coffre est rejetée nommément, au lieu d'échouer plus loin sur le contenu
+// sans qu'on sache pourquoi.
+async function engagement(brut){
   const k=await crypto.subtle.importKey('raw',brut,{name:'HMAC',hash:'SHA-256'},false,['sign']);
-  const sig=new Uint8Array(await crypto.subtle.sign('HMAC',k,new TextEncoder().encode(FORMAT+'/engagement')));
-  return b64e(sig)===attendu;
+  return b64e(new Uint8Array(await crypto.subtle.sign('HMAC',k,new TextEncoder().encode(FORMAT+'/engagement'))));
 }
+// 🔑 L'empreinte du SCEAU — ce qui rattache un coffre à l'acte de fabrication qui
+// l'a produit, et à lui seul.
+//
+// Le sceau prouve qu'un coffre n'a pas bougé ; il ne prouve pas d'où il vient. La
+// clé publique naît dans le coffre et ne renvoie à rien d'extérieur : qui connaît
+// un code d'ouverture — il est imprimé sur le pli — peut fabriquer un coffre
+// entièrement neuf, cohérent et scellé. Ce qui les distingue est la paire tirée à
+// la fabrication, neuve à chaque coffre.
+//
+// On empreinte donc la clé publique, et non le FICHIER : l'empreinte d'un fichier
+// change dès qu'un outil réécrit le JSON avec un autre espacement, ce qui
+// déclencherait de fausses alertes. Celle-ci survit à toute réécriture et ne
+// change que si le coffre a été refabriqué.
+async function empreinteSceau(c){
+  const h=new Uint8Array(await crypto.subtle.digest('SHA-256',b64(c.cle_publique)));
+  return [...h.slice(0,16)].map(o=>o.toString(16).padStart(2,'0')).join('')
+         .replace(/(.{4})(?=.)/g,'$1 ');
+}
+// La comparaison ignore la casse et tout ce qui n'est pas hexadécimal : le pli
+// imprime des groupes de quatre, et une recopie à la main perd les espaces.
+const hex=s=>(s||'').toLowerCase().replace(/[^0-9a-f]/g,'');
+const memeEmpreinte=(a,b)=>hex(a).length>0&&hex(a)===hex(b);
 
-$('#f').onchange=async e=>{
-  const fi=e.target.files[0]; if(!fi)return;
-  try{
-    coffre=JSON.parse(await fi.text());
-    verifierEntete(coffre);
-    // Rien de l'en-tête n'est affiché ici : à ce stade il n'est pas encore
-    // authentifié. La version et la date apparaissent après l'ouverture, quand
-    // l'AAD a prouvé qu'elles n'ont pas bougé — c'est sur ce numéro que le pli
-    // demande au dépositaire de se fier pour savoir quel coffre est le plus récent.
-    dis('Coffre lu — '+coffre.serrures.length+' serrure(s). Version et date seront affichées '
-       +"après l'ouverture, une fois authentifiées.",'ok');
-    $('#go').disabled=false;
-  }catch(err){ coffre=null; $('#go').disabled=true; dis('Fichier illisible : '+err.message,'ko'); }
-};
+// La fabrique CALCULE cet engagement, le déchiffreur le VÉRIFIE. Les deux passent
+// donc par la même fonction : deux exemplaires du même HMAC finiraient par ne
+// plus dire la même chose, et le coffre ne s'ouvrirait plus qu'avec le programme
+// qui l'a écrit.
+const engagementTenu=async(brut,attendu)=>await engagement(brut)===attendu;
 
 // Recoller le coffre depuis les lignes des QR codes, sans aucun outil externe.
 // Sur Windows, l'outil Capture d'écran décode un QR code et rend son texte : le
@@ -146,8 +244,8 @@ $('#f').onchange=async e=>{
 // chemin qui ne demande ni installation, ni ligne de commande, ni envoi du
 // fichier à un service tiers — ce dernier étant exclu, le coffre étant l'objet
 // même qu'on protège.
-$('#recoller').onclick=()=>{
-  const lignes=$('#q').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+function recoller(texte){
+  const lignes=texte.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
   const parts=new Map(); let total=0, divergent=null;
   for(const l of lignes){
     const m=/^PLI1\|V\|(\d+)\/(\d+)\|(.*)$/.exec(l);
@@ -156,84 +254,174 @@ $('#recoller').onclick=()=>{
     if(parts.has(rang)&&parts.get(rang)!==m[3]) divergent=rang;
     parts.set(rang,m[3]);
   }
-  if(!total) return dis("Aucune ligne de coffre reconnue. Chaque ligne commence par « PLI1|V| » "
-                      +"— celles en « PLI1|A| » sont le déchiffreur, pas le coffre.",'ko');
-  if(divergent!==null) return dis("Deux lectures du QR code V"+divergent+"/"+total+" ne donnent pas "
-                      +"la même chose. L'une des deux copies est abîmée.",'ko');
+  if(!total) leve("Aucune ligne de coffre reconnue. Chaque ligne commence par « PLI1|V| » "
+                 +"— celles en « PLI1|A| » sont le déchiffreur, pas le coffre.");
+  if(divergent!==null) leve("Deux lectures du QR code V"+divergent+"/"+total+" ne donnent pas "
+                 +"la même chose. L'une des deux copies est abîmée.");
   const absents=[];
   for(let i=1;i<=total;i++) if(!parts.has(i)) absents.push("V"+i+"/"+total);
-  if(absents.length) return dis("Il manque "+absents.length+" QR code(s) : "+absents.join(", ")
-                      +". Rien n'a été recollé.",'ko');
-  let texte=""; for(let i=1;i<=total;i++) texte+=parts.get(i);
+  if(absents.length) leve("Il manque "+absents.length+" QR code(s) : "+absents.join(", ")
+                 +". Rien n'a été recollé.");
+  let contenu=""; for(let i=1;i<=total;i++) contenu+=parts.get(i);
+  let c;
+  try{ c=JSON.parse(new TextDecoder().decode(b64(contenu))); }
+  catch(err){ leve("Les lignes se recollent mal : "+err.message); }
+  verifierEntete(c);
+  return {coffre:c,total:total};
+}
+
+// Ouvre le coffre avec le secret saisi. Rend { serrure, clair } quand une serrure
+// cède ; rend { echec } quand aucune ne cède — ce n'est pas une anomalie, c'est
+// un refus, et le message y diagnostique la saisie. Toute autre défaillance lève :
+// un fichier fabriqué et un mauvais mot de passe ne doivent pas se raconter pareil.
+async function ouvrir(coffre,saisie){
+  // Le sceau se vérifie AVANT toute dérivation : il ne dépend d'aucun secret, il
+  // coûte une milliseconde, et il répond à une question qui précède toutes les
+  // autres — ce fichier est-il celui que la titulaire a scellé ?
+  if(!await sceauTenu(coffre))
+    leve("le sceau de ce coffre ne tient pas. Le fichier a été modifié depuis sa "
+        +"fabrication : ce n'est pas ce que la titulaire a déposé. Aucune serrure "
+        +"ne sera essayée.");
+  const code=normaliser(saisie);
+  const aad=enteteCanonique(coffre);
+  let maitresse=null, ouverte=null;
+  for(const s of coffre.serrures){
+    let brut;
+    try{
+      const km=await crypto.subtle.deriveKey(
+        {name:'PBKDF2',salt:b64(s.sel),iterations:s.iterations,hash:'SHA-256'},
+        await crypto.subtle.importKey('raw',new TextEncoder().encode(code),'PBKDF2',false,['deriveKey']),
+        {name:'AES-GCM',length:256},false,['decrypt']);
+      brut=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64(s.nonce),additionalData:aad},km,b64(s.enveloppe));
+    }catch(err){
+      // Seul l'échec d'authentification veut dire « ce n'est pas cette
+      // serrure ». Tout le reste — WebCrypto absent, base64 illisible, mémoire
+      // épuisée — remonte, au lieu d'être maquillé en erreur de saisie.
+      if(err&&err.name==='OperationError') continue;
+      throw err;
+    }
+    if(!await engagementTenu(brut,coffre.engagement)){
+      leve("la serrure « "+s.nom+" » s'ouvre mais rend une clé qui n'est pas celle "
+          +"de ce coffre. Le fichier a été fabriqué ou assemblé.");
+    }
+    ouverte=s.nom;
+    maitresse=await crypto.subtle.importKey('raw',brut,{name:'AES-GCM'},false,['decrypt']);
+    break;
+  }
+  if(!maitresse){
+    let msg="Aucune serrure ne s'ouvre.";
+    const maj=code.toUpperCase();
+    if(casseSeule(code)&&await controle(maj.slice(0,20))===maj.slice(20))
+      msg+=" Le code a été saisi en minuscules : il s'écrit tout en majuscules.";
+    else if(ressembleAUnCode(code)&&await controle(code.slice(0,20))!==code.slice(20))
+      msg+=" Les cinq derniers caractères ne concordent pas avec les vingt premiers : "
+          +"c'est une faute de recopie, pas un mauvais code.";
+    else msg+=" Soit le secret saisi n'est pas le bon, soit l'en-tête du fichier a été "
+            +"modifié depuis sa fabrication — les deux se ressemblent, c'est voulu.";
+    return {echec:msg};
+  }
+  let clair;
   try{
-    coffre=JSON.parse(new TextDecoder().decode(b64(texte)));
+    clair=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64(coffre.nonce),additionalData:aad},maitresse,b64(coffre.contenu));
+  }catch(err){
+    if(err&&err.name==='OperationError')
+      leve("la serrure « "+ouverte+" » s'est ouverte, mais le contenu n'est pas "
+          +"celui de cet en-tête. Le fichier est abîmé, ou il a été assemblé "
+          +"à partir de deux coffres différents.");
+    throw err;
+  }
+  return {serrure:ouverte,clair:new TextDecoder().decode(clair)};
+}
+/* === NOYAU SELFVAULT3 — fin ================================================== */
+
+// --- Le câblage de cette page-ci ---------------------------------------------
+const $=s=>document.querySelector(s);
+let coffre=null;
+function dis(t,k){const e=$('#etat');e.textContent=t;e.className=k}
+
+// Cette page ne sait rien faire sans WebCrypto. Le dire au chargement plutôt que
+// de laisser la boucle des serrures avaler l'erreur et rendre « vérifie ta
+// saisie » à quelqu'un qui tient le bon code.
+if(!(self.crypto&&self.crypto.subtle)){
+  dis("Ce navigateur ne sait pas déchiffrer : WebCrypto est indisponible. Ouvre cette page "
+     +"depuis un fichier local ou en HTTPS, ou utilise un navigateur plus récent. Le coffre "
+     +"n'est pas en cause.",'ko');
+  $('#f').disabled=true; $('#c').disabled=true;
+}
+
+// Rien de l'en-tête n'est affiché avant l'ouverture : à ce stade il n'est pas
+// encore authentifié. La version et la date apparaissent après, quand l'AAD a
+// prouvé qu'elles n'ont pas bougé — c'est sur ce numéro que le pli demande au
+// dépositaire de se fier pour savoir quel coffre est le plus récent.
+const APRES="Version et date seront affichées après l'ouverture, une fois authentifiées.";
+
+// On demande d'abord ce que la personne a SOUS LES YEUX : un fichier, ou des
+// feuilles de papier.
+function voie(quoi){
+  $('#pfichier').hidden = quoi!=='fichier';
+  $('#ppapier').hidden  = quoi!=='papier';
+  $('#vfichier').setAttribute('aria-pressed', quoi==='fichier');
+  $('#vpapier').setAttribute('aria-pressed', quoi==='papier');
+}
+$('#vfichier').onclick=()=>voie('fichier');
+$('#vpapier').onclick=()=>voie('papier');
+
+// Le sceau s'affiche dès qu'un coffre est là : il ne dépend d'aucun secret, et
+// c'est la seule chose que la personne puisse comparer à son papier AVANT de
+// s'engager dans une ouverture.
+async function montrerSceau(){
+  $('#emp').textContent=await empreinteSceau(coffre);
+  $('#sceau').hidden=false;
+}
+
+$('#f').onchange=async e=>{
+  const fi=e.target.files[0]; if(!fi)return;
+  try{
+    coffre=JSON.parse(await fi.text());
     verifierEntete(coffre);
-  }catch(err){ coffre=null; $('#go').disabled=true;
-    return dis("Les lignes se recollent mal : "+err.message,'ko'); }
+    await montrerSceau();
+    dis('Coffre lu — '+coffre.serrures.length+' serrure(s). '+APRES,'ok');
+    $('#go').disabled=false;
+  }catch(err){ coffre=null; $('#sceau').hidden=true; $('#go').disabled=true;
+               dis('Fichier illisible : '+err.message,'ko'); }
+};
+
+$('#recoller').onclick=async()=>{
+  let r;
+  try{ r=recoller($('#q').value); }
+  catch(err){ coffre=null; $('#sceau').hidden=true; $('#go').disabled=true; return dis(err.message,'ko'); }
+  coffre=r.coffre;
+  await montrerSceau();
   $('#go').disabled=false;
-  dis("Coffre recollé depuis "+total+" QR code(s) — "+coffre.serrures.length+" serrure(s). "
-     +"Version et date seront affichées après l'ouverture, une fois authentifiées.",'ok');
+  dis("Coffre recollé depuis "+r.total+" QR code(s) — "+coffre.serrures.length+" serrure(s). "+APRES,'ok');
 };
 
 $('#go').onclick=async()=>{
-  // Forme canonique : lettres et chiffres seuls. Un code recopié à la main perd
-  // ses tirets ou les remplace par des espaces ; la ponctuation ne porte aucun secret.
-  const code=[...$('#c').value].filter(c=>/[\p{L}\p{N}]/u.test(c)).join('');
-  if(!code||!coffre)return;
+  const saisie=$('#c').value;
+  if(!normaliser(saisie)||!coffre)return;
   $('#go').disabled=true; $('#sortie').style.display='none';
+  // Le sceau imprimé se compare AVANT toute dérivation : il ne demande aucun
+  // secret, et un fichier qui n'est pas celui du pli ne mérite pas qu'on essaie
+  // ses serrures.
+  const attendu=$('#ep').value, porte=await empreinteSceau(coffre);
+  if(hex(attendu)&&!memeEmpreinte(porte,attendu)){
+    $('#go').disabled=false;
+    return dis("Le sceau de ce coffre ne correspond pas à celui imprimé sur votre pli. "
+      +"Ce fichier n'est pas celui qui a été déposé — ne vous en servez pas, et "
+      +"reconstituez le coffre depuis les images du pli.",'ko');
+  }
+  const rattache=hex(attendu)
+    ? " Il correspond au sceau imprimé sur votre pli : c'est bien le coffre déposé."
+    : " Sans le sceau imprimé sur le pli, rien ne rattache ce fichier au dépôt.";
   dis('Dérivation de la clé en cours (quelques secondes)…','ok');
   await new Promise(r=>setTimeout(r,30));
   try{
-    const aad=enteteCanonique(coffre);
-    let maitresse=null, brute=null, ouverte=null;
-    for(const s of coffre.serrures){
-      let brut;
-      try{
-        const km=await crypto.subtle.deriveKey(
-          {name:'PBKDF2',salt:b64(s.sel),iterations:s.iterations,hash:'SHA-256'},
-          await crypto.subtle.importKey('raw',new TextEncoder().encode(code),'PBKDF2',false,['deriveKey']),
-          {name:'AES-GCM',length:256},false,['decrypt']);
-        brut=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64(s.nonce),additionalData:aad},km,b64(s.enveloppe));
-      }catch(err){
-        // Seul l'échec d'authentification veut dire « ce n'est pas cette
-        // serrure ». Tout le reste — WebCrypto absent, base64 illisible, mémoire
-        // épuisée — remonte, au lieu d'être maquillé en erreur de saisie.
-        if(err&&err.name==='OperationError') continue;
-        throw err;
-      }
-      if(!await engagementTenu(brut,coffre.engagement)){
-        throw new Error("la serrure « "+s.nom+" » s'ouvre mais rend une clé qui n'est pas celle "
-                       +"de ce coffre. Le fichier a été fabriqué ou assemblé.");
-      }
-      brute=brut; ouverte=s.nom;
-      maitresse=await crypto.subtle.importKey('raw',brut,{name:'AES-GCM'},false,['decrypt']);
-      break;
-    }
-    if(!maitresse){
-      let msg="Aucune serrure ne s'ouvre.";
-      const maj=code.toUpperCase();
-      if(casseSeule(code)&&await controle(maj.slice(0,20))===maj.slice(20))
-        msg+=" Le code a été saisi en minuscules : il s'écrit tout en majuscules.";
-      else if(ressembleAUnCode(code)&&await controle(code.slice(0,20))!==code.slice(20))
-        msg+=" Les cinq derniers caractères ne concordent pas avec les vingt premiers : "
-            +"c'est une faute de recopie, pas un mauvais code.";
-      else msg+=" Soit le secret saisi n'est pas le bon, soit l'en-tête du fichier a été "
-              +"modifié depuis sa fabrication — les deux se ressemblent, c'est voulu.";
-      $('#go').disabled=false; return dis(msg,'ko');
-    }
-    let clair;
-    try{
-      clair=await crypto.subtle.decrypt({name:'AES-GCM',iv:b64(coffre.nonce),additionalData:aad},maitresse,b64(coffre.contenu));
-    }catch(err){
-      if(err&&err.name==='OperationError')
-        throw new Error("la serrure « "+ouverte+" » s'est ouverte, mais le contenu n'est pas "
-                       +"celui de cet en-tête. Le fichier est abîmé, ou il a été assemblé "
-                       +"à partir de deux coffres différents.");
-      throw err;
-    }
-    dis('Serrure « '+ouverte+' » ouverte — coffre version '+coffre.version
-       +', du '+coffre.date+'. En-tête authentifié.','ok');
-    $('#sortie').textContent=new TextDecoder().decode(clair); $('#sortie').style.display='block';
+    const r=await ouvrir(coffre,saisie);
+    if(r.echec){ $('#go').disabled=false; return dis(r.echec,'ko'); }
+    dis('Serrure « '+r.serrure+' » ouverte — coffre version '+coffre.version
+       +', du '+coffre.date+'. Sceau intact : non modifié depuis sa fabrication.'
+       +rattache,'ok');
+    $('#sortie').textContent=r.clair; $('#sortie').style.display='block';
   }catch(err){
     dis('Ouverture impossible : '+(err&&err.message?err.message:err),'ko');
   }

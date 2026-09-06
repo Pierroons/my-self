@@ -26,7 +26,7 @@ Une clé maîtresse tirée au sort chiffre le contenu. Elle est ensuite enfermé
 | serrure | secret | détenteur | entropie |
 |---|---|---|---|
 | **L1** | code de récupération imprimé | le dépositaire | 98 bits |
-| **L2** | phrase de passe tirée au sort | le titulaire | ≥ 77 bits |
+| **L2** | phrase de passe tirée au sort | le titulaire | ≥ 96 bits |
 
 C'est le schéma de SelfDataGuard (`data_master_key_pwd_wrap` / `_recov_wrap`) ; seul le destinataire de la seconde enveloppe change. Ajouter ou retirer une serrure ne touche ni au contenu, ni aux autres.
 
@@ -34,7 +34,11 @@ C'est le schéma de SelfDataGuard (`data_master_key_pwd_wrap` / `_recov_wrap`) ;
 
 ## La limite assumée
 
-**Le détenteur du pli complet peut ouvrir les données.** La double serrure supprime la protection contre l'ouverture prématurée. C'est un arbitrage : on ne se protège pas ici contre un dépositaire malhonnête, mais contre l'oubli, la perte et la disparition de l'éditeur. C'est écrit en page 1 du pli.
+**Le détenteur du pli complet peut LIRE les données.** La double serrure supprime la protection contre l'ouverture prématurée. C'est un arbitrage : on ne se protège pas ici contre un dépositaire malhonnête, mais contre l'oubli, la perte et la disparition de l'éditeur. C'est écrit en page 1 du pli.
+
+**Il ne peut pas modifier ce coffre-ci.** Le contenu n'est authentifié que par la clé maîtresse, et toute serrure rend la clé maîtresse : sans autre protection, qui détient une serrure réécrit ce que l'autre lira, sans trace. La fabrique scelle donc le coffre — ECDSA P-256, clé publique dans l'en-tête, **clé privée détruite** —, et le déchiffreur vérifie ce sceau avant d'essayer la moindre serrure. Amender, c'est fabriquer un nouveau coffre.
+
+**Le sceau prouve l'intégrité, pas l'origine.** La clé publique naît dans le coffre et ne renvoie à rien d'extérieur : qui connaît un code d'ouverture peut fabriquer un coffre neuf, scellé et cohérent, qui s'ouvrira avec le code imprimé. L'ancrage est l'**empreinte du sceau** — `SHA-256` de la clé publique, imprimée à côté du code d'ouverture. L'écran affiche celle du fichier chargé et compare si on lui recopie celle du pli. Elle porte sur la clé et non sur le fichier, donc elle survit à toute réécriture du JSON ; et elle reste **facultative**, parce qu'un détenteur légitime qui a perdu le pli doit pouvoir ouvrir.
 
 ## Ce que porte le module
 
@@ -59,15 +63,17 @@ python3 outils/lire_pli.py pli-scanne.pdf  # reconstitue depuis le pli scanné
 bash tests/banc.sh                         # le banc, sur les deux lecteurs
 ```
 
-## Le format `SELFVAULT2`
+## Le format `SELFVAULT3`
 
 JSON, champs binaires en Base64. **La notice imprimée dans le pli fait autorité** : elle permet de réécrire un déchiffreur sans disposer de ce dépôt, et c'est pour cette raison que le format n'emploie que des primitives natives aux navigateurs.
 
-L'en-tête canonique est passé en données authentifiées associées de chaque opération AES-GCM, la clé maîtresse est engagée par un HMAC, le nombre d'itérations est borné à la lecture comme à l'écriture, et chaque champ entrant dans l'AAD est contraint à une forme qui exclut ses deux caractères structurants.
+L'en-tête canonique est passé en données authentifiées associées de chaque opération AES-GCM, la clé maîtresse est engagée par un HMAC, le nombre d'itérations, le nombre de serrures et le numéro de version sont bornés à la lecture comme à l'écriture, et chaque champ entrant dans l'AAD est contraint à une forme qui exclut ses deux caractères structurants.
+
+L'AAD est arrêté avant les chiffrements, puisqu'il leur sert d'entrée : il ne peut donc pas les couvrir. Une signature ECDSA P-256 prend le relais sur ce que l'AAD ne peut pas atteindre — les nonces, les enveloppes et le contenu chiffré.
 
 ## Statut
 
-Format arrêté le 4 septembre 2026. **Le pli n'a pas encore été présenté à un notaire**, et le module n'est déployé nulle part. `tests/banc.sh` éprouve chaque contrôle sur le défaut qu'il prétend attraper, avec son contre-témoin, sur les deux lecteurs ; il tourne en intégration continue et imprime son propre décompte.
+Format arrêté le 4 septembre 2026, scellé le 6 septembre 2026 (`SELFVAULT3`). **Le pli n'a pas encore été présenté à un notaire**, et le module n'est déployé nulle part. `tests/banc.sh` éprouve chaque contrôle sur le défaut qu'il prétend attraper, avec son contre-témoin, sur les deux lecteurs ; il tourne en intégration continue et imprime son propre décompte.
 
 **Le pli ne dépend d'aucun de ces programmes.** Il porte une page « Relire les QR codes » avec deux chemins. **Sur Windows, sans rien installer** : l'Outil Capture d'écran décode un QR code et rend son texte ; le coffre n'en compte que trois, et le déchiffreur les recolle lui-même — une case prévue pour ça. **Sur Linux ou macOS** : quatre commandes shell n'employant que `zbar-tools` et des outils Unix ordinaires, que le banc **extrait du pli rendu et exécute telles quelles** — une procédure imprimée sur un document opposable qu'on n'a jamais lancée est une affirmation, pas une mesure.
 
@@ -75,6 +81,6 @@ Le pli interdit formellement les lecteurs de QR codes en ligne : ces codes **son
 
 Chaque QR code est imprimé **deux fois**, sur deux pages distinctes. Perdre, déchirer ou tacher une page ne coûte rien ; le banc vérifie que chaque exemplaire suffit seul. Le lecteur refuse quand deux lectures d'un même rang divergent, plutôt que de laisser la dernière lue gagner en silence.
 
-La boucle papier est mesurée de bout en bout : le pli rendu, rastérisé, relu, reconstitué **octet pour octet**, et le coffre rouvert avec le code imprimé sur sa page 2. `outils/lire_pli.py` nomme tous les QR codes manquants, n'écrit aucun fichier partiel, et refuse de conclure quand il n'a pas d'empreinte de référence à comparer. **Plancher de résolution re-mesuré le 04/09/2026 : 200 points par pouce passent, 150 échouent** — d'où le minimum de 300 inscrit sur le pli.
+La boucle papier est mesurée de bout en bout : le pli rendu, rastérisé, relu, reconstitué **octet pour octet**, et le coffre rouvert avec le code imprimé sur sa page 2. `outils/lire_pli.py` nomme tous les QR codes manquants, n'écrit aucun fichier partiel, et refuse de conclure quand il n'a pas d'empreinte de référence à comparer. **Plancher de résolution re-mesuré le 06/09/2026 sur le pli scellé : 200 points par pouce passent, 150 échouent** — les deux valeurs sont éprouvées par le banc papier, l'une parce qu'elle doit passer, l'autre parce qu'elle doit refuser — d'où le minimum de 300 inscrit sur le pli.
 
 Reste ouvert : les conditions de remise, à écrire dans l'acte de dépôt — la page 1 renvoie aujourd'hui à un accord dont le notaire successeur n'aura pas connaissance.
