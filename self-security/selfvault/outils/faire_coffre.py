@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fabrique un coffre SELFVAULT2 de démonstration, à deux serrures."""
+"""Fabrique un coffre SELFVAULT3 de démonstration, à deux serrures."""
 import datetime, json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from selfvault import FORMAT, bits_de, code_recuperation, fabriquer, tirer_phrase
@@ -58,8 +58,11 @@ code_notaire = code_recuperation()
 # sur un coffre remis à un tiers : voir le plancher d'entropie dans selfvault.py.
 MOT_UTILISATEUR = tirer_phrase()
 
-coffre = fabriquer(CONTENU, [("L2 — titulaire", MOT_UTILISATEUR),
-                             ("L1 — dépositaire", code_notaire)],
+# L'ordre compte : l'ouverture essaie les serrures dans l'ordre du fichier, et
+# le dépositaire est le seul dont on soit sûr qu'il ouvrira un jour. Le mettre
+# en second lui coûterait une dérivation PBKDF2 complète pour rien.
+coffre = fabriquer(CONTENU, [("L1 — dépositaire", code_notaire),
+                             ("L2 — titulaire", MOT_UTILISATEUR)],
                    version=VERSION, date=DATE)
 
 SD      = os.path.dirname(os.path.abspath(__file__))
@@ -70,13 +73,11 @@ chemin = os.path.join(SORTIE, "coffre.selfvault")
 open(chemin, "w").write(json.dumps(coffre, ensure_ascii=False, indent=1))
 open(os.path.join(SECRETS, "code_L1.txt"), "w").write(code_notaire + "\n")
 open(os.path.join(SECRETS, "mot_L2.txt"), "w").write(MOT_UTILISATEUR + "\n")
-# Le nom de la titulaire n'entre pas dans le coffre en clair : il vit à côté,
-# pour la page 1 du pli, qui l'imprime.
 # L'identité n'entre pas dans le coffre en clair : elle vit à côté, pour la
 # première page du pli. Un dépôt réel demande plus qu'un nom — un notaire
 # identifie une personne, pas une chaîne de caractères.
 json.dump({"titulaire": "Sophie MARTIN",
-           "naissance": "12 mars 1961 à Bordeaux (Gironde)",
+           "naissance": "12 mars 1961 à Sainte-Foy (33220)",
            "reference": "SV-2026-0001"},
           open(os.path.join(SORTIE, "meta.json"), "w"), ensure_ascii=False)
 print(f"version : {VERSION} — du {DATE}")

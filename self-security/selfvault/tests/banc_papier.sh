@@ -38,6 +38,27 @@ S="$MODULE/sortie"
 weasyprint "$S/pli.html" "$T/pli.pdf" 2>/dev/null || { echo "✗ rendu PDF"; exit 1; }
 L1=$(cat "$MODULE/outils/secrets/code_L1.txt")
 
+# 🔑 Le pli PDF est rendu ici, une fois. Plus bas, le contrôle des tirages mêlés
+# refabrique coffre et pli — `faire_coffre.py` et `faire_pli.py` écrivent dans
+# `sortie/` sans paramètre — et `sortie/` cesse alors de correspondre à ce PDF.
+# Tout contrôle postérieur qui comparerait à `$S/` mesurerait deux tirages
+# différents et rougirait pour la mauvaise raison. On fige donc les références.
+cp "$S/coffre.selfvault" "$T/ref-coffre.selfvault"
+
+# L'empreinte du sceau imprimée sur le pli est le seul ancrage entre un fichier et
+# CE dépôt : le sceau prouve qu'un coffre n'a pas bougé, jamais d'où il vient. Une
+# empreinte imprimée fausse rendrait l'ancrage inutile sans que rien ne le dise.
+n=$((n+1))
+SCEAU=$(python3 -c "
+import json, sys; sys.path.insert(0, '$MODULE/outils')
+from selfvault import empreinte_sceau
+print(empreinte_sceau(json.load(open('$S/coffre.selfvault'))))")
+if grep -qF "$SCEAU" "$S/pli.html"; then
+  echo "  ✓ le sceau imprimé sur le pli est celui du coffre déposé"
+else
+  echo "  ✗ le pli imprime un sceau qui n'est pas celui du coffre : « $SCEAU » absent"; echec=1
+fi
+
 echo "▸ La boucle complète — le contre-témoin de tout le reste"
 n=$((n+1))
 if lire "$T/pli.pdf" -o "$T/plein" >"$T/log" 2>&1 \
@@ -178,14 +199,20 @@ rouge "$T/s3" "AUCUNE empreinte de référence" "sans référence, le lecteur re
 # et le lecteur doit le nommer plutôt que rendre un fichier tronqué.
 mkdir -p "$T/troue2"
 cp "$T"/pages/p-*.png "$T/troue2/"
-# La même page dans chaque exemplaire porte les mêmes rangs : retirer les deux
-# fait disparaître ces rangs du pli entier, quelle que soit la mise en page.
-rm -f "$T/troue2/$(basename "$(echo "$avecqr" | head -n "$moitie" | tail -1)")"
-rm -f "$T/troue2/$(basename "$(echo "$avecqr" | tail -n "$moitie" | tail -1)")"
+# Les pages à retirer sont DÉSIGNÉES PAR CE QU'ELLES PORTENT, pas par leur rang
+# dans le document : toute page où figure un QR code de la pièce V s'en va, dans
+# les deux exemplaires. Retirer « la dernière page de chaque moitié » supposait
+# que ces deux pages portent la pièce V en entier — ce qui a cessé d'être vrai
+# le jour où le déchiffreur a grossi de deux QR codes.
+for f in "$T"/pages/p-*.png; do
+  if zbarimg --raw -q "$f" 2>/dev/null | grep -q '^PLI1|V|'; then
+    rm -f "$T/troue2/$(basename "$f")"
+  fi
+done
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/troue2" -o "$T/s5" --empreinte-app "$EA" --empreinte-coffre "$EV")
-# Les deux pages retirées portent la pièce V en entier : le lecteur doit nommer
-# la pièce, pas énumérer ses rangs. Le cas « quelques rangs manquants » est
-# éprouvé plus haut, sur des QR codes retirés un à un.
+# La pièce V a disparu du pli entier : le lecteur doit nommer la PIÈCE, pas
+# énumérer ses rangs. Le cas « quelques rangs manquants » est éprouvé plus haut,
+# sur des QR codes retirés un à un.
 rouge "$T/s5" "entièrement absente" "une pièce absente des deux exemplaires — nommée, rien d'écrit"
 
 # Deux lectures divergentes d'un même rang : deux plis différents mêlés. La
@@ -197,11 +224,26 @@ cp "$S/qr"/V01.png "$T/melee/autre-V01.png"
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/melee" -o "$T/s6")
 rouge "$T/s6" "ne donnent pas la même chose" "deux tirages mêlés — divergence nommée"
 
-# Le plancher de résolution. 300 dpi passe (contre-témoin ci-dessus), 100 échoue.
+# Le plancher de résolution, éprouvé DES DEUX CÔTÉS de la valeur publiée. Les
+# README et le pli annoncent « 200 points par pouce passent, 150 échoue » : ce sont
+# ces deux nombres-là qu'il faut mesurer, et pas un troisième plus confortable.
+# Le banc n'éprouvait que 100 dpi — la phrase publiée ne tenait sous aucun contrôle.
+n=$((n+1))
+mkdir -p "$T/plancher"
+pdftoppm -r 200 -gray -png "$T/pli.pdf" "$T/plancher/p" 2>/dev/null
+if python3 "$MODULE/outils/lire_pli.py" "$T/plancher" -o "$T/s200" \
+     --empreinte-app "$EA" --empreinte-coffre "$EV" >/dev/null 2>&1 \
+   && cmp -s "$T/s200/selfvault.html" "$MODULE/pli/selfvault.html" \
+   && cmp -s "$T/s200/coffre.selfvault" "$T/ref-coffre.selfvault"; then
+  echo "  ✓ 200 dpi — la valeur publiée passe, octet pour octet"
+else
+  echo "  ✗ 200 dpi échoue alors que le pli et les README l'annoncent tenable"; echec=1
+fi
+
 mkdir -p "$T/basse"
-pdftoppm -r 100 -gray -png "$T/pli.pdf" "$T/basse/p" 2>/dev/null
+pdftoppm -r 150 -gray -png "$T/pli.pdf" "$T/basse/p" 2>/dev/null
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/basse" -o "$T/s4" --empreinte-app "$EA" --empreinte-coffre "$EV")
-rouge "$T/s4" "Pli incomplet" "numérisation à 100 dpi — refus, pas de fichier tronqué"
+rouge "$T/s4" "Pli incomplet" "150 dpi — la valeur publiée échoue, sans fichier tronqué"
 
 echo
 if [ $echec -eq 0 ]; then echo "✓ Boucle papier conforme — $n contrôles."; else echo "✗ Boucle papier en échec — $n contrôles."; fi

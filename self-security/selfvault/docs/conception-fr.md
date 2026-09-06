@@ -60,13 +60,56 @@ sans retirer l'autre.
 
 ### La limite assumée
 
-**Le détenteur du pli complet peut ouvrir les données.** La double serrure supprime la
+**Le détenteur du pli complet peut LIRE les données.** La double serrure supprime la
 protection contre l'ouverture prématurée. C'est un arbitrage volontaire : on ne se protège
 pas ici contre un notaire malhonnête, mais contre l'oubli, la perte et la mort de l'éditeur.
 Le notaire est l'institution construite pour ce risque — il détient déjà des testaments
 qu'il n'ouvre pas, avec un ordre professionnel et un successeur désigné.
 
 C'est écrit en page 1 du pli.
+
+**Il ne peut pas les RÉÉCRIRE — depuis le 06/09/2026.** Ce n'était pas vrai avant, et ce
+document ne l'admettait pas : il ne parlait que de lecture. Le contenu n'était authentifié
+que par la clé maîtresse, et toute serrure rend la clé maîtresse. Le dépositaire ouvrait la
+sienne, rechiffrait ce qu'il voulait sous cette même clé avec le même AAD — l'en-tête ne
+bougeait pas d'un octet, l'engagement restait valide, l'enveloppe de la titulaire était
+intacte, et l'application lui affichait « en-tête authentifié » au-dessus d'un texte qu'elle
+n'avait jamais écrit. La relation était symétrique : elle pouvait réécrire ce que le
+dépositaire lirait.
+
+La fabrique tire donc une paire ECDSA P-256, publie la clé publique dans l'en-tête — donc
+dans l'AAD —, signe l'ensemble, et **détruit la clé privée**. Dans le navigateur, celle-ci
+est créée non exportable : le moteur refuse de la rendre, elle ne peut être ni écrite ni
+copiée. Plus personne au monde ne peut sceller une autre version de ce coffre. Amender,
+c'est en fabriquer un nouveau, de version supérieure.
+
+**Le sceau prouve l'intégrité, pas l'origine.** La clé publique naît dans le coffre et ne
+renvoie à rien d'extérieur : quelqu'un qui a photographié le pli connaît le code L1 et peut
+fabriquer un coffre entièrement neuf, cohérent et scellé, qui s'ouvrira avec le code imprimé.
+Rien dans le fichier ne l'en distingue.
+
+**Ce qui l'en distingue est l'empreinte du sceau, imprimée sur le pli** — `SHA-256` de la clé
+publique, 32 caractères groupés par quatre, à côté du code d'ouverture, là où la personne
+regarde. L'écran d'ouverture affiche celle du fichier qu'on lui donne, et accepte qu'on lui
+recopie celle du pli : il compare alors, et refuse bruyamment avant d'essayer la moindre
+serrure.
+
+**Elle empreinte la clé publique, pas le fichier.** L'empreinte d'un fichier change dès qu'un
+outil réécrit le JSON avec un autre espacement — en faire une porte fabriquerait des refus
+injustifiés chez quelqu'un dont le coffre est intact. Celle de la clé survit à toute
+réécriture et ne change que si le coffre a été refabriqué.
+
+**Et elle reste facultative.** Un détenteur légitime qui a le coffre mais plus le pli —
+incendie, étude fermée — doit pouvoir ouvrir : c'est le risque contre lequel tout le module
+existe. Sans empreinte, la page ouvre et dit ce qu'elle ne sait pas : « rien ne rattache ce
+fichier au dépôt ». Un garde-fou qui bloque l'ouverture légitime pour empêcher une
+substitution serait un mauvais échange sur cet objet-là.
+
+Reste hors format : l'identification du déposant par l'étude, seule défense contre la
+substitution du pli lui-même.
+
+**Coût mesuré le 06/09/2026** : le déchiffreur passe de 17 453 à 21 057 octets, le pli de 18 à 21 QR codes
+et de 11 à 13 pages.
 
 ## Trois objets, et un ordre de priorité
 
@@ -113,9 +156,9 @@ récupération.
 
 ## Le format
 
-Le format de l'ébauche était `SELFVAULT1`. Il est passé en **`SELFVAULT2`** le 04/09/2026,
-pour authentifier l'en-tête et engager la clé maîtresse. Sa notice fait autorité et vit
-dans le pli lui-même — c'est elle qui permet de réécrire un déchiffreur sans disposer du
+Le format de l'ébauche était `SELFVAULT1`. Il est passé en `SELFVAULT2` le 04/09/2026, pour
+authentifier l'en-tête et engager la clé maîtresse, puis en **`SELFVAULT3`** le 06/09/2026,
+pour sceller le coffre. Sa notice fait autorité et vit dans le pli lui-même — c'est elle qui permet de réécrire un déchiffreur sans disposer du
 code, et c'est à cette fin qu'elle est imprimée plutôt que rangée ici.
 
 ## Ce qui a été mesuré, le 04/09/2026
@@ -139,7 +182,7 @@ Chaîne complète : chiffrer → imprimer → rasteriser à 300 dpi → relire �
 | deux caractères voisins permutés | refus |
 | un octet du coffre retourné | refus |
 | photocopie délavée + poussière | **7/7 quand même** — la correction Q encaisse |
-| scan à 150 dpi | 4/7 — **plancher mesuré : 200 dpi passe, 150 échoue** |
+| scan à 150 dpi | 4/7 — **plancher mesuré : 200 dpi passe, 150 échoue**. Re-mesuré le 06/09/2026 sur le pli scellé, à 13 pages : inchangé, et désormais borné des deux côtés par le banc papier |
 
 ### Deux défauts trouvés par la boucle
 
@@ -154,6 +197,12 @@ Chaîne complète : chiffrer → imprimer → rasteriser à 300 dpi → relire �
    pas le code.*
 
 ## Décisions à valider, et travail restant
+
+**Tranché le 06/09/2026 — le format devient `SELFVAULT3`.** Le sceau change les règles de
+lecture : un lecteur qui ignore la signature accepterait un coffre réécrit. Garder le nom
+`SELFVAULT2` aurait mis deux jeux de règles derrière un seul identifiant — sur un objet dont
+la notice imprimée EST la spécification, et qui doit se relire dans vingt ans, c'est
+exactement le piège que ce module existe pour éviter.
 
 **Tranché le 04/09/2026 — PBKDF2 plutôt qu'Argon2id.** Argon2id est meilleur, mais n'existe pas
 nativement dans les navigateurs : il faudrait embarquer une bibliothèque WASM, soit une centaine

@@ -2,7 +2,9 @@
 """Compose le pli à déposer : instructions, code, notice, et les fichiers en QR codes."""
 import base64, hashlib, os, json, re, sys, qrcode
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from selfvault import BITS_MIN
+from selfvault import (ALPHABET, BITS_MIN, FORMAT, ITER_MAX, ITER_MIN,
+                       SERRURES_MAX, VERSION_MAX, empreinte_sceau)
+import math
 
 # Les chemins partent de la RACINE du module, pas du répertoire du script.
 # `pli/` porte les sources — le déchiffreur et le gabarit. `sortie/` porte ce que
@@ -15,7 +17,7 @@ QRD    = os.path.join(SORTIE, "qr"); os.makedirs(QRD, exist_ok=True)
 CHARGE = 1600            # octets de texte par QR code, correction Q comprise
 
 # Le préfixe versionne le DÉCOUPAGE du pli, pas le format du coffre. Les deux
-# évoluent séparément : un coffre SELFVAULT2 se découpe exactement comme un
+# évoluent séparément : un coffre SELFVAULT3 se découpe exactement comme un
 # SELFVAULT1. Les nommer pareil invitait à les faire bouger ensemble.
 PREFIXE = "PLI1"
 
@@ -85,6 +87,18 @@ jetons = {
     "EMPREINTE_COFFRE": groupe4(pieces["V"]["sha"]),
     "TOTAL_QR": str(len(tous)),
     "BITS_MIN": "%d" % BITS_MIN,
+    # 🔑 Toute valeur que la notice imprimée énonce vient d'ici. Une constante
+    # écrite en dur dans le gabarit échappe au garde-fou de substitution par
+    # construction, et un pli imprimé ne se corrige pas : les cinq bornes ajoutées
+    # le 06/09/2026 y étaient toutes figées en dur.
+    "FORMAT": FORMAT,
+    "VERSION_MAX": "{:,d}".format(VERSION_MAX).replace(",", "\u202f"),
+    "ITER_MIN": "{:,d}".format(ITER_MIN).replace(",", "\u202f"),
+    "ITER_MAX": "{:,d}".format(ITER_MAX).replace(",", "\u202f"),
+    "SERRURES_MAX": str(SERRURES_MAX),
+    "TAILLE_ALPHABET": str(len(ALPHABET)),
+    "BITS_L1": "%d" % (20 * math.log2(len(ALPHABET))),
+    "EMPREINTE_SCEAU": empreinte_sceau(coffre_json),
     "GRILLE_QR": grille,
 }
 rendu = open(os.path.join(PLI, "gabarit-pli.html")).read()
