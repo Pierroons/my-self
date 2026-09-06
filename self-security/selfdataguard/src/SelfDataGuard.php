@@ -22,8 +22,8 @@ use RuntimeException;
  *
  *     $dg = new SelfDataGuard($storage, $blindKey);
  *
- *     // New user
- *     $session = $dg->register('user-1', 'password', 'memorized-secret');
+ *     // New user. Passwords are refused below UserVault::PASSWORD_MIN_LEN.
+ *     $session = $dg->register('user-1', 'a-long-generated-password', 'memorized-secret');
  *     $dg->setFields($session, ['email' => 'a@b.c'], indexed: ['email']);
  *
  *     // Returning user

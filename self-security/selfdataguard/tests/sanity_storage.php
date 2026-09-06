@@ -131,7 +131,7 @@ $reloaded2->wrapPwd->ciphertext !== $record->wrapPwd->ciphertext
 hash_equals($reloaded2->userSalt, $record->userSalt) ? ok('userSalt unchanged on update') : ko('salt changed');
 
 // updateVault on missing user throws
-$ghostResult = $vault->register(userId: 'user-ghost', password: 'pwd');
+$ghostResult = $vault->register(userId: 'user-ghost', password: 'ghost-password-long');
 try {
     $storage->updateVault($ghostResult['record']);
     ko('updateVault should throw on missing user');

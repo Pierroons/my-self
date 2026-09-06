@@ -3,6 +3,75 @@
 All notable changes to SelfDataGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed — BREAKING (stored format) — the memorized secret is derived with Argon2id
+
+`Primitives::deriveFromMemorized()` used a single HMAC-SHA256 pass, and its output
+went straight in as the AES-256-GCM key that unwraps `data_master_key`. Measured
+before and after on the same host: **0.0064 ms per attempt against 47.9 ms — a
+factor of 7 492, about 13 bits of added work**. On a slower deployment host the
+factor measured 78 100. Both keys open the same `data_master_key`, and `wrap_recov`
+is attacked offline with no attempt counter, so the pair was only ever as strong as
+its cheaper door. The password path is unchanged at 44.8 ms: the two doors now cost
+the same, which was the point.
+
+- `deriveFromMemorized()` now uses Argon2id with the same profile as
+  `deriveFromPassword()`. The free-length context is condensed into the 16-byte salt
+  Argon2id requires; a salt is not a secret and only has to be unique per target.
+- **`wrap_recov` produced before this change cannot be opened by this version.**
+  The public API is unchanged — callers still pass a plain string — but the stored
+  format is not. No migration ships because none was needed: every deployment
+  measured held zero recovery wraps. **This was not verified on every host**; see
+  below.
+- `deriveFromMemorizedLegacyV1()` is kept for DIAGNOSIS ONLY. It lets
+  `unlockWithMemorized()` answer "this vault predates the Argon2id derivation,
+  re-seal it" instead of "invalid memorized secret", which would send someone
+  hunting for a typo in a secret that is correct. It never grants access, and a
+  sanity control fails if it ever does.
+
+### Added
+
+- `UserVault::PASSWORD_MIN_LEN = 12`, enforced in `register()` and
+  `changePassword()`. The whitepaper had promised this refusal since v0.1 and no
+  line of code applied it. Length is not entropy — twelve identical letters clear
+  the bar — and the error message says so rather than overselling the rule.
+
+### Not done, on purpose
+
+**No entropy floor is enforced on the memorized secret.** Argon2id buys a
+multiplier, not entropy: a weak word is still ~13 bits of guessing plus ~13 bits of
+cost. A floor high enough to matter (77 bits) would end the "one memorized word,
+two uses" pairing with SelfRecover that the whitepaper sells elsewhere — a design
+decision, not a setting. It is now stated as an open question in whitepaper §7
+instead of being answered silently in either direction.
+
+### Fixed — documentation that described something else than the code
+
+`docs/whitepaper-fr.md` announced `Argon2id … p=4`, a parameter
+`sodium_crypto_pwhash` does not expose; a refusal of passwords under 12 characters
+and against breach lists that no code applied; and a 30-bit floor presented as a
+recommendation with nothing behind it. The `p=4` claim is corrected with the reason,
+the password rule now exists in code, no blocklist is claimed since none ships, and
+the memorized-secret paragraph says plainly what is and is not enforced.
+
+### Migration risk, and what was actually measured
+
+Changing the derivation changes the stored format of `wrap_recov`. Whether that
+costs anyone anything depends on one number — how many exist — so it was counted
+rather than assumed, on 2026-09-06:
+
+| host | vaults | `wrap_recov` | how |
+|---|---|---|---|
+| dev | 3 | **0** | `sqlite3 -readonly`, witness `SUM(wrap_pwd IS NOT NULL)` = 3 |
+| public demo | 0 | **0** | `sqlite3 -readonly`, witness `pragma_table_info` = 1, no journal created |
+| production NAS | — | **inferred 0** | no caller passes a memorized secret (grep with positive witness). `sqlite3` is absent from that host and its container, and opening a production database by other means can write a journal — so this one is a deduction, not a measurement, and is stated as such |
+
+No migration therefore ships. Should a recovery wrap exist somewhere unmeasured,
+its holder loses that door on upgrade and must re-seal via `changeMemorized()`
+after unlocking by password — `unlockWithMemorized()` names that case explicitly
+instead of reporting a wrong secret.
+
 ## [v0.2.0] — 2026-08-21
 
 ### Added — Escrow compartment (recovery-escrow sub-vault)
