@@ -14,6 +14,15 @@ RACINE = os.path.dirname(SD)
 PLI    = os.path.join(RACINE, "pli")
 SORTIE = os.path.join(RACINE, "sortie")
 QRD    = os.path.join(SORTIE, "qr"); os.makedirs(QRD, exist_ok=True)
+# 🔑 Le répertoire est PURGÉ avant d'écrire. Sans ça, les images d'un pli plus
+# gros survivent à côté de celles d'un pli plus petit, et tout consommateur qui
+# lit le répertoire en entier — `tests/banc_papier.sh` le fait — mêle deux
+# tirages. Il rougit alors bruyamment, mais pour la mauvaise raison : « rescanne
+# à 300 points par pouce » là où rien n'est mal numérisé.
+# Suppression nommée, jamais récursive : on retire ce que ce script a posé.
+for _vieux in sorted(os.listdir(QRD)):
+    if re.fullmatch(r"[AV]\d+\.png", _vieux):
+        os.remove(os.path.join(QRD, _vieux))
 CHARGE = 1600            # octets de texte par QR code, correction Q comprise
 
 # Le préfixe versionne le DÉCOUPAGE du pli, pas le format du coffre. Les deux

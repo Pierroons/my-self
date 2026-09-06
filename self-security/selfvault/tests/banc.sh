@@ -417,9 +417,16 @@ croise "$MODULE/tests/pilote_app.mjs"      "$AL1" "— et par le déchiffreur im
 # Il écrase `sortie/` — le banc papier, qui tourne après, refabrique tout au
 # départ.
 n=$((n+1))
-if [ -s "$BANC/meta.json" ] \
+# Les TROIS entrées de `faire_pli.py` : le coffre, l'identité, et le code L1 —
+# que le pli imprime, et que l'atelier n'affiche qu'à l'écran. Le contrôle les
+# fournit toutes les trois. Il passait localement en s'appuyant sur un
+# `secrets/code_L1.txt` laissé par une exécution antérieure : vert grâce à un
+# état qu'il ne créait pas, rouge sur un dépôt fraîchement cloné.
+mkdir -p "$MODULE/sortie" "$MODULE/outils/secrets"
+if [ -s "$BANC/meta.json" ] && [ -n "$AL1" ] \
    && cp "$BANC/atelier.selfvault" "$MODULE/sortie/coffre.selfvault" \
    && cp "$BANC/meta.json" "$MODULE/sortie/meta.json" \
+   && printf '%s\n' "$AL1" > "$MODULE/outils/secrets/code_L1.txt" \
    && python3 "$MODULE/outils/faire_pli.py" >/dev/null 2>&1 \
    && grep -qF "$(python3 -c "import json;print(json.load(open('$BANC/meta.json'))['titulaire'])")" \
            "$MODULE/sortie/pli.html"; then
