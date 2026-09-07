@@ -90,14 +90,14 @@ Reload the page — you'll get a clean DB and a fresh server-side blind key. The
 - **No password policy enforcement** beyond ≥12 chars. Production deployments must add HaveIBeenPwned checks, common-password blocklists, and zxcvbn entropy on the memorized secret (whitepaper §7).
 - **No rate limiting**: the demo accepts unlimited authentication attempts. Production needs Argon2id-based rate limits per user, anti-bruteforce on memorized secrets, IP throttling.
 - **No TLS**: the demo runs on plain HTTP localhost. Production REQUIRES HTTPS with HSTS strict.
-- **No admin operational key**: only Lite mode is wired (master key in memory during session only). Hybrid mode (admin can read operational fields offline) is whitepaper §4.2 and ships with v0.2.0.
+- **No admin operational key**: only Lite mode is wired (master key in memory during session only). Hybrid mode (admin can read operational fields offline) is whitepaper §4.2 and is still not wired: `wrapAdmin` stays null, and a sanity check fails if it ever stops being null. The escrow compartment shipped in v0.2.0 solves the recovery case with a dedicated key instead.
 - **No 2FA**: the demo only authenticates via password OR memorized secret. Production would layer SelfRecover on top for multi-factor account recovery.
 
 ## Browser screenshot reference
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  SelfDataGuard v0.2.0 — Dump my database — and you get encrypted noise       │
+│  SelfDataGuard v0.3.0 — Dump my database — and you get encrypted noise       │
 │  GitHub · Whitepaper EN · Whitepaper FR · AGPL-3.0                           │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ How this demo works (full-width explainer)                                   │

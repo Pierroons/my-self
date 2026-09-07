@@ -102,7 +102,7 @@ try {
 
 // -----------------------------------------------------------------------------
 
-section('deriveFromMemorized (Argon2id since 0.2.0) — shape and domain separation');
+section('deriveFromMemorized (Argon2id since 0.3.0) — shape and domain separation');
 
 $mem = 'sunset-river-marble';
 $ctx1 = bin2hex($salt) . '/dataguard';
@@ -200,7 +200,7 @@ $secret === '' ? ok('zeroize wipes string variable') : ko('zeroize did not wipe'
 
 // -----------------------------------------------------------------------------
 
-section('Memorized derivation is memory-hard (the whole point of 0.2.0)');
+section('Memorized derivation is memory-hard (the whole point of 0.3.0)');
 
 // Exact witness: the hardened derivation and the legacy one must not agree. If
 // someone puts the HMAC back, these two become equal and this line goes red.
@@ -208,7 +208,7 @@ $ctx  = str_repeat("\x11", 16) . '/dataguard';
 $hard = Primitives::deriveFromMemorized('a-drawn-passphrase-of-some-length', $ctx);
 $weak = Primitives::deriveFromMemorizedLegacyV1('a-drawn-passphrase-of-some-length', $ctx);
 $hard !== $weak
-    ? ok('deriveFromMemorized no longer equals the pre-0.2.0 HMAC')
+    ? ok('deriveFromMemorized no longer equals the pre-0.3.0 HMAC')
     : ko('deriveFromMemorized IS the legacy HMAC — the hardening is gone');
 strlen($hard) === Primitives::KEY_LEN
     ? ok('hardened derivation still returns ' . Primitives::KEY_LEN . ' bytes')

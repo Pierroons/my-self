@@ -63,9 +63,9 @@ de droit tenues à jour, pas des dispositifs de protection.
 
 | Module | Question | État |
 |---|---|---|
-| [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | **v0.4.0** — utilisable, démo locale |
-| [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.3.0** — installé et documenté |
-| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.2.0** — en service, 191 contrôles |
+| [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | **v0.5.0** — bibliothèque + implémentation déployée |
+| [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.4.0** — installé et documenté, clé en hexadécimal |
+| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.3.0** — en service, 198 contrôles |
 | [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.1.0 bêta** |
 | [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — en ligne, plus de 1 800 démarches officielles |
 | [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.3.0** — recoupement des votants liés, convalescence, motif de vote ; 24 contrôles ; 2 mécanismes manquent |

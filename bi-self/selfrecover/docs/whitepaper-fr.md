@@ -210,7 +210,7 @@ Le L2 combine toujours **connaissance** (le mot mémorisé) et **possession**. D
 
 Chaque session de récupération échouée au-delà de L1 ouvre un litige (`LIT-XXXX`) visible dans le dashboard admin.
 
-- Chaque litige a un numéro **non devinable**, le faisceau de signaux (faits bruts, jamais un score), des compteurs de tentatives et de refus, un compteur de tentatives concurrentes (« multi-demandeur »), et un statut (`open`, `awaiting_admin`, `granted`, `resolved`, `refused`, `closed`)
+- Chaque litige a un numéro **non devinable**, le faisceau de signaux (faits bruts, jamais un score), des compteurs de tentatives et de refus, un compteur de tentatives concurrentes (« multi-demandeur »), et un statut (`open`, `awaiting_admin`, `accepted`, `refused`, `closed`)
 - L'admin retrouve les litiges ouverts dans son tableau de bord
 - Un chat bidirectionnel est disponible entre l'admin et l'utilisateur, dont l'accès est conditionné par le code de suivi (polling, pas de WebSocket temps réel pour rester simple)
 - Les litiges résolus sont purgés automatiquement après 24 heures pour garder la BDD propre
@@ -228,11 +228,13 @@ Quand l'admin examine un litige, deux options existent :
 **Option 2 — Refuser la récupération :**
 
 - L'admin ne considère pas la preuve d'identité suffisante
-- Ban temporaire de 24 h appliqué — aucun nouveau litige ne peut être ouvert pendant cette fenêtre
-- Le compteur de refus s'incrémente (1/3, 2/3, 3/3)
-- **Au 3ᵉ refus : le compte est définitivement supprimé.** L'identifiant public redevient disponible pour une nouvelle inscription.
+- Le dossier passe en `refused`, avec la date et le nom de qui a tranché
+- **Le compte n'est pas touché** : ni supprimé, ni banni, ni vidé de ses codes. Il reste connectable
+- Au-delà de **3 refus dans une fenêtre glissante de 30 jours**, l'**ouverture** de nouveaux dossiers gèle 7 jours sur ce compte. Un administrateur peut lever le gel, et la trace du dégel est conservée
 
-**Raisonnement :** un attaquant ne peut pas spammer des litiges à l'infini. Chaque refus coûte 24 h de downtime, et trois strikes effacent l'enregistrement complètement. Le vrai propriétaire, s'il est bloqué par erreur, peut réessayer après chaque fenêtre de ban ou recommencer de zéro s'il est totalement verrouillé.
+🔑 **Ce qui se durcit est la procédure, jamais le compte.** Une version antérieure de ce document annonçait un ban de 24 h et la suppression définitive au 3ᵉ refus ; l'implémentation qui s'en approchait le plus supprimait le compte dès le **premier**. Les deux étaient fautives pour la même raison : un refus dit « ce demandeur ne m'a pas convaincu », pas « ce compte est illégitime ». Si le demandeur était un imposteur, supprimer détruit le compte de sa victime ; s'il était le titulaire mal jugé, cela punit un innocent. Et un attaquant incapable de voler un compte pouvait le faire effacer en accumulant des refus — **l'échec devenait une arme**.
+
+**Raisonnement :** le gel coûte à qui insiste sans convaincre, sans rien coûter au titulaire, qui continue de se connecter normalement pendant ce temps. Le comptage porte sur les **dossiers refusés**, pas sur les dépôts : trois soumissions dans un même dossier restent un seul refus, sinon l'insistance d'un titulaire honnête déclencherait le gel aussi vite qu'une campagne hostile.
 
 ### 6.2 Super-utilisateur (SU) — gouvernance des administrateurs
 

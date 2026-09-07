@@ -5,8 +5,8 @@
 **Application-layer data-at-rest protection that survives a database exfiltration.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.2.0 in service](https://img.shields.io/badge/status-v0.2.0%20in%20service-brightgreen.svg)](#status)
-[![Tests: 191 passing](https://img.shields.io/badge/tests-191%20passing-brightgreen.svg)](#testing)
+[![Status: v0.3.0 in service](https://img.shields.io/badge/status-v0.3.0%20in%20service-brightgreen.svg)](#status)
+[![Tests: 198 passing](https://img.shields.io/badge/tests-198%20passing-brightgreen.svg)](#testing)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -102,15 +102,15 @@ Most e-commerce deployments will pick **Hybrid**. Health, banking, identity prov
 
 ## Status
 
-**v0.2.0 — reference library, escrow compartment, standalone demo**, 21 August 2026.
+**v0.3.0 — Argon2id derivation on both factors, escrow compartment, standalone demo**, 7 September 2026.
 
-Whitepaper complete (specification + threat model). PHP reference library implemented (2 249 lines across 17 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, AES-256-GCM) covered by **191 checks across 8 suites**, all passing. A clickable HTML demo is included to inspect the encrypted database in real time.
+Whitepaper complete (specification + threat model). PHP reference library implemented (2 372 lines across 17 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, AES-256-GCM) covered by **198 checks across 8 suites**, all passing. A clickable HTML demo is included to inspect the encrypted database in real time.
 
 The module runs on real deployments. It has **not been audited by an external cryptographer**: its design is verified today by its author and by the readers of this repository, and by no one else.
 
 Reviews are wanted, on the design and on the implementation alike — security researchers get a runnable target rather than a specification to argue with. Downstream integrators, SelfRecover users in particular, should read the threat model before wiring it in.
 
-A formal community cryptographic audit is planned before v1.0.0. ANSSI Visa de sécurité submission planned for the v0.3.0 milestone.
+A formal community cryptographic audit is planned before v1.0.0. ANSSI Visa de sécurité submission planned for the same milestone.
 
 ---
 
@@ -171,7 +171,7 @@ php tests/sanity_facade.php       # 34 tests — full API end-to-end
 php tests/sanity_audit.php        #  6 tests — audit log
 php tests/sanity_ceremony.php     # 14 tests — key ceremony
 php tests/sanity_escrow.php       # 16 tests — escrow compartment
-# Total: 191 tests, 0 failures — counted by running them, 2026-08-27
+# Total: 198 tests, 0 failures — counted by running them, 2026-09-07
 ```
 
 The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file and verifies that no plaintext personal data appears anywhere in the binary blob.

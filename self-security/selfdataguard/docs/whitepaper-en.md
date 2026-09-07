@@ -68,7 +68,7 @@ Step 2 — Generate the user salt (cryptographic identifier):
 
 Step 3 — Derive the two wrap keys:
     password_key     ← Argon2id(password, user_salt, m=65536, t=3, p=4)
-    recov_key        ← HMAC-SHA256(memorized_word, user_salt || "/dataguard")
+    recov_key        ← Argon2id(memorized_word, SHA-256(user_salt || "/dataguard")[:16], m=65536, t=3)
 
 Step 4 — Wrap the master key with each of the two keys:
     wrap_pwd         ← AES-256-GCM-encrypt(data_master_key, key=password_key, nonce=random_96)
@@ -103,7 +103,7 @@ On memorized-word login (degraded case, password forgotten):
 ```
 1. Server receives (username, memorized_word) over HTTPS
 2. Fetch user_salt and wrap_recov from the database
-3. recov_key       ← HMAC-SHA256(memorized_word, user_salt || "/dataguard")
+3. recov_key       ← Argon2id(memorized_word, SHA-256(user_salt || "/dataguard")[:16], m=65536, t=3)
 4. data_master_key ← AES-256-GCM-decrypt(wrap_recov, key=recov_key)
 5. User can access their data and set a new password
 6. Regenerate wrap_pwd with the new password_key (no need to re-encrypt the data fields)
@@ -121,9 +121,13 @@ An attacker who exfiltrates the user table obtains:
 
 To decrypt, the attacker has two paths:
 
-1. **Bruteforce a target user's password** → cost of Argon2id per attempt (~250 ms on top-tier GPU with recommended parameters). For an 8-character random password: ~10^14 attempts × 0.25 s = ~10^6 years in massive parallel. For a weak password (`123456` or similar), still feasible. **Recommendation**: the library refuses passwords below 12 characters or present in blocklists.
+1. **Bruteforce a target user's password** → cost of Argon2id per attempt (~250 ms on top-tier GPU with recommended parameters). For an 8-character random password: ~10^14 attempts × 0.25 s = ~10^6 years in massive parallel. For a weak password (`123456` or similar), still feasible. **Applied since 0.3.0**: `UserVault::register()` refuses passwords under 12 bytes (`PASSWORD_MIN_LEN`). ⚠️ Length is not entropy — twelve identical letters clear the bar. It is a floor against the worst case, not a measure. **No blocklist ships**: an earlier edition of this paragraph announced a refusal against breach lists that no line of code applied, and a promise with no mechanism behind it is worse than no promise.
 
-2. **Bruteforce the memorized word** → HMAC-SHA256 is fast (~10^9 / s on GPU), but the search space depends on the word. If the memorized word is a dictionary word (~30,000 common French words), bruteforce is trivial. **Recommendation**: the memorized word must be a combination of at least two words or a rare word (entropy ≥ 30 bits). To document in the registration UX.
+2. **Bruteforce the memorized word** → since 0.3.0, the same cost as the password path: Argon2id, ~250 ms per attempt.
+
+   > **Fixed on 2026-09-06.** Up to 0.3.0, `recov_key` was derived by a single HMAC-SHA256 pass, on the assumption written in this very document that "the memorized word must have sufficient entropy by construction", with a recommended floor of 30 bits. Measured on a deployment host: **213.7 ms per Argon2id attempt against 0.0027 ms per HMAC attempt, a factor of 78,100**. Both keys unwrap the SAME `data_master_key`, and `wrap_recov` is attacked offline with no attempt counter: the security of the pair was therefore that of its cheaper door, whatever the cost of the other. A salt forbids precomputation but adds **no bit** against a targeted person; the AEAD tag tells the attacker which attempt was the right one, it does not slow them down. Only the cost per attempt buys time, and it buys a factor, never entropy.
+   >
+   > **No entropy floor is enforced.** Argon2id buys a multiplier, not entropy: a weak word remains ~13 bits of guessing plus ~13 bits of cost. A floor high enough to matter (77 bits) would end the "one memorized word, two uses" pairing with SelfRecover that this document sells elsewhere — a design decision, not a setting. It is stated here as an open question rather than answered silently in either direction.
 
 A leak therefore yields **nothing immediately exploitable**. Bruteforce cost is per-user (impossible to bruteforce the whole database in parallel because each user has their own `user_salt`).
 
@@ -142,7 +146,7 @@ raw_secret = user_memorized_word
          ┌──────────────────────────────────────────────────────┐
          │     HMAC-SHA256(raw_secret, domain + "/recover")    │  →  recover_key  (SelfRecover)
          ├──────────────────────────────────────────────────────┤
-         │     HMAC-SHA256(raw_secret, salt + "/dataguard")    │  →  data_key    (SelfDataGuard)
+         │     Argon2id(raw_secret, SHA-256(salt + "/dataguard")) │  →  data_key  (SelfDataGuard)
          └──────────────────────────────────────────────────────┘
 ```
 
@@ -219,7 +223,7 @@ Most e-commerce sites should pick **Hybrid**. High-assurance services (health, b
 | Use | Primitive | Rationale |
 |-----|-----------|-----------|
 | Password derivation | **Argon2id** (m=65536 KiB, t=3, p=4) | Memory-hard, resistant to GPUs and ASICs. Modern standard (RFC 9106) |
-| Memorized-word derivation | **HMAC-SHA256** | Fast (UX-compatible), proven PRF. No memory-hardening because the memorized word must have sufficient entropy by construction |
+| Memorized-word derivation | **Argon2id** (m=65536 KiB, t=3) | Same cost as the password path since 0.3.0. Both keys unwrap the same `data_master_key`, and `wrap_recov` is attacked offline with no attempt counter — so the pair was only ever as strong as its cheaper door. The free-length context is condensed into the 16-byte salt Argon2id requires |
 | Envelope encryption | **AES-256-GCM** | Authenticated encryption, universal hardware acceleration, NIST standard |
 | Field encryption | **AES-256-GCM** with random 96-bit nonce per field | Idem |
 | Search indexing | **HMAC-SHA256(field, server_blind_key)** | Allows `WHERE field_hash = HMAC(query)` without decrypting. Trade-off: equality search only, not full-text |
@@ -282,10 +286,11 @@ Failure to respect any of these rules significantly degrades the guarantees. The
 
 ### 8.2 Roadmap
 
-- **v0.1.0** (shipped, Q3 2026): reference PHP implementation — 2,249 auditable lines across 17 files, Eloquent / Doctrine trait integration via adapter
+- **v0.1.0** (shipped, Q3 2026): reference PHP implementation, Eloquent / Doctrine trait integration via adapter — the library's current size is given by the README, which is measured at each edition
 - **v0.2.0** (shipped 2026-08-21, Q3): escrow compartment, key ceremony, audit log
-- **v0.3.0** (upcoming): advanced blind index extension for searchable encryption, multi-tenant support
-- **v0.3.0** (2027): formal community cryptographic audit, ANSSI Visa de sécurité submission (industries@ssi.gouv.fr), test vector pack publication
+- **v0.3.0** (shipped 2026-09-07): Argon2id derivation of the memorized secret, password length floor enforced in code
+- **v0.4.0** (upcoming): advanced blind index extension for searchable encryption, multi-tenant support
+- **v1.0.0** (2027): formal community cryptographic audit, ANSSI Visa de sécurité submission (industries@ssi.gouv.fr), test vector pack publication
 
 ---
 
@@ -301,4 +306,4 @@ Technical feedback, community audits, and cryptographic critiques are welcome, e
 
 ---
 
-*Document v0.0.1 — May 2026, roadmap updated 2026-08-27. ⚠️ This English edition is one revision behind: the French version was revised on 23 July 2026 (the copy sent to the CNIL) and is authoritative where the two differ. The specification described here is implemented: v0.1.0 and v0.2.0 have shipped and are tested (191 checks, 8 suites).*
+*Document v0.0.1 — May 2026, roadmap updated 2026-08-27. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 (the copy sent to the CNIL) and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026 — §2, §3.1 and §6 now describe the shipped derivation; the rest of the edition has not been re-read against the French one. The specification described here is implemented: v0.1.0, v0.2.0 and v0.3.0 have shipped and are tested (198 checks, 8 suites).*

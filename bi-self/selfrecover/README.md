@@ -5,7 +5,7 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per service, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.4.0](https://img.shields.io/badge/status-v0.4.0-green.svg)](#status)
+[![Status: v0.5.0](https://img.shields.io/badge/status-v0.5.0-green.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#quickstart)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#quickstart)
@@ -192,7 +192,7 @@ SelfRecover distinguishes three roles: **SU → Admin → User**. An **admin** c
 3. **Per-entry HMAC** (key derived from the SU passphrase)
 4. **Externalization** to a notification channel (action + target + time only, **never** the forensic context)
 
-> ⚠️ The `demo/su.html` page is a **100 % client-side pedagogical simulation** ("everything is FAKE"): it replays the SU terminal experience without ever touching the API or the real database. The real SU console is the server CLI.
+> ⚠️ The real SU console is the **server CLI**. To watch it at work without administering one, the lab serves a **pedagogical showcase** — [`demo/lab/public/su_console.php`](../../demo/lab/public/su_console.php): a user / admin / SU role selector showing, at each level, what it can and cannot do. It runs the real code against an **in-memory** SQLite database, created and thrown away on every request — never the lab's own database, never a real privilege. The SU does not exist in that database, because its secret lives outside the database.
 
 ---
 
@@ -287,17 +287,18 @@ This is a companion module, **[`selfrecover-luks`](../../self-security/selfrecov
 
 ## Status
 
-**Deployed reference implementation + self-audited**
+**Reference library + deployed implementation, self-audited**
 
 This repository contains:
 - The **protocol specification** (whitepapers v1.1)
-- A **complete reference implementation**: L1/L2/L3 recovery, recovery codes, "this device" factor, super-user (SU) with audit log
-- A **standalone working demo** to try everything locally
+- A **PHP library** — `src/`, PSR-4 `Pierroons\SelfRecover\`: level 1 and level 2 recovery, recovery codes, the "this device" factor, the Argon2id profile, the diceware wordlist, and the storage interface an integrator implements against their own database
+- The **browser deriver** — `client/sr-derive.js`, shipped rather than described: it is what carries the anti-phishing property, and the integrators who wrote it themselves produced variants that did not have it
+- **All three levels**, since 2026-09-07: level 3 escalation now lives in `src/Recovery/Escalade.php` — case file, single-use claim secret, bundle of raw facts, arbitration and procedure freeze. It does not check *who* may decide: roles and sessions belong to the application. The super-user still lives in [`demo/lab/`](../../demo/lab/)
 
-**Real deployment:** beyond the demo, the implementation runs in real conditions — notably as the **authentication backend of a messaging service**, reusing the SelfRecover account store as-is (Argon2id).
+**Real deployment:** the implementation runs in real conditions — notably as the **authentication backend of a messaging service**, reusing the SelfRecover account store as-is (Argon2id).
 
 **What this repo is NOT (yet):**
-- An installable PHP/JS library (planned for V1.0)
+- A **published** package: the library installs through a Composer `path` or VCS repository — which is what `demo/lab/` does — but not yet through `composer require` from Packagist, nor through `npm install`
 - A product with an **external** security audit (an internal adversarial audit has been run; external red-team feedback is welcome)
 
 ---
@@ -343,7 +344,7 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 
 - [x] Protocol specification + whitepapers EN + FR
 - [x] Complete reference implementation (L1/L2/L3)
-- [x] Standalone demo + offline HTML validator (zero external requests, verifiable by `grep`)
+- [x] Offline HTML validator + entropy lab (zero external requests, verifiable by `grep`) — the standalone PHP demo that hosted them has since been removed, see "Trying SelfRecover"
 - [x] EFF 7776-word wordlist integrated (EN + FR) + diceware reference PDF
 - [x] **Recovery codes** — L2 possession factor (10 codes, HMAC lookup + Argon2id, single-use)
 - [x] **"This device" factor** — ECDSA P-256, private key under an Argon2id envelope, public key only server-side
@@ -375,8 +376,8 @@ Build skeleton: see [`tools/build-myself-live/`](../../tools/build-myself-live/)
 
 ### V1.0 (planned: 2027)
 
-- [ ] PHP library extraction (`composer require pierroons/selfrecover`)
-- [ ] JS library extraction (`npm install selfrecover`)
+- [ ] Publish the PHP package on Packagist (`composer require pierroons/selfrecover`) — extraction into a library is done (`src/`, PSR-4); publishing is what remains
+- [ ] JS package (`npm install selfrecover`) — the deriver ships as `client/sr-derive.js`, it is not packaged yet
 - [ ] WordPress plugin
 - [ ] Laravel package
 - [ ] Ports to Python, Go, Rust, Node

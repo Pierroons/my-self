@@ -123,11 +123,11 @@ Un attaquant qui exfiltre la table utilisateurs obtient :
 
 Pour déchiffrer, il a deux voies :
 
-1. **Bruteforcer le mot de passe** d'un utilisateur ciblé → coût Argon2id par tentative (~250 ms sur GPU haut de gamme avec les paramètres recommandés). Pour un mot de passe à 8 caractères aléatoires : ~10^14 tentatives × 0.25 s = ~10^6 années en parallèle massif. Pour un mot de passe faible (`123456` ou similaire), ça reste faisable. **Appliqué depuis 0.2.0** : `UserVault::register()` refuse les mots de passe de moins de 12 octets (`PASSWORD_MIN_LEN`). ⚠️ La longueur n'est pas de l'entropie — douze lettres identiques franchissent cette barre. C'est un plancher contre le pire, pas une mesure. **Aucune blocklist n'est embarquée** : une version antérieure de ce paragraphe annonçait un refus par listes de breach qu'aucune ligne de code n'appliquait, et une promesse sans mécanisme derrière est pire que pas de promesse.
+1. **Bruteforcer le mot de passe** d'un utilisateur ciblé → coût Argon2id par tentative (~250 ms sur GPU haut de gamme avec les paramètres recommandés). Pour un mot de passe à 8 caractères aléatoires : ~10^14 tentatives × 0.25 s = ~10^6 années en parallèle massif. Pour un mot de passe faible (`123456` ou similaire), ça reste faisable. **Appliqué depuis 0.3.0** : `UserVault::register()` refuse les mots de passe de moins de 12 octets (`PASSWORD_MIN_LEN`). ⚠️ La longueur n'est pas de l'entropie — douze lettres identiques franchissent cette barre. C'est un plancher contre le pire, pas une mesure. **Aucune blocklist n'est embarquée** : une version antérieure de ce paragraphe annonçait un refus par listes de breach qu'aucune ligne de code n'appliquait, et une promesse sans mécanisme derrière est pire que pas de promesse.
 
-2. **Bruteforcer le mot mémorisé** → depuis 0.2.0, même coût que la voie mot de passe : Argon2id, ~250 ms par tentative.
+2. **Bruteforcer le mot mémorisé** → depuis 0.3.0, même coût que la voie mot de passe : Argon2id, ~250 ms par tentative.
 
-   > **Corrigé le 06/09/2026.** Jusqu'à 0.2.0, `recov_key` était dérivée par un seul passage de HMAC-SHA256, sur l'hypothèse écrite ici même que « l'entropie du mot mémorisé doit être suffisante par construction », avec un plancher recommandé de 30 bits. Mesuré sur une machine de déploiement : **213,7 ms par tentative Argon2id contre 0,0027 ms par tentative HMAC, soit un facteur 78 100**. Les deux clés déballent la MÊME `data_master_key`, et `wrap_recov` s'attaque hors ligne, sans compteur d'essais : la sécurité de la paire était donc celle de la porte la moins chère, quel que soit le coût de l'autre. Un sel interdit le précalcul mais n'ajoute **aucun bit** contre une personne ciblée ; le tag AEAD dit à l'attaquant quelle tentative était la bonne, il ne le ralentit pas. Seul le coût par essai achète du temps, et il achète un facteur, jamais de l'entropie.
+   > **Corrigé le 06/09/2026.** Jusqu'à 0.3.0, `recov_key` était dérivée par un seul passage de HMAC-SHA256, sur l'hypothèse écrite ici même que « l'entropie du mot mémorisé doit être suffisante par construction », avec un plancher recommandé de 30 bits. Mesuré sur une machine de déploiement : **213,7 ms par tentative Argon2id contre 0,0027 ms par tentative HMAC, soit un facteur 78 100**. Les deux clés déballent la MÊME `data_master_key`, et `wrap_recov` s'attaque hors ligne, sans compteur d'essais : la sécurité de la paire était donc celle de la porte la moins chère, quel que soit le coût de l'autre. Un sel interdit le précalcul mais n'ajoute **aucun bit** contre une personne ciblée ; le tag AEAD dit à l'attaquant quelle tentative était la bonne, il ne le ralentit pas. Seul le coût par essai achète du temps, et il achète un facteur, jamais de l'entropie.
 
    ⚠️ **Nécessaire, pas suffisant — et la bibliothèque n'impose AUCUN plancher d'entropie.**
    Argon2id multiplie le coût par essai ; il n'ajoute pas d'entropie. Un mot faible reste un mot
@@ -286,7 +286,7 @@ Pour qu'un déploiement SelfDataGuard apporte effectivement les garanties listé
 
 1. **Politique de mot de passe** : minimum 12 octets, **appliqué par la lib** (`UserVault::PASSWORD_MIN_LEN`). Le refus par listes de breach reste à la charge de l'intégrateur — la lib n'embarque aucune liste et ne prétend plus le faire
 2. **Politique de mot mémorisé** : **à la charge de l'intégrateur — la bibliothèque n'impose
-   rien**. Elle a durci le coût par essai (Argon2id depuis 0.2.0) ; elle ne mesure pas l'entropie et
+   rien**. Elle a durci le coût par essai (Argon2id depuis 0.3.0) ; elle ne mesure pas l'entropie et
    ne prétend pas le faire. Un intégrateur qui branche `loginWithMemorized()` sur un mot choisi par
    l'utilisateur doit savoir que `wrap_recov` s'attaque alors hors ligne, sans compteur, sur ce seul
    secret. Cf. §7, question ouverte
@@ -311,10 +311,11 @@ Le non-respect d'une de ces règles dégrade significativement les garanties. La
 
 ### 8.2 Roadmap
 
-- **v0.1.0** (livrée, Q3 2026) : implémentation de référence en PHP — 2 249 lignes auditables sur 17 fichiers, intégration trait Eloquent / Doctrine via adapter
+- **v0.1.0** (livrée, Q3 2026) : implémentation de référence en PHP, intégration trait Eloquent / Doctrine via adapter — le volume courant de la bibliothèque est donné par le README, qui se mesure à chaque édition
 - **v0.2.0** (livrée le 21/08/2026, Q3) : compartiment escrow, cérémonie de clés, journal d'audit
-- **v0.3.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
-- **v0.3.0** (2027) : audit cryptographique communautaire formel, soumission ANSSI Visa de sécurité (industries@ssi.gouv.fr), publication d'un test vector pack
+- **v0.3.0** (livrée le 07/09/2026) : dérivation Argon2id du secret mémorisé, plancher de longueur du mot de passe appliqué en code
+- **v0.4.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
+- **v1.0.0** (2027) : audit cryptographique communautaire formel, soumission ANSSI Visa de sécurité (industries@ssi.gouv.fr), publication d'un test vector pack
 
 ---
 
@@ -330,4 +331,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Document v0.0.1 — édition du 23 juillet 2026, roadmap actualisée le 27/08/2026. La spécification décrite ici est implémentée : v0.1.0 et v0.2.0 sont livrées et testées (191 contrôles, 8 suites).*
+*Document v0.0.1 — édition du 23 juillet 2026, roadmap actualisée le 27/08/2026. La spécification décrite ici est implémentée : v0.1.0, v0.2.0 et v0.3.0 sont livrées et testées (198 contrôles, 8 suites).*

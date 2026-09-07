@@ -10,6 +10,93 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover — le niveau 3 remonte dans la bibliothèque, et un refus cesse de détruire — 7 septembre 2026
+
+Le 19 août, la remontée des niveaux 1 et 2 écrivait que le niveau 3 resterait
+applicatif : « il suppose une interface d'arbitrage, des échanges, une notion de
+litige. » Cette décision est rouverte, pour une raison qu'elle ne pouvait pas
+anticiper : **deux applications le portaient, et elles avaient divergé sur ce
+qu'un refus fait au compte.**
+
+`src/Recovery/Escalade.php` porte désormais le dossier, le sésame à usage unique,
+le faisceau et l'arbitrage ; `src/Recovery/Litige.php` l'objet qui les traverse ;
+`StorageInterface` gagne dix-sept opérations. Ce qui reste à l'application est
+nommé dans le docblock : la bibliothèque ne vérifie jamais **qui** a le droit de
+trancher, parce que les rôles et les sessions ne sont pas à elle.
+
+**🔑 Un refus ne touche jamais au compte.** L'implémentation la plus avancée le
+tenait déjà, l'autre supprimait le compte **dès le premier refus**, et les deux
+whitepapers annonçaient encore un ban de 24 h avec suppression au troisième. Un
+refus dit « ce demandeur ne m'a pas convaincu », pas « ce compte est
+illégitime » : si le demandeur était un imposteur, supprimer détruit le compte de
+sa victime ; s'il était le titulaire mal jugé, cela punit un innocent. Et un
+attaquant incapable de voler un compte pouvait le faire effacer en accumulant des
+refus — l'échec devenait une arme. Ce qui se durcit est la **procédure** : au-delà
+de trois refus en trente jours, l'ouverture de nouveaux dossiers gèle sept jours ;
+le compte reste connectable, et un arbitre dégèle.
+
+**Le faisceau a trois états, et le troisième est celui qui coûtait.** `concorde`,
+`diverge`, et **`indisponible`**. Sans lui, un déploiement qui n'enregistre pas
+les connexions fait marquer « ne concorde pas » à une réponse honnête. C'était le
+cas du laboratoire : `last_login_at` et `login_count` étaient **lus** par le
+faisceau et écrits nulle part, si bien que « dernière connexion » rendait toujours
+*jamais connecté* et « fréquence » toujours *rare* — un titulaire légitime
+obtenait le dossier d'un imposteur. Le laboratoire les écrit désormais, et son
+adaptateur rend `null` plutôt que zéro tant qu'il n'a rien enregistré.
+
+Corrigé au passage : le docblock de `Recovery` annonçait « 77 bits pour six mots »
+quand le fichier en tirait quatre depuis toujours, à deux endroits.
+`engendrerPassphrase()` fixe la longueur une seule fois.
+
+**Contrôles.** `tests/sanity_escalade.php`, 74 contrôles, entrés en intégration
+continue ; le banc d'équivalence du laboratoire passe de 29 à 41 et éprouve le
+niveau 3 sur le schéma réel. S'y ajoute `tests/fuzz_escalade.php`, un fuzzer à
+propriétés : il tire des suites d'opérations et vérifie après chaque appel que
+rien du compte n'a bougé sans ré-enrôlement réussi. Il a trouvé, à son premier
+essai, qu'une réponse en UTF-8 invalide faisait ranger le faisceau **vide** —
+`json_encode` rend `false`, et `(string) false` vaut la chaîne vide. L'arbitre
+tranchait alors sur rien.
+Le sixième a démenti la sonde elle-même : le contrôle « le sésame ne sert qu'une
+fois » restait vert alors que l'invalidation était retirée, parce qu'il constatait
+un refus sans vérifier son motif — c'était le statut du dossier qui refusait, pas
+le sésame. Il vérifie maintenant le motif, et le fil, que le statut ne garde pas.
+
+### SelfRecover v0.5.0, SelfRecover-LUKS v0.4.0, SelfDataGuard v0.3.0 — les versions rattrapent le code — 7 septembre 2026
+
+Trois modules affichaient une version antérieure au travail qu'ils portent. Le
+badge n'était pas seulement en retard : il désignait une release publiée qui ne
+contient pas ce que le dépôt décrit.
+
+- **SelfRecover 0.4.0 → 0.5.0.** Le tag `selfrecover-v0.4.0` date du 3 juillet ;
+  quarante commits l'ont suivi, dont l'extraction de la bibliothèque `src/`
+  (PSR-4) et la livraison du dériveur navigateur `client/sr-derive.js`. Le README
+  annonçait pourtant, sous « ce que ce dépôt n'est PAS », une bibliothèque
+  « prévue en V1.0 » — celle-là même que le dossier d'à côté contient. Ce qui
+  manque n'est pas l'extraction, c'est la publication : ni Packagist, ni npm.
+  Corrigé aussi : le même fichier annonçait une démo autonome vingt lignes après
+  avoir écrit qu'elle avait été retirée, et renvoyait à `demo/su.html`, absent
+  depuis le rangement du 19 août. La vitrine pédagogique du modèle SU existe, sur
+  base jetable en mémoire : `demo/lab/public/su_console.php`.
+
+- **SelfRecover-LUKS 0.3.0 → 0.4.0.** Le module a basculé la clé livrée à
+  `cryptsetup` du format brut vers l'hexadécimal, avec sa procédure de migration
+  (`INSTALL.md` §15). Le whitepaper décrivait encore la clé brute.
+
+- **SelfDataGuard 0.2.0 → 0.3.0.** Le durcissement du 6 septembre — dérivation
+  Argon2id du secret mémorisé, plancher de longueur du mot de passe — était daté
+  « 0.2.0 » à quinze endroits du code, des tests et du whitepaper français, alors
+  que le tag `selfdataguard-v0.2.0` du 21 août ne le contient pas : quelqu'un qui
+  récupère cette release obtient la dérivation HMAC pendant que le commentaire lui
+  promet Argon2id. Les quinze porteurs sont redatés sur 0.3.0.
+
+  Au passage, le whitepaper **anglais** — l'édition que lit un auditeur externe,
+  `self-security/` étant en anglais pour cette raison — décrivait encore
+  `recov_key ← HMAC-SHA256(…)` à trois endroits, une liste de mots de passe
+  compromis qu'aucune ligne n'applique, et un plancher de 30 bits présenté comme
+  recommandation. Ces affirmations sont alignées sur le code ; le reste de
+  l'édition n'a pas été relu contre la version française, et son pied de page le
+  dit désormais.
+
 ### SelfJustice / SelfAct — ce que le module affirme de lui-même — 22 août 2026
 
 **Serveur MCP `selfright-mcp` 0.4.0.** Un contrôle extérieur mené le 21 août a

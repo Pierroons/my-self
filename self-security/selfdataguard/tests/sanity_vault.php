@@ -252,7 +252,7 @@ section('What the library refuses, and what it deliberately does not')
 // savoir si ce plancher doit exister est ouverte et écrite comme telle dans le
 // whitepaper §7. Aucune sonde ne peut la trancher à la place de qui décide.
 
-// The promise that lived only in the whitepaper until 0.2.0.
+// The promise that lived only in the whitepaper until 0.3.0.
 try {
     $vault->register(userId: 'user-short', password: 'onze-caract');
     ko('an 11-byte password was accepted');
@@ -262,7 +262,7 @@ try {
         : ko('short password refused without the caveat', $e->getMessage());
 }
 
-// A vault sealed by the pre-0.2.0 derivation must be NAMED, not reported as a
+// A vault sealed by the pre-0.3.0 derivation must be NAMED, not reported as a
 // wrong secret — otherwise someone hunts for a typo in a correct secret.
 $legacyMem   = 'un-secret-parfaitement-correct';
 $legacyBuild = $vault->register(userId: 'user-legacy', password: 'correct horse battery staple');

@@ -3,7 +3,7 @@
 > 🇫🇷 **[Lire en français →](./README.fr.md)**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.3.0](https://img.shields.io/badge/status-v0.3.0-green.svg)](./INSTALL.md)
+[![Status: v0.4.0](https://img.shields.io/badge/status-v0.4.0-green.svg)](./INSTALL.md)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -12,7 +12,7 @@
 > recovery passphrase**, remotely from boot, with no cloud and no trusted third party. The
 > self-hosted FDE layer of the **MySelf** ecosystem (Self-Security pillar).
 
-**Status: validated on a LNMP Debian 13 Trixie server (2026-06-07) — v0.3.0.**
+**Status: validated on a LNMP Debian 13 Trixie server (2026-06-07) — v0.4.0.**
 Root (`/`) unlocked at boot (Argon2id keyscript + boot SSH) and automatic cascade of secondary
 volumes (key-file), reproducible reboots. Documented, reproducible install →
 **[INSTALL.md](./INSTALL.md)**.
@@ -68,7 +68,7 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | [`docs/cryptsetup-lecture-cle.md`](./docs/cryptsetup-lecture-cle.md) | measurement note (French): how `cryptsetup` reads a key depending on the path taken |
 | `fido2-banc-essai/` | research bench: FIDO2 in the initramfs — not a supported path |
 | `install.sh` | semi-automatic installer (see INSTALL.md) |
-| [`quorum-rnd/`](./quorum-rnd/) | R&D: witness-quorum unlock — **not enabled in v0.3.0** |
+| [`quorum-rnd/`](./quorum-rnd/) | R&D: witness-quorum unlock — **not enabled in v0.4.0** |
 
 ## Installation
 
