@@ -86,6 +86,34 @@ final class Db
             }
         }
 
+        // Colonnes du niveau 3 remonté dans la bibliothèque le 07/09/2026. La
+        // décision et son auteur n'étaient nulle part : un dossier tranché ne
+        // disait ni quand ni par qui, et le comptage des refus dans une fenêtre
+        // glissante a besoin de la date.
+        $dsp = array_column(self::$pdo->query('PRAGMA table_info(disputes)')->fetchAll(PDO::FETCH_ASSOC), 'name');
+        foreach ([
+            'decided_at'   => 'INTEGER',
+            'decided_by'   => 'TEXT',
+            'submitted_at' => 'INTEGER NOT NULL DEFAULT 0',
+        ] as $col => $type) {
+            if (!in_array($col, $dsp, true)) {
+                self::$pdo->exec("ALTER TABLE disputes ADD COLUMN $col $type");
+            }
+        }
+
+        // 🔑 Le gel porte sur la PROCÉDURE, jamais sur le compte. La ligne est
+        // gardée après un dégel plutôt que supprimée : qui a dégelé et quand
+        // vaut d'être conservé pour l'arbitre suivant.
+        self::$pdo->exec(
+            'CREATE TABLE IF NOT EXISTS l3_gel (
+                account_id   INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+                gele_jusqu_a INTEGER NOT NULL,
+                pose_le      INTEGER NOT NULL,
+                degele_par   TEXT,
+                degele_le    INTEGER
+            )'
+        );
+
         // recovery_codes a longtemps référencé accounts SANS cascade : toute
         // suppression de compte échouait alors sur la contrainte. SQLite ne sait
         // pas modifier une clé étrangère — il faut recréer la table.

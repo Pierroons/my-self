@@ -6,6 +6,7 @@ namespace Pierroons\MySelfLab;
 
 use PDO;
 use Pierroons\SelfRecover\Device\Appareil;
+use Pierroons\SelfRecover\Recovery\Litige;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -215,5 +216,240 @@ final class StockageSelfRecover implements StorageInterface
         if ($this->pdo->inTransaction()) {
             $this->pdo->rollBack();
         }
+    }
+
+    // ── Récupération de niveau 3 : dossier et arbitrage humain ─────────────
+    //
+    // La traduction des noms se fait ici : le lab dit `dispute_number` là où la
+    // bibliothèque dit un numéro, et `init_collisions` là où elle dit des
+    // demandeurs concurrents.
+
+    private function litigeDepuis(array $l): Litige
+    {
+        return new Litige(
+            id: (int) $l['id'],
+            numero: (string) $l['dispute_number'],
+            compteId: (int) $l['account_id'],
+            nomCompte: (string) ($l['username'] ?? ''),
+            statut: (string) $l['status'],
+            empreinteSesame: (string) ($l['claim_hash'] ?? ''),
+            creeLe: (int) $l['created_at'],
+            expireLe: (int) $l['expires_at'],
+            deposeLe: (int) ($l['submitted_at'] ?? 0),
+            trancheLe: $l['decided_at'] === null ? null : (int) $l['decided_at'],
+            tranchePar: $l['decided_by'] === null ? null : (string) $l['decided_by'],
+            demandeursConcurrents: (int) $l['init_collisions'],
+        );
+    }
+
+    public function trouverLitigeParNumero(string $numero): ?Litige
+    {
+        $st = $this->pdo->prepare(
+            'SELECT d.*, a.username FROM disputes d
+             LEFT JOIN accounts a ON a.id = d.account_id
+             WHERE d.dispute_number = ?'
+        );
+        $st->execute([$numero]);
+        $ligne = $st->fetch(PDO::FETCH_ASSOC);
+
+        return $ligne === false ? null : $this->litigeDepuis($ligne);
+    }
+
+    public function litigeActifDuCompte(int $compteId, int $maintenant): ?Litige
+    {
+        // ⚠️ `accepted` compte comme actif. Entre l'accord et le ré-enrôlement,
+        // le compte est au plus vulnérable : y laisser ouvrir un second dossier
+        // sans le signaler priverait l'arbitre de l'information la plus utile
+        // du moment — qu'un second demandeur se présente.
+        $st = $this->pdo->prepare(
+            "SELECT d.*, a.username FROM disputes d
+             LEFT JOIN accounts a ON a.id = d.account_id
+             WHERE d.account_id = ? AND d.status IN ('open', 'awaiting_admin', 'accepted')
+               AND d.expires_at > ?
+             ORDER BY d.id DESC LIMIT 1"
+        );
+        $st->execute([$compteId, $maintenant]);
+        $ligne = $st->fetch(PDO::FETCH_ASSOC);
+
+        return $ligne === false ? null : $this->litigeDepuis($ligne);
+    }
+
+    public function ouvrirLitige(
+        int $compteId,
+        string $numero,
+        string $empreinteSesame,
+        int $quand,
+        int $expireLe,
+    ): void {
+        $this->pdo->prepare(
+            "INSERT INTO disputes (dispute_number, account_id, status, claim_hash, expires_at, created_at, updated_at)
+             VALUES (?, ?, 'open', ?, ?, ?, ?)"
+        )->execute([$numero, $compteId, $empreinteSesame, $expireLe, $quand, $quand]);
+    }
+
+    public function compterDemandeurConcurrent(int $litigeId): void
+    {
+        $this->pdo->prepare('UPDATE disputes SET init_collisions = init_collisions + 1 WHERE id = ?')
+                  ->execute([$litigeId]);
+    }
+
+    public function enregistrerFaisceau(int $litigeId, string $faisceauJson, int $quand): void
+    {
+        $this->pdo->prepare(
+            "UPDATE disputes SET signals_json = ?, status = 'awaiting_admin', submitted_at = ?, updated_at = ?
+             WHERE id = ?"
+        )->execute([$faisceauJson, $quand, $quand, $litigeId]);
+    }
+
+    public function trancherLitige(int $litigeId, string $statut, string $par, int $quand): void
+    {
+        $this->pdo->prepare(
+            'UPDATE disputes SET status = ?, decided_at = ?, decided_by = ?, updated_at = ? WHERE id = ?'
+        )->execute([$statut, $quand, $par, $quand, $litigeId]);
+    }
+
+    public function cloreLitige(int $litigeId, int $quand): void
+    {
+        // ⚠️ `claim_hash` passe à NULL : le sésame ne doit plus rien rouvrir, et
+        // le fil, lui, ne regarde pas le statut du dossier.
+        $this->pdo->prepare(
+            "UPDATE disputes SET status = 'closed', claim_hash = NULL, updated_at = ? WHERE id = ?"
+        )->execute([$quand, $litigeId]);
+    }
+
+    public function compterRefusRecents(int $compteId, int $depuis): int
+    {
+        $st = $this->pdo->prepare(
+            "SELECT COUNT(*) FROM disputes WHERE account_id = ? AND status = 'refused' AND decided_at > ?"
+        );
+        $st->execute([$compteId, $depuis]);
+
+        return (int) $st->fetchColumn();
+    }
+
+    public function poserGel(int $compteId, int $jusqua, int $quand): void
+    {
+        $this->pdo->prepare(
+            'INSERT INTO l3_gel (account_id, gele_jusqu_a, pose_le) VALUES (?, ?, ?)
+             ON CONFLICT(account_id) DO UPDATE SET gele_jusqu_a = excluded.gele_jusqu_a,
+                                                   pose_le      = excluded.pose_le,
+                                                   degele_par   = NULL,
+                                                   degele_le    = NULL'
+        )->execute([$compteId, $jusqua, $quand]);
+    }
+
+    public function gelJusqua(int $compteId, int $maintenant): int
+    {
+        $st = $this->pdo->prepare('SELECT gele_jusqu_a FROM l3_gel WHERE account_id = ?');
+        $st->execute([$compteId]);
+        $v = (int) ($st->fetchColumn() ?: 0);
+
+        return $v > $maintenant ? $v : 0;
+    }
+
+    public function leverGel(int $compteId, string $par, int $quand): void
+    {
+        // La ligne est gardée, pas supprimée : qui a dégelé et quand vaut d'être
+        // conservé, y compris pour l'arbitre suivant.
+        $this->pdo->prepare(
+            'UPDATE l3_gel SET gele_jusqu_a = 0, degele_par = ?, degele_le = ? WHERE account_id = ?'
+        )->execute([$par, $quand, $compteId]);
+    }
+
+    public function ajouterMessageLitige(int $litigeId, string $auteur, string $texte, int $quand): void
+    {
+        $this->pdo->prepare(
+            'INSERT INTO dispute_messages (dispute_id, sender, body, created_at) VALUES (?, ?, ?, ?)'
+        )->execute([$litigeId, $auteur, $texte, $quand]);
+    }
+
+    public function messagesDuLitige(int $litigeId): array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT sender, body, created_at FROM dispute_messages WHERE dispute_id = ? ORDER BY id'
+        );
+        $st->execute([$litigeId]);
+
+        return array_map(
+            static fn (array $m): array => ['auteur' => (string) $m['sender'], 'texte' => (string) $m['body'],
+                                            'ecrit_le' => (int) $m['created_at']],
+            $st->fetchAll(PDO::FETCH_ASSOC),
+        );
+    }
+
+    public function listerLitiges(int $limite): array
+    {
+        // ⚠️ `source_ip` n'est pas sélectionné : l'adresse du demandeur n'a rien
+        // à faire dans une console d'arbitrage.
+        $st = $this->pdo->prepare(
+            'SELECT d.dispute_number, d.status, d.signals_json, d.init_collisions, d.created_at,
+                    d.submitted_at, d.decided_at, d.decided_by, a.username,
+                    (SELECT COUNT(*) FROM dispute_messages m WHERE m.dispute_id = d.id) AS messages,
+                    (SELECT g.gele_jusqu_a FROM l3_gel g WHERE g.account_id = a.id) AS gele_jusqu_a
+               FROM disputes d JOIN accounts a ON a.id = d.account_id
+              ORDER BY d.id DESC LIMIT ?'
+        );
+        $st->execute([$limite]);
+        $lignes = $st->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($lignes as &$l) {
+            $l['faisceau'] = $l['signals_json'] === null ? null : json_decode((string) $l['signals_json'], true);
+            unset($l['signals_json']);
+        }
+
+        return $lignes;
+    }
+
+    public function purgerLitigesExpires(int $avant): int
+    {
+        // ⚠️ Les dossiers REFUSÉS survivent à la purge : le gel se calcule en
+        // comptant les refus d'une fenêtre de trente jours, et un dossier
+        // expire au bout de vingt-quatre heures. Les effacer viderait le
+        // compteur avant qu'il puisse atteindre son seuil, et le gel — seule
+        // protection contre l'acharnement — deviendrait inatteignable sans
+        // qu'aucune sonde ne rougisse.
+        $st = $this->pdo->prepare("DELETE FROM disputes WHERE expires_at <= ? AND status != 'refused'");
+        $st->execute([$avant]);
+
+        return $st->rowCount();
+    }
+
+    public function faitsDuCompte(int $compteId): ?array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT id, username, created_at, last_login_at, login_count FROM accounts WHERE id = ?'
+        );
+        $st->execute([$compteId]);
+        $l = $st->fetch(PDO::FETCH_ASSOC);
+        if ($l === false) {
+            return null;
+        }
+
+        // 🔑 `login_count` est NOT NULL DEFAULT 0 dans ce schéma : « jamais
+        // enregistré » y est indiscernable de « zéro connexion ». On rend donc
+        // `null` pour les deux faits tant que `last_login_at` est vide, plutôt
+        // que de laisser un compte non tracé produire « rare » — ce qui ferait
+        // diverger la réponse honnête d'un titulaire légitime.
+        $jamais = $l['last_login_at'] === null;
+
+        return [
+            'id'                 => (int) $l['id'],
+            'nom_compte'         => (string) $l['username'],
+            'cree_le'            => (int) $l['created_at'],
+            'derniere_connexion' => $jamais ? null : (int) $l['last_login_at'],
+            'nombre_connexions'  => $jamais ? null : (int) $l['login_count'],
+        ];
+    }
+
+    public function reposerSecrets(
+        int $compteId,
+        string $empreinteMotDePasse,
+        string $empreintePassphrase,
+        string $empreinteMotDerive,
+        string $sel,
+    ): void {
+        $this->pdo->prepare(
+            'UPDATE accounts SET pw_hash = ?, pass_hash = ?, recovery_hash = ?, recovery_salt = ?,
+                                 banned_until = 0 WHERE id = ?'
+        )->execute([$empreinteMotDePasse, $empreintePassphrase, $empreinteMotDerive, $sel, $compteId]);
     }
 }

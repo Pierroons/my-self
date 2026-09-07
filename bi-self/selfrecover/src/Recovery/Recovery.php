@@ -13,13 +13,23 @@ use Pierroons\SelfRecover\Storage\StorageInterface;
  * Les deux premiers niveaux de l'escalade de récupération.
  *
  *   Niveau 1 — la passphrase diceware. Un seul facteur, mais à forte entropie
- *              (77 bits pour six mots) et jamais saisi ailleurs.
+ *              (≈51,7 bits pour quatre mots de la liste EFF) et jamais saisi
+ *              ailleurs. `engendrerPassphrase()` fixe la longueur, à un seul
+ *              endroit : ce docblock a annoncé six mots et 77 bits pendant que
+ *              le code en tirait quatre.
  *   Niveau 2 — un code de récupération ET le mot mémorisé. Deux facteurs de
  *              nature différente : une possession imprimable, une connaissance.
  *
- * Le niveau 3 — décision humaine sur faisceau de faits — reste applicatif : il
- * suppose une interface d'arbitrage, des échanges, une notion de litige. Rien
- * de tout cela n'appartient au protocole.
+ *   Niveau 3 — la décision humaine sur faisceau de faits, quand il ne reste
+ *              aucun secret. Il vit dans `Escalade`, depuis le 07/09/2026 :
+ *              porté par deux applications, il y avait divergé, et l'une
+ *              supprimait le compte au premier refus. Ce que le protocole doit
+ *              garantir ne pouvait pas rester au libre choix de chacune.
+ *
+ * 🔑 L'arbitrage suppose des rôles et des sessions, que la bibliothèque ne
+ * connaît pas : `Escalade` ne vérifie jamais qu'un appelant a le droit de
+ * trancher. Elle garantit le reste — le sésame, le faisceau, et qu'aucun refus
+ * ne touche au compte.
  *
  * 🔑 **Aucune erreur ne dit lequel des facteurs a échoué.** Le préciser rendrait
  * chacun attaquable seul, ce qui annulerait le bénéfice d'en exiger deux.
@@ -45,6 +55,9 @@ final class Recovery
 
     /** Longueur du lot émis à l'inscription. */
     public const CODES_PAR_LOT = 10;
+
+    /** Mots tirés pour une passphrase de niveau 1 — quatre valent ≈51,7 bits. */
+    public const MOTS_PASSPHRASE = 4;
 
     /**
      * Niveau 1 — récupération par passphrase diceware.
@@ -88,7 +101,7 @@ final class Recovery
         // La laisser valable ferait d'un papier volé une porte permanente, et
         // l'utilisateur croirait son accès rendu alors qu'il resterait partagé.
         $motDePasse     = Device::engendrerMotDePasse();
-        $nouvellePhrase = implode(' ', Wordlist::generate(4, 'en')['words']);
+        $nouvellePhrase = self::engendrerPassphrase();
 
         $this->stockage->commencerTransaction();
         try {
@@ -179,7 +192,7 @@ final class Recovery
         // l'ancienne passphrase valable garderait ouverte une porte dont on
         // ignore si elle est connue.
             $motDePasse     = Device::engendrerMotDePasse();
-            $nouvellePhrase = implode(' ', Wordlist::generate(4, 'en')['words']);
+            $nouvellePhrase = self::engendrerPassphrase();
             $this->stockage->remplacerEmpreintes(
                 (int) $trouve['compte_id'],
                 Hashing::hash($motDePasse),
@@ -213,6 +226,19 @@ final class Recovery
      *
      * @return list<string>
      */
+    /**
+     * Une passphrase neuve, de la longueur du protocole.
+     *
+     * ⚠️ Définie ICI et nulle part ailleurs. Elle était engendrée à deux
+     * endroits de ce fichier et à un troisième dans le niveau 3 : trois copies
+     * du même choix, qui n'ont aucune raison de rester d'accord. Changer la
+     * longueur se fait sur cette ligne, et se répercute partout.
+     */
+    public static function engendrerPassphrase(): string
+    {
+        return implode(' ', Wordlist::generate(self::MOTS_PASSPHRASE, 'en')['words']);
+    }
+
     public function emettreCodes(int $compteId, int $combien = self::CODES_PAR_LOT, ?int $maintenant = null): array
     {
         $maintenant = $maintenant ?? time();

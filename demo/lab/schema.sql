@@ -202,16 +202,32 @@ CREATE TABLE IF NOT EXISTS disputes (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     dispute_number  TEXT UNIQUE NOT NULL,          -- LIT-XXXX (non énumérable)
     account_id      INTEGER NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'open',  -- open|awaiting_admin|granted|resolved|refused|closed
+    status          TEXT NOT NULL DEFAULT 'open',  -- open|awaiting_admin|accepted|refused|closed
     refusal_count   INTEGER NOT NULL DEFAULT 0,
     signals_json    TEXT,                          -- faisceau de faits bruts pour l'admin (jamais un score chiffré)
     claim_hash      TEXT,                          -- SHA-256 du sésame généré côté demandeur (autorise le fil)
     expires_at      INTEGER,                       -- TTL de la capability (défaut +24h)
     init_collisions INTEGER NOT NULL DEFAULT 0,    -- inits concurrentes = signal multi-demandeur
     source_ip       TEXT,
+    submitted_at    INTEGER NOT NULL DEFAULT 0,    -- dernier dépôt de réponses
+    decided_at      INTEGER,                       -- quand un arbitre a tranché
+    decided_by      TEXT,                          -- et qui
     created_at      INTEGER NOT NULL,
     updated_at      INTEGER NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+-- Gel de PROCÉDURE après des refus répétés. Le compte n'est jamais touché : un
+-- refus dit « ce demandeur ne m'a pas convaincu », pas « ce compte est
+-- illégitime ». Sans ce partage, un attaquant incapable de voler un compte
+-- pourrait le faire effacer en accumulant des refus.
+-- La ligne est gardée après un dégel : qui a dégelé et quand vaut d'être conservé.
+CREATE TABLE IF NOT EXISTS l3_gel (
+    account_id   INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+    gele_jusqu_a INTEGER NOT NULL,
+    pose_le      INTEGER NOT NULL,
+    degele_par   TEXT,
+    degele_le    INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_disputes_account ON disputes(account_id);
 CREATE INDEX IF NOT EXISTS idx_disputes_number ON disputes(dispute_number);

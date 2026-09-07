@@ -277,6 +277,19 @@ final class Auth
             'INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, ?, ?, ?)'
         )->execute([$username, $ok ? 1 : 0, $ip, time()]);
 
+        if ($ok) {
+            // 🔑 Les traces d'usage que le faisceau du niveau 3 confronte aux
+            // réponses du demandeur. Elles étaient LUES par `recover_l3` et
+            // écrites nulle part : « dernière connexion » rendait toujours
+            // « jamais connecté » et « fréquence » toujours « rare », donc un
+            // titulaire légitime obtenait le dossier d'un imposteur. Un signal
+            // qu'on ne nourrit pas ne vaut pas moins qu'un signal absent : il
+            // vaut moins que rien, parce qu'il accuse.
+            $pdo->prepare(
+                'UPDATE accounts SET last_login_at = ?, login_count = login_count + 1 WHERE id = ?'
+            )->execute([time(), (int) $acc['id']]);
+        }
+
         if (!$ok) {
             // LAB-07 : message générique, sans compteur de tentatives restantes.
             return ['ok' => false, 'status' => 'wrong',

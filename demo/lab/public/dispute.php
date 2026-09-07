@@ -172,13 +172,13 @@ async function rafraichir(){
     const fil = document.getElementById('thread');
     const msgs = d.messages || [];
     fil.innerHTML = msgs.length ? msgs.map(function(m){
-      const qui = m.sender === 'admin' ? DSP.admin : DSP.you;
-      return '<p style="margin:0 0 8px"><strong>'+esc(qui)+'</strong> — '+esc(m.body)+'</p>';
+      const qui = m.auteur === 'admin' ? DSP.admin : DSP.you;
+      return '<p style="margin:0 0 8px"><strong>'+esc(qui)+'</strong> — '+esc(m.texte)+'</p>';
     }).join('') : '<p class="muted" style="margin:0">'+esc(DSP.empty)+'</p>';
     fil.scrollTop = fil.scrollHeight;
     // L'accord de l'admin n'ouvre rien : il déverrouille seulement l'étape où
     // le propriétaire repose lui-même ses secrets.
-    if(d.status === 'granted') montrer('step-reset');
+    if(d.status === 'accepted') montrer('step-reset');
   }catch(e){ toast(DSP.neterr); }
 }
 
