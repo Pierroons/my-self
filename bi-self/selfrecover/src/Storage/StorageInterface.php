@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Pierroons\SelfRecover\Storage;
 
 use Pierroons\SelfRecover\Device\Appareil;
+use Pierroons\SelfRecover\Recovery\Litige;
 
 /**
  * Contrat de persistance du protocole SelfRecover.
@@ -116,6 +117,111 @@ interface StorageInterface
 
     /** Combien de codes restent utilisables pour ce compte. */
     public function compterCodesRestants(int $compteId): int;
+
+    // ── Récupération de niveau 3 : dossier et arbitrage humain ─────────────
+    //
+    // 🔑 Aucune de ces opérations ne touche au compte. Un refus clôt un dossier,
+    // il ne supprime ni ne bannit : un refus dit « ce demandeur ne m'a pas
+    // convaincu », pas « ce compte est illégitime ». Si le demandeur était un
+    // imposteur, supprimer détruirait le compte de sa victime ; s'il était le
+    // titulaire mal jugé, ça punirait un innocent. Et un attaquant incapable de
+    // voler un compte pourrait le faire effacer en accumulant des refus —
+    // l'échec deviendrait une arme. Ce qui se durcit est la PROCÉDURE, par le
+    // gel ci-dessous.
+
+    /** Le dossier portant ce numéro, quel que soit son état. */
+    public function trouverLitigeParNumero(string $numero): ?Litige;
+
+    /** Le dossier encore recevable de ce compte, s'il en existe un. */
+    public function litigeActifDuCompte(int $compteId, int $maintenant): ?Litige;
+
+    public function ouvrirLitige(
+        int $compteId,
+        string $numero,
+        string $empreinteSesame,
+        int $quand,
+        int $expireLe,
+    ): void;
+
+    /** Une tentative d'ouverture pendant qu'un dossier court : un fait pour l'arbitre. */
+    public function compterDemandeurConcurrent(int $litigeId): void;
+
+    /** Range le faisceau et fait passer le dossier en attente de lecture. */
+    public function enregistrerFaisceau(int $litigeId, string $faisceauJson, int $quand): void;
+
+    /** Écrit la décision, son auteur et sa date. Ne touche pas au compte. */
+    public function trancherLitige(int $litigeId, string $statut, string $par, int $quand): void;
+
+    /**
+     * Clôt le dossier et rend son sésame inutilisable.
+     *
+     * ⚠️ Le sésame est à usage unique : un dossier repris après le
+     * ré-enrôlement rouvrirait une porte que le titulaire croit refermée.
+     */
+    public function cloreLitige(int $litigeId, int $quand): void;
+
+    /**
+     * Combien de dossiers REFUSÉS sur ce compte depuis cet instant.
+     *
+     * ⚠️ On compte les dossiers, pas les dépôts : trois soumissions sur un même
+     * dossier restent un seul refus, sinon l'insistance d'un titulaire honnête
+     * déclencherait le gel aussi vite qu'une campagne hostile.
+     */
+    public function compterRefusRecents(int $compteId, int $depuis): int;
+
+    /** Gèle l'OUVERTURE de nouveaux dossiers. Le compte reste entier et connectable. */
+    public function poserGel(int $compteId, int $jusqua, int $quand): void;
+
+    /** Jusqu'à quand l'ouverture est gelée, 0 si elle ne l'est pas. */
+    public function gelJusqua(int $compteId, int $maintenant): int;
+
+    /**
+     * Lève le gel.
+     *
+     * ⚠️ La trace se garde : qui a dégelé et quand vaut d'être conservé, y
+     * compris pour l'arbitre suivant. Effacer la ligne effacerait la décision.
+     */
+    public function leverGel(int $compteId, string $par, int $quand): void;
+
+    /** `$auteur` vaut `demandeur` ou `admin`. */
+    public function ajouterMessageLitige(int $litigeId, string $auteur, string $texte, int $quand): void;
+
+    /** @return list<array{auteur: string, texte: string, ecrit_le: int}> */
+    public function messagesDuLitige(int $litigeId): array;
+
+    /** Les dossiers pour la console d'arbitrage, du plus récent au plus ancien. */
+    public function listerLitiges(int $limite): array;
+
+    /** Efface les dossiers périmés. Rend le nombre effacé. */
+    public function purgerLitigesExpires(int $avant): int;
+
+    /**
+     * Ce que le serveur sait du compte, sans que personne l'ait déclaré.
+     *
+     * ⚠️ `derniere_connexion` et `nombre_connexions` sont NULLABLES, et c'est
+     * délibéré : un déploiement qui ne les enregistre pas doit rendre `null`,
+     * jamais zéro. Zéro se lit « jamais connecté » et transforme une réponse
+     * honnête en divergence — le dossier d'une personne légitime arrive alors à
+     * charge devant l'arbitre.
+     *
+     * @return array{id: int, nom_compte: string, cree_le: int, derniere_connexion: int|null, nombre_connexions: int|null}|null
+     */
+    public function faitsDuCompte(int $compteId): ?array;
+
+    /**
+     * Repose les quatre secrets d'un compte en une fois, après un accord.
+     *
+     * 🔑 Les trois empreintes et le sel ne sont pas quatre informations mais
+     * une seule : le mot mémorisé est dérivé sous ce sel, les séparer laisse une
+     * fenêtre où le compte n'est récupérable par rien.
+     */
+    public function reposerSecrets(
+        int $compteId,
+        string $empreinteMotDePasse,
+        string $empreintePassphrase,
+        string $empreinteMotDerive,
+        string $sel,
+    ): void;
 
     // ── Atomicité ──────────────────────────────────────────────────────────
     //

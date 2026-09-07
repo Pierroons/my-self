@@ -194,38 +194,55 @@ table.adm tr:last-child td{border-bottom:none}
         ces faits en un chiffre ferait lire le chiffre à la place des faits.
       -->
       <tr><td colspan="5">
-        <?php $sig = $d['signals'] ?? []; ?>
+        <?php
+          $sig     = $d['faisceau'] ?? [];
+          $ctx     = $sig['contexte'] ?? [];
+          $etats   = ['concorde' => '✅', 'diverge' => '❌', 'indisponible' => '—'];
+          $libelle = ['annee_creation' => 'Année de création',
+                      'mois_connexion' => 'Dernière connexion (mois)',
+                      'frequence'      => 'Fréquence d\'usage'];
+        ?>
         <?php if (!$sig): ?>
           <span class="muted" style="font-size:12px">Faisceau pas encore soumis.</span>
         <?php else: ?>
           <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px">
             <div style="flex:1;min-width:240px">
-              <strong style="color:var(--acc)">Passif</strong> <span class="muted">— constaté par le serveur, non falsifiable</span>
+              <strong style="color:var(--acc)">Contexte</strong> <span class="muted">— ce que le serveur sait, sans que personne l'ait déclaré</span>
               <ul style="margin:4px 0 0;padding-left:18px">
-                <?php foreach (($sig['passive'] ?? []) as $f): ?>
-                  <li><?= ($f['ok'] ?? false) ? '✅' : '⬜' ?> <?= h((string) ($f['label'] ?? '')) ?> <span class="muted">— <?= h((string) ($f['detail'] ?? '')) ?></span></li>
-                <?php endforeach; ?>
+                <li>Compte créé le <strong><?= h((string) ($ctx['compte_cree_le'] ?? '?')) ?></strong></li>
+                <li>Dernière connexion : <strong><?= $ctx['derniere_connexion'] === null ? '<em>non enregistrée</em>' : h((string) $ctx['derniere_connexion']) ?></strong></li>
+                <li>Connexions comptées : <strong><?= $ctx['nombre_connexions'] === null ? '<em>non enregistrées</em>' : (int) $ctx['nombre_connexions'] ?></strong></li>
+                <li>Codes de niveau 2 restants : <strong><?= (int) ($ctx['codes_l2_restants'] ?? 0) ?></strong></li>
+                <li>Refus sur ce compte (30 j) : <strong><?= (int) ($ctx['refus_precedents'] ?? 0) ?></strong></li>
               </ul>
             </div>
             <div style="flex:1;min-width:240px">
               <strong style="color:var(--warn)">Déclaratif</strong> <span class="muted">— affirmé par le demandeur, devinable</span>
               <ul style="margin:4px 0 0;padding-left:18px">
-                <?php foreach (($sig['declarative'] ?? []) as $f): ?>
-                  <?php // Le déclaratif porte « dit » et « reel » : afficher les deux est
-                        // tout l'intérêt de cet axe — une coche seule ne se relit pas. ?>
-                  <li><?= ($f['ok'] ?? false) ? '✅' : '⬜' ?> <?= h((string) ($f['label'] ?? '')) ?>
-                    <span class="muted">— déclaré <strong><?= h((string) ($f['dit'] ?? $f['detail'] ?? '—')) ?></strong>
-                    <?php if (isset($f['reel'])): ?> · réel <strong><?= h((string) $f['reel']) ?></strong><?php endif; ?></span></li>
+                <?php foreach (($sig['declaratif'] ?? []) as $cle => $f): ?>
+                  <?php // ⚠️ Trois états. « — » veut dire que le serveur n'a rien
+                        // enregistré sur ce point : ce n'est PAS une divergence, et
+                        // l'afficher comme un refus mettrait à charge une réponse
+                        // honnête. C'est pour ça que le libellé le dit en toutes lettres. ?>
+                  <li><?= $etats[$f['etat'] ?? ''] ?? '?' ?> <?= h($libelle[$cle] ?? (string) $cle) ?>
+                    <span class="muted">— déclaré <strong><?= h((string) ($f['declare'] ?? '—')) ?></strong>
+                    <?php if (($f['reel'] ?? null) === null): ?>
+                      · <em>rien d'enregistré côté serveur</em>
+                    <?php else: ?>
+                      · réel <strong><?= h((string) $f['reel']) ?></strong>
+                    <?php endif; ?></span></li>
                 <?php endforeach; ?>
               </ul>
             </div>
           </div>
           <p class="muted" style="font-size:12px;margin:8px 0 0">
-            <?php // Un décompte de concordances, pas une note : il résume ce qui est
-                  // au-dessus sans prétendre trancher à la place du relecteur. ?>
-            <?php if (!empty($sig['summary'])): ?><strong><?= h((string) $sig['summary']) ?></strong> · <?php endif; ?>
-            Échecs L2 antérieurs depuis la même connexion : <?= (int) ($d['l2_prior_attempts'] ?? 0) ?>
-            · Refus déjà prononcés : <?= (int) ($d['refusal_count'] ?? 0) ?>
+            <?php // Aucun décompte agrégé : ni note, ni score, ni « n/m concordants ».
+                  // Un chiffre se lirait à la place des faits, et c'est un humain qui
+                  // doit trancher ici. ?>
+            <?php if (!empty($sig['avertissement'])): ?>⚠️ <?= h((string) $sig['avertissement']) ?><br><?php endif; ?>
+            Demandeurs concurrents : <?= (int) ($d['init_collisions'] ?? 0) ?>
+            <?php if (!empty($d['decided_by'])): ?> · tranché par <strong><?= h((string) $d['decided_by']) ?></strong><?php endif; ?>
+            <?php if (!empty($d['gele_jusqu_a'])): ?> · 🧊 ouverture gelée jusqu'au <?= h(date('d/m/Y', (int) $d['gele_jusqu_a'])) ?> — <em>le compte, lui, fonctionne</em><?php endif; ?>
           </p>
         <?php endif; ?>
       </td></tr>

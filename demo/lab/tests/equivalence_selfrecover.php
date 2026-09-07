@@ -202,6 +202,97 @@ try {
     @unlink($tmp);
 }
 
+// ── Le niveau 3 sur le schéma réel ──────────────────────────────────────────
+//
+// La sonde `bi-self/selfrecover/tests/sanity_escalade.php` prouve que le
+// protocole est correct sur un stockage en mémoire. Ici on vérifie que
+// l'adaptateur du lab le sert : `disputes.dispute_number` porte bien le numéro,
+// `init_collisions` les demandeurs concurrents, et la table `l3_gel` le gel.
+//
+// ⚠️ Ces contrôles ne gardent que CETTE couche. Ce que les endpoints
+// `public/api/recover_l3*.php` font des paramètres avant d'appeler la
+// bibliothèque n'est pas mesuré ici — c'est exactement l'étage où le défaut du
+// 27/08 vivait, quand `register.php` normalisait le sel avant la garde.
+
+echo "\n→ Le niveau 3 sur le schéma réel du lab\n";
+
+$pdo3 = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$pdo3->exec('PRAGMA foreign_keys = ON');
+$pdo3->exec((string) file_get_contents(__DIR__ . '/../schema.sql'));
+
+$now3 = 1_700_000_000;
+$pdo3->prepare(
+    'INSERT INTO accounts (id, username, pw_hash, pass_hash, recovery_hash, recovery_salt,
+                           created_at, last_login_at, login_count)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)'
+)->execute([
+    'alice', Hashing::hash('x'), Hashing::hash('y'), Hashing::hash($MOT), sr_sel_aleatoire(),
+    $now3 - 400 * 86400, $now3 - 30 * 86400, 42,
+]);
+
+$stock3 = new StockageSelfRecover($pdo3);
+$esc3   = new \Pierroons\SelfRecover\Recovery\Escalade(
+    $stock3,
+    new Recovery($stock3, 'sel-du-lab-pour-la-sonde', delaiRefusUs: 0),
+    delaiRefusUs: 0,
+);
+
+$ses3 = bin2hex(random_bytes(32));
+$ouv3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame($ses3), $now3);
+verifier('un dossier s\'ouvre sur le schéma réel', ($ouv3['ok'] ?? false) === true);
+
+$col = $pdo3->query('SELECT dispute_number, status, claim_hash FROM disputes')->fetch(PDO::FETCH_ASSOC);
+verifier('la colonne dispute_number porte le numéro rendu', ($col['dispute_number'] ?? '') === ($ouv3['numero'] ?? 'x'));
+verifier('la colonne claim_hash porte l\'empreinte, jamais le sésame',
+    ($col['claim_hash'] ?? '') === hash('sha256', $ses3) && ($col['claim_hash'] ?? '') !== $ses3);
+
+$esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('autre'), $now3 + 5);
+verifier('init_collisions compte le demandeur concurrent',
+    (int) $pdo3->query('SELECT init_collisions FROM disputes')->fetchColumn() === 1);
+
+$dep3 = $esc3->soumettre((string) $ouv3['numero'], $ses3, [
+    'annee_creation' => gmdate('Y', $now3 - 400 * 86400),
+    'mois_connexion' => gmdate('Y-m', $now3 - 30 * 86400),
+    'frequence'      => 'souvent',
+], $now3);
+$fs = json_decode((string) $pdo3->query('SELECT signals_json FROM disputes')->fetchColumn(), true);
+verifier('le faisceau est rangé en base', is_array($fs));
+verifier('⭐ les traces d\'usage que le lab écrit désormais rendent des états calculés',
+    ($fs['declaratif']['mois_connexion']['etat'] ?? '') === 'concorde'
+    && ($fs['declaratif']['frequence']['etat'] ?? '') === 'concorde');
+
+// Contre-témoin : un compte jamais connecté rend « indisponible », pas « diverge ».
+$pdo3->exec('UPDATE accounts SET last_login_at = NULL, login_count = 0 WHERE id = 1');
+$ses4 = bin2hex(random_bytes(32));
+$pdo3->exec("UPDATE disputes SET status = 'closed'");
+$ouv4 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame($ses4), $now3 + 100);
+$esc3->soumettre((string) $ouv4['numero'], $ses4, ['mois_connexion' => '2026-05'], $now3 + 100);
+$st4 = $pdo3->query('SELECT signals_json FROM disputes ORDER BY id DESC LIMIT 1')->fetchColumn();
+verifier('contre-témoin : un compte non tracé rend « indisponible », pas « diverge »',
+    (json_decode((string) $st4, true)['declaratif']['mois_connexion']['etat'] ?? '') === 'indisponible');
+
+echo "\n→ ⭐ Sur le schéma réel non plus, un refus ne touche pas au compte\n";
+
+$avant3 = $pdo3->query('SELECT pw_hash, pass_hash, recovery_hash FROM accounts WHERE id = 1')->fetch(PDO::FETCH_ASSOC);
+for ($i = 0; $i < 3; $i++) {
+    $pdo3->exec("UPDATE disputes SET status = 'closed' WHERE status IN ('open','awaiting_admin')");
+    $s = bin2hex(random_bytes(32));
+    $o = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame($s), $now3 + 200 + $i * 86400);
+    $esc3->trancher((string) $o['numero'], 'refuse', 'arbitre', $now3 + 300 + $i * 86400);
+}
+$apres3 = $pdo3->query('SELECT pw_hash, pass_hash, recovery_hash FROM accounts WHERE id = 1')->fetch(PDO::FETCH_ASSOC);
+
+verifier('la ligne du compte existe toujours après trois refus',
+    (int) $pdo3->query('SELECT COUNT(*) FROM accounts WHERE id = 1')->fetchColumn() === 1);
+verifier('ses trois empreintes sont inchangées', $avant3 === $apres3);
+verifier('le gel est posé dans la table l3_gel, et pas ailleurs',
+    (int) $pdo3->query('SELECT COUNT(*) FROM l3_gel WHERE account_id = 1')->fetchColumn() === 1);
+verifier('banned_until n\'a PAS été posé — c\'est la procédure qui gèle, pas le compte',
+    (int) ($pdo3->query('SELECT COALESCE(banned_until, 0) FROM accounts WHERE id = 1')->fetchColumn()) === 0);
+
+$gele3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('encore'), $now3 + 400 + 2 * 86400);
+verifier('et l\'ouverture est bien refusée pendant le gel', ($gele3['error'] ?? '') === 'gele');
+
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Équivalence lab ⨯ SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 echo str_repeat('=', 63) . "\n\n";

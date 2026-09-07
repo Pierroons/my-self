@@ -67,6 +67,13 @@ jobs:
       - name: Garde-fou — récupération niveaux 1 et 2
         run: php bi-self/selfrecover/tests/sanity_recovery.php
 
+      # Le contrôle central de ce banc est qu'un refus ne touche pas au compte :
+      # le code dont ce niveau est issu supprimait le compte au premier refus,
+      # ce qui donnait à un attaquant le moyen de faire effacer un compte qu'il
+      # n'arrivait pas à voler.
+      - name: Garde-fou — récupération niveau 3, arbitrage et gel de procédure
+        run: php bi-self/selfrecover/tests/sanity_escalade.php
+
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les
       # vecteurs étaient figés, et ne gardaient rien. Cinq implémentations
@@ -213,6 +220,12 @@ jobs:
 
       - name: Garde-fou — coût constant du hash factice (lab)
         run: php demo/lab/tests/sanity_timing.php
+
+      # Ce banc porte la justification écrite de l'ancre externe du journal SU
+      # (contrôle 4) et le profil de hachage du secret SuperUser (contrôle 8).
+      # Il tournait à la main depuis sa création : rien ne le lançait ici.
+      - name: Garde-fou — journal et secret du super-utilisateur
+        run: php demo/lab/tests/sanity_su.php
 
       # ── Suites de module ───────────────────────────────────────────────────
       - name: SelfDataGuard — sanity

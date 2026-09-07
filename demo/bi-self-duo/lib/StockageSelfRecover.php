@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../../bi-self/selfrecover/src/autoload.php';
 
 use Pierroons\SelfRecover\Device\Appareil;
+use Pierroons\SelfRecover\Recovery\Litige;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -241,5 +242,117 @@ final class StockageSelfRecover implements StorageInterface
             $this->db->exec('ROLLBACK');
             $this->ouverte = false;
         }
+    }
+
+    // ── Récupération de niveau 3 : absente de cette démo ───────────────────
+    //
+    // 🔑 Cette démo montre les niveaux 1 et 2 ; elle n'a ni table de dossiers,
+    // ni fil, ni arbitre. Chaque opération du niveau 3 REFUSE au lieu de rendre
+    // une valeur neutre — c'est la règle déjà posée plus haut pour le frein par
+    // IP. Rendre `null` ou `0` ferait passer un niveau absent pour un niveau
+    // vide, et l'application croirait avoir un arbitrage alors qu'elle n'en a
+    // aucun. Ici l'erreur est bruyante, immédiate, et dit quoi faire.
+
+    private function pasDeNiveau3(string $quoi): never
+    {
+        throw new RuntimeException(
+            "Cette démo n'implémente pas le niveau 3 ($quoi) : elle n'a ni dossiers, ni fil, "
+            . "ni arbitre. Ne pas construire d'Escalade sur cet adaptateur."
+        );
+    }
+
+    public function trouverLitigeParNumero(string $numero): ?Litige
+    {
+        $this->pasDeNiveau3('trouverLitigeParNumero');
+    }
+
+    public function litigeActifDuCompte(int $compteId, int $maintenant): ?Litige
+    {
+        $this->pasDeNiveau3('litigeActifDuCompte');
+    }
+
+    public function ouvrirLitige(
+        int $compteId,
+        string $numero,
+        string $empreinteSesame,
+        int $quand,
+        int $expireLe,
+    ): void {
+        $this->pasDeNiveau3('ouvrirLitige');
+    }
+
+    public function compterDemandeurConcurrent(int $litigeId): void
+    {
+        $this->pasDeNiveau3('compterDemandeurConcurrent');
+    }
+
+    public function enregistrerFaisceau(int $litigeId, string $faisceauJson, int $quand): void
+    {
+        $this->pasDeNiveau3('enregistrerFaisceau');
+    }
+
+    public function trancherLitige(int $litigeId, string $statut, string $par, int $quand): void
+    {
+        $this->pasDeNiveau3('trancherLitige');
+    }
+
+    public function cloreLitige(int $litigeId, int $quand): void
+    {
+        $this->pasDeNiveau3('cloreLitige');
+    }
+
+    public function compterRefusRecents(int $compteId, int $depuis): int
+    {
+        $this->pasDeNiveau3('compterRefusRecents');
+    }
+
+    public function poserGel(int $compteId, int $jusqua, int $quand): void
+    {
+        $this->pasDeNiveau3('poserGel');
+    }
+
+    public function gelJusqua(int $compteId, int $maintenant): int
+    {
+        $this->pasDeNiveau3('gelJusqua');
+    }
+
+    public function leverGel(int $compteId, string $par, int $quand): void
+    {
+        $this->pasDeNiveau3('leverGel');
+    }
+
+    public function ajouterMessageLitige(int $litigeId, string $auteur, string $texte, int $quand): void
+    {
+        $this->pasDeNiveau3('ajouterMessageLitige');
+    }
+
+    public function messagesDuLitige(int $litigeId): array
+    {
+        $this->pasDeNiveau3('messagesDuLitige');
+    }
+
+    public function listerLitiges(int $limite): array
+    {
+        $this->pasDeNiveau3('listerLitiges');
+    }
+
+    public function purgerLitigesExpires(int $avant): int
+    {
+        $this->pasDeNiveau3('purgerLitigesExpires');
+    }
+
+    public function faitsDuCompte(int $compteId): ?array
+    {
+        $this->pasDeNiveau3('faitsDuCompte');
+    }
+
+    public function reposerSecrets(
+        int $compteId,
+        string $empreinteMotDePasse,
+        string $empreintePassphrase,
+        string $empreinteMotDerive,
+        string $sel,
+    ): void {
+        $this->pasDeNiveau3('reposerSecrets');
     }
 }
