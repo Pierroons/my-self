@@ -175,6 +175,78 @@ if (!empty($soi['ok'])) {
     ok('auto-promotion refusée, demande vers un tiers acceptée');
 }
 
+// ── 8. Le secret SU est posé au profil du dépôt, pas à celui de PHP ─────────
+// 🔑 Le contrôle passe par la CONSOLE, pas par `Hashing::ARGON2` : le défaut
+// n'était pas dans le profil, il était dans un appel qui ne le lisait pas.
+// `password_hash($p, PASSWORD_ARGON2ID)` sans options prend ceux de PHP, et
+// aujourd'hui ils ne diffèrent que d'un fil — assez peu pour ne rien casser,
+// assez pour que le secret le plus privilégié du modèle reste en arrière le
+// jour où le profil monte. Un contrôle sur la constante seule serait resté vert
+// pendant tout ce temps.
+//
+// Mesuré : options retirées de l'appel, le contrôle rougit sur `p=1`.
+require_once __DIR__ . '/../../../bi-self/selfrecover/src/autoload.php';
+
+$dirP = sys_get_temp_dir() . '/sanity_su_prof_' . bin2hex(random_bytes(6));
+mkdir($dirP, 0700, true);
+register_shutdown_function(static function () use ($dirP): void {
+    foreach (glob("$dirP/*") ?: [] as $f) {
+        unlink($f);
+    }
+    @rmdir($dirP);
+});
+
+$console = __DIR__ . '/../selfrecover-su';
+$secret  = 'banc-de-mesure-passphrase-longue-sans-espace';
+$env     = [
+    'PATH'                          => getenv('PATH') ?: '/usr/bin:/bin',
+    'SELFRECOVER_STATE_DIR'         => $dirP,
+    'SELFRECOVER_SU_AUDIT_SECRET'   => 'sanity-secret-fixe',
+    'SU_FORENSIC_MINIMAL'           => '1',
+    'SELFRECOVER_SU_DEV'            => '1',
+    'SELFRECOVER_NTFY_URL'          => '',
+    'SELFRECOVER_SU_SECRET'         => $secret,
+    'SELFRECOVER_SU_SECRET_INPUT'   => $secret,
+    'SELFRECOVER_SU_NEW_INPUT'      => 'une-autre-passphrase-longue-et-sans-espace',
+];
+$proc = proc_open(
+    escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($console) . ' change-passphrase',
+    [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
+    $pipes,
+    null,
+    $env
+);
+if (is_resource($proc)) {
+    proc_close($proc);
+}
+
+$pose = @file_get_contents("$dirP/su-secret");
+if ($pose === false || $pose === '') {
+    nok('la console n\'a posé aucun secret — le contrôle ne mesure rien');
+} else {
+    $attendu = Pierroons\SelfRecover\Crypto\Hashing::ARGON2;
+    $motif   = sprintf(
+        '/^\$argon2id\$v=19\$m=%d,t=%d,p=%d\$/',
+        $attendu['memory_cost'],
+        $attendu['time_cost'],
+        $attendu['threads']
+    );
+    preg_match($motif, trim($pose)) === 1
+        ? ok('le secret SU porte le profil du dépôt (m=' . $attendu['memory_cost']
+            . ', t=' . $attendu['time_cost'] . ', p=' . $attendu['threads'] . ')')
+        : nok('le secret SU ne porte pas le profil du dépôt : ' . substr(trim($pose), 0, 32));
+}
+
+// ── 9. Un secret posé avant le correctif s'authentifie toujours ─────────────
+// `password_verify` lit les paramètres DANS l'empreinte : changer le profil de
+// hachage ne condamne aucun secret déjà posé. Sans ce contrôle, quelqu'un
+// pourrait croire qu'un durcissement du profil oblige à refaire le tour des
+// déploiements.
+$ancien = password_hash($secret, PASSWORD_ARGON2ID);   // profil de PHP, comme avant le correctif
+password_verify($secret, $ancien)
+    ? ok('un secret posé sous l\'ancien profil se vérifie encore')
+    : nok('un secret posé sous l\'ancien profil ne se vérifie plus — migration forcée');
+
 echo "\n";
 $total = $reussites + $echecs;
 if ($echecs === 0) {

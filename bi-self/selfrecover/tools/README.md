@@ -44,14 +44,27 @@ défendable pour vérifier une passphrase qu'on garde sur papier.
 
 ## reference
 
-`device_handlers.php` vient de la démo supprimée. Il n'est ni servi, ni chargé,
-ni testé.
+`device_handlers.php` vient de la démo supprimée. Rien ne l'inclut, et aucun
+banc ne l'exécute.
 
 Il porte le flux d'enrôlement d'appareil en deux temps — défi de 32 octets à
-usage unique, vérification de signature ECDSA P-256. `demo/lab/lib/device.php`
-implémente le même mécanisme, plus complètement et à jour ; c'est **lui** la
-référence. Ce fichier est gardé pour comparaison le jour où le protocole
-remontera dans une bibliothèque partagée, et pour aucun autre usage.
+usage unique, vérification de signature ECDSA P-256. `src/Device/Device.php`
+porte désormais ce mécanisme dans la bibliothèque, et `demo/lab/lib/device.php`
+l'implémente au-dessus : la comparaison pour laquelle ce fichier était gardé a
+eu lieu.
+
+Ce qu'il garde de propre, et pourquoi il reste : **le récit écrit de la prise de
+compte du 13/08/2026**, en tête de `handleDeviceEnroll()` — la chaîne
+`enroll → auth-begin → auth-finish` qui réécrivait un mot de passe sans qu'aucun
+secret soit vérifié, le correctif appliqué au lab le 02/08 et jamais ici, et les
+deux contraintes qui la ferment. C'est le compte rendu le plus complet de cet
+incident dans le dépôt, attaché au code qu'il concerne.
+
+Le code est corrigé, pas seulement commenté : l'enrôlement exige une session et
+refuse un nom de compte divergent. Il hache par `Hashing::hash()`, comme le reste
+du dépôt — il a longtemps appelé une constante `ARGON2_OPTIONS` que rien ne
+définissait, défaut qu'aucun contrôle ne voyait puisque la ligne ne s'exécute
+nulle part.
 
 `su_audit.php` a quitté ce dossier le 20/08/2026 : le journal SU redevient du
 code vivant, dans `demo/lab/lib/su_audit.php`. Il n'en reste pas de copie ici —
