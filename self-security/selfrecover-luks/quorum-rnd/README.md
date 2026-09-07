@@ -3,7 +3,7 @@
 Piste de recherche : déverrouillage **automatique** des volumes par **consensus de témoins**
 réseau (parts distribuées / Shamir), **sans saisie** de passphrase.
 
-⚠️ **Non activé dans la v0.3.0** de SelfRecover-LUKS, qui repose sur keyscript Argon2id +
+⚠️ **Non activé dans la v0.4.0** de SelfRecover-LUKS, qui repose sur keyscript Argon2id +
 keyfile (voir [`../INSTALL.md`](../INSTALL.md) et le [whitepaper](../docs/SelfRecover-LUKS_Whitepaper.md), § travaux futurs).
 Ces fichiers sont conservés ici comme base de travaux futurs.
 

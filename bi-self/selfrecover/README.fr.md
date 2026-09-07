@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.4.0](https://img.shields.io/badge/status-v0.4.0-green.svg)](#statut)
+[![Status: v0.5.0](https://img.shields.io/badge/status-v0.5.0-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#quickstart)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#quickstart)
@@ -192,7 +192,7 @@ SelfRecover distingue trois rôles : **SU → Admin → User**. Un **admin** peu
 3. **HMAC par entrée** (clé dérivée de la passphrase SU)
 4. **Externalisation** vers un canal de notification (action + cible + heure uniquement, **jamais** le contexte forensique)
 
-> ⚠️ La page `demo/su.html` est une **simulation pédagogique 100 % côté client** (« tout est FAKE ») : elle rejoue l'expérience du terminal SU sans jamais toucher l'API ni la vraie base. La vraie console SU est le CLI serveur.
+> ⚠️ La vraie console SU est le **CLI serveur**. Pour la voir à l'œuvre sans en administrer une, le laboratoire sert une **vitrine pédagogique** — [`demo/lab/public/su_console.php`](../../demo/lab/public/su_console.php) : un sélecteur de rôle user / admin / SU qui montre, à chaque niveau, ce qu'il peut et ce qu'il ne peut pas. Elle exécute le vrai code sur une base SQLite **en mémoire**, créée et jetée à chaque requête — jamais la base du laboratoire, jamais un privilège réel. Le SU n'y existe pas en base, puisque son secret vit hors base.
 
 ---
 
@@ -287,17 +287,18 @@ C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecove
 
 ## Statut
 
-**Implémentation de référence déployée + auto-auditée**
+**Bibliothèque de référence + implémentation déployée, auto-auditée**
 
 Ce dépôt contient :
 - La **spécification du protocole** (whitepapers v1.1)
-- Une **implémentation de référence complète** : récupération L1/L2/L3, recovery codes, facteur « cet appareil », super-utilisateur (SU) avec journal d'audit
-- Une **démo autonome fonctionnelle** pour tout essayer localement
+- Une **bibliothèque PHP** — `src/`, PSR-4 `Pierroons\SelfRecover\` : récupération de niveaux 1 et 2, recovery codes, facteur « cet appareil », profil Argon2id, wordlist diceware, et l'interface de stockage que l'intégrateur implémente pour sa propre base
+- Le **dériveur navigateur** — `client/sr-derive.js`, livré plutôt que décrit : c'est lui qui porte la propriété anti-hameçonnage, et les intégrateurs qui l'écrivaient eux-mêmes en produisaient des variantes qui ne l'avaient pas
+- **Les trois niveaux**, depuis le 07/09/2026 : l'escalade de niveau 3 est remontée dans `src/Recovery/Escalade.php` — dossier, sésame à usage unique, faisceau de faits bruts, arbitrage et gel de procédure. Elle ne vérifie pas *qui* a le droit de trancher : les rôles et les sessions appartiennent à l'application. Le super-utilisateur, lui, vit toujours dans [`demo/lab/`](../../demo/lab/)
 
-**Déploiement réel :** au-delà de la démo, l'implémentation tourne en conditions réelles — notamment comme **backend d'authentification d'un service de messagerie**, qui réutilise tel quel le stockage de comptes SelfRecover (Argon2id).
+**Déploiement réel :** l'implémentation tourne en conditions réelles — notamment comme **backend d'authentification d'un service de messagerie**, qui réutilise tel quel le stockage de comptes SelfRecover (Argon2id).
 
 **Ce que ce dépôt n'est PAS (encore) :**
-- Une bibliothèque PHP/JS installable (prévue en V1.0)
+- Un paquet **publié** : la bibliothèque s'installe par dépôt Composer `path` ou VCS — c'est ce que fait `demo/lab/` — mais pas encore par `composer require` depuis Packagist, ni par `npm install`
 - Un produit avec audit de sécurité **externe** (un audit adverse interne a été mené ; les retours red-team externes sont bienvenus)
 
 ---
@@ -343,7 +344,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 - [x] Spécification du protocole + whitepapers EN + FR
 - [x] Implémentation de référence complète (L1/L2/L3)
-- [x] Démo autonome + validateur offline HTML (zéro requête externe, vérifiable par `grep`)
+- [x] Validateur offline HTML + laboratoire d'entropie (zéro requête externe, vérifiables par `grep`) — la démo PHP autonome qui les hébergeait a depuis été retirée, cf. « Essayer SelfRecover »
 - [x] Wordlist EFF 7776 mots intégrée (EN + FR) + PDF de référence diceware
 - [x] **Recovery codes** — foyer de possession de L2 (10 codes, HMAC lookup + Argon2id, usage unique)
 - [x] **Facteur « cet appareil »** — ECDSA P-256, clé privée sous enveloppe Argon2id, clé publique seule côté serveur
@@ -375,8 +376,8 @@ Squelette de build : voir [`tools/build-myself-live/`](../../tools/build-myself-
 
 ### V1.0 (prévu : 2027)
 
-- [ ] Extraction en bibliothèque PHP (`composer require pierroons/selfrecover`)
-- [ ] Extraction en bibliothèque JS (`npm install selfrecover`)
+- [ ] Publication du paquet PHP sur Packagist (`composer require pierroons/selfrecover`) — l'extraction en bibliothèque est faite (`src/`, PSR-4) ; il reste à publier
+- [ ] Paquet JS (`npm install selfrecover`) — le dériveur est livré (`client/sr-derive.js`), il n'est pas encore paqueté
 - [ ] Plugin WordPress
 - [ ] Package Laravel
 - [ ] Portages vers Python, Go, Rust, Node

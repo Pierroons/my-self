@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [v0.3.0] — 2026-09-07
+
 ### Changed — BREAKING (stored format) — the memorized secret is derived with Argon2id
 
 `Primitives::deriveFromMemorized()` used a single HMAC-SHA256 pass, and its output

@@ -3,7 +3,7 @@
 > 🇬🇧 **[Read in English →](./README.md)**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.3.0](https://img.shields.io/badge/statut-v0.3.0-green.svg)](./INSTALL.md)
+[![Statut : v0.4.0](https://img.shields.io/badge/statut-v0.4.0-green.svg)](./INSTALL.md)
 [![Fait partie de : Self-Security](https://img.shields.io/badge/fait%20partie%20de-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon de : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -13,7 +13,7 @@
 > tiers de confiance. Couche FDE auto-hébergée de l'écosystème **MySelf** (pilier Self-Security).
 
 **Statut : validé sur serveur LNMP Debian 13 Trixie (07/06/2026), puis sur poste portable
-chiffré (22/08/2026) — v0.3.0.**
+chiffré (22/08/2026) — v0.4.0.**
 Déverrouillage du `/` au boot (keyscript Argon2id + SSH d'amorçage) et cascade automatique des
 volumes secondaires (fichier-clé), redémarrages reproductibles. Installation documentée et
 reproductible → **[INSTALL.md](./INSTALL.md)**.
@@ -68,7 +68,7 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces **et le sel** après chaque génération d'initramfs |
 | [`tests/test_lecture_keyfile.sh`](./tests/test_lecture_keyfile.sh) | garde-fou : les quatre lectures, et le `\n` final qui casse la clé |
 | [`docs/cryptsetup-lecture-cle.md`](./docs/cryptsetup-lecture-cle.md) | note de mesure : comment `cryptsetup` lit une clé selon le chemin emprunté |
-| [`quorum-rnd/`](./quorum-rnd/) | R&D : déverrouillage par quorum de témoins — **non activé en v0.3.0** |
+| [`quorum-rnd/`](./quorum-rnd/) | R&D : déverrouillage par quorum de témoins — **non activé en v0.4.0** |
 | [`fido2-banc-essai/`](./fido2-banc-essai/) | banc d'essai : FIDO2 dans l'initramfs — **voie non soutenue**, incompatible avec le keyscript |
 
 ## Installation

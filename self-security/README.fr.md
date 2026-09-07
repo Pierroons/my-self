@@ -7,8 +7,8 @@
 > *Prends ma base — tu auras du bruit.*
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfDataGuard : v0.2.0](https://img.shields.io/badge/SelfDataGuard-v0.2.0-brightgreen.svg)](./selfdataguard/)
-[![SelfRecover-LUKS : v0.3.0](https://img.shields.io/badge/SelfRecover--LUKS-v0.3.0-green.svg)](./selfrecover-luks/)
+[![SelfDataGuard : v0.3.0](https://img.shields.io/badge/SelfDataGuard-v0.3.0-brightgreen.svg)](./selfdataguard/)
+[![SelfRecover-LUKS : v0.4.0](https://img.shields.io/badge/SelfRecover--LUKS-v0.4.0-green.svg)](./selfrecover-luks/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
@@ -55,8 +55,8 @@ L'étiquette change le sel effectif : deux clés issues du même secret restent 
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, qui survit au dump de la base | **v0.2.0** — en service, 191 contrôles sur 8 suites |
-| [SelfRecover-LUKS](./selfrecover-luks/) | Racine LUKS2 **et** volumes de données ouverts par une seule phrase de récupération | **v0.3.0** — validé sur un serveur Debian 13 LNMP, installation reproductible |
+| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, qui survit au dump de la base | **v0.3.0** — en service, 198 contrôles sur 8 suites |
+| [SelfRecover-LUKS](./selfrecover-luks/) | Racine LUKS2 **et** volumes de données ouverts par une seule phrase de récupération | **v0.4.0** — validé sur un serveur Debian 13 LNMP et un poste portable, installation reproductible |
 
 ---
 
@@ -64,7 +64,7 @@ L'étiquette change le sel effectif : deux clés issues du même secret restent 
 
 Les deux modules tournent. SelfDataGuard est déployé et ses huit suites passent ; SelfRecover-LUKS a été validé sur des cycles de redémarrage complets — racine puis volumes secondaires en cascade — et son installation est documentée pas à pas dans [INSTALL.md](./selfrecover-luks/INSTALL.md).
 
-Une piste de recherche est volontairement laissée de côté : ouvrir un volume par un **quorum de témoins du foyer** (parts de Shamir, avec secours SelfRecover quand le quorum est injoignable). Son code est rangé sous [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) et a été validé sur images jetables, mais il n'est **pas activé** en v0.3.0, qui ouvre par keyscript et fichier-clé.
+Une piste de recherche est volontairement laissée de côté : ouvrir un volume par un **quorum de témoins du foyer** (parts de Shamir, avec secours SelfRecover quand le quorum est injoignable). Son code est rangé sous [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) et a été validé sur images jetables, mais il n'est **pas activé** en v0.4.0, qui ouvre par keyscript et fichier-clé.
 
 Aucun des deux modules n'a été audité par un cryptographe extérieur. Leur conception est vérifiée aujourd'hui par leur auteur et par les lecteurs de ce dépôt, par personne d'autre. Les audits sont bienvenus — voir [SECURITY.md](../SECURITY.md).
 

@@ -5,8 +5,8 @@
 **Protection des données au repos côté application, qui survit à une exfiltration de base de données.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.2.0 en service](https://img.shields.io/badge/statut-v0.2.0%20en%20service-brightgreen.svg)](#statut)
-[![Tests : 191 passants](https://img.shields.io/badge/tests-191%20passants-brightgreen.svg)](#tests)
+[![Statut : v0.3.0 en service](https://img.shields.io/badge/statut-v0.3.0%20en%20service-brightgreen.svg)](#statut)
+[![Tests : 198 passants](https://img.shields.io/badge/tests-198%20passants-brightgreen.svg)](#tests)
 [![Pilier : Self-Security](https://img.shields.io/badge/pilier-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -102,15 +102,15 @@ La majorité des déploiements e-commerce choisiront **Hybrid**. Santé, banque,
 
 ## Statut
 
-**v0.2.0 — bibliothèque de référence, compartiment escrow, démo standalone**, 21 août 2026.
+**v0.3.0 — dérivation Argon2id sur les deux facteurs, compartiment escrow, démo standalone**, 7 septembre 2026.
 
-Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (2 249 lignes réparties sur 17 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, AES-256-GCM) couvertes par **191 contrôles répartis sur 8 suites**, tous passants. Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
+Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (2 372 lignes réparties sur 17 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, AES-256-GCM) couvertes par **198 contrôles répartis sur 8 suites**, tous passants. Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
 
 Le module tourne sur des déploiements réels. Il **n'a pas été audité par un cryptographe extérieur** : sa conception n'est vérifiée à ce jour que par son auteur et par les lecteurs de ce dépôt.
 
 Les revues sont recherchées, sur la conception comme sur l'implémentation — les chercheurs en sécurité disposent d'une cible exécutable plutôt que d'une spécification à contester. Les intégrateurs en aval, en particulier les utilisateurs de SelfRecover, lisent le modèle de menace avant de le brancher.
 
-Un audit cryptographique communautaire formel est prévu avant la v1.0.0. Soumission ANSSI Visa de sécurité prévue à l'horizon v0.3.0.
+Un audit cryptographique communautaire formel est prévu avant la v1.0.0. Soumission ANSSI Visa de sécurité prévue au même jalon.
 
 ---
 
@@ -171,7 +171,7 @@ php tests/sanity_facade.php       # 34 tests — API complète bout en bout
 php tests/sanity_audit.php        #  6 tests — journal d'audit
 php tests/sanity_ceremony.php     # 14 tests — cérémonie de clés
 php tests/sanity_escrow.php       # 16 tests — compartiment escrow
-# Total : 191 tests, 0 échec — relevé par exécution le 27/08/2026
+# Total : 198 tests, 0 échec — relevé par exécution le 07/09/2026
 ```
 
 La suite `sanity_storage.php` inclut un "BIG TEST" qui dumpe le fichier SQLite et vérifie qu'aucune donnée personnelle en clair n'apparaît nulle part dans le blob binaire.

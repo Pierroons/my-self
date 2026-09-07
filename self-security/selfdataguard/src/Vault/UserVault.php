@@ -38,7 +38,7 @@ final class UserVault
      * floor against the worst, not a measure. What actually protects wrap_pwd is
      * Argon2id, plus the fact that the integrations generate the password rather
      * than letting someone pick it. The promise was in the whitepaper and in no
-     * line of code until 0.2.0; a rule that only exists in a document is not a
+     * line of code until 0.3.0; a rule that only exists in a document is not a
      * rule, and reads as one.
      */
     public const PASSWORD_MIN_LEN = 12;
@@ -163,14 +163,14 @@ final class UserVault
         } catch (RuntimeException $e) {
             Primitives::zeroize($recovKey);
             // Before answering "wrong secret", find out whether this wrap was
-            // sealed by the pre-0.2.0 HMAC derivation. If the legacy key opens
+            // sealed by the pre-0.3.0 HMAC derivation. If the legacy key opens
             // it, the secret is RIGHT and the vault is old — a different problem
             // and a different sentence. Silence here would send someone hunting
             // for a typo in a secret that is perfectly correct.
             if ($this->wrapIsLegacyV1($record, $memorized)) {
                 throw new RuntimeException(
                     'This vault predates the Argon2id recovery derivation '
-                    . '(SelfDataGuard < 0.2.0). The memorized secret is correct; '
+                    . '(SelfDataGuard < 0.3.0). The memorized secret is correct; '
                     . 'unlock by password and call changeMemorized() to re-seal. '
                     . 'Access is refused here on purpose: the legacy derivation is '
                     . 'about 78 000 times cheaper to attack.',
@@ -246,7 +246,7 @@ final class UserVault
     }
 
     /**
-     * Does this recovery wrap open under the pre-0.2.0 HMAC derivation?
+     * Does this recovery wrap open under the pre-0.3.0 HMAC derivation?
      *
      * Diagnosis only — the master key obtained here is discarded immediately and
      * never handed to a caller. Its single purpose is to tell "your secret is

@@ -208,7 +208,7 @@ L2 always combines **knowledge** (the memorized word) and **possession**. Two po
 
 Every failed recovery session above L1 opens a dispute (`LIT-XXXX`) visible in the admin dashboard.
 
-- Each dispute has a **non-guessable** number, the bundle of signals (raw facts, never a score), attempt and refusal counters, a concurrent-attempt counter ("multi-requester"), and a status (`open`, `awaiting_admin`, `granted`, `resolved`, `refused`, `closed`)
+- Each dispute has a **non-guessable** number, the bundle of signals (raw facts, never a score), attempt and refusal counters, a concurrent-attempt counter ("multi-requester"), and a status (`open`, `awaiting_admin`, `accepted`, `refused`, `closed`)
 - The admin finds open disputes in their dashboard
 - A bidirectional chat channel is available between admin and user, with access gated by the tracking code (polling, not real-time WebSocket to keep it simple)
 - Resolved disputes are auto-purged after 24 hours to keep the database clean
@@ -225,12 +225,14 @@ When the admin reviews a dispute, two paths exist:
 
 **Option 2 — Refuse recovery:**
 
-- Admin doesn't believe the user is legitimate
-- Temporary 24h ban applied — no new dispute can be opened during this window
-- Refusal counter increments (1/3, 2/3, 3/3)
-- **At the 3rd refusal: the account is permanently deleted.** The public identifier becomes available for fresh registration.
+- Admin doesn't believe the requester is legitimate
+- The case moves to `refused`, carrying the date and the name of whoever decided
+- **The account is not touched**: not deleted, not banned, not stripped of its codes. It stays usable
+- Past **3 refusals within a rolling 30-day window**, *opening* new cases freezes for 7 days on that account. An administrator can lift the freeze, and the record of who lifted it is kept
 
-**Rationale:** a malicious actor cannot spam disputes indefinitely. Each refusal costs 24h of downtime, and three strikes erase the record completely. The legitimate owner, if blocked by mistake, can still retry after each ban window or re-register from scratch if totally locked out.
+🔑 **What hardens is the procedure, never the account.** An earlier edition of this document announced a 24h ban and permanent deletion at the 3rd refusal; the implementation closest to it deleted the account on the **first**. Both were wrong for the same reason: a refusal says "this requester did not convince me", not "this account is illegitimate". If the requester was an impostor, deleting destroys the victim's account; if they were the mis-judged owner, it punishes an innocent. And an attacker unable to steal an account could get it erased by piling up refusals — **failure became a weapon**.
+
+**Rationale:** the freeze costs whoever insists without convincing, and costs the owner nothing — they keep signing in normally throughout. Counting is on **refused cases**, not submissions: three submissions within one case remain one refusal, otherwise an honest owner's persistence would trip the freeze as fast as a hostile campaign.
 
 ### 6.2 Super-user (SU) — governing the administrators
 

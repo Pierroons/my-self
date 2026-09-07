@@ -21,7 +21,7 @@ use SodiumException;
  *   - Encryption          : AES-256-GCM (NIST, hardware-accelerated, AEAD)
  *   - Randomness          : random_bytes (PHP CSPRNG)
  *
- * 🔑 Both human secrets go through the SAME cost. Until 0.2.0 the memorized
+ * 🔑 Both human secrets go through the SAME cost. Until 0.3.0 the memorized
  * secret was derived with a single HMAC-SHA256 pass, on the stated assumption
  * that "entropy comes from the secret". Measured on the dev host, that made the
  * two doors 78 100 times apart: 213.7 ms per Argon2id attempt against 0.0027 ms
@@ -137,7 +137,7 @@ final class Primitives
     }
 
     /**
-     * The pre-0.2.0 derivation: one HMAC-SHA256 pass.
+     * The pre-0.3.0 derivation: one HMAC-SHA256 pass.
      *
      * ⚠️ DIAGNOSTIC ONLY. This must never gate access to anything. It exists so
      * that a recovery wrap sealed by an older version can be RECOGNISED and
