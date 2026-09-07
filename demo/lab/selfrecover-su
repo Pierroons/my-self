@@ -183,6 +183,53 @@ function su_backup_key_legacy(string $passphrase): string
     return hash('sha256', $passphrase . '|su-audit-backup', true);
 }
 
+/**
+ * Le profil Argon2id du dépôt, pour hacher le secret SU.
+ *
+ * 🔑 Ce secret est le plus privilégié du modèle, et c'était le seul hachage du
+ * dépôt à ne pas lire ce profil : `password_hash($p, PASSWORD_ARGON2ID)` sans
+ * options prend ceux de PHP. Aujourd'hui les deux coïncident sur la mémoire et
+ * les itérations et diffèrent d'un fil (p=1 contre p=2) — c'est la coïncidence
+ * qui tenait, pas une décision. Le jour où le profil monte, ce secret-là serait
+ * resté seul en arrière, sans que rien ne le dise.
+ *
+ * ⚠️ On échoue plutôt que de se rabattre sur un profil écrit ici : deux valeurs
+ * pour une même règle, c'est la divergence qu'on vient de fermer. Une console
+ * qui ne trouve pas la bibliothèque ne doit pas poser un secret dont personne
+ * ne connaît le coût.
+ *
+ * La vérification, elle, ne dépend pas de ceci : `password_verify` lit les
+ * paramètres DANS l'empreinte stockée. Un secret posé avant ce correctif
+ * continue donc de s'authentifier ; seul un `change-passphrase` le réécrit.
+ */
+function su_argon2_options(): array
+{
+    $classe = 'Pierroons\\SelfRecover\\Crypto\\Hashing';
+    if (!class_exists($classe)) {
+        // Le CLI ne charge pas Composer — il doit tourner là où seule la
+        // bibliothèque est déposée. Son autoload sans Composer suffit.
+        foreach ([
+            __DIR__ . '/vendor/pierroons/selfrecover/src/autoload.php',
+            __DIR__ . '/../../bi-self/selfrecover/src/autoload.php',
+        ] as $chemin) {
+            if (is_file($chemin)) {
+                require_once $chemin;
+                break;
+            }
+        }
+    }
+    if (!class_exists($classe)) {
+        su_fail(
+            'Profil de hachage introuvable : la bibliothèque SelfRecover n\'est pas'
+            . ' chargeable depuis cette console. Refus de poser un secret SU dont le'
+            . ' coût ne serait pas celui du dépôt.',
+            78
+        );
+    }
+
+    return $classe::ARGON2;
+}
+
 // ─── Garde-fou de démarrage ──────────────────────────────────────────────────
 // Le régime strict est le défaut : contourner demande un geste conscient, parce
 // qu'un déploiement qui ne pose rien ne doit pas hériter des valeurs de démonstration.
@@ -429,7 +476,7 @@ switch ($cmd) {
         if (!is_dir(dirname($secPath)) && !@mkdir(dirname($secPath), 0700, true)) {
             su_fail('Dossier d\'état introuvable et non créable : ' . dirname($secPath));
         }
-        $newHash = password_hash((string) $n1, PASSWORD_ARGON2ID);
+        $newHash = password_hash((string) $n1, PASSWORD_ARGON2ID, su_argon2_options());
         if (@file_put_contents($secPath, $newHash) === false) {
             su_fail("Écriture impossible : $secPath.");
         }

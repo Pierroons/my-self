@@ -12,6 +12,14 @@
  * vol d'appareil (blob inutile sans le mot, cassable seulement hors-ligne contre Argon2id).
  */
 
+// Le profil de hachage vient de la bibliothèque, jamais d'une constante locale.
+// Ce fichier a longtemps appelé `ARGON2_OPTIONS`, qu'aucun `define` du dépôt ne
+// posait : sur PHP 8, une constante inconnue est une `Error`, pas un
+// avertissement. Le chemin ne s'exécutant nulle part, rien ne l'a signalé.
+require_once __DIR__ . '/../../src/autoload.php';
+
+use Pierroons\SelfRecover\Crypto\Hashing;
+
 function dev_b64url_encode(string $s): string { return rtrim(strtr(base64_encode($s), '+/', '-_'), '='); }
 function dev_b64url_decode(string $s): string { return base64_decode(strtr($s, '-_', '+/') . str_repeat('=', (4 - strlen($s) % 4) % 4)); }
 
@@ -128,7 +136,7 @@ function handleDeviceAuthFinish(): void {
         jsonError('Appareil ou mot mémorisé incorrect', 401);
     }
 
-    $newHash = password_hash($newPassword, PASSWORD_ARGON2ID, ARGON2_OPTIONS);
+    $newHash = Hashing::hash($newPassword);
     $db->prepare("UPDATE users SET password_hash = ?, l1_block_count = 0, l1_blocked_until = NULL WHERE id = ?")
        ->execute([$newHash, $cred['user_id']]);
     logAttempt($db, $cred['username'], 2, true);
