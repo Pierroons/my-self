@@ -458,6 +458,18 @@ else
   # versionné. Les secrets de `outils/secrets/` changent donc aussi.
 fi
 
+# ── Le geste de la titulaire — même règle ────────────────────────────────────
+# Tout ce qui précède s'exécute dans Node, avec un DOM factice. La titulaire,
+# elle, double-clique sur un fichier : `crypto.subtle` n'existe que dans un
+# contexte réputé sûr, et rien ici ne disait si un fichier local en est un.
+echo
+if ! command -v firefox >/dev/null && ! command -v firefox-esr >/dev/null; then
+  echo "⚠ Geste de la titulaire NON MESURÉ — aucun Firefox"
+  echo "  (apt install firefox-esr)"
+else
+  bash "$MODULE/tests/banc_navigateur.sh" || echec=1
+fi
+
 echo
 if [ $echec -eq 0 ]; then echo "✓ Banc conforme — $n contrôles de format."; else echo "✗ Banc en échec."; fi
 exit $echec
