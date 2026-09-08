@@ -347,6 +347,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 - [x] Validateur offline HTML + laboratoire d'entropie (zéro requête externe, vérifiables par `grep`) — la démo PHP autonome qui les hébergeait a depuis été retirée, cf. « Essayer SelfRecover »
 - [x] Wordlist EFF 7776 mots intégrée (EN + FR) + PDF de référence diceware
 - [x] **Recovery codes** — foyer de possession de L2 (10 codes, HMAC lookup + Argon2id, usage unique)
+- [x] **Passphrase L1 sans expiration, par décision** — elle sert quand tout le reste est perdu, parfois des années après ; l'échéance la tuerait au moment précis où elle sert, et il n'y a pas d'email pour prévenir. Ce qui borne un papier volé est l'usage unique. La bibliothèque range une date d'émission si le déploiement en tient une, et `parPassphrase()` rend son âge : elle informe, elle ne refuse jamais
 - [x] **Facteur « cet appareil »** — ECDSA P-256, clé privée sous enveloppe Argon2id, clé publique seule côté serveur
 - [x] **Super-utilisateur (SU)** — modèle SU→Admin→User, journal d'audit append-only + hash-chaîné + HMAC, détection d'admins fantômes
 - [x] **Déploiement réel** — backend d'authentification d'un service de messagerie

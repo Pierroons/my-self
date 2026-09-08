@@ -400,6 +400,11 @@ return [
     'su.js.error'   => 'Erreur :',
 
     // ── Profil ────────────────────────────────────────────────────────────
+    'prf.pass.h2'       => 'Ta passphrase de secours',
+    'prf.pass.age'      => 'Émise il y a %d jours',
+    'prf.pass.inconnue' => 'Ce compte est antérieur au suivi : on ne sait pas quand ta passphrase a été émise.',
+    'prf.pass.ancienne' => 'Elle a plus de deux ans. Rien ne t\'oblige à la changer — mais si tu ne sais plus où tu l\'as rangée, c\'est le moment de vérifier, pendant que tu as encore accès à ton compte.',
+    'prf.pass.jamais'   => 'Elle n\'expire jamais. Une passphrase de secours sert quand tout le reste est perdu, parfois des années plus tard : la faire périmer la tuerait au moment exact où elle sert. Ce qui la protège, c\'est qu\'elle ne fonctionne qu\'une fois — dès qu\'elle sert, on t\'en donne une neuve et l\'ancienne est morte.',
     'prf.title'      => 'Mon espace',
     'prf.rep'        => 'Réputation',
     'prf.suspended'  => 'suspendu',

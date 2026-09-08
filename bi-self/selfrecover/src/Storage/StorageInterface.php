@@ -76,9 +76,28 @@ interface StorageInterface
     public function compterEchecsCompte(string $nomCompte, int $depuis): int;
 
     /**
-     * Empreinte de la passphrase pour ce compte.
+     * Empreinte de la passphrase pour ce compte, et la date où elle a été émise.
      *
-     * @return array{id: int, empreinte_passphrase: string}|null
+     * `emise_le` est facultatif — un déploiement qui ne le tient pas rend `null`,
+     * jamais zéro : zéro se lirait « émise le 1er janvier 1970 », et le calcul
+     * d'âge afficherait cinquante-six ans à quelqu'un qui vient de s'inscrire.
+     *
+     * 🔑 **Cette date n'expire rien, et c'est une décision, pas un oubli.** Une
+     * passphrase de récupération sert quand tout le reste est perdu, parfois des
+     * années après avoir été rangée. La faire expirer tuerait le secours au
+     * moment précis où il sert, et son détenteur ne pourrait pas le savoir avant
+     * d'essayer — il n'y a pas d'email pour le prévenir, c'est tout le propos du
+     * protocole. La date informe : « émise il y a N ans », dans un espace
+     * personnel ou devant un arbitre. Ce qui borne le vol d'un papier est
+     * ailleurs, et c'est l'usage unique — `parPassphrase()` la consomme.
+     *
+     * ⚠️ Elle ne sert pas non plus à durcir automatiquement une récupération
+     * ancienne. Il faudrait pour cela distinguer un contexte connu d'un contexte
+     * inconnu, et derrière un service caché il n'y a aucun contexte : toutes les
+     * requêtes partagent une adresse. La bibliothèque refuserait un titulaire
+     * légitime sur un signal qui n'existe pas.
+     *
+     * @return array{id: int, empreinte_passphrase: string, emise_le?: int|null}|null
      */
     public function trouverComptePourPassphrase(string $nomCompte): ?array;
 
@@ -87,6 +106,13 @@ interface StorageInterface
      *
      * 🔑 Une récupération de niveau 1 consomme la passphrase : la laisser
      * valable après usage ferait d'un vol de papier une porte permanente.
+     *
+     * ⚠️ **Une implémentation qui tient une date d'émission la refait ici.** Une
+     * passphrase neuve est émise aujourd'hui : garder l'ancienne date ferait
+     * vieillir un papier qui vient d'être imprimé, et l'affichage « émise il y a
+     * quatre ans » porterait sur un secret d'hier. Avec `reposerSecrets()`, ce
+     * sont les deux seuls endroits du protocole où la passphrase est réécrite ;
+     * l'inscription est le troisième, et elle appartient à l'application.
      */
     public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase): void;
 
@@ -226,6 +252,9 @@ interface StorageInterface
      * 🔑 Les trois empreintes et le sel ne sont pas quatre informations mais
      * une seule : le mot mémorisé est dérivé sous ce sel, les séparer laisse une
      * fenêtre où le compte n'est récupérable par rien.
+     *
+     * ⚠️ **Une date d'émission de passphrase se refait ici aussi** : ce chemin
+     * en émet une neuve, exactement comme `remplacerEmpreintes()`.
      *
      * ⚠️ **Une implémentation rafraîchit ici ses marqueurs de déploiement liés
      * au mot dérivé, dans la même requête.** C'est le seul endroit du protocole

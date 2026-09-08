@@ -400,6 +400,11 @@ return [
     'su.js.error'   => 'Error:',
 
     // ── Profile ───────────────────────────────────────────────────────────
+    'prf.pass.h2'       => 'Your backup passphrase',
+    'prf.pass.age'      => 'Issued %d days ago',
+    'prf.pass.inconnue' => 'This account predates the tracking: we do not know when your passphrase was issued.',
+    'prf.pass.ancienne' => 'It is over two years old. Nothing forces you to change it — but if you are no longer sure where you put it, now is the time to check, while you still have access to your account.',
+    'prf.pass.jamais'   => 'It never expires. A backup passphrase is for when everything else is lost, sometimes years later: expiring it would kill it at the exact moment it is needed. What protects it is that it works only once — the moment it is used, you get a new one and the old one is dead.',
     'prf.title'      => 'My space',
     'prf.rep'        => 'Reputation',
     'prf.suspended'  => 'suspended',

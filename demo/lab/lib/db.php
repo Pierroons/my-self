@@ -75,8 +75,19 @@ final class Db
             self::$pdo->exec("ALTER TABLE accounts ADD COLUMN recovery_salt TEXT NOT NULL DEFAULT ''");
         }
 
+        // 🔑 Date d'émission de la passphrase L1, NULLABLE et sans valeur par
+        // défaut. Un compte antérieur à cette colonne rend `null` — « on ne sait
+        // pas quand » — et l'affichage se tait. Poser `DEFAULT 0` ferait dire à
+        // chaque compte existant qu'il tient sa passphrase depuis 1970, ce qui
+        // est le même défaut que `login_count` rendant zéro pour « jamais
+        // connecté » : une valeur neutre qui se lit comme un fait.
+        //
+        // Elle n'expire rien. La faire expirer tuerait le secours au moment
+        // précis où il sert.
+        //
         // Traces d'usage lues par le faisceau du niveau 3.
         foreach ([
+            'pass_emise_le' => 'INTEGER',
             'last_login_at' => 'INTEGER',
             'login_count'   => 'INTEGER NOT NULL DEFAULT 0',
             'banned_until'  => 'INTEGER',

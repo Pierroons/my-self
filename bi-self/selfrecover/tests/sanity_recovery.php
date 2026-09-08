@@ -63,6 +63,35 @@ $inconnu  = $rec->parPassphrase('personne', 'mauvaise phrase ici maintenant', nu
 verifier('compte inconnu et passphrase fausse : même message',
     $mauvaise['message'] === $inconnu['message'], $mauvaise['message']);
 
+echo "\n→ ⭐ La date d'émission informe, elle n'expire rien\n";
+
+// La question posée en séance était : faut-il faire expirer une passphrase L1 ?
+// Non — elle sert quand tout le reste est perdu, parfois des années après, et
+// l'expiration la tuerait au moment précis où elle sert, sans que personne
+// puisse le savoir avant d'essayer. Ce qui borne le vol d'un papier est l'usage
+// unique, pas une échéance. Ces contrôles gardent cette décision.
+
+$QUATRE_ANS = 4 * 365 * 86400;
+[$st, $rec] = neuf($MOT, $PHR, $SEL);
+$st->passphrases['alice']['emise_le'] = $now - $QUATRE_ANS;
+$st->horloge = $now;
+
+$vieille = $rec->parPassphrase('alice', $PHR, null, $now);
+verifier('⭐ une passphrase de quatre ans ouvre encore — rien n\'expire',
+    ($vieille['ok'] ?? false) === true, (string) ($vieille['message'] ?? ''));
+verifier('et son âge est rendu, pour informer', ($vieille['age_jours'] ?? null) === 1460,
+    var_export($vieille['age_jours'] ?? null, true));
+verifier('⭐ la neuve repart à zéro — un papier imprimé aujourd\'hui n\'a pas l\'âge de celui qu\'il remplace',
+    ($st->passphrases['alice']['emise_le'] ?? null) === $now);
+
+// ⚠️ Un déploiement qui ne tient pas la date rend `null`, jamais zéro : zéro se
+// lirait « émise en 1970 » et afficherait cinquante-six ans à qui vient de
+// s'inscrire — le même piège que `derniere_connexion` dans le faisceau du L3.
+[$st2, $rec2] = neuf($MOT, $PHR, $SEL);
+$muet = $rec2->parPassphrase('alice', $PHR, null, $now);
+verifier('contre-témoin : sans date tenue, l\'âge vaut null et l\'accès passe quand même',
+    ($muet['ok'] ?? false) === true && array_key_exists('age_jours', $muet) && $muet['age_jours'] === null);
+
 // ── Niveau 2 ───────────────────────────────────────────────────────────────
 echo "\n→ Niveau 2 — code de récupération et mot mémorisé\n";
 [$st, $rec] = neuf($MOT, $PHR, $SEL);
