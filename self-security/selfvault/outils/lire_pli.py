@@ -34,14 +34,39 @@ def outil(nom):
     return nom
 
 
+def lancer(argv, tolere=()):
+    """Exécute un outil externe et rend sa sortie. Un code inattendu arrête tout.
+
+    🔑 Sans ce contrôle, un outil qui cède rend une sortie vide, et une sortie
+    vide se lit exactement comme « cette page ne porte aucun QR code ». Le
+    lecteur conclut alors que le pli est mal numérisé et demande de rescanner
+    plus fin — alors que le scan était bon et que c'est lui qui a échoué. Celui
+    qui ouvre le pli n'a aucun moyen de faire la différence, et pourrait croire
+    le dépôt perdu.
+
+    `zbarimg` rend 4 quand une image ne porte aucun code : c'est le cas normal
+    d'une page de garde, il se tolère. Il rend 1 sur une image illisible ou
+    absente — panne réelle. Les deux se distinguent, encore faut-il regarder.
+    """
+    fait = subprocess.run(argv, capture_output=True, text=True)
+    if fait.returncode != 0 and fait.returncode not in tolere:
+        detail = (fait.stderr or "").strip().split("\n")[0]
+        sys.exit("« %s » a échoué (code %d) sur %s.\n"
+                 "   Ce n'est pas la numérisation qui est en cause, mais l'outil de "
+                 "lecture.%s"
+                 % (os.path.basename(argv[0]), fait.returncode, argv[-1],
+                    "\n   " + detail if detail else ""))
+    return fait.stdout
+
+
 def pages_en_images(source, travail):
     """Rend la liste des images à scruter, qu'on parte d'un PDF ou d'images."""
     if os.path.isdir(source):
         return sorted(os.path.join(source, f) for f in os.listdir(source)
                       if f.lower().endswith((".png", ".jpg", ".jpeg", ".tif", ".tiff", ".pnm")))
     if source.lower().endswith(".pdf"):
-        subprocess.run([outil("pdftoppm"), "-r", str(DPI), "-gray", "-png",
-                        source, os.path.join(travail, "page")], check=True)
+        lancer([outil("pdftoppm"), "-r", str(DPI), "-gray", "-png",
+                source, os.path.join(travail, "page")])
         return sorted(os.path.join(travail, f) for f in os.listdir(travail)
                       if f.startswith("page") and f.endswith(".png"))
     return [source]
@@ -59,8 +84,7 @@ def fragments(images):
     # reconnaît que `[0-9]` et rendait `null` sur la même ligne.
     motif = re.compile(r"^%s\|([A-Z])\|([0-9]+)/([0-9]+)\|(.*)$" % PREFIXE, re.S)
     for img in images:
-        sortie = subprocess.run([outil("zbarimg"), "--raw", "-q", img],
-                                capture_output=True, text=True).stdout
+        sortie = lancer([outil("zbarimg"), "--raw", "-q", img], tolere=(4,))
         for ligne in sortie.split("\n"):
             ligne = ligne.strip()
             if not ligne:
@@ -96,8 +120,7 @@ def empreintes_imprimees(source):
     """
     if not source.lower().endswith(".pdf"):
         return {}
-    texte = subprocess.run([outil("pdftotext"), source, "-"],
-                           capture_output=True, text=True).stdout
+    texte = lancer([outil("pdftotext"), source, "-"])
     trouve = {}
     for piece, motif in (("A", r"^\s*Déchiffreur\s*\n\s*([0-9a-f][0-9a-f ]{30,})"),
                          ("V", r"^\s*Coffre\s*\n\s*([0-9a-f][0-9a-f ]{30,})")):
