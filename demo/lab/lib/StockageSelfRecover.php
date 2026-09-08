@@ -257,6 +257,12 @@ final class StockageSelfRecover implements StorageInterface
 
     public function litigeActifDuCompte(int $compteId, int $maintenant): ?Litige
     {
+        // ⚠️ `accepted` compte comme actif ET n'expire pas, comme dans
+        // `Escalade::recevable()` qui l'exempte du TTL : l'horloge ne doit pas
+        // annuler le travail de l'arbitre. Sans cette exemption, une fenêtre
+        // s'ouvre entre la 24e heure et le retour du titulaire, où un tiers ouvre
+        // un dossier neuf sans que la collision soit comptée ni montrée.
+        //
         // ⚠️ `accepted` compte comme actif. Entre l'accord et le ré-enrôlement,
         // le compte est au plus vulnérable : y laisser ouvrir un second dossier
         // sans le signaler priverait l'arbitre de l'information la plus utile
@@ -265,7 +271,7 @@ final class StockageSelfRecover implements StorageInterface
             "SELECT d.*, a.username FROM disputes d
              LEFT JOIN accounts a ON a.id = d.account_id
              WHERE d.account_id = ? AND d.status IN ('open', 'awaiting_admin', 'accepted')
-               AND d.expires_at > ?
+               AND (d.status = 'accepted' OR d.expires_at > ?)
              ORDER BY d.id DESC LIMIT 1"
         );
         $st->execute([$compteId, $maintenant]);
@@ -407,7 +413,14 @@ final class StockageSelfRecover implements StorageInterface
         // compteur avant qu'il puisse atteindre son seuil, et le gel — seule
         // protection contre l'acharnement — deviendrait inatteignable sans
         // qu'aucune sonde ne rougisse.
-        $st = $this->pdo->prepare("DELETE FROM disputes WHERE expires_at <= ? AND status != 'refused'");
+        //
+        // ⚠️ Les dossiers ACCEPTÉS y survivent aussi, pour la même raison que
+        // `litigeActifDuCompte` les exempte du TTL : le titulaire qui revient
+        // après vingt-quatre heures doit encore trouver son accord. Les purger
+        // rendrait la porte définitivement close à qui a déjà tout perdu.
+        $st = $this->pdo->prepare(
+            "DELETE FROM disputes WHERE expires_at <= ? AND status NOT IN ('refused', 'accepted')"
+        );
         $st->execute([$avant]);
 
         return $st->rowCount();

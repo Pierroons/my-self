@@ -19,6 +19,10 @@ declare(strict_types=1);
  * a le droit de trancher : `Escalade` ne connaît pas les rôles, c'est
  * l'application qui les porte, et c'est écrit dans son docblock.
  *
+ * ⚠️ Elle ne garde pas non plus l'UNIFORMITÉ DES TEMPS de réponse d'`ouvrir()`.
+ * Trois refus y portent un `usleep` — « inconnu », « gelé », « déjà ouvert » —
+ * et rien ici ne le mesure : ce qui est gardé est la forme des refus.
+ *
  * Usage : php tests/sanity_escalade.php
  */
 
@@ -64,6 +68,9 @@ function banc(int $now, ?int $derniereConnexion = null, ?int $connexions = null)
     // Le mot de passe de CONNEXION, distinct du mot mémorisé : ils ne vivent pas
     // au même endroit, et confondre les deux est ce qui rendait le contrôle muet.
     $st->empreintes[1]        = Hashing::hash('mot de passe de connexion');
+    // Le marqueur de déploiement d'un compte déjà enrôlé — c'est ce que
+    // `reposerSecrets()` devra rafraîchir, et ce que le faisceau montre.
+    $st->hotes[1]             = $st->hoteServi;
     $st->faits[1] = [
         'cree_le'            => $now - 400 * 86400,
         'derniere_connexion' => $derniereConnexion,
@@ -85,7 +92,7 @@ echo "\n→ Ouverture d'un dossier\n";
 
 [$st, $esc] = banc($now);
 $sesame     = bin2hex(random_bytes(32));
-$ouv        = $esc->ouvrir('alice', Escalade::empreinteSesame($sesame), $now);
+$ouv        = $esc->ouvrir('alice', Escalade::empreinteSesame($sesame), maintenant: $now);
 
 verifier('un dossier s\'ouvre pour un compte connu', ($ouv['ok'] ?? false) === true);
 verifier('son numéro n\'est pas séquentiel', (bool) preg_match('/^LIT-[0-9A-F]{16}$/', $ouv['numero'] ?? ''),
@@ -93,19 +100,124 @@ verifier('son numéro n\'est pas séquentiel', (bool) preg_match('/^LIT-[0-9A-F]
 verifier('trois questions sont posées, aucune ne demande de secret', count($ouv['questions'] ?? []) === 3);
 verifier('le dossier expire dans 24 h', ($ouv['expire_le'] ?? 0) === $now + $JOUR);
 
-$inconnu = $esc->ouvrir('mallory', Escalade::empreinteSesame($sesame), $now);
+$inconnu = $esc->ouvrir('mallory', Escalade::empreinteSesame($sesame), maintenant: $now);
 verifier('un compte inconnu est refusé', ($inconnu['ok'] ?? true) === false);
 
-$malforme = $esc->ouvrir('alice', 'pas-une-empreinte', $now);
+$malforme = $esc->ouvrir('alice', 'pas-une-empreinte', maintenant: $now);
 verifier('une empreinte de sésame malformée est refusée', ($malforme['ok'] ?? true) === false);
 
 echo "\n→ Un dossier déjà ouvert ne redonne pas son numéro\n";
 
-$autre = $esc->ouvrir('alice', Escalade::empreinteSesame('un autre sésame'), $now + 10);
+$autre = $esc->ouvrir('alice', Escalade::empreinteSesame('un autre sésame'), maintenant: $now + 10);
 verifier('la seconde ouverture est refusée', ($autre['ok'] ?? true) === false);
 verifier('elle ne divulgue aucun numéro', !isset($autre['numero']));
 verifier('le demandeur concurrent est compté, c\'est un fait pour l\'arbitre',
     ($st->litiges[0]['demandeurs_concurrents'] ?? 0) === 1);
+
+echo "\n→ Les freins de l'ouverture\n";
+
+// ⭐ Le compteur annoncé doit être le compteur réel. Une version antérieure de
+// ce correctif écrivait DEUX lignes par appel sous l'étiquette comptée : le
+// frein annoncé à 10 mordait au 6e appel, et rien ici ne le voyait.
+[$stI, $_] = banc($now);
+$escIp = new Escalade($stI, new Recovery($stI, 'sel', delaiRefusUs: 0),
+    delaiRefusUs: 0, maxOuverturesIp: 3);
+
+$passes3 = [];
+for ($i = 0; $i < 4; $i++) {
+    $passes3[] = $escIp->ouvrir("n$i", Escalade::empreinteSesame("s$i"), '10.0.0.1', $now + $i);
+}
+verifier('contre-témoin : les trois premières passent le frein — le seuil annoncé est le seuil réel',
+    array_slice(array_column($passes3, 'error'), 0, 3) === ['compte_inconnu', 'compte_inconnu', 'compte_inconnu']);
+verifier('⭐ la 4e est freinée', ($passes3[3]['error'] ?? '') === 'trop_de_demandes');
+
+// ⭐ Ouvrir un dossier ne doit consommer le quota d'AUCUNE autre voie. Toutes
+// les surfaces — connexion, niveaux 1 et 2, enrôlement d'appareil — comptent
+// les échecs d'une adresse dans la même table, sans regarder d'où ils viennent.
+$avecIp = array_filter($stI->tentatives, static fn (array $t): bool => $t['ip'] !== null);
+verifier('⭐ aucune ligne d\'ouverture ne porte d\'adresse', $avecIp === [],
+    count($avecIp) . ' ligne(s) en portent');
+verifier('⭐ le compteur partagé par adresse est intact — l\'échec n\'est pas une arme',
+    $stI->compterEchecsIp('10.0.0.1', $now - 3600) === 0);
+verifier('et aucun nom de compte n\'est écrit : l\'ouverture est comptée, pas attribuée',
+    array_filter($stI->tentatives, static fn (array $t): bool => str_contains($t['etiquette'], 'n0')) === []);
+
+// ⭐ Les compteurs vivent dans une colonne où les tentatives de connexion
+// atterrissent aussi, et un nom soumis y arrive tel quel depuis une route
+// publique. Une étiquette devinable serait un compteur que n'importe qui
+// remplit : mesuré avant correction, vingt lignes fermaient le service à tous.
+[$stF, $escF] = banc($now);
+for ($i = 0; $i < 40; $i++) {
+    $stF->tracerTentative('l3:ouvrir:*', false, '198.51.100.4', $now + $i);
+    $stF->tracerTentative('l3:ouvrir:@' . substr(hash('sha256', '10.0.0.1'), 0, 32), false, '198.51.100.4', $now + $i);
+}
+$apresForge = $escF->ouvrir('alice', Escalade::empreinteSesame('la vraie'), '10.0.0.1', $now + 50);
+verifier('⭐ quarante lignes forgées sous l\'étiquette devinable ne freinent personne',
+    ($apresForge['ok'] ?? false) === true, (string) ($apresForge['error'] ?? ''));
+
+// ⭐ Les seuils LIVRÉS, pas seulement ceux qu'on injecte : ce sont eux que le
+// CHANGELOG et l'architecture publient.
+[$stD, $escD] = banc($now);
+$suiteD = [];
+for ($i = 0; $i < 11; $i++) {
+    $suiteD[] = $escD->ouvrir("d$i", Escalade::empreinteSesame("x$i"), '10.0.0.5', $now + $i);
+}
+verifier('⭐ par défaut, dix ouvertures par adresse passent',
+    array_column(array_slice($suiteD, 0, 10), 'error') === array_fill(0, 10, 'compte_inconnu'));
+verifier('⭐ et la onzième est freinée — le chiffre publié est le chiffre livré',
+    ($suiteD[10]['error'] ?? '') === 'trop_de_demandes');
+
+// L'énumération vise des noms différents : seul un plafond de service la voit.
+[$stS, $__] = banc($now);
+$escServ = new Escalade($stS, new Recovery($stS, 'sel', delaiRefusUs: 0),
+    delaiRefusUs: 0, maxOuverturesService: 2);
+
+$e1 = $escServ->ouvrir('inconnu1', Escalade::empreinteSesame('a'), maintenant: $now);
+$e2 = $escServ->ouvrir('inconnu2', Escalade::empreinteSesame('b'), maintenant: $now + 1);
+$e3 = $escServ->ouvrir('inconnu3', Escalade::empreinteSesame('c'), maintenant: $now + 2);
+verifier('contre-témoin : les deux premiers noms rendent bien « inconnu »',
+    ($e1['error'] ?? '') === 'compte_inconnu' && ($e2['error'] ?? '') === 'compte_inconnu');
+verifier('⭐ le plafond de service arrête l\'énumération, que les noms n\'existent pas n\'y change rien',
+    ($e3['error'] ?? '') === 'trop_de_demandes');
+
+$connu = $escServ->ouvrir('alice', Escalade::empreinteSesame('d'), maintenant: $now + 3);
+verifier('⭐ une fois le plafond atteint, un compte CONNU et un compte inconnu rendent le même refus',
+    ($connu['error'] ?? '') === ($e3['error'] ?? 'x'));
+
+// 🔑 Sans adresse — derrière un service caché, où il n'y a rien à compter — un
+// seuil par adresse à zéro ne doit rien freiner : c'est le plafond de service
+// qui gouverne seul.
+[$stN, $___] = banc($now);
+$escNul = new Escalade($stN, new Recovery($stN, 'sel', delaiRefusUs: 0),
+    delaiRefusUs: 0, maxOuverturesIp: 0);
+$sansIp = $escNul->ouvrir('alice', Escalade::empreinteSesame('e'), null, $now);
+verifier('⭐ sans adresse, le frein par adresse ne freine pas',
+    ($sansIp['ok'] ?? false) === true);
+
+// ⭐ Une chaîne vide n'est pas une adresse. Un intégrateur qui écrit
+// `REMOTE_ADDR ?? ''` la passerait, et tous les appelants partageraient alors un
+// compteur unique — un plafond global au seuil du client, qui masque celui du
+// service. Les deux formes vides doivent se comporter comme `null`.
+[$stV, $__v] = banc($now);
+$escV = new Escalade($stV, new Recovery($stV, 'sel', delaiRefusUs: 0),
+    delaiRefusUs: 0, maxOuverturesIp: 1);
+$escV->ouvrir('v1', Escalade::empreinteSesame('a'), '', $now);
+$vide2 = $escV->ouvrir('v2', Escalade::empreinteSesame('b'), '   ', $now + 1);
+verifier('⭐ une adresse vide ou blanche vaut « pas d\'adresse »',
+    ($vide2['error'] ?? '') === 'compte_inconnu', (string) ($vide2['error'] ?? ''));
+
+// ⭐ Aucun frein par compte : un tiers ne doit pas pouvoir fermer l'ouverture au
+// titulaire. Ce qui borne le harcèlement est le dossier lui-même, et la
+// collision se COMPTE sous les yeux de l'arbitre plutôt que de murer en silence.
+[$stH, $escH] = banc($now);
+for ($i = 0; $i < 8; $i++) {
+    $escH->ouvrir('alice', Escalade::empreinteSesame("mallory$i"), '10.0.0.9', $now + $i);
+}
+$victime = $escH->ouvrir('alice', Escalade::empreinteSesame('la vraie'), '10.0.0.2', $now + 20);
+verifier('⭐ huit sollicitations d\'un tiers ne murent pas le titulaire',
+    ($victime['error'] ?? '') === 'deja_ouvert');
+verifier('et la collision reste visible à l\'arbitre',
+    ($stH->litiges[0]['demandeurs_concurrents'] ?? 0) === 8);
 
 echo "\n→ Le sésame, et rien d'autre, ouvre le dossier\n";
 
@@ -147,11 +259,57 @@ verifier('le faisceau ne porte aucun score agrégé',
     !isset($f['score']) && !isset($f['summary']) && !isset($f['confidence']));
 verifier('il dit à l\'arbitre ce qu\'il ne prouve pas', isset($f['avertissement']));
 
+// Les faits que seul le déploiement connaît. Ils passent sous `contexte.local`
+// et ne se mêlent jamais aux faits calculés : un adaptateur ne doit pas pouvoir
+// écrire un « refus_precedents » de son cru sous les yeux de l'arbitre.
+verifier('un fait local du déploiement atteint le faisceau',
+    ($f['contexte']['local']['hote_derivation'] ?? '?') === 'exemple.test');
+// ⭐ Un adaptateur qui rend une clé réservée ne doit pas pouvoir en changer la
+// valeur : `refus_precedents` arme le gel, et un arbitre qui lit un zéro forgé
+// tranche sur un faux.
+[$stMenteur, $escMenteur] = banc($now);
+$stMenteur->faitsLocaux = ['refus_precedents' => 999, 'hote_derivation' => 'imposteur.test'];
+$sMenteur = bin2hex(random_bytes(32));
+$oMenteur = $escMenteur->ouvrir('alice', Escalade::empreinteSesame($sMenteur), maintenant: $now);
+$escMenteur->soumettre((string) $oMenteur['numero'], $sMenteur, ['annee_creation' => '2022'], $now + 7200);
+$fMenteur = json_decode((string) $stMenteur->litiges[0]['faisceau'], true);
+verifier('⭐ un fait local ne peut pas écraser un fait calculé par la bibliothèque',
+    ($fMenteur['contexte']['refus_precedents'] ?? '?') === 0,
+    'refus_precedents = ' . var_export($fMenteur['contexte']['refus_precedents'] ?? null, true));
+verifier('et la valeur forgée reste visible à sa place, sous `local`',
+    ($fMenteur['contexte']['local']['refus_precedents'] ?? '?') === 999);
+
+// Contre-témoin : un adaptateur qui ne rend PAS la case ne casse rien. C'est le
+// cas de l'adaptateur du lab, seul adaptateur de production du niveau 3 : sans
+// ce contrôle, retirer le `?? []` de `faisceau()` laisserait le banc vert et
+// casserait chaque dossier servi.
+[$stMuet, $escMuet] = banc($now);
+$stMuet->sansFaitsLocaux = true;
+$sMuet = bin2hex(random_bytes(32));
+$oMuet = $escMuet->ouvrir('alice', Escalade::empreinteSesame($sMuet), maintenant: $now);
+$escMuet->soumettre((string) $oMuet['numero'], $sMuet, ['annee_creation' => '2022'], $now + 7200);
+$fMuet = json_decode((string) $stMuet->litiges[0]['faisceau'], true);
+verifier('contre-témoin : un adaptateur qui ne rend pas la case ne casse rien',
+    is_array($fMuet['contexte']['local'] ?? null) && $fMuet['contexte']['local'] === []);
+
+// ⭐ Un fait illisible ne doit pas fermer la porte : ce niveau s'adresse à qui
+// n'a plus rien, et un faisceau qui n'assemble jamais rend le refus définitif.
+[$stSale, $escSale] = banc($now);
+$stSale->faitsLocaux = ['hote' => "octet\xE9 hors UTF-8", 'compteur' => INF, 'objet' => new stdClass()];
+$sSale = bin2hex(random_bytes(32));
+$oSale = $escSale->ouvrir('alice', Escalade::empreinteSesame($sSale), maintenant: $now);
+$dSale = $escSale->soumettre((string) $oSale['numero'], $sSale, ['annee_creation' => '2022'], $now + 7200);
+verifier('⭐ un fait local illisible n\'empêche pas le dépôt', ($dSale['ok'] ?? false) === true,
+    (string) ($dSale['error'] ?? ''));
+$fSale = json_decode((string) $stSale->litiges[0]['faisceau'], true);
+verifier('et il arrive à l\'arbitre en « on ne sait pas », pas en valeur forgée',
+    ($fSale['contexte']['local'] ?? null) === ['hote' => null, 'compteur' => null, 'objet' => null]);
+
 // Contre-témoin : sans lui, un faisceau qui rendrait TOUJOURS « indisponible »
 // passerait les deux contrôles ci-dessus. Un faux vert tue une sonde.
 [$st2, $esc2] = banc($now, $now - 30 * 86400, 42);
 $sesame2 = bin2hex(random_bytes(32));
-$ouv2    = $esc2->ouvrir('alice', Escalade::empreinteSesame($sesame2), $now);
+$ouv2    = $esc2->ouvrir('alice', Escalade::empreinteSesame($sesame2), maintenant: $now);
 $esc2->soumettre((string) $ouv2['numero'], $sesame2, [
     'annee_creation' => gmdate('Y', $now - 400 * 86400),
     'mois_connexion' => gmdate('Y-m', $now - 30 * 86400),
@@ -169,7 +327,10 @@ verifier('contre-témoin : une réponse fausse diverge',
 
 echo "\n→ Un niveau 3 ne réussit jamais tout seul\n";
 
-$l3 = array_values(array_filter($st->tentatives, static fn (array $t): bool => str_starts_with($t['etiquette'], 'l3:')));
+// Étiquette exacte : deux étiquettes commencent par « l3: », le dépôt et
+// l'ouverture. Un filtre par préfixe les compterait ensemble et resterait vert
+// même si le dépôt cessait d'être journalisé.
+$l3 = array_values(array_filter($st->tentatives, static fn (array $t): bool => $t['etiquette'] === 'l3:alice'));
 verifier('le dépôt est journalisé', count($l3) === 1);
 verifier('⭐ il est journalisé comme un ÉCHEC, sinon L3 effacerait l\'ardoise des tentatives',
     ($l3[0]['succes'] ?? true) === false);
@@ -207,7 +368,7 @@ $codesAvant     = count($st3->codes);
 $numeros = [];
 for ($i = 0; $i < 3; $i++) {
     $s = bin2hex(random_bytes(32));
-    $o = $esc3->ouvrir('alice', Escalade::empreinteSesame($s), $now + $i * $JOUR);
+    $o = $esc3->ouvrir('alice', Escalade::empreinteSesame($s), maintenant: $now + $i * $JOUR);
     $numeros[] = [$o['numero'] ?? '', $s];
     $esc3->trancher((string) $o['numero'], 'refuse', 'arbitre', $now + $i * $JOUR + 100);
 }
@@ -222,7 +383,7 @@ verifier('contre-témoin : le banc en portait bien avant les refus', $codesAvant
 
 echo "\n→ Ce qui gèle, c'est la procédure\n";
 
-$gel = $esc3->ouvrir('alice', Escalade::empreinteSesame('encore un'), $now + 3 * $JOUR);
+$gel = $esc3->ouvrir('alice', Escalade::empreinteSesame('encore un'), maintenant: $now + 3 * $JOUR);
 verifier('au 3ᵉ refus, l\'ouverture d\'un nouveau dossier est gelée', ($gel['ok'] ?? true) === false);
 verifier('et le refus le dit', ($gel['error'] ?? '') === 'gele');
 verifier('le message précise que le compte fonctionne',
@@ -232,14 +393,14 @@ verifier('le message précise que le compte fonctionne',
 // les trois contrôles ci-dessus verts.
 [$st4, $esc4] = banc($now);
 for ($i = 0; $i < 2; $i++) {
-    $o = $esc4->ouvrir('alice', Escalade::empreinteSesame("s$i"), $now + $i * $JOUR);
+    $o = $esc4->ouvrir('alice', Escalade::empreinteSesame("s$i"), maintenant: $now + $i * $JOUR);
     $esc4->trancher((string) $o['numero'], 'refuse', 'arbitre', $now + $i * $JOUR + 100);
 }
-$deux = $esc4->ouvrir('alice', Escalade::empreinteSesame('troisieme'), $now + 2 * $JOUR);
+$deux = $esc4->ouvrir('alice', Escalade::empreinteSesame('troisieme'), maintenant: $now + 2 * $JOUR);
 verifier('contre-témoin : deux refus ne gèlent pas', ($deux['ok'] ?? false) === true);
 
 // Contre-témoin : hors de la fenêtre, les refus ne comptent plus.
-$vieux = $esc3->ouvrir('alice', Escalade::empreinteSesame('bien plus tard'), $now + 400 * $JOUR);
+$vieux = $esc3->ouvrir('alice', Escalade::empreinteSesame('bien plus tard'), maintenant: $now + 400 * $JOUR);
 verifier('contre-témoin : passé la fenêtre et le gel, l\'ouverture rouvre', ($vieux['ok'] ?? false) === true);
 
 $deg = $esc3->degeler('alice', 'arbitre', $now + 3 * $JOUR + 10);
@@ -251,7 +412,7 @@ echo "\n→ Accepter ne fabrique aucun secret\n";
 
 [$st5, $esc5] = banc($now);
 $s5  = bin2hex(random_bytes(32));
-$o5  = $esc5->ouvrir('alice', Escalade::empreinteSesame($s5), $now);
+$o5  = $esc5->ouvrir('alice', Escalade::empreinteSesame($s5), maintenant: $now);
 $n5  = (string) $o5['numero'];
 $acc = $esc5->trancher($n5, 'accepte', 'arbitre', $now + 100);
 
@@ -285,6 +446,55 @@ verifier('le mot mémorisé dérivé est rangé', Hashing::verify($MOT, $st5->co
 verifier('le sel du compte est rangé', ($st5->sels[1] ?? '') === $SEL);
 verifier('les sessions sont révoquées — qui tenait le compte est éjecté', $st5->sessionsRevoquees === [1]);
 
+// ⭐ Le marqueur de déploiement suit l'empreinte. `reposerSecrets()` est le seul
+// endroit du protocole où l'empreinte du mot mémorisé est réécrite : un marqueur
+// laissé en place n'y survit qu'en mentant sur l'adresse sous laquelle le compte
+// se dérive désormais. Ce contrôle éprouve l'adaptateur de référence, celui que
+// les intégrateurs recopient — il ne peut rien dire du leur.
+verifier('⭐ le marqueur de déploiement a suivi le ré-enrôlement',
+    ($st5->hotes[1] ?? '?') === $st5->hoteServi,
+    'hôte = ' . var_export($st5->hotes[1] ?? null, true));
+
+// ⭐ Un dossier ACCEPTÉ reste actif et n'expire pas. Entre l'accord et le retour
+// du titulaire, le compte est au plus ouvert : un second dossier ouvert là sans
+// être signalé priverait l'arbitre du fait le plus utile du moment. Et
+// l'exemption d'expiration vaut aussi : l'horloge ne doit pas annuler son
+// travail avant que le titulaire revienne.
+[$stA, $escA] = banc($now);
+$sA = bin2hex(random_bytes(32));
+$oA = $escA->ouvrir('alice', Escalade::empreinteSesame($sA), maintenant: $now);
+$escA->soumettre((string) $oA['numero'], $sA, ['annee_creation' => '2022'], $now + 7200);
+$escA->trancher((string) $oA['numero'], 'accepte', 'arbitre', $now + 7300);
+verifier('contre-témoin : le dossier est bien accepté et non consommé',
+    ($stA->litiges[0]['statut'] ?? '') === Litige::ACCEPTE);
+
+$tiers = $escA->ouvrir('alice', Escalade::empreinteSesame('un tiers'), maintenant: $now + 25 * $JOUR);
+verifier('⭐ un dossier accepté reste actif bien après son TTL',
+    ($tiers['error'] ?? '') === 'deja_ouvert', (string) ($tiers['error'] ?? ''));
+verifier('et la collision est comptée pour l\'arbitre',
+    ($stA->litiges[0]['demandeurs_concurrents'] ?? 0) === 1);
+
+// ⭐ La purge épargne les REFUSÉS : le gel se compte sur eux, sur trente jours,
+// alors qu'un dossier expire en vingt-quatre heures. Les effacer viderait le
+// compteur avant son seuil, et le gel deviendrait inatteignable sans qu'aucune
+// sonde ne rougisse. Elle épargne aussi les ACCEPTÉS, pour la même raison que
+// ci-dessus.
+[$stP, $escP] = banc($now);
+$stP->litiges[] = ['id' => 900, 'compte_id' => 1, 'numero' => 'LIT-REFUSE', 'empreinte_sesame' => '',
+                   'statut' => Litige::REFUSE, 'ouvert_le' => $now, 'expire_le' => $now + 10,
+                   'depose_le' => null, 'faisceau' => null, 'demandeurs_concurrents' => 0,
+                   'tranche_par' => 'arbitre', 'tranche_le' => $now];
+$stP->litiges[] = ['id' => 901, 'compte_id' => 1, 'numero' => 'LIT-PERIME', 'empreinte_sesame' => '',
+                   'statut' => Litige::OUVERT, 'ouvert_le' => $now, 'expire_le' => $now + 10,
+                   'depose_le' => null, 'faisceau' => null, 'demandeurs_concurrents' => 0,
+                   'tranche_par' => null, 'tranche_le' => null];
+$escP->purger($now + 100);
+$restants = array_column($stP->litiges, 'numero');
+verifier('⭐ la purge épargne le dossier refusé — sans lui le gel ne s\'arme jamais',
+    in_array('LIT-REFUSE', $restants, true), implode(', ', $restants));
+verifier('contre-témoin : elle efface bien le dossier périmé et non tranché',
+    !in_array('LIT-PERIME', $restants, true));
+
 echo "\n→ Le sésame ne sert qu'une fois\n";
 
 // ⚠️ Ce contrôle vérifie le MOTIF, pas seulement le refus, et c'est délibéré :
@@ -306,7 +516,7 @@ echo "\n→ Ce qu'un dossier non accepté ne permet pas\n";
 
 [$st6, $esc6] = banc($now);
 $s6 = bin2hex(random_bytes(32));
-$o6 = $esc6->ouvrir('alice', Escalade::empreinteSesame($s6), $now);
+$o6 = $esc6->ouvrir('alice', Escalade::empreinteSesame($s6), maintenant: $now);
 $nr = $esc6->reEnroler((string) $o6['numero'], $s6, 'mot de passe', $MOT, $SEL, $now + 100);
 verifier('un dossier non tranché ne permet pas de reposer les secrets', ($nr['ok'] ?? true) === false);
 verifier('et le refus dit pourquoi', ($nr['error'] ?? '') === 'non_accepte');
@@ -336,7 +546,7 @@ echo "\n→ Expiration et purge\n";
 
 [$st7, $esc7] = banc($now);
 $s7 = bin2hex(random_bytes(32));
-$o7 = $esc7->ouvrir('alice', Escalade::empreinteSesame($s7), $now);
+$o7 = $esc7->ouvrir('alice', Escalade::empreinteSesame($s7), maintenant: $now);
 $ex = $esc7->etat((string) $o7['numero'], $s7, $now + $JOUR + 1);
 verifier('un dossier expiré n\'est plus recevable', ($ex['ok'] ?? true) === false);
 verifier('et le refus dit que c\'est l\'expiration', ($ex['error'] ?? '') === 'expire');

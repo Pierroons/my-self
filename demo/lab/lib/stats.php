@@ -36,8 +36,14 @@ final class Stats
             "SELECT COUNT(*) FROM accounts WHERE username NOT LIKE 'ctf\_%' ESCAPE '\\'"
         )->fetchColumn();
 
+        // Les sondes de fréquence du niveau 3 ne sont pas des attaques repoussées :
+        // chaque récupération légitime en pose, et les compter gonflerait un
+        // chiffre PUBLIC avec le trafic normal du service. Même paire
+        // d'identification que dans la console — préfixe ET adresse nulle, qu'une
+        // route publique ne peut pas produire.
         $repoussees = (int) $pdo->query(
-            'SELECT COUNT(*) FROM login_attempts WHERE success = 0'
+            "SELECT COUNT(*) FROM login_attempts
+              WHERE success = 0 AND NOT (username LIKE 'l3:ouvrir:%' AND ip IS NULL)"
         )->fetchColumn();
 
         $rapports = (int) $pdo->query('SELECT COUNT(*) FROM redteam_reports')->fetchColumn();
