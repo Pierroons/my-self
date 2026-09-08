@@ -21,6 +21,13 @@ require __DIR__ . '/../vendor/autoload.php';
 // navigateur. Le sel est exigé depuis le 27/08 : sans lui, l'inscription refuse.
 require_once __DIR__ . '/../lib/derive_cli.php';
 require __DIR__ . '/../lib/StockageSelfRecover.php';
+// L'adaptateur applicatif, pour éprouver le chemin que les endpoints empruntent
+// et non une reconstitution. Son sel de site est détourné vers un fichier
+// jetable : celui de l'instance ne doit pas bouger, un remplacement rendrait
+// introuvables tous les codes déjà émis.
+putenv('LAB_SITESALT_PATH=' . sys_get_temp_dir() . '/lab-sonde-sitesalt-' . getmypid());
+require_once __DIR__ . '/../lib/auth.php';
+require_once __DIR__ . '/../lib/recover_l3.php';
 
 use Pierroons\MySelfLab\StockageSelfRecover;
 use Pierroons\SelfRecover\Crypto\Hashing;
@@ -292,6 +299,56 @@ verifier('banned_until n\'a PAS été posé — c\'est la procédure qui gèle, 
 
 $gele3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('encore'), maintenant: $now3 + 400 + 2 * 86400);
 verifier('et l\'ouverture est bien refusée pendant le gel', ($gele3['error'] ?? '') === 'gele');
+
+echo "\n→ ⭐ Le dégel est atteignable, et il rend la porte\n";
+
+// Trois textes du module promettent qu'un arbitre lève le gel. Jusqu'ici
+// `degeler()` n'avait aucun appelant : la promesse était vraie dans la
+// bibliothèque et fausse partout où quelqu'un aurait pu s'en servir.
+
+$gelAvant = (int) $pdo3->query('SELECT gele_jusqu_a FROM l3_gel WHERE account_id = 1')->fetchColumn();
+verifier('contre-témoin : le gel court bien avant qu\'on y touche', $gelAvant > $now3);
+
+$deg = \Pierroons\MySelfLab\RecoverL3::adminUnfreeze($pdo3, 'alice', 'arbitre-nommé');
+verifier('⭐ le dégel passe par l\'adaptateur et réussit', ($deg['ok'] ?? false) === true,
+    (string) ($deg['error'] ?? ''));
+
+$apres = $pdo3->query('SELECT gele_jusqu_a, degele_par FROM l3_gel WHERE account_id = 1')
+              ->fetch(PDO::FETCH_ASSOC);
+verifier('le gel est levé', (int) $apres['gele_jusqu_a'] === 0);
+verifier('⭐ et la ligne dit QUI a levé — pas « admin » pour tout le monde',
+    $apres['degele_par'] === 'arbitre-nommé', (string) $apres['degele_par']);
+
+$rouvre = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('apres degel'),
+    maintenant: $now3 + 500 + 2 * 86400);
+verifier('⭐ la porte est rendue : l\'ouverture repasse', ($rouvre['ok'] ?? false) === true,
+    (string) ($rouvre['error'] ?? ''));
+
+// ⚠️ Un gel ÉCHU ne doit pas se présenter comme un gel : la console afficherait
+// « gelée jusqu\'au <date passée> » et proposerait de lever ce qui n\'existe plus.
+$pdo3->prepare('UPDATE l3_gel SET gele_jusqu_a = ? WHERE account_id = 1')->execute([time() - 3600]);
+$liste = (new \Pierroons\MySelfLab\StockageSelfRecover($pdo3))->listerLitiges(10);
+verifier('⭐ un gel échu n\'est pas remonté à la console',
+    array_sum(array_map(static fn (array $l): int => (int) ($l['gele_jusqu_a'] ?? 0), $liste)) === 0);
+
+$pdo3->prepare('UPDATE l3_gel SET gele_jusqu_a = ? WHERE account_id = 1')->execute([time() + 86400]);
+$liste2 = (new \Pierroons\MySelfLab\StockageSelfRecover($pdo3))->listerLitiges(10);
+verifier('contre-témoin : un gel qui court, lui, est bien remonté',
+    array_sum(array_map(static fn (array $l): int => (int) ($l['gele_jusqu_a'] ?? 0), $liste2)) > 0);
+
+echo "\n→ Les gardes des endpoints d'arbitrage\n";
+
+// Un endpoint d'arbitrage sans garde est une console ouverte. Contrôle
+// structurel : la bibliothèque ne connaît pas les rôles, c'est ici que ça tient.
+foreach (['admin_unfreeze.php' => ['require_method', 'require_admin', 'require_csrf'],
+          'admin_dispute_decide.php' => ['require_method', 'require_admin', 'require_csrf']] as $f => $gardes) {
+    $src = (string) file_get_contents(__DIR__ . '/../public/api/' . $f);
+    foreach ($gardes as $g) {
+        verifier("{$f} pose {$g}()", str_contains($src, $g . '('));
+    }
+    verifier("{$f} ne prend pas l'identité de l'arbitre dans le corps de la requête",
+        !preg_match('/\$body\[.(par|admin|auteur|username_admin).\]/', $src));
+}
 
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Équivalence lab ⨯ SelfRecover — %d passés, %d échoués\n", $passes, $echecs);

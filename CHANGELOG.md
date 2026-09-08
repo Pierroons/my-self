@@ -10,6 +10,36 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### MySelf-Lab — le dégel devient atteignable, et la trace dit qui — 8 septembre 2026
+
+Deux whitepapers promettaient qu'un arbitre lève le gel de procédure et que la
+trace du dégel est conservée. `Escalade::degeler()` existait, `RecoverL3::adminUnfreeze()`
+aussi — et **aucun appelant ne les atteignait**. La promesse était vraie dans la
+bibliothèque et fausse partout où quelqu'un aurait pu s'en servir. Un compte gelé
+le restait sept jours quoi qu'en pense l'arbitre.
+
+`demo/lab/public/api/admin_unfreeze.php` ferme le chemin, avec les trois gardes
+de ses voisins — méthode, qualité d'arbitre, jeton CSRF. La console d'arbitrage
+porte le bouton, et il n'apparaît que sur un gel qui court.
+
+**Qui agit est pris dans la session, jamais dans le corps de la requête.**
+`admin_dispute_decide.php` passait le défaut `'admin'` : toutes les décisions du
+service étaient signées du même nom, alors que la console affiche cette signature
+à l'arbitre suivant. Une trace qui ne distingue personne n'en est pas une. Les
+deux endpoints prennent désormais le nom dans la session, et la sonde refuse
+qu'il puisse revenir du corps.
+
+**Un gel échu n'est plus un gel.** `listerLitiges` remontait la colonne brute,
+si bien que la console affichait « ouverture gelée jusqu'au <date passée> » sur
+un compte redevenu libre — et aurait proposé de lever un gel qui n'existait plus.
+`gelJusqua()` appliquait déjà la borne ; les deux lectures disent maintenant la
+même chose.
+
+Éprouvé de bout en bout sur le schéma réel — le gel court, le dégel passe par
+l'adaptateur, `degele_par` porte le nom, l'ouverture repasse — et quatre défauts
+plantés à la main, quatre attrapés.
+
+
 ## [SelfRecover v0.5.0] — 8 septembre 2026
 
 ### SelfRecover — l'ouverture d'un dossier de niveau 3 cesse d'être un oracle gratuit — 8 septembre 2026
