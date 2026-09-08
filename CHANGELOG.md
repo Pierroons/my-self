@@ -8,7 +8,7 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ---
 
-## [Non publié]
+## [SelfRecover v0.5.1] — 8 septembre 2026
 
 ### SelfRecover L1 — une date qui informe, et l'écrit qu'elle n'expire rien — 8 septembre 2026
 
