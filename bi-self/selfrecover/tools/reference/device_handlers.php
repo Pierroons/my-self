@@ -112,7 +112,12 @@ function handleDeviceAuthFinish(): void {
     $signature    = dev_b64url_decode($in['signature'] ?? ''); // P1363 (r||s)
     $newPassword  = $in['new_password'] ?? '';
     if (!$credentialId || !$challenge) jsonError('Données incomplètes');
-    if (strlen($newPassword) < 8) jsonError('Nouveau mot de passe: 8 caractères minimum');
+    // Le plancher du module vit dans `Escalade::MOT_DE_PASSE_MINIMUM`. Le
+    // recopier en littéral est ce qui a laissé un 8 survivre ici pendant que
+    // la bibliothèque passait à 12.
+    if (mb_strlen($newPassword) < \Pierroons\SelfRecover\Recovery\Escalade::MOT_DE_PASSE_MINIMUM) {
+        jsonError('Nouveau mot de passe : ' . \Pierroons\SelfRecover\Recovery\Escalade::MOT_DE_PASSE_MINIMUM . ' caractères minimum');
+    }
 
     $db = getDB();
     $stmt = $db->prepare("SELECT 1 FROM device_challenges WHERE challenge = ? AND credential_id = ? AND created_at > datetime('now', '-5 minutes')");

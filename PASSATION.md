@@ -58,7 +58,7 @@ endroit. Et comme ce fichier est public : rien qui n'irait pas dans un commit.
   | Seuil | Valeur | Où |
   |---|---|---|
   | Passphrase générée | 4 mots (≈51,7 bits) | `Wordlist::generate(4, …)` — **5 sites d'appel**, plus un test à 6 |
-  | Mot de passe | 8 caractères | `demo/lab/lib/recover_l3.php`, `bi-self/selfrecover/tools/reference/device_handlers.php` |
+  | Mot de passe | 12 caractères, `Escalade::MOT_DE_PASSE_MINIMUM` | la constante ; `recover_l3.php` délègue, `tools/reference/device_handlers.php` la lit |
   | Mot de passe (démo SelfDataGuard) | 12 caractères | `demo/selfdataguard/api/change_password.php` |
   | `blindKey` | ≥32 octets | `demo/selfdataguard/api/_bootstrap.php` |
   | Argon2id | opslimit 3, memlimit 64 Mio | `self-security/selfdataguard/src/Crypto/Primitives.php` |

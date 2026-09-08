@@ -163,8 +163,8 @@ Le matériel doit être **lu** dans le navigateur, jamais reçu du réseau : un 
 - L'utilisateur fournit : `username` + `passphrase diceware` (correspondance exacte)
 - En cas de succès : nouveau mot de passe généré, masqué par défaut, affiché une seule fois
 - Le mot de passe reste à l'écran jusqu'à confirmation `"J'ai noté"`
-- Rate limit : 3 essais / 15 minutes par username, 3 blocages → éjection vers L2
-- Anti-bot : champ honeypot (caché en CSS) + vérification de timing (< 2 secondes = bot)
+- Rate limit : 5 échecs / 15 minutes par username et 12 par adresse (valeurs par défaut, réglées par l'intégrateur)
+- Anti-bot : hors de portée de la bibliothèque — le champ honeypot et le contrôle de timing vivent sur la page
 
 ### 5.2 Niveau 2 — Passphrase perdue (2FA sans identifiant)
 
@@ -175,7 +175,7 @@ Le L2 est un **vrai 2FA** — possession **et** connaissance — **sans identifi
 
 Le serveur vérifie les **deux** (Argon2id) et renvoie une **erreur générique** ne révélant jamais lequel a échoué. En cas de succès, l'utilisateur choisit son nouveau mot de passe et le code est marqué comme utilisé. Une variante optionnelle — le **facteur « cet appareil »** — offre une troisième voie de L2 (voir §5.4).
 
-Après 3 échecs L2 (fenêtre glissante), bascule automatique vers L3. Toutes les tentatives sont loguées.
+Aucune bascule automatique vers L3 : le niveau 2 ne demande aucun identifiant, donc il n'y a rien à compter par compte. Son seul frein est le compteur par adresse. C'est la personne qui décide d'ouvrir un dossier.
 
 ### 5.3 Niveau 3 — Accès totalement perdu
 
@@ -184,11 +184,11 @@ Après 3 échecs L2 (fenêtre glissante), bascule automatique vers L3. Toutes le
 - Un litige au numéro **non devinable** (`LIT-<aléatoire>`) est ouvert. Si un litige est déjà ouvert pour ce compte, le numéro n'est **pas redivulgué** et la tentative concurrente est signalée à l'admin (« multi-demandeur »)
 - L'utilisateur répond à quelques **questions de contexte** (année de création du compte, période de dernière connexion, fréquence d'usage) — **aucun secret n'est demandé**
 - Le serveur assemble un **faisceau de signaux** présenté à l'administrateur :
-  - **Signaux passifs** (non falsifiables par l'utilisateur) : IP déjà connue du compte, empreinte navigateur déjà observée
+  - Le faisceau ne porte **aucun signal passif** : ni adresse, ni empreinte de navigateur. Il est entièrement déclaratif, confronté à ce que le serveur enregistre déjà, et il le dit à l'arbitre plutôt que de le laisser supposer
   - **Signaux déclaratifs** (ce que l'utilisateur affirme, comparé au réel) : année de création, mois de dernière connexion, fréquence d'usage
 - **Aucun score chiffré n'est calculé.** Les signaux sont des **faits bruts** : ils n'ouvrent **jamais** le compte automatiquement, ils aident seulement un **administrateur humain** à trancher dans le chat
 - Cooldown : 1 heure entre chaque soumission
-- Le code de suivi conditionne l'accès au fil de discussion et au rétablissement ; il expire avec le litige (TTL 24 h) et n'est utilisable qu'une fois
+- Le code de suivi conditionne l'accès au fil de discussion et au rétablissement, et n'est utilisable qu'une fois. Il expire avec le dossier au bout de 24 h — **sauf si le dossier a été accepté** : à partir de l'accord, l'horloge s'arrête, pour qu'elle n'annule pas le travail de l'arbitre avant que le titulaire revienne
 
 ### 5.4 Les foyers de possession de L2 — recovery codes & facteur appareil
 
@@ -208,12 +208,12 @@ Le L2 combine toujours **connaissance** (le mot mémorisé) et **possession**. D
 
 ## 6. Système de litiges et interface admin
 
-Chaque session de récupération échouée au-delà de L1 ouvre un litige (`LIT-XXXX`) visible dans le dashboard admin.
+Un dossier (`LIT-XXXX`) s'ouvre quand la personne le demande, jamais automatiquement, et devient visible dans la console d'arbitrage dès qu'elle y a déposé ses réponses.
 
 - Chaque litige a un numéro **non devinable**, le faisceau de signaux (faits bruts, jamais un score), des compteurs de tentatives et de refus, un compteur de tentatives concurrentes (« multi-demandeur »), et un statut (`open`, `awaiting_admin`, `accepted`, `refused`, `closed`)
 - L'admin retrouve les litiges ouverts dans son tableau de bord
 - Un chat bidirectionnel est disponible entre l'admin et l'utilisateur, dont l'accès est conditionné par le code de suivi (polling, pas de WebSocket temps réel pour rester simple)
-- Les litiges résolus sont purgés automatiquement après 24 heures pour garder la BDD propre
+- `purger()` efface les dossiers périmés — ni les refusés, sur lesquels se compte le gel, ni les acceptés, qu'un titulaire peut encore venir consommer. ⚠️ La bibliothèque expose la méthode ; **elle n'a pas d'horloge**. C'est au déploiement de l'appeler, par une tâche planifiée.
 
 ### 6.1 Clôture du litige — Décision admin
 
@@ -250,12 +250,17 @@ SelfRecover distingue trois rôles : **SU → Admin → User**. L'administrateur
 
 ## 7. Détection anti-abus
 
-- **Honeypot** : champ caché en CSS — s'il est rempli, c'est un bot
-- **Timing** : formulaire soumis en moins de 2 secondes → bot
-- **Empreintes suspectes** : 5 tentatives depuis la même empreinte navigateur (tout identifiant confondu) → empreinte suspecte
-- **Empreinte suspecte + liée à un utilisateur connu** : admin notifié, utilisateur contacté
-- **Empreinte suspecte + inconnue** : IP bloquée 24 h
-- **Patterns inter-comptes** : détectés en L2/L3 via le tracking d'empreintes
+**Ce que la bibliothèque applique**
+
+- **Compteurs** : par username et par adresse au niveau 1, par adresse et par service au niveau 3
+- **Délai forcé** sur chaque refus qui tait un état
+- **Message de refus unique**, pour que rien ne trie les comptes qui existent
+
+**Ce qui appartient à l'intégrateur**, parce qu'il faut des routes, des pages ou
+un navigateur que la bibliothèque n'a pas : le champ honeypot, le contrôle de
+timing du formulaire, une preuve de travail devant la route d'ouverture, la
+corrélation par empreinte de navigateur, et toute politique de notification ou de
+blocage bâtie dessus.
 
 ---
 
@@ -285,7 +290,7 @@ SR-SYS-SALT-ERR  Erreur système, récupération du sel échouée
 
 ## 9. Protection contre les attaques actives
 
-Si un utilisateur légitime se connecte normalement et que le serveur détecte une activité suspecte (tentatives L1 échouées, litiges ouverts, empreintes suspectes liées à son compte), un modal s'affiche :
+Si un utilisateur légitime se connecte normalement et que le serveur détecte une activité suspecte (tentatives L1 échouées, dossiers d'arbitrage ouverts), un modal s'affiche :
 
 > **Vérification de sécurité**
 > Une activité inhabituelle a été détectée sur ton compte.
@@ -295,10 +300,11 @@ Si un utilisateur légitime se connecte normalement et que le serveur détecte u
 - **Oui** → nettoyage silencieux des tentatives échouées et des litiges, l'utilisateur continue normalement
 - **Non** → protection renforcée activée en arrière-plan :
   - Nouveau mot de passe généré et affiché à l'utilisateur
-  - Tous les JWT existants invalidés
-  - Mode protection 7 jours activé (recovery L2 verrouillé)
-  - Empreintes suspectes bloquées 24 h
-  - Admin notifié via push
+  - Sessions révoquées : qui tenait le compte est éjecté
+  - Admin notifié
+
+Ce qui suit relève de l'application et non du protocole, parce qu'il faut des
+sessions, des rôles et un canal de notification que la bibliothèque n'a pas.
 
 L'utilisateur voit un message rassurant `"Ton compte est maintenant sécurisé"` — pas un log technique. L'admin gère l'investigation en arrière-plan.
 
@@ -313,7 +319,7 @@ L'utilisateur voit un message rassurant `"Ton compte est maintenant sécurisé"`
 - **Panne du fournisseur SMTP** — pas de dépendance SMTP
 - **Confiance tiers** — seuls le site et l'utilisateur sont impliqués
 - **Brute force limité par rate** — limites par username + escalade L2/L3
-- **Énumération par bot** — honeypot + timing + délais forcés
+- **Énumération par bot** — *partiellement*. Fermée aux niveaux 1 et 2 : refus unique au premier, aucun identifiant demandé au second. Ouverte au niveau 3, où la réponse utile EST la distinction — un succès rend un numéro de dossier, un nom inconnu ne peut pas en rendre. Ce qui s'y oppose est le coût : deux freins avant la recherche du compte (par adresse, par service), un délai sur chaque refus qui tait un état, et une preuve de travail devant la route — que la bibliothèque ne peut pas imposer puisqu'elle n'a pas de route
 - **Blanchiment de réputation sociale** — l'identifiant public est verrouillé après inscription, impossible à modifier par l'utilisateur
 
 ### 10.2 CRITIQUE — Accès root serveur (sudo)

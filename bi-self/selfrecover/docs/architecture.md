@@ -60,7 +60,7 @@ Server: Argon2id-verify(recovery_code) AND Argon2id-verify(recovery_key)
               │          Return new password to browser
               │
               └── FAIL ─> Increment L2 attempts counter
-                         If >= 3 → redirect to Level 3
+                         The person chooses to open a dispute
 ```
 
 ## Recovery L3 flow (everything lost)
@@ -140,11 +140,19 @@ HMAC's keyed construction takes the memorized word as the **key** and the per-se
 
 Not covered in detail in this diagram, but essential in production:
 
-- Per-username rate limits (L1: 3 attempts/15min → 1h block → 3 blocks → ejected to L2)
-- Per-identifier rate limits (L2: 3 attempts total → ejected to L3)
-- Cooldown between L3 attempts (1h)
-- Honeypot field (hidden via CSS) to trap unsophisticated bots
-- Timing check (form submitted in < 2s = bot)
-- Fingerprint tracking for cross-account patterns
+What the library enforces, with the defaults it ships:
 
-All these are documented in the [full whitepaper](whitepaper-en.md).
+- L1 — 5 failures per username and 12 per address, over a 15-minute window
+- L2 — no username is asked, so there is nothing to rate-limit per account; the
+  per-address counter applies
+- L3 — 1 hour between two deposits on a dispute; 10 openings per address and 20
+  per service, over an hour
+- A forced delay on every refusal that hides a state
+
+What it does **not** enforce, and leaves to the integrator: a honeypot field, a
+form-timing check, a proof of work in front of the routes, and any cross-account
+correlation. These live where the routes and the pages are — the library has
+neither.
+
+Thresholds are constructor parameters, not constants: a deployment sets its own.
+See the [full whitepaper](whitepaper-en.md).

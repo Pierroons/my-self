@@ -139,7 +139,7 @@ HMAC is intentionally **fast** client-side because the goal is service binding, 
 - **L2 = real 2FA, with no identifier to remember.** The *recovery code* **locates** the account (via an HMAC lookup — no more enumeration) and acts as the **possession** factor; the memorized word (HMAC-derived client-side) is the **knowledge** factor. Both are verified, with a **generic error** that never reveals which one failed. See [recovery codes](#recovery-codes) and [the "this device" factor](#the-this-device-factor).
 - **L3 = human judgment.** A **bundle of raw facts** is shown to an admin — never an automatic score. Dispute access is protected by an **owner sesame** (never the semi-public identifier). On grant, the user **re-defines their own secret**: the server issues no password.
 
-Rate limits, dispute system and anti-abuse detection at every level; **automatic escalation** L1→L2→L3 after 3 failures.
+Rate limits and a dispute system at every level. Moving from one level to the next is **the person's own choice**, not an automatic escalation: each level asks for something different, and only they know what they still hold.
 
 ---
 
@@ -156,7 +156,7 @@ Each code is stored **twice**, never in clear:
 
 - **Single-use** (marked `used` after a successful reset).
 - **Regenerable** on demand (auth = username + memorized word) — the new batch replaces the old one.
-- A `low_codes` warning fires when ≤ 2 remain.
+- `parCode()` returns `codes_restants` on every use. The threshold at which to warn belongs to the application: the library gives the count, it does not decide when the count becomes worrying.
 
 This is what enables an **identifier-less L2**: the code is both "who" and a proof of possession.
 

@@ -139,7 +139,7 @@ HMAC est volontairement **rapide** côté client car l'objectif est la liaison a
 - **L2 = vrai 2FA, sans identifiant à retenir.** Le *recovery code* **localise** le compte (via un lookup HMAC — plus d'énumération) et fait office de facteur de **possession** ; le mot mémorisé (dérivé HMAC côté client) est le facteur de **connaissance**. Les deux sont vérifiés, avec une **erreur générique** qui ne révèle jamais lequel a échoué. Voir [recovery codes](#recovery-codes) et [facteur « cet appareil »](#facteur--cet-appareil-).
 - **L3 = jugement humain.** Un **faisceau de faits bruts** est présenté à un admin — jamais un score automatique. L'accès au litige est protégé par un **sésame propriétaire** (jamais l'identifiant semi-public). En cas d'accord, l'utilisateur **redéfinit lui-même** son secret : le serveur n'émet aucun mot de passe.
 
-Limites de débit, système de litige et détection d'abus à chaque niveau ; **escalade automatique** L1→L2→L3 après 3 échecs.
+Limites de débit et système de litige à chaque niveau. Passer d'un niveau au suivant est **le choix de la personne**, pas une escalade automatique : chaque niveau demande autre chose, et elle seule sait ce qu'il lui reste.
 
 ---
 
@@ -156,7 +156,7 @@ Chaque code est stocké **deux fois**, jamais en clair :
 
 - **Usage unique** (marqué `used` après un reset réussi).
 - **Régénérables** à la demande (auth = username + mot mémorisé) — le nouveau lot remplace l'ancien.
-- Un avertissement `low_codes` remonte quand il en reste ≤ 2.
+- `parCode()` rend `codes_restants` à chaque usage. Le seuil à partir duquel on alerte appartient à l'application : la bibliothèque donne le nombre, elle ne décide pas quand il devient inquiétant.
 
 C'est ce qui permet un **L2 sans identifiant à retenir** : le code fait à la fois « qui » et « une preuve de possession ».
 

@@ -86,7 +86,7 @@ if ($stmt->execute()->fetchArray()) {
 
 // Génère les secrets
 $password = RecoverHelper::generatePassword(16);
-$log->info('register', 'Password généré côté serveur (16 chars alphanum + symbols)');
+$log->info('register', 'Password généré côté serveur (16 caractères, alphanum sans ambigus)');
 
 $diceware = DicewareWordlist::generate(4, 'en');
 $passphrase = implode(' ', $diceware['words']);

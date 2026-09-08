@@ -25,8 +25,34 @@ You don't need to trust Google, Microsoft, or anyone else for account recovery. 
 ### ✓ Rate-limited brute force
 Per-username rate limits + L2/L3 escalation make brute-force infeasible.
 
-### ✓ Bot-driven account enumeration
-Anti-timing, honeypot fields, and forced delays on L3 init make automated probing very expensive.
+### ~ Bot-driven account enumeration
+
+**Partial, and the honest version is uncomfortable: opening an L3 dispute tells you whether an
+account exists.** A success returns a dispute number; an unknown name cannot return one, so no
+wording closes that gap. L1 and L2 do close it — L1 with a single generic refusal, L2 by asking
+for no identifier at all. L3 cannot, because there the distinction *is* the useful answer.
+
+What opposes enumeration at L3 is cost, not silence:
+
+- two brakes in `Escalade::ouvrir()` — per address and a service-wide ceiling — both applied
+  **before** the account lookup, so that being braked does not itself sort the accounts that
+  exist from the ones that do not. There is deliberately no per-account brake: it would let a
+  third party wall the holder out of their own dispute with nothing shown to the arbitrator,
+  where the existing collision counter shows it;
+- a forced delay on every refusal that hides a state, so the clock says no more than the message;
+- and, for an exposed deployment, **a proof of work in front of the route**. The library cannot
+  impose it — it has no routes. Deploy without one and the service-wide ceiling is the only brake
+  left, which is a blunt instrument: it slows every visitor at once.
+
+Behind a hidden service, where every request shares one address, the caller passes `null` rather
+than that address: it says nothing about who is calling, and passing it would turn a per-client
+brake into a global ceiling set at the per-client threshold — lower than the service ceiling, and
+masking it. The service-wide ceiling then governs alone, and the proof of work stops being
+optional.
+
+None of the rows these brakes write carry the caller's address in the column other counters read.
+Were they to, opening disputes would consume the login, L1, L2 and device-enrolment budget of
+whoever shares that address.
 
 ---
 
@@ -83,7 +109,7 @@ If a user forgets their password AND their passphrase AND their recovery word, t
 | SMTP failures | ✓ | No SMTP |
 | Third-party trust | ✓ | Local only |
 | Brute force recovery word | ✓ | Rate limits + L2/L3 escalation |
-| Bot enumeration | ✓ | Honeypot + timing + forced delays |
+| Bot enumeration | ~ | Closed at L1/L2; at L3 it is a cost, not a silence — see above |
 | Server root compromise | ✗ | Mandatory sudo hardening |
 | Stolen recovery word | ✗ | User responsibility |
 | User negligence | ✗ | Reused secrets stay reusable; only unique secrets help |
