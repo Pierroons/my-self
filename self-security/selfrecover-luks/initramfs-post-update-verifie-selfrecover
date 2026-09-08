@@ -52,12 +52,31 @@ IFS=$OLDIFS
 # autre cle : le volume ne s'ouvre plus, et un controle de simple presence aurait
 # affiche "complet". C'est le cas qui survient quand /etc/selfkeyguard/ est
 # regenere sans que l'initramfs le soit.
+#
+# ⚠️ Cette comparaison peut ne pas s'executer, et son absence DOIT s'entendre.
+# Sautee en silence, elle rendait le meme "complet" qu'une comparaison reussie :
+# le faux vert que ce hook existe pour fermer, loge dans le hook. Trois etats
+# sont donc distingues — concorde, differe, pas verifiable — et le mot "complet"
+# est reserve au premier.
 SEL_ECART=""
-if [ -r "$SKG/selfrecover_salt" ] && command -v unmkinitramfs >/dev/null 2>&1; then
+SEL_SAUTE=""
+if [ ! -r "$SKG/selfrecover_salt" ]; then
+  SEL_SAUTE="$SKG/selfrecover_salt illisible"
+elif ! command -v unmkinitramfs >/dev/null 2>&1; then
+  SEL_SAUTE="unmkinitramfs absent (paquet initramfs-tools-bin)"
+else
   TMP=$(mktemp -d) || TMP=""
-  if [ -n "$TMP" ]; then
-    if unmkinitramfs "$INITRD" "$TMP" >/dev/null 2>&1 \
-       && [ -f "$TMP/etc/selfkeyguard/selfrecover_salt" ]; then
+  if [ -z "$TMP" ]; then
+    SEL_SAUTE="repertoire temporaire indisponible"
+  else
+    if ! unmkinitramfs "$INITRD" "$TMP" >/dev/null 2>&1; then
+      SEL_SAUTE="extraction de l'image impossible"
+    elif [ ! -f "$TMP/etc/selfkeyguard/selfrecover_salt" ]; then
+      # La presence du sel est deja couverte par PIECES. Arriver ici veut dire
+      # que l'image extraite ne montre pas ce que lsinitramfs annonce : a
+      # signaler, pas a taire.
+      SEL_SAUTE="sel absent de l'image extraite"
+    else
       A=$(sha256sum < "$SKG/selfrecover_salt" | cut -d' ' -f1)
       B=$(sha256sum < "$TMP/etc/selfkeyguard/selfrecover_salt" | cut -d' ' -f1)
       [ "$A" = "$B" ] || SEL_ECART="oui"
@@ -98,4 +117,14 @@ fi
 
 # La liste vient de la boucle, pas d'une seconde ecriture a la main : ajouter une
 # piece ci-dessus suffit, le message suit.
-echo "SelfRecover-LUKS : initramfs $VER complet (${PRESENTES#, })."
+if [ -n "$SEL_SAUTE" ]; then
+  # Pas d'exit 1 : une capacite manquante n'est pas une image cassee, et faire
+  # echouer update-initramfs pousserait a desinstaller le hook. Mais la sortie
+  # part sur stderr et ne dit pas "complet" — elle nomme ce qui reste a etablir.
+  printf 'SelfRecover-LUKS : initramfs %s — pieces presentes (%s).\n' \
+         "$VER" "${PRESENTES#, }" >&2
+  printf '  SEL NON VERIFIE : %s. La concordance du sel embarque reste a etablir.\n' \
+         "$SEL_SAUTE" >&2
+else
+  echo "SelfRecover-LUKS : initramfs $VER complet (${PRESENTES#, })."
+fi

@@ -186,25 +186,45 @@ est stdin, et le flux est lu **en entier**. La clause « from stdin » de la pag
 manuel ne vise que la lecture d'une passphrase, sans `--key-file` — chemin que
 l'amorçage Debian n'emprunte jamais.
 
-**Le seul mode de défaillance est un saut de ligne final** ajouté à la clé — un
-`echo` au lieu d'un `printf '%s'`. Il casse l'hexadécimal comme le brut, par tube
-comme par fichier, et rien ne le gardait. `tests/test_lecture_keyfile.sh` le garde
-désormais : conteneur LUKS2 jetable sur fichier, **sans root**, `--test-passphrase`
-seulement, avec le cas qui le fait rougir et deux témoins négatifs. Le keyscript et
-les deux dérivateurs passeraient un jour à `echo`, ce banc rougirait.
+**Le seul mode de défaillance de cette lecture est un saut de ligne final** ajouté
+à la clé — un `echo` au lieu d'un `printf '%s'`. Il casse l'hexadécimal comme le
+brut, par tube comme par fichier, et rien ne le gardait.
+`tests/test_lecture_keyfile.sh` le garde désormais : conteneur LUKS2 jetable sur
+fichier, **sans root**, `--test-passphrase` seulement, avec le cas qui le fait
+rougir et deux témoins négatifs.
+
+Le banc éprouve **un** dérivateur par exécution — le binaire C s'il est compilé,
+sinon celui en Python — et il annonce lequel à chaque essai. La CI ne compilait
+pas le `.c` : elle n'éprouvait donc que le Python, alors que le binaire appelé à
+l'amorçage est le C. **Elle le compile désormais**, et une ligne relit
+l'annonce du banc pour refuser un vert obtenu sur l'autre chemin — motif éprouvé
+dans les deux sens, il reconnaît le binaire et refuse la ligne `python3 …`.
+
+⚠️ Ce qu'aucun vert ne couvre encore : `selfrecover-keyscript.sh` lui-même. Le
+banc éprouve la chaîne dérivateur → tube → cryptsetup, pas le script qui les
+assemble à l'amorçage.
 
 L'hexadécimal est conservé pour la **portabilité** : une clé hex survit à une
 lecture en tant que passphrase — secours tapé à la main, `cryptsetup open` sans
 `--key-file=-`, amorceur non Debian. Une clé brute non : 11,8 % d'entre elles
 contiennent un `0x0A`, et là, la troncature est réelle. `install.sh` pose en outre
-`keyfile-size=64` dans crypttab, pour qu'une lecture bornée ignore un `\n` final
-plutôt que de rendre la machine non amorçable. La mesure commentée et l'historique
+`keyfile-size=64` sur la ligne racine de crypttab **lors d'une installation
+neuve**, pour qu'une lecture bornée ignore un `\n` final plutôt que de rendre la
+machine non amorçable. Il la pose **aussi sur une ligne qui porte déjà
+`keyscript=`** — donc sur les machines SelfRecover existantes, précisément le
+public de la migration. Un simple avertissement y laissait la borne absente,
+c'est-à-dire là où elle sert le plus : celui qui vient de changer le format de sa
+clé. La question est posée avant d'écrire, comme pour toute modification de
+`/etc/crypttab` dans ce script, et la sauvegarde datée est prise avant. La mesure commentée et l'historique
 du démenti vivent dans `docs/cryptsetup-lecture-cle.md`, pour que personne ne
 refasse ce diagnostic depuis la page de manuel.
 
 La migration reste décrite (`INSTALL.md` §15) mais perd son urgence : une machine
 en clé brute qui démarre continuera de démarrer. Ce qui reste vrai, c'est qu'on ne
-dépose pas le nouveau keyscript sur un ancien slot.
+dépose pas le nouveau keyscript sur un ancien slot. Et sa première étape n'est pas
+l'ajout de slot mais la **sauvegarde de l'en-tête** : c'est elle qui protège pendant
+que `luksAddKey` y écrit. Celle de la fin sert à autre chose — empêcher l'ancienne
+de ressusciter le slot qu'on vient de retirer.
 
 ### Le script de secours affichait la passphrase en clair
 
@@ -212,19 +232,37 @@ dépose pas le nouveau keyscript sur un ancien slot.
 dérivateur en `--stdin` sans rien lui passer. Le tube n'existait pas : `--stdin`
 lisait donc le terminal, alors que la fin du `read -rs` venait de rétablir l'écho.
 Le déverrouillage restait bloqué sur ce qui ressemblait à une invite muette,
-l'administrateur retapait sa passphrase, et elle s'affichait. Sur un script dont
-l'usage est précisément la reprise après incident.
+l'administrateur retapait sa passphrase, et elle s'affichait.
 
-Le `printf '%s' "$WORD" |` manquant est rétabli — et non un `--word`, qui rendrait
-la passphrase lisible dans `/proc/<pid>/cmdline`. Le script gagne par ailleurs une
-confirmation explicite, un `trap` qui restaure l'écho et efface la variable quelle
-que soit la sortie, et une limite de trois essais.
+Le tube manquant est **ajouté** — `printf '%s' "$WORD" |`, et non un `--word`, qui
+rendrait la passphrase lisible dans `/proc/<pid>/cmdline`. Il n'avait pas été
+retiré : l'appel passait auparavant par `--word`, et le passage à `--stdin` a
+oublié le tube. Plus tôt dans la même fenêtre, le script avait gagné une
+confirmation explicite, un `trap` qui restaure l'écho et libère la variable
+(`unset`) quelle que soit la sortie, et une limite de trois essais.
 
-### Un initramfs muet ne se découvre plus au redémarrage
+### Chaque régénération d'initramfs rend maintenant un verdict
 
 `initramfs-post-update-verifie-selfrecover` s'exécute après **chaque** génération
-d'initramfs et vérifie que les pièces SelfRecover y sont, et que le sel embarqué
-est bien celui du disque. Il est posé dans `post-update.d` et non dans
+d'initramfs et vérifie que les pièces SelfRecover y sont. Quand `unmkinitramfs` est
+disponible, il compare en outre le sel embarqué à celui du disque — un sel présent
+mais périmé dérive une autre clé, et un contrôle de simple présence afficherait
+« complet ».
+
+Cette comparaison peut ne pas s'exécuter, et **son absence s'entend**. Elle était
+d'abord enfermée dans une condition muette : `unmkinitramfs` manquant, extraction
+impossible, répertoire temporaire indisponible, et le script imprimait « complet »
+en n'ayant établi que la présence des pièces — le faux vert que ce hook existe
+pour fermer, logé dans le hook. Trois états sont maintenant distingués, concorde,
+diffère, pas vérifiable, et le mot « complet » est réservé au premier. Un contrôle
+sauté nomme sa raison sur la sortie d'erreur, sans faire échouer la génération :
+une capacité manquante n'est pas une image cassée, et faire tomber
+`update-initramfs` pousserait à désinstaller le hook.
+
+Il alerte, il n'empêche pas : posé en `post-update.d`, il tourne après l'écriture
+de l'image et rend 1 avec un bandeau, au milieu d'une sortie d'`apt`. L'échec se
+signale donc à la régénération, avec la marche à suivre, au lieu d'apparaître au
+redémarrage suivant. Il est posé là et non dans
 `kernel/postinst.d`, parce qu'`update-initramfs` est aussi déclenché par
 cryptsetup-initramfs, busybox, initramfs-tools ou une commande manuelle — et c'est
 justement une mise à jour de cryptsetup-initramfs qui casserait ce module.
@@ -240,7 +278,8 @@ dépendance de moins pour un outil qui vise l'auto-hébergement.
 
 Un mode de défaillance n'était couvert par aucun filet : les sauvegardes
 d'initramfs et de crypttab protègent l'amorçage, aucune ne protégeait **l'en-tête
-LUKS**, que `luksAddKey` écrit précisément.
+LUKS**, que `luksAddKey` écrit précisément. En-tête corrompu, plus aucun slot
+n'ouvre.
 
 Le §7 aiguille désormais entre deux parcours — serveur déverrouillé par SSH, et
 poste dont on tape la passphrase au clavier. Sur un poste, dropbear et la cascade
