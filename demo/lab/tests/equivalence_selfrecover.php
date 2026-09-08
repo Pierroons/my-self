@@ -238,7 +238,7 @@ $esc3   = new \Pierroons\SelfRecover\Recovery\Escalade(
 );
 
 $ses3 = bin2hex(random_bytes(32));
-$ouv3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame($ses3), $now3);
+$ouv3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame($ses3), maintenant: $now3);
 verifier('un dossier s\'ouvre sur le schéma réel', ($ouv3['ok'] ?? false) === true);
 
 $col = $pdo3->query('SELECT dispute_number, status, claim_hash FROM disputes')->fetch(PDO::FETCH_ASSOC);
@@ -246,7 +246,7 @@ verifier('la colonne dispute_number porte le numéro rendu', ($col['dispute_numb
 verifier('la colonne claim_hash porte l\'empreinte, jamais le sésame',
     ($col['claim_hash'] ?? '') === hash('sha256', $ses3) && ($col['claim_hash'] ?? '') !== $ses3);
 
-$esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('autre'), $now3 + 5);
+$esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('autre'), maintenant: $now3 + 5);
 verifier('init_collisions compte le demandeur concurrent',
     (int) $pdo3->query('SELECT init_collisions FROM disputes')->fetchColumn() === 1);
 
@@ -265,7 +265,7 @@ verifier('⭐ les traces d\'usage que le lab écrit désormais rendent des état
 $pdo3->exec('UPDATE accounts SET last_login_at = NULL, login_count = 0 WHERE id = 1');
 $ses4 = bin2hex(random_bytes(32));
 $pdo3->exec("UPDATE disputes SET status = 'closed'");
-$ouv4 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame($ses4), $now3 + 100);
+$ouv4 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame($ses4), maintenant: $now3 + 100);
 $esc3->soumettre((string) $ouv4['numero'], $ses4, ['mois_connexion' => '2026-05'], $now3 + 100);
 $st4 = $pdo3->query('SELECT signals_json FROM disputes ORDER BY id DESC LIMIT 1')->fetchColumn();
 verifier('contre-témoin : un compte non tracé rend « indisponible », pas « diverge »',
@@ -277,7 +277,7 @@ $avant3 = $pdo3->query('SELECT pw_hash, pass_hash, recovery_hash FROM accounts W
 for ($i = 0; $i < 3; $i++) {
     $pdo3->exec("UPDATE disputes SET status = 'closed' WHERE status IN ('open','awaiting_admin')");
     $s = bin2hex(random_bytes(32));
-    $o = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame($s), $now3 + 200 + $i * 86400);
+    $o = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame($s), maintenant: $now3 + 200 + $i * 86400);
     $esc3->trancher((string) $o['numero'], 'refuse', 'arbitre', $now3 + 300 + $i * 86400);
 }
 $apres3 = $pdo3->query('SELECT pw_hash, pass_hash, recovery_hash FROM accounts WHERE id = 1')->fetch(PDO::FETCH_ASSOC);
@@ -290,7 +290,7 @@ verifier('le gel est posé dans la table l3_gel, et pas ailleurs',
 verifier('banned_until n\'a PAS été posé — c\'est la procédure qui gèle, pas le compte',
     (int) ($pdo3->query('SELECT COALESCE(banned_until, 0) FROM accounts WHERE id = 1')->fetchColumn()) === 0);
 
-$gele3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('encore'), $now3 + 400 + 2 * 86400);
+$gele3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('encore'), maintenant: $now3 + 400 + 2 * 86400);
 verifier('et l\'ouverture est bien refusée pendant le gel', ($gele3['error'] ?? '') === 'gele');
 
 echo "\n" . str_repeat('=', 63) . "\n";

@@ -227,7 +227,7 @@ for ($tour = 1; $tour <= $tours; $tour++) {
             switch ($op) {
                 case 'ouvrir':
                     $s = bin2hex(random_bytes(16));
-                    $r = $esc->ouvrir(parfois('alice'), parfois(hash('sha256', $s)), $maintenant);
+                    $r = $esc->ouvrir(parfois('alice'), parfois(hash('sha256', $s)), maintenant: $maintenant);
                     if (($r['ok'] ?? false) === true) {
                         $numeros[] = $r['numero'];
                         $sesames[] = $s;

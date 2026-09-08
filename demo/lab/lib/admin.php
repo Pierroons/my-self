@@ -36,7 +36,17 @@ final class Admin
             'rapports'           => $q('SELECT COUNT(*) FROM redteam_reports'),
             'rapports_nouveaux'  => $q("SELECT COUNT(*) FROM redteam_reports WHERE status = 'nouveau'"),
             'comptes_24h'        => $q('SELECT COUNT(*) FROM accounts WHERE created_at > ' . $h24),
-            'echecs_login_24h'   => $q("SELECT COUNT(*) FROM login_attempts WHERE success = 0 AND username != '__register__' AND attempted_at > " . $h24),
+            // ⚠️ Les compteurs d'ouverture de niveau 3 sont exclus : ce sont des
+            // sondes de fréquence, pas des échecs d'authentification, et les
+            // compter allumerait l'alerte sur un volume de récupérations normal.
+            //
+            // 🔑 **Le préfixe seul ne suffit pas à les reconnaître.** Un nom de
+            // compte soumis à la page de connexion arrive dans cette colonne tel
+            // quel : quiconque se nomme `l3:ouvrir:…` disparaîtrait de la console
+            // en même temps que ses tentatives. La bibliothèque, elle, écrit ces
+            // lignes SANS adresse. C'est la paire — préfixe et adresse nulle —
+            // qui les identifie, et une route publique ne peut pas la produire.
+            'echecs_login_24h'   => $q("SELECT COUNT(*) FROM login_attempts WHERE success = 0 AND username != '__register__' AND NOT (username LIKE 'l3:ouvrir:%' AND ip IS NULL) AND attempted_at > " . $h24),
         ];
     }
 
@@ -61,6 +71,7 @@ final class Admin
         $stmt = $pdo->prepare(
             "SELECT username, ip, attempted_at FROM login_attempts
               WHERE success = 0 AND username != '__register__'
+                AND NOT (username LIKE 'l3:ouvrir:%' AND ip IS NULL)
               ORDER BY attempted_at DESC LIMIT ?"
         );
         $stmt->execute([$limit]);

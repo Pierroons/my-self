@@ -59,7 +59,61 @@ final class Escalade
         private readonly int $gelDuree = 604800,
         /** Délai appliqué aux refus, pour aplatir ce que le message tait. */
         private readonly int $delaiRefusUs = 300000,
+        /** Fenêtre glissante sur laquelle les freins d'ouverture comptent. */
+        private readonly int $fenetreOuvertures = 3600,
+        /** Ouvertures depuis une même adresse, quand l'appelant en fournit une. */
+        private readonly int $maxOuverturesIp = 10,
+        /**
+         * Ouvertures sur tout le service.
+         *
+         * 🔑 C'est ce plafond qui tient quand l'adresse ne dit rien — derrière un
+         * service caché, où l'appelant passe `null` faute d'information à
+         * compter. Il est grossier par nature : il ralentit tout le monde
+         * ensemble, et c'est le prix d'un frein qui tienne sans adresses.
+         */
+        private readonly int $maxOuverturesService = 20,
     ) {
+    }
+
+    /**
+     * Étiquette du compteur de service.
+     *
+     * 🔑 Les compteurs d'ouverture vivent sous des étiquettes à eux, et leurs
+     * lignes ne portent AUCUNE adresse. `compterEchecsIp` compte les échecs
+     * d'une adresse sans regarder d'où ils viennent : une ligne d'ouverture qui
+     * porterait l'adresse consommerait le quota de la connexion ordinaire, du
+     * niveau 1, du niveau 2 et de l'enrôlement d'appareil — ouvrir des dossiers
+     * chez autrui lui fermerait toutes ses portes, et l'échec redeviendrait
+     * l'arme que cette classe existe pour désamorcer.
+     *
+     * Aucun nom de compte n'entre dans ces étiquettes non plus : l'ouverture est
+     * comptée, pas attribuée. Le dépôt, lui, est nominatif — c'est un fait, pas
+     * une sonde.
+     */
+    private const PREFIXE = 'l3:ouvrir:';
+
+    /**
+     * L'étiquette d'un compteur d'ouverture — un HMAC sous le sel du déploiement.
+     *
+     * ⚠️ **Le sel n'est pas là pour cacher, il est là pour EMPÊCHER D'ÉCRIRE.**
+     * `compterEchecsCompte()` compte des lignes par étiquette, dans une table où
+     * les tentatives de connexion atterrissent aussi — et un nom de compte
+     * soumis y arrive tel quel, sans contrôle de forme, depuis une route
+     * publique. Une étiquette devinable serait donc un compteur que n'importe
+     * qui remplit : vingt requêtes sur la page de connexion, sous le nom
+     * `l3:ouvrir:*`, et plus personne n'ouvre de dossier. Mesuré avant d'être
+     * corrigé, pas supposé.
+     *
+     * Sous HMAC, l'étiquette suppose le sel du déploiement, qui vit hors du
+     * webroot. Le préfixe reste en clair pour que les consoles sachent quoi ne
+     * pas afficher ; il ne suffit à personne pour viser un compteur.
+     *
+     * 🔑 Même raisonnement que `Recovery::indexRecherche()`, et même primitive :
+     * retrouver une ligne sans que la connaître permette de la fabriquer.
+     */
+    private function etiquette(string $quoi): string
+    {
+        return self::PREFIXE . $this->recovery->indexRecherche($quoi);
     }
 
     /**
@@ -123,18 +177,58 @@ final class Escalade
      * Le client engendre le sésame et n'en envoie que l'empreinte : le serveur
      * ne détient jamais de quoi reprendre le dossier de quelqu'un.
      *
+     * ⚠️ **Cette porte dit si un compte existe, et aucune formulation ne peut le
+     * taire.** Le niveau 1 s'en sort par un refus unique, le niveau 2 en ne
+     * demandant aucun identifiant ; ici la réponse utile EST la distinction —
+     * un succès rend un numéro de dossier, un nom inconnu ne peut pas en rendre.
+     * Ce qui s'oppose à l'énumération n'est donc pas le silence mais le COÛT :
+     * les freins ci-dessous, et une preuve de travail que l'intégrateur pose
+     * devant la route.
+     *
+     * 🔑 `$ip` vaut `null` quand l'adresse ne dit rien de l'appelant — derrière
+     * un service caché, où tout arrive de la même adresse, la passer ferait d'un
+     * frein par client un plafond global au seuil du client, plus bas que le
+     * plafond de service et le masquant. Passer `null` laisse le plafond de
+     * service gouverner seul, ce qui est le comportement voulu là-bas.
+     *
      * @return array{ok: bool, message: string, numero?: string, questions?: array, expire_le?: int, error?: string}
      */
     public function ouvrir(
         string $nomCompte,
         string $empreinteSesame,
+        ?string $ip = null,
         ?int $maintenant = null,
     ): array {
         $maintenant = $maintenant ?? time();
 
+        // Casse normalisée comme au niveau 1 : sans elle, « Alice » et « alice »
+        // tiennent deux compteurs distincts et chacun freine à moitié.
+        $nomCompte = strtolower(trim($nomCompte));
+
+        // ⚠️ Une chaîne vide n'est pas une adresse. Un intégrateur qui écrit
+        // `$_SERVER['REMOTE_ADDR'] ?? ''` la passerait, et tous les appelants
+        // partageraient alors un compteur unique au seuil du client — un plafond
+        // global plus bas que celui du service, qui le masquerait.
+        $ip = ($ip === null || trim($ip) === '') ? null : trim($ip);
+
         if (!preg_match('/^[a-f0-9]{64}$/', $empreinteSesame)) {
             return ['ok' => false, 'error' => 'empreinte_invalide',
                     'message' => 'L\'empreinte du sésame est absente ou malformée.'];
+        }
+
+        // 🔑 Freiner AVANT de chercher le compte. Après, le frein ne mordrait
+        // que sur les comptes existants, et être freiné deviendrait à son tour
+        // la réponse qu'on refuse de donner.
+        if ($frein = $this->freinerOuverture($ip, $maintenant)) {
+            return $frein;
+        }
+
+        // Tracé avant la recherche, donc identique que le compte existe ou non.
+        // Une ligne par compteur, et l'adresse dans l'étiquette, jamais dans la
+        // colonne : ces lignes ne doivent alimenter aucun autre frein.
+        $this->stockage->tracerTentative($this->etiquette('*'), false, null, $maintenant);
+        if ($ip !== null) {
+            $this->stockage->tracerTentative($this->etiquette('@' . $ip), false, null, $maintenant);
         }
 
         $compte = $this->stockage->trouverCompte($nomCompte);
@@ -147,6 +241,10 @@ final class Escalade
 
         $gel = $this->stockage->gelJusqua($compteId, $maintenant);
         if ($gel > 0) {
+            // Même délai que le compte inconnu : sans lui, l'existence se lirait
+            // au chronomètre.
+            usleep($this->delaiRefusUs);
+
             return ['ok' => false, 'error' => 'gele',
                     'message' => 'Trop de demandes refusées récemment sur ce compte. La procédure rouvrira le '
                                . gmdate('d/m/Y', $gel) . '. Le compte, lui, fonctionne normalement.'];
@@ -159,6 +257,7 @@ final class Escalade
         $existant = $this->stockage->litigeActifDuCompte($compteId, $maintenant);
         if ($existant !== null) {
             $this->stockage->compterDemandeurConcurrent($existant->id);
+            usleep($this->delaiRefusUs);
 
             return ['ok' => false, 'error' => 'deja_ouvert',
                     'message' => 'Une procédure est déjà en cours sur ce compte. '
@@ -373,7 +472,11 @@ final class Escalade
     public function degeler(string $nomCompte, string $par, ?int $maintenant = null): array
     {
         $maintenant = $maintenant ?? time();
+        $nomCompte  = strtolower(trim($nomCompte));
 
+        // Ce chemin distingue « inconnu » de « levé » sans frein ni délai, et
+        // c'est assumé : il est réservé à un arbitre, et la qualité d'arbitre se
+        // vérifie à l'endpoint — la bibliothèque ne connaît pas les rôles.
         $compte = $this->stockage->trouverCompte($nomCompte);
         if ($compte === null) {
             return ['ok' => false, 'error' => 'compte_inconnu', 'message' => 'Aucun compte à ce nom.'];
@@ -463,6 +566,43 @@ final class Escalade
     // ── Interne ────────────────────────────────────────────────────────────
 
     /**
+     * Les freins de l'ouverture. Deux compteurs, aucun nom de compte.
+     *
+     * ⚠️ **Il n'y a délibérément PAS de frein par compte.** Un tel frein
+     * fermerait l'ouverture à un titulaire dès qu'un tiers a assez sollicité son
+     * compte, sans qu'aucun dossier n'existe — donc sans que rien n'apparaisse à
+     * l'arbitre. Le harcèlement d'un compte est déjà borné autrement : le
+     * premier dossier tient `$ttl`, le suivant reçoit `deja_ouvert`, et cette
+     * collision-là **se compte et se montre** (`compterDemandeurConcurrent`).
+     * Un frein silencieux aurait remplacé un fait visible par un mur muet.
+     *
+     * ⚠️ Un refus unique pour les deux, et sans délai : le message ne cache rien
+     * qu'un chronomètre pourrait retrouver, contrairement aux refus qui suivent.
+     * L'y ajouter tiendrait un exécutant occupé à chaque requête refusée, ce qui
+     * est le levier qu'on retire à l'attaquant.
+     *
+     * @return array{ok: bool, error: string, message: string}|null
+     */
+    private function freinerOuverture(?string $ip, int $maintenant): ?array
+    {
+        $depuis = $maintenant - $this->fenetreOuvertures;
+        $refus  = ['ok' => false, 'error' => 'trop_de_demandes',
+                   'message' => 'Trop de demandes d\'arbitrage récemment. Réessaie plus tard.'];
+
+        if ($ip !== null
+            && $this->stockage->compterEchecsCompte($this->etiquette('@' . $ip), $depuis)
+               >= $this->maxOuverturesIp) {
+            return $refus;
+        }
+        if ($this->stockage->compterEchecsCompte($this->etiquette('*'), $depuis)
+            >= $this->maxOuverturesService) {
+            return $refus;
+        }
+
+        return null;
+    }
+
+    /**
      * Le dossier, si le numéro et le sésame ouvrent et qu'il n'a pas expiré.
      *
      * Rend le `Litige` ou le tableau de refus — les appelants testent
@@ -533,6 +673,45 @@ final class Escalade
      * @param array{id: int, nom_compte: string, cree_le: int, derniere_connexion: int|null, nombre_connexions: int|null} $faits
      * @param array<string, string> $reponses
      */
+    /**
+     * Ce qu'un adaptateur ajoute au faisceau, ramené à ce qui s'encode.
+     *
+     * ⚠️ **Un fait local illisible ne doit pas fermer la porte.** Ce niveau
+     * s'adresse à quelqu'un qui n'a plus aucun secret : c'est le dernier
+     * recours. Une valeur qu'`json_encode` refuse — un octet hors UTF-8 venu
+     * d'une colonne héritée, un flottant infini, un objet — ferait échouer
+     * l'assemblage, à chaque tentative, pour toujours, sur ce compte. Le refus
+     * serait déterministe et le message dirait « réessaie ».
+     *
+     * Une valeur illisible devient donc `null`, ce que le faisceau sait déjà
+     * dire : « le serveur ne sait pas ». Un fait manquant coûte à l'arbitre ;
+     * un dossier qui ne s'assemble jamais coûte le compte.
+     *
+     * @param  mixed $faitsLocaux ce que l'adaptateur a rendu, sans garantie
+     * @return array<string, string|int|bool|null>
+     */
+    private static function assainir(mixed $faitsLocaux): array
+    {
+        if (!is_array($faitsLocaux)) {
+            return [];
+        }
+        $propre = [];
+        foreach ($faitsLocaux as $cle => $valeur) {
+            if (!is_string($cle) || !mb_check_encoding($cle, 'UTF-8')) {
+                continue;
+            }
+            $propre[$cle] = match (true) {
+                $valeur === null, is_bool($valeur)      => $valeur,
+                is_int($valeur)                         => $valeur,
+                is_float($valeur) && is_finite($valeur) => $valeur,
+                is_string($valeur) && mb_check_encoding($valeur, 'UTF-8') => $valeur,
+                default                                 => null,
+            };
+        }
+
+        return $propre;
+    }
+
     private function faisceau(array $faits, array $reponses, int $maintenant): array
     {
         $etat = static function (?string $reel, string $declare): array {
@@ -569,6 +748,11 @@ final class Escalade
                     $faits['id'],
                     $maintenant - $this->gelFenetre,
                 ),
+                // 🔑 Les faits du déploiement sous leur propre clé, jamais mêlés
+                // aux précédents : un adaptateur ne doit pas pouvoir rendre un
+                // « refus_precedents » de son cru sous les yeux de l'arbitre.
+                // La bibliothèque ne les interprète pas — c'est l'arbitre qui lit.
+                'local'              => self::assainir($faits['faits_locaux'] ?? []),
             ],
             'declaratif' => [
                 'annee_creation' => $etat($annee, (string) ($reponses['annee_creation'] ?? '')),

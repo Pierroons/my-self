@@ -31,6 +31,24 @@ class StockageMemoire implements StorageInterface
     /** @var list<int> */
     public array $sessionsRevoquees = [];
 
+    /**
+     * L'hôte sous lequel le mot mémorisé de chaque compte a été dérivé.
+     *
+     * Cet adaptateur est celui que les intégrateurs recopient : il porte donc le
+     * marqueur de déploiement que `reposerSecrets()` oblige à rafraîchir, pour
+     * que le geste soit visible dans un exemple et pas seulement dans un contrat.
+     */
+    public array $hotes = [];
+
+    /** L'hôte que ce déploiement sert — une constante, pas une valeur de requête. */
+    public string $hoteServi = 'exemple.test';
+
+    /** Ce que l'adaptateur ajoute au faisceau. Réglable pour éprouver un menteur. */
+    public ?array $faitsLocaux = null;
+
+    /** Un adaptateur qui ne rend PAS la case : le cas de l'adaptateur du lab. */
+    public bool $sansFaitsLocaux = false;
+
     public function compterEchecsIp(string $ip, int $depuis): int
     {
         return count(array_filter(
@@ -236,9 +254,14 @@ class StockageMemoire implements StorageInterface
     public function litigeActifDuCompte(int $compteId, int $maintenant): ?Litige
     {
         foreach (array_reverse($this->litiges) as $l) {
+            // ⚠️ `ACCEPTE` compte parmi les actifs, et il n'expire pas — comme
+            // dans `Escalade::recevable()`. Entre l'accord et le ré-enrôlement,
+            // le compte est au plus ouvert : y laisser ouvrir un second dossier
+            // sans le signaler priverait l'arbitre du fait le plus utile du
+            // moment, et l'horloge annulerait le travail qu'il vient de faire.
             if ($l['compte_id'] === $compteId
-                && in_array($l['statut'], [Litige::OUVERT, Litige::A_LIRE], true)
-                && $l['expire_le'] > $maintenant) {
+                && in_array($l['statut'], [Litige::OUVERT, Litige::A_LIRE, Litige::ACCEPTE], true)
+                && ($l['statut'] === Litige::ACCEPTE || $l['expire_le'] > $maintenant)) {
                 return $this->litigeDepuis($l);
             }
         }
@@ -378,7 +401,14 @@ class StockageMemoire implements StorageInterface
 
     public function purgerLitigesExpires(int $avant): int
     {
-        $garde = array_filter($this->litiges, static fn (array $l): bool => $l['expire_le'] > $avant);
+        // ⚠️ Les dossiers REFUSÉS survivent à la purge : c'est sur eux que se
+        // compte le seuil du gel. Les effacer viderait le compteur avant qu'il
+        // atteigne son seuil, et le gel — seule protection contre l'acharnement —
+        // deviendrait inatteignable sans qu'aucune sonde ne rougisse. Un dossier
+        // ACCEPTÉ survit aussi : il n'expire pas tant qu'il n'est pas consommé.
+        $garde = array_filter($this->litiges, static fn (array $l): bool =>
+            $l['expire_le'] > $avant
+            || in_array($l['statut'], [Litige::REFUSE, Litige::ACCEPTE], true));
         $n     = count($this->litiges) - count($garde);
         $this->litiges = array_values($garde);
 
@@ -400,7 +430,9 @@ class StockageMemoire implements StorageInterface
         $f = $this->faits[$compteId] ?? ['cree_le' => 0, 'derniere_connexion' => null, 'nombre_connexions' => null];
 
         return ['id' => $compteId, 'nom_compte' => $nom, 'cree_le' => $f['cree_le'],
-                'derniere_connexion' => $f['derniere_connexion'], 'nombre_connexions' => $f['nombre_connexions']];
+                'derniere_connexion' => $f['derniere_connexion'], 'nombre_connexions' => $f['nombre_connexions'],
+                ...($this->sansFaitsLocaux ? [] : ['faits_locaux' => $this->faitsLocaux
+                    ?? ['hote_derivation' => $this->hotes[$compteId] ?? null]])];
     }
 
     public function reposerSecrets(
@@ -422,6 +454,11 @@ class StockageMemoire implements StorageInterface
             }
         }
         $this->sels[$compteId] = $sel;
+
+        // ⚠️ Le marqueur suit l'empreinte, ici et pas ailleurs. C'est ce que le
+        // contrat de `reposerSecrets()` demande et que sa signature ne peut pas
+        // imposer : l'hôte vient du déploiement, jamais de la requête.
+        $this->hotes[$compteId] = $this->hoteServi;
     }
 
     /** @var array<int, string> */

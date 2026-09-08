@@ -204,7 +204,19 @@ interface StorageInterface
      * honnête en divergence — le dossier d'une personne légitime arrive alors à
      * charge devant l'arbitre.
      *
-     * @return array{id: int, nom_compte: string, cree_le: int, derniere_connexion: int|null, nombre_connexions: int|null}|null
+     * `faits_locaux` est facultatif : la case des faits que seul le déploiement
+     * connaît. `Escalade` les rend tels quels sous `contexte.local`, sans les
+     * interpréter ni les confronter à une réponse — l'arbitre les lit, la
+     * bibliothèque ne sait pas ce qu'ils veulent dire. L'hôte de dérivation en
+     * est l'exemple : il dit sous quelle adresse le mot mémorisé du compte a été
+     * dérivé, ce qui distingue les générations après un changement d'adresse.
+     *
+     * ⚠️ **Jamais un secret, jamais une empreinte.** Ce qui entre ici est montré
+     * à un humain qui arbitre. Le niveau 3 rassemble des faits parce qu'il n'a
+     * plus de secret à vérifier ; y glisser une empreinte remettrait dans la
+     * console ce que le protocole tient hors de portée.
+     *
+     * @return array{id: int, nom_compte: string, cree_le: int, derniere_connexion: int|null, nombre_connexions: int|null, faits_locaux?: array<string, string|int|bool|null>}|null
      */
     public function faitsDuCompte(int $compteId): ?array;
 
@@ -214,6 +226,28 @@ interface StorageInterface
      * 🔑 Les trois empreintes et le sel ne sont pas quatre informations mais
      * une seule : le mot mémorisé est dérivé sous ce sel, les séparer laisse une
      * fenêtre où le compte n'est récupérable par rien.
+     *
+     * ⚠️ **Une implémentation rafraîchit ici ses marqueurs de déploiement liés
+     * au mot dérivé, dans la même requête.** C'est le seul endroit du protocole
+     * où l'empreinte du mot mémorisé est réécrite : `remplacerEmpreintes()` ne
+     * touche que le mot de passe et la passphrase. Un marqueur laissé en place
+     * ne se périme donc jamais ailleurs qu'ici — et il ment à partir d'ici.
+     *
+     * Le cas concret est l'hôte de dérivation. Le mot mémorisé est dérivé dans
+     * le navigateur sous le nom d'hôte servi (`client/sr-derive.js`, mode
+     * `hostname`), et le serveur ne reçoit que l'empreinte : elle ne dit pas
+     * d'où elle vient. Un déploiement qui range l'hôte à côté doit le réécrire
+     * en même temps, sinon la seule colonne capable de distinguer les
+     * générations affirme une adresse que l'empreinte ne porte plus.
+     *
+     * 🔑 **Cette obligation ne passe pas par la signature, et c'est un choix.**
+     * L'hôte est une constante de déploiement, pas une valeur de requête : en
+     * paramètre, il s'assiérait à côté de cinq arguments qui viennent tous du
+     * corps HTTP, et un intégrateur le remplirait tôt ou tard avec
+     * `$_SERVER['HTTP_HOST']` — que l'attaquant écrit. Une donnée absente se
+     * rattrape ; une donnée fausse fournie par l'attaquant, non. L'adaptateur,
+     * lui, tient déjà l'environnement du déploiement, et l'écriture reste dans
+     * la transaction que la bibliothèque a ouverte.
      */
     public function reposerSecrets(
         int $compteId,

@@ -58,6 +58,7 @@ final class RecoverL3
         'clos'               => 409,
         'gele'               => 429,
         'trop_tot'           => 429,
+        'trop_de_demandes'   => 429,
     ];
 
     private static function escalade(PDO $pdo): Escalade
@@ -86,7 +87,7 @@ final class RecoverL3
 
     public static function init(PDO $pdo, string $username, string $claimHash, ?string $ip = null): array
     {
-        $r = self::escalade($pdo)->ouvrir(strtolower(trim($username)), strtolower(trim($claimHash)));
+        $r = self::escalade($pdo)->ouvrir($username, strtolower(trim($claimHash)), $ip);
         if (($r['ok'] ?? false) !== true) {
             return self::http($r);
         }
