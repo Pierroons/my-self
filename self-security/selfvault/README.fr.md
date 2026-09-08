@@ -51,7 +51,9 @@ C'est le schéma de SelfDataGuard (`data_master_key_pwd_wrap` / `_recov_wrap`) ;
 | `outils/lire_pli.py` | le lecteur : pli scanné → fichiers reconstitués |
 | `outils/test_webcrypto.mjs` | une réimplémentation indépendante, écrite depuis la notice |
 | `tests/banc.sh` · `tests/banc_papier.sh` | le banc du format, et celui de la boucle papier |
+| `tests/banc_navigateur.sh` | le banc du geste : la page ouverte d'un double-clic, dans un vrai navigateur |
 | `tests/defauts.py` · `tests/pilote_app.mjs` | les coffres défectueux, et le pilote de l'application |
+| `tests/pilote_navigateur.js` · `tests/juge_navigateur.py` | ce qui pilote l'atelier dans le navigateur, et ce qui juge ce qu'il en sort |
 | `docs/conception-fr.md` | les raisons : ce qui a été retenu, écarté, mesuré |
 
 `sortie/` porte ce que la chaîne produit et **n'est pas versionné** : un tirage réel y écrit un vrai code de récupération.
@@ -61,6 +63,7 @@ python3 outils/faire_coffre.py [version]   # coffre + secrets dans outils/secret
 python3 outils/faire_pli.py                # QR codes + pli rendu
 python3 outils/lire_pli.py pli-scanne.pdf  # reconstitue depuis le pli scanné
 bash tests/banc.sh                         # le banc, sur les deux lecteurs
+bash tests/banc_navigateur.sh              # le geste réel, dans un navigateur
 ```
 
 ## Le format `SELFVAULT3`

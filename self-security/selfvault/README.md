@@ -51,7 +51,9 @@ This is SelfDataGuard's scheme (`data_master_key_pwd_wrap` / `_recov_wrap`); onl
 | `outils/lire_pli.py` | the reader: scanned envelope → reconstituted files |
 | `outils/test_webcrypto.mjs` | an independent reimplementation, written from the printed notice |
 | `tests/banc.sh` · `tests/banc_papier.sh` | the format bench, and the paper-loop bench |
+| `tests/banc_navigateur.sh` | the gesture bench: the page opened by a double-click, in a real browser |
 | `tests/defauts.py` · `tests/pilote_app.mjs` | the defective vaults, and the application driver |
+| `tests/pilote_navigateur.js` · `tests/juge_navigateur.py` | what drives the workshop inside the browser, and what judges what comes out |
 | `docs/conception-fr.md` | the reasoning: what was chosen, rejected, measured (French) |
 
 `sortie/` holds what the chain produces and is **not versioned**: a real run writes a real recovery code there.
@@ -61,6 +63,7 @@ python3 outils/faire_coffre.py [version]   # vault + secrets into outils/secrets
 python3 outils/faire_pli.py                # QR codes + rendered envelope
 python3 outils/lire_pli.py scanned.pdf     # reconstitute from the scanned envelope
 bash tests/banc.sh                         # the bench, against both readers
+bash tests/banc_navigateur.sh              # the real gesture, in a browser
 ```
 
 ## The `SELFVAULT3` format
