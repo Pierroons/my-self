@@ -162,6 +162,98 @@ l'adaptateur, `degele_par` porte le nom, l'ouverture repasse — et quatre défa
 plantés à la main, quatre attrapés.
 
 
+## [SelfRecover-LUKS v0.4.0] — 8 septembre 2026
+
+Le tag `selfrecover-luks-v0.3.0` date du 7 juin. Vingt-trois commits l'ont suivi,
+et le module a changé sur des points qu'une release ne devrait pas taire : un
+défaut qui rend une machine non amorçable, un script de secours qui affichait la
+passphrase en clair, et un guide décrivant une installation que personne n'avait
+faite de bout en bout.
+
+### La clé livrée à cryptsetup — un défaut réel, et un diagnostic faux avant lui
+
+Le format de la clé passe du brut à l'**hexadécimal**, et la raison retenue n'est
+pas celle qui avait été annoncée.
+
+`b5047e9` avait conclu de la page de manuel que `--key-file=-` tronquait la clé au
+premier saut de ligne, donc qu'une installation sur huit produisait un slot qui
+s'enrôle, se vérifie, et échoue définitivement au redémarrage. Le raisonnement
+s'était propagé dans cinq fichiers, deux bancs d'essai et le guide.
+
+`5a3feb7` le dément, mesuré sur **deux machines indépendantes** (cryptsetup 2.7.5)
+avec témoins négatifs : `--key-file=-` est la lecture d'un *keyfile* dont la source
+est stdin, et le flux est lu **en entier**. La clause « from stdin » de la page de
+manuel ne vise que la lecture d'une passphrase, sans `--key-file` — chemin que
+l'amorçage Debian n'emprunte jamais.
+
+**Le seul mode de défaillance est un saut de ligne final** ajouté à la clé — un
+`echo` au lieu d'un `printf '%s'`. Il casse l'hexadécimal comme le brut, par tube
+comme par fichier, et rien ne le gardait. `tests/test_lecture_keyfile.sh` le garde
+désormais : conteneur LUKS2 jetable sur fichier, **sans root**, `--test-passphrase`
+seulement, avec le cas qui le fait rougir et deux témoins négatifs. Le keyscript et
+les deux dérivateurs passeraient un jour à `echo`, ce banc rougirait.
+
+L'hexadécimal est conservé pour la **portabilité** : une clé hex survit à une
+lecture en tant que passphrase — secours tapé à la main, `cryptsetup open` sans
+`--key-file=-`, amorceur non Debian. Une clé brute non : 11,8 % d'entre elles
+contiennent un `0x0A`, et là, la troncature est réelle. `install.sh` pose en outre
+`keyfile-size=64` dans crypttab, pour qu'une lecture bornée ignore un `\n` final
+plutôt que de rendre la machine non amorçable. La mesure commentée et l'historique
+du démenti vivent dans `docs/cryptsetup-lecture-cle.md`, pour que personne ne
+refasse ce diagnostic depuis la page de manuel.
+
+La migration reste décrite (`INSTALL.md` §15) mais perd son urgence : une machine
+en clé brute qui démarre continuera de démarrer. Ce qui reste vrai, c'est qu'on ne
+dépose pas le nouveau keyscript sur un ancien slot.
+
+### Le script de secours affichait la passphrase en clair
+
+`selfrecover-unlock.sh` lisait la saisie par `read -rsp`, puis appelait le
+dérivateur en `--stdin` sans rien lui passer. Le tube n'existait pas : `--stdin`
+lisait donc le terminal, alors que la fin du `read -rs` venait de rétablir l'écho.
+Le déverrouillage restait bloqué sur ce qui ressemblait à une invite muette,
+l'administrateur retapait sa passphrase, et elle s'affichait. Sur un script dont
+l'usage est précisément la reprise après incident.
+
+Le `printf '%s' "$WORD" |` manquant est rétabli — et non un `--word`, qui rendrait
+la passphrase lisible dans `/proc/<pid>/cmdline`. Le script gagne par ailleurs une
+confirmation explicite, un `trap` qui restaure l'écho et efface la variable quelle
+que soit la sortie, et une limite de trois essais.
+
+### Un initramfs muet ne se découvre plus au redémarrage
+
+`initramfs-post-update-verifie-selfrecover` s'exécute après **chaque** génération
+d'initramfs et vérifie que les pièces SelfRecover y sont, et que le sel embarqué
+est bien celui du disque. Il est posé dans `post-update.d` et non dans
+`kernel/postinst.d`, parce qu'`update-initramfs` est aussi déclenché par
+cryptsetup-initramfs, busybox, initramfs-tools ou une commande manuelle — et c'est
+justement une mise à jour de cryptsetup-initramfs qui casserait ce module.
+
+### Le guide décrit maintenant deux parcours, et une installation qui a eu lieu
+
+Un déploiement réel sur poste portable a montré que le guide décrivait une
+procédure que personne n'avait suivie de bout en bout sur une Debian 13 neuve.
+Deux étapes échouaient d'entrée : `python3-argon2` manquait aux prérequis alors que
+l'ajout de slot en dépend, et `xxd` n'est plus installé par défaut depuis que Debian
+l'a détaché de `vim-common` — remplacé par `od`, qui vient de coreutils, donc une
+dépendance de moins pour un outil qui vise l'auto-hébergement.
+
+Un mode de défaillance n'était couvert par aucun filet : les sauvegardes
+d'initramfs et de crypttab protègent l'amorçage, aucune ne protégeait **l'en-tête
+LUKS**, que `luksAddKey` écrit précisément.
+
+Le §7 aiguille désormais entre deux parcours — serveur déverrouillé par SSH, et
+poste dont on tape la passphrase au clavier. Sur un poste, dropbear et la cascade
+de volumes secondaires ne servent à rien, et personne ne le disait : quelqu'un
+montait un serveur SSH dans son initramfs pour rien. Le tronc commun reste unique.
+
+### Divers
+
+Le R&D de déverrouillage par quorum est rangé dans `quorum-rnd/` — il n'est pas
+activé en v0.4.0. Un banc d'essai FIDO2 entre dans le module. Le whitepaper, qui
+décrivait encore la clé brute, est régénéré depuis sa source Markdown.
+
+
 ## [SelfRecover v0.5.0] — 8 septembre 2026
 
 ### SelfRecover — l'ouverture d'un dossier de niveau 3 cesse d'être un oracle gratuit — 8 septembre 2026
