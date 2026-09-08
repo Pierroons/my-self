@@ -300,6 +300,57 @@ verifier('banned_until n\'a PAS été posé — c\'est la procédure qui gèle, 
 $gele3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('encore'), maintenant: $now3 + 400 + 2 * 86400);
 verifier('et l\'ouverture est bien refusée pendant le gel', ($gele3['error'] ?? '') === 'gele');
 
+echo "\n→ ⭐ La date d'émission de la passphrase, sur le schéma réel\n";
+
+// Trois endroits émettent une passphrase : l'inscription, la récupération L1, et
+// le ré-enrôlement L3. Un seul oublié, et un papier imprimé à l'instant
+// s'afficherait avec l'âge de celui qu'il remplace — devant quelqu'un qui sort
+// précisément d'une perte totale.
+
+$pdoP = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$pdoP->exec((string) file_get_contents(__DIR__ . '/../schema.sql'));
+$T0   = 1_700_000_000;
+$QUATRE_ANS = 4 * 365 * 86400;
+$pdoP->prepare('INSERT INTO accounts (id, username, pw_hash, pass_hash, recovery_hash, recovery_salt,
+                                      created_at, pass_emise_le) VALUES (1, ?, ?, ?, ?, ?, ?, ?)')
+     ->execute(['alice', 'x', Hashing::hash('cheval agrafe batterie correct'), 'x',
+                str_repeat('b', 32), $T0 - $QUATRE_ANS, $T0 - $QUATRE_ANS]);
+
+$stP  = new StockageSelfRecover($pdoP);
+$recP = new Recovery($stP, 'sel-de-la-sonde', delaiRefusUs: 0);
+
+$lu = $stP->trouverComptePourPassphrase('alice');
+verifier('la date d\'émission remonte de la base', ($lu['emise_le'] ?? null) === $T0 - $QUATRE_ANS);
+
+$rP = $recP->parPassphrase('alice', 'cheval agrafe batterie correct', null, $T0);
+verifier('⭐ une passphrase de quatre ans ouvre encore, sur le schéma réel',
+    ($rP['ok'] ?? false) === true, (string) ($rP['message'] ?? ''));
+verifier('son âge est rendu', ($rP['age_jours'] ?? null) === 1460, var_export($rP['age_jours'] ?? null, true));
+
+$apresP = (int) $pdoP->query('SELECT pass_emise_le FROM accounts WHERE id = 1')->fetchColumn();
+verifier('⭐ la neuve est estampillée d\'aujourd\'hui, pas de l\'âge de l\'ancienne',
+    $apresP > $T0 - 86400, gmdate('Y-m-d', $apresP));
+
+// ⚠️ Un compte antérieur à la colonne rend `null`, jamais zéro : zéro se lirait
+// « émise en 1970 » et afficherait cinquante-six ans à qui vient de s'inscrire.
+$pdoP->exec('UPDATE accounts SET pass_emise_le = NULL WHERE id = 1');
+$muetP = $stP->trouverComptePourPassphrase('alice');
+verifier('contre-témoin : sans date, la lecture rend null et non zéro',
+    array_key_exists('emise_le', $muetP) && $muetP['emise_le'] === null);
+
+// Le faisceau du niveau 3 porte le fait, pour l'arbitre.
+$faitsP = $stP->faitsDuCompte(1);
+// ⚠️ `array_key_exists`, pas `??` : l'opérateur avale le `null` et rendrait la
+// valeur par défaut, si bien que le contrôle testerait l'inverse de son intitulé.
+verifier('le faisceau reçoit « on ne sait pas » quand la date manque',
+    array_key_exists('passphrase_emise_le', $faitsP['faits_locaux'] ?? [])
+    && $faitsP['faits_locaux']['passphrase_emise_le'] === null);
+$pdoP->prepare('UPDATE accounts SET pass_emise_le = ? WHERE id = 1')->execute([$T0 - $QUATRE_ANS]);
+$faitsP2 = $stP->faitsDuCompte(1);
+verifier('⭐ et la date quand elle existe — un arbitre voit depuis quand le secours dormait',
+    ($faitsP2['faits_locaux']['passphrase_emise_le'] ?? null) === gmdate('Y-m-d', $T0 - $QUATRE_ANS),
+    (string) ($faitsP2['faits_locaux']['passphrase_emise_le'] ?? '—'));
+
 echo "\n→ ⭐ Le dégel est atteignable, et il rend la porte\n";
 
 // Trois textes du module promettent qu'un arbitre lève le gel. Jusqu'ici

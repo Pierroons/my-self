@@ -62,7 +62,12 @@ final class Recovery
     /**
      * Niveau 1 — récupération par passphrase diceware.
      *
-     * @return array{ok: bool, message: string, mot_de_passe?: string, passphrase?: string}
+     * `age_jours` dit depuis combien de jours la passphrase qui vient de servir
+     * avait été émise, ou `null` si le déploiement ne tient pas cette date.
+     * **Elle informe, elle ne refuse jamais** — le contrat de
+     * `trouverComptePourPassphrase()` dit pourquoi.
+     *
+     * @return array{ok: bool, message: string, mot_de_passe?: string, passphrase?: string, age_jours?: int|null}
      */
     public function parPassphrase(
         string $nomCompte,
@@ -118,11 +123,21 @@ final class Recovery
             throw $e;
         }
 
+        // 🔑 L'âge de la passphrase qui VIENT DE SERVIR, jamais celui de la
+        // neuve. C'est le seul moment où la bibliothèque lit cette date, et la
+        // question utile est « depuis combien de temps ce papier traînait-il ».
+        // Rendu pour informer — journal, message à l'utilisateur, ce que
+        // l'application en fait ne regarde pas le protocole. Rien ici n'a été
+        // refusé à cause de l'âge, et rien ne le sera : voir le contrat de
+        // `trouverComptePourPassphrase()`.
+        $emiseLe = $compte['emise_le'] ?? null;
+
         return [
             'ok'           => true,
             'message'      => 'Accès rendu. Le mot de récupération, lui, ne change pas.',
             'mot_de_passe' => $motDePasse,
             'passphrase'   => $nouvellePhrase,
+            'age_jours'    => is_int($emiseLe) ? intdiv(max(0, $maintenant - $emiseLe), 86400) : null,
         ];
     }
 

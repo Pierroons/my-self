@@ -347,6 +347,7 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 - [x] Offline HTML validator + entropy lab (zero external requests, verifiable by `grep`) — the standalone PHP demo that hosted them has since been removed, see "Trying SelfRecover"
 - [x] EFF 7776-word wordlist integrated (EN + FR) + diceware reference PDF
 - [x] **Recovery codes** — L2 possession factor (10 codes, HMAC lookup + Argon2id, single-use)
+- [x] **L1 passphrase never expires, by decision** — it is for when everything else is lost, sometimes years later; a deadline would kill it at the exact moment it is needed, and there is no email to warn anyone. What bounds a stolen paper is single use. The library stores an issue date when the deployment keeps one, and `parPassphrase()` returns its age: it informs, it never refuses
 - [x] **"This device" factor** — ECDSA P-256, private key under an Argon2id envelope, public key only server-side
 - [x] **Super-user (SU)** — SU→Admin→User model, append-only + hash-chained + HMAC audit log, ghost-admin detection
 - [x] **Real deployment** — authentication backend of a messaging service

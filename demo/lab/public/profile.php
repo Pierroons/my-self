@@ -117,9 +117,39 @@ $nbVotesEmis  = $cnt('SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND bloc
 $nbVotesRecus = $cnt('SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND blocked = 0');
 [$canVote, $whyNot] = Moderate::canVote($pdo, $myId);
 
+// 🔑 L'âge de la passphrase de secours. Il INFORME — rien n'expire, et c'est une
+// décision : une passphrase de récupération sert quand tout le reste est perdu,
+// parfois des années après, et une échéance la tuerait au moment précis où elle
+// sert, sans que personne puisse le savoir avant d'essayer. Il n'y a pas d'email
+// pour prévenir, c'est tout le propos du protocole.
+//
+// ⚠️ `null` se dit, il ne se remplace pas par zéro : un compte antérieur à la
+// colonne ne sait pas quand sa passphrase a été émise, et afficher « émise il y a
+// 56 ans » serait un fait inventé.
+$sPass = $pdo->prepare('SELECT pass_emise_le FROM accounts WHERE id = ?');
+$sPass->execute([$myId]);
+$passEmiseLe = $sPass->fetchColumn();
+$passEmiseLe = ($passEmiseLe === false || $passEmiseLe === null) ? null : (int) $passEmiseLe;
+$passAgeJours = $passEmiseLe === null ? null : intdiv(max(0, time() - $passEmiseLe), 86400);
+
 render_header(t('prf.title'), $account);
 ?>
 <h1>Mon espace — @<?= h($account['username']) ?></h1>
+
+<!-- Passphrase de secours : une date qui informe, jamais qui expire -->
+<div class="card">
+  <h2 style="margin-top:0"><?= h(t('prf.pass.h2')) ?></h2>
+<?php if ($passEmiseLe === null): ?>
+  <p class="muted" style="margin:0"><?= h(t('prf.pass.inconnue')) ?></p>
+<?php else: ?>
+  <p style="margin:0 0 6px"><strong><?= h(sprintf(t('prf.pass.age'), $passAgeJours)) ?></strong>
+     <span class="muted">— <?= h(gmdate('d/m/Y', $passEmiseLe)) ?></span></p>
+  <?php if ($passAgeJours >= 730): ?>
+  <p class="muted" style="margin:0;font-size:13px">⏳ <?= h(t('prf.pass.ancienne')) ?></p>
+  <?php endif; ?>
+<?php endif; ?>
+  <p class="muted" style="margin:8px 0 0;font-size:13px"><?= h(t('prf.pass.jamais')) ?></p>
+</div>
 
 <!-- Panel modération -->
 <div class="card">

@@ -19,6 +19,12 @@ CREATE TABLE IF NOT EXISTS accounts (
     recovery_salt   TEXT NOT NULL DEFAULT '',
     is_admin        INTEGER NOT NULL DEFAULT 0,  -- panel admin (promotion par `selfrecover-su`, jamais en base directement)
     created_at      INTEGER NOT NULL,
+    -- 🔑 Date d'émission de la passphrase L1. Elle INFORME, elle n'expire rien :
+    -- une passphrase de récupération sert quand tout le reste est perdu, parfois
+    -- des années après, et l'expiration la tuerait au moment précis où elle sert.
+    -- Nullable exprès — un compte antérieur à la colonne rend `null`, jamais
+    -- zéro, qui se lirait « émise en 1970 ».
+    pass_emise_le INTEGER,
     -- Traces d'usage, lues par le faisceau du niveau 3 : elles disent si le
     -- compte vivait, sans rien révéler de ses secrets.
     last_login_at INTEGER,

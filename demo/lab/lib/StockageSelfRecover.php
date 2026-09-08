@@ -64,13 +64,21 @@ final class StockageSelfRecover implements StorageInterface
 
     public function trouverComptePourPassphrase(string $nomCompte): ?array
     {
-        $st = $this->pdo->prepare('SELECT id, pass_hash FROM accounts WHERE username = ?');
+        $st = $this->pdo->prepare('SELECT id, pass_hash, pass_emise_le FROM accounts WHERE username = ?');
         $st->execute([$nomCompte]);
         $ligne = $st->fetch(PDO::FETCH_ASSOC);
+        if ($ligne === false) {
+            return null;
+        }
 
-        return $ligne === false
-            ? null
-            : ['id' => (int) $ligne['id'], 'empreinte_passphrase' => (string) $ligne['pass_hash']];
+        // ⚠️ `null` reste `null`. Un compte antérieur à la colonne ne sait pas
+        // quand sa passphrase a été émise, et le dire vaut mieux que rendre zéro,
+        // qui afficherait un âge de cinquante-six ans à qui vient de s'inscrire.
+        return [
+            'id'                   => (int) $ligne['id'],
+            'empreinte_passphrase' => (string) $ligne['pass_hash'],
+            'emise_le'             => $ligne['pass_emise_le'] === null ? null : (int) $ligne['pass_emise_le'],
+        ];
     }
 
     public function remplacerEmpreinteMotDePasse(int $compteId, string $empreinte): void
@@ -80,9 +88,13 @@ final class StockageSelfRecover implements StorageInterface
 
     public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase): void
     {
+        // ⚠️ La date d'émission se refait ici : une passphrase neuve est émise, et
+        // garder l'ancienne date ferait vieillir un papier imprimé à l'instant.
+        // C'est le geste que le contrat demande et que sa signature ne peut pas
+        // imposer — même famille que l'hôte de dérivation dans `reposerSecrets()`.
         $this->pdo
-            ->prepare('UPDATE accounts SET pw_hash = ?, pass_hash = ? WHERE id = ?')
-            ->execute([$empreinteMotDePasse, $empreintePassphrase, $compteId]);
+            ->prepare('UPDATE accounts SET pw_hash = ?, pass_hash = ?, pass_emise_le = ? WHERE id = ?')
+            ->execute([$empreinteMotDePasse, $empreintePassphrase, time(), $compteId]);
     }
 
     public function revoquerSessions(int $compteId): void
@@ -434,7 +446,8 @@ final class StockageSelfRecover implements StorageInterface
     public function faitsDuCompte(int $compteId): ?array
     {
         $st = $this->pdo->prepare(
-            'SELECT id, username, created_at, last_login_at, login_count FROM accounts WHERE id = ?'
+            'SELECT id, username, created_at, last_login_at, login_count, pass_emise_le
+               FROM accounts WHERE id = ?'
         );
         $st->execute([$compteId]);
         $l = $st->fetch(PDO::FETCH_ASSOC);
@@ -455,6 +468,15 @@ final class StockageSelfRecover implements StorageInterface
             'cree_le'            => (int) $l['created_at'],
             'derniere_connexion' => $jamais ? null : (int) $l['last_login_at'],
             'nombre_connexions'  => $jamais ? null : (int) $l['login_count'],
+            // Le fait que seul ce déploiement connaît. « Passphrase émise il y a
+            // trois ans, jamais utilisée » dit quelque chose à un arbitre :
+            // quelqu'un qui perd tout après des années n'a pas le même profil
+            // qu'un compte créé la semaine dernière. Rendu brut, sans
+            // interprétation — la bibliothèque ne sait pas ce qu'il veut dire.
+            'faits_locaux'       => [
+                'passphrase_emise_le' => $l['pass_emise_le'] === null
+                    ? null : gmdate('Y-m-d', (int) $l['pass_emise_le']),
+            ],
         ];
     }
 
@@ -465,9 +487,14 @@ final class StockageSelfRecover implements StorageInterface
         string $empreinteMotDerive,
         string $sel,
     ): void {
+        // ⚠️ `pass_emise_le` se refait ici aussi : ce chemin émet une passphrase
+        // neuve, exactement comme `remplacerEmpreintes()`. L'oublier ferait
+        // afficher l'âge de l'ancienne sur celle qui vient d'être imprimée, à
+        // quelqu'un qui sort précisément d'une perte totale.
         $this->pdo->prepare(
             'UPDATE accounts SET pw_hash = ?, pass_hash = ?, recovery_hash = ?, recovery_salt = ?,
-                                 banned_until = 0 WHERE id = ?'
-        )->execute([$empreinteMotDePasse, $empreintePassphrase, $empreinteMotDerive, $sel, $compteId]);
+                                 pass_emise_le = ?, banned_until = 0 WHERE id = ?'
+        )->execute([$empreinteMotDePasse, $empreintePassphrase, $empreinteMotDerive, $sel,
+                    time(), $compteId]);
     }
 }

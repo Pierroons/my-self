@@ -10,6 +10,55 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover L1 — une date qui informe, et l'écrit qu'elle n'expire rien — 8 septembre 2026
+
+Question sortie d'une séance de lecture de code : faut-il faire expirer la
+passphrase de niveau 1 ? Deux pistes avaient été proposées — une échéance
+calendaire, ou un durcissement automatique d'une récupération ancienne présentée
+depuis un « contexte inconnu ».
+
+**Les deux sont écartées, et l'arbitrage est écrit plutôt que sous-entendu.**
+
+L'échéance tuerait le secours au moment précis où il sert : une passphrase de
+récupération s'emploie quand tout le reste est perdu, parfois des années après, et
+son détenteur ne pourrait pas savoir qu'elle est morte avant d'essayer — il n'y a
+pas d'email pour le prévenir, c'est tout le propos du protocole.
+
+Le durcissement automatique suppose un contexte. Derrière un service caché, il
+n'y en a aucun : toutes les requêtes partagent une adresse, `$ip` vaut `null`
+pour tout le monde. La bibliothèque refuserait un titulaire légitime sur un
+signal qui n'existe pas.
+
+Ce qui borne le vol d'un papier était déjà là et n'avait pas besoin d'être
+ajouté : **l'usage unique**. `parPassphrase()` consomme la passphrase et en émet
+une neuve.
+
+**Ce qui est ajouté est une date qui informe.** `trouverComptePourPassphrase()`
+peut rendre `emise_le`, facultatif et `null` — jamais zéro, qui se lirait
+« émise en 1970 » et afficherait cinquante-six ans à qui vient de s'inscrire.
+`parPassphrase()` rend `age_jours` : l'âge de la passphrase **qui vient de
+servir**, pas de la neuve, parce que la question utile est depuis combien de
+temps ce papier traînait. Informatif, jamais bloquant. L'interface reste à 39
+méthodes : aucun consommateur n'a à changer.
+
+**Trois endroits émettent une passphrase** — l'inscription, la récupération de
+niveau 1, le ré-enrôlement de niveau 3. Un seul oublié, et un papier imprimé à
+l'instant s'afficherait avec l'âge de celui qu'il remplace, devant quelqu'un qui
+sort précisément d'une perte totale. Les deux de la bibliothèque portent
+l'obligation dans leur contrat ; le troisième appartient à l'application, et
+c'est pour cela qu'il s'oublie.
+
+Le laboratoire les tient tous les trois, montre l'âge dans l'espace personnel, et
+verse le fait au faisceau du niveau 3 — « passphrase émise il y a trois ans » dit
+quelque chose à un arbitre : qui perd tout après des années n'a pas le profil
+d'un compte créé la semaine dernière.
+
+Ce que le modèle de menace dit désormais, et qu'il taisait : une passphrase volée
+reste utilisable jusqu'à ce que quelqu'un l'utilise, et **le titulaire n'apprend
+rien au moment du vol — c'est le voleur qui reçoit la passphrase neuve.** Sans
+canal hors-bande, la notification n'existe pas. C'est structurel au modèle sans
+email, pas un oubli.
+
 ### Fuzzer du niveau 3 — quatre défauts, dont un qui faussait la mesure annoncée — 8 septembre 2026
 
 Relevés par une relecture extérieure du code de la sonde, pas par un rouge :

@@ -187,10 +187,16 @@ final class Auth
         $recoveryHash = Hashing::hash($derivedKey);
 
         $stmt = $pdo->prepare(
-            'INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, recovery_salt, created_at)
-             VALUES (?, ?, ?, ?, ?, ?)'
+            'INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, recovery_salt,
+                                   created_at, pass_emise_le)
+             VALUES (?, ?, ?, ?, ?, ?, ?)'
         );
-        $stmt->execute([$username, $pwHash, $passHash, $recoveryHash, $recoverySalt, time()]);
+        // 🔑 Le troisième et dernier endroit où une passphrase est émise. Les deux
+        // autres sont dans la bibliothèque, qui les documente ; celui-ci
+        // appartient à l'application, et c'est pour ça qu'il s'oublie.
+        $maintenant = time();
+        $stmt->execute([$username, $pwHash, $passHash, $recoveryHash, $recoverySalt,
+                        $maintenant, $maintenant]);
         $accountId = (int) $pdo->lastInsertId();
 
         // Trace la création pour le rate-limit IP

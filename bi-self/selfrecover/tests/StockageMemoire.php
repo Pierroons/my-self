@@ -134,6 +134,26 @@ class StockageMemoire implements StorageInterface
         return $this->passphrases[$nomCompte] ?? null;
     }
 
+    /**
+     * Estampille la date d'émission de la passphrase d'un compte.
+     *
+     * Ce qui suit est le geste que le contrat demande à toute implémentation, et
+     * que sa signature ne peut pas imposer : la date se refait partout où la
+     * passphrase est réécrite, sans quoi un papier imprimé aujourd'hui
+     * s'afficherait avec l'âge de celui qu'il remplace.
+     */
+    private function estampiller(int $compteId): void
+    {
+        foreach ($this->passphrases as $nom => $p) {
+            if ($p['id'] === $compteId) {
+                $this->passphrases[$nom]['emise_le'] = $this->horloge;
+            }
+        }
+    }
+
+    /** L'horloge de l'adaptateur. Une implémentation réelle appellerait `time()`. */
+    public int $horloge = 1_700_000_000;
+
     public function remplacerEmpreintes(int $compteId, string $empreinteMotDePasse, string $empreintePassphrase): void
     {
         $this->empreintes[$compteId] = $empreinteMotDePasse;
@@ -142,6 +162,7 @@ class StockageMemoire implements StorageInterface
                 $this->passphrases[$nom]['empreinte_passphrase'] = $empreintePassphrase;
             }
         }
+        $this->estampiller($compteId);
     }
 
     public function purgerCodes(int $compteId): void
@@ -459,6 +480,7 @@ class StockageMemoire implements StorageInterface
         // contrat de `reposerSecrets()` demande et que sa signature ne peut pas
         // imposer : l'hôte vient du déploiement, jamais de la requête.
         $this->hotes[$compteId] = $this->hoteServi;
+        $this->estampiller($compteId);
     }
 
     /** @var array<int, string> */

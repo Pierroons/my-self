@@ -83,6 +83,30 @@ A SelfRecover deployment without hardened sudo is a lock on a door with no wall.
 
 **A protected secret stays safe; a neglected one is exposed.** This is not a flaw — it is the fundamental contract of any secret-based security system.
 
+### ✗ A stolen L1 passphrase, until it is used
+
+The level-1 passphrase **never expires, and that is a decision rather than an omission.**
+
+A backup passphrase is for the moment everything else is lost — sometimes years after it was
+written down and put away. Expiring it would kill the recovery at the exact moment it is needed,
+and its holder could not know beforehand: there is no email to warn them, which is the whole point
+of the protocol. So a stolen sheet of paper stays usable until someone uses it.
+
+What bounds the damage is **single use**, not a deadline: `parPassphrase()` consumes the passphrase
+and issues a new one, so a stolen paper opens the account once, not forever.
+
+What does *not* exist, and should not be claimed: the legitimate holder learns nothing at the
+moment of the theft. **It is the thief who receives the new passphrase.** The owner finds out when
+their password stops working. Without an out-of-band channel there is no notification, and that is
+structural to an email-less model.
+
+The library stores an issue date when the deployment keeps one, and `parPassphrase()` returns the
+age of the passphrase that was just used. It **informs** — an account page saying "issued four
+years ago", an arbitrator seeing how long the backup had been dormant. It never refuses. Hardening
+an old recovery automatically would require telling a known context from an unknown one, and behind
+a hidden service there is no context at all: every request shares one address. The library would
+turn away a legitimate holder on a signal that does not exist.
+
 ### ✗ User negligence
 - Writing the recovery word on a sticky note visible on the monitor
 - Sharing it in a chat or email "for convenience"
@@ -110,6 +134,7 @@ If a user forgets their password AND their passphrase AND their recovery word, t
 | Third-party trust | ✓ | Local only |
 | Brute force recovery word | ✓ | Rate limits + L2/L3 escalation |
 | Bot enumeration | ~ | Closed at L1/L2; at L3 it is a cost, not a silence — see above |
+| Stolen L1 passphrase | ✗ until used | Never expires, deliberately; single use bounds it, no notification exists |
 | Server root compromise | ✗ | Mandatory sudo hardening |
 | Stolen recovery word | ✗ | User responsibility |
 | User negligence | ✗ | Reused secrets stay reusable; only unique secrets help |
