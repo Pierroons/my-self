@@ -141,8 +141,20 @@ cp -a /etc/crypttab "/etc/crypttab.bak.$(date +%s)"
 # du printf '%s'. Mesure : docs/cryptsetup-lecture-cle.md
 if grep -q "^${ROOT_NAME}.*keyscript=" /etc/crypttab; then
   ok "keyscript déjà présent sur $ROOT_NAME"
-  grep -q "^${ROOT_NAME}.*keyfile-size=" /etc/crypttab \
-    || warn "pense à ajouter keyfile-size=64 à la ligne $ROOT_NAME (borne la lecture de la clé)"
+  if grep -q "^${ROOT_NAME}.*keyfile-size=" /etc/crypttab; then
+    ok "keyfile-size déjà présent sur $ROOT_NAME"
+  else
+    # ⚠️ Un simple avertissement laissait la borne absente sur toute machine déjà
+    # équipée — précisément le public de la migration du §15, celui qui vient de
+    # changer le format de sa clé. La ceinture n'était posée que sur les
+    # installations neuves, c'est-à-dire là où elle sert le moins.
+    # La question est posée comme partout ailleurs dans ce script : une ligne de
+    # /etc/crypttab ne se modifie pas sans accord. La sauvegarde datée est déjà
+    # prise plus haut, et le script se relance sans dommage.
+    confirm "Ajouter keyfile-size=64 à la ligne $ROOT_NAME (borne la lecture de la clé) ?"
+    sed -i "/^${ROOT_NAME}[[:space:]]/s|\$|,keyfile-size=64|" /etc/crypttab
+    ok "keyfile-size=64 ajouté"
+  fi
 else
   confirm "Ajouter keyscript= et keyfile-size=64 à la ligne $ROOT_NAME ?"
   sed -i "/^${ROOT_NAME}[[:space:]]/s|\$|,keyscript=$SKG/selfrecover-keyscript.sh,keyfile-size=64|" /etc/crypttab

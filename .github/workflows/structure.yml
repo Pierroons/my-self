@@ -203,10 +203,25 @@ jobs:
       - name: Outils du banc SelfRecover-LUKS
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq cryptsetup-bin python3-argon2
+          sudo apt-get install -y -qq cryptsetup-bin python3-argon2 libargon2-dev
+          # Le binaire C est celui que le keyscript appelle à l'amorçage. Le banc
+          # choisit UN dérivateur : le C s'il est compilé, sinon le Python. Sans
+          # cette compilation, la CI n'éprouvait que le Python — et le seul chemin
+          # dont l'échec rend une machine non amorçable n'était couvert par aucun
+          # vert.
+          cc -O2 -Wall -o self-security/selfrecover-luks/selfrecover_derive \
+             self-security/selfrecover-luks/selfrecover_derive.c -l:libargon2.so.1
 
       - name: Garde-fou — comment cryptsetup lit une clé selon le chemin emprunté
-        run: bash self-security/selfrecover-luks/tests/test_lecture_keyfile.sh
+        run: |
+          sortie=$(bash self-security/selfrecover-luks/tests/test_lecture_keyfile.sh)
+          echo "$sortie"
+          # ⚠️ Le banc annonce le dérivateur qu'il a exercé. Sans ce contrôle, une
+          # compilation ratée le ferait retomber sur le Python et rendre le même
+          # vert — en ayant mesuré l'autre chemin. Motif éprouvé dans les deux
+          # sens : il reconnaît le binaire C, il refuse la ligne `python3 …`.
+          echo "$sortie" | grep -qE '▸ dérivateur : [^ ]*/selfrecover_derive$' \
+            || { echo "::error::le banc n'a pas exercé le dérivateur C"; exit 1; }
 
       - name: Garde-fou — coût constant du hash factice (bi-self-duo)
         run: php demo/bi-self-duo/tests/sanity_timing.php
