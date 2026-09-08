@@ -41,10 +41,6 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     username     TEXT NOT NULL,
     success      INTEGER NOT NULL,
-    -- Niveau de récupération concerné (0 = connexion ordinaire, 1/2/3 = L1/L2/L3).
-    -- Sépare les compteurs : le cooldown du niveau 3 ne doit pas être remis à
-    -- zéro par une tentative de connexion, ni l'inverse.
-    level        INTEGER NOT NULL DEFAULT 0,
     ip           TEXT,
     attempted_at INTEGER NOT NULL
 );
@@ -244,22 +240,6 @@ CREATE TABLE IF NOT EXISTS dispute_messages (
     FOREIGN KEY (dispute_id) REFERENCES disputes(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_dispute_msg ON dispute_messages(dispute_id);
-
--- Couche anti-abus. L'empreinte a été retirée des signaux de RÉCUPÉRATION le
--- 2026-07-03 (c'est une technique de traçage, incompatible avec le projet) ;
--- elle subsiste ici, où elle signale un attaquant au lieu de vouer pour un
--- propriétaire.
-CREATE TABLE IF NOT EXISTS suspicious_fingerprints (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    ip            TEXT NOT NULL,
-    fingerprint   TEXT,
-    user_agent    TEXT,
-    attempt_count INTEGER NOT NULL DEFAULT 1,
-    blocked_until INTEGER,
-    created_at    INTEGER NOT NULL,
-    last_seen     INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_susp_ip ON suspicious_fingerprints(ip);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Codes de récupération — facteur de possession du niveau 2.

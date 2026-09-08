@@ -142,12 +142,6 @@ final class Db
             self::$pdo->exec('PRAGMA foreign_keys = ON');
         }
 
-        // Niveau de récupération : le niveau 3 compte ses tentatives à part.
-        $cols = self::$pdo->query('PRAGMA table_info(login_attempts)')->fetchAll(PDO::FETCH_COLUMN, 1);
-        if (!in_array('level', $cols, true)) {
-            self::$pdo->exec('ALTER TABLE login_attempts ADD COLUMN level INTEGER NOT NULL DEFAULT 0');
-        }
-
         // SelfModerate — cause du signalement, et convalescence (remontée passive).
         $cols = self::$pdo->query('PRAGMA table_info(member_moderation)')->fetchAll(PDO::FETCH_COLUMN, 1);
         foreach ([
