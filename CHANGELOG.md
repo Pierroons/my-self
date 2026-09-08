@@ -10,6 +10,45 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Fuzzer du niveau 3 — quatre défauts, dont un qui faussait la mesure annoncée — 8 septembre 2026
+
+Relevés par une relecture extérieure du code de la sonde, pas par un rouge :
+une sonde qui se trompe rend le même vert qu'une sonde juste.
+
+**La longueur des suites se retirait à chaque itération.** Écrite
+`for ($pas = 0; $pas < mt_rand(6, 20); $pas++)`, la borne se redessine à chaque
+tour et la suite s'arrête dès qu'un tirage tombe sous le compteur. Mesuré sur
+200 000 tirages, à graine identique :
+
+| | moyenne | suites ≥ 15 pas |
+|---|---|---|
+| borne retirée à chaque tour | 9,55 | 1,9 % |
+| borne tirée une fois | 13,00 | 40,0 % |
+
+Les états profonds vivent dans les suites longues. **Le chiffre de profondeur
+annoncé jusqu'ici était donc faussé.** Sur 200 tours, la sonde corrigée atteint
+28 ré-enrôlements réussis à graine 7 — contre 15 avant —, 26 à graine 42 et 29 à
+graine 101, sans violation sur aucune des trois.
+
+**L'invariant central se désarmait pour le reste de la suite.** « Rien du compte
+ne bouge sans un ré-enrôlement réussi » se lisait `if (!$reussi && …)`, avec un
+drapeau posé une fois pour toutes : dès le premier ré-enrôlement, tout ce qui
+bougeait ensuite passait sans contrôle — et c'est précisément après un
+ré-enrôlement que l'état est le plus riche. Le drapeau vaut désormais pour un pas.
+
+**Le sésame n'était cherché que dans la colonne qui promet de ne pas le
+contenir.** Une fuite par le faisceau, par un message recopié ou par un champ
+ajouté plus tard passait inaperçue. Le dossier entier est sérialisé et fouillé.
+Canari décisif : le même défaut — sésame glissé dans le faisceau, JSON
+parfaitement valide — laisse l'ancienne sonde verte et fait rougir la nouvelle.
+
+**La sonde mourait au lieu de rapporter.** Le calcul du détail d'une violation
+passait par une fermeture `fn ($v): string => json_encode($v)`, et `json_encode`
+rend `false` sur ce qu'il ne sait pas encoder : sous `strict_types`, une
+`TypeError` tuait la sonde au seul moment où elle savait quelque chose. Éprouvé —
+avec un défaut planté qui rend le compte non sérialisable, l'ancienne forme meurt,
+la nouvelle rapporte.
+
 ### Garde-fou du profil Argon2id — trois formes lui échappaient — 8 septembre 2026
 
 Le quatrième contrôle de `check-profil-unique.sh` cherchait

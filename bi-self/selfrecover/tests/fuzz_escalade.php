@@ -162,7 +162,11 @@ for ($tour = 1; $tour <= $tours; $tour++) {
     $esc      = new Escalade($st, $recovery, delaiRefusUs: 0);
 
     $avant     = photo($st);
-    $reussi    = false;          // un reEnroler a-t-il rendu ok ?
+    // ⚠️ Ce drapeau vaut pour UN pas, pas pour la suite. Écrit une fois pour
+    // toutes, il désarmait l'invariant central dès le premier ré-enrôlement
+    // réussi : tout ce qui bougeait ensuite dans le compte passait sans contrôle,
+    // et c'est précisément après un ré-enrôlement que l'état est le plus riche.
+    $reussiCePas = false;        // un reEnroler a-t-il rendu ok à CE pas ?
     $maintenant = 1_700_000_000;
     $numeros   = [];             // les numéros vus, pour pouvoir les rejouer
     $sesames   = [];
@@ -176,7 +180,13 @@ for ($tour = 1; $tour <= $tours; $tour++) {
                          'journal' => $journal];
     };
 
-    for ($pas = 0; $pas < mt_rand(6, 20); $pas++) {
+    // ⚠️ La longueur se tire UNE fois. Écrite `$pas < mt_rand(6, 20)`, elle se
+    // retirait à chaque itération : la suite s'arrête dès que le tirage tombe
+    // sous le compteur, ce qui donne 9,6 pas de moyenne au lieu de 13 et ne
+    // laisse jamais atteindre 20. Les états les plus profonds vivent dans les
+    // suites longues, et ce défaut les rendait rares sans rien signaler.
+    $longueur = mt_rand(6, 20);
+    for ($pas = 0; $pas < $longueur; $pas++) {
         $maintenant += mt_rand(0, 200000);
 
         // 🔑 **Marche GUIDÉE, pas purement aléatoire.** Une suite tirée
@@ -274,7 +284,7 @@ for ($tour = 1; $tour <= $tours; $tour++) {
                         $maintenant,
                     );
                     if (($r['ok'] ?? false) === true) {
-                        $reussi   = true;
+                        $reussiCePas = true;
                         $profonds++;
                         $sesamesConsommes[] = $sesame;
 
@@ -339,10 +349,16 @@ for ($tour = 1; $tour <= $tours; $tour++) {
         }
 
         $apres = photo($st);
-        if (!$reussi && $apres !== $avant) {
+        if (!$reussiCePas && $apres !== $avant) {
+            // ⚠️ `json_encode` rend `false` sur ce qu'il ne sait pas encoder, et la
+            // fermeture promettait `string` sous `strict_types` : la sonde mourait
+            // d'une TypeError au lieu de rapporter la violation qu'elle venait de
+            // détecter. Le seul chemin où elle sait quelque chose est celui où elle
+            // se taisait.
+            $plat = static fn ($v): string => var_export($v, true);
             $diff = array_keys(array_diff_assoc(
-                array_map(static fn ($v): string => json_encode($v), $apres),
-                array_map(static fn ($v): string => json_encode($v), $avant),
+                array_map($plat, $apres),
+                array_map($plat, $avant),
             ));
             $signaler(
                 '⭐ rien du compte ne bouge sans un reEnroler réussi',
@@ -350,7 +366,8 @@ for ($tour = 1; $tour <= $tours; $tour++) {
             );
             break;
         }
-        $avant = $apres;
+        $avant       = $apres;
+        $reussiCePas = false;
 
         // Le faisceau part en base par `json_encode` : s'il rend `false` sur de
         // l'UTF-8 invalide, un `(string)` le range en chaîne VIDE, sans erreur.
@@ -384,11 +401,21 @@ for ($tour = 1; $tour <= $tours; $tour++) {
             }
         }
 
-        // Un litige ne porte que l'empreinte du sésame, jamais le sésame.
+        // ⭐ Un dossier ne porte JAMAIS le sésame, dans aucun de ses champs.
+        //
+        // ⚠️ Ce contrôle ne regardait que `empreinte_sesame`, c'est-à-dire la
+        // seule colonne dont le nom promet qu'elle ne le contient pas. Une fuite
+        // par le faisceau, par un message recopié ou par un champ ajouté plus
+        // tard passait donc inaperçue. On sérialise le dossier entier et on
+        // cherche dedans : c'est la question qu'on voulait poser.
         foreach ($st->litiges as $l) {
-            if (in_array($l['empreinte_sesame'], $sesames, true)) {
-                $signaler('un dossier ne stocke jamais le sésame en clair', 'sésame trouvé sur ' . $l['numero']);
-                break 2;
+            $serialise = var_export($l, true);
+            foreach ($sesames as $ses) {
+                if ($ses !== '' && str_contains($serialise, $ses)) {
+                    $signaler('⭐ un dossier ne stocke jamais le sésame en clair',
+                        'sésame trouvé dans ' . $l['numero'] . ' — ' . substr($serialise, 0, 160));
+                    break 3;
+                }
             }
         }
     }
