@@ -7,7 +7,7 @@
 > *Si une communauté peut se construire, elle peut se gouverner.*
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfRecover: v0.5.0](https://img.shields.io/badge/SelfRecover-v0.5.0-green.svg)](./selfrecover/)
+[![SelfRecover: v0.5.1](https://img.shields.io/badge/SelfRecover-v0.5.1-green.svg)](./selfrecover/)
 [![SelfModerate: v0.3.0](https://img.shields.io/badge/SelfModerate-v0.3.0-yellow.svg)](./selfmoderate/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -54,7 +54,7 @@ Un plus un égale une communauté auto-gouvernée. Pas trois — une chose quali
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfRecover](./selfrecover/) | Identité & récupération sans email | **v0.5.0** — bibliothèque PSR-4 + dériveur navigateur, implémentation déployée et auto-auditée |
+| [SelfRecover](./selfrecover/) | Identité & récupération sans email | **v0.5.1** — bibliothèque PSR-4 + dériveur navigateur, implémentation déployée et auto-auditée |
 | [SelfModerate](./selfmoderate/) | Modération communautaire par raisonnement collectif | v0.3.0 — moteur installable, 24 contrôles ; 2 mécanismes du protocole manquent |
 
 ---
