@@ -10,6 +10,40 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Garde-fou du profil Argon2id — trois formes lui échappaient — 8 septembre 2026
+
+Le quatrième contrôle de `check-profil-unique.sh` cherchait
+`password_hash(<un argument>, PASSWORD_ARGON2ID)` par `git grep`. Trois formes
+passaient au travers, chacune plantée dans le dépôt et vérifiée verte avant
+d'être fermée :
+
+| Forme | Pourquoi elle passait |
+|---|---|
+| `password_hash($s, PASSWORD_ARGON2ID, [])` | des options vides valent les défauts de PHP, et le motif exigeait `)` après l'algorithme |
+| l'appel réparti sur plusieurs lignes | `git grep` lit une ligne à la fois |
+| `$algo = PASSWORD_ARGON2ID; password_hash($s, $algo)` | l'algorithme n'est plus dans l'appel |
+
+`scripts/audit-password-hash.php` les voit toutes : il lit des **appels**, pas
+des lignes. Un commentaire n'y est pas du code, ce qui retire au passage le
+filtre à la main sur les lignes commençant par `//` — documenter le défaut ne le
+fait plus rougir.
+
+Il est **fail-closed sur ce qu'il ne peut pas lire** : un algorithme passé par
+variable est signalé, non parce qu'il est fautif, mais parce que rien ne peut
+prouver qu'il ne l'est pas.
+
+**L'exemption se réduit d'une famille à un chemin.** Le contrôle écartait tous
+les `tests/sanity_*`. Passé sur les 182 fichiers sans aucune exclusion,
+l'analyseur ne remonte qu'un seul appel, et c'est le seul légitime : un banc qui
+pose délibérément une empreinte à l'ancien profil pour vérifier qu'elle se
+vérifie encore. Exempter la famille couvrait aussi celui qui deviendrait fautif
+demain.
+
+**L'absence de l'analyseur est bruyante.** Sans ce garde, un fichier effacé
+faisait échouer `php`, le `|| true` avalait son code, la sortie était vide et le
+contrôle rendait vert : un dépôt amputé se serait lu comme un dépôt sain.
+Éprouvé dans les deux cas — fichier retiré, fichier cassé.
+
 ### MySelf-Lab — le dégel devient atteignable, et la trace dit qui — 8 septembre 2026
 
 Deux whitepapers promettaient qu'un arbitre lève le gel de procédure et que la

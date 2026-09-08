@@ -64,28 +64,52 @@ else
     echo "  ✓ tout passe par Hashing::hash()"
 fi
 
-echo "▸ Appels à password_hash SANS troisième argument"
-# 🔑 C'est la forme qui a réellement fait défaut, et l'avertissement ci-dessus ne
-# la distinguait pas d'un appel correct : `password_hash($p, PASSWORD_ARGON2ID)`
-# sans options prend celles de PHP. Elles coïncident aujourd'hui avec le profil
-# sur la mémoire et les itérations, et diffèrent d'un fil — assez peu pour ne
-# rien casser, assez pour que le hachage concerné reste en arrière le jour où le
-# profil monte. Le secret du super-utilisateur a été posé ainsi.
+echo "▸ Appels à password_hash sans profil explicite"
+# 🔑 C'est la forme qui a réellement fait défaut : `password_hash($p, PASSWORD_ARGON2ID)`
+# sans options prend celles de PHP. Elles coïncident aujourd'hui avec le profil sur la
+# mémoire et les itérations, et diffèrent d'un fil — assez peu pour ne rien casser,
+# assez pour que le hachage concerné reste en arrière le jour où le profil monte. Le
+# secret du super-utilisateur a été posé ainsi.
 #
-# Les bancs sont exclus : ils écrivent délibérément une empreinte à l'ancien
-# profil pour vérifier qu'elle se vérifie encore.
-# Le motif est cité dans des commentaires — ici même, et dans la console SU qui
-# explique le défaut. Une ligne de commentaire n'exécute rien : on l'écarte, sans
-# quoi documenter le défaut le ferait rougir.
-nues=$(git grep -nE 'password_hash\([^,]+,\s*PASSWORD_ARGON2ID\s*\)' -- "${PHP_PATHS[@]}" \
-    | grep -vE "^(${SOURCE}|bi-self/selfrecover/tests/|.*/tests/sanity_)" \
-    | grep -vE '^[^:]+:[0-9]+:\s*(\*|//|#)' || true)
-if [ -n "$nues" ]; then
+# ⚠️ **Ce contrôle ne peut pas être un `grep`.** Trois formes lui échappaient, chacune
+# éprouvée avant d'être fermée : les options vides `[]`, qui valent les défauts de PHP ;
+# l'appel réparti sur plusieurs lignes, qu'une recherche ligne à ligne ne voit pas ; et
+# l'algorithme rangé dans une variable. `audit-password-hash.php` lit des appels, pas
+# des lignes — et n'a donc pas besoin d'écarter les commentaires à la main, puisqu'un
+# commentaire n'est pas du code pour un analyseur de jetons.
+#
+# La seule exemption est nominative. Un banc qui pose délibérément une empreinte à
+# l'ancien profil, pour vérifier qu'elle se vérifie encore, ne peut pas passer le
+# profil : c'est tout son propos. Exempter la famille `tests/sanity_*` couvrirait
+# aussi celui qui deviendrait fautif demain.
+EXEMPTS='demo/lab/tests/sanity_su.php'
+
+mapfile -t A_LIRE < <(
+    { git ls-files -- '*.php'; printf '%s\n' "${SANS_EXT[@]}"; } \
+    | grep -vE "^(${EXEMPTS})$" | grep -v '^$'
+)
+# ⚠️ L'absence de l'analyseur doit être bruyante. Sans ce garde, `php` échoue,
+# `|| true` avale son code, la sortie est vide et le contrôle rend VERT : un
+# fichier effacé se lit alors comme un dépôt sain.
+ANALYSEUR="scripts/audit-password-hash.php"
+if [ ! -f "$ANALYSEUR" ]; then
+    echo "  ✗ ${ANALYSEUR} est introuvable — ce contrôle ne peut rien affirmer"
+    exit 1
+fi
+
+sans_profil=$(php "$ANALYSEUR" "${A_LIRE[@]}")
+etat=$?
+if [ "$etat" -gt 1 ]; then
+    echo "  ✗ ${ANALYSEUR} a échoué (code ${etat}) — ce contrôle ne peut rien affirmer"
+    echo "$sans_profil" | sed 's/^/     /'
+    exit 1
+fi
+if [ -n "$sans_profil" ]; then
     echo "  ✗ hachage Argon2id sans profil explicite :"
-    echo "$nues" | sed 's/^/     /'
+    echo "$sans_profil" | sed 's/^/     /'
     echec=1
 else
-    echo "  ✓ tout hachage Argon2id porte son profil"
+    echo "  ✓ les ${#A_LIRE[@]} fichiers analysés portent tous leur profil"
 fi
 
 exit $echec
