@@ -391,11 +391,16 @@ final class StockageSelfRecover implements StorageInterface
             'SELECT d.dispute_number, d.status, d.signals_json, d.init_collisions, d.created_at,
                     d.submitted_at, d.decided_at, d.decided_by, a.username,
                     (SELECT COUNT(*) FROM dispute_messages m WHERE m.dispute_id = d.id) AS messages,
-                    (SELECT g.gele_jusqu_a FROM l3_gel g WHERE g.account_id = a.id) AS gele_jusqu_a
+                    (SELECT g.gele_jusqu_a FROM l3_gel g
+                      WHERE g.account_id = a.id AND g.gele_jusqu_a > ?) AS gele_jusqu_a
                FROM disputes d JOIN accounts a ON a.id = d.account_id
               ORDER BY d.id DESC LIMIT ?'
         );
-        $st->execute([$limite]);
+        // ⚠️ Un gel ÉCHU n'est pas un gel. Sans cette borne, la console affiche
+        // « ouverture gelée jusqu'au <date passée> » sur un compte qui n'est plus
+        // gelé — et propose de lever un gel qui n'existe plus. `gelJusqua()`
+        // applique déjà la même règle ; les deux lectures doivent dire pareil.
+        $st->execute([time(), $limite]);
         $lignes = $st->fetchAll(PDO::FETCH_ASSOC);
         foreach ($lignes as &$l) {
             $l['faisceau'] = $l['signals_json'] === null ? null : json_decode((string) $l['signals_json'], true);

@@ -66,7 +66,8 @@ function render(disputes){
   $('list').innerHTML=disputes.map(function(d){
     var flags=[];
     if(d.init_collisions>0) flags.push('⚠️ '+d.init_collisions+' demandeur(s) concurrent(s)');
-    if(d.gele_jusqu_a>0) flags.push('🧊 ouverture gelée jusqu\'au '+new Date(d.gele_jusqu_a*1000).toLocaleDateString());
+    var gele = d.gele_jusqu_a>0;
+    if(gele) flags.push('🧊 ouverture gelée jusqu\'au '+new Date(d.gele_jusqu_a*1000).toLocaleDateString());
     if(d.decided_by) flags.push('tranché par '+esc(d.decided_by));
     return '<div class="card" data-num="'+esc(d.dispute_number)+'" style="margin-bottom:14px">'
       +'<div class="row" style="justify-content:space-between"><div><strong>'+esc(d.username)+'</strong> <span class="muted">— '+esc(d.dispute_number)+' · '+esc(d.status)+'</span></div></div>'
@@ -75,6 +76,7 @@ function render(disputes){
       +'<div class="l3-msgs" style="max-height:180px;overflow:auto;border:1px solid #2a2a2a;border-radius:6px;padding:8px;margin:8px 0;font-size:13px"></div>'
       +'<div class="row" style="gap:6px"><input class="l3-in" placeholder="répondre au demandeur…" style="flex:1"><button class="btn l3-send">Envoyer</button></div>'
       +(d.status==='awaiting_admin'||d.status==='open'?'<div class="row" style="gap:8px;margin-top:8px"><button class="btn l3-grant">Accorder</button><button class="btn l3-refuse" style="border-color:#5a2a2a;color:#d96459">Refuser</button></div>':'')
+      +(gele?'<div class="row" style="gap:8px;margin-top:8px"><button class="btn l3-degel" data-user="'+esc(d.username)+'">🧊 Lever le gel</button></div>':'')
       +'</div>';
   }).join('');
   document.querySelectorAll('.card[data-num]').forEach(function(card){
@@ -95,6 +97,22 @@ function render(disputes){
                 +'Au 3ᵉ refus en 30 jours, l\'ouverture de nouveaux dossiers gèle 7 jours. Confirmer ?'))
         post('/api/admin_dispute_decide.php',{dispute_number:num,decision:'refuse'}).then(function(d){
           if(d && d.gele) alert('Ouverture gelée 7 jours sur ce compte. Le compte, lui, fonctionne normalement.');
+          load();
+        });
+    });
+    // Le gel porte sur le COMPTE, pas sur ce dossier : c'est l'ouverture de
+    // nouveaux dossiers qui est suspendue, et le lever rouvre cette porte à
+    // quelqu'un qui n'a plus aucun secret. Qui lève est pris dans la session,
+    // côté endpoint, et rangé dans `degele_par`.
+    var dg=card.querySelector('.l3-degel');
+    if(dg)dg.addEventListener('click',function(){
+      var u=dg.getAttribute('data-user');
+      if(confirm('Lever le gel sur « '+u+' » ?\n\n'
+                +'Le compte n\'a jamais été bloqué : c\'est l\'ouverture de nouveaux dossiers qui '
+                +'reprend. Le gel s\'était armé sur trois refus en trente jours — le lever remet ce '
+                +'compteur en position d\'armement.'))
+        post('/api/admin_unfreeze.php',{username:u}).then(function(d){
+          if(d && !d.ok) alert(d.message||'Le gel n\'a pas pu être levé.');
           load();
         });
     });
