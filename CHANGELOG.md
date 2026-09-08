@@ -10,6 +10,86 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+## [SelfRecover v0.5.0] — 8 septembre 2026
+
+### SelfRecover — l'ouverture d'un dossier de niveau 3 cesse d'être un oracle gratuit — 8 septembre 2026
+
+En remontant le niveau 3 dans la bibliothèque la veille, `Escalade::ouvrir()` a
+perdu le frein que l'implémentation d'origine posait devant sa route, et rien ne
+l'a remplacé. La méthode répondait donc « aucun compte à ce nom » autant de fois
+qu'on le lui demandait, gratuitement : de quoi dresser la liste des comptes d'un
+service en la parcourant. C'était une régression introduite par la remontée, pas
+un défaut hérité.
+
+**Ce qui n'a pas été fait, et pourquoi.** Aucune formulation ne ferme cette
+porte. Un succès rend un numéro de dossier ; un nom inconnu ne peut pas en rendre
+un. Le niveau 1 s'en sort par un refus unique et le niveau 2 en ne demandant
+aucun identifiant, mais au niveau 3 la distinction **est** la réponse utile.
+Prétendre la taire aurait produit un texte rassurant devant un code inchangé.
+
+Ce qui s'y oppose est donc le coût. `ouvrir()` accepte une adresse
+(`?string $ip = null`, **intercalé avant `$maintenant`** — un appelant tiers en
+positionnel doit passer aux arguments nommés) et pose deux freins, tous deux
+**avant** la recherche du compte — après, le fait d'être freiné aurait à son tour
+trié les comptes existants :
+
+| Frein | Ce qu'il attrape |
+|---|---|
+| par adresse, 10 / heure | l'énumération, quand l'appelant fournit une adresse |
+| par service, 20 / heure | la même, quand il n'y en a pas à fournir |
+
+`$ip` vaut `null` quand l'adresse ne dit rien de l'appelant — derrière un service
+caché, où tout arrive de la même adresse. La passer là-bas ferait d'un frein par
+client un plafond global au seuil du client, plus bas que le plafond de service
+et le masquant ; `null` laisse le plafond de service gouverner seul. Un
+déploiement exposé pose en plus une preuve de travail devant la route, que la
+bibliothèque ne peut pas imposer.
+
+**Il n'y a délibérément pas de frein par compte.** Il aurait fermé l'ouverture à
+un titulaire dès qu'un tiers avait assez sollicité son compte, sans qu'aucun
+dossier n'existe — donc sans que rien n'apparaisse à l'arbitre. Le harcèlement
+d'un compte est déjà borné autrement : le premier dossier tient 24 h, le suivant
+reçoit `deja_ouvert`, et cette collision-là **se compte et se montre**. Un frein
+silencieux aurait remplacé un fait visible par un mur muet.
+
+**Les étiquettes de comptage sont sous HMAC du sel de déploiement.** Les
+compteurs se lisent par `compterEchecsCompte()`, dans une table où les tentatives
+de connexion atterrissent aussi — et un nom de compte soumis y arrive tel quel,
+sans contrôle de forme, depuis une route publique. Avec une étiquette devinable,
+vingt requêtes sur la page de connexion sous le nom `l3:ouvrir:*` fermaient
+l'ouverture de dossier pour tout le service, et ces vingt lignes étaient
+invisibles dans la console d'arbitrage. Mesuré de bout en bout avant d'être
+corrigé. Sous HMAC, viser un compteur suppose le sel, qui vit hors du webroot ;
+la console, elle, reconnaît les lignes de la bibliothèque à la **paire** préfixe
+et adresse nulle, qu'aucune route publique ne peut produire.
+
+**Aucune ligne de traçage ne porte l'adresse de l'appelant.** Les compteurs
+d'ouverture vivent sous leurs propres étiquettes, l'adresse sous forme
+d'empreinte dans l'étiquette. Une ligne qui porterait l'adresse dans sa colonne
+alimenterait tous les autres compteurs par adresse du service — connexion
+ordinaire, niveaux 1 et 2, enrôlement d'appareil : ouvrir des dossiers depuis une
+adresse aurait fermé les quatre voies à qui la partage, et l'échec serait
+redevenu l'arme que la refonte de la veille avait retirée de `trancher()`. Aucun
+nom de compte n'entre dans ces étiquettes non plus — l'ouverture est comptée, pas
+attribuée, et la console d'arbitrage n'a pas à lire qui a été visé.
+
+Les refus qui taisent un état (`compte_inconnu`, `gele`, `deja_ouvert`) portent
+tous le même délai. Auparavant seul le premier attendait, si bien que l'existence
+d'un compte se lisait au chronomètre.
+
+**Deux éléments de schéma morts sont retirés.** `suspicious_fingerprints` — table
+sans lecteur ni écrivain, résidu d'un mécanisme de traçage retiré des signaux de
+récupération le 03/07 — et `login_attempts.level`, dont le commentaire décrivait
+exactement la séparation des compteurs que la bibliothèque obtient désormais par
+une étiquette sous HMAC. Deux mécanismes pour un besoin, dont un jamais branché :
+il en reste un. Les bases existantes gardent une colonne inutilisée, ce qui ne
+coûte rien ; aucune migration ne détruit de données.
+
+`docs/threat-model.md` et les deux whitepapers annonçaient « énumération par bot :
+honeypot + timing + délais forcés » comme une menace traitée. Elle passe à
+partielle, avec ce qui la ferme et ce qui reste ouvert.
+
+
 ### SelfRecover — le niveau 3 remonte dans la bibliothèque, et un refus cesse de détruire — 7 septembre 2026
 
 Le 19 août, la remontée des niveaux 1 et 2 écrivait que le niveau 3 resterait

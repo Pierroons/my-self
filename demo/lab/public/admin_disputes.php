@@ -21,7 +21,7 @@ $csrf = Security::csrfToken(session_token() ?? '');
 render_header('Litiges L3', $account);
 ?>
 <h1>Récupérations assistées <span class="muted" style="font-size:13px">— litiges L3</span></h1>
-<p class="muted" style="max-width:640px">Le faisceau ci-dessous = <strong>des faits bruts</strong>, jamais un score. Ils t'aident à décider ; ils n'ouvrent rien tout seuls. <strong>Accorder</strong> = tu confirmes l'identité, le demandeur re-choisira lui-même son secret (aucun mot de passe transmis). <strong>Refuser</strong> = compte clôturé.</p>
+<p class="muted" style="max-width:640px">Le faisceau ci-dessous = <strong>des faits bruts</strong>, jamais un score. Ils t'aident à décider ; ils n'ouvrent rien tout seuls. <strong>Accorder</strong> = tu confirmes l'identité, le demandeur re-choisira lui-même son secret (aucun mot de passe transmis). <strong>Refuser</strong> = ce demandeur n'a pas convaincu. <strong>Le compte n'est pas touché</strong> : il reste connectable, et son titulaire garde tout. Au troisième refus en trente jours, c'est l'ouverture de nouveaux dossiers qui gèle sept jours — pas le compte.</p>
 <div id="list"><p class="muted">chargement…</p></div>
 
 <script nonce="<?= nonce() ?>">

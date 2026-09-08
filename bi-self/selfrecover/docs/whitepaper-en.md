@@ -161,8 +161,8 @@ The material must be **read** in the browser, never received from the network: m
 - User provides: `username` + `diceware passphrase` (exact match)
 - On success: new password generated, masked by default, shown once
 - Password stays on screen until the user confirms "I've saved it"
-- Rate limit: 3 attempts / 15 minutes per username, 3 blocks → ejected to L2
-- Anti-bot: honeypot field (hidden in CSS) + timing check (< 2 seconds = bot)
+- Rate limit: 5 failures / 15 minutes per username and 12 per address (defaults, set by the integrator)
+- Anti-bot: out of the library's reach — a honeypot field and a form-timing check live on the page
 
 ### 5.2 Level 2 — Lost Passphrase (identifier-less 2FA)
 
@@ -173,7 +173,7 @@ L2 is a **real 2FA** — possession **and** knowledge — **with no identifier t
 
 The server verifies **both** (Argon2id) and returns a **generic error** that never reveals which one failed. On success, the user picks their new password and the code is marked used. An optional variant — the **"this device" factor** — provides a third L2 path (see §5.4).
 
-After 3 L2 failures (sliding window), automatic escalation to L3. All attempts are tracked.
+There is no automatic escalation to L3: level 2 asks for no identifier, so there is nothing to count per account. Its only brake is the per-address counter. Opening a dispute is the person's own decision.
 
 ### 5.3 Level 3 — All Access Lost
 
@@ -182,11 +182,11 @@ After 3 L2 failures (sliding window), automatic escalation to L3. All attempts a
 - A dispute with a **non-guessable** number (`LIT-<random>`) is opened. If a dispute is already open for that account, the number is **not re-disclosed** and the concurrent attempt is flagged to the admin ("multi-requester")
 - The user answers a few **context questions** (account creation year, last-login period, usage frequency) — **no secret is requested**
 - The server assembles a **bundle of signals** presented to the administrator:
-  - **Passive signals** (not falsifiable by the user): IP already known to the account, browser fingerprint already seen
+  - The bundle carries **no passive signal**: no address, no browser fingerprint. It is entirely declarative, checked against what the server already records, and it says so to the arbitrator rather than letting them assume otherwise
   - **Declarative signals** (what the user claims, compared against reality): creation year, last-login month, usage frequency
 - **No numeric score is computed.** The signals are **raw facts**: they **never** unlock the account automatically, they only help a **human administrator** decide in the chat
 - Cooldown: 1 hour between submissions
-- The tracking code gates access to the chat thread and to the reset; it expires with the dispute (24h TTL) and is single-use
+- The tracking code gates access to the chat thread and to the reset, and is single-use. It expires with the dispute after 24h — **unless the dispute has been accepted**: from the arbitrator's decision onwards the clock stops, so that it cannot undo their work before the holder comes back
 
 ### 5.4 L2 possession factors — recovery codes & the "this device" factor
 
@@ -206,12 +206,12 @@ L2 always combines **knowledge** (the memorized word) and **possession**. Two po
 
 ## 6. Dispute System & Admin Interface
 
-Every failed recovery session above L1 opens a dispute (`LIT-XXXX`) visible in the admin dashboard.
+A dispute (`LIT-XXXX`) opens when the person asks for one, never automatically, and becomes visible in the arbitration console once they have filed their answers.
 
 - Each dispute has a **non-guessable** number, the bundle of signals (raw facts, never a score), attempt and refusal counters, a concurrent-attempt counter ("multi-requester"), and a status (`open`, `awaiting_admin`, `accepted`, `refused`, `closed`)
 - The admin finds open disputes in their dashboard
 - A bidirectional chat channel is available between admin and user, with access gated by the tracking code (polling, not real-time WebSocket to keep it simple)
-- Resolved disputes are auto-purged after 24 hours to keep the database clean
+- `purger()` erases expired disputes — neither the refused ones, on which the freeze is counted, nor the accepted ones, which a holder may still come back to consume. ⚠️ The library exposes the method; **it has no clock**. Calling it is the deployment's job, from a scheduled task.
 
 ### 6.1 Dispute Closure — Admin Decision
 
@@ -248,12 +248,16 @@ SelfRecover distinguishes three roles: **SU → Admin → User**. The administra
 
 ## 7. Anti-Abuse Detection
 
-- **Honeypot**: hidden CSS field — if filled, it's a bot
-- **Timing**: form submitted in less than 2 seconds → bot
-- **Suspicious fingerprints**: 5 attempts from the same browser fingerprint (any identifier) → flagged
-- **Flagged + linked to a known user**: admin notified, user contacted
-- **Flagged + unknown**: IP blocked 24h
-- **Cross-account patterns**: detected at L2/L3 via fingerprint tracking
+**What the library enforces**
+
+- **Counters**: per username and per address at L1, per address and per service at L3
+- **Forced delay** on every refusal that hides a state
+- **Single refusal message**, so nothing sorts the accounts that exist
+
+**What the integrator owns**, because it needs routes, pages or a browser the
+library does not have: a honeypot field, a form-timing check, a proof of work in
+front of the dispute-opening route, browser-fingerprint correlation, and any
+notification or blocking policy built on top.
 
 ---
 
@@ -283,7 +287,7 @@ SR-SYS-SALT-ERR  System error, salt retrieval failed
 
 ## 9. Protection Against Active Attacks
 
-If a legitimate user logs in normally and the server detects suspicious activity (failed L1 attempts, open disputes, suspicious fingerprints linked to their account), a modal is shown:
+If a legitimate user logs in normally and the server detects suspicious activity (failed L1 attempts, open disputes), a modal is shown:
 
 > **Security check**
 > An unusual activity has been detected on your account.
@@ -293,10 +297,11 @@ If a legitimate user logs in normally and the server detects suspicious activity
 - **Yes** → silent cleanup of failed attempts and disputes, user continues normally
 - **No** → enhanced protection activated behind the scenes:
   - New password generated and shown to user
-  - All existing JWT tokens invalidated
-  - 7-day protection mode enabled (L2 recovery locked)
-  - Suspicious fingerprints blocked 24h
-  - Admin notified via push
+  - Sessions revoked: whoever held the account is ejected
+  - Admin notified
+
+What follows belongs to the application rather than the protocol, because it
+needs sessions, roles and a notification channel the library does not have.
 
 The user sees a reassuring "Your account is now secured" message — not a technical log. The admin handles the investigation behind the scenes.
 
@@ -311,7 +316,7 @@ The user sees a reassuring "Your account is now secured" message — not a techn
 - **SMTP provider failures** — no SMTP dependency
 - **Third-party trust** — only the site and the user are involved
 - **Rate-limited brute force** — per-username limits + L2/L3 escalation
-- **Bot enumeration** — honeypot + timing + forced delays
+- **Bot enumeration** — *partly*. Closed at levels 1 and 2: a single generic refusal at the first, no identifier asked at the second. Open at level 3, where the useful answer IS the distinction — a success returns a dispute number, an unknown name cannot. What opposes it is cost: two brakes applied before the account lookup (per address, per service), a delay on every refusal that hides a state, and a proof of work in front of the route — which the library cannot impose, having no routes
 - **Social reputation laundering** — public identifier locked after registration, cannot be changed by the user
 
 ### 10.2 CRITICAL — Server Root Access (sudo)

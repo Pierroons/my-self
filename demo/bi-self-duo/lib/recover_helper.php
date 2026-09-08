@@ -60,7 +60,7 @@ final class RecoverHelper {
     }
 
     /**
-     * Génère un password random (16 chars alphanum + quelques symboles mémorisables).
+     * Génère un password random (16 caractères, alphabet a-zA-Z2-9 sans les ambigus (l 1 I O 0), aucun symbole).
      */
     /**
      * Mot de passe temporaire rendu à l'utilisateur après une récupération.
