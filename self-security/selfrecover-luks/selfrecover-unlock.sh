@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# selfrecover-unlock.sh — déverrouillage de SECOURS d'un volume LUKS via le mot de récupération
+# selfrecover-unlock.sh — déverrouillage de SECOURS d'un volume LUKS via la passphrase Recover-LUKS
 # SelfRecover (sans email ni tiers). Utilisé en fallback quand le déverrouillage automatique
 # (quorum distribué) est indisponible.
 #
@@ -29,7 +29,7 @@ if [ -e "/dev/mapper/$MAP" ]; then echo "/dev/mapper/$MAP déjà ouvert — rien
 # --- Bandeau explicite + confirmation (anti-lancement accidentel) ---
 echo "=== SelfRecover — déverrouillage de SECOURS ==="
 echo "Cible  : $DEV  →  /dev/mapper/$MAP"
-echo "Action : ouvre ce volume chiffré à partir de ton mot de récupération."
+echo "Action : ouvre ce volume chiffré à partir de ta passphrase Recover-LUKS."
 echo "Ctrl+C à tout moment pour annuler."
 echo
 read -rp "Confirmer le déverrouillage de ce volume ? [o/N] " REP
@@ -42,7 +42,7 @@ esac
 # mot -> Argon2id(label=disk) -> key-file -> luksOpen. Le mot ne touche jamais le disque.
 RUN_AS="${SUDO_USER:-$USER}"
 for (( i=1; i<=MAX_ESSAIS; i++ )); do
-  read -rsp "Mot de récupération SelfRecover (essai $i/$MAX_ESSAIS) : " WORD; echo
+  read -rsp "Passphrase Recover-LUKS (essai $i/$MAX_ESSAIS) : " WORD; echo
   # printf et non --word : en argv la passphrase serait lisible dans /proc/<pid>/cmdline.
   # Sans ce printf, --stdin lit le terminal : le script attend une saisie alors que
   # l'echo vient d'etre retabli par la fin du read -rs, et la passphrase s'affiche.

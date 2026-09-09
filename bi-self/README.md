@@ -61,7 +61,7 @@ One plus one equals a self-governing community. Not three — a qualitatively di
 
 ## Status
 
-SelfRecover ships as a reference implementation with a self-audited demo (no real-world production deployment yet). SelfModerate has a complete whitepaper defining the protocol; the reference implementation lives in [`selfmoderate/src/`](./selfmoderate/src/) and the lab uses it. Two protocol mechanisms remain to be written, marked in its README.
+SelfRecover ships as a reference implementation and **runs in production** — as the authentication backend of a messaging service, which reuses the SelfRecover account store as-is. Its demo is self-audited; no external audit has been run. SelfModerate has a complete whitepaper defining the protocol; the reference implementation lives in [`selfmoderate/src/`](./selfmoderate/src/) and the lab uses it. Two protocol mechanisms remain to be written, marked in its README.
 
 The two modules are designed to interlock — when both are live, a community can bootstrap itself and govern itself without any central service.
 

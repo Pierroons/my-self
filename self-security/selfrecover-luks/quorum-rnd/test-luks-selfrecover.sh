@@ -12,7 +12,7 @@ DERIVE=(sudo -u "$RUN_AS" python3 "$HERE/../selfrecover_derive.py")
 
 IMG=/tmp/luks-selfrecover-test.img
 MAP=selfrecover_test
-WORD="correct horse battery staple"   # mot de récupération (à garder FORT en vrai)
+WORD="correct horse battery staple"   # passphrase de test (diceware FORTE en vrai)
 INIT="passphrase-init-temporaire"     # slot 0 (jetable, juste pour le test)
 TMP="$(mktemp -d)"
 

@@ -5,7 +5,7 @@ SelfKeyGuard LUKS unlock — quorum réseau avec FALLBACK SelfRecover.
 Flow :
   1. Tente le déverrouillage par QUORUM réseau (témoins) -> clé maître Shamir.
   2. Si le quorum échoue (témoin down, réseau KO) -> bascule SelfRecover :
-     prompt du mot de récupération -> Argon2id(label=disk) -> clé du slot SelfRecover.
+     prompt de la passphrase Recover-LUKS -> Argon2id(label=disk) -> clé du slot.
   3. luksOpen via key-file en tmpfs (RAM) -> mount -> shred de la clé.
 
 Le slot quorum n'est JAMAIS retiré : les deux voies ouvrent le même volume (slots LUKS distincts).
@@ -123,7 +123,7 @@ def get_key_via_selfrecover() -> bytes:
     salt = SALT_PATH.read_text().strip() if SALT_PATH.exists() else os.environ.get("SELFRECOVER_SALT", "")
     if not salt:
         raise SystemExit("Sel SelfRecover manquant (fichier selfrecover_salt ou env SELFRECOVER_SALT).")
-    word = getpass.getpass("  Mot de récupération SelfRecover : ")
+    word = getpass.getpass("  Passphrase Recover-LUKS : ")
     return selfrecover_derive(word, salt, "disk")
 
 
@@ -151,7 +151,7 @@ def main():
         raise
     except Exception as e:
         print(f"[quorum] ⚠ indisponible : {e}", file=sys.stderr)
-        print("[fallback] → SelfRecover (mot de récupération)\n", file=sys.stderr)
+        print("[fallback] → SelfRecover (passphrase Recover-LUKS)\n", file=sys.stderr)
         key = get_key_via_selfrecover()
         source = "SelfRecover (mot de récup)"
     print(f"      clé obtenue via {source} ({len(key) * 8} bits)\n")

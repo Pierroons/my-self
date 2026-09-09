@@ -37,6 +37,67 @@ if morts:
 print("  ✓ tous les liens résolvent")
 PY
 
+echo "▸ Chemins cités — ancres Markdown"
+# 🔑 **Le contrôle au-dessus ne regardait AUCUN lien ancré.** Sa classe `[^)#]`
+# exclut le `#` : `](#quickstart)` et `](guide.md#section)` sortaient de son
+# périmètre depuis toujours. Quatre badges des README SelfRecover pointaient un
+# fragment qu'aucun titre ne produit, et le script rendait vert. C'est la forme
+# la plus discrète du faux vert : un contrôle qui passe parce qu'il ne regarde pas.
+#
+# ⚠️ L'ordre des opérations de `github-slugger` n'est pas intuitif et un seul
+# écart fabrique des faux positifs : `trim()` s'applique AVANT la suppression de
+# la ponctuation, jamais après. `## Facteur « cet appareil »` produit donc
+# `facteur--cet-appareil-`, avec son tiret final — le retirer condamnait un lien
+# parfaitement valide, et un garde-fou qui crie à tort finit désactivé.
+python3 - <<'PY' || echec=1
+import re, pathlib, subprocess, sys, collections
+
+def slug(titre):
+    t = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', titre)   # le TEXTE du lien, pas sa cible
+    t = re.sub(r'[`*_~]', '', t).lower().strip()
+    t = re.sub(r'[^\w\s-]', '', t, flags=re.UNICODE)
+    return t.replace(' ', '-')
+
+def fragments(p):
+    vus, out = collections.Counter(), set()
+    txt = p.read_text(errors="ignore")
+    for ligne in txt.splitlines():
+        m = re.match(r'\s{0,3}#{1,6}\s+(.*)', ligne)
+        if not m: continue
+        s = slug(m.group(1))
+        if not s: continue
+        # GitHub suffixe les doublons : -1, -2, …
+        out.add(s if not vus[s] else f"{s}-{vus[s]}")
+        vus[s] += 1
+    for m in re.finditer(r'<a\s+(?:id|name)=["\']([^"\']+)["\']', txt):
+        out.add(m.group(1).lower())
+    return out
+
+morts, vivantes, cache = [], 0, {}
+for f in subprocess.run(["git","ls-files","*.md"],capture_output=True,text=True).stdout.split():
+    p = pathlib.Path(f)
+    for m in re.finditer(r'\]\(([^)\s]+)\)', p.read_text(errors="ignore")):
+        cible = m.group(1)
+        if cible.startswith(("http", "mailto", "#!")) or "#" not in cible: continue
+        chemin, _, frag = cible.partition("#")
+        if not frag: continue
+        dest = p if chemin == "" else (p.parent / chemin)
+        if not dest.exists():
+            morts.append(f"{f} → {cible}  (fichier absent)"); continue
+        if dest.suffix != ".md": continue
+        if dest not in cache: cache[dest] = fragments(dest)
+        if frag.lower() in cache[dest]: vivantes += 1
+        else: morts.append(f"{f} → {cible}")
+
+# Le contre-témoin fait partie du verdict : sans lui, « 0 mort » ne distingue pas
+# « tout résout » de « le motif n'a rien trouvé à regarder ».
+if morts:
+    print(f"  ✗ {len(morts)} ancre(s) morte(s) sur {len(morts) + vivantes} vérifiée(s)")
+    for x in morts: print("     " + x)
+    sys.exit(1)
+print(f"  ✓ les {vivantes} ancres vérifiées résolvent")
+PY
+
 echo "▸ Chemins cités — règles .gitignore"
 # Une règle peut légitimement viser ce qui n'existe pas encore (/vendor/, /tmp/).
 # Le signal n'est donc pas « la cible manque » mais « la cible manque ET un
