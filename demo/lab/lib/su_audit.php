@@ -30,6 +30,13 @@ final class SuAudit
     public const ACTION_QUARANTINE      = 'quarantine-ghost';
     public const ACTION_RESET_SHELL     = 'reset-shell';
     public const ACTION_CHANGE_PASS     = 'change-passphrase';
+    /**
+     * Constat, pas mutation : l'empreinte du secret en place est portée au
+     * journal sans que le secret change. Sans cette action, un secret posé hors
+     * de `change-passphrase` — à la main, par restauration — laisse `verify-log`
+     * dans un désaccord permanent, et une alarme qui démarre rouge s'ignore.
+     */
+    public const ACTION_RECORD_SEAL     = 'record-seal';
     public const ACTION_BACKUP_LOG      = 'backup-log';
 
     /**
@@ -337,5 +344,52 @@ final class SuAudit
         }
 
         return ['ok' => true, 'count' => count($entries)];
+    }
+
+    /**
+     * L'empreinte que le journal retient d'un secret SU.
+     *
+     * ⚠️ **HMAC et non SHA-256 nu.** Le secret attendu n'est pas toujours un hash
+     * Argon2id : `su_expected_secret()` accepte aussi une valeur en clair, et un
+     * condensat non salé d'un secret mémorisé se casse hors ligne à coût nul par
+     * essai. La clé du journal fait ici office de poivre — elle ne quitte pas la
+     * machine, là où le journal, lui, part en sauvegarde hors site.
+     */
+    public static function empreinteDe(string $secret): string
+    {
+        return hash_hmac('sha256', $secret, self::secret());
+    }
+
+    /**
+     * La dernière empreinte de secret SU que le journal ait vue poser, ou `null`
+     * si aucune entrée n'en porte.
+     *
+     * 🔑 `null` ne veut pas dire « conforme ». Les entrées écrites avant que ce
+     * champ existe n'en portent aucune, et un secret posé à la main n'a jamais
+     * traversé le journal : dans les deux cas le journal ne peut rien affirmer,
+     * et le dire est le seul verdict honnête. `verify()` contrôle la chaîne, pas
+     * ce que la chaîne raconte — ce sont deux questions distinctes.
+     *
+     * @return array{empreinte: string, ts_paris: string, action: string}|null
+     */
+    public static function dernierSceau(): ?array
+    {
+        $vu = null;
+        foreach (self::read() as $e) {
+            $action = (string) ($e['action'] ?? '');
+            if ($action !== self::ACTION_CHANGE_PASS && $action !== self::ACTION_RECORD_SEAL) {
+                continue;
+            }
+            $h = $e['extra']['empreinte'] ?? null;
+            if (is_string($h) && $h !== '') {
+                $vu = [
+                    'empreinte' => $h,
+                    'ts_paris' => (string) ($e['ts_paris'] ?? '?'),
+                    'action'   => $action,
+                ];
+            }
+        }
+
+        return $vu;
     }
 }

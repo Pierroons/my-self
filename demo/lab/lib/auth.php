@@ -21,6 +21,7 @@ use Pierroons\SelfRecover\Recovery\Recovery;
 use PDO;
 
 require_once __DIR__ . '/diceware/wordlist.php';
+require_once __DIR__ . '/secret_instance.php';
 
 final class Auth
 {
@@ -86,30 +87,17 @@ final class Auth
      * absent, `file_put_contents` en échec, `file_get_contents` rendant
      * `false`, sel vide, et deux avertissements PHP que rien ne lit. Observé
      * le 27/08/2026 en lançant la sonde d'équivalence.
+     *
+     * La garde a depuis quitté cette méthode pour `SecretInstance` : elle était
+     * juste ici et fausse chez ses deux jumeaux, qui portaient encore le défaut
+     * du 27/08 (mesuré le 09/09/2026 — le secret CSRF tombait à une constante).
+     * Le chemin reste surchargeable : un déploiement peut vouloir ce sel hors de
+     * l'arborescence servie, et la sonde l'éprouve sans toucher au sel de
+     * l'instance, dont un remplacement rendrait introuvables tous les codes émis.
      */
     public static function siteSalt(): string
     {
-        // Le chemin est surchargeable : un déploiement peut vouloir ce sel hors
-        // de l'arborescence servie, et la sonde l'éprouve sans toucher au sel
-        // de l'instance — dont un remplacement rendrait introuvables tous les
-        // codes déjà émis.
-        $f = getenv('LAB_SITESALT_PATH') ?: __DIR__ . '/../data/.sitesalt';
-        if (!file_exists($f)) {
-            $dossier = dirname($f);
-            if (!is_dir($dossier) && !@mkdir($dossier, 0700, true) && !is_dir($dossier)) {
-                throw new \RuntimeException("Sel de site : {$dossier} introuvable et non créable.");
-            }
-            if (@file_put_contents($f, bin2hex(random_bytes(32))) === false) {
-                throw new \RuntimeException("Sel de site : écriture impossible dans {$f}.");
-            }
-            @chmod($f, 0600);
-        }
-        $sel = trim((string) @file_get_contents($f));
-        if (strlen($sel) < 32) {
-            throw new \RuntimeException("Sel de site vide ou tronqué ({$f}) — refus de servir.");
-        }
-
-        return $sel;
+        return SecretInstance::lire('.sitesalt', 32, 32, 'LAB_SITESALT_PATH');
     }
 
     /** Mot de passe temporaire rendu après une récupération. */
@@ -304,7 +292,7 @@ final class Auth
 
         // R9-06 : réencodage à la connexion réussie — un hash produit avec des paramètres
         // Argon2id périmés est refait avec le profil courant, sans que l'utilisateur agisse.
-        if (password_needs_rehash($acc['pw_hash'], PASSWORD_ARGON2ID, Hashing::argon2Options())) {
+        if (Hashing::needsRehash($acc['pw_hash'])) {
             $pdo->prepare('UPDATE accounts SET pw_hash = ? WHERE id = ?')
                 ->execute([Hashing::hash($password), (int) $acc['id']]);
         }

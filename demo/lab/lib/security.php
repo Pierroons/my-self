@@ -6,12 +6,14 @@
  * - Protection CSRF (token lié à la session, sans stockage : HMAC du token de session)
  * - Helpers de validation
  *
- * Le secret CSRF est dérivé de la blind key serveur (déjà hors webroot).
+ * Le secret CSRF est un secret d'instance à lui seul (`.serversecret`, hors webroot).
  */
 
 declare(strict_types=1);
 
 namespace Pierroons\MySelfLab;
+
+require_once __DIR__ . '/secret_instance.php';
 
 final class Security
 {
@@ -58,15 +60,24 @@ final class Security
         }
     }
 
-    /** Secret serveur pour signer les tokens CSRF (réutilise la blind key). */
+    /**
+     * Secret serveur pour signer les tokens CSRF.
+     *
+     * ⚠️ **Ce secret était le seul du lab dont l'absence ne cassait rien**, et c'est
+     * ce qui le rendait dangereux : un sel de site vide fait échouer la recherche des
+     * codes, une clé de coffre vide fait lever la dérivation, mais `hash_hmac` accepte
+     * n'importe quelle clé — y compris la chaîne vide. L'application continuait donc
+     * de servir des jetons que quiconque lit le dépôt pouvait recalculer. Aucun garde
+     * ne pouvait vivre en aval : il est dans `SecretInstance`, qui lève plutôt que de
+     * rendre un secret court.
+     *
+     * Il ne partage plus `.blindkey` avec le chiffrement des coffres : un même
+     * secret pour signer et pour chiffrer mélange deux contextes, et rien
+     * n'obligeait à le faire.
+     */
     private static function csrfSecret(): string
     {
-        $f = __DIR__ . '/../data/.blindkey';
-        if (!file_exists($f)) {
-            file_put_contents($f, bin2hex(random_bytes(48)));
-            @chmod($f, 0600);
-        }
-        return 'csrf|' . trim((string) file_get_contents($f));
+        return 'csrf|' . SecretInstance::lire('.serversecret', 48, 32);
     }
 
     /** Token CSRF déterministe lié au token de session (pas de stockage requis). */
