@@ -41,6 +41,19 @@
 
 declare(strict_types=1);
 
+// Le profil Argon2id vient de la bibliothèque, jamais d'une valeur recopiée ici :
+// `check-profil-unique.sh` refuse un second porteur, et il a raison. L'autoload sans
+// Composer suffit, comme pour la console SU.
+foreach ([
+    __DIR__ . '/../vendor/autoload.php',
+    __DIR__ . '/../../../bi-self/selfrecover/src/autoload.php',
+] as $chemin) {
+    if (is_file($chemin)) {
+        require_once $chemin;
+        break;
+    }
+}
+
 require_once __DIR__ . '/../lib/secret_instance.php';
 require_once __DIR__ . '/../lib/su_audit.php';
 
@@ -347,10 +360,14 @@ verifier(
     SuAudit::dernierSceau() === null
 );
 
-$empreinte = SuAudit::empreinteDe('$argon2id$v=19$m=65536,t=4,p=2$exemple');
+// Une valeur quelconque suffit : c'est l'empreinte qu'on éprouve, pas le secret.
+// Écrire ici un vrai hash Argon2id ferait de ce banc un second porteur du profil,
+// ce que `check-profil-unique.sh` refuse à juste titre.
+$secretFictif = 'secret-fictif-du-banc-des-secrets-d-instance';
+$empreinte    = SuAudit::empreinteDe($secretFictif);
 verifier(
     'l\'empreinte est un HMAC, pas un condensat nu du secret',
-    $empreinte !== hash('sha256', '$argon2id$v=19$m=65536,t=4,p=2$exemple')
+    $empreinte !== hash('sha256', $secretFictif)
 );
 
 SuAudit::append(SuAudit::ACTION_CHANGE_PASS, 'SU', ['store' => 'su-secret', 'empreinte' => $empreinte]);
@@ -373,9 +390,9 @@ section('6. La console distingue trois issues par son CODE DE SORTIE, pas par du
 $su   = $bac . '/su';
 mkdir($su, 0700, true);
 $pass = 'correct cheval batterie agrafe';
-file_put_contents($su . '/su-secret', password_hash($pass, PASSWORD_ARGON2ID, [
-    'memory_cost' => 65536, 'time_cost' => 4, 'threads' => 2,
-]));
+// Le profil vient de la bibliothèque : deux valeurs pour une même règle, c'est la
+// divergence que le secret SU a mis trois semaines à révéler.
+file_put_contents($su . '/su-secret', password_hash($pass, PASSWORD_ARGON2ID, Auth::argon2Options()));
 $envSu = [
     'SELFRECOVER_STATE_DIR'       => $su,
     'SELFRECOVER_SU_AUDIT_SECRET' => 'banc-console',
@@ -395,9 +412,10 @@ verifier('après le sceau, verify-log sort à 0', $r['code'] === 0, 'code ' . $r
 verifier('et il dit à quel sceau le secret est conforme', str_contains($r['texte'], 'conforme au sceau'));
 
 $codeAvant = $r['code'];
-file_put_contents($su . '/su-secret', password_hash('un-tout-autre-secret-du-banc', PASSWORD_ARGON2ID, [
-    'memory_cost' => 65536, 'time_cost' => 4, 'threads' => 2,
-]));
+file_put_contents(
+    $su . '/su-secret',
+    password_hash('un-tout-autre-secret-du-banc', PASSWORD_ARGON2ID, Auth::argon2Options())
+);
 $envAutre = ['SELFRECOVER_SU_SECRET_INPUT' => 'un-tout-autre-secret-du-banc'] + $envSu;
 $r = console('verify-log', $envAutre);
 verifier('un secret remplacé hors journal fait échouer verify-log', $r['code'] === 5, 'code ' . $r['code']);
