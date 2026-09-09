@@ -242,6 +242,22 @@ jobs:
       - name: Garde-fou — journal et secret du super-utilisateur
         run: php demo/lab/tests/sanity_su.php
 
+      - name: Garde-fou — les secrets d'instance refusent au lieu de servir
+        run: |
+          sortie=$(php demo/lab/tests/sanity_secrets_instance.php)
+          echo "$sortie"
+          # ⚠️ Deux des six sections ne s'éprouvent pas sous root : un répertoire en
+          # 0500 ne lui ferme rien, et le banc les saute EN LE DISANT — mais il sort
+          # quand même à zéro, puisque rien n'a échoué. Ces deux lignes sont donc le
+          # seul témoin qui distingue « tout a été mesuré » de « la moitié l'a été ».
+          # Le premier compteur dit ce qu'il compte : trois LECTURES DE SOURCE, qui
+          # établissent que les trois fonctions délèguent — pas trois secrets écrits
+          # sur un disque fermé, ce que le banc avoue ne pas faire.
+          echo "$sortie" | grep -qE "▸ délégations contrôlées sur le source : 3$" \
+            || { echo "::error::le banc n'a pas contrôlé les trois délégations"; exit 1; }
+          echo "$sortie" | grep -qE "▸ sections sautées : 0$" \
+            || { echo "::error::le banc a sauté une section — verdict partiel"; exit 1; }
+
       # ── Suites de module ───────────────────────────────────────────────────
       - name: SelfDataGuard — sanity
         run: |

@@ -21,24 +21,76 @@ final class Db
     public static function path(): string
     {
         $override = getenv('LAB_DB_PATH');
-        if ($override) {
-            $dir = dirname($override);
-            if (!is_dir($dir)) {
-                mkdir($dir, 0750, true);
+
+        return $override ? $override : __DIR__ . '/../data/lab.db';
+    }
+
+    /**
+     * SQLite rend « unable to open database file » pour un disque plein comme pour
+     * un répertoire où l'utilisateur courant n'écrit pas — et le second cas est la
+     * règle dès que la console et le site tournent sous deux identités. La trace
+     * PDO ne nomme ni l'utilisateur, ni le droit manquant, ni la prise qui déroute
+     * la base : elle a coûté une nuit à qui la lisait le 09/09/2026.
+     */
+    private static function exigerAcces(string $chemin): void
+    {
+        $dossier = dirname($chemin);
+
+        if (file_exists($chemin)) {
+            if (!is_readable($chemin) || !is_writable($chemin)) {
+                throw new \RuntimeException(
+                    "Base du lab présente mais fermée à « " . self::utilisateur() . " » : {$chemin}\n"
+                    . '   → ouvre les droits sur ce fichier, ou pose LAB_DB_PATH ailleurs.'
+                );
             }
-            return $override;
+            // 🔑 Le fichier ne suffit pas. SQLite pose `lab.db-journal` (ou `-wal`)
+            // À CÔTÉ de la base à chaque transaction — mesuré. Un répertoire fermé
+            // laisse donc l'ouverture réussir et le premier INSERT échouer sur la
+            // `PDOException` nue que cette méthode existe pour ne plus jamais rendre.
+            if (!is_writable($dossier)) {
+                throw new \RuntimeException(
+                    "Base du lab lisible mais {$dossier} n'est pas inscriptible par « "
+                    . self::utilisateur() . " » — SQLite y écrit son journal à chaque transaction.\n"
+                    . '   → ouvre les droits sur ce dossier, ou pose LAB_DB_PATH ailleurs.'
+                );
+            }
+
+            return;
         }
-        $dir = __DIR__ . '/../data';
-        if (!is_dir($dir)) {
-            mkdir($dir, 0750, true);
+
+        if (!is_dir($dossier) && !@mkdir($dossier, 0750, true) && !is_dir($dossier)) {
+            throw new \RuntimeException(
+                "Base du lab : {$dossier} introuvable et non créable par « " . self::utilisateur() . " ».\n"
+                . '   → pose LAB_DB_PATH sur un dossier accessible à cet utilisateur.'
+            );
         }
-        return $dir . '/lab.db';
+        if (!is_writable($dossier)) {
+            throw new \RuntimeException(
+                "Base du lab absente, et {$dossier} n'est pas inscriptible par « " . self::utilisateur() . " ».\n"
+                . '   → pose LAB_DB_PATH sur un dossier où cet utilisateur écrit.'
+            );
+        }
+    }
+
+    /** Le nom de l'utilisateur courant, pour que le message dise à QUI l'accès manque. */
+    private static function utilisateur(): string
+    {
+        if (function_exists('posix_geteuid') && function_exists('posix_getpwuid')) {
+            $u = posix_getpwuid(posix_geteuid());
+            if (is_array($u) && isset($u['name'])) {
+                return (string) $u['name'];
+            }
+        }
+
+        return get_current_user() ?: '?';
     }
 
     public static function pdo(): PDO
     {
         if (self::$pdo === null) {
-            self::$pdo = new PDO('sqlite:' . self::path());
+            $chemin = self::path();
+            self::exigerAcces($chemin);
+            self::$pdo = new PDO('sqlite:' . $chemin);
             self::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             self::$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
             self::$pdo->exec('PRAGMA foreign_keys = ON');

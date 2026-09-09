@@ -3,17 +3,17 @@
 /**
  * Contrôle du hash factice qui égalise les temps de réponse.
  *
- * 🔑 `Auth::DUMMY_HASH` (`lib/auth.php:37`) est un littéral figé, écrit six
- * lignes sous le tableau `ARGON2` dont il doit reproduire le coût. Rien dans le
- * langage ne relie les deux : ce sont deux syntaxes différentes pour les mêmes
- * nombres, et une relecture ne montre pas leur divergence.
+ * 🔑 `Hashing::DUMMY_HASH` est un littéral figé, écrit dans le même fichier que
+ * le tableau `ARGON2` dont il doit reproduire le coût. Rien dans le langage ne
+ * relie les deux : ce sont deux syntaxes différentes pour les mêmes nombres, et
+ * une relecture ne montre pas leur divergence.
  *
  * ⚠️ Le jour où le profil est révisé — `memory_cost` doublé, par exemple — les
  * vrais hachages coûtent deux fois plus, le factice reste au tarif ancien, et
  * l'écart de temps que ce hash existe pour supprimer réapparaît sur tous les
  * chemins d'authentification à la fois. Aucun test ne rougirait.
  *
- * Ce fichier est le jumeau de `bi-self/demo-backend/tests/sanity_timing.php`.
+ * Ce fichier est le jumeau de `demo/bi-self-duo/tests/sanity_timing.php`.
  * Les deux modules gardent chacun leur constante — `AGENTS.md` fait du précédent
  * de module l'autorité, et leurs cycles de déploiement sont séparés. Mais si
  * chaque module porte sa constante, chaque module porte sa garantie : le lab

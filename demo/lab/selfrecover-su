@@ -82,6 +82,34 @@ function su_expected_secret(): ?string
 }
 
 /**
+ * Empreinte du secret attendu à cet instant, et d'où il vient.
+ *
+ * ⚠️ **Pèse le secret, pas le fichier.** Une installation qui pose
+ * `SELFRECOVER_SU_SECRET` n'a pas de fichier ; peser le fichier y rendait `null`
+ * pour toujours, donc un `verify-log` qui avertit à chaque exécution et un
+ * `record-seal` qui refuse — une alarme qu'aucun geste n'éteint s'ignore, ce qui
+ * est exactement ce que ce mécanisme cherche à éviter.
+ *
+ * `null` uniquement quand il n'y a aucun secret configuré : là, il n'y a rien à
+ * comparer.
+ *
+ * @return array{empreinte: string, source: string}|null
+ */
+function su_empreinte_secret(): ?array
+{
+    $attendu = su_expected_secret();
+    if ($attendu === null) {
+        return null;
+    }
+    $f      = su_secret_path();
+    $source = (is_file($f) && trim((string) @file_get_contents($f)) !== '')
+        ? basename($f)
+        : 'SELFRECOVER_SU_SECRET';
+
+    return ['empreinte' => SuAudit::empreinteDe($attendu), 'source' => $source];
+}
+
+/**
  * @return string la passphrase en clair — nécessaire pour dériver la clé de
  *                sauvegarde, à effacer dès que le dérivé est obtenu.
  */
@@ -101,6 +129,31 @@ function su_authenticate(): string
         : hash_equals((string) $expected, (string) $given);
     if (!$ok) {
         su_fail('Secret SU invalide.', 3);
+    }
+
+    // 🔑 On le dit, on ne le réécrit pas. Un hash rangé en base voit son profil
+    // comparé à chaque connexion réussie ; ce secret-là vit seul dans un fichier
+    // et personne ne lui posait la question — il est resté trois semaines en
+    // `p=1` quand la bibliothèque déclarait `p=2`. Reposer le secret reste un
+    // geste humain : `change-passphrase` le fait, et il le journalise.
+    if ($isHash) {
+        // Les trois réponses de `su_profil_perime()` restent trois jusqu'ici. Taire
+        // le `null` rendrait le même silence que « conforme » — sur une console
+        // déployée sans la bibliothèque, l'opérateur en conclurait que son profil
+        // est à jour, ce qui est la situation d'origine sous une nouvelle forme.
+        $perime = su_profil_perime((string) $expected);
+        if ($perime === true) {
+            fwrite(
+                STDERR,
+                "⚠️  Le secret SU suit un profil Argon2id périmé — relance « change-passphrase ».\n"
+            );
+        } elseif ($perime === null) {
+            fwrite(
+                STDERR,
+                "⚠️  Profil du secret SU NON VÉRIFIÉ : bibliothèque SelfRecover introuvable"
+                . " depuis cette console.\n"
+            );
+        }
     }
 
     return (string) $given;
@@ -202,7 +255,7 @@ function su_backup_key_legacy(string $passphrase): string
  * paramètres DANS l'empreinte stockée. Un secret posé avant ce correctif
  * continue donc de s'authentifier ; seul un `change-passphrase` le réécrit.
  */
-function su_argon2_options(): array
+function su_classe_hachage(): ?string
 {
     $classe = 'Pierroons\\SelfRecover\\Crypto\\Hashing';
     if (!class_exists($classe)) {
@@ -218,7 +271,14 @@ function su_argon2_options(): array
             }
         }
     }
-    if (!class_exists($classe)) {
+
+    return class_exists($classe) ? $classe : null;
+}
+
+function su_argon2_options(): array
+{
+    $classe = su_classe_hachage();
+    if ($classe === null) {
         su_fail(
             'Profil de hachage introuvable : la bibliothèque SelfRecover n\'est pas'
             . ' chargeable depuis cette console. Refus de poser un secret SU dont le'
@@ -228,6 +288,21 @@ function su_argon2_options(): array
     }
 
     return $classe::ARGON2;
+}
+
+/**
+ * Le hash suit-il encore le profil du dépôt ? `null` quand la bibliothèque n'est
+ * pas chargeable.
+ *
+ * ⚠️ Les trois réponses sont distinctes et le restent : « conforme », « périmé »
+ * et « je ne sais pas ». Rabattre la troisième sur la première rendrait le même
+ * silence qu'un contrôle réussi, ce qui est exactement le défaut qu'on ferme ici.
+ */
+function su_profil_perime(string $hash): ?bool
+{
+    $classe = su_classe_hachage();
+
+    return $classe === null ? null : $classe::needsRehash($hash);
 }
 
 // ─── Garde-fou de démarrage ──────────────────────────────────────────────────
@@ -410,7 +485,82 @@ switch ($cmd) {
         if (!$ver['ok']) {
             su_fail("🚨 Chaîne ROMPUE à l'entrée {$ver['break_at']} : {$ver['reason']}", 4);
         }
+
+        // Deux questions distinctes, et « intègre » ne répond qu'à la première : la
+        // chaîne a-t-elle bougé, et le secret en place est-il celui qu'on a vu poser ?
+        // Un journal parfaitement intègre peut n'avoir jamais vu passer le secret qui
+        // garde la console — c'est ce qui est arrivé le 09/09/2026, où un hash a été
+        // déposé à la main sans laisser d'entrée.
+        $sceau = SuAudit::dernierSceau();
+        $etat  = su_empreinte_secret();
+
+        if ($sceau !== null && $etat !== null && !hash_equals($sceau['empreinte'], $etat['empreinte'])) {
+            // ⚠️ Le désaccord est un fait ; sa cause n'en est pas un. Trois chemins y
+            // mènent, et n'en nommer qu'un ferait accuser à tort un journal complet.
+            su_fail(
+                "🚨 Le secret SU en place ne correspond pas au dernier sceau connu,"
+                . " celui du {$sceau['ts_paris']}.\n"
+                . "   Trois causes y mènent : un remplacement hors de `change-passphrase` ;"
+                . " une console qui lit\n"
+                . "   un autre SELFRECOVER_SU_SECRET_FILE ; un `change-passphrase` lancé"
+                . " depuis une copie du\n"
+                . "   script antérieure au sceau. Si ce changement est le tien : `record-seal`.",
+                5
+            );
+        }
+
         su_ok("Chaîne intègre — {$ver['count']} entrées, aucune altération.");
+
+        if ($sceau !== null && $etat !== null) {
+            fwrite(
+                STDOUT,
+                "   Secret SU conforme au sceau du {$sceau['ts_paris']}"
+                . " ({$sceau['action']}, source : {$etat['source']}).\n"
+            );
+            break;
+        }
+
+        // 🔑 Un code de sortie à part, et c'est le cœur du contrôle. Le premier jet
+        // écrivait ces deux lignes sur STDERR et sortait à 0, comme le cas vérifié :
+        // une tâche planifiée qui alerte sur un code non nul n'aurait jamais rien vu,
+        // et le faux vert que ce mécanisme ferme se serait logé dans le mécanisme.
+        $cause = $etat === null
+            ? 'aucun secret SU configuré — rien à peser'
+            : 'aucune entrée du journal ne porte d\'empreinte de secret';
+        fwrite(STDERR, "   SCEAU NON VÉRIFIÉ : {$cause}.\n");
+        fwrite(STDERR, "   La concordance du secret en place reste à établir — `record-seal` la pose.\n");
+        exit(6);
+
+    case 'record-seal':
+        // Constat, pas mutation : le secret ne change pas, on note seulement à quoi
+        // il ressemblait ce jour-là. C'est le geste qui amorce le contrôle sur une
+        // console dont le secret a été posé avant que ce champ existe.
+        su_authenticate();
+        $etat = su_empreinte_secret();
+        if ($etat === null) {
+            su_fail('Aucun secret SU configuré — rien à sceller.', 2);
+        }
+        $connu = SuAudit::dernierSceau();
+        if ($connu !== null && hash_equals($connu['empreinte'], $etat['empreinte'])) {
+            su_ok("Déjà scellé — ce secret est celui du {$connu['ts_paris']}. Rien à noter.");
+            break;
+        }
+        SuAudit::append(SuAudit::ACTION_RECORD_SEAL, 'SU', [
+            'source'    => $etat['source'],
+            'empreinte' => $etat['empreinte'],
+            'remplace'  => $connu !== null ? $connu['ts_paris'] : null,
+        ]);
+        // Amorcer un contrôle et acquitter une alarme sont deux gestes : le second
+        // clôt un désaccord que `verify-log` signalait, et l'opérateur doit lire
+        // qu'il vient de le faire. L'ancien sceau reste au journal dans les deux cas.
+        if ($connu !== null) {
+            su_ok(
+                "Sceau REMPLACÉ — le désaccord avec celui du {$connu['ts_paris']} est acquitté."
+                . " L'ancien reste au journal."
+            );
+        } else {
+            su_ok('Sceau posé — `verify-log` peut désormais dire si ce secret change.');
+        }
         break;
 
     case 'show-log':
@@ -481,7 +631,15 @@ switch ($cmd) {
             su_fail("Écriture impossible : $secPath.");
         }
         @chmod($secPath, 0600);
-        SuAudit::append(SuAudit::ACTION_CHANGE_PASS, 'SU', ['store' => basename($secPath), 'algo' => 'argon2id']);
+        // L'empreinte du hash posé, et non le hash : elle suffit à reconnaître le
+        // secret en place, et elle entre dans `extra`, donc dans la chaîne et sous
+        // le HMAC. Sans elle le journal peut attester de sa propre intégrité tout
+        // en ignorant que le secret qu'il protège a été remplacé en dehors de lui.
+        SuAudit::append(SuAudit::ACTION_CHANGE_PASS, 'SU', [
+            'store'     => basename($secPath),
+            'algo'      => 'argon2id',
+            'empreinte' => SuAudit::empreinteDe($newHash),
+        ]);
         su_ok("Passphrase SU changée — hash Argon2id dans $secPath. L'ancienne ne vaut plus rien.");
         break;
 
@@ -602,7 +760,8 @@ switch ($cmd) {
         fwrite(STDOUT, "  reject-request  <id> \"<obs>\"   refuse une demande\n");
         fwrite(STDOUT, "  audit [--dry-run]              croise base et journal, met les fantômes en quarantaine\n");
         fwrite(STDOUT, "  show-log [N]                   affiche le journal\n");
-        fwrite(STDOUT, "  verify-log                     contrôle l'intégrité de la chaîne\n");
+        fwrite(STDOUT, "  verify-log                     contrôle l'intégrité de la chaîne, et le sceau du secret\n");
+        fwrite(STDOUT, "  record-seal                    note l'empreinte du secret en place, sans le changer\n");
         fwrite(STDOUT, "  change-passphrase              change la passphrase SU\n");
         fwrite(STDOUT, "  backup-log <dest>              scelle le journal pour le hors-site\n");
         fwrite(STDOUT, "  restore-log <scellé>           relit une sauvegarde scellée\n");

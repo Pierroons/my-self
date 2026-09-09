@@ -100,11 +100,19 @@ EXCLUS=(
 # catalogue SelfAct, corrigée le 21/08/2026 en déplaçant le fichier. Ici le
 # répertoire doit exister à la destination, mais son contenu lui appartient.
 # 🔑 `demo/lab/data/` relève du même régime, et l'oubli s'est vu le 22/08/2026 :
-# l'assemblage y prenait `.blindkey`, `.sitesalt` et `.serversecret`, que le code
-# du lab décrit lui-même comme « propre à ce déploiement » (lib/auth.php). Les
-# poser depuis un poste aurait remplacé le sel qui vérifie les mots de passe et
-# la clé qui chiffre les coffres : plus personne ne se connecte, et ce qui était
-# chiffré devient illisible. Le répertoire est nommé ici plutôt que dans EXCLUS
+# l'assemblage y prenait `.blindkey`, `.sitesalt` et `.serversecret` — les trois
+# secrets que `lib/secret_instance.php` tire au premier démarrage, propres à ce
+# déploiement. Les poser depuis un poste remplacerait le sel qui vérifie les mots
+# de passe, la clé qui chiffre les coffres et le secret qui signe les jetons
+# anti-CSRF : plus personne ne se connecte, ce qui était chiffré devient
+# illisible, et les formulaires ouverts sont refusés.
+# ⚠️ Un seul fichier de ce répertoire est écrit par DEUX identités : `lab.db`, que
+# le site sert et que `selfrecover-su` administre. Les trois secrets, eux, sont
+# posés en 0600 par le premier qui démarre et personne d'autre n'a à les lire.
+# Le code ne peut pas régler ce partage — `SecretInstance` crée le répertoire en
+# 0700 et `Db` en 0750, chacun pour son créateur : il se règle à l'exploitation,
+# par un groupe commun et le bit setgid. Sans ce geste, la console tombe sur
+# « n'est pas inscriptible par … » et le site continue de servir. Le répertoire est nommé ici plutôt que dans EXCLUS
 # parce que ce n'est pas de l'outillage — c'est de la donnée vivante.
 #
 # La leçon vaut au-delà de ces deux lignes : une exclusion nommée répertoire par

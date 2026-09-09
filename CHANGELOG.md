@@ -8,6 +8,146 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ---
 
+## [Non publié]
+
+### Les secrets du lab refusent au lieu de servir — 9 septembre 2026
+
+Trois fonctions posaient chacune leur secret sans jamais lire le retour de leur
+écriture. Sur un répertoire non inscriptible — l'état exact de la production ce
+jour-là — l'écriture échouait, la relecture rendait `false`, et `(string) false`
+donnait la chaîne vide.
+
+Les trois ne dégradaient pas de la même façon, et c'est ce qui rend le premier cas
+sérieux :
+
+| | ce qui arrivait |
+|---|---|
+| `Security::csrfSecret()` | 🔴 rendait la constante `csrf\|`. **Aucun garde en aval** : `hash_hmac` accepte n'importe quelle clé, l'application continuait de servir des jetons anti-CSRF que quiconque lit le dépôt pouvait recalculer |
+| `DataGuard::blindKey()` | rendait `''`, mais `Primitives::deriveFromMemorized` lève sur une clé vide : panne bruyante, pas de chiffrement affaibli |
+| `Auth::siteSalt()` | rien — elle portait déjà la garde, écrite après un incident du 27/08 |
+
+**Le correctif n'est pas de réparer les trois, c'est qu'il n'y en ait plus qu'un.**
+`SecretInstance::lire()` (`demo/lab/lib/secret_instance.php`) reprend ce que
+`siteSalt()` faisait seule : `mkdir` contrôlé, retour d'écriture lu, longueur
+minimale exigée, `RuntimeException` nommant le fichier et la cause à chaque étape.
+Les trois appelants deviennent des façades d'une ligne. La même garde entre dans
+`demo/selfdataguard/api/_bootstrap.php`, où la clé publique de récupération admin
+pouvait devenir vide sans que rien ne le voie.
+
+**Le secret CSRF cesse de partager `.blindkey` avec le chiffrement des coffres** et
+prend `.serversecret`, un fichier que le déployeur protégeait depuis le 22/08 sans
+qu'aucun code ne le lise. Un même secret pour signer et pour chiffrer mélangeait
+deux contextes, et rien n'obligeait à le faire.
+
+⚠️ **Migration, et elle demande un geste AVANT le déploiement.** Sur une instance où
+`data/` n'est pas inscriptible, l'ancien code lisait le `.blindkey` déjà présent et
+servait des jetons faibles ; le nouveau lève, et l'exception n'est rattrapée nulle part
+dans le lab — toute page d'un utilisateur connecté devient fatale. Le refus est le
+comportement voulu, mais il faut **ouvrir `data/` en écriture, ou y poser `.serversecret`
+d'au moins 32 caractères, avant de déployer**, sinon la mise à jour est une panne et non
+un durcissement. Sur une instance saine, le seul effet est que les formulaires ouverts à
+l'instant du redémarrage sont refusés une fois. Les coffres ne bougent pas : `.blindkey`
+garde son rôle et son contenu.
+
+### Le profil du secret SuperUser se contrôle enfin — 9 septembre 2026
+
+`Crypto\Hashing::needsRehash()` entre dans la bibliothèque, sur le modèle de
+`dummyHashSuitProfil()`. Un hash rangé en base voit son profil comparé à chaque
+connexion réussie ; un hash qui vit seul dans un fichier ne recevait la question de
+personne, et c'est ainsi que le secret SU est resté trois semaines en `p=1` pendant
+que le protocole annonçait `p=2`.
+
+`selfrecover-su` le dit désormais après une authentification réussie — **et ne le
+réécrit pas** : reposer un secret est un geste humain, et `change-passphrase` le
+journalise, là où une réécriture automatique ne laisserait aucune trace. Les trois
+réponses restent trois jusqu'au message : « conforme », « périmé », et « bibliothèque
+introuvable, donc non vérifié » — taire la troisième rendrait le silence de la première.
+
+### Le journal voit qu'on a remplacé le secret qu'il protège — 9 septembre 2026
+
+Changer la passphrase SU sans connaître l'ancienne est trivial pour qui a le shell,
+et c'est assumé. Ce qui ne l'était pas : l'opération ne laissait **aucune trace**, et
+`verify-log` pouvait attester que la chaîne était intacte tout en ignorant que le
+porteur avait changé.
+
+L'entrée `change-passphrase` porte maintenant une empreinte du secret déposé — dans
+`extra`, donc sous la chaîne et sous le HMAC. **Un HMAC et non un condensat nu** : le
+secret attendu n'est pas toujours un hash Argon2id, la console accepte aussi une valeur
+en clair, et un SHA-256 non salé d'un secret mémorisé se casse hors ligne à coût nul par
+essai — or le journal, lui, part en sauvegarde hors site.
+
+`verify-log` compare le secret en place à la dernière empreinte journalisée, avec
+**trois issues qui portent trois CODES DE SORTIE distincts** : conforme (0) · désaccord
+(5) · rien à comparer (6). Le premier jet de ce correctif écrivait les trois messages
+mais sortait à 0 dans deux cas sur trois : une tâche planifiée qui alerte sur un code non
+nul n'aurait jamais rien vu, et le faux vert que ce mécanisme ferme se serait logé dans
+le mécanisme. Trouvé en revue, avant publication.
+
+Le message du désaccord **n'affirme pas de cause** : trois chemins y mènent — un
+remplacement hors console, un `SELFRECOVER_SU_SECRET_FILE` différent, un
+`change-passphrase` lancé depuis une copie antérieure du script — et n'en nommer qu'un
+ferait accuser à tort un journal complet.
+
+`record-seal` note l'empreinte du secret en place sans le changer, que celui-ci vienne
+d'un fichier ou de `SELFRECOVER_SU_SECRET`. C'est le geste qui amorce le contrôle sur une
+console dont le secret a été posé avant que ce champ existe, et celui qui acquitte un
+désaccord — il le dit alors explicitement, l'ancien sceau restant au journal. Sans lui, la
+première vérification démarre rouge, et une alarme qui démarre rouge s'ignore.
+
+### Une base introuvable dit pourquoi — 9 septembre 2026
+
+`Db::pdo()` vérifie l'accès avant d'ouvrir et nomme le chemin, l'utilisateur à qui le
+droit manque, et la prise `LAB_DB_PATH`. SQLite rend « unable to open database file »
+aussi bien pour un disque plein que pour un répertoire fermé, et la trace PDO ne dit
+ni sous quelle identité on tourne ni comment dérouter la base — elle a coûté une nuit
+d'enquête. `Db::path()` ne crée plus rien : elle calcule un chemin, la vérification
+est ailleurs.
+
+### Quatre porteurs qui ne suivaient plus — 9 septembre 2026
+
+Sortis de l'inventaire exhaustif des endroits qui nomment ces trois secrets, une fois
+`.serversecret` devenu réel. Les deux premiers sont des trous, pas des redites :
+
+- **`demo/lab/.gitignore`** — le second filet, celui qui existe « au cas où `data/` bouge »,
+  couvrait `.blindkey` et `.sitesalt` mais pas `.serversecret`. Mesuré : un `.serversecret`
+  déposé ailleurs que dans `data/` était **suivi par git**. Le motif est ajouté.
+- **`deploy/my-self/tests/test_deploy.sh`** — le cas qui éprouve la liste `INTERDITS` hors du
+  lab ne posait qu'un `.blindkey`, quand la liste porte trois motifs. Retirer l'un des deux
+  autres laissait le banc vert ; il les éprouve maintenant tous les trois, et **il a été vu
+  rougir sur chacun**.
+- `demo/lab/docs/PENTEST-MISSION-ctf.md` — la liste des fichiers à chercher en exposition
+  nommait deux secrets sur trois.
+- `demo/lab/tests/sanity_timing.php` — deux références périmées : `Auth::DUMMY_HASH`, qui vit
+  dans `Crypto\Hashing` depuis sa remontée, et un chemin de fichier jumeau qui n'existe plus.
+
+### Vérification
+
+`demo/lab/tests/sanity_secrets_instance.php` — 36 contrôles, six sections, entré dans
+`structure.yml`. Sa sixième section lance la console pour de bon et lit ses **codes de
+sortie** : sans elle, les trois issues de `verify-log` n'étaient éprouvées par rien.
+
+Vu rougir sur **sept** défauts replantés : écriture non contrôlée · longueur minimale
+retirée · prise d'environnement vide ignorée · `csrfSecret()` ramené à son ancien corps ·
+« aucune empreinte » déguisé en sceau vide · l'`exit(6)` de `verify-log` remplacé par un
+`break` · l'empreinte redevenue un SHA-256 nu.
+
+🔑 **Un de ces sept a rougi trop tard.** Le contrôle de la prise vide passait pour une
+mauvaise raison : sans la garde, la chaîne vide part comme chemin et l'échec survient plus
+loin, au renommage — le banc voyait une exception et concluait que la propriété était
+tenue. Il vérifie maintenant le message, pas seulement la levée.
+
+Le banc **avoue son périmètre** : il n'exerce pas `csrfSecret()` ni `blindKey()` sur un
+vrai répertoire fermé — ni l'une ni l'autre n'a de prise pour dérouter son chemin. Il
+éprouve la mécanique commune pour de bon, contrôle sur le source que les trois y
+passent, et cherche le motif fautif dans tout `lib/` pour attraper le jumeau suivant.
+
+Le garde-fou de CI vérifie deux compteurs plutôt que le seul code de sortie : deux
+sections ne s'éprouvent pas sous root, le banc les saute **en le disant** et sort quand
+même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le même vert en
+ayant renoncé aux contrôles qui touchent au système.
+
+---
+
 ## [SelfRecover v0.5.1] — 8 septembre 2026
 
 ### SelfRecover L1 — une date qui informe, et l'écrit qu'elle n'expire rien — 8 septembre 2026

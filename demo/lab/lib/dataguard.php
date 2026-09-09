@@ -18,17 +18,21 @@ namespace Pierroons\MySelfLab;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 
+require_once __DIR__ . '/secret_instance.php';
+
 final class DataGuard
 {
-    /** Secret serveur ≥32 bytes, généré une fois, hors DB + hors webroot. */
+    /**
+     * Secret serveur ≥32 bytes, généré une fois, hors DB + hors webroot.
+     *
+     * La longueur annoncée est maintenant exigée : `SecretInstance` refuse de
+     * rendre un secret plus court. Avant, l'échec d'écriture rendait la chaîne
+     * vide, et c'est `Primitives::deriveFromMemorized` qui levait — la garantie
+     * tenait par la bibliothèque, pas par cette ligne.
+     */
     private static function blindKey(): string
     {
-        $f = __DIR__ . '/../data/.blindkey';
-        if (!file_exists($f)) {
-            file_put_contents($f, bin2hex(random_bytes(48)));
-            @chmod($f, 0600);
-        }
-        return trim((string) file_get_contents($f));
+        return SecretInstance::lire('.blindkey', 48, 32);
     }
 
     /** Clé 32 bytes dérivée du blind key, contexte isolé "DM". */

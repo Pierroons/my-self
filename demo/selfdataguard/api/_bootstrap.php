@@ -57,11 +57,31 @@ $adminSealPath = dirname($blindKeyPath) . '/admin-recovery.sealed';
 if (!is_file($adminPubPath)) {
     // Passphrase de démo (documentée dans README). En prod : dans la tête de l'admin.
     $ar = SelfDataGuard::generateAdminRecoveryKey('demo-admin-recovery-passphrase-2026');
-    file_put_contents($adminPubPath, $ar['publicKey']);
-    file_put_contents($adminSealPath, $ar['sealedSecret']);
+    // Les DEUX moitiés, ou aucune. Si la publique s'écrit et que la scellée échoue,
+    // l'escrow scellera vers une clé dont la partie privée n'existe nulle part : chaque
+    // scellement produirait alors une donnée définitivement irrécupérable, sans un mot.
+    $ecrites = @file_put_contents($adminPubPath, $ar['publicKey']) !== false
+        && @file_put_contents($adminSealPath, $ar['sealedSecret']) !== false;
+    if (!$ecrites) {
+        @unlink($adminPubPath);
+        @unlink($adminSealPath);
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to write admin recovery key pair']);
+        exit;
+    }
     chmod($adminSealPath, 0600);
 }
-$adminRecoveryPubKey = trim((string) file_get_contents($adminPubPath));
+// Même garde que pour la blindKey ci-dessus : une écriture qui a échoué rend la
+// chaîne vide, et une clé publique vide n'échoue nulle part en aval — l'escrow
+// accepterait de sceller vers un destinataire qui n'existe pas.
+$adminRecoveryPubKey = trim((string) @file_get_contents($adminPubPath));
+// Longueur exigée et non « non vide » : `file_put_contents` rend un entier court sur
+// une écriture partielle, jamais `false` — un fichier tronqué passe un test de vacuité.
+if (strlen($adminRecoveryPubKey) < 32 || !is_file($adminSealPath)) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Failed to load admin recovery public key']);
+    exit;
+}
 
 /**
  * Decode a JSON body, return [] if absent or malformed.

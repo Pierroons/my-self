@@ -75,6 +75,21 @@ final class Hashing
     }
 
     /**
+     * Ce hash a-t-il été produit avec un autre profil que celui d'aujourd'hui ?
+     *
+     * 🔑 **Un secret hors base n'a personne pour lui poser la question.** Un hash
+     * rangé en base la reçoit à chaque connexion réussie ; un hash qui vit seul
+     * dans un fichier ne la reçoit jamais, et son profil peut s'écarter de celui
+     * que le protocole déclare sans qu'aucun chemin ne les compare. C'est arrivé
+     * au secret du super-utilisateur du lab, resté trois semaines à `p=1` pendant
+     * que cette classe annonçait `p=2`.
+     */
+    public static function needsRehash(string $hash): bool
+    {
+        return password_needs_rehash($hash, PASSWORD_ARGON2ID, self::ARGON2);
+    }
+
+    /**
      * Le hash factice porte-t-il encore le profil courant ?
      *
      * Un littéral et un tableau écrits à quelques lignes d'écart ne peuvent pas

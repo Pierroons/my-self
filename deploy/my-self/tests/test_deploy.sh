@@ -240,14 +240,20 @@ fi
 # exclu doit arrêter l'assemblage, sinon la correction du 22/08 ne protège que
 # le chemin d'hier. `*.key` ne capture pas `.blindkey`, faute de point : c'est
 # précisément le trou que ce cas garde fermé.
-monter
-echo "cle-egaree" > "$BAC/depot/web/my-self.fr/.blindkey"
-sortie=$(lancer assembler --dest "$BAC/dist"); code=$?
-if [ "$code" -ne 0 ] && [ ! -d "$BAC/dist" ]; then
-    ok "un .blindkey hors du lab arrête l'assemblage"
-else
-    nok "un .blindkey hors du lab a franchi le filtre (code $code)"
-fi
+#
+# ⚠️ Les TROIS motifs d'INTERDITS, pas seulement le premier. Le cas n'en éprouvait
+# qu'un jusqu'au 09/09/2026 : en retirer un autre de la liste laissait ce banc
+# vert. Une garde à trois motifs se mesure sur trois.
+for secret in .blindkey .sitesalt .serversecret; do
+    monter
+    echo "cle-egaree" > "$BAC/depot/web/my-self.fr/$secret"
+    lancer assembler --dest "$BAC/dist" >/dev/null 2>&1; code=$?
+    if [ "$code" -ne 0 ] && [ ! -d "$BAC/dist" ]; then
+        ok "un $secret hors du lab arrête l'assemblage"
+    else
+        nok "un $secret hors du lab a franchi le filtre (code $code)"
+    fi
+done
 monter
 lancer assembler --dest "$BAC/dist" >/dev/null 2>&1
 
