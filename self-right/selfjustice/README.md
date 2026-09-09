@@ -5,7 +5,7 @@
 **Impartial legal pre-analysis powered by AI-readable directives — served over a free public API.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.2.0 beta](https://img.shields.io/badge/status-v0.2.0%20beta-green.svg)](#status)
+[![Status: v0.3.0 beta](https://img.shields.io/badge/status-v0.3.0%20beta-green.svg)](#status)
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
@@ -184,11 +184,11 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 
 ## Status
 
-**v0.2.0 — live in production at [justice.my-self.fr](https://justice.my-self.fr)**
+**v0.3.0 — live in production at [justice.my-self.fr](https://justice.my-self.fr)**
 
 - [x] System directives (7-step analysis procedure, 5 principles)
-- [x] 7 legal categories (work, housing, family, neighborhood, consumer, civil, criminal)
-- [x] Detailed entry points for housing law and family law
+- [x] 8 legal categories (work, housing, family, public administration, neighborhood, consumer, civil, criminal)
+- [x] Detailed entry points — housing law, family law, administrative law
 - [x] Structured output template with glossary
 - [x] Legal disclaimers (loi 71-1130 compliant)
 - [x] API serving the full LEGI corpus — **108 codes** addressable by title, no alias table required
@@ -207,8 +207,8 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 ## Roadmap
 
 - **v0.1.0** — Core directives + 5 categories + LEGI/EU API
-- **v0.2.0 (current)** — Family law (divorce, custody, alimony) + housing law (leases, eviction)
-- **v0.3.0** — Administrative law (disputes with public services)
+- **v0.2.0** — Family law (divorce, custody, alimony) + housing law (leases, eviction)
+- **v0.3.0 (current)** — Administrative law (disputes with public services)
 - **v0.4.0** — Administrative case law (Conseil d'État, CAA, administrative courts) — **judicial** case law (Cour de cassation, courts of appeal) already ships and is served
 - **v1.0.0** — Directives reviewed by a practicing attorney (SelfAct integration shipped in v0.2.0)
 
