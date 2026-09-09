@@ -97,7 +97,15 @@ jobs:
       # que ce que son nom laisse croire.
       - name: Garde-fou — le format SELFVAULT3 et sa boucle papier
         run: |
-          sudo apt-get update -qq
+          # ⚠️ `apt-get update` rend 100 dès qu'UN index est incohérent, y compris
+          # celui d'un dépôt tiers préinstallé sur le runner et dont ce dépôt ne
+          # dépend pas — vu le 09/09/2026 sur celui de Chrome. Le message d'apt le
+          # dit lui-même : « They have been ignored, or old ones used instead ».
+          # L'étape mourait alors, et les trente contrôles suivants passaient en
+          # `skipped` : une panne amont éteignait la CI sans que rien ne le nomme.
+          # C'est l'installation qui porte la propriété qu'on veut, pas la
+          # fraîcheur de tous les index — elle reste donc bloquante.
+          sudo apt-get update -qq || echo "::warning::index apt partiel — l'installation reste bloquante"
           sudo apt-get install -y -qq zbar-tools poppler-utils weasyprint
           python3 -m pip install --quiet --disable-pip-version-check cryptography qrcode pillow
           bash self-security/selfvault/tests/banc.sh
@@ -112,7 +120,10 @@ jobs:
       # découvrait sur la machine, au rechargement. `nginx -t` a besoin du binaire,
       # pas du service — et le test tourne sans privilège, dans un préfixe jetable.
       - name: Installer nginx (pour valider les gabarits de vhost)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq nginx-light
+        run: |
+          # `update` non bloquant, `install` bloquant — motif expliqué au banc SELFVAULT3.
+          sudo apt-get update -qq || echo "::warning::index apt partiel — l'installation reste bloquante"
+          sudo apt-get install -y -qq nginx-light
 
       - name: Garde-fou — les gabarits de vhost sont syntaxiquement valides
         run: bash scripts/check-vhost.sh
@@ -202,7 +213,8 @@ jobs:
       # conteneur LUKS2 est un fichier, aucune activation device-mapper.
       - name: Outils du banc SelfRecover-LUKS
         run: |
-          sudo apt-get update -qq
+          # `update` non bloquant, `install` bloquant — motif expliqué au banc SELFVAULT3.
+          sudo apt-get update -qq || echo "::warning::index apt partiel — l'installation reste bloquante"
           sudo apt-get install -y -qq cryptsetup-bin python3-argon2 libargon2-dev
           # Le binaire C est celui que le keyscript appelle à l'amorçage. Le banc
           # choisit UN dérivateur : le C s'il est compilé, sinon le Python. Sans
