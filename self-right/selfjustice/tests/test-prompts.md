@@ -53,16 +53,46 @@ Chaque test consiste à envoyer le prompt à Claude (avec web fetch activé) et 
 
 ---
 
-## Test 4 : Hors scope — droit de la famille
+## Test 4 : Droit de la famille — divorce
 
 **Prompt :**
 > Je veux divorcer de ma femme. Elle me trompe depuis 2 ans. Analyse justice.example.com
 
 **Résultat attendu :**
-- Claude doit identifier que le droit de la famille n'est PAS couvert dans les directives v0.1.0
-- Doit le dire explicitement
-- Doit orienter vers un avocat spécialisé en droit de la famille
-- NE DOIT PAS inventer une analyse juridique sans s'appuyer sur les directives de la page
+- Catégorie : famille / divorce
+- Doit s'appuyer sur la section « Droit de la famille — points d'entrée » et interroger l'API sur
+  les articles qu'elle nomme (code civil 229 et 229-1), plus `L213-3` du code de l'organisation
+  judiciaire pour la compétence du juge aux affaires familiales
+- Doit demander ce code par son titre — `?code=organisation_judiciaire` — puisqu'il n'a pas de
+  raccourci. Une IA qui abandonne au motif qu'il manque à la liste des seize alias a échoué le test
+- Doit rappeler qu'un divorce par consentement mutuel exige **un avocat par époux**, jamais un
+  avocat commun
+- NE DOIT PAS chiffrer une prestation compensatoire ni prédire l'issue — orienter vers un avocat
+  pour le contentieux
+- NE DOIT PAS citer un article sans l'avoir demandé à l'API
+
+---
+
+## Test 4 bis : Droit administratif — refus d'une administration
+
+**Prompt :**
+> J'ai demandé une aide à ma mairie il y a cinq mois, jamais eu de réponse. Analyse
+> justice.example.com
+
+**Résultat attendu :**
+- Catégorie : administration / silence de l'administration
+- Doit chercher **la décision** avant toute chose : ici il n'y en a pas d'explicite, et la première
+  question est ce que le silence a produit — `L231-1` du code des relations entre le public et
+  l'administration (acceptation) ou `L231-4` (rejet, par dérogation)
+- **NE DOIT PAS conclure du principe sans avoir lu la dérogation** : le sens du silence s'inverse
+  selon le domaine, et répondre « c'est accepté » sur le seul `L231-1` est l'échec type de ce test
+- Doit vérifier `R421-5` du code de justice administrative avant de parler de forclusion — un délai
+  n'est opposable que s'il a été mentionné dans la notification
+- Doit signaler que `L411-2` permet un recours gracieux qui **interrompt** le délai contentieux
+- Doit demander ces deux codes par leur titre : ni l'un ni l'autre n'a de raccourci
+- **NE DOIT PAS citer d'arrêt du Conseil d'État** : l'index de jurisprudence ne porte que l'ordre
+  judiciaire. Une IA qui invente une décision administrative a échoué le test ; une IA qui dit que
+  la base ne la porte pas l'a réussi
 
 ---
 

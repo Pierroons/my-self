@@ -5,7 +5,7 @@
 **Pré-analyse juridique impartiale par directives lisibles par IA — servie via une API publique gratuite.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.1.0 bêta](https://img.shields.io/badge/statut-v0.1.0%20b%C3%AAta-green.svg)](#statut)
+[![Statut : v0.3.0 bêta](https://img.shields.io/badge/statut-v0.3.0%20b%C3%AAta-green.svg)](#statut)
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
@@ -185,14 +185,18 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 
 ## Statut
 
-**v0.1.0 — en production sur [justice.my-self.fr](https://justice.my-self.fr)**
+**v0.3.0 — en production sur [justice.my-self.fr](https://justice.my-self.fr)**
 
 - [x] Directives système (procédure d'analyse en 7 étapes, 5 principes)
-- [x] 5 catégories juridiques (travail, voisinage, consommation, civil, pénal)
+- [x] 8 catégories juridiques (travail, logement, famille, administration, voisinage, consommation, civil, pénal)
+- [x] Points d'entrée détaillés — droit du logement, droit de la famille, droit administratif
 - [x] Template de sortie structuré avec glossaire
 - [x] Disclaimers légaux (conforme loi 71-1130)
-- [x] API servant tout le corpus LEGI
+- [x] API servant tout le corpus LEGI — **108 codes** adressables par leur titre, sans table d'alias
 - [x] API servant le corpus UE/CEDH (dont le règlement IA 2024/1689)
+- [x] Index de jurisprudence judiciaire (Cour de cassation, cours d'appel)
+- [x] Serveur MCP (paquet `selfright-mcp`) — consultation depuis un client local
+- [x] Intégration SelfAct — les démarches officielles servies à côté des directives
 - [x] Testé multi-IA (Claude, crawler ChatGPT, OAI-SearchBot détectés)
 - [x] Stats publiques (`/api/stats/by-ai`, `/api/stats/by-endpoint`)
 - [x] Domaine dédié [justice.my-self.fr](https://justice.my-self.fr)
@@ -203,11 +207,11 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 
 ## Roadmap
 
-- **v0.1.0 (actuelle)** — Directives cœur + 5 catégories + API LEGI/UE
+- **v0.1.0** — Directives cœur + 5 catégories + API LEGI/UE
 - **v0.2.0** — Droit de la famille (divorce, garde, pension) + droit du logement (baux, expulsion)
-- **v0.3.0** — Droit administratif (litiges avec services publics)
+- **v0.3.0 (actuelle)** — Droit administratif (litiges avec services publics)
 - **v0.4.0** — Jurisprudence administrative (Conseil d'État, CAA, tribunaux administratifs) — la jurisprudence **judiciaire** (Cour de cassation, cours d'appel) est livrée et servie
-- **v1.0.0** — Directives peer-reviewed + intégration SelfAct
+- **v1.0.0** — Directives relues par un avocat praticien (l'intégration SelfAct est livrée depuis la v0.2.0)
 
 ---
 
