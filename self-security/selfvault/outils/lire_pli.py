@@ -11,8 +11,10 @@ un ordre sans instrument.
 Dépendances système : `poppler-utils` (pdftoppm, pdftotext) et `zbar-tools`
 (zbarimg). Aucune bibliothèque Python.
 
-🔑 Trois règles de conduite, toutes trois éprouvées par le banc :
+🔑 Quatre règles de conduite, toutes éprouvées par le banc :
 
+- il insiste avant de conclure qu'il manque quelque chose : un balayage plus
+  fin, puis d'autres résolutions quand la source est un PDF ;
 - il nomme **tous** les QR codes manquants, pas le premier ;
 - il n'écrit **aucun fichier partiel** : sans la totalité des fragments et sans
   concordance des empreintes, rien n'est posé sur le disque ;
@@ -24,7 +26,16 @@ import argparse, base64, hashlib, os, re, shutil, subprocess, sys, tempfile
 
 PREFIXE = "PLI1"
 PIECES = {"A": "selfvault.html", "V": "coffre.selfvault"}
-DPI = 300          # plancher mesuré : 200 passe, 150 échoue
+DPI = 300          # ce que le pli imprime
+# 🔑 Ces deux recours ne sont pas du zèle : sans eux, une lecture unique rend
+# « pli incomplet » sur un pli intact. Mesuré le 09/09/2026 — la page qui perd
+# A9/21 à 300 points par pouce le rend à 150, 200, 250, 350, 400, 500 et 600,
+# et le même code extrait seul se relit à toutes les tailles. Ce que perd une
+# rasterisation dépend de sa phase, donc de la version de poppler.
+DPI_SECOURS = (400, 250)
+# Le balayage fin vaut pour TOUTES les sources, y compris un répertoire venu d'un
+# scanner qu'on ne peut pas relancer : sur la page ci-dessus, il rend A9/21.
+BALAYAGES = ((), ("-Sx-density=2", "-Sy-density=2"))
 EMPREINTE_CAR = 32  # ce que le pli imprime : SHA-256 tronqué
 
 
@@ -59,32 +70,43 @@ def lancer(argv, tolere=()):
     return fait.stdout
 
 
+def rasteriser(source, travail, dpi):
+    """Un PDF → ses pages en images, à la résolution demandée."""
+    prefixe = "page%d" % dpi
+    lancer([outil("pdftoppm"), "-r", str(dpi), "-gray", "-png",
+            source, os.path.join(travail, prefixe)])
+    return sorted(os.path.join(travail, f) for f in os.listdir(travail)
+                  if f.startswith(prefixe) and f.endswith(".png"))
+
+
 def pages_en_images(source, travail):
     """Rend la liste des images à scruter, qu'on parte d'un PDF ou d'images."""
     if os.path.isdir(source):
         return sorted(os.path.join(source, f) for f in os.listdir(source)
                       if f.lower().endswith((".png", ".jpg", ".jpeg", ".tif", ".tiff", ".pnm")))
     if source.lower().endswith(".pdf"):
-        lancer([outil("pdftoppm"), "-r", str(DPI), "-gray", "-png",
-                source, os.path.join(travail, "page")])
-        return sorted(os.path.join(travail, f) for f in os.listdir(travail)
-                      if f.startswith("page") and f.endswith(".png"))
+        return rasteriser(source, travail, DPI)
     return [source]
 
 
-def fragments(images):
+def fragments(images, lus=None, options=()):
     """Tous les fragments lus, indexés par (pièce, rang). L'ordre n'importe pas.
 
     Le rang vit DANS les données : un pli scanné en désordre, ou dont les pages
     ont été mélangées, se reconstitue quand même.
+
+    `lus` permet de verser une seconde lecture dans la première : deux passes du
+    même PDF se complètent rang par rang, et deux lectures d'un même rang restent
+    comparées comme si elles venaient de deux pages.
     """
-    lus, inconnus, divergents = {}, 0, []
+    lus, inconnus, divergents = ({} if lus is None else lus), 0, []
     # `\d` désigne en Python TOUS les chiffres d'Unicode : « PLI1|V|١/٣| » se
     # laissait lire, et `int("١")` vaut 1. Le déchiffreur JavaScript, lui, ne
     # reconnaît que `[0-9]` et rendait `null` sur la même ligne.
     motif = re.compile(r"^%s\|([A-Z])\|([0-9]+)/([0-9]+)\|(.*)$" % PREFIXE, re.S)
     for img in images:
-        sortie = lancer([outil("zbarimg"), "--raw", "-q", img], tolere=(4,))
+        sortie = lancer([outil("zbarimg"), "--raw", "-q"] + list(options) + [img],
+                        tolere=(4,))
         for ligne in sortie.split("\n"):
             ligne = ligne.strip()
             if not ligne:
@@ -106,6 +128,39 @@ def fragments(images):
                 sys.exit("Le pli mélange deux tirages : la pièce %s s'annonce tantôt en %d "
                          "QR codes, tantôt en %d." % (piece, lus[piece]["total"], total))
     return lus, inconnus, sorted(set(divergents))
+
+
+def complet(lus):
+    """Les deux pièces sont-elles là, tous rangs présents ?"""
+    for piece in PIECES:
+        d = lus.get(piece)
+        if not d or any(i not in d["parts"] for i in range(1, d["total"] + 1)):
+            return False
+    return True
+
+
+def scruter(images, lus=None):
+    """Lit toutes les images, et insiste tant qu'il manque un code.
+
+    Un code manquant ne veut pas dire une page abîmée : il peut se dérober à un
+    balayage et se rendre au suivant. On ne change donc pas de pages, on change
+    de manière de les regarder.
+
+    Les codes étrangers ne se comptent qu'à la première passe : les repasses
+    reliraient les mêmes, et le compte doublerait sans que rien de neuf n'ait été
+    vu.
+    """
+    inconnus, divergents, premiere = 0, [], True
+    for options in BALAYAGES:
+        if options and not complet(lus or {}):
+            print("  il manque des codes — relecture au balayage fin")
+        lus, encore, aussi = fragments(images, lus, options)
+        if premiere:
+            inconnus, premiere = encore, False
+        divergents = sorted(set(divergents) | set(aussi))
+        if complet(lus):
+            break
+    return lus, inconnus, divergents
 
 
 def empreintes_imprimees(source):
@@ -144,7 +199,20 @@ def main():
         if not images:
             sys.exit("Rien à lire dans « %s »." % opt.source)
         print("▸ %d page(s) à scruter" % len(images))
-        lus, inconnus, divergents = fragments(images)
+        lus, inconnus, divergents = scruter(images)
+
+        # Un PDF se relit à une autre résolution tant qu'il manque un code : ce
+        # qui se dérobe à une échelle se rend à la suivante. On ne le fait que
+        # pour un PDF — un répertoire d'images vient d'un scanner, et lui seul
+        # peut le relancer.
+        est_pdf = not os.path.isdir(opt.source) and opt.source.lower().endswith(".pdf")
+        for secours in (DPI_SECOURS if est_pdf else ()):
+            if complet(lus):
+                break
+            print("  relecture du PDF à %d points par pouce" % secours)
+            lus, _, aussi = scruter(rasteriser(opt.source, travail, secours), lus)
+            divergents = sorted(set(divergents) | set(aussi))
+
         if divergents:
             print("\n✗ Deux lectures d'un même QR code ne donnent pas la même chose : %s"
                   % ", ".join(divergents))
@@ -171,7 +239,13 @@ def main():
             print("\n✗ Pli incomplet. Rien n'a été écrit.")
             for m in manques:
                 print("   " + m)
-            print("\n   Rescanne les pages concernées à %d points par pouce au moins." % DPI)
+            # Ce n'est pas « plus fin » qu'il faut, c'est « autrement » : un code
+            # qui se dérobe à une résolution se rend à la suivante, sans que rien
+            # ne soit abîmé. Ce lecteur le fait déjà seul sur un PDF ; sur un
+            # répertoire d'images, seule la personne qui tient le scanner le peut.
+            print("\n   Renumérise les pages concernées à une AUTRE résolution — %s —"
+                  % ", ".join("%d" % d for d in (DPI,) + DPI_SECOURS))
+            print("   puis relance. Un code manquant ne veut pas dire un pli abîmé.")
             return 1
 
         # ── Reconstitution en mémoire, écriture seulement à la fin ───────────
