@@ -216,7 +216,7 @@ ouvrir. Le pli comptait alors 7 QR codes ; il en compte 24 aujourd'hui.
 | deux caractères voisins permutés | refus |
 | un octet du coffre retourné | refus |
 | photocopie délavée + poussière | **les 7 QR d'alors, tous lus** — la correction Q encaisse |
-| scan à 150 dpi | 4/7 — **plancher mesuré : 200 dpi passe, 150 échoue**. Re-mesuré le 06/09/2026 sur le pli scellé, à 13 pages : inchangé, et désormais borné des deux côtés par le banc papier |
+| scan à 150 dpi | 4/7 — lu à l'époque comme un **plancher de résolution**. ⚠️ Ce n'en était pas un : voir la mesure du 09/09/2026 |
 
 ## Ce qui a été mesuré, le 06/09/2026
 
@@ -232,8 +232,8 @@ imposées. Chaque chiffre ci-dessous a été mesuré, aucun n'est déduit.
 | recombinaison Shamir GF(256) écrite dans le style du dépôt | 736 octets, moins d'un QR code |
 | capacité d'un QR v40 correction Q | base64 en mode octet 1 247 o · base32 en mode alphanumérique 1 512 o (+21 %) |
 | indépendance du second lecteur | **53 % des lignes** venaient du noyau — réécrit, il en partage 2 |
-| pli courant | 24 QR codes (21 déchiffreur + 3 coffre), 13 pages, déchiffreur de 24 825 octets |
-| plancher de résolution, re-mesuré sur ce pli-là | 200 dpi passe, 175 échoue — la valeur publiée tient |
+| pli courant à cette date | 24 QR codes (21 déchiffreur + 3 coffre), 13 pages, déchiffreur de 24 825 octets |
+| plancher de résolution, re-mesuré sur ce pli-là | 200 dpi passe, 175 échoue — ⚠️ conclusion invalidée le 09/09/2026 |
 
 **Rouges provoqués, éprouvés jusqu'au bout** — chacun a d'abord été vu réussir sans la garde :
 
@@ -245,6 +245,53 @@ imposées. Chaque chiffre ci-dessous a été mesuré, aucun n'est déduit.
 | liste de mots dont les entrées ne diffèrent que par la ponctuation | refusée — 90,5 bits annoncés pour 79,4 réels |
 | liste de plus de 65 536 mots | refusée — au-delà, la borne de rejet tombe à zéro et l'onglet se fige |
 | coffre entièrement refabriqué par un tiers qui a lu le code | il s'ouvre ; **seule l'empreinte du sceau le démasque** |
+
+## Ce qui a été mesuré, le 09/09/2026
+
+Parti d'une intégration continue qui rougissait un tour sur deux sans qu'aucun fichier du
+module n'ait bougé — relancée sur le même commit, elle passait au vert.
+
+**Il n'y a pas de plancher de résolution.** Sur un même pli, la lecture échoue à 300 et à
+200 points par pouce et réussit à 150 et 120. Le QR fautif, extrait seul de `sortie/qr/`,
+se relit à toutes les tailles : ce n'est ni la charge, ni la densité, c'est la
+rasterisation qui perd un code à un facteur d'échelle précis. Deux versions de poppler
+(24.02 en intégration, 25.03 au poste) ne tombent pas sur la même phase, donc pas sur les
+mêmes codes — d'où le tirage au sort.
+
+| épreuve | résultat |
+|---|---|
+| page perdant `A9/21` à 300 dpi | relue à 150, 200, 250, 350, 400, 500 et 600 : **complète partout ailleurs** |
+| le même code, extrait seul, réduit de 331 à 1 850 px | lu à toutes les tailles |
+| `zbarimg -Sx-density=2` sur la page fautive | **le code se rend** — un second balayage suffit |
+
+**Et le banc n'avait jamais rencontré de papier.** Il rasterise un PDF parfait, où chaque
+module tombe sur un nombre régulier de pixels. Une planche dégradée comme le ferait un
+copieur donne autre chose :
+
+| planche à 300 dpi | QR relus |
+|---|---|
+| nette | 15 / 15 |
+| flou 0,5 px | 15 / 15 |
+| **flou 1,0 px** | **0 / 15** |
+| flou 0,8 + bruit 1 % + travers 0,5° | 14 / 15 — et un seul manquant perd le coffre |
+
+À 200 points par pouce, un demi-pixel de flou suffisait à tout effacer. Les deux
+exemplaires portant la **même image**, ils échouent ensemble : la duplication protège
+d'une page déchirée, jamais d'un code illisible.
+
+**Deux corrections, mesurées l'une et l'autre :**
+
+| ce qui change | ce que ça achète |
+|---|---|
+| QR imprimés à **7 cm** au lieu de 4,2 (17 pages au lieu de 13) | 4,47 px par module au lieu de 2,68 ; la planche dégradée passe **6/6** au lieu de 14/15 |
+| le lecteur **insiste** — balayage fin, puis d'autres résolutions sur un PDF | les répertoires à 300 et 200 dpi qui refusaient se reconstituent |
+
+Le contrôle neuf a été vu rougir sur le pli à 4,2 cm avec le lecteur insistant : trois
+codes perdus, dont `V1/3`. L'élargissement porte donc quelque chose que la relecture seule
+n'apporte pas.
+
+**Ce que le pli imprimait était le mauvais remède.** « Rescannez à 300 points par pouce au
+moins » demande *plus fin* ; ce qu'il faut, c'est *autrement*.
 
 ### Deux défauts de méthode, dans le banc lui-même
 

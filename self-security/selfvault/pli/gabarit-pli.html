@@ -61,7 +61,7 @@ pre { font-family:"DejaVu Sans Mono",monospace; font-size:8pt; line-height:1.3; 
 .planche .chapeau { margin:0 0 .3cm; font-size:9.5pt; }
 .grille { display:flex; flex-wrap:wrap; gap:.4cm; justify-content:flex-start; }
 figure { margin:0; text-align:center; }
-figure img { width:4.2cm; height:4.2cm; display:block; }
+figure img { width:7cm; height:7cm; display:block; }
 figcaption { line-height:1.1; }
 figcaption { font:700 9pt "DejaVu Sans Mono",monospace; color:var(--gris); margin-top:.05cm; }
 .pied { margin-top:.7cm; font:8.5pt Lato,sans-serif; color:var(--gris); border-top:1px solid var(--filet); padding-top:.25cm; }
@@ -167,9 +167,10 @@ seule question que le programme ne peut pas trancher tout seul : ce fichier vien
 <strong>deux fois</strong>, en deux exemplaires identiques : <strong>l'un des deux suffit</strong>.
 Si une planche est perdue, déchirée ou tachée, l'autre rend le pli entier.</p>
 
-<p>Numérisez à <strong>300 points par pouce au moins</strong>, en niveaux de gris — le réglage
-courant d'un copieur. Éprouvé sur ce pli : à 200 points la lecture passe encore, à 150 elle échoue.
-Après reconstitution, les deux empreintes doivent être identiques à celles-ci :</p>
+<p>Numérisez à <strong>300 points par pouce</strong>, en niveaux de gris — le réglage courant d'un
+copieur. S'il manque une image à la lecture, <strong>renumérisez à une autre résolution</strong>,
+400 ou 200 : une image peut se dérober à un réglage et se rendre au suivant, sans que rien ne soit
+abîmé. Après reconstitution, les deux empreintes doivent être identiques à celles-ci :</p>
 
 <dl class="carte">
   <dt>Déchiffreur</dt><dd class="emp">{{EMPREINTE_APP}}</dd>
@@ -178,7 +179,7 @@ Après reconstitution, les deux empreintes doivent être identiques à celles-ci
 </dl>
 
 <p>Une seule différence signifie qu'une image a été mal lue. Ne vous servez alors d'aucun des deux
-fichiers : reprenez à une résolution plus élevée, ou servez-vous du second exemplaire.</p>
+fichiers : renumérisez à une autre résolution, ou servez-vous du second exemplaire.</p>
 <p>Ces deux empreintes-ci ne répondent pas à la même question que le sceau. Elles disent
 <em>« la lecture des images est-elle exacte&nbsp;? »</em> ; le sceau dit <em>« ce coffre est-il celui
 qui a été déposé&nbsp;? »</em>. Les premières changent si l'on réécrit le fichier autrement, le sceau
@@ -196,7 +197,7 @@ non.</p>
 <p>Windows sait lire ces images tout seul, et il n'y en a que {{NQR_COFFRE}} à lire pour le coffre :
 celles marquées <code>V1/{{NQR_COFFRE}}</code> à <code>V{{NQR_COFFRE}}/{{NQR_COFFRE}}</code>.</p>
 <ol>
-  <li>Numérisez une planche, ou photographiez-la, à 300 points par pouce au moins.</li>
+  <li>Numérisez une planche, ou photographiez-la, à 300 points par pouce.</li>
   <li>Ouvrez l'application <strong>Outil Capture d'écran</strong>, puis le menu « … » et « Ouvrir un
       fichier ». Choisissez l'image.</li>
   <li>Cliquez l'icône de code, en bas à droite. Windows affiche le texte : copiez-le.</li>

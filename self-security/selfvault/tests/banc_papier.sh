@@ -66,7 +66,10 @@ if lire "$T/pli.pdf" -o "$T/plein" >"$T/log" 2>&1 \
    && cmp -s "$T/plein/coffre.selfvault" "$S/coffre.selfvault"; then
   echo "  ✓ PDF rastérisé à 300 dpi → deux fichiers reconstitués octet pour octet"
 else
-  echo "  ✗ la boucle complète échoue : $(tail -1 "$T/log")"; echec=1
+  # Le refus ENTIER, pas sa dernière ligne : c'est l'avant-dernière qui nomme la
+  # pièce et les rangs manquants. Un banc qui rougit pour la bonne raison et
+  # n'en donne pas le nom coûte la soirée à qui le relit.
+  echo "  ✗ la boucle complète échoue :"; sed 's/^/      /' "$T/log"; echec=1
 fi
 
 n=$((n+1))
@@ -224,26 +227,58 @@ cp "$S/qr"/V01.png "$T/melee/autre-V01.png"
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/melee" -o "$T/s6")
 rouge "$T/s6" "ne donnent pas la même chose" "deux tirages mêlés — divergence nommée"
 
-# Le plancher de résolution, éprouvé DES DEUX CÔTÉS de la valeur publiée. Les
-# README et le pli annoncent « 200 points par pouce passent, 150 échoue » : ce sont
-# ces deux nombres-là qu'il faut mesurer, et pas un troisième plus confortable.
-# Le banc n'éprouvait que 100 dpi — la phrase publiée ne tenait sous aucun contrôle.
+# La résolution, éprouvée des deux côtés. ⚠️ Il n'existe PAS de plancher au sens
+# où le banc l'entendait : mesuré le 09/09/2026 sur un même pli, la lecture
+# échouait à 300 et à 200 points par pouce et réussissait à 150 et 120. Ce n'est
+# pas la finesse qui manquait, c'est la rasterisation qui perdait un code par
+# résonance d'échelle — d'où le lecteur qui insiste, et ces deux bornes-ci :
+# celle qu'on imprime sur le pli, et une si basse que les modules ne sont plus
+# résolus du tout. Entre les deux, le résultat dépend du tirage : y planter un
+# nombre reviendrait à publier le résultat d'une loterie.
 n=$((n+1))
-mkdir -p "$T/plancher"
-pdftoppm -r 200 -gray -png "$T/pli.pdf" "$T/plancher/p" 2>/dev/null
-if python3 "$MODULE/outils/lire_pli.py" "$T/plancher" -o "$T/s200" \
+mkdir -p "$T/publiee"
+pdftoppm -r 300 -gray -png "$T/pli.pdf" "$T/publiee/p" 2>/dev/null
+if python3 "$MODULE/outils/lire_pli.py" "$T/publiee" -o "$T/s300" \
      --empreinte-app "$EA" --empreinte-coffre "$EV" >/dev/null 2>&1 \
-   && cmp -s "$T/s200/selfvault.html" "$MODULE/pli/selfvault.html" \
-   && cmp -s "$T/s200/coffre.selfvault" "$T/ref-coffre.selfvault"; then
-  echo "  ✓ 200 dpi — la valeur publiée passe, octet pour octet"
+   && cmp -s "$T/s300/selfvault.html" "$MODULE/pli/selfvault.html" \
+   && cmp -s "$T/s300/coffre.selfvault" "$T/ref-coffre.selfvault"; then
+  echo "  ✓ 300 dpi — la valeur imprimée sur le pli passe, octet pour octet"
 else
-  echo "  ✗ 200 dpi échoue alors que le pli et les README l'annoncent tenable"; echec=1
+  echo "  ✗ 300 dpi échoue alors que le pli l'imprime comme consigne"; echec=1
 fi
 
 mkdir -p "$T/basse"
-pdftoppm -r 150 -gray -png "$T/pli.pdf" "$T/basse/p" 2>/dev/null
+pdftoppm -r 80 -gray -png "$T/pli.pdf" "$T/basse/p" 2>/dev/null
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/basse" -o "$T/s4" --empreinte-app "$EA" --empreinte-coffre "$EV")
-rouge "$T/s4" "Pli incomplet" "150 dpi — la valeur publiée échoue, sans fichier tronqué"
+rouge "$T/s4" "Pli incomplet" "80 dpi — les modules ne sont plus résolus, rien n'est écrit"
+
+# ── Le pli passé au scanner ──────────────────────────────────────────────────
+# 🔑 Tout ce qui précède rasterise un PDF parfait : chaque module y tombe sur un
+# nombre régulier de pixels, sans flou, sans grain, sans travers. Aucun scanner
+# ne rend cela, et c'est un scanner qui lira le pli. Le banc établissait donc que
+# le pli se RELIT, jamais qu'il se NUMÉRISE. Mesuré le 09/09/2026 sur le pli à
+# 4,2 cm : un flou d'un pixel effaçait la planche entière — 0 code sur 15, et le
+# scan plausible en perdait un, ce qui suffit à perdre le coffre.
+echo "▸ Le pli passé au scanner — ce que la rasterisation parfaite ne dit pas"
+n=$((n+1))
+python3 "$MODULE/tests/degrader.py" "$T/publiee" "$T/scanne" >/dev/null
+if python3 "$MODULE/outils/lire_pli.py" "$T/scanne" -o "$T/s7" \
+     --empreinte-app "$EA" --empreinte-coffre "$EV" >"$T/log-scan" 2>&1 \
+   && cmp -s "$T/s7/selfvault.html" "$MODULE/pli/selfvault.html" \
+   && cmp -s "$T/s7/coffre.selfvault" "$T/ref-coffre.selfvault"; then
+  echo "  ✓ planche floutée, grenée et de travers — reconstituée octet pour octet"
+else
+  echo "  ✗ un scan plausible perd le pli :"; sed 's/^/      /' "$T/log-scan"; echec=1
+fi
+
+# Contre-témoin permanent, sur le patron du banc navigateur : sans lui, une
+# dégradation qui ne mordrait plus rendrait le contrôle précédent vert sans rien
+# établir. Le flou seul, poussé loin — c'est lui qui tue, le bruit et le travers
+# ne font que l'accompagner.
+python3 "$MODULE/tests/degrader.py" --flou 3 --bruit 0 --rotation 0 \
+        "$T/publiee" "$T/noyee" >/dev/null
+CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/noyee" -o "$T/s8" --empreinte-app "$EA" --empreinte-coffre "$EV")
+rouge "$T/s8" "Pli incomplet" "— une planche vraiment noyée est refusée : la sonde sait rougir"
 
 # 🔑 Un outil de lecture qui cède ne doit pas se déguiser en pli mal numérisé.
 # `zbarimg` rend une sortie vide quand il échoue, et une sortie vide se lit
@@ -258,7 +293,7 @@ n=$((n+1))
 s=$(PATH="$T/panne:$PATH" python3 "$MODULE/outils/lire_pli.py" "$T/pli.pdf" -o "$T/s5" 2>&1); c=$?
 if [ $c -eq 0 ]; then
   echo "  ✗ l'outil de lecture en panne — a RÉUSSI alors qu'il ne pouvait rien lire"; echec=1
-elif [[ "$s" == *"Rescanne"* ]]; then
+elif [[ "$s" == *"Renumérise"* ]]; then
   echo "  ✗ l'outil de lecture en panne — accuse la numérisation au lieu de s'accuser"; echec=1
 elif [[ "$s" != *"a échoué"* ]]; then
   echo "  ✗ l'outil de lecture en panne — refuse sans nommer la cause : $(echo "$s" | tail -1)"; echec=1
