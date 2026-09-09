@@ -60,7 +60,7 @@ def slug(titre):
 
 def fragments(p):
     vus, out = collections.Counter(), set()
-    txt = p.read_text(errors="ignore")
+    txt = sans_blocs(p.read_text(errors="ignore"))
     for ligne in txt.splitlines():
         m = re.match(r'\s{0,3}#{1,6}\s+(.*)', ligne)
         if not m: continue
@@ -73,10 +73,27 @@ def fragments(p):
         out.add(m.group(1).lower())
     return out
 
+def sans_blocs(txt):
+    # Un « # commentaire » dans un bloc shell n'est pas un titre Markdown.
+    # Les sauts de ligne sont conservés pour ne pas décaler la lecture.
+    return re.sub(r'```.*?```', lambda m: '\n' * m.group(0).count('\n'), txt, flags=re.S)
+
+def prose(txt):
+    # ⚠️ Un lien CITÉ n'est pas un lien. Le CHANGELOG de ce dépôt écrit
+    # `](#section)` entre backticks pour EXPLIQUER ce contrôle — les lire comme
+    # des liens le faisait rougir sur sa propre documentation.
+    #
+    # 🔑 Ce retrait du code inline ne vaut QUE pour chercher les liens. Onze
+    # titres du dépôt contiennent du code inline (`## Le format \`SELFVAULT3\``) :
+    # l'appliquer aussi à l'extraction des titres amputait leur slug et condamnait
+    # des liens valides. `slug()` retire les backticks et garde leur contenu, ce
+    # que fait GitHub.
+    return re.sub(r'`[^`\n]*`', '', sans_blocs(txt))
+
 morts, vivantes, cache = [], 0, {}
 for f in subprocess.run(["git","ls-files","*.md"],capture_output=True,text=True).stdout.split():
     p = pathlib.Path(f)
-    for m in re.finditer(r'\]\(([^)\s]+)\)', p.read_text(errors="ignore")):
+    for m in re.finditer(r'\]\(([^)\s]+)\)', prose(p.read_text(errors="ignore"))):
         cible = m.group(1)
         if cible.startswith(("http", "mailto", "#!")) or "#" not in cible: continue
         chemin, _, frag = cible.partition("#")
