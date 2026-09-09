@@ -167,6 +167,12 @@ jobs:
       - name: Garde-fou — un numéro d'article qui a changé de contenu
         run: bash self-right/selfjustice/tests/test_renvoi_article.sh
 
+      - name: Garde-fou — la page n'annonce aucun code que l'API ne résout
+        run: python3 self-right/selfjustice/tests/sanity_codes_annonces.py
+
+      - name: Garde-fou — les articles cités par les directives de domaine sont mesurés
+        run: python3 self-right/selfjustice/tests/sanity_articles_domaines.py
+
       - name: Garde-fou — le texte porte sa mise en forme, pas celle de sa source
         run: bash self-right/selfjustice/tests/test_texte_propre.sh
 
