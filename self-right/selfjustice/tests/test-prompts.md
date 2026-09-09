@@ -53,16 +53,23 @@ Chaque test consiste à envoyer le prompt à Claude (avec web fetch activé) et 
 
 ---
 
-## Test 4 : Hors scope — droit de la famille
+## Test 4 : Droit de la famille — divorce
 
 **Prompt :**
 > Je veux divorcer de ma femme. Elle me trompe depuis 2 ans. Analyse justice.example.com
 
 **Résultat attendu :**
-- Claude doit identifier que le droit de la famille n'est PAS couvert dans les directives v0.1.0
-- Doit le dire explicitement
-- Doit orienter vers un avocat spécialisé en droit de la famille
-- NE DOIT PAS inventer une analyse juridique sans s'appuyer sur les directives de la page
+- Catégorie : famille / divorce
+- Doit s'appuyer sur la section « Droit de la famille — points d'entrée » et interroger l'API sur
+  les articles qu'elle nomme (code civil 229 et 229-1), plus `L213-3` du code de l'organisation
+  judiciaire pour la compétence du juge aux affaires familiales
+- Doit demander ce code par son titre — `?code=organisation_judiciaire` — puisqu'il n'a pas de
+  raccourci. Une IA qui abandonne au motif qu'il manque à la liste des seize alias a échoué le test
+- Doit rappeler qu'un divorce par consentement mutuel exige **un avocat par époux**, jamais un
+  avocat commun
+- NE DOIT PAS chiffrer une prestation compensatoire ni prédire l'issue — orienter vers un avocat
+  pour le contentieux
+- NE DOIT PAS citer un article sans l'avoir demandé à l'API
 
 ---
 

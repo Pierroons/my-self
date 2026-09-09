@@ -63,7 +63,7 @@ protection mechanisms.
 | [SelfRecover](./bi-self/selfrecover/) | Who are you? | **v0.5.1** — library + deployed implementation |
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | What if the disk is stolen? | **v0.4.0** — deployed and documented, hex key |
 | [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.3.0** — in service, 198 checks |
-| [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.1.0 beta** |
+| [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.2.0 beta** — housing and family law covered |
 | [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.2** — live, over 1,800 official procedures |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.3.0** — linked-voter cross-referencing, recovery, vote reason; 24 checks; 2 mechanisms missing |
 
