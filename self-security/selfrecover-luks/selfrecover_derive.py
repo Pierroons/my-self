@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-selfrecover_derive — dérive une clé (Argon2id) depuis un mot de récupération SelfRecover.
+selfrecover_derive — dérive une clé (Argon2id) depuis la passphrase Recover-LUKS.
 
-Principe « mapping » : UN mot racine mémorisé -> clés filles cloisonnées par LABEL.
+Principe « mapping » : UNE passphrase -> clés filles cloisonnées par LABEL.
+
+⚠️ Le secret d'entrée est une passphrase de NIVEAU 1 — diceware, tirée par
+`genere-passphrase.py`, propre à la MACHINE. Ce n'est pas le « mot de récupération »
+du niveau 2, qui est par compte et se combine à un code de récupération. Le
+vocabulaire de L2 employé ici a essaimé jusqu'au README racine du monorepo, où il
+était devenu « une seule passphrase mémorisée » — un terme qui n'existe dans aucun
+des deux niveaux.
+
+⚠️ `--label` est une CAPACITÉ de ce dérivateur, pas une architecture déployée : seul
+`disk` a un consommateur (`selfrecover-keyscript.sh`). Les étiquettes `auth` et
+`data-enc` citées dans la documentation n'existent dans aucun code du monorepo.
   - label "auth"     -> prouver/retrouver l'accès (web)
   - label "data-enc" -> chiffrer la donnée applicative (SelfDataGuard)
   - label "disk"     -> key-file pour un slot LUKS (FDE du SSD /data)
@@ -44,10 +55,10 @@ def derive(word: str, salt: str, label: str, length: int = 32,
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Dérive une clé SelfRecover (Argon2id).")
-    ap.add_argument("--word", help="mot de récupération — DÉCONSEILLÉ : visible dans "
+    ap.add_argument("--word", help="la passphrase — DÉCONSEILLÉ : visible dans "
                                    "/proc/<pid>/cmdline pendant l'exécution. Réservé aux tests.")
     ap.add_argument("--stdin", action="store_true",
-                    help="lit le mot de récupération sur stdin (1re ligne) — voie recommandée")
+                    help="lit la passphrase sur stdin (1re ligne) — voie recommandée")
     ap.add_argument("--salt", help="sel propre au déploiement (ex. site_salt)")
     ap.add_argument("--salt-file", help="fichier contenant le sel (comme le clone C)")
     ap.add_argument("--label", default="disk", help="disk | auth | data-enc | ...")
@@ -56,7 +67,7 @@ if __name__ == "__main__":
                     help="hex (texte, sûr en pipe) ou raw (octets bruts)")
     a = ap.parse_args()
 
-    # Mot de récupération : stdin par défaut, argv seulement si explicitement demandé.
+    # Passphrase : stdin par défaut, argv seulement si explicitement demandé.
     if a.stdin:
         word = sys.stdin.readline().rstrip("\n")
     elif a.word is not None:

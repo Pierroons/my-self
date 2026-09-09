@@ -61,7 +61,7 @@ Un plus un égale une communauté auto-gouvernée. Pas trois — une chose quali
 
 ## Statut
 
-SelfRecover existe en implémentation de référence avec une démo auto-auditée (pas encore de déploiement en production réelle). SelfModerate dispose d'un whitepaper complet définissant le protocole ; l'implémentation de référence vit dans [`selfmoderate/src/`](./selfmoderate/src/) et le lab s'en sert. Deux mécanismes du protocole restent à écrire, marqués dans son README.
+SelfRecover existe en implémentation de référence et **tourne en production** — comme backend d'authentification d'un service de messagerie, qui réutilise tel quel son stockage de comptes. Sa démo est auto-auditée ; aucun audit externe n'a été mené. SelfModerate dispose d'un whitepaper complet définissant le protocole ; l'implémentation de référence vit dans [`selfmoderate/src/`](./selfmoderate/src/) et le lab s'en sert. Deux mécanismes du protocole restent à écrire, marqués dans son README.
 
 Les deux modules sont conçus pour s'imbriquer — une fois les deux en ligne, une communauté peut se bootstraper et se gouverner elle-même sans aucun service central.
 

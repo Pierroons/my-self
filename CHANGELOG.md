@@ -10,6 +10,59 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Le contrôle des chemins ne regardait aucun lien ancré — 9 septembre 2026
+
+`scripts/check-paths.sh` porte depuis sa création une classe `[^)#]` qui **exclut le
+`#`** : `](#section)` et `](guide.md#section)` sortaient de son périmètre. Quatre badges
+des README SelfRecover pointaient `#quickstart`, qu'aucun titre ne produit, et le script
+rendait vert — la forme la plus discrète du faux vert, un contrôle qui passe parce qu'il
+ne regarde pas.
+
+Un quatrième contrôle vérifie désormais les fragments, en reproduisant l'algorithme de
+`github-slugger`. ⚠️ **Son ordre d'opérations n'est pas intuitif et un seul écart fabrique
+des faux positifs** : `trim()` s'applique AVANT la suppression de la ponctuation, jamais
+après. `## Facteur « cet appareil »` produit donc `facteur--cet-appareil-`, tiret final
+compris — la première version du contrôle le retirait et condamnait un lien parfaitement
+valide. Un garde-fou qui crie à tort finit désactivé.
+
+Le verdict porte son **contre-témoin** : « les 29 ancres vérifiées résolvent », et non un
+zéro nu qui ne distinguerait pas « tout résout » de « le motif n'a rien trouvé à
+regarder ». Éprouvé dans les trois sens : ancre morte plantée → rougit ; fichier absent
+derrière une ancre → rougit en nommant la cause ; ancre valide chargée de ponctuation →
+acceptée.
+
+Les quatre `#quickstart` pointent maintenant la section de démarrage qu'ils visaient.
+
+### SelfRecover était déployé et non déployé, à sept lignes d'intervalle — 9 septembre 2026
+
+`bi-self/README.md:57` annonçait « deployed and self-audited implementation » et la
+section Statut, sept lignes plus bas, « no real-world production deployment yet ». Le
+lecteur devait trancher seul entre deux affirmations opposées du même fichier.
+
+**C'est la ligne 57 qui dit vrai**, vérifié sur la machine par la conv GitHub : le
+backend d'authentification d'un service de messagerie sert la bibliothèque en conditions
+réelles. La section Statut le dit désormais, dans les deux langues, et garde ce qui reste
+exact — la démo est auto-auditée, aucun audit externe n'a été mené.
+
+### Le secret de LUKS portait le vocabulaire de l'autre niveau — 9 septembre 2026
+
+Quatre fichiers de `selfrecover-luks/` appelaient « mot de récupération » — le terme du
+**niveau 2**, qui est par compte et se combine à un code — ce qui est une **passphrase de
+niveau 1**, diceware, propre à la machine. Douze occurrences ; deux fichiers seulement
+disaient juste, dont le keyscript, c'est-à-dire le seul qui tourne au démarrage.
+
+La source est la docstring de `selfrecover_derive.py`, et c'est de là que la formulation a
+essaimé jusqu'au README racine du monorepo, où elle était devenue « une seule passphrase
+mémorisée » — un terme qui n'existe dans aucun des deux niveaux.
+
+Corrigé, et la docstring porte maintenant les deux avertissements qui manquaient : la
+nature du secret d'entrée, et le fait que **`--label` est une capacité du dérivateur, pas
+une architecture déployée** — seul `disk` a un consommateur, les étiquettes `auth` et
+`data-enc` citées en documentation n'existent dans aucun code du monorepo.
+
+Aucune clé, aucune dérivation, aucun format n'est touché : c'est de la prose dans du code.
+Le nom de l'option `--word` est conservé — le renommer romprait un contrat.
+
 ### Les secrets du lab refusent au lieu de servir — 9 septembre 2026
 
 Trois fonctions posaient chacune leur secret sans jamais lire le retour de leur

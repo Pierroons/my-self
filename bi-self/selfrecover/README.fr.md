@@ -7,8 +7,8 @@
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.5.1](https://img.shields.io/badge/status-v0.5.1-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
-[![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#quickstart)
-[![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#quickstart)
+[![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
+[![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
 > **Un mot. Chaque site. Pas d'email requis.**
