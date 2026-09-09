@@ -35,9 +35,17 @@ if ($src === false) {
 // ⚠️ `texte_propre` est ici parce que `chercher_conventionnalite` l'appelle sur
 // chaque aperçu. Une fonction manquante ne fait pas rougir un cas : elle tue le
 // banc au milieu, et le message parle d'`eval` plutôt que du défaut.
+// `juridiction_valide` n'est plus une fonction pure : elle lit la couverture de
+// l'index. On pointe JURIS_DB sur un chemin inexistant pour que le banc éprouve
+// le repli — déterministe, et c'est l'état d'un déploiement avant moissonnage.
+// La dérivation depuis une vraie base est éprouvée à part, par
+// sanity_juridictions_servies.php.
+define('JURIS_DB', '/nonexistent/judilibre_index.sqlite');
+const JURIDICTIONS_SANS_INDEX = ['cc', 'ca'];
+
 foreach (['requete_cherchable', 'champ_juris', 'mots_cherchables', 'texte_propre',
-          'chercher_conventionnalite', 'juridiction_valide',
-          'message_juridiction_inconnue'] as $nom) {
+          'chercher_conventionnalite', 'juridictions_servies', 'juridiction_libelle',
+          'juridiction_valide', 'message_juridiction_inconnue'] as $nom) {
     if (!preg_match('/^function ' . $nom . '\(.*?^}$/ms', $src, $m)) {
         fwrite(STDERR, "$nom introuvable dans api/api.php\n");
         exit(2);
@@ -99,14 +107,30 @@ echo "\n▸ Une juridiction inconnue est refusée, pas filtrée vers le vide\n";
 // ⚠️ On interroge la fonction du code, jamais une copie de sa règle : une
 // première version rejouait le `in_array` dans le test, et aurait donc été
 // verte quel que soit le comportement réel de l'API.
-foreach ([['cc', 'cc'], [' CA ', 'ca'], ['ce', null], ['ta', null], ['xx', null]] as [$j, $attendu]) {
-    $obtenu = juridiction_valide($j);
-    verdict($obtenu === $attendu, "« $j » → " . ($obtenu ?? 'refusée'));
+// 🔑 Ce qui se contrôle est la RÈGLE — « hors de la couverture, refusée » — et
+// non le cas « ce ». Écrire `['ce', null]` en dur ferait de ce banc un
+// quatrième endroit à corriger le jour où le Conseil d'État entre dans
+// l'index, et il rougirait pour une couverture élargie : un garde-fou ne doit
+// pas défendre l'état d'hier.
+$servies = juridictions_servies();
+verdict($servies === JURIDICTIONS_SANS_INDEX, 'sans index lisible, on retombe sur le repli');
+foreach ($servies as $j) {
+    verdict(juridiction_valide($j) === $j, "« $j », servie par l'index → acceptée");
+    verdict(juridiction_valide(' ' . strtoupper($j) . ' ') === $j, "« $j » en majuscules et espacée → normalisée");
+}
+foreach (['xx', 'zzz', ''] as $j) {
+    verdict(juridiction_valide($j) === null, "« $j », hors couverture → refusée");
 }
 $msg = message_juridiction_inconnue('ce');
-foreach (['cc', 'ca', "Conseil d'État", 'ArianeWeb'] as $attendu) {
-    verdict(str_contains($msg, $attendu), "le refus nomme « $attendu »");
+foreach ($servies as $j) {
+    verdict(str_contains($msg, $j), "le refus nomme « $j », qu'il sert");
+    verdict(str_contains($msg, juridiction_libelle($j)), "le refus nomme « " . juridiction_libelle($j) . " »");
 }
+// La réserve sur la justice administrative n'a de sens que tant qu'elle est
+// vraie. Ici l'index est absent, donc le repli judiciaire s'applique.
+verdict(str_contains($msg, 'ArianeWeb'), 'le refus dit où chercher la justice administrative');
+verdict(str_contains(message_juridiction_inconnue('xx'), 'ArianeWeb'),
+        'la réserve accompagne tout refus, pas seulement celui qui porte sur « ce »');
 
 echo "\n▸ Quelles formes une requête fait-elle chercher\n";
 

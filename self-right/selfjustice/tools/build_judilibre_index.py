@@ -41,7 +41,15 @@ MARQUEUR = os.environ.get("JUDILIBRE_MARQUEUR", os.path.join(os.path.dirname(DB)
 
 BATCH_SIZE = 1000          # plafond de l'API : 2000 est refusé par un 400
 DELAI = 1.2                # rythme poli ; la rafale courte est limitée à 20
-JURIDICTIONS = ["cc", "ca"]
+# L'ordre judiciaire, puis le Conseil d'État. Ce que cette liste moissonne
+# détermine ce que l'API accepte : `juridictions_servies()` d'api.php lit la
+# couverture dans la base plutôt que de la redéclarer. Ajouter un code ici
+# ouvre donc le guichet correspondant — au prochain moissonnage, pas avant.
+#
+# ⚠️ `ce` n'a jamais été rapatrié : la couverture réelle de l'amont pour cette
+# juridiction reste à mesurer au premier passage. Un lot vide se verrait à
+# `intervalles_faits`, pas à un plantage.
+JURIDICTIONS = ["cc", "ca", "ce"]
 
 # Une date antérieure à celle-ci trahit une donnée corrompue : la base contient
 # une décision de cour d'appel datée du 24 février 0201.

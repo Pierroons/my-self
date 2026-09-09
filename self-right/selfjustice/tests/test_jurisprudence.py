@@ -64,9 +64,21 @@ def negatif() -> list[str]:
     elif not absente.get("reserve"):
         echecs.append("une absence sans réserve : elle se lira « n'existe pas »")
 
-    statut, hors = appeler("/api/jurisprudence/verifier/470123?jurisdiction=ce")
-    if hors.get("etat") != "indeterminee" or statut != 503:
-        echecs.append(f"juridiction hors index → {statut} {hors.get('etat')} (attendu 503 indeterminee)")
+    # 🔑 La juridiction hors index ne s'écrit pas en dur. « ce » servait
+    # d'exemple ; le jour où le Conseil d'État entre dans l'index, ce contrôle
+    # rougirait pour une couverture ÉLARGIE — un garde-fou ne défend pas l'état
+    # d'hier. On demande donc à l'instance ce qu'elle couvre, et on interroge un
+    # code qui n'y est pas.
+    _, etat = appeler("/api/status")
+    couverts = set((etat.get("jurisprudence") or {}).get("couverture") or {})
+    absente = next((j for j in ("ce", "caa", "ta", "tj", "zzz") if j not in couverts), None)
+    if absente is None:
+        echecs.append("aucune juridiction hors index à éprouver — le contrôle négatif est muet")
+    else:
+        statut, hors = appeler(f"/api/jurisprudence/verifier/470123?jurisdiction={absente}")
+        if hors.get("etat") != "indeterminee" or statut != 503:
+            echecs.append(f"juridiction hors index « {absente} » → {statut} "
+                          f"{hors.get('etat')} (attendu 503 indeterminee)")
 
     statut, numero = appeler("/api/jurisprudence/search?q=" + urllib.parse.quote("25/01234"))
     if statut != 400:
