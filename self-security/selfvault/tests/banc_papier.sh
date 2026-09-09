@@ -245,6 +245,29 @@ pdftoppm -r 150 -gray -png "$T/pli.pdf" "$T/basse/p" 2>/dev/null
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/basse" -o "$T/s4" --empreinte-app "$EA" --empreinte-coffre "$EV")
 rouge "$T/s4" "Pli incomplet" "150 dpi — la valeur publiée échoue, sans fichier tronqué"
 
+# 🔑 Un outil de lecture qui cède ne doit pas se déguiser en pli mal numérisé.
+# `zbarimg` rend une sortie vide quand il échoue, et une sortie vide se lit
+# comme « cette page ne porte aucun QR code » : le lecteur demandait alors de
+# rescanner plus fin, alors que le scan était bon. Celui qui ouvre le pli n'a
+# aucun moyen de faire la différence, et pourrait croire le dépôt perdu.
+# Éprouvé en plaçant devant lui un homonyme qui échoue.
+mkdir -p "$T/panne"
+printf '#!/bin/sh\nexit 1\n' > "$T/panne/zbarimg"
+chmod +x "$T/panne/zbarimg"
+n=$((n+1))
+s=$(PATH="$T/panne:$PATH" python3 "$MODULE/outils/lire_pli.py" "$T/pli.pdf" -o "$T/s5" 2>&1); c=$?
+if [ $c -eq 0 ]; then
+  echo "  ✗ l'outil de lecture en panne — a RÉUSSI alors qu'il ne pouvait rien lire"; echec=1
+elif [[ "$s" == *"Rescanne"* ]]; then
+  echo "  ✗ l'outil de lecture en panne — accuse la numérisation au lieu de s'accuser"; echec=1
+elif [[ "$s" != *"a échoué"* ]]; then
+  echo "  ✗ l'outil de lecture en panne — refuse sans nommer la cause : $(echo "$s" | tail -1)"; echec=1
+elif [ -e "$T/s5/selfvault.html" ] || [ -e "$T/s5/coffre.selfvault" ]; then
+  echo "  ✗ l'outil de lecture en panne — a refusé MAIS a écrit un fichier"; echec=1
+else
+  echo "  ✓ un outil de lecture en panne se nomme, au lieu d'accuser le scan"
+fi
+
 echo
 if [ $echec -eq 0 ]; then echo "✓ Boucle papier conforme — $n contrôles."; else echo "✗ Boucle papier en échec — $n contrôles."; fi
 exit $echec
