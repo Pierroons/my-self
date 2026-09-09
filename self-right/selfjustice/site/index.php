@@ -151,7 +151,7 @@ function chiffre(array $corpus, string $cle): string {
   <div class="card">
     <h3>Comment ça marche ?</h3>
     <ol class="steps">
-      <li>Tu as un conflit (travail, logement, famille, voisinage, consommation, civil, pénal…)</li>
+      <li>Tu as un conflit (travail, logement, famille, administration, voisinage, consommation, civil, pénal…)</li>
       <li>Tu ouvres ton IA (Claude, Mistral, ChatGPT, Gemini, Perplexity — au choix)</li>
       <li>Tu décris ton problème et tu ajoutes : <code>analyse justice.example.org</code></li>
       <li>Ton IA fetch cette page, lit les directives juridiques, et t'envoie une pré-analyse structurée</li>
@@ -536,6 +536,10 @@ Analyse selon /directives.html</pre>
           <li><a href="/api/legi/article/371-1?code=civil">/api/legi/article/371-1?code=civil</a> (Code civil 371-1 — autorité parentale)</li>
           <li><a href="/api/legi/article/373-2-2?code=civil">/api/legi/article/373-2-2?code=civil</a> (Code civil 373-2-2 — pension alimentaire)</li>
           <li><a href="/api/legi/article/205?code=civil">/api/legi/article/205?code=civil</a> (Code civil 205 — obligation alimentaire envers les ascendants)</li>
+          <li><a href="/api/legi/article/R421-1?code=justice_administrative">/api/legi/article/R421-1?code=justice_administrative</a> (CJA R421-1 — délai de deux mois et décision préalable)</li>
+          <li><a href="/api/legi/article/R421-5?code=justice_administrative">/api/legi/article/R421-5?code=justice_administrative</a> (CJA R421-5 — le délai n'est opposable que s'il a été mentionné)</li>
+          <li><a href="/api/legi/article/L231-1?code=relations_entre_le_public_et_l_administration">/api/legi/article/L231-1?code=relations_entre_le_public_et_l_administration</a> (CRPA L231-1 — le silence vaut acceptation)</li>
+          <li><a href="/api/legi/article/L411-2?code=relations_entre_le_public_et_l_administration">/api/legi/article/L411-2?code=relations_entre_le_public_et_l_administration</a> (CRPA L411-2 — le recours gracieux interrompt le délai)</li>
           <li><a href="/api/eu/article/CEDH/6">/api/eu/article/CEDH/6</a> (CEDH art. 6 — procès équitable)</li>
           <li><a href="/api/eu/article/CEDH/8">/api/eu/article/CEDH/8</a> (CEDH art. 8 — vie privée et familiale)</li>
           <li><a href="/api/eu/article/CHARTE_UE/7">/api/eu/article/CHARTE_UE/7</a> (Charte UE art. 7 — respect vie privée)</li>
@@ -882,6 +886,22 @@ Analyse selon /directives.html</pre>
       <li><strong>Le divorce</strong> — <code>art. 229</code> et <code>art. 229-1</code> : le consentement mutuel se fait par acte sous signature privée contresigné par avocats et déposé au rang des minutes d'un notaire. <strong>Chaque époux doit avoir son propre avocat</strong> — un avocat commun est une cause de nullité, pas une économie.</li>
       <li><strong>Le délai</strong> — <code>art. 2224</code> : cinq ans pour les actions personnelles, à compter du jour où le titulaire du droit a connu ou aurait dû connaître les faits lui permettant de l'exercer. Le point de départ compte autant que la durée : dis-le explicitement.</li>
       <li><strong>Où l'orienter</strong> — le CIDFF, gratuit, pour l'information sur les droits familiaux. Et si un mineur est en danger, le 119 avant toute analyse, comme le rappellent les règles complémentaires.</li>
+    </ul>
+  </section>
+
+  <section id="domaine-administratif">
+    <h3>Droit administratif — points d'entrée</h3>
+    <p><strong>On n'attaque pas un litige, on attaque une décision.</strong> C'est la première chose à établir : quelle décision, prise quand, notifiée comment. Sans décision, il n'y a rien à contester — et si l'utilisateur réclame de l'argent, il faut d'abord une demande adressée à l'administration, dont le refus fera la décision. Deux codes portent la matière, et aucun des deux n'a de raccourci : <code>?code=justice_administrative</code> pour le contentieux, <code>?code=relations_entre_le_public_et_l_administration</code> pour ce qui se passe avant.</p>
+    <ul>
+      <li><strong>Le délai</strong> — <code>art. R421-1</code> du code de justice administrative : deux mois à compter de la notification ou de la publication. Le même article pose que la requête tendant au paiement d'une somme n'est recevable qu'après une décision de l'administration sur une demande préalable.</li>
+      <li><strong>Le délai n'est pas toujours opposable</strong> — <code>art. R421-5</code> : il ne l'est qu'à condition d'avoir été mentionné dans la notification de la décision. <strong>Vérifie-le avant de conclure à la forclusion</strong> : c'est le point qui sauve le plus de dossiers qu'on croyait perdus, et celui qu'on oublie le plus souvent.</li>
+      <li><strong>Le recours amiable ne fait pas perdre le délai</strong> — <code>art. L411-2</code> du code des relations entre le public et l'administration : le recours gracieux ou hiérarchique, exercé dans le délai contentieux, l'interrompt. Le conseiller sans le dire reviendrait à conseiller de laisser filer le délai.</li>
+      <li><strong>Le silence</strong> — <code>art. L231-1</code> : le silence gardé deux mois vaut décision d'acceptation. Mais <code>art. L231-4</code> énumère les cas où il vaut rejet, et ils sont nombreux. <strong>Ne conclus jamais du principe sans avoir lu la dérogation</strong> — le sens du silence est l'inverse selon le domaine.</li>
+      <li><strong>Ce que l'administration devait faire</strong> — <code>art. L112-3</code> : toute demande fait l'objet d'un accusé de réception. <code>art. L121-1</code> : les décisions individuelles défavorables sont précédées d'une procédure contradictoire. <code>art. L211-2</code> et <code>art. L211-5</code> : les décisions qui doivent être motivées le sont par écrit, avec l'énoncé des considérations de droit et de fait. Un manquement à l'une de ces obligations est un moyen de légalité externe, pas une simple maladresse.</li>
+      <li><strong>L'urgence</strong> — <code>art. L521-1</code> : le référé-suspension, qui suppose une requête en annulation déjà déposée. <code>art. L521-2</code> : le référé-liberté, sur atteinte grave et manifestement illégale à une liberté fondamentale ; le juge se prononce dans un délai de quarante-huit heures. Si les faits décrits relèvent de l'urgence, dis-le avant tout le reste.</li>
+      <li><strong>Les frais</strong> — <code>art. L761-1</code> : la condamnation aux frais exposés et non compris dans les dépens. À mentionner dans la feuille de route, pas à chiffrer.</li>
+      <li><strong>⚠️ La jurisprudence administrative n'est pas dans les bases de ce module.</strong> L'index de décisions ne porte que la Cour de cassation et les cours d'appel — l'ordre judiciaire. `rechercher_jurisprudence` ne rendra donc rien du Conseil d'État, des cours administratives d'appel ni des tribunaux administratifs, et <strong>son silence ne veut pas dire qu'aucune décision n'existe</strong>. Dis-le à l'utilisateur au lieu de citer un arrêt de mémoire, et renvoie-le vers les sources publiques du Conseil d'État.</li>
+      <li><strong>Où l'orienter</strong> — le Défenseur des droits, gratuit et compétent sur les relations avec les services publics, déjà nommé dans les aides à l'accès au droit.</li>
     </ul>
   </section>
 </article>

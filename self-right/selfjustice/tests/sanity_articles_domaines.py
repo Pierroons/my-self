@@ -49,15 +49,24 @@ PAUSE = float(os.environ.get("SELFJUSTICE_API_PAUSE", "0.5"))
 
 
 def cites_par_la_page() -> set:
-    """Les `<code>art. N</code>` des deux sections de domaine, et d'elles seules."""
+    """Les `<code>art. N</code>` de TOUTES les sections `domaine-*`.
+
+    🔑 La première version bornait l'extraction entre `domaine-logement` et la fin
+    de `domaine-famille`. L'ajout de `domaine-administratif` l'a rendue aveugle à
+    douze articles — sans rougir : elle a continué de rendre vert sur les
+    vingt-trois qu'elle voyait encore. Une sonde délimitée par des noms littéraux
+    ne signale pas ce qu'elle cesse de couvrir, elle rétrécit en silence.
+    """
     src = PAGE.read_text(encoding="utf-8")
-    m = re.search(r'<section id="domaine-logement">.*?<section id="domaine-famille">.*?</section>',
-                  src, re.S)
-    if not m:
-        print("✗ les sections de domaine sont introuvables dans la page — "
+    sections = re.findall(r'<section id="domaine-[\w\-]+">(.*?)</section>', src, re.S)
+    if not sections:
+        print("✗ aucune section « domaine-… » dans la page — "
               "le contrôle ne peut rien juger", file=sys.stderr)
         sys.exit(2)
-    return set(re.findall(r"<code>art\. ([\w\-]+)</code>", m.group(0)))
+    refs = set()
+    for bloc in sections:
+        refs |= set(re.findall(r"<code>art\. ([\w\-]+)</code>", bloc))
+    return refs
 
 
 def interroge(base: str, ref: str, code: str) -> dict:

@@ -7,7 +7,7 @@
 > *Know your rights, make them right.*
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfJustice: v0.2.0 beta](https://img.shields.io/badge/SelfJustice-v0.2.0%20beta-green.svg)](./selfjustice/)
+[![SelfJustice: v0.3.0 beta](https://img.shields.io/badge/SelfJustice-v0.3.0%20beta-green.svg)](./selfjustice/)
 [![SelfAct: v0.1.2](https://img.shields.io/badge/SelfAct-v0.1.2-brightgreen.svg)](./selfact/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -58,7 +58,7 @@ From the fog of "I think I'm in my rights" to "this letter is in the post on Mon
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfJustice](./selfjustice/) | Machine-readable legal directives + an open law API | **v0.2.0 beta** — live at [justice.my-self.fr](https://justice.my-self.fr) |
+| [SelfJustice](./selfjustice/) | Machine-readable legal directives + an open law API | **v0.3.0 beta** — live at [justice.my-self.fr](https://justice.my-self.fr) |
 | [SelfAct](./selfact/) | Letters, forms and procedural deadlines built on that analysis | **v0.1.2** — API, catalogue and pages running |
 
 ---

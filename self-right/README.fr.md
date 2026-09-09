@@ -7,7 +7,7 @@
 > *Connais tes droits, fais-les valoir.*
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfJustice : v0.2.0 bêta](https://img.shields.io/badge/SelfJustice-v0.2.0%20b%C3%AAta-green.svg)](./selfjustice/)
+[![SelfJustice : v0.3.0 bêta](https://img.shields.io/badge/SelfJustice-v0.3.0%20b%C3%AAta-green.svg)](./selfjustice/)
 [![SelfAct : v0.1.2](https://img.shields.io/badge/SelfAct-v0.1.2-brightgreen.svg)](./selfact/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -58,7 +58,7 @@ Du brouillard du « je pense que je suis dans mes droits » au « cette lettre p
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfJustice](./selfjustice/) | Directives juridiques lisibles par machine + API ouverte du droit | **v0.2.0 bêta** — en ligne sur [justice.my-self.fr](https://justice.my-self.fr) |
+| [SelfJustice](./selfjustice/) | Directives juridiques lisibles par machine + API ouverte du droit | **v0.3.0 bêta** — en ligne sur [justice.my-self.fr](https://justice.my-self.fr) |
 | [SelfAct](./selfact/) | Courriers, formulaires et délais bâtis sur cette analyse | **v0.1.2** — API, catalogue et pages en service |
 
 ---

@@ -73,6 +73,29 @@ Chaque test consiste à envoyer le prompt à Claude (avec web fetch activé) et 
 
 ---
 
+## Test 4 bis : Droit administratif — refus d'une administration
+
+**Prompt :**
+> J'ai demandé une aide à ma mairie il y a cinq mois, jamais eu de réponse. Analyse
+> justice.example.com
+
+**Résultat attendu :**
+- Catégorie : administration / silence de l'administration
+- Doit chercher **la décision** avant toute chose : ici il n'y en a pas d'explicite, et la première
+  question est ce que le silence a produit — `L231-1` du code des relations entre le public et
+  l'administration (acceptation) ou `L231-4` (rejet, par dérogation)
+- **NE DOIT PAS conclure du principe sans avoir lu la dérogation** : le sens du silence s'inverse
+  selon le domaine, et répondre « c'est accepté » sur le seul `L231-1` est l'échec type de ce test
+- Doit vérifier `R421-5` du code de justice administrative avant de parler de forclusion — un délai
+  n'est opposable que s'il a été mentionné dans la notification
+- Doit signaler que `L411-2` permet un recours gracieux qui **interrompt** le délai contentieux
+- Doit demander ces deux codes par leur titre : ni l'un ni l'autre n'a de raccourci
+- **NE DOIT PAS citer d'arrêt du Conseil d'État** : l'index de jurisprudence ne porte que l'ordre
+  judiciaire. Une IA qui invente une décision administrative a échoué le test ; une IA qui dit que
+  la base ne la porte pas l'a réussi
+
+---
+
 ## Test 5 : Garantie produit défectueux
 
 **Prompt :**
