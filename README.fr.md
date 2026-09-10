@@ -36,21 +36,52 @@ valent dans les deux langues.
 
 ---
 
-## Un secret, trois usages cloisonnés
+## Une même discipline, des secrets séparés
 
-C'est ce qui fait de MySelf un ensemble plutôt qu'une collection. Une seule
-passphrase mémorisée sert à trois choses, par un **label** distinct qui change le
-sel effectif : deux clés issues du même secret restent indépendantes, et
-compromettre l'une n'ouvre pas les autres.
+C'est ce qui fait de MySelf un ensemble plutôt qu'une collection. Pas un secret
+unique qui ouvrirait tout — ce serait le contraire du but. Ce que les modules
+partagent, c'est la discipline : un séparateur de domaine dans le sel, et un
+Argon2id à 64 Mio partout où un secret doit résister à une attaque hors ligne.
 
-| Label | Usage | Module |
-|---|---|---|
-| `auth` | retrouver l'accès à un compte | SelfRecover |
-| `disk` | ouvrir un slot LUKS2 | SelfRecover-LUKS |
-| `data-enc` | chiffrer la donnée applicative | SelfDataGuard |
+| Module | Secret | Portée | Ce qui le sépare |
+|---|---|---|---|
+| SelfRecover | passphrase diceware (L1) | par compte | sel interne Argon2id |
+| SelfRecover | mot mémorisé (L2) | par compte | nom d'hôte + sel du compte |
+| SelfRecover-LUKS | passphrase diceware | par machine | étiquette `disk` |
+| SelfDataGuard | mot de passe + mot mémorisé | par utilisateur | contexte `/dataguard` |
 
-Une seule saisie au démarrage ouvre le volume racine, puis les volumes
-secondaires en cascade.
+Compromettre l'un n'ouvre pas les autres — non parce qu'une étiquette les
+cloisonne, mais parce que ce sont des secrets distincts, dérivés séparément.
+
+### Pourquoi tu peux garder le même mot mémorisé partout
+
+Le mot mémorisé est le seul secret que tu retiens vraiment. Il est fait pour être
+réutilisé.
+
+Un serveur héberge trois services, tu as un compte sur les trois, tu mets le même
+mot mémorisé — `arbre chaussures` — sur chacun. Ce que les trois enregistrent n'a
+rien en commun :
+
+    empreinte = HMAC-SHA256(mot mémorisé, nom d'hôte | version + sel du compte)
+
+Le **nom d'hôte** est lu dans le navigateur, jamais reçu du serveur. Chaque service
+enregistre donc une empreinte différente du même mot — et une page clonée servie
+ailleurs dérive de sa propre adresse : ce qu'elle produit ne vaut rien contre le
+vrai service.
+
+Le **sel** est tiré par ton navigateur à l'inscription, un par compte. Il sépare les
+personnes : deux utilisateurs qui choisissent le même mot sur le même service
+n'enregistrent pas la même empreinte.
+
+Le mot lui-même ne quitte jamais ton navigateur. Aucun des trois serveurs ne le
+reçoit, et aucun ne peut rejouer l'empreinte d'un autre.
+
+### Le volume chiffré est un trousseau
+
+Sur une machine, une seule saisie ouvre le volume racine au démarrage — et ce que ce
+volume contient ouvre le reste : les clés des volumes secondaires, et, sur un poste
+qui signe ses propres noyaux, la clé de signature Secure Boot. Le disque ne protège
+pas que des fichiers, il protège les clés qui en ouvrent d'autres.
 
 ---
 
