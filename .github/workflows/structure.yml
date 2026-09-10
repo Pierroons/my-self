@@ -198,6 +198,12 @@ jobs:
       - name: Garde-fou — un paramètre refusé par l'amont ne se découpe pas
         run: bash self-right/selfjustice/tests/sanity_refus_amont.sh
 
+      - name: Garde-fou — les 113 libellés du fonds JADE sont tous classés
+        run: python3 self-right/selfjustice/tests/sanity_jade_juridictions.py
+
+      - name: Garde-fou — le collecteur JADE refuse bruyamment ce qu'il ne sait pas lire
+        run: python3 self-right/selfjustice/tests/sanity_jade_collecteur.py
+
       - name: Garde-fou — le compteur d'IA lit le User-Agent, pas la ligne
         run: bash self-right/selfjustice/tests/test_compteur_ia.sh
 
