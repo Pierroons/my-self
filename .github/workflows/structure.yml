@@ -192,6 +192,12 @@ jobs:
       - name: Garde-fou — le texte porte sa mise en forme, pas celle de sa source
         run: bash self-right/selfjustice/tests/test_texte_propre.sh
 
+      - name: Garde-fou — la couverture juridictionnelle se dérive de l'index
+        run: bash self-right/selfjustice/tests/sanity_juridictions_servies.sh
+
+      - name: Garde-fou — un paramètre refusé par l'amont ne se découpe pas
+        run: bash self-right/selfjustice/tests/sanity_refus_amont.sh
+
       - name: Garde-fou — le compteur d'IA lit le User-Agent, pas la ligne
         run: bash self-right/selfjustice/tests/test_compteur_ia.sh
 
