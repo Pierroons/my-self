@@ -11,7 +11,7 @@
 #
 # Usage : bash scripts/check-profil-unique.sh
 set -uo pipefail
-cd "$(git rev-parse --show-toplevel)"
+cd "$(git rev-parse --show-toplevel)" || exit 1
 
 SOURCE="bi-self/selfrecover/src/Crypto/Hashing.php"
 echec=0
@@ -110,6 +110,78 @@ if [ -n "$sans_profil" ]; then
     echec=1
 else
     echo "  ✓ les ${#A_LIRE[@]} fichiers analysés portent tous leur profil"
+fi
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 🔑 Les quatre contrôles ci-dessus ne regardent QUE du PHP, et c'est le trou par
+# lequel l'écart a vécu : un profil de dérivation écrit dans un `.js` ne
+# déclenchait rien. La bibliothèque annonçait Argon2id pour le facteur « cet
+# appareil » pendant que la seule implémentation faisait PBKDF2, et aucune sonde
+# n'avait de raison de le voir.
+#
+# Une sonde qui ne regarde pas un langage rend le même vert que si ce langage
+# était sain.
+# ─────────────────────────────────────────────────────────────────────────────
+
+echo "▸ Dérivation de clé côté navigateur"
+
+# Le porteur unique, et ce qui l'entoure légitimement.
+KDF_JS="bi-self/selfrecover/client/sr-kdf.js"
+
+# L'exemption est NOMINATIVE et porte sa raison. Exempter un répertoire couvrirait
+# aussi le fichier qui deviendrait fautif demain.
+#
+# `e2e-memo.js` — coffre de démonstration, dont le PBKDF2 est assumé et INSCRIT
+#   DANS LE BLOB (`kdf_iter`) : il sait sous quoi il a chiffré, donc il peut
+#   migrer. C'est le seul du dépôt dans ce cas.
+EXEMPTS_JS='demo/lab/public/js/e2e-memo\.js'
+
+kdf_js=$(git grep -lE "name:\s*'PBKDF2'|\"PBKDF2\"|'PBKDF2'" -- '*.js' \
+    | grep -vE "^(${KDF_JS}|bi-self/selfrecover/client/vendor/|bi-self/selfrecover/tests/|${EXEMPTS_JS})" || true)
+if [ -n "$kdf_js" ]; then
+    echo "  ✗ dérivation de mot de passe en JavaScript hors de ${KDF_JS} :"
+    echo "$kdf_js" | sed 's/^/     /'
+    echo "     Argon2id est la règle du projet ; l'exception est SelfVault, et elle"
+    echo "     énonce sa condition — des secrets TIRÉS AU SORT. Un mot mémorisé est"
+    echo "     choisi par un humain : la condition ne tient pas."
+    echec=1
+else
+    echo "  ✓ aucune KDF en JavaScript hors du porteur, sauf les exemptions nommées"
+fi
+
+# Un profil Argon2id recopié dans un autre `.js` se désaligne sans que rien ne le
+# dise — le même défaut que les empreintes en dur, dans l'autre langage.
+profil_js=$(git grep -lE 'memorySize\s*:|memoryCost\s*:|memory_cost\s*:' -- '*.js' \
+    | grep -vE "^(${KDF_JS}|bi-self/selfrecover/client/vendor/|bi-self/selfrecover/tests/)" || true)
+if [ -n "$profil_js" ]; then
+    echo "  ✗ profil de KDF redéfini en JavaScript :"
+    echo "$profil_js" | sed 's/^/     /'
+    echec=1
+else
+    echo "  ✓ le profil Argon2id du navigateur n'est défini que dans ${KDF_JS}"
+fi
+
+echo "▸ Aucune bibliothèque cryptographique tierce embarquée"
+
+# 🔑 La KDF du navigateur a d'abord été un binaire WebAssembly copié dans le
+# dépôt. Elle est maintenant écrite ici, et rien ne doit ramener un opaque à sa
+# place sans que ce contrôle le dise : un fichier minifié ne se relit pas, et
+# c'est précisément là que personne ne regarde.
+opaques=$(git ls-files -- 'bi-self/selfrecover/client/*' \
+    | while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        # Une ligne de plus de 500 caractères ne s'écrit pas à la main.
+        awk 'length > 500 { print FILENAME; exit }' "$f"
+      done | sort -u)
+if [ -n "$opaques" ]; then
+    echo "  ✗ fichier illisible dans la bibliothèque cliente :"
+    echo "$opaques" | sed 's/^/     /'
+    echo "     Un binaire minifié ne se vérifie que par son empreinte. S'il est"
+    echo "     voulu, il lui faut une provenance et un contrôle d'intégrité."
+    echec=1
+else
+    echo "  ✓ tout ce que la bibliothèque cliente livre est lisible"
 fi
 
 exit $echec

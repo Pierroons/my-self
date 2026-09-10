@@ -82,8 +82,9 @@ What you will find opening `src/`, and which says more than any pitch:
 | [`entropy.js`](./bi-self/selfrecover/tools/entropy-lab/engine/entropy.js) | Rejection sampling over `crypto.getRandomValues` |
 | [`Recovery.php`](./bi-self/selfrecover/src/Recovery/Recovery.php) | Rate limit scoped to `username + IP`, dummy hash against the timing oracle |
 
-The vendored libraries (`zxcvbn.js`, `hash-wasm-argon2.js`, EFF wordlist) are the
-real ones, not demo stand-ins.
+The vendored libraries (`zxcvbn.js`, EFF wordlist) are the real ones, not demo
+stand-ins. Browser-side Argon2id is not vendored: it is written here, in
+`bi-self/selfrecover/client/argon2id.js`, and checked against libsodium's vectors.
 
 ---
 

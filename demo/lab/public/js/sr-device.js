@@ -2,28 +2,33 @@
  * SelfRecover — facteur possession « CET APPAREIL » côté client (ECDSA P-256).
  *
  * Le navigateur génère une paire ECDSA P-256. La clé PRIVÉE est chiffrée au repos
- * (AES-256-GCM) par une clé dérivée du MOT MÉMORISÉ (PBKDF2), puis stockée localement.
- * Le serveur ne reçoit QUE la clé publique. Récupérer = signer un challenge : impossible
- * sans l'appareil (le blob) ET le mot (pour déchiffrer la privée) → 2FA cryptographique.
+ * (AES-256-GCM) par une clé dérivée du MOT MÉMORISÉ, puis stockée localement. Le
+ * serveur ne reçoit QUE la clé publique. Récupérer = signer un challenge :
+ * impossible sans l'appareil (le blob) ET le mot (pour déchiffrer la privée) →
+ * 2FA cryptographique.
  *
- * Dépend de rien d'externe (WebCrypto natif). Stockage : localStorage['srdev_<username>'].
+ * ── La dérivation n'est pas ici ────────────────────────────────────────────
+ *
+ * Elle vit dans `sr-kdf.js`, livré par la bibliothèque et partagé par lien
+ * symbolique : un seul porteur, des vecteurs figés vérifiés en PHP et en
+ * JavaScript. Ce fichier n'en est qu'un appelant.
+ *
+ * Le mot mémorisé est choisi par un humain — `register.php` en accepte quatre
+ * caractères — et il sert ici à CHIFFRER. L'exception PBKDF2 du projet
+ * (SelfVault) ne couvre que des secrets tirés au sort : elle ne s'applique pas.
+ *
+ * ⚠️ **Les blobs écrits avant ce changement ne sont pas lisibles** : rien n'y
+ * indique la KDF employée, c'est exactement le défaut corrigé. `srDeviceRecover`
+ * le dit et invite à ré-enrôler, plutôt que de laisser croire à un mot oublié.
+ *
+ * Charger avant celui-ci : `argon2id.js` puis `sr-kdf.js`.
+ * Stockage : localStorage['srdev_<username>'].
  */
 (function () {
   'use strict';
   var enc = new TextEncoder();
   function hex(buf){ return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join(''); }
-  function fromHex(h){ var a=new Uint8Array(h.length/2); for(var i=0;i<a.length;i++)a[i]=parseInt(h.substr(i*2,2),16); return a; }
   function b64u(buf){ return btoa(String.fromCharCode.apply(null,new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
-  function unb64u(s){ s=s.replace(/-/g,'+').replace(/_/g,'/'); while(s.length%4)s+='='; var bin=atob(s),a=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i); return a; }
-
-  // Clé AES-GCM dérivée du mot mémorisé (PBKDF2-SHA256, 200k itérations) + sel par-appareil.
-  async function aesKey(word, salt){
-    var base = await crypto.subtle.importKey('raw', enc.encode(word), 'PBKDF2', false, ['deriveKey']);
-    return crypto.subtle.deriveKey(
-      { name:'PBKDF2', salt: salt, iterations: 200000, hash:'SHA-256' },
-      base, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']
-    );
-  }
 
   function post(url, payload){ return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).then(r=>r.json()); }
 
@@ -32,9 +37,8 @@
     var kp = await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'}, true, ['sign','verify']);
     var pubSpki = await crypto.subtle.exportKey('spki', kp.publicKey);
     var privPkcs8 = await crypto.subtle.exportKey('pkcs8', kp.privateKey);
-    var salt = crypto.getRandomValues(new Uint8Array(16));
-    var iv   = crypto.getRandomValues(new Uint8Array(12));
-    var ct   = await crypto.subtle.encrypt({name:'AES-GCM',iv:iv}, await aesKey(word,salt), privPkcs8);
+    // Le blob porte sa version et ses paramètres : c'est `sr-kdf.js` qui les écrit.
+    var blob = await srKdfChiffrer(word, privPkcs8);
     var credentialId = hex(crypto.getRandomValues(new Uint8Array(16))); // 32 hex → [A-Za-z0-9_-]{16,64}
     // Le serveur exige la preuve qu'on détient le mot : sans elle, on pourrait
     // enrôler son appareil sur le compte d'un autre. Le mot lui-même ne part
@@ -49,7 +53,7 @@
       public_key: b64u(pubSpki), memorized_derived_key: derived
     });
     if (r.ok) {
-      localStorage.setItem('srdev_'+username, JSON.stringify({ credentialId: credentialId, salt: hex(salt), iv: hex(iv), ct: b64u(ct) }));
+      localStorage.setItem('srdev_'+username, JSON.stringify({ credentialId: credentialId, blob: blob }));
     }
     return r;
   };
@@ -64,10 +68,24 @@
     var st = JSON.parse(raw);
     var begin = await post('/api/device_auth_begin.php', { credential_id: st.credentialId });
     if (!begin.ok) return begin;
+    // 🔑 Un blob d'avant le versionnage n'est pas un blob corrompu, et le dire
+    // change ce que la personne va faire : sans distinction, elle chercherait un
+    // mot qu'elle n'a pas oublié. La seule issue est un ré-enrôlement.
+    if (!st.blob) {
+      return { ok:false, message:"Cet appareil a été enrôlé avec une version antérieure, dont la protection ne peut plus être relue. Ton mot mémorisé est inchangé : ré-enrôle cet appareil." };
+    }
     var privPkcs8;
     try {
-      privPkcs8 = await crypto.subtle.decrypt({name:'AES-GCM',iv:fromHex(st.iv)}, await aesKey(word, fromHex(st.salt)), unb64u(st.ct));
+      privPkcs8 = await srKdfDechiffrer(word, st.blob);
     } catch(e) {
+      // 🔑 Deux pannes très différentes arrivent ici. Un mot faux fait échouer
+      // AES-GCM sans message exploitable ; un blob mal formé, d'une version
+      // inconnue ou aux paramètres affaiblis fait lever `sr-kdf.js` avec une
+      // raison. Les confondre enverrait chercher un mot qui est le bon.
+      var raison = String((e && e.message) || '');
+      if (raison.indexOf('srKdf : ') === 0) {
+        return { ok:false, message:'Le contenu enrôlé sur cet appareil est inutilisable — ' + raison.slice(8) };
+      }
       return { ok:false, message:'Mot mémorisé incorrect (clé de cet appareil non déchiffrable).' };
     }
     var priv = await crypto.subtle.importKey('pkcs8', privPkcs8, {name:'ECDSA',namedCurve:'P-256'}, false, ['sign']);

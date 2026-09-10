@@ -86,8 +86,10 @@ présentation :
 | [`entropy.js`](./bi-self/selfrecover/tools/entropy-lab/engine/entropy.js) | Rejection sampling sur `crypto.getRandomValues` |
 | [`Recovery.php`](./bi-self/selfrecover/src/Recovery/Recovery.php) | Rate-limit scopé `username + IP`, empreinte factice contre l'oracle temporel |
 
-Les bibliothèques embarquées (`zxcvbn.js`, `hash-wasm-argon2.js`, liste EFF) sont
-les vraies, pas des remplaçantes de démonstration.
+Les bibliothèques embarquées (`zxcvbn.js`, liste EFF) sont les vraies, pas des
+remplaçantes de démonstration. Argon2id côté navigateur n'est pas embarqué : il
+est écrit ici, dans `bi-self/selfrecover/client/argon2id.js`, et confronté aux
+vecteurs de libsodium.
 
 ---
 

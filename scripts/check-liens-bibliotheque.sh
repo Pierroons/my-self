@@ -15,50 +15,64 @@
 #
 # Usage : bash scripts/check-liens-bibliotheque.sh
 set -uo pipefail
-cd "$(git rev-parse --show-toplevel)"
+cd "$(git rev-parse --show-toplevel)" || exit 1
 
 SOURCE="bi-self/selfrecover/client/sr-derive.js"
 echec=0
 
+# 🔑 Trois fichiers sont partagés, pas un. Une sonde qui ne regarde qu'un porteur
+# rend le même vert que si les autres étaient sains.
+PARTAGES=(
+    "bi-self/selfrecover/client/sr-derive.js"
+    "bi-self/selfrecover/client/sr-kdf.js"
+    "bi-self/selfrecover/client/argon2id.js"
+)
+
 echo "▸ La bibliothèque existe"
-if [ -f "$SOURCE" ]; then
-    echo "  ✓ ${SOURCE}"
-else
-    echo "  ✗ ${SOURCE} est introuvable — les liens ci-dessous ne peuvent pas résoudre."
-    exit 1
-fi
+for src in "${PARTAGES[@]}"; do
+    if [ -f "$src" ]; then
+        echo "  ✓ ${src}"
+    else
+        echo "  ✗ ${src} est introuvable — les liens ci-dessous ne peuvent pas résoudre."
+        exit 1
+    fi
+done
 
 echo "▸ Liens des démos vers la bibliothèque"
-# Le mode git fait foi, pas le système de fichiers : c'est ce qui est versionné
-# qui sera cloné ailleurs. Un lien correct en local mais commité comme fichier
-# régulier reviendrait en copie chez le prochain qui clone.
-liens=$(git ls-files -s -- 'demo/*/sr-derive.js' 'demo/*/*/sr-derive.js' 'demo/*/*/*/sr-derive.js' || true)
+for src in "${PARTAGES[@]}"; do
+    base=$(basename "$src")
 
-# 🔑 D'abord ce que git NE voit pas. Un lien présent sur le disque mais absent de
-# l'index rendait cet étage vert sans rien mesurer : la démo marchait en local,
-# et le prochain clone n'emportait rien. C'est arrivé le 27/08/2026, ici même,
-# pendant qu'on éprouvait ce script.
-sur_disque=$(find demo -name sr-derive.js 2>/dev/null | sort || true)
-for f in $sur_disque; do
-    if ! git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
-        echo "  ✗ ${f} existe sur le disque mais n'est pas suivi par git — un clone ne l'aura pas"
-        echec=1
+    # Le mode git fait foi, pas le système de fichiers : c'est ce qui est versionné
+    # qui sera cloné ailleurs. Un lien correct en local mais commité comme fichier
+    # régulier reviendrait en copie chez le prochain qui clone.
+    liens=$(git ls-files -s -- "demo/*/${base}" "demo/*/*/${base}" "demo/*/*/*/${base}" || true)
+
+    # 🔑 D'abord ce que git NE voit pas. Un lien présent sur le disque mais absent de
+    # l'index rendait cet étage vert sans rien mesurer : la démo marchait en local,
+    # et le prochain clone n'emportait rien. C'est arrivé le 27/08/2026, ici même,
+    # pendant qu'on éprouvait ce script.
+    sur_disque=$(find demo -name "$base" 2>/dev/null | sort || true)
+    for f in $sur_disque; do
+        if ! git ls-files --error-unmatch "$f" >/dev/null 2>&1; then
+            echo "  ✗ ${f} existe sur le disque mais n'est pas suivi par git — un clone ne l'aura pas"
+            echec=1
+        fi
+    done
+
+    # Puis ce qui charge la bibliothèque sans lien du tout à côté.
+    chargeurs=$(git grep -l "src=\"/js/${base}\"" -- 'demo/**' || true)
+    for c in $chargeurs; do
+        racine=$(printf '%s' "$c" | cut -d/ -f1-2)
+        if ! printf '%s' "$liens" | grep -q "^.*${racine}/"; then
+            echo "  ✗ ${c} charge /js/${base}, mais ${racine} n'a aucun lien indexé vers la bibliothèque"
+            echec=1
+        fi
+    done
+
+    if [ -z "$liens" ]; then
+        echo "  ⚠ aucune démo ne référence ${base} — attendu tant qu'aucune ne le charge"
+        continue
     fi
-done
-
-# Puis ce qui charge la bibliothèque sans lien du tout à côté.
-chargeurs=$(git grep -l 'src="/js/sr-derive.js"' -- 'demo/**' || true)
-for c in $chargeurs; do
-    racine=$(printf '%s' "$c" | cut -d/ -f1-2)
-    if ! printf '%s' "$liens" | grep -q "^.*${racine}/"; then
-        echo "  ✗ ${c} charge /js/sr-derive.js, mais ${racine} n'a aucun lien indexé vers la bibliothèque"
-        echec=1
-    fi
-done
-
-if [ -z "$liens" ]; then
-    echo "  ⚠ aucune démo ne référence la bibliothèque — attendu tant qu'aucune n'est raccordée"
-else
     while read -r mode _ _ chemin; do
         [ -z "$chemin" ] && continue
         if [ "$mode" != "120000" ]; then
@@ -67,14 +81,14 @@ else
         elif [ ! -e "$chemin" ]; then
             echo "  ✗ ${chemin} est un lien mort → $(readlink "$chemin")"
             echec=1
-        elif [ "$(realpath "$chemin")" != "$(realpath "$SOURCE")" ]; then
+        elif [ "$(realpath "$chemin")" != "$(realpath "$src")" ]; then
             echo "  ✗ ${chemin} pointe ailleurs → $(readlink "$chemin")"
             echec=1
         else
-            echo "  ✓ ${chemin} → ${SOURCE}"
+            echo "  ✓ ${chemin} → ${src}"
         fi
     done <<< "$liens"
-fi
+done
 
 echo "▸ Réimplémentations du dériveur hors de la bibliothèque"
 # Le motif vise le HMAC nommément, et non `subtle.importKey` : ce dernier attrape
