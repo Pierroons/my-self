@@ -33,9 +33,17 @@ DPI = 300          # ce que le pli imprime
 # relit à toutes les tailles. Ce que perd une rasterisation dépend de sa phase,
 # donc de la version de poppler.
 DPI_SECOURS = (400, 250)
-# Le balayage fin vaut pour TOUTES les sources, y compris un répertoire venu d'un
-# scanner qu'on ne peut pas relancer : sur la page ci-dessus, il rend A9.
-BALAYAGES = ((), ("-Sx-density=2", "-Sy-density=2"))
+# Les balayages valent pour TOUTES les sources, y compris un répertoire venu d'un
+# scanner qu'on ne peut pas relancer — c'est le seul recours qui lui reste, puisque
+# rerasteriser demande un PDF. Chacun échantillonne l'image sur d'autres lignes :
+# un code que l'un manque, un autre le trouve. Ils ne se lancent que tant qu'il
+# manque quelque chose, donc ils ne coûtent rien sur un pli qui se lit d'un coup.
+# Au-delà d'une ligne sur trois, zbar ne rend plus rien du tout — mesuré.
+BALAYAGES = ((),
+             ("-Sx-density=2", "-Sy-density=2"),
+             ("-Sx-density=3", "-Sy-density=3"),
+             ("-Sx-density=1", "-Sy-density=2"),
+             ("-Sx-density=2", "-Sy-density=1"))
 EMPREINTE_CAR = 32  # ce que le pli imprime : SHA-256 tronqué
 
 
@@ -154,7 +162,10 @@ def scruter(images, lus=None):
     inconnus, divergents, premiere = 0, [], True
     for options in BALAYAGES:
         if options and not complet(lus or {}):
-            print("  il manque des codes — relecture au balayage fin")
+            # Le réglage est nommé : quatre lignes identiques ne disent pas
+            # combien de recours ont été tentés avant de renoncer.
+            print("  il manque des codes — relecture en %s"
+                  % " ".join(o.lstrip("-S") for o in options))
         lus, encore, aussi = fragments(images, lus, options)
         if premiere:
             inconnus, premiere = encore, False

@@ -236,6 +236,24 @@ else
   echo "  ✗ 300 dpi échoue alors que le pli l'imprime comme consigne"; echec=1
 fi
 
+# 🔑 Le contrôle ci-dessus passe même quand le lecteur s'y est repris à quatre
+# fois : ses recours masquent l'érosion qu'ils rattrapent. Celui-ci exige que la
+# rasterisation rende TOUS les codes du PREMIER coup, sans aucune option. C'est
+# la propriété qui a cédé le 10/09 — à 7 cm, soit 4,469 pixels par module, un
+# code manquait sur quatre tirages sur quatre en local et trois sur le runner,
+# tandis que la boucle complète restait verte en relisant le PDF autrement.
+# La taille imprimée se calcule désormais pour que chaque module tombe sur un
+# nombre ENTIER de pixels à cette résolution.
+n=$((n+1))
+attendus=$(python3 -c "import json;d=json.load(open('$S/pli.json'));print(sum(p['n'] for p in d['pieces'].values()))")
+lus=$(for f in "$T"/pages/p-*.png; do zbarimg --raw -q "$f" 2>/dev/null; done | grep -c '^PLI1|')
+if [ "$lus" -eq "$attendus" ]; then
+  echo "  ✓ $attendus codes sur $attendus au premier balayage — aucun recours nécessaire"
+else
+  echo "  ✗ $lus codes sur $attendus au premier balayage : la rasterisation en perd,"
+  echo "    les recours du lecteur le rattrapent, et la marge s'en va sans bruit"; echec=1
+fi
+
 mkdir -p "$T/basse"
 pdftoppm -r 80 -gray -png "$T/pli.pdf" "$T/basse/p" 2>/dev/null
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/basse" -o "$T/s4" --empreinte-app "$EA" --empreinte-coffre "$EV")

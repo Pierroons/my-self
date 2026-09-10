@@ -24,6 +24,21 @@ for _vieux in sorted(os.listdir(QRD)):
     if re.fullmatch(r"[AV]\d+\.png", _vieux):
         os.remove(os.path.join(QRD, _vieux))
 CHARGE = 1600            # octets de texte par QR code, correction Q comprise
+BORDURE = 4              # modules de marge blanche, exigés par ISO/IEC 18004
+
+# 🔑 La taille imprimée d'un QR code se CALCULE, elle ne se choisit pas. Mesuré le
+# 10/09/2026 : à 7 cm — 4,469 pixels par module — la rasterisation du pli à 300
+# points par pouce perdait un code sur quatre tirages sur quatre, et le runner
+# d'intégration en perdait trois. À un nombre ENTIER de pixels par module, les
+# vingt-quatre passent, sans une page de plus. Un module qui tombe sur un nombre
+# fractionnaire de pixels voit ses bords répartis inégalement par l'interpolation,
+# et un code y perd assez de contraste pour que zbar renonce.
+#
+# La valeur dépend du nombre de modules, donc de la version des QR codes : l'écrire
+# en dur dans le gabarit la périmerait en silence le jour où le déchiffreur maigrit
+# assez pour descendre d'une version.
+PX_MODULE = 5            # pixels par module, à DPI_PLI — entier, c'est tout l'objet
+DPI_PLI = 300            # la résolution que le pli imprime comme consigne
 
 # Le préfixe versionne le DÉCOUPAGE du pli, pas le format du coffre. Les deux
 # évoluent séparément : un coffre SELFVAULT3 se découpe exactement comme un
@@ -42,7 +57,7 @@ def decouper(nom_court, chemin):
     return brut, codes
 
 def image(donnees, sortie):
-    q = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_Q, border=4)
+    q = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_Q, border=BORDURE)
     q.add_data(donnees); q.make(fit=True)
     q.make_image(fill_color="black", back_color="white").save(sortie)
     return q.version
@@ -58,6 +73,9 @@ for court, chemin in (("A", os.path.join(PLI, "selfvault.html")),
         nom = f"{court}{i:02d}.png"
         v = image(c, os.path.join(QRD, nom))
         tous.append({"nom": nom, "etiquette": f"{court}{i}/{len(codes)}", "version": v})
+
+# Un QR de version v compte 4v + 17 modules, plus la marge des deux côtés.
+modules_max = max(4 * c["version"] + 17 for c in tous) + 2 * BORDURE
 
 json.dump({"pieces": pieces, "codes": tous}, open(os.path.join(SORTIE, "pli.json"), "w"), indent=1)
 
@@ -95,6 +113,9 @@ jetons = {
     "NQR_COFFRE": str(pieces["V"]["n"]),
     "EMPREINTE_COFFRE": groupe4(pieces["V"]["sha"]),
     "TOTAL_QR": str(len(tous)),
+    # Tous les codes s'impriment à la taille du PLUS GROS : la grille doit rester
+    # régulière. Un code de version inférieure y gagne des pixels par module.
+    "TAILLE_QR": "%.4fin" % (modules_max * PX_MODULE / DPI_PLI),
     "BITS_MIN": "%d" % BITS_MIN,
     # 🔑 Toute valeur que la notice imprimée énonce vient d'ici. Une constante
     # écrite en dur dans le gabarit échappe au garde-fou de substitution par
@@ -121,3 +142,5 @@ print(f"  pli rendu : sortie/pli.html — {len(rendu)} octets")
 for c, p in pieces.items():
     print(f"  {p['fichier']:22s} {p['octets']:6d} o → {p['n']} QR code(s)   sha256 {p['sha'][:16]}…")
 print(f"  total : {len(tous)} QR codes, version QR max {max(c['version'] for c in tous)}")
+print(f"  imprimés à {jetons['TAILLE_QR']} — {modules_max} modules, "
+      f"{PX_MODULE} pixels par module à {DPI_PLI} points par pouce")

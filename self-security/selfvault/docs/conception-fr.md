@@ -346,6 +346,54 @@ imprévisibles. Une garde compte les images copiées et, si le compte ne tombe p
 juste, le banc dit **« banc fautif, pas pli fautif »** au lieu de laisser un défaut
 d'outillage se déguiser en pli mal numérisé.
 
+## Ce qui a été mesuré, le 10/09/2026
+
+L'intégration a rougi sur la pull request — le premier passage du banc papier sur un
+runner depuis les corrections. Elle a nommé ce qu'elle perdait : `A7/21`, `A13/21`,
+`A19/21`. Espacés de six, et il y a six QR codes par planche : une **position**, pas
+un tirage. La pièce A est un fichier fixe, ses vingt et une images ne changent jamais
+d'un tirage à l'autre.
+
+**La taille imprimée était choisie, elle aurait dû être calculée.** Un QR code version
+40 compte 177 modules plus 4 de marge de chaque côté, soit 185. Imprimé à 7 cm et
+rastérisé à 300 points par pouce, cela fait **4,469 pixels par module** — un nombre
+fractionnaire. L'interpolation répartit alors inégalement les bords des modules, et
+certains codes y perdent assez de contraste pour que zbar renonce.
+
+| largeur | pixels par module | codes lus à 300 dpi, 4 tirages | pages |
+|---|---|---|---|
+| **7 cm** | 4,469 | **23/24 — les quatre fois** | 12 |
+| 6,27 cm | 4 pile | 24/24 | 12 |
+| 7,05 cm | 4,5 | 24/24 | 12 |
+| **7,83 cm** | **5 pile** | **24/24 — les quatre fois** | **12** |
+
+Retenu : **5 pixels par module**, soit 7,83 cm — plus de marge que 7 cm, et pas une
+page de plus. `image-rendering: pixelated` a été essayé d'abord : sans effet, weasyprint
+ne l'honore pas.
+
+🔑 **La valeur n'est pas écrite dans le gabarit, elle est dérivée par
+`outils/faire_pli.py`** à partir du nombre de modules réellement produit. L'écrire en
+dur la périmerait en silence le jour où le déchiffreur maigrit assez pour descendre
+d'une version de QR code.
+
+### Le contrôle qui manquait — celui qui voit l'érosion
+
+Le banc exigeait qu'un pli rastérisé à 300 points par pouce se reconstitue. Il se
+reconstituait : le lecteur s'y reprenait à quatre fois et y arrivait. **Les recours
+masquaient l'érosion qu'ils rattrapaient.** Un contrôle neuf exige que la rasterisation
+rende tous les codes au **premier balayage, sans aucune option**. Éprouvé dans les deux
+sens : vert à la taille calculée, rouge en replantant 7 cm — et c'est le **seul** des
+21 contrôles qui rougit alors.
+
+🔑 Un recours automatique est une dette : il paie le défaut et le rend invisible. Tout
+recours veut son contrôle qui mesure ce qui resterait sans lui.
+
+Le lecteur, lui, gagne deux balayages de plus — quatre au total, chacun échantillonnant
+l'image sur d'autres lignes, et il nomme celui qu'il tente. Ils ne se lancent que tant
+qu'il manque un code : coût nul sur un pli qui se lit du premier coup. C'est le seul
+recours qui vaille pour un répertoire venu d'un scanner, puisque rerasteriser demande
+un PDF.
+
 **Ce que le pli imprimait était le mauvais remède.** « Rescannez à 300 points par pouce au
 moins » demande *plus fin* ; ce qu'il faut, c'est *autrement*.
 
