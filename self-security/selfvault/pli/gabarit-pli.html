@@ -59,8 +59,17 @@ pre { font-family:"DejaVu Sans Mono",monospace; font-size:8pt; line-height:1.3; 
 .planche { page:planche; }
 .planche h1 { font-size:14pt; margin:0 0 .05cm; }
 .planche .chapeau { margin:0 0 .3cm; font-size:9.5pt; }
-.grille { display:flex; flex-wrap:wrap; gap:.4cm; justify-content:flex-start; }
-figure { margin:0; text-align:center; }
+/* 🔑 Pas de flexbox ici, et pas de `gap`. Ce pli doit rendre la même page sur
+   n'importe quel moteur, y compris celui qu'une machine aura dans vingt ans.
+   Mesuré le 10/09/2026 : WeasyPrint 61.2 — la version qu'apt installe sur le
+   runner d'intégration — ignore `gap` ET fragmente mal un conteneur flex en
+   travers d'une coupure de page. Elle tranchait le premier code de chaque
+   planche après la première : A7, A13, A19, quelle que soit leur taille.
+   `inline-block` plus des marges se fragmentent correctement partout, et
+   `break-inside:avoid` interdit qu'une image soit coupée en deux. */
+.grille { text-align:left; }
+figure { display:inline-block; vertical-align:top; margin:0 .2cm .4cm 0;
+         text-align:center; break-inside:avoid; }
 figure img { width:{{TAILLE_QR}}; height:{{TAILLE_QR}}; display:block; }
 figcaption { line-height:1.1; }
 figcaption { font:700 9pt "DejaVu Sans Mono",monospace; color:var(--gris); margin-top:.05cm; }
