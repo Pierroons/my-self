@@ -477,6 +477,31 @@ function juridiction_valide(string $brute): ?string {
  * retombe alors exactement sur le comportement d'avant, comme `legi_a_nature()`
  * le fait pour sa colonne.
  */
+/** L'index porte-t-il les colonnes du fonds administratif ?
+ *
+ * 🔑 **Le code se déploie avant la base, toujours.** Mesuré le 10/09/2026 en
+ * production : la route `decision` interrogeait `texte` et `source` sur un index
+ * qui ne les avait pas encore — `prepare()` rendait `false`, et l'appel suivant
+ * tuait la requête. Un 500 sur une base parfaitement saine, parce que le
+ * collecteur n'était pas encore passé.
+ *
+ * Même sonde que `legi_a_nature()`, même raison : entre le déploiement du code
+ * et la construction de la base il s'écoule des heures, et pendant ce temps
+ * l'API doit répondre comme avant.
+ */
+function juris_a_jade(SQLite3 $db): bool {
+    static $cache = null;
+    if ($cache !== null) return $cache;
+    $colonnes = [];
+    $res = @$db->query("PRAGMA table_info(decisions)");
+    while ($res && ($r = $res->fetchArray(SQLITE3_ASSOC))) {
+        $colonnes[] = $r['name'];
+    }
+    $cache = in_array('texte', $colonnes, true)
+          && in_array('source', $colonnes, true);
+    return $cache;
+}
+
 function juridictions_servies(): array {
     static $cache = null;
     if ($cache !== null) return $cache;
@@ -985,9 +1010,9 @@ if ($segments[0] === 'status') {
             // collecteurs a cessé de tourner. Les compter à part rend chaque
             // panne visible séparément.
             $par_source = [];
-            $stmt = @$db->query(
+            $stmt = juris_a_jade($db) ? @$db->query(
                 "SELECT COALESCE(source,'judilibre') AS s, COUNT(*) AS n "
-                . "FROM decisions GROUP BY s");
+                . "FROM decisions GROUP BY s") : null;
             while ($stmt && ($row = $stmt->fetchArray(SQLITE3_ASSOC))) {
                 $par_source[$row['s']] = (int) $row['n'];
             }
@@ -1981,6 +2006,14 @@ if ($segments[0] === 'jurisprudence') {
                 json_error("Index de jurisprudence absent de cette instance.", 503);
             }
             $db  = open_db(JURIS_DB);
+            if (!juris_a_jade($db)) {
+                json_error(
+                    "L'index de jurisprudence administrative n'est pas encore "
+                    . "construit sur cette instance. Les décisions de l'ordre "
+                    . "judiciaire restent servies normalement.",
+                    503
+                );
+            }
             $req = $db->prepare(
                 "SELECT id, number, decision_date, jurisdiction, location, formation,
                         publication, solution, type, texte, date_suspecte
