@@ -14,12 +14,11 @@ prend du travers dans le chargeur. Pas de bruit aléatoire : ce n'est pas ce que
 fait un scanner, et le banc tire déjà le contenu du coffre à neuf à chaque
 exécution — une seconde source d'aléa rendrait un rouge irreproductible.
 
-Le flou est celui qui tue, et il tue d'un coup. Mesuré le 09/09/2026 sur six
-tirages du pli **à 7 cm**, tous rendant le même seuil : la planche se reconstitue
-octet pour octet jusqu'à 1,5 pixel de rayon et disparaît à 2,0. Le pli à 4,2 cm
-mourait entre 1,0 et 1,5. Le pli imprime depuis le 10/09 des codes de 7,83 cm,
-plus grands donc plus tolérants — le seuil n'a pas été re-mesuré à cette taille,
-et celui écrit ici est donc un minorant.
+Le flou est celui qui tue, et il tue d'un coup. Re-mesuré le 10/09/2026 sur six
+tirages du pli **tel qu'il s'imprime**, à 7,83 cm, tous rendant le même seuil :
+les 24 codes se relisent jusqu'à 1,5 pixel de rayon, il en manque un ou deux à
+2,0, il n'en reste que deux à 2,5 et plus aucun à 3,0. Le pli à 4,2 cm mourait
+entre 1,0 et 1,5 — l'agrandissement a déplacé le seuil, il ne l'a pas supprimé.
 
 **Ce que ce modèle n'établit pas.** Il ne dit rien du grain du capteur, du seuil
 de binarisation d'un copieur, d'une tache d'encre, d'un pli de papier ni d'une

@@ -26,13 +26,13 @@ for _vieux in sorted(os.listdir(QRD)):
 CHARGE = 1600            # octets de texte par QR code, correction Q comprise
 BORDURE = 4              # modules de marge blanche, exigés par ISO/IEC 18004
 
-# 🔑 La taille imprimée d'un QR code se CALCULE, elle ne se choisit pas. Mesuré le
-# 10/09/2026 : à 7 cm — 4,469 pixels par module — la rasterisation du pli à 300
-# points par pouce perdait un code sur quatre tirages sur quatre, et le runner
-# d'intégration en perdait trois. À un nombre ENTIER de pixels par module, les
-# vingt-quatre passent, sans une page de plus. Un module qui tombe sur un nombre
-# fractionnaire de pixels voit ses bords répartis inégalement par l'interpolation,
-# et un code y perd assez de contraste pour que zbar renonce.
+# 🔑 La taille imprimée se DÉRIVE du nombre de modules, elle ne s'écrit pas en dur :
+# l'écrire la périmerait en silence le jour où le déchiffreur maigrit assez pour
+# descendre d'une version de QR code. Le choix de 5 n'est pas un correctif — re-mesuré
+# le 10/09/2026 sur le gabarit corrigé, les quatre largeurs essayées (4 / 4,469 / 4,5
+# et 5 pixels par module) rendent les 24 codes sur quatre tirages, en 11 pages chacune.
+# 5 est retenu parce que c'est la plus grande : le plus de marge devant le flou d'un
+# scanner, et un entier de moins à interpréter.
 #
 # La valeur dépend du nombre de modules, donc de la version des QR codes : l'écrire
 # en dur dans le gabarit la périmerait en silence le jour où le déchiffreur maigrit
