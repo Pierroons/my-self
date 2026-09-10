@@ -286,7 +286,7 @@ d'une page déchirée, jamais d'un code illisible.
 |---|---|
 | QR imprimés à **7 cm** au lieu de 4,2 | 4,47 px par module au lieu de 2,68 ; le flou supporté passe de « entre 1,0 et 1,5 px » à **1,5 px**, mesuré identique sur six tirages |
 | le lecteur **insiste** — balayage fin, puis d'autres résolutions sur un PDF | les répertoires à 300 et 200 dpi qui refusaient se reconstituent |
-| la **double impression est retirée** | l'agrandissement est payé : **12 pages**, contre 13 pour l'ancien pli à 4,2 cm |
+| la **double impression est retirée** | l'agrandissement est plus que payé : **11 pages**, contre 13 pour l'ancien pli à 4,2 cm |
 
 Le contrôle neuf a été vu rougir sur le pli à 4,2 cm avec le lecteur insistant : trois
 codes perdus, dont `V1/3`. L'élargissement porte donc quelque chose que la relecture seule
@@ -354,22 +354,34 @@ runner depuis les corrections. Elle a nommé ce qu'elle perdait : `A7/21`, `A13/
 un tirage. La pièce A est un fichier fixe, ses vingt et une images ne changent jamais
 d'un tirage à l'autre.
 
-**La taille imprimée était choisie, elle aurait dû être calculée.** Un QR code version
-40 compte 177 modules plus 4 de marge de chaque côté, soit 185. Imprimé à 7 cm et
-rastérisé à 300 points par pouce, cela fait **4,469 pixels par module** — un nombre
-fractionnaire. L'interpolation répartit alors inégalement les bords des modules, et
-certains codes y perdent assez de contraste pour que zbar renonce.
+**La taille imprimée était écrite en dur, elle aurait dû être dérivée.** Un QR code
+version 40 compte 177 modules plus 4 de marge de chaque côté, soit 185. Imprimé à 7 cm
+et rastérisé à 300 points par pouce, cela fait **4,469 pixels par module** — un nombre
+fractionnaire, dont on a d'abord cru qu'il expliquait les codes perdus.
 
-| largeur | pixels par module | codes lus à 300 dpi, 4 tirages | pages |
-|---|---|---|---|
-| **7 cm** | 4,469 | **23/24 — les quatre fois** | 12 |
-| 6,27 cm | 4 pile | 24/24 | 12 |
-| 7,05 cm | 4,5 | 24/24 | 12 |
-| **7,83 cm** | **5 pile** | **24/24 — les quatre fois** | **12** |
+⚠️ **Il ne l'expliquait pas.** La colonne de gauche ci-dessous a été mesurée avec la
+grille en flexbox, celle que weasyprint fragmentait mal : elle imputait à
+l'échantillonnage un défaut de mise en page. Re-mesurée le 10/09/2026 sur le gabarit
+corrigé, quatre tirages par largeur :
 
-Retenu : **5 pixels par module**, soit 7,83 cm — plus de marge que 7 cm, et pas une
-page de plus. `image-rendering: pixelated` a été essayé d'abord : sans effet, weasyprint
-ne l'honore pas.
+| largeur | pixels par module | grille flex | grille corrigée | pages |
+|---|---|---|---|---|
+| **7 cm** | 4,469 | 23/24 — les quatre fois | **24/24 — les quatre fois** | 11 |
+| 6,27 cm | 4 pile | 24/24 | 24/24 | 11 |
+| 7,05 cm | 4,5 | 24/24 | 24/24 | 11 |
+| **7,83 cm** | **5 pile** | 24/24 | **24/24 — les quatre fois** | **11** |
+
+Aucune largeur ne perd plus rien, aucune ne coûte une page de plus : la mesure ne les
+départage pas. **7,83 cm est retenu pour une raison qui, elle, reste vraie** — c'est la
+plus grande des quatre, donc celle qui garde le plus de marge devant le flou d'un
+scanner, et un nombre entier de pixels par module retire une variable du raisonnement.
+Ce n'est plus un correctif, c'est un choix, et il se dit comme tel.
+
+`image-rendering: pixelated` a été essayé d'abord : sans effet, weasyprint ne l'honore pas.
+
+🔑 **Une cause qu'on n'a pas isolée n'est qu'une corrélation bien racontée.** Le nombre
+fractionnaire était là, les codes manquaient, et l'explication se tenait. Elle a survécu
+à un commit et à une CI rouge avant qu'on pense à la mesurer seule.
 
 🔑 **La valeur n'est pas écrite dans le gabarit, elle est dérivée par
 `outils/faire_pli.py`** à partir du nombre de modules réellement produit. L'écrire en
@@ -501,7 +513,7 @@ Reste à faire :
       l'application réelle. Il imprime son propre décompte plutôt que de le faire recopier
       ailleurs. La boucle papier y est jointe depuis le 04/09 — rasteriser, relire les QR,
       borner la résolution, et depuis le 09/09 dégrader la planche comme un scanner.
-      Au 09/09 : **83 contrôles de format, 20 papier, 18 navigateur.**
+      Au 10/09 : **83 contrôles de format, 21 papier, 18 navigateur** — trois passages consécutifs verts.
       **Dépendances dérivées des imports, pas recopiées** : binaires
       `zbar-tools`, `poppler-utils`, `weasyprint`, `node` ; modules Python `cryptography`,
       `qrcode` et `pillow` — ce dernier parce que `qrcode` en a besoin pour écrire un PNG.
@@ -520,7 +532,7 @@ Reste à faire :
       C'est le seul chemin qui laisse de la place pour de vraies directives, dont le pli ne
       porte aujourd'hui aucun octet. ⚠️ Le gain en pages qui figurait ici — « de 13 à 7 » — se
       calculait sur le pli à 4,2 cm imprimé deux fois, et ne vaut plus. Sur la géométrie
-      actuelle — 6 QR par planche, 4 planches, 12 pages — les 24 QR codes tomberaient à 20 et
+      actuelle — 6 QR par planche, 4 planches, 11 pages — les 24 QR codes tomberaient à 20 et
       le nombre de planches ne bougerait pas : ce que la densité achète n'est pas des pages
       mais quatre emplacements libres. À recalculer avant d'en faire un argument. Rupture de
       format : `PLI1` → `PLI2`, séparateur `|` → `:`. Décision de produit, non prise.
