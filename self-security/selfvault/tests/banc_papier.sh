@@ -67,8 +67,7 @@ if lire "$T/pli.pdf" -o "$T/plein" >"$T/log" 2>&1 \
   echo "  ✓ PDF rastérisé à 300 dpi → deux fichiers reconstitués octet pour octet"
 else
   # Le refus ENTIER, pas sa dernière ligne : c'est l'avant-dernière qui nomme la
-  # pièce et les rangs manquants. Un banc qui rougit pour la bonne raison et
-  # n'en donne pas le nom coûte la soirée à qui le relit.
+  # pièce et les rangs manquants.
   echo "  ✗ la boucle complète échoue :"; sed 's/^/      /' "$T/log"; echec=1
 fi
 
@@ -81,10 +80,19 @@ fi
 
 # ── Les QR codes pris comme images, dans le désordre ─────────────────────
 # Le rang vit dans les données : l'ordre des pages ne doit rien changer.
+# 🔑 Les copies sont numérotées à la suite, pas nommées au hasard. Deux tirages
+# de `$RANDOM` sur vingt-quatre coïncident 7 fois sur 1 000 — `cp` écrase alors
+# sans rien dire, le répertoire perd un QR code, et les trois contrôles qui
+# lisent ce répertoire rougissent pour une raison qui n'est pas la leur.
+# La propriété éprouvée est que le RANG ne vient pas du nom du fichier ; elle
+# n'a jamais eu besoin que les noms soient imprévisibles.
 mkdir -p "$T/desordre"
+i=0
 find "$S/qr" -name '*.png' | shuf | while read -r f; do
-  cp "$f" "$T/desordre/p$RANDOM.png"
+  i=$((i+1)); cp "$f" "$T/desordre/p$i.png"
 done
+[ "$(find "$T/desordre" -name '*.png' | wc -l)" -eq "$(find "$S/qr" -name '*.png' | wc -l)" ] \
+  || { echo "  ✗ la copie en désordre a perdu des images — banc fautif, pas pli fautif"; exit 1; }
 EA=$(python3 -c "import json;print(json.load(open('$S/pli.json'))['pieces']['A']['sha'][:32])")
 NA=$(python3 -c "import json;print(json.load(open('$S/pli.json'))['pieces']['A']['n'])")
 EV=$(python3 -c "import json;print(json.load(open('$S/pli.json'))['pieces']['V']['sha'][:32])")
@@ -97,28 +105,12 @@ else
   echo "  ✗ pages mélangées — la reconstitution a échoué"; echec=1
 fi
 
-# ── Les deux exemplaires ─────────────────────────────────────────────────────
-# Le pli imprime chaque QR code deux fois, sur deux pages. Chaque exemplaire doit
-# suffire à lui seul, sans quoi la page supplémentaire ne paie pas son prix.
+# ── Les pages du pli, rastérisées une fois à la résolution imprimée ──────────
+# Un seul répertoire pour tous les contrôles qui suivent : la procédure imprimée,
+# la pièce retirée du pli, la borne des 300 dpi et la planche dégradée. Ceux qui
+# retirent des pages copient d'abord ailleurs.
 mkdir -p "$T/pages"
 pdftoppm -r 300 -gray -png "$T/pli.pdf" "$T/pages/p" 2>/dev/null
-avecqr=$(for f in "$T"/pages/p-*.png; do
-           [ "$(zbarimg --raw -q "$f" 2>/dev/null | grep -c '^PLI1|')" -gt 0 ] && echo "$f"
-         done)
-moitie=$(( $(echo "$avecqr" | wc -l) / 2 ))
-mkdir -p "$T/ex1" "$T/ex2"
-echo "$avecqr" | head -n "$moitie" | xargs -I{} cp {} "$T/ex1/"
-echo "$avecqr" | tail -n "$moitie" | xargs -I{} cp {} "$T/ex2/"
-
-for ex in ex1 ex2; do
-  n=$((n+1))
-  if lire "$T/$ex" -o "$T/o-$ex" --empreinte-app "$EA" --empreinte-coffre "$EV" >/dev/null 2>&1 \
-     && cmp -s "$T/o-$ex/coffre.selfvault" "$S/coffre.selfvault"; then
-    echo "  ✓ l'exemplaire ${ex#ex} seul suffit — l'autre peut être perdu"
-  else
-    echo "  ✗ l'exemplaire ${ex#ex} seul ne reconstitue pas"; echec=1
-  fi
-done
 
 # ── La procédure imprimée, exécutée telle quelle ─────────────────────────────
 # 🔑 Elle est EXTRAITE du pli rendu, pas recopiée ici. Une procédure imprimée sur
@@ -198,15 +190,14 @@ rouge "$T/s2" "le pli annonce" "empreinte de référence non concordante"
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/desordre" -o "$T/s3")
 rouge "$T/s3" "AUCUNE empreinte de référence" "sans référence, le lecteur refuse au lieu de conclure"
 
-# Le même rang absent des DEUX exemplaires : la duplication ne rattrape plus rien,
-# et le lecteur doit le nommer plutôt que rendre un fichier tronqué.
+# Une pièce entière absente du pli : le lecteur doit la nommer plutôt que rendre
+# un fichier tronqué.
 mkdir -p "$T/troue2"
 cp "$T"/pages/p-*.png "$T/troue2/"
 # Les pages à retirer sont DÉSIGNÉES PAR CE QU'ELLES PORTENT, pas par leur rang
-# dans le document : toute page où figure un QR code de la pièce V s'en va, dans
-# les deux exemplaires. Retirer « la dernière page de chaque moitié » supposait
-# que ces deux pages portent la pièce V en entier — ce qui a cessé d'être vrai
-# le jour où le déchiffreur a grossi de deux QR codes.
+# dans le document : toute page où figure un QR code de la pièce V s'en va.
+# Le rang d'une page ne dit pas ce qu'elle porte : le déchiffreur change de
+# taille, et avec lui la page où la pièce V commence.
 for f in "$T"/pages/p-*.png; do
   if zbarimg --raw -q "$f" 2>/dev/null | grep -q '^PLI1|V|'; then
     rm -f "$T/troue2/$(basename "$f")"
@@ -216,7 +207,7 @@ CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/troue2" -o "$T/s5" --empreinte-app
 # La pièce V a disparu du pli entier : le lecteur doit nommer la PIÈCE, pas
 # énumérer ses rangs. Le cas « quelques rangs manquants » est éprouvé plus haut,
 # sur des QR codes retirés un à un.
-rouge "$T/s5" "entièrement absente" "une pièce absente des deux exemplaires — nommée, rien d'écrit"
+rouge "$T/s5" "entièrement absente" "une pièce absente du pli — nommée, rien d'écrit"
 
 # Deux lectures divergentes d'un même rang : deux plis différents mêlés. La
 # dernière lue gagnerait en silence, et rien ne dirait laquelle est la bonne.
@@ -227,18 +218,16 @@ cp "$S/qr"/V01.png "$T/melee/autre-V01.png"
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/melee" -o "$T/s6")
 rouge "$T/s6" "ne donnent pas la même chose" "deux tirages mêlés — divergence nommée"
 
-# La résolution, éprouvée des deux côtés. ⚠️ Il n'existe PAS de plancher au sens
-# où le banc l'entendait : mesuré le 09/09/2026 sur un même pli, la lecture
-# échouait à 300 et à 200 points par pouce et réussissait à 150 et 120. Ce n'est
+# La résolution, éprouvée des deux côtés. ⚠️ Il n'existe PAS de plancher : mesuré
+# le 09/09/2026 sur un même pli à 4,2 cm, la lecture échouait à 300 et à 200
+# points par pouce et réussissait à 150 et 120. Ce n'est
 # pas la finesse qui manquait, c'est la rasterisation qui perdait un code par
 # résonance d'échelle — d'où le lecteur qui insiste, et ces deux bornes-ci :
 # celle qu'on imprime sur le pli, et une si basse que les modules ne sont plus
 # résolus du tout. Entre les deux, le résultat dépend du tirage : y planter un
 # nombre reviendrait à publier le résultat d'une loterie.
 n=$((n+1))
-mkdir -p "$T/publiee"
-pdftoppm -r 300 -gray -png "$T/pli.pdf" "$T/publiee/p" 2>/dev/null
-if python3 "$MODULE/outils/lire_pli.py" "$T/publiee" -o "$T/s300" \
+if python3 "$MODULE/outils/lire_pli.py" "$T/pages" -o "$T/s300" \
      --empreinte-app "$EA" --empreinte-coffre "$EV" >/dev/null 2>&1 \
    && cmp -s "$T/s300/selfvault.html" "$MODULE/pli/selfvault.html" \
    && cmp -s "$T/s300/coffre.selfvault" "$T/ref-coffre.selfvault"; then
@@ -254,31 +243,49 @@ rouge "$T/s4" "Pli incomplet" "80 dpi — les modules ne sont plus résolus, rie
 
 # ── Le pli passé au scanner ──────────────────────────────────────────────────
 # 🔑 Tout ce qui précède rasterise un PDF parfait : chaque module y tombe sur un
-# nombre régulier de pixels, sans flou, sans grain, sans travers. Aucun scanner
-# ne rend cela, et c'est un scanner qui lira le pli. Le banc établissait donc que
-# le pli se RELIT, jamais qu'il se NUMÉRISE. Mesuré le 09/09/2026 sur le pli à
-# 4,2 cm : un flou d'un pixel effaçait la planche entière — 0 code sur 15, et le
-# scan plausible en perdait un, ce qui suffit à perdre le coffre.
+# nombre régulier de pixels, sans flou et sans travers. Aucun scanner ne rend
+# cela, et c'est un scanner qui lira le pli — une rasterisation établit que le
+# pli se RELIT, pas qu'il se NUMÉRISE. Mesuré le 09/09/2026 sur le pli à 4,2 cm :
+# un flou d'un pixel effaçait la planche entière — 0 code sur 15.
 echo "▸ Le pli passé au scanner — ce que la rasterisation parfaite ne dit pas"
 n=$((n+1))
-python3 "$MODULE/tests/degrader.py" "$T/publiee" "$T/scanne" >/dev/null
+python3 "$MODULE/tests/degrader.py" "$T/pages" "$T/scanne" >/dev/null
 if python3 "$MODULE/outils/lire_pli.py" "$T/scanne" -o "$T/s7" \
      --empreinte-app "$EA" --empreinte-coffre "$EV" >"$T/log-scan" 2>&1 \
    && cmp -s "$T/s7/selfvault.html" "$MODULE/pli/selfvault.html" \
    && cmp -s "$T/s7/coffre.selfvault" "$T/ref-coffre.selfvault"; then
-  echo "  ✓ planche floutée, grenée et de travers — reconstituée octet pour octet"
+  echo "  ✓ planche floutée et de travers — reconstituée octet pour octet"
 else
   echo "  ✗ un scan plausible perd le pli :"; sed 's/^/      /' "$T/log-scan"; echec=1
 fi
 
+# 🔑 Le contrôle ci-dessus rougit quand le pli est DÉJÀ illisible par un scanner
+# ordinaire — trop tard pour le remanier. Celui-ci rougit avant : 1,2 px de flou,
+# soit une fois et demie un scan plausible. Mesuré le 09/09/2026 sur six tirages
+# du pli à 7 cm, le seuil de rupture est entre 1,5 et 2,0 ; 1,2 laisse donc de
+# quoi voir venir. S'il rougit un jour, le pli a perdu de la marge, pas le banc.
+n=$((n+1))
+python3 "$MODULE/tests/degrader.py" --flou 1.2 --rotation 0.5 "$T/pages" "$T/marge" >/dev/null
+if python3 "$MODULE/outils/lire_pli.py" "$T/marge" -o "$T/s9" \
+     --empreinte-app "$EA" --empreinte-coffre "$EV" >"$T/log-marge" 2>&1 \
+   && cmp -s "$T/s9/coffre.selfvault" "$T/ref-coffre.selfvault"; then
+  echo "  ✓ flou 1,2 px — une fois et demie un scan plausible, le pli tient encore"
+else
+  echo "  ✗ la marge a fondu : le pli ne tient plus 1,2 px de flou :"
+  sed 's/^/      /' "$T/log-marge"; echec=1
+fi
+
 # Contre-témoin permanent, sur le patron du banc navigateur : sans lui, une
 # dégradation qui ne mordrait plus rendrait le contrôle précédent vert sans rien
-# établir. Le flou seul, poussé loin — c'est lui qui tue, le bruit et le travers
-# ne font que l'accompagner.
-python3 "$MODULE/tests/degrader.py" --flou 3 --bruit 0 --rotation 0 \
-        "$T/publiee" "$T/noyee" >/dev/null
+# établir. Le flou seul, poussé loin — c'est lui qui tue, le travers ne fait que
+# l'accompagner.
+python3 "$MODULE/tests/degrader.py" --flou 3 --rotation 0 \
+        "$T/pages" "$T/noyee" >/dev/null
 CMD=(python3 "$MODULE/outils/lire_pli.py" "$T/noyee" -o "$T/s8" --empreinte-app "$EA" --empreinte-coffre "$EV")
 rouge "$T/s8" "Pli incomplet" "— une planche vraiment noyée est refusée : la sonde sait rougir"
+
+echo "  ⓘ non établi ici : grain de capteur, seuil de binarisation d'un copieur,"
+echo "    tache d'encre, pli de papier, photographie au téléphone."
 
 # 🔑 Un outil de lecture qui cède ne doit pas se déguiser en pli mal numérisé.
 # `zbarimg` rend une sortie vide quand il échoue, et une sortie vide se lit

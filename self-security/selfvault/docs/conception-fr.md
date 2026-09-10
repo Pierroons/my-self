@@ -135,7 +135,8 @@ et de 11 à 13 pages.
 C'est la décision qui sépare l'atelier du déchiffreur, tranchée le 05/09/2026 après mesure.
 Personne n'a besoin de *fabriquer* un coffre à partir du pli : quand le pli s'ouvre, la
 titulaire est morte. Tout mettre dans un seul fichier — la liste de 7 776 mots pèse 62,9 ko à
-elle seule — aurait porté le pli à environ 84 QR codes et 35 pages, contre 24 aujourd'hui.
+elle seule — aurait porté le pli à environ 84 QR codes, contre 24 aujourd'hui : quatorze
+planches au lieu de quatre, soit un pli de 22 pages au lieu de 12.
 
 L'atelier ouvre **aussi** : la titulaire n'a donc qu'un fichier à garder, et elle vérifie son
 propre coffre sans recharger quoi que ce soit. Il est assemblé, pas écrit à la main —
@@ -279,16 +280,71 @@ copieur donne autre chose :
 exemplaires portant la **même image**, ils échouent ensemble : la duplication protège
 d'une page déchirée, jamais d'un code illisible.
 
-**Deux corrections, mesurées l'une et l'autre :**
+**Trois corrections, mesurées chacune :**
 
 | ce qui change | ce que ça achète |
 |---|---|
-| QR imprimés à **7 cm** au lieu de 4,2 (17 pages au lieu de 13) | 4,47 px par module au lieu de 2,68 ; la planche dégradée passe **6/6** au lieu de 14/15 |
+| QR imprimés à **7 cm** au lieu de 4,2 | 4,47 px par module au lieu de 2,68 ; le flou supporté passe de « entre 1,0 et 1,5 px » à **1,5 px**, mesuré identique sur six tirages |
 | le lecteur **insiste** — balayage fin, puis d'autres résolutions sur un PDF | les répertoires à 300 et 200 dpi qui refusaient se reconstituent |
+| la **double impression est retirée** | l'agrandissement est payé : **12 pages**, contre 13 pour l'ancien pli à 4,2 cm |
 
 Le contrôle neuf a été vu rougir sur le pli à 4,2 cm avec le lecteur insistant : trois
 codes perdus, dont `V1/3`. L'élargissement porte donc quelque chose que la relecture seule
 n'apporte pas.
+
+### Pourquoi la double impression tombe
+
+Elle coûtait quatre planches et couvrait le mauvais accident : la page déchirée, jamais
+observée sur ce pli, et non le code illisible, qui est ce qu'on rencontre.
+
+Ce qui la remplacerait vraiment n'est pas une copie mais des **fragments de parité** :
+découper en `n` fragments dont `k` quelconques suffisent (Reed-Solomon sur les
+fragments). C'est une rupture de format, `PLI1` → `PLI2`, et une question ouverte sur le
+chemin « coller les lignes dans la page », qui devrait la supporter aussi. **Décision de
+produit non prise.**
+
+### Ce que le banc mesure maintenant, et ce qu'il ne mesure pas
+
+Le flou supporté a été re-mesuré sur la géométrie courante, six tirages, travers de
+0,5° partout. Les six rendent le **même** seuil — ce que la dégradation précédente ne
+faisait pas :
+
+| flou, à 300 points par pouce | 6 tirages |
+|---|---|
+| 0,8 px — un scan plausible | reconstitué octet pour octet, 6/6 |
+| 1,0 px | 6/6 |
+| 1,2 px | 6/6 |
+| 1,5 px | 6/6 |
+| **2,0 px** | **0/6** |
+
+D'où deux contrôles au lieu d'un. Celui à 0,8 px rougit quand le pli est **déjà**
+illisible par un copieur ordinaire — trop tard pour le remanier. Celui à **1,2 px**
+rougit avant : il ne dit pas que le pli est cassé, il dit qu'il a perdu sa marge. Les
+deux ont été vus rouges en rétablissant 4,2 cm dans le gabarit.
+
+### Le contrôle écrit pour supprimer une loterie en était une autre
+
+La dégradation du banc mêlait trois choses, dont une inventée : 1 % des pixels mis à une
+valeur tirée au hasard. Un scanner ne fait pas cela ; un fax abîmé, oui. Ce bruit-là
+faisait rougir le banc **un tirage sur neuf environ**, et j'ai d'abord conclu du contraire
+sur **un seul tirage** — exactement le défaut que je venais de corriger dans le banc.
+Retiré : la dégradation se borne au flou et au travers, et le banc **imprime ce qu'il
+n'établit pas** — ni grain de capteur, ni binarisation de copieur, ni tache, ni
+photographie au téléphone.
+
+### Une troisième loterie, plus ancienne que les deux autres
+
+Le contrôle « pages mélangées » copiait les images sous des noms tirés de `$RANDOM`.
+Deux tirages sur vingt-quatre coïncident **7 fois sur 1 000** — mesuré sur 2 000
+essais — et `cp` écrase alors sans rien dire : le répertoire perd un QR code, et les
+trois contrôles qui le lisent rougissent en accusant le pli. Vu une fois sur dix
+passages.
+
+Les noms sont maintenant numérotés à la suite. La propriété éprouvée est que le rang
+ne vient pas du nom du fichier ; elle n'a jamais eu besoin que les noms soient
+imprévisibles. Une garde compte les images copiées et, si le compte ne tombe pas
+juste, le banc dit **« banc fautif, pas pli fautif »** au lieu de laisser un défaut
+d'outillage se déguiser en pli mal numérisé.
 
 **Ce que le pli imprimait était le mauvais remède.** « Rescannez à 300 points par pouce au
 moins » demande *plus fin* ; ce qu'il faut, c'est *autrement*.
@@ -374,7 +430,8 @@ Reste à faire :
       prétend attraper, et pilote **les deux lecteurs** : la réimplémentation Node et
       l'application réelle. Il imprime son propre décompte plutôt que de le faire recopier
       ailleurs. La boucle papier y est jointe depuis le 04/09 — rasteriser, relire les QR,
-      mesurer le plancher de résolution. Au 06/09 : **83 contrôles de format, 18 papier.**
+      borner la résolution, et depuis le 09/09 dégrader la planche comme un scanner.
+      Au 09/09 : **83 contrôles de format, 20 papier, 18 navigateur.**
       **Dépendances dérivées des imports, pas recopiées** : binaires
       `zbar-tools`, `poppler-utils`, `weasyprint`, `node` ; modules Python `cryptography`,
       `qrcode` et `pillow` — ce dernier parce que `qrcode` en a besoin pour écrire un PNG.
@@ -389,9 +446,13 @@ Reste à faire :
 - [ ] **L'encodeur de QR codes dans le navigateur** — le pli est aujourd'hui composé par
       `outils/faire_pli.py`, qui exige Python et `qrcode`. Tant qu'il n'existe pas, la
       titulaire fabrique son coffre à l'atelier mais ne peut pas imprimer son pli seule.
-- [ ] **base32 en mode alphanumérique** — mesuré le 06/09 : +21 % de densité par QR code, le
-      pli passerait de 13 à 7 pages, et c'est le seul chemin qui laisse de la place pour de
-      vraies directives (2 850 octets contre 0 aujourd'hui, à budget de 7 pages). Rupture de
+- [ ] **base32 en mode alphanumérique** — mesuré le 06/09 : +21 % de densité par QR code.
+      C'est le seul chemin qui laisse de la place pour de vraies directives, dont le pli ne
+      porte aujourd'hui aucun octet. ⚠️ Le gain en pages qui figurait ici — « de 13 à 7 » — se
+      calculait sur le pli à 4,2 cm imprimé deux fois, et ne vaut plus. Sur la géométrie
+      actuelle — 6 QR par planche, 4 planches, 12 pages — les 24 QR codes tomberaient à 20 et
+      le nombre de planches ne bougerait pas : ce que la densité achète n'est pas des pages
+      mais quatre emplacements libres. À recalculer avant d'en faire un argument. Rupture de
       format : `PLI1` → `PLI2`, séparateur `|` → `:`. Décision de produit, non prise.
 - [ ] **Articuler avec le document type de directives** — deux objets à ne pas mélanger : les
       directives disent *quoi faire* et partent en clair, le coffre porte *les moyens* et ne
