@@ -376,6 +376,28 @@ ne l'honore pas.
 dur la périmerait en silence le jour où le déchiffreur maigrit assez pour descendre
 d'une version de QR code.
 
+### La vraie cause : le moteur de rendu, pas l'échantillonnage
+
+L'agrandissement n'a rien changé sur le runner — **le même triplet `A7`, `A13`, `A19`
+manquait à 7 cm comme à 7,83 cm**, et les relectures à 400 et 250 points par pouce
+échouaient aussi. Une résonance d'échantillonnage ne survit pas à trois résolutions :
+ces codes étaient abîmés **dans le PDF**.
+
+Le runner installe `weasyprint` par apt, donc **61.2**, là où le poste est en 68.1.
+Reproduit à l'identique en installant 61.2 dans un environnement isolé : mêmes trois
+codes perdus, le premier de chaque planche après la première. Cette version **ignore
+`gap`, `display:grid` et `grid-template-columns`**, et fragmente mal un conteneur flex
+en travers d'une coupure de page — elle tranchait l'image.
+
+La grille n'emploie plus ni flexbox ni `gap` : des `inline-block` avec des marges, et
+`break-inside: avoid` sur chaque `figure`. **24 codes sur 24 sur les deux moteurs**, et
+le pli tombe à 11 pages.
+
+🔑 **Un document qui doit se réimprimer dans vingt ans n'emploie que du CSS ancien.**
+La CI valait ici mieux que le poste de travail : sa version arriérée est la seule chose
+qui ait montré le défaut. Un banc qui ne tourne que sur la machine de l'auteur ne
+mesure que la machine de l'auteur.
+
 ### Le contrôle qui manquait — celui qui voit l'érosion
 
 Le banc exigeait qu'un pli rastérisé à 300 points par pouce se reconstitue. Il se
