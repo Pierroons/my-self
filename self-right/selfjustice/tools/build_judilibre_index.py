@@ -26,7 +26,12 @@ import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta, timezone
 
-BASE = "https://api.piste.gouv.fr/cassation/judilibre/v1.0"
+# Surchargeable pour la même raison que les autres sondes du module : un
+# contrôle qu'on ne peut pas brancher sur un amont maîtrisé ne peut pas être
+# vu rougir, et un garde-fou jamais vu rougir ne se distingue pas d'un
+# garde-fou qui ne mesure rien. Cf tests/sanity_refus_amont.sh.
+BASE = os.environ.get("SELFJUSTICE_JUDILIBRE_BASE",
+                      "https://api.piste.gouv.fr/cassation/judilibre/v1.0").rstrip("/")
 # Les deux chemins se surchargent par l'environnement : sur le serveur, la clé
 # vient d'un EnvironmentFile en 0600 et la base vit à côté des autres bases
 # SelfJustice, pas dans le répertoire de travail d'un poste de développement.
@@ -41,6 +46,20 @@ MARQUEUR = os.environ.get("JUDILIBRE_MARQUEUR", os.path.join(os.path.dirname(DB)
 
 BATCH_SIZE = 1000          # plafond de l'API : 2000 est refusé par un 400
 DELAI = 1.2                # rythme poli ; la rafale courte est limitée à 20
+# Ce que cette liste moissonne détermine ce que l'API accepte :
+# `juridictions_servies()` d'api.php lit la couverture dans la base plutôt que
+# de la redéclarer. Ajouter un code ici ouvre donc le guichet correspondant —
+# au prochain moissonnage, pas avant.
+#
+# 🔑 **Ce que l'amont sert, et rien d'autre.** Judilibre a répondu le 10/09/2026 :
+# « Value of the jurisdiction parameter must be in [cc,ca,tj,tcom] ». Il n'y a
+# donc PAS de justice administrative ici — `ce` y a été ajouté puis retiré le
+# même jour, après sept heures de refus. Le Conseil d'État, les CAA et les TA
+# relèvent du fonds JADE de la DILA (dumps sur echanges.dila.gouv.fr/OPENDATA/JADE/),
+# une autre source et un autre collecteur : cf la roadmap, jalon v0.4.0.
+#
+# `tj` et `tcom` sont servis par l'amont et non moissonnés — première instance
+# judiciaire, à décider séparément.
 JURIDICTIONS = ["cc", "ca"]
 
 # Une date antérieure à celle-ci trahit une donnée corrompue : la base contient
@@ -101,6 +120,22 @@ def journal(msg):
     print(f"[{datetime.now():%H:%M:%S}] {msg}", flush=True)
 
 
+class RefusDefinitif(Exception):
+    """L'amont refuse la demande elle-même — pas son volume, pas son moment.
+
+    🔑 Un paramètre invalide et une tranche trop lourde se ressemblaient : les
+    deux rendaient `None`, et l'appelant coupait la tranche en deux dans les deux
+    cas. Sur un paramètre invalide, couper ne corrige rien — la moitié est tout
+    aussi invalide. Mesuré le 10/09/2026 : `jurisdiction=ce`, que l'amont
+    n'expose pas, a fait disséquer l'an 298 jour par jour pendant sept heures,
+    sans une écriture et sans fin possible. L'intervalle va de 0100 à 2027.
+
+    C'est le même motif que celui de `juridiction_valide()` côté API, à l'autre
+    bout de la chaîne : un argument refusé ne doit jamais ressembler à une
+    réponse.
+    """
+
+
 def appel(chemin, params):
     """Un appel, avec respect du quota annoncé par la passerelle.
 
@@ -131,7 +166,18 @@ def appel(chemin, params):
                 journal(f"429 — pause {attente} s")
                 time.sleep(attente)
                 continue
-            journal(f"HTTP {e.code} sur {chemin} {params} : {e.read()[:200]}")
+            corps = e.read()
+            journal(f"HTTP {e.code} sur {chemin} {params} : {corps[:200]}")
+            # Un 400 qui met en cause un PARAMÈTRE est définitif ; un 400 qui
+            # parle de volume (`circuit_breaking_exception: Data too large`) ne
+            # l'est pas — celui-là se corrige en coupant la tranche, et c'est
+            # tout l'intérêt de la dichotomie. Les refus d'identité ne se
+            # réessaient pas davantage.
+            texte = corps.decode("utf-8", "replace").lower()
+            if e.code in (401, 403) or (e.code == 400 and '"param"' in texte):
+                raise RefusDefinitif(
+                    f"{chemin} refusé sur ses paramètres ({e.code}) : "
+                    f"{corps[:200].decode('utf-8', 'replace')}")
             return None
         except Exception as e:
             journal(f"échec réseau ({tentative}/5) : {e}")
@@ -335,8 +381,15 @@ def moissonner_intervalle(conn, juri, debut, fin, etat):
 
 
 def moissonner(conn, juri):
+    # 🔑 Ce premier appel est la seule occasion de découvrir que l'amont ne
+    # connaît pas cette juridiction. Sans lui, `total` valait 0 et le moissonnage
+    # partait quand même — vers un arbre de dichotomie sans fond.
     stats = appel("stats", {"jurisdiction": juri})
-    total = (stats or {}).get("results", {}).get("total_decisions", 0)
+    if stats is None:
+        journal(f"{juri} : l'amont n'a pas répondu au décompte — juridiction "
+                f"non moissonnée")
+        return False
+    total = stats.get("results", {}).get("total_decisions", 0)
     journal(f"{juri} : {total:,} décisions annoncées".replace(",", " "))
 
     # 🔑 Les fenêtres closes avant leur sédimentation sont rouvertes. Sans cette
@@ -427,15 +480,26 @@ def main():
     journal(f"Index Judilibre → {DB}")
     conn = ouvrir_base()
 
-    if incremental:
-        depuis = depuis_auto(conn) if valeur == "auto" else valeur
-        jusqua = datetime.now(timezone.utc).date().isoformat()
-        complet = rafraichir(conn, depuis, jusqua)
-    else:
-        complet = True
-        for juri in JURIDICTIONS:
-            if not moissonner(conn, juri):
-                complet = False
+    # Un refus définitif s'arrête net : il ne se réessaie pas, et poursuivre
+    # sur les juridictions suivantes masquerait la cause derrière un décompte
+    # rassurant. Ce qui est déjà en base reste écrit — les commits sont par
+    # tranche, pas en fin de course.
+    try:
+        if incremental:
+            depuis = depuis_auto(conn) if valeur == "auto" else valeur
+            jusqua = datetime.now(timezone.utc).date().isoformat()
+            complet = rafraichir(conn, depuis, jusqua)
+        else:
+            complet = True
+            for juri in JURIDICTIONS:
+                if not moissonner(conn, juri):
+                    complet = False
+    except RefusDefinitif as e:
+        conn.commit()
+        conn.close()
+        sys.exit(f"Refus définitif de l'amont : {e}\n"
+                 f"Rien à réessayer — corriger la demande, pas la découper. "
+                 f"JURIDICTIONS = {JURIDICTIONS}")
 
     n_dec = conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
     n_num = conn.execute("SELECT COUNT(*) FROM numeros").fetchone()[0]

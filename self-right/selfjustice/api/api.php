@@ -40,6 +40,9 @@ header('X-Content-Type-Options: nosniff');
 define('LEGI_DB',  getenv('SELFJUSTICE_LEGI_DB')  ?: '/var/lib/selfjustice/db/legi_selfjustice.sqlite');
 define('EU_DB',    getenv('SELFJUSTICE_EU_DB')    ?: '/var/lib/selfjustice/db/conventionnalite.sqlite');
 define('JURIS_DB', getenv('SELFJUSTICE_JURIS_DB') ?: '/var/lib/selfjustice/db/judilibre_index.sqlite');
+// Ce sur quoi on retombe quand l'index n'est pas lisible — jamais une seconde
+// source : la vérité est dans la base, cf. juridictions_servies().
+const JURIDICTIONS_SANS_INDEX = ['cc', 'ca'];
 
 // Métadonnées de plus d'un million de décisions, sans leur texte : l'index répond
 // « cette référence existe / n'existe pas » hors ligne, le texte intégral et la
@@ -456,7 +459,49 @@ function chercher_conventionnalite(SQLite3 $db, string $q, ?string $source, int 
  */
 function juridiction_valide(string $brute): ?string {
     $j = strtolower(trim($brute));
-    return in_array($j, ['cc', 'ca'], true) ? $j : null;
+    return in_array($j, juridictions_servies(), true) ? $j : null;
+}
+
+/**
+ * Les juridictions que l'index porte réellement.
+ *
+ * 🔑 La liste était écrite à la main ici, dans le message d'erreur, et dans le
+ * moissonneur — trois endroits pour une seule vérité, quand `juris_couverture()`
+ * la lit déjà dans la base. Ajouter une juridiction au moissonnage sans toucher
+ * les deux autres aurait rempli la base de décisions que l'API refuse de
+ * servir : la donnée présente, et la porte fermée devant elle.
+ *
+ * Le repli n'est pas une seconde source. Sans base lisible — un déploiement
+ * avant le premier moissonnage, la CI — on ne peut rien dériver, et refuser
+ * tout ferait passer une absence d'index pour un paramètre invalide. On
+ * retombe alors exactement sur le comportement d'avant, comme `legi_a_nature()`
+ * le fait pour sa colonne.
+ */
+function juridictions_servies(): array {
+    static $cache = null;
+    if ($cache !== null) return $cache;
+    $cache = JURIDICTIONS_SANS_INDEX;
+    if (file_exists(JURIS_DB)) {
+        try {
+            $servies = array_keys(juris_couverture(open_db(JURIS_DB)));
+            if ($servies) $cache = $servies;
+        } catch (Throwable $e) {
+            // Une base illisible ne doit pas fermer le guichet : on garde le repli.
+        }
+    }
+    return $cache;
+}
+
+/** Le nom qu'on donne à une juridiction, ou son code si on ne le connaît pas. */
+function juridiction_libelle(string $code): string {
+    return [
+        'cc'  => 'Cour de cassation',
+        'ca'  => "cours d'appel",
+        'ce'  => "Conseil d'État",
+        'caa' => "cours administratives d'appel",
+        'tj'  => 'tribunaux judiciaires',
+        'tcom'=> 'tribunaux de commerce',
+    ][$code] ?? $code;
 }
 
 /**
@@ -465,10 +510,22 @@ function juridiction_valide(string $brute): ?string {
  * justice administrative.
  */
 function message_juridiction_inconnue(string $brute): string {
-    return "Juridiction « " . trim($brute) . " » inconnue. Valeurs acceptées : "
-        . "cc (Cour de cassation), ca (cours d'appel). Cette base ne couvre que "
-        . "la justice judiciaire : la justice administrative — Conseil d'État, "
-        . "CAA, TA — relève d'ArianeWeb et n'y figure pas.";
+    $servies = juridictions_servies();
+    $noms = array_map(
+        fn(string $c): string => $c . ' (' . juridiction_libelle($c) . ')',
+        $servies
+    );
+    $message = "Juridiction « " . trim($brute) . " » inconnue. Valeurs acceptées : "
+        . implode(', ', $noms) . ".";
+    // La réserve ne s'affirme que si elle est vraie : le jour où l'index porte
+    // le Conseil d'État, la phrase disparaît d'elle-même. Une réserve périmée
+    // ferait renoncer quelqu'un à une recherche que la base sait servir.
+    if (!array_intersect($servies, ['ce', 'caa', 'ta'])) {
+        $message .= " Cet index ne couvre que la justice judiciaire : la justice "
+            . "administrative — Conseil d'État, CAA, TA — relève d'ArianeWeb et "
+            . "n'y figure pas.";
+    }
+    return $message;
 }
 
 function requete_cherchable(string $q): bool {

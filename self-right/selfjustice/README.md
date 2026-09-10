@@ -209,7 +209,12 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 - **v0.1.0** — Core directives + 5 categories + LEGI/EU API
 - **v0.2.0** — Family law (divorce, custody, alimony) + housing law (leases, eviction)
 - **v0.3.0 (current)** — Administrative law (disputes with public services)
-- **v0.4.0** — Administrative case law (Conseil d'État, CAA, administrative courts) — **judicial** case law (Cour de cassation, courts of appeal) already ships and is served
+- **v0.4.0** — Administrative case law (Conseil d'État, CAA, administrative courts).
+  It does **not** come from the Judilibre API, which only serves the judicial order — measured
+  on 2026-09-10: `Value of the jurisdiction parameter must be in [cc,ca,tj,tcom]`. Its source is
+  DILA's **JADE** corpus, a 1.24 GB global dump plus daily diffs, so a separate collector has to
+  be written. **Judicial** case law (Cour de cassation, courts of appeal) already ships and is
+  served; `tj` and `tcom` are available upstream and not yet harvested
 - **v1.0.0** — Directives reviewed by a practicing attorney (SelfAct integration shipped in v0.2.0)
 
 ---
