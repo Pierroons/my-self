@@ -198,9 +198,9 @@ L2 always combines **knowledge** (the memorized word) and **possession**. Two po
 - **Single-use**, regenerable on demand (the new batch replaces the old one). Universal: paper, password manager, or a second device — the user's choice.
 
 **"This device" factor — the cryptographic factor, optional.**
-- An **ECDSA P-256** keypair is generated in the browser. The private key is **encrypted at rest** by an AES-256-GCM key derived from the **memorized word** via **Argon2id** (client-side WASM), and stored in **IndexedDB**.
+- An **ECDSA P-256** keypair is generated in the browser. The private key is **encrypted at rest** by an AES-256-GCM key derived from the **memorized word** via **Argon2id** in JavaScript, written in the library and checked against libsodium's vectors — no vendored binary. The resulting blob carries its version and derivation parameters. Where it is stored is an integration choice: the reference implementation uses `localStorage`, IndexedDB being preferable and still to be done.
 - The server holds **only the public key**. Recovery means **signing a challenge** (32 bytes, 5-min TTL, single-use): the browser decrypts the private key with the word, signs, the server verifies.
-- It is a cryptographic **device + knowledge** 2FA, with no TPM or hardware. **Software** protection (assumed), device-bound. **Automatically disabled on Tor/onion profiles** (WebCrypto/IndexedDB unreliable) — the paper recovery code remains the floor.
+- It is a cryptographic **device + knowledge** 2FA, with no TPM or hardware. **Software** protection (assumed), device-bound. **Should be disabled on Tor/onion profiles**, where local storage does not survive the session — an integration choice, not an automatic behaviour. The paper recovery code remains the floor.
 
 ---
 

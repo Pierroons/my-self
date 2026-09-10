@@ -126,6 +126,15 @@ The wire never carries the recovery word. The server never stores the recovery w
 
 HMAC is intentionally **fast** client-side because the goal is service binding, not brute-force resistance. The brute-force resistance is provided server-side by **Argon2id** (memory-hard, 64 MiB per attempt) on the derived key. Splitting the roles keeps the UX instant on mobile while still imposing a memory-hard cost per server-side verification attempt.
 
+> ⚠️ **This reasoning covers the PROOF, not the ENCRYPTION.** The same memorized word serves two purposes:
+>
+> | Role | File | Primitive | Why |
+> |---|---|---|---|
+> | **Prove** knowledge of the word | `client/sr-derive.js` | HMAC-SHA256, fast | the cost is imposed by the server, which stores an Argon2id of the received digest and counts attempts |
+> | **Encrypt** a secret with the word | `client/sr-kdf.js` | Argon2id, 64 MiB | nothing reaches the server: no attempt counter applies, and the per-guess cost is **all** that is left |
+>
+> An attacker who steals the "this device" blob works **offline**: the AEAD tag tells them for free whether a guess is right. This is the pattern `AGENTS.md` names — the authentication path hardened and the encryption path left behind, a few lines apart.
+
 ---
 
 ## Three-level recovery escalation
@@ -167,11 +176,12 @@ This is what enables an **identifier-less L2**: the code is both "who" and a pro
 An **optional third path for L2**, entirely browser-side — a real cryptographic device + knowledge 2FA, **with no TPM or hardware**.
 
 - An **ECDSA P-256 keypair** is generated in the browser.
-- The **private key is encrypted at rest** by an AES-256-GCM key derived from the **memorized word** via **Argon2id** (client-side WASM). The encrypted blob lives in **IndexedDB** — the raw key and the word are never persisted.
+- The **private key is encrypted at rest** by an AES-256-GCM key derived from the **memorized word** via **Argon2id** (`client/argon2id.js`, plain JavaScript — no vendored binary, no CSP directive to open). The encrypted blob carries its version and derivation parameters, which makes migration possible. The raw key and the word are never persisted.
+- **Where the blob is stored is an integration choice**, not part of the protocol: the reference implementation uses `localStorage`. IndexedDB is preferable, but **not** for scoping — both stores are origin-scoped: it survives browser cleanups better and stores bytes without re-encoding. Still to be done.
 - The **server stores only the public key** (`device_credentials`), plus a random `credential_id` that locates the account (like a recovery code).
 - Recovery = **sign a challenge** (32 bytes, 5-min TTL, single-use): the browser decrypts the private key with the word, signs, the server verifies (`openssl_verify`, SHA-256).
 
-Impossible without **the device** (the blob) **AND** the **word** (to decrypt the key). **Software** protection (not TPM), device-bound, assumed as such. **Automatically disabled on Tor / onion profiles** (WebCrypto/IndexedDB unreliable) — the paper recovery code remains the universal floor.
+Impossible without **the device** (the blob) **AND** the **word** (to decrypt the key). **Software** protection (not TPM), device-bound, assumed as such. **Should be disabled on Tor / onion profiles**, where local storage does not survive the session: this is an integration choice, not an automatic behaviour today. The paper recovery code remains the universal floor.
 
 ---
 

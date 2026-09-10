@@ -45,6 +45,10 @@ final class Security
         if ($htmlPage) {
             // CSP stricte : JS uniquement depuis nos <script nonce>. Pas d'inline non signé,
             // pas de handlers onclick (tous externalisés en addEventListener). LAB-06.
+            //
+            // 🔑 Aucune directive n'a été ouverte pour la KDF. Une implémentation
+            // en WebAssembly aurait exigé `wasm-unsafe-eval` ; `argon2id.js` est
+            // du JavaScript ordinaire, servi comme le reste.
             header(
                 "Content-Security-Policy: default-src 'self'; "
                 . "script-src 'self' 'nonce-" . self::nonce() . "'; "
