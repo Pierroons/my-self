@@ -91,8 +91,15 @@ else
 fi
 
 echo
-echo "▸ Ce que le moissonneur demande doit être ce que le guichet nomme"
-MOISSON="$(grep -oP 'JURIDICTIONS = \[\K[^]]+' "$RACINE/tools/build_judilibre_index.py" | tr -d '" ')"
+echo "▸ Ce que les collecteurs demandent doit être ce que le guichet nomme"
+# Deux collecteurs alimentent la même table : Judilibre pour l'ordre judiciaire,
+# JADE pour l'ordre administratif. Ne contrôler que le premier laissait un angle
+# mort — `ta`, `tc` et `cdbf` sont entrés dans la base par JADE sans que rien
+# n'exige leur libellé. Un garde-fou borné à une source ne signale pas ce qu'il
+# cesse de couvrir : il rétrécit en silence.
+JUDI="$(grep -oP 'JURIDICTIONS = \[\K[^]]+' "$RACINE/tools/build_judilibre_index.py" | tr -d '" ')"
+JADE="$(grep -oP '^CODES = \(\K[^)]+' "$RACINE/tools/jade_juridictions.py" | tr -d '" ')"
+MOISSON="$JUDI,$JADE"
 SANS_LIBELLE="$(php -r '
     $src = file_get_contents($argv[1] . "/api/api.php");
     preg_match("/^function juridiction_libelle\(.*?^}$/ms", $src, $m); eval($m[0]);
