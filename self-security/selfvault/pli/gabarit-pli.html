@@ -163,9 +163,14 @@ seule question que le programme ne peut pas trancher tout seul : ce fichier vien
 <h2>Vérifier que rien n'a été abîmé</h2>
 <p>Les planches en fin de pli portent {{TOTAL_QR}} images de données, étiquetées
 <code>A1/{{NQR_APP}}</code> à <code>A{{NQR_APP}}/{{NQR_APP}}</code> et
-<code>V1/{{NQR_COFFRE}}</code> à <code>V{{NQR_COFFRE}}/{{NQR_COFFRE}}</code>. Elles sont imprimées
-<strong>deux fois</strong>, en deux exemplaires identiques : <strong>l'un des deux suffit</strong>.
-Si une planche est perdue, déchirée ou tachée, l'autre rend le pli entier.</p>
+<code>V1/{{NQR_COFFRE}}</code> à <code>V{{NQR_COFFRE}}/{{NQR_COFFRE}}</code>. Chacune n'est imprimée
+<strong>qu'une fois</strong> : <strong>le pli ne vaut que complet</strong>. Gardez toutes les
+planches ensemble et à l'abri — une planche perdue, déchirée ou tachée perd le pli.</p>
+
+<p>Ces planches-là ne portent <strong>pas</strong> le code d'ouverture : il figure une seule fois
+dans ce pli, en tête du dossier technique. Elles peuvent donc être photocopiées et rangées à un
+second endroit sans affaiblir le pli — ce qu'elles contiennent est déjà chiffré. La page du code,
+elle, ne se recopie pas.</p>
 
 <p>Numérisez à <strong>300 points par pouce</strong>, en niveaux de gris — le réglage courant d'un
 copieur. S'il manque une image à la lecture, <strong>renumérisez à une autre résolution</strong>,
@@ -179,7 +184,7 @@ abîmé. Après reconstitution, les deux empreintes doivent être identiques à 
 </dl>
 
 <p>Une seule différence signifie qu'une image a été mal lue. Ne vous servez alors d'aucun des deux
-fichiers : renumérisez à une autre résolution, ou servez-vous du second exemplaire.</p>
+fichiers : renumérisez les planches concernées à une autre résolution.</p>
 <p>Ces deux empreintes-ci ne répondent pas à la même question que le sceau. Elles disent
 <em>« la lecture des images est-elle exacte&nbsp;? »</em> ; le sceau dit <em>« ce coffre est-il celui
 qui a été déposé&nbsp;? »</em>. Les premières changent si l'on réécrit le fichier autrement, le sceau
@@ -216,8 +221,8 @@ informaticien de le réécrire en une vingtaine de lignes.</p>
 
 <h2>Sur Linux ou macOS — quatre commandes</h2>
 <p>N'emploie que deux outils publics et anciens : <code>poppler-utils</code> et
-<code>zbar-tools</code>. Numérisez les planches — celles d'un seul exemplaire suffisent — placez les
-images dans un répertoire vide, et lancez :</p>
+<code>zbar-tools</code>. Numérisez toutes les planches, placez les images dans un répertoire
+vide, et lancez :</p>
 
 <pre id="procedure">zbarimg --raw -q ./*.png &gt; codes.txt || true   # pages sans image de données : normal
 grep '^PLI1|A|' codes.txt | sort -u | sort -t'|' -k3,3n | cut -d'|' -f4- | tr -d '\n' | base64 -d &gt; selfvault.html
@@ -268,8 +273,8 @@ nouveau, de version supérieure.</p>
 <p>⚠️ Le sceau prouve qu'un coffre n'a pas bougé depuis sa fabrication — il ne prouve pas
 <em>qui</em> l'a fabriqué : la clé publique naît dans le coffre et ne renvoie à rien d'extérieur.
 Quelqu'un qui connaîtrait le code d'ouverture pourrait donc fabriquer un coffre entièrement neuf,
-scellé et cohérent. <strong>Ce qui rattache un coffre à ce pli-ci, c'est l'empreinte imprimée
-page&nbsp;3</strong> — et, avant elle, l'identification du déposant par l'étude.</p>
+scellé et cohérent. <strong>Ce qui rattache un coffre à ce pli-ci, c'est l'empreinte imprimée en
+tête du dossier technique</strong> — et, avant elle, l'identification du déposant par l'étude.</p>
 <p>Le message signé prolonge l'AAD, dans le même style — une ligne par champ, séparateur
 <code>0x0A</code>, sans séparateur final, UTF-8 :</p>
 <pre>&lt;les lignes de l'AAD ci-dessus&gt;
@@ -284,7 +289,7 @@ fabriquerait deux coffres différents rendant la même chaîne.</p>
 <h2>Comment on ouvre</h2>
 <ol>
   <li><strong>Comparer d'abord l'empreinte</strong> <code>SHA-256</code> du fichier à celle
-      imprimée page&nbsp;3 de ce pli. C'est la seule étape qui rattache le fichier qu'on a en main
+      imprimée en tête du dossier technique. C'est la seule étape qui rattache le fichier qu'on a en main
       à celui qui a été déposé ici ; toutes les suivantes ne parlent que de sa cohérence interne.</li>
   <li><strong>Vérifier le sceau</strong> : <code>ECDSA P-256 / SHA-256</code>, signature
       <code>signature</code>, clé <code>cle_publique</code>, message ci-dessus. S'il ne tient pas,
@@ -348,18 +353,9 @@ Base64 rend le fichier octet pour octet. <strong>L'ordre est inscrit dans les do
 images peuvent donc être lues dans n'importe quel ordre.</p>
 
 <div class="saut planche">
-<h1>Planche des données — exemplaire 1 sur 2</h1>
-<p class="chapeau">{{NQR_APP}} images pour le déchiffreur, {{NQR_COFFRE}} pour le coffre. La planche
-suivante en est la copie conforme : <strong>l'une des deux suffit.</strong></p>
-<div class="grille">
-{{GRILLE_QR}}
-</div>
-</div>
-
-<div class="saut planche">
-<h1>Planche des données — exemplaire 2 sur 2</h1>
-<p class="chapeau">Copie conforme de la précédente. Ne pas la séparer du pli : c'est elle qui rend
-le pli lisible si l'autre est abîmé.</p>
+<h1>Planches des données</h1>
+<p class="chapeau">{{TOTAL_QR}} images : {{NQR_APP}} pour le déchiffreur, {{NQR_COFFRE}} pour le
+coffre. Chacune n'est imprimée qu'une fois — <strong>il les faut toutes.</strong></p>
 <div class="grille">
 {{GRILLE_QR}}
 </div>

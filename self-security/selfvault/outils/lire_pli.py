@@ -27,14 +27,14 @@ import argparse, base64, hashlib, os, re, shutil, subprocess, sys, tempfile
 PREFIXE = "PLI1"
 PIECES = {"A": "selfvault.html", "V": "coffre.selfvault"}
 DPI = 300          # ce que le pli imprime
-# 🔑 Ces deux recours ne sont pas du zèle : sans eux, une lecture unique rend
-# « pli incomplet » sur un pli intact. Mesuré le 09/09/2026 — la page qui perd
-# A9/21 à 300 points par pouce le rend à 150, 200, 250, 350, 400, 500 et 600,
-# et le même code extrait seul se relit à toutes les tailles. Ce que perd une
-# rasterisation dépend de sa phase, donc de la version de poppler.
+# 🔑 Sans ces deux recours, une lecture unique rend « pli incomplet » sur un pli
+# intact. Mesuré le 09/09/2026 — la page qui perd A9 à 300 points par pouce le
+# rend à 150, 200, 250, 350, 400, 500 et 600, et le même code extrait seul se
+# relit à toutes les tailles. Ce que perd une rasterisation dépend de sa phase,
+# donc de la version de poppler.
 DPI_SECOURS = (400, 250)
 # Le balayage fin vaut pour TOUTES les sources, y compris un répertoire venu d'un
-# scanner qu'on ne peut pas relancer : sur la page ci-dessus, il rend A9/21.
+# scanner qu'on ne peut pas relancer : sur la page ci-dessus, il rend A9.
 BALAYAGES = ((), ("-Sx-density=2", "-Sy-density=2"))
 EMPREINTE_CAR = 32  # ce que le pli imprime : SHA-256 tronqué
 
@@ -117,10 +117,11 @@ def fragments(images, lus=None, options=()):
                 continue
             piece, rang, total, donnees = m.group(1), int(m.group(2)), int(m.group(3)), m.group(4)
             lus.setdefault(piece, {"total": total, "parts": {}})
-            # Le pli imprime chaque QR code DEUX fois, sur deux pages. Deux
-            # lectures d'un même rang doivent donc porter les mêmes octets. Si
-            # elles divergent, la dernière lue gagnerait en silence — et rien ne
-            # dirait laquelle est la bonne.
+            # Un même rang se lit deux fois quand deux balayages parcourent la
+            # même source, ou quand deux tirages sont mêlés dans le même
+            # répertoire. Les octets doivent alors coïncider : s'ils divergent,
+            # la dernière lue gagnerait en silence, et rien ne dirait laquelle
+            # est la bonne.
             if rang in lus[piece]["parts"] and lus[piece]["parts"][rang] != donnees:
                 divergents.append("%s%d/%d" % (piece, rang, total))
             lus[piece]["parts"][rang] = donnees
@@ -239,10 +240,8 @@ def main():
             print("\n✗ Pli incomplet. Rien n'a été écrit.")
             for m in manques:
                 print("   " + m)
-            # Ce n'est pas « plus fin » qu'il faut, c'est « autrement » : un code
-            # qui se dérobe à une résolution se rend à la suivante, sans que rien
-            # ne soit abîmé. Ce lecteur le fait déjà seul sur un PDF ; sur un
-            # répertoire d'images, seule la personne qui tient le scanner le peut.
+            # Ce lecteur réessaie déjà seul sur un PDF ; sur un répertoire
+            # d'images, seule la personne qui tient le scanner le peut.
             print("\n   Renumérise les pages concernées à une AUTRE résolution — %s —"
                   % ", ".join("%d" % d for d in (DPI,) + DPI_SECOURS))
             print("   puis relance. Un code manquant ne veut pas dire un pli abîmé.")
