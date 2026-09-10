@@ -18,6 +18,28 @@ use Pierroons\SelfRecover\Recovery\Litige;
  *
  * L'implémentation est responsable des requêtes préparées, de l'atomicité, et
  * de la création de son schéma.
+ *
+ * ── L'unité des instants, une fois pour toutes ──────────────────────────────
+ *
+ * 🔑 **Tout paramètre et tout retour typé `int` qui porte un instant compte les
+ * SECONDES depuis le 1er janvier 1970 UTC** — la valeur de `time()`, jamais des
+ * millisecondes, jamais une date lisible. Cela vaut pour les vingt porteurs de
+ * ce contrat : `$quand`, `$depuis`, `$avant`, `$maintenant`, `$expireLe`,
+ * `$jusqua`, et les champs d'horodatage de `Litige`.
+ *
+ * Le dire ici n'est pas une politesse. `int` ne distingue pas les secondes des
+ * millisecondes, et surtout il ne distingue pas un instant d'un nombre qui n'en
+ * est pas : si la colonne de votre base est restée en `TEXT`, le cast rend le
+ * millésime — `(int) '2026-07-12 08:00:00'` vaut `2026`. Le typage est satisfait,
+ * aucune ligne n'échoue, et un dossier se retrouve daté de janvier 1970.
+ *
+ * `Litige` refuse désormais ces valeurs à la construction
+ * (`Litige::PLANCHER_EPOQUE`). Les autres paramètres ne sont pas gardés : ils
+ * traversent votre adaptateur sans repasser par un objet de valeur. **Vérifiez
+ * donc le TYPE DÉCLARÉ de vos colonnes de date**, pas seulement ce qu'elles
+ * contiennent aujourd'hui — une colonne `TEXT` qui reçoit des entiers depuis
+ * l'origine se comporte correctement jusqu'au jour où quelque chose y écrit une
+ * date lisible.
  */
 interface StorageInterface
 {
