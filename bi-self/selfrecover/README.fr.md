@@ -247,6 +247,37 @@ Le mot de récupération brut ne quitte jamais le navigateur.
 
 ---
 
+### Le stockage : un contrat, et une implémentation fournie
+
+La bibliothèque ne sait rien de ta base. Elle pose **39 questions** définies par
+`src/Storage/StorageInterface.php` — « donne-moi l'empreinte du mot mémorisé du compte 42 »
+— sans savoir dans quelle table ni dans quelle colonne tu la ranges.
+
+Tu as donc deux chemins, et le contrat existe pour que le premier reste possible :
+
+| ta situation | ce que tu fais |
+|---|---|
+| tu as déjà tes tables | tu écris ton adaptateur, **tu ne migres rien** |
+| tu pars de zéro | tu charges `schema.sql`, tu branches `StockagePdo` — **aucun adaptateur à écrire** |
+Les deux ciblent SQLite. Sur MariaDB ou PostgreSQL, les types de colonnes et trois
+requêtes se réécrivent — l'en-tête de `schema.sql` les nomme.
+
+`StockagePdo` sert aussi le facteur « cet appareil » et exige l'**hôte de dérivation** :
+il refuse de reposer des secrets sans lui, plutôt que d'écrire un marqueur vide sur un
+compte dont le navigateur vient de dériver sur une adresse bien réelle.
+
+```php
+// L'hôte est une constante de DÉPLOIEMENT, jamais une valeur de requête : le lire
+// dans $_SERVER['HTTP_HOST'] laisserait l'attaquant choisir ce qu'on enregistre.
+$stockage = new StockagePdo($pdo, hoteDerivation: 'mon-service.example');
+```
+
+Éprouvé par `tests/banc_stockage_pdo.php`, qui **relit la base** plutôt que la valeur
+rendue : une méthode d'écriture qui ne fait rien et rend `void` est indiscernable d'une
+méthode qui écrit, tant qu'on ne va pas voir la table.
+
+---
+
 ## Propriétés de sécurité
 
 | Propriété | Comment c'est obtenu |

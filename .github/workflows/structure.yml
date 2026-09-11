@@ -147,6 +147,41 @@ jobs:
       - name: Garde-fou — la bibliothèque sur le schéma de bi-self-duo
         run: php demo/bi-self-duo/tests/equivalence_selfrecover.php
 
+      # Le schéma d'exemple et l'adaptateur fournis avec le contrat, pour une
+      # application qui n'a pas déjà ses tables. Quatrième porteur de
+      # `StorageInterface` — après les deux démos et le double en mémoire — et
+      # le seul à servir le facteur « cet appareil » sur un schéma qu'on livre.
+      - name: Garde-fou — le schéma d'exemple et son adaptateur PDO
+        run: |
+          # ⚠️ `pipefail` + `tee` plutôt qu'une capture nue : sous `bash -e`,
+          # `sortie=$(php …)` tue l'étape AVANT le `echo`, et la CI n'affiche
+          # alors aucune ligne du banc — donc pas laquelle a rougi.
+          set -o pipefail
+          sortie=$(php bi-self/selfrecover/tests/banc_stockage_pdo.php | tee /dev/stderr)
+          # ⚠️ Le banc MESURE ce qu'il a exercé (ReflectionClass + realpath), il
+          # ne l'écrit pas : un littéral s'imprimerait à l'identique même s'il
+          # chargeait un autre fichier, et ce contrôle ne vaudrait rien.
+          echo "$sortie" | grep -qE '^▸ implémentation exercée : bi-self/selfrecover/src/Storage/StockagePdo\.php$' \
+            || { echo "::error::le banc n'a pas exercé src/Storage/StockagePdo.php"; exit 1; }
+          echo "$sortie" | grep -qE '^▸ schéma exercé          : bi-self/selfrecover/schema\.sql$' \
+            || { echo "::error::le banc n'a pas exercé schema.sql"; exit 1; }
+          # ⚠️ Le code de sortie du banc vient de son propre verdict : falsifier
+          # ce verdict le rend muet, et aucune garde INTERNE ne peut l'attraper —
+          # mesuré au canari. Ce grep est la seconde source, et elle est dehors.
+          if echo "$sortie" | grep -q '❌'; then
+            echo "::error::le banc a affiché au moins un échec tout en sortant à 0"; exit 1
+          fi
+          # ⚠️ Les greps ci-dessus prouvent que la classe se RÉSOUT au bon chemin,
+          # pas qu'un contrôle l'a exercée : mesuré au canari, un banc à zéro
+          # contrôle les passe tous les trois. Le plancher ci-dessous est le seul
+          # à distinguer « tout est vert » de « rien n'a tourné », et il vit
+          # dehors parce que celui du banc se contourne depuis l'intérieur.
+          passes=$(echo "$sortie" | sed -nE 's/^✅ ([0-9]+) contrôle\(s\) passé\(s\).*/\1/p')
+          if [ -z "$passes" ] || [ "$passes" -lt 140 ]; then
+            echo "::error::le banc n'a rendu que « ${passes:-aucun} » contrôle(s) — il en faut au moins 140"
+            exit 1
+          fi
+
       - name: Garde-fou — déploiement SelfJustice
         run: bash self-right/selfjustice/tests/test_deploy.sh
 
