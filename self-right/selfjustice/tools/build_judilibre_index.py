@@ -56,7 +56,7 @@ DELAI = 1.2                # rythme poli ; la rafale courte est limitée à 20
 # donc PAS de justice administrative ici — `ce` y a été ajouté puis retiré le
 # même jour, après sept heures de refus. Le Conseil d'État, les CAA et les TA
 # relèvent du fonds JADE de la DILA (dumps sur echanges.dila.gouv.fr/OPENDATA/JADE/),
-# une autre source et un autre collecteur : cf la roadmap, jalon v0.4.0.
+# une autre source et un autre collecteur : `build_jade_db.py`, livré en v0.4.0.
 #
 # `tj` et `tcom` sont servis par l'amont et non moissonnés — première instance
 # judiciaire, à décider séparément.
