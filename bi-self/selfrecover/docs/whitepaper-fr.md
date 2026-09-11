@@ -200,9 +200,9 @@ Le L2 combine toujours **connaissance** (le mot mémorisé) et **possession**. D
 - **Usage unique**, régénérables à la demande (le nouveau lot remplace l'ancien). Universels : papier, gestionnaire de mots de passe ou second appareil, au choix.
 
 **Facteur « cet appareil » — le foyer cryptographique, optionnel.**
-- Une paire **ECDSA P-256** est générée dans le navigateur. La clé privée est **chiffrée au repos** par une clé AES-256-GCM dérivée du **mot mémorisé** via **Argon2id** (WASM côté client), et stockée en **IndexedDB**.
+- Une paire **ECDSA P-256** est générée dans le navigateur. La clé privée est **chiffrée au repos** par une clé AES-256-GCM dérivée du **mot mémorisé** via **Argon2id** en JavaScript, écrit dans la bibliothèque et confronté aux vecteurs de libsodium — aucun binaire embarqué. Le blob obtenu porte sa version et ses paramètres de dérivation. Le lieu de rangement relève de l'intégration : l'implémentation de référence emploie `localStorage`, IndexedDB restant préférable et à faire.
 - Le serveur ne détient **que la clé publique**. La récupération consiste à **signer un défi** (32 octets, TTL 5 min, usage unique) : le navigateur déchiffre la clé privée avec le mot, signe, le serveur vérifie.
-- C'est un 2FA cryptographique **appareil + connaissance**, sans TPM ni matériel. Protection **logicielle** (assumée), device-bound. **Désactivé automatiquement en profil Tor/onion** (WebCrypto/IndexedDB non fiables) — le recovery code papier reste le plancher.
+- C'est un 2FA cryptographique **appareil + connaissance**, sans TPM ni matériel. Protection **logicielle** (assumée), device-bound. **À désactiver en profil Tor/onion**, où le stockage local ne survit pas à la session — c'est un choix d'intégration, non un automatisme à ce jour. Le recovery code papier reste le plancher.
 
 ---
 

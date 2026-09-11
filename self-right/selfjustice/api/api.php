@@ -477,6 +477,31 @@ function juridiction_valide(string $brute): ?string {
  * retombe alors exactement sur le comportement d'avant, comme `legi_a_nature()`
  * le fait pour sa colonne.
  */
+/** L'index porte-t-il les colonnes du fonds administratif ?
+ *
+ * 🔑 **Le code se déploie avant la base, toujours.** Mesuré le 10/09/2026 en
+ * production : la route `decision` interrogeait `texte` et `source` sur un index
+ * qui ne les avait pas encore — `prepare()` rendait `false`, et l'appel suivant
+ * tuait la requête. Un 500 sur une base parfaitement saine, parce que le
+ * collecteur n'était pas encore passé.
+ *
+ * Même sonde que `legi_a_nature()`, même raison : entre le déploiement du code
+ * et la construction de la base il s'écoule des heures, et pendant ce temps
+ * l'API doit répondre comme avant.
+ */
+function juris_a_jade(SQLite3 $db): bool {
+    static $cache = null;
+    if ($cache !== null) return $cache;
+    $colonnes = [];
+    $res = @$db->query("PRAGMA table_info(decisions)");
+    while ($res && ($r = $res->fetchArray(SQLITE3_ASSOC))) {
+        $colonnes[] = $r['name'];
+    }
+    $cache = in_array('texte', $colonnes, true)
+          && in_array('source', $colonnes, true);
+    return $cache;
+}
+
 function juridictions_servies(): array {
     static $cache = null;
     if ($cache !== null) return $cache;
@@ -495,12 +520,16 @@ function juridictions_servies(): array {
 /** Le nom qu'on donne à une juridiction, ou son code si on ne le connaît pas. */
 function juridiction_libelle(string $code): string {
     return [
-        'cc'  => 'Cour de cassation',
-        'ca'  => "cours d'appel",
-        'ce'  => "Conseil d'État",
-        'caa' => "cours administratives d'appel",
-        'tj'  => 'tribunaux judiciaires',
-        'tcom'=> 'tribunaux de commerce',
+        'cc'   => 'Cour de cassation',
+        'ca'   => "cours d'appel",
+        'tj'   => 'tribunaux judiciaires',
+        'tcom' => 'tribunaux de commerce',
+        // L'ordre administratif, servi par le fonds JADE de la DILA.
+        'ce'   => "Conseil d'État",
+        'caa'  => "cours administratives d'appel",
+        'ta'   => 'tribunaux administratifs',
+        'tc'   => 'Tribunal des conflits',
+        'cdbf' => 'Cour de discipline budgétaire et financière',
     ][$code] ?? $code;
 }
 
@@ -973,6 +1002,33 @@ if ($segments[0] === 'status') {
                 'last_update' => marqueur('judilibre_last_update'),
                 'last_sync'   => marqueur('judilibre_last_sync'),
             ];
+
+            // Deux fonds partagent la table : Judilibre pour l'ordre
+            // judiciaire, JADE pour l'ordre administratif. `couverture` les
+            // mêle, ce qui est juste pour répondre « jusqu'où puis-je
+            // conclure à une absence » — mais masque qu'un des deux
+            // collecteurs a cessé de tourner. Les compter à part rend chaque
+            // panne visible séparément.
+            $par_source = [];
+            $stmt = juris_a_jade($db) ? @$db->query(
+                "SELECT COALESCE(source,'judilibre') AS s, COUNT(*) AS n "
+                . "FROM decisions GROUP BY s") : null;
+            while ($stmt && ($row = $stmt->fetchArray(SQLITE3_ASSOC))) {
+                $par_source[$row['s']] = (int) $row['n'];
+            }
+            if ($par_source) {
+                $result['jurisprudence']['par_source'] = $par_source;
+            }
+
+            // Le dernier incrément JADE appliqué. C'est une CHAÎNE et elle ne
+            // bouge que si un incrément a réellement été absorbé : un marqueur
+            // qui avancerait tout seul rendrait la sonde de fraîcheur aveugle
+            // au fonds qui stagne — le défaut de LEGI, treize mois durant.
+            $dernier = @$db->querySingle(
+                "SELECT valeur FROM jade_etat WHERE cle='dernier_diff'");
+            if ($dernier) {
+                $result['jurisprudence']['jade'] = ['dernier_increment' => $dernier];
+            }
             $db->close();
         } catch (Exception $e) {}
     }
@@ -1935,10 +1991,63 @@ if ($segments[0] === 'jurisprudence') {
     }
 
     // /api/jurisprudence/decision/{id} — texte intégral, à la demande
+    //
+    // Deux fonds, deux provenances du texte. L'ordre judiciaire vient de
+    // Judilibre à la demande : l'index n'en garde que l'identité. L'ordre
+    // administratif vient du fonds JADE, qui n'a pas d'API — son texte est donc
+    // en base, et c'est la seule façon de le rendre. Le préfixe de
+    // l'identifiant suffit à les distinguer : tous les identifiants JADE sont
+    // « CETATEXT » suivi de douze chiffres (mesuré sur le fonds entier).
     if (count($segments) >= 3 && $segments[1] === 'decision') {
         $id = $segments[2];
+
+        if (preg_match('/^CETATEXT\d{12}$/i', $id)) {
+            if (!file_exists(JURIS_DB)) {
+                json_error("Index de jurisprudence absent de cette instance.", 503);
+            }
+            $db  = open_db(JURIS_DB);
+            if (!juris_a_jade($db)) {
+                json_error(
+                    "L'index de jurisprudence administrative n'est pas encore "
+                    . "construit sur cette instance. Les décisions de l'ordre "
+                    . "judiciaire restent servies normalement.",
+                    503
+                );
+            }
+            $req = $db->prepare(
+                "SELECT id, number, decision_date, jurisdiction, location, formation,
+                        publication, solution, type, texte, date_suspecte
+                 FROM decisions WHERE id = :id AND source = 'jade'");
+            $req->bindValue(':id', strtoupper($id), SQLITE3_TEXT);
+            $ligne = $req->execute()->fetchArray(SQLITE3_ASSOC);
+            if (!$ligne) {
+                json_error(
+                    "Décision « $id » absente de l'index administratif. Le fonds "
+                    . "JADE ne porte qu'une sélection : les décisions publiées au "
+                    . "recueil Lebon et une part des inédites. Une absence ici ne "
+                    . "dit pas que la décision n'existe pas.",
+                    404
+                );
+            }
+            $ligne['juridiction_libelle'] = juridiction_libelle($ligne['jurisdiction']);
+            $ligne['texte'] = texte_propre($ligne['texte']);
+            $ligne['source'] = "JADE (DILA) — jurisprudence administrative";
+            if ((int) $ligne['date_suspecte'] === 1) {
+                // Une date aberrante se signale au lieu d'être servie comme un
+                // fait : le fonds en porte une à l'an 2990.
+                $ligne['reserve'] = "La date de cette décision est hors des bornes "
+                    . "plausibles telle que la source la publie — ne pas s'y fier.";
+            }
+            json_response($ligne);
+        }
+
         if (!preg_match('/^[a-f0-9]{16,40}$/i', $id)) {
-            json_error("Identifiant de décision invalide : « $id »");
+            json_error(
+                "Identifiant de décision invalide : « $id ». Deux formes sont "
+                . "acceptées : un identifiant Judilibre (hexadécimal, ordre "
+                . "judiciaire) ou un identifiant JADE « CETATEXT » suivi de douze "
+                . "chiffres (ordre administratif)."
+            );
         }
         json_response(judilibre_get('/decision', ['id' => $id]));
     }

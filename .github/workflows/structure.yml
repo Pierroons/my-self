@@ -86,6 +86,22 @@ jobs:
           node --version
           node bi-self/selfrecover/tests/derivation.js
 
+      # La KDF du facteur « cet appareil » — les mêmes vecteurs, dans deux
+      # langages. Notre implémentation JavaScript face à libsodium en C : elles
+      # ne partagent pas une ligne, et c'est ce qui rend le vert probant.
+      - name: Garde-fou — les vecteurs de la KDF, côté PHP
+        run: php bi-self/selfrecover/tests/argon2.php
+
+      - name: Garde-fou — les vecteurs de la KDF, sur la bibliothèque livrée
+        run: |
+          sortie=$(node bi-self/selfrecover/tests/argon2.js)
+          echo "$sortie"
+          # ⚠️ Le banc annonce l'implémentation exercée. Sans ce contrôle, une
+          # implémentation absente ou remplacée par un repli le ferait mesurer
+          # autre chose que ce que les intégrateurs chargent, en rendant le même vert.
+          echo "$sortie" | grep -qE '^▸ implémentation exercée : argon2id\.js \(écrite dans ce dépôt\)$' \
+            || { echo "::error::le banc n'a pas exercé argon2id.js"; exit 1; }
+
       # SelfVault — le format d'un coffre destiné à un dépôt notarial. Le banc
       # pilote les DEUX lecteurs : la réimplémentation Node et l'application
       # réelle découpée en QR codes. Cette dernière était le seul des trois
@@ -179,6 +195,15 @@ jobs:
       - name: Garde-fou — la couverture juridictionnelle se dérive de l'index
         run: bash self-right/selfjustice/tests/sanity_juridictions_servies.sh
 
+      - name: Garde-fou — un paramètre refusé par l'amont ne se découpe pas
+        run: bash self-right/selfjustice/tests/sanity_refus_amont.sh
+
+      - name: Garde-fou — les 113 libellés du fonds JADE sont tous classés
+        run: python3 self-right/selfjustice/tests/sanity_jade_juridictions.py
+
+      - name: Garde-fou — le collecteur JADE refuse bruyamment ce qu'il ne sait pas lire
+        run: python3 self-right/selfjustice/tests/sanity_jade_collecteur.py
+
       - name: Garde-fou — le compteur d'IA lit le User-Agent, pas la ligne
         run: bash self-right/selfjustice/tests/test_compteur_ia.sh
 
@@ -256,6 +281,11 @@ jobs:
 
       - name: Garde-fou — coût constant du hash factice (lab)
         run: php demo/lab/tests/sanity_timing.php
+
+      # Le chemin CLIENT du facteur « cet appareil » — le seul banc du lab qui
+      # ne soit pas en PHP, et le seul à dépasser l'API.
+      - name: Garde-fou — le facteur « cet appareil », côté navigateur
+        run: node demo/lab/tests/sanity_device_client.js
 
       # Ce banc porte la justification écrite de l'ancre externe du journal SU
       # (contrôle 4) et le profil de hachage du secret SuperUser (contrôle 8).

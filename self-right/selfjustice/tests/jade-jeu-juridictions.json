@@ -1,0 +1,460 @@
+{
+  "_source": "Freemium_jade_global_20250713-140000.tar.gz — inventaire du 10 septembre 2026",
+  "_pourquoi": "Les 113 libellés de JURIDICTION réellement présents dans le fonds, avec leur effectif. Écrits à la main, ils auraient reflété l'orthographe d'aujourd'hui : l'échantillon des quatre derniers jours n'en montrait que 10, tous récents. Le fonds remonte à 1873 et écrit « Conseil d'Etat » sans accent 113 069 fois.",
+  "_total_decisions": 552576,
+  "libelles": [
+    {
+      "libelle": "Conseil d'Etat",
+      "decisions": 113069
+    },
+    {
+      "libelle": "Conseil d'État",
+      "decisions": 57433
+    },
+    {
+      "libelle": "Cour administrative d'appel de Bordeaux",
+      "decisions": 26370
+    },
+    {
+      "libelle": "Cour administrative d'appel de Paris",
+      "decisions": 24853
+    },
+    {
+      "libelle": "CAA de MARSEILLE",
+      "decisions": 24617
+    },
+    {
+      "libelle": "Cour Administrative d'Appel de Marseille",
+      "decisions": 24365
+    },
+    {
+      "libelle": "CAA de PARIS",
+      "decisions": 23873
+    },
+    {
+      "libelle": "CAA de LYON",
+      "decisions": 22053
+    },
+    {
+      "libelle": "CAA de NANTES",
+      "decisions": 21211
+    },
+    {
+      "libelle": "CAA de BORDEAUX",
+      "decisions": 19653
+    },
+    {
+      "libelle": "Cour Administrative d'Appel de Nantes",
+      "decisions": 15583
+    },
+    {
+      "libelle": "Cour administrative d'appel de Nantes",
+      "decisions": 14950
+    },
+    {
+      "libelle": "COUR ADMINISTRATIVE D'APPEL DE LYON",
+      "decisions": 14912
+    },
+    {
+      "libelle": "CAA de NANCY",
+      "decisions": 14806
+    },
+    {
+      "libelle": "Cour administrative d'appel de Nancy",
+      "decisions": 14317
+    },
+    {
+      "libelle": "Cour administrative d'appel de Douai",
+      "decisions": 14268
+    },
+    {
+      "libelle": "CAA de DOUAI",
+      "decisions": 14116
+    },
+    {
+      "libelle": "Cour Administrative d'Appel de Versailles",
+      "decisions": 13658
+    },
+    {
+      "libelle": "CAA de VERSAILLES",
+      "decisions": 12186
+    },
+    {
+      "libelle": "Cour Administrative d'Appel de Bordeaux",
+      "decisions": 12105
+    },
+    {
+      "libelle": "Cour Administrative d'Appel de Nancy",
+      "decisions": 11033
+    },
+    {
+      "libelle": "Cour administrative d'appel de Marseille",
+      "decisions": 11033
+    },
+    {
+      "libelle": "Cour administrative d'appel de Lyon",
+      "decisions": 9857
+    },
+    {
+      "libelle": "Cour Administrative d'Appel de Paris",
+      "decisions": 7234
+    },
+    {
+      "libelle": "CAA de TOULOUSE",
+      "decisions": 3722
+    },
+    {
+      "libelle": "Cour administrative d'appel de Versailles",
+      "decisions": 1957
+    },
+    {
+      "libelle": "Tribunal des conflits",
+      "decisions": 971
+    },
+    {
+      "libelle": "Tribunal des Conflits",
+      "decisions": 840
+    },
+    {
+      "libelle": "Cour administrative d'appel",
+      "decisions": 639
+    },
+    {
+      "libelle": "Tribunal administratif de Lyon",
+      "decisions": 613
+    },
+    {
+      "libelle": "Tribunal administratif Paris",
+      "decisions": 506
+    },
+    {
+      "libelle": "Tribunal administratif de Versailles",
+      "decisions": 369
+    },
+    {
+      "libelle": "Tribunal administratif Versailles",
+      "decisions": 341
+    },
+    {
+      "libelle": "Tribunal administratif de Lille",
+      "decisions": 311
+    },
+    {
+      "libelle": "cour administrative d'appel de Toulouse",
+      "decisions": 268
+    },
+    {
+      "libelle": "Tribunal administratif de Paris",
+      "decisions": 251
+    },
+    {
+      "libelle": "Tribunal administratif de Nantes",
+      "decisions": 175
+    },
+    {
+      "libelle": "Tribunal administratif de Rouen",
+      "decisions": 170
+    },
+    {
+      "libelle": "Tribunal administratif de Strasbourg",
+      "decisions": 168
+    },
+    {
+      "libelle": "Tribunal administratif Grenoble",
+      "decisions": 168
+    },
+    {
+      "libelle": "Tribunal administratif Lyon",
+      "decisions": 161
+    },
+    {
+      "libelle": "Tribunal administratif Rennes",
+      "decisions": 159
+    },
+    {
+      "libelle": "Tribunal administratif Nantes",
+      "decisions": 157
+    },
+    {
+      "libelle": "Tribunal administratif Nice",
+      "decisions": 152
+    },
+    {
+      "libelle": "Tribunal administratif Strasbourg",
+      "decisions": 148
+    },
+    {
+      "libelle": "Tribunal administratif Montpellier",
+      "decisions": 146
+    },
+    {
+      "libelle": "Tribunal administratif de Rennes",
+      "decisions": 135
+    },
+    {
+      "libelle": "Tribunal administratif Clermont-Ferrand",
+      "decisions": 134
+    },
+    {
+      "libelle": "Tribunal administratif Marseille",
+      "decisions": 117
+    },
+    {
+      "libelle": "Tribunal administratif Amiens",
+      "decisions": 104
+    },
+    {
+      "libelle": "Tribunal administratif Poitiers",
+      "decisions": 103
+    },
+    {
+      "libelle": "Tribunal administratif de Poitiers",
+      "decisions": 101
+    },
+    {
+      "libelle": "Tribunal administratif de Clermont-Ferrand",
+      "decisions": 96
+    },
+    {
+      "libelle": "Tribunal administratif de Grenoble",
+      "decisions": 92
+    },
+    {
+      "libelle": "Tribunal administratif Orléans",
+      "decisions": 90
+    },
+    {
+      "libelle": "Tribunal administratif Pau",
+      "decisions": 89
+    },
+    {
+      "libelle": "Tribunal administratif Rouen",
+      "decisions": 86
+    },
+    {
+      "libelle": "Tribunal administratif de Nice",
+      "decisions": 84
+    },
+    {
+      "libelle": "Tribunal administratif d'Amiens",
+      "decisions": 81
+    },
+    {
+      "libelle": "Tribunal administratif de Marseille",
+      "decisions": 72
+    },
+    {
+      "libelle": "Tribunal administratif Bordeaux",
+      "decisions": 70
+    },
+    {
+      "libelle": "Cour de discipline budgétaire et financière",
+      "decisions": 68
+    },
+    {
+      "libelle": "Tribunal administratif de Dijon",
+      "decisions": 60
+    },
+    {
+      "libelle": "Tribunal administratif de Châlons-sur-Marne",
+      "decisions": 59
+    },
+    {
+      "libelle": "Tribunal administratif Dijon",
+      "decisions": 59
+    },
+    {
+      "libelle": "Tribunal administratif de Saint-Denis de la Réunion",
+      "decisions": 58
+    },
+    {
+      "libelle": "Tribunal administratif Toulouse",
+      "decisions": 57
+    },
+    {
+      "libelle": "Tribunal administratif Caen",
+      "decisions": 56
+    },
+    {
+      "libelle": "Tribunal administratif Lille",
+      "decisions": 56
+    },
+    {
+      "libelle": "Tribunal administratif de Bordeaux",
+      "decisions": 51
+    },
+    {
+      "libelle": "Tribunal administratif Limoges",
+      "decisions": 49
+    },
+    {
+      "libelle": "Tribunal administratif d'Orléans",
+      "decisions": 48
+    },
+    {
+      "libelle": "Tribunal administratif de Toulouse",
+      "decisions": 46
+    },
+    {
+      "libelle": "Tribunal administratif de Pau",
+      "decisions": 41
+    },
+    {
+      "libelle": "Tribunal administratif Nancy",
+      "decisions": 41
+    },
+    {
+      "libelle": "Tribunal administratif Châlons-sur-Marne",
+      "decisions": 40
+    },
+    {
+      "libelle": "Tribunal administratif de Limoges",
+      "decisions": 39
+    },
+    {
+      "libelle": "Tribunal administratif de Montpellier",
+      "decisions": 38
+    },
+    {
+      "libelle": "Tribunal administratif Besançon",
+      "decisions": 36
+    },
+    {
+      "libelle": "Tribunal administratif de Papeete",
+      "decisions": 28
+    },
+    {
+      "libelle": "Tribunal administratif de Nouméa",
+      "decisions": 27
+    },
+    {
+      "libelle": "Tribunal administratif Saint-Denis de la Réunion",
+      "decisions": 26
+    },
+    {
+      "libelle": "Tribunal administratif de Besançon",
+      "decisions": 23
+    },
+    {
+      "libelle": "Tribunal administratif de Nancy",
+      "decisions": 19
+    },
+    {
+      "libelle": "CAA de VERSAILLESS",
+      "decisions": 16
+    },
+    {
+      "libelle": "Tribunal administratif Nouméa",
+      "decisions": 15
+    },
+    {
+      "libelle": "Tribunal administratif Papeete",
+      "decisions": 15
+    },
+    {
+      "libelle": "Tribunal administratif de Caen",
+      "decisions": 13
+    },
+    {
+      "libelle": "Cour administrative d'appel de Toulouse",
+      "decisions": 13
+    },
+    {
+      "libelle": "Tribunal Administratif d'Orléans",
+      "decisions": 10
+    },
+    {
+      "libelle": "Tribunal Administratif de Nantes",
+      "decisions": 9
+    },
+    {
+      "libelle": "Tribunal administratif de Châlons-en-Champagne",
+      "decisions": 7
+    },
+    {
+      "libelle": "Tribunal administratif Cayenne",
+      "decisions": 6
+    },
+    {
+      "libelle": "Tribunal administratif Bastia",
+      "decisions": 6
+    },
+    {
+      "libelle": "Tribunal administratif Basse-Terre",
+      "decisions": 6
+    },
+    {
+      "libelle": "Tribunal administratif Fort-de-France",
+      "decisions": 5
+    },
+    {
+      "libelle": "CAA de Nantes",
+      "decisions": 3
+    },
+    {
+      "libelle": "Tribunal Administratif d'Amiens",
+      "decisions": 3
+    },
+    {
+      "libelle": "Tribunal Administratif de Paris",
+      "decisions": 3
+    },
+    {
+      "libelle": "Tribunal Administratif de Lille",
+      "decisions": 2
+    },
+    {
+      "libelle": "Tribunal administratif de Fort-de-France",
+      "decisions": 2
+    },
+    {
+      "libelle": "Section du Contentieux",
+      "decisions": 2
+    },
+    {
+      "libelle": "CAA de Nancy",
+      "decisions": 2
+    },
+    {
+      "libelle": "CAA de Lyon",
+      "decisions": 2
+    },
+    {
+      "libelle": "Tribunal Administratif de Limoges",
+      "decisions": 2
+    },
+    {
+      "libelle": "CAA de Paris",
+      "decisions": 1
+    },
+    {
+      "libelle": "Tribunal administratif Montpellier ordonnance du president",
+      "decisions": 1
+    },
+    {
+      "libelle": "COUR ADMINISTRATIVE D'APPEL DE NANCY",
+      "decisions": 1
+    },
+    {
+      "libelle": "Cour administrative d'appel de Montpellier",
+      "decisions": 1
+    },
+    {
+      "libelle": "CAA de Bordeaux",
+      "decisions": 1
+    },
+    {
+      "libelle": "Tribunal Administratif de Marseille",
+      "decisions": 1
+    },
+    {
+      "libelle": "Tribunal Administratif de Caen",
+      "decisions": 1
+    },
+    {
+      "libelle": "Tribunal Administratif de MELUN",
+      "decisions": 1
+    }
+  ],
+  "_unite": "Les effectifs comptent des FICHIERS du dump, pas des décisions distinctes : 40 identifiants y figurent deux fois, et la base en porte donc 552 536. La distinction n'a pas d'effet ici — ce contrôle juge la classification des libellés — mais elle expliquerait un écart avec le compte de la base."
+}

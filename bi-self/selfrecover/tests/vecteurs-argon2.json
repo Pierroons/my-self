@@ -1,0 +1,177 @@
+{
+  "_": [
+    "Vecteurs de la KDF SelfRecover — la vérité, écrite une fois.",
+    "",
+    "Ces empreintes ont été produites par `sodium_crypto_pwhash` (libsodium, en C,",
+    "écrit par d'autres et audité). Elles sont retrouvées à l'identique par",
+    "`client/argon2id.js`, écrit dans ce dépôt.",
+    "",
+    "🔑 C'est ce croisement qui rend le vert probant, et il ne tient QUE tant que",
+    "les deux implémentations sont indépendantes. Le jour où libsodium serait",
+    "remplacé par une seconde implémentation maison, ce fichier comparerait notre",
+    "code à notre code et cesserait de prouver quoi que ce soit.",
+    "",
+    "Le 10/09/2026, trois implémentations sans une ligne commune rendaient ces",
+    "mêmes empreintes : libsodium, `hash-wasm` 4.12.0 en WebAssembly, et",
+    "`@noble/hashes` 2.4.0. Les deux dernières ne sont pas dans le dépôt — la",
+    "mesure est citée parce qu'elle vaut relecture indépendante, pas parce qu'un",
+    "contrôle la rejoue.",
+    "",
+    "On ne compare jamais deux textes de code : une comparaison textuelle rougit",
+    "sur un reformatage, et reste muette quand deux formules se ressemblent en",
+    "s'appliquant différemment.",
+    "",
+    "🔑 Les PARAMÈTRES sont dans chaque vecteur, pas en tête de fichier. C'est",
+    "délibéré : des paramètres communs à tous les vecteurs ne peuvent pas éprouver",
+    "qu'ils entrent réellement dans le calcul. Deux vecteurs ne diffèrent du",
+    "premier que par `t`, puis par `m` — si une implémentation les ignorait, ils",
+    "rougiraient.",
+    "",
+    "`m` est en KIBIOCTETS, l'unité de la RFC 9106, de PHP et de LUKS.",
+    "`sodium_crypto_pwhash` prend des OCTETS : la conversion est le défaut le plus",
+    "fréquent, et un facteur 1024 sur la mémoire ne se voit pas au résultat,",
+    "seulement au coût.",
+    "",
+    "`p` vaut 1 partout parce que libsodium ne sait produire que celui-là. Ce",
+    "n'est pas une préférence : c'est la condition pour que l'oracle PHP existe.",
+    "",
+    "`refus` porte ce que le dériveur doit REFUSER. Un jeu de vecteurs qui ne",
+    "contient que des cas valides n'éprouve jamais qu'une chose se ferme."
+  ],
+  "alg": "argon2id",
+  "profil_ecriture": {
+    "t": 3,
+    "m": 65536,
+    "p": 1,
+    "dkLen": 32
+  },
+  "plancher_lecture": {
+    "t": 3,
+    "m": 65536,
+    "p": 1
+  },
+  "vecteurs": [
+    {
+      "quoi": "profil courant, sel ordinaire",
+      "mot": "chaise-nuage-tambour",
+      "sel": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "t": 3,
+      "m": 65536,
+      "p": 1,
+      "dkLen": 32,
+      "cle": "8ecafc9873a9d6f3dfa2f4d0c7d82329579c73acf438da8659a20f6a17933990"
+    },
+    {
+      "quoi": "🔑 le MÊME mot, un autre sel — doit différer du premier",
+      "mot": "chaise-nuage-tambour",
+      "sel": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "t": 3,
+      "m": 65536,
+      "p": 1,
+      "dkLen": 32,
+      "cle": "3718d7a1a4a87fc3054273532b2f00dd0ff48fd2986c4eb01cec467d755e0bc4"
+    },
+    {
+      "quoi": "🔑 un autre mot, le MÊME sel — doit différer aussi",
+      "mot": "chaise-nuage-fenetre",
+      "sel": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "t": 3,
+      "m": 65536,
+      "p": 1,
+      "dkLen": 32,
+      "cle": "41e2b456ebc594ebc712da276fadbae36be880620bf53c8cb2d90cd042e36c3b"
+    },
+    {
+      "quoi": "mot accentué — l'encodage UTF-8 fait partie du calcul",
+      "mot": "clé-éphémère-où",
+      "sel": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "t": 3,
+      "m": 65536,
+      "p": 1,
+      "dkLen": 32,
+      "cle": "62f2bda01b91f7a20ee968581aba7563119d352a26fe453d38465dca25efe13a"
+    },
+    {
+      "quoi": "mot d'un seul caractère — le dériveur ne juge pas la longueur",
+      "mot": "x",
+      "sel": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "t": 3,
+      "m": 65536,
+      "p": 1,
+      "dkLen": 32,
+      "cle": "4d3b909b69de5e4e91e9e0ee85c6c71d5306bc9cf9c3417f542d54a517fb37c1"
+    },
+    {
+      "quoi": "🔑 même mot, même sel, t=4 — les PARAMÈTRES entrent dans le calcul",
+      "mot": "chaise-nuage-tambour",
+      "sel": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "t": 4,
+      "m": 65536,
+      "p": 1,
+      "dkLen": 32,
+      "cle": "ed5985ca0dfd8c05bd30ef5b1b943c4cadd0cf328940d5e6b288add201816f5e"
+    },
+    {
+      "quoi": "🔑 même mot, même sel, m=128 Mio — la mémoire aussi",
+      "mot": "chaise-nuage-tambour",
+      "sel": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "t": 3,
+      "m": 131072,
+      "p": 1,
+      "dkLen": 32,
+      "cle": "d01fe987f6110fa6b07b43cf4dce622ffa618a2da1d0d9a0074631bbe994d3bb"
+    }
+  ],
+  "refus": [
+    {
+      "quoi": "sel trop court — 30 hexadécimaux au lieu de 32",
+      "mot": "chaise-nuage-tambour",
+      "sel": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    {
+      "quoi": "sel en majuscules — une seule forme est acceptée, sinon deux écritures du même sel donnent deux clés",
+      "mot": "chaise-nuage-tambour",
+      "sel": "A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1"
+    },
+    {
+      "quoi": "sel non hexadécimal",
+      "mot": "chaise-nuage-tambour",
+      "sel": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+    },
+    {
+      "quoi": "sel absent",
+      "mot": "chaise-nuage-tambour",
+      "sel": null
+    },
+    {
+      "quoi": "mot vide",
+      "mot": "",
+      "sel": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    {
+      "quoi": "🔑 paramètres sous le plancher — un blob remplacé ne doit pas pouvoir affaiblir la dérivation",
+      "mot": "chaise-nuage-tambour",
+      "sel": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "t": 2,
+      "m": 65536,
+      "p": 1
+    },
+    {
+      "quoi": "🔑 mémoire sous le plancher — le même piège par l'autre paramètre",
+      "mot": "chaise-nuage-tambour",
+      "sel": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "t": 3,
+      "m": 8,
+      "p": 1
+    },
+    {
+      "quoi": "algorithme inconnu",
+      "mot": "chaise-nuage-tambour",
+      "sel": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "alg": "scrypt",
+      "t": 3,
+      "m": 65536,
+      "p": 1
+    }
+  ]
+}
