@@ -10,6 +10,47 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover fournit son schéma et l'implémentation de son propre contrat — 11 septembre 2026
+
+`StorageInterface` posait 39 questions et laissait chaque application y répondre. C'était
+délibéré — imposer des tables obligerait un déploiement en service à migrer sa base — mais
+celui qui part de zéro devait écrire 500 lignes avant sa première ligne utile.
+
+La bibliothèque livre désormais `schema.sql` et `src/Storage/StockagePdo.php` :
+**fournis, jamais imposés**. Qui a déjà ses tables continue d'écrire son adaptateur et ne
+migre rien ; qui part de zéro les prend tels quels. Il sert le facteur « cet appareil »,
+que les adaptateurs de démonstration ne servent pas tous.
+
+Deux défauts corrigés au passage :
+
+- 🔴 **`PRAGMA foreign_keys` est propre à la connexion, pas à la base.** Le poser dans un
+  fichier de schéma ne sert que la connexion qui le charge — souvent `sqlite3(1)`, jetée
+  aussitôt. Mesuré : effacer un compte laissait derrière lui ses codes, ses clés
+  d'appareil et le texte qu'il avait écrit à un arbitre, sans qu'aucune contrainte ne
+  proteste. Le constructeur de l'adaptateur le repose sur la connexion de l'application.
+- 🔴 **Les gardes de transaction validaient celle de l'appelant.** « Ne rien faire si une
+  transaction existe déjà » traite le symptôme et fabrique pire : le `commit()` suivant
+  rendait durable le travail à moitié fait de l'appelant, qui recevait ensuite « There is
+  no active transaction » sur son propre rollback. Remplacé par des points de reprise
+  (`SAVEPOINT`) : la transaction extérieure reste la sienne, nos écritures s'annulent sans
+  y toucher.
+
+  ⚠️ **Le correctif ne vaut que pour cet adaptateur.** Les trois autres porteurs du
+  contrat gardent le motif : les deux démos, et le double en mémoire des bancs — dont
+  `commencerTransaction()` écrase l'instantané précédent, de sorte qu'une annulation
+  imbriquée ne restaure rien. La cause est en amont : `StorageInterface` ne dit pas si
+  ces trois méthodes sont ré-entrantes, et les quatre implémentations y répondent
+  différemment. À trancher au contrat, pas porteur par porteur.
+
+Le banc `tests/banc_stockage_pdo.php` relit la base plutôt que la valeur rendue, et son
+plancher compte **par section** : un plancher global laissait disparaître 22 contrôles —
+dont ceux du facteur « cet appareil » — en rendant le même vert.
+
+⚠️ **Un banc ne peut pas se garder contre la falsification de son propre verdict.** Mesuré :
+débrancher le compteur d'échecs lui faisait afficher les ❌ et sortir à 0. La seconde
+source est donc dehors — l'étape de CI cherche le caractère ❌ dans la sortie, en plus du
+code de retour.
+
 ### Le contrôle des chemins ne regardait aucun lien ancré — 9 septembre 2026
 
 `scripts/check-paths.sh` porte depuis sa création une classe `[^)#]` qui **exclut le
