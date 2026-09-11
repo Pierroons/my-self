@@ -96,7 +96,7 @@ protection mechanisms.
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | What if the disk is stolen? | **v0.4.0** — deployed and documented, hex key |
 | [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.3.0** — in service, 198 checks |
 | [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.3.0 beta** — housing, family and administrative law covered |
-| [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.2** — live, over 1,800 official procedures |
+| [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.2** — live, over 1,800 official resources |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.3.0** — linked-voter cross-referencing, recovery, vote reason; 24 checks; 2 mechanisms missing |
 
 Every line above links to code you can read and run. No link to a hosted demo:
