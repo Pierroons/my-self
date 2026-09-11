@@ -45,3 +45,22 @@ selfrecover-validator\.html$	wordlist diceware embarquée dans le validateur hor
 offline-validator/index\.html$	wordlist diceware embarquée dans le validateur hors-ligne (nom actuel)
 openpgp\.min\.mjs$	OpenPGP.js minifié — ses tables de constantes cryptographiques produisent par hasard des suites de chiffres (un code postal est apparu à cheval sur deux entiers : ...2393238008,367...). Vérifié 02/08/2026 : aucune donnée réelle.
 diceware-method-(en|fr)\.pdf$	wordlist diceware imprimée dans le PDF pédagogique — « mumble » y figure entre « multitude » et « mumbling », avec ses index de dés. Trouvé le 24/08/2026 par le nouvel étage 6, qui lit le TEXTE des documents : même bruit que les wordlists ci-dessus, sous un format que rien ne lisait avant.
+
+
+# ── Un nom de projet privé, publié avant que le motif n'existe ──────────────
+# Le motif visant ce projet a été ajouté à `patterns.txt` le 11/09/2026, quinze
+# jours après que le nom soit arrivé ici. Le garde-fou attrape en sortie ce qui
+# était déjà dehors : le fichier ci-dessous le porte depuis `b303c2f` (10/09) et
+# `.gitleaks.toml` depuis `05888ab` (26/08), tous deux servis sur `main` depuis.
+# Les deux mentions sont retirées du HEAD le 11/09 — le lien entre ce nom et la
+# nature du projet ne se lit plus nulle part dans l'arbre courant. Ce qui ne se
+# retire pas : le contenu de ces commits et le MESSAGE de `b303c2f`. Les
+# corriger demanderait de réécrire l'historique, qu'AGENTS.md interdit, et ne
+# dépublierait pas ce que GitHub a servi pendant deux semaines.
+#
+# ⚠️ Cette ligne écarte un FICHIER, pas un motif : elle masquerait donc une fuite
+# neuve au même endroit. Dette assumée faute de granularité dans l'allowlist —
+# le jour où elle sait exclure « ce motif dans ce fichier », elle se resserre.
+# `.gitleaks.toml` n'y figure pas : l'étage 2 ne lit plus que les chemins qu'un
+# envoi modifie, et personne ne le modifie en passant.
+^bi-self/selfrecover/tests/sanity_escalade\.php$	nom de projet privé retiré du HEAD le 11/09/2026 ; l'occurrence subsiste dans l'historique déjà publié (b303c2f)
