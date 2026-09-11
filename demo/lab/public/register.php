@@ -25,6 +25,10 @@ render_header(t('reg.title'), Auth::currentAccount(Db::pdo()));
 </div>
 
 <script src="/js/sr-derive.js"></script>
+<!-- argon2id.js avant sr-kdf.js : la recherche a lieu au premier appel, donc un
+     mauvais ordre ne casse rien au chargement — il échoue à l'enrôlement. -->
+<script src="/js/argon2id.js"></script>
+<script src="/js/sr-kdf.js"></script>
 <script src="/js/sr-device.js"></script>
 <script nonce="<?= nonce() ?>">
 // Libellés traduits côté serveur ; les secrets, eux, viennent du client.

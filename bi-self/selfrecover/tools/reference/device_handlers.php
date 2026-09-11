@@ -8,8 +8,12 @@
  * déchiffrer) → 2FA cryptographiquement liée, le serveur vérifie une seule signature.
  *
  * Niveau « correct pas max » : protégé LOGICIEL (pas TPM), device-bound (codes = plancher),
- * résistant au distant / phishing (IndexedDB cloisonnée) / fuite DB (clé publique seule) /
- * vol d'appareil (blob inutile sans le mot, cassable seulement hors-ligne contre Argon2id).
+ * résistant au distant / fuite DB (clé publique seule) / vol d'appareil (blob inutile sans le
+ * mot, cassable seulement hors-ligne contre Argon2id).
+ *
+ * ⚠️ La résistance au hameçonnage tenait ici au cloisonnement d'IndexedDB. L'implémentation
+ * de référence range son blob dans `localStorage` : cloisonné par origine lui aussi, mais
+ * effacé plus facilement. L'argument vaut donc pour l'origine, pas pour la durabilité.
  */
 
 // Le profil de hachage vient de la bibliothèque, jamais d'une constante locale.

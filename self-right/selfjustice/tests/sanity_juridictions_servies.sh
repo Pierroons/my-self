@@ -91,8 +91,44 @@ else
 fi
 
 echo
-echo "▸ Ce que le moissonneur demande doit être ce que le guichet nomme"
-MOISSON="$(grep -oP 'JURIDICTIONS = \[\K[^]]+' "$RACINE/tools/build_judilibre_index.py" | tr -d '" ')"
+echo "▸ L'index avant la migration — le code se déploie avant la base"
+# 🔑 Mesuré en production le 10/09/2026 : la route `decision` interrogeait les
+# colonnes `texte` et `source` sur un index qui ne les avait pas encore. 500 sur
+# une base saine, parce que le collecteur n'était pas passé. Entre le
+# déploiement du code et la construction de la base il s'écoule des heures.
+sqlite3 "$TMP/ancienne.sqlite" "CREATE TABLE decisions (id TEXT PRIMARY KEY,
+    number TEXT, decision_date TEXT, jurisdiction TEXT, date_suspecte INTEGER DEFAULT 0);
+    INSERT INTO decisions VALUES ('JURITEXT1','23-1','2026-01-01','cc',0);"
+a_jade() {
+    php -r '
+        $src = file_get_contents($argv[1] . "/api/api.php");
+        foreach (["open_db", "juris_a_jade"] as $nom) {
+            if (!preg_match("/^function " . $nom . "\(.*?^}$/ms", $src, $m)) {
+                fwrite(STDERR, "$nom introuvable\n"); exit(2);
+            }
+            eval($m[0]);
+        }
+        echo juris_a_jade(open_db($argv[2])) ? "oui" : "non";
+    ' "$RACINE" "$1"
+}
+[ "$(a_jade "$TMP/ancienne.sqlite")" = "non" ]
+verdict $? "un index sans les colonnes du fonds administratif est reconnu comme tel"
+sqlite3 "$TMP/migree.sqlite" "CREATE TABLE decisions (id TEXT PRIMARY KEY,
+    number TEXT, decision_date TEXT, jurisdiction TEXT, date_suspecte INTEGER DEFAULT 0,
+    texte TEXT, source TEXT);"
+[ "$(a_jade "$TMP/migree.sqlite")" = "oui" ]
+verdict $? "un index migré est reconnu comme tel"
+
+echo
+echo "▸ Ce que les collecteurs demandent doit être ce que le guichet nomme"
+# Deux collecteurs alimentent la même table : Judilibre pour l'ordre judiciaire,
+# JADE pour l'ordre administratif. Ne contrôler que le premier laissait un angle
+# mort — `ta`, `tc` et `cdbf` sont entrés dans la base par JADE sans que rien
+# n'exige leur libellé. Un garde-fou borné à une source ne signale pas ce qu'il
+# cesse de couvrir : il rétrécit en silence.
+JUDI="$(grep -oP 'JURIDICTIONS = \[\K[^]]+' "$RACINE/tools/build_judilibre_index.py" | tr -d '" ')"
+JADE="$(grep -oP '^CODES = \(\K[^)]+' "$RACINE/tools/jade_juridictions.py" | tr -d '" ')"
+MOISSON="$JUDI,$JADE"
 SANS_LIBELLE="$(php -r '
     $src = file_get_contents($argv[1] . "/api/api.php");
     preg_match("/^function juridiction_libelle\(.*?^}$/ms", $src, $m); eval($m[0]);
@@ -105,7 +141,7 @@ verdict $? "chaque juridiction moissonnée ($MOISSON) a un libellé — sinon le
 
 echo
 if [ "$ECHECS" -eq 0 ]; then
-    echo "✓ La couverture se dérive de l'index — 10 contrôles."
+    echo "✓ La couverture se dérive de l'index — 12 contrôles."
     exit 0
 fi
 echo "✗ $ECHECS contrôle(s) en échec."

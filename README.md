@@ -34,20 +34,52 @@ there is no official list in French, this one settled in through use. Both hold
 
 ---
 
-## One secret, three separated uses
+## One discipline, separate secrets
 
-This is what makes MySelf a set rather than a collection. A single memorized
-passphrase serves three purposes, through a distinct **label** that changes the
-effective salt: two keys derived from the same secret stay independent, and
-compromising one does not open the others.
+This is what makes MySelf a set rather than a collection. Not one master secret
+that opens everything — that would be the opposite of the point. What the modules
+share is the discipline: a domain separator in the salt, and Argon2id at 64 MiB
+wherever a secret has to withstand an offline attack.
 
-| Label | Purpose | Module |
-|---|---|---|
-| `auth` | regain access to an account | SelfRecover |
-| `disk` | open a LUKS2 slot | SelfRecover-LUKS |
-| `data-enc` | encrypt application data | SelfDataGuard |
+| Module | Secret | Scope | What separates it |
+|---|---|---|---|
+| SelfRecover | diceware passphrase (L1) | per account | Argon2id internal salt |
+| SelfRecover | memorized word (L2) | per account | hostname + account salt |
+| SelfRecover-LUKS | diceware passphrase | per machine | label `disk` |
+| SelfDataGuard | password + memorized word | per user | context `/dataguard` |
 
-One entry at boot opens the root volume, then the secondary volumes in cascade.
+Compromising one does not open the others — not because a label compartmentalizes
+them, but because they are distinct secrets, derived separately.
+
+### Why you can keep the same memorized word everywhere
+
+The memorized word is the only secret you actually remember. It is meant to be
+reused.
+
+One server hosts three services, you have an account on all three, and you use the
+same memorized word — `tree shoes` — on each. What the three of them store has
+nothing in common:
+
+    fingerprint = HMAC-SHA256(memorized word, hostname | version + account salt)
+
+The **hostname** is read in the browser, never received from the server. Each
+service therefore stores a different fingerprint of the same word — and a cloned
+page served elsewhere derives from its own address: what it produces is worthless
+against the real service.
+
+The **salt** is drawn by your browser at sign-up, one per account. It separates
+people: two users who pick the same word on the same service do not store the same
+fingerprint.
+
+The word itself never leaves your browser. None of the three servers receives it,
+and none can replay another's fingerprint.
+
+### The encrypted volume is a keyring
+
+On a machine, a single entry opens the root volume at boot — and what that volume
+holds opens the rest: the keys of the secondary volumes and, on a host that signs
+its own kernels, the Secure Boot signing key. The disk does not only protect files,
+it protects the keys that open others.
 
 ---
 
@@ -64,7 +96,7 @@ protection mechanisms.
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | What if the disk is stolen? | **v0.4.0** — deployed and documented, hex key |
 | [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.3.0** — in service, 198 checks |
 | [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.3.0 beta** — housing, family and administrative law covered |
-| [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.2** — live, over 1,800 official procedures |
+| [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.2** — live, over 1,800 official resources |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.3.0** — linked-voter cross-referencing, recovery, vote reason; 24 checks; 2 mechanisms missing |
 
 Every line above links to code you can read and run. No link to a hosted demo:
@@ -82,8 +114,9 @@ What you will find opening `src/`, and which says more than any pitch:
 | [`entropy.js`](./bi-self/selfrecover/tools/entropy-lab/engine/entropy.js) | Rejection sampling over `crypto.getRandomValues` |
 | [`Recovery.php`](./bi-self/selfrecover/src/Recovery/Recovery.php) | Rate limit scoped to `username + IP`, dummy hash against the timing oracle |
 
-The vendored libraries (`zxcvbn.js`, `hash-wasm-argon2.js`, EFF wordlist) are the
-real ones, not demo stand-ins.
+The vendored libraries (`zxcvbn.js`, EFF wordlist) are the real ones, not demo
+stand-ins. Browser-side Argon2id is not vendored: it is written here, in
+`bi-self/selfrecover/client/argon2id.js`, and checked against libsodium's vectors.
 
 ---
 

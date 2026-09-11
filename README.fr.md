@@ -36,21 +36,52 @@ valent dans les deux langues.
 
 ---
 
-## Un secret, trois usages cloisonnés
+## Une même discipline, des secrets séparés
 
-C'est ce qui fait de MySelf un ensemble plutôt qu'une collection. Une seule
-passphrase mémorisée sert à trois choses, par un **label** distinct qui change le
-sel effectif : deux clés issues du même secret restent indépendantes, et
-compromettre l'une n'ouvre pas les autres.
+C'est ce qui fait de MySelf un ensemble plutôt qu'une collection. Pas un secret
+unique qui ouvrirait tout — ce serait le contraire du but. Ce que les modules
+partagent, c'est la discipline : un séparateur de domaine dans le sel, et un
+Argon2id à 64 Mio partout où un secret doit résister à une attaque hors ligne.
 
-| Label | Usage | Module |
-|---|---|---|
-| `auth` | retrouver l'accès à un compte | SelfRecover |
-| `disk` | ouvrir un slot LUKS2 | SelfRecover-LUKS |
-| `data-enc` | chiffrer la donnée applicative | SelfDataGuard |
+| Module | Secret | Portée | Ce qui le sépare |
+|---|---|---|---|
+| SelfRecover | passphrase diceware (L1) | par compte | sel interne Argon2id |
+| SelfRecover | mot mémorisé (L2) | par compte | nom d'hôte + sel du compte |
+| SelfRecover-LUKS | passphrase diceware | par machine | étiquette `disk` |
+| SelfDataGuard | mot de passe + mot mémorisé | par utilisateur | contexte `/dataguard` |
 
-Une seule saisie au démarrage ouvre le volume racine, puis les volumes
-secondaires en cascade.
+Compromettre l'un n'ouvre pas les autres — non parce qu'une étiquette les
+cloisonne, mais parce que ce sont des secrets distincts, dérivés séparément.
+
+### Pourquoi tu peux garder le même mot mémorisé partout
+
+Le mot mémorisé est le seul secret que tu retiens vraiment. Il est fait pour être
+réutilisé.
+
+Un serveur héberge trois services, tu as un compte sur les trois, tu mets le même
+mot mémorisé — `arbre chaussures` — sur chacun. Ce que les trois enregistrent n'a
+rien en commun :
+
+    empreinte = HMAC-SHA256(mot mémorisé, nom d'hôte | version + sel du compte)
+
+Le **nom d'hôte** est lu dans le navigateur, jamais reçu du serveur. Chaque service
+enregistre donc une empreinte différente du même mot — et une page clonée servie
+ailleurs dérive de sa propre adresse : ce qu'elle produit ne vaut rien contre le
+vrai service.
+
+Le **sel** est tiré par ton navigateur à l'inscription, un par compte. Il sépare les
+personnes : deux utilisateurs qui choisissent le même mot sur le même service
+n'enregistrent pas la même empreinte.
+
+Le mot lui-même ne quitte jamais ton navigateur. Aucun des trois serveurs ne le
+reçoit, et aucun ne peut rejouer l'empreinte d'un autre.
+
+### Le volume chiffré est un trousseau
+
+Sur une machine, une seule saisie ouvre le volume racine au démarrage — et ce que ce
+volume contient ouvre le reste : les clés des volumes secondaires, et, sur un poste
+qui signe ses propres noyaux, la clé de signature Secure Boot. Le disque ne protège
+pas que des fichiers, il protège les clés qui en ouvrent d'autres.
 
 ---
 
@@ -67,7 +98,7 @@ de droit tenues à jour, pas des dispositifs de protection.
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.4.0** — installé et documenté, clé en hexadécimal |
 | [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.3.0** — en service, 198 contrôles |
 | [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.3.0 bêta** — logement, famille et administration couverts |
-| [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — en ligne, plus de 1 800 démarches officielles |
+| [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — en ligne, plus de 1 800 ressources officielles |
 | [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.3.0** — recoupement des votants liés, convalescence, motif de vote ; 24 contrôles ; 2 mécanismes manquent |
 
 Chaque ligne ci-dessus mène à du code lisible et exécutable. Pas de lien vers une
@@ -86,8 +117,10 @@ présentation :
 | [`entropy.js`](./bi-self/selfrecover/tools/entropy-lab/engine/entropy.js) | Rejection sampling sur `crypto.getRandomValues` |
 | [`Recovery.php`](./bi-self/selfrecover/src/Recovery/Recovery.php) | Rate-limit scopé `username + IP`, empreinte factice contre l'oracle temporel |
 
-Les bibliothèques embarquées (`zxcvbn.js`, `hash-wasm-argon2.js`, liste EFF) sont
-les vraies, pas des remplaçantes de démonstration.
+Les bibliothèques embarquées (`zxcvbn.js`, liste EFF) sont les vraies, pas des
+remplaçantes de démonstration. Argon2id côté navigateur n'est pas embarqué : il
+est écrit ici, dans `bi-self/selfrecover/client/argon2id.js`, et confronté aux
+vecteurs de libsodium.
 
 ---
 

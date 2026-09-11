@@ -555,6 +555,62 @@ verifier('la purge n\'efface rien tant que le dossier court', $esc7->purger($now
 verifier('elle efface le dossier périmé', $esc7->purger($now + $JOUR + 1) === 1);
 verifier('et le dossier a bien disparu', $st7->litiges === []);
 
+echo "\n→ Un instant qui n'en est pas un\n";
+
+// 🔑 Ce banc avait l'angle mort que la conv RN2C a nommé le 09/09 : il vérifiait
+// que le DTO se CONSTRUIT, pas que la valeur qu'il porte veut dire quelque chose.
+// Un contrôle de forme reste vert pendant qu'une date est perdue — `2026` est un
+// entier parfaitement valide, et une colonne restée en TEXT en produit un.
+$champsGardes = [
+    'creeLe'    => ['creeLe' => 2026],
+    'expireLe'  => ['expireLe' => 1970],
+    'deposeLe'  => ['deposeLe' => 2026],
+    'trancheLe' => ['trancheLe' => 2026],
+];
+$litigeAvec = static function (array $remplace) use ($now, $JOUR): Litige {
+    $champs = [
+        'id' => 1, 'numero' => 'SR-TEST', 'compteId' => 1, 'nomCompte' => 'alice',
+        'statut' => Litige::OUVERT, 'empreinteSesame' => str_repeat('c3', 32),
+        'creeLe' => $now, 'expireLe' => $now + $JOUR, 'deposeLe' => 0,
+        'trancheLe' => null, 'tranchePar' => null, 'demandeursConcurrents' => 0,
+    ];
+
+    return new Litige(...array_replace($champs, $remplace));
+};
+
+foreach ($champsGardes as $champ => $remplace) {
+    $leve = false;
+    try {
+        $litigeAvec($remplace);
+    } catch (\InvalidArgumentException $e) {
+        // Le message doit ENSEIGNER : sans le nom du champ, on cherche partout.
+        $leve = str_contains($e->getMessage(), $champ);
+    }
+    verifier("⭐ un {$champ} sous le plancher d'époque est refusé, et nommé", $leve,
+        'millésime tiré d\'une colonne TEXT');
+}
+
+// Contre-témoins : sans eux, un constructeur qui refuserait TOUT rendrait les
+// quatre verts ci-dessus.
+$recevable = null;
+try {
+    $recevable = $litigeAvec([]);
+} catch (\InvalidArgumentException $e) {
+    $recevable = null;
+}
+verifier('contre-témoin : un dossier aux instants réels se construit', $recevable instanceof Litige);
+verifier('contre-témoin : deposeLe = 0 reste légitime — rien n\'a été déposé',
+    $recevable instanceof Litige && $recevable->deposeLe === 0);
+verifier('contre-témoin : trancheLe = null reste légitime — personne n\'a tranché',
+    $recevable instanceof Litige && $recevable->trancheLe === null);
+
+// 🔑 Le plancher doit être franchement au-dessous de tout instant réel, et
+// franchement au-dessus de tout millésime. Sans ce contrôle, quelqu'un pourrait
+// le monter jusqu'à rejeter des dossiers valides sans qu'une sonde bouge.
+verifier('le plancher est sous tout instant réel du protocole',
+    Litige::PLANCHER_EPOQUE < $now && Litige::PLANCHER_EPOQUE > 9999,
+    date('Y-m-d', Litige::PLANCHER_EPOQUE));
+
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Escalade SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 echo str_repeat('=', 63) . "\n\n";

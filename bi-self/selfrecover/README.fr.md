@@ -126,6 +126,15 @@ Le réseau ne transporte jamais le mot de récupération. Le serveur ne le stock
 
 HMAC est volontairement **rapide** côté client car l'objectif est la liaison au service, pas la résistance au brute-force. La résistance au brute-force est assurée côté serveur par **Argon2id** (memory-hard, 64 Mio par tentative) sur la clé dérivée. Séparer les rôles garde l'UX instantanée sur mobile tout en imposant un coût memory-hard par tentative de vérification côté serveur.
 
+> ⚠️ **Ce raisonnement vaut pour la PREUVE, pas pour le CHIFFREMENT.** Le même mot mémorisé sert à deux choses :
+>
+> | Rôle | Fichier | Primitive | Pourquoi |
+> |---|---|---|---|
+> | **Prouver** qu'on connaît le mot | `client/sr-derive.js` | HMAC-SHA256, rapide | le coût est imposé par le serveur, qui range un Argon2id de l'empreinte reçue et compte les tentatives |
+> | **Chiffrer** un secret avec le mot | `client/sr-kdf.js` | Argon2id, 64 Mio | rien ne part au serveur : aucun compteur d'essais ne s'applique, et le coût par essai est **tout** ce qui reste |
+>
+> Un attaquant qui vole le blob du facteur « cet appareil » travaille **hors ligne** : le tag AEAD lui dit gratuitement si son essai est bon. C'est le motif que `AGENTS.md` nomme — le chemin d'authentification durci et le chemin de chiffrement laissé en arrière, à quelques lignes d'écart.
+
 ---
 
 ## Escalade de récupération à trois niveaux
@@ -167,11 +176,12 @@ C'est ce qui permet un **L2 sans identifiant à retenir** : le code fait à la f
 Une **troisième voie optionnelle de L2**, entièrement côté navigateur — un vrai 2FA cryptographique appareil + connaissance, **sans TPM ni matériel**.
 
 - Une **paire ECDSA P-256** est générée dans le navigateur.
-- La **clé privée est chiffrée au repos** par une clé AES-256-GCM dérivée du **mot mémorisé** via **Argon2id** (WASM côté client). Le blob chiffré vit dans **IndexedDB** — la clé nue et le mot ne sont jamais persistés.
+- La **clé privée est chiffrée au repos** par une clé AES-256-GCM dérivée du **mot mémorisé** via **Argon2id** (`client/argon2id.js`, du JavaScript ordinaire — aucun binaire embarqué, aucune directive CSP à ouvrir). Le blob chiffré porte sa version et ses paramètres de dérivation, ce qui rend une migration possible. La clé nue et le mot ne sont jamais persistés.
+- **Où le blob est rangé relève de l'intégration**, pas du protocole : l'implémentation de référence utilise `localStorage`. IndexedDB est préférable, mais **pas** pour le cloisonnement — les deux le sont par origine : elle survit mieux à un nettoyage de navigateur et range des octets sans réencodage. Reste à faire.
 - Le **serveur ne stocke que la clé publique** (`device_credentials`), plus un `credential_id` aléatoire qui localise le compte (comme un recovery code).
 - La récupération = **signer un challenge** (32 octets, TTL 5 min, usage unique) : le navigateur déchiffre la clé privée avec le mot, signe, le serveur vérifie (`openssl_verify`, SHA-256).
 
-Impossible sans **l'appareil** (le blob) **ET** le **mot** (pour déchiffrer la clé). Protection **logicielle** (pas TPM), device-bound, assumée comme telle. **Désactivé automatiquement sur Tor / profil onion** (WebCrypto/IndexedDB non fiables) — le recovery code papier reste le plancher universel.
+Impossible sans **l'appareil** (le blob) **ET** le **mot** (pour déchiffrer la clé). Protection **logicielle** (pas TPM), device-bound, assumée comme telle. **À désactiver sur un profil Tor / onion**, où le stockage local ne survit pas à la session : cette désactivation est un choix d'intégration, elle n'est pas automatique aujourd'hui. Le recovery code papier reste le plancher universel.
 
 ---
 
