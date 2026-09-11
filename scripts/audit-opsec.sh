@@ -111,6 +111,31 @@ if [ -n "$RANGE" ] && ! git -C "$ROOT" rev-list "$RANGE" >/dev/null 2>&1; then
   RANGE=""
 fi
 
+# 🔑 Une plage de push n'est pas ce qu'un push REND PUBLIC.
+#
+# Le périmètre naturel — `<distant>..HEAD` — est « ce que cet envoi transporte ».
+# Ce n'est pas la propriété qu'on veut établir : une branche qui rattrape `dev`
+# transporte forcément des commits que la forge sert déjà. L'audit rougissait
+# alors sur un motif entré dans l'historique public quinze jours plus tôt, par un
+# commit que l'envoi ne fait que traverser — et il rougirait ainsi sur CHAQUE
+# branche, à CHAQUE rattrapage, sans que personne ne publie rien de neuf.
+#
+# Un garde-fou qui crie sur un geste innocent finit par se faire contourner :
+# c'est ainsi qu'on apprend à taper `--no-verify`. On retire donc du périmètre ce
+# qui est déjà atteignable depuis une référence du distant. Ce qui reste est
+# exactement ce que cet envoi ajoute à ce que le public peut lire.
+#
+# Ça ne pardonne rien : une fuite déjà publiée reste une fuite, et l'audit COMPLET
+# — sans `--range`, celui du chantier de réécriture — continue de la voir. Ce
+# contrôle-ci répond à « qu'est-ce que je publie maintenant », pas à « qu'y a-t-il
+# dans le passé ». Mesuré le 11/09/2026.
+RANGE_AFF="$RANGE"
+PLAGE=("$RANGE")
+if [ -n "$RANGE" ] && [ -n "$(git -C "$ROOT" for-each-ref --count=1 --format='%(refname)' refs/remotes/origin)" ]; then
+  PLAGE=("$RANGE" --not --remotes=origin)
+  RANGE_AFF="$RANGE, moins ce que le distant publie déjà"
+fi
+
 # Ce qui sépare vraiment les modes n'est pas leur nom : c'est de travailler sur
 # une LISTE DE FICHIERS ou sur l'HISTORIQUE. Les contrôles 4 et 5 (messages,
 # orphelins) n'ont de sens que dans le second cas.
@@ -307,10 +332,10 @@ else
   # sur origin/main..dev — gitleaks disait « no leaks found », le rapport disait
   # « secret détecté ».
   GL_PORTEE=()
-  [ -n "$RANGE" ] && GL_PORTEE=(--log-opts "$RANGE")
+  [ -n "$RANGE" ] && GL_PORTEE=(--log-opts "${PLAGE[*]}")
   if gitleaks detect --source "$ROOT" -c "$ROOT/.gitleaks.toml" \
        "${GL_PORTEE[@]}" --no-banner --redact >/dev/null 2>&1; then
-    ok "aucun secret${RANGE:+ dans les commits à publier ($RANGE)}"
+    ok "aucun secret${RANGE:+ dans les commits à publier ($RANGE_AFF)}"
   else
     warn "secret détecté — détail : gitleaks detect${RANGE:+ --log-opts \"$RANGE\"} -v"
   fi
@@ -372,9 +397,29 @@ if [ "$PAR_CIBLES" = "1" ]; then
 else
   # On scanne TOUS les commits, pas le HEAD : corriger un fichier ne retire
   # pas ce qu'il contenait hier. C'est ce qui distingue ce contrôle de gitleaks.
+  # 🔑 Sur une plage, on borne aussi les CHEMINS, pas seulement les commits.
+  #
+  # `git grep <rev>` lit l'arbre ENTIER de ce commit, y compris les fichiers qu'il
+  # n'a pas touchés. Un motif présent depuis des semaines dans un fichier hérité
+  # rougissait donc sur tout envoi, indéfiniment — mesuré le 11/09/2026 sur un nom
+  # que `.gitleaks.toml` portait depuis le 26/08 : aucune plage ne pouvait plus
+  # passer. On restreint aux chemins que ces commits modifient.
+  #
+  # La propriété du contrôle est préservée : on lit toujours le CONTENU à chaque
+  # commit, pas au HEAD, donc un fichier sali puis nettoyé dans la même série est
+  # toujours attrapé. Ce qui disparaît, c'est seulement l'héritage qu'on ne
+  # publie pas. L'audit complet, lui, lit tout, sans restriction de chemin.
+  CHEMINS=()
   if [ -n "$RANGE" ]; then
-    echo "2. Données personnelles — contenu des commits à publier ($RANGE)"
-    mapfile -t REVS < <(git -C "$ROOT" rev-list "$RANGE")
+    echo "2. Données personnelles — contenu des commits à publier ($RANGE_AFF)"
+    mapfile -t REVS < <(git -C "$ROOT" rev-list "${PLAGE[@]}")
+    # ⚠️ `--diff-merges=first-parent` n'est pas un détail : sans lui, `git log`
+    # ne montre AUCUN fichier pour un commit de fusion. Un envoi qui ne contient
+    # qu'une fusion — le cas de toute branche qui rattrape `dev` — rendait alors
+    # une liste de chemins vide, donc un vert qui ne reposait sur rien, et un
+    # motif introduit par une résolution de conflit y serait passé invisible.
+    mapfile -t CHEMINS < <(git -C "$ROOT" log "${PLAGE[@]}" --diff-merges=first-parent \
+                             --name-only --format='' | sort -u | grep . || true)
   else
     echo "2. Données personnelles — contenu de l'historique complet"
     mapfile -t REVS < <(git -C "$ROOT" rev-list --all)
@@ -388,7 +433,11 @@ else
   C2=0
   for m in "${MOTIFS[@]}"; do
     [ "${#REVS[@]}" = "0" ] && break
-    hits=$(git -C "$ROOT" grep -Iil -e "$m" "${REVS[@]}" | cut -d: -f2- | sort -u)
+    if [ "${#CHEMINS[@]}" != "0" ]; then
+      hits=$(git -C "$ROOT" grep -Iil -e "$m" "${REVS[@]}" -- "${CHEMINS[@]}" | cut -d: -f2- | sort -u)
+    else
+      hits=$(git -C "$ROOT" grep -Iil -e "$m" "${REVS[@]}" | cut -d: -f2- | sort -u)
+    fi
     rc=${PIPESTATUS[0]}
     if [ "$rc" -gt 1 ]; then
       echo
@@ -474,8 +523,8 @@ fi
 if [ "$PAR_CIBLES" = "0" ]; then
   echo
   if [ -n "$RANGE" ]; then
-    echo "4. Messages de commit à publier ($RANGE)"
-    MESSAGES=$(git -C "$ROOT" log "$RANGE" --format='%s%n%b')
+    echo "4. Messages de commit à publier ($RANGE_AFF)"
+    MESSAGES=$(git -C "$ROOT" log "${PLAGE[@]}" --format='%s%n%b')
   else
     echo "4. Messages de commit (sujets et corps)"
     MESSAGES=$(git -C "$ROOT" log --all --format='%s%n%b')
@@ -530,8 +579,8 @@ if [ "$PAR_CIBLES" = "0" ]; then
   # poussé. L'audit complet, sans --range, continue de voir tout le passé —
   # c'est lui qui sert au chantier de réécriture, et c'est sa place.
   if [ -n "$RANGE" ]; then
-    echo "5. Fichiers orphelins supprimés par les commits à publier ($RANGE)"
-    PORTEE=("$RANGE")
+    echo "5. Fichiers orphelins supprimés par les commits à publier ($RANGE_AFF)"
+    PORTEE=("${PLAGE[@]}")
   else
     echo "5. Fichiers orphelins (dans l'historique, absents du HEAD)"
     PORTEE=(--all)

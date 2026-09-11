@@ -92,7 +92,7 @@ paths = [
   # ÉCRIT des clés, et ses primitives crypto en wasm base64. Vérifié le
   # 2026-08-02, un bloc après l'autre : aucune clé réelle, aucun secret.
   '''openpgp\.min\.mjs$''',
-  # Humla : le client Mumble dont RN2C est un fork, vendoré tel quel. Il embarque
+  # Humla : un client Mumble vendoré tel quel, dont un projet privé dérive. Il embarque
   # SpongyCastle et Opus, et les 120 signalements du 25/08/2026 y vivent tous —
   # 114 dans SpongyCastle (clés et certificats des vecteurs de test), 6 dans les
   # AUTHORS d'Opus et un brouillon IETF (adresses d'auteurs de logiciels libres,
