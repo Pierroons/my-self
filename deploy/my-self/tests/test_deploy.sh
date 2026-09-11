@@ -83,6 +83,18 @@ HTML
     echo "<?php // le lab"    > "$BAC/depot/demo/lab/index.php"
     echo "donnée vivante de l'instance" > "$BAC/depot/demo/selfdataguard/storage/demo.sqlite"
 
+    # 🔑 Un VRAI dépôt git, avec son `.gitignore`. Le filet fail-closed
+    # interroge `git check-ignore` : hors d'un dépôt la commande échoue, la
+    # liste ressort vide, et le contrôle passe sans avoir rien regardé.
+    git -C "$BAC/depot" init -q >/dev/null 2>&1
+    git -C "$BAC/depot" config user.email banc@test.invalid >/dev/null 2>&1
+    git -C "$BAC/depot" config user.name  banc >/dev/null 2>&1
+    cat > "$BAC/depot/.gitignore" <<'IGNORE'
+*.log
+demo/lab/data/
+demo/lab/challenge/
+IGNORE
+
     cat > "$BAC/vhosts/faux.conf" <<VHOST
 server {
     root  $BAC/www/web/my-self.fr;
@@ -357,6 +369,49 @@ else
 fi
 
 echo
+# ── Un fichier ignoré par git n'atteint pas la racine servie ───────────────
+#
+# 🔑 La liste des exclusions nomme ce qu'on a pensé à exclure. Elle ne dit rien
+# de ce qu'on ajoutera demain, et c'est par là que sont passés deux secrets de
+# coffre et un binaire compilé. Le filet inverse le sens de la défaillance :
+# tout ignoré non déclaré fait ÉCHOUER l'assemblage.
+echo
+echo "▸ Ce que git ignore ne part pas sans décision écrite"
+monter
+echo "trace applicative" > "$BAC/depot/web/my-self.fr/acces.log"
+sortie=$(lancer assembler --dest "$BAC/dist"); code=$?
+if [ "$code" -ne 0 ] && [ ! -d "$BAC/dist" ] && grep -q "ignoré(s) par git survivent" <<<"$sortie"; then
+    ok "un .log ignoré → refus (code $code), rien d'assemblé"
+else
+    nok "un .log ignoré → code $code : un fichier que git cache part en production"
+fi
+
+# ⚠️ Le refus doit NOMMER le fichier : « quelque chose a été refusé » envoie
+# chercher dans 248 fichiers.
+if grep -q "web/my-self.fr/acces.log" <<<"$sortie"; then
+    ok "le refus nomme le fichier fautif"
+else
+    nok "le refus ne dit pas lequel : $(head -c 120 <<<"$sortie")"
+fi
+
+# ── Et ce qui est déclaré servi passe ──────────────────────────────────────
+#
+# Le contre-témoin : sans lui, un filet qui refuse TOUT rendrait les deux
+# contrôles ci-dessus verts en cassant le déploiement.
+echo
+echo "▸ Un ignoré déclaré servi traverse"
+monter
+mkdir -p "$BAC/depot/demo/lab/vendor/composer"
+echo "<?php // dépendance" > "$BAC/depot/demo/lab/vendor/composer/ClassLoader.php"
+printf 'demo/lab/vendor/\n' >> "$BAC/depot/.gitignore"
+sortie=$(lancer assembler --dest "$BAC/dist"); code=$?
+if [ "$code" -eq 0 ] && [ -f "$BAC/dist/demo/lab/vendor/composer/ClassLoader.php" ]; then
+    ok "les dépendances du lab passent — elles sont dans IGNORES_SERVIS"
+else
+    nok "un ignoré DÉCLARÉ servi a été refusé (code $code) : le lab ne démarrerait pas"
+fi
+
+
 total=$((reussites + echecs))
 if [ "$echecs" -eq 0 ]; then
     echo "OK — $reussites/$total propriétés tiennent."
