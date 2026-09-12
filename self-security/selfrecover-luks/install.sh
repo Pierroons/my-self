@@ -55,7 +55,19 @@ done
 command -v cryptsetup >/dev/null || die "cryptsetup absent."
 cryptsetup isLuks "$ROOT_DEV" || die "$ROOT_DEV n'est pas un volume LUKS."
 command -v cc >/dev/null || die "cc absent (apt install build-essential)."
-[ -f /usr/lib/x86_64-linux-gnu/libargon2.so.1 ] || [ -f /lib/x86_64-linux-gnu/libargon2.so.1 ] \
+# Le chemin dépend de l'architecture : `ldconfig` d'abord, chemins connus ensuite.
+# ⚠️ Deux chemins amd64 codés en dur refusaient l'installation sur arm64 alors que
+# la bibliothèque était là — « libargon2.so.1 absent » sur une machine qui l'avait.
+# C'est le même défaut que le hook d'initramfs avait déjà rencontré, et il échoue
+# du mauvais côté : un faux négatif rend le module ininstallable, et aucune
+# validation sur amd64 ne peut le voir.
+_ARGON2=$(ldconfig -p 2>/dev/null | awk '/libargon2\.so\.1 /{print $NF; exit}')
+if [ -z "$_ARGON2" ] || [ ! -e "$_ARGON2" ]; then
+  for _C in /lib/*/libargon2.so.1 /usr/lib/*/libargon2.so.1 /lib/libargon2.so.1; do
+    [ -e "$_C" ] && { _ARGON2="$_C"; break; }
+  done
+fi
+[ -n "$_ARGON2" ] && [ -e "$_ARGON2" ] \
   || die "libargon2.so.1 absent (apt install libargon2-1)."
 case "$DROPBEAR" in
   oui)
