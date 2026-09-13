@@ -12,8 +12,9 @@
 > par une **unique passphrase de récupération**, à distance dès le démarrage, sans cloud ni
 > tiers de confiance. Couche FDE auto-hébergée de l'écosystème **MySelf** (pilier Self-Security).
 
-**Statut : validé sur serveur LNMP Debian 13 Trixie (07/06/2026), puis sur poste portable
-chiffré (22/08/2026) — v0.4.0.**
+**Statut : validé sur serveur LNMP Debian 13 Trixie (07/06/2026), sur poste portable
+chiffré (22/08/2026), puis sur une racine en LVM chiffré — le schéma que propose
+l'installateur Debian en mode assisté (13/09/2026) — v0.4.0.**
 Déverrouillage du `/` au boot (keyscript Argon2id + SSH d'amorçage) et cascade automatique des
 volumes secondaires (fichier-clé), redémarrages reproductibles. Installation documentée et
 reproductible → **[INSTALL.md](./INSTALL.md)**.
