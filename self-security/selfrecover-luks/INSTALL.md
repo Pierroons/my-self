@@ -4,7 +4,10 @@
 > récupération**, à distance dès le démarrage, sans cloud ni tiers de confiance.
 > Pilier **Self-Security** de l'écosystème MySelf — Licence **AGPL-3.0-or-later**.
 
-Ce guide reproduit une installation **validée sur serveur LNMP Debian 13 Trixie**. Il n'invente aucune
+Ce guide reproduit une installation **validée sur serveur LNMP Debian 13 Trixie**, puis sur
+une racine en **LVM chiffré** — un seul volume LUKS contenant le groupe de volumes, ce que
+l'installateur Debian produit en mode assisté. Dans ce cas `ROOT_DEV` est la **partition
+LUKS** (ex. `/dev/nvme0n1p3`), jamais le volume logique qui porte `/`. Il n'invente aucune
 cryptographie : il assemble LUKS2, Argon2id et un SSH d'amorçage (dropbear) en un protocole
 cohérent et auto-hébergé.
 

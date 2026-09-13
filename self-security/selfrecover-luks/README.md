@@ -12,7 +12,9 @@
 > recovery passphrase**, remotely from boot, with no cloud and no trusted third party. The
 > self-hosted FDE layer of the **MySelf** ecosystem (Self-Security pillar).
 
-**Status: validated on a LNMP Debian 13 Trixie server (2026-06-07) — v0.4.0.**
+**Status: validated on a LNMP Debian 13 Trixie server (2026-06-07), on an encrypted
+laptop (2026-08-22), and on an encrypted-LVM root — the layout the Debian installer
+proposes in guided mode (2026-09-13) — v0.4.0.**
 Root (`/`) unlocked at boot (Argon2id keyscript + boot SSH) and automatic cascade of secondary
 volumes (key-file), reproducible reboots. Documented, reproducible install →
 **[INSTALL.md](./INSTALL.md)**.
