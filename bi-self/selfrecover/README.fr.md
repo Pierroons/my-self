@@ -282,7 +282,7 @@ méthode qui écrit, tant qu'on ne va pas voir la table.
 
 | Propriété | Comment c'est obtenu |
 |----------|------------------|
-| **Serveur à connaissance nulle** | Le serveur ne voit que des hachages Argon2id de valeurs dérivées par site. Une compromission de la base ne révèle aucun mot de récupération. |
+| **Le serveur ne voit jamais un secret en clair** | Le serveur ne voit que des hachages Argon2id de valeurs dérivées par site. Une compromission de la base ne révèle aucun mot de récupération. |
 | **Résistance au phishing passif** | **En mode `'hostname'` seulement.** Le matériel est lu dans le navigateur : un clone qui copie la page dérive de sa propre adresse et produit une clé que le vrai serveur ne détient pas. En mode `'label'`, il n'y en a aucune — la copie porte le même label. Un site de phishing actif qui contrôle sa propre page reste hors périmètre dans les deux cas (vrai pour tout protocole in-browser). |
 | **Résistance au rejeu** | Chaque requête de récupération est limitée par un rate limit côté serveur + système de litige. Le L3 ajoute une décision revue par un humain. |
 | **Résistance à la fuite** | Chaque compte a son propre sel ; le serveur ne stocke que des hachages Argon2id de clés dérivées par service. Une fuite du code client seul est inutile. |
