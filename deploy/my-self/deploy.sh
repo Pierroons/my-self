@@ -61,7 +61,19 @@ VHOSTS="${MYSELF_VHOSTS:-/etc/nginx/sites-enabled}"
 # apparaît dans `api/act/find.php` et `api/api.php` comme repli d'exécution
 # quand `HTTP_HOST` est absent — un défaut, pas un gabarit. Y substituer le nom
 # de l'instance le graverait dans le message d'erreur.
+# Surchargeable par un fichier, sur le motif des trois variables ci-dessus :
+# une même arborescence est servie par plusieurs instances, et chacune nomme
+# ses propres domaines. Sans cela, l'arbre posé sur une instance de
+# développement grave les noms de la production dans toutes ses pages — le
+# visiteur du dev clique et se retrouve en prod.
+# Le format du fichier est celui de la table ci-dessous : deux colonnes,
+# gabarit puis domaine, séparées par des espaces.
 lire_table() {
+    if [ -n "${MYSELF_TABLE:-}" ]; then
+        [ -f "$MYSELF_TABLE" ] || { rouge "table introuvable : $MYSELF_TABLE"; return 1; }
+        cat "$MYSELF_TABLE"
+        return 0
+    fi
     cat <<'TABLE'
 justice.example.org    justice.my-self.fr
 lab.example.org        lab.my-self.fr
@@ -223,6 +235,14 @@ assembler() {
         [ -z "$gabarit" ] && continue
         connus+=("$gabarit"); domaines+=("$domaine")
     done < <(lire_table)
+    # Une table vide n'arrête rien plus bas : le filtre des gabarits inconnus
+    # laisserait tout passer, et l'arrêt « aucun gabarit substitué » ne tomberait
+    # qu'après la copie, en accusant les sources alors que le fautif est la table.
+    if [ "${#connus[@]}" -eq 0 ]; then
+        rouge "  ✗ table de domaines vide — ${MYSELF_TABLE:-table interne}"
+        rm -rf "$dest"
+        return 1
+    fi
 
     local inconnus
     inconnus=$(grep -rhoE "[a-z0-9-]+\.example\.(org|com|net)" "$dest" 2>/dev/null \
@@ -288,7 +308,12 @@ references_serveur() { # references_serveur <racine>
     [ -d "$VHOSTS" ] || return 0
     # Les accolades ne sont pas décoratives : sans elles, `$racine[` se lit comme
     # une indexation de tableau et l'expression ne cherche plus rien.
-    grep -rhoE "${racine}[A-Za-z0-9._/\$-]*" "$VHOSTS"/*.conf 2>/dev/null | sort -u
+    # ⚠️ `*` et non `*.conf` : nginx inclut `sites-enabled/*` sans regarder
+    # l'extension, et rien ne l'oblige. Mesuré le 14/09/2026 sur l'instance de
+    # développement — 1 vhost sur 19 portait `.conf` : ce contrôle parcourait
+    # un fichier et rendait vert. Un garde-fou qui ne lit pas la surface qu'il
+    # prétend couvrir est pire que pas de garde-fou, parce qu'on s'y fie.
+    grep -rhoE "${racine}[A-Za-z0-9._/\$-]*" "$VHOSTS"/* 2>/dev/null | sort -u
 }
 
 poser() {
