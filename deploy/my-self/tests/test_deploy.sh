@@ -274,6 +274,66 @@ else
     nok "référence orpheline non détectée (code $code) : la 404 se découvrirait chez un visiteur"
 fi
 
+# ── 6 bis — un vhost sans extension est lu comme les autres ─────────────────
+#
+# 🔑 nginx inclut `sites-enabled/*` sans regarder l'extension, et rien ne
+# l'oblige à en porter une. Le contrôle des références ne balayait que `*.conf` :
+# sur l'instance de développement, mesuré le 14/09/2026, il parcourait **1 vhost
+# sur 19** et rendait vert. Un garde-fou qui ne lit pas la surface qu'il prétend
+# couvrir est pire que pas de garde-fou — celui-ci était cru.
+#
+# Le cas reprend exactement le 6, en déplaçant le vhost sous un nom sans point :
+# ce qui change est le nom du fichier, rien d'autre, donc ce qu'il éprouve est
+# bien la lecture et pas le contrôle lui-même.
+echo
+echo "▸ Un vhost que son nom ne signale pas"
+monter
+mv "$BAC/vhosts/faux.conf" "$BAC/vhosts/faux-sans-extension"
+lancer assembler --dest "$BAC/dist" >/dev/null
+rm -f "$BAC/dist/self-right/selfact/api/directives.md"
+sortie=$(lancer poser "$BAC/dist" --racine "$BAC/www"); code=$?
+if [ "$code" -ne 0 ] && grep -q "orpheline" <<<"$sortie" && grep -q "directives.md" <<<"$sortie"; then
+    ok "vhost sans .conf lu quand même → référence orpheline vue"
+else
+    nok "vhost sans .conf ignoré (code $code) : le contrôle rend vert sur ce qu'il n'a pas lu"
+fi
+
+# ── 6 ter — la table de domaines se surcharge ───────────────────────────────
+#
+# Une même arborescence est servie par plusieurs instances, et chacune nomme ses
+# propres domaines. Sans surcharge, l'arbre posé sur l'instance de développement
+# grave les noms de la production dans toutes ses pages.
+echo
+echo "▸ Une instance qui nomme ses propres domaines"
+monter
+cat > "$BAC/table-dev" <<'TABLE'
+justice.example.org    dev-justice.autre.invalid
+lab.example.org        dev-lab.autre.invalid
+ctf.example.org        dev-ctf.autre.invalid
+bi-self.example.org    dev-bi-self.autre.invalid
+dataguard.example.org  dev-dataguard.autre.invalid
+farm.example.org       dev-selffarm.autre.invalid
+TABLE
+sortie=$(MYSELF_TABLE="$BAC/table-dev" lancer assembler --dest "$BAC/dist"); code=$?
+page="$BAC/dist/web/my-self.fr/index.html"
+if [ "$code" -eq 0 ] && grep -q "dev-justice.autre.invalid" "$page" 2>/dev/null \
+   && ! grep -q "justice.test.invalid" "$page"; then
+    ok "table surchargée : les domaines posés sont les siens, pas ceux du script"
+else
+    nok "la surcharge n'a pas pris (code $code) — trouvé : $(grep -o '[a-z.-]*\.invalid' "$page" 2>/dev/null | sort -u | paste -sd' ')"
+fi
+
+# ⚠️ Une table désignée mais introuvable doit ARRÊTER. Sans ce cas, une faute de
+# frappe dans le chemin ferait retomber le script sur la table interne — et
+# poserait silencieusement les noms de la production sur l'instance de dev.
+monter
+sortie=$(MYSELF_TABLE="$BAC/table-qui-nexiste-pas" lancer assembler --dest "$BAC/dist"); code=$?
+if [ "$code" -ne 0 ] && ! grep -q "justice.test.invalid" "$BAC/dist/web/my-self.fr/index.html" 2>/dev/null; then
+    ok "table introuvable → arrêt, aucun repli muet sur la table interne"
+else
+    nok "table introuvable : le script est retombé sur sa table interne (code $code)"
+fi
+
 # ── 7 — un orphelin de la destination est signalé, jamais supprimé ──────────
 echo
 echo "▸ Ce qui traîne à la destination"
