@@ -329,12 +329,51 @@ jobs:
           chmod 0755 /tmp/garde-neutralise
           grep -q '# neutralisé' /tmp/garde-neutralise \
             || { echo "::error::la neutralisation n'a rien changé — le canari ne prouve rien"; exit 1; }
-          if GARDE=/tmp/garde-neutralise \
-             bash self-security/selfrecover-luks/tests/test_garde_fou_image_chargee.sh; then
+          if sortie=$(GARDE=/tmp/garde-neutralise \
+             bash self-security/selfrecover-luks/tests/test_garde_fou_image_chargee.sh 2>&1); then
+            echo "$sortie"
             echo "::error::le banc reste VERT sans le correctif — il ne mesure pas ce qu'il annonce"
             exit 1
           fi
-          echo "✓ le banc rougit quand la résolution de l'image chargée disparaît"
+          # ⚠️ Le banc a rougi — mais POUR QUELLE RAISON ? Un canari qui se contente d'un
+          # code de retour non nul ne distingue pas « le défaut planté est détecté » de
+          # « le banc n'a pas pu démarrer ». Éprouvé : en le pointant vers un fichier
+          # absent, il rougit aussi — et cette étape aurait conclu qu'il prouvait quelque
+          # chose. Le cas vient d'un déploiement intégrateur, 15/09 : son canari
+          # rougissait parce que php manquait sur l'hôte, pas parce que le défaut
+          # planté était là. Un canari qui se trompe de motif ne vaut pas mieux que
+          # la sonde qu'il éprouve.
+          echo "$sortie" | grep -q '13/09.*VERT (attendu ROUGE)' \
+            || { echo "$sortie"
+                 echo "::error::le banc a échoué, mais PAS sur le cas du 13/09 — ce canari ne prouve rien"
+                 exit 1; }
+          echo "✓ le banc rougit, et il rougit SUR LE CAS DU 13/09 — pas sur un contretemps"
+
+      - name: Garde-fou — un seul plancher pour les secrets de déploiement
+        run: bash scripts/check-plancher-secret.sh
+
+      - name: Canari — le contrôle des planchers rougit quand l'un d'eux dérive
+        run: |
+          # Un plancher trop bas n'échoue jamais : il accepte. Ce contrôle est donc
+          # le seul endroit où la divergence se voit — et un contrôle jamais vu
+          # rougir ne se distingue pas d'un contrôle qui ne mesure rien.
+          F=self-security/selfdataguard/src/Escrow/AuditLog.php
+          cp "$F" /tmp/AL.intact
+          sed -i 's/public const PLANCHER_SECRET = 32;/public const PLANCHER_SECRET = 16;/' "$F"
+          grep -q 'PLANCHER_SECRET = 16' "$F" \
+            || { cp /tmp/AL.intact "$F"; echo "::error::la plantation n'a pas pris — le canari ne prouve rien"; exit 1; }
+          if bash scripts/check-plancher-secret.sh >/dev/null 2>&1; then
+            cp /tmp/AL.intact "$F"
+            echo "::error::le contrôle reste VERT avec un plancher à 16 — il ne mesure pas ce qu'il annonce"
+            exit 1
+          fi
+          cp /tmp/AL.intact "$F"
+          # Comparaison à la copie d'avant, et non à HEAD : `git diff` rendrait un
+          # écart dès que le fichier porte une modification non commitée, donc un
+          # faux rouge en local et un contrôle qui ne dit pas ce qu'il prétend.
+          cmp -s /tmp/AL.intact "$F" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le contrôle rougit sur un plancher divergent, et le fichier est restauré"
 
       - name: Garde-fou — coût constant du hash factice (bi-self-duo)
         run: php demo/bi-self-duo/tests/sanity_timing.php

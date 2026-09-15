@@ -121,15 +121,46 @@ final class SuAudit
         ];
     }
 
-    /** Toutes les entrées, dans l'ordre. Lecture intégrale : réservée à l'affichage et à la vérification. */
+    /**
+     * Toutes les entrées, dans l'ordre. Lecture intégrale : réservée à l'affichage et à la vérification.
+     *
+     * 🔑 **« Illisible » ne se rend jamais comme « aucun événement ».** Un journal qu'on
+     * ne peut pas ouvrir — répertoire non traversable, droits perdus, disque monté en
+     * lecture seule — rendait un tableau vide, indiscernable d'un journal sans entrée.
+     * Sur un journal d'audit, c'est le pire des faux verts : l'absence de preuve prend
+     * l'apparence de la preuve d'absence.
+     *
+     * Le cas du répertoire compte autant que celui du fichier : quand le dossier n'est
+     * pas traversable, `file_exists()` répond non pour un fichier qui est bien là.
+     * Rencontré le 15/09/2026 sur un déploiement intégrateur, un conteneur en uid 1000
+     * devant un répertoire `700 root` — le service annonçait « certificat absent ».
+     *
+     * @throws \RuntimeException quand le journal est illisible, ou que son absence ne
+     *                           peut pas être établie
+     */
     public static function read(): array
     {
         $path = self::logPath();
         if (!file_exists($path)) {
+            $dossier = dirname($path);
+            if (!is_dir($dossier) || !is_readable($dossier) || !is_executable($dossier)) {
+                throw new \RuntimeException(
+                    "Journal SU : impossible d'établir si {$path} existe — {$dossier} n'est pas "
+                    . 'traversable. Refus de répondre « aucune entrée » : illisible n\'est pas vide.'
+                );
+            }
+
             return [];
         }
+        $lignes = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if ($lignes === false) {
+            throw new \RuntimeException(
+                "Journal SU : {$path} est présent mais illisible. "
+                . 'Refus de répondre « aucune entrée » : illisible n\'est pas vide.'
+            );
+        }
         $out = [];
-        foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        foreach ($lignes as $line) {
             $d = json_decode($line, true);
             if ($d) {
                 $out[] = $d;

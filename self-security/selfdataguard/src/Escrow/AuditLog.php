@@ -23,12 +23,33 @@ use RuntimeException;
  */
 final class AuditLog
 {
+    /**
+     * Floor for a deployment-provided shared secret, in characters.
+     *
+     * 🔑 **One declared value, checked mechanically.** This class asked for ≥16 while
+     * every other secret consumer in the repository asks for 32 — `demo/lab/lib/auth.php`,
+     * `dataguard.php`, `security.php` and their benches. Three floors for one kind of
+     * value, and nothing made the divergence visible: a 20-character secret was accepted
+     * here and refused next door, and the operator met "service misconfigured" from the
+     * strict side while the lax side had already taken it (measured on an integrator
+     * deployment, 15/09/2026, on secrets of 28 characters).
+     *
+     * Raising 16 → 32 refuses nothing this project generates: every generator writes
+     * hex from at least 32 random bytes, i.e. 64 characters. `scripts/check-plancher-secret.sh`
+     * fails the build if any declared floor drifts from this one.
+     */
+    public const PLANCHER_SECRET = 32;
+
     public function __construct(
         private readonly string $path,
         private readonly string $auditSecret
     ) {
-        if (strlen($auditSecret) < 16) {
-            throw new InvalidArgumentException('auditSecret must be ≥16 bytes');
+        if (strlen($auditSecret) < self::PLANCHER_SECRET) {
+            throw new InvalidArgumentException(sprintf(
+                'auditSecret must be ≥%d characters (got %d) — it signs the escrow audit chain.',
+                self::PLANCHER_SECRET,
+                strlen($auditSecret)
+            ));
         }
     }
 
@@ -89,21 +110,58 @@ final class AuditLog
     }
 
     /**
+     * 🔑 **"Unreadable" is never reported as "no events".**
+     *
+     * This method used to swallow failure twice — `!is_file()` returned `[]`, and
+     * `file(...) ?: []` turned a read error into an empty array. Either one made an
+     * audit log we could not read look exactly like an audit log with nothing in it.
+     *
+     * The consequence is worse than it first appears, because `verify()` reads through
+     * here: an unreadable log made the whole chain check answer `{ok: true, count: 0}`.
+     * The tamper detector reassured itself about a file it had never opened.
+     *
+     * The distinction also has to survive an unreadable *parent directory*: when the
+     * directory is not traversable, `is_file()` answers false for a file that is really
+     * there. That case was met on an integrator deployment (15/09/2026), with a
+     * container running as uid 1000 against a `700 root` directory — the service
+     * announced "certificate absent" for a certificate that existed.
+     *
      * @return array<int, array<string, mixed>>
+     *
+     * @throws RuntimeException when the log cannot be read, or when its absence
+     *                          cannot be established
      */
     public function readAll(): array
     {
         if (!is_file($this->path)) {
+            $dir = dirname($this->path);
+            if (!is_dir($dir) || !is_readable($dir) || !is_executable($dir)) {
+                throw new RuntimeException(sprintf(
+                    'Cannot establish whether the audit log exists: %s is not traversable. '
+                    . 'Refusing to answer "no events" — unreadable is not empty.',
+                    $dir
+                ));
+            }
+
             return [];
         }
+        $lines = @file($this->path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if ($lines === false) {
+            throw new RuntimeException(sprintf(
+                'Audit log present but unreadable: %s. '
+                . 'Refusing to answer "no events" — unreadable is not empty.',
+                $this->path
+            ));
+        }
         $out = [];
-        foreach (file($this->path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+        foreach ($lines as $line) {
             $rec = json_decode($line, true);
             if (!is_array($rec)) {
                 throw new RuntimeException('Corrupted audit log: non-JSON line');
             }
             $out[] = $rec;
         }
+
         return $out;
     }
 
