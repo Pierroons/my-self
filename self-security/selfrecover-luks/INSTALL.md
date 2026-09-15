@@ -576,6 +576,49 @@ cryptroot-unlock        # -> saisis la PASSPHRASE RECOVER
 # Le(s) volume(s) secondaire(s) s'ouvre(nt) automatiquement via le fichier-clé.
 ```
 
+### Un seul inconnu à la fois — **parcours SERVEUR**, si le noyau a changé
+
+Un premier redémarrage après installation mélange souvent **deux inconnues** : le
+déverrouillage fonctionne-t-il, et ce noyau-là démarre-t-il ? Sur une machine sans écran,
+un échec ne dit pas laquelle des deux a cédé — et `GRUB_TIMEOUT` ne sert qu'à qui peut
+voir le menu.
+
+`grub-reboot` les sépare : il pose un `next_entry` dans `grubenv` que GRUB honore **une
+seule fois**, puis efface. Tu éprouves le déverrouillage sur le noyau que la machine sait
+déjà démarrer ; si ça passe, le redémarrage suivant reprend le noyau par défaut, et tu
+n'as plus qu'une inconnue.
+
+```bash
+# 1. les identifiants d'entrée (PAS les index : ils glissent à chaque noyau installé)
+grep -oE "menuentry_id_option 'gnulinux-[^']*'" /boot/grub/grub.cfg | sort -u
+
+# 2. viser une entrée du sous-menu : <id du sous-menu>>ent<id de l'entrée>
+sudo /usr/sbin/grub-reboot "gnulinux-advanced-<UUID>>gnulinux-<ANCIEN-NOYAU>-advanced-<UUID>"
+
+# 3. vérifier que la consigne est bien écrite AVANT de redémarrer
+sudo grub-editenv /boot/grub/grubenv list      # -> next_entry=...
+reboot
+```
+
+> **Trois pièges, mesurés :**
+> - **`grub-reboot` n'est pas dans le `PATH` d'un `ssh` non interactif** — il vit dans
+>   `/usr/sbin`, que ce `PATH` n'inclut pas. Un `command -v grub-reboot` rend vide sur une
+>   machine où le binaire existe. Chemin absolu, ou `sudo -i`.
+> - **Vise par identifiant, jamais par index.** Un `grub-reboot 1>2` désigne une autre
+>   entrée dès qu'un noyau est installé ou purgé — et sur une machine sans écran, personne
+>   ne voit qu'on a démarré ailleurs que prévu.
+> - **`save_env` peut échouer en silence** selon le système de fichiers qui porte
+>   `/boot/grub`. GRUB sait y écrire sur ext ; sur btrfs ou un LVM, la consigne peut ne
+>   jamais être posée. D'où l'étape 3 : `grub-editenv … list` doit montrer `next_entry`
+>   avant que tu redémarres. Sans cette vérification, tu crois avoir séparé les deux
+>   inconnues alors que tu démarres sur le noyau par défaut.
+
+⚠️ **Ce qui est mesuré ici, et ce qui ne l'est pas.** Le mécanisme et ses prérequis ont été
+relevés sur une machine réelle — binaire présent, `next_entry` bien câblé dans `grub.cfg`,
+`grubenv` inscriptible sur ext4. **Le cycle complet — poser, redémarrer, constater que GRUB
+a bien honoré puis effacé la consigne — ne l'a pas été.** Éprouve-le une fois sur une
+machine dont tu peux voir l'écran avant de t'y fier sur un serveur.
+
 ### Filet anti-verrouillage — les deux parcours
 
 Si le keyscript échoue, ouvre la racine au slot **natif** sans passer par lui : au
@@ -618,6 +661,9 @@ de passe** (pas sur la machine) :
 | `bad password` alors que la passphrase est juste | binaire/sel/lib manquant dans l'initramfs | vérifie `lsinitramfs` (§10) |
 | `bad password`, alors que le §6 répondait ✅ | le slot enrôlé et le keyscript livré n'ont pas le même format | compare : `luksDump` pour le slot, `--format` dans le keyscript ; migre (§15) |
 | `bad password` juste après avoir touché au keyscript | un `echo` a glissé à la place d'un `printf '%s'` : un `\n` final change la clé | `bash tests/test_lecture_keyfile.sh` le montre en dix secondes |
+| `unknown /etc/crypttab option 'keyscript='` au démarrage | **rien à corriger** — `keyscript` appartient à `cryptsetup-initramfs`, pas à systemd, et le volume est déjà ouvert quand systemd lit la ligne | ignorer ; c'est le §9 piège n°3 vu depuis l'autre bout |
+| `systemd-cryptsetup : Volume <nom> already active` | **rien à corriger, c'est la bonne nouvelle** : le keyscript a dérivé et ouvert la racine **dans l'initramfs**, systemd n'a plus qu'à le constater | c'est la signature d'un déverrouillage réussi, pas d'un doublon |
+| La phase noyau dure 1 à 2 minutes avant la main | c'est l'attente de la passphrase, pas un blocage | mesuré 1 min 42 à 2 min 10 sur deux machines ; `systemd-analyze` l'impute au noyau |
 
 ---
 
