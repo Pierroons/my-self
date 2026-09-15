@@ -282,7 +282,7 @@ indistinguishable from one that writes, until you go look at the table.
 
 | Property | How it's achieved |
 |----------|------------------|
-| **Zero-knowledge server** | The server only ever sees Argon2id hashes of per-site-derived values. Compromise of the database reveals no recovery words. |
+| **The server never sees a plaintext secret** | The server only ever sees Argon2id hashes of per-site-derived values. Compromise of the database reveals no recovery words. |
 | **Passive-phishing resistance** | **In `'hostname'` mode only.** The material is read in the browser, so a clone that copies the page derives from its own hostname and produces a key the real server does not hold. In `'label'` mode there is none — the copy carries the same label. An active phishing site that controls its own page is out of scope either way (true for any in-browser protocol). |
 | **Replay resistance** | Each recovery request is gated by a server-side rate limit + dispute system. L3 adds a human-reviewed decision. |
 | **Leak resistance** | Each account has its own salt; the server stores only Argon2id hashes of per-service-derived keys. Leaked client code alone is useless. |

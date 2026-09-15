@@ -55,8 +55,35 @@ done
 command -v cryptsetup >/dev/null || die "cryptsetup absent."
 cryptsetup isLuks "$ROOT_DEV" || die "$ROOT_DEV n'est pas un volume LUKS."
 command -v cc >/dev/null || die "cc absent (apt install build-essential)."
-[ -f /usr/lib/x86_64-linux-gnu/libargon2.so.1 ] || [ -f /lib/x86_64-linux-gnu/libargon2.so.1 ] \
+# Le chemin dépend de l'architecture : `ldconfig` d'abord, chemins connus ensuite.
+# ⚠️ Deux chemins amd64 codés en dur refusaient l'installation sur arm64 alors que
+# la bibliothèque était là — « libargon2.so.1 absent » sur une machine qui l'avait.
+# C'est le même défaut que le hook d'initramfs avait déjà rencontré, et il échoue
+# du mauvais côté : un faux négatif rend le module ininstallable, et aucune
+# validation sur amd64 ne peut le voir.
+_ARGON2=$(ldconfig -p 2>/dev/null | awk '/libargon2\.so\.1 /{print $NF; exit}')
+if [ -z "$_ARGON2" ] || [ ! -e "$_ARGON2" ]; then
+  for _C in /lib/*/libargon2.so.1 /usr/lib/*/libargon2.so.1 /lib/libargon2.so.1; do
+    [ -e "$_C" ] && { _ARGON2="$_C"; break; }
+  done
+fi
+[ -n "$_ARGON2" ] && [ -e "$_ARGON2" ] \
   || die "libargon2.so.1 absent (apt install libargon2-1)."
+# L'étape 4 dérive la clé du slot par python3 + le module argon2, et ni l'un ni
+# l'autre n'était contrôlé ici. Sur une Debian minimale (debootstrap, image RPi
+# Lite) l'installation mourait donc à l'ÉTAPE 4 — après que l'étape 2 a écrit le
+# sel et l'étape 3 le keyscript : machine à moitié configurée, zéro slot ajouté.
+# Mesuré sur RPi4 le 13/09 : « setup-add-selfrecover-slot.sh: ligne 51: python3 :
+# commande introuvable ». Même motif que les chemins libargon2 gravés juste
+# au-dessus — une dépendance supposée, qui mord tard.
+# Le module s'éprouve par son import réel et non par dpkg : un `pip install` par
+# utilisateur, que ce script refuse (l'étape 4 tourne en root), passerait un test
+# de paquet et échouerait quand même.
+_PY="${PYTHON:-python3}"
+command -v "$_PY" >/dev/null \
+  || die "$_PY absent (apt install python3) — l'étape 4 en dépend."
+"$_PY" -c 'from argon2.low_level import hash_secret_raw' 2>/dev/null \
+  || die "module python argon2 absent ou incomplet (apt install python3-argon2) — l'étape 4 en dépend."
 case "$DROPBEAR" in
   oui)
     dpkg -s dropbear-initramfs >/dev/null 2>&1 || die "dropbear-initramfs absent (apt install dropbear-initramfs)."
@@ -181,20 +208,93 @@ else
   install -m 0600 "$SSH_PUBKEY" /etc/dropbear/initramfs/authorized_keys
   echo "DROPBEAR_OPTIONS=\"-p $DROPBEAR_PORT -s -j -k -I 300\"" > /etc/dropbear/initramfs/dropbear.conf
   ok "dropbear: port $DROPBEAR_PORT, clé autorisée, IP=dhcp"
-  cp -a /etc/default/grub "/etc/default/grub.bak.$(date +%s)"
-  if grep -q 'rootdelay=' /etc/default/grub; then
-    sed -i "s/rootdelay=[0-9]*/rootdelay=$ROOTDELAY/g" /etc/default/grub
+
+  # --- rien ne disait QUELLE passphrase l'invite attend ---
+  # Le keyscript pose « Passphrase Recover-LUKS (nom) : » sur /dev/console, que
+  # personne ne voit sur une machine sans écran. Par dropbear, cryptroot-unlock
+  # affiche sa propre invite générique « Please unlock disk … » : l'opérateur doit
+  # DEVINER laquelle des deux phrases taper, et un essai raté ressemble à une
+  # panne du module — alors que c'est une question d'étiquette.
+  #
+  # ⚠️ /usr/share/initramfs-tools/hooks/cryptroot-unlock REMPLACE le message par
+  # défaut quand ce fichier existe — c'est un if/else, pas un ajout (vérifié sur
+  # Debian 13 le 15/09). Ce message doit donc redire `cryptroot-unlock`, faute de
+  # quoi on gagnerait une précision en perdant l'instruction.
+  install -d -m 0755 /etc/initramfs-tools/etc
+  cat > /etc/initramfs-tools/etc/motd <<MOTD
+
+  SelfRecover-LUKS — ce disque attend la passphrase RECOVER.
+
+  Pour ouvrir la racine (et les autres volumes) :  cryptroot-unlock
+  À l'invite, saisis la passphrase RECOVER, pas la passphrase native du disque.
+
+  Filet : le slot natif est conservé et ouvre toujours le volume.
+    cryptsetup open $ROOT_DEV $ROOT_NAME
+
+MOTD
+  chmod 0644 /etc/initramfs-tools/etc/motd
+  ok "message d'amorçage posé : il nomme la phrase attendue et redit cryptroot-unlock"
+  # --- rootdelay : le fichier qui porte les paramètres du noyau dépend de l'amorceur ---
+  #
+  # Ce bloc supposait GRUB. Un RPi4 n'a ni /etc/default/grub ni update-grub :
+  # l'installation mourait ICI, c'est-à-dire APRÈS l'ajout du slot (étape 4) et la
+  # réécriture de crypttab (étape 5), dans une branche qui n'est pas optionnelle
+  # sur une machine sans écran — et ce rootdelay est justement ce qui laisse au
+  # réseau le temps de se lever, sur la seule voie d'entrée.
+  #
+  # Repli et non refus net : refuser laisserait la machine dans le même état à
+  # moitié configuré. Ça déplace le symptôme, ça ne le soigne pas.
+  ROOTDELAY_PORTEUR=""
+  if [ -f /etc/default/grub ] && command -v update-grub >/dev/null; then
+    cp -a /etc/default/grub "/etc/default/grub.bak.$(date +%s)"
+    if grep -q 'rootdelay=' /etc/default/grub; then
+      sed -i "s/rootdelay=[0-9]*/rootdelay=$ROOTDELAY/g" /etc/default/grub
+    else
+      sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=\"\(.*\)\"\$/GRUB_CMDLINE_LINUX_DEFAULT=\"\1 rootdelay=$ROOTDELAY\"/" /etc/default/grub
+    fi
+    # `update-grub >/dev/null 2>&1 && ok` fait sortir le script sans un mot sous
+    # set -e, crypttab et slots déjà modifiés. La sortie de grub est donc capturée
+    # et rendue à l'écran avant d'arrêter.
+    if ! GRUB_OUT="$(update-grub 2>&1)"; then
+      printf '%s\n' "$GRUB_OUT" >&2
+      die "update-grub a échoué — rootdelay écrit dans /etc/default/grub mais pas appliqué (repli : /etc/default/grub.bak.*)."
+    fi
+    ROOTDELAY_PORTEUR=/etc/default/grub
+    ok "rootdelay=$ROOTDELAY appliqué (GRUB)"
+
+  elif [ -f /boot/firmware/cmdline.txt ]; then
+    # Parcours Raspberry Pi.
+    # ⚠️ NE PAS écrire dans /boot/firmware/cmdline.txt : il est RÉGÉNÉRÉ par
+    # raspi-firmware à chaque mise à jour de noyau et à chaque update-initramfs
+    # (/etc/kernel/postinst.d/z50-raspi-firmware). Une modification à la main y
+    # tient jusqu'au prochain noyau, puis disparaît — sans un mot, sur la seule
+    # voie d'entrée d'une machine sans écran.
+    # La source durable est documentée par le paquet lui-même, dans
+    # /etc/default/raspi-firmware : « To pass extra arbitrary parameters to the
+    # kernel at boot, you can specify them in /etc/default/raspi-extra-cmdline.
+    # Keep in mind they should be all in a single line, no comments! »
+    RXC=/etc/default/raspi-extra-cmdline
+    [ -f "$RXC" ] && cp -a "$RXC" "$RXC.bak.$(date +%s)"
+    if [ -f "$RXC" ] && grep -q 'rootdelay=' "$RXC"; then
+      sed -i "s/rootdelay=[0-9]*/rootdelay=$ROOTDELAY/g" "$RXC"
+    else
+      EXTRA=""
+      [ -f "$RXC" ] && EXTRA="$(tr -d '\n' < "$RXC")"
+      printf '%s rootdelay=%s\n' "$EXTRA" "$ROOTDELAY" \
+        | sed 's/^[[:space:]]*//' > "$RXC.nouveau"
+      mv "$RXC.nouveau" "$RXC"
+    fi
+    ROOTDELAY_PORTEUR="$RXC"
+    ok "rootdelay=$ROOTDELAY écrit dans $RXC (source durable du cmdline RPi)"
+    warn "il ne sera EFFECTIF qu'après la régénération de l'étape 9 — vérifiée là-bas."
+
   else
-    sed -i "s/^GRUB_CMDLINE_LINUX_DEFAULT=\"\(.*\)\"\$/GRUB_CMDLINE_LINUX_DEFAULT=\"\1 rootdelay=$ROOTDELAY\"/" /etc/default/grub
+    die "aucun porteur de paramètres noyau reconnu : ni /etc/default/grub avec update-grub, ni /boot/firmware/cmdline.txt.
+     Pose rootdelay=$ROOTDELAY toi-même dans la ligne de commande du noyau de cet amorceur,
+     puis relance ce script — il verra la valeur déjà en place.
+     Sans ce délai, dropbear peut démarrer avant que le réseau soit levé : la machine
+     resterait injoignable au boot, et c'est la seule voie d'entrée sans écran."
   fi
-  # `update-grub >/dev/null 2>&1 && ok` fait sortir le script sans un mot sous
-  # set -e, crypttab et slots déjà modifiés. La sortie de grub est donc capturée
-  # et rendue à l'écran avant d'arrêter.
-  if ! GRUB_OUT="$(update-grub 2>&1)"; then
-    printf '%s\n' "$GRUB_OUT" >&2
-    die "update-grub a échoué — rootdelay écrit dans /etc/default/grub mais pas appliqué (repli : /etc/default/grub.bak.*)."
-  fi
-  ok "rootdelay=$ROOTDELAY appliqué"
 fi
 
 # ---------- 7. Volume secondaire : keyfile (cascade) ----------
@@ -234,10 +334,30 @@ ok "garde-fou -> /etc/initramfs/post-update.d/zz-verifie-selfrecover"
 # ---------- 9. Régénérer l'initramfs (avec filet) ----------
 say "9. Régénération de l'image d'amorçage"
 KR="$(uname -r)"
-cp -a "/boot/initrd.img-$KR" "/boot/initrd.img-$KR.bak.$(date +%s)"
-ok "FILET : initrd sauvegardé (.bak.*)"
+# ⚠️ Le filet ne reste PAS dans /boot. Sur un Raspberry Pi, raspi-firmware balaie
+# /boot et copie les images vers la partition d'amorçage : le 13/09 il a promu une
+# de ces sauvegardes .bak.* en IMAGE D'AMORÇAGE, et la machine a démarré sur un
+# initrd sans aucune pièce SelfRecover. Le filet était devenu la cible — et le
+# garde-fou, qui ne regardait que l'image générée, affichait « complet ».
+# Le répertoire est donc hors du chemin balayé par l'amorceur.
+FILETS=/root/selfrecover-filets
+install -d -m 0700 "$FILETS"
+cp -a "/boot/initrd.img-$KR" "$FILETS/initrd.img-$KR.bak.$(date +%s)"
+ok "FILET : initrd sauvegardé dans $FILETS/ (hors du chemin de l'amorceur)"
 confirm "Lancer update-initramfs maintenant ?"
 update-initramfs -u
+
+# Parcours RPi : le rootdelay se mesure À L'ARRIVÉE, dans le fichier que
+# l'amorceur lit réellement — pas dans celui qu'on a écrit. C'est raspi-firmware
+# qui vient de produire cmdline.txt, au cours de la régénération ci-dessus.
+if [ "${ROOTDELAY_PORTEUR:-}" = /etc/default/raspi-extra-cmdline ]; then
+  grep -q "rootdelay=$ROOTDELAY" /boot/firmware/cmdline.txt \
+    || die "rootdelay=$ROOTDELAY est bien dans $ROOTDELAY_PORTEUR mais ABSENT de /boot/firmware/cmdline.txt après régénération.
+     NE REDÉMARRE PAS : dropbear peut démarrer avant que le réseau soit levé, et
+     c'est la seule voie d'entrée sur une machine sans écran."
+  ok "rootdelay=$ROOTDELAY présent dans /boot/firmware/cmdline.txt (mesuré après régénération)"
+fi
+
 say "Vérification du contenu de l'initrd"
 MOTIFS="selfrecover-keyscript|selfrecover_derive_c|libargon2|libgcc"
 if [ "$DROPBEAR" = oui ]; then MOTIFS="$MOTIFS|sbin/dropbear"; fi
@@ -274,6 +394,8 @@ cat <<EOF
        - le sel : $SKG/selfrecover_salt
        - les secrets de sauvegarde (accès dépôt + passphrase dépôt)
 
-  3) Filets en place : slot natif conservé, initrd .bak.*, crypttab/grub/fstab .bak.*,
+  3) Filets en place : slot natif conservé, initrd sauvegardé dans $FILETS/
+     (hors du chemin de l'amorceur — un .bak.* laissé dans /boot peut être promu
+     en image d'amorçage par raspi-firmware), crypttab/fstab/${ROOTDELAY_PORTEUR:-amorceur} .bak.*,
      garde-fou /etc/initramfs/post-update.d/zz-verifie-selfrecover à chaque régénération
 EOF

@@ -61,7 +61,19 @@ VHOSTS="${MYSELF_VHOSTS:-/etc/nginx/sites-enabled}"
 # apparaît dans `api/act/find.php` et `api/api.php` comme repli d'exécution
 # quand `HTTP_HOST` est absent — un défaut, pas un gabarit. Y substituer le nom
 # de l'instance le graverait dans le message d'erreur.
+# Surchargeable par un fichier, sur le motif des trois variables ci-dessus :
+# une même arborescence est servie par plusieurs instances, et chacune nomme
+# ses propres domaines. Sans cela, l'arbre posé sur une instance de
+# développement grave les noms de la production dans toutes ses pages — le
+# visiteur du dev clique et se retrouve en prod.
+# Le format du fichier est celui de la table ci-dessous : deux colonnes,
+# gabarit puis domaine, séparées par des espaces.
 lire_table() {
+    if [ -n "${MYSELF_TABLE:-}" ]; then
+        [ -f "$MYSELF_TABLE" ] || { rouge "table introuvable : $MYSELF_TABLE"; return 1; }
+        cat "$MYSELF_TABLE"
+        return 0
+    fi
     cat <<'TABLE'
 justice.example.org    justice.my-self.fr
 lab.example.org        lab.my-self.fr
@@ -92,6 +104,42 @@ EXCLUS=(
     # l'outillage qui les pose. Déployées depuis un poste, elles changeraient les
     # drapeaux sous les joueurs d'une partie en cours.
     "/demo/lab/challenge/"
+    # 🔑 Ce que `faire_coffre.py` produit quand un développeur l'essaie : les
+    # DEUX secrets d'un coffre en clair (`code_L1.txt` le code notaire,
+    # `mot_L2.txt` le mot de l'utilisateur, lignes 74-75 de l'outil), et le
+    # coffre lui-même avec son pli imprimable et ses QR codes.
+    #
+    # ⚠️ Les deux sont dans `.gitignore` — quelqu'un avait déjà jugé qu'ils ne
+    # devaient pas être publiés. Mesuré le 11/09/2026 : ils étaient quand même
+    # sur la racine servie depuis le 9, parce qu'une règle `.gitignore` ne
+    # retient pas un `rsync`. Non servis par nginx, mais lisibles par tout ce
+    # qui tourne sous `www-data`.
+    "/self-security/selfvault/outils/secrets/"
+    "/self-security/selfvault/sortie/"
+    # 🔑 Le binaire compilé du dérivateur LUKS. Sa source `.c` est versionnée,
+    # lui ne l'est pas — il naît d'un `gcc` local. Un exécutable ELF n'a rien à
+    # faire sur une racine servie, et celui-ci y était depuis une date que
+    # personne ne peut dater : il est arrivé par un déploiement fait depuis un
+    # poste où quelqu'un venait de compiler.
+    "/self-security/selfrecover-luks/selfrecover_derive"
+)
+
+# ── Ce que git ignore et qui a le droit de partir quand même ────────────────
+#
+# 🔑 **Ce filet existe parce que la liste ci-dessus ne peut pas suffire.** Elle
+# nomme ce qu'on a pensé à exclure ; elle ne dit rien de ce qu'on ajoutera
+# demain. Trois choses sont parties en production sans que personne ne le
+# décide — deux secrets de coffre, un coffre complet, un binaire compilé — et
+# chacune était pourtant dans `.gitignore`. Le sens de la défaillance était le
+# mauvais : partir était le défaut, refuser demandait un geste.
+#
+# Ici c'est l'inverse. Tout fichier de l'arbre assemblé que git ignore fait
+# ÉCHOUER l'assemblage, sauf s'il est couvert par un préfixe de cette liste —
+# où chaque entrée porte la raison pour laquelle elle est servie.
+IGNORES_SERVIS=(
+    # Les dépendances PHP du lab. Le service ne démarre pas sans elles, et
+    # `composer install` ne tourne pas sur la machine servie.
+    "demo/lab/vendor/"
 )
 
 # ⚠️ **L'état de l'instance ne se déploie pas.** `storage/` porte ce que la
@@ -223,6 +271,14 @@ assembler() {
         [ -z "$gabarit" ] && continue
         connus+=("$gabarit"); domaines+=("$domaine")
     done < <(lire_table)
+    # Une table vide n'arrête rien plus bas : le filtre des gabarits inconnus
+    # laisserait tout passer, et l'arrêt « aucun gabarit substitué » ne tomberait
+    # qu'après la copie, en accusant les sources alors que le fautif est la table.
+    if [ "${#connus[@]}" -eq 0 ]; then
+        rouge "  ✗ table de domaines vide — ${MYSELF_TABLE:-table interne}"
+        rm -rf "$dest"
+        return 1
+    fi
 
     local inconnus
     inconnus=$(grep -rhoE "[a-z0-9-]+\.example\.(org|com|net)" "$dest" 2>/dev/null \
@@ -272,6 +328,38 @@ assembler() {
     echo "  · repli d'exécution « your-instance.example » conservé dans $repli fichier(s)"
     echo
 
+    # ── Le filet fail-closed : rien d'ignoré ne part sans décision écrite ───
+    echo "▸ Ce que git ignore et qui partirait quand même"
+    local ignores intrus=() f autorise
+    # ⚠️ `git check-ignore` rend 1 quand il ne trouve rien : sans le `|| true`,
+    # `set -e` ferait échouer l'assemblage le jour où l'arbre est propre — un
+    # contrôle qui casse sur le cas nominal finit désactivé.
+    ignores=$( (cd "$dest" && find . -type f | sed 's|^\./||') \
+               | (cd "$DEPOT" && git check-ignore --stdin 2>/dev/null) || true )
+
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        autorise=0
+        for prefixe in "${IGNORES_SERVIS[@]}"; do
+            case "$f" in "$prefixe"*) autorise=1; break ;; esac
+        done
+        [ "$autorise" -eq 1 ] || intrus+=("$f")
+    done <<< "$ignores"
+
+    if [ "${#intrus[@]}" -gt 0 ]; then
+        rouge "  ✗ ${#intrus[@]} fichier(s) ignoré(s) par git survivent à l'assemblage :"
+        printf '      %s\n' "${intrus[@]}"
+        echo
+        echo "  Chacun est soit un oubli — l'ajouter aux EXCLUSIONS — soit servi"
+        echo "  délibérément — l'ajouter à IGNORES_SERVIS avec sa raison."
+        rm -rf "$dest"
+        return 1
+    fi
+    local comptes
+    comptes=$(printf '%s\n' "$ignores" | grep -c . || true)
+    echo "  ✓ les $comptes fichier(s) ignoré(s) présents sont tous déclarés servis"
+    echo
+
     vert "Arbre assemblé : $dest"
     echo "  Le poser : sudo bash $ICI/deploy.sh poser $dest --appliquer"
     return 0
@@ -288,7 +376,12 @@ references_serveur() { # references_serveur <racine>
     [ -d "$VHOSTS" ] || return 0
     # Les accolades ne sont pas décoratives : sans elles, `$racine[` se lit comme
     # une indexation de tableau et l'expression ne cherche plus rien.
-    grep -rhoE "${racine}[A-Za-z0-9._/\$-]*" "$VHOSTS"/*.conf 2>/dev/null | sort -u
+    # ⚠️ `*` et non `*.conf` : nginx inclut `sites-enabled/*` sans regarder
+    # l'extension, et rien ne l'oblige. Mesuré le 14/09/2026 sur l'instance de
+    # développement — 1 vhost sur 19 portait `.conf` : ce contrôle parcourait
+    # un fichier et rendait vert. Un garde-fou qui ne lit pas la surface qu'il
+    # prétend couvrir est pire que pas de garde-fou, parce qu'on s'y fie.
+    grep -rhoE "${racine}[A-Za-z0-9._/\$-]*" "$VHOSTS"/* 2>/dev/null | sort -u
 }
 
 poser() {
