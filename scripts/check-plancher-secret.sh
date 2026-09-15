@@ -30,6 +30,12 @@ PLANCHER=32
 echec=0
 vus=0
 
+# ⚠️ Les lignes de COMMENTAIRE sont écartées des deux inventaires ci-dessous.
+# Sans ce filtre, une mention de `SecretInstance::lire()` dans un docblock était
+# comptée comme un appel, et le contrôle rougissait sur une phrase — il lisait du
+# texte au lieu de lire du code. `git grep -n` rend « fichier:ligne:contenu ».
+sans_commentaires() { grep -vE '^[^:]+:[0-9]+:[[:space:]]*(\*|//|#|/\*)'; }
+
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 ko()   { printf '  \033[31m✗\033[0m %s\n' "$*"; echec=1; }
 
@@ -71,7 +77,7 @@ while IFS=: read -r fichier ligne texte; do
     else
         ko "$fichier:$ligne — $min, sous le plancher $PLANCHER"
     fi
-done < <(git grep -nE "SecretInstance::lire\(" -- '*.php' | grep -v 'function lire')
+done < <(git grep -nE "SecretInstance::lire\(" -- '*.php' | grep -v 'function lire' | sans_commentaires)
 
 [ "$appels" -gt 0 ] || printf '  (aucun appel — rien à juger)\n'
 
@@ -100,7 +106,7 @@ while IFS=: read -r fichier ligne texte; do
         ko "$fichier:$ligne — $valeur, diverge du plancher $PLANCHER"
     fi
 done < <(git grep -nE "strlen\(\\\$[A-Za-z_]*([Ss]ecret|[Ss]el|[Kk]ey)[A-Za-z_]*\) *< *[0-9]+" -- '*.php' \
-         | grep -viE '\$[A-Za-z_]*[Pp]ub')
+         | grep -viE '\$[A-Za-z_]*[Pp]ub' | sans_commentaires)
 [ "$dur" -eq 0 ] && ok "aucun plancher en dur"
 
 # ---------------------------------------------------------------------------
