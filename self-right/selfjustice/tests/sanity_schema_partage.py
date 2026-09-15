@@ -28,6 +28,7 @@ ICI = os.path.dirname(os.path.abspath(__file__))
 OUTILS = os.path.join(os.path.dirname(ICI), "tools")
 
 ECHECS = []
+CLE_FACTICE = ""    # posée par main(), dans le répertoire temporaire
 
 
 def controle(nom, condition, detail=""):
@@ -64,8 +65,16 @@ def charger(nom, chemin_db):
 
     Le module lit son chemin de base au CHARGEMENT : l'environnement se pose
     avant l'import, et le module se retire du cache pour que le suivant relise.
+
+    ⚠️ La clé factice n'est pas un détail. Sans `JUDILIBRE_KEY_FILE`, le
+    moissonneur cherche `~/.config/judilibre/keyid` et meurt à l'import — ce
+    banc passait donc en local, où ce fichier personnel existe, et échouait sur
+    un runner qui ne l'a pas. Même procédé que `sanity_refus_amont.sh`. Aucun
+    appel réseau n'est fait ici : la clé n'a qu'à être lisible.
     """
     os.environ["JUDILIBRE_DB"] = chemin_db
+    os.environ["JUDILIBRE_KEY_FILE"] = CLE_FACTICE
+    os.environ["JUDILIBRE_MARQUEUR"] = chemin_db + ".marqueur"
     sys.path.insert(0, OUTILS)
     for m in ("build_judilibre_index", "build_jade_db", "jade_juridictions"):
         sys.modules.pop(m, None)
@@ -155,8 +164,12 @@ def sens_jade_dabord(tmp):
 
 
 def main():
+    global CLE_FACTICE
     print("\033[1mLes deux collecteurs partagent la table `decisions`\033[0m")
     with tempfile.TemporaryDirectory() as tmp:
+        CLE_FACTICE = os.path.join(tmp, "keyid")
+        with open(CLE_FACTICE, "w", encoding="utf-8") as f:
+            f.write("factice\n")
         sens_judilibre_dabord(tmp)
         sens_jade_dabord(tmp)
 
