@@ -312,11 +312,16 @@ jobs:
           # Il ne demande ni root ni initramfs réel : `lsinitramfs` est bouchonné.
           sortie=$(bash self-security/selfrecover-luks/tests/test_garde_fou_image_chargee.sh)
           echo "$sortie"
-          # ⚠️ Le banc doit avoir joué ses 8 cas. Sans ce contrôle, un banc qui
+          # ⚠️ Le banc doit avoir joué TOUS ses cas. Sans ce contrôle, un banc qui
           # sortirait tôt — bouchon non exécutable, mktemp en échec — rendrait le
           # même vert en n'ayant rien éprouvé.
-          echo "$sortie" | grep -qE '^✅ 8/8 ' \
-            || { echo "::error::le banc du garde-fou n'a pas joué ses 8 cas"; exit 1; }
+          #
+          # Le compte est écrit en dur : c'est un inventaire, pas un seuil. Un
+          # `N/N` suffirait à dire que les cas joués ont réussi, jamais qu'aucun
+          # n'a disparu. Ajouter un cas au banc demande donc de le monter ici —
+          # cette friction est le contrôle.
+          echo "$sortie" | grep -qE '^✅ 12/12 ' \
+            || { echo "::error::le banc du garde-fou n'a pas joué ses 12 cas"; exit 1; }
 
       - name: Canari — le banc du garde-fou rougit quand le correctif disparaît
         run: |
