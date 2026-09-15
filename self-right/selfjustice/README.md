@@ -5,7 +5,7 @@
 **Impartial legal pre-analysis powered by AI-readable directives — served over a free public API.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.3.0 beta](https://img.shields.io/badge/status-v0.3.0%20beta-green.svg)](#status)
+[![Status: v0.4.0 beta](https://img.shields.io/badge/status-v0.4.0%20beta-green.svg)](#status)
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
@@ -184,7 +184,7 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 
 ## Status
 
-**v0.3.0 — live in production at [justice.my-self.fr](https://justice.my-self.fr)**
+**v0.4.0 — live in production at [justice.my-self.fr](https://justice.my-self.fr)**
 
 - [x] System directives (7-step analysis procedure, 5 principles)
 - [x] 8 legal categories (work, housing, family, public administration, neighborhood, consumer, civil, criminal)
@@ -194,6 +194,8 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 - [x] API serving the full LEGI corpus — **108 codes** addressable by title, no alias table required
 - [x] API serving the EU/ECHR corpus (including AI Act 2024/1689)
 - [x] Judicial case law index (Cour de cassation, courts of appeal)
+- [x] **Administrative** case law index, full text served (Conseil d'État, CAA, Tribunal des
+      conflits; tribunals and CDBF as historical corpora) — source: DILA's JADE corpus
 - [x] MCP server (`selfright-mcp` package) — consultation from a local client
 - [x] SelfAct integration — official procedures served alongside the directives
 - [x] Multi-AI tested (Claude, ChatGPT crawler, OAI-SearchBot detected)
@@ -208,13 +210,18 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 
 - **v0.1.0** — Core directives + 5 categories + LEGI/EU API
 - **v0.2.0** — Family law (divorce, custody, alimony) + housing law (leases, eviction)
-- **v0.3.0 (current)** — Administrative law (disputes with public services)
-- **v0.4.0** — Administrative case law (Conseil d'État, CAA, administrative courts).
-  It does **not** come from the Judilibre API, which only serves the judicial order — measured
-  on 2026-09-10: `Value of the jurisdiction parameter must be in [cc,ca,tj,tcom]`. Its source is
-  DILA's **JADE** corpus, a 1.24 GB global dump plus daily diffs, so a separate collector has to
-  be written. **Judicial** case law (Cour de cassation, courts of appeal) already ships and is
-  served; `tj` and `tcom` are available upstream and not yet harvested
+- **v0.3.0** — Administrative law (disputes with public services)
+- **v0.4.0 (current)** — Administrative case law: Conseil d'État and administrative courts
+  of appeal up to the current day, Tribunal des conflits, and two historical corpora —
+  administrative tribunals **stop in 2009** and the Cour de discipline budgétaire et financière
+  **in 2000**, because JADE only publishes a selection of them. A recent tribunal ruling is
+  therefore absent; that is what v0.5.0 is for. It does **not** come from the Judilibre API, which only serves the judicial
+  order — measured on 2026-09-10: `Value of the jurisdiction parameter must be in
+  [cc,ca,tj,tcom]`. Its source is DILA's **JADE** corpus, a global dump plus daily increments,
+  harvested by a separate collector (`tools/build_jade_db.py`). **570,896 decisions as of
+  2026-09-11**, from 1873 to 2026, full text included — today's count is served at
+  `/api/status`. **Judicial** case law (Cour de cassation, courts of appeal) already ships and
+  is served; `tj` and `tcom` are available upstream and not yet harvested
 - **v1.0.0** — Directives reviewed by a practicing attorney (SelfAct integration shipped in v0.2.0)
 
 ---
