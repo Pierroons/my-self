@@ -244,7 +244,7 @@ SelfRecover distingue trois rôles : **SU → Admin → User**. L'administrateur
 
 **Séparation des pouvoirs.** Un administrateur **ne se promeut pas lui-même** : il **propose** une promotion, le SU **tranche** (observation obligatoire). Le SU peut promouvoir/révoquer des administrateurs (une révocation coupe les sessions), **auditer** l'état (croiser les droits en base avec le journal → détecter les **administrateurs fantômes** et les mettre en **quarantaine automatique**), et, si sa passphrase est perdue, repartir d'une « coquille vide » (révocation de tous les administrateurs, gel du journal).
 
-**Journal d'audit inviolable.** Chaque action du SU est journalisée hors base et hors racine web, en quatre couches : **append-only** au niveau système de fichiers (`chattr +a`), **chaîne de hachage** (toute altération casse la chaîne), **HMAC par entrée** (clé dérivée de la passphrase SU), et **externalisation** vers un canal de notification (action + cible + heure uniquement, jamais le contexte forensique).
+**Journal d'audit infalsifiable sans trace.** Chaque action du SU est journalisée hors base et hors racine web, en quatre couches : **append-only** au niveau système de fichiers (`chattr +a`), **chaîne de hachage** (toute altération casse la chaîne), **HMAC par entrée** (clé dérivée de la passphrase SU), et **externalisation** vers un canal de notification (action + cible + heure uniquement, jamais le contexte forensique).
 
 ---
 

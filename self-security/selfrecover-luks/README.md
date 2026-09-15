@@ -12,7 +12,9 @@
 > recovery passphrase**, remotely from boot, with no cloud and no trusted third party. The
 > self-hosted FDE layer of the **MySelf** ecosystem (Self-Security pillar).
 
-**Status: validated on a LNMP Debian 13 Trixie server (2026-06-07) — v0.4.0.**
+**Status: validated on a LNMP Debian 13 Trixie server (2026-06-07), on an encrypted
+laptop (2026-08-22), and on an encrypted-LVM root — the layout the Debian installer
+proposes in guided mode (2026-09-13) — v0.4.0.**
 Root (`/`) unlocked at boot (Argon2id keyscript + boot SSH) and automatic cascade of secondary
 volumes (key-file), reproducible reboots. Documented, reproducible install →
 **[INSTALL.md](./INSTALL.md)**.
@@ -63,7 +65,7 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | `setup-add-selfrecover-slot.sh` | adds a recovery slot to a LUKS volume (authorized by an existing key) |
 | `selfrecover-unlock.sh` | standalone emergency unlock (userspace) |
 | `genere-passphrase.py` | draws a diceware passphrase, printing both forms and their lengths |
-| `initramfs-post-update-verifie-selfrecover` | guard: checks the six pieces **and the salt** after every initramfs build |
+| `initramfs-post-update-verifie-selfrecover` | guard: checks the six pieces, **the salt**, and **the image the bootloader actually loads** after every initramfs build |
 | [`tests/test_lecture_keyfile.sh`](./tests/test_lecture_keyfile.sh) | guard: the four read paths, and the trailing `\n` that breaks the key |
 | [`docs/cryptsetup-lecture-cle.md`](./docs/cryptsetup-lecture-cle.md) | measurement note (French): how `cryptsetup` reads a key depending on the path taken |
 | `fido2-banc-essai/` | research bench: FIDO2 in the initramfs — not a supported path |
