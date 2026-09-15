@@ -247,11 +247,42 @@ The raw recovery word never leaves the browser.
 
 ---
 
+### Storage: a contract, and one implementation provided
+
+The library knows nothing about your database. It asks **39 questions** defined in
+`src/Storage/StorageInterface.php` — "give me the memorized word's digest for account 42" —
+without knowing which table or column you keep it in.
+
+So you have two paths, and the contract exists so the first one stays open:
+
+| your situation | what you do |
+|---|---|
+| you already have tables | you write your adapter, **you migrate nothing** |
+| you start from scratch | you load `schema.sql` and wire `StockagePdo` — **no adapter to write** |
+Both target SQLite. On MariaDB or PostgreSQL, the column types and three queries need
+rewriting — `schema.sql` names them in its header.
+
+`StockagePdo` also serves the "this device" factor and requires the **derivation host**:
+it refuses to reset secrets without one, rather than writing an empty marker onto an
+account whose browser has just derived against a real one.
+
+```php
+// The host is a DEPLOYMENT constant, never a request value: reading it from
+// $_SERVER['HTTP_HOST'] would let an attacker choose what gets recorded.
+$stockage = new StockagePdo($pdo, hoteDerivation: 'my-service.example');
+```
+
+Exercised by `tests/banc_stockage_pdo.php`, which **reads the database back** rather than
+the returned value: a write method that does nothing and returns `void` is
+indistinguishable from one that writes, until you go look at the table.
+
+---
+
 ## Security properties
 
 | Property | How it's achieved |
 |----------|------------------|
-| **Zero-knowledge server** | The server only ever sees Argon2id hashes of per-site-derived values. Compromise of the database reveals no recovery words. |
+| **The server never sees a plaintext secret** | The server only ever sees Argon2id hashes of per-site-derived values. Compromise of the database reveals no recovery words. |
 | **Passive-phishing resistance** | **In `'hostname'` mode only.** The material is read in the browser, so a clone that copies the page derives from its own hostname and produces a key the real server does not hold. In `'label'` mode there is none — the copy carries the same label. An active phishing site that controls its own page is out of scope either way (true for any in-browser protocol). |
 | **Replay resistance** | Each recovery request is gated by a server-side rate limit + dispute system. L3 adds a human-reviewed decision. |
 | **Leak resistance** | Each account has its own salt; the server stores only Argon2id hashes of per-service-derived keys. Leaked client code alone is useless. |
