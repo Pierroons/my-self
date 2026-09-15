@@ -12,8 +12,9 @@
 > par une **unique passphrase de récupération**, à distance dès le démarrage, sans cloud ni
 > tiers de confiance. Couche FDE auto-hébergée de l'écosystème **MySelf** (pilier Self-Security).
 
-**Statut : validé sur serveur LNMP Debian 13 Trixie (07/06/2026), puis sur poste portable
-chiffré (22/08/2026) — v0.4.0.**
+**Statut : validé sur serveur LNMP Debian 13 Trixie (07/06/2026), sur poste portable
+chiffré (22/08/2026), puis sur une racine en LVM chiffré — le schéma que propose
+l'installateur Debian en mode assisté (13/09/2026) — v0.4.0.**
 Déverrouillage du `/` au boot (keyscript Argon2id + SSH d'amorçage) et cascade automatique des
 volumes secondaires (fichier-clé), redémarrages reproductibles. Installation documentée et
 reproductible → **[INSTALL.md](./INSTALL.md)**.
@@ -65,7 +66,7 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | `selfrecover-unlock.sh` | déverrouillage de secours autonome (userspace) |
 | `install.sh` | installateur semi-automatique (cf. INSTALL.md) |
 | `genere-passphrase.py` | tire une passphrase diceware, affiche les deux formes et leur longueur |
-| `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces **et le sel** après chaque génération d'initramfs |
+| `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces, **le sel**, et **l'image que l'amorceur charge** après chaque génération d'initramfs |
 | [`tests/test_lecture_keyfile.sh`](./tests/test_lecture_keyfile.sh) | garde-fou : les quatre lectures, et le `\n` final qui casse la clé |
 | [`docs/cryptsetup-lecture-cle.md`](./docs/cryptsetup-lecture-cle.md) | note de mesure : comment `cryptsetup` lit une clé selon le chemin emprunté |
 | [`quorum-rnd/`](./quorum-rnd/) | R&D : déverrouillage par quorum de témoins — **non activé en v0.4.0** |

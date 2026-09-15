@@ -557,7 +557,7 @@ verifier('et le dossier a bien disparu', $st7->litiges === []);
 
 echo "\n→ Un instant qui n'en est pas un\n";
 
-// 🔑 Ce banc avait l'angle mort que la conv RN2C a nommé le 09/09 : il vérifiait
+// 🔑 L'angle mort que cette section ferme : un banc qui vérifie
 // que le DTO se CONSTRUIT, pas que la valeur qu'il porte veut dire quelque chose.
 // Un contrôle de forme reste vert pendant qu'une date est perdue — `2026` est un
 // entier parfaitement valide, et une colonne restée en TEXT en produit un.
