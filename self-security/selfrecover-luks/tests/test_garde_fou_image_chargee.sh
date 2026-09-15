@@ -162,6 +162,60 @@ printf 'cryptroot UUID=banc none luks\n' > "$BANC/crypttab"
 verdict "module non actif dans crypttab : silence" VERT "--" \
   lancer "$GEN_VIDE"
 
+# ---------------------------------------------------------------------------
+echo
+echo "▸ Le sel, selon la forme de l'image — le trou du 15/09/2026"
+#
+# `unmkinitramfs` extrait à la racine une image d'un seul tenant, mais éclate en
+# `early/` + `main/` celle qui porte un segment de microcode — c'est-à-dire
+# l'image de toute machine Intel ou AMD. Le contrôle cherchait le sel à la
+# racine : sur ces machines il ne le trouvait jamais, annonçait « sel absent de
+# l'image extraite » et sortait en 0. Un sel périmé y passait en silence.
+printf 'cryptroot UUID=banc none luks,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh\n' \
+  > "$BANC/crypttab"
+rm -f "$BANC/firmware/config.txt"          # on ne juge plus que le sel
+
+cat > "$BANC/bin/unmkinitramfs" <<'STUB'
+#!/bin/sh
+# Reproduit les deux dispositions réelles de l'outil, choisies par le nom de
+# l'image : « microcode » donne early/ + main/, sinon tout est à la racine.
+case "$1" in
+  *microcode*) racine="$2/main"; mkdir -p "$2/early" ;;
+  *)           racine="$2" ;;
+esac
+mkdir -p "$racine/etc/selfkeyguard"
+case "$1" in
+  *selperime*) printf 'sel-etranger\n' ;;
+  *)           printf 'sel-de-banc\n' ;;
+esac > "$racine/etc/selfkeyguard/selfrecover_salt"
+STUB
+chmod 0755 "$BANC/bin/unmkinitramfs"
+
+# 9. Image d'un seul tenant, sel concordant — le cas qui marchait déjà.
+GEN_PLAT="$BANC/boot/initrd.img-$VER.complete.plat"
+: > "$GEN_PLAT"
+verdict "image plate, sel concordant" VERT "complet" \
+  lancer "$GEN_PLAT"
+
+# 10. Image à microcode, sel concordant. Avant le correctif : « SEL NON VERIFIE ».
+GEN_UCODE="$BANC/boot/initrd.img-$VER.complete.microcode"
+: > "$GEN_UCODE"
+verdict "image à microcode, sel concordant" VERT "complet" \
+  lancer "$GEN_UCODE"
+
+# 11. LE DÉFAUT QUI TUE : image à microcode, sel périmé. Avant le correctif, le
+#     contrôle sortait en 0 — et le volume ne se serait pas ouvert au redémarrage.
+GEN_UCODE_KO="$BANC/boot/initrd.img-$VER.complete.microcode.selperime"
+: > "$GEN_UCODE_KO"
+verdict "image à microcode, SEL PÉRIMÉ" ROUGE "sel embarque DIFFERE" \
+  lancer "$GEN_UCODE_KO"
+
+# 12. Le même sel périmé dans une image plate : déjà attrapé, ne doit pas régresser.
+GEN_PLAT_KO="$BANC/boot/initrd.img-$VER.complete.plat.selperime"
+: > "$GEN_PLAT_KO"
+verdict "image plate, SEL PÉRIMÉ (non-régression)" ROUGE "sel embarque DIFFERE" \
+  lancer "$GEN_PLAT_KO"
+
 echo
 if [ "$echec" -eq 0 ]; then
   printf '✅ %d/%d — le garde-fou vise l image chargée, et il rougit sur les cinq défauts replantés.\n' \

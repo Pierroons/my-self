@@ -247,6 +247,44 @@ password_verify($secret, $ancien)
     ? ok('un secret posé sous l\'ancien profil se vérifie encore')
     : nok('un secret posé sous l\'ancien profil ne se vérifie plus — migration forcée');
 
+// ─── Le refus de la valeur de démonstration vit DANS la fonction ─────────────
+// 🔑 L'en-tête de SuAudit promet que les valeurs de démonstration sont refusées en
+// régime strict. Le refus existait — mais chez UN appelant, la console. Tout autre
+// consommateur recevait `DEMO_SECRET` sans un mot et aurait signé le journal
+// d'audit avec une constante publiée dans le dépôt. Une garde chez l'appelant
+// n'est pas une garde, c'est une convention.
+$secretDeCeBanc = getenv('SELFRECOVER_SU_AUDIT_SECRET');
+
+putenv('SELFRECOVER_SU_AUDIT_SECRET');     // rien de posé
+putenv('SELFRECOVER_SU_DEV');              // régime strict
+try {
+    $rendu = SuAudit::secret();
+    nok('régime strict, rien de posé : secret() a rendu ' . strlen($rendu) . ' caractères au lieu de refuser');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'SELFRECOVER_SU_AUDIT_SECRET')
+        ? ok('régime strict, rien de posé : secret() refuse et nomme la variable')
+        : nok('secret() refuse, mais sans nommer la variable à poser');
+}
+SuAudit::secretPose() === false
+    ? ok('secretPose() rend faux sans lever — la console garde son propre message')
+    : nok('secretPose() devrait rendre faux quand rien n\'est posé');
+
+putenv('SELFRECOVER_SU_AUDIT_SECRET=' . SuAudit::DEMO_SECRET);
+try {
+    SuAudit::secret();
+    nok('la valeur de démonstration posée explicitement passe en régime strict');
+} catch (RuntimeException) {
+    ok('la valeur de démonstration posée explicitement est refusée aussi');
+}
+
+putenv('SELFRECOVER_SU_DEV=1');
+SuAudit::secret() === SuAudit::DEMO_SECRET
+    ? ok('le mode dev reste permissif — les bancs en dépendent')
+    : nok('le mode dev devrait rendre la valeur de démonstration');
+
+putenv('SELFRECOVER_SU_DEV');
+putenv('SELFRECOVER_SU_AUDIT_SECRET=' . $secretDeCeBanc);   // le banc reprend son décor
+
 echo "\n";
 $total = $reussites + $echecs;
 if ($echecs === 0) {
