@@ -304,6 +304,38 @@ jobs:
           echo "$sortie" | grep -qE '▸ dérivateur : [^ ]*/selfrecover_derive$' \
             || { echo "::error::le banc n'a pas exercé le dérivateur C"; exit 1; }
 
+      - name: Garde-fou — le contrôle d'initramfs vise l'image que l'amorceur CHARGE
+        run: |
+          # Le 13/09/2026 sur RPi4 : image générée complète, image d'amorçage sans
+          # une seule pièce SelfRecover, et le contrôle affichait « complet » sur une
+          # machine non amorçable. Ce banc replante ce cas et quatre voisins.
+          # Il ne demande ni root ni initramfs réel : `lsinitramfs` est bouchonné.
+          sortie=$(bash self-security/selfrecover-luks/tests/test_garde_fou_image_chargee.sh)
+          echo "$sortie"
+          # ⚠️ Le banc doit avoir joué ses 8 cas. Sans ce contrôle, un banc qui
+          # sortirait tôt — bouchon non exécutable, mktemp en échec — rendrait le
+          # même vert en n'ayant rien éprouvé.
+          echo "$sortie" | grep -qE '^✅ 8/8 ' \
+            || { echo "::error::le banc du garde-fou n'a pas joué ses 8 cas"; exit 1; }
+
+      - name: Canari — le banc du garde-fou rougit quand le correctif disparaît
+        run: |
+          # Un banc qu'on n'a jamais fait échouer ne se distingue pas d'un banc qui
+          # ne mesure rien : les deux rendent vert. On neutralise ici la seule
+          # instruction qui résout l'image chargée, et on exige que le banc rougisse.
+          G=self-security/selfrecover-luks/initramfs-post-update-verifie-selfrecover
+          sed 's|^  \[ -n "\$_NOM" \] && CHARGEE="\$FW/\$_NOM"|  : # neutralisé|' \
+            "$G" > /tmp/garde-neutralise
+          chmod 0755 /tmp/garde-neutralise
+          grep -q '# neutralisé' /tmp/garde-neutralise \
+            || { echo "::error::la neutralisation n'a rien changé — le canari ne prouve rien"; exit 1; }
+          if GARDE=/tmp/garde-neutralise \
+             bash self-security/selfrecover-luks/tests/test_garde_fou_image_chargee.sh; then
+            echo "::error::le banc reste VERT sans le correctif — il ne mesure pas ce qu'il annonce"
+            exit 1
+          fi
+          echo "✓ le banc rougit quand la résolution de l'image chargée disparaît"
+
       - name: Garde-fou — coût constant du hash factice (bi-self-duo)
         run: php demo/bi-self-duo/tests/sanity_timing.php
 
