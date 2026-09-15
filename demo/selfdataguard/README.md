@@ -46,9 +46,15 @@ To use a different port: `PORT=9000 ./run.sh`.
   DATAGUARD_ADMIN_PUBKEY_FILE=storage/admin-recovery.pub \
   DATAGUARD_ADMIN_SEALED_FILE=storage/admin-recovery.sealed \
   DATAGUARD_AUDIT_LOG=storage/escrow-audit.log \
-  DATAGUARD_AUDIT_SECRET=any-demo-secret-≥16-bytes \
+  DATAGUARD_AUDIT_SECRET="$(openssl rand -hex 32)" \
   php ../bin/escrow-ceremony.php unlock <user> <litige_id>
   ```
+
+  `DATAGUARD_AUDIT_SECRET` signs the escrow audit chain: the floor is **32 characters**
+  (`AuditLog::PLANCHER_SECRET`), the same one every other secret in this project is held
+  to. This line used to suggest `≥16`, which the code no longer accepts — a floor that
+  differs from its neighbours is never caught by a test, because a floor that is too low
+  does not fail: it accepts.
 
   (requires a `litiges` table with an open row for `<user>` — the calling application
   wires its own; see the ceremony CLI header for details).
