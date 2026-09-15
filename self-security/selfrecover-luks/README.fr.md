@@ -66,7 +66,7 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | `selfrecover-unlock.sh` | déverrouillage de secours autonome (userspace) |
 | `install.sh` | installateur semi-automatique (cf. INSTALL.md) |
 | `genere-passphrase.py` | tire une passphrase diceware, affiche les deux formes et leur longueur |
-| `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces **et le sel** après chaque génération d'initramfs |
+| `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces, **le sel**, et **l'image que l'amorceur charge** après chaque génération d'initramfs |
 | [`tests/test_lecture_keyfile.sh`](./tests/test_lecture_keyfile.sh) | garde-fou : les quatre lectures, et le `\n` final qui casse la clé |
 | [`docs/cryptsetup-lecture-cle.md`](./docs/cryptsetup-lecture-cle.md) | note de mesure : comment `cryptsetup` lit une clé selon le chemin emprunté |
 | [`quorum-rnd/`](./quorum-rnd/) | R&D : déverrouillage par quorum de témoins — **non activé en v0.4.0** |

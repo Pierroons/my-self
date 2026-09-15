@@ -65,7 +65,7 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | `setup-add-selfrecover-slot.sh` | adds a recovery slot to a LUKS volume (authorized by an existing key) |
 | `selfrecover-unlock.sh` | standalone emergency unlock (userspace) |
 | `genere-passphrase.py` | draws a diceware passphrase, printing both forms and their lengths |
-| `initramfs-post-update-verifie-selfrecover` | guard: checks the six pieces **and the salt** after every initramfs build |
+| `initramfs-post-update-verifie-selfrecover` | guard: checks the six pieces, **the salt**, and **the image the bootloader actually loads** after every initramfs build |
 | [`tests/test_lecture_keyfile.sh`](./tests/test_lecture_keyfile.sh) | guard: the four read paths, and the trailing `\n` that breaks the key |
 | [`docs/cryptsetup-lecture-cle.md`](./docs/cryptsetup-lecture-cle.md) | measurement note (French): how `cryptsetup` reads a key depending on the path taken |
 | `fido2-banc-essai/` | research bench: FIDO2 in the initramfs — not a supported path |
