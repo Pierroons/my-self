@@ -5,7 +5,7 @@
 **Pré-analyse juridique impartiale par directives lisibles par IA — servie via une API publique gratuite.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.3.0 bêta](https://img.shields.io/badge/statut-v0.3.0%20b%C3%AAta-green.svg)](#statut)
+[![Statut : v0.4.0 bêta](https://img.shields.io/badge/statut-v0.4.0%20b%C3%AAta-green.svg)](#statut)
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
@@ -185,7 +185,7 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 
 ## Statut
 
-**v0.3.0 — en production sur [justice.my-self.fr](https://justice.my-self.fr)**
+**v0.4.0 — en production sur [justice.my-self.fr](https://justice.my-self.fr)**
 
 - [x] Directives système (procédure d'analyse en 7 étapes, 5 principes)
 - [x] 8 catégories juridiques (travail, logement, famille, administration, voisinage, consommation, civil, pénal)
@@ -195,6 +195,8 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 - [x] API servant tout le corpus LEGI — **108 codes** adressables par leur titre, sans table d'alias
 - [x] API servant le corpus UE/CEDH (dont le règlement IA 2024/1689)
 - [x] Index de jurisprudence judiciaire (Cour de cassation, cours d'appel)
+- [x] Index de jurisprudence **administrative**, texte intégral servi (Conseil d'État, CAA,
+      Tribunal des conflits ; TA et CDBF en fonds historique) — source : fonds JADE de la DILA
 - [x] Serveur MCP (paquet `selfright-mcp`) — consultation depuis un client local
 - [x] Intégration SelfAct — les démarches officielles servies à côté des directives
 - [x] Testé multi-IA (Claude, crawler ChatGPT, OAI-SearchBot détectés)
@@ -209,13 +211,18 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 
 - **v0.1.0** — Directives cœur + 5 catégories + API LEGI/UE
 - **v0.2.0** — Droit de la famille (divorce, garde, pension) + droit du logement (baux, expulsion)
-- **v0.3.0 (actuelle)** — Droit administratif (litiges avec services publics)
-- **v0.4.0** — Jurisprudence administrative (Conseil d'État, CAA, tribunaux administratifs).
-  Elle ne vient **pas** de l'API Judilibre, qui ne sert que l'ordre judiciaire — mesuré le
-  10/09/2026 : `Value of the jurisdiction parameter must be in [cc,ca,tj,tcom]`. Sa source est
-  le fonds **JADE** de la DILA, un dump global de 1,24 Go et ses diffs quotidiens, donc un
-  collecteur distinct à écrire. La jurisprudence **judiciaire** (Cour de cassation, cours
-  d'appel) est livrée et servie ; `tj` et `tcom` sont disponibles chez l'amont et non moissonnés
+- **v0.3.0** — Droit administratif (litiges avec services publics)
+- **v0.4.0 (actuelle)** — Jurisprudence administrative : Conseil d'État et cours
+  administratives d'appel jusqu'au jour dit, Tribunal des conflits, et deux fonds historiques
+  — les tribunaux administratifs **s'arrêtent en 2009** et la Cour de discipline budgétaire et
+  financière **en 2000**, parce que JADE n'en publie qu'une sélection. Un jugement de TA récent
+  ne s'y trouve donc pas ; c'est l'objet de la v0.5.0. Elle ne vient **pas** de l'API Judilibre, qui ne sert que l'ordre judiciaire —
+  mesuré le 10/09/2026 : `Value of the jurisdiction parameter must be in [cc,ca,tj,tcom]`. Sa
+  source est le fonds **JADE** de la DILA, un dump global et ses incréments quotidiens,
+  moissonnés par un collecteur distinct (`tools/build_jade_db.py`). **570 896 décisions au
+  11/09/2026**, de 1873 à 2026, texte intégral compris — le compte du jour se lit sur
+  `/api/status`. La jurisprudence **judiciaire** (Cour de cassation, cours d'appel) est livrée
+  et servie ; `tj` et `tcom` sont disponibles chez l'amont et non moissonnés
 - **v1.0.0** — Directives relues par un avocat praticien (l'intégration SelfAct est livrée depuis la v0.2.0)
 
 ---
