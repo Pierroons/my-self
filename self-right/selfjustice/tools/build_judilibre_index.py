@@ -56,7 +56,7 @@ DELAI = 1.2                # rythme poli ; la rafale courte est limitée à 20
 # donc PAS de justice administrative ici — `ce` y a été ajouté puis retiré le
 # même jour, après sept heures de refus. Le Conseil d'État, les CAA et les TA
 # relèvent du fonds JADE de la DILA (dumps sur echanges.dila.gouv.fr/OPENDATA/JADE/),
-# une autre source et un autre collecteur : cf la roadmap, jalon v0.4.0.
+# une autre source et un autre collecteur : `build_jade_db.py`, livré en v0.4.0.
 #
 # `tj` et `tcom` sont servis par l'amont et non moissonnés — première instance
 # judiciaire, à décider séparément.
@@ -268,11 +268,22 @@ def enregistrer(conn, decisions):
                 vus.add(nn)
                 nums.append((nn, did))
 
+    # 🔑 Les colonnes se nomment. `VALUES (?,?,…)` seul lie ce script au NOMBRE
+    # de colonnes de la table — or `decisions` est partagée : le collecteur JADE
+    # y a ajouté `texte` et `source` le 11/09/2026, et la moisson du 15 est
+    # morte au premier lot sur « table decisions has 15 columns but 13 values
+    # were supplied ». Nommer les colonnes rend l'écriture indifférente à toute
+    # colonne ajoutée par un autre, tant qu'elle a un défaut.
     conn.executemany(
-        "INSERT OR REPLACE INTO decisions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT OR REPLACE INTO decisions "
+        "(id, number, decision_date, jurisdiction, chamber, location, "
+        " formation, publication, solution, ecli, type, update_date, "
+        " date_suspecte) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
         lignes)
     conn.executemany(
-        "INSERT OR IGNORE INTO numeros VALUES (?,?)", nums)
+        "INSERT OR IGNORE INTO numeros (number_norm, decision_id) VALUES (?,?)",
+        nums)
     return len(lignes)
 
 
