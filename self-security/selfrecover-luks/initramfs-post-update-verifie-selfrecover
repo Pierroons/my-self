@@ -143,15 +143,30 @@ else
   else
     if ! unmkinitramfs "$INITRD" "$TMP" >/dev/null 2>&1; then
       SEL_SAUTE="extraction de l'image impossible"
-    elif [ ! -f "$TMP/etc/selfkeyguard/selfrecover_salt" ]; then
-      # La presence du sel est deja couverte par PIECES. Arriver ici veut dire
-      # que l'image extraite ne montre pas ce que lsinitramfs annonce : a
-      # signaler, pas a taire.
-      SEL_SAUTE="sel absent de l'image extraite"
     else
-      A=$(sha256sum < "$SKG/selfrecover_salt" | cut -d' ' -f1)
-      B=$(sha256sum < "$TMP/etc/selfkeyguard/selfrecover_salt" | cut -d' ' -f1)
-      [ "$A" = "$B" ] || SEL_ECART="oui"
+      # 🔑 `unmkinitramfs` n'extrait pas toujours a la racine. Une image portant
+      # un segment de microcode — le cas de toute machine Intel ou AMD — est
+      # eclatee en `early/`, `early2/`… et `main/` ; le systeme de fichiers de
+      # l'initramfs est alors sous `main/`, jamais a la racine.
+      #
+      # ⚠️ Un chemin en dur `$TMP/etc/...` ne trouve donc rien sur ces machines,
+      # et le controle rendait « sel absent de l'image extraite » — donc 0 — sur
+      # des images parfaitement saines. Mesure du 15/09/2026 : les quatre images
+      # d'un poste x86 en portaient toutes le sel sous `main/`, et le sel n'y a
+      # jamais ete verifie une seule fois. C'est le defaut que ce hook existe
+      # pour fermer, loge dans le hook — la seconde fois au meme endroit.
+      SEL_IMAGE=$(find "$TMP" -path '*/etc/selfkeyguard/selfrecover_salt' \
+                    -type f 2>/dev/null | head -1)
+      if [ -z "$SEL_IMAGE" ]; then
+        # La presence du sel est deja couverte par PIECES. Arriver ici veut dire
+        # que l'image extraite ne montre pas ce que lsinitramfs annonce : a
+        # signaler, pas a taire.
+        SEL_SAUTE="sel absent de l'image extraite"
+      else
+        A=$(sha256sum < "$SKG/selfrecover_salt" | cut -d' ' -f1)
+        B=$(sha256sum < "$SEL_IMAGE" | cut -d' ' -f1)
+        [ "$A" = "$B" ] || SEL_ECART="oui"
+      fi
     fi
     rm -rf "$TMP"
   fi

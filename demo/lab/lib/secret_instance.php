@@ -19,6 +19,27 @@ namespace Pierroons\MySelfLab;
 final class SecretInstance
 {
     /**
+     * Plancher d'un secret de déploiement, en caractères.
+     *
+     * 🔑 **Le contrôle appartient à la fonction, pas à l'appelant.** `$minLongueur`
+     * était laissé à la libre appréciation de chaque appel : les trois du lab
+     * demandaient 32, `AuditLog` de SelfDataGuard se contentait de 16, et l'adaptateur
+     * d'un intégrateur portait les deux valeurs dans deux fichiers voisins. Une même sorte de
+     * secret, trois planchers, et rien qui rende l'écart visible — un secret de 28
+     * caractères passait d'un côté et faisait rendre « Service mal configuré » de
+     * l'autre, sans que le message nomme la vraie cause (mesuré sur un déploiement
+     * intégrateur, 15/09/2026).
+     *
+     * `lire()` refuse donc un `$minLongueur` inférieur : un appelant peut être plus
+     * exigeant que le plancher, jamais moins. Le contrôle ne dépend plus de ce que
+     * l'appel demande : une garde qui vit chez l'appelant n'est pas une garde, c'est
+     * une convention — et une convention se contourne par le prochain appelant.
+     *
+     * `scripts/check-plancher-secret.sh` fait rougir la CI si une déclaration dérive.
+     */
+    public const PLANCHER = 32;
+
+    /**
      * Rend le secret nommé, en le créant à la première demande.
      *
      * @param string      $nom          nom du fichier dans `data/`, point compris
@@ -31,6 +52,12 @@ final class SecretInstance
      */
     public static function lire(string $nom, int $octets, int $minLongueur, ?string $env = null): string
     {
+        if ($minLongueur < self::PLANCHER) {
+            throw new \RuntimeException(
+                "Secret d'instance {$nom} : plancher demandé {$minLongueur}, minimum du projet "
+                . self::PLANCHER . ' — un appelant peut être plus exigeant, jamais moins.'
+            );
+        }
         $f = self::chemin($nom, $env);
 
         $dossier = dirname($f);
