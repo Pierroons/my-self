@@ -82,9 +82,59 @@ final class SuAudit
         return dirname(__DIR__, 3) . '/.su-state';
     }
 
+    /**
+     * Le secret est-il réellement posé pour ce régime ?
+     *
+     * Rendu à part pour qu'un appelant puisse refuser avec SON message — la console
+     * sait dire quoi faire, une exception générique non. Ce prédicat ne lève pas :
+     * c'est `secret()` qui tranche.
+     */
+    public static function secretPose(): bool
+    {
+        if (self::devMode()) {
+            return true;
+        }
+        $pose = getenv('SELFRECOVER_SU_AUDIT_SECRET') ?: '';
+
+        return $pose !== '' && $pose !== self::DEMO_SECRET;
+    }
+
+    /**
+     * 🔑 **Le refus appartient à la fonction, pas à ses appelants.**
+     *
+     * L'en-tête de cette classe promet que « les valeurs de démonstration sont
+     * refusées au démarrage » en régime strict. Le refus existait — mais dans
+     * `selfrecover-su`, c'est-à-dire chez UN appelant. Cette méthode, elle, rendait
+     * `DEMO_SECRET` sans un mot à qui la demandait autrement : un second outil, une
+     * page, un script d'exploitation auraient signé le journal d'audit avec une
+     * constante publiée dans le dépôt, et rien n'aurait rougi.
+     *
+     * Une garde placée chez l'appelant n'est pas une garde, c'est une convention —
+     * et une convention se contourne par le prochain appelant. Le constat vient de
+     * deux endroits le même jour : une route de promotion dont le contrôle vivait
+     * chez son appelant, et `SecretInstance::lire()`, corrigé dans le même lot.
+     *
+     * La console garde son propre refus : il arrive plus tôt et il dit quoi faire.
+     * Celui-ci est le filet, pour tous les autres.
+     *
+     * @throws RuntimeException en régime strict, quand rien n'est posé ou que la
+     *                          valeur de démonstration a été laissée en place
+     */
     public static function secret(): string
     {
-        return getenv('SELFRECOVER_SU_AUDIT_SECRET') ?: self::DEMO_SECRET;
+        if (self::devMode()) {
+            return getenv('SELFRECOVER_SU_AUDIT_SECRET') ?: self::DEMO_SECRET;
+        }
+        $pose = getenv('SELFRECOVER_SU_AUDIT_SECRET') ?: '';
+        if ($pose === '' || $pose === self::DEMO_SECRET) {
+            throw new RuntimeException(
+                'SELFRECOVER_SU_AUDIT_SECRET absent ou laissé à sa valeur de démonstration. '
+                . 'Le journal SU ne sera pas signé avec une constante publiée dans le dépôt. '
+                . 'Pose la variable à l\'installation, ou SELFRECOVER_SU_DEV=1 pour un banc.'
+            );
+        }
+
+        return $pose;
     }
 
     /**
@@ -121,15 +171,46 @@ final class SuAudit
         ];
     }
 
-    /** Toutes les entrées, dans l'ordre. Lecture intégrale : réservée à l'affichage et à la vérification. */
+    /**
+     * Toutes les entrées, dans l'ordre. Lecture intégrale : réservée à l'affichage et à la vérification.
+     *
+     * 🔑 **« Illisible » ne se rend jamais comme « aucun événement ».** Un journal qu'on
+     * ne peut pas ouvrir — répertoire non traversable, droits perdus, disque monté en
+     * lecture seule — rendait un tableau vide, indiscernable d'un journal sans entrée.
+     * Sur un journal d'audit, c'est le pire des faux verts : l'absence de preuve prend
+     * l'apparence de la preuve d'absence.
+     *
+     * Le cas du répertoire compte autant que celui du fichier : quand le dossier n'est
+     * pas traversable, `file_exists()` répond non pour un fichier qui est bien là.
+     * Rencontré le 15/09/2026 sur un déploiement intégrateur, un conteneur en uid 1000
+     * devant un répertoire `700 root` — le service annonçait « certificat absent ».
+     *
+     * @throws \RuntimeException quand le journal est illisible, ou que son absence ne
+     *                           peut pas être établie
+     */
     public static function read(): array
     {
         $path = self::logPath();
         if (!file_exists($path)) {
+            $dossier = dirname($path);
+            if (!is_dir($dossier) || !is_readable($dossier) || !is_executable($dossier)) {
+                throw new \RuntimeException(
+                    "Journal SU : impossible d'établir si {$path} existe — {$dossier} n'est pas "
+                    . 'traversable. Refus de répondre « aucune entrée » : illisible n\'est pas vide.'
+                );
+            }
+
             return [];
         }
+        $lignes = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if ($lignes === false) {
+            throw new \RuntimeException(
+                "Journal SU : {$path} est présent mais illisible. "
+                . 'Refus de répondre « aucune entrée » : illisible n\'est pas vide.'
+            );
+        }
         $out = [];
-        foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
+        foreach ($lignes as $line) {
             $d = json_decode($line, true);
             if ($d) {
                 $out[] = $d;

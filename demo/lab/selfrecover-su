@@ -312,7 +312,10 @@ if (!SuAudit::devMode()) {
     if (su_expected_secret() === SU_DEMO_SECRET) {
         su_fail('Secret SU = valeur de démonstration. Lance `change-passphrase`, ou pose un hash Argon2id.', 78);
     }
-    if (SuAudit::secret() === SuAudit::DEMO_SECRET) {
+    // `secretPose()` et non `secret()` : depuis que le refus est DANS la fonction,
+    // l'appeler ici ferait remonter une exception à la place de ce message-ci — qui
+    // dit, lui, quoi faire. Le prédicat laisse la console garder sa voix.
+    if (!SuAudit::secretPose()) {
         su_fail('SELFRECOVER_SU_AUDIT_SECRET absent ou laissé à sa valeur de démonstration — à fixer à l\'installation.', 78);
     }
     $state = dirname(su_secret_path());

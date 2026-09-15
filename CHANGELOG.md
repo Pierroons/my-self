@@ -10,6 +10,52 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfJustice v0.4.0 — la jurisprudence administrative, et ce qu'il a fallu défaire pour l'atteindre — 11 septembre 2026
+
+La roadmap réservait la v0.4.0 au Conseil d'État et aux juridictions administratives. Le chantier
+avait été annoncé comme tenant « à une ligne » : ajouter `ce` à la liste des juridictions du
+moissonneur Judilibre, et remoisonner. **C'était faux**, et l'affirmation venait d'une lecture du
+code du *client*, jamais d'un appel au *serveur*. L'amont a répondu :
+`Value of the jurisdiction parameter must be in [cc,ca,tj,tcom]`. Judilibre ne sert pas l'ordre
+administratif ; il n'a jamais eu ce paramètre. Sept heures de calcul y sont passées, sur un
+intervalle allant de l'an 100 à 2027 — sans erreur, sans code de sortie, un processus vivant qui
+paraissait travailler.
+
+Deux défauts en sont sortis, corrigés avant la fonctionnalité elle-même :
+
+- **Un paramètre refusé ne se découpe plus.** `appel()` rendait la même valeur pour « cette tranche
+  pèse trop lourd » — où couper la fenêtre en deux est la bonne réponse, et c'est ainsi qu'on
+  traverse 1,19 million de décisions à travers un guichet plafonné — et pour « ce paramètre
+  n'existe pas », où couper ne corrige rien : la moitié d'un intervalle est tout aussi invalide.
+  L'amont rend les deux en HTTP 400 ; la cause était effacée avant d'atteindre celui qui décide.
+  Un refus définitif lève désormais son exception propre. Le banc juge sur le **nombre d'appels** :
+  1 sur un paramètre refusé, plus de 340 000 sur un refus de volume.
+- **La couverture juridictionnelle se dérive de l'index**, au lieu d'être redéclarée à trois
+  endroits. Le guichet s'ouvre donc sur ce que la base contient réellement.
+
+**La source est le fonds JADE de la DILA** : un dump global et ses incréments quotidiens, sans API.
+Un collecteur distinct le lit (`tools/build_jade_db.py`), avec la robustesse prise sur le
+moissonneur Judilibre et non sur le collecteur LEGI — journal horodaté, marqueur de fraîcheur écrit
+seulement sur passage complet, code de sortie non nul sur moisson partielle. **Le global seul est un
+piège, et il avait déjà servi** : LEGI a été construit pendant treize mois sur un dump figé dont les
+diffs étaient téléchargés et jamais appliqués, servant honnêtement une date qui ne bougeait pas.
+`--depuis auto` refuse de s'arrêter tant qu'un incrément postérieur reste à appliquer.
+
+**La table des juridictions a été écrite sur l'inventaire du fonds entier, pas sur un échantillon.**
+Quatre incréments récents portaient dix libellés, tous dans la même graphie ; le fonds en porte
+**113** — `Conseil d'Etat` et `Conseil d'État`, `CAA de MARSEILLE` et `Cour Administrative d'Appel
+de Marseille`, des capitales, des accents absents. Une table bâtie sur l'échantillon aurait classé
+le présent et laissé soixante ans de décisions sous des juridictions fantômes, sans erreur ni
+total qui le montre. La normalisation **refuse** ce qu'elle ne reconnaît pas plutôt que de le ranger
+sous un code par défaut, et le jeu de test est l'inventaire lui-même.
+
+Mesuré sur l'instance après collecte : **570 896 décisions administratives**, texte intégral
+compris, 320 archives appliquées, 0 refusée, 0 illisible.
+
+⚠️ **Deux limites qui se disent plutôt qu'elles ne se devinent.** Le fonds ne porte des tribunaux
+administratifs qu'une sélection **arrêtée en 2009**, et la Cour de discipline budgétaire et
+financière s'arrête **en 2000** : un jugement de TA récent n'est pas dans la base. Et aucun
+incrément ne porte de liste de suppression — une décision retirée du fonds par la DILA y restera.
 ### SelfRecover fournit son schéma et l'implémentation de son propre contrat — 11 septembre 2026
 
 `StorageInterface` posait 39 questions et laissait chaque application y répondre. C'était
