@@ -147,6 +147,41 @@ jobs:
       - name: Garde-fou — la bibliothèque sur le schéma de bi-self-duo
         run: php demo/bi-self-duo/tests/equivalence_selfrecover.php
 
+      # Le schéma d'exemple et l'adaptateur fournis avec le contrat, pour une
+      # application qui n'a pas déjà ses tables. Quatrième porteur de
+      # `StorageInterface` — après les deux démos et le double en mémoire — et
+      # le seul à servir le facteur « cet appareil » sur un schéma qu'on livre.
+      - name: Garde-fou — le schéma d'exemple et son adaptateur PDO
+        run: |
+          # ⚠️ `pipefail` + `tee` plutôt qu'une capture nue : sous `bash -e`,
+          # `sortie=$(php …)` tue l'étape AVANT le `echo`, et la CI n'affiche
+          # alors aucune ligne du banc — donc pas laquelle a rougi.
+          set -o pipefail
+          sortie=$(php bi-self/selfrecover/tests/banc_stockage_pdo.php | tee /dev/stderr)
+          # ⚠️ Le banc MESURE ce qu'il a exercé (ReflectionClass + realpath), il
+          # ne l'écrit pas : un littéral s'imprimerait à l'identique même s'il
+          # chargeait un autre fichier, et ce contrôle ne vaudrait rien.
+          echo "$sortie" | grep -qE '^▸ implémentation exercée : bi-self/selfrecover/src/Storage/StockagePdo\.php$' \
+            || { echo "::error::le banc n'a pas exercé src/Storage/StockagePdo.php"; exit 1; }
+          echo "$sortie" | grep -qE '^▸ schéma exercé          : bi-self/selfrecover/schema\.sql$' \
+            || { echo "::error::le banc n'a pas exercé schema.sql"; exit 1; }
+          # ⚠️ Le code de sortie du banc vient de son propre verdict : falsifier
+          # ce verdict le rend muet, et aucune garde INTERNE ne peut l'attraper —
+          # mesuré au canari. Ce grep est la seconde source, et elle est dehors.
+          if echo "$sortie" | grep -q '❌'; then
+            echo "::error::le banc a affiché au moins un échec tout en sortant à 0"; exit 1
+          fi
+          # ⚠️ Les greps ci-dessus prouvent que la classe se RÉSOUT au bon chemin,
+          # pas qu'un contrôle l'a exercée : mesuré au canari, un banc à zéro
+          # contrôle les passe tous les trois. Le plancher ci-dessous est le seul
+          # à distinguer « tout est vert » de « rien n'a tourné », et il vit
+          # dehors parce que celui du banc se contourne depuis l'intérieur.
+          passes=$(echo "$sortie" | sed -nE 's/^✅ ([0-9]+) contrôle\(s\) passé\(s\).*/\1/p')
+          if [ -z "$passes" ] || [ "$passes" -lt 140 ]; then
+            echo "::error::le banc n'a rendu que « ${passes:-aucun} » contrôle(s) — il en faut au moins 140"
+            exit 1
+          fi
+
       - name: Garde-fou — déploiement SelfJustice
         run: bash self-right/selfjustice/tests/test_deploy.sh
 
@@ -268,6 +303,38 @@ jobs:
           # sens : il reconnaît le binaire C, il refuse la ligne `python3 …`.
           echo "$sortie" | grep -qE '▸ dérivateur : [^ ]*/selfrecover_derive$' \
             || { echo "::error::le banc n'a pas exercé le dérivateur C"; exit 1; }
+
+      - name: Garde-fou — le contrôle d'initramfs vise l'image que l'amorceur CHARGE
+        run: |
+          # Le 13/09/2026 sur RPi4 : image générée complète, image d'amorçage sans
+          # une seule pièce SelfRecover, et le contrôle affichait « complet » sur une
+          # machine non amorçable. Ce banc replante ce cas et quatre voisins.
+          # Il ne demande ni root ni initramfs réel : `lsinitramfs` est bouchonné.
+          sortie=$(bash self-security/selfrecover-luks/tests/test_garde_fou_image_chargee.sh)
+          echo "$sortie"
+          # ⚠️ Le banc doit avoir joué ses 8 cas. Sans ce contrôle, un banc qui
+          # sortirait tôt — bouchon non exécutable, mktemp en échec — rendrait le
+          # même vert en n'ayant rien éprouvé.
+          echo "$sortie" | grep -qE '^✅ 8/8 ' \
+            || { echo "::error::le banc du garde-fou n'a pas joué ses 8 cas"; exit 1; }
+
+      - name: Canari — le banc du garde-fou rougit quand le correctif disparaît
+        run: |
+          # Un banc qu'on n'a jamais fait échouer ne se distingue pas d'un banc qui
+          # ne mesure rien : les deux rendent vert. On neutralise ici la seule
+          # instruction qui résout l'image chargée, et on exige que le banc rougisse.
+          G=self-security/selfrecover-luks/initramfs-post-update-verifie-selfrecover
+          sed 's|^  \[ -n "\$_NOM" \] && CHARGEE="\$FW/\$_NOM"|  : # neutralisé|' \
+            "$G" > /tmp/garde-neutralise
+          chmod 0755 /tmp/garde-neutralise
+          grep -q '# neutralisé' /tmp/garde-neutralise \
+            || { echo "::error::la neutralisation n'a rien changé — le canari ne prouve rien"; exit 1; }
+          if GARDE=/tmp/garde-neutralise \
+             bash self-security/selfrecover-luks/tests/test_garde_fou_image_chargee.sh; then
+            echo "::error::le banc reste VERT sans le correctif — il ne mesure pas ce qu'il annonce"
+            exit 1
+          fi
+          echo "✓ le banc rougit quand la résolution de l'image chargée disparaît"
 
       - name: Garde-fou — coût constant du hash factice (bi-self-duo)
         run: php demo/bi-self-duo/tests/sanity_timing.php

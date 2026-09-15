@@ -15,10 +15,45 @@
 set -e
 VER="${1:?version attendue}"
 INITRD="${2:-/boot/initrd.img-$VER}"
-SKG=/etc/selfkeyguard
+# Les trois racines sont surchargeables par l'environnement, avec les chemins
+# reels par defaut. Sans cela ce controle n'etait epprouvable que sur une machine
+# amorcable — c'est-a-dire nulle part, et c'est pourquoi il a pu viser la mauvaise
+# cible pendant des mois sans que personne le voie. Le banc tests/ s'en sert pour
+# le faire ROUGIR sur le cas du 13/09.
+SKG="${SKG:-/etc/selfkeyguard}"
+CRYPTTAB="${CRYPTTAB:-/etc/crypttab}"
+FW="${FW:-/boot/firmware}"
 
 [ -f "$INITRD" ] || exit 0
-grep -q "keyscript=.*selfrecover" /etc/crypttab 2>/dev/null || exit 0   # module non actif
+grep -q "keyscript=.*selfrecover" "$CRYPTTAB" 2>/dev/null || exit 0   # module non actif
+
+# --- QUELLE image l'amorceur charge-t-il vraiment ? ---
+#
+# Ce script ne verifiait que $INITRD, c'est-a-dire l'image qu'update-initramfs
+# VIENT DE PRODUIRE. Sur x86+GRUB les deux coincident, donc il n'a jamais pu se
+# tromper — et personne ne pouvait voir qu'il visait la mauvaise cible.
+#
+# Sur un Raspberry Pi, l'amorceur lit config.txt dans la partition firmware et y
+# charge une AUTRE copie. Le 13/09/2026 la machine a demarre sur une image sans
+# une seule piece SelfRecover, pendant que ce controle affichait « complet » :
+# l'image a jour n'avait pas ete copiee, et raspi-firmware avait promu une
+# sauvegarde .bak.* du module en image d'amorcage. Le filet etait devenu la cible.
+#
+# 🔑 Un controle qui ne vise pas la bonne cible est pire qu'une absence de
+#    controle : il rassure.
+#
+# L'ordonnancement le permet : dans /etc/initramfs/post-update.d/,
+# z50-raspi-firmware s'execute AVANT zz-verifie-selfrecover (ordre lexical), donc
+# la partition d'amorcage est deja a jour quand ce controle tourne.
+# ($FW est declare plus haut, surchargeable pour le banc.)
+CHARGEE=""
+if [ -r "$FW/config.txt" ]; then
+  # Derniere ligne gagnante : config.txt se lit de haut en bas, une directive
+  # repetee ecrase la precedente.
+  _NOM=$(sed -n 's/^[[:space:]]*initramfs[[:space:]]\{1,\}\([^[:space:]]\{1,\}\).*/\1/p' \
+         "$FW/config.txt" | tail -n 1)
+  [ -n "$_NOM" ] && CHARGEE="$FW/$_NOM"
+fi
 
 # AVERTISSEMENT — NE PAS ajouter `set -o pipefail` a ce script.
 # La boucle ci-dessous fait `lsinitramfs | grep -q`. Quand grep -q trouve, il
@@ -33,20 +68,57 @@ libargon2:libargon2
 libgcc_s:libgcc_s
 usr/sbin/cryptsetup:cryptsetup"
 
-MANQUE=""
-PRESENTES=""
-OLDIFS=$IFS; IFS='
+# Renseigne ABSENTES et TROUVEES pour l'image passee en argument. Une fonction
+# et non deux boucles : elle sert a l'image generee ET a l'image chargee, et deux
+# inventaires recopies divergeraient a la premiere piece ajoutee.
+inventorier() {
+  _img="$1"; ABSENTES=""; TROUVEES=""
+  _oldifs=$IFS; IFS='
 '
-for piece in $PIECES; do
-  motif="${piece%%:*}"; nom="${piece#*:}"
-  if lsinitramfs "$INITRD" 2>/dev/null | grep -q "$motif"; then
-    PRESENTES="$PRESENTES, $nom"
+  for _p in $PIECES; do
+    _motif="${_p%%:*}"; _nom="${_p#*:}"
+    if lsinitramfs "$_img" 2>/dev/null | grep -q "$_motif"; then
+      TROUVEES="$TROUVEES, $_nom"
+    else
+      ABSENTES="$ABSENTES
+    - $_nom"
+    fi
+  done
+  IFS=$_oldifs
+}
+
+inventorier "$INITRD"
+MANQUE="$ABSENTES"
+PRESENTES="$TROUVEES"
+
+# --- l'image chargee, quand ce n'est pas celle qu'on vient de produire ---
+ALERTE_CHARGEE=""
+if [ -n "$CHARGEE" ] && [ "$CHARGEE" != "$INITRD" ]; then
+  if [ ! -f "$CHARGEE" ]; then
+    ALERTE_CHARGEE="config.txt designe $CHARGEE, qui n'existe pas."
   else
-    MANQUE="$MANQUE
-    - $nom"
+    case "${CHARGEE##*/}" in
+      *.bak.*|*.pre-selfrecover*)
+        ALERTE_CHARGEE="l'amorceur charge une SAUVEGARDE du module ($CHARGEE),
+    pas l'image courante. Un filet promu en cible : sors les .bak.* de /boot." ;;
+    esac
+    # Comparaison des dates par stat et non par `-nt` : l'operateur marche sous
+    # dash mais n'est pas defini par POSIX (shellcheck SC3013), et ce script est
+    # en /bin/sh. Une image chargee plus ancienne que celle qu'on vient de
+    # produire veut dire que la copie vers la partition d'amorcage n'a pas eu lieu.
+    _T_GEN=$(stat -c %Y "$INITRD" 2>/dev/null || echo 0)
+    _T_CHG=$(stat -c %Y "$CHARGEE" 2>/dev/null || echo 0)
+    if [ -z "$ALERTE_CHARGEE" ] && [ "$_T_GEN" -gt "$_T_CHG" ]; then
+      ALERTE_CHARGEE="l'image chargee ($CHARGEE) est PLUS ANCIENNE que celle qui
+    vient d'etre generee ($INITRD) : la copie vers la partition d'amorcage n'a pas eu lieu."
+    fi
+    if [ -z "$ALERTE_CHARGEE" ]; then
+      inventorier "$CHARGEE"
+      [ -n "$ABSENTES" ] && ALERTE_CHARGEE="pieces absentes de l'image CHARGEE
+    ($CHARGEE) — l'image generee, elle, est complete :$ABSENTES"
+    fi
   fi
-done
-IFS=$OLDIFS
+fi
 
 # Le sel embarque doit etre CELUI DU DISQUE. Un sel present mais perime derive une
 # autre cle : le volume ne s'ouvre plus, et un controle de simple presence aurait
@@ -85,7 +157,7 @@ else
   fi
 fi
 
-if [ -n "$MANQUE" ] || [ -n "$SEL_ECART" ]; then
+if [ -n "$MANQUE" ] || [ -n "$SEL_ECART" ] || [ -n "$ALERTE_CHARGEE" ]; then
   cat >&2 <<MSG
 
   ############################################################
@@ -94,7 +166,9 @@ if [ -n "$MANQUE" ] || [ -n "$SEL_ECART" ]; then
 
   Image concernee : $INITRD
 MSG
+  [ -n "$CHARGEE" ] && printf '  Image chargee par l amorceur : %s\n' "$CHARGEE" >&2
   [ -n "$MANQUE" ] && printf '\n  Pieces absentes :%s\n' "$MANQUE" >&2
+  [ -n "$ALERTE_CHARGEE" ] && printf '\n  IMAGE D AMORCAGE : %s\n' "$ALERTE_CHARGEE" >&2
   [ -n "$SEL_ECART" ] && printf '\n  Le sel embarque DIFFERE de %s/selfrecover_salt.\n  La derivation ne reproduira pas la cle du slot.\n' "$SKG" >&2
   cat >&2 <<MSG
 
@@ -117,14 +191,30 @@ fi
 
 # La liste vient de la boucle, pas d'une seconde ecriture a la main : ajouter une
 # piece ci-dessus suffit, le message suit.
+# La cible controlee est NOMMEE — dans les DEUX branches ci-dessous. Dire
+# « complet » sans dire de quelle image on parle est precisement ce qui a rassure
+# a tort le 13/09 ; le dire seulement quand le sel a pu etre verifie laisserait le
+# meme trou ouvert sur toute machine sans unmkinitramfs. Le troisieme cas ne se
+# maquille pas en succes : quand la cible d'amorcage n'est pas resolue, ce script
+# ne l'a pas verifiee, et il le dit au lieu de laisser croire a une concordance.
+if [ -z "$CHARGEE" ]; then
+  CIBLE="cible d amorcage non resolue (pas de $FW/config.txt) : seule l image generee est verifiee."
+elif [ "$CHARGEE" = "$INITRD" ]; then
+  CIBLE="l amorceur charge cette image meme ($CHARGEE)."
+else
+  CIBLE="image chargee par l amorceur verifiee et concordante : $CHARGEE"
+fi
+
 if [ -n "$SEL_SAUTE" ]; then
   # Pas d'exit 1 : une capacite manquante n'est pas une image cassee, et faire
   # echouer update-initramfs pousserait a desinstaller le hook. Mais la sortie
   # part sur stderr et ne dit pas "complet" — elle nomme ce qui reste a etablir.
   printf 'SelfRecover-LUKS : initramfs %s — pieces presentes (%s).\n' \
          "$VER" "${PRESENTES#, }" >&2
+  printf '  %s\n' "$CIBLE" >&2
   printf '  SEL NON VERIFIE : %s. La concordance du sel embarque reste a etablir.\n' \
          "$SEL_SAUTE" >&2
 else
   echo "SelfRecover-LUKS : initramfs $VER complet (${PRESENTES#, })."
+  echo "  $CIBLE"
 fi
