@@ -4,7 +4,10 @@
 > récupération**, à distance dès le démarrage, sans cloud ni tiers de confiance.
 > Pilier **Self-Security** de l'écosystème MySelf — Licence **AGPL-3.0-or-later**.
 
-Ce guide reproduit une installation **validée sur serveur LNMP Debian 13 Trixie**. Il n'invente aucune
+Ce guide reproduit une installation **validée sur serveur LNMP Debian 13 Trixie**, puis sur
+une racine en **LVM chiffré** — un seul volume LUKS contenant le groupe de volumes, ce que
+l'installateur Debian produit en mode assisté. Dans ce cas `ROOT_DEV` est la **partition
+LUKS** (ex. `/dev/nvme0n1p3`), jamais le volume logique qui porte `/`. Il n'invente aucune
 cryptographie : il assemble LUKS2, Argon2id et un SSH d'amorçage (dropbear) en un protocole
 cohérent et auto-hébergé.
 
@@ -333,21 +336,61 @@ echo 'DROPBEAR_OPTIONS="-p 2222 -s -j -k -I 300"' > /etc/dropbear/initramfs/drop
 > démarrage abandonne avant que tu aies pu te connecter et saisir la passphrase. Ajoute un
 > **délai d'attente** :
 >
+> **Le fichier qui porte ce délai dépend de ton amorceur.** `install.sh` détecte lequel ;
+> à la main, choisis la bonne colonne.
+>
 > ```bash
-> # /etc/default/grub : ajoute rootdelay=60 à GRUB_CMDLINE_LINUX_DEFAULT, puis update-grub
+> # ── amorceur GRUB (x86, la plupart des serveurs) ──
 > sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"$/GRUB_CMDLINE_LINUX_DEFAULT="\1 rootdelay=60"/' /etc/default/grub
 > update-grub
 > ```
+>
+> ```bash
+> # ── Raspberry Pi ──
+> # ⚠️ N'écris PAS dans /boot/firmware/cmdline.txt : raspi-firmware le RÉGÉNÈRE à
+> # chaque mise à jour de noyau et à chaque update-initramfs. Ta ligne tiendrait
+> # jusqu'au prochain noyau, puis disparaîtrait sans un mot — sur la seule voie
+> # d'entrée d'une machine sans écran.
+> # La source durable, documentée par /etc/default/raspi-firmware lui-même :
+> echo 'rootdelay=60' >> /etc/default/raspi-extra-cmdline   # une seule ligne, aucun commentaire
+> update-initramfs -u
+> grep rootdelay /boot/firmware/cmdline.txt                 # MESURE À L'ARRIVÉE : il doit y être
+> ```
+>
+> La dernière ligne n'est pas décorative : c'est `cmdline.txt` que l'amorceur lit, pas le
+> fichier que tu viens d'écrire.
 
-### 8c. (Optionnel) Prompt explicite côté dropbear — **parcours SERVEUR**
+### 8c. Dire QUELLE passphrase l'invite attend — **parcours SERVEUR**
 
-Par défaut `cryptroot-unlock` affiche « Please unlock disk ». Pour annoncer la recover :
+Ce n'est pas cosmétique. Deux invites coexistent, et aucune ne nomme la phrase attendue :
+le keyscript écrit `Passphrase Recover-LUKS (nom) :` sur `/dev/console` — que **personne ne
+voit sur une machine sans écran** — tandis que dropbear te présente le générique
+`Please unlock disk …` de `cryptroot-unlock`. L'opérateur doit deviner laquelle des deux
+phrases taper, et **un essai raté ressemble à une panne du module**.
+
+`install.sh` pose ce message automatiquement quand `DROPBEAR=oui`. À la main :
 
 ```bash
-sed -i 's|Please unlock disk $CRYPTTAB_NAME: |Passphrase Recover-LUKS ($CRYPTTAB_NAME) : |' \
-  /usr/share/cryptsetup/initramfs/bin/cryptroot-unlock
-# Cosmétique. Réécrit par une mise à jour du paquet cryptsetup -> à ré-appliquer le cas échéant.
+install -d -m 0755 /etc/initramfs-tools/etc
+cat > /etc/initramfs-tools/etc/motd <<'EOF'
+
+  SelfRecover-LUKS — ce disque attend la passphrase RECOVER.
+
+  Pour ouvrir la racine (et les autres volumes) :  cryptroot-unlock
+  À l'invite, saisis la passphrase RECOVER, pas la passphrase native du disque.
+
+EOF
+update-initramfs -u
 ```
+
+> ⚠️ **Ce fichier REMPLACE le message par défaut, il ne s'y ajoute pas.** Le hook
+> `/usr/share/initramfs-tools/hooks/cryptroot-unlock` teste son existence en `if/else` :
+> s'il est là, la phrase « run `cryptroot-unlock` » n'est plus affichée. Ton message doit
+> donc **redire la commande**, sinon tu gagnes une précision en perdant l'instruction.
+>
+> Cette voie remplace l'ancienne consigne, qui patchait `cryptroot-unlock` par `sed` : le
+> binaire est réécrit à chaque mise à jour du paquet `cryptsetup`, le fichier de
+> configuration non.
 
 ## 9. Volumes secondaires — cascade par fichier-clé — **parcours SERVEUR**
 
@@ -387,8 +430,16 @@ cryptsetup luksAddKey "$DATA_DEV" /etc/keys/<data>.key
 
 ## 10. Régénérer l'image d'amorçage (avec filet)
 
+> ⚠️ **Le filet ne reste pas dans `/boot/`.** Sur un Raspberry Pi, `raspi-firmware` balaie
+> `/boot` et copie les images vers la partition d'amorçage : le 13/09/2026 il a promu une de
+> ces sauvegardes `.bak.*` en **image d'amorçage**, et la machine a démarré sur un initrd sans
+> une seule pièce SelfRecover. La passphrase Recover n'ouvrait rien, la native oui — et le
+> contrôle de l'étape 11 affichait « complet », parce qu'il regardait l'image *générée*.
+> Le filet devenu la cible. Range-le hors du chemin de l'amorceur.
+
 ```bash
-cp -a /boot/initrd.img-$(uname -r) /boot/initrd.img-$(uname -r).bak    # FILET : retour arrière
+install -d -m 0700 /root/selfrecover-filets                            # hors du chemin de l'amorceur
+cp -a /boot/initrd.img-$(uname -r) /root/selfrecover-filets/           # FILET : retour arrière
 update-initramfs -u
 
 # vérifie que tout est embarqué :
@@ -474,6 +525,19 @@ périmé dérive une autre clé, et un contrôle de simple présence afficherait
 marche à suivre**, et reste inerte tant que `keyscript=` n'est pas dans
 `/etc/crypttab` : tu peux l'installer avant même d'avoir branché le module.
 
+🔑 **Et il vérifie l'image que l'amorceur CHARGE, pas seulement celle qu'il vient de
+produire.** Sur x86+GRUB les deux coïncident, et le contrôle n'a jamais pu se tromper.
+Sur un Raspberry Pi, l'amorceur lit `initramfs …` dans `/boot/firmware/config.txt` et
+charge une **autre copie** : le 13/09/2026 la machine a démarré sur une image sans une
+seule pièce SelfRecover pendant que le contrôle affichait « complet ». Il refuse donc
+maintenant trois situations de plus — l'image chargée est une **sauvegarde `.bak.*` du
+module** promue en cible, elle est **plus ancienne** que celle qui vient d'être générée,
+ou il lui **manque des pièces** que la générée possède. Quand la cible d'amorçage n'est
+pas résolvable, il le dit au lieu de laisser croire qu'il l'a vérifiée.
+
+*Un contrôle qui ne vise pas la bonne cible est pire qu'une absence de contrôle : il
+rassure.*
+
 Éprouve-le dans les deux sens — un garde-fou qu'on n'a jamais vu refuser ne prouve
 rien :
 
@@ -521,10 +585,11 @@ clavier sur un poste, dans le shell dropbear sur un serveur.
 cryptsetup open "$ROOT_DEV" <root_name>   # -> passphrase native -> exit -> le boot continue
 ```
 
-En dernier recours : remets l'image `.bak` (`mv …​.bak …`) depuis un live/secours.
+En dernier recours : remets une image du filet (`/root/selfrecover-filets/`) depuis un
+live/secours.
 
 > **Prépare ce filet avant d'en avoir besoin.** Sur un poste, une entrée de secours
-> dans le chargeur d'amorçage, pointant sur l'initrd `.bak`, évite d'aller chercher
+> dans le chargeur d'amorçage, pointant sur une image du filet, évite d'aller chercher
 > une clé USB live à froid. Elle fige en revanche une version de noyau : à retirer
 > après la première mise à jour, sinon elle devient trompeuse plutôt qu'utile.
 
@@ -627,6 +692,6 @@ ressusciterait l'ancien slot brut si on la restaurait (§4).
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS |
 | `selfrecover_derive.py` | implémentation de référence (Python) pour usage userspace |
 | `genere-passphrase.py` | tire une passphrase diceware et affiche les deux formes avec leur longueur (§5) |
-| `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces **et le sel** après chaque génération d'initramfs (§11) |
+| `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces, **le sel**, et **l'image que l'amorceur charge** après chaque génération d'initramfs (§11) |
 
 *SelfRecover-LUKS — MySelf / Self-Security — AGPL-3.0-or-later.*
