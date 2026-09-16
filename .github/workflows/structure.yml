@@ -357,6 +357,46 @@ jobs:
                  exit 1; }
           echo "✓ le banc rougit, et il rougit SUR LE CAS DU 13/09 — pas sur un contretemps"
 
+      - name: Garde-fou — les secrets irréversibles ont une sauvegarde UTILISABLE
+        run: |
+          # Le 15/09/2026, une machine passée en production publique avait sa seule
+          # copie d'en-tête LUKS à l'intérieur du volume qu'elle sert à ouvrir.
+          # INSTALL.md §4 le proscrivait déjà, mot pour mot : c'est un trou
+          # d'exécution, pas de documentation. Ce banc éprouve le contrôle qui le
+          # ferme — conteneur LUKS de 32 Mo sur fichier, ni root ni device-mapper.
+          sortie=$(bash self-security/selfrecover-luks/tests/test_sauvegardes.sh)
+          echo "$sortie"
+          # ⚠️ Le compte est écrit en dur : un `N/N` dirait que les cas joués ont
+          # réussi, jamais qu'aucun n'a disparu.
+          echo "$sortie" | grep -qE '^✅ 11/11 ' \
+            || { echo "::error::le banc des sauvegardes n'a pas joué ses 11 cas"; exit 1; }
+
+      - name: Canari — le contrôle des sauvegardes rougit quand il cesse de mordre
+        run: |
+          # Le cas qui compte le plus est la sauvegarde PÉRIMÉE : elle existe, elle se
+          # lit, elle appartient au bon volume — et elle ressuscite un slot révoqué.
+          # C'est celui-là qu'on neutralise.
+          V=self-security/selfrecover-luks/verifie-sauvegardes.sh
+          sed 's|^\[ "\$N_DISQUE" = "\$N_SAUVE" \] \\|if false; then : ; fi; [ 1 = 1 ] \\|' \
+            "$V" > /tmp/verif-neutralise.sh
+          chmod 0755 /tmp/verif-neutralise.sh
+          grep -q 'if false; then' /tmp/verif-neutralise.sh \
+            || { echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          bash -n /tmp/verif-neutralise.sh \
+            || { echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(VERIF=/tmp/verif-neutralise.sh \
+               bash self-security/selfrecover-luks/tests/test_sauvegardes.sh 2>&1); then
+            echo "$sortie"
+            echo "::error::le banc reste VERT sans le contrôle de péremption"
+            exit 1
+          fi
+          # Rouge — mais SUR QUEL CAS ? Un banc qui n'aurait pas démarré rougirait aussi.
+          echo "$sortie" | grep -q 'PÉRIMÉE.*ACCEPTE' \
+            || { echo "$sortie"
+                 echo "::error::rouge, mais pas sur le cas de la sauvegarde périmée"
+                 exit 1; }
+          echo "✓ le banc rougit, et sur le cas de la sauvegarde périmée"
+
       - name: Garde-fou — un seul plancher pour les secrets de déploiement
         run: bash scripts/check-plancher-secret.sh
 

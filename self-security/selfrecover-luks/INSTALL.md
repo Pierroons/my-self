@@ -131,8 +131,14 @@ chmod 400 entete-luks-*.img
 Vérifie que la sauvegarde porte bien les slots attendus :
 
 ```bash
-cryptsetup luksDump --header entete-luks-*.img | grep -cE "^\s+[0-9]+: luks2"
+cryptsetup luksDump entete-luks-*.img | grep -cE "^\s+[0-9]+: luks2"
 ```
+
+> ⚠️ **`luksDump --header <fichier>` n'existe pas.** cryptsetup 2.7.5 rend une erreur
+> d'usage : l'option `--header` désigne un en-tête *détaché* accompagnant un périphérique,
+> pas un fichier à lire seul. La forme qui lit une sauvegarde est `luksDump <fichier>`,
+> tout court. Ce guide portait la mauvaise pendant des mois — l'opérateur à qui on
+> demandait de vérifier sa sauvegarde voyait une erreur, et passait.
 
 Trois choses à savoir, et elles comptent autant que la commande :
 
@@ -146,6 +152,33 @@ Trois choses à savoir, et elles comptent autant que la commande :
    Refaire la sauvegarde après chaque changement de slot, et détruire l'ancienne.
 
 ---
+
+### Ces trois règles sont désormais vérifiées, pas seulement écrites
+
+Elles étaient déjà là, et une machine passée en production les a quand même violées :
+sa seule copie d'en-tête vivait **dans le volume qu'elle sert à ouvrir**. Un
+avertissement écrit qui ne déclenche rien ne vaut pas mieux qu'un avertissement absent.
+
+```bash
+ENTETE_SAUVEGARDE=/media/cle-usb/entete-luks-20260916.img \
+SEL_SAUVEGARDE=/media/cle-usb/selfrecover_salt \
+  ./verifie-sauvegardes.sh "$ROOT_DEV"
+```
+
+`install.sh` le lance **avant l'étape 5** — le premier geste irréversible — et refuse
+d'aller plus loin s'il échoue. Il vérifie ce qui est mesurable : la sauvegarde se lit,
+elle appartient à **ce** volume (même UUID), elle n'est **pas périmée** (même nombre de
+slots), et son support ne descend pas du volume racine ni d'une mémoire volatile.
+
+> ⚠️ **Ce qu'aucun script ne peut mesurer : « hors du bâtiment ».** Se contenter de
+> « un fichier existe » serait satisfait par une copie posée sur le volume chiffré —
+> précisément le défaut. Le contrôle ne remplace donc pas le geste, il empêche
+> seulement de croire qu'on l'a fait.
+
+**Relance-le après chaque changement de slot** : c'est ce qui périme une sauvegarde, et
+rien d'autre ne te le dira. Si tu assumes le risque, `J_ACCEPTE_SANS_SAUVEGARDE=oui`
+laisse passer — et inscrit ce choix dans `$SKG/renoncements.log`, parce qu'une alarme
+sans porte de sortie se contourne en éditant le script, sans laisser de trace.
 
 ## 5. Ajouter le slot « récupération » sur chaque volume
 

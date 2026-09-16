@@ -25,6 +25,11 @@ DROPBEAR="${DROPBEAR:-auto}"        # auto | oui | non — SSH d'amorçage.
                                     # avant le déverrouillage : il n'apporte rien au clavier.
 ROOTDELAY="${ROOTDELAY:-60}"
 SKG="${SKG:-/etc/selfkeyguard}"
+# Les deux secrets dont la perte est IRRÉVERSIBLE (§3 bis). Chemins de leurs copies,
+# à donner explicitement : les chercher tout seul reviendrait à se satisfaire d'une
+# copie posée sur le volume chiffré, ce qui est exactement le défaut à fermer.
+ENTETE_SAUVEGARDE="${ENTETE_SAUVEGARDE:-}"   # sauvegarde de l'en-tête LUKS (§4)
+SEL_SAUVEGARDE="${SEL_SAUVEGARDE:-}"         # copie de selfrecover_salt (§13)
 # ===================================================================
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -49,7 +54,8 @@ say "0. Vérifications"
 [ "$(id -u)" = 0 ] || die "À lancer en root."
 [ -n "$ROOT_DEV" ] || die "ROOT_DEV non défini (édite l'en-tête du script)."
 for f in selfrecover_derive.c selfrecover-keyscript.sh initramfs-hook-selfrecover \
-         setup-add-selfrecover-slot.sh initramfs-post-update-verifie-selfrecover; do
+         setup-add-selfrecover-slot.sh initramfs-post-update-verifie-selfrecover \
+         verifie-sauvegardes.sh; do
   [ -f "$HERE/$f" ] || die "Fichier manquant dans le dépôt : $f"
 done
 command -v cryptsetup >/dev/null || die "cryptsetup absent."
@@ -148,6 +154,50 @@ say "3. Keyscript + hook initramfs"
 install -m 0755 "$HERE/selfrecover-keyscript.sh"   "$SKG/selfrecover-keyscript.sh"
 install -m 0755 "$HERE/initramfs-hook-selfrecover" /etc/initramfs-tools/hooks/selfrecover
 ok "keyscript + hook (avec fix libgcc) déployés"
+
+# ---------- 3 bis. Les deux secrets irréversibles sont-ils hors de cette machine ? ----------
+say "3 bis. Sauvegardes des secrets irréversibles — contrôle bloquant"
+# 🔑 Ce contrôle existe parce que la consigne ne suffisait pas. INSTALL.md §4 dit
+# depuis toujours qu'une sauvegarde d'en-tête rangée sur le volume chiffré ne sert à
+# rien — « au moment où on en a besoin, on ne peut plus la lire ». Le 15/09/2026, une
+# machine devenue production publique avait sa SEULE copie d'en-tête à l'intérieur du
+# volume qu'elle sert à ouvrir. Un avertissement écrit qui ne déclenche rien ne vaut
+# pas mieux qu'un avertissement absent.
+#
+# ⚠️ Ce qu'un script NE PEUT PAS mesurer, c'est « hors de la machine ». Se contenter
+# de « un fichier de sauvegarde existe » serait satisfait par une copie posée sur le
+# volume chiffré — précisément le défaut. On aurait remplacé un avertissement juste
+# par une FAUSSE ASSURANCE, ce qui est pire. Le contrôle porte donc uniquement sur ce
+# qui est mesurable ici :
+#   1. la sauvegarde se lit, et c'est bien un en-tête LUKS ;
+#   2. elle appartient à CE volume — même UUID ;
+#   3. elle n'est pas périmée — même nombre de slots ;
+#   4. son support ne descend pas du volume qu'on va ouvrir, et n'est pas volatil.
+# Emporter la copie hors du bâtiment reste un geste humain, que le §4 décrit.
+#
+# Placé ICI, juste avant l'étape 4 : c'est le premier geste irréversible, celui qui
+# écrit dans l'en-tête. Refuser après laisserait la machine à moitié configurée —
+# ce qu'on s'est déjà interdit sur le rootdelay.
+
+if [ "${J_ACCEPTE_SANS_SAUVEGARDE:-non}" = oui ]; then
+  # Une alarme sans porte de sortie se contourne en editant le script, et ce
+  # contournement-la ne laisse aucune trace. Celle-ci se nomme et s'inscrit.
+  warn "CONTROLE DESARME par J_ACCEPTE_SANS_SAUVEGARDE=oui."
+  warn "Perdre l'en-tete LUKS ou le sel rend ce volume DEFINITIVEMENT inouvrable,"
+  warn "y compris avec la bonne passphrase. Aucune recuperation n'existe."
+  install -d -m 0755 "$SKG"
+  printf '%s  install.sh  controle des sauvegardes desarme (J_ACCEPTE_SANS_SAUVEGARDE=oui)\n' \
+    "$(date -Is)" >> "$SKG/renoncements.log"
+  ok "choix inscrit dans $SKG/renoncements.log - trace, pas invisible"
+else
+  # Le controle vit dans son propre script : il est ainsi eprouvable hors d'une vraie
+  # machine (tests/test_sauvegardes.sh), et relancable quand on veut - chaque ajout de
+  # slot perime la sauvegarde d'en-tete.
+  ENTETE_SAUVEGARDE="$ENTETE_SAUVEGARDE" SEL_SAUVEGARDE="$SEL_SAUVEGARDE" \
+    bash "$HERE/verifie-sauvegardes.sh" "$ROOT_DEV" "$SKG" \
+    || die "sauvegardes des secrets irreversibles : voir ci-dessus.
+     Corrige, ou assume le risque par J_ACCEPTE_SANS_SAUVEGARDE=oui (le choix est journalise)."
+fi
 
 # ---------- 4. Slots recover ----------
 say "4. Ajout du slot recover (autorisé par une passphrase EXISTANTE)"
