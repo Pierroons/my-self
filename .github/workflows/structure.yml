@@ -445,7 +445,38 @@ jobs:
       # (contrôle 4) et le profil de hachage du secret SuperUser (contrôle 8).
       # Il tournait à la main depuis sa création : rien ne le lançait ici.
       - name: Garde-fou — journal et secret du super-utilisateur
-        run: php demo/lab/tests/sanity_su.php
+        run: |
+          sortie=$(php demo/lab/tests/sanity_su.php)
+          echo "$sortie"
+          # ⚠️ Le compte est écrit en dur : un `N/N` dirait que les cas joués ont
+          # réussi, jamais qu'aucun n'a disparu. Un banc dont le nombre de cas change
+          # sans que personne le dise est un banc qu'on ne sait plus lire.
+          echo "$sortie" | grep -qE 'OK — 18/18 ' \
+            || { echo "::error::le banc SU n'a pas joué ses 18 cas"; exit 1; }
+
+      - name: Canari — la troncature du journal SU se voit encore depuis le dehors
+        run: |
+          # La chaîne de hachage ne détecte pas sa propre troncature : le préfixe
+          # d'une chaîne valide est une chaîne valide. Seule la marque du témoin, qui
+          # vit HORS du journal, rend un journal raccourci visible. On neutralise
+          # cette comparaison et on exige que le banc rougisse — sur ce cas-là.
+          F=demo/lab/lib/su_audit.php
+          cp "$F" /tmp/su_audit.intact
+          sed -i 's|^        if (\$marque > \$tete) {|        if (false) { // neutralisé|' "$F"
+          grep -q 'if (false) { // neutralisé' "$F" \
+            || { cp /tmp/su_audit.intact "$F"; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          php -l "$F" >/dev/null \
+            || { cp /tmp/su_audit.intact "$F"; echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(php demo/lab/tests/sanity_su.php 2>&1); then
+            cp /tmp/su_audit.intact "$F"
+            echo "$sortie"; echo "::error::le banc reste VERT sans la détection de troncature"; exit 1
+          fi
+          cp /tmp/su_audit.intact "$F"
+          cmp -s /tmp/su_audit.intact "$F" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$sortie" | grep -q 'journal raccourci sous la marque' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de la troncature"; exit 1; }
+          echo "✓ le banc rougit, et sur le cas du journal raccourci"
 
       - name: Garde-fou — les secrets d'instance refusent au lieu de servir
         run: |

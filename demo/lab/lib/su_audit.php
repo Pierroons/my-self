@@ -288,8 +288,105 @@ final class SuAudit
 
         @chmod($path, 0600);
         $core['ntfy_delivered'] = self::notify($core);
+        if ($core['ntfy_delivered'] === true) {
+            self::poserMarqueTemoin($core);
+        }
 
         return $core;
+    }
+
+    /**
+     * Fichier de la marque du témoin — la trace du dernier envoi CONFIRMÉ.
+     *
+     * 🔑 **Il vit à côté du journal, pas dedans.** C'est tout l'objet de ce
+     * mécanisme : la trace « le témoin n'a pas répondu » ne peut pas vivre dans le
+     * fichier que le témoin existe pour protéger. Qui tronque le journal effacerait
+     * aussi la preuve que l'externalisation échouait.
+     */
+    public static function marqueTemoinPath(): string
+    {
+        return dirname(self::logPath()) . '/su-audit-temoin.json';
+    }
+
+    /**
+     * Enregistre le plus haut point confirmé par le témoin distant : `seq` et
+     * `entry_hash` de la dernière entrée dont l'envoi a réussi.
+     *
+     * Écriture par fichier temporaire puis renommage : une marque tronquée dirait
+     * un point de confirmation faux, et une marque fausse est pire qu'absente —
+     * c'est le motif du sel de déploiement, dans `install.sh`.
+     */
+    private static function poserMarqueTemoin(array $entry): void
+    {
+        $f   = self::marqueTemoinPath();
+        $tmp = $f . '.' . bin2hex(random_bytes(4)) . '.tmp';
+        $doc = json_encode([
+            'seq'        => $entry['seq'],
+            'entry_hash' => $entry['entry_hash'],
+            'confirme_a' => gmdate('c'),
+        ], JSON_UNESCAPED_SLASHES);
+        if (@file_put_contents($tmp, $doc . "\n") === false) {
+            return;   // ne jamais faire échouer une action d'administration pour ça
+        }
+        @chmod($tmp, 0600);
+        @rename($tmp, $f);
+    }
+
+    /**
+     * Où en est le témoin distant, **sans lire le journal pour le savoir** ?
+     *
+     * 🔑 **Trois états, et le troisième est celui qui vaut.** La chaîne de hachage
+     * se vérifie de l'intérieur : elle ne détecte pas sa propre troncature, car le
+     * préfixe d'une chaîne valide est une chaîne valide. Le témoin distant est le
+     * seul angle qui la rende visible — et jusqu'ici, son silence ne se voyait
+     * nulle part. Rien, ni dans l'entrée, ni ailleurs, ne disait si la notification
+     * était partie : `ntfy_delivered` était posé APRÈS l'écriture de la ligne,
+     * donc il n'atteignait jamais le fichier, et aucun appelant ne lisait le retour.
+     *
+     * - `jamais` : une externalisation est configurée, aucun envoi n'a été confirmé.
+     * - `muet` : le témoin n'a rien confirmé depuis N entrées — il échoue en silence.
+     * - `tronque` : **le journal est plus court que ce que le témoin a confirmé.**
+     *   La marque vit hors du journal : une troncature en dessous d'elle se voit
+     *   donc sans que le journal ait à le dire.
+     *
+     * ⚠️ Ce que ça NE fait PAS : résister à qui a root et efface les deux fichiers.
+     * La marque rend visible une défaillance silencieuse et une troncature partielle ;
+     * contre un effacement complet, c'est le témoin DISTANT qui reste la seule preuve.
+     *
+     * @return array{etat: string, marque: ?int, tete: ?int, detail: string}
+     */
+    public static function ecartTemoin(): array
+    {
+        $rien = static fn(string $e, string $d): array
+            => ['etat' => $e, 'marque' => null, 'tete' => null, 'detail' => $d];
+
+        if (!getenv('SELFRECOVER_NTFY_URL')) {
+            return $rien('non_configure', 'aucune externalisation configurée — la troncature du journal ne serait visible de nulle part');
+        }
+
+        $f = self::marqueTemoinPath();
+        $m = is_readable($f) ? json_decode((string) @file_get_contents($f), true) : null;
+
+        $entrees = self::read();
+        $tete    = $entrees ? (int) ($entrees[count($entrees) - 1]['seq'] ?? 0) : 0;
+
+        if (!is_array($m) || !isset($m['seq'])) {
+            return ['etat' => 'jamais', 'marque' => null, 'tete' => $tete,
+                    'detail' => "aucun envoi confirmé — le témoin distant n'a jamais répondu"];
+        }
+        $marque = (int) $m['seq'];
+
+        if ($marque > $tete) {
+            return ['etat' => 'tronque', 'marque' => $marque, 'tete' => $tete,
+                    'detail' => "le témoin a confirmé l'entrée $marque, le journal s'arrête à $tete — il a été RACCOURCI"];
+        }
+        if ($marque < $tete) {
+            return ['etat' => 'muet', 'marque' => $marque, 'tete' => $tete,
+                    'detail' => 'le témoin n\'a rien confirmé depuis ' . ($tete - $marque) . " entrée(s) — dernière confirmation : $marque"];
+        }
+
+        return ['etat' => 'a_jour', 'marque' => $marque, 'tete' => $tete,
+                'detail' => "le témoin a confirmé jusqu'à l'entrée $marque, qui est la dernière"];
     }
 
     /**
