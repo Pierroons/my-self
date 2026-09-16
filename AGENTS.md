@@ -116,10 +116,13 @@ tiennent en intégration continue.
 | `scripts/check-vhost.sh` | les gabarits de vhost sont-ils syntaxiquement valides — sur nginx local, ou par SSH sur un hôte nommé |
 | `scripts/check-surface-servie.sh` | ce qu'un serveur donne réellement à voir, répertoire par répertoire |
 | `scripts/check-patch-legi.sh` | un hôte porte-t-il encore les correctifs locaux sur `legi.py`, à l'identique du patch versionné |
+| `scripts/check-liens-bibliotheque.sh` | une démo pointe-t-elle vers la bibliothèque, ou en a-t-elle recopié une version qui divergera |
+| `scripts/check-plancher-secret.sh` | un secret de déploiement atteint-il le plancher de longueur que le code exige |
 
-**Trois d'entre eux tournent en intégration continue** (`structure.yml`) : les
-chemins cités, l'unicité du profil de hachage et les gabarits de vhost — ce
-dernier parce que le job installe nginx pour lui. Les autres ne le peuvent pas,
+**Cinq d'entre eux tournent en intégration continue** (`structure.yml`) : les
+chemins cités, l'unicité du profil de hachage, les gabarits de vhost — ce
+dernier parce que le job installe nginx pour lui —, les liens de bibliothèque et
+le plancher de secret. Les autres ne le peuvent pas,
 et ce n'est pas un oubli — l'écart d'instance, la surface servie et les
 correctifs de `legi.py` ont besoin d'un accès à la machine, la fraîcheur des
 bases a besoin de ses API, et l'audit OPSEC a besoin de motifs qui vivent hors
