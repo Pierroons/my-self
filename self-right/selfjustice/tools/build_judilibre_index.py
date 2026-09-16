@@ -252,6 +252,23 @@ def ouvrir_base():
         CREATE INDEX IF NOT EXISTS idx_date ON decisions(decision_date);
         CREATE INDEX IF NOT EXISTS idx_juri ON decisions(jurisdiction);
 
+        -- 🔑 **Celui-ci dispense `/api/status` de lire la table.** La couverture
+        -- (`api.php:805`) agrège par juridiction sur `date_suspecte = 0`. Avec
+        -- `idx_juri` seul, SQLite parcourt l'index puis va chercher les deux
+        -- autres colonnes dans la table : 1,77 M accès à un fichier de 6,1 Go
+        -- depuis que le collecteur JADE y écrit le texte intégral.
+        -- Mesuré le 16/09/2026 sur l'instance : 0,60 s à chaud, contre 0,075 s
+        -- pour la même agrégation servie par un index seul — et au-delà des 20 s
+        -- qu'accorde `check_fraicheur.sh` quand le cache disque est froid, ce
+        -- qu'`apt-daily-upgrade` garantit chaque matin à 06:44. La sentinelle
+        -- de fraîcheur n'a plus rien mesuré du 01/09 au 16/09 : elle le disait
+        -- (« non mesurées ce passage »), personne ne l'a lu.
+        -- L'ordre des colonnes fait tout : `date_suspecte` porte le WHERE,
+        -- `jurisdiction` le GROUP BY, `decision_date` les extremums. SQLite
+        -- annonce alors « USING COVERING INDEX » — vérifié au banc.
+        CREATE INDEX IF NOT EXISTS idx_couverture
+            ON decisions(date_suspecte, jurisdiction, decision_date);
+
         -- Un intervalle n'est inscrit qu'une fois entièrement moissonné :
         -- une reprise ne peut donc pas sauter une tranche à moitié faite.
         CREATE TABLE IF NOT EXISTS intervalles_faits (

@@ -119,6 +119,14 @@ def ouvrir_base(chemin: str) -> sqlite3.Connection:
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_juri ON decisions(jurisdiction)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_source ON decisions(source)")
+    # 🔑 Le même index que pose le moissonneur Judilibre, pour la même raison —
+    # `/api/status` ne doit pas lire une table de 6,1 Go pour compter. Il est
+    # dans les DEUX collecteurs parce que l'un ou l'autre peut créer la base :
+    # posé d'un seul côté, il disparaîtrait à la première reconstruction faite
+    # par l'autre, et le défaut reviendrait sans bruit. Le pourquoi complet et
+    # les mesures sont dans `build_judilibre_index.py`, à `idx_couverture`.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_couverture "
+                 "ON decisions(date_suspecte, jurisdiction, decision_date)")
     conn.commit()
     return conn
 
