@@ -285,6 +285,52 @@ SuAudit::secret() === SuAudit::DEMO_SECRET
 putenv('SELFRECOVER_SU_DEV');
 putenv('SELFRECOVER_SU_AUDIT_SECRET=' . $secretDeCeBanc);   // le banc reprend son décor
 
+// ─── Le témoin distant : son silence doit se voir HORS du journal ────────────
+// 🔑 La chaîne de hachage ne détecte pas sa propre troncature — le préfixe d'une
+// chaîne valide est une chaîne valide. Le témoin distant est le seul angle qui la
+// rende visible, et jusqu'ici son silence ne se voyait nulle part : `ntfy_delivered`
+// était posé APRÈS l'écriture de la ligne, donc il n'atteignait jamais le fichier,
+// et aucun appelant ne lisait le retour d'`append()`.
+// La marque vit hors du journal, donc ces cinq états se fabriquent sans serveur ntfy.
+$marque = SuAudit::marqueTemoinPath();
+$tete   = (int) (SuAudit::read()[count(SuAudit::read()) - 1]['seq'] ?? 0);
+$poser  = static function (int $seq) use ($marque): void {
+    file_put_contents($marque, json_encode(['seq' => $seq, 'entry_hash' => str_repeat('a', 64), 'confirme_a' => gmdate('c')]));
+};
+
+putenv('SELFRECOVER_NTFY_URL');                       // aucune externalisation
+@unlink($marque);
+SuAudit::ecartTemoin()['etat'] === 'non_configure'
+    ? ok('sans externalisation configurée : l\'état le dit, il ne se tait pas')
+    : nok('une externalisation absente devrait être annoncée');
+
+putenv('SELFRECOVER_NTFY_URL=https://exemple.invalid/su');   // jamais contactée
+SuAudit::ecartTemoin()['etat'] === 'jamais'
+    ? ok('externalisation configurée, aucune confirmation : état « jamais »')
+    : nok('aucun envoi confirmé devrait rendre « jamais »');
+
+$poser($tete);
+SuAudit::ecartTemoin()['etat'] === 'a_jour'
+    ? ok('marque à la tête du journal : état « à jour »')
+    : nok('une marque à la tête devrait rendre « a_jour »');
+
+$poser($tete - 2);
+$e = SuAudit::ecartTemoin();
+$e['etat'] === 'muet' && str_contains($e['detail'], '2 entrée')
+    ? ok('témoin en retard de 2 entrées : « muet », et il compte combien')
+    : nok('un témoin en retard devrait rendre « muet » et nommer l\'écart', $e['detail'] ?? '');
+
+// LE CAS QUI COMPTE : le journal est plus court que ce que le témoin a confirmé.
+// C'est une PREUVE de troncature, et elle tient parce que la marque est extérieure.
+$poser($tete + 3);
+$e = SuAudit::ecartTemoin();
+$e['etat'] === 'tronque' && $e['marque'] === $tete + 3 && $e['tete'] === $tete
+    ? ok('journal plus court que la marque : « tronqué » — la preuve vient du dehors')
+    : nok('un journal raccourci sous la marque devrait rendre « tronque »', $e['detail'] ?? '');
+
+@unlink($marque);
+putenv('SELFRECOVER_NTFY_URL');
+
 echo "\n";
 $total = $reussites + $echecs;
 if ($echecs === 0) {

@@ -514,6 +514,32 @@ switch ($cmd) {
 
         su_ok("Chaîne intègre — {$ver['count']} entrées, aucune altération.");
 
+        // 🔑 « Intègre » ne répond pas à la troisième question : le témoin distant
+        // a-t-il vu passer ces entrées ? La chaîne se vérifie de l'intérieur, donc
+        // elle ne détecte pas sa propre troncature — le préfixe d'une chaîne valide
+        // est une chaîne valide. Seule la marque du témoin, qui vit HORS du journal,
+        // rend visible un journal raccourci ou un témoin devenu muet.
+        // Placé AVANT le bloc du sceau, qui sort par `break` dans le cas nominal :
+        // écrit après, ce contrôle ne se serait jamais affiché quand tout va bien.
+        $tem = SuAudit::ecartTemoin();
+        switch ($tem['etat']) {
+            case 'tronque':
+                // Le journal est plus court que ce que le témoin a confirmé. Ce n'est
+                // pas un soupçon, c'est une preuve : la marque est extérieure au fichier.
+                su_fail("🚨 JOURNAL RACCOURCI — {$tem['detail']}", 5);
+                // no break
+            case 'jamais':
+            case 'muet':
+                fwrite(STDERR, "   ⚠️  Témoin distant : {$tem['detail']}.\n");
+                fwrite(STDERR, "      Tant qu'il se tait, une troncature du journal ne se verrait de nulle part.\n");
+                break;
+            case 'non_configure':
+                fwrite(STDERR, "   ⚠️  {$tem['detail']}.\n");
+                break;
+            default:
+                fwrite(STDOUT, "   Témoin distant : {$tem['detail']}.\n");
+        }
+
         if ($sceau !== null && $etat !== null) {
             fwrite(
                 STDOUT,
