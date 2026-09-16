@@ -85,6 +85,46 @@ def colonnes(conn):
     return [r[1] for r in conn.execute("PRAGMA table_info(decisions)")]
 
 
+# La requête de couverture, recopiée de `api/api.php:805`. C'est elle que sert
+# `/api/status`, et c'est la seule des trois requêtes de l'API sur `decisions`
+# qui agrège — les deux autres passent par `idx_source` et par la clé primaire.
+REQUETE_COUVERTURE = (
+    "SELECT jurisdiction, MIN(decision_date) AS debut, MAX(decision_date) AS fin, "
+    "COUNT(*) AS total FROM decisions WHERE date_suspecte = 0 GROUP BY jurisdiction"
+)
+
+
+def plan(conn):
+    """Ce que SQLite dit qu'il va faire, en une ligne."""
+    return " ; ".join(r[3] for r in
+                      conn.execute("EXPLAIN QUERY PLAN " + REQUETE_COUVERTURE))
+
+
+def controle_couverture(conn, qui):
+    """La couverture se calcule SANS lire la table. C'est tout ce qu'on exige.
+
+    🔑 Ce banc ne chronomètre rien : une durée dépend de la machine, du cache
+    disque et du volume, et un seuil en secondes rendrait vert sur un runner
+    vide quel que soit le plan. Ce qui se vérifie ici est la PROPRIÉTÉ dont la
+    vitesse découle — SQLite répond depuis l'index seul. Il le dit lui-même :
+    « USING COVERING INDEX ». Sans `idx_couverture`, le même plan annonce
+    « SCAN decisions USING INDEX idx_juri », c'est-à-dire un accès à la table
+    par ligne ; sur l'instance, au 16/09/2026, cela faisait 1,77 M accès à
+    6,1 Go et dépassait les 20 s de la sentinelle de fraîcheur dès que le cache
+    était froid.
+    """
+    p = plan(conn)
+    controle("%s : la couverture se lit dans l\u2019index, pas dans la table" % qui,
+             "COVERING INDEX" in p and "idx_couverture" in p, p)
+
+
+def controle_index_present(conn, qui):
+    noms = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='decisions'")}
+    controle("%s : `idx_couverture` existe" % qui, "idx_couverture" in noms,
+             "index présents : %s" % ", ".join(sorted(noms)))
+
+
 def sens_judilibre_dabord(tmp):
     """Judilibre crée, JADE migre, Judilibre réécrit — l'ordre du 15/09."""
     db = os.path.join(tmp, "a.sqlite")
@@ -94,6 +134,8 @@ def sens_judilibre_dabord(tmp):
     conn = jud.ouvrir_base()
     controle("la base neuve porte 13 colonnes", len(colonnes(conn)) == 13,
              "%d colonnes" % len(colonnes(conn)))
+    controle_index_present(conn, "base créée par Judilibre")
+    controle_couverture(conn, "base créée par Judilibre")
     conn.close()
 
     jade = charger("build_jade_db", db)
@@ -142,6 +184,8 @@ def sens_jade_dabord(tmp):
     controle("JADE écrit sur sa propre base",
              conn.execute("SELECT COUNT(*) FROM decisions WHERE source='jade'")
                  .fetchone()[0] == 1)
+    controle_index_present(conn, "base créée par JADE")
+    controle_couverture(conn, "base créée par JADE")
     conn.close()
 
     jud = charger("build_judilibre_index", db)
