@@ -71,12 +71,34 @@ fi
 
 avant=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions" 2>/dev/null || echo 0)
 
-if ! python3 "$SCRIPT" --depuis auto >> "$LOG_FILE" 2>&1; then
+# 🔑 **Trois issues, pas deux.** Le 16/09/2026, cinq tranches refusées sur
+# quatre-vingt-douze ont fait restaurer un index qui venait de gagner 4 190
+# décisions en 2 h 34 — pour revenir à celui d'avant, qui avait quinze jours de
+# retard. Le tout-ou-rien gardait le plus incomplet des deux.
+#
+#   0  moisson entière                 → on garde, le marqueur a avancé
+#   3  incomplète, base saine          → on GARDE, le marqueur n'a pas avancé
+#   *  échec, base peut-être à moitié  → on restaure
+#
+# `|| rc=$?` est nécessaire : `set -e` et le `trap ERR` tueraient le script sur
+# le code non nul avant qu'on ait pu le lire.
+rc=0
+python3 "$SCRIPT" --depuis auto >> "$LOG_FILE" 2>&1 || rc=$?
+
+if [ "$rc" = "3" ]; then
+    apres=$(sqlite3 "$JUDILIBRE_DB" "SELECT COUNT(*) FROM decisions")
+    journal "Moisson partielle — index CONSERVÉ : $avant → $apres (+$((apres - avant)))."
+    journal "Fraîcheur NON avancée ; les tranches refusées seront reprises au passage suivant."
+    rm -f "$SAUVEGARDE"
+    alerter "SelfJustice — moisson Judilibre partielle" \
+            "Index conserve et enrichi ($avant -> $apres), mais incomplet : la fraicheur n'avance pas. Voir $LOG_FILE."
+    exit 1
+elif [ "$rc" != "0" ]; then
     if [ -f "$SAUVEGARDE" ]; then
         mv "$SAUVEGARDE" "$JUDILIBRE_DB"
-        journal "Moisson incomplète — index précédent restauré."
+        journal "Moisson en échec (code $rc) — index précédent restauré."
     fi
-    alerter "SelfJustice — moisson Judilibre incomplete" \
+    alerter "SelfJustice — moisson Judilibre en echec" \
             "L'index a ete restaure dans son etat precedent. Voir $LOG_FILE."
     exit 1
 fi

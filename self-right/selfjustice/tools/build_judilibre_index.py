@@ -44,6 +44,11 @@ DB = os.environ.get(
 )
 MARQUEUR = os.environ.get("JUDILIBRE_MARQUEUR", os.path.join(os.path.dirname(DB), "judilibre_last_update.txt"))
 
+# Pause de base entre deux tentatives sur un refus muet — 5, 10, puis 15 s.
+# Surchargeable pour que les bancs n'attendent pas une demi-minute par
+# requête refusée : sans cela, le banc de la moisson partielle dépasse son
+# propre délai et rend 124 au lieu du code qu'il mesure.
+REESSAI_PAUSE = float(os.environ.get("SELFJUSTICE_REESSAI_PAUSE", "5"))
 BATCH_SIZE = 1000          # plafond de l'API : 2000 est refusé par un 400
 DELAI = 1.2                # rythme poli ; la rafale courte est limitée à 20
 # Ce que cette liste moissonne détermine ce que l'API accepte :
@@ -168,6 +173,22 @@ def appel(chemin, params):
                 continue
             corps = e.read()
             journal(f"HTTP {e.code} sur {chemin} {params} : {corps[:200]}")
+
+            # 🔑 **Un 400 SANS corps ne dit rien, et c'est le seul refus qui
+            # n'avait droit à aucune seconde chance.** Il ne met en cause ni un
+            # paramètre (le corps est vide, donc pas de `"param"`), ni le
+            # plafond de pagination (qui rend 416 au 11e lot), ni le volume
+            # (`Data too large`, qui s'explique). Mesuré le 16/09/2026 : il est
+            # tombé sur 5 tranches aux lots 2 à 4 pendant que 87 autres
+            # passaient, et ces 5 abandons ont fait jeter 4 190 décisions et
+            # 2 h 34 de moisson. Un hoquet se réessaie ; c'est le 429 qui sert
+            # de modèle, pas le refus définitif.
+            if e.code == 400 and not corps.strip() and tentative < 4:
+                attente = REESSAI_PAUSE * tentative
+                journal(f"400 sans corps — nouvelle tentative dans {attente} s "
+                        f"({tentative}/3)")
+                time.sleep(attente)
+                continue
             # Un 400 qui met en cause un PARAMÈTRE est définitif ; un 400 qui
             # parle de volume (`circuit_breaking_exception: Data too large`) ne
             # l'est pas — celui-là se corrige en coupant la tranche, et c'est
@@ -524,11 +545,29 @@ def main():
     if n_sus:
         journal(f"⚠️ {n_sus} dates antérieures à {DATE_PLANCHER} (données corrompues)")
 
-    # 🔑 Sortir en code non nul quand la moisson est partielle. Un index
-    # silencieusement incomplet répondrait « cette référence n'existe pas »
-    # à des arrêts bien réels — l'erreur la plus grave pour cet outil.
+    # 🔑 **Sortir en 3 : incomplet, mais les données écrites sont bonnes.**
+    # Un index silencieusement incomplet répondrait « cette référence n'existe
+    # pas » à des arrêts bien réels — l'erreur la plus grave pour cet outil, et
+    # c'est pourquoi ce chemin reste un échec. Mais l'index PRÉCÉDENT a le même
+    # défaut en pire : il lui manque tout ce qui a été publié depuis. Détruire
+    # une moisson partielle pour le restaurer, c'est garder le plus incomplet
+    # des deux.
+    #
+    # Ce qui rend la conservation sûre, c'est que `moissonner_intervalle`
+    # n'inscrit PAS une tranche qui a échoué : l'index sait ce qui lui manque
+    # et le reprendra au passage suivant. Et le marqueur, écrit plus bas, ne
+    # bouge pas — donc l'API continue d'annoncer son retard, et la sentinelle
+    # d'alerter. Les données et la fraîcheur sont deux questions distinctes ;
+    # elles étaient traitées comme une seule.
+    #
+    # Le code 3 est lu par `update_judilibre.sh`, qui restaure sur tout autre
+    # code non nul. Une exception non attrapée sort en 1 et fait donc toujours
+    # restaurer — c'est le cas du 15/09/2026, où la base pouvait être à moitié
+    # écrite.
     if not complet:
-        sys.exit("Moisson incomplète — index inutilisable en l'état.")
+        journal("Moisson incomplète — index CONSERVÉ, marqueur de fraîcheur "
+                "non avancé ; les tranches refusées seront reprises.")
+        sys.exit(3)
 
     # La date n'est écrite qu'en cas de succès complet : elle atteste d'une
     # moisson entière, pas d'une tentative. L'API la relaie à l'utilisateur.

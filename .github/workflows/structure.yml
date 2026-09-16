@@ -242,6 +242,9 @@ jobs:
       - name: Garde-fou — les deux collecteurs écrivent dans la même table
         run: python3 self-right/selfjustice/tests/sanity_schema_partage.py
 
+      - name: Garde-fou — une moisson partielle se garde, elle ne se détruit pas
+        run: bash self-right/selfjustice/tests/sanity_moisson_partielle.sh
+
       - name: Garde-fou — le compteur d'IA lit le User-Agent, pas la ligne
         run: bash self-right/selfjustice/tests/test_compteur_ia.sh
 
