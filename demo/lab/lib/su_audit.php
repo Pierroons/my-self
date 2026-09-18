@@ -490,10 +490,24 @@ final class SuAudit
             curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5_HOSTNAME);
         }
 
-        $ok = curl_exec($ch) !== false && curl_errno($ch) === 0;
+        // 🔑 Le transport qui réussit ne dit PAS que le témoin a reçu. Un ntfy qui
+        // rend 401 faute de jeton, 403, ou 404 sur un sujet inexistant répond
+        // parfaitement : `curl_exec` rend le corps, `curl_errno` rend 0. Sans lire
+        // le code, `poserMarqueTemoin()` était appelé sur un refus, et
+        // `ecartTemoin()` annonçait « a_jour » pour un témoin qui n'avait jamais
+        // rien reçu — le contrôle écrit pour rendre le silence visible le masquait.
+        // Mesuré le 16/09/2026 contre un serveur qui refuse : `ntfy_delivered`
+        // valait `true`, marque posée, écart « a_jour ». Trouvé par un déploiement intégrateur.
+        $reponse = curl_exec($ch);
+        $errno   = curl_errno($ch);
+        $code    = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
-        return $ok;
+        if ($reponse === false || $errno !== 0) {
+            return false;
+        }
+
+        return $code >= 200 && $code < 300;
     }
 
     /** Le service est-il déclaré comme servi derrière un service caché. */
