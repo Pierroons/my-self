@@ -331,6 +331,82 @@ $e['etat'] === 'tronque' && $e['marque'] === $tete + 3 && $e['tete'] === $tete
 @unlink($marque);
 putenv('SELFRECOVER_NTFY_URL');
 
+// ─── Le témoin qui RÉPOND et REFUSE — le cas que les cinq états ne voient pas ──
+// 🔑 Les états ci-dessus se fabriquent sans serveur, et c'est le bon choix pour
+// eux. Mais aucun n'exerce la lecture du code HTTP, et un témoin injoignable
+// échoue AVANT d'avoir un code : le contrôle n'était donc jamais éprouvé. Un ntfy
+// qui rend 401 faute de jeton répond parfaitement — `curl_exec` rend le corps,
+// `curl_errno` rend 0 — et `notify()` concluait « remis ». Il faut un vrai
+// serveur, et il faut les DEUX réponses : sans le contre-témoin du 200, une
+// fonction qui refuserait tout passerait aussi.
+$racine = sys_get_temp_dir() . '/sanity-su-ntfy-' . getmypid();
+@mkdir($racine, 0700, true);
+file_put_contents($racine . '/index.php', <<<'SRV'
+<?php
+$h = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+if ($h !== 'Bearer le-bon-jeton') { http_response_code(401); echo 'unauthorized'; exit; }
+http_response_code(200); echo 'ok';
+SRV);
+
+$port    = 8000 + (getmypid() % 1000);
+$serveur = proc_open(
+    sprintf('exec php -S 127.0.0.1:%d -t %s %s', $port, escapeshellarg($racine), escapeshellarg($racine . '/index.php')),
+    [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
+    $tuyaux
+);
+
+$debout = false;
+for ($i = 0; $i < 50 && !$debout; $i++) {
+    $c = @fsockopen('127.0.0.1', $port, $e1, $e2, 0.2);
+    if ($c) { fclose($c); $debout = true; } else { usleep(100000); }
+}
+
+if (!$debout) {
+    nok('le serveur témoin du banc n\'a pas démarré — ce contrôle n\'a rien établi');
+} else {
+    putenv('SELFRECOVER_NTFY_URL=http://127.0.0.1:' . $port . '/');
+    putenv('SELFRECOVER_NTFY_SOCKS=none');
+
+    // LE CAS QUI COMPTE : le témoin répond, et il refuse.
+    putenv('SELFRECOVER_NTFY_TOKEN');
+    @unlink($marque);
+    $e = SuAudit::append('banc-temoin', 'refus-401', ['note' => 'le témoin répond 401']);
+    $e['ntfy_delivered'] === false
+        ? ok('témoin qui répond 401 : « non remis » — le code HTTP est lu, pas seulement le transport')
+        : nok('un témoin qui REFUSE ne doit pas compter comme remis', var_export($e['ntfy_delivered'], true));
+    !file_exists($marque)
+        ? ok('témoin qui refuse : aucune marque posée — l\'écart restera visible')
+        : nok('une marque posée sur un refus rend « à jour » un témoin qui n\'a rien reçu');
+
+    // LE CONTRE-TÉMOIN : sans lui, une fonction qui refuserait tout passerait.
+    putenv('SELFRECOVER_NTFY_TOKEN=le-bon-jeton');
+    @unlink($marque);
+    $e = SuAudit::append('banc-temoin', 'accepte-200', ['note' => 'le témoin répond 200']);
+    $e['ntfy_delivered'] === true
+        ? ok('témoin qui répond 200 : « remis » — la sonde ne refuse pas tout')
+        : nok('un témoin qui ACCEPTE doit compter comme remis', var_export($e['ntfy_delivered'], true));
+    file_exists($marque)
+        ? ok('témoin qui accepte : marque posée')
+        : nok('une acceptation doit poser la marque');
+
+    if (is_resource($serveur)) { proc_terminate($serveur); proc_close($serveur); }
+}
+
+// Le témoin injoignable — l'ancien seul cas, gardé : il échoue AVANT tout code HTTP.
+putenv('SELFRECOVER_NTFY_URL=http://127.0.0.1:' . ($port + 1) . '/');
+@unlink($marque);
+$e = SuAudit::append('banc-temoin', 'injoignable', []);
+$e['ntfy_delivered'] === false
+    ? ok('témoin injoignable : « non remis »')
+    : nok('un témoin injoignable ne peut pas être remis');
+
+@unlink($racine . '/index.php');
+@rmdir($racine);
+@unlink($marque);
+putenv('SELFRECOVER_NTFY_URL');
+putenv('SELFRECOVER_NTFY_TOKEN');
+putenv('SELFRECOVER_NTFY_SOCKS');
+
 echo "\n";
 $total = $reussites + $echecs;
 if ($echecs === 0) {
