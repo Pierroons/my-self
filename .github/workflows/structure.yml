@@ -454,8 +454,8 @@ jobs:
           # ⚠️ Le compte est écrit en dur : un `N/N` dirait que les cas joués ont
           # réussi, jamais qu'aucun n'a disparu. Un banc dont le nombre de cas change
           # sans que personne le dise est un banc qu'on ne sait plus lire.
-          echo "$sortie" | grep -qE 'OK — 18/18 ' \
-            || { echo "::error::le banc SU n'a pas joué ses 18 cas"; exit 1; }
+          echo "$sortie" | grep -qE 'OK — 23/23 ' \
+            || { echo "::error::le banc SU n'a pas joué ses 23 cas"; exit 1; }
 
       - name: Canari — la troncature du journal SU se voit encore depuis le dehors
         run: |
