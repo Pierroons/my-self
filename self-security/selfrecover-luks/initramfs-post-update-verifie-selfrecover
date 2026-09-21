@@ -233,3 +233,40 @@ else
   echo "SelfRecover-LUKS : initramfs $VER complet (${PRESENTES#, })."
   echo "  $CIBLE"
 fi
+
+# ---------------------------------------------------------------------------
+# Consigner l'empreinte de l'image, HORS de /boot.
+#
+# 🔑 Ce que ce bloc ferme, et ce qu'il ne ferme pas. Condamner le shell du
+# dropbear d'amorcage retire UN chemin vers /boot ; il en reste d'autres — un
+# acces physique, et root sur la machine en marche. La classe ne se ferme pas,
+# mais l'alteration peut devenir VISIBLE : l'empreinte est ecrite dans $SKG,
+# qui vit sur le volume CHIFFRE, tandis que l'image vit sur /boot en clair. Qui
+# modifie /boot sans ouvrir le volume ne peut pas mettre l'empreinte d'accord.
+#
+# Ce n'est pas un scellement TPM : ca ne protege pas la saisie qui suit
+# immediatement l'alteration, et ca se contourne par quiconque a deja root sur
+# la machine ouverte. Mais ca ne demande aucun materiel — le RPI4 du parc n'a
+# pas de TPM — et ca rend l'ecart lisible par une commande, ce qu'aucun
+# controle ne faisait jusqu'ici.
+#
+# L'ecriture est la derniere chose que fait ce script : consigner une empreinte
+# avant d'avoir verifie les pieces reviendrait a certifier une image cassee.
+EMPREINTES="${SKG}/initramfs.sha256"
+if [ -d "$SKG" ] && [ -r "$INITRD" ]; then
+  SOMME=$(sha256sum < "$INITRD" | cut -d' ' -f1)
+  TMP="${EMPREINTES}.nouveau"
+  # Les autres versions de noyau sont conservees : une machine porte souvent
+  # l'image courante ET celle de secours, et effacer la ligne de la seconde
+  # rendrait sa verification impossible sans la regenerer.
+  [ -f "$EMPREINTES" ] && grep -v "^${VER}[[:space:]]" "$EMPREINTES" > "$TMP" 2>/dev/null || : > "$TMP"
+  printf '%s\t%s\t%s\n' "$VER" "$SOMME" "$(date -Is)" >> "$TMP"
+  mv "$TMP" "$EMPREINTES"
+  chmod 0644 "$EMPREINTES"
+  echo "  empreinte consignee hors de /boot : $EMPREINTES"
+else
+  # Ne pas echouer : une empreinte non consignee n'est pas une image cassee. Mais
+  # ne pas se taire non plus — un controle qui n'a pas pu s'executer et qui ne le
+  # dit pas est exactement ce que ce fichier existe pour eviter.
+  echo "  empreinte NON consignee ($SKG absent, ou image illisible) : la verification d integrite sera impossible." >&2
+fi

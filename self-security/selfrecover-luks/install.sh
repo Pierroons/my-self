@@ -19,6 +19,12 @@ DATA_MOUNT="${DATA_MOUNT:-/data}"   # point de montage du volume secondaire
 NET_MODULE="${NET_MODULE:-}"        # module réseau, ex. r8169 (lspci -k | grep -A2 Ethernet)
 SSH_PUBKEY="${SSH_PUBKEY:-}"        # chemin clé publique autorisée au boot — requis si dropbear
 DROPBEAR_PORT="${DROPBEAR_PORT:-2222}"
+# Le shell root que dropbear rend au boot, AVANT que la racine soit ouverte.
+#   demander (défaut) | ferme | ouvert
+# Le fermer est vivement conseillé et n'est jamais imposé : un défaut appliqué
+# dans le dos de l'opérateur le priverait d'un choix qui lui appartient. Ce que
+# la question coûte de chaque côté est énoncé à l'étape 6.
+SHELL_AMORCAGE="${SHELL_AMORCAGE:-demander}"
 DROPBEAR="${DROPBEAR:-auto}"        # auto | oui | non — SSH d'amorçage.
                                     # auto : oui si le paquet ET la clé sont là, non sinon.
                                     # Sur un poste, dropbear est un serveur SSH qui écoute
@@ -55,7 +61,7 @@ say "0. Vérifications"
 [ -n "$ROOT_DEV" ] || die "ROOT_DEV non défini (édite l'en-tête du script)."
 for f in selfrecover_derive.c selfrecover-keyscript.sh initramfs-hook-selfrecover \
          setup-add-selfrecover-slot.sh initramfs-post-update-verifie-selfrecover \
-         verifie-sauvegardes.sh; do
+         verifie-sauvegardes.sh selfrecover-secours.sh; do
   [ -f "$HERE/$f" ] || die "Fichier manquant dans le dépôt : $f"
 done
 command -v cryptsetup >/dev/null || die "cryptsetup absent."
@@ -152,8 +158,11 @@ fi
 # ---------- 3. Keyscript + hook ----------
 say "3. Keyscript + hook initramfs"
 install -m 0755 "$HERE/selfrecover-keyscript.sh"   "$SKG/selfrecover-keyscript.sh"
+# Posé ICI, avant l'étape 6 qui décide de s'en servir, et avant l'étape 7 qui
+# régénère l'image : le hook ne peut embarquer que ce qui est déjà sur le disque.
+install -m 0755 "$HERE/selfrecover-secours.sh"     "$SKG/selfrecover-secours.sh"
 install -m 0755 "$HERE/initramfs-hook-selfrecover" /etc/initramfs-tools/hooks/selfrecover
-ok "keyscript + hook (avec fix libgcc) déployés"
+ok "keyscript + secours + hook (avec fix libgcc) déployés"
 
 # ---------- 3 bis. Les deux secrets irréversibles sont-ils hors de cette machine ? ----------
 say "3 bis. Sauvegardes des secrets irréversibles — contrôle bloquant"
@@ -259,6 +268,86 @@ else
   echo "DROPBEAR_OPTIONS=\"-p $DROPBEAR_PORT -s -j -k -I 300\"" > /etc/dropbear/initramfs/dropbear.conf
   ok "dropbear: port $DROPBEAR_PORT, clé autorisée, IP=dhcp"
 
+  # --- le shell root d'amorçage : la question, et pourquoi c'en est une ---
+  #
+  # Sans option, cette clé donne un shell root busybox AVANT que la racine soit
+  # ouverte. Ce n'est pas une commodité, c'est un contournement du chiffrement :
+  # /boot n'est pas chiffré (le firmware doit le lire), le sel y voyage, et qui
+  # obtient ce shell y dépose un initrd modifié puis capture la passphrase à la
+  # saisie suivante. Rien ne le détecterait.
+  #
+  # 🔑 Mesuré sur quatre machines le 21/09/2026 : toutes portaient la clé NUE,
+  # et c'est CETTE ligne d'installation qui les produisait — pas une négligence
+  # d'opérateur répétée quatre fois. La même clé ouvrant le pré-boot des quatre,
+  # un seul vol donnait le contournement sur tout le parc.
+  #
+  # Le fermer avec `command="cryptroot-unlock"` retirerait le filet anti-lockout
+  # documenté par le keyscript : cryptroot-unlock passe par le keyscript, donc la
+  # passphrase NATIVE deviendrait inatteignable à distance. selfrecover-secours.sh
+  # offre les deux voies sans rendre de shell — il n'y a donc pas d'arbitrage, et
+  # aucune clé de secours à générer, sortir et ranger.
+  #
+  # ⚠️ Ça ne ferme PAS la classe, seulement ce chemin : /boot reste modifiable par
+  # un accès physique et par root sur la machine en marche. Ce que ça rend visible
+  # est traité ailleurs, par l'empreinte consignée hors de /boot (post-update).
+  #
+  # La question se POSE, elle ne se décide pas à la place de l'opérateur : un
+  # défaut imposé le priverait d'un choix qui lui appartient (décision de Pierroons,
+  # 21/09/2026). Elle est vivement conseillée, jamais forcée.
+  case "$SHELL_AMORCAGE" in
+    ferme|ouvert) REP="$SHELL_AMORCAGE" ;;
+    demander)
+      printf '\n'
+      printf '  Le shell root au démarrage (dropbear) — vivement conseillé de le fermer\n\n'
+      printf '    FERMER  : le contournement du chiffrement par /boot se ferme.\n'
+      printf '              Les DEUX passphrases restent utilisables à distance\n'
+      printf '              (Recover, et native en secours) — le filet est conservé.\n\n'
+      printf '    LAISSER : shell root busybox avant déverrouillage. Qui détient cette\n'
+      printf '              clé peut déposer un initrd modifié et capturer la passphrase.\n\n'
+      read -rp "  → Fermer le shell d'amorçage ? [O/n] " r
+      case "$r" in n|N) REP=ouvert ;; *) REP=ferme ;; esac
+      ;;
+    *) die "SHELL_AMORCAGE invalide : $SHELL_AMORCAGE (demander|ferme|ouvert)" ;;
+  esac
+
+  if [ "$REP" = ferme ]; then
+    # Chaque clé du fichier est préfixée, pas seulement la première : un fichier
+    # à deux clés dont une seule est bornée ne ferme rien, et c'est exactement la
+    # forme qu'avait le `.48` (208 octets = deux clés nues, pas une clé bornée).
+    # ⚠️ PAS de no-pty : `command=` suffit à interdire le shell (dropbear exécute
+    # cette commande et ignore ce que le client demande), tandis que sans PTY,
+    # `stty -echo` ne coupe rien et la passphrase native s'afficherait EN CLAIR
+    # à la saisie. L'option qui ressemble à un durcissement ferait ici une fuite.
+    SR_OPTS='command="'"$SKG"'/selfrecover-secours.sh",no-port-forwarding,no-agent-forwarding,no-X11-forwarding'
+    AK=/etc/dropbear/initramfs/authorized_keys
+    awk -v o="$SR_OPTS" '
+      /^[[:space:]]*(#|$)/ { print; next }
+      { print o "," $0 }
+    ' "$AK" > "$AK.nouveau"
+    # Contre-témoin AVANT de remplacer : autant de clés après qu'avant, et plus
+    # aucune ligne de clé sans option. Un fichier tronqué ici rendrait la machine
+    # injoignable au prochain démarrage, et on ne le verrait qu'à ce moment-là.
+    AV=$(grep -c '^ssh-' "$AK" || true)
+    AP=$(grep -c 'command=' "$AK.nouveau" || true)
+    NU=$(grep -c '^ssh-' "$AK.nouveau" || true)
+    if [ "$AV" -eq 0 ] || [ "$AP" -ne "$AV" ] || [ "$NU" -ne 0 ]; then
+      rm -f "$AK.nouveau"
+      die "pose du command= incohérente ($AV clés, $AP bornées, $NU nues) — fichier laissé intact."
+    fi
+    cp -a "$AK" "$AK.avant-command.$(date +%s)"
+    mv "$AK.nouveau" "$AK"
+    chmod 0600 "$AK"
+    ok "shell d'amorçage FERMÉ — $AV clé(s) bornée(s) sur selfrecover-secours.sh"
+    ok "les deux passphrases restent utilisables à distance (menu à la connexion)"
+    MOTD_FILET="  Filet : au menu, choisir 2 pour la passphrase LUKS NATIVE."
+  else
+    warn "shell d'amorçage LAISSÉ OUVERT — choix de l'opérateur, inscrit au journal"
+    warn "qui détient cette clé peut modifier /boot et capturer la passphrase"
+    printf '%s\tshell-amorcage-laisse-ouvert\n' "$(date -Is)" >> "$SKG/renoncements.log"
+    MOTD_FILET="  Filet : le slot natif est conservé et ouvre toujours le volume.
+    cryptsetup open $ROOT_DEV $ROOT_NAME"
+  fi
+
   # --- rien ne disait QUELLE passphrase l'invite attend ---
   # Le keyscript pose « Passphrase Recover-LUKS (nom) : » sur /dev/console, que
   # personne ne voit sur une machine sans écran. Par dropbear, cryptroot-unlock
@@ -278,8 +367,7 @@ else
   Pour ouvrir la racine (et les autres volumes) :  cryptroot-unlock
   À l'invite, saisis la passphrase RECOVER, pas la passphrase native du disque.
 
-  Filet : le slot natif est conservé et ouvre toujours le volume.
-    cryptsetup open $ROOT_DEV $ROOT_NAME
+$MOTD_FILET
 
 MOTD
   chmod 0644 /etc/initramfs-tools/etc/motd

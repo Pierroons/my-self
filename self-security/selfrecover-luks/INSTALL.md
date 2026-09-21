@@ -357,13 +357,68 @@ grep -q '^IP=' /etc/initramfs-tools/initramfs.conf \
 grep -qx "$NET_MODULE" /etc/initramfs-tools/modules || echo "$NET_MODULE" >> /etc/initramfs-tools/modules
 
 # clé publique autorisée au boot (mets TA clé)
+# ⚠️ Le `command=` n'est pas décoratif — voir juste en dessous pourquoi.
 install -d -m 0755 /etc/dropbear/initramfs
-cat ~/.ssh/id_ed25519.pub > /etc/dropbear/initramfs/authorized_keys   # adapte
+O='command="/etc/selfkeyguard/selfrecover-secours.sh",no-port-forwarding,no-agent-forwarding,no-X11-forwarding'
+printf '%s,%s\n' "$O" "$(cat ~/.ssh/id_ed25519.pub)" \
+  > /etc/dropbear/initramfs/authorized_keys   # adapte
 chmod 0600 /etc/dropbear/initramfs/authorized_keys
 
 # dropbear sur un port dédié
 echo 'DROPBEAR_OPTIONS="-p 2222 -s -j -k -I 300"' > /etc/dropbear/initramfs/dropbear.conf
 ```
+
+#### 🔴 Le shell d'amorçage — la question que l'installateur te pose
+
+Une clé posée **sans `command=`** te donne un **shell root** quand tu te connectes au
+démarrage. Ça paraît pratique. C'est un **contournement complet du chiffrement du disque** :
+
+1. `/boot` et la partition EFI ne sont pas chiffrés — ils ne peuvent pas l'être, le firmware
+   doit les lire avant qu'aucune clé n'existe ;
+2. le sel SelfRecover y voyage, dans l'initramfs ;
+3. qui obtient ce shell monte `/boot` en écriture, y dépose un initrd modifié, et **capture ta
+   passphrase à la saisie suivante**. Rien ne le détecterait.
+
+> **Ce n'est pas théorique.** Le 21/09/2026, les **quatre** machines chiffrées d'un même parc
+> portaient la clé nue — et c'est la ligne d'installation ci-dessus, dans sa forme d'avant, qui
+> les produisait. La même clé ouvrant le pré-boot des quatre, un seul vol donnait le
+> contournement sur tout le parc.
+
+**Le remède évident coûterait ton filet.** Poser `command="cryptroot-unlock"` ferme bien le
+shell — mais `cryptroot-unlock` passe par le keyscript, donc la **passphrase LUKS native
+deviendrait inatteignable à distance**, et une machine dont le module Recover est cassé n'aurait
+plus que sa console physique.
+
+`selfrecover-secours.sh` tient les deux : à la connexion, il propose
+
+```
+    1) Passphrase RECOVER      — la voie normale
+    2) Passphrase LUKS NATIVE  — si le module Recover est cassé
+```
+
+et **rien d'autre** — pas de shell, aucun argument accepté du client. Le filet reste, la porte
+ferme, et il n'y a **aucune clé de secours** à générer, sortir de la machine et ranger : une clé
+de secours partagée par le parc recréerait exactement le défaut qu'on vient de fermer.
+
+`install.sh` **pose la question** (§6) et recommande de fermer. Il ne l'impose pas : un défaut
+appliqué dans le dos de l'opérateur le priverait d'un choix qui lui appartient. Pour répondre
+d'avance, sans interaction : `SHELL_AMORCAGE=ferme` ou `=ouvert`. Un refus est inscrit dans
+`/etc/selfkeyguard/renoncements.log` — tracé, pas invisible.
+
+> ⚠️ **Ça ne ferme pas la classe, seulement ce chemin.** `/boot` reste modifiable par un accès
+> physique et par root sur la machine en marche. Ce que ça ne ferme pas, `verifie-initramfs.sh`
+> le rend **visible** : le hook post-update consigne l'empreinte de chaque image dans
+> `/etc/selfkeyguard/initramfs.sha256`, **sur le volume chiffré**, et qui modifie `/boot` sans
+> ouvrir le volume ne peut pas la mettre d'accord.
+>
+> ```bash
+> ./verifie-initramfs.sh    # 0 concorde · 1 écart · 2 rien à comparer
+> ```
+>
+> Ce n'est pas un scellement TPM : le contrôle tourne à chaud, donc il ne protège pas la saisie
+> qui suit immédiatement une altération, et il ne dit rien contre quelqu'un qui a déjà root sur
+> la machine ouverte. Son modèle de menace est étroit et assumé : **quelqu'un qui atteint
+> `/boot` sans ouvrir le volume.**
 
 > **Piège n°2 — « gave up waiting for root file system device ».** Sans marge de temps, le
 > démarrage abandonne avant que tu aies pu te connecter et saisir la passphrase. Ajoute un

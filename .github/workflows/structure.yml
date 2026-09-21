@@ -398,6 +398,46 @@ jobs:
             || { echo "$sortie"
                  echo "::error::rouge, mais pas sur le cas de la sauvegarde périmée"
                  exit 1; }
+
+      - name: Garde-fou — le secours d'amorçage rend les deux voies, jamais un shell
+        run: |
+          # Mesuré le 21/09/2026 sur les quatre machines chiffrées du parc : la clé
+          # du dropbear d'amorçage était NUE, donc elle rendait un shell root avant
+          # l'ouverture de la racine. /boot n'étant pas chiffré et le sel y voyageant,
+          # ce shell permet de déposer un initrd modifié et de capturer la passphrase
+          # suivante. C'est install.sh qui produisait ces clés nues.
+          # Le remède ne doit pas coûter le filet anti-lockout : selfrecover-secours.sh
+          # offre les DEUX passphrases sans rendre de shell. Ce banc l'éprouve.
+          sortie=$(bash self-security/selfrecover-luks/tests/test_secours_sans_shell.sh)
+          echo "$sortie"
+          # Compte en dur : un `N/N` dirait que les cas joués passent, jamais
+          # qu'aucun n'a disparu.
+          echo "$sortie" | grep -qE '^✅ 23/23 ' \
+            || { echo "::error::le banc du secours n'a pas joué ses 23 cas"; exit 1; }
+
+      - name: Canari — le banc du secours rougit si le shell revient
+        run: |
+          # Le cas qui compte est celui qu'on vient de fermer : un secours qui rend
+          # un shell. On le replante et on exige que le banc cesse de passer.
+          S=self-security/selfrecover-luks/selfrecover-secours.sh
+          sed 's|^    exec "\$UNLOCK"|    exec /bin/sh|' "$S" > /tmp/secours-avec-shell.sh
+          chmod 0755 /tmp/secours-avec-shell.sh
+          grep -q 'exec /bin/sh' /tmp/secours-avec-shell.sh \
+            || { echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          sh -n /tmp/secours-avec-shell.sh \
+            || { echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(SECOURS=/tmp/secours-avec-shell.sh \
+               bash self-security/selfrecover-luks/tests/test_secours_sans_shell.sh 2>&1); then
+            echo "$sortie"
+            echo "::error::le banc reste VERT alors que le secours rend un shell"
+            exit 1
+          fi
+          # Rouge — mais SUR QUEL CAS ? Un banc qui n'aurait pas démarré rougirait aussi.
+          echo "$sortie" | grep -q 'aucun exec/eval vers un shell' \
+            || { echo "$sortie"
+                 echo "::error::rouge, mais pas sur le cas du shell rendu"
+                 exit 1; }
+          echo "✓ le banc rougit, et il rougit SUR LE SHELL — pas sur un contretemps"
           echo "✓ le banc rougit, et sur le cas de la sauvegarde périmée"
 
       - name: Garde-fou — un seul plancher pour les secrets de déploiement
