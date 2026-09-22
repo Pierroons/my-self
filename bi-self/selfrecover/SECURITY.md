@@ -15,12 +15,15 @@ Please include:
 
 ## Supported versions
 
-Current status: **concept stage**. The `main` branch is the only supported version for security fixes.
+Current status: **v0.6.0 — reference library, deployed in real conditions, self-audited.** An internal adversarial audit has been run; no external audit yet, and external red-team feedback is welcome.
+
+Security fixes land on `main` and ship in the next release. Only the latest release line is supported: upgrade rather than wait for a backport.
 
 | Version | Supported |
 |---------|-----------|
-| main    | ✓ |
-| < main  | ✗ |
+| `main`  | ✓ |
+| 0.6.x   | ✓ |
+| < 0.6   | ✗ |
 
 ## Threat model
 
@@ -28,7 +31,8 @@ See the [whitepaper threat model](docs/whitepaper-en.md#10-threat-model--limitat
 
 - **Protected against:** passive phishing **when the derivation runs in `'hostname'` mode** (the material is read in the browser, so a clone derives from its own hostname — in `'label'` mode there is no phishing resistance at all), email account takeover (no email at all), SMTP interception, rate limiting bypass
 - **NOT protected against:** compromised server root access (see the "CRITICAL — Server Root Access" section), social engineering of the recovery word, user negligence, active phishing (a page the attacker controls)
-- **By design:** recovery requires either the passphrase (L1) OR the recovery word + public identifier (L2). Lose both, and a human-reviewed L3 is the only fallback.
+- **Offline attack on a database dump:** only Argon2id hashes of per-site-derived values are stored — the server never sees a raw passphrase or recovery word.
+- **By design:** recovery requires either the passphrase (L1) OR a paper recovery code + the memorized word — or a "this device" proof — (L2). Lose both, and a human-reviewed L3 is the only fallback.
 
 ## Deployment security checklist
 

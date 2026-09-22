@@ -362,7 +362,7 @@ SelfRecover is honest about what it protects and what it does not. Every cryptog
 
 | Adversary | Mitigation |
 |---|---|
-| **Compromised host** (keylogger, info-stealer, RAT) | Out of scope. Use **Tails Live USB**, **Qubes OS**, or **MySelf-Live (V0.2)** for root secret ceremonies. See [Roadmap](#roadmap). |
+| **Compromised host** (keylogger, info-stealer, RAT) | Out of scope. Use **Tails Live USB**, **Qubes OS**, or **MySelf-Live** (in progress) for root secret ceremonies. See [Roadmap](#roadmap). |
 | Compromised browser (extension, 0-day) | Out of scope. Same mitigation. |
 | Coercion (physical / rubber-hose) | Out of scope. No plausible deniability provided. |
 | Theoretical break of SHA-256 / Argon2id | Out of scope. Migration follows ANSSI/NIST guidance. |
@@ -381,7 +381,10 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 
 ## Roadmap
 
-### V0.1 (July 2026)
+### Shipped — v0.1.0 to v0.6.0 (April → September 2026)
+
+The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library outran it, pulled by its first real deployment: that deployment's needs moved the protocol faster than planned. The work below therefore carries no version number — each item gets one when it ships.
+
 
 - [x] Protocol specification + whitepapers EN + FR
 - [x] Complete reference implementation (L1/L2/L3)
@@ -392,8 +395,11 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 - [x] **"This device" factor** — ECDSA P-256, private key under an Argon2id envelope, public key only server-side
 - [x] **Super-user (SU)** — SU→Admin→User model, append-only + hash-chained + HMAC audit log, ghost-admin detection
 - [x] **Real deployment** — authentication backend of a messaging service
+- [x] **Level 3 in the library** — `src/Recovery/Escalade.php`: case file, single-use claim secret, arbitration, procedure freeze (v0.5.0)
+- [x] **Argon2id written in the library** — `client/sr-kdf.js`, versioned blob, checked against seven libsodium vectors (v0.6.0)
+- [x] **Schema and contract implementation** — `schema.sql` + `StockagePdo`, shipped, never imposed (v0.6.0)
 
-### V0.2 — MySelf-Live (planned: summer 2026)
+### MySelf-Live — in progress
 
 A minimal, signed, verifiable Linux distribution for SelfRecover ceremonies:
 
@@ -409,14 +415,14 @@ A minimal, signed, verifiable Linux distribution for SelfRecover ceremonies:
 
 Build skeleton: see [`tools/build-myself-live/`](../../tools/build-myself-live/) (in progress).
 
-### V0.3 (planned: autumn 2026)
+### Next
 
 - [ ] Community security audit
 - [ ] Reproducible build pipeline finalized
 - [ ] Anti-Evil-Maid (Heads / TPM measurements) optional
 - [ ] Localizations EN / FR / DE / ES
 
-### V1.0 (planned: 2027)
+### Towards v1.0 (planned: 2027)
 
 - [ ] Publish the PHP package on Packagist (`composer require pierroons/selfrecover`) — extraction into a library is done (`src/`, PSR-4); publishing is what remains
 - [ ] JS package (`npm install selfrecover`) — the deriver ships as `client/sr-derive.js`, it is not packaged yet
