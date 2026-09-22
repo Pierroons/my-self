@@ -47,16 +47,15 @@ SelfRecover propose une autre réponse : la confiance reste entre l'utilisateur 
 
 > Mot de récupération seul = rien.
 > Algorithme seul = rien.
-> Mot de récupération + Algorithme = identité prouvée.
+> Mot de récupération + Algorithme = une empreinte que le serveur sait vérifier — un des deux facteurs du niveau 2.
 
 SelfRecover est un système de récupération à connaissance partagée (split knowledge). L'utilisateur retient un mot. Le système fournit l'algorithme. Aucun des deux n'a de valeur sans l'autre.
 
-**Ce que l'utilisateur retient :**
+**Ce que l'utilisateur retient :** un seul mot, qui ne s'écrit nulle part.
 
-- Un identifiant public (pseudo, téléphone, gamer tag, numéro client — n'importe quelle étiquette)
-- Un mot de récupération de son choix (n'importe quelle longueur, même `bob`)
+**Ce que l'utilisateur garde sur papier :** ses recovery codes (niveau 2) et sa passphrase diceware (niveau 1). Ils sont tirés au hasard ; personne n'a à les retenir.
 
-C'est tout. Deux choses. Pour tous les sites. Pour toujours.
+Le mot seul ne rouvre aucun compte : au niveau 2, il faut aussi un recovery code ou l'appareil enrôlé (§5.4).
 
 ---
 
@@ -173,7 +172,7 @@ Le L2 est un **vrai 2FA** — possession **et** connaissance — **sans identifi
 - **Possession** : un *recovery code* (parmi les 10 remis à l'inscription). Il **localise** le compte via un lookup HMAC (plus d'énumération) et sert de facteur de possession.
 - **Connaissance** : le *mot mémorisé*, dérivé HMAC côté client (le mot brut ne quitte jamais le navigateur).
 
-Le serveur vérifie les **deux** (Argon2id) et renvoie une **erreur générique** ne révélant jamais lequel a échoué. En cas de succès, l'utilisateur choisit son nouveau mot de passe et le code est marqué comme utilisé. Une variante optionnelle — le **facteur « cet appareil »** — offre une troisième voie de L2 (voir §5.4).
+Le serveur vérifie les **deux** (Argon2id) et renvoie une **erreur générique** ne révélant jamais lequel a échoué. En cas de succès, l'utilisateur choisit son nouveau mot de passe et le code est marqué comme utilisé. Une variante optionnelle — le **facteur « cet appareil »** — offre une seconde voie de L2 (voir §5.4).
 
 Aucune bascule automatique vers L3 : le niveau 2 ne demande aucun identifiant, donc il n'y a rien à compter par compte. Son seul frein est le compteur par adresse. C'est la personne qui décide d'ouvrir un dossier.
 

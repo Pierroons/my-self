@@ -55,7 +55,7 @@ SelfRecover est un protocole de récupération à **connaissance partagée** :
 - **Algorithme seul** = rien.
 - **Mot de récupération + algorithme** = une empreinte que le serveur sait vérifier — **un facteur sur les deux** que le niveau 2 exige.
 
-L'utilisateur n'a qu'**un mot à retenir de tête**, et c'est là tout ce qu'on lui demande de mémoriser. Ce n'est pas tout ce qu'il lui faut : au niveau 2, la récupération réclame aussi son *recovery code* papier ; au niveau 1, c'est la passphrase diceware qui tient ce rôle. Un seul secret en mémoire, jamais un seul facteur.
+L'utilisateur n'a qu'**un mot à retenir de tête**, et c'est là tout ce qu'on lui demande de mémoriser. Ce n'est pas tout ce qu'il lui faut : au niveau 2, le mot ne vaut qu'accompagné d'un *recovery code* papier ou de l'appareil qu'il a enrôlé. Le niveau 1 ne passe pas par le mot : il demande l'identifiant et une passphrase diceware gardée sur papier, soit un seul facteur.
 
 Quand il le saisit, le navigateur effectue une **dérivation HMAC-SHA256**. Le mot mémorisé entre en **clé** ; le message porte le **matériel de dérivation**, la version du format et le **sel du compte**. Il en sort une empreinte de 64 caractères hexadécimaux minuscules, et c'est la seule chose qui quitte le client. Le serveur ne voit jamais le mot brut.
 
@@ -114,10 +114,13 @@ Le serveur ne voit jamais : le mot de passe brut, la passphrase brute, le mot de
 ### Chaîne de renforcement de clé (récupération niveau 2)
 
 ```
-saisie user  → recovery_word
+saisie user  → recovery_code + recovery_word
+réseau       → sel du compte, demandé par le code   // toujours un sel : un faux, stable, pour un code inconnu
 client       → derived_key  = HMAC-SHA256(clé = recovery_word, message = matériel + "|v2" + user_salt)
-réseau       → POST /recover { identifier, derived_key }
-serveur      → verify        = password_verify(derived_key, stored_recovery_hash)  // Argon2id
+réseau       → POST /recover { recovery_code, derived_key }
+serveur      → compte        = lookup(HMAC-SHA256(SERVER_SECRET, recovery_code))  // le code localise le compte
+               verify        = password_verify(recovery_code, code_hash)
+                             ET password_verify(derived_key, stored_recovery_hash)  // Argon2id, les deux toujours calculés
 ```
 
 Le réseau ne transporte jamais le mot de récupération. Le serveur ne le stocke jamais. Même une fuite complète de la base de données + du code source ne l'expose pas — seulement des hachages Argon2id de clés dérivées par site.
@@ -142,10 +145,10 @@ HMAC est volontairement **rapide** côté client car l'objectif est la liaison a
 | Niveau | Ce qu'il faut fournir | Résultat |
 |-------|----------------|---------|
 | **L1** | Passphrase (diceware EFF, 4 mots ≈ 51 bits) | Nouveau mot de passe |
-| **L2** | **2FA sans identifiant** : un *recovery code* papier (possession) **+** le mot mémorisé (connaissance) — ou, en option, une preuve *« cet appareil »* | Nouveau mot de passe |
+| **L2** | **2FA sans identifiant**, deux voies : un *recovery code* papier **+** le mot mémorisé — ou, en option, l'appareil enrôlé **+** le mot mémorisé | Nouveau mot de passe |
 | **L3** | Faisceau de faits bruts + échange humain | Décision d'un admin humain, puis ré-enrôlement **par l'utilisateur** |
 
-- **L2 = vrai 2FA, sans identifiant à retenir.** Le *recovery code* **localise** le compte (via un lookup HMAC — plus d'énumération) et fait office de facteur de **possession** ; le mot mémorisé (dérivé HMAC côté client) est le facteur de **connaissance**. Les deux sont vérifiés, avec une **erreur générique** qui ne révèle jamais lequel a échoué. Voir [recovery codes](#recovery-codes) et [facteur « cet appareil »](#facteur--cet-appareil-).
+- **L2 = vrai 2FA, sans identifiant à retenir.** Le *recovery code* **localise** le compte (via un lookup HMAC — plus d'énumération) et fait office de facteur de **possession** ; le mot mémorisé (dérivé HMAC côté client) est le facteur de **connaissance**. Les deux sont vérifiés, avec une **erreur générique** qui ne révèle jamais lequel a échoué. La voie « cet appareil » remplace le code, jamais le mot. Voir [recovery codes](#recovery-codes) et [facteur « cet appareil »](#facteur--cet-appareil-).
 - **L3 = jugement humain.** Un **faisceau de faits bruts** est présenté à un admin — jamais un score automatique. L'accès au litige est protégé par un **sésame propriétaire** (jamais l'identifiant semi-public). En cas d'accord, l'utilisateur **redéfinit lui-même** son secret : le serveur n'émet aucun mot de passe.
 
 Limites de débit et système de litige à chaque niveau. Passer d'un niveau au suivant est **le choix de la personne**, pas une escalade automatique : chaque niveau demande autre chose, et elle seule sait ce qu'il lui reste.
@@ -173,7 +176,7 @@ C'est ce qui permet un **L2 sans identifiant à retenir** : le code fait à la f
 
 ## Facteur « cet appareil »
 
-Une **troisième voie optionnelle de L2**, entièrement côté navigateur — un vrai 2FA cryptographique appareil + connaissance, **sans TPM ni matériel**.
+La **seconde voie de L2, optionnelle**, entièrement côté navigateur — un vrai 2FA cryptographique appareil + connaissance, **sans TPM ni matériel**.
 
 - Une **paire ECDSA P-256** est générée dans le navigateur.
 - La **clé privée est chiffrée au repos** par une clé AES-256-GCM dérivée du **mot mémorisé** via **Argon2id** (`client/argon2id.js`, du JavaScript ordinaire — aucun binaire embarqué, aucune directive CSP à ouvrir). Le blob chiffré porte sa version et ses paramètres de dérivation, ce qui rend une migration possible. La clé nue et le mot ne sont jamais persistés.
@@ -181,7 +184,7 @@ Une **troisième voie optionnelle de L2**, entièrement côté navigateur — un
 - Le **serveur ne stocke que la clé publique** (`device_credentials`), plus un `credential_id` aléatoire qui localise le compte (comme un recovery code).
 - La récupération = **signer un challenge** (32 octets, TTL 5 min, usage unique) : le navigateur déchiffre la clé privée avec le mot, signe, le serveur vérifie (`openssl_verify`, SHA-256).
 
-Impossible sans **l'appareil** (le blob) **ET** le **mot** (pour déchiffrer la clé). Protection **logicielle** (pas TPM), device-bound, assumée comme telle. **À désactiver sur un profil Tor / onion**, où le stockage local ne survit pas à la session : cette désactivation est un choix d'intégration, elle n'est pas automatique aujourd'hui. Le recovery code papier reste le plancher universel.
+Impossible sans **l'appareil** (le blob) **ET** le **mot** (pour déchiffrer la clé). ⚠️ **Sur cette voie, le serveur ne vérifie pas le mot** : il vérifie une signature. Le mot n'y est tenu que par le chiffrement du blob — un blob volé se travaille hors ligne, sans compteur d'essais, au seul coût d'Argon2id. Cette voie demande donc un mot robuste. Protection **logicielle** (pas TPM), device-bound, assumée comme telle. **À désactiver sur un profil Tor / onion**, où le stockage local ne survit pas à la session : cette désactivation est un choix d'intégration, elle n'est pas automatique aujourd'hui. Le recovery code papier reste le plancher universel.
 
 ---
 
@@ -369,11 +372,12 @@ SelfRecover est honnête sur ce qu'il protège et ce qu'il ne protège pas. Tout
 
 ### Discipline opérationnelle
 
-La passphrase **DOIT** ne jamais exister hors du cerveau de l'utilisateur (et papier de backup). Elle ne doit jamais être saisie pour "vérification" ou "validation". Trois moments légitimes seulement :
+Deux sortes de secrets, deux règles :
 
-1. Inscription du compte (une frappe, le serveur stocke un hash Argon2id)
-2. Récupération L1 (une frappe, prouve la connaissance)
-3. Après récupération, la passphrase n'est plus utilisée — le mot de passe régénéré la remplace
+- **Le mot mémorisé ne s'écrit nulle part** — ni papier, ni gestionnaire, ni fichier. Il n'existe que dans la tête de l'utilisateur. Écrit sur le même papier que les recovery codes, il réunirait les deux facteurs de L2 en un seul ; écrit près de l'appareil, il livrerait la clé du facteur « cet appareil ».
+- **La passphrase diceware (L1) et les recovery codes (L2) se gardent sur papier**, rangés hors ligne. Ils sont tirés au hasard : personne n'a à les retenir.
+
+Aucun ne se saisit pour « vérification » ou « validation ». Le mot se saisit à l'inscription, à la régénération des codes, à l'enrôlement d'un appareil et à la récupération L2. La passphrase se saisit à la seule récupération L1, qui la consomme : une passphrase neuve la remplace.
 
 Si la vérification d'une passphrase fraîchement tirée est souhaitée, utiliser **l'outil HTML autonome offline** (`tools/offline-validator/index.html`) sur une machine déconnectée.
 

@@ -45,16 +45,15 @@ SelfRecover proposes a different answer: trust stays between the user and the si
 
 > Recovery word alone = nothing.
 > Algorithm alone = nothing.
-> Recovery word + Algorithm = identity proven.
+> Recovery word + Algorithm = a fingerprint the server can verify — one of level 2's two factors.
 
 SelfRecover is a split-knowledge recovery system. The user remembers one word. The system provides the algorithm. Neither has value without the other.
 
-**What the user remembers:**
+**What the user remembers:** a single word, written down nowhere.
 
-- A public identifier (username, phone, gamer tag, customer ID — any label)
-- A recovery word of their choice (any length, any complexity — even `bob`)
+**What the user keeps on paper:** their recovery codes (level 2) and their diceware passphrase (level 1). They are drawn at random; nobody has to remember them.
 
-That's it. Two things. For every site. Forever.
+The word alone reopens no account: level 2 also requires a recovery code or the enrolled device (§5.4).
 
 ---
 
@@ -171,7 +170,7 @@ L2 is a **real 2FA** — possession **and** knowledge — **with no identifier t
 - **Possession**: a *recovery code* (one of the 10 issued at registration). It **locates** the account via an HMAC lookup (no more enumeration) and acts as the possession factor.
 - **Knowledge**: the *memorized word*, HMAC-derived client-side (the raw word never leaves the browser).
 
-The server verifies **both** (Argon2id) and returns a **generic error** that never reveals which one failed. On success, the user picks their new password and the code is marked used. An optional variant — the **"this device" factor** — provides a third L2 path (see §5.4).
+The server verifies **both** (Argon2id) and returns a **generic error** that never reveals which one failed. On success, the user picks their new password and the code is marked used. An optional variant — the **"this device" factor** — provides a second L2 path (see §5.4).
 
 There is no automatic escalation to L3: level 2 asks for no identifier, so there is nothing to count per account. Its only brake is the per-address counter. Opening a dispute is the person's own decision.
 

@@ -55,7 +55,7 @@ SelfRecover is a **split-knowledge** recovery protocol:
 - **Algorithm alone** = nothing.
 - **Recovery word + algorithm** = a fingerprint the server can verify — **one factor out of the two** level 2 requires.
 
-The user has only **one word to keep in their head**, and that is all they are asked to memorize. It is not all they need: at level 2, recovery also calls for their paper *recovery code*; at level 1, the diceware passphrase plays that part. One secret in memory, never a single factor.
+The user has only **one word to keep in their head**, and that is all they are asked to memorize. It is not all they need: at level 2, the word only counts together with a paper *recovery code* or the device they enrolled. Level 1 does not use the word: it asks for the identifier and a diceware passphrase kept on paper — a single factor.
 
 When they type it, the browser performs a **HMAC-SHA256 derivation**. The memorized word goes in as the **key**; the message carries the **derivation material**, the format version, and the account's **salt**. What comes out is a 64-character lowercase hex fingerprint, and it is the only thing that leaves the client. The server never sees the raw word.
 
@@ -114,10 +114,13 @@ The server never sees: the raw password, the raw passphrase, the raw recovery wo
 ### Key-stretching chain (Level 2 recovery)
 
 ```
-user input   → recovery_word
+user input   → recovery_code + recovery_word
+wire         → account salt, requested by the code   // always a salt: a fake, stable one for an unknown code
 client       → derived_key  = HMAC-SHA256(key = recovery_word, message = material + "|v2" + user_salt)
-wire         → POST /recover { identifier, derived_key }
-server       → verify        = password_verify(derived_key, stored_recovery_hash)  // Argon2id
+wire         → POST /recover { recovery_code, derived_key }
+server       → account       = lookup(HMAC-SHA256(SERVER_SECRET, recovery_code))  // the code locates the account
+               verify        = password_verify(recovery_code, code_hash)
+                             AND password_verify(derived_key, stored_recovery_hash)  // Argon2id, both always computed
 ```
 
 The wire never carries the recovery word. The server never stores the recovery word. Even a full database dump + source code leak does not expose it — only Argon2id hashes of per-site-derived keys.
@@ -142,10 +145,10 @@ HMAC is intentionally **fast** client-side because the goal is service binding, 
 | Level | What you provide | Outcome |
 |-------|----------------|---------|
 | **L1** | Passphrase (EFF diceware, 4 words ≈ 51 bits) | New password |
-| **L2** | **Identifier-less 2FA**: a paper *recovery code* (possession) **+** the memorized word (knowledge) — or, optionally, a *"this device"* proof | New password |
+| **L2** | **Identifier-less 2FA**, two paths: a paper *recovery code* **+** the memorized word — or, optionally, the enrolled device **+** the memorized word | New password |
 | **L3** | Bundle of raw facts + human exchange | Human admin decision, then re-enrollment **by the user** |
 
-- **L2 = real 2FA, with no identifier to remember.** The *recovery code* **locates** the account (via an HMAC lookup — no more enumeration) and acts as the **possession** factor; the memorized word (HMAC-derived client-side) is the **knowledge** factor. Both are verified, with a **generic error** that never reveals which one failed. See [recovery codes](#recovery-codes) and [the "this device" factor](#the-this-device-factor).
+- **L2 = real 2FA, with no identifier to remember.** The *recovery code* **locates** the account (via an HMAC lookup — no more enumeration) and acts as the **possession** factor; the memorized word (HMAC-derived client-side) is the **knowledge** factor. Both are verified, with a **generic error** that never reveals which one failed. The "this device" path replaces the code, never the word. See [recovery codes](#recovery-codes) and [the "this device" factor](#the-this-device-factor).
 - **L3 = human judgment.** A **bundle of raw facts** is shown to an admin — never an automatic score. Dispute access is protected by an **owner sesame** (never the semi-public identifier). On grant, the user **re-defines their own secret**: the server issues no password.
 
 Rate limits and a dispute system at every level. Moving from one level to the next is **the person's own choice**, not an automatic escalation: each level asks for something different, and only they know what they still hold.
@@ -173,7 +176,7 @@ This is what enables an **identifier-less L2**: the code is both "who" and a pro
 
 ## The "this device" factor
 
-An **optional third path for L2**, entirely browser-side — a real cryptographic device + knowledge 2FA, **with no TPM or hardware**.
+The **second, optional path for L2**, entirely browser-side — a real cryptographic device + knowledge 2FA, **with no TPM or hardware**.
 
 - An **ECDSA P-256 keypair** is generated in the browser.
 - The **private key is encrypted at rest** by an AES-256-GCM key derived from the **memorized word** via **Argon2id** (`client/argon2id.js`, plain JavaScript — no vendored binary, no CSP directive to open). The encrypted blob carries its version and derivation parameters, which makes migration possible. The raw key and the word are never persisted.
@@ -181,7 +184,7 @@ An **optional third path for L2**, entirely browser-side — a real cryptographi
 - The **server stores only the public key** (`device_credentials`), plus a random `credential_id` that locates the account (like a recovery code).
 - Recovery = **sign a challenge** (32 bytes, 5-min TTL, single-use): the browser decrypts the private key with the word, signs, the server verifies (`openssl_verify`, SHA-256).
 
-Impossible without **the device** (the blob) **AND** the **word** (to decrypt the key). **Software** protection (not TPM), device-bound, assumed as such. **Should be disabled on Tor / onion profiles**, where local storage does not survive the session: this is an integration choice, not an automatic behaviour today. The paper recovery code remains the universal floor.
+Impossible without **the device** (the blob) **AND** the **word** (to decrypt the key). ⚠️ **On this path the server does not check the word**: it checks a signature. The word is held only by the blob's encryption — a stolen blob can be attacked offline, with no attempt counter, at the sole cost of Argon2id. This path therefore calls for a strong word. **Software** protection (not TPM), device-bound, assumed as such. **Should be disabled on Tor / onion profiles**, where local storage does not survive the session: this is an integration choice, not an automatic behaviour today. The paper recovery code remains the universal floor.
 
 ---
 
@@ -369,11 +372,12 @@ SelfRecover is honest about what it protects and what it does not. Every cryptog
 
 ### Operational discipline
 
-The passphrase **MUST** never exist outside the user's brain (and a paper backup). It should never be typed for "verification" or "validation". Three legitimate moments only:
+Two kinds of secrets, two rules:
 
-1. Account registration (one keystroke, server stores Argon2id hash)
-2. Recovery L1 (one keystroke, proves knowledge)
-3. After recovery, the passphrase is no longer used — the regenerated password replaces it
+- **The memorized word is written down nowhere** — no paper, no password manager, no file. It exists only in the user's head. Written on the same sheet as the recovery codes, it would merge L2's two factors into one; written next to the device, it would hand over the key of the "this device" factor.
+- **The diceware passphrase (L1) and the recovery codes (L2) are kept on paper**, stored offline. They are drawn at random: nobody has to remember them.
+
+None of them is typed for "verification" or "validation". The word is typed at registration, when regenerating codes, when enrolling a device, and at L2 recovery. The passphrase is typed only at L1 recovery, which consumes it: a fresh passphrase replaces it.
 
 If verification of a freshly-rolled passphrase is desired, use the **standalone offline HTML tool** (`tools/offline-validator/index.html`) on an air-gapped machine.
 
