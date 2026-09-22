@@ -5,7 +5,7 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per service, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.5.1](https://img.shields.io/badge/status-v0.5.1-green.svg)](#status)
+[![Status: v0.6.0](https://img.shields.io/badge/status-v0.6.0-green.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#trying-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#trying-selfrecover)
@@ -332,8 +332,8 @@ This is a companion module, **[`selfrecover-luks`](../../self-security/selfrecov
 
 This repository contains:
 - The **protocol specification** (whitepapers v1.1)
-- A **PHP library** — `src/`, PSR-4 `Pierroons\SelfRecover\`: level 1 and level 2 recovery, recovery codes, the "this device" factor, the Argon2id profile, the diceware wordlist, and the storage interface an integrator implements against their own database
-- The **browser deriver** — `client/sr-derive.js`, shipped rather than described: it is what carries the anti-phishing property, and the integrators who wrote it themselves produced variants that did not have it
+- A **PHP library** — `src/`, PSR-4 `Pierroons\SelfRecover\`: level 1 and level 2 recovery, recovery codes, the "this device" factor, the Argon2id profile, the diceware wordlist, and the storage interface an integrator implements against their own database — or, starting from scratch, its shipped implementation (`schema.sql` + `StockagePdo`)
+- The **browser deriver** — `client/sr-derive.js`, shipped rather than described: it is what carries the anti-phishing property, and the integrators who wrote it themselves produced variants that did not have it; and `client/sr-kdf.js`, which encrypts a local secret with Argon2id, version and parameters inside the blob
 - **All three levels**, since 2026-09-07: level 3 escalation now lives in `src/Recovery/Escalade.php` — case file, single-use claim secret, bundle of raw facts, arbitration and procedure freeze. It does not check *who* may decide: roles and sessions belong to the application. The super-user still lives in [`demo/lab/`](../../demo/lab/)
 
 **Real deployment:** the implementation runs in real conditions — notably as the **authentication backend of a messaging service**, reusing the SelfRecover account store as-is (Argon2id).

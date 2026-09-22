@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.5.1](https://img.shields.io/badge/status-v0.5.1-green.svg)](#statut)
+[![Status: v0.6.0](https://img.shields.io/badge/status-v0.6.0-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -332,8 +332,8 @@ C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecove
 
 Ce dépôt contient :
 - La **spécification du protocole** (whitepapers v1.1)
-- Une **bibliothèque PHP** — `src/`, PSR-4 `Pierroons\SelfRecover\` : récupération de niveaux 1 et 2, recovery codes, facteur « cet appareil », profil Argon2id, wordlist diceware, et l'interface de stockage que l'intégrateur implémente pour sa propre base
-- Le **dériveur navigateur** — `client/sr-derive.js`, livré plutôt que décrit : c'est lui qui porte la propriété anti-hameçonnage, et les intégrateurs qui l'écrivaient eux-mêmes en produisaient des variantes qui ne l'avaient pas
+- Une **bibliothèque PHP** — `src/`, PSR-4 `Pierroons\SelfRecover\` : récupération de niveaux 1 et 2, recovery codes, facteur « cet appareil », profil Argon2id, wordlist diceware, et l'interface de stockage que l'intégrateur implémente pour sa propre base — ou, s'il part de zéro, son implémentation fournie (`schema.sql` + `StockagePdo`)
+- Le **dériveur navigateur** — `client/sr-derive.js`, livré plutôt que décrit : c'est lui qui porte la propriété anti-hameçonnage, et les intégrateurs qui l'écrivaient eux-mêmes en produisaient des variantes qui ne l'avaient pas ; et `client/sr-kdf.js`, qui chiffre un secret local en Argon2id avec sa version et ses paramètres dans le blob
 - **Les trois niveaux**, depuis le 07/09/2026 : l'escalade de niveau 3 est remontée dans `src/Recovery/Escalade.php` — dossier, sésame à usage unique, faisceau de faits bruts, arbitrage et gel de procédure. Elle ne vérifie pas *qui* a le droit de trancher : les rôles et les sessions appartiennent à l'application. Le super-utilisateur, lui, vit toujours dans [`demo/lab/`](../../demo/lab/)
 
 **Déploiement réel :** l'implémentation tourne en conditions réelles — notamment comme **backend d'authentification d'un service de messagerie**, qui réutilise tel quel le stockage de comptes SelfRecover (Argon2id).

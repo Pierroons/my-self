@@ -7,7 +7,7 @@
 > *If a community can build itself, it can govern itself.*
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfRecover: v0.5.1](https://img.shields.io/badge/SelfRecover-v0.5.1-green.svg)](./selfrecover/)
+[![SelfRecover: v0.6.0](https://img.shields.io/badge/SelfRecover-v0.6.0-green.svg)](./selfrecover/)
 [![SelfModerate: v0.3.0](https://img.shields.io/badge/SelfModerate-v0.3.0-yellow.svg)](./selfmoderate/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)

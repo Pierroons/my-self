@@ -4,7 +4,7 @@
 > *Un déverrouillage qui ne dépend d'aucun tiers — pas de cloud, pas de serveur de clés réseau.*
 > *Architecture, sécurité et déploiement*
 
-Écosystème MySelf — pilier Self-Security · Version 0.4.0 · 07 septembre 2026 · AGPL-3.0-or-later
+Écosystème MySelf — pilier Self-Security · Version 0.5.0 · 22 septembre 2026 · AGPL-3.0-or-later
 📥 Aussi disponible en DOCX (impression / diffusion) : [SelfRecover-LUKS_Whitepaper.docx](./SelfRecover-LUKS_Whitepaper.docx)
 
 ---
