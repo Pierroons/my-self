@@ -19,7 +19,7 @@
 
 Tous les produits actuels de chiffrement des données au repos (MySQL TDE, MongoDB CSFLE, AWS RDS encryption) répondent au même modèle de menace : **l'attaquant a le disque, mais pas l'application**. La clé de chiffrement se trouve à côté des données — dans un fichier de configuration, une variable d'environnement, ou un service de gestion de clés que l'application peut lire.
 
-Ce modèle s'effondre dès que **le serveur d'application est compromis**. L'attaquant exfiltre la base de données ET la clé — le chiffrement n'était qu'une case cochée, pas une défense. Les fuites récentes à grande échelle (ANTS, France, avril 2026 — 11,7 à 19 millions de comptes exposés via une faille IDOR triviale) ont prouvé que les données personnelles exposées en clair constituent le coût dominant de ce type d'incident.
+Ce modèle s'effondre dès que **le serveur d'application est compromis**. L'attaquant exfiltre la base de données ET la clé — le chiffrement n'était qu'une case cochée, pas une défense. Les fuites récentes à grande échelle ont montré la même chose à chaque fois : ce sont les données personnelles exposées en clair qui constituent le coût dominant de l'incident, parce qu'elles ne se révoquent pas.
 
 Les outils actuels soit ignorent complètement le chiffrement au repos, soit l'implémentent d'une manière qui n'apporte aucune valeur contre une compromission côté serveur. SelfDataGuard choisit une troisième voie : **dériver la clé de chiffrement d'un secret connu uniquement de l'utilisateur**, de sorte qu'un dump de base ne donne que de la soupe cryptographique.
 

@@ -9,11 +9,11 @@
 
 ## Contexte
 
-Le 15 avril 2026, le portail `moncompte.ants.gouv.fr` (Agence nationale des titres sécurisés) a subi une fuite de données via une faille IDOR (*Insecure Direct Object Reference*) : modifier un identifiant dans une requête de l'API permettait d'accéder au compte d'un autre citoyen. Le ministère de l'Intérieur a confirmé **11,7 millions de comptes** impactés ; les attaquants revendiquent jusqu'à **19 millions d'enregistrements** exfiltrés. Données exposées : état civil, coordonnées, statut de certification d'identité — sans mot de passe ni biométrie.
+Le schéma qui coûte le plus cher est connu, et il se répète : une faille d'autorisation triviale — changer un identifiant dans une requête d'API suffit à lire le compte d'un autre — sur un service dont la récupération de compte passe par un canal email. L'ampleur ne tient alors qu'au nombre de lignes de la table.
 
-L'incident a posé une question structurelle : pourquoi un service régalien doit-il indexer un canal email pour réinitialiser un compte ? Tant qu'une boîte mail tierce est dans la chaîne de récupération, sa compromission devient l'angle d'attaque dominant. SelfRecover a été publié sous AGPL-3.0-or-later **avant cet incident** (avril 2026, v0.1.0) précisément pour proposer une réponse technique : rendre le canal email optionnel (mode **Lite** v0.1.1) ou le supprimer complètement (mode **Full**).
+La question est structurelle : pourquoi un service doit-il indexer une boîte mail pour établir qu'on est soi ? Tant qu'une boîte tierce est dans la chaîne de récupération, sa compromission devient l'angle d'attaque dominant. SelfRecover propose une réponse technique : rendre le canal email optionnel (mode **Lite** v0.1.1) ou le supprimer complètement (mode **Full**). Publié sous AGPL-3.0-or-later en avril 2026 (v0.1.0).
 
-Ce whitepaper décrit le protocole. Il n'est ni une critique ad hoc d'un acteur, ni une revendication post-incident — c'est une proposition open-source antérieure que les opérateurs publics et privés peuvent auditer, intégrer ou contester librement.
+Ce whitepaper décrit le protocole. Il ne vise aucun acteur en particulier — c'est une proposition open-source que les opérateurs publics et privés peuvent auditer, intégrer ou contester librement.
 
 ---
 

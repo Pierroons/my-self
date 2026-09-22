@@ -19,7 +19,7 @@
 
 For e-commerce or SaaS deployments that also need to **protect stored personal data** against database exfiltration, see the [SelfDataGuard](../../self-security/selfdataguard/) companion module. SelfDataGuard reuses the SelfRecover memorized recovery word as one of its key-wrapping factors (with a strict context separator: `/recover` for auth, `/dataguard` for data), so a user who forgets their password can simultaneously regain account access AND decrypt their stored data with the same memorized word.
 
-SelfRecover protects **authentication**. SelfDataGuard protects **data at rest**. Together they close the loop against breaches like the April 2026 ANTS leak (where both auth tokens AND personal data were exposed in plain text).
+SelfRecover protects **authentication**. SelfDataGuard protects **data at rest**. Together they close the loop on the case that does the most damage: a dump where authentication tokens **and** personal data leave in plain text, from the same table.
 
 ---
 
@@ -30,7 +30,7 @@ without an all-or-nothing rewrite of their authentication stack.
 
 | Mode | Email channel | Crypto added | When to pick it |
 |------|---------------|--------------|-----------------|
-| **Full** | None at all | Diceware EFF passphrase + HMAC-per-service | Greenfield projects, high-assurance and post-ANTS-leak threat models |
+| **Full** | None at all | Diceware EFF passphrase + HMAC-per-service | Greenfield projects, high-assurance threat models |
 | **Lite** 🆕 | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want a recovery secret that never travels in clear, and migrate to Full later |
 
 **Try it:** see [Trying SelfRecover](#trying-selfrecover). The method comparison (8 adversaries × 3 models) is a standalone page: `tools/comparison.html`.
@@ -53,9 +53,9 @@ SelfRecover is a **split-knowledge** recovery protocol:
 
 - **Recovery word alone** = nothing.
 - **Algorithm alone** = nothing.
-- **Recovery word + algorithm** = identity proven.
+- **Recovery word + algorithm** = a fingerprint the server can verify — **one factor out of the two** level 2 requires.
 
-The user remembers **one word of their choice**. That's it.
+The user has only **one word to keep in their head**, and that is all they are asked to memorize. It is not all they need: at level 2, recovery also calls for their paper *recovery code*; at level 1, the diceware passphrase plays that part. One secret in memory, never a single factor.
 
 When they type it, the browser performs a **HMAC-SHA256 derivation**. The memorized word goes in as the **key**; the message carries the **derivation material**, the format version, and the account's **salt**. What comes out is a 64-character lowercase hex fingerprint, and it is the only thing that leaves the client. The server never sees the raw word.
 

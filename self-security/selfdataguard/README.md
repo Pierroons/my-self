@@ -19,7 +19,7 @@
 
 Every encrypted-data-at-rest product today (MySQL TDE, MongoDB CSFLE, AWS RDS encryption) answers the same threat model: **the attacker has the disk, but not the application**. The encryption key sits next to the data — in a config file, an environment variable, a key management service the application can read.
 
-That model breaks the moment the **application server is compromised**. The attacker dumps the database AND the key — the encryption was a checkbox, not a defense. Recent breaches at scale (ANTS, France, April 2026 — 11.7 to 19 million accounts exposed via a trivial IDOR) proved that personal data exposed in plain text is the dominant cost of these incidents.
+That model breaks the moment the **application server is compromised**. The attacker dumps the database AND the key — the encryption was a checkbox, not a defense. Recent breaches at scale have shown the same thing every time: personal data exposed in plain text is the dominant cost of the incident, because it cannot be revoked.
 
 Current tools either skip data-at-rest encryption entirely or implement it in a way that adds zero value against a server-side compromise. SelfDataGuard picks a third path: **derive the encryption key from a secret only the user knows**, so a database dump alone yields cryptographic soup.
 

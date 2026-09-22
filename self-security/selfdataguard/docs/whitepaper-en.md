@@ -7,13 +7,13 @@
 
 ## Context (May 2026)
 
-On April 15, 2026, the `moncompte.ants.gouv.fr` portal (Agence nationale des titres sécurisés — France's national agency for secure documents) suffered a data breach via an IDOR vulnerability: changing an identifier in an API request granted access to another citizen's account. The Ministry of the Interior confirmed 11.7 million accounts affected; attackers claim up to 19 million records exfiltrated. Exposed data: civil status, contact details, identity certification status — **stored in plain text**, with no application-layer encryption that could have rendered them unusable.
+The pattern is always the same: an authorization flaw grants access to other people's accounts, and what it exposes sits **in plain text in the database**, with no application-layer encryption that could have rendered it unusable. Civil status, contact details, identity status: data you cannot change the way you change a password.
 
-The incident raised a structural question complementary to the one addressed by SelfRecover: **how to make a database leak technically useless to the attacker**, independently of the authentication flow?
+There is a structural question here, complementary to the one SelfRecover addresses: **how to make a database leak technically useless to the attacker**, independently of the authentication flow?
 
 SelfRecover protects **account access**. SelfDataGuard protects **stored data**. Together, the two modules close the loop: an attacker bypassing authentication (SelfRecover) finds an encrypted database (SelfDataGuard); an attacker dumping the database (SelfDataGuard) finds non-reversible Argon2id hashes (SelfRecover).
 
-This whitepaper describes the SelfDataGuard protocol. It is neither an ad-hoc critique of any single actor nor a post-incident claim — it is an open-source proposal complementary to SelfRecover, that public and private operators may audit, integrate, or contest freely.
+This whitepaper describes the SelfDataGuard protocol. It targets no actor in particular — it is an open-source proposal complementary to SelfRecover, that public and private operators may audit, integrate, or contest freely.
 
 ---
 

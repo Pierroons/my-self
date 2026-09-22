@@ -17,9 +17,9 @@
 
 ## Module compagnon — SelfDataGuard (concept)
 
-Pour les déploiements e-commerce ou SaaS qui ont également besoin de **protéger les données personnelles stockées** contre une exfiltration de base, voir le module compagnon [SelfDataGuard](../../self-security/selfdataguard/). SelfDataGuard réutilise le mot mémorisé de récupération SelfRecover comme l'un de ses facteurs d'encapsulage de clé (avec un séparateur de contexte strict : `/recover` pour l'auth, `/dataguard` pour les données), de sorte qu'un utilisateur qui oublie son mot de passe peut simultanément retrouver son accès au compte ET déchiffrer ses données stockées avec le même mot mémorisé.
+Pour les déploiements e-commerce ou SaaS qui ont également besoin de **protéger les données personnelles stockées** contre une exfiltration de base, voir le module compagnon [SelfDataGuard](../../self-security/selfdataguard/). SelfDataGuard réutilise le mot mémorisé de récupération SelfRecover comme l'un de ses facteurs d'encapsulage de clé (avec un séparateur de contexte strict : `/recover` pour l'auth, `/dataguard` pour les données), de sorte qu'un utilisateur qui oublie son mot de passe garde une voie vers chacune de ses deux moitiés : son mot mémorisé ouvre le coffre SelfDataGuard à lui seul, et sert de facteur de connaissance pour rouvrir le compte — avec le *recovery code* papier à côté.
 
-SelfRecover protège l'**authentification**. SelfDataGuard protège les **données au repos**. Ensemble, ils ferment la boucle contre les fuites de type ANTS avril 2026 (où à la fois les tokens d'auth ET les données personnelles ont été exposés en clair).
+SelfRecover protège l'**authentification**. SelfDataGuard protège les **données au repos**. Ensemble, ils ferment la boucle sur le cas qui fait le plus de dégâts : un dump où les jetons d'authentification **et** les données personnelles partent en clair, dans la même table.
 
 ---
 
@@ -30,7 +30,7 @@ sans réécriture totale de la pile d'authentification existante.
 
 | Mode | Canal email | Crypto ajoutée | Quand le choisir |
 |------|-------------|----------------|------------------|
-| **Full** | Aucun | Passphrase diceware EFF + HMAC par service | Projets greenfield, modèles de menace exigeants et post-ANTS |
+| **Full** | Aucun | Passphrase diceware EFF + HMAC par service | Projets greenfield, modèles de menace exigeants |
 | **Lite** 🆕 | Conservé (lien reset SMTP) | Un mot mémorisé par l'utilisateur, dérivé HMAC côté client, jamais envoyé en clair | Stack legacy qui veut un secret de secours qui ne circule jamais en clair, migration vers Full plus tard |
 
 **Essayer :** voir [Essayer SelfRecover](#essayer-selfrecover). Le comparatif des méthodes (8 adversaires × 3 modèles) est une page autonome : `tools/comparison.html`.
@@ -53,9 +53,9 @@ SelfRecover est un protocole de récupération à **connaissance partagée** :
 
 - **Mot de récupération seul** = rien.
 - **Algorithme seul** = rien.
-- **Mot de récupération + algorithme** = identité prouvée.
+- **Mot de récupération + algorithme** = une empreinte que le serveur sait vérifier — **un facteur sur les deux** que le niveau 2 exige.
 
-L'utilisateur se souvient d'**un mot de son choix**. C'est tout.
+L'utilisateur n'a qu'**un mot à retenir de tête**, et c'est là tout ce qu'on lui demande de mémoriser. Ce n'est pas tout ce qu'il lui faut : au niveau 2, la récupération réclame aussi son *recovery code* papier ; au niveau 1, c'est la passphrase diceware qui tient ce rôle. Un seul secret en mémoire, jamais un seul facteur.
 
 Quand il le saisit, le navigateur effectue une **dérivation HMAC-SHA256**. Le mot mémorisé entre en **clé** ; le message porte le **matériel de dérivation**, la version du format et le **sel du compte**. Il en sort une empreinte de 64 caractères hexadécimaux minuscules, et c'est la seule chose qui quitte le client. Le serveur ne voit jamais le mot brut.
 

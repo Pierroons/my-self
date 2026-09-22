@@ -9,13 +9,13 @@
 
 ## Contexte
 
-Le 15 avril 2026, le portail `moncompte.ants.gouv.fr` (Agence nationale des titres sécurisés) a subi une fuite de données via une faille IDOR : modifier un identifiant dans une requête de l'API permettait d'accéder au compte d'un autre citoyen. Le ministère de l'Intérieur a confirmé 11,7 millions de comptes impactés ; les attaquants revendiquent jusqu'à 19 millions d'enregistrements exfiltrés. Données exposées : état civil, coordonnées, statut de certification d'identité — **en clair dans la base**, sans chiffrement applicatif susceptible de les rendre inexploitables.
+Le schéma est toujours le même : une faille d'autorisation donne accès aux comptes d'autrui, et ce qu'elle expose est **en clair dans la base**, sans chiffrement applicatif susceptible de le rendre inexploitable. État civil, coordonnées, statut d'identité : des données qui ne se changent pas comme un mot de passe.
 
-L'incident a posé une question structurelle complémentaire à celle adressée par SelfRecover : **comment rendre une fuite de base de données techniquement inutile pour l'attaquant**, indépendamment du flux d'authentification ?
+Il y a là une question structurelle, complémentaire à celle qu'adresse SelfRecover : **comment rendre une fuite de base de données techniquement inutile pour l'attaquant**, indépendamment du flux d'authentification ?
 
 SelfRecover protège l'**accès** au compte. SelfDataGuard protège les **données** stockées. Ensemble, les deux modules ferment la boucle : un attaquant qui contourne l'authentification (SelfRecover) trouve une base chiffrée (SelfDataGuard) ; un attaquant qui dump la base (SelfDataGuard) trouve des hashes Argon2id non réversibles (SelfRecover).
 
-Ce whitepaper décrit le protocole SelfDataGuard. Il n'est ni une critique ad hoc d'un acteur, ni une revendication post-incident — c'est une proposition open-source, complémentaire à SelfRecover, que les opérateurs publics et privés peuvent auditer, intégrer ou contester librement.
+Ce whitepaper décrit le protocole SelfDataGuard. Il ne vise aucun acteur en particulier — c'est une proposition open-source, complémentaire à SelfRecover, que les opérateurs publics et privés peuvent auditer, intégrer ou contester librement.
 
 ---
 
