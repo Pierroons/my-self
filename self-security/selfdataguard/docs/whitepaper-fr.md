@@ -187,7 +187,7 @@ Scénario : un utilisateur a perdu son mot de passe.
 
 - **Sans SelfDataGuard** : SelfRecover lui permet de redéfinir un mot de passe. Mais il aurait pu, avec ses données personnelles en clair dans la base, perdre l'accès à ces données ? Non : la base était en clair, donc l'admin pouvait toujours les lui re-fournir.
 - **Avec SelfDataGuard seul** (sans SelfRecover) : impossible, ses données sont chiffrées par sa `password_key` qu'il ne se rappelle plus.
-- **Avec les deux ensemble** : il entre son mot mémorisé. SelfRecover dérive `recover_key` et l'authentifie. SelfDataGuard dérive `data_key`, déballe `wrap_recov` et restaure `data_master_key`. L'utilisateur retrouve simultanément l'accès à son compte et la lisibilité de ses données.
+- **Avec les deux ensemble** : il présente son *recovery code* papier **et** son mot mémorisé. SelfRecover vérifie les deux — le code localise le compte et porte la possession, le mot dérivé porte la connaissance — puis l'authentifie. SelfDataGuard, lui, n'a besoin que du mot : il dérive `data_key`, déballe `wrap_recov` et restaure `data_master_key`. L'utilisateur retrouve l'accès à son compte et la lisibilité de ses données dans le même passage.
 
 C'est le mécanisme exact qu'on retrouve sur Bitwarden (recovery code) ou ProtonMail (recovery phrase).
 

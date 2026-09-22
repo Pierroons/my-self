@@ -166,7 +166,7 @@ Scenario: a user has lost their password.
 
 - **Without SelfDataGuard**: SelfRecover lets them set a new password. But could they have lost access to their personal data with it in plain text in the database? No: the database was in plain text, so the admin could always re-provide them.
 - **With SelfDataGuard alone** (no SelfRecover): impossible, their data is encrypted with their `password_key`, which they no longer remember.
-- **With both together**: they enter their memorized word. SelfRecover derives `recover_key` and authenticates them. SelfDataGuard derives `data_key`, unwraps `wrap_recov`, and restores `data_master_key`. The user simultaneously regains account access and data readability.
+- **With both together**: they present their paper *recovery code* **and** their memorized word. SelfRecover checks both — the code locates the account and carries possession, the derived word carries knowledge — then authenticates them. SelfDataGuard needs only the word: it derives `data_key`, unwraps `wrap_recov`, and restores `data_master_key`. The user regains account access and data readability in the same pass.
 
 This is the exact mechanism found in Bitwarden (recovery code) or ProtonMail (recovery phrase).
 

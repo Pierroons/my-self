@@ -69,9 +69,9 @@ mot_memorise (secret utilisateur, jamais transmis en clair)
     └─ HMAC-SHA256(secret, user_salt + "/dataguard")  →  data_key    (encapsulage SelfDataGuard)
 ```
 
-Conséquence pratique : un utilisateur qui oublie son mot de passe mais se rappelle son mot mémorisé peut simultanément **retrouver l'accès à son compte (via SelfRecover) et déchiffrer ses données stockées (via SelfDataGuard)**. Un seul mot mémorisé, deux usages dérivés, mathématiquement isolés.
+Conséquence pratique : un utilisateur qui oublie son mot de passe garde une voie vers chacune de ses deux moitiés. Son mot mémorisé ouvre **à lui seul** le coffre SelfDataGuard. Pour l'accès au compte, il lui faut en plus ce que SelfRecover exige — son *recovery code* papier au niveau 2, ou sa passphrase diceware au niveau 1 : le mot mémorisé n'y est **qu'un facteur sur deux**. Un seul mot à retenir, deux usages dérivés, mathématiquement isolés.
 
-Sans SelfRecover, SelfDataGuard fonctionne quand même — il bascule alors sur un encapsulage uniquement par mot de passe (récupération à un seul facteur, UX dégradée). Mais l'appariement naturel est : **SelfRecover protège l'authentification, SelfDataGuard protège les données, le même mot mémorisé débloque les deux**.
+Sans SelfRecover, SelfDataGuard fonctionne quand même — il bascule alors sur un encapsulage uniquement par mot de passe (récupération à un seul facteur, UX dégradée). Mais l'appariement naturel est : **SelfRecover protège l'authentification, SelfDataGuard protège les données, et le même mot mémorisé sert dans les deux** — seul pour ouvrir le coffre, accompagné du *recovery code* pour rouvrir le compte.
 
 ---
 

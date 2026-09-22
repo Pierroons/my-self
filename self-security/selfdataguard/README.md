@@ -69,9 +69,9 @@ recovery_word (user secret, never transmitted in plain)
     └─ HMAC-SHA256(secret, salt_user + "/dataguard")  →  data_key  (SelfDataGuard wrap)
 ```
 
-Practical consequence: a user who forgets their password but remembers their recovery word can simultaneously **regain account access (via SelfRecover) and decrypt their stored data (via SelfDataGuard)**. One memorized word, two derived purposes, mathematically isolated.
+Practical consequence: a user who forgets their password keeps a way into each of their two halves. Their memorized word opens the SelfDataGuard vault **on its own**. For account access they also need what SelfRecover requires — their paper *recovery code* at level 2, or their diceware passphrase at level 1: the memorized word is **one factor out of two** there. One word to remember, two derived purposes, mathematically isolated.
 
-Without SelfRecover, SelfDataGuard still works — it falls back to a password-only wrap (single-factor recovery, weaker UX). But the natural pairing is: **SelfRecover protects authentication, SelfDataGuard protects data, the same memorized word unlocks both**.
+Without SelfRecover, SelfDataGuard still works — it falls back to a password-only wrap (single-factor recovery, weaker UX). But the natural pairing is: **SelfRecover protects authentication, SelfDataGuard protects data, and the same memorized word serves in both** — alone to open the vault, alongside the *recovery code* to reopen the account.
 
 ---
 
