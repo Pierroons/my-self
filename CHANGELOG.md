@@ -10,6 +10,49 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover-LUKS v0.5.0 — plus de shell avant l'ouverture du disque, et trois plateformes — 12 au 22 septembre 2026
+
+Neuf commits depuis `selfrecover-luks-v0.4.0`, sans rupture de contrat.
+
+- 🔴 **Le SSH d'amorçage ne rend plus de shell.** La clé posée par `install.sh` était nue :
+  elle ouvrait un busybox root **avant** le déverrouillage de `/`. Comme `/boot` est en
+  clair et que le sel y voyage, ce shell suffisait à déposer un initrd modifié et à capturer
+  la passphrase suivante. `selfrecover-secours.sh` devient le `command=` de la clé : il
+  propose la passphrase recover **ou** la passphrase native, rien d'autre — le filet
+  anti-verrouillage reste atteignable à distance, ce que `command="cryptroot-unlock"` seul
+  aurait retiré. `install.sh` pose la question (`SHELL_AMORCAGE`) et consigne un refus dans
+  `renoncements.log`. `verifie-initramfs.sh` compare les images de `/boot` à une empreinte
+  consignée sur le volume chiffré : la classe n'est pas fermée, elle devient visible.
+- 🔴 **Les sauvegardes irréversibles se vérifient.** `verifie-sauvegardes.sh`, lancé par
+  `install.sh` avant le premier geste qui écrit dans l'en-tête, refuse une copie d'en-tête
+  ou de sel rangée sur le volume qu'elle sert à ouvrir, ou dont le nombre de slots ne
+  correspond plus au disque.
+- 🔴 **Le sel n'était jamais vérifié sur une machine à microcode.** Une image Intel ou AMD
+  s'extrait en `early/` + `main/` ; le garde-fou cherchait le sel à la racine, annonçait
+  « SEL NON VERIFIE » et sortait en 0.
+- **ARM (Raspberry Pi 4, Debian 13).** L'installeur ne suppose plus x86 + GRUB : `rootdelay`
+  passe par `/etc/default/raspi-extra-cmdline`, `python3-argon2` est exigé au préambule,
+  libargon2 se trouve par `ldconfig`, et le garde-fou juge l'image que l'amorceur
+  **charge** (`config.txt`), pas celle qu'`update-initramfs` vient de produire.
+- Les scripts du module sont exécutables depuis un clone frais ; les textes déclarent les
+  trois plateformes éprouvées (serveur, portable, racine en LVM chiffré).
+
+Bancs ajoutés : `test_secours_sans_shell.sh`, `test_sauvegardes.sh`,
+`test_garde_fou_image_chargee.sh`.
+
+### SelfRecover écrit Argon2id dans la bibliothèque, la démo quitte PBKDF2 — 10 septembre 2026
+
+Six documents annonçaient Argon2id pour le facteur « cet appareil » ; la seule
+implémentation faisait PBKDF2, avec un blob qui ne disait ni sa version ni son algorithme.
+`client/argon2id.js` porte désormais la KDF et `client/sr-kdf.js` le format : version et
+paramètres **dans** le blob, et un blob d'avant le versionnage reconnu pour ce qu'il est.
+
+Vérifié contre `tests/vecteurs-argon2.json` — sept empreintes produites par libsodium, une
+implémentation écrite par d'autres. Deux défauts invisibles à la lecture y ont été
+attrapés, qui rendaient un résultat bien formé et faux. Coût mesuré : 1 115 ms par
+dérivation contre 163 pour le WebAssembly retiré ; le profil ne baisse pas, c'est la
+mémoire qui coûte à un attaquant.
+
 ### SelfJustice v0.4.0 — la jurisprudence administrative, et ce qu'il a fallu défaire pour l'atteindre — 11 septembre 2026
 
 La roadmap réservait la v0.4.0 au Conseil d'État et aux juridictions administratives. Le chantier

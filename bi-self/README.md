@@ -54,7 +54,7 @@ One plus one equals a self-governing community. Not three — a qualitatively di
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfRecover](./selfrecover/) | Zero-email identity & recovery | **v0.5.1** — PSR-4 library + browser deriver, deployed and self-audited implementation |
+| [SelfRecover](./selfrecover/) | Zero-email identity & recovery | **v0.6.0** — PSR-4 library + browser deriver, deployed and self-audited implementation |
 | [SelfModerate](./selfmoderate/) | Community moderation by collective reasoning | v0.3.0 — installable engine, 24 checks; 2 protocol mechanisms missing |
 
 ---

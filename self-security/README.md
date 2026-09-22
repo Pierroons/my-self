@@ -8,7 +8,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
 [![SelfDataGuard: v0.3.0](https://img.shields.io/badge/SelfDataGuard-v0.3.0-brightgreen.svg)](./selfdataguard/)
-[![SelfRecover-LUKS: v0.4.0](https://img.shields.io/badge/SelfRecover--LUKS-v0.4.0-green.svg)](./selfrecover-luks/)
+[![SelfRecover-LUKS: v0.5.0](https://img.shields.io/badge/SelfRecover--LUKS-v0.5.0-green.svg)](./selfrecover-luks/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
@@ -56,7 +56,7 @@ The label changes the effective salt, so two keys from the same secret stay inde
 | Module | Role | Status |
 |--------|------|--------|
 | [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.3.0** — in service, 198 checks across 8 suites |
-| [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.4.0** — validated on a Debian 13 LNMP server and a laptop, reproducible install |
+| [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.5.0** — validated on a Debian 13 LNMP server, a laptop and an encrypted-LVM root, reproducible install |
 
 ---
 
@@ -64,7 +64,7 @@ The label changes the effective salt, so two keys from the same secret stay inde
 
 Both modules run. SelfDataGuard is deployed and its eight suites pass; SelfRecover-LUKS was validated over full reboot cycles — root volume plus cascading secondary volumes — and its install is documented step by step in [INSTALL.md](./selfrecover-luks/INSTALL.md).
 
-One research path is deliberately left off: unlocking a volume through a **quorum of household witnesses** (Shamir shares, with a SelfRecover fallback when the quorum is unreachable). Its code sits under [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) and was validated on throwaway images, but it is **not enabled** in v0.4.0, which unlocks by keyscript and keyfile instead.
+One research path is deliberately left off: unlocking a volume through a **quorum of household witnesses** (Shamir shares, with a SelfRecover fallback when the quorum is unreachable). Its code sits under [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) and was validated on throwaway images, but it is **not enabled** in v0.5.0, which unlocks by keyscript and keyfile instead.
 
 Neither module has been audited by an external cryptographer. Their design is verified today by their author and by the readers of this repository, and by no one else. Audits are welcome — see [SECURITY.md](../SECURITY.md).
 
