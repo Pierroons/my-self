@@ -197,7 +197,9 @@ SelfRecover distingue trois rôles : **SU → Admin → User**. Un **admin** peu
 - **CLI uniquement**, jamais exposé sur le web ni en distant.
 - **Séparation des pouvoirs** : un admin ne se promeut pas lui-même — il **propose** une promotion, le SU **tranche** (avec observation obligatoire).
 
-**Ce que le SU peut faire :** promouvoir/révoquer des admins (révocation = coupe les sessions), approuver/rejeter les demandes de promotion, **auditer** (croise `is_admin` en base ↔ journal → détecte les **admins fantômes** et les met en **quarantaine automatique**), vérifier l'intégrité du journal, changer sa passphrase, sceller/restaurer une sauvegarde du journal (AES-256-GCM), et une commande « coquille vide » (`reset-shell`) si la passphrase SU est perdue (révoque tous les admins, fige le journal, repart propre).
+**Ce que le SU peut faire :** nommer le **premier** admin (`first-admin`, une seule fois), révoquer des admins (révocation = coupe les sessions ; le dernier ne se révoque qu'en nommant son successeur dans le même geste), approuver/rejeter les demandes de promotion, **auditer** (croise `is_admin` en base ↔ journal → détecte les **admins fantômes** et les met en **quarantaine automatique**), vérifier l'intégrité du journal, changer sa passphrase, sceller/restaurer une sauvegarde du journal (AES-256-GCM), une commande « coquille vide » (`reset-shell`) si la passphrase SU est perdue (révoque tous les admins, fige le journal, repart propre), et `reset-db` en cas de compromission (supprime **tous** les comptes et le secret SU ; la base et le secret sont mis de côté, le journal est gardé et porte le reset).
+
+**Invariant :** une fois le premier admin nommé, la base en garde toujours au moins un — la règle vit dans la base elle-même, pas seulement dans la console. Seuls `reset-shell` et `reset-db` la ramènent à zéro, et rouvrent `first-admin`.
 
 **Journal d'audit** (hors base, hors webroot) — quatre couches :
 1. **Append-only** au niveau filesystem (`chattr +a` en prod)

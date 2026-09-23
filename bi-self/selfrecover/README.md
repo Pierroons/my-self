@@ -197,7 +197,9 @@ SelfRecover distinguishes three roles: **SU → Admin → User**. An **admin** c
 - **CLI only**, never exposed on the web or remotely.
 - **Separation of powers**: an admin does not promote themselves — they **propose** a promotion, the SU **decides** (with a mandatory note).
 
-**What the SU can do:** promote/revoke admins (revocation cuts sessions), approve/reject promotion requests, **audit** (cross-checks `is_admin` in the DB ↔ the log → detects **ghost admins** and puts them in **automatic quarantine**), verify log integrity, change its passphrase, seal/restore a log backup (AES-256-GCM), and an "empty shell" command (`reset-shell`) if the SU passphrase is lost (revokes all admins, freezes the log, starts clean).
+**What the SU can do:** appoint the **first** admin (`first-admin`, once), revoke admins (revocation cuts sessions; the last one can only be revoked by naming its successor in the same step), approve/reject promotion requests, **audit** (cross-checks `is_admin` in the DB ↔ the log → detects **ghost admins** and puts them in **automatic quarantine**), verify log integrity, change its passphrase, seal/restore a log backup (AES-256-GCM), an "empty shell" command (`reset-shell`) if the SU passphrase is lost (revokes all admins, freezes the log, starts clean), and `reset-db` after a compromise (deletes **every** account and the SU secret; the database and the secret are set aside, the log is kept and records the reset).
+
+**Invariant:** once the first admin is appointed, the database always keeps at least one — the rule lives in the database itself, not only in the console. Only `reset-shell` and `reset-db` bring it back to zero, and reopen `first-admin`.
 
 **Audit log** (outside the DB, outside the webroot) — four layers:
 1. **Append-only** at the filesystem level (`chattr +a` in prod)

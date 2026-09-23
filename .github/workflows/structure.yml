@@ -521,6 +521,37 @@ jobs:
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de la troncature"; exit 1; }
           echo "✓ le banc rougit, et sur le cas du journal raccourci"
 
+      - name: Garde-fou — premier administrateur et dernier administrateur
+        run: |
+          sortie=$(php demo/lab/tests/sanity_first_admin.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE 'OK — 26/26 ' \
+            || { echo "::error::le banc first-admin n'a pas joué ses 26 cas"; exit 1; }
+
+      - name: Canari — le dernier administrateur tombe sans ses deux gardes
+        run: |
+          # Deux gardes se recouvrent : la console refuse, et la base refuse derrière
+          # elle. On retire les DEUX, et le banc doit rougir sur le dernier admin —
+          # en retirer une seule laisse l'autre tenir, ce qui ne prouverait rien.
+          C=demo/lab/selfrecover-su; D=demo/lab/lib/db.php
+          cp "$C" /tmp/su.intact; cp "$D" /tmp/db.intact
+          restaurer() { cp /tmp/su.intact "$C"; cp /tmp/db.intact "$D"; }
+          sed -i 's|if (su_nb_admins(\$db) <= 1) {|if (false) { // neutralisé|' "$C"
+          sed -i 's|AND (SELECT COUNT(\*) FROM accounts WHERE is_admin = 1) <= 1|AND 0|' "$D"
+          grep -q 'if (false) { // neutralisé' "$C" && [ "$(grep -c '^             AND 0$' "$D")" = 2 ] \
+            || { restaurer; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          php -l "$C" >/dev/null && php -l "$D" >/dev/null \
+            || { restaurer; echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(php demo/lab/tests/sanity_first_admin.php 2>&1); then
+            restaurer; echo "$sortie"; echo "::error::le banc reste VERT sans les gardes du dernier admin"; exit 1
+          fi
+          restaurer
+          cmp -s /tmp/su.intact "$C" && cmp -s /tmp/db.intact "$D" \
+            || { echo "::error::les fichiers n'ont pas été restaurés à l'identique"; exit 1; }
+          echo "$sortie" | grep -q 'le dernier admin devait être gardé' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du dernier admin"; exit 1; }
+          echo "✓ le banc rougit, et sur le cas du dernier admin"
+
       - name: Garde-fou — les secrets d'instance refusent au lieu de servir
         run: |
           sortie=$(php demo/lab/tests/sanity_secrets_instance.php)

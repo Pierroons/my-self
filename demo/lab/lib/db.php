@@ -225,5 +225,50 @@ final class Db
                 self::$pdo->exec("ALTER TABLE mod_votes ADD COLUMN $col $type");
             }
         }
+
+        // 🔑 Le dernier administrateur ne part pas. La règle vit dans la base et
+        // non dans la console : tout chemin qui écrit `accounts` s'y heurte, y
+        // compris celui qu'on écrira demain. Seul `reset-shell` lève la garde, en
+        // posant `reset_en_cours` dans sa propre transaction ; `reset-db` ne la lève
+        // pas, il remplace la base entière.
+        //
+        // Ici plutôt que dans `schema.sql` : les triggers nomment `is_admin`, que
+        // les bases anciennes ne reçoivent qu'au début de cette méthode.
+        //
+        // ⚠️ Qui écrit directement dans le fichier lève la garde aussi. Elle arrête
+        // un chemin de code oublieux, pas un intrus sur le serveur : contre une base
+        // compromise, le remède est `reset-db`.
+        self::$pdo->exec(
+            "CREATE TABLE IF NOT EXISTS garde_admin (
+                id             INTEGER PRIMARY KEY CHECK (id = 1),
+                reset_en_cours INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT OR IGNORE INTO garde_admin (id) VALUES (1);
+            CREATE TRIGGER IF NOT EXISTS dernier_admin_update
+            BEFORE UPDATE OF is_admin ON accounts
+            WHEN OLD.is_admin = 1 AND NEW.is_admin = 0
+             AND (SELECT COUNT(*) FROM accounts WHERE is_admin = 1) <= 1
+             AND (SELECT reset_en_cours FROM garde_admin WHERE id = 1) = 0
+            BEGIN
+                SELECT RAISE(ABORT, 'dernier administrateur : la base en garde toujours un');
+            END;
+            CREATE TRIGGER IF NOT EXISTS dernier_admin_delete
+            BEFORE DELETE ON accounts
+            WHEN OLD.is_admin = 1
+             AND (SELECT COUNT(*) FROM accounts WHERE is_admin = 1) <= 1
+             AND (SELECT reset_en_cours FROM garde_admin WHERE id = 1) = 0
+            BEGIN
+                SELECT RAISE(ABORT, 'dernier administrateur : la base en garde toujours un');
+            END;"
+        );
+    }
+
+    /**
+     * Lâche la connexion. `reset-db` renomme le fichier : sans ce geste, la
+     * console continuerait d'écrire dans la base figée.
+     */
+    public static function fermer(): void
+    {
+        self::$pdo = null;
     }
 }

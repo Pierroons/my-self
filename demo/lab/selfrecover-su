@@ -11,6 +11,10 @@
  * au journal chaîné avant d'être appliquée en base. Un `is_admin = 1` sans
  * entrée correspondante est un fantôme, que `audit` révoque et met en
  * quarantaine.
+ *
+ * Une fois le premier administrateur nommé (`first-admin`), la base en garde
+ * toujours au moins un. Seuls `reset-shell` et `reset-db` la ramènent à zéro,
+ * et rouvrent l'amorçage.
  */
 
 declare(strict_types=1);
@@ -305,6 +309,44 @@ function su_profil_perime(string $hash): ?bool
     return $classe === null ? null : $classe::needsRehash($hash);
 }
 
+/**
+ * Met un fichier de côté sous un nom horodaté, sans jamais le détruire.
+ *
+ * @return string|null le nouveau chemin, ou `null` si le fichier n'existait pas
+ */
+function su_figer(string $chemin, string $horodatage): ?string
+{
+    if (!file_exists($chemin)) {
+        return null;
+    }
+    $fige = $chemin . '.frozen-' . $horodatage;
+    if (!@rename($chemin, $fige)) {
+        su_fail("Impossible de mettre $chemin de côté — rien n'a été supprimé.");
+    }
+    @chmod($fige, 0600);
+
+    return $fige;
+}
+
+function su_nb_admins(PDO $db): int
+{
+    return (int) $db->query('SELECT COUNT(*) FROM accounts WHERE is_admin = 1')->fetchColumn();
+}
+
+/** Rappelle le dernier `reset-db` en tête des commandes qui parlent des admins. */
+function su_rappel_reset_db(): void
+{
+    $r = SuAudit::dernierResetDb();
+    if ($r === null) {
+        return;
+    }
+    fwrite(STDOUT, sprintf(
+        "🔴 Dernier reset-db : %s — %d compte(s) supprimé(s). Détail : `show-log`.\n",
+        $r['ts_paris'] ?? '?',
+        (int) ($r['extra']['comptes'] ?? 0)
+    ));
+}
+
 // ─── Garde-fou de démarrage ──────────────────────────────────────────────────
 // Le régime strict est le défaut : contourner demande un geste conscient, parce
 // qu'un déploiement qui ne pose rien ne doit pas hériter des valeurs de démonstration.
@@ -329,35 +371,89 @@ if (!SuAudit::devMode()) {
 }
 
 switch ($cmd) {
-    case 'add-admin':
+    case 'first-admin':
+        // L'amorçage : sans lui, personne ne pourrait déposer la première demande
+        // de promotion. Il sert une fois, puis seul un reset le rouvre.
         su_authenticate();
-        $u   = $argv[2] ?? su_fail("usage: $argv0 add-admin <username>");
+        $u   = $argv[2] ?? su_fail("usage: $argv0 first-admin <username>");
         $db  = Db::pdo();
-        $acc = su_find_account($db, $u) ?: su_fail("Compte « $u » introuvable.");
-        if ((int) $acc['is_admin'] === 1) {
-            su_fail("« $u » est déjà administrateur.");
+        $nb  = su_nb_admins($db);
+        if (SuAudit::firstAdminConsomme()) {
+            if ($nb === 0) {
+                su_fail(
+                    "Aucun administrateur en base, alors que le journal a déjà vu le premier.\n"
+                    . "   La base a perdu ses admins par un chemin qui n'est pas un reset : la voie ne se rouvre pas\n"
+                    . "   d'elle-même. Restaure la base, ou `reset-shell` (passphrase SU perdue), ou `reset-db`\n"
+                    . '   (compromission).',
+                    5
+                );
+            }
+            su_fail(
+                "Le premier administrateur est déjà nommé. Les suivants passent par une demande d'un\n"
+                . "   admin (`list-requests`), que tu tranches par `approve-request`."
+            );
         }
-        SuAudit::append(SuAudit::ACTION_ADD_ADMIN, $u);
+        if ($nb > 0) {
+            su_fail("$nb administrateur(s) en base sans amorçage au journal — lance `audit`.", 5);
+        }
+        $acc = su_find_account($db, $u) ?: su_fail("Compte « $u » introuvable — il doit s'inscrire d'abord.");
+        SuAudit::append(SuAudit::ACTION_FIRST_ADMIN, $u);
         $db->prepare('UPDATE accounts SET is_admin = 1 WHERE id = ?')->execute([$acc['id']]);
-        su_ok("« $u » promu administrateur (journalisé).");
+        su_ok("« $u » est le premier administrateur (journalisé). La voie `first-admin` est close.");
+        break;
+
+    case 'add-admin':
+        su_fail(
+            "`add-admin` ne promeut plus.\n"
+            . "   Premier administrateur : `$argv0 first-admin <username>`.\n"
+            . "   Les suivants : un admin dépose la demande, tu la tranches par `approve-request`."
+        );
         break;
 
     case 'revoke-admin':
         su_authenticate();
-        $u   = $argv[2] ?? su_fail("usage: $argv0 revoke-admin <username>");
+        $u   = $argv[2] ?? su_fail("usage: $argv0 revoke-admin <username> [--remplacant <username>]");
+        $pos = array_search('--remplacant', $argv, true);
+        $r   = $pos !== false ? ($argv[$pos + 1] ?? su_fail('--remplacant attend un nom de compte.')) : null;
         $db  = Db::pdo();
         $acc = su_find_account($db, $u) ?: su_fail("Compte « $u » introuvable.");
         if ((int) $acc['is_admin'] !== 1) {
             su_fail("« $u » n'est pas administrateur.");
         }
-        SuAudit::append(SuAudit::ACTION_REVOKE_ADMIN, $u);
+
+        if ($r === null) {
+            if (su_nb_admins($db) <= 1) {
+                su_fail(
+                    "« $u » est le dernier administrateur : il ne se révoque pas seul.\n"
+                    . "   → `$argv0 revoke-admin $u --remplacant <username>` nomme son successeur dans le même geste.",
+                    6
+                );
+            }
+            SuAudit::append(SuAudit::ACTION_REVOKE_ADMIN, $u);
+            $db->prepare('UPDATE accounts SET is_admin = 0 WHERE id = ?')->execute([$acc['id']]);
+            $db->prepare('DELETE FROM app_sessions WHERE account_id = ?')->execute([$acc['id']]);
+            su_ok("« $u » révoqué — sessions coupées, journalisé.");
+            break;
+        }
+
+        $rem = su_find_account($db, $r) ?: su_fail("Remplaçant « $r » introuvable.");
+        if ((int) $rem['is_admin'] === 1) {
+            su_fail("« $r » est déjà administrateur : révoque « $u » sans --remplacant.");
+        }
+        SuAudit::append(SuAudit::ACTION_REPLACE_ADMIN, $u, ['revoque' => $u, 'promu' => $r]);
+        // Promouvoir d'abord : l'ordre inverse ferait passer la base par zéro
+        // admin, et la garde de `Db::migrate()` refuserait la transaction.
+        $db->beginTransaction();
+        $db->prepare('UPDATE accounts SET is_admin = 1 WHERE id = ?')->execute([$rem['id']]);
         $db->prepare('UPDATE accounts SET is_admin = 0 WHERE id = ?')->execute([$acc['id']]);
         $db->prepare('DELETE FROM app_sessions WHERE account_id = ?')->execute([$acc['id']]);
-        su_ok("« $u » révoqué — sessions coupées, journalisé.");
+        $db->commit();
+        su_ok("« $u » révoqué et remplacé par « $r » — sessions de « $u » coupées, journalisé.");
         break;
 
     case 'list-admins':
         su_authenticate();
+        su_rappel_reset_db();
         $rows = Db::pdo()->query('SELECT username FROM accounts WHERE is_admin = 1 ORDER BY username')->fetchAll();
         if (!$rows) {
             fwrite(STDOUT, "Aucun administrateur.\n");
@@ -444,26 +540,27 @@ switch ($cmd) {
         $dryRun = in_array('--dry-run', $argv, true);
         $db     = Db::pdo();
         $admins = array_column($db->query('SELECT username FROM accounts WHERE is_admin = 1')->fetchAll(), 'username');
+        $ghosts = array_values(array_diff($admins, array_keys(SuAudit::adminsLegitimes())));
 
-        $legit = [];
-        foreach (SuAudit::read() as $e) {
-            $t = $e['target'] ?? null;
-            if (!$t) {
-                continue;
-            }
-            if (in_array($e['action'], SuAudit::GRANTING, true)) {
-                $legit[$t] = true;
-            } elseif (in_array($e['action'], SuAudit::REVOKING, true)) {
-                unset($legit[$t]);
-            }
-        }
-        $ghosts = array_values(array_diff($admins, array_keys($legit)));
-
+        su_rappel_reset_db();
         $ver = SuAudit::verify();
         fwrite(STDOUT, 'Journal : ' . ($ver['ok']
             ? "✅ intègre ({$ver['count']} entrées)"
             : "🚨 ROMPU à l'entrée {$ver['break_at']} — {$ver['reason']}") . "\n");
 
+        if ($ghosts && count($ghosts) === count($admins) && !$dryRun) {
+            // Tout mettre en quarantaine laisserait la base sans admin. Un contrôle
+            // qui veut tout retirer a plus probablement une entrée cassée — journal
+            // tronqué, remplacé, lu au mauvais endroit — qu'une base envahie.
+            fwrite(STDOUT, '🚨 TOUS les administrateurs (' . count($admins) . ') sont absents du journal : '
+                . implode(', ', $ghosts) . "\n");
+            su_fail(
+                "Quarantaine refusée : elle ne laisserait aucun administrateur.\n"
+                . "   L'entrée est plus probablement cassée qu'envahie : `verify-log`, puis `restore-log`\n"
+                . '   depuis une sauvegarde. Si la base est réellement compromise : `reset-db`.',
+                7
+            );
+        }
         if ($ghosts) {
             fwrite(STDOUT, "🚨 ADMINISTRATEUR(S) FANTÔME(S) — is_admin = 1 sans entrée de création :\n");
             foreach ($ghosts as $g) {
@@ -484,6 +581,7 @@ switch ($cmd) {
 
     case 'verify-log':
         su_authenticate();
+        su_rappel_reset_db();
         $ver = SuAudit::verify();
         if (!$ver['ok']) {
             su_fail("🚨 Chaîne ROMPUE à l'entrée {$ver['break_at']} : {$ver['reason']}", 4);
@@ -619,6 +717,10 @@ switch ($cmd) {
                     . ($f['unix_user'] ?? '?') . '@' . ($f['ssh_client_ip'] ?: 'local')
                     . ' tty=' . ($f['tty'] ?? '?') . ' pid=' . ($f['pid'] ?? '?');
 
+            if (($e['action'] ?? '') === SuAudit::ACTION_RESET_DB) {
+                fwrite(STDOUT, str_repeat('━', 60) . "\n");
+                fwrite(STDOUT, "🔴 RESET-DB — tous les comptes supprimés\n");
+            }
             fwrite(STDOUT, sprintf(
                 "#%-3s %s  %s%s\n",
                 $e['seq'] ?? '?',
@@ -634,6 +736,9 @@ switch ($cmd) {
             fwrite(STDOUT, "     par  : $who\n");
             fwrite(STDOUT, '     hash : ' . substr($e['entry_hash'] ?? '', 0, 12) . '…  hmac '
                 . substr($e['hmac'] ?? '', 0, 12) . "…\n");
+            if (($e['action'] ?? '') === SuAudit::ACTION_RESET_DB) {
+                fwrite(STDOUT, str_repeat('━', 60) . "\n");
+            }
         }
         fwrite(STDOUT, str_repeat('─', 60) . "\n");
         fwrite(STDOUT, "Intégrité : `$argv0 verify-log` contrôle la chaîne.\n");
@@ -758,16 +863,17 @@ switch ($cmd) {
             exit(1);
         }
         $db = Db::pdo();
-        $n  = $db->exec('UPDATE accounts SET is_admin = 0 WHERE is_admin = 1');
+        // Le seul geste qui lève la garde du dernier administrateur, et seulement
+        // le temps de sa transaction.
+        $db->beginTransaction();
+        $db->exec('UPDATE garde_admin SET reset_en_cours = 1 WHERE id = 1');
+        $n = $db->exec('UPDATE accounts SET is_admin = 0 WHERE is_admin = 1');
+        $db->exec('UPDATE garde_admin SET reset_en_cours = 0 WHERE id = 1');
         $db->exec('DELETE FROM app_sessions');
         $db->exec("DELETE FROM admin_requests WHERE status = 'pending'");
+        $db->commit();
 
-        $logPath = SuAudit::logPath();
-        $frozen  = null;
-        if (file_exists($logPath)) {
-            $frozen = $logPath . '.frozen-' . (new DateTime('now', new DateTimeZone('UTC')))->format('Ymd-His');
-            @rename($logPath, $frozen);
-        }
+        $frozen = su_figer(SuAudit::logPath(), (new DateTime('now', new DateTimeZone('UTC')))->format('Ymd-His'));
         SuAudit::append(SuAudit::ACTION_RESET_SHELL, 'ALL-ADMINS', [
             'revoked_admins' => (int) $n,
             'frozen_log'     => $frozen ? basename($frozen) : null,
@@ -776,13 +882,74 @@ switch ($cmd) {
         if ($frozen) {
             fwrite(STDOUT, '   Ancien journal figé → ' . basename($frozen) . "\n");
         }
-        fwrite(STDOUT, "   ⚠️  Pose maintenant une nouvelle passphrase SU avant toute promotion.\n");
+        fwrite(STDOUT, "   ⚠️  Pose maintenant une nouvelle passphrase SU, puis `first-admin` : la voie est rouverte.\n");
+        break;
+
+    case 'reset-db':
+        // Kill all : quand un compte peut avoir été trafiqué, rien ne permet de le
+        // reconnaître de l'intérieur — un intrus qui a tenu la base a pu remplacer
+        // un `pw_hash` ou ajouter un compte qui ressemble aux autres. On ne trie
+        // pas : tout part, et chacun se réinscrit.
+        //
+        // La base et le secret SU sont RENOMMÉS, jamais détruits : c'est la pièce
+        // à conviction. Renommer plutôt que vider garantit qu'aucune table n'est
+        // oubliée, y compris celles qui n'ont pas de clé étrangère vers `accounts`.
+        // Le journal, lui, est GARDÉ : le reset s'y lit au milieu de ce qui précède.
+        su_authenticate();
+        $db    = Db::pdo();
+        $bilan = [
+            'comptes'  => (int) $db->query('SELECT COUNT(*) FROM accounts')->fetchColumn(),
+            'admins'   => su_nb_admins($db),
+            'sessions' => (int) $db->query('SELECT COUNT(*) FROM app_sessions')->fetchColumn(),
+            'litiges'  => (int) $db->query('SELECT COUNT(*) FROM disputes')->fetchColumn(),
+        ];
+        if (!in_array('--confirm', $argv, true)) {
+            fwrite(STDOUT, "⚠️  RESET-DB (compromission) — tout ce qui suit est SUPPRIMÉ du service :\n");
+            fwrite(STDOUT, "   • {$bilan['comptes']} compte(s), dont {$bilan['admins']} administrateur(s)\n");
+            fwrite(STDOUT, "   • {$bilan['sessions']} session(s), {$bilan['litiges']} litige(s), appareils, codes de secours\n");
+            fwrite(STDOUT, "   • le secret SU : il faudra en reposer un, comme à l'installation\n");
+            fwrite(STDOUT, "   La base et le secret sont mis de côté, jamais détruits ; le journal est gardé.\n\n");
+            fwrite(STDOUT, "   Relance avec --confirm pour exécuter.\n");
+            exit(1);
+        }
+
+        $source = su_empreinte_secret()['source'] ?? null;
+        $quand  = (new DateTime('now', new DateTimeZone('UTC')))->format('Ymd-His');
+        Db::fermer();
+        $db = null;
+        $baseFigee = su_figer(Db::path(), $quand);
+        foreach (['-wal', '-shm', '-journal'] as $suffixe) {
+            su_figer(Db::path() . $suffixe, $quand);
+        }
+        $secretFige = su_figer(su_secret_path(), $quand);
+
+        SuAudit::append(SuAudit::ACTION_RESET_DB, 'ALL-ACCOUNTS', $bilan + [
+            'base_figee'   => $baseFigee ? basename($baseFigee) : null,
+            'secret_fige'  => $secretFige ? basename($secretFige) : null,
+        ]);
+        $restants = (int) Db::pdo()->query('SELECT COUNT(*) FROM accounts')->fetchColumn();
+        if ($restants !== 0) {
+            su_fail("La base rouverte porte encore $restants compte(s) : " . Db::path() . ' n\'a pas été remplacée.');
+        }
+
+        su_ok("Reset-db : {$bilan['comptes']} compte(s) supprimé(s), base neuve, journal gardé.");
+        fwrite(STDOUT, '   Base figée   → ' . ($baseFigee ? basename($baseFigee) : '(aucune)') . "\n");
+        fwrite(STDOUT, '   Secret figé  → ' . ($secretFige ? basename($secretFige) : '(aucun fichier)') . "\n");
+        if ($source === 'SELFRECOVER_SU_SECRET') {
+            fwrite(STDOUT, "   🚨 Le secret SU vient de l'environnement : aucun fichier ne peut le retirer.\n");
+            fwrite(STDOUT, "      Retire SELFRECOVER_SU_SECRET, sinon l'ancienne passphrase vaut toujours.\n");
+        }
+        fwrite(STDOUT, "   Ensuite : un secret SU neuf (SELFRECOVER_SU_SECRET le temps d'un `change-passphrase`),\n");
+        fwrite(STDOUT, "   l'inscription du futur admin, puis `first-admin` — la voie est rouverte.\n");
+        fwrite(STDOUT, "   ⚠️  Ce reset ne chasse pas un intrus qui a la main sur le SERVEUR, et ne tourne ni le\n");
+        fwrite(STDOUT, "      sel d'instance (.sitesalt) ni les secrets serveur : ces gestes-là sont à part.\n");
         break;
 
     default:
         fwrite(STDOUT, "selfrecover-su — console SuperUser (SU→Admin→User)\n\n");
-        fwrite(STDOUT, "  add-admin <username>           promeut un compte en administrateur\n");
-        fwrite(STDOUT, "  revoke-admin <username>        révoque un administrateur et coupe ses sessions\n");
+        fwrite(STDOUT, "  first-admin <username>         nomme le premier administrateur — une fois, rouverte par un reset\n");
+        fwrite(STDOUT, "  revoke-admin <username>        révoque un administrateur et coupe ses sessions (jamais le dernier)\n");
+        fwrite(STDOUT, "    … --remplacant <username>    révoque et nomme le successeur dans le même geste\n");
         fwrite(STDOUT, "  list-admins                    liste les administrateurs\n");
         fwrite(STDOUT, "  list-requests                  demandes de promotion en attente\n");
         fwrite(STDOUT, "  approve-request <id> \"<obs>\"   valide une demande, observation obligatoire\n");
@@ -794,7 +961,9 @@ switch ($cmd) {
         fwrite(STDOUT, "  change-passphrase              change la passphrase SU\n");
         fwrite(STDOUT, "  backup-log <dest>              scelle le journal pour le hors-site\n");
         fwrite(STDOUT, "  restore-log <scellé>           relit une sauvegarde scellée\n");
-        fwrite(STDOUT, "  reset-shell --confirm          coquille vide (passphrase perdue)\n\n");
+        fwrite(STDOUT, "  reset-shell --confirm          coquille vide (passphrase perdue) : révoque les admins\n");
+        fwrite(STDOUT, "  reset-db --confirm             compromission : supprime TOUS les comptes et le secret SU\n\n");
+        fwrite(STDOUT, "`add-admin` est retiré : le premier admin passe par `first-admin`, les suivants par une demande.\n");
         fwrite(STDOUT, "État hors site servi : SELFRECOVER_STATE_DIR. Secret du journal : SELFRECOVER_SU_AUDIT_SECRET.\n");
         break;
 }

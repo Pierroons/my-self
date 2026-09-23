@@ -23,12 +23,19 @@ use RuntimeException;
 
 final class SuAudit
 {
+    /** L'amorçage : le premier administrateur, une fois par cycle (voir `firstAdminConsomme()`). */
+    public const ACTION_FIRST_ADMIN     = 'first-admin';
+    /** La console ne l'écrit plus ; il reste lu, pour les journaux qui en portent. */
     public const ACTION_ADD_ADMIN       = 'add-admin';
     public const ACTION_REVOKE_ADMIN    = 'revoke-admin';
+    /** Octroi et révocation dans la même transaction : le seul admin se remplace sans passer par zéro. */
+    public const ACTION_REPLACE_ADMIN   = 'replace-admin';
     public const ACTION_APPROVE_REQUEST = 'approve-request';
     public const ACTION_REJECT_REQUEST  = 'reject-request';
     public const ACTION_QUARANTINE      = 'quarantine-ghost';
     public const ACTION_RESET_SHELL     = 'reset-shell';
+    /** Tous les comptes supprimés : la base et le secret SU sont figés, le journal continue. */
+    public const ACTION_RESET_DB        = 'reset-db';
     public const ACTION_CHANGE_PASS     = 'change-passphrase';
     /**
      * Constat, pas mutation : l'empreinte du secret en place est portée au
@@ -45,8 +52,14 @@ final class SuAudit
      * l'autre produisait une branche morte silencieuse dans la logique qui
      * décide d'une révocation.
      */
-    public const GRANTING = [self::ACTION_ADD_ADMIN, self::ACTION_APPROVE_REQUEST];
-    public const REVOKING = [self::ACTION_REVOKE_ADMIN, self::ACTION_RESET_SHELL, self::ACTION_QUARANTINE];
+    public const GRANTING = [self::ACTION_FIRST_ADMIN, self::ACTION_ADD_ADMIN, self::ACTION_APPROVE_REQUEST];
+    public const REVOKING = [self::ACTION_REVOKE_ADMIN, self::ACTION_QUARANTINE];
+    /**
+     * Un reset vide la liste entière. Tenu à part de `REVOKING`, qui retire une
+     * cible nommée : la cible de `reset-shell` est `ALL-ADMINS`, un nom qu'aucun
+     * compte ne porte, et l'y ranger ne retirerait personne.
+     */
+    public const RESETS   = [self::ACTION_RESET_SHELL, self::ACTION_RESET_DB];
 
     public const DEMO_SECRET = 'dev-su-audit-secret-CHANGE-IN-PROD';
 
@@ -550,6 +563,73 @@ final class SuAudit
     public static function empreinteDe(string $secret): string
     {
         return hash_hmac('sha256', $secret, self::secret());
+    }
+
+    /**
+     * Qui le journal reconnaît comme administrateur, rejoué depuis le début.
+     *
+     * `audit` confronte cette liste à `is_admin` : un admin en base qui n'y figure
+     * pas est un fantôme.
+     *
+     * @return array<string, true>
+     */
+    public static function adminsLegitimes(): array
+    {
+        $legit = [];
+        foreach (self::read() as $e) {
+            $action = (string) ($e['action'] ?? '');
+            $cible  = (string) ($e['target'] ?? '');
+            if (in_array($action, self::RESETS, true)) {
+                $legit = [];
+            } elseif ($action === self::ACTION_REPLACE_ADMIN) {
+                unset($legit[(string) ($e['extra']['revoque'] ?? '')]);
+                $legit[(string) ($e['extra']['promu'] ?? '')] = true;
+            } elseif ($cible !== '' && in_array($action, self::GRANTING, true)) {
+                $legit[$cible] = true;
+            } elseif ($cible !== '' && in_array($action, self::REVOKING, true)) {
+                unset($legit[$cible]);
+            }
+        }
+        unset($legit['']);
+
+        return $legit;
+    }
+
+    /**
+     * La voie `first-admin` a-t-elle servi depuis le dernier reset ?
+     *
+     * 🔑 La réponse vient du journal, jamais de la base : une base vidée de ses
+     * admins par un chemin qui n'est pas un reset ne doit pas rouvrir l'amorçage.
+     * Tout octroi compte, pas seulement `first-admin` : un journal antérieur au
+     * 23/09/2026 n'en porte aucun, et un admin nommé par `add-admin` ou
+     * `approve-request` prouve que l'amorçage a eu lieu.
+     */
+    public static function firstAdminConsomme(): bool
+    {
+        $consomme = false;
+        foreach (self::read() as $e) {
+            $action = (string) ($e['action'] ?? '');
+            if (in_array($action, self::RESETS, true)) {
+                $consomme = false;
+            } elseif ($action === self::ACTION_REPLACE_ADMIN || in_array($action, self::GRANTING, true)) {
+                $consomme = true;
+            }
+        }
+
+        return $consomme;
+    }
+
+    /** La dernière entrée `reset-db` du journal, ou `null`. */
+    public static function dernierResetDb(): ?array
+    {
+        $vu = null;
+        foreach (self::read() as $e) {
+            if (($e['action'] ?? '') === self::ACTION_RESET_DB) {
+                $vu = $e;
+            }
+        }
+
+        return $vu;
     }
 
     /**

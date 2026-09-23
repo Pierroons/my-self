@@ -130,11 +130,11 @@ file_put_contents($log, $intact);
 // Un nom écrit d'un côté et relu de l'autre avait produit une branche morte
 // dans la logique qui décide d'une révocation.
 $connues = [
-    SuAudit::ACTION_ADD_ADMIN, SuAudit::ACTION_REVOKE_ADMIN,
+    SuAudit::ACTION_FIRST_ADMIN, SuAudit::ACTION_ADD_ADMIN, SuAudit::ACTION_REVOKE_ADMIN,
     SuAudit::ACTION_APPROVE_REQUEST, SuAudit::ACTION_REJECT_REQUEST,
-    SuAudit::ACTION_QUARANTINE, SuAudit::ACTION_RESET_SHELL,
+    SuAudit::ACTION_QUARANTINE, SuAudit::ACTION_RESET_SHELL, SuAudit::ACTION_RESET_DB,
 ];
-$rejouees = array_merge(SuAudit::GRANTING, SuAudit::REVOKING);
+$rejouees = array_merge(SuAudit::GRANTING, SuAudit::REVOKING, SuAudit::RESETS);
 $inconnues = array_diff($rejouees, $connues);
 $inconnues === []
     ? ok('les ' . count($rejouees) . ' actions rejouées par `audit` sont toutes des constantes déclarées')
