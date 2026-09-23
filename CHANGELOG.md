@@ -10,49 +10,6 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### SelfRecover-LUKS v0.5.0 — plus de shell avant l'ouverture du disque, et trois plateformes — 12 au 22 septembre 2026
-
-Neuf commits depuis `selfrecover-luks-v0.4.0`, sans rupture de contrat.
-
-- 🔴 **Le SSH d'amorçage ne rend plus de shell.** La clé posée par `install.sh` était nue :
-  elle ouvrait un busybox root **avant** le déverrouillage de `/`. Comme `/boot` est en
-  clair et que le sel y voyage, ce shell suffisait à déposer un initrd modifié et à capturer
-  la passphrase suivante. `selfrecover-secours.sh` devient le `command=` de la clé : il
-  propose la passphrase recover **ou** la passphrase native, rien d'autre — le filet
-  anti-verrouillage reste atteignable à distance, ce que `command="cryptroot-unlock"` seul
-  aurait retiré. `install.sh` pose la question (`SHELL_AMORCAGE`) et consigne un refus dans
-  `renoncements.log`. `verifie-initramfs.sh` compare les images de `/boot` à une empreinte
-  consignée sur le volume chiffré : la classe n'est pas fermée, elle devient visible.
-- 🔴 **Les sauvegardes irréversibles se vérifient.** `verifie-sauvegardes.sh`, lancé par
-  `install.sh` avant le premier geste qui écrit dans l'en-tête, refuse une copie d'en-tête
-  ou de sel rangée sur le volume qu'elle sert à ouvrir, ou dont le nombre de slots ne
-  correspond plus au disque.
-- 🔴 **Le sel n'était jamais vérifié sur une machine à microcode.** Une image Intel ou AMD
-  s'extrait en `early/` + `main/` ; le garde-fou cherchait le sel à la racine, annonçait
-  « SEL NON VERIFIE » et sortait en 0.
-- **ARM (Raspberry Pi 4, Debian 13).** L'installeur ne suppose plus x86 + GRUB : `rootdelay`
-  passe par `/etc/default/raspi-extra-cmdline`, `python3-argon2` est exigé au préambule,
-  libargon2 se trouve par `ldconfig`, et le garde-fou juge l'image que l'amorceur
-  **charge** (`config.txt`), pas celle qu'`update-initramfs` vient de produire.
-- Les scripts du module sont exécutables depuis un clone frais ; les textes déclarent les
-  trois plateformes éprouvées (serveur, portable, racine en LVM chiffré).
-
-Bancs ajoutés : `test_secours_sans_shell.sh`, `test_sauvegardes.sh`,
-`test_garde_fou_image_chargee.sh`.
-
-### SelfRecover écrit Argon2id dans la bibliothèque, la démo quitte PBKDF2 — 10 septembre 2026
-
-Six documents annonçaient Argon2id pour le facteur « cet appareil » ; la seule
-implémentation faisait PBKDF2, avec un blob qui ne disait ni sa version ni son algorithme.
-`client/argon2id.js` porte désormais la KDF et `client/sr-kdf.js` le format : version et
-paramètres **dans** le blob, et un blob d'avant le versionnage reconnu pour ce qu'il est.
-
-Vérifié contre `tests/vecteurs-argon2.json` — sept empreintes produites par libsodium, une
-implémentation écrite par d'autres. Deux défauts invisibles à la lecture y ont été
-attrapés, qui rendaient un résultat bien formé et faux. Coût mesuré : 1 115 ms par
-dérivation contre 163 pour le WebAssembly retiré ; le profil ne baisse pas, c'est la
-mémoire qui coûte à un attaquant.
-
 ### SelfJustice v0.4.0 — la jurisprudence administrative, et ce qu'il a fallu défaire pour l'atteindre — 11 septembre 2026
 
 La roadmap réservait la v0.4.0 au Conseil d'État et aux juridictions administratives. Le chantier
@@ -99,47 +56,6 @@ compris, 320 archives appliquées, 0 refusée, 0 illisible.
 administratifs qu'une sélection **arrêtée en 2009**, et la Cour de discipline budgétaire et
 financière s'arrête **en 2000** : un jugement de TA récent n'est pas dans la base. Et aucun
 incrément ne porte de liste de suppression — une décision retirée du fonds par la DILA y restera.
-### SelfRecover fournit son schéma et l'implémentation de son propre contrat — 11 septembre 2026
-
-`StorageInterface` posait 39 questions et laissait chaque application y répondre. C'était
-délibéré — imposer des tables obligerait un déploiement en service à migrer sa base — mais
-celui qui part de zéro devait écrire 500 lignes avant sa première ligne utile.
-
-La bibliothèque livre désormais `schema.sql` et `src/Storage/StockagePdo.php` :
-**fournis, jamais imposés**. Qui a déjà ses tables continue d'écrire son adaptateur et ne
-migre rien ; qui part de zéro les prend tels quels. Il sert le facteur « cet appareil »,
-que les adaptateurs de démonstration ne servent pas tous.
-
-Deux défauts corrigés au passage :
-
-- 🔴 **`PRAGMA foreign_keys` est propre à la connexion, pas à la base.** Le poser dans un
-  fichier de schéma ne sert que la connexion qui le charge — souvent `sqlite3(1)`, jetée
-  aussitôt. Mesuré : effacer un compte laissait derrière lui ses codes, ses clés
-  d'appareil et le texte qu'il avait écrit à un arbitre, sans qu'aucune contrainte ne
-  proteste. Le constructeur de l'adaptateur le repose sur la connexion de l'application.
-- 🔴 **Les gardes de transaction validaient celle de l'appelant.** « Ne rien faire si une
-  transaction existe déjà » traite le symptôme et fabrique pire : le `commit()` suivant
-  rendait durable le travail à moitié fait de l'appelant, qui recevait ensuite « There is
-  no active transaction » sur son propre rollback. Remplacé par des points de reprise
-  (`SAVEPOINT`) : la transaction extérieure reste la sienne, nos écritures s'annulent sans
-  y toucher.
-
-  ⚠️ **Le correctif ne vaut que pour cet adaptateur.** Les trois autres porteurs du
-  contrat gardent le motif : les deux démos, et le double en mémoire des bancs — dont
-  `commencerTransaction()` écrase l'instantané précédent, de sorte qu'une annulation
-  imbriquée ne restaure rien. La cause est en amont : `StorageInterface` ne dit pas si
-  ces trois méthodes sont ré-entrantes, et les quatre implémentations y répondent
-  différemment. À trancher au contrat, pas porteur par porteur.
-
-Le banc `tests/banc_stockage_pdo.php` relit la base plutôt que la valeur rendue, et son
-plancher compte **par section** : un plancher global laissait disparaître 22 contrôles —
-dont ceux du facteur « cet appareil » — en rendant le même vert.
-
-⚠️ **Un banc ne peut pas se garder contre la falsification de son propre verdict.** Mesuré :
-débrancher le compteur d'échecs lui faisait afficher les ❌ et sortir à 0. La seconde
-source est donc dehors — l'étape de CI cherche le caractère ❌ dans la sortie, en plus du
-code de retour.
-
 ### Le contrôle des chemins ne regardait aucun lien ancré — 9 septembre 2026
 
 `scripts/check-paths.sh` porte depuis sa création une classe `[^)#]` qui **exclut le
@@ -162,36 +78,6 @@ derrière une ancre → rougit en nommant la cause ; ancre valide chargée de po
 acceptée.
 
 Les quatre `#quickstart` pointent maintenant la section de démarrage qu'ils visaient.
-
-### SelfRecover était déployé et non déployé, à sept lignes d'intervalle — 9 septembre 2026
-
-`bi-self/README.md:57` annonçait « deployed and self-audited implementation » et la
-section Statut, sept lignes plus bas, « no real-world production deployment yet ». Le
-lecteur devait trancher seul entre deux affirmations opposées du même fichier.
-
-**C'est la ligne 57 qui dit vrai**, vérifié sur la machine par la conv GitHub : le
-backend d'authentification d'un service de messagerie sert la bibliothèque en conditions
-réelles. La section Statut le dit désormais, dans les deux langues, et garde ce qui reste
-exact — la démo est auto-auditée, aucun audit externe n'a été mené.
-
-### Le secret de LUKS portait le vocabulaire de l'autre niveau — 9 septembre 2026
-
-Quatre fichiers de `selfrecover-luks/` appelaient « mot de récupération » — le terme du
-**niveau 2**, qui est par compte et se combine à un code — ce qui est une **passphrase de
-niveau 1**, diceware, propre à la machine. Douze occurrences ; deux fichiers seulement
-disaient juste, dont le keyscript, c'est-à-dire le seul qui tourne au démarrage.
-
-La source est la docstring de `selfrecover_derive.py`, et c'est de là que la formulation a
-essaimé jusqu'au README racine du monorepo, où elle était devenue « une seule passphrase
-mémorisée » — un terme qui n'existe dans aucun des deux niveaux.
-
-Corrigé, et la docstring porte maintenant les deux avertissements qui manquaient : la
-nature du secret d'entrée, et le fait que **`--label` est une capacité du dérivateur, pas
-une architecture déployée** — seul `disk` a un consommateur, les étiquettes `auth` et
-`data-enc` citées en documentation n'existent dans aucun code du monorepo.
-
-Aucune clé, aucune dérivation, aucun format n'est touché : c'est de la prose dans du code.
-Le nom de l'option `--word` est conservé — le renommer romprait un contrat.
 
 ### Les secrets du lab refusent au lieu de servir — 9 septembre 2026
 
@@ -328,6 +214,128 @@ Le garde-fou de CI vérifie deux compteurs plutôt que le seul code de sortie : 
 sections ne s'éprouvent pas sous root, le banc les saute **en le disant** et sort quand
 même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le même vert en
 ayant renoncé aux contrôles qui touchent au système.
+
+---
+
+## [SelfRecover v0.6.0] — 22 septembre 2026
+
+### SelfRecover écrit Argon2id dans la bibliothèque, la démo quitte PBKDF2 — 10 septembre 2026
+
+Six documents annonçaient Argon2id pour le facteur « cet appareil » ; la seule
+implémentation faisait PBKDF2, avec un blob qui ne disait ni sa version ni son algorithme.
+`client/argon2id.js` porte désormais la KDF et `client/sr-kdf.js` le format : version et
+paramètres **dans** le blob, et un blob d'avant le versionnage reconnu pour ce qu'il est.
+
+Vérifié contre `tests/vecteurs-argon2.json` — sept empreintes produites par libsodium, une
+implémentation écrite par d'autres. Deux défauts invisibles à la lecture y ont été
+attrapés, qui rendaient un résultat bien formé et faux. Coût mesuré : 1 115 ms par
+dérivation contre 163 pour le WebAssembly retiré ; le profil ne baisse pas, c'est la
+mémoire qui coûte à un attaquant.
+
+### SelfRecover fournit son schéma et l'implémentation de son propre contrat — 11 septembre 2026
+
+`StorageInterface` posait 39 questions et laissait chaque application y répondre. C'était
+délibéré — imposer des tables obligerait un déploiement en service à migrer sa base — mais
+celui qui part de zéro devait écrire 500 lignes avant sa première ligne utile.
+
+La bibliothèque livre désormais `schema.sql` et `src/Storage/StockagePdo.php` :
+**fournis, jamais imposés**. Qui a déjà ses tables continue d'écrire son adaptateur et ne
+migre rien ; qui part de zéro les prend tels quels. Il sert le facteur « cet appareil »,
+que les adaptateurs de démonstration ne servent pas tous.
+
+Deux défauts corrigés au passage :
+
+- 🔴 **`PRAGMA foreign_keys` est propre à la connexion, pas à la base.** Le poser dans un
+  fichier de schéma ne sert que la connexion qui le charge — souvent `sqlite3(1)`, jetée
+  aussitôt. Mesuré : effacer un compte laissait derrière lui ses codes, ses clés
+  d'appareil et le texte qu'il avait écrit à un arbitre, sans qu'aucune contrainte ne
+  proteste. Le constructeur de l'adaptateur le repose sur la connexion de l'application.
+- 🔴 **Les gardes de transaction validaient celle de l'appelant.** « Ne rien faire si une
+  transaction existe déjà » traite le symptôme et fabrique pire : le `commit()` suivant
+  rendait durable le travail à moitié fait de l'appelant, qui recevait ensuite « There is
+  no active transaction » sur son propre rollback. Remplacé par des points de reprise
+  (`SAVEPOINT`) : la transaction extérieure reste la sienne, nos écritures s'annulent sans
+  y toucher.
+
+  ⚠️ **Le correctif ne vaut que pour cet adaptateur.** Les trois autres porteurs du
+  contrat gardent le motif : les deux démos, et le double en mémoire des bancs — dont
+  `commencerTransaction()` écrase l'instantané précédent, de sorte qu'une annulation
+  imbriquée ne restaure rien. La cause est en amont : `StorageInterface` ne dit pas si
+  ces trois méthodes sont ré-entrantes, et les quatre implémentations y répondent
+  différemment. À trancher au contrat, pas porteur par porteur.
+
+Le banc `tests/banc_stockage_pdo.php` relit la base plutôt que la valeur rendue, et son
+plancher compte **par section** : un plancher global laissait disparaître 22 contrôles —
+dont ceux du facteur « cet appareil » — en rendant le même vert.
+
+⚠️ **Un banc ne peut pas se garder contre la falsification de son propre verdict.** Mesuré :
+débrancher le compteur d'échecs lui faisait afficher les ❌ et sortir à 0. La seconde
+source est donc dehors — l'étape de CI cherche le caractère ❌ dans la sortie, en plus du
+code de retour.
+
+### SelfRecover était déployé et non déployé, à sept lignes d'intervalle — 9 septembre 2026
+
+`bi-self/README.md:57` annonçait « deployed and self-audited implementation » et la
+section Statut, sept lignes plus bas, « no real-world production deployment yet ». Le
+lecteur devait trancher seul entre deux affirmations opposées du même fichier.
+
+**C'est la ligne 57 qui dit vrai**, vérifié sur la machine par la conv GitHub : le
+backend d'authentification d'un service de messagerie sert la bibliothèque en conditions
+réelles. La section Statut le dit désormais, dans les deux langues, et garde ce qui reste
+exact — la démo est auto-auditée, aucun audit externe n'a été mené.
+
+---
+
+## [SelfRecover-LUKS v0.5.0] — 22 septembre 2026
+
+### SelfRecover-LUKS v0.5.0 — plus de shell avant l'ouverture du disque, et trois plateformes — 12 au 22 septembre 2026
+
+Neuf commits depuis `selfrecover-luks-v0.4.0`, sans rupture de contrat.
+
+- 🔴 **Le SSH d'amorçage ne rend plus de shell.** La clé posée par `install.sh` était nue :
+  elle ouvrait un busybox root **avant** le déverrouillage de `/`. Comme `/boot` est en
+  clair et que le sel y voyage, ce shell suffisait à déposer un initrd modifié et à capturer
+  la passphrase suivante. `selfrecover-secours.sh` devient le `command=` de la clé : il
+  propose la passphrase recover **ou** la passphrase native, rien d'autre — le filet
+  anti-verrouillage reste atteignable à distance, ce que `command="cryptroot-unlock"` seul
+  aurait retiré. `install.sh` pose la question (`SHELL_AMORCAGE`) et consigne un refus dans
+  `renoncements.log`. `verifie-initramfs.sh` compare les images de `/boot` à une empreinte
+  consignée sur le volume chiffré : la classe n'est pas fermée, elle devient visible.
+- 🔴 **Les sauvegardes irréversibles se vérifient.** `verifie-sauvegardes.sh`, lancé par
+  `install.sh` avant le premier geste qui écrit dans l'en-tête, refuse une copie d'en-tête
+  ou de sel rangée sur le volume qu'elle sert à ouvrir, ou dont le nombre de slots ne
+  correspond plus au disque.
+- 🔴 **Le sel n'était jamais vérifié sur une machine à microcode.** Une image Intel ou AMD
+  s'extrait en `early/` + `main/` ; le garde-fou cherchait le sel à la racine, annonçait
+  « SEL NON VERIFIE » et sortait en 0.
+- **ARM (Raspberry Pi 4, Debian 13).** L'installeur ne suppose plus x86 + GRUB : `rootdelay`
+  passe par `/etc/default/raspi-extra-cmdline`, `python3-argon2` est exigé au préambule,
+  libargon2 se trouve par `ldconfig`, et le garde-fou juge l'image que l'amorceur
+  **charge** (`config.txt`), pas celle qu'`update-initramfs` vient de produire.
+- Les scripts du module sont exécutables depuis un clone frais ; les textes déclarent les
+  trois plateformes éprouvées (serveur, portable, racine en LVM chiffré).
+
+Bancs ajoutés : `test_secours_sans_shell.sh`, `test_sauvegardes.sh`,
+`test_garde_fou_image_chargee.sh`.
+
+### Le secret de LUKS portait le vocabulaire de l'autre niveau — 9 septembre 2026
+
+Quatre fichiers de `selfrecover-luks/` appelaient « mot de récupération » — le terme du
+**niveau 2**, qui est par compte et se combine à un code — ce qui est une **passphrase de
+niveau 1**, diceware, propre à la machine. Douze occurrences ; deux fichiers seulement
+disaient juste, dont le keyscript, c'est-à-dire le seul qui tourne au démarrage.
+
+La source est la docstring de `selfrecover_derive.py`, et c'est de là que la formulation a
+essaimé jusqu'au README racine du monorepo, où elle était devenue « une seule passphrase
+mémorisée » — un terme qui n'existe dans aucun des deux niveaux.
+
+Corrigé, et la docstring porte maintenant les deux avertissements qui manquaient : la
+nature du secret d'entrée, et le fait que **`--label` est une capacité du dérivateur, pas
+une architecture déployée** — seul `disk` a un consommateur, les étiquettes `auth` et
+`data-enc` citées en documentation n'existent dans aucun code du monorepo.
+
+Aucune clé, aucune dérivation, aucun format n'est touché : c'est de la prose dans du code.
+Le nom de l'option `--word` est conservé — le renommer romprait un contrat.
 
 ---
 
