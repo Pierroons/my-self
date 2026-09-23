@@ -273,6 +273,26 @@ débrancher le compteur d'échecs lui faisait afficher les ❌ et sortir à 0. L
 source est donc dehors — l'étape de CI cherche le caractère ❌ dans la sortie, en plus du
 code de retour.
 
+### Un instant du contrat doit en être un — 10 septembre 2026
+
+⚠️ **Changement de comportement pour les adaptateurs.** `Litige` refuse désormais, à la
+construction, tout instant inférieur à 1 000 000 000 (`InvalidArgumentException`, qui
+nomme le champ). Un adaptateur dont une colonne d'instant est restée en `TEXT` lève là où
+il passait en silence : vérifier ses colonnes avant de monter de version.
+
+Les instants de `StorageInterface` sont typés `int`, et aucun ne disait en quelle unité.
+Le typage ne suffit pas : `(int) '2026-07-12 08:00:00'` vaut `2026`. Aucune ligne
+n'échouait, et l'arbitre recevait un dossier daté de janvier 1970 — donc expiré, donc
+invisible. Le contrat énonce maintenant l'unité, la seconde Unix. `deposeLe = 0` et
+`trancheLe = null` restent légitimes ; c'est la zone entre zéro et le plancher qui est
+refusée.
+
+Huit contrôles ajoutés à `sanity_escalade`, dont trois contre-témoins : sans eux, un
+constructeur qui refuserait tout rendrait les autres verts.
+
+`Crypto\Hashing::needsRehash()` entre aussi dans la bibliothèque — son usage est décrit
+dans la section « Non publié », à l'entrée du secret SuperUser du lab.
+
 ### SelfRecover était déployé et non déployé, à sept lignes d'intervalle — 9 septembre 2026
 
 `bi-self/README.md:57` annonçait « deployed and self-audited implementation » et la
