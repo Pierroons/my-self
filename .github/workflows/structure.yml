@@ -552,6 +552,41 @@ jobs:
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du dernier admin"; exit 1; }
           echo "✓ le banc rougit, et sur le cas du dernier admin"
 
+      - name: Garde-fou — rotation de la clé du journal SU
+        run: |
+          sortie=$(php demo/lab/tests/sanity_rotation.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE 'OK — 18/18 ' \
+            || { echo "::error::le banc de rotation n'a pas joué ses 18 cas"; exit 1; }
+
+      - name: Canari — la rotation re-signe sans vérifier d'abord
+        run: |
+          # Sans la vérification sous l'ancienne clé, une entrée forgée sans la clé
+          # (chaînage juste, HMAC faux) devient authentique sous la nouvelle.
+          C=demo/lab/selfrecover-su
+          cp "$C" /tmp/su-rot.intact
+          restaurer() { cp /tmp/su-rot.intact "$C"; }
+          python3 - "$C" <<'PY'
+          import sys
+          p = sys.argv[1]; s = open(p).read()
+          a = "$ver = SuAudit::verifierEntrees($entrees, $ancienne);\n        if (!$ver['ok']) {"
+          assert s.count(a) == 1, "motif introuvable"
+          open(p, 'w').write(s.replace(a, "$ver = SuAudit::verifierEntrees($entrees, $ancienne);\n        if (false) {"))
+          PY
+          [ $? -eq 0 ] && ! cmp -s /tmp/su-rot.intact "$C" \
+            || { restaurer; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          php -l "$C" >/dev/null \
+            || { restaurer; echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(php demo/lab/tests/sanity_rotation.php 2>&1); then
+            restaurer; echo "$sortie"; echo "::error::le banc reste VERT quand la rotation blanchit une entrée forgée"; exit 1
+          fi
+          restaurer
+          cmp -s /tmp/su-rot.intact "$C" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$sortie" | grep -q 'entrée forgée sans la clé' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de l'entrée forgée"; exit 1; }
+          echo "✓ le banc rougit, et sur le cas de l'entrée forgée"
+
       - name: Garde-fou — les secrets d'instance refusent au lieu de servir
         run: |
           sortie=$(php demo/lab/tests/sanity_secrets_instance.php)

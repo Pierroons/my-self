@@ -45,6 +45,8 @@ final class SuAudit
      */
     public const ACTION_RECORD_SEAL     = 'record-seal';
     public const ACTION_BACKUP_LOG      = 'backup-log';
+    /** Le journal re-signé sous une nouvelle clé ; l'entrée porte aussi le sceau du secret SU. */
+    public const ACTION_ROTATE_KEY      = 'rotate-audit-key';
 
     /**
      * Les deux listes que `audit` rejoue pour reconstituer qui est légitimement
@@ -222,12 +224,46 @@ final class SuAudit
                 . 'Refus de répondre « aucune entrée » : illisible n\'est pas vide.'
             );
         }
+        return self::decoder($lignes);
+    }
+
+    /** Les entrées d'une liste de lignes JSON ; une ligne qui ne se décode pas est ignorée. */
+    public static function decoder(array $lignes): array
+    {
         $out = [];
         foreach ($lignes as $line) {
             $d = json_decode($line, true);
             if ($d) {
                 $out[] = $d;
             }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Les mêmes entrées, signées par une autre clé.
+     *
+     * Seul `hmac` change : `entry_hash` et `prev_hash` ne dépendent pas de la clé,
+     * donc la chaîne et les témoins déjà externalisés restent valables. Ne re-signe
+     * rien qui n'ait d'abord été vérifié sous l'ancienne clé — c'est l'appelant
+     * (`rotate-audit-key`) qui porte ce refus, avant l'appel.
+     */
+    public static function resigner(array $entrees, string $cle): array
+    {
+        foreach ($entrees as $i => $e) {
+            $entrees[$i]['hmac'] = hash_hmac('sha256', (string) ($e['entry_hash'] ?? ''), $cle);
+        }
+
+        return $entrees;
+    }
+
+    /** Les entrées en JSON-lines, dans le format qu'écrit `append()`. */
+    public static function encoder(array $entrees): string
+    {
+        $out = '';
+        foreach ($entrees as $e) {
+            $out .= json_encode($e, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
         }
 
         return $out;
@@ -532,7 +568,12 @@ final class SuAudit
     /** Intégrité de la chaîne : prev_hash, entry_hash et HMAC de chaque entrée. */
     public static function verify(): array
     {
-        $entries = self::read();
+        return self::verifierEntrees(self::read(), self::secret());
+    }
+
+    /** Comme `verify()`, sur des entrées et une clé données : une rotation vérifie sous les deux. */
+    public static function verifierEntrees(array $entries, string $cle): array
+    {
         $prev    = str_repeat('0', 64);
         foreach ($entries as $i => $e) {
             if (($e['prev_hash'] ?? null) !== $prev) {
@@ -542,7 +583,7 @@ final class SuAudit
             if ($h !== ($e['entry_hash'] ?? '')) {
                 return ['ok' => false, 'break_at' => $i + 1, 'reason' => 'entrée altérée (entry_hash)'];
             }
-            if (!hash_equals(hash_hmac('sha256', $h, self::secret()), (string) ($e['hmac'] ?? ''))) {
+            if (!hash_equals(hash_hmac('sha256', $h, $cle), (string) ($e['hmac'] ?? ''))) {
                 return ['ok' => false, 'break_at' => $i + 1, 'reason' => 'signature invalide (HMAC)'];
             }
             $prev = $e['entry_hash'];
@@ -649,7 +690,7 @@ final class SuAudit
         $vu = null;
         foreach (self::read() as $e) {
             $action = (string) ($e['action'] ?? '');
-            if ($action !== self::ACTION_CHANGE_PASS && $action !== self::ACTION_RECORD_SEAL) {
+            if (!in_array($action, [self::ACTION_CHANGE_PASS, self::ACTION_RECORD_SEAL, self::ACTION_ROTATE_KEY], true)) {
                 continue;
             }
             $h = $e['extra']['empreinte'] ?? null;

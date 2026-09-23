@@ -321,7 +321,8 @@ function su_figer(string $chemin, string $horodatage): ?string
     }
     $fige = $chemin . '.frozen-' . $horodatage;
     if (!@rename($chemin, $fige)) {
-        su_fail("Impossible de mettre $chemin de côté — rien n'a été supprimé.");
+        su_fail("Impossible de mettre $chemin de côté — rien n'a été supprimé."
+            . " (Un fichier en append-only se lève d'abord : `chattr -a`.)");
     }
     @chmod($fige, 0600);
 
@@ -847,6 +848,117 @@ switch ($cmd) {
         fwrite(STDOUT, $plain);
         break;
 
+    case 'rotate-audit-key':
+        // Change la clé qui signe le journal sans le casser : `verify()` recalcule le
+        // HMAC de chaque entrée avec la clé courante, donc poser une clé neuve à côté
+        // d'un journal existant le rendrait « signature invalide » dès l'entrée 1.
+        su_authenticate();
+        $i = array_search('--nouvelle-cle', $argv, true);
+        $fichierCle = $i !== false ? ($argv[$i + 1] ?? '') : '';
+        if ($fichierCle === '') {
+            su_fail("usage: $argv0 rotate-audit-key --nouvelle-cle <fichier>\n"
+                . "   La clé se lit dans un fichier en 0600 : passée en argument, `sudo` la"
+                . " recopierait dans le journal système.");
+        }
+        if (!is_file($fichierCle) || !is_readable($fichierCle)) {
+            su_fail("Clé illisible : $fichierCle.");
+        }
+        $mode = fileperms($fichierCle) & 0777;
+        if ($mode & 0077) {
+            su_fail(sprintf("%s est lisible au-delà de son propriétaire (%o) — `chmod 600` d'abord.", $fichierCle, $mode));
+        }
+        $nouvelle = rtrim((string) file_get_contents($fichierCle), "\r\n");
+        if (strlen($nouvelle) < 32 || $nouvelle === SuAudit::DEMO_SECRET) {
+            su_fail('Nouvelle clé refusée : 32 caractères au moins, et pas la valeur de démonstration.'
+                . ' `openssl rand -hex 32` en donne une.');
+        }
+        $ancienne = SuAudit::secret();
+        if (hash_equals($ancienne, $nouvelle)) {
+            su_fail('La nouvelle clé est celle en place — rien à tourner.');
+        }
+
+        $logPath = SuAudit::logPath();
+        if (!file_exists($logPath)) {
+            su_fail("Aucun journal ($logPath) : pose simplement la nouvelle clé, rien n'est à re-signer.");
+        }
+        $lignes  = file($logPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+        $entrees = SuAudit::decoder($lignes);
+        // Une ligne que `read()` ignore disparaîtrait à la réécriture : c'est une pièce,
+        // elle ne se jette pas en silence.
+        if (count($entrees) !== count($lignes)) {
+            su_fail(sprintf(
+                "🚨 %d ligne(s) du journal ne se décodent pas — `verify-log` ne les voit pas, une réécriture"
+                . " les effacerait. Rotation refusée : examine le fichier d'abord.",
+                count($lignes) - count($entrees)
+            ), 4);
+        }
+        // Re-signer une chaîne rompue la blanchirait : elle vérifierait sous la clé neuve.
+        $ver = SuAudit::verifierEntrees($entrees, $ancienne);
+        if (!$ver['ok']) {
+            su_fail("🚨 Chaîne ROMPUE à l'entrée {$ver['break_at']} ({$ver['reason']}) sous la clé en place."
+                . " Rotation refusée : re-signer blanchirait l'altération.", 4);
+        }
+
+        $tmp = $logPath . '.rotation-' . bin2hex(random_bytes(4)) . '.tmp';
+        register_shutdown_function(static function () use ($tmp): void {
+            if (file_exists($tmp)) {
+                @unlink($tmp);
+            }
+        });
+        $ancienUmask = umask(0077);
+        $ecrit = @file_put_contents($tmp, SuAudit::encoder(SuAudit::resigner($entrees, $nouvelle)), LOCK_EX);
+        umask($ancienUmask);
+        if ($ecrit === false) {
+            su_fail("Écriture impossible de $tmp — le journal n'a pas été touché.");
+        }
+        // Le fichier neuf se vérifie AVANT de prendre la place de l'ancien.
+        $relu  = SuAudit::decoder(file($tmp, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: []);
+        $verNv = SuAudit::verifierEntrees($relu, $nouvelle);
+        $tete  = $entrees === [] ? null : $entrees[count($entrees) - 1]['entry_hash'];
+        $teteNv = $relu === [] ? null : $relu[count($relu) - 1]['entry_hash'];
+        if (!$verNv['ok'] || count($relu) !== count($entrees) || $tete !== $teteNv) {
+            su_fail("🚨 Le journal re-signé ne se vérifie pas sous la nouvelle clé — le journal n'a pas été touché.", 4);
+        }
+
+        $fige = su_figer($logPath, (new DateTime('now', new DateTimeZone('UTC')))->format('Ymd-His'));
+        if (!@rename($tmp, $logPath)) {
+            @rename((string) $fige, $logPath);
+            su_fail("Mise en place du journal re-signé impossible — l'ancien est remis à sa place.");
+        }
+        @chmod($logPath, 0600);
+
+        // La suite du processus signe et poivre avec la clé neuve.
+        putenv("SELFRECOVER_SU_AUDIT_SECRET=$nouvelle");
+        su_zeroize($nouvelle);
+        su_zeroize($ancienne);
+        $etat = su_empreinte_secret();
+        SuAudit::append(SuAudit::ACTION_ROTATE_KEY, 'SU-AUDIT-KEY', [
+            'entrees'      => count($entrees),
+            'tete'         => $tete,
+            'journal_fige' => basename((string) $fige),
+            'empreinte'    => $etat['empreinte'] ?? null,
+            'source'       => $etat['source'] ?? null,
+        ]);
+        $fin = SuAudit::verify();
+        if (!$fin['ok']) {
+            su_fail("🚨 Journal rompu après la rotation (entrée {$fin['break_at']}) — l'ancien est intact : $fige", 4);
+        }
+        // Un écrivain qui attendait le verrou de l'ancien fichier y aurait écrit après nous.
+        $figees = count(SuAudit::decoder(file((string) $fige, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: []));
+        if ($figees !== count($entrees)) {
+            fwrite(STDERR, "🚨 Le journal figé a reçu " . ($figees - count($entrees)) . " entrée(s) pendant la rotation :\n"
+                . "   un autre écrivain tournait. Ces entrées ne sont PAS dans le journal en place.\n");
+        }
+
+        su_ok("Journal re-signé — {$fin['count']} entrées, chaîne intègre sous la nouvelle clé, sceau reposé.");
+        fwrite(STDOUT, "   Ancien journal figé : $fige (se vérifie toujours sous l'ancienne clé).\n");
+        fwrite(STDOUT, "   À faire maintenant : poser la nouvelle clé dans CHAQUE porteur de SELFRECOVER_SU_AUDIT_SECRET\n");
+        fwrite(STDOUT, "   (environnement de la console, pool PHP…) par fichier, jamais en ligne de commande.\n");
+        fwrite(STDOUT, "   Tant qu'un porteur garde l'ancienne, ce qu'il écrit rompra la chaîne.\n");
+        fwrite(STDOUT, "   ⚠️  Si l'ancienne clé a fui, son HMAC ne prouve plus rien sur les entrées d'avant :\n");
+        fwrite(STDOUT, "      seul leur entry_hash chez le témoin distant les authentifie.\n");
+        break;
+
     case 'forgot-passphrase':
     case 'reset-shell':
         // Coquille vide : la passphrase est perdue, donc elle ne peut pas être
@@ -961,6 +1073,8 @@ switch ($cmd) {
         fwrite(STDOUT, "  change-passphrase              change la passphrase SU\n");
         fwrite(STDOUT, "  backup-log <dest>              scelle le journal pour le hors-site\n");
         fwrite(STDOUT, "  restore-log <scellé>           relit une sauvegarde scellée\n");
+        fwrite(STDOUT, "  rotate-audit-key --nouvelle-cle <fichier>\n");
+        fwrite(STDOUT, "                                 re-signe le journal sous une nouvelle clé, sans le casser\n");
         fwrite(STDOUT, "  reset-shell --confirm          coquille vide (passphrase perdue) : révoque les admins\n");
         fwrite(STDOUT, "  reset-db --confirm             compromission : supprime TOUS les comptes et le secret SU\n\n");
         fwrite(STDOUT, "`add-admin` est retiré : le premier admin passe par `first-admin`, les suivants par une demande.\n");

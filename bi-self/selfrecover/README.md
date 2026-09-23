@@ -204,7 +204,7 @@ SelfRecover distinguishes three roles: **SU → Admin → User**. An **admin** c
 **Audit log** (outside the DB, outside the webroot) — four layers:
 1. **Append-only** at the filesystem level (`chattr +a` in prod)
 2. **Hash chain** (`prev_hash → entry_hash`, SHA-256) — any tampering breaks the chain
-3. **Per-entry HMAC** (an instance key, `SELFRECOVER_SU_AUDIT_SECRET` — separate from the SU passphrase: changing the passphrase does not break the chain)
+3. **Per-entry HMAC** (an instance key, `SELFRECOVER_SU_AUDIT_SECRET` — separate from the SU passphrase: changing the passphrase does not break the chain; the key itself is rotated with `rotate-audit-key`, which re-signs the log without changing its hashes)
 4. **Externalization** to a notification channel (action + target + time only, **never** the forensic context)
 
 > ⚠️ The real SU console is the **server CLI**. To watch it at work without administering one, the lab serves a **pedagogical showcase** — [`demo/lab/public/su_console.php`](../../demo/lab/public/su_console.php): a user / admin / SU role selector showing, at each level, what it can and cannot do. It runs the real code against an **in-memory** SQLite database, created and thrown away on every request — never the lab's own database, never a real privilege. The SU does not exist in that database, because its secret lives outside the database.
