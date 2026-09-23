@@ -138,7 +138,8 @@ return [
     'MÊME le SU ne le déchiffre pas' => 'EVEN the SU cannot decrypt it',
     'Ce que le SU PEUT' => 'What the SU CAN do',
     'Approuver / rejeter les promotions (créer les admins)' => 'Approve or reject promotions (create admins)',
-    'Révoquer un admin + couper ses sessions' => 'Revoke an admin and cut their sessions',
+    'Nommer le premier admin — une seule fois, à l\'installation' => 'Name the first admin — once, at installation',
+    'Révoquer un admin + couper ses sessions — jamais le dernier' => 'Revoke an admin and cut their sessions — never the last one',
     'Auditer : tout est tracé, 0 admin fantôme' => 'Audit: everything is logged, no phantom admins',
     'Ce que MÊME le SU NE PEUT PAS' => 'What EVEN the SU CANNOT do',
     'Lire ton mémo chiffré E2E (la clé n\'a jamais touché le serveur)'
