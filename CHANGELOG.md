@@ -10,6 +10,54 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### La console SU garde toujours un administrateur — 23 septembre 2026
+
+`selfrecover-su` nommait autant d'administrateurs qu'on voulait par `add-admin`, révoquait le
+dernier, et `audit` pouvait mettre en quarantaine tous les admins d'un coup. Plus rien ne
+permettait alors d'en nommer un.
+
+- **`first-admin` nomme le premier admin, une fois par cycle.** La voie est « consommée » dès
+  qu'un octroi figure au journal après le dernier reset. `add-admin` ne promeut plus : les admins
+  suivants passent par une demande, que le SU tranche avec `approve-request`.
+- **La base garde toujours au moins un admin.** La console refuse de révoquer le dernier
+  (code 6), et deux triggers SQLite refusent la même chose derrière elle, pour tout chemin de code
+  qui l'oublierait. `revoke-admin <x> --remplacant <y>` promeut puis révoque dans une seule
+  transaction.
+- **`audit` ne vide plus la base de ses admins.** Quand tous les admins en base sont absents du
+  journal, l'entrée est plus probablement cassée qu'envahie : il refuse, sort en code 7 et ne met
+  personne en quarantaine.
+- **Deux resets, et eux seuls rouvrent `first-admin`.** `reset-shell` (passphrase SU perdue)
+  révoque les admins et garde les comptes. `reset-db` (compromission) fige la base et le secret SU
+  sans les détruire, puis repart d'une base vide. Le journal est gardé : il affiche le reset en
+  bandeau, et `list-admins`, `audit` et `verify-log` le rappellent en tête.
+
+Banc `sanity_first_admin.php`, 26 cas, qui lisent chacun le code de sortie ET la base. Un canari
+retire les deux gardes du dernier admin, et le banc doit rougir sur ce cas.
+
+### La clé du journal SU se tourne sans casser la chaîne — 23 septembre 2026
+
+Poser une nouvelle `SELFRECOVER_SU_AUDIT_SECRET` à côté d'un journal existant le rendait
+« signature invalide » dès l'entrée 1, parce que `verify()` recalcule chaque HMAC avec la clé
+courante. `rotate-audit-key --nouvelle-cle <fichier>` vérifie la chaîne sous l'ancienne clé,
+recalcule seulement les HMAC, puis vérifie le fichier neuf avant de le mettre en place.
+`entry_hash` et `prev_hash` ne changent pas, donc les témoins déjà externalisés restent
+valables. L'ancien journal est figé, et l'entrée de rotation repose le sceau du secret SU.
+
+Il refuse une chaîne rompue, une ligne qu'il ne sait pas relire, et une clé courte, identique à
+celle en place ou lisible par d'autres que son propriétaire. La clé se lit dans un fichier et
+jamais en argument : `sudo` recopie la ligne de commande dans le journal système.
+
+🔑 **La vérification préalable n'est pas une précaution.** Sans elle, une entrée forgée par
+quelqu'un qui n'a pas la clé (chaînage juste, HMAC faux) ressort authentique sous la nouvelle.
+C'est le cas que vise le canari. Banc `sanity_rotation.php`, 18 cas.
+
+### Le lab et les textes rattrapent la console — 23 septembre 2026
+
+La console simulée du lab n'offre plus `add-admin`. Elle montre `first-admin`,
+`approve-request`, le refus du dernier admin et le remplacement. Les READMEs et les whitepapers
+de SelfRecover attribuaient la clé HMAC du journal à la passphrase SU : c'est
+`SELFRECOVER_SU_AUDIT_SECRET`, distincte d'elle.
+
 ### SelfJustice v0.4.0 — la jurisprudence administrative, et ce qu'il a fallu défaire pour l'atteindre — 11 septembre 2026
 
 La roadmap réservait la v0.4.0 au Conseil d'État et aux juridictions administratives. Le chantier

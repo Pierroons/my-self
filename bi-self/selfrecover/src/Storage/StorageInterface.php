@@ -23,7 +23,7 @@ use Pierroons\SelfRecover\Recovery\Litige;
  *
  * 🔑 **Tout paramètre et tout retour typé `int` qui porte un instant compte les
  * SECONDES depuis le 1er janvier 1970 UTC** — la valeur de `time()`, jamais des
- * millisecondes, jamais une date lisible. Cela vaut pour les vingt porteurs de
+ * millisecondes, jamais une date lisible. Cela vaut pour tous les porteurs de
  * ce contrat : `$quand`, `$depuis`, `$avant`, `$maintenant`, `$expireLe`,
  * `$jusqua`, et les champs d'horodatage de `Litige`.
  *
