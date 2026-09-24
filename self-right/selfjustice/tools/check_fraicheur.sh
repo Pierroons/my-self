@@ -118,7 +118,13 @@ def empreinte(bloc, prefixe=""):
 # sens ni dans l'autre.
 provenances = {}
 
-sources, volumes, empreintes, erreurs = {}, {}, {}, []
+# 🔑 Trois familles, parce qu'elles appellent trois gestes : une base en retard
+# se resynchronise, un renvoi mort se recure, une sonde aveugle se répare côté
+# mesure. Chacune donne son titre à la notification — sous un titre unique, une
+# route trop lente pour répondre se lisait « base en retard », et envoyait
+# chercher la panne dans une base saine.
+sources, volumes, empreintes = {}, {}, {}
+renvois, aveugle = [], []
 try:
     st = lire(f"{API}/status")
     for cle, nom in (("legi", "LEGI"), ("eu", "conventionnalité"), ("jurisprudence", "jurisprudence")):
@@ -128,7 +134,7 @@ try:
         empreintes[nom] = empreinte(bloc)
         provenances[nom] = bloc.get("provenance") or {}
 except Exception as e:
-    erreurs.append(f"/status injoignable ({type(e).__name__})")
+    aveugle.append(f"/status injoignable ({type(e).__name__})")
 
 try:
     meta = (lire(f"{ACT}/catalog").get("meta") or {})
@@ -138,7 +144,7 @@ try:
     volumes["catalogue SelfAct"] = volume(meta)
     empreintes["catalogue SelfAct"] = empreinte(meta)
 except Exception as e:
-    erreurs.append(f"/act/api/catalog injoignable ({type(e).__name__})")
+    aveugle.append(f"/act/api/catalog injoignable ({type(e).__name__})")
 
 # 🔑 **Un renvoi peut mourir sans que rien ne change de date.** Le rapprochement
 # gabarit → ressource officielle est curé à la main contre le catalogue d'un
@@ -159,12 +165,12 @@ try:
     }
     if orphelins:
         detail = "; ".join(f"{c} → {', '.join(ids)}" for c, ids in sorted(orphelins.items()))
-        erreurs.append(
+        renvois.append(
             f"renvois officiels morts dans data/gabarits.json ({detail}) : "
             "la démarche paraît sans équivalent officiel alors qu'elle en a"
         )
 except Exception as e:
-    erreurs.append(f"/act/api/gabarits injoignable ({type(e).__name__})")
+    aveugle.append(f"/act/api/gabarits injoignable ({type(e).__name__})")
 
 today = dt.date.today()
 attendu = derniere_echeance(today)
@@ -369,14 +375,14 @@ etat_a_ecrire = {**etat_precedent, **etat_courant}
 # ancienne qu'on ne le croit.
 muettes = [n for n in etat_precedent if n not in etat_courant]
 if muettes:
-    erreurs.append(
+    aveugle.append(
         "non mesurées ce passage, référence d'avant conservée : " + ", ".join(sorted(muettes))
     )
 
 try:
     pathlib.Path(os.environ["ETAT"]).write_text(json.dumps(etat_a_ecrire, indent=1))
 except Exception as e:
-    erreurs.append(f"état non enregistré ({type(e).__name__}) : la comparaison de volume sera muette demain")
+    aveugle.append(f"état non enregistré ({type(e).__name__}) : la comparaison de volume sera muette demain")
 
 if VERBEUX:
     print(f"# Échéance exigible : {attendu.isoformat()} (contrôle du {today.isoformat()})")
@@ -384,15 +390,24 @@ if VERBEUX:
     if not etat_precedent:
         print("# Première mesure : la comparaison de volume commencera demain.")
 
-# Une source injoignable est un retard : ne pas distinguer « en retard » de
-# « impossible à vérifier » serait dire « tout va bien » quand on ne sait pas.
-probs = retards + erreurs
+# Une source injoignable alerte autant qu'un retard : se taire serait dire
+# « tout va bien » quand on ne sait pas. Le titre nomme la famille la plus
+# grave présente, le corps les liste toutes.
+probs = retards + renvois + aveugle
+if probs:
+    titre = ("base en retard" if retards
+             else "renvoi officiel mort" if renvois
+             else "sonde aveugle")
+    print("TITRE Self-Right — " + titre)
 print("ALERTE " + " | ".join(probs) if probs else "OK")
 PY
 )
 
-echo "$RAPPORT" | sed '/^ALERTE\|^OK$/d'
+echo "$RAPPORT" | sed '/^ALERTE\|^OK$\|^TITRE /d'
 ETAT=$(echo "$RAPPORT" | grep -E "^(ALERTE|OK)" | head -1)
+# Sans titre, c'est le contrôle lui-même qui n'a rien pu rendre.
+TITRE=$(echo "$RAPPORT" | sed -n 's/^TITRE //p' | head -1)
+TITRE=${TITRE:-Self-Right — sonde aveugle}
 
 case "$ETAT" in
     OK) rm -f "${CHECK_FRAICHEUR_SILENCE_FICHIER:-$HOME/.check-fraicheur.dernier-cri}"
@@ -403,12 +418,12 @@ MESSAGE=${ETAT#ALERTE }
 logger -t check-fraicheur "$MESSAGE"
 echo "RETARD : $MESSAGE"
 
-# 🔑 **Le même fait ne se notifie qu'une fois.** Une source figée reste figée
-# plusieurs jours — la cadence de publication de certaines bases les laisse
-# immobiles jusqu'à deux semaines. Sans garde, le contrôle envoyait une alerte
-# chaque matin pour un seul événement, et un canal qui répète devient un canal
-# qu'on n'ouvre plus. Le journal local, lui, garde chaque passage : c'est la
-# notification qu'on espace, pas la mesure.
+# 🔑 **Le même fait se notifie une fois, puis se rappelle chaque semaine tant
+# qu'il dure.** Une source figée reste figée plusieurs jours — la cadence de
+# publication de certaines bases les laisse immobiles jusqu'à deux semaines. Un
+# canal qui répète chaque matin devient un canal qu'on n'ouvre plus. Le journal
+# local, lui, garde chaque passage : c'est la notification qu'on espace, pas la
+# mesure. Un fait nouveau, lui, part tout de suite.
 #
 # ⚠️ Aucun message ne porte de compteur qui avance : c'est la condition pour
 # que la signature soit le message lui-même. Un « soit 2 jours » puis « soit
@@ -417,26 +432,33 @@ echo "RETARD : $MESSAGE"
 #
 # Cet état sert à se taire, pas à mesurer : le perdre fait envoyer une alerte de
 # trop, jamais une de moins. C'est le bon sens de la défaillance — l'inverse de
-# l'état de volume, dont la perte rend le contrôle muet.
+# l'état de volume, dont la perte rend le contrôle muet. Un horodatage illisible
+# se traite donc comme une absence.
 SIGNATURE="$MESSAGE"
 SILENCE_FICHIER="${CHECK_FRAICHEUR_SILENCE_FICHIER:-$HOME/.check-fraicheur.dernier-cri}"
-SILENCE_SECONDES=${CHECK_FRAICHEUR_SILENCE:-86400}
+SILENCE_JOURS=${CHECK_FRAICHEUR_SILENCE_JOURS:-7}
 
 DEJA=""; QUAND=0
 [ -r "$SILENCE_FICHIER" ] && IFS='|' read -r QUAND DEJA < "$SILENCE_FICHIER"
+case "$QUAND" in ''|*[!0-9]*) QUAND=0 ;; esac
 MAINTENANT=$(date +%s)
+# ⚠️ L'écart se compte en jours ARRONDIS, jamais en secondes. Le timer tire son
+# heure dans une fenêtre de cinq minutes : un seuil en secondes égal à un
+# multiple du jour tombe une fois sur deux juste avant ou juste après, et le
+# même fait revient un passage sur deux au lieu d'attendre son échéance.
+JOURS=$(( (MAINTENANT - QUAND + 43200) / 86400 ))
 # 🔑 Le silence porte sur la NOTIFICATION, pas sur le verdict. Il sortait en 0,
 # donc une base arrêtée depuis vingt jours rendait vert à partir du deuxième
 # passage : toute supervision branchée sur le code de sortie voyait le retard
 # disparaître pendant qu'il durait. Le canal se tait, le code de sortie non.
-if [ "$SIGNATURE" = "$DEJA" ] && [ $((MAINTENANT - ${QUAND:-0})) -lt "$SILENCE_SECONDES" ]; then
+if [ "$SIGNATURE" = "$DEJA" ] && [ "$JOURS" -lt "$SILENCE_JOURS" ]; then
     [ -n "$VERBEUX" ] && echo "  (déjà notifié, silence en cours — le retard dure)"
     exit 1
 fi
 
 if [ -n "$NTFY_URL" ]; then
     curl -s -m 10 -H "Authorization: Bearer $NTFY_TOKEN" \
-         -H "Title: Self-Right — base en retard" -H "Priority: high" \
+         -H "Title: $TITRE" -H "Priority: high" \
          -d "$MESSAGE" "$NTFY_URL" >/dev/null 2>&1 \
       && { echo "  alerte envoyée"
            # La signature n'est retenue qu'après un envoi réussi : un canal
