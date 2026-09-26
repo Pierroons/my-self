@@ -156,7 +156,39 @@ try {
         : nok('refus inattendu : ' . $e->getMessage());
 }
 
+// ── 4 bis. Un déclencheur au corps périmé est réécrit à l'ouverture ─────────
+// Une base créée par une version antérieure garde le corps qu'elle a reçu, tant
+// que rien ne compare les textes.
+$pdo = base();
+$pdo->exec('DROP TRIGGER dernier_admin_update');
+$pdo->exec('CREATE TRIGGER dernier_admin_update BEFORE UPDATE OF is_admin ON accounts WHEN 0 BEGIN SELECT 1; END');
+su(['list-admins']);
+try {
+    base()->exec("UPDATE accounts SET is_admin = 0 WHERE username = 'alice'");
+    nok("le déclencheur périmé est resté en place : le dernier admin est parti");
+    base()->exec("UPDATE accounts SET is_admin = 1 WHERE username = 'alice'");
+} catch (PDOException $e) {
+    str_contains($e->getMessage(), 'dernier administrateur') && est_admin('alice')
+        ? ok("déclencheur au corps périmé : réécrit à l'ouverture, la garde tient")
+        : nok('refus inattendu : ' . $e->getMessage());
+}
+$avant = (int) base()->query('PRAGMA schema_version')->fetchColumn();
+su(['list-admins']);
+$apres = (int) base()->query('PRAGMA schema_version')->fetchColumn();
+$avant === $apres
+    ? ok("déclencheurs à jour : l'ouverture n'écrit rien dans le schéma")
+    : nok("l'ouverture réécrit le schéma à chaque fois (schema_version $avant → $apres)");
+
 // ── 5. Le remplacement atomique ─────────────────────────────────────────────
+// Un journal qui refuse d'écrire : la base ne doit pas bouger non plus.
+$journalMuet = "$dir/journal-dossier";
+mkdir($journalMuet);
+[$c] = su(['revoke-admin', 'alice', '--remplacant', 'bob'], ['SELFRECOVER_SU_AUDIT_LOG' => $journalMuet]);
+rmdir($journalMuet);
+$c !== 0 && est_admin('alice') && !est_admin('bob')
+    ? ok('journal qui refuse : le remplacement échoue et la base revient en arrière')
+    : nok("un remplacement que le journal refuse a changé la base (code $c)");
+
 [$c] = su(['revoke-admin', 'alice', '--remplacant', 'bob']);
 $c === 0 && est_admin('bob') && !est_admin('alice')
     ? ok('revoke-admin alice --remplacant bob : bob admin, alice non')
@@ -167,6 +199,16 @@ $c === 0 && est_admin('bob') && !est_admin('alice')
 base()->prepare(
     "INSERT INTO admin_requests (requester_username, target_username, reason, created_at) VALUES ('bob', 'carol', 'banc', ?)"
 )->execute([time()]);
+
+// Une base qui refuse : le journal ne doit rien dire.
+$entrees = count(SuAudit::read());
+base()->exec("CREATE TRIGGER banc_refus BEFORE UPDATE ON admin_requests BEGIN SELECT RAISE(ABORT, 'banc : la base refuse'); END");
+[$c] = su(['approve-request', '1', 'observation du banc']);
+base()->exec('DROP TRIGGER banc_refus');
+$c !== 0 && !est_admin('carol') && count(SuAudit::read()) === $entrees
+    ? ok("base qui refuse : l'approbation échoue et le journal ne l'inscrit pas")
+    : nok("une approbation refusée par la base a été journalisée ou appliquée (code $c)");
+
 [$c1] = su(['approve-request', '1', 'observation du banc']);
 [$c2] = su(['revoke-admin', 'carol']);
 $c1 === 0 && $c2 === 0 && !est_admin('carol') && est_admin('bob')

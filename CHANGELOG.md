@@ -10,6 +10,20 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### La console SU n'écrit plus au journal ce que la base a refusé — 26 septembre 2026
+
+- **La base et le journal réussissent ou échouent ensemble.** `first-admin`, `revoke-admin`,
+  le remplacement, `approve-request`, `reject-request` et la quarantaine d'`audit` écrivaient au
+  journal **avant** la base : une écriture refusée par la base laissait au journal un acte qui
+  n'avait pas eu lieu. Chaque verbe écrit désormais en base, puis au journal, dans une seule
+  transaction ; si le journal refuse, la base revient en arrière.
+- **Les déclencheurs du dernier admin suivent le code.** Posés en `CREATE TRIGGER IF NOT EXISTS`,
+  ils gardaient sur une base existante le corps qu'elle avait reçu à sa création. Leur texte est
+  comparé à l'ouverture et réécrit s'il diffère ; à texte égal, rien n'est écrit.
+
+Banc `sanity_first_admin.php` : 30 cas. Chacun des quatre ajoutés a été vu rougir sur son défaut
+planté.
+
 ### La console SU garde toujours un administrateur — 23 septembre 2026
 
 `selfrecover-su` nommait autant d'administrateurs qu'on voulait par `add-admin`, révoquait le

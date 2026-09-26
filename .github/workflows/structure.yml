@@ -525,8 +525,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_first_admin.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE 'OK — 26/26 ' \
-            || { echo "::error::le banc first-admin n'a pas joué ses 26 cas"; exit 1; }
+          echo "$sortie" | grep -qE 'OK — 30/30 ' \
+            || { echo "::error::le banc first-admin n'a pas joué ses 30 cas"; exit 1; }
 
       - name: Canari — le dernier administrateur tombe sans ses deux gardes
         run: |

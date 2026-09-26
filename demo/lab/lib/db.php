@@ -243,24 +243,51 @@ final class Db
                 id             INTEGER PRIMARY KEY CHECK (id = 1),
                 reset_en_cours INTEGER NOT NULL DEFAULT 0
             );
-            INSERT OR IGNORE INTO garde_admin (id) VALUES (1);
-            CREATE TRIGGER IF NOT EXISTS dernier_admin_update
+            INSERT OR IGNORE INTO garde_admin (id) VALUES (1);"
+        );
+        self::poserDeclencheurs();
+    }
+
+    private const DECLENCHEURS = [
+        'dernier_admin_update' => "CREATE TRIGGER dernier_admin_update
             BEFORE UPDATE OF is_admin ON accounts
             WHEN OLD.is_admin = 1 AND NEW.is_admin = 0
              AND (SELECT COUNT(*) FROM accounts WHERE is_admin = 1) <= 1
              AND (SELECT reset_en_cours FROM garde_admin WHERE id = 1) = 0
             BEGIN
                 SELECT RAISE(ABORT, 'dernier administrateur : la base en garde toujours un');
-            END;
-            CREATE TRIGGER IF NOT EXISTS dernier_admin_delete
+            END",
+        'dernier_admin_delete' => "CREATE TRIGGER dernier_admin_delete
             BEFORE DELETE ON accounts
             WHEN OLD.is_admin = 1
              AND (SELECT COUNT(*) FROM accounts WHERE is_admin = 1) <= 1
              AND (SELECT reset_en_cours FROM garde_admin WHERE id = 1) = 0
             BEGIN
                 SELECT RAISE(ABORT, 'dernier administrateur : la base en garde toujours un');
-            END;"
-        );
+            END",
+    ];
+
+    /**
+     * Réécrit tout déclencheur dont le texte en base diffère de `DECLENCHEURS`.
+     * `CREATE TRIGGER IF NOT EXISTS` garderait l'ancien corps sur toute base
+     * existante. SQLite conserve le texte tel qu'il a été posé : à texte égal,
+     * l'ouverture n'écrit rien dans le schéma.
+     */
+    private static function poserDeclencheurs(): void
+    {
+        $lire = self::$pdo->prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?");
+        foreach (self::DECLENCHEURS as $nom => $sql) {
+            $lire->execute([$nom]);
+            $enBase = $lire->fetchColumn();
+            $lire->closeCursor();
+            if ($enBase === $sql) {
+                continue;
+            }
+            self::$pdo->beginTransaction();
+            self::$pdo->exec("DROP TRIGGER IF EXISTS $nom");
+            self::$pdo->exec($sql);
+            self::$pdo->commit();
+        }
     }
 
     /**
