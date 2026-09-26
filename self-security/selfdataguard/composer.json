@@ -1,8 +1,8 @@
 {
     "name": "pierroons/selfdataguard",
-    "description": "Application-side at-rest data protection that survives database exfiltration. Per-user envelope encryption with two-factor key wrapping (password Argon2id + memorized HMAC).",
+    "description": "Application-side at-rest data protection that survives database exfiltration. Per-user envelope encryption with two-factor key wrapping (password and memorized secret, both Argon2id).",
     "type": "library",
-    "keywords": ["security", "encryption", "envelope-encryption", "key-wrapping", "at-rest", "argon2id", "aes-gcm", "self-security", "myself", "agpl"],
+    "keywords": ["security", "encryption", "envelope-encryption", "key-wrapping", "at-rest", "argon2id", "xchacha20-poly1305", "self-security", "myself", "agpl"],
     "license": "AGPL-3.0-or-later",
     "homepage": "https://github.com/Pierroons/my-self",
     "authors": [
@@ -23,6 +23,9 @@
         "ext-pdo_sqlite": "*",
         "ext-json": "*",
         "ext-mbstring": "*"
+    },
+    "suggest": {
+        "ext-openssl": "Reads AES-256-GCM blobs written before 0.4.0 on a CPU where libsodium does not serve AES-256-GCM"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.5"
@@ -49,7 +52,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-main": "0.1.x-dev"
+            "dev-main": "0.4.x-dev"
         }
     }
 }

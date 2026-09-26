@@ -131,7 +131,7 @@ $escrowKey = $unlockedEscrow->getEscrowKey();
 
 $privCipher = $storage->loadFields('alice', ['mots_de_passe'])['mots_de_passe'];
 try {
-    Primitives::aesGcmDecrypt(EncryptedBlob::fromBase64($privCipher), $escrowKey, aad: 'alice|mots_de_passe');
+    Primitives::decrypt(EncryptedBlob::fromBase64($privCipher), $escrowKey, aad: 'alice|mots_de_passe');
     ko('escrow_key decrypted a private field — COMPARTMENTALISATION BROKEN (CRITICAL)');
 } catch (RuntimeException) {
     ok('escrow_key cannot decrypt private field (mots_de_passe) — private zone out of admin reach');

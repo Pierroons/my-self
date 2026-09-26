@@ -18,7 +18,8 @@ use SodiumException;
  * Per whitepaper §5:
  *   - Password derivation : Argon2id (m=64 MiB, t=3) — RFC 9106 / OWASP / ANSSI
  *   - Memorized derivation: Argon2id, same profile — see below
- *   - Encryption          : AES-256-GCM (NIST, hardware-accelerated, AEAD)
+ *   - Encryption          : XChaCha20-Poly1305 (IETF, AEAD, constant-time in software)
+ *   - Legacy decryption   : AES-256-GCM, for blobs written before 0.4.0
  *   - Randomness          : random_bytes (PHP CSPRNG)
  *
  * 🔑 Both human secrets go through the SAME cost. Until 0.3.0 the memorized
@@ -47,7 +48,7 @@ final class Primitives
     public const ARGON2_MEMLIMIT = 65536 * 1024;
     public const SALT_LEN        = 16;
     public const KEY_LEN         = 32;
-    public const NONCE_LEN       = 12;
+    public const NONCE_LEN       = EncryptedBlob::NONCE_LEN_V2;
     public const HMAC_ALGO       = 'sha256';
 
     private function __construct()
@@ -65,7 +66,7 @@ final class Primitives
      * @return string 32 raw bytes
      */
     public static function deriveFromPassword(
-        string $password,
+        #[\SensitiveParameter] string $password,
         string $salt,
         int $opslimit = self::ARGON2_OPSLIMIT,
         int $memlimit = self::ARGON2_MEMLIMIT
@@ -108,7 +109,7 @@ final class Primitives
      * @return string 32 raw bytes
      */
     public static function deriveFromMemorized(
-        string $memorized,
+        #[\SensitiveParameter] string $memorized,
         string $context,
         int $opslimit = self::ARGON2_OPSLIMIT,
         int $memlimit = self::ARGON2_MEMLIMIT
@@ -147,7 +148,7 @@ final class Primitives
      *
      * A wrap it opens is not a wrap the caller may use. UserVault throws.
      */
-    public static function deriveFromMemorizedLegacyV1(string $memorized, string $context): string
+    public static function deriveFromMemorizedLegacyV1(#[\SensitiveParameter] string $memorized, string $context): string
     {
         if ($memorized === '' || $context === '') {
             throw new InvalidArgumentException('Legacy derivation needs both arguments');
@@ -156,25 +157,26 @@ final class Primitives
     }
 
     /**
-     * Authenticated encryption with AES-256-GCM and a fresh random nonce.
+     * Authenticated encryption with XChaCha20-Poly1305 (IETF) and a fresh random
+     * nonce. Always writes a v2 blob.
+     *
+     * libsodium computes it in software, in constant time, on every CPU. AES-256-GCM
+     * does not travel that well: libsodium serves it only with hardware support,
+     * which a Raspberry Pi 4 lacks. The 24-byte nonce keeps random nonces safe
+     * without a counter.
      *
      * @param string      $plaintext Raw data to encrypt
      * @param string      $key       Exactly 32 bytes
      * @param string|null $aad       Optional additional authenticated data (bound to the ciphertext, not encrypted)
      */
-    public static function aesGcmEncrypt(
-        string $plaintext,
-        string $key,
+    public static function encrypt(
+        #[\SensitiveParameter] string $plaintext,
+        #[\SensitiveParameter] string $key,
         ?string $aad = null
     ): EncryptedBlob {
         self::assertKeyLength($key);
-        if (!sodium_crypto_aead_aes256gcm_is_available()) {
-            throw new RuntimeException(
-                'AES-256-GCM not supported on this CPU (no AES-NI)'
-            );
-        }
-        $nonce = random_bytes(self::NONCE_LEN);
-        $ciphertext = sodium_crypto_aead_aes256gcm_encrypt(
+        $nonce = random_bytes(EncryptedBlob::NONCE_LEN_V2);
+        $ciphertext = sodium_crypto_aead_xchacha20poly1305_ietf_encrypt(
             $plaintext,
             (string) $aad,
             $nonce,
@@ -184,21 +186,60 @@ final class Primitives
     }
 
     /**
-     * Verify and decrypt an EncryptedBlob.
+     * Verify and decrypt a blob of either format.
      *
-     * @throws RuntimeException if the auth tag fails to verify (tampered ciphertext, wrong key, tampered AAD).
+     * A v1 blob (AES-256-GCM) is read by libsodium where it serves AES, and by
+     * OpenSSL elsewhere: the format is standard GCM, 12-byte nonce, tag appended.
+     *
+     * @throws LegacyCipherUnavailableException a v1 blob, on a machine with neither route
+     * @throws RuntimeException                 if the auth tag fails to verify (tampered ciphertext, wrong key, tampered AAD)
      */
-    public static function aesGcmDecrypt(
+    public static function decrypt(
         EncryptedBlob $blob,
-        string $key,
+        #[\SensitiveParameter] string $key,
         ?string $aad = null
     ): string {
         self::assertKeyLength($key);
-        if (!sodium_crypto_aead_aes256gcm_is_available()) {
-            throw new RuntimeException(
-                'AES-256-GCM not supported on this CPU (no AES-NI)'
-            );
+        if (!$blob->isLegacy()) {
+            try {
+                $plaintext = sodium_crypto_aead_xchacha20poly1305_ietf_decrypt(
+                    $blob->ciphertext,
+                    (string) $aad,
+                    $blob->nonce,
+                    $key
+                );
+            } catch (SodiumException $e) {
+                throw new RuntimeException('Decryption failed: ' . $e->getMessage(), 0, $e);
+            }
+            return self::authenticated($plaintext);
         }
+        if (sodium_crypto_aead_aes256gcm_is_available()) {
+            return self::legacyDecryptSodium($blob, $key, $aad);
+        }
+        if (self::opensslHasAesGcm()) {
+            return self::legacyDecryptOpenssl($blob, $key, $aad);
+        }
+        throw new LegacyCipherUnavailableException(
+            'This blob was written with AES-256-GCM (SelfDataGuard < 0.4.0), and this machine '
+            . 'cannot decrypt it: libsodium serves AES-256-GCM only with hardware support '
+            . '(AES-NI and, since 1.0.19, AVX on x86-64; the ARMv8 crypto extensions since 1.0.19), '
+            . 'and ext-openssl, the fallback, is missing. '
+            . 'Install ext-openssl, or read the data once on a machine that has either.'
+        );
+    }
+
+    /**
+     * v1 decryption through libsodium. Callers go through decrypt(); this is
+     * public so the test suite can check each route against the other.
+     *
+     * @internal
+     */
+    public static function legacyDecryptSodium(
+        EncryptedBlob $blob,
+        #[\SensitiveParameter] string $key,
+        ?string $aad = null
+    ): string {
+        self::assertKeyLength($key);
         try {
             $plaintext = sodium_crypto_aead_aes256gcm_decrypt(
                 $blob->ciphertext,
@@ -209,12 +250,55 @@ final class Primitives
         } catch (SodiumException $e) {
             throw new RuntimeException('Decryption failed: ' . $e->getMessage(), 0, $e);
         }
-        if ($plaintext === false) {
-            throw new RuntimeException(
-                'Decryption failed: auth tag mismatch (corrupted ciphertext, wrong key, or tampered AAD)'
-            );
-        }
-        return $plaintext;
+        return self::authenticated($plaintext);
+    }
+
+    /**
+     * v1 decryption through OpenSSL. Callers go through decrypt(); this is
+     * public so the test suite can check each route against the other.
+     *
+     * @internal
+     */
+    public static function legacyDecryptOpenssl(
+        EncryptedBlob $blob,
+        #[\SensitiveParameter] string $key,
+        ?string $aad = null
+    ): string {
+        self::assertKeyLength($key);
+        $tagOffset = strlen($blob->ciphertext) - EncryptedBlob::TAG_LEN;
+        $plaintext = openssl_decrypt(
+            substr($blob->ciphertext, 0, $tagOffset),
+            'aes-256-gcm',
+            $key,
+            OPENSSL_RAW_DATA,
+            $blob->nonce,
+            substr($blob->ciphertext, $tagOffset),
+            (string) $aad
+        );
+        return self::authenticated($plaintext);
+    }
+
+    /**
+     * @deprecated 0.4.0 Use encrypt(). Despite its name, it writes XChaCha20-Poly1305.
+     *             Removed in 0.5.0.
+     */
+    public static function aesGcmEncrypt(
+        #[\SensitiveParameter] string $plaintext,
+        #[\SensitiveParameter] string $key,
+        ?string $aad = null
+    ): EncryptedBlob {
+        return self::encrypt($plaintext, $key, $aad);
+    }
+
+    /**
+     * @deprecated 0.4.0 Use decrypt(), which reads both formats. Removed in 0.5.0.
+     */
+    public static function aesGcmDecrypt(
+        EncryptedBlob $blob,
+        #[\SensitiveParameter] string $key,
+        ?string $aad = null
+    ): string {
+        return self::decrypt($blob, $key, $aad);
     }
 
     /**
@@ -232,7 +316,7 @@ final class Primitives
      * Constant-time equality check. Use for any secret-equal comparison
      * (MACs, tokens, hashes) to prevent timing attacks.
      */
-    public static function secureCompare(string $a, string $b): bool
+    public static function secureCompare(#[\SensitiveParameter] string $a, #[\SensitiveParameter] string $b): bool
     {
         return hash_equals($a, $b);
     }
@@ -243,7 +327,7 @@ final class Primitives
      * PHP strings are not guaranteed mutable, but sodium_memzero at least
      * gives the underlying libsodium buffer a chance to be wiped before GC.
      */
-    public static function zeroize(string &$secret): void
+    public static function zeroize(#[\SensitiveParameter] string &$secret): void
     {
         if (function_exists('sodium_memzero')) {
             try {
@@ -257,12 +341,30 @@ final class Primitives
         $secret = '';
     }
 
-    private static function assertKeyLength(string $key): void
+    private static function assertKeyLength(#[\SensitiveParameter] string $key): void
     {
         if (strlen($key) !== self::KEY_LEN) {
             throw new InvalidArgumentException(
                 'Key must be exactly ' . self::KEY_LEN . ' bytes; got ' . strlen($key)
             );
         }
+    }
+
+    private static function authenticated(string|false $plaintext): string
+    {
+        if ($plaintext === false) {
+            throw new RuntimeException(
+                'Decryption failed: auth tag mismatch (corrupted ciphertext, wrong key, or tampered AAD)'
+            );
+        }
+        return $plaintext;
+    }
+
+    private static function opensslHasAesGcm(): bool
+    {
+        static $available = null;
+
+        return $available ??= function_exists('openssl_get_cipher_methods')
+            && in_array('aes-256-gcm', openssl_get_cipher_methods(), true);
     }
 }

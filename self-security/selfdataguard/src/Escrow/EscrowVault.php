@@ -6,6 +6,7 @@ namespace Pierroons\SelfDataGuard\Escrow;
 
 use DateTimeImmutable;
 use InvalidArgumentException;
+use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 use RuntimeException;
@@ -18,8 +19,8 @@ use RuntimeException;
  *
  *     escrow_key   ←  random(256 bits)
  *
- *     wrap_user    ←  AES-256-GCM(escrow_key, data_master_key)      (AAD userId|escrow)
- *     wrap_admin   ←  crypto_box_seal(escrow_key, admin_public_key) (anonymous sealed box)
+ *     wrap_user    ←  XChaCha20-Poly1305(escrow_key, data_master_key) (AAD userId|escrow)
+ *     wrap_admin   ←  crypto_box_seal(escrow_key, admin_public_key)   (anonymous sealed box)
  *
  * The user opens wrap_user with the master key they already hold. The admin
  * opens wrap_admin with the recovery secret key (itself passphrase-sealed, see
@@ -52,7 +53,7 @@ final class EscrowVault
 
         $escrowKey = Primitives::randomBytes(Primitives::KEY_LEN);
 
-        $wrapUser  = Primitives::aesGcmEncrypt(
+        $wrapUser  = Primitives::encrypt(
             $escrowKey,
             $session->getMasterKey(),
             aad: $session->userId . self::WRAP_AAD_SUFFIX
@@ -86,11 +87,14 @@ final class EscrowVault
         }
 
         try {
-            $escrowKey = Primitives::aesGcmDecrypt(
+            $escrowKey = Primitives::decrypt(
                 $record->wrapUser,
                 $session->getMasterKey(),
                 aad: $record->userId . self::WRAP_AAD_SUFFIX
             );
+        } catch (LegacyCipherUnavailableException $e) {
+            // A RuntimeException too: without this, the next catch hides a machine limit.
+            throw $e;
         } catch (RuntimeException $e) {
             throw new RuntimeException('Could not unwrap escrow with user master key', previous: $e);
         }

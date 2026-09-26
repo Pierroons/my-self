@@ -9,7 +9,7 @@
 <body>
 
 <header>
-  <h1>SelfDataGuard <span class="version">v0.2.0</span></h1>
+  <h1>SelfDataGuard <span class="version">v0.4.0</span></h1>
   <p class="tagline">Dumpez ma base de données — vous obtenez du bruit chiffré.</p>
   <nav>
     <a class="nav-cta" href="coffre.html">🔐 Espace membre — Mon coffre</a>
@@ -27,8 +27,8 @@
     Chaque utilisateur dispose d'une <strong>clé maîtresse de données</strong> qui n'est jamais stockée en clair.
     Elle est encapsulée deux fois — une fois par une clé dérivée de son
     <em>mot de passe</em> (Argon2id), une fois par une clé dérivée de son
-    <em>mot mémorisé</em> (HMAC-SHA256). Les champs personnels sont chiffrés
-    par la clé maîtresse en AES-256-GCM.
+    <em>mot mémorisé</em> (Argon2id aussi). Les champs personnels sont chiffrés
+    par la clé maîtresse en XChaCha20-Poly1305.
     <strong>Le panneau "Backend — vue brute de la base" à droite</strong> montre
     exactement ce qui est stocké sur disque en temps réel. Observez sa mise à jour
     après chaque action : un attaquant qui exfiltre le fichier SQLite ne voit rien
@@ -133,7 +133,7 @@
   <p class="hint">
     Voici exactement ce qu'un attaquant qui exfiltre le fichier SQLite verrait.
     <strong>Aucune donnée personnelle en clair n'apparaît nulle part</strong> — uniquement
-    des blobs ciphertext base64 (AES-256-GCM) et des index HMAC. Cette vue
+    des blobs ciphertext base64 (XChaCha20-Poly1305) et des index HMAC. Cette vue
     s'actualise automatiquement après chaque action effectuée à gauche.
   </p>
   <button id="inspect-btn" type="button">Actualiser manuellement</button>

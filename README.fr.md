@@ -96,7 +96,7 @@ de droit tenues à jour, pas des dispositifs de protection.
 |---|---|---|
 | [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | **v0.6.0** — bibliothèque + implémentation déployée |
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.5.0** — installé et documenté, clé en hexadécimal |
-| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.3.0** — en service, 198 contrôles |
+| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.4.0** — 219 contrôles, XChaCha20-Poly1305 sur tout processeur ; l'instance publique tourne encore en 0.3.0 |
 | [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.4.0 bêta** — logement, famille, administration et jurisprudence administrative |
 | [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — en ligne, plus de 1 800 ressources officielles |
 | [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.3.0** — recoupement des votants liés, convalescence, motif de vote ; 24 contrôles ; 2 mécanismes manquent |

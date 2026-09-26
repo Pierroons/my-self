@@ -80,7 +80,7 @@ final class AttackSimulator
             'titre' => 'Exfiltration de la base de données',
             'objectif' => "Voler les messages privés et données personnelles en dumpant la base SQLite.",
             'etapes' => [
-                ['action' => 'Bob envoie un DM contenant son RIB à Alice', 'resultat' => 'message chiffré AES-256-GCM avant insertion'],
+                ['action' => 'Bob envoie un DM contenant son RIB à Alice', 'resultat' => 'message chiffré XChaCha20-Poly1305 avant insertion'],
                 ['action' => 'Alice renseigne son adresse dans son profil', 'resultat' => 'profil chiffré at-rest'],
                 ['action' => "L'attaquant exfiltre la base et lit les tables dm + profiles", 'resultat' => 'il n\'obtient que des blobs base64'],
             ],
@@ -101,7 +101,7 @@ final class AttackSimulator
                 ],
             ],
             'verdict' => 'neutralisé',
-            'defense' => 'SelfDataGuard (chiffrement enveloppé AES-256-GCM, clé hors base)',
+            'defense' => 'SelfDataGuard (chiffrement enveloppé XChaCha20-Poly1305, clé hors base)',
             'message_cle' => "La donnée est intégralement conservée et utilisable par Alice — mais l'attaquant ne récupère que du bruit chiffré.",
         ];
     }

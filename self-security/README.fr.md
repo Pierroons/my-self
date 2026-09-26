@@ -7,7 +7,7 @@
 > *Prends ma base — tu auras du bruit.*
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfDataGuard : v0.3.0](https://img.shields.io/badge/SelfDataGuard-v0.3.0-brightgreen.svg)](./selfdataguard/)
+[![SelfDataGuard : v0.4.0](https://img.shields.io/badge/SelfDataGuard-v0.4.0-brightgreen.svg)](./selfdataguard/)
 [![SelfRecover-LUKS : v0.5.0](https://img.shields.io/badge/SelfRecover--LUKS-v0.5.0-green.svg)](./selfrecover-luks/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -55,7 +55,7 @@ L'étiquette change le sel effectif : deux clés issues du même secret restent 
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, qui survit au dump de la base | **v0.3.0** — en service, 198 contrôles sur 8 suites |
+| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, qui survit au dump de la base | **v0.4.0** — 219 contrôles sur 8 suites ; l'instance publique tourne encore en 0.3.0 |
 | [SelfRecover-LUKS](./selfrecover-luks/) | Racine LUKS2 **et** volumes de données ouverts par une seule phrase de récupération | **v0.5.0** — validé sur un serveur Debian 13 LNMP un poste portable et une racine en LVM chiffré, installation reproductible |
 
 ---

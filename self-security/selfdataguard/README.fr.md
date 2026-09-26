@@ -5,8 +5,8 @@
 **Protection des données au repos côté application, qui survit à une exfiltration de base de données.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.3.0 en service](https://img.shields.io/badge/statut-v0.3.0%20en%20service-brightgreen.svg)](#statut)
-[![Tests : 198 passants](https://img.shields.io/badge/tests-198%20passants-brightgreen.svg)](#tests)
+[![Statut : v0.4.0, pas encore déployée](https://img.shields.io/badge/statut-v0.4.0%20pas%20encore%20d%C3%A9ploy%C3%A9e-yellow.svg)](#statut)
+[![Tests : 219 passants](https://img.shields.io/badge/tests-219%20passants-brightgreen.svg)](#tests)
 [![Pilier : Self-Security](https://img.shields.io/badge/pilier-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -49,8 +49,8 @@ SelfDataGuard implémente un **encapsulage de clé à deux facteurs** inspiré d
 Chaque utilisateur dispose de :
 
 - Un `user_salt` aléatoire unique, stocké en clair (équivalent à un identifiant)
-- Un `data_master_key_pwd_wrap` : ciphertext AES-256-GCM de la clé maîtresse, chiffré avec la clé dérivée du mot de passe
-- Un `data_master_key_recov_wrap` : ciphertext AES-256-GCM de la clé maîtresse, chiffré avec la clé dérivée du mot mémorisé
+- Un `data_master_key_pwd_wrap` : ciphertext XChaCha20-Poly1305 de la clé maîtresse, chiffré avec la clé dérivée du mot de passe
+- Un `data_master_key_recov_wrap` : ciphertext XChaCha20-Poly1305 de la clé maîtresse, chiffré avec la clé dérivée du mot mémorisé
 - Des champs de données personnelles chiffrés un par un avec `data_master_key`
 
 **Dump de la base → soupe cryptographique.** Aucune combinaison des valeurs en clair présentes dans le dump ne permet d'obtenir la clé maîtresse. L'attaquant aurait besoin soit du mot de passe de l'utilisateur (durci par Argon2id, isolé par sel), soit du mot mémorisé de l'utilisateur (jamais transmis en clair) pour déchiffrer quoi que ce soit.
@@ -102,9 +102,11 @@ La majorité des déploiements e-commerce choisiront **Hybrid**. Santé, banque,
 
 ## Statut
 
-**v0.3.0 — dérivation Argon2id sur les deux facteurs, compartiment escrow, démo standalone**, 7 septembre 2026.
+**v0.4.0 — XChaCha20-Poly1305 sur tout processeur, format de blob versionné**, 26 septembre 2026. Pas encore déployée : l'instance publique tourne en 0.3.0.
 
-Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (2 372 lignes réparties sur 17 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, AES-256-GCM) couvertes par **198 contrôles répartis sur 8 suites**, tous passants. Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
+Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (2 607 lignes réparties sur 18 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **219 contrôles répartis sur 8 suites**, tous passants.
+
+Le chiffrement ne dépend plus du processeur. Jusqu'à la 0.3.0, il reposait sur AES-256-GCM, que libsodium ne sert qu'avec un support matériel — AES-NI, plus AVX depuis libsodium 1.0.19 — et jamais sur un Raspberry Pi 4. Les blobs écrits par la 0.3.0 restent lisibles, par OpenSSL là où libsodium refuse AES. Une fois qu'un blob a été écrit par la 0.4.0, revenir à la 0.3.0 le rend illisible : cette version le refuse comme base64 invalide au lieu de le lire de travers. Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
 
 Le module tourne sur des déploiements réels. Il **n'a pas été audité par un cryptographe extérieur** : sa conception n'est vérifiée à ce jour que par son auteur et par les lecteurs de ce dépôt.
 
@@ -163,15 +165,15 @@ Trois classes principales exposées : `SelfDataGuard` (façade), `SqliteAdapter`
 Huit suites de tests sanity, exécutables directement avec `php` (pas besoin de PHPUnit) :
 
 ```bash
-php tests/sanity_primitives.php   # 27 tests — Argon2id, HMAC, AES-GCM, aléatoire
-php tests/sanity_vault.php        # 33 tests — register, unlock, rotation, liaison AAD
-php tests/sanity_fields.php       # 25 tests — chiffrement de champs + blind index
+php tests/sanity_primitives.php   # 45 tests — Argon2id, HMAC, XChaCha20-Poly1305 + vecteur IETF, AES-GCM historique, aléatoire
+php tests/sanity_vault.php        # 36 tests — register, unlock, rotation, liaison AAD, wraps historiques
+php tests/sanity_fields.php       # 26 tests — chiffrement de champs + blind index
 php tests/sanity_storage.php      # 36 tests — adaptateur SQLite, test "soupe DB"
 php tests/sanity_facade.php       # 34 tests — API complète bout en bout
-php tests/sanity_audit.php        #  6 tests — journal d'audit
+php tests/sanity_audit.php        # 11 tests — journal d'audit
 php tests/sanity_ceremony.php     # 14 tests — cérémonie de clés
-php tests/sanity_escrow.php       # 16 tests — compartiment escrow
-# Total : 198 tests, 0 échec — relevé par exécution le 07/09/2026
+php tests/sanity_escrow.php       # 17 tests — compartiment escrow
+# Total : 219 tests, 0 échec — relevé par exécution le 26/09/2026
 ```
 
 La suite `sanity_storage.php` inclut un "BIG TEST" qui dumpe le fichier SQLite et vérifie qu'aucune donnée personnelle en clair n'apparaît nulle part dans le blob binaire.

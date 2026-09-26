@@ -15,7 +15,7 @@ use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
  * Layout:
  *   - user_id    : opaque application identifier (same as the main vault)
  *   - wrap_user  : escrow_key wrapped by the user's data_master_key
- *                  (AES-256-GCM, AAD = "userId|escrow") → the user opens it daily
+ *                  (XChaCha20-Poly1305, AAD = "userId|escrow") → the user opens it daily
  *   - wrap_admin : escrow_key sealed to the admin recovery PUBLIC key
  *                  (libsodium anonymous sealed box) → the admin opens it during
  *                  a recovery ceremony, and ONLY the escrow_key — never the

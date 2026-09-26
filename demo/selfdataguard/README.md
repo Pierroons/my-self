@@ -6,13 +6,14 @@ A standalone clickable demo of SelfDataGuard's per-user envelope encryption, wit
 
 - **PHP 8.1+** with the `sodium`, `pdo`, `pdo_sqlite`, `json`, `mbstring` extensions
 - A modern browser (Firefox, Chromium, Safari…)
-- AES-NI-capable CPU (any x86-64 since ~2010, ARM64 since Cortex-A53)
+- Any CPU: encryption is XChaCha20-Poly1305, computed in software by libsodium
+- The `openssl` extension, only to read blobs written before 0.4.0 (AES-256-GCM) on a CPU where libsodium does not serve AES
 
 Check with:
 
 ```bash
 php --version
-php -r "var_dump(extension_loaded('sodium'), sodium_crypto_aead_aes256gcm_is_available());"
+php -r "var_dump(extension_loaded('sodium'), function_exists('sodium_crypto_aead_xchacha20poly1305_ietf_encrypt'));"
 ```
 
 Both must report `true`.
@@ -103,7 +104,7 @@ Reload the page — you'll get a clean DB and a fresh server-side blind key. The
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  SelfDataGuard v0.3.0 — Dump my database — and you get encrypted noise       │
+│  SelfDataGuard v0.4.0 — Dump my database — and you get encrypted noise       │
 │  GitHub · Whitepaper EN · Whitepaper FR · AGPL-3.0                           │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ How this demo works (full-width explainer)                                   │

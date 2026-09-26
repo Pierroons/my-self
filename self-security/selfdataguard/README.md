@@ -5,8 +5,8 @@
 **Application-layer data-at-rest protection that survives a database exfiltration.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.3.0 in service](https://img.shields.io/badge/status-v0.3.0%20in%20service-brightgreen.svg)](#status)
-[![Tests: 198 passing](https://img.shields.io/badge/tests-198%20passing-brightgreen.svg)](#testing)
+[![Status: v0.4.0, not yet deployed](https://img.shields.io/badge/status-v0.4.0%20not%20yet%20deployed-yellow.svg)](#status)
+[![Tests: 219 passing](https://img.shields.io/badge/tests-219%20passing-brightgreen.svg)](#testing)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -49,8 +49,8 @@ SelfDataGuard implements **two-factor key wrapping** inspired by Bitwarden, 1Pas
 Each user has:
 
 - A unique random `user_salt` stored in plain (identifier-grade)
-- A `data_master_key_pwd_wrap`: AES-256-GCM ciphertext of the master key, encrypted with the password-derived key
-- A `data_master_key_recov_wrap`: AES-256-GCM ciphertext of the master key, encrypted with the recovery-word-derived key
+- A `data_master_key_pwd_wrap`: XChaCha20-Poly1305 ciphertext of the master key, encrypted with the password-derived key
+- A `data_master_key_recov_wrap`: XChaCha20-Poly1305 ciphertext of the master key, encrypted with the recovery-word-derived key
 - Personal data fields encrypted field-by-field with `data_master_key`
 
 **Database dump → cryptographic soup.** No combination of plain-text values in the dump yields the master key. The attacker would need either the user's password (Argon2id-hardened, salt-isolated) or the user's recovery word (never transmitted in plain) to decrypt anything.
@@ -102,9 +102,11 @@ Most e-commerce deployments will pick **Hybrid**. Health, banking, identity prov
 
 ## Status
 
-**v0.3.0 — Argon2id derivation on both factors, escrow compartment, standalone demo**, 7 September 2026.
+**v0.4.0 — XChaCha20-Poly1305 on every CPU, versioned blob format**, 26 September 2026. Not yet deployed: the public instance runs 0.3.0.
 
-Whitepaper complete (specification + threat model). PHP reference library implemented (2 372 lines across 17 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, AES-256-GCM) covered by **198 checks across 8 suites**, all passing. A clickable HTML demo is included to inspect the encrypted database in real time.
+Whitepaper complete (specification + threat model). PHP reference library implemented (2 607 lines across 18 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **219 checks across 8 suites**, all passing.
+
+Encryption no longer depends on the CPU. Up to 0.3.0 it used AES-256-GCM, which libsodium serves only with hardware support — AES-NI, plus AVX since libsodium 1.0.19 — and never on a Raspberry Pi 4. Blobs written by 0.3.0 stay readable, through OpenSSL where libsodium refuses AES. Once 0.4.0 has written a blob, going back to 0.3.0 makes it unreadable: that version refuses it as invalid base64 rather than misreading it. A clickable HTML demo is included to inspect the encrypted database in real time.
 
 The module runs on real deployments. It has **not been audited by an external cryptographer**: its design is verified today by its author and by the readers of this repository, and by no one else.
 
@@ -163,15 +165,15 @@ Three primary classes exposed: `SelfDataGuard` (façade), `SqliteAdapter` (stora
 Eight sanity test suites, runnable directly with `php` (no PHPUnit required):
 
 ```bash
-php tests/sanity_primitives.php   # 27 tests — Argon2id, HMAC, AES-GCM, randomness
-php tests/sanity_vault.php        # 33 tests — register, unlock, rotation, AAD binding
-php tests/sanity_fields.php       # 25 tests — field encrypt/decrypt + blind index
+php tests/sanity_primitives.php   # 45 tests — Argon2id, HMAC, XChaCha20-Poly1305 + IETF vector, legacy AES-GCM, randomness
+php tests/sanity_vault.php        # 36 tests — register, unlock, rotation, AAD binding, legacy wraps
+php tests/sanity_fields.php       # 26 tests — field encrypt/decrypt + blind index
 php tests/sanity_storage.php      # 36 tests — SQLite adapter, "DB dump = soup" test
 php tests/sanity_facade.php       # 34 tests — full API end-to-end
-php tests/sanity_audit.php        #  6 tests — audit log
+php tests/sanity_audit.php        # 11 tests — audit log
 php tests/sanity_ceremony.php     # 14 tests — key ceremony
-php tests/sanity_escrow.php       # 16 tests — escrow compartment
-# Total: 198 tests, 0 failures — counted by running them, 2026-09-07
+php tests/sanity_escrow.php       # 17 tests — escrow compartment
+# Total: 219 tests, 0 failures — counted by running them, 2026-09-26
 ```
 
 The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file and verifies that no plaintext personal data appears anywhere in the binary blob.

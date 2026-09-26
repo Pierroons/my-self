@@ -5,6 +5,59 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [v0.4.0] — 2026-09-26
+
+### Changed — BREAKING (stored format) — XChaCha20-Poly1305 for every write
+
+Up to 0.3.0, every blob was AES-256-GCM through libsodium, which serves it only with
+hardware support: AES-NI on x86-64, plus AVX since libsodium 1.0.19, and the ARMv8
+crypto extensions since 1.0.19. On a CPU without them — a Celeron or Atom without
+AVX under a recent libsodium, a Raspberry Pi 4 under any version — the library could
+neither write nor read, and its error blamed AES-NI whatever the actual cause.
+
+- `Primitives::encrypt()` writes XChaCha20-Poly1305 (IETF), computed in software, in
+  constant time, on every CPU, with a random 192-bit nonce.
+- **Blobs are versioned.** A new blob is stored as `SDG2.` followed by
+  `base64(nonce ‖ ciphertext ‖ tag)`. `.` is not a base64 character, so no blob
+  written before 0.4.0 can begin with the prefix. An unknown `SDG<n>.` prefix is
+  refused as "written by a newer version".
+- **Blobs written before 0.4.0 stay readable.** `Primitives::decrypt()` reads both
+  formats: AES-256-GCM through libsodium where it serves AES, through OpenSSL
+  elsewhere. When neither is available it throws `LegacyCipherUnavailableException`,
+  which names the causes. `UserVault`, `EscrowVault` and the ceremony CLI let it
+  through instead of reporting a wrong password or a bad passphrase.
+- **No migration.** An existing blob stays AES-256-GCM until one of the existing
+  write paths replaces it (password change, field update).
+- ⚠️ **Once 0.4.0 has written a blob, 0.3.0 cannot read it.** It refuses it as
+  invalid base64: the failure is loud, not a misread. Roll back only a database that
+  0.4.0 has not written to.
+- `Primitives::NONCE_LEN` is now 24.
+
+### Deprecated
+
+- `Primitives::aesGcmEncrypt()` and `aesGcmDecrypt()` delegate to `encrypt()` and
+  `decrypt()`. Despite its name, `aesGcmEncrypt()` now writes XChaCha20-Poly1305.
+  Both are removed in 0.5.0.
+
+### Added
+
+- `#[\SensitiveParameter]` on every key, plaintext, password, memorized secret and
+  passphrase parameter. From PHP 8.2 they no longer appear in stack traces, whatever
+  `zend.exception_ignore_args` says. Under PHP 8.1 the attribute is inert.
+- `ext-openssl` in `suggest`: it reads AES-256-GCM blobs on a CPU where libsodium
+  does not serve AES.
+- `sanity_primitives.php`: the IETF XChaCha20-Poly1305 test vector
+  (draft-irtf-cfrg-xchacha-03, A.3.1); a frozen AES-256-GCM blob that must decrypt
+  forever; libsodium and OpenSSL reading each other's blobs. `sanity_vault.php`: a
+  vault whose wrap was written as AES-256-GCM by OpenSSL still unlocks.
+
+### Fixed
+
+- `sanity_fields.php` flipped a byte after `base64_decode()` of the whole stored
+  string. With a prefix, that decode also reads the letters of `SDG2`, and the
+  "tampered blob" check passed because the blob was garbage, not because the tag
+  failed. It now alters the ciphertext through `EncryptedBlob` and checks the reason.
+
 ## [v0.3.0] — 2026-09-07
 
 ### Changed — BREAKING (stored format) — the memorized secret is derived with Argon2id

@@ -71,16 +71,16 @@ Step 3 — Derive the two wrap keys:
     recov_key        ← Argon2id(memorized_word, SHA-256(user_salt || "/dataguard")[:16], m=65536, t=3)
 
 Step 4 — Wrap the master key with each of the two keys:
-    wrap_pwd         ← AES-256-GCM-encrypt(data_master_key, key=password_key, nonce=random_96)
-    wrap_recov       ← AES-256-GCM-encrypt(data_master_key, key=recov_key,    nonce=random_96)
+    wrap_pwd         ← XChaCha20-Poly1305-encrypt(data_master_key, key=password_key, nonce=random_192)
+    wrap_recov       ← XChaCha20-Poly1305-encrypt(data_master_key, key=recov_key,    nonce=random_192)
 
 Step 5 — Database storage (all values listed below stored in plain):
     user_id, user_salt, wrap_pwd, wrap_recov, [optional] wrap_admin
 
 Step 6 — Field-by-field encryption of personal data:
-    email_encrypted        ← AES-256-GCM-encrypt(email,    key=data_master_key, nonce=random_96)
-    address_encrypted      ← AES-256-GCM-encrypt(address,  key=data_master_key, nonce=random_96)
-    phone_encrypted        ← AES-256-GCM-encrypt(phone,    key=data_master_key, nonce=random_96)
+    email_encrypted        ← XChaCha20-Poly1305-encrypt(email,    key=data_master_key, nonce=random_192)
+    address_encrypted      ← XChaCha20-Poly1305-encrypt(address,  key=data_master_key, nonce=random_192)
+    phone_encrypted        ← XChaCha20-Poly1305-encrypt(phone,    key=data_master_key, nonce=random_192)
     [...]
 
 Step 7 — Wipe data_master_key, password_key and recov_key from server memory.
@@ -92,7 +92,7 @@ On password login (standard case, ~99% of the time):
 1. Server receives (username, password) over HTTPS
 2. Fetch user_salt and wrap_pwd from the database
 3. password_key   ← Argon2id(password, user_salt, ...)
-4. data_master_key ← AES-256-GCM-decrypt(wrap_pwd, key=password_key)
+4. data_master_key ← XChaCha20-Poly1305-decrypt(wrap_pwd, key=password_key)
 5. data_master_key kept in session memory (never persisted)
 6. On each request: on-the-fly decryption of personal fields
 7. On logout: wipe data_master_key
@@ -104,7 +104,7 @@ On memorized-word login (degraded case, password forgotten):
 1. Server receives (username, memorized_word) over HTTPS
 2. Fetch user_salt and wrap_recov from the database
 3. recov_key       ← Argon2id(memorized_word, SHA-256(user_salt || "/dataguard")[:16], m=65536, t=3)
-4. data_master_key ← AES-256-GCM-decrypt(wrap_recov, key=recov_key)
+4. data_master_key ← XChaCha20-Poly1305-decrypt(wrap_recov, key=recov_key)
 5. User can access their data and set a new password
 6. Regenerate wrap_pwd with the new password_key (no need to re-encrypt the data fields)
 ```
@@ -224,8 +224,8 @@ Most e-commerce sites should pick **Hybrid**. High-assurance services (health, b
 |-----|-----------|-----------|
 | Password derivation | **Argon2id** (m=65536 KiB, t=3, p=4) | Memory-hard, resistant to GPUs and ASICs. Modern standard (RFC 9106) |
 | Memorized-word derivation | **Argon2id** (m=65536 KiB, t=3) | Same cost as the password path since 0.3.0. Both keys unwrap the same `data_master_key`, and `wrap_recov` is attacked offline with no attempt counter — so the pair was only ever as strong as its cheaper door. The free-length context is condensed into the 16-byte salt Argon2id requires |
-| Envelope encryption | **AES-256-GCM** | Authenticated encryption, universal hardware acceleration, NIST standard |
-| Field encryption | **AES-256-GCM** with random 96-bit nonce per field | Idem |
+| Envelope encryption | **XChaCha20-Poly1305** | AEAD — ChaCha20-Poly1305 (RFC 8439) extended to a 192-bit nonce (draft-irtf-cfrg-xchacha). Computed in software, in constant time, on every CPU. Blobs written before 0.4.0 are AES-256-GCM and remain readable |
+| Field encryption | **XChaCha20-Poly1305** with random 192-bit nonce per field | Idem. At 192 bits, a random nonce needs no counter |
 | Search indexing | **HMAC-SHA256(field, server_blind_key)** | Allows `WHERE field_hash = HMAC(query)` without decrypting. Trade-off: equality search only, not full-text |
 
 **No PBKDF2**: Argon2id is more robust against GPUs. PBKDF2 remains acceptable for interoperability with very old stacks but is discouraged for new deployments.
@@ -253,7 +253,7 @@ In line with ANSSI's transparency best practices for threat models, SelfDataGuar
 
 - **User endpoint compromise** (keylogger, info-stealer, RAT): OUT OF SCOPE. If the user enters their password and memorized word on a compromised machine, their data on that site is exposed. Recommendation: Tails / Qubes for high-assurance use cases.
 - **Browser compromise** (malicious extension, 0-day exploit): OUT OF SCOPE in Full mode as well. WebCrypto operations are only as secure as the browser.
-- **Theoretical cryptanalysis of SHA-256, AES-256-GCM, Argon2id**: OUT OF SCOPE. Cryptographic migration aligned with ANSSI / NIST recommendations when algorithms are declared weak.
+- **Theoretical cryptanalysis of SHA-256, XChaCha20-Poly1305, AES-256-GCM, Argon2id**: OUT OF SCOPE. Cryptographic migration aligned with ANSSI / NIST recommendations when algorithms are declared weak.
 - **Bruteforce of a weak password**: OUT OF SCOPE. The library must enforce a minimum password policy. Without policy, the weakest factor dominates.
 - **Denial of service**: OUT OF SCOPE. SelfDataGuard does not address availability, only confidentiality.
 
@@ -289,7 +289,8 @@ Failure to respect any of these rules significantly degrades the guarantees. The
 - **v0.1.0** (shipped, Q3 2026): reference PHP implementation, Eloquent / Doctrine trait integration via adapter — the library's current size is given by the README, which is measured at each edition
 - **v0.2.0** (shipped 2026-08-21, Q3): escrow compartment, key ceremony, audit log
 - **v0.3.0** (shipped 2026-09-07): Argon2id derivation of the memorized secret, password length floor enforced in code
-- **v0.4.0** (upcoming): advanced blind index extension for searchable encryption, multi-tenant support
+- **v0.4.0** (2026-09-26): XChaCha20-Poly1305 for every write, versioned blob format (`SDG2.`), AES-256-GCM blobs read by libsodium or OpenSSL
+- **v0.5.0** (upcoming): advanced blind index extension for searchable encryption, multi-tenant support
 - **v1.0.0** (2027): formal community cryptographic audit, ANSSI Visa de sécurité submission (industries@ssi.gouv.fr), test vector pack publication
 
 ---
@@ -306,4 +307,4 @@ Technical feedback, community audits, and cryptographic critiques are welcome, e
 
 ---
 
-*Document v0.0.1 — May 2026, roadmap updated 2026-08-27. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 (the copy sent to the CNIL) and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026 — §2, §3.1 and §6 now describe the shipped derivation; the rest of the edition has not been re-read against the French one. The specification described here is implemented: v0.1.0, v0.2.0 and v0.3.0 have shipped and are tested (198 checks, 8 suites).*
+*Document v0.0.1 — May 2026, roadmap updated 2026-09-26. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 (the copy sent to the CNIL) and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026 — §2, §3.1 and §6 now describe the shipped derivation; the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026. The specification described here is implemented: v0.1.0 to v0.4.0 are implemented and tested (219 checks, 8 suites).*

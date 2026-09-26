@@ -7,7 +7,7 @@
 > *Dump my database — and get encrypted noise.*
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfDataGuard: v0.3.0](https://img.shields.io/badge/SelfDataGuard-v0.3.0-brightgreen.svg)](./selfdataguard/)
+[![SelfDataGuard: v0.4.0](https://img.shields.io/badge/SelfDataGuard-v0.4.0-brightgreen.svg)](./selfdataguard/)
 [![SelfRecover-LUKS: v0.5.0](https://img.shields.io/badge/SelfRecover--LUKS-v0.5.0-green.svg)](./selfrecover-luks/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -55,7 +55,7 @@ The label changes the effective salt, so two keys from the same secret stay inde
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.3.0** — in service, 198 checks across 8 suites |
+| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.4.0** — 219 checks across 8 suites; the public instance still runs 0.3.0 |
 | [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.5.0** — validated on a Debian 13 LNMP server, a laptop and an encrypted-LVM root, reproducible install |
 
 ---

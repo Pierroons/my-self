@@ -3,7 +3,7 @@
  * MySelf-Lab — wrapper SelfDataGuard pour chiffrement at-rest des DM.
  *
  * Démontre la résistance à l'exfiltration de la base : le contenu des messages
- * privés est chiffré AES-256-GCM avec une clé dérivée d'un secret serveur
+ * privés est chiffré XChaCha20-Poly1305 avec une clé dérivée d'un secret serveur
  * (blind key) stocké HORS de la base et hors du webroot. Un dump SQL de la
  * table `dm` ne révèle que des blobs base64 illisibles.
  *
@@ -43,12 +43,12 @@ final class DataGuard
 
     public static function encrypt(string $plaintext): string
     {
-        return Primitives::aesGcmEncrypt($plaintext, self::dmKey())->toBase64();
+        return Primitives::encrypt($plaintext, self::dmKey())->toBase64();
     }
 
     public static function decrypt(string $b64): string
     {
-        return Primitives::aesGcmDecrypt(EncryptedBlob::fromBase64($b64), self::dmKey());
+        return Primitives::decrypt(EncryptedBlob::fromBase64($b64), self::dmKey());
     }
 
     /**

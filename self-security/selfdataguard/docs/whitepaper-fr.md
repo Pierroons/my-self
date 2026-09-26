@@ -73,16 +73,16 @@ Conséquences directes :
     recov_key        ← Argon2id(mot_memorise, sha256(user_salt || "/dataguard")[0:16], m=65536, t=3, p=1)
 
 Étape 4 — Encapsulage de la clé maîtresse par chacune des deux clés :
-    wrap_pwd         ← AES-256-GCM-encrypt(data_master_key, key=password_key, nonce=random_96)
-    wrap_recov       ← AES-256-GCM-encrypt(data_master_key, key=recov_key,    nonce=random_96)
+    wrap_pwd         ← XChaCha20-Poly1305-encrypt(data_master_key, key=password_key, nonce=random_192)
+    wrap_recov       ← XChaCha20-Poly1305-encrypt(data_master_key, key=recov_key,    nonce=random_192)
 
 Étape 5 — Stockage en base (toutes les valeurs en clair listées ci-dessous) :
     user_id, user_salt, wrap_pwd, wrap_recov, [optional] wrap_admin
 
 Étape 6 — Chiffrement champ par champ des données personnelles :
-    email_encrypted        ← AES-256-GCM-encrypt(email,    key=data_master_key, nonce=random_96)
-    address_encrypted      ← AES-256-GCM-encrypt(address,  key=data_master_key, nonce=random_96)
-    phone_encrypted        ← AES-256-GCM-encrypt(phone,    key=data_master_key, nonce=random_96)
+    email_encrypted        ← XChaCha20-Poly1305-encrypt(email,    key=data_master_key, nonce=random_192)
+    address_encrypted      ← XChaCha20-Poly1305-encrypt(address,  key=data_master_key, nonce=random_192)
+    phone_encrypted        ← XChaCha20-Poly1305-encrypt(phone,    key=data_master_key, nonce=random_192)
     [...]
 
 Étape 7 — Purge de data_master_key et password_key et recov_key de la mémoire serveur.
@@ -94,7 +94,7 @@ Conséquences directes :
 1. Le serveur reçoit (username, password) sur HTTPS
 2. Il récupère user_salt et wrap_pwd depuis la base
 3. password_key   ← Argon2id(password, user_salt, ...)
-4. data_master_key ← AES-256-GCM-decrypt(wrap_pwd, key=password_key)
+4. data_master_key ← XChaCha20-Poly1305-decrypt(wrap_pwd, key=password_key)
 5. data_master_key est conservée dans la session (mémoire, jamais persistée)
 6. À chaque requête : déchiffrement à la volée des champs personnels
 7. Au logout : purge data_master_key
@@ -106,7 +106,7 @@ Conséquences directes :
 1. Le serveur reçoit (username, mot_memorise) sur HTTPS
 2. Il récupère user_salt et wrap_recov depuis la base
 3. recov_key       ← Argon2id(mot_memorise, sha256(user_salt || "/dataguard")[0:16])
-4. data_master_key ← AES-256-GCM-decrypt(wrap_recov, key=recov_key)
+4. data_master_key ← XChaCha20-Poly1305-decrypt(wrap_recov, key=recov_key)
 5. L'utilisateur peut accéder à ses données et redéfinir un nouveau password
 6. Régénération du wrap_pwd avec la nouvelle password_key (sans re-chiffrer les données)
 ```
@@ -245,8 +245,8 @@ La majorité des sites e-commerce devraient choisir **Hybrid**. Les services à 
 |-------|-----------|-----------|
 | Dérivation depuis mot de passe | **Argon2id** (m=65536 KiB, t=3, p=1) | Memory-hard, résistant aux GPU et ASICs. Standard moderne (RFC 9106). ⚠️ `p=1` et non `p=4` : `sodium_crypto_pwhash` **n'expose pas** de paramètre de parallélisme — signature `length, password, salt, opslimit, memlimit, algo`. Les versions antérieures de ce tableau annonçaient un paramètre que l'API choisie ne peut pas porter |
 | Dérivation depuis mot mémorisé | **Argon2id** (mêmes paramètres) | Même coût que la voie mot de passe, parce que les deux ouvrent la même clé de données et que la paire ne vaut que sa porte la moins chère. Cf. §7 pour la mesure qui a motivé le changement |
-| Chiffrement par enveloppe | **AES-256-GCM** | Authenticated encryption, accélération matérielle universelle, standard NIST |
-| Chiffrement de champs | **AES-256-GCM** avec nonce aléatoire 96 bits par champ | Idem |
+| Chiffrement par enveloppe | **XChaCha20-Poly1305** | Chiffrement authentifié : ChaCha20-Poly1305 (RFC 8439) étendu à un nonce de 192 bits (draft-irtf-cfrg-xchacha). Calculé en logiciel, en temps constant, sur tout processeur. Les blobs écrits avant la 0.4.0 sont en AES-256-GCM et restent lisibles |
+| Chiffrement de champs | **XChaCha20-Poly1305** avec nonce aléatoire 192 bits par champ | Idem. À 192 bits, un nonce tiré au hasard ne demande aucun compteur |
 | Indexation de recherche | **HMAC-SHA256(field, server_blind_key)** | Permet `WHERE field_hash = HMAC(query)` sans déchiffrer. Trade-off : recherche par égalité uniquement, pas full-text |
 
 **Pas de PBKDF2** : Argon2id est plus robuste face aux GPU. PBKDF2 reste acceptable pour l'interopérabilité avec des piles très anciennes mais déconseillé pour de nouveaux déploiements.
@@ -274,7 +274,7 @@ Conformément aux bonnes pratiques recommandées par l'ANSSI en matière de tran
 
 - **Compromission du poste utilisateur** (keylogger, info-stealer, RAT) : HORS PÉRIMÈTRE. Si l'utilisateur entre son password et son mot mémorisé sur une machine compromise, ses données de ce site sont exposées. Recommandation : Tails / Qubes pour les usages à forte exigence.
 - **Compromission du navigateur** (extension malveillante, exploit 0-day) : HORS PÉRIMÈTRE en mode Full également. Les opérations crypto WebCrypto sont aussi sûres que le navigateur.
-- **Cryptanalyse théorique de SHA-256, AES-256-GCM, Argon2id** : HORS PÉRIMÈTRE. Migration cryptographique conforme aux recommandations ANSSI / NIST quand les algorithmes seront déclarés faibles.
+- **Cryptanalyse théorique de SHA-256, XChaCha20-Poly1305, AES-256-GCM, Argon2id** : HORS PÉRIMÈTRE. Migration cryptographique conforme aux recommandations ANSSI / NIST quand les algorithmes seront déclarés faibles.
 - **Bruteforce d'un mot de passe faible** : HORS PÉRIMÈTRE. La lib doit imposer une politique de mot de passe minimale. Sans politique, le facteur le plus faible domine.
 - **Déni de service** : HORS PÉRIMÈTRE. SelfDataGuard ne traite pas la disponibilité, seulement la confidentialité.
 
@@ -314,7 +314,8 @@ Le non-respect d'une de ces règles dégrade significativement les garanties. La
 - **v0.1.0** (livrée, Q3 2026) : implémentation de référence en PHP, intégration trait Eloquent / Doctrine via adapter — le volume courant de la bibliothèque est donné par le README, qui se mesure à chaque édition
 - **v0.2.0** (livrée le 21/08/2026, Q3) : compartiment escrow, cérémonie de clés, journal d'audit
 - **v0.3.0** (livrée le 07/09/2026) : dérivation Argon2id du secret mémorisé, plancher de longueur du mot de passe appliqué en code
-- **v0.4.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
+- **v0.4.0** (26/09/2026) : XChaCha20-Poly1305 pour toute écriture, format de blob versionné (`SDG2.`), relecture des blobs AES-256-GCM par libsodium ou OpenSSL
+- **v0.5.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
 - **v1.0.0** (2027) : audit cryptographique communautaire formel, soumission ANSSI Visa de sécurité (industries@ssi.gouv.fr), publication d'un test vector pack
 
 ---
@@ -331,4 +332,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Document v0.0.1 — édition du 23 juillet 2026, roadmap actualisée le 27/08/2026. La spécification décrite ici est implémentée : v0.1.0, v0.2.0 et v0.3.0 sont livrées et testées (198 contrôles, 8 suites).*
+*Document v0.0.1 — édition du 23 juillet 2026, roadmap actualisée le 26/09/2026. Les algorithmes du §2.2 et du §5 ont été réalignés sur le code le 26/09/2026. La spécification décrite ici est implémentée : v0.1.0 à v0.4.0 sont implémentées et testées (219 contrôles, 8 suites).*

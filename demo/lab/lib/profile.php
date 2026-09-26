@@ -3,7 +3,7 @@
  * MySelf-Lab — profil membre chiffré at-rest (SelfDataGuard).
  *
  * Les champs perso (bio, localisation, lien) sont sérialisés en JSON puis
- * chiffrés AES-256-GCM avant stockage. Un dump de la table `profiles` ne
+ * chiffrés XChaCha20-Poly1305 avant stockage. Un dump de la table `profiles` ne
  * révèle que des blobs. Aucune donnée personnelle en clair en base.
  */
 

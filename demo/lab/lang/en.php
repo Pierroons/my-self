@@ -60,7 +60,7 @@ return [
         . '</ul>',
 
     'sec.2.h2' => '2. Data encryption — two models, by sensitivity',
-    'sec.2.body' => '<p><strong>a) Server blind-key</strong> (profile: bio, location, link) — AES-256-GCM, key derived from a server secret held <em>outside the database and outside the webroot</em>. A SQL dump yields nothing but blobs.</p>'
+    'sec.2.body' => '<p><strong>a) Server blind-key</strong> (profile: bio, location, link) — XChaCha20-Poly1305, key derived from a server secret held <em>outside the database and outside the webroot</em>. A SQL dump yields nothing but blobs.</p>'
         . '<p><strong>b) Client-side end-to-end</strong> (personal memo) — encrypted in the <strong>browser</strong> (WebCrypto). <code>PBKDF2</code> (600k) → <code>HKDF</code> per label → a random <code>vault_key</code> encrypts the memo, itself wrapped in two envelopes (password and recovery passphrase). <strong>The server holds no key.</strong></p>'
         . '<div class="mt">'
         . '<div class="ok"><h4>✅ What this protects</h4><ul>'
@@ -360,7 +360,7 @@ return [
     // ── Private messages ──────────────────────────────────────────────────
     'msg.title'    => 'Messages',
     'msg.h1'       => 'Private messages',
-    'msg.note'     => '🔒 Content encrypted at rest by <strong>SelfDataGuard</strong> (AES-256-GCM). A database dump reveals nothing but unreadable blobs.',
+    'msg.note'     => '🔒 Content encrypted at rest by <strong>SelfDataGuard</strong> (XChaCha20-Poly1305). A database dump reveals nothing but unreadable blobs.',
     'msg.new.h2'   => 'New message',
     'msg.to'       => 'Recipient (username)',
     'msg.to_ph'    => 'e.g. libriste',

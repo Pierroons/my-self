@@ -45,6 +45,6 @@ unset($f);
 ok([
     'vaults' => $vaults,
     'fields' => $fields,
-    'note'   => 'These are the raw values stored on disk. Wraps and ciphertexts are AES-256-GCM blobs encrypted with keys never persisted in this database.',
+    'note'   => 'These are the raw values stored on disk. Wraps and ciphertexts are XChaCha20-Poly1305 blobs (prefix SDG2.; unprefixed ones are AES-256-GCM, written before 0.4.0), encrypted with keys never persisted in this database.',
     'dbSize' => (int) filesize(DEMO_DB_PATH),
 ]);

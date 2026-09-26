@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 
+use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
@@ -136,16 +137,24 @@ $decrypted === $plaintextFields ? ok('batch round-trip preserves all fields') : 
 
 section('FieldCrypter — tamper detection on stored blob');
 
-// Flip a bit in the stored ciphertext and verify decryption fails
-$tamperedRaw = base64_decode($emailCipher);
-$tamperedRaw[20] = chr(ord($tamperedRaw[20]) ^ 0x01);
-$tamperedB64 = base64_encode($tamperedRaw);
+// Flip a bit in the stored ciphertext and verify decryption fails. The blob is
+// taken apart by EncryptedBlob: a raw base64_decode would also read the letters
+// of the "SDG2." prefix, and fail for a reason that is not the tag.
+$stored  = EncryptedBlob::fromBase64($emailCipher);
+$flipped = $stored->ciphertext;
+$flipped[0] = chr(ord($flipped[0]) ^ 0x01);
+$tamperedB64 = (new EncryptedBlob(ciphertext: $flipped, nonce: $stored->nonce))->toBase64();
+str_starts_with($tamperedB64, EncryptedBlob::PREFIX_V2)
+    ? ok('stored field is a v2 blob, and so is its tampered copy')
+    : ko('stored field is not a v2 blob', substr($emailCipher, 0, 8));
 
 try {
     FieldCrypter::decrypt($unlocked, 'email', $tamperedB64);
     ko('tampered ciphertext accepted (CRITICAL)');
-} catch (RuntimeException) {
-    ok('tampered ciphertext rejected (auth tag mismatch)');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'auth tag mismatch')
+        ? ok('tampered ciphertext rejected (auth tag mismatch)')
+        : ko('tampered ciphertext rejected, but not by the tag', $e->getMessage());
 }
 
 // -----------------------------------------------------------------------------

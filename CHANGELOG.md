@@ -10,6 +10,27 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfDataGuard v0.4.0 — le chiffrement ne dépend plus du processeur — 26 septembre 2026
+
+Jusqu'à la 0.3.0, SelfDataGuard chiffrait en AES-256-GCM par libsodium, qui ne le sert
+qu'avec un support matériel : AES-NI, plus AVX depuis libsodium 1.0.19. Sur un Celeron
+sans AVX avec une libsodium récente, ou sur un Raspberry Pi 4, la bibliothèque ne pouvait
+ni écrire ni relire, et son message accusait AES-NI à tort.
+
+- **Toute écriture passe en XChaCha20-Poly1305**, calculé en logiciel et en temps constant
+  sur tout processeur, dans un format versionné : `SDG2.` suivi du base64.
+- **Les blobs écrits avant restent lisibles**, par libsodium là où il sert AES, par OpenSSL
+  ailleurs. Éprouvé sur un Raspberry Pi 4 sans AES matériel : les 8 bancs passent, et une
+  base écrite par la 0.3.0 se relit entièrement.
+- ⚠️ **Un blob écrit par la 0.4.0 ne se relit pas en 0.3.0** : un retour arrière ne vaut
+  que pour une base où la 0.4.0 n'a rien écrit.
+- Les clés et les clairs n'apparaissent plus dans les traces d'exception
+  (`#[\SensitiveParameter]`).
+
+Bancs : 219 contrôles, dont le vecteur de test officiel de XChaCha20-Poly1305 et un blob
+AES figé que libsodium et OpenSSL produisent à l'identique. Détail dans le CHANGELOG du
+module.
+
 ### La console SU n'écrit plus au journal ce que la base a refusé — 26 septembre 2026
 
 - **La base et le journal réussissent ou échouent ensemble.** `first-admin`, `revoke-admin`,

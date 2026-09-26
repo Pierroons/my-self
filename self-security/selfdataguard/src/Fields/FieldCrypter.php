@@ -13,10 +13,10 @@ use Pierroons\SelfDataGuard\Vault\UnlockedVault;
  *
  * Protocol per whitepaper §2.2 step 6:
  *
- *     email_encrypted = AES-256-GCM(email, key=data_master_key, nonce=random_96)
+ *     email_encrypted = XChaCha20-Poly1305(email, key=data_master_key, nonce=random_192)
  *
- * Each field gets its own random nonce. Output is a single base64 string
- * suitable for storage in a TEXT/VARCHAR column.
+ * Each field gets its own random nonce. Output is a single ASCII string
+ * (EncryptedBlob::toBase64()) suitable for storage in a TEXT/VARCHAR column.
  *
  * The Additional Authenticated Data (AAD) is automatically built as
  * "userId|fieldName" to prevent two classes of attack:
@@ -33,14 +33,14 @@ final class FieldCrypter
     }
 
     /**
-     * Encrypt a single field value. Returns a base64 string ready for SQL storage.
+     * Encrypt a single field value. Returns an ASCII string ready for SQL storage.
      */
     public static function encrypt(
         UnlockedVault $vault,
         string $fieldName,
-        string $plaintext
+        #[\SensitiveParameter] string $plaintext
     ): string {
-        $blob = Primitives::aesGcmEncrypt(
+        $blob = Primitives::encrypt(
             plaintext: $plaintext,
             key: $vault->getMasterKey(),
             aad: self::buildAad($vault->userId, $fieldName)
@@ -60,7 +60,7 @@ final class FieldCrypter
         string $serialized
     ): string {
         $blob = EncryptedBlob::fromBase64($serialized);
-        return Primitives::aesGcmDecrypt(
+        return Primitives::decrypt(
             $blob,
             $vault->getMasterKey(),
             aad: self::buildAad($vault->userId, $fieldName)
@@ -100,7 +100,7 @@ final class FieldCrypter
     /**
      * Construct the AAD string. The pipe separator is safe since neither
      * userId nor fieldName should contain raw "|" by convention; even if they
-     * did, GCM's auth tag still binds the exact bytes.
+     * did, the AEAD tag still binds the exact bytes.
      */
     private static function buildAad(string $userId, string $fieldName): string
     {

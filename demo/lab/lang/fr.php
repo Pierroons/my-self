@@ -58,7 +58,7 @@ return [
         . '</ul>',
 
     'sec.2.h2' => '2. Chiffrement des données — deux modèles selon la sensibilité',
-    'sec.2.body' => '<p><strong>a) Blind-key serveur</strong> (profil : bio, localisation, lien) — AES-256-GCM, clé dérivée d\'un secret serveur stocké <em>hors base et hors webroot</em>. Un dump SQL ne révèle que des blobs.</p>'
+    'sec.2.body' => '<p><strong>a) Blind-key serveur</strong> (profil : bio, localisation, lien) — XChaCha20-Poly1305, clé dérivée d\'un secret serveur stocké <em>hors base et hors webroot</em>. Un dump SQL ne révèle que des blobs.</p>'
         . '<p><strong>b) Bout-en-bout côté client</strong> (mémo perso) — chiffré dans le <strong>navigateur</strong> (WebCrypto). <code>PBKDF2</code> (600k) → <code>HKDF</code> par étiquette → une <code>vault_key</code> aléatoire chiffre le mémo, wrappée dans deux enveloppes (mot de passe + passphrase de secours). <strong>Le serveur ne détient aucune clé.</strong></p>'
         . '<div class="mt">'
         . '<div class="ok"><h4>✅ Ce que ça protège</h4><ul>'
@@ -360,7 +360,7 @@ return [
     // ── Messages privés ───────────────────────────────────────────────────
     'msg.title'    => 'Messages',
     'msg.h1'       => 'Messages privés',
-    'msg.note'     => '🔒 Contenu chiffré at-rest par <strong>SelfDataGuard</strong> (AES-256-GCM). Un dump de la base ne révèle que des blobs illisibles.',
+    'msg.note'     => '🔒 Contenu chiffré at-rest par <strong>SelfDataGuard</strong> (XChaCha20-Poly1305). Un dump de la base ne révèle que des blobs illisibles.',
     'msg.new.h2'   => 'Nouveau message',
     'msg.to'       => 'Destinataire (identifiant)',
     'msg.to_ph'    => 'ex : libriste',
