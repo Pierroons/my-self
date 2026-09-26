@@ -61,6 +61,7 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | `selfrecover-keyscript.sh` | keyscript du volume racine (dérive la passphrase recover) |
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript dans l'initrd |
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS (autorisé par une clé existante) |
+| `format-slot.sh` | inscrit le format de clé enrôlé par volume, et refuse de poser un keyscript d'un autre format |
 | `selfrecover-unlock.sh` | déverrouillage de secours autonome (userspace) |
 | `selfrecover-secours.sh` | `command=` de la clé du SSH d'amorçage : propose la passphrase recover **ou** la passphrase native, **jamais un shell** |
 | `verifie-initramfs.sh` | compare les images de `/boot` à l'empreinte consignée sur le volume chiffré — rend visible une image modifiée hors de la machine |

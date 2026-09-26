@@ -61,6 +61,7 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | `selfrecover-keyscript.sh` | root-volume keyscript (derives the recovery passphrase) |
 | `initramfs-hook-selfrecover` | embeds binary + libargon2 + **libgcc** + salt + keyscript in the initrd |
 | `setup-add-selfrecover-slot.sh` | adds a recovery slot to a LUKS volume (authorized by an existing key) |
+| `format-slot.sh` | records the enrolled key format per volume, and refuses to install a keyscript of another format |
 | `selfrecover-unlock.sh` | standalone emergency unlock (userspace) |
 | `selfrecover-secours.sh` | `command=` of the boot SSH key: offers the recovery passphrase **or** the native passphrase, **never a shell** |
 | `verifie-initramfs.sh` | compares the images in `/boot` with the fingerprint recorded on the encrypted volume — makes an image modified off-machine visible |

@@ -47,8 +47,10 @@ read -rsp "  Confirme la passphrase : " W2; echo
 # (paquet Debian), et non par utilisateur via pip.
 # --format hex : voir la note dans selfrecover-keyscript.sh. La cle enrolee DOIT
 # etre CELLE QUE LE KEYSCRIPT PRODUIRA au demarrage — un slot enrole en brut n'est
-# pas ouvert par un keyscript qui rend de l'hex.
-printf '%s' "$W1" | "$PY" "$HERE/selfrecover_derive.py" --stdin --salt "$SALT" --label disk --format hex > "$TMP/sr.key"
+# pas ouvert par un keyscript qui rend de l'hex. Le format enrole est inscrit plus
+# bas (format-slot.sh), et install.sh le relit avant de poser un keyscript.
+FORMAT=hex
+printf '%s' "$W1" | "$PY" "$HERE/selfrecover_derive.py" --stdin --salt "$SALT" --label disk --format "$FORMAT" > "$TMP/sr.key"
 
 if [ -n "$EXISTING_KF" ]; then
   cryptsetup luksAddKey "$DEV" "$TMP/sr.key" --key-file "$EXISTING_KF"
@@ -75,9 +77,11 @@ fi
 # le meme derivateur, donc les deux porteraient le meme octet en trop et
 # s'accorderaient. C'est tests/test_lecture_keyfile.sh qui garde cette propriete.
 if printf '%s' "$W1" | "$PY" "$HERE/selfrecover_derive.py" --stdin --salt "$SALT" \
-     --label disk --format hex \
+     --label disk --format "$FORMAT" \
    | cryptsetup open --test-passphrase --key-file=- "$DEV"; then
   echo "✅ slot SelfRecover ajouté à $DEV"
+  bash "$HERE/format-slot.sh" inscrire "$DEV" "$FORMAT" "${SKG:-/etc/selfkeyguard}" \
+    || echo "⚠️  marqueur non ecrit : install.sh refusera de poser un keyscript tant qu'il manque." >&2
 else
   echo "❌ le slot a ete ajoute mais n'ouvre PAS le volume par stdin." >&2
   echo "   Ne branche pas le keyscript. Voir INSTALL.md §6." >&2

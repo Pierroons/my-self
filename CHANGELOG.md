@@ -10,6 +10,28 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover-LUKS n'installe plus un keyscript que le slot n'ouvrirait pas — 26 septembre 2026
+
+Un slot enrôlé en `raw` n'est pas ouvert par un keyscript qui produit de l'hexadécimal.
+Le keyscript livré produit de l'hex depuis le passage du 12/09, et une machine installée
+avant garde un slot `raw` : y déposer le nouveau keyscript la rend inamorçable, au
+redémarrage suivant ou à la prochaine mise à jour du noyau. Seul `INSTALL.md` §15 le
+disait ; le format enrôlé n'était écrit nulle part, donc rien ne pouvait s'y opposer.
+
+- **Le format enrôlé est inscrit, par volume** : `setup-add-selfrecover-slot.sh` écrit
+  `<UUID LUKS> <hex|raw>` dans `$SKG/format-slot` une fois le slot prouvé ouvrant. Le
+  marqueur est indexé par volume : un slot hex sur un volume de données ne dit rien de la
+  racine.
+- **`install.sh` refuse de poser un keyscript d'un autre format** que celui enrôlé pour la
+  racine. Il refuse aussi un keyscript déjà en place sans marqueur, et dit comment établir
+  le format réel puis l'inscrire.
+- `INSTALL.md` §15 compte les slots avant la migration, et passe le dépôt manuel du
+  keyscript par le même contrôle.
+
+Banc `tests/test_format_slot.sh`, 14 cas sur des conteneurs LUKS de 32 Mo, sans root. Un
+canari en CI retire la comparaison des formats, et le banc doit rougir sur le cas slot
+`raw` / keyscript `hex`. Quatre défauts plantés ont chacun fait rougir leur cas.
+
 ### SelfDataGuard v0.4.0 — le chiffrement ne dépend plus du processeur — 26 septembre 2026
 
 Jusqu'à la 0.3.0, SelfDataGuard chiffrait en AES-256-GCM par libsodium, qui ne le sert

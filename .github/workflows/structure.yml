@@ -399,6 +399,38 @@ jobs:
                  echo "::error::rouge, mais pas sur le cas de la sauvegarde périmée"
                  exit 1; }
 
+      - name: Garde-fou — un keyscript ne se pose pas sur un slot d'un autre format
+        run: |
+          # Un slot enrôlé en raw n'est pas ouvert par un keyscript hex : la machine
+          # démarre encore, puis plus au redémarrage suivant. install.sh relit le
+          # format enrôlé (format-slot.sh) avant de poser le keyscript. Ce banc
+          # l'exerce sur des conteneurs LUKS de 32 Mo, ni root ni device-mapper.
+          sortie=$(bash self-security/selfrecover-luks/tests/test_format_slot.sh)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^✅ 14/14 ' \
+            || { echo "::error::le banc du format de slot n'a pas joué ses 14 cas"; exit 1; }
+
+      - name: Canari — le contrôle du format rougit quand il ne compare plus
+        run: |
+          # Le cas qui rend une machine muette : slot raw, keyscript hex. On retire la
+          # comparaison, et le banc doit rougir sur ce cas-là.
+          F=self-security/selfrecover-luks/format-slot.sh
+          sed 's/\[ "\$ENROLE" = "\$LIVRE" \] || refus/true || refus/' "$F" > /tmp/format-neutralise.sh
+          grep -q 'true || refus "le slot de' /tmp/format-neutralise.sh \
+            || { echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          bash -n /tmp/format-neutralise.sh \
+            || { echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(FMT=/tmp/format-neutralise.sh \
+               bash self-security/selfrecover-luks/tests/test_format_slot.sh 2>&1); then
+            echo "$sortie"
+            echo "::error::le banc reste VERT sans la comparaison des formats"
+            exit 1
+          fi
+          echo "$sortie" | grep -q 'racine enrôlée raw, keyscript hex à poser.*ACCEPTE' \
+            || { echo "$sortie"
+                 echo "::error::rouge, mais pas sur le cas slot raw / keyscript hex"
+                 exit 1; }
+
       - name: Garde-fou — le secours d'amorçage rend les deux voies, jamais un shell
         run: |
           # Mesuré le 21/09/2026 sur les quatre machines chiffrées du parc : la clé
