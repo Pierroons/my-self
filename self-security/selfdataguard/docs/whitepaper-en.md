@@ -67,8 +67,8 @@ Step 2 — Generate the user salt (cryptographic identifier):
     user_salt        ← random(128 bits)        # stored in plain text in the database
 
 Step 3 — Derive the two wrap keys:
-    password_key     ← Argon2id(password, user_salt, m=65536, t=3, p=4)
-    recov_key        ← Argon2id(memorized_word, SHA-256(user_salt || "/dataguard")[:16], m=65536, t=3)
+    password_key     ← Argon2id(password, user_salt, m=65536, t=3, p=1)
+    recov_key        ← Argon2id(memorized_word, SHA-256(user_salt || "/dataguard")[:16], m=65536, t=3, p=1)
 
 Step 4 — Wrap the master key with each of the two keys:
     wrap_pwd         ← XChaCha20-Poly1305-encrypt(data_master_key, key=password_key, nonce=random_192)
@@ -137,22 +137,23 @@ A leak therefore yields **nothing immediately exploitable**. Bruteforce cost is 
 
 ### 3.1 Shared memorized word, two isolated derivations
 
-SelfRecover and SelfDataGuard use **the same memorized word** on the user side, but derive it into two **strictly disjoint** cryptographic keys via contextual HMAC:
+SelfRecover and SelfDataGuard use **the same memorized word** on the user side, but derive it into two **strictly disjoint** cryptographic keys through two distinct derivations:
 
 ```
 raw_secret = user_memorized_word
              (never transmitted in plain, never stored)
 
          ┌──────────────────────────────────────────────────────┐
-         │     HMAC-SHA256(raw_secret, domain + "/recover")    │  →  recover_key  (SelfRecover)
+         │     HMAC-SHA256(raw_secret, domain + "|v2" + salt)   │  →  recover_key  (SelfRecover)
          ├──────────────────────────────────────────────────────┤
-         │     Argon2id(raw_secret, SHA-256(salt + "/dataguard")) │  →  data_key  (SelfDataGuard)
+         │     Argon2id(raw_secret, SHA-256(salt+"/dataguard")) │  →  data_key     (SelfDataGuard)
          └──────────────────────────────────────────────────────┘
 ```
 
 Cryptographic properties:
 
-- **Independence**: knowledge of `recover_key` reveals no information about `data_key`, and vice versa (HMAC-SHA256 is a PRF, its outputs on different labels are indistinguishable from random)
+- **Independence**: knowledge of `recover_key` reveals no information about `data_key`, and vice versa — both derivations start from the same secret but with distinct functions and salts, and neither output lets anyone recover the input.
+- ⚠️ **The two paths do not carry the same risk and are not hardened the same way.** `recover_key` controls an ACCESS: a server counts attempts, and SelfRecover also requires a recovery code — two factors. `data_key` decrypts DATA: it is attacked offline on a dump, with a single factor and no counter. The same memorized word therefore cannot be held to the same requirements on both sides.
 - **No crossover**: a leak on the SelfRecover side (e.g., compromise of the Argon2id hash store) does not expose SelfDataGuard, and vice versa
 - **Simplified UX**: the user memorizes a single secret, derives two purposes from it
 
@@ -222,8 +223,8 @@ Most e-commerce sites should pick **Hybrid**. High-assurance services (health, b
 
 | Use | Primitive | Rationale |
 |-----|-----------|-----------|
-| Password derivation | **Argon2id** (m=65536 KiB, t=3, p=4) | Memory-hard, resistant to GPUs and ASICs. Modern standard (RFC 9106) |
-| Memorized-word derivation | **Argon2id** (m=65536 KiB, t=3) | Same cost as the password path since 0.3.0. Both keys unwrap the same `data_master_key`, and `wrap_recov` is attacked offline with no attempt counter — so the pair was only ever as strong as its cheaper door. The free-length context is condensed into the 16-byte salt Argon2id requires |
+| Password derivation | **Argon2id** (m=65536 KiB, t=3, p=1) | Memory-hard, resistant to GPUs and ASICs. Modern standard (RFC 9106). ⚠️ `p=1`, not `p=4`: `sodium_crypto_pwhash` **exposes no** parallelism parameter — its signature is `length, password, salt, opslimit, memlimit, algo`. Earlier versions of this table announced a parameter the chosen API cannot carry |
+| Memorized-word derivation | **Argon2id** (same parameters) | Same cost as the password path since 0.3.0. Both keys unwrap the same `data_master_key`, and `wrap_recov` is attacked offline with no attempt counter — so the pair was only ever as strong as its cheaper door. The free-length context is condensed into the 16-byte salt Argon2id requires |
 | Envelope encryption | **XChaCha20-Poly1305** | AEAD — ChaCha20-Poly1305 (RFC 8439) extended to a 192-bit nonce (draft-irtf-cfrg-xchacha). Computed in software, in constant time, on every CPU. Blobs written before 0.4.0 are AES-256-GCM and remain readable |
 | Field encryption | **XChaCha20-Poly1305** with random 192-bit nonce per field | Idem. At 192 bits, a random nonce needs no counter |
 | Search indexing | **HMAC-SHA256(field, server_blind_key)** | Allows `WHERE field_hash = HMAC(query)` without decrypting. Trade-off: equality search only, not full-text |
@@ -263,8 +264,8 @@ In line with ANSSI's transparency best practices for threat models, SelfDataGuar
 
 For a SelfDataGuard deployment to actually deliver the listed guarantees, it must respect:
 
-1. **Password policy**: minimum 12 characters, refusal of passwords present in breach lists (HaveIBeenPwned, top 10000 commons)
-2. **Memorized-word policy**: minimum 2 words or one rare word (entropy ≥ 30 bits estimated by zxcvbn)
+1. **Password policy**: minimum 12 bytes, **enforced by the library** (`UserVault::PASSWORD_MIN_LEN`). Refusal through breach lists is left to the integrator — the library ships no list and no longer claims to
+2. **Memorized-word policy**: **left to the integrator — the library enforces nothing**. It has hardened the cost per attempt (Argon2id since 0.3.0); it does not measure entropy and does not claim to. An integrator who wires `loginWithMemorized()` to a word chosen by the user must know that `wrap_recov` is then attacked offline, with no counter, on that single secret. See §2.3, open question
 3. **Mandatory TLS**: no HTTP fallback allowed (strict HSTS)
 4. **Short sessions**: `data_master_key` purged from session after inactivity (15 min recommended for Hybrid, 5 min for Full)
 5. **No sensitive logging**: `password_key`, `recov_key`, `data_master_key` must never appear in logs (even at debug level)
@@ -307,4 +308,4 @@ Technical feedback, community audits, and cryptographic critiques are welcome, e
 
 ---
 
-*Document v0.0.1 — May 2026, roadmap updated 2026-09-26. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 (the copy sent to the CNIL) and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026 — §2, §3.1 and §6 now describe the shipped derivation; the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026. The specification described here is implemented: v0.1.0 to v0.4.0 are implemented and tested (219 checks, 8 suites).*
+*Document v0.0.1 — May 2026, roadmap updated 2026-09-26. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 (the copy sent to the CNIL) and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026. The specification described here is implemented: v0.1.0 to v0.4.0 are implemented and tested (219 checks, 8 suites).*

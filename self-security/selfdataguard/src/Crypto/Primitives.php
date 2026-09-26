@@ -39,7 +39,7 @@ use SodiumException;
  * ~13 bits of guessing plus ~13 bits of added cost is still ~26 bits of work on a
  * database dump. Whether a floor belongs here — and what it would cost, since a
  * floor high enough to matter ends the "one memorized word, two uses" pairing
- * with SelfRecover — is an open question, stated as such in whitepaper §7. It is
+ * with SelfRecover — is an open question, stated as such in whitepaper §2.3. It is
  * not a question this file may answer on its own.
  */
 final class Primitives

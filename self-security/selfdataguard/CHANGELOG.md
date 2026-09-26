@@ -98,7 +98,7 @@ the same, which was the point.
 multiplier, not entropy: a weak word is still ~13 bits of guessing plus ~13 bits of
 cost. A floor high enough to matter (77 bits) would end the "one memorized word,
 two uses" pairing with SelfRecover that the whitepaper sells elsewhere — a design
-decision, not a setting. It is now stated as an open question in whitepaper §7
+decision, not a setting. It is now stated as an open question in whitepaper §2.3
 instead of being answered silently in either direction.
 
 ### Fixed — documentation that described something else than the code
@@ -126,6 +126,20 @@ No migration therefore ships. Should a recovery wrap exist somewhere unmeasured,
 its holder loses that door on upgrade and must re-seal via `changeMemorized()`
 after unlocking by password — `unlockWithMemorized()` names that case explicitly
 instead of reporting a wrong secret.
+
+### Fixed before tagging — 2026-09-26
+
+The version shipped on 2026-09-07 and was never tagged; the tag carries these too.
+
+- **The public demo's API answered 500 on every call.** `demo/selfdataguard/api/_bootstrap.php`
+  required an autoloader left behind when the library moved to `self-security/selfdataguard/`.
+  It now loads the library where it lives; checked end to end on a copy (register, unlock by
+  password and by memorized word, wrong word refused).
+- The demo page announced v0.2.0 and described the memorized path as HMAC-SHA256.
+- `composer.json` described "memorized HMAC".
+- `docs/whitepaper-en.md` trailed the French edition: `p=4`, the SelfRecover formula in
+  `/recover` instead of `|v2` + salt, independence argued from HMAC on both sides, and
+  deployment rules (breach lists, a 30-bit floor) the library does not apply.
 
 ## [v0.2.0] — 2026-08-21
 

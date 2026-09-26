@@ -48,6 +48,10 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
   l'administrateur saisit sa passphrase.
 - **Cascade** : les volumes non-racine sont ouverts par `systemd-cryptsetup` via un fichier-clé
   rangé dans le coffre racine chiffré (un disque volé reste illisible).
+- **Le volume racine est un trousseau** : ce qu'il contient ouvre le reste. Les fichiers-clés
+  des volumes secondaires y vivent, et sur un poste qui signe ses propres noyaux, la clé de
+  signature Secure Boot aussi. Le disque ne protège pas que des fichiers : il protège les clés
+  qui en ouvrent d'autres.
 - **Filet anti-verrouillage** : chaque volume garde un slot **natif** (passphrase classique),
   jamais retiré, ouvrable manuellement si le keyscript défaille.
 

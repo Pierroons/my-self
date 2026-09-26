@@ -2,46 +2,61 @@
 
 > 🇬🇧 **[Read this page in English →](./README.md)**
 
-**Récupérer un compte sans email, sans SMS, sans tiers.**
+**Des outils qui n'ont besoin de personne d'autre que toi.**
 
-Aujourd'hui, « mot de passe oublié » veut dire « on envoie un lien à ton adresse
-email ». Ta boîte mail devient la clé de tous tes comptes. Et si tu la perds, tu
-perds tout le reste avec.
+Retrouver un compte passe par une adresse email. Connaître ses droits passe par
+quelqu'un qui les connaît. Protéger ses données passe par un service qui les
+détient. À chaque fois, un tiers est dans la boucle — et ce tiers peut fermer,
+se tromper, être piraté, ou simplement ne plus répondre.
 
-MySelf est un ensemble de modules qui explorent l'autre voie : des outils pour
-l'identité, les données, le droit et la vie collective, sans canal externe dans
-la boucle. Le code est libre, il tourne sur ta propre machine, et il est fait
-pour être lu.
-
----
-
-## D'où vient l'aléa
-
-Cinq dés, une liste de 7776 mots — soit exactement 6⁵.
-
-| Passphrase | Entropie |
-|---|---|
-| 1 mot (5 dés) | 12,9 bits |
-| 4 mots | 51,7 bits |
-| 6 mots | 77,5 bits |
-
-C'est mesurable et non reproductible. Un générateur logiciel produit une suite
-calculable à partir de son état interne ; les dés n'ont pas d'état.
-
-La liste anglaise est celle de l'EFF. La liste française est une traduction
-communautaire : il n'existe pas de liste officielle en français, celle-ci s'est
-imposée par l'usage. Les deux comptent 7776 entrées, donc les chiffres ci-dessus
-valent dans les deux langues.
-[La méthode papier est documentée pas à pas](./bi-self/selfrecover/tools/entropy-lab/docs/diceware-method-fr.pdf).
+MySelf est un ensemble de modules qui explorent l'autre voie, sur quatre
+terrains : l'identité, les données, le droit et la vie collective. Le code est
+libre, il tourne sur ta propre machine, et il est fait pour être lu.
 
 ---
 
-## Une même discipline, des secrets séparés
+## Les modules
 
-C'est ce qui fait de MySelf un ensemble plutôt qu'une collection. Pas un secret
-unique qui ouvrirait tout — ce serait le contraire du but. Ce que les modules
-partagent, c'est la discipline : un séparateur de domaine dans le sel, et un
-Argon2id à 64 Mio partout où un secret doit résister à une attaque hors ligne.
+Chaque module répond à une question et se déploie seul. Son README dit le reste :
+ce qu'il fait, comment l'installer, et ce qu'il ne protège pas.
+
+| Module | Question | État |
+|---|---|---|
+| [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | **v0.6.0** — bibliothèque + implémentation déployée |
+| [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.5.0** — installé et documenté, clé en hexadécimal |
+| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.4.0** — 219 contrôles, XChaCha20-Poly1305 sur tout processeur ; l'instance publique tourne encore en 0.3.0 |
+| [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.4.0 bêta** — logement, famille, administration et jurisprudence administrative |
+| [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — en ligne, plus de 1 800 ressources officielles |
+| [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.3.0** — recoupement des votants liés, convalescence, motif de vote ; 2 mécanismes pas encore codés |
+
+Ceux qui portent du code de sécurité documentent leur propre modèle de menace.
+SelfJustice et SelfAct n'en ont pas : ce sont des bases de droit tenues à jour,
+pas des dispositifs de protection.
+
+Chaque ligne mène à du code lisible et exécutable. Pas de lien vers une démo
+hébergée : tout s'auto-héberge depuis ce dépôt.
+
+---
+
+## Ce qui en fait un ensemble
+
+Pas un secret unique qui ouvrirait tout — ce serait le contraire du but. Ce que
+les modules partagent, c'est la discipline : un séparateur de domaine dans le
+sel, et deux primitives dont chacune tient un rôle qu'on ne lui fait pas quitter.
+
+**HMAC-SHA256 lie et masque.** Le mot mémorisé sert à prouver qu'on le connaît
+sans jamais l'envoyer : ce qui transite vaut
+`HMAC(mot, nom d'hôte | version + sel du compte)`. Le nom d'hôte est lu dans la
+page, jamais reçu du réseau — le même mot donne donc une empreinte différente sur
+chaque service, et une page clonée servie ailleurs ne produit rien d'utilisable.
+L'empreinte fait 64 caractères que le mot en compte quatre ou quarante, et sa
+sortie est indistinguable d'un aléa : deux services qui compareraient leurs bases
+n'y reconnaîtraient ni le même mot, ni la même personne.
+
+**Argon2id à 64 Mio ralentit.** C'est la seule chose que HMAC ne fait pas : il ne
+coûte rien à calculer. Partout où un attaquant travaille hors ligne — un disque
+volé, un coffre chiffré, une base dumpée — aucun compteur d'essais ne peut
+l'arrêter, et le prix d'une tentative est tout ce qui reste.
 
 | Module | Secret | Portée | Ce qui le sépare |
 |---|---|---|---|
@@ -52,75 +67,30 @@ Argon2id à 64 Mio partout où un secret doit résister à une attaque hors lign
 
 Compromettre l'un n'ouvre pas les autres — non parce qu'une étiquette les
 cloisonne, mais parce que ce sont des secrets distincts, dérivés séparément.
+Le détail de chaque dérivation est dans le README du module concerné.
 
-### Pourquoi tu peux garder le même mot mémorisé partout
+### Le sel n'est pas un secret
 
-Le mot mémorisé est le seul secret que tu retiens vraiment. Il est fait pour être
-réutilisé.
+Il est rangé en clair à côté de l'empreinte, et qui lit la base le voit. Ce n'est
+pas un oubli : le sel ne sert pas à cacher, il sert à **séparer**.
 
-Un serveur héberge trois services, tu as un compte sur les trois, tu mets le même
-mot mémorisé — `arbre chaussures` — sur chacun. Ce que les trois enregistrent n'a
-rien en commun :
+Sans lui, deux personnes qui choisissent le même mot produisent la même
+empreinte. Trois conséquences, toutes mauvaises : la base révèle qui partage un
+secret avec qui ; une table calculée une seule fois sert contre tous les comptes
+du service ; et qui casse une empreinte les casse toutes d'un coup.
 
-    empreinte = HMAC-SHA256(mot mémorisé, nom d'hôte | version + sel du compte)
+Avec un sel tiré au hasard par compte — 16 octets, engendrés par ton navigateur —
+chaque empreinte redevient un problème séparé. Le travail ne se mutualise plus :
+il faut le refaire personne par personne.
 
-Le **nom d'hôte** est lu dans le navigateur, jamais reçu du serveur. Chaque service
-enregistre donc une empreinte différente du même mot — et une page clonée servie
-ailleurs dérive de sa propre adresse : ce qu'elle produit ne vaut rien contre le
-vrai service.
+**Un sel par service ne suffirait pas.** Il déplacerait la constante au lieu de
+saler : tous les comptes du service la partageraient encore. C'est pourquoi le
+code l'exige par compte et refuse de dériver sans lui, plutôt que de l'accepter
+vide en silence.
 
-Le **sel** est tiré par ton navigateur à l'inscription, un par compte. Il sépare les
-personnes : deux utilisateurs qui choisissent le même mot sur le même service
-n'enregistrent pas la même empreinte.
-
-Le mot lui-même ne quitte jamais ton navigateur. Aucun des trois serveurs ne le
-reçoit, et aucun ne peut rejouer l'empreinte d'un autre.
-
-### Le volume chiffré est un trousseau
-
-Sur une machine, une seule saisie ouvre le volume racine au démarrage — et ce que ce
-volume contient ouvre le reste : les clés des volumes secondaires, et, sur un poste
-qui signe ses propres noyaux, la clé de signature Secure Boot. Le disque ne protège
-pas que des fichiers, il protège les clés qui en ouvrent d'autres.
-
----
-
-## Les modules
-
-Chaque module répond à une question et se déploie seul. Ceux qui portent du code
-de sécurité documentent leur propre modèle de menace : ce qu'ils protègent, et ce
-qu'ils ne protègent pas. SelfJustice et SelfAct n'en ont pas — ce sont des bases
-de droit tenues à jour, pas des dispositifs de protection.
-
-| Module | Question | État |
-|---|---|---|
-| [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | **v0.6.0** — bibliothèque + implémentation déployée |
-| [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.5.0** — installé et documenté, clé en hexadécimal |
-| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.4.0** — 219 contrôles, XChaCha20-Poly1305 sur tout processeur ; l'instance publique tourne encore en 0.3.0 |
-| [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.4.0 bêta** — logement, famille, administration et jurisprudence administrative |
-| [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.2** — en ligne, plus de 1 800 ressources officielles |
-| [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.3.0** — recoupement des votants liés, convalescence, motif de vote ; 24 contrôles ; 2 mécanismes manquent |
-
-Chaque ligne ci-dessus mène à du code lisible et exécutable. Pas de lien vers une
-démo hébergée : tout s'auto-héberge depuis ce dépôt.
-
----
-
-## Sous le capot
-
-Ce que tu trouveras en ouvrant `src/`, et qui vaut mieux qu'un paragraphe de
-présentation :
-
-| Fichier | Ce qu'il y a dedans |
-|---|---|
-| [`Primitives.php`](./self-security/selfdataguard/src/Crypto/Primitives.php) | AAD lié au `userId`, `zeroize()` avec repli si `sodium_memzero` manque, `hash_equals`, classe finale à constructeur privé |
-| [`entropy.js`](./bi-self/selfrecover/tools/entropy-lab/engine/entropy.js) | Rejection sampling sur `crypto.getRandomValues` |
-| [`Recovery.php`](./bi-self/selfrecover/src/Recovery/Recovery.php) | Rate-limit scopé `username + IP`, empreinte factice contre l'oracle temporel |
-
-Les bibliothèques embarquées (`zxcvbn.js`, liste EFF) sont les vraies, pas des
-remplaçantes de démonstration. Argon2id côté navigateur n'est pas embarqué : il
-est écrit ici, dans `bi-self/selfrecover/client/argon2id.js`, et confronté aux
-vecteurs de libsodium.
+Et ce qu'il ne fait pas : il ne rend aucune tentative plus coûteuse. Attaquer un
+compte précis reste possible si son secret est faible — c'est Argon2id qui rend
+chaque essai cher, et le sel qui empêche d'en faire un seul pour tout le monde.
 
 ---
 

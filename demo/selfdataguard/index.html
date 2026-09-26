@@ -14,7 +14,7 @@
   <nav>
     <a class="nav-cta" href="coffre.html">🔐 Espace membre — Mon coffre</a>
     <a class="nav-cta" href="https://github.com/Pierroons/my-self/tree/main/self-security/selfdataguard" target="_blank" rel="noopener">⌨ Code source GitHub</a>
-    <a href="https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.2.0" target="_blank" rel="noopener">Release v0.2.0</a>
+    <a href="https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.3.0" target="_blank" rel="noopener">Release v0.3.0</a>
     <a href="https://github.com/Pierroons/my-self/blob/main/self-security/selfdataguard/docs/whitepaper-fr.md" target="_blank" rel="noopener">Whitepaper FR</a>
     <a href="https://github.com/Pierroons/my-self/blob/main/self-security/selfdataguard/docs/whitepaper-en.md" target="_blank" rel="noopener">Whitepaper EN</a>
     <span class="nav-license">AGPL-3.0</span>
@@ -26,8 +26,9 @@
   <p>
     Chaque utilisateur dispose d'une <strong>clé maîtresse de données</strong> qui n'est jamais stockée en clair.
     Elle est encapsulée deux fois — une fois par une clé dérivée de son
-    <em>mot de passe</em> (Argon2id), une fois par une clé dérivée de son
-    <em>mot mémorisé</em> (Argon2id aussi). Les champs personnels sont chiffrés
+    <em>mot de passe</em>, une fois par une clé dérivée de son
+    <em>mot mémorisé</em> — les deux par Argon2id, au même coût : deux
+    enveloppes ne valent que la moins chère à ouvrir. Les champs personnels sont chiffrés
     par la clé maîtresse en XChaCha20-Poly1305.
     <strong>Le panneau "Backend — vue brute de la base" à droite</strong> montre
     exactement ce qui est stocké sur disque en temps réel. Observez sa mise à jour
