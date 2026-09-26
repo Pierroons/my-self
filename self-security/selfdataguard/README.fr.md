@@ -39,12 +39,15 @@ SelfDataGuard implémente un **encapsulage de clé à deux facteurs** inspiré d
                      │            │
         ┌────────────▼─┐      ┌──▼─────────────┐
         │ password_key │      │   recov_key    │
-        │ Argon2id(    │      │ HMAC-SHA256(   │
+        │ Argon2id(    │      │ Argon2id(      │
         │   password,  │      │  mot_memorise, │
-        │   user_salt) │      │  user_salt+    │
-        │              │      │  "/dataguard") │
+        │   user_salt) │      │  SHA-256(      │
+        │              │      │   user_salt +  │
+        │              │      │  "/dataguard"))│
         └──────────────┘      └────────────────┘
 ```
+
+Argon2id prend un sel de 16 octets : les 16 premiers octets de ce SHA-256. Les deux clés d'encapsulage coûtent autant : deux enveloppes ne valent que la moins chère à ouvrir.
 
 Chaque utilisateur dispose de :
 
@@ -59,14 +62,14 @@ Chaque utilisateur dispose de :
 
 ## Couplage avec SelfRecover
 
-SelfDataGuard réutilise le mot mémorisé de récupération de SelfRecover comme l'un de ses deux facteurs de désencapsulage, avec **séparation contextuelle stricte** pour empêcher tout crossover :
+SelfDataGuard réutilise le mot mémorisé de récupération de SelfRecover comme l'un de ses deux facteurs de désencapsulage, avec **deux dérivations distinctes** — fonctions et sels différents — pour empêcher tout crossover :
 
 ```
 mot_memorise (secret utilisateur, jamais transmis en clair)
     │
-    ├─ HMAC-SHA256(secret, domaine + "/recover")     →  recover_key  (auth SelfRecover)
+    ├─ HMAC-SHA256(clé = secret, msg = matériel + "|v2" + user_salt)  →  recover_key  (auth SelfRecover)
     │
-    └─ HMAC-SHA256(secret, user_salt + "/dataguard")  →  data_key    (encapsulage SelfDataGuard)
+    └─ Argon2id(secret, SHA-256(user_salt + "/dataguard")[:16])       →  data_key     (encapsulage SelfDataGuard)
 ```
 
 Conséquence pratique : un utilisateur qui oublie son mot de passe garde une voie vers chacune de ses deux moitiés. Son mot mémorisé ouvre **à lui seul** le coffre SelfDataGuard. Pour l'accès au compte, il lui faut en plus ce que SelfRecover exige — son *recovery code* papier au niveau 2, ou sa passphrase diceware au niveau 1 : le mot mémorisé n'y est **qu'un facteur sur deux**. Un seul mot à retenir, deux usages dérivés, mathématiquement isolés.

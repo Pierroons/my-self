@@ -39,12 +39,15 @@ SelfDataGuard implements **two-factor key wrapping** inspired by Bitwarden, 1Pas
                      │            │
         ┌────────────▼─┐      ┌──▼─────────────┐
         │ password_key │      │   recov_key    │
-        │ Argon2id(    │      │ HMAC-SHA256(   │
+        │ Argon2id(    │      │ Argon2id(      │
         │   password,  │      │  memorized,    │
-        │   user_salt) │      │  user_salt+    │
-        │              │      │  "/dataguard") │
+        │   user_salt) │      │  SHA-256(      │
+        │              │      │   user_salt +  │
+        │              │      │  "/dataguard"))│
         └──────────────┘      └────────────────┘
 ```
+
+Argon2id takes a 16-byte salt: the first 16 bytes of this SHA-256. Both wrap keys cost the same: two wraps are only as strong as the cheaper one.
 
 Each user has:
 
@@ -59,14 +62,14 @@ Each user has:
 
 ## Coupling with SelfRecover
 
-SelfDataGuard reuses the SelfRecover memorized-recovery-word as one of its two unwrap factors, with **strict context separation** to prevent crossover:
+SelfDataGuard reuses the SelfRecover memorized-recovery-word as one of its two unwrap factors, with **two distinct derivations** — different functions, different salts — to prevent crossover:
 
 ```
 recovery_word (user secret, never transmitted in plain)
     │
-    ├─ HMAC-SHA256(secret, domain + "/recover")  →  recover_key  (SelfRecover auth)
+    ├─ HMAC-SHA256(key = secret, msg = material + "|v2" + user_salt)  →  recover_key  (SelfRecover auth)
     │
-    └─ HMAC-SHA256(secret, salt_user + "/dataguard")  →  data_key  (SelfDataGuard wrap)
+    └─ Argon2id(secret, SHA-256(user_salt + "/dataguard")[:16])       →  data_key     (SelfDataGuard wrap)
 ```
 
 Practical consequence: a user who forgets their password keeps a way into each of their two halves. Their memorized word opens the SelfDataGuard vault **on its own**. For account access they also need what SelfRecover requires — their paper *recovery code* at level 2, or their diceware passphrase at level 1: the memorized word is **one factor out of two** there. One word to remember, two derived purposes, mathematically isolated.

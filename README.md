@@ -66,9 +66,12 @@ and the price of one guess is all that is left.
 | SelfRecover-LUKS | diceware passphrase | per machine | label `disk` |
 | SelfDataGuard | password + memorized word | per user | context `/dataguard` |
 
-Compromising one does not open the others — not because a label compartmentalizes
-them, but because they are distinct secrets, derived separately. The detail of
-each derivation is in the README of the module concerned.
+Compromising one does not open the others, with one exception worth stating:
+SelfRecover (L2) and SelfDataGuard share the memorized word, and the derivation is
+what separates them. A hash stolen on one side does not open the other; the word
+itself, if stolen, opens the SelfDataGuard vault on its own — on the SelfRecover
+side it still needs the *recovery code*.
+The detail of each derivation is in the README of the module concerned.
 
 ### A salt is not a secret
 

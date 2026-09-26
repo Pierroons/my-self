@@ -31,20 +31,20 @@ Self-Security takes the two surfaces apart: **data is encrypted before it reache
 
 **SelfRecover-LUKS alone** keeps that disk unreadable while the machine is off. But the moment it boots, the volumes are mounted and the database reads in plain.
 
-**Together**, both states are covered — cold by LUKS2, warm by application-layer encryption — and they draw on one memorized passphrase, derived under two distinct labels:
+**Together**, both states are covered — cold by LUKS2, warm by application-layer encryption. They share no secret:
 
-| Label | Opens | Module |
-|---|---|---|
-| `disk` | a LUKS2 slot | SelfRecover-LUKS |
-| `data-enc` | application data | SelfDataGuard |
+| Secret | Held by | Derived with | Opens | Module |
+|---|---|---|---|---|
+| a diceware passphrase | the machine's administrator | Argon2id, label `disk` | a LUKS2 slot | SelfRecover-LUKS |
+| a password and a memorized word | each user | Argon2id, the user's salt | that user's data | SelfDataGuard |
 
-The label changes the effective salt, so two keys from the same secret stay independent: compromising one does not open the other.
+A stolen drive yields nothing without the machine's passphrase; a dumped database yields nothing without each user's secrets.
 
 ---
 
 ## What each one does when something goes wrong
 
-- **Database dumped and published** → fields encrypted by SelfDataGuard stay noise. Each user's master key is wrapped twice — once by an Argon2id key derived from their password, once by an HMAC-SHA256 key derived from their recovery word — and neither derivation input is in the dump.
+- **Database dumped and published** → fields encrypted by SelfDataGuard stay noise. Each user's master key is wrapped twice — once by a key derived from their password, once by a key derived from their memorized word, both through Argon2id at the same cost, since two wraps are only as strong as the cheaper one — and neither derivation input is in the dump.
 - **Machine off, drive seized or resold** → the LUKS2 volume is closed. Secondary volumes open from a key-file kept *inside* the encrypted root, so a stolen drive stays unreadable on its own.
 - **Server rebooted remotely** → a dropbear SSH server embedded in the initramfs takes the passphrase; the root volume opens, then the secondary volumes cascade without a second entry.
 - **Keyscript fails** → every volume keeps a native LUKS slot with a classic passphrase, never removed. A broken keyscript costs a manual unlock, not the data.
