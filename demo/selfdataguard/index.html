@@ -10,11 +10,11 @@
 
 <header>
   <h1>SelfDataGuard <span class="version">v0.4.0</span></h1>
-  <p class="tagline">Dumpez ma base de données — vous obtenez du bruit chiffré.</p>
+  <p class="tagline">Dumpe ma base de données — tu obtiens du bruit chiffré.</p>
   <nav>
     <a class="nav-cta" href="coffre.html">🔐 Espace membre — Mon coffre</a>
     <a class="nav-cta" href="https://github.com/Pierroons/my-self/tree/main/self-security/selfdataguard" target="_blank" rel="noopener">⌨ Code source GitHub</a>
-    <a href="https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.3.0" target="_blank" rel="noopener">Release v0.3.0</a>
+    <a href="https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.4.0" target="_blank" rel="noopener">Release v0.4.0</a>
     <a href="https://github.com/Pierroons/my-self/blob/main/self-security/selfdataguard/docs/whitepaper-fr.md" target="_blank" rel="noopener">Whitepaper FR</a>
     <a href="https://github.com/Pierroons/my-self/blob/main/self-security/selfdataguard/docs/whitepaper-en.md" target="_blank" rel="noopener">Whitepaper EN</a>
     <span class="nav-license">AGPL-3.0</span>
@@ -31,7 +31,7 @@
     enveloppes ne valent que la moins chère à ouvrir. Les champs personnels sont chiffrés
     par la clé maîtresse en XChaCha20-Poly1305.
     <strong>Le panneau "Backend — vue brute de la base" à droite</strong> montre
-    exactement ce qui est stocké sur disque en temps réel. Observez sa mise à jour
+    exactement ce qui est stocké sur disque en temps réel. Observe sa mise à jour
     après chaque action : un attaquant qui exfiltre le fichier SQLite ne voit rien
     de plus que ce qui s'y trouve.
   </p>
@@ -74,8 +74,8 @@
 <section id="login-section">
   <h2>2. Connexion &amp; déchiffrement</h2>
   <p class="hint">
-    Choisissez votre méthode de connexion. Le champ ci-dessous s'adapte à votre choix —
-    saisissez l'identifiant correspondant (mot de passe OU mot mémorisé, pas les deux).
+    Choisis ta méthode de connexion. Le champ ci-dessous s'adapte à ton choix —
+    saisis l'identifiant correspondant (mot de passe OU mot mémorisé, pas les deux).
   </p>
   <form id="login-form">
     <label>Identifiant <input name="userId" placeholder="alice" required></label>
@@ -88,7 +88,7 @@
     </label>
     <label id="login-secret-label">
       Mot de passe
-      <input name="secret" id="login-secret" type="password" placeholder="votre mot de passe ≥12 caractères" required>
+      <input name="secret" id="login-secret" type="password" placeholder="ton mot de passe ≥12 caractères" required>
     </label>
     <button type="submit">Se connecter &amp; afficher les champs</button>
   </form>
@@ -151,7 +151,7 @@
     Publié sous licence AGPL-3.0-or-later.
   </p>
   <p class="footer-notice">
-    🔄 Base de démo publique — données effacées automatiquement chaque nuit à <strong>04:00 (Europe/Paris)</strong>. Ne stockez pas d'informations réelles.
+    🔄 Base de démo publique — données effacées automatiquement chaque nuit à <strong>04:00 (Europe/Paris)</strong>. N'y mets pas d'informations réelles.
   </p>
 </footer>
 

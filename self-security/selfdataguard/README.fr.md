@@ -107,9 +107,9 @@ La majorité des déploiements e-commerce choisiront **Hybrid**. Santé, banque,
 
 **v0.4.0 — XChaCha20-Poly1305 sur tout processeur, format de blob versionné**, 26 septembre 2026.
 
-Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (2 607 lignes réparties sur 18 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **219 contrôles répartis sur 8 suites**, tous passants.
+Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (2 607 lignes réparties sur 18 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **219 contrôles répartis sur 8 suites**, tous passants. Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
 
-Le chiffrement ne dépend plus du processeur. Jusqu'à la 0.3.0, il reposait sur AES-256-GCM, que libsodium ne sert qu'avec un support matériel — AES-NI, plus AVX depuis libsodium 1.0.19 — et jamais sur un Raspberry Pi 4. Les blobs écrits par la 0.3.0 restent lisibles, par OpenSSL là où libsodium refuse AES. Une fois qu'un blob a été écrit par la 0.4.0, revenir à la 0.3.0 le rend illisible : cette version le refuse comme base64 invalide au lieu de le lire de travers. Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
+Les blobs écrits par la 0.3.0 restent lisibles, par OpenSSL (`ext-openssl`) là où libsodium refuse AES. Un blob écrit par la 0.4.0 ne se relit pas en 0.3.0, qui le refuse comme base64 invalide : un retour arrière ne vaut que pour une base où la 0.4.0 n'a rien écrit. Pourquoi AES-256-GCM a été abandonné, et sur quels processeurs il échouait : [CHANGELOG](./CHANGELOG.md).
 
 Le module tourne sur des déploiements réels. Il **n'a pas été audité par un cryptographe extérieur** : sa conception n'est vérifiée à ce jour que par son auteur et par les lecteurs de ce dépôt.
 
@@ -124,13 +124,14 @@ Un audit cryptographique communautaire formel est prévu avant la v1.0.0. Soumis
 ### Lancer la démo standalone (zéro install)
 
 ```bash
-cd demo && ./run.sh
+# depuis la racine du dépôt
+demo/selfdataguard/run.sh
 # ouvrir http://127.0.0.1:8081 dans un navigateur
 ```
 
 La démo permet d'inscrire un utilisateur, se connecter, changer de mot de passe, et inspecter la base SQLite brute en parallèle — démontrant que les champs personnels (email, tél, IBAN, adresse) ne sont jamais lisibles sur disque.
 
-### Utiliser la bibliothèque dans votre app
+### Utiliser la bibliothèque dans ton app
 
 ```php
 use Pierroons\SelfDataGuard\SelfDataGuard;
@@ -159,7 +160,7 @@ $dg->changePassword($session, 'nouvelle-passphrase-solide-ici');
 $userId = $dg->findUserByField('email', 'a@b.c');  // 'alice' ou null
 ```
 
-Trois classes principales exposées : `SelfDataGuard` (façade), `SqliteAdapter` (stockage ; implémentez `StorageInterface` pour MariaDB / Postgres), `Primitives` (crypto brute si vous voulez bâtir au-dessus).
+Trois classes principales exposées : `SelfDataGuard` (façade), `SqliteAdapter` (stockage ; implémente `StorageInterface` pour MariaDB / Postgres), `Primitives` (crypto brute si tu veux bâtir au-dessus).
 
 ---
 
@@ -195,4 +196,4 @@ La suite `sanity_storage.php` inclut un "BIG TEST" qui dumpe le fichier SQLite e
 
 **AGPL-3.0-or-later**. Voir [LICENSE](../../LICENSE).
 
-Tout déploiement, modifié ou non, doit publier son code source sous la même licence. Aucune capture SaaS possible.
+Si tu modifies SelfDataGuard et que tu offres ta version à des utilisateurs à travers un réseau, tu dois leur donner accès à son code source, sous la même licence (AGPL-3.0, article 13).

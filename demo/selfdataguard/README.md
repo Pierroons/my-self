@@ -21,7 +21,7 @@ Both must report `true`.
 ## Launch
 
 ```bash
-cd demo
+cd demo/selfdataguard   # from the repository root
 ./run.sh
 ```
 
@@ -48,7 +48,7 @@ To use a different port: `PORT=9000 ./run.sh`.
   DATAGUARD_ADMIN_SEALED_FILE=storage/admin-recovery.sealed \
   DATAGUARD_AUDIT_LOG=storage/escrow-audit.log \
   DATAGUARD_AUDIT_SECRET="$(openssl rand -hex 32)" \
-  php ../bin/escrow-ceremony.php unlock <user> <litige_id>
+  php ../../self-security/selfdataguard/bin/escrow-ceremony.php unlock <user> <litige_id>
   ```
 
   `DATAGUARD_AUDIT_SECRET` signs the escrow audit chain: the floor is **32 characters**
@@ -86,10 +86,10 @@ The proof: type your email in the register form, watch it disappear into a base6
 ## Reset the demo
 
 ```bash
-rm -f demo/storage/demo.sqlite demo/storage/blindkey.bin
+rm -f storage/demo.sqlite storage/blindkey.bin   # from demo/selfdataguard/
 ```
 
-Reload the page — you'll get a clean DB and a fresh server-side blind key. The blind key is auto-generated on first run and stored in `demo/storage/blindkey.bin` (mode 0600), gitignored. **In production**, this key would live in a secret manager / Vault / HSM, not on disk next to the DB.
+Reload the page — you'll get a clean DB and a fresh server-side blind key. The blind key is auto-generated on first run and stored in `demo/selfdataguard/storage/blindkey.bin` (mode 0600), gitignored. **In production**, this key would live in a secret manager / Vault / HSM, not on disk next to the DB.
 
 ## What this demo doesn't do (production gaps)
 
@@ -132,8 +132,7 @@ Reload the page — you'll get a clean DB and a fresh server-side blind key. The
 ## Troubleshooting
 
 - **"Authentication failed"** on login: check that you typed exactly the same password as registration (case + spaces matter), and that the "Login method" matches what you set (don't try memorized recovery if you didn't configure a memorized secret).
-- **"Email domain could not be verified"** is unrelated to this demo (Brevo/GitHub story). Not applicable here.
-- **Permission denied on `demo/storage/`**: the directory must be writable by the user running PHP. `chmod +rw demo/storage` should fix it.
+- **Permission denied on `demo/selfdataguard/storage/`**: the directory must be writable by the user running PHP. `chmod +rw demo/selfdataguard/storage` should fix it.
 - **Port already in use**: another process is on 8081. `PORT=9000 ./run.sh` to switch ports.
 - **The right panel says `"vaults": [], "dbSize": 24576`**: that's normal, the empty SQLite still allocates 24 KB for its internal page structure. Register a user and it will fill up.
 

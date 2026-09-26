@@ -38,8 +38,6 @@ Self-Security takes the two surfaces apart: **data is encrypted before it reache
 | a diceware passphrase | the machine's administrator | Argon2id, label `disk` | a LUKS2 slot | SelfRecover-LUKS |
 | a password and a memorized word | each user | Argon2id, the user's salt | that user's data | SelfDataGuard |
 
-A stolen drive yields nothing without the machine's passphrase; a dumped database yields nothing without each user's secrets.
-
 ---
 
 ## What each one does when something goes wrong
@@ -74,4 +72,4 @@ Neither module has been audited by an external cryptographer. Their design is ve
 
 **Pierroons** — [github.com/Pierroons/my-self](https://github.com/Pierroons/my-self)
 
-*Self-Security — one passphrase, two states, readable in neither.*
+*Self-Security — two secrets, two states, readable in neither.*

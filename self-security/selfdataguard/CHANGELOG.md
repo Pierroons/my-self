@@ -259,7 +259,7 @@ First runnable release. Whitepaper-driven implementation of the SelfDataGuard en
 - `wrap_admin` field is reserved in the schema for **Hybrid mode** (whitepaper §4.2) but not yet wired through the façade. Planned for v0.2.0.
 - This release is intended for **community cryptographic review** before any production use. A formal audit is targeted before v1.0.0.
 
-## [v0.0.1] — 2026-05-06
+## v0.0.1 — 2026-05-06 (untagged)
 
 ### Added
 
@@ -267,5 +267,8 @@ First runnable release. Whitepaper-driven implementation of the SelfDataGuard en
 - Initial README EN + FR
 - Repository structure under `self-security/selfdataguard/`
 
-[v0.1.0-beta]: https://github.com/Pierroons/my-self/tree/main/self-security/selfdataguard
-[v0.0.1]: https://github.com/Pierroons/my-self/blob/v0.0.1/self-security/selfdataguard/
+[Unreleased]: https://github.com/Pierroons/my-self/compare/selfdataguard-v0.4.0...dev
+[v0.4.0]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.4.0
+[v0.3.0]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.3.0
+[v0.2.0]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.2.0
+[v0.1.0-beta]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.1.0-beta

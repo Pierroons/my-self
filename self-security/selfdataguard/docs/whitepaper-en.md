@@ -1,7 +1,9 @@
-# SelfDataGuard — Whitepaper v0.0.1
+# SelfDataGuard — Whitepaper
 
 **Application-layer data-at-rest protection that survives a database exfiltration**
 *Dump my database — and get encrypted noise.*
+
+*Edition of 26 September 2026 — describes SelfDataGuard v0.4.0. The French edition is authoritative where the two differ.*
 
 ---
 
@@ -31,7 +33,7 @@ All current data-at-rest encryption products share a structural weakness: **the 
 | AWS RDS encryption / Aurora encryption | AWS KMS, transparent to the application | ✗ Yes |
 | Application-level encryption (AES + key in `.env`) | Environment variable / Vault accessible to the app | ✗ Yes |
 
-In all six cases, an attacker who obtains a shell on the application server (RCE, privilege escalation, SSH key theft) **simultaneously** obtains the database and the key. Data-at-rest encryption then provides **no protection at all** — it only protected against an attacker holding the disk without the server (a rare scenario in practice).
+In all five cases, an attacker who obtains a shell on the application server (RCE, privilege escalation, SSH key theft) **simultaneously** obtains the database and the key. Data-at-rest encryption then provides **no protection at all** — it only protected against an attacker holding the disk without the server (a rare scenario in practice).
 
 ### 1.2 The real question
 
@@ -121,7 +123,7 @@ An attacker who exfiltrates the user table obtains:
 
 To decrypt, the attacker has two paths:
 
-1. **Bruteforce a target user's password** → cost of Argon2id per attempt (~250 ms on top-tier GPU with recommended parameters). For an 8-character random password: ~10^14 attempts × 0.25 s = ~10^6 years in massive parallel. For a weak password (`123456` or similar), still feasible. **Applied since 0.3.0**: `UserVault::register()` refuses passwords under 12 bytes (`PASSWORD_MIN_LEN`). ⚠️ Length is not entropy — twelve identical letters clear the bar. It is a floor against the worst case, not a measure. **No blocklist ships**: an earlier edition of this paragraph announced a refusal against breach lists that no line of code applied, and a promise with no mechanism behind it is worse than no promise.
+1. **Bruteforce a target user's password** → cost of Argon2id per attempt (~250 ms with the recommended parameters; 213.7 ms measured on a deployment machine, see the note under point 2). For an 8-character random password: ~10^14 attempts × 0.25 s ≈ 8·10^5 years, one attempt at a time; the attacker divides that time by the number of attempts run in parallel, each needing 64 MiB of memory. For a weak password (`123456` or similar), still feasible. **Applied since 0.3.0**: `UserVault::register()` refuses passwords under 12 bytes (`PASSWORD_MIN_LEN`). ⚠️ Length is not entropy — twelve identical letters clear the bar. It is a floor against the worst case, not a measure. **No blocklist ships**: an earlier edition of this paragraph announced a refusal against breach lists that no line of code applied, and a promise with no mechanism behind it is worse than no promise.
 
 2. **Bruteforce the memorized word** → since 0.3.0, the same cost as the password path: Argon2id, ~250 ms per attempt.
 
@@ -169,7 +171,7 @@ Scenario: a user has lost their password.
 - **With SelfDataGuard alone** (no SelfRecover): impossible, their data is encrypted with their `password_key`, which they no longer remember.
 - **With both together**: they present their paper *recovery code* **and** their memorized word. SelfRecover checks both — the code locates the account and carries possession, the derived word carries knowledge — then authenticates them. SelfDataGuard needs only the word: it derives `data_key`, unwraps `wrap_recov`, and restores `data_master_key`. The user regains account access and data readability in the same pass.
 
-This is the exact mechanism found in Bitwarden (recovery code) or ProtonMail (recovery phrase).
+This is the principle of the recovery phrases offered by end-to-end encrypted services: a secret kept offline restores access to the data when the password is lost.
 
 ---
 
@@ -205,7 +207,7 @@ Not all deployments share the same constraints. SelfDataGuard offers three modes
 
 ```
 - No encryption key is ever accessible to the server
-- All cryptography executed in the browser via WebCrypto SubtleCrypto
+- All cryptography executed in the browser, by libsodium compiled to WebAssembly: WebCrypto provides neither Argon2id nor XChaCha20-Poly1305
 - Server only stores and serves encrypted blobs
 ```
 
@@ -270,27 +272,27 @@ For a SelfDataGuard deployment to actually deliver the listed guarantees, it mus
 4. **Short sessions**: `data_master_key` purged from session after inactivity (15 min recommended for Hybrid, 5 min for Full)
 5. **No sensitive logging**: `password_key`, `recov_key`, `data_master_key` must never appear in logs (even at debug level)
 6. **Admin access auditing**: in Hybrid mode, every admin access to operational fields must be logged (without the data itself)
-7. **Regular updates**: track Argon2id recommendations to adjust `m`, `t`, `p` as hardware progresses
+7. **Regular updates**: track Argon2id recommendations to adjust `m` and `t` as hardware progresses (`p` is fixed at 1, see §5)
 
-Failure to respect any of these rules significantly degrades the guarantees. The reference SelfDataGuard library automatically enforces rules 1, 2, 5, 6; rules 3, 4, 7 are deployment configuration.
+Failure to respect any of these rules significantly degrades the guarantees. The reference library enforces rule 1, and rule 5 for its own exception traces (`#[\SensitiveParameter]`); the others are up to the integrator and the deployment configuration.
 
 ---
 
 ## 8. Limitations and future work
 
-### 8.1 Known limitations of v0.0.1
+### 8.1 Known limitations
 
 - **Full-text search** on encrypted fields: impossible without advanced techniques (partial homomorphic encryption, secure indexes like CipherSweet)
 - **Asynchronous transactional notifications**: require admin_op_key (Hybrid mode) or redesign toward push (Full mode)
 - **Schema migration**: if an encrypted field is added to an existing account, it must be populated during an active user session
-- **Performance**: each encrypted field adds ~50-100 µs overhead on recent GPU. For queries listing many accounts, this cost compounds. To evaluate case by case.
+- **Performance**: the overhead of each encrypted field has not been measured yet. For queries listing many accounts, it compounds: to evaluate case by case.
 
 ### 8.2 Roadmap
 
-- **v0.1.0** (shipped, Q3 2026): reference PHP implementation, Eloquent / Doctrine trait integration via adapter — the library's current size is given by the README, which is measured at each edition
+- **v0.1.0** (shipped as beta on 2026-05-08): reference PHP implementation, SQLite storage behind `StorageInterface`; the Eloquent / Doctrine integration is still to be written — the library's current size is given by the README, which is measured at each edition
 - **v0.2.0** (shipped 2026-08-21, Q3): escrow compartment, key ceremony, audit log
 - **v0.3.0** (shipped 2026-09-07): Argon2id derivation of the memorized secret, password length floor enforced in code
-- **v0.4.0** (2026-09-26): XChaCha20-Poly1305 for every write, versioned blob format (`SDG2.`), AES-256-GCM blobs read by libsodium or OpenSSL
+- **v0.4.0** (shipped 2026-09-26): XChaCha20-Poly1305 for every write, versioned blob format (`SDG2.`), AES-256-GCM blobs read by libsodium or OpenSSL
 - **v0.5.0** (upcoming): advanced blind index extension for searchable encryption, multi-tenant support
 - **v1.0.0** (2027): formal community cryptographic audit, ANSSI Visa de sécurité submission (industries@ssi.gouv.fr), test vector pack publication
 
@@ -300,7 +302,7 @@ Failure to respect any of these rules significantly degrades the guarantees. The
 
 **AGPL-3.0-or-later**. Code, documentation, and whitepapers published in the `Pierroons/my-self` repository.
 
-Any deployed version, modified or not, must publish its sources under the same license. No SaaS capture possible.
+A modified version offered to users over a network must give them access to its source code, under the same license (AGPL-3.0, section 13).
 
 Author: Pierroons. Contact details accessible via the public repository.
 
@@ -308,4 +310,4 @@ Technical feedback, community audits, and cryptographic critiques are welcome, e
 
 ---
 
-*Document v0.0.1 — May 2026, roadmap updated 2026-09-26. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 (the copy sent to the CNIL) and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026. The specification described here is implemented: v0.1.0 to v0.4.0 are implemented and tested (219 checks, 8 suites).*
+*First edition May 2026; this edition 26 September 2026, aligned on SelfDataGuard v0.4.0. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026. The specification described here is implemented and tested from v0.1.0 to v0.4.0 (219 checks, 8 suites).*

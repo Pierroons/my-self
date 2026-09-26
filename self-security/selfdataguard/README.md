@@ -107,9 +107,9 @@ Most e-commerce deployments will pick **Hybrid**. Health, banking, identity prov
 
 **v0.4.0 — XChaCha20-Poly1305 on every CPU, versioned blob format**, 26 September 2026.
 
-Whitepaper complete (specification + threat model). PHP reference library implemented (2 607 lines across 18 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **219 checks across 8 suites**, all passing.
+Whitepaper complete (specification + threat model). PHP reference library implemented (2 607 lines across 18 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **219 checks across 8 suites**, all passing. A clickable HTML demo is included to inspect the encrypted database in real time.
 
-Encryption no longer depends on the CPU. Up to 0.3.0 it used AES-256-GCM, which libsodium serves only with hardware support — AES-NI, plus AVX since libsodium 1.0.19 — and never on a Raspberry Pi 4. Blobs written by 0.3.0 stay readable, through OpenSSL where libsodium refuses AES. Once 0.4.0 has written a blob, going back to 0.3.0 makes it unreadable: that version refuses it as invalid base64 rather than misreading it. A clickable HTML demo is included to inspect the encrypted database in real time.
+Blobs written by 0.3.0 stay readable, through OpenSSL (`ext-openssl`) where libsodium refuses AES. A blob written by 0.4.0 cannot be read by 0.3.0, which refuses it as invalid base64: roll back only a database that 0.4.0 has not written to. Why AES-256-GCM was dropped, and on which CPUs it failed: see the [CHANGELOG](./CHANGELOG.md).
 
 The module runs on real deployments. It has **not been audited by an external cryptographer**: its design is verified today by its author and by the readers of this repository, and by no one else.
 
@@ -124,7 +124,8 @@ A formal community cryptographic audit is planned before v1.0.0. ANSSI Visa de s
 ### Run the standalone demo (no install needed)
 
 ```bash
-cd demo && ./run.sh
+# from the repository root
+demo/selfdataguard/run.sh
 # open http://127.0.0.1:8081 in a browser
 ```
 
@@ -195,4 +196,4 @@ The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file 
 
 **AGPL-3.0-or-later**. See [LICENSE](../../LICENSE).
 
-Any deployment, modified or not, must publish its source code under the same license. No SaaS capture possible.
+If you modify SelfDataGuard and offer your version to users over a network, you must give them access to its source code, under the same license (AGPL-3.0, section 13).

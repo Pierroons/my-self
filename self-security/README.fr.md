@@ -38,8 +38,6 @@ Self-Security sépare les deux surfaces : **la donnée est chiffrée avant d'att
 | une passphrase diceware | l'administrateur de la machine | Argon2id, étiquette `disk` | un slot LUKS2 | SelfRecover-LUKS |
 | un mot de passe et un mot mémorisé | chaque utilisateur | Argon2id, sel de l'utilisateur | ses données | SelfDataGuard |
 
-Un disque volé ne donne rien sans la passphrase de la machine ; une base dumpée ne donne rien sans les secrets de chaque utilisateur.
-
 ---
 
 ## Ce que chacun fait le jour où ça tourne mal
@@ -74,4 +72,4 @@ Aucun des deux modules n'a été audité par un cryptographe extérieur. Leur co
 
 **Pierroons** — [github.com/Pierroons/my-self](https://github.com/Pierroons/my-self)
 
-*Self-Security — une phrase, deux états, lisible dans aucun des deux.*
+*Self-Security — deux secrets, deux états, lisible dans aucun des deux.*
