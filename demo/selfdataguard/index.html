@@ -26,8 +26,9 @@
   <p>
     Chaque utilisateur dispose d'une <strong>clé maîtresse de données</strong> qui n'est jamais stockée en clair.
     Elle est encapsulée deux fois — une fois par une clé dérivée de son
-    <em>mot de passe</em> (Argon2id), une fois par une clé dérivée de son
-    <em>mot mémorisé</em> (HMAC-SHA256). Les champs personnels sont chiffrés
+    <em>mot de passe</em>, une fois par une clé dérivée de son
+    <em>mot mémorisé</em> — les deux par Argon2id, au même coût : deux
+    enveloppes ne valent que la moins chère à ouvrir. Les champs personnels sont chiffrés
     par la clé maîtresse en AES-256-GCM.
     <strong>Le panneau "Backend — vue brute de la base" à droite</strong> montre
     exactement ce qui est stocké sur disque en temps réel. Observez sa mise à jour

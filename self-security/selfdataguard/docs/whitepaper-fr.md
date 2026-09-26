@@ -157,7 +157,7 @@ Une fuite ne donne donc **rien d'exploitable directement**. Le coût de brutefor
 
 ### 3.1 Le mot mémorisé partagé, deux dérivations isolées
 
-SelfRecover et SelfDataGuard utilisent **le même mot mémorisé** côté utilisateur, mais le dérivent vers deux clés cryptographiques **strictement disjointes** via HMAC contextuel :
+SelfRecover et SelfDataGuard utilisent **le même mot mémorisé** côté utilisateur, mais le dérivent vers deux clés cryptographiques **strictement disjointes**, par deux dérivations distinctes :
 
 ```
 secret_brut = mot_memorise_utilisateur
@@ -244,7 +244,7 @@ La majorité des sites e-commerce devraient choisir **Hybrid**. Les services à 
 | Usage | Primitive | Rationale |
 |-------|-----------|-----------|
 | Dérivation depuis mot de passe | **Argon2id** (m=65536 KiB, t=3, p=1) | Memory-hard, résistant aux GPU et ASICs. Standard moderne (RFC 9106). ⚠️ `p=1` et non `p=4` : `sodium_crypto_pwhash` **n'expose pas** de paramètre de parallélisme — signature `length, password, salt, opslimit, memlimit, algo`. Les versions antérieures de ce tableau annonçaient un paramètre que l'API choisie ne peut pas porter |
-| Dérivation depuis mot mémorisé | **Argon2id** (mêmes paramètres) | Même coût que la voie mot de passe, parce que les deux ouvrent la même clé de données et que la paire ne vaut que sa porte la moins chère. Cf. §7 pour la mesure qui a motivé le changement |
+| Dérivation depuis mot mémorisé | **Argon2id** (mêmes paramètres) | Même coût que la voie mot de passe, parce que les deux ouvrent la même clé de données et que la paire ne vaut que sa porte la moins chère. Cf. §2.3 pour la mesure qui a motivé le changement |
 | Chiffrement par enveloppe | **AES-256-GCM** | Authenticated encryption, accélération matérielle universelle, standard NIST |
 | Chiffrement de champs | **AES-256-GCM** avec nonce aléatoire 96 bits par champ | Idem |
 | Indexation de recherche | **HMAC-SHA256(field, server_blind_key)** | Permet `WHERE field_hash = HMAC(query)` sans déchiffrer. Trade-off : recherche par égalité uniquement, pas full-text |
@@ -289,7 +289,7 @@ Pour qu'un déploiement SelfDataGuard apporte effectivement les garanties listé
    rien**. Elle a durci le coût par essai (Argon2id depuis 0.3.0) ; elle ne mesure pas l'entropie et
    ne prétend pas le faire. Un intégrateur qui branche `loginWithMemorized()` sur un mot choisi par
    l'utilisateur doit savoir que `wrap_recov` s'attaque alors hors ligne, sans compteur, sur ce seul
-   secret. Cf. §7, question ouverte
+   secret. Cf. §2.3, question ouverte
 3. **TLS obligatoire** : aucune dégradation HTTP autorisée (HSTS strict)
 4. **Sessions courtes** : `data_master_key` purgée de la session après inactivité (15 min recommandé pour Hybrid, 5 min pour Full)
 5. **Pas de logging sensible** : `password_key`, `recov_key`, `data_master_key` ne doivent jamais apparaître dans les logs (même en niveau debug)
