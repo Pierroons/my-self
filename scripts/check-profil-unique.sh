@@ -129,16 +129,10 @@ echo "▸ Dérivation de clé côté navigateur"
 # Le porteur unique, et ce qui l'entoure légitimement.
 KDF_JS="bi-self/selfrecover/client/sr-kdf.js"
 
-# L'exemption est NOMINATIVE et porte sa raison. Exempter un répertoire couvrirait
-# aussi le fichier qui deviendrait fautif demain.
-#
-# `e2e-memo.js` — coffre de démonstration, dont le PBKDF2 est assumé et INSCRIT
-#   DANS LE BLOB (`kdf_iter`) : il sait sous quoi il a chiffré, donc il peut
-#   migrer. C'est le seul du dépôt dans ce cas.
-EXEMPTS_JS='demo/lab/public/js/e2e-memo\.js'
-
+# Aucune exemption : le dernier fichier qui en avait une, le mémo du lab, dérive
+# par srKdfDeriver.
 kdf_js=$(git grep -lE "name:\s*'PBKDF2'|\"PBKDF2\"|'PBKDF2'" -- '*.js' \
-    | grep -vE "^(${KDF_JS}|bi-self/selfrecover/client/vendor/|bi-self/selfrecover/tests/|${EXEMPTS_JS})" || true)
+    | grep -vE "^(${KDF_JS}|bi-self/selfrecover/client/vendor/|bi-self/selfrecover/tests/)" || true)
 if [ -n "$kdf_js" ]; then
     echo "  ✗ dérivation de mot de passe en JavaScript hors de ${KDF_JS} :"
     echo "$kdf_js" | sed 's/^/     /'
@@ -147,7 +141,7 @@ if [ -n "$kdf_js" ]; then
     echo "     choisi par un humain : la condition ne tient pas."
     echec=1
 else
-    echo "  ✓ aucune KDF en JavaScript hors du porteur, sauf les exemptions nommées"
+    echo "  ✓ aucune KDF en JavaScript hors du porteur"
 fi
 
 # Un profil Argon2id recopié dans un autre `.js` se désaligne sans que rien ne le

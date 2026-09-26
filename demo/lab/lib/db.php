@@ -226,6 +226,12 @@ final class Db
             }
         }
 
+        // Un coffre mémo sans `kdf` a été scellé par PBKDF2 : le client refuse de le relire.
+        $cols = self::$pdo->query('PRAGMA table_info(memo_vault)')->fetchAll(PDO::FETCH_COLUMN, 1);
+        if (!in_array('kdf', $cols, true)) {
+            self::$pdo->exec('ALTER TABLE memo_vault ADD COLUMN kdf TEXT');
+        }
+
         // 🔑 Le dernier administrateur ne part pas. La règle vit dans la base et
         // non dans la console : tout chemin qui écrit `accounts` s'y heurte, y
         // compris celui qu'on écrira demain. Seul `reset-shell` lève la garde, en

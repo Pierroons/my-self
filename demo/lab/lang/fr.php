@@ -59,7 +59,7 @@ return [
 
     'sec.2.h2' => '2. Chiffrement des données — deux modèles selon la sensibilité',
     'sec.2.body' => '<p><strong>a) Blind-key serveur</strong> (profil : bio, localisation, lien) — XChaCha20-Poly1305, clé dérivée d\'un secret serveur stocké <em>hors base et hors webroot</em>. Un dump SQL ne révèle que des blobs.</p>'
-        . '<p><strong>b) Bout-en-bout côté client</strong> (mémo perso) — chiffré dans le <strong>navigateur</strong> (WebCrypto). <code>PBKDF2</code> (600k) → <code>HKDF</code> par étiquette → une <code>vault_key</code> aléatoire chiffre le mémo, wrappée dans deux enveloppes (mot de passe + passphrase de secours). <strong>Le serveur ne détient aucune clé.</strong></p>'
+        . '<p><strong>b) Bout-en-bout côté client</strong> (mémo perso) — chiffré dans le <strong>navigateur</strong> (WebCrypto). <code>Argon2id</code> (64 Mio, le profil de SelfRecover) → <code>HKDF</code> par étiquette → une <code>vault_key</code> aléatoire chiffre le mémo, wrappée dans deux enveloppes (mot de passe + passphrase de secours). <strong>Le serveur ne détient aucune clé.</strong></p>'
         . '<div class="mt">'
         . '<div class="ok"><h4>✅ Ce que ça protège</h4><ul>'
         . '<li>Blind-key : vol de disque, dump SQL, injection</li>'
@@ -463,7 +463,9 @@ return [
     'prf.js.required' => 'Mot de passe, passphrase et mémo requis.',
     'prf.js.weakpass' => 'Passphrase de récupération trop faible : au moins 4 mots (réutilise celle de ton inscription). C\'est ce qui protège ton mémo si tu perds ton mot de passe.',
     'prf.js.created' => 'Coffre créé et chiffré localement. Le serveur n\'a reçu que des blobs.',
-    'prf.js.deriving' => 'Dérivation de la clé (PBKDF2)…',
+    'prf.js.deriving' => 'Dérivation de la clé (Argon2id, une à quelques secondes)…',
+    'prf.js.sealing' => 'Scellement du coffre : deux dérivations Argon2id, quelques secondes…',
+    'prf.js.oldvault' => 'Ce coffre a été scellé avant le passage à Argon2id et ne se relit plus. Recrée-le.',
     'prf.js.decrypted' => 'Déchiffré localement. La clé reste dans cette page, jamais envoyée.',
     'prf.js.locked'  => 'Coffre verrouillé.',
     'prf.js.saved2'  => 'Mémo re-chiffré et enregistré.',

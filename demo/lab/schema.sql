@@ -173,11 +173,13 @@ CREATE INDEX IF NOT EXISTS idx_redteam_iphash ON redteam_reports(ip_hash, create
 --   memo_ct  : le mémo chiffré par une vault_key aléatoire (AES-256-GCM)
 --   wrap_pw  : la vault_key chiffrée par la clé dérivée du PASSWORD (enveloppe A)
 --   wrap_rec : la vault_key chiffrée par la clé dérivée de la PASSPHRASE (enveloppe B)
--- Tous les champs *_ct/*_iv sont en base64. kdf_salt/kdf_iter = paramètres PBKDF2.
+-- Tous les champs *_ct/*_iv sont en base64. kdf_salt : le sel (16 octets) ; kdf : les
+-- paramètres Argon2id du scellement, en JSON. kdf_iter ne sert plus et vaut 0.
 CREATE TABLE IF NOT EXISTS memo_vault (
     account_id   INTEGER PRIMARY KEY,
     kdf_salt     TEXT NOT NULL,
     kdf_iter     INTEGER NOT NULL,
+    kdf          TEXT,
     memo_iv      TEXT NOT NULL,
     memo_ct      TEXT NOT NULL,
     wrap_pw_iv   TEXT NOT NULL,

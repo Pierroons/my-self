@@ -516,6 +516,23 @@ jobs:
       - name: Garde-fou — le facteur « cet appareil », côté navigateur
         run: node demo/lab/tests/sanity_device_client.js
 
+      # Le mémo chiffré du lab dérive par srKdfDeriver (Argon2id). Le banc rouvre
+      # l'enveloppe produite par le JS avec PHP (libsodium, hash_hkdf, openssl) :
+      # une étiquette ou un profil qui dériverait n'y survivrait pas.
+      - name: Garde-fou — le mémo chiffré du lab scelle en Argon2id
+        run: |
+          sortie=$(node demo/lab/tests/sanity_memo_client.js)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^OK — 11/11 ' \
+            || { echo "::error::le banc du mémo n'a pas joué ses 11 cas"; exit 1; }
+
+      - name: Garde-fou — le stockage du coffre mémo exige ses paramètres Argon2id
+        run: |
+          sortie=$(php demo/lab/tests/sanity_memo_vault.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE 'OK — 9/9 ' \
+            || { echo "::error::le banc du stockage mémo n'a pas joué ses 9 cas"; exit 1; }
+
       # Ce banc porte la justification écrite de l'ancre externe du journal SU
       # (contrôle 4) et le profil de hachage du secret SuperUser (contrôle 8).
       # Il tournait à la main depuis sa création : rien ne le lançait ici.

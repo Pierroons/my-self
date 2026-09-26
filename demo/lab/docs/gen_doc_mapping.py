@@ -11,7 +11,7 @@ MOIS = ["janvier","février","mars","avril","mai","juin","juillet","août",
         "septembre","octobre","novembre","décembre"]
 now = datetime.now(ZoneInfo("Europe/Paris"))
 DATE = f"{now.day} {MOIS[now.month-1]} {now.year} — {now:%H:%M}"
-VERSION = "v1.1"
+VERSION = "v1.2"
 # Dossier de sortie portable : 1er argument CLI, sinon $OUTPUT_DIR, sinon ./out à côté du script.
 _OUT_DIR = sys.argv[1] if len(sys.argv) > 1 else os.environ.get(
     "OUTPUT_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "out"))
@@ -84,8 +84,8 @@ dérivations distinctes.</div>
 <pre>
    mot SelfRecover            mot de passe              passphrase de secours
          |                         |                              |
-   HMAC-SHA256(mot,          PBKDF2-SHA256                  PBKDF2-SHA256
-   site|version + sel)       600 000 tours, sel du coffre   600 000 tours, sel du coffre
+   HMAC-SHA256(mot,          Argon2id                       Argon2id
+   site|version + sel)       profil sr-kdf, sel du coffre   profil sr-kdf, sel du coffre
          |                         |  HKDF "data-enc"             |  HKDF "data-recover"
          v                         v                              v
    empreinte --> serveur      clé fille A                    clé fille B
@@ -118,7 +118,7 @@ bouge pas. Cette indirection (<code>vault_key</code>) découple l'accès des don
   NAVIGATEUR (zone de confiance)        |   SERVEUR (aveugle)
   ------------------------------        |   --------------------
   - mot, mot de passe, passphrase       |   - Argon2id de l'empreinte
-  - clés PBKDF2          (éphémères)    |   - blob chiffré    (opaque)
+  - clés Argon2id        (éphémères)    |   - blob chiffré    (opaque)
   - data-enc, data-recover              |   - enveloppe A     (opaque)
   - vault_key (déballée à la volée)     |   - enveloppe B     (opaque)
   - mémo EN CLAIR                       |

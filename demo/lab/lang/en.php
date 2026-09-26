@@ -61,7 +61,7 @@ return [
 
     'sec.2.h2' => '2. Data encryption — two models, by sensitivity',
     'sec.2.body' => '<p><strong>a) Server blind-key</strong> (profile: bio, location, link) — XChaCha20-Poly1305, key derived from a server secret held <em>outside the database and outside the webroot</em>. A SQL dump yields nothing but blobs.</p>'
-        . '<p><strong>b) Client-side end-to-end</strong> (personal memo) — encrypted in the <strong>browser</strong> (WebCrypto). <code>PBKDF2</code> (600k) → <code>HKDF</code> per label → a random <code>vault_key</code> encrypts the memo, itself wrapped in two envelopes (password and recovery passphrase). <strong>The server holds no key.</strong></p>'
+        . '<p><strong>b) Client-side end-to-end</strong> (personal memo) — encrypted in the <strong>browser</strong> (WebCrypto). <code>Argon2id</code> (64 MiB, the SelfRecover profile) → <code>HKDF</code> per label → a random <code>vault_key</code> encrypts the memo, itself wrapped in two envelopes (password and recovery passphrase). <strong>The server holds no key.</strong></p>'
         . '<div class="mt">'
         . '<div class="ok"><h4>✅ What this protects</h4><ul>'
         . '<li>Blind-key: stolen disk, SQL dump, injection</li>'
@@ -463,7 +463,9 @@ return [
     'prf.js.required' => 'Password, passphrase and memo are required.',
     'prf.js.weakpass' => 'Recovery passphrase too weak: at least 4 words (reuse the one from your sign-up). This is what protects your memo if you lose your password.',
     'prf.js.created' => 'Vault created and encrypted locally. The server only received blobs.',
-    'prf.js.deriving' => 'Deriving the key (PBKDF2)…',
+    'prf.js.deriving' => 'Deriving the key (Argon2id, one to a few seconds)…',
+    'prf.js.sealing' => 'Sealing the vault: two Argon2id derivations, a few seconds…',
+    'prf.js.oldvault' => 'This vault was sealed before the move to Argon2id and can no longer be read. Create it again.',
     'prf.js.decrypted' => 'Decrypted locally. The key stays in this page and is never sent.',
     'prf.js.locked'  => 'Vault locked.',
     'prf.js.saved2'  => 'Memo re-encrypted and saved.',

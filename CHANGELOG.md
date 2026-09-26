@@ -10,6 +10,28 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Le mémo chiffré du lab scelle en Argon2id ; PBKDF2 quitte le dépôt — 26 septembre 2026
+
+Le mémo du lab était le dernier code à dériver une clé par PBKDF2 : 600 000 tours, et un
+coût presque nul en mémoire. Il était exempté nommément de `check-profil-unique.sh` depuis
+le 10/09, à la condition qu'il migre. Il a migré.
+
+- **`e2e-memo.js` dérive par `srKdfDeriver`**, le porteur Argon2id de SelfRecover : même
+  profil figé, même plancher de lecture. Les étiquettes HKDF `data-enc` / `data-recover` et
+  les deux enveloppes ne changent pas.
+- **Le coffre inscrit ses paramètres** (`kdf`, en JSON) ; le serveur exige leur forme et la
+  normalise. Un coffre sans `kdf` est refusé à l'ouverture, avec un message qui dit de le
+  recréer. Aucun n'existait : 0 coffre en prod comme en local, mesuré avant la migration.
+- **L'exemption est retirée** : aucune dérivation de mot de passe en JavaScript hors du
+  porteur, sans exception.
+- **Corrigé au passage** : la page attendait que la création rende la clé du coffre pour
+  enchaîner sur l'écriture ; elle ne la rendait pas, et le premier enregistrement répondait
+  « verrouillé ».
+
+Bancs : `sanity_memo_client.js` (11 cas, dont un oracle — PHP rouvre avec libsodium,
+`hash_hkdf` et openssl l'enveloppe produite par le JavaScript) et `sanity_memo_vault.php`
+(9 cas). Défauts plantés : une étiquette HKDF changée n'est vue que par l'oracle.
+
 ### Le lab décrit ses clés telles qu'elles sont — 26 septembre 2026
 
 La page sécurité du lab et le PDF d'architecture qu'en tire `docs/gen_doc_mapping.py`
