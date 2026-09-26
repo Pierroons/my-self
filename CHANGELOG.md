@@ -10,6 +10,105 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Le mémo chiffré du lab scelle en Argon2id ; PBKDF2 quitte le dépôt — 26 septembre 2026
+
+Le mémo du lab était le dernier code à dériver une clé par PBKDF2 : 600 000 tours, et un
+coût presque nul en mémoire. Il était exempté nommément de `check-profil-unique.sh` depuis
+le 10/09, à la condition qu'il migre. Il a migré.
+
+- **`e2e-memo.js` dérive par `srKdfDeriver`**, le porteur Argon2id de SelfRecover : même
+  profil figé, même plancher de lecture. Les étiquettes HKDF `data-enc` / `data-recover` et
+  les deux enveloppes ne changent pas.
+- **Le coffre inscrit ses paramètres** (`kdf`, en JSON) ; le serveur exige leur forme et la
+  normalise. Un coffre sans `kdf` est refusé à l'ouverture, avec un message qui dit de le
+  recréer. Aucun n'existait : 0 coffre en prod comme en local, mesuré avant la migration.
+- **L'exemption est retirée** : aucune dérivation de mot de passe en JavaScript hors du
+  porteur, sans exception.
+- **Corrigé au passage** : la page attendait que la création rende la clé du coffre pour
+  enchaîner sur l'écriture ; elle ne la rendait pas, et le premier enregistrement répondait
+  « verrouillé ».
+
+Bancs : `sanity_memo_client.js` (11 cas, dont un oracle — PHP rouvre avec libsodium,
+`hash_hkdf` et openssl l'enveloppe produite par le JavaScript) et `sanity_memo_vault.php`
+(9 cas). Défauts plantés : une étiquette HKDF changée n'est vue que par l'oracle.
+
+### Le lab décrit ses clés telles qu'elles sont — 26 septembre 2026
+
+La page sécurité du lab et le PDF d'architecture qu'en tire `docs/gen_doc_mapping.py`
+décrivaient un seul secret racine, dont HKDF aurait tiré trois clés filles : `auth`,
+`data-enc`, `data-recover`. Aucun code ne dérive ainsi. L'étiquette `auth` n'a aucun
+consommateur, et SelfDataGuard ne consomme aucune clé de SelfRecover.
+
+- **La section 3 de la page sécurité**, en français et en anglais, dit ce que fait le code.
+  L'accès passe par SelfRecover : une empreinte `HMAC-SHA256` du mot, liée au site et salée
+  par compte, dont le serveur garde un Argon2id. Le mémo tire deux clés filles par étiquette
+  HKDF, `data-enc` depuis le mot de passe et `data-recover` depuis la passphrase de secours.
+  La récupération n'est unifiée que si cette passphrase est aussi celle de SelfRecover.
+- **Le PDF d'architecture (v1.1)** redessine le schéma A en deux branches qui ne se croisent
+  pas. Il précise aussi que « le serveur ne peut rien déchiffrer » vaut pour le mémo, pas pour
+  les messages et profils que SelfDataGuard chiffre côté serveur.
+- **`DataGuard` du lab ne dérive plus sa clé à chaque appel.** Chaque dérivation coûtait un
+  Argon2id de 64 Mio, environ 40 ms : lister 20 messages en payait 20. La clé est désormais
+  gardée par contexte le temps de la requête. La dérivation ne change pas, donc les données
+  existantes restent lisibles.
+
+### SelfRecover-LUKS n'installe plus un keyscript que le slot n'ouvrirait pas — 26 septembre 2026
+
+Un slot enrôlé en `raw` n'est pas ouvert par un keyscript qui produit de l'hexadécimal.
+Le keyscript livré produit de l'hex depuis le passage du 12/09, et une machine installée
+avant garde un slot `raw` : y déposer le nouveau keyscript la rend inamorçable, au
+redémarrage suivant ou à la prochaine mise à jour du noyau. Seul `INSTALL.md` §15 le
+disait ; le format enrôlé n'était écrit nulle part, donc rien ne pouvait s'y opposer.
+
+- **Le format enrôlé est inscrit, par volume** : `setup-add-selfrecover-slot.sh` écrit
+  `<UUID LUKS> <hex|raw>` dans `$SKG/format-slot` une fois le slot prouvé ouvrant. Le
+  marqueur est indexé par volume : un slot hex sur un volume de données ne dit rien de la
+  racine.
+- **`install.sh` refuse de poser un keyscript d'un autre format** que celui enrôlé pour la
+  racine. Il refuse aussi un keyscript déjà en place sans marqueur, et dit comment établir
+  le format réel puis l'inscrire.
+- `INSTALL.md` §15 compte les slots avant la migration, et passe le dépôt manuel du
+  keyscript par le même contrôle.
+
+Banc `tests/test_format_slot.sh`, 14 cas sur des conteneurs LUKS de 32 Mo, sans root. Un
+canari en CI retire la comparaison des formats, et le banc doit rougir sur le cas slot
+`raw` / keyscript `hex`. Quatre défauts plantés ont chacun fait rougir leur cas.
+
+### SelfDataGuard v0.4.0 — le chiffrement ne dépend plus du processeur — 26 septembre 2026
+
+Jusqu'à la 0.3.0, SelfDataGuard chiffrait en AES-256-GCM par libsodium, qui ne le sert
+qu'avec un support matériel : AES-NI, plus AVX depuis libsodium 1.0.19. Sur un Celeron
+sans AVX avec une libsodium récente, ou sur un Raspberry Pi 4, la bibliothèque ne pouvait
+ni écrire ni relire, et son message accusait AES-NI à tort.
+
+- **Toute écriture passe en XChaCha20-Poly1305**, calculé en logiciel et en temps constant
+  sur tout processeur, dans un format versionné : `SDG2.` suivi du base64.
+- **Les blobs écrits avant restent lisibles**, par libsodium là où il sert AES, par OpenSSL
+  ailleurs. Éprouvé sur un Raspberry Pi 4 sans AES matériel : les 8 bancs passent, et une
+  base écrite par la 0.3.0 se relit entièrement.
+- ⚠️ **Un blob écrit par la 0.4.0 ne se relit pas en 0.3.0** : un retour arrière ne vaut
+  que pour une base où la 0.4.0 n'a rien écrit.
+- Les clés et les clairs n'apparaissent plus dans les traces d'exception
+  (`#[\SensitiveParameter]`).
+
+Bancs : 219 contrôles, dont le vecteur de test officiel de XChaCha20-Poly1305 et un blob
+AES figé que libsodium et OpenSSL produisent à l'identique. Détail dans le CHANGELOG du
+module.
+
+### La console SU n'écrit plus au journal ce que la base a refusé — 26 septembre 2026
+
+- **La base et le journal réussissent ou échouent ensemble.** `first-admin`, `revoke-admin`,
+  le remplacement, `approve-request`, `reject-request` et la quarantaine d'`audit` écrivaient au
+  journal **avant** la base : une écriture refusée par la base laissait au journal un acte qui
+  n'avait pas eu lieu. Chaque verbe écrit désormais en base, puis au journal, dans une seule
+  transaction ; si le journal refuse, la base revient en arrière.
+- **Les déclencheurs du dernier admin suivent le code.** Posés en `CREATE TRIGGER IF NOT EXISTS`,
+  ils gardaient sur une base existante le corps qu'elle avait reçu à sa création. Leur texte est
+  comparé à l'ouverture et réécrit s'il diffère ; à texte égal, rien n'est écrit.
+
+Banc `sanity_first_admin.php` : 30 cas. Chacun des quatre ajoutés a été vu rougir sur son défaut
+planté.
+
 ### La console SU garde toujours un administrateur — 23 septembre 2026
 
 `selfrecover-su` nommait autant d'administrateurs qu'on voulait par `add-admin`, révoquait le

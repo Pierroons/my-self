@@ -60,8 +60,8 @@ return [
         . '</ul>',
 
     'sec.2.h2' => '2. Data encryption — two models, by sensitivity',
-    'sec.2.body' => '<p><strong>a) Server blind-key</strong> (profile: bio, location, link) — AES-256-GCM, key derived from a server secret held <em>outside the database and outside the webroot</em>. A SQL dump yields nothing but blobs.</p>'
-        . '<p><strong>b) Client-side end-to-end</strong> (personal memo) — encrypted in the <strong>browser</strong> (WebCrypto). <code>PBKDF2</code> (600k) → <code>HKDF</code> per label → a random <code>vault_key</code> encrypts the memo, itself wrapped in two envelopes (password and recovery passphrase). <strong>The server holds no key.</strong></p>'
+    'sec.2.body' => '<p><strong>a) Server blind-key</strong> (profile: bio, location, link) — XChaCha20-Poly1305, key derived from a server secret held <em>outside the database and outside the webroot</em>. A SQL dump yields nothing but blobs.</p>'
+        . '<p><strong>b) Client-side end-to-end</strong> (personal memo) — encrypted in the <strong>browser</strong> (WebCrypto). <code>Argon2id</code> (64 MiB, the SelfRecover profile) → <code>HKDF</code> per label → a random <code>vault_key</code> encrypts the memo, itself wrapped in two envelopes (password and recovery passphrase). <strong>The server holds no key.</strong></p>'
         . '<div class="mt">'
         . '<div class="ok"><h4>✅ What this protects</h4><ul>'
         . '<li>Blind-key: stolen disk, SQL dump, injection</li>'
@@ -73,11 +73,11 @@ return [
         . '</ul></div>'
         . '</div>',
 
-    'sec.3.h2' => '3. The shared foundation — SelfRecover ⇄ SelfDataGuard',
+    'sec.3.h2' => '3. One key per use — SelfRecover, the memo, SelfDataGuard',
     'sec.3.body' => '<ul>'
-        . '<li>One memorised <strong>root secret</strong>, one <strong>shared derivation primitive</strong>, and <strong>child keys separated by label</strong> (<code>auth</code> / <code>data-enc</code> / <code>data-recover</code>).</li>'
+        . '<li><strong>Each use derives its own key, through its own derivation.</strong> Access goes through SelfRecover: your browser computes an <code>HMAC-SHA256</code> fingerprint of your word, bound to the site name and salted per account; the server only keeps an Argon2id of it. The memo draws two child keys, separated by <code>HKDF</code> label: <code>data-enc</code> from your password, <code>data-recover</code> from your recovery passphrase.</li>'
         . '<li>Cardinal rule: <strong>never the same key for authentication and encryption</strong>. The server sees authentication; it must never be able to decrypt.</li>'
-        . '<li>Unified recovery: the same recovery word or passphrase restores access <em>and</em> data. Recovery strength comes from the <strong>entropy of the input</strong> (diceware passphrase), not from hash length.</li>'
+        . '<li>Recovery: if your memo\'s recovery passphrase is also your SelfRecover one, a single secret restores access <em>and</em> the memo — through two separate derivations, with no shared key. Recovery strength comes from the <strong>entropy of the input</strong> (diceware passphrase), not from hash length.</li>'
         . '</ul>',
 
     'sec.4.h2' => '4. Application hardening',
@@ -360,7 +360,7 @@ return [
     // ── Private messages ──────────────────────────────────────────────────
     'msg.title'    => 'Messages',
     'msg.h1'       => 'Private messages',
-    'msg.note'     => '🔒 Content encrypted at rest by <strong>SelfDataGuard</strong> (AES-256-GCM). A database dump reveals nothing but unreadable blobs.',
+    'msg.note'     => '🔒 Content encrypted at rest by <strong>SelfDataGuard</strong> (XChaCha20-Poly1305). A database dump reveals nothing but unreadable blobs.',
     'msg.new.h2'   => 'New message',
     'msg.to'       => 'Recipient (username)',
     'msg.to_ph'    => 'e.g. libriste',
@@ -463,7 +463,9 @@ return [
     'prf.js.required' => 'Password, passphrase and memo are required.',
     'prf.js.weakpass' => 'Recovery passphrase too weak: at least 4 words (reuse the one from your sign-up). This is what protects your memo if you lose your password.',
     'prf.js.created' => 'Vault created and encrypted locally. The server only received blobs.',
-    'prf.js.deriving' => 'Deriving the key (PBKDF2)…',
+    'prf.js.deriving' => 'Deriving the key (Argon2id, one to a few seconds)…',
+    'prf.js.sealing' => 'Sealing the vault: two Argon2id derivations, a few seconds…',
+    'prf.js.oldvault' => 'This vault was sealed before the move to Argon2id and can no longer be read. Create it again.',
     'prf.js.decrypted' => 'Decrypted locally. The key stays in this page and is never sent.',
     'prf.js.locked'  => 'Vault locked.',
     'prf.js.saved2'  => 'Memo re-encrypted and saved.',

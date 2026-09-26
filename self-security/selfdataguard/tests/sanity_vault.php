@@ -17,6 +17,7 @@ require __DIR__ . '/../src/autoload.php';
 use Pierroons\SelfDataGuard\Vault\UserVault;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
+use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 
 $failures = 0;
@@ -271,7 +272,7 @@ $legacyKey   = Primitives::deriveFromMemorizedLegacyV1(
     $legacyMem,
     $legacyRec->userSalt . UserVault::HMAC_CONTEXT_SUFFIX
 );
-$legacyWrap  = Primitives::aesGcmEncrypt(
+$legacyWrap  = Primitives::encrypt(
     $legacyBuild['unlocked']->getMasterKey(),
     $legacyKey,
     aad: $legacyRec->userId
@@ -284,6 +285,28 @@ try {
     str_contains($e->getMessage(), 'predates the Argon2id')
         ? ok('legacy wrap refused AND named — not passed off as a wrong secret')
         : ko('legacy wrap refused as a wrong secret — the zone is silent', $e->getMessage());
+}
+
+// A vault written by 0.3.0 wraps its key in AES-256-GCM. Built here by OpenSSL, so
+// that the writer is not the library that reads it back.
+if (!function_exists('openssl_encrypt')) {
+    echo "     (skipped: ext-openssl is needed to build a legacy AES wrap)\n";
+} else {
+    $aesBuild = $vault->register(userId: 'user-aes', password: 'correct horse battery staple');
+    $aesRec   = $aesBuild['record'];
+    $aesMaster = $aesBuild['unlocked']->getMasterKey();
+    $aesKey   = Primitives::deriveFromPassword('correct horse battery staple', $aesRec->userSalt);
+    $aesNonce = random_bytes(EncryptedBlob::NONCE_LEN_V1);
+    $aesCt    = openssl_encrypt($aesMaster, 'aes-256-gcm', $aesKey, OPENSSL_RAW_DATA, $aesNonce, $aesTag, $aesRec->userId, 16);
+    $aesRec   = $aesRec->withWrapPwd(new EncryptedBlob(ciphertext: $aesCt . $aesTag, nonce: $aesNonce), new DateTimeImmutable());
+    try {
+        $reopened = $vault->unlockWithPassword($aesRec, 'correct horse battery staple');
+        hash_equals($aesMaster, $reopened->getMasterKey())
+            ? ok('a vault whose wrap is legacy AES-256-GCM still unlocks by password')
+            : ko('a legacy AES wrap unlocked to a different master key');
+    } catch (RuntimeException $e) {
+        ko('a vault written before 0.4.0 no longer unlocks', $e->getMessage());
+    }
 }
 
 // -----------------------------------------------------------------------------

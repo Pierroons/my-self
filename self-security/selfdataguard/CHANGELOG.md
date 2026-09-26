@@ -5,6 +5,59 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [v0.4.0] — 2026-09-26
+
+### Changed — BREAKING (stored format) — XChaCha20-Poly1305 for every write
+
+Up to 0.3.0, every blob was AES-256-GCM through libsodium, which serves it only with
+hardware support: AES-NI on x86-64, plus AVX since libsodium 1.0.19, and the ARMv8
+crypto extensions since 1.0.19. On a CPU without them — a Celeron or Atom without
+AVX under a recent libsodium, a Raspberry Pi 4 under any version — the library could
+neither write nor read, and its error blamed AES-NI whatever the actual cause.
+
+- `Primitives::encrypt()` writes XChaCha20-Poly1305 (IETF), computed in software, in
+  constant time, on every CPU, with a random 192-bit nonce.
+- **Blobs are versioned.** A new blob is stored as `SDG2.` followed by
+  `base64(nonce ‖ ciphertext ‖ tag)`. `.` is not a base64 character, so no blob
+  written before 0.4.0 can begin with the prefix. An unknown `SDG<n>.` prefix is
+  refused as "written by a newer version".
+- **Blobs written before 0.4.0 stay readable.** `Primitives::decrypt()` reads both
+  formats: AES-256-GCM through libsodium where it serves AES, through OpenSSL
+  elsewhere. When neither is available it throws `LegacyCipherUnavailableException`,
+  which names the causes. `UserVault`, `EscrowVault` and the ceremony CLI let it
+  through instead of reporting a wrong password or a bad passphrase.
+- **No migration.** An existing blob stays AES-256-GCM until one of the existing
+  write paths replaces it (password change, field update).
+- ⚠️ **Once 0.4.0 has written a blob, 0.3.0 cannot read it.** It refuses it as
+  invalid base64: the failure is loud, not a misread. Roll back only a database that
+  0.4.0 has not written to.
+- `Primitives::NONCE_LEN` is now 24.
+
+### Deprecated
+
+- `Primitives::aesGcmEncrypt()` and `aesGcmDecrypt()` delegate to `encrypt()` and
+  `decrypt()`. Despite its name, `aesGcmEncrypt()` now writes XChaCha20-Poly1305.
+  Both are removed in 0.5.0.
+
+### Added
+
+- `#[\SensitiveParameter]` on every key, plaintext, password, memorized secret and
+  passphrase parameter. From PHP 8.2 they no longer appear in stack traces, whatever
+  `zend.exception_ignore_args` says. Under PHP 8.1 the attribute is inert.
+- `ext-openssl` in `suggest`: it reads AES-256-GCM blobs on a CPU where libsodium
+  does not serve AES.
+- `sanity_primitives.php`: the IETF XChaCha20-Poly1305 test vector
+  (draft-irtf-cfrg-xchacha-03, A.3.1); a frozen AES-256-GCM blob that must decrypt
+  forever; libsodium and OpenSSL reading each other's blobs. `sanity_vault.php`: a
+  vault whose wrap was written as AES-256-GCM by OpenSSL still unlocks.
+
+### Fixed
+
+- `sanity_fields.php` flipped a byte after `base64_decode()` of the whole stored
+  string. With a prefix, that decode also reads the letters of `SDG2`, and the
+  "tampered blob" check passed because the blob was garbage, not because the tag
+  failed. It now alters the ciphertext through `EncryptedBlob` and checks the reason.
+
 ## [v0.3.0] — 2026-09-07
 
 ### Changed — BREAKING (stored format) — the memorized secret is derived with Argon2id
@@ -45,7 +98,7 @@ the same, which was the point.
 multiplier, not entropy: a weak word is still ~13 bits of guessing plus ~13 bits of
 cost. A floor high enough to matter (77 bits) would end the "one memorized word,
 two uses" pairing with SelfRecover that the whitepaper sells elsewhere — a design
-decision, not a setting. It is now stated as an open question in whitepaper §7
+decision, not a setting. It is now stated as an open question in whitepaper §2.3
 instead of being answered silently in either direction.
 
 ### Fixed — documentation that described something else than the code
@@ -73,6 +126,20 @@ No migration therefore ships. Should a recovery wrap exist somewhere unmeasured,
 its holder loses that door on upgrade and must re-seal via `changeMemorized()`
 after unlocking by password — `unlockWithMemorized()` names that case explicitly
 instead of reporting a wrong secret.
+
+### Fixed before tagging — 2026-09-26
+
+The version shipped on 2026-09-07 and was never tagged; the tag carries these too.
+
+- **The public demo's API answered 500 on every call.** `demo/selfdataguard/api/_bootstrap.php`
+  required an autoloader left behind when the library moved to `self-security/selfdataguard/`.
+  It now loads the library where it lives; checked end to end on a copy (register, unlock by
+  password and by memorized word, wrong word refused).
+- The demo page announced v0.2.0 and described the memorized path as HMAC-SHA256.
+- `composer.json` described "memorized HMAC".
+- `docs/whitepaper-en.md` trailed the French edition: `p=4`, the SelfRecover formula in
+  `/recover` instead of `|v2` + salt, independence argued from HMAC on both sides, and
+  deployment rules (breach lists, a 30-bit floor) the library does not apply.
 
 ## [v0.2.0] — 2026-08-21
 
@@ -192,7 +259,7 @@ First runnable release. Whitepaper-driven implementation of the SelfDataGuard en
 - `wrap_admin` field is reserved in the schema for **Hybrid mode** (whitepaper §4.2) but not yet wired through the façade. Planned for v0.2.0.
 - This release is intended for **community cryptographic review** before any production use. A formal audit is targeted before v1.0.0.
 
-## [v0.0.1] — 2026-05-06
+## v0.0.1 — 2026-05-06 (untagged)
 
 ### Added
 
@@ -200,5 +267,8 @@ First runnable release. Whitepaper-driven implementation of the SelfDataGuard en
 - Initial README EN + FR
 - Repository structure under `self-security/selfdataguard/`
 
-[v0.1.0-beta]: https://github.com/Pierroons/my-self/tree/main/self-security/selfdataguard
-[v0.0.1]: https://github.com/Pierroons/my-self/blob/v0.0.1/self-security/selfdataguard/
+[Unreleased]: https://github.com/Pierroons/my-self/compare/selfdataguard-v0.4.0...dev
+[v0.4.0]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.4.0
+[v0.3.0]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.3.0
+[v0.2.0]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.2.0
+[v0.1.0-beta]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.1.0-beta

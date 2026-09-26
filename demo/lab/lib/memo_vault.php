@@ -18,7 +18,7 @@ use PDO;
 final class MemoVault
 {
     private const CHAMPS = [
-        'kdf_salt', 'kdf_iter', 'memo_iv', 'memo_ct',
+        'kdf_salt', 'kdf', 'memo_iv', 'memo_ct',
         'wrap_pw_iv', 'wrap_pw_ct', 'wrap_rec_iv', 'wrap_rec_ct',
     ];
 
@@ -26,7 +26,7 @@ final class MemoVault
     public static function get(PDO $pdo, int $accountId): ?array
     {
         $stmt = $pdo->prepare(
-            'SELECT kdf_salt, kdf_iter, memo_iv, memo_ct, wrap_pw_iv, wrap_pw_ct,
+            'SELECT kdf_salt, kdf, memo_iv, memo_ct, wrap_pw_iv, wrap_pw_ct,
                     wrap_rec_iv, wrap_rec_ct, updated_at
                FROM memo_vault WHERE account_id = ?'
         );
@@ -52,12 +52,12 @@ final class MemoVault
         $clean = [];
         foreach (self::CHAMPS as $c) {
             $v = (string) ($blobs[$c] ?? '');
-            if ($c === 'kdf_iter') {
-                $iter = (int) $v;
-                if ($iter < 100000 || $iter > 5000000) {
-                    return ['ok' => false, 'message' => 'Paramètre KDF hors bornes.'];
+            if ($c === 'kdf') {
+                $kdf = self::kdf($v);
+                if ($kdf === null) {
+                    return ['ok' => false, 'message' => 'Paramètres KDF invalides.'];
                 }
-                $clean[$c] = $iter;
+                $clean[$c] = $kdf;
                 continue;
             }
             // base64 strict, longueur raisonnable (anti-abus de stockage)
@@ -69,23 +69,43 @@ final class MemoVault
 
         $pdo->prepare(
             'INSERT INTO memo_vault
-               (account_id, kdf_salt, kdf_iter, memo_iv, memo_ct,
+               (account_id, kdf_salt, kdf_iter, kdf, memo_iv, memo_ct,
                 wrap_pw_iv, wrap_pw_ct, wrap_rec_iv, wrap_rec_ct, updated_at)
-             VALUES (:id,:salt,:iter,:miv,:mct,:pwiv,:pwct,:reciv,:recct,:ts)
+             VALUES (:id,:salt,0,:kdf,:miv,:mct,:pwiv,:pwct,:reciv,:recct,:ts)
              ON CONFLICT(account_id) DO UPDATE SET
-               kdf_salt=excluded.kdf_salt, kdf_iter=excluded.kdf_iter,
+               kdf_salt=excluded.kdf_salt, kdf_iter=0, kdf=excluded.kdf,
                memo_iv=excluded.memo_iv, memo_ct=excluded.memo_ct,
                wrap_pw_iv=excluded.wrap_pw_iv, wrap_pw_ct=excluded.wrap_pw_ct,
                wrap_rec_iv=excluded.wrap_rec_iv, wrap_rec_ct=excluded.wrap_rec_ct,
                updated_at=excluded.updated_at'
         )->execute([
-            ':id' => $accountId, ':salt' => $clean['kdf_salt'], ':iter' => $clean['kdf_iter'],
+            ':id' => $accountId, ':salt' => $clean['kdf_salt'], ':kdf' => $clean['kdf'],
             ':miv' => $clean['memo_iv'], ':mct' => $clean['memo_ct'],
             ':pwiv' => $clean['wrap_pw_iv'], ':pwct' => $clean['wrap_pw_ct'],
             ':reciv' => $clean['wrap_rec_iv'], ':recct' => $clean['wrap_rec_ct'],
             ':ts' => time(),
         ]);
         return ['ok' => true];
+    }
+
+    /**
+     * Les paramètres Argon2id du scellement, normalisés, ou null. Seule la FORME est
+     * vérifiée ici, avec des bornes contre l'abus de stockage : le plancher de lecture
+     * vit dans sr-kdf.js, qui refuse à la relecture des paramètres affaiblis.
+     */
+    private static function kdf(string $json): ?string
+    {
+        $k = json_decode($json, true);
+        if (!is_array($k) || ($k['alg'] ?? null) !== 'argon2id') {
+            return null;
+        }
+        foreach (['t' => [1, 20], 'm' => [8, 4194304], 'p' => [1, 16]] as $c => [$min, $max]) {
+            if (!is_int($k[$c] ?? null) || $k[$c] < $min || $k[$c] > $max) {
+                return null;
+            }
+        }
+
+        return json_encode(['alg' => 'argon2id', 't' => $k['t'], 'm' => $k['m'], 'p' => $k['p']]);
     }
 
     /**

@@ -6,6 +6,7 @@ namespace Pierroons\SelfDataGuard\Vault;
 
 use DateTimeImmutable;
 use InvalidArgumentException;
+use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use RuntimeException;
 
@@ -20,8 +21,8 @@ use RuntimeException;
  *     password_key     ←  Argon2id(password, user_salt)
  *     recov_key        ←  Argon2id(memorized, sha256(user_salt || "/dataguard"))
  *
- *     wrap_pwd         ←  AES-256-GCM-encrypt(data_master_key, password_key)
- *     wrap_recov       ←  AES-256-GCM-encrypt(data_master_key, recov_key)
+ *     wrap_pwd         ←  XChaCha20-Poly1305-encrypt(data_master_key, password_key)
+ *     wrap_recov       ←  XChaCha20-Poly1305-encrypt(data_master_key, recov_key)
  *
  * On authentication, the matching wrap is opened and the data_master_key is
  * loaded into an UnlockedVault for the duration of the session.
@@ -57,8 +58,8 @@ final class UserVault
      */
     public function register(
         string $userId,
-        string $password,
-        ?string $memorized = null
+        #[\SensitiveParameter] string $password,
+        #[\SensitiveParameter] ?string $memorized = null
     ): array {
         if ($userId === '') {
             throw new InvalidArgumentException('userId must not be empty');
@@ -72,7 +73,7 @@ final class UserVault
         $dataMasterKey = Primitives::randomBytes(Primitives::KEY_LEN);
 
         $passwordKey = Primitives::deriveFromPassword($password, $userSalt);
-        $wrapPwd     = Primitives::aesGcmEncrypt($dataMasterKey, $passwordKey, aad: $userId);
+        $wrapPwd     = Primitives::encrypt($dataMasterKey, $passwordKey, aad: $userId);
         Primitives::zeroize($passwordKey);
 
         $wrapRecov = null;
@@ -81,7 +82,7 @@ final class UserVault
                 $memorized,
                 $userSalt . self::HMAC_CONTEXT_SUFFIX
             );
-            $wrapRecov = Primitives::aesGcmEncrypt($dataMasterKey, $recovKey, aad: $userId);
+            $wrapRecov = Primitives::encrypt($dataMasterKey, $recovKey, aad: $userId);
             Primitives::zeroize($recovKey);
         }
 
@@ -107,7 +108,7 @@ final class UserVault
      *
      * @throws RuntimeException on wrong password (decryption auth failure)
      */
-    public function unlockWithPassword(VaultRecord $record, string $password): UnlockedVault
+    public function unlockWithPassword(VaultRecord $record, #[\SensitiveParameter] string $password): UnlockedVault
     {
         if ($password === '') {
             throw new InvalidArgumentException('password must not be empty');
@@ -115,11 +116,15 @@ final class UserVault
 
         $passwordKey = Primitives::deriveFromPassword($password, $record->userSalt);
         try {
-            $masterKey = Primitives::aesGcmDecrypt(
+            $masterKey = Primitives::decrypt(
                 $record->wrapPwd,
                 $passwordKey,
                 aad: $record->userId
             );
+        } catch (LegacyCipherUnavailableException $e) {
+            // A RuntimeException too: without this, the next catch calls it a wrong secret.
+            Primitives::zeroize($passwordKey);
+            throw $e;
         } catch (RuntimeException $e) {
             Primitives::zeroize($passwordKey);
             throw new RuntimeException(
@@ -139,7 +144,7 @@ final class UserVault
      *
      * @throws RuntimeException on wrong memorized secret OR if vault has no recovery wrap.
      */
-    public function unlockWithMemorized(VaultRecord $record, string $memorized): UnlockedVault
+    public function unlockWithMemorized(VaultRecord $record, #[\SensitiveParameter] string $memorized): UnlockedVault
     {
         if ($memorized === '') {
             throw new InvalidArgumentException('memorized must not be empty');
@@ -155,11 +160,15 @@ final class UserVault
             $record->userSalt . self::HMAC_CONTEXT_SUFFIX
         );
         try {
-            $masterKey = Primitives::aesGcmDecrypt(
+            $masterKey = Primitives::decrypt(
                 $record->wrapRecov,
                 $recovKey,
                 aad: $record->userId
             );
+        } catch (LegacyCipherUnavailableException $e) {
+            // A RuntimeException too: without this, the next catch calls it a wrong secret.
+            Primitives::zeroize($recovKey);
+            throw $e;
         } catch (RuntimeException $e) {
             Primitives::zeroize($recovKey);
             // Before answering "wrong secret", find out whether this wrap was
@@ -199,7 +208,7 @@ final class UserVault
     public function changePassword(
         VaultRecord $record,
         UnlockedVault $unlocked,
-        string $newPassword
+        #[\SensitiveParameter] string $newPassword
     ): VaultRecord {
         self::assertPasswordLength($newPassword, 'newPassword');
         if ($unlocked->userId !== $record->userId) {
@@ -208,7 +217,7 @@ final class UserVault
 
         $newPwdKey = Primitives::deriveFromPassword($newPassword, $record->userSalt);
         $masterKey = $unlocked->getMasterKey();
-        $newWrap   = Primitives::aesGcmEncrypt($masterKey, $newPwdKey, aad: $record->userId);
+        $newWrap   = Primitives::encrypt($masterKey, $newPwdKey, aad: $record->userId);
         Primitives::zeroize($newPwdKey);
 
         return $record->withWrapPwd($newWrap, $this->now());
@@ -221,7 +230,7 @@ final class UserVault
     public function changeMemorized(
         VaultRecord $record,
         UnlockedVault $unlocked,
-        ?string $newMemorized
+        #[\SensitiveParameter] ?string $newMemorized
     ): VaultRecord {
         if ($unlocked->userId !== $record->userId) {
             throw new InvalidArgumentException('UnlockedVault userId does not match record');
@@ -239,7 +248,7 @@ final class UserVault
             $record->userSalt . self::HMAC_CONTEXT_SUFFIX
         );
         $masterKey = $unlocked->getMasterKey();
-        $newWrap   = Primitives::aesGcmEncrypt($masterKey, $newRecovKey, aad: $record->userId);
+        $newWrap   = Primitives::encrypt($masterKey, $newRecovKey, aad: $record->userId);
         Primitives::zeroize($newRecovKey);
 
         return $record->withWrapRecov($newWrap, $this->now());
@@ -252,14 +261,14 @@ final class UserVault
      * never handed to a caller. Its single purpose is to tell "your secret is
      * wrong" apart from "your vault is old", which look identical from outside.
      */
-    private function wrapIsLegacyV1(VaultRecord $record, string $memorized): bool
+    private function wrapIsLegacyV1(VaultRecord $record, #[\SensitiveParameter] string $memorized): bool
     {
         $legacy = Primitives::deriveFromMemorizedLegacyV1(
             $memorized,
             $record->userSalt . self::HMAC_CONTEXT_SUFFIX
         );
         try {
-            $probe = Primitives::aesGcmDecrypt($record->wrapRecov, $legacy, aad: $record->userId);
+            $probe = Primitives::decrypt($record->wrapRecov, $legacy, aad: $record->userId);
             Primitives::zeroize($probe);
             return true;
         } catch (RuntimeException) {
@@ -269,7 +278,7 @@ final class UserVault
         }
     }
 
-    private static function assertPasswordLength(string $password, string $name = 'password'): void
+    private static function assertPasswordLength(#[\SensitiveParameter] string $password, string $name = 'password'): void
     {
         if ($password === '') {
             throw new InvalidArgumentException($name . ' must not be empty');

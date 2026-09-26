@@ -58,8 +58,8 @@ return [
         . '</ul>',
 
     'sec.2.h2' => '2. Chiffrement des données — deux modèles selon la sensibilité',
-    'sec.2.body' => '<p><strong>a) Blind-key serveur</strong> (profil : bio, localisation, lien) — AES-256-GCM, clé dérivée d\'un secret serveur stocké <em>hors base et hors webroot</em>. Un dump SQL ne révèle que des blobs.</p>'
-        . '<p><strong>b) Bout-en-bout côté client</strong> (mémo perso) — chiffré dans le <strong>navigateur</strong> (WebCrypto). <code>PBKDF2</code> (600k) → <code>HKDF</code> par étiquette → une <code>vault_key</code> aléatoire chiffre le mémo, wrappée dans deux enveloppes (mot de passe + passphrase de secours). <strong>Le serveur ne détient aucune clé.</strong></p>'
+    'sec.2.body' => '<p><strong>a) Blind-key serveur</strong> (profil : bio, localisation, lien) — XChaCha20-Poly1305, clé dérivée d\'un secret serveur stocké <em>hors base et hors webroot</em>. Un dump SQL ne révèle que des blobs.</p>'
+        . '<p><strong>b) Bout-en-bout côté client</strong> (mémo perso) — chiffré dans le <strong>navigateur</strong> (WebCrypto). <code>Argon2id</code> (64 Mio, le profil de SelfRecover) → <code>HKDF</code> par étiquette → une <code>vault_key</code> aléatoire chiffre le mémo, wrappée dans deux enveloppes (mot de passe + passphrase de secours). <strong>Le serveur ne détient aucune clé.</strong></p>'
         . '<div class="mt">'
         . '<div class="ok"><h4>✅ Ce que ça protège</h4><ul>'
         . '<li>Blind-key : vol de disque, dump SQL, injection</li>'
@@ -71,11 +71,11 @@ return [
         . '</ul></div>'
         . '</div>',
 
-    'sec.3.h2' => '3. Le socle commun — mapping SelfRecover ⇄ SelfDataGuard',
+    'sec.3.h2' => '3. Une clé par usage — SelfRecover, le mémo, SelfDataGuard',
     'sec.3.body' => '<ul>'
-        . '<li>Un seul <strong>secret racine</strong> mémorisé, une <strong>primitive de dérivation partagée</strong>, des <strong>clés filles séparées par étiquette</strong> (<code>auth</code> / <code>data-enc</code> / <code>data-recover</code>).</li>'
+        . '<li><strong>Chaque usage dérive sa propre clé, par sa propre dérivation.</strong> L\'accès passe par SelfRecover : ton navigateur calcule une empreinte <code>HMAC-SHA256</code> de ton mot, liée au nom du site et salée par compte ; le serveur n\'en garde qu\'un Argon2id. Le mémo tire deux clés filles, séparées par étiquette <code>HKDF</code> : <code>data-enc</code> depuis ton mot de passe, <code>data-recover</code> depuis ta passphrase de secours.</li>'
         . '<li>Règle d\'or : <strong>jamais la même clé pour l\'authentification et le chiffrement</strong> (le serveur voit l\'auth, il ne doit jamais pouvoir déchiffrer).</li>'
-        . '<li>Récupération unifiée : le même mot/passphrase de secours rend l\'accès <em>et</em> les données. La force du secours = <strong>entropie de l\'entrée</strong> (passphrase diceware), pas la taille du hash.</li>'
+        . '<li>Récupération : si la passphrase de secours de ton mémo est aussi celle de SelfRecover, un seul secret rend l\'accès <em>et</em> le mémo — par deux dérivations distinctes, sans clé commune. La force du secours = <strong>entropie de l\'entrée</strong> (passphrase diceware), pas la taille du hash.</li>'
         . '</ul>',
 
     'sec.4.h2' => '4. Durcissement applicatif',
@@ -360,7 +360,7 @@ return [
     // ── Messages privés ───────────────────────────────────────────────────
     'msg.title'    => 'Messages',
     'msg.h1'       => 'Messages privés',
-    'msg.note'     => '🔒 Contenu chiffré at-rest par <strong>SelfDataGuard</strong> (AES-256-GCM). Un dump de la base ne révèle que des blobs illisibles.',
+    'msg.note'     => '🔒 Contenu chiffré at-rest par <strong>SelfDataGuard</strong> (XChaCha20-Poly1305). Un dump de la base ne révèle que des blobs illisibles.',
     'msg.new.h2'   => 'Nouveau message',
     'msg.to'       => 'Destinataire (identifiant)',
     'msg.to_ph'    => 'ex : libriste',
@@ -463,7 +463,9 @@ return [
     'prf.js.required' => 'Mot de passe, passphrase et mémo requis.',
     'prf.js.weakpass' => 'Passphrase de récupération trop faible : au moins 4 mots (réutilise celle de ton inscription). C\'est ce qui protège ton mémo si tu perds ton mot de passe.',
     'prf.js.created' => 'Coffre créé et chiffré localement. Le serveur n\'a reçu que des blobs.',
-    'prf.js.deriving' => 'Dérivation de la clé (PBKDF2)…',
+    'prf.js.deriving' => 'Dérivation de la clé (Argon2id, une à quelques secondes)…',
+    'prf.js.sealing' => 'Scellement du coffre : deux dérivations Argon2id, quelques secondes…',
+    'prf.js.oldvault' => 'Ce coffre a été scellé avant le passage à Argon2id et ne se relit plus. Recrée-le.',
     'prf.js.decrypted' => 'Déchiffré localement. La clé reste dans cette page, jamais envoyée.',
     'prf.js.locked'  => 'Coffre verrouillé.',
     'prf.js.saved2'  => 'Mémo re-chiffré et enregistré.',

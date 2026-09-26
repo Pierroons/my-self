@@ -17,7 +17,7 @@
 
 ## Module compagnon — SelfDataGuard (concept)
 
-Pour les déploiements e-commerce ou SaaS qui ont également besoin de **protéger les données personnelles stockées** contre une exfiltration de base, voir le module compagnon [SelfDataGuard](../../self-security/selfdataguard/). SelfDataGuard réutilise le mot mémorisé de récupération SelfRecover comme l'un de ses facteurs d'encapsulage de clé (avec un séparateur de contexte strict : `/recover` pour l'auth, `/dataguard` pour les données), de sorte qu'un utilisateur qui oublie son mot de passe garde une voie vers chacune de ses deux moitiés : son mot mémorisé ouvre le coffre SelfDataGuard à lui seul, et sert de facteur de connaissance pour rouvrir le compte — avec le *recovery code* papier à côté.
+Pour les déploiements e-commerce ou SaaS qui ont également besoin de **protéger les données personnelles stockées** contre une exfiltration de base, voir le module compagnon [SelfDataGuard](../../self-security/selfdataguard/). SelfDataGuard réutilise le mot mémorisé de récupération SelfRecover comme l'un de ses facteurs d'encapsulage de clé (par deux dérivations distinctes : un HMAC lié au site côté SelfRecover, un Argon2id sous le contexte `/dataguard` côté données), de sorte qu'un utilisateur qui oublie son mot de passe garde une voie vers chacune de ses deux moitiés : son mot mémorisé ouvre le coffre SelfDataGuard à lui seul, et sert de facteur de connaissance pour rouvrir le compte — avec le *recovery code* papier à côté.
 
 SelfRecover protège l'**authentification**. SelfDataGuard protège les **données au repos**. Ensemble, ils ferment la boucle sur le cas qui fait le plus de dégâts : un dump où les jetons d'authentification **et** les données personnelles partent en clair, dans la même table.
 
@@ -92,6 +92,25 @@ Le matériel doit être **lu** dans le navigateur, jamais reçu du réseau. Un m
 | Hachage de l'identifiant public | SHA-256 | tronqué à 16 octets, puis encodé en hex |
 | Génération de passphrase (L1) | EFF Diceware | 4 mots, ≥ 51 bits d'entropie |
 | Sel du compte | 16 octets aléatoires, rendus en 32 hexadécimaux minuscules | un par compte, engendré par le navigateur à l'inscription (`srEngendrerSel`), stocké en clair (un sel n'est pas un secret) — obligatoire, la bibliothèque refuse toute autre forme |
+
+### D'où vient l'aléa
+
+Cinq dés, une liste de 7776 mots — soit exactement 6⁵.
+
+| Passphrase | Entropie |
+|---|---|
+| 1 mot (5 dés) | 12,9 bits |
+| 4 mots | 51,7 bits |
+| 6 mots | 77,5 bits |
+
+C'est mesurable et non reproductible. Un générateur logiciel produit une suite
+calculable à partir de son état interne ; les dés n'ont pas d'état.
+
+La liste anglaise est celle de l'EFF. La liste française est une liste
+communautaire, celle d'Arthur Pons (CC-BY 3.0), construite sur la méthode de l'EFF :
+il n'existe pas de liste officielle en français, celle-ci s'est imposée par l'usage. Les deux comptent 7776 entrées, donc les chiffres ci-dessus
+valent dans les deux langues.
+[La méthode papier est documentée pas à pas](./tools/entropy-lab/docs/diceware-method-fr.pdf).
 
 ### Modèle de stockage
 
@@ -325,7 +344,7 @@ Analyse complète : **[docs/threat-model.md](docs/threat-model.md)**
 
 ## Au-delà du web : déverrouillage de disque
 
-Le même mot de récupération, dérivé par **label** avec Argon2id, peut aussi servir de clé de secours pour un volume chiffré **LUKS2** — permettant à une machine de déverrouiller son disque sans email ni tiers, quand son mécanisme principal (un quorum de témoins distribués) est indisponible. Le label sépare la clé web de la clé disque : aucune ne permet de dériver l'autre.
+Un module compagnon applique la même idée au disque : un volume chiffré **LUKS2** se déverrouille avec une passphrase de récupération, sans email ni tiers. C'est un secret distinct — une passphrase diceware tirée pour chaque machine, dérivée par Argon2id sous le label `disk` — et non le mot mémorisé de tes comptes web : aucun des deux n'ouvre l'autre.
 
 C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecover-luks/)**, **déployé** : serveur LNMP (07/06/2026) puis poste portable chiffré (22/08/2026), avec son guide d'installation à deux parcours. Son guide d'installation couvre deux parcours, serveur et poste de travail.
 

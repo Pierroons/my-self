@@ -21,15 +21,9 @@ volumes (key-file), reproducible reboots. Documented, reproducible install →
 
 ## The principle
 
-One memorized recovery passphrase → **Argon2id** derivation per **label** → compartmentalized child keys:
+A recovery passphrase — diceware, drawn for each machine by `genere-passphrase.py` — goes through **Argon2id** under the label `disk`, which yields the key of a **LUKS2 slot**.
 
-| label | use |
-|-------|-----|
-| `auth` | prove / recover access (SelfRecover web) |
-| `data-enc` | encrypt application data (SelfDataGuard) |
-| `disk` | **key for a LUKS2 slot** (this module) |
-
-The label changes the effective salt → two keys from the same secret are independent. Argon2id
+The label changes the effective salt → two keys drawn from the same secret under two labels are independent. The derivator accepts other labels (`--label`), but **only `disk` has a consumer** (`selfrecover-keyscript.sh`): SelfRecover web and SelfDataGuard do not go through it. Argon2id
 (memory-hard) because a disk key is brute-forceable **offline** if the drive is stolen. Resistance comes **first from the passphrase entropy**; Argon2id slows each attempt but does not offset a weak secret.
 
 ## Architecture
@@ -48,6 +42,10 @@ Recovery passphrase (entered once, remotely via boot SSH)
   admin types their passphrase.
 - **Cascade**: non-root volumes are opened by `systemd-cryptsetup` via a key-file kept inside
   the encrypted root vault (a stolen drive stays unreadable).
+- **The root volume is a keyring**: what it holds opens the rest. The key files of the
+  secondary volumes live there and, on a host that signs its own kernels, so does the Secure
+  Boot signing key. The disk does not only protect files: it protects the keys that open
+  others.
 - **Anti-lockout net**: every volume keeps a **native** slot (classic passphrase), never
   removed, openable by hand if the keyscript fails.
 
@@ -63,6 +61,7 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | `selfrecover-keyscript.sh` | root-volume keyscript (derives the recovery passphrase) |
 | `initramfs-hook-selfrecover` | embeds binary + libargon2 + **libgcc** + salt + keyscript in the initrd |
 | `setup-add-selfrecover-slot.sh` | adds a recovery slot to a LUKS volume (authorized by an existing key) |
+| `format-slot.sh` | records the enrolled key format per volume, and refuses to install a keyscript of another format |
 | `selfrecover-unlock.sh` | standalone emergency unlock (userspace) |
 | `selfrecover-secours.sh` | `command=` of the boot SSH key: offers the recovery passphrase **or** the native passphrase, **never a shell** |
 | `verifie-initramfs.sh` | compares the images in `/boot` with the fingerprint recorded on the encrypted volume — makes an image modified off-machine visible |

@@ -75,13 +75,13 @@ CREATE TABLE IF NOT EXISTS posts (
 );
 CREATE INDEX IF NOT EXISTS idx_posts_thread ON posts(thread_id, created_at);
 
--- Messages privés — contenu CHIFFRÉ at-rest (AES-256-GCM via SelfDataGuard Primitives).
+-- Messages privés — contenu CHIFFRÉ at-rest (XChaCha20-Poly1305 via SelfDataGuard Primitives).
 -- Un dump SQL ne révèle QUE le ciphertext : illisible sans la blind key serveur.
 CREATE TABLE IF NOT EXISTS dm (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     sender_id     INTEGER NOT NULL,
     recipient_id  INTEGER NOT NULL,
-    ciphertext    TEXT NOT NULL,         -- base64(AES-256-GCM blob) — JAMAIS de plaintext
+    ciphertext    TEXT NOT NULL,         -- blob SelfDataGuard — JAMAIS de plaintext
     created_at    INTEGER NOT NULL,
     lu            INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (sender_id) REFERENCES accounts(id) ON DELETE CASCADE,
@@ -89,11 +89,11 @@ CREATE TABLE IF NOT EXISTS dm (
 );
 CREATE INDEX IF NOT EXISTS idx_dm_recipient ON dm(recipient_id, created_at);
 
--- Profil membre — champs perso CHIFFRÉS at-rest (AES-256-GCM via SelfDataGuard).
+-- Profil membre — champs perso CHIFFRÉS at-rest (XChaCha20-Poly1305 via SelfDataGuard).
 -- Un dump SQL ne révèle que des blobs : aucune donnée personnelle en clair.
 CREATE TABLE IF NOT EXISTS profiles (
     account_id   INTEGER PRIMARY KEY,
-    ciphertext   TEXT NOT NULL,        -- base64(AES-256-GCM) du JSON {bio, localisation, lien}
+    ciphertext   TEXT NOT NULL,        -- blob SelfDataGuard du JSON {bio, localisation, lien}
     updated_at   INTEGER NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
@@ -151,15 +151,15 @@ CREATE TABLE IF NOT EXISTS mod_pack_flags (
 CREATE INDEX IF NOT EXISTS idx_packflags_voter ON mod_pack_flags(voter_id, detected_at);
 
 -- Rapports red team — soumis via formulaire public. Le corps du rapport
--- (titre, description, repro, contact) est CHIFFRÉ at-rest via SelfDataGuard :
--- la base ne révèle qu'un blob. handle/severity/target restent en clair (tri + hall of fame).
+-- (titre, description, repro, contact) est chiffré en PGP dans le navigateur :
+-- la base ne révèle qu'un message PGP. handle/severity/target restent en clair (tri + hall of fame).
 -- L'IP n'est jamais stockée en clair : seulement un HMAC (rate-limit anti-spam).
 CREATE TABLE IF NOT EXISTS redteam_reports (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     handle      TEXT,                              -- pseudo public (hall of fame), peut être vide
     severity    TEXT NOT NULL DEFAULT 'info',      -- info|faible|moyen|eleve|critique
     target      TEXT,                              -- scénario ciblé (memo|auth|dm|moderation|web|autre)
-    ciphertext  TEXT NOT NULL,                     -- base64(AES-256-GCM) du JSON {titre, description, repro, contact}
+    ciphertext  TEXT NOT NULL,                     -- message PGP armuré, chiffré côté client — jamais le rapport en clair
     status      TEXT NOT NULL DEFAULT 'nouveau',   -- nouveau|valide|rejete
     ip_hash     TEXT,                              -- HMAC-SHA256 de l'IP (rate-limit), jamais l'IP en clair
     created_at  INTEGER NOT NULL
@@ -173,11 +173,13 @@ CREATE INDEX IF NOT EXISTS idx_redteam_iphash ON redteam_reports(ip_hash, create
 --   memo_ct  : le mémo chiffré par une vault_key aléatoire (AES-256-GCM)
 --   wrap_pw  : la vault_key chiffrée par la clé dérivée du PASSWORD (enveloppe A)
 --   wrap_rec : la vault_key chiffrée par la clé dérivée de la PASSPHRASE (enveloppe B)
--- Tous les champs *_ct/*_iv sont en base64. kdf_salt/kdf_iter = paramètres PBKDF2.
+-- Tous les champs *_ct/*_iv sont en base64. kdf_salt : le sel (16 octets) ; kdf : les
+-- paramètres Argon2id du scellement, en JSON. kdf_iter ne sert plus et vaut 0.
 CREATE TABLE IF NOT EXISTS memo_vault (
     account_id   INTEGER PRIMARY KEY,
     kdf_salt     TEXT NOT NULL,
     kdf_iter     INTEGER NOT NULL,
+    kdf          TEXT,
     memo_iv      TEXT NOT NULL,
     memo_ct      TEXT NOT NULL,
     wrap_pw_iv   TEXT NOT NULL,

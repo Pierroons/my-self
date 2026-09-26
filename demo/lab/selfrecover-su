@@ -214,6 +214,25 @@ function su_find_account(PDO $db, string $username): ?array
 }
 
 /**
+ * Écrit en base puis au journal, dans une seule transaction. Une garde de la
+ * base qui refuse arrête tout avant le journal ; un journal qui refuse ramène
+ * la base en arrière. Reste une fenêtre : un COMMIT qui échoue après l'écriture
+ * au journal.
+ */
+function su_ecrire_et_journaliser(PDO $db, string $action, string $cible, array $extra, callable $ecrire): void
+{
+    $db->beginTransaction();
+    try {
+        $ecrire($db);
+        SuAudit::append($action, $cible, $extra);
+        $db->commit();
+    } catch (Throwable $e) {
+        $db->rollBack();
+        su_fail("$action refusé, rien n'a changé ni en base ni au journal — " . $e->getMessage());
+    }
+}
+
+/**
  * Clé de chiffrement de la sauvegarde, dérivée de la passphrase SU par Argon2id
  * avec un sel propre à chaque fichier.
  *
@@ -398,8 +417,9 @@ switch ($cmd) {
             su_fail("$nb administrateur(s) en base sans amorçage au journal — lance `audit`.", 5);
         }
         $acc = su_find_account($db, $u) ?: su_fail("Compte « $u » introuvable — il doit s'inscrire d'abord.");
-        SuAudit::append(SuAudit::ACTION_FIRST_ADMIN, $u);
-        $db->prepare('UPDATE accounts SET is_admin = 1 WHERE id = ?')->execute([$acc['id']]);
+        su_ecrire_et_journaliser($db, SuAudit::ACTION_FIRST_ADMIN, $u, [], static function (PDO $db) use ($acc): void {
+            $db->prepare('UPDATE accounts SET is_admin = 1 WHERE id = ?')->execute([$acc['id']]);
+        });
         su_ok("« $u » est le premier administrateur (journalisé). La voie `first-admin` est close.");
         break;
 
@@ -430,9 +450,10 @@ switch ($cmd) {
                     6
                 );
             }
-            SuAudit::append(SuAudit::ACTION_REVOKE_ADMIN, $u);
-            $db->prepare('UPDATE accounts SET is_admin = 0 WHERE id = ?')->execute([$acc['id']]);
-            $db->prepare('DELETE FROM app_sessions WHERE account_id = ?')->execute([$acc['id']]);
+            su_ecrire_et_journaliser($db, SuAudit::ACTION_REVOKE_ADMIN, $u, [], static function (PDO $db) use ($acc): void {
+                $db->prepare('UPDATE accounts SET is_admin = 0 WHERE id = ?')->execute([$acc['id']]);
+                $db->prepare('DELETE FROM app_sessions WHERE account_id = ?')->execute([$acc['id']]);
+            });
             su_ok("« $u » révoqué — sessions coupées, journalisé.");
             break;
         }
@@ -441,14 +462,19 @@ switch ($cmd) {
         if ((int) $rem['is_admin'] === 1) {
             su_fail("« $r » est déjà administrateur : révoque « $u » sans --remplacant.");
         }
-        SuAudit::append(SuAudit::ACTION_REPLACE_ADMIN, $u, ['revoque' => $u, 'promu' => $r]);
-        // Promouvoir d'abord : l'ordre inverse ferait passer la base par zéro
-        // admin, et la garde de `Db::migrate()` refuserait la transaction.
-        $db->beginTransaction();
-        $db->prepare('UPDATE accounts SET is_admin = 1 WHERE id = ?')->execute([$rem['id']]);
-        $db->prepare('UPDATE accounts SET is_admin = 0 WHERE id = ?')->execute([$acc['id']]);
-        $db->prepare('DELETE FROM app_sessions WHERE account_id = ?')->execute([$acc['id']]);
-        $db->commit();
+        su_ecrire_et_journaliser(
+            $db,
+            SuAudit::ACTION_REPLACE_ADMIN,
+            $u,
+            ['revoque' => $u, 'promu' => $r],
+            static function (PDO $db) use ($acc, $rem): void {
+                // Promouvoir d'abord : l'ordre inverse ferait passer la base par zéro
+                // admin, et la garde de `Db::migrate()` refuserait la transaction.
+                $db->prepare('UPDATE accounts SET is_admin = 1 WHERE id = ?')->execute([$rem['id']]);
+                $db->prepare('UPDATE accounts SET is_admin = 0 WHERE id = ?')->execute([$acc['id']]);
+                $db->prepare('DELETE FROM app_sessions WHERE account_id = ?')->execute([$acc['id']]);
+            }
+        );
         su_ok("« $u » révoqué et remplacé par « $r » — sessions de « $u » coupées, journalisé.");
         break;
 
@@ -500,18 +526,17 @@ switch ($cmd) {
         $acc = su_find_account($db, $req['target_username'])
             ?: su_fail("Cible « {$req['target_username']} » introuvable — le compte a disparu depuis la demande.");
 
-        SuAudit::append(SuAudit::ACTION_APPROVE_REQUEST, $req['target_username'], [
+        su_ecrire_et_journaliser($db, SuAudit::ACTION_APPROVE_REQUEST, $req['target_username'], [
             'request_id'   => (int) $id,
             'requester'    => $req['requester_username'],
             'reason'       => $req['reason'],
             'requested_at' => (int) $req['created_at'],
             'su_note'      => $note,
-        ]);
-        $db->beginTransaction();
-        $db->prepare('UPDATE accounts SET is_admin = 1 WHERE id = ?')->execute([$acc['id']]);
-        $db->prepare("UPDATE admin_requests SET status = 'approved', su_note = ?, decided_at = ? WHERE id = ?")
-            ->execute([$note, time(), $id]);
-        $db->commit();
+        ], static function (PDO $db) use ($acc, $note, $id): void {
+            $db->prepare('UPDATE accounts SET is_admin = 1 WHERE id = ?')->execute([$acc['id']]);
+            $db->prepare("UPDATE admin_requests SET status = 'approved', su_note = ?, decided_at = ? WHERE id = ?")
+                ->execute([$note, time(), $id]);
+        });
         su_ok("Demande #$id approuvée — « {$req['target_username']} » promu administrateur.");
         break;
 
@@ -524,15 +549,16 @@ switch ($cmd) {
         $st->execute([$id]);
         $req = $st->fetch() ?: su_fail("Demande #$id introuvable ou déjà traitée.");
 
-        SuAudit::append(SuAudit::ACTION_REJECT_REQUEST, $req['target_username'], [
+        su_ecrire_et_journaliser($db, SuAudit::ACTION_REJECT_REQUEST, $req['target_username'], [
             'request_id'   => (int) $id,
             'requester'    => $req['requester_username'],
             'reason'       => $req['reason'],
             'requested_at' => (int) $req['created_at'],
             'su_note'      => $note,
-        ]);
-        $db->prepare("UPDATE admin_requests SET status = 'rejected', su_note = ?, decided_at = ? WHERE id = ?")
-            ->execute([$note, time(), $id]);
+        ], static function (PDO $db) use ($note, $id): void {
+            $db->prepare("UPDATE admin_requests SET status = 'rejected', su_note = ?, decided_at = ? WHERE id = ?")
+                ->execute([$note, time(), $id]);
+        });
         su_ok("Demande #$id refusée (journalisé).");
         break;
 
@@ -569,10 +595,17 @@ switch ($cmd) {
                     fwrite(STDOUT, "   ⚠️  $g  (--dry-run : non bloqué)\n");
                     continue;
                 }
-                SuAudit::append(SuAudit::ACTION_QUARANTINE, $g, ['reason' => 'is_admin=1 sans entrée de création au journal']);
-                $db->prepare('UPDATE accounts SET is_admin = 0 WHERE username = ?')->execute([$g]);
-                $db->prepare('DELETE FROM app_sessions WHERE account_id = (SELECT id FROM accounts WHERE username = ?)')
-                    ->execute([$g]);
+                su_ecrire_et_journaliser(
+                    $db,
+                    SuAudit::ACTION_QUARANTINE,
+                    $g,
+                    ['reason' => 'is_admin=1 sans entrée de création au journal'],
+                    static function (PDO $db) use ($g): void {
+                        $db->prepare('UPDATE accounts SET is_admin = 0 WHERE username = ?')->execute([$g]);
+                        $db->prepare('DELETE FROM app_sessions WHERE account_id = (SELECT id FROM accounts WHERE username = ?)')
+                            ->execute([$g]);
+                    }
+                );
                 fwrite(STDOUT, "   🔒 $g → quarantaine (droits révoqués, sessions coupées, journalisé)\n");
             }
             exit(4);

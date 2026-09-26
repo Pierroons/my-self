@@ -21,15 +21,9 @@ reproductible → **[INSTALL.md](./INSTALL.md)**.
 
 ## Le principe
 
-Une passphrase de récupération mémorisée → dérivation **Argon2id** par **label** → clés filles cloisonnées :
+Une passphrase de récupération — diceware, tirée pour chaque machine par `genere-passphrase.py` — passe par **Argon2id** sous le label `disk`, ce qui donne la clé d'un **slot LUKS2**.
 
-| label | usage |
-|-------|-------|
-| `auth` | prouver / retrouver l'accès (SelfRecover web) |
-| `data-enc` | chiffrer la donnée applicative (SelfDataGuard) |
-| `disk` | **clé d'un slot LUKS2** (ce module) |
-
-Le label change le sel effectif → deux clés du même secret sont indépendantes. Argon2id
+Le label change le sel effectif → deux clés tirées du même secret sous deux labels sont indépendantes. Le dérivateur accepte d'autres labels (`--label`), mais **seul `disk` a un consommateur** (`selfrecover-keyscript.sh`) : SelfRecover web et SelfDataGuard ne passent pas par lui. Argon2id
 (memory-hard) car une clé de disque est attaquable **hors-ligne** en cas de vol du support. La résistance vient **d'abord de l'entropie de la passphrase** ; Argon2id ralentit chaque essai, il ne sauve pas un secret faible.
 
 ## Architecture
@@ -48,6 +42,10 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
   l'administrateur saisit sa passphrase.
 - **Cascade** : les volumes non-racine sont ouverts par `systemd-cryptsetup` via un fichier-clé
   rangé dans le coffre racine chiffré (un disque volé reste illisible).
+- **Le volume racine est un trousseau** : ce qu'il contient ouvre le reste. Les fichiers-clés
+  des volumes secondaires y vivent, et sur un poste qui signe ses propres noyaux, la clé de
+  signature Secure Boot aussi. Le disque ne protège pas que des fichiers : il protège les clés
+  qui en ouvrent d'autres.
 - **Filet anti-verrouillage** : chaque volume garde un slot **natif** (passphrase classique),
   jamais retiré, ouvrable manuellement si le keyscript défaille.
 
@@ -63,6 +61,7 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | `selfrecover-keyscript.sh` | keyscript du volume racine (dérive la passphrase recover) |
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript dans l'initrd |
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS (autorisé par une clé existante) |
+| `format-slot.sh` | inscrit le format de clé enrôlé par volume, et refuse de poser un keyscript d'un autre format |
 | `selfrecover-unlock.sh` | déverrouillage de secours autonome (userspace) |
 | `selfrecover-secours.sh` | `command=` de la clé du SSH d'amorçage : propose la passphrase recover **ou** la passphrase native, **jamais un shell** |
 | `verifie-initramfs.sh` | compare les images de `/boot` à l'empreinte consignée sur le volume chiffré — rend visible une image modifiée hors de la machine |

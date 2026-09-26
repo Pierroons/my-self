@@ -5,13 +5,13 @@ declare(strict_types=1);
 /**
  * Bootstrap shared by every demo API endpoint.
  *
- * - Loads the local autoloader
+ * - Loads the SelfDataGuard library autoloader
  * - Sets a JSON content-type
  * - Constructs (and caches) a SelfDataGuard façade backed by a local SQLite DB
  * - Generates and persists a stable blindKey on first run
  */
 
-require __DIR__ . '/../../src/autoload.php';
+require __DIR__ . '/../../../self-security/selfdataguard/src/autoload.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\SelfDataGuard;

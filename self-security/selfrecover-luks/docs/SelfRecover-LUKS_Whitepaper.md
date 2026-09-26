@@ -34,22 +34,21 @@ Le flux se résume ainsi :
 ```
 Passphrase de récupération (mémorisée)
    │  dérivation Argon2id, cloisonnée par étiquette
-   ▼  clés filles indépendantes (étiquettes : disk / auth / data-enc …)
+   ▼  clé d'un slot LUKS (étiquette « disk »)
    ├──► volume RACINE      : keyscript dans l'image d'amorçage
    │                          + accès distant SSH minimal (saisie à distance)
    └──► volumes SECONDAIRES : fichier-clé stocké sur la racine chiffrée
                               → ouverture automatique après le pivot
 ```
 
-## 4. Le secret unifié : dérivation cloisonnée par étiquette
+## 4. Dérivation cloisonnée par étiquette
 
-Une unique passphrase racine produit des clés filles indépendantes selon une étiquette :
+D'une même passphrase, le dérivateur produit des clés indépendantes selon une étiquette. **Une
+seule a un consommateur : « disk »**, la clé d'un slot LUKS, que le keyscript dérive au
+démarrage. Le dérivateur en accepte d'autres, mais aucun module n'en emploie : SelfRecover web
+dérive par un HMAC lié au site, SelfDataGuard par son propre Argon2id.
 
-- **étiquette « disk » —** clé d'un slot LUKS (déverrouillage disque) ;
-- **étiquette « auth » —** preuve d'identité / d'accès applicatif ;
-- **étiquette « data-enc » —** chiffrement de données applicatives.
-
-Le sel effectif est dérivé par `SHA-256(sel_de_déploiement || étiquette)`, tronqué. Le `sel_de_déploiement` doit être **aléatoire et unique par machine** (issu de `/dev/urandom`) : c'est lui qui sépare deux déploiements et empêche tout précalcul. Deux étiquettes issues du même secret produisent des clés non corrélées : compromettre la clé applicative ne révèle pas la clé disque.
+Le sel effectif est dérivé par `SHA-256(sel_de_déploiement + ":" + étiquette)`, tronqué à 16 octets. Le `sel_de_déploiement` doit être **aléatoire et unique par machine** (issu de `/dev/urandom`) : c'est lui qui sépare deux déploiements et empêche tout précalcul. Deux étiquettes issues du même secret produisent des clés non corrélées : compromettre une clé dérivée sous une autre étiquette ne révèle pas la clé disque.
 
 La dérivation emploie **Argon2id** (memory-hard ; paramètres `t=3`, `m=64 MiB`, `p=4`), qui rend coûteux chaque essai d'une attaque hors-ligne sur un support volé. Ce coût est un **facteur de ralentissement, pas une garantie** : la résistance au bruteforce tient **d'abord à l'entropie de la passphrase de récupération** — Argon2id renchérit chaque essai, il ne compense pas un secret faible. Les paramètres sont un compromis (un déverrouillage au démarrage qui reste praticable) et peuvent être renforcés selon le matériel.
 

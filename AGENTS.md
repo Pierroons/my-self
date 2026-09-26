@@ -9,7 +9,7 @@ Instructions pour les agents de code travaillant sur MySelf. Lire aussi
 |---|---|
 | `bi-self/` | SelfRecover (recovery sans email/SMS), SelfModerate |
 | `self-right/` | SelfJustice (consultation du droit français et européen), SelfAct |
-| `self-security/` | SelfDataGuard (chiffrement enveloppé), SelfGuard, SelfKeyGuard, SelfRecover-LUKS |
+| `self-security/` | SelfDataGuard (chiffrement enveloppé), SelfRecover-LUKS |
 | `demo/` | ce qui se lance pour montrer : `bi-self-duo/`, `selfdataguard/`, `lab/` |
 | `web/` | ce qui est servi statiquement, un dossier par domaine |
 | `deploy/` | nginx et systemd, un dossier par cible |

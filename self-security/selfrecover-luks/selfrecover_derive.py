@@ -13,8 +13,8 @@ vocabulaire de L2 employé ici a essaimé jusqu'au README racine du monorepo, o�
 des deux niveaux.
 
 ⚠️ `--label` est une CAPACITÉ de ce dérivateur, pas une architecture déployée : seul
-`disk` a un consommateur (`selfrecover-keyscript.sh`). Les étiquettes `auth` et
-`data-enc` citées dans la documentation n'existent dans aucun code du monorepo.
+`disk` a un consommateur (`selfrecover-keyscript.sh`). Aucun module ne dérive `auth` ni
+`data-enc` par ce dérivateur.
   - label "auth"     -> prouver/retrouver l'accès (web)
   - label "data-enc" -> chiffrer la donnée applicative (SelfDataGuard)
   - label "disk"     -> key-file pour un slot LUKS (FDE du SSD /data)

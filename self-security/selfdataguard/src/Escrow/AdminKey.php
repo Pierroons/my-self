@@ -17,8 +17,10 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
  * deployment server (VPS/NAS) SEALED by an admin passphrase (Argon2id), exactly
  * like the SelfRecover-SU secret model:
  *
- *   sealed_secret = base64(salt) || ":" || base64( AES-256-GCM(secret_key,
+ *   sealed_secret = base64(salt) || ":" || EncryptedBlob( XChaCha20-Poly1305(secret_key,
  *                        key = Argon2id(passphrase, salt)) )
+ *
+ * A secret sealed before 0.4.0 carries an AES-256-GCM blob; unseal() still opens it.
  *
  * Threat model consequence: a server seized cold gives the attacker the DB, the
  * blindKey, the admin PUBLIC key and this sealed blob — but WITHOUT the admin
@@ -43,7 +45,7 @@ final class AdminKey
      *
      * @return array{publicKey: string, sealedSecret: string} both base64
      */
-    public static function generate(string $passphrase): array
+    public static function generate(#[\SensitiveParameter] string $passphrase): array
     {
         if ($passphrase === '') {
             throw new InvalidArgumentException('Admin passphrase must not be empty');
@@ -55,7 +57,7 @@ final class AdminKey
 
         $salt    = Primitives::randomBytes(Primitives::SALT_LEN);
         $sealKey = Primitives::deriveFromPassword($passphrase, $salt);
-        $blob    = Primitives::aesGcmEncrypt($secretKey, $sealKey, aad: self::SEAL_AAD);
+        $blob    = Primitives::encrypt($secretKey, $sealKey, aad: self::SEAL_AAD);
 
         Primitives::zeroize($sealKey);
         sodium_memzero($secretKey);
@@ -73,7 +75,7 @@ final class AdminKey
      *
      * @throws \RuntimeException on wrong passphrase (auth tag mismatch)
      */
-    public static function unseal(string $sealedSecret, string $passphrase): string
+    public static function unseal(string $sealedSecret, #[\SensitiveParameter] string $passphrase): string
     {
         if ($passphrase === '') {
             throw new InvalidArgumentException('Admin passphrase must not be empty');
@@ -89,7 +91,7 @@ final class AdminKey
         }
 
         $sealKey   = Primitives::deriveFromPassword($passphrase, $salt);
-        $secretKey = Primitives::aesGcmDecrypt(EncryptedBlob::fromBase64($blobB64), $sealKey, aad: self::SEAL_AAD);
+        $secretKey = Primitives::decrypt(EncryptedBlob::fromBase64($blobB64), $sealKey, aad: self::SEAL_AAD);
         Primitives::zeroize($sealKey);
 
         return $secretKey;

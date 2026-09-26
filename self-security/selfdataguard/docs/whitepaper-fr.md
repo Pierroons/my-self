@@ -1,9 +1,9 @@
-# SelfDataGuard — Whitepaper v0.0.1
+# SelfDataGuard — Whitepaper
 
 **Protection des données personnelles au repos côté application**
 *Dump ma base — et tu obtiens du bruit chiffré.*
 
-*Édition du 23 juillet 2026 — v0.0.1*
+*Édition du 26 septembre 2026 — décrit SelfDataGuard v0.4.0*
 
 ---
 
@@ -33,7 +33,7 @@ Tous les produits de chiffrement des données au repos actuels partagent une fai
 | AWS RDS encryption / Aurora encryption | KMS AWS, transparent à l'application | ✗ Oui |
 | Application-level encryption (AES + clé en `.env`) | Variable d'environnement / Vault accessible à l'app | ✗ Oui |
 
-Dans les six cas, un attaquant qui obtient un shell sur le serveur applicatif (RCE, escalade de privilèges, vol de clé SSH) obtient **simultanément** la base et la clé. Le chiffrement au repos n'apporte alors **aucune protection** — il protégeait uniquement contre un attaquant ayant le disque sans le serveur (cas de figure rare en pratique).
+Dans les cinq cas, un attaquant qui obtient un shell sur le serveur applicatif (RCE, escalade de privilèges, vol de clé SSH) obtient **simultanément** la base et la clé. Le chiffrement au repos n'apporte alors **aucune protection** — il protégeait uniquement contre un attaquant ayant le disque sans le serveur (cas de figure rare en pratique).
 
 ### 1.2 La vraie question
 
@@ -73,16 +73,16 @@ Conséquences directes :
     recov_key        ← Argon2id(mot_memorise, sha256(user_salt || "/dataguard")[0:16], m=65536, t=3, p=1)
 
 Étape 4 — Encapsulage de la clé maîtresse par chacune des deux clés :
-    wrap_pwd         ← AES-256-GCM-encrypt(data_master_key, key=password_key, nonce=random_96)
-    wrap_recov       ← AES-256-GCM-encrypt(data_master_key, key=recov_key,    nonce=random_96)
+    wrap_pwd         ← XChaCha20-Poly1305-encrypt(data_master_key, key=password_key, nonce=random_192)
+    wrap_recov       ← XChaCha20-Poly1305-encrypt(data_master_key, key=recov_key,    nonce=random_192)
 
 Étape 5 — Stockage en base (toutes les valeurs en clair listées ci-dessous) :
     user_id, user_salt, wrap_pwd, wrap_recov, [optional] wrap_admin
 
 Étape 6 — Chiffrement champ par champ des données personnelles :
-    email_encrypted        ← AES-256-GCM-encrypt(email,    key=data_master_key, nonce=random_96)
-    address_encrypted      ← AES-256-GCM-encrypt(address,  key=data_master_key, nonce=random_96)
-    phone_encrypted        ← AES-256-GCM-encrypt(phone,    key=data_master_key, nonce=random_96)
+    email_encrypted        ← XChaCha20-Poly1305-encrypt(email,    key=data_master_key, nonce=random_192)
+    address_encrypted      ← XChaCha20-Poly1305-encrypt(address,  key=data_master_key, nonce=random_192)
+    phone_encrypted        ← XChaCha20-Poly1305-encrypt(phone,    key=data_master_key, nonce=random_192)
     [...]
 
 Étape 7 — Purge de data_master_key et password_key et recov_key de la mémoire serveur.
@@ -94,7 +94,7 @@ Conséquences directes :
 1. Le serveur reçoit (username, password) sur HTTPS
 2. Il récupère user_salt et wrap_pwd depuis la base
 3. password_key   ← Argon2id(password, user_salt, ...)
-4. data_master_key ← AES-256-GCM-decrypt(wrap_pwd, key=password_key)
+4. data_master_key ← XChaCha20-Poly1305-decrypt(wrap_pwd, key=password_key)
 5. data_master_key est conservée dans la session (mémoire, jamais persistée)
 6. À chaque requête : déchiffrement à la volée des champs personnels
 7. Au logout : purge data_master_key
@@ -106,7 +106,7 @@ Conséquences directes :
 1. Le serveur reçoit (username, mot_memorise) sur HTTPS
 2. Il récupère user_salt et wrap_recov depuis la base
 3. recov_key       ← Argon2id(mot_memorise, sha256(user_salt || "/dataguard")[0:16])
-4. data_master_key ← AES-256-GCM-decrypt(wrap_recov, key=recov_key)
+4. data_master_key ← XChaCha20-Poly1305-decrypt(wrap_recov, key=recov_key)
 5. L'utilisateur peut accéder à ses données et redéfinir un nouveau password
 6. Régénération du wrap_pwd avec la nouvelle password_key (sans re-chiffrer les données)
 ```
@@ -123,7 +123,7 @@ Un attaquant qui exfiltre la table utilisateurs obtient :
 
 Pour déchiffrer, il a deux voies :
 
-1. **Bruteforcer le mot de passe** d'un utilisateur ciblé → coût Argon2id par tentative (~250 ms sur GPU haut de gamme avec les paramètres recommandés). Pour un mot de passe à 8 caractères aléatoires : ~10^14 tentatives × 0.25 s = ~10^6 années en parallèle massif. Pour un mot de passe faible (`123456` ou similaire), ça reste faisable. **Appliqué depuis 0.3.0** : `UserVault::register()` refuse les mots de passe de moins de 12 octets (`PASSWORD_MIN_LEN`). ⚠️ La longueur n'est pas de l'entropie — douze lettres identiques franchissent cette barre. C'est un plancher contre le pire, pas une mesure. **Aucune blocklist n'est embarquée** : une version antérieure de ce paragraphe annonçait un refus par listes de breach qu'aucune ligne de code n'appliquait, et une promesse sans mécanisme derrière est pire que pas de promesse.
+1. **Bruteforcer le mot de passe** d'un utilisateur ciblé → coût Argon2id par tentative (~250 ms avec les paramètres recommandés ; 213,7 ms mesurées sur une machine de déploiement, cf. la note du point 2). Pour un mot de passe à 8 caractères aléatoires : ~10^14 tentatives × 0,25 s ≈ 8·10^5 années, un essai à la fois ; l'attaquant divise ce temps par le nombre d'essais qu'il mène en parallèle, chacun demandant 64 Mio de mémoire. Pour un mot de passe faible (`123456` ou similaire), ça reste faisable. **Appliqué depuis 0.3.0** : `UserVault::register()` refuse les mots de passe de moins de 12 octets (`PASSWORD_MIN_LEN`). ⚠️ La longueur n'est pas de l'entropie — douze lettres identiques franchissent cette barre. C'est un plancher contre le pire, pas une mesure. **Aucune blocklist n'est embarquée** : une version antérieure de ce paragraphe annonçait un refus par listes de breach qu'aucune ligne de code n'appliquait, et une promesse sans mécanisme derrière est pire que pas de promesse.
 
 2. **Bruteforcer le mot mémorisé** → depuis 0.3.0, même coût que la voie mot de passe : Argon2id, ~250 ms par tentative.
 
@@ -157,7 +157,7 @@ Une fuite ne donne donc **rien d'exploitable directement**. Le coût de brutefor
 
 ### 3.1 Le mot mémorisé partagé, deux dérivations isolées
 
-SelfRecover et SelfDataGuard utilisent **le même mot mémorisé** côté utilisateur, mais le dérivent vers deux clés cryptographiques **strictement disjointes** via HMAC contextuel :
+SelfRecover et SelfDataGuard utilisent **le même mot mémorisé** côté utilisateur, mais le dérivent vers deux clés cryptographiques **strictement disjointes**, par deux dérivations distinctes :
 
 ```
 secret_brut = mot_memorise_utilisateur
@@ -189,7 +189,7 @@ Scénario : un utilisateur a perdu son mot de passe.
 - **Avec SelfDataGuard seul** (sans SelfRecover) : impossible, ses données sont chiffrées par sa `password_key` qu'il ne se rappelle plus.
 - **Avec les deux ensemble** : il présente son *recovery code* papier **et** son mot mémorisé. SelfRecover vérifie les deux — le code localise le compte et porte la possession, le mot dérivé porte la connaissance — puis l'authentifie. SelfDataGuard, lui, n'a besoin que du mot : il dérive `data_key`, déballe `wrap_recov` et restaure `data_master_key`. L'utilisateur retrouve l'accès à son compte et la lisibilité de ses données dans le même passage.
 
-C'est le mécanisme exact qu'on retrouve sur Bitwarden (recovery code) ou ProtonMail (recovery phrase).
+C'est le principe des phrases de récupération des services chiffrés de bout en bout : un secret gardé hors ligne rend l'accès aux données quand le mot de passe est perdu.
 
 ---
 
@@ -225,7 +225,7 @@ Tous les déploiements n'ont pas les mêmes contraintes. SelfDataGuard propose t
 
 ```
 - Aucune clé de chiffrement n'est jamais accessible au serveur
-- Toute la cryptographie est exécutée dans le navigateur via WebCrypto SubtleCrypto
+- Toute la cryptographie est exécutée dans le navigateur, par libsodium compilé en WebAssembly : WebCrypto ne fournit ni Argon2id ni XChaCha20-Poly1305
 - Le serveur ne fait que stocker et servir des blobs chiffrés
 ```
 
@@ -244,9 +244,9 @@ La majorité des sites e-commerce devraient choisir **Hybrid**. Les services à 
 | Usage | Primitive | Rationale |
 |-------|-----------|-----------|
 | Dérivation depuis mot de passe | **Argon2id** (m=65536 KiB, t=3, p=1) | Memory-hard, résistant aux GPU et ASICs. Standard moderne (RFC 9106). ⚠️ `p=1` et non `p=4` : `sodium_crypto_pwhash` **n'expose pas** de paramètre de parallélisme — signature `length, password, salt, opslimit, memlimit, algo`. Les versions antérieures de ce tableau annonçaient un paramètre que l'API choisie ne peut pas porter |
-| Dérivation depuis mot mémorisé | **Argon2id** (mêmes paramètres) | Même coût que la voie mot de passe, parce que les deux ouvrent la même clé de données et que la paire ne vaut que sa porte la moins chère. Cf. §7 pour la mesure qui a motivé le changement |
-| Chiffrement par enveloppe | **AES-256-GCM** | Authenticated encryption, accélération matérielle universelle, standard NIST |
-| Chiffrement de champs | **AES-256-GCM** avec nonce aléatoire 96 bits par champ | Idem |
+| Dérivation depuis mot mémorisé | **Argon2id** (mêmes paramètres) | Même coût que la voie mot de passe, parce que les deux ouvrent la même clé de données et que la paire ne vaut que sa porte la moins chère. Cf. §2.3 pour la mesure qui a motivé le changement |
+| Chiffrement par enveloppe | **XChaCha20-Poly1305** | Chiffrement authentifié : ChaCha20-Poly1305 (RFC 8439) étendu à un nonce de 192 bits (draft-irtf-cfrg-xchacha). Calculé en logiciel, en temps constant, sur tout processeur. Les blobs écrits avant la 0.4.0 sont en AES-256-GCM et restent lisibles |
+| Chiffrement de champs | **XChaCha20-Poly1305** avec nonce aléatoire 192 bits par champ | Idem. À 192 bits, un nonce tiré au hasard ne demande aucun compteur |
 | Indexation de recherche | **HMAC-SHA256(field, server_blind_key)** | Permet `WHERE field_hash = HMAC(query)` sans déchiffrer. Trade-off : recherche par égalité uniquement, pas full-text |
 
 **Pas de PBKDF2** : Argon2id est plus robuste face aux GPU. PBKDF2 reste acceptable pour l'interopérabilité avec des piles très anciennes mais déconseillé pour de nouveaux déploiements.
@@ -274,7 +274,7 @@ Conformément aux bonnes pratiques recommandées par l'ANSSI en matière de tran
 
 - **Compromission du poste utilisateur** (keylogger, info-stealer, RAT) : HORS PÉRIMÈTRE. Si l'utilisateur entre son password et son mot mémorisé sur une machine compromise, ses données de ce site sont exposées. Recommandation : Tails / Qubes pour les usages à forte exigence.
 - **Compromission du navigateur** (extension malveillante, exploit 0-day) : HORS PÉRIMÈTRE en mode Full également. Les opérations crypto WebCrypto sont aussi sûres que le navigateur.
-- **Cryptanalyse théorique de SHA-256, AES-256-GCM, Argon2id** : HORS PÉRIMÈTRE. Migration cryptographique conforme aux recommandations ANSSI / NIST quand les algorithmes seront déclarés faibles.
+- **Cryptanalyse théorique de SHA-256, XChaCha20-Poly1305, AES-256-GCM, Argon2id** : HORS PÉRIMÈTRE. Migration cryptographique conforme aux recommandations ANSSI / NIST quand les algorithmes seront déclarés faibles.
 - **Bruteforce d'un mot de passe faible** : HORS PÉRIMÈTRE. La lib doit imposer une politique de mot de passe minimale. Sans politique, le facteur le plus faible domine.
 - **Déni de service** : HORS PÉRIMÈTRE. SelfDataGuard ne traite pas la disponibilité, seulement la confidentialité.
 
@@ -289,32 +289,33 @@ Pour qu'un déploiement SelfDataGuard apporte effectivement les garanties listé
    rien**. Elle a durci le coût par essai (Argon2id depuis 0.3.0) ; elle ne mesure pas l'entropie et
    ne prétend pas le faire. Un intégrateur qui branche `loginWithMemorized()` sur un mot choisi par
    l'utilisateur doit savoir que `wrap_recov` s'attaque alors hors ligne, sans compteur, sur ce seul
-   secret. Cf. §7, question ouverte
+   secret. Cf. §2.3, question ouverte
 3. **TLS obligatoire** : aucune dégradation HTTP autorisée (HSTS strict)
 4. **Sessions courtes** : `data_master_key` purgée de la session après inactivité (15 min recommandé pour Hybrid, 5 min pour Full)
 5. **Pas de logging sensible** : `password_key`, `recov_key`, `data_master_key` ne doivent jamais apparaître dans les logs (même en niveau debug)
 6. **Audit des accès admin** : en mode Hybrid, chaque accès aux champs opérationnels par l'admin doit être logué (sans la donnée elle-même)
-7. **Mise à jour régulière** : suivre les recommandations Argon2id pour ajuster `m`, `t`, `p` à mesure que le hardware progresse
+7. **Mise à jour régulière** : suivre les recommandations Argon2id pour ajuster `m` et `t` à mesure que le hardware progresse (`p` est fixé à 1, cf. §5)
 
-Le non-respect d'une de ces règles dégrade significativement les garanties. La lib SelfDataGuard de référence fait respecter automatiquement les règles 1, 2, 5, 6 ; les règles 3, 4, 7 relèvent de la configuration de déploiement.
+Le non-respect d'une de ces règles dégrade significativement les garanties. La bibliothèque de référence applique la règle 1, et la règle 5 pour ses propres traces d'exception (`#[\SensitiveParameter]`) ; les autres relèvent de l'intégrateur et de la configuration de déploiement.
 
 ---
 
 ## 8. Limites et travaux futurs
 
-### 8.1 Limites connues de v0.0.1
+### 8.1 Limites connues
 
 - **Recherche full-text** sur les champs chiffrés : impossible sans techniques avancées (chiffrement homomorphe partiel, secure indexes type CipherSweet)
 - **Notifications transactionnelles asynchrones** : nécessitent l'admin_op_key (mode Hybrid) ou un re-design vers push (mode Full)
 - **Migration de schéma** : si on ajoute un champ chiffré à un compte existant, il faut le populer pendant une session active de l'utilisateur
-- **Performance** : chaque champ chiffré ajoute un overhead d'environ 50-100 µs sur GPU récent. Pour les requêtes listant plein de comptes, ce coût se cumule. À évaluer cas par cas.
+- **Performance** : le surcoût de chaque champ chiffré n'est pas mesuré à ce jour. Pour les requêtes qui listent beaucoup de comptes, il se cumule : à évaluer cas par cas.
 
 ### 8.2 Roadmap
 
-- **v0.1.0** (livrée, Q3 2026) : implémentation de référence en PHP, intégration trait Eloquent / Doctrine via adapter — le volume courant de la bibliothèque est donné par le README, qui se mesure à chaque édition
+- **v0.1.0** (livrée en bêta le 08/05/2026) : implémentation de référence en PHP, stockage SQLite derrière `StorageInterface` ; l'intégration Eloquent / Doctrine reste à écrire — le volume courant de la bibliothèque est donné par le README, qui se mesure à chaque édition
 - **v0.2.0** (livrée le 21/08/2026, Q3) : compartiment escrow, cérémonie de clés, journal d'audit
 - **v0.3.0** (livrée le 07/09/2026) : dérivation Argon2id du secret mémorisé, plancher de longueur du mot de passe appliqué en code
-- **v0.4.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
+- **v0.4.0** (livrée le 26/09/2026) : XChaCha20-Poly1305 pour toute écriture, format de blob versionné (`SDG2.`), relecture des blobs AES-256-GCM par libsodium ou OpenSSL
+- **v0.5.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
 - **v1.0.0** (2027) : audit cryptographique communautaire formel, soumission ANSSI Visa de sécurité (industries@ssi.gouv.fr), publication d'un test vector pack
 
 ---
@@ -323,7 +324,7 @@ Le non-respect d'une de ces règles dégrade significativement les garanties. La
 
 **AGPL-3.0-or-later**. Code, documentation et whitepapers publiés dans le dépôt `Pierroons/my-self`.
 
-Toute version déployée publiquement, modifiée ou non, doit publier ses sources sous la même licence. Pas de capture SaaS possible.
+Une version modifiée offerte à des utilisateurs à travers un réseau doit leur donner accès à son code source, sous la même licence (AGPL-3.0, article 13).
 
 Auteur : Pierroons. Coordonnées de contact accessibles via le dépôt public.
 
@@ -331,4 +332,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Document v0.0.1 — édition du 23 juillet 2026, roadmap actualisée le 27/08/2026. La spécification décrite ici est implémentée : v0.1.0, v0.2.0 et v0.3.0 sont livrées et testées (198 contrôles, 8 suites).*
+*Édition du 26 septembre 2026, alignée sur SelfDataGuard v0.4.0 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.4.0 (219 contrôles, 8 suites). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*

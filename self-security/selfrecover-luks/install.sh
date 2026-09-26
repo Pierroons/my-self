@@ -61,7 +61,7 @@ say "0. Vérifications"
 [ -n "$ROOT_DEV" ] || die "ROOT_DEV non défini (édite l'en-tête du script)."
 for f in selfrecover_derive.c selfrecover-keyscript.sh initramfs-hook-selfrecover \
          setup-add-selfrecover-slot.sh initramfs-post-update-verifie-selfrecover \
-         verifie-sauvegardes.sh selfrecover-secours.sh; do
+         verifie-sauvegardes.sh selfrecover-secours.sh format-slot.sh; do
   [ -f "$HERE/$f" ] || die "Fichier manquant dans le dépôt : $f"
 done
 command -v cryptsetup >/dev/null || die "cryptsetup absent."
@@ -157,6 +157,11 @@ fi
 
 # ---------- 3. Keyscript + hook ----------
 say "3. Keyscript + hook initramfs"
+# Un keyscript d'un autre format que le slot enrôlé rend la machine inamorçable, et
+# seulement au redémarrage suivant. Le contrôle vit dans format-slot.sh, éprouvé
+# hors d'une vraie machine par tests/test_format_slot.sh.
+bash "$HERE/format-slot.sh" verifier "$ROOT_DEV" "$HERE/selfrecover-keyscript.sh" "$SKG" \
+  || die "keyscript non posé : voir ci-dessus. Rien d'irréversible n'a été fait."
 install -m 0755 "$HERE/selfrecover-keyscript.sh"   "$SKG/selfrecover-keyscript.sh"
 # Posé ICI, avant l'étape 6 qui décide de s'en servir, et avant l'étape 7 qui
 # régénère l'image : le hook ne peut embarquer que ce qui est déjà sur le disque.

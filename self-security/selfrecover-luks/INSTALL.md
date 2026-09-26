@@ -777,15 +777,26 @@ inouvrable, quel que soit le motif du changement de format.
 > l'ancien slot ne se parlent pas. C'est le seul geste de cette page qui peut rendre
 > une machine en service non amorçable.
 
+**Le format enrôlé est désormais écrit** dans `$SKG/format-slot`, une ligne par volume
+(`<UUID LUKS> <hex|raw>`). `setup-add-selfrecover-slot.sh` l'inscrit une fois le slot
+prouvé ouvrant, et `install.sh` le relit avant de poser le keyscript : il refuse un
+format différent, et il refuse aussi un keyscript déjà en place sans marqueur pour la
+racine — le cas d'une machine installée avant ce marqueur. Le contrôle est
+`format-slot.sh` ; `tests/test_format_slot.sh` l'éprouve.
+
 ### La migration, dans cet ordre
 
 Le slot natif reste ouvrable pendant toute l'opération : c'est lui le filet.
 
 ```bash
-# 0. Sauvegarde de l'en-tête AVANT (§4) — elle contient les slots
+# 0. Compter les slots AVANT, et sauvegarder l'en-tête (§4) — elle contient les slots.
+#    Si un slot hex existe déjà, l'étape 1 en ajoute un troisième : le numéro que
+#    l'étape 5 retirera n'est alors plus celui qu'on croit.
+cryptsetup luksDump "$ROOT_DEV" | grep -E "^\s+[0-9]+: luks2"
 cryptsetup luksHeaderBackup "$ROOT_DEV" --header-backup-file entete-avant-migration.img
 
-# 1. Ajouter un SECOND slot recover, en hexadécimal, sans toucher à l'ancien
+# 1. Ajouter un SECOND slot recover, en hexadécimal, sans toucher à l'ancien.
+#    Une fois le slot prouvé, le script inscrit « <UUID> hex » dans $SKG/format-slot.
 SELFRECOVER_SALT="$(cat $SKG/selfrecover_salt)" ./setup-add-selfrecover-slot.sh "$ROOT_DEV"
 
 # 2. Le prouver PAR LE CHEMIN DU BOOT (§6) — c'est l'étape qui décide
@@ -795,8 +806,10 @@ printf '%s' "$P" \
   | cryptsetup open --test-passphrase --key-file=- "$ROOT_DEV" \
   && echo "✅ le slot hex ouvre le volume par stdin"
 
-# 3. Seulement alors : déployer le nouveau keyscript et régénérer
-install -m 0755 selfrecover-keyscript.sh "$SKG/selfrecover-keyscript.sh"
+# 3. Seulement alors : déployer le nouveau keyscript et régénérer. Le contrôle
+#    refuse si le format enrôlé pour la racine n'est pas celui du keyscript.
+bash format-slot.sh verifier "$ROOT_DEV" selfrecover-keyscript.sh "$SKG" \
+  && install -m 0755 selfrecover-keyscript.sh "$SKG/selfrecover-keyscript.sh"
 update-initramfs -u
 
 # 4. REDÉMARRER et vérifier que le déverrouillage fonctionne. Ne passe pas à
@@ -823,7 +836,8 @@ ressusciterait l'ancien slot brut si on la restaurait (§4).
 | `selfrecover_derive.c` | dérivation Argon2id (clone C, stdin → clé hex) |
 | `selfrecover-keyscript.sh` | keyscript du volume racine (dérive la recover) |
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript |
-| `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS |
+| `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS, et inscrit son format |
+| `format-slot.sh` | inscrit le format enrôlé par volume, et refuse de poser un keyscript d'un autre format |
 | `selfrecover_derive.py` | implémentation de référence (Python) pour usage userspace |
 | `genere-passphrase.py` | tire une passphrase diceware et affiche les deux formes avec leur longueur (§5) |
 | `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces, **le sel**, et **l'image que l'amorceur charge** après chaque génération d'initramfs (§11) |
