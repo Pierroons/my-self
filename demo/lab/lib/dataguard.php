@@ -35,10 +35,22 @@ final class DataGuard
         return SecretInstance::lire('.blindkey', 48, 32);
     }
 
-    /** Clé 32 bytes dérivée du blind key, contexte isolé "DM". */
+    /** @var array<string, string> clés dérivées, une par contexte, le temps de la requête */
+    private static array $cles = [];
+
+    /**
+     * Clé 32 bytes dérivée du blind key pour un contexte. `deriveFromMemorized`
+     * coûte un Argon2id de 64 Mio : sans ce mémo, lister N messages en payait N.
+     */
+    private static function cle(string $contexte): string
+    {
+        return self::$cles[$contexte] ??= Primitives::deriveFromMemorized(self::blindKey(), $contexte);
+    }
+
+    /** Clé du contexte isolé "DM". */
     private static function dmKey(): string
     {
-        return Primitives::deriveFromMemorized(self::blindKey(), '/my-self-lab/dm');
+        return self::cle('/my-self-lab/dm');
     }
 
     public static function encrypt(string $plaintext): string
@@ -57,7 +69,6 @@ final class DataGuard
      */
     public static function hmac(string $data, string $ctx): string
     {
-        $key = Primitives::deriveFromMemorized(self::blindKey(), '/my-self-lab/hmac/' . $ctx);
-        return hash_hmac('sha256', $data, $key);
+        return hash_hmac('sha256', $data, self::cle('/my-self-lab/hmac/' . $ctx));
     }
 }

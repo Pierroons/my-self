@@ -73,11 +73,11 @@ return [
         . '</ul></div>'
         . '</div>',
 
-    'sec.3.h2' => '3. The shared foundation — SelfRecover ⇄ SelfDataGuard',
+    'sec.3.h2' => '3. One key per use — SelfRecover, the memo, SelfDataGuard',
     'sec.3.body' => '<ul>'
-        . '<li>One memorised <strong>root secret</strong>, one <strong>shared derivation primitive</strong>, and <strong>child keys separated by label</strong> (<code>auth</code> / <code>data-enc</code> / <code>data-recover</code>).</li>'
+        . '<li><strong>Each use derives its own key, through its own derivation.</strong> Access goes through SelfRecover: your browser computes an <code>HMAC-SHA256</code> fingerprint of your word, bound to the site name and salted per account; the server only keeps an Argon2id of it. The memo draws two child keys, separated by <code>HKDF</code> label: <code>data-enc</code> from your password, <code>data-recover</code> from your recovery passphrase.</li>'
         . '<li>Cardinal rule: <strong>never the same key for authentication and encryption</strong>. The server sees authentication; it must never be able to decrypt.</li>'
-        . '<li>Unified recovery: the same recovery word or passphrase restores access <em>and</em> data. Recovery strength comes from the <strong>entropy of the input</strong> (diceware passphrase), not from hash length.</li>'
+        . '<li>Recovery: if your memo\'s recovery passphrase is also your SelfRecover one, a single secret restores access <em>and</em> the memo — through two separate derivations, with no shared key. Recovery strength comes from the <strong>entropy of the input</strong> (diceware passphrase), not from hash length.</li>'
         . '</ul>',
 
     'sec.4.h2' => '4. Application hardening',

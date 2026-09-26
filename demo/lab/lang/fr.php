@@ -71,11 +71,11 @@ return [
         . '</ul></div>'
         . '</div>',
 
-    'sec.3.h2' => '3. Le socle commun — mapping SelfRecover ⇄ SelfDataGuard',
+    'sec.3.h2' => '3. Une clé par usage — SelfRecover, le mémo, SelfDataGuard',
     'sec.3.body' => '<ul>'
-        . '<li>Un seul <strong>secret racine</strong> mémorisé, une <strong>primitive de dérivation partagée</strong>, des <strong>clés filles séparées par étiquette</strong> (<code>auth</code> / <code>data-enc</code> / <code>data-recover</code>).</li>'
+        . '<li><strong>Chaque usage dérive sa propre clé, par sa propre dérivation.</strong> L\'accès passe par SelfRecover : ton navigateur calcule une empreinte <code>HMAC-SHA256</code> de ton mot, liée au nom du site et salée par compte ; le serveur n\'en garde qu\'un Argon2id. Le mémo tire deux clés filles, séparées par étiquette <code>HKDF</code> : <code>data-enc</code> depuis ton mot de passe, <code>data-recover</code> depuis ta passphrase de secours.</li>'
         . '<li>Règle d\'or : <strong>jamais la même clé pour l\'authentification et le chiffrement</strong> (le serveur voit l\'auth, il ne doit jamais pouvoir déchiffrer).</li>'
-        . '<li>Récupération unifiée : le même mot/passphrase de secours rend l\'accès <em>et</em> les données. La force du secours = <strong>entropie de l\'entrée</strong> (passphrase diceware), pas la taille du hash.</li>'
+        . '<li>Récupération : si la passphrase de secours de ton mémo est aussi celle de SelfRecover, un seul secret rend l\'accès <em>et</em> le mémo — par deux dérivations distinctes, sans clé commune. La force du secours = <strong>entropie de l\'entrée</strong> (passphrase diceware), pas la taille du hash.</li>'
         . '</ul>',
 
     'sec.4.h2' => '4. Durcissement applicatif',

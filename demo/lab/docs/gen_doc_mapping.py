@@ -11,7 +11,7 @@ MOIS = ["janvier","février","mars","avril","mai","juin","juillet","août",
         "septembre","octobre","novembre","décembre"]
 now = datetime.now(ZoneInfo("Europe/Paris"))
 DATE = f"{now.day} {MOIS[now.month-1]} {now.year} — {now:%H:%M}"
-VERSION = "v1.0"
+VERSION = "v1.1"
 # Dossier de sortie portable : 1er argument CLI, sinon $OUTPUT_DIR, sinon ./out à côté du script.
 _OUT_DIR = sys.argv[1] if len(sys.argv) > 1 else os.environ.get(
     "OUTPUT_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "out"))
@@ -54,11 +54,11 @@ BODY = """
 <div class="cover">
   <div class="kicker">MySelf · Note d'architecture</div>
   <h1>Mapping<br>SelfRecover ⇄ SelfDataGuard</h1>
-  <div class="sub">Un seul secret racine, une primitive de dérivation partagée, des clés filles
-  cloisonnées. Comment l'accès et le chiffrement des données reposent sur la même fondation —
-  sans jamais partager la même clé.</div>
+  <div class="sub">Des secrets distincts, des dérivations distinctes, aucune clé partagée. Comment
+  l'accès (SelfRecover) et le chiffrement des données (le mémo, SelfDataGuard) se tiennent sans
+  jamais se toucher.</div>
   <div class="meta">
-    <b>Principe&nbsp;:</b> SelfRecover = racine de confiance · SelfDataGuard = consommateur de clés<br>
+    <b>Principe&nbsp;:</b> une clé par usage — l'accès ne déchiffre rien, le chiffrement ne prouve rien<br>
     <b>Document&nbsp;:</b> {{VERSION}} — généré le {{DATE}} (Europe/Paris)<br>
     <b>Écosystème&nbsp;:</b> Self-Security (Recover · DataGuard · KeyGuard · Guard)
   </div>
@@ -66,40 +66,38 @@ BODY = """
 
 <div class="pb"></div>
 <h2>1. Le principe en une page</h2>
-<p>Retrouver un <strong>accès</strong> et chiffrer une <strong>donnée</strong> reposent sur le même
-geste&nbsp;: <em>dériver une clé d'un secret mémorisé, par domaine, sans dépôt central du secret.</em>
-On factorise donc <strong>une primitive commune</strong>, et on en tire des <strong>clés filles
-séparées par étiquette</strong> (HKDF). Règle d'or&nbsp;: <strong>jamais la même clé pour
-l'authentification et pour le chiffrement</strong> — le serveur voit l'auth, il ne doit jamais
-pouvoir déchiffrer.</p>
+<p>Retrouver un <strong>accès</strong> et chiffrer une <strong>donnée</strong> partent tous deux d'un
+secret mémorisé, mais <em>jamais du même calcul</em>. L'accès passe par SelfRecover&nbsp;: le navigateur
+calcule une empreinte <code>HMAC-SHA256</code> du mot, liée au nom du site et salée par compte, et le
+serveur n'en garde qu'un Argon2id. Le mémo chiffré dérive ses propres clés, <strong>séparées par
+étiquette</strong> (HKDF). Règle d'or&nbsp;: <strong>jamais la même clé pour l'authentification et
+pour le chiffrement</strong> — le serveur voit l'auth, il ne doit jamais pouvoir déchiffrer.</p>
 <div class="box ok"><span class="bt">Rôles</span>
-<strong>SelfRecover</strong> gère le secret racine et sait en dériver des clés (avec récupération sans
-email). <strong>SelfDataGuard</strong> consomme ces clés pour chiffrer en bout-en-bout. La
-<strong>récupération est unifiée</strong>&nbsp;: le même mot/passphrase de secours rend l'accès ET
-les données.</div>
+<strong>SelfRecover</strong> prouve l'accès sans dépôt central du secret, avec une récupération sans
+email. <strong>Le mémo du lab</strong> chiffre de bout en bout, dans le navigateur.
+<strong>SelfDataGuard</strong> chiffre côté serveur les données au repos (messages, profils), avec une
+clé tenue hors de la base. La <strong>récupération peut être unifiée</strong>&nbsp;: si la passphrase
+de secours du mémo est aussi celle de SelfRecover, un seul secret rend l'accès ET le mémo — par deux
+dérivations distinctes.</div>
 
-<h2>2. Schéma A — l'arbre de dérivation (côté navigateur)</h2>
+<h2>2. Schéma A — deux branches qui ne se croisent pas (côté navigateur)</h2>
 <pre>
-   SECRET RACINE (mémorisé par l'humain)
-   +------------------+-----------------------+
-   |  password         |  passphrase diceware |   2 secrets :
-   |  (login)          |  (récupération)      |   l'un fort, l'autre TRÈS fort
-   +--------+----------+-----------+----------+
-            |   KDF lent (PBKDF2 / Argon2, salé)
-            v                      v
-       master_key            recover_key
-            |  HKDF                 |  HKDF
-   +--------+--------+              |
-   v        v        v              v
-auth_hash data-enc (futurs)   data-recover
-   |        |                       |
-   |        +----------+   +--------+
-   v                   v   v
-(-> serveur,       déballe VAULT_KEY
- prouve l'accès)   (la vraie clé du coffre)
+   mot SelfRecover            mot de passe              passphrase de secours
+         |                         |                              |
+   HMAC-SHA256(mot,          PBKDF2-SHA256                  PBKDF2-SHA256
+   site|version + sel)       600 000 tours, sel du coffre   600 000 tours, sel du coffre
+         |                         |  HKDF "data-enc"             |  HKDF "data-recover"
+         v                         v                              v
+   empreinte --> serveur      clé fille A                    clé fille B
+   (qui en garde                   |                              |
+    un Argon2id)                   +-------------+  +-------------+
+                                                 v  v
+                                        déballent VAULT_KEY
+                                        (la vraie clé du coffre)
 </pre>
-<p class="cap">Les étiquettes HKDF distinctes ("auth", "data-enc", "data-recover") garantissent que
-connaître l'une ne révèle pas les autres.</p>
+<p class="cap">Aucune clé n'est commune aux deux branches&nbsp;: l'empreinte d'accès et les clés du
+mémo sortent de secrets et de calculs différents. Les étiquettes HKDF séparent les deux clés du
+mémo&nbsp;: connaître l'une ne révèle pas l'autre.</p>
 
 <h2>3. Schéma B — le coffre et ses deux enveloppes</h2>
 <pre>
@@ -119,19 +117,22 @@ bouge pas. Cette indirection (<code>vault_key</code>) découple l'accès des don
 <pre>
   NAVIGATEUR (zone de confiance)        |   SERVEUR (aveugle)
   ------------------------------        |   --------------------
-  - password / passphrase               |   - auth_hash       (opaque)
-  - master_key, recover_key  (éphém.)   |   - blob chiffré    (opaque)
+  - mot, mot de passe, passphrase       |   - Argon2id de l'empreinte
+  - clés PBKDF2          (éphémères)    |   - blob chiffré    (opaque)
   - data-enc, data-recover              |   - enveloppe A     (opaque)
   - vault_key (déballée à la volée)     |   - enveloppe B     (opaque)
   - mémo EN CLAIR                       |
                                         |   root ici = QUE des blobs
   ======================================+==========================
-            seul l'auth_hash franchit la ligne -->
+     ne franchissent la ligne que l'empreinte et des blobs -->
 </pre>
 <div class="box ok"><span class="bt">Conséquence</span>
-Un attaquant qui prend le contrôle du serveur récupère des blobs et un hash d'authentification.
-<strong>Rien de déchiffrable</strong> sans le secret de l'utilisateur, qui n'a jamais quitté son
-navigateur.</div>
+Un attaquant qui prend le contrôle du serveur récupère des blobs et l'Argon2id d'une empreinte.
+<strong>Rien du mémo n'est déchiffrable</strong> sans le secret de l'utilisateur, qui n'a jamais quitté
+son navigateur.</div>
+<div class="box warn"><span class="bt">Cela vaut pour le mémo</span>
+Les messages privés et les profils du lab sont chiffrés par SelfDataGuard, côté serveur, avec une clé
+tenue hors de la base&nbsp;: ils résistent au vol de la base, pas à un serveur compromis.</div>
 
 <div class="pb"></div>
 <h2>5. Sécurité adaptative — la force du secret suit la sensibilité</h2>
@@ -171,7 +172,7 @@ calculé sur 676 entrées possibles reste cassable en 676 essais.</p>
   (ex. PBKDF2, Argon2).</dd>
   <dt>HKDF</dt>
   <dd>Dérive plusieurs sous-clés indépendantes d'une même clé mère, via des étiquettes distinctes.
-  C'est ce qui sépare « auth » de « chiffrement ».</dd>
+  C'est ce qui sépare les deux clés du mémo, « data-enc » et « data-recover ».</dd>
   <dt>vault_key (clé de coffre)</dt>
   <dd>Clé aléatoire qui chiffre réellement la donnée&nbsp;; elle est elle-même chiffrée (wrappée) par
   les clés dérivées du secret. Permet de changer de password sans re-chiffrer la donnée.</dd>

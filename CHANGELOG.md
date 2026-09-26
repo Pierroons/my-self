@@ -10,6 +10,26 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Le lab décrit ses clés telles qu'elles sont — 26 septembre 2026
+
+La page sécurité du lab et le PDF d'architecture qu'en tire `docs/gen_doc_mapping.py`
+décrivaient un seul secret racine, dont HKDF aurait tiré trois clés filles : `auth`,
+`data-enc`, `data-recover`. Aucun code ne dérive ainsi. L'étiquette `auth` n'a aucun
+consommateur, et SelfDataGuard ne consomme aucune clé de SelfRecover.
+
+- **La section 3 de la page sécurité**, en français et en anglais, dit ce que fait le code.
+  L'accès passe par SelfRecover : une empreinte `HMAC-SHA256` du mot, liée au site et salée
+  par compte, dont le serveur garde un Argon2id. Le mémo tire deux clés filles par étiquette
+  HKDF, `data-enc` depuis le mot de passe et `data-recover` depuis la passphrase de secours.
+  La récupération n'est unifiée que si cette passphrase est aussi celle de SelfRecover.
+- **Le PDF d'architecture (v1.1)** redessine le schéma A en deux branches qui ne se croisent
+  pas. Il précise aussi que « le serveur ne peut rien déchiffrer » vaut pour le mémo, pas pour
+  les messages et profils que SelfDataGuard chiffre côté serveur.
+- **`DataGuard` du lab ne dérive plus sa clé à chaque appel.** Chaque dérivation coûtait un
+  Argon2id de 64 Mio, environ 40 ms : lister 20 messages en payait 20. La clé est désormais
+  gardée par contexte le temps de la requête. La dérivation ne change pas, donc les données
+  existantes restent lisibles.
+
 ### SelfRecover-LUKS n'installe plus un keyscript que le slot n'ouvrirait pas — 26 septembre 2026
 
 Un slot enrôlé en `raw` n'est pas ouvert par un keyscript qui produit de l'hexadécimal.
