@@ -198,7 +198,7 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 - [x] Index de jurisprudence **administrative**, texte intégral servi (Conseil d'État, CAA,
       Tribunal des conflits ; TA et CDBF en fonds historique) — source : fonds JADE de la DILA
 - [x] Serveur MCP (paquet `selfright-mcp`) — consultation depuis un client local
-- [x] Intégration SelfAct — les démarches officielles servies à côté des directives
+- [x] Intégration SelfAct — les ressources officielles servies à côté des directives
 - [x] Testé multi-IA (Claude, crawler ChatGPT, OAI-SearchBot détectés)
 - [x] Stats publiques (`/api/stats/by-ai`, `/api/stats/by-endpoint`)
 - [x] Domaine dédié [justice.my-self.fr](https://justice.my-self.fr)

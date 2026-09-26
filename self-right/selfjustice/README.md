@@ -197,7 +197,7 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 - [x] **Administrative** case law index, full text served (Conseil d'État, CAA, Tribunal des
       conflits; tribunals and CDBF as historical corpora) — source: DILA's JADE corpus
 - [x] MCP server (`selfright-mcp` package) — consultation from a local client
-- [x] SelfAct integration — official procedures served alongside the directives
+- [x] SelfAct integration — official resources served alongside the directives
 - [x] Multi-AI tested (Claude, ChatGPT crawler, OAI-SearchBot detected)
 - [x] Public stats (`/api/stats/by-ai`, `/api/stats/by-endpoint`)
 - [x] Dedicated domain [justice.my-self.fr](https://justice.my-self.fr)
