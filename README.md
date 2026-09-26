@@ -2,44 +2,62 @@
 
 > 🇫🇷 **[Lire cette page en français →](./README.fr.md)**
 
-**Account recovery without email, without SMS, without a third party.**
+**Tools that need no one but you.**
 
-Today, "forgot my password" means "we've sent a link to your email address".
-Your inbox becomes the key to every account you own. And if you lose it, you
-lose everything else with it.
+Getting an account back goes through an email address. Knowing your rights goes
+through someone who knows them. Protecting your data goes through a service that
+holds it. Every time, a third party sits in the loop — and that third party can
+shut down, get it wrong, be breached, or simply stop answering.
 
-MySelf is a set of modules exploring the other route: tools for identity, data,
-law and community life, with no external channel in the loop. The code is free
-software, it runs on your own machine, and it is written to be read.
-
----
-
-## Where the randomness comes from
-
-Five dice, a list of 7776 words — exactly 6⁵.
-
-| Passphrase | Entropy |
-|---|---|
-| 1 word (5 dice) | 12.9 bits |
-| 4 words | 51.7 bits |
-| 6 words | 77.5 bits |
-
-Measurable, and not reproducible. A software generator produces a sequence
-computable from its internal state; dice have no state.
-
-The English list is the EFF one. The French list is a community translation:
-there is no official list in French, this one settled in through use. Both hold
-7776 entries, so the figures above hold in either language.
-[The paper method is documented step by step](./bi-self/selfrecover/tools/entropy-lab/docs/diceware-method-en.pdf).
+MySelf is a set of modules exploring the other way, across four grounds:
+identity, data, law, and collective life. The code is free, it runs on your own
+machine, and it is written to be read.
 
 ---
 
-## One discipline, separate secrets
+## The modules
 
-This is what makes MySelf a set rather than a collection. Not one master secret
-that opens everything — that would be the opposite of the point. What the modules
-share is the discipline: a domain separator in the salt, and Argon2id at 64 MiB
-wherever a secret has to withstand an offline attack.
+Each module answers one question and deploys on its own. Its README says the rest:
+what it does, how to install it, and what it does not protect.
+
+| Module | Question | Status |
+|---|---|---|
+| [SelfRecover](./bi-self/selfrecover/) | Who are you? | **v0.6.0** — library + deployed implementation |
+| [SelfRecover-LUKS](./self-security/selfrecover-luks/) | What if the disk is stolen? | **v0.5.0** — deployed and documented, hex key |
+| [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.3.0** — in service, 198 checks |
+| [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.4.0 beta** — housing, family, administrative law and administrative case law |
+| [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.2** — live, over 1,800 official resources |
+| [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.3.0** — linked-voter cross-referencing, recovery, vote reason; 2 mechanisms not yet coded |
+
+Those carrying security code document their own threat model. SelfJustice and
+SelfAct have none: they are law databases kept up to date, not protection
+mechanisms.
+
+Every line links to code you can read and run. No link to a hosted demo:
+everything self-hosts from this repository.
+
+---
+
+## What makes it a set
+
+Not one master secret that opens everything — that would be the opposite of the
+point. What the modules share is the discipline: a domain separator in the salt,
+and two primitives, each kept to a role it is never asked to leave.
+
+**HMAC-SHA256 binds and masks.** The memorized word proves you know it without
+ever being sent: what travels is
+`HMAC(word, hostname | version + account salt)`. The hostname is read in the
+page, never received from the network — so the same word yields a different
+fingerprint on every service, and a cloned page served elsewhere produces
+nothing usable. The fingerprint is 64 characters whether the word has four
+letters or forty, and its output is indistinguishable from random: two services
+comparing their databases would recognize neither the same word nor the same
+person.
+
+**Argon2id at 64 MiB slows things down.** That is the one thing HMAC does not
+do: it costs nothing to compute. Wherever an attacker works offline — a stolen
+disk, an encrypted vault, a dumped database — no attempt counter can stop them,
+and the price of one guess is all that is left.
 
 | Module | Secret | Scope | What separates it |
 |---|---|---|---|
@@ -49,74 +67,33 @@ wherever a secret has to withstand an offline attack.
 | SelfDataGuard | password + memorized word | per user | context `/dataguard` |
 
 Compromising one does not open the others — not because a label compartmentalizes
-them, but because they are distinct secrets, derived separately.
+them, but because they are distinct secrets, derived separately. The detail of
+each derivation is in the README of the module concerned.
 
-### Why you can keep the same memorized word everywhere
+### A salt is not a secret
 
-The memorized word is the only secret you actually remember. It is meant to be
-reused.
+It sits in the clear next to the fingerprint, and anyone reading the database
+sees it. That is not an oversight: a salt is not there to hide, it is there to
+**separate**.
 
-One server hosts three services, you have an account on all three, and you use the
-same memorized word — `tree shoes` — on each. What the three of them store has
-nothing in common:
+Without it, two people choosing the same word produce the same fingerprint.
+Three consequences, all bad: the database reveals who shares a secret with whom;
+a table computed once works against every account on the service; and cracking
+one fingerprint cracks them all at once.
 
-    fingerprint = HMAC-SHA256(memorized word, hostname | version + account salt)
+With a salt drawn at random per account — 16 bytes, generated by your browser —
+each fingerprint becomes a separate problem again. The work no longer pools: it
+has to be redone person by person.
 
-The **hostname** is read in the browser, never received from the server. Each
-service therefore stores a different fingerprint of the same word — and a cloned
-page served elsewhere derives from its own address: what it produces is worthless
-against the real service.
+**A salt per service would not be enough.** It would move the constant rather
+than salt anything: every account on the service would still share it. That is
+why the code requires one per account and refuses to derive without it, rather
+than quietly accepting an empty one.
 
-The **salt** is drawn by your browser at sign-up, one per account. It separates
-people: two users who pick the same word on the same service do not store the same
-fingerprint.
-
-The word itself never leaves your browser. None of the three servers receives it,
-and none can replay another's fingerprint.
-
-### The encrypted volume is a keyring
-
-On a machine, a single entry opens the root volume at boot — and what that volume
-holds opens the rest: the keys of the secondary volumes and, on a host that signs
-its own kernels, the Secure Boot signing key. The disk does not only protect files,
-it protects the keys that open others.
-
----
-
-## The modules
-
-Each module answers one question and deploys on its own. Those carrying security
-code document their own threat model: what they protect, and what they do not.
-SelfJustice and SelfAct have none — they are law databases kept up to date, not
-protection mechanisms.
-
-| Module | Question | Status |
-|---|---|---|
-| [SelfRecover](./bi-self/selfrecover/) | Who are you? | **v0.6.0** — library + deployed implementation |
-| [SelfRecover-LUKS](./self-security/selfrecover-luks/) | What if the disk is stolen? | **v0.5.0** — deployed and documented, hex key |
-| [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.3.0** — in service, 198 checks |
-| [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.4.0 beta** — housing, family, administrative law and administrative case law |
-| [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.2** — live, over 1,800 official resources |
-| [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.3.0** — linked-voter cross-referencing, recovery, vote reason; 24 checks; 2 mechanisms missing |
-
-Every line above links to code you can read and run. No link to a hosted demo:
-everything self-hosts from this repository.
-
----
-
-## Under the hood
-
-What you will find opening `src/`, and which says more than any pitch:
-
-| File | What's inside |
-|---|---|
-| [`Primitives.php`](./self-security/selfdataguard/src/Crypto/Primitives.php) | AAD bound to `userId`, `zeroize()` with a fallback when `sodium_memzero` is missing, `hash_equals`, final class with a private constructor |
-| [`entropy.js`](./bi-self/selfrecover/tools/entropy-lab/engine/entropy.js) | Rejection sampling over `crypto.getRandomValues` |
-| [`Recovery.php`](./bi-self/selfrecover/src/Recovery/Recovery.php) | Rate limit scoped to `username + IP`, dummy hash against the timing oracle |
-
-The vendored libraries (`zxcvbn.js`, EFF wordlist) are the real ones, not demo
-stand-ins. Browser-side Argon2id is not vendored: it is written here, in
-`bi-self/selfrecover/client/argon2id.js`, and checked against libsodium's vectors.
+And what it does not do: it makes no single attempt more expensive. Attacking one
+specific account stays possible if its secret is weak — Argon2id is what makes
+each guess costly, and the salt is what stops anyone from making one guess for
+everybody.
 
 ---
 

@@ -93,6 +93,25 @@ Le matériel doit être **lu** dans le navigateur, jamais reçu du réseau. Un m
 | Génération de passphrase (L1) | EFF Diceware | 4 mots, ≥ 51 bits d'entropie |
 | Sel du compte | 16 octets aléatoires, rendus en 32 hexadécimaux minuscules | un par compte, engendré par le navigateur à l'inscription (`srEngendrerSel`), stocké en clair (un sel n'est pas un secret) — obligatoire, la bibliothèque refuse toute autre forme |
 
+### D'où vient l'aléa
+
+Cinq dés, une liste de 7776 mots — soit exactement 6⁵.
+
+| Passphrase | Entropie |
+|---|---|
+| 1 mot (5 dés) | 12,9 bits |
+| 4 mots | 51,7 bits |
+| 6 mots | 77,5 bits |
+
+C'est mesurable et non reproductible. Un générateur logiciel produit une suite
+calculable à partir de son état interne ; les dés n'ont pas d'état.
+
+La liste anglaise est celle de l'EFF. La liste française est une traduction
+communautaire : il n'existe pas de liste officielle en français, celle-ci s'est
+imposée par l'usage. Les deux comptent 7776 entrées, donc les chiffres ci-dessus
+valent dans les deux langues.
+[La méthode papier est documentée pas à pas](./tools/entropy-lab/docs/diceware-method-fr.pdf).
+
 ### Modèle de stockage
 
 Pour chaque compte, le serveur stocke exactement trois secrets :
