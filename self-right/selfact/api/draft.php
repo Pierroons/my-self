@@ -129,7 +129,7 @@ if ($method === 'POST') {
             'type' => $_GET['type'] ?? 'mise_en_demeure',
             'expediteur' => [
                 'nom'     => 'Mme Sophie MARTIN',
-                'adresse' => "17 rue des Lilas\n75011 Paris\ntél. : 06 12 34 56 78\nemail : sophie.martin.exemple@proton.me",
+                'adresse' => "17 rue des Lilas\n75011 Paris\ntél. : 06 12 34 56 78\nemail : sophie.martin.exemple@example.org",
             ],
             'destinataire' => [
                 'nom'     => "Monsieur le Directeur\nSARL BATIMENTS RAPIDES",
