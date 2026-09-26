@@ -21,15 +21,9 @@ reproductible → **[INSTALL.md](./INSTALL.md)**.
 
 ## Le principe
 
-Une passphrase de récupération mémorisée → dérivation **Argon2id** par **label** → clés filles cloisonnées :
+Une passphrase de récupération — diceware, tirée pour chaque machine par `genere-passphrase.py` — passe par **Argon2id** sous le label `disk`, ce qui donne la clé d'un **slot LUKS2**.
 
-| label | usage |
-|-------|-------|
-| `auth` | prouver / retrouver l'accès (SelfRecover web) |
-| `data-enc` | chiffrer la donnée applicative (SelfDataGuard) |
-| `disk` | **clé d'un slot LUKS2** (ce module) |
-
-Le label change le sel effectif → deux clés du même secret sont indépendantes. Argon2id
+Le label change le sel effectif → deux clés tirées du même secret sous deux labels sont indépendantes. Le dérivateur accepte d'autres labels (`--label`), mais **seul `disk` a un consommateur** (`selfrecover-keyscript.sh`) : SelfRecover web et SelfDataGuard ne passent pas par lui. Argon2id
 (memory-hard) car une clé de disque est attaquable **hors-ligne** en cas de vol du support. La résistance vient **d'abord de l'entropie de la passphrase** ; Argon2id ralentit chaque essai, il ne sauve pas un secret faible.
 
 ## Architecture

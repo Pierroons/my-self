@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Genere une passphrase diceware depuis la liste EFF francaise du depot MySelf.
+"""Genere une passphrase diceware depuis la liste diceware francaise du depot MySelf
+(celle d'Arthur Pons, CC-BY 3.0, construite sur la methode de l'EFF).
 
 A LANCER DANS UN VRAI TERMINAL. La passphrase s'affiche a l'ecran : elle ne doit
 jamais transiter par un journal, un historique, ni une conversation.
 
-  python3 genere-passphrase.py          # 7 mots sur la liste EFF longue, ~90 bits
+  python3 genere-passphrase.py          # 7 mots sur la liste longue (7776 mots), ~90 bits
   python3 genere-passphrase.py 8        # si tu veux plus
 
 Le nombre de mots suffisant depend de la liste : une liste diceware compte 6^4 =
