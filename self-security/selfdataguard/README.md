@@ -5,7 +5,7 @@
 **Application-layer data-at-rest protection that survives a database exfiltration.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.4.0, not yet deployed](https://img.shields.io/badge/status-v0.4.0%20not%20yet%20deployed-yellow.svg)](#status)
+[![Status: v0.4.0 in service](https://img.shields.io/badge/status-v0.4.0%20in%20service-brightgreen.svg)](#status)
 [![Tests: 219 passing](https://img.shields.io/badge/tests-219%20passing-brightgreen.svg)](#testing)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
@@ -105,7 +105,7 @@ Most e-commerce deployments will pick **Hybrid**. Health, banking, identity prov
 
 ## Status
 
-**v0.4.0 — XChaCha20-Poly1305 on every CPU, versioned blob format**, 26 September 2026. Not yet deployed: the public instance runs 0.3.0.
+**v0.4.0 — XChaCha20-Poly1305 on every CPU, versioned blob format**, 26 September 2026.
 
 Whitepaper complete (specification + threat model). PHP reference library implemented (2 607 lines across 18 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **219 checks across 8 suites**, all passing.
 

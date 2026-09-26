@@ -5,7 +5,7 @@
 **Protection des données au repos côté application, qui survit à une exfiltration de base de données.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.4.0, pas encore déployée](https://img.shields.io/badge/statut-v0.4.0%20pas%20encore%20d%C3%A9ploy%C3%A9e-yellow.svg)](#statut)
+[![Statut : v0.4.0 en service](https://img.shields.io/badge/statut-v0.4.0%20en%20service-brightgreen.svg)](#statut)
 [![Tests : 219 passants](https://img.shields.io/badge/tests-219%20passants-brightgreen.svg)](#tests)
 [![Pilier : Self-Security](https://img.shields.io/badge/pilier-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
@@ -105,7 +105,7 @@ La majorité des déploiements e-commerce choisiront **Hybrid**. Santé, banque,
 
 ## Statut
 
-**v0.4.0 — XChaCha20-Poly1305 sur tout processeur, format de blob versionné**, 26 septembre 2026. Pas encore déployée : l'instance publique tourne en 0.3.0.
+**v0.4.0 — XChaCha20-Poly1305 sur tout processeur, format de blob versionné**, 26 septembre 2026.
 
 Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (2 607 lignes réparties sur 18 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **219 contrôles répartis sur 8 suites**, tous passants.
 

@@ -55,7 +55,7 @@ A stolen drive yields nothing without the machine's passphrase; a dumped databas
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.4.0** — 219 checks across 8 suites; the public instance still runs 0.3.0 |
+| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.4.0** — in service, 219 checks across 8 suites |
 | [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.5.0** — validated on a Debian 13 LNMP server, a laptop and an encrypted-LVM root, reproducible install |
 
 ---

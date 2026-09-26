@@ -55,7 +55,7 @@ Un disque volé ne donne rien sans la passphrase de la machine ; une base dumpé
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, qui survit au dump de la base | **v0.4.0** — 219 contrôles sur 8 suites ; l'instance publique tourne encore en 0.3.0 |
+| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, qui survit au dump de la base | **v0.4.0** — en service, 219 contrôles sur 8 suites |
 | [SelfRecover-LUKS](./selfrecover-luks/) | Racine LUKS2 **et** volumes de données ouverts par une seule phrase de récupération | **v0.5.0** — validé sur un serveur Debian 13 LNMP un poste portable et une racine en LVM chiffré, installation reproductible |
 
 ---
