@@ -31,7 +31,7 @@ portant la mention « NON OFFICIEL » quand il imite la forme d'un acte.
    collectées AVANT génération, dans la conversation.
 4. **Collecte des infos = liste numérotée**, un élément par numéro, numérotation
    continue 1 à N à travers tous les blocs thématiques.
-5. **Articles de loi récupérés via SelfJustice** (connectée à Légifrance).
+5. **Articles de loi récupérés via SelfJustice** (données officielles de la DILA, synchronisées les 1er et 15 du mois).
    Vérification systématique à la source.
 6. **Modèle officiel R-xxxx trouvé →** structure reproduite + données utilisateur
    injectées. SelfAct produit le document complet (voir cas A de la matrice).
@@ -94,7 +94,7 @@ soutien, et l'espoir qu'un chemin existe**.
 
 Les affirmations juridiques sont **ancrées dans un article précis**, au format
 `art. X du Code Y`. Les articles sont toujours récupérés via l'API SelfJustice
-(`GET https://justice.my-self.fr/api/legi/article/{ref}?code={code}`), connectée à Légifrance.
+(`GET https://justice.my-self.fr/api/legi/article/{ref}?code={code}`), tirée des données officielles de la DILA.
 Vérification systématique à la source.
 
 Un article obsolète ou renuméroté est signalé à l'utilisateur avec la référence à

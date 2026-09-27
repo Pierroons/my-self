@@ -21,6 +21,19 @@ $fichier = getenv('SELFJUSTICE_STATS_DIR') ?: '/var/lib/selfjustice/stats';
 if (is_readable("$fichier/corpus.json")) {
     $corpus = json_decode(file_get_contents("$fichier/corpus.json"), true) ?: [];
 }
+/**
+ * La date du pied de page est celle du fichier servi. La page demande aux IA
+ * de la citer : écrite à la main, elle ne suivait pas les modifications.
+ */
+function date_page(): string {
+    return strtr(date('j F Y', filemtime(__FILE__)), [
+        'January' => 'janvier', 'February' => 'février', 'March' => 'mars',
+        'April' => 'avril', 'May' => 'mai', 'June' => 'juin',
+        'July' => 'juillet', 'August' => 'août', 'September' => 'septembre',
+        'October' => 'octobre', 'November' => 'novembre', 'December' => 'décembre',
+    ]);
+}
+
 /** Un tiret plutôt qu'un zéro : une valeur absente se voit, une valeur fausse non. */
 function chiffre(array $corpus, string $cle): string {
     $v = $corpus[$cle] ?? null;
@@ -776,7 +789,7 @@ function chiffre(array $corpus, string $cle): string {
   </p>
   <p style="font-size:0.82rem">
     Cadence de mise à jour législative : <strong>bimensuelle (1<sup>er</sup> + 15)</strong>
-    via <a href="/">SelfJustice</a>. Dernière mise à jour : 18 avril 2026.
+    via <a href="/">SelfJustice</a>. Dernière mise à jour : <?= date_page() ?>.
   </p>
 </footer>
 

@@ -21,6 +21,19 @@ $fichier = getenv('SELFJUSTICE_STATS_DIR') ?: '/var/lib/selfjustice/stats';
 if (is_readable("$fichier/corpus.json")) {
     $corpus = json_decode(file_get_contents("$fichier/corpus.json"), true) ?: [];
 }
+/**
+ * La date du pied de page est celle du fichier servi. La page demande aux IA
+ * de la citer : écrite à la main, elle ne suivait pas les modifications.
+ */
+function date_page(): string {
+    return strtr(date('j F Y', filemtime(__FILE__)), [
+        'January' => 'janvier', 'February' => 'février', 'March' => 'mars',
+        'April' => 'avril', 'May' => 'mai', 'June' => 'juin',
+        'July' => 'juillet', 'August' => 'août', 'September' => 'septembre',
+        'October' => 'octobre', 'November' => 'novembre', 'December' => 'décembre',
+    ]);
+}
+
 /** Un tiret plutôt qu'un zéro : une valeur absente se voit, une valeur fausse non. */
 function chiffre(array $corpus, string $cle): string {
     $v = $corpus[$cle] ?? null;
@@ -210,8 +223,8 @@ Analyse selon /directives.html</pre>
     <h3>IA recommandées pour une analyse optimale</h3>
     <p>Cette page de directives est <strong>optimisée pour Claude — écrite par et pour Claude</strong>, avec un suivi rigoureux des règles, l'impartialité maintenue sous pression utilisateur, et une nuance dans le raisonnement juridique structuré.</p>
     <ul>
-      <li><strong>★★★★★ Claude Opus</strong> (recommandé) — Anthropic, suivi strict des directives, 20 €/mois sur claude.ai</li>
-      <li><strong>★★★★ Claude Sonnet</strong> — alternative plus rapide, version gratuite de claude.ai disponible</li>
+      <li><strong>Claude Opus</strong> (recommandé) — Anthropic, suivi strict des directives</li>
+      <li><strong>Claude Sonnet</strong> — alternative plus rapide, avec une version gratuite</li>
     </ul>
     <p style="margin-top: 0.8rem; font-size: 0.9rem; color: var(--text-muted);">
       <strong>Autres IA fonctionnelles</strong> (résultats variables, complaisance possible, suivi partiel des directives) : Mistral Large (atout : connaissance native du droit français, hébergement EU), GPT-5, Gemini 2.5 Pro, Perplexity. Ces IA peuvent être utilisées si Claude n'est pas accessible.
@@ -913,7 +926,7 @@ Analyse selon /directives.html</pre>
 
 <article id="consultation-sources">
   <h2>Consultation des sources juridiques — ordre obligatoire</h2>
-  <p>SelfJustice met à disposition une <strong>API de consultation temps réel</strong> des sources officielles. Pour chaque article cité dans ton analyse, tu DOIS suivre cet ordre de consultation :</p>
+  <p>SelfJustice met à disposition une <strong>API de consultation</strong> des sources officielles, synchronisées les 1er et 15 du mois — la date de chaque base est dans <code>/api/status</code>. Pour chaque article cité dans ton analyse, tu DOIS suivre cet ordre de consultation :</p>
 
   <section>
     <h3>0. Étape préalable — Obtenir la date réelle de dernière MAJ des bases</h3>
@@ -1491,7 +1504,7 @@ référence SJ.
     Open source — Licence AGPL-3.0-or-later<br>
     Auteur : Pierroons<br>
     Contact : contact@my-self.fr<br>
-    Dernière mise à jour : 18 avril 2026
+    Dernière mise à jour : <?= date_page() ?>
   </p>
   <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
     Pas de compte, pas de cookie, pas de traceur. Comme tout serveur web, ce site tient un journal d'accès — adresse IP, adresse demandée, date, navigateur — conservé 14 jours pour la sécurité et les statistiques de fréquentation. Le formulaire de retour garde ce que tu envoies 30 jours.

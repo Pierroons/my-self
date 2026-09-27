@@ -30,7 +30,7 @@ Le token doit être conservé en lieu sûr (gestionnaire de mots de passe, Proto
 
 ### 3. Configurer nginx
 
-Le vhost versionné (`migration/nginx-selfjustice.conf`) contient déjà la location block. Si elle n'est pas encore en place :
+Aucun gabarit versionné ne porte ce bloc : c'est le vhost servi qui fait autorité. S'il n'y est pas encore :
 
 ```nginx
 limit_req_zone $binary_remote_addr zone=selfjustice_admin:10m rate=10r/m;

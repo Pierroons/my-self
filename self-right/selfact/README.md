@@ -96,3 +96,22 @@ See **[whitepaper](docs/whitepaper.md)** for the full protocol specification, te
 **Pierroons** — [github.com/Pierroons/my-self](https://github.com/Pierroons/my-self)
 
 *SelfAct — The template is ready. The facts are yours to write.*
+
+---
+
+## Installation notes
+
+The synchronised catalogue does **not** live in the code tree: `update_catalog.sh`
+writes it to `/var/lib/selfact/`, and the API reads it there. Two writers do not
+share a path — the cron harvests on the 1st and 15th, while the repository is
+pushed from a workstation that harvests nothing. As long as both targeted
+`api/data/`, the last writer won, and it was the older one.
+
+```bash
+sudo install -d -o www-data -g deploy -m 775 /var/lib/selfact
+```
+
+The mixed ownership lets the cron write through the group while `www-data`
+(nginx/PHP-FPM) reads as usual. `api/data/situations.json` and
+`api/data/gabarits.json` stay versioned: they are curated by hand and have a
+single writer.

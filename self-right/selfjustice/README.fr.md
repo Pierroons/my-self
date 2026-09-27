@@ -19,7 +19,7 @@
 
 ## Le problème
 
-Le conseil juridique en France coûte 50–300 € par consultation. La plupart des citoyens face à des conflits quotidiens — licenciement abusif, voisinage bruyant, refus d'indemnisation d'assurance, litiges de consommation — soit abandonnent, soit agissent à l'aveugle sans comprendre leurs droits.
+Le conseil juridique en France se paie à la consultation. La plupart des citoyens face à des conflits quotidiens — licenciement abusif, voisinage bruyant, refus d'indemnisation d'assurance, litiges de consommation — soit abandonnent, soit agissent à l'aveugle sans comprendre leurs droits.
 
 Pendant ce temps, chaque assistant IA (Claude, ChatGPT, Mistral, Gemini, Perplexity) répond volontiers aux questions juridiques, mais sans encadrement structuré il hallucine les citations, loupe la hiérarchie des normes, ne reste pas impartial, et saute les disclaimers obligatoires.
 
@@ -83,7 +83,7 @@ N'importe quelle IA. N'importe quel citoyen. N'importe quel conflit. Une pré-an
 
 ## Composants cœur
 
-### 1. Page de directives (`site/index.html`)
+### 1. Page de directives (`site/index.php`)
 
 Directives machine-readable disant à l'IA comment raisonner :
 
@@ -156,7 +156,7 @@ curl -s "https://justice.my-self.fr/api/legi/search?q=harcelement&limit=20" | jq
 
 ### Auto-héberger
 
-Cloner le repo, pointer nginx sur `site/`, configurer `api/api.php` contre votre dump SQLite LEGI. `deploy/selfjustice/` porte le vhost nginx, le script de déploiement et les unités systemd de synchronisation — la configuration de référence, pas un guide pas-à-pas.
+Clone le dépôt, pointe nginx sur `site/`, configure `api/api.php` contre ton dump SQLite LEGI. `deploy/selfjustice/` porte le vhost nginx, le script de déploiement et les unités systemd de synchronisation — la configuration de référence, pas un guide pas-à-pas.
 
 ---
 
@@ -179,7 +179,7 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 - Une consultation juridique (réservée aux avocats inscrits au Barreau)
 - Un avis juridique contraignant
 
-**Consultez toujours un avocat avant toute action en justice.**
+**Consulte toujours un avocat avant toute action en justice.**
 
 ---
 
@@ -242,7 +242,7 @@ L'humain apporte l'entropie (vécu, faits). La machine apporte l'impartialité (
 
 ## Licence
 
-[AGPL-3.0-or-later](../../LICENSE) — utilisez, forkez, hébergez le vôtre. Si vous faites tourner une version modifiée en service, vous devez publier vos modifications.
+[AGPL-3.0-or-later](../../LICENSE) — utilise, forke, héberge le tien. Si tu fais tourner une version modifiée en service, tu dois publier tes modifications.
 
 ---
 

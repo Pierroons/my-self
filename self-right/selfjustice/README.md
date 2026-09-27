@@ -19,7 +19,7 @@
 
 ## The problem
 
-Legal advice in France costs 50–300 € per consultation. Most citizens facing everyday conflicts — unfair dismissal, noisy neighbors, refused insurance claims, consumer disputes — either give up or act blindly without understanding their rights.
+Legal advice in France is paid by the consultation. Most citizens facing everyday conflicts — unfair dismissal, noisy neighbors, refused insurance claims, consumer disputes — either give up or act blindly without understanding their rights.
 
 Meanwhile, every AI assistant (Claude, ChatGPT, Mistral, Gemini, Perplexity) is eager to answer legal questions, but without structured guidance they hallucinate citations, miss the hierarchy of norms, fail to stay impartial, and skip the mandatory disclaimers.
 
@@ -82,7 +82,7 @@ Any AI. Any citizen. Any conflict. One consistent, sourced, impartial pre-analys
 
 ## Core components
 
-### 1. Directives page (`site/index.html`)
+### 1. Directives page (`site/index.php`)
 
 Machine-readable directives telling the AI how to reason:
 
