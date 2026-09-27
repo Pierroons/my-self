@@ -23,53 +23,6 @@ tribunaux administratifs (arrêtés en 2009 dans JADE) et la Cour de discipline 
 financière (en 2000) lui faisaient afficher « 9657 jours ». Ces fonds restent nommés, à part, avec
 leur borne. Les juridictions administratives sont nommées en toutes lettres au lieu de leur code.
 
-### SelfJustice v0.4.1 — le Conseil d'État se vérifie, et `/verifier` ne nie plus une décision présente — 27 septembre 2026
-
-`/verifier` prenait les cinquante décisions les plus récentes d'un numéro, puis filtrait par la date
-annoncée. Une décision présente derrière plus d'homonymes récents n'était jamais examinée, et la
-route la déclarait absente : mesuré en production sur `23/00039` du 5 janvier 2023, porté par 61
-décisions. Les décisions du jour annoncé passent désormais en tête du tri, et le nombre d'homonymes
-que lit le modèle vient du total, non de la liste bornée.
-
-Le fonds JADE, servi depuis le 10 septembre, n'était pas cherchable par numéro : son collecteur
-n'écrivait jamais dans `numeros`, la seule table que lit `/verifier`. La décision du Conseil d'État
-n° 519395 du 9 septembre 2026, présente en base, était déclarée absente, avec la réserve que la
-justice administrative « n'y figurera jamais ». `build_jade_db.py` inscrit maintenant chaque
-numéro, sous la règle de normalisation de l'API, et `--numeros` rattrape une base existante. La
-réserve « ArianeWeb » ne s'affiche plus que si l'index ne sert pas la justice administrative, et la
-recherche par thème filtrée sur une juridiction que Judilibre ne connaît pas refuse avec une
-indication, au lieu de rendre l'erreur de l'amont comme une panne.
-
-Les textes disent ce que l'instance garde — le journal d'accès, IP comprise, quatorze jours ; les
-retours de mise en page, trente jours — là où ils promettaient « aucune donnée personnelle ». La date
-du pied de page, que la page demande aux IA de citer, vient du fichier servi. Les articles 750-1 du
-code de procédure civile et 54 de la loi n° 71-1130 sont cités d'après la base LEGI.
-
-### SelfAct v0.1.3 — le module se décrit comme il est — 27 septembre 2026
-
-Depuis la 0.1.2 du 23 août, l'avertissement « NON OFFICIEL » suit ce que le document imite, la
-section des faits porte le titre que son gabarit annonce, et l'adresse d'exemple du brouillon passe
-sur un domaine réservé.
-
-Les textes présentaient SelfAct comme un générateur de documents « conformes » qui lit une analyse,
-dit quoi signer et livre un dossier. Le code fait l'inverse, volontairement : un modèle à trous,
-rempli dans le navigateur, et un `POST` refusé sans lire le corps. README, whitepaper, pages servies
-et conditions d'utilisation disent maintenant ce qu'il fait et ce qu'il ne fait pas. La saisine du
-conciliateur de justice n'est plus dite « obligatoire » à elle seule : l'article 750-1 laisse le
-choix entre conciliation, médiation et procédure participative.
-
-### selfright-mcp 0.4.4 — le périmètre de la jurisprudence suit la couverture — 27 septembre 2026
-
-Aucune version n'a été publiée depuis la 0.4.0 du 22 août. Les 0.4.1 et 0.4.2 ont corrigé ce que
-le contrôle extérieur du 22 août avait relevé, montré d'où vient un texte, et rendu obligatoire
-`SELFRIGHT_ACT_URL`. Le serveur a ensuite suivi l'élargissement de la base à tout le droit publié au
-Journal officiel, nommé ses 108 codes, dit ce que la base ne contient pas, et transmis au modèle les
-seuils d'une situation. Le numéro a rattrapé ces changements le 26 septembre, en 0.4.3.
-
-En 0.4.4, le bandeau de la jurisprudence tire son périmètre de la couverture que rend `/status` :
-la justice administrative n'y est plus dite absente dès que l'index la sert, et
-`verifier_jurisprudence` nomme les juridictions administratives qu'il accepte.
-
 ### Le lab enrôle de nouveau un appareil — 27 septembre 2026
 
 L'enrôlement « cet appareil » refusait le bon mot mémorisé (« Compte ou mot mémorisé
@@ -239,52 +192,6 @@ La console simulée du lab n'offre plus `add-admin`. Elle montre `first-admin`,
 de SelfRecover attribuaient la clé HMAC du journal à la passphrase SU : c'est
 `SELFRECOVER_SU_AUDIT_SECRET`, distincte d'elle.
 
-### SelfJustice v0.4.0 — la jurisprudence administrative, et ce qu'il a fallu défaire pour l'atteindre — 11 septembre 2026
-
-La roadmap réservait la v0.4.0 au Conseil d'État et aux juridictions administratives. Le chantier
-avait été annoncé comme tenant « à une ligne » : ajouter `ce` à la liste des juridictions du
-moissonneur Judilibre, et remoisonner. **C'était faux**, et l'affirmation venait d'une lecture du
-code du *client*, jamais d'un appel au *serveur*. L'amont a répondu :
-`Value of the jurisdiction parameter must be in [cc,ca,tj,tcom]`. Judilibre ne sert pas l'ordre
-administratif ; il n'a jamais eu ce paramètre. Sept heures de calcul y sont passées, sur un
-intervalle allant de l'an 100 à 2027 — sans erreur, sans code de sortie, un processus vivant qui
-paraissait travailler.
-
-Deux défauts en sont sortis, corrigés avant la fonctionnalité elle-même :
-
-- **Un paramètre refusé ne se découpe plus.** `appel()` rendait la même valeur pour « cette tranche
-  pèse trop lourd » — où couper la fenêtre en deux est la bonne réponse, et c'est ainsi qu'on
-  traverse 1,19 million de décisions à travers un guichet plafonné — et pour « ce paramètre
-  n'existe pas », où couper ne corrige rien : la moitié d'un intervalle est tout aussi invalide.
-  L'amont rend les deux en HTTP 400 ; la cause était effacée avant d'atteindre celui qui décide.
-  Un refus définitif lève désormais son exception propre. Le banc juge sur le **nombre d'appels** :
-  1 sur un paramètre refusé, plus de 340 000 sur un refus de volume.
-- **La couverture juridictionnelle se dérive de l'index**, au lieu d'être redéclarée à trois
-  endroits. Le guichet s'ouvre donc sur ce que la base contient réellement.
-
-**La source est le fonds JADE de la DILA** : un dump global et ses incréments quotidiens, sans API.
-Un collecteur distinct le lit (`tools/build_jade_db.py`), avec la robustesse prise sur le
-moissonneur Judilibre et non sur le collecteur LEGI — journal horodaté, marqueur de fraîcheur écrit
-seulement sur passage complet, code de sortie non nul sur moisson partielle. **Le global seul est un
-piège, et il avait déjà servi** : LEGI a été construit pendant treize mois sur un dump figé dont les
-diffs étaient téléchargés et jamais appliqués, servant honnêtement une date qui ne bougeait pas.
-`--depuis auto` refuse de s'arrêter tant qu'un incrément postérieur reste à appliquer.
-
-**La table des juridictions a été écrite sur l'inventaire du fonds entier, pas sur un échantillon.**
-Quatre incréments récents portaient dix libellés, tous dans la même graphie ; le fonds en porte
-**113** — `Conseil d'Etat` et `Conseil d'État`, `CAA de MARSEILLE` et `Cour Administrative d'Appel
-de Marseille`, des capitales, des accents absents. Une table bâtie sur l'échantillon aurait classé
-le présent et laissé soixante ans de décisions sous des juridictions fantômes, sans erreur ni
-total qui le montre. La normalisation **refuse** ce qu'elle ne reconnaît pas plutôt que de le ranger
-sous un code par défaut, et le jeu de test est l'inventaire lui-même.
-
-Mesuré sur l'instance après collecte : **570 896 décisions administratives**, texte intégral
-compris, 320 archives appliquées, 0 refusée, 0 illisible.
-
-⚠️ **Deux limites qui se disent plutôt qu'elles ne se devinent.** Le fonds ne porte des tribunaux
-administratifs qu'une sélection **arrêtée en 2009**, et la Cour de discipline budgétaire et
-financière s'arrête **en 2000** : un jugement de TA récent n'est pas dans la base. Et aucun
-incrément ne porte de liste de suppression — une décision retirée du fonds par la DILA y restera.
 ### Le contrôle des chemins ne regardait aucun lien ancré — 9 septembre 2026
 
 `scripts/check-paths.sh` porte depuis sa création une classe `[^)#]` qui **exclut le
@@ -445,6 +352,62 @@ même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le mê
 ayant renoncé aux contrôles qui touchent au système.
 
 ---
+
+## [SelfJustice v0.4.1] — 27 septembre 2026
+
+### SelfJustice v0.4.1 — le Conseil d'État se vérifie, et `/verifier` ne nie plus une décision présente — 27 septembre 2026
+
+`/verifier` prenait les cinquante décisions les plus récentes d'un numéro, puis filtrait par la date
+annoncée. Une décision présente derrière plus d'homonymes récents n'était jamais examinée, et la
+route la déclarait absente : mesuré en production sur `23/00039` du 5 janvier 2023, porté par 61
+décisions. Les décisions du jour annoncé passent désormais en tête du tri, et le nombre d'homonymes
+que lit le modèle vient du total, non de la liste bornée.
+
+Le fonds JADE, servi depuis le 10 septembre, n'était pas cherchable par numéro : son collecteur
+n'écrivait jamais dans `numeros`, la seule table que lit `/verifier`. La décision du Conseil d'État
+n° 519395 du 9 septembre 2026, présente en base, était déclarée absente, avec la réserve que la
+justice administrative « n'y figurera jamais ». `build_jade_db.py` inscrit maintenant chaque
+numéro, sous la règle de normalisation de l'API, et `--numeros` rattrape une base existante. La
+réserve « ArianeWeb » ne s'affiche plus que si l'index ne sert pas la justice administrative, et la
+recherche par thème filtrée sur une juridiction que Judilibre ne connaît pas refuse avec une
+indication, au lieu de rendre l'erreur de l'amont comme une panne.
+
+Les textes disent ce que l'instance garde — le journal d'accès, IP comprise, quatorze jours ; les
+retours de mise en page, trente jours — là où ils promettaient « aucune donnée personnelle ». La date
+du pied de page, que la page demande aux IA de citer, vient du fichier servi. Les articles 750-1 du
+code de procédure civile et 54 de la loi n° 71-1130 sont cités d'après la base LEGI.
+
+
+## [SelfAct v0.1.3] — 27 septembre 2026
+
+### SelfAct v0.1.3 — le module se décrit comme il est — 27 septembre 2026
+
+Depuis la 0.1.2 du 23 août, l'avertissement « NON OFFICIEL » suit ce que le document imite, la
+section des faits porte le titre que son gabarit annonce, et l'adresse d'exemple du brouillon passe
+sur un domaine réservé.
+
+Les textes présentaient SelfAct comme un générateur de documents « conformes » qui lit une analyse,
+dit quoi signer et livre un dossier. Le code fait l'inverse, volontairement : un modèle à trous,
+rempli dans le navigateur, et un `POST` refusé sans lire le corps. README, whitepaper, pages servies
+et conditions d'utilisation disent maintenant ce qu'il fait et ce qu'il ne fait pas. La saisine du
+conciliateur de justice n'est plus dite « obligatoire » à elle seule : l'article 750-1 laisse le
+choix entre conciliation, médiation et procédure participative.
+
+
+## [selfright-mcp 0.4.4] — 27 septembre 2026
+
+### selfright-mcp 0.4.4 — le périmètre de la jurisprudence suit la couverture — 27 septembre 2026
+
+Aucune version n'a été publiée depuis la 0.4.0 du 22 août. Les 0.4.1 et 0.4.2 ont corrigé ce que
+le contrôle extérieur du 22 août avait relevé, montré d'où vient un texte, et rendu obligatoire
+`SELFRIGHT_ACT_URL`. Le serveur a ensuite suivi l'élargissement de la base à tout le droit publié au
+Journal officiel, nommé ses 108 codes, dit ce que la base ne contient pas, et transmis au modèle les
+seuils d'une situation. Le numéro a rattrapé ces changements le 26 septembre, en 0.4.3.
+
+En 0.4.4, le bandeau de la jurisprudence tire son périmètre de la couverture que rend `/status` :
+la justice administrative n'y est plus dite absente dès que l'index la sert, et
+`verifier_jurisprudence` nomme les juridictions administratives qu'il accepte.
+
 
 ## [SelfDataGuard v0.4.0] — 26 septembre 2026
 
@@ -610,6 +573,55 @@ Aucune clé, aucune dérivation, aucun format n'est touché : c'est de la prose 
 Le nom de l'option `--word` est conservé — le renommer romprait un contrat.
 
 ---
+
+## [SelfJustice v0.4.0] — 11 septembre 2026
+
+### SelfJustice v0.4.0 — la jurisprudence administrative, et ce qu'il a fallu défaire pour l'atteindre — 11 septembre 2026
+
+La roadmap réservait la v0.4.0 au Conseil d'État et aux juridictions administratives. Le chantier
+avait été annoncé comme tenant « à une ligne » : ajouter `ce` à la liste des juridictions du
+moissonneur Judilibre, et remoisonner. **C'était faux**, et l'affirmation venait d'une lecture du
+code du *client*, jamais d'un appel au *serveur*. L'amont a répondu :
+`Value of the jurisdiction parameter must be in [cc,ca,tj,tcom]`. Judilibre ne sert pas l'ordre
+administratif ; il n'a jamais eu ce paramètre. Sept heures de calcul y sont passées, sur un
+intervalle allant de l'an 100 à 2027 — sans erreur, sans code de sortie, un processus vivant qui
+paraissait travailler.
+
+Deux défauts en sont sortis, corrigés avant la fonctionnalité elle-même :
+
+- **Un paramètre refusé ne se découpe plus.** `appel()` rendait la même valeur pour « cette tranche
+  pèse trop lourd » — où couper la fenêtre en deux est la bonne réponse, et c'est ainsi qu'on
+  traverse 1,19 million de décisions à travers un guichet plafonné — et pour « ce paramètre
+  n'existe pas », où couper ne corrige rien : la moitié d'un intervalle est tout aussi invalide.
+  L'amont rend les deux en HTTP 400 ; la cause était effacée avant d'atteindre celui qui décide.
+  Un refus définitif lève désormais son exception propre. Le banc juge sur le **nombre d'appels** :
+  1 sur un paramètre refusé, plus de 340 000 sur un refus de volume.
+- **La couverture juridictionnelle se dérive de l'index**, au lieu d'être redéclarée à trois
+  endroits. Le guichet s'ouvre donc sur ce que la base contient réellement.
+
+**La source est le fonds JADE de la DILA** : un dump global et ses incréments quotidiens, sans API.
+Un collecteur distinct le lit (`tools/build_jade_db.py`), avec la robustesse prise sur le
+moissonneur Judilibre et non sur le collecteur LEGI — journal horodaté, marqueur de fraîcheur écrit
+seulement sur passage complet, code de sortie non nul sur moisson partielle. **Le global seul est un
+piège, et il avait déjà servi** : LEGI a été construit pendant treize mois sur un dump figé dont les
+diffs étaient téléchargés et jamais appliqués, servant honnêtement une date qui ne bougeait pas.
+`--depuis auto` refuse de s'arrêter tant qu'un incrément postérieur reste à appliquer.
+
+**La table des juridictions a été écrite sur l'inventaire du fonds entier, pas sur un échantillon.**
+Quatre incréments récents portaient dix libellés, tous dans la même graphie ; le fonds en porte
+**113** — `Conseil d'Etat` et `Conseil d'État`, `CAA de MARSEILLE` et `Cour Administrative d'Appel
+de Marseille`, des capitales, des accents absents. Une table bâtie sur l'échantillon aurait classé
+le présent et laissé soixante ans de décisions sous des juridictions fantômes, sans erreur ni
+total qui le montre. La normalisation **refuse** ce qu'elle ne reconnaît pas plutôt que de le ranger
+sous un code par défaut, et le jeu de test est l'inventaire lui-même.
+
+Mesuré sur l'instance après collecte : **570 896 décisions administratives**, texte intégral
+compris, 320 archives appliquées, 0 refusée, 0 illisible.
+
+⚠️ **Deux limites qui se disent plutôt qu'elles ne se devinent.** Le fonds ne porte des tribunaux
+administratifs qu'une sélection **arrêtée en 2009**, et la Cour de discipline budgétaire et
+financière s'arrête **en 2000** : un jugement de TA récent n'est pas dans la base. Et aucun
+incrément ne porte de liste de suppression — une décision retirée du fonds par la DILA y restera.
 
 ## [SelfRecover v0.5.1] — 8 septembre 2026
 
