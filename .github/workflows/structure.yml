@@ -136,8 +136,8 @@ jobs:
           sortie=$(php bi-self/selfrecover/tests/sanity_device.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du facteur « cet appareil » a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 26/26$' \
-            || { echo "::error::le banc du facteur « cet appareil » n'a pas joué ses 26 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 27/27$' \
+            || { echo "::error::le banc du facteur « cet appareil » n'a pas joué ses 27 cas"; exit 1; }
 
       # Enrôler ouvre le compte avec le seul mot mémorisé : ce chemin n'avait aucun
       # frein par compte, donc rien sous un profil où l'adresse ne distingue personne.
