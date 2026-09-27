@@ -18,39 +18,39 @@
 
 L'accès au droit en France est formellement égal. En pratique, il demande :
 - De lire du texte juridique (codé, archaïque, plein de renvois)
-- D'identifier quelle loi s'applique à votre situation
-- De quantifier vos chances
+- D'identifier quelle loi s'applique à ta situation
+- De quantifier tes chances
 - De connaître la bonne procédure (médiation, courrier, tribunal, quel tribunal)
 - De remplir le bon formulaire dans le bon délai
-- De payer un avocat, ou de vous représenter vous-même
+- De payer un avocat, ou de te représenter toi-même
 
 Chacune de ces étapes est un filtre. La plupart des gens abandonnent aux deux premières. Connaître ses droits ne sert à rien si on ne sait pas les faire valoir. **Le droit n'est accessible qu'à ceux qui ont déjà une littératie juridique** — une inégalité auto-entretenue.
 
-Self-Right prend en charge l'arc complet en deux modules complémentaires : **comprendre le droit (SelfJustice), puis agir (SelfAct)**.
+Self-Right couvre cet arc en deux modules : **le droit (SelfJustice), puis la démarche (SelfAct)**.
 
 ---
 
-## Pourquoi les deux modules se renforcent mutuellement
+## Pourquoi les deux modules vont ensemble
 
-**SelfJustice seul** produit une analyse juridique impartiale avec citations — mais vous laisse avec un document. Vous savez ce que dit la loi. Et maintenant ? Rien, sauf si vous savez rédiger une mise en demeure, identifier le tribunal compétent, remplir un CERFA, respecter un délai procédural. Pour 90 % des citoyens, c'est là qu'est le mur.
+**SelfJustice seul** sert le droit — articles en vigueur, textes européens, jurisprudence — pour que ton IA t'explique ce qu'il dit de ta situation. Tu sais alors ce que dit la loi, pas encore comment agir : quel formulaire, quel service en ligne, quel délai, comment écrire le courrier.
 
-**SelfAct seul** est une bibliothèque de modèles — utile, mais dangereux sans contexte. Une mise en demeure avec la mauvaise base légale est pire qu'une absence de courrier.
+**SelfAct seul** est un catalogue et des modèles de lettres. Sans le droit, tu pourrais te tromper de démarche.
 
-**Ensemble**, la chaîne est complète :
+**Ensemble :**
 
-1. Vous décrivez votre situation en langage courant.
-2. SelfJustice récupère les articles de loi réels, fait une analyse impartiale, identifie ce qui est défendable.
-3. SelfAct prend cette analyse en entrée et génère des documents prêts à envoyer : mise en demeure, saisine du tribunal compétent, CERFA pré-rempli, calendrier des délais.
+1. Tu décris ta situation à ta propre IA.
+2. Ton IA lit le droit par SelfJustice et t'explique ce qu'il dit, avec des références vérifiables.
+3. SelfAct pointe la ressource officielle de la démarche, calcule le délai, et te donne un modèle de lettre à trous. Tu écris les faits, tu relis, tu signes, tu envoies.
 
-Du brouillard du « je pense que je suis dans mes droits » au « cette lettre part lundi matin » — en un workflow continu, à coût zéro.
+Aucun des deux modules n'analyse ton cas à ta place : la consultation juridique est réservée aux professionnels du droit (loi n° 71-1130). Le jugement, et la décision d'agir, restent les tiens.
 
 ---
 
-## Workflows croisés
+## Exemples croisés
 
-- **Trouble de voisinage sonore** → SelfJustice qualifie le conflit (nuisance sonore, art. R1336-5 CSP), extrait les articles et délais applicables → SelfAct génère la mise en demeure avec la bonne base légale, identifie le conciliateur de justice comme première étape, calcule la fenêtre de 15 jours pour répondre.
-- **Refus d'indemnisation assurance** → SelfJustice identifie la clause applicable (exclusion formelle et limitée, L113-1 CCA), l'évalue contre la jurisprudence → SelfAct rédige la lettre de contestation + la saisine du Médiateur de l'Assurance avec le CERFA.
-- **Harcèlement au travail** → SelfJustice cite L1152-1 Code du travail, identifie les exigences de preuves → SelfAct produit le courrier à l'employeur, la notification CSE/CSSCT, le formulaire prud'hommes (CERFA 15586*03) avec les sections pertinentes pré-remplies.
+- **Conflit de voisinage (bruit)** → SelfJustice sert les articles applicables → SelfAct pointe le signalement officiel des nuisances et la saisine du conciliateur de justice, obligatoire avant le tribunal.
+- **Litige avec un assureur** → SelfJustice sert les articles du code des assurances et la jurisprudence → SelfAct pointe la saisine du médiateur en assurances.
+- **Licenciement contesté** → SelfJustice sert le code du travail → SelfAct pointe la requête de saisine du conseil de prud'hommes et calcule le délai.
 
 ---
 

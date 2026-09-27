@@ -26,31 +26,31 @@ Access to law in France is formally equal. In practice, it requires:
 
 Each of these steps is a filter. Most people give up at the first two. Knowing your rights is useless if you don't know how to enforce them. **The law is accessible only to those who already have legal literacy** — a self-perpetuating inequality.
 
-Self-Right tackles the full arc in two complementary modules: **understand the law (SelfJustice), then act on it (SelfAct)**.
+Self-Right covers that arc in two modules: **the law (SelfJustice), then the step (SelfAct)**.
 
 ---
 
-## Why the two modules reinforce each other
+## Why the two modules go together
 
-**SelfJustice alone** produces an impartial legal analysis with citations — but leaves you with a document. You know what the law says. Now what? Nothing, unless you know how to draft a formal notice, identify the competent court, fill a CERFA form, respect a procedural deadline. For 90 % of citizens, this gap is the wall.
+**SelfJustice alone** serves the law — articles in force, European texts, case law — for your AI to explain what it says about your situation. You then know what the law says, but not yet how to act: which form, which online service, which deadline, how to write the letter.
 
-**SelfAct alone** is a template library — useful, but dangerous without context. A formal notice with the wrong legal basis is worse than no letter at all.
+**SelfAct alone** is a catalogue and a set of letter templates. Without the law, you could pick the wrong step.
 
-**Together**, the chain is complete:
+**Together:**
 
-1. You describe your situation in plain language.
-2. SelfJustice fetches the actual law articles, does an impartial analysis, identifies what's defensible.
-3. SelfAct takes that analysis as input and generates ready-to-send documents: mise en demeure letter, saisine of the competent court, CERFA form pre-filled, calendar of deadlines.
+1. You describe your situation to your own AI.
+2. Your AI reads the law through SelfJustice and explains what it says, with verifiable references.
+3. SelfAct points to the official resource for the step, computes the deadline, and gives you a letter template with gaps. You write the facts, review, sign and send.
 
-From the fog of "I think I'm in my rights" to "this letter is in the post on Monday" — in a single continuous workflow, at zero cost.
+Neither module analyses your case in your place: legal advice is reserved to legal professionals in France (loi n° 71-1130). The judgement, and the decision to act, stay yours.
 
 ---
 
-## Cross-module workflows
+## Cross-module examples
 
-- **Neighborhood noise complaint** → SelfJustice qualifies the conflict (nuisance sonore, art. R1336-5 CSP), extracts the applicable articles and deadlines → SelfAct generates the mise en demeure with the right legal basis, identifies the conciliateur de justice as first step, calculates the 15-day response window.
-- **Refused insurance claim** → SelfJustice identifies the applicable clause (exclusion formelle et limitée, L113-1 CCA), evaluates it against jurisprudence → SelfAct drafts the contestation letter + the saisine of the Médiateur de l'Assurance with the CERFA.
-- **Work harassment** → SelfJustice cites L1152-1 Code du travail, identifies evidence requirements → SelfAct produces the letter to the employer, the CSE/CSSCT notice, the prud'hommes form (CERFA 15586*03) with the relevant sections pre-filled.
+- **Neighbour dispute (noise)** → SelfJustice serves the applicable articles → SelfAct points to the official nuisance report and to the saisine of the conciliateur de justice, mandatory before court.
+- **Dispute with an insurer** → SelfJustice serves the articles of the Code des assurances and the case law → SelfAct points to the saisine of the insurance mediator.
+- **Contested dismissal** → SelfJustice serves the Code du travail → SelfAct points to the application to the conseil de prud'hommes and computes the deadline.
 
 ---
 

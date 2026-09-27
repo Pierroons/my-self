@@ -162,13 +162,13 @@ Cloner le repo, pointer nginx sur `site/`, configurer `api/api.php` contre votre
 
 ## Rôle dans Self-Right
 
-SelfJustice **diagnostique**. [SelfAct](../selfact/) **agit**. Ensemble ils couvrent l'arc complet de « je pense que je suis dans mes droits » à « la mise en demeure est signée et envoyée » :
+SelfJustice sert **le droit**. [SelfAct](../selfact/) sert **la démarche**. Ensemble, ils vont de « que dit la loi sur ma situation ? » à « quel formulaire, quel délai, quel courrier ? » :
 
-1. L'utilisateur décrit le conflit → SelfJustice retourne une analyse JSON structurée.
-2. SelfAct prend ce JSON → génère mise en demeure, saisine, CERFA, calendrier.
-3. L'utilisateur télécharge un dossier ZIP, envoie en RAR à La Poste.
+1. Tu décris ta situation à ta propre IA, qui lit le droit par SelfJustice et t'explique ce qu'il dit, avec des références vérifiables.
+2. SelfAct pointe la ressource officielle de la démarche, calcule le délai et te donne un modèle de lettre à trous.
+3. Tu écris les faits, tu relis, tu signes, tu envoies.
 
-Zéro frais de consultation. Zéro cloud. Zéro intermédiaire.
+Pas de frais de consultation. Ta question est lue par l'IA que tu choisis ; SelfJustice ne reçoit que les requêtes de consultation qu'elle lui envoie.
 
 ---
 
@@ -191,7 +191,7 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 - [x] 8 catégories juridiques (travail, logement, famille, administration, voisinage, consommation, civil, pénal)
 - [x] Points d'entrée détaillés — droit du logement, droit de la famille, droit administratif
 - [x] Template de sortie structuré avec glossaire
-- [x] Disclaimers légaux (conforme loi 71-1130)
+- [x] Avertissements sur la loi 71-1130 — la consultation juridique reste réservée aux professionnels du droit
 - [x] API servant tout le corpus LEGI — **108 codes** adressables par leur titre, sans table d'alias
 - [x] API servant le corpus UE/CEDH (dont le règlement IA 2024/1689)
 - [x] Index de jurisprudence judiciaire (Cour de cassation, cours d'appel)
@@ -233,8 +233,8 @@ SelfJustice fait partie de l'écosystème **MySelf**, spécifiquement le pilier 
 
 | Module | Rôle |
 |--------|------|
-| **SelfJustice** (celui-ci) | Diagnostiquer — que dit la loi ? |
-| [SelfAct](../selfact/) | Agir — rédiger la mise en demeure, remplir le CERFA, calendrier des délais |
+| **SelfJustice** (celui-ci) | Le droit — que dit la loi ? |
+| [SelfAct](../selfact/) | La démarche — la ressource officielle, le délai, un modèle de lettre à compléter |
 
 L'humain apporte l'entropie (vécu, faits). La machine apporte l'impartialité (raisonnement structuré, loi citée). Aucun des deux ne suffit seul.
 

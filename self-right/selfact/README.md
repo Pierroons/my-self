@@ -2,7 +2,7 @@
 
 > 🇫🇷 **[Lire en français →](./README.fr.md)**
 
-**Turn legal analysis into ready-to-send action.**
+**From "I know my rights" to the step itself: the right form, the deadline, a letter template to complete.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.1.2 running](https://img.shields.io/badge/status-v0.1.2%20running-brightgreen.svg)](#status)
@@ -14,90 +14,57 @@
 
 ---
 
-## The gap SelfAct fills
+## What SelfAct covers
 
-[SelfJustice](../selfjustice/) produces an impartial legal pre-analysis with article citations, strength/weakness analysis, and procedural pointers. Excellent output. But the user ends up with a PDF that says:
+[SelfJustice](../selfjustice/) serves the law: articles in force, European texts, case law.
+Your AI uses it to explain what the law says about your situation. What remains is acting:
+which form to fill, which online service to use, within which deadline, how to write the
+letter.
 
-> *"You could send a formal notice based on art. L113-1 of the Code des assurances, then seize the Médiateur de l'Assurance, with a delay of 2 months..."*
-
-...and still doesn't know how to write that formal notice, which court has jurisdiction, which CERFA form to fill, or how to calculate the deadline. **The cliff between "I understand my rights" and "I am acting on my rights" is where 90 % of cases die.**
-
-SelfAct is the bridge. It takes the structured output of SelfJustice and produces **the actual document you send**.
-
----
-
-## Vision
-
-An open-source, self-hostable generator of legally compliant procedural documents for French civil matters:
-
-- **Mise en demeure** letters (with correct legal basis, RAR formatting, 15-day standard clause)
-- **Saisines** of the competent court / tribunal / commission / conciliateur
-- **CERFA forms** pre-filled from SelfJustice analysis
-- **Procedural calendars** with deadlines auto-calculated (art. 640 CPC, etc.)
-- **Evidence dossiers** with suggested content and structure
-
-All output stays local. No cloud. No third party touches the documents.
+SelfAct covers that step. It **does not write your case**: it shows you the official resource,
+computes the deadline, and gives you a letter template with gaps. The facts are yours to write.
 
 ---
 
-## Core principle
+## What SelfAct does
 
-SelfAct reads a **SelfJustice JSON analysis** as input. The analysis contains:
+- **Catalogue of official resources** — CERFA forms, online services and letter templates from
+  service-public.gouv.fr, harvested on the 1st and 15th of each month (exact count:
+  `/act/api/catalog.php?stats=1`).
+- **Situations** — around twenty common situations, checked by hand, each mapped to a step, an
+  article and a form.
+- **Deadlines** — computed under articles 640 to 643 of the French Code of Civil Procedure
+  (mainland, overseas, abroad), exportable to your calendar (`.ics`).
+- **Letter templates with gaps** — formal notice, saisine, contestation, termination, appeal.
+  You complete the fields in your browser, then print. A template that imitates the form of a
+  legal act carries a "NON OFFICIEL" notice in its body; every template carries a footer
+  reminder.
 
-```json
-{
-  "qualification": "refus d'indemnisation assurance",
-  "legal_basis": ["L113-1 CCA", "L113-5 CCA"],
-  "jurisdiction": "médiateur puis tribunal judiciaire",
-  "deadline": { "type": "prescription", "days": 730 },
-  "next_steps": ["mise en demeure", "saisine médiateur", "saisine TJ"]
-}
-```
-
-From that, SelfAct:
-1. Selects the matching **document templates** (mise en demeure + saisine médiateur).
-2. Fills them with the parties, facts, legal basis.
-3. Calculates the **procedural calendar** from the extracted deadline.
-4. Generates the draft letter through `api/draft.php`, with CERFA XML where applicable.
-5. Outputs a **dossier package**: `dossier-2026-0042.zip` containing all documents, a readme for the user, and an action plan.
+Nothing you write leaves your browser: the server refuses to receive a document (`POST`
+rejected with `405`, body unread).
 
 ---
 
-## Integration flow with SelfJustice
+## What SelfAct does not do, on purpose
 
-```
-User input
-    │
-    ▼
-SelfJustice analysis (structured JSON)
-    │
-    ▼
-SelfAct — reads JSON, selects templates, fills data
-    │
-    ├─ Generate mise-en-demeure.pdf
-    ├─ Generate saisine-mediateur.pdf  (+ CERFA XML)
-    ├─ Generate procedural-calendar.ics (iCal)
-    ├─ Generate dossier-index.pdf
-    │
-    ▼
-ZIP archive "dossier-{ref}.zip"
-```
-
-The user downloads the ZIP, prints what needs printing, sends what needs sending. Every step traceable, every template auditable, every deadline on their calendar.
+- **It does not analyse your situation** or pick the article or the step for you: legal advice
+  is reserved to legal professionals in France (loi n° 71-1130).
+- **It fills nothing in for you**: it formats what you provide, without guessing a field or
+  turning a story into a claim.
+- **It produces no official act**: a template stays a template, which you review and take
+  responsibility for before sending it.
 
 ---
 
 ## Role in Self-Right
 
-| SelfJustice (diagnosis) | SelfAct (action) |
-|-------------------------|-------------------|
-| Qualifies the conflict | Generates matching documents |
-| Cites applicable articles | Puts them in the correct formal document |
-| Identifies jurisdiction | Drafts the saisine with the right attachments |
-| Extracts deadlines | Pre-fills the calendar (ics) |
-| Says what's possible | Says what to sign |
+| SelfJustice (the law) | SelfAct (the step) |
+|---|---|
+| Serves the articles, the European texts and the case law | Points to the official resource: form, online service, letter template |
+| Checks that a reference exists | Computes the deadline and exports it to your calendar |
+| Says what the text says | Gives a template with gaps — the facts and the signature are yours |
 
-Without SelfAct, SelfJustice is a consultation that ends on the user's desk. With SelfAct, it's a workflow that ends with a signed RAR receipt at La Poste.
+Both modules are served from the same domain and do not call each other.
 
 ---
 
@@ -120,7 +87,7 @@ exchanges no calls with it: SelfJustice states the law, SelfAct performs the ste
 - [ ] CERFA XML pre-fill
 - [ ] Wider template coverage — more scenarios, more jurisdictions
 
-See **[whitepaper](docs/whitepaper.docx)** for the full protocol specification, template library plan, and deployment roadmap.
+See **[whitepaper](docs/whitepaper.md)** for the full protocol specification, template library plan, and deployment roadmap.
 
 ---
 
@@ -128,4 +95,4 @@ See **[whitepaper](docs/whitepaper.docx)** for the full protocol specification, 
 
 **Pierroons** — [github.com/Pierroons/my-self](https://github.com/Pierroons/my-self)
 
-*SelfAct — The letter is already written. All you need is to sign.*
+*SelfAct — The template is ready. The facts are yours to write.*

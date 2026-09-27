@@ -161,13 +161,13 @@ Clone the repo, point nginx to `site/`, configure `api/api.php` against your LEG
 
 ## Role in Self-Right
 
-SelfJustice **diagnoses**. [SelfAct](../selfact/) **acts**. Together they cover the full arc from "I think I'm in my rights" to "the formal notice is signed and sent":
+SelfJustice serves **the law**. [SelfAct](../selfact/) serves **the step**. Together they go from "what does the law say about my situation?" to "which form, which deadline, which letter?":
 
-1. User describes conflict → SelfJustice returns structured JSON analysis.
-2. SelfAct takes that JSON → generates mise en demeure, saisine, CERFA, calendar.
-3. User downloads a ZIP dossier, sends by RAR at La Poste.
+1. You describe your situation to your own AI, which reads the law through SelfJustice and explains what it says, with verifiable references.
+2. SelfAct points to the official resource for the step, computes the deadline and gives you a letter template with gaps.
+3. You write the facts, review, sign and send.
 
-Zero consultation fee. Zero cloud. Zero intermediary.
+No consultation fee. Your question is read by the AI you choose; SelfJustice only receives the lookup requests it sends.
 
 ---
 
@@ -190,7 +190,7 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 - [x] 8 legal categories (work, housing, family, public administration, neighborhood, consumer, civil, criminal)
 - [x] Detailed entry points — housing law, family law, administrative law
 - [x] Structured output template with glossary
-- [x] Legal disclaimers (loi 71-1130 compliant)
+- [x] Notices on loi 71-1130 — legal advice stays reserved to legal professionals
 - [x] API serving the full LEGI corpus — **108 codes** addressable by title, no alias table required
 - [x] API serving the EU/ECHR corpus (including AI Act 2024/1689)
 - [x] Judicial case law index (Cour de cassation, courts of appeal)
@@ -232,8 +232,8 @@ SelfJustice is part of the **MySelf** ecosystem, specifically the **Self-Right**
 
 | Module | Role |
 |--------|------|
-| **SelfJustice** (this) | Diagnose — what does the law say? |
-| [SelfAct](../selfact/) | Act — draft the formal notice, fill the CERFA, calendar the deadlines |
+| **SelfJustice** (this) | The law — what does it say? |
+| [SelfAct](../selfact/) | The step — the official resource, the deadline, a letter template to complete |
 
 The human provides entropy (lived experience, facts). The machine provides impartiality (structured reasoning, cited law). Neither is enough alone.
 
