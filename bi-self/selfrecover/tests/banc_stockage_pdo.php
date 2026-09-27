@@ -160,12 +160,12 @@ $T0 = 1_700_000_000;
 section('contrat');
 
 // 🔑 Le contrôle qui vaut tous les autres : PHP refuse de charger une classe qui
-// déclare `implements` sans tenir la promesse. Si ce banc démarre, les 39
+// déclare `implements` sans tenir la promesse. Si ce banc démarre, les 41
 // signatures sont là. On le DIT quand même, parce qu'un lecteur ne devine pas
 // qu'un `new` porte cette preuve.
 $pdo = baseNeuve();
 $r = abrite(static fn (): object => new StockagePdo($pdo, HOTE));
-verifier('la classe s\'instancie — donc les 39 signatures sont tenues', $r['ok'], $r['message']);
+verifier('la classe s\'instancie — donc les 41 signatures sont tenues', $r['ok'], $r['message']);
 
 $stockage = new StockagePdo($pdo, HOTE);
 verifier('elle est bien un StorageInterface', $stockage instanceof StorageInterface);
@@ -177,7 +177,7 @@ verifier('aucune méthode du contrat ne manque', $manquantes === [], (string) co
 // ⚠️ Compter ne suffit pas : une méthode qui rend toujours `null` compte pareil.
 // Ce décompte sert à faire ROUGIR le banc si le contrat gagne une méthode que
 // l'adaptateur n'a pas suivie — c'est le seul cas où le compte dit quelque chose.
-verifier('le contrat en porte 39, comme annoncé partout ailleurs', count($attendues) === 39,
+verifier('le contrat en porte 41, comme annoncé partout ailleurs', count($attendues) === 41,
     (string) count($attendues));
 
 // ═══════════════════════════════════════════════════════════════════════════

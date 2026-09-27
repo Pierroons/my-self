@@ -77,6 +77,37 @@ verifier('code et mot rendent l\'accès', $r2['ok'] === true, $r2['compte'] ?? '
 verifier('le code est marqué consommé',
     (int) $pdo->query('SELECT COUNT(*) FROM recovery_codes WHERE used = 1')->fetchColumn() === 1);
 
+echo "\n→ Le frein par compte du niveau 2, sur le schéma réel\n";
+$compter = static fn (string $ou): int => (int) $pdo->query(
+    'SELECT COUNT(*) FROM login_attempts WHERE success = 0 AND ' . $ou)->fetchColumn();
+$FAUX  = str_repeat('c3', 32);
+$neufs = $recovery->emettreCodes($compteId, 10, $now);
+// La colonne accepte l'étiquette absente : la base du lab porte la contrainte
+// relâchée, et c'est ici qu'on le voit, pas dans le schéma lu.
+$nomAvant = $compter("username = 'alice'");
+for ($i = 0; $i < 5; $i++) { $recovery->parCode($neufs[0], $FAUX, null, $now); }
+$rF = $recovery->parCode($neufs[0], $MOT, null, $now);
+verifier('⭐ au sixième essai, même le bon mot est freiné',
+    $rF['ok'] === false && $rF['message'] === 'Trop de tentatives. Réessaie dans 15 minutes.',
+    $rF['message']);
+verifier('⭐ aucun code n\'a été consommé par les essais freinés',
+    (int) $pdo->query('SELECT COUNT(*) FROM recovery_codes WHERE used = 1')->fetchColumn() === 0);
+verifier('🔑 les cinq échecs sont sous un HMAC, aucun sous le nom du compte',
+    $compter("username = 'alice'") === $nomAvant
+    && $compter("username = '" . $recovery->etiquetteEchecsL2('alice') . "'") === 5);
+$recovery->parCode('11111-11111', $MOT, null, $now + 901);
+verifier('🔑 un code introuvable s\'écrit sans étiquette, que la colonne accepte',
+    $compter('username IS NULL') === 1);
+// 🔑 La table est partagée avec la page de connexion du lab, qui écrit le nom
+// soumis tel quel (`Auth::login`). C'est ce qui rend une étiquette en clair
+// dangereuse, et ce cas-ci mesure que le HMAC la met hors d'atteinte.
+$aveugle = $pdo->prepare('INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, 0, NULL, ?)');
+foreach (['l2:alice', 'code:alice', 'l2:' . hash('sha256', 'alice')] as $imitation) {
+    for ($i = 0; $i < 6; $i++) { $aveugle->execute([$imitation, $now + 902]); }
+}
+verifier('🔑 une étiquette imitée depuis la page de connexion ne freine personne',
+    $recovery->parCode($neufs[1], $MOT, null, $now + 903)['ok'] === true);
+
 echo "\n→ Appareil sur le schéma réel\n";
 $cle  = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
 $spki = base64_decode(implode('', array_filter(

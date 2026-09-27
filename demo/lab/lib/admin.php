@@ -46,7 +46,18 @@ final class Admin
             // en même temps que ses tentatives. La bibliothèque, elle, écrit ces
             // lignes SANS adresse. C'est la paire — préfixe et adresse nulle —
             // qui les identifie, et une route publique ne peut pas la produire.
-            'echecs_login_24h'   => $q("SELECT COUNT(*) FROM login_attempts WHERE success = 0 AND username != '__register__' AND NOT (username LIKE 'l3:ouvrir:%' AND ip IS NULL) AND attempted_at > " . $h24),
+            //
+            // 🔑 Les échecs du niveau 2, eux, RESTENT comptés — ceux sous étiquette
+            // comme ceux qui n'en portent aucune. Un mot mémorisé refusé est un
+            // échec d'authentification, et le code inconnu est le seul chemin
+            // qu'aucun frein par compte ne couvre : l'écarter éteindrait l'alarme
+            // là où elle sert le plus.
+            //
+            // ⚠️ D'où le `username IS NULL OR` : en SQL, `username != '…'` ne rend
+            // pas « vrai » sur une ligne sans étiquette, elle rend « inconnu ».
+            // Sans ce garde, la comparaison écarte ce qu'elle ne prétend pas
+            // écarter, et l'alarme s'éteint en silence. Mesuré.
+            'echecs_login_24h'   => $q("SELECT COUNT(*) FROM login_attempts WHERE success = 0 AND (username IS NULL OR username != '__register__') AND NOT (username LIKE 'l3:ouvrir:%' AND ip IS NULL) AND attempted_at > " . $h24),
         ];
     }
 
@@ -69,8 +80,12 @@ final class Admin
     public static function failedLogins(PDO $pdo, int $limit = 20): array
     {
         $stmt = $pdo->prepare(
-            "SELECT username, ip, attempted_at FROM login_attempts
-              WHERE success = 0 AND username != '__register__'
+            // Une tentative sans étiquette est un code de récupération introuvable.
+            // Le libellé est posé à l'affichage, jamais en base : stocké, il serait
+            // un nom qu'un compte peut porter.
+            "SELECT COALESCE(username, '(code de récupération inconnu)') AS username, ip, attempted_at
+               FROM login_attempts
+              WHERE success = 0 AND (username IS NULL OR username != '__register__')
                 AND NOT (username LIKE 'l3:ouvrir:%' AND ip IS NULL)
               ORDER BY attempted_at DESC LIMIT ?"
         );

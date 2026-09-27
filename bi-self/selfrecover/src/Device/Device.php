@@ -80,8 +80,11 @@ final class Device
             return ['ok' => false, 'message' => 'Clé publique invalide.'];
         }
 
-        // Même compteur que la récupération : enrôler mène au compte au même
-        // titre, ce chemin doit se fatiguer aussi vite.
+        // ⚠️ **Ce chemin mène au compte avec le mot mémorisé, et il n'a PAS le frein
+        // par compte que la récupération par code a reçu** : seule l'adresse le
+        // freine, donc rien ne le freine derrière un service caché. Son étiquette
+        // est de surcroît en clair, ce qu'un frein relisant ce compteur ne pourrait
+        // pas accepter — voir `Recovery::etiquetteEchecsL2()`.
         if ($ip !== null
             && $this->stockage->compterEchecsIp($ip, $maintenant - $this->fenetreEchecs) >= $this->maxEchecsIp) {
             return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];

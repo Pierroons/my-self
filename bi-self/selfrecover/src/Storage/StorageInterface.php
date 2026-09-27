@@ -49,10 +49,17 @@ interface StorageInterface
     /**
      * Trace une tentative, réussie ou non.
      *
-     * ⚠️ L'étiquette ne doit pas révéler l'existence du compte : le lab écrit
-     * `enroll:inconnu` quand il n'a rien trouvé, jamais le nom soumis.
+     * ⚠️ L'étiquette ne doit pas révéler l'existence du compte : quand rien n'a
+     * été trouvé, elle ne reprend jamais ce qui a été soumis.
+     *
+     * 🔑 **Et elle vaut `null`, jamais un mot littéral, dès qu'un frein la
+     * relit.** Un littéral range tous les échecs du service sous un nom qu'un
+     * compte peut porter, et ce compte hérite alors de leur frein. Un littéral
+     * que rien ne relit reste sans effet — le `enroll:inconnu` du facteur
+     * « cet appareil » est dans ce cas, et le jour où un frein le lira, il
+     * devra suivre la même règle.
      */
-    public function tracerTentative(string $etiquette, bool $succes, ?string $ip, int $quand): void;
+    public function tracerTentative(?string $etiquette, bool $succes, ?string $ip, int $quand): void;
 
     /**
      * Empreinte du mot mémorisé pour ce compte, et son identifiant.
@@ -160,11 +167,34 @@ interface StorageInterface
      */
     public function trouverCodeParIndex(string $indexRecherche): ?array;
 
-    /** Marque le code consommé. Un code de récupération ne sert qu'une fois. */
+    /**
+     * Marque le code consommé. Un code de récupération ne sert qu'une fois.
+     *
+     * ⚠️ **La garde appartient à cette écriture, pas à l'appelant.**
+     * `Recovery::parCode()` a lu `deja_utilise` avant les deux Argon2id : entre
+     * cette lecture et ici, une seconde requête portant le même code a eu tout le
+     * temps de passer. Un `UPDATE` sans condition sur l'état les laisse réussir
+     * toutes les deux. **Lève** si l'écriture ne porte pas sur exactement une
+     * ligne encore libre, par un `CodeDejaConsomme` — un type à lui, pour que
+     * l'appelant ne confonde pas cette course avec une panne de la base.
+     */
     public function consommerCode(int $codeId, int $quand): void;
 
     /** Combien de codes restent utilisables pour ce compte. */
     public function compterCodesRestants(int $compteId): int;
+
+    /**
+     * Date d'émission du code le plus récent de ce compte, ou `null` s'il n'en a
+     * aucun.
+     *
+     * Avec `dateDerniereReussite()`, elle donne le point de réarmement du frein
+     * du niveau 2 : émettre un lot de codes remet son compteur à zéro, sans rien
+     * effacer du journal.
+     */
+    public function dateDernierCodeEmis(int $compteId): ?int;
+
+    /** Date de la dernière tentative RÉUSSIE sous cette étiquette, ou `null`. */
+    public function dateDerniereReussite(string $etiquette): ?int;
 
     // ── Récupération de niveau 3 : dossier et arbitrage humain ─────────────
     //

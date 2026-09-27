@@ -172,7 +172,7 @@ L2 is a **real 2FA** — possession **and** knowledge — **with no identifier t
 
 The server verifies **both** (Argon2id) and returns a **generic error** that never reveals which one failed. On success, the user picks their new password and the code is marked used. An optional variant — the **"this device" factor** — provides a second L2 path (see §5.4).
 
-There is no automatic escalation to L3: level 2 asks for no identifier, so there is nothing to count per account. Its only brake is the per-address counter. Opening a dispute is the person's own decision.
+There is no automatic escalation to L3: level 2 asks for no identifier, but the code it receives names its account, which is what its per-account brake counts — a short window, then suspension of the level for that account. The per-address counter applies on top, when an address means anything. Opening a dispute is the person's own decision.
 
 ### 5.3 Level 3 — All Access Lost
 

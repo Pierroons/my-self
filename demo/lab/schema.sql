@@ -45,7 +45,7 @@ CREATE INDEX IF NOT EXISTS idx_app_sessions_token ON app_sessions(token);
 -- Rate-limit login (anti-bruteforce applicatif)
 CREATE TABLE IF NOT EXISTS login_attempts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    username     TEXT NOT NULL,
+    username     TEXT,
     success      INTEGER NOT NULL,
     ip           TEXT,
     attempted_at INTEGER NOT NULL

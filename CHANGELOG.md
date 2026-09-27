@@ -10,6 +10,65 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover v0.7.0 — la récupération par code freine enfin par compte — 27 septembre 2026
+
+`Recovery::parCode()` ne consultait que le compteur par adresse, et seulement si une adresse lui était
+passée. Il écrivait pourtant un compteur par compte à chaque échec, sous l'étiquette `code:<compte>`,
+que personne ne relisait : le paramètre `maxEchecsCompte` n'avait aucun effet au niveau 2. Derrière un
+service caché ou un proxy mutualisé, où l'adresse ne veut rien dire et vaut `null`, il ne restait donc
+aucun frein — qui détenait une feuille de codes volée pouvait essayer des mots mémorisés sans limite.
+
+Deux seuils désormais, tous deux paramètres de construction : `maxEchecsCompte` échecs sur
+`fenetreEchecs` font attendre, et `maxEchecsL2AvantSuspension` depuis le dernier réarmement suspendent
+la récupération par code de ce compte. Réarmer, c'est émettre un lot de codes ou réussir une
+récupération par code. Le contrôle a lieu avant les deux Argon2id : un essai freiné ne consomme ni code
+ni aucun des compteurs de la bibliothèque — le quota que la démo du duo tient par session, lui, est
+pris avant l'appel. Le compteur est lu avant l'essai et écrit après, donc des requêtes simultanées passent
+ensemble, au plus le seuil plus le nombre de requêtes servies en parallèle moins une — la même borne
+qu'au niveau 1.
+
+L'étiquette de ce compteur est un HMAC sous le sel du déploiement, comme celle du niveau 3 depuis
+qu'une étiquette en clair y avait été mesurée remplissable depuis la page de connexion. La table des
+tentatives est partagée : un nom de compte soumis y arrive tel quel. En clair, le compteur du niveau 2
+d'un tiers se remplissait en échouant six fois sous son nom, et ses codes papier cessaient de
+fonctionner. `etiquetteEchecsL2()` est publique pour qu'un intégrateur qui pose son propre frein lise
+l'étiquette au lieu de la recopier.
+
+Un code introuvable ne se rattache plus à aucun compte : l'étiquette est absente, là où elle valait
+`code:inconnu`. Un compte de ce nom héritait du frein de toutes les fautes de frappe du service.
+`login_attempts.username` devient donc facultatif, dans les trois schémas et pour les bases existantes
+du lab.
+
+Enfin `consommerCode()` écrivait `used = 1` sans condition sur l'état, alors que `parCode()` lit
+`deja_utilise` avant deux Argon2id : deux requêtes portant le même code valide réussissaient toutes les
+deux. La garde vit maintenant dans l'écriture, qui refuse de porter sur autre chose qu'une ligne encore
+libre, et lève un `CodeDejaConsomme` — un type à elle, pour que `parCode()` rende le refus ordinaire au
+perdant de la course sans confondre cette course avec une panne de la base. Un double-clic ne produit
+plus d'erreur de serveur sur une route qu'on n'atteint qu'avec les deux facteurs bons.
+
+**Ce que le refus dit, et ce qu'il taît.** Le frein par fenêtre rend le message du frein par adresse, au
+mot près, et paie le même délai : nommer le compte apprendrait à qui détient un code que ce code en vise
+un vrai, et l'apprendrait sans payer les deux Argon2id. La suspension, elle, doit se dire — sinon son
+titulaire ne sait pas quoi faire — et c'est le seul refus de cette classe qui nomme un état. Le modèle de
+menace et les whitepapers portent la concession.
+
+⚠️ **Migration.** `login_attempts.username` devient facultatif dans les trois schémas. Sur une base créée
+avant, l'ancien `NOT NULL` refuse l'insertion d'une tentative sans étiquette, et la route rend une erreur
+de serveur au premier code introuvable. Le lab reprend sa base seul ; `bi-self/selfrecover/schema.sql`
+porte la note pour les autres. Le contrat de stockage passe de 39 à 41 méthodes : deux lectures de date,
+à implémenter dans un adaptateur tiers.
+
+Le banc `sanity_recovery.php` passe de 31 à 51 cas et annonce son compte, que l'intégration continue
+exige — l'étape ne lisait que son code de sortie. Un canari débranche le frein et vérifie que le banc
+rougit sur le bon cas. Le fuzzer du niveau 3, qui construit `Recovery` et qu'aucun job ne lançait, entre
+en intégration continue.
+
+**Reste ouvert, et nommé ici pour ne pas l'oublier** : l'enrôlement d'un appareil mène au compte avec le
+même mot mémorisé et n'a pas reçu ce frein — seule l'adresse le retient, donc rien ne le retient derrière
+un service caché. Son étiquette est en clair, ce qu'un frein relisant ce compteur ne pourrait pas
+accepter. Et l'étiquette du niveau 1 reste le nom saisi : elle est falsifiable, mais son compteur ne
+freine que le compte visé, et la déplacer remettrait à zéro le frein de tous les déploiements en service.
+
 ### selfright-mcp 0.4.6 — le renvoi « Voir « homonymes » » trouve sa cible — 27 septembre 2026
 
 La réserve que rend `/jurisprudence/verifier` renvoie à un champ de la réponse : « Voir

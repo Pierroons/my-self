@@ -8,6 +8,14 @@
 -- demande. Ce schéma-ci s'adresse à qui n'a pas encore de base : il se charge tel
 -- quel, et `StockagePdo` le branche sans une ligne à écrire.
 --
+-- ⚠️ **À migrer sur une base créée avant que `login_attempts.username` devienne
+-- facultatif.** Une tentative sur un code de récupération introuvable s'y écrit
+-- désormais sans étiquette : sous l'ancien `NOT NULL`, l'insertion est refusée par
+-- la base, et la route rend une erreur de serveur là où elle rendait un refus. Ce
+-- fichier ne migre rien — il crée ce qui manque. SQLite ne sait pas retirer un
+-- `NOT NULL` : la table se reconstruit, et `demo/lab/lib/db.php` porte la reprise
+-- qui sert de modèle.
+--
 -- ── Les empreintes ─────────────────────────────────────────────────────────
 --
 -- Cinq colonnes de ce schéma portent une empreinte. Les trois du compte sont
@@ -123,9 +131,13 @@ CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
 -- caché ou un proxy mutualisé, l'adresse vue est la même pour tout le monde.
 -- Un déploiement dans ce cas passe `null` et compte sur une preuve de travail,
 -- pas sur cette colonne — sinon le premier échec bloque tous les visiteurs.
+-- ⚠️ `username` est nullable, et ce n'est pas une négligence non plus : une
+-- tentative qui ne se rattache à aucun compte — un code de récupération
+-- introuvable — n'a pas d'étiquette. Y mettre un mot littéral donnerait au compte
+-- qui le porterait le frein de tout le service.
 CREATE TABLE IF NOT EXISTS login_attempts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    username     TEXT    NOT NULL,
+    username     TEXT,
     success      INTEGER NOT NULL,
     ip           TEXT,
     attempted_at INTEGER NOT NULL
