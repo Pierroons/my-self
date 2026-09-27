@@ -61,8 +61,8 @@ final class SelfDataGuard
      */
     public function register(
         string $userId,
-        string $password,
-        ?string $memorized = null
+        #[\SensitiveParameter] string $password,
+        #[\SensitiveParameter] ?string $memorized = null
     ): UnlockedVault {
         if ($this->storage->vaultExists($userId)) {
             throw new RuntimeException("User '{$userId}' already exists");
@@ -77,7 +77,7 @@ final class SelfDataGuard
      *
      * @throws RuntimeException on wrong password or missing user.
      */
-    public function loginWithPassword(string $userId, string $password): UnlockedVault
+    public function loginWithPassword(string $userId, #[\SensitiveParameter] string $password): UnlockedVault
     {
         $record = $this->storage->loadVault($userId);
         return $this->vault->unlockWithPassword($record, $password);
@@ -88,7 +88,7 @@ final class SelfDataGuard
      *
      * @throws RuntimeException on wrong secret, missing user, or vault without recovery wrap.
      */
-    public function loginWithMemorized(string $userId, string $memorized): UnlockedVault
+    public function loginWithMemorized(string $userId, #[\SensitiveParameter] string $memorized): UnlockedVault
     {
         $record = $this->storage->loadVault($userId);
         return $this->vault->unlockWithMemorized($record, $memorized);
@@ -139,7 +139,7 @@ final class SelfDataGuard
      *
      * @return string|null userId if found, null otherwise.
      */
-    public function findUserByField(string $fieldName, string $value): ?string
+    public function findUserByField(string $fieldName, #[\SensitiveParameter] string $value): ?string
     {
         $index = BlindIndex::compute($value, $this->blindKey, $fieldName);
         return $this->storage->findUserIdByBlindIndex($fieldName, $index);
@@ -148,7 +148,7 @@ final class SelfDataGuard
     /**
      * Re-seal the password wrap with a new password. Session must be active.
      */
-    public function changePassword(UnlockedVault $session, string $newPassword): void
+    public function changePassword(UnlockedVault $session, #[\SensitiveParameter] string $newPassword): void
     {
         $record = $this->storage->loadVault($session->userId);
         $rotated = $this->vault->changePassword($record, $session, $newPassword);
@@ -158,7 +158,7 @@ final class SelfDataGuard
     /**
      * Re-seal the recovery wrap. Pass null to remove recovery entirely.
      */
-    public function changeMemorized(UnlockedVault $session, ?string $newMemorized): void
+    public function changeMemorized(UnlockedVault $session, #[\SensitiveParameter] ?string $newMemorized): void
     {
         $record = $this->storage->loadVault($session->userId);
         $rotated = $this->vault->changeMemorized($record, $session, $newMemorized);
@@ -190,7 +190,7 @@ final class SelfDataGuard
      *
      * @return array{publicKey: string, sealedSecret: string} both base64
      */
-    public static function generateAdminRecoveryKey(string $passphrase): array
+    public static function generateAdminRecoveryKey(#[\SensitiveParameter] string $passphrase): array
     {
         return AdminKey::generate($passphrase);
     }
@@ -200,7 +200,7 @@ final class SelfDataGuard
      * 32-byte secret key — caller MUST sodium_memzero() it after use. Meant for
      * the recovery-ceremony CLI, not for web request paths.
      */
-    public static function unsealAdminRecoveryKey(string $sealedSecret, string $passphrase): string
+    public static function unsealAdminRecoveryKey(string $sealedSecret, #[\SensitiveParameter] string $passphrase): string
     {
         return AdminKey::unseal($sealedSecret, $passphrase);
     }

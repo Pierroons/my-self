@@ -138,7 +138,8 @@ return [
     'MÊME le SU ne le déchiffre pas' => 'EVEN the SU cannot decrypt it',
     'Ce que le SU PEUT' => 'What the SU CAN do',
     'Approuver / rejeter les promotions (créer les admins)' => 'Approve or reject promotions (create admins)',
-    'Révoquer un admin + couper ses sessions' => 'Revoke an admin and cut their sessions',
+    'Nommer le premier admin — une seule fois, à l\'installation' => 'Name the first admin — once, at installation',
+    'Révoquer un admin + couper ses sessions — jamais le dernier' => 'Revoke an admin and cut their sessions — never the last one',
     'Auditer : tout est tracé, 0 admin fantôme' => 'Audit: everything is logged, no phantom admins',
     'Ce que MÊME le SU NE PEUT PAS' => 'What EVEN the SU CANNOT do',
     'Lire ton mémo chiffré E2E (la clé n\'a jamais touché le serveur)'
@@ -153,16 +154,16 @@ return [
     'Voler les messages privés et données personnelles en dumpant la base SQLite.'
         => 'Steal private messages and personal data by dumping the SQLite database.',
     'Bob envoie un DM contenant son RIB à Alice' => 'Bob sends Alice a private message containing his bank details',
-    'message chiffré AES-256-GCM avant insertion' => 'message encrypted with AES-256-GCM before insertion',
+    'message chiffré XChaCha20-Poly1305 avant insertion' => 'message encrypted with XChaCha20-Poly1305 before insertion',
     'profil chiffré at-rest' => 'profile encrypted at rest',
     'L\'attaquant exfiltre la base et lit les tables dm + profiles'
         => 'The attacker exfiltrates the database and reads the dm and profiles tables',
-    'il n\'obtient que des blobs base64' => 'all they get are base64 blobs',
+    'il n\'obtient que des blobs SDG2. illisibles' => 'all they get are unreadable SDG2. blobs',
     'Dump SQL brut (ce que voit l\'attaquant)' => 'Raw SQL dump (what the attacker sees)',
     'Alice connectée (ce que conserve le propriétaire)' => 'Alice logged in (what the owner still holds)',
     'neutralisé' => 'neutralised',
-    'SelfDataGuard (chiffrement enveloppé AES-256-GCM, clé hors base)'
-        => 'SelfDataGuard (envelope encryption, AES-256-GCM, key held outside the database)',
+    'SelfDataGuard (chiffrement enveloppé XChaCha20-Poly1305, clé hors base)'
+        => 'SelfDataGuard (envelope encryption, XChaCha20-Poly1305, key held outside the database)',
 
     // ── Attack simulator: Sybil and pack voting ───────────────────────────
     'Sybil + pack-voting (enterrement coordonné)' => 'Sybil and pack voting (coordinated burial)',

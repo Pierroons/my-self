@@ -5,8 +5,8 @@
 **Protection des données au repos côté application, qui survit à une exfiltration de base de données.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.3.0 en service](https://img.shields.io/badge/statut-v0.3.0%20en%20service-brightgreen.svg)](#statut)
-[![Tests : 198 passants](https://img.shields.io/badge/tests-198%20passants-brightgreen.svg)](#tests)
+[![Statut : v0.4.0 en service](https://img.shields.io/badge/statut-v0.4.0%20en%20service-brightgreen.svg)](#statut)
+[![Tests : 219 passants](https://img.shields.io/badge/tests-219%20passants-brightgreen.svg)](#tests)
 [![Pilier : Self-Security](https://img.shields.io/badge/pilier-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -19,7 +19,7 @@
 
 Tous les produits actuels de chiffrement des données au repos (MySQL TDE, MongoDB CSFLE, AWS RDS encryption) répondent au même modèle de menace : **l'attaquant a le disque, mais pas l'application**. La clé de chiffrement se trouve à côté des données — dans un fichier de configuration, une variable d'environnement, ou un service de gestion de clés que l'application peut lire.
 
-Ce modèle s'effondre dès que **le serveur d'application est compromis**. L'attaquant exfiltre la base de données ET la clé — le chiffrement n'était qu'une case cochée, pas une défense. Les fuites récentes à grande échelle (ANTS, France, avril 2026 — 11,7 à 19 millions de comptes exposés via une faille IDOR triviale) ont prouvé que les données personnelles exposées en clair constituent le coût dominant de ce type d'incident.
+Ce modèle s'effondre dès que **le serveur d'application est compromis**. L'attaquant exfiltre la base de données ET la clé — le chiffrement n'était qu'une case cochée, pas une défense. Les fuites récentes à grande échelle ont montré la même chose à chaque fois : ce sont les données personnelles exposées en clair qui constituent le coût dominant de l'incident, parce qu'elles ne se révoquent pas.
 
 Les outils actuels soit ignorent complètement le chiffrement au repos, soit l'implémentent d'une manière qui n'apporte aucune valeur contre une compromission côté serveur. SelfDataGuard choisit une troisième voie : **dériver la clé de chiffrement d'un secret connu uniquement de l'utilisateur**, de sorte qu'un dump de base ne donne que de la soupe cryptographique.
 
@@ -39,18 +39,21 @@ SelfDataGuard implémente un **encapsulage de clé à deux facteurs** inspiré d
                      │            │
         ┌────────────▼─┐      ┌──▼─────────────┐
         │ password_key │      │   recov_key    │
-        │ Argon2id(    │      │ HMAC-SHA256(   │
+        │ Argon2id(    │      │ Argon2id(      │
         │   password,  │      │  mot_memorise, │
-        │   user_salt) │      │  user_salt+    │
-        │              │      │  "/dataguard") │
+        │   user_salt) │      │  SHA-256(      │
+        │              │      │   user_salt +  │
+        │              │      │  "/dataguard"))│
         └──────────────┘      └────────────────┘
 ```
+
+Argon2id prend un sel de 16 octets : les 16 premiers octets de ce SHA-256. Les deux clés d'encapsulage coûtent autant : deux enveloppes ne valent que la moins chère à ouvrir.
 
 Chaque utilisateur dispose de :
 
 - Un `user_salt` aléatoire unique, stocké en clair (équivalent à un identifiant)
-- Un `data_master_key_pwd_wrap` : ciphertext AES-256-GCM de la clé maîtresse, chiffré avec la clé dérivée du mot de passe
-- Un `data_master_key_recov_wrap` : ciphertext AES-256-GCM de la clé maîtresse, chiffré avec la clé dérivée du mot mémorisé
+- Un `data_master_key_pwd_wrap` : ciphertext XChaCha20-Poly1305 de la clé maîtresse, chiffré avec la clé dérivée du mot de passe
+- Un `data_master_key_recov_wrap` : ciphertext XChaCha20-Poly1305 de la clé maîtresse, chiffré avec la clé dérivée du mot mémorisé
 - Des champs de données personnelles chiffrés un par un avec `data_master_key`
 
 **Dump de la base → soupe cryptographique.** Aucune combinaison des valeurs en clair présentes dans le dump ne permet d'obtenir la clé maîtresse. L'attaquant aurait besoin soit du mot de passe de l'utilisateur (durci par Argon2id, isolé par sel), soit du mot mémorisé de l'utilisateur (jamais transmis en clair) pour déchiffrer quoi que ce soit.
@@ -59,19 +62,19 @@ Chaque utilisateur dispose de :
 
 ## Couplage avec SelfRecover
 
-SelfDataGuard réutilise le mot mémorisé de récupération de SelfRecover comme l'un de ses deux facteurs de désencapsulage, avec **séparation contextuelle stricte** pour empêcher tout crossover :
+SelfDataGuard réutilise le mot mémorisé de récupération de SelfRecover comme l'un de ses deux facteurs de désencapsulage, avec **deux dérivations distinctes** — fonctions et sels différents — pour empêcher tout crossover :
 
 ```
 mot_memorise (secret utilisateur, jamais transmis en clair)
     │
-    ├─ HMAC-SHA256(secret, domaine + "/recover")     →  recover_key  (auth SelfRecover)
+    ├─ HMAC-SHA256(clé = secret, msg = matériel + "|v2" + user_salt)  →  recover_key  (auth SelfRecover)
     │
-    └─ HMAC-SHA256(secret, user_salt + "/dataguard")  →  data_key    (encapsulage SelfDataGuard)
+    └─ Argon2id(secret, SHA-256(user_salt + "/dataguard")[:16])       →  data_key     (encapsulage SelfDataGuard)
 ```
 
-Conséquence pratique : un utilisateur qui oublie son mot de passe mais se rappelle son mot mémorisé peut simultanément **retrouver l'accès à son compte (via SelfRecover) et déchiffrer ses données stockées (via SelfDataGuard)**. Un seul mot mémorisé, deux usages dérivés, mathématiquement isolés.
+Conséquence pratique : un utilisateur qui oublie son mot de passe garde une voie vers chacune de ses deux moitiés. Son mot mémorisé ouvre **à lui seul** le coffre SelfDataGuard. Pour l'accès au compte, il lui faut en plus ce que SelfRecover exige — son *recovery code* papier au niveau 2, ou sa passphrase diceware au niveau 1 : le mot mémorisé n'y est **qu'un facteur sur deux**. Un seul mot à retenir, deux usages dérivés, mathématiquement isolés.
 
-Sans SelfRecover, SelfDataGuard fonctionne quand même — il bascule alors sur un encapsulage uniquement par mot de passe (récupération à un seul facteur, UX dégradée). Mais l'appariement naturel est : **SelfRecover protège l'authentification, SelfDataGuard protège les données, le même mot mémorisé débloque les deux**.
+Sans SelfRecover, SelfDataGuard fonctionne quand même — il bascule alors sur un encapsulage uniquement par mot de passe (récupération à un seul facteur, UX dégradée). Mais l'appariement naturel est : **SelfRecover protège l'authentification, SelfDataGuard protège les données, et le même mot mémorisé sert dans les deux** — seul pour ouvrir le coffre, accompagné du *recovery code* pour rouvrir le compte.
 
 ---
 
@@ -102,9 +105,11 @@ La majorité des déploiements e-commerce choisiront **Hybrid**. Santé, banque,
 
 ## Statut
 
-**v0.3.0 — dérivation Argon2id sur les deux facteurs, compartiment escrow, démo standalone**, 7 septembre 2026.
+**v0.4.0 — XChaCha20-Poly1305 sur tout processeur, format de blob versionné**, 26 septembre 2026.
 
-Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (2 372 lignes réparties sur 17 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, AES-256-GCM) couvertes par **198 contrôles répartis sur 8 suites**, tous passants. Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
+Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (2 607 lignes réparties sur 18 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **219 contrôles répartis sur 8 suites**, tous passants. Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
+
+Les blobs écrits par la 0.3.0 restent lisibles, par OpenSSL (`ext-openssl`) là où libsodium refuse AES. Un blob écrit par la 0.4.0 ne se relit pas en 0.3.0, qui le refuse comme base64 invalide : un retour arrière ne vaut que pour une base où la 0.4.0 n'a rien écrit. Pourquoi AES-256-GCM a été abandonné, et sur quels processeurs il échouait : [CHANGELOG](./CHANGELOG.md).
 
 Le module tourne sur des déploiements réels. Il **n'a pas été audité par un cryptographe extérieur** : sa conception n'est vérifiée à ce jour que par son auteur et par les lecteurs de ce dépôt.
 
@@ -119,13 +124,14 @@ Un audit cryptographique communautaire formel est prévu avant la v1.0.0. Soumis
 ### Lancer la démo standalone (zéro install)
 
 ```bash
-cd demo && ./run.sh
+# depuis la racine du dépôt
+demo/selfdataguard/run.sh
 # ouvrir http://127.0.0.1:8081 dans un navigateur
 ```
 
 La démo permet d'inscrire un utilisateur, se connecter, changer de mot de passe, et inspecter la base SQLite brute en parallèle — démontrant que les champs personnels (email, tél, IBAN, adresse) ne sont jamais lisibles sur disque.
 
-### Utiliser la bibliothèque dans votre app
+### Utiliser la bibliothèque dans ton app
 
 ```php
 use Pierroons\SelfDataGuard\SelfDataGuard;
@@ -154,7 +160,7 @@ $dg->changePassword($session, 'nouvelle-passphrase-solide-ici');
 $userId = $dg->findUserByField('email', 'a@b.c');  // 'alice' ou null
 ```
 
-Trois classes principales exposées : `SelfDataGuard` (façade), `SqliteAdapter` (stockage ; implémentez `StorageInterface` pour MariaDB / Postgres), `Primitives` (crypto brute si vous voulez bâtir au-dessus).
+Trois classes principales exposées : `SelfDataGuard` (façade), `SqliteAdapter` (stockage ; implémente `StorageInterface` pour MariaDB / Postgres), `Primitives` (crypto brute si tu veux bâtir au-dessus).
 
 ---
 
@@ -163,15 +169,15 @@ Trois classes principales exposées : `SelfDataGuard` (façade), `SqliteAdapter`
 Huit suites de tests sanity, exécutables directement avec `php` (pas besoin de PHPUnit) :
 
 ```bash
-php tests/sanity_primitives.php   # 27 tests — Argon2id, HMAC, AES-GCM, aléatoire
-php tests/sanity_vault.php        # 33 tests — register, unlock, rotation, liaison AAD
-php tests/sanity_fields.php       # 25 tests — chiffrement de champs + blind index
+php tests/sanity_primitives.php   # 45 tests — Argon2id, HMAC, XChaCha20-Poly1305 + vecteur IETF, AES-GCM historique, aléatoire
+php tests/sanity_vault.php        # 36 tests — register, unlock, rotation, liaison AAD, wraps historiques
+php tests/sanity_fields.php       # 26 tests — chiffrement de champs + blind index
 php tests/sanity_storage.php      # 36 tests — adaptateur SQLite, test "soupe DB"
 php tests/sanity_facade.php       # 34 tests — API complète bout en bout
-php tests/sanity_audit.php        #  6 tests — journal d'audit
+php tests/sanity_audit.php        # 11 tests — journal d'audit
 php tests/sanity_ceremony.php     # 14 tests — cérémonie de clés
-php tests/sanity_escrow.php       # 16 tests — compartiment escrow
-# Total : 198 tests, 0 échec — relevé par exécution le 07/09/2026
+php tests/sanity_escrow.php       # 17 tests — compartiment escrow
+# Total : 219 tests, 0 échec — relevé par exécution le 26/09/2026
 ```
 
 La suite `sanity_storage.php` inclut un "BIG TEST" qui dumpe le fichier SQLite et vérifie qu'aucune donnée personnelle en clair n'apparaît nulle part dans le blob binaire.
@@ -190,4 +196,4 @@ La suite `sanity_storage.php` inclut un "BIG TEST" qui dumpe le fichier SQLite e
 
 **AGPL-3.0-or-later**. Voir [LICENSE](../../LICENSE).
 
-Tout déploiement, modifié ou non, doit publier son code source sous la même licence. Aucune capture SaaS possible.
+Si tu modifies SelfDataGuard et que tu offres ta version à des utilisateurs à travers un réseau, tu dois leur donner accès à son code source, sous la même licence (AGPL-3.0, article 13).

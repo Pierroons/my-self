@@ -3,7 +3,7 @@
 > 🇬🇧 **[Read in English →](./README.md)**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.4.0](https://img.shields.io/badge/statut-v0.4.0-green.svg)](./INSTALL.md)
+[![Statut : v0.5.0](https://img.shields.io/badge/statut-v0.5.0-green.svg)](./INSTALL.md)
 [![Fait partie de : Self-Security](https://img.shields.io/badge/fait%20partie%20de-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon de : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -14,22 +14,16 @@
 
 **Statut : validé sur serveur LNMP Debian 13 Trixie (07/06/2026), sur poste portable
 chiffré (22/08/2026), puis sur une racine en LVM chiffré — le schéma que propose
-l'installateur Debian en mode assisté (13/09/2026) — v0.4.0.**
+l'installateur Debian en mode assisté (13/09/2026) — v0.5.0.**
 Déverrouillage du `/` au boot (keyscript Argon2id + SSH d'amorçage) et cascade automatique des
 volumes secondaires (fichier-clé), redémarrages reproductibles. Installation documentée et
 reproductible → **[INSTALL.md](./INSTALL.md)**.
 
 ## Le principe
 
-Une passphrase de récupération mémorisée → dérivation **Argon2id** par **label** → clés filles cloisonnées :
+Une passphrase de récupération — diceware, tirée pour chaque machine par `genere-passphrase.py` — passe par **Argon2id** sous le label `disk`, ce qui donne la clé d'un **slot LUKS2**.
 
-| label | usage |
-|-------|-------|
-| `auth` | prouver / retrouver l'accès (SelfRecover web) |
-| `data-enc` | chiffrer la donnée applicative (SelfDataGuard) |
-| `disk` | **clé d'un slot LUKS2** (ce module) |
-
-Le label change le sel effectif → deux clés du même secret sont indépendantes. Argon2id
+Le label change le sel effectif → deux clés tirées du même secret sous deux labels sont indépendantes. Le dérivateur accepte d'autres labels (`--label`), mais **seul `disk` a un consommateur** (`selfrecover-keyscript.sh`) : SelfRecover web et SelfDataGuard ne passent pas par lui. Argon2id
 (memory-hard) car une clé de disque est attaquable **hors-ligne** en cas de vol du support. La résistance vient **d'abord de l'entropie de la passphrase** ; Argon2id ralentit chaque essai, il ne sauve pas un secret faible.
 
 ## Architecture
@@ -48,6 +42,10 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
   l'administrateur saisit sa passphrase.
 - **Cascade** : les volumes non-racine sont ouverts par `systemd-cryptsetup` via un fichier-clé
   rangé dans le coffre racine chiffré (un disque volé reste illisible).
+- **Le volume racine est un trousseau** : ce qu'il contient ouvre le reste. Les fichiers-clés
+  des volumes secondaires y vivent, et sur un poste qui signe ses propres noyaux, la clé de
+  signature Secure Boot aussi. Le disque ne protège pas que des fichiers : il protège les clés
+  qui en ouvrent d'autres.
 - **Filet anti-verrouillage** : chaque volume garde un slot **natif** (passphrase classique),
   jamais retiré, ouvrable manuellement si le keyscript défaille.
 
@@ -63,13 +61,20 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | `selfrecover-keyscript.sh` | keyscript du volume racine (dérive la passphrase recover) |
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript dans l'initrd |
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS (autorisé par une clé existante) |
+| `format-slot.sh` | inscrit le format de clé enrôlé par volume, et refuse de poser un keyscript d'un autre format |
 | `selfrecover-unlock.sh` | déverrouillage de secours autonome (userspace) |
+| `selfrecover-secours.sh` | `command=` de la clé du SSH d'amorçage : propose la passphrase recover **ou** la passphrase native, **jamais un shell** |
+| `verifie-initramfs.sh` | compare les images de `/boot` à l'empreinte consignée sur le volume chiffré — rend visible une image modifiée hors de la machine |
+| `verifie-sauvegardes.sh` | vérifie que l'en-tête LUKS et le sel ont une copie **hors du volume** et **à jour** de ses slots |
 | `install.sh` | installateur semi-automatique (cf. INSTALL.md) |
 | `genere-passphrase.py` | tire une passphrase diceware, affiche les deux formes et leur longueur |
 | `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces, **le sel**, et **l'image que l'amorceur charge** après chaque génération d'initramfs |
 | [`tests/test_lecture_keyfile.sh`](./tests/test_lecture_keyfile.sh) | garde-fou : les quatre lectures, et le `\n` final qui casse la clé |
+| [`tests/test_secours_sans_shell.sh`](./tests/test_secours_sans_shell.sh) | banc : le secours d'amorçage rend les deux voies et refuse tout shell |
+| [`tests/test_sauvegardes.sh`](./tests/test_sauvegardes.sh) | banc : `verifie-sauvegardes.sh` refuse une copie sur le volume chiffré ou périmée |
+| [`tests/test_garde_fou_image_chargee.sh`](./tests/test_garde_fou_image_chargee.sh) | banc : le garde-fou juge l'image que l'amorceur **charge** (Raspberry Pi compris) |
 | [`docs/cryptsetup-lecture-cle.md`](./docs/cryptsetup-lecture-cle.md) | note de mesure : comment `cryptsetup` lit une clé selon le chemin emprunté |
-| [`quorum-rnd/`](./quorum-rnd/) | R&D : déverrouillage par quorum de témoins — **non activé en v0.4.0** |
+| [`quorum-rnd/`](./quorum-rnd/) | R&D : déverrouillage par quorum de témoins — **non activé en v0.5.0** |
 | [`fido2-banc-essai/`](./fido2-banc-essai/) | banc d'essai : FIDO2 dans l'initramfs — **voie non soutenue**, incompatible avec le keyscript |
 
 ## Installation
@@ -104,9 +109,15 @@ un gain de résistance.
 
 - Passphrase recover **forte** (diceware) — le KDF ralentit, il ne compense pas un secret faible.
 - **Slot natif conservé** sur chaque volume + sauvegarde de l'initramfs avant régénération.
+- **Pas de shell avant l'ouverture de `/`.** La clé du SSH d'amorçage est bornée à
+  `selfrecover-secours.sh` : la passphrase recover ou la passphrase native, rien d'autre. Un
+  shell à cet endroit contourne le chiffrement — `/boot` est en clair, on y dépose un initrd
+  modifié et on capture la saisie suivante. `install.sh` pose la question (`SHELL_AMORCAGE`)
+  et consigne un refus dans `renoncements.log`.
 - **Sauvegarde de l'en-tête LUKS avant tout ajout de slot.** Les sauvegardes d'initramfs et de
   `crypttab` couvrent l'amorçage, pas la corruption de l'en-tête — en-tête perdu, plus aucun
-  slot n'ouvre rien.
+  slot n'ouvre rien. `verifie-sauvegardes.sh` refuse une copie rangée sur le volume qu'elle
+  sert à ouvrir, ou dont le nombre de slots ne correspond plus au disque.
 - **Le slot se prouve avant qu'on en dépende** : `--test-passphrase` entre l'ajout du slot et le
   branchement du keyscript. Ce qui n'a pas été vérifié se découvre au redémarrage.
 - **Garde-fou après mise à jour de noyau** : le coût réel du module n'est pas cryptographique,

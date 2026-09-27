@@ -25,7 +25,7 @@ final class UnlockedVault
 
     public function __construct(
         public readonly string $userId,
-        string $masterKey
+        #[\SensitiveParameter] string $masterKey
     ) {
         if (strlen($masterKey) !== Primitives::KEY_LEN) {
             throw new RuntimeException(

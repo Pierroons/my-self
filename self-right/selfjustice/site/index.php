@@ -21,6 +21,19 @@ $fichier = getenv('SELFJUSTICE_STATS_DIR') ?: '/var/lib/selfjustice/stats';
 if (is_readable("$fichier/corpus.json")) {
     $corpus = json_decode(file_get_contents("$fichier/corpus.json"), true) ?: [];
 }
+/**
+ * La date du pied de page est celle du fichier servi. La page demande aux IA
+ * de la citer : écrite à la main, elle ne suivait pas les modifications.
+ */
+function date_page(): string {
+    return strtr(date('j F Y', filemtime(__FILE__)), [
+        'January' => 'janvier', 'February' => 'février', 'March' => 'mars',
+        'April' => 'avril', 'May' => 'mai', 'June' => 'juin',
+        'July' => 'juillet', 'August' => 'août', 'September' => 'septembre',
+        'October' => 'octobre', 'November' => 'novembre', 'December' => 'décembre',
+    ]);
+}
+
 /** Un tiret plutôt qu'un zéro : une valeur absente se voit, une valeur fausse non. */
 function chiffre(array $corpus, string $cle): string {
     $v = $corpus[$cle] ?? null;
@@ -157,7 +170,7 @@ function chiffre(array $corpus, string $cle): string {
       <li>Ton IA fetch cette page, lit les directives juridiques, et t'envoie une pré-analyse structurée</li>
     </ol>
     <p style="margin-top: 1rem; color: var(--text-muted);">
-      Coût : zéro. Tu utilises ton propre abonnement IA (ou une version gratuite comme Mistral Le Chat). Cette page est statique, open source, sans tracking, sans base de données.
+      Coût : zéro. Tu utilises ton propre abonnement IA (ou une version gratuite comme Mistral Le Chat). Cette page est open source, sans cookie ni traceur.
     </p>
   </div>
 
@@ -210,8 +223,8 @@ Analyse selon /directives.html</pre>
     <h3>IA recommandées pour une analyse optimale</h3>
     <p>Cette page de directives est <strong>optimisée pour Claude — écrite par et pour Claude</strong>, avec un suivi rigoureux des règles, l'impartialité maintenue sous pression utilisateur, et une nuance dans le raisonnement juridique structuré.</p>
     <ul>
-      <li><strong>★★★★★ Claude Opus</strong> (recommandé) — Anthropic, suivi strict des directives, 20 €/mois sur claude.ai</li>
-      <li><strong>★★★★ Claude Sonnet</strong> — alternative plus rapide, version gratuite de claude.ai disponible</li>
+      <li><strong>Claude Opus</strong> (recommandé) — Anthropic, suivi strict des directives</li>
+      <li><strong>Claude Sonnet</strong> — alternative plus rapide, avec une version gratuite</li>
     </ul>
     <p style="margin-top: 0.8rem; font-size: 0.9rem; color: var(--text-muted);">
       <strong>Autres IA fonctionnelles</strong> (résultats variables, complaisance possible, suivi partiel des directives) : Mistral Large (atout : connaissance native du droit français, hébergement EU), GPT-5, Gemini 2.5 Pro, Perplexity. Ces IA peuvent être utilisées si Claude n'est pas accessible.
@@ -379,7 +392,7 @@ Analyse selon /directives.html</pre>
   <p>SelfJustice est un outil d'information juridique gratuit et open source. Il ne constitue en aucun cas :</p>
   <ul>
     <li>Un conseil juridique au sens de la loi n° 71-1130 du 31 décembre 1971</li>
-    <li>Une consultation juridique (activité réservée aux avocats inscrits au barreau)</li>
+    <li>Une consultation juridique (activité réservée aux professionnels du droit, loi n° 71-1130, art. 54)</li>
     <li>Un avis juridique engageant la responsabilité de quiconque</li>
   </ul>
   <p>Les articles de loi cités sont fournis à titre indicatif. Ils peuvent avoir été modifiés, abrogés ou recodifiés depuis la date de dernière mise à jour de cette page.</p>
@@ -589,7 +602,7 @@ Analyse selon /directives.html</pre>
       <li><strong>Réalisme jurisprudentiel — chercher, ne pas deviner</strong> — Un article de loi c'est la théorie. En pratique, les juges interprètent. Quand tu cites une jurisprudence :
         <ul>
           <li><strong>Cette instance sert la jurisprudence en local. Utilise-la avant tout le reste.</strong> Vérifier qu'un arrêt existe : <code>GET /api/jurisprudence/verifier/{numero}</code>. Chercher par thème : <code>GET /api/jurisprudence/search?q=...</code>. Texte intégral d'une décision : <code>GET /api/jurisprudence/decision/{id}</code>. La volumétrie et la date de synchronisation sont dans <code>GET /api/status</code>, clé <code>jurisprudence</code>.</li>
-          <li><strong>Périmètre : justice judiciaire seulement</strong> — Cour de cassation et cours d'appel. Le Conseil d'État, les cours administratives d'appel et les tribunaux administratifs ne sont pas dans cette base : si la question en relève, dis-le et renvoie vers ArianeWeb plutôt que de servir un arrêt civil qui parle du même mot.</li>
+          <li><strong>Périmètre de la recherche par thème : justice judiciaire</strong> — Cour de cassation et cours d'appel, par Judilibre. Les décisions administratives que l'index porte — Conseil d'État, cours administratives d'appel, tribunaux administratifs, sur les périodes que donne <code>/api/status</code> — se vérifient par leur numéro et ne sortent d'aucune recherche par thème : si la question relève du droit administratif, dis-le plutôt que de servir un arrêt civil qui parle du même mot.</li>
           <li><strong>Ne cite jamais un arrêt de mémoire.</strong> Si l'API ne le connaît pas, écris « jurisprudence à vérifier » et donne les mots-clés — pas un numéro.</li>
           <li><strong>Ne fabrique jamais</strong> un numéro d'arrêt ou une date de décision. Un faux arrêt cité dans un dossier est pire que pas d'arrêt du tout.</li>
         </ul>
@@ -825,7 +838,7 @@ Analyse selon /directives.html</pre>
       <li><strong>Aide juridictionnelle</strong> — L'État prend en charge les frais d'avocat si les revenus sont insuffisants (loi n° 91-647). Plafonds révisés annuellement. Demande au tribunal judiciaire ou en ligne. Mentionner les seuils approximatifs en vigueur.</li>
       <li><strong>Maisons de justice et du droit (MJD)</strong> — Consultations juridiques gratuites avec des avocats bénévoles. Présentes dans la plupart des grandes villes.</li>
       <li><strong>Permanences juridiques gratuites</strong> — Barreau local, mairies, associations (CIDFF, ADIL pour le logement, associations de consommateurs).</li>
-      <li><strong>Conciliateur de justice</strong> — Gratuit, bénévole, disponible en mairie ou au tribunal. Obligatoire avant saisine pour les litiges < 5 000 € (art. 750-1 CPC).</li>
+      <li><strong>Conciliateur de justice</strong> — Gratuit, bénévole, disponible en mairie ou au tribunal. Pour un litige de 5 000 € ou moins, ou un trouble anormal de voisinage, une tentative amiable — conciliation, médiation ou procédure participative, au choix — doit précéder la saisine du juge (art. 750-1 CPC).</li>
       <li><strong>Défenseur des droits</strong> — Gratuit, compétent en discrimination, relations avec les services publics, droits de l'enfant. Saisine en ligne.</li>
       <li><strong>Syndicats</strong> — En droit du travail, le syndicat peut fournir un accompagnement juridique et une assistance aux prud'hommes.</li>
       <li><strong>Protection juridique</strong> — Vérifier si l'utilisateur a une assurance protection juridique (souvent incluse dans l'assurance habitation ou auto). Elle peut couvrir les frais d'avocat.</li>
@@ -900,7 +913,7 @@ Analyse selon /directives.html</pre>
       <li><strong>Ce que l'administration devait faire</strong> — <code>art. L112-3</code> : toute demande fait l'objet d'un accusé de réception. <code>art. L121-1</code> : les décisions individuelles défavorables sont précédées d'une procédure contradictoire. <code>art. L211-2</code> et <code>art. L211-5</code> : les décisions qui doivent être motivées le sont par écrit, avec l'énoncé des considérations de droit et de fait. Un manquement à l'une de ces obligations est un moyen de légalité externe, pas une simple maladresse.</li>
       <li><strong>L'urgence</strong> — <code>art. L521-1</code> : le référé-suspension, qui suppose une requête en annulation déjà déposée. <code>art. L521-2</code> : le référé-liberté, sur atteinte grave et manifestement illégale à une liberté fondamentale ; le juge se prononce dans un délai de quarante-huit heures. Si les faits décrits relèvent de l'urgence, dis-le avant tout le reste.</li>
       <li><strong>Les frais</strong> — <code>art. L761-1</code> : la condamnation aux frais exposés et non compris dans les dépens. À mentionner dans la feuille de route, pas à chiffrer.</li>
-      <li><strong>⚠️ La jurisprudence administrative n'est pas dans les bases de ce module.</strong> L'index de décisions ne porte que la Cour de cassation et les cours d'appel — l'ordre judiciaire. `rechercher_jurisprudence` ne rendra donc rien du Conseil d'État, des cours administratives d'appel ni des tribunaux administratifs, et <strong>son silence ne veut pas dire qu'aucune décision n'existe</strong>. Dis-le à l'utilisateur au lieu de citer un arrêt de mémoire, et renvoie-le vers les sources publiques du Conseil d'État.</li>
+      <li><strong>⚠️ La recherche par thème ne couvre pas la jurisprudence administrative.</strong> Elle passe par Judilibre, qui ne sert que l'ordre judiciaire : `rechercher_jurisprudence` ne rendra rien du Conseil d'État, des cours administratives d'appel ni des tribunaux administratifs, et <strong>son silence ne veut pas dire qu'aucune décision n'existe</strong>. Une décision administrative dont tu as le numéro se vérifie avec `verifier_jurisprudence` : l'index en porte une partie, sur les périodes que donne `statut`. Pour chercher par thème en droit administratif, dis-le à l'utilisateur au lieu de citer un arrêt de mémoire, et renvoie-le vers les sources publiques du Conseil d'État.</li>
       <li><strong>Où l'orienter</strong> — le Défenseur des droits, gratuit et compétent sur les relations avec les services publics, déjà nommé dans les aides à l'accès au droit.</li>
     </ul>
   </section>
@@ -913,7 +926,7 @@ Analyse selon /directives.html</pre>
 
 <article id="consultation-sources">
   <h2>Consultation des sources juridiques — ordre obligatoire</h2>
-  <p>SelfJustice met à disposition une <strong>API de consultation temps réel</strong> des sources officielles. Pour chaque article cité dans ton analyse, tu DOIS suivre cet ordre de consultation :</p>
+  <p>SelfJustice met à disposition une <strong>API de consultation</strong> des sources officielles, synchronisées les 1er et 15 du mois — la date de chaque base est dans <code>/api/status</code>. Pour chaque article cité dans ton analyse, tu DOIS suivre cet ordre de consultation :</p>
 
   <section>
     <h3>0. Étape préalable — Obtenir la date réelle de dernière MAJ des bases</h3>
@@ -1008,7 +1021,7 @@ Analyse selon /directives.html</pre>
 
   <section>
     <h3>Couverture juridique — ce qui est dedans, ce qui est dehors</h3>
-    <p>Les bases locales portent le <strong>droit national publié au Journal officiel</strong> — codes, lois, ordonnances, décrets, arrêtés — dans sa version consolidée, plus les textes de conventionnalité et la jurisprudence judiciaire. Restent dehors, parce que ce sont d'autres bases : les conventions collectives, les circulaires et instructions, les textes locaux (préfecture, mairie), les normes techniques NF ou EN, et la justice administrative. <strong>Un sujet qu'elles portent paraît vide ici sans l'être</strong> — ne conclus jamais à l'absence de règle sur un silence de cette base. Domaines couverts :</p>
+    <p>Les bases locales portent le <strong>droit national publié au Journal officiel</strong> — codes, lois, ordonnances, décrets, arrêtés — dans sa version consolidée, plus les textes de conventionnalité, la jurisprudence judiciaire, et une partie de la jurisprudence administrative, vérifiable par numéro mais pas cherchable par thème. Restent dehors, parce que ce sont d'autres bases : les conventions collectives, les circulaires et instructions, les textes locaux (préfecture, mairie) et les normes techniques NF ou EN. <strong>Un sujet qu'elles portent paraît vide ici sans l'être</strong> — ne conclus jamais à l'absence de règle sur un silence de cette base. Domaines couverts :</p>
     <ul>
       <li>Droit du travail, civil, pénal, de la consommation, de la famille</li>
       <li>Droit de l'urbanisme, de la construction, du logement, de la copropriété</li>
@@ -1491,10 +1504,10 @@ référence SJ.
     Open source — Licence AGPL-3.0-or-later<br>
     Auteur : Pierroons<br>
     Contact : contact@my-self.fr<br>
-    Dernière mise à jour : 18 avril 2026
+    Dernière mise à jour : <?= date_page() ?>
   </p>
   <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
-    Ce site ne collecte aucune donnée personnelle. Pas de cookies, pas de tracking, pas de base de données.
+    Pas de compte, pas de cookie, pas de traceur. Comme tout serveur web, ce site tient un journal d'accès — adresse IP, adresse demandée, date, navigateur — conservé 14 jours pour la sécurité et les statistiques de fréquentation. Le formulaire de retour garde ce que tu envoies 30 jours.
     Le code source est disponible sur GitHub sous licence AGPL-3.0-or-later.
   </p>
 </footer>

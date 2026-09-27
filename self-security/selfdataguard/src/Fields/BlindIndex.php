@@ -47,7 +47,7 @@ final class BlindIndex
      *                indexing (idempotent per (value, blindKey, fieldName)).
      */
     public static function compute(
-        string $value,
+        #[\SensitiveParameter] string $value,
         string $blindKey,
         string $fieldName
     ): string {

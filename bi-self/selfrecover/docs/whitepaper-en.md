@@ -7,11 +7,11 @@
 
 ## Context (May 2026)
 
-On April 15, 2026, the `moncompte.ants.gouv.fr` portal (Agence nationale des titres sécurisés — France's national agency for secure documents: ID cards, passports, driver's licenses, vehicle registrations) suffered a data breach via an IDOR (*Insecure Direct Object Reference*) vulnerability: changing an identifier in an API request granted access to another citizen's account. The Ministry of the Interior confirmed **11.7 million accounts** affected; attackers claim up to **19 million records** exfiltrated. Exposed data: civil status, contact details, identity certification status — no passwords, no biometrics.
+The costliest pattern is a familiar one, and it keeps recurring: a trivial authorization flaw — changing an identifier in an API request is enough to read someone else's account — on a service whose account recovery runs through an email channel. The scale then comes down to nothing more than the number of rows in the table.
 
-The incident raised a structural question: why does a sovereign service need to index an email channel to reset an account? As long as a third-party mailbox is in the recovery chain, its compromise becomes the dominant attack vector. SelfRecover was published under AGPL-3.0-or-later **before this incident** (April 2026, v0.1.0) precisely to offer a technical answer: make the email channel optional (**Lite** mode, v0.1.1) or remove it entirely (**Full** mode).
+The question is structural: why does a service need to index a mailbox to establish that you are you? As long as a third-party mailbox is in the recovery chain, its compromise becomes the dominant attack vector. SelfRecover offers a technical answer: make the email channel optional (**Lite** mode, v0.1.1) or remove it entirely (**Full** mode). Published under AGPL-3.0-or-later in April 2026 (v0.1.0).
 
-This whitepaper describes the protocol. It is neither an ad-hoc critique of any single actor nor a post-incident claim — it is a prior open-source proposal that public and private operators may audit, integrate, or contest freely.
+This whitepaper describes the protocol. It targets no actor in particular — it is an open-source proposal that public and private operators may audit, integrate, or contest freely.
 
 ---
 
@@ -45,16 +45,15 @@ SelfRecover proposes a different answer: trust stays between the user and the si
 
 > Recovery word alone = nothing.
 > Algorithm alone = nothing.
-> Recovery word + Algorithm = identity proven.
+> Recovery word + Algorithm = a fingerprint the server can verify — one of level 2's two factors.
 
 SelfRecover is a split-knowledge recovery system. The user remembers one word. The system provides the algorithm. Neither has value without the other.
 
-**What the user remembers:**
+**What the user remembers:** a single word, written down nowhere.
 
-- A public identifier (username, phone, gamer tag, customer ID — any label)
-- A recovery word of their choice (any length, any complexity — even `bob`)
+**What the user keeps on paper:** their recovery codes (level 2) and their diceware passphrase (level 1). They are drawn at random; nobody has to remember them.
 
-That's it. Two things. For every site. Forever.
+The word alone reopens no account: level 2 also requires a recovery code or the enrolled device (§5.4).
 
 ---
 
@@ -171,7 +170,7 @@ L2 is a **real 2FA** — possession **and** knowledge — **with no identifier t
 - **Possession**: a *recovery code* (one of the 10 issued at registration). It **locates** the account via an HMAC lookup (no more enumeration) and acts as the possession factor.
 - **Knowledge**: the *memorized word*, HMAC-derived client-side (the raw word never leaves the browser).
 
-The server verifies **both** (Argon2id) and returns a **generic error** that never reveals which one failed. On success, the user picks their new password and the code is marked used. An optional variant — the **"this device" factor** — provides a third L2 path (see §5.4).
+The server verifies **both** (Argon2id) and returns a **generic error** that never reveals which one failed. On success, the user picks their new password and the code is marked used. An optional variant — the **"this device" factor** — provides a second L2 path (see §5.4).
 
 There is no automatic escalation to L3: level 2 asks for no identifier, so there is nothing to count per account. Its only brake is the per-address counter. Opening a dispute is the person's own decision.
 
@@ -240,9 +239,9 @@ SelfRecover distinguishes three roles: **SU → Admin → User**. The administra
 
 **Anchoring and secret.** The SU **does not exist in the database**: it is server-anchored (server access is authorization). Its secret lives **outside the database and outside the code** — a file outside the webroot, or an environment variable. This is a **Kerckhoffs model**: security rests on the secret, never on the obscurity of a code that is public. The SU is a **command-line interface**, never exposed on the web or remotely.
 
-**Separation of powers.** An administrator **does not promote themselves**: they **propose** a promotion, the SU **decides** (mandatory note). The SU can promote/revoke administrators (a revocation cuts sessions), **audit** the state (cross-check DB rights against the log → detect **ghost admins** and put them in **automatic quarantine**), and, if its passphrase is lost, start from an "empty shell" (revoke all administrators, freeze the log).
+**Separation of powers.** An administrator **does not promote themselves**: they **propose** a promotion, the SU **decides** (mandatory note). The SU appoints the **first** administrator, once; from then on the database **always keeps at least one** — the last one can only be revoked by naming its successor in the same transaction. The SU can revoke administrators (a revocation cuts sessions), **audit** the state (cross-check DB rights against the log → detect **ghost admins** and put them in **automatic quarantine**), and, if its passphrase is lost, start from an "empty shell" (revoke all administrators, freeze the log). After a compromise, a **database reset** deletes every account and the SU secret: a tampered account cannot be recognised from the inside, so none is kept. Both resets reopen the appointment of the first administrator.
 
-**Tamper-evident audit log.** Every SU action is logged outside the database and outside the webroot, in four layers: **append-only** at the filesystem level (`chattr +a`), a **hash chain** (any tampering breaks the chain), a **per-entry HMAC** (key derived from the SU passphrase), and **externalization** to a notification channel (action + target + time only, never the forensic context).
+**Tamper-evident audit log.** Every SU action is logged outside the database and outside the webroot, in four layers: **append-only** at the filesystem level (`chattr +a`), a **hash chain** (any tampering breaks the chain), a **per-entry HMAC** (an instance key, `SELFRECOVER_SU_AUDIT_SECRET` — separate from the SU passphrase: changing the passphrase does not break the chain; the key itself is rotated with `rotate-audit-key`, which re-signs the log without changing its hashes), and **externalization** to a notification channel (action + target + time only, never the forensic context).
 
 ---
 

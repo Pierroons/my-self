@@ -21,6 +21,19 @@ $fichier = getenv('SELFJUSTICE_STATS_DIR') ?: '/var/lib/selfjustice/stats';
 if (is_readable("$fichier/corpus.json")) {
     $corpus = json_decode(file_get_contents("$fichier/corpus.json"), true) ?: [];
 }
+/**
+ * La date du pied de page est celle du fichier servi. La page demande aux IA
+ * de la citer : écrite à la main, elle ne suivait pas les modifications.
+ */
+function date_page(): string {
+    return strtr(date('j F Y', filemtime(__FILE__)), [
+        'January' => 'janvier', 'February' => 'février', 'March' => 'mars',
+        'April' => 'avril', 'May' => 'mai', 'June' => 'juin',
+        'July' => 'juillet', 'August' => 'août', 'September' => 'septembre',
+        'October' => 'octobre', 'November' => 'novembre', 'December' => 'décembre',
+    ]);
+}
+
 /** Un tiret plutôt qu'un zéro : une valeur absente se voit, une valeur fausse non. */
 function chiffre(array $corpus, string $cle): string {
     $v = $corpus[$cle] ?? null;
@@ -32,11 +45,11 @@ function chiffre(array $corpus, string $cle): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SelfAct — Transforme le droit en action</title>
-  <meta name="description" content="SelfAct : générateur open-source de documents procéduraux conformes (mises en demeure, saisines, plaintes) depuis une analyse SelfJustice. Droit français.">
+  <title>SelfAct — Du droit à la démarche</title>
+  <meta name="description" content="SelfAct : la ressource officielle de ta démarche, le délai à respecter et des modèles de lettres à compléter — mise en demeure, saisine du conciliateur, recours gracieux. Droit français, open source.">
   <meta name="author" content="Pierroons — MySelf Project">
   <meta property="og:title" content="SelfAct — Du droit à l'action">
-  <meta property="og:description" content="Prolongement opérationnel de SelfJustice. Produit l'acte que l'on envoie, conforme aux exigences légales.">
+  <meta property="og:description" content="Prolongement de SelfJustice : le formulaire officiel, le délai, un modèle de lettre à trous. Les faits, c'est toi qui les écris.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://justice.example.org/act">
   <style>
@@ -320,13 +333,13 @@ function chiffre(array $corpus, string $cle): string {
   <h1>SelfAct</h1>
   <p class="tagline">Du droit à l'action.</p>
   <p class="pact">
-    SelfJustice te dit <em>quoi</em> tu as le droit de faire.
-    SelfAct produit <em>comment</em> tu le fais — acte par acte, conforme aux exigences légales.
+    SelfJustice te dit ce que dit <em>le texte</em>.
+    SelfAct te montre <em>comment</em> t'y prendre — la ressource officielle, le délai, un modèle à compléter.
   </p>
 </header>
 
 <div class="disclaimer" style="margin-top: 0;">
-  <h4>⚠ Version bêta v0.1.2 — catalogue opérationnel, non validé par juriste</h4>
+  <h4>⚠ Version bêta v0.1.3 — catalogue opérationnel, non validé par juriste</h4>
   <p style="font-size: 0.95rem; margin-bottom: 0.5rem;">
     SelfAct indexe <strong><span id="act-catalog-total"><?= chiffre($corpus, "act_catalogue") ?></span> ressources
     officielles</strong> publiées par service-public.gouv.fr — modèles de lettres,
@@ -401,7 +414,7 @@ function chiffre(array $corpus, string $cle): string {
 
   <p class="muted" style="font-size:0.9rem">
     Coût : zéro. Tu utilises ton propre abonnement IA (ou la version gratuite d'une IA).
-    Cette page est statique, open source, sans tracking, sans base de données.
+    Cette page est open source, sans cookie ni traceur.
   </p>
 
   <h3>Compatibilité IA — deux modes d'usage</h3>
@@ -768,7 +781,7 @@ function chiffre(array $corpus, string $cle): string {
 
 <footer>
   <p>
-    <strong>SelfAct v0.1.2</strong> — module du binôme
+    <strong>SelfAct v0.1.3</strong> — module du binôme
     <a href="https://github.com/Pierroons/my-self/tree/main/self-right">Self-Right</a>
     de l'écosystème <a href="https://my-self.fr">MySelf</a>
     · Licence <a href="https://github.com/Pierroons/my-self/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0-or-later</a>
@@ -776,7 +789,7 @@ function chiffre(array $corpus, string $cle): string {
   </p>
   <p style="font-size:0.82rem">
     Cadence de mise à jour législative : <strong>bimensuelle (1<sup>er</sup> + 15)</strong>
-    via <a href="/">SelfJustice</a>. Dernière mise à jour : 18 avril 2026.
+    via <a href="/">SelfJustice</a>. Dernière mise à jour : <?= date_page() ?>.
   </p>
 </footer>
 

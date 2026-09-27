@@ -5,7 +5,7 @@
 **Impartial legal pre-analysis powered by AI-readable directives — served over a free public API.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.4.0 beta](https://img.shields.io/badge/status-v0.4.0%20beta-green.svg)](#status)
+[![Status: v0.4.1 beta](https://img.shields.io/badge/status-v0.4.1%20beta-green.svg)](#status)
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
@@ -19,7 +19,7 @@
 
 ## The problem
 
-Legal advice in France costs 50–300 € per consultation. Most citizens facing everyday conflicts — unfair dismissal, noisy neighbors, refused insurance claims, consumer disputes — either give up or act blindly without understanding their rights.
+Legal advice in France is paid by the consultation. Most citizens facing everyday conflicts — unfair dismissal, noisy neighbors, refused insurance claims, consumer disputes — either give up or act blindly without understanding their rights.
 
 Meanwhile, every AI assistant (Claude, ChatGPT, Mistral, Gemini, Perplexity) is eager to answer legal questions, but without structured guidance they hallucinate citations, miss the hierarchy of norms, fail to stay impartial, and skip the mandatory disclaimers.
 
@@ -82,7 +82,7 @@ Any AI. Any citizen. Any conflict. One consistent, sourced, impartial pre-analys
 
 ## Core components
 
-### 1. Directives page (`site/index.html`)
+### 1. Directives page (`site/index.php`)
 
 Machine-readable directives telling the AI how to reason:
 
@@ -114,7 +114,7 @@ All endpoints return JSON, all are rate-limited, all are CORS-open.
 
 - Access log parsing distinguishes **user-initiated consultations** (Claude-User, ChatGPT-User, Perplexity-User) from **automated crawlers** (GPTBot, ClaudeBot, GoogleBot, etc.).
 - Homepage counter shows real-time consultation count, updated hourly via `build_stats.sh`.
-- Zero IP logged, zero cookie, zero user content stored. Only anonymized User-Agent families and endpoint paths.
+- The published statistics carry only User-Agent families and endpoint paths — never an IP address. The access log they are computed from does keep IP addresses, like any web server: 14 days on the reference instance, then deleted by the daily rotation. No account, no cookie. The layout-feedback form, if you use it, keeps what you send for 30 days.
 
 ---
 
@@ -161,13 +161,13 @@ Clone the repo, point nginx to `site/`, configure `api/api.php` against your LEG
 
 ## Role in Self-Right
 
-SelfJustice **diagnoses**. [SelfAct](../selfact/) **acts**. Together they cover the full arc from "I think I'm in my rights" to "the formal notice is signed and sent":
+SelfJustice serves **the law**. [SelfAct](../selfact/) serves **the step**. Together they go from "what does the text say?" to "which form, which deadline, which letter?":
 
-1. User describes conflict → SelfJustice returns structured JSON analysis.
-2. SelfAct takes that JSON → generates mise en demeure, saisine, CERFA, calendar.
-3. User downloads a ZIP dossier, sends by RAR at La Poste.
+1. You describe your situation to your own AI, which reads the law through SelfJustice and explains what it says, with verifiable references.
+2. SelfAct points to the official resource for the step, computes the deadline and gives you a letter template with gaps.
+3. You write the facts, review, sign and send.
 
-Zero consultation fee. Zero cloud. Zero intermediary.
+Free of charge. Your question is read by the AI you choose; SelfJustice only receives the lookup requests it sends.
 
 ---
 
@@ -175,7 +175,7 @@ Zero consultation fee. Zero cloud. Zero intermediary.
 
 SelfJustice is an **information tool**, not legal advice. It does not constitute:
 - Legal counsel under French law n° 71-1130 of December 31, 1971
-- A legal consultation (reserved to licensed attorneys)
+- A legal consultation (reserved to legal professionals, loi n° 71-1130, art. 54)
 - A binding legal opinion
 
 **Always consult a lawyer before taking legal action.**
@@ -184,20 +184,20 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 
 ## Status
 
-**v0.4.0 — live in production at [justice.my-self.fr](https://justice.my-self.fr)**
+**v0.4.1 — live in production at [justice.my-self.fr](https://justice.my-self.fr)**
 
 - [x] System directives (7-step analysis procedure, 5 principles)
 - [x] 8 legal categories (work, housing, family, public administration, neighborhood, consumer, civil, criminal)
 - [x] Detailed entry points — housing law, family law, administrative law
 - [x] Structured output template with glossary
-- [x] Legal disclaimers (loi 71-1130 compliant)
+- [x] Notices on loi 71-1130 — legal advice stays reserved to legal professionals
 - [x] API serving the full LEGI corpus — **108 codes** addressable by title, no alias table required
 - [x] API serving the EU/ECHR corpus (including AI Act 2024/1689)
 - [x] Judicial case law index (Cour de cassation, courts of appeal)
 - [x] **Administrative** case law index, full text served (Conseil d'État, CAA, Tribunal des
       conflits; tribunals and CDBF as historical corpora) — source: DILA's JADE corpus
 - [x] MCP server (`selfright-mcp` package) — consultation from a local client
-- [x] SelfAct integration — official procedures served alongside the directives
+- [x] SelfAct integration — official resources served alongside the directives
 - [x] Multi-AI tested (Claude, ChatGPT crawler, OAI-SearchBot detected)
 - [x] Public stats (`/api/stats/by-ai`, `/api/stats/by-endpoint`)
 - [x] Dedicated domain [justice.my-self.fr](https://justice.my-self.fr)
@@ -211,7 +211,7 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 - **v0.1.0** — Core directives + 5 categories + LEGI/EU API
 - **v0.2.0** — Family law (divorce, custody, alimony) + housing law (leases, eviction)
 - **v0.3.0** — Administrative law (disputes with public services)
-- **v0.4.0 (current)** — Administrative case law: Conseil d'État and administrative courts
+- **v0.4.0** — Administrative case law: Conseil d'État and administrative courts
   of appeal up to the current day, Tribunal des conflits, and two historical corpora —
   administrative tribunals **stop in 2009** and the Cour de discipline budgétaire et financière
   **in 2000**, because JADE only publishes a selection of them. A recent tribunal ruling is
@@ -222,6 +222,9 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
   2026-09-11**, from 1873 to 2026, full text included — today's count is served at
   `/api/status`. **Judicial** case law (Cour de cassation, courts of appeal) already ships and
   is served; `tj` and `tcom` are available upstream and not yet harvested
+- **v0.4.1 (current)** — Administrative decisions can be checked by their number, and
+  `/verifier` no longer denies a decision that sits behind more recent namesakes. Theme search
+  says it only covers the judicial order, instead of passing on the upstream error
 - **v1.0.0** — Directives reviewed by a practicing attorney (SelfAct integration shipped in v0.2.0)
 
 ---
@@ -232,8 +235,8 @@ SelfJustice is part of the **MySelf** ecosystem, specifically the **Self-Right**
 
 | Module | Role |
 |--------|------|
-| **SelfJustice** (this) | Diagnose — what does the law say? |
-| [SelfAct](../selfact/) | Act — draft the formal notice, fill the CERFA, calendar the deadlines |
+| **SelfJustice** (this) | The law — what does it say? |
+| [SelfAct](../selfact/) | The step — the official resource, the deadline, a letter template to complete |
 
 The human provides entropy (lived experience, facts). The machine provides impartiality (structured reasoning, cited law). Neither is enough alone.
 

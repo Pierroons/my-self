@@ -17,7 +17,7 @@ if (PHP_SAPI !== 'cli') {
 
 $username = trim($argv[1] ?? '');
 $off      = (($argv[2] ?? '') === 'off');
-$verbe    = $off ? 'revoke-admin' : 'add-admin';
+$verbe    = $off ? 'revoke-admin' : 'first-admin';
 $cible    = $username !== '' ? $username : '<username>';
 
 fwrite(STDERR, <<<TXT

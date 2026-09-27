@@ -58,8 +58,8 @@ return [
         . '</ul>',
 
     'sec.2.h2' => '2. Chiffrement des données — deux modèles selon la sensibilité',
-    'sec.2.body' => '<p><strong>a) Blind-key serveur</strong> (profil : bio, localisation, lien) — AES-256-GCM, clé dérivée d\'un secret serveur stocké <em>hors base et hors webroot</em>. Un dump SQL ne révèle que des blobs.</p>'
-        . '<p><strong>b) Bout-en-bout côté client</strong> (mémo perso) — chiffré dans le <strong>navigateur</strong> (WebCrypto). <code>PBKDF2</code> (600k) → <code>HKDF</code> par étiquette → une <code>vault_key</code> aléatoire chiffre le mémo, wrappée dans deux enveloppes (mot de passe + passphrase de secours). <strong>Le serveur ne détient aucune clé.</strong></p>'
+    'sec.2.body' => '<p><strong>a) Blind-key serveur</strong> (profil : bio, localisation, lien) — XChaCha20-Poly1305, clé dérivée d\'un secret serveur stocké <em>hors base et hors webroot</em>. Un dump SQL ne révèle que des blobs.</p>'
+        . '<p><strong>b) Bout-en-bout côté client</strong> (mémo perso) — chiffré dans le <strong>navigateur</strong> (WebCrypto). <code>Argon2id</code> (64 Mio, le profil de SelfRecover) → <code>HKDF</code> par étiquette → une <code>vault_key</code> aléatoire chiffre le mémo, wrappée dans deux enveloppes (mot de passe + passphrase de secours). <strong>Le serveur ne détient aucune clé.</strong></p>'
         . '<div class="mt">'
         . '<div class="ok"><h4>✅ Ce que ça protège</h4><ul>'
         . '<li>Blind-key : vol de disque, dump SQL, injection</li>'
@@ -71,11 +71,11 @@ return [
         . '</ul></div>'
         . '</div>',
 
-    'sec.3.h2' => '3. Le socle commun — mapping SelfRecover ⇄ SelfDataGuard',
+    'sec.3.h2' => '3. Une clé par usage — SelfRecover, le mémo, SelfDataGuard',
     'sec.3.body' => '<ul>'
-        . '<li>Un seul <strong>secret racine</strong> mémorisé, une <strong>primitive de dérivation partagée</strong>, des <strong>clés filles séparées par étiquette</strong> (<code>auth</code> / <code>data-enc</code> / <code>data-recover</code>).</li>'
+        . '<li><strong>Chaque usage dérive sa propre clé, par sa propre dérivation.</strong> L\'accès passe par SelfRecover : ton navigateur calcule une empreinte <code>HMAC-SHA256</code> de ton mot, liée au nom du site et salée par compte ; le serveur n\'en garde qu\'un Argon2id. Le mémo tire deux clés filles, séparées par étiquette <code>HKDF</code> : <code>data-enc</code> depuis ton mot de passe, <code>data-recover</code> depuis ta passphrase de secours.</li>'
         . '<li>Règle d\'or : <strong>jamais la même clé pour l\'authentification et le chiffrement</strong> (le serveur voit l\'auth, il ne doit jamais pouvoir déchiffrer).</li>'
-        . '<li>Récupération unifiée : le même mot/passphrase de secours rend l\'accès <em>et</em> les données. La force du secours = <strong>entropie de l\'entrée</strong> (passphrase diceware), pas la taille du hash.</li>'
+        . '<li>Récupération : si la passphrase de secours de ton mémo est aussi celle de SelfRecover, un seul secret rend l\'accès <em>et</em> le mémo — par deux dérivations distinctes, sans clé commune. La force du secours = <strong>entropie de l\'entrée</strong> (passphrase diceware), pas la taille du hash.</li>'
         . '</ul>',
 
     'sec.4.h2' => '4. Durcissement applicatif',
@@ -104,14 +104,14 @@ return [
         . '<li>Vol du mémo, <strong>même avec un accès root</strong> (E2E au repos)</li>'
         . '</ul></div>'
         . '<div class="no"><h4>⚠️ Limites connues (V1)</h4><ul>'
-        . '<li>Profil &amp; DM lisibles par un admin / un RCE (blind-key)</li>'
+        . '<li>Profil &amp; DM lisibles par qui obtient la clé serveur (<code>.blindkey</code>), par exemple via un RCE — pas par le panneau admin</li>'
         . '<li>Serveur compromis <em>persistant</em> → altération du code servi (« code servi »)</li>'
         . '<li>Métadonnées non chiffrées (qui parle à qui, quand)</li>'
         . '</ul></div>'
         . '</div>',
 
     'sec.7.h2' => '7. Feuille de route (hors V1)',
-    'sec.7.body' => '<p class="roadmap">E2E étendu aux messages privés et au profil · <code>Argon2id</code> en remplacement de PBKDF2 · <strong>superviseur d\'intégrité externe</strong> (détection du code servi altéré + comportement anormal, confinement automatique réversible) · quorum distribué (Shamir) pour les clés critiques.</p>',
+    'sec.7.body' => '<p class="roadmap">E2E étendu aux messages privés et au profil · <strong>superviseur d\'intégrité externe</strong> (détection du code servi altéré + comportement anormal, confinement automatique réversible) · quorum distribué (Shamir) pour les clés critiques.</p>',
 
     // ── Page « Règles d'engagement » ──────────────────────────────────────
     'rt.hero.h1' => '🎯 Test red team — règles d\'engagement',
@@ -136,13 +136,13 @@ return [
     'rt.scope.note'   => 'Un périmètre étendu (autres composants MySelf) peut être convenu <strong>en privé</strong> avec une équipe retenue, sous accord écrit. Il n\'est pas publié ici.',
 
     'rt.obj.h2'    => '🏁 Objectifs (capture-the-flag)',
-    'rt.obj.intro' => 'Un compte de démonstration contient, dans son <strong>mémo personnel</strong>, un secret au format :',
-    'rt.obj.flag'  => '<span class="lbl">FLAG-</span>… (chiffré <strong>de bout en bout côté client</strong> — AES-256-GCM, clé dérivée du secret de l\'utilisateur, <strong>jamais présente sur le serveur</strong>)',
-    'rt.obj.note'  => 'Le nom du compte cible te sera communiqué à l\'ouverture du test. Ni un dump de la base, ni un accès administrateur, ni la prise de contrôle du serveur ne révèlent ce secret — la clé n\'existe que dans le navigateur du propriétaire. Le défi est de le ramener <strong>en clair</strong>.',
+    'rt.obj.intro' => '<strong>Saison 2</strong> — deux drapeaux, dans deux comptes de démonstration :',
+    'rt.obj.flag'  => '<span class="lbl">FLAG-E2E-</span>… dans le <strong>mémo personnel</strong> de <code>ctf_alpha</code> — chiffré <strong>dans le navigateur</strong> (Argon2id → HKDF → AES-256-GCM), clé <strong>jamais présente sur le serveur</strong>.<br><span class="lbl">FLAG-DM-</span>… dans un <strong>message privé</strong> de <code>ctf_beta</code> à <code>ctf_gamma</code> — chiffré au repos côté serveur par SelfDataGuard (XChaCha20-Poly1305), avec une clé tenue hors de la base.',
+    'rt.obj.note'  => '<strong>FLAG-E2E</strong> : ni un dump de la base, ni un accès administrateur, ni la prise de contrôle du serveur ne le révèlent — la clé n\'existe que dans le navigateur de son propriétaire. <strong>FLAG-DM</strong> : un dump seul ne suffit pas, mais la clé serveur (<code>.blindkey</code>) le fait tomber — c\'est la limite assumée du chiffrement côté serveur. Le défi est de ramener l\'un ou l\'autre <strong>en clair</strong>.',
     'rt.obj.refs'  => 'Réfs <strong>MITRE ATT&amp;CK</strong> / <strong>OWASP</strong> indiquées par objectif (les vulns web applicatives relèvent d\'OWASP/CWE, hors périmètre ATT&amp;CK).',
-    'rt.obj.list'  => '<li>🎯 <strong>Exfiltrer le mémo secret</strong> du compte cible et le restituer en clair <span class="ttp">objectif central</span></li>'
+    'rt.obj.list'  => '<li>🎯 <strong>Exfiltrer FLAG-E2E</strong>, le mémo de <code>ctf_alpha</code>, et le restituer en clair <span class="ttp">objectif central</span></li>'
         . '<li>🔓 <strong>Contourner l\'authentification</strong> SelfRecover (prendre la main sur un compte sans son mot de passe) <span class="ttp">ATT&amp;CK T1110 · T1078 · OWASP A07</span></li>'
-        . '<li>💬 <strong>Lire un DM</strong> échangé entre deux autres membres, en clair <span class="ttp">OWASP A01</span></li>'
+        . '<li>💬 <strong>Lire FLAG-DM</strong>, le message de <code>ctf_beta</code> à <code>ctf_gamma</code>, en clair <span class="ttp">OWASP A01</span></li>'
         . '<li>⚖️ <strong>Manipuler la réputation</strong> SelfModerate (enterrer un membre par faux comptes coordonnés, ou s\'auto-promouvoir) <span class="ttp">CAPEC-210</span></li>'
         . '<li>🪪 <strong>Usurper une session</strong> ou aboutir une attaque CSRF authentifiée <span class="ttp">ATT&amp;CK T1539 · CWE-352</span></li>'
         . '<li>🧨 <strong>Escalade de privilèges</strong> : obtenir un accès administrateur (panel <code>/admin</code>) <span class="ttp">ATT&amp;CK T1078 · OWASP A01</span></li>',
@@ -177,7 +177,7 @@ return [
         . 'En cas de doute sur le périmètre ou une technique : <strong>demande avant d\'agir</strong> via le formulaire ci-dessous.',
 
     'rt.form.h2'      => '📨 Soumettre un rapport',
-    'rt.form.note'    => '🔒 Le corps de ton rapport est chiffré at-rest par <strong>SelfDataGuard</strong> avant stockage : la base qui le contient ne révèle qu\'un blob. Le module que tu testes protège aussi ton rapport.',
+    'rt.form.note'    => '🔒 Le corps de ton rapport est chiffré <strong>dans ton navigateur</strong>, en PGP, vers la clé publique du programme, avant l\'envoi : le serveur ne stocke qu\'un message qu\'il ne sait pas lire.',
     'rt.form.handle'  => 'Pseudo public (hall of fame, optionnel)',
     'rt.form.handle_ph' => 'ex. @nom_ou_équipe',
     'rt.form.severity' => 'Sévérité',
@@ -220,7 +220,7 @@ return [
 
     // ── Accueil du forum ──────────────────────────────────────────────────
     'idx.title'     => 'Forum',
-    'idx.pitch'     => 'Forum de démonstration : <strong>attaquez-le, vos données survivent.</strong><br>Auth sans email · messages chiffrés de bout en bout · modération anti-manipulation.',
+    'idx.pitch'     => 'Forum de démonstration : <strong>attaquez-le, vos données survivent.</strong><br>Auth sans email · mémo chiffré de bout en bout, messages chiffrés au repos · modération anti-manipulation.',
     'idx.cta.test'  => '🛡️ Tester la sécurité',
     'idx.cta.archi' => 'Voir l\'architecture',
     'idx.credit'    => 'Un cowork <strong>Pierroons × Claude</strong> — sécurité open source, à l\'épreuve.',
@@ -360,7 +360,7 @@ return [
     // ── Messages privés ───────────────────────────────────────────────────
     'msg.title'    => 'Messages',
     'msg.h1'       => 'Messages privés',
-    'msg.note'     => '🔒 Contenu chiffré at-rest par <strong>SelfDataGuard</strong> (AES-256-GCM). Un dump de la base ne révèle que des blobs illisibles.',
+    'msg.note'     => '🔒 Contenu chiffré at-rest par <strong>SelfDataGuard</strong> (XChaCha20-Poly1305). Un dump de la base ne révèle que des blobs illisibles.',
     'msg.new.h2'   => 'Nouveau message',
     'msg.to'       => 'Destinataire (identifiant)',
     'msg.to_ph'    => 'ex : libriste',
@@ -443,13 +443,15 @@ return [
     'prf.edit.tag'   => '🌐 public',
     'prf.public.warn' => '🌐 <strong>Profil public</strong> — bio, localisation et lien sont <strong>visibles de tous</strong> (page <code>/profile.php?u=…</code>, même sans compte). Le chiffrement at-rest SelfDataGuard protège contre un <strong>vol de la base</strong>, pas contre l\'affichage public : n\'y mets <strong>aucune donnée sensible</strong>. Pour une note privée, utilise le <strong>mémo E2E</strong> ci-dessous.',
     'prf.memo.h2'    => '🎯 Mémo perso — chiffré de bout en bout (E2E)',
-    'prf.memo.note'  => '🔒 Chiffré <strong>dans ton navigateur</strong> par <strong>SelfDataGuard E2E</strong> : le serveur ne reçoit que des blobs, il ne détient <strong>aucune clé</strong>. Même l\'administrateur ne peut pas le lire. C\'est le <strong>secret à exfiltrer</strong> pour la red team — un dump de la base ne donne rien sans ton mot de passe.',
+    'prf.memo.note'  => '🔒 Chiffré <strong>dans ton navigateur</strong> (Argon2id puis AES-GCM) : le serveur ne reçoit que des blobs, il ne détient <strong>aucune clé</strong>. Même l\'administrateur ne peut pas le lire. C\'est le <strong>secret à exfiltrer</strong> pour la red team — un dump de la base ne donne rien sans ton mot de passe.',
     'prf.memo.create' => '<strong>Une seule fois :</strong> tu poses ici les deux secrets qui scellent ton coffre. Ensuite tu n\'auras plus qu\'à écrire — seul le mot de passe sera redemandé pour ouvrir, jamais la passphrase.<br>Le <strong>mot de passe</strong> sert au quotidien ; la <strong>passphrase de récupération</strong> est ton unique filet si tu l\'oublies.',
     'prf.memo.create_once' => '⚙️ Étape de mise en place, pas d\'écriture. Ton mémo s\'écrit à l\'écran suivant, dans un bloc libre.',
     'prf.memo.pass'  => 'Passphrase de récupération',
-    'prf.memo.pass_hint' => '— réutilise celle reçue à l\'inscription',
+    'prf.memo.pw'    => 'Mot de passe du coffre',
+    'prf.memo.pw_hint' => '— pas celui du compte',
+    'prf.memo.pass_hint' => '— pas celle du compte',
     'prf.memo.pass_ph' => 'ex. correct horse battery staple',
-    'prf.memo.pass_note' => 'Au moins 4 mots. C\'est ton unique filet si tu perds ton mot de passe — il doit être fort (idéalement ta passphrase SelfRecover).',
+    'prf.memo.pass_note' => 'Au moins 4 mots ; 6 ou plus pour un secret qui compte. C\'est ton unique filet si tu perds ton mot de passe. Prends deux secrets propres au coffre : ceux du compte, le serveur les reçoit — le mot de passe à chaque connexion, la passphrase quand tu récupères ton compte.',
     'prf.memo.label' => 'Mémo',
     'prf.memo.ph'    => 'Ex. FLAG-exemple-2026 : ma note privée…',
     'prf.memo.btncreate' => 'Créer le coffre (chiffrement local)',
@@ -460,10 +462,12 @@ return [
     'prf.memo.decrypted' => 'Ton mémo — écris ce que tu veux',
     'prf.memo.save'  => 'Enregistrer (re-chiffré local)',
     'prf.js.saved'   => 'Profil enregistré (chiffré).',
-    'prf.js.required' => 'Mot de passe, passphrase et mémo requis.',
+    'prf.js.required' => 'Mot de passe et passphrase requis.',
     'prf.js.weakpass' => 'Passphrase de récupération trop faible : au moins 4 mots (réutilise celle de ton inscription). C\'est ce qui protège ton mémo si tu perds ton mot de passe.',
     'prf.js.created' => 'Coffre créé et chiffré localement. Le serveur n\'a reçu que des blobs.',
-    'prf.js.deriving' => 'Dérivation de la clé (PBKDF2)…',
+    'prf.js.deriving' => 'Dérivation de la clé (Argon2id, une à quelques secondes)…',
+    'prf.js.sealing' => 'Scellement du coffre : deux dérivations Argon2id, quelques secondes…',
+    'prf.js.oldvault' => 'Ce coffre a été scellé avant le passage à Argon2id et ne se relit plus. Recrée-le.',
     'prf.js.decrypted' => 'Déchiffré localement. La clé reste dans cette page, jamais envoyée.',
     'prf.js.locked'  => 'Coffre verrouillé.',
     'prf.js.saved2'  => 'Mémo re-chiffré et enregistré.',

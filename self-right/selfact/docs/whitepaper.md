@@ -1,6 +1,6 @@
 ---
 title: "SelfAct — Whitepaper"
-subtitle: "Operational extension of SelfJustice: compliant legal documents, one analysis away"
+subtitle: "Operational extension of SelfJustice: the official resource, the deadline, a template to complete"
 author: "Pierroons — MySelf ecosystem"
 date: "August 2026"
 version: "0.1.3"
@@ -8,9 +8,9 @@ version: "0.1.3"
 
 # Executive summary
 
-SelfAct is the companion of [SelfJustice](https://justice.my-self.fr) that closes the gap between *"you understand your rights"* and *"your formal notice is signed and sent"*. It takes the structured JSON output of a SelfJustice analysis and turns it into the documents a dispute needs: a mise en demeure, a saisine, and the procedural deadline that governs both.
+SelfAct is the companion of [SelfJustice](https://justice.my-self.fr) for the step that follows the law: which form, which online service, which deadline, which letter. For a situation, it points to the official resource, computes the procedural deadline, and gives letter templates with gaps that the reader completes in their browser. It does not analyse a case: legal advice is reserved to legal professionals in France (loi n° 71-1130).
 
-No cloud. No third party. No legal fee. The tool runs locally, the documents are yours, and the deadlines land in your calendar.
+Free of charge. What the reader types into a template stays in their browser — the server refuses to receive a document — and the deadlines land in their calendar.
 
 # 1. Problem statement
 
@@ -20,10 +20,10 @@ This is not a legal problem. It is a **documentation-production problem**. Every
 
 # 2. Solution overview
 
-SelfAct is a **template-driven document generator** that takes the SelfJustice JSON analysis as input and produces:
+SelfAct is driven by **situations and templates**. For a situation, it provides:
 
-1. A **mise en demeure** carrying the legal basis, the factual summary and the standard 15-day response clause.
-2. A **saisine** of the competent jurisdiction (tribunal judiciaire, tribunal de proximité, conciliateur de justice, médiateur, conseil des prud'hommes) with its list of attachments.
+1. A **mise en demeure** template with gaps: the facts, the legal basis the reader relies on and the response delay are theirs to fill.
+2. A **saisine** template for the conciliateur de justice, and one for the Défenseur des droits.
 3. The **procedural deadline**, computed under art. 640 CPC and returned as an `.ics` file ready to import into any calendar app.
 4. A **pointer to the CERFA form** the situation calls for — its number and its official page. SelfAct does not fill it in.
 
@@ -113,14 +113,14 @@ SelfAct does not generate CERFA forms. The catalogue points to the official ones
 
 # 4. Security & privacy
 
-- All input is processed in-memory and written only to the local filesystem.
+- What the reader types into a template is processed in their browser and never sent: the server refuses to receive a document. Catalogue searches and deadline computations are ordinary requests to the server.
 - No telemetry, no cloud, no third-party API calls.
 - Templates are versioned in the repository and curated by hand — they are not generated, and a change to one is a commit.
 - Legal references follow SelfJustice, which is resynchronised on the 1st and the 15th of each month.
 
 # 5. Integration with SelfJustice
 
-The two modules share a host and a reading order: SelfJustice says what the law provides, SelfAct says what to send and by when. There is no automatic hand-off between them — a caller reads the SelfJustice answer, picks the situation it describes, and asks SelfAct for the acts.
+The two modules share a host and a reading order: SelfJustice says what the law provides, SelfAct points to the step and its deadline. There is no automatic hand-off between them — a caller reads the SelfJustice answer, picks the situation it describes, and asks SelfAct for the acts.
 
 SelfAct is served at `justice.my-self.fr/act`, as a sub-path of SelfJustice. Only declared routes answer: anything else returns an error rather than a file.
 
@@ -134,11 +134,10 @@ SelfAct is served at `justice.my-self.fr/act`, as a sub-path of SelfJustice. Onl
 
 # 7. License & contribution
 
-AGPL-3.0-or-later (since 2026-04-19; earlier releases were MIT and remain so under their original terms). Contributions welcome for: additional templates, additional CERFA, additional jurisdictions (Belgium, Luxembourg, Québec). Legal reviewers welcome — every template should be validated by a lawyer familiar with the domain.
+AGPL-3.0-or-later (since 2026-04-19; earlier releases were MIT and remain so under their original terms). Contributions welcome for: additional templates, additional catalogue sources, additional jurisdictions (Belgium, Luxembourg, Québec). Legal reviewers welcome — every template should be validated by a lawyer familiar with the domain.
 
 # 8. References
 
 - Art. 640 CPC (computation of delays)
-- Art. 242 nonies A Annexe II CGI (mandatory mentions)
 - SelfJustice API: https://justice.my-self.fr/api
 - Template library repository: https://github.com/Pierroons/my-self/tree/main/self-right/selfact

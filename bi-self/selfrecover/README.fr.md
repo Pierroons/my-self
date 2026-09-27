@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.5.1](https://img.shields.io/badge/status-v0.5.1-green.svg)](#statut)
+[![Status: v0.6.0](https://img.shields.io/badge/status-v0.6.0-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -17,9 +17,9 @@
 
 ## Module compagnon — SelfDataGuard (concept)
 
-Pour les déploiements e-commerce ou SaaS qui ont également besoin de **protéger les données personnelles stockées** contre une exfiltration de base, voir le module compagnon [SelfDataGuard](../../self-security/selfdataguard/). SelfDataGuard réutilise le mot mémorisé de récupération SelfRecover comme l'un de ses facteurs d'encapsulage de clé (avec un séparateur de contexte strict : `/recover` pour l'auth, `/dataguard` pour les données), de sorte qu'un utilisateur qui oublie son mot de passe peut simultanément retrouver son accès au compte ET déchiffrer ses données stockées avec le même mot mémorisé.
+Pour les déploiements e-commerce ou SaaS qui ont également besoin de **protéger les données personnelles stockées** contre une exfiltration de base, voir le module compagnon [SelfDataGuard](../../self-security/selfdataguard/). SelfDataGuard réutilise le mot mémorisé de récupération SelfRecover comme l'un de ses facteurs d'encapsulage de clé (par deux dérivations distinctes : un HMAC lié au site côté SelfRecover, un Argon2id sous le contexte `/dataguard` côté données), de sorte qu'un utilisateur qui oublie son mot de passe garde une voie vers chacune de ses deux moitiés : son mot mémorisé ouvre le coffre SelfDataGuard à lui seul, et sert de facteur de connaissance pour rouvrir le compte — avec le *recovery code* papier à côté.
 
-SelfRecover protège l'**authentification**. SelfDataGuard protège les **données au repos**. Ensemble, ils ferment la boucle contre les fuites de type ANTS avril 2026 (où à la fois les tokens d'auth ET les données personnelles ont été exposés en clair).
+SelfRecover protège l'**authentification**. SelfDataGuard protège les **données au repos**. Ensemble, ils ferment la boucle sur le cas qui fait le plus de dégâts : un dump où les jetons d'authentification **et** les données personnelles partent en clair, dans la même table.
 
 ---
 
@@ -30,7 +30,7 @@ sans réécriture totale de la pile d'authentification existante.
 
 | Mode | Canal email | Crypto ajoutée | Quand le choisir |
 |------|-------------|----------------|------------------|
-| **Full** | Aucun | Passphrase diceware EFF + HMAC par service | Projets greenfield, modèles de menace exigeants et post-ANTS |
+| **Full** | Aucun | Passphrase diceware EFF + HMAC par service | Projets greenfield, modèles de menace exigeants |
 | **Lite** 🆕 | Conservé (lien reset SMTP) | Un mot mémorisé par l'utilisateur, dérivé HMAC côté client, jamais envoyé en clair | Stack legacy qui veut un secret de secours qui ne circule jamais en clair, migration vers Full plus tard |
 
 **Essayer :** voir [Essayer SelfRecover](#essayer-selfrecover). Le comparatif des méthodes (8 adversaires × 3 modèles) est une page autonome : `tools/comparison.html`.
@@ -53,9 +53,9 @@ SelfRecover est un protocole de récupération à **connaissance partagée** :
 
 - **Mot de récupération seul** = rien.
 - **Algorithme seul** = rien.
-- **Mot de récupération + algorithme** = identité prouvée.
+- **Mot de récupération + algorithme** = une empreinte que le serveur sait vérifier — **un facteur sur les deux** que le niveau 2 exige.
 
-L'utilisateur se souvient d'**un mot de son choix**. C'est tout.
+L'utilisateur n'a qu'**un mot à retenir de tête**, et c'est là tout ce qu'on lui demande de mémoriser. Ce n'est pas tout ce qu'il lui faut : au niveau 2, le mot ne vaut qu'accompagné d'un *recovery code* papier ou de l'appareil qu'il a enrôlé. Le niveau 1 ne passe pas par le mot : il demande l'identifiant et une passphrase diceware gardée sur papier, soit un seul facteur.
 
 Quand il le saisit, le navigateur effectue une **dérivation HMAC-SHA256**. Le mot mémorisé entre en **clé** ; le message porte le **matériel de dérivation**, la version du format et le **sel du compte**. Il en sort une empreinte de 64 caractères hexadécimaux minuscules, et c'est la seule chose qui quitte le client. Le serveur ne voit jamais le mot brut.
 
@@ -93,6 +93,25 @@ Le matériel doit être **lu** dans le navigateur, jamais reçu du réseau. Un m
 | Génération de passphrase (L1) | EFF Diceware | 4 mots, ≥ 51 bits d'entropie |
 | Sel du compte | 16 octets aléatoires, rendus en 32 hexadécimaux minuscules | un par compte, engendré par le navigateur à l'inscription (`srEngendrerSel`), stocké en clair (un sel n'est pas un secret) — obligatoire, la bibliothèque refuse toute autre forme |
 
+### D'où vient l'aléa
+
+Cinq dés, une liste de 7776 mots — soit exactement 6⁵.
+
+| Passphrase | Entropie |
+|---|---|
+| 1 mot (5 dés) | 12,9 bits |
+| 4 mots | 51,7 bits |
+| 6 mots | 77,5 bits |
+
+C'est mesurable et non reproductible. Un générateur logiciel produit une suite
+calculable à partir de son état interne ; les dés n'ont pas d'état.
+
+La liste anglaise est celle de l'EFF. La liste française est une liste
+communautaire, celle d'Arthur Pons (CC-BY 3.0), construite sur la méthode de l'EFF :
+il n'existe pas de liste officielle en français, celle-ci s'est imposée par l'usage. Les deux comptent 7776 entrées, donc les chiffres ci-dessus
+valent dans les deux langues.
+[La méthode papier est documentée pas à pas](./tools/entropy-lab/docs/diceware-method-fr.pdf).
+
 ### Modèle de stockage
 
 Pour chaque compte, le serveur stocke exactement trois secrets :
@@ -114,10 +133,13 @@ Le serveur ne voit jamais : le mot de passe brut, la passphrase brute, le mot de
 ### Chaîne de renforcement de clé (récupération niveau 2)
 
 ```
-saisie user  → recovery_word
+saisie user  → recovery_code + recovery_word
+réseau       → sel du compte, demandé par le code   // toujours un sel : un faux, stable, pour un code inconnu
 client       → derived_key  = HMAC-SHA256(clé = recovery_word, message = matériel + "|v2" + user_salt)
-réseau       → POST /recover { identifier, derived_key }
-serveur      → verify        = password_verify(derived_key, stored_recovery_hash)  // Argon2id
+réseau       → POST /recover { recovery_code, derived_key }
+serveur      → compte        = lookup(HMAC-SHA256(SERVER_SECRET, recovery_code))  // le code localise le compte
+               verify        = password_verify(recovery_code, code_hash)
+                             ET password_verify(derived_key, stored_recovery_hash)  // Argon2id, les deux toujours calculés
 ```
 
 Le réseau ne transporte jamais le mot de récupération. Le serveur ne le stocke jamais. Même une fuite complète de la base de données + du code source ne l'expose pas — seulement des hachages Argon2id de clés dérivées par site.
@@ -142,10 +164,10 @@ HMAC est volontairement **rapide** côté client car l'objectif est la liaison a
 | Niveau | Ce qu'il faut fournir | Résultat |
 |-------|----------------|---------|
 | **L1** | Passphrase (diceware EFF, 4 mots ≈ 51 bits) | Nouveau mot de passe |
-| **L2** | **2FA sans identifiant** : un *recovery code* papier (possession) **+** le mot mémorisé (connaissance) — ou, en option, une preuve *« cet appareil »* | Nouveau mot de passe |
+| **L2** | **2FA sans identifiant**, deux voies : un *recovery code* papier **+** le mot mémorisé — ou, en option, l'appareil enrôlé **+** le mot mémorisé | Nouveau mot de passe |
 | **L3** | Faisceau de faits bruts + échange humain | Décision d'un admin humain, puis ré-enrôlement **par l'utilisateur** |
 
-- **L2 = vrai 2FA, sans identifiant à retenir.** Le *recovery code* **localise** le compte (via un lookup HMAC — plus d'énumération) et fait office de facteur de **possession** ; le mot mémorisé (dérivé HMAC côté client) est le facteur de **connaissance**. Les deux sont vérifiés, avec une **erreur générique** qui ne révèle jamais lequel a échoué. Voir [recovery codes](#recovery-codes) et [facteur « cet appareil »](#facteur--cet-appareil-).
+- **L2 = vrai 2FA, sans identifiant à retenir.** Le *recovery code* **localise** le compte (via un lookup HMAC — plus d'énumération) et fait office de facteur de **possession** ; le mot mémorisé (dérivé HMAC côté client) est le facteur de **connaissance**. Les deux sont vérifiés, avec une **erreur générique** qui ne révèle jamais lequel a échoué. La voie « cet appareil » remplace le code, jamais le mot. Voir [recovery codes](#recovery-codes) et [facteur « cet appareil »](#facteur--cet-appareil-).
 - **L3 = jugement humain.** Un **faisceau de faits bruts** est présenté à un admin — jamais un score automatique. L'accès au litige est protégé par un **sésame propriétaire** (jamais l'identifiant semi-public). En cas d'accord, l'utilisateur **redéfinit lui-même** son secret : le serveur n'émet aucun mot de passe.
 
 Limites de débit et système de litige à chaque niveau. Passer d'un niveau au suivant est **le choix de la personne**, pas une escalade automatique : chaque niveau demande autre chose, et elle seule sait ce qu'il lui reste.
@@ -173,7 +195,7 @@ C'est ce qui permet un **L2 sans identifiant à retenir** : le code fait à la f
 
 ## Facteur « cet appareil »
 
-Une **troisième voie optionnelle de L2**, entièrement côté navigateur — un vrai 2FA cryptographique appareil + connaissance, **sans TPM ni matériel**.
+La **seconde voie de L2, optionnelle**, entièrement côté navigateur — un vrai 2FA cryptographique appareil + connaissance, **sans TPM ni matériel**.
 
 - Une **paire ECDSA P-256** est générée dans le navigateur.
 - La **clé privée est chiffrée au repos** par une clé AES-256-GCM dérivée du **mot mémorisé** via **Argon2id** (`client/argon2id.js`, du JavaScript ordinaire — aucun binaire embarqué, aucune directive CSP à ouvrir). Le blob chiffré porte sa version et ses paramètres de dérivation, ce qui rend une migration possible. La clé nue et le mot ne sont jamais persistés.
@@ -181,7 +203,7 @@ Une **troisième voie optionnelle de L2**, entièrement côté navigateur — un
 - Le **serveur ne stocke que la clé publique** (`device_credentials`), plus un `credential_id` aléatoire qui localise le compte (comme un recovery code).
 - La récupération = **signer un challenge** (32 octets, TTL 5 min, usage unique) : le navigateur déchiffre la clé privée avec le mot, signe, le serveur vérifie (`openssl_verify`, SHA-256).
 
-Impossible sans **l'appareil** (le blob) **ET** le **mot** (pour déchiffrer la clé). Protection **logicielle** (pas TPM), device-bound, assumée comme telle. **À désactiver sur un profil Tor / onion**, où le stockage local ne survit pas à la session : cette désactivation est un choix d'intégration, elle n'est pas automatique aujourd'hui. Le recovery code papier reste le plancher universel.
+Impossible sans **l'appareil** (le blob) **ET** le **mot** (pour déchiffrer la clé). ⚠️ **Sur cette voie, le serveur ne vérifie pas le mot** : il vérifie une signature. Le mot n'y est tenu que par le chiffrement du blob — un blob volé se travaille hors ligne, sans compteur d'essais, au seul coût d'Argon2id. Cette voie demande donc un mot robuste. Protection **logicielle** (pas TPM), device-bound, assumée comme telle. **À désactiver sur un profil Tor / onion**, où le stockage local ne survit pas à la session : cette désactivation est un choix d'intégration, elle n'est pas automatique aujourd'hui. Le recovery code papier reste le plancher universel.
 
 ---
 
@@ -194,12 +216,14 @@ SelfRecover distingue trois rôles : **SU → Admin → User**. Un **admin** peu
 - **CLI uniquement**, jamais exposé sur le web ni en distant.
 - **Séparation des pouvoirs** : un admin ne se promeut pas lui-même — il **propose** une promotion, le SU **tranche** (avec observation obligatoire).
 
-**Ce que le SU peut faire :** promouvoir/révoquer des admins (révocation = coupe les sessions), approuver/rejeter les demandes de promotion, **auditer** (croise `is_admin` en base ↔ journal → détecte les **admins fantômes** et les met en **quarantaine automatique**), vérifier l'intégrité du journal, changer sa passphrase, sceller/restaurer une sauvegarde du journal (AES-256-GCM), et une commande « coquille vide » (`reset-shell`) si la passphrase SU est perdue (révoque tous les admins, fige le journal, repart propre).
+**Ce que le SU peut faire :** nommer le **premier** admin (`first-admin`, une seule fois), révoquer des admins (révocation = coupe les sessions ; le dernier ne se révoque qu'en nommant son successeur dans le même geste), approuver/rejeter les demandes de promotion, **auditer** (croise `is_admin` en base ↔ journal → détecte les **admins fantômes** et les met en **quarantaine automatique**), vérifier l'intégrité du journal, changer sa passphrase, sceller/restaurer une sauvegarde du journal (AES-256-GCM), une commande « coquille vide » (`reset-shell`) si la passphrase SU est perdue (révoque tous les admins, fige le journal, repart propre), et `reset-db` en cas de compromission (supprime **tous** les comptes et le secret SU ; la base et le secret sont mis de côté, le journal est gardé et porte le reset).
+
+**Invariant :** une fois le premier admin nommé, la base en garde toujours au moins un — la règle vit dans la base elle-même, pas seulement dans la console. Seuls `reset-shell` et `reset-db` la ramènent à zéro, et rouvrent `first-admin`.
 
 **Journal d'audit** (hors base, hors webroot) — quatre couches :
 1. **Append-only** au niveau filesystem (`chattr +a` en prod)
 2. **Chaîne de hachage** (`prev_hash → entry_hash`, SHA-256) — toute altération casse la chaîne
-3. **HMAC par entrée** (clé dérivée de la passphrase SU)
+3. **HMAC par entrée** (clé propre à l'instance, `SELFRECOVER_SU_AUDIT_SECRET` — distincte de la passphrase SU : en changer ne rompt pas la chaîne ; elle se tourne par `rotate-audit-key`, qui re-signe le journal sans en changer les empreintes)
 4. **Externalisation** vers un canal de notification (action + cible + heure uniquement, **jamais** le contexte forensique)
 
 > ⚠️ La vraie console SU est le **CLI serveur**. Pour la voir à l'œuvre sans en administrer une, le laboratoire sert une **vitrine pédagogique** — [`demo/lab/public/su_console.php`](../../demo/lab/public/su_console.php) : un sélecteur de rôle user / admin / SU qui montre, à chaque niveau, ce qu'il peut et ce qu'il ne peut pas. Elle exécute le vrai code sur une base SQLite **en mémoire**, créée et jetée à chaque requête — jamais la base du laboratoire, jamais un privilège réel. Le SU n'y existe pas en base, puisque son secret vit hors base.
@@ -320,7 +344,7 @@ Analyse complète : **[docs/threat-model.md](docs/threat-model.md)**
 
 ## Au-delà du web : déverrouillage de disque
 
-Le même mot de récupération, dérivé par **label** avec Argon2id, peut aussi servir de clé de secours pour un volume chiffré **LUKS2** — permettant à une machine de déverrouiller son disque sans email ni tiers, quand son mécanisme principal (un quorum de témoins distribués) est indisponible. Le label sépare la clé web de la clé disque : aucune ne permet de dériver l'autre.
+Un module compagnon applique la même idée au disque : un volume chiffré **LUKS2** se déverrouille avec une passphrase de récupération, sans email ni tiers. C'est un secret distinct — une passphrase diceware tirée pour chaque machine, dérivée par Argon2id sous le label `disk` — et non le mot mémorisé de tes comptes web : aucun des deux n'ouvre l'autre.
 
 C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecover-luks/)**, **déployé** : serveur LNMP (07/06/2026) puis poste portable chiffré (22/08/2026), avec son guide d'installation à deux parcours. Son guide d'installation couvre deux parcours, serveur et poste de travail.
 
@@ -332,8 +356,8 @@ C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecove
 
 Ce dépôt contient :
 - La **spécification du protocole** (whitepapers v1.1)
-- Une **bibliothèque PHP** — `src/`, PSR-4 `Pierroons\SelfRecover\` : récupération de niveaux 1 et 2, recovery codes, facteur « cet appareil », profil Argon2id, wordlist diceware, et l'interface de stockage que l'intégrateur implémente pour sa propre base
-- Le **dériveur navigateur** — `client/sr-derive.js`, livré plutôt que décrit : c'est lui qui porte la propriété anti-hameçonnage, et les intégrateurs qui l'écrivaient eux-mêmes en produisaient des variantes qui ne l'avaient pas
+- Une **bibliothèque PHP** — `src/`, PSR-4 `Pierroons\SelfRecover\` : récupération de niveaux 1 et 2, recovery codes, facteur « cet appareil », profil Argon2id, wordlist diceware, et l'interface de stockage que l'intégrateur implémente pour sa propre base — ou, s'il part de zéro, son implémentation fournie (`schema.sql` + `StockagePdo`)
+- Le **dériveur navigateur** — `client/sr-derive.js`, livré plutôt que décrit : c'est lui qui porte la propriété anti-hameçonnage, et les intégrateurs qui l'écrivaient eux-mêmes en produisaient des variantes qui ne l'avaient pas ; et `client/sr-kdf.js`, qui chiffre un secret local en Argon2id avec sa version et ses paramètres dans le blob
 - **Les trois niveaux**, depuis le 07/09/2026 : l'escalade de niveau 3 est remontée dans `src/Recovery/Escalade.php` — dossier, sésame à usage unique, faisceau de faits bruts, arbitrage et gel de procédure. Elle ne vérifie pas *qui* a le droit de trancher : les rôles et les sessions appartiennent à l'application. Le super-utilisateur, lui, vit toujours dans [`demo/lab/`](../../demo/lab/)
 
 **Déploiement réel :** l'implémentation tourne en conditions réelles — notamment comme **backend d'authentification d'un service de messagerie**, qui réutilise tel quel le stockage de comptes SelfRecover (Argon2id).
@@ -362,18 +386,19 @@ SelfRecover est honnête sur ce qu'il protège et ce qu'il ne protège pas. Tout
 
 | Adversaire | Mitigation |
 |---|---|
-| **Poste utilisateur compromis** (keylogger, info-stealer, RAT) | Hors périmètre. Utiliser **Tails Live USB**, **Qubes OS**, ou **MySelf-Live (V0.2)** pour les cérémonies de secrets racine. Voir [Roadmap](#roadmap). |
+| **Poste utilisateur compromis** (keylogger, info-stealer, RAT) | Hors périmètre. Utiliser **Tails Live USB**, **Qubes OS**, ou **MySelf-Live** (en cours) pour les cérémonies de secrets racine. Voir [Roadmap](#roadmap). |
 | Navigateur compromis (extension, 0-day) | Hors périmètre. Même mitigation. |
 | Coercition (physique / rubber-hose) | Hors périmètre. Pas de plausible deniability fournie. |
 | Cryptanalyse théorique de SHA-256 / Argon2id | Hors périmètre. Migration suit les recommandations ANSSI/NIST. |
 
 ### Discipline opérationnelle
 
-La passphrase **DOIT** ne jamais exister hors du cerveau de l'utilisateur (et papier de backup). Elle ne doit jamais être saisie pour "vérification" ou "validation". Trois moments légitimes seulement :
+Deux sortes de secrets, deux règles :
 
-1. Inscription du compte (une frappe, le serveur stocke un hash Argon2id)
-2. Récupération L1 (une frappe, prouve la connaissance)
-3. Après récupération, la passphrase n'est plus utilisée — le mot de passe régénéré la remplace
+- **Le mot mémorisé ne s'écrit nulle part** — ni papier, ni gestionnaire, ni fichier. Il n'existe que dans la tête de l'utilisateur. Écrit sur le même papier que les recovery codes, il réunirait les deux facteurs de L2 en un seul ; écrit près de l'appareil, il livrerait la clé du facteur « cet appareil ».
+- **La passphrase diceware (L1) et les recovery codes (L2) se gardent sur papier**, rangés hors ligne. Ils sont tirés au hasard : personne n'a à les retenir.
+
+Aucun ne se saisit pour « vérification » ou « validation ». Le mot se saisit à l'inscription, à la régénération des codes, à l'enrôlement d'un appareil et à la récupération L2. La passphrase se saisit à la seule récupération L1, qui la consomme : une passphrase neuve la remplace.
 
 Si la vérification d'une passphrase fraîchement tirée est souhaitée, utiliser **l'outil HTML autonome offline** (`tools/offline-validator/index.html`) sur une machine déconnectée.
 
@@ -381,7 +406,10 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 ## Roadmap
 
-### V0.1 (juillet 2026)
+### Livré — v0.1.0 à v0.6.0 (avril → septembre 2026)
+
+Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bibliothèque les a dépassés, tirée par son premier déploiement réel : ses besoins ont fait avancer le protocole plus vite que prévu. Les chantiers qui suivent ne portent donc plus de numéro — ils en recevront un en sortant.
+
 
 - [x] Spécification du protocole + whitepapers EN + FR
 - [x] Implémentation de référence complète (L1/L2/L3)
@@ -392,8 +420,11 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 - [x] **Facteur « cet appareil »** — ECDSA P-256, clé privée sous enveloppe Argon2id, clé publique seule côté serveur
 - [x] **Super-utilisateur (SU)** — modèle SU→Admin→User, journal d'audit append-only + hash-chaîné + HMAC, détection d'admins fantômes
 - [x] **Déploiement réel** — backend d'authentification d'un service de messagerie
+- [x] **Niveau 3 dans la bibliothèque** — `src/Recovery/Escalade.php` : dossier, sésame à usage unique, arbitrage, gel de procédure (v0.5.0)
+- [x] **Argon2id écrit dans la bibliothèque** — `client/sr-kdf.js`, blob versionné, vérifié contre sept vecteurs libsodium (v0.6.0)
+- [x] **Schéma et implémentation du contrat** — `schema.sql` + `StockagePdo`, fournis sans être imposés (v0.6.0)
 
-### V0.2 — MySelf-Live (prévu : été 2026)
+### MySelf-Live — en cours
 
 Distribution Linux minimale, signée et vérifiable, dédiée aux cérémonies SelfRecover :
 
@@ -409,14 +440,14 @@ Distribution Linux minimale, signée et vérifiable, dédiée aux cérémonies S
 
 Squelette de build : voir [`tools/build-myself-live/`](../../tools/build-myself-live/) (en cours).
 
-### V0.3 (prévu : automne 2026)
+### Ensuite
 
 - [ ] Audit de sécurité communautaire
 - [ ] Pipeline reproducible build finalisé
 - [ ] Anti-Evil-Maid (Heads / TPM measurements) optionnel
 - [ ] Localisations EN / FR / DE / ES
 
-### V1.0 (prévu : 2027)
+### Vers v1.0 (prévu : 2027)
 
 - [ ] Publication du paquet PHP sur Packagist (`composer require pierroons/selfrecover`) — l'extraction en bibliothèque est faite (`src/`, PSR-4) ; il reste à publier
 - [ ] Paquet JS (`npm install selfrecover`) — le dériveur est livré (`client/sr-derive.js`), il n'est pas encore paqueté

@@ -3,8 +3,8 @@
  * MySelf-Lab — soumission de rapports red team + hall of fame.
  *
  * Le corps du rapport (titre, description, étapes de repro, contact) est chiffré
- * at-rest via SelfDataGuard avant stockage : un dump de `redteam_reports` ne
- * révèle qu'un blob. handle/severity/target restent en clair (tri + crédit public).
+ * en PGP dans le navigateur avant envoi : un dump de `redteam_reports` ne
+ * révèle qu'un message PGP. handle/severity/target restent en clair (tri + crédit public).
  * L'IP du soumetteur n'est jamais stockée en clair, seulement un HMAC (rate-limit).
  */
 
@@ -83,7 +83,7 @@ final class Redteam
         $id = (int) $pdo->lastInsertId();
         // Alerte le lecteur du panneau. Volontairement après l'écriture et sans
         // condition de succès : un canal muet ne doit pas perdre un rapport.
-        Notify::nouveauRapport($id, (string) ($champs['severite'] ?? '?'));
+        Notify::nouveauRapport($id, $severity);
 
         return ['ok' => true, 'id' => $id];
     }

@@ -22,9 +22,9 @@ final class EscrowFieldCrypter
     {
     }
 
-    public static function encrypt(UnlockedEscrow $escrow, string $fieldName, string $plaintext): string
+    public static function encrypt(UnlockedEscrow $escrow, string $fieldName, #[\SensitiveParameter] string $plaintext): string
     {
-        $blob = Primitives::aesGcmEncrypt(
+        $blob = Primitives::encrypt(
             plaintext: $plaintext,
             key: $escrow->getEscrowKey(),
             aad: self::buildAad($escrow->userId, $fieldName)
@@ -35,7 +35,7 @@ final class EscrowFieldCrypter
     public static function decrypt(UnlockedEscrow $escrow, string $fieldName, string $serialized): string
     {
         $blob = EncryptedBlob::fromBase64($serialized);
-        return Primitives::aesGcmDecrypt(
+        return Primitives::decrypt(
             $blob,
             $escrow->getEscrowKey(),
             aad: self::buildAad($escrow->userId, $fieldName)

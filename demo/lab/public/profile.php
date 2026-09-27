@@ -18,7 +18,7 @@ $account = Auth::currentAccount($pdo);
 // Libellés JS partagés par les deux vues (profil d'un membre / son propre espace).
 // Une seule source : la vue publique se terminant par un exit, dupliquer la liste
 // garantissait qu'une clé ajoutée d'un côté manquerait de l'autre.
-$prfJs = json_encode(['saved'=>t('prf.js.saved'),'required'=>t('prf.js.required'),'weakpass'=>t('prf.js.weakpass'),'created'=>t('prf.js.created'),'deriving'=>t('prf.js.deriving'),'decrypted'=>t('prf.js.decrypted'),'locked'=>t('prf.js.locked'),'saved2'=>t('prf.js.saved2'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE);
+$prfJs = json_encode(['saved'=>t('prf.js.saved'),'required'=>t('prf.js.required'),'weakpass'=>t('prf.js.weakpass'),'created'=>t('prf.js.created'),'deriving'=>t('prf.js.deriving'),'sealing'=>t('prf.js.sealing'),'oldvault'=>t('prf.js.oldvault'),'decrypted'=>t('prf.js.decrypted'),'locked'=>t('prf.js.locked'),'saved2'=>t('prf.js.saved2'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE);
 
 // Vue publique d'un membre : ?u=username
 $voirUsername = $_GET['u'] ?? null;
@@ -240,7 +240,7 @@ render_header(t('prf.title'), $account);
   <div id="memo-create" style="display:<?= $vaultExiste ? 'none' : 'block' ?>">
     <p style="margin:0 0 10px;padding:8px 11px;background:rgba(63,185,140,.08);border-left:3px solid var(--acc);border-radius:5px;font-size:12.5px;color:var(--txt2)"><?= t('prf.memo.create_once') ?></p>
     <p class="muted" style="margin-top:0"><?= t('prf.memo.create') ?></p>
-    <div class="field"><label>Ton mot de passe</label><input type="password" id="c-pw" autocomplete="off"></div>
+    <div class="field"><label><?= h(t('prf.memo.pw')) ?> <span style="text-transform:none;font-weight:400;color:var(--muted)"><?= h(t('prf.memo.pw_hint')) ?></span></label><input type="password" id="c-pw" autocomplete="off"></div>
     <div class="field"><label><?= h(t('prf.memo.pass')) ?> <span style="text-transform:none;font-weight:400;color:var(--muted)"><?= h(t('prf.memo.pass_hint')) ?></span></label><input type="password" id="c-pass" autocomplete="off" placeholder="<?= h(t('prf.memo.pass_ph')) ?>"><span class="muted" style="font-size:11px"><?= h(t('prf.memo.pass_note')) ?></span></div>
     <!-- Le mémo ne s'écrit PAS ici : cet écran ne fait que sceller le coffre.
          Champ conservé masqué — createVault() attend un texte initial. -->
@@ -251,7 +251,7 @@ render_header(t('prf.title'), $account);
   <!-- État B : coffre existant → déverrouillage -->
   <div id="memo-locked" style="display:<?= $vaultExiste ? 'block' : 'none' ?>">
     <p style="margin-top:0"><?= h(t('prf.memo.locked')) ?></p>
-    <div class="field"><label>Mot de passe</label><input type="password" id="u-pw" autocomplete="off"></div>
+    <div class="field"><label><?= h(t('prf.memo.pw')) ?></label><input type="password" id="u-pw" autocomplete="off"></div>
     <button class="btn" id="btn-memodev"><?= h(t('prf.memo.unlock')) ?></button>
     <button class="btn btn-ghost" id="btn-memoforgot"><?= h(t('prf.memo.forgot')) ?></button>
     <div id="memo-recover" style="display:none;margin-top:12px">
@@ -287,7 +287,10 @@ function enregistrer(){
 document.getElementById('btn-saveprofil').addEventListener('click', enregistrer);
 </script>
 
-<!-- Mémo E2E : toute la crypto est ici, côté navigateur -->
+<!-- Mémo E2E : toute la crypto est ici, côté navigateur. argon2id.js avant
+     sr-kdf.js, et les deux avant e2e-memo.js, qui dérive par srKdfDeriver. -->
+<script src="/js/argon2id.js"></script>
+<script src="/js/sr-kdf.js"></script>
 <script src="/js/e2e-memo.js"></script>
 <script nonce="<?= nonce() ?>">
 let _vaultKeyB64 = null; // vault_key déverrouillée, en mémoire de page uniquement
@@ -304,7 +307,7 @@ async function memoCreer(btn){
   if(mots.length < 4 || pass.trim().length < 16){
     return memoMsg(false,PRF.weakpass);
   }
-  btn.disabled=true; memoMsg(true,'Chiffrement local en cours…');
+  btn.disabled=true; memoMsg(true,PRF.sealing);
   try{
     const blobs = await E2EMemo.createVault(pw, pass, memo);
     const cle = blobs._vaultKeyB64; delete blobs._vaultKeyB64;   // ne part jamais au serveur
@@ -331,7 +334,8 @@ async function _ouvrir(secret, which, btn){
     show('memo-locked',false); show('memo-recover',false); show('memo-open',true);
     memoMsg(true,PRF.decrypted);
   }catch(e){
-    memoMsg(false, e.message==='secret_incorrect' ? 'Secret incorrect.' : e.message);
+    memoMsg(false, e.message==='secret_incorrect' ? 'Secret incorrect.'
+      : e.message==='coffre_ancien' ? PRF.oldvault : e.message);
   }finally{ btn.disabled=false; }
 }
 const memoDeverrouiller = (btn) => _ouvrir(document.getElementById('u-pw').value,'pw',btn);

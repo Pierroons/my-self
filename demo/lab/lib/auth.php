@@ -405,8 +405,13 @@ final class Auth
         // session le prouve. Aucun oracle : on ne rend que son propre sel.
         if ($code === '') {
             $compte = self::currentAccount($pdo);
-            if ($compte !== null && ($compte['recovery_salt'] ?? '') !== '') {
-                return (string) $compte['recovery_salt'];
+            if ($compte !== null) {
+                $st = $pdo->prepare('SELECT recovery_salt FROM accounts WHERE id = ?');
+                $st->execute([(int) $compte['id']]);
+                $sel = (string) $st->fetchColumn();
+                if ($sel !== '') {
+                    return $sel;
+                }
             }
         }
 

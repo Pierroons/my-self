@@ -56,6 +56,56 @@ jobs:
       - name: Chemins cités
         run: bash scripts/check-paths.sh
 
+      # ── Versions ───────────────────────────────────────────────────────────
+      # modules.json est la source unique ; chaque porteur qu'il déclare doit la
+      # répéter. Le tag manquant se suit à part, dans suivi.yml : il dépend d'un
+      # geste de Pierroons et ne doit pas bloquer l'envoi d'un autre module.
+      - name: Versions — chaque porteur dit la version de modules.json
+        run: bash scripts/check-versions.sh
+
+      - name: Canari — le contrôle des versions rougit sur un porteur décalé et sur un tag absent
+        run: |
+          F=bi-self/selfmoderate/README.md
+          cp "$F" /tmp/SM.intact
+          sed -i -E 's#(badge/status-v)[0-9]+\.[0-9]+\.[0-9]+#\10.0.0#' "$F"
+          grep -q 'badge/status-v0.0.0' "$F" \
+            || { cp /tmp/SM.intact "$F"; echo "::error::la plantation n'a pas pris — le canari ne prouve rien"; exit 1; }
+          if bash scripts/check-versions.sh >/dev/null 2>&1; then
+            cp /tmp/SM.intact "$F"
+            echo "::error::le contrôle reste VERT avec un badge décalé — il ne mesure pas ce qu'il annonce"
+            exit 1
+          fi
+          cp /tmp/SM.intact "$F"
+          cmp -s /tmp/SM.intact "$F" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le contrôle rougit sur un porteur décalé, et le fichier est restauré"
+          # Mode --tags : une version qu'aucun tag ne porte, avec un délai nul, doit rougir.
+          cp modules.json /tmp/MJ.intact
+          python3 -c "import json;d=json.load(open('modules.json'));[m.update(version='9.9.9') for m in d['modules'] if m['id']=='selfmoderate'];json.dump(d,open('modules.json','w'),ensure_ascii=False,indent=2)"
+          if VERSIONS_DELAI_JOURS=0 bash scripts/check-versions.sh --tags >/dev/null 2>&1; then
+            cp /tmp/MJ.intact modules.json
+            echo "::error::le mode --tags reste VERT sur une version sans tag"
+            exit 1
+          fi
+          cp /tmp/MJ.intact modules.json
+          cmp -s /tmp/MJ.intact modules.json \
+            || { echo "::error::modules.json n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le mode --tags rougit sur une version sans tag, et modules.json est restauré"
+
+      - name: Canari — le contrôle d'écosystème rougit quand selffarm-lite avance
+        run: |
+          echo 9.9.9 > /tmp/selffarm-version
+          cp README.md /tmp/RM.intact && cp README.fr.md /tmp/RF.intact
+          if SELFFARM_VERSION_URL=file:///tmp/selffarm-version bash scripts/check-ecosysteme.sh >/dev/null 2>&1; then
+            echo "::error::le contrôle reste VERT alors que selffarm-lite annonce une autre version"
+            exit 1
+          fi
+          # Comparaison aux copies d'avant, et non à HEAD : un README modifié et non
+          # commité ferait rougir `git diff` sans que le contrôle y soit pour rien.
+          cmp -s /tmp/RM.intact README.md && cmp -s /tmp/RF.intact README.fr.md \
+            || { echo "::error::le contrôle a modifié les README sans --ecrire"; exit 1; }
+          echo "✓ le contrôle rougit sur une version voisine différente, sans toucher aux README"
+
       # ── Garde-fous ─────────────────────────────────────────────────────────
       # Priorité sur le reste : ce sont eux qui échouent en silence.
       - name: Garde-fou — socle SelfRecover (profil de hachage, encodage, diceware)
@@ -102,30 +152,6 @@ jobs:
           echo "$sortie" | grep -qE '^▸ implémentation exercée : argon2id\.js \(écrite dans ce dépôt\)$' \
             || { echo "::error::le banc n'a pas exercé argon2id.js"; exit 1; }
 
-      # SelfVault — le format d'un coffre destiné à un dépôt notarial. Le banc
-      # pilote les DEUX lecteurs : la réimplémentation Node et l'application
-      # réelle découpée en QR codes. Cette dernière était le seul des trois
-      # porteurs du format que rien n'éprouvait : on pouvait y planter trois
-      # défauts cryptographiques sans qu'aucun contrôle ne bouge.
-      # `zbar-tools`, `poppler-utils` et `weasyprint` sont là pour la boucle
-      # papier : rendre le pli, le rasteriser, relire ses QR codes, reconstituer.
-      # Sans eux le banc la saute — et le dit — mais ce serait un zéro plus étroit
-      # que ce que son nom laisse croire.
-      - name: Garde-fou — le format SELFVAULT3 et sa boucle papier
-        run: |
-          # ⚠️ `apt-get update` rend 100 dès qu'UN index est incohérent, y compris
-          # celui d'un dépôt tiers préinstallé sur le runner et dont ce dépôt ne
-          # dépend pas — vu le 09/09/2026 sur celui de Chrome. Le message d'apt le
-          # dit lui-même : « They have been ignored, or old ones used instead ».
-          # L'étape mourait alors, et les trente contrôles suivants passaient en
-          # `skipped` : une panne amont éteignait la CI sans que rien ne le nomme.
-          # C'est l'installation qui porte la propriété qu'on veut, pas la
-          # fraîcheur de tous les index — elle reste donc bloquante.
-          sudo apt-get update -qq || echo "::warning::index apt partiel — l'installation reste bloquante"
-          sudo apt-get install -y -qq zbar-tools poppler-utils weasyprint
-          python3 -m pip install --quiet --disable-pip-version-check cryptography qrcode pillow
-          bash self-security/selfvault/tests/banc.sh
-
       # Une démo qui recopierait la bibliothèque au lieu d'y pointer redeviendrait
       # le duplicata que ce lien existe pour supprimer — et le fichier recopié
       # aurait l'air correct le jour où il est posé.
@@ -137,7 +163,14 @@ jobs:
       # pas du service — et le test tourne sans privilège, dans un préfixe jetable.
       - name: Installer nginx (pour valider les gabarits de vhost)
         run: |
-          # `update` non bloquant, `install` bloquant — motif expliqué au banc SELFVAULT3.
+          # ⚠️ `apt-get update` rend 100 dès qu'UN index est incohérent, y compris
+          # celui d'un dépôt tiers préinstallé sur le runner et dont ce dépôt ne
+          # dépend pas — vu le 09/09/2026 sur celui de Chrome. Le message d'apt le
+          # dit lui-même : « They have been ignored, or old ones used instead ».
+          # L'étape mourait alors, et les trente contrôles suivants passaient en
+          # `skipped` : une panne amont éteignait la CI sans que rien ne le nomme.
+          # C'est l'installation qui porte la propriété qu'on veut, pas la
+          # fraîcheur de tous les index — elle reste donc bloquante.
           sudo apt-get update -qq || echo "::warning::index apt partiel — l'installation reste bloquante"
           sudo apt-get install -y -qq nginx-light
 
@@ -200,6 +233,9 @@ jobs:
       - name: Garde-fou — sur quelle date se juge le retard d'une base
         run: python3 self-right/selfjustice/tests/sanity_fraicheur_bases.py
 
+      - name: Garde-fou — le texte d'une décision, selon son fonds (MCP)
+        run: python3 self-right/selfjustice/tests/sanity_texte_decision.py
+
       - name: Garde-fou — ce que la sentinelle appelle un retard
         run: bash self-right/selfjustice/tests/test_fraicheur.sh
 
@@ -241,6 +277,9 @@ jobs:
 
       - name: Garde-fou — les deux collecteurs écrivent dans la même table
         run: python3 self-right/selfjustice/tests/sanity_schema_partage.py
+
+      - name: Garde-fou — une moisson partielle se garde, elle ne se détruit pas
+        run: bash self-right/selfjustice/tests/sanity_moisson_partielle.sh
 
       - name: Garde-fou — le compteur d'IA lit le User-Agent, pas la ligne
         run: bash self-right/selfjustice/tests/test_compteur_ia.sh
@@ -285,7 +324,7 @@ jobs:
       # conteneur LUKS2 est un fichier, aucune activation device-mapper.
       - name: Outils du banc SelfRecover-LUKS
         run: |
-          # `update` non bloquant, `install` bloquant — motif expliqué au banc SELFVAULT3.
+          # `update` non bloquant, `install` bloquant — motif expliqué à l'installation de nginx.
           sudo apt-get update -qq || echo "::warning::index apt partiel — l'installation reste bloquante"
           sudo apt-get install -y -qq cryptsetup-bin python3-argon2 libargon2-dev
           # Le binaire C est celui que le keyscript appelle à l'amorçage. Le banc
@@ -395,6 +434,78 @@ jobs:
             || { echo "$sortie"
                  echo "::error::rouge, mais pas sur le cas de la sauvegarde périmée"
                  exit 1; }
+
+      - name: Garde-fou — un keyscript ne se pose pas sur un slot d'un autre format
+        run: |
+          # Un slot enrôlé en raw n'est pas ouvert par un keyscript hex : la machine
+          # démarre encore, puis plus au redémarrage suivant. install.sh relit le
+          # format enrôlé (format-slot.sh) avant de poser le keyscript. Ce banc
+          # l'exerce sur des conteneurs LUKS de 32 Mo, ni root ni device-mapper.
+          sortie=$(bash self-security/selfrecover-luks/tests/test_format_slot.sh)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^✅ 14/14 ' \
+            || { echo "::error::le banc du format de slot n'a pas joué ses 14 cas"; exit 1; }
+
+      - name: Canari — le contrôle du format rougit quand il ne compare plus
+        run: |
+          # Le cas qui rend une machine muette : slot raw, keyscript hex. On retire la
+          # comparaison, et le banc doit rougir sur ce cas-là.
+          F=self-security/selfrecover-luks/format-slot.sh
+          sed 's/\[ "\$ENROLE" = "\$LIVRE" \] || refus/true || refus/' "$F" > /tmp/format-neutralise.sh
+          grep -q 'true || refus "le slot de' /tmp/format-neutralise.sh \
+            || { echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          bash -n /tmp/format-neutralise.sh \
+            || { echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(FMT=/tmp/format-neutralise.sh \
+               bash self-security/selfrecover-luks/tests/test_format_slot.sh 2>&1); then
+            echo "$sortie"
+            echo "::error::le banc reste VERT sans la comparaison des formats"
+            exit 1
+          fi
+          echo "$sortie" | grep -q 'racine enrôlée raw, keyscript hex à poser.*ACCEPTE' \
+            || { echo "$sortie"
+                 echo "::error::rouge, mais pas sur le cas slot raw / keyscript hex"
+                 exit 1; }
+
+      - name: Garde-fou — le secours d'amorçage rend les deux voies, jamais un shell
+        run: |
+          # Mesuré le 21/09/2026 sur les quatre machines chiffrées du parc : la clé
+          # du dropbear d'amorçage était NUE, donc elle rendait un shell root avant
+          # l'ouverture de la racine. /boot n'étant pas chiffré et le sel y voyageant,
+          # ce shell permet de déposer un initrd modifié et de capturer la passphrase
+          # suivante. C'est install.sh qui produisait ces clés nues.
+          # Le remède ne doit pas coûter le filet anti-lockout : selfrecover-secours.sh
+          # offre les DEUX passphrases sans rendre de shell. Ce banc l'éprouve.
+          sortie=$(bash self-security/selfrecover-luks/tests/test_secours_sans_shell.sh)
+          echo "$sortie"
+          # Compte en dur : un `N/N` dirait que les cas joués passent, jamais
+          # qu'aucun n'a disparu.
+          echo "$sortie" | grep -qE '^✅ 23/23 ' \
+            || { echo "::error::le banc du secours n'a pas joué ses 23 cas"; exit 1; }
+
+      - name: Canari — le banc du secours rougit si le shell revient
+        run: |
+          # Le cas qui compte est celui qu'on vient de fermer : un secours qui rend
+          # un shell. On le replante et on exige que le banc cesse de passer.
+          S=self-security/selfrecover-luks/selfrecover-secours.sh
+          sed 's|^    exec "\$UNLOCK"|    exec /bin/sh|' "$S" > /tmp/secours-avec-shell.sh
+          chmod 0755 /tmp/secours-avec-shell.sh
+          grep -q 'exec /bin/sh' /tmp/secours-avec-shell.sh \
+            || { echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          sh -n /tmp/secours-avec-shell.sh \
+            || { echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(SECOURS=/tmp/secours-avec-shell.sh \
+               bash self-security/selfrecover-luks/tests/test_secours_sans_shell.sh 2>&1); then
+            echo "$sortie"
+            echo "::error::le banc reste VERT alors que le secours rend un shell"
+            exit 1
+          fi
+          # Rouge — mais SUR QUEL CAS ? Un banc qui n'aurait pas démarré rougirait aussi.
+          echo "$sortie" | grep -q 'aucun exec/eval vers un shell' \
+            || { echo "$sortie"
+                 echo "::error::rouge, mais pas sur le cas du shell rendu"
+                 exit 1; }
+          echo "✓ le banc rougit, et il rougit SUR LE SHELL — pas sur un contretemps"
           echo "✓ le banc rougit, et sur le cas de la sauvegarde périmée"
 
       - name: Garde-fou — un seul plancher pour les secrets de déploiement
@@ -441,11 +552,134 @@ jobs:
       - name: Garde-fou — le facteur « cet appareil », côté navigateur
         run: node demo/lab/tests/sanity_device_client.js
 
+      # Le banc client simule `/api/sel.php` : celui-ci éprouve le vrai, par la
+      # session que l'inscription ouvre, jusqu'à l'enrôlement.
+      - name: Garde-fou — l'enrôlement d'appareil dérive avec le sel du compte
+        run: |
+          sortie=$(php demo/lab/tests/sanity_sel_session.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^OK — 5/5$' \
+            || { echo "::error::le banc du sel de session n'a pas joué ses 5 cas"; exit 1; }
+
+      # Le mémo chiffré du lab dérive par srKdfDeriver (Argon2id). Le banc rouvre
+      # l'enveloppe produite par le JS avec PHP (libsodium, hash_hkdf, openssl) :
+      # une étiquette ou un profil qui dériverait n'y survivrait pas.
+      - name: Garde-fou — le mémo chiffré du lab scelle en Argon2id
+        run: |
+          sortie=$(node demo/lab/tests/sanity_memo_client.js)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^OK — 11/11 ' \
+            || { echo "::error::le banc du mémo n'a pas joué ses 11 cas"; exit 1; }
+
+      - name: Garde-fou — le stockage du coffre mémo exige ses paramètres Argon2id
+        run: |
+          sortie=$(php demo/lab/tests/sanity_memo_vault.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE 'OK — 9/9 ' \
+            || { echo "::error::le banc du stockage mémo n'a pas joué ses 9 cas"; exit 1; }
+
       # Ce banc porte la justification écrite de l'ancre externe du journal SU
       # (contrôle 4) et le profil de hachage du secret SuperUser (contrôle 8).
       # Il tournait à la main depuis sa création : rien ne le lançait ici.
       - name: Garde-fou — journal et secret du super-utilisateur
-        run: php demo/lab/tests/sanity_su.php
+        run: |
+          sortie=$(php demo/lab/tests/sanity_su.php)
+          echo "$sortie"
+          # ⚠️ Le compte est écrit en dur : un `N/N` dirait que les cas joués ont
+          # réussi, jamais qu'aucun n'a disparu. Un banc dont le nombre de cas change
+          # sans que personne le dise est un banc qu'on ne sait plus lire.
+          echo "$sortie" | grep -qE 'OK — 23/23 ' \
+            || { echo "::error::le banc SU n'a pas joué ses 23 cas"; exit 1; }
+
+      - name: Canari — la troncature du journal SU se voit encore depuis le dehors
+        run: |
+          # La chaîne de hachage ne détecte pas sa propre troncature : le préfixe
+          # d'une chaîne valide est une chaîne valide. Seule la marque du témoin, qui
+          # vit HORS du journal, rend un journal raccourci visible. On neutralise
+          # cette comparaison et on exige que le banc rougisse — sur ce cas-là.
+          F=demo/lab/lib/su_audit.php
+          cp "$F" /tmp/su_audit.intact
+          sed -i 's|^        if (\$marque > \$tete) {|        if (false) { // neutralisé|' "$F"
+          grep -q 'if (false) { // neutralisé' "$F" \
+            || { cp /tmp/su_audit.intact "$F"; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          php -l "$F" >/dev/null \
+            || { cp /tmp/su_audit.intact "$F"; echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(php demo/lab/tests/sanity_su.php 2>&1); then
+            cp /tmp/su_audit.intact "$F"
+            echo "$sortie"; echo "::error::le banc reste VERT sans la détection de troncature"; exit 1
+          fi
+          cp /tmp/su_audit.intact "$F"
+          cmp -s /tmp/su_audit.intact "$F" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$sortie" | grep -q 'journal raccourci sous la marque' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de la troncature"; exit 1; }
+          echo "✓ le banc rougit, et sur le cas du journal raccourci"
+
+      - name: Garde-fou — premier administrateur et dernier administrateur
+        run: |
+          sortie=$(php demo/lab/tests/sanity_first_admin.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE 'OK — 30/30 ' \
+            || { echo "::error::le banc first-admin n'a pas joué ses 30 cas"; exit 1; }
+
+      - name: Canari — le dernier administrateur tombe sans ses deux gardes
+        run: |
+          # Deux gardes se recouvrent : la console refuse, et la base refuse derrière
+          # elle. On retire les DEUX, et le banc doit rougir sur le dernier admin —
+          # en retirer une seule laisse l'autre tenir, ce qui ne prouverait rien.
+          C=demo/lab/selfrecover-su; D=demo/lab/lib/db.php
+          cp "$C" /tmp/su.intact; cp "$D" /tmp/db.intact
+          restaurer() { cp /tmp/su.intact "$C"; cp /tmp/db.intact "$D"; }
+          sed -i 's|if (su_nb_admins(\$db) <= 1) {|if (false) { // neutralisé|' "$C"
+          sed -i 's|AND (SELECT COUNT(\*) FROM accounts WHERE is_admin = 1) <= 1|AND 0|' "$D"
+          grep -q 'if (false) { // neutralisé' "$C" && [ "$(grep -c '^             AND 0$' "$D")" = 2 ] \
+            || { restaurer; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          php -l "$C" >/dev/null && php -l "$D" >/dev/null \
+            || { restaurer; echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(php demo/lab/tests/sanity_first_admin.php 2>&1); then
+            restaurer; echo "$sortie"; echo "::error::le banc reste VERT sans les gardes du dernier admin"; exit 1
+          fi
+          restaurer
+          cmp -s /tmp/su.intact "$C" && cmp -s /tmp/db.intact "$D" \
+            || { echo "::error::les fichiers n'ont pas été restaurés à l'identique"; exit 1; }
+          echo "$sortie" | grep -q 'le dernier admin devait être gardé' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du dernier admin"; exit 1; }
+          echo "✓ le banc rougit, et sur le cas du dernier admin"
+
+      - name: Garde-fou — rotation de la clé du journal SU
+        run: |
+          sortie=$(php demo/lab/tests/sanity_rotation.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE 'OK — 18/18 ' \
+            || { echo "::error::le banc de rotation n'a pas joué ses 18 cas"; exit 1; }
+
+      - name: Canari — la rotation re-signe sans vérifier d'abord
+        run: |
+          # Sans la vérification sous l'ancienne clé, une entrée forgée sans la clé
+          # (chaînage juste, HMAC faux) devient authentique sous la nouvelle.
+          C=demo/lab/selfrecover-su
+          cp "$C" /tmp/su-rot.intact
+          restaurer() { cp /tmp/su-rot.intact "$C"; }
+          python3 - "$C" <<'PY'
+          import sys
+          p = sys.argv[1]; s = open(p).read()
+          a = "$ver = SuAudit::verifierEntrees($entrees, $ancienne);\n        if (!$ver['ok']) {"
+          assert s.count(a) == 1, "motif introuvable"
+          open(p, 'w').write(s.replace(a, "$ver = SuAudit::verifierEntrees($entrees, $ancienne);\n        if (false) {"))
+          PY
+          [ $? -eq 0 ] && ! cmp -s /tmp/su-rot.intact "$C" \
+            || { restaurer; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          php -l "$C" >/dev/null \
+            || { restaurer; echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(php demo/lab/tests/sanity_rotation.php 2>&1); then
+            restaurer; echo "$sortie"; echo "::error::le banc reste VERT quand la rotation blanchit une entrée forgée"; exit 1
+          fi
+          restaurer
+          cmp -s /tmp/su-rot.intact "$C" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$sortie" | grep -q 'entrée forgée sans la clé' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de l'entrée forgée"; exit 1; }
+          echo "✓ le banc rougit, et sur le cas de l'entrée forgée"
 
       - name: Garde-fou — les secrets d'instance refusent au lieu de servir
         run: |

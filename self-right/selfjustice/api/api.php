@@ -43,6 +43,10 @@ define('JURIS_DB', getenv('SELFJUSTICE_JURIS_DB') ?: '/var/lib/selfjustice/db/ju
 // Ce sur quoi on retombe quand l'index n'est pas lisible — jamais une seconde
 // source : la vérité est dans la base, cf. juridictions_servies().
 const JURIDICTIONS_SANS_INDEX = ['cc', 'ca'];
+// Ce que l'amont Judilibre accepte en filtre, et rien d'autre. Il l'a répondu le
+// 10/09/2026 : « Value of the jurisdiction parameter must be in [cc,ca,tj,tcom] ».
+// La justice administrative de l'index vient de JADE, pas de lui.
+const JURIDICTIONS_AMONT = ['cc', 'ca', 'tj', 'tcom'];
 
 // Métadonnées de plus d'un million de décisions, sans leur texte : l'index répond
 // « cette référence existe / n'existe pas » hors ligne, le texte intégral et la
@@ -534,9 +538,33 @@ function juridiction_libelle(string $code): string {
 }
 
 /**
- * Le refus nomme les valeurs admises ET l'exclusion : « ce » est la tentation
- * naturelle de qui cherche le Conseil d'État, et cette base ne couvre pas la
- * justice administrative.
+ * L'index porte-t-il la justice administrative ? Tant que non, la réserve
+ * « relève d'ArianeWeb » est vraie et s'affiche. Dès que oui, elle disparaît
+ * d'elle-même : une réserve périmée ferait renoncer à une recherche que la base
+ * sait servir.
+ */
+function administratif_servi(): bool {
+    return (bool) array_intersect(juridictions_servies(), ['ce', 'caa', 'ta']);
+}
+
+/**
+ * La phrase de périmètre de la jurisprudence, tirée de ce que l'index sert.
+ */
+function perimetre_juris(): string {
+    $phrase = "Périmètre : "
+        . implode(', ', array_map('juridiction_libelle', juridictions_servies()))
+        . " — les dates couvertes, juridiction par juridiction, sont dans "
+        . "« couverture ».";
+    if (!administratif_servi()) {
+        $phrase .= " La justice administrative — Conseil d'État, CAA, TA — relève "
+            . "d'ArianeWeb et n'y figure pas.";
+    }
+    return $phrase;
+}
+
+/**
+ * Le refus nomme les valeurs admises, et l'exclusion de la justice
+ * administrative tant que l'index ne la porte pas.
  */
 function message_juridiction_inconnue(string $brute): string {
     $servies = juridictions_servies();
@@ -546,10 +574,7 @@ function message_juridiction_inconnue(string $brute): string {
     );
     $message = "Juridiction « " . trim($brute) . " » inconnue. Valeurs acceptées : "
         . implode(', ', $noms) . ".";
-    // La réserve ne s'affirme que si elle est vraie : le jour où l'index porte
-    // le Conseil d'État, la phrase disparaît d'elle-même. Une réserve périmée
-    // ferait renoncer quelqu'un à une recherche que la base sait servir.
-    if (!array_intersect($servies, ['ce', 'caa', 'ta'])) {
+    if (!administratif_servi()) {
         $message .= " Cet index ne couvre que la justice judiciaire : la justice "
             . "administrative — Conseil d'État, CAA, TA — relève d'ArianeWeb et "
             . "n'y figure pas.";
@@ -1620,9 +1645,10 @@ if ($segments[0] === 'jurisprudence') {
             $db->close();
             json_indetermine(
                 "Juridiction « $juridiction » hors de l'index (couvertes : "
-                . implode(', ', array_keys($couverture)) . "). La justice "
-                . "administrative — Conseil d'État, tribunaux administratifs — "
-                . "n'est pas dans Judilibre mais dans ArianeWeb.",
+                . implode(', ', array_keys($couverture)) . ")."
+                . (administratif_servi() ? "" : " La justice administrative — "
+                    . "Conseil d'État, tribunaux administratifs — n'est pas dans "
+                    . "Judilibre mais dans ArianeWeb."),
                 ['reference' => $ref, 'couverture' => $couverture]
             );
         }
@@ -1644,7 +1670,13 @@ if ($segments[0] === 'jurisprudence') {
             $sql .= " AND d.jurisdiction = :juri";
             $sql_count .= " AND d.jurisdiction = :juri";
         }
-        $sql .= " ORDER BY d.decision_date DESC LIMIT " . LIMITE_DECISIONS;
+        // 🔑 Avec une date, les décisions de ce jour passent en tête. La limite
+        // s'applique avant le filtre par date plus bas : sans ce tri, une
+        // décision présente derrière plus d'homonymes récents que la limite
+        // n'en retient sortait « absente ».
+        $sql .= $date_annoncee === null
+            ? " ORDER BY d.decision_date DESC LIMIT " . LIMITE_DECISIONS
+            : " ORDER BY d.decision_date = :date DESC, d.decision_date DESC LIMIT " . LIMITE_DECISIONS;
 
         // Le total se compte à part : `count($decisions)` saturait à la limite
         // ci-dessus sans que rien ne le signale. Un outil dont la fonction est
@@ -1660,6 +1692,9 @@ if ($segments[0] === 'jurisprudence') {
         $stmt->bindValue(':norm', $norm);
         if ($juridiction !== null) {
             $stmt->bindValue(':juri', $juridiction);
+        }
+        if ($date_annoncee !== null) {
+            $stmt->bindValue(':date', $date_annoncee);
         }
         $res = $stmt->execute();
 
@@ -1730,6 +1765,9 @@ if ($segments[0] === 'jurisprudence') {
             $decisions, fn($d) => ($d['date_brute'] ?? null) === $date_annoncee));
         $homonymes = $date_annoncee === null ? [] : array_values(array_filter(
             $decisions, fn($d) => ($d['date_brute'] ?? null) !== $date_annoncee));
+        // Le nombre d'homonymes se déduit du total : la liste ci-dessus est
+        // bornée par la limite, et c'est ce nombre que lit le modèle.
+        $nb_homonymes = $date_annoncee === null ? 0 : $total - count($a_la_date);
         $correspond = (bool) $a_la_date;
 
         if (!$correspond && $date_annoncee !== null && $arret !== null && $date_annoncee > $arret) {
@@ -1861,7 +1899,7 @@ if ($segments[0] === 'jurisprudence') {
                 . "la date annoncée ($date_annoncee). Son existence est établie — "
                 . "c'est l'index qui est en retard, pas la référence qui est fausse."
                 : ($issues
-                ? ($homonymes ? "Les " . count($homonymes) . " autre(s) décision(s) "
+                ? ($nb_homonymes ? "Les " . $nb_homonymes . " autre(s) décision(s) "
                     . "portant ce numéro à d'autres dates ne sont pas celle-ci : un "
                     . "rôle général n'est unique qu'au sein d'une cour. Voir "
                     . "« homonymes »."
@@ -1881,15 +1919,13 @@ if ($segments[0] === 'jurisprudence') {
                     . "date de la décision cherchée : elle déclenche l'interrogation "
                     . "de la base amont, qui va plus loin."
                     : null))
-                : ($homonymes ? "Ce numéro existe — " . count($homonymes)
+                : ($nb_homonymes ? "Ce numéro existe — " . $nb_homonymes
                     . " décision(s) le portent — mais aucune n'est datée du "
                     . "$date_annoncee. Un rôle général n'est unique qu'au sein d'une "
                     . "cour : la décision cherchée n'est pas celles-là. Voir "
                     . "« homonymes ». " : "")
-                . $reserve_borne . " Périmètre limité à la "
-                . "Cour de cassation et aux cours d'appel — la justice "
-                . "administrative (Conseil d'État, CAA, TA) relève d'ArianeWeb et "
-                . "n'y figurera jamais. Dire « introuvable », pas « n'existe pas »."),
+                . $reserve_borne . " " . perimetre_juris()
+                . " Dire « introuvable », pas « n'existe pas »."),
             'avertissement' => count($juridictions) > 1
                 ? "Plusieurs juridictions portent ce même numéro normalisé : un RG "
                 . "de cour d'appel (25/10907) et un pourvoi (25-10.907) se "
@@ -1961,13 +1997,21 @@ if ($segments[0] === 'jurisprudence') {
         // filtre rendait 37 159 décisions. La route du catalogue nomme déjà ses
         // valeurs acceptées en cas de refus ; celle-ci ne disait rien.
         //
-        // Le message nomme aussi l'exclusion : « ce » est la tentation
-        // naturelle de qui cherche le Conseil d'État, et cette base ne couvre
-        // pas la justice administrative.
+        // 🔑 Une juridiction servie par l'index n'est pas forcément servie par
+        // l'amont. Le Conseil d'État est dans l'index par JADE ; transmis à
+        // Judilibre, il revenait en « API Judilibre — HTTP 400 », une panne
+        // apparente là où il fallait une indication.
         if (isset($params['jurisdiction'])) {
             $normalisee = juridiction_valide($params['jurisdiction']);
             if ($normalisee === null) {
                 json_error(message_juridiction_inconnue($params['jurisdiction']), 400);
+            }
+            if (!in_array($normalisee, JURIDICTIONS_AMONT, true)) {
+                json_error("La recherche par thème interroge Judilibre, qui ne sert que "
+                    . "la justice judiciaire (" . implode(', ', JURIDICTIONS_AMONT)
+                    . "). « $normalisee » (" . juridiction_libelle($normalisee) . ") est "
+                    . "dans l'index local, tiré du fonds JADE : une de ses décisions se "
+                    . "vérifie par son numéro, avec /jurisprudence/verifier.", 400);
             }
             $params['jurisdiction'] = $normalisee;
         }

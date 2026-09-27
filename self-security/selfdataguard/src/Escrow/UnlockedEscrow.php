@@ -25,7 +25,7 @@ final class UnlockedEscrow
 
     public function __construct(
         public readonly string $userId,
-        string $escrowKey
+        #[\SensitiveParameter] string $escrowKey
     ) {
         if (strlen($escrowKey) !== Primitives::KEY_LEN) {
             throw new RuntimeException(

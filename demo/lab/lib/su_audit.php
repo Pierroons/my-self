@@ -23,12 +23,19 @@ use RuntimeException;
 
 final class SuAudit
 {
+    /** L'amorçage : le premier administrateur, une fois par cycle (voir `firstAdminConsomme()`). */
+    public const ACTION_FIRST_ADMIN     = 'first-admin';
+    /** La console ne l'écrit plus ; il reste lu, pour les journaux qui en portent. */
     public const ACTION_ADD_ADMIN       = 'add-admin';
     public const ACTION_REVOKE_ADMIN    = 'revoke-admin';
+    /** Octroi et révocation dans la même transaction : le seul admin se remplace sans passer par zéro. */
+    public const ACTION_REPLACE_ADMIN   = 'replace-admin';
     public const ACTION_APPROVE_REQUEST = 'approve-request';
     public const ACTION_REJECT_REQUEST  = 'reject-request';
     public const ACTION_QUARANTINE      = 'quarantine-ghost';
     public const ACTION_RESET_SHELL     = 'reset-shell';
+    /** Tous les comptes supprimés : la base et le secret SU sont figés, le journal continue. */
+    public const ACTION_RESET_DB        = 'reset-db';
     public const ACTION_CHANGE_PASS     = 'change-passphrase';
     /**
      * Constat, pas mutation : l'empreinte du secret en place est portée au
@@ -38,6 +45,8 @@ final class SuAudit
      */
     public const ACTION_RECORD_SEAL     = 'record-seal';
     public const ACTION_BACKUP_LOG      = 'backup-log';
+    /** Le journal re-signé sous une nouvelle clé ; l'entrée porte aussi le sceau du secret SU. */
+    public const ACTION_ROTATE_KEY      = 'rotate-audit-key';
 
     /**
      * Les deux listes que `audit` rejoue pour reconstituer qui est légitimement
@@ -45,8 +54,14 @@ final class SuAudit
      * l'autre produisait une branche morte silencieuse dans la logique qui
      * décide d'une révocation.
      */
-    public const GRANTING = [self::ACTION_ADD_ADMIN, self::ACTION_APPROVE_REQUEST];
-    public const REVOKING = [self::ACTION_REVOKE_ADMIN, self::ACTION_RESET_SHELL, self::ACTION_QUARANTINE];
+    public const GRANTING = [self::ACTION_FIRST_ADMIN, self::ACTION_ADD_ADMIN, self::ACTION_APPROVE_REQUEST];
+    public const REVOKING = [self::ACTION_REVOKE_ADMIN, self::ACTION_QUARANTINE];
+    /**
+     * Un reset vide la liste entière. Tenu à part de `REVOKING`, qui retire une
+     * cible nommée : la cible de `reset-shell` est `ALL-ADMINS`, un nom qu'aucun
+     * compte ne porte, et l'y ranger ne retirerait personne.
+     */
+    public const RESETS   = [self::ACTION_RESET_SHELL, self::ACTION_RESET_DB];
 
     public const DEMO_SECRET = 'dev-su-audit-secret-CHANGE-IN-PROD';
 
@@ -209,12 +224,46 @@ final class SuAudit
                 . 'Refus de répondre « aucune entrée » : illisible n\'est pas vide.'
             );
         }
+        return self::decoder($lignes);
+    }
+
+    /** Les entrées d'une liste de lignes JSON ; une ligne qui ne se décode pas est ignorée. */
+    public static function decoder(array $lignes): array
+    {
         $out = [];
         foreach ($lignes as $line) {
             $d = json_decode($line, true);
             if ($d) {
                 $out[] = $d;
             }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Les mêmes entrées, signées par une autre clé.
+     *
+     * Seul `hmac` change : `entry_hash` et `prev_hash` ne dépendent pas de la clé,
+     * donc la chaîne et les témoins déjà externalisés restent valables. Ne re-signe
+     * rien qui n'ait d'abord été vérifié sous l'ancienne clé — c'est l'appelant
+     * (`rotate-audit-key`) qui porte ce refus, avant l'appel.
+     */
+    public static function resigner(array $entrees, string $cle): array
+    {
+        foreach ($entrees as $i => $e) {
+            $entrees[$i]['hmac'] = hash_hmac('sha256', (string) ($e['entry_hash'] ?? ''), $cle);
+        }
+
+        return $entrees;
+    }
+
+    /** Les entrées en JSON-lines, dans le format qu'écrit `append()`. */
+    public static function encoder(array $entrees): string
+    {
+        $out = '';
+        foreach ($entrees as $e) {
+            $out .= json_encode($e, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
         }
 
         return $out;
@@ -288,8 +337,105 @@ final class SuAudit
 
         @chmod($path, 0600);
         $core['ntfy_delivered'] = self::notify($core);
+        if ($core['ntfy_delivered'] === true) {
+            self::poserMarqueTemoin($core);
+        }
 
         return $core;
+    }
+
+    /**
+     * Fichier de la marque du témoin — la trace du dernier envoi CONFIRMÉ.
+     *
+     * 🔑 **Il vit à côté du journal, pas dedans.** C'est tout l'objet de ce
+     * mécanisme : la trace « le témoin n'a pas répondu » ne peut pas vivre dans le
+     * fichier que le témoin existe pour protéger. Qui tronque le journal effacerait
+     * aussi la preuve que l'externalisation échouait.
+     */
+    public static function marqueTemoinPath(): string
+    {
+        return dirname(self::logPath()) . '/su-audit-temoin.json';
+    }
+
+    /**
+     * Enregistre le plus haut point confirmé par le témoin distant : `seq` et
+     * `entry_hash` de la dernière entrée dont l'envoi a réussi.
+     *
+     * Écriture par fichier temporaire puis renommage : une marque tronquée dirait
+     * un point de confirmation faux, et une marque fausse est pire qu'absente —
+     * c'est le motif du sel de déploiement, dans `install.sh`.
+     */
+    private static function poserMarqueTemoin(array $entry): void
+    {
+        $f   = self::marqueTemoinPath();
+        $tmp = $f . '.' . bin2hex(random_bytes(4)) . '.tmp';
+        $doc = json_encode([
+            'seq'        => $entry['seq'],
+            'entry_hash' => $entry['entry_hash'],
+            'confirme_a' => gmdate('c'),
+        ], JSON_UNESCAPED_SLASHES);
+        if (@file_put_contents($tmp, $doc . "\n") === false) {
+            return;   // ne jamais faire échouer une action d'administration pour ça
+        }
+        @chmod($tmp, 0600);
+        @rename($tmp, $f);
+    }
+
+    /**
+     * Où en est le témoin distant, **sans lire le journal pour le savoir** ?
+     *
+     * 🔑 **Trois états, et le troisième est celui qui vaut.** La chaîne de hachage
+     * se vérifie de l'intérieur : elle ne détecte pas sa propre troncature, car le
+     * préfixe d'une chaîne valide est une chaîne valide. Le témoin distant est le
+     * seul angle qui la rende visible — et jusqu'ici, son silence ne se voyait
+     * nulle part. Rien, ni dans l'entrée, ni ailleurs, ne disait si la notification
+     * était partie : `ntfy_delivered` était posé APRÈS l'écriture de la ligne,
+     * donc il n'atteignait jamais le fichier, et aucun appelant ne lisait le retour.
+     *
+     * - `jamais` : une externalisation est configurée, aucun envoi n'a été confirmé.
+     * - `muet` : le témoin n'a rien confirmé depuis N entrées — il échoue en silence.
+     * - `tronque` : **le journal est plus court que ce que le témoin a confirmé.**
+     *   La marque vit hors du journal : une troncature en dessous d'elle se voit
+     *   donc sans que le journal ait à le dire.
+     *
+     * ⚠️ Ce que ça NE fait PAS : résister à qui a root et efface les deux fichiers.
+     * La marque rend visible une défaillance silencieuse et une troncature partielle ;
+     * contre un effacement complet, c'est le témoin DISTANT qui reste la seule preuve.
+     *
+     * @return array{etat: string, marque: ?int, tete: ?int, detail: string}
+     */
+    public static function ecartTemoin(): array
+    {
+        $rien = static fn(string $e, string $d): array
+            => ['etat' => $e, 'marque' => null, 'tete' => null, 'detail' => $d];
+
+        if (!getenv('SELFRECOVER_NTFY_URL')) {
+            return $rien('non_configure', 'aucune externalisation configurée — la troncature du journal ne serait visible de nulle part');
+        }
+
+        $f = self::marqueTemoinPath();
+        $m = is_readable($f) ? json_decode((string) @file_get_contents($f), true) : null;
+
+        $entrees = self::read();
+        $tete    = $entrees ? (int) ($entrees[count($entrees) - 1]['seq'] ?? 0) : 0;
+
+        if (!is_array($m) || !isset($m['seq'])) {
+            return ['etat' => 'jamais', 'marque' => null, 'tete' => $tete,
+                    'detail' => "aucun envoi confirmé — le témoin distant n'a jamais répondu"];
+        }
+        $marque = (int) $m['seq'];
+
+        if ($marque > $tete) {
+            return ['etat' => 'tronque', 'marque' => $marque, 'tete' => $tete,
+                    'detail' => "le témoin a confirmé l'entrée $marque, le journal s'arrête à $tete — il a été RACCOURCI"];
+        }
+        if ($marque < $tete) {
+            return ['etat' => 'muet', 'marque' => $marque, 'tete' => $tete,
+                    'detail' => 'le témoin n\'a rien confirmé depuis ' . ($tete - $marque) . " entrée(s) — dernière confirmation : $marque"];
+        }
+
+        return ['etat' => 'a_jour', 'marque' => $marque, 'tete' => $tete,
+                'detail' => "le témoin a confirmé jusqu'à l'entrée $marque, qui est la dernière"];
     }
 
     /**
@@ -393,10 +539,24 @@ final class SuAudit
             curl_setopt($ch, CURLOPT_PROXYTYPE, CURLPROXY_SOCKS5_HOSTNAME);
         }
 
-        $ok = curl_exec($ch) !== false && curl_errno($ch) === 0;
+        // 🔑 Le transport qui réussit ne dit PAS que le témoin a reçu. Un ntfy qui
+        // rend 401 faute de jeton, 403, ou 404 sur un sujet inexistant répond
+        // parfaitement : `curl_exec` rend le corps, `curl_errno` rend 0. Sans lire
+        // le code, `poserMarqueTemoin()` était appelé sur un refus, et
+        // `ecartTemoin()` annonçait « a_jour » pour un témoin qui n'avait jamais
+        // rien reçu — le contrôle écrit pour rendre le silence visible le masquait.
+        // Mesuré le 16/09/2026 contre un serveur qui refuse : `ntfy_delivered`
+        // valait `true`, marque posée, écart « a_jour ». Trouvé par un déploiement intégrateur.
+        $reponse = curl_exec($ch);
+        $errno   = curl_errno($ch);
+        $code    = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
-        return $ok;
+        if ($reponse === false || $errno !== 0) {
+            return false;
+        }
+
+        return $code >= 200 && $code < 300;
     }
 
     /** Le service est-il déclaré comme servi derrière un service caché. */
@@ -408,7 +568,12 @@ final class SuAudit
     /** Intégrité de la chaîne : prev_hash, entry_hash et HMAC de chaque entrée. */
     public static function verify(): array
     {
-        $entries = self::read();
+        return self::verifierEntrees(self::read(), self::secret());
+    }
+
+    /** Comme `verify()`, sur des entrées et une clé données : une rotation vérifie sous les deux. */
+    public static function verifierEntrees(array $entries, string $cle): array
+    {
         $prev    = str_repeat('0', 64);
         foreach ($entries as $i => $e) {
             if (($e['prev_hash'] ?? null) !== $prev) {
@@ -418,7 +583,7 @@ final class SuAudit
             if ($h !== ($e['entry_hash'] ?? '')) {
                 return ['ok' => false, 'break_at' => $i + 1, 'reason' => 'entrée altérée (entry_hash)'];
             }
-            if (!hash_equals(hash_hmac('sha256', $h, self::secret()), (string) ($e['hmac'] ?? ''))) {
+            if (!hash_equals(hash_hmac('sha256', $h, $cle), (string) ($e['hmac'] ?? ''))) {
                 return ['ok' => false, 'break_at' => $i + 1, 'reason' => 'signature invalide (HMAC)'];
             }
             $prev = $e['entry_hash'];
@@ -442,6 +607,73 @@ final class SuAudit
     }
 
     /**
+     * Qui le journal reconnaît comme administrateur, rejoué depuis le début.
+     *
+     * `audit` confronte cette liste à `is_admin` : un admin en base qui n'y figure
+     * pas est un fantôme.
+     *
+     * @return array<string, true>
+     */
+    public static function adminsLegitimes(): array
+    {
+        $legit = [];
+        foreach (self::read() as $e) {
+            $action = (string) ($e['action'] ?? '');
+            $cible  = (string) ($e['target'] ?? '');
+            if (in_array($action, self::RESETS, true)) {
+                $legit = [];
+            } elseif ($action === self::ACTION_REPLACE_ADMIN) {
+                unset($legit[(string) ($e['extra']['revoque'] ?? '')]);
+                $legit[(string) ($e['extra']['promu'] ?? '')] = true;
+            } elseif ($cible !== '' && in_array($action, self::GRANTING, true)) {
+                $legit[$cible] = true;
+            } elseif ($cible !== '' && in_array($action, self::REVOKING, true)) {
+                unset($legit[$cible]);
+            }
+        }
+        unset($legit['']);
+
+        return $legit;
+    }
+
+    /**
+     * La voie `first-admin` a-t-elle servi depuis le dernier reset ?
+     *
+     * 🔑 La réponse vient du journal, jamais de la base : une base vidée de ses
+     * admins par un chemin qui n'est pas un reset ne doit pas rouvrir l'amorçage.
+     * Tout octroi compte, pas seulement `first-admin` : un journal antérieur au
+     * 23/09/2026 n'en porte aucun, et un admin nommé par `add-admin` ou
+     * `approve-request` prouve que l'amorçage a eu lieu.
+     */
+    public static function firstAdminConsomme(): bool
+    {
+        $consomme = false;
+        foreach (self::read() as $e) {
+            $action = (string) ($e['action'] ?? '');
+            if (in_array($action, self::RESETS, true)) {
+                $consomme = false;
+            } elseif ($action === self::ACTION_REPLACE_ADMIN || in_array($action, self::GRANTING, true)) {
+                $consomme = true;
+            }
+        }
+
+        return $consomme;
+    }
+
+    /** La dernière entrée `reset-db` du journal, ou `null`. */
+    public static function dernierResetDb(): ?array
+    {
+        $vu = null;
+        foreach (self::read() as $e) {
+            if (($e['action'] ?? '') === self::ACTION_RESET_DB) {
+                $vu = $e;
+            }
+        }
+
+        return $vu;
+    }
+
+    /**
      * La dernière empreinte de secret SU que le journal ait vue poser, ou `null`
      * si aucune entrée n'en porte.
      *
@@ -458,7 +690,7 @@ final class SuAudit
         $vu = null;
         foreach (self::read() as $e) {
             $action = (string) ($e['action'] ?? '');
-            if ($action !== self::ACTION_CHANGE_PASS && $action !== self::ACTION_RECORD_SEAL) {
+            if (!in_array($action, [self::ACTION_CHANGE_PASS, self::ACTION_RECORD_SEAL, self::ACTION_ROTATE_KEY], true)) {
                 continue;
             }
             $h = $e['extra']['empreinte'] ?? null;

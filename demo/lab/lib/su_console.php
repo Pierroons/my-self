@@ -65,12 +65,15 @@ final class SuConsole
      * Terminal SU SIMULÉ (aucun pouvoir réel). Reproduit les commandes du vrai CLI selfrecover-su
      * sur une sandbox ::memory:. L'état (admins) est cohérent entre commandes car le client renvoie
      * l'historique des mutations déjà validées ($mutations), rejoué avant la commande courante.
+     *
+     * La sandbox part de l'état d'une instance en service : admin_demo a été nommé par
+     * `first-admin` à l'installation, et user_lambda attend une promotion proposée par lui.
      */
     public static function terminal(array $mutations, string $cmd): array
     {
         $pdo = self::sandbox();
         self::seed($pdo);
-        $log = [];
+        $log = ['first-admin admin_demo   (installation · opérateur=su · HMAC ✓)'];
         // Rejeu de l'historique (borné : anti-abus)
         foreach (array_slice($mutations, 0, 100) as $m) {
             self::applyMutation($pdo, (string) $m, $log);
@@ -89,13 +92,17 @@ final class SuConsole
             case 'help':
                 $out = [
                     'Commandes SU (démo — sandbox, aucun effet réel) :',
-                    '  list-admins            liste les admins',
-                    '  list-requests          demandes de promotion en attente',
-                    '  add-admin <user>       promeut un user en admin (tracé)',
-                    '  revoke-admin <user>    révoque un admin (+ coupe ses sessions)',
-                    '  audit                  intégrité du log + admins fantômes',
-                    '  show-log               journal SU (append-only + HMAC)',
-                    '  read-memo <user>       tente de lire un mémo E2E  🔒',
+                    '  list-admins                        liste les admins',
+                    '  list-requests                      demandes de promotion en attente',
+                    '  approve-request <n>                tranche une demande : le compte devient admin',
+                    '  first-admin <user>                 nomme le PREMIER admin — une seule fois',
+                    '  revoke-admin <user>                révoque un admin (+ coupe ses sessions)',
+                    '  revoke-admin <user> --remplacant <autre>',
+                    '                                     remplace le dernier admin sans jamais passer par zéro',
+                    '  audit                              intégrité du log + admins fantômes',
+                    '  show-log                           journal SU (append-only + HMAC)',
+                    '  reset-shell | reset-db             les deux remises à zéro (non simulées)',
+                    '  read-memo <user>                   tente de lire un mémo E2E  🔒',
                     '  whoami | help | clear',
                     'Comptes de la sandbox : user_lambda (user), admin_demo (admin).',
                 ];
@@ -107,30 +114,48 @@ final class SuConsole
                 $rows = $pdo->query('SELECT username FROM accounts WHERE is_admin = 1 ORDER BY username')->fetchAll();
                 $out[] = 'Admins (' . count($rows) . ') :';
                 foreach ($rows as $r) { $out[] = '  ● ' . $r['username']; }
-                if (!$rows) { $out[] = '  (aucun)'; }
                 break;
             case 'list-requests':
+                $out = self::demandeOuverte($pdo)
+                    ? [
+                        'Demandes de promotion en attente :',
+                        '  #1  cible=user_lambda  proposé par=admin_demo  statut=pending',
+                        '  → tranche avec : approve-request 1',
+                    ]
+                    : ['Demandes de promotion en attente : (aucune)'];
+                break;
+            case 'first-admin':
                 $out = [
-                    'Demandes de promotion en attente :',
-                    '  #1  cible=user_lambda  proposé par=admin_demo  statut=pending',
-                    '  → approuve avec : add-admin user_lambda',
+                    '✗ refusé — le premier admin a déjà été nommé (admin_demo, à l\'installation).',
+                    '  Cette voie ne sert qu\'une fois. Elle ne se rouvre qu\'après reset-shell ou reset-db.',
+                    '  Un admin de plus : un admin le propose, le SU tranche (list-requests).',
                 ];
                 break;
             case 'add-admin':
-                if ($arg === '') { $out = ['usage: add-admin <username>']; break; }
-                $ok = self::applyMutation($pdo, "add-admin $arg", $log);
-                $out = $ok
-                    ? ["✅ « $arg » promu admin — action écrite au journal SU (HMAC)."]
-                    : ["✗ compte « $arg » introuvable dans la sandbox (essaie: user_lambda)."];
+                $out = [
+                    '✗ add-admin est retiré : le SU ne fabrique plus d\'admin seul.',
+                    '  → first-admin pour le premier, puis approve-request sur la demande d\'un admin.',
+                ];
+                break;
+            case 'approve-request':
+            case 'revoke-admin':
+                [$ok, $out] = self::mutation($pdo, $cmd, $log);
                 $mutating = $ok;
                 break;
-            case 'revoke-admin':
-                if ($arg === '') { $out = ['usage: revoke-admin <username>']; break; }
-                $ok = self::applyMutation($pdo, "revoke-admin $arg", $log);
-                $out = $ok
-                    ? ["✅ « $arg » n'est plus admin — sessions coupées, action tracée."]
-                    : ["✗ « $arg » n'était pas admin."];
-                $mutating = $ok;
+            case 'reset-shell':
+                $out = [
+                    'reset-shell — non simulé ici. En vrai : le SU a perdu sa passphrase.',
+                    '  Tous les admins sont révoqués, les comptes restent, le journal est figé.',
+                    '  La voie first-admin se rouvre : c\'est le seul moment où la base n\'a aucun admin.',
+                ];
+                break;
+            case 'reset-db':
+                $out = [
+                    'reset-db — non simulé ici. En vrai : une compromission, on met tout le monde dehors.',
+                    '  La base et le secret SU sont figés (gardés comme pièces), une base vide repart.',
+                    '  Le journal, lui, est gardé : il affiche le reset-db en bandeau.',
+                    '  ⚠️ Il ne chasse pas un intrus qui tient encore le SERVEUR.',
+                ];
                 break;
             case 'audit':
                 $out = [
@@ -142,7 +167,6 @@ final class SuConsole
             case 'show-log':
                 $out = ['Journal SU (append-only + HMAC, hors DB/webroot) :'];
                 foreach ($log as $i => $e) { $out[] = '  ' . str_pad((string) ($i + 1), 2, '0', STR_PAD_LEFT) . '  ' . $e; }
-                if (!$log) { $out[] = '  (aucune action encore)'; }
                 break;
             case 'read-memo':
                 if ($arg === '') { $out = ['usage: read-memo <username>']; break; }
@@ -164,23 +188,85 @@ final class SuConsole
         return ['ok' => true, 'echo' => $cmd, 'output' => $out, 'mutating' => $mutating];
     }
 
-    /** Applique une mutation (add/revoke-admin) sur la sandbox + trace au log. Retourne true si effet. */
-    private static function applyMutation(PDO $pdo, string $m, array &$log): bool
+    /** La demande #1 (user_lambda, proposée par admin_demo) est-elle encore ouverte ? */
+    private static function demandeOuverte(PDO $pdo): bool
+    {
+        return (int) $pdo->query("SELECT is_admin FROM accounts WHERE username = 'user_lambda'")->fetchColumn() === 0;
+    }
+
+    private static function estAdmin(PDO $pdo, string $user): ?bool
+    {
+        $st = $pdo->prepare('SELECT is_admin FROM accounts WHERE username = ?');
+        $st->execute([$user]);
+        $v = $st->fetchColumn();
+        return $v === false ? null : (int) $v === 1;
+    }
+
+    /** Rejoue une mutation déjà validée : seul l'effet compte, la sortie est jetée. */
+    private static function applyMutation(PDO $pdo, string $m, array &$log): void
+    {
+        self::mutation($pdo, $m, $log);
+    }
+
+    /**
+     * approve-request et revoke-admin, avec les gardes de la vraie console :
+     * le dernier admin ne tombe que remplacé, et le remplaçant est promu AVANT
+     * que l'autre soit révoqué — la base ne passe jamais par zéro admin.
+     *
+     * @return array{0: bool, 1: list<string>} [effet appliqué, lignes à afficher]
+     */
+    private static function mutation(PDO $pdo, string $m, array &$log): array
     {
         $p    = preg_split('/\s+/', trim($m)) ?: [];
         $verb = strtolower($p[0] ?? '');
         $arg  = $p[1] ?? '';
-        if ($arg === '' || !in_array($verb, ['add-admin', 'revoke-admin'], true)) {
-            return false;
+        $set  = $pdo->prepare('UPDATE accounts SET is_admin = ? WHERE username = ?');
+
+        if ($verb === 'approve-request') {
+            if ($arg === '') { return [false, ['usage: approve-request <n>']]; }
+            if ($arg !== '1' || !self::demandeOuverte($pdo)) {
+                return [false, ["✗ aucune demande #$arg en attente (list-requests)."]];
+            }
+            $set->execute([1, 'user_lambda']);
+            $log[] = 'approve-request #1 user_lambda   (proposé par admin_demo · opérateur=su · HMAC ✓)';
+            return [true, ['✅ demande #1 tranchée : « user_lambda » devient admin — action écrite au journal SU (HMAC).']];
         }
-        $val  = $verb === 'add-admin' ? 1 : 0;
-        $stmt = $pdo->prepare('UPDATE accounts SET is_admin = ? WHERE username = ?');
-        $stmt->execute([$val, $arg]);
-        if ($stmt->rowCount() > 0) {
-            $log[] = "$verb $arg   (opérateur=su · HMAC ✓)";
-            return true;
+
+        if ($verb !== 'revoke-admin') {
+            return [false, []];
         }
-        return false;
+        if ($arg === '') { return [false, ['usage: revoke-admin <username> [--remplacant <username>]']]; }
+        if (self::estAdmin($pdo, $arg) !== true) {
+            return [false, ["✗ « $arg » n'est pas admin."]];
+        }
+        $nbAdmins = (int) $pdo->query('SELECT COUNT(*) FROM accounts WHERE is_admin = 1')->fetchColumn();
+        $remplacant = ($p[2] ?? '') === '--remplacant' ? ($p[3] ?? '') : '';
+
+        if ($remplacant === '') {
+            if ($nbAdmins <= 1) {
+                return [false, [
+                    "✗ refusé — « $arg » est le dernier admin : la base en garde toujours un.",
+                    "  → revoke-admin $arg --remplacant <user>  (remplacement atomique)",
+                ]];
+            }
+            $set->execute([0, $arg]);
+            $log[] = "revoke-admin $arg   (sessions coupées · opérateur=su · HMAC ✓)";
+            return [true, ["✅ « $arg » n'est plus admin — sessions coupées, action tracée."]];
+        }
+
+        $etat = self::estAdmin($pdo, $remplacant);
+        if ($etat === null) {
+            return [false, ["✗ compte « $remplacant » introuvable dans la sandbox."]];
+        }
+        if ($etat) {
+            return [false, ["✗ « $remplacant » est déjà admin : un remplaçant doit être promu."]];
+        }
+        $pdo->beginTransaction();
+        $set->execute([1, $remplacant]);
+        $set->execute([0, $arg]);
+        $pdo->commit();
+        $log[] = "replace-admin $arg → $remplacant   (une transaction · opérateur=su · HMAC ✓)";
+        return [true, ["✅ « $remplacant » promu puis « $arg » révoqué, dans la même transaction — jamais zéro admin."]];
     }
 
     private static function viewUser(): array
@@ -324,8 +410,9 @@ final class SuConsole
                 ['action' => 'Tente de lire le mémo E2E de user_lambda', 'resultat' => 'MÊME le SU ne le déchiffre pas', 'valeur' => substr($blob, 0, 24) . '…'],
             ],
             'peut' => ['label' => 'Ce que le SU PEUT', 'lignes' => [
+                'Nommer le premier admin — une seule fois, à l\'installation',
                 'Approuver / rejeter les promotions (créer les admins)',
-                'Révoquer un admin + couper ses sessions',
+                'Révoquer un admin + couper ses sessions — jamais le dernier',
                 'Auditer : tout est tracé, 0 admin fantôme',
             ]],
             'ne_peut_pas' => ['label' => 'Ce que MÊME le SU NE PEUT PAS', 'lignes' => [

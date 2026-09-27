@@ -5,8 +5,8 @@
 **Application-layer data-at-rest protection that survives a database exfiltration.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.3.0 in service](https://img.shields.io/badge/status-v0.3.0%20in%20service-brightgreen.svg)](#status)
-[![Tests: 198 passing](https://img.shields.io/badge/tests-198%20passing-brightgreen.svg)](#testing)
+[![Status: v0.4.0 in service](https://img.shields.io/badge/status-v0.4.0%20in%20service-brightgreen.svg)](#status)
+[![Tests: 219 passing](https://img.shields.io/badge/tests-219%20passing-brightgreen.svg)](#testing)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -19,7 +19,7 @@
 
 Every encrypted-data-at-rest product today (MySQL TDE, MongoDB CSFLE, AWS RDS encryption) answers the same threat model: **the attacker has the disk, but not the application**. The encryption key sits next to the data — in a config file, an environment variable, a key management service the application can read.
 
-That model breaks the moment the **application server is compromised**. The attacker dumps the database AND the key — the encryption was a checkbox, not a defense. Recent breaches at scale (ANTS, France, April 2026 — 11.7 to 19 million accounts exposed via a trivial IDOR) proved that personal data exposed in plain text is the dominant cost of these incidents.
+That model breaks the moment the **application server is compromised**. The attacker dumps the database AND the key — the encryption was a checkbox, not a defense. Recent breaches at scale have shown the same thing every time: personal data exposed in plain text is the dominant cost of the incident, because it cannot be revoked.
 
 Current tools either skip data-at-rest encryption entirely or implement it in a way that adds zero value against a server-side compromise. SelfDataGuard picks a third path: **derive the encryption key from a secret only the user knows**, so a database dump alone yields cryptographic soup.
 
@@ -39,18 +39,21 @@ SelfDataGuard implements **two-factor key wrapping** inspired by Bitwarden, 1Pas
                      │            │
         ┌────────────▼─┐      ┌──▼─────────────┐
         │ password_key │      │   recov_key    │
-        │ Argon2id(    │      │ HMAC-SHA256(   │
+        │ Argon2id(    │      │ Argon2id(      │
         │   password,  │      │  memorized,    │
-        │   user_salt) │      │  user_salt+    │
-        │              │      │  "/dataguard") │
+        │   user_salt) │      │  SHA-256(      │
+        │              │      │   user_salt +  │
+        │              │      │  "/dataguard"))│
         └──────────────┘      └────────────────┘
 ```
+
+Argon2id takes a 16-byte salt: the first 16 bytes of this SHA-256. Both wrap keys cost the same: two wraps are only as strong as the cheaper one.
 
 Each user has:
 
 - A unique random `user_salt` stored in plain (identifier-grade)
-- A `data_master_key_pwd_wrap`: AES-256-GCM ciphertext of the master key, encrypted with the password-derived key
-- A `data_master_key_recov_wrap`: AES-256-GCM ciphertext of the master key, encrypted with the recovery-word-derived key
+- A `data_master_key_pwd_wrap`: XChaCha20-Poly1305 ciphertext of the master key, encrypted with the password-derived key
+- A `data_master_key_recov_wrap`: XChaCha20-Poly1305 ciphertext of the master key, encrypted with the recovery-word-derived key
 - Personal data fields encrypted field-by-field with `data_master_key`
 
 **Database dump → cryptographic soup.** No combination of plain-text values in the dump yields the master key. The attacker would need either the user's password (Argon2id-hardened, salt-isolated) or the user's recovery word (never transmitted in plain) to decrypt anything.
@@ -59,19 +62,19 @@ Each user has:
 
 ## Coupling with SelfRecover
 
-SelfDataGuard reuses the SelfRecover memorized-recovery-word as one of its two unwrap factors, with **strict context separation** to prevent crossover:
+SelfDataGuard reuses the SelfRecover memorized-recovery-word as one of its two unwrap factors, with **two distinct derivations** — different functions, different salts — to prevent crossover:
 
 ```
 recovery_word (user secret, never transmitted in plain)
     │
-    ├─ HMAC-SHA256(secret, domain + "/recover")  →  recover_key  (SelfRecover auth)
+    ├─ HMAC-SHA256(key = secret, msg = material + "|v2" + user_salt)  →  recover_key  (SelfRecover auth)
     │
-    └─ HMAC-SHA256(secret, salt_user + "/dataguard")  →  data_key  (SelfDataGuard wrap)
+    └─ Argon2id(secret, SHA-256(user_salt + "/dataguard")[:16])       →  data_key     (SelfDataGuard wrap)
 ```
 
-Practical consequence: a user who forgets their password but remembers their recovery word can simultaneously **regain account access (via SelfRecover) and decrypt their stored data (via SelfDataGuard)**. One memorized word, two derived purposes, mathematically isolated.
+Practical consequence: a user who forgets their password keeps a way into each of their two halves. Their memorized word opens the SelfDataGuard vault **on its own**. For account access they also need what SelfRecover requires — their paper *recovery code* at level 2, or their diceware passphrase at level 1: the memorized word is **one factor out of two** there. One word to remember, two derived purposes, mathematically isolated.
 
-Without SelfRecover, SelfDataGuard still works — it falls back to a password-only wrap (single-factor recovery, weaker UX). But the natural pairing is: **SelfRecover protects authentication, SelfDataGuard protects data, the same memorized word unlocks both**.
+Without SelfRecover, SelfDataGuard still works — it falls back to a password-only wrap (single-factor recovery, weaker UX). But the natural pairing is: **SelfRecover protects authentication, SelfDataGuard protects data, and the same memorized word serves in both** — alone to open the vault, alongside the *recovery code* to reopen the account.
 
 ---
 
@@ -102,9 +105,11 @@ Most e-commerce deployments will pick **Hybrid**. Health, banking, identity prov
 
 ## Status
 
-**v0.3.0 — Argon2id derivation on both factors, escrow compartment, standalone demo**, 7 September 2026.
+**v0.4.0 — XChaCha20-Poly1305 on every CPU, versioned blob format**, 26 September 2026.
 
-Whitepaper complete (specification + threat model). PHP reference library implemented (2 372 lines across 17 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, AES-256-GCM) covered by **198 checks across 8 suites**, all passing. A clickable HTML demo is included to inspect the encrypted database in real time.
+Whitepaper complete (specification + threat model). PHP reference library implemented (2 607 lines across 18 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **219 checks across 8 suites**, all passing. A clickable HTML demo is included to inspect the encrypted database in real time.
+
+Blobs written by 0.3.0 stay readable, through OpenSSL (`ext-openssl`) where libsodium refuses AES. A blob written by 0.4.0 cannot be read by 0.3.0, which refuses it as invalid base64: roll back only a database that 0.4.0 has not written to. Why AES-256-GCM was dropped, and on which CPUs it failed: see the [CHANGELOG](./CHANGELOG.md).
 
 The module runs on real deployments. It has **not been audited by an external cryptographer**: its design is verified today by its author and by the readers of this repository, and by no one else.
 
@@ -119,7 +124,8 @@ A formal community cryptographic audit is planned before v1.0.0. ANSSI Visa de s
 ### Run the standalone demo (no install needed)
 
 ```bash
-cd demo && ./run.sh
+# from the repository root
+demo/selfdataguard/run.sh
 # open http://127.0.0.1:8081 in a browser
 ```
 
@@ -163,15 +169,15 @@ Three primary classes exposed: `SelfDataGuard` (façade), `SqliteAdapter` (stora
 Eight sanity test suites, runnable directly with `php` (no PHPUnit required):
 
 ```bash
-php tests/sanity_primitives.php   # 27 tests — Argon2id, HMAC, AES-GCM, randomness
-php tests/sanity_vault.php        # 33 tests — register, unlock, rotation, AAD binding
-php tests/sanity_fields.php       # 25 tests — field encrypt/decrypt + blind index
+php tests/sanity_primitives.php   # 45 tests — Argon2id, HMAC, XChaCha20-Poly1305 + IETF vector, legacy AES-GCM, randomness
+php tests/sanity_vault.php        # 36 tests — register, unlock, rotation, AAD binding, legacy wraps
+php tests/sanity_fields.php       # 26 tests — field encrypt/decrypt + blind index
 php tests/sanity_storage.php      # 36 tests — SQLite adapter, "DB dump = soup" test
 php tests/sanity_facade.php       # 34 tests — full API end-to-end
-php tests/sanity_audit.php        #  6 tests — audit log
+php tests/sanity_audit.php        # 11 tests — audit log
 php tests/sanity_ceremony.php     # 14 tests — key ceremony
-php tests/sanity_escrow.php       # 16 tests — escrow compartment
-# Total: 198 tests, 0 failures — counted by running them, 2026-09-07
+php tests/sanity_escrow.php       # 17 tests — escrow compartment
+# Total: 219 tests, 0 failures — counted by running them, 2026-09-26
 ```
 
 The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file and verifies that no plaintext personal data appears anywhere in the binary blob.
@@ -190,4 +196,4 @@ The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file 
 
 **AGPL-3.0-or-later**. See [LICENSE](../../LICENSE).
 
-Any deployment, modified or not, must publish its source code under the same license. No SaaS capture possible.
+If you modify SelfDataGuard and offer your version to users over a network, you must give them access to its source code, under the same license (AGPL-3.0, section 13).

@@ -9,8 +9,13 @@
 # stocké sur / (chiffré) : une fois / déverrouillé par recover, systemd lit le keyfile et
 # ouvre /data tout seul. Une saisie recover -> / + /data.
 #
-# Filet anti-lockout : la passphrase LUKS native (slot 0) reste ouvrable via
-#   `cryptsetup open <dev> <name>` manuel (shell dropbear), qui NE passe PAS par ce script.
+# Filet anti-lockout : la passphrase LUKS native (slot 0) reste ouvrable par
+#   `cryptsetup open <dev> <name>`, qui NE passe PAS par ce script.
+#   A distance, ce chemin est offert par selfrecover-secours.sh (choix 2), appele
+#   comme `command=` de la cle dropbear. Ce commentaire disait « shell dropbear » :
+#   c'etait vrai, et c'etait le probleme — ce shell tourne AVANT que la racine soit
+#   ouverte, et /boot n'etant pas chiffre, qui l'obtient y depose un initrd modifie
+#   et capture la passphrase suivante. Le filet reste, la porte ferme.
 SALT=/etc/selfkeyguard/selfrecover_salt
 BIN=/etc/selfkeyguard/selfrecover_derive_c
 NAME="${CRYPTTAB_NAME:-disque}"

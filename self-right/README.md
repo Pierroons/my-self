@@ -7,8 +7,8 @@
 > *Know your rights, make them right.*
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfJustice: v0.4.0 beta](https://img.shields.io/badge/SelfJustice-v0.4.0%20beta-green.svg)](./selfjustice/)
-[![SelfAct: v0.1.2](https://img.shields.io/badge/SelfAct-v0.1.2-brightgreen.svg)](./selfact/)
+[![SelfJustice: v0.4.1 beta](https://img.shields.io/badge/SelfJustice-v0.4.1%20beta-green.svg)](./selfjustice/)
+[![SelfAct: v0.1.3](https://img.shields.io/badge/SelfAct-v0.1.3-brightgreen.svg)](./selfact/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
@@ -26,31 +26,31 @@ Access to law in France is formally equal. In practice, it requires:
 
 Each of these steps is a filter. Most people give up at the first two. Knowing your rights is useless if you don't know how to enforce them. **The law is accessible only to those who already have legal literacy** — a self-perpetuating inequality.
 
-Self-Right tackles the full arc in two complementary modules: **understand the law (SelfJustice), then act on it (SelfAct)**.
+Self-Right takes on two of these filters: **reading the text (SelfJustice), then finding the step and its deadline (SelfAct)**.
 
 ---
 
-## Why the two modules reinforce each other
+## Why the two modules go together
 
-**SelfJustice alone** produces an impartial legal analysis with citations — but leaves you with a document. You know what the law says. Now what? Nothing, unless you know how to draft a formal notice, identify the competent court, fill a CERFA form, respect a procedural deadline. For 90 % of citizens, this gap is the wall.
+**SelfJustice alone** serves the law — articles in force, European texts, case law — so that your AI relies on the texts in force rather than on its memory. You then know what the law says, but not yet how to act: which form, which online service, which deadline, how to write the letter.
 
-**SelfAct alone** is a template library — useful, but dangerous without context. A formal notice with the wrong legal basis is worse than no letter at all.
+**SelfAct alone** is a catalogue and a set of letter templates. Without the law, you could pick the wrong step.
 
-**Together**, the chain is complete:
+**Together:**
 
-1. You describe your situation in plain language.
-2. SelfJustice fetches the actual law articles, does an impartial analysis, identifies what's defensible.
-3. SelfAct takes that analysis as input and generates ready-to-send documents: mise en demeure letter, saisine of the competent court, CERFA form pre-filled, calendar of deadlines.
+1. You describe your situation to your own AI.
+2. Your AI reads the law through SelfJustice and explains what it says, with verifiable references.
+3. SelfAct points to the official resource for the step, computes the deadline, and gives you a letter template with gaps. You write the facts, review, sign and send.
 
-From the fog of "I think I'm in my rights" to "this letter is in the post on Monday" — in a single continuous workflow, at zero cost.
+Neither module analyses your case in your place: legal advice is reserved to legal professionals in France (loi n° 71-1130). For advice on your own situation, turn to one of them.
 
 ---
 
-## Cross-module workflows
+## Cross-module examples
 
-- **Neighborhood noise complaint** → SelfJustice qualifies the conflict (nuisance sonore, art. R1336-5 CSP), extracts the applicable articles and deadlines → SelfAct generates the mise en demeure with the right legal basis, identifies the conciliateur de justice as first step, calculates the 15-day response window.
-- **Refused insurance claim** → SelfJustice identifies the applicable clause (exclusion formelle et limitée, L113-1 CCA), evaluates it against jurisprudence → SelfAct drafts the contestation letter + the saisine of the Médiateur de l'Assurance with the CERFA.
-- **Work harassment** → SelfJustice cites L1152-1 Code du travail, identifies evidence requirements → SelfAct produces the letter to the employer, the CSE/CSSCT notice, the prud'hommes form (CERFA 15586*03) with the relevant sections pre-filled.
+- **Neighbour dispute (noise)** → SelfJustice serves the texts on noise and neighbourhood → SelfAct points to the official nuisance report and to the saisine of the conciliateur de justice: for an abnormal neighbourhood nuisance, an amicable attempt — conciliation, mediation or participatory procedure — must come before court (art. 750-1 of the French Code of Civil Procedure).
+- **Dispute with an insurer** → SelfJustice serves the articles of the Code des assurances and the case law → SelfAct points to the saisine of the insurance mediator.
+- **Contested dismissal** → SelfJustice serves the Code du travail → SelfAct points to the application to the conseil de prud'hommes and computes the deadline.
 
 ---
 
@@ -59,7 +59,7 @@ From the fog of "I think I'm in my rights" to "this letter is in the post on Mon
 | Module | Role | Status |
 |--------|------|--------|
 | [SelfJustice](./selfjustice/) | Machine-readable legal directives + an open law API | **v0.4.0 beta** — live at [justice.my-self.fr](https://justice.my-self.fr) |
-| [SelfAct](./selfact/) | Letters, forms and procedural deadlines built on that analysis | **v0.1.2** — API, catalogue and pages running |
+| [SelfAct](./selfact/) | Official resources, deadlines and letter templates for the step | **v0.1.2** — API, catalogue and pages running |
 
 ---
 
@@ -74,9 +74,9 @@ SelfAct **runs as well**, and its folder shows it: [`selfact/`](./selfact/) hold
 | Catalogue | [`selfact/api/`](./selfact/api/) | over 1,800 official resources harvested from service-public.gouv.fr, in 16 categories — the exact count and per-type breakdown are served live by `/act/api/catalog.php?stats=1`. Refreshed on the 1st and 15th. |
 | Situation matching | [`selfact/api/find.php`](./selfact/api/find.php) | Around twenty hand-curated situations: "I am being laid off" → the step, the article, the form. |
 | Deadline computation | [`selfact/api/deadline.php`](./selfact/api/deadline.php) | The one piece that computes rather than retrieves, with calendar export. |
-| Letter drafting | [`selfact/api/draft.php`](./selfact/api/draft.php) | Formal notice, saisine (conciliateur, Défenseur des droits), contestation, termination, recours — each carrying a "NON OFFICIEL" notice in the body when it imitates the form of a legal act, and a footer reminder in every case, plus the matching official resources. |
+| Letter drafting | [`selfact/api/draft.php`](./selfact/api/draft.php) | Formal notice, saisine (conciliateur, Défenseur des droits), recours gracieux, termination, complaint — each carrying a "NON OFFICIEL" notice in the body when it imitates the form of a legal act, and a footer reminder in every case, plus the matching official resources. |
 
-Four of the twelve SelfRight MCP tools are SelfAct's. Both modules are served from the same domain — `justice.my-self.fr/act` — and exchange no calls: SelfJustice states the law, SelfAct performs the step.
+Four of the twelve SelfRight MCP tools are SelfAct's. Both modules are served from the same domain — `justice.my-self.fr/act` — and exchange no calls: SelfJustice states the law, SelfAct points to the step.
 
 ---
 

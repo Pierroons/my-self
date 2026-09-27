@@ -51,7 +51,10 @@ PY
 }
 read -r ATTENDU AVANT APRES < <(lire_dates)
 
-# ── Un amont de contrefaçon, piloté par deux fichiers ────────────────────────
+# ── Un amont de contrefaçon, piloté par des fichiers ─────────────────────────
+# status.json et catalog.json servent les deux routes ; `status.panne` fait
+# tomber /status seule ; gabarits.json, s'il existe, sert /gabarits. Il reçoit
+# aussi la notification, et consigne son titre et son corps dans ntfy.log.
 cat > "$BAC/amont.py" <<'PY'
 import json, os, pathlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -60,13 +63,27 @@ BAC = pathlib.Path(os.environ["BAC"])
 
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path.endswith("/status") and (BAC / "status.panne").exists():
+            self.send_error(500)
+            return
         nom = "status.json" if self.path.endswith("/status") else "catalog.json"
+        if self.path.endswith("/gabarits") and (BAC / "gabarits.json").exists():
+            nom = "gabarits.json"
         corps = (BAC / nom).read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(corps)))
         self.end_headers()
         self.wfile.write(corps)
+    def do_POST(self):
+        corps = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        # Les en-têtes arrivent décodés en latin-1 : le tiret du titre est de l'UTF-8.
+        titre = (self.headers.get("Title") or "").encode("latin-1").decode("utf-8", "replace")
+        with open(BAC / "ntfy.log", "a", encoding="utf-8") as f:
+            f.write(f"TITRE {titre}\nCORPS {corps.decode('utf-8', 'replace')}\n")
+        self.send_response(200)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
     def log_message(self, *a):
         pass
 
@@ -115,11 +132,13 @@ PY
     printf '%s' "$5" > "$BAC/etat.json"
     # HOME détourné : la sentinelle charge ~/.check-fraicheur.env avant tout, et
     # une configuration réelle ferait interroger la vraie instance.
+    # Sans CANAL, rien n'est envoyé ; avec, la notification arrive à l'amont.
     HOME="$BAC" \
     SELFRIGHT_API_URL="http://127.0.0.1:$PORT" \
     SELFRIGHT_ACT_URL="http://127.0.0.1:$PORT" \
     CHECK_FRAICHEUR_ETAT="$BAC/etat.json" \
     CHECK_FRAICHEUR_SILENCE_FICHIER="$BAC/silence" \
+    NTFY_URL="${CANAL:-}" NTFY_TOKEN="${CANAL:+banc}" \
     bash "$SONDE" --verbeux 2>&1
 }
 
@@ -433,8 +452,98 @@ if grep -q "injoignable" <<<"$sortie"; then
 else
     ok "un sous-objet sans entier ne casse pas la mesure"
 fi
+
+# ── Ce que reçoit le téléphone ───────────────────────────────────────────────
 echo
-echo "▸ Une source injoignable reste un retard"
+echo "▸ Le titre nomme ce qui est en cause, le corps dit tout"
+URL_CANAL="http://127.0.0.1:$PORT/ntfy"
+recu() { sed -n "s/^$1 //p" "$BAC/ntfy.log" 2>/dev/null | head -1; }
+
+rm -f "$BAC/silence" "$BAC/ntfy.log"
+CANAL="$URL_CANAL" jouer "$AVANT" 525441 "$AVANT" 1890 "$(etat "$AVANT" 525441 "$AVANT")" >/dev/null
+titre=$(recu TITRE)
+if [ "$titre" = "Self-Right — base en retard" ]; then
+    ok "base figée → « $titre »"
+else
+    nok "base figée → titre « $titre »"
+fi
+
+# /status ne répond pas, le catalogue répond au même passage : aucune base n'est
+# en retard, c'est la mesure qui manque.
+rm -f "$BAC/silence" "$BAC/ntfy.log"; : > "$BAC/status.panne"
+CANAL="$URL_CANAL" jouer "$ATTENDU" 525441 "$ATTENDU" 1890 "$(etat "$ATTENDU" 525441 "$ATTENDU")" >/dev/null
+code=$?
+titre=$(recu TITRE)
+if [ "$titre" = "Self-Right — sonde aveugle" ] && [ "$code" -ne 0 ] && recu CORPS | grep -q "/status injoignable"; then
+    ok "/status seule injoignable → « $titre », RC=$code"
+else
+    nok "/status seule injoignable → titre « $titre », RC=$code"
+fi
+
+# Les deux à la fois : le titre prend le plus grave, le corps garde les deux.
+rm -f "$BAC/silence" "$BAC/ntfy.log"
+CANAL="$URL_CANAL" jouer "$ATTENDU" 525441 "$AVANT" 1890 "$(etat "$ATTENDU" 525441 "$AVANT" "$AVANT" 1890)" >/dev/null
+titre=$(recu TITRE); corps=$(recu CORPS)
+if [ "$titre" = "Self-Right — base en retard" ] && grep -q "injoignable" <<<"$corps" && grep -q "figée" <<<"$corps"; then
+    ok "catalogue figé et /status injoignable → « $titre », les deux au corps"
+else
+    nok "catalogue figé et /status injoignable → titre « $titre », corps « $corps »"
+fi
+rm -f "$BAC/status.panne"
+
+rm -f "$BAC/silence" "$BAC/ntfy.log"
+printf '%s' '{"gabarits":{"conciliation":{"inconnus":["R48318"]}}}' > "$BAC/gabarits.json"
+CANAL="$URL_CANAL" jouer "$ATTENDU" 525441 "$ATTENDU" 1890 "$(etat "$ATTENDU" 525441 "$ATTENDU")" >/dev/null
+titre=$(recu TITRE)
+if [ "$titre" = "Self-Right — renvoi officiel mort" ]; then
+    ok "renvoi vers une ressource disparue → « $titre »"
+else
+    nok "renvoi vers une ressource disparue → titre « $titre »"
+fi
+rm -f "$BAC/gabarits.json"
+
+echo
+echo "▸ Un fait qui dure revient une fois par semaine, pas un passage sur deux"
+# Un premier passage envoie et arme le silence ; on n'en change ensuite que
+# l'horodatage, comme si la notification datait d'avant. Le timer tire son
+# heure dans une fenêtre de cinq minutes : les écarts éprouvés sont ceux qu'il
+# produit réellement, à quelques minutes près autour d'un nombre de jours.
+fige() {
+    CANAL="$URL_CANAL" jouer "$AVANT" 525441 "$AVANT" 1890 "$(etat "$AVANT" 525441 "$AVANT")"
+}
+rm -f "$BAC/silence" "$BAC/ntfy.log"
+fige >/dev/null
+MSG=$(cut -d'|' -f2- "$BAC/silence" 2>/dev/null)
+armer() { # armer <horodatage> [message]
+    printf '%s|%s\n' "$1" "${2:-$MSG}" > "$BAC/silence"
+    : > "$BAC/ntfy.log"
+}
+verdict() { # verdict <attendu : muet|envoi> <libellé>
+    local code vu
+    fige >/dev/null; code=$?
+    if [ -s "$BAC/ntfy.log" ]; then vu=envoi; else vu=muet; fi
+    if [ "$vu" = "$1" ] && [ "$code" -ne 0 ]; then
+        ok "$2 → $vu, RC=$code"
+    else
+        nok "$2 → $vu (attendu : $1), RC=$code"
+    fi
+}
+if [ -z "$MSG" ]; then
+    nok "le premier passage n'a rien envoyé : le silence reste inéprouvé"
+else
+    maintenant=$(date +%s)
+    armer $((maintenant - 86400 - 180));     verdict muet  "même fait, 24 h 03 après"
+    armer $((maintenant - 6 * 86400));       verdict muet  "même fait, 6 jours après"
+    armer $((maintenant - 7 * 86400 + 180)); verdict envoi "même fait, 7 jours moins 3 minutes après"
+    armer $((maintenant - 60)) "un autre fait"
+    verdict envoi "fait nouveau, une minute après le précédent"
+    armer "illisible"
+    verdict envoi "horodatage illisible → une alerte de trop, pas une de moins"
+fi
+rm -f "$BAC/silence" "$BAC/ntfy.log"
+
+echo
+echo "▸ Une source injoignable reste une alerte"
 kill "$SERVEUR" 2>/dev/null; SERVEUR=""
 sortie=$(jouer "$ATTENDU" 525441 "$ATTENDU" 1890 "$(etat "$ATTENDU" 525441 "$ATTENDU")")
 if grep -q "injoignable" <<<"$sortie"; then

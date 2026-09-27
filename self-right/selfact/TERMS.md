@@ -1,6 +1,6 @@
 # SelfAct — Conditions d'utilisation
 
-Version **v0.1.2** — en vigueur depuis le 18 avril 2026, révisée le 23 août 2026 · Licence AGPL-3.0-or-later (code, depuis le 19/04/2026) · Données sous licence Etalab 2.0 (modèles service-public.fr)
+Version **v0.1.3** — en vigueur depuis le 18 avril 2026, révisée le 27 septembre 2026 · Licence AGPL-3.0-or-later (code, depuis le 19/04/2026) · Données sous licence Etalab 2.0 (modèles service-public.fr)
 
 ## 1. Nature du service
 
@@ -48,12 +48,12 @@ L'utilisateur utilise SelfAct **sous sa seule responsabilité**. SelfAct ne gara
 
 ## 6. Données personnelles et tracking
 
-SelfAct **ne collecte aucune donnée personnelle**. En particulier :
+SelfAct **ne reçoit rien de ce que tu écris**, et ne garde de toi que ce que tout serveur web garde. En particulier :
 
 - Pas de compte utilisateur
 - Pas de cookies de session
 - Pas d'analytics ou de tracking tiers
-- Pas de journal d'accès nominatif au-delà des logs nginx standards (IP rotés 7 jours, aucun enrichissement)
+- Un journal d'accès nginx standard, et rien au-delà : adresse IP, adresse demandée, date, navigateur, conservés 14 jours, sans enrichissement
 - Le générateur de brouillon ne conserve aucune trace du contenu traité
 
 `/act/api/draft` ne reçoit aucune donnée : elle rend un gabarit à trous, et le remplissage a lieu dans le navigateur. Un POST est refusé en 405. Rien de ce que tu écris ne quitte ta machine, donc rien n'est persisté côté serveur.

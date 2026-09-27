@@ -39,6 +39,8 @@ VOULUES = {
     # La table des noms de juridiction sert à dire les bornes de couverture :
     # sans elle, le chargement rend un NameError au premier cas qui en porte.
     "_NOM_JURIDICTION_COURT", "_PERIMETRE", "MOIS", "DATE_ISO",
+    "_perimetre", "_ADMINISTRATIVES", "_PERIMETRE_JURIS_ADMINISTRATIF",
+    "_SILENCE_MAX_JOURS",
 }
 
 # Un vendredi ordinaire, postérieur à l'échéance du 15 : c'est la configuration
@@ -172,6 +174,52 @@ def main() -> int:
         "une seule juridiction couverte → une seule borne dite",
     ))
 
+    # 🔑 Un fonds qui ne reçoit plus rien borne la couverture, il ne la vieillit
+    # pas. Mesuré le 27/09/2026 : les tribunaux administratifs s'arrêtent en
+    # 2009 dans JADE, la Cour de discipline budgétaire en 2000, et chaque
+    # réponse annonçait « (9657 jours) » — une base à jour lue comme vieille de
+    # vingt-six ans. Couverture de ce jour-là, décalée sur la date gelée.
+    mesuree = {
+        "last_update": "2026-08-15", "last_sync": "2026-08-15",
+        "couverture": {
+            "ca": {"fin": "2026-08-10"}, "caa": {"fin": "2026-08-09"},
+            "cc": {"fin": "2026-08-16"}, "cdbf": {"fin": "2000-04-19"},
+            "ce": {"fin": "2026-08-09"}, "ta": {"fin": "2009-12-17"},
+            "tc": {"fin": "2026-07-06"},
+        },
+    }
+    ancien = (AUJOURDHUI - datetime.date(2000, 4, 19)).days
+    cas.append((
+        mesuree, False,
+        ["Conseil d'État jusqu'au 9 août 2026",
+         "cours administratives d'appel jusqu'au 9 août 2026",
+         # Le moins prolifique des fonds vivants fixe l'âge : c'est lui qui
+         # limite ce qu'on peut affirmer absent.
+         "Tribunal des conflits jusqu'au 6 juillet 2026 (46 jours)",
+         "hors du compte des jours",
+         "tribunaux administratifs jusqu'au 17 décembre 2009",
+         "Cour de discipline budgétaire et financière jusqu'au 19 avril 2000"],
+        [f"({ancien} jours)", "caa jusqu'au", "ce jusqu'au", "cdbf"],
+        "fonds arrêtés → nommés à part, hors de l'âge ; juridictions nommées",
+    ))
+
+    # La frontière du silence, des deux côtés : lue dans le serveur, pour que ce
+    # cas suive la valeur au lieu de la recopier.
+    seuil = charger()["_SILENCE_MAX_JOURS"]
+    front = datetime.date(2026, 8, 20)
+    for ecart, arrete in ((seuil, False), (seuil + 1, True)):
+        fin = front - datetime.timedelta(days=ecart)
+        bloc = {"last_update": "2026-08-15", "last_sync": "2026-08-15",
+                "couverture": {"cc": {"fin": front.isoformat()},
+                               "tc": {"fin": fin.isoformat()}}}
+        age = (AUJOURDHUI - fin).days
+        cas.append((
+            bloc, False,
+            ["hors du compte des jours", "(1 jour)"] if arrete else [f"({age} jours)"],
+            [] if arrete else ["hors du compte des jours"],
+            f"silence de {ecart} jours → {'arrêté' if arrete else 'vivant'}",
+        ))
+
     print("▸ Ce que le serveur annonce, selon les deux dates")
     for bloc, retard_attendu, exiges, interdits, libelle in cas:
         message, retard = etat(bloc, "LEGI")
@@ -199,6 +247,24 @@ def main() -> int:
         "jurisprudence" in perimetre,
         "la clé est celle du bloc de statut, pas un nom d'outil",
     )
+
+    print("\n▸ Le périmètre suit la couverture que déclare /status")
+    # 🔑 La réserve « la justice administrative n'est pas dans cette base » est
+    # vraie tant que l'index ne sert que cc et ca, fausse dès qu'il sert le
+    # Conseil d'État. Les deux branches s'éprouvent : une seule ne distingue pas
+    # une réserve déduite d'une réserve écrite en dur.
+    serveur = charger()
+    judiciaire = serveur["_perimetre"]("jurisprudence", {"couverture": {"cc": {}, "ca": {}}})
+    verdict("ArianeWeb" in judiciaire,
+            "index judiciaire seul → la réserve ArianeWeb est dite")
+    elargi = serveur["_perimetre"]("jurisprudence",
+                                  {"couverture": {"cc": {}, "ca": {}, "ce": {}}})
+    verdict("ArianeWeb" not in elargi and "n'est pas dans cette base" not in elargi,
+            "index élargi au Conseil d'État → la réserve disparaît")
+    verdict("verifier_jurisprudence" in elargi,
+            "index élargi → le périmètre dit comment atteindre le Conseil d'État")
+    verdict(serveur["_perimetre"]("legi", {}) == perimetre["legi"],
+            "les autres bases gardent leur périmètre")
 
     print()
     if echecs:

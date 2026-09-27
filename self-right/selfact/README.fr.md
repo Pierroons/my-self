@@ -2,10 +2,10 @@
 
 > 🇬🇧 **[Read in English →](./README.md)**
 
-**Transforme une analyse juridique en action prête à envoyer.**
+**De « je connais mes droits » à la démarche : le formulaire officiel, le délai, un modèle de lettre à compléter.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.1.2 en service](https://img.shields.io/badge/statut-v0.1.2%20en%20service-brightgreen.svg)](#statut)
+[![Statut : v0.1.3 en service](https://img.shields.io/badge/statut-v0.1.3%20en%20service-brightgreen.svg)](#statut)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfJustice](https://img.shields.io/badge/companion-SelfJustice-green.svg)](../selfjustice/)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -14,114 +14,81 @@
 
 ---
 
-## Le gap que SelfAct comble
+## Ce que SelfAct couvre
 
-[SelfJustice](../selfjustice/) produit une pré-analyse juridique impartiale avec citations d'articles, analyse forces/faiblesses, et indications procédurales. Excellente sortie. Mais l'utilisateur se retrouve avec un PDF qui dit :
+[SelfJustice](../selfjustice/) sert le droit : les articles en vigueur, les textes européens,
+la jurisprudence. Ton IA s'en sert pour s'appuyer sur les textes en vigueur, avec des références vérifiables, plutôt que sur sa mémoire. Reste à
+agir : quel formulaire remplir, quel service en ligne utiliser, dans quel délai, comment écrire
+le courrier.
 
-> *« Vous pourriez envoyer une mise en demeure fondée sur l'art. L113-1 du Code des assurances, puis saisir le Médiateur de l'Assurance, avec un délai de 2 mois... »*
-
-...et ne sait toujours pas comment rédiger cette mise en demeure, quelle juridiction est compétente, quel CERFA remplir, ni comment calculer le délai. **La falaise entre « je comprends mes droits » et « j'agis sur mes droits » est là où 90 % des dossiers meurent.**
-
-SelfAct est le pont. Il prend la sortie structurée de SelfJustice et produit **le document réel que vous envoyez**.
-
----
-
-## Vision
-
-Un générateur open-source auto-hébergeable de documents procéduraux conformes en matière civile française :
-
-- **Mises en demeure** (avec la bonne base légale, format RAR, clause standard 15 jours)
-- **Saisines** de la juridiction / tribunal / commission / conciliateur compétent
-- **Formulaires CERFA** pré-remplis depuis l'analyse SelfJustice
-- **Calendriers procéduraux** avec délais auto-calculés (art. 640 CPC, etc.)
-- **Dossiers de preuves** avec contenu et structure suggérés
-
-Toute sortie reste locale. Pas de cloud. Aucun tiers ne touche les documents.
+SelfAct couvre cette étape. Il **ne rédige pas ton dossier** : il te montre la ressource
+officielle, calcule le délai, et te donne un modèle de lettre à trous. Les faits, c'est toi qui
+les écris.
 
 ---
 
-## Principe cœur
+## Ce que fait SelfAct
 
-SelfAct lit une **analyse SelfJustice JSON** en entrée. L'analyse contient :
+- **Catalogue des ressources officielles** — formulaires CERFA, téléservices et modèles de
+  lettres de service-public.gouv.fr, moissonnés les 1er et 15 du mois (compte exact :
+  `/act/api/catalog.php?stats=1`).
+- **Situations** — une vingtaine de situations courantes, curées à la main ; tu choisis la
+  tienne, SelfAct rend la démarche, l'article et le formulaire qui lui sont rattachés.
+- **Délais** — calcul selon les articles 640 à 643 du code de procédure civile (métropole,
+  outre-mer, étranger), exportable dans ton agenda (`.ics`).
+- **Modèles de lettres à trous** — mise en demeure, saisine du conciliateur de justice ou du
+  Défenseur des droits, recours gracieux, résiliation, dépôt de plainte.
+  Tu complètes les champs dans ton navigateur, puis tu imprimes. Un modèle qui imite la forme
+  d'un acte juridique porte la mention « NON OFFICIEL » dans son corps ; tous portent un rappel
+  en pied de page.
 
-```json
-{
-  "qualification": "refus d'indemnisation assurance",
-  "legal_basis": ["L113-1 CCA", "L113-5 CCA"],
-  "jurisdiction": "médiateur puis tribunal judiciaire",
-  "deadline": { "type": "prescription", "days": 730 },
-  "next_steps": ["mise en demeure", "saisine médiateur", "saisine TJ"]
-}
-```
-
-À partir de ça, SelfAct :
-1. Sélectionne les **templates de document** correspondants (mise en demeure + saisine médiateur).
-2. Les remplit avec les parties, les faits, la base légale.
-3. Calcule le **calendrier procédural** depuis le délai extrait.
-4. Génère le brouillon du courrier via `api/draft.php`, avec XML CERFA le cas échéant.
-5. Sort un **pack dossier** : `dossier-2026-0042.zip` contenant tous les documents, un readme pour l'utilisateur, et un plan d'action.
+Ce que tu écris dans un modèle ne quitte pas ton navigateur : le serveur refuse de recevoir un document
+(`POST` refusé en `405`, sans lire le corps).
 
 ---
 
-## Flux d'intégration avec SelfJustice
+## Ce que SelfAct ne fait pas, volontairement
 
-```
-Saisie user
-    │
-    ▼
-Analyse SelfJustice (JSON structuré)
-    │
-    ▼
-SelfAct — lit le JSON, sélectionne les templates, remplit les données
-    │
-    ├─ Génère mise-en-demeure.pdf
-    ├─ Génère saisine-mediateur.pdf  (+ CERFA XML)
-    ├─ Génère calendrier-procedural.ics (iCal)
-    ├─ Génère dossier-index.pdf
-    │
-    ▼
-Archive ZIP "dossier-{ref}.zip"
-```
-
-L'utilisateur télécharge le ZIP, imprime ce qui doit l'être, envoie ce qui doit l'être. Chaque étape traçable, chaque template auditable, chaque délai dans son agenda.
+- **Il n'analyse pas ta situation** et ne choisit pas pour toi l'article ou la démarche : la
+  consultation juridique est réservée aux professionnels du droit (loi n° 71-1130).
+- **Il ne remplit rien à ta place** : il met en forme ce que tu fournis, sans deviner un champ
+  ni formuler une demande à partir d'un récit.
+- **Il ne produit pas d'acte officiel** : le courrier complété est le tien, tu le relis et tu en
+  assumes le contenu avant de l'envoyer.
 
 ---
 
 ## Rôle dans Self-Right
 
-| SelfJustice (diagnostic) | SelfAct (action) |
-|-------------------------|-------------------|
-| Qualifie le conflit | Génère les documents correspondants |
-| Cite les articles applicables | Les met dans le bon document formel |
-| Identifie la juridiction | Rédige la saisine avec les bonnes pièces |
-| Extrait les délais | Pré-remplit le calendrier (ics) |
-| Dit ce qui est possible | Dit ce qu'il faut signer |
-
-Sans SelfAct, SelfJustice est une consultation qui finit sur le bureau de l'utilisateur. Avec SelfAct, c'est un workflow qui finit avec un reçu RAR signé à La Poste.
+| SelfJustice (le droit) | SelfAct (la démarche) |
+|---|---|
+| Sert les articles, les textes européens et la jurisprudence | Pointe la ressource officielle : formulaire, téléservice, modèle de lettre |
+| Vérifie qu'une référence existe | Calcule le délai et l'exporte dans ton agenda |
+| Dit ce que dit le texte | Donne un modèle à trous — les faits et la signature sont à toi |
 
 ---
 
 ## Statut
 
-**v0.1.2 — en service sur `justice.my-self.fr/act`.**
+**v0.1.3 — en service sur `justice.my-self.fr/act`.**
 
 Tout est ici : [`api/`](api/) le service et ses données, [`site/`](site/) les
 pages, [`tests/`](tests/) les garde-fous, [`docs/`](docs/) le whitepaper. SelfAct
 est servi par le même domaine que SelfJustice — `justice.my-self.fr/act` — et
-n'échange aucun appel avec lui : SelfJustice dit le droit, SelfAct fait la
-démarche.
+n'échange aucun appel avec lui : SelfJustice dit le droit, SelfAct pointe
+la démarche.
 
 - [x] Note de conception
 - [x] Catalogue de ressources — plus de 1 800 ressources officielles en 16 catégories, moissonnées sur service-public.gouv.fr, rafraîchies les 1er et 15 (compte exact : `/act/api/catalog.php?stats=1`)
 - [x] Aiguillage par situation — une vingtaine de situations curées à la main, chacune reliée à un acte, un article et un formulaire
 - [x] Moteur d'échéance — art. 640-643 CPC, métropole / outre-mer / étranger, avec export agenda, couvert par un garde-fou en CI
-- [x] Gabarits de courrier — mise en demeure, saisine, contestation, résiliation, recours, chacun portant la mention « NON OFFICIEL » dans le corps quand il imite la forme d'un acte, et le rappel en pied dans tous les cas
+- [x] Gabarits de courrier — mise en demeure, saisine du conciliateur ou du Défenseur des droits, recours gracieux, résiliation, plainte, chacun portant la mention « NON OFFICIEL » dans le corps quand il imite la forme d'un acte, et le rappel en pied dans tous les cas
 - [x] Impression côté navigateur : aucun brouillon ne quitte la machine
 - [x] Exposé par le serveur MCP SelfRight (4 de ses 12 outils)
 - [ ] Pré-remplissage XML des CERFA
 - [ ] Couverture de gabarits plus large — plus de scénarios, plus de juridictions
 
-Voir **[whitepaper](docs/whitepaper.docx)** pour la spécification complète du protocole, le plan de bibliothèque de templates, et la roadmap de déploiement.
+Voir **[whitepaper](docs/whitepaper.md)** pour la spécification complète du protocole, le plan de bibliothèque de templates, et la roadmap de déploiement.
 
 ---
 
@@ -129,7 +96,7 @@ Voir **[whitepaper](docs/whitepaper.docx)** pour la spécification complète du 
 
 **Pierroons** — [github.com/Pierroons/my-self](https://github.com/Pierroons/my-self)
 
-*SelfAct — La lettre est déjà écrite. Il suffit de la signer.*
+*SelfAct — Le modèle est prêt. Les faits, c'est toi qui les écris.*
 
 ---
 

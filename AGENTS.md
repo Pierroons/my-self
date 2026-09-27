@@ -9,7 +9,7 @@ Instructions pour les agents de code travaillant sur MySelf. Lire aussi
 |---|---|
 | `bi-self/` | SelfRecover (recovery sans email/SMS), SelfModerate |
 | `self-right/` | SelfJustice (consultation du droit français et européen), SelfAct |
-| `self-security/` | SelfDataGuard (chiffrement enveloppé), SelfGuard, SelfKeyGuard, SelfRecover-LUKS |
+| `self-security/` | SelfDataGuard (chiffrement enveloppé), SelfRecover-LUKS |
 | `demo/` | ce qui se lance pour montrer : `bi-self-duo/`, `selfdataguard/`, `lab/` |
 | `web/` | ce qui est servi statiquement, un dossier par domaine |
 | `deploy/` | nginx et systemd, un dossier par cible |
@@ -48,6 +48,7 @@ sur toute convention générale.
 | shell | `bash -n <fichier>` **et** `shellcheck` |
 | SelfJustice, API ou index | `python3 self-right/selfjustice/tests/test_jurisprudence.py <url>` |
 | tout commit | le hook `pre-commit` lance gitleaks — ne pas le contourner |
+| la version d'un module | `modules.json` d'abord, puis `bash scripts/check-versions.sh`, qui liste chaque porteur à suivre ; la version annoncée demande son tag à Pierroons |
 
 Si une validation ne peut pas être lancée, l'écrire : la commande, la raison,
 et le risque qui subsiste.
@@ -118,11 +119,16 @@ tiennent en intégration continue.
 | `scripts/check-patch-legi.sh` | un hôte porte-t-il encore les correctifs locaux sur `legi.py`, à l'identique du patch versionné |
 | `scripts/check-liens-bibliotheque.sh` | une démo pointe-t-elle vers la bibliothèque, ou en a-t-elle recopié une version qui divergera |
 | `scripts/check-plancher-secret.sh` | un secret de déploiement atteint-il le plancher de longueur que le code exige |
+| `scripts/check-versions.sh` | chaque porteur d'une version dit-il celle de `modules.json`, la source unique ; avec `--tags`, chaque version annoncée a-t-elle son tag |
+| `scripts/check-ecosysteme.sh` | ce que nos README disent de `selffarm-lite` correspond-il à ce qu'il publie ; `--ecrire` remet le bloc à jour |
 
-**Cinq d'entre eux tournent en intégration continue** (`structure.yml`) : les
+**Six d'entre eux tournent en intégration continue** (`structure.yml`) : les
 chemins cités, l'unicité du profil de hachage, les gabarits de vhost — ce
-dernier parce que le job installe nginx pour lui —, les liens de bibliothèque et
-le plancher de secret. Les autres ne le peuvent pas,
+dernier parce que le job installe nginx pour lui —, les liens de bibliothèque,
+le plancher de secret et les porteurs de version. **Deux autres tournent aussi
+chaque matin** (`suivi.yml`), parce que ce qui les fait rougir n'arrive pas par
+un envoi ici : le tag qu'une version annoncée attend, et le dépôt voisin. Ils
+signalent sans bloquer `main`. Les autres ne le peuvent pas,
 et ce n'est pas un oubli — l'écart d'instance, la surface servie et les
 correctifs de `legi.py` ont besoin d'un accès à la machine, la fraîcheur des
 bases a besoin de ses API, et l'audit OPSEC a besoin de motifs qui vivent hors

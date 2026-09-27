@@ -91,8 +91,8 @@ def prose(txt):
     # `](#section)` entre backticks pour EXPLIQUER ce contrôle — les lire comme
     # des liens le faisait rougir sur sa propre documentation.
     #
-    # 🔑 Ce retrait du code inline ne vaut QUE pour chercher les liens. Onze
-    # titres du dépôt contiennent du code inline (`## Le format \`SELFVAULT3\``) :
+    # 🔑 Ce retrait du code inline ne vaut QUE pour chercher les liens. Des
+    # titres du dépôt contiennent du code inline (`## 6. \`--keyfile-size\` est une parade…`) :
     # l'appliquer aussi à l'extraction des titres amputait leur slug et condamnait
     # des liens valides. `slug()` retire les backticks et garde leur contenu, ce
     # que fait GitHub.

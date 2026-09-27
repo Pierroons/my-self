@@ -5,7 +5,7 @@
 **Pré-analyse juridique impartiale par directives lisibles par IA — servie via une API publique gratuite.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.4.0 bêta](https://img.shields.io/badge/statut-v0.4.0%20b%C3%AAta-green.svg)](#statut)
+[![Statut : v0.4.1 bêta](https://img.shields.io/badge/statut-v0.4.1%20b%C3%AAta-green.svg)](#statut)
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
@@ -19,7 +19,7 @@
 
 ## Le problème
 
-Le conseil juridique en France coûte 50–300 € par consultation. La plupart des citoyens face à des conflits quotidiens — licenciement abusif, voisinage bruyant, refus d'indemnisation d'assurance, litiges de consommation — soit abandonnent, soit agissent à l'aveugle sans comprendre leurs droits.
+Le conseil juridique en France se paie à la consultation. La plupart des citoyens face à des conflits quotidiens — licenciement abusif, voisinage bruyant, refus d'indemnisation d'assurance, litiges de consommation — soit abandonnent, soit agissent à l'aveugle sans comprendre leurs droits.
 
 Pendant ce temps, chaque assistant IA (Claude, ChatGPT, Mistral, Gemini, Perplexity) répond volontiers aux questions juridiques, mais sans encadrement structuré il hallucine les citations, loupe la hiérarchie des normes, ne reste pas impartial, et saute les disclaimers obligatoires.
 
@@ -83,7 +83,7 @@ N'importe quelle IA. N'importe quel citoyen. N'importe quel conflit. Une pré-an
 
 ## Composants cœur
 
-### 1. Page de directives (`site/index.html`)
+### 1. Page de directives (`site/index.php`)
 
 Directives machine-readable disant à l'IA comment raisonner :
 
@@ -115,7 +115,7 @@ Toutes les endpoints retournent du JSON, toutes sont rate-limitées, toutes ont 
 
 - Le parsing des logs d'accès distingue les **consultations utilisateur** (Claude-User, ChatGPT-User, Perplexity-User) des **crawlers automatisés** (GPTBot, ClaudeBot, GoogleBot, etc.).
 - Le compteur de la homepage affiche le nombre de consultations en temps réel, mis à jour horairement via `build_stats.sh`.
-- Zéro IP loguée, zéro cookie, aucun contenu utilisateur stocké. Uniquement les familles User-Agent anonymisées et les chemins d'endpoint.
+- Les statistiques publiées ne portent que des familles de User-Agent et des chemins d'endpoint — jamais une adresse IP. Le journal d'accès dont elles sont tirées garde, lui, les adresses IP, comme tout serveur web : 14 jours sur l'instance de référence, puis la rotation quotidienne les efface. Pas de compte, pas de cookie. Le formulaire de retour sur la mise en page, si tu t'en sers, garde ce que tu envoies 30 jours.
 
 ---
 
@@ -156,19 +156,19 @@ curl -s "https://justice.my-self.fr/api/legi/search?q=harcelement&limit=20" | jq
 
 ### Auto-héberger
 
-Cloner le repo, pointer nginx sur `site/`, configurer `api/api.php` contre votre dump SQLite LEGI. `deploy/selfjustice/` porte le vhost nginx, le script de déploiement et les unités systemd de synchronisation — la configuration de référence, pas un guide pas-à-pas.
+Clone le dépôt, pointe nginx sur `site/`, configure `api/api.php` contre ton dump SQLite LEGI. `deploy/selfjustice/` porte le vhost nginx, le script de déploiement et les unités systemd de synchronisation — la configuration de référence, pas un guide pas-à-pas.
 
 ---
 
 ## Rôle dans Self-Right
 
-SelfJustice **diagnostique**. [SelfAct](../selfact/) **agit**. Ensemble ils couvrent l'arc complet de « je pense que je suis dans mes droits » à « la mise en demeure est signée et envoyée » :
+SelfJustice sert **le droit**. [SelfAct](../selfact/) sert **la démarche**. Ensemble, ils vont de « que dit le texte ? » à « quel formulaire, quel délai, quel courrier ? » :
 
-1. L'utilisateur décrit le conflit → SelfJustice retourne une analyse JSON structurée.
-2. SelfAct prend ce JSON → génère mise en demeure, saisine, CERFA, calendrier.
-3. L'utilisateur télécharge un dossier ZIP, envoie en RAR à La Poste.
+1. Tu décris ta situation à ta propre IA, qui lit le droit par SelfJustice et t'explique ce qu'il dit, avec des références vérifiables.
+2. SelfAct pointe la ressource officielle de la démarche, calcule le délai et te donne un modèle de lettre à trous.
+3. Tu écris les faits, tu relis, tu signes, tu envoies.
 
-Zéro frais de consultation. Zéro cloud. Zéro intermédiaire.
+Gratuit. Ta question est lue par l'IA que tu choisis ; SelfJustice ne reçoit que les recherches de textes qu'elle lui envoie.
 
 ---
 
@@ -176,29 +176,29 @@ Zéro frais de consultation. Zéro cloud. Zéro intermédiaire.
 
 SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne constitue pas :
 - Un conseil juridique au sens de la loi n° 71-1130 du 31 décembre 1971
-- Une consultation juridique (réservée aux avocats inscrits au Barreau)
+- Une consultation juridique (réservée aux professionnels du droit, loi n° 71-1130, art. 54)
 - Un avis juridique contraignant
 
-**Consultez toujours un avocat avant toute action en justice.**
+**Consulte toujours un avocat avant toute action en justice.**
 
 ---
 
 ## Statut
 
-**v0.4.0 — en production sur [justice.my-self.fr](https://justice.my-self.fr)**
+**v0.4.1 — en production sur [justice.my-self.fr](https://justice.my-self.fr)**
 
 - [x] Directives système (procédure d'analyse en 7 étapes, 5 principes)
 - [x] 8 catégories juridiques (travail, logement, famille, administration, voisinage, consommation, civil, pénal)
 - [x] Points d'entrée détaillés — droit du logement, droit de la famille, droit administratif
 - [x] Template de sortie structuré avec glossaire
-- [x] Disclaimers légaux (conforme loi 71-1130)
+- [x] Avertissements sur la loi 71-1130 — la consultation juridique reste réservée aux professionnels du droit
 - [x] API servant tout le corpus LEGI — **108 codes** adressables par leur titre, sans table d'alias
 - [x] API servant le corpus UE/CEDH (dont le règlement IA 2024/1689)
 - [x] Index de jurisprudence judiciaire (Cour de cassation, cours d'appel)
 - [x] Index de jurisprudence **administrative**, texte intégral servi (Conseil d'État, CAA,
       Tribunal des conflits ; TA et CDBF en fonds historique) — source : fonds JADE de la DILA
 - [x] Serveur MCP (paquet `selfright-mcp`) — consultation depuis un client local
-- [x] Intégration SelfAct — les démarches officielles servies à côté des directives
+- [x] Intégration SelfAct — les ressources officielles servies à côté des directives
 - [x] Testé multi-IA (Claude, crawler ChatGPT, OAI-SearchBot détectés)
 - [x] Stats publiques (`/api/stats/by-ai`, `/api/stats/by-endpoint`)
 - [x] Domaine dédié [justice.my-self.fr](https://justice.my-self.fr)
@@ -212,7 +212,7 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 - **v0.1.0** — Directives cœur + 5 catégories + API LEGI/UE
 - **v0.2.0** — Droit de la famille (divorce, garde, pension) + droit du logement (baux, expulsion)
 - **v0.3.0** — Droit administratif (litiges avec services publics)
-- **v0.4.0 (actuelle)** — Jurisprudence administrative : Conseil d'État et cours
+- **v0.4.0** — Jurisprudence administrative : Conseil d'État et cours
   administratives d'appel jusqu'au jour dit, Tribunal des conflits, et deux fonds historiques
   — les tribunaux administratifs **s'arrêtent en 2009** et la Cour de discipline budgétaire et
   financière **en 2000**, parce que JADE n'en publie qu'une sélection. Un jugement de TA récent
@@ -223,6 +223,9 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
   11/09/2026**, de 1873 à 2026, texte intégral compris — le compte du jour se lit sur
   `/api/status`. La jurisprudence **judiciaire** (Cour de cassation, cours d'appel) est livrée
   et servie ; `tj` et `tcom` sont disponibles chez l'amont et non moissonnés
+- **v0.4.1 (actuelle)** — Les décisions administratives se vérifient par leur numéro, et
+  `/verifier` ne nie plus une décision présente derrière des homonymes plus récents. La recherche
+  par thème dit qu'elle ne couvre que l'ordre judiciaire, au lieu de rendre l'erreur de l'amont
 - **v1.0.0** — Directives relues par un avocat praticien (l'intégration SelfAct est livrée depuis la v0.2.0)
 
 ---
@@ -233,8 +236,8 @@ SelfJustice fait partie de l'écosystème **MySelf**, spécifiquement le pilier 
 
 | Module | Rôle |
 |--------|------|
-| **SelfJustice** (celui-ci) | Diagnostiquer — que dit la loi ? |
-| [SelfAct](../selfact/) | Agir — rédiger la mise en demeure, remplir le CERFA, calendrier des délais |
+| **SelfJustice** (celui-ci) | Le droit — que dit la loi ? |
+| [SelfAct](../selfact/) | La démarche — la ressource officielle, le délai, un modèle de lettre à compléter |
 
 L'humain apporte l'entropie (vécu, faits). La machine apporte l'impartialité (raisonnement structuré, loi citée). Aucun des deux ne suffit seul.
 
@@ -242,7 +245,7 @@ L'humain apporte l'entropie (vécu, faits). La machine apporte l'impartialité (
 
 ## Licence
 
-[AGPL-3.0-or-later](../../LICENSE) — utilisez, forkez, hébergez le vôtre. Si vous faites tourner une version modifiée en service, vous devez publier vos modifications.
+[AGPL-3.0-or-later](../../LICENSE) — utilise, forke, héberge le tien. Si tu fais tourner une version modifiée en service, tu dois publier tes modifications.
 
 ---
 

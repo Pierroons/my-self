@@ -22,7 +22,7 @@ from fpdf.enums import XPos, YPos
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "..", "..", "..", "assets")
-DOC_VERSION = "0.4.0"
+DOC_VERSION = "0.6.0"
 
 # Aucune URL : ce document est imprimé, et une instance auto-hébergée n'a pas
 # d'adresse commune. On donne le chemin dans le dépôt, qui ne bouge qu'avec lui.

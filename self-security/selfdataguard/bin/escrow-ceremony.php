@@ -30,6 +30,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 
+use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Escrow\AuditLog;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
@@ -139,6 +140,9 @@ if (!litigeIsOpen($pdo, $litigeId, $user)) {
 $passphrase = readPassphrase("Passphrase admin de récupération : ");
 try {
     $sk = SelfDataGuard::unsealAdminRecoveryKey(fileEnv('DATAGUARD_ADMIN_SEALED_FILE'), $passphrase);
+} catch (LegacyCipherUnavailableException $e) {
+    sodium_memzero($passphrase);
+    denyAndExit($auditLog, $ctx, 'legacy-cipher-unavailable', $e->getMessage());
 } catch (\Throwable) {
     sodium_memzero($passphrase);
     denyAndExit($auditLog, $ctx, 'bad-passphrase', 'passphrase admin invalide.');

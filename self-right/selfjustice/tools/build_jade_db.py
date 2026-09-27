@@ -11,6 +11,7 @@ quotidiens, la même mécanique que LEGI.
     python3 build_jade_db.py --global Freemium_jade_global_*.tar.gz --db …
     python3 build_jade_db.py --diff JADE_20260909-214416.tar.gz --db …
     python3 build_jade_db.py --depuis auto --db …    # rattrape ce qui manque
+    python3 build_jade_db.py --numeros --db …        # rend cherchable ce qui est en base
 
 🔑 **Le global seul est un piège, et il a déjà servi.** LEGI a été construit
 pendant treize mois à partir d'un dump global figé au 13 juillet 2025, ses diffs
@@ -119,8 +120,57 @@ def ouvrir_base(chemin: str) -> sqlite3.Connection:
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_juri ON decisions(jurisdiction)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_source ON decisions(source)")
+    # 🔑 Le même index que pose le moissonneur Judilibre, pour la même raison —
+    # `/api/status` ne doit pas lire une table de 6,1 Go pour compter. Il est
+    # dans les DEUX collecteurs parce que l'un ou l'autre peut créer la base :
+    # posé d'un seul côté, il disparaîtrait à la première reconstruction faite
+    # par l'autre, et le défaut reviendrait sans bruit. Le pourquoi complet et
+    # les mesures sont dans `build_judilibre_index.py`, à `idx_couverture`.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_couverture "
+                 "ON decisions(date_suspecte, jurisdiction, decision_date)")
+    # `/verifier` ne cherche un numéro que dans cette table : la même que pose
+    # le moissonneur Judilibre, pour qu'une base créée par l'un serve l'autre.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS numeros (
+            number_norm  TEXT NOT NULL,
+            decision_id  TEXT NOT NULL,
+            PRIMARY KEY (number_norm, decision_id)
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_num ON numeros(number_norm)")
     conn.commit()
     return conn
+
+
+def numero_norm(numero):
+    """La forme sous laquelle `/verifier` cherche un numéro.
+
+    🔑 C'est la règle de `juris_normaliser()` dans `api/api.php` : l'API est la
+    seule à lire `numeros`, c'est donc elle qui fait autorité. Un caractère
+    qu'elle retire et qu'on garderait ici rendrait la décision introuvable —
+    d'où l'alphabet ASCII plutôt que `str.isalnum()`, qui garde les lettres
+    accentuées. `tests/sanity_schema_partage.py` compare les deux règles.
+    """
+    if not numero:
+        return None
+    return re.sub(r"[^A-Za-z0-9]", "", str(numero)).lower() or None
+
+
+def remplir_numeros(conn) -> int:
+    """Inscrit dans `numeros` les décisions JADE qui n'y sont pas. Rend leur nombre.
+
+    Sans cette inscription, `decisions` porte la décision et `/verifier` la
+    déclare introuvable. Idempotent : une décision déjà inscrite ne l'est pas
+    deux fois.
+    """
+    conn.create_function("numero_norm", 1, numero_norm, deterministic=True)
+    avant = conn.total_changes
+    conn.execute(
+        "INSERT OR IGNORE INTO numeros (number_norm, decision_id) "
+        "SELECT numero_norm(number), id FROM decisions "
+        "WHERE source = 'jade' AND numero_norm(number) IS NOT NULL")
+    conn.commit()
+    return conn.total_changes - avant
 
 
 def etat_lire(conn, cle, defaut=None):
@@ -275,6 +325,9 @@ def ecrire(conn, lot) -> int:
          texte, source)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, lot)
+    conn.executemany(
+        "INSERT OR IGNORE INTO numeros (number_norm, decision_id) VALUES (?,?)",
+        [(n, ligne[0]) for ligne in lot if (n := numero_norm(ligne[1]))])
     conn.commit()
     return len(lot)
 
@@ -330,11 +383,18 @@ def main():
     p.add_argument("--depuis", help="« auto » : applique tous les incréments manquants")
     p.add_argument("--cache", default=os.environ.get("SELFJUSTICE_JADE_CACHE", "."),
                    help="où déposer les incréments téléchargés")
+    p.add_argument("--numeros", action="store_true",
+                   help="inscrit dans `numeros` les décisions JADE qui n'y sont pas")
     a = p.parse_args()
-    if not (a.glob or a.diff or a.depuis):
-        p.error("rien à faire : --global, --diff ou --depuis")
+    if not (a.glob or a.diff or a.depuis or a.numeros):
+        p.error("rien à faire : --global, --diff, --depuis ou --numeros")
 
     conn = ouvrir_base(a.db)
+    inscrites = remplir_numeros(conn)
+    journal("numéros : %d décision(s) JADE rendue(s) cherchables" % inscrites)
+    if not (a.glob or a.diff or a.depuis):
+        conn.close()
+        return
     complet = True
     refuses_total = set()
 

@@ -357,13 +357,68 @@ grep -q '^IP=' /etc/initramfs-tools/initramfs.conf \
 grep -qx "$NET_MODULE" /etc/initramfs-tools/modules || echo "$NET_MODULE" >> /etc/initramfs-tools/modules
 
 # clé publique autorisée au boot (mets TA clé)
+# ⚠️ Le `command=` n'est pas décoratif — voir juste en dessous pourquoi.
 install -d -m 0755 /etc/dropbear/initramfs
-cat ~/.ssh/id_ed25519.pub > /etc/dropbear/initramfs/authorized_keys   # adapte
+O='command="/etc/selfkeyguard/selfrecover-secours.sh",no-port-forwarding,no-agent-forwarding,no-X11-forwarding'
+printf '%s,%s\n' "$O" "$(cat ~/.ssh/id_ed25519.pub)" \
+  > /etc/dropbear/initramfs/authorized_keys   # adapte
 chmod 0600 /etc/dropbear/initramfs/authorized_keys
 
 # dropbear sur un port dédié
 echo 'DROPBEAR_OPTIONS="-p 2222 -s -j -k -I 300"' > /etc/dropbear/initramfs/dropbear.conf
 ```
+
+#### 🔴 Le shell d'amorçage — la question que l'installateur te pose
+
+Une clé posée **sans `command=`** te donne un **shell root** quand tu te connectes au
+démarrage. Ça paraît pratique. C'est un **contournement complet du chiffrement du disque** :
+
+1. `/boot` et la partition EFI ne sont pas chiffrés — ils ne peuvent pas l'être, le firmware
+   doit les lire avant qu'aucune clé n'existe ;
+2. le sel SelfRecover y voyage, dans l'initramfs ;
+3. qui obtient ce shell monte `/boot` en écriture, y dépose un initrd modifié, et **capture ta
+   passphrase à la saisie suivante**. Rien ne le détecterait.
+
+> **Ce n'est pas théorique.** Le 21/09/2026, les **quatre** machines chiffrées d'un même parc
+> portaient la clé nue — et c'est la ligne d'installation ci-dessus, dans sa forme d'avant, qui
+> les produisait. La même clé ouvrant le pré-boot des quatre, un seul vol donnait le
+> contournement sur tout le parc.
+
+**Le remède évident coûterait ton filet.** Poser `command="cryptroot-unlock"` ferme bien le
+shell — mais `cryptroot-unlock` passe par le keyscript, donc la **passphrase LUKS native
+deviendrait inatteignable à distance**, et une machine dont le module Recover est cassé n'aurait
+plus que sa console physique.
+
+`selfrecover-secours.sh` tient les deux : à la connexion, il propose
+
+```
+    1) Passphrase RECOVER      — la voie normale
+    2) Passphrase LUKS NATIVE  — si le module Recover est cassé
+```
+
+et **rien d'autre** — pas de shell, aucun argument accepté du client. Le filet reste, la porte
+ferme, et il n'y a **aucune clé de secours** à générer, sortir de la machine et ranger : une clé
+de secours partagée par le parc recréerait exactement le défaut qu'on vient de fermer.
+
+`install.sh` **pose la question** (§6) et recommande de fermer. Il ne l'impose pas : un défaut
+appliqué dans le dos de l'opérateur le priverait d'un choix qui lui appartient. Pour répondre
+d'avance, sans interaction : `SHELL_AMORCAGE=ferme` ou `=ouvert`. Un refus est inscrit dans
+`/etc/selfkeyguard/renoncements.log` — tracé, pas invisible.
+
+> ⚠️ **Ça ne ferme pas la classe, seulement ce chemin.** `/boot` reste modifiable par un accès
+> physique et par root sur la machine en marche. Ce que ça ne ferme pas, `verifie-initramfs.sh`
+> le rend **visible** : le hook post-update consigne l'empreinte de chaque image dans
+> `/etc/selfkeyguard/initramfs.sha256`, **sur le volume chiffré**, et qui modifie `/boot` sans
+> ouvrir le volume ne peut pas la mettre d'accord.
+>
+> ```bash
+> ./verifie-initramfs.sh    # 0 concorde · 1 écart · 2 rien à comparer
+> ```
+>
+> Ce n'est pas un scellement TPM : le contrôle tourne à chaud, donc il ne protège pas la saisie
+> qui suit immédiatement une altération, et il ne dit rien contre quelqu'un qui a déjà root sur
+> la machine ouverte. Son modèle de menace est étroit et assumé : **quelqu'un qui atteint
+> `/boot` sans ouvrir le volume.**
 
 > **Piège n°2 — « gave up waiting for root file system device ».** Sans marge de temps, le
 > démarrage abandonne avant que tu aies pu te connecter et saisir la passphrase. Ajoute un
@@ -722,15 +777,26 @@ inouvrable, quel que soit le motif du changement de format.
 > l'ancien slot ne se parlent pas. C'est le seul geste de cette page qui peut rendre
 > une machine en service non amorçable.
 
+**Le format enrôlé est désormais écrit** dans `$SKG/format-slot`, une ligne par volume
+(`<UUID LUKS> <hex|raw>`). `setup-add-selfrecover-slot.sh` l'inscrit une fois le slot
+prouvé ouvrant, et `install.sh` le relit avant de poser le keyscript : il refuse un
+format différent, et il refuse aussi un keyscript déjà en place sans marqueur pour la
+racine — le cas d'une machine installée avant ce marqueur. Le contrôle est
+`format-slot.sh` ; `tests/test_format_slot.sh` l'éprouve.
+
 ### La migration, dans cet ordre
 
 Le slot natif reste ouvrable pendant toute l'opération : c'est lui le filet.
 
 ```bash
-# 0. Sauvegarde de l'en-tête AVANT (§4) — elle contient les slots
+# 0. Compter les slots AVANT, et sauvegarder l'en-tête (§4) — elle contient les slots.
+#    Si un slot hex existe déjà, l'étape 1 en ajoute un troisième : le numéro que
+#    l'étape 5 retirera n'est alors plus celui qu'on croit.
+cryptsetup luksDump "$ROOT_DEV" | grep -E "^\s+[0-9]+: luks2"
 cryptsetup luksHeaderBackup "$ROOT_DEV" --header-backup-file entete-avant-migration.img
 
-# 1. Ajouter un SECOND slot recover, en hexadécimal, sans toucher à l'ancien
+# 1. Ajouter un SECOND slot recover, en hexadécimal, sans toucher à l'ancien.
+#    Une fois le slot prouvé, le script inscrit « <UUID> hex » dans $SKG/format-slot.
 SELFRECOVER_SALT="$(cat $SKG/selfrecover_salt)" ./setup-add-selfrecover-slot.sh "$ROOT_DEV"
 
 # 2. Le prouver PAR LE CHEMIN DU BOOT (§6) — c'est l'étape qui décide
@@ -740,8 +806,10 @@ printf '%s' "$P" \
   | cryptsetup open --test-passphrase --key-file=- "$ROOT_DEV" \
   && echo "✅ le slot hex ouvre le volume par stdin"
 
-# 3. Seulement alors : déployer le nouveau keyscript et régénérer
-install -m 0755 selfrecover-keyscript.sh "$SKG/selfrecover-keyscript.sh"
+# 3. Seulement alors : déployer le nouveau keyscript et régénérer. Le contrôle
+#    refuse si le format enrôlé pour la racine n'est pas celui du keyscript.
+bash format-slot.sh verifier "$ROOT_DEV" selfrecover-keyscript.sh "$SKG" \
+  && install -m 0755 selfrecover-keyscript.sh "$SKG/selfrecover-keyscript.sh"
 update-initramfs -u
 
 # 4. REDÉMARRER et vérifier que le déverrouillage fonctionne. Ne passe pas à
@@ -768,7 +836,8 @@ ressusciterait l'ancien slot brut si on la restaurait (§4).
 | `selfrecover_derive.c` | dérivation Argon2id (clone C, stdin → clé hex) |
 | `selfrecover-keyscript.sh` | keyscript du volume racine (dérive la recover) |
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript |
-| `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS |
+| `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS, et inscrit son format |
+| `format-slot.sh` | inscrit le format enrôlé par volume, et refuse de poser un keyscript d'un autre format |
 | `selfrecover_derive.py` | implémentation de référence (Python) pour usage userspace |
 | `genere-passphrase.py` | tire une passphrase diceware et affiche les deux formes avec leur longueur (§5) |
 | `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces, **le sel**, et **l'image que l'amorceur charge** après chaque génération d'initramfs (§11) |

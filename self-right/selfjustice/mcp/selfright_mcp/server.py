@@ -187,7 +187,19 @@ def _derniere_echeance(aujourdhui: dt.date) -> dt.date:
 # Les codes de juridiction tels que l'index les publie. Table close et courte —
 # la même information écrite en toutes lettres ailleurs dans ce fichier vaut
 # pour l'affichage d'une décision, pas pour une borne de couverture.
-_NOM_JURIDICTION_COURT = {"cc": "Cour de cassation", "ca": "cours d'appel"}
+_NOM_JURIDICTION_COURT = {
+    "cc": "Cour de cassation", "ca": "cours d'appel",
+    "ce": "Conseil d'État", "caa": "cours administratives d'appel",
+    "ta": "tribunaux administratifs", "tc": "Tribunal des conflits",
+    "cdbf": "Cour de discipline budgétaire et financière",
+}
+
+# Au-delà de ce silence, un fonds ne reçoit plus rien : il borne la couverture
+# sans la vieillir. Mesuré le 27/09/2026 : le moins prolifique des fonds
+# vivants, le Tribunal des conflits, n'est jamais resté plus de 203 jours sans
+# décision depuis 1990 ; les fonds arrêtés s'arrêtent en 2009 (tribunaux
+# administratifs) et en 2000 (Cour de discipline budgétaire et financière).
+_SILENCE_MAX_JOURS = 365
 
 
 def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
@@ -242,6 +254,7 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
     #
     # Quand la base publie sa couverture, c'est elle qui dit jusqu'où va le
     # contenu — et elle le dit par juridiction, ce qu'aucune date unique ne peut.
+    arretes = ""
     couverture = bloc.get("couverture")
     if isinstance(couverture, dict) and couverture:
         bornes = {
@@ -250,11 +263,26 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
         }
         bornes = {c: d for c, d in bornes.items() if d}
         if bornes:
+            # 🔑 Un fonds arrêté borne la couverture, il ne la vieillit pas :
+            # compté dans l'âge, il fait annoncer des milliers de jours sur une
+            # base synchronisée la veille. Le silence se mesure depuis la borne
+            # la plus récente, pas depuis aujourd'hui : une synchronisation
+            # morte vieillit tous les fonds ensemble, et l'âge doit le dire.
+            front = max(bornes.values())
+            vivants = {c: d for c, d in bornes.items()
+                       if (front - d).days <= _SILENCE_MAX_JOURS}
             contenu = ", ".join(
                 f"{_NOM_JURIDICTION_COURT.get(c, c)} jusqu'au {_format_fr(d)}"
-                for c, d in sorted(bornes.items())
+                for c, d in sorted(vivants.items())
             )
-            date_contenu = min(bornes.values())
+            date_contenu = min(vivants.values())
+            arretes = "".join(
+                f", {_NOM_JURIDICTION_COURT.get(c, c)} jusqu'au {_format_fr(d)}"
+                for c, d in sorted(bornes.items()) if c not in vivants
+            )
+            if arretes:
+                arretes = (" · fonds sans décision depuis plus d'un an, hors du "
+                           "compte des jours : " + arretes[2:])
 
     # ⚠️ Une instance qui n'annonce pas sa date de synchronisation ne permet pas
     # de distinguer un cron mort d'un amont silencieux. On le DIT, plutôt que de
@@ -272,7 +300,7 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
 
     if date_synchro is None:
         return (
-            f"Base {base} — contenu : {contenu}{vieillesse}. Cette instance "
+            f"Base {base} — contenu : {contenu}{vieillesse}{arretes}. Cette instance "
             "n'annonce pas la date de sa dernière synchronisation : impossible "
             "de dire si elle est à jour. Signale-le si la réponse a des "
             "conséquences.",
@@ -288,7 +316,7 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
         # les données. L'âge du contenu se dit à côté, et il tranche.
         return (
             f"Base {base} synchronisée le {synchro} — cadence tenue · "
-            f"contenu : {contenu}{vieillesse}.",
+            f"contenu : {contenu}{vieillesse}{arretes}.",
             False,
         )
 
@@ -297,7 +325,7 @@ def _etat_fraicheur(bloc: dict, base: str) -> tuple[str, bool]:
         f"⚠️ RETARD — la synchronisation de la base {base} n'a pas tourné depuis "
         f"le {synchro}, soit {retard} jours, et l'échéance du "
         f"{_format_fr(echeance)} n'a pas été honorée. Contenu servi : "
-        f"{contenu}{vieillesse} — les textes rendus peuvent être abrogés ou "
+        f"{contenu}{vieillesse}{arretes} — les textes rendus peuvent être abrogés ou "
         "modifiés depuis. Signale-le à l'utilisateur et renvoie-le vers "
         "legifrance.gouv.fr avant tout usage ayant des conséquences (saisine, "
         "courrier, décision).",
@@ -756,7 +784,12 @@ COURS_APPEL = {
     "ca_toulouse": "Toulouse", "ca_versailles": "Versailles",
 }
 
-JURIDICTIONS = {"cc": "Cour de cassation", "ca": "Cour d'appel"}
+JURIDICTIONS = {
+    "cc": "Cour de cassation", "ca": "Cour d'appel",
+    "ce": "Conseil d'État", "caa": "Cour administrative d'appel",
+    "ta": "Tribunal administratif", "tc": "Tribunal des conflits",
+    "cdbf": "Cour de discipline budgétaire et financière",
+}
 
 # Les formations de la Cour de cassation, libellés repris de la taxonomie
 # Judilibre (`/taxonomy?id=chamber&context_value=cc`), abaissés en minuscule
@@ -818,7 +851,10 @@ def _nom_juridiction(juridiction: Any, cour: Any) -> str:
         return juri
     nom = COURS_APPEL.get(str(cour))
     if nom is None:
-        return f"{juri} {cour}"          # code inconnu : le rendre tel quel
+        # L'index JADE écrit la ville en clair (« Paris »), pas un code.
+        if str(juridiction) not in _ADMINISTRATIVES:
+            return f"{juri} {cour}"      # code inconnu : le rendre tel quel
+        nom = str(cour)
     liaison = "d'" if nom[0] in "AEIOUÉÈaeiou" else "de "
     return f"{juri} {liaison}{nom}"
 
@@ -913,7 +949,7 @@ async def _bandeau(base: str) -> str:
             f"Consultation MCP : {message}",
             cle,
         )
-    return message + _PERIMETRE.get(cle, "")
+    return message + _perimetre(cle, bloc)
 
 
 # 🔑 **L'avertissement de périmètre doit accompagner l'outil qu'on APPELLE.**
@@ -967,6 +1003,30 @@ _PERIMETRE = {
         "qui parle du même mot."
     ),
 }
+
+_ADMINISTRATIVES = ("ce", "caa", "ta")
+
+_PERIMETRE_JURIS_ADMINISTRATIF = (
+    "\nPérimètre : la recherche par thème ne couvre que la justice JUDICIAIRE — "
+    "Cour de cassation et cours d'appel —, parce qu'elle passe par Judilibre. "
+    "Les décisions administratives que l'index porte — Conseil d'État, cours "
+    "administratives d'appel, tribunaux administratifs, sur les périodes que "
+    "donne `statut` — se vérifient par leur numéro avec verifier_jurisprudence, "
+    "et ne sortent d'aucune recherche par thème. Si la question relève du droit "
+    "administratif, dis-le plutôt que de servir un arrêt civil qui parle du même mot."
+)
+
+
+def _perimetre(cle: str, bloc: dict) -> str:
+    """Le périmètre d'une base, tiré de ce que son statut déclare servir.
+
+    🔑 Écrite en dur, la réserve « la justice administrative n'est pas dans
+    cette base » devient fausse dès que l'index sert le Conseil d'État. Elle
+    suit donc la couverture que rend `/status`, comme la même réserve côté API.
+    """
+    if cle == "jurisprudence" and set(bloc.get("couverture") or {}) & set(_ADMINISTRATIVES):
+        return _PERIMETRE_JURIS_ADMINISTRATIF
+    return _PERIMETRE.get(cle, "")
 
 
 # -------------------------------------------------------------------- outils
@@ -1025,7 +1085,7 @@ async def statut() -> str:
             return _format_fr(fin) if fin else bloc.get("fin", "?")
 
         bornes = " · ".join(
-            f"{code} jusqu'au {_borne(bloc)} ({bloc.get('decisions', '?')} décisions)"
+            f"{_NOM_JURIDICTION_COURT.get(code, code)} jusqu'au {_borne(bloc)} ({bloc.get('decisions', '?')} décisions)"
             for code, bloc in sorted(juris.get("couverture", {}).items())
         )
         ligne_juris = (
@@ -1049,7 +1109,7 @@ async def statut() -> str:
     try:
         meta = (await _get("/catalog", {"limit": 1}, base=ACT_URL)).get("meta") or {}
         ligne_catalogue = await _bandeau_catalogue(meta) + (
-            f"\nDémarches officielles : {meta.get('total', '?')} ressources."
+            f"\nRessources officielles au catalogue : {meta.get('total', '?')}."
         )
     except (ApiIndisponible, RequeteInvalide) as e:
         ligne_catalogue = (
@@ -1422,7 +1482,8 @@ def _msg_juris_morte(detail: str) -> str:
         f"Vérification de jurisprudence impossible ({detail}).\n\n"
         "Ne cite AUCUNE décision de mémoire, même si elle te paraît certaine. "
         "Dis à l'utilisateur que la vérification est indisponible et renvoie-le "
-        "vers courdecassation.fr ou judilibre.io. Un numéro d'arrêt cité sans "
+        "vers courdecassation.fr ou judilibre.io pour la justice judiciaire, "
+        "legifrance.gouv.fr pour la justice administrative. Un numéro d'arrêt cité sans "
         "vérification n'a aucune valeur."
     )
 
@@ -1442,7 +1503,10 @@ async def verifier_jurisprudence(
     Args:
         reference: le numéro tel qu'il s'écrit — « 25-10.377 » pour un pourvoi,
             « 26/00027 » pour un rôle général de cour d'appel.
-        juridiction: « cc » (Cour de cassation) ou « ca » (cours d'appel).
+        juridiction: « cc » (Cour de cassation), « ca » (cours d'appel), et,
+            quand l'index les porte — `statut` le dit —, « ce » (Conseil
+            d'État), « caa » (cours administratives d'appel), « ta »
+            (tribunaux administratifs), « tc » (Tribunal des conflits).
             À préciser quand on la connaît : le même numéro normalisé peut
             désigner un pourvoi et un RG de cour d'appel.
         date: la date attribuée à la décision, au format « AAAA-MM-JJ », quand
@@ -1786,14 +1850,24 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
         return _msg_juris_morte(data.get("raison", data.get("detail", "raison non précisée")))
 
     bandeau = await _bandeau("jurisprudence")
+    # 🔑 Deux fonds, deux formes. L'API relaie Judilibre tel quel pour l'ordre
+    # judiciaire (`text`, `chamber`) et sert l'ordre administratif depuis son
+    # index JADE (`texte`, `formation`, un `source` déjà rédigé). Lire la seule
+    # forme Judilibre rend « texte non fourni » pour toute décision
+    # administrative, dont le texte est pourtant servi. L'identifiant désigne le
+    # fonds, comme il désigne la route côté API.
+    jade = identifiant.upper().startswith("CETATEXT")
+    formation = data.get("formation") if jade else (
+        _nom_chambre(data.get("chamber")) if data.get("chamber") else "")
     entete = (
         f"{data.get('number')} — "
         + _nom_juridiction(data.get("jurisdiction"), data.get("location"))
-        + (f", {_nom_chambre(data.get('chamber'))}" if data.get("chamber") else "")
+        + (f", {formation}" if formation else "")
         + f", {data.get('decision_date')}"
     )
+    reserve = data.get("reserve")
 
-    texte = data.get("text") or "(texte non fourni par la source)"
+    texte = data.get("texte" if jade else "text") or "(texte non fourni par la source)"
     coupe = ""
 
     if not integral and len(texte) > PLAFOND_TEXTE:
@@ -1836,7 +1910,7 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
                 "fin, dispositif compris, sont là. Ne conclus pas sur ce qui "
                 "n'est pas affiché. `integral=True` rend le texte entier si le "
                 "client peut l'encaisser, sinon lis la décision sur "
-                "courdecassation.fr."
+                + ("legifrance.gouv.fr." if jade else "courdecassation.fr.")
             )
             texte = (
                 texte[:tete]
@@ -1847,13 +1921,18 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
     # La juridiction commande, le fonds complète : `source` vaut `dila` sur
     # toutes les décisions mesurées et ne permet pas de dire d'où vient le
     # texte. Un champ inconnu se tait plutôt que de nommer une origine fausse.
-    juri = JURIDICTIONS.get(str(data.get("jurisdiction") or ""))
-    fonds = FONDS_JUDILIBRE.get(str(data.get("source") or "").lower())
-    detail = ", ".join(x for x in (juri, fonds) if x)
-    provenance = f"Judilibre ({detail})" if detail else "Judilibre"
+    if jade:
+        provenance = data.get("source") or "JADE (DILA)"
+    else:
+        juri = JURIDICTIONS.get(str(data.get("jurisdiction") or ""))
+        fonds = FONDS_JUDILIBRE.get(str(data.get("source") or "").lower())
+        detail = ", ".join(x for x in (juri, fonds) if x)
+        provenance = f"Judilibre ({detail})" if detail else "Judilibre"
 
     return (
-        f"{bandeau}\n\n{entete}\n{data.get('ecli', '')}\n\n{texte}{coupe}\n\n"
+        f"{bandeau}\n\n{entete}\n{data.get('ecli', '')}\n\n"
+        + (f"⚠️ {reserve}\n\n" if reserve else "")
+        + f"{texte}{coupe}\n\n"
         f"Source : {provenance}, open data. Cite la décision "
         "telle qu'elle est écrite ici, sans la reformuler en règle générale."
     )

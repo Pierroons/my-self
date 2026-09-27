@@ -10,6 +10,235 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### selfright-mcp 0.4.5 — le texte d'une décision administrative sort enfin — 27 septembre 2026
+
+`texte_decision` lisait toute réponse dans la forme de Judilibre. Pour une décision du Conseil
+d'État, d'une cour administrative d'appel ou d'un tribunal administratif, il rendait « texte non
+fourni » et l'attribuait à Judilibre, alors que l'API servait le texte entier depuis l'index JADE.
+Il lit désormais les deux formes, nomme JADE comme provenance, relaie la réserve qui accompagne une
+date aberrante, et renvoie vers Légifrance quand le texte est coupé.
+
+L'âge annoncé de la jurisprudence ne compte plus les fonds sans décision depuis plus d'un an : les
+tribunaux administratifs (arrêtés en 2009 dans JADE) et la Cour de discipline budgétaire et
+financière (en 2000) lui faisaient afficher « 9657 jours ». Ces fonds restent nommés, à part, avec
+leur borne. Les juridictions administratives sont nommées en toutes lettres au lieu de leur code.
+
+### SelfJustice v0.4.1 — le Conseil d'État se vérifie, et `/verifier` ne nie plus une décision présente — 27 septembre 2026
+
+`/verifier` prenait les cinquante décisions les plus récentes d'un numéro, puis filtrait par la date
+annoncée. Une décision présente derrière plus d'homonymes récents n'était jamais examinée, et la
+route la déclarait absente : mesuré en production sur `23/00039` du 5 janvier 2023, porté par 61
+décisions. Les décisions du jour annoncé passent désormais en tête du tri, et le nombre d'homonymes
+que lit le modèle vient du total, non de la liste bornée.
+
+Le fonds JADE, servi depuis le 10 septembre, n'était pas cherchable par numéro : son collecteur
+n'écrivait jamais dans `numeros`, la seule table que lit `/verifier`. La décision du Conseil d'État
+n° 519395 du 9 septembre 2026, présente en base, était déclarée absente, avec la réserve que la
+justice administrative « n'y figurera jamais ». `build_jade_db.py` inscrit maintenant chaque
+numéro, sous la règle de normalisation de l'API, et `--numeros` rattrape une base existante. La
+réserve « ArianeWeb » ne s'affiche plus que si l'index ne sert pas la justice administrative, et la
+recherche par thème filtrée sur une juridiction que Judilibre ne connaît pas refuse avec une
+indication, au lieu de rendre l'erreur de l'amont comme une panne.
+
+Les textes disent ce que l'instance garde — le journal d'accès, IP comprise, quatorze jours ; les
+retours de mise en page, trente jours — là où ils promettaient « aucune donnée personnelle ». La date
+du pied de page, que la page demande aux IA de citer, vient du fichier servi. Les articles 750-1 du
+code de procédure civile et 54 de la loi n° 71-1130 sont cités d'après la base LEGI.
+
+### SelfAct v0.1.3 — le module se décrit comme il est — 27 septembre 2026
+
+Depuis la 0.1.2 du 23 août, l'avertissement « NON OFFICIEL » suit ce que le document imite, la
+section des faits porte le titre que son gabarit annonce, et l'adresse d'exemple du brouillon passe
+sur un domaine réservé.
+
+Les textes présentaient SelfAct comme un générateur de documents « conformes » qui lit une analyse,
+dit quoi signer et livre un dossier. Le code fait l'inverse, volontairement : un modèle à trous,
+rempli dans le navigateur, et un `POST` refusé sans lire le corps. README, whitepaper, pages servies
+et conditions d'utilisation disent maintenant ce qu'il fait et ce qu'il ne fait pas. La saisine du
+conciliateur de justice n'est plus dite « obligatoire » à elle seule : l'article 750-1 laisse le
+choix entre conciliation, médiation et procédure participative.
+
+### selfright-mcp 0.4.4 — le périmètre de la jurisprudence suit la couverture — 27 septembre 2026
+
+Aucune version n'a été publiée depuis la 0.4.0 du 22 août. Les 0.4.1 et 0.4.2 ont corrigé ce que
+le contrôle extérieur du 22 août avait relevé, montré d'où vient un texte, et rendu obligatoire
+`SELFRIGHT_ACT_URL`. Le serveur a ensuite suivi l'élargissement de la base à tout le droit publié au
+Journal officiel, nommé ses 108 codes, dit ce que la base ne contient pas, et transmis au modèle les
+seuils d'une situation. Le numéro a rattrapé ces changements le 26 septembre, en 0.4.3.
+
+En 0.4.4, le bandeau de la jurisprudence tire son périmètre de la couverture que rend `/status` :
+la justice administrative n'y est plus dite absente dès que l'index la sert, et
+`verifier_jurisprudence` nomme les juridictions administratives qu'il accepte.
+
+### Le lab enrôle de nouveau un appareil — 27 septembre 2026
+
+L'enrôlement « cet appareil » refusait le bon mot mémorisé (« Compte ou mot mémorisé
+incorrect »), sur tout compte créé depuis le salage par compte du 27 août. `/api/sel.php` devait
+rendre à la session le sel de son compte ; il lisait ce sel sur le compte de session, qui ne le
+porte pas, et rendait le sel de repli. Le navigateur dérivait donc une autre empreinte. Le sel est
+désormais relu en base. Le banc `sanity_sel_session.php` passe par la vraie route, de
+l'inscription à l'enrôlement ; le banc client simulait le serveur et ne pouvait pas le voir.
+
+Le décor du lab (`seed.php`) referme la session que l'inscription ouvre : ses trois comptes
+laissaient chacun un jeton valide 24 heures en base.
+
+Le coffre mémo conseillait de reprendre la passphrase reçue à l'inscription, et son champ de mot de
+passe s'intitulait « Ton mot de passe ». Or le serveur reçoit les secrets du compte : le mot de passe
+à chaque connexion, la passphrase à chaque récupération. Un coffre scellé avec eux n'est plus hors de
+portée du serveur. Les deux champs demandent désormais des secrets propres au coffre, en français et
+en anglais.
+
+### Le CTF annonce sa Saison 2 : deux drapeaux, et des promesses exactes — 26 septembre 2026
+
+La page red team présentait un seul drapeau, dans le mémo, chiffré « AES-256-GCM ». Elle en
+porte désormais deux, nommés avec leurs comptes, et dit pour chacun ce qui le protège et ce qui
+le fait tomber :
+- **FLAG-E2E** est chiffré dans le navigateur (Argon2id, HKDF puis AES-GCM) : ni un dump, ni un
+  administrateur, ni le serveur ne le révèlent.
+- **FLAG-DM** est chiffré au repos par SelfDataGuard : un dump seul ne suffit pas, la clé serveur
+  si.
+
+Quatre affirmations fausses de l'interface sont corrigées :
+- **les rapports red team** étaient dits chiffrés par SelfDataGuard ; ils le sont en PGP, dans le
+  navigateur ;
+- **les messages privés** étaient dits « de bout en bout » ; ils sont chiffrés au repos ;
+- **le mémo** était attribué à SelfDataGuard ;
+- **les profils et DM** étaient dits lisibles par un administrateur, alors que c'est la clé serveur
+  qui permet de les lire.
+
+La feuille de route n'annonce plus Argon2id comme à venir.
+
+Deux corrections suivent :
+- la notification d'un nouveau rapport affiche la sévérité validée ; elle lisait un champ
+  inexistant et affichait toujours « ? » ;
+- le compteur public de drapeaux capturés compte aussi FLAG-DM.
+
+### Le mémo chiffré du lab scelle en Argon2id ; PBKDF2 quitte le dépôt — 26 septembre 2026
+
+Le mémo du lab était le dernier code à dériver une clé par PBKDF2 : 600 000 tours, et un
+coût presque nul en mémoire. Il était exempté nommément de `check-profil-unique.sh` depuis
+le 10/09, à la condition qu'il migre. Il a migré.
+
+- **`e2e-memo.js` dérive par `srKdfDeriver`**, le porteur Argon2id de SelfRecover : même
+  profil figé, même plancher de lecture. Les étiquettes HKDF `data-enc` / `data-recover` et
+  les deux enveloppes ne changent pas.
+- **Le coffre inscrit ses paramètres** (`kdf`, en JSON) ; le serveur exige leur forme et la
+  normalise. Un coffre sans `kdf` est refusé à l'ouverture, avec un message qui dit de le
+  recréer. Aucun n'existait : 0 coffre en prod comme en local, mesuré avant la migration.
+- **L'exemption est retirée** : aucune dérivation de mot de passe en JavaScript hors du
+  porteur, sans exception.
+- **Corrigé au passage** : la page attendait que la création rende la clé du coffre pour
+  enchaîner sur l'écriture ; elle ne la rendait pas, et le premier enregistrement répondait
+  « verrouillé ».
+
+Bancs : `sanity_memo_client.js` (11 cas, dont un oracle — PHP rouvre avec libsodium,
+`hash_hkdf` et openssl l'enveloppe produite par le JavaScript) et `sanity_memo_vault.php`
+(9 cas). Défauts plantés : une étiquette HKDF changée n'est vue que par l'oracle.
+
+### Le lab décrit ses clés telles qu'elles sont — 26 septembre 2026
+
+La page sécurité du lab et le PDF d'architecture qu'en tire `docs/gen_doc_mapping.py`
+décrivaient un seul secret racine, dont HKDF aurait tiré trois clés filles : `auth`,
+`data-enc`, `data-recover`. Aucun code ne dérive ainsi. L'étiquette `auth` n'a aucun
+consommateur, et SelfDataGuard ne consomme aucune clé de SelfRecover.
+
+- **La section 3 de la page sécurité**, en français et en anglais, dit ce que fait le code.
+  L'accès passe par SelfRecover : une empreinte `HMAC-SHA256` du mot, liée au site et salée
+  par compte, dont le serveur garde un Argon2id. Le mémo tire deux clés filles par étiquette
+  HKDF, `data-enc` depuis le mot de passe et `data-recover` depuis la passphrase de secours.
+  La récupération n'est unifiée que si cette passphrase est aussi celle de SelfRecover.
+- **Le PDF d'architecture (v1.1)** redessine le schéma A en deux branches qui ne se croisent
+  pas. Il précise aussi que « le serveur ne peut rien déchiffrer » vaut pour le mémo, pas pour
+  les messages et profils que SelfDataGuard chiffre côté serveur.
+- **`DataGuard` du lab ne dérive plus sa clé à chaque appel.** Chaque dérivation coûtait un
+  Argon2id de 64 Mio, environ 40 ms : lister 20 messages en payait 20. La clé est désormais
+  gardée par contexte le temps de la requête. La dérivation ne change pas, donc les données
+  existantes restent lisibles.
+
+### SelfRecover-LUKS n'installe plus un keyscript que le slot n'ouvrirait pas — 26 septembre 2026
+
+Un slot enrôlé en `raw` n'est pas ouvert par un keyscript qui produit de l'hexadécimal.
+Le keyscript livré produit de l'hex depuis le passage du 12/09, et une machine installée
+avant garde un slot `raw` : y déposer le nouveau keyscript la rend inamorçable, au
+redémarrage suivant ou à la prochaine mise à jour du noyau. Seul `INSTALL.md` §15 le
+disait ; le format enrôlé n'était écrit nulle part, donc rien ne pouvait s'y opposer.
+
+- **Le format enrôlé est inscrit, par volume** : `setup-add-selfrecover-slot.sh` écrit
+  `<UUID LUKS> <hex|raw>` dans `$SKG/format-slot` une fois le slot prouvé ouvrant. Le
+  marqueur est indexé par volume : un slot hex sur un volume de données ne dit rien de la
+  racine.
+- **`install.sh` refuse de poser un keyscript d'un autre format** que celui enrôlé pour la
+  racine. Il refuse aussi un keyscript déjà en place sans marqueur, et dit comment établir
+  le format réel puis l'inscrire.
+- `INSTALL.md` §15 compte les slots avant la migration, et passe le dépôt manuel du
+  keyscript par le même contrôle.
+
+Banc `tests/test_format_slot.sh`, 14 cas sur des conteneurs LUKS de 32 Mo, sans root. Un
+canari en CI retire la comparaison des formats, et le banc doit rougir sur le cas slot
+`raw` / keyscript `hex`. Quatre défauts plantés ont chacun fait rougir leur cas.
+
+### La console SU n'écrit plus au journal ce que la base a refusé — 26 septembre 2026
+
+- **La base et le journal réussissent ou échouent ensemble.** `first-admin`, `revoke-admin`,
+  le remplacement, `approve-request`, `reject-request` et la quarantaine d'`audit` écrivaient au
+  journal **avant** la base : une écriture refusée par la base laissait au journal un acte qui
+  n'avait pas eu lieu. Chaque verbe écrit désormais en base, puis au journal, dans une seule
+  transaction ; si le journal refuse, la base revient en arrière.
+- **Les déclencheurs du dernier admin suivent le code.** Posés en `CREATE TRIGGER IF NOT EXISTS`,
+  ils gardaient sur une base existante le corps qu'elle avait reçu à sa création. Leur texte est
+  comparé à l'ouverture et réécrit s'il diffère ; à texte égal, rien n'est écrit.
+
+Banc `sanity_first_admin.php` : 30 cas. Chacun des quatre ajoutés a été vu rougir sur son défaut
+planté.
+
+### La console SU garde toujours un administrateur — 23 septembre 2026
+
+`selfrecover-su` nommait autant d'administrateurs qu'on voulait par `add-admin`, révoquait le
+dernier, et `audit` pouvait mettre en quarantaine tous les admins d'un coup. Plus rien ne
+permettait alors d'en nommer un.
+
+- **`first-admin` nomme le premier admin, une fois par cycle.** La voie est « consommée » dès
+  qu'un octroi figure au journal après le dernier reset. `add-admin` ne promeut plus : les admins
+  suivants passent par une demande, que le SU tranche avec `approve-request`.
+- **La base garde toujours au moins un admin.** La console refuse de révoquer le dernier
+  (code 6), et deux triggers SQLite refusent la même chose derrière elle, pour tout chemin de code
+  qui l'oublierait. `revoke-admin <x> --remplacant <y>` promeut puis révoque dans une seule
+  transaction.
+- **`audit` ne vide plus la base de ses admins.** Quand tous les admins en base sont absents du
+  journal, l'entrée est plus probablement cassée qu'envahie : il refuse, sort en code 7 et ne met
+  personne en quarantaine.
+- **Deux resets, et eux seuls rouvrent `first-admin`.** `reset-shell` (passphrase SU perdue)
+  révoque les admins et garde les comptes. `reset-db` (compromission) fige la base et le secret SU
+  sans les détruire, puis repart d'une base vide. Le journal est gardé : il affiche le reset en
+  bandeau, et `list-admins`, `audit` et `verify-log` le rappellent en tête.
+
+Banc `sanity_first_admin.php`, 26 cas, qui lisent chacun le code de sortie ET la base. Un canari
+retire les deux gardes du dernier admin, et le banc doit rougir sur ce cas.
+
+### La clé du journal SU se tourne sans casser la chaîne — 23 septembre 2026
+
+Poser une nouvelle `SELFRECOVER_SU_AUDIT_SECRET` à côté d'un journal existant le rendait
+« signature invalide » dès l'entrée 1, parce que `verify()` recalcule chaque HMAC avec la clé
+courante. `rotate-audit-key --nouvelle-cle <fichier>` vérifie la chaîne sous l'ancienne clé,
+recalcule seulement les HMAC, puis vérifie le fichier neuf avant de le mettre en place.
+`entry_hash` et `prev_hash` ne changent pas, donc les témoins déjà externalisés restent
+valables. L'ancien journal est figé, et l'entrée de rotation repose le sceau du secret SU.
+
+Il refuse une chaîne rompue, une ligne qu'il ne sait pas relire, et une clé courte, identique à
+celle en place ou lisible par d'autres que son propriétaire. La clé se lit dans un fichier et
+jamais en argument : `sudo` recopie la ligne de commande dans le journal système.
+
+🔑 **La vérification préalable n'est pas une précaution.** Sans elle, une entrée forgée par
+quelqu'un qui n'a pas la clé (chaînage juste, HMAC faux) ressort authentique sous la nouvelle.
+C'est le cas que vise le canari. Banc `sanity_rotation.php`, 18 cas.
+
+### Le lab et les textes rattrapent la console — 23 septembre 2026
+
+La console simulée du lab n'offre plus `add-admin`. Elle montre `first-admin`,
+`approve-request`, le refus du dernier admin et le remplacement. Les READMEs et les whitepapers
+de SelfRecover attribuaient la clé HMAC du journal à la passphrase SU : c'est
+`SELFRECOVER_SU_AUDIT_SECRET`, distincte d'elle.
+
 ### SelfJustice v0.4.0 — la jurisprudence administrative, et ce qu'il a fallu défaire pour l'atteindre — 11 septembre 2026
 
 La roadmap réservait la v0.4.0 au Conseil d'État et aux juridictions administratives. Le chantier
@@ -56,47 +285,6 @@ compris, 320 archives appliquées, 0 refusée, 0 illisible.
 administratifs qu'une sélection **arrêtée en 2009**, et la Cour de discipline budgétaire et
 financière s'arrête **en 2000** : un jugement de TA récent n'est pas dans la base. Et aucun
 incrément ne porte de liste de suppression — une décision retirée du fonds par la DILA y restera.
-### SelfRecover fournit son schéma et l'implémentation de son propre contrat — 11 septembre 2026
-
-`StorageInterface` posait 39 questions et laissait chaque application y répondre. C'était
-délibéré — imposer des tables obligerait un déploiement en service à migrer sa base — mais
-celui qui part de zéro devait écrire 500 lignes avant sa première ligne utile.
-
-La bibliothèque livre désormais `schema.sql` et `src/Storage/StockagePdo.php` :
-**fournis, jamais imposés**. Qui a déjà ses tables continue d'écrire son adaptateur et ne
-migre rien ; qui part de zéro les prend tels quels. Il sert le facteur « cet appareil »,
-que les adaptateurs de démonstration ne servent pas tous.
-
-Deux défauts corrigés au passage :
-
-- 🔴 **`PRAGMA foreign_keys` est propre à la connexion, pas à la base.** Le poser dans un
-  fichier de schéma ne sert que la connexion qui le charge — souvent `sqlite3(1)`, jetée
-  aussitôt. Mesuré : effacer un compte laissait derrière lui ses codes, ses clés
-  d'appareil et le texte qu'il avait écrit à un arbitre, sans qu'aucune contrainte ne
-  proteste. Le constructeur de l'adaptateur le repose sur la connexion de l'application.
-- 🔴 **Les gardes de transaction validaient celle de l'appelant.** « Ne rien faire si une
-  transaction existe déjà » traite le symptôme et fabrique pire : le `commit()` suivant
-  rendait durable le travail à moitié fait de l'appelant, qui recevait ensuite « There is
-  no active transaction » sur son propre rollback. Remplacé par des points de reprise
-  (`SAVEPOINT`) : la transaction extérieure reste la sienne, nos écritures s'annulent sans
-  y toucher.
-
-  ⚠️ **Le correctif ne vaut que pour cet adaptateur.** Les trois autres porteurs du
-  contrat gardent le motif : les deux démos, et le double en mémoire des bancs — dont
-  `commencerTransaction()` écrase l'instantané précédent, de sorte qu'une annulation
-  imbriquée ne restaure rien. La cause est en amont : `StorageInterface` ne dit pas si
-  ces trois méthodes sont ré-entrantes, et les quatre implémentations y répondent
-  différemment. À trancher au contrat, pas porteur par porteur.
-
-Le banc `tests/banc_stockage_pdo.php` relit la base plutôt que la valeur rendue, et son
-plancher compte **par section** : un plancher global laissait disparaître 22 contrôles —
-dont ceux du facteur « cet appareil » — en rendant le même vert.
-
-⚠️ **Un banc ne peut pas se garder contre la falsification de son propre verdict.** Mesuré :
-débrancher le compteur d'échecs lui faisait afficher les ❌ et sortir à 0. La seconde
-source est donc dehors — l'étape de CI cherche le caractère ❌ dans la sortie, en plus du
-code de retour.
-
 ### Le contrôle des chemins ne regardait aucun lien ancré — 9 septembre 2026
 
 `scripts/check-paths.sh` porte depuis sa création une classe `[^)#]` qui **exclut le
@@ -119,36 +307,6 @@ derrière une ancre → rougit en nommant la cause ; ancre valide chargée de po
 acceptée.
 
 Les quatre `#quickstart` pointent maintenant la section de démarrage qu'ils visaient.
-
-### SelfRecover était déployé et non déployé, à sept lignes d'intervalle — 9 septembre 2026
-
-`bi-self/README.md:57` annonçait « deployed and self-audited implementation » et la
-section Statut, sept lignes plus bas, « no real-world production deployment yet ». Le
-lecteur devait trancher seul entre deux affirmations opposées du même fichier.
-
-**C'est la ligne 57 qui dit vrai**, vérifié sur la machine par la conv GitHub : le
-backend d'authentification d'un service de messagerie sert la bibliothèque en conditions
-réelles. La section Statut le dit désormais, dans les deux langues, et garde ce qui reste
-exact — la démo est auto-auditée, aucun audit externe n'a été mené.
-
-### Le secret de LUKS portait le vocabulaire de l'autre niveau — 9 septembre 2026
-
-Quatre fichiers de `selfrecover-luks/` appelaient « mot de récupération » — le terme du
-**niveau 2**, qui est par compte et se combine à un code — ce qui est une **passphrase de
-niveau 1**, diceware, propre à la machine. Douze occurrences ; deux fichiers seulement
-disaient juste, dont le keyscript, c'est-à-dire le seul qui tourne au démarrage.
-
-La source est la docstring de `selfrecover_derive.py`, et c'est de là que la formulation a
-essaimé jusqu'au README racine du monorepo, où elle était devenue « une seule passphrase
-mémorisée » — un terme qui n'existe dans aucun des deux niveaux.
-
-Corrigé, et la docstring porte maintenant les deux avertissements qui manquaient : la
-nature du secret d'entrée, et le fait que **`--label` est une capacité du dérivateur, pas
-une architecture déployée** — seul `disk` a un consommateur, les étiquettes `auth` et
-`data-enc` citées en documentation n'existent dans aucun code du monorepo.
-
-Aucune clé, aucune dérivation, aucun format n'est touché : c'est de la prose dans du code.
-Le nom de l'option `--word` est conservé — le renommer romprait un contrat.
 
 ### Les secrets du lab refusent au lieu de servir — 9 septembre 2026
 
@@ -285,6 +443,171 @@ Le garde-fou de CI vérifie deux compteurs plutôt que le seul code de sortie : 
 sections ne s'éprouvent pas sous root, le banc les saute **en le disant** et sort quand
 même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le même vert en
 ayant renoncé aux contrôles qui touchent au système.
+
+---
+
+## [SelfDataGuard v0.4.0] — 26 septembre 2026
+
+### SelfDataGuard v0.4.0 — le chiffrement ne dépend plus du processeur — 26 septembre 2026
+
+Jusqu'à la 0.3.0, SelfDataGuard chiffrait en AES-256-GCM par libsodium, qui ne le sert
+qu'avec un support matériel : AES-NI, plus AVX depuis libsodium 1.0.19. Sur un Celeron
+sans AVX avec une libsodium récente, ou sur un Raspberry Pi 4, la bibliothèque ne pouvait
+ni écrire ni relire, et son message accusait AES-NI à tort.
+
+- **Toute écriture passe en XChaCha20-Poly1305**, calculé en logiciel et en temps constant
+  sur tout processeur, dans un format versionné : `SDG2.` suivi du base64.
+- **Les blobs écrits avant restent lisibles**, par libsodium là où il sert AES, par OpenSSL
+  ailleurs. Éprouvé sur un Raspberry Pi 4 sans AES matériel : les 8 bancs passent, et une
+  base écrite par la 0.3.0 se relit entièrement.
+- ⚠️ **Un blob écrit par la 0.4.0 ne se relit pas en 0.3.0** : un retour arrière ne vaut
+  que pour une base où la 0.4.0 n'a rien écrit.
+- Les clés et les clairs n'apparaissent plus dans les traces d'exception
+  (`#[\SensitiveParameter]`).
+
+Bancs : 219 contrôles, dont le vecteur de test officiel de XChaCha20-Poly1305 et un blob
+AES figé que libsodium et OpenSSL produisent à l'identique. Détail dans le CHANGELOG du
+module.
+
+## [SelfRecover v0.6.0] — 22 septembre 2026
+
+### SelfRecover écrit Argon2id dans la bibliothèque, la démo quitte PBKDF2 — 10 septembre 2026
+
+Six documents annonçaient Argon2id pour le facteur « cet appareil » ; la seule
+implémentation faisait PBKDF2, avec un blob qui ne disait ni sa version ni son algorithme.
+`client/argon2id.js` porte désormais la KDF et `client/sr-kdf.js` le format : version et
+paramètres **dans** le blob, et un blob d'avant le versionnage reconnu pour ce qu'il est.
+
+Vérifié contre `tests/vecteurs-argon2.json` — sept empreintes produites par libsodium, une
+implémentation écrite par d'autres. Deux défauts invisibles à la lecture y ont été
+attrapés, qui rendaient un résultat bien formé et faux. Coût mesuré : 1 115 ms par
+dérivation contre 163 pour le WebAssembly retiré ; le profil ne baisse pas, c'est la
+mémoire qui coûte à un attaquant.
+
+### SelfRecover fournit son schéma et l'implémentation de son propre contrat — 11 septembre 2026
+
+`StorageInterface` posait 39 questions et laissait chaque application y répondre. C'était
+délibéré — imposer des tables obligerait un déploiement en service à migrer sa base — mais
+celui qui part de zéro devait écrire 500 lignes avant sa première ligne utile.
+
+La bibliothèque livre désormais `schema.sql` et `src/Storage/StockagePdo.php` :
+**fournis, jamais imposés**. Qui a déjà ses tables continue d'écrire son adaptateur et ne
+migre rien ; qui part de zéro les prend tels quels. Il sert le facteur « cet appareil »,
+que les adaptateurs de démonstration ne servent pas tous.
+
+Deux défauts corrigés au passage :
+
+- 🔴 **`PRAGMA foreign_keys` est propre à la connexion, pas à la base.** Le poser dans un
+  fichier de schéma ne sert que la connexion qui le charge — souvent `sqlite3(1)`, jetée
+  aussitôt. Mesuré : effacer un compte laissait derrière lui ses codes, ses clés
+  d'appareil et le texte qu'il avait écrit à un arbitre, sans qu'aucune contrainte ne
+  proteste. Le constructeur de l'adaptateur le repose sur la connexion de l'application.
+- 🔴 **Les gardes de transaction validaient celle de l'appelant.** « Ne rien faire si une
+  transaction existe déjà » traite le symptôme et fabrique pire : le `commit()` suivant
+  rendait durable le travail à moitié fait de l'appelant, qui recevait ensuite « There is
+  no active transaction » sur son propre rollback. Remplacé par des points de reprise
+  (`SAVEPOINT`) : la transaction extérieure reste la sienne, nos écritures s'annulent sans
+  y toucher.
+
+  ⚠️ **Le correctif ne vaut que pour cet adaptateur.** Les trois autres porteurs du
+  contrat gardent le motif : les deux démos, et le double en mémoire des bancs — dont
+  `commencerTransaction()` écrase l'instantané précédent, de sorte qu'une annulation
+  imbriquée ne restaure rien. La cause est en amont : `StorageInterface` ne dit pas si
+  ces trois méthodes sont ré-entrantes, et les quatre implémentations y répondent
+  différemment. À trancher au contrat, pas porteur par porteur.
+
+Le banc `tests/banc_stockage_pdo.php` relit la base plutôt que la valeur rendue, et son
+plancher compte **par section** : un plancher global laissait disparaître 22 contrôles —
+dont ceux du facteur « cet appareil » — en rendant le même vert.
+
+⚠️ **Un banc ne peut pas se garder contre la falsification de son propre verdict.** Mesuré :
+débrancher le compteur d'échecs lui faisait afficher les ❌ et sortir à 0. La seconde
+source est donc dehors — l'étape de CI cherche le caractère ❌ dans la sortie, en plus du
+code de retour.
+
+### Un instant du contrat doit en être un — 10 septembre 2026
+
+⚠️ **Changement de comportement pour les adaptateurs.** `Litige` refuse désormais, à la
+construction, tout instant inférieur à 1 000 000 000 (`InvalidArgumentException`, qui
+nomme le champ). Un adaptateur dont une colonne d'instant est restée en `TEXT` lève là où
+il passait en silence : vérifier ses colonnes avant de monter de version.
+
+Les instants de `StorageInterface` sont typés `int`, et aucun ne disait en quelle unité.
+Le typage ne suffit pas : `(int) '2026-07-12 08:00:00'` vaut `2026`. Aucune ligne
+n'échouait, et l'arbitre recevait un dossier daté de janvier 1970 — donc expiré, donc
+invisible. Le contrat énonce maintenant l'unité, la seconde Unix. `deposeLe = 0` et
+`trancheLe = null` restent légitimes ; c'est la zone entre zéro et le plancher qui est
+refusée.
+
+Huit contrôles ajoutés à `sanity_escalade`, dont trois contre-témoins : sans eux, un
+constructeur qui refuserait tout rendrait les autres verts.
+
+`Crypto\Hashing::needsRehash()` entre aussi dans la bibliothèque — son usage est décrit
+dans la section « Non publié », à l'entrée du secret SuperUser du lab.
+
+### SelfRecover était déployé et non déployé, à sept lignes d'intervalle — 9 septembre 2026
+
+`bi-self/README.md:57` annonçait « deployed and self-audited implementation » et la
+section Statut, sept lignes plus bas, « no real-world production deployment yet ». Le
+lecteur devait trancher seul entre deux affirmations opposées du même fichier.
+
+**C'est la ligne 57 qui dit vrai**, vérifié sur la machine par la conv GitHub : le
+backend d'authentification d'un service de messagerie sert la bibliothèque en conditions
+réelles. La section Statut le dit désormais, dans les deux langues, et garde ce qui reste
+exact — la démo est auto-auditée, aucun audit externe n'a été mené.
+
+---
+
+## [SelfRecover-LUKS v0.5.0] — 22 septembre 2026
+
+### SelfRecover-LUKS v0.5.0 — plus de shell avant l'ouverture du disque, et trois plateformes — 12 au 22 septembre 2026
+
+Neuf commits depuis `selfrecover-luks-v0.4.0`, sans rupture de contrat.
+
+- 🔴 **Le SSH d'amorçage ne rend plus de shell.** La clé posée par `install.sh` était nue :
+  elle ouvrait un busybox root **avant** le déverrouillage de `/`. Comme `/boot` est en
+  clair et que le sel y voyage, ce shell suffisait à déposer un initrd modifié et à capturer
+  la passphrase suivante. `selfrecover-secours.sh` devient le `command=` de la clé : il
+  propose la passphrase recover **ou** la passphrase native, rien d'autre — le filet
+  anti-verrouillage reste atteignable à distance, ce que `command="cryptroot-unlock"` seul
+  aurait retiré. `install.sh` pose la question (`SHELL_AMORCAGE`) et consigne un refus dans
+  `renoncements.log`. `verifie-initramfs.sh` compare les images de `/boot` à une empreinte
+  consignée sur le volume chiffré : la classe n'est pas fermée, elle devient visible.
+- 🔴 **Les sauvegardes irréversibles se vérifient.** `verifie-sauvegardes.sh`, lancé par
+  `install.sh` avant le premier geste qui écrit dans l'en-tête, refuse une copie d'en-tête
+  ou de sel rangée sur le volume qu'elle sert à ouvrir, ou dont le nombre de slots ne
+  correspond plus au disque.
+- 🔴 **Le sel n'était jamais vérifié sur une machine à microcode.** Une image Intel ou AMD
+  s'extrait en `early/` + `main/` ; le garde-fou cherchait le sel à la racine, annonçait
+  « SEL NON VERIFIE » et sortait en 0.
+- **ARM (Raspberry Pi 4, Debian 13).** L'installeur ne suppose plus x86 + GRUB : `rootdelay`
+  passe par `/etc/default/raspi-extra-cmdline`, `python3-argon2` est exigé au préambule,
+  libargon2 se trouve par `ldconfig`, et le garde-fou juge l'image que l'amorceur
+  **charge** (`config.txt`), pas celle qu'`update-initramfs` vient de produire.
+- Les scripts du module sont exécutables depuis un clone frais ; les textes déclarent les
+  trois plateformes éprouvées (serveur, portable, racine en LVM chiffré).
+
+Bancs ajoutés : `test_secours_sans_shell.sh`, `test_sauvegardes.sh`,
+`test_garde_fou_image_chargee.sh`.
+
+### Le secret de LUKS portait le vocabulaire de l'autre niveau — 9 septembre 2026
+
+Quatre fichiers de `selfrecover-luks/` appelaient « mot de récupération » — le terme du
+**niveau 2**, qui est par compte et se combine à un code — ce qui est une **passphrase de
+niveau 1**, diceware, propre à la machine. Douze occurrences ; deux fichiers seulement
+disaient juste, dont le keyscript, c'est-à-dire le seul qui tourne au démarrage.
+
+La source est la docstring de `selfrecover_derive.py`, et c'est de là que la formulation a
+essaimé jusqu'au README racine du monorepo, où elle était devenue « une seule passphrase
+mémorisée » — un terme qui n'existe dans aucun des deux niveaux.
+
+Corrigé, et la docstring porte maintenant les deux avertissements qui manquaient : la
+nature du secret d'entrée, et le fait que **`--label` est une capacité du dérivateur, pas
+une architecture déployée** — seul `disk` a un consommateur, les étiquettes `auth` et
+`data-enc` citées en documentation n'existent dans aucun code du monorepo.
+
+Aucune clé, aucune dérivation, aucun format n'est touché : c'est de la prose dans du code.
+Le nom de l'option `--word` est conservé — le renommer romprait un contrat.
 
 ---
 
@@ -808,6 +1131,8 @@ ressources officielles dont 340 modèles de lettre.
 Garde-fous portés de 15 à 21, dont trois neufs, chacun vu rougir avant d'être
 cru. Le banc du déploiement annonçait « 10/10 » depuis un chiffre écrit en dur :
 il en éprouvait douze, il en compte quatorze.
+
+## [SelfModerate v0.3.0] — 22 août 2026
 
 ### SelfModerate v0.3.0 — 21-22 août 2026
 

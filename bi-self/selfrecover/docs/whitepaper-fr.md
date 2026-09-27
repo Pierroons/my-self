@@ -9,11 +9,11 @@
 
 ## Contexte
 
-Le 15 avril 2026, le portail `moncompte.ants.gouv.fr` (Agence nationale des titres sécurisés) a subi une fuite de données via une faille IDOR (*Insecure Direct Object Reference*) : modifier un identifiant dans une requête de l'API permettait d'accéder au compte d'un autre citoyen. Le ministère de l'Intérieur a confirmé **11,7 millions de comptes** impactés ; les attaquants revendiquent jusqu'à **19 millions d'enregistrements** exfiltrés. Données exposées : état civil, coordonnées, statut de certification d'identité — sans mot de passe ni biométrie.
+Le schéma qui coûte le plus cher est connu, et il se répète : une faille d'autorisation triviale — changer un identifiant dans une requête d'API suffit à lire le compte d'un autre — sur un service dont la récupération de compte passe par un canal email. L'ampleur ne tient alors qu'au nombre de lignes de la table.
 
-L'incident a posé une question structurelle : pourquoi un service régalien doit-il indexer un canal email pour réinitialiser un compte ? Tant qu'une boîte mail tierce est dans la chaîne de récupération, sa compromission devient l'angle d'attaque dominant. SelfRecover a été publié sous AGPL-3.0-or-later **avant cet incident** (avril 2026, v0.1.0) précisément pour proposer une réponse technique : rendre le canal email optionnel (mode **Lite** v0.1.1) ou le supprimer complètement (mode **Full**).
+La question est structurelle : pourquoi un service doit-il indexer une boîte mail pour établir qu'on est soi ? Tant qu'une boîte tierce est dans la chaîne de récupération, sa compromission devient l'angle d'attaque dominant. SelfRecover propose une réponse technique : rendre le canal email optionnel (mode **Lite** v0.1.1) ou le supprimer complètement (mode **Full**). Publié sous AGPL-3.0-or-later en avril 2026 (v0.1.0).
 
-Ce whitepaper décrit le protocole. Il n'est ni une critique ad hoc d'un acteur, ni une revendication post-incident — c'est une proposition open-source antérieure que les opérateurs publics et privés peuvent auditer, intégrer ou contester librement.
+Ce whitepaper décrit le protocole. Il ne vise aucun acteur en particulier — c'est une proposition open-source que les opérateurs publics et privés peuvent auditer, intégrer ou contester librement.
 
 ---
 
@@ -47,16 +47,15 @@ SelfRecover propose une autre réponse : la confiance reste entre l'utilisateur 
 
 > Mot de récupération seul = rien.
 > Algorithme seul = rien.
-> Mot de récupération + Algorithme = identité prouvée.
+> Mot de récupération + Algorithme = une empreinte que le serveur sait vérifier — un des deux facteurs du niveau 2.
 
 SelfRecover est un système de récupération à connaissance partagée (split knowledge). L'utilisateur retient un mot. Le système fournit l'algorithme. Aucun des deux n'a de valeur sans l'autre.
 
-**Ce que l'utilisateur retient :**
+**Ce que l'utilisateur retient :** un seul mot, qui ne s'écrit nulle part.
 
-- Un identifiant public (pseudo, téléphone, gamer tag, numéro client — n'importe quelle étiquette)
-- Un mot de récupération de son choix (n'importe quelle longueur, même `bob`)
+**Ce que l'utilisateur garde sur papier :** ses recovery codes (niveau 2) et sa passphrase diceware (niveau 1). Ils sont tirés au hasard ; personne n'a à les retenir.
 
-C'est tout. Deux choses. Pour tous les sites. Pour toujours.
+Le mot seul ne rouvre aucun compte : au niveau 2, il faut aussi un recovery code ou l'appareil enrôlé (§5.4).
 
 ---
 
@@ -173,7 +172,7 @@ Le L2 est un **vrai 2FA** — possession **et** connaissance — **sans identifi
 - **Possession** : un *recovery code* (parmi les 10 remis à l'inscription). Il **localise** le compte via un lookup HMAC (plus d'énumération) et sert de facteur de possession.
 - **Connaissance** : le *mot mémorisé*, dérivé HMAC côté client (le mot brut ne quitte jamais le navigateur).
 
-Le serveur vérifie les **deux** (Argon2id) et renvoie une **erreur générique** ne révélant jamais lequel a échoué. En cas de succès, l'utilisateur choisit son nouveau mot de passe et le code est marqué comme utilisé. Une variante optionnelle — le **facteur « cet appareil »** — offre une troisième voie de L2 (voir §5.4).
+Le serveur vérifie les **deux** (Argon2id) et renvoie une **erreur générique** ne révélant jamais lequel a échoué. En cas de succès, l'utilisateur choisit son nouveau mot de passe et le code est marqué comme utilisé. Une variante optionnelle — le **facteur « cet appareil »** — offre une seconde voie de L2 (voir §5.4).
 
 Aucune bascule automatique vers L3 : le niveau 2 ne demande aucun identifiant, donc il n'y a rien à compter par compte. Son seul frein est le compteur par adresse. C'est la personne qui décide d'ouvrir un dossier.
 
@@ -242,9 +241,9 @@ SelfRecover distingue trois rôles : **SU → Admin → User**. L'administrateur
 
 **Ancrage et secret.** Le SU **n'existe pas en base de données** : il est ancré au serveur (l'accès au serveur vaut autorisation). Son secret est **hors base et hors code** — un fichier hors racine web, ou une variable d'environnement. C'est un **modèle de Kerckhoffs** : la sécurité repose sur le secret, jamais sur l'obscurité d'un code qui, lui, est public. Le SU est une **interface en ligne de commande**, jamais exposée sur le web ni en distant.
 
-**Séparation des pouvoirs.** Un administrateur **ne se promeut pas lui-même** : il **propose** une promotion, le SU **tranche** (observation obligatoire). Le SU peut promouvoir/révoquer des administrateurs (une révocation coupe les sessions), **auditer** l'état (croiser les droits en base avec le journal → détecter les **administrateurs fantômes** et les mettre en **quarantaine automatique**), et, si sa passphrase est perdue, repartir d'une « coquille vide » (révocation de tous les administrateurs, gel du journal).
+**Séparation des pouvoirs.** Un administrateur **ne se promeut pas lui-même** : il **propose** une promotion, le SU **tranche** (observation obligatoire). Le SU nomme le **premier** administrateur, une seule fois ; ensuite, la base en garde **toujours au moins un** — le dernier ne se révoque qu'en nommant son successeur dans la même transaction. Le SU peut révoquer des administrateurs (une révocation coupe les sessions), **auditer** l'état (croiser les droits en base avec le journal → détecter les **administrateurs fantômes** et les mettre en **quarantaine automatique**), et, si sa passphrase est perdue, repartir d'une « coquille vide » (révocation de tous les administrateurs, gel du journal). En cas de compromission, un **reset de la base** supprime tous les comptes et le secret SU : un compte trafiqué ne se reconnaît pas de l'intérieur, donc aucun n'est gardé. Les deux resets rouvrent la nomination du premier administrateur.
 
-**Journal d'audit infalsifiable sans trace.** Chaque action du SU est journalisée hors base et hors racine web, en quatre couches : **append-only** au niveau système de fichiers (`chattr +a`), **chaîne de hachage** (toute altération casse la chaîne), **HMAC par entrée** (clé dérivée de la passphrase SU), et **externalisation** vers un canal de notification (action + cible + heure uniquement, jamais le contexte forensique).
+**Journal d'audit infalsifiable sans trace.** Chaque action du SU est journalisée hors base et hors racine web, en quatre couches : **append-only** au niveau système de fichiers (`chattr +a`), **chaîne de hachage** (toute altération casse la chaîne), **HMAC par entrée** (clé propre à l'instance, `SELFRECOVER_SU_AUDIT_SECRET` — distincte de la passphrase SU : en changer ne rompt pas la chaîne ; elle se tourne par `rotate-audit-key`, qui re-signe le journal sans en changer les empreintes), et **externalisation** vers un canal de notification (action + cible + heure uniquement, jamais le contexte forensique).
 
 ---
 

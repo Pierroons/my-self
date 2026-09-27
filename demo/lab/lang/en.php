@@ -60,8 +60,8 @@ return [
         . '</ul>',
 
     'sec.2.h2' => '2. Data encryption — two models, by sensitivity',
-    'sec.2.body' => '<p><strong>a) Server blind-key</strong> (profile: bio, location, link) — AES-256-GCM, key derived from a server secret held <em>outside the database and outside the webroot</em>. A SQL dump yields nothing but blobs.</p>'
-        . '<p><strong>b) Client-side end-to-end</strong> (personal memo) — encrypted in the <strong>browser</strong> (WebCrypto). <code>PBKDF2</code> (600k) → <code>HKDF</code> per label → a random <code>vault_key</code> encrypts the memo, itself wrapped in two envelopes (password and recovery passphrase). <strong>The server holds no key.</strong></p>'
+    'sec.2.body' => '<p><strong>a) Server blind-key</strong> (profile: bio, location, link) — XChaCha20-Poly1305, key derived from a server secret held <em>outside the database and outside the webroot</em>. A SQL dump yields nothing but blobs.</p>'
+        . '<p><strong>b) Client-side end-to-end</strong> (personal memo) — encrypted in the <strong>browser</strong> (WebCrypto). <code>Argon2id</code> (64 MiB, the SelfRecover profile) → <code>HKDF</code> per label → a random <code>vault_key</code> encrypts the memo, itself wrapped in two envelopes (password and recovery passphrase). <strong>The server holds no key.</strong></p>'
         . '<div class="mt">'
         . '<div class="ok"><h4>✅ What this protects</h4><ul>'
         . '<li>Blind-key: stolen disk, SQL dump, injection</li>'
@@ -73,11 +73,11 @@ return [
         . '</ul></div>'
         . '</div>',
 
-    'sec.3.h2' => '3. The shared foundation — SelfRecover ⇄ SelfDataGuard',
+    'sec.3.h2' => '3. One key per use — SelfRecover, the memo, SelfDataGuard',
     'sec.3.body' => '<ul>'
-        . '<li>One memorised <strong>root secret</strong>, one <strong>shared derivation primitive</strong>, and <strong>child keys separated by label</strong> (<code>auth</code> / <code>data-enc</code> / <code>data-recover</code>).</li>'
+        . '<li><strong>Each use derives its own key, through its own derivation.</strong> Access goes through SelfRecover: your browser computes an <code>HMAC-SHA256</code> fingerprint of your word, bound to the site name and salted per account; the server only keeps an Argon2id of it. The memo draws two child keys, separated by <code>HKDF</code> label: <code>data-enc</code> from your password, <code>data-recover</code> from your recovery passphrase.</li>'
         . '<li>Cardinal rule: <strong>never the same key for authentication and encryption</strong>. The server sees authentication; it must never be able to decrypt.</li>'
-        . '<li>Unified recovery: the same recovery word or passphrase restores access <em>and</em> data. Recovery strength comes from the <strong>entropy of the input</strong> (diceware passphrase), not from hash length.</li>'
+        . '<li>Recovery: if your memo\'s recovery passphrase is also your SelfRecover one, a single secret restores access <em>and</em> the memo — through two separate derivations, with no shared key. Recovery strength comes from the <strong>entropy of the input</strong> (diceware passphrase), not from hash length.</li>'
         . '</ul>',
 
     'sec.4.h2' => '4. Application hardening',
@@ -106,14 +106,14 @@ return [
         . '<li>Memo theft, <strong>even with root access</strong> (E2E at rest)</li>'
         . '</ul></div>'
         . '<div class="no"><h4>⚠️ Known limits (V1)</h4><ul>'
-        . '<li>Profiles and private messages readable by an admin or an RCE (blind-key)</li>'
+        . '<li>Profiles and private messages readable by whoever obtains the server key (<code>.blindkey</code>), for instance through an RCE — not through the admin panel</li>'
         . '<li><em>Persistently</em> compromised server → tampering with the served code</li>'
         . '<li>Metadata is not encrypted (who talks to whom, and when)</li>'
         . '</ul></div>'
         . '</div>',
 
     'sec.7.h2' => '7. Roadmap (beyond V1)',
-    'sec.7.body' => '<p class="roadmap">E2E extended to private messages and profiles · <code>Argon2id</code> replacing PBKDF2 · an <strong>external integrity supervisor</strong> (detecting tampered served code and abnormal behaviour, with reversible automatic containment) · distributed quorum (Shamir) for critical keys.</p>',
+    'sec.7.body' => '<p class="roadmap">E2E extended to private messages and profiles · an <strong>external integrity supervisor</strong> (detecting tampered served code and abnormal behaviour, with reversible automatic containment) · distributed quorum (Shamir) for critical keys.</p>',
 
     // ── "Rules of engagement" page ────────────────────────────────────────
     'rt.hero.h1' => '🎯 Red team test — rules of engagement',
@@ -138,13 +138,13 @@ return [
     'rt.scope.note'   => 'An extended scope (other MySelf components) may be agreed <strong>privately</strong> with a selected team, under written agreement. It is not published here.',
 
     'rt.obj.h2'    => '🏁 Objectives (capture the flag)',
-    'rt.obj.intro' => 'A demonstration account holds, in its <strong>personal memo</strong>, a secret in the form:',
-    'rt.obj.flag'  => '<span class="lbl">FLAG-</span>… (encrypted <strong>end-to-end, client-side</strong> — AES-256-GCM, key derived from the user\'s secret, <strong>never present on the server</strong>)',
-    'rt.obj.note'  => 'The target account name will be given to you when the test opens. Neither a database dump, nor administrator access, nor full control of the server reveals this secret — the key exists only in its owner\'s browser. The challenge is to bring it back <strong>in the clear</strong>.',
+    'rt.obj.intro' => '<strong>Season 2</strong> — two flags, in two demonstration accounts:',
+    'rt.obj.flag'  => '<span class="lbl">FLAG-E2E-</span>… in the <strong>personal memo</strong> of <code>ctf_alpha</code> — encrypted <strong>in the browser</strong> (Argon2id → HKDF → AES-256-GCM), key <strong>never present on the server</strong>.<br><span class="lbl">FLAG-DM-</span>… in a <strong>private message</strong> from <code>ctf_beta</code> to <code>ctf_gamma</code> — encrypted at rest on the server by SelfDataGuard (XChaCha20-Poly1305), with a key held outside the database.',
+    'rt.obj.note'  => '<strong>FLAG-E2E</strong>: neither a database dump, nor administrator access, nor full control of the server reveals it — the key exists only in its owner\'s browser. <strong>FLAG-DM</strong>: a dump alone is not enough, but the server key (<code>.blindkey</code>) brings it down — the accepted limit of server-side encryption. The challenge is to bring either one back <strong>in the clear</strong>.',
     'rt.obj.refs'  => '<strong>MITRE ATT&amp;CK</strong> and <strong>OWASP</strong> references are given per objective (web application vulnerabilities map to OWASP/CWE, outside the ATT&amp;CK scope).',
-    'rt.obj.list'  => '<li>🎯 <strong>Exfiltrate the secret memo</strong> from the target account and produce it in the clear <span class="ttp">core objective</span></li>'
+    'rt.obj.list'  => '<li>🎯 <strong>Exfiltrate FLAG-E2E</strong>, the memo of <code>ctf_alpha</code>, and produce it in the clear <span class="ttp">core objective</span></li>'
         . '<li>🔓 <strong>Bypass SelfRecover authentication</strong> (take over an account without its password) <span class="ttp">ATT&amp;CK T1110 · T1078 · OWASP A07</span></li>'
-        . '<li>💬 <strong>Read a private message</strong> exchanged between two other members, in the clear <span class="ttp">OWASP A01</span></li>'
+        . '<li>💬 <strong>Read FLAG-DM</strong>, the message from <code>ctf_beta</code> to <code>ctf_gamma</code>, in the clear <span class="ttp">OWASP A01</span></li>'
         . '<li>⚖️ <strong>Manipulate SelfModerate reputation</strong> (bury a member with coordinated fake accounts, or promote yourself) <span class="ttp">CAPEC-210</span></li>'
         . '<li>🪪 <strong>Hijack a session</strong> or land an authenticated CSRF attack <span class="ttp">ATT&amp;CK T1539 · CWE-352</span></li>'
         . '<li>🧨 <strong>Escalate privileges</strong>: obtain administrator access (the <code>/admin</code> panel) <span class="ttp">ATT&amp;CK T1078 · OWASP A01</span></li>',
@@ -179,7 +179,7 @@ return [
         . 'If in doubt about the scope or a technique: <strong>ask before you act</strong>, using the form below.',
 
     'rt.form.h2'      => '📨 Submit a report',
-    'rt.form.note'    => '🔒 The body of your report is encrypted at rest by <strong>SelfDataGuard</strong> before storage: the database holding it reveals nothing but a blob. The module you are testing protects your report too.',
+    'rt.form.note'    => '🔒 The body of your report is encrypted <strong>in your browser</strong>, with PGP, to the programme\'s public key, before it is sent: the server only stores a message it cannot read.',
     'rt.form.handle'  => 'Public handle (hall of fame, optional)',
     'rt.form.handle_ph' => 'e.g. @name_or_team',
     'rt.form.severity' => 'Severity',
@@ -220,7 +220,7 @@ return [
 
     // ── Forum home ────────────────────────────────────────────────────────
     'idx.title'     => 'Forum',
-    'idx.pitch'     => 'Demonstration forum: <strong>attack it, your data survives.</strong><br>Auth with no email · end-to-end encrypted messages · anti-manipulation moderation.',
+    'idx.pitch'     => 'Demonstration forum: <strong>attack it, your data survives.</strong><br>Auth with no email · end-to-end encrypted memo, messages encrypted at rest · anti-manipulation moderation.',
     'idx.cta.test'  => '🛡️ Test the security',
     'idx.cta.archi' => 'See the architecture',
     'idx.credit'    => 'A Pierroons × Claude collaboration — open source security, put to the test.',
@@ -360,7 +360,7 @@ return [
     // ── Private messages ──────────────────────────────────────────────────
     'msg.title'    => 'Messages',
     'msg.h1'       => 'Private messages',
-    'msg.note'     => '🔒 Content encrypted at rest by <strong>SelfDataGuard</strong> (AES-256-GCM). A database dump reveals nothing but unreadable blobs.',
+    'msg.note'     => '🔒 Content encrypted at rest by <strong>SelfDataGuard</strong> (XChaCha20-Poly1305). A database dump reveals nothing but unreadable blobs.',
     'msg.new.h2'   => 'New message',
     'msg.to'       => 'Recipient (username)',
     'msg.to_ph'    => 'e.g. libriste',
@@ -443,13 +443,15 @@ return [
     'prf.edit.tag'   => '🌐 public',
     'prf.public.warn' => '🌐 <strong>Public profile</strong> — bio, location and link are <strong>visible to everyone</strong> (page <code>/profile.php?u=…</code>, even without an account). SelfDataGuard at-rest encryption protects against a <strong>database theft</strong>, not against public display: put <strong>no sensitive data</strong> here. For a private note, use the <strong>E2E memo</strong> below.',
     'prf.memo.h2'    => '🎯 Personal memo — end-to-end encrypted',
-    'prf.memo.note'  => '🔒 Encrypted <strong>in your browser</strong> by <strong>SelfDataGuard E2E</strong>: the server only ever receives blobs and holds <strong>no key</strong>. Even the administrator cannot read it. This is the <strong>secret to exfiltrate</strong> for the red team — a database dump yields nothing without your password.',
+    'prf.memo.note'  => '🔒 Encrypted <strong>in your browser</strong> (Argon2id then AES-GCM): the server only ever receives blobs and holds <strong>no key</strong>. Even the administrator cannot read it. This is the <strong>secret to exfiltrate</strong> for the red team — a database dump yields nothing without your password.',
     'prf.memo.create' => '<strong>Once, and only once:</strong> you set here the two secrets that seal your vault. After this you will only write — the password alone reopens it, never the passphrase.<br>The <strong>password</strong> is for everyday use; the <strong>recovery passphrase</strong> is your only safety net if you forget it.',
     'prf.memo.create_once' => '⚙️ Setup step, not writing. Your memo is written on the next screen, in a free-form block.',
     'prf.memo.pass'  => 'Recovery passphrase',
-    'prf.memo.pass_hint' => '— reuse the one from your sign-up',
+    'prf.memo.pw'    => 'Vault password',
+    'prf.memo.pw_hint' => '— not your account password',
+    'prf.memo.pass_hint' => '— not the one from your account',
     'prf.memo.pass_ph' => 'e.g. correct horse battery staple',
-    'prf.memo.pass_note' => 'At least 4 words. This is your only safety net if you lose your password — it must be strong (ideally your SelfRecover passphrase).',
+    'prf.memo.pass_note' => 'At least 4 words; 6 or more for a secret that matters. This is your only safety net if you lose your password. Use two secrets that belong to this vault only: the server receives your account ones — the password at every sign-in, the passphrase whenever you recover your account.',
     'prf.memo.label' => 'Memo',
     'prf.memo.ph'    => 'e.g. FLAG-example-2026: my private note…',
     'prf.memo.btncreate' => 'Create the vault (local encryption)',
@@ -460,10 +462,12 @@ return [
     'prf.memo.decrypted' => 'Your memo — write whatever you want',
     'prf.memo.save'  => 'Save (re-encrypted locally)',
     'prf.js.saved'   => 'Profile saved (encrypted).',
-    'prf.js.required' => 'Password, passphrase and memo are required.',
+    'prf.js.required' => 'Password and passphrase are required.',
     'prf.js.weakpass' => 'Recovery passphrase too weak: at least 4 words (reuse the one from your sign-up). This is what protects your memo if you lose your password.',
     'prf.js.created' => 'Vault created and encrypted locally. The server only received blobs.',
-    'prf.js.deriving' => 'Deriving the key (PBKDF2)…',
+    'prf.js.deriving' => 'Deriving the key (Argon2id, one to a few seconds)…',
+    'prf.js.sealing' => 'Sealing the vault: two Argon2id derivations, a few seconds…',
+    'prf.js.oldvault' => 'This vault was sealed before the move to Argon2id and can no longer be read. Create it again.',
     'prf.js.decrypted' => 'Decrypted locally. The key stays in this page and is never sent.',
     'prf.js.locked'  => 'Vault locked.',
     'prf.js.saved2'  => 'Memo re-encrypted and saved.',

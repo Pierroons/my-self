@@ -1,19 +1,21 @@
-# SelfDataGuard — Whitepaper v0.0.1
+# SelfDataGuard — Whitepaper
 
 **Application-layer data-at-rest protection that survives a database exfiltration**
 *Dump my database — and get encrypted noise.*
+
+*Edition of 26 September 2026 — describes SelfDataGuard v0.4.0. The French edition is authoritative where the two differ.*
 
 ---
 
 ## Context (May 2026)
 
-On April 15, 2026, the `moncompte.ants.gouv.fr` portal (Agence nationale des titres sécurisés — France's national agency for secure documents) suffered a data breach via an IDOR vulnerability: changing an identifier in an API request granted access to another citizen's account. The Ministry of the Interior confirmed 11.7 million accounts affected; attackers claim up to 19 million records exfiltrated. Exposed data: civil status, contact details, identity certification status — **stored in plain text**, with no application-layer encryption that could have rendered them unusable.
+The pattern is always the same: an authorization flaw grants access to other people's accounts, and what it exposes sits **in plain text in the database**, with no application-layer encryption that could have rendered it unusable. Civil status, contact details, identity status: data you cannot change the way you change a password.
 
-The incident raised a structural question complementary to the one addressed by SelfRecover: **how to make a database leak technically useless to the attacker**, independently of the authentication flow?
+There is a structural question here, complementary to the one SelfRecover addresses: **how to make a database leak technically useless to the attacker**, independently of the authentication flow?
 
 SelfRecover protects **account access**. SelfDataGuard protects **stored data**. Together, the two modules close the loop: an attacker bypassing authentication (SelfRecover) finds an encrypted database (SelfDataGuard); an attacker dumping the database (SelfDataGuard) finds non-reversible Argon2id hashes (SelfRecover).
 
-This whitepaper describes the SelfDataGuard protocol. It is neither an ad-hoc critique of any single actor nor a post-incident claim — it is an open-source proposal complementary to SelfRecover, that public and private operators may audit, integrate, or contest freely.
+This whitepaper describes the SelfDataGuard protocol. It targets no actor in particular — it is an open-source proposal complementary to SelfRecover, that public and private operators may audit, integrate, or contest freely.
 
 ---
 
@@ -31,7 +33,7 @@ All current data-at-rest encryption products share a structural weakness: **the 
 | AWS RDS encryption / Aurora encryption | AWS KMS, transparent to the application | ✗ Yes |
 | Application-level encryption (AES + key in `.env`) | Environment variable / Vault accessible to the app | ✗ Yes |
 
-In all six cases, an attacker who obtains a shell on the application server (RCE, privilege escalation, SSH key theft) **simultaneously** obtains the database and the key. Data-at-rest encryption then provides **no protection at all** — it only protected against an attacker holding the disk without the server (a rare scenario in practice).
+In all five cases, an attacker who obtains a shell on the application server (RCE, privilege escalation, SSH key theft) **simultaneously** obtains the database and the key. Data-at-rest encryption then provides **no protection at all** — it only protected against an attacker holding the disk without the server (a rare scenario in practice).
 
 ### 1.2 The real question
 
@@ -67,20 +69,20 @@ Step 2 — Generate the user salt (cryptographic identifier):
     user_salt        ← random(128 bits)        # stored in plain text in the database
 
 Step 3 — Derive the two wrap keys:
-    password_key     ← Argon2id(password, user_salt, m=65536, t=3, p=4)
-    recov_key        ← Argon2id(memorized_word, SHA-256(user_salt || "/dataguard")[:16], m=65536, t=3)
+    password_key     ← Argon2id(password, user_salt, m=65536, t=3, p=1)
+    recov_key        ← Argon2id(memorized_word, SHA-256(user_salt || "/dataguard")[:16], m=65536, t=3, p=1)
 
 Step 4 — Wrap the master key with each of the two keys:
-    wrap_pwd         ← AES-256-GCM-encrypt(data_master_key, key=password_key, nonce=random_96)
-    wrap_recov       ← AES-256-GCM-encrypt(data_master_key, key=recov_key,    nonce=random_96)
+    wrap_pwd         ← XChaCha20-Poly1305-encrypt(data_master_key, key=password_key, nonce=random_192)
+    wrap_recov       ← XChaCha20-Poly1305-encrypt(data_master_key, key=recov_key,    nonce=random_192)
 
 Step 5 — Database storage (all values listed below stored in plain):
     user_id, user_salt, wrap_pwd, wrap_recov, [optional] wrap_admin
 
 Step 6 — Field-by-field encryption of personal data:
-    email_encrypted        ← AES-256-GCM-encrypt(email,    key=data_master_key, nonce=random_96)
-    address_encrypted      ← AES-256-GCM-encrypt(address,  key=data_master_key, nonce=random_96)
-    phone_encrypted        ← AES-256-GCM-encrypt(phone,    key=data_master_key, nonce=random_96)
+    email_encrypted        ← XChaCha20-Poly1305-encrypt(email,    key=data_master_key, nonce=random_192)
+    address_encrypted      ← XChaCha20-Poly1305-encrypt(address,  key=data_master_key, nonce=random_192)
+    phone_encrypted        ← XChaCha20-Poly1305-encrypt(phone,    key=data_master_key, nonce=random_192)
     [...]
 
 Step 7 — Wipe data_master_key, password_key and recov_key from server memory.
@@ -92,7 +94,7 @@ On password login (standard case, ~99% of the time):
 1. Server receives (username, password) over HTTPS
 2. Fetch user_salt and wrap_pwd from the database
 3. password_key   ← Argon2id(password, user_salt, ...)
-4. data_master_key ← AES-256-GCM-decrypt(wrap_pwd, key=password_key)
+4. data_master_key ← XChaCha20-Poly1305-decrypt(wrap_pwd, key=password_key)
 5. data_master_key kept in session memory (never persisted)
 6. On each request: on-the-fly decryption of personal fields
 7. On logout: wipe data_master_key
@@ -104,7 +106,7 @@ On memorized-word login (degraded case, password forgotten):
 1. Server receives (username, memorized_word) over HTTPS
 2. Fetch user_salt and wrap_recov from the database
 3. recov_key       ← Argon2id(memorized_word, SHA-256(user_salt || "/dataguard")[:16], m=65536, t=3)
-4. data_master_key ← AES-256-GCM-decrypt(wrap_recov, key=recov_key)
+4. data_master_key ← XChaCha20-Poly1305-decrypt(wrap_recov, key=recov_key)
 5. User can access their data and set a new password
 6. Regenerate wrap_pwd with the new password_key (no need to re-encrypt the data fields)
 ```
@@ -121,7 +123,7 @@ An attacker who exfiltrates the user table obtains:
 
 To decrypt, the attacker has two paths:
 
-1. **Bruteforce a target user's password** → cost of Argon2id per attempt (~250 ms on top-tier GPU with recommended parameters). For an 8-character random password: ~10^14 attempts × 0.25 s = ~10^6 years in massive parallel. For a weak password (`123456` or similar), still feasible. **Applied since 0.3.0**: `UserVault::register()` refuses passwords under 12 bytes (`PASSWORD_MIN_LEN`). ⚠️ Length is not entropy — twelve identical letters clear the bar. It is a floor against the worst case, not a measure. **No blocklist ships**: an earlier edition of this paragraph announced a refusal against breach lists that no line of code applied, and a promise with no mechanism behind it is worse than no promise.
+1. **Bruteforce a target user's password** → cost of Argon2id per attempt (~250 ms with the recommended parameters; 213.7 ms measured on a deployment machine, see the note under point 2). For an 8-character random password: ~10^14 attempts × 0.25 s ≈ 8·10^5 years, one attempt at a time; the attacker divides that time by the number of attempts run in parallel, each needing 64 MiB of memory. For a weak password (`123456` or similar), still feasible. **Applied since 0.3.0**: `UserVault::register()` refuses passwords under 12 bytes (`PASSWORD_MIN_LEN`). ⚠️ Length is not entropy — twelve identical letters clear the bar. It is a floor against the worst case, not a measure. **No blocklist ships**: an earlier edition of this paragraph announced a refusal against breach lists that no line of code applied, and a promise with no mechanism behind it is worse than no promise.
 
 2. **Bruteforce the memorized word** → since 0.3.0, the same cost as the password path: Argon2id, ~250 ms per attempt.
 
@@ -137,22 +139,23 @@ A leak therefore yields **nothing immediately exploitable**. Bruteforce cost is 
 
 ### 3.1 Shared memorized word, two isolated derivations
 
-SelfRecover and SelfDataGuard use **the same memorized word** on the user side, but derive it into two **strictly disjoint** cryptographic keys via contextual HMAC:
+SelfRecover and SelfDataGuard use **the same memorized word** on the user side, but derive it into two **strictly disjoint** cryptographic keys through two distinct derivations:
 
 ```
 raw_secret = user_memorized_word
              (never transmitted in plain, never stored)
 
          ┌──────────────────────────────────────────────────────┐
-         │     HMAC-SHA256(raw_secret, domain + "/recover")    │  →  recover_key  (SelfRecover)
+         │     HMAC-SHA256(raw_secret, domain + "|v2" + salt)   │  →  recover_key  (SelfRecover)
          ├──────────────────────────────────────────────────────┤
-         │     Argon2id(raw_secret, SHA-256(salt + "/dataguard")) │  →  data_key  (SelfDataGuard)
+         │     Argon2id(raw_secret, SHA-256(salt+"/dataguard")) │  →  data_key     (SelfDataGuard)
          └──────────────────────────────────────────────────────┘
 ```
 
 Cryptographic properties:
 
-- **Independence**: knowledge of `recover_key` reveals no information about `data_key`, and vice versa (HMAC-SHA256 is a PRF, its outputs on different labels are indistinguishable from random)
+- **Independence**: knowledge of `recover_key` reveals no information about `data_key`, and vice versa — both derivations start from the same secret but with distinct functions and salts, and neither output lets anyone recover the input.
+- ⚠️ **The two paths do not carry the same risk and are not hardened the same way.** `recover_key` controls an ACCESS: a server counts attempts, and SelfRecover also requires a recovery code — two factors. `data_key` decrypts DATA: it is attacked offline on a dump, with a single factor and no counter. The same memorized word therefore cannot be held to the same requirements on both sides.
 - **No crossover**: a leak on the SelfRecover side (e.g., compromise of the Argon2id hash store) does not expose SelfDataGuard, and vice versa
 - **Simplified UX**: the user memorizes a single secret, derives two purposes from it
 
@@ -166,9 +169,9 @@ Scenario: a user has lost their password.
 
 - **Without SelfDataGuard**: SelfRecover lets them set a new password. But could they have lost access to their personal data with it in plain text in the database? No: the database was in plain text, so the admin could always re-provide them.
 - **With SelfDataGuard alone** (no SelfRecover): impossible, their data is encrypted with their `password_key`, which they no longer remember.
-- **With both together**: they enter their memorized word. SelfRecover derives `recover_key` and authenticates them. SelfDataGuard derives `data_key`, unwraps `wrap_recov`, and restores `data_master_key`. The user simultaneously regains account access and data readability.
+- **With both together**: they present their paper *recovery code* **and** their memorized word. SelfRecover checks both — the code locates the account and carries possession, the derived word carries knowledge — then authenticates them. SelfDataGuard needs only the word: it derives `data_key`, unwraps `wrap_recov`, and restores `data_master_key`. The user regains account access and data readability in the same pass.
 
-This is the exact mechanism found in Bitwarden (recovery code) or ProtonMail (recovery phrase).
+This is the principle of the recovery phrases offered by end-to-end encrypted services: a secret kept offline restores access to the data when the password is lost.
 
 ---
 
@@ -204,7 +207,7 @@ Not all deployments share the same constraints. SelfDataGuard offers three modes
 
 ```
 - No encryption key is ever accessible to the server
-- All cryptography executed in the browser via WebCrypto SubtleCrypto
+- All cryptography executed in the browser, by libsodium compiled to WebAssembly: WebCrypto provides neither Argon2id nor XChaCha20-Poly1305
 - Server only stores and serves encrypted blobs
 ```
 
@@ -222,10 +225,10 @@ Most e-commerce sites should pick **Hybrid**. High-assurance services (health, b
 
 | Use | Primitive | Rationale |
 |-----|-----------|-----------|
-| Password derivation | **Argon2id** (m=65536 KiB, t=3, p=4) | Memory-hard, resistant to GPUs and ASICs. Modern standard (RFC 9106) |
-| Memorized-word derivation | **Argon2id** (m=65536 KiB, t=3) | Same cost as the password path since 0.3.0. Both keys unwrap the same `data_master_key`, and `wrap_recov` is attacked offline with no attempt counter — so the pair was only ever as strong as its cheaper door. The free-length context is condensed into the 16-byte salt Argon2id requires |
-| Envelope encryption | **AES-256-GCM** | Authenticated encryption, universal hardware acceleration, NIST standard |
-| Field encryption | **AES-256-GCM** with random 96-bit nonce per field | Idem |
+| Password derivation | **Argon2id** (m=65536 KiB, t=3, p=1) | Memory-hard, resistant to GPUs and ASICs. Modern standard (RFC 9106). ⚠️ `p=1`, not `p=4`: `sodium_crypto_pwhash` **exposes no** parallelism parameter — its signature is `length, password, salt, opslimit, memlimit, algo`. Earlier versions of this table announced a parameter the chosen API cannot carry |
+| Memorized-word derivation | **Argon2id** (same parameters) | Same cost as the password path since 0.3.0. Both keys unwrap the same `data_master_key`, and `wrap_recov` is attacked offline with no attempt counter — so the pair was only ever as strong as its cheaper door. The free-length context is condensed into the 16-byte salt Argon2id requires |
+| Envelope encryption | **XChaCha20-Poly1305** | AEAD — ChaCha20-Poly1305 (RFC 8439) extended to a 192-bit nonce (draft-irtf-cfrg-xchacha). Computed in software, in constant time, on every CPU. Blobs written before 0.4.0 are AES-256-GCM and remain readable |
+| Field encryption | **XChaCha20-Poly1305** with random 192-bit nonce per field | Idem. At 192 bits, a random nonce needs no counter |
 | Search indexing | **HMAC-SHA256(field, server_blind_key)** | Allows `WHERE field_hash = HMAC(query)` without decrypting. Trade-off: equality search only, not full-text |
 
 **No PBKDF2**: Argon2id is more robust against GPUs. PBKDF2 remains acceptable for interoperability with very old stacks but is discouraged for new deployments.
@@ -253,7 +256,7 @@ In line with ANSSI's transparency best practices for threat models, SelfDataGuar
 
 - **User endpoint compromise** (keylogger, info-stealer, RAT): OUT OF SCOPE. If the user enters their password and memorized word on a compromised machine, their data on that site is exposed. Recommendation: Tails / Qubes for high-assurance use cases.
 - **Browser compromise** (malicious extension, 0-day exploit): OUT OF SCOPE in Full mode as well. WebCrypto operations are only as secure as the browser.
-- **Theoretical cryptanalysis of SHA-256, AES-256-GCM, Argon2id**: OUT OF SCOPE. Cryptographic migration aligned with ANSSI / NIST recommendations when algorithms are declared weak.
+- **Theoretical cryptanalysis of SHA-256, XChaCha20-Poly1305, AES-256-GCM, Argon2id**: OUT OF SCOPE. Cryptographic migration aligned with ANSSI / NIST recommendations when algorithms are declared weak.
 - **Bruteforce of a weak password**: OUT OF SCOPE. The library must enforce a minimum password policy. Without policy, the weakest factor dominates.
 - **Denial of service**: OUT OF SCOPE. SelfDataGuard does not address availability, only confidentiality.
 
@@ -263,33 +266,34 @@ In line with ANSSI's transparency best practices for threat models, SelfDataGuar
 
 For a SelfDataGuard deployment to actually deliver the listed guarantees, it must respect:
 
-1. **Password policy**: minimum 12 characters, refusal of passwords present in breach lists (HaveIBeenPwned, top 10000 commons)
-2. **Memorized-word policy**: minimum 2 words or one rare word (entropy ≥ 30 bits estimated by zxcvbn)
+1. **Password policy**: minimum 12 bytes, **enforced by the library** (`UserVault::PASSWORD_MIN_LEN`). Refusal through breach lists is left to the integrator — the library ships no list and no longer claims to
+2. **Memorized-word policy**: **left to the integrator — the library enforces nothing**. It has hardened the cost per attempt (Argon2id since 0.3.0); it does not measure entropy and does not claim to. An integrator who wires `loginWithMemorized()` to a word chosen by the user must know that `wrap_recov` is then attacked offline, with no counter, on that single secret. See §2.3, open question
 3. **Mandatory TLS**: no HTTP fallback allowed (strict HSTS)
 4. **Short sessions**: `data_master_key` purged from session after inactivity (15 min recommended for Hybrid, 5 min for Full)
 5. **No sensitive logging**: `password_key`, `recov_key`, `data_master_key` must never appear in logs (even at debug level)
 6. **Admin access auditing**: in Hybrid mode, every admin access to operational fields must be logged (without the data itself)
-7. **Regular updates**: track Argon2id recommendations to adjust `m`, `t`, `p` as hardware progresses
+7. **Regular updates**: track Argon2id recommendations to adjust `m` and `t` as hardware progresses (`p` is fixed at 1, see §5)
 
-Failure to respect any of these rules significantly degrades the guarantees. The reference SelfDataGuard library automatically enforces rules 1, 2, 5, 6; rules 3, 4, 7 are deployment configuration.
+Failure to respect any of these rules significantly degrades the guarantees. The reference library enforces rule 1, and rule 5 for its own exception traces (`#[\SensitiveParameter]`); the others are up to the integrator and the deployment configuration.
 
 ---
 
 ## 8. Limitations and future work
 
-### 8.1 Known limitations of v0.0.1
+### 8.1 Known limitations
 
 - **Full-text search** on encrypted fields: impossible without advanced techniques (partial homomorphic encryption, secure indexes like CipherSweet)
 - **Asynchronous transactional notifications**: require admin_op_key (Hybrid mode) or redesign toward push (Full mode)
 - **Schema migration**: if an encrypted field is added to an existing account, it must be populated during an active user session
-- **Performance**: each encrypted field adds ~50-100 µs overhead on recent GPU. For queries listing many accounts, this cost compounds. To evaluate case by case.
+- **Performance**: the overhead of each encrypted field has not been measured yet. For queries listing many accounts, it compounds: to evaluate case by case.
 
 ### 8.2 Roadmap
 
-- **v0.1.0** (shipped, Q3 2026): reference PHP implementation, Eloquent / Doctrine trait integration via adapter — the library's current size is given by the README, which is measured at each edition
+- **v0.1.0** (shipped as beta on 2026-05-08): reference PHP implementation, SQLite storage behind `StorageInterface`; the Eloquent / Doctrine integration is still to be written — the library's current size is given by the README, which is measured at each edition
 - **v0.2.0** (shipped 2026-08-21, Q3): escrow compartment, key ceremony, audit log
 - **v0.3.0** (shipped 2026-09-07): Argon2id derivation of the memorized secret, password length floor enforced in code
-- **v0.4.0** (upcoming): advanced blind index extension for searchable encryption, multi-tenant support
+- **v0.4.0** (shipped 2026-09-26): XChaCha20-Poly1305 for every write, versioned blob format (`SDG2.`), AES-256-GCM blobs read by libsodium or OpenSSL
+- **v0.5.0** (upcoming): advanced blind index extension for searchable encryption, multi-tenant support
 - **v1.0.0** (2027): formal community cryptographic audit, ANSSI Visa de sécurité submission (industries@ssi.gouv.fr), test vector pack publication
 
 ---
@@ -298,7 +302,7 @@ Failure to respect any of these rules significantly degrades the guarantees. The
 
 **AGPL-3.0-or-later**. Code, documentation, and whitepapers published in the `Pierroons/my-self` repository.
 
-Any deployed version, modified or not, must publish its sources under the same license. No SaaS capture possible.
+A modified version offered to users over a network must give them access to its source code, under the same license (AGPL-3.0, section 13).
 
 Author: Pierroons. Contact details accessible via the public repository.
 
@@ -306,4 +310,4 @@ Technical feedback, community audits, and cryptographic critiques are welcome, e
 
 ---
 
-*Document v0.0.1 — May 2026, roadmap updated 2026-08-27. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 (the copy sent to the CNIL) and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026 — §2, §3.1 and §6 now describe the shipped derivation; the rest of the edition has not been re-read against the French one. The specification described here is implemented: v0.1.0, v0.2.0 and v0.3.0 have shipped and are tested (198 checks, 8 suites).*
+*First edition May 2026; this edition 26 September 2026, aligned on SelfDataGuard v0.4.0. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026. The specification described here is implemented and tested from v0.1.0 to v0.4.0 (219 checks, 8 suites).*

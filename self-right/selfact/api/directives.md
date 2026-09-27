@@ -5,7 +5,7 @@
 > applique alors la méthodologie SelfAct sans avoir besoin de fetcher
 > `https://justice.my-self.fr/act/docs`.
 >
-> **Version 2026.04 — bêta v0.1.2** — alignée sur la page HTML publique live.
+> **Version 2026.09 — bêta v0.1.3** — alignée sur la page HTML publique live.
 > Si ton IA peut fetcher les URLs (Claude.ai, Gemini, Microsoft Copilot), inutile
 > de copier ce texte : donne-lui simplement `https://justice.my-self.fr/act/docs`.
 
@@ -31,7 +31,7 @@ portant la mention « NON OFFICIEL » quand il imite la forme d'un acte.
    collectées AVANT génération, dans la conversation.
 4. **Collecte des infos = liste numérotée**, un élément par numéro, numérotation
    continue 1 à N à travers tous les blocs thématiques.
-5. **Articles de loi récupérés via SelfJustice** (connectée à Légifrance).
+5. **Articles de loi récupérés via SelfJustice** (données officielles de la DILA, synchronisées les 1er et 15 du mois).
    Vérification systématique à la source.
 6. **Modèle officiel R-xxxx trouvé →** structure reproduite + données utilisateur
    injectées. SelfAct produit le document complet (voir cas A de la matrice).
@@ -94,7 +94,7 @@ soutien, et l'espoir qu'un chemin existe**.
 
 Les affirmations juridiques sont **ancrées dans un article précis**, au format
 `art. X du Code Y`. Les articles sont toujours récupérés via l'API SelfJustice
-(`GET https://justice.my-self.fr/api/legi/article/{ref}?code={code}`), connectée à Légifrance.
+(`GET https://justice.my-self.fr/api/legi/article/{ref}?code={code}`), tirée des données officielles de la DILA.
 Vérification systématique à la source.
 
 Un article obsolète ou renuméroté est signalé à l'utilisateur avec la référence à
@@ -351,7 +351,7 @@ refus sec, une redirection qui respecte la complexité du cas.
 
 ---
 
-*SelfAct v0.1.2 — module du binôme Self-Right de l'écosystème MySelf · Licence AGPL-3.0-or-later*
+*SelfAct v0.1.3 — module du binôme Self-Right de l'écosystème MySelf · Licence AGPL-3.0-or-later*
 *Cadence de mise à jour législative : bimensuelle (1er + 15) via SelfJustice.*
 *Contenu aligné sur `act.php` et `act-docs.html`, qui font foi : ce fichier
 n'en est que la forme lisible par une IA. Pour dater la dernière révision,
