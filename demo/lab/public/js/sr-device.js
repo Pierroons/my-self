@@ -14,8 +14,8 @@
  * JavaScript. Ce fichier n'en est qu'un appelant.
  *
  * Le mot mémorisé est choisi par un humain — `register.php` en accepte quatre
- * caractères — et il sert ici à CHIFFRER. L'exception PBKDF2 du projet
- * (SelfVault) ne couvre que des secrets tirés au sort : elle ne s'applique pas.
+ * caractères — et il sert ici à CHIFFRER. Une KDF rapide ne se défend que pour
+ * des secrets tirés au sort : elle ne s'applique pas.
  *
  * ⚠️ **Les blobs écrits avant ce changement ne sont pas lisibles** : rien n'y
  * indique la KDF employée, c'est exactement le défaut corrigé. `srDeviceRecover`
