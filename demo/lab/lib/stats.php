@@ -48,10 +48,9 @@ final class Stats
 
         $rapports = (int) $pdo->query('SELECT COUNT(*) FROM redteam_reports')->fetchColumn();
 
-        // Un rapport validé sur le mémo = un flag tombé. C'est le seul chiffre
-        // qui dise si la promesse centrale tient encore.
+        // Un rapport validé sur le mémo ou sur les messages privés = un flag tombé.
         $flags = (int) $pdo->query(
-            "SELECT COUNT(*) FROM redteam_reports WHERE status = 'valide' AND target = 'memo'"
+            "SELECT COUNT(*) FROM redteam_reports WHERE status = 'valide' AND target IN ('memo', 'dm')"
         )->fetchColumn();
 
         // Ancienneté déduite du plus ancien enregistrement plutôt que codée en

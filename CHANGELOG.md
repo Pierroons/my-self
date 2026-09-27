@@ -10,6 +10,31 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Le CTF annonce sa Saison 2 : deux drapeaux, et des promesses exactes — 26 septembre 2026
+
+La page red team présentait un seul drapeau, dans le mémo, chiffré « AES-256-GCM ». Elle en
+porte désormais deux, nommés avec leurs comptes, et dit pour chacun ce qui le protège et ce qui
+le fait tomber :
+- **FLAG-E2E** est chiffré dans le navigateur (Argon2id, HKDF puis AES-GCM) : ni un dump, ni un
+  administrateur, ni le serveur ne le révèlent.
+- **FLAG-DM** est chiffré au repos par SelfDataGuard : un dump seul ne suffit pas, la clé serveur
+  si.
+
+Quatre affirmations fausses de l'interface sont corrigées :
+- **les rapports red team** étaient dits chiffrés par SelfDataGuard ; ils le sont en PGP, dans le
+  navigateur ;
+- **les messages privés** étaient dits « de bout en bout » ; ils sont chiffrés au repos ;
+- **le mémo** était attribué à SelfDataGuard ;
+- **les profils et DM** étaient dits lisibles par un administrateur, alors que c'est la clé serveur
+  qui permet de les lire.
+
+La feuille de route n'annonce plus Argon2id comme à venir.
+
+Deux corrections suivent :
+- la notification d'un nouveau rapport affiche la sévérité validée ; elle lisait un champ
+  inexistant et affichait toujours « ? » ;
+- le compteur public de drapeaux capturés compte aussi FLAG-DM.
+
 ### Le mémo chiffré du lab scelle en Argon2id ; PBKDF2 quitte le dépôt — 26 septembre 2026
 
 Le mémo du lab était le dernier code à dériver une clé par PBKDF2 : 600 000 tours, et un

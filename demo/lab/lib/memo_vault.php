@@ -3,7 +3,7 @@
  * MySelf-Lab — stockage du coffre E2E du mémo.
  *
  * IMPORTANT : cette couche ne fait AUCUNE cryptographie. Toute la dérivation de
- * clé et le chiffrement/déchiffrement se passent dans le NAVIGATEUR (WebCrypto).
+ * clé (Argon2id, par sr-kdf.js) et le chiffrement se passent dans le NAVIGATEUR.
  * Le serveur ne voit que des blobs opaques : aucune clé, aucun plaintext.
  * Un dump de la table `memo_vault` ne révèle rien d'exploitable sans le secret
  * de l'utilisateur — qui n'a jamais quitté son poste.

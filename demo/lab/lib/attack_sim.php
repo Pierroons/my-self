@@ -82,7 +82,7 @@ final class AttackSimulator
             'etapes' => [
                 ['action' => 'Bob envoie un DM contenant son RIB à Alice', 'resultat' => 'message chiffré XChaCha20-Poly1305 avant insertion'],
                 ['action' => 'Alice renseigne son adresse dans son profil', 'resultat' => 'profil chiffré at-rest'],
-                ['action' => "L'attaquant exfiltre la base et lit les tables dm + profiles", 'resultat' => 'il n\'obtient que des blobs base64'],
+                ['action' => "L'attaquant exfiltre la base et lit les tables dm + profiles", 'resultat' => 'il n\'obtient que des blobs SDG2. illisibles'],
             ],
             'cote_attaquant' => [
                 'label' => 'Dump SQL brut (ce que voit l\'attaquant)',

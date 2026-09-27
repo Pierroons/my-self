@@ -83,7 +83,7 @@ final class Redteam
         $id = (int) $pdo->lastInsertId();
         // Alerte le lecteur du panneau. Volontairement après l'écriture et sans
         // condition de succès : un canal muet ne doit pas perdre un rapport.
-        Notify::nouveauRapport($id, (string) ($champs['severite'] ?? '?'));
+        Notify::nouveauRapport($id, $severity);
 
         return ['ok' => true, 'id' => $id];
     }
