@@ -96,8 +96,14 @@ lire_tableau() {   # lire_tableau <NOM> → les chaînes entre guillemets du tab
 motif_vers_regex() {
     local m="$1" r
     r=$(printf '%s' "$m" | sed -e 's|\.|\\.|g' -e 's|\*|[^/]*|g')
+    # ⚠️ Le motif ancré à la racine avait besoin d'une ancre de fin. Sans elle il
+    # attrapait par préfixe : le motif visant le binaire `selfrecover_derive`
+    # emportait aussi `selfrecover_derive.c` et `.py`, qui quittaient le
+    # périmètre comparé — leur contenu n'était plus confronté à l'instance,
+    # et la sonde continuait d'annoncer que rien ne divergeait.
     case "$m" in
-        /*)   printf '^%s' "${r#/}" ;;
+        /*/)  printf '^%s' "${r#/}" ;;
+        /*)   printf '^%s(/|$)' "${r#/}" ;;
         */*)  printf '(^|/)%s' "$r" ;;
         *)    printf '(^|/)%s(/|$)' "$r" ;;
     esac

@@ -16,7 +16,15 @@
 # Sortie : 0 si tout résout, 1 sinon.
 
 set -uo pipefail
-cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# ⚠️ `cd "$(git rev-parse --show-toplevel)" || exit 1` ne gardait rien : hors
+# dépôt, la substitution est vide et `cd ""` rend 0 en bash. Les `git ls-files`
+# rendaient vide ensuite, et les quatre blocs annonçaient ✓ après n'avoir lu
+# aucun fichier. Le code de sortie ne le disait pas non plus — il valait 1, mais
+# parce que la copie de licence manquait, pas parce que rien n'avait été lu.
+RACINE="$(git rev-parse --show-toplevel)" || exit 1
+[ -n "$RACINE" ] || { echo "✗ hors dépôt git — aucun périmètre à contrôler" >&2; exit 1; }
+cd "$RACINE" || exit 1
 
 echec=0
 
