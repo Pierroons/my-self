@@ -32,6 +32,7 @@ require __DIR__ . '/StockageMemoire.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Recovery\Escalade;
+use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Tests\StockageMemoire;
 
@@ -158,7 +159,15 @@ for ($tour = 1; $tour <= $tours; $tour++) {
         $st->codes[] = ['id' => $c, 'compte_id' => 1, 'index' => "idx$c",
                         'empreinte' => "emp$c", 'utilise' => false];
     }
-    $recovery = new Recovery($st, 'sel-du-fuzzer', delaiRefusUs: 0);
+    $recovery = new Recovery(
+        $st,
+        'sel-du-fuzzer',
+        // Ce fuzzer n'ouvre jamais de dossier avec une origine : son monde est
+        // celui où aucune n'est exploitable. Déclaré `clearweb`, il levait sur
+        // chaque tour — et c'est lui qui l'a signalé.
+        ProfilDeploiement::TOR_ONION,
+        delaiRefusUs: 0,
+    );
     $esc      = new Escalade($st, $recovery, delaiRefusUs: 0);
 
     $avant     = photo($st);

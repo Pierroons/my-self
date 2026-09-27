@@ -136,12 +136,20 @@ jobs:
       - name: Garde-fou — récupération niveaux 1 et 2, dont le frein par compte du niveau 2
         run: |
           # Le banc est lancé sans `set -e` sur l'affectation : sinon l'étape meurt
-          # avant le contrôle du compte, là où il serait le plus utile (50/51).
-          sortie=$(php bi-self/selfrecover/tests/sanity_recovery.php 2>&1) && rc=0 || rc=$?
-          echo "$sortie"
-          [ "$rc" = 0 ] || { echo "::error::le banc de récupération a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 51/51$' \
-            || { echo "::error::le banc de récupération n'a pas joué ses 51 cas"; exit 1; }
+          # avant le contrôle du compte, là où il serait le plus utile — un cas
+          # manquant sur les cinquante-huit.
+          #
+          # 🔑 Les DEUX profils, dans la même étape. Le corps du banc est le même :
+          # seule l'origine change, absente en tor-onion. Un comportement qui ne
+          # tiendrait que d'un côté se verrait ici, et le frein par compte est
+          # précisément ce qui doit tenir des deux.
+          for profil in clearweb tor-onion; do
+            sortie=$(php bi-self/selfrecover/tests/sanity_recovery.php --profil="$profil" 2>&1) && rc=0 || rc=$?
+            echo "$sortie"
+            [ "$rc" = 0 ] || { echo "::error::le banc de récupération a échoué sous $profil"; exit 1; }
+            echo "$sortie" | grep -qE '^OK — 58/58$' \
+              || { echo "::error::le banc de récupération n'a pas joué ses 58 cas sous $profil"; exit 1; }
+          done
 
       # Un frein qu'on n'a jamais fait céder ne se distingue pas d'un frein qui
       # n'est relié à rien : les deux laissent le banc vert. Ce canari mesure que
@@ -171,6 +179,34 @@ jobs:
           echo "$sortie" | grep -q 'au sixième essai, même le bon mot est freiné' \
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du frein"; exit 1; }
           echo "✓ le banc rougit, et sur le cas du frein par compte"
+
+      # Un profil qui ne refuse rien serait une déclaration, pas un garde-fou : le
+      # défaut qu'il décrit passerait quand même.
+      - name: Canari — le profil de déploiement ne refuse plus rien
+        run: |
+          F=bi-self/selfrecover/src/ProfilDeploiement.php
+          cp "$F" /tmp/Profil.intact
+          python3 - <<'PY'
+          chemin = 'bi-self/selfrecover/src/ProfilDeploiement.php'
+          motif  = '    public function verifierOrigine(?string $ip): void\n    {'
+          s = open(chemin, encoding='utf-8').read()
+          assert s.count(motif) == 1, 'motif introuvable — ce canari ne prouve rien'
+          open(chemin, 'w', encoding='utf-8').write(s.replace(motif, motif + '\n        return; // neutralisé', 1))
+          PY
+          grep -q 'return; // neutralisé' "$F" \
+            || { cp /tmp/Profil.intact "$F"; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          php -l "$F" >/dev/null \
+            || { cp /tmp/Profil.intact "$F"; echo "::error::la version plantée ne compile pas"; exit 1; }
+          if sortie=$(php bi-self/selfrecover/tests/sanity_recovery.php 2>&1); then
+            cp /tmp/Profil.intact "$F"
+            echo "$sortie"; echo "::error::le banc reste VERT alors que le profil ne refuse plus rien"; exit 1
+          fi
+          cp /tmp/Profil.intact "$F"
+          cmp -s /tmp/Profil.intact "$F" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$sortie" | grep -q 'une origine transmise est refusée' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du profil"; exit 1; }
+          echo "✓ le banc rougit, et sur le cas du profil"
 
       # Il construit `Recovery` : le constructeur du niveau 2 ne peut pas changer
       # sans qu'un rouge apparaisse ici.

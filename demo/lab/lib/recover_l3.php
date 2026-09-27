@@ -26,6 +26,7 @@ namespace Pierroons\MySelfLab;
 
 use PDO;
 use Pierroons\SelfRecover\Recovery\Escalade;
+use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 
 require_once __DIR__ . '/StockageSelfRecover.php';
@@ -65,7 +66,10 @@ final class RecoverL3
     {
         $stockage = new StockageSelfRecover($pdo);
 
-        return new Escalade($stockage, new Recovery($stockage, Auth::siteSalt()));
+        return new Escalade(
+            $stockage,
+            new Recovery($stockage, Auth::siteSalt(), ProfilDeploiement::CLEARWEB),
+        );
     }
 
     /** Ajoute le code HTTP au refus rendu par la bibliothèque. */

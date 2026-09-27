@@ -17,6 +17,7 @@ require __DIR__ . '/StockageMemoire.php';
 
 use Pierroons\SelfRecover\Crypto\Encoding;
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Device\Device;
 use Pierroons\SelfRecover\Tests\StockageMemoire;
 
@@ -61,7 +62,7 @@ $now = 1_700_000_000;
 // ── Scénario 1 : enrôlement légitime, puis récupération ────────────────────
 $st = new StockageMemoire();
 $st->comptes['alice'] = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
-$dev = new Device($st, delaiRefusUs: 0);
+$dev = new Device($st, ProfilDeploiement::CLEARWEB, delaiRefusUs: 0);
 [$privee, $publique] = engendrerPaire();
 $credId = 'cred' . str_repeat('A', 20);
 
@@ -83,7 +84,7 @@ verifier('le mot de passe stocké est bien celui rendu',
 echo "\n→ Prise de compte par enrôlement (02/08/2026)\n";
 $st2 = new StockageMemoire();
 $st2->comptes['victime'] = ['id' => 7, 'empreinte_mot' => Hashing::hash('bb' . str_repeat('cd', 31))];
-$dev2 = new Device($st2, delaiRefusUs: 0);
+$dev2 = new Device($st2, ProfilDeploiement::CLEARWEB, delaiRefusUs: 0);
 [$priveeAtt, $publiqueAtt] = engendrerPaire();
 
 $att = $dev2->enroler('victime', 'cred' . str_repeat('B', 20), $publiqueAtt, $MOT, '192.0.2.9', $now);
@@ -117,7 +118,7 @@ verifier('une signature d\'un autre appareil est rejetée', $mauvaise['ok'] === 
 
 // ── Scénario 4 : formes refusées ───────────────────────────────────────────
 echo "\n→ Entrées mal formées\n";
-$clair = $dev->enroler('alice', 'cred' . str_repeat('D', 20), $publique, 'mon-mot-en-clair', null, $now);
+$clair = $dev->enroler('alice', 'cred' . str_repeat('D', 20), $publique, 'mon-mot-en-clair', '192.0.2.1', $now);
 verifier('un mot non dérivé est refusé', ($clair['error'] ?? '') === 'invalid_derived_key');
 verifier('64 hexa sont acceptés comme clé dérivée', Device::estCleDerivee($MOT));
 verifier('une chaîne trop courte ne l\'est pas', !Device::estCleDerivee('abcdef'));

@@ -27,6 +27,7 @@ require __DIR__ . '/../src/autoload.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Recovery\Escalade;
+use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 use Pierroons\SelfRecover\Storage\StockagePdo;
@@ -208,7 +209,7 @@ $PHRASE = 'cheval agrafe batterie correct';
 // réécriture plus bas passerait au vert en lisant la valeur initiale.
 $compteId = creerCompte($pdo, 'alice', $MOT, $PHRASE, $T0, $T0, 'ancien.example');
 
-$recovery = new Recovery($stockage, 'sel-de-deploiement-du-banc', delaiRefusUs: 0);
+$recovery = new Recovery($stockage, 'sel-de-deploiement-du-banc', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0);
 
 // Quatre ans avant $T0 : aucune réécriture ne peut rendre cette valeur.
 $SEME_ANCIEN = $T0 - 4 * 365 * 86400;

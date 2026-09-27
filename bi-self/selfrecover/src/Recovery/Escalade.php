@@ -199,6 +199,7 @@ final class Escalade
         ?string $ip = null,
         ?int $maintenant = null,
     ): array {
+        $this->recovery->profil()->verifierOrigine($ip);
         $maintenant = $maintenant ?? time();
 
         // Casse normalisée comme au niveau 1 : sans elle, « Alice » et « alice »

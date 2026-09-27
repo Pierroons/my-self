@@ -17,6 +17,7 @@ require_once __DIR__ . '/StockageSelfRecover.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device as Protocole;
+use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 
 final class RecoverHelper {
@@ -162,7 +163,16 @@ final class RecoverHelper {
 
     /** Le protocole monté sur la base de cette session de démo. */
     private static function protocole(DemoSession $session): Recovery {
-        return new Recovery(new StockageSelfRecover($session->db()), self::siteSalt($session));
+        // ⚠️ `tor-onion` sans être un service caché : cette démo est servie sur le
+        // web ordinaire, mais sa table `login_attempts` ne porte pas d'adresse et
+        // son `compterEchecsIp()` lève. Aucune origine n'y est exploitable par
+        // appelant, ce qui est exactement ce que ce profil déclare ; son frein est
+        // `RateLimit`, par session.
+        return new Recovery(
+            new StockageSelfRecover($session->db()),
+            self::siteSalt($session),
+            ProfilDeploiement::TOR_ONION,
+        );
     }
 
     /**

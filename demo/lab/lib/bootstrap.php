@@ -105,6 +105,17 @@ function require_csrf(): void
     }
 }
 
+/**
+ * L'adresse de l'appelant, telle que le serveur la rapporte.
+ *
+ * ⚠️ **Rend `null` quand le serveur ne la rapporte pas, et ce `null` n'est pas
+ * rattrapé.** Ce lab déclare le profil `clearweb` à la bibliothèque, qui refuse
+ * alors une origine absente : un serveur qui n'en fournit aucune fait échouer la
+ * requête, bruyamment. C'est le comportement voulu — inventer une valeur de repli
+ * ferait compter tous les visiteurs sous une même origine, et les premiers échecs
+ * de n'importe qui freineraient tout le monde. Un frein qui refuse tout le monde
+ * ensemble est pire que pas de frein, parce qu'il a l'air d'en être un.
+ */
 function client_ip(): ?string
 {
     return $_SERVER['REMOTE_ADDR'] ?? null;

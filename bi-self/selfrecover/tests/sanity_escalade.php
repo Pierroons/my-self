@@ -30,11 +30,15 @@ require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/StockageMemoire.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Escalade;
 use Pierroons\SelfRecover\Recovery\Litige;
 use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Tests\StockageMemoire;
 
+// 🔑 Ce banc ne se joue PAS sous un profil unique, contrairement à celui de la
+// récupération : ses cas éprouvent les deux mondes exprès — le quota par adresse
+// d'un côté, celui par service qui tient quand l'adresse ne dit rien de l'autre.
 $passes = 0;
 $echecs = 0;
 
@@ -60,8 +64,12 @@ $JOUR = 86400;
  * restaient VERTS quand on faisait purger les codes du titulaire par un refus.
  * Mesuré. Une sonde ne vaut que l'état qu'elle met en place.
  */
-function banc(int $now, ?int $derniereConnexion = null, ?int $connexions = null): array
-{
+function banc(
+    ProfilDeploiement $profil,
+    int $now,
+    ?int $derniereConnexion = null,
+    ?int $connexions = null,
+): array {
     $st = new StockageMemoire();
     $st->comptes['alice']     = ['id' => 1, 'empreinte_mot' => Hashing::hash('mot memorise initial')];
     $st->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash('phrase initiale')];
@@ -76,7 +84,7 @@ function banc(int $now, ?int $derniereConnexion = null, ?int $connexions = null)
         'derniere_connexion' => $derniereConnexion,
         'nombre_connexions'  => $connexions,
     ];
-    $recovery = new Recovery($st, 'sel-de-la-sonde', delaiRefusUs: 0);
+    $recovery = new Recovery($st, 'sel-de-la-sonde', $profil, delaiRefusUs: 0);
     $esc      = new Escalade($st, $recovery, delaiRefusUs: 0);
     // Un lot posé à la main — ce qu'on vérifie est qu'un refus ne le détruit pas,
     // pas la façon dont il est fabriqué. `emettreCodes()` coûterait dix Argon2id.
@@ -90,7 +98,7 @@ function banc(int $now, ?int $derniereConnexion = null, ?int $connexions = null)
 
 echo "\n→ Ouverture d'un dossier\n";
 
-[$st, $esc] = banc($now);
+[$st, $esc] = banc(ProfilDeploiement::TOR_ONION, $now);
 $sesame     = bin2hex(random_bytes(32));
 $ouv        = $esc->ouvrir('alice', Escalade::empreinteSesame($sesame), maintenant: $now);
 
@@ -119,8 +127,8 @@ echo "\n→ Les freins de l'ouverture\n";
 // ⭐ Le compteur annoncé doit être le compteur réel. Une version antérieure de
 // ce correctif écrivait DEUX lignes par appel sous l'étiquette comptée : le
 // frein annoncé à 10 mordait au 6e appel, et rien ici ne le voyait.
-[$stI, $_] = banc($now);
-$escIp = new Escalade($stI, new Recovery($stI, 'sel', delaiRefusUs: 0),
+[$stI, $_] = banc(ProfilDeploiement::CLEARWEB, $now);
+$escIp = new Escalade($stI, new Recovery($stI, 'sel', ProfilDeploiement::CLEARWEB, delaiRefusUs: 0),
     delaiRefusUs: 0, maxOuverturesIp: 3);
 
 $passes3 = [];
@@ -146,7 +154,7 @@ verifier('et aucun nom de compte n\'est écrit : l\'ouverture est comptée, pas 
 // atterrissent aussi, et un nom soumis y arrive tel quel depuis une route
 // publique. Une étiquette devinable serait un compteur que n'importe qui
 // remplit : mesuré avant correction, vingt lignes fermaient le service à tous.
-[$stF, $escF] = banc($now);
+[$stF, $escF] = banc(ProfilDeploiement::CLEARWEB, $now);
 for ($i = 0; $i < 40; $i++) {
     $stF->tracerTentative('l3:ouvrir:*', false, '198.51.100.4', $now + $i);
     $stF->tracerTentative('l3:ouvrir:@' . substr(hash('sha256', '10.0.0.1'), 0, 32), false, '198.51.100.4', $now + $i);
@@ -157,7 +165,7 @@ verifier('⭐ quarante lignes forgées sous l\'étiquette devinable ne freinent 
 
 // ⭐ Les seuils LIVRÉS, pas seulement ceux qu'on injecte : ce sont eux que le
 // CHANGELOG et l'architecture publient.
-[$stD, $escD] = banc($now);
+[$stD, $escD] = banc(ProfilDeploiement::CLEARWEB, $now);
 $suiteD = [];
 for ($i = 0; $i < 11; $i++) {
     $suiteD[] = $escD->ouvrir("d$i", Escalade::empreinteSesame("x$i"), '10.0.0.5', $now + $i);
@@ -168,8 +176,8 @@ verifier('⭐ et la onzième est freinée — le chiffre publié est le chiffre 
     ($suiteD[10]['error'] ?? '') === 'trop_de_demandes');
 
 // L'énumération vise des noms différents : seul un plafond de service la voit.
-[$stS, $__] = banc($now);
-$escServ = new Escalade($stS, new Recovery($stS, 'sel', delaiRefusUs: 0),
+[$stS, $__] = banc(ProfilDeploiement::TOR_ONION, $now);
+$escServ = new Escalade($stS, new Recovery($stS, 'sel', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0),
     delaiRefusUs: 0, maxOuverturesService: 2);
 
 $e1 = $escServ->ouvrir('inconnu1', Escalade::empreinteSesame('a'), maintenant: $now);
@@ -187,8 +195,8 @@ verifier('⭐ une fois le plafond atteint, un compte CONNU et un compte inconnu 
 // 🔑 Sans adresse — derrière un service caché, où il n'y a rien à compter — un
 // seuil par adresse à zéro ne doit rien freiner : c'est le plafond de service
 // qui gouverne seul.
-[$stN, $___] = banc($now);
-$escNul = new Escalade($stN, new Recovery($stN, 'sel', delaiRefusUs: 0),
+[$stN, $___] = banc(ProfilDeploiement::TOR_ONION, $now);
+$escNul = new Escalade($stN, new Recovery($stN, 'sel', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0),
     delaiRefusUs: 0, maxOuverturesIp: 0);
 $sansIp = $escNul->ouvrir('alice', Escalade::empreinteSesame('e'), null, $now);
 verifier('⭐ sans adresse, le frein par adresse ne freine pas',
@@ -198,8 +206,8 @@ verifier('⭐ sans adresse, le frein par adresse ne freine pas',
 // `REMOTE_ADDR ?? ''` la passerait, et tous les appelants partageraient alors un
 // compteur unique — un plafond global au seuil du client, qui masque celui du
 // service. Les deux formes vides doivent se comporter comme `null`.
-[$stV, $__v] = banc($now);
-$escV = new Escalade($stV, new Recovery($stV, 'sel', delaiRefusUs: 0),
+[$stV, $__v] = banc(ProfilDeploiement::TOR_ONION, $now);
+$escV = new Escalade($stV, new Recovery($stV, 'sel', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0),
     delaiRefusUs: 0, maxOuverturesIp: 1);
 $escV->ouvrir('v1', Escalade::empreinteSesame('a'), '', $now);
 $vide2 = $escV->ouvrir('v2', Escalade::empreinteSesame('b'), '   ', $now + 1);
@@ -209,7 +217,7 @@ verifier('⭐ une adresse vide ou blanche vaut « pas d\'adresse »',
 // ⭐ Aucun frein par compte : un tiers ne doit pas pouvoir fermer l'ouverture au
 // titulaire. Ce qui borne le harcèlement est le dossier lui-même, et la
 // collision se COMPTE sous les yeux de l'arbitre plutôt que de murer en silence.
-[$stH, $escH] = banc($now);
+[$stH, $escH] = banc(ProfilDeploiement::CLEARWEB, $now);
 for ($i = 0; $i < 8; $i++) {
     $escH->ouvrir('alice', Escalade::empreinteSesame("mallory$i"), '10.0.0.9', $now + $i);
 }
@@ -267,7 +275,7 @@ verifier('un fait local du déploiement atteint le faisceau',
 // ⭐ Un adaptateur qui rend une clé réservée ne doit pas pouvoir en changer la
 // valeur : `refus_precedents` arme le gel, et un arbitre qui lit un zéro forgé
 // tranche sur un faux.
-[$stMenteur, $escMenteur] = banc($now);
+[$stMenteur, $escMenteur] = banc(ProfilDeploiement::TOR_ONION, $now);
 $stMenteur->faitsLocaux = ['refus_precedents' => 999, 'hote_derivation' => 'imposteur.test'];
 $sMenteur = bin2hex(random_bytes(32));
 $oMenteur = $escMenteur->ouvrir('alice', Escalade::empreinteSesame($sMenteur), maintenant: $now);
@@ -283,7 +291,7 @@ verifier('et la valeur forgée reste visible à sa place, sous `local`',
 // cas de l'adaptateur du lab, seul adaptateur de production du niveau 3 : sans
 // ce contrôle, retirer le `?? []` de `faisceau()` laisserait le banc vert et
 // casserait chaque dossier servi.
-[$stMuet, $escMuet] = banc($now);
+[$stMuet, $escMuet] = banc(ProfilDeploiement::TOR_ONION, $now);
 $stMuet->sansFaitsLocaux = true;
 $sMuet = bin2hex(random_bytes(32));
 $oMuet = $escMuet->ouvrir('alice', Escalade::empreinteSesame($sMuet), maintenant: $now);
@@ -294,7 +302,7 @@ verifier('contre-témoin : un adaptateur qui ne rend pas la case ne casse rien',
 
 // ⭐ Un fait illisible ne doit pas fermer la porte : ce niveau s'adresse à qui
 // n'a plus rien, et un faisceau qui n'assemble jamais rend le refus définitif.
-[$stSale, $escSale] = banc($now);
+[$stSale, $escSale] = banc(ProfilDeploiement::TOR_ONION, $now);
 $stSale->faitsLocaux = ['hote' => "octet\xE9 hors UTF-8", 'compteur' => INF, 'objet' => new stdClass()];
 $sSale = bin2hex(random_bytes(32));
 $oSale = $escSale->ouvrir('alice', Escalade::empreinteSesame($sSale), maintenant: $now);
@@ -307,7 +315,7 @@ verifier('et il arrive à l\'arbitre en « on ne sait pas », pas en valeur forg
 
 // Contre-témoin : sans lui, un faisceau qui rendrait TOUJOURS « indisponible »
 // passerait les deux contrôles ci-dessus. Un faux vert tue une sonde.
-[$st2, $esc2] = banc($now, $now - 30 * 86400, 42);
+[$st2, $esc2] = banc(ProfilDeploiement::TOR_ONION, $now, $now - 30 * 86400, 42);
 $sesame2 = bin2hex(random_bytes(32));
 $ouv2    = $esc2->ouvrir('alice', Escalade::empreinteSesame($sesame2), maintenant: $now);
 $esc2->soumettre((string) $ouv2['numero'], $sesame2, [
@@ -359,7 +367,7 @@ verifier('un message de plus de 2000 caractères est refusé', ($long['ok'] ?? t
 
 echo "\n→ ⭐ Un refus ne touche JAMAIS au compte\n";
 
-[$st3, $esc3] = banc($now);
+[$st3, $esc3] = banc(ProfilDeploiement::TOR_ONION, $now);
 $empreinteAvant = $st3->comptes['alice']['empreinte_mot'];
 $mdpAvant       = $st3->empreintes[1];
 $phraseAvant    = $st3->passphrases['alice']['empreinte_passphrase'];
@@ -391,7 +399,7 @@ verifier('le message précise que le compte fonctionne',
 
 // Contre-témoin : deux refus ne gèlent pas. Sans lui, un gel permanent rendrait
 // les trois contrôles ci-dessus verts.
-[$st4, $esc4] = banc($now);
+[$st4, $esc4] = banc(ProfilDeploiement::TOR_ONION, $now);
 for ($i = 0; $i < 2; $i++) {
     $o = $esc4->ouvrir('alice', Escalade::empreinteSesame("s$i"), maintenant: $now + $i * $JOUR);
     $esc4->trancher((string) $o['numero'], 'refuse', 'arbitre', $now + $i * $JOUR + 100);
@@ -410,7 +418,7 @@ verifier('la trace du dégel est gardée, pas effacée',
 
 echo "\n→ Accepter ne fabrique aucun secret\n";
 
-[$st5, $esc5] = banc($now);
+[$st5, $esc5] = banc(ProfilDeploiement::TOR_ONION, $now);
 $s5  = bin2hex(random_bytes(32));
 $o5  = $esc5->ouvrir('alice', Escalade::empreinteSesame($s5), maintenant: $now);
 $n5  = (string) $o5['numero'];
@@ -460,7 +468,7 @@ verifier('⭐ le marqueur de déploiement a suivi le ré-enrôlement',
 // être signalé priverait l'arbitre du fait le plus utile du moment. Et
 // l'exemption d'expiration vaut aussi : l'horloge ne doit pas annuler son
 // travail avant que le titulaire revienne.
-[$stA, $escA] = banc($now);
+[$stA, $escA] = banc(ProfilDeploiement::TOR_ONION, $now);
 $sA = bin2hex(random_bytes(32));
 $oA = $escA->ouvrir('alice', Escalade::empreinteSesame($sA), maintenant: $now);
 $escA->soumettre((string) $oA['numero'], $sA, ['annee_creation' => '2022'], $now + 7200);
@@ -479,7 +487,7 @@ verifier('et la collision est comptée pour l\'arbitre',
 // compteur avant son seuil, et le gel deviendrait inatteignable sans qu'aucune
 // sonde ne rougisse. Elle épargne aussi les ACCEPTÉS, pour la même raison que
 // ci-dessus.
-[$stP, $escP] = banc($now);
+[$stP, $escP] = banc(ProfilDeploiement::TOR_ONION, $now);
 $stP->litiges[] = ['id' => 900, 'compte_id' => 1, 'numero' => 'LIT-REFUSE', 'empreinte_sesame' => '',
                    'statut' => Litige::REFUSE, 'ouvert_le' => $now, 'expire_le' => $now + 10,
                    'depose_le' => null, 'faisceau' => null, 'demandeurs_concurrents' => 0,
@@ -514,7 +522,7 @@ verifier('le mot de passe de la seconde tentative n\'a rien écrasé',
 
 echo "\n→ Ce qu'un dossier non accepté ne permet pas\n";
 
-[$st6, $esc6] = banc($now);
+[$st6, $esc6] = banc(ProfilDeploiement::TOR_ONION, $now);
 $s6 = bin2hex(random_bytes(32));
 $o6 = $esc6->ouvrir('alice', Escalade::empreinteSesame($s6), maintenant: $now);
 $nr = $esc6->reEnroler((string) $o6['numero'], $s6, 'mot de passe', $MOT, $SEL, $now + 100);
@@ -544,7 +552,7 @@ verifier('contre-témoin : un mot de passe recevable passe', ($bonMdp['ok'] ?? f
 
 echo "\n→ Expiration et purge\n";
 
-[$st7, $esc7] = banc($now);
+[$st7, $esc7] = banc(ProfilDeploiement::TOR_ONION, $now);
 $s7 = bin2hex(random_bytes(32));
 $o7 = $esc7->ouvrir('alice', Escalade::empreinteSesame($s7), maintenant: $now);
 $ex = $esc7->etat((string) $o7['numero'], $s7, $now + $JOUR + 1);

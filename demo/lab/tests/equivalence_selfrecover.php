@@ -32,6 +32,7 @@ require_once __DIR__ . '/../lib/recover_l3.php';
 use Pierroons\MySelfLab\StockageSelfRecover;
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device;
+use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 
 $passes = 0;
@@ -58,8 +59,8 @@ $pdo->prepare(
 $compteId = (int) $pdo->lastInsertId();
 
 $stockage = new StockageSelfRecover($pdo);
-$device   = new Device($stockage, delaiRefusUs: 0);
-$recovery = new Recovery($stockage, 'sel-du-lab-pour-la-sonde', delaiRefusUs: 0);
+$device   = new Device($stockage, ProfilDeploiement::CLEARWEB, delaiRefusUs: 0);
+$recovery = new Recovery($stockage, 'sel-du-lab-pour-la-sonde', ProfilDeploiement::CLEARWEB, delaiRefusUs: 0);
 
 echo "\n→ Niveau 1 sur le schéma réel\n";
 $r = $recovery->parPassphrase('alice', $PHR, '192.0.2.1', $now);
@@ -81,12 +82,17 @@ echo "\n→ Le frein par compte du niveau 2, sur le schéma réel\n";
 $compter = static fn (string $ou): int => (int) $pdo->query(
     'SELECT COUNT(*) FROM login_attempts WHERE success = 0 AND ' . $ou)->fetchColumn();
 $FAUX  = str_repeat('c3', 32);
-$neufs = $recovery->emettreCodes($compteId, 10, $now);
+// 🔑 Ce frein-ci se mesure SANS origine, sur un protocole qui le déclare : c'est
+// la configuration où il est le seul rempart, et la seule où un vert prouve que
+// ce n'est pas le frein par adresse qui a refusé à sa place.
+$recSansIp = new Recovery($stockage, 'sel-du-lab-pour-la-sonde',
+    ProfilDeploiement::TOR_ONION, delaiRefusUs: 0);
+$neufs = $recSansIp->emettreCodes($compteId, 10, $now);
 // La colonne accepte l'étiquette absente : la base du lab porte la contrainte
 // relâchée, et c'est ici qu'on le voit, pas dans le schéma lu.
 $nomAvant = $compter("username = 'alice'");
-for ($i = 0; $i < 5; $i++) { $recovery->parCode($neufs[0], $FAUX, null, $now); }
-$rF = $recovery->parCode($neufs[0], $MOT, null, $now);
+for ($i = 0; $i < 5; $i++) { $recSansIp->parCode($neufs[0], $FAUX, null, $now); }
+$rF = $recSansIp->parCode($neufs[0], $MOT, null, $now);
 verifier('⭐ au sixième essai, même le bon mot est freiné',
     $rF['ok'] === false && $rF['message'] === 'Trop de tentatives. Réessaie dans 15 minutes.',
     $rF['message']);
@@ -94,8 +100,8 @@ verifier('⭐ aucun code n\'a été consommé par les essais freinés',
     (int) $pdo->query('SELECT COUNT(*) FROM recovery_codes WHERE used = 1')->fetchColumn() === 0);
 verifier('🔑 les cinq échecs sont sous un HMAC, aucun sous le nom du compte',
     $compter("username = 'alice'") === $nomAvant
-    && $compter("username = '" . $recovery->etiquetteEchecsL2('alice') . "'") === 5);
-$recovery->parCode('11111-11111', $MOT, null, $now + 901);
+    && $compter("username = '" . $recSansIp->etiquetteEchecsL2('alice') . "'") === 5);
+$recSansIp->parCode('11111-11111', $MOT, null, $now + 901);
 verifier('🔑 un code introuvable s\'écrit sans étiquette, que la colonne accepte',
     $compter('username IS NULL') === 1);
 // 🔑 La table est partagée avec la page de connexion du lab, qui écrit le nom
@@ -106,7 +112,7 @@ foreach (['l2:alice', 'code:alice', 'l2:' . hash('sha256', 'alice')] as $imitati
     for ($i = 0; $i < 6; $i++) { $aveugle->execute([$imitation, $now + 902]); }
 }
 verifier('🔑 une étiquette imitée depuis la page de connexion ne freine personne',
-    $recovery->parCode($neufs[1], $MOT, null, $now + 903)['ok'] === true);
+    $recSansIp->parCode($neufs[1], $MOT, null, $now + 903)['ok'] === true);
 
 echo "\n→ Appareil sur le schéma réel\n";
 $cle  = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1']);
@@ -271,7 +277,7 @@ $pdo3->prepare(
 $stock3 = new StockageSelfRecover($pdo3);
 $esc3   = new \Pierroons\SelfRecover\Recovery\Escalade(
     $stock3,
-    new Recovery($stock3, 'sel-du-lab-pour-la-sonde', delaiRefusUs: 0),
+    new Recovery($stock3, 'sel-du-lab-pour-la-sonde', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0),
     delaiRefusUs: 0,
 );
 
@@ -348,12 +354,12 @@ $pdoP->prepare('INSERT INTO accounts (id, username, pw_hash, pass_hash, recovery
                 str_repeat('b', 32), $T0 - $QUATRE_ANS, $T0 - $QUATRE_ANS]);
 
 $stP  = new StockageSelfRecover($pdoP);
-$recP = new Recovery($stP, 'sel-de-la-sonde', delaiRefusUs: 0);
+$recP = new Recovery($stP, 'sel-de-la-sonde', ProfilDeploiement::CLEARWEB, delaiRefusUs: 0);
 
 $lu = $stP->trouverComptePourPassphrase('alice');
 verifier('la date d\'émission remonte de la base', ($lu['emise_le'] ?? null) === $T0 - $QUATRE_ANS);
 
-$rP = $recP->parPassphrase('alice', 'cheval agrafe batterie correct', null, $T0);
+$rP = $recP->parPassphrase('alice', 'cheval agrafe batterie correct', '192.0.2.4', $T0);
 verifier('⭐ une passphrase de quatre ans ouvre encore, sur le schéma réel',
     ($rP['ok'] ?? false) === true, (string) ($rP['message'] ?? ''));
 verifier('son âge est rendu', ($rP['age_jours'] ?? null) === 1460, var_export($rP['age_jours'] ?? null, true));

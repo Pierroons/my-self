@@ -15,6 +15,7 @@ declare(strict_types=1);
 require __DIR__ . '/../lib/StockageSelfRecover.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 
 $passes = 0;
@@ -46,7 +47,7 @@ $st->execute();
 $compteId = (int) $db->lastInsertRowID();
 
 $stockage = new StockageSelfRecover($db);
-$recovery = new Recovery($stockage, 'sel-de-la-demo-pour-la-sonde', delaiRefusUs: 0);
+$recovery = new Recovery($stockage, 'sel-de-la-demo-pour-la-sonde', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0);
 
 echo "\n→ Niveau 1 sur le schéma de la démo\n";
 $r = $recovery->parPassphrase('alice', $PHR, null, $now);

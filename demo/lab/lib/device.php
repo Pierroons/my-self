@@ -6,6 +6,7 @@ namespace Pierroons\MySelfLab;
 
 use PDO;
 use Pierroons\SelfRecover\Device\Device as Protocole;
+use Pierroons\SelfRecover\ProfilDeploiement;
 
 /**
  * Facteur de possession « cet appareil » — façade du lab sur la bibliothèque.
@@ -31,6 +32,10 @@ final class Device
     {
         return new Protocole(
             new StockageSelfRecover($pdo),
+            // ⚠️ Le même profil que `Auth::protocole()`, et pas par symétrie : les
+            // deux chemins comptent par adresse dans la MÊME table `login_attempts`.
+            // Deux profils divergents y produiraient deux comptages incohérents.
+            ProfilDeploiement::CLEARWEB,
             fenetreEchecs: self::ENROLL_WINDOW,
             maxEchecsIp: self::ENROLL_MAX_FAILS_PER_IP,
         );
@@ -47,8 +52,12 @@ final class Device
         string $username,
         string $credentialId,
         string $publicKeyB64url,
-        string $recoveryDerivedKey = '',
-        ?string $ip = null
+        // ⚠️ Sans valeur par défaut, l'origine comprise : l'exiger ici refuse à
+        // l'écriture ce que le profil `clearweb` refuse à l'exécution. Un défaut
+        // rendrait le frein par adresse silencieusement inerte pour l'appelant qui
+        // l'oublie.
+        string $recoveryDerivedKey,
+        ?string $ip,
     ): array {
         return self::protocole($pdo)->enroler($username, $credentialId, $publicKeyB64url, $recoveryDerivedKey, $ip);
     }

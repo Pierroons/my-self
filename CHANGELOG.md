@@ -10,7 +10,7 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### SelfRecover v0.7.0 — la récupération par code freine enfin par compte — 27 septembre 2026
+### SelfRecover v0.7.0 — la récupération par code freine par compte, et le déploiement déclare son profil — 27 septembre 2026
 
 `Recovery::parCode()` ne consultait que le compteur par adresse, et seulement si une adresse lui était
 passée. Il écrivait pourtant un compteur par compte à chaque échec, sous l'étiquette `code:<compte>`,
@@ -62,6 +62,24 @@ Le banc `sanity_recovery.php` passe de 31 à 51 cas et annonce son compte, que l
 exige — l'étape ne lisait que son code de sortie. Un canari débranche le frein et vérifie que le banc
 rougit sur le bon cas. Le fuzzer du niveau 3, qui construit `Recovery` et qu'aucun job ne lançait, entre
 en intégration continue.
+
+**Le profil de déploiement devient obligatoire**, sans valeur par défaut : `clearweb` ou `tor-onion`.
+Il ne décrit pas un réseau mais une clé — deux appelants différents arrivent-ils sous deux origines que
+cette bibliothèque peut lire ? Un service caché répond non ; une base qui ne porte pas de colonne
+d'adresse répond non aussi, et se déclare pareil, ce que fait la démo `bi-self-duo` en étant servie sur
+le web ordinaire.
+
+Le profil refuse l'argument qui le contredit, aux points d'entrée de la récupération, de l'enrôlement et
+de l'ouverture d'un dossier. Sans ce refus il ne serait qu'une déclaration, et les deux erreurs qu'il
+attrape laissent un service qui a l'air de fonctionner : une origine partagée par tous freine tout le
+monde ensemble dès les premiers échecs de n'importe qui, et une origine absente rend le frein par adresse
+inerte sans que rien ne le signale. Le second a été trouvé en posant ce profil, dans notre propre lab :
+son aide à l'enrôlement acceptait une origine facultative, et un appelant qui l'oubliait perdait le
+frein. Elle l'exige désormais.
+
+Le banc de la récupération se joue sous les deux profils, dans la même étape d'intégration continue : le
+corps est le même, seule l'origine change. Ce que le frein par compte doit tenir des deux côtés se
+mesure donc des deux côtés. Un canari neutralise le refus du profil et vérifie que le banc rougit.
 
 **Reste ouvert, et nommé ici pour ne pas l'oublier** : l'enrôlement d'un appareil mène au compte avec le
 même mot mémorisé et n'a pas reçu ce frein — seule l'adresse le retient, donc rien ne le retient derrière

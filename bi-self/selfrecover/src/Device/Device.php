@@ -6,6 +6,7 @@ namespace Pierroons\SelfRecover\Device;
 
 use Pierroons\SelfRecover\Crypto\Encoding;
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -35,6 +36,12 @@ final class Device
 
     public function __construct(
         private readonly StorageInterface $stockage,
+        /**
+         * **Obligatoire, sans défaut.** Le contrat est dans `ProfilDeploiement`.
+         * Ce chemin freine par adresse, dans la même table que la récupération :
+         * deux profils divergents y produiraient deux comptages incohérents.
+         */
+        private readonly ProfilDeploiement $profil,
         /** Fenêtre de comptage des échecs par IP. */
         private readonly int $fenetreEchecs = 900,
         /** Échecs tolérés par IP dans la fenêtre — un foyer NAT partage son IP. */
@@ -57,6 +64,7 @@ final class Device
         ?string $ip = null,
         ?int $maintenant = null,
     ): array {
+        $this->profil->verifierOrigine($ip);
         $maintenant = $maintenant ?? time();
 
         // Message unique pour tous les refus qui suivent la validation de forme :

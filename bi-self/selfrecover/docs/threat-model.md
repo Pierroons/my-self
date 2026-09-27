@@ -24,7 +24,9 @@ You don't need to trust Google, Microsoft, or anyone else for account recovery. 
 
 ### ✓ Rate-limited brute force
 Per-account rate limits at every level, plus per-address limits where an address means anything, plus
-L2/L3 escalation. At L2 the per-account brake is the only one that works behind a hidden service, and it
+L2/L3 escalation. Which of the two applies is not guessed: the deployment declares a profile, and the
+library refuses an address where none can mean anything, and refuses the absence of one where the brake
+is supposed to bite. At L2 the per-account brake is the only one that works behind a hidden service, and it
 has two steps: a short window, then suspension of the level for that account until it is rearmed.
 
 Three gestures rearm it — a fresh batch of codes, a successful code recovery, a successful passphrase

@@ -142,6 +142,12 @@ Not covered in detail in this diagram, but essential in production:
 
 What the library enforces, with the defaults it ships:
 
+- The deployment profile is a required constructor argument, with no default:
+  `clearweb` (each caller has its own address) or `tor-onion` (no per-caller
+  address the library can read — a hidden service, or a schema without the
+  column). It decides whether the per-address brake exists at all, and it refuses
+  the argument that contradicts it: an address under `tor-onion`, none under
+  `clearweb`. Both are integration mistakes that leave a service looking healthy
 - L1 — 5 failures per username and 12 per address, over a 15-minute window
 - L2 — no username is asked, but the code names its account: 5 failures per
   account over the same window, and the level is suspended for that account after

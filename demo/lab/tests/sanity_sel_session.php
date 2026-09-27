@@ -59,10 +59,10 @@ $cle = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' 
 $pem = openssl_pkey_get_details($cle)['key'];
 $spki = base64_decode(preg_replace('/-----[^-]+-----|\s/', '', $pem));
 $b64u = rtrim(strtr(base64_encode($spki), '+/', '-_'), '=');
-$r = Device::enroll($pdo, 'banc_sel', bin2hex(random_bytes(16)), $b64u, sr_derive_like_browser($MOT, $rendu, $HOTE));
+$r = Device::enroll($pdo, 'banc_sel', bin2hex(random_bytes(16)), $b64u, sr_derive_like_browser($MOT, $rendu, $HOTE), '192.0.2.1');
 verifier("l'enrôlement accepte le bon mot", ($r['ok'] ?? false) === true, (string) ($r['message'] ?? ''));
 
-$r = Device::enroll($pdo, 'banc_sel', bin2hex(random_bytes(16)), $b64u, sr_derive_like_browser('autre-mot', $rendu, $HOTE));
+$r = Device::enroll($pdo, 'banc_sel', bin2hex(random_bytes(16)), $b64u, sr_derive_like_browser('autre-mot', $rendu, $HOTE), '192.0.2.1');
 verifier("l'enrôlement refuse un autre mot", ($r['ok'] ?? true) === false);
 
 $total = $reussites + $echecs;

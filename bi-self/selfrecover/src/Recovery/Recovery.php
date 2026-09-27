@@ -7,6 +7,7 @@ namespace Pierroons\SelfRecover\Recovery;
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device;
 use Pierroons\SelfRecover\Diceware\Wordlist;
+use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
@@ -47,6 +48,11 @@ final class Recovery
          * de service, hors webroot.
          */
         private readonly string $selDeploiement,
+        /**
+         * **Obligatoire, sans défaut.** Le contrat est dans `ProfilDeploiement` :
+         * il ne se devine pas depuis le transport.
+         */
+        private readonly ProfilDeploiement $profil,
         private readonly int $fenetreEchecs = 900,
         private readonly int $maxEchecsCompte = 5,
         private readonly int $maxEchecsIp = 12,
@@ -92,6 +98,7 @@ final class Recovery
         ?string $ip = null,
         ?int $maintenant = null,
     ): array {
+        $this->profil->verifierOrigine($ip);
         $maintenant = $maintenant ?? time();
         $nomCompte  = strtolower(trim($nomCompte));
         $refus      = ['ok' => false, 'message' => 'Identifiant ou passphrase incorrect.'];
@@ -173,6 +180,7 @@ final class Recovery
         ?string $ip = null,
         ?int $maintenant = null,
     ): array {
+        $this->profil->verifierOrigine($ip);
         $maintenant = $maintenant ?? time();
         $code       = strtolower(trim($code));
         $refus      = ['ok' => false, 'message' => 'Code ou mot mémorisé incorrect.'];
@@ -314,6 +322,18 @@ final class Recovery
         }
 
         return $codes;
+    }
+
+    /**
+     * Le profil de ce déploiement.
+     *
+     * 🔑 `Escalade` compose une `Recovery` : elle lit le profil ici plutôt que de
+     * recevoir le sien. Deux copies du même choix n'ont aucune raison de rester
+     * d'accord, et celle qui diverge appliquerait le mauvais frein.
+     */
+    public function profil(): ProfilDeploiement
+    {
+        return $this->profil;
     }
 
     /**

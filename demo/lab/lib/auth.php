@@ -16,6 +16,7 @@ namespace Pierroons\MySelfLab;
 
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device as Protocole;
+use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 
 use PDO;
@@ -373,6 +374,9 @@ final class Auth
         return new Recovery(
             new StockageSelfRecover($pdo),
             self::siteSalt(),
+            // Ce lab est servi sur le web ordinaire et transmet `client_ip()` à
+            // chaque appel : le frein par adresse y compte pour de bon.
+            ProfilDeploiement::CLEARWEB,
             maxEchecsCompte: self::LOGIN_MAX_FAILS,
             maxEchecsIp: self::LOGIN_MAX_FAILS_PER_IP,
         );
