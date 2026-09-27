@@ -516,6 +516,15 @@ jobs:
       - name: Garde-fou — le facteur « cet appareil », côté navigateur
         run: node demo/lab/tests/sanity_device_client.js
 
+      # Le banc client simule `/api/sel.php` : celui-ci éprouve le vrai, par la
+      # session que l'inscription ouvre, jusqu'à l'enrôlement.
+      - name: Garde-fou — l'enrôlement d'appareil dérive avec le sel du compte
+        run: |
+          sortie=$(php demo/lab/tests/sanity_sel_session.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^OK — 5/5$' \
+            || { echo "::error::le banc du sel de session n'a pas joué ses 5 cas"; exit 1; }
+
       # Le mémo chiffré du lab dérive par srKdfDeriver (Argon2id). Le banc rouvre
       # l'enveloppe produite par le JS avec PHP (libsodium, hash_hkdf, openssl) :
       # une étiquette ou un profil qui dériverait n'y survivrait pas.

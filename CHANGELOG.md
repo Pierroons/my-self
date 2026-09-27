@@ -10,6 +10,15 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Le lab enrôle de nouveau un appareil — 27 septembre 2026
+
+L'enrôlement « cet appareil » refusait le bon mot mémorisé (« Compte ou mot mémorisé
+incorrect »), sur tout compte créé depuis le salage par compte du 27 août. `/api/sel.php` devait
+rendre à la session le sel de son compte ; il lisait ce sel sur le compte de session, qui ne le
+porte pas, et rendait le sel de repli. Le navigateur dérivait donc une autre empreinte. Le sel est
+désormais relu en base. Le banc `sanity_sel_session.php` passe par la vraie route, de
+l'inscription à l'enrôlement ; le banc client simulait le serveur et ne pouvait pas le voir.
+
 ### Le CTF annonce sa Saison 2 : deux drapeaux, et des promesses exactes — 26 septembre 2026
 
 La page red team présentait un seul drapeau, dans le mémo, chiffré « AES-256-GCM ». Elle en
