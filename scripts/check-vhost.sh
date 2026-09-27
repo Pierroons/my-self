@@ -127,9 +127,16 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
 # Les placeholders deviennent des valeurs que nginx peut charger, et les chemins
 # de journal des valeurs qu'un utilisateur ordinaire peut écrire. On ne corrige
 # pas le gabarit : on le rend testable, le temps du test.
+# ⚠️ Deux emplacements de certificat coexistent dans le dépôt, et n'en connaître
+# qu'un fait échouer des gabarits valides sur le premier `ssl_certificate` — donc
+# sans rien tester de ce qui suit. `/etc/letsencrypt/live/` est la pose par défaut
+# de certbot ; `/etc/ssl/<domaine>/` est celle des vhosts servis par l'instance.
 sed -E "s#/etc/letsencrypt/live/[^/]+/fullchain\.pem#$D/certs/c.pem#g;
         s#/etc/letsencrypt/live/[^/]+/privkey\.pem#$D/certs/k.pem#g;
         s#/etc/letsencrypt/live/[^/]+/chain\.pem#$D/certs/c.pem#g;
+        s#/etc/ssl/[^/]+/fullchain\.pem#$D/certs/c.pem#g;
+        s#/etc/ssl/[^/]+/privkey\.pem#$D/certs/k.pem#g;
+        s#/etc/ssl/[^/]+/chain\.pem#$D/certs/c.pem#g;
         s#your-instance\.example#gabarit.test#g;
         s#/var/log/nginx/#$D/logs/#g;
         s#/etc/letsencrypt/options-ssl-nginx\.conf#$D/letsencrypt/options-ssl-nginx.conf#g;
