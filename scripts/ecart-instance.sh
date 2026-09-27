@@ -93,18 +93,18 @@ lire_tableau() {   # lire_tableau <NOM> → les chaînes entre guillemets du tab
 # c'est toute la sémantique employée ici : un nom simple vaut à n'importe quel
 # niveau, un motif ouvert par une barre part de la racine, `*` ne franchit pas
 # de barre. Vérifié contre l'assemblage réel, qui pose les mêmes 216 fichiers.
+#
+# ⚠️ Un motif qui ne finit pas par une barre désigne un chemin ENTIER : rsync
+# n'exclut pas `selfrecover_derive.c` parce qu'il exclut `selfrecover_derive`.
+# Sans ancre de fin, les deux sources du dérivateur LUKS sortaient « figées »
+# alors qu'elles sont déployées et identiques (audit du 27/09/2026).
 motif_vers_regex() {
-    local m="$1" r
+    local m="$1" r fin='(/|$)'
     r=$(printf '%s' "$m" | sed -e 's|\.|\\.|g' -e 's|\*|[^/]*|g')
-    # ⚠️ Le motif ancré à la racine avait besoin d'une ancre de fin. Sans elle il
-    # attrapait par préfixe : le motif visant le binaire `selfrecover_derive`
-    # emportait aussi `selfrecover_derive.c` et `.py`, qui quittaient le
-    # périmètre comparé — leur contenu n'était plus confronté à l'instance,
-    # et la sonde continuait d'annoncer que rien ne divergeait.
+    case "$m" in */) fin='' ;; esac
     case "$m" in
-        /*/)  printf '^%s' "${r#/}" ;;
-        /*)   printf '^%s(/|$)' "${r#/}" ;;
-        */*)  printf '(^|/)%s' "$r" ;;
+        /*)   printf '^%s%s' "${r#/}" "$fin" ;;
+        */*)  printf '(^|/)%s%s' "$r" "$fin" ;;
         *)    printf '(^|/)%s(/|$)' "$r" ;;
     esac
 }
@@ -190,19 +190,24 @@ lire_domaines() {
     awk "/cat <<'TABLE'/ { dedans = 1; next } /^TABLE\$/ { dedans = 0 } dedans" "$DEPLOY"
 }
 
-SEDS=()
+SEDS=(); : > "$TMP/gabarits"
 while read -r placeholder domaine _; do
     case "$placeholder" in ''|'#'*) continue;; esac
     case "$placeholder$domaine" in *[!a-zA-Z0-9.-]*) continue;; esac
-    [ -n "$domaine" ] && SEDS+=("-e" "s/$placeholder/$domaine/g")
+    [ -n "$domaine" ] && { SEDS+=("-e" "s/$placeholder/$domaine/g"); printf '%s\n' "$placeholder" >> "$TMP/gabarits"; }
 done < <(lire_domaines)
 # Sans table, chaque fichier substitué sortirait divergent : l'erreur se dit.
 [ "${#SEDS[@]}" -gt 0 ] || { echo "❌ Table des domaines vide — lue dans $DEPLOY" >&2; exit 1; }
 
 # Empreinte locale, placeholders concrétisés comme le fait le déploiement. Sans
 # ce rejeu, tout fichier substitué sortirait divergent et le rapport, illisible.
+# Le déploiement substitue dans TOUT fichier qui porte un gabarit, quelle que soit
+# son extension (`grep -rlF` puis `sed -i`) : le rejeu suit la même règle. Mais
+# seulement pour l'arbre qu'il assemble (préfixe `.`) : les outils du planificateur
+# partent bruts, et `check_fraicheur.sh` GARDE exprès son domaine d'exemple, que
+# la configuration de l'instance remplace à l'exécution.
 empreinte() {
-    if [ "${#SEDS[@]}" -gt 0 ] && [[ "$1" =~ \.(html|php|js|json)$ ]]; then
+    if [ "$prefixe" = "." ] && [ "${#SEDS[@]}" -gt 0 ] && grep -qF -f "$TMP/gabarits" -- "$1"; then
         sed "${SEDS[@]}" -- "$1" | sha256sum | cut -d' ' -f1
     else
         sha256sum -- "$1" | cut -d' ' -f1

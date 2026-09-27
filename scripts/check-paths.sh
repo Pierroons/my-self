@@ -118,60 +118,43 @@ if morts:
 print(f"  ✓ les {fichiers_ok} liens vérifiés résolvent, dont {ancres_ok} ancre(s)")
 PY
 
-echo "▸ Chemins cités — citations entre backticks"
-# 🔑 **Un chemin cité n'est pas un lien, et aucun bloc ne le regardait.** Le
-# contrôle des liens ne lit que la forme `](…)`, et sa fonction `prose()` retire
-# le code inline — à juste titre, pour ne pas prendre un lien cité pour un lien.
-# Mais du coup, une phrase qui dit « copier `deploy/x.conf` » n'était vue par
-# personne. Trois README envoyaient vers un fichier déplacé, dans de la
-# documentation publiée.
-#
-# ⚠️ **Le calibrage est tout le contrôle.** « Toute citation qui ressemble à un
-# chemin » rend 207 signalements presque tous faux. La règle retenue exige un `/`
-# ET une extension connue, et résout depuis le dossier du fichier PUIS chacun de
-# ses ancêtres — un README de module cite volontiers un chemin relatif à la
-# racine. Elle tombe à 32, dont deux familles qui s'exemptent nommément.
+echo "▸ Chemins cités — code inline"
+# 🔑 **Un chemin se cite aussi hors d'un lien.** « Copier `deploy/nginx-bi-self.conf` »
+# guide l'installateur autant qu'un lien, et les deux contrôles au-dessus ne lisent
+# que les `](…)` : l'audit du 27/09/2026 a trouvé cinq chemins morts qu'ils rendaient
+# verts. Ne comptent que les chemins du dépôt — premier segment connu du dépôt ou du
+# dossier du fichier —, et trois familles sont écartées parce qu'elles ne sont pas
+# des défauts : l'histoire (un CHANGELOG cite ce qui existait), ce que git ignore
+# (un fichier créé à l'exécution), et les exceptions nommées ci-dessous avec leur raison.
 python3 - <<'PY' || echec=1
 import re, pathlib, subprocess, sys
-
-# Un récit cite ce qui a été supprimé : c'est son travail, pas une erreur.
-RECITS  = ("CHANGELOG.md", "PASSATION.md")
-# Chemins d'un autre arbre que le nôtre : `snippets/` désigne /etc/nginx/snippets/.
-SYSTEME = ("snippets/",)
-# ⚠️ Une définition d'agent décrit un comportement sur un dépôt QUELCONQUE. Deux
-# d'entre elles nomment `.github/pull_request_template.md` comme un fichier à
-# chercher chez un tiers — en écrivant « s'ils existent », et « ne signale pas
-# leur absence ». Ce ne sont pas des cibles ici. Aucune de leurs citations ne
-# désigne un chemin de ce dépôt : exempter le répertoire ne retire donc aucune
-# vérification, mesuré le 27/09/2026.
-AGENTS  = (".claude/agents/",)
-
-EXT   = r'(?:md|html|php|sh|json|ya?ml|js|css|py|c|conf|service|timer|txt|sql|patch|docx|pdf)'
-MOTIF = re.compile(r'`([A-Za-z0-9_.][A-Za-z0-9_./-]*/[A-Za-z0-9_.-]+\.' + EXT + r')`')
-
-def sans_blocs(txt):
-    return re.sub(r'```.*?```', lambda m: '\n' * m.group(0).count('\n'), txt, flags=re.S)
-
-morts, examinees = [], 0
-for f in subprocess.run(["git","ls-files","*.md"],capture_output=True,text=True).stdout.split():
-    if f.endswith(RECITS) or f.startswith(AGENTS): continue
+EXCEPTIONS = {
+    "scripts/local-top/": "chemin de l'initramfs du système, pas du dépôt",
+    ".github/pull_request_template.md": "lu par les agents s'il existe, absent le plus souvent",
+}
+suivis = subprocess.run(["git", "ls-files"], capture_output=True, text=True).stdout.split()
+tete = {p.split("/")[0] for p in suivis}
+def ignore(chemin):
+    return subprocess.run(["git", "check-ignore", "-q", "--no-index", str(chemin)]).returncode == 0
+morts, lus = [], 0
+for f in subprocess.run(["git", "ls-files", "*.md"], capture_output=True, text=True).stdout.split():
+    if re.search(r"(^|/)CHANGELOG\.md$", f): continue
     p = pathlib.Path(f)
-    for n, ligne in enumerate(sans_blocs(p.read_text(errors="ignore")).splitlines(), 1):
-        for m in MOTIF.finditer(ligne):
-            cite = m.group(1)
-            if cite.startswith(SYSTEME): continue
-            examinees += 1
-            base, trouve = p.parent, False
-            while True:
-                if (base / cite).exists(): trouve = True; break
-                if base == pathlib.Path("."): break
-                base = base.parent
-            if not trouve: morts.append(f"{f}:{n}  {cite}")
+    texte = re.sub(r"```.*?```", lambda m: "\n" * m.group(0).count("\n"), p.read_text(errors="ignore"), flags=re.S)
+    for n, ligne in enumerate(texte.splitlines(), 1):
+        for m in re.finditer(r"`([A-Za-z0-9_][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_.-]+)+/?)`", ligne):
+            t = m.group(1)
+            if any(t.startswith(e) for e in EXCEPTIONS): continue
+            if t.split("/")[0] not in tete and not (p.parent / t.split("/")[0]).exists(): continue
+            lus += 1
+            candidats = [p.parent / t, pathlib.Path(t)]
+            if any(c.exists() for c in candidats) or any(ignore(c) for c in candidats): continue
+            morts.append(f"{f}:{n} → {t}")
 if morts:
-    print(f"  ✗ {len(morts)} citation(s) morte(s) sur {examinees} examinée(s)")
+    print(f"  ✗ {len(morts)} chemin(s) mort(s) sur {lus} cité(s) en code inline")
     for x in morts: print("     " + x)
     sys.exit(1)
-print(f"  ✓ les {examinees} citations examinées résolvent")
+print(f"  ✓ les {lus} chemins du dépôt cités en code inline résolvent")
 PY
 
 echo "▸ Chemins cités — règles .gitignore"

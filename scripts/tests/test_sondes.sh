@@ -74,10 +74,17 @@ fi
 # Un lien vers un `.js`, un `.conf` ou un répertoire ne passait par aucun des deux.
 echo "▸ check-paths.sh — un lien vers un .js mort doit être signalé"
 mkdir -p "$BAC/faux-depot"
+# 🔑 Le faux dépôt porte un `deploy/` réel, et ce n'est pas décoratif : le contrôle
+# des chemins cités en code inline ne signale que ceux dont le premier segment est
+# connu du dépôt — c'est ce qui lui évite des centaines de faux positifs. Sans ce
+# répertoire, la citation morte plantée ci-dessous sort du périmètre et le canari
+# verdit sans rien prouver.
+mkdir -p "$BAC/faux-depot/deploy"
 ( cd "$BAC/faux-depot" \
   && git init -q 2>/dev/null \
+  && : > deploy/existe.conf \
   && printf 'Voir [le dérivateur](client/sr-derive.js) et [l API](api/).\nCopier `deploy/disparu.conf` vers le serveur.\n' > a.md \
-  && git add a.md 2>/dev/null ) || true
+  && git add a.md deploy/existe.conf 2>/dev/null ) || true
 texte="$( (cd "$BAC/faux-depot" && bash "$CHECK_PATHS") 2>&1 || true )"
 if printf '%s\n' "$texte" | grep -q 'client/sr-derive.js'; then
     ok "signale un lien mort vers un .js"

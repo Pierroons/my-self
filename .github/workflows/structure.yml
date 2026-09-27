@@ -56,6 +56,21 @@ jobs:
       - name: Chemins cités
         run: bash scripts/check-paths.sh
 
+      - name: Canari — les chemins cités en code inline rougissent quand l'un meurt
+        run: |
+          F=demo/bi-self-duo/CONTRIBUTING.md
+          cp "$F" /tmp/CB.intact
+          printf '\nCopier `deploy/bi-self/inexistant-canari.conf`.\n' >> "$F"
+          if bash scripts/check-paths.sh >/dev/null 2>&1; then
+            cp /tmp/CB.intact "$F"
+            echo "::error::le contrôle reste VERT sur un chemin mort en code inline"
+            exit 1
+          fi
+          cp /tmp/CB.intact "$F"
+          cmp -s /tmp/CB.intact "$F" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le contrôle rougit sur un chemin mort en code inline, et le fichier est restauré"
+
       # ── Versions ───────────────────────────────────────────────────────────
       # modules.json est la source unique ; chaque porteur qu'il déclare doit la
       # répéter. Le tag manquant se suit à part, dans suivi.yml : il dépend d'un
@@ -114,8 +129,53 @@ jobs:
       - name: Garde-fou — facteur « cet appareil » (dont la prise de compte du 02/08)
         run: php bi-self/selfrecover/tests/sanity_device.php
 
-      - name: Garde-fou — récupération niveaux 1 et 2
-        run: php bi-self/selfrecover/tests/sanity_recovery.php
+      # Le compte est écrit en dur : c'est un inventaire, pas un seuil. Un code de
+      # sortie à zéro dit que les cas joués ont réussi, jamais qu'aucun n'a
+      # disparu. Ajouter un cas demande donc de monter ce nombre : cette friction
+      # est le contrôle.
+      - name: Garde-fou — récupération niveaux 1 et 2, dont le frein par compte du niveau 2
+        run: |
+          # Le banc est lancé sans `set -e` sur l'affectation : sinon l'étape meurt
+          # avant le contrôle du compte, là où il serait le plus utile (50/51).
+          sortie=$(php bi-self/selfrecover/tests/sanity_recovery.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc de récupération a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 51/51$' \
+            || { echo "::error::le banc de récupération n'a pas joué ses 51 cas"; exit 1; }
+
+      # Un frein qu'on n'a jamais fait céder ne se distingue pas d'un frein qui
+      # n'est relié à rien : les deux laissent le banc vert. Ce canari mesure que
+      # celui du niveau 2 est branché, pas seulement écrit.
+      - name: Canari — le banc rougit quand le frein du niveau 2 est débranché
+        run: |
+          F=bi-self/selfrecover/src/Recovery/Recovery.php
+          cp "$F" /tmp/Recovery.intact
+          python3 - <<'PY'
+          chemin = 'bi-self/selfrecover/src/Recovery/Recovery.php'
+          motif  = '        if ($etiquette !== null) {'
+          s = open(chemin, encoding='utf-8').read()
+          assert s.count(motif) == 1, 'motif introuvable — ce canari ne prouve rien'
+          open(chemin, 'w', encoding='utf-8').write(s.replace(motif, '        if (false) { // débranché', 1))
+          PY
+          grep -q 'if (false) { // débranché' "$F" \
+            || { cp /tmp/Recovery.intact "$F"; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          php -l "$F" >/dev/null \
+            || { cp /tmp/Recovery.intact "$F"; echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(php bi-self/selfrecover/tests/sanity_recovery.php 2>&1); then
+            cp /tmp/Recovery.intact "$F"
+            echo "$sortie"; echo "::error::le banc reste VERT sans le frein du niveau 2"; exit 1
+          fi
+          cp /tmp/Recovery.intact "$F"
+          cmp -s /tmp/Recovery.intact "$F" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$sortie" | grep -q 'au sixième essai, même le bon mot est freiné' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du frein"; exit 1; }
+          echo "✓ le banc rougit, et sur le cas du frein par compte"
+
+      # Il construit `Recovery` : le constructeur du niveau 2 ne peut pas changer
+      # sans qu'un rouge apparaisse ici.
+      - name: Garde-fou — le fuzzer du niveau 3
+        run: php bi-self/selfrecover/tests/fuzz_escalade.php --tours=500
 
       # Le contrôle central de ce banc est qu'un refus ne touche pas au compte :
       # le code dont ce niveau est issu supprimait le compte au premier refus,
@@ -235,6 +295,9 @@ jobs:
 
       - name: Garde-fou — le texte d'une décision, selon son fonds (MCP)
         run: python3 self-right/selfjustice/tests/sanity_texte_decision.py
+
+      - name: Garde-fou — le renvoi « Voir « homonymes » » trouve sa cible (MCP)
+        run: python3 self-right/selfjustice/tests/sanity_renvoi_homonymes.py
 
       - name: Garde-fou — ce que la sentinelle appelle un retard
         run: bash self-right/selfjustice/tests/test_fraicheur.sh
@@ -560,6 +623,46 @@ jobs:
           echo "$sortie"
           echo "$sortie" | grep -qE '^OK — 5/5$' \
             || { echo "::error::le banc du sel de session n'a pas joué ses 5 cas"; exit 1; }
+
+      # `login_attempts` est partagée entre la page de connexion et les compteurs de
+      # la bibliothèque. Deux fois, un filtre censé écarter les seconds a emporté les
+      # échecs qu'il devait montrer — dont les codes introuvables, le seul chemin
+      # qu'aucun frein par compte ne couvre.
+      - name: Garde-fou — la console compte les échecs qu'elle doit compter
+        run: |
+          sortie=$(php demo/lab/tests/sanity_console_freins.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc des compteurs de la console a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 5/5$' \
+            || { echo "::error::le banc des compteurs de la console n'a pas joué ses 5 cas"; exit 1; }
+
+      - name: Canari — la console reperd les tentatives sans étiquette
+        run: |
+          F=demo/lab/lib/admin.php
+          cp "$F" /tmp/admin.intact
+          # En SQL, `username != '…'` ne rend pas « vrai » sur une valeur absente :
+          # retirer ce garde écarte les codes introuvables sans le dire.
+          python3 - <<'PY'
+          chemin = 'demo/lab/lib/admin.php'
+          motif  = "(username IS NULL OR username != '__register__')"
+          s = open(chemin, encoding='utf-8').read()
+          assert s.count(motif) == 2, 'motif introuvable — ce canari ne prouve rien'
+          open(chemin, 'w', encoding='utf-8').write(s.replace(motif, "username != '__register__'"))
+          PY
+          grep -q "AND username != '__register__'" "$F" \
+            || { cp /tmp/admin.intact "$F"; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          php -l "$F" >/dev/null \
+            || { cp /tmp/admin.intact "$F"; echo "::error::la version plantée ne compile pas"; exit 1; }
+          if sortie=$(php demo/lab/tests/sanity_console_freins.php 2>&1); then
+            cp /tmp/admin.intact "$F"
+            echo "$sortie"; echo "::error::le banc reste VERT alors que la console perd des échecs"; exit 1
+          fi
+          cp /tmp/admin.intact "$F"
+          cmp -s /tmp/admin.intact "$F" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$sortie" | grep -q 'voit exactement celles-là' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du compteur"; exit 1; }
+          echo "✓ le banc rougit, et sur le cas du compteur de la console"
 
       # Le mémo chiffré du lab dérive par srKdfDeriver (Argon2id). Le banc rouvre
       # l'enveloppe produite par le JS avec PHP (libsodium, hash_hkdf, openssl) :

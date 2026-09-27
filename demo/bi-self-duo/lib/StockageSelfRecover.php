@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../../bi-self/selfrecover/src/autoload.php';
 
 use Pierroons\SelfRecover\Device\Appareil;
 use Pierroons\SelfRecover\Recovery\Litige;
+use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -76,7 +77,7 @@ final class StockageSelfRecover implements StorageInterface
         return (int) ($l['n'] ?? 0);
     }
 
-    public function tracerTentative(string $etiquette, bool $succes, ?string $ip, int $quand): void
+    public function tracerTentative(?string $etiquette, bool $succes, ?string $ip, int $quand): void
     {
         // L'origine est ignorée : la table ne la porte pas, et le frein de
         // cette démo est ailleurs (RateLimit, par session).
@@ -84,6 +85,22 @@ final class StockageSelfRecover implements StorageInterface
             'INSERT INTO login_attempts (username, success, attempted_at) VALUES (:u, :s, :t)',
             [':u' => $etiquette, ':s' => $succes ? 1 : 0, ':t' => $quand],
         );
+    }
+
+    public function dateDernierCodeEmis(int $compteId): ?int
+    {
+        $l = $this->un('SELECT MAX(created_at) AS q FROM recovery_codes WHERE account_id = :i',
+            [':i' => $compteId]);
+
+        return isset($l['q']) ? (int) $l['q'] : null;
+    }
+
+    public function dateDerniereReussite(string $etiquette): ?int
+    {
+        $l = $this->un('SELECT MAX(attempted_at) AS q FROM login_attempts WHERE username = :u AND success = 1',
+            [':u' => $etiquette]);
+
+        return isset($l['q']) ? (int) $l['q'] : null;
     }
 
     public function trouverCompte(string $nomCompte): ?array
@@ -154,8 +171,11 @@ final class StockageSelfRecover implements StorageInterface
 
     public function consommerCode(int $codeId, int $quand): void
     {
-        $this->executer('UPDATE recovery_codes SET used = 1, used_at = :t WHERE id = :i',
+        $this->executer('UPDATE recovery_codes SET used = 1, used_at = :t WHERE id = :i AND used = 0',
             [':t' => $quand, ':i' => $codeId]);
+        if ($this->db->changes() !== 1) {
+            throw new CodeDejaConsomme('aucun code libre à ce numéro');
+        }
     }
 
     public function compterCodesRestants(int $compteId): int

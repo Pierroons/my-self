@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_app_sessions_token ON app_sessions(token);
 -- Compteur de tentatives de login failed (rate-limit applicatif, pas infra)
 CREATE TABLE IF NOT EXISTS login_attempts (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    username    TEXT NOT NULL,
+    username    TEXT,
     success     INTEGER NOT NULL,
     attempted_at INTEGER NOT NULL
 );

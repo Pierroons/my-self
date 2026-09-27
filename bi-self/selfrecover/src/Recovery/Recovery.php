@@ -7,6 +7,7 @@ namespace Pierroons\SelfRecover\Recovery;
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device;
 use Pierroons\SelfRecover\Diceware\Wordlist;
+use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -50,8 +51,24 @@ final class Recovery
         private readonly int $maxEchecsCompte = 5,
         private readonly int $maxEchecsIp = 12,
         private readonly int $delaiRefusUs = 300000,
+        /**
+         * Échecs du niveau 2 au-delà desquels il est suspendu pour ce compte,
+         * jusqu'au prochain réarmement — l'émission d'un lot de codes, ou une
+         * récupération par code réussie.
+         *
+         * Il borne ce qu'ouvre une feuille volée : `maxEchecsCompte` seul fait
+         * attendre, il ne plafonne pas. Le titulaire lève la suspension par sa
+         * passphrase ou par le niveau 3, puis renouvelle ses codes.
+         */
+        private readonly int $maxEchecsL2AvantSuspension = 20,
     ) {
     }
+
+    /**
+     * Préfixe des compteurs d'échec du niveau 2. En clair, pour qu'une console
+     * sache quoi ne pas afficher comme une tentative de connexion.
+     */
+    private const PREFIXE_L2 = 'l2:';
 
     /** Longueur du lot émis à l'inscription. */
     public const CODES_PAR_LOT = 10;
@@ -148,7 +165,7 @@ final class Recovery
      * index de recherche, donc il n'existe aucun champ où éprouver l'existence
      * d'un compte : l'énumération n'a plus de porte.
      *
-     * @return array{ok: bool, message: string, mot_de_passe?: string, compte?: string, codes_restants?: int}
+     * @return array{ok: bool, error?: string, message: string, mot_de_passe?: string, passphrase?: string, compte?: string, codes_restants?: int}
      */
     public function parCode(
         string $code,
@@ -179,18 +196,32 @@ final class Recovery
 
         $trouve = $this->stockage->trouverCodeParIndex($this->indexRecherche($code));
 
+        // Le frein par compte avant les deux Argon2id, donc avant toute
+        // consommation : un essai freiné ne coûte ni code ni place au quota de
+        // l'appelant. Il ne s'applique qu'à un code retrouvé — sans compte, il
+        // n'y a pas de compteur à consulter, et le frein par origine tient seul.
+        $etiquette = $trouve !== null ? $this->etiquetteEchecsL2($trouve['nom_compte']) : null;
+        if ($etiquette !== null) {
+            $frein = $this->freinerNiveau2(
+                $etiquette,
+                (string) $trouve['nom_compte'],
+                (int) $trouve['compte_id'],
+                $maintenant,
+            );
+            if ($frein !== null) {
+                return $frein;
+            }
+        }
+
         // Les deux vérifications sont menées quoi qu'il arrive : s'arrêter à la
         // première échouée dirait, par le temps, laquelle a échoué.
         $codeOk = Hashing::verify($code, $trouve['empreinte_code'] ?? Hashing::dummyHash());
         $motOk  = Hashing::verify($motDerive, $trouve['empreinte_mot'] ?? Hashing::dummyHash());
         $ok     = $trouve !== null && !$trouve['deja_utilise'] && $codeOk && $motOk;
 
-        $this->stockage->tracerTentative(
-            'code:' . ($trouve !== null ? $trouve['nom_compte'] : 'inconnu'),
-            $ok,
-            $ip,
-            $maintenant,
-        );
+        // 🔑 Un code introuvable n'est rattaché à AUCUN compte. La ligne garde en
+        // revanche son adresse : le frein par origine continue de la voir.
+        $this->stockage->tracerTentative($etiquette, $ok, $ip, $maintenant);
 
         if (!$ok) {
             usleep($this->delaiRefusUs);
@@ -215,6 +246,16 @@ final class Recovery
             );
             $this->stockage->revoquerSessions((int) $trouve['compte_id']);
             $this->stockage->validerTransaction();
+        } catch (CodeDejaConsomme) {
+            // 🔑 Une seconde requête portant le même code est arrivée pendant nos
+            // deux Argon2id : la garde de l'écriture a tranché, et le perdant reçoit
+            // le refus ordinaire. Le laisser remonter rendrait une erreur de serveur
+            // sur un simple double-clic — et ce serait un oracle, puisqu'on n'arrive
+            // ici qu'avec les DEUX facteurs bons.
+            $this->stockage->annulerTransaction();
+            usleep($this->delaiRefusUs);
+
+            return $refus;
         } catch (\Throwable $e) {
             $this->stockage->annulerTransaction();
 
@@ -284,6 +325,106 @@ final class Recovery
     public function indexRecherche(string $code): string
     {
         return hash_hmac('sha256', strtolower(trim($code)), $this->selDeploiement);
+    }
+
+    /**
+     * L'étiquette du compteur d'échecs du niveau 2 — un HMAC sous le sel du
+     * déploiement.
+     *
+     * ⚠️ **Le sel n'est pas là pour cacher, il est là pour EMPÊCHER D'ÉCRIRE** :
+     * sans lui, le compteur des codes papier d'un compte se remplit depuis la
+     * page de connexion. Le raisonnement en entier, et l'incident qui l'a établi,
+     * sont dans `Escalade::etiquette()` — même table, même primitive.
+     *
+     * 🔑 **Publique exprès.** Un intégrateur qui pose son propre frein devant le
+     * niveau 2 doit lire le même compteur que celui que la bibliothèque écrit.
+     * Recopier l'étiquette le condamnerait à devenir muet le jour où elle
+     * change, sans qu'aucune erreur ne le dise.
+     */
+    public function etiquetteEchecsL2(string $nomCompte): string
+    {
+        return self::PREFIXE_L2 . $this->indexRecherche($nomCompte);
+    }
+
+    /**
+     * Freins du niveau 2, par compte, sur un code déjà retrouvé.
+     *
+     * 🔑 **L'objection faite au blocage de compte ne vaut pas ici.** À la
+     * connexion, n'importe qui fermerait le compte d'un autre en échouant
+     * exprès ; pour charger ce compteur, il faut un code du compte, même déjà
+     * consommé, et l'étiquette n'est pas fabricable sans le sel.
+     *
+     * ⚠️ **Ce que la suspension concède, et que le frein par fenêtre ne concède
+     * pas.** Elle doit se dire, sinon le titulaire ne sait pas quoi faire : son
+     * refus est donc le seul de cette classe qui nomme un état. Il apprend à qui
+     * détient déjà un code que ce code appartient à un compte réel, et il l'apprend
+     * plus vite que le refus ordinaire, faute des deux Argon2id. Aucune énumération
+     * n'en sort — il faut déjà détenir un code —, mais un code partiellement
+     * illisible se complète à ce prix. Le frein par fenêtre, lui, rend le message
+     * du frein par origine et paie le délai : il est indiscernable.
+     *
+     * ⚠️ **La suspension exige une sortie, et elle vient du déploiement.** Trois
+     * gestes la lèvent, parce que tous les trois réarment le compteur : un lot de
+     * codes neufs, une récupération par code réussie, une récupération par
+     * passphrase réussie. Le dernier est le seul qui soit toujours à portée du
+     * titulaire sans qu'aucune route ne soit ajoutée, et il est hors de portée de
+     * qui n'a volé que la feuille. Un déploiement qui ne tient aucune de ces trois
+     * dates ne suspend pas : voir plus bas.
+     *
+     * ⚠️ Le compteur est lu ici et écrit après l'essai : des requêtes
+     * simultanées sur un même compte passent ensemble, soit au plus le seuil plus
+     * le nombre de requêtes servies en parallèle, moins une. Le frein du niveau 1
+     * a la même borne.
+     *
+     * ⚠️ Un seuil de suspension inférieur au frein par fenêtre rendrait celui-ci
+     * inatteignable : la suspension mordrait la première.
+     *
+     * @return array{ok: bool, error?: string, message: string}|null
+     */
+    private function freinerNiveau2(
+        string $etiquette,
+        string $nomCompte,
+        int $compteId,
+        int $maintenant,
+    ): ?array {
+        $rearmements = array_filter([
+            $this->stockage->dateDernierCodeEmis($compteId),
+            $this->stockage->dateDerniereReussite($etiquette),
+            $this->stockage->dateDerniereReussite($nomCompte),
+        ], static fn (?int $quand): bool => $quand !== null);
+
+        // 🔑 Aucune des trois dates n'est tenue par ce déploiement : on ne suspend
+        // pas. Prendre zéro pour point de réarmement compterait les échecs depuis
+        // 1970 — la suspension tomberait sur l'usure d'années, et aucun geste ne la
+        // lèverait, puisque la date qui la lève est celle qui manque. Le niveau 1
+        // traite le même piège de la même façon, pour la date d'émission.
+        if ($rearmements !== []) {
+            // ⚠️ `compterEchecsCompte()` compte ce qui est STRICTEMENT postérieur à
+            // sa borne. Un échec survenu dans la seconde même du réarmement compte
+            // pour après lui : la borne passée est donc reculée d'une seconde.
+            $depuis = max($rearmements) - 1;
+            if ($this->stockage->compterEchecsCompte($etiquette, $depuis)
+                >= $this->maxEchecsL2AvantSuspension) {
+                usleep($this->delaiRefusUs);
+
+                return ['ok' => false, 'error' => 'l2_suspendu',
+                        'message' => 'Trop d\'essais manqués : la récupération par code est suspendue pour '
+                                   . 'ce compte. Récupère ton accès par ta passphrase.'];
+            }
+        }
+
+        // 🔑 Le message est celui du frein par origine, au mot près, et le délai
+        // est payé : un refus qui nomme le compte dirait à qui détient un code que
+        // ce code appartient à un compte réel — et le dirait sans payer les deux
+        // Argon2id, donc en offrant un oracle gratuit sur le premier facteur.
+        if ($this->stockage->compterEchecsCompte($etiquette, $maintenant - $this->fenetreEchecs)
+            >= $this->maxEchecsCompte) {
+            usleep($this->delaiRefusUs);
+
+            return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+        }
+
+        return null;
     }
 
     /**

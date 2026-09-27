@@ -23,14 +23,25 @@ No SMTP at all. No SendGrid, no Mailgun, no Gmail deliverability rules, no spam 
 You don't need to trust Google, Microsoft, or anyone else for account recovery. You only trust the site you're registering on.
 
 ### ✓ Rate-limited brute force
-Per-username rate limits + L2/L3 escalation make brute-force infeasible.
+Per-account rate limits at every level, plus per-address limits where an address means anything, plus
+L2/L3 escalation. At L2 the per-account brake is the only one that works behind a hidden service, and it
+has two steps: a short window, then suspension of the level for that account until it is rearmed.
+
+Three gestures rearm it — a fresh batch of codes, a successful code recovery, a successful passphrase
+recovery. A deployment that holds none of those dates does not suspend, rather than suspend for good.
 
 ### ~ Bot-driven account enumeration
 
 **Partial, and the honest version is uncomfortable: opening an L3 dispute tells you whether an
 account exists.** A success returns a dispute number; an unknown name cannot return one, so no
-wording closes that gap. L1 and L2 do close it — L1 with a single generic refusal, L2 by asking
-for no identifier at all. L3 cannot, because there the distinction *is* the useful answer.
+wording closes that gap. L1 and L2 close it for an unknown account — L1 with a single generic refusal,
+L2 by asking for no identifier at all. L3 cannot, because there the distinction *is* the useful answer.
+
+**One L2 refusal does name a state, and it has to.** A suspended level cannot be described to its owner
+without saying so. That refusal tells whoever already holds one of the account's codes that the code names
+a real account, and tells it without paying the two Argon2id a wrong word costs. No enumeration follows —
+a code is needed first — but a partly illegible code is completed at that price. The short-window brake
+carries no such cost: it returns the per-address wording and pays the same delay.
 
 What opposes enumeration at L3 is cost, not silence:
 

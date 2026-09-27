@@ -205,6 +205,33 @@ final class Db
             self::$pdo->exec('PRAGMA foreign_keys = ON');
         }
 
+        // Une tentative sans compte — un code de récupération introuvable — n'a pas
+        // d'étiquette. SQLite ne sait pas retirer un NOT NULL : la table se
+        // reconstruit. La contrainte se lit au PRAGMA, jamais dans le texte du
+        // schéma : une réindentation de `schema.sql` sauterait la reprise, et la
+        // panne n'arriverait qu'au premier code mal tapé.
+        $notnull = 0;
+        foreach (self::$pdo->query('PRAGMA table_info(login_attempts)')->fetchAll(PDO::FETCH_ASSOC) as $col) {
+            if ($col['name'] === 'username') {
+                $notnull = (int) $col['notnull'];
+            }
+        }
+        if ($notnull === 1) {
+            self::$pdo->exec('
+                CREATE TABLE login_attempts_new (
+                    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username     TEXT,
+                    success      INTEGER NOT NULL,
+                    ip           TEXT,
+                    attempted_at INTEGER NOT NULL
+                );
+                INSERT INTO login_attempts_new SELECT id, username, success, ip, attempted_at FROM login_attempts;
+                DROP TABLE login_attempts;
+                ALTER TABLE login_attempts_new RENAME TO login_attempts;
+                CREATE INDEX IF NOT EXISTS idx_login_attempts ON login_attempts(username, attempted_at);
+            ');
+        }
+
         // SelfModerate — cause du signalement, et convalescence (remontée passive).
         $cols = self::$pdo->query('PRAGMA table_info(member_moderation)')->fetchAll(PDO::FETCH_COLUMN, 1);
         foreach ([

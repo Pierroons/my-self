@@ -104,11 +104,31 @@ final class StockagePdo implements StorageInterface
         return (int) $st->fetchColumn();
     }
 
-    public function tracerTentative(string $etiquette, bool $succes, ?string $ip, int $quand): void
+    public function tracerTentative(?string $etiquette, bool $succes, ?string $ip, int $quand): void
     {
         $this->pdo
             ->prepare('INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (?, ?, ?, ?)')
             ->execute([$etiquette, $succes ? 1 : 0, $ip, $quand]);
+    }
+
+    public function dateDernierCodeEmis(int $compteId): ?int
+    {
+        $st = $this->pdo->prepare('SELECT MAX(created_at) FROM recovery_codes WHERE account_id = ?');
+        $st->execute([$compteId]);
+        $quand = $st->fetchColumn();
+
+        return $quand === null || $quand === false ? null : (int) $quand;
+    }
+
+    public function dateDerniereReussite(string $etiquette): ?int
+    {
+        $st = $this->pdo->prepare(
+            'SELECT MAX(attempted_at) FROM login_attempts WHERE username = ? AND success = 1'
+        );
+        $st->execute([$etiquette]);
+        $quand = $st->fetchColumn();
+
+        return $quand === null || $quand === false ? null : (int) $quand;
     }
 
     // ── Comptes ────────────────────────────────────────────────────────────
@@ -268,8 +288,11 @@ final class StockagePdo implements StorageInterface
 
     public function consommerCode(int $codeId, int $quand): void
     {
-        $this->pdo->prepare('UPDATE recovery_codes SET used = 1, used_at = ? WHERE id = ?')
-                  ->execute([$quand, $codeId]);
+        $st = $this->pdo->prepare('UPDATE recovery_codes SET used = 1, used_at = ? WHERE id = ? AND used = 0');
+        $st->execute([$quand, $codeId]);
+        if ($st->rowCount() !== 1) {
+            throw new CodeDejaConsomme('aucun code libre à ce numéro');
+        }
     }
 
     public function compterCodesRestants(int $compteId): int

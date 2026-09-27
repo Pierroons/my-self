@@ -6,7 +6,7 @@
       "id": "selfrecover",
       "nom": "SelfRecover",
       "dossier": "bi-self/selfrecover",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "resume": {"fr": "récupération de compte sans email ni SMS", "en": "account recovery without email or SMS"},
       "porteurs": [
         ["bi-self/selfrecover/README.md", "badge/status-v"],
@@ -106,7 +106,7 @@
       "id": "selfright-mcp",
       "nom": "selfright-mcp",
       "dossier": "self-right/selfjustice/mcp",
-      "version": "0.4.5",
+      "version": "0.4.6",
       "resume": {"fr": "serveur MCP de consultation du droit, adossé à SelfJustice", "en": "MCP server for law lookup, backed by SelfJustice"},
       "porteurs": [
         ["self-right/selfjustice/mcp/pyproject.toml", "version = \""]

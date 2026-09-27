@@ -1488,6 +1488,42 @@ def _msg_juris_morte(detail: str) -> str:
     )
 
 
+HOMONYMES_MONTRES = 10
+
+
+def _bloc_homonymes(data: dict[str, Any]) -> str:
+    """Rend la liste vers laquelle la réserve de l'index renvoie.
+
+    🔑 **Un renvoi ne vaut que si ce qu'il désigne est là.** La réserve de
+    `/verifier` finit par « Voir « homonymes » » et l'index rend bien ce champ ;
+    ce client le jetait, si bien que l'invitation arrivait au modèle sans rien
+    derrière elle. C'est le cas où l'utilisateur a mal daté sa décision : les
+    dates disponibles sous le même numéro sont exactement ce qui le détrompe.
+
+    L'index les rend triées par date décroissante — c'est l'`ORDER BY` de la
+    route qui le décide : l'ordre est le sien, il ne se recalcule pas ici.
+    Aucun total ne s'y recompte non plus. La liste subit deux bornes — la limite
+    de la requête en amont, puis `HOMONYMES_MONTRES` ici — et peut donc être bien
+    plus courte que le nombre que la réserve annonce, seule à le connaître.
+    """
+    homonymes = data.get("homonymes") or []
+    if not homonymes:
+        return ""
+    montres = homonymes[:HOMONYMES_MONTRES]
+    entete = (
+        f"Homonymes — les {len(montres)} plus récents de la liste rendue par l'index :"
+        if len(homonymes) > len(montres)
+        else "Homonymes — la liste rendue par l'index :"
+    )
+    lignes = "\n".join(
+        f"  · {_nom_juridiction(d.get('juridiction'), d.get('cour'))}"
+        + (f", {_nom_chambre(d.get('chambre'))}" if d.get("chambre") else "")
+        + f", {d.get('date') or 'date douteuse en base amont'}"
+        for d in montres
+    )
+    return f"{entete}\n{lignes}\n\n"
+
+
 @server.tool()
 async def verifier_jurisprudence(
     reference: str,
@@ -1581,7 +1617,8 @@ async def verifier_jurisprudence(
             f"{bandeau}\n\n"
             f"« {reference} » est INTROUVABLE dans l'index.\n\n"
             f"{reserve}{note}\n\n"
-            "Ne présente pas cette décision comme existante. Si l'utilisateur "
+            + _bloc_homonymes(data)
+            + "Ne présente pas cette décision comme existante. Si l'utilisateur "
             "l'a lue quelque part, dis-lui que la référence n'a pas pu être "
             "confirmée et invite-le à vérifier sa source."
         )
@@ -1615,6 +1652,7 @@ async def verifier_jurisprudence(
         f"{entete} :\n{lignes}\n\n"
         + (f"⚠️ {avert}\n\n" if avert else "")
         + (f"{reserve}\n\n" if reserve else "")
+        + _bloc_homonymes(data)
         + "L'existence est confirmée, pas le contenu : appelle `texte_decision` "
         "avec l'id avant d'affirmer ce que la décision juge."
     )
