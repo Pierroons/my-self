@@ -126,6 +126,26 @@ for tableau in EXCLUS ETAT_INSTANCE EXCLUS_MOTIF; do
         exit 1; }
 done
 
+# ⚠️ `IGNORES_SERVIS` n'était pas lu du tout, et ses fichiers sortaient en
+# ORPHELIN : gitignorés, ils sont absents de `git ls-files`, donc du périmètre
+# comme du hors-périmètre, donc de `connus`. Or ils sont servis **délibérément** —
+# les dépendances PHP du lab, que `composer install` ne produit pas sur la machine
+# servie. Dix faux orphelins à chaque exécution, pour un seul vrai : une sonde qui
+# crie dix fois à tort emporte son unique constat utile avec elle.
+#
+# 🔑 Le garde n'est pas décoratif. Sans lui, un tableau disparu donnerait un motif
+# vide, que `grep -vE ""` accepte en filtrant TOUT : zéro orphelin, et le verdict
+# l'annoncerait comme une mesure.
+SERVIS_FRAGMENTS=()
+while IFS= read -r prefixe; do
+    [ -n "$prefixe" ] || continue
+    SERVIS_FRAGMENTS+=("^${prefixe//./\\.}")
+done < <(lire_tableau IGNORES_SERVIS)
+[ "${#SERVIS_FRAGMENTS[@]}" -gt 0 ] || {
+    echo "❌ Tableau IGNORES_SERVIS vide ou introuvable dans $DEPLOY — lecture en échec." >&2
+    exit 1; }
+SERVIS_RE="$(IFS='|'; printf '%s' "${SERVIS_FRAGMENTS[*]}")"
+
 # ⚠️ Une lecture qui échoue ne doit pas passer pour un périmètre. Zéro motif
 # donnerait un regex vide, que `grep -vE` accepte en ne filtrant rien : le
 # dépôt entier redeviendrait le périmètre et la sonde crierait sur 421 fichiers.
@@ -327,7 +347,7 @@ for i in "${!PREFIXES[@]}"; do
         while IFS= read -r f; do
             [ -n "$f" ] || continue
             orphelins=$((orphelins + 1)); printf 'ORPHELIN   %s → %s\n' "$f" "$cible" >> "$TMP/rapport"
-        done < <(sort "$TMP/find-distant" | comm -23 - "$TMP/connus")
+        done < <(sort "$TMP/find-distant" | grep -vE "$SERVIS_RE" | comm -23 - "$TMP/connus")
     else
         echo "   ⚠ orphelins NON mesurés sur ${cible}"
         non_mesures=$((non_mesures + 1))

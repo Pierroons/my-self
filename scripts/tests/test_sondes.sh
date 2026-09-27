@@ -183,6 +183,39 @@ else
     nok "le verdict ne distingue pas « non mesuré » de « divergent »"
 fi
 
+# ── 4. ecart-instance.sh — ce qui est servi exprès n'est pas orphelin ───────
+#
+# `IGNORES_SERVIS` n'était pas lu. Gitignorés, les fichiers qu'il couvre sont
+# absents de `git ls-files`, donc du périmètre comme du hors-périmètre : le `find`
+# distant les remontait tous en ORPHELIN. Dix faux pour un vrai.
+#
+# Ce faux `ssh` rend un `find` contenant les deux : un fichier servi exprès, et un
+# véritable inconnu. Seul le second doit sortir.
+echo "▸ ecart-instance.sh — un fichier servi exprès ne doit pas sortir orphelin"
+mkdir -p "$BAC/bin4"
+cat > "$BAC/bin4/ssh" <<'FAUXSSH'
+#!/bin/sh
+case "$*" in
+    *sha256sum*) while IFS= read -r f; do printf 'ABSENT  %s\n' "$f"; done; exit 0 ;;
+    *find*)      printf 'demo/lab/vendor/autoload.php\nintrus-jamais-versionne.php\n'; exit 0 ;;
+    *)           exit 0 ;;
+esac
+FAUXSSH
+chmod +x "$BAC/bin4/ssh"
+
+texte="$( cd "$RACINE" && PATH="$BAC/bin4:$PATH" MYSELF_INSTANCE="$BAC/instance.map" \
+          bash "$ECART" 2>&1 || true )"
+if printf '%s\n' "$texte" | grep -q 'ORPHELIN.*intrus-jamais-versionne'; then
+    ok "l'intrus réel sort bien en orphelin"
+else
+    nok "témoin : l'intrus réel ne sort pas — le filtre emporte tout"
+fi
+if printf '%s\n' "$texte" | grep -q 'ORPHELIN.*demo/lab/vendor'; then
+    nok "un fichier d'IGNORES_SERVIS sort en orphelin"
+else
+    ok "les fichiers d'IGNORES_SERVIS ne sortent plus en orphelin"
+fi
+
 # ── Verdict ─────────────────────────────────────────────────────────────────
 echo
 echo "$reussites propriété(s) tiennent, $echecs en échec."
