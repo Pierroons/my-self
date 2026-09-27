@@ -233,6 +233,9 @@ jobs:
       - name: Garde-fou — sur quelle date se juge le retard d'une base
         run: python3 self-right/selfjustice/tests/sanity_fraicheur_bases.py
 
+      - name: Garde-fou — le texte d'une décision, selon son fonds (MCP)
+        run: python3 self-right/selfjustice/tests/sanity_texte_decision.py
+
       - name: Garde-fou — ce que la sentinelle appelle un retard
         run: bash self-right/selfjustice/tests/test_fraicheur.sh
 

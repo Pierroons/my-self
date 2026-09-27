@@ -10,6 +10,19 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### selfright-mcp 0.4.5 — le texte d'une décision administrative sort enfin — 27 septembre 2026
+
+`texte_decision` lisait toute réponse dans la forme de Judilibre. Pour une décision du Conseil
+d'État, d'une cour administrative d'appel ou d'un tribunal administratif, il rendait « texte non
+fourni » et l'attribuait à Judilibre, alors que l'API servait le texte entier depuis l'index JADE.
+Il lit désormais les deux formes, nomme JADE comme provenance, relaie la réserve qui accompagne une
+date aberrante, et renvoie vers Légifrance quand le texte est coupé.
+
+L'âge annoncé de la jurisprudence ne compte plus les fonds sans décision depuis plus d'un an : les
+tribunaux administratifs (arrêtés en 2009 dans JADE) et la Cour de discipline budgétaire et
+financière (en 2000) lui faisaient afficher « 9657 jours ». Ces fonds restent nommés, à part, avec
+leur borne. Les juridictions administratives sont nommées en toutes lettres au lieu de leur code.
+
 ### SelfJustice v0.4.1 — le Conseil d'État se vérifie, et `/verifier` ne nie plus une décision présente — 27 septembre 2026
 
 `/verifier` prenait les cinquante décisions les plus récentes d'un numéro, puis filtrait par la date
