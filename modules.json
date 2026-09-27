@@ -1,6 +1,6 @@
 {
-  "depot": "my-self",
-  "lisez_moi": "Source unique des versions des modules de ce dépôt. scripts/check-versions.sh vérifie que chaque porteur déclaré dit la même version, et que chaque version a son tag <id>-v<version>. Les autres dépôts de l'écosystème lisent ce fichier au lieu de recopier nos versions.",
+  "depot": {"nom": "my-self", "version": null},
+  "lisez_moi": "Source unique des versions des modules de ce dépôt. scripts/check-versions.sh vérifie que chaque porteur déclaré dit la même version, et que chaque version a son tag <id>-v<version>. Les autres dépôts de l'écosystème lisent ce fichier au lieu de recopier nos versions ; my-self n'a pas de version de dépôt, chaque module a la sienne.",
   "modules": [
     {
       "id": "selfrecover",

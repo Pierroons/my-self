@@ -109,17 +109,22 @@ jobs:
 
       - name: Canari — le contrôle d'écosystème rougit quand selffarm-lite avance
         run: |
-          echo 9.9.9 > /tmp/selffarm-version
-          cp README.md /tmp/RM.intact && cp README.fr.md /tmp/RF.intact
-          if SELFFARM_VERSION_URL=file:///tmp/selffarm-version bash scripts/check-ecosysteme.sh >/dev/null 2>&1; then
-            echo "::error::le contrôle reste VERT alors que selffarm-lite annonce une autre version"
-            exit 1
-          fi
-          # Comparaison aux copies d'avant, et non à HEAD : un README modifié et non
+          # Deux dérives, à partir du vrai manifeste : une version qui avance, un module
+          # qui disparaît. Le code attendu est 1 (dérive), pas 2 (panne) : un manifeste
+          # injoignable ferait sinon passer le canari sans rien éprouver.
+          curl -fsSL --retry 3 https://raw.githubusercontent.com/Pierroons/selffarm-lite/main/modules.json > /tmp/sfl.json
+          python3 -c "import json;d=json.load(open('/tmp/sfl.json'));d['depot']['version']='9.9.9';json.dump(d,open('/tmp/sfl-version.json','w'))"
+          python3 -c "import json;d=json.load(open('/tmp/sfl.json'));d['modules']=d['modules'][1:];json.dump(d,open('/tmp/sfl-module.json','w'))"
+          cp README.md /tmp/RM.intact && cp README.fr.md /tmp/RF.intact && cp web/my-self.fr/index.html /tmp/IX.intact
+          for cas in version module; do
+            rc=0; SELFFARM_MANIFESTE_URL="file:///tmp/sfl-$cas.json" bash scripts/check-ecosysteme.sh >/dev/null 2>&1 || rc=$?
+            [ "$rc" -eq 1 ] || { echo "::error::cas « $cas » : code $rc, 1 attendu — le contrôle ne voit pas la dérive"; exit 1; }
+          done
+          # Comparaison aux copies d'avant, et non à HEAD : un fichier modifié et non
           # commité ferait rougir `git diff` sans que le contrôle y soit pour rien.
-          cmp -s /tmp/RM.intact README.md && cmp -s /tmp/RF.intact README.fr.md \
-            || { echo "::error::le contrôle a modifié les README sans --ecrire"; exit 1; }
-          echo "✓ le contrôle rougit sur une version voisine différente, sans toucher aux README"
+          cmp -s /tmp/RM.intact README.md && cmp -s /tmp/RF.intact README.fr.md && cmp -s /tmp/IX.intact web/my-self.fr/index.html \
+            || { echo "::error::le contrôle a modifié un bloc sans --ecrire"; exit 1; }
+          echo "✓ le contrôle rougit sur une version voisine et sur un module retiré, sans rien modifier"
 
       # ── Garde-fous ─────────────────────────────────────────────────────────
       # Priorité sur le reste : ce sont eux qui échouent en silence.
