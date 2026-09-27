@@ -76,7 +76,7 @@ echo "▸ check-paths.sh — un lien vers un .js mort doit être signalé"
 mkdir -p "$BAC/faux-depot"
 ( cd "$BAC/faux-depot" \
   && git init -q 2>/dev/null \
-  && printf 'Voir [le dérivateur](client/sr-derive.js) et [l API](api/).\n' > a.md \
+  && printf 'Voir [le dérivateur](client/sr-derive.js) et [l API](api/).\nCopier `deploy/disparu.conf` vers le serveur.\n' > a.md \
   && git add a.md 2>/dev/null ) || true
 texte="$( (cd "$BAC/faux-depot" && bash "$CHECK_PATHS") 2>&1 || true )"
 if printf '%s\n' "$texte" | grep -q 'client/sr-derive.js'; then
@@ -88,6 +88,13 @@ if printf '%s\n' "$texte" | grep -q 'api/'; then
     ok "signale un lien mort vers un répertoire"
 else
     nok "un lien vers un répertoire mort n'est vu par aucun bloc"
+fi
+# Une citation entre backticks n'est pas un lien : `prose()` retire le code inline
+# exprès, donc aucun bloc de liens ne peut la voir. Elle a son contrôle à part.
+if printf '%s\n' "$texte" | grep -q 'deploy/disparu.conf'; then
+    ok "signale une citation morte entre backticks"
+else
+    nok "une citation morte entre backticks n'est vue par aucun bloc"
 fi
 
 # ── 2. ecart-instance.sh — l'ancre de fin de motif_vers_regex ───────────────
