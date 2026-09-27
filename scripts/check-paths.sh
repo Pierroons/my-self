@@ -28,29 +28,18 @@ cd "$RACINE" || exit 1
 
 echec=0
 
-echo "▸ Chemins cités — liens Markdown"
-python3 - <<'PY' || echec=1
-import re, pathlib, subprocess, sys
-morts = []
-for f in subprocess.run(["git","ls-files","*.md"],capture_output=True,text=True).stdout.split():
-    p = pathlib.Path(f)
-    for m in re.finditer(r'\]\((\.{0,2}/[^)#]+|[A-Za-z0-9_][^):#]*\.(?:md|html|php|sh|json|ya?ml|docx|pdf))\)', p.read_text(errors="ignore")):
-        t = m.group(1)
-        if t.startswith(("http", "mailto")): continue
-        if not (p.parent / t).exists(): morts.append(f"{f} → {t}")
-if morts:
-    print("  ✗ " + str(len(morts)) + " lien(s) mort(s)")
-    for m in morts: print("     " + m)
-    sys.exit(1)
-print("  ✓ tous les liens résolvent")
-PY
-
-echo "▸ Chemins cités — ancres Markdown"
-# 🔑 **Le contrôle au-dessus ne regardait AUCUN lien ancré.** Sa classe `[^)#]`
-# exclut le `#` : `](#quickstart)` et `](guide.md#section)` sortaient de son
-# périmètre depuis toujours. Quatre badges des README SelfRecover pointaient un
-# fragment qu'aucun titre ne produit, et le script rendait vert. C'est la forme
-# la plus discrète du faux vert : un contrôle qui passe parce qu'il ne regarde pas.
+echo "▸ Chemins cités — liens et ancres Markdown"
+# 🔑 **Deux contrôles se partageaient ce travail, et chacun était aveugle à ce que
+# l'autre regardait.** Le premier n'acceptait qu'un chemin relatif ou l'une de
+# neuf extensions, et sa classe `[^)#]` excluait le `#` : tout lien ancré sortait
+# de son périmètre. Le second ne regardait QUE les liens ancrés, par son
+# `"#" not in cible`. Entre les deux, aucun lien vers un `.js`, un `.css`, un
+# `.conf`, un `.service` ni vers un répertoire n'était vérifié — `](client/sr-derive.js)`
+# et `](api/)` passaient sans être lus.
+#
+# Le second portait déjà la bonne expression et le bon test d'existence : les
+# fusionner ne demandait que de retirer sa condition d'entrée. Le périmètre passe
+# de 29 ancres à 291 liens, sans un mort de plus — mesuré avant d'écrire.
 #
 # ⚠️ L'ordre des opérations de `github-slugger` n'est pas intuitif et un seul
 # écart fabrique des faux positifs : `trim()` s'applique AVANT la suppression de
@@ -98,29 +87,35 @@ def prose(txt):
     # que fait GitHub.
     return re.sub(r'`[^`\n]*`', '', sans_blocs(txt))
 
-morts, vivantes, cache = [], 0, {}
+morts, ancres_ok, fichiers_ok, cache = [], 0, 0, {}
 for f in subprocess.run(["git","ls-files","*.md"],capture_output=True,text=True).stdout.split():
     p = pathlib.Path(f)
     for m in re.finditer(r'\]\(([^)\s]+)\)', prose(p.read_text(errors="ignore"))):
         cible = m.group(1)
-        if cible.startswith(("http", "mailto", "#!")) or "#" not in cible: continue
+        if cible.startswith(("http", "mailto", "#!")): continue
         chemin, _, frag = cible.partition("#")
-        if not frag: continue
-        dest = p if chemin == "" else (p.parent / chemin)
+        # ⚠️ Un lien ancré à la racine du dépôt se résout depuis elle. `p.parent / "/x"`
+        # rend un chemin absolu SYSTÈME, qui n'existerait jamais et sortirait en faux
+        # mort. Aucune occurrence aujourd'hui — mais le périmètre vient de décupler.
+        if chemin.startswith("/"): dest = pathlib.Path(chemin.lstrip("/"))
+        elif chemin == "":         dest = p
+        else:                      dest = p.parent / chemin
         if not dest.exists():
             morts.append(f"{f} → {cible}  (fichier absent)"); continue
+        fichiers_ok += 1
+        if not frag: continue
         if dest.suffix != ".md": continue
         if dest not in cache: cache[dest] = fragments(dest)
-        if frag.lower() in cache[dest]: vivantes += 1
+        if frag.lower() in cache[dest]: ancres_ok += 1
         else: morts.append(f"{f} → {cible}")
 
 # Le contre-témoin fait partie du verdict : sans lui, « 0 mort » ne distingue pas
 # « tout résout » de « le motif n'a rien trouvé à regarder ».
 if morts:
-    print(f"  ✗ {len(morts)} ancre(s) morte(s) sur {len(morts) + vivantes} vérifiée(s)")
+    print(f"  ✗ {len(morts)} lien(s) mort(s) sur {len(morts) + fichiers_ok} vérifié(s)")
     for x in morts: print("     " + x)
     sys.exit(1)
-print(f"  ✓ les {vivantes} ancres vérifiées résolvent")
+print(f"  ✓ les {fichiers_ok} liens vérifiés résolvent, dont {ancres_ok} ancre(s)")
 PY
 
 echo "▸ Chemins cités — règles .gitignore"
@@ -129,7 +124,7 @@ echo "▸ Chemins cités — règles .gitignore"
 # fichier du même nom existe ailleurs » — c'est-à-dire : elle a été déplacée.
 python3 - <<'PY' || echec=1
 import pathlib, subprocess, sys
-suspects = []
+suspects, examinees = [], 0
 tous = {p.as_posix() for p in pathlib.Path(".").rglob("*") if ".git/" not in p.as_posix()}
 for gi in subprocess.run(["git","ls-files","*.gitignore",".gitignore"],capture_output=True,text=True).stdout.split():
     base = pathlib.Path(gi).parent
@@ -141,6 +136,7 @@ for gi in subprocess.run(["git","ls-files","*.gitignore",".gitignore"],capture_o
         if s.strip("/") in {"vendor", "node_modules", ".venv", "tmp", "cache", ".phpunit.cache"}: continue
         cible = s.lstrip("/").split("*")[0].rstrip("/")
         if not cible: continue
+        examinees += 1
         if (base / cible).exists(): continue
         feuille = cible.rsplit("/", 1)[-1]
         if feuille and any(t.endswith("/" + feuille) for t in tous):
@@ -164,26 +160,28 @@ if suspects:
     print("  ✗ " + str(len(suspects)) + " règle(s) probablement orpheline(s)")
     for x in suspects: print("     " + x)
     sys.exit(1)
-print("  ✓ aucune règle orpheline détectée")
+print(f"  ✓ aucune règle orpheline sur {examinees} règle(s) examinée(s)")
 PY
 
 echo "▸ Chemins cités — workflows GitHub"
 python3 - <<'EOF' || echec=1
 import pathlib, re, sys
-morts = []
-for wf in sorted(pathlib.Path(".github/workflows").glob("*.yml")):
+morts, examines = [], 0
+rep = pathlib.Path(".github/workflows")
+for wf in sorted(list(rep.glob("*.yml")) + list(rep.glob("*.yaml"))):
     for n, line in enumerate(wf.read_text().splitlines(), 1):
         m = re.match(r"\s*(context|working-directory|dockerfile|file):\s*(\S+)", line)
         if not m: continue
         chemin = m.group(2).strip("'\"")
         if chemin.startswith("$") or chemin == ".": continue
+        examines += 1
         if not pathlib.Path(chemin).exists():
             morts.append(f"{wf}:{n}  {m.group(1)}: {chemin}")
 if morts:
     print("  \u2717 " + str(len(morts)) + " chemin(s) mort(s)")
     for x in morts: print("     " + x)
     sys.exit(1)
-print("  \u2713 tous les chemins de workflow résolvent")
+print(f"  \u2713 les {examines} chemin(s) de workflow résolvent")
 EOF
 
 # ── Copies qui doivent rester identiques ────────────────────────────────────

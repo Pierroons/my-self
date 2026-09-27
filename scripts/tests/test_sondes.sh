@@ -67,6 +67,29 @@ else
     nok "témoin : code de sortie inattendu dans le dépôt réel ($sortie)"
 fi
 
+# ── 1 bis. check-paths.sh — un lien hors des neuf extensions doit être lu ───
+#
+# Deux contrôles se partageaient les liens et chacun était aveugle à ce que
+# l'autre regardait : l'un refusait les liens ancrés, l'autre ne regardait qu'eux.
+# Un lien vers un `.js`, un `.conf` ou un répertoire ne passait par aucun des deux.
+echo "▸ check-paths.sh — un lien vers un .js mort doit être signalé"
+mkdir -p "$BAC/faux-depot"
+( cd "$BAC/faux-depot" \
+  && git init -q 2>/dev/null \
+  && printf 'Voir [le dérivateur](client/sr-derive.js) et [l API](api/).\n' > a.md \
+  && git add a.md 2>/dev/null ) || true
+texte="$( (cd "$BAC/faux-depot" && bash "$CHECK_PATHS") 2>&1 || true )"
+if printf '%s\n' "$texte" | grep -q 'client/sr-derive.js'; then
+    ok "signale un lien mort vers un .js"
+else
+    nok "un lien vers un .js mort n'est vu par aucun bloc"
+fi
+if printf '%s\n' "$texte" | grep -q 'api/'; then
+    ok "signale un lien mort vers un répertoire"
+else
+    nok "un lien vers un répertoire mort n'est vu par aucun bloc"
+fi
+
 # ── 2. ecart-instance.sh — l'ancre de fin de motif_vers_regex ───────────────
 #
 # Un motif rsync ancré à la racine sans ancre de fin attrape par préfixe. Le
