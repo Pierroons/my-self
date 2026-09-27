@@ -26,13 +26,13 @@ L'accès au droit en France est formellement égal. En pratique, il demande :
 
 Chacune de ces étapes est un filtre. La plupart des gens abandonnent aux deux premières. Connaître ses droits ne sert à rien si on ne sait pas les faire valoir. **Le droit n'est accessible qu'à ceux qui ont déjà une littératie juridique** — une inégalité auto-entretenue.
 
-Self-Right couvre cet arc en deux modules : **le droit (SelfJustice), puis la démarche (SelfAct)**.
+Self-Right s'attaque à deux de ces filtres : **lire le texte (SelfJustice), puis trouver la démarche et son délai (SelfAct)**.
 
 ---
 
 ## Pourquoi les deux modules vont ensemble
 
-**SelfJustice seul** sert le droit — articles en vigueur, textes européens, jurisprudence — pour que ton IA t'explique ce qu'il dit de ta situation. Tu sais alors ce que dit la loi, pas encore comment agir : quel formulaire, quel service en ligne, quel délai, comment écrire le courrier.
+**SelfJustice seul** sert le droit — articles en vigueur, textes européens, jurisprudence — pour que ton IA s'appuie sur les textes en vigueur plutôt que sur sa mémoire. Tu sais alors ce que dit la loi, pas encore comment agir : quel formulaire, quel service en ligne, quel délai, comment écrire le courrier.
 
 **SelfAct seul** est un catalogue et des modèles de lettres. Sans le droit, tu pourrais te tromper de démarche.
 
@@ -42,13 +42,13 @@ Self-Right couvre cet arc en deux modules : **le droit (SelfJustice), puis la d�
 2. Ton IA lit le droit par SelfJustice et t'explique ce qu'il dit, avec des références vérifiables.
 3. SelfAct pointe la ressource officielle de la démarche, calcule le délai, et te donne un modèle de lettre à trous. Tu écris les faits, tu relis, tu signes, tu envoies.
 
-Aucun des deux modules n'analyse ton cas à ta place : la consultation juridique est réservée aux professionnels du droit (loi n° 71-1130). Le jugement, et la décision d'agir, restent les tiens.
+Aucun des deux modules n'analyse ton cas à ta place : la consultation juridique est réservée aux professionnels du droit (loi n° 71-1130). Pour un avis sur ta situation, c'est à eux qu'il faut t'adresser.
 
 ---
 
 ## Exemples croisés
 
-- **Conflit de voisinage (bruit)** → SelfJustice sert les articles applicables → SelfAct pointe le signalement officiel des nuisances et la saisine du conciliateur de justice, obligatoire avant le tribunal.
+- **Conflit de voisinage (bruit)** → SelfJustice sert les textes sur le bruit et le voisinage → SelfAct pointe le signalement officiel des nuisances et la saisine du conciliateur de justice : pour un trouble anormal de voisinage, une tentative amiable — conciliation, médiation ou procédure participative — doit précéder le tribunal (art. 750-1 du code de procédure civile).
 - **Litige avec un assureur** → SelfJustice sert les articles du code des assurances et la jurisprudence → SelfAct pointe la saisine du médiateur en assurances.
 - **Licenciement contesté** → SelfJustice sert le code du travail → SelfAct pointe la requête de saisine du conseil de prud'hommes et calcule le délai.
 
@@ -59,7 +59,7 @@ Aucun des deux modules n'analyse ton cas à ta place : la consultation juridique
 | Module | Rôle | Statut |
 |--------|------|--------|
 | [SelfJustice](./selfjustice/) | Directives juridiques lisibles par machine + API ouverte du droit | **v0.4.0 bêta** — en ligne sur [justice.my-self.fr](https://justice.my-self.fr) |
-| [SelfAct](./selfact/) | Courriers, formulaires et délais bâtis sur cette analyse | **v0.1.2** — API, catalogue et pages en service |
+| [SelfAct](./selfact/) | Ressources officielles, délais et modèles de lettres pour la démarche | **v0.1.2** — API, catalogue et pages en service |
 
 ---
 
@@ -74,9 +74,9 @@ SelfAct **tourne aussi**, et son dossier le montre : [`selfact/`](./selfact/) po
 | Catalogue | [`selfact/api/`](./selfact/api/) | plus de 1 800 ressources officielles moissonnées sur service-public.gouv.fr, rangées en 16 catégories — le compte exact et la ventilation par type sont servis en direct par `/act/api/catalog.php?stats=1`. Rafraîchi les 1er et 15. |
 | Aiguillage | [`selfact/api/find.php`](./selfact/api/find.php) | une vingtaine de situations curées à la main : « je me fais licencier » → l'acte, l'article, le formulaire. |
 | Calcul de délai | [`selfact/api/deadline.php`](./selfact/api/deadline.php) | Le seul endroit qui calcule au lieu de restituer, avec export agenda. |
-| Gabarit de courrier | [`selfact/api/draft.php`](./selfact/api/draft.php) | Mise en demeure, saisine (conciliateur, Défenseur des droits), contestation, résiliation, recours — chacun portant la mention « NON OFFICIEL » dans le corps quand il imite la forme d'un acte, et le rappel en pied dans tous les cas, et les ressources officielles correspondantes. |
+| Gabarit de courrier | [`selfact/api/draft.php`](./selfact/api/draft.php) | Mise en demeure, saisine (conciliateur, Défenseur des droits), recours gracieux, résiliation, plainte — chacun portant la mention « NON OFFICIEL » dans le corps quand il imite la forme d'un acte, et le rappel en pied dans tous les cas, et les ressources officielles correspondantes. |
 
-Quatre des douze outils MCP SelfRight sont ceux de SelfAct. Les deux modules sont servis par le même domaine — `justice.my-self.fr/act` — et n'échangent aucun appel : SelfJustice dit le droit, SelfAct fait la démarche.
+Quatre des douze outils MCP SelfRight sont ceux de SelfAct. Les deux modules sont servis par le même domaine — `justice.my-self.fr/act` — et n'échangent aucun appel : SelfJustice dit le droit, SelfAct pointe la démarche.
 
 ---
 

@@ -161,13 +161,13 @@ Clone the repo, point nginx to `site/`, configure `api/api.php` against your LEG
 
 ## Role in Self-Right
 
-SelfJustice serves **the law**. [SelfAct](../selfact/) serves **the step**. Together they go from "what does the law say about my situation?" to "which form, which deadline, which letter?":
+SelfJustice serves **the law**. [SelfAct](../selfact/) serves **the step**. Together they go from "what does the text say?" to "which form, which deadline, which letter?":
 
 1. You describe your situation to your own AI, which reads the law through SelfJustice and explains what it says, with verifiable references.
 2. SelfAct points to the official resource for the step, computes the deadline and gives you a letter template with gaps.
 3. You write the facts, review, sign and send.
 
-No consultation fee. Your question is read by the AI you choose; SelfJustice only receives the lookup requests it sends.
+Free of charge. Your question is read by the AI you choose; SelfJustice only receives the lookup requests it sends.
 
 ---
 
@@ -175,7 +175,7 @@ No consultation fee. Your question is read by the AI you choose; SelfJustice onl
 
 SelfJustice is an **information tool**, not legal advice. It does not constitute:
 - Legal counsel under French law n° 71-1130 of December 31, 1971
-- A legal consultation (reserved to licensed attorneys)
+- A legal consultation (reserved to legal professionals, loi n° 71-1130, art. 54)
 - A binding legal opinion
 
 **Always consult a lawyer before taking legal action.**

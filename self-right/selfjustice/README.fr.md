@@ -162,13 +162,13 @@ Clone le dépôt, pointe nginx sur `site/`, configure `api/api.php` contre ton d
 
 ## Rôle dans Self-Right
 
-SelfJustice sert **le droit**. [SelfAct](../selfact/) sert **la démarche**. Ensemble, ils vont de « que dit la loi sur ma situation ? » à « quel formulaire, quel délai, quel courrier ? » :
+SelfJustice sert **le droit**. [SelfAct](../selfact/) sert **la démarche**. Ensemble, ils vont de « que dit le texte ? » à « quel formulaire, quel délai, quel courrier ? » :
 
 1. Tu décris ta situation à ta propre IA, qui lit le droit par SelfJustice et t'explique ce qu'il dit, avec des références vérifiables.
 2. SelfAct pointe la ressource officielle de la démarche, calcule le délai et te donne un modèle de lettre à trous.
 3. Tu écris les faits, tu relis, tu signes, tu envoies.
 
-Pas de frais de consultation. Ta question est lue par l'IA que tu choisis ; SelfJustice ne reçoit que les requêtes de consultation qu'elle lui envoie.
+Gratuit. Ta question est lue par l'IA que tu choisis ; SelfJustice ne reçoit que les recherches de textes qu'elle lui envoie.
 
 ---
 
@@ -176,7 +176,7 @@ Pas de frais de consultation. Ta question est lue par l'IA que tu choisis ; Self
 
 SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne constitue pas :
 - Un conseil juridique au sens de la loi n° 71-1130 du 31 décembre 1971
-- Une consultation juridique (réservée aux avocats inscrits au Barreau)
+- Une consultation juridique (réservée aux professionnels du droit, loi n° 71-1130, art. 54)
 - Un avis juridique contraignant
 
 **Consulte toujours un avocat avant toute action en justice.**

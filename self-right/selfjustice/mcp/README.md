@@ -29,7 +29,7 @@ accompagné de la date à laquelle cette base a été synchronisée.
 | `catalogue_actes` | Cherche modèles de lettres, CERFA et démarches officiels |
 | `actes_pour_situation` | Quelles démarches existent pour une situation donnée |
 | `calculer_echeance` | Calcule un délai de procédure et rend son raisonnement |
-| `gabarit_document` | Adresse d'un modèle de courrier à trous, marqué « non officiel », et champs à compléter |
+| `gabarit_document` | Adresse d'un modèle de courrier à trous et champs à compléter ; mention « NON OFFICIEL » quand il imite la forme d'un acte |
 
 Le règlement (UE) 2024/1689 sur l'intelligence artificielle est inclus sous le
 nom `AI_ACT`. Son article 50 porte les obligations de transparence applicables

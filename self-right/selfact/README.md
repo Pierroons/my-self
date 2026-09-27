@@ -2,7 +2,7 @@
 
 > 🇫🇷 **[Lire en français →](./README.fr.md)**
 
-**From "I know my rights" to the step itself: the right form, the deadline, a letter template to complete.**
+**From "I know my rights" to the step itself: the official form, the deadline, a letter template to complete.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.1.2 running](https://img.shields.io/badge/status-v0.1.2%20running-brightgreen.svg)](#status)
@@ -17,7 +17,7 @@
 ## What SelfAct covers
 
 [SelfJustice](../selfjustice/) serves the law: articles in force, European texts, case law.
-Your AI uses it to explain what the law says about your situation. What remains is acting:
+Your AI uses it to rely on the texts in force, with verifiable references, rather than on its memory. What remains is acting:
 which form to fill, which online service to use, within which deadline, how to write the
 letter.
 
@@ -31,16 +31,17 @@ computes the deadline, and gives you a letter template with gaps. The facts are 
 - **Catalogue of official resources** — CERFA forms, online services and letter templates from
   service-public.gouv.fr, harvested on the 1st and 15th of each month (exact count:
   `/act/api/catalog.php?stats=1`).
-- **Situations** — around twenty common situations, checked by hand, each mapped to a step, an
-  article and a form.
+- **Situations** — around twenty common situations, hand-curated; you pick yours, SelfAct returns
+  the step, the article and the form attached to it.
 - **Deadlines** — computed under articles 640 to 643 of the French Code of Civil Procedure
   (mainland, overseas, abroad), exportable to your calendar (`.ics`).
-- **Letter templates with gaps** — formal notice, saisine, contestation, termination, appeal.
+- **Letter templates with gaps** — formal notice, referral to the conciliateur de justice or the
+  Défenseur des droits, administrative appeal (recours gracieux), termination, criminal complaint.
   You complete the fields in your browser, then print. A template that imitates the form of a
   legal act carries a "NON OFFICIEL" notice in its body; every template carries a footer
   reminder.
 
-Nothing you write leaves your browser: the server refuses to receive a document (`POST`
+What you type into a template stays in your browser: the server refuses to receive a document (`POST`
 rejected with `405`, body unread).
 
 ---
@@ -51,8 +52,8 @@ rejected with `405`, body unread).
   is reserved to legal professionals in France (loi n° 71-1130).
 - **It fills nothing in for you**: it formats what you provide, without guessing a field or
   turning a story into a claim.
-- **It produces no official act**: a template stays a template, which you review and take
-  responsibility for before sending it.
+- **It produces no official act**: the completed letter is yours to review and answer for before
+  you send it.
 
 ---
 
@@ -64,8 +65,6 @@ rejected with `405`, body unread).
 | Checks that a reference exists | Computes the deadline and exports it to your calendar |
 | Says what the text says | Gives a template with gaps — the facts and the signature are yours |
 
-Both modules are served from the same domain and do not call each other.
-
 ---
 
 ## Status
@@ -75,13 +74,13 @@ Both modules are served from the same domain and do not call each other.
 Everything is here: [`api/`](api/) the service and its data, [`site/`](site/) the
 pages, [`tests/`](tests/) the guards, [`docs/`](docs/) the whitepaper. SelfAct is
 served from the same domain as SelfJustice — `justice.my-self.fr/act` — and
-exchanges no calls with it: SelfJustice states the law, SelfAct performs the step.
+exchanges no calls with it: SelfJustice states the law, SelfAct points to the step.
 
 - [x] Concept paper
 - [x] Resource catalogue — over 1,800 official resources in 16 categories, harvested from service-public.gouv.fr, refreshed on the 1st and 15th (exact count: `/act/api/catalog.php?stats=1`)
 - [x] Situation matching — around twenty hand-curated situations, each mapped to a step, an article and a form
 - [x] Deadline engine — art. 640-643 CPC, mainland / overseas / abroad, with calendar export, covered by a CI guard
-- [x] Letter templates — formal notice, saisine, contestation, termination, recours, each carrying a "NON OFFICIEL" notice in the body when it imitates the form of a legal act, and a footer reminder in every case
+- [x] Letter templates — formal notice, referral to the conciliateur or the Défenseur des droits, recours gracieux, termination, complaint, each carrying a "NON OFFICIEL" notice in the body when it imitates the form of a legal act, and a footer reminder in every case
 - [x] Printing — browser-side, so no draft ever leaves the machine
 - [x] Exposed through the SelfRight MCP server (4 of its 12 tools)
 - [ ] CERFA XML pre-fill

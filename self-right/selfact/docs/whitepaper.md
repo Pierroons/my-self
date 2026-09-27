@@ -10,7 +10,7 @@ version: "0.1.3"
 
 SelfAct is the companion of [SelfJustice](https://justice.my-self.fr) for the step that follows the law: which form, which online service, which deadline, which letter. For a situation, it points to the official resource, computes the procedural deadline, and gives letter templates with gaps that the reader completes in their browser. It does not analyse a case: legal advice is reserved to legal professionals in France (loi n° 71-1130).
 
-No legal fee. What the reader types stays in their browser — the server refuses to receive a document — and the deadlines land in their calendar.
+Free of charge. What the reader types into a template stays in their browser — the server refuses to receive a document — and the deadlines land in their calendar.
 
 # 1. Problem statement
 
@@ -23,7 +23,7 @@ This is not a legal problem. It is a **documentation-production problem**. Every
 SelfAct is driven by **situations and templates**. For a situation, it provides:
 
 1. A **mise en demeure** template with gaps: the facts, the legal basis the reader relies on and the response delay are theirs to fill.
-2. A **saisine** template for the competent body (tribunal judiciaire, conciliateur de justice, médiateur, conseil de prud'hommes).
+2. A **saisine** template for the conciliateur de justice, and one for the Défenseur des droits.
 3. The **procedural deadline**, computed under art. 640 CPC and returned as an `.ics` file ready to import into any calendar app.
 4. A **pointer to the CERFA form** the situation calls for — its number and its official page. SelfAct does not fill it in.
 
@@ -113,7 +113,7 @@ SelfAct does not generate CERFA forms. The catalogue points to the official ones
 
 # 4. Security & privacy
 
-- All input is processed in-memory and written only to the local filesystem.
+- What the reader types into a template is processed in their browser and never sent: the server refuses to receive a document. Catalogue searches and deadline computations are ordinary requests to the server.
 - No telemetry, no cloud, no third-party API calls.
 - Templates are versioned in the repository and curated by hand — they are not generated, and a change to one is a commit.
 - Legal references follow SelfJustice, which is resynchronised on the 1st and the 15th of each month.

@@ -392,7 +392,7 @@ Analyse selon /directives.html</pre>
   <p>SelfJustice est un outil d'information juridique gratuit et open source. Il ne constitue en aucun cas :</p>
   <ul>
     <li>Un conseil juridique au sens de la loi n° 71-1130 du 31 décembre 1971</li>
-    <li>Une consultation juridique (activité réservée aux avocats inscrits au barreau)</li>
+    <li>Une consultation juridique (activité réservée aux professionnels du droit, loi n° 71-1130, art. 54)</li>
     <li>Un avis juridique engageant la responsabilité de quiconque</li>
   </ul>
   <p>Les articles de loi cités sont fournis à titre indicatif. Ils peuvent avoir été modifiés, abrogés ou recodifiés depuis la date de dernière mise à jour de cette page.</p>
@@ -838,7 +838,7 @@ Analyse selon /directives.html</pre>
       <li><strong>Aide juridictionnelle</strong> — L'État prend en charge les frais d'avocat si les revenus sont insuffisants (loi n° 91-647). Plafonds révisés annuellement. Demande au tribunal judiciaire ou en ligne. Mentionner les seuils approximatifs en vigueur.</li>
       <li><strong>Maisons de justice et du droit (MJD)</strong> — Consultations juridiques gratuites avec des avocats bénévoles. Présentes dans la plupart des grandes villes.</li>
       <li><strong>Permanences juridiques gratuites</strong> — Barreau local, mairies, associations (CIDFF, ADIL pour le logement, associations de consommateurs).</li>
-      <li><strong>Conciliateur de justice</strong> — Gratuit, bénévole, disponible en mairie ou au tribunal. Obligatoire avant saisine pour les litiges < 5 000 € (art. 750-1 CPC).</li>
+      <li><strong>Conciliateur de justice</strong> — Gratuit, bénévole, disponible en mairie ou au tribunal. Pour un litige de 5 000 € ou moins, ou un trouble anormal de voisinage, une tentative amiable — conciliation, médiation ou procédure participative, au choix — doit précéder la saisine du juge (art. 750-1 CPC).</li>
       <li><strong>Défenseur des droits</strong> — Gratuit, compétent en discrimination, relations avec les services publics, droits de l'enfant. Saisine en ligne.</li>
       <li><strong>Syndicats</strong> — En droit du travail, le syndicat peut fournir un accompagnement juridique et une assistance aux prud'hommes.</li>
       <li><strong>Protection juridique</strong> — Vérifier si l'utilisateur a une assurance protection juridique (souvent incluse dans l'assurance habitation ou auto). Elle peut couvrir les frais d'avocat.</li>

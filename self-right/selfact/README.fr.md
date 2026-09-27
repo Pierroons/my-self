@@ -2,7 +2,7 @@
 
 > 🇬🇧 **[Read in English →](./README.md)**
 
-**De « je connais mes droits » à la démarche : le bon formulaire, le délai, un modèle de lettre à compléter.**
+**De « je connais mes droits » à la démarche : le formulaire officiel, le délai, un modèle de lettre à compléter.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
 [![Statut : v0.1.2 en service](https://img.shields.io/badge/statut-v0.1.2%20en%20service-brightgreen.svg)](#statut)
@@ -17,7 +17,7 @@
 ## Ce que SelfAct couvre
 
 [SelfJustice](../selfjustice/) sert le droit : les articles en vigueur, les textes européens,
-la jurisprudence. Ton IA s'en sert pour t'expliquer ce que dit la loi sur ta situation. Reste à
+la jurisprudence. Ton IA s'en sert pour s'appuyer sur les textes en vigueur, avec des références vérifiables, plutôt que sur sa mémoire. Reste à
 agir : quel formulaire remplir, quel service en ligne utiliser, dans quel délai, comment écrire
 le courrier.
 
@@ -32,16 +32,17 @@ les écris.
 - **Catalogue des ressources officielles** — formulaires CERFA, téléservices et modèles de
   lettres de service-public.gouv.fr, moissonnés les 1er et 15 du mois (compte exact :
   `/act/api/catalog.php?stats=1`).
-- **Situations** — une vingtaine de situations courantes, vérifiées à la main, chacune reliée à
-  une démarche, un article et un formulaire.
+- **Situations** — une vingtaine de situations courantes, curées à la main ; tu choisis la
+  tienne, SelfAct rend la démarche, l'article et le formulaire qui lui sont rattachés.
 - **Délais** — calcul selon les articles 640 à 643 du code de procédure civile (métropole,
   outre-mer, étranger), exportable dans ton agenda (`.ics`).
-- **Modèles de lettres à trous** — mise en demeure, saisine, contestation, résiliation, recours.
+- **Modèles de lettres à trous** — mise en demeure, saisine du conciliateur de justice ou du
+  Défenseur des droits, recours gracieux, résiliation, dépôt de plainte.
   Tu complètes les champs dans ton navigateur, puis tu imprimes. Un modèle qui imite la forme
   d'un acte juridique porte la mention « NON OFFICIEL » dans son corps ; tous portent un rappel
   en pied de page.
 
-Rien de ce que tu écris ne quitte ton navigateur : le serveur refuse de recevoir un document
+Ce que tu écris dans un modèle ne quitte pas ton navigateur : le serveur refuse de recevoir un document
 (`POST` refusé en `405`, sans lire le corps).
 
 ---
@@ -52,8 +53,8 @@ Rien de ce que tu écris ne quitte ton navigateur : le serveur refuse de recevoi
   consultation juridique est réservée aux professionnels du droit (loi n° 71-1130).
 - **Il ne remplit rien à ta place** : il met en forme ce que tu fournis, sans deviner un champ
   ni formuler une demande à partir d'un récit.
-- **Il ne produit pas d'acte officiel** : un modèle reste un modèle, que tu relis et assumes
-  avant de l'envoyer.
+- **Il ne produit pas d'acte officiel** : le courrier complété est le tien, tu le relis et tu en
+  assumes le contenu avant de l'envoyer.
 
 ---
 
@@ -65,8 +66,6 @@ Rien de ce que tu écris ne quitte ton navigateur : le serveur refuse de recevoi
 | Vérifie qu'une référence existe | Calcule le délai et l'exporte dans ton agenda |
 | Dit ce que dit le texte | Donne un modèle à trous — les faits et la signature sont à toi |
 
-Les deux modules sont servis sur le même domaine et ne s'appellent pas l'un l'autre.
-
 ---
 
 ## Statut
@@ -76,14 +75,14 @@ Les deux modules sont servis sur le même domaine et ne s'appellent pas l'un l'a
 Tout est ici : [`api/`](api/) le service et ses données, [`site/`](site/) les
 pages, [`tests/`](tests/) les garde-fous, [`docs/`](docs/) le whitepaper. SelfAct
 est servi par le même domaine que SelfJustice — `justice.my-self.fr/act` — et
-n'échange aucun appel avec lui : SelfJustice dit le droit, SelfAct fait la
-démarche.
+n'échange aucun appel avec lui : SelfJustice dit le droit, SelfAct pointe
+la démarche.
 
 - [x] Note de conception
 - [x] Catalogue de ressources — plus de 1 800 ressources officielles en 16 catégories, moissonnées sur service-public.gouv.fr, rafraîchies les 1er et 15 (compte exact : `/act/api/catalog.php?stats=1`)
 - [x] Aiguillage par situation — une vingtaine de situations curées à la main, chacune reliée à un acte, un article et un formulaire
 - [x] Moteur d'échéance — art. 640-643 CPC, métropole / outre-mer / étranger, avec export agenda, couvert par un garde-fou en CI
-- [x] Gabarits de courrier — mise en demeure, saisine, contestation, résiliation, recours, chacun portant la mention « NON OFFICIEL » dans le corps quand il imite la forme d'un acte, et le rappel en pied dans tous les cas
+- [x] Gabarits de courrier — mise en demeure, saisine du conciliateur ou du Défenseur des droits, recours gracieux, résiliation, plainte, chacun portant la mention « NON OFFICIEL » dans le corps quand il imite la forme d'un acte, et le rappel en pied dans tous les cas
 - [x] Impression côté navigateur : aucun brouillon ne quitte la machine
 - [x] Exposé par le serveur MCP SelfRight (4 de ses 12 outils)
 - [ ] Pré-remplissage XML des CERFA

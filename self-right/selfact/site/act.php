@@ -45,8 +45,8 @@ function chiffre(array $corpus, string $cle): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SelfAct — Transforme le droit en action</title>
-  <meta name="description" content="SelfAct : la ressource officielle de ta démarche, le délai à respecter et des modèles de lettres à compléter — mise en demeure, saisine, contestation. Droit français, open source.">
+  <title>SelfAct — Du droit à la démarche</title>
+  <meta name="description" content="SelfAct : la ressource officielle de ta démarche, le délai à respecter et des modèles de lettres à compléter — mise en demeure, saisine du conciliateur, recours gracieux. Droit français, open source.">
   <meta name="author" content="Pierroons — MySelf Project">
   <meta property="og:title" content="SelfAct — Du droit à l'action">
   <meta property="og:description" content="Prolongement de SelfJustice : le formulaire officiel, le délai, un modèle de lettre à trous. Les faits, c'est toi qui les écris.">
@@ -333,7 +333,7 @@ function chiffre(array $corpus, string $cle): string {
   <h1>SelfAct</h1>
   <p class="tagline">Du droit à l'action.</p>
   <p class="pact">
-    SelfJustice te dit <em>quoi</em> tu as le droit de faire.
+    SelfJustice te dit ce que dit <em>le texte</em>.
     SelfAct te montre <em>comment</em> t'y prendre — la ressource officielle, le délai, un modèle à compléter.
   </p>
 </header>

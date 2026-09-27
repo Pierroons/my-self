@@ -58,7 +58,7 @@
         {
           "type": "saisine_conciliateur",
           "status": "info_only",
-          "label": "Saisine du conciliateur de justice (obligatoire avant tribunal)",
+          "label": "Saisine du conciliateur de justice (une tentative amiable doit précéder le tribunal, art. 750-1 CPC)",
           "url": "https://www.service-public.gouv.fr/particuliers/vosdroits/F1736",
           "fallback_note": "Pas de modèle officiel — SelfAct peut produire un brouillon d'aide à la rédaction."
         }
