@@ -401,7 +401,7 @@ function chiffre(array $corpus, string $cle): string {
 
   <p class="muted" style="font-size:0.9rem">
     Coût : zéro. Tu utilises ton propre abonnement IA (ou la version gratuite d'une IA).
-    Cette page est statique, open source, sans tracking, sans base de données.
+    Cette page est open source, sans cookie ni traceur.
   </p>
 
   <h3>Compatibilité IA — deux modes d'usage</h3>

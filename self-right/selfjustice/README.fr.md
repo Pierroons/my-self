@@ -115,7 +115,7 @@ Toutes les endpoints retournent du JSON, toutes sont rate-limitées, toutes ont 
 
 - Le parsing des logs d'accès distingue les **consultations utilisateur** (Claude-User, ChatGPT-User, Perplexity-User) des **crawlers automatisés** (GPTBot, ClaudeBot, GoogleBot, etc.).
 - Le compteur de la homepage affiche le nombre de consultations en temps réel, mis à jour horairement via `build_stats.sh`.
-- Zéro IP loguée, zéro cookie, aucun contenu utilisateur stocké. Uniquement les familles User-Agent anonymisées et les chemins d'endpoint.
+- Les statistiques publiées ne portent que des familles de User-Agent et des chemins d'endpoint — jamais une adresse IP. Le journal d'accès dont elles sont tirées garde, lui, les adresses IP, comme tout serveur web : 14 jours sur l'instance de référence, puis la rotation quotidienne les efface. Pas de compte, pas de cookie. Le formulaire de retour sur la mise en page, si tu t'en sers, garde ce que tu envoies 30 jours.
 
 ---
 

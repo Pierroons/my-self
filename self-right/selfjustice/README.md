@@ -114,7 +114,7 @@ All endpoints return JSON, all are rate-limited, all are CORS-open.
 
 - Access log parsing distinguishes **user-initiated consultations** (Claude-User, ChatGPT-User, Perplexity-User) from **automated crawlers** (GPTBot, ClaudeBot, GoogleBot, etc.).
 - Homepage counter shows real-time consultation count, updated hourly via `build_stats.sh`.
-- Zero IP logged, zero cookie, zero user content stored. Only anonymized User-Agent families and endpoint paths.
+- The published statistics carry only User-Agent families and endpoint paths — never an IP address. The access log they are computed from does keep IP addresses, like any web server: 14 days on the reference instance, then deleted by the daily rotation. No account, no cookie. The layout-feedback form, if you use it, keeps what you send for 30 days.
 
 ---
 

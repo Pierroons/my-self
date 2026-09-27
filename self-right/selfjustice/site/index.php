@@ -157,7 +157,7 @@ function chiffre(array $corpus, string $cle): string {
       <li>Ton IA fetch cette page, lit les directives juridiques, et t'envoie une pré-analyse structurée</li>
     </ol>
     <p style="margin-top: 1rem; color: var(--text-muted);">
-      Coût : zéro. Tu utilises ton propre abonnement IA (ou une version gratuite comme Mistral Le Chat). Cette page est statique, open source, sans tracking, sans base de données.
+      Coût : zéro. Tu utilises ton propre abonnement IA (ou une version gratuite comme Mistral Le Chat). Cette page est open source, sans cookie ni traceur.
     </p>
   </div>
 
@@ -1494,7 +1494,7 @@ référence SJ.
     Dernière mise à jour : 18 avril 2026
   </p>
   <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
-    Ce site ne collecte aucune donnée personnelle. Pas de cookies, pas de tracking, pas de base de données.
+    Pas de compte, pas de cookie, pas de traceur. Comme tout serveur web, ce site tient un journal d'accès — adresse IP, adresse demandée, date, navigateur — conservé 14 jours pour la sécurité et les statistiques de fréquentation. Le formulaire de retour garde ce que tu envoies 30 jours.
     Le code source est disponible sur GitHub sous licence AGPL-3.0-or-later.
   </p>
 </footer>
