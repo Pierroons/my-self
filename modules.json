@@ -106,7 +106,7 @@
       "id": "selfright-mcp",
       "nom": "selfright-mcp",
       "dossier": "self-right/selfjustice/mcp",
-      "version": "0.4.5",
+      "version": "0.4.6",
       "resume": {"fr": "serveur MCP de consultation du droit, adossé à SelfJustice", "en": "MCP server for law lookup, backed by SelfJustice"},
       "porteurs": [
         ["self-right/selfjustice/mcp/pyproject.toml", "version = \""]
