@@ -240,7 +240,7 @@ render_header(t('prf.title'), $account);
   <div id="memo-create" style="display:<?= $vaultExiste ? 'none' : 'block' ?>">
     <p style="margin:0 0 10px;padding:8px 11px;background:rgba(63,185,140,.08);border-left:3px solid var(--acc);border-radius:5px;font-size:12.5px;color:var(--txt2)"><?= t('prf.memo.create_once') ?></p>
     <p class="muted" style="margin-top:0"><?= t('prf.memo.create') ?></p>
-    <div class="field"><label>Ton mot de passe</label><input type="password" id="c-pw" autocomplete="off"></div>
+    <div class="field"><label><?= h(t('prf.memo.pw')) ?> <span style="text-transform:none;font-weight:400;color:var(--muted)"><?= h(t('prf.memo.pw_hint')) ?></span></label><input type="password" id="c-pw" autocomplete="off"></div>
     <div class="field"><label><?= h(t('prf.memo.pass')) ?> <span style="text-transform:none;font-weight:400;color:var(--muted)"><?= h(t('prf.memo.pass_hint')) ?></span></label><input type="password" id="c-pass" autocomplete="off" placeholder="<?= h(t('prf.memo.pass_ph')) ?>"><span class="muted" style="font-size:11px"><?= h(t('prf.memo.pass_note')) ?></span></div>
     <!-- Le mémo ne s'écrit PAS ici : cet écran ne fait que sceller le coffre.
          Champ conservé masqué — createVault() attend un texte initial. -->
@@ -251,7 +251,7 @@ render_header(t('prf.title'), $account);
   <!-- État B : coffre existant → déverrouillage -->
   <div id="memo-locked" style="display:<?= $vaultExiste ? 'block' : 'none' ?>">
     <p style="margin-top:0"><?= h(t('prf.memo.locked')) ?></p>
-    <div class="field"><label>Mot de passe</label><input type="password" id="u-pw" autocomplete="off"></div>
+    <div class="field"><label><?= h(t('prf.memo.pw')) ?></label><input type="password" id="u-pw" autocomplete="off"></div>
     <button class="btn" id="btn-memodev"><?= h(t('prf.memo.unlock')) ?></button>
     <button class="btn btn-ghost" id="btn-memoforgot"><?= h(t('prf.memo.forgot')) ?></button>
     <div id="memo-recover" style="display:none;margin-top:12px">

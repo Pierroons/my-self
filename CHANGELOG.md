@@ -22,6 +22,12 @@ l'inscription à l'enrôlement ; le banc client simulait le serveur et ne pouvai
 Le décor du lab (`seed.php`) referme la session que l'inscription ouvre : ses trois comptes
 laissaient chacun un jeton valide 24 heures en base.
 
+Le coffre mémo conseillait de reprendre la passphrase reçue à l'inscription, et son champ de mot de
+passe s'intitulait « Ton mot de passe ». Or le serveur reçoit les secrets du compte : le mot de passe
+à chaque connexion, la passphrase à chaque récupération. Un coffre scellé avec eux n'est plus hors de
+portée du serveur. Les deux champs demandent désormais des secrets propres au coffre, en français et
+en anglais.
+
 ### Le CTF annonce sa Saison 2 : deux drapeaux, et des promesses exactes — 26 septembre 2026
 
 La page red team présentait un seul drapeau, dans le mémo, chiffré « AES-256-GCM ». Elle en
