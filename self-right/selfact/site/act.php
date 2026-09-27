@@ -339,7 +339,7 @@ function chiffre(array $corpus, string $cle): string {
 </header>
 
 <div class="disclaimer" style="margin-top: 0;">
-  <h4>⚠ Version bêta v0.1.2 — catalogue opérationnel, non validé par juriste</h4>
+  <h4>⚠ Version bêta v0.1.3 — catalogue opérationnel, non validé par juriste</h4>
   <p style="font-size: 0.95rem; margin-bottom: 0.5rem;">
     SelfAct indexe <strong><span id="act-catalog-total"><?= chiffre($corpus, "act_catalogue") ?></span> ressources
     officielles</strong> publiées par service-public.gouv.fr — modèles de lettres,
@@ -781,7 +781,7 @@ function chiffre(array $corpus, string $cle): string {
 
 <footer>
   <p>
-    <strong>SelfAct v0.1.2</strong> — module du binôme
+    <strong>SelfAct v0.1.3</strong> — module du binôme
     <a href="https://github.com/Pierroons/my-self/tree/main/self-right">Self-Right</a>
     de l'écosystème <a href="https://my-self.fr">MySelf</a>
     · Licence <a href="https://github.com/Pierroons/my-self/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0-or-later</a>

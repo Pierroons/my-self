@@ -1,6 +1,6 @@
 # SelfAct — Conditions d'utilisation
 
-Version **v0.1.2** — en vigueur depuis le 18 avril 2026, révisée le 23 août 2026 · Licence AGPL-3.0-or-later (code, depuis le 19/04/2026) · Données sous licence Etalab 2.0 (modèles service-public.fr)
+Version **v0.1.3** — en vigueur depuis le 18 avril 2026, révisée le 27 septembre 2026 · Licence AGPL-3.0-or-later (code, depuis le 19/04/2026) · Données sous licence Etalab 2.0 (modèles service-public.fr)
 
 ## 1. Nature du service
 

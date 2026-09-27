@@ -25,8 +25,8 @@ what it does, how to install it, and what it does not protect.
 | [SelfRecover](./bi-self/selfrecover/) | Who are you? | **v0.6.0** — library + deployed implementation |
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | What if the disk is stolen? | **v0.5.0** — deployed and documented, hex key |
 | [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.4.0** — in service, 219 checks, XChaCha20-Poly1305 on every CPU |
-| [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.4.0 beta** — housing, family, administrative law and administrative case law |
-| [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.2** — live, over 1,800 official resources |
+| [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.4.1 beta** — housing, family, administrative law and administrative case law |
+| [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.3** — live, over 1,800 official resources |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.3.0** — linked-voter cross-referencing, recovery, vote reason; 2 mechanisms not yet coded |
 
 Those carrying security code document their own threat model. SelfJustice and

@@ -10,6 +10,53 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfJustice v0.4.1 — le Conseil d'État se vérifie, et `/verifier` ne nie plus une décision présente — 27 septembre 2026
+
+`/verifier` prenait les cinquante décisions les plus récentes d'un numéro, puis filtrait par la date
+annoncée. Une décision présente derrière plus d'homonymes récents n'était jamais examinée, et la
+route la déclarait absente : mesuré en production sur `23/00039` du 5 janvier 2023, porté par 61
+décisions. Les décisions du jour annoncé passent désormais en tête du tri, et le nombre d'homonymes
+que lit le modèle vient du total, non de la liste bornée.
+
+Le fonds JADE, servi depuis le 10 septembre, n'était pas cherchable par numéro : son collecteur
+n'écrivait jamais dans `numeros`, la seule table que lit `/verifier`. La décision du Conseil d'État
+n° 519395 du 9 septembre 2026, présente en base, était déclarée absente, avec la réserve que la
+justice administrative « n'y figurera jamais ». `build_jade_db.py` inscrit maintenant chaque
+numéro, sous la règle de normalisation de l'API, et `--numeros` rattrape une base existante. La
+réserve « ArianeWeb » ne s'affiche plus que si l'index ne sert pas la justice administrative, et la
+recherche par thème filtrée sur une juridiction que Judilibre ne connaît pas refuse avec une
+indication, au lieu de rendre l'erreur de l'amont comme une panne.
+
+Les textes disent ce que l'instance garde — le journal d'accès, IP comprise, quatorze jours ; les
+retours de mise en page, trente jours — là où ils promettaient « aucune donnée personnelle ». La date
+du pied de page, que la page demande aux IA de citer, vient du fichier servi. Les articles 750-1 du
+code de procédure civile et 54 de la loi n° 71-1130 sont cités d'après la base LEGI.
+
+### SelfAct v0.1.3 — le module se décrit comme il est — 27 septembre 2026
+
+Depuis la 0.1.2 du 23 août, l'avertissement « NON OFFICIEL » suit ce que le document imite, la
+section des faits porte le titre que son gabarit annonce, et l'adresse d'exemple du brouillon passe
+sur un domaine réservé.
+
+Les textes présentaient SelfAct comme un générateur de documents « conformes » qui lit une analyse,
+dit quoi signer et livre un dossier. Le code fait l'inverse, volontairement : un modèle à trous,
+rempli dans le navigateur, et un `POST` refusé sans lire le corps. README, whitepaper, pages servies
+et conditions d'utilisation disent maintenant ce qu'il fait et ce qu'il ne fait pas. La saisine du
+conciliateur de justice n'est plus dite « obligatoire » à elle seule : l'article 750-1 laisse le
+choix entre conciliation, médiation et procédure participative.
+
+### selfright-mcp 0.4.4 — le périmètre de la jurisprudence suit la couverture — 27 septembre 2026
+
+Aucune version n'a été publiée depuis la 0.4.0 du 22 août. Les 0.4.1 et 0.4.2 ont corrigé ce que
+le contrôle extérieur du 22 août avait relevé, montré d'où vient un texte, et rendu obligatoire
+`SELFRIGHT_ACT_URL`. Le serveur a ensuite suivi l'élargissement de la base à tout le droit publié au
+Journal officiel, nommé ses 108 codes, dit ce que la base ne contient pas, et transmis au modèle les
+seuils d'une situation. Le numéro a rattrapé ces changements le 26 septembre, en 0.4.3.
+
+En 0.4.4, le bandeau de la jurisprudence tire son périmètre de la couverture que rend `/status` :
+la justice administrative n'y est plus dite absente dès que l'index la sert, et
+`verifier_jurisprudence` nomme les juridictions administratives qu'il accepte.
+
 ### Le lab enrôle de nouveau un appareil — 27 septembre 2026
 
 L'enrôlement « cet appareil » refusait le bon mot mémorisé (« Compte ou mot mémorisé

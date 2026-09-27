@@ -74,7 +74,7 @@
       "id": "selfjustice",
       "nom": "SelfJustice",
       "dossier": "self-right/selfjustice",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "resume": {"fr": "consultation du droit français et européen par une API publique", "en": "French and EU law lookup through a public API"},
       "porteurs": [
         ["self-right/selfjustice/README.md", "badge/status-v"],
@@ -90,7 +90,7 @@
       "id": "selfact",
       "nom": "SelfAct",
       "dossier": "self-right/selfact",
-      "version": "0.1.2",
+      "version": "0.1.3",
       "resume": {"fr": "modèles officiels et calcul des délais de procédure", "en": "official templates and procedural deadlines"},
       "porteurs": [
         ["self-right/selfact/README.md", "badge/status-v"],
@@ -106,7 +106,7 @@
       "id": "selfright-mcp",
       "nom": "selfright-mcp",
       "dossier": "self-right/selfjustice/mcp",
-      "version": "0.4.3",
+      "version": "0.4.4",
       "resume": {"fr": "serveur MCP de consultation du droit, adossé à SelfJustice", "en": "MCP server for law lookup, backed by SelfJustice"},
       "porteurs": [
         ["self-right/selfjustice/mcp/pyproject.toml", "version = \""]

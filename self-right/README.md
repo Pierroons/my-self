@@ -7,8 +7,8 @@
 > *Know your rights, make them right.*
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfJustice: v0.4.0 beta](https://img.shields.io/badge/SelfJustice-v0.4.0%20beta-green.svg)](./selfjustice/)
-[![SelfAct: v0.1.2](https://img.shields.io/badge/SelfAct-v0.1.2-brightgreen.svg)](./selfact/)
+[![SelfJustice: v0.4.1 beta](https://img.shields.io/badge/SelfJustice-v0.4.1%20beta-green.svg)](./selfjustice/)
+[![SelfAct: v0.1.3](https://img.shields.io/badge/SelfAct-v0.1.3-brightgreen.svg)](./selfact/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
