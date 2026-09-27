@@ -36,6 +36,10 @@ mechanisms.
 Every line links to code you can read and run. No link to a hosted demo:
 everything self-hosts from this repository.
 
+<!-- ecosysteme:selffarm-lite:debut — produit par scripts/check-ecosysteme.sh --ecrire -->
+**SelfFarm-Lite**, the farm application layer of the ecosystem, lives in its own repository: [Pierroons/selffarm-lite](https://github.com/Pierroons/selffarm-lite) — **v0.4.1**, released.
+<!-- ecosysteme:selffarm-lite:fin -->
+
 ---
 
 ## What makes it a set
@@ -46,10 +50,11 @@ and two primitives, each kept to a role it is never asked to leave.
 
 **HMAC-SHA256 binds and masks.** The memorized word proves you know it without
 ever being sent: what travels is
-`HMAC(word, hostname | version + account salt)`. The hostname is read in the
-page, never received from the network — so the same word yields a different
-fingerprint on every service, and a cloned page served elsewhere produces
-nothing usable. The fingerprint is 64 characters whether the word has four
+`HMAC(word, material | version + account salt)`, where the integrator picks the
+material. With the hostname, read in the page and never received from the
+network, the same word yields a different fingerprint on every service, and a
+cloned page served elsewhere produces nothing usable. With a fixed label, chosen
+so that accounts survive a change of address, that protection is gone. The fingerprint is 64 characters whether the word has four
 letters or forty, and its output is indistinguishable from random: two services
 comparing their databases would recognize neither the same word nor the same
 person.
@@ -62,7 +67,7 @@ and the price of one guess is all that is left.
 | Module | Secret | Scope | What separates it |
 |---|---|---|---|
 | SelfRecover | diceware passphrase (L1) | per account | Argon2id internal salt |
-| SelfRecover | memorized word (L2) | per account | hostname + account salt |
+| SelfRecover | memorized word (L2) | per account | hostname or label + account salt |
 | SelfRecover-LUKS | diceware passphrase | per machine | label `disk` |
 | SelfDataGuard | password + memorized word | per user | context `/dataguard` |
 

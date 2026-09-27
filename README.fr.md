@@ -36,6 +36,10 @@ pas des dispositifs de protection.
 Chaque ligne mène à du code lisible et exécutable. Pas de lien vers une démo
 hébergée : tout s'auto-héberge depuis ce dépôt.
 
+<!-- ecosysteme:selffarm-lite:debut — produit par scripts/check-ecosysteme.sh --ecrire -->
+**SelfFarm-Lite**, l'étage applicatif agricole de l'écosystème, vit dans son propre dépôt : [Pierroons/selffarm-lite](https://github.com/Pierroons/selffarm-lite) — **v0.4.1**, publiée.
+<!-- ecosysteme:selffarm-lite:fin -->
+
 ---
 
 ## Ce qui en fait un ensemble
@@ -46,9 +50,11 @@ sel, et deux primitives dont chacune tient un rôle qu'on ne lui fait pas quitte
 
 **HMAC-SHA256 lie et masque.** Le mot mémorisé sert à prouver qu'on le connaît
 sans jamais l'envoyer : ce qui transite vaut
-`HMAC(mot, nom d'hôte | version + sel du compte)`. Le nom d'hôte est lu dans la
-page, jamais reçu du réseau — le même mot donne donc une empreinte différente sur
-chaque service, et une page clonée servie ailleurs ne produit rien d'utilisable.
+`HMAC(mot, matériau | version + sel du compte)`, où l'intégrateur choisit le
+matériau. Avec le nom d'hôte, lu dans la page et jamais reçu du réseau, le même
+mot donne une empreinte différente sur chaque service, et une page clonée servie
+ailleurs ne produit rien d'utilisable. Avec une étiquette fixe, choisie pour que
+les comptes survivent à un changement d'adresse, cette protection disparaît.
 L'empreinte fait 64 caractères que le mot en compte quatre ou quarante, et sa
 sortie est indistinguable d'un aléa : deux services qui compareraient leurs bases
 n'y reconnaîtraient ni le même mot, ni la même personne.
@@ -61,7 +67,7 @@ l'arrêter, et le prix d'une tentative est tout ce qui reste.
 | Module | Secret | Portée | Ce qui le sépare |
 |---|---|---|---|
 | SelfRecover | passphrase diceware (L1) | par compte | sel interne Argon2id |
-| SelfRecover | mot mémorisé (L2) | par compte | nom d'hôte + sel du compte |
+| SelfRecover | mot mémorisé (L2) | par compte | nom d'hôte ou étiquette + sel du compte |
 | SelfRecover-LUKS | passphrase diceware | par machine | étiquette `disk` |
 | SelfDataGuard | mot de passe + mot mémorisé | par utilisateur | contexte `/dataguard` |
 
