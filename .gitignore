@@ -61,11 +61,3 @@ deploy/my-self/dist/
 # par-dessus celle que le cron vient d'écrire. Le fichier suivi datait du 3 août
 # quand l'instance en servait un du 21.
 self-right/selfact/api/data/catalog.json
-
-# Ancien emplacement d'un module sorti de ce dépôt le 27/09/2026. Les arbres de
-# travail qui l'ont connu gardent sur le disque des secrets de démonstration et
-# leurs rendus, que `git rm` n'efface pas. Sans ces deux règles, ils deviendraient
-# des fichiers non suivis qu'un `git add -A` publierait. Elles restent tant qu'un
-# arbre en porte.
-self-security/selfvault/outils/secrets/
-self-security/selfvault/sortie/

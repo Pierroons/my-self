@@ -104,13 +104,6 @@ EXCLUS=(
     # l'outillage qui les pose. Déployées depuis un poste, elles changeraient les
     # drapeaux sous les joueurs d'une partie en cours.
     "/demo/lab/challenge/"
-    # 🔑 Ancien emplacement d'un module sorti de ce dépôt le 27/09/2026 : les
-    # arbres de travail qui l'ont connu gardent sur le disque des secrets de
-    # démonstration et leurs rendus, que `git rm` n'efface pas. Le déploiement
-    # copie l'arbre de travail : ces exclusions restent tant qu'un arbre en porte.
-    # Mesuré le 11/09/2026 : une règle `.gitignore` seule ne les avait pas retenus.
-    "/self-security/selfvault/outils/secrets/"
-    "/self-security/selfvault/sortie/"
     # 🔑 Le binaire compilé du dérivateur LUKS. Sa source `.c` est versionnée,
     # lui ne l'est pas — il naît d'un `gcc` local. Un exécutable ELF n'a rien à
     # faire sur une racine servie, et celui-ci y était depuis une date que
