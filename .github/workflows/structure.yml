@@ -56,6 +56,21 @@ jobs:
       - name: Chemins cités
         run: bash scripts/check-paths.sh
 
+      - name: Canari — les chemins cités en code inline rougissent quand l'un meurt
+        run: |
+          F=demo/bi-self-duo/CONTRIBUTING.md
+          cp "$F" /tmp/CB.intact
+          printf '\nCopier `deploy/bi-self/inexistant-canari.conf`.\n' >> "$F"
+          if bash scripts/check-paths.sh >/dev/null 2>&1; then
+            cp /tmp/CB.intact "$F"
+            echo "::error::le contrôle reste VERT sur un chemin mort en code inline"
+            exit 1
+          fi
+          cp /tmp/CB.intact "$F"
+          cmp -s /tmp/CB.intact "$F" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le contrôle rougit sur un chemin mort en code inline, et le fichier est restauré"
+
       # ── Versions ───────────────────────────────────────────────────────────
       # modules.json est la source unique ; chaque porteur qu'il déclare doit la
       # répéter. Le tag manquant se suit à part, dans suivi.yml : il dépend d'un

@@ -4,9 +4,9 @@
 # 🔑 **Pourquoi ce script existe.** my-self et selffarm-lite se décrivent l'un l'autre, et chacun
 # avançait sans que l'autre le sache : au 27/09/2026, selffarm-lite présentait encore les modules de
 # my-self tels qu'en juin, et my-self ne citait selffarm-lite dans aucun README. Chaque dépôt fait foi
-# pour ses propres modules ; l'autre le LIT au lieu de le recopier. Ici, le bloc balisé des deux README
-# racine est produit depuis ce que selffarm-lite publie (son fichier VERSION et ses tags), et ce contrôle
-# rougit dès que le bloc ne correspond plus.
+# pour ses propres modules ; l'autre le LIT au lieu de le recopier. Ici, les blocs balisés des deux README
+# racine et de l'accueil sont produits depuis ce que selffarm-lite publie (son fichier VERSION et ses tags),
+# et ce contrôle rougit dès qu'un bloc ne correspond plus.
 #
 # Le retard vient de l'autre dépôt : ce contrôle tourne donc aussi chaque matin (suivi.yml), pas
 # seulement quand on pousse ici.
@@ -29,7 +29,7 @@ esac
 URL="${SELFFARM_VERSION_URL:-https://raw.githubusercontent.com/Pierroons/selffarm-lite/main/VERSION}"
 DEPOT="${SELFFARM_DEPOT:-https://github.com/Pierroons/selffarm-lite}"
 
-echo "▸ Écosystème — le bloc selffarm-lite des README racine"
+echo "▸ Écosystème — les blocs selffarm-lite des README racine et de l'accueil"
 if ! version="$(curl -fsSL --retry 3 --max-time 20 "$URL" | tr -d '[:space:]')" || [ -z "$version" ]; then
   echo "  ✗ version de selffarm-lite injoignable : $URL"
   exit 2
@@ -57,8 +57,11 @@ blocs = {
                  f"{LIEN} — **v{v}**, {'released' if publiee else 'not yet released'}.",
     "README.fr.md": f"**SelfFarm-Lite**, l'étage applicatif agricole de l'écosystème, vit dans son propre dépôt : "
                     f"{LIEN} — **v{v}**, {'publiée' if publiee else 'pas encore publiée'}.",
+    "web/my-self.fr/index.html": f'    <p class="muted">Version {"publiée" if publiee else "annoncée, pas encore publiée"} : '
+                                 f'<strong>v{v}</strong>. Le détail de ses modules et de leur état vit dans son '
+                                 f'propre dépôt.</p>',
 }
-motif = re.compile(re.escape(DEBUT) + r"\n(.*?)\n" + re.escape(FIN), re.S)
+motif = re.compile(re.escape(DEBUT) + r"\n(.*?)\n[ \t]*" + re.escape(FIN), re.S)
 ecarts, absents = [], []
 for fichier, attendu in blocs.items():
     texte = open(fichier, encoding="utf-8").read()
@@ -83,5 +86,5 @@ if ecarts and os.environ["MODE"] != "--ecrire":
 if ecarts:
     print(f"  ✓ bloc réécrit dans {', '.join(ecarts)} : selffarm-lite v{v} ({etat})")
 else:
-    print(f"  ✓ les deux README disent selffarm-lite v{v} ({etat})")
+    print(f"  ✓ les README et l'accueil disent selffarm-lite v{v} ({etat})")
 PY

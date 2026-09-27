@@ -93,12 +93,18 @@ lire_tableau() {   # lire_tableau <NOM> → les chaînes entre guillemets du tab
 # c'est toute la sémantique employée ici : un nom simple vaut à n'importe quel
 # niveau, un motif ouvert par une barre part de la racine, `*` ne franchit pas
 # de barre. Vérifié contre l'assemblage réel, qui pose les mêmes 216 fichiers.
+#
+# ⚠️ Un motif qui ne finit pas par une barre désigne un chemin ENTIER : rsync
+# n'exclut pas `selfrecover_derive.c` parce qu'il exclut `selfrecover_derive`.
+# Sans ancre de fin, les deux sources du dérivateur LUKS sortaient « figées »
+# alors qu'elles sont déployées et identiques (audit du 27/09/2026).
 motif_vers_regex() {
-    local m="$1" r
+    local m="$1" r fin='(/|$)'
     r=$(printf '%s' "$m" | sed -e 's|\.|\\.|g' -e 's|\*|[^/]*|g')
+    case "$m" in */) fin='' ;; esac
     case "$m" in
-        /*)   printf '^%s' "${r#/}" ;;
-        */*)  printf '(^|/)%s' "$r" ;;
+        /*)   printf '^%s%s' "${r#/}" "$fin" ;;
+        */*)  printf '(^|/)%s%s' "$r" "$fin" ;;
         *)    printf '(^|/)%s(/|$)' "$r" ;;
     esac
 }
@@ -148,6 +154,12 @@ ATTENDU="$(git rev-parse --show-toplevel)/scripts/ecart-attendu.txt"
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
+SERVIS_FRAGMENTS=()
+while IFS= read -r servi; do
+    [ -n "$servi" ] && SERVIS_FRAGMENTS+=("^${servi//./\\.}")
+done < <(lire_tableau IGNORES_SERVIS)
+SERVIS_RE="$(IFS='|'; printf '%s' "${SERVIS_FRAGMENTS[*]}")"
+
 # Un motif impossible sert de liste vide : `grep -f` sur un fichier vide accepte
 # TOUT, ce qui classerait chaque divergence en « attendu ». Le défaut le plus
 # coûteux serait ici, et il ne se verrait pas.
@@ -164,19 +176,24 @@ lire_domaines() {
     awk "/cat <<'TABLE'/ { dedans = 1; next } /^TABLE\$/ { dedans = 0 } dedans" "$DEPLOY"
 }
 
-SEDS=()
+SEDS=(); : > "$TMP/gabarits"
 while read -r placeholder domaine _; do
     case "$placeholder" in ''|'#'*) continue;; esac
     case "$placeholder$domaine" in *[!a-zA-Z0-9.-]*) continue;; esac
-    [ -n "$domaine" ] && SEDS+=("-e" "s/$placeholder/$domaine/g")
+    [ -n "$domaine" ] && { SEDS+=("-e" "s/$placeholder/$domaine/g"); printf '%s\n' "$placeholder" >> "$TMP/gabarits"; }
 done < <(lire_domaines)
 # Sans table, chaque fichier substitué sortirait divergent : l'erreur se dit.
 [ "${#SEDS[@]}" -gt 0 ] || { echo "❌ Table des domaines vide — lue dans $DEPLOY" >&2; exit 1; }
 
 # Empreinte locale, placeholders concrétisés comme le fait le déploiement. Sans
 # ce rejeu, tout fichier substitué sortirait divergent et le rapport, illisible.
+# Le déploiement substitue dans TOUT fichier qui porte un gabarit, quelle que soit
+# son extension (`grep -rlF` puis `sed -i`) : le rejeu suit la même règle. Mais
+# seulement pour l'arbre qu'il assemble (préfixe `.`) : les outils du planificateur
+# partent bruts, et `check_fraicheur.sh` GARDE exprès son domaine d'exemple, que
+# la configuration de l'instance remplace à l'exécution.
 empreinte() {
-    if [ "${#SEDS[@]}" -gt 0 ] && [[ "$1" =~ \.(html|php|js|json)$ ]]; then
+    if [ "$prefixe" = "." ] && [ "${#SEDS[@]}" -gt 0 ] && grep -qF -f "$TMP/gabarits" -- "$1"; then
         sed "${SEDS[@]}" -- "$1" | sha256sum | cut -d' ' -f1
     else
         sha256sum -- "$1" | cut -d' ' -f1
@@ -280,6 +297,9 @@ for i in "${!PREFIXES[@]}"; do
     cat "$TMP/relatifs" "$TMP/hors-perimetre" 2>/dev/null | sort -u > "$TMP/connus"
     while IFS= read -r f; do
         [ -n "$f" ] || continue
+        # Ce que git ignore mais que le déploiement pose exprès (`IGNORES_SERVIS`,
+        # les dépendances du lab) n'est pas orphelin : le dépôt en a la trace.
+        [ "$prefixe" = "." ] && [ -n "$SERVIS_RE" ] && [[ "$f" =~ $SERVIS_RE ]] && continue
         orphelins=$((orphelins + 1)); printf 'ORPHELIN   %s → %s\n' "$f" "$cible" >> "$TMP/rapport"
     done < <(ssh -o ConnectTimeout=10 "$HOTE" "find '$cible' -type f \
         \\( -name '*.php' -o -name '*.html' -o -name '*.js' -o -name '*.sql' -o -name '*.sh' -o -name '*.py' \\
