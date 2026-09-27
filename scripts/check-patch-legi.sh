@@ -25,7 +25,13 @@
 # Usage :
 #   LEGI_PATCH_HOST=mon-serveur bash scripts/check-patch-legi.sh
 set -uo pipefail
-cd "$(git rev-parse --show-toplevel)"
+# ⚠️ `cd "$(git rev-parse --show-toplevel)"` ne garde rien : hors dépôt, la
+# substitution est vide et `cd ""` rend 0 en bash. Le script continuerait alors
+# dans le répertoire courant, où `git ls-files` rend vide — et un périmètre vide
+# se lit comme un périmètre sain.
+RACINE="$(git rev-parse --show-toplevel)" || exit 1
+[ -n "$RACINE" ] || { echo "✗ hors dépôt git — aucun périmètre à contrôler" >&2; exit 1; }
+cd "$RACINE" || exit 1
 
 PATCH="self-right/selfjustice/tools/legi_tar2sqlite.patch"
 CLONE="${LEGI_PATCH_CLONE:-/opt/selfjustice/legi.py}"

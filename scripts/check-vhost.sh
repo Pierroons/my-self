@@ -22,7 +22,13 @@
 #   bash scripts/check-vhost.sh
 #   VHOST_TEST_HOST=mon-serveur bash scripts/check-vhost.sh
 set -uo pipefail
-cd "$(git rev-parse --show-toplevel)"
+# ⚠️ `cd "$(git rev-parse --show-toplevel)"` ne garde rien : hors dépôt, la
+# substitution est vide et `cd ""` rend 0 en bash. Le script continuerait alors
+# dans le répertoire courant, où `git ls-files` rend vide — et un périmètre vide
+# se lit comme un périmètre sain.
+RACINE="$(git rev-parse --show-toplevel)" || exit 1
+[ -n "$RACINE" ] || { echo "✗ hors dépôt git — aucun périmètre à contrôler" >&2; exit 1; }
+cd "$RACINE" || exit 1
 
 echec=0
 
@@ -31,6 +37,37 @@ if [ -z "$gabarits" ]; then
     echo "▸ Gabarits de vhost"
     echo "  ⚠ aucun gabarit trouvé — rien à valider"
     exit 0
+fi
+
+# ── Les zones limit_req employées sont-elles déclarées DANS le dépôt ? ───────
+#
+# 🔑 **`nginx -t` ne peut pas répondre à cette question**, et c'est ce qui rend ce
+# contrôle nécessaire. Il valide chaque gabarit sur une machine dont le `conf.d/`
+# déclare déjà ses zones : un gabarit qui emploie `zone=X` sans que le dépôt
+# déclare X passe donc vert, et refuse de démarrer sur une machine neuve — une
+# `limit_req zone=` inconnue est une erreur fatale, pas un avertissement.
+#
+# C'est le seul contrôle d'ici qui ne demande pas nginx : il passe avant, pour
+# rendre un verdict même là où la recette doit s'arrêter.
+echo "▸ Zones limit_req — déclarées là où elles sont employées"
+zones_employees=$(printf '%s\n' "$gabarits" \
+    | xargs grep -ho 'limit_req[[:space:]]\+zone=[A-Za-z0-9_]*' 2>/dev/null \
+    | sed 's/.*zone=//' | sort -u)
+zones_declarees=$(git ls-files '*.conf' \
+    | xargs grep -ho 'limit_req_zone.*zone=[A-Za-z0-9_]*' 2>/dev/null \
+    | sed 's/.*zone=//; s/:.*//' | sort -u)
+if [ -z "$zones_employees" ]; then
+    echo "  ⚠ aucune zone employée dans les gabarits — rien à vérifier"
+else
+    manquantes=$(comm -23 <(printf '%s\n' "$zones_employees") <(printf '%s\n' "$zones_declarees"))
+    if [ -n "$manquantes" ]; then
+        echo "  ✗ employée(s) sans déclaration dans le dépôt : $(printf '%s' "$manquantes" | tr '\n' ' ')"
+        echo "    Un déploiement sur une machine qui ne les déclare pas ailleurs empêcherait"
+        echo "    nginx de démarrer. Déclare-les dans le gabarit qui les emploie."
+        echec=1
+    else
+        echo "  ✓ les $(printf '%s\n' "$zones_employees" | wc -l) zone(s) employée(s) sont déclarées"
+    fi
 fi
 
 # 🔑 Les snippets que les gabarits incluent vivent dans le DÉPÔT, pas dans le
