@@ -169,7 +169,7 @@ echo "Bypass URL: https://bi-self.my-self.fr/bypass/$BYPASS_TOKEN/"
 
 ### 4.4 nginx
 
-Copier `deploy/nginx-bi-self.conf` (dans `bi-self/deploy/`) vers
+Copier `deploy/bi-self/nginx-bi-self.conf` vers
 `/etc/nginx/sites-available/bi-self`, créer le symlink dans `sites-enabled/`,
 puis `sudo nginx -t && sudo systemctl reload nginx`.
 
@@ -231,7 +231,7 @@ contrôle de déploiement, à passer après chaque envoi.
    `DemoSession::create`).
 4. Créer les endpoints applicatifs du module sous `api/<module>_*.php`
    qui utilisent `DemoSession::current()` pour accéder à la DB et au logger.
-5. Ajouter les nouvelles routes dans `deploy/nginx-bi-self.conf`.
+5. Ajouter les nouvelles routes dans `deploy/bi-self/nginx-bi-self.conf`.
 
 Pattern type d'endpoint applicatif :
 
