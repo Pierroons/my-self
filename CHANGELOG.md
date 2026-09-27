@@ -69,36 +69,6 @@ un service caché. Son étiquette est en clair, ce qu'un frein relisant ce compt
 accepter. Et l'étiquette du niveau 1 reste le nom saisi : elle est falsifiable, mais son compteur ne
 freine que le compte visé, et la déplacer remettrait à zéro le frein de tous les déploiements en service.
 
-### selfright-mcp 0.4.6 — le renvoi « Voir « homonymes » » trouve sa cible — 27 septembre 2026
-
-La réserve que rend `/jurisprudence/verifier` renvoie à un champ de la réponse : « Voir
-« homonymes » ». L'API le peuple, et tout client HTTP le reçoit ; le serveur MCP relayait la
-réserve mot pour mot et jetait le champ. L'invitation arrivait donc au modèle sans rien derrière
-elle, dans les deux cas où la réserve la porte — décision trouvée à la date annoncée, et numéro
-existant dont aucune décision ne porte cette date. Ce second cas est celui où la liste sert le
-plus : elle montre les dates disponibles sous le même numéro à qui a mal daté la sienne.
-
-`verifier_jurisprudence` rend désormais les homonymes, cour et date, dans l'ordre de l'index —
-décroissant — et borné à dix. Aucun total n'y est recompté : la liste que rend l'API est bornée par
-la limite de sa requête et peut être plus courte que le nombre annoncé par la réserve, seule à le
-connaître — 49 rendus pour 60 annoncés sur `23/00039` du 5 janvier 2023.
-
-Un garde-fou tient les deux moitiés de la phrase ensemble : tant que `api.php` renvoie à ce champ,
-chaque réponse du client qui relaie une réserve doit le rendre.
-
-### selfright-mcp 0.4.5 — le texte d'une décision administrative sort enfin — 27 septembre 2026
-
-`texte_decision` lisait toute réponse dans la forme de Judilibre. Pour une décision du Conseil
-d'État, d'une cour administrative d'appel ou d'un tribunal administratif, il rendait « texte non
-fourni » et l'attribuait à Judilibre, alors que l'API servait le texte entier depuis l'index JADE.
-Il lit désormais les deux formes, nomme JADE comme provenance, relaie la réserve qui accompagne une
-date aberrante, et renvoie vers Légifrance quand le texte est coupé.
-
-L'âge annoncé de la jurisprudence ne compte plus les fonds sans décision depuis plus d'un an : les
-tribunaux administratifs (arrêtés en 2009 dans JADE) et la Cour de discipline budgétaire et
-financière (en 2000) lui faisaient afficher « 9657 jours ». Ces fonds restent nommés, à part, avec
-leur borne. Les juridictions administratives sont nommées en toutes lettres au lieu de leur code.
-
 ### Le lab enrôle de nouveau un appareil — 27 septembre 2026
 
 L'enrôlement « cet appareil » refusait le bon mot mémorisé (« Compte ou mot mémorisé
