@@ -19,6 +19,9 @@ porte pas, et rendait le sel de repli. Le navigateur dérivait donc une autre em
 désormais relu en base. Le banc `sanity_sel_session.php` passe par la vraie route, de
 l'inscription à l'enrôlement ; le banc client simulait le serveur et ne pouvait pas le voir.
 
+Le décor du lab (`seed.php`) referme la session que l'inscription ouvre : ses trois comptes
+laissaient chacun un jeton valide 24 heures en base.
+
 ### Le CTF annonce sa Saison 2 : deux drapeaux, et des promesses exactes — 26 septembre 2026
 
 La page red team présentait un seul drapeau, dans le mémo, chiffré « AES-256-GCM ». Elle en

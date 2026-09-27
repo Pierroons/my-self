@@ -29,6 +29,9 @@ foreach ($comptes as [$u, $rw]) {
     $sel = sr_sel_aleatoire();
     $r = Auth::register($pdo, $u, sr_derive_like_browser($rw, $sel), $sel);
     if ($r['ok']) {
+        // L'inscription ouvre une session pour le navigateur ; le décor n'en a pas
+        // l'usage, et un jeton laissé en base ouvre le compte à qui lit la base.
+        Auth::logout($pdo, (string) $r['token']);
         $ids[$u] = $r['account_id'];
         echo "Compte $u créé (#{$r['account_id']})\n";
     } else {
