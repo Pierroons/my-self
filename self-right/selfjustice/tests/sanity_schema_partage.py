@@ -19,8 +19,10 @@ défaut symétrique s'était déjà produit le 10/09 dans l'autre sens : la rout
 l'était pas. Même angle mort, deux directions — d'où les deux ordres ci-dessous.
 """
 
+import json
 import os
 import sqlite3
+import subprocess
 import sys
 import tempfile
 
@@ -186,6 +188,9 @@ def sens_jade_dabord(tmp):
                  .fetchone()[0] == 1)
     controle_index_present(conn, "base créée par JADE")
     controle_couverture(conn, "base créée par JADE")
+    controle("la décision JADE est cherchable par son numéro",
+             conn.execute("SELECT decision_id FROM numeros WHERE number_norm = '400001'")
+                 .fetchone() == (LIGNE_JADE[0],))
     conn.close()
 
     jud = charger("build_judilibre_index", db)
@@ -207,6 +212,53 @@ def sens_jade_dabord(tmp):
     conn.close()
 
 
+def normaliser_comme_l_api(numeros):
+    """`juris_normaliser()`, lue dans api.php et exécutée — jamais recopiée."""
+    code = (
+        '$src = file_get_contents($argv[1]);'
+        'if (!preg_match("/^function juris_normaliser\\(.*?^}$/ms", $src, $m)) {'
+        '    fwrite(STDERR, "juris_normaliser introuvable dans api.php\\n"); exit(2); }'
+        'eval($m[0]);'
+        'echo json_encode(array_map("juris_normaliser", array_slice($argv, 2)));'
+    )
+    api = os.path.join(os.path.dirname(ICI), "api", "api.php")
+    r = subprocess.run(["php", "-r", code, api] + numeros,
+                       capture_output=True, text=True, check=True)
+    return json.loads(r.stdout)
+
+
+def numeros_jade(tmp):
+    """Ce que lit `/verifier` : la table `numeros`, sous la règle de l'API."""
+    db = os.path.join(tmp, "c.sqlite")
+    print("\n\033[1m▸ Les décisions JADE se cherchent par leur numéro\033[0m")
+
+    jade = charger("build_jade_db", db)
+    conn = jade.ouvrir_base(db)
+    # Une base comme celle de l'instance au 27/09/2026 : des décisions JADE,
+    # aucune dans `numeros`.
+    conn.execute(
+        "INSERT INTO decisions (id, number, decision_date, jurisdiction, "
+        "date_suspecte, source) VALUES "
+        "('CETATEXT000000000002', '519395', '2026-09-09', 'ce', 0, 'jade'), "
+        "('CETATEXT000000000003', '23PA01234', '2025-01-10', 'caa', 0, 'jade'), "
+        "('CETATEXT000000000004', NULL, '2025-01-11', 'ce', 0, 'jade')")
+    conn.commit()
+    n = jade.remplir_numeros(conn)
+    controle("les décisions JADE déjà en base deviennent cherchables, "
+             "celle sans numéro exceptée", n == 2, "%d inscrite(s)" % n)
+    controle("relancé, le remplissage n'inscrit rien de plus",
+             jade.remplir_numeros(conn) == 0)
+    conn.close()
+
+    # `12é34` est le cas qui sépare les deux règles : `str.isalnum()` garde la
+    # lettre accentuée, l'API la retire.
+    echantillon = ["519395", "23PA01234", "N° 400 001", "25-10.377", "23/03077", "12é34"]
+    attendu = normaliser_comme_l_api(echantillon)
+    obtenu = [jade.numero_norm(x) or "" for x in echantillon]
+    controle("JADE normalise un numéro comme l'API qui le cherche",
+             obtenu == attendu, "JADE %s · API %s" % (obtenu, attendu))
+
+
 def main():
     global CLE_FACTICE
     print("\033[1mLes deux collecteurs partagent la table `decisions`\033[0m")
@@ -216,6 +268,7 @@ def main():
             f.write("factice\n")
         sens_judilibre_dabord(tmp)
         sens_jade_dabord(tmp)
+        numeros_jade(tmp)
 
     print()
     if ECHECS:

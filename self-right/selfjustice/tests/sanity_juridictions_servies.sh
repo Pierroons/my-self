@@ -50,6 +50,7 @@ sonder() {
         const JURIDICTIONS_SANS_INDEX = ["cc", "ca"];
         foreach (["open_db", "juris_couverture", "juridictions_servies",
                   "juridiction_libelle", "juridiction_valide",
+                  "administratif_servi", "perimetre_juris",
                   "message_juridiction_inconnue"] as $nom) {
             if (!preg_match("/^function " . $nom . "\(.*?^}$/ms", $src, $m)) {
                 fwrite(STDERR, "$nom introuvable dans api/api.php\n"); exit(2);
@@ -60,6 +61,7 @@ sonder() {
             "servies" => juridictions_servies(),
             "valide"  => juridiction_valide($argv[3]),
             "message" => message_juridiction_inconnue("zzz"),
+            "perimetre" => perimetre_juris(),
         ], JSON_UNESCAPED_UNICODE);
     ' "$RACINE" "$1" "$2"
 }
@@ -77,6 +79,7 @@ R="$(sonder "$TMP/judiciaire.sqlite" ce)"
 grep -q '"valide":null'      <<<"$R" ; verdict $? "« ce » reste refusé"
 grep -q 'Cour de cassation'  <<<"$R" ; verdict $? "le refus nomme ce qu'il sert"
 grep -q 'ArianeWeb'          <<<"$R" ; verdict $? "la réserve administrative est encore vraie, donc présente"
+grep -q '"perimetre":"[^"]*ArianeWeb' <<<"$R" ; verdict $? "le périmètre de /verifier la porte aussi"
 
 echo
 echo "▸ Index élargi au Conseil d'État — le contre-témoin"
@@ -89,6 +92,7 @@ if grep -q 'ArianeWeb' <<<"$R"; then
 else
     verdict 0 "la réserve « relève d'ArianeWeb » a disparu — elle serait devenue fausse"
 fi
+grep -q "\"perimetre\":\"[^\"]*Conseil d'État" <<<"$R" ; verdict $? "le périmètre de /verifier nomme le Conseil d'État parmi ce qu'il sert"
 
 echo
 echo "▸ L'index avant la migration — le code se déploie avant la base"

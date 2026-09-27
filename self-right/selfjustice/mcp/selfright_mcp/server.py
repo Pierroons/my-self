@@ -913,7 +913,7 @@ async def _bandeau(base: str) -> str:
             f"Consultation MCP : {message}",
             cle,
         )
-    return message + _PERIMETRE.get(cle, "")
+    return message + _perimetre(cle, bloc)
 
 
 # 🔑 **L'avertissement de périmètre doit accompagner l'outil qu'on APPELLE.**
@@ -967,6 +967,30 @@ _PERIMETRE = {
         "qui parle du même mot."
     ),
 }
+
+_ADMINISTRATIVES = ("ce", "caa", "ta")
+
+_PERIMETRE_JURIS_ADMINISTRATIF = (
+    "\nPérimètre : la recherche par thème ne couvre que la justice JUDICIAIRE — "
+    "Cour de cassation et cours d'appel —, parce qu'elle passe par Judilibre. "
+    "Les décisions administratives que l'index porte — Conseil d'État, cours "
+    "administratives d'appel, tribunaux administratifs, sur les périodes que "
+    "donne `statut` — se vérifient par leur numéro avec verifier_jurisprudence, "
+    "et ne sortent d'aucune recherche par thème. Si la question relève du droit "
+    "administratif, dis-le plutôt que de servir un arrêt civil qui parle du même mot."
+)
+
+
+def _perimetre(cle: str, bloc: dict) -> str:
+    """Le périmètre d'une base, tiré de ce que son statut déclare servir.
+
+    🔑 Écrite en dur, la réserve « la justice administrative n'est pas dans
+    cette base » devient fausse dès que l'index sert le Conseil d'État. Elle
+    suit donc la couverture que rend `/status`, comme la même réserve côté API.
+    """
+    if cle == "jurisprudence" and set(bloc.get("couverture") or {}) & set(_ADMINISTRATIVES):
+        return _PERIMETRE_JURIS_ADMINISTRATIF
+    return _PERIMETRE.get(cle, "")
 
 
 # -------------------------------------------------------------------- outils
@@ -1442,7 +1466,10 @@ async def verifier_jurisprudence(
     Args:
         reference: le numéro tel qu'il s'écrit — « 25-10.377 » pour un pourvoi,
             « 26/00027 » pour un rôle général de cour d'appel.
-        juridiction: « cc » (Cour de cassation) ou « ca » (cours d'appel).
+        juridiction: « cc » (Cour de cassation), « ca » (cours d'appel), et,
+            quand l'index les porte — `statut` le dit —, « ce » (Conseil
+            d'État), « caa » (cours administratives d'appel), « ta »
+            (tribunaux administratifs), « tc » (Tribunal des conflits).
             À préciser quand on la connaît : le même numéro normalisé peut
             désigner un pourvoi et un RG de cour d'appel.
         date: la date attribuée à la décision, au format « AAAA-MM-JJ », quand

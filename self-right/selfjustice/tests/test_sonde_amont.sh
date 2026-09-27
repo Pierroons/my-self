@@ -54,6 +54,10 @@ INSERT INTO decisions VALUES
   ('aaaa000000000004','23/03077','2025-02-06','ca','soc','ca_toulouse','f','','other','ECLI:E','ar','2025-02-07',0);
 INSERT INTO numeros VALUES ('2200111','aaaa000000000001'), ('2111222','aaaa000000000002'),
   ('2303077','aaaa000000000003'), ('2303077','aaaa000000000004');
+-- Une décision du Conseil d'État, telle que le collecteur JADE l'inscrit.
+INSERT INTO decisions VALUES
+  ('CETATEXT000000519395','519395','2026-06-09','ce','2','Paris','f','','rejet','ECLI:G','ar','2026-06-10',0);
+INSERT INTO numeros VALUES ('519395','CETATEXT000000519395');
 SQL
 
 # ── Un numéro porté par PLUS de décisions que la limite de la route ─────────
@@ -221,6 +225,27 @@ nb=$(printf '%s' "$corps" | python3 -c 'import json,sys; print(len(json.load(sys
 controle "homonymes locaux, date couverte, aucune correspondance → absente" \
     "23%2F03077?jurisdiction=ca&date=2025-06-01" \
     "etat:absente" "reserve:~aucune n'est datée du 2025-06-01"
+
+echo
+echo "▸ La justice administrative que l'index porte"
+# 🔑 L'index sert le Conseil d'État par JADE depuis le 10/09/2026 ; la route
+# disait encore qu'il « n'y figurera jamais », et la recherche filtrée sur « ce »
+# rendait le 400 de l'amont comme une panne.
+controle "une décision du Conseil d'État en base est trouvée" \
+    "519395?jurisdiction=ce&date=2026-06-09" \
+    "etat:trouvee" "source:index local" "count:1"
+controle "absente, le périmètre vient de l'index et renvoie à sa couverture" \
+    "999999?jurisdiction=ce&date=2026-06-09" \
+    "etat:absente" "reserve:~juridiction par juridiction, sont dans « couverture »"
+corps=$(curl -s "$BASE/999999?jurisdiction=ce&date=2026-06-09")
+printf '%s' "$corps" | grep -q 'ArianeWeb' \
+    && nok "la réserve renvoie encore vers ArianeWeb alors que l'index sert le Conseil d'État" \
+    || ok "la réserve ne renvoie plus vers ArianeWeb"
+RECHERCHE="http://127.0.0.1:$PORT_API/api/jurisprudence/search"
+code=$(curl -s -o "$TMP/recherche.json" -w '%{http_code}' "$RECHERCHE?q=exces+de+pouvoir&jurisdiction=ce")
+[ "$code" = "400" ] && grep -q 'JADE' "$TMP/recherche.json" && grep -q 'verifier' "$TMP/recherche.json" \
+    && ok "la recherche filtrée sur « ce » refuse, et dit où chercher" \
+    || nok "la recherche filtrée sur « ce » rend $code : $(head -c 160 "$TMP/recherche.json")"
 
 echo
 echo "▸ Plus d'homonymes que la limite de la route"

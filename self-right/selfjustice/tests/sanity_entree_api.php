@@ -45,7 +45,7 @@ const JURIDICTIONS_SANS_INDEX = ['cc', 'ca'];
 
 foreach (['requete_cherchable', 'champ_juris', 'mots_cherchables', 'texte_propre',
           'chercher_conventionnalite', 'juridictions_servies', 'juridiction_libelle',
-          'juridiction_valide', 'message_juridiction_inconnue'] as $nom) {
+          'juridiction_valide', 'administratif_servi', 'message_juridiction_inconnue'] as $nom) {
     if (!preg_match('/^function ' . $nom . '\(.*?^}$/ms', $src, $m)) {
         fwrite(STDERR, "$nom introuvable dans api/api.php\n");
         exit(2);

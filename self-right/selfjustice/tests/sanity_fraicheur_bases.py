@@ -39,6 +39,7 @@ VOULUES = {
     # La table des noms de juridiction sert à dire les bornes de couverture :
     # sans elle, le chargement rend un NameError au premier cas qui en porte.
     "_NOM_JURIDICTION_COURT", "_PERIMETRE", "MOIS", "DATE_ISO",
+    "_perimetre", "_ADMINISTRATIVES", "_PERIMETRE_JURIS_ADMINISTRATIF",
 }
 
 # Un vendredi ordinaire, postérieur à l'échéance du 15 : c'est la configuration
@@ -199,6 +200,24 @@ def main() -> int:
         "jurisprudence" in perimetre,
         "la clé est celle du bloc de statut, pas un nom d'outil",
     )
+
+    print("\n▸ Le périmètre suit la couverture que déclare /status")
+    # 🔑 La réserve « la justice administrative n'est pas dans cette base » est
+    # vraie tant que l'index ne sert que cc et ca, fausse dès qu'il sert le
+    # Conseil d'État. Les deux branches s'éprouvent : une seule ne distingue pas
+    # une réserve déduite d'une réserve écrite en dur.
+    serveur = charger()
+    judiciaire = serveur["_perimetre"]("jurisprudence", {"couverture": {"cc": {}, "ca": {}}})
+    verdict("ArianeWeb" in judiciaire,
+            "index judiciaire seul → la réserve ArianeWeb est dite")
+    elargi = serveur["_perimetre"]("jurisprudence",
+                                  {"couverture": {"cc": {}, "ca": {}, "ce": {}}})
+    verdict("ArianeWeb" not in elargi and "n'est pas dans cette base" not in elargi,
+            "index élargi au Conseil d'État → la réserve disparaît")
+    verdict("verifier_jurisprudence" in elargi,
+            "index élargi → le périmètre dit comment atteindre le Conseil d'État")
+    verdict(serveur["_perimetre"]("legi", {}) == perimetre["legi"],
+            "les autres bases gardent leur périmètre")
 
     print()
     if echecs:
