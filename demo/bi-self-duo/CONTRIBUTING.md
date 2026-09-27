@@ -47,7 +47,7 @@ deploy/           nginx vhost config
    - Do the work, log via `$s->logger()->info(...)` / `->crypto(...)` / etc.
    - Return JSON
 4. **Frontend** : `frontend/<module>.html`. Reuse the CSS palette/structure of `recover.html` or `moderate.html` for consistency.
-5. **nginx route** : extend the `location ~ "^/demo/api/<module>/..."` regex in `deploy/nginx-bi-self.conf` with your action names.
+5. **nginx route** : extend the `location ~ "^/demo/api/<module>/..."` regex in `deploy/bi-self/nginx-bi-self.conf` with your action names.
 6. **Rewrite** : add `location = /<module> { rewrite ^ /<module>.html last; }` to expose the HTML cleanly.
 7. **Code viewer** : add the new files to the whitelist in `api/<module>/code.php`.
 8. **Tests** : add a section to `tests/integration.sh` covering the happy path.

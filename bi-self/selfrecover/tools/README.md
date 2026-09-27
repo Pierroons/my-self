@@ -17,7 +17,7 @@ Tutoriel de la méthode Reinhold (1995) en cinq étapes, plus les deux tables
 diceware de 7 776 mots au format PDF — EFF pour l'anglais, ArthurPons pour le
 français. La page ne charge rien et n'envoie rien.
 
-`docs/generate_diceware_pdf.py` régénère les tables depuis les wordlists.
+`entropy-lab/docs/generate_diceware_pdf.py` régénère les tables depuis les wordlists.
 
 ### Le moteur n'est pas branché — et c'est volontaire de le noter
 
