@@ -23,10 +23,18 @@ No SMTP at all. No SendGrid, no Mailgun, no Gmail deliverability rules, no spam 
 You don't need to trust Google, Microsoft, or anyone else for account recovery. You only trust the site you're registering on.
 
 ### ✓ Rate-limited brute force
-Per-account rate limits at every level, plus per-address limits where an address means anything, plus
-L2/L3 escalation. Which of the two applies is not guessed: the deployment declares a profile, and the
-library refuses an address where none can mean anything, and refuses the absence of one where the brake
-is supposed to bite. At L2 the per-account brake is the only one that works behind a hidden service, and it
+Per-account rate limits on every path that reaches an account — the three levels and device
+enrolment — plus per-address limits where an address means anything, plus L2/L3 escalation.
+
+⚠️ Enrolling a device reaches the account with the memorized word alone: measured on the wire on
+13 August 2026, in three requests, with the attacker's own key. The library cannot verify a session, so
+it requires the caller to assert that the holder is already authenticated, and it brakes the path per
+account. What no assertion replaces, and what the integrator owes: the account name comes from the open
+session, never from the request body.
+
+Which brake applies — per account, per address, or both — is not guessed: the deployment declares a
+profile, and the library refuses an address where none can mean anything, and refuses the absence of one
+where the brake is supposed to bite. At L2 the per-account brake is the only one that works behind a hidden service, and it
 has two steps: a short window, then suspension of the level for that account until it is rearmed.
 
 Three gestures rearm it — a fresh batch of codes, a successful code recovery, a successful passphrase
@@ -36,8 +44,11 @@ recovery. A deployment that holds none of those dates does not suspend, rather t
 
 **Partial, and the honest version is uncomfortable: opening an L3 dispute tells you whether an
 account exists.** A success returns a dispute number; an unknown name cannot return one, so no
-wording closes that gap. L1 and L2 close it for an unknown account — L1 with a single generic refusal,
-L2 by asking for no identifier at all. L3 cannot, because there the distinction *is* the useful answer.
+wording closes that gap. L1, L2 and device enrolment close it for an unknown account — L1 with a single
+generic refusal, L2 by asking for no identifier at all, enrolment by counting failures under a label
+derived from the *submitted* name: the brake bites whether that account exists or not, so its refusal
+tells nothing apart. Deriving the label from the account found would have opened the gap in six requests,
+which is how it was measured before being closed. L3 cannot, because there the distinction *is* the useful answer.
 
 **One L2 refusal does name a state, and it has to.** A suspended level cannot be described to its owner
 without saying so. That refusal tells whoever already holds one of the account's codes that the code names

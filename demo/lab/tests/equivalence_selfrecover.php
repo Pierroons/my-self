@@ -33,6 +33,7 @@ use Pierroons\MySelfLab\StockageSelfRecover;
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device;
 use Pierroons\SelfRecover\ProfilDeploiement;
+use Pierroons\SelfRecover\Titulaire;
 use Pierroons\SelfRecover\Recovery\Recovery;
 
 $passes = 0;
@@ -59,7 +60,7 @@ $pdo->prepare(
 $compteId = (int) $pdo->lastInsertId();
 
 $stockage = new StockageSelfRecover($pdo);
-$device   = new Device($stockage, ProfilDeploiement::CLEARWEB, delaiRefusUs: 0);
+$device   = new Device($stockage, ProfilDeploiement::CLEARWEB, 'sel-du-lab-pour-la-sonde', delaiRefusUs: 0);
 $recovery = new Recovery($stockage, 'sel-du-lab-pour-la-sonde', ProfilDeploiement::CLEARWEB, delaiRefusUs: 0);
 
 echo "\n→ Niveau 1 sur le schéma réel\n";
@@ -123,7 +124,7 @@ $spki = base64_decode(implode('', array_filter(
 $pub = rtrim(strtr(base64_encode($spki), '+/', '-_'), '=');
 $credId = 'cred' . str_repeat('E', 20);
 
-$e = $device->enroler('alice', $credId, $pub, $MOT, '192.0.2.3', $now);
+$e = $device->enroler('alice', $credId, $pub, $MOT, Titulaire::AUTHENTIFIE, '192.0.2.3', $now);
 verifier('enrôlement écrit dans device_credentials',
     $e['ok'] === true && (int) $pdo->query('SELECT COUNT(*) FROM device_credentials')->fetchColumn() === 1);
 
@@ -146,7 +147,7 @@ verifier('le défi est consommé',
     (int) $pdo->query('SELECT COUNT(*) FROM device_challenges')->fetchColumn() === 0);
 
 echo "\n→ L'attaque du 02/08 sur le schéma réel\n";
-$att = $device->enroler('alice', 'cred' . str_repeat('F', 20), $pub, str_repeat('99', 32), '192.0.2.9', $now);
+$att = $device->enroler('alice', 'cred' . str_repeat('F', 20), $pub, str_repeat('99', 32), Titulaire::AUTHENTIFIE, '192.0.2.9', $now);
 verifier('enrôlement sans le mot mémorisé refusé', $att['ok'] === false);
 verifier('aucun appareil supplémentaire posé',
     (int) $pdo->query('SELECT COUNT(*) FROM device_credentials')->fetchColumn() === 1);

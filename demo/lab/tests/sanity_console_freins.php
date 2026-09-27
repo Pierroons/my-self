@@ -9,7 +9,8 @@
  * et doit garder tout le reste.
  *
  * 🔑 Deux familles comptent plus que les autres, et ce sont celles qu'on perd le
- * plus facilement : les échecs du niveau 2, et **les tentatives sans étiquette**,
+ * plus facilement : les échecs du niveau 2 et de l'enrôlement, et **les tentatives
+ * sans étiquette**,
  * qui sont les codes de récupération introuvables. C'est le seul chemin qu'aucun
  * frein par compte ne couvre, donc le seul où la console est la dernière alarme.
  * Deux fois déjà, un filtre censé écarter les compteurs de la bibliothèque les a
@@ -55,6 +56,7 @@ $lignes = [
     ['une sonde du niveau 3 (sans adresse)',       'l3:ouvrir:' . str_repeat('b', 64), null,    false],
     ["l'étiquette interne d'inscription",           '__register__',                 '192.0.2.4', false],
     ['un imposteur « l3:ouvrir:… » AVEC adresse',  'l3:ouvrir:x',                  '192.0.2.5', true],
+    ['un échec d\'enrôlement, sous son HMAC',       'enroll:' . str_repeat('c', 64), '192.0.2.6', true],
 ];
 $attendus = 0;
 foreach ($lignes as [$quoi, $nom, $ip, $compte]) {

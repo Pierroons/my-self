@@ -96,6 +96,11 @@ final class Escalade
      * L'étiquette d'un compteur d'ouverture — un HMAC sous le sel du déploiement.
      *
      * ⚠️ **Le sel n'est pas là pour cacher, il est là pour EMPÊCHER D'ÉCRIRE.**
+     * Le raisonnement en entier est dans `Etiquette`, qui porte le calcul des trois
+     * chemins. Celui-ci y arrive par `Recovery::indexRecherche()` plutôt qu'en
+     * appelant `Etiquette::sous()` : passer le sel demanderait de l'exposer par un
+     * accesseur, c'est-à-dire de livrer un secret de service pour éviter une
+     * indirection. Ce qui suit ne garde que ce qui est propre au niveau 3.
      * `compterEchecsCompte()` compte des lignes par étiquette, dans une table où
      * les tentatives de connexion atterrissent aussi — et un nom de compte
      * soumis y arrive tel quel, sans contrôle de forme, depuis une route

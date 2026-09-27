@@ -7,6 +7,7 @@ namespace Pierroons\SelfRecover\Recovery;
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device;
 use Pierroons\SelfRecover\Diceware\Wordlist;
+use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
 use Pierroons\SelfRecover\Storage\StorageInterface;
@@ -344,7 +345,7 @@ final class Recovery
      */
     public function indexRecherche(string $code): string
     {
-        return hash_hmac('sha256', strtolower(trim($code)), $this->selDeploiement);
+        return Etiquette::empreinte($code, $this->selDeploiement);
     }
 
     /**
@@ -353,8 +354,7 @@ final class Recovery
      *
      * ⚠️ **Le sel n'est pas là pour cacher, il est là pour EMPÊCHER D'ÉCRIRE** :
      * sans lui, le compteur des codes papier d'un compte se remplit depuis la
-     * page de connexion. Le raisonnement en entier, et l'incident qui l'a établi,
-     * sont dans `Escalade::etiquette()` — même table, même primitive.
+     * page de connexion. Le raisonnement en entier est dans `Etiquette`.
      *
      * 🔑 **Publique exprès.** Un intégrateur qui pose son propre frein devant le
      * niveau 2 doit lire le même compteur que celui que la bibliothèque écrit.
@@ -363,7 +363,7 @@ final class Recovery
      */
     public function etiquetteEchecsL2(string $nomCompte): string
     {
-        return self::PREFIXE_L2 . $this->indexRecherche($nomCompte);
+        return Etiquette::sous(self::PREFIXE_L2, $nomCompte, $this->selDeploiement);
     }
 
     /**

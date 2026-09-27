@@ -10,7 +10,7 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### SelfRecover v0.7.0 — la récupération par code freine par compte, et le déploiement déclare son profil — 27 septembre 2026
+### SelfRecover v0.7.0 — les chemins qui mènent au compte freinent par compte, et le déploiement déclare son profil — 27 septembre 2026
 
 `Recovery::parCode()` ne consultait que le compteur par adresse, et seulement si une adresse lui était
 passée. Il écrivait pourtant un compteur par compte à chaque échec, sous l'étiquette `code:<compte>`,
@@ -81,11 +81,41 @@ Le banc de la récupération se joue sous les deux profils, dans la même étape
 corps est le même, seule l'origine change. Ce que le frein par compte doit tenir des deux côtés se
 mesure donc des deux côtés. Un canari neutralise le refus du profil et vérifie que le banc rougit.
 
-**Reste ouvert, et nommé ici pour ne pas l'oublier** : l'enrôlement d'un appareil mène au compte avec le
-même mot mémorisé et n'a pas reçu ce frein — seule l'adresse le retient, donc rien ne le retient derrière
-un service caché. Son étiquette est en clair, ce qu'un frein relisant ce compteur ne pourrait pas
-accepter. Et l'étiquette du niveau 1 reste le nom saisi : elle est falsifiable, mais son compteur ne
-freine que le compte visé, et la déplacer remettrait à zéro le frein de tous les déploiements en service.
+**L'enrôlement d'un appareil rejoint les chemins freinés, et cesse de s'intégrer en silence.** Il mène au
+compte avec le seul mot mémorisé — mesuré sur le fil le 13 août 2026, en trois requêtes, l'attaquant
+apportant sa propre clé : il enrôle, s'authentifie, et reçoit un mot de passe neuf, les sessions du
+titulaire coupées. Les codes de secours et la passphrase n'y servent à rien, le chemin les contourne.
+
+`enroler()` prend désormais un `Titulaire`, obligatoire et sans défaut, et refuse `NON_VERIFIE`. Ce n'est
+pas une preuve : le contrat de stockage sait révoquer des sessions, jamais en lire une, et la
+bibliothèque ne vérifie pas plus l'autorisation ici qu'au niveau 3. C'est une affirmation, que
+l'intégrateur doit écrire, et qui se relit en revue. Ce qu'aucune valeur ne remplace est dit dans le
+type : le nom du compte vient de la session ouverte, jamais du corps de la requête.
+
+Il reçoit aussi le frein par compte qui lui manquait — cinq échecs sur la même fenêtre, sur une étiquette
+sous HMAC, sans seuil de suspension puisqu'il n'y a pas de feuille de codes à plafonner. Le refus est
+celui du frein par adresse, au mot près, et paie le même délai. Sous `tor-onion`, où l'adresse ne freine
+rien, ce chemin n'avait jusqu'ici aucun frein du tout.
+
+🔑 **Son étiquette vient du nom SOUMIS, pas du compte trouvé**, et c'est ce qui distingue ce chemin de la
+récupération par code. Tirée du compte, elle n'aurait existé que pour les comptes réels : le frein
+n'aurait mordu que sur eux, et six requêtes sur un nom choisi auraient dit s'il existe — l'oracle que le
+message unique de cette méthode existe pour refuser. La première version de ce correctif l'ouvrait ; il a
+été mesuré, puis fermé. Le prix, assumé et déjà celui du niveau 1 : qui soumet un nom en boucle ferme
+l'enrôlement de ce nom pendant la fenêtre. C'est un confort, pas une récupération. L'étiquette valait
+`enroll:inconnu` pour tout nom introuvable, donc un compte de ce nom héritait du frein de tout le service.
+
+⚠️ **La console du lab perd l'attribution de ces échecs** : elle affichait `enroll:<compte>`, elle affiche
+maintenant un HMAC. C'est le prix que le niveau 2 paie déjà, et il se paie ici pour la même raison — une
+étiquette lisible est une étiquette qu'une route publique peut écrire.
+
+Le calcul des étiquettes quitte `Recovery` pour `Etiquette` : un seul `hash_hmac` subsiste dans la
+bibliothèque, et les trois chemins qui écrivent dans ces compteurs y arrivent. Les signatures publiques ne bougent pas : `indexRecherche()` et `etiquetteEchecsL2()`
+délèguent. Recopier ce calcul aurait laissé diverger deux définitions de la même règle, et le frein qui
+relit serait devenu muet du côté qui bouge.
+
+**Reste ouvert** : l'étiquette du niveau 1 est le nom saisi, donc falsifiable ; son compteur ne freine que
+le compte visé, et la déplacer remettrait à zéro le frein de tous les déploiements en service.
 
 ### Le lab enrôle de nouveau un appareil — 27 septembre 2026
 

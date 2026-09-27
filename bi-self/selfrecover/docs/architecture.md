@@ -148,6 +148,9 @@ What the library enforces, with the defaults it ships:
   column). It decides whether the per-address brake exists at all, and it refuses
   the argument that contradicts it: an address under `tor-onion`, none under
   `clearweb`. Both are integration mistakes that leave a service looking healthy
+- Device enrolment — 5 failures per account and 12 per address, over the same window, and a required
+  assertion that the holder is already authenticated. Without it the path reaches the account with the
+  memorized word alone
 - L1 — 5 failures per username and 12 per address, over a 15-minute window
 - L2 — no username is asked, but the code names its account: 5 failures per
   account over the same window, and the level is suspended for that account after

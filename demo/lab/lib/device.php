@@ -7,6 +7,7 @@ namespace Pierroons\MySelfLab;
 use PDO;
 use Pierroons\SelfRecover\Device\Device as Protocole;
 use Pierroons\SelfRecover\ProfilDeploiement;
+use Pierroons\SelfRecover\Titulaire;
 
 /**
  * Facteur de possession « cet appareil » — façade du lab sur la bibliothèque.
@@ -27,6 +28,8 @@ final class Device
     private const ENROLL_WINDOW = 900;
     /** Aligné sur Auth::LOGIN_MAX_FAILS_PER_IP — un foyer NAT partage son IP. */
     private const ENROLL_MAX_FAILS_PER_IP = 12;
+    /** Échecs tolérés sur un même compte — le seul frein qui agisse sans adresse. */
+    private const ENROLL_MAX_FAILS = 5;
 
     private static function protocole(PDO $pdo): Protocole
     {
@@ -36,7 +39,11 @@ final class Device
             // deux chemins comptent par adresse dans la MÊME table `login_attempts`.
             // Deux profils divergents y produiraient deux comptages incohérents.
             ProfilDeploiement::CLEARWEB,
+            // Le sel du lab, celui que la récupération emploie : l'étiquette du
+            // compteur d'enrôlement est un HMAC sous ce sel.
+            Auth::siteSalt(),
             fenetreEchecs: self::ENROLL_WINDOW,
+            maxEchecsCompte: self::ENROLL_MAX_FAILS,
             maxEchecsIp: self::ENROLL_MAX_FAILS_PER_IP,
         );
     }
@@ -59,7 +66,19 @@ final class Device
         string $recoveryDerivedKey,
         ?string $ip,
     ): array {
-        return self::protocole($pdo)->enroler($username, $credentialId, $publicKeyB64url, $recoveryDerivedKey, $ip);
+        // 🔑 `Titulaire::AUTHENTIFIE` n'est pas une formalité : la route
+        // `api/device_enroll.php` exige une session (401 sinon) et prend le nom du
+        // compte DANS cette session — elle refuse même un nom du corps qui en
+        // diverge. C'est cette garde qui autorise l'affirmation, et c'est elle qui
+        // avait manqué le 13 août 2026.
+        return self::protocole($pdo)->enroler(
+            $username,
+            $credentialId,
+            $publicKeyB64url,
+            $recoveryDerivedKey,
+            Titulaire::AUTHENTIFIE,
+            $ip,
+        );
     }
 
     /** Émet un challenge de 32 octets pour la récupération « depuis cet appareil ». */

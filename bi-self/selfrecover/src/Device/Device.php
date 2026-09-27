@@ -6,7 +6,9 @@ namespace Pierroons\SelfRecover\Device;
 
 use Pierroons\SelfRecover\Crypto\Encoding;
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\ProfilDeploiement;
+use Pierroons\SelfRecover\Titulaire;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -34,6 +36,12 @@ final class Device
     /** Durée de vie d'un défi. Cinq minutes suffisent à signer, pas à chercher. */
     public const DEFI_TTL = 300;
 
+    /**
+     * Préfixe du compteur d'échecs d'enrôlement. En clair, pour qu'une console
+     * sache le reconnaître ; le HMAC qui suit est ce qui empêche de l'écrire.
+     */
+    private const PREFIXE_ENROLEMENT = 'enroll:';
+
     public function __construct(
         private readonly StorageInterface $stockage,
         /**
@@ -42,8 +50,15 @@ final class Device
          * deux profils divergents y produiraient deux comptages incohérents.
          */
         private readonly ProfilDeploiement $profil,
-        /** Fenêtre de comptage des échecs par IP. */
+        /**
+         * Sel du déploiement, celui de `Recovery`. Il ne sert ici qu'à fabriquer
+         * l'étiquette du compteur d'échecs, que `Etiquette` explique.
+         */
+        private readonly string $selDeploiement,
+        /** Fenêtre de comptage des échecs, par compte comme par IP. */
         private readonly int $fenetreEchecs = 900,
+        /** Échecs tolérés sur un même compte dans la fenêtre. */
+        private readonly int $maxEchecsCompte = 5,
         /** Échecs tolérés par IP dans la fenêtre — un foyer NAT partage son IP. */
         private readonly int $maxEchecsIp = 12,
         /** Délai appliqué aux refus, pour aplatir ce que le message tait. */
@@ -61,6 +76,12 @@ final class Device
         string $credentialId,
         string $clePubliqueB64url,
         string $motDerive,
+        /**
+         * ⚠️ **Obligatoire, sans défaut.** Enrôler ouvre le compte avec le seul mot
+         * mémorisé : `Titulaire` dit ce que cela coûte, et ce que l'intégrateur doit
+         * garantir à la place de cette bibliothèque.
+         */
+        Titulaire $titulaire,
         ?string $ip = null,
         ?int $maintenant = null,
     ): array {
@@ -72,6 +93,16 @@ final class Device
         // deux facteurs testable seul, et ferait de cet appel un oracle
         // d'existence de comptes.
         $refus = ['ok' => false, 'message' => 'Compte ou mot mémorisé incorrect.'];
+
+        // 🔴 Avant tout calcul : enrôler ouvre le compte avec le seul mot mémorisé.
+        // `Titulaire` porte la mesure du 13 août 2026 et ce que l'intégrateur doit
+        // garantir. Le refus est ordinaire, pas une exception : celui qui découvre
+        // ce paramètre le lit dans sa réponse, pas dans une page blanche.
+        if ($titulaire !== Titulaire::AUTHENTIFIE) {
+            return ['ok' => false, 'error' => 'titulaire_non_authentifie',
+                    'message' => 'Enrôler un appareil demande une session ouverte du titulaire. '
+                               . 'Qui a perdu son accès passe par la récupération.'];
+        }
 
         $nomCompte    = strtolower(trim($nomCompte));
         $credentialId = trim($credentialId);
@@ -88,13 +119,37 @@ final class Device
             return ['ok' => false, 'message' => 'Clé publique invalide.'];
         }
 
-        // ⚠️ **Ce chemin mène au compte avec le mot mémorisé, et il n'a PAS le frein
-        // par compte que la récupération par code a reçu** : seule l'adresse le
-        // freine, donc rien ne le freine derrière un service caché. Son étiquette
-        // est de surcroît en clair, ce qu'un frein relisant ce compteur ne pourrait
-        // pas accepter — voir `Recovery::etiquetteEchecsL2()`.
         if ($ip !== null
             && $this->stockage->compterEchecsIp($ip, $maintenant - $this->fenetreEchecs) >= $this->maxEchecsIp) {
+            usleep($this->delaiRefusUs);
+
+            return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+        }
+
+        // 🔑 **L'étiquette vient du nom SOUMIS, avant toute recherche.** Tirée du
+        // compte trouvé, elle n'existerait que pour les comptes réels : le frein ne
+        // mordrait que sur eux, et six requêtes sur un nom choisi diraient s'il
+        // existe — l'oracle que le message unique de cette méthode refuse. Mesuré
+        // avant d'être corrigé : « Trop de tentatives » d'un côté, « Compte ou mot
+        // mémorisé incorrect » de l'autre, au sixième essai.
+        //
+        // Le prix, assumé et déjà celui du niveau 1 : qui soumet un nom en boucle
+        // ferme l'enrôlement de ce nom pendant la fenêtre. C'est un confort, pas une
+        // récupération — et l'étiquette étant sous HMAC, aucune autre route ne peut
+        // remplir ce compteur.
+        $etiquette = $this->etiquetteEchecsEnrolement($nomCompte);
+
+        // Le frein par compte, avant l'Argon2id : c'est le seul qui agisse quand
+        // l'adresse ne distingue personne, et ce chemin n'a que le mot pour secret.
+        // Pas de seuil de suspension, contrairement au niveau 2 : il n'y a pas de
+        // feuille de codes à plafonner ici, et suspendre priverait un titulaire
+        // légitime d'un confort sans borner autre chose.
+        //
+        // Le refus est celui du frein par adresse, au mot près, et paie le même délai.
+        if ($this->stockage->compterEchecsCompte($etiquette, $maintenant - $this->fenetreEchecs)
+            >= $this->maxEchecsCompte) {
+            usleep($this->delaiRefusUs);
+
             return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
         }
 
@@ -105,12 +160,10 @@ final class Device
         $motOk = Hashing::verify($motDerive, $compte['empreinte_mot'] ?? Hashing::dummyHash());
         $ok    = $compte !== null && $motOk;
 
-        $this->stockage->tracerTentative(
-            'enroll:' . ($compte !== null ? $nomCompte : 'inconnu'),
-            $ok,
-            $ip,
-            $maintenant,
-        );
+        // L'étiquette est la même que le compte existe ou non : c'est ce qui rend les
+        // deux cas indiscernables. Elle valait `enroll:inconnu` pour tout nom
+        // introuvable, donc un compte de ce nom héritait du frein de tout le service.
+        $this->stockage->tracerTentative($etiquette, $ok, $ip, $maintenant);
 
         if (!$ok) {
             usleep($this->delaiRefusUs);
@@ -205,6 +258,19 @@ final class Device
             'mot_de_passe' => $motDePasse,
             'compte'       => $appareil->nomCompte,
         ];
+    }
+
+    /**
+     * L'étiquette du compteur d'échecs d'enrôlement — un HMAC sous le sel du
+     * déploiement. `Etiquette` dit pourquoi elle ne peut pas être en clair.
+     *
+     * 🔑 **Publique exprès**, comme celle du niveau 2 : un intégrateur qui pose son
+     * propre frein devant ce chemin doit lire le compteur que la bibliothèque écrit,
+     * au lieu de recopier une étiquette qui le laisserait muet le jour où elle change.
+     */
+    public function etiquetteEchecsEnrolement(string $nomCompte): string
+    {
+        return Etiquette::sous(self::PREFIXE_ENROLEMENT, $nomCompte, $this->selDeploiement);
     }
 
     /**

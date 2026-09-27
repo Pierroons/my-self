@@ -132,7 +132,51 @@ jobs:
         run: php bi-self/selfrecover/tests/sanity_socle.php
 
       - name: Garde-fou — facteur « cet appareil » (dont la prise de compte du 02/08)
-        run: php bi-self/selfrecover/tests/sanity_device.php
+        run: |
+          sortie=$(php bi-self/selfrecover/tests/sanity_device.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc du facteur « cet appareil » a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 26/26$' \
+            || { echo "::error::le banc du facteur « cet appareil » n'a pas joué ses 26 cas"; exit 1; }
+
+      # Enrôler ouvre le compte avec le seul mot mémorisé : ce chemin n'avait aucun
+      # frein par compte, donc rien sous un profil où l'adresse ne distingue personne.
+      - name: Canari — l'enrôlement n'exige plus le titulaire, et ne freine plus par compte
+        run: |
+          F=bi-self/selfrecover/src/Device/Device.php
+          cp "$F" /tmp/Device.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
+          python3 - <<'PY'
+          chemin = 'bi-self/selfrecover/src/Device/Device.php'
+          gardes = [
+              ('        if ($titulaire !== Titulaire::AUTHENTIFIE) {', '        if (false) { // exigence débranchée'),
+              ('        if ($this->stockage->compterEchecsCompte($etiquette,',
+               '        if (false && $this->stockage->compterEchecsCompte($etiquette,'),
+          ]
+          s = open(chemin, encoding='utf-8').read()
+          for avant, apres in gardes:
+              assert s.count(avant) == 1, f'motif introuvable : {avant[:40]!r} — ce canari ne prouve rien'
+              s = s.replace(avant, apres, 1)
+          open(chemin, 'w', encoding='utf-8').write(s)
+          PY
+          grep -q 'exigence débranchée' "$F" && grep -q 'if (false && $this->stockage' "$F" \
+            || { cp /tmp/Device.intact "$F"; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          php -l "$F" >/dev/null \
+            || { cp /tmp/Device.intact "$F"; echo "::error::la version plantée ne compile pas"; exit 1; }
+          if sortie=$(php bi-self/selfrecover/tests/sanity_device.php 2>&1); then
+            cp /tmp/Device.intact "$F"
+            echo "$sortie"; echo "::error::le banc reste VERT sans l'exigence ni le frein"; exit 1
+          fi
+          cp /tmp/Device.intact "$F"
+          # ⚠️ Mesuré contre l'empreinte prise AVANT la plantation. Comparer au témoin
+          # qu'on vient de recopier ne peut échouer que si `cp` a échoué.
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$sortie" | grep -q "❌ .*sans titulaire authentifié, l'enrôlement est refusé" \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de l'exigence"; exit 1; }
+          echo "$sortie" | grep -q '❌ .*au sixième essai, même le bon mot est freiné' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du frein"; exit 1; }
+          echo "✓ le banc rougit, et sur les deux cas — l'exigence et le frein"
 
       # Le compte est écrit en dur : c'est un inventaire, pas un seuil. Un code de
       # sortie à zéro dit que les cas joués ont réussi, jamais qu'aucun n'a
@@ -163,6 +207,7 @@ jobs:
         run: |
           F=bi-self/selfrecover/src/Recovery/Recovery.php
           cp "$F" /tmp/Recovery.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
           python3 - <<'PY'
           chemin = 'bi-self/selfrecover/src/Recovery/Recovery.php'
           motif  = '        if ($etiquette !== null) {'
@@ -179,9 +224,11 @@ jobs:
             echo "$sortie"; echo "::error::le banc reste VERT sans le frein du niveau 2"; exit 1
           fi
           cp /tmp/Recovery.intact "$F"
-          cmp -s /tmp/Recovery.intact "$F" \
+          # ⚠️ Mesuré contre l'empreinte prise AVANT la plantation. Comparer au témoin
+          # qu'on vient de recopier ne peut échouer que si `cp` a échoué.
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
             || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-          echo "$sortie" | grep -q 'au sixième essai, même le bon mot est freiné' \
+          echo "$sortie" | grep -q '❌ .*au sixième essai, même le bon mot est freiné' \
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du frein"; exit 1; }
           echo "✓ le banc rougit, et sur le cas du frein par compte"
 
@@ -191,6 +238,7 @@ jobs:
         run: |
           F=bi-self/selfrecover/src/ProfilDeploiement.php
           cp "$F" /tmp/Profil.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
           python3 - <<'PY'
           chemin = 'bi-self/selfrecover/src/ProfilDeploiement.php'
           motif  = '    public function verifierOrigine(?string $ip): void\n    {'
@@ -207,9 +255,11 @@ jobs:
             echo "$sortie"; echo "::error::le banc reste VERT alors que le profil ne refuse plus rien"; exit 1
           fi
           cp /tmp/Profil.intact "$F"
-          cmp -s /tmp/Profil.intact "$F" \
+          # ⚠️ Mesuré contre l'empreinte prise AVANT la plantation. Comparer au témoin
+          # qu'on vient de recopier ne peut échouer que si `cp` a échoué.
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
             || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-          echo "$sortie" | grep -q 'une origine transmise est refusée' \
+          echo "$sortie" | grep -q '❌ .*une origine transmise est refusée' \
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du profil"; exit 1; }
           echo "✓ le banc rougit, et sur le cas du profil"
 
@@ -681,6 +731,7 @@ jobs:
         run: |
           F=demo/lab/lib/admin.php
           cp "$F" /tmp/admin.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
           # En SQL, `username != '…'` ne rend pas « vrai » sur une valeur absente :
           # retirer ce garde écarte les codes introuvables sans le dire.
           python3 - <<'PY'
@@ -699,9 +750,11 @@ jobs:
             echo "$sortie"; echo "::error::le banc reste VERT alors que la console perd des échecs"; exit 1
           fi
           cp /tmp/admin.intact "$F"
-          cmp -s /tmp/admin.intact "$F" \
+          # ⚠️ Mesuré contre l'empreinte prise AVANT la plantation. Comparer au témoin
+          # qu'on vient de recopier ne peut échouer que si `cp` a échoué.
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
             || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
-          echo "$sortie" | grep -q 'voit exactement celles-là' \
+          echo "$sortie" | grep -q '❌ .*voit exactement celles-là' \
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du compteur"; exit 1; }
           echo "✓ le banc rougit, et sur le cas du compteur de la console"
 
