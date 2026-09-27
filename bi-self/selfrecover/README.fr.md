@@ -209,14 +209,16 @@ Impossible sans **l'appareil** (le blob) **ET** le **mot** (pour déchiffrer la 
 
 ## Super-utilisateur (SU) — le cran au-dessus de l'admin
 
-SelfRecover distingue trois rôles : **SU → Admin → User**. Un **admin** peut trancher les litiges L3 ; le **SU** gouverne les admins eux-mêmes.
+SelfRecover gouverne **un seul droit** : trancher les litiges L3. Deux rôles le portent — l'**admin** tranche, le **SU** gouverne les admins eux-mêmes.
+
+⚠️ **La bibliothèque ne vérifie pas ce droit** : son schéma ne porte aucune colonne de droit. C'est ton application qui établit la qualité d'admin, et la bibliothèque la reçoit comme une **affirmation**. Si tu as d'autres rôles — une modération de salon, par exemple —, SelfRecover n'en sait rien : c'est à tes routes de les tenir à l'écart des dossiers de récupération.
 
 **Principes :**
 - **Le SU n'est pas en base.** Il est ancré au serveur : accès au serveur = autorisation. Son secret est **hors base et hors code** — dans un fichier hors webroot ou une variable d'environnement (**modèle Kerckhoffs** : la sécurité tient au secret, pas à l'obscurité du code, qui est public).
 - **CLI uniquement**, jamais exposé sur le web ni en distant.
 - **Séparation des pouvoirs** : un admin ne se promeut pas lui-même — il **propose** une promotion, le SU **tranche** (avec observation obligatoire).
 
-**Ce que le SU peut faire :** nommer le **premier** admin (`first-admin`, une seule fois), révoquer des admins (révocation = coupe les sessions ; le dernier ne se révoque qu'en nommant son successeur dans le même geste), approuver/rejeter les demandes de promotion, **auditer** (croise `is_admin` en base ↔ journal → détecte les **admins fantômes** et les met en **quarantaine automatique**), vérifier l'intégrité du journal, changer sa passphrase, sceller/restaurer une sauvegarde du journal (AES-256-GCM), une commande « coquille vide » (`reset-shell`) si la passphrase SU est perdue (révoque tous les admins, fige le journal, repart propre), et `reset-db` en cas de compromission (supprime **tous** les comptes et le secret SU ; la base et le secret sont mis de côté, le journal est gardé et porte le reset).
+**Ce que le SU peut faire :** nommer le **premier** admin (`first-admin`, une seule fois), révoquer des admins (révocation = coupe les sessions ; le dernier ne se révoque qu'en nommant son successeur dans le même geste), approuver/rejeter les demandes de promotion, **auditer** (croise la colonne de droit de ton schéma — `is_admin` dans la démo de référence — ↔ journal → détecte les **admins fantômes** et les met en **quarantaine automatique**), vérifier l'intégrité du journal, changer sa passphrase, sceller/restaurer une sauvegarde du journal (AES-256-GCM), une commande « coquille vide » (`reset-shell`) si la passphrase SU est perdue (révoque tous les admins, fige le journal, repart propre), et `reset-db` en cas de compromission (supprime **tous** les comptes et le secret SU ; la base et le secret sont mis de côté, le journal est gardé et porte le reset).
 
 **Invariant :** une fois le premier admin nommé, la base en garde toujours au moins un — la règle vit dans la base elle-même, pas seulement dans la console. Seuls `reset-shell` et `reset-db` la ramènent à zéro, et rouvrent `first-admin`.
 

@@ -209,7 +209,9 @@ Impossible without **the device** (the blob) **AND** the **word** (to decrypt th
 
 ## Super-user (SU) — the tier above admin
 
-SelfRecover distinguishes three roles: **SU → Admin → User**. An **admin** can settle L3 disputes; the **SU** governs the admins themselves.
+SelfRecover governs **a single right**: settling L3 disputes. Two roles carry it — the **admin** decides, the **SU** governs the admins themselves.
+
+⚠️ **The library does not verify this right**: its schema carries no rights column. Your application establishes who is an admin, and the library takes it as an **assertion**. If you have other roles — room moderation, say — SelfRecover knows nothing about them: it is up to your routes to keep them away from recovery cases.
 
 **Principles:**
 - **The SU is not in the database.** It is server-anchored: server access = authorization. Its secret is **outside the database and outside the code** — in a file outside the webroot, or an environment variable (**Kerckhoffs model**: security rests on the secret, not on the obscurity of the code, which is public).
