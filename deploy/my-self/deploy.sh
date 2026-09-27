@@ -104,18 +104,6 @@ EXCLUS=(
     # l'outillage qui les pose. Déployées depuis un poste, elles changeraient les
     # drapeaux sous les joueurs d'une partie en cours.
     "/demo/lab/challenge/"
-    # 🔑 Ce que `faire_coffre.py` produit quand un développeur l'essaie : les
-    # DEUX secrets d'un coffre en clair (`code_L1.txt` le code notaire,
-    # `mot_L2.txt` le mot de l'utilisateur, lignes 74-75 de l'outil), et le
-    # coffre lui-même avec son pli imprimable et ses QR codes.
-    #
-    # ⚠️ Les deux sont dans `.gitignore` — quelqu'un avait déjà jugé qu'ils ne
-    # devaient pas être publiés. Mesuré le 11/09/2026 : ils étaient quand même
-    # sur la racine servie depuis le 9, parce qu'une règle `.gitignore` ne
-    # retient pas un `rsync`. Non servis par nginx, mais lisibles par tout ce
-    # qui tourne sous `www-data`.
-    "/self-security/selfvault/outils/secrets/"
-    "/self-security/selfvault/sortie/"
     # 🔑 Le binaire compilé du dérivateur LUKS. Sa source `.c` est versionnée,
     # lui ne l'est pas — il naît d'un `gcc` local. Un exécutable ELF n'a rien à
     # faire sur une racine servie, et celui-ci y était depuis une date que

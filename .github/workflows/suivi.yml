@@ -1,0 +1,38 @@
+# Suivi — ce qui peut devenir faux sans qu'on pousse ici.
+#
+# 🔑 **Pourquoi ce workflow existe.** Deux retards mesurés par l'audit du 27/09/2026 ne venaient d'aucun
+# envoi sur ce dépôt : des versions annoncées que personne n'avait taguées (SelfJustice v0.4.0 depuis le
+# 11/09), et un dépôt voisin, selffarm-lite, qui avançait pendant que nos README le décrivaient tel qu'en
+# juin. Un contrôle qui ne tourne qu'à nos propres envois ne voit ni l'un ni l'autre : celui-ci tourne
+# aussi chaque matin.
+#
+# Il n'est pas exigé par la protection de `main` : un tag manquant dépend d'un geste de Pierroons, et le
+# dépôt voisin d'une autre conversation. Il signale, il ne bloque pas l'envoi d'un autre module.
+name: suivi
+
+on:
+  push:
+    branches: [main, dev]
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tags:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          fetch-depth: 0  # l'historique de modules.json date les versions, et les tags s'y lisent
+      - name: Chaque version annoncée a son tag
+        run: bash scripts/check-versions.sh --tags
+
+  ecosysteme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - name: Les README disent la version publiée de selffarm-lite
+        run: bash scripts/check-ecosysteme.sh

@@ -56,6 +56,56 @@ jobs:
       - name: Chemins cités
         run: bash scripts/check-paths.sh
 
+      # ── Versions ───────────────────────────────────────────────────────────
+      # modules.json est la source unique ; chaque porteur qu'il déclare doit la
+      # répéter. Le tag manquant se suit à part, dans suivi.yml : il dépend d'un
+      # geste de Pierroons et ne doit pas bloquer l'envoi d'un autre module.
+      - name: Versions — chaque porteur dit la version de modules.json
+        run: bash scripts/check-versions.sh
+
+      - name: Canari — le contrôle des versions rougit sur un porteur décalé et sur un tag absent
+        run: |
+          F=bi-self/selfmoderate/README.md
+          cp "$F" /tmp/SM.intact
+          sed -i -E 's#(badge/status-v)[0-9]+\.[0-9]+\.[0-9]+#\10.0.0#' "$F"
+          grep -q 'badge/status-v0.0.0' "$F" \
+            || { cp /tmp/SM.intact "$F"; echo "::error::la plantation n'a pas pris — le canari ne prouve rien"; exit 1; }
+          if bash scripts/check-versions.sh >/dev/null 2>&1; then
+            cp /tmp/SM.intact "$F"
+            echo "::error::le contrôle reste VERT avec un badge décalé — il ne mesure pas ce qu'il annonce"
+            exit 1
+          fi
+          cp /tmp/SM.intact "$F"
+          cmp -s /tmp/SM.intact "$F" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le contrôle rougit sur un porteur décalé, et le fichier est restauré"
+          # Mode --tags : une version qu'aucun tag ne porte, avec un délai nul, doit rougir.
+          cp modules.json /tmp/MJ.intact
+          python3 -c "import json;d=json.load(open('modules.json'));[m.update(version='9.9.9') for m in d['modules'] if m['id']=='selfmoderate'];json.dump(d,open('modules.json','w'),ensure_ascii=False,indent=2)"
+          if VERSIONS_DELAI_JOURS=0 bash scripts/check-versions.sh --tags >/dev/null 2>&1; then
+            cp /tmp/MJ.intact modules.json
+            echo "::error::le mode --tags reste VERT sur une version sans tag"
+            exit 1
+          fi
+          cp /tmp/MJ.intact modules.json
+          cmp -s /tmp/MJ.intact modules.json \
+            || { echo "::error::modules.json n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le mode --tags rougit sur une version sans tag, et modules.json est restauré"
+
+      - name: Canari — le contrôle d'écosystème rougit quand selffarm-lite avance
+        run: |
+          echo 9.9.9 > /tmp/selffarm-version
+          cp README.md /tmp/RM.intact && cp README.fr.md /tmp/RF.intact
+          if SELFFARM_VERSION_URL=file:///tmp/selffarm-version bash scripts/check-ecosysteme.sh >/dev/null 2>&1; then
+            echo "::error::le contrôle reste VERT alors que selffarm-lite annonce une autre version"
+            exit 1
+          fi
+          # Comparaison aux copies d'avant, et non à HEAD : un README modifié et non
+          # commité ferait rougir `git diff` sans que le contrôle y soit pour rien.
+          cmp -s /tmp/RM.intact README.md && cmp -s /tmp/RF.intact README.fr.md \
+            || { echo "::error::le contrôle a modifié les README sans --ecrire"; exit 1; }
+          echo "✓ le contrôle rougit sur une version voisine différente, sans toucher aux README"
+
       # ── Garde-fous ─────────────────────────────────────────────────────────
       # Priorité sur le reste : ce sont eux qui échouent en silence.
       - name: Garde-fou — socle SelfRecover (profil de hachage, encodage, diceware)
@@ -102,30 +152,6 @@ jobs:
           echo "$sortie" | grep -qE '^▸ implémentation exercée : argon2id\.js \(écrite dans ce dépôt\)$' \
             || { echo "::error::le banc n'a pas exercé argon2id.js"; exit 1; }
 
-      # SelfVault — le format d'un coffre destiné à un dépôt notarial. Le banc
-      # pilote les DEUX lecteurs : la réimplémentation Node et l'application
-      # réelle découpée en QR codes. Cette dernière était le seul des trois
-      # porteurs du format que rien n'éprouvait : on pouvait y planter trois
-      # défauts cryptographiques sans qu'aucun contrôle ne bouge.
-      # `zbar-tools`, `poppler-utils` et `weasyprint` sont là pour la boucle
-      # papier : rendre le pli, le rasteriser, relire ses QR codes, reconstituer.
-      # Sans eux le banc la saute — et le dit — mais ce serait un zéro plus étroit
-      # que ce que son nom laisse croire.
-      - name: Garde-fou — le format SELFVAULT3 et sa boucle papier
-        run: |
-          # ⚠️ `apt-get update` rend 100 dès qu'UN index est incohérent, y compris
-          # celui d'un dépôt tiers préinstallé sur le runner et dont ce dépôt ne
-          # dépend pas — vu le 09/09/2026 sur celui de Chrome. Le message d'apt le
-          # dit lui-même : « They have been ignored, or old ones used instead ».
-          # L'étape mourait alors, et les trente contrôles suivants passaient en
-          # `skipped` : une panne amont éteignait la CI sans que rien ne le nomme.
-          # C'est l'installation qui porte la propriété qu'on veut, pas la
-          # fraîcheur de tous les index — elle reste donc bloquante.
-          sudo apt-get update -qq || echo "::warning::index apt partiel — l'installation reste bloquante"
-          sudo apt-get install -y -qq zbar-tools poppler-utils weasyprint
-          python3 -m pip install --quiet --disable-pip-version-check cryptography qrcode pillow
-          bash self-security/selfvault/tests/banc.sh
-
       # Une démo qui recopierait la bibliothèque au lieu d'y pointer redeviendrait
       # le duplicata que ce lien existe pour supprimer — et le fichier recopié
       # aurait l'air correct le jour où il est posé.
@@ -137,7 +163,14 @@ jobs:
       # pas du service — et le test tourne sans privilège, dans un préfixe jetable.
       - name: Installer nginx (pour valider les gabarits de vhost)
         run: |
-          # `update` non bloquant, `install` bloquant — motif expliqué au banc SELFVAULT3.
+          # ⚠️ `apt-get update` rend 100 dès qu'UN index est incohérent, y compris
+          # celui d'un dépôt tiers préinstallé sur le runner et dont ce dépôt ne
+          # dépend pas — vu le 09/09/2026 sur celui de Chrome. Le message d'apt le
+          # dit lui-même : « They have been ignored, or old ones used instead ».
+          # L'étape mourait alors, et les trente contrôles suivants passaient en
+          # `skipped` : une panne amont éteignait la CI sans que rien ne le nomme.
+          # C'est l'installation qui porte la propriété qu'on veut, pas la
+          # fraîcheur de tous les index — elle reste donc bloquante.
           sudo apt-get update -qq || echo "::warning::index apt partiel — l'installation reste bloquante"
           sudo apt-get install -y -qq nginx-light
 
@@ -288,7 +321,7 @@ jobs:
       # conteneur LUKS2 est un fichier, aucune activation device-mapper.
       - name: Outils du banc SelfRecover-LUKS
         run: |
-          # `update` non bloquant, `install` bloquant — motif expliqué au banc SELFVAULT3.
+          # `update` non bloquant, `install` bloquant — motif expliqué à l'installation de nginx.
           sudo apt-get update -qq || echo "::warning::index apt partiel — l'installation reste bloquante"
           sudo apt-get install -y -qq cryptsetup-bin python3-argon2 libargon2-dev
           # Le binaire C est celui que le keyscript appelle à l'amorçage. Le banc

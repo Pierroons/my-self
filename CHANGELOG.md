@@ -117,27 +117,6 @@ Banc `tests/test_format_slot.sh`, 14 cas sur des conteneurs LUKS de 32 Mo, sans 
 canari en CI retire la comparaison des formats, et le banc doit rougir sur le cas slot
 `raw` / keyscript `hex`. Quatre défauts plantés ont chacun fait rougir leur cas.
 
-### SelfDataGuard v0.4.0 — le chiffrement ne dépend plus du processeur — 26 septembre 2026
-
-Jusqu'à la 0.3.0, SelfDataGuard chiffrait en AES-256-GCM par libsodium, qui ne le sert
-qu'avec un support matériel : AES-NI, plus AVX depuis libsodium 1.0.19. Sur un Celeron
-sans AVX avec une libsodium récente, ou sur un Raspberry Pi 4, la bibliothèque ne pouvait
-ni écrire ni relire, et son message accusait AES-NI à tort.
-
-- **Toute écriture passe en XChaCha20-Poly1305**, calculé en logiciel et en temps constant
-  sur tout processeur, dans un format versionné : `SDG2.` suivi du base64.
-- **Les blobs écrits avant restent lisibles**, par libsodium là où il sert AES, par OpenSSL
-  ailleurs. Éprouvé sur un Raspberry Pi 4 sans AES matériel : les 8 bancs passent, et une
-  base écrite par la 0.3.0 se relit entièrement.
-- ⚠️ **Un blob écrit par la 0.4.0 ne se relit pas en 0.3.0** : un retour arrière ne vaut
-  que pour une base où la 0.4.0 n'a rien écrit.
-- Les clés et les clairs n'apparaissent plus dans les traces d'exception
-  (`#[\SensitiveParameter]`).
-
-Bancs : 219 contrôles, dont le vecteur de test officiel de XChaCha20-Poly1305 et un blob
-AES figé que libsodium et OpenSSL produisent à l'identique. Détail dans le CHANGELOG du
-module.
-
 ### La console SU n'écrit plus au journal ce que la base a refusé — 26 septembre 2026
 
 - **La base et le journal réussissent ou échouent ensemble.** `first-admin`, `revoke-admin`,
@@ -406,6 +385,29 @@ même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le mê
 ayant renoncé aux contrôles qui touchent au système.
 
 ---
+
+## [SelfDataGuard v0.4.0] — 26 septembre 2026
+
+### SelfDataGuard v0.4.0 — le chiffrement ne dépend plus du processeur — 26 septembre 2026
+
+Jusqu'à la 0.3.0, SelfDataGuard chiffrait en AES-256-GCM par libsodium, qui ne le sert
+qu'avec un support matériel : AES-NI, plus AVX depuis libsodium 1.0.19. Sur un Celeron
+sans AVX avec une libsodium récente, ou sur un Raspberry Pi 4, la bibliothèque ne pouvait
+ni écrire ni relire, et son message accusait AES-NI à tort.
+
+- **Toute écriture passe en XChaCha20-Poly1305**, calculé en logiciel et en temps constant
+  sur tout processeur, dans un format versionné : `SDG2.` suivi du base64.
+- **Les blobs écrits avant restent lisibles**, par libsodium là où il sert AES, par OpenSSL
+  ailleurs. Éprouvé sur un Raspberry Pi 4 sans AES matériel : les 8 bancs passent, et une
+  base écrite par la 0.3.0 se relit entièrement.
+- ⚠️ **Un blob écrit par la 0.4.0 ne se relit pas en 0.3.0** : un retour arrière ne vaut
+  que pour une base où la 0.4.0 n'a rien écrit.
+- Les clés et les clairs n'apparaissent plus dans les traces d'exception
+  (`#[\SensitiveParameter]`).
+
+Bancs : 219 contrôles, dont le vecteur de test officiel de XChaCha20-Poly1305 et un blob
+AES figé que libsodium et OpenSSL produisent à l'identique. Détail dans le CHANGELOG du
+module.
 
 ## [SelfRecover v0.6.0] — 22 septembre 2026
 
@@ -1069,6 +1071,8 @@ ressources officielles dont 340 modèles de lettre.
 Garde-fous portés de 15 à 21, dont trois neufs, chacun vu rougir avant d'être
 cru. Le banc du déploiement annonçait « 10/10 » depuis un chiffre écrit en dur :
 il en éprouvait douze, il en compte quatorze.
+
+## [SelfModerate v0.3.0] — 22 août 2026
 
 ### SelfModerate v0.3.0 — 21-22 août 2026
 

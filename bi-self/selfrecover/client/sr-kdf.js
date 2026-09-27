@@ -18,10 +18,9 @@
  *
  * ── Pourquoi Argon2id et pas PBKDF2 ────────────────────────────────────────
  *
- * L'exception PBKDF2 du projet est SelfVault, et elle énonce sa propre condition
- * de validité : « à 103 bits TIRÉS AU SORT, une KDF mémoire-dure n'achète rien ;
- * son intérêt est de rattraper les secrets CHOISIS PAR UN HUMAIN ». SelfVault n'a
- * aucun secret choisi, par construction.
+ * Une KDF rapide ne se défend que pour un secret TIRÉ AU SORT : à une centaine
+ * de bits d'aléa, une KDF mémoire-dure n'achète rien ; son intérêt est de
+ * rattraper les secrets CHOISIS PAR UN HUMAIN.
  *
  * Le mot mémorisé, lui, est choisi par un humain — c'est sa définition. La
  * condition tombe, donc l'exception ne couvre pas ce fichier. Argon2id, qui est

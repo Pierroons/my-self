@@ -1,0 +1,116 @@
+{
+  "depot": "my-self",
+  "lisez_moi": "Source unique des versions des modules de ce dépôt. scripts/check-versions.sh vérifie que chaque porteur déclaré dit la même version, et que chaque version a son tag <id>-v<version>. Les autres dépôts de l'écosystème lisent ce fichier au lieu de recopier nos versions.",
+  "modules": [
+    {
+      "id": "selfrecover",
+      "nom": "SelfRecover",
+      "dossier": "bi-self/selfrecover",
+      "version": "0.6.0",
+      "resume": {"fr": "récupération de compte sans email ni SMS", "en": "account recovery without email or SMS"},
+      "porteurs": [
+        ["bi-self/selfrecover/README.md", "badge/status-v"],
+        ["bi-self/selfrecover/README.fr.md", "badge/status-v"],
+        ["bi-self/README.md", "badge/SelfRecover-v"],
+        ["bi-self/README.fr.md", "badge/SelfRecover-v"],
+        ["README.md", "| [SelfRecover](./bi-self/selfrecover/)"],
+        ["README.fr.md", "| [SelfRecover](./bi-self/selfrecover/)"],
+        ["web/my-self.fr/index.html", "<span class=\"name\">SelfRecover<"],
+        ["demo/bi-self-duo/frontend/index.html", "<h3>SelfRecover<"]
+      ]
+    },
+    {
+      "id": "selfrecover-luks",
+      "nom": "SelfRecover-LUKS",
+      "dossier": "self-security/selfrecover-luks",
+      "version": "0.5.0",
+      "resume": {"fr": "ouverture d'un disque chiffré LUKS par une passphrase dérivée en Argon2id", "en": "unlocking a LUKS-encrypted disk with an Argon2id-derived passphrase"},
+      "porteurs": [
+        ["self-security/selfrecover-luks/README.md", "badge/status-v"],
+        ["self-security/selfrecover-luks/README.fr.md", "badge/statut-v"],
+        ["self-security/README.md", "badge/SelfRecover--LUKS-v"],
+        ["self-security/README.fr.md", "badge/SelfRecover--LUKS-v"],
+        ["README.md", "| [SelfRecover-LUKS](./self-security/selfrecover-luks/)"],
+        ["README.fr.md", "| [SelfRecover-LUKS](./self-security/selfrecover-luks/)"],
+        ["web/my-self.fr/index.html", "<span class=\"name\">SelfRecover-LUKS<"]
+      ]
+    },
+    {
+      "id": "selfdataguard",
+      "nom": "SelfDataGuard",
+      "dossier": "self-security/selfdataguard",
+      "version": "0.4.0",
+      "resume": {"fr": "chiffrement des données au repos côté application", "en": "application-layer encryption of data at rest"},
+      "porteurs": [
+        ["self-security/selfdataguard/README.md", "badge/status-v"],
+        ["self-security/selfdataguard/README.fr.md", "badge/statut-v"],
+        ["self-security/README.md", "badge/SelfDataGuard-v"],
+        ["self-security/README.fr.md", "badge/SelfDataGuard-v"],
+        ["README.md", "| [SelfDataGuard](./self-security/selfdataguard/)"],
+        ["README.fr.md", "| [SelfDataGuard](./self-security/selfdataguard/)"],
+        ["web/my-self.fr/index.html", "<span class=\"name\">SelfDataGuard<"],
+        ["demo/selfdataguard/index.html", "<span class=\"version\">v"],
+        ["demo/selfdataguard/index.html", "releases/tag/selfdataguard-v"]
+      ]
+    },
+    {
+      "id": "selfmoderate",
+      "nom": "SelfModerate",
+      "dossier": "bi-self/selfmoderate",
+      "version": "0.3.0",
+      "resume": {"fr": "modération communautaire par raisonnement social", "en": "community moderation through social reasoning"},
+      "porteurs": [
+        ["bi-self/selfmoderate/README.md", "badge/status-v"],
+        ["bi-self/selfmoderate/README.fr.md", "badge/status-v"],
+        ["bi-self/README.md", "badge/SelfModerate-v"],
+        ["bi-self/README.fr.md", "badge/SelfModerate-v"],
+        ["README.md", "| [SelfModerate](./bi-self/selfmoderate/)"],
+        ["README.fr.md", "| [SelfModerate](./bi-self/selfmoderate/)"],
+        ["web/my-self.fr/index.html", "<span class=\"name\">SelfModerate<"],
+        ["demo/bi-self-duo/frontend/index.html", "<h3>SelfModerate<"]
+      ]
+    },
+    {
+      "id": "selfjustice",
+      "nom": "SelfJustice",
+      "dossier": "self-right/selfjustice",
+      "version": "0.4.0",
+      "resume": {"fr": "consultation du droit français et européen par une API publique", "en": "French and EU law lookup through a public API"},
+      "porteurs": [
+        ["self-right/selfjustice/README.md", "badge/status-v"],
+        ["self-right/selfjustice/README.fr.md", "badge/statut-v"],
+        ["self-right/README.md", "badge/SelfJustice-v"],
+        ["self-right/README.fr.md", "badge/SelfJustice-v"],
+        ["README.md", "| [SelfJustice](./self-right/selfjustice/)"],
+        ["README.fr.md", "| [SelfJustice](./self-right/selfjustice/)"],
+        ["web/my-self.fr/index.html", "<span class=\"name\">SelfJustice<"]
+      ]
+    },
+    {
+      "id": "selfact",
+      "nom": "SelfAct",
+      "dossier": "self-right/selfact",
+      "version": "0.1.2",
+      "resume": {"fr": "modèles officiels et calcul des délais de procédure", "en": "official templates and procedural deadlines"},
+      "porteurs": [
+        ["self-right/selfact/README.md", "badge/status-v"],
+        ["self-right/selfact/README.fr.md", "badge/statut-v"],
+        ["self-right/README.md", "badge/SelfAct-v"],
+        ["self-right/README.fr.md", "badge/SelfAct-v"],
+        ["README.md", "| [SelfAct](./self-right/selfact/)"],
+        ["README.fr.md", "| [SelfAct](./self-right/selfact/)"],
+        ["web/my-self.fr/index.html", "<span class=\"name\">SelfAct<"]
+      ]
+    },
+    {
+      "id": "selfright-mcp",
+      "nom": "selfright-mcp",
+      "dossier": "self-right/selfjustice/mcp",
+      "version": "0.4.3",
+      "resume": {"fr": "serveur MCP de consultation du droit, adossé à SelfJustice", "en": "MCP server for law lookup, backed by SelfJustice"},
+      "porteurs": [
+        ["self-right/selfjustice/mcp/pyproject.toml", "version = \""]
+      ]
+    }
+  ]
+}

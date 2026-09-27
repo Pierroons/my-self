@@ -136,9 +136,8 @@ kdf_js=$(git grep -lE "name:\s*'PBKDF2'|\"PBKDF2\"|'PBKDF2'" -- '*.js' \
 if [ -n "$kdf_js" ]; then
     echo "  ✗ dérivation de mot de passe en JavaScript hors de ${KDF_JS} :"
     echo "$kdf_js" | sed 's/^/     /'
-    echo "     Argon2id est la règle du projet ; l'exception est SelfVault, et elle"
-    echo "     énonce sa condition — des secrets TIRÉS AU SORT. Un mot mémorisé est"
-    echo "     choisi par un humain : la condition ne tient pas."
+    echo "     Argon2id est la règle du projet. Une KDF rapide ne se défend que pour"
+    echo "     des secrets TIRÉS AU SORT ; un mot mémorisé est choisi par un humain."
     echec=1
 else
     echo "  ✓ aucune KDF en JavaScript hors du porteur"
