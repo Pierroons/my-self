@@ -56,6 +56,26 @@ INSERT INTO numeros VALUES ('2200111','aaaa000000000001'), ('2111222','aaaa00000
   ('2303077','aaaa000000000003'), ('2303077','aaaa000000000004');
 SQL
 
+# ── Un numéro porté par PLUS de décisions que la limite de la route ─────────
+# Des homonymes récents, plus nombreux que la limite, et la décision cherchée,
+# plus ancienne que tous. Mesuré sur la production le 27/09/2026 : « 23/00039 »,
+# 61 décisions. La limite est lue dans api.php : écrite ici, elle pourrait
+# grandir là-bas et ce cas passerait sans plus rien éprouver.
+LIMITE=$(sed -nE 's/^const LIMITE_DECISIONS = ([0-9]+);.*/\1/p' "$RACINE/api/api.php")
+[ -n "$LIMITE" ] || { echo "LIMITE_DECISIONS introuvable dans api.php" >&2; exit 1; }
+NB_HOMONYMES=$((LIMITE + 9))
+CIBLE=$(date -d "2026-01-01 - $((NB_HOMONYMES + 30)) days" +%F)
+SANS_DECISION=$(date -d "$CIBLE + 1 day" +%F)
+sqlite3 "$DB" "
+WITH RECURSIVE s(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM s WHERE i < $NB_HOMONYMES)
+INSERT INTO decisions SELECT printf('dddd%012d', i), '24/00042',
+  date('2026-01-01', printf('-%d days', i)), 'ca', 'soc', printf('ca_cour%04d', i),
+  'f', '', 'other', '', 'ar', '2026-01-02', 0 FROM s;
+INSERT INTO decisions VALUES
+  ('dddd999999999999','24/00042','$CIBLE','ca','soc','ca_cible','f','','rejet','ECLI:F','ar','$CIBLE',0);
+INSERT INTO numeros SELECT '2400042', id FROM decisions WHERE number = '24/00042';"
+
+
 # ── Le faux amont ───────────────────────────────────────────────────────────
 # Il ne connaît qu'une décision, du 2026-08-12, hors de portée de l'index. Le
 # reste rend une liste vide : c'est ce qui distingue « l'amont ne l'a pas » de
@@ -201,6 +221,27 @@ nb=$(printf '%s' "$corps" | python3 -c 'import json,sys; print(len(json.load(sys
 controle "homonymes locaux, date couverte, aucune correspondance → absente" \
     "23%2F03077?jurisdiction=ca&date=2025-06-01" \
     "etat:absente" "reserve:~aucune n'est datée du 2025-06-01"
+
+echo
+echo "▸ Plus d'homonymes que la limite de la route"
+# 🔑 La limite s'appliquait avant le filtre par date : derrière plus
+# d'homonymes récents qu'elle n'en retient, une décision présente sortait
+# « absente », et le MCP disait au modèle de ne pas la présenter comme existante.
+controle "la datée est retrouvée derrière $NB_HOMONYMES homonymes plus récents (limite $LIMITE)" \
+    "24%2F00042?jurisdiction=ca&date=$CIBLE" \
+    "etat:trouvee" "source:index local" "count:1"
+cour=$(curl -s "$BASE/24%2F00042?jurisdiction=ca&date=$CIBLE" \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin)["decisions"]; print(d[0]["cour"] if d else "")')
+[ "$cour" = "ca_cible" ] \
+    && ok "la décision rendue est la datée, pas un homonyme" \
+    || nok "la décision rendue vient de « $cour »"
+# Le nombre d'homonymes que lit le modèle vient du total, pas de la liste bornée.
+controle "trouvée → les $NB_HOMONYMES autres sont comptées, pas les seules affichées" \
+    "24%2F00042?jurisdiction=ca&date=$CIBLE" \
+    "reserve:~Les $NB_HOMONYMES autre(s) décision(s)"
+controle "absente → le numéro est porté par $((NB_HOMONYMES + 1)) décisions, pas $LIMITE" \
+    "24%2F00042?jurisdiction=ca&date=$SANS_DECISION" \
+    "etat:absente" "reserve:~$((NB_HOMONYMES + 1)) décision(s) le portent"
 
 echo
 echo "▸ Sans date, la liste dit jusqu'où elle a cherché"

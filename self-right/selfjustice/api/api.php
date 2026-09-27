@@ -1644,7 +1644,13 @@ if ($segments[0] === 'jurisprudence') {
             $sql .= " AND d.jurisdiction = :juri";
             $sql_count .= " AND d.jurisdiction = :juri";
         }
-        $sql .= " ORDER BY d.decision_date DESC LIMIT " . LIMITE_DECISIONS;
+        // 🔑 Avec une date, les décisions de ce jour passent en tête. La limite
+        // s'applique avant le filtre par date plus bas : sans ce tri, une
+        // décision présente derrière plus d'homonymes récents que la limite
+        // n'en retient sortait « absente ».
+        $sql .= $date_annoncee === null
+            ? " ORDER BY d.decision_date DESC LIMIT " . LIMITE_DECISIONS
+            : " ORDER BY d.decision_date = :date DESC, d.decision_date DESC LIMIT " . LIMITE_DECISIONS;
 
         // Le total se compte à part : `count($decisions)` saturait à la limite
         // ci-dessus sans que rien ne le signale. Un outil dont la fonction est
@@ -1660,6 +1666,9 @@ if ($segments[0] === 'jurisprudence') {
         $stmt->bindValue(':norm', $norm);
         if ($juridiction !== null) {
             $stmt->bindValue(':juri', $juridiction);
+        }
+        if ($date_annoncee !== null) {
+            $stmt->bindValue(':date', $date_annoncee);
         }
         $res = $stmt->execute();
 
@@ -1730,6 +1739,9 @@ if ($segments[0] === 'jurisprudence') {
             $decisions, fn($d) => ($d['date_brute'] ?? null) === $date_annoncee));
         $homonymes = $date_annoncee === null ? [] : array_values(array_filter(
             $decisions, fn($d) => ($d['date_brute'] ?? null) !== $date_annoncee));
+        // Le nombre d'homonymes se déduit du total : la liste ci-dessus est
+        // bornée par la limite, et c'est ce nombre que lit le modèle.
+        $nb_homonymes = $date_annoncee === null ? 0 : $total - count($a_la_date);
         $correspond = (bool) $a_la_date;
 
         if (!$correspond && $date_annoncee !== null && $arret !== null && $date_annoncee > $arret) {
@@ -1861,7 +1873,7 @@ if ($segments[0] === 'jurisprudence') {
                 . "la date annoncée ($date_annoncee). Son existence est établie — "
                 . "c'est l'index qui est en retard, pas la référence qui est fausse."
                 : ($issues
-                ? ($homonymes ? "Les " . count($homonymes) . " autre(s) décision(s) "
+                ? ($nb_homonymes ? "Les " . $nb_homonymes . " autre(s) décision(s) "
                     . "portant ce numéro à d'autres dates ne sont pas celle-ci : un "
                     . "rôle général n'est unique qu'au sein d'une cour. Voir "
                     . "« homonymes »."
@@ -1881,7 +1893,7 @@ if ($segments[0] === 'jurisprudence') {
                     . "date de la décision cherchée : elle déclenche l'interrogation "
                     . "de la base amont, qui va plus loin."
                     : null))
-                : ($homonymes ? "Ce numéro existe — " . count($homonymes)
+                : ($nb_homonymes ? "Ce numéro existe — " . $nb_homonymes
                     . " décision(s) le portent — mais aucune n'est datée du "
                     . "$date_annoncee. Un rôle général n'est unique qu'au sein d'une "
                     . "cour : la décision cherchée n'est pas celles-là. Voir "
