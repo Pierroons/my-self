@@ -29,11 +29,11 @@
 set -uo pipefail
 
 CONFIG="${MYSELF_INSTANCE:-$HOME/.config/selfopsec/instance.map}"
-DOMAINES="${MYSELF_DOMAINES:-$HOME/.config/selfopsec/domaines.map}"
 
 # L'hôte et les chemins de destination vivent hors dépôt, avec les motifs de
-# l'audit OPSEC et la table des domaines : l'adresse d'une machine n'a pas à
-# être publiée avec le code qui la vérifie.
+# l'audit OPSEC : l'adresse d'une machine n'a pas à être publiée avec le code
+# qui la vérifie. La table des domaines, elle, est lue dans le déploiement, qui
+# la publie déjà — voir `lire_domaines`.
 [ -r "$CONFIG" ] || { cat >&2 <<AIDE
 ❌ Configuration d'instance introuvable : $CONFIG
    Une ligne d'hôte, puis une ligne par destination :
@@ -154,14 +154,24 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 printf '$^\n' > "$TMP/motifs-attendus"
 [ -r "$ATTENDU" ] && cut -f1 "$ATTENDU" | grep -vE '^\s*(#|$)' >> "$TMP/motifs-attendus"
 
+# 🔑 La table des domaines est celle que le déploiement substitue, lue chez
+# lui. Recopiée dans une configuration privée, elle avait perdu `ctf` : les huit
+# liens de la page d'accueil sortaient « DIVERGENT » alors que dépôt et instance
+# disaient la même chose. Les surcharges suivent celles du déploiement.
+lire_domaines() {
+    if [ -n "${MYSELF_DOMAINES:-}" ]; then cat -- "$MYSELF_DOMAINES"; return; fi
+    if [ -n "${MYSELF_TABLE:-}" ]; then cat -- "$MYSELF_TABLE"; return; fi
+    awk "/cat <<'TABLE'/ { dedans = 1; next } /^TABLE\$/ { dedans = 0 } dedans" "$DEPLOY"
+}
+
 SEDS=()
-if [ -r "$DOMAINES" ]; then
-    while read -r placeholder domaine _; do
-        case "$placeholder" in ''|'#'*) continue;; esac
-        case "$placeholder$domaine" in *[!a-zA-Z0-9.-]*) continue;; esac
-        [ -n "$domaine" ] && SEDS+=("-e" "s/$placeholder/$domaine/g")
-    done < "$DOMAINES"
-fi
+while read -r placeholder domaine _; do
+    case "$placeholder" in ''|'#'*) continue;; esac
+    case "$placeholder$domaine" in *[!a-zA-Z0-9.-]*) continue;; esac
+    [ -n "$domaine" ] && SEDS+=("-e" "s/$placeholder/$domaine/g")
+done < <(lire_domaines)
+# Sans table, chaque fichier substitué sortirait divergent : l'erreur se dit.
+[ "${#SEDS[@]}" -gt 0 ] || { echo "❌ Table des domaines vide — lue dans $DEPLOY" >&2; exit 1; }
 
 # Empreinte locale, placeholders concrétisés comme le fait le déploiement. Sans
 # ce rejeu, tout fichier substitué sortirait divergent et le rapport, illisible.
