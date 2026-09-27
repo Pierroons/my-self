@@ -6,6 +6,7 @@ namespace Pierroons\SelfRecover\Tests;
 
 use Pierroons\SelfRecover\Device\Appareil;
 use Pierroons\SelfRecover\Recovery\Litige;
+use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -24,7 +25,7 @@ class StockageMemoire implements StorageInterface
     public array $appareils = [];
     /** @var array<string, array{credentialId: string, quand: int}> */
     public array $defis = [];
-    /** @var list<array{etiquette: string, succes: bool, ip: ?string, quand: int}> */
+    /** @var list<array{etiquette: ?string, succes: bool, ip: ?string, quand: int}> */
     public array $tentatives = [];
     /** @var array<int, string> */
     public array $empreintes = [];
@@ -57,7 +58,7 @@ class StockageMemoire implements StorageInterface
         ));
     }
 
-    public function tracerTentative(string $etiquette, bool $succes, ?string $ip, int $quand): void
+    public function tracerTentative(?string $etiquette, bool $succes, ?string $ip, int $quand): void
     {
         $this->tentatives[] = compact('etiquette', 'succes', 'ip', 'quand');
     }
@@ -117,7 +118,7 @@ class StockageMemoire implements StorageInterface
 
     /** @var array<string, array{id: int, empreinte_passphrase: string}> */
     public array $passphrases = [];
-    /** @var list<array{id: int, compte_id: int, index: string, empreinte: string, utilise: bool}> */
+    /** @var list<array{id: int, compte_id: int, index: string, empreinte: string, utilise: bool, emis_le: int}> */
     public array $codes = [];
     private int $prochainCodeId = 1;
 
@@ -181,6 +182,7 @@ class StockageMemoire implements StorageInterface
             'index'      => $indexRecherche,
             'empreinte'  => $empreinteCode,
             'utilise'    => false,
+            'emis_le'    => $quand,
         ];
     }
 
@@ -211,9 +213,19 @@ class StockageMemoire implements StorageInterface
 
     public function consommerCode(int $codeId, int $quand): void
     {
+        // La même garde que les adaptateurs SQL, qui la tiennent d'un
+        // `WHERE … AND used = 0` : sans elle, ce double laisserait passer la double
+        // consommation que la sonde doit voir refusée. Un numéro inconnu lève aussi,
+        // comme un `rowCount()` à zéro : le contrat ne distingue pas les deux.
         foreach ($this->codes as $i => $c) {
-            if ($c['id'] === $codeId) { $this->codes[$i]['utilise'] = true; }
+            if ($c['id'] === $codeId && !$c['utilise']) {
+                $this->codes[$i]['utilise'] = true;
+
+                return;
+            }
         }
+
+        throw new CodeDejaConsomme('aucun code libre à ce numéro');
     }
 
     public function compterCodesRestants(int $compteId): int
@@ -222,6 +234,29 @@ class StockageMemoire implements StorageInterface
             $this->codes,
             static fn (array $c): bool => $c['compte_id'] === $compteId && !$c['utilise'],
         ));
+    }
+
+    public function dateDernierCodeEmis(int $compteId): ?int
+    {
+        $dates = array_column(
+            array_filter($this->codes, static fn (array $c): bool => $c['compte_id'] === $compteId),
+            'emis_le',
+        );
+
+        return $dates === [] ? null : max($dates);
+    }
+
+    public function dateDerniereReussite(string $etiquette): ?int
+    {
+        $dates = array_column(
+            array_filter(
+                $this->tentatives,
+                static fn (array $t): bool => $t['etiquette'] === $etiquette && $t['succes'],
+            ),
+            'quand',
+        );
+
+        return $dates === [] ? null : max($dates);
     }
 
     // ── Récupération de niveau 3 : dossier et arbitrage humain ─────────────

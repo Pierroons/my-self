@@ -5,7 +5,7 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per service, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.6.0](https://img.shields.io/badge/status-v0.6.0-green.svg)](#status)
+[![Status: v0.7.0](https://img.shields.io/badge/status-v0.7.0-green.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#trying-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#trying-selfrecover)
@@ -273,7 +273,7 @@ The raw recovery word never leaves the browser.
 
 ### Storage: a contract, and one implementation provided
 
-The library knows nothing about your database. It asks **39 questions** defined in
+The library knows nothing about your database. It asks **41 questions** defined in
 `src/Storage/StorageInterface.php` — "give me the memorized word's digest for account 42" —
 without knowing which table or column you keep it in.
 

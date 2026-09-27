@@ -174,7 +174,7 @@ Le L2 est un **vrai 2FA** — possession **et** connaissance — **sans identifi
 
 Le serveur vérifie les **deux** (Argon2id) et renvoie une **erreur générique** ne révélant jamais lequel a échoué. En cas de succès, l'utilisateur choisit son nouveau mot de passe et le code est marqué comme utilisé. Une variante optionnelle — le **facteur « cet appareil »** — offre une seconde voie de L2 (voir §5.4).
 
-Aucune bascule automatique vers L3 : le niveau 2 ne demande aucun identifiant, donc il n'y a rien à compter par compte. Son seul frein est le compteur par adresse. C'est la personne qui décide d'ouvrir un dossier.
+Aucune bascule automatique vers L3 : le niveau 2 ne demande aucun identifiant, mais le code qu'il reçoit nomme son compte, et c'est ce que compte son frein par compte — une fenêtre courte, puis la suspension du niveau pour ce compte. Le compteur par adresse s'y ajoute, là où une adresse veut dire quelque chose. C'est la personne qui décide d'ouvrir un dossier.
 
 ### 5.3 Niveau 3 — Accès totalement perdu
 

@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.6.0](https://img.shields.io/badge/status-v0.6.0-green.svg)](#statut)
+[![Status: v0.7.0](https://img.shields.io/badge/status-v0.7.0-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -273,7 +273,7 @@ Le mot de récupération brut ne quitte jamais le navigateur.
 
 ### Le stockage : un contrat, et une implémentation fournie
 
-La bibliothèque ne sait rien de ta base. Elle pose **39 questions** définies par
+La bibliothèque ne sait rien de ta base. Elle pose **41 questions** définies par
 `src/Storage/StorageInterface.php` — « donne-moi l'empreinte du mot mémorisé du compte 42 »
 — sans savoir dans quelle table ni dans quelle colonne tu la ranges.
 

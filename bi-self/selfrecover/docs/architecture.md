@@ -143,11 +143,17 @@ Not covered in detail in this diagram, but essential in production:
 What the library enforces, with the defaults it ships:
 
 - L1 — 5 failures per username and 12 per address, over a 15-minute window
-- L2 — no username is asked, so there is nothing to rate-limit per account; the
-  per-address counter applies
+- L2 — no username is asked, but the code names its account: 5 failures per
+  account over the same window, and the level is suspended for that account after
+  20 failures since its last rearming — a fresh batch of codes, a successful code
+  recovery, or a successful passphrase recovery. The per-address counter applies on
+  top. A deployment that holds none of those three dates does not suspend
 - L3 — 1 hour between two deposits on a dispute; 10 openings per address and 20
   per service, over an hour
-- A forced delay on every refusal that hides a state
+- A forced delay on every refusal that hides a state. One refusal names its
+  state, and must: an account whose level 2 is suspended cannot be told to renew
+  otherwise. It tells whoever already holds one of that account's codes that the
+  code names a real account, and tells it without paying the two Argon2id
 
 What it does **not** enforce, and leaves to the integrator: a honeypot field, a
 form-timing check, a proof of work in front of the routes, and any cross-account

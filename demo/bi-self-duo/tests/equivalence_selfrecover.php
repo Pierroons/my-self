@@ -70,6 +70,33 @@ verifier('neuf codes restent', ($r2['codes_restants'] ?? -1) === 9);
 verifier('la passphrase est renouvelée aussi', isset($r2['passphrase']));
 verifier('un code ne resert pas', $recovery->parCode($codes[0], $MOT, null, $now)['ok'] === false);
 
+echo "\n→ Le frein par compte du niveau 2, sur cette table-ci\n";
+// Cette démo ne trace pas l'origine : son `compterEchecsIp()` lève. Le frein par
+// compte est donc le seul que la bibliothèque puisse y appliquer — c'est la
+// configuration d'un service caché, éprouvée ici sur du SQL réel.
+$FAUX  = str_repeat('c3', 32);
+$neufs = $recovery->emettreCodes($compteId, 10, $now);
+// Le niveau 1 de ce banc a déjà écrit sous le nom brut : c'est son étiquette, et
+// elle ne change pas ici. On mesure donc ce que le niveau 2 AJOUTE.
+$nomAvant = (int) $db->querySingle("SELECT COUNT(*) FROM login_attempts WHERE username = 'alice' AND success = 0");
+for ($i = 0; $i < 5; $i++) { $recovery->parCode($neufs[0], $FAUX, null, $now); }
+$rF = $recovery->parCode($neufs[0], $MOT, null, $now);
+verifier('⭐ au sixième essai, même le bon mot est freiné',
+    $rF['ok'] === false && $rF['message'] === 'Trop de tentatives. Réessaie dans 15 minutes.',
+    $rF['message']);
+verifier('⭐ aucun code n\'a été consommé par les essais freinés',
+    (int) $db->querySingle('SELECT COUNT(*) FROM recovery_codes WHERE used = 1') === 0);
+$nomApres = (int) $db->querySingle("SELECT COUNT(*) FROM login_attempts WHERE username = 'alice' AND success = 0");
+$sousHmac = (int) $db->querySingle('SELECT COUNT(*) FROM login_attempts WHERE success = 0 AND username = \''
+    . $recovery->etiquetteEchecsL2('alice') . "'");
+verifier('🔑 les cinq échecs sont écrits sous un HMAC, aucun sous le nom du compte',
+    $nomApres === $nomAvant && $sousHmac === 5,
+    "sous le nom : $nomAvant puis $nomApres, sous le HMAC : $sousHmac");
+verifier('🔑 un code introuvable n\'écrit aucune étiquette',
+    (int) $db->querySingle('SELECT COUNT(*) FROM login_attempts WHERE username IS NULL') === 0
+    && $recovery->parCode('11111-11111', $MOT, null, $now + 901)['ok'] === false
+    && (int) $db->querySingle('SELECT COUNT(*) FROM login_attempts WHERE username IS NULL') === 1);
+
 echo "\n→ Ce que le refus ne dit pas\n";
 $sansMot  = $recovery->parCode($codes[1], str_repeat('b2', 32), null, $now);
 $sansCode = $recovery->parCode('00000-00000', $MOT, null, $now);
