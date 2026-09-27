@@ -191,6 +191,11 @@ empreinte() {
 
 git ls-files -z | tr '\0' '\n' | sort > "$TMP/versionnes"
 divergents=0; figes=0; absents=0; orphelins=0
+# ⚠️ Ce qui n'a pas pu être mesuré se compte à part, et entre dans le verdict.
+# Sans lui, un fichier dont le distant ne dit rien — `sha256sum` refusé sur un
+# 0600, lien cassé, chemin devenu répertoire — sortait de la boucle en silence,
+# et le script concluait « rien ne diverge » sur des fichiers qu'il n'avait pas lus.
+non_mesures=0
 : > "$TMP/rapport"
 
 for i in "${!PREFIXES[@]}"; do
@@ -227,23 +232,42 @@ for i in "${!PREFIXES[@]}"; do
         printf '%s  %s\n' "$(empreinte "$f")" "$rel" >> "$TMP/local"
     done < "$TMP/couverts"
 
+    # ⚠️ `sha256sum` qui échoue sur un fichier présent n'écrivait rien : stderr
+    # est jeté, stdout reste muet, et le fichier disparaissait de la comparaison
+    # sans laisser de trace. Un `0600` appartenant à un autre compte suffisait.
     if ! ssh -o ConnectTimeout=10 "$HOTE" "cd '$cible' 2>/dev/null || exit 3
         while IFS= read -r f; do
-            if [ -f \"\$f\" ]; then sha256sum -- \"\$f\"; else echo \"ABSENT  \$f\"; fi
+            if [ -f \"\$f\" ]; then sha256sum -- \"\$f\" 2>/dev/null || echo \"ILLISIBLE  \$f\"
+            else echo \"ABSENT  \$f\"; fi
         done" < "$TMP/relatifs" > "$TMP/distant" 2>/dev/null; then
         echo "   ⚠ injoignable, ou ${cible} inexistant — destination NON comparée"
         SAUTEES=$((SAUTEES + 1))
         continue
     fi
-    printf '   %s fichier(s) comparé(s)\n' "$nb"
+    # ⚠️ Le compte se prend sur ce qui a RÉELLEMENT été soumis à comparaison, pas
+    # sur le périmètre : la boucle ci-dessus écarte ce que `[ -f ]` refuse, un
+    # lien vers un répertoire par exemple. L'écart était d'un fichier sur 239, et
+    # un périmètre entièrement absent du worktree aurait annoncé 239 comparaisons
+    # en n'en faisant aucune.
+    printf '   %s fichier(s) comparé(s)\n' "$(wc -l < "$TMP/relatifs")"
 
     while IFS= read -r ligne; do
         h_local="${ligne%%  *}"; rel="${ligne#*  }"
-        ligne_d="$(grep -F -m1 -- "  $rel" "$TMP/distant" 2>/dev/null || true)"
-        [ -n "$ligne_d" ] || continue
-        h_dist="${ligne_d%%  *}"
         if [ "$prefixe" = "." ]; then origine="$rel"; else origine="${prefixe%/}/$rel"; fi
-        if [ "$h_dist" = "ABSENT" ]; then
+        # ⚠️ L'appariement se fait sur l'égalité du chemin, pas sur une
+        # sous-chaîne : `grep -F "  x.js"` trouvait la ligne de `x.json` et
+        # comparait le hash d'un autre fichier, donc une divergence inventée.
+        ligne_d="$(awk -F'  ' -v r="$rel" '$2 == r { print; exit }' "$TMP/distant" 2>/dev/null || true)"
+        if [ -z "$ligne_d" ]; then
+            non_mesures=$((non_mesures + 1))
+            printf 'NON MESURÉ %s → %s (le distant n'"'"'a rien répondu)\n' "$origine" "$cible" >> "$TMP/rapport"
+            continue
+        fi
+        h_dist="${ligne_d%%  *}"
+        if [ "$h_dist" = "ILLISIBLE" ]; then
+            non_mesures=$((non_mesures + 1))
+            printf 'NON MESURÉ %s → %s (illisible sur la destination)\n' "$origine" "$cible" >> "$TMP/rapport"
+        elif [ "$h_dist" = "ABSENT" ]; then
             # 🔑 Une absence n'est pas moins grave qu'une divergence : le fichier
             # versionné que la destination devrait porter n'y est pas, donc ce qui
             # est servi n'est plus ce qui est versionné. Le verdict la rangeait
@@ -269,12 +293,22 @@ for i in "${!PREFIXES[@]}"; do
 
     # Hors périmètre de déploiement, et pourtant là-bas : le fichier vit sur
     # l'instance et plus aucun déploiement ne le mettra à jour.
+    # ⚠️ `|| true` avalait l'échec de cette mesure : hôte injoignable entre-temps,
+    # cible renommée, et la sonde annonçait zéro figé sans avoir pu le demander.
+    # 🔑 Le `exit 0` distant est nécessaire : `while … do [ -f ] && echo; done`
+    # rend le code du DERNIER corps exécuté, donc 1 si le dernier fichier de la
+    # liste est absent — un succès aurait été lu comme une panne.
     if [ -s "$TMP/hors-perimetre" ]; then
-        while IFS= read -r f; do
-            figes=$((figes + 1)); printf 'FIGÉ       %s → %s\n' "$f" "$cible" >> "$TMP/rapport"
-        done < <(ssh -o ConnectTimeout=10 "$HOTE" "cd '$cible' 2>/dev/null || exit 3
-            while IFS= read -r f; do [ -f \"\$f\" ] && echo \"\$f\"; done" \
-            < "$TMP/hors-perimetre" 2>/dev/null || true)
+        if ssh -o ConnectTimeout=10 "$HOTE" "cd '$cible' 2>/dev/null || exit 3
+            while IFS= read -r f; do [ -f \"\$f\" ] && echo \"\$f\"; done
+            exit 0" < "$TMP/hors-perimetre" > "$TMP/figes-distant" 2>/dev/null; then
+            while IFS= read -r f; do
+                figes=$((figes + 1)); printf 'FIGÉ       %s → %s\n' "$f" "$cible" >> "$TMP/rapport"
+            done < "$TMP/figes-distant"
+        else
+            echo "   ⚠ figés NON mesurés sur ${cible}"
+            non_mesures=$((non_mesures + 1))
+        fi
     fi
 
     # Le sens inverse : ce que la destination porte et que le dépôt ignore.
@@ -284,13 +318,20 @@ for i in "${!PREFIXES[@]}"; do
     # laissé sur la machine n'est pas inconnu du dépôt : il en sort, et c'est
     # « figé » qui le décrit. Un orphelin est ce dont le dépôt n'a aucune trace.
     cat "$TMP/relatifs" "$TMP/hors-perimetre" 2>/dev/null | sort -u > "$TMP/connus"
-    while IFS= read -r f; do
-        [ -n "$f" ] || continue
-        orphelins=$((orphelins + 1)); printf 'ORPHELIN   %s → %s\n' "$f" "$cible" >> "$TMP/rapport"
-    done < <(ssh -o ConnectTimeout=10 "$HOTE" "find '$cible' -type f \
+    # Même défaut que pour les figés : un `find` qui n'a pas pu tourner rendait
+    # zéro orphelin, et le verdict final l'annonçait comme une mesure.
+    if ssh -o ConnectTimeout=10 "$HOTE" "find '$cible' -type f \
         \\( -name '*.php' -o -name '*.html' -o -name '*.js' -o -name '*.sql' -o -name '*.sh' -o -name '*.py' \\
            -o -name '.env*' -o -name '.htaccess' -o -name '*.conf' -o -name '*.ini' -o -name '*.yml' -o -name '*.yaml' \\) \\
-        -printf '%P\n' 2>/dev/null" 2>/dev/null | sort | comm -23 - "$TMP/connus")
+        -printf '%P\n' 2>/dev/null" > "$TMP/find-distant" 2>/dev/null; then
+        while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            orphelins=$((orphelins + 1)); printf 'ORPHELIN   %s → %s\n' "$f" "$cible" >> "$TMP/rapport"
+        done < <(sort "$TMP/find-distant" | comm -23 - "$TMP/connus")
+    else
+        echo "   ⚠ orphelins NON mesurés sur ${cible}"
+        non_mesures=$((non_mesures + 1))
+    fi
 done
 
 echo
@@ -302,8 +343,8 @@ grep '^ORPHELIN' "$TMP/rapport" 2>/dev/null | head -20 || true
 [ -s "$TMP/rapport" ] || echo "Aucun écart."
 
 echo
-printf '── %s divergent(s) · %s figé(s) · %s absent(s) · %s orphelin(s)\n' \
-    "$divergents" "$figes" "$absents" "$orphelins"
+printf '── %s divergent(s) · %s figé(s) · %s absent(s) · %s orphelin(s) · %s non mesuré(s)\n' \
+    "$divergents" "$figes" "$absents" "$orphelins" "$non_mesures"
 
 if [ "$divergents" -gt 0 ] || [ "$absents" -gt 0 ]; then
     echo "✗ Le dépôt et l'instance ne disent pas la même chose."
@@ -311,8 +352,9 @@ if [ "$divergents" -gt 0 ] || [ "$absents" -gt 0 ]; then
 fi
 # Le verdict ne porte que sur ce qui a été comparé. Le dire avant de conclure,
 # sinon zéro divergence sur zéro comparaison se lit comme zéro divergence.
-if [ "$SAUTEES" -gt 0 ]; then
-    printf '✗ %s destination(s) non comparée(s) — verdict incomplet.\n' "$SAUTEES"
+if [ "$SAUTEES" -gt 0 ] || [ "$non_mesures" -gt 0 ]; then
+    [ "$SAUTEES" -gt 0 ] && printf '✗ %s destination(s) non comparée(s) — verdict incomplet.\n' "$SAUTEES"
+    [ "$non_mesures" -gt 0 ] && printf '✗ %s mesure(s) manquante(s) — verdict incomplet.\n' "$non_mesures"
     echo "  Vérifie l'hôte et les chemins de $CONFIG."
     exit 2
 fi

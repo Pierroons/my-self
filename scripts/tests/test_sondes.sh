@@ -21,8 +21,12 @@ set -uo pipefail
 
 ICI="$(cd "$(dirname "$0")" && pwd)"
 RACINE="$(cd "$ICI/../.." && pwd)"
-CHECK_PATHS="$RACINE/scripts/check-paths.sh"
-ECART="$RACINE/scripts/ecart-instance.sh"
+# 🔑 Les deux chemins se surchargent, pour pouvoir rejouer le banc contre une
+# version antérieure d'une sonde. C'est le seul moyen de vérifier qu'un cas
+# rougit vraiment : posé sur du code déjà corrigé, il verdit sans rien prouver.
+#   ECART_SOUS_TEST=$(git show <sha>:scripts/ecart-instance.sh > /tmp/x; echo /tmp/x)
+CHECK_PATHS="${CHECK_PATHS_SOUS_TEST:-$RACINE/scripts/check-paths.sh}"
+ECART="${ECART_SOUS_TEST:-$RACINE/scripts/ecart-instance.sh}"
 for f in "$CHECK_PATHS" "$ECART"; do
     [ -r "$f" ] || { echo "sonde introuvable : $f" >&2; exit 1; }
 done
@@ -101,6 +105,59 @@ if eval "$(sed -n '/^motif_vers_regex()/,/^}/p' "$ECART")" 2>/dev/null \
     fi
 else
     nok "extraction de motif_vers_regex impossible — le banc ne mesure rien"
+fi
+
+# ── 3. ecart-instance.sh — un distant muet ne doit pas rendre vert ──────────
+#
+# Trois façons de ne rien mesurer se rangeaient en silence : `sha256sum` refusé
+# sur un fichier présent n'écrivait rien et le fichier sortait de la comparaison,
+# et les deux `ssh` de fin se terminaient par `|| true`, donc zéro figé et zéro
+# orphelin s'affichaient qu'ils aient été demandés ou non.
+#
+# Le faux `ssh` ci-dessous répond `ILLISIBLE` à la comparaison et échoue sur les
+# deux mesures suivantes — exactement ce qu'une machine dont les droits ont changé
+# renvoie. Le script doit le dire, et surtout ne pas conclure.
+echo "▸ ecart-instance.sh — un distant qui ne mesure rien ne doit pas conclure"
+mkdir -p "$BAC/bin"
+cat > "$BAC/bin/ssh" <<'FAUXSSH'
+#!/bin/sh
+# La comparaison rend ILLISIBLE pour chaque chemin reçu ; le reste échoue.
+case "$*" in
+    *sha256sum*) while IFS= read -r f; do printf 'ILLISIBLE  %s\n' "$f"; done; exit 0 ;;
+    *)           exit 255 ;;
+esac
+FAUXSSH
+chmod +x "$BAC/bin/ssh"
+printf 'hote   canari@invalide\nsert   .   /chemin/sans/importance\n' > "$BAC/instance.map"
+
+texte="$( cd "$RACINE" && PATH="$BAC/bin:$PATH" MYSELF_INSTANCE="$BAC/instance.map" \
+          bash "$ECART" 2>&1 )" && code=0 || code=$?
+
+# Témoin, non canari : l'ancienne version tenait déjà cette propriété, parce que
+# ses faux hashes la faisaient sortir en divergence. Elle garde sa place pour
+# qu'une correction future ne la casse pas, pas pour prouver quoi que ce soit.
+if printf '%s\n' "$texte" | grep -q 'Rien ne diverge'; then
+    nok "témoin : conclut « rien ne diverge » alors qu'aucune empreinte n'a été lue"
+else
+    ok "témoin : ne conclut pas quand rien n'a pu être lu"
+fi
+if printf '%s\n' "$texte" | grep -q 'NON MESURÉ'; then
+    ok "nomme les fichiers que le distant n'a pas pu lire"
+else
+    nok "les fichiers illisibles disparaissent sans trace"
+fi
+if printf '%s\n' "$texte" | grep -qE 'figés NON mesurés|orphelins NON mesurés'; then
+    ok "signale les mesures de fin qui n'ont pas pu tourner"
+else
+    nok "un ssh en échec sur les figés ou les orphelins passe pour un zéro mesuré"
+fi
+# ⚠️ Le code de sortie ne suffit pas : l'ancienne version sortait déjà en 1, mais
+# pour des divergences que ses faux hashes fabriquaient. La propriété est que le
+# verdict nomme la MESURE MANQUANTE — un incomplet, pas un écart.
+if printf '%s\n' "$texte" | grep -q 'mesure(s) manquante(s)'; then
+    ok "le verdict nomme l'incomplétude, pas une divergence inventée (code $code)"
+else
+    nok "le verdict ne distingue pas « non mesuré » de « divergent »"
 fi
 
 # ── Verdict ─────────────────────────────────────────────────────────────────
