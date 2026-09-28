@@ -16,6 +16,7 @@ namespace Pierroons\MySelfLab;
 
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device as Protocole;
+use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 
@@ -31,9 +32,9 @@ final class Auth
     private const COOKIE = 'lab_session';
     private const SESSION_TTL = 86400;        // 24h
     private const REGISTER_MAX_PER_IP = 5;    // max comptes créés / IP / heure
-    private const LOGIN_MAX_FAILS = 5;        // échecs / username avant blocage temporaire
-    private const LOGIN_MAX_FAILS_PER_IP = 12; // échecs cumulés / IP / fenêtre (anti-spraying, tolère un foyer NAT)
-    private const LOGIN_WINDOW = 900;         // fenêtre de comptage (15 min)
+    public const LOGIN_MAX_FAILS = 5;        // échecs / username avant blocage temporaire
+    public const LOGIN_MAX_FAILS_PER_IP = 12; // échecs cumulés / IP / fenêtre (anti-spraying, tolère un foyer NAT)
+    public const LOGIN_WINDOW = 900;         // fenêtre de comptage (15 min)
     /** Options Argon2id (R9-06, alignées sur le profil OWASP de SelfRecover). */
     /**
      * Hash Argon2id factice (R9-06), exécuté quand le compte n'existe pas, pour que
@@ -259,7 +260,7 @@ final class Auth
         // Déjà bloqué (compte OU IP)
         if ($fails >= self::LOGIN_MAX_FAILS || $failsIp >= self::LOGIN_MAX_FAILS_PER_IP) {
             return ['ok' => false, 'status' => 'locked',
-                    'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+                    'message' => 'Trop de tentatives. Réessaie dans ' . Duree::enClair(self::LOGIN_WINDOW) . '.'];
         }
 
         $stmt = $pdo->prepare('SELECT id, pw_hash FROM accounts WHERE username = ?');
@@ -375,6 +376,7 @@ final class Auth
             // Ce lab est servi sur le web ordinaire et transmet `client_ip()` à
             // chaque appel : le frein par adresse y compte pour de bon.
             ProfilDeploiement::CLEARWEB,
+            fenetreEchecs: self::LOGIN_WINDOW,
             maxEchecsCompte: self::LOGIN_MAX_FAILS,
             maxEchecsIp: self::LOGIN_MAX_FAILS_PER_IP,
         );

@@ -109,7 +109,17 @@ README de SelfDataGuard, le contrat de `register()` et `SECURITY.md` le disent, 
 de re-scellement. Signalés par une intégration qui fait tourner les deux modules ; aucune donnée
 perdue. L'enrôlement d'un appareil dit maintenant où vit sa clé.
 
-Le banc de l'escalade passe de 107 à 123 cas, celui de la récupération de 58 à 59. Le contrôle
+**Les messages disent le délai réglé, pas un délai recopié.** « Réessaie dans 15 minutes » était
+écrit en dur six fois dans `Recovery` et `Device`, alors que la fenêtre est un paramètre du
+constructeur ; le lab la règle. Le refus des freins vient maintenant d'une seule méthode par
+classe, et `Duree::enClair()` dit la fenêtre en clair — le texte reste identique entre le frein par
+compte et le frein par origine. `Escalade` fait de même pour l'accord, le gel et le dépôt trop
+rapproché (qui dit maintenant combien de temps attendre) ; le gel dit qu'un administrateur peut le
+lever, et le refus `deja_ouvert` donne la date où la procédure en cours tombe d'elle-même.
+`Escalade::reglesDuGel()` rend seuil, fenêtre et durée aux écrans d'arbitrage, qui les recopiaient.
+Le lab transmet sa fenêtre de connexion au module et ses textes lisent ses constantes.
+
+Le banc de l'escalade passe de 107 à 124 cas, celui de la récupération de 58 à 61. Le contrôle
 qui affirmait qu'un accord reste actif « bien après son TTL » n'a pas été réparé mais **scindé** :
 la propriété qu'il défendait tient sur la fenêtre où elle vaut, l'échéance la borne au-delà.
 Trois canaris : révocation neutralisée, échéance retirée, abandon qui ne clôt plus.

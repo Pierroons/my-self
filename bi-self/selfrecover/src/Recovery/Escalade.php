@@ -6,6 +6,7 @@ namespace Pierroons\SelfRecover\Recovery;
 
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device;
+use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -266,7 +267,8 @@ final class Escalade
 
             return ['ok' => false, 'error' => 'gele',
                     'message' => 'Trop de demandes refusées récemment sur ce compte. La procédure rouvrira le '
-                               . gmdate('d/m/Y', $gel) . '. Le compte, lui, fonctionne normalement.'];
+                               . gmdate('d/m/Y', $gel) . '. Le compte, lui, fonctionne normalement. '
+                               . 'Si c\'est une erreur, un administrateur peut lever ce gel.'];
         }
 
         // 🔑 Un dossier déjà ouvert ne redonne PAS son numéro. Le nom de compte
@@ -286,12 +288,18 @@ final class Escalade
         if ($existant !== null) {
             $this->stockage->compterDemandeurConcurrent($existant->id);
             usleep($this->delaiRefusUs);
+            // Un accord court `ttlAccepte` après la décision ; tout autre dossier
+            // actif, jusqu'à son `expireLe` — la règle de `litigeActifDuCompte()`.
+            $libre = $existant->statut === Litige::ACCEPTE && $existant->trancheLe !== null
+                ? $existant->trancheLe + $this->ttlAccepte
+                : $existant->expireLe;
 
             return ['ok' => false, 'error' => 'deja_ouvert',
                     'message' => 'Une procédure est déjà en cours sur ce compte. '
                                . 'Si c\'est la tienne, reprends-la avec son numéro et ton sésame. '
-                               . 'Si tu les as perdus, demande à un administrateur de la clore : '
-                               . 'tu pourras alors en ouvrir une nouvelle.'];
+                               . 'Si tu les as perdus, demande à un administrateur de la clore, '
+                               . 'ou attends le ' . gmdate('d/m/Y', $libre) . ' : sans suite, elle tombe '
+                               . 'd\'elle-même, et tu pourras en ouvrir une nouvelle.'];
         }
 
         $numero   = self::engendrerNumero();
@@ -326,7 +334,8 @@ final class Escalade
             return ['ok' => false, 'error' => 'deja_tranche', 'message' => 'Ce dossier a déjà été tranché.'];
         }
         if ($litige->deposeLe > 0 && $maintenant - $litige->deposeLe < $this->attenteDepot) {
-            return ['ok' => false, 'error' => 'trop_tot', 'message' => 'Un dépôt par heure. Réessaie plus tard.'];
+            return ['ok' => false, 'error' => 'trop_tot', 'message' => 'Dépôt trop rapproché du précédent. Réessaie dans '
+                    . Duree::enClair($this->attenteDepot - ($maintenant - $litige->deposeLe)) . '.'];
         }
 
         $faits = $this->stockage->faitsDuCompte($litige->compteId);
@@ -481,9 +490,9 @@ final class Escalade
             return ['ok' => true, 'statut' => Litige::ACCEPTE,
                     'message' => sprintf(
                         'Litige accepté. Le titulaire repose lui-même ses secrets ; aucun secret '
-                        . 'n\'a été fabriqué ici. Il a %d jours pour revenir avec son sésame ; '
+                        . 'n\'a été fabriqué ici. Il a %s pour revenir avec son sésame ; '
                         . 'passé ce délai, l\'accord tombe et la procédure est à refaire.',
-                        intdiv($this->ttlAccepte, 86400)
+                        Duree::enClair($this->ttlAccepte)
                     )];
         }
 
@@ -498,9 +507,19 @@ final class Escalade
 
         return ['ok' => true, 'statut' => Litige::REFUSE, 'refus_dans_la_fenetre' => $refus, 'gele' => $gele,
                 'message' => $gele
-                    ? 'Dossier refusé. L\'ouverture de nouveaux dossiers est gelée ' . (int) ($this->gelDuree / 86400)
-                        . ' jours sur ce compte. Le compte n\'est pas touché.'
+                    ? 'Dossier refusé. L\'ouverture de nouveaux dossiers est gelée ' . Duree::enClair($this->gelDuree)
+                        . ' sur ce compte. Le compte n\'est pas touché.'
                     : 'Dossier refusé. Le compte n\'est pas touché.'];
+    }
+
+    /**
+     * Les règles du gel, pour qu'un écran d'arbitre les annonce sans les recopier.
+     *
+     * @return array{seuil: int, fenetre: int, duree: int}
+     */
+    public function reglesDuGel(): array
+    {
+        return ['seuil' => $this->gelSeuil, 'fenetre' => $this->gelFenetre, 'duree' => $this->gelDuree];
     }
 
     /** Lève un gel de procédure. La trace du dégel est conservée. */

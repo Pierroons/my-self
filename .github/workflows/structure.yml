@@ -258,8 +258,8 @@ jobs:
             sortie=$(php bi-self/selfrecover/tests/sanity_recovery.php --profil="$profil" 2>&1) && rc=0 || rc=$?
             echo "$sortie"
             [ "$rc" = 0 ] || { echo "::error::le banc de récupération a échoué sous $profil"; exit 1; }
-            echo "$sortie" | grep -qE '^OK — 59/59$' \
-              || { echo "::error::le banc de récupération n'a pas joué ses 59 cas sous $profil"; exit 1; }
+            echo "$sortie" | grep -qE '^OK — 61/61$' \
+              || { echo "::error::le banc de récupération n'a pas joué ses 61 cas sous $profil"; exit 1; }
           done
 
       # Un frein qu'on n'a jamais fait céder ne se distingue pas d'un frein qui
@@ -342,8 +342,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 123 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 123 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 124 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 124 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les

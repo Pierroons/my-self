@@ -7,6 +7,7 @@ namespace Pierroons\SelfRecover\Recovery;
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device;
 use Pierroons\SelfRecover\Diceware\Wordlist;
+use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
@@ -197,7 +198,7 @@ final class Recovery
         }
         if ($ip !== null
             && $this->stockage->compterEchecsIp($ip, $maintenant - $this->fenetreEchecs) >= $this->maxEchecsIp) {
-            return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+            return $this->refusFrein();
         }
 
         // Forme validée avant le moindre calcul : un code qui n'a pas la forme
@@ -307,6 +308,18 @@ final class Recovery
     public static function engendrerPassphrase(): string
     {
         return implode(' ', Wordlist::generate(self::MOTS_PASSPHRASE, 'en')['words']);
+    }
+
+    /**
+     * Le refus des freins par fenêtre. Un seul texte pour tous : le frein par
+     * compte ne doit pas se distinguer du frein par origine. Le délai annoncé est
+     * celui de la fenêtre réglée, pas un nombre recopié.
+     *
+     * @return array{ok: false, message: string}
+     */
+    private function refusFrein(): array
+    {
+        return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans ' . Duree::enClair($this->fenetreEchecs) . '.'];
     }
 
     /**
@@ -467,7 +480,7 @@ final class Recovery
             >= $this->maxEchecsCompte) {
             usleep($this->delaiRefusUs);
 
-            return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+            return $this->refusFrein();
         }
 
         return null;
@@ -483,10 +496,10 @@ final class Recovery
         $depuis = $maintenant - $this->fenetreEchecs;
 
         if ($this->stockage->compterEchecsCompte($nomCompte, $depuis) >= $this->maxEchecsCompte) {
-            return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+            return $this->refusFrein();
         }
         if ($ip !== null && $this->stockage->compterEchecsIp($ip, $depuis) >= $this->maxEchecsIp) {
-            return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+            return $this->refusFrein();
         }
 
         return null;
