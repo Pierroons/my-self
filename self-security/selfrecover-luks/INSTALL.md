@@ -90,6 +90,10 @@ Une différence signale une divergence d'implémentation — paramètres Argon2,
 du sel, ou traitement de la fin de ligne. **Ne va pas plus loin tant qu'elles ne
 s'accordent pas.**
 
+> [`tests/test_preuve_binaire_boot.sh`](tests/test_preuve_binaire_boot.sh) rejoue ce
+> vecteur à chaque intégration continue, en le lisant **dans cette page** plutôt qu'en
+> le recopiant : une valeur qui changerait d'un seul côté ferait rougir le banc.
+
 ## 2. Générer le sel de déploiement
 
 Sel **unique** à ta machine, indispensable à toute dérivation (à **sauvegarder hors-site**, cf. §13).
@@ -237,6 +241,13 @@ redémarrage coûte une session de secours.
 
 Il faut le vérifier **par le chemin qu'empruntera le démarrage**, et pas par un
 chemin voisin — voir l'encadré plus bas.
+
+> **`setup-add-selfrecover-slot.sh` le fait déjà** : il enrôle avec le dérivateur
+> Python et prouve avec `selfrecover_derive_c`, celui de l'amorçage. Sans ce binaire
+> il refuse, avant d'écrire dans l'en-tête. Les commandes ci-dessous restent celles
+> d'une machine dont le slot a été posé par un outillage plus ancien, ou d'une seconde
+> lecture avant un geste sur une machine en service. Le comportement est gardé par
+> [`tests/test_preuve_binaire_boot.sh`](tests/test_preuve_binaire_boot.sh).
 
 ```bash
 read -rs -p "Passphrase recover : " P; echo        # jamais en argv, jamais dans l'historique

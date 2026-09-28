@@ -621,6 +621,43 @@ jobs:
                  echo "::error::rouge, mais pas sur le cas slot raw / keyscript hex"
                  exit 1; }
 
+      - name: Garde-fou — le slot se prouve par le dérivateur de l'amorçage
+        run: |
+          # L'enrôlement dérive en Python, l'amorçage en C. Tant que la preuve
+          # appelait le Python elle aussi, une divergence entre les deux
+          # implémentations ne se voyait qu'au redémarrage suivant — celui où la
+          # machine ne revient pas. Conteneurs LUKS de 32 Mo, ni root ni
+          # device-mapper ; compte ~1 min, les luksAddKey passent par Argon2id.
+          sortie=$(bash self-security/selfrecover-luks/tests/test_preuve_binaire_boot.sh)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^✅ 10/10 ' \
+            || { echo "::error::le banc de la preuve n'a pas joué ses 10 cas"; exit 1; }
+          # Le banc annonce le dérivateur qu'il a exercé. Il refuse de se rabattre
+          # sur le Python, mais le vert ne le dit pas : cette ligne le dit.
+          echo "$sortie" | grep -qE '▸ dérivateur du démarrage : .*/selfrecover_derive$' \
+            || { echo "::error::le banc n'a pas exercé le dérivateur C"; exit 1; }
+
+      - name: Canari — le banc rougit si la preuve repasse par l'enrôleur
+        run: |
+          # Le défaut d'origine, replanté : la preuve dérive avec le même outil que
+          # l'enrôlement, donc elle s'accorde toujours avec elle-même.
+          S=self-security/selfrecover-luks/setup-add-selfrecover-slot.sh
+          sed 's/^if \[ -n "\$DERIVE_C" \]; then$/if false; then/' "$S" > /tmp/setup-neutralise.sh
+          grep -q '^if false; then' /tmp/setup-neutralise.sh \
+            || { echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          bash -n /tmp/setup-neutralise.sh \
+            || { echo "::error::la version plantée ne compile pas — le rouge viendrait de la syntaxe"; exit 1; }
+          if sortie=$(SETUP=/tmp/setup-neutralise.sh \
+               bash self-security/selfrecover-luks/tests/test_preuve_binaire_boot.sh 2>&1); then
+            echo "$sortie"
+            echo "::error::le banc reste VERT quand la preuve n'emprunte plus le chemin du démarrage"
+            exit 1
+          fi
+          echo "$sortie" | grep -q 'les deux dérivateurs divergent.*ACCEPTE (attendu REFUSE)' \
+            || { echo "$sortie"
+                 echo "::error::rouge, mais pas sur le cas de la divergence"
+                 exit 1; }
+
       - name: Garde-fou — le secours d'amorçage rend les deux voies, jamais un shell
         run: |
           # Mesuré le 21/09/2026 sur les quatre machines chiffrées du parc : la clé
