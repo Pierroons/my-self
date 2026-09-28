@@ -166,11 +166,11 @@ $pdo2 = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMOD
 $pdo2->exec((string) file_get_contents(__DIR__ . '/../schema.sql'));
 
 $insc = \Pierroons\MySelfLab\Auth::register($pdo2, 'bob', $MOT, sr_sel_aleatoire(), '192.0.2.1');
-verifier('inscription : dix codes remis une fois',
-    ($insc['ok'] ?? false) && count($insc['credentials']['recovery_codes'] ?? []) === 10);
+verifier('inscription : un lot entier de codes remis une fois',
+    ($insc['ok'] ?? false) && count($insc['credentials']['recovery_codes'] ?? []) === Recovery::CODES_PAR_LOT);
 
 $niv2 = \Pierroons\MySelfLab\Auth::recoverByCode($pdo2, $insc['credentials']['recovery_codes'][0], $MOT, '192.0.2.2');
-verifier('niveau 2 : code consommé, neuf restants', ($niv2['codes_restants'] ?? -1) === 9);
+verifier('niveau 2 : code consommé, le reste du lot restant', ($niv2['codes_restants'] ?? -1) === Recovery::CODES_PAR_LOT - 1);
 verifier('niveau 2 : la forme du retour est préservée',
     isset($niv2['credentials']['password'], $niv2['credentials']['passphrase'], $niv2['note']));
 

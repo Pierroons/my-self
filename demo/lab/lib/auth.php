@@ -307,8 +307,6 @@ final class Auth
         return ['ok' => true, 'token' => $token];
     }
 
-    private const RECOVERY_CODES = 10;
-
     /**
      * Génère un lot de codes de récupération — le facteur de POSSESSION du L2.
      *
@@ -320,7 +318,7 @@ final class Auth
      * mot mémorisé, et le rate-limit s'applique. Sa fonction est d'être
      * imprimable et transportable, pas d'être un secret maximal.
      */
-    public static function generateRecoveryCodes(PDO $pdo, int $accountId, int $n = self::RECOVERY_CODES): array
+    public static function generateRecoveryCodes(PDO $pdo, int $accountId, int $n = Recovery::CODES_PAR_LOT): array
     {
         return self::protocole($pdo)->emettreCodes($accountId, $n);
     }
@@ -420,7 +418,7 @@ final class Auth
             }
         }
 
-        if (preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code)) {
+        if (Recovery::estFormeCode($code)) {
             $st = $pdo->prepare(
                 'SELECT a.recovery_salt FROM recovery_codes c
                    JOIN accounts a ON a.id = c.account_id

@@ -545,7 +545,7 @@ return [
     'dsp.js.reset_done' => 'Compte repris. Tu peux te connecter avec tes nouveaux secrets.',
 
     'reg.weak_word' => 'Le mot de récupération doit faire au moins 4 caractères.',
-    'reg.codes'  => 'Codes de secours — 10, usage unique (récupération L2 avec ton mot mémorisé)',
+    'reg.codes'  => 'Codes de secours — %d, usage unique (récupération L2 avec ton mot mémorisé)',
 
     // --- Appareil de confiance (L2, facteur de possession alternatif au code) ---
     'dev.enroll.btn'    => '📱 Activer la récupération depuis cet appareil',

@@ -49,7 +49,7 @@ $log->info('recover-l2-code', 'Body parsed', [
     'note'              => "Aucun identifiant n'est transmis : le code retrouve le compte à lui seul.",
 ]);
 
-if (!preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code)) {
+if (!\Pierroons\SelfRecover\Recovery\Recovery::estFormeCode($code)) {
     $log->warning('recover-l2-code', 'Code de secours mal formé (attendu : xxxxx-xxxxx en hexadécimal)');
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'invalid_code_format']);

@@ -35,7 +35,7 @@ render_header(t('reg.title'), Auth::currentAccount(Db::pdo()));
 const I18N = <?= json_encode([
   'done'=>t('reg.done'),'copy'=>t('reg.copy_now'),'pw'=>t('reg.password'),
   'pp'=>t('reg.passphrase'),'keep'=>t('reg.keep_safe'),'goto'=>t('reg.goto_login'),
-  'err'=>t('log.error'),'codes'=>t('reg.codes'),'weakWord'=>t('reg.weak_word'),
+  'err'=>t('log.error'),'codes'=>t('reg.codes', \Pierroons\SelfRecover\Recovery\Recovery::CODES_PAR_LOT),'weakWord'=>t('reg.weak_word'),
   'devBtn'=>t('dev.enroll.btn'),'devNote'=>t('dev.enroll.note'),
   'devDoing'=>t('dev.enroll.doing'),'devOk'=>t('dev.enroll.ok'),'devFail'=>t('dev.enroll.fail'),
 ], JSON_UNESCAPED_UNICODE) ?>;

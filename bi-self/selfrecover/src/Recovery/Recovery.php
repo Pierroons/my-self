@@ -202,7 +202,7 @@ final class Recovery
 
         // Forme validée avant le moindre calcul : un code qui n'a pas la forme
         // d'un code n'a pas à coûter un HMAC, encore moins un Argon2id.
-        if (!preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code)) {
+        if (!self::estFormeCode($code)) {
             usleep($this->delaiRefusUs);
 
             return $refus;
@@ -307,6 +307,17 @@ final class Recovery
     public static function engendrerPassphrase(): string
     {
         return implode(' ', Wordlist::generate(self::MOTS_PASSPHRASE, 'en')['words']);
+    }
+
+    /**
+     * Le code a-t-il la forme de ceux qu'`emettreCodes()` fabrique ?
+     *
+     * Les intégrateurs qui filtrent avant d'appeler `parCode()` l'appellent au
+     * lieu de recopier l'expression : un format changé ici leur parvient.
+     */
+    public static function estFormeCode(string $code): bool
+    {
+        return preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code) === 1;
     }
 
     public function emettreCodes(int $compteId, int $combien = self::CODES_PAR_LOT, ?int $maintenant = null): array

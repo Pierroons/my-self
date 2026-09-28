@@ -92,6 +92,12 @@ délivrée reste valide, et la prochaine récupération la remplace par six mots
 écrivaient `4` en dur lisent maintenant `Recovery::MOTS_PASSPHRASE`. Un intégrateur qui affiche
 ou valide un nombre de mots fixe doit le relire.
 
+**Une seule fabrique de codes de secours.** La démo bi-self-duo fabriquait les siens (boucle,
+`random_bytes(5)`, `10` en dur) et le lab gardait son propre `10` : un changement de nombre ou de
+format dans la bibliothèque ne leur parvenait pas. Les deux passent par `Recovery::emettreCodes()`
+et `Recovery::CODES_PAR_LOT`. `Recovery::estFormeCode()` porte seule la forme `xxxxx-xxxxx` ; les
+trois copies de l'expression dans les démos l'appellent.
+
 Le banc de l'escalade passe de 107 à 123 cas, celui de la récupération de 58 à 59. Le contrôle
 qui affirmait qu'un accord reste actif « bien après son TTL » n'a pas été réparé mais **scindé** :
 la propriété qu'il défendait tient sur la fenêtre où elle vaut, l'échéance la borne au-delà.

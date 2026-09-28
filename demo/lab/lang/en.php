@@ -545,7 +545,7 @@ return [
     'dsp.js.reset_done' => 'Account recovered. You can log in with your new secrets.',
 
     'reg.weak_word' => 'The recovery word must be at least 4 characters long.',
-    'reg.codes'  => 'Backup codes — 10, single use (L2 recovery with your memorized word)',
+    'reg.codes'  => 'Backup codes — %d, single use (L2 recovery with your memorized word)',
 
     // --- Trusted device (L2, possession factor, alternative to the code) ---
     'dev.enroll.btn'    => '📱 Enable recovery from this device',
