@@ -29,6 +29,22 @@ tiers : sa CSP se décide dans `selffarm-lite`.
 Les deux CSP ont été éprouvées dans un navigateur sans interface, contre les pages servies : aucune
 violation, et une version plus stricte y déclenche bien les blocages attendus.
 
+### La console SU exige sept mots de la liste EFF — 28 septembre 2026
+
+La passphrase du super-utilisateur chiffre les sauvegardes du journal : elle s'attaque hors ligne,
+sans compteur d'essais. La console acceptait « quatre mots de la liste EFF, ou vingt caractères ».
+Trois mots de la liste font déjà vingt caractères en moyenne : la seconde voie rendait la première
+décorative. Elle exige maintenant sept mots de la liste (≈ 90,5 bits, le tirage par défaut de
+SelfRecover-LUKS), et rien d'autre.
+
+⚠️ **Geste à prévoir.** Le contrôle s'applique à `change-passphrase` et à chaque `backup-log`. Une
+passphrase SU posée avant, qui ne fait pas sept mots de la liste, s'authentifie toujours mais refuse
+la prochaine sauvegarde du journal : il faut d'abord un `change-passphrase`. Les sauvegardes déjà
+scellées se restaurent sous leur passphrase d'origine, que rien ne contrôle à la lecture.
+
+Le banc SU passe de 23 à 26 cas : six mots, quarante caractères sans mot, sept mots dont un hors de
+la liste, tous refusés sans poser de secret. L'ancienne règle remise, les trois rougissent.
+
 ### SelfRecover v0.8.0 — reprendre un compte le referme vraiment, et un accord rendu a une fin — 28 septembre 2026
 
 Deux chemins laissaient une personne devant une porte qu'aucun geste ne pouvait ouvrir ou

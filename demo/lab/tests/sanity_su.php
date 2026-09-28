@@ -207,7 +207,7 @@ $env     = [
     'SELFRECOVER_NTFY_URL'          => '',
     'SELFRECOVER_SU_SECRET'         => $secret,
     'SELFRECOVER_SU_SECRET_INPUT'   => $secret,
-    'SELFRECOVER_SU_NEW_INPUT'      => 'une-autre-passphrase-longue-et-sans-espace',
+    'SELFRECOVER_SU_NEW_INPUT'      => 'abacus acorn badge dagger eagle fabric nautical',
 ];
 $proc = proc_open(
     escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($console) . ' change-passphrase',
@@ -246,6 +246,35 @@ $ancien = password_hash($secret, PASSWORD_ARGON2ID);   // profil de PHP, comme a
 password_verify($secret, $ancien)
     ? ok('un secret posé sous l\'ancien profil se vérifie encore')
     : nok('un secret posé sous l\'ancien profil ne se vérifie plus — migration forcée');
+
+// ── 10. La passphrase SU exige sept mots de la liste, et rien d'autre ───────
+// La console acceptait « 4 mots OU 20 caractères » : trois mots de la liste en
+// font déjà vingt, la seconde voie rendait la première décorative. Un refus
+// sort en erreur ET ne pose aucun secret.
+foreach ([
+    'six mots de la liste'              => 'umbrella vacant waffle yodel zebra acid',
+    'quarante caractères, aucun mot'    => 'une-autre-passphrase-longue-et-sans-espace',
+    'sept mots dont un hors de la liste' => 'umbrella vacant waffle yodel zebra acid sanity',
+] as $cas => $candidate) {
+    $dirR = sys_get_temp_dir() . '/sanity_su_refus_' . bin2hex(random_bytes(6));
+    mkdir($dirR, 0700, true);
+    $procR = proc_open(
+        escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($console) . ' change-passphrase',
+        [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
+        $pipesR,
+        null,
+        ['SELFRECOVER_STATE_DIR' => $dirR, 'SELFRECOVER_SU_NEW_INPUT' => $candidate] + $env
+    );
+    $codeR = is_resource($procR) ? proc_close($procR) : -1;
+    $poseR = is_file("$dirR/su-secret");
+    foreach (glob("$dirR/*") ?: [] as $f) {
+        unlink($f);
+    }
+    @rmdir($dirR);
+    ($codeR !== 0 && !$poseR)
+        ? ok("passphrase SU refusée : $cas")
+        : nok("passphrase SU acceptée : $cas (code $codeR, secret " . ($poseR ? 'posé' : 'absent') . ')');
+}
 
 // ─── Le refus de la valeur de démonstration vit DANS la fonction ─────────────
 // 🔑 L'en-tête de SuAudit promet que les valeurs de démonstration sont refusées en
