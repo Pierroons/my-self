@@ -258,8 +258,8 @@ jobs:
             sortie=$(php bi-self/selfrecover/tests/sanity_recovery.php --profil="$profil" 2>&1) && rc=0 || rc=$?
             echo "$sortie"
             [ "$rc" = 0 ] || { echo "::error::le banc de récupération a échoué sous $profil"; exit 1; }
-            echo "$sortie" | grep -qE '^OK — 58/58$' \
-              || { echo "::error::le banc de récupération n'a pas joué ses 58 cas sous $profil"; exit 1; }
+            echo "$sortie" | grep -qE '^OK — 59/59$' \
+              || { echo "::error::le banc de récupération n'a pas joué ses 59 cas sous $profil"; exit 1; }
           done
 
       # Un frein qu'on n'a jamais fait céder ne se distingue pas d'un frein qui
@@ -335,7 +335,15 @@ jobs:
       # ce qui donnait à un attaquant le moyen de faire effacer un compte qu'il
       # n'arrivait pas à voler.
       - name: Garde-fou — récupération niveau 3, arbitrage et gel de procédure
-        run: php bi-self/selfrecover/tests/sanity_escalade.php
+        run: |
+          # ⚠️ Le compte de cas se vérifie, comme pour les deux autres bancs : un
+          # banc qui sort en 0 après avoir joué la moitié de ses cas rend le même
+          # vert qu'un banc complet. Celui-ci n'avait pas ce contrôle, et c'est le
+          # plus fourni des trois.
+          sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 123 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 123 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les
