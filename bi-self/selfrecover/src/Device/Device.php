@@ -6,6 +6,7 @@ namespace Pierroons\SelfRecover\Device;
 
 use Pierroons\SelfRecover\Crypto\Encoding;
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Titulaire;
@@ -123,7 +124,7 @@ final class Device
             && $this->stockage->compterEchecsIp($ip, $maintenant - $this->fenetreEchecs) >= $this->maxEchecsIp) {
             usleep($this->delaiRefusUs);
 
-            return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+            return $this->refusFrein();
         }
 
         // 🔑 **L'étiquette vient du nom SOUMIS, avant toute recherche.** Tirée du
@@ -150,7 +151,7 @@ final class Device
             >= $this->maxEchecsCompte) {
             usleep($this->delaiRefusUs);
 
-            return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+            return $this->refusFrein();
         }
 
         $compte = $this->stockage->trouverCompte($nomCompte);
@@ -178,7 +179,9 @@ final class Device
             $maintenant,
         );
 
-        return ['ok' => true, 'message' => 'Appareil enrôlé.'];
+        return ['ok' => true, 'message' => 'Appareil enrôlé. Sa clé vit dans ce navigateur, chiffrée par ton '
+                                         . 'mot mémorisé : un autre navigateur, ou des données de site effacées, '
+                                         . 'demanderont un nouvel enrôlement.'];
     }
 
     /**
@@ -286,6 +289,17 @@ final class Device
     public static function estCleDerivee(string $valeur): bool
     {
         return (bool) preg_match('/^[0-9a-f]{64}$/', $valeur);
+    }
+
+    /**
+     * Le refus des freins par fenêtre, identique à celui de `Recovery` : même
+     * texte pour le frein par compte et par origine, délai tiré de la fenêtre.
+     *
+     * @return array{ok: false, message: string}
+     */
+    private function refusFrein(): array
+    {
+        return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans ' . Duree::enClair($this->fenetreEchecs) . '.'];
     }
 
     /** Mot de passe temporaire rendu au titulaire après une récupération. */

@@ -145,30 +145,16 @@ $log->info('register', "INSERT INTO accounts", ['id' => $accountId, 'username' =
 // ⚠️ Affichés une seule fois. Le serveur n'en garde qu'un HMAC (pour retrouver
 // le compte) et un Argon2id (pour vérifier) : il est incapable de les réafficher,
 // et c'est voulu.
-$codes   = [];
-$insCode = $db->prepare(
-    'INSERT INTO recovery_codes (account_id, code_lookup, code_hash, created_at) VALUES (:a, :l, :h, :t)'
-);
 $tCodes = microtime(true);
-for ($i = 0; $i < 10; $i++) {
-    $brut = bin2hex(random_bytes(5));                                  // 40 bits
-    $code = substr($brut, 0, 5) . '-' . substr($brut, 5, 5);           // xxxxx-xxxxx
-    $insCode->reset();
-    $insCode->bindValue(':a', $accountId, SQLITE3_INTEGER);
-    $insCode->bindValue(':l', RecoverHelper::indexCode($s, $code));
-    $insCode->bindValue(':h', RecoverHelper::hash($code));
-    $insCode->bindValue(':t', time(), SQLITE3_INTEGER);
-    $insCode->execute();
-    $codes[] = $code;
-}
-$log->crypto('register', '10 codes de secours générés', [
+$codes  = RecoverHelper::protocole($s)->emettreCodes($accountId);
+$log->crypto('register', count($codes) . ' codes de secours générés', [
     'duration_ms' => (int) ((microtime(true) - $tCodes) * 1000),
     'entropie'    => '40 bits chacun (5 octets aléatoires)',
     'stockage'    => 'HMAC-SHA256 pour la recherche sans identifiant + Argon2id pour la vérification',
     'note'        => "Le serveur ne peut pas les réafficher : il n'en détient aucune forme réversible.",
 ]);
 
-$log->success('register', 'HTTP 201 — compte créé', ['account_id' => $accountId, 'codes' => 10]);
+$log->success('register', 'HTTP 201 — compte créé', ['account_id' => $accountId, 'codes' => count($codes)]);
 
 echo json_encode([
     'ok'          => true,
@@ -181,5 +167,5 @@ echo json_encode([
     ],
     // Le mot mémorisé ne figure pas dans cette réponse, et ne le peut pas : le
     // serveur ne l'a jamais reçu. C'est ton navigateur qui te l'affiche.
-    'note' => 'Copie tes credentials ET tes 10 codes de secours maintenant. Le serveur ne les montrera plus en clair. Pour les hash Argon2id, regarde les logs.',
+    'note' => 'Copie tes credentials ET tes ' . count($codes) . ' codes de secours maintenant. Le serveur ne les montrera plus en clair. Pour les hash Argon2id, regarde les logs.',
 ], JSON_UNESCAPED_UNICODE);

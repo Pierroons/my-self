@@ -25,6 +25,7 @@ declare(strict_types=1);
 namespace Pierroons\MySelfLab;
 
 use PDO;
+use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\Recovery\Escalade;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
@@ -68,8 +69,27 @@ final class RecoverL3
 
         return new Escalade(
             $stockage,
-            new Recovery($stockage, Auth::siteSalt(), ProfilDeploiement::CLEARWEB),
+            new Recovery(
+                $stockage,
+                Auth::siteSalt(),
+                ProfilDeploiement::CLEARWEB,
+                fenetreEchecs: Auth::LOGIN_WINDOW,
+                maxEchecsCompte: Auth::LOGIN_MAX_FAILS,
+                maxEchecsIp: Auth::LOGIN_MAX_FAILS_PER_IP,
+            ),
         );
+    }
+
+    /**
+     * Les règles du gel dites en clair, pour les écrans d'arbitrage.
+     *
+     * @return array{seuil: int, fenetre: string, duree: string}
+     */
+    public static function reglesDuGel(PDO $pdo): array
+    {
+        $r = self::escalade($pdo)->reglesDuGel();
+
+        return ['seuil' => $r['seuil'], 'fenetre' => Duree::enClair($r['fenetre']), 'duree' => Duree::enClair($r['duree'])];
     }
 
     /** Ajoute le code HTTP au refus rendu par la bibliothèque. */

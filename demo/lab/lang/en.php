@@ -56,7 +56,7 @@ return [
         . '<li>No email, no phone number. On sign-up: you choose a recovery word → a 16-character <code>password</code> and an EFF diceware passphrase are generated server-side.</li>'
         . '<li>Storage: <code>Argon2id(password)</code>, <code>Argon2id(passphrase)</code>, <code>Argon2id(derived_key)</code> — m=64&nbsp;MB, t=4, p=2 (OWASP profile). <strong>No secret is ever stored in the clear.</strong></li>'
         . '<li>Derivation bound to the hostname the browser reads: <code>HMAC-SHA256(key = memorised word, message = hostname ‖ "|v2" ‖ account salt)</code> → a word phished on another address does not yield the right key.</li>'
-        . '<li>Progressive rate limiting (5 failures / 15 min) plus a per-IP sign-up cap (anti-enumeration, anti-spam).</li>'
+        . '<li>Progressive rate limiting (%1$d failures / %2$d min) plus a per-IP sign-up cap (anti-enumeration, anti-spam).</li>'
         . '</ul>',
 
     'sec.2.h2' => '2. Data encryption — two models, by sensitivity',
@@ -545,7 +545,7 @@ return [
     'dsp.js.reset_done' => 'Account recovered. You can log in with your new secrets.',
 
     'reg.weak_word' => 'The recovery word must be at least 4 characters long.',
-    'reg.codes'  => 'Backup codes — 10, single use (L2 recovery with your memorized word)',
+    'reg.codes'  => 'Backup codes — %d, single use (L2 recovery with your memorized word)',
 
     // --- Trusted device (L2, possession factor, alternative to the code) ---
     'dev.enroll.btn'    => '📱 Enable recovery from this device',

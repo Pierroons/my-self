@@ -15,6 +15,7 @@ require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/StockageMemoire.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Tests\StockageMemoire;
@@ -181,6 +182,21 @@ verifier('⭐ un AUTRE code du même compte est freiné aussi',
 verifier('⭐ un essai freiné ne consomme aucun code', $st->compterCodesRestants(1) === 10);
 verifier('contre-témoin : hors de la fenêtre, le bon mot passe',
     $rec->parCode($codes[0], $MOT, $IP, $now + 901)['ok'] === true);
+
+// Le délai annoncé est celui de la fenêtre RÉGLÉE : un intégrateur qui la
+// raccourcit ne doit pas lire un « 15 minutes » recopié.
+$st10 = new StockageMemoire();
+$st10->comptes['alice'] = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
+$rec10   = new Recovery($st10, $SEL, $PROFIL, fenetreEchecs: 600, delaiRefusUs: 0);
+$codes10 = $rec10->emettreCodes(1, 10, $now);
+for ($i = 0; $i < 5; $i++) { $rec10->parCode($codes10[0], $FAUX, $IP, $now); }
+$r10 = $rec10->parCode($codes10[0], $MOT, $IP, $now);
+verifier('le refus annonce la fenêtre réglée, pas un délai recopié',
+    $r10['message'] === 'Trop de tentatives. Réessaie dans 10 minutes.', $r10['message']);
+verifier('une durée se dit comme un message la dit, arrondie au-dessus',
+    Duree::enClair(900) === '15 minutes' && Duree::enClair(3600) === '1 heure'
+    && Duree::enClair(604800) === '7 jours' && Duree::enClair(90) === '2 minutes'
+    && Duree::enClair(1) === '1 minute');
 
 // 🔑 Le cas qui justifie le HMAC. La table des tentatives est partagée avec la
 // page de connexion, qui y écrit le nom SAISI. Une étiquette devinable serait un

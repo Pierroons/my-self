@@ -213,7 +213,7 @@ table.adm tr:last-child td{border-bottom:none}
                 <li>Dernière connexion : <strong><?= $ctx['derniere_connexion'] === null ? '<em>non enregistrée</em>' : h((string) $ctx['derniere_connexion']) ?></strong></li>
                 <li>Connexions comptées : <strong><?= $ctx['nombre_connexions'] === null ? '<em>non enregistrées</em>' : (int) $ctx['nombre_connexions'] ?></strong></li>
                 <li>Codes de niveau 2 restants : <strong><?= (int) ($ctx['codes_l2_restants'] ?? 0) ?></strong></li>
-                <li>Refus sur ce compte (30 j) : <strong><?= (int) ($ctx['refus_precedents'] ?? 0) ?></strong></li>
+                <li>Refus sur ce compte (<?= h(\Pierroons\MySelfLab\RecoverL3::reglesDuGel($pdo)['fenetre']) ?>) : <strong><?= (int) ($ctx['refus_precedents'] ?? 0) ?></strong></li>
               </ul>
             </div>
             <div style="flex:1;min-width:240px">

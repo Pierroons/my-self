@@ -24,13 +24,6 @@ use Pierroons\SelfRecover\Titulaire;
  */
 final class Device
 {
-    /** Fenêtre de comptage des échecs par IP (15 min). */
-    private const ENROLL_WINDOW = 900;
-    /** Aligné sur Auth::LOGIN_MAX_FAILS_PER_IP — un foyer NAT partage son IP. */
-    private const ENROLL_MAX_FAILS_PER_IP = 12;
-    /** Échecs tolérés sur un même compte — le seul frein qui agisse sans adresse. */
-    private const ENROLL_MAX_FAILS = 5;
-
     private static function protocole(PDO $pdo): Protocole
     {
         return new Protocole(
@@ -42,9 +35,11 @@ final class Device
             // Le sel du lab, celui que la récupération emploie : l'étiquette du
             // compteur d'enrôlement est un HMAC sous ce sel.
             Auth::siteSalt(),
-            fenetreEchecs: self::ENROLL_WINDOW,
-            maxEchecsCompte: self::ENROLL_MAX_FAILS,
-            maxEchecsIp: self::ENROLL_MAX_FAILS_PER_IP,
+            // Les freins de la connexion, lus chez `Auth` : les deux chemins
+            // comptent dans la même table, un réglage doit valoir pour les deux.
+            fenetreEchecs: Auth::LOGIN_WINDOW,
+            maxEchecsCompte: Auth::LOGIN_MAX_FAILS,
+            maxEchecsIp: Auth::LOGIN_MAX_FAILS_PER_IP,
         );
     }
 

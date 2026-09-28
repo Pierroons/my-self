@@ -76,6 +76,11 @@ Practical consequence: a user who forgets their password keeps a way into each o
 
 Without SelfRecover, SelfDataGuard still works — it falls back to a password-only wrap (single-factor recovery, weaker UX). But the natural pairing is: **SelfRecover protects authentication, SelfDataGuard protects data, and the same memorized word serves in both** — alone to open the vault, alongside the *recovery code* to reopen the account.
 
+> ⚠️ **A password-only vault does not survive a SelfRecover recovery.** Levels 1 and 2 of SelfRecover replace the account password (`Recovery::parPassphrase()`, `Recovery::parCode()`). A vault registered as `register($user, $password)` — `$memorized` omitted — has a single envelope, sealed on the old password: after the recovery it can no longer be opened, by anyone, and nothing in either library says so. When the two modules share an account:
+> - pass `$memorized` to `register()`, so the vault has its second envelope;
+> - after a level-1 or level-2 recovery, re-seal as soon as the application holds the memorized secret again: `loginWithMemorized($user, $memorized)`, then `changePassword($session, $newPassword)`. Until then the vault stays sealed on the old password, but still opens with the memorized word;
+> - level 3 is reached when the memorized word may be lost as well: without an escrow envelope, the vault does not survive it.
+
 ---
 
 ## Operational modes — v0.4.0 implements one of them

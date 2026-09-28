@@ -31,7 +31,7 @@ render_header(t('title.security'), $account);
 
 <div class="sec-card">
   <h2><?= t('sec.1.h2') ?></h2>
-  <?= t('sec.1.body') ?>
+  <?= t('sec.1.body', Auth::LOGIN_MAX_FAILS, intdiv(Auth::LOGIN_WINDOW, 60)) ?>
 </div>
 
 <div class="sec-card">

@@ -131,11 +131,17 @@ printf '%s' "$SEL" > sel
 printf '%s' "$MOT" | "${DERIVE[@]}" --salt-file sel --label disk --format hex > derive.hex || exit 1
 
 taille="$(wc -c < derive.hex)"
+# La taille attendue est celle qu'install.sh écrit dans crypttab (keyfile-size) :
+# la figer ici laisserait les deux diverger sans que rien ne rougisse.
+attendue="$(grep -oE 'keyfile-size=[0-9]+' "$MODULE/install.sh" | head -1 | cut -d= -f2)"
 total=$((total + 1))
-if [ "$taille" = 64 ]; then
-  printf '  ✅ %-50s %s\n' "sortie du dérivateur : 64 o, aucun \\n final" "$taille"
+if [ -z "$attendue" ]; then
+  printf '  ❌ %-50s\n' "keyfile-size introuvable dans install.sh"
+  echec=1
+elif [ "$taille" = "$attendue" ]; then
+  printf '  ✅ %-50s %s\n' "sortie du dérivateur : $attendue o (keyfile-size), aucun \\n final" "$taille"
 else
-  printf '  ❌ %-50s %s (attendu 64)\n' "sortie du dérivateur" "$taille"
+  printf '  ❌ %-50s %s (keyfile-size d install.sh : %s)\n' "sortie du dérivateur" "$taille" "$attendue"
   echec=1
 fi
 

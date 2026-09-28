@@ -14,6 +14,10 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PY="${PYTHON:-python3}"
+# Label de dérivation : l'enrôlement, le démarrage et le secours doivent dériver
+# sous le MÊME. Changé d'un seul côté, le slot ne s'ouvre plus au boot.
+# Garde : tests/test_label_derivation.sh.
+LABEL_DERIVATION=disk
 DEV="${1:?device LUKS attendu (ex. /dev/disk/by-label/cryptdata)}"; shift || true
 EXISTING_KF=""
 case "${1:-}" in
@@ -86,7 +90,7 @@ read -rsp "  Confirme la passphrase : " W2; echo
 # pas ouvert par un keyscript qui rend de l'hex. Le format enrole est inscrit plus
 # bas (format-slot.sh), et install.sh le relit avant de poser un keyscript.
 FORMAT=hex
-printf '%s' "$W1" | "$PY" "$HERE/selfrecover_derive.py" --stdin --salt "$SALT" --label disk --format "$FORMAT" > "$TMP/sr.key"
+printf '%s' "$W1" | "$PY" "$HERE/selfrecover_derive.py" --stdin --salt "$SALT" --label "$LABEL_DERIVATION" --format "$FORMAT" > "$TMP/sr.key"
 
 if [ -n "$EXISTING_KF" ]; then
   cryptsetup luksAddKey "$DEV" "$TMP/sr.key" --key-file "$EXISTING_KF"
@@ -117,10 +121,10 @@ fi
 printf '%s' "$SALT" > "$TMP/salt"   # --salt-file : le sel ne passe pas par argv
 if [ -n "$DERIVE_C" ]; then
   PREUVE="$DERIVE_C — le chemin du demarrage"
-  derive_preuve() { "$DERIVE_C" --salt-file "$TMP/salt" --label disk --format "$FORMAT"; }
+  derive_preuve() { "$DERIVE_C" --salt-file "$TMP/salt" --label "$LABEL_DERIVATION" --format "$FORMAT"; }
 else
   PREUVE="selfrecover_derive.py — le chemin du demarrage N'EST PAS eprouve"
-  derive_preuve() { "$PY" "$HERE/selfrecover_derive.py" --stdin --salt "$SALT" --label disk --format "$FORMAT"; }
+  derive_preuve() { "$PY" "$HERE/selfrecover_derive.py" --stdin --salt "$SALT" --label "$LABEL_DERIVATION" --format "$FORMAT"; }
 fi
 
 if printf '%s' "$W1" | derive_preuve | cryptsetup open --test-passphrase --key-file=- "$DEV"; then

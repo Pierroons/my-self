@@ -81,7 +81,7 @@ final class Security
      */
     private static function csrfSecret(): string
     {
-        return 'csrf|' . SecretInstance::lire('.serversecret', 48, 32);
+        return 'csrf|' . SecretInstance::lire('.serversecret', 48, SecretInstance::PLANCHER);
     }
 
     /** Token CSRF déterministe lié au token de session (pas de stockage requis). */

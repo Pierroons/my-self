@@ -58,6 +58,9 @@ final class SelfDataGuard
     /**
      * Create a new user vault and persist it. Returns the UnlockedVault for
      * immediate field encryption (e.g. setting initial profile data).
+     *
+     * ⚠️ Without `$memorized`, the vault has one envelope and dies with the
+     * password: see `UserVault::register()`.
      */
     public function register(
         string $userId,

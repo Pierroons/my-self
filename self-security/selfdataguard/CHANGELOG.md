@@ -5,6 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Documentation — two ways to lose a vault that nothing announced
+
+- **A password-only vault does not survive a SelfRecover recovery.** `register()` without
+  `$memorized` seals the data key under the password alone; SelfRecover levels 1 and 2
+  replace that password. The contract of `register()` (both `UserVault` and the facade) and
+  the README « Coupling with SelfRecover » now say so, with the re-seal sequence
+  (`loginWithMemorized`, then `changePassword`). Reported by an integrator running both
+  modules together; no vault was lost.
+- **The Argon2id profile is not stored in the vaults.** Changing `ARGON2_OPSLIMIT` or
+  `ARGON2_MEMLIMIT` makes every existing envelope fail as a wrong password would. Stated on
+  the constants.
+
 ## [v0.4.0] — 2026-09-26
 
 ### Changed — BREAKING (stored format) — XChaCha20-Poly1305 for every write

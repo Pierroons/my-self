@@ -29,6 +29,23 @@ tiers : sa CSP se décide dans `selffarm-lite`.
 Les deux CSP ont été éprouvées dans un navigateur sans interface, contre les pages servies : aucune
 violation, et une version plus stricte y déclenche bien les blocages attendus.
 
+### SelfRecover-LUKS : ce qui rendrait une machine muette se garde — 28 septembre 2026
+
+Trois scripts dérivent la clé du slot — l'enrôlement (`setup-add-selfrecover-slot.sh`), le
+démarrage (`selfrecover-keyscript.sh`), le secours (`selfrecover-unlock.sh`) — et chacun écrivait
+le label `disk` en dur. Changé d'un seul côté, le slot s'enrôle sous un label et se dérive sous
+l'autre : la machine ne démarre plus, et la preuve de `setup-add`, qui relit son propre label, ne
+le voit pas. Chaque script déclare maintenant `LABEL_DERIVATION` une fois (le keyscript tourne
+dans l'initramfs et ne peut rien sourcer du dépôt), et `tests/test_label_derivation.sh` exige
+l'égalité, avec son canari en CI. Comportement inchangé.
+
+`install.sh` rendait `SKG` réglable alors que le keyscript et le hook initramfs lisent
+`/etc/selfkeyguard` en dur : il refuse désormais tout autre chemin, avant d'écrire quoi que ce
+soit. Le vérificateur post-`update-initramfs` cherche aussi `selfrecover-secours.sh`, que le hook
+embarque et sans lequel une clé d'amorçage portant son `command=` ne rend plus rien (banc
+12 → 13 cas). `test_lecture_keyfile.sh` lit `keyfile-size` dans `install.sh` au lieu de figer 64.
+Aucune machine n'est touchée : le `.92` garde son keyscript `raw` et son marqueur.
+
 ### La console SU exige sept mots de la liste EFF — 28 septembre 2026
 
 La passphrase du super-utilisateur chiffre les sauvegardes du journal : elle s'attaque hors ligne,
@@ -92,7 +109,43 @@ délivrée reste valide, et la prochaine récupération la remplace par six mots
 écrivaient `4` en dur lisent maintenant `Recovery::MOTS_PASSPHRASE`. Un intégrateur qui affiche
 ou valide un nombre de mots fixe doit le relire.
 
-Le banc de l'escalade passe de 107 à 123 cas, celui de la récupération de 58 à 59. Le contrôle
+**Une seule fabrique de codes de secours.** La démo bi-self-duo fabriquait les siens (boucle,
+`random_bytes(5)`, `10` en dur) et le lab gardait son propre `10` : un changement de nombre ou de
+format dans la bibliothèque ne leur parvenait pas. Les deux passent par `Recovery::emettreCodes()`
+et `Recovery::CODES_PAR_LOT`. `Recovery::estFormeCode()` porte seule la forme `xxxxx-xxxxx` ; les
+trois copies de l'expression dans les démos l'appellent.
+
+**Ce que la documentation taisait aux intégrateurs.** Le tableau des niveaux disait « Nouveau
+mot de passe » pour L1 et L2 : les deux rendent aussi une nouvelle passphrase et effacent
+l'ancienne, et une application qui ne l'affiche pas fait perdre le niveau 1 à son utilisateur.
+`emettreCodes()` efface le lot en place avant d'écrire le suivant. Changer le sel du déploiement
+rend tous les codes émis introuvables, sans réindexation possible : la seule procédure (changer,
+puis faire réémettre chaque feuille) est écrite dans le README et `SECURITY.md`. Un coffre
+SelfDataGuard créé sans mot mémorisé ne survit pas à une récupération de niveau 1 ou 2 : le
+README de SelfDataGuard, le contrat de `register()` et `SECURITY.md` le disent, avec la séquence
+de re-scellement. Signalés par une intégration qui fait tourner les deux modules ; aucune donnée
+perdue. L'enrôlement d'un appareil dit maintenant où vit sa clé.
+
+**Les messages disent le délai réglé, pas un délai recopié.** « Réessaie dans 15 minutes » était
+écrit en dur six fois dans `Recovery` et `Device`, alors que la fenêtre est un paramètre du
+constructeur ; le lab la règle. Le refus des freins vient maintenant d'une seule méthode par
+classe, et `Duree::enClair()` dit la fenêtre en clair — le texte reste identique entre le frein par
+compte et le frein par origine. `Escalade` fait de même pour l'accord, le gel et le dépôt trop
+rapproché (qui dit maintenant combien de temps attendre) ; le gel dit qu'un administrateur peut le
+lever, et le refus `deja_ouvert` donne la date où la procédure en cours tombe d'elle-même.
+`Escalade::reglesDuGel()` rend seuil, fenêtre et durée aux écrans d'arbitrage, qui les recopiaient.
+Le lab transmet sa fenêtre de connexion au module et ses textes lisent ses constantes.
+
+**SelfDataGuard : la démo lit la bibliothèque au lieu de la recopier.** Ses API écrivaient
+`strlen(…) < 12` à côté de `UserVault::PASSWORD_MIN_LEN`, et un refus d'entrée de la bibliothèque
+(`InvalidArgumentException`) n'était pas attrapé : il sortait en 500 sans JSON. Elles lisent la
+constante et répondent 400. `check-plancher-secret.sh` n'acceptait qu'un chiffre en troisième
+argument de `SecretInstance::lire()` — il poussait à écrire `32` en dur ; il accepte maintenant
+`SecretInstance::PLANCHER`, que le lab emploie. `sanity_couplage_dataguard.php` tient d'accord le
+minimum de mot de passe d'`Escalade` et celui de `UserVault` (l'un compte des caractères, l'autre
+des octets : c'est dit, pas unifié), avec son canari en CI.
+
+Le banc de l'escalade passe de 107 à 124 cas, celui de la récupération de 58 à 61. Le contrôle
 qui affirmait qu'un accord reste actif « bien après son TTL » n'a pas été réparé mais **scindé** :
 la propriété qu'il défendait tient sur la fenêtre où elle vaut, l'échéance la borne au-delà.
 Trois canaris : révocation neutralisée, échéance retirée, abandon qui ne clôt plus.

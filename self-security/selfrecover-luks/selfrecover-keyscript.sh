@@ -18,6 +18,10 @@
 #   et capture la passphrase suivante. Le filet reste, la porte ferme.
 SALT=/etc/selfkeyguard/selfrecover_salt
 BIN=/etc/selfkeyguard/selfrecover_derive_c
+# Label de derivation : l'enrôlement, le demarrage et le secours doivent deriver
+# sous le MÊME. Change d'un seul côte, le slot ne s'ouvre plus au boot.
+# Garde : tests/test_label_derivation.sh.
+LABEL_DERIVATION=disk
 NAME="${CRYPTTAB_NAME:-disque}"
 
 if [ -x /lib/cryptsetup/askpass ]; then
@@ -52,4 +56,4 @@ fi
 # printf '%s' et non echo, ici comme dans le derivateur : un \n FINAL ferait partie
 # du keyfile et changerait la cle. C'est le seul mode de defaillance, et il vaut
 # pour l'hex autant que pour le brut. Garde par tests/test_lecture_keyfile.sh.
-printf '%s' "$PASS" | "$BIN" --salt-file "$SALT" --label disk --format hex
+printf '%s' "$PASS" | "$BIN" --salt-file "$SALT" --label "$LABEL_DERIVATION" --format hex

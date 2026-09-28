@@ -19,7 +19,7 @@
 
 For e-commerce or SaaS deployments that also need to **protect stored personal data** against database exfiltration, see the [SelfDataGuard](../../self-security/selfdataguard/) companion module. SelfDataGuard reuses the SelfRecover memorized recovery word as one of its key-wrapping factors (through two distinct derivations: an HMAC bound to the site on the SelfRecover side, an Argon2id under the `/dataguard` context on the data side), so a user who forgets their password keeps a way into each of their two halves: the memorized word opens the SelfDataGuard vault on its own, and serves as the knowledge factor to reopen the account — with the paper *recovery code* alongside.
 
-⚠️ **The pairing is a design property, not a code call**: neither library imports the other, and `loginWithMemorized()` is called only by the `demo/selfdataguard/` demo. It is the integrator who hands the same memorized word to both.
+⚠️ **The pairing is a design property, not a code call**: neither library imports the other, and `loginWithMemorized()` is called only by the `demo/selfdataguard/` demo. It is the integrator who hands the same memorized word to both. And it is the integrator who re-seals: levels 1 and 2 replace the password, and a SelfDataGuard vault registered without the memorized word has that envelope only — it becomes unreadable. See [« Coupling with SelfRecover »](../../self-security/selfdataguard/README.md#coupling-with-selfrecover).
 
 SelfRecover protects **authentication**. SelfDataGuard protects **data at rest**. Together they close the loop on the case that does the most damage: a dump where authentication tokens **and** personal data leave in plain text, from the same table.
 
@@ -173,10 +173,11 @@ HMAC is intentionally **fast** client-side because the goal is service binding, 
 
 | Level | What you provide | Outcome |
 |-------|----------------|---------|
-| **L1** | Passphrase (EFF diceware, 6 words ≈ 77.5 bits) | New password |
-| **L2** | **Identifier-less 2FA**, two paths: a paper *recovery code* **+** the memorized word — or, optionally, the enrolled device **+** the memorized word | New password |
+| **L1** | Passphrase (EFF diceware, 6 words ≈ 77.5 bits) | New password **and** new passphrase |
+| **L2** | **Identifier-less 2FA**, two paths: a paper *recovery code* **+** the memorized word — or, optionally, the enrolled device **+** the memorized word | By code: new password **and** new passphrase. By device: new password only |
 | **L3** | Bundle of raw facts + human exchange | Human admin decision, then re-enrollment **by the user** |
 
+- ⚠️ **Show the new passphrase.** Levels 1 and 2 by code return a fresh one (`passphrase` in the result) and erase the old one. An application that only shows the password makes its user lose level 1, with nothing telling them.
 - **L2 = real 2FA, with no identifier to remember.** The *recovery code* **locates** the account (via an HMAC lookup — no more enumeration) and acts as the **possession** factor; the memorized word (HMAC-derived client-side) is the **knowledge** factor. Both are verified, with a **generic error** that never reveals which one failed. The "this device" path replaces the code, never the word — **for a device already enrolled**. Enrolling one asks for the word alone, which is why the library requires the caller to assert that the account holder is already authenticated, and brakes that path per account. See [recovery codes](#recovery-codes) and [the "this device" factor](#the-this-device-factor).
 - **L3 = human judgment.** A **bundle of raw facts** is shown to an admin — never an automatic score. Dispute access is protected by an **owner sesame** (never the semi-public identifier). On grant, the user **re-defines their own secret**: the server issues no password.
 
@@ -186,7 +187,7 @@ Rate limits and a dispute system at every level. Moving from one level to the ne
 
 ## Recovery codes
 
-The **possession factor of L2**. At registration, a batch of **10 codes** is generated and **shown only once** (format `xxxxx-xxxxx`, ~40 bits each).
+The **possession factor of L2**. At registration, a batch of **10 codes** (`Recovery::CODES_PAR_LOT`) is generated and **shown only once** (format `xxxxx-xxxxx`, ~40 bits each).
 
 Each code is stored **twice**, never in clear:
 
@@ -196,7 +197,8 @@ Each code is stored **twice**, never in clear:
 | `code_hash` = `Argon2id(code)` | verification + resistance to a database leak |
 
 - **Single-use** (marked `used` after a successful reset).
-- **Regenerable** on demand (auth = username + memorized word) — the new batch replaces the old one.
+- **Regenerable** on demand (auth = username + memorized word) — the new batch replaces the old one. ⚠️ `emettreCodes()` **erases** the current batch before writing the next: the printed sheet stops being valid at that moment. Call it only on the holder's request, and tell them.
+- **The deployment salt does not rotate without reissuing.** `code_lookup` is an HMAC of the code under that salt, and the code is stored nowhere: changing the salt makes **every** issued code unfindable, with no possible reindexing. The only procedure: change the salt, then have every sheet reissued. In between, level 2 by code is closed; level 1 and the device stay open.
 - `parCode()` returns `codes_restants` on every use. The threshold at which to warn belongs to the application: the library gives the count, it does not decide when the count becomes worrying.
 
 This is what enables an **identifier-less L2**: the code is both "who" and a proof of possession.
