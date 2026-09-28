@@ -166,7 +166,7 @@ section('contrat');
 // qu'un `new` porte cette preuve.
 $pdo = baseNeuve();
 $r = abrite(static fn (): object => new StockagePdo($pdo, HOTE));
-verifier('la classe s\'instancie — donc les 41 signatures sont tenues', $r['ok'], $r['message']);
+verifier('la classe s\'instancie — donc les 42 signatures sont tenues', $r['ok'], $r['message']);
 
 $stockage = new StockagePdo($pdo, HOTE);
 verifier('elle est bien un StorageInterface', $stockage instanceof StorageInterface);
@@ -178,7 +178,7 @@ verifier('aucune méthode du contrat ne manque', $manquantes === [], (string) co
 // ⚠️ Compter ne suffit pas : une méthode qui rend toujours `null` compte pareil.
 // Ce décompte sert à faire ROUGIR le banc si le contrat gagne une méthode que
 // l'adaptateur n'a pas suivie — c'est le seul cas où le compte dit quelque chose.
-verifier('le contrat en porte 41, comme annoncé partout ailleurs', count($attendues) === 41,
+verifier('le contrat en porte 42, comme annoncé partout ailleurs', count($attendues) === 42,
     (string) count($attendues));
 
 // ═══════════════════════════════════════════════════════════════════════════
