@@ -146,7 +146,10 @@ final class Escalade
      * La longueur n'est pas de l'entropie — douze caractères identiques
      * franchissent la barre. C'est un plancher contre le pire, pas une mesure,
      * et c'est le même que celui de SelfDataGuard : un utilisateur des deux
-     * modules ne doit pas rencontrer deux règles.
+     * modules ne doit pas rencontrer deux règles. `sanity_couplage_dataguard`
+     * tient les deux valeurs d'accord. ⚠️ L'unité diffère : ici des caractères
+     * (`mb_strlen`), là-bas des octets (`strlen`) — un mot de passe accentué
+     * franchit plus tôt le plancher de SelfDataGuard.
      */
     public const MOT_DE_PASSE_MINIMUM = 12;
 

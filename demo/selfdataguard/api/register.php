@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 require __DIR__ . '/_bootstrap.php';
 
+use Pierroons\SelfDataGuard\Vault\UserVault;
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') fail('POST only', 405);
 
 $body      = json_input();
@@ -14,7 +16,9 @@ $fields    = is_array($body['fields'] ?? null) ? $body['fields'] : [];
 $indexed   = is_array($body['indexed'] ?? null) ? $body['indexed'] : ['email'];
 
 if ($userId === '' || $password === '') fail('userId and password are required');
-if (strlen($password) < 12) fail('Password must be ≥12 characters (whitepaper §7)');
+if (strlen($password) < UserVault::PASSWORD_MIN_LEN) {
+    fail('Password must be ≥' . UserVault::PASSWORD_MIN_LEN . ' characters (whitepaper §7)');
+}
 
 try {
     $session = $dataGuard->register($userId, $password, $memorized === '' ? null : $memorized);
@@ -27,6 +31,10 @@ try {
         $dataGuard->setFields($session, $clean, $indexed);
     }
     ok(['userId' => $userId]);
+} catch (InvalidArgumentException $e) {
+    // Un refus de la bibliothèque sur une entrée, pas un conflit : sans ce
+    // catch, il sortait en 500 sans JSON.
+    fail($e->getMessage(), 400);
 } catch (RuntimeException $e) {
     fail($e->getMessage(), 409);
 }

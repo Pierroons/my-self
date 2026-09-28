@@ -119,6 +119,15 @@ lever, et le refus `deja_ouvert` donne la date où la procédure en cours tombe 
 `Escalade::reglesDuGel()` rend seuil, fenêtre et durée aux écrans d'arbitrage, qui les recopiaient.
 Le lab transmet sa fenêtre de connexion au module et ses textes lisent ses constantes.
 
+**SelfDataGuard : la démo lit la bibliothèque au lieu de la recopier.** Ses API écrivaient
+`strlen(…) < 12` à côté de `UserVault::PASSWORD_MIN_LEN`, et un refus d'entrée de la bibliothèque
+(`InvalidArgumentException`) n'était pas attrapé : il sortait en 500 sans JSON. Elles lisent la
+constante et répondent 400. `check-plancher-secret.sh` n'acceptait qu'un chiffre en troisième
+argument de `SecretInstance::lire()` — il poussait à écrire `32` en dur ; il accepte maintenant
+`SecretInstance::PLANCHER`, que le lab emploie. `sanity_couplage_dataguard.php` tient d'accord le
+minimum de mot de passe d'`Escalade` et celui de `UserVault` (l'un compte des caractères, l'autre
+des octets : c'est dit, pas unifié), avec son canari en CI.
+
 Le banc de l'escalade passe de 107 à 124 cas, celui de la récupération de 58 à 61. Le contrôle
 qui affirmait qu'un accord reste actif « bien après son TTL » n'a pas été réparé mais **scindé** :
 la propriété qu'il défendait tient sur la fenêtre où elle vaut, l'échéance la borne au-delà.

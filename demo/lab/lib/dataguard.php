@@ -32,7 +32,7 @@ final class DataGuard
      */
     private static function blindKey(): string
     {
-        return SecretInstance::lire('.blindkey', 48, 32);
+        return SecretInstance::lire('.blindkey', 48, SecretInstance::PLANCHER);
     }
 
     /** @var array<string, string> clés dérivées, une par contexte, le temps de la requête */

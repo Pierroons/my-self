@@ -68,8 +68,11 @@ appels=0
 while IFS=: read -r fichier ligne texte; do
     [ -n "$fichier" ] || continue
     appels=$((appels + 1))
-    # lire('<nom>', <octets>, <minLongueur>, …) — le troisième argument
-    min=$(printf '%s' "$texte" | sed -nE "s/.*lire\([^,]+, *[0-9]+, *([0-9]+).*/\1/p")
+    # lire('<nom>', <octets>, <minLongueur>, …) — le troisième argument. La
+    # constante du plancher y vaut le plancher : la section 1 l'a vérifiée. Ne
+    # lire qu'un chiffre poussait à écrire le littéral, c'est-à-dire une copie.
+    min=$(printf '%s' "$texte" | sed -nE "s/.*lire\([^,]+, *[0-9]+, *([0-9]+|(SecretInstance|self|static)::PLANCHER).*/\1/p")
+    case "$min" in *::PLANCHER) min=$PLANCHER ;; esac
     if [ -z "$min" ]; then
         ko "$fichier:$ligne — longueur minimale non lisible, à vérifier à la main"
     elif [ "$min" -ge "$PLANCHER" ]; then

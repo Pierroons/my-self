@@ -100,7 +100,7 @@ final class Auth
      */
     public static function siteSalt(): string
     {
-        return SecretInstance::lire('.sitesalt', 32, 32, 'LAB_SITESALT_PATH');
+        return SecretInstance::lire('.sitesalt', 32, SecretInstance::PLANCHER, 'LAB_SITESALT_PATH');
     }
 
     /** Mot de passe temporaire rendu après une récupération. */

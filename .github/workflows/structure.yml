@@ -1009,3 +1009,23 @@ jobs:
             echo "→ $(basename "$t")"
             php "$t"
           done
+
+      # SelfRecover et SelfDataGuard déclarent chacun leur minimum de mot de passe,
+      # sans dépendre l'un de l'autre : ce banc les tient d'accord. Le canari
+      # désaccorde l'un des deux et exige le rouge.
+      - name: Garde-fou — les valeurs que SelfRecover partage avec SelfDataGuard
+        run: |
+          php bi-self/selfrecover/tests/sanity_couplage_dataguard.php
+          F=self-security/selfdataguard/src/Vault/UserVault.php
+          cp "$F" /tmp/UserVault.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
+          sed -i 's/public const PASSWORD_MIN_LEN = 12;/public const PASSWORD_MIN_LEN = 13;/' "$F"
+          grep -q 'PASSWORD_MIN_LEN = 13;' "$F" || { echo "::error::canari non planté — motif introuvable"; exit 1; }
+          if php bi-self/selfrecover/tests/sanity_couplage_dataguard.php; then
+            cp /tmp/UserVault.intact "$F"
+            echo "::error::les minimums désaccordés rendent encore vert"; exit 1
+          fi
+          cp /tmp/UserVault.intact "$F"
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ la sonde rougit quand les minimums divergent"
