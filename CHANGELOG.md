@@ -69,6 +69,13 @@ Trois messages disent maintenant ce qu'ils taisaient : l'acceptation annonce son
 « une procédure est déjà en cours » dit quoi faire quand le sésame est perdu, et la reprise
 annonce le nombre d'appareils retirés. `appareils_retires` est rendu à l'application.
 
+**La passphrase du niveau 1 passe de quatre à six mots**, soit de ≈ 51,7 à ≈ 77,5 bits : le
+minimum que l'entropy-lab et le guide diceware recommandent déjà. Seule la génération change. La
+vérification compare une empreinte et ne compte pas les mots : une passphrase de quatre mots déjà
+délivrée reste valide, et la prochaine récupération la remplace par six mots. Les trois démos qui
+écrivaient `4` en dur lisent maintenant `Recovery::MOTS_PASSPHRASE`. Un intégrateur qui affiche
+ou valide un nombre de mots fixe doit le relire.
+
 Le banc de l'escalade passe de 107 à 123 cas, celui de la récupération de 58 à 59. Le contrôle
 qui affirmait qu'un accord reste actif « bien après son TTL » n'a pas été réparé mais **scindé** :
 la propriété qu'il défendait tient sur la fenêtre où elle vaut, l'échéance la borne au-delà.

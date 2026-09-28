@@ -74,7 +74,7 @@ Le `matériel` dépend d'un mode de dérivation obligatoire, décrit en §4. La 
 Le serveur reçoit et stocke :
 
 - `Argon2id(mot_de_passe)` — hash classique du mot de passe
-- `Argon2id(passphrase)` — une passphrase diceware générée côté serveur (4 mots, ~51 bits d'entropie)
+- `Argon2id(passphrase)` — une passphrase diceware générée côté serveur (6 mots, ~77,5 bits d'entropie)
 - `Argon2id(clé_dérivée)` — la clé de récupération dérivée par HMAC
 - `sel_compte` — le sel du compte : 16 octets aléatoires rendus en 32 hexadécimaux minuscules, un par compte, engendré par le navigateur, pas un secret
 

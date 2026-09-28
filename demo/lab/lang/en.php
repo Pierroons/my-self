@@ -482,7 +482,7 @@ return [
 
     'rec.username' => 'Username',
     'rec.passphrase' => 'Backup passphrase',
-    'rec.passphrase_ph' => 'the four words received at sign-up',
+    'rec.passphrase_ph' => 'the words received at sign-up',
     'rec.word'    => 'Recovery word',
     'rec.submit'  => 'Recover my access',
     'rec.back'    => '← Back to log in',
@@ -520,7 +520,7 @@ return [
     'rec.code'    => 'Recovery code',
     'rec.code_ph' => 'xxxxx-xxxxx',
     'rec.word2'   => 'Recovery word',
-    'rec.l1.note' => '<strong>Level 1</strong> — the backup passphrase you received at sign-up, four generated words. A <em>strong</em> secret: its entropy is what protects you.',
+    'rec.l1.note' => '<strong>Level 1</strong> — the backup passphrase you received at sign-up, six generated words. A <em>strong</em> secret: its entropy is what protects you.',
 
     // --- Level 3: contextual questions, body of signals, human decision ---
     'dsp.h1'            => '🧑\u200d⚖️ Assisted recovery',

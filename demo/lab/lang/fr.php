@@ -482,7 +482,7 @@ return [
 
     'rec.username' => 'Identifiant',
     'rec.passphrase' => 'Passphrase de secours',
-    'rec.passphrase_ph' => 'les quatre mots reçus à l\'inscription',
+    'rec.passphrase_ph' => 'les mots reçus à l\'inscription',
     'rec.word'    => 'Mot de récupération',
     'rec.submit'  => 'Récupérer mon accès',
     'rec.back'    => '← Retour à la connexion',
@@ -520,7 +520,7 @@ return [
     'rec.code'    => 'Code de récupération',
     'rec.code_ph' => 'xxxxx-xxxxx',
     'rec.word2'   => 'Mot de récupération',
-    'rec.l1.note' => '<strong>Niveau 1</strong> — la passphrase de secours reçue à l\'inscription, quatre mots générés. Secret <em>fort</em> : c\'est son entropie qui te protège.',
+    'rec.l1.note' => '<strong>Niveau 1</strong> — la passphrase de secours reçue à l\'inscription, six mots générés. Secret <em>fort</em> : c\'est son entropie qui te protège.',
 
     // --- Niveau 3 : questions contextuelles, faisceau, décision humaine ---
     'dsp.h1'            => '🧑\u200d⚖️ Récupération assistée',

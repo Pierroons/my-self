@@ -512,14 +512,14 @@
         <input id="r1-username" name="username" placeholder="ex: alice" autocomplete="off">
       </div>
       <div class="field">
-        <label for="r1-passphrase">Passphrase (4 mots générés à l'étape 1)</label>
-        <input id="r1-passphrase" name="passphrase" placeholder="ex: cat river moon drift" autocomplete="off">
+        <label for="r1-passphrase">Passphrase (6 mots générés à l'étape 1)</label>
+        <input id="r1-passphrase" name="passphrase" placeholder="ex: cat river moon drift lamp cedar" autocomplete="off">
       </div>
       <button class="btn" type="submit">Récupérer mon compte</button>
     </form>
     <div id="r1-result"></div>
     <div class="teach tuto-only">
-      La passphrase est ton « sceau de secours » : 4 mots mémorisables, connus de toi seul,
+      La passphrase est ton « sceau de secours » : 6 mots tirés au hasard, à garder sur papier,
       qui re-débloquent ton compte sans aucun email. <code>argon2id_verify</code> contre le
       hash stocké, génération d'un nouveau password, invalidation de toutes les sessions
       précédentes. <strong>Aucun tiers impliqué, aucun SMTP, aucun délai.</strong>

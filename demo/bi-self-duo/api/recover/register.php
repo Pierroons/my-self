@@ -88,13 +88,12 @@ if ($stmt->execute()->fetchArray()) {
 $password = RecoverHelper::generatePassword(16);
 $log->info('register', 'Password généré côté serveur (16 caractères, alphanum sans ambigus)');
 
-$diceware = DicewareWordlist::generate(4, 'en');
+$diceware = DicewareWordlist::generate(\Pierroons\SelfRecover\Recovery\Recovery::MOTS_PASSPHRASE, 'en');
 $passphrase = implode(' ', $diceware['words']);
 $log->info('register', 'Passphrase diceware générée depuis la liste officielle EFF (7776 mots, CC-BY 3.0)', [
     'words_count'  => count($diceware['words']),
     'entropy_bits' => $diceware['entropy_bits'],
     'wordlist'     => 'EFF large wordlist (2016)',
-    'note'         => 'Mode avancé disponible : l\'utilisateur peut saisir ses propres 6+ mots pour monter jusqu\'à 77 bits (EFF recommandé) ou 103 bits (paranoïaque).',
 ]);
 
 $log->crypto('register', 'Le mot mémorisé est arrivé DÉJÀ dérivé', [
