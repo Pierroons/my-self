@@ -8,7 +8,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
 [![SelfDataGuard: v0.4.0](https://img.shields.io/badge/SelfDataGuard-v0.4.0-brightgreen.svg)](./selfdataguard/)
-[![SelfRecover-LUKS: v0.5.0](https://img.shields.io/badge/SelfRecover--LUKS-v0.5.0-green.svg)](./selfrecover-luks/)
+[![SelfRecover-LUKS: v0.6.0](https://img.shields.io/badge/SelfRecover--LUKS-v0.6.0-green.svg)](./selfrecover-luks/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
@@ -54,7 +54,7 @@ Self-Security takes the two surfaces apart: **data is encrypted before it reache
 | Module | Role | Status |
 |--------|------|--------|
 | [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.4.0** — in service, 219 checks across 8 suites |
-| [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.5.0** — validated on a Debian 13 LNMP server, a laptop and an encrypted-LVM root, reproducible install |
+| [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.6.0** — validated on a Debian 13 LNMP server, a laptop and an encrypted-LVM root, reproducible install |
 
 ---
 

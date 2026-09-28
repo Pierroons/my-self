@@ -29,7 +29,22 @@ tiers : sa CSP se décide dans `selffarm-lite`.
 Les deux CSP ont été éprouvées dans un navigateur sans interface, contre les pages servies : aucune
 violation, et une version plus stricte y déclenche bien les blocages attendus.
 
-### SelfRecover-LUKS : ce qui rendrait une machine muette se garde — 28 septembre 2026
+### SelfRecover-LUKS v0.6.0 — ce qui rendrait une machine muette se garde — 28 septembre 2026
+
+Mineure, pas corrective : trois changements depuis la v0.5.0 obligent à relire avant de mettre à
+jour une machine en service.
+
+⚠️ **Migration.**
+- **Le format enrôlé est inscrit, et `install.sh` le relit** (26/09) : il refuse de poser un
+  keyscript d'un autre format que le slot, et refuse aussi de remplacer un keyscript en place
+  sans marqueur `format-slot`. Une machine installée avant doit d'abord faire inscrire le format
+  de son slot (`INSTALL.md` §15) — c'est le geste qu'a demandé le premier serveur migré.
+- **`SKG` n'accepte plus que `/etc/selfkeyguard`**, le seul chemin que l'amorçage lit.
+- **Le vérificateur d'image réclame `selfrecover-secours.sh`** : une image générée sans lui
+  déclenche l'alerte.
+
+La preuve du slot, elle, passe par le dérivateur de l'amorçage quand il est présent (28/09), sans
+geste à faire.
 
 Trois scripts dérivent la clé du slot — l'enrôlement (`setup-add-selfrecover-slot.sh`), le
 démarrage (`selfrecover-keyscript.sh`), le secours (`selfrecover-unlock.sh`) — et chacun écrivait
