@@ -131,6 +131,36 @@ jobs:
       - name: Garde-fou — socle SelfRecover (profil de hachage, encodage, diceware)
         run: php bi-self/selfrecover/tests/sanity_socle.php
 
+      - name: Garde-fou — les appelants passent ce que la bibliothèque exige
+        run: |
+          # PHP ne compte les arguments qu'à l'exécution : un constructeur qui
+          # gagne un paramètre obligatoire laisse tous ses appelants passer
+          # `php -l` et lever à la première requête. C'est arrivé aux deux seules
+          # routes de récupération de la démo publique, restées à 2 arguments.
+          php bi-self/selfrecover/tests/sanity_constructions.php
+
+      - name: Canari — le contrôle rougit sur un appel incomplet
+        run: |
+          PLANTE=$(mktemp -d)
+          mkdir -p "$PLANTE/demo"
+          cp demo/bi-self-duo/api/recover/recover-l1.php "$PLANTE/demo/"
+          PLANTE="$PLANTE" python3 - <<'PY'
+          import pathlib, os
+          p = pathlib.Path(os.environ['PLANTE']) / 'demo/recover-l1.php'
+          t = p.read_text(encoding='utf-8')
+          bon = '$recovery = RecoverHelper::protocole($s);'
+          assert t.count(bon) == 1, 'la plantation n\'a pas pris — ce canari ne prouve rien'
+          p.write_text(t.replace(bon, '$recovery = new Pierroons\\SelfRecover\\Recovery\\Recovery($a, $b);'), encoding='utf-8')
+          PY
+          if sortie=$(SR_APPELANTS="$PLANTE" php bi-self/selfrecover/tests/sanity_constructions.php 2>&1); then
+            echo "$sortie"
+            echo "::error::le contrôle reste VERT sur une construction à 2 arguments"
+            exit 1
+          fi
+          echo "$sortie"
+          echo "$sortie" | grep -q 'Recovery reçoit 2 argument(s), 3 requis' \
+            || { echo "::error::rouge, mais pas sur le cas attendu"; exit 1; }
+
       - name: Garde-fou — un secret rendu s'accompagne de sa consigne
         run: |
           # Une perte silencieuse est pire qu'une panne : la personne range son

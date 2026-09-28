@@ -41,10 +41,10 @@ if (!preg_match('/^[a-z0-9]{3,20}$/', $username) || strlen($passphrase) < 4) {
     exit;
 }
 
-$db = $s->db();
-
-require_once __DIR__ . '/../../lib/StockageSelfRecover.php';
-$recovery = new Pierroons\SelfRecover\Recovery\Recovery(new StockageSelfRecover($db), RecoverHelper::siteSalt($s));
+// Monté par la fabrique du helper, jamais à la main : c'est elle qui porte le
+// profil de déploiement, obligatoire depuis la 0.7.0. Construire ici avec deux
+// arguments compilait sans broncher et levait un ArgumentCountError à l'appel.
+$recovery = RecoverHelper::protocole($s);
 
 // 🔑 Le protocole n'est pas réimplémenté ici : il vit dans
 // `bi-self/selfrecover/src`, avec le lab pour second consommateur. Cet endpoint

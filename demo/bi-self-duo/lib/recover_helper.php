@@ -162,7 +162,7 @@ final class RecoverHelper {
     }
 
     /** Le protocole monté sur la base de cette session de démo. */
-    private static function protocole(DemoSession $session): Recovery {
+    public static function protocole(DemoSession $session): Recovery {
         // ⚠️ `tor-onion` sans être un service caché : cette démo est servie sur le
         // web ordinaire, mais sa table `login_attempts` ne porte pas d'adresse et
         // son `compterEchecsIp()` lève. Aucune origine n'y est exploitable par

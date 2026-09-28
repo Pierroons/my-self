@@ -62,10 +62,10 @@ if (!preg_match('/^[a-f0-9]{64}$/', $derivedKey)) {
     exit;
 }
 
-$db = $s->db();
-
-require_once __DIR__ . '/../../lib/StockageSelfRecover.php';
-$recovery = new Pierroons\SelfRecover\Recovery\Recovery(new StockageSelfRecover($db), RecoverHelper::siteSalt($s));
+// Monté par la fabrique du helper, jamais à la main : c'est elle qui porte le
+// profil de déploiement, obligatoire depuis la 0.7.0. Construire ici avec deux
+// arguments compilait sans broncher et levait un ArgumentCountError à l'appel.
+$recovery = RecoverHelper::protocole($s);
 
 // 🔑 Le protocole vit dans `bi-self/selfrecover/src`, partagé avec le lab. Cet
 // endpoint n'est plus qu'une porte HTTP. Ce qu'il ne fait plus lui-même :
