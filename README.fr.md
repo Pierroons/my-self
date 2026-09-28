@@ -72,10 +72,12 @@ l'arrêter, et le prix d'une tentative est tout ce qui reste.
 | SelfDataGuard | mot de passe + mot mémorisé | par utilisateur | contexte `/dataguard` |
 
 Compromettre l'un n'ouvre pas les autres, avec une exception qu'il faut dire :
-SelfRecover (L2) et SelfDataGuard partagent le mot mémorisé, et c'est la dérivation
-qui les sépare. Une empreinte volée d'un côté n'ouvre pas l'autre ; le mot lui-même,
-s'il est volé, ouvre seul le coffre SelfDataGuard — côté SelfRecover, il lui faut
-encore le *recovery code*.
+SelfRecover (L2) et SelfDataGuard peuvent partager le mot mémorisé, et c'est la
+dérivation qui les sépare. Aucune des deux bibliothèques n'importe l'autre : c'est
+l'intégrateur qui les apparie, et `demo/selfdataguard/` en montre une façon. Une
+empreinte volée d'un côté n'ouvre pas l'autre ; le mot lui-même, s'il est volé,
+ouvre seul le coffre SelfDataGuard — côté SelfRecover, il lui faut encore le
+*recovery code*.
 Le détail de chaque dérivation est dans le README du module concerné.
 
 ### Le sel n'est pas un secret
