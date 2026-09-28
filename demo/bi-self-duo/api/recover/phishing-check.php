@@ -64,7 +64,7 @@ if (!preg_match('/^[a-z0-9]{3,20}$/', $username)) {
     echo json_encode(['ok'=>false,'error'=>'invalid_username']);
     exit;
 }
-if (!preg_match('/^[a-f0-9]{64}$/', $derivedKey)) {
+if (!RecoverHelper::isDerivedKey($derivedKey)) {
     $log->warning('phishing-check', 'derived_key mal formé (attendu: 64 chars hex SHA-256)', ['received' => $derivedKey]);
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'invalid_derived_key']);

@@ -85,10 +85,10 @@ if ($stmt->execute()->fetchArray()) {
 }
 
 // Génère les secrets
-$password = RecoverHelper::generatePassword(16);
-$log->info('register', 'Password généré côté serveur (16 caractères, alphanum sans ambigus)');
+$password = RecoverHelper::generatePassword();
+$log->info('register', 'Password généré côté serveur (' . strlen($password) . ' caractères, alphanum sans ambigus)');
 
-$diceware = DicewareWordlist::generate(\Pierroons\SelfRecover\Recovery\Recovery::MOTS_PASSPHRASE, 'en');
+$diceware = \Pierroons\SelfRecover\Diceware\Wordlist::generate(\Pierroons\SelfRecover\Recovery\Recovery::MOTS_PASSPHRASE, 'en');
 $passphrase = implode(' ', $diceware['words']);
 $log->info('register', 'Passphrase diceware générée depuis la liste officielle EFF (7776 mots, CC-BY 3.0)', [
     'words_count'  => count($diceware['words']),
@@ -107,17 +107,17 @@ $log->crypto('register', 'Le mot mémorisé est arrivé DÉJÀ dérivé', [
 $t0 = microtime(true);
 $pwHash = RecoverHelper::hash($password);
 $t1 = microtime(true);
-$log->crypto('register', 'argon2id(password) — m=64 Mo, t=4, p=2', ['duration_ms' => (int) (($t1 - $t0) * 1000)]);
+$log->crypto('register', 'argon2id(password) — ' . \Pierroons\SelfRecover\Crypto\Hashing::profilEnClair(), ['duration_ms' => (int) (($t1 - $t0) * 1000)]);
 
 $t2 = microtime(true);
 $passHash = RecoverHelper::hash($passphrase);
 $t3 = microtime(true);
-$log->crypto('register', 'argon2id(passphrase) — m=64 Mo, t=4, p=2', ['duration_ms' => (int) (($t3 - $t2) * 1000)]);
+$log->crypto('register', 'argon2id(passphrase) — ' . \Pierroons\SelfRecover\Crypto\Hashing::profilEnClair(), ['duration_ms' => (int) (($t3 - $t2) * 1000)]);
 
 $t4 = microtime(true);
 $recoveryHash = RecoverHelper::hash($derivedKey);
 $t5 = microtime(true);
-$log->crypto('register', 'argon2id(derived_key) — m=64 Mo, t=4, p=2', ['duration_ms' => (int) (($t5 - $t4) * 1000)]);
+$log->crypto('register', 'argon2id(derived_key) — ' . \Pierroons\SelfRecover\Crypto\Hashing::profilEnClair(), ['duration_ms' => (int) (($t5 - $t4) * 1000)]);
 
 // INSERT
 $stmt = $db->prepare('

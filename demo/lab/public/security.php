@@ -31,7 +31,10 @@ render_header(t('title.security'), $account);
 
 <div class="sec-card">
   <h2><?= t('sec.1.h2') ?></h2>
-  <?= t('sec.1.body', Auth::LOGIN_MAX_FAILS, intdiv(Auth::LOGIN_WINDOW, 60)) ?>
+  <?= t('sec.1.body', Auth::LOGIN_MAX_FAILS, intdiv(Auth::LOGIN_WINDOW, 60),
+      intdiv(\Pierroons\SelfRecover\Crypto\Hashing::ARGON2['memory_cost'], 1024),
+      \Pierroons\SelfRecover\Crypto\Hashing::ARGON2['time_cost'],
+      \Pierroons\SelfRecover\Crypto\Hashing::ARGON2['threads']) ?>
 </div>
 
 <div class="sec-card">

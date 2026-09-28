@@ -46,8 +46,8 @@ $log = $s->logger();
 $log->info('phishing-sim', 'POST /demo/api/recover/phishing-sim');
 
 if (!preg_match('/^[a-z0-9]{3,20}$/', $username) ||
-    !preg_match('/^[a-f0-9]{64}$/', $derivedKeyLegit) ||
-    !preg_match('/^[a-f0-9]{64}$/', $derivedKeyPhishing)) {
+    !RecoverHelper::isDerivedKey($derivedKeyLegit) ||
+    !RecoverHelper::isDerivedKey($derivedKeyPhishing)) {
     $log->warning('phishing-sim', 'Champs invalides');
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'invalid_fields']);

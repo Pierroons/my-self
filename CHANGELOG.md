@@ -145,6 +145,16 @@ argument de `SecretInstance::lire()` — il poussait à écrire `32` en dur ; il
 minimum de mot de passe d'`Escalade` et celui de `UserVault` (l'un compte des caractères, l'autre
 des octets : c'est dit, pas unifié), avec son canari en CI.
 
+**Les démos cessent de recopier la bibliothèque.** Le lab et la démo duo embarquaient chacun une
+copie entière de `Wordlist` (identique au module, au namespace près) : une correction du module ne
+leur parvenait pas. Les deux copies sont supprimées, leurs appelants et la console SU lisent la
+classe du module. `Device::LONGUEUR_MOT_DE_PASSE` nomme la longueur du mot de passe engendré, que
+cinq appels écrivaient `16` ; `Hashing::profilEnClair()` dit le profil Argon2id que les journaux et
+les pages recopiaient (« m=64 Mo, t=4, p=2 ») ; la forme d'une clé dérivée passe par
+`Device::estCleDerivee()` dans les trois routes du duo qui la testaient à la main ; les durées de
+cookie lisent la durée de session ; `recover.html` affiche `SR_DERIVE_VERSION` au lieu de `|v2`, et
+`sr-kdf.js` dérive la forme du sel de `SEL_OCTETS`.
+
 Le banc de l'escalade passe de 107 à 124 cas, celui de la récupération de 58 à 61. Le contrôle
 qui affirmait qu'un accord reste actif « bien après son TTL » n'a pas été réparé mais **scindé** :
 la propriété qu'il défendait tient sur la fenêtre où elle vaut, l'échéance la borne au-delà.

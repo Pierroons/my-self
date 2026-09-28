@@ -54,7 +54,7 @@ return [
     'sec.1.h2' => '1. Authentication — SelfRecover <span class="pill">no email</span>',
     'sec.1.body' => '<ul>'
         . '<li>No email, no phone number. On sign-up: you choose a recovery word → a 16-character <code>password</code> and an EFF diceware passphrase are generated server-side.</li>'
-        . '<li>Storage: <code>Argon2id(password)</code>, <code>Argon2id(passphrase)</code>, <code>Argon2id(derived_key)</code> — m=64&nbsp;MB, t=4, p=2 (OWASP profile). <strong>No secret is ever stored in the clear.</strong></li>'
+        . '<li>Storage: <code>Argon2id(password)</code>, <code>Argon2id(passphrase)</code>, <code>Argon2id(derived_key)</code> — m=%3$d&nbsp;MB, t=%4$d, p=%5$d (OWASP profile). <strong>No secret is ever stored in the clear.</strong></li>'
         . '<li>Derivation bound to the hostname the browser reads: <code>HMAC-SHA256(key = memorised word, message = hostname ‖ "|v2" ‖ account salt)</code> → a word phished on another address does not yield the right key.</li>'
         . '<li>Progressive rate limiting (%1$d failures / %2$d min) plus a per-IP sign-up cap (anti-enumeration, anti-spam).</li>'
         . '</ul>',

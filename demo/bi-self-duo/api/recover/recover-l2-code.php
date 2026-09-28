@@ -55,7 +55,7 @@ if (!\Pierroons\SelfRecover\Recovery\Recovery::estFormeCode($code)) {
     echo json_encode(['ok'=>false,'error'=>'invalid_code_format']);
     exit;
 }
-if (!preg_match('/^[a-f0-9]{64}$/', $derivedKey)) {
+if (!RecoverHelper::isDerivedKey($derivedKey)) {
     $log->warning('recover-l2-code', 'memorized_derived mal formé (attendu : 64 caractères hexadécimaux)');
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'invalid_derived_key']);

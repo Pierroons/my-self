@@ -146,7 +146,7 @@ final class AttackSimulator
                 ],
             ],
             'verdict' => 'neutralisé',
-            'defense' => 'Rate-limit applicatif (' . Auth::LOGIN_MAX_FAILS . ' échecs / ' . Duree::enClair(Auth::LOGIN_WINDOW) . ') + Argon2id (m=64 Mo, t=4, p=2)',
+            'defense' => 'Rate-limit applicatif (' . Auth::LOGIN_MAX_FAILS . ' échecs / ' . Duree::enClair(Auth::LOGIN_WINDOW) . ') + Argon2id (' . \Pierroons\SelfRecover\Crypto\Hashing::profilEnClair() . ')',
             'message_cle' => 'Le bruteforce est bloqué après ' . Auth::LOGIN_MAX_FAILS . " essais, mais l'utilisateur légitime se connecte sans entrave.",
         ];
     }

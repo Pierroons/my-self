@@ -31,7 +31,6 @@ declare(strict_types=1);
 require_once __DIR__ . '/../../lib/session_manager.php';
 require_once __DIR__ . '/../../lib/moderate_helper.php';
 require_once __DIR__ . '/../../lib/recover_helper.php';
-require_once __DIR__ . '/../../lib/diceware/wordlist.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -75,8 +74,8 @@ $totalArgon2Ms = 0;
 
 for ($i = 1; $i <= 5; $i++) {
     $username = 'sybil_' . $i . '_' . bin2hex(random_bytes(2));
-    $password = RecoverHelper::generatePassword(16);
-    $diceware = DicewareWordlist::generate(\Pierroons\SelfRecover\Recovery\Recovery::MOTS_PASSPHRASE, 'en');
+    $password = RecoverHelper::generatePassword();
+    $diceware = \Pierroons\SelfRecover\Diceware\Wordlist::generate(\Pierroons\SelfRecover\Recovery\Recovery::MOTS_PASSPHRASE, 'en');
     $passphrase = implode(' ', $diceware['words']);
     // Ce que cette simulation mesure, c'est le COÛT que l'attaquant paye : trois
     // Argon2id par compte. La clé dérivée n'est jamais stockée ici — n'importe
@@ -106,8 +105,13 @@ for ($i = 1; $i <= 5; $i++) {
     $sybilAccounts[] = ['id' => (int) $sybilId, 'username' => '@' . $username];
 }
 
-$log->warning('sybil', sprintf('Phase 1 terminée — 5 comptes créés avec %d ms d\'Argon2id cumulé (ralentissement SelfRecover)', $totalArgon2Ms));
-$log->info('sybil', 'SelfRecover ne bloque pas l\'attaque, mais impose un coût cryptographique : 15 hachages Argon2id à 64 Mo pour 5 comptes, et autant de mémoire à mobiliser en parallèle.');
+$log->warning('sybil', sprintf('Phase 1 terminée — %d comptes créés avec %d ms d\'Argon2id cumulé (ralentissement SelfRecover)', count($sybilAccounts), $totalArgon2Ms));
+$log->info('sybil', sprintf(
+    'SelfRecover ne bloque pas l\'attaque, mais impose un coût cryptographique : %d hachages Argon2id (%s) pour %d comptes, et autant de mémoire à mobiliser en parallèle.',
+    3 * count($sybilAccounts),
+    \Pierroons\SelfRecover\Crypto\Hashing::profilEnClair(),
+    count($sybilAccounts),
+));
 
 // ------------------------------------------------------------
 // Phase 2 : Les 5 Sybils votent -1 coordonnés contre la cible

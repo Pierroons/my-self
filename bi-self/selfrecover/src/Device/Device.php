@@ -302,8 +302,11 @@ final class Device
         return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans ' . Duree::enClair($this->fenetreEchecs) . '.'];
     }
 
+    /** Longueur du mot de passe engendré après une récupération. */
+    public const LONGUEUR_MOT_DE_PASSE = 16;
+
     /** Mot de passe temporaire rendu au titulaire après une récupération. */
-    public static function engendrerMotDePasse(int $longueur = 16): string
+    public static function engendrerMotDePasse(int $longueur = self::LONGUEUR_MOT_DE_PASSE): string
     {
         $alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
         $sortie   = '';

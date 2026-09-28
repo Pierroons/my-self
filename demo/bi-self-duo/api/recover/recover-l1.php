@@ -59,7 +59,7 @@ $t0 = microtime(true);
 $r  = $recovery->parPassphrase($username, $passphrase, null);
 $ms = (int) ((microtime(true) - $t0) * 1000);
 
-$log->crypto('recover-l1', 'argon2id — m=64 Mo, t=4, p=2, exécuté même sur compte inconnu', [
+$log->crypto('recover-l1', 'argon2id — ' . \Pierroons\SelfRecover\Crypto\Hashing::profilEnClair() . ', exécuté même sur compte inconnu', [
     'duration_ms' => $ms,
     'note'        => "C'est le coût du hachage qui égalise le temps de réponse, jamais un délai fixe : celui-ci se distinguerait d'un Argon2id, qui varie.",
 ]);

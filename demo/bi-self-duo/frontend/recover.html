@@ -1083,7 +1083,7 @@ $('form-phishing-check').addEventListener('submit', async (e) => {
       <div class="hmac-viz">
         <div class="line"><span class="lbl">dans ton navigateur :</span></div>
         <div class="line">  <span class="lbl">clé (le mot) :</span> <span class="val">${html_escape(word)}</span></div>
-        <div class="line">  <span class="lbl">message :</span> <span class="val">${html_escape(location.hostname)}|v2 + <span class="val">${html_escape(salt.substring(0,16))}...</span></div>
+        <div class="line">  <span class="lbl">message :</span> <span class="val">${html_escape(location.hostname)}|${html_escape(SR_DERIVE_VERSION)} + <span class="val">${html_escape(salt.substring(0,16))}...</span></div>
         <div class="line">  <span class="lbl">HMAC-SHA256 = </span><span class="val">${derived}</span></div>
         <div class="line" style="margin-top: 0.4rem;">→ le serveur ne reçoit que la <strong>clé dérivée</strong>. Le mot <code>${html_escape(word)}</code> ne quitte pas cette page.</div>
         <div class="line">→ le nom d'hôte employé est <code>${html_escape(location.hostname)}</code>, <strong>lu par ton navigateur</strong> — pas reçu du serveur. C'est ce qui rend la clé inutilisable ailleurs.</div>
@@ -1140,7 +1140,7 @@ $('form-recover-l2-code').addEventListener('submit', async (e) => {
     viz.innerHTML = `
       <div class="hmac-viz">
         <div class="line"><span class="lbl">dans ton navigateur :</span></div>
-        <div class="line">  <span class="lbl">HMAC-SHA256(mot, ${html_escape(location.hostname)}|v2 + sel du compte) = </span><span class="val">${derived}</span></div>
+        <div class="line">  <span class="lbl">HMAC-SHA256(mot, ${html_escape(location.hostname)}|${html_escape(SR_DERIVE_VERSION)} + sel du compte) = </span><span class="val">${derived}</span></div>
         <div class="line" style="margin-top: 0.4rem;">→ le corps envoyé contient <strong>le code et la clé dérivée</strong>, rien d'autre.</div>
         <div class="line">→ <strong>aucun identifiant</strong> : le serveur retrouve le compte par le seul code.</div>
       </div>`;

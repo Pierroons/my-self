@@ -46,6 +46,17 @@ final class Hashing
         '$argon2id$v=19$m=65536,t=4,p=2$bmJrdDNvVlNHYlZKaktvOQ$5rrXLA5A2HcsuydGvvacn80ulh5dLCAuqWjd5t3F+Bw';
 
     /** Hache un secret destiné à être stocké. */
+    /** Le profil dit en clair, pour les journaux et les pages qui l'affichent : « m=64 Mo, t=4, p=2 ». */
+    public static function profilEnClair(): string
+    {
+        return sprintf(
+            'm=%d Mo, t=%d, p=%d',
+            intdiv(self::ARGON2['memory_cost'], 1024),
+            self::ARGON2['time_cost'],
+            self::ARGON2['threads'],
+        );
+    }
+
     public static function hash(string $secret): string
     {
         return password_hash($secret, PASSWORD_ARGON2ID, self::ARGON2);

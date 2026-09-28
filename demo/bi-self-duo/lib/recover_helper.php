@@ -10,7 +10,6 @@ require_once __DIR__ . '/session_manager.php';
 // et il évite d'imposer une étape d'installation à une démo qu'on déploie par
 // simple copie.
 require_once __DIR__ . '/../../../bi-self/selfrecover/src/autoload.php';
-require_once __DIR__ . '/diceware/wordlist.php';
 // L'adaptateur du duo, dont `selDeDerivation` a besoin pour monter le protocole.
 // Il vit hors autoload : la bibliothèque ne connaît que ses propres classes.
 require_once __DIR__ . '/StockageSelfRecover.php';
@@ -71,7 +70,7 @@ final class RecoverHelper {
      * coûte plus cher que les 3,8 bits qu'elle fait gagner — 93 bits restent
      * hors de portée, un `1` pris pour un `l` bloque l'utilisateur tout de suite.
      */
-    public static function generatePassword(int $length = 16): string {
+    public static function generatePassword(int $length = Protocole::LONGUEUR_MOT_DE_PASSE): string {
         return Protocole::engendrerMotDePasse($length);
     }
 
@@ -214,7 +213,7 @@ final class RecoverHelper {
         return is_array($row) ? $row : null;
     }
 
-    public static function setAppSessionCookie(string $token, int $lifetimeSeconds = 1800): void {
+    public static function setAppSessionCookie(string $token, int $lifetimeSeconds = DemoSession::TTL_SECONDS): void {
         setcookie('sr_app_session', $token, [
             'expires'  => time() + $lifetimeSeconds,
             'path'     => '/',

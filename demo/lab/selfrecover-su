@@ -26,7 +26,6 @@ if (PHP_SAPI !== 'cli') {
 
 require __DIR__ . '/lib/db.php';
 require __DIR__ . '/lib/su_audit.php';
-require __DIR__ . '/lib/diceware/wordlist.php';
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\SuAudit;
@@ -185,9 +184,13 @@ const SU_MOTS_MINIMUM = 7;
  */
 function su_check_passphrase(string $p): void
 {
+    // La liste EFF vit dans la bibliothèque, que `su_classe_hachage()` charge.
+    su_classe_hachage();
+    $liste = 'Pierroons\\SelfRecover\\Diceware\\Wordlist';
+    class_exists($liste) || su_fail('Bibliothèque SelfRecover introuvable : la liste EFF ne peut pas être lue.');
     $words = preg_split('/\s+/', trim($p), -1, PREG_SPLIT_NO_EMPTY) ?: [];
     $horsListe = array_filter($words, static fn (string $w): bool =>
-        !DicewareWordlist::contains(strtolower($w), 'en') && !DicewareWordlist::contains(strtolower($w), 'fr'));
+        !$liste::contains(strtolower($w), 'en') && !$liste::contains(strtolower($w), 'fr'));
     if (count($words) >= SU_MOTS_MINIMUM && $horsListe === []) {
         return;
     }

@@ -246,9 +246,9 @@
     if (typeof mot !== 'string' || mot === '') {
       throw new Error('srKdf : le mot mémorisé est obligatoire et non vide.');
     }
-    if (typeof selHex !== 'string' || !/^[0-9a-f]{32}$/.test(selHex)) {
+    if (typeof selHex !== 'string' || !new RegExp('^[0-9a-f]{' + 2 * SEL_OCTETS + '}$').test(selHex)) {
       throw new Error(
-        'srKdf : sel obligatoire — 32 caractères hexadécimaux (16 octets), ' +
+        'srKdf : sel obligatoire — ' + 2 * SEL_OCTETS + ' caractères hexadécimaux (' + SEL_OCTETS + ' octets), ' +
         'engendré par srKdfEngendrerSel. Sans lui, deux personnes qui ont choisi ' +
         'le même mot produisent la même clé.',
       );

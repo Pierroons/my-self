@@ -15,6 +15,7 @@ declare(strict_types=1);
 namespace Pierroons\MySelfLab;
 
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\Diceware\Wordlist;
 use Pierroons\SelfRecover\Device\Device as Protocole;
 use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\ProfilDeploiement;
@@ -22,7 +23,6 @@ use Pierroons\SelfRecover\Recovery\Recovery;
 
 use PDO;
 
-require_once __DIR__ . '/diceware/wordlist.php';
 require_once __DIR__ . '/secret_instance.php';
 
 final class Auth
@@ -104,7 +104,7 @@ final class Auth
     }
 
     /** Mot de passe temporaire rendu après une récupération. */
-    public static function generatePassword(int $length = 16): string
+    public static function generatePassword(int $length = Protocole::LONGUEUR_MOT_DE_PASSE): string
     {
         return Protocole::engendrerMotDePasse($length);
     }
@@ -167,8 +167,8 @@ final class Auth
         }
 
 
-        $password = self::generatePassword(16);
-        $diceware = \DicewareWordlist::generate(Recovery::MOTS_PASSPHRASE, 'en');
+        $password = self::generatePassword();
+        $diceware = Wordlist::generate(Recovery::MOTS_PASSPHRASE, 'en');
         $passphrase = implode(' ', $diceware['words']);
 
         $derivedKey = $recoveryDerivedKey;   // déjà dérivée côté client
@@ -474,7 +474,7 @@ final class Auth
             ->execute([time() - self::SESSION_TTL]);
     }
 
-    public static function setSessionCookie(string $token, int $lifetime = 86400): void
+    public static function setSessionCookie(string $token, int $lifetime = self::SESSION_TTL): void
     {
         setcookie(self::COOKIE, $token, [
             'expires' => time() + $lifetime,
