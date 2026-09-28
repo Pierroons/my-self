@@ -89,8 +89,9 @@ Document d'architecture (le *pourquoi*) : **[SelfRecover-LUKS_Whitepaper](./docs
 ## Ce que ce module n'apporte PAS
 
 Il remplace une passphrase par une autre, dérivée. C'est un gain d'**ergonomie et
-d'unification** — un seul secret pour plusieurs volumes et plusieurs machines — pas
-un gain de résistance.
+d'unification** — un seul secret pour les volumes d'une même machine, dont la cascade
+ouvre les secondaires — pas un gain de résistance. L'unification s'arrête à la machine :
+`genere-passphrase.py` en tire une par machine, et deux machines ne partagent rien.
 
 - **La force du volume reste celle de son slot le plus faible.** Le slot natif
   demeure, et c'est voulu : il est le filet. Un attaquant attaque le plus faible des

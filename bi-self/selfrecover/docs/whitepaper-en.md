@@ -221,7 +221,7 @@ When the admin reviews a dispute, two paths exist:
 
 - Admin verifies identity via the chat exchange
 - The dispute moves to `granted`. **The server neither generates nor transmits any password**: no secret travels through the chat
-- The user **re-defines their own** secrets from their recovery page (re-enrollment model, consistent with the MySelf principle: the server never sees the password, even during recovery). The tracking code is then consumed (single-use) and the dispute moves to `resolved`
+- The user **re-defines their own** password and memorized word from their recovery page (re-enrollment model): the memorized word is derived in the browser and never arrives in the clear, the password is submitted in the clear — the server does not issue it, it files it. The passphrase and the codes are server-generated and displayed once. The tracking code is then consumed (single-use) and the dispute moves to `resolved`
 
 **Option 2 — Refuse recovery:**
 
@@ -424,9 +424,9 @@ A deployment that skips this checklist is not a SelfRecover deployment — it is
 
 ### 12.1 Requirements
 
-- PHP 8.0+ or Node.js 18+
+- PHP 8.1+ with `ext-json`, `ext-mbstring` and `ext-openssl` — the constraints `composer.json` carries. The reference implementation is PHP; there is no other server-side one
 - Any SQL database (MySQL, MariaDB, PostgreSQL, SQLite)
-- Modern browser with JavaScript and Web Crypto API
+- Modern browser with JavaScript and Web Crypto API: `client/sr-derive.js` derives the memorized word there, through `crypto.subtle`
 - HTTPS mandatory in production
 
 ### 12.2 Planned distribution
@@ -464,8 +464,9 @@ SelfRecover is not a replacement for WebAuthn. It is a complement, especially fo
 - [x] Whitepapers EN + FR
 - [x] Standalone demo (L1 + L2)
 - [ ] Security audit (community welcome)
-- [ ] PHP library extraction (`composer require pierroons/selfrecover`)
-- [ ] JS library extraction (`npm install selfrecover`)
+- [x] PHP library extracted — PSR-4 with its own `composer.json`, consumed through a `path` repository
+- [ ] Published on Packagist (`composer require pierroons/selfrecover`)
+- [ ] JS package (`npm install selfrecover`) — the deriver ships as `client/sr-derive.js`, it is not packaged
 - [ ] WordPress plugin
 - [ ] Laravel package
 - [ ] Ports to Python, Go, Rust, Node

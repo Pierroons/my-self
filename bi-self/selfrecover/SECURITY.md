@@ -31,7 +31,7 @@ See the [whitepaper threat model](docs/whitepaper-en.md#10-threat-model--limitat
 
 - **Protected against:** passive phishing **when the derivation runs in `'hostname'` mode** (the material is read in the browser, so a clone derives from its own hostname — in `'label'` mode there is no phishing resistance at all), email account takeover (no email at all), SMTP interception, rate limiting bypass
 - **NOT protected against:** compromised server root access (see the "CRITICAL — Server Root Access" section), social engineering of the recovery word, user negligence, active phishing (a page the attacker controls)
-- **Offline attack on a database dump:** only Argon2id hashes of per-site-derived values are stored — the server never sees a raw passphrase or recovery word.
+- **Offline attack on a database dump:** only Argon2id hashes are stored — a dump yields no recovery word, no passphrase, no password. The recovery word is the one the server never sees at all; the passphrase and the password are server-generated and pass through it in the clear each time they are used.
 - **By design:** recovery requires either the passphrase (L1) OR a paper recovery code + the memorized word — or a "this device" proof — (L2). Lose both, and a human-reviewed L3 is the only fallback.
 
 ## Deployment security checklist

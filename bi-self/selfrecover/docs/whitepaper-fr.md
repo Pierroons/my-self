@@ -223,7 +223,7 @@ Quand l'admin examine un litige, deux options existent :
 
 - L'admin vérifie l'identité via l'échange chat
 - Le litige passe en `granted`. **Le serveur ne génère ni ne transmet aucun mot de passe** : aucun secret ne circule dans le chat
-- L'utilisateur **re-définit lui-même** ses secrets depuis sa page de récupération (modèle de ré-enrôlement, cohérent avec le principe MySelf : le serveur ne voit jamais le mot de passe, même en récupération). Le code de suivi est alors consommé (usage unique) et le litige passe en `resolved`
+- L'utilisateur **re-définit lui-même** son mot de passe et son mot mémorisé depuis sa page de récupération (modèle de ré-enrôlement) : le mot mémorisé est dérivé dans le navigateur et n'arrive jamais en clair, le mot de passe est soumis en clair — le serveur ne l'émet pas, il le range. La passphrase et les codes, eux, sont engendrés par le serveur et affichés une fois. Le code de suivi est alors consommé (usage unique) et le litige passe en `resolved`
 
 **Option 2 — Refuser la récupération :**
 
@@ -427,9 +427,9 @@ Un déploiement qui ignore cette checklist n'est pas un déploiement SelfRecover
 
 ### 12.1 Pré-requis
 
-- PHP 8.0+ ou Node.js 18+
+- PHP 8.1+ avec `ext-json`, `ext-mbstring` et `ext-openssl` — les contraintes que porte `composer.json`. L'implémentation de référence est en PHP ; il n'en existe pas d'autre côté serveur
 - Base de données SQL (MySQL, MariaDB, PostgreSQL, SQLite)
-- Navigateur moderne avec JavaScript et Web Crypto API
+- Navigateur moderne avec JavaScript et Web Crypto API : `client/sr-derive.js` y dérive le mot mémorisé par `crypto.subtle`
 - HTTPS obligatoire en production
 
 ### 12.2 Distribution prévue
@@ -467,8 +467,9 @@ SelfRecover n'est pas un remplacement pour WebAuthn. C'est un complément, surto
 - [x] Livres blancs EN + FR
 - [x] Démo standalone (L1 + L2)
 - [ ] Audit de sécurité (communauté bienvenue)
-- [ ] Extraction en librairie PHP (`composer require pierroons/selfrecover`)
-- [ ] Extraction en librairie JS (`npm install selfrecover`)
+- [x] Bibliothèque PHP extraite — PSR-4, son propre `composer.json`, consommée par un dépôt `path`
+- [ ] Publication sur Packagist (`composer require pierroons/selfrecover`)
+- [ ] Paquet JS (`npm install selfrecover`) — le dériveur est livré comme `client/sr-derive.js`, il n'est pas paqueté
 - [ ] Plugin WordPress
 - [ ] Package Laravel
 - [ ] Portages vers Python, Go, Rust, Node

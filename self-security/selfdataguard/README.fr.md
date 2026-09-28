@@ -78,15 +78,17 @@ Sans SelfRecover, SelfDataGuard fonctionne quand même — il bascule alors sur 
 
 ---
 
-## Trois modes opérationnels
+## Modes opérationnels — la v0.4.0 n'en implémente qu'un
 
-| Mode | Accès serveur aux données | Compromis |
-|------|---------------------------|-----------|
-| **Lite** *(transparent pour les piles legacy)* | Le serveur déchiffre uniquement pendant les sessions utilisateur | Compromission serveur pendant une session active = fan-out limité (un utilisateur à la fois) |
-| **Hybrid** *(par défaut pour e-commerce)* | Champs opérationnels (`email`, `adresse_livraison`) encapsulés avec une clé opérationnelle admin. Champs sensibles (`tel`, `doc_KYC`) nécessitent une session utilisateur | L'admin peut traiter les commandes ; les données sensibles restent zero-knowledge |
-| **Full** *(zero-knowledge pour services à forte exigence)* | Le serveur ne déchiffre JAMAIS. Toute la crypto tourne dans le navigateur via WebCrypto SubtleCrypto | Certains workflows à redessiner (pas de mails transactionnels asynchrones, notifications push à la place) |
+| Mode | Accès serveur aux données | Compromis | Dans le code |
+|------|---------------------------|-----------|--------------|
+| **Lite** *(transparent pour les piles legacy)* | Le serveur déchiffre uniquement pendant les sessions utilisateur | Compromission serveur pendant une session active = fan-out limité (un utilisateur à la fois) | ✅ c'est ce que fait la bibliothèque |
+| **Hybrid** *(visé pour l'e-commerce)* | Champs opérationnels (`email`, `adresse_livraison`) encapsulés avec une clé opérationnelle admin. Champs sensibles (`tel`, `doc_KYC`) nécessitent une session utilisateur | L'admin peut traiter les commandes ; les données sensibles restent zero-knowledge | ❌ spécifié, pas écrit — le `wrap_admin` du coffre vaut `null` (`src/Vault/UserVault.php:95`) |
+| **Full** *(zero-knowledge pour services à forte exigence)* | Le serveur ne déchiffre JAMAIS. Toute la crypto tourne dans le navigateur, par libsodium compilé en WebAssembly — WebCrypto n'offre ni Argon2id ni XChaCha20-Poly1305 | Certains workflows à redessiner (pas de mails transactionnels asynchrones, notifications push à la place) | ❌ spécifié, pas écrit — le module ne porte aucun code client |
 
-La majorité des déploiements e-commerce choisiront **Hybrid**. Santé, banque, fournisseurs d'identité choisiront **Full**.
+Un déploiement qui installe la v0.4.0 est donc en **Lite**, quel que soit le mode visé : les deux autres sont décrits au whitepaper (§4.2, §4.3) comme une cible, et aucun paramètre de l'API ne les choisit.
+
+Une voie administrateur existe pourtant, hors de ce tableau : le **séquestre** (`src/Escrow/`), compartiment à clé propre qu'un administrateur rouvre sous cérémonie — dossier ouvert, passphrase de séquestre, journal signé. Il ne rend que ce compartiment, jamais le coffre privé, et il n'est pas le mode Hybrid : rien n'y est déchiffré au fil de l'eau.
 
 ---
 
@@ -97,9 +99,9 @@ La majorité des déploiements e-commerce choisiront **Hybrid**. Santé, banque,
 | SQL injection / IDOR / dump DB | Données personnelles en clair exposées | Soupe chiffrée |
 | Bande de sauvegarde volée | Données personnelles en clair exposées | Soupe chiffrée |
 | DBA malveillant | Lit tout | Chiffré (impossible de déballer sans mot de passe ou mot mémorisé d'un utilisateur) |
-| Compromission root applicative (RCE) | Lit tout | Lit uniquement les sessions actives (Lite) ou les champs opérationnels (Hybrid). Rien (Full) |
+| Compromission root applicative (RCE) | Lit tout | Lit les sessions actives — c'est le mode Lite, le seul en service |
 | Endpoint utilisateur compromis (keylogger) | Identifiants utilisateur capturés | Identifiants capturés → données de cet utilisateur uniquement (pas de fan-out) |
-| Coercition d'un admin pour déchiffrer | Toutes les données à la discrétion de l'admin | L'admin ne peut déchiffrer que les champs opérationnels (Hybrid) — pour le reste, il faudrait le mot de passe ou le mot mémorisé de chaque utilisateur |
+| Coercition d'un admin pour déchiffrer | Toutes les données à la discrétion de l'admin | En Lite, aucune clé admin permanente n'existe : il faudrait le mot de passe ou le mot mémorisé de chaque utilisateur. Le séquestre s'ouvre sous cérémonie et ne rend que son compartiment |
 
 ---
 

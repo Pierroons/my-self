@@ -78,15 +78,17 @@ Without SelfRecover, SelfDataGuard still works — it falls back to a password-o
 
 ---
 
-## Three operational modes
+## Operational modes — v0.4.0 implements one of them
 
-| Mode | Server access to data | Trade-off |
-|------|----------------------|-----------|
-| **Lite** *(transparent for legacy stacks)* | Server decrypts during user sessions only | Server compromise during an active session = limited fan-out (one user at a time) |
-| **Hybrid** *(default for e-commerce)* | Operational fields (`email`, `shipping_address`) wrapped with admin operational key. Sensitive fields (`tel`, `KYC_doc`) require user session | Admin can fulfill orders; sensitive data remains zero-knowledge |
-| **Full** *(zero-knowledge for high-assurance services)* | Server NEVER decrypts. All crypto runs in the browser via WebCrypto SubtleCrypto | Some workflows redesigned (no async transactional emails, push notifications instead) |
+| Mode | Server access to data | Trade-off | In the code |
+|------|----------------------|-----------|-------------|
+| **Lite** *(transparent for legacy stacks)* | Server decrypts during user sessions only | Server compromise during an active session = limited fan-out (one user at a time) | ✅ this is what the library does |
+| **Hybrid** *(targeted at e-commerce)* | Operational fields (`email`, `shipping_address`) wrapped with admin operational key. Sensitive fields (`tel`, `KYC_doc`) require user session | Admin can fulfill orders; sensitive data remains zero-knowledge | ❌ specified, not written — the vault's `wrap_admin` is `null` (`src/Vault/UserVault.php:95`) |
+| **Full** *(zero-knowledge for high-assurance services)* | Server NEVER decrypts. All crypto runs in the browser, through libsodium compiled to WebAssembly — WebCrypto offers neither Argon2id nor XChaCha20-Poly1305 | Some workflows redesigned (no async transactional emails, push notifications instead) | ❌ specified, not written — the module carries no client-side code |
 
-Most e-commerce deployments will pick **Hybrid**. Health, banking, identity providers will pick **Full**.
+A deployment installing v0.4.0 therefore runs in **Lite**, whatever mode it aims for: the other two are described in the whitepaper (§4.2, §4.3) as a target, and no API parameter selects them.
+
+One admin path does exist, outside this table: the **escrow** (`src/Escrow/`), a compartment with its own key that an administrator reopens under ceremony — open dispute, escrow passphrase, signed log. It yields that compartment only, never the private vault, and it is not Hybrid mode: nothing there is decrypted as a matter of routine.
 
 ---
 
@@ -97,9 +99,9 @@ Most e-commerce deployments will pick **Hybrid**. Health, banking, identity prov
 | SQL injection / IDOR / DB dump | Plain-text PII exposed | Encrypted soup |
 | Backup tape stolen | Plain-text PII exposed | Encrypted soup |
 | Insider DBA | Reads everything | Encrypted (cannot unwrap without user password or recovery word) |
-| Application root compromise (RCE) | Reads everything | Reads only currently active sessions (Lite) or operational fields (Hybrid). Zero (Full) |
+| Application root compromise (RCE) | Reads everything | Reads currently active sessions — that is Lite, the only mode in service |
 | Compromised user endpoint (keylogger) | User credentials harvested | User credentials harvested → that user's data only (no fan-out) |
-| Coercion of admin to decrypt | All data at admin's discretion | Admin can decrypt only operational fields (Hybrid) — for full data, they would need every user's password/recovery word |
+| Coercion of admin to decrypt | All data at admin's discretion | In Lite there is no standing admin key: they would need every user's password or memorized word. The escrow opens under ceremony and yields its compartment only |
 
 ---
 

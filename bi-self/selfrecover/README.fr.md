@@ -15,9 +15,11 @@
 
 ---
 
-## Module compagnon — SelfDataGuard (concept)
+## Module compagnon — SelfDataGuard
 
 Pour les déploiements e-commerce ou SaaS qui ont également besoin de **protéger les données personnelles stockées** contre une exfiltration de base, voir le module compagnon [SelfDataGuard](../../self-security/selfdataguard/). SelfDataGuard réutilise le mot mémorisé de récupération SelfRecover comme l'un de ses facteurs d'encapsulage de clé (par deux dérivations distinctes : un HMAC lié au site côté SelfRecover, un Argon2id sous le contexte `/dataguard` côté données), de sorte qu'un utilisateur qui oublie son mot de passe garde une voie vers chacune de ses deux moitiés : son mot mémorisé ouvre le coffre SelfDataGuard à lui seul, et sert de facteur de connaissance pour rouvrir le compte — avec le *recovery code* papier à côté.
+
+⚠️ **Le couplage est une propriété de conception, pas un appel de code** : aucune des deux bibliothèques n'importe l'autre, et `loginWithMemorized()` n'est appelé que par la démo `demo/selfdataguard/`. C'est l'intégrateur qui passe le même mot mémorisé aux deux.
 
 SelfRecover protège l'**authentification**. SelfDataGuard protège les **données au repos**. Ensemble, ils ferment la boucle sur le cas qui fait le plus de dégâts : un dump où les jetons d'authentification **et** les données personnelles partent en clair, dans la même table.
 
@@ -89,7 +91,7 @@ Le matériel doit être **lu** dans le navigateur, jamais reçu du réseau. Un m
 | Dérivation de clé côté client | HMAC-SHA256 | clé = recovery_word, message = matériel + "&#124;v2" + user_salt |
 | Matériel de dérivation | `'hostname'` ou `'label'` | obligatoire — la bibliothèque n'a pas de défaut et lève si le mode manque |
 | Stockage des secrets côté serveur | Argon2id | mémoire = 64 Mio, time = 4, threads = 2 (memory-hard) |
-| Hachage de l'identifiant public | SHA-256 | tronqué à 16 octets, puis encodé en hex |
+| Index de recherche d'un code, étiquettes de compteurs | HMAC-SHA256 | clé = sel du déploiement — retrouve une ligne sans stocker le code, et rend l'étiquette d'un tiers impossible à fabriquer |
 | Génération de passphrase (L1) | EFF Diceware | 4 mots, ≥ 51 bits d'entropie |
 | Sel du compte | 16 octets aléatoires, rendus en 32 hexadécimaux minuscules | un par compte, engendré par le navigateur à l'inscription (`srEngendrerSel`), stocké en clair (un sel n'est pas un secret) — obligatoire, la bibliothèque refuse toute autre forme |
 
@@ -117,18 +119,26 @@ valent dans les deux langues.
 Pour chaque compte, le serveur stocke exactement trois secrets :
 
 ```sql
-CREATE TABLE account (
-  id           INTEGER PRIMARY KEY,
-  identifier   TEXT UNIQUE,              -- public, choisi par l'utilisateur
-  password     TEXT,                     -- Argon2id(password)
-  pass_hash    TEXT,                     -- Argon2id(diceware_passphrase)  [L1]
-  recovery     TEXT,                     -- Argon2id(derived_key)          [L2]
-  user_salt    TEXT,                     -- sel par utilisateur, généré côté client (pas un secret)
-  created_at   INTEGER
+CREATE TABLE accounts (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  username         TEXT    UNIQUE NOT NULL,      -- public, choisi par l'utilisateur
+  pw_hash          TEXT    NOT NULL,             -- Argon2id(mot de passe de connexion)
+  passphrase_hash  TEXT    NOT NULL,             -- Argon2id(passphrase diceware)   [L1]
+  recovery_hash    TEXT    NOT NULL,             -- Argon2id(empreinte dérivée)     [L2]
+  recovery_salt    TEXT    NOT NULL DEFAULT '',  -- sel du compte, en clair (pas un secret)
+  derivation_host  TEXT    NOT NULL DEFAULT '',
+  pass_emise_le    INTEGER,
+  created_at       INTEGER NOT NULL,
+  last_login_at    INTEGER,
+  login_count      INTEGER NOT NULL DEFAULT 0
 );
 ```
 
-Le serveur ne voit jamais : le mot de passe brut, la passphrase brute, le mot de récupération brut. Chaque comparaison est une vérification Argon2id contre la valeur dérivée soumise par le client.
+[`schema.sql`](./schema.sql) fait foi, et porte neuf tables : celle-ci, les sessions, les
+tentatives, les dix codes papier, l'appareil et ses défis, les dossiers du niveau 3, leurs
+messages et leur gel. `StockagePdo` les lit toutes.
+
+Le mot de récupération ne parvient jamais au serveur : le navigateur en dérive une empreinte HMAC-SHA256, et `Device::estCleDerivee()` refuse toute valeur qui n'en a pas la forme. Le mot de passe et la passphrase prennent l'autre chemin — le serveur les **engendre** et les rend une fois à leur titulaire, puis les revoit en clair quand ils lui sont soumis : la passphrase au niveau 1, le mot de passe au niveau 3, où c'est le titulaire qui le choisit. Dans les trois cas, la base ne conserve qu'une empreinte Argon2id.
 
 ### Chaîne de renforcement de clé (récupération niveau 2)
 
@@ -308,12 +318,12 @@ méthode qui écrit, tant qu'on ne va pas voir la table.
 
 | Propriété | Comment c'est obtenu |
 |----------|------------------|
-| **Le serveur ne voit jamais un secret en clair** | Le serveur ne voit que des hachages Argon2id de valeurs dérivées par site. Une compromission de la base ne révèle aucun mot de récupération. |
+| **Le mot de récupération ne quitte jamais le navigateur** | Seule son empreinte HMAC par site est transmise, et la base n'en garde qu'un hachage Argon2id : une compromission ne révèle aucun mot de récupération. Le mot de passe et la passphrase, engendrés par le serveur, passent par lui au moment où ils servent. |
 | **Résistance au phishing passif** | **En mode `'hostname'` seulement.** Le matériel est lu dans le navigateur : un clone qui copie la page dérive de sa propre adresse et produit une clé que le vrai serveur ne détient pas. En mode `'label'`, il n'y en a aucune — la copie porte le même label. Un site de phishing actif qui contrôle sa propre page reste hors périmètre dans les deux cas (vrai pour tout protocole in-browser). |
-| **Résistance au rejeu** | Chaque requête de récupération est limitée par un rate limit côté serveur + système de litige. Le L3 ajoute une décision revue par un humain. |
+| **Résistance au rejeu** | Chaque secret ne sert qu'une fois : un code L2 est consommé par l'`UPDATE` qui le marque, un défi d'appareil est consommé avant la vérification de signature, et la reprise du compte clôt le dossier L3, ce qui périme son sésame. Les freins de débit ralentissent, ils ne ferment pas le rejeu. |
 | **Résistance à la fuite** | Chaque compte a son propre sel ; le serveur ne stocke que des hachages Argon2id de clés dérivées par service. Une fuite du code client seul est inutile. |
-| **Pas de dépendance centrale** | Chaque déploiement est autonome. Pas de SPOF, pas de vendor lock-in, pas d'opérateur qui peut révoquer des comptes à travers l'écosystème. |
-| **Secret mémorisable** | Un mot au choix de l'utilisateur. Pas une seed de 24 mots, pas une passphrase à écrire sur papier, pas un QR code. |
+| **Pas de dépendance centrale** | Chaque déploiement est autonome : pas de vendor lock-in, pas d'opérateur qui peut révoquer des comptes à travers l'écosystème. À l'intérieur d'un déploiement, le serveur reste un point unique de défaillance — un accès root y contourne tout le protocole, ce que dit la section « accès root ». |
+| **Secret mémorisable** | Un mot au choix de l'utilisateur : pas une seed de 24 mots, pas un QR code. C'est le seul secret à retenir. Ce qui se garde sur papier — passphrase du niveau 1, codes du niveau 2 — est tiré au hasard, et personne n'a à le mémoriser. |
 
 ---
 
@@ -348,7 +358,7 @@ Analyse complète : **[docs/threat-model.md](docs/threat-model.md)**
 
 Un module compagnon applique la même idée au disque : un volume chiffré **LUKS2** se déverrouille avec une passphrase de récupération, sans email ni tiers. C'est un secret distinct — une passphrase diceware tirée pour chaque machine, dérivée par Argon2id sous le label `disk` — et non le mot mémorisé de tes comptes web : aucun des deux n'ouvre l'autre.
 
-C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecover-luks/)**, **déployé** : serveur LNMP (07/06/2026) puis poste portable chiffré (22/08/2026), avec son guide d'installation à deux parcours. Son guide d'installation couvre deux parcours, serveur et poste de travail.
+C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecover-luks/)**, **déployé** : serveur LNMP (07/06/2026), poste portable chiffré (22/08/2026), puis racine en LVM chiffré — le schéma que propose l'installateur Debian en mode assisté (13/09/2026). Son guide d'installation couvre deux parcours, serveur et poste de travail.
 
 ---
 
@@ -378,7 +388,7 @@ SelfRecover est honnête sur ce qu'il protège et ce qu'il ne protège pas. Tout
 
 | Adversaire | Couverture |
 |---|---|
-| Serveur SelfRecover compromis | ✅ Connaissance partagée + HMAC client : le serveur ne voit jamais les secrets bruts |
+| Serveur SelfRecover compromis | ⚠️ Le mot de récupération reste hors d'atteinte (HMAC dans le navigateur) ; la passphrase et le mot de passe, non — le serveur les engendre et les revoit à l'usage |
 | Phishing passif / page clonée | ✅ en mode `'hostname'` — un clone dérive de sa propre adresse ; ❌ rien en mode `'label'` (un phishing actif contrôlant sa page est hors périmètre dans les deux cas) |
 | Sniffeur réseau / MITM | ✅ TLS en transit + seule la dérivation HMAC est transmise |
 | Fuite de base de données | ✅ Hashes Argon2id (memory-hard, GPU-resistant) |
