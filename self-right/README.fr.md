@@ -58,8 +58,8 @@ Aucun des deux modules n'analyse ton cas à ta place : la consultation juridique
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfJustice](./selfjustice/) | Directives juridiques lisibles par machine + API ouverte du droit | **v0.4.0 bêta** — en ligne sur [justice.my-self.fr](https://justice.my-self.fr) |
-| [SelfAct](./selfact/) | Ressources officielles, délais et modèles de lettres pour la démarche | **v0.1.2** — API, catalogue et pages en service |
+| [SelfJustice](./selfjustice/) | Directives juridiques lisibles par machine + API ouverte du droit | **v0.4.1 bêta** — en ligne sur [justice.my-self.fr](https://justice.my-self.fr) |
+| [SelfAct](./selfact/) | Ressources officielles, délais et modèles de lettres pour la démarche | **v0.1.3** — API, catalogue et pages en service |
 
 ---
 

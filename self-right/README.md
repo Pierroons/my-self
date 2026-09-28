@@ -58,8 +58,8 @@ Neither module analyses your case in your place: legal advice is reserved to leg
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfJustice](./selfjustice/) | Machine-readable legal directives + an open law API | **v0.4.0 beta** — live at [justice.my-self.fr](https://justice.my-self.fr) |
-| [SelfAct](./selfact/) | Official resources, deadlines and letter templates for the step | **v0.1.2** — API, catalogue and pages running |
+| [SelfJustice](./selfjustice/) | Machine-readable legal directives + an open law API | **v0.4.1 beta** — live at [justice.my-self.fr](https://justice.my-self.fr) |
+| [SelfAct](./selfact/) | Official resources, deadlines and letter templates for the step | **v0.1.3** — API, catalogue and pages running |
 
 ---
 

@@ -11,7 +11,7 @@ pas les cartouches couleur. Liens cliquables (outil offline + projet SelfRecover
 - FR : liste ArthurPons (CC-BY 3.0). L'EFF ne publie QUE l'anglais ; cette liste FR
   en est l'equivalent communautaire. AUCUN claim "EFF FR" (qui n'existe pas).
 
-Regenere docs/diceware-method-{en,fr}.pdf depuis data/eff_large_wordlist_{en,fr}.txt.
+Regenere docs/diceware-method-{en,fr}.pdf depuis assets/eff_{en,fr}.json.
 Usage : python3 generate_diceware_pdf.py
 """
 import json
@@ -22,7 +22,19 @@ from fpdf.enums import XPos, YPos
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "..", "..", "..", "assets")
-DOC_VERSION = "0.6.0"
+MANIFESTE = os.path.join(HERE, "..", "..", "..", "..", "..", "modules.json")
+
+
+def version_du_module():
+    """La version imprimée et portée dans les mots-clés du PDF est celle de modules.json."""
+    with open(MANIFESTE, encoding="utf-8") as f:
+        version = next((m.get("version") for m in json.load(f)["modules"] if m["id"] == "selfrecover"), None)
+    if not version:
+        raise SystemExit(f"SelfRecover n'a pas de version dans {MANIFESTE}")
+    return version
+
+
+DOC_VERSION = version_du_module()
 
 # Aucune URL : ce document est imprimé, et une instance auto-hébergée n'a pas
 # d'adresse commune. On donne le chemin dans le dépôt, qui ne bouge qu'avec lui.
@@ -449,6 +461,8 @@ def build(lang, cfg):
     pdf.set_title(f"{cfg['title']} - SelfRecover - MySelf")
     pdf.set_author("MySelf - SelfRecover")
     pdf.set_creator("generate_diceware_pdf.py")
+    # Porteur déclaré dans modules.json : scripts/check-versions.sh lit ce mot-clé en clair dans le PDF.
+    pdf.set_keywords(f"SelfRecover-v{DOC_VERSION}")
     cover(pdf, cfg)
     content(pdf, cfg, words)
     out = os.path.join(HERE, f"diceware-method-{lang}.pdf")

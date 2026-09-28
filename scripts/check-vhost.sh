@@ -239,16 +239,29 @@ else
     exit 1
 fi
 
+# ⚠️ **Un `[warn]` n'empêche pas `nginx -t` de réussir.** Directive dépréciée, en
+# conflit ou ignorée : le gabarit passe, et l'écart se découvre sur la machine, à
+# la montée de version suivante. Seuls les avertissements que nginx situe dans le
+# gabarit ou dans un snippet du dépôt font échouer ; ceux qui viennent de la
+# machine de test (sa `mime.types`, ses tables de hachage) s'affichent sans juger
+# le gabarit.
 echo "▸ Gabarits de vhost — validés ${ou}"
 while read -r g; do
     [ -z "$g" ] && continue
     sortie=$(lancer "$g" 2>&1)
-    if printf '%s' "$sortie" | grep -q "test is successful"; then
-        echo "  ✓ ${g}"
-    else
+    avertis=$(printf '%s\n' "$sortie" | grep -F '[warn]' || true)
+    du_depot=$(printf '%s\n' "$avertis" | grep -E '/(gabarit\.conf|snippets/[^ :]+):[0-9]+$' || true)
+    if ! printf '%s' "$sortie" | grep -q "test is successful"; then
         echo "  ✗ ${g}"
         printf '%s\n' "$sortie" | grep -E "emerg|error|warn" | head -3 | sed 's/^/       /'
         echec=1
+    elif [ -n "$du_depot" ]; then
+        echo "  ✗ ${g} — accepté par nginx, mais avec un avertissement"
+        printf '%s\n' "$du_depot" | head -3 | sed 's/^/       /'
+        echec=1
+    else
+        echo "  ✓ ${g}"
+        [ -n "$avertis" ] && printf '%s\n' "$avertis" | head -3 | sed 's/^/       ⚠ machine de test : /'
     fi
 done <<< "$gabarits"
 
