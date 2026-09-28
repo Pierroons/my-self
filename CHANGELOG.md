@@ -10,6 +10,25 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### HSTS et CSP pour la vitrine, la démo SelfDataGuard et SelfFarm — 28 septembre 2026
+
+Ces trois vhosts envoyaient les quatre en-têtes du socle, sans HSTS ni CSP. Trois fragments
+s'ajoutent à `deploy/my-self/snippets/` :
+
+- `hsts.conf` : un an, sans `includeSubDomains` ni `preload`. Posée sur le domaine parent, la
+  première option engagerait pour un an tout sous-domaine, y compris ceux que le DNS résoudrait sans
+  vhost ni certificat valide. Chaque vhost inclut donc le fragment pour lui-même.
+- `csp-accueil.conf` : la vitrine est statique et sans saisie. Son script inline passe par
+  `'unsafe-inline'` ; la politique ferme les ressources et connexions hors de l'origine, les objets
+  embarqués et l'encadrement par un autre site.
+- `csp-dataguard.conf` : aucun script inline permis, les deux scripts de la démo sont des fichiers.
+
+SelfFarm reçoit HSTS seul. L'application charge des bibliothèques et des polices depuis des services
+tiers : sa CSP se décide dans `selffarm-lite`.
+
+Les deux CSP ont été éprouvées dans un navigateur sans interface, contre les pages servies : aucune
+violation, et une version plus stricte y déclenche bien les blocages attendus.
+
 ### SelfRecover v0.8.0 — reprendre un compte le referme vraiment, et un accord rendu a une fin — 28 septembre 2026
 
 Deux chemins laissaient une personne devant une porte qu'aucun geste ne pouvait ouvrir ou
