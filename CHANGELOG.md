@@ -10,6 +10,30 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### L'image Docker de SelfRecover est retirée, et ce qu'on publie hors du dépôt entre sous contrôle — 28 septembre 2026
+
+`ghcr.io/pierroons/selfrecover` servait encore, sous les étiquettes `latest` et `v0.4.0`, l'image
+construite le 28 juillet 2026. Le rangement du 18 août avait supprimé d'un même geste son
+`Dockerfile` et le workflow qui la construisait à chaque tag ; les quatre tags suivants — 0.5.0,
+0.5.1, 0.6.0, 0.7.0 — sont donc passés sans rien reconstruire, sans que rien ne le signale. Ce que
+`latest` donnait à qui la tirait précédait trois correctifs décrits plus bas dans ce fichier :
+l'ouverture de dossier de niveau 3 qui énumérait les comptes (0.5.0), la démo restée sur PBKDF2
+quand la documentation annonçait Argon2id (0.6.0), le frein par compte sans effet au niveau 2
+(0.7.0).
+
+**L'image est retirée plutôt que reconstruite.** Ce dépôt ne propose pas d'essayer SelfRecover par
+un conteneur : « Essayer SelfRecover » renvoie à la démo servie et aux pages autonomes, et la démo
+du duo écrit qu'elle se passe de Docker par principe. L'image était le dernier reste d'une démo
+autonome retirée en août, et aucune page du dépôt n'y menait.
+
+**Ce qui empêchera la même dérive.** Un artefact publié sur un registre est un porteur de version
+qu'aucune recherche dans l'arbre n'atteint. `modules.json` déclare désormais, sous
+`artefacts_retires`, ce qu'un registre ne doit plus servir, et `scripts/check-versions.sh` gagne
+deux modes qui partent de l'extérieur : `--publications` vérifie chaque matin que la version
+courante d'un module a sa release et qu'un artefact retiré ne répond plus, sans secret dédié ;
+`--artefacts-orphelins` liste les paquets publiés au nom de ce dépôt que plus aucun module ne
+revendique.
+
 ### Le lab enrôle de nouveau un appareil — 27 septembre 2026
 
 L'enrôlement « cet appareil » refusait le bon mot mémorisé (« Compte ou mot mémorisé

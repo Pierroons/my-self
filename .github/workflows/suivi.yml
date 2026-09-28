@@ -30,6 +30,18 @@ jobs:
       - name: Chaque version annoncée a son tag
         run: bash scripts/check-versions.sh --tags
 
+  publications:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          fetch-depth: 0  # l'historique de modules.json date les versions
+      - name: Chaque version est publiée, et ce qui est retiré ne sert plus
+        # Sans jeton, l'API GitHub anonyme plafonne à 60 requêtes par heure et rend 403.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/check-versions.sh --publications
+
   ecosysteme:
     runs-on: ubuntu-latest
     steps:
