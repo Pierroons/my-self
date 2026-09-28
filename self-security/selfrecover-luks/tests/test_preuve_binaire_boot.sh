@@ -25,6 +25,12 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 MODULE="$(cd "$HERE/.." && pwd)"
 SETUP="${SETUP:-$MODULE/setup-add-selfrecover-slot.sh}"   # surchargeable : canari de CI
 
+# Le répertoire de travail sort du poste de qui lance : une sortie de banc finit
+# parfois collée dans une issue, et un chemin absolu y nomme un compte. Défini
+# ICI, avant le premier affichage : la version précédente ne couvrait que deux
+# des cinq sorties, et le refus de copie imprimait le chemin entier.
+sans_home() { printf '%s' "${1//$HOME/\~}"; }
+
 command -v cryptsetup >/dev/null || { echo "❌ cryptsetup absent"; exit 1; }
 python3 -c 'import argon2' 2>/dev/null || { echo "❌ python3-argon2 absent"; exit 1; }
 
@@ -49,7 +55,7 @@ ATELIER="$BANC/atelier"; mkdir -p "$ATELIER"
 cp "$MODULE/selfrecover_derive.py" "$MODULE/format-slot.sh" "$ATELIER/" \
   || { echo "❌ copie de l'atelier"; exit 1; }
 SCRIPT="$ATELIER/setup-add-selfrecover-slot.sh"
-cp "$SETUP" "$SCRIPT" || { echo "❌ script introuvable : $SETUP"; exit 1; }
+cp "$SETUP" "$SCRIPT" || { echo "❌ script introuvable : $(sans_home "$SETUP")"; exit 1; }
 
 SEL="0123456789abcdef0123456789abcdef"
 RECOVER="passe recover du banc sept mots"
@@ -80,11 +86,11 @@ verdict() {  # verdict <libellé> <ACCEPTE|REFUSE> <motif attendu|--> <slots att
   [ "$code" -eq 0 ] && obtenu=ACCEPTE || obtenu=REFUSE
   if [ "$obtenu" != "$attendu" ]; then
     printf '  ❌ %-56s %s (attendu %s)\n' "$libelle" "$obtenu" "$attendu"
-    printf '%s\n' "$sortie" | sed 's/^/        /' | head -4; echec=1; return
+    printf '%s\n' "$(sans_home "$sortie")" | sed 's/^/        /' | head -4; echec=1; return
   fi
   if [ "$motif" != "--" ] && ! printf '%s' "$sortie" | grep -qi -- "$motif"; then
     printf '  ❌ %-56s %s mais sans dire « %s »\n' "$libelle" "$obtenu" "$motif"
-    printf '%s\n' "$sortie" | sed 's/^/        /' | head -4; echec=1; return
+    printf '%s\n' "$(sans_home "$sortie")" | sed 's/^/        /' | head -4; echec=1; return
   fi
   if [ "$slots_attendus" != "--" ] && [ "$SLOTS_APRES" != "$slots_attendus" ]; then
     printf '  ❌ %-56s %s mais %s slot(s), %s attendu(s)\n' \
@@ -101,10 +107,6 @@ lance() {
     | env SELFRECOVER_SALT="$SEL" SKG="$skg" SELFRECOVER_TMPDIR="$BANC" "$@" \
         bash "$SCRIPT" "$img" --existing-keyfile "$NATIF" 2>&1
 }
-
-# Le répertoire de travail sort du poste de qui lance : une sortie de banc finit
-# parfois collée dans une issue, et un chemin absolu y nomme un compte.
-sans_home() { printf '%s' "${1/#$HOME/\~}"; }
 
 echo
 echo "▸ script sous banc : $(sans_home "$SETUP")"
@@ -130,7 +132,7 @@ if [ -n "$VECTEUR" ] && [ -n "$SEL_DOC" ] && [ -n "$MOT_DOC" ]; then
     if [ "$obtenu" = "$VECTEUR" ]; then
       printf '  ✅ %-56s %s\n' "$nom rend le vecteur publié" ACCEPTE
     else
-      printf '  ❌ %-56s rend %s\n' "$nom rend le vecteur publié" "${obtenu:0:16}…"
+      printf '  ❌ %-56s rend %s\n' "$nom rend le vecteur publié" "$(sans_home "${obtenu:0:16}")…"
       echec=1
     fi
   done
