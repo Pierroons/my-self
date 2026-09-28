@@ -55,8 +55,17 @@ function neuf(string $mot, string $phrase, string $sel): array
 // ── Niveau 1 ───────────────────────────────────────────────────────────────
 echo "\n→ Niveau 1 — passphrase\n";
 [$st, $rec] = neuf($MOT, $PHR, $SEL);
+// ⭐ Contre-témoin de la révocation d'appareils : seul le NIVEAU 3 les retire.
+// Aux niveaux 1 et 2, la personne a présenté un papier — ou un code ET son mot
+// mémorisé : elle a prouvé quelque chose, et effacer ses appareils y serait une
+// punition sans motif. La garde vit ici, dans le banc du niveau qui ne doit pas
+// le faire ; une révocation glissée dans `parPassphrase()` ou `parCode()` la
+// ferait rougir.
+$st->enregistrerAppareil(1, 'cred-de-son-telephone', str_repeat('K', 60), $now);
 $r = $rec->parPassphrase('alice', $PHR, $IP, $now);
 verifier('la bonne passphrase rend l\'accès', $r['ok'] === true && isset($r['mot_de_passe']));
+verifier('⭐ le niveau 1 NE retire PAS les appareils enrôlés',
+    $st->trouverAppareil('cred-de-son-telephone') !== null);
 verifier('une passphrase neuve est émise',
     isset($r['passphrase']) && $r['passphrase'] !== $PHR, $r['passphrase'] ?? '—');
 verifier('l\'ancienne passphrase ne resert pas',

@@ -49,6 +49,19 @@ final class Escalade
         private readonly Recovery $recovery,
         /** Durée de vie d'un dossier. Au-delà, il faut en ouvrir un neuf. */
         private readonly int $ttl = 86400,
+        /**
+         * Délai laissé au titulaire pour revenir APRÈS un accord, sésame en main.
+         *
+         * 🔑 Passé ce délai, la place se libère. Sans lui, un accord non repris
+         * fermait le niveau 3 pour toujours : `ouvrir()` refuse tant qu'un
+         * litige est actif, un accepté ne périmait jamais, et la seule clôture
+         * exige le sésame — précisément ce que la personne n'a plus quand elle
+         * revient. La sortie passait par un `UPDATE` en base.
+         *
+         * Ce que l'expiration coûte : l'arbitrage est à refaire. Ce qu'elle ne
+         * coûte pas : l'accès, puisqu'un nouveau litige redevient ouvrable.
+         */
+        private readonly int $ttlAccepte = 604800,
         /** Attente imposée entre deux dépôts de réponses, contre le tâtonnement. */
         private readonly int $attenteDepot = 3600,
         /** Refus dans la fenêtre à partir desquels l'ouverture gèle. */
@@ -261,13 +274,24 @@ final class Escalade
         // procédure d'un autre. L'appel concurrent est enregistré — c'est un
         // fait que l'arbitre doit voir.
         $existant = $this->stockage->litigeActifDuCompte($compteId, $maintenant);
+        // Un accord que personne n'est venu reprendre a une fin : on le clôt
+        // ici, à la première demande qui bute dessus, et la place se libère.
+        // Le stockage ne sait pas le faire — il ignore `ttlAccepte` —, et lui
+        // apprendre demanderait d'élargir le contrat que tout intégrateur
+        // implémente. La date de décision qu'il rend déjà suffit.
+        if ($existant !== null && $this->accordPerime($existant, $maintenant)) {
+            $this->stockage->cloreLitige($existant->id, $maintenant);
+            $existant = null;
+        }
         if ($existant !== null) {
             $this->stockage->compterDemandeurConcurrent($existant->id);
             usleep($this->delaiRefusUs);
 
             return ['ok' => false, 'error' => 'deja_ouvert',
                     'message' => 'Une procédure est déjà en cours sur ce compte. '
-                               . 'Si c\'est la tienne, reprends-la avec son numéro et ton sésame.'];
+                               . 'Si c\'est la tienne, reprends-la avec son numéro et ton sésame. '
+                               . 'Si tu les as perdus, demande à un administrateur de la clore : '
+                               . 'tu pourras alors en ouvrir une nouvelle.'];
         }
 
         $numero   = self::engendrerNumero();
@@ -276,7 +300,8 @@ final class Escalade
 
         return ['ok' => true, 'numero' => $numero, 'questions' => self::questions(),
                 'expire_le' => $expireLe,
-                'message' => 'Garde ton sésame : sans lui, personne ne peut reprendre ce dossier, toi compris.'];
+                'message' => 'Garde ton sésame : sans lui, personne ne peut reprendre ce litige, '
+                           . 'toi compris — et il faudra en ouvrir un nouveau.'];
     }
 
     /**
@@ -454,8 +479,12 @@ final class Escalade
             $this->stockage->trancherLitige($litige->id, Litige::ACCEPTE, $par, $maintenant);
 
             return ['ok' => true, 'statut' => Litige::ACCEPTE,
-                    'message' => 'Dossier accepté. Le titulaire repose lui-même ses secrets ; '
-                               . 'aucun secret n\'a été fabriqué ici.'];
+                    'message' => sprintf(
+                        'Litige accepté. Le titulaire repose lui-même ses secrets ; aucun secret '
+                        . 'n\'a été fabriqué ici. Il a %d jours pour revenir avec son sésame ; '
+                        . 'passé ce délai, l\'accord tombe et la procédure est à refaire.',
+                        intdiv($this->ttlAccepte, 86400)
+                    )];
         }
 
         $this->stockage->trancherLitige($litige->id, Litige::REFUSE, $par, $maintenant);
@@ -552,6 +581,13 @@ final class Escalade
             $codes = $this->recovery->emettreCodes($litige->compteId, Recovery::CODES_PAR_LOT, $maintenant);
             $this->stockage->cloreLitige($litige->id, $maintenant);
             $this->stockage->revoquerSessions($litige->compteId);
+            // 🔑 Et les appareils. On arrive ici après avoir TOUT perdu, et « tout
+            // perdu » veut souvent dire « quelqu'un d'autre l'a ». Un appareil
+            // enrôlé ouvre le compte sur une signature seule — `cloreDefi()` ne
+            // vérifie pas le mot mémorisé —, donc le laisser vivre reviendrait à
+            // reposer tous les secrets en gardant la porte la plus directe ouverte,
+            // pendant que le titulaire croit avoir refermé.
+            $appareilsRetires = $this->stockage->revoquerAppareils($litige->compteId);
             $this->stockage->validerTransaction();
         } catch (\Throwable $e) {
             $this->stockage->annulerTransaction();
@@ -559,11 +595,33 @@ final class Escalade
             throw $e;
         }
 
+        $avis = $appareilsRetires > 0
+            ? sprintf(
+                ' %d appareil(s) enrôlé(s) ont été retirés : réenrôle celui que tu utilises.',
+                $appareilsRetires
+            )
+            : '';
+
         return ['ok' => true, 'passphrase' => $passphrase, 'codes' => $codes,
-                'message' => 'Compte repris. Note ces codes et cette passphrase : ils ne seront pas réaffichés.'];
+                'appareils_retires' => $appareilsRetires,
+                'message' => 'Compte repris. Note ces codes et cette passphrase : ils ne seront pas '
+                           . 'réaffichés.' . $avis];
     }
 
-    /** Efface les dossiers périmés. Rend le nombre effacé. */
+    /**
+     * Un accord rendu, jamais repris, et dont le délai est passé.
+     *
+     * ⚠️ Un litige sans date de décision n'est jamais périmé de ce fait : mieux
+     * vaut une place occupée à tort qu'un accord annulé sur une donnée absente.
+     */
+    private function accordPerime(Litige $litige, int $maintenant): bool
+    {
+        return $litige->statut === Litige::ACCEPTE
+            && $litige->trancheLe !== null
+            && $litige->trancheLe + $this->ttlAccepte <= $maintenant;
+    }
+
+    /** Efface les litiges périmés. Rend le nombre effacé. */
     public function purger(?int $maintenant = null): int
     {
         return $this->stockage->purgerLitigesExpires($maintenant ?? time());
@@ -640,7 +698,14 @@ final class Escalade
         // le dossier, pas l'horloge.
         if ($litige->statut !== Litige::ACCEPTE && $litige->expire($maintenant)) {
             return ['ok' => false, 'error' => 'expire',
-                    'message' => 'Ce dossier a expiré. Il faut en ouvrir un nouveau.'];
+                    'message' => 'Ce litige a expiré. Il faut en ouvrir un nouveau.'];
+        }
+        // L'accord, lui, tient `ttlAccepte` après la décision — pas le TTL
+        // d'instruction, qui ne vaut que tant que personne n'a tranché.
+        if ($this->accordPerime($litige, $maintenant)) {
+            return ['ok' => false, 'error' => 'accord_perime',
+                    'message' => 'L\'accord rendu sur ce litige a expiré faute d\'avoir été repris. '
+                               . 'Ouvre un nouveau litige : l\'arbitrage sera à refaire.'];
         }
 
         return $litige;

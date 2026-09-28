@@ -114,6 +114,24 @@ class StockageMemoire implements StorageInterface
         $this->sessionsRevoquees[] = $compteId;
     }
 
+    public function revoquerAppareils(int $compteId): int
+    {
+        $avant = count($this->appareils);
+        $partants = [];
+        foreach ($this->appareils as $credentialId => $appareil) {
+            if ($appareil->compteId === $compteId) {
+                $partants[$credentialId] = true;
+                unset($this->appareils[$credentialId]);
+            }
+        }
+        $this->defis = array_filter(
+            $this->defis,
+            static fn (array $d): bool => !isset($partants[$d['credentialId'] ?? '']),
+        );
+
+        return $avant - count($this->appareils);
+    }
+
     // ── Récupération ───────────────────────────────────────────────────────
 
     /** @var array<string, array{id: int, empreinte_passphrase: string}> */

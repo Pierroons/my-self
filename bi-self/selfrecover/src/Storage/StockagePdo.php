@@ -184,6 +184,22 @@ final class StockagePdo implements StorageInterface
         $this->pdo->prepare('DELETE FROM sessions WHERE account_id = ?')->execute([$compteId]);
     }
 
+    public function revoquerAppareils(int $compteId): int
+    {
+        // Les défis en vol partent d'abord : ils désignent un appareil par son
+        // `credential_id`, et non un compte. Les retirer après la suppression
+        // des appareils laisserait des lignes que plus aucune jointure n'atteint.
+        $this->pdo->prepare(
+            'DELETE FROM device_challenges
+              WHERE credential_id IN (SELECT credential_id FROM device_credentials WHERE account_id = ?)'
+        )->execute([$compteId]);
+
+        $st = $this->pdo->prepare('DELETE FROM device_credentials WHERE account_id = ?');
+        $st->execute([$compteId]);
+
+        return $st->rowCount();
+    }
+
     // ── Le facteur « cet appareil » ────────────────────────────────────────
 
     public function enregistrerAppareil(

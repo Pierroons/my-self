@@ -123,6 +123,20 @@ final class StockageSelfRecover implements StorageInterface
         $this->pdo->prepare('DELETE FROM app_sessions WHERE account_id = ?')->execute([$compteId]);
     }
 
+    public function revoquerAppareils(int $compteId): int
+    {
+        // Les défis d'abord : ils désignent un appareil, pas un compte.
+        $this->pdo->prepare(
+            'DELETE FROM device_challenges
+              WHERE credential_id IN (SELECT credential_id FROM device_credentials WHERE account_id = ?)'
+        )->execute([$compteId]);
+
+        $st = $this->pdo->prepare('DELETE FROM device_credentials WHERE account_id = ?');
+        $st->execute([$compteId]);
+
+        return $st->rowCount();
+    }
+
     // ── Appareil de confiance ──────────────────────────────────────────────
 
     public function enregistrerAppareil(int $compteId, string $credentialId, string $clePubliqueB64url, int $quand): void

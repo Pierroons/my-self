@@ -135,6 +135,19 @@ final class StockageSelfRecover implements StorageInterface
         $this->executer('DELETE FROM app_sessions WHERE account_id = :i', [':i' => $compteId]);
     }
 
+    /**
+     * Cette démo n'a pas le facteur « cet appareil » : il n'y a rien à retirer.
+     *
+     * ⚠️ Elle rend 0 au lieu de lever, contrairement aux autres méthodes du
+     * facteur : celle-ci est appelée dans la reprise du niveau 3, et lever y
+     * ferait échouer une récupération pour une fonction que ce déploiement
+     * n'offre pas.
+     */
+    public function revoquerAppareils(int $compteId): int
+    {
+        return 0;
+    }
+
     // ── Codes de récupération ──────────────────────────────────────────────
 
     public function purgerCodes(int $compteId): void

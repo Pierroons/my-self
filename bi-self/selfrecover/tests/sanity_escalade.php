@@ -437,6 +437,16 @@ verifier('une décision hors « accepte » / « refuse » est refusée', ($incon
 
 echo "\n→ Le titulaire repose lui-même ses secrets\n";
 
+// ⭐ Un appareil enrôlé AVANT la reprise. On arrive au niveau 3 après avoir tout
+// perdu, et « tout perdu » veut souvent dire « quelqu'un d'autre l'a » : un
+// appareil qui survit à la reprise ouvre le compte sur une signature seule,
+// `cloreDefi()` ne vérifiant pas le mot mémorisé. Le titulaire croirait avoir
+// refermé sa porte.
+$st5->enregistrerAppareil(1, 'cred-du-precedent', str_repeat('K', 60), $now);
+$st5->enregistrerDefi('defi-en-vol', 'cred-du-precedent', $now);
+verifier('contre-témoin : l\'appareil est bien enrôlé avant la reprise',
+    $st5->trouverAppareil('cred-du-precedent') !== null);
+
 $re = $esc5->reEnroler($n5, $s5, 'un mot de passe choisi par elle', $MOT, $SEL, $now + 300);
 verifier('le ré-enrôlement réussit', ($re['ok'] ?? false) === true, (string) ($re['error'] ?? ''));
 // ⚠️ On cherche la VALEUR, pas la clé. Énumérer les clés interdites laissait
@@ -445,6 +455,14 @@ verifier('le ré-enrôlement réussit', ($re['ok'] ?? false) === true, (string) 
 verifier('⭐ AUCUN mot de passe n\'est rendu — le serveur n\'en fabrique pas',
     !str_contains((string) json_encode($re, JSON_UNESCAPED_UNICODE), 'un mot de passe choisi par elle'));
 verifier('une passphrase neuve est rendue', is_string($re['passphrase'] ?? null));
+verifier('⭐ les appareils enrôlés sont retirés par la reprise',
+    $st5->trouverAppareil('cred-du-precedent') === null);
+verifier('et le défi qui les désignait part avec',
+    !$st5->defiEnCours('defi-en-vol', 'cred-du-precedent', $now - 1));
+verifier('le compte des appareils retirés est rendu à l\'application',
+    ($re['appareils_retires'] ?? null) === 1, (string) ($re['appareils_retires'] ?? 'absent'));
+verifier('et le message dit de réenrôler',
+    str_contains((string) ($re['message'] ?? ''), 'réenrôle'));
 verifier('elle porte la longueur du protocole',
     count(explode(' ', (string) ($re['passphrase'] ?? ''))) === Recovery::MOTS_PASSPHRASE);
 verifier('un lot de codes est rendu', count($re['codes'] ?? []) === Recovery::CODES_PAR_LOT);
@@ -476,11 +494,25 @@ $escA->trancher((string) $oA['numero'], 'accepte', 'arbitre', $now + 7300);
 verifier('contre-témoin : le dossier est bien accepté et non consommé',
     ($stA->litiges[0]['statut'] ?? '') === Litige::ACCEPTE);
 
-$tiers = $escA->ouvrir('alice', Escalade::empreinteSesame('un tiers'), maintenant: $now + 25 * $JOUR);
-verifier('⭐ un dossier accepté reste actif bien après son TTL',
+$tiers = $escA->ouvrir('alice', Escalade::empreinteSesame('un tiers'), maintenant: $now + 3 * $JOUR);
+verifier('⭐ un accord reste actif bien après le TTL d\'instruction',
     ($tiers['error'] ?? '') === 'deja_ouvert', (string) ($tiers['error'] ?? ''));
 verifier('et la collision est comptée pour l\'arbitre',
     ($stA->litiges[0]['demandeurs_concurrents'] ?? 0) === 1);
+
+// La reprise tardive d'abord : une fois la place libérée, l'ancien litige est
+// clos et c'est son sésame annulé qui refuserait, pas son délai.
+$reprise = $escA->reEnroler((string) $oA['numero'], $sA, 'un-mot-de-passe-neuf',
+    str_repeat('a', 64), str_repeat('b', 32), $now + 25 * $JOUR);
+verifier('⭐ reprendre un accord périmé est refusé, et le refus le nomme',
+    ($reprise['error'] ?? '') === 'accord_perime', (string) ($reprise['error'] ?? 'aucun refus'));
+
+$tard = $escA->ouvrir('alice', Escalade::empreinteSesame('le titulaire, sans son sesame'),
+    maintenant: $now + 25 * $JOUR);
+verifier('⭐ passé son délai, l\'accord non repris libère la place',
+    ($tard['ok'] ?? false) === true, (string) ($tard['error'] ?? 'refus'));
+verifier('et l\'accord périmé est clos : son sésame ne rouvre plus rien',
+    ($stA->litiges[0]['statut'] ?? '') === 'closed', (string) ($stA->litiges[0]['statut'] ?? ''));
 
 // ⭐ La purge épargne les REFUSÉS : le gel se compte sur eux, sur trente jours,
 // alors qu'un dossier expire en vingt-quatre heures. Les effacer viderait le

@@ -99,6 +99,21 @@ interface StorageInterface
      */
     public function revoquerSessions(int $compteId): void;
 
+    /**
+     * Retire tous les appareils enrôlés du compte. Rend le nombre retiré.
+     *
+     * 🔑 **Le niveau 3 s'atteint après avoir tout perdu, et « tout perdu » veut
+     * souvent dire « quelqu'un d'autre l'a ».** Un appareil enrôlé ouvre le
+     * compte sur une signature seule — `cloreDefi()` ne vérifie pas le mot
+     * mémorisé —, donc reposer ses secrets sans retirer les appareils laisse
+     * intacte la porte la plus directe, et son titulaire croit avoir refermé.
+     *
+     * Les niveaux 1 et 2 ne le font pas : qui présente un papier, ou un code
+     * ET son mot mémorisé, a prouvé quelque chose ; effacer ses appareils y
+     * serait une punition sans motif.
+     */
+    public function revoquerAppareils(int $compteId): int;
+
     // ── Récupération de niveau 1 : passphrase diceware ──────────────────────
 
     /** Échecs récents visant ce compte précis, en plus du compteur par IP. */
