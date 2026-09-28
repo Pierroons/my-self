@@ -40,6 +40,11 @@ Before deploying SelfRecover in production, read the [deployment checklist](docs
 
 **Critical rule:** sudo must require a strong diceware passphrase. A SelfRecover deployment without hardened sudo is a lock on a door with no wall.
 
+Two operations destroy data by construction, and nothing in the library stops them:
+
+- **Rotating the deployment salt** (`$selDeploiement`, the secret the integrator stores as its server secret). Paper codes are found by `HMAC(code, salt)` and stored nowhere in the clear: a new salt makes every issued code unfindable, with no possible reindexing. The only procedure is to change the salt, then have every holder reissue their sheet — level 2 by code is closed in between.
+- **Pairing with SelfDataGuard without the memorized envelope.** Levels 1 and 2 replace the password; a vault registered without `$memorized` is sealed on that password alone and becomes unreadable. See SelfDataGuard's README, « Coupling with SelfRecover ».
+
 ## Responsible disclosure
 
 If you report a security issue in good faith, we commit to:

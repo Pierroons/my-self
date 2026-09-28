@@ -178,7 +178,9 @@ final class Device
             $maintenant,
         );
 
-        return ['ok' => true, 'message' => 'Appareil enrôlé.'];
+        return ['ok' => true, 'message' => 'Appareil enrôlé. Sa clé vit dans ce navigateur, chiffrée par ton '
+                                         . 'mot mémorisé : un autre navigateur, ou des données de site effacées, '
+                                         . 'demanderont un nouvel enrôlement.'];
     }
 
     /**

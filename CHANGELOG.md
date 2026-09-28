@@ -98,6 +98,17 @@ format dans la bibliothèque ne leur parvenait pas. Les deux passent par `Recove
 et `Recovery::CODES_PAR_LOT`. `Recovery::estFormeCode()` porte seule la forme `xxxxx-xxxxx` ; les
 trois copies de l'expression dans les démos l'appellent.
 
+**Ce que la documentation taisait aux intégrateurs.** Le tableau des niveaux disait « Nouveau
+mot de passe » pour L1 et L2 : les deux rendent aussi une nouvelle passphrase et effacent
+l'ancienne, et une application qui ne l'affiche pas fait perdre le niveau 1 à son utilisateur.
+`emettreCodes()` efface le lot en place avant d'écrire le suivant. Changer le sel du déploiement
+rend tous les codes émis introuvables, sans réindexation possible : la seule procédure (changer,
+puis faire réémettre chaque feuille) est écrite dans le README et `SECURITY.md`. Un coffre
+SelfDataGuard créé sans mot mémorisé ne survit pas à une récupération de niveau 1 ou 2 : le
+README de SelfDataGuard, le contrat de `register()` et `SECURITY.md` le disent, avec la séquence
+de re-scellement. Signalés par une intégration qui fait tourner les deux modules ; aucune donnée
+perdue. L'enrôlement d'un appareil dit maintenant où vit sa clé.
+
 Le banc de l'escalade passe de 107 à 123 cas, celui de la récupération de 58 à 59. Le contrôle
 qui affirmait qu'un accord reste actif « bien après son TTL » n'a pas été réparé mais **scindé** :
 la propriété qu'il défendait tient sur la fenêtre où elle vaut, l'échéance la borne au-delà.

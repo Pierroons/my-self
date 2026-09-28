@@ -320,6 +320,16 @@ final class Recovery
         return preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code) === 1;
     }
 
+    /**
+     * Émet un lot de codes neufs et les rend en clair, cette fois seulement.
+     *
+     * ⚠️ **Efface d'abord le lot en place** : la feuille que le titulaire a
+     * imprimée cesse de valoir à cet appel, et rien dans le retour ne le
+     * rappelle — c'est à l'application de le lui dire. À n'appeler qu'à
+     * l'inscription ou sur sa demande.
+     *
+     * @return list<string>
+     */
     public function emettreCodes(int $compteId, int $combien = self::CODES_PAR_LOT, ?int $maintenant = null): array
     {
         $maintenant = $maintenant ?? time();

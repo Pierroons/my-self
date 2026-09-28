@@ -19,7 +19,7 @@
 
 Pour les déploiements e-commerce ou SaaS qui ont également besoin de **protéger les données personnelles stockées** contre une exfiltration de base, voir le module compagnon [SelfDataGuard](../../self-security/selfdataguard/). SelfDataGuard réutilise le mot mémorisé de récupération SelfRecover comme l'un de ses facteurs d'encapsulage de clé (par deux dérivations distinctes : un HMAC lié au site côté SelfRecover, un Argon2id sous le contexte `/dataguard` côté données), de sorte qu'un utilisateur qui oublie son mot de passe garde une voie vers chacune de ses deux moitiés : son mot mémorisé ouvre le coffre SelfDataGuard à lui seul, et sert de facteur de connaissance pour rouvrir le compte — avec le *recovery code* papier à côté.
 
-⚠️ **Le couplage est une propriété de conception, pas un appel de code** : aucune des deux bibliothèques n'importe l'autre, et `loginWithMemorized()` n'est appelé que par la démo `demo/selfdataguard/`. C'est l'intégrateur qui passe le même mot mémorisé aux deux.
+⚠️ **Le couplage est une propriété de conception, pas un appel de code** : aucune des deux bibliothèques n'importe l'autre, et `loginWithMemorized()` n'est appelé que par la démo `demo/selfdataguard/`. C'est l'intégrateur qui passe le même mot mémorisé aux deux. Et c'est lui qui re-scelle : les niveaux 1 et 2 remplacent le mot de passe, et un coffre SelfDataGuard créé sans mot mémorisé n'a que cette enveloppe-là — il devient illisible. Voir [« Couplage avec SelfRecover »](../../self-security/selfdataguard/README.fr.md#couplage-avec-selfrecover).
 
 SelfRecover protège l'**authentification**. SelfDataGuard protège les **données au repos**. Ensemble, ils ferment la boucle sur le cas qui fait le plus de dégâts : un dump où les jetons d'authentification **et** les données personnelles partent en clair, dans la même table.
 
@@ -173,10 +173,11 @@ HMAC est volontairement **rapide** côté client car l'objectif est la liaison a
 
 | Niveau | Ce qu'il faut fournir | Résultat |
 |-------|----------------|---------|
-| **L1** | Passphrase (diceware EFF, 6 mots ≈ 77,5 bits) | Nouveau mot de passe |
-| **L2** | **2FA sans identifiant**, deux voies : un *recovery code* papier **+** le mot mémorisé — ou, en option, l'appareil enrôlé **+** le mot mémorisé | Nouveau mot de passe |
+| **L1** | Passphrase (diceware EFF, 6 mots ≈ 77,5 bits) | Nouveau mot de passe **et** nouvelle passphrase |
+| **L2** | **2FA sans identifiant**, deux voies : un *recovery code* papier **+** le mot mémorisé — ou, en option, l'appareil enrôlé **+** le mot mémorisé | Par le code : nouveau mot de passe **et** nouvelle passphrase. Par l'appareil : nouveau mot de passe seul |
 | **L3** | Faisceau de faits bruts + échange humain | Décision d'un admin humain, puis ré-enrôlement **par l'utilisateur** |
 
+- ⚠️ **Affiche la nouvelle passphrase.** Les niveaux 1 et 2 par code en rendent une neuve (`passphrase` dans le retour) et effacent l'ancienne. Une application qui n'affiche que le mot de passe fait perdre le niveau 1 à son utilisateur, sans que rien ne le lui dise.
 - **L2 = vrai 2FA, sans identifiant à retenir.** Le *recovery code* **localise** le compte (via un lookup HMAC — plus d'énumération) et fait office de facteur de **possession** ; le mot mémorisé (dérivé HMAC côté client) est le facteur de **connaissance**. Les deux sont vérifiés, avec une **erreur générique** qui ne révèle jamais lequel a échoué. La voie « cet appareil » remplace le code, jamais le mot — **pour un appareil déjà enrôlé**. L'enrôler, lui, ne demande que le mot : c'est pourquoi la bibliothèque exige que l'appelant affirme que le titulaire est déjà authentifié, et freine ce chemin par compte. Voir [recovery codes](#recovery-codes) et [facteur « cet appareil »](#facteur--cet-appareil-).
 - **L3 = jugement humain.** Un **faisceau de faits bruts** est présenté à un admin — jamais un score automatique. L'accès au litige est protégé par un **sésame propriétaire** (jamais l'identifiant semi-public). En cas d'accord, l'utilisateur **redéfinit lui-même** son secret : le serveur n'émet aucun mot de passe.
 
@@ -186,7 +187,7 @@ Limites de débit et système de litige à chaque niveau. Passer d'un niveau au 
 
 ## Recovery codes
 
-Le **foyer de possession de L2**. À l'inscription, un lot de **10 codes** est généré et **affiché une seule fois** (format `xxxxx-xxxxx`, ~40 bits chacun).
+Le **foyer de possession de L2**. À l'inscription, un lot de **10 codes** (`Recovery::CODES_PAR_LOT`) est généré et **affiché une seule fois** (format `xxxxx-xxxxx`, ~40 bits chacun).
 
 Chaque code est stocké **deux fois**, jamais en clair :
 
@@ -196,7 +197,8 @@ Chaque code est stocké **deux fois**, jamais en clair :
 | `code_hash` = `Argon2id(code)` | vérification + résistance à une fuite de base |
 
 - **Usage unique** (marqué `used` après un reset réussi).
-- **Régénérables** à la demande (auth = username + mot mémorisé) — le nouveau lot remplace l'ancien.
+- **Régénérables** à la demande (auth = username + mot mémorisé) — le nouveau lot remplace l'ancien. ⚠️ `emettreCodes()` **efface** le lot en place avant d'écrire le suivant : la feuille imprimée cesse de valoir à cet instant. Ne l'appelle que sur une demande du titulaire, et dis-le-lui.
+- **Le sel du déploiement ne tourne pas sans réémission.** `code_lookup` est un HMAC du code sous ce sel, et le code n'est stocké nulle part : changer le sel rend **tous** les codes émis introuvables, sans réindexation possible. Seule procédure : changer le sel, puis faire réémettre chaque feuille. Entre les deux, le niveau 2 par code est fermé ; le niveau 1 et l'appareil restent ouverts.
 - `parCode()` rend `codes_restants` à chaque usage. Le seuil à partir duquel on alerte appartient à l'application : la bibliothèque donne le nombre, elle ne décide pas quand il devient inquiétant.
 
 C'est ce qui permet un **L2 sans identifiant à retenir** : le code fait à la fois « qui » et « une preuve de possession ».

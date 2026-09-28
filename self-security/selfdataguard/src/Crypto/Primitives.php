@@ -44,6 +44,13 @@ use SodiumException;
  */
 final class Primitives
 {
+    /**
+     * ⚠️ Not stored in the vaults: every unwrap derives with the values in force
+     * at that moment. Change them and every existing envelope stops opening, with
+     * the same error as a wrong password. Changing them needs a record format that
+     * carries its profile, or a re-seal of every vault while the old values still
+     * open it.
+     */
     public const ARGON2_OPSLIMIT = 3;
     public const ARGON2_MEMLIMIT = 65536 * 1024;
     public const SALT_LEN        = 16;

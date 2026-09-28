@@ -54,6 +54,12 @@ final class UserVault
      * be stored by the application) and the in-memory UnlockedVault that the
      * caller can use immediately to encrypt initial data.
      *
+     * ⚠️ `$memorized` omitted = a single envelope, on the password. Anything that
+     * replaces the password without re-sealing — a SelfRecover level-1 or
+     * level-2 recovery does — leaves the vault unreadable for good. The vault
+     * works, tests and demos fine until that day: the loss only shows once the
+     * user already has a problem. See README, « Coupling with SelfRecover ».
+     *
      * @return array{record: VaultRecord, unlocked: UnlockedVault}
      */
     public function register(
