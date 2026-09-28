@@ -145,7 +145,7 @@ final class RecoverHelper {
             }
         }
 
-        if (preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code)) {
+        if (Recovery::estFormeCode($code)) {
             $stmt = $session->db()->prepare(
                 'SELECT a.recovery_salt FROM recovery_codes c
                    JOIN accounts a ON a.id = c.account_id

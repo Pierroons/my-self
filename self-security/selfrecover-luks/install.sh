@@ -45,6 +45,12 @@ warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 confirm() { read -rp "  → $* [o/N] " r; [ "$r" = o ] || [ "$r" = O ] || die "Annulé."; }
 
+# ⚠️ Le keyscript et le hook initramfs lisent /etc/selfkeyguard en dur : ils
+# tournent à l'amorçage, sans cette variable. Un autre SKG poserait les pièces là
+# où le démarrage ne les cherche pas, et la machine resterait muette au boot.
+[ "$SKG" = /etc/selfkeyguard ] \
+  || die "SKG=$SKG : le démarrage ne lit que /etc/selfkeyguard (keyscript, hook initramfs). Rien n'est posé."
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --avec-dropbear) DROPBEAR=oui ;;

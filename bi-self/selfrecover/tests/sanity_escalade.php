@@ -670,6 +670,14 @@ verifier('contre-témoin : trancheLe = null reste légitime — personne n\'a tr
 // 🔑 Le plancher doit être franchement au-dessous de tout instant réel, et
 // franchement au-dessus de tout millésime. Sans ce contrôle, quelqu'un pourrait
 // le monter jusqu'à rejeter des dossiers valides sans qu'une sonde bouge.
+// Un écran d'arbitre annonce les règles du gel : il doit lire celles qu'on a
+// réglées, pas les valeurs par défaut.
+$escGel = new Escalade($stI, new Recovery($stI, 'sel', ProfilDeploiement::CLEARWEB, delaiRefusUs: 0),
+    gelSeuil: 2, gelFenetre: 86400, gelDuree: 3600, delaiRefusUs: 0);
+verifier('les règles du gel rendues sont celles du constructeur',
+    $escGel->reglesDuGel() === ['seuil' => 2, 'fenetre' => 86400, 'duree' => 3600],
+    json_encode($escGel->reglesDuGel()));
+
 verifier('le plancher est sous tout instant réel du protocole',
     Litige::PLANCHER_EPOQUE < $now && Litige::PLANCHER_EPOQUE > 9999,
     date('Y-m-d', Litige::PLANCHER_EPOQUE));

@@ -16,6 +16,7 @@ namespace Pierroons\MySelfLab;
 
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device as Protocole;
+use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 
@@ -31,9 +32,9 @@ final class Auth
     private const COOKIE = 'lab_session';
     private const SESSION_TTL = 86400;        // 24h
     private const REGISTER_MAX_PER_IP = 5;    // max comptes créés / IP / heure
-    private const LOGIN_MAX_FAILS = 5;        // échecs / username avant blocage temporaire
-    private const LOGIN_MAX_FAILS_PER_IP = 12; // échecs cumulés / IP / fenêtre (anti-spraying, tolère un foyer NAT)
-    private const LOGIN_WINDOW = 900;         // fenêtre de comptage (15 min)
+    public const LOGIN_MAX_FAILS = 5;        // échecs / username avant blocage temporaire
+    public const LOGIN_MAX_FAILS_PER_IP = 12; // échecs cumulés / IP / fenêtre (anti-spraying, tolère un foyer NAT)
+    public const LOGIN_WINDOW = 900;         // fenêtre de comptage (15 min)
     /** Options Argon2id (R9-06, alignées sur le profil OWASP de SelfRecover). */
     /**
      * Hash Argon2id factice (R9-06), exécuté quand le compte n'existe pas, pour que
@@ -99,7 +100,7 @@ final class Auth
      */
     public static function siteSalt(): string
     {
-        return SecretInstance::lire('.sitesalt', 32, 32, 'LAB_SITESALT_PATH');
+        return SecretInstance::lire('.sitesalt', 32, SecretInstance::PLANCHER, 'LAB_SITESALT_PATH');
     }
 
     /** Mot de passe temporaire rendu après une récupération. */
@@ -259,7 +260,7 @@ final class Auth
         // Déjà bloqué (compte OU IP)
         if ($fails >= self::LOGIN_MAX_FAILS || $failsIp >= self::LOGIN_MAX_FAILS_PER_IP) {
             return ['ok' => false, 'status' => 'locked',
-                    'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+                    'message' => 'Trop de tentatives. Réessaie dans ' . Duree::enClair(self::LOGIN_WINDOW) . '.'];
         }
 
         $stmt = $pdo->prepare('SELECT id, pw_hash FROM accounts WHERE username = ?');
@@ -307,8 +308,6 @@ final class Auth
         return ['ok' => true, 'token' => $token];
     }
 
-    private const RECOVERY_CODES = 10;
-
     /**
      * Génère un lot de codes de récupération — le facteur de POSSESSION du L2.
      *
@@ -320,7 +319,7 @@ final class Auth
      * mot mémorisé, et le rate-limit s'applique. Sa fonction est d'être
      * imprimable et transportable, pas d'être un secret maximal.
      */
-    public static function generateRecoveryCodes(PDO $pdo, int $accountId, int $n = self::RECOVERY_CODES): array
+    public static function generateRecoveryCodes(PDO $pdo, int $accountId, int $n = Recovery::CODES_PAR_LOT): array
     {
         return self::protocole($pdo)->emettreCodes($accountId, $n);
     }
@@ -377,6 +376,7 @@ final class Auth
             // Ce lab est servi sur le web ordinaire et transmet `client_ip()` à
             // chaque appel : le frein par adresse y compte pour de bon.
             ProfilDeploiement::CLEARWEB,
+            fenetreEchecs: self::LOGIN_WINDOW,
             maxEchecsCompte: self::LOGIN_MAX_FAILS,
             maxEchecsIp: self::LOGIN_MAX_FAILS_PER_IP,
         );
@@ -420,7 +420,7 @@ final class Auth
             }
         }
 
-        if (preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code)) {
+        if (Recovery::estFormeCode($code)) {
             $st = $pdo->prepare(
                 'SELECT a.recovery_salt FROM recovery_codes c
                    JOIN accounts a ON a.id = c.account_id

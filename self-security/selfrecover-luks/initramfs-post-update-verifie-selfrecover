@@ -64,6 +64,7 @@ fi
 PIECES="selfkeyguard/selfrecover_derive_c:binaire de derivation
 selfkeyguard/selfrecover_salt:sel de deploiement
 selfkeyguard/selfrecover-keyscript:keyscript
+selfkeyguard/selfrecover-secours:script de secours (command= de dropbear)
 libargon2:libargon2
 libgcc_s:libgcc_s
 usr/sbin/cryptsetup:cryptsetup"

@@ -17,6 +17,7 @@ declare(strict_types=1);
 namespace Pierroons\MySelfLab;
 
 use PDO;
+use Pierroons\SelfRecover\Duree;
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/dm.php';
@@ -114,7 +115,7 @@ final class AttackSimulator
         $vraiPassword = $r['credentials']['password'];
 
         $seq = [];
-        for ($i = 1; $i <= 6; $i++) {
+        for ($i = 1; $i <= Auth::LOGIN_MAX_FAILS + 1; $i++) {
             $res = Auth::login($pdo, 'victime', 'TENTATIVE_PIRATE_' . $i, '6.6.6.6');
             $seq[] = "Essai $i : " . ($res['ok'] ? 'RÉUSSI (!)' : $res['message']);
         }
@@ -130,8 +131,8 @@ final class AttackSimulator
             'titre' => 'Bruteforce du mot de passe',
             'objectif' => "Deviner le mot de passe d'un compte en testant des milliers de combinaisons.",
             'etapes' => [
-                ['action' => "L'attaquant tente 6 mots de passe différents", 'resultat' => 'chaque échec est compté'],
-                ['action' => 'Au 5ᵉ échec', 'resultat' => 'le compte est verrouillé 15 minutes'],
+                ['action' => "L'attaquant tente " . (Auth::LOGIN_MAX_FAILS + 1) . ' mots de passe différents', 'resultat' => 'chaque échec est compté'],
+                ['action' => 'Au ' . Auth::LOGIN_MAX_FAILS . 'ᵉ échec', 'resultat' => 'le compte est verrouillé ' . Duree::enClair(Auth::LOGIN_WINDOW)],
             ],
             'cote_attaquant' => [
                 'label' => 'Tentatives de l\'attaquant',
@@ -145,8 +146,8 @@ final class AttackSimulator
                 ],
             ],
             'verdict' => 'neutralisé',
-            'defense' => 'Rate-limit applicatif (5 échecs / 15 min) + Argon2id (m=64 Mo, t=4, p=2)',
-            'message_cle' => "Le bruteforce est bloqué après 5 essais, mais l'utilisateur légitime se connecte sans entrave.",
+            'defense' => 'Rate-limit applicatif (' . Auth::LOGIN_MAX_FAILS . ' échecs / ' . Duree::enClair(Auth::LOGIN_WINDOW) . ') + Argon2id (m=64 Mo, t=4, p=2)',
+            'message_cle' => 'Le bruteforce est bloqué après ' . Auth::LOGIN_MAX_FAILS . " essais, mais l'utilisateur légitime se connecte sans entrave.",
         ];
     }
 

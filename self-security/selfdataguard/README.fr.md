@@ -76,6 +76,11 @@ Conséquence pratique : un utilisateur qui oublie son mot de passe garde une voi
 
 Sans SelfRecover, SelfDataGuard fonctionne quand même — il bascule alors sur un encapsulage uniquement par mot de passe (récupération à un seul facteur, UX dégradée). Mais l'appariement naturel est : **SelfRecover protège l'authentification, SelfDataGuard protège les données, et le même mot mémorisé sert dans les deux** — seul pour ouvrir le coffre, accompagné du *recovery code* pour rouvrir le compte.
 
+> ⚠️ **Un coffre scellé par le seul mot de passe ne survit pas à une récupération SelfRecover.** Les niveaux 1 et 2 de SelfRecover remplacent le mot de passe du compte (`Recovery::parPassphrase()`, `Recovery::parCode()`). Un coffre créé par `register($user, $password)` — `$memorized` omis — n'a qu'une enveloppe, scellée sur l'ancien mot de passe : après la récupération, plus personne ne l'ouvre, et aucune des deux bibliothèques ne le dit. Quand les deux modules partagent un compte :
+> - passe `$memorized` à `register()`, pour que le coffre ait sa seconde enveloppe ;
+> - après une récupération de niveau 1 ou 2, re-scelle dès que l'application détient de nouveau le secret mémorisé : `loginWithMemorized($user, $memorized)`, puis `changePassword($session, $nouveauMotDePasse)`. D'ici là, le coffre reste scellé sur l'ancien mot de passe, mais s'ouvre toujours par le mot mémorisé ;
+> - on atteint le niveau 3 quand le mot mémorisé peut être perdu lui aussi : sans enveloppe de séquestre, le coffre n'y survit pas.
+
 ---
 
 ## Modes opérationnels — la v0.4.0 n'en implémente qu'un

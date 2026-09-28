@@ -7,6 +7,7 @@ namespace Pierroons\SelfRecover\Recovery;
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device;
 use Pierroons\SelfRecover\Diceware\Wordlist;
+use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
@@ -197,12 +198,12 @@ final class Recovery
         }
         if ($ip !== null
             && $this->stockage->compterEchecsIp($ip, $maintenant - $this->fenetreEchecs) >= $this->maxEchecsIp) {
-            return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+            return $this->refusFrein();
         }
 
         // Forme validée avant le moindre calcul : un code qui n'a pas la forme
         // d'un code n'a pas à coûter un HMAC, encore moins un Argon2id.
-        if (!preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code)) {
+        if (!self::estFormeCode($code)) {
             usleep($this->delaiRefusUs);
 
             return $refus;
@@ -309,6 +310,39 @@ final class Recovery
         return implode(' ', Wordlist::generate(self::MOTS_PASSPHRASE, 'en')['words']);
     }
 
+    /**
+     * Le refus des freins par fenêtre. Un seul texte pour tous : le frein par
+     * compte ne doit pas se distinguer du frein par origine. Le délai annoncé est
+     * celui de la fenêtre réglée, pas un nombre recopié.
+     *
+     * @return array{ok: false, message: string}
+     */
+    private function refusFrein(): array
+    {
+        return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans ' . Duree::enClair($this->fenetreEchecs) . '.'];
+    }
+
+    /**
+     * Le code a-t-il la forme de ceux qu'`emettreCodes()` fabrique ?
+     *
+     * Les intégrateurs qui filtrent avant d'appeler `parCode()` l'appellent au
+     * lieu de recopier l'expression : un format changé ici leur parvient.
+     */
+    public static function estFormeCode(string $code): bool
+    {
+        return preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code) === 1;
+    }
+
+    /**
+     * Émet un lot de codes neufs et les rend en clair, cette fois seulement.
+     *
+     * ⚠️ **Efface d'abord le lot en place** : la feuille que le titulaire a
+     * imprimée cesse de valoir à cet appel, et rien dans le retour ne le
+     * rappelle — c'est à l'application de le lui dire. À n'appeler qu'à
+     * l'inscription ou sur sa demande.
+     *
+     * @return list<string>
+     */
     public function emettreCodes(int $compteId, int $combien = self::CODES_PAR_LOT, ?int $maintenant = null): array
     {
         $maintenant = $maintenant ?? time();
@@ -446,7 +480,7 @@ final class Recovery
             >= $this->maxEchecsCompte) {
             usleep($this->delaiRefusUs);
 
-            return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+            return $this->refusFrein();
         }
 
         return null;
@@ -462,10 +496,10 @@ final class Recovery
         $depuis = $maintenant - $this->fenetreEchecs;
 
         if ($this->stockage->compterEchecsCompte($nomCompte, $depuis) >= $this->maxEchecsCompte) {
-            return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+            return $this->refusFrein();
         }
         if ($ip !== null && $this->stockage->compterEchecsIp($ip, $depuis) >= $this->maxEchecsIp) {
-            return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans 15 minutes.'];
+            return $this->refusFrein();
         }
 
         return null;

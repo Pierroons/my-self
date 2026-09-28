@@ -26,6 +26,7 @@ render_header('Litiges L3', $account);
 
 <script nonce="<?= nonce() ?>">
 var CSRF='<?= h($csrf) ?>';
+var GEL=<?= json_encode(\Pierroons\MySelfLab\RecoverL3::reglesDuGel($pdo), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
 function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 function $(id){return document.getElementById(id);}
 function get(u){return fetch(u,{headers:{'X-CSRF-Token':CSRF}}).then(r=>r.json());}
@@ -94,9 +95,9 @@ function render(disputes){
     // un geste devenu réversible.
     if(r)r.addEventListener('click',()=>{
       if(confirm('Refuser clôt ce dossier. Le compte n\'est pas touché : il reste connectable.\n'
-                +'Au 3ᵉ refus en 30 jours, l\'ouverture de nouveaux dossiers gèle 7 jours. Confirmer ?'))
+                +'Au '+GEL.seuil+'ᵉ refus en '+GEL.fenetre+', l\'ouverture de nouveaux dossiers gèle '+GEL.duree+'. Confirmer ?'))
         post('/api/admin_dispute_decide.php',{dispute_number:num,decision:'refuse'}).then(function(d){
-          if(d && d.gele) alert('Ouverture gelée 7 jours sur ce compte. Le compte, lui, fonctionne normalement.');
+          if(d && d.gele) alert(d.message);
           load();
         });
     });
