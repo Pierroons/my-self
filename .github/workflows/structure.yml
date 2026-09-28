@@ -131,6 +131,38 @@ jobs:
       - name: Garde-fou — socle SelfRecover (profil de hachage, encodage, diceware)
         run: php bi-self/selfrecover/tests/sanity_socle.php
 
+      - name: Garde-fou — un secret rendu s'accompagne de sa consigne
+        run: |
+          # Une perte silencieuse est pire qu'une panne : la personne range son
+          # papier et découvre des mois plus tard, au moment où elle en a besoin,
+          # qu'il ne vaut plus rien. Rien n'échoue, rien ne se journalise.
+          php bi-self/selfrecover/tests/sanity_annonce_secrets.php
+
+      - name: Canari — le contrôle rougit si un message tait ce qu'il remplace
+        run: |
+          # Le défaut d'origine replanté : un message qui nomme ce qui SURVIT et
+          # tait ce qui MEURT.
+          # Jamais un chemin fixe : au second passage, cp copierait DANS le dossier
+          # existant et la plantation porterait sur un source déjà planté.
+          PLANTE=$(mktemp -d)
+          cp -r bi-self/selfrecover/src "$PLANTE/src"
+          PLANTE="$PLANTE" python3 - <<'PY'
+          import pathlib, os
+          p = pathlib.Path(os.environ['PLANTE']) / 'src/Recovery/Recovery.php'
+          t = p.read_text(encoding='utf-8')
+          m = 'note-les, les anciens ne valent plus rien et ceux-ci ne seront pas réaffichés. '
+          assert t.count(m) == 2, 'la plantation n\'a pas pris — ce canari ne prouve rien'
+          p.write_text(t.replace(m, ''), encoding='utf-8')
+          PY
+          if sortie=$(SR_SRC="$PLANTE/src" php bi-self/selfrecover/tests/sanity_annonce_secrets.php 2>&1); then
+            echo "$sortie"
+            echo "::error::le contrôle reste VERT alors que deux messages taisent le remplacement"
+            exit 1
+          fi
+          echo "$sortie"
+          echo "$sortie" | grep -q 'Recovery/Recovery.php.*sans dire de le noter' \
+            || { echo "::error::rouge, mais pas sur le cas attendu"; exit 1; }
+
       - name: Garde-fou — facteur « cet appareil » (dont la prise de compte du 02/08)
         run: |
           sortie=$(php bi-self/selfrecover/tests/sanity_device.php 2>&1) && rc=0 || rc=$?

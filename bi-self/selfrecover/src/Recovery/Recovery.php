@@ -159,7 +159,7 @@ final class Recovery
 
         return [
             'ok'           => true,
-            'message'      => 'Accès rendu. Le mot de récupération, lui, ne change pas.',
+            'message'      => 'Accès rendu. Ton mot de passe et ta passphrase ont été remplacés : note-les, les anciens ne valent plus rien et ceux-ci ne seront pas réaffichés. Le mot mémorisé, lui, ne change pas.',
             'mot_de_passe' => $motDePasse,
             'passphrase'   => $nouvellePhrase,
             'age_jours'    => is_int($emiseLe) ? intdiv(max(0, $maintenant - $emiseLe), 86400) : null,
@@ -273,7 +273,7 @@ final class Recovery
 
         return [
             'ok'             => true,
-            'message'        => 'Accès rendu. Le mot de récupération, lui, ne change pas.',
+            'message'        => 'Accès rendu. Ton mot de passe et ta passphrase ont été remplacés : note-les, les anciens ne valent plus rien et ceux-ci ne seront pas réaffichés. Le mot mémorisé, lui, ne change pas.',
             'mot_de_passe'   => $motDePasse,
             'passphrase'     => $nouvellePhrase,
             'compte'         => $trouve['nom_compte'],

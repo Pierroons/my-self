@@ -254,7 +254,7 @@ final class Device
 
         return [
             'ok'           => true,
-            'message'      => 'Appareil reconnu.',
+            'message'      => 'Appareil reconnu. Note ton nouveau mot de passe : il ne sera pas réaffiché. Ta passphrase et tes codes papier, eux, ne changent pas.',
             'mot_de_passe' => $motDePasse,
             'compte'       => $appareil->nomCompte,
         ];
