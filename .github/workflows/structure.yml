@@ -574,7 +574,7 @@ jobs:
         run: |
           # Le 13/09/2026 sur RPi4 : image générée complète, image d'amorçage sans
           # une seule pièce SelfRecover, et le contrôle affichait « complet » sur une
-          # machine non amorçable. Ce banc replante ce cas et quatre voisins.
+          # machine non amorçable. Ce banc replante ce cas et ses voisins.
           # Il ne demande ni root ni initramfs réel : `lsinitramfs` est bouchonné.
           sortie=$(bash self-security/selfrecover-luks/tests/test_garde_fou_image_chargee.sh)
           echo "$sortie"
@@ -586,8 +586,8 @@ jobs:
           # `N/N` suffirait à dire que les cas joués ont réussi, jamais qu'aucun
           # n'a disparu. Ajouter un cas au banc demande donc de le monter ici —
           # cette friction est le contrôle.
-          echo "$sortie" | grep -qE '^✅ 12/12 ' \
-            || { echo "::error::le banc du garde-fou n'a pas joué ses 12 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 13/13 ' \
+            || { echo "::error::le banc du garde-fou n'a pas joué ses 13 cas"; exit 1; }
 
       - name: Canari — le banc du garde-fou rougit quand le correctif disparaît
         run: |
@@ -619,6 +619,31 @@ jobs:
                  echo "::error::le banc a échoué, mais PAS sur le cas du 13/09 — ce canari ne prouve rien"
                  exit 1; }
           echo "✓ le banc rougit, et il rougit SUR LE CAS DU 13/09 — pas sur un contretemps"
+
+      # L'enrôlement, le démarrage et le secours dérivent la clé du slot sous un label.
+      # Changé d'un seul côté, la machine ne s'ouvre plus au boot — et la preuve de
+      # setup-add, qui relit son propre label, ne le verrait pas.
+      - name: Garde-fou — un seul label de dérivation pour les trois scripts LUKS
+        run: |
+          sortie=$(bash self-security/selfrecover-luks/tests/test_label_derivation.sh)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^✅ 3/3 ' \
+            || { echo "::error::le banc du label n'a pas jugé les trois scripts"; exit 1; }
+          F=self-security/selfrecover-luks/selfrecover-unlock.sh
+          cp "$F" /tmp/unlock.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
+          sed -i 's/^LABEL_DERIVATION=disk$/LABEL_DERIVATION=root/' "$F"
+          grep -q '^LABEL_DERIVATION=root$' "$F" || { echo "::error::canari non planté"; exit 1; }
+          if canari=$(bash self-security/selfrecover-luks/tests/test_label_derivation.sh); then
+            cp /tmp/unlock.intact "$F"
+            echo "::error::un label divergent rend encore vert"; exit 1
+          fi
+          cp /tmp/unlock.intact "$F"
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$canari" | grep -q 'selfrecover-unlock.sh.*« root », les autres « disk »' \
+            || { echo "$canari"; echo "::error::rouge, mais pas sur le label divergent"; exit 1; }
+          echo "✓ le banc rougit sur un label divergent"
 
       - name: Garde-fou — les secrets irréversibles ont une sauvegarde UTILISABLE
         run: |

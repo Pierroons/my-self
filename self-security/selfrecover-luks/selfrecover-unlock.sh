@@ -11,6 +11,10 @@ DEV="${1:?device LUKS attendu (ex. /dev/nvme0n1p2)}"
 MAP="${2:-data}"
 SALT="${SELFRECOVER_SALT:?définir SELFRECOVER_SALT (sel propre au déploiement)}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# Label de dérivation : l'enrôlement, le démarrage et le secours doivent dériver
+# sous le MÊME. Changé d'un seul côté, le slot ne s'ouvre plus au boot.
+# Garde : tests/test_label_derivation.sh.
+LABEL_DERIVATION=disk
 MAX_ESSAIS=3
 
 # --- Nettoyage systématique : restaure l'écho du terminal (coupé par read -s) et efface le
@@ -48,7 +52,7 @@ for (( i=1; i<=MAX_ESSAIS; i++ )); do
   # l'echo vient d'etre retabli par la fin du read -rs, et la passphrase s'affiche.
   if printf '%s' "$WORD" \
      | sudo -u "$RUN_AS" python3 "$HERE/selfrecover_derive.py" \
-         --stdin --salt "$SALT" --label disk --format hex \
+         --stdin --salt "$SALT" --label "$LABEL_DERIVATION" --format hex \
      | cryptsetup luksOpen "$DEV" "$MAP" --key-file=-
   then
     unset WORD

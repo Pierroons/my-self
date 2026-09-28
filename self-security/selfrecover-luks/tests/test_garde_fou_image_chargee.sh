@@ -72,10 +72,19 @@ mkdir -p "$BANC/bin"
 cat > "$BANC/bin/lsinitramfs" <<'STUB'
 #!/bin/sh
 case "$1" in
+  *sans-secours*)   # complète, sauf le script que dropbear lance au boot
+    echo "etc/selfkeyguard/selfrecover_derive_c"
+    echo "etc/selfkeyguard/selfrecover_salt"
+    echo "etc/selfkeyguard/selfrecover-keyscript"
+    echo "usr/lib/x86_64-linux-gnu/libargon2.so.1"
+    echo "usr/lib/x86_64-linux-gnu/libgcc_s.so.1"
+    echo "usr/sbin/cryptsetup"
+    ;;
   *complete*)
     echo "etc/selfkeyguard/selfrecover_derive_c"
     echo "etc/selfkeyguard/selfrecover_salt"
     echo "etc/selfkeyguard/selfrecover-keyscript"
+    echo "etc/selfkeyguard/selfrecover-secours.sh"
     echo "usr/lib/x86_64-linux-gnu/libargon2.so.1"
     echo "usr/lib/x86_64-linux-gnu/libgcc_s.so.1"
     echo "usr/sbin/cryptsetup"
@@ -133,6 +142,15 @@ printf 'initramfs initrd.img-%s.complete.bak.1789332878\n' "$VER" > "$BANC/firmw
 : > "$BANC/firmware/initrd.img-$VER.complete.bak.1789332878"
 verdict "l'amorceur charge un .bak.* du module" ROUGE "SAUVEGARDE" \
   lancer "$GEN"
+
+# 4 bis. Sans le script de secours, une clé d'amorçage portant son `command=`
+#        ne rend plus rien : la machine devient injoignable au boot.
+SANS="$BANC/boot/initrd.img-$VER.sans-secours"
+: > "$SANS"
+cp "$SANS" "$BANC/firmware/initrd.img-$VER.sans-secours"
+printf 'initramfs initrd.img-%s.sans-secours\n' "$VER" > "$BANC/firmware/config.txt"
+verdict "image sans le script de secours" ROUGE "script de secours" \
+  lancer "$SANS"
 
 # 5. La copie vers la partition d'amorçage n'a pas eu lieu : image chargée
 #    complète mais plus ancienne que celle qui vient d'être générée.
@@ -218,7 +236,7 @@ verdict "image plate, SEL PÉRIMÉ (non-régression)" ROUGE "sel embarque DIFFER
 
 echo
 if [ "$echec" -eq 0 ]; then
-  printf '✅ %d/%d — le garde-fou vise l image chargée, et il rougit sur les cinq défauts replantés.\n' \
+  printf '✅ %d/%d — le garde-fou vise l image chargée, et il rougit sur chaque défaut replanté.\n' \
     "$total" "$total"
   exit 0
 fi

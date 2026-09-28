@@ -29,6 +29,23 @@ tiers : sa CSP se décide dans `selffarm-lite`.
 Les deux CSP ont été éprouvées dans un navigateur sans interface, contre les pages servies : aucune
 violation, et une version plus stricte y déclenche bien les blocages attendus.
 
+### SelfRecover-LUKS : ce qui rendrait une machine muette se garde — 28 septembre 2026
+
+Trois scripts dérivent la clé du slot — l'enrôlement (`setup-add-selfrecover-slot.sh`), le
+démarrage (`selfrecover-keyscript.sh`), le secours (`selfrecover-unlock.sh`) — et chacun écrivait
+le label `disk` en dur. Changé d'un seul côté, le slot s'enrôle sous un label et se dérive sous
+l'autre : la machine ne démarre plus, et la preuve de `setup-add`, qui relit son propre label, ne
+le voit pas. Chaque script déclare maintenant `LABEL_DERIVATION` une fois (le keyscript tourne
+dans l'initramfs et ne peut rien sourcer du dépôt), et `tests/test_label_derivation.sh` exige
+l'égalité, avec son canari en CI. Comportement inchangé.
+
+`install.sh` rendait `SKG` réglable alors que le keyscript et le hook initramfs lisent
+`/etc/selfkeyguard` en dur : il refuse désormais tout autre chemin, avant d'écrire quoi que ce
+soit. Le vérificateur post-`update-initramfs` cherche aussi `selfrecover-secours.sh`, que le hook
+embarque et sans lequel une clé d'amorçage portant son `command=` ne rend plus rien (banc
+12 → 13 cas). `test_lecture_keyfile.sh` lit `keyfile-size` dans `install.sh` au lieu de figer 64.
+Aucune machine n'est touchée : le `.92` garde son keyscript `raw` et son marqueur.
+
 ### La console SU exige sept mots de la liste EFF — 28 septembre 2026
 
 La passphrase du super-utilisateur chiffre les sauvegardes du journal : elle s'attaque hors ligne,
