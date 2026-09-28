@@ -1,6 +1,9 @@
 {
   "depot": {"nom": "my-self", "version": null},
-  "lisez_moi": "Source unique des versions des modules de ce dépôt. scripts/check-versions.sh vérifie que chaque porteur déclaré dit la même version, et que chaque version a son tag <id>-v<version>. Les autres dépôts de l'écosystème lisent ce fichier au lieu de recopier nos versions ; my-self n'a pas de version de dépôt, chaque module a la sienne.",
+  "lisez_moi": "Source unique des versions des modules de ce dépôt. scripts/check-versions.sh vérifie que chaque porteur déclaré dit la même version, et que chaque version a son tag <id>-v<version>. Les autres dépôts de l'écosystème lisent ce fichier au lieu de recopier nos versions ; my-self n'a pas de version de dépôt, chaque module a la sienne. Il porte aussi ce que ce dépôt a publié hors de lui : « artefacts_retires » nomme ce qu'un registre ne doit plus servir, et le contrôle va le demander là où il vit.",
+  "artefacts_retires": [
+    {"canal": "ghcr", "reference": "pierroons/selfrecover", "date": "2026-09-28", "motif": "la démo autonome qu'elle sert a été retirée le 18/08/2026 ; « Essayer SelfRecover » ne propose aucun docker run"}
+  ],
   "modules": [
     {
       "id": "selfrecover",

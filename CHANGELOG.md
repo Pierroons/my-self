@@ -10,112 +10,29 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### SelfRecover v0.7.0 — les chemins qui mènent au compte freinent par compte, et le déploiement déclare son profil — 27 septembre 2026
+### L'image Docker de SelfRecover est retirée, et ce qu'on publie hors du dépôt entre sous contrôle — 28 septembre 2026
 
-`Recovery::parCode()` ne consultait que le compteur par adresse, et seulement si une adresse lui était
-passée. Il écrivait pourtant un compteur par compte à chaque échec, sous l'étiquette `code:<compte>`,
-que personne ne relisait : le paramètre `maxEchecsCompte` n'avait aucun effet au niveau 2. Derrière un
-service caché ou un proxy mutualisé, où l'adresse ne veut rien dire et vaut `null`, il ne restait donc
-aucun frein — qui détenait une feuille de codes volée pouvait essayer des mots mémorisés sans limite.
+`ghcr.io/pierroons/selfrecover` servait encore, sous les étiquettes `latest` et `v0.4.0`, l'image
+construite le 28 juillet 2026. Le rangement du 18 août avait supprimé d'un même geste son
+`Dockerfile` et le workflow qui la construisait à chaque tag ; les quatre tags suivants — 0.5.0,
+0.5.1, 0.6.0, 0.7.0 — sont donc passés sans rien reconstruire, sans que rien ne le signale. Ce que
+`latest` donnait à qui la tirait précédait trois correctifs décrits plus bas dans ce fichier :
+l'ouverture de dossier de niveau 3 qui énumérait les comptes (0.5.0), la démo restée sur PBKDF2
+quand la documentation annonçait Argon2id (0.6.0), le frein par compte sans effet au niveau 2
+(0.7.0).
 
-Deux seuils désormais, tous deux paramètres de construction : `maxEchecsCompte` échecs sur
-`fenetreEchecs` font attendre, et `maxEchecsL2AvantSuspension` depuis le dernier réarmement suspendent
-la récupération par code de ce compte. Réarmer, c'est émettre un lot de codes ou réussir une
-récupération par code. Le contrôle a lieu avant les deux Argon2id : un essai freiné ne consomme ni code
-ni aucun des compteurs de la bibliothèque — le quota que la démo du duo tient par session, lui, est
-pris avant l'appel. Le compteur est lu avant l'essai et écrit après, donc des requêtes simultanées passent
-ensemble, au plus le seuil plus le nombre de requêtes servies en parallèle moins une — la même borne
-qu'au niveau 1.
+**L'image est retirée plutôt que reconstruite.** Ce dépôt ne propose pas d'essayer SelfRecover par
+un conteneur : « Essayer SelfRecover » renvoie à la démo servie et aux pages autonomes, et la démo
+du duo écrit qu'elle se passe de Docker par principe. L'image était le dernier reste d'une démo
+autonome retirée en août, et aucune page du dépôt n'y menait.
 
-L'étiquette de ce compteur est un HMAC sous le sel du déploiement, comme celle du niveau 3 depuis
-qu'une étiquette en clair y avait été mesurée remplissable depuis la page de connexion. La table des
-tentatives est partagée : un nom de compte soumis y arrive tel quel. En clair, le compteur du niveau 2
-d'un tiers se remplissait en échouant six fois sous son nom, et ses codes papier cessaient de
-fonctionner. `etiquetteEchecsL2()` est publique pour qu'un intégrateur qui pose son propre frein lise
-l'étiquette au lieu de la recopier.
-
-Un code introuvable ne se rattache plus à aucun compte : l'étiquette est absente, là où elle valait
-`code:inconnu`. Un compte de ce nom héritait du frein de toutes les fautes de frappe du service.
-`login_attempts.username` devient donc facultatif, dans les trois schémas et pour les bases existantes
-du lab.
-
-Enfin `consommerCode()` écrivait `used = 1` sans condition sur l'état, alors que `parCode()` lit
-`deja_utilise` avant deux Argon2id : deux requêtes portant le même code valide réussissaient toutes les
-deux. La garde vit maintenant dans l'écriture, qui refuse de porter sur autre chose qu'une ligne encore
-libre, et lève un `CodeDejaConsomme` — un type à elle, pour que `parCode()` rende le refus ordinaire au
-perdant de la course sans confondre cette course avec une panne de la base. Un double-clic ne produit
-plus d'erreur de serveur sur une route qu'on n'atteint qu'avec les deux facteurs bons.
-
-**Ce que le refus dit, et ce qu'il taît.** Le frein par fenêtre rend le message du frein par adresse, au
-mot près, et paie le même délai : nommer le compte apprendrait à qui détient un code que ce code en vise
-un vrai, et l'apprendrait sans payer les deux Argon2id. La suspension, elle, doit se dire — sinon son
-titulaire ne sait pas quoi faire — et c'est le seul refus de cette classe qui nomme un état. Le modèle de
-menace et les whitepapers portent la concession.
-
-⚠️ **Migration.** `login_attempts.username` devient facultatif dans les trois schémas. Sur une base créée
-avant, l'ancien `NOT NULL` refuse l'insertion d'une tentative sans étiquette, et la route rend une erreur
-de serveur au premier code introuvable. Le lab reprend sa base seul ; `bi-self/selfrecover/schema.sql`
-porte la note pour les autres. Le contrat de stockage passe de 39 à 41 méthodes : deux lectures de date,
-à implémenter dans un adaptateur tiers.
-
-Le banc `sanity_recovery.php` passe de 31 à 51 cas et annonce son compte, que l'intégration continue
-exige — l'étape ne lisait que son code de sortie. Un canari débranche le frein et vérifie que le banc
-rougit sur le bon cas. Le fuzzer du niveau 3, qui construit `Recovery` et qu'aucun job ne lançait, entre
-en intégration continue.
-
-**Le profil de déploiement devient obligatoire**, sans valeur par défaut : `clearweb` ou `tor-onion`.
-Il ne décrit pas un réseau mais une clé — deux appelants différents arrivent-ils sous deux origines que
-cette bibliothèque peut lire ? Un service caché répond non ; une base qui ne porte pas de colonne
-d'adresse répond non aussi, et se déclare pareil, ce que fait la démo `bi-self-duo` en étant servie sur
-le web ordinaire.
-
-Le profil refuse l'argument qui le contredit, aux points d'entrée de la récupération, de l'enrôlement et
-de l'ouverture d'un dossier. Sans ce refus il ne serait qu'une déclaration, et les deux erreurs qu'il
-attrape laissent un service qui a l'air de fonctionner : une origine partagée par tous freine tout le
-monde ensemble dès les premiers échecs de n'importe qui, et une origine absente rend le frein par adresse
-inerte sans que rien ne le signale. Le second a été trouvé en posant ce profil, dans notre propre lab :
-son aide à l'enrôlement acceptait une origine facultative, et un appelant qui l'oubliait perdait le
-frein. Elle l'exige désormais.
-
-Le banc de la récupération se joue sous les deux profils, dans la même étape d'intégration continue : le
-corps est le même, seule l'origine change. Ce que le frein par compte doit tenir des deux côtés se
-mesure donc des deux côtés. Un canari neutralise le refus du profil et vérifie que le banc rougit.
-
-**L'enrôlement d'un appareil rejoint les chemins freinés, et cesse de s'intégrer en silence.** Il mène au
-compte avec le seul mot mémorisé — mesuré sur le fil le 13 août 2026, en trois requêtes, l'attaquant
-apportant sa propre clé : il enrôle, s'authentifie, et reçoit un mot de passe neuf, les sessions du
-titulaire coupées. Les codes de secours et la passphrase n'y servent à rien, le chemin les contourne.
-
-`enroler()` prend désormais un `Titulaire`, obligatoire et sans défaut, et refuse `NON_VERIFIE`. Ce n'est
-pas une preuve : le contrat de stockage sait révoquer des sessions, jamais en lire une, et la
-bibliothèque ne vérifie pas plus l'autorisation ici qu'au niveau 3. C'est une affirmation, que
-l'intégrateur doit écrire, et qui se relit en revue. Ce qu'aucune valeur ne remplace est dit dans le
-type : le nom du compte vient de la session ouverte, jamais du corps de la requête.
-
-Il reçoit aussi le frein par compte qui lui manquait — cinq échecs sur la même fenêtre, sur une étiquette
-sous HMAC, sans seuil de suspension puisqu'il n'y a pas de feuille de codes à plafonner. Le refus est
-celui du frein par adresse, au mot près, et paie le même délai. Sous `tor-onion`, où l'adresse ne freine
-rien, ce chemin n'avait jusqu'ici aucun frein du tout.
-
-🔑 **Son étiquette vient du nom SOUMIS, pas du compte trouvé**, et c'est ce qui distingue ce chemin de la
-récupération par code. Tirée du compte, elle n'aurait existé que pour les comptes réels : le frein
-n'aurait mordu que sur eux, et six requêtes sur un nom choisi auraient dit s'il existe — l'oracle que le
-message unique de cette méthode existe pour refuser. La première version de ce correctif l'ouvrait ; il a
-été mesuré, puis fermé. Le prix, assumé et déjà celui du niveau 1 : qui soumet un nom en boucle ferme
-l'enrôlement de ce nom pendant la fenêtre. C'est un confort, pas une récupération. L'étiquette valait
-`enroll:inconnu` pour tout nom introuvable, donc un compte de ce nom héritait du frein de tout le service.
-
-⚠️ **La console du lab perd l'attribution de ces échecs** : elle affichait `enroll:<compte>`, elle affiche
-maintenant un HMAC. C'est le prix que le niveau 2 paie déjà, et il se paie ici pour la même raison — une
-étiquette lisible est une étiquette qu'une route publique peut écrire.
-
-Le calcul des étiquettes quitte `Recovery` pour `Etiquette` : un seul `hash_hmac` subsiste dans la
-bibliothèque, et les trois chemins qui écrivent dans ces compteurs y arrivent. Les signatures publiques ne bougent pas : `indexRecherche()` et `etiquetteEchecsL2()`
-délèguent. Recopier ce calcul aurait laissé diverger deux définitions de la même règle, et le frein qui
-relit serait devenu muet du côté qui bouge.
-
-**Reste ouvert** : l'étiquette du niveau 1 est le nom saisi, donc falsifiable ; son compteur ne freine que
-le compte visé, et la déplacer remettrait à zéro le frein de tous les déploiements en service.
+**Ce qui empêchera la même dérive.** Un artefact publié sur un registre est un porteur de version
+qu'aucune recherche dans l'arbre n'atteint. `modules.json` déclare désormais, sous
+`artefacts_retires`, ce qu'un registre ne doit plus servir, et `scripts/check-versions.sh` gagne
+deux modes qui partent de l'extérieur : `--publications` vérifie chaque matin que la version
+courante d'un module a sa release et qu'un artefact retiré ne répond plus, sans secret dédié ;
+`--artefacts-orphelins` liste les paquets publiés au nom de ce dépôt que plus aucun module ne
+revendique.
 
 ### Le lab enrôle de nouveau un appareil — 27 septembre 2026
 
@@ -444,6 +361,117 @@ Le garde-fou de CI vérifie deux compteurs plutôt que le seul code de sortie : 
 sections ne s'éprouvent pas sous root, le banc les saute **en le disant** et sort quand
 même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le même vert en
 ayant renoncé aux contrôles qui touchent au système.
+
+---
+
+## [SelfRecover v0.7.0] — 27 septembre 2026
+
+### SelfRecover v0.7.0 — les chemins qui mènent au compte freinent par compte, et le déploiement déclare son profil — 27 septembre 2026
+
+`Recovery::parCode()` ne consultait que le compteur par adresse, et seulement si une adresse lui était
+passée. Il écrivait pourtant un compteur par compte à chaque échec, sous l'étiquette `code:<compte>`,
+que personne ne relisait : le paramètre `maxEchecsCompte` n'avait aucun effet au niveau 2. Derrière un
+service caché ou un proxy mutualisé, où l'adresse ne veut rien dire et vaut `null`, il ne restait donc
+aucun frein — qui détenait une feuille de codes volée pouvait essayer des mots mémorisés sans limite.
+
+Deux seuils désormais, tous deux paramètres de construction : `maxEchecsCompte` échecs sur
+`fenetreEchecs` font attendre, et `maxEchecsL2AvantSuspension` depuis le dernier réarmement suspendent
+la récupération par code de ce compte. Réarmer, c'est émettre un lot de codes ou réussir une
+récupération par code. Le contrôle a lieu avant les deux Argon2id : un essai freiné ne consomme ni code
+ni aucun des compteurs de la bibliothèque — le quota que la démo du duo tient par session, lui, est
+pris avant l'appel. Le compteur est lu avant l'essai et écrit après, donc des requêtes simultanées passent
+ensemble, au plus le seuil plus le nombre de requêtes servies en parallèle moins une — la même borne
+qu'au niveau 1.
+
+L'étiquette de ce compteur est un HMAC sous le sel du déploiement, comme celle du niveau 3 depuis
+qu'une étiquette en clair y avait été mesurée remplissable depuis la page de connexion. La table des
+tentatives est partagée : un nom de compte soumis y arrive tel quel. En clair, le compteur du niveau 2
+d'un tiers se remplissait en échouant six fois sous son nom, et ses codes papier cessaient de
+fonctionner. `etiquetteEchecsL2()` est publique pour qu'un intégrateur qui pose son propre frein lise
+l'étiquette au lieu de la recopier.
+
+Un code introuvable ne se rattache plus à aucun compte : l'étiquette est absente, là où elle valait
+`code:inconnu`. Un compte de ce nom héritait du frein de toutes les fautes de frappe du service.
+`login_attempts.username` devient donc facultatif, dans les trois schémas et pour les bases existantes
+du lab.
+
+Enfin `consommerCode()` écrivait `used = 1` sans condition sur l'état, alors que `parCode()` lit
+`deja_utilise` avant deux Argon2id : deux requêtes portant le même code valide réussissaient toutes les
+deux. La garde vit maintenant dans l'écriture, qui refuse de porter sur autre chose qu'une ligne encore
+libre, et lève un `CodeDejaConsomme` — un type à elle, pour que `parCode()` rende le refus ordinaire au
+perdant de la course sans confondre cette course avec une panne de la base. Un double-clic ne produit
+plus d'erreur de serveur sur une route qu'on n'atteint qu'avec les deux facteurs bons.
+
+**Ce que le refus dit, et ce qu'il taît.** Le frein par fenêtre rend le message du frein par adresse, au
+mot près, et paie le même délai : nommer le compte apprendrait à qui détient un code que ce code en vise
+un vrai, et l'apprendrait sans payer les deux Argon2id. La suspension, elle, doit se dire — sinon son
+titulaire ne sait pas quoi faire — et c'est le seul refus de cette classe qui nomme un état. Le modèle de
+menace et les whitepapers portent la concession.
+
+⚠️ **Migration.** `login_attempts.username` devient facultatif dans les trois schémas. Sur une base créée
+avant, l'ancien `NOT NULL` refuse l'insertion d'une tentative sans étiquette, et la route rend une erreur
+de serveur au premier code introuvable. Le lab reprend sa base seul ; `bi-self/selfrecover/schema.sql`
+porte la note pour les autres. Le contrat de stockage passe de 39 à 41 méthodes : deux lectures de date,
+à implémenter dans un adaptateur tiers.
+
+Le banc `sanity_recovery.php` passe de 31 à 51 cas et annonce son compte, que l'intégration continue
+exige — l'étape ne lisait que son code de sortie. Un canari débranche le frein et vérifie que le banc
+rougit sur le bon cas. Le fuzzer du niveau 3, qui construit `Recovery` et qu'aucun job ne lançait, entre
+en intégration continue.
+
+**Le profil de déploiement devient obligatoire**, sans valeur par défaut : `clearweb` ou `tor-onion`.
+Il ne décrit pas un réseau mais une clé — deux appelants différents arrivent-ils sous deux origines que
+cette bibliothèque peut lire ? Un service caché répond non ; une base qui ne porte pas de colonne
+d'adresse répond non aussi, et se déclare pareil, ce que fait la démo `bi-self-duo` en étant servie sur
+le web ordinaire.
+
+Le profil refuse l'argument qui le contredit, aux points d'entrée de la récupération, de l'enrôlement et
+de l'ouverture d'un dossier. Sans ce refus il ne serait qu'une déclaration, et les deux erreurs qu'il
+attrape laissent un service qui a l'air de fonctionner : une origine partagée par tous freine tout le
+monde ensemble dès les premiers échecs de n'importe qui, et une origine absente rend le frein par adresse
+inerte sans que rien ne le signale. Le second a été trouvé en posant ce profil, dans notre propre lab :
+son aide à l'enrôlement acceptait une origine facultative, et un appelant qui l'oubliait perdait le
+frein. Elle l'exige désormais.
+
+Le banc de la récupération se joue sous les deux profils, dans la même étape d'intégration continue : le
+corps est le même, seule l'origine change. Ce que le frein par compte doit tenir des deux côtés se
+mesure donc des deux côtés. Un canari neutralise le refus du profil et vérifie que le banc rougit.
+
+**L'enrôlement d'un appareil rejoint les chemins freinés, et cesse de s'intégrer en silence.** Il mène au
+compte avec le seul mot mémorisé — mesuré sur le fil le 13 août 2026, en trois requêtes, l'attaquant
+apportant sa propre clé : il enrôle, s'authentifie, et reçoit un mot de passe neuf, les sessions du
+titulaire coupées. Les codes de secours et la passphrase n'y servent à rien, le chemin les contourne.
+
+`enroler()` prend désormais un `Titulaire`, obligatoire et sans défaut, et refuse `NON_VERIFIE`. Ce n'est
+pas une preuve : le contrat de stockage sait révoquer des sessions, jamais en lire une, et la
+bibliothèque ne vérifie pas plus l'autorisation ici qu'au niveau 3. C'est une affirmation, que
+l'intégrateur doit écrire, et qui se relit en revue. Ce qu'aucune valeur ne remplace est dit dans le
+type : le nom du compte vient de la session ouverte, jamais du corps de la requête.
+
+Il reçoit aussi le frein par compte qui lui manquait — cinq échecs sur la même fenêtre, sur une étiquette
+sous HMAC, sans seuil de suspension puisqu'il n'y a pas de feuille de codes à plafonner. Le refus est
+celui du frein par adresse, au mot près, et paie le même délai. Sous `tor-onion`, où l'adresse ne freine
+rien, ce chemin n'avait jusqu'ici aucun frein du tout.
+
+🔑 **Son étiquette vient du nom SOUMIS, pas du compte trouvé**, et c'est ce qui distingue ce chemin de la
+récupération par code. Tirée du compte, elle n'aurait existé que pour les comptes réels : le frein
+n'aurait mordu que sur eux, et six requêtes sur un nom choisi auraient dit s'il existe — l'oracle que le
+message unique de cette méthode existe pour refuser. La première version de ce correctif l'ouvrait ; il a
+été mesuré, puis fermé. Le prix, assumé et déjà celui du niveau 1 : qui soumet un nom en boucle ferme
+l'enrôlement de ce nom pendant la fenêtre. C'est un confort, pas une récupération. L'étiquette valait
+`enroll:inconnu` pour tout nom introuvable, donc un compte de ce nom héritait du frein de tout le service.
+
+⚠️ **La console du lab perd l'attribution de ces échecs** : elle affichait `enroll:<compte>`, elle affiche
+maintenant un HMAC. C'est le prix que le niveau 2 paie déjà, et il se paie ici pour la même raison — une
+étiquette lisible est une étiquette qu'une route publique peut écrire.
+
+Le calcul des étiquettes quitte `Recovery` pour `Etiquette` : un seul `hash_hmac` subsiste dans la
+bibliothèque, et les trois chemins qui écrivent dans ces compteurs y arrivent. Les signatures publiques ne bougent pas : `indexRecherche()` et `etiquetteEchecsL2()`
+délèguent. Recopier ce calcul aurait laissé diverger deux définitions de la même règle, et le frein qui
+relit serait devenu muet du côté qui bouge.
+
+**Reste ouvert** : l'étiquette du niveau 1 est le nom saisi, donc falsifiable ; son compteur ne freine que
+le compte visé, et la déplacer remettrait à zéro le frein de tous les déploiements en service.
 
 ---
 
