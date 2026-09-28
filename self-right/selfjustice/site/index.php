@@ -180,42 +180,15 @@ function chiffre(array $corpus, string $cle): string {
       Décris ton problème ci-dessous. Le bouton ajoute automatiquement l'URL des directives et copie le tout dans ton presse-papier. Tu n'as plus qu'à coller dans ton IA.
     </p>
     <textarea id="problem-input" rows="7" style="width: 100%; box-sizing: border-box; padding: 0.8rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 0.95rem; line-height: 1.5; resize: vertical; margin-top: 0.5rem;" placeholder="Exemple : Mon assurance refuse d'indemniser mon dégât des eaux survenu il y a 2 mois. Fuite venant du voisin du dessus. Motif du refus : défaut d'entretien. Je cotise depuis 5 ans sans incident. J'ai le contrat, la lettre de refus, pas encore le rapport d'expertise. Je cherche à savoir si ce refus est légitime et comment réagir."></textarea>
-    <button id="copy-btn" onclick="selfjusticeCopy()" style="margin-top: 0.7rem; background: var(--accent); color: var(--bg); border: none; padding: 0.7rem 1.4rem; border-radius: 6px; font-size: 0.95rem; font-weight: 600; cursor: pointer;">Générer la requête et copier</button>
+    <button id="copy-btn" style="margin-top: 0.7rem; background: var(--accent); color: var(--bg); border: none; padding: 0.7rem 1.4rem; border-radius: 6px; font-size: 0.95rem; font-weight: 600; cursor: pointer;">Générer la requête et copier</button>
     <span id="copy-feedback" style="margin-left: 1rem; font-size: 0.9rem; color: var(--success); display: none;">✓ Copié ! Colle maintenant dans ton IA (claude.ai, Mistral Le Chat, ChatGPT…)</span>
-    <script>
-      function selfjusticeCopy() {
-        var txt = document.getElementById('problem-input').value.trim();
-        if (!txt) {
-          document.getElementById('problem-input').focus();
-          return;
-        }
-        var full = txt + "\n\nAnalyse selon /directives.html";
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(full).then(function() {
-            var fb = document.getElementById('copy-feedback');
-            fb.style.display = 'inline';
-            setTimeout(function() { fb.style.display = 'none'; }, 4000);
-          });
-        } else {
-          var ta = document.createElement('textarea');
-          ta.value = full;
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-          var fb = document.getElementById('copy-feedback');
-          fb.style.display = 'inline';
-          setTimeout(function() { fb.style.display = 'none'; }, 4000);
-        }
-      }
-    </script>
 
     <details style="margin-top: 1.2rem;">
       <summary style="cursor: pointer; color: var(--text-muted); font-size: 0.85rem;">Format à copier manuellement (si le bouton ne fonctionne pas)</summary>
       <pre style="margin-top: 0.5rem; background: var(--bg); padding: 0.8rem; border-radius: 6px; border: 1px solid var(--border); font-size: 0.85rem; white-space: pre-wrap;">[Décris ton problème concrètement : faits, dates, parties,
 démarches déjà faites, preuves dont tu disposes.]
 
-Analyse selon /directives.html</pre>
+Analyse justice.example.org</pre>
     </details>
   </div>
 
@@ -261,7 +234,7 @@ Analyse selon /directives.html</pre>
       Si ton IA a produit un Document 1 / 2 / 3 dont la mise en page est ratée (tableaux cassés, numérotation illisible, caractères manquants, etc.), tu peux nous le transmettre ici. Ça sert à <strong>affiner les directives de rendu PDF</strong> selon le moteur IA utilisé. <strong>Aucune donnée du document n'est extraite</strong> — nous l'ouvrons manuellement pour comprendre ce qui a coincé visuellement, et on ajuste. Fichiers purgés automatiquement après 30 jours.
     </p>
 
-    <form id="feedback-form" enctype="multipart/form-data" style="margin-top: 1rem;">
+    <form id="feedback-form" method="post" action="/api/feedback" enctype="multipart/form-data" style="margin-top: 1rem;">
       <div style="margin-bottom: 0.8rem;">
         <label for="fb-moteur" style="display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.3rem;">Moteur IA qui a produit le document *</label>
         <select id="fb-moteur" name="moteur" required style="width: 100%; padding: 0.6rem; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; font-family: inherit; font-size: 0.9rem;">
@@ -291,36 +264,6 @@ Analyse selon /directives.html</pre>
       <span id="fb-feedback" style="margin-left: 1rem; font-size: 0.9rem;"></span>
     </form>
 
-    <script>
-      (function() {
-        var form = document.getElementById('feedback-form');
-        form.addEventListener('submit', function(ev) {
-          ev.preventDefault();
-          var fb = document.getElementById('fb-feedback');
-          var btn = document.getElementById('fb-submit');
-          fb.style.color = 'var(--text-muted)';
-          fb.textContent = 'Envoi en cours…';
-          btn.disabled = true;
-          fetch('/api/feedback', { method: 'POST', body: new FormData(form) })
-            .then(function(r) { return r.json().catch(function() { return { ok: false, error: 'Réponse illisible (code ' + r.status + ')' }; }); })
-            .then(function(data) {
-              if (data.ok) {
-                fb.style.color = 'var(--success)';
-                fb.textContent = '✓ ' + (data.message || 'Merci, feedback enregistré');
-                form.reset();
-              } else {
-                fb.style.color = 'var(--danger)';
-                fb.textContent = '✗ ' + (data.error || 'Erreur inconnue');
-              }
-            })
-            .catch(function(err) {
-              fb.style.color = 'var(--danger)';
-              fb.textContent = '✗ Erreur réseau';
-            })
-            .finally(function() { btn.disabled = false; });
-        });
-      })();
-    </script>
   </div>
 
   <div class="card" style="margin-top: 1rem;">
@@ -338,45 +281,6 @@ Analyse selon /directives.html</pre>
       Données publiques (avec le détail complet des crawlers en arrière-plan) : <a href="/api/stats/by-ai" style="color: var(--accent-dim);">/api/stats/by-ai</a> · <a href="/api/stats/by-endpoint" style="color: var(--accent-dim);">/api/stats/by-endpoint</a> · mise à jour horaire
     </p>
   </div>
-
-  <script>
-    (function() {
-      fetch('/api/stats/by-ai', { cache: 'no-store' })
-        .then(function(r) { return r.ok ? r.json() : null; })
-        .then(function(data) {
-          if (!data || !data.user_consultations) return;
-          var hc = document.getElementById('header-counter');
-          if (hc && typeof data.user_total === 'number') {
-            hc.textContent = data.user_total.toLocaleString('fr-FR');
-          }
-          var labels = {
-            claude: 'Claude',
-            chatgpt: 'ChatGPT',
-            perplexity: 'Perplexity'
-          };
-          var fam = data.user_consultations;
-          var total = data.user_total || 0;
-          var container = document.getElementById('stats-by-ai');
-          if (!container) return;
-          container.innerHTML = '';
-          Object.keys(labels).forEach(function(key) {
-            var count = fam[key] || 0;
-            var pct = total > 0 ? ((count / total) * 100).toFixed(1) : '0.0';
-            var cell = document.createElement('div');
-            cell.style.cssText = 'background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem 0.8rem;';
-            cell.innerHTML =
-              '<div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px;">' + labels[key] + '</div>' +
-              '<div style="font-size: 1.3rem; font-weight: bold; color: var(--accent); margin-top: 0.2rem;">' + count.toLocaleString('fr-FR') + '</div>' +
-              '<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.1rem;">' + pct + ' %</div>';
-            container.appendChild(cell);
-          });
-        })
-        .catch(function() {
-          var container = document.getElementById('stats-by-ai');
-          if (container) container.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem; grid-column: 1 / -1;">Statistiques indisponibles pour l\'instant.</div>';
-        });
-    })();
-  </script>
 
   <p style="margin-top: 1.5rem; font-size: 0.85rem; color: var(--text-muted); text-align: center;">
     Code source et directives complètes : <a href="https://github.com/Pierroons/my-self/tree/main/self-right/selfjustice" target="_blank" rel="noopener">github.com/Pierroons/my-self/self-right/selfjustice</a>
@@ -1512,5 +1416,6 @@ référence SJ.
   </p>
 </footer>
 
+<script src="/selfjustice.js"></script>
 </body>
 </html>

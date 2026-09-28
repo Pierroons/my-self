@@ -50,7 +50,7 @@ N'importe quelle IA. N'importe quel citoyen. N'importe quel conflit. Une pré-an
        │   harcèle, analyse        │                            │
        │   justice.my-self.fr »    │                            │
        │──────────────────────────>│                            │
-       │                           │  GET /directives.html      │
+       │                           │  GET /                     │
        │                           │───────────────────────────>│
        │                           │<───────────────────────────│
        │                           │  [lit les directives]      │
@@ -123,7 +123,7 @@ Toutes les endpoints retournent du JSON, toutes sont rate-limitées, toutes ont 
 
 | Couche | Technologie |
 |-------|-----------|
-| Serveur web | nginx 1.22 avec CSP strict, rate limiting, headers de sécurité |
+| Serveur web | nginx, CSP qui n'admet que les scripts du site, rate limiting, headers de sécurité |
 | Backend | PHP-FPM 8.2 (lecture seule) |
 | Base de données | SQLite 3 (dump LEGI parsé en `legi_selfjustice.sqlite`) + SQLite (UE/CEDH) |
 | TLS | Let's Encrypt, auto-renouvellement |

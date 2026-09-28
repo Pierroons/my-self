@@ -50,7 +50,7 @@ Any AI. Any citizen. Any conflict. One consistent, sourced, impartial pre-analys
        │   analyze justice.        │                            │
        │   my-self.fr"             │                            │
        │──────────────────────────>│                            │
-       │                           │  GET /directives.html      │
+       │                           │  GET /                     │
        │                           │───────────────────────────>│
        │                           │<───────────────────────────│
        │                           │  [reads directives]        │
@@ -122,7 +122,7 @@ All endpoints return JSON, all are rate-limited, all are CORS-open.
 
 | Layer | Technology |
 |-------|-----------|
-| Web server | nginx 1.22 with strict CSP, rate limiting, security headers |
+| Web server | nginx, a CSP that admits only the site's own scripts, rate limiting, security headers |
 | Backend | PHP-FPM 8.2 (read-only) |
 | Database | SQLite 3 (LEGI dump parsed to `legi_selfjustice.sqlite`) + SQLite (EU/CEDH) |
 | TLS | Let's Encrypt, auto-renewal |
