@@ -10,6 +10,51 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover v0.8.0 — reprendre un compte le referme vraiment, et un accord rendu a une fin — 28 septembre 2026
+
+Deux chemins laissaient une personne devant une porte qu'aucun geste ne pouvait ouvrir ou
+fermer. Ils se corrigent ensemble parce qu'ils vivent au même endroit : la reprise de compte
+au niveau 3.
+
+**Les appareils enrôlés survivaient à tout.** Aucune méthode du contrat de stockage ne savait
+en retirer un. `reposerSecrets()` réécrit les empreintes et le sel ; les appareils restaient,
+et `Device::cloreDefi()` ouvre le compte sur une **signature seule** — il ne vérifie pas le mot
+mémorisé. L'appareil de qui détenait le compte avant signait donc encore et recevait encore un
+mot de passe neuf, pendant que le titulaire croyait avoir refermé sa porte.
+
+On atteint le niveau 3 après avoir tout perdu, et « tout perdu » veut souvent dire « quelqu'un
+d'autre l'a ». C'est le seul niveau où ce qui existait avant doit être tenu pour suspect : les
+niveaux 1 et 2 ne révoquent rien, et un contre-témoin du banc de récupération garde cette
+frontière. Qui présente un papier, ou un code **et** son mot mémorisé, a prouvé quelque chose.
+
+**Un accord rendu n'avait pas de fin.** Un litige accepté ne périmait jamais, `ouvrir()` refuse
+tant qu'un litige est actif, et la seule clôture passait par `reEnroler()`, qui exige le sésame.
+Qui perdait son sésame entre l'accord et son retour voyait le niveau 3 se fermer définitivement,
+avec un message lui demandant précisément ce qu'il n'avait plus. La sortie était un `UPDATE` en
+base.
+
+Deux réponses, et il fallait les deux. `Escalade::abandonner()` rend la main tout de suite à qui
+le demande : un arbitre clôt le litige, la place se libère, l'arbitrage est à refaire — il ne
+décide pas à la place de celui qui tranchera. Et `ttlAccepte`, sept jours par défaut, sert de
+filet quand personne ne demande rien. Le délai seul aurait laissé quelqu'un dehors une semaine ;
+l'abandon seul aurait laissé la place prise pour toujours si personne n'y pensait.
+
+⚠️ **Migration.** Le contrat de stockage passe de 41 à 42 méthodes : `revoquerAppareils(int
+$compteId): int`. Un adaptateur tiers ne s'instancie plus sans elle. Les implémentations d'un
+déploiement sans facteur « cet appareil » rendent 0 plutôt que de lever — cette méthode est
+appelée dans la transaction de reprise, et lever y ferait échouer une récupération pour une
+fonction que le déploiement n'offre pas. Les défis en vol se retirent **avant** les appareils :
+ils désignent un `credential_id` et non un compte.
+
+Trois messages disent maintenant ce qu'ils taisaient : l'acceptation annonce son délai, le refus
+« une procédure est déjà en cours » dit quoi faire quand le sésame est perdu, et la reprise
+annonce le nombre d'appareils retirés. `appareils_retires` est rendu à l'application.
+
+Le banc de l'escalade passe de 107 à 123 cas, celui de la récupération de 58 à 59. Le contrôle
+qui affirmait qu'un accord reste actif « bien après son TTL » n'a pas été réparé mais **scindé** :
+la propriété qu'il défendait tient sur la fenêtre où elle vaut, l'échéance la borne au-delà.
+Trois canaris : révocation neutralisée, échéance retirée, abandon qui ne clôt plus.
+
 ### L'image Docker de SelfRecover est retirée, et ce qu'on publie hors du dépôt entre sous contrôle — 28 septembre 2026
 
 `ghcr.io/pierroons/selfrecover` servait encore, sous les étiquettes `latest` et `v0.4.0`, l'image

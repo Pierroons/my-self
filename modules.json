@@ -17,7 +17,7 @@
       "id": "selfrecover",
       "nom": "SelfRecover",
       "dossier": "bi-self/selfrecover",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "resume": {
         "fr": "récupération de compte sans email ni SMS",
         "en": "account recovery without email or SMS"

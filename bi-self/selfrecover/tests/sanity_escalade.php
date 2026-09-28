@@ -507,6 +507,29 @@ $reprise = $escA->reEnroler((string) $oA['numero'], $sA, 'un-mot-de-passe-neuf',
 verifier('⭐ reprendre un accord périmé est refusé, et le refus le nomme',
     ($reprise['error'] ?? '') === 'accord_perime', (string) ($reprise['error'] ?? 'aucun refus'));
 
+// ⭐ La sortie immédiate : l'arbitre abandonne, et la place se libère sans
+// attendre l'échéance. C'est ce que le message du refus promet à qui a perdu son
+// sésame — une promesse qui n'engageait rien tant que la méthode n'existait pas.
+[$stB, $escB] = banc(ProfilDeploiement::TOR_ONION, $now);
+$sB = bin2hex(random_bytes(32));
+$oB = $escB->ouvrir('alice', Escalade::empreinteSesame($sB), maintenant: $now);
+$escB->soumettre((string) $oB['numero'], $sB, ['annee_creation' => '2022'], $now + 60);
+$escB->trancher((string) $oB['numero'], 'accepte', 'arbitre', $now + 120);
+verifier('contre-témoin : sans abandon, la place reste prise',
+    ($escB->ouvrir('alice', Escalade::empreinteSesame('x'), maintenant: $now + 200)['error'] ?? '') === 'deja_ouvert');
+$ab = $escB->abandonner('alice', 'arbitre', $now + 300);
+verifier('⭐ un arbitre abandonne le litige en cours', ($ab['ok'] ?? false) === true,
+    (string) ($ab['error'] ?? ''));
+verifier('il rend le statut qu\'avait le litige', ($ab['statut_precedent'] ?? '') === Litige::ACCEPTE);
+// L'ordre compte : une fois la place libre, on la reprend en ouvrant, donc les
+// deux refus se mesurent AVANT cette réouverture.
+verifier('abandonner deux fois est refusé, et nommé',
+    ($escB->abandonner('alice', 'arbitre', $now + 350)['error'] ?? '') === 'aucun_litige');
+verifier('abandonner sur un compte inconnu est refusé, et nommé',
+    ($escB->abandonner('personne', 'arbitre', $now + 350)['error'] ?? '') === 'compte_inconnu');
+verifier('et la place est libre AVANT l\'échéance',
+    ($escB->ouvrir('alice', Escalade::empreinteSesame('neuf'), maintenant: $now + 400)['ok'] ?? false) === true);
+
 $tard = $escA->ouvrir('alice', Escalade::empreinteSesame('le titulaire, sans son sesame'),
     maintenant: $now + 25 * $JOUR);
 verifier('⭐ passé son délai, l\'accord non repris libère la place',

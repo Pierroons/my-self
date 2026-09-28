@@ -522,6 +522,46 @@ final class Escalade
     }
 
     /**
+     * Clôt le litige en cours d'un compte, sur décision d'un arbitre.
+     *
+     * 🔑 **C'est la sortie de qui a perdu son sésame.** Sans elle, un accord
+     * rendu bloquait le niveau 3 jusqu'à son échéance — sept jours par défaut —
+     * et le seul recours immédiat était un `UPDATE` en base. Le délai reste, en
+     * filet ; ce chemin-ci rend la main tout de suite à qui le demande.
+     *
+     * ⚠️ Il ne rend AUCUN accès : il libère la place. Le titulaire rouvre un
+     * litige et l'arbitrage est à refaire — un arbitre qui abandonne ne décide
+     * pas à la place de celui qui tranchera.
+     *
+     * Comme `degeler()`, ce chemin est réservé à un arbitre et la qualité
+     * d'arbitre se vérifie à l'endpoint : la bibliothèque ne connaît pas les
+     * rôles. Il distingue donc « inconnu » de « clos » sans frein ni délai.
+     */
+    public function abandonner(string $nomCompte, string $par, ?int $maintenant = null): array
+    {
+        $maintenant = $maintenant ?? time();
+        $nomCompte  = strtolower(trim($nomCompte));
+
+        $compte = $this->stockage->trouverCompte($nomCompte);
+        if ($compte === null) {
+            return ['ok' => false, 'error' => 'compte_inconnu', 'message' => 'Aucun compte à ce nom.'];
+        }
+
+        $litige = $this->stockage->litigeActifDuCompte((int) $compte['id'], $maintenant);
+        if ($litige === null) {
+            return ['ok' => false, 'error' => 'aucun_litige',
+                    'message' => 'Aucune procédure en cours sur ce compte.'];
+        }
+
+        $this->stockage->cloreLitige($litige->id, $maintenant);
+
+        return ['ok' => true, 'numero' => $litige->numero, 'statut_precedent' => $litige->statut,
+                'abandonne_par' => $par,
+                'message' => 'Procédure close. Le titulaire peut en ouvrir une nouvelle ; '
+                           . 'l\'arbitrage sera à refaire.'];
+    }
+
+    /**
      * Le titulaire repose lui-même ses secrets, après un accord.
      *
      * 🔑 **Aucun mot de passe n'est rendu**, contrairement aux niveaux 1 et 2.
