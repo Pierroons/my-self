@@ -62,6 +62,14 @@
         [
           "bi-self/README.fr.md",
           "| [SelfRecover](./selfrecover/)"
+        ],
+        [
+          "bi-self/selfrecover/tools/entropy-lab/docs/diceware-method-en.pdf",
+          "/Keywords (SelfRecover-v"
+        ],
+        [
+          "bi-self/selfrecover/tools/entropy-lab/docs/diceware-method-fr.pdf",
+          "/Keywords (SelfRecover-v"
         ]
       ]
     },
