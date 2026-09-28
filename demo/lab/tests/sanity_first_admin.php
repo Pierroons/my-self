@@ -283,7 +283,7 @@ SuAudit::verify()['ok']
     : nok('chaîne rompue après reset-db : ' . json_encode(SuAudit::verify()));
 
 // Un secret neuf, comme à l'installation, puis l'amorçage.
-$neuve = 'banc-passphrase-neuve-apres-reset';
+$neuve = 'habitat igloo jackal kennel ladder oasis paddle';
 [$c] = su(['change-passphrase'], [
     'SELFRECOVER_SU_SECRET'       => 'secret-temporaire-d-installation',
     'SELFRECOVER_SU_SECRET_INPUT' => 'secret-temporaire-d-installation',

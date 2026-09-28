@@ -104,6 +104,28 @@ function tordu(): string
     return $v[mt_rand(0, count($v) - 1)];
 }
 
+/**
+ * Un mot de passe tordu porte ce préfixe, qu'aucune entrée du vivier ne contient.
+ * Les textes libres (`repondre`, `trancher`, `degeler`) sont tirés du vivier : un
+ * mot de passe ne peut donc pas se retrouver dans un fil pour y avoir été écrit
+ * comme message, et la sonde « ne renvoie jamais le mot de passe » ne voit que
+ * des fuites. Un seul caractère : les valeurs courtes restent sous le plancher.
+ */
+const PREFIXE_MOT_DE_PASSE = "\u{E000}";
+
+function torduMotDePasse(): string
+{
+    return PREFIXE_MOT_DE_PASSE . tordu();
+}
+
+foreach (vivier() as $v) {
+    if (str_contains($v, PREFIXE_MOT_DE_PASSE)) {
+        fwrite(STDERR, "❌ le vivier contient le préfixe réservé aux mots de passe : "
+            . "la sonde de fuite confondrait un message et une fuite.\n");
+        exit(1);
+    }
+}
+
 /** Tantôt la vraie valeur, tantôt une valeur tordue : sinon on ne parcourt rien. */
 function parfois(string $vrai): string
 {
@@ -283,7 +305,7 @@ for ($tour = 1; $tour <= $tours; $tour++) {
                     // Un mot de passe reconnaissable et assez long pour franchir
                     // le plancher : sinon on ne teste que le refus de forme.
                     $motDePasseChoisi = 'MotDePasseTemoin-' . bin2hex(random_bytes(4));
-                    $motDePasseSoumis = ($guide || mt_rand(0, 4)) ? $motDePasseChoisi : tordu();
+                    $motDePasseSoumis = ($guide || mt_rand(0, 4)) ? $motDePasseChoisi : torduMotDePasse();
                     $r = $esc->reEnroler(
                         $numero,
                         $sesame,

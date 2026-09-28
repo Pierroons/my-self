@@ -76,7 +76,7 @@ $totalArgon2Ms = 0;
 for ($i = 1; $i <= 5; $i++) {
     $username = 'sybil_' . $i . '_' . bin2hex(random_bytes(2));
     $password = RecoverHelper::generatePassword(16);
-    $diceware = DicewareWordlist::generate(4, 'en');
+    $diceware = DicewareWordlist::generate(\Pierroons\SelfRecover\Recovery\Recovery::MOTS_PASSPHRASE, 'en');
     $passphrase = implode(' ', $diceware['words']);
     // Ce que cette simulation mesure, c'est le COÛT que l'attaquant paye : trois
     // Argon2id par compte. La clé dérivée n'est jamais stockée ici — n'importe

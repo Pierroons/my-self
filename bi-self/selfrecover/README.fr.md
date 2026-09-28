@@ -92,7 +92,7 @@ Le matériel doit être **lu** dans le navigateur, jamais reçu du réseau. Un m
 | Matériel de dérivation | `'hostname'` ou `'label'` | obligatoire — la bibliothèque n'a pas de défaut et lève si le mode manque |
 | Stockage des secrets côté serveur | Argon2id | mémoire = 64 Mio, time = 4, threads = 2 (memory-hard) |
 | Index de recherche d'un code, étiquettes de compteurs | HMAC-SHA256 | clé = sel du déploiement — retrouve une ligne sans stocker le code, et rend l'étiquette d'un tiers impossible à fabriquer |
-| Génération de passphrase (L1) | EFF Diceware | 4 mots, ≥ 51 bits d'entropie |
+| Génération de passphrase (L1) | EFF Diceware | 6 mots, ≈ 77,5 bits d'entropie |
 | Sel du compte | 16 octets aléatoires, rendus en 32 hexadécimaux minuscules | un par compte, engendré par le navigateur à l'inscription (`srEngendrerSel`), stocké en clair (un sel n'est pas un secret) — obligatoire, la bibliothèque refuse toute autre forme |
 
 ### D'où vient l'aléa
@@ -173,7 +173,7 @@ HMAC est volontairement **rapide** côté client car l'objectif est la liaison a
 
 | Niveau | Ce qu'il faut fournir | Résultat |
 |-------|----------------|---------|
-| **L1** | Passphrase (diceware EFF, 4 mots ≈ 51 bits) | Nouveau mot de passe |
+| **L1** | Passphrase (diceware EFF, 6 mots ≈ 77,5 bits) | Nouveau mot de passe |
 | **L2** | **2FA sans identifiant**, deux voies : un *recovery code* papier **+** le mot mémorisé — ou, en option, l'appareil enrôlé **+** le mot mémorisé | Nouveau mot de passe |
 | **L3** | Faisceau de faits bruts + échange humain | Décision d'un admin humain, puis ré-enrôlement **par l'utilisateur** |
 

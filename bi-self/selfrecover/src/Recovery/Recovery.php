@@ -16,10 +16,9 @@ use Pierroons\SelfRecover\Storage\StorageInterface;
  * Les deux premiers niveaux de l'escalade de récupération.
  *
  *   Niveau 1 — la passphrase diceware. Un seul facteur, mais à forte entropie
- *              (≈51,7 bits pour quatre mots de la liste EFF) et jamais saisi
- *              ailleurs. `engendrerPassphrase()` fixe la longueur, à un seul
- *              endroit : ce docblock a annoncé six mots et 77 bits pendant que
- *              le code en tirait quatre.
+ *              (≈77,5 bits pour six mots de la liste EFF) et jamais saisi
+ *              ailleurs. `MOTS_PASSPHRASE` fixe la longueur, à un seul
+ *              endroit : les démos le lisent au lieu d'écrire leur nombre.
  *   Niveau 2 — un code de récupération ET le mot mémorisé. Deux facteurs de
  *              nature différente : une possession imprimable, une connaissance.
  *
@@ -80,8 +79,14 @@ final class Recovery
     /** Longueur du lot émis à l'inscription. */
     public const CODES_PAR_LOT = 10;
 
-    /** Mots tirés pour une passphrase de niveau 1 — quatre valent ≈51,7 bits. */
-    public const MOTS_PASSPHRASE = 4;
+    /**
+     * Mots tirés pour une passphrase de niveau 1 — six valent ≈77,5 bits.
+     *
+     * Ne vaut que pour les passphrases engendrées : la vérification compare
+     * une empreinte et ne compte pas les mots, donc une passphrase plus courte
+     * délivrée avant un changement de cette valeur reste valide.
+     */
+    public const MOTS_PASSPHRASE = 6;
 
     /**
      * Niveau 1 — récupération par passphrase diceware.

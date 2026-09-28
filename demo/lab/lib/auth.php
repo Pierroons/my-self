@@ -167,7 +167,7 @@ final class Auth
 
 
         $password = self::generatePassword(16);
-        $diceware = \DicewareWordlist::generate(4, 'en');
+        $diceware = \DicewareWordlist::generate(Recovery::MOTS_PASSPHRASE, 'en');
         $passphrase = implode(' ', $diceware['words']);
 
         $derivedKey = $recoveryDerivedKey;   // déjà dérivée côté client

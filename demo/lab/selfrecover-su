@@ -174,34 +174,27 @@ function su_zeroize(string &$v): void
     $v = str_repeat("\0", strlen($v));
 }
 
+/** Mots de la liste EFF exigés pour la passphrase SU : le tirage par défaut de SelfRecover-LUKS, ≈ 90,5 bits. */
+const SU_MOTS_MINIMUM = 7;
+
 /**
  * Une passphrase qui sert de CLÉ doit résister hors ligne, où aucun compteur
- * d'essais ne s'applique. Deux voies mesurables, sans estimateur maison :
- * quatre mots de la liste EFF (≈ 51,7 bits), ou une longueur qui ne se devine
- * pas. Le seuil de huit caractères de l'ancienne console tombait en secondes.
+ * d'essais ne s'applique. Une seule voie, mesurable sans estimateur maison :
+ * SU_MOTS_MINIMUM mots de la liste EFF. Un seuil en caractères ne mesure pas
+ * l'entropie : trois mots de la liste en font déjà vingt en moyenne.
  */
 function su_check_passphrase(string $p): void
 {
     $words = preg_split('/\s+/', trim($p), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-    if (count($words) >= 4) {
-        $inList = true;
-        foreach ($words as $w) {
-            if (!DicewareWordlist::contains(strtolower($w), 'en') && !DicewareWordlist::contains(strtolower($w), 'fr')) {
-                $inList = false;
-                break;
-            }
-        }
-        if ($inList) {
-            return;
-        }
-    }
-    if (mb_strlen($p) >= 20) {
+    $horsListe = array_filter($words, static fn (string $w): bool =>
+        !DicewareWordlist::contains(strtolower($w), 'en') && !DicewareWordlist::contains(strtolower($w), 'fr'));
+    if (count($words) >= SU_MOTS_MINIMUM && $horsListe === []) {
         return;
     }
     su_fail(
         "Passphrase trop faible pour chiffrer une sauvegarde.\n"
-        . "   → soit 4 mots ou plus de la liste diceware EFF (« cheval agrafe pile batterie »),\n"
-        . '   → soit 20 caractères au minimum.'
+        . '   → ' . SU_MOTS_MINIMUM . " mots ou plus de la liste diceware EFF, tirés au hasard, séparés par des espaces"
+        . ($horsListe === [] ? '' : ' (hors liste : ' . count($horsListe) . ' mot(s))') . '.'
     );
 }
 

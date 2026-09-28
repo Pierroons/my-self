@@ -72,7 +72,7 @@ derived_key = HMAC-SHA256(key = recovery_word, message = material + "|v2" + acco
 The server receives and stores:
 
 - `Argon2id(password)` — classic password hash
-- `Argon2id(passphrase)` — a diceware passphrase generated server-side (4 words, ~51 bits of entropy)
+- `Argon2id(passphrase)` — a diceware passphrase generated server-side (6 words, ~77.5 bits of entropy)
 - `Argon2id(derived_key)` — the HMAC-derived recovery key
 - `account_salt` — the account salt: 16 random bytes rendered as 32 lowercase hex characters, one per account, browser-generated, not a secret
 
