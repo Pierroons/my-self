@@ -34,7 +34,7 @@ $log->info('recover-l1', 'Body parsed', [
     'passphrase' => '[HIDDEN ' . strlen($passphrase) . ' chars, ' . str_word_count($passphrase) . ' words]',
 ]);
 
-if (!preg_match('/^[a-z0-9]{3,20}$/', $username) || strlen($passphrase) < 4) {
+if (!RecoverHelper::estIdentifiant($username) || strlen($passphrase) < 4) {
     $log->warning('recover-l1', 'Champs invalides');
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'invalid_fields']);

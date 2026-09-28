@@ -181,6 +181,17 @@ vérifie. `derive_cli.php`, qui recopie `srDerive()` pour les scripts sans navig
 les vecteurs figés (`sanity_derive_cli.php`), et la simulation d'attaque l'appelle au lieu d'en
 recopier la formule. Chaque sonde a son canari en CI.
 
+**Les nombres magiques qui touchent aux comptes ont un nom.** Les bornes de l'identifiant (3 à
+20 caractères) étaient écrites dans six routes de la démo duo et dans le lab, avec leurs messages ;
+le jeton de session (24 octets, 48 hexadécimaux) dans quatre fichiers du lab et trois du duo ; la
+longueur minimale du mot mémorisé dans le JavaScript et le texte du lab ; la longueur maximale d'un
+message de litige deux fois dans `Escalade`. Chacun a maintenant une constante, lue par ses
+contrôles et par ses textes (`Auth::IDENTIFIANT_MIN/MAX`, `Auth::estJeton()`,
+`RecoverHelper::estIdentifiant()`, `RecoverHelper::estJeton()`, `Escalade::MESSAGE_MAXIMUM`).
+L'entropie par mot de `Wordlist` se calcule depuis la taille de la liste au lieu d'être recopiée.
+La démo duo garde deux règles d'identifiant — `[a-z0-9]` en récupération, `[a-z0-9_]` en
+modération — : c'est noté, et tranché avec SelfModerate.
+
 Le banc de l'escalade passe de 107 à 124 cas, celui de la récupération de 58 à 61. Le contrôle
 qui affirmait qu'un accord reste actif « bien après son TTL » n'a pas été réparé mais **scindé** :
 la propriété qu'il défendait tient sur la fenêtre où elle vaut, l'échéance la borne au-delà.

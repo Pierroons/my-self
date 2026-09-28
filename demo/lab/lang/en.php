@@ -248,7 +248,7 @@ return [
     'reg.h1'         => 'Create an account',
     'reg.intro'      => 'No email, no phone number. Authentication by <strong>SelfRecover</strong>: you choose a recovery word, the server generates a password and a passphrase for you to keep.',
     'reg.username'   => 'Username',
-    'reg.username_ph'=> '3-20 characters, lowercase/digits/_',
+    'reg.username_ph'=> '%d-%d characters, lowercase/digits/_',
     'reg.recovery'   => 'Recovery word (you choose it, keep it secret)',
     'reg.recovery_ph'=> 'e.g. mycat2024',
     'reg.submit'     => 'Create my account',
@@ -544,7 +544,7 @@ return [
     'dsp.js.empty'      => 'No messages yet.',
     'dsp.js.reset_done' => 'Account recovered. You can log in with your new secrets.',
 
-    'reg.weak_word' => 'The recovery word must be at least 4 characters long.',
+    'reg.weak_word' => 'The recovery word must be at least %d characters long.',
     'reg.codes'  => 'Backup codes — %d, single use (L2 recovery with your memorized word)',
 
     // --- Trusted device (L2, possession factor, alternative to the code) ---

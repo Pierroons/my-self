@@ -227,7 +227,7 @@ final class AttackSimulator
     {
         $pdo = self::sandbox();
         // session fictive pour le calcul CSRF
-        $sessionToken = bin2hex(random_bytes(24));
+        $sessionToken = Auth::generateSessionToken();
 
         // 🔴 CSRF : token absent ou faux
         $sansToken = Security::verifyCsrf($sessionToken); // $_SERVER vide → false

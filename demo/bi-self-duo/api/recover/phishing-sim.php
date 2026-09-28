@@ -45,7 +45,7 @@ $derivedKeyPhishing  = is_array($body) ? (string) ($body['derived_key_phishing']
 $log = $s->logger();
 $log->info('phishing-sim', 'POST /demo/api/recover/phishing-sim');
 
-if (!preg_match('/^[a-z0-9]{3,20}$/', $username) ||
+if (!RecoverHelper::estIdentifiant($username) ||
     !RecoverHelper::isDerivedKey($derivedKeyLegit) ||
     !RecoverHelper::isDerivedKey($derivedKeyPhishing)) {
     $log->warning('phishing-sim', 'Champs invalides');

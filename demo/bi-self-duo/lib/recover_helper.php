@@ -20,6 +20,20 @@ use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 
 final class RecoverHelper {
+    /** Bornes d'un identifiant de la démo, en caractères [a-z0-9]. */
+    public const IDENTIFIANT_MIN = 3;
+    public const IDENTIFIANT_MAX = 20;
+    /** Octets aléatoires d'un jeton de session, rendus en hexadécimal. */
+    public const JETON_OCTETS = 24;
+
+    public static function estIdentifiant(string $username): bool {
+        return preg_match('/^[a-z0-9]{' . self::IDENTIFIANT_MIN . ',' . self::IDENTIFIANT_MAX . '}$/', $username) === 1;
+    }
+
+    public static function estJeton(string $token): bool {
+        return preg_match('/^[a-f0-9]{' . (2 * self::JETON_OCTETS) . '}$/', $token) === 1;
+    }
+
     /**
      * Profil Argon2id du projet.
      *
@@ -135,7 +149,7 @@ final class RecoverHelper {
         // Par identifiant : l'étape qui démontre la dérivation en désigne un, et
         // n'a pas de code sous la main. Même garde — un identifiant inconnu rend
         // un sel fabriqué, jamais une erreur, sinon cette route dirait qui existe.
-        if ($code === '' && preg_match('/^[a-z0-9]{3,20}$/', $username)) {
+        if ($code === '' && self::estIdentifiant($username)) {
             $stmt = $session->db()->prepare('SELECT recovery_salt FROM accounts WHERE username = :u');
             $stmt->bindValue(':u', $username);
             $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -193,12 +207,12 @@ final class RecoverHelper {
     }
 
     public static function generateSessionToken(): string {
-        return bin2hex(random_bytes(24));
+        return bin2hex(random_bytes(self::JETON_OCTETS));
     }
 
     public static function getLoggedAccount(DemoSession $session): ?array {
         $token = $_COOKIE['sr_app_session'] ?? '';
-        if ($token === '' || !preg_match('/^[a-f0-9]{48}$/', $token)) {
+        if (!self::estJeton($token)) {
             return null;
         }
         $db = $session->db();

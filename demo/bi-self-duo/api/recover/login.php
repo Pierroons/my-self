@@ -34,7 +34,7 @@ $log = $s->logger();
 $log->info('login', 'POST /demo/api/recover/login');
 $log->info('login', 'Body parsed', ['username' => $username, 'password' => '[HIDDEN ' . strlen($password) . ' chars]']);
 
-if (!preg_match('/^[a-z0-9]{3,20}$/', $username) || $password === '') {
+if (!RecoverHelper::estIdentifiant($username) || $password === '') {
     $log->warning('login', 'Champ manquant ou invalide');
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'invalid_fields','message'=>'Identifiant ou mot de passe manquant.']);

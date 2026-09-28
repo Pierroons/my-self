@@ -58,7 +58,7 @@ $log->info('phishing-check', 'Body parsed', [
     'note'        => "Le recovery_word brut n'est pas dans le body — seulement la clé HMAC dérivée par le navigateur. Le serveur n'a aucun moyen de le reconstituer, ni de savoir sous quel nom d'hôte elle a été calculée.",
 ]);
 
-if (!preg_match('/^[a-z0-9]{3,20}$/', $username)) {
+if (!RecoverHelper::estIdentifiant($username)) {
     $log->warning('phishing-check', 'Username invalide');
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'invalid_username']);

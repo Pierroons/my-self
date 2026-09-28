@@ -14,7 +14,7 @@ render_header(t('reg.title'), Auth::currentAccount(Db::pdo()));
   <div id="form">
     <div class="field">
       <label><?= h(t('reg.username')) ?></label>
-      <input id="username" placeholder="<?= h(t('reg.username_ph')) ?>" autocomplete="off">
+      <input id="username" placeholder="<?= h(t('reg.username_ph', Auth::IDENTIFIANT_MIN, Auth::IDENTIFIANT_MAX)) ?>" autocomplete="off">
     </div>
     <div class="field">
       <label><?= h(t('reg.recovery')) ?></label>
@@ -35,14 +35,14 @@ render_header(t('reg.title'), Auth::currentAccount(Db::pdo()));
 const I18N = <?= json_encode([
   'done'=>t('reg.done'),'copy'=>t('reg.copy_now'),'pw'=>t('reg.password'),
   'pp'=>t('reg.passphrase'),'keep'=>t('reg.keep_safe'),'goto'=>t('reg.goto_login'),
-  'err'=>t('log.error'),'codes'=>t('reg.codes', \Pierroons\SelfRecover\Recovery\Recovery::CODES_PAR_LOT),'weakWord'=>t('reg.weak_word'),
+  'err'=>t('log.error'),'codes'=>t('reg.codes', \Pierroons\SelfRecover\Recovery\Recovery::CODES_PAR_LOT),'weakWord'=>t('reg.weak_word', Auth::MOT_MEMORISE_MINIMUM),
   'devBtn'=>t('dev.enroll.btn'),'devNote'=>t('dev.enroll.note'),
   'devDoing'=>t('dev.enroll.doing'),'devOk'=>t('dev.enroll.ok'),'devFail'=>t('dev.enroll.fail'),
 ], JSON_UNESCAPED_UNICODE) ?>;
 async function creer(){
   const username=document.getElementById('username').value.trim();
   const recovery=document.getElementById('recovery').value.trim();
-  if(recovery.length<4){
+  if(recovery.length<<?= (int) Auth::MOT_MEMORISE_MINIMUM ?>){
     document.getElementById('msg').innerHTML='<div class="toast err">'+I18N.weakWord+'</div>';
     return;
   }

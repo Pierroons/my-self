@@ -248,7 +248,7 @@ return [
     'reg.h1'         => 'Créer un compte',
     'reg.intro'      => 'Sans email, sans téléphone. Auth par <strong>SelfRecover</strong> : tu choisis un mot de récupération, le serveur te génère un mot de passe + une passphrase à conserver.',
     'reg.username'   => 'Identifiant',
-    'reg.username_ph'=> '3-20 caractères, minuscules/chiffres/_',
+    'reg.username_ph'=> '%d-%d caractères, minuscules/chiffres/_',
     'reg.recovery'   => 'Mot de récupération (tu le choisis, garde-le secret)',
     'reg.recovery_ph'=> 'ex : monchat2024',
     'reg.submit'     => 'Créer mon compte',
@@ -544,7 +544,7 @@ return [
     'dsp.js.empty'      => 'Aucun message pour l\'instant.',
     'dsp.js.reset_done' => 'Compte repris. Tu peux te connecter avec tes nouveaux secrets.',
 
-    'reg.weak_word' => 'Le mot de récupération doit faire au moins 4 caractères.',
+    'reg.weak_word' => 'Le mot de récupération doit faire au moins %d caractères.',
     'reg.codes'  => 'Codes de secours — %d, usage unique (récupération L2 avec ton mot mémorisé)',
 
     // --- Appareil de confiance (L2, facteur de possession alternatif au code) ---

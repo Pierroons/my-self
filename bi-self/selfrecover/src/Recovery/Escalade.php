@@ -153,6 +153,9 @@ final class Escalade
      */
     public const MOT_DE_PASSE_MINIMUM = 12;
 
+    /** Longueur maximale d'un message du fil d'un litige, en caractères. */
+    public const MESSAGE_MAXIMUM = 2000;
+
     /** Au-delà, on refuse : un Argon2id sur une entrée démesurée se paie en mémoire. */
     public const MOT_DE_PASSE_MAXIMUM = 4096;
 
@@ -780,8 +783,8 @@ final class Escalade
         if ($texte === '') {
             return ['ok' => false, 'error' => 'vide', 'message' => 'Le message est vide.'];
         }
-        if (mb_strlen($texte) > 2000) {
-            return ['ok' => false, 'error' => 'trop_long', 'message' => 'Le message dépasse 2000 caractères.'];
+        if (mb_strlen($texte) > self::MESSAGE_MAXIMUM) {
+            return ['ok' => false, 'error' => 'trop_long', 'message' => 'Le message dépasse ' . self::MESSAGE_MAXIMUM . ' caractères.'];
         }
         if ($litige->statut === Litige::CLOS) {
             return ['ok' => false, 'error' => 'clos', 'message' => 'Ce dossier est clos.'];

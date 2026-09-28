@@ -26,7 +26,7 @@ $log = $s->logger();
 $log->info('logout', 'POST /demo/api/recover/logout');
 
 $token = $_COOKIE['sr_app_session'] ?? '';
-if (preg_match('/^[a-f0-9]{48}$/', $token)) {
+if (RecoverHelper::estJeton($token)) {
     $stmt = $s->db()->prepare('DELETE FROM app_sessions WHERE token = :t');
     $stmt->bindValue(':t', $token);
     $stmt->execute();

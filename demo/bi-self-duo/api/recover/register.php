@@ -41,10 +41,10 @@ $derivedKey   = is_array($body) ? strtolower(trim((string) ($body['recovery_deri
 $recoverySalt = is_array($body) ? trim((string) ($body['recovery_salt'] ?? '')) : '';
 
 // Validation username
-if (!preg_match('/^[a-z0-9]{3,20}$/', $username)) {
+if (!RecoverHelper::estIdentifiant($username)) {
     $s->logger()->error('register', 'Username invalide', ['username' => $username]);
     http_response_code(400);
-    echo json_encode(['ok'=>false,'error'=>'invalid_username','message'=>"L'identifiant doit faire 3 à 20 caractères minuscules alphanumériques."]);
+    echo json_encode(['ok'=>false,'error'=>'invalid_username','message'=>"L'identifiant doit faire " . RecoverHelper::IDENTIFIANT_MIN . ' à ' . RecoverHelper::IDENTIFIANT_MAX . ' caractères minuscules alphanumériques.']);
     exit;
 }
 

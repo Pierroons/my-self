@@ -93,7 +93,7 @@ function require_admin(\PDO $pdo): array
 function session_token(): ?string
 {
     $t = $_COOKIE[Auth::cookieName()] ?? '';
-    return preg_match('/^[a-f0-9]{48}$/', $t) ? $t : null;
+    return Auth::estJeton($t) ? $t : null;
 }
 
 /** Vérifie le token CSRF d'une action authentifiée, sinon 403. */

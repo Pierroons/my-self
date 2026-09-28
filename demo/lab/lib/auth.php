@@ -34,7 +34,14 @@ final class Auth
     private const REGISTER_MAX_PER_IP = 5;    // max comptes créés / IP / heure
     public const LOGIN_MAX_FAILS = 5;        // échecs / username avant blocage temporaire
     public const LOGIN_MAX_FAILS_PER_IP = 12; // échecs cumulés / IP / fenêtre (anti-spraying, tolère un foyer NAT)
-    public const LOGIN_WINDOW = 900;         // fenêtre de comptage (15 min)
+    public const LOGIN_WINDOW = 900;
+    /** Bornes d'un identifiant, en caractères [a-z0-9_]. */
+    public const IDENTIFIANT_MIN = 3;
+    public const IDENTIFIANT_MAX = 20;
+    /** Longueur minimale du mot mémorisé : seul le navigateur le voit, il la vérifie. */
+    public const MOT_MEMORISE_MINIMUM = 4;
+    /** Octets aléatoires d'un jeton de session, rendus en hexadécimal. */
+    private const JETON_OCTETS = 24;         // fenêtre de comptage (15 min)
     /** Options Argon2id (R9-06, alignées sur le profil OWASP de SelfRecover). */
     /**
      * Hash Argon2id factice (R9-06), exécuté quand le compte n'existe pas, pour que
@@ -111,7 +118,13 @@ final class Auth
 
     public static function generateSessionToken(): string
     {
-        return bin2hex(random_bytes(24)); // 48 hex chars
+        return bin2hex(random_bytes(self::JETON_OCTETS));
+    }
+
+    /** Le jeton a-t-il la forme de ceux que `generateSessionToken()` fabrique ? */
+    public static function estJeton(string $token): bool
+    {
+        return preg_match('/^[a-f0-9]{' . (2 * self::JETON_OCTETS) . '}$/', $token) === 1;
     }
 
     /**
@@ -133,9 +146,10 @@ final class Auth
         }
 
         $username = strtolower(trim($username));
-        if (!preg_match('/^[a-z0-9_]{3,20}$/', $username)) {
+        if (!preg_match('/^[a-z0-9_]{' . self::IDENTIFIANT_MIN . ',' . self::IDENTIFIANT_MAX . '}$/', $username)) {
             return ['ok' => false, 'error' => 'invalid_username',
-                    'message' => "Identifiant : 3 à 20 caractères minuscules, chiffres ou _."];
+                    'message' => 'Identifiant : ' . self::IDENTIFIANT_MIN . ' à ' . self::IDENTIFIANT_MAX
+                               . ' caractères minuscules, chiffres ou _.'];
         }
         // La longueur du mot est vérifiée par le navigateur, seul à le voir.
         // Ici on ne peut contrôler que la forme de la clé dérivée.
@@ -445,7 +459,7 @@ final class Auth
     public static function currentAccount(PDO $pdo): ?array
     {
         $token = $_COOKIE[self::COOKIE] ?? '';
-        if (!preg_match('/^[a-f0-9]{48}$/', $token)) {
+        if (!self::estJeton($token)) {
             return null;
         }
         $stmt = $pdo->prepare(

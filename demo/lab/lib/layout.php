@@ -16,7 +16,7 @@ function render_header(string $title, ?array $account = null): void
     $account ??= Auth::currentAccount(Db::pdo());
     // Token CSRF injecté pour les fetch POST authentifiés
     $sessTok = $_COOKIE[Auth::cookieName()] ?? '';
-    $csrf = ($account && preg_match('/^[a-f0-9]{48}$/', $sessTok)) ? Security::csrfToken($sessTok) : '';
+    $csrf = ($account && Auth::estJeton($sessTok)) ? Security::csrfToken($sessTok) : '';
     ?><!DOCTYPE html>
 <html lang="<?= lang() ?>">
 <head>

@@ -22,7 +22,6 @@ use RuntimeException;
 
 final class Wordlist {
     public const LIST_SIZE = 7776;
-    private const ENTROPY_PER_WORD = 12.9248125; // log2(7776)
 
     /** @var array<string, string[]> */
     private static array $cache = [];
@@ -76,7 +75,7 @@ final class Wordlist {
         }
         return [
             'words'        => $picked,
-            'entropy_bits' => round($count * self::ENTROPY_PER_WORD, 2),
+            'entropy_bits' => round($count * log(self::LIST_SIZE, 2), 2),
             'lang'         => $lang,
         ];
     }
@@ -103,7 +102,7 @@ final class Wordlist {
         }
         return [
             'words'        => $normalized,
-            'entropy_bits' => round($count * self::ENTROPY_PER_WORD, 2),
+            'entropy_bits' => round($count * log(self::LIST_SIZE, 2), 2),
             'lang'         => $lang,
         ];
     }
