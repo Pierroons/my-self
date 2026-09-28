@@ -62,7 +62,7 @@ if (!RecoverHelper::isDerivedKey($derivedKey)) {
 // Le sel est EXIGÉ. Le tolérer vide rouvrirait ce qu'il ferme : deux personnes
 // au même mot mémorisé, une seule empreinte, et une table précalculée qui sert
 // pour tout le service. Il n'est pas secret, mais il doit exister.
-if (!preg_match('/^[0-9a-f]{32}$/', $recoverySalt)) {
+if (!\Pierroons\SelfRecover\Recovery\Recovery::estSelCompte($recoverySalt)) {
     $s->logger()->error('register', 'Sel de dérivation invalide');
     http_response_code(400);
     echo json_encode(['ok'=>false,'error'=>'invalid_salt','message'=>"Sel de dérivation invalide : 32 caractères hexadécimaux attendus."]);

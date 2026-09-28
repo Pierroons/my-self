@@ -620,7 +620,7 @@ final class Escalade
             return ['ok' => false, 'error' => 'invalid_derived_key',
                     'message' => 'Mot mémorisé invalide : la dérivation doit se faire dans le navigateur.'];
         }
-        if (!preg_match('/^[a-f0-9]{32}$/', $sel)) {
+        if (!Recovery::estSelCompte($sel)) {
             return ['ok' => false, 'error' => 'sel_invalide',
                     'message' => 'Le sel du compte est absent ou malformé.'];
         }

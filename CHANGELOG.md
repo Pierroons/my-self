@@ -155,6 +155,17 @@ les pages recopiaient (« m=64 Mo, t=4, p=2 ») ; la forme d'une clé dérivée 
 cookie lisent la durée de session ; `recover.html` affiche `SR_DERIVE_VERSION` au lieu de `|v2`, et
 `sr-kdf.js` dérive la forme du sel de `SEL_OCTETS`.
 
+**Une sonde par copie entre langages.** La taille du sel de compte vivait à quatre endroits qui
+ne peuvent pas se lire — `sr-derive.js`, `sr-kdf.js`, le serveur, le `CHECK` du schéma duo — et
+deux faux sels anti-oracle en dépendaient : si elle changeait d'un seul côté, les faux sels se
+distingueraient des vrais. `Recovery::SEL_OCTETS` et `Recovery::estSelCompte()` en sont la source
+PHP (lue par `Escalade`, le lab et le duo), `sr-derive.js` déclare la sienne, et
+`sanity_forme_sel.php` tient les quatre d'accord. `sanity_couplage_dataguard.php` compare aussi le
+profil de `sr-kdf.js` à celui de SelfDataGuard, qu'il disait partager sans que rien ne le
+vérifie. `derive_cli.php`, qui recopie `srDerive()` pour les scripts sans navigateur, entre dans
+les vecteurs figés (`sanity_derive_cli.php`), et la simulation d'attaque l'appelle au lieu d'en
+recopier la formule. Chaque sonde a son canari en CI.
+
 Le banc de l'escalade passe de 107 à 124 cas, celui de la récupération de 58 à 61. Le contrôle
 qui affirmait qu'un accord reste actif « bien après son TTL » n'a pas été réparé mais **scindé** :
 la propriété qu'il défendait tient sur la fenêtre où elle vaut, l'échéance la borne au-delà.

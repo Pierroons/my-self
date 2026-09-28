@@ -52,9 +52,9 @@ function sr_derive_like_browser(string $word, string $sel, ?string $hote = null)
 /**
  * Un sel de compte, pour les scripts qui n'ont pas de navigateur.
  *
- * Le miroir de `srEngendrerSel()` : 16 octets, rendus en 32 hexadécimaux.
+ * Le miroir de `srEngendrerSel()` : `Recovery::SEL_OCTETS` octets, rendus en hexadécimal.
  */
 function sr_sel_aleatoire(): string
 {
-    return bin2hex(random_bytes(16));
+    return bin2hex(random_bytes(\Pierroons\SelfRecover\Recovery\Recovery::SEL_OCTETS));
 }

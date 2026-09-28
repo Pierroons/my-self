@@ -323,6 +323,20 @@ final class Recovery
     }
 
     /**
+     * Octets du sel de compte, engendré par le navigateur à l'inscription et
+     * transmis en `2 × SEL_OCTETS` hexadécimaux minuscules. Le client JS
+     * (`sr-derive.js`, `sr-kdf.js`) et les schémas SQL le déclarent de leur
+     * côté : `tests/sanity_forme_sel.php` les tient d'accord.
+     */
+    public const SEL_OCTETS = 16;
+
+    /** Le sel a-t-il la forme d'un sel de compte ? */
+    public static function estSelCompte(string $sel): bool
+    {
+        return strlen($sel) === 2 * self::SEL_OCTETS && ctype_xdigit($sel) && strtolower($sel) === $sel;
+    }
+
+    /**
      * Le code a-t-il la forme de ceux qu'`emettreCodes()` fabrique ?
      *
      * Les intégrateurs qui filtrent avant d'appeler `parCode()` l'appellent au

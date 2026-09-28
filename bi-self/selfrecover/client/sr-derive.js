@@ -69,6 +69,9 @@
 (function (global) {
   /** Version du format de message. Change = toutes les empreintes changent. */
   const VERSION = 'v2';
+  // Octets du sel de compte — Recovery::SEL_OCTETS côté serveur, tenu d'accord
+  // par tests/sanity_forme_sel.php.
+  const SEL_OCTETS = 16;
 
   const hex = (buf) =>
     [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -133,9 +136,9 @@
     // Sans sel, deux personnes qui choisissent le même mot mémorisé produisent la
     // même empreinte, et une table précalculée sert alors pour tout le service.
     // Un sel par SITE ne suffit pas : il déplace la constante au lieu de saler.
-    if (typeof sel !== 'string' || !/^[0-9a-f]{32}$/.test(sel)) {
+    if (typeof sel !== 'string' || !new RegExp('^[0-9a-f]{' + 2 * SEL_OCTETS + '}$').test(sel)) {
         throw new Error(
-          'srDerive : sel obligatoire — 32 caractères hexadécimaux, un par compte, ' +
+          'srDerive : sel obligatoire — ' + 2 * SEL_OCTETS + ' caractères hexadécimaux, un par compte, ' +
           'engendré par le navigateur (srEngendrerSel). Il n\'est pas secret ; sans ' +
           'lui, le même mot mémorisé donne la même empreinte pour tout le monde.',
         );
@@ -153,7 +156,7 @@
 
   /** Un sel de compte : 16 octets, rendus en 32 hexadécimaux. */
   function srEngendrerSel() {
-    return hex(global.crypto.getRandomValues(new Uint8Array(16)));
+    return hex(global.crypto.getRandomValues(new Uint8Array(SEL_OCTETS)));
   }
 
   global.srDerive = srDerive;

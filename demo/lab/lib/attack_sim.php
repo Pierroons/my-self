@@ -262,8 +262,8 @@ final class AttackSimulator
         $mot  = 'monchat2024';
         $sel  = str_repeat('a1b2c3d4', 4);          // 32 hex, comme srEngendrerSel
         $hote = strtolower((string) (getenv('SR_DERIVE_HOTE') ?: 'localhost'));
-        $cleVraiSite = hash_hmac('sha256', $hote . '|v2' . $sel, $mot);
-        $clePhishing = hash_hmac('sha256', 'phishing-' . str_replace('.', '-', $hote) . '.local|v2' . $sel, $mot);
+        $cleVraiSite = sr_derive_like_browser($mot, $sel, $hote);
+        $clePhishing = sr_derive_like_browser($mot, $sel, 'phishing-' . str_replace('.', '-', $hote) . '.local');
 
         return [
             'ok' => true,

@@ -1040,7 +1040,10 @@ jobs:
       # désaccorde l'un des deux et exige le rouge.
       - name: Garde-fou — les valeurs que SelfRecover partage avec SelfDataGuard
         run: |
-          php bi-self/selfrecover/tests/sanity_couplage_dataguard.php
+          sortie=$(php bi-self/selfrecover/tests/sanity_couplage_dataguard.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^OK — 4/4 ' \
+            || { echo "::error::le banc du couplage n'a pas jugé ses 4 valeurs"; exit 1; }
           F=self-security/selfdataguard/src/Vault/UserVault.php
           cp "$F" /tmp/UserVault.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
@@ -1054,3 +1057,48 @@ jobs:
           [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
             || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
           echo "✓ la sonde rougit quand les minimums divergent"
+
+      # La taille du sel de compte vit à quatre endroits qui ne peuvent pas se lire :
+      # sr-derive.js, sr-kdf.js, Recovery::SEL_OCTETS, le CHECK du schéma duo.
+      - name: Garde-fou — une seule taille de sel de compte, du navigateur à la base
+        run: |
+          sortie=$(php bi-self/selfrecover/tests/sanity_forme_sel.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^OK — 7/7$' \
+            || { echo "::error::le banc du sel n'a pas joué ses 7 cas"; exit 1; }
+          F=bi-self/selfrecover/client/sr-derive.js
+          cp "$F" /tmp/sr-derive.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
+          sed -i 's/const SEL_OCTETS = 16;/const SEL_OCTETS = 24;/' "$F"
+          grep -q 'const SEL_OCTETS = 24;' "$F" || { echo "::error::canari non planté"; exit 1; }
+          if canari=$(php bi-self/selfrecover/tests/sanity_forme_sel.php); then
+            cp /tmp/sr-derive.intact "$F"; echo "::error::un sel JS divergent rend encore vert"; exit 1
+          fi
+          cp /tmp/sr-derive.intact "$F"
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$canari" | grep -q '✗ sr-derive.js SEL_OCTETS' \
+            || { echo "$canari"; echo "::error::rouge, mais pas sur le sel de sr-derive.js"; exit 1; }
+          echo "✓ le banc rougit sur un sel JS divergent"
+
+      # derive_cli.php recopie srDerive() pour seed.php, la simulation d'attaque et
+      # trois bancs : il doit retrouver les vecteurs figés que tiennent déjà les
+      # implémentations PHP et JS.
+      - name: Garde-fou — la dérivation des scripts sans navigateur tient les vecteurs
+        run: |
+          sortie=$(php demo/lab/tests/sanity_derive_cli.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^OK — 5/5 vecteurs$' \
+            || { echo "::error::derive_cli n'a pas retrouvé ses 5 vecteurs"; exit 1; }
+          F=demo/lab/lib/derive_cli.php
+          cp "$F" /tmp/derive_cli.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
+          sed -i "s/const SR_DERIVE_VERSION = 'v2';/const SR_DERIVE_VERSION = 'v3';/" "$F"
+          grep -q "SR_DERIVE_VERSION = 'v3'" "$F" || { echo "::error::canari non planté"; exit 1; }
+          if php demo/lab/tests/sanity_derive_cli.php; then
+            cp /tmp/derive_cli.intact "$F"; echo "::error::une formule divergente rend encore vert"; exit 1
+          fi
+          cp /tmp/derive_cli.intact "$F"
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le banc rougit quand la formule diverge"

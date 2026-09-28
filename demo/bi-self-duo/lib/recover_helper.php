@@ -157,7 +157,7 @@ final class RecoverHelper {
             }
         }
 
-        return substr(hash_hmac('sha256', 'sel-absent:' . $code . '|' . $username, self::siteSalt($session)), 0, 32);
+        return substr(hash_hmac('sha256', 'sel-absent:' . $code . '|' . $username, self::siteSalt($session)), 0, 2 * Recovery::SEL_OCTETS);
     }
 
     /** Le protocole monté sur la base de cette session de démo. */

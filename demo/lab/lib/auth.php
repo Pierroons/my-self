@@ -161,7 +161,7 @@ final class Auth
         // personnes au même mot mémorisé, une seule empreinte. Le client
         // l'engendre (`srEngendrerSel`), le serveur ne fait que le ranger — il
         // n'est pas secret, mais il doit exister.
-        if (!preg_match('/^[0-9a-f]{32}$/', $recoverySalt)) {
+        if (!Recovery::estSelCompte($recoverySalt)) {
             return ['ok' => false, 'error' => 'invalid_salt',
                     'message' => 'Sel de dérivation invalide : 32 caractères hexadécimaux attendus.'];
         }
@@ -433,7 +433,7 @@ final class Auth
             }
         }
 
-        return substr(hash_hmac('sha256', 'sel-absent:' . $code, self::siteSalt()), 0, 32);
+        return substr(hash_hmac('sha256', 'sel-absent:' . $code, self::siteSalt()), 0, 2 * Recovery::SEL_OCTETS);
     }
 
     public static function logout(PDO $pdo, string $token): void
