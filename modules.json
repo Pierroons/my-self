@@ -92,6 +92,14 @@
           "badge/SelfRecover--LUKS-v"
         ],
         [
+          "self-security/README.md",
+          "| [SelfRecover-LUKS](./selfrecover-luks/)"
+        ],
+        [
+          "self-security/README.fr.md",
+          "| [SelfRecover-LUKS](./selfrecover-luks/)"
+        ],
+        [
           "README.md",
           "| [SelfRecover-LUKS](./self-security/selfrecover-luks/)"
         ],
@@ -130,6 +138,14 @@
         [
           "self-security/README.fr.md",
           "badge/SelfDataGuard-v"
+        ],
+        [
+          "self-security/README.md",
+          "| [SelfDataGuard](./selfdataguard/)"
+        ],
+        [
+          "self-security/README.fr.md",
+          "| [SelfDataGuard](./selfdataguard/)"
         ],
         [
           "README.md",
@@ -180,6 +196,14 @@
           "badge/SelfModerate-v"
         ],
         [
+          "bi-self/README.md",
+          "| [SelfModerate](./selfmoderate/)"
+        ],
+        [
+          "bi-self/README.fr.md",
+          "| [SelfModerate](./selfmoderate/)"
+        ],
+        [
           "README.md",
           "| [SelfModerate](./bi-self/selfmoderate/)"
         ],
@@ -224,6 +248,14 @@
           "badge/SelfJustice-v"
         ],
         [
+          "self-right/README.md",
+          "| [SelfJustice](./selfjustice/)"
+        ],
+        [
+          "self-right/README.fr.md",
+          "| [SelfJustice](./selfjustice/)"
+        ],
+        [
           "README.md",
           "| [SelfJustice](./self-right/selfjustice/)"
         ],
@@ -262,6 +294,14 @@
         [
           "self-right/README.fr.md",
           "badge/SelfAct-v"
+        ],
+        [
+          "self-right/README.md",
+          "| [SelfAct](./selfact/)"
+        ],
+        [
+          "self-right/README.fr.md",
+          "| [SelfAct](./selfact/)"
         ],
         [
           "README.md",
