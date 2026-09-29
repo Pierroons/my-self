@@ -233,7 +233,7 @@
       "id": "selfjustice",
       "nom": "SelfJustice",
       "dossier": "self-right/selfjustice",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "resume": {
         "fr": "consultation du droit français et européen par une API publique",
         "en": "French and EU law lookup through a public API"

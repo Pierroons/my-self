@@ -460,6 +460,9 @@ jobs:
       - name: Garde-fou — le renvoi « Voir « homonymes » » trouve sa cible (MCP)
         run: python3 self-right/selfjustice/tests/sanity_renvoi_homonymes.py
 
+      - name: Garde-fou — les pages de justice.my-self.fr restent compatibles avec sa CSP
+        run: python3 self-right/selfjustice/tests/sanity_csp_compatible.py
+
       - name: Garde-fou — ce que la sentinelle appelle un retard
         run: bash self-right/selfjustice/tests/test_fraicheur.sh
 

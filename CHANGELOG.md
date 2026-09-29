@@ -562,6 +562,29 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfJustice v0.4.2] — 29 septembre 2026
+
+### SelfJustice v0.4.2 — l'accueil fonctionne sous la CSP du site — 29 septembre 2026
+
+Le vhost de `justice.my-self.fr` sert `default-src 'self'` : un navigateur n'exécute que les scripts
+chargés depuis le site. Les trois scripts inline de l'accueil et l'attribut `onclick` du bouton de
+copie étaient bloqués, sans une erreur côté serveur. Le bouton ne faisait rien, la grille des
+consultations par IA restait sur « Chargement… », et le formulaire de retours, privé de son
+JavaScript, partait en GET avec le commentaire dans l'URL, donc dans le journal d'accès.
+
+Les trois scripts passent dans `site/selfjustice.js`. Le formulaire déclare `method="post"` et son
+action : un JavaScript défaillant ne met plus le commentaire dans l'URL. Le compteur d'en-tête garde
+la valeur rendue par le serveur ; le script réactivé y aurait écrit un autre chiffre sous le même mot
+« consultations ». La requête copiée renvoyait à `/directives.html`, qui répond 404 : elle dit
+désormais « Analyse <domaine> », la formule que la page enseigne.
+
+`tests/sanity_csp_compatible.py` lit les quatre pages que sert ce vhost et échoue sur un script
+inline, un gestionnaire `on*=`, une URL `javascript:` ou un script hors du site ; il échoue aussi si
+une page manque. Il tourne dans `structure.yml`. Mesuré en production le 29 septembre, dans Chromium :
+aucune violation de CSP sur l'accueil, copie, grille et formulaire fonctionnels.
+
+---
+
 ## [SelfRecover v0.7.0] — 27 septembre 2026
 
 ### SelfRecover v0.7.0 — les chemins qui mènent au compte freinent par compte, et le déploiement déclare son profil — 27 septembre 2026
