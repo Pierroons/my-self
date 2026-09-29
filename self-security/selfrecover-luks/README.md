@@ -75,7 +75,7 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | [`docs/cryptsetup-lecture-cle.md`](./docs/cryptsetup-lecture-cle.md) | measurement note (French): how `cryptsetup` reads a key depending on the path taken |
 | `fido2-banc-essai/` | research bench: FIDO2 in the initramfs — not a supported path |
 | `install.sh` | semi-automatic installer (see INSTALL.md) |
-| [`quorum-rnd/`](./quorum-rnd/) | R&D: witness-quorum unlock — **not enabled in v0.5.0** |
+| [`quorum-rnd/`](./quorum-rnd/) | R&D: witness-quorum unlock — **not enabled** |
 
 ## Installation
 
