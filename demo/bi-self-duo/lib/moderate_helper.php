@@ -165,6 +165,15 @@ final class ModerateHelper {
             $stmt4->bindValue(':id', $targetId);
             $stmt4->execute();
 
+            // Le ban que la meute avait provoqué tombe avec elle, et son strike
+            // avec lui : la réputation rendue ne suffisait pas, le compte restait
+            // banni pour des votes qu'on venait d'annuler.
+            $stmt5 = $db->prepare('UPDATE users SET banned_until = 0, strikes = MAX(0, strikes - 1)
+                                    WHERE id = :id AND banned_until > 0 AND reputation > :ban');
+            $stmt5->bindValue(':id', $targetId);
+            $stmt5->bindValue(':ban', self::BAN_AT);
+            $stmt5->execute();
+
             $cancelled += $restore;
             $packs[] = ['target_id' => $targetId, 'voters' => $voters, 'spread_s' => $spread, 'cancelled' => $restore];
 
@@ -209,7 +218,7 @@ final class ModerateHelper {
         }
 
         if ($reputation <= self::BAN_AT) {
-            $stmt = $db->prepare('SELECT strikes FROM users WHERE id = :id');
+            $stmt = $db->prepare('SELECT strikes, banned_until FROM users WHERE id = :id');
             $stmt->bindValue(':id', $userId);
             $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
             $strikes = (int) ($row['strikes'] ?? 0);
@@ -218,6 +227,13 @@ final class ModerateHelper {
             // ticks de démo puissent faire avancer le temps et déclencher l'unban.
             $simRow = $db->query('SELECT simulated_time FROM time_state WHERE id = 1')->fetchArray(SQLITE3_ASSOC);
             $simNow = (int) ($simRow['simulated_time'] ?? time());
+
+            // Une peine en cours ne se rejoue pas au vote suivant : sans cette
+            // garde, trois votes de plus sur un compte à zéro valaient trois
+            // strikes, et le ban devenait permanent en quelques secondes.
+            if ((int) ($row['banned_until'] ?? 0) > $simNow) {
+                return;
+            }
 
             $durations = [86400, 7 * 86400, 30 * 86400];
             if ($strikes >= 3) {

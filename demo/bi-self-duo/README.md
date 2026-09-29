@@ -5,9 +5,10 @@ hosted at [bi-self.my-self.fr](https://bi-self.my-self.fr). Provides
 per-session sandboxes, real-time log streaming to the frontend, rate-limiting
 and abuse bans — without any external dependency.
 
-> This backend is the plumbing. The demo logic for each module (register,
-> login, vote, etc.) lives under its own module in the repo and is layered
-> on top of the session primitives provided here.
+> This backend is the plumbing. The SelfRecover demo calls its library
+> (`bi-self/selfrecover/`). The moderation demo does not: it runs a simplified
+> engine of its own (`lib/moderate_helper.php`), on a simulated clock, and the
+> page says so — the SelfModerate module works differently.
 
 ---
 
