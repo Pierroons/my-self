@@ -5,7 +5,7 @@
 **Autonomous community moderation engine through social reasoning**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.3.0](https://img.shields.io/badge/status-v0.3.0-yellow.svg)](#status)
+[![Status: v0.4.0](https://img.shields.io/badge/status-v0.4.0-yellow.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#)
@@ -58,10 +58,17 @@ The punishment isn't technical — it's social.
 
 ### Sanction escalation
 - Score < 5 → **loss of voting rights**
-- Score = 0 → **temporary ban** (24h → 7d → 30d, progressive)
-- 3 temporary bans executed → **permanent ban**
-- After a served ban: score resets to 20 (second chance), strike count preserved
-- 3 months clean: full reset (score + strikes) — *partial: the duo demo clears everyone's strikes at once, the lab does not do it at all*
+- Score = 0 → **temporary ban, graduated**: 24 h → 7 d → 30 d in service (`Config::prod()`), 2 → 10 → 30 min in demonstration (`Config::demo()`). The last tier **repeats**: the machine never pronounces a definitive exclusion; beyond it, the arbiter decides
+- **The automatic ban only falls when a journal is plugged in** (`setJournal()`). Without a journal, a zero reputation raises a flag and an arbiter decides. With one, every start, end and lift of a ban is written to the journal, **before** the database: a failure leaves a trace without effect, never a penalty without trace
+- A running penalty **is not extended** by the next opposing vote
+- After a served automatic ban: score back to **20**, strikes kept — the next ban will be longer
+- What a ban blocks beyond voting is the platform's call (`estBanni()`). The lab also blocks posting, and leaves login and private messages open
+- 3 months without incident: strikes reset — *not implemented yet*
+
+### Arbiter actions
+- **Ban**, **lift**, **maintain**: each carries the arbiter's name and is written to the journal. Banning requires a reason, checked like a downvote's: the banned person must be able to read what they are blamed for
+- **Floor**: before one third of the **running** penalty (`Config::$plancherFraction`), a lift requires a written reason and is recorded as an **early lift**, with the time that remained. One third of the running penalty, never of the maximum tier: otherwise the floor of a one-day first ban would last ten days. The floor does not close favouritism; it makes it costly, because it leaves a signed trace
+- **Never a floor on a detected pack**: when the engine recognises that the ban came from a pack, it lifts it on its own and records it. That lift repairs an injustice; it grants none. An arbiter's ban is not lifted that way: it did not come from the votes
 
 ### Escalation for pack voters
 The rank belongs to the **voter**, not to the target. Counted on the target, a
@@ -90,14 +97,31 @@ several groups would get first-time offenders punished.
   more penalty, decided by no one
 
 ### Anti-manipulation
-- **Anti-Sybil**: SelfRecover integration (optional) + **24-hour** cooldown on new accounts, matching the warm-up period described by [Bi-Self](../README.md) — *partial: anti-Sybil is there; the lab lowers the cooldown to 120 s to stay testable*
+- **Anti-Sybil**: SelfRecover integration (optional) + a delay on new accounts, unless they have already posted: **24 hours** in service, matching the warm-up period described by [Bi-Self](../README.md), **2 minutes** in demonstration. The refusal states the remaining wait
 - **Pack**: two voters **linked to each other** hitting the same target within 30 days → their votes are cancelled, the reputation restored, and the voters enter the escalation described above. Linkage propagates transitively — A–B and B–C linked form a pack of three, because a pack has a ringleader
 - What links two accounts depends on the platform. On a forum: a **private message in each direction**, the closest equivalent to an accepted invitation. Requiring reciprocity stops a spammer from becoming invulnerable by writing to everyone. Message contents are **never read** — only who wrote to whom
-- **Fast burst**: several voters with **no link at all** within the same minute. That is not a pack, it is most often the same reaction to the same post: nothing is cancelled, the target goes to human review. Cancelling here would protect a post all the better for shocking more people at once
+- **Fast burst**: several voters with **no link at all** within a short window (5 min in service, 1 min in demonstration). That is not a pack, it is most often the same reaction to the same post: nothing is cancelled, the target goes to human review. Cancelling here would protect a post all the better for shocking more people at once
 - **What neither one sees**: coordination organised elsewhere, between accounts that never wrote to each other on the platform. It lands as a fast burst — flagged, never cancelled
-- **Upvote farming**: mutual positive votes blocked after 3 occurrences in 2 months
+- **Farming**: beyond 3 positive votes from one voter to one member within 60 days, the next ones are neutralised; the same cap applies to negative votes, against the slow erosion of a patient voter who targets every post
 - **Cross-voting**: A vs B and B vs A on same invitation → both cancelled — *not implemented yet*
-- **Victim protection**: flagged abuse suspends the ban for admin review — *not implemented yet*
+- **Victim protection**: a recognised pack lifts the automatic ban it caused — *partial: a mere flag does not suspend a ban yet*
+
+## Integrating
+
+The engine is a static class; the host passes its `PDO` connection on every call.
+
+| Call | Role |
+|---|---|
+| `setConfig(Config)` | the thresholds: `Config::demo()`, `Config::prod()` or your own. **Single source** of the thresholds: the engine reads them there, and so do your pages, through `Moderate::config()` |
+| `setJournal(Journal)` | plugs in the journal, and with it the automatic ban. The [`Journal`](./src/Journal.php) interface lists the acts and their keys; writing must be durable and not rewritable, and an exception is never swallowed |
+| `balayerBansEchus(PDO)` | closes expired penalties in one pass, for a scheduler. Without it, an end is noticed at the next read, and the journal carries the due time AND the moment it was noticed |
+| `estBanni(PDO, id)` · `bansEnCours(PDO)` | what the host blocks, and what the arbiter must see: origin, reason, end, time left, floor |
+| `adminBan(PDO, id, arbiter, reason)` · `adminPardon(PDO, id, arbiter, ?reason)` · `adminMaintenir(PDO, id, arbiter, reason)` | the arbiter actions, returning `['ok' => bool, 'message' => string]` |
+| `dureeEnClair(seconds)` | a readable duration, units passed through your translator (`setTranslator()`) |
+
+**Expected schema** — the lab's is the reference ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)): `member_moderation` (reputation, strikes, voting right, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, flag, recovery, vote suspension), `mod_votes`, `mod_pack_flags`, and three host tables read without being written: `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. The engine writes SQLite SQL.
+
+Dates in its messages follow the host's time zone (`date_default_timezone_set()`).
 
 ## Documentation
 
@@ -106,19 +130,22 @@ several groups would get first-time offenders punished.
 
 ## Status
 
-🟢 **v0.3.0** — the engine is here, under `src/`, and the lab imports it the way
+🟢 **v0.4.0** — the engine is here, under `src/`, and the lab imports it the way
 it imports SelfRecover and SelfDataGuard.
 
-This version ships linked-voter cross-referencing, recovery, the vote reason, and
-the escalation that makes a pack cost those who form it. **Two mechanisms remain
-to be written** — cross-voting and victim protection — plus three half-kept, all
-marked in the lists above.
+0.4.0 brings the automatic ban back, held in check: graduated, finite, journaled
+end to end, liftable by an arbiter under a floor, and lifted on its own when a pack
+is recognised. The thresholds have a single source, `Config`. **Breaking** since
+0.3.0: the engine's threshold constants are removed (read `Moderate::config()`),
+and `adminBan()` / `adminPardon()` take the arbiter and the reason. **One mechanism
+remains to be written** — cross-voting — plus three half-kept, all marked in the
+lists above.
 
 Checks: [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
-— twenty-four, each seen failing first: the mechanism is disabled, the
-measurement retaken, the code restored. One of them measured nothing at its
+— forty-five, run by CI, each seen failing first: the mechanism is disabled,
+the measurement retaken, the code restored. One of them measured nothing at its
 first mutation — it computed its expectation from the very constant it watched,
-and drifted along with it; it now reads a literal value. The four reason rules are exercised **separately**,
+and drifted along with it; it now reads a literal value. The five reason rules are exercised **separately**,
 each case breaking only one: otherwise defence in depth catches the hole, the
 check stays green, and nobody knows which rule still measures anything. They
 still live on the lab side because they need a database schema; they will move

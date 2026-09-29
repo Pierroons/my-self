@@ -27,7 +27,7 @@ ce qu'il fait, comment l'installer, et ce qu'il ne protège pas.
 | [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.4.0** — en service, 219 contrôles, XChaCha20-Poly1305 sur tout processeur |
 | [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.4.2 bêta** — logement, famille, administration et jurisprudence administrative |
 | [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.3** — en ligne, plus de 1 800 ressources officielles |
-| [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.3.0** — recoupement des votants liés, convalescence, motif de vote ; 2 mécanismes pas encore codés |
+| [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.4.0** — votants liés, convalescence, motif de vote, ban gradué tracé au journal ; 1 mécanisme pas encore codé |
 
 Ceux qui portent du code de sécurité documentent leur propre modèle de menace.
 SelfJustice et SelfAct n'en ont pas : ce sont des bases de droit tenues à jour,

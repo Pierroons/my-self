@@ -8,7 +8,7 @@
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../LICENSE)
 [![SelfRecover: v0.8.0](https://img.shields.io/badge/SelfRecover-v0.8.0-green.svg)](./selfrecover/)
-[![SelfModerate: v0.3.0](https://img.shields.io/badge/SelfModerate-v0.3.0-yellow.svg)](./selfmoderate/)
+[![SelfModerate: v0.4.0](https://img.shields.io/badge/SelfModerate-v0.4.0-yellow.svg)](./selfmoderate/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
@@ -55,7 +55,7 @@ Un plus un égale une communauté auto-gouvernée. Pas trois — une chose quali
 | Module | Rôle | Statut |
 |--------|------|--------|
 | [SelfRecover](./selfrecover/) | Identité & récupération sans email | **v0.8.0** — bibliothèque PSR-4 + dériveur navigateur, implémentation déployée et auto-auditée |
-| [SelfModerate](./selfmoderate/) | Modération communautaire par raisonnement collectif | v0.3.0 — moteur installable, 24 contrôles ; 2 mécanismes du protocole manquent |
+| [SelfModerate](./selfmoderate/) | Modération communautaire par raisonnement collectif | v0.4.0 — moteur installable, ban automatique tracé au journal, 45 contrôles en CI ; 1 mécanisme du protocole manque |
 
 ---
 

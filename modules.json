@@ -181,7 +181,7 @@
       "id": "selfmoderate",
       "nom": "SelfModerate",
       "dossier": "bi-self/selfmoderate",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "resume": {
         "fr": "modération communautaire par raisonnement social",
         "en": "community moderation through social reasoning"
@@ -222,10 +222,6 @@
         [
           "web/my-self.fr/index.html",
           "<span class=\"name\">SelfModerate<"
-        ],
-        [
-          "demo/bi-self-duo/frontend/index.html",
-          "<h3>SelfModerate<"
         ]
       ]
     },

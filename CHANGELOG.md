@@ -10,6 +10,46 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfModerate v0.4.0 — le ban automatique revient, tracé de bout en bout — 29 septembre 2026
+
+`R10-LAB-01` avait retiré le ban automatique à réputation zéro : un ban prononcé sur une érosion
+étalée devenait une arme d'escalade à la portée de qui n'a aucun droit d'administration. Le
+signalement qui l'a remplacé ne protège toutefois personne tant que l'arbitre n'est pas devant. Le
+ban revient, avec les bornes qui lui manquaient.
+
+- **Gradué et fini.** 24 h → 7 j → 30 j en service, 2 → 10 → 30 min en démonstration ; le dernier
+  palier se reconduit, la machine ne prononce jamais d'exclusion définitive. Une peine en cours ne se
+  rallonge pas. À la fin, la réputation revient au point de départ et les strikes restent : le ban
+  suivant sera plus long.
+- **Écrit au journal, ou pas du tout.** Le ban automatique ne s'arme que si l'hôte branche un
+  journal (`setJournal()`) ; sans lui, une réputation à zéro reste un signalement. Début, fin,
+  levée, maintien, grâce : cinq actes, toujours écrits avant la base, avec l'origine (automatique
+  ou arbitre), le motif et le nom de l'arbitre.
+- **Gestes d'arbitre sous plancher.** Bannir exige un motif. Avant un tiers de la peine en cours,
+  une levée exige un motif écrit et s'inscrit comme levée anticipée. Une meute détectée lève seule
+  le ban automatique qu'elle avait provoqué, sans plancher, et jamais un ban d'arbitre.
+- **Une seule source pour les seuils.** Dix-neuf seuils existaient en constante du moteur et en
+  propriété de `Config` ; le moteur lisait surtout les constantes, et `Config::prod()` ne changeait
+  que les durées de ban. `Config` est désormais la seule source, pour le moteur comme pour les pages.
+- **Nouveaux appels** : `estBanni()`, `bansEnCours()`, `adminMaintenir()`, `journal()`,
+  `dureeEnClair()`, `Config::plancherDe()`.
+
+⚠️ **Ruptures par rapport à la 0.3.0** : les constantes de seuil du moteur sont retirées (lire
+`Moderate::config()`) ; `adminBan()` et `adminPardon()` prennent l'arbitre et le motif, et rendent
+`['ok', 'message']`. Le schéma gagne trois colonnes dans `member_moderation` (`ban_debut`,
+`ban_origine`, `ban_motif`) ; la migration du lab les ajoute à la première requête.
+
+**Dans le lab** : le ban s'arme avec un journal de modération à part, chaîné et signé, dont le site
+tient seul la clé — pas le journal du super-utilisateur, où le site pourrait forger une nomination
+d'admin. Un compte banni ne vote plus et ne publie plus ; la connexion et les messages privés restent
+ouverts. L'admin voit les bans en cours, leur plancher et l'état du journal. Les heures affichées
+sont celles de Paris.
+
+**SelfDataGuard** : deux ajouts simultanés au journal d'audit cassaient sa chaîne ; la lecture et
+l'ajout tiennent maintenant sous un seul verrou (voir son CHANGELOG).
+
+`sanity_moderate.php` passe de 24 à 45 contrôles et entre dans la CI, avec un canari.
+
 ### La base du lab naît partageable entre le site et la console — 29 septembre 2026
 
 Le site et `selfrecover-su` écrivent la même base, sous deux identités. Créée sous le masque par

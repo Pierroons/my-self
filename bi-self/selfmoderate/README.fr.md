@@ -5,7 +5,7 @@
 **Moteur de modération communautaire autonome par raisonnement social**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.3.0](https://img.shields.io/badge/status-v0.3.0-yellow.svg)](#statut)
+[![Status: v0.4.0](https://img.shields.io/badge/status-v0.4.0-yellow.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#)
@@ -39,8 +39,8 @@ SelfModerate est un moteur de modération qui permet aux communautés en ligne d
 - Votes anonymes : la cible voit son score et les raisons, pas qui a voté. Les raisons lui sont rendues **datées au jour**, dans un ordre non chronologique — à la seconde près, recoupées avec les présences, elles désigneraient leur auteur. Limite qu'aucun tri ne lève : sur un unique downvote reçu, la personne devine souvent qui l'a émis
 
 ### Score de réputation
-- Chaque utilisateur démarre à **20** (configurable)
-- Score plafonné à **30** (configurable) — pas d'accumulation de crédit social
+- Chaque utilisateur démarre à **20** (`Config`)
+- Score plafonné à **30** (`Config`) — pas d'accumulation de crédit social
 - Monter est lent, descendre est rapide : un downvote retire un point immédiatement, la remontée passive en rend un par intervalle de calme
 - **Convalescence** : sous 5, l'état est posé et le score remonte tout seul **jusqu'à 20**, son point de départ — jamais au-delà. Le droit de vote revient à 5, l'état se lève à 20
 - L'état est **visible**, sur son propre profil et sur celui que voient les autres : il annonce qu'il y a eu bêtise, et que le score varie par la patience, pas par le mérite
@@ -58,10 +58,17 @@ La punition n'est pas technique — elle est sociale.
 
 ### Escalade des sanctions
 - Score < 5 → **perte du droit de vote**
-- Score = 0 → **ban temporaire** (24 h → 7 j → 30 j, progressif)
-- 3 bans temporaires exécutés → **ban permanent**
-- Après un ban purgé : score reset à 20 (seconde chance), compte de strikes préservé
-- 3 mois clean : reset total (score + strikes) — *partiel : la démo duo remet les strikes à zéro pour tout le monde d'un coup, le lab ne le fait pas*
+- Score = 0 → **ban temporaire, gradué** : 24 h → 7 j → 30 j en service (`Config::prod()`), 2 → 10 → 30 min en démonstration (`Config::demo()`). Le dernier palier **se reconduit** : la machine ne prononce jamais d'exclusion définitive, au-delà c'est l'arbitre qui décide
+- **Le ban automatique ne tombe que si un journal est branché** (`setJournal()`). Sans journal, une réputation à zéro lève un signalement et un arbitre tranche. Avec lui, chaque début, chaque fin et chaque levée de ban s'écrit au journal, **avant** la base : une panne laisse une trace sans effet, jamais une peine sans trace
+- Une peine en cours **ne se rallonge pas** au vote contraire suivant
+- Après un ban automatique purgé : score remis à **20**, strikes préservés — le ban suivant sera plus long
+- Ce qu'un ban bloque au-delà du vote relève de la plateforme (`estBanni()`). Le lab bloque aussi la publication, et laisse ouverts la connexion et les messages privés
+- 3 mois sans incident : remise à zéro des strikes — *pas encore codé*
+
+### Gestes d'arbitre
+- **Bannir**, **lever**, **maintenir** : chaque geste porte le nom de l'arbitre et s'écrit au journal. Bannir exige un motif, contrôlé comme celui d'un downvote : la personne bannie doit pouvoir lire ce qu'on lui reproche
+- **Plancher** : avant un tiers de la peine **en cours** (`Config::$plancherFraction`), une levée exige un motif écrit et s'inscrit comme **levée anticipée**, avec le temps qui restait. Un tiers de la peine en cours, jamais du palier maximal : sinon le plancher d'un premier ban d'un jour durerait dix jours. Le plancher ne ferme pas le favoritisme ; il le rend coûteux, parce qu'il laisse une trace signée
+- **Jamais de plancher sur une meute détectée** : quand le moteur reconnaît que le ban venait d'une meute, il le lève seul et l'écrit. Cette levée répare une injustice ; elle n'en accorde aucune. Un ban d'arbitre, lui, ne se lève pas ainsi : il n'est pas venu des votes
 
 ### Escalade pour les votants d'une meute
 Le rang appartient au **votant**, pas à la cible. Compté sur la cible, un groupe
@@ -90,14 +97,31 @@ visée par plusieurs groupes ferait punir des gens dont c'est le premier écart.
   serait une peine de plus, que personne n'a décidée
 
 ### Anti-manipulation
-- **Anti-Sybil** : intégration SelfRecover (optionnel) + cooldown **24 h** sur les nouveaux comptes, aligné sur la période d'échauffement décrite par [Bi-Self](../README.fr.md) — *partiel : l'anti-Sybil est là ; le lab abaisse le cooldown à 120 s pour rester testable*
+- **Anti-Sybil** : intégration SelfRecover (optionnel) + délai sur les nouveaux comptes, sauf s'ils ont déjà publié : **24 h** en service, aligné sur la période d'échauffement décrite par [Bi-Self](../README.fr.md), **2 min** en démonstration. Le refus dit l'attente restante
 - **Meute** : deux votants **liés entre eux** qui frappent la même cible sur 30 jours → leurs votes sont annulés, la réputation restituée, et les votants entrent dans l'escalade décrite plus haut. Le lien se propage par transitivité — A–B et B–C liés forment une meute de trois, car une meute a un meneur
 - Ce qui lie deux comptes dépend de la plateforme. Sur un forum : un **message privé dans chaque sens**, l'équivalent le plus proche d'une invitation acceptée. Exiger la réciprocité empêche un spammeur de se rendre invulnérable en écrivant à tout le monde. Le contenu des messages n'est **jamais lu** — seulement qui a écrit à qui
-- **Salve rapide** : plusieurs votants **sans aucun lien** dans la même minute. Ce n'est pas une meute, c'est le plus souvent la même réaction au même message : rien n'est annulé, la cible part en revue humaine. Annuler ici protégerait un message d'autant mieux qu'il choque plus de monde à la fois
+- **Salve rapide** : plusieurs votants **sans aucun lien** dans une fenêtre courte (5 min en service, 1 min en démonstration). Ce n'est pas une meute, c'est le plus souvent la même réaction au même message : rien n'est annulé, la cible part en revue humaine. Annuler ici protégerait un message d'autant mieux qu'il choque plus de monde à la fois
 - **Ce que ni l'une ni l'autre ne voit** : une coordination organisée ailleurs, entre comptes qui ne se sont jamais écrit sur la plateforme. Elle tombe en salve rapide — donc signalée, jamais annulée
-- **Upvote farming** : votes positifs mutuels bloqués après 3 occurrences en 2 mois
+- **Farming** : au-delà de 3 votes positifs d'un même votant vers un même membre en 60 jours, les suivants sont neutralisés ; même plafond pour les votes négatifs, contre l'érosion lente d'un votant patient qui vise chaque message
 - **Cross-voting** : A vs B et B vs A sur la même invitation → les deux annulés — *pas encore codé*
-- **Protection des victimes** : un abus signalé suspend le ban pour revue admin — *pas encore codé*
+- **Protection des victimes** : une meute reconnue lève le ban automatique qu'elle avait provoqué — *partiel : un simple signalement ne suspend pas encore un ban*
+
+## Intégrer
+
+Le moteur est une classe statique ; l'hôte fournit la connexion `PDO` à chaque appel.
+
+| Appel | Rôle |
+|---|---|
+| `setConfig(Config)` | les seuils : `Config::demo()`, `Config::prod()` ou les tiens. **Seule source** des seuils : le moteur les lit là, et tes pages aussi, par `Moderate::config()` |
+| `setJournal(Journal)` | branche le journal, et avec lui le ban automatique. L'interface [`Journal`](./src/Journal.php) liste les actes et leurs clés ; l'écriture doit être durable et non réécrivable, et une exception n'y est jamais avalée |
+| `balayerBansEchus(PDO)` | referme les peines échues en une passe, pour un planificateur. Sans lui, une fin se constate à la lecture suivante, et le journal porte l'échéance ET l'instant de la constatation |
+| `estBanni(PDO, id)` · `bansEnCours(PDO)` | ce que l'hôte bloque, et ce que l'arbitre doit voir : origine, motif, fin, temps restant, plancher |
+| `adminBan(PDO, id, arbitre, motif)` · `adminPardon(PDO, id, arbitre, ?motif)` · `adminMaintenir(PDO, id, arbitre, motif)` | les gestes d'arbitre, qui rendent `['ok' => bool, 'message' => string]` |
+| `dureeEnClair(secondes)` | une durée lisible, unités passées par ton traducteur (`setTranslator()`) |
+
+**Schéma attendu** — celui du lab fait référence ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)) : `member_moderation` (réputation, strikes, droit de vote, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, signalement, convalescence, suspension de vote), `mod_votes`, `mod_pack_flags`, et trois tables de l'hôte lues sans être écrites : `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. Le moteur écrit du SQL SQLite.
+
+Les dates de ses messages suivent le fuseau de l'hôte (`date_default_timezone_set()`).
 
 ## Documentation
 
@@ -106,19 +130,22 @@ visée par plusieurs groupes ferait punir des gens dont c'est le premier écart.
 
 ## Statut
 
-🟢 **v0.3.0** — le moteur est ici, dans `src/`, et le lab l'importe comme il
+🟢 **v0.4.0** — le moteur est ici, dans `src/`, et le lab l'importe comme il
 importe SelfRecover et SelfDataGuard.
 
-Cette version livre le recoupement des votants liés, la convalescence, le motif
-de vote, et l'escalade qui fait payer la meute à ceux qui la forment. **Deux
-mécanismes restent à écrire** — cross-voting et protection des victimes — plus
-trois tenus à moitié, tous marqués dans les listes ci-dessus.
+La 0.4.0 fait revenir le ban automatique, tenu : gradué, fini, écrit au journal de
+bout en bout, levable par un arbitre sous plancher, et levé seul quand une meute
+est reconnue. Les seuils ont une seule source, `Config`. **Rupture** par rapport à
+la 0.3.0 : les constantes de seuil du moteur sont retirées (lire `Moderate::config()`),
+et `adminBan()` / `adminPardon()` prennent l'arbitre et le motif. **Un mécanisme
+reste à écrire** — le cross-voting — plus trois tenus à moitié, tous marqués dans
+les listes ci-dessus.
 
 Contrôles : [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
-— vingt-quatre, chacun vu rougir : le mécanisme est neutralisé, la mesure
-refaite, le code restauré. L'un d'eux ne mesurait rien à sa première mutation —
+— quarante-cinq, joués par la CI, chacun vu rougir : le mécanisme est
+neutralisé, la mesure refaite, le code restauré. L'un d'eux ne mesurait rien à sa première mutation —
 il calculait son attendu depuis la constante qu'il surveillait, et se décalait
-donc avec elle ; il lit maintenant une valeur en clair. Les quatre règles du motif sont éprouvées **séparément**, chaque
+donc avec elle ; il lit maintenant une valeur en clair. Les cinq règles du motif sont éprouvées **séparément**, chaque
 cas n'en violant qu'une : sinon la défense en profondeur rattrape le trou, le
 contrôle reste vert, et on ne sait plus laquelle mesure encore quelque chose.
 Ils vivent encore côté lab parce qu'ils ont besoin d'un schéma de base ; ils

@@ -8,7 +8,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
 [![SelfRecover: v0.8.0](https://img.shields.io/badge/SelfRecover-v0.8.0-green.svg)](./selfrecover/)
-[![SelfModerate: v0.3.0](https://img.shields.io/badge/SelfModerate-v0.3.0-yellow.svg)](./selfmoderate/)
+[![SelfModerate: v0.4.0](https://img.shields.io/badge/SelfModerate-v0.4.0-yellow.svg)](./selfmoderate/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
@@ -55,7 +55,7 @@ One plus one equals a self-governing community. Not three — a qualitatively di
 | Module | Role | Status |
 |--------|------|--------|
 | [SelfRecover](./selfrecover/) | Zero-email identity & recovery | **v0.8.0** — PSR-4 library + browser deriver, deployed and self-audited implementation |
-| [SelfModerate](./selfmoderate/) | Community moderation by collective reasoning | v0.3.0 — installable engine, 24 checks; 2 protocol mechanisms missing |
+| [SelfModerate](./selfmoderate/) | Community moderation by collective reasoning | v0.4.0 — installable engine, automatic ban traced to a journal, 45 checks in CI; 1 protocol mechanism missing |
 
 ---
 
