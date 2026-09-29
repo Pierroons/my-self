@@ -142,8 +142,8 @@ class Moderate
         self::regenerate($pdo, $accountId);
         self::cloreBanExpire($pdo, $accountId);
         $stmt = $pdo->prepare(
-            'SELECT reputation, strikes, voting_rights, banned_until, needs_review, review_reason,
-                    convalescent, vote_muted_until
+            'SELECT reputation, strikes, voting_rights, banned_until, ban_debut, ban_origine, ban_motif,
+                    needs_review, review_reason, convalescent, vote_muted_until
                FROM member_moderation WHERE account_id = ?'
         );
         $stmt->execute([$accountId]);
@@ -154,6 +154,9 @@ class Moderate
             'voting_rights' => (bool) $row['voting_rights'],
             'banned'        => ((int) $row['banned_until']) > time(),
             'banned_until'  => (int) $row['banned_until'],
+            'ban_debut'     => (int) $row['ban_debut'],
+            'ban_origine'   => $row['ban_origine'] !== null ? (string) $row['ban_origine'] : null,
+            'ban_motif'     => $row['ban_motif'] !== null ? (string) $row['ban_motif'] : null,
             'needs_review'  => (bool) $row['needs_review'],
             'review_reason' => $row['review_reason'] !== null ? (string) $row['review_reason'] : null,
             'convalescent'  => (bool) $row['convalescent'],
@@ -163,7 +166,7 @@ class Moderate
     }
 
     /**
-     * Inscrit la fin d'une peine échue, puis la referme.
+     * Referme une peine échue, et l'inscrit au journal quand il y en a un.
      *
      * 🔑 **Personne ne s'exécute à l'instant où une peine expire.** La fin se
      * constate donc quand on regarde l'état — ce que `getReputation()` fait à
@@ -173,17 +176,20 @@ class Moderate
      * appelle `balayerBansEchus()` depuis son planificateur ; il n'y est pas
      * tenu, et rien n'est perdu s'il ne le fait pas.
      *
+     * La fin d'un ban automatique remet la réputation au point de départ et
+     * garde les strikes : le temps de la peine vaut remise à flot, et le ban
+     * suivant sera plus long. Sans cette remise, le compte ressortait à zéro et
+     * le premier vote contraire le renvoyait au palier supérieur. Un ban
+     * d'arbitre n'est pas venu de la réputation, et n'y touche pas en sortant.
+     *
      * `banned_until = 0` est l'état « aucune peine à clore » : c'est lui qui
-     * rend l'inscription unique, sans colonne de plus.
+     * rend l'inscription unique.
      */
     private static function cloreBanExpire(PDO $pdo, int $accountId): void
     {
-        if (self::$journal === null) {
-            return;
-        }
         $maintenant = time();
         $stmt = $pdo->prepare(
-            'SELECT banned_until, strikes, review_reason FROM member_moderation
+            'SELECT banned_until, ban_debut, ban_origine, ban_motif, strikes, review_reason FROM member_moderation
               WHERE account_id = ? AND banned_until > 0 AND banned_until <= ?'
         );
         $stmt->execute([$accountId, $maintenant]);
@@ -191,35 +197,47 @@ class Moderate
         if (!$row) {
             return;
         }
+        $origine = $row['ban_origine'] !== null ? (string) $row['ban_origine'] : null;
 
-        self::$journal->inscrire([
-            'acte'      => 'ban_auto_fin',
+        self::$journal?->inscrire([
+            'acte'      => 'ban_fin',
             'compte'    => $accountId,
+            'origine'   => $origine,
             'episode'   => (int) $row['strikes'],
+            'debut'     => (int) $row['ban_debut'],
             'jusqu_a'   => (int) $row['banned_until'],
             'observe_a' => $maintenant,
-            'motif'     => $row['review_reason'] !== null ? (string) $row['review_reason'] : 'inconnu',
+            'motif'     => $row['ban_motif'] ?? $row['review_reason'] ?? 'inconnu',
             'arbitre'   => null,
         ]);
 
-        // Le droit de vote ne revient pas avec la fin de la peine : il dépend de
-        // la réputation, que la convalescence remonte à son rythme. Lever les
-        // deux d'un coup rendrait la peine sans effet dès sa dernière seconde.
-        $pdo->prepare('UPDATE member_moderation SET banned_until = 0, updated_at = ? WHERE account_id = ?')
-            ->execute([$maintenant, $accountId]);
+        if ($origine === 'auto') {
+            $pdo->prepare(
+                "UPDATE member_moderation
+                    SET reputation = ?, voting_rights = 1, convalescent = 0, last_regen_at = 0,
+                        needs_review  = CASE WHEN review_reason = 'ban_auto' THEN 0 ELSE needs_review END,
+                        review_reason = CASE WHEN review_reason = 'ban_auto' THEN NULL ELSE review_reason END
+                  WHERE account_id = ?"
+            )->execute([self::config()->reputationInitiale, $accountId]);
+        } else {
+            $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ? AND reputation >= ?')
+                ->execute([$accountId, self::config()->perteDroitDeVoteSous]);
+        }
+        $pdo->prepare(
+            'UPDATE member_moderation
+                SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL, updated_at = ?
+              WHERE account_id = ?'
+        )->execute([$maintenant, $accountId]);
     }
 
     /**
      * Clôt toutes les peines échues en une passe, pour un planificateur.
      *
-     * Rend le nombre d'entrées inscrites. Sans journal, ne fait rien et rend 0 :
-     * il n'y a alors aucune peine automatique à clore.
+     * Rend le nombre de peines refermées. Sans journal, elles se referment
+     * quand même, sans rien inscrire.
      */
     public static function balayerBansEchus(PDO $pdo, int $limite = 500): int
     {
-        if (self::$journal === null) {
-            return 0;
-        }
         $stmt = $pdo->prepare(
             'SELECT account_id FROM member_moderation
               WHERE banned_until > 0 AND banned_until <= ? ORDER BY banned_until LIMIT ?'
@@ -295,7 +313,7 @@ class Moderate
     {
         $rep = self::getReputation($pdo, $accountId);
         if ($rep['banned']) {
-            return [false, static::t('Compte temporairement suspendu.')];
+            return [false, sprintf(static::t('Compte banni jusqu\'au %s.'), date('d/m/Y H:i', $rep['banned_until']))];
         }
         // Avant le seuil de réputation, et non après : les deux refusent le
         // vote, mais l'un s'efface en attendant et l'autre à une date. Rendre
@@ -727,9 +745,28 @@ class Moderate
         if ($rep['reputation'] >= self::config()->perteDroitDeVoteSous) {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ?')->execute([$author]);
         }
-        if ($rep['reputation'] > self::config()->banA && $rep['banned_until'] > 0) {
-            $pdo->prepare('UPDATE member_moderation SET banned_until = 0, strikes = MAX(0, strikes - ?) WHERE account_id = ?')
-                ->execute([$restore, $author]);
+        // Seul un ban automatique se lève ici : il est venu des votes que la
+        // meute a faussés. Un ban d'arbitre n'en dépend pas. Pas de plancher non
+        // plus : cette levée répare une injustice, elle n'en accorde aucune.
+        if ($rep['reputation'] > self::config()->banA && $rep['banned'] && $rep['ban_origine'] === 'auto') {
+            self::$journal?->inscrire([
+                'acte'      => 'ban_leve',
+                'compte'    => $author,
+                'origine'   => 'auto',
+                'arbitre'   => null,
+                'motif'     => 'meute_detectee',
+                'cause'     => 'meute_detectee',
+                'anticipee' => false,
+                'reste'     => $rep['banned_until'] - time(),
+            ]);
+            $pdo->prepare(
+                "UPDATE member_moderation
+                    SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
+                        strikes = MAX(0, strikes - ?),
+                        needs_review  = CASE WHEN review_reason = 'ban_auto' THEN 0 ELSE needs_review END,
+                        review_reason = CASE WHEN review_reason = 'ban_auto' THEN NULL ELSE review_reason END
+                  WHERE account_id = ?"
+            )->execute([$restore, $author]);
         }
         // La convalescence avait été ouverte par une chute qui n'aurait pas dû
         // avoir lieu : on la referme, plutôt que d'imposer une guérison au temps
@@ -822,7 +859,11 @@ class Moderate
         return $sanctions;
     }
 
-    /** La peine attachée à un rang. Aucune exclusion automatique, quel que soit le rang. */
+    /**
+     * La peine attachée à un rang. Le rang ne bannit jamais par lui-même : au
+     * troisième, la perte de points peut mener au ban de la réputation zéro,
+     * comme n'importe quelle autre chute.
+     */
     private static function appliquerPeine(PDO $pdo, int $voter, int $rang, int $maintenant): void
     {
         if ($rang <= 1) {
@@ -841,6 +882,10 @@ class Moderate
         )->execute([$maintenant + $duree, $maintenant, $voter]);
 
         if ($rang === 3) {
+            // Une peine échue se referme avant la perte de points : refermée
+            // après, elle remettrait la réputation au départ et effacerait la
+            // pénalité qu'on vient de poser.
+            self::cloreBanExpire($pdo, $voter);
             $pdo->prepare(
                 'UPDATE member_moderation SET reputation = MAX(reputation - ?, 0), updated_at = ?
                   WHERE account_id = ?'
@@ -918,10 +963,11 @@ class Moderate
             return;
         }
 
-        $stmt = $pdo->prepare('SELECT banned_until, strikes FROM member_moderation WHERE account_id = ?');
+        self::cloreBanExpire($pdo, $accountId);
+        $stmt = $pdo->prepare('SELECT reputation, banned_until, strikes FROM member_moderation WHERE account_id = ?');
         $stmt->execute([$accountId]);
         $etat = $stmt->fetch();
-        if (!$etat) {
+        if (!$etat || (int) $etat['reputation'] > self::config()->banA) {
             return;
         }
         // Une peine en cours ne se rallonge pas au downvote suivant. Sans cette
@@ -936,10 +982,12 @@ class Moderate
         $jusqua  = $maintenant + $duree;
 
         self::$journal->inscrire([
-            'acte'    => 'ban_auto_debut',
+            'acte'    => 'ban_debut',
             'compte'  => $accountId,
+            'origine' => 'auto',
             'episode' => $episode,
             'duree'   => $duree,
+            'debut'   => $maintenant,
             'jusqu_a' => $jusqua,
             'motif'   => 'reputation_zero',
             'arbitre' => null,
@@ -947,10 +995,10 @@ class Moderate
 
         $pdo->prepare(
             "UPDATE member_moderation
-                SET banned_until = ?, voting_rights = 0, strikes = ?, needs_review = 1,
-                    review_reason = 'ban_auto', updated_at = ?
+                SET banned_until = ?, ban_debut = ?, ban_origine = 'auto', ban_motif = 'reputation_zero',
+                    voting_rights = 0, strikes = ?, needs_review = 1, review_reason = 'ban_auto', updated_at = ?
               WHERE account_id = ?"
-        )->execute([$jusqua, $episode, $maintenant, $accountId]);
+        )->execute([$jusqua, $maintenant, $episode, $maintenant, $accountId]);
     }
 
     /** Score (somme votes non bloqués) d'un post ou d'un membre. */
@@ -1012,32 +1060,210 @@ class Moderate
     }
 
     /**
-     * Action admin manuelle (« squizz ») — la machine pré-mâche, l'humain tranche.
-     * Bannit un compte (`dureeBanAdmin()` par défaut), retire le droit de vote, +1 strike.
+     * Ban prononcé par un arbitre. Le motif est exigé, et contrôlé comme celui
+     * d'un downvote : la personne bannie doit pouvoir lire ce qu'on lui
+     * reproche. Un ban en cours n'est pas remplacé — l'arbitre le lève d'abord,
+     * et les deux gestes restent au journal.
+     *
+     * @return array{ok: bool, message: string}
      */
-    public static function adminBan(PDO $pdo, int $accountId, ?int $seconds = null): void
+    public static function adminBan(PDO $pdo, int $accountId, string $arbitre, string $motif, ?int $seconds = null): array
     {
+        [$motifOk, $pourquoi] = self::validateReason($motif);
+        if (!$motifOk) {
+            return ['ok' => false, 'message' => $pourquoi];
+        }
         $seconds ??= self::config()->dureeBanAdmin();
-        self::ensureRow($pdo, $accountId);
-        $pdo->prepare(
-            'UPDATE member_moderation SET banned_until = ?, voting_rights = 0, strikes = strikes + 1, needs_review = 0, updated_at = ? WHERE account_id = ?'
-        )->execute([time() + $seconds, time(), $accountId]);
-    }
+        if ($seconds <= 0) {
+            return ['ok' => false, 'message' => static::t('Durée de ban invalide.')];
+        }
+        $etat = self::getReputation($pdo, $accountId);
+        if ($etat['banned']) {
+            return ['ok' => false, 'message' => sprintf(
+                static::t('Déjà banni jusqu\'au %s : lève ce ban avant d\'en poser un autre.'),
+                date('d/m/Y H:i', $etat['banned_until'])
+            )];
+        }
 
-    /** Grâce admin : lève le ban, restaure le droit de vote, remet la réputation initiale, strikes à 0. */
-    public static function adminPardon(PDO $pdo, int $accountId): void
-    {
-        self::ensureRow($pdo, $accountId);
+        $maintenant = time();
+        $jusqua     = $maintenant + $seconds;
+        $episode    = $etat['strikes'] + 1;
+        self::$journal?->inscrire([
+            'acte'    => 'ban_debut',
+            'compte'  => $accountId,
+            'origine' => 'admin',
+            'episode' => $episode,
+            'duree'   => $seconds,
+            'debut'   => $maintenant,
+            'jusqu_a' => $jusqua,
+            'motif'   => trim($motif),
+            'arbitre' => $arbitre,
+        ]);
         $pdo->prepare(
-            'UPDATE member_moderation SET banned_until = 0, voting_rights = 1, reputation = ?, strikes = 0, needs_review = 0, updated_at = ? WHERE account_id = ?'
-        )->execute([self::config()->reputationInitiale, time(), $accountId]);
+            "UPDATE member_moderation
+                SET banned_until = ?, ban_debut = ?, ban_origine = 'admin', ban_motif = ?,
+                    voting_rights = 0, strikes = ?, needs_review = 0, review_reason = NULL, updated_at = ?
+              WHERE account_id = ?"
+        )->execute([$jusqua, $maintenant, trim($motif), $episode, $maintenant, $accountId]);
+
+        return ['ok' => true, 'message' => sprintf(static::t('Compte banni jusqu\'au %s.'), date('d/m/Y H:i', $jusqua))];
     }
 
     /**
-     * Membres à arbitrer par un admin. `review_reason` dit lequel des deux cas :
-     * `reputation_zero` (érosion étalée jusqu'à zéro) ou `salve_rapide` (plusieurs
-     * votants sans lien dans la même minute). Un drapeau sans sa cause laisserait
-     * l'admin appliquer le même geste à deux situations opposées.
+     * Grâce d'un arbitre : lève le ban en cours, rend le vote, remet la
+     * réputation au départ et les strikes à zéro. Sans ban en cours, elle ne
+     * fait que remettre la réputation au départ.
+     *
+     * 🔑 **Le plancher.** Avant `plancherFraction` de la peine en cours, la grâce
+     * exige un motif, et s'inscrit comme levée anticipée avec le temps qui
+     * restait. Le plancher ne ferme pas le favoritisme : il le rend coûteux,
+     * parce qu'il laisse une trace signée d'un nom. Il ne s'applique pas à
+     * l'annulation pour meute détectée (`restoreAfterCancel`), qui répare une
+     * injustice au lieu d'en accorder une.
+     *
+     * @return array{ok: bool, message: string, anticipee?: bool}
+     */
+    public static function adminPardon(PDO $pdo, int $accountId, string $arbitre, ?string $motif = null): array
+    {
+        $motif = $motif !== null ? trim($motif) : '';
+        if ($motif !== '') {
+            [$motifOk, $pourquoi] = self::validateReason($motif);
+            if (!$motifOk) {
+                return ['ok' => false, 'message' => $pourquoi];
+            }
+        }
+        $etat       = self::getReputation($pdo, $accountId);
+        $maintenant = time();
+        $anticipee  = false;
+
+        if ($etat['banned']) {
+            $plancher  = $etat['ban_debut'] > 0
+                ? self::config()->plancherDe($etat['ban_debut'], $etat['banned_until'])
+                : null;
+            $anticipee = $plancher !== null && $maintenant < $plancher;
+            if ($anticipee && $motif === '') {
+                return ['ok' => false, 'message' => sprintf(
+                    static::t('Levée anticipée : sans motif écrit, ce ban ne se lève qu\'à partir du %s.'),
+                    date('d/m/Y H:i', $plancher)
+                )];
+            }
+            self::$journal?->inscrire([
+                'acte'      => 'ban_leve',
+                'compte'    => $accountId,
+                'origine'   => $etat['ban_origine'],
+                'arbitre'   => $arbitre,
+                'motif'     => $motif !== '' ? $motif : null,
+                'cause'     => 'grace',
+                'anticipee' => $anticipee,
+                'reste'     => $etat['banned_until'] - $maintenant,
+                'plancher'  => $plancher,
+            ]);
+        } else {
+            self::$journal?->inscrire([
+                'acte'       => 'grace',
+                'compte'     => $accountId,
+                'arbitre'    => $arbitre,
+                'motif'      => $motif !== '' ? $motif : null,
+                'reputation' => $etat['reputation'],
+            ]);
+        }
+
+        $pdo->prepare(
+            'UPDATE member_moderation
+                SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
+                    voting_rights = 1, reputation = ?, strikes = 0, needs_review = 0, review_reason = NULL,
+                    convalescent = 0, updated_at = ?
+              WHERE account_id = ?'
+        )->execute([self::config()->reputationInitiale, $maintenant, $accountId]);
+
+        return ['ok' => true, 'anticipee' => $anticipee, 'message' => match (true) {
+            $anticipee      => static::t('Ban levé avant son plancher : la levée anticipée et son motif sont au journal.'),
+            $etat['banned'] => static::t('Ban levé.'),
+            default         => static::t('Réputation remise au point de départ.'),
+        }];
+    }
+
+    /**
+     * Clôt la revue d'un ban sans le lever : l'arbitre a regardé, la peine
+     * court. Le motif est exigé — un maintien sans raison ne se distingue pas
+     * d'un oubli.
+     *
+     * @return array{ok: bool, message: string}
+     */
+    public static function adminMaintenir(PDO $pdo, int $accountId, string $arbitre, string $motif): array
+    {
+        [$motifOk, $pourquoi] = self::validateReason($motif);
+        if (!$motifOk) {
+            return ['ok' => false, 'message' => $pourquoi];
+        }
+        $etat = self::getReputation($pdo, $accountId);
+        if (!$etat['banned']) {
+            return ['ok' => false, 'message' => static::t('Aucun ban en cours sur ce compte.')];
+        }
+        self::$journal?->inscrire([
+            'acte'    => 'ban_maintenu',
+            'compte'  => $accountId,
+            'origine' => $etat['ban_origine'],
+            'arbitre' => $arbitre,
+            'motif'   => trim($motif),
+            'jusqu_a' => $etat['banned_until'],
+        ]);
+        $pdo->prepare('UPDATE member_moderation SET needs_review = 0, review_reason = NULL, updated_at = ? WHERE account_id = ?')
+            ->execute([time(), $accountId]);
+
+        return ['ok' => true, 'message' => static::t('Ban maintenu ; la revue est close.')];
+    }
+
+    /** Le compte purge-t-il un ban ? Pour l'hôte qui décide ce qu'un ban bloque au-delà du vote. */
+    public static function estBanni(PDO $pdo, int $accountId): bool
+    {
+        return self::getReputation($pdo, $accountId)['banned'];
+    }
+
+    /**
+     * Les bans en cours, avec ce qu'un arbitre doit voir avant de toucher à
+     * l'un d'eux : l'origine, le motif, le temps restant et la date du plancher.
+     *
+     * @return list<array{account_id: int, username: string, origine: ?string, motif: ?string,
+     *                    debut: int, jusqu_a: int, reste: int, plancher: ?int, episode: int, a_revoir: bool}>
+     */
+    public static function bansEnCours(PDO $pdo, int $limite = 100): array
+    {
+        $maintenant = time();
+        $stmt = $pdo->prepare(
+            'SELECT m.account_id, a.username, m.ban_origine, m.ban_motif, m.ban_debut, m.banned_until,
+                    m.strikes, m.needs_review
+               FROM member_moderation m JOIN accounts a ON a.id = m.account_id
+              WHERE m.banned_until > ? ORDER BY m.banned_until ASC LIMIT ?'
+        );
+        $stmt->bindValue(1, $maintenant, PDO::PARAM_INT);
+        $stmt->bindValue(2, $limite, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return array_map(static function (array $r) use ($maintenant): array {
+            $debut = (int) $r['ban_debut'];
+            $fin   = (int) $r['banned_until'];
+            return [
+                'account_id' => (int) $r['account_id'],
+                'username'   => (string) $r['username'],
+                'origine'    => $r['ban_origine'] !== null ? (string) $r['ban_origine'] : null,
+                'motif'      => $r['ban_motif'] !== null ? (string) $r['ban_motif'] : null,
+                'debut'      => $debut,
+                'jusqu_a'    => $fin,
+                'reste'      => $fin - $maintenant,
+                'plancher'   => $debut > 0 ? self::config()->plancherDe($debut, $fin) : null,
+                'episode'    => (int) $r['strikes'],
+                'a_revoir'   => (bool) $r['needs_review'],
+            ];
+        }, $stmt->fetchAll());
+    }
+
+    /**
+     * Membres à arbitrer par un admin. `review_reason` dit la cause :
+     * `reputation_zero` (érosion jusqu'à zéro, sans journal branché), `ban_auto`
+     * (ban automatique en cours), `salve_rapide` (plusieurs votants sans lien dans
+     * la même fenêtre) ou `meute_recidive` (4e épisode de meute). Un drapeau sans
+     * sa cause laisserait l'admin appliquer le même geste à des situations opposées.
      */
     public static function flaggedForReview(PDO $pdo, int $limit = 50): array
     {

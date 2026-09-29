@@ -27,14 +27,24 @@ interface Journal
     /**
      * Inscrit un acte. Le moteur passe un tableau dont les clés sont stables :
      *
-     *   acte      `ban_auto_debut` | `ban_auto_fin` | `ban_leve` | `ban_maintenu`
-     *   compte    identifiant du membre sanctionné
-     *   episode   numéro d'épisode au moment de l'acte (1 = premier)
-     *   duree     durée de la peine en secondes, pour les actes qui en posent une
-     *   jusqu_a   horodatage de fin prévue
-     *   motif     `reputation_zero` pour l'automatique, libre pour un acte d'arbitre
-     *   arbitre   identifiant de l'admin, ou null quand c'est la machine
-     *   observe_a horodatage de la constatation, présent quand il diffère de l'échéance
+     *   acte       `ban_debut` | `ban_fin` | `ban_leve` | `ban_maintenu` | `grace`
+     *   compte     identifiant numérique du membre visé
+     *   origine    `auto` (réputation à zéro) | `admin` (arbitre) ; null pour un ban
+     *              posé avant que l'origine ne soit enregistrée
+     *   arbitre    nom de l'admin, ou null quand c'est la machine
+     *   motif      `reputation_zero` ou `meute_detectee` pour la machine, texte validé
+     *              par `validateReason()` pour un arbitre ; le même au début et à la
+     *              fin d'un ban
+     *   episode    numéro d'épisode (1 = premier)              ban_debut, ban_fin
+     *   duree      durée de la peine en secondes               ban_debut
+     *   debut      horodatage du début de la peine             ban_debut, ban_fin
+     *   jusqu_a    horodatage de fin prévue                    ban_debut, ban_fin, ban_maintenu
+     *   observe_a  instant où la fin a été constatée           ban_fin
+     *   cause      `grace` | `meute_detectee`                  ban_leve
+     *   anticipee  levée avant le plancher de la peine         ban_leve
+     *   reste      secondes de peine qui restaient             ban_leve
+     *   plancher   horodatage du plancher, ou null             ban_leve
+     *   reputation réputation avant la grâce                   grace
      *
      * Une implémentation peut en ajouter (horodatage, chaînage, signature) ;
      * elle ne doit pas en retirer.

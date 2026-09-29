@@ -567,6 +567,194 @@ $remonte === 12
     ? ok('la convalescence suit l\'intervalle de la config (+10 en 10 intervalles)')
     : nok('convalescence sourde à la config : ' . $remonte . ' au lieu de 12');
 
+// ── Le ban tracé : un journal factice, relu par le banc ─────────────────────
+final class JournalDeBanc implements Pierroons\SelfModerate\Journal
+{
+    /** @var list<array<string, mixed>> */
+    public array $actes = [];
+
+    public function inscrire(array $acte): void
+    {
+        $this->actes[] = $acte;
+    }
+
+    /** @return list<array<string, mixed>> */
+    public function de(int $compte, string $acte): array
+    {
+        return array_values(array_filter($this->actes, static fn (array $a): bool =>
+            $a['compte'] === $compte && $a['acte'] === $acte));
+    }
+}
+
+final class JournalEnPanne implements Pierroons\SelfModerate\Journal
+{
+    public function inscrire(array $acte): void
+    {
+        throw new RuntimeException('journal indisponible');
+    }
+}
+
+function etatBan(PDO $pdo, int $id): array
+{
+    $stmt = $pdo->prepare('SELECT * FROM member_moderation WHERE account_id = ?');
+    $stmt->execute([$id]);
+    return $stmt->fetch();
+}
+
+/** Recule une peine dans le temps : début et fin décalés de $secondes. */
+function vieillirBan(PDO $pdo, int $id, int $secondes): void
+{
+    $pdo->prepare('UPDATE member_moderation SET ban_debut = ban_debut - ?, banned_until = banned_until - ? WHERE account_id = ?')
+        ->execute([$secondes, $secondes, $id]);
+}
+
+$journal = new JournalDeBanc();
+Moderate::setJournal($journal);
+
+// ── 26. À zéro, avec journal : ban gradué, écrit avant la base ──────────────
+$banni = membre($pdo, 'banni-auto');
+poserReputation($pdo, $banni, 1);
+$vx = membre($pdo, 'votant-x');
+Moderate::applyVote($pdo, $vx, 'member', $banni, -1, motif(), 'agressif');
+$e = Moderate::getReputation($pdo, $banni);
+$debut = $journal->de($banni, 'ban_debut');
+$e['banned'] && $e['ban_origine'] === 'auto' && $e['strikes'] === 1 && count($debut) === 1
+    && $debut[0]['origine'] === 'auto' && $debut[0]['motif'] === 'reputation_zero'
+    && $debut[0]['duree'] === Moderate::config()->dureeBanPourEpisode(1)
+    ? ok('à zéro, le ban automatique tombe pour ' . Moderate::dureeEnClair($debut[0]['duree']) . ', et le journal l\'a reçu')
+    : nok('ban automatique absent ou non tracé : ' . json_encode([$e, $debut]));
+
+$vy = membre($pdo, 'votant-y');
+$finAvant = $e['banned_until'];
+Moderate::applyVote($pdo, $vy, 'member', $banni, -1, motif(), 'agressif');
+Moderate::getReputation($pdo, $banni)['banned_until'] === $finAvant && count($journal->de($banni, 'ban_debut')) === 1
+    ? ok('une peine en cours ne se rallonge pas au vote contraire suivant')
+    : nok('la peine a reculé ou s\'est doublée');
+
+// ── 27. La fin : réputation au départ, strikes gardés, même motif ────────────
+vieillirBan($pdo, $banni, 10_000);
+$e = Moderate::getReputation($pdo, $banni);
+$fin = $journal->de($banni, 'ban_fin');
+!$e['banned'] && $e['reputation'] === Moderate::config()->reputationInitiale && $e['strikes'] === 1
+    && $e['voting_rights'] && $e['review_reason'] !== 'ban_auto'
+    && count($fin) === 1 && $fin[0]['motif'] === 'reputation_zero' && $fin[0]['origine'] === 'auto'
+    && isset($fin[0]['observe_a'], $fin[0]['jusqu_a'])
+    ? ok('à la fin, la réputation revient à ' . $e['reputation'] . ', le strike reste, et le journal dit la même cause qu\'au début')
+    : nok('fin de ban mal refermée : ' . json_encode([$e, $fin]));
+
+poserReputation($pdo, $banni, 1);
+$vz = membre($pdo, 'votant-z');
+Moderate::applyVote($pdo, $vz, 'member', $banni, -1, motif(), 'agressif');
+$second = $journal->de($banni, 'ban_debut');
+count($second) === 2 && $second[1]['episode'] === 2 && $second[1]['duree'] === Moderate::config()->dureeBanPourEpisode(2)
+    ? ok('le ban suivant monte d\'un palier : ' . Moderate::dureeEnClair($second[1]['duree']))
+    : nok('le second ban n\'a pas monté d\'un palier : ' . json_encode($second));
+
+// ── 28. Le balayage referme ce que personne n'a regardé ─────────────────────
+vieillirBan($pdo, $banni, 10_000);
+$closAvant = count($journal->de($banni, 'ban_fin'));
+Moderate::balayerBansEchus($pdo) >= 1 && count($journal->de($banni, 'ban_fin')) === $closAvant + 1
+    ? ok('balayerBansEchus() referme une peine échue et l\'inscrit')
+    : nok('le balayage n\'a rien refermé');
+
+// ── 29. Le ban d'arbitre : motif exigé, signé, et sans effet sur la réputation ─
+$cible = membre($pdo, 'banni-admin');
+poserReputation($pdo, $cible, 15);
+$sansMotif = Moderate::adminBan($pdo, $cible, 'arbitre-banc', 'parce que');
+$r = Moderate::adminBan($pdo, $cible, 'arbitre-banc', motif());
+$doublon = Moderate::adminBan($pdo, $cible, 'arbitre-banc', motif());
+$dA = $journal->de($cible, 'ban_debut');
+!$sansMotif['ok'] && $r['ok'] && !$doublon['ok'] && count($dA) === 1 && $dA[0]['origine'] === 'admin'
+    && $dA[0]['arbitre'] === 'arbitre-banc' && $dA[0]['duree'] === Moderate::config()->dureeBanAdmin()
+    ? ok('le ban d\'arbitre exige un motif, se signe, prend dureeBanAdmin() et ne s\'empile pas')
+    : nok('ban d\'arbitre mal tenu : ' . json_encode([$sansMotif, $r, $doublon, $dA]));
+
+vieillirBan($pdo, $cible, 10_000);
+$e = Moderate::getReputation($pdo, $cible);
+$finA = $journal->de($cible, 'ban_fin');
+!$e['banned'] && $e['reputation'] === 15 && count($finA) === 1 && $finA[0]['origine'] === 'admin'
+    ? ok('la fin d\'un ban d\'arbitre est tracée comme telle, et laisse la réputation où elle était')
+    : nok('fin de ban d\'arbitre : ' . json_encode([$e, $finA]));
+
+// ── 30. Le plancher : avant lui, pas de grâce sans motif ────────────────────
+Moderate::adminBan($pdo, $cible, 'arbitre-banc', motif());
+$refus = Moderate::adminPardon($pdo, $cible, 'arbitre-banc');
+$grace = Moderate::adminPardon($pdo, $cible, 'arbitre-banc', motif());
+$leve = $journal->de($cible, 'ban_leve');
+!$refus['ok'] && str_contains($refus['message'], 'à partir du') && $grace['ok'] && $grace['anticipee']
+    && count($leve) === 1 && $leve[0]['anticipee'] === true && $leve[0]['reste'] > 0 && $leve[0]['cause'] === 'grace'
+    && !Moderate::estBanni($pdo, $cible)
+    ? ok('avant le plancher, la grâce exige un motif et s\'inscrit comme levée anticipée')
+    : nok('plancher non tenu : ' . json_encode([$refus, $grace, $leve]));
+
+Moderate::adminBan($pdo, $cible, 'arbitre-banc', motif());
+$pdo->prepare('UPDATE member_moderation SET ban_debut = ?, banned_until = ? WHERE account_id = ?')
+    ->execute([time() - 100, time() + 20, $cible]);   // plancher dépassé, peine encore en cours
+$libre = Moderate::adminPardon($pdo, $cible, 'arbitre-banc');
+$leve = $journal->de($cible, 'ban_leve');
+$libre['ok'] && !$libre['anticipee'] && count($leve) === 2 && $leve[1]['anticipee'] === false
+    ? ok('après le plancher, la grâce se passe de motif, mais s\'inscrit quand même')
+    : nok('grâce après plancher : ' . json_encode([$libre, $leve]));
+
+// ── 31. Le maintien clôt la revue sans lever la peine ───────────────────────
+Moderate::adminBan($pdo, $cible, 'arbitre-banc', motif());
+$pdo->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide' WHERE account_id = ?")->execute([$cible]);
+$m = Moderate::adminMaintenir($pdo, $cible, 'arbitre-banc', motif());
+$e = Moderate::getReputation($pdo, $cible);
+$m['ok'] && $e['banned'] && !$e['needs_review'] && count($journal->de($cible, 'ban_maintenu')) === 1
+    && !Moderate::adminMaintenir($pdo, $banni, 'arbitre-banc', motif())['ok']
+    ? ok('le maintien clôt la revue, la peine court, et le journal le dit')
+    : nok('maintien : ' . json_encode([$m, $e]));
+
+// ── 32. La meute détectée lève un ban automatique, jamais un ban d'arbitre ──
+$proie = membre($pdo, 'proie-ban-auto');
+poserReputation($pdo, $proie, 1);
+$m1 = membre($pdo, 'meute-ban-1'); $m2 = membre($pdo, 'meute-ban-2');
+echangePrive($pdo, $m1, $m2);
+Moderate::applyVote($pdo, $m1, 'member', $proie, -1, motif(), 'agressif');
+$banniParMeute = Moderate::estBanni($pdo, $proie);
+Moderate::applyVote($pdo, $m2, 'member', $proie, -1, motif(), 'agressif');
+$leveM = $journal->de($proie, 'ban_leve');
+$banniParMeute && !Moderate::estBanni($pdo, $proie) && count($leveM) === 1
+    && $leveM[0]['cause'] === 'meute_detectee' && $leveM[0]['arbitre'] === null
+    ? ok('la meute reconnue lève le ban automatique qu\'elle avait provoqué, et la levée s\'inscrit')
+    : nok('ban de meute non levé : ' . json_encode([$banniParMeute, $leveM, etatBan($pdo, $proie)]));
+
+$tenu = membre($pdo, 'tenu-par-arbitre');
+poserReputation($pdo, $tenu, 1);
+Moderate::adminBan($pdo, $cibleArbitre = $tenu, 'arbitre-banc', motif());
+$m3 = membre($pdo, 'meute-ban-3'); $m4 = membre($pdo, 'meute-ban-4');
+echangePrive($pdo, $m3, $m4);
+Moderate::applyVote($pdo, $m3, 'member', $tenu, -1, motif(), 'agressif');
+Moderate::applyVote($pdo, $m4, 'member', $tenu, -1, motif(), 'agressif');
+Moderate::estBanni($pdo, $tenu) && Moderate::getReputation($pdo, $tenu)['ban_origine'] === 'admin'
+    && $journal->de($tenu, 'ban_leve') === []
+    ? ok('un ban d\'arbitre survit à l\'annulation d\'une meute : il n\'était pas venu des votes')
+    : nok('la meute a levé un ban d\'arbitre : ' . json_encode(etatBan($pdo, $tenu)));
+
+// ── 33. La vue de l'arbitre ─────────────────────────────────────────────────
+$vue = array_values(array_filter(Moderate::bansEnCours($pdo), static fn (array $b): bool => $b['account_id'] === $tenu));
+count($vue) === 1 && $vue[0]['origine'] === 'admin' && $vue[0]['reste'] > 0 && $vue[0]['plancher'] !== null
+    && $vue[0]['motif'] !== null && $vue[0]['username'] === 'tenu-par-arbitre'
+    ? ok('bansEnCours() rend l\'origine, le motif, le temps restant et le plancher')
+    : nok('bansEnCours() : ' . json_encode($vue));
+
+// ── 34. 🔑 Journal en panne : aucun ban sans sa trace ────────────────────────
+Moderate::setJournal(new JournalEnPanne());
+$sansTrace = membre($pdo, 'journal-en-panne');
+poserReputation($pdo, $sansTrace, 1);
+$vw = membre($pdo, 'votant-w');
+$leve = null;
+try {
+    Moderate::applyVote($pdo, $vw, 'member', $sansTrace, -1, motif(), 'agressif');
+} catch (RuntimeException $ex) {
+    $leve = $ex->getMessage();
+}
+Moderate::setJournal(null);
+$leve !== null && (int) etatBan($pdo, $sansTrace)['banned_until'] === 0
+    ? ok('un journal en panne empêche le ban : l\'exception remonte et la base n\'a rien reçu')
+    : nok('ban posé sans trace, ou panne avalée : ' . json_encode([$leve, etatBan($pdo, $sansTrace)]));
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"

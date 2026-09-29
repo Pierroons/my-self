@@ -314,8 +314,14 @@ function statutRapport(id,status){
   });
 }
 function modAction(id,op){
-  if(op==='ban' && !confirm('Bannir ce compte (durée démo) ?')) return;
-  labPost('/api/admin.php',{action:'moderate',account_id:id,op:op}).then(d=>{
+  const invites={
+    ban:'Motif du ban — une phrase de 40 caractères au moins, que le membre pourra lire :',
+    pardon:'Motif de la grâce — exigé avant le plancher de la peine, facultatif ensuite :',
+    maintenir:'Motif du maintien — pourquoi la peine continue :'
+  };
+  const motif=prompt(invites[op]||'Motif :','');
+  if(motif===null) return;
+  labPost('/api/admin.php',{action:'moderate',account_id:id,op:op,motif:motif}).then(d=>{
     if(d.ok){ location.reload(); } else { alert(d.message||'Erreur'); }
   });
 }

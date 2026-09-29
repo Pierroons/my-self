@@ -47,6 +47,8 @@ final class Config
      * @param int      $intervalleConvalescenceSecondes Convalescence : +1 point par
      *                                        intervalle. La réputation remonte avec le
      *                                        temps, pas avec le mérite.
+     * @param float    $plancherFraction      Part de la peine EN COURS avant laquelle un
+     *                                        arbitre ne lève un ban qu'avec un motif écrit.
      */
     public function __construct(
         public readonly int $reputationInitiale = 20,
@@ -69,6 +71,7 @@ final class Config
         public readonly array $dureesBan = [120, 600, 1800],
         public readonly ?int $dureeBanAdminSecondes = null,
         public readonly int $intervalleConvalescenceSecondes = 86400,
+        public readonly float $plancherFraction = 1 / 3,
     ) {
         if ($this->dureesBan === []) {
             throw new InvalidArgumentException('dureesBan ne peut pas être vide : sans palier, aucune peine n\'a de fin.');
@@ -77,6 +80,9 @@ final class Config
             if (!is_int($duree) || $duree <= 0) {
                 throw new InvalidArgumentException('dureesBan n\'accepte que des durées entières et strictement positives.');
             }
+        }
+        if ($this->plancherFraction < 0 || $this->plancherFraction > 1) {
+            throw new InvalidArgumentException('plancherFraction est une part de la peine : entre 0 et 1.');
         }
     }
 
@@ -134,6 +140,17 @@ final class Config
     public function entreeConvalescenceSous(): int
     {
         return $this->perteDroitDeVoteSous;
+    }
+
+    /**
+     * L'instant avant lequel lever ce ban demande un motif écrit : une fraction
+     * de la peine en cours, jamais du palier maximal — un tiers de trente jours
+     * appliqué à un premier ban d'un jour ferait un plancher dix fois plus long
+     * que la peine.
+     */
+    public function plancherDe(int $debut, int $fin): int
+    {
+        return $debut + (int) ceil($this->plancherFraction * max(0, $fin - $debut));
     }
 
     /** La remontée s'arrête au point de départ, jamais au-delà. */
