@@ -947,6 +947,37 @@ jobs:
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de la troncature"; exit 1; }
           echo "✓ le banc rougit, et sur le cas du journal raccourci"
 
+      - name: Garde-fou — SelfModerate, le moteur et son ban tracé
+        run: |
+          sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
+          echo "$sortie"
+          echo "$sortie" | grep -qx '✅ 44/44 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 44 contrôles"; exit 1; }
+
+      - name: Canari — SelfModerate prolonge une peine en cours
+        run: |
+          # La garde qui empêche un ban en cours de reculer à chaque vote contraire
+          # est retirée : le banc doit rougir sur ce cas précis.
+          M=bi-self/selfmoderate/src/Moderate.php
+          cp "$M" /tmp/moderate.intact
+          python3 - "$M" <<'PY'
+          import sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          garde = "        if ((int) $etat['banned_until'] > $maintenant) {\n            return;\n        }\n\n        $episode"
+          assert s.count(garde) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(garde, "        $episode"))
+          PY
+          [ $? -eq 0 ] || { cp /tmp/moderate.intact "$M"; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+            cp /tmp/moderate.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT quand une peine se prolonge"; exit 1
+          fi
+          cp /tmp/moderate.intact "$M"
+          cmp -s /tmp/moderate.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$sortie" | grep -q 'la peine a reculé' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de la peine prolongée"; exit 1; }
+          echo "✓ le banc rougit, et sur le cas de la peine prolongée"
+
       - name: Garde-fou — premier administrateur et dernier administrateur
         run: |
           sortie=$(php demo/lab/tests/sanity_first_admin.php)
