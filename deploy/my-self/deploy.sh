@@ -49,13 +49,9 @@ VHOSTS="${MYSELF_VHOSTS:-/etc/nginx/sites-enabled}"
 # La table est donc écrite, et l'inventaire de ce que les sources portent
 # vraiment la précède : `grep -rhoE '[a-z0-9.-]*\.example\.org'`.
 #
-# 🔑 `lab` et `ctf` servent le même forum sur deux instances distinctes, et les
-# deux lignes sont nécessaires : `lab` est fermé au public derrière une Basic
-# Auth, `ctf` est l'instance ouverte que les pages publiques citent. `lab` reste
-# dans la table même si plus aucune source ne le porte — `verifier()` construit
-# ses adresses à partir d'ici, et l'en retirer supprimerait la sonde qui éprouve
-# cette Basic Auth. Mesuré le 03/09/2026 : `lab` rend 401, `ctf` rend 200 sur
-# les six pages que la page d'accueil cite.
+# 🔑 `ctf` est le lab public, servi par une autre machine qui se déploie à part
+# depuis `main` : les pages d'ici le citent, cet arbre ne le pose pas. Il reste
+# dans la table parce que `verifier()` construit ses adresses à partir d'ici.
 #
 # ⚠️ `your-instance.example` n'y figure pas et ne doit pas y figurer. Il
 # apparaît dans `api/act/find.php` et `api/api.php` comme repli d'exécution
@@ -76,7 +72,6 @@ lire_table() {
     fi
     cat <<'TABLE'
 justice.example.org    justice.my-self.fr
-lab.example.org        lab.my-self.fr
 ctf.example.org        ctf.my-self.fr
 bi-self.example.org    bi-self.my-self.fr
 dataguard.example.org  dataguard.my-self.fr
@@ -99,11 +94,11 @@ EXCLUS=(
     # `.gitignore` n'a jamais retenu un `rsync`.
     "/self-security/selfdataguard/playground/"
     "/self-right/selfjustice/data/"
-    # 🔑 Rien de ce répertoire n'est suivi par git — ni `flags.txt`, ni
-    # `prepare.php`, ni `gen-vault.cjs`. Ce sont les réponses du CTF et
-    # l'outillage qui les pose. Déployées depuis un poste, elles changeraient les
-    # drapeaux sous les joueurs d'une partie en cours.
-    "/demo/lab/challenge/"
+    # 🔑 Le lab n'est pas servi depuis cette racine : son instance publique vit
+    # sur une autre machine (voir `ctf` dans la table). L'emporter y poserait
+    # aussi ce que git ne suit pas — ses secrets d'instance dans `data/`, les
+    # réponses du CTF dans `challenge/`.
+    "/demo/lab/"
     # 🔑 Le binaire compilé du dérivateur LUKS. Sa source `.c` est versionnée,
     # lui ne l'est pas — il naît d'un `gcc` local. Un exécutable ELF n'a rien à
     # faire sur une racine servie, et celui-ci y était depuis une date que
@@ -124,37 +119,19 @@ EXCLUS=(
 # Ici c'est l'inverse. Tout fichier de l'arbre assemblé que git ignore fait
 # ÉCHOUER l'assemblage, sauf s'il est couvert par un préfixe de cette liste —
 # où chaque entrée porte la raison pour laquelle elle est servie.
-IGNORES_SERVIS=(
-    # Les dépendances PHP du lab. Le service ne démarre pas sans elles, et
-    # `composer install` ne tourne pas sur la machine servie.
-    "demo/lab/vendor/"
-)
+# Vide : rien de ce que git ignore n'est servi depuis cette racine.
+IGNORES_SERVIS=()
 
 # ⚠️ **L'état de l'instance ne se déploie pas.** `storage/` porte ce que la
 # démonstration a produit chez elle ; le poser depuis un poste écraserait des
 # données vivantes par celles d'un développeur — la même erreur que le
 # catalogue SelfAct, corrigée le 21/08/2026 en déplaçant le fichier. Ici le
 # répertoire doit exister à la destination, mais son contenu lui appartient.
-# 🔑 `demo/lab/data/` relève du même régime, et l'oubli s'est vu le 22/08/2026 :
-# l'assemblage y prenait `.blindkey`, `.sitesalt` et `.serversecret` — les trois
-# secrets que `lib/secret_instance.php` tire au premier démarrage, propres à ce
-# déploiement. Les poser depuis un poste remplacerait le sel qui vérifie les mots
-# de passe, la clé qui chiffre les coffres et le secret qui signe les jetons
-# anti-CSRF : plus personne ne se connecte, ce qui était chiffré devient
-# illisible, et les formulaires ouverts sont refusés.
-# ⚠️ Un seul fichier de ce répertoire est écrit par DEUX identités : `lab.db`, que
-# le site sert et que `selfrecover-su` administre. Les trois secrets, eux, sont
-# posés en 0600 par le premier qui démarre et personne d'autre n'a à les lire.
-# Le code ne peut pas régler ce partage — `SecretInstance` crée le répertoire en
-# 0700 et `Db` en 0750, chacun pour son créateur : il se règle à l'exploitation,
-# par un groupe commun et le bit setgid. Sans ce geste, la console tombe sur
-# « n'est pas inscriptible par … » et le site continue de servir. Le répertoire est nommé ici plutôt que dans EXCLUS
-# parce que ce n'est pas de l'outillage — c'est de la donnée vivante.
 #
-# La leçon vaut au-delà de ces deux lignes : une exclusion nommée répertoire par
+# La leçon vaut au-delà de ce tableau : une exclusion nommée répertoire par
 # répertoire se périme dès qu'un module naît. Les INTERDITS plus bas sont ce qui
 # rattrape l'oubli suivant.
-ETAT_INSTANCE=( "storage/*" "/demo/lab/data/*" )
+ETAT_INSTANCE=( "storage/*" )
 EXCLUS_MOTIF=(
     "*.md" "*.pyc" "composer.json" "composer.lock" "package.json"
     "package-lock.json" ".gitignore" ".gitattributes" ".gitleaks.toml"
@@ -484,11 +461,10 @@ poser() {
 
     local code=0
     rsync -a --no-perms --no-owner --no-group "$source/" "$racine/" || code=1
-    # 🔑 Le code revient au site ; l'état de l'instance garde ses groupes. Le
-    # partage de `demo/lab/data/` entre le site et la console SU tient à un
-    # groupe commun posé à la main (voir ETAT_INSTANCE), qu'un `chown -R` de la
-    # racine défait. Un répertoire d'état ne reçoit que son propriétaire : créé
-    # par rsync, il appartiendrait à root et le site ne pourrait pas y écrire.
+    # 🔑 Le code revient au site ; l'état de l'instance garde les groupes que
+    # l'exploitation y pose, et qu'un `chown -R` de la racine déferait. Un
+    # répertoire d'état ne reçoit que son propriétaire : créé par rsync, il
+    # appartiendrait à root et le site ne pourrait pas y écrire.
     local etat=() e
     for e in "${ETAT_INSTANCE[@]}"; do
         e="${e%/\*}"
@@ -513,36 +489,6 @@ poser() {
 
 # ═══ verifier ═══════════════════════════════════════════════════════════════
 
-# 🔑 Les adresses contrôlées sont DÉDUITES de la table, pas recopiées à côté
-# d'elle : un module qu'on inscrit pour la substitution entre du même geste dans
-# le contrôle. Une seconde liste écrite à la main finirait par ne plus décrire
-# la première — c'est le défaut que ce script tout entier existe pour empêcher.
-# ── Ce que chaque domaine doit répondre ─────────────────────────────────────
-#
-# 🔑 **Un domaine protégé n'est pas un domaine en panne.** `lab` est derrière une
-# authentification Basic : il répond 401, et c'est son bon fonctionnement. Tant
-# que la sonde exigeait 200 partout, elle sortait en échec à chaque pose — donc
-# pour toujours, sur un défaut qui n'existait pas. Une alarme qui hurle sans
-# discontinuer cesse d'être lue, et le jour où un vrai service tombe, son rouge
-# ressemble au rouge de la veille.
-#
-# Attendre le 401 fait mieux que taire le bruit : la sonde éprouve désormais la
-# protection elle-même. Si `lab` répondait 200, c'est CELA qu'il faudrait
-# signaler — la Basic Auth aurait sauté.
-lire_codes() {
-    cat <<'CODES'
-lab.my-self.fr    401
-CODES
-}
-
-code_attendu() { # code_attendu <hôte> → le code HTTP attendu, 200 par défaut
-    local hote code
-    while read -r hote code; do
-        [ "$hote" = "$1" ] && { echo "$code"; return; }
-    done < <(lire_codes)
-    echo 200
-}
-
 # Surchargeable : un garde-fou ne peut éprouver cette fonction qu'en lui mentant
 # sur ce que le réseau répond.
 sonde_http() { # sonde_http <url> → écrit le code HTTP obtenu
@@ -552,8 +498,12 @@ sonde_http() { # sonde_http <url> → écrit le code HTTP obtenu
          --max-time 15 "$1?verif=$RANDOM"
 }
 
+# 🔑 Les adresses contrôlées sont DÉDUITES de la table, pas recopiées à côté
+# d'elle : un module qu'on inscrit pour la substitution entre du même geste dans
+# le contrôle. Une seconde liste écrite à la main finirait par ne plus décrire
+# la première — c'est le défaut que ce script tout entier existe pour empêcher.
 verifier() {
-    local souci=0 code attendu u domaine hote adresses=("https://my-self.fr/")
+    local souci=0 code u domaine adresses=("https://my-self.fr/")
     local sonde="${MYSELF_SONDE:-sonde_http}"
     while read -r _ domaine; do
         [ -n "$domaine" ] && adresses+=("https://$domaine/")
@@ -564,15 +514,11 @@ verifier() {
 
     echo "▸ Ce que chaque domaine doit répondre"
     for u in "${adresses[@]}"; do
-        hote="${u#https://}"; hote="${hote%%/*}"
-        attendu=$(code_attendu "$hote")
         code=$("$sonde" "$u")
-        if [ "$code" != "$attendu" ]; then
-            printf "  ✗  %-48s %s (attendu %s)\n" "$u" "$code" "$attendu"; souci=1
-        elif [ "$attendu" = 200 ]; then
+        if [ "$code" = 200 ]; then
             printf "  ✓  %-48s %s\n" "$u" "$code"
         else
-            printf "  ✓  %-48s %s — protégé, c'est l'attendu\n" "$u" "$code"
+            printf "  ✗  %-48s %s (attendu 200)\n" "$u" "$code"; souci=1
         fi
     done
     return $souci

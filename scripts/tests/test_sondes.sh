@@ -197,21 +197,21 @@ else
     nok "le verdict ne distingue pas « non mesuré » de « divergent »"
 fi
 
-# ── 4. ecart-instance.sh — ce qui est servi exprès n'est pas orphelin ───────
+# ── 4. ecart-instance.sh — une liste IGNORES_SERVIS vide ne filtre rien ─────
 #
-# `IGNORES_SERVIS` n'était pas lu. Gitignorés, les fichiers qu'il couvre sont
-# absents de `git ls-files`, donc du périmètre comme du hors-périmètre : le `find`
-# distant les remontait tous en ORPHELIN. Dix faux pour un vrai.
+# `IGNORES_SERVIS` est vide dans le déployeur : rien d'ignoré n'est servi. La
+# lecture doit tenir — un tableau vide est déclaré, pas disparu — et chaque
+# inconnu doit sortir en orphelin. Un filtre bâti sur une liste vide qui
+# retiendrait TOUT rendrait zéro orphelin, annoncé comme une mesure.
 #
-# Ce faux `ssh` rend un `find` contenant les deux : un fichier servi exprès, et un
-# véritable inconnu. Seul le second doit sortir.
-echo "▸ ecart-instance.sh — un fichier servi exprès ne doit pas sortir orphelin"
+# Ce faux `ssh` rend un `find` contenant deux fichiers qu'aucune liste ne couvre.
+echo "▸ ecart-instance.sh — une liste IGNORES_SERVIS vide ne filtre rien"
 mkdir -p "$BAC/bin4"
 cat > "$BAC/bin4/ssh" <<'FAUXSSH'
 #!/bin/sh
 case "$*" in
     *sha256sum*) while IFS= read -r f; do printf 'ABSENT  %s\n' "$f"; done; exit 0 ;;
-    *find*)      printf 'demo/lab/vendor/autoload.php\nintrus-jamais-versionne.php\n'; exit 0 ;;
+    *find*)      printf 'demo/inconnu/vendor/autoload.php\nintrus-jamais-versionne.php\n'; exit 0 ;;
     *)           exit 0 ;;
 esac
 FAUXSSH
@@ -219,15 +219,16 @@ chmod +x "$BAC/bin4/ssh"
 
 texte="$( cd "$RACINE" && PATH="$BAC/bin4:$PATH" MYSELF_INSTANCE="$BAC/instance.map" \
           bash "$ECART" 2>&1 || true )"
-if printf '%s\n' "$texte" | grep -q 'ORPHELIN.*intrus-jamais-versionne'; then
-    ok "l'intrus réel sort bien en orphelin"
+if printf '%s\n' "$texte" | grep -q 'IGNORES_SERVIS introuvable'; then
+    nok "la lecture refuse un IGNORES_SERVIS déclaré vide"
 else
-    nok "témoin : l'intrus réel ne sort pas — le filtre emporte tout"
+    ok "un IGNORES_SERVIS déclaré vide se lit"
 fi
-if printf '%s\n' "$texte" | grep -q 'ORPHELIN.*demo/lab/vendor'; then
-    nok "un fichier d'IGNORES_SERVIS sort en orphelin"
+if printf '%s\n' "$texte" | grep -q 'ORPHELIN.*intrus-jamais-versionne' \
+   && printf '%s\n' "$texte" | grep -q 'ORPHELIN.*demo/inconnu/vendor'; then
+    ok "les deux inconnus sortent en orphelin"
 else
-    ok "les fichiers d'IGNORES_SERVIS ne sortent plus en orphelin"
+    nok "un inconnu ne sort pas en orphelin — le filtre retient ce qu'aucune liste ne couvre"
 fi
 
 # ── Verdict ─────────────────────────────────────────────────────────────────

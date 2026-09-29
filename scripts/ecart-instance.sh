@@ -110,10 +110,9 @@ motif_vers_regex() {
 }
 
 # ⚠️ Chaque tableau se contrôle pour lui-même. Un plancher global laissait
-# disparaître le plus petit sans un mot : `ETAT_INSTANCE` renommé, ce sont
-# `storage/*` et `/demo/lab/data/*` qui rentrent dans le périmètre — donc les
-# sels et clés propres au déploiement du lab, comparés comme des fichiers
-# ordinaires. Vingt-neuf motifs sur trente et un passaient le seuil.
+# disparaître le plus petit sans un mot : `ETAT_INSTANCE` renommé, c'est
+# `storage/*` qui rentre dans le périmètre — donc les données vivantes de
+# l'instance, comparées comme des fichiers ordinaires.
 FRAGMENTS=()
 for tableau in EXCLUS ETAT_INSTANCE EXCLUS_MOTIF; do
     lus=0
@@ -126,25 +125,25 @@ for tableau in EXCLUS ETAT_INSTANCE EXCLUS_MOTIF; do
         exit 1; }
 done
 
-# ⚠️ `IGNORES_SERVIS` n'était pas lu du tout, et ses fichiers sortaient en
-# ORPHELIN : gitignorés, ils sont absents de `git ls-files`, donc du périmètre
-# comme du hors-périmètre, donc de `connus`. Or ils sont servis **délibérément** —
-# les dépendances PHP du lab, que `composer install` ne produit pas sur la machine
-# servie. Dix faux orphelins à chaque exécution, pour un seul vrai : une sonde qui
-# crie dix fois à tort emporte son unique constat utile avec elle.
+# ⚠️ Les fichiers d'`IGNORES_SERVIS` sont gitignorés : absents de `git ls-files`,
+# donc du périmètre comme du hors-périmètre, donc de `connus`. Non filtrés, ils
+# sortiraient en ORPHELIN alors qu'ils sont servis **délibérément** — et une sonde
+# qui crie à tort emporte ses constats utiles avec elle.
 #
-# 🔑 Le garde n'est pas décoratif. Sans lui, un tableau disparu donnerait un motif
-# vide, que `grep -vE ""` accepte en filtrant TOUT : zéro orphelin, et le verdict
-# l'annoncerait comme une mesure.
+# 🔑 Deux gardes, parce qu'un tableau vide et un tableau disparu ne se valent pas.
+# Vide, il est déclaré : rien d'ignoré n'est servi, et `^$` ne filtre que les
+# lignes vides. Disparu, il donnerait un motif vide, que `grep -vE ""` accepte en
+# filtrant TOUT : zéro orphelin, et le verdict l'annoncerait comme une mesure.
+grep -q '^IGNORES_SERVIS=(' "$DEPLOY" || {
+    echo "❌ Tableau IGNORES_SERVIS introuvable dans $DEPLOY — lecture en échec." >&2
+    exit 1; }
 SERVIS_FRAGMENTS=()
 while IFS= read -r prefixe; do
     [ -n "$prefixe" ] || continue
     SERVIS_FRAGMENTS+=("^${prefixe//./\\.}")
 done < <(lire_tableau IGNORES_SERVIS)
-[ "${#SERVIS_FRAGMENTS[@]}" -gt 0 ] || {
-    echo "❌ Tableau IGNORES_SERVIS vide ou introuvable dans $DEPLOY — lecture en échec." >&2
-    exit 1; }
-SERVIS_RE="$(IFS='|'; printf '%s' "${SERVIS_FRAGMENTS[*]}")"
+SERVIS_RE='^$'
+[ "${#SERVIS_FRAGMENTS[@]}" -eq 0 ] || SERVIS_RE="$(IFS='|'; printf '%s' "${SERVIS_FRAGMENTS[*]}")"
 
 # ⚠️ Une lecture qui échoue ne doit pas passer pour un périmètre. Zéro motif
 # donnerait un regex vide, que `grep -vE` accepte en ne filtrant rien : le

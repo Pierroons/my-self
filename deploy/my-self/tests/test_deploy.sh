@@ -70,10 +70,10 @@ HTML
     # parte : seul le témoin de présence est gardé.
     touch "$BAC/depot/demo/selfdataguard/storage/.gitkeep"
 
-    # Les secrets du lab et les réponses de son CTF. Aucun n'est suivi par git,
-    # et c'est exactement pourquoi ils doivent être posés ici : `.gitignore` ne
-    # retient pas un `rsync`, donc le banc doit reproduire un disque, pas un
-    # dépôt. Sans ces cinq fichiers, le cas 5 ter mesurerait le vide.
+    # Le lab : son code, ses secrets d'instance, les réponses de son CTF. Seul le
+    # code est suivi par git ; le reste est posé ici parce que `.gitignore` ne
+    # retient pas un `rsync` — le banc reproduit un disque, pas un dépôt. Sans
+    # ces fichiers, le cas 5 ter mesurerait le vide.
     mkdir -p "$BAC/depot/demo/lab/data" "$BAC/depot/demo/lab/challenge"
     echo "sel-de-l-instance"  > "$BAC/depot/demo/lab/data/.sitesalt"
     echo "cle-de-chiffrement" > "$BAC/depot/demo/lab/data/.blindkey"
@@ -225,27 +225,21 @@ else
     nok "storage/ : $(ls "$BAC/dist/demo/selfdataguard/storage" 2>/dev/null | paste -sd' ') — la donnée du poste écraserait celle de l'instance"
 fi
 
-# ── 5 ter — les secrets du lab ne voyagent pas ──────────────────────────────
+# ── 5 ter — rien du lab ne part ─────────────────────────────────────────────
 echo
-echo "▸ Les secrets d'un lab public"
-# 🔑 Mesuré le 22/08/2026 : l'assemblage emportait `.blindkey`, `.sitesalt` et
-# `.serversecret` de `demo/lab/data/`, que le code du lab décrit lui-même comme
-# « propre à ce déploiement ». Les poser aurait remplacé le sel qui vérifie les
-# mots de passe et la clé qui chiffre les coffres — plus personne ne se connecte,
-# et ce qui était chiffré devient illisible. `flags.txt` aurait changé les
-# réponses du CTF sous les joueurs d'une partie en cours.
+echo "▸ Le lab, servi par une autre machine"
+# 🔑 L'instance publique du lab se déploie ailleurs : rien de `demo/lab/` ne part
+# d'ici — ni son code, ni ses secrets d'instance, ni les drapeaux du CTF.
 #
-# Le cas éprouve les deux protections, parce qu'elles ne se valent pas :
-# l'exclusion évite, et l'interdiction ARRÊTE si le fichier revient par un autre
-# chemin. Une exclusion seule laisserait passer le prochain module.
-emporte=""
-for f in demo/lab/data/.sitesalt demo/lab/data/.blindkey          demo/lab/data/.serversecret demo/lab/challenge/flags.txt          demo/lab/challenge/prepare.php; do
-    [ -e "$BAC/dist/$f" ] && emporte="$emporte $f"
-done
-if [ -z "$emporte" ] && [ -f "$BAC/dist/demo/lab/index.php" ]; then
-    ok "lab : le code part, les secrets et les drapeaux restent"
+# ⚠️ L'assemblage doit avoir RÉUSSI. Sans l'exclusion, les secrets du lab font
+# refuser l'arbre entier par INTERDITS : « rien du lab n'est parti » serait vrai,
+# pour une mauvaise raison, et ce cas resterait vert sur l'exclusion retirée.
+monter
+sortie=$(lancer assembler --dest "$BAC/dist"); code=$?
+if [ "$code" -eq 0 ] && [ -d "$BAC/dist/web" ] && [ ! -e "$BAC/dist/demo/lab" ]; then
+    ok "lab : rien ne part, l'arbre s'assemble"
 else
-    nok "lab : dist/ emporte$emporte$([ -f "$BAC/dist/demo/lab/index.php" ] || echo ' — et le code du lab manque')"
+    nok "lab : code $code — $(find "$BAC/dist/demo/lab" -type f 2>/dev/null | sed "s|$BAC/dist/||" | paste -sd' ')"
 fi
 
 # 🔑 Les bretelles, seules. Un secret déposé AILLEURS que dans le répertoire
@@ -320,7 +314,6 @@ echo "▸ Une instance qui nomme ses propres domaines"
 monter
 cat > "$BAC/table-dev" <<'TABLE'
 justice.example.org    dev-justice.autre.invalid
-lab.example.org        dev-lab.autre.invalid
 ctf.example.org        dev-ctf.autre.invalid
 bi-self.example.org    dev-bi-self.autre.invalid
 dataguard.example.org  dev-dataguard.autre.invalid
@@ -380,15 +373,7 @@ else
     nok "sans --appliquer : $avant → $apres, et rien n'annonce un plan — le mode a disparu"
 fi
 
-# ── 9 — un domaine protégé n'est pas un domaine en panne ────────────────────
-#
-# 🔑 Ces cas existent parce que `verifier` exigeait 200 partout, `lab` compris,
-# alors que `lab` est derrière une authentification Basic et répond 401. La sonde
-# sortait donc en échec à chaque pose — indéfiniment, sur un défaut inexistant.
-#
-# ⚠️ Le cas qui compte n'est pas celui où `lab` rend 401 : c'est celui où il rend
-# 200. Une sonde qui accepterait les deux ne mesurerait plus rien, et la
-# disparition de la Basic Auth passerait pour une bonne nouvelle.
+# ── 9 — la sonde exige 200 ──────────────────────────────────────────────────
 echo
 echo "▸ Le code attendu, par domaine"
 monter
@@ -407,40 +392,44 @@ chmod +x "$BAC/faux-sonde"
 sonder() { FAUX_CODES="$1" MYSELF_SONDE="$BAC/faux-sonde" \
            bash "$BAC/depot/deploy/my-self/deploy.sh" verifier 2>&1; }
 
-sortie=$(sonder "lab.test.invalid 401"); code=$?
-if [ "$code" -eq 0 ] && grep -q "401 — protégé" <<<"$sortie"; then
-    ok "lab répond 401 : accepté, et dit protégé"
+sortie=$(sonder ""); code=$?
+# `dataguard` : un domaine que seule la table apporte. `justice` figure aussi
+# dans l'adresse écrite en dur plus bas, et ne prouverait rien.
+if [ "$code" -eq 0 ] && grep -q "https://dataguard.test.invalid/" <<<"$sortie"; then
+    ok "tout en 200 : accepté, domaines de la table sondés"
 else
-    nok "lab répond 401 mais la sonde n'est pas satisfaite (sortie $code)"
-fi
-
-sortie=$(sonder "lab.test.invalid 200"); code=$?
-if [ "$code" -ne 0 ] && grep -q "attendu 401" <<<"$sortie"; then
-    ok "lab répond 200 : REFUSÉ — la protection aurait sauté"
-else
-    nok "lab répond 200 sans que la sonde bronche : elle n'éprouve plus la Basic Auth"
+    nok "tout en 200 mais la sonde n'est pas satisfaite (sortie $code)"
 fi
 
 sortie=$(sonder "justice.test.invalid 502"); code=$?
 if [ "$code" -ne 0 ] && grep -q "attendu 200" <<<"$sortie"; then
-    ok "un domaine ordinaire en 502 : refusé"
+    ok "un domaine en 502 : refusé"
 else
     nok "un 502 sur justice passe inaperçu"
 fi
 
+# ⚠️ Un 401 n'est pas un succès : aucun domaine de la table n'est protégé. Une
+# Basic Auth posée par erreur devant un site public doit se voir.
+sortie=$(sonder "justice.test.invalid 401"); code=$?
+if [ "$code" -ne 0 ] && grep -q "attendu 200" <<<"$sortie"; then
+    ok "un domaine en 401 : refusé"
+else
+    nok "un 401 sur justice passe pour un succès"
+fi
+
 # ── 10 — la pose rend le code au site, et laisse à l'instance ses groupes ────
 #
-# 🔑 `demo/lab/data/` est partagé entre le site et la console SU par un groupe
-# commun posé à la main : la pose doit le laisser. Ce banc ne tourne pas en
-# root : `id` et `chown` sont remplacés par des témoins, et `chown` écrit dans
-# un journal ce qu'on lui demande au lieu de le faire.
+# 🔑 L'état de l'instance porte les groupes que l'exploitation y pose : la pose
+# doit les laisser. Ce banc ne tourne pas en root : `id` et `chown` sont
+# remplacés par des témoins, et `chown` écrit dans un journal ce qu'on lui
+# demande au lieu de le faire.
 echo
 echo "▸ La pose ne touche pas aux groupes de l'état de l'instance"
 monter
 lancer assembler --dest "$BAC/dist" >/dev/null
 rm -rf "$BAC/www"; mkdir -p "$BAC/www/web/my-self.fr" "$BAC/www/self-right/selfact/api" \
-    "$BAC/www/demo/lab/data" "$BAC/www/demo/selfdataguard/storage"
-touch "$BAC/www/self-right/selfact/api/directives.md" "$BAC/www/demo/lab/data/lab.db" \
+    "$BAC/www/demo/selfdataguard/storage"
+touch "$BAC/www/self-right/selfact/api/directives.md" \
     "$BAC/www/demo/selfdataguard/storage/demo.sqlite"
 mkdir -p "$BAC/temoins"
 cat > "$BAC/temoins/id" <<'ID'
@@ -472,7 +461,7 @@ couvert() { # couvert <chemin> <motif de spec> → 0 si un chown l'atteint avec 
     } END { exit !t }' "$BAC/chown.log"
 }
 touche=""
-for c in demo/lab/data demo/lab/data/lab.db demo/selfdataguard/storage demo/selfdataguard/storage/demo.sqlite; do
+for c in demo/selfdataguard/storage demo/selfdataguard/storage/demo.sqlite; do
     couvert "$BAC/www/$c" ':' && touche="$touche $c"
 done
 if [ ! -s "$BAC/chown.log" ]; then
@@ -483,7 +472,7 @@ else
     ok "l'état de l'instance garde son groupe"
 fi
 if couvert "$BAC/www/web/my-self.fr/index.html" '^www-data:www-data$' \
-   && couvert "$BAC/www/demo/lab/data" '^www-data$'; then
+   && couvert "$BAC/www/demo/selfdataguard/storage" '^www-data$'; then
     ok "le code revient à www-data:www-data, les répertoires d'état à www-data"
 else
     nok "la pose ne rend plus au site son code, ou un répertoire d'état créé par root lui resterait"
@@ -518,18 +507,23 @@ fi
 # ── Et ce qui est déclaré servi passe ──────────────────────────────────────
 #
 # Le contre-témoin : sans lui, un filet qui refuse TOUT rendrait les deux
-# contrôles ci-dessus verts en cassant le déploiement.
+# contrôles ci-dessus verts en cassant le déploiement. `IGNORES_SERVIS` est vide
+# dans le script : le banc inscrit une entrée dans sa copie.
 echo
 echo "▸ Un ignoré déclaré servi traverse"
 monter
-mkdir -p "$BAC/depot/demo/lab/vendor/composer"
-echo "<?php // dépendance" > "$BAC/depot/demo/lab/vendor/composer/ClassLoader.php"
-printf 'demo/lab/vendor/\n' >> "$BAC/depot/.gitignore"
+sed -i 's|^IGNORES_SERVIS=()|IGNORES_SERVIS=( "web/my-self.fr/vendor/" )|' \
+    "$BAC/depot/deploy/my-self/deploy.sh"
+mkdir -p "$BAC/depot/web/my-self.fr/vendor"
+echo "<?php // dépendance" > "$BAC/depot/web/my-self.fr/vendor/ClassLoader.php"
+printf 'web/my-self.fr/vendor/\n' >> "$BAC/depot/.gitignore"
 sortie=$(lancer assembler --dest "$BAC/dist"); code=$?
-if [ "$code" -eq 0 ] && [ -f "$BAC/dist/demo/lab/vendor/composer/ClassLoader.php" ]; then
-    ok "les dépendances du lab passent — elles sont dans IGNORES_SERVIS"
+if ! grep -q '^IGNORES_SERVIS=( "web/my-self.fr/vendor/" )' "$BAC/depot/deploy/my-self/deploy.sh"; then
+    nok "le banc n'a pas pu inscrire son entrée : la déclaration IGNORES_SERVIS=() a changé de forme"
+elif [ "$code" -eq 0 ] && [ -f "$BAC/dist/web/my-self.fr/vendor/ClassLoader.php" ]; then
+    ok "un ignoré inscrit dans IGNORES_SERVIS passe"
 else
-    nok "un ignoré DÉCLARÉ servi a été refusé (code $code) : le lab ne démarrerait pas"
+    nok "un ignoré DÉCLARÉ servi a été refusé (code $code)"
 fi
 
 
