@@ -428,6 +428,67 @@ else
     nok "un 502 sur justice passe inaperçu"
 fi
 
+# ── 10 — la pose rend le code au site, et laisse à l'instance ses groupes ────
+#
+# 🔑 `demo/lab/data/` est partagé entre le site et la console SU par un groupe
+# commun posé à la main : la pose doit le laisser. Ce banc ne tourne pas en
+# root : `id` et `chown` sont remplacés par des témoins, et `chown` écrit dans
+# un journal ce qu'on lui demande au lieu de le faire.
+echo
+echo "▸ La pose ne touche pas aux groupes de l'état de l'instance"
+monter
+lancer assembler --dest "$BAC/dist" >/dev/null
+rm -rf "$BAC/www"; mkdir -p "$BAC/www/web/my-self.fr" "$BAC/www/self-right/selfact/api" \
+    "$BAC/www/demo/lab/data" "$BAC/www/demo/selfdataguard/storage"
+touch "$BAC/www/self-right/selfact/api/directives.md" "$BAC/www/demo/lab/data/lab.db" \
+    "$BAC/www/demo/selfdataguard/storage/demo.sqlite"
+mkdir -p "$BAC/temoins"
+cat > "$BAC/temoins/id" <<'ID'
+#!/bin/sh
+[ "$1" = "-u" ] && { echo 0; exit 0; }
+exec /usr/bin/id "$@"
+ID
+cat > "$BAC/temoins/chown" <<'CHOWN'
+#!/bin/sh
+r= spec=
+for a; do
+    case "$a" in
+        -R) r=" -R" ;;
+        -*) ;;
+        *) if [ -z "$spec" ]; then spec=$a; else echo "$spec$r $a"; fi ;;
+    esac
+done >> "$JOURNAL_CHOWN"
+CHOWN
+chmod +x "$BAC/temoins/id" "$BAC/temoins/chown"
+: > "$BAC/chown.log"
+PATH="$BAC/temoins:$PATH" JOURNAL_CHOWN="$BAC/chown.log" \
+    lancer poser "$BAC/dist" --racine "$BAC/www" --appliquer >/dev/null
+# Un chemin est couvert par une ligne du journal s'il y est nommé, ou si un de
+# ses parents y est nommé avec -R.
+couvert() { # couvert <chemin> <motif de spec> → 0 si un chown l'atteint avec ce spec
+    awk -v c="$1" -v m="$2" '$1 ~ m {
+        p = $NF; r = ($2 == "-R")
+        if (p == c || (r && index(c "/", p "/") == 1)) { t = 1 }
+    } END { exit !t }' "$BAC/chown.log"
+}
+touche=""
+for c in demo/lab/data demo/lab/data/lab.db demo/selfdataguard/storage demo/selfdataguard/storage/demo.sqlite; do
+    couvert "$BAC/www/$c" ':' && touche="$touche $c"
+done
+if [ ! -s "$BAC/chown.log" ]; then
+    nok "la pose n'a appelé aucun chown : le cas n'a rien mesuré"
+elif [ -n "$touche" ]; then
+    nok "la pose change le groupe de l'état de l'instance :$touche"
+else
+    ok "l'état de l'instance garde son groupe"
+fi
+if couvert "$BAC/www/web/my-self.fr/index.html" '^www-data:www-data$' \
+   && couvert "$BAC/www/demo/lab/data" '^www-data$'; then
+    ok "le code revient à www-data:www-data, les répertoires d'état à www-data"
+else
+    nok "la pose ne rend plus au site son code, ou un répertoire d'état créé par root lui resterait"
+fi
+
 echo
 # ── Un fichier ignoré par git n'atteint pas la racine servie ───────────────
 #

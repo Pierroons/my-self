@@ -484,7 +484,21 @@ poser() {
 
     local code=0
     rsync -a --no-perms --no-owner --no-group "$source/" "$racine/" || code=1
-    chown -R www-data:www-data "$racine" 2>/dev/null || true
+    # 🔑 Le code revient au site ; l'état de l'instance garde ses groupes. Le
+    # partage de `demo/lab/data/` entre le site et la console SU tient à un
+    # groupe commun posé à la main (voir ETAT_INSTANCE), qu'un `chown -R` de la
+    # racine défait. Un répertoire d'état ne reçoit que son propriétaire : créé
+    # par rsync, il appartiendrait à root et le site ne pourrait pas y écrire.
+    local etat=() e
+    for e in "${ETAT_INSTANCE[@]}"; do
+        e="${e%/\*}"
+        case "$e" in
+            /*) etat+=(-path "$racine$e" -o) ;;
+            *)  etat+=(-path "*/$e" -o) ;;
+        esac
+    done
+    find "$racine" \( "${etat[@]}" -false \) -prune -exec chown www-data {} + \
+        -o -exec chown -h www-data:www-data {} + 2>/dev/null || true
 
     if [ "$deverrouille" -eq 1 ]; then
         trap - EXIT
