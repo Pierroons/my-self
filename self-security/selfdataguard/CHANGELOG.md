@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed — concurrent audit appends broke the chain
+
+`AuditLog::append()` read the chain outside the lock that guarded its write. Two
+processes appending at the same moment took the same `seq` and `prev`, and `verify()`
+failed from that entry on — measured: four writers of 150 appends each broke the chain
+at its second entry, on every run. The read and the append now happen under one
+exclusive lock. `tests/sanity_audit.php` gains the four-writer case. No format change:
+existing logs verify as before.
+
 ### Documentation — two ways to lose a vault that nothing announced
 
 - **A password-only vault does not survive a SelfRecover recovery.** `register()` without

@@ -28,6 +28,11 @@ require_once __DIR__ . '/device.php';
 // Alerte sortante sur rapport red team. Inactive tant que l'environnement ne
 // porte pas ses identifiants — jamais au dépôt, qui est public.
 require_once __DIR__ . '/notify.php';
+// Le ban automatique s'arme avec son journal : sans lui, SelfModerate signale et
+// l'arbitre tranche. Armé ici, et non dans la façade que chargent aussi le
+// simulateur d'attaques et les bancs, qui n'ont rien à écrire au journal du site.
+require_once __DIR__ . '/journal_moderation.php';
+\Pierroons\SelfModerate\Moderate::setJournal(new \Pierroons\MySelfLab\JournalModeration());
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Auth;

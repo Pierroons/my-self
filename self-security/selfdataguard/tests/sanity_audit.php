@@ -149,6 +149,38 @@ AuditLog::PLANCHER_SECRET === 32
 
 // -----------------------------------------------------------------------------
 
+section('Concurrent writers keep one chain');
+
+// Four processes append to the same log at once. Without the lock around the
+// read-then-append, two of them read the same tail and write the same `seq`:
+// the chain breaks at the first collision.
+$shared  = tempnam(sys_get_temp_dir(), 'dg_audit_conc_');
+$writers = 4;
+$each    = 150;
+$child   = sprintf(
+    'require %s; $l = new Pierroons\SelfDataGuard\Escrow\AuditLog(%s, %s);'
+    . ' for ($i = 0; $i < %d; $i++) { $l->append(["writer" => getmypid(), "n" => $i]); }',
+    var_export(realpath(__DIR__ . '/../src/autoload.php'), true),
+    var_export($shared, true),
+    var_export($secret, true),
+    $each
+);
+$procs = [];
+for ($w = 0; $w < $writers; $w++) {
+    $procs[] = proc_open([PHP_BINARY, '-r', $child], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+}
+$childFailures = 0;
+foreach ($procs as $proc) {
+    $childFailures += proc_close($proc) === 0 ? 0 : 1;
+}
+$r = (new AuditLog($shared, $secret))->verify();
+$childFailures === 0 && $r['ok'] && $r['count'] === $writers * $each
+    ? ok(sprintf('%d writers × %d appends: one unbroken chain of %d entries', $writers, $each, $r['count']))
+    : ko('concurrent appends broke the chain', json_encode($r + ['child_failures' => $childFailures]));
+@unlink($shared);
+
+// -----------------------------------------------------------------------------
+
 echo "\n";
 echo "═══════════════════════════════════════════════════════════════\n";
 echo "  AuditLog Sanity — {$passes} passed, {$failures} failed\n";

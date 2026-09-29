@@ -61,25 +61,41 @@ final class AuditLog
      */
     public function append(array $event): array
     {
-        $entries = $this->readAll();
-        $prev    = $entries === [] ? '' : (string) end($entries)['hmac'];
-
-        $signable = [
-            'seq'   => count($entries),
-            'ts'    => (new DateTimeImmutable())->format('c'),
-            'event' => $event,
-            'prev'  => $prev,
-        ];
-        $record = $signable + ['hmac' => $this->hmac($signable)];
-
-        $line = json_encode($record, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        if ($line === false) {
-            throw new RuntimeException('Failed to encode audit record');
+        // 🔑 The chain is read and extended under ONE exclusive lock. Read outside
+        // it, two concurrent writers computed the same `seq` and `prev`, and the
+        // second entry broke verification for every entry after it.
+        $handle = @fopen($this->path, 'a');
+        if ($handle === false) {
+            throw new RuntimeException("Cannot open audit log at {$this->path}");
         }
-        if (file_put_contents($this->path, $line . "\n", FILE_APPEND | LOCK_EX) === false) {
-            throw new RuntimeException("Cannot append to audit log at {$this->path}");
+        try {
+            if (!flock($handle, LOCK_EX)) {
+                throw new RuntimeException("Cannot lock audit log at {$this->path}");
+            }
+            $entries = $this->readAll();
+            $prev    = $entries === [] ? '' : (string) end($entries)['hmac'];
+
+            $signable = [
+                'seq'   => count($entries),
+                'ts'    => (new DateTimeImmutable())->format('c'),
+                'event' => $event,
+                'prev'  => $prev,
+            ];
+            $record = $signable + ['hmac' => $this->hmac($signable)];
+
+            $line = json_encode($record, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if ($line === false) {
+                throw new RuntimeException('Failed to encode audit record');
+            }
+            $line .= "\n";
+            if (fwrite($handle, $line) !== strlen($line) || !fflush($handle)) {
+                throw new RuntimeException("Cannot append to audit log at {$this->path}");
+            }
+            return $record;
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
         }
-        return $record;
     }
 
     /**

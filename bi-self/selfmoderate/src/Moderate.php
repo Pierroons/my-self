@@ -122,6 +122,12 @@ class Moderate
         self::$journal = $journal;
     }
 
+    /** Le journal branché, pour qui doit le suspendre le temps d'une simulation. */
+    public static function journal(): ?Journal
+    {
+        return self::$journal;
+    }
+
     /** Le bannissement automatique est-il armé sur ce déploiement ? */
     public static function banAutomatiqueArme(): bool
     {

@@ -43,13 +43,21 @@ final class AttackSimulator
 
     public static function run(string $scenario): array
     {
-        return match ($scenario) {
-            'dump'       => self::runDumpBase(),
-            'bruteforce' => self::runBruteforce(),
-            'packvoting' => self::runPackVoting(),
-            'csrf'       => self::runCsrf(),
-            default      => ['ok' => false, 'message' => 'Scénario inconnu.'],
-        };
+        // La sandbox est jetable : ses bans simulés n'ont pas leur place au
+        // journal de modération du site.
+        $journal = Moderate::journal();
+        Moderate::setJournal(null);
+        try {
+            return match ($scenario) {
+                'dump'       => self::runDumpBase(),
+                'bruteforce' => self::runBruteforce(),
+                'packvoting' => self::runPackVoting(),
+                'csrf'       => self::runCsrf(),
+                default      => ['ok' => false, 'message' => 'Scénario inconnu.'],
+            };
+        } finally {
+            Moderate::setJournal($journal);
+        }
     }
 
     // ─── Scénario 1 : exfiltration de la base ────────────────────────────────

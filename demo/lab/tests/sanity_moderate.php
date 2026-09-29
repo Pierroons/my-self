@@ -755,6 +755,31 @@ $leve !== null && (int) etatBan($pdo, $sansTrace)['banned_until'] === 0
     ? ok('un journal en panne empêche le ban : l\'exception remonte et la base n\'a rien reçu')
     : nok('ban posé sans trace, ou panne avalée : ' . json_encode([$leve, etatBan($pdo, $sansTrace)]));
 
+// ── 35. Le journal du lab : une chaîne signée, lisible par le groupe ────────
+require_once __DIR__ . '/../lib/journal_moderation.php';
+require_once __DIR__ . '/../lib/attack_sim.php';
+putenv("LAB_MODAUDIT_PATH=$dir/modaudit");
+$journalLab = new Pierroons\MySelfLab\JournalModeration("$dir/moderation.log");
+$journalLab->inscrire(['acte' => 'ban_debut', 'compte' => 1, 'origine' => 'auto']);
+$journalLab->inscrire(['acte' => 'ban_fin', 'compte' => 1, 'origine' => 'auto']);
+$v = $journalLab->verifier();
+clearstatcache();
+$modeJournal = fileperms("$dir/moderation.log") & 0777;
+$v['ok'] && $v['count'] === 2 && $modeJournal === 0640
+    ? ok('le journal du lab chaîne et signe ses actes, et naît en 0640 (lisible par le groupe de la console)')
+    : nok('journal du lab : ' . json_encode($v) . ' mode ' . sprintf('%o', $modeJournal));
+
+// ── 36. Le simulateur d'attaques rend le journal du site tel qu'il l'a trouvé ─
+// ⚠️ Aucun scénario n'atteint un ban aujourd'hui : ce contrôle garde la
+// restitution du journal, pas sa suspension pendant la sandbox.
+$journalSite = new JournalDeBanc();
+Moderate::setJournal($journalSite);
+Pierroons\MySelfLab\AttackSimulator::run('packvoting');
+$journalSite->actes === [] && Moderate::journal() === $journalSite
+    ? ok('le simulateur rend le journal du site tel qu\'il l\'a trouvé')
+    : nok('le simulateur a écrit au journal du site, ou ne l\'a pas rendu : ' . count($journalSite->actes) . ' acte(s)');
+Moderate::setJournal(null);
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"
