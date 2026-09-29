@@ -54,7 +54,7 @@ Self-Security takes the two surfaces apart: **data is encrypted before it reache
 | Module | Role | Status |
 |--------|------|--------|
 | [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.4.0** — in service, 219 checks across 8 suites |
-| [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.6.0** — validated on a Debian 13 LNMP server, a laptop and an encrypted-LVM root, reproducible install |
+| [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.6.0** — reproducible install; earlier releases validated on a Debian 13 LNMP server, a laptop and an encrypted-LVM root |
 
 ---
 
@@ -62,7 +62,7 @@ Self-Security takes the two surfaces apart: **data is encrypted before it reache
 
 Both modules run. SelfDataGuard is deployed and its eight suites pass; SelfRecover-LUKS was validated over full reboot cycles — root volume plus cascading secondary volumes — and its install is documented step by step in [INSTALL.md](./selfrecover-luks/INSTALL.md).
 
-One research path is deliberately left off: unlocking a volume through a **quorum of household witnesses** (Shamir shares, with a SelfRecover fallback when the quorum is unreachable). Its code sits under [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) and was validated on throwaway images, but it is **not enabled** in v0.5.0, which unlocks by keyscript and keyfile instead.
+One research path is deliberately left off: unlocking a volume through a **quorum of household witnesses** (Shamir shares, with a SelfRecover fallback when the quorum is unreachable). Its code sits under [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) and was validated on throwaway images, but it is **not enabled**: the module unlocks by keyscript and keyfile instead.
 
 Neither module has been audited by an external cryptographer. Their design is verified today by their author and by the readers of this repository, and by no one else. Audits are welcome — see [SECURITY.md](../SECURITY.md).
 

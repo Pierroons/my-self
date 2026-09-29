@@ -23,7 +23,7 @@ what it does, how to install it, and what it does not protect.
 | Module | Question | Status |
 |---|---|---|
 | [SelfRecover](./bi-self/selfrecover/) | Who are you? | **v0.8.0** — library + deployed implementation |
-| [SelfRecover-LUKS](./self-security/selfrecover-luks/) | What if the disk is stolen? | **v0.6.0** — deployed and documented, hex key |
+| [SelfRecover-LUKS](./self-security/selfrecover-luks/) | What if the disk is stolen? | **v0.6.0** — documented, hex key |
 | [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.4.0** — in service, 219 checks, XChaCha20-Poly1305 on every CPU |
 | [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.4.1 beta** — housing, family, administrative law and administrative case law |
 | [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.3** — live, over 1,800 official resources |
