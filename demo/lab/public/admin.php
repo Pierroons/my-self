@@ -174,7 +174,8 @@ table.adm tr:last-child td{border-bottom:none}
 <!-- Comptes -->
 <div class="card">
   <h2>👥 Comptes</h2>
-  <p class="adm-warn" style="margin-top:0">⏱️ <strong>Timings réduits pour la démo</strong> (volontaire, pour test rapide) : anti-Sybil <strong>2 min</strong>, bans <strong>2 / 10 / 30 min</strong>. En production : 24 h / 24 h → 7 j → 30 j → permanent.</p>
+  <?php $enDemo = Moderate::regles(); $enService = \Pierroons\SelfModerate\Config::prod(); ?>
+  <p class="adm-warn" style="margin-top:0">⏱️ <strong>Durées de démonstration</strong> (volontaire, pour tester vite) : anti-Sybil <strong><?= h($enDemo['sybil']) ?></strong>, bans <strong><?= h($enDemo['paliers']) ?></strong>, dernier palier reconduit. En service (<code>Config::prod()</code>) : anti-Sybil <?= h(Moderate::dureeEnClair($enService->ageMinPourVoterSecondes)) ?>, bans <?= h(implode(' → ', array_map([Moderate::class, 'dureeEnClair'], $enService->dureesBan))) ?>. Jamais de ban définitif prononcé par la machine.</p>
   <table class="adm"><tr><th>ID</th><th>Identifiant</th><th>Réputation</th><th>Créé</th><th>Profil déchiffré</th><th>Modération</th></tr>
     <?php foreach ($comptes as $c): ?>
       <tr>

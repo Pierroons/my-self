@@ -90,10 +90,10 @@ return [
 
     'sec.5.h2' => '5. Moderation — SelfModerate <span class="pill">anti-manipulation</span>',
     'sec.5.body' => '<ul>'
-        . '<li>Per-member reputation (starting at 20/30), ±1 votes on posts <em>and</em> on members.</li>'
-        . '<li><strong>Anti-Sybil</strong>: an account under 24 h old with no contribution cannot vote.</li>'
-        . '<li><strong>Anti pack-voting</strong>: 3 or more coordinated downvotes within 60 s are cancelled and the reputation restored.</li>'
-        . '<li><strong>Anti upvote-farming</strong>: repeated mutual votes are neutralised. Graduated sanctions — loss of voting rights, then 24 h → 7 d → 30 d → permanent ban.</li>'
+        . '<li>Per-member reputation (starting at %1$d/%2$d), ±1 votes on posts <em>and</em> on members, a reason required for a downvote.</li>'
+        . '<li><strong>Anti-Sybil</strong>: an account under %3$s old with no contribution cannot vote.</li>'
+        . '<li><strong>Pack</strong>: voters linked to each other (private messages both ways) hitting the same target → votes cancelled, reputation restored. <strong>Burst</strong> of unlinked votes → flagged to an arbiter, nothing cancelled.</li>'
+        . '<li><strong>Anti-farming</strong>: repeated votes from one member to another are neutralised. Graduated sanctions — loss of voting rights, then a ban of %4$s; the last tier repeats, never permanent, and every ban is written to the moderation journal.</li>'
         . '</ul>',
 
     'sec.6.h2' => '6. Threat model — stated honestly',
@@ -284,15 +284,15 @@ return [
     'mod.h1'       => '🛡️ Moderation — SelfModerate',
     'mod.intro'    => 'Moderation <strong>without central authority</strong>: the community votes, automated defences counter manipulation.',
     'mod.how.h2'   => 'How it works',
-    'mod.how.body' => '<li><strong>Reputation</strong>: every member starts at 20/30. ▲▼ votes on their posts and profile make it move.</li>'
-        . '<li><strong>Anti-Sybil</strong>: an account under 24 h old with no post at all cannot vote.</li>'
-        . '<li><strong>Anti upvote-farming</strong>: more than 3 repeated upvotes towards the same member over 60 days are neutralised.</li>'
-        . '<li><strong>Anti pack-voting</strong>: 3 coordinated downvotes (&lt;60 s) on the same target are cancelled and the reputation restored.</li>'
-        . '<li><strong>Graduated sanctions</strong>: reputation &lt;5 → loss of voting rights; ≤0 → 24 h suspension, then 7 d, 30 d, permanent.</li>',
+    'mod.how.body' => '<li><strong>Reputation</strong>: every member starts at %1$d/%2$d. ▲▼ votes on their posts and profile make it move; a ▼ vote requires a reason.</li>'
+        . '<li><strong>Anti-Sybil</strong>: an account under %3$s old with no post at all cannot vote.</li>'
+        . '<li><strong>Anti-farming</strong>: beyond %4$d votes from one member to another over %5$d days, the next ones are neutralised.</li>'
+        . '<li><strong>Pack</strong>: voters linked to each other (private messages both ways) hitting the same target have their votes cancelled, and the target\'s reputation is restored. <strong>Burst</strong>: several unlinked votes in the same window are not cancelled — the target is flagged to an arbiter.</li>'
+        . '<li><strong>Graduated sanctions</strong>: reputation &lt;%6$d → loss of voting rights; at 0 → a ban of %7$s, the last tier repeats, never permanent. A ban blocks voting and posting; private messages stay open. When the ban ends, reputation goes back to %1$d.</li>',
     'mod.detect.h2'   => 'Run abuse detection',
-    'mod.detect.note' => 'Analyses recent votes and cancels any pack-voting pattern found.',
+    'mod.detect.note' => 'Analyses recent votes: cancels the votes of recognised packs, flags bursts.',
     'mod.detect.btn'  => '🔍 Detect abuse now',
-    'mod.detect.login' => '<a href="/login.php">Log in</a> to run abuse detection.',
+    'mod.detect.login' => 'Detection runs on every downvote; triggering it by hand is reserved to administrators.',
     'mod.blocked.h2'  => 'Neutralised votes (%d)',
     'mod.blocked.none' => 'No blocked vote yet.',
     'mod.col.date'    => 'Date',

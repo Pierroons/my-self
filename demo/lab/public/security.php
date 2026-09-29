@@ -2,9 +2,11 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../lib/bootstrap.php';
 require_once __DIR__ . '/../lib/layout.php';
+require_once __DIR__ . '/../lib/moderate.php';
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Auth;
+use Pierroons\MySelfLab\Moderate;
 
 $account = Auth::currentAccount(Db::pdo());
 render_header(t('title.security'), $account);
@@ -54,7 +56,8 @@ render_header(t('title.security'), $account);
 
 <div class="sec-card">
   <h2><?= t('sec.5.h2') ?></h2>
-  <?= t('sec.5.body') ?>
+  <?php $r = Moderate::regles(); ?>
+  <?= t('sec.5.body', $r['initiale'], $r['max'], h($r['sybil']), h($r['paliers'])) ?>
 </div>
 
 <div class="sec-card">

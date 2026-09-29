@@ -792,6 +792,26 @@ $accepte = Pierroons\MySelfLab\Forum::createThread($pdo, $muet, 'un fil', 'gener
     ? ok('un compte banni ne publie ni fil ni message, et publie de nouveau une fois le ban levé')
     : nok('publication pendant un ban : ' . json_encode([$refusFil, $refusMsg, $accepte]));
 
+// ── 38. Les textes du lab ne portent aucun seuil à eux ──────────────────────
+// Les pages annonçaient « 24 h → 7 j → 30 j → définitive » pendant que le
+// moteur appliquait 2 / 10 / 30 minutes et ne bannissait jamais sans fin.
+$fautes = [];
+foreach (['fr', 'en'] as $langue) {
+    $dico = require __DIR__ . '/../lang/' . $langue . '.php';
+    foreach (['mod.how.body', 'sec.5.body'] as $cle) {
+        $texte = strip_tags($dico[$cle]);
+        if (preg_match('/\b(24 ?h|7 ?[jd]|30 ?[jd]|20\/30)\b/iu', $texte, $m)) {
+            $fautes[] = "$langue:$cle « {$m[0]} »";
+        }
+        if (!str_contains($texte, '%1$d') || !preg_match('/%\d\$s/', $texte)) {
+            $fautes[] = "$langue:$cle sans valeurs lues";
+        }
+    }
+}
+$fautes === []
+    ? ok('les textes de modération du lab (fr, en) lisent leurs seuils dans la config')
+    : nok('seuil écrit en dur dans un texte : ' . implode(' ; ', $fautes));
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"

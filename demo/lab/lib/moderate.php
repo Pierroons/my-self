@@ -27,4 +27,23 @@ Engine::setTranslator('tc');
 
 final class Moderate extends Engine
 {
+    /**
+     * Ce que les pages annoncent des règles, lu dans la config en service :
+     * les textes ne portent aucun seuil à eux.
+     *
+     * @return array{initiale: int, max: int, sybil: string, farmingMax: int, farmingJours: int, perteVote: int, paliers: string}
+     */
+    public static function regles(): array
+    {
+        $c = self::config();
+        return [
+            'initiale'     => $c->reputationInitiale,
+            'max'          => $c->reputationMax,
+            'sybil'        => self::dureeEnClair($c->ageMinPourVoterSecondes),
+            'farmingMax'   => $c->farmingUpvotesMax,
+            'farmingJours' => $c->fenetreFarmingJours,
+            'perteVote'    => $c->perteDroitDeVoteSous,
+            'paliers'      => implode(' → ', array_map([self::class, 'dureeEnClair'], $c->dureesBan)),
+        ];
+    }
 }

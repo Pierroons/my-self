@@ -88,10 +88,10 @@ return [
 
     'sec.5.h2' => '5. Modération — SelfModerate <span class="pill">anti-manipulation</span>',
     'sec.5.body' => '<ul>'
-        . '<li>Réputation par membre (départ 20/30), vote ±1 sur les messages <em>et</em> les membres.</li>'
-        . '<li><strong>Anti-Sybil</strong> : un compte de moins de 24 h sans contribution ne peut pas voter.</li>'
-        . '<li><strong>Anti pack-voting</strong> : 3+ votes négatifs coordonnés en moins de 60 s → annulés, réputation restaurée.</li>'
-        . '<li><strong>Anti upvote-farming</strong> : votes mutuels répétés neutralisés. Sanctions graduées (perte du vote, bannissement 24 h → 7 j → 30 j → permanent).</li>'
+        . '<li>Réputation par membre (départ %1$d/%2$d), vote ±1 sur les messages <em>et</em> les membres, motif exigé au vote négatif.</li>'
+        . '<li><strong>Anti-Sybil</strong> : un compte de moins de %3$s sans contribution ne peut pas voter.</li>'
+        . '<li><strong>Meute</strong> : des votants liés entre eux (messages privés dans les deux sens) qui frappent la même cible → votes annulés, réputation restaurée. <strong>Salve</strong> de votes sans lien → signalée à un arbitre, rien n\'est annulé.</li>'
+        . '<li><strong>Anti-farming</strong> : votes répétés d\'un membre vers un même autre neutralisés. Sanctions graduées : perte du vote, puis ban de %4$s — le dernier palier se reconduit, jamais définitif, et chaque ban s\'écrit au journal de modération.</li>'
         . '</ul>',
 
     'sec.6.h2' => '6. Modèle de menace — honnête',
@@ -284,15 +284,15 @@ return [
     'mod.h1'       => '🛡️ Modération — SelfModerate',
     'mod.intro'    => 'Modération <strong>sans autorité centrale</strong> : la communauté vote, des défenses automatiques contrent la manipulation.',
     'mod.how.h2'   => 'Comment ça marche',
-    'mod.how.body' => '<li><strong>Réputation</strong> : chaque membre démarre à 20/30. Les votes ▲▼ sur ses posts et son profil la font évoluer.</li>'
-        . '<li><strong>Anti-Sybil</strong> : un compte trop récent (&lt;24 h) sans aucun message ne peut pas voter.</li>'
-        . '<li><strong>Anti upvote-farming</strong> : plus de 3 votes positifs répétés vers le même membre sur 60 jours sont neutralisés.</li>'
-        . '<li><strong>Anti pack-voting</strong> : 3 votes négatifs coordonnés (&lt;60 s) sur une même cible sont annulés et la réputation restaurée.</li>'
-        . '<li><strong>Sanctions graduées</strong> : réputation &lt;5 → perte du droit de vote ; ≤0 → suspension 24 h, puis 7 j, 30 j, définitive.</li>',
+    'mod.how.body' => '<li><strong>Réputation</strong> : chaque membre démarre à %1$d/%2$d. Les votes ▲▼ sur ses posts et son profil la font évoluer ; un vote ▼ exige un motif.</li>'
+        . '<li><strong>Anti-Sybil</strong> : un compte de moins de %3$s sans aucun message ne peut pas voter.</li>'
+        . '<li><strong>Anti-farming</strong> : au-delà de %4$d votes d\'un même membre vers un même autre sur %5$d jours, les suivants sont neutralisés.</li>'
+        . '<li><strong>Meute</strong> : des votants liés entre eux (messages privés dans les deux sens) qui frappent la même cible voient leurs votes annulés, et la réputation de la cible est restaurée. <strong>Salve</strong> : plusieurs votes sans lien dans la même fenêtre ne sont pas annulés — la cible est signalée à un arbitre.</li>'
+        . '<li><strong>Sanctions graduées</strong> : réputation &lt;%6$d → perte du droit de vote ; à 0 → ban de %7$s, le dernier palier se reconduit, jamais définitif. Un ban bloque le vote et la publication ; les messages privés restent ouverts. À la fin du ban, la réputation revient à %1$d.</li>',
     'mod.detect.h2'   => 'Lancer la détection d\'abus',
-    'mod.detect.note' => 'Analyse les votes récents et annule les patterns de pack-voting détectés.',
+    'mod.detect.note' => 'Analyse les votes récents : annule les votes des meutes reconnues, signale les salves.',
     'mod.detect.btn'  => '🔍 Détecter les abus maintenant',
-    'mod.detect.login' => '<a href="/login.php">Connecte-toi</a> pour lancer la détection d\'abus.',
+    'mod.detect.login' => 'La détection tourne à chaque vote négatif ; son déclenchement manuel est réservé aux administrateurs.',
     'mod.blocked.h2'  => 'Votes neutralisés (%d)',
     'mod.blocked.none' => 'Aucun vote bloqué pour l\'instant.',
     'mod.col.date'    => 'Date',

@@ -243,7 +243,25 @@ return [
         => 'Account too new: post at least once, or wait another %s, before you can vote (anti-Sybil).',
     'jour' => 'day', 'jours' => 'days', 'heure' => 'hour', 'heures' => 'hours',
     'minute' => 'minute', 'minutes' => 'minutes',
-    'Compte temporairement suspendu.' => 'Account temporarily suspended.',
+    'Compte banni jusqu\'au %s.' => 'Account banned until %s.',
+    'Droit de vote suspendu jusqu\'au %s (participation à une meute).'
+        => 'Voting rights suspended until %s (took part in a pack).',
+    'Explique en %d caractères au moins : il en manque %d.' => 'Explain in at least %d characters: %d more needed.',
+    'Un caractère est répété en rafale : écris une phrase.' => 'A character is repeated in a burst: write a sentence.',
+    'Ce motif tourne sur trop peu de caractères différents.' => 'This reason uses too few different characters.',
+    'Il faut au moins %d mots différents.' => 'At least %d different words are needed.',
+    'Un mot revient trop souvent : dis ce que tu reproches.' => 'A word comes back too often: say what you object to.',
+    'Durée de ban invalide.' => 'Invalid ban duration.',
+    'Déjà banni jusqu\'au %s : lève ce ban avant d\'en poser un autre.'
+        => 'Already banned until %s: lift this ban before setting another.',
+    'Levée anticipée : sans motif écrit, ce ban ne se lève qu\'à partir du %s.'
+        => 'Early lift: without a written reason, this ban can only be lifted from %s.',
+    'Ban levé avant son plancher : la levée anticipée et son motif sont au journal.'
+        => 'Ban lifted before its floor: the early lift and its reason are in the journal.',
+    'Ban levé.' => 'Ban lifted.',
+    'Réputation remise au point de départ.' => 'Reputation reset to its starting point.',
+    'Aucun ban en cours sur ce compte.' => 'No ban in progress on this account.',
+    'Ban maintenu ; la revue est close.' => 'Ban maintained; the review is closed.',
     'Droit de vote retiré (réputation trop basse).' => 'Voting rights withdrawn (reputation too low).',
 
     // ── Red team report encryption ───────────────────────────────────────

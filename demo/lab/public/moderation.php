@@ -19,7 +19,8 @@ render_header(t('mod.title'), $account);
 
 <div class="card">
   <h2><?= h(t('mod.how.h2')) ?></h2>
-  <ul style="color:var(--txt2);font-size:13px;line-height:1.7;margin:0;padding-left:18px"><?= t('mod.how.body') ?></ul>
+  <?php $r = Moderate::regles(); ?>
+  <ul style="color:var(--txt2);font-size:13px;line-height:1.7;margin:0;padding-left:18px"><?= t('mod.how.body', $r['initiale'], $r['max'], h($r['sybil']), $r['farmingMax'], $r['farmingJours'], $r['perteVote'], h($r['paliers'])) ?></ul>
 </div>
 
 <?php if ($account && !empty($account['is_admin'])): ?>
