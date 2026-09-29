@@ -239,8 +239,10 @@ return [
         => 'Vote recorded but neutralised: too many repeated upvotes towards this member (anti-farming).',
     'Vote enregistré mais neutralisé : trop de downvotes répétés vers ce membre (anti-farming).'
         => 'Vote recorded but neutralised: too many repeated downvotes towards this member (anti-farming).',
-    'Compte trop récent : publie au moins un message ou attends 24 h pour pouvoir voter (anti-Sybil).'
-        => 'Account too new: post at least once, or wait 24 h, before you can vote (anti-Sybil).',
+    'Compte trop récent : publie au moins un message ou attends encore %s pour pouvoir voter (anti-Sybil).'
+        => 'Account too new: post at least once, or wait another %s, before you can vote (anti-Sybil).',
+    'jour' => 'day', 'jours' => 'days', 'heure' => 'hour', 'heures' => 'hours',
+    'minute' => 'minute', 'minutes' => 'minutes',
     'Compte temporairement suspendu.' => 'Account temporarily suspended.',
     'Droit de vote retiré (réputation trop basse).' => 'Voting rights withdrawn (reputation too low).',
 

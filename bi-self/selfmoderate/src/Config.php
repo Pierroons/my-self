@@ -3,14 +3,10 @@
 /**
  * Les seuils du moteur, en un objet plutôt qu'en constantes de classe.
  *
- * Quatre d'entre eux portaient déjà la marque `⏱️ VALEUR DÉMO` et leur valeur de
- * production en commentaire : les changer demandait d'éditer le fichier du
- * module, donc de faire diverger le code d'un déploiement de celui du dépôt.
- * Ils vivent ici, et les deux jeux connus se nomment — `demo()` et `prod()`.
- *
- * Les constantes de `Moderate` restent en place et gardent les valeurs de démo :
- * elles sont lues par les vues du lab, et un moteur qui change ses seuils ne
- * doit pas casser l'affichage de qui les cite.
+ * C'est leur seule source : le moteur les lit ici, et un hôte qui les affiche
+ * les lit ici aussi, par `Moderate::config()`. Changer de jeu (`demo()`,
+ * `prod()`, ou le sien) change donc à la fois ce que le moteur applique et ce
+ * que les pages annoncent.
  */
 
 declare(strict_types=1);
@@ -22,10 +18,35 @@ use InvalidArgumentException;
 final class Config
 {
     /**
-     * @param int[] $dureesBan Paliers de bannissement automatique, du premier
-     *                         épisode au dernier. Le dernier palier se répète :
-     *                         un quatrième épisode ne rend pas la peine infinie,
-     *                         il la reconduit, et l'arbitre décide au-delà.
+     * @param int      $fenetreSalveSecondes  Salve rapide : plusieurs downvotes groupés
+     *                                        dans ce délai, SANS lien entre les votants.
+     *                                        Le plus souvent une réaction spontanée au
+     *                                        même message : elle signale, elle n'annule rien.
+     * @param int      $fenetreMeuteJours     Meute : des votants LIÉS ENTRE EUX qui frappent
+     *                                        la même cible. Le lien seul déclenche
+     *                                        l'annulation, sur une fenêtre longue — une
+     *                                        meute prend son temps.
+     * @param int      $meuteVotantsMax       Borne du graphe des votants, dont le coût est
+     *                                        quadratique ; une troncature est signalée.
+     * @param int      $meuteEpisodeCooldown  Un épisode de meute par votant sur ce délai :
+     *                                        trois victimes le même soir restent un épisode.
+     * @param int      $meuteMute2            Suspension du droit de vote au 2e épisode. Le
+     *                                        premier ne coûte que ses votes : deux amis de
+     *                                        bonne foi remplissent le critère de meute.
+     * @param int      $meuteMute3            Suspension au 3e épisode et au-delà.
+     * @param int      $meutePenalite3        Points retirés au 3e épisode.
+     * @param int      $farmingDownvotesMax   Plafond de downvotes d'un votant vers un même
+     *                                        auteur sur la fenêtre : casse l'érosion lente
+     *                                        d'un votant patient qui vise chaque message.
+     * @param int      $ageMinPourVoterSecondes Anti-Sybil : ancienneté exigée pour voter,
+     *                                        sauf si le compte a déjà publié.
+     * @param int[]    $dureesBan             Paliers de bannissement automatique, du premier
+     *                                        épisode au dernier. Le dernier palier se répète :
+     *                                        un quatrième épisode ne rend pas la peine infinie,
+     *                                        il la reconduit, et l'arbitre décide au-delà.
+     * @param int      $intervalleConvalescenceSecondes Convalescence : +1 point par
+     *                                        intervalle. La réputation remonte avec le
+     *                                        temps, pas avec le mérite.
      */
     public function __construct(
         public readonly int $reputationInitiale = 20,
@@ -65,11 +86,7 @@ final class Config
         return new self();
     }
 
-    /**
-     * Les valeurs de service. Elles étaient déjà écrites — en commentaire, à
-     * côté de chaque `⏱️ VALEUR DÉMO`. Les sortir du commentaire est tout ce que
-     * cette méthode fait.
-     */
+    /** Les valeurs de service. */
     public static function prod(): self
     {
         return new self(
@@ -105,5 +122,23 @@ final class Config
     public function dureeBanAdmin(): int
     {
         return $this->dureeBanAdminSecondes ?? $this->dureesBan[0];
+    }
+
+    /**
+     * La convalescence s'ouvre sous ce seuil et se lève à `sortieConvalescence()`.
+     *
+     * Un ÉTAT plutôt qu'un seuil : conditionner la remontée à « score < seuil
+     * du vote » l'arrêterait pile au seuil qui rend le droit de vote, et
+     * laisserait le compte à vie sur le fil du rasoir.
+     */
+    public function entreeConvalescenceSous(): int
+    {
+        return $this->perteDroitDeVoteSous;
+    }
+
+    /** La remontée s'arrête au point de départ, jamais au-delà. */
+    public function sortieConvalescence(): int
+    {
+        return $this->reputationInitiale;
     }
 }

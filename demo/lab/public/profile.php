@@ -35,7 +35,7 @@ if ($voirUsername !== null) {
         $memberId = (int) $stmt->fetchColumn();
         $rep = Moderate::getReputation($pdo, $memberId);
         $repScore = $rep['reputation'];
-        $repPct = (int) round($repScore / Moderate::MAX_REPUTATION * 100);
+        $repPct = (int) round($repScore / Moderate::config()->reputationMax * 100);
         $repColor = $repScore >= 25 ? '#3fb98c' : ($repScore >= 15 ? '#9aa9b6' : ($repScore >= 5 ? '#d4a056' : '#d96459'));
         $mine = $account ? Moderate::userVote($pdo, (int) $account['id'], 'member', $memberId) : null;
         $isSelf = $account && (int) $account['id'] === $memberId;
@@ -102,7 +102,7 @@ $myId = (int) $account['id'];
 // Mon état de modération
 $rep = Moderate::getReputation($pdo, $myId);
 $repScore = $rep['reputation'];
-$repPct = (int) round($repScore / Moderate::MAX_REPUTATION * 100);
+$repPct = (int) round($repScore / Moderate::config()->reputationMax * 100);
 $repColor = $repScore >= 25 ? '#3fb98c' : ($repScore >= 15 ? '#9aa9b6' : ($repScore >= 5 ? '#d4a056' : '#d96459'));
 $repLabel = $repScore >= 25 ? t('prf.rep.trust') : ($repScore >= 15 ? t('prf.rep.member') : ($repScore >= 5 ? t('prf.rep.frail') : t('prf.rep.watch')));
 // Activité
@@ -170,7 +170,7 @@ render_header(t('prf.title'), $account);
   <?php if ($rep['convalescent']): ?>
     <div style="margin:14px 0 0;padding:10px 12px;border-left:3px solid #d4a056;background:var(--elev);border-radius:0 6px 6px 0">
       <strong style="color:#d4a056"><?= h(t('prf.mod.conv.h')) ?></strong>
-      <p class="muted" style="margin:4px 0 0;font-size:13px"><?= h(sprintf(t('prf.mod.conv.txt'), Moderate::REGEN_EXIT_AT)) ?></p>
+      <p class="muted" style="margin:4px 0 0;font-size:13px"><?= h(sprintf(t('prf.mod.conv.txt'), Moderate::config()->sortieConvalescence())) ?></p>
     </div>
   <?php endif; ?>
   <?php

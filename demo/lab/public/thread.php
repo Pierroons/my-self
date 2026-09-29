@@ -19,7 +19,7 @@ $thread = Forum::getThread($pdo, $threadId);
 function rep_badge(int $rep): string {
     if ($rep >= 25) { $c = '#3fb98c'; $lbl = t('thr.rep.trust'); }
     elseif ($rep >= 15) { $c = '#9aa9b6'; $lbl = t('thr.rep.member'); }
-    elseif ($rep >= 5) { $c = '#d4a056'; $lbl = t('thr.rep.frail'); }
+    elseif ($rep >= Moderate::config()->perteDroitDeVoteSous) { $c = '#d4a056'; $lbl = t('thr.rep.frail'); }
     else { $c = '#d96459'; $lbl = t('thr.rep.watch'); }
     return '<span class="rep-badge" style="color:' . $c . ';border-color:' . $c . '" title="' . h(t('thr.rep.title', $rep, $lbl)) . '">★ ' . $rep . '</span>';
 }

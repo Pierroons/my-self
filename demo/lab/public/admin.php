@@ -3,10 +3,12 @@ declare(strict_types=1);
 require_once __DIR__ . '/../lib/bootstrap.php';
 require_once __DIR__ . '/../lib/admin.php';
 require_once __DIR__ . '/../lib/layout.php';
+require_once __DIR__ . '/../lib/moderate.php';
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Auth;
 use Pierroons\MySelfLab\Admin;
+use Pierroons\MySelfLab\Moderate;
 
 $pdo = Db::pdo();
 $account = Auth::currentAccount($pdo);
@@ -115,7 +117,7 @@ table.adm tr:last-child td{border-bottom:none}
       <tr>
         <td><?= (int) $c['id'] ?></td>
         <td>@<?= h($c['username']) ?> <?php if ($c['is_admin']): ?><span class="tag-sm" style="color:var(--acc);border-color:var(--acc)">admin</span><?php endif; ?></td>
-        <td>★ <?= (int) $c['reputation'] ?><?php if ((int) $c['banned_until'] > time()): ?> <span class="tag-sm" style="color:var(--danger);border-color:var(--danger)">banni</span><?php endif; ?></td>
+        <td>★ <?= (int) ($c['reputation'] ?? Moderate::config()->reputationInitiale) ?><?php if ((int) $c['banned_until'] > time()): ?> <span class="tag-sm" style="color:var(--danger);border-color:var(--danger)">banni</span><?php endif; ?></td>
         <td><?= $dt((int) $c['created_at']) ?></td>
         <td><button class="btn btn-ghost mini js-voirprofil" data-id="<?= (int) $c['id'] ?>">👁 voir (mémo)</button>
             <div id="prof-<?= (int) $c['id'] ?>"></div></td>

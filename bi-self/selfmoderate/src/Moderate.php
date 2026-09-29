@@ -40,62 +40,23 @@ class Moderate
     {
         return self::$translator ? (string) (self::$translator)($texte) : $texte;
     }
-    public const INITIAL_REPUTATION = 20;
-    public const MAX_REPUTATION     = 30;
-    public const LOSE_VOTING_AT     = 5;
-    public const BAN_AT             = 0;
 
-    // Salve rapide : plusieurs downvotes groupés dans le temps, SANS lien entre
-    // les votants. Ce n'est pas une meute — c'est le plus souvent une réaction
-    // spontanée au même message. Elle ne fait donc rien annuler : elle signale.
-    // ⏱️ VALEUR DÉMO. PROD = 300 s.
-    public const PACK_WINDOW_SECONDS = 60;
-    public const PACK_MIN_VOTERS     = 3;
-
-    // Meute : des votants LIÉS ENTRE EUX qui frappent la même cible. Le lien
-    // seul déclenche l'annulation, sur une fenêtre longue — une meute prend son
-    // temps. MEUTE_MAX_VOTERS borne le graphe, dont le coût est quadratique.
-    public const MEUTE_WINDOW_DAYS = 30;
-    public const MEUTE_MIN_LINKED  = 2;
-    public const MEUTE_MAX_VOTERS  = 30;
-
-    // Escalade — ce que la meute coûte à ceux qui la forment. Le premier épisode
-    // ne coûte rien : le critère de meute est le message privé réciproque, et
-    // deux amis qui réagissent de bonne foi au même message pénible le
-    // remplissent. Annuler leurs votes protège la victime et se défait ;
-    // suspendre leur droit de vote, non. C'est la récidive qui fait la peine.
-    //
-    // Le rang appartient au VOTANT. Compté sur la cible, un groupe qui change
-    // de proie resterait au palier 1 indéfiniment, et une victime visée par
-    // plusieurs groupes ferait punir des primo-délinquants.
-    //
-    // Durées réelles, non réduites pour la démo : une suspension du droit de
-    // vote laisse tout le reste du lab utilisable, contrairement à un ban.
-    public const MEUTE_FLAG_COOLDOWN = 86400;      // un épisode par jour et par votant
-    public const MEUTE_MUTE_2        = 7 * 86400;
-    public const MEUTE_MUTE_3        = 30 * 86400;
-    public const MEUTE_PENALTY_3     = 5;          // points retirés au 3e épisode
-
-    public const FARMING_WINDOW_DAYS = 60;
-    public const FARMING_MAX_UPVOTES = 3;
-    public const FARMING_MAX_DOWNVOTES = 3;   // R10-LAB-01 : plafond de downvotes voter->cible sur la fenêtre (anti slow-drip)
-
-    // Anti-Sybil : un compte doit avoir cette ancienneté OU >=1 post pour voter
-    // ⏱️ VALEUR DÉMO réduite à 120 s pour qu'un dev puisse tester sans attendre. PROD = 86400 (24 h).
-    public const MIN_AGE_TO_VOTE_SECONDS = 120;
-    // ⏱️ Durées de bannissement — VALEURS DÉMO (2/10/30 min). PROD = [86400, 604800, 2592000] (24 h / 7 j / 30 j).
-    public const BAN_DURATIONS = [120, 600, 1800];
-    public const ADMIN_BAN_SECONDS = 600; // ban manuel admin (démo 10 min ; prod : à définir)
-
-    // Convalescence — la réputation remonte avec le temps, pas avec le mérite.
-    // L'état est posé sous REGEN_ENTER_BELOW et levé à REGEN_EXIT_AT. Poser un
-    // ÉTAT plutôt qu'un seuil est délibéré : conditionner la remontée à
-    // « score < 5 » l'arrête pile au seuil qui rend le droit de vote, et laisse
-    // le compte à vie sur le fil du rasoir.
-    // ⏱️ VALEUR DÉMO : 1 jour. Le protocole décrit +1 par semaine.
-    public const REGEN_INTERVAL_SECONDS = 86400;
-    public const REGEN_ENTER_BELOW      = self::LOSE_VOTING_AT;
-    public const REGEN_EXIT_AT          = self::INITIAL_REPUTATION;
+    /**
+     * Une durée en clair : la plus grande unité qui la divise exactement, sinon
+     * des minutes arrondies au-dessus. Les unités passent par le traducteur, pour
+     * que l'hôte affiche les seuils de la config dans sa langue.
+     */
+    public static function dureeEnClair(int $secondes): string
+    {
+        foreach ([[86400, 'jour', 'jours'], [3600, 'heure', 'heures'], [60, 'minute', 'minutes']] as [$unite, $un, $plusieurs]) {
+            if ($secondes >= $unite && $secondes % $unite === 0) {
+                $n = intdiv($secondes, $unite);
+                return $n . ' ' . static::t($n > 1 ? $plusieurs : $un);
+            }
+        }
+        $n = max(1, intdiv($secondes + 59, 60));
+        return $n . ' ' . static::t($n > 1 ? 'minutes' : 'minute');
+    }
 
     // Motif de vote — un downvote coûte une phrase. Les bornes visent le
     // remplissage : « lol » est trop court, « aaaaaa… » et « bon bon bon » sont
@@ -128,9 +89,8 @@ class Moderate
     }
 
     /**
-     * Les seuils en service. Par défaut ceux de la démo, c'est-à-dire les
-     * valeurs que portent les constantes ci-dessus : brancher une `Config` ne
-     * change rien tant qu'on ne lui en donne pas d'autres.
+     * Les seuils en service — leur seule source, pour le moteur comme pour les
+     * pages de l'hôte. Par défaut ceux de la démo.
      */
     private static ?Config $config = null;
 
@@ -173,7 +133,7 @@ class Moderate
     {
         $pdo->prepare(
             'INSERT OR IGNORE INTO member_moderation (account_id, reputation, updated_at) VALUES (?, ?, ?)'
-        )->execute([$accountId, self::INITIAL_REPUTATION, time()]);
+        )->execute([$accountId, self::config()->reputationInitiale, time()]);
     }
 
     public static function getReputation(PDO $pdo, int $accountId): array
@@ -303,20 +263,20 @@ class Moderate
                 ->execute([$now, $accountId]);
             return;
         }
-        $gagnes = intdiv($now - $last, self::REGEN_INTERVAL_SECONDS);
+        $gagnes = intdiv($now - $last, self::config()->intervalleConvalescenceSecondes);
         if ($gagnes < 1) {
             return;
         }
-        $rep = min(self::REGEN_EXIT_AT, (int) $row['reputation'] + $gagnes);
+        $rep = min(self::config()->sortieConvalescence(), (int) $row['reputation'] + $gagnes);
         // L'horloge avance des intervalles consommés, pas jusqu'à maintenant : le
         // reste de temps est acquis et compte pour le point suivant.
         $pdo->prepare('UPDATE member_moderation SET reputation = ?, last_regen_at = ?, updated_at = ? WHERE account_id = ?')
-            ->execute([$rep, $last + $gagnes * self::REGEN_INTERVAL_SECONDS, $now, $accountId]);
+            ->execute([$rep, $last + $gagnes * self::config()->intervalleConvalescenceSecondes, $now, $accountId]);
 
-        if ($rep >= self::LOSE_VOTING_AT) {
+        if ($rep >= self::config()->perteDroitDeVoteSous) {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ?')->execute([$accountId]);
         }
-        if ($rep >= self::REGEN_EXIT_AT) {
+        if ($rep >= self::config()->sortieConvalescence()) {
             // Revenu à son point de départ : l'état se lève, et le signalement
             // qui accompagnait la chute n'a plus d'objet. Uniquement celui-là :
             // une récidive de meute ne se rachète pas en attendant que la
@@ -355,12 +315,16 @@ class Moderate
         $stmt->execute([$accountId]);
         $createdAt = (int) $stmt->fetchColumn();
         $age = time() - $createdAt;
-        if ($age < self::MIN_AGE_TO_VOTE_SECONDS) {
+        $ageMin = self::config()->ageMinPourVoterSecondes;
+        if ($age < $ageMin) {
             $stmt = $pdo->prepare('SELECT COUNT(*) FROM posts WHERE account_id = ?');
             $stmt->execute([$accountId]);
             $nbPosts = (int) $stmt->fetchColumn();
             if ($nbPosts < 1) {
-                return [false, static::t('Compte trop récent : publie au moins un message ou attends 24 h pour pouvoir voter (anti-Sybil).')];
+                return [false, sprintf(
+                    static::t('Compte trop récent : publie au moins un message ou attends encore %s pour pouvoir voter (anti-Sybil).'),
+                    static::dureeEnClair($ageMin - $age)
+                )];
             }
         }
         return [true, ''];
@@ -439,7 +403,7 @@ class Moderate
      * Le motif est exigé au downvote et facultatif à l'upvote : il existe pour
      * que la personne sanctionnée sache ce qu'on lui reproche, et un pouce en
      * l'air ne sanctionne personne. L'upvote reste tenu par son plafond de
-     * FARMING_MAX_UPVOTES sur la fenêtre.
+     * `farmingUpvotesMax` sur la fenêtre.
      */
     public static function applyVote(
         PDO $pdo,
@@ -491,8 +455,8 @@ class Moderate
             $stmt = $pdo->prepare(
                 'SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = 1 AND blocked = 0 AND created_at >= ?'
             );
-            $stmt->execute([$voterId, $author, time() - self::FARMING_WINDOW_DAYS * 86400]);
-            if ((int) $stmt->fetchColumn() >= self::FARMING_MAX_UPVOTES) {
+            $stmt->execute([$voterId, $author, time() - self::config()->fenetreFarmingJours * 86400]);
+            if ((int) $stmt->fetchColumn() >= self::config()->farmingUpvotesMax) {
                 $pdo->prepare(
                     'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, created_at)
                      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)'
@@ -509,8 +473,8 @@ class Moderate
             $stmt = $pdo->prepare(
                 'SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?'
             );
-            $stmt->execute([$voterId, $author, time() - self::FARMING_WINDOW_DAYS * 86400]);
-            if ((int) $stmt->fetchColumn() >= self::FARMING_MAX_DOWNVOTES) {
+            $stmt->execute([$voterId, $author, time() - self::config()->fenetreFarmingJours * 86400]);
+            if ((int) $stmt->fetchColumn() >= self::config()->farmingDownvotesMax) {
                 $pdo->prepare(
                     'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, created_at)
                      VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)'
@@ -527,7 +491,7 @@ class Moderate
         )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, time()]);
 
         $rep = self::getReputation($pdo, $author);
-        $newRep = max(self::BAN_AT, min(self::MAX_REPUTATION, $rep['reputation'] + $value));
+        $newRep = max(self::config()->banA, min(self::config()->reputationMax, $rep['reputation'] + $value));
         $pdo->prepare('UPDATE member_moderation SET reputation = ?, updated_at = ? WHERE account_id = ?')
             ->execute([$newRep, time(), $author]);
 
@@ -564,7 +528,7 @@ class Moderate
               WHERE created_at >= ?
                 AND ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))'
         );
-        $stmt->execute([time() - self::MEUTE_WINDOW_DAYS * 86400, $a, $b, $b, $a]);
+        $stmt->execute([time() - self::config()->fenetreMeuteJours * 86400, $a, $b, $b, $a]);
         // Deux expéditeurs distincts sur les messages échangés entre eux : chacun
         // a écrit à l'autre.
         return (int) $stmt->fetchColumn() === 2;
@@ -638,12 +602,12 @@ class Moderate
         $tronques = [];
 
         // ── Meute : fenêtre longue, critère relationnel ──────────────────────
-        $sinceMeute = $maintenant - self::MEUTE_WINDOW_DAYS * 86400;
+        $sinceMeute = $maintenant - self::config()->fenetreMeuteJours * 86400;
         // Le seuil est interpolé, pas lié : un paramètre PDO arrive en TEXT, et
         // SQLite range tout INTEGER avant tout TEXT — `COUNT(*) >= '2'` est donc
         // toujours faux. Les colonnes INTEGER convertissent leur paramètre par
         // affinité ; une expression comme COUNT(*) n'a aucune affinité.
-        $minLies = (int) self::MEUTE_MIN_LINKED;
+        $minLies = (int) self::config()->meuteLiensMin;
         $stmt = $pdo->prepare("
             SELECT target_author FROM mod_votes
              WHERE value = -1 AND blocked = 0 AND created_at >= ?
@@ -661,13 +625,13 @@ class Moderate
 
             // Le graphe est quadratique : on borne, et on le DIT. Une troncature
             // muette se lirait comme une absence de meute.
-            if (count($voters) > self::MEUTE_MAX_VOTERS) {
-                $tronques[] = ['target_author' => $author, 'voters' => count($voters), 'scanned' => self::MEUTE_MAX_VOTERS];
-                $voters = array_slice($voters, 0, self::MEUTE_MAX_VOTERS);
+            if (count($voters) > self::config()->meuteVotantsMax) {
+                $tronques[] = ['target_author' => $author, 'voters' => count($voters), 'scanned' => self::config()->meuteVotantsMax];
+                $voters = array_slice($voters, 0, self::config()->meuteVotantsMax);
             }
 
             foreach (self::linkedGroups($pdo, $voters) as $groupe) {
-                if (count($groupe) < self::MEUTE_MIN_LINKED) {
+                if (count($groupe) < self::config()->meuteLiensMin) {
                     continue;
                 }
                 $ph = implode(',', array_fill(0, count($groupe), '?'));
@@ -684,7 +648,7 @@ class Moderate
                     ->execute($voteIds);
                 $restore = count($voteIds);
                 $pdo->prepare('UPDATE member_moderation SET reputation = MIN(reputation + ?, ?), updated_at = ? WHERE account_id = ?')
-                    ->execute([$restore, self::MAX_REPUTATION, $maintenant, $author]);
+                    ->execute([$restore, self::config()->reputationMax, $maintenant, $author]);
                 self::restoreAfterCancel($pdo, $author, $restore);
                 $cancelled += $restore;
                 // La victime est remise d'aplomb avant qu'on regarde qui a frappé :
@@ -700,8 +664,8 @@ class Moderate
         }
 
         // ── Salve rapide : fenêtre courte, aucun lien, aucune annulation ─────
-        $sinceSalve = $maintenant - self::PACK_WINDOW_SECONDS * 2;
-        $minVotants = (int) self::PACK_MIN_VOTERS;
+        $sinceSalve = $maintenant - self::config()->fenetreSalveSecondes * 2;
+        $minVotants = (int) self::config()->salveVotantsMin;
         $stmt = $pdo->prepare("
             SELECT target_author FROM mod_votes
              WHERE value = -1 AND blocked = 0 AND created_at >= ?
@@ -719,13 +683,13 @@ class Moderate
             $n = count($votes);
 
             // Plus gros groupe de votants distincts tenant dans une fenêtre de
-            // PACK_WINDOW_SECONDS. Raisonner par fenêtre glissante plutôt que sur
+            // `fenetreSalveSecondes`. Raisonner par fenêtre glissante plutôt que sur
             // l'étalement global empêche un vote espacé de masquer le groupe.
             $best = [];
             for ($i = 0; $i < $n; $i++) {
                 $cluster = [];
                 for ($k = $i; $k < $n; $k++) {
-                    if ((int) $votes[$k]['created_at'] - (int) $votes[$i]['created_at'] > self::PACK_WINDOW_SECONDS) {
+                    if ((int) $votes[$k]['created_at'] - (int) $votes[$i]['created_at'] > self::config()->fenetreSalveSecondes) {
                         break;
                     }
                     $cluster[(int) $votes[$k]['voter_id']] = true;
@@ -734,7 +698,7 @@ class Moderate
                     $best = $cluster;
                 }
             }
-            if (count($best) < self::PACK_MIN_VOTERS) {
+            if (count($best) < self::config()->salveVotantsMin) {
                 continue;
             }
             $pdo->prepare(
@@ -760,17 +724,17 @@ class Moderate
     private static function restoreAfterCancel(PDO $pdo, int $author, int $restore): void
     {
         $rep = self::getReputation($pdo, $author);
-        if ($rep['reputation'] >= self::LOSE_VOTING_AT) {
+        if ($rep['reputation'] >= self::config()->perteDroitDeVoteSous) {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ?')->execute([$author]);
         }
-        if ($rep['reputation'] > self::BAN_AT && $rep['banned_until'] > 0) {
+        if ($rep['reputation'] > self::config()->banA && $rep['banned_until'] > 0) {
             $pdo->prepare('UPDATE member_moderation SET banned_until = 0, strikes = MAX(0, strikes - ?) WHERE account_id = ?')
                 ->execute([$restore, $author]);
         }
         // La convalescence avait été ouverte par une chute qui n'aurait pas dû
         // avoir lieu : on la referme, plutôt que d'imposer une guérison au temps
         // pour une faute annulée.
-        if ($rep['reputation'] >= self::REGEN_ENTER_BELOW) {
+        if ($rep['reputation'] >= self::config()->entreeConvalescenceSous()) {
             $pdo->prepare('UPDATE member_moderation SET convalescent = 0 WHERE account_id = ?')
                 ->execute([$author]);
             // Seul le signalement que la chute a provoqué s'en va avec elle. Une
@@ -800,12 +764,16 @@ class Moderate
      * déjà eu lieu et ne dépend pas de ce qui suit : la victime est protégée dès
      * le premier passage, la peine attend la récidive.
      *
-     * Un votant ne monte d'un rang qu'une fois par MEUTE_FLAG_COOLDOWN. Sans
+     * Un votant ne monte d'un rang qu'une fois par `meuteEpisodeCooldown`. Sans
      * cette borne, la boucle de detectPackVoting — qui traite toutes les cibles
      * d'un même passage — ferait franchir trois paliers d'un coup à un groupe
      * qui a frappé trois personnes, et l'avertissement du premier rang ne serait
      * jamais vu par personne. Les cibles supplémentaires sont enregistrées
      * quand même : l'admin doit voir l'ampleur, pas seulement le rang.
+     *
+     * Le rang appartient au VOTANT. Compté sur la cible, un groupe qui change de
+     * proie resterait au premier palier indéfiniment, et une victime visée par
+     * plusieurs groupes ferait punir des primo-délinquants.
      *
      * @param  int[] $voters
      * @param  int[] $voteIds
@@ -826,7 +794,7 @@ class Moderate
             $dernier = $stmt->fetch();
 
             $memeEpisode = $dernier
-                && ($maintenant - (int) $dernier['detected_at']) < self::MEUTE_FLAG_COOLDOWN;
+                && ($maintenant - (int) $dernier['detected_at']) < self::config()->meuteEpisodeCooldown;
             $rang = $memeEpisode
                 ? (int) $dernier['rang']
                 : self::rangDe($pdo, $voter) + 1;
@@ -865,7 +833,7 @@ class Moderate
         // troisième, le rang ajoute la revue humaine sans rien retirer. Sans ce
         // report, le quatrième épisode serait moins puni que le troisième — la
         // peine expirerait pendant que l'admin regarde.
-        $duree = $rang === 2 ? self::MEUTE_MUTE_2 : self::MEUTE_MUTE_3;
+        $duree = $rang === 2 ? self::config()->meuteMute2 : self::config()->meuteMute3;
         // MAX : une nouvelle suspension ne raccourcit jamais celle en cours.
         $pdo->prepare(
             'UPDATE member_moderation SET vote_muted_until = MAX(vote_muted_until, ?), updated_at = ?
@@ -876,7 +844,7 @@ class Moderate
             $pdo->prepare(
                 'UPDATE member_moderation SET reputation = MAX(reputation - ?, 0), updated_at = ?
                   WHERE account_id = ?'
-            )->execute([self::MEUTE_PENALTY_3, $maintenant, $voter]);
+            )->execute([self::config()->meutePenalite3, $maintenant, $voter]);
             $stmt = $pdo->prepare('SELECT reputation FROM member_moderation WHERE account_id = ?');
             $stmt->execute([$voter]);
             // La perte de points ouvre la convalescence comme n'importe quelle
@@ -1045,10 +1013,11 @@ class Moderate
 
     /**
      * Action admin manuelle (« squizz ») — la machine pré-mâche, l'humain tranche.
-     * Bannit un compte (durée démo), retire le droit de vote, +1 strike.
+     * Bannit un compte (`dureeBanAdmin()` par défaut), retire le droit de vote, +1 strike.
      */
-    public static function adminBan(PDO $pdo, int $accountId, int $seconds = self::ADMIN_BAN_SECONDS): void
+    public static function adminBan(PDO $pdo, int $accountId, ?int $seconds = null): void
     {
+        $seconds ??= self::config()->dureeBanAdmin();
         self::ensureRow($pdo, $accountId);
         $pdo->prepare(
             'UPDATE member_moderation SET banned_until = ?, voting_rights = 0, strikes = strikes + 1, needs_review = 0, updated_at = ? WHERE account_id = ?'
@@ -1061,7 +1030,7 @@ class Moderate
         self::ensureRow($pdo, $accountId);
         $pdo->prepare(
             'UPDATE member_moderation SET banned_until = 0, voting_rights = 1, reputation = ?, strikes = 0, needs_review = 0, updated_at = ? WHERE account_id = ?'
-        )->execute([self::INITIAL_REPUTATION, time(), $accountId]);
+        )->execute([self::config()->reputationInitiale, time(), $accountId]);
     }
 
     /**

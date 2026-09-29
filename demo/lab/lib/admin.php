@@ -61,12 +61,12 @@ final class Admin
         ];
     }
 
-    /** Comptes récents + réputation (LEFT JOIN modération). */
+    /** Comptes récents + réputation (LEFT JOIN modération ; `null` pour un compte sans ligne de modération). */
     public static function accounts(PDO $pdo, int $limit = 50): array
     {
         $stmt = $pdo->prepare(
             'SELECT a.id, a.username, a.is_admin, a.created_at,
-                    COALESCE(m.reputation, 20) AS reputation,
+                    m.reputation AS reputation,
                     COALESCE(m.banned_until, 0) AS banned_until
                FROM accounts a
                LEFT JOIN member_moderation m ON m.account_id = a.id

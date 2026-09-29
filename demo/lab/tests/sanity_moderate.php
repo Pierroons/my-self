@@ -31,6 +31,8 @@ require_once __DIR__ . '/../lib/moderate.php';
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Moderate;
+use Pierroons\SelfModerate\Config;
+use Pierroons\SelfModerate\Moderate as Moteur;
 
 // 🔑 Le total se compte, il ne s'écrit pas.
 //
@@ -174,7 +176,7 @@ $votant = membre($pdo, 'votant');
 $post   = message($pdo, $cible, 'fil-1');
 
 $r = Moderate::applyVote($pdo, $votant, 'post', $post, -1, motif(), 'hors_sujet');
-$r['ok'] && reputation($pdo, $cible) === Moderate::INITIAL_REPUTATION - 1
+$r['ok'] && reputation($pdo, $cible) === Moderate::config()->reputationInitiale - 1
     ? ok('un downvote fait passer la réputation de 20 à ' . reputation($pdo, $cible))
     : nok('le downvote n\'a pas été appliqué : ' . json_encode($r));
 
@@ -184,7 +186,7 @@ $r['ok'] && reputation($pdo, $cible) === Moderate::INITIAL_REPUTATION - 1
 // vote possible — la base lève une violation de contrainte. Un contrôle qui
 // n'exerçait que la garde applicative laisserait croire qu'elle est seule.
 $r = Moderate::applyVote($pdo, $votant, 'post', $post, -1, motif(), 'hors_sujet');
-!$r['ok'] && reputation($pdo, $cible) === Moderate::INITIAL_REPUTATION - 1
+!$r['ok'] && reputation($pdo, $cible) === Moderate::config()->reputationInitiale - 1
     ? ok('un second vote sur la même cible est refusé, la réputation ne bouge plus')
     : nok('le double vote est passé : ' . json_encode($r));
 
@@ -198,11 +200,11 @@ $r = Moderate::applyVote($pdo, $votant, 'post', $sien, 1);
 // ── 4. Sous le seuil, le droit de vote est retiré ───────────────────────────
 $chute = membre($pdo, 'chute');
 $p     = message($pdo, $chute, 'fil-chute');
-poserReputation($pdo, $chute, Moderate::LOSE_VOTING_AT);   // exactement au seuil
+poserReputation($pdo, $chute, Moderate::config()->perteDroitDeVoteSous);   // exactement au seuil
 Moderate::applyVote($pdo, membre($pdo, 'passant'), 'post', $p, -1, motif(), 'hors_sujet');
 $rep = Moderate::getReputation($pdo, $chute);
-$rep['reputation'] === Moderate::LOSE_VOTING_AT - 1 && !$rep['voting_rights']
-    ? ok('sous ' . Moderate::LOSE_VOTING_AT . ', le droit de vote est retiré')
+$rep['reputation'] === Moderate::config()->perteDroitDeVoteSous - 1 && !$rep['voting_rights']
+    ? ok('sous ' . Moderate::config()->perteDroitDeVoteSous . ', le droit de vote est retiré')
     : nok('droit de vote conservé sous le seuil : ' . json_encode($rep));
 
 // ── 5. R10 — le harcèlement d'un seul votant est neutralisé ─────────────────
@@ -214,12 +216,12 @@ $harceleur = membre($pdo, 'harceleur');
 poserReputation($pdo, $harcele, 20);
 $avant = reputation($pdo, $harcele);
 $dernier = null;
-for ($i = 1; $i <= Moderate::FARMING_MAX_DOWNVOTES + 1; $i++) {
+for ($i = 1; $i <= Moderate::config()->farmingDownvotesMax + 1; $i++) {
     $dernier = Moderate::applyVote($pdo, $harceleur, 'post', message($pdo, $harcele, "fil-h$i"), -1, motif(), 'hors_sujet');
 }
 !empty($dernier['blocked'])
-    && reputation($pdo, $harcele) === $avant - Moderate::FARMING_MAX_DOWNVOTES
-    ? ok('le ' . (Moderate::FARMING_MAX_DOWNVOTES + 1) . 'e downvote du même membre est neutralisé (anti slow-drip)')
+    && reputation($pdo, $harcele) === $avant - Moderate::config()->farmingDownvotesMax
+    ? ok('le ' . (Moderate::config()->farmingDownvotesMax + 1) . 'e downvote du même membre est neutralisé (anti slow-drip)')
     : nok('le slow-drip est passé : ' . json_encode($dernier) . ' rep=' . reputation($pdo, $harcele));
 
 // ── 6. 🔑 Trois votants sans lien ne forment PAS une meute ──────────────────
@@ -255,7 +257,7 @@ $isole = membre($pdo, 'isole');
 poserReputation($pdo, $isole, 20);
 $vieux = membre($pdo, 'vieux-grief');
 Moderate::applyVote($pdo, $vieux, 'member', $isole, -1, motif(), 'hors_sujet');
-$pdo->exec('UPDATE mod_votes SET created_at = ' . (time() - 10 * Moderate::PACK_WINDOW_SECONDS)
+$pdo->exec('UPDATE mod_votes SET created_at = ' . (time() - 10 * Moderate::config()->fenetreSalveSecondes)
          . ' WHERE voter_id = ' . $vieux . ' AND target_author = ' . $isole);
 foreach ([membre($pdo, 'recent-a'), membre($pdo, 'recent-b')] as $v) {
     Moderate::applyVote($pdo, $v, 'member', $isole, -1, motif(), 'hors_sujet');
@@ -291,7 +293,7 @@ Moderate::applyVote($pdo, $duoB, 'member', $vise, -1, motif(), 'agressif');
 $bloques9 = (int) $pdo->query(
     'SELECT COUNT(*) FROM mod_votes WHERE target_author = ' . $vise . " AND blocked_reason = 'pack_voting'"
 )->fetchColumn();
-$bloques9 === Moderate::MEUTE_MIN_LINKED && reputation($pdo, $vise) === 20
+$bloques9 === Moderate::config()->meuteLiensMin && reputation($pdo, $vise) === 20
     ? ok("deux votants qui se sont écrit voient leurs $bloques9 votes annulés, réputation restituée")
     : nok('la meute n\'a pas été détectée : bloqués=' . $bloques9 . ' rep=' . reputation($pdo, $vise));
 
@@ -339,7 +341,7 @@ $bloques11 = (int) $pdo->query(
 $conv = membre($pdo, 'convalescent');
 poserReputation($pdo, $conv, 2);
 $pdo->prepare('UPDATE member_moderation SET convalescent = 1, voting_rights = 0, last_regen_at = ? WHERE account_id = ?')
-    ->execute([time() - 3 * Moderate::REGEN_INTERVAL_SECONDS, $conv]);
+    ->execute([time() - 3 * Moderate::config()->intervalleConvalescenceSecondes, $conv]);
 $etat12 = Moderate::getReputation($pdo, $conv);
 $etat12['reputation'] === 5 && $etat12['voting_rights'] && $etat12['convalescent']
     ? ok('trois intervalles de calme rendent trois points et le droit de vote, sans lever la convalescence')
@@ -351,10 +353,10 @@ $etat12['reputation'] === 5 && $etat12['voting_rights'] && $etat12['convalescent
 // laisse le compte à vie sur le fil du rasoir. Ici l'état est posé sous 5 et levé
 // à 20 : ce contrôle doit rougir si quelqu'un réintroduit la condition de seuil.
 $pdo->prepare('UPDATE member_moderation SET last_regen_at = ? WHERE account_id = ?')
-    ->execute([time() - 40 * Moderate::REGEN_INTERVAL_SECONDS, $conv]);
+    ->execute([time() - 40 * Moderate::config()->intervalleConvalescenceSecondes, $conv]);
 $etat13 = Moderate::getReputation($pdo, $conv);
-$etat13['reputation'] === Moderate::REGEN_EXIT_AT && !$etat13['convalescent']
-    ? ok('la remontée s\'arrête à ' . Moderate::REGEN_EXIT_AT . ' et lève la convalescence')
+$etat13['reputation'] === Moderate::config()->sortieConvalescence() && !$etat13['convalescent']
+    ? ok('la remontée s\'arrête à ' . Moderate::config()->sortieConvalescence() . ' et lève la convalescence')
     : nok('la convalescence ne se termine pas où elle devrait : ' . json_encode($etat13));
 
 // ── 14. Le motif refuse ce qui ne dit rien ──────────────────────────────────
@@ -424,7 +426,7 @@ $rangA = Moderate::rangDe($pdo, $a);
 $modA  = Moderate::getReputation($pdo, $a);
 [$peutVoter, ] = Moderate::canVote($pdo, $a);
 $rangA === 1 && $modA['vote_muted_until'] === 0 && $peutVoter
-    && reputation($pdo, $c1) === Moderate::INITIAL_REPUTATION
+    && reputation($pdo, $c1) === Moderate::config()->reputationInitiale
     ? ok('premier épisode : rang 1, aucune peine, droit de vote intact, victime restaurée')
     : nok('premier épisode mal traité : rang=' . $rangA . ' ' . json_encode($modA) . ' vote=' . var_export($peutVoter, true));
 
@@ -434,7 +436,7 @@ $c2 = episodeMeute($pdo, [$a, $b], 'victime-2');
 
 $modA = Moderate::getReputation($pdo, $a);
 [$peutVoter, $raison] = Moderate::canVote($pdo, $a);
-$attendu = time() + Moderate::MEUTE_MUTE_2;
+$attendu = time() + Moderate::config()->meuteMute2;
 Moderate::rangDe($pdo, $a) === 2
     && abs($modA['vote_muted_until'] - $attendu) <= 5
     && !$peutVoter && str_contains($raison, date('d/m/Y', $modA['vote_muted_until']))
@@ -447,8 +449,8 @@ $repAvant = reputation($pdo, $a);
 $c3 = episodeMeute($pdo, [$a, $b], 'victime-3');
 
 $modA = Moderate::getReputation($pdo, $a);
-$attendu = time() + Moderate::MEUTE_MUTE_3;
-// 5 en clair, et non Moderate::MEUTE_PENALTY_3 : un contrôle qui calcule son
+$attendu = time() + Moderate::config()->meuteMute3;
+// 5 en clair, et non Moderate::config()->meutePenalite3 : un contrôle qui calcule son
 // attendu depuis la constante qu'il mesure se décale avec elle. Mise à 0, la
 // pénalité disparaissait sans que rien ne rougisse — mesuré, pas supposé.
 Moderate::rangDe($pdo, $a) === 3
@@ -528,9 +530,42 @@ Moderate::rangDe($pdo, $g) === 1 && Moderate::rangDe($pdo, $i) === 1 && $modI['v
 // ── 24. La victime est protégée à tous les paliers ──────────────────────────
 // La sanction du votant est venue après l'annulation, et n'y a rien changé.
 $restaurees = array_map(static fn (int $id): int => reputation($pdo, $id), [$c1, $c2, $c3, $c4]);
-count(array_unique($restaurees)) === 1 && $restaurees[0] === Moderate::INITIAL_REPUTATION
-    ? ok('les quatre victimes sont revenues à ' . Moderate::INITIAL_REPUTATION . ', du premier palier au dernier')
+count(array_unique($restaurees)) === 1 && $restaurees[0] === Moderate::config()->reputationInitiale
+    ? ok('les quatre victimes sont revenues à ' . Moderate::config()->reputationInitiale . ', du premier palier au dernier')
     : nok('une victime n\'a pas été restaurée : ' . implode(', ', $restaurees));
+
+// ── 25. La config est la seule source des seuils ────────────────────────────
+// Deux sources pour un seuil, c'est un seuil que la config ne règle qu'à
+// moitié : `Config::prod()` ne changeait que les durées de ban, le moteur
+// lisant ses propres constantes pour tout le reste.
+$jumelles = array_values(array_filter(
+    array_keys((new ReflectionClass(Moteur::class))->getConstants()),
+    static fn (string $c): bool => !str_starts_with($c, 'REASON_')
+));
+$jumelles === []
+    ? ok('le moteur ne garde aucune constante de seuil à côté de la config')
+    : nok('constantes de seuil encore dans le moteur : ' . implode(', ', $jumelles));
+
+$recent = membre($pdo, 'recent-config');
+$pdo->prepare('UPDATE accounts SET created_at = ? WHERE id = ?')->execute([time() - 600, $recent]);
+Moderate::setConfig(new Config(ageMinPourVoterSecondes: 3600));
+[$refuse, $attente] = Moderate::canVote($pdo, $recent);
+Moderate::setConfig(null);
+[$accepteEnDemo] = Moderate::canVote($pdo, $recent);
+!$refuse && str_contains($attente, '50 minutes') && $accepteEnDemo
+    ? ok('l\'anti-Sybil suit la config et dit l\'attente restante : « ' . $attente . ' »')
+    : nok('anti-Sybil sourd à la config : refus=' . var_export(!$refuse, true) . ' « ' . $attente . ' » démo=' . var_export($accepteEnDemo, true));
+
+$lent = membre($pdo, 'convalescent-config');
+poserReputation($pdo, $lent, 2);
+$pdo->prepare('UPDATE member_moderation SET convalescent = 1, last_regen_at = ? WHERE account_id = ?')
+    ->execute([time() - 600, $lent]);
+Moderate::setConfig(new Config(intervalleConvalescenceSecondes: 60));
+$remonte = reputation($pdo, $lent);
+Moderate::setConfig(null);
+$remonte === 12
+    ? ok('la convalescence suit l\'intervalle de la config (+10 en 10 intervalles)')
+    : nok('convalescence sourde à la config : ' . $remonte . ' au lieu de 12');
 
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
