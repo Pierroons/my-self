@@ -27,8 +27,6 @@ require_once __DIR__ . '/secret_instance.php';
 
 final class Auth
 {
-    public const DOMAIN = 'lab.my-self.fr';
-
     private const COOKIE = 'lab_session';
     private const SESSION_TTL = 86400;        // 24h
     private const REGISTER_MAX_PER_IP = 5;    // max comptes créés / IP / heure

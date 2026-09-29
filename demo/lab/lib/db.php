@@ -98,11 +98,12 @@ final class Db
             // Schema idempotent (CREATE TABLE/INDEX IF NOT EXISTS) — exécuté à chaque
             // démarrage pour appliquer les nouvelles tables sans migration manuelle.
             self::initSchema();
-            // 🔑 Deux identités écrivent cette base : le site et `selfrecover-su`. Née
-            // sous le masque par défaut, elle serait en 0644 : un `reset-db` de la
+            // 🔑 Deux identités peuvent écrire cette base : le site et `selfrecover-su`.
+            // Née sous le masque par défaut, elle serait en 0644 : un `reset-db` de la
             // console la recréerait au nom de l'opérateur, fermée en écriture au site.
-            // 0660 la remet au groupe commun que pose l'exploitation (setgid sur
-            // `data/`, voir `deploy/my-self/deploy.sh`), et la ferme aux autres comptes.
+            // 0660 la laisse au groupe que l'exploitation pose sur `data/` (bit
+            // setgid) quand la console tourne sous une autre identité, et la ferme
+            // aux autres comptes.
             if ($neuve) {
                 @chmod($chemin, 0660);
             }
