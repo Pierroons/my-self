@@ -22,7 +22,7 @@ render_header(t('mod.title'), $account);
   <ul style="color:var(--txt2);font-size:13px;line-height:1.7;margin:0;padding-left:18px"><?= t('mod.how.body') ?></ul>
 </div>
 
-<?php if ($account): ?>
+<?php if ($account && !empty($account['is_admin'])): ?>
 <div class="card">
   <h2><?= h(t('mod.detect.h2')) ?></h2>
   <p class="muted"><?= h(t('mod.detect.note')) ?></p>
@@ -30,14 +30,14 @@ render_header(t('mod.title'), $account);
   <button class="btn" id="btn-detecter"><?= h(t('mod.detect.btn')) ?></button>
 </div>
 <script nonce="<?= nonce() ?>">
-const MOD_I18N = <?= json_encode(['cancelled'=>t('mod.js.cancelled'),'target'=>t('mod.js.target'),'spread'=>t('mod.js.spread'),'none'=>t('mod.js.none'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE) ?>;
+const MOD_I18N = <?= json_encode(['cancelled'=>t('mod.js.cancelled'),'target'=>t('mod.js.target'),'none'=>t('mod.js.none'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE) ?>;
 function detecter(){
   labPost('/api/detect_abuse.php',{}).then(d=>{
     const m=document.getElementById('dmsg');
     if(d.ok){
       if(d.pack_detected){
         let html='<div class="toast ok">✓ '+d.cancelled_votes+' '+MOD_I18N.cancelled+'<ul>';
-        d.packs.forEach(p=>{html+='<li>'+MOD_I18N.target+' #'+p.target_author+' — '+p.voters.join(', ')+' ('+MOD_I18N.spread+' '+p.spread_s+'s)</li>';});
+        d.packs.forEach(p=>{html+='<li>'+MOD_I18N.target+' #'+p.target_author+' — '+p.voters.join(', ')+' ('+p.cancelled+' '+MOD_I18N.cancelled+')</li>';});
         html+='</ul></div>';
         m.innerHTML=html;
         setTimeout(()=>location.reload(),2500);

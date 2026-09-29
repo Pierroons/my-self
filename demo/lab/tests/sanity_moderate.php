@@ -780,6 +780,18 @@ $journalSite->actes === [] && Moderate::journal() === $journalSite
     : nok('le simulateur a écrit au journal du site, ou ne l\'a pas rendu : ' . count($journalSite->actes) . ' acte(s)');
 Moderate::setJournal(null);
 
+// ── 37. Dans le lab, un ban coupe la publication, pas la connexion ──────────
+require_once __DIR__ . '/../lib/forum.php';
+$muet = membre($pdo, 'banni-forum');
+Moderate::adminBan($pdo, $muet, 'arbitre-banc', motif());
+$refusFil = Pierroons\MySelfLab\Forum::createThread($pdo, $muet, 'un fil', 'general', 'bonjour');
+$refusMsg = Pierroons\MySelfLab\Forum::createPost($pdo, $muet, 1, 'bonjour');
+Moderate::adminPardon($pdo, $muet, 'arbitre-banc', motif());
+$accepte = Pierroons\MySelfLab\Forum::createThread($pdo, $muet, 'un fil', 'general', 'bonjour');
+($refusFil['error'] ?? '') === 'compte_banni' && ($refusMsg['error'] ?? '') === 'compte_banni' && $accepte['ok']
+    ? ok('un compte banni ne publie ni fil ni message, et publie de nouveau une fois le ban levé')
+    : nok('publication pendant un ban : ' . json_encode([$refusFil, $refusMsg, $accepte]));
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"

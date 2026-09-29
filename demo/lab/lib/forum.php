@@ -9,6 +9,8 @@ namespace Pierroons\MySelfLab;
 
 use PDO;
 
+require_once __DIR__ . '/moderate.php';
+
 final class Forum
 {
     public const CATEGORIES = [
@@ -64,8 +66,28 @@ final class Forum
         return $stmt->fetchAll();
     }
 
+    /**
+     * Un compte banni ne publie plus : ni fil, ni message. La connexion et les
+     * messages privés restent ouverts — le ban coupe la parole publique, pas le
+     * lien avec qui voudrait lui écrire.
+     */
+    private static function refusBan(PDO $pdo, int $accountId): ?array
+    {
+        $etat = Moderate::getReputation($pdo, $accountId);
+        if (!$etat['banned']) {
+            return null;
+        }
+        return ['ok' => false, 'error' => 'compte_banni', 'message' => sprintf(
+            'Compte banni jusqu\'au %s : la publication reprend à la fin de la peine.',
+            date('d/m/Y H:i', $etat['banned_until'])
+        )];
+    }
+
     public static function createThread(PDO $pdo, int $accountId, string $titre, string $categorie, string $premierMessage): array
     {
+        if ($refus = self::refusBan($pdo, $accountId)) {
+            return $refus;
+        }
         $titre = trim($titre);
         $premierMessage = trim($premierMessage);
         if (mb_strlen($titre) < 3 || mb_strlen($titre) > 150) {
@@ -88,6 +110,9 @@ final class Forum
 
     public static function createPost(PDO $pdo, int $accountId, int $threadId, string $contenu): array
     {
+        if ($refus = self::refusBan($pdo, $accountId)) {
+            return $refus;
+        }
         $contenu = trim($contenu);
         if (mb_strlen($contenu) < 1) {
             return ['ok' => false, 'error' => 'message_vide', 'message' => 'Le message ne peut pas être vide.'];

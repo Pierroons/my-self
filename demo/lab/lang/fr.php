@@ -302,7 +302,6 @@ return [
     'mod.col.reason'  => 'Raison',
     'mod.js.cancelled' => 'vote(s) annulé(s). Pack(s) :',
     'mod.js.target'    => 'cible',
-    'mod.js.spread'    => 'écart',
     'mod.js.none'      => 'Aucun pack-voting détecté sur la période récente.',
 
     // ── Page « Attack Simulator » ─────────────────────────────────────────
@@ -407,7 +406,10 @@ return [
     'prf.pass.jamais'   => 'Elle n\'expire jamais. Une passphrase de secours sert quand tout le reste est perdu, parfois des années plus tard : la faire périmer la tuerait au moment exact où elle sert. Ce qui la protège, c\'est qu\'elle ne fonctionne qu\'une fois — dès qu\'elle sert, on t\'en donne une neuve et l\'ancienne est morte.',
     'prf.title'      => 'Mon espace',
     'prf.rep'        => 'Réputation',
-    'prf.suspended'  => 'suspendu',
+    'prf.banned.until' => 'banni jusqu\'au %s',
+    'prf.mod.ban.h'    => 'Ban en cours',
+    'prf.mod.ban.txt'  => 'Jusqu\'au %s, tu ne peux ni voter ni publier. Tes messages privés restent ouverts. Motif : %s',
+    'prf.mod.ban.auto' => 'ta réputation est tombée à zéro',
     'prf.novote'     => 'sans droit de vote',
     'prf.support'    => '▲ Soutenir',
     'prf.report'     => '▼ Signaler',

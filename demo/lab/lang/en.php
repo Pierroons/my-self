@@ -302,7 +302,6 @@ return [
     'mod.col.reason'  => 'Reason',
     'mod.js.cancelled' => 'vote(s) cancelled. Pack(s):',
     'mod.js.target'    => 'target',
-    'mod.js.spread'    => 'spread',
     'mod.js.none'      => 'No pack-voting detected over the recent period.',
 
     // ── "Attack Simulator" page ───────────────────────────────────────────
@@ -407,7 +406,10 @@ return [
     'prf.pass.jamais'   => 'It never expires. A backup passphrase is for when everything else is lost, sometimes years later: expiring it would kill it at the exact moment it is needed. What protects it is that it works only once — the moment it is used, you get a new one and the old one is dead.',
     'prf.title'      => 'My space',
     'prf.rep'        => 'Reputation',
-    'prf.suspended'  => 'suspended',
+    'prf.banned.until' => 'banned until %s',
+    'prf.mod.ban.h'    => 'Ban in progress',
+    'prf.mod.ban.txt'  => 'Until %s, you can neither vote nor post. Your private messages stay open. Reason: %s',
+    'prf.mod.ban.auto' => 'your reputation fell to zero',
     'prf.novote'     => 'no voting rights',
     'prf.support'    => '▲ Support',
     'prf.report'     => '▼ Report',

@@ -29,6 +29,23 @@ $episodes = Admin::packEpisodes($pdo);
 $reports = Admin::reports($pdo);
 $demandes = Admin::pendingRequests($pdo);
 $disputes = \Pierroons\MySelfLab\RecoverL3::adminList($pdo)['disputes'] ?? [];
+$bans     = Moderate::bansEnCours($pdo);
+$aRevoir  = array_values(array_filter(Moderate::flaggedForReview($pdo), static fn (array $f): bool => $f['review_reason'] !== 'ban_auto'));
+// L'état du journal se lit, il ne se suppose pas : une chaîne rompue ou
+// illisible doit se voir ici avant qu'un arbitre ne s'y fie.
+$journalMod = Moderate::journal();
+try {
+    $etatJournal = $journalMod instanceof \Pierroons\MySelfLab\JournalModeration ? $journalMod->verifier() : null;
+    $erreurJournal = null;
+} catch (\RuntimeException $e) {
+    $etatJournal = null;
+    $erreurJournal = $e->getMessage();
+}
+$causes = [
+    'reputation_zero' => 'réputation à zéro',
+    'salve_rapide'    => 'salve de votes sans lien',
+    'meute_recidive'  => 'récidive de meute (4e épisode)',
+];
 
 $sevColor = ['info' => '#9aa9b6', 'faible' => '#6cb6ff', 'moyen' => '#d4a056', 'eleve' => '#e0824f', 'critique' => '#d96459'];
 $statutColor = ['nouveau' => '#d4a056', 'valide' => '#3fb98c', 'rejete' => '#d96459'];
@@ -104,6 +121,52 @@ table.adm tr:last-child td{border-bottom:none}
           <td><?= (int) $e['rang'] ?></td>
           <td><?= h((string) $e['action']) ?></td>
           <td><?= $dt((int) $e['detected_at']) ?></td></tr>
+    <?php endforeach; ?>
+  </table><?php endif; ?>
+</div>
+
+<!-- Bans en cours -->
+<div class="card">
+  <h2>⛔ Bans en cours <span class="muted" style="font-size:12px">(vote et publication bloqués ; messages privés ouverts)</span></h2>
+  <p class="muted" style="margin-top:0;font-size:12.5px">
+    <?php if ($erreurJournal !== null): ?>
+      <span style="color:var(--danger)">⚠ Journal de modération illisible : <?= h($erreurJournal) ?></span>
+    <?php elseif ($etatJournal === null): ?>
+      <span style="color:var(--warn)">⚠ Aucun journal branché : le ban automatique ne tombe pas, une réputation à zéro est seulement signalée.</span>
+    <?php elseif (!$etatJournal['ok']): ?>
+      <span style="color:var(--danger)">⚠ Journal de modération rompu à l'entrée <?= (int) $etatJournal['brokenAt'] ?> sur <?= (int) $etatJournal['count'] ?>.</span>
+    <?php else: ?>
+      ✓ Journal de modération : <?= (int) $etatJournal['count'] ?> entrée(s), chaîne intègre.
+    <?php endif; ?>
+    Lever un ban avant son plancher (<?= (int) round(Moderate::config()->plancherFraction * 100) ?> % de la peine) exige un motif, et s'inscrit comme levée anticipée.
+  </p>
+  <?php if (!$bans): ?><p class="muted">Aucun ban en cours.</p><?php else: ?>
+  <table class="adm"><tr><th>Compte</th><th>Origine</th><th>Motif</th><th>Fin</th><th>Reste</th><th>Plancher</th><th></th></tr>
+    <?php foreach ($bans as $b): ?>
+      <tr><td>@<?= h($b['username']) ?><?php if ($b['a_revoir']): ?> <span class="tag-sm" style="color:var(--warn);border-color:var(--warn)">à revoir</span><?php endif; ?></td>
+          <td><?= $b['origine'] === 'auto' ? 'automatique' : ($b['origine'] === 'admin' ? 'arbitre' : '—') ?> · épisode <?= (int) $b['episode'] ?></td>
+          <td><?= h($b['origine'] === 'auto' ? 'réputation à zéro' : (string) $b['motif']) ?></td>
+          <td><?= $dt($b['jusqu_a']) ?></td>
+          <td><?= h(Moderate::dureeEnClair($b['reste'])) ?></td>
+          <td><?= $b['plancher'] === null ? '—' : ($b['plancher'] <= time() ? 'passé' : $dt($b['plancher'])) ?></td>
+          <td style="white-space:nowrap">
+            <button class="btn mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="pardon">✅ lever</button>
+            <?php if ($b['a_revoir']): ?><button class="btn btn-ghost mini js-modaction" data-id="<?= $b['account_id'] ?>" data-op="maintenir">⏳ maintenir</button><?php endif; ?>
+          </td></tr>
+    <?php endforeach; ?>
+  </table><?php endif; ?>
+
+  <h3 style="margin:16px 0 6px;font-size:14px">🔎 Signalements à arbitrer</h3>
+  <?php if (!$aRevoir): ?><p class="muted">Aucun signalement en attente.</p><?php else: ?>
+  <table class="adm"><tr><th>Compte</th><th>Cause</th><th>Réputation</th><th></th></tr>
+    <?php foreach ($aRevoir as $f): ?>
+      <tr><td>@<?= h((string) $f['username']) ?></td>
+          <td><?= h($causes[$f['review_reason']] ?? (string) $f['review_reason']) ?></td>
+          <td>★ <?= (int) $f['reputation'] ?></td>
+          <td style="white-space:nowrap">
+            <button class="btn btn-ghost mini js-modaction" data-id="<?= (int) $f['account_id'] ?>" data-op="ban">🔨 bannir</button>
+            <button class="btn mini js-modaction" data-id="<?= (int) $f['account_id'] ?>" data-op="pardon">✅ gracier</button>
+          </td></tr>
     <?php endforeach; ?>
   </table><?php endif; ?>
 </div>

@@ -7,6 +7,10 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
+// Les heures affichées — fin d'un ban, plancher d'une peine, dates d'échec —
+// sont celles de Paris. Sans ce réglage, PHP retombe sur UTC quand l'hôte n'en
+// déclare aucun, et un « banni jusqu'à 05:50 » ment de deux heures l'été.
+date_default_timezone_set('Europe/Paris');
 // Traduction : chargée ici et non dans layout.php, sinon elle ne serait
 // disponible que pour les pages HTML. Les points d'entrée d'API n'incluent pas
 // le gabarit, et leurs classes appellent tc() — sans cela, une fonction

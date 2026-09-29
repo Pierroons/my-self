@@ -43,8 +43,8 @@ if ($voirUsername !== null) {
         ?>
         <h1>@<?= h($vue['username']) ?></h1>
         <div class="card">
-          <p style="margin-top:0"><strong><?= h(t('prf.rep')) ?></strong> · <span style="color:<?= $repColor ?>;font-weight:700">★ <?= $repScore ?>/30</span>
-            <?php if ($rep['banned']): ?><span style="color:#d96459"> · <?= h(t('prf.suspended')) ?></span><?php endif; ?>
+          <p style="margin-top:0"><strong><?= h(t('prf.rep')) ?></strong> · <span style="color:<?= $repColor ?>;font-weight:700">★ <?= $repScore ?>/<?= Moderate::config()->reputationMax ?></span>
+            <?php if ($rep['banned']): ?><span style="color:#d96459"> · <?= h(sprintf(t('prf.banned.until'), date('d/m/Y H:i', $rep['banned_until']))) ?></span><?php endif; ?>
             <?php if (!$rep['voting_rights']): ?><span style="color:#d4a056"> · <?= h(t('prf.novote')) ?></span><?php endif; ?>
             <?php if ($rep['convalescent']): ?><span style="color:#d4a056"> · <?= h(t('prf.convalescent')) ?></span><?php endif; ?>
           </p>
@@ -154,16 +154,26 @@ render_header(t('prf.title'), $account);
 <!-- Panel modération -->
 <div class="card">
   <h2 style="margin-top:0"><?= t('prf.mod.h2') ?></h2>
-  <p style="margin:0 0 6px"><span style="color:<?= $repColor ?>;font-weight:700;font-size:18px">★ <?= $repScore ?>/30</span>
+  <p style="margin:0 0 6px"><span style="color:<?= $repColor ?>;font-weight:700;font-size:18px">★ <?= $repScore ?>/<?= Moderate::config()->reputationMax ?></span>
      <span class="cat-pill" style="color:<?= $repColor ?>;border-color:<?= $repColor ?>;margin-left:8px"><?= $repLabel ?></span></p>
   <div style="height:9px;background:var(--elev);border-radius:5px;overflow:hidden;margin:8px 0 14px">
     <div style="height:100%;width:<?= $repPct ?>%;background:<?= $repColor ?>"></div>
   </div>
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;font-size:13px">
     <div><span class="muted"><?= h(t('prf.mod.right')) ?></span><br><strong style="color:<?= $canVote ? 'var(--acc)' : 'var(--warn)' ?>"><?= $canVote ? t('prf.mod.active') : '✗ '. t($rep['voting_rights'] ? 'prf.mod.limited' : 'prf.mod.removed') ?></strong></div>
-    <div><span class="muted"><?= h(t('prf.mod.strikes')) ?></span><br><strong><?= $rep['strikes'] ?>/3</strong></div>
-    <div><span class="muted"><?= h(t('prf.mod.status')) ?></span><br><strong style="color:<?= $rep['banned'] ? 'var(--danger)' : 'var(--acc)' ?>"><?= t($rep['banned'] ? 'prf.suspended' : 'prf.mod.st.active') ?></strong></div>
+    <div><span class="muted"><?= h(t('prf.mod.strikes')) ?></span><br><strong><?= $rep['strikes'] ?></strong></div>
+    <div><span class="muted"><?= h(t('prf.mod.status')) ?></span><br><strong style="color:<?= $rep['banned'] ? 'var(--danger)' : 'var(--acc)' ?>"><?= $rep['banned'] ? h(sprintf(t('prf.banned.until'), date('d/m/Y H:i', $rep['banned_until']))) : t('prf.mod.st.active') ?></strong></div>
   </div>
+  <?php if ($rep['banned']): ?>
+    <div style="margin:14px 0 0;padding:10px 12px;border-left:3px solid #d96459;background:var(--elev);border-radius:0 6px 6px 0">
+      <strong style="color:#d96459"><?= h(t('prf.mod.ban.h')) ?></strong>
+      <p class="muted" style="margin:4px 0 0;font-size:13px"><?= h(sprintf(
+          t('prf.mod.ban.txt'),
+          date('d/m/Y H:i', $rep['banned_until']),
+          $rep['ban_origine'] === 'auto' ? t('prf.mod.ban.auto') : (string) $rep['ban_motif']
+      )) ?></p>
+    </div>
+  <?php endif; ?>
   <?php if (!$canVote && $whyNot): ?>
     <p class="muted" style="margin:12px 0 0">⚠ <?= h($whyNot) ?></p>
   <?php endif; ?>
