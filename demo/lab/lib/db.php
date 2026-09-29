@@ -90,6 +90,7 @@ final class Db
         if (self::$pdo === null) {
             $chemin = self::path();
             self::exigerAcces($chemin);
+            $neuve = !file_exists($chemin);
             self::$pdo = new PDO('sqlite:' . $chemin);
             self::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             self::$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
@@ -97,6 +98,14 @@ final class Db
             // Schema idempotent (CREATE TABLE/INDEX IF NOT EXISTS) — exécuté à chaque
             // démarrage pour appliquer les nouvelles tables sans migration manuelle.
             self::initSchema();
+            // 🔑 Deux identités écrivent cette base : le site et `selfrecover-su`. Née
+            // sous le masque par défaut, elle serait en 0644 : un `reset-db` de la
+            // console la recréerait au nom de l'opérateur, fermée en écriture au site.
+            // 0660 la remet au groupe commun que pose l'exploitation (setgid sur
+            // `data/`, voir `deploy/my-self/deploy.sh`), et la ferme aux autres comptes.
+            if ($neuve) {
+                @chmod($chemin, 0660);
+            }
         }
         return self::$pdo;
     }

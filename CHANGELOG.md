@@ -10,6 +10,17 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### La base du lab naît partageable entre le site et la console — 29 septembre 2026
+
+Le site et `selfrecover-su` écrivent la même base, sous deux identités. Créée sous le masque par
+défaut, elle naissait en `0644` : lisible par tous les comptes de la machine, et, recréée par un
+`reset-db` de la console, fermée en écriture au site. `Db::pdo()` pose désormais `0660` sur une base
+qu'il vient de créer. Une base existante garde son mode.
+
+Le partage lui-même reste un geste d'exploitation, décrit dans `deploy/my-self/deploy.sh` : un groupe
+commun au site et à l'opérateur, le bit setgid sur `data/`, puis un redémarrage de PHP-FPM.
+Une section de `sanity_secrets_instance.php` le vérifie.
+
 ### HSTS et CSP pour la vitrine, la démo SelfDataGuard et SelfFarm — 28 septembre 2026
 
 Ces trois vhosts envoyaient les quatre en-têtes du socle, sans HSTS ni CSP. Trois fragments
