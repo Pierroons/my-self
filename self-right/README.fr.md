@@ -7,7 +7,7 @@
 > *Connais tes droits, fais-les valoir.*
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfJustice : v0.4.1 bêta](https://img.shields.io/badge/SelfJustice-v0.4.1%20b%C3%AAta-green.svg)](./selfjustice/)
+[![SelfJustice : v0.4.2 bêta](https://img.shields.io/badge/SelfJustice-v0.4.2%20b%C3%AAta-green.svg)](./selfjustice/)
 [![SelfAct : v0.1.3](https://img.shields.io/badge/SelfAct-v0.1.3-brightgreen.svg)](./selfact/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -58,7 +58,7 @@ Aucun des deux modules n'analyse ton cas à ta place : la consultation juridique
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfJustice](./selfjustice/) | Directives juridiques lisibles par machine + API ouverte du droit | **v0.4.1 bêta** — en ligne sur [justice.my-self.fr](https://justice.my-self.fr) |
+| [SelfJustice](./selfjustice/) | Directives juridiques lisibles par machine + API ouverte du droit | **v0.4.2 bêta** — en ligne sur [justice.my-self.fr](https://justice.my-self.fr) |
 | [SelfAct](./selfact/) | Ressources officielles, délais et modèles de lettres pour la démarche | **v0.1.3** — API, catalogue et pages en service |
 
 ---

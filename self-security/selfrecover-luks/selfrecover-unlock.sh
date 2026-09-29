@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # selfrecover-unlock.sh — déverrouillage de SECOURS d'un volume LUKS via la passphrase Recover-LUKS
-# SelfRecover (sans email ni tiers). Utilisé en fallback quand le déverrouillage automatique
-# (quorum distribué) est indisponible.
+# SelfRecover (sans email ni tiers), depuis un système démarré : un volume secondaire, ou un
+# disque ouvert depuis un système de secours. Le démarrage passe par le keyscript.
 #
 # Usage :  sudo SELFRECOVER_SALT="<sel du déploiement>" ./selfrecover-unlock.sh <device> [mapping]
 #   ex.    sudo SELFRECOVER_SALT="site-salt-example" ./selfrecover-unlock.sh /dev/nvme0n1p2 data

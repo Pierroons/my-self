@@ -12,12 +12,13 @@
  * `hash_hmac` accepte n'importe quelle clé, l'application continuait de servir des
  * jetons que quiconque lit le dépôt pouvait recalculer.
  *
- * 🔑 **Sept défauts replantés, sept rougissements.** Le plus instructif est le sixième :
+ * 🔑 **Huit défauts replantés, huit rougissements.** Le plus instructif est le sixième :
  * remplacer l'`exit(6)` de `verify-log` par un `break` — c'est ce que le premier jet du
  * correctif portait, et le banc ne le voyait pas tant que sa section 6 n'existait pas.
  * Les autres : écriture non contrôlée · `strlen()` retiré de `SecretInstance` · prise
  * d'environnement vide ignorée · `csrfSecret()` ramené à son ancien corps · sceau vide
- * au lieu de `null` · empreinte redevenue un condensat nu.
+ * au lieu de `null` · empreinte redevenue un condensat nu · `chmod` de la base neuve
+ * retiré de `Db::pdo()`.
  *
  * ⚠️ Un de ces sept passait pour une mauvaise raison : sans la garde, une prise vide part
  * comme CHEMIN et l'échec survient plus loin, au renommage. Le banc voyait une exception
@@ -179,7 +180,7 @@ function console(string $args, array $env): array
 $bac = sys_get_temp_dir() . '/lab-secrets-' . bin2hex(random_bytes(6));
 mkdir($bac, 0700, true);
 register_shutdown_function(static function () use ($bac, $bacSel): void {
-    foreach (['ferme', 'etat', 'su'] as $sous) {
+    foreach (['ferme', 'etat', 'su', 'base'] as $sous) {
         @chmod("$bac/$sous", 0700);
         foreach (glob("$bac/$sous/*") ?: [] as $f) {
             @unlink($f);
@@ -447,6 +448,32 @@ $envEnv = [
 $r = console('record-seal', $envEnv);
 verifier('un secret posé par l\'environnement est scellable', $r['code'] === 0, $r['texte']);
 verifier('et verify-log le reconnaît', console('verify-log', $envEnv)['code'] === 0);
+
+// ─────────────────────────────────────────────────────────────────────────────
+section('7. Une base neuve naît partageable : 0660, fermée aux autres comptes');
+
+// Le site et la console écrivent la même base. Celle que recrée un `reset-db`
+// doit rester inscriptible par le groupe commun, quel que soit le masque de qui
+// la crée ; une base existante garde le mode que l'exploitation lui a donné.
+$base = $bac . '/base/lab.db';
+mkdir(dirname($base), 0700, true);
+$masque = umask(0022);
+putenv('LAB_DB_PATH=' . $base);
+Db::fermer();
+Db::pdo();
+Db::fermer();
+clearstatcache();
+$mode = fileperms($base) & 0777;
+verifier('une base créée sous le masque 022 naît en 0660', $mode === 0660, sprintf('%o', $mode));
+
+chmod($base, 0640);
+Db::pdo();
+Db::fermer();
+clearstatcache();
+$mode = fileperms($base) & 0777;
+verifier('une base existante garde son mode', $mode === 0640, sprintf('%o', $mode));
+umask($masque);
+putenv('LAB_DB_PATH');
 
 // ─────────────────────────────────────────────────────────────────────────────
 echo "\n" . str_repeat('=', 63) . "\n";

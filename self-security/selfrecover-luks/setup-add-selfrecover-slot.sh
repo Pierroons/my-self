@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Ajoute un slot SelfRecover à un volume LUKS (déverrouillage de secours).
-# Autorise l'ajout via une clé EXISTANTE : la clé maître du quorum (--existing-keyfile)
-# ou une passphrase déjà connue (prompt). Le slot quorum n'est JAMAIS retiré.
+# L'ajout s'autorise par une clé EXISTANTE : une passphrase déjà enrôlée, demandée à
+# l'invite, ou un keyfile (--existing-keyfile). Aucun slot n'est retiré.
 #
-# Usage (vrai disque, autorisé par la master reconstituée via quorum) :
-#   # 1) reconstituer la master via quorum dans un keyfile tmpfs, puis :
+# Usage (INSTALL.md) :
 #   sudo SELFRECOVER_SALT="$(cat /etc/selfkeyguard/selfrecover_salt)" \
-#        ./setup-add-selfrecover-slot.sh /dev/disk/by-label/cryptdata --existing-keyfile /run/keyguard/master.bin
+#        ./setup-add-selfrecover-slot.sh "$ROOT_DEV"
 #
-# Usage (test, autorisé par une passphrase existante) :
-#   sudo SELFRECOVER_SALT="..." ./setup-add-selfrecover-slot.sh /dev/xxx
+# Usage (autorisé par un keyfile existant) :
+#   sudo SELFRECOVER_SALT="$(cat /etc/selfkeyguard/selfrecover_salt)" \
+#        ./setup-add-selfrecover-slot.sh "$ROOT_DEV" --existing-keyfile <keyfile>
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

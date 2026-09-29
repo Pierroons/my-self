@@ -5,7 +5,7 @@
 **Impartial legal pre-analysis powered by AI-readable directives — served over a free public API.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.4.1 beta](https://img.shields.io/badge/status-v0.4.1%20beta-green.svg)](#status)
+[![Status: v0.4.2 beta](https://img.shields.io/badge/status-v0.4.2%20beta-green.svg)](#status)
 [![Live](https://img.shields.io/badge/live-justice.my--self.fr-brightgreen.svg)](https://justice.my-self.fr)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.md)
 [![Companion of: SelfAct](https://img.shields.io/badge/companion-SelfAct-green.svg)](../selfact/)
@@ -184,7 +184,7 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 
 ## Status
 
-**v0.4.1 — live in production at [justice.my-self.fr](https://justice.my-self.fr)**
+**v0.4.2 — live in production at [justice.my-self.fr](https://justice.my-self.fr)**
 
 - [x] System directives (7-step analysis procedure, 5 principles)
 - [x] 8 legal categories (work, housing, family, public administration, neighborhood, consumer, civil, criminal)
@@ -222,9 +222,11 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
   2026-09-11**, from 1873 to 2026, full text included — today's count is served at
   `/api/status`. **Judicial** case law (Cour de cassation, courts of appeal) already ships and
   is served; `tj` and `tcom` are available upstream and not yet harvested
-- **v0.4.1 (current)** — Administrative decisions can be checked by their number, and
+- **v0.4.1** — Administrative decisions can be checked by their number, and
   `/verifier` no longer denies a decision that sits behind more recent namesakes. Theme search
   says it only covers the judicial order, instead of passing on the upstream error
+- **v0.4.2 (current)** — The home page has no inline script left: the copy button, the feedback
+  form and the per-AI consultation grid work under the site's CSP
 - **v1.0.0** — Directives reviewed by a practicing attorney (SelfAct integration shipped in v0.2.0)
 
 ---

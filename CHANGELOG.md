@@ -10,6 +10,17 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### La base du lab naît partageable entre le site et la console — 29 septembre 2026
+
+Le site et `selfrecover-su` écrivent la même base, sous deux identités. Créée sous le masque par
+défaut, elle naissait en `0644` : lisible par tous les comptes de la machine, et, recréée par un
+`reset-db` de la console, fermée en écriture au site. `Db::pdo()` pose désormais `0660` sur une base
+qu'il vient de créer. Une base existante garde son mode.
+
+Le partage lui-même reste un geste d'exploitation, décrit dans `deploy/my-self/deploy.sh` : un groupe
+commun au site et à l'opérateur, le bit setgid sur `data/`, puis un redémarrage de PHP-FPM.
+Une section de `sanity_secrets_instance.php` le vérifie.
+
 ### HSTS et CSP pour la vitrine, la démo SelfDataGuard et SelfFarm — 28 septembre 2026
 
 Ces trois vhosts envoyaient les quatre en-têtes du socle, sans HSTS ni CSP. Trois fragments
@@ -548,6 +559,29 @@ Le garde-fou de CI vérifie deux compteurs plutôt que le seul code de sortie : 
 sections ne s'éprouvent pas sous root, le banc les saute **en le disant** et sort quand
 même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le même vert en
 ayant renoncé aux contrôles qui touchent au système.
+
+---
+
+## [SelfJustice v0.4.2] — 29 septembre 2026
+
+### SelfJustice v0.4.2 — l'accueil fonctionne sous la CSP du site — 29 septembre 2026
+
+Le vhost de `justice.my-self.fr` sert `default-src 'self'` : un navigateur n'exécute que les scripts
+chargés depuis le site. Les trois scripts inline de l'accueil et l'attribut `onclick` du bouton de
+copie étaient bloqués, sans une erreur côté serveur. Le bouton ne faisait rien, la grille des
+consultations par IA restait sur « Chargement… », et le formulaire de retours, privé de son
+JavaScript, partait en GET avec le commentaire dans l'URL, donc dans le journal d'accès.
+
+Les trois scripts passent dans `site/selfjustice.js`. Le formulaire déclare `method="post"` et son
+action : un JavaScript défaillant ne met plus le commentaire dans l'URL. Le compteur d'en-tête garde
+la valeur rendue par le serveur ; le script réactivé y aurait écrit un autre chiffre sous le même mot
+« consultations ». La requête copiée renvoyait à `/directives.html`, qui répond 404 : elle dit
+désormais « Analyse <domaine> », la formule que la page enseigne.
+
+`tests/sanity_csp_compatible.py` lit les quatre pages que sert ce vhost et échoue sur un script
+inline, un gestionnaire `on*=`, une URL `javascript:` ou un script hors du site ; il échoue aussi si
+une page manque. Il tourne dans `structure.yml`. Mesuré en production le 29 septembre, dans Chromium :
+aucune violation de CSP sur l'accueil, copie, grille et formulaire fonctionnels.
 
 ---
 

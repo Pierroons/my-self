@@ -74,7 +74,7 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | [`tests/test_sauvegardes.sh`](./tests/test_sauvegardes.sh) | banc : `verifie-sauvegardes.sh` refuse une copie sur le volume chiffré ou périmée |
 | [`tests/test_garde_fou_image_chargee.sh`](./tests/test_garde_fou_image_chargee.sh) | banc : le garde-fou juge l'image que l'amorceur **charge** (Raspberry Pi compris) |
 | [`docs/cryptsetup-lecture-cle.md`](./docs/cryptsetup-lecture-cle.md) | note de mesure : comment `cryptsetup` lit une clé selon le chemin emprunté |
-| [`quorum-rnd/`](./quorum-rnd/) | R&D : déverrouillage par quorum de témoins — **non activé en v0.5.0** |
+| [`quorum-rnd/`](./quorum-rnd/) | R&D : déverrouillage par quorum de témoins — **non activé** |
 | [`fido2-banc-essai/`](./fido2-banc-essai/) | banc d'essai : FIDO2 dans l'initramfs — **voie non soutenue**, incompatible avec le keyscript |
 
 ## Installation
