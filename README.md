@@ -77,6 +77,8 @@ is what separates them. Neither library imports the other: pairing them is the
 integrator's job, and `demo/selfdataguard/` shows one way. A hash stolen on one
 side does not open the other; the word itself, if stolen, opens the SelfDataGuard
 vault on its own — on the SelfRecover side it still needs the *recovery code*.
+A vault sealed by the password alone does not survive a SelfRecover recovery:
+see [the warning in the SelfDataGuard README](./self-security/selfdataguard/README.md#coupling-with-selfrecover).
 The detail of each derivation is in the README of the module concerned.
 
 ### A salt is not a secret

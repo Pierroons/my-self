@@ -78,6 +78,8 @@ l'intégrateur qui les apparie, et `demo/selfdataguard/` en montre une façon. U
 empreinte volée d'un côté n'ouvre pas l'autre ; le mot lui-même, s'il est volé,
 ouvre seul le coffre SelfDataGuard — côté SelfRecover, il lui faut encore le
 *recovery code*.
+Un coffre scellé par le seul mot de passe ne survit pas à une récupération
+SelfRecover : voir [l'avertissement dans le README de SelfDataGuard](./self-security/selfdataguard/README.fr.md#couplage-avec-selfrecover).
 Le détail de chaque dérivation est dans le README du module concerné.
 
 ### Le sel n'est pas un secret
