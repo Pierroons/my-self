@@ -324,6 +324,21 @@ $pdo->rollBack();
 
 // -----------------------------------------------------------------------------
 
+section('wrap_phrase — persisted on insert and on update');
+
+$withPhrase = (new UserVault())->register('user-phrase', 'phrase-password-0001', null, 'cheval agrafe batterie correct moulin ivoire');
+$own->saveVault($withPhrase['record']);
+$loaded = $own->loadVault('user-phrase');
+$loaded->wrapPhrase?->toBase64() === $withPhrase['record']->wrapPhrase->toBase64()
+    ? ok('saveVault() then loadVault() round-trips wrap_phrase')
+    : ko('wrap_phrase lost on insert');
+$own->updateVault((new UserVault())->removePassphrase($loaded, $withPhrase['unlocked']));
+!$own->loadVault('user-phrase')->hasPassphrase()
+    ? ok('updateVault() writes wrap_phrase too (here: its removal)')
+    : ko('updateVault() left the old wrap_phrase in place');
+
+// -----------------------------------------------------------------------------
+
 section('updateVault — a record read from a replaced vault cannot overwrite the new one');
 
 $uv = new UserVault();

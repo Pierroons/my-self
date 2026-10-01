@@ -18,16 +18,18 @@ use Throwable;
 /**
  * SQLite-backed storage adapter using PDO.
  *
- * Schema is auto-created on first use. Two tables:
+ * Schema is auto-created on first use, and migrated in place when an older
+ * version created it:
  *
  *   selfdataguard_vaults
  *     user_id     TEXT PRIMARY KEY
  *     user_salt   TEXT NOT NULL    (base64)
  *     wrap_pwd    TEXT NOT NULL    (base64 of EncryptedBlob)
  *     wrap_recov  TEXT             (base64, nullable)
- *     wrap_admin  TEXT             (base64, nullable, reserved for v0.2.0+)
+ *     wrap_admin  TEXT             (base64, nullable, reserved, never written)
  *     created_at  TEXT NOT NULL    (ISO 8601)
  *     updated_at  TEXT NOT NULL    (ISO 8601)
+ *     wrap_phrase TEXT             (base64, nullable — added in 0.5.0, hence last)
  *
  *   selfdataguard_fields
  *     user_id     TEXT NOT NULL
@@ -39,6 +41,12 @@ use Throwable;
  *     FOREIGN KEY (user_id) REFERENCES selfdataguard_vaults(user_id) ON DELETE CASCADE
  *
  *   INDEX selfdataguard_fields_blind ON selfdataguard_fields(field_name, blind_index)
+ *
+ *   selfdataguard_escrow          — one row per user
+ *     wrap_user   escrow_key wrapped by the master key (base64 EncryptedBlob)
+ *     wrap_admin  escrow_key sealed to the admin public key (base64 sealed box)
+ *
+ *   selfdataguard_escrow_fields   — escrow fields encrypted with escrow_key
  */
 final class SqliteAdapter implements StorageInterface
 {
@@ -64,8 +72,8 @@ final class SqliteAdapter implements StorageInterface
     {
         $stmt = $this->pdo->prepare(
             'INSERT INTO selfdataguard_vaults
-             (user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at)
-             VALUES (:uid, :salt, :wp, :wr, :wa, :ca, :ua)'
+             (user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase)
+             VALUES (:uid, :salt, :wp, :wr, :wa, :ca, :ua, :wph)'
         );
         try {
             $stmt->execute($this->vaultToParamsForInsert($record));
@@ -91,7 +99,8 @@ final class SqliteAdapter implements StorageInterface
              SET wrap_pwd  = :wp,
                  wrap_recov = :wr,
                  wrap_admin = :wa,
-                 updated_at = :ua
+                 updated_at = :ua,
+                 wrap_phrase = :wph
              WHERE user_id = :uid AND user_salt = :salt'
         );
         $stmt->execute($this->vaultToParamsForUpdate($record));
@@ -363,9 +372,11 @@ final class SqliteAdapter implements StorageInterface
                 wrap_recov  TEXT,
                 wrap_admin  TEXT,
                 created_at  TEXT NOT NULL,
-                updated_at  TEXT NOT NULL
+                updated_at  TEXT NOT NULL,
+                wrap_phrase TEXT
             )'
         );
+        $this->addMissingVaultColumn('wrap_phrase');
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_fields (
                 user_id     TEXT NOT NULL,
@@ -381,12 +392,11 @@ final class SqliteAdapter implements StorageInterface
             'CREATE INDEX IF NOT EXISTS selfdataguard_fields_blind
              ON selfdataguard_fields(field_name, blind_index)'
         );
-        // Escrow compartment: one envelope row + N ciphertext rows per user.
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_escrow (
                 user_id     TEXT PRIMARY KEY,
-                wrap_user   TEXT NOT NULL,   -- escrow_key wrapped by master_key (base64 EncryptedBlob)
-                wrap_admin  TEXT NOT NULL,   -- escrow_key sealed to admin pubkey (base64 sealed box)
+                wrap_user   TEXT NOT NULL,
+                wrap_admin  TEXT NOT NULL,
                 created_at  TEXT NOT NULL,
                 updated_at  TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES selfdataguard_vaults(user_id) ON DELETE CASCADE
@@ -396,12 +406,57 @@ final class SqliteAdapter implements StorageInterface
             'CREATE TABLE IF NOT EXISTS selfdataguard_escrow_fields (
                 user_id     TEXT NOT NULL,
                 field_name  TEXT NOT NULL,
-                ciphertext  TEXT NOT NULL,   -- escrow field encrypted with escrow_key (base64 EncryptedBlob)
+                ciphertext  TEXT NOT NULL,
                 updated_at  TEXT NOT NULL,
                 PRIMARY KEY (user_id, field_name),
                 FOREIGN KEY (user_id) REFERENCES selfdataguard_vaults(user_id) ON DELETE CASCADE
             )'
         );
+    }
+
+    /**
+     * A table created by an older version lacks the columns added since.
+     * `CREATE TABLE IF NOT EXISTS` leaves it as it is, and every query naming
+     * the new column would then fail with "no such column".
+     *
+     * The check is repeated under BEGIN IMMEDIATE: two processes opening the
+     * same old database both see the column missing, and the second ALTER
+     * would otherwise fail on "duplicate column name". The write lock makes the
+     * second one wait, then find the column there. Inside a caller's
+     * transaction the lock is already the caller's; a savepoint suffices.
+     */
+    private function addMissingVaultColumn(string $column): void
+    {
+        if ($this->vaultsHaveColumn($column)) {
+            return;
+        }
+        $add = function () use ($column): void {
+            if (!$this->vaultsHaveColumn($column)) {
+                $this->pdo->exec("ALTER TABLE selfdataguard_vaults ADD COLUMN {$column} TEXT");
+            }
+        };
+        if ($this->pdo->inTransaction()) {
+            $this->atomic($add);
+            return;
+        }
+        $this->pdo->exec('BEGIN IMMEDIATE');
+        try {
+            $add();
+            $this->pdo->exec('COMMIT');
+        } catch (Throwable $e) {
+            $this->pdo->exec('ROLLBACK');
+            throw $e;
+        }
+    }
+
+    private function vaultsHaveColumn(string $column): bool
+    {
+        foreach ($this->pdo->query('PRAGMA table_info(selfdataguard_vaults)') as $info) {
+            if ($info['name'] === $column) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -417,6 +472,7 @@ final class SqliteAdapter implements StorageInterface
             ':wa'   => $record->wrapAdmin?->toBase64(),
             ':ca'   => $record->createdAt->format('c'),
             ':ua'   => $record->updatedAt->format('c'),
+            ':wph'  => $record->wrapPhrase?->toBase64(),
         ];
     }
 
@@ -435,6 +491,7 @@ final class SqliteAdapter implements StorageInterface
             ':wr'   => $record->wrapRecov?->toBase64(),
             ':wa'   => $record->wrapAdmin?->toBase64(),
             ':ua'   => $record->updatedAt->format('c'),
+            ':wph'  => $record->wrapPhrase?->toBase64(),
         ];
     }
 
@@ -455,6 +512,7 @@ final class SqliteAdapter implements StorageInterface
             wrapAdmin: $row['wrap_admin'] !== null ? EncryptedBlob::fromBase64((string) $row['wrap_admin']) : null,
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
+            wrapPhrase: $row['wrap_phrase'] !== null ? EncryptedBlob::fromBase64((string) $row['wrap_phrase']) : null,
         );
     }
 
@@ -464,7 +522,7 @@ final class SqliteAdapter implements StorageInterface
     private function fetchVaultRow(string $userId): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at
+            'SELECT user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase
              FROM selfdataguard_vaults WHERE user_id = :uid'
         );
         $stmt->execute([':uid' => $userId]);
