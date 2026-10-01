@@ -114,9 +114,7 @@ final class Recovery
             return $frein;
         }
 
-        // Espaces normalisés avant comparaison : « alpha  beta » et
-        // « alpha beta » sont la même passphrase pour qui l'a recopiée.
-        $passphrase = trim((string) preg_replace('/\s+/', ' ', $passphrase));
+        $passphrase = self::normaliserPassphrase($passphrase);
 
         $compte = $this->stockage->trouverComptePourPassphrase($nomCompte);
 
@@ -308,6 +306,19 @@ final class Recovery
     public static function engendrerPassphrase(): string
     {
         return implode(' ', Wordlist::generate(self::MOTS_PASSPHRASE, 'en')['words']);
+    }
+
+    /**
+     * La passphrase telle qu'on la compare : espaces de bord retirés, toute
+     * suite d'espaces réduite à un seul. « alpha  beta » et « alpha beta » sont
+     * la même passphrase pour qui l'a recopiée.
+     *
+     * SelfDataGuard scelle la serrure « passphrase » d'un coffre sur la même
+     * chaîne : `tests/sanity_couplage_dataguard.php` tient les deux d'accord.
+     */
+    public static function normaliserPassphrase(string $passphrase): string
+    {
+        return trim((string) preg_replace('/\s+/', ' ', $passphrase));
     }
 
     /**
