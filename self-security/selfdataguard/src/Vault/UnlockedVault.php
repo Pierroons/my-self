@@ -16,6 +16,10 @@ use RuntimeException;
  * short session timeouts and sensitive deployment hygiene (no swap, etc.),
  * this is acceptable for the threat model.
  *
+ * It also carries the user_salt of the vault it was opened on. A vault
+ * re-created for the same userId has another salt, so a session from the old
+ * one cannot write into the new one (StaleVaultException).
+ *
  * NEVER serialize, log, or persist this object.
  */
 final class UnlockedVault
@@ -25,11 +29,17 @@ final class UnlockedVault
 
     public function __construct(
         public readonly string $userId,
-        #[\SensitiveParameter] string $masterKey
+        #[\SensitiveParameter] string $masterKey,
+        public readonly string $vaultSalt
     ) {
         if (strlen($masterKey) !== Primitives::KEY_LEN) {
             throw new RuntimeException(
                 'masterKey must be exactly ' . Primitives::KEY_LEN . ' bytes'
+            );
+        }
+        if (strlen($vaultSalt) !== Primitives::SALT_LEN) {
+            throw new RuntimeException(
+                'vaultSalt must be exactly ' . Primitives::SALT_LEN . ' bytes'
             );
         }
         $this->masterKey = $masterKey;
