@@ -286,29 +286,6 @@ final class Primitives
     }
 
     /**
-     * @deprecated 0.4.0 Use encrypt(). Despite its name, it writes XChaCha20-Poly1305.
-     *             Removed in 0.5.0.
-     */
-    public static function aesGcmEncrypt(
-        #[\SensitiveParameter] string $plaintext,
-        #[\SensitiveParameter] string $key,
-        ?string $aad = null
-    ): EncryptedBlob {
-        return self::encrypt($plaintext, $key, $aad);
-    }
-
-    /**
-     * @deprecated 0.4.0 Use decrypt(), which reads both formats. Removed in 0.5.0.
-     */
-    public static function aesGcmDecrypt(
-        EncryptedBlob $blob,
-        #[\SensitiveParameter] string $key,
-        ?string $aad = null
-    ): string {
-        return self::decrypt($blob, $key, $aad);
-    }
-
-    /**
      * Cryptographically secure random bytes from the OS CSPRNG.
      */
     public static function randomBytes(int $length): string

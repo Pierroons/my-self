@@ -363,6 +363,14 @@ Primitives::deriveFromMemorized('same-secret-both-times', $ctx)
 
 // -----------------------------------------------------------------------------
 
+section('0.5.0 — the deprecated AES-GCM entry points are gone, the v1 read path is not');
+
+!method_exists(Primitives::class, 'aesGcmEncrypt') && !method_exists(Primitives::class, 'aesGcmDecrypt')
+    ? ok('aesGcmEncrypt() and aesGcmDecrypt() removed, as announced in 0.4.0')
+    : ko('a deprecated AES-GCM entry point is still public');
+
+// -----------------------------------------------------------------------------
+
 echo "\n";
 echo "═══════════════════════════════════════════════════════════════\n";
 echo "  Phase 1 Sanity — {$passes} passed, {$failures} failed\n";
