@@ -141,13 +141,22 @@ final class UserVault
     /**
      * Unwrap data_master_key with any of the three secrets.
      *
+     * The Argon2id profile defaults to the current one. An archive passes the
+     * profile it was sealed under: it cannot be re-sealed when the profile
+     * changes, so it must be opened with its own.
+     *
      * @throws MissingEnvelopeException if the vault was never sealed for $lock
      * @throws WrongSecretException     if the secret does not open the envelope
      * @throws LegacyCipherUnavailableException if the envelope is an AES blob
      *         this machine cannot decrypt — the secret may well be right
      */
-    public function unlock(VaultRecord $record, Lock $lock, #[\SensitiveParameter] string $secret): UnlockedVault
-    {
+    public function unlock(
+        VaultRecord $record,
+        Lock $lock,
+        #[\SensitiveParameter] string $secret,
+        int $opslimit = Primitives::ARGON2_OPSLIMIT,
+        int $memlimit = Primitives::ARGON2_MEMLIMIT
+    ): UnlockedVault {
         if ($secret === '') {
             throw new InvalidArgumentException(self::secretName($lock) . ' must not be empty');
         }
@@ -160,7 +169,7 @@ final class UserVault
             });
         }
 
-        $key = self::deriveKey($lock, $secret, $record->userSalt);
+        $key = self::deriveKey($lock, $secret, $record->userSalt, $opslimit, $memlimit);
         try {
             $masterKey = Primitives::decrypt($wrap, $key, aad: $record->userId);
         } catch (LegacyCipherUnavailableException $e) {
@@ -315,14 +324,26 @@ final class UserVault
         }
     }
 
-    private static function deriveKey(Lock $lock, #[\SensitiveParameter] string $secret, string $userSalt): string
-    {
+    private static function deriveKey(
+        Lock $lock,
+        #[\SensitiveParameter] string $secret,
+        string $userSalt,
+        int $opslimit = Primitives::ARGON2_OPSLIMIT,
+        int $memlimit = Primitives::ARGON2_MEMLIMIT
+    ): string {
         return match ($lock) {
-            Lock::Password   => Primitives::deriveFromPassword($secret, $userSalt),
-            Lock::Memorized  => Primitives::deriveFromMemorized($secret, $userSalt . self::HMAC_CONTEXT_SUFFIX),
+            Lock::Password   => Primitives::deriveFromPassword($secret, $userSalt, $opslimit, $memlimit),
+            Lock::Memorized  => Primitives::deriveFromMemorized(
+                $secret,
+                $userSalt . self::HMAC_CONTEXT_SUFFIX,
+                $opslimit,
+                $memlimit
+            ),
             Lock::Passphrase => Primitives::deriveFromMemorized(
                 self::normalizePassphrase($secret),
-                $userSalt . self::PASSPHRASE_CONTEXT_SUFFIX
+                $userSalt . self::PASSPHRASE_CONTEXT_SUFFIX,
+                $opslimit,
+                $memlimit
             ),
         };
     }

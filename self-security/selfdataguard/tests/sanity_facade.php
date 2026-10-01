@@ -347,6 +347,104 @@ $refused === array_keys($guarded)
 
 // -----------------------------------------------------------------------------
 
+section('reEnroll() — level 3: the old vault is archived, a new one created');
+
+$EMAIL = 'ancien@example.org';
+$l3old = $dg->register('user-l3', 'l3-password-0001', 'l3-memorized', $PH1);
+$dg->setFields($l3old, ['email' => $EMAIL, 'note' => 'ancienne note'], indexed: ['email']);
+$dg->setEscrowFields($l3old, $admin['publicKey'], ['contact' => 'contact de secours']);
+
+$l3 = $dg->reEnroll('user-l3', 'l3-password-0002', 'l3-memorized-new', $PH2);
+$current = $l3['unlocked'];
+$archiveId = $l3['archiveId'];
+is_string($archiveId) && $dg->getFields($current) === []
+    ? ok('reEnroll() returns the archive id and an empty new vault')
+    : ko('reEnroll() did not set the old vault aside');
+($dg->listArchives('user-l3')[0]['id'] ?? null) === $archiveId
+    ? ok('listArchives() lists it')
+    : ko('the archive is not listed');
+
+// -----------------------------------------------------------------------------
+
+section('openArchive() — an old lock AND a session on the current vault');
+
+try {
+    $dg->openArchive($l3old, $archiveId, Lock::Passphrase, $PH1);
+    ko('the archive opened from a session on the replaced vault');
+} catch (StaleVaultException) {
+    ok('a session on the replaced vault cannot open the archive');
+}
+try {
+    $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH2);
+    ko('the archive opened with the NEW passphrase');
+} catch (WrongSecretException) {
+    ok('the archive does not open with the new secrets');
+}
+
+$opened = $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
+$read = $dg->readArchive($opened);
+($read['private'] ?? null) == ['email' => $EMAIL, 'note' => 'ancienne note']
+    && ($read['escrow'] ?? null) === ['contact' => 'contact de secours']
+    && ($read['indexed'] ?? null) === ['email']
+    ? ok('the old passphrase opens it: private fields, escrow, and which fields were indexed')
+    : ko('readArchive() returned something else', json_encode($read));
+
+try {
+    $dg->setFields($opened->session(), ['x' => 'y']);
+    ko('an archive session wrote into the live vault');
+} catch (StaleVaultException) {
+    ok('an archive session handed to a write path by hand is refused');
+}
+
+$dg->setFields($current, $read['private'], indexed: $read['indexed']);
+$dg->findUserByField('email', $EMAIL) === 'user-l3'
+    && ($dg->getFields($current)['note'] ?? null) === 'ancienne note'
+    ? ok('restored into the new vault, re-indexed: the old email finds the account again')
+    : ko('restoration failed');
+
+// -----------------------------------------------------------------------------
+
+section('The archive opens under the Argon2id profile it was sealed with');
+
+$pdoForProfile = new PDO("sqlite:{$dbPath}");
+$setOps = static fn (int $ops) => $pdoForProfile->prepare(
+    'UPDATE selfdataguard_archives SET package = json_set(package, \'$.kdf.opslimit\', :ops) WHERE archive_id = :id'
+)->execute([':ops' => $ops, ':id' => $archiveId]);
+$setOps(Primitives::ARGON2_OPSLIMIT + 1);
+try {
+    $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
+    ko('the stored profile is ignored — the archive opened under the current one');
+} catch (WrongSecretException) {
+    ok('with another profile recorded, the same secret no longer opens it: the stored profile is the one used');
+}
+$setOps(Primitives::ARGON2_OPSLIMIT);
+
+// -----------------------------------------------------------------------------
+
+section('The admin reaches the archived escrow; deletion is explicit');
+
+$sk = SelfDataGuard::unsealAdminRecoveryKey($admin['sealedSecret'], 'admin passphrase for the facade bench');
+$dg->getArchiveEscrowFieldsAsAdmin('user-l3', $archiveId, $sk, $admin['publicKey']) === ['contact' => 'contact de secours']
+    ? ok('getArchiveEscrowFieldsAsAdmin() reads the backup memo of the archive')
+    : ko('the admin cannot reach the archived escrow');
+sodium_memzero($sk);
+
+try {
+    $dg->deleteArchive($l3old, $archiveId);
+    ko('a session on the replaced vault deleted the archive');
+} catch (StaleVaultException) {
+    ok('deleteArchive() refuses a session on the replaced vault');
+}
+$dg->delete('user-l3');
+count($dg->listArchives('user-l3')) === 1
+    ? ok('delete() leaves the archive')
+    : ko('delete() took the archive with it');
+$dg->purgeArchives('user-l3') === 1 && $dg->listArchives('user-l3') === []
+    ? ok('purgeArchives() is the explicit erasure')
+    : ko('purgeArchives() did not erase it');
+
+// -----------------------------------------------------------------------------
+
 section('A storage that drops wrap_phrase is caught, not trusted');
 
 /** A StorageInterface implementation that predates 0.5.0: wrap_phrase is not written. */

@@ -13,8 +13,10 @@ use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
+use Pierroons\SelfDataGuard\Vault\UnlockedArchive;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use RuntimeException;
 
@@ -36,6 +38,9 @@ use RuntimeException;
  *     // After a SelfRecover recovery: open with the secret the server holds,
  *     // re-seal with the secrets SelfRecover just issued — one write.
  *     $session = $dg->recover('user-1', Lock::Passphrase, $old, $newPassword, $newPassphrase);
+ *
+ *     // Level 3, no old secret left: the vault is archived, a new one created.
+ *     ['unlocked' => $session, 'archiveId' => $id] = $dg->reEnroll('user-1', $pwd, $memorized, $passphrase);
  *
  *     // Find a user by an indexed field (no plaintext lookup needed)
  *     $userId = $dg->findUserByField('email', 'a@b.c');
@@ -233,8 +238,125 @@ final class SelfDataGuard
         $this->assertPassphrasePersisted($rotated);
     }
 
+    // -- Re-enrolment and archives ---------------------------------------------
+
     /**
-     * Delete the user's vault and all encrypted fields.
+     * Give the userId a new vault and set the current one aside as an archive
+     * — SelfRecover's level 3, where no old secret is left to re-seal with.
+     * Every Argon2id runs first, then one transaction archives and inserts:
+     * a failure leaves the old vault live. With no live vault, it simply
+     * creates one.
+     *
+     * The new vault starts empty; the old data comes back through
+     * openArchive().
+     *
+     * @return array{unlocked: UnlockedVault, archiveId: ?string}
+     */
+    public function reEnroll(
+        string $userId,
+        #[\SensitiveParameter] string $newPassword,
+        #[\SensitiveParameter] ?string $newMemorized = null,
+        #[\SensitiveParameter] ?string $newPassphrase = null
+    ): array {
+        $result    = $this->vault->register($userId, $newPassword, $newMemorized, $newPassphrase);
+        $archiveId = $this->storage->replaceWithArchive($result['record']);
+        $this->assertPassphrasePersisted($result['record']);
+        return ['unlocked' => $result['unlocked'], 'archiveId' => $archiveId];
+    }
+
+    /**
+     * @return list<array{id: string, archivedAt: \DateTimeImmutable, locks: list<Lock>}> oldest first
+     */
+    public function listArchives(string $userId): array
+    {
+        return $this->storage->listArchives($userId);
+    }
+
+    /**
+     * Open an archive with one of its OLD locks — and only from a session on
+     * the CURRENT vault. Old secrets are what may have leaked before a level-3
+     * recovery: on their own, they must not reach the old data.
+     *
+     * Each call costs an Argon2id and nothing here counts failures: the
+     * integrator rate-limits it as it does its login.
+     *
+     * The memorized lock of an archive taken at level 3 needs the SelfRecover
+     * salt of that time, which level 3 replaced. Keep it — as a field of the
+     * new vault, say — for that lock to stay usable.
+     *
+     * @throws StaleVaultException    if $current is not a session on the live vault
+     * @throws VaultNotFoundException if this userId has no such archive
+     */
+    public function openArchive(
+        UnlockedVault $current,
+        string $archiveId,
+        Lock $lock,
+        #[\SensitiveParameter] string $oldSecret
+    ): UnlockedArchive {
+        $this->currentRecord($current);
+        $archive = $this->storage->loadArchive($current->userId, $archiveId)
+            ?? throw new VaultNotFoundException("No archive '{$archiveId}' for this account");
+        $session = $this->vault->unlock(
+            $archive->record,
+            $lock,
+            $oldSecret,
+            $archive->kdfOpslimit,
+            $archive->kdfMemlimit
+        );
+        return new UnlockedArchive($archive, $session);
+    }
+
+    /**
+     * Decrypt an opened archive. `indexed` names the fields that had a blind
+     * index: hand it back to setFields() when restoring into the new vault.
+     *
+     * @return array{private: array<string, string>, escrow: array<string, string>, indexed: list<string>}
+     */
+    public function readArchive(UnlockedArchive $opened): array
+    {
+        $archive = $opened->archive;
+        $private = FieldCrypter::decryptBatch(
+            $opened->session(),
+            array_map(static fn (array $f): string => $f['ciphertext'], $archive->privateFields)
+        );
+        $escrow = [];
+        if ($archive->escrow !== null) {
+            $unlocked = $this->escrow->unlockAsUser($archive->escrow, $opened->session());
+            $escrow   = EscrowFieldCrypter::decryptBatch($unlocked, $archive->escrowFields);
+            $unlocked->lock();
+        }
+        return [
+            'private' => $private,
+            'escrow'  => $escrow,
+            'indexed' => array_keys(array_filter($archive->privateFields, static fn (array $f): bool => $f['wasIndexed'])),
+        ];
+    }
+
+    /**
+     * Delete one archive, from a session on the current vault.
+     */
+    public function deleteArchive(UnlockedVault $current, string $archiveId): bool
+    {
+        $this->currentRecord($current);
+        return $this->storage->deleteArchive($current->userId, $archiveId);
+    }
+
+    /**
+     * Delete every archive of the userId, without a session — account erasure.
+     *
+     * delete() leaves archives on purpose, and erasing an account calls both.
+     * Whoever exposes this decides who may call it: after a level-3 recovery,
+     * the holder of the account is not necessarily the person the archives
+     * belong to.
+     */
+    public function purgeArchives(string $userId): int
+    {
+        return $this->storage->purgeArchives($userId);
+    }
+
+    /**
+     * Delete the user's live vault and all its encrypted fields. Archives stay:
+     * see purgeArchives().
      */
     public function delete(string $userId): void
     {
@@ -353,6 +475,35 @@ final class SelfDataGuard
         $unlocked    = $this->escrow->unlockAsAdmin($record, $adminSecretKey, $adminPublicKey);
         $ciphertexts = $this->storage->loadEscrowFields($userId, $fieldNames);
         $plain       = EscrowFieldCrypter::decryptBatch($unlocked, $ciphertexts);
+        $unlocked->lock();
+        return $plain;
+    }
+
+    /**
+     * getEscrowFieldsAsAdmin() for an archived vault. A user who lost every
+     * secret is the one the backup memo exists for, and level 3 is when that
+     * happens. Same scope, same policy duty for the caller.
+     *
+     * @param array<string> $fieldNames Empty = all escrow fields
+     * @return array<string, string>    field_name => plaintext
+     */
+    public function getArchiveEscrowFieldsAsAdmin(
+        string $userId,
+        string $archiveId,
+        string $adminSecretKey,
+        string $adminPublicKey,
+        array $fieldNames = []
+    ): array {
+        $archive = $this->storage->loadArchive($userId, $archiveId)
+            ?? throw new VaultNotFoundException("No archive '{$archiveId}' for user '{$userId}'");
+        if ($archive->escrow === null) {
+            throw new RuntimeException("No escrow compartment in archive '{$archiveId}'");
+        }
+        $ciphertexts = $fieldNames === []
+            ? $archive->escrowFields
+            : array_intersect_key($archive->escrowFields, array_flip($fieldNames));
+        $unlocked = $this->escrow->unlockAsAdmin($archive->escrow, $adminSecretKey, $adminPublicKey);
+        $plain    = EscrowFieldCrypter::decryptBatch($unlocked, $ciphertexts);
         $unlocked->lock();
         return $plain;
     }
