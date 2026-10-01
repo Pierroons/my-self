@@ -24,7 +24,7 @@ what it does, how to install it, and what it does not protect.
 |---|---|---|
 | [SelfRecover](./bi-self/selfrecover/) | Who are you? | **v0.8.0** — library + deployed implementation |
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | What if the disk is stolen? | **v0.6.0** — documented, hex key |
-| [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.5.0** — available, 300 checks, three locks and archiving at level 3 |
+| [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.5.0** — available, 314 checks, three locks and archiving at level 3 |
 | [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.4.2 beta** — housing, family, administrative law and administrative case law |
 | [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.3** — live, over 1,800 official resources |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.4.0** — linked voters, recovery, vote reason, graduated ban traced to a journal; 1 mechanism not yet coded |
@@ -75,7 +75,7 @@ Compromising one does not open the others, with two exceptions worth stating:
 SelfRecover and SelfDataGuard may share the memorized word (L2) and the passphrase
 (L1), and the derivation is what separates them. Neither library imports the other:
 pairing them is the integrator's job, and `demo/selfdataguard/` shows one way. A
-hash stolen on one side does not open the other. The word itself, if stolen, opens
+hash stolen from one side's database does not open the other. The word itself, if stolen, opens
 the SelfDataGuard vault on its own — on the SelfRecover side it still needs the
 *recovery code*. A stolen passphrase opens both, until its first legitimate use,
 which replaces it.

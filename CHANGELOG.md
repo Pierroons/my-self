@@ -32,6 +32,8 @@ reste aucun ancien secret, et la seule issue était de supprimer le coffre.
 - Une base 0.4.0 se migre en place à sa première ouverture, y compris quand deux processus
   l'ouvrent en même temps. ⚠️ Un retour à la 0.4.0 ne voit pas les archives, et laisse en place
   une serrure passphrase que SelfRecover a pu remplacer depuis.
+- **Deux requêtes qui se chevauchent ne corrompent rien** : écritures sous verrou immédiat, génération
+  du coffre vérifiée dans l'écriture même, révision du coffre contre les mises à jour perdues.
 - `aesGcmEncrypt()` et `aesGcmDecrypt()`, dépréciés en 0.4.0, sont retirés.
 
 SelfRecover : la normalisation de la passphrase devient `Recovery::normaliserPassphrase()`, sans
@@ -39,7 +41,7 @@ changement de comportement, pour que le banc de couplage la compare à celle de 
 banc de parcours fait traverser à un coffre chaque récupération, sur les vrais chemins des deux
 bibliothèques (18 cas, en CI).
 
-Bancs SelfDataGuard : 300 contrôles sur 10 suites. Détail dans le CHANGELOG du module.
+Bancs SelfDataGuard : 314 contrôles sur 10 suites. Le détail des changements est dans le CHANGELOG du module.
 
 ### SelfModerate v0.4.0 — le ban automatique revient, tracé de bout en bout — 29 septembre 2026
 

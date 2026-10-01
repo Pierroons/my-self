@@ -145,7 +145,7 @@ To decrypt, the attacker has three paths:
 
    > **Fixed on 2026-09-06.** Up to 0.3.0, `recov_key` was derived by a single HMAC-SHA256 pass, on the assumption written in this very document that "the memorized word must have sufficient entropy by construction", with a recommended floor of 30 bits. Measured on a deployment host: **213.7 ms per Argon2id attempt against 0.0027 ms per HMAC attempt, a factor of 78,100**. Both keys unwrap the SAME `data_master_key`, and `wrap_recov` is attacked offline with no attempt counter: the security of the pair was therefore that of its cheaper door, whatever the cost of the other. A salt forbids precomputation but adds **no bit** against a targeted person; the AEAD tag tells the attacker which attempt was the right one, it does not slow them down. Only the cost per attempt buys time, and it buys a factor, never entropy.
    >
-   > **No entropy floor is enforced.** Argon2id buys a multiplier, not entropy: a weak word remains ~13 bits of guessing plus ~13 bits of cost. A floor high enough to matter (77 bits) would end the "one memorized word, two uses" pairing with SelfRecover that this document sells elsewhere — a design decision, not a setting. It is stated here as an open question rather than answered silently in either direction.
+   > **No entropy floor is enforced.** Argon2id buys a multiplier, not entropy: a weak word remains ~13 bits of guessing plus ~13 bits of cost. A floor high enough to matter (77.5 bits) would end the sharing of the memorized word between SelfRecover and the vault (§3.1) — a design decision, not a setting. It is stated here as an open question rather than answered silently in either direction.
 
 3. **Bruteforce the passphrase** → the same Argon2id cost per attempt. Here the entropy is known, because SelfRecover draws it at random: six words from a 7,776-word list, about 77.5 bits. It is the strongest door by computation. Its weakness lies elsewhere: it is written on paper (§6.1).
 
@@ -207,10 +207,10 @@ SelfRecover recoveries replace secrets; neither library calls the other. The int
 |---|---|---|---|
 | Level 1 — passphrase | the old passphrase | password and passphrase | `recover(Lock::Passphrase, old, new_password, new_passphrase)` |
 | Level 2 — code + word | the word's digest | password and passphrase | `recover(Lock::Memorized, digest, new_password, new_passphrase)` |
-| Level 2 — device | a signature | the password only | nothing at that moment; at the next secret given, `recover(lock, secret, current_password)` |
+| Level 2 — device | a signature | the password only | nothing at that moment; at the next secret given, `recover(lock, secret, current_password)`, rate-limited like the login |
 | Level 3 — human escalation | no old secret | everything | `reEnroll(password, digest, passphrase)`: archive (§3.5) |
 
-`recover()` unwraps the key, regenerates `wrap_pwd` — and `wrap_phrase` if a new passphrase is given — and writes it all at once, provided the vault still carries the same `user_salt`. A request holding a vault replaced in the meantime fails instead of overwriting it. Called on its own, the method is an Argon2id oracle with no rate limit: SelfRecover's acceptance, with its counters, comes first.
+`recover()` unwraps the key, regenerates `wrap_pwd` — and `wrap_phrase` if a new passphrase is given — and writes it all at once, provided the vault still carries the same `user_salt`. A request holding a vault replaced in the meantime fails instead of overwriting it. Called on its own, the method is an Argon2id oracle with no rate limit: SelfRecover's acceptance, with its counters, comes first — and, for the catch-up after a level-2 device recovery, the login's rate limit.
 
 ### 3.5 Level 3: archiving, not destruction
 
@@ -218,7 +218,7 @@ At level 3 the user has no old secret left, and the vault cannot be re-sealed. U
 
 `reEnroll()` therefore sets the live vault aside, **decrypting nothing** — envelopes, private fields, escrow —, and creates a new vault for the same account, in the same transaction. The AADs bind the account identifier only, so the old envelopes stay valid as they are.
 
-- **Reopening**: `openArchive()` needs an old lock **and** a session on the current vault. Old secrets are precisely what may have leaked before level 3: on their own, they do not reach the old data. Derivation follows the Argon2id profile recorded in the archive, because an archive is not re-sealed when the profile changes.
+- **Reopening**: `openArchive()` needs an old lock **and** a session on the current vault. Old secrets are precisely what may have leaked before level 3: on their own, they do not reach the old data through the service — given a dump, they do (§6.1). Derivation follows the Argon2id profile recorded in the archive, because an archive is not re-sealed when the profile changes.
 - **Restoring**: `readArchive()` returns the fields, which the application writes back into the new vault. Blind indexes are not archived — they would keep answering equality lookups for data that is no longer live —, but each field records whether it was indexed.
 - **The escrow** goes with the archive. The administrator reopens it as for a live vault, with the same key: nothing more is exposed.
 - **Destroying**: on explicit decision only. Deleting the account does not delete its archives; otherwise a fraudulent level 3 followed by a deletion would erase the legitimate holder's.
@@ -326,8 +326,8 @@ For a SelfDataGuard deployment to actually deliver the listed guarantees, it mus
 4. **Short sessions**: `data_master_key` purged from session after inactivity (15 min recommended for Hybrid, 5 min for Full)
 5. **No sensitive logging**: `password_key`, `recov_key`, `phrase_key`, `data_master_key` must never appear in logs (even at debug level)
 6. **Admin access auditing**: in Hybrid mode, every admin access to operational fields must be logged (without the data itself)
-7. **Regular updates**: track Argon2id recommendations to adjust `m` and `t` as hardware progresses (`p` is fixed at 1, see §5). A live vault is re-sealed under the new profile; an archive keeps its own
-8. **Re-sealing at every recovery**: `recover()` at levels 1 and 2, **after** SelfRecover's acceptance and never before; `reEnroll()` at level 3; `openArchive()` rate-limited by the integrator like its login
+7. **Regular updates**: track Argon2id recommendations to adjust `m` and `t` as hardware progresses (`p` is fixed at 1, see §5). The profile is not stored in a live vault: changing it requires re-sealing every live vault first, and the library provides no tool for it. An archive records the profile in force when it was archived, and opens with it
+8. **Re-sealing at every recovery**: `recover()` at levels 1 and 2, **after** SelfRecover's acceptance and never before; the catch-up after a level-2 device recovery and `openArchive()` rate-limited by the integrator like its login; `reEnroll()` at level 3
 
 Failure to respect any of these rules significantly degrades the guarantees. The reference library enforces rule 1, and rule 5 for its own exception traces (`#[\SensitiveParameter]`); the others are up to the integrator and the deployment configuration.
 
@@ -366,4 +366,4 @@ Technical feedback, community audits, and cryptographic critiques are welcome, e
 
 ---
 
-*First edition May 2026; this edition 1 October 2026, aligned on SelfDataGuard v0.5.0. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026; §2, §3, §5, §6, §7 and §8.2 were rewritten alongside the French edition on 1 October 2026 for v0.5.0. The specification described here is implemented and tested from v0.1.0 to v0.5.0 (300 checks, 10 suites).*
+*First edition May 2026; this edition 1 October 2026, aligned on SelfDataGuard v0.5.0. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026; §2, §3, §5, §6, §7 and §8.2 were rewritten alongside the French edition on 1 October 2026 for v0.5.0. The specification described here is implemented and tested from v0.1.0 to v0.5.0 (314 checks, 10 suites).*

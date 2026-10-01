@@ -53,14 +53,14 @@ Self-Security sépare les deux surfaces : **la donnée est chiffrée avant d'att
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, qui survit au dump de la base | **v0.5.0** — disponible, 300 contrôles sur 10 suites |
+| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, qui survit au dump de la base | **v0.5.0** — disponible, 314 contrôles sur 10 suites |
 | [SelfRecover-LUKS](./selfrecover-luks/) | Racine LUKS2 **et** volumes de données ouverts par une seule phrase de récupération | **v0.6.0** — installation reproductible ; versions antérieures validées sur un serveur Debian 13 LNMP, un poste portable et une racine en LVM chiffré |
 
 ---
 
 ## Statut
 
-Les deux modules tournent. SelfDataGuard est déployé et ses dix suites passent ; SelfRecover-LUKS a été validé sur des cycles de redémarrage complets — racine puis volumes secondaires en cascade — et son installation est documentée pas à pas dans [INSTALL.md](./selfrecover-luks/INSTALL.md).
+Les deux modules tournent. SelfDataGuard est déployé en 0.4.0, et les dix suites de la 0.5.0 passent ; SelfRecover-LUKS a été validé sur des cycles de redémarrage complets — racine puis volumes secondaires en cascade — et son installation est documentée pas à pas dans [INSTALL.md](./selfrecover-luks/INSTALL.md).
 
 Une piste de recherche est volontairement laissée de côté : ouvrir un volume par un **quorum de témoins du foyer** (parts de Shamir, avec secours SelfRecover quand le quorum est injoignable). Son code est rangé sous [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) et a été validé sur images jetables, mais il n'est **pas activé** : le module ouvre par keyscript et fichier-clé.
 

@@ -6,7 +6,7 @@
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
 [![Statut : v0.5.0 disponible](https://img.shields.io/badge/statut-v0.5.0%20disponible-brightgreen.svg)](#statut)
-[![Tests : 300 passants](https://img.shields.io/badge/tests-300%20passants-brightgreen.svg)](#tests)
+[![Tests : 314 passants](https://img.shields.io/badge/tests-314%20passants-brightgreen.svg)](#tests)
 [![Pilier : Self-Security](https://img.shields.io/badge/pilier-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -85,19 +85,19 @@ Chaque récupération SelfRecover remplace des secrets. Le coffre suit si l'int�
 |---|---|---|
 | Niveau 1 — passphrase | l'ancienne passphrase | `recover($user, Lock::Passphrase, $ancienne, $nouveauMdp, $nouvellePassphrase)` |
 | Niveau 2 — code + mot mémorisé | l'empreinte du mot | `recover($user, Lock::Memorized, $empreinte, $nouveauMdp, $nouvellePassphrase)` |
-| Niveau 2 — appareil enrôlé | une signature, rien qui ouvre le coffre | au prochain secret donné : `recover($user, $serrure, $secret, $motDePasseActuel)` |
+| Niveau 2 — appareil enrôlé | une signature, rien qui ouvre le coffre | au prochain secret donné : `recover($user, $serrure, $secret, $motDePasseActuel)`, freiné comme la connexion |
 | Niveau 3 — escalade humaine | aucun ancien secret | `reEnroll($user, $mdp, $empreinte, $passphrase)` : l'ancien coffre est **archivé** |
 
-`recover()` ouvre et re-scelle en une seule écriture conditionnelle. Le même appel rattrape un coffre dont l'enveloppe du mot de passe a pris du retard. Seul, c'est un oracle Argon2id sans frein : on ne l'appelle qu'une fois la récupération acceptée par SelfRecover.
+`recover()` ouvre et re-scelle en une seule écriture conditionnelle. Le même appel rattrape un coffre dont l'enveloppe du mot de passe a pris du retard. Appelé seul, c'est un oracle Argon2id sans frein : appelle-le juste après une récupération acceptée par SelfRecover, derrière ses compteurs, et freine le rattrapage du niveau 2 par appareil comme la connexion.
 
-**Au niveau 3, rien ne se perd.** `reEnroll()` met l'ancien coffre de côté, scellé sous ses anciennes serrures, sans péremption, et crée un coffre neuf. Si l'utilisateur retrouve plus tard une ancienne serrure, `openArchive($session, $id, Lock::Passphrase, $ancienne)` puis `readArchive()` lui rendent ses données. La session doit être celle du coffre actuel : une ancienne serrure seule n'ouvre rien, parce que ces secrets sont justement ceux qui ont pu fuir. Une archive ne se détruit que par `deleteArchive()` ou `purgeArchives()`, et `delete()` la laisse.
+**Au niveau 3, l'ancien coffre est archivé.** `reEnroll()` le met de côté, scellé sous ses anciennes serrures, sans péremption, et crée un coffre neuf. Si l'utilisateur retrouve plus tard une ancienne serrure, `openArchive($session, $id, Lock::Passphrase, $ancienne)` puis `readArchive()` lui rendent ses données. La session doit être celle du coffre actuel : par le service, une ancienne serrure seule n'ouvre rien, parce que ces secrets sont justement ceux qui ont pu fuir. Avec un dump de la base, elle ouvre l'archive hors ligne. Une archive ne se détruit que par `deleteArchive()` ou `purgeArchives()`, et `delete()` la laisse.
 
 > ⚠️ **Un coffre scellé par le seul mot de passe ne survit pas à une récupération SelfRecover.** Les niveaux 1 et 2 remplacent le mot de passe du compte (`Recovery::parPassphrase()`, `Recovery::parCode()`). Un coffre créé par `register($user, $password)` seul n'a qu'une enveloppe, scellée sur l'ancien mot de passe : après la récupération, plus personne ne l'ouvre, et aucune des deux bibliothèques ne le dit. Quand les deux modules partagent un compte :
 > - passe `$memorized` et `$passphrase` à `register()` ;
 > - après chaque récupération acceptée, appelle `recover()` comme dans le tableau ci-dessus ;
 > - au niveau 3, appelle `reEnroll()`. La serrure « mot mémorisé » de l'archive dépend du sel SelfRecover de l'époque, que le niveau 3 remplace : range-le, par exemple comme champ du coffre neuf, si cette serrure doit rester utilisable.
 
-Sans SelfRecover, SelfDataGuard fonctionne quand même, avec les serrures que l'application lui donne. Mais l'appariement naturel est : **SelfRecover protège l'authentification, SelfDataGuard protège les données, et les mêmes secrets servent dans les deux.**
+Sans SelfRecover, SelfDataGuard fonctionne quand même, avec les serrures que l'application lui donne.
 
 ---
 
@@ -133,9 +133,9 @@ Une voie administrateur existe pourtant, hors de ce tableau : le **séquestre** 
 
 **v0.5.0 — une troisième serrure, et l'archive au lieu de la destruction**, 1er octobre 2026.
 
-Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (3 537 lignes réparties sur 25 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **300 contrôles répartis sur 10 suites**, tous passants. Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
+Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (3 601 lignes réparties sur 25 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **314 contrôles répartis sur 10 suites**, tous passants. Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
 
-Une base créée par la 0.4.0 se migre en place à sa première ouverture par la 0.5.0 (colonne `wrap_phrase`). Un retour à la 0.4.0 ne voit pas les archives, et laisse en place une serrure passphrase que SelfRecover a pu remplacer depuis : [CHANGELOG](./CHANGELOG.md). Les blobs écrits par la 0.3.0 restent lisibles, par OpenSSL (`ext-openssl`) là où libsodium refuse AES.
+Une base créée par la 0.4.0 se migre en place à sa première ouverture par la 0.5.0 (colonnes `wrap_phrase` et `revision`). Un retour à la 0.4.0 ne voit pas les archives, et laisse en place une serrure passphrase que SelfRecover a pu remplacer depuis : [CHANGELOG](./CHANGELOG.md). Les blobs écrits par la 0.3.0 restent lisibles, par OpenSSL (`ext-openssl`) là où libsodium refuse AES.
 
 Le module tourne sur des déploiements réels. Il **n'a pas été audité par un cryptographe extérieur** : sa conception n'est vérifiée à ce jour que par son auteur et par les lecteurs de ce dépôt.
 
@@ -189,7 +189,7 @@ $session = $dg->recover('alice', Lock::Passphrase, $anciennePassphrase, $nouveau
 $userId = $dg->findUserByField('email', 'a@b.c');  // 'alice' ou null
 ```
 
-Trois classes principales exposées : `SelfDataGuard` (façade), `SqliteAdapter` (stockage ; implémente `StorageInterface` pour MariaDB / Postgres), `Primitives` (crypto brute si tu veux bâtir au-dessus). Les erreurs se distinguent par leur type : `WrongSecretException`, `MissingEnvelopeException`, `VaultNotFoundException`, `StaleVaultException` (une session ouverte sur un coffre remplacé depuis).
+Trois classes principales exposées : `SelfDataGuard` (façade), `SqliteAdapter` (stockage ; implémente `StorageInterface` pour MariaDB / Postgres), `Primitives` (crypto brute si tu veux bâtir au-dessus). Chaque échec a son type d'exception : `WrongSecretException`, `MissingEnvelopeException`, `VaultNotFoundException`, `StaleVaultException` (une session ouverte sur un coffre remplacé depuis).
 
 ---
 
@@ -199,16 +199,16 @@ Dix suites de tests sanity, exécutables directement avec `php` (pas besoin de P
 
 ```bash
 php tests/sanity_primitives.php   # 46 tests — Argon2id, HMAC, XChaCha20-Poly1305 + vecteur IETF, AES-GCM historique, aléatoire
-php tests/sanity_vault.php        # 50 tests — trois serrures, rotation, séparation des contextes, liaison AAD, génération du coffre
+php tests/sanity_vault.php        # 51 tests — trois serrures, rotation, séparation des contextes, liaison AAD, génération du coffre
 php tests/sanity_fields.php       # 26 tests — chiffrement de champs + blind index
-php tests/sanity_storage.php      # 49 tests — adaptateur SQLite, transactions imbriquées, écriture conditionnelle, test "soupe DB"
-php tests/sanity_migration.php    #  9 tests — base 0.4.0 migrée en place, deux migrateurs simultanés
-php tests/sanity_archive.php      # 22 tests — archive : contenu, cloisonnement, tout-ou-rien
-php tests/sanity_facade.php       # 55 tests — API complète bout en bout, recover(), niveau 3
+php tests/sanity_storage.php      # 55 tests — adaptateur SQLite, transactions imbriquées, écriture conditionnelle (génération, révision), test "soupe DB"
+php tests/sanity_migration.php    # 10 tests — base 0.4.0 migrée en place, deux migrateurs simultanés
+php tests/sanity_archive.php      # 26 tests — archive : contenu, cloisonnement, tout-ou-rien, écrivain concurrent attendu
+php tests/sanity_facade.php       # 57 tests — API complète bout en bout, recover(), niveau 3, course à l'écriture
 php tests/sanity_audit.php        # 12 tests — journal d'audit
 php tests/sanity_ceremony.php     # 14 tests — cérémonie de clés
 php tests/sanity_escrow.php       # 17 tests — compartiment escrow
-# Total : 300 tests, 0 échec — relevé par exécution le 01/10/2026
+# Total : 314 tests, 0 échec — relevé par exécution le 01/10/2026
 ```
 
 La suite `sanity_storage.php` inclut un "BIG TEST" qui dumpe le fichier SQLite et vérifie qu'aucune donnée personnelle en clair n'apparaît nulle part dans le blob binaire. Côté SelfRecover, `bi-self/selfrecover/tests/sanity_parcours_dataguard.php` fait traverser à un coffre chaque récupération, sur les vrais chemins des deux bibliothèques.

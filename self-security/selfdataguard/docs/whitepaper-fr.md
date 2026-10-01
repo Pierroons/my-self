@@ -153,8 +153,8 @@ Pour déchiffrer, il a trois voies :
    se présente plus comme une garantie.
 
    **Question ouverte, et elle est de nature produit, pas technique.** Un plancher assez haut pour
-   compter (77 bits, soit six mots sur une liste diceware longue) mettrait fin à la propriété que ce
-   document vend par ailleurs : *« un seul mot mémorisé, deux usages »*. Le mot mémorisé de
+   compter (77,5 bits, soit six mots sur une liste diceware longue) mettrait fin au partage du mot
+   mémorisé entre SelfRecover et le coffre (§3.1). Le mot mémorisé de
    SelfRecover est **choisi** et protégé par un second facteur et un compteur d'essais ; celui-ci
    est **seul** et s'attaque hors ligne. Les deux ne peuvent pas être soumis aux mêmes exigences.
    Trancher revient à choisir entre la commodité du couplage et la solidité de `wrap_recov` — c'est
@@ -225,10 +225,10 @@ Les récupérations SelfRecover remplacent des secrets ; aucune des deux bibliot
 |---|---|---|---|
 | Niveau 1 — passphrase | l'ancienne passphrase | mot de passe et passphrase | `recover(Lock::Passphrase, ancienne, nouveau_mdp, nouvelle_passphrase)` |
 | Niveau 2 — code + mot | l'empreinte du mot | mot de passe et passphrase | `recover(Lock::Memorized, empreinte, nouveau_mdp, nouvelle_passphrase)` |
-| Niveau 2 — appareil | une signature | le mot de passe seul | rien à cet instant ; au prochain secret donné, `recover(serrure, secret, mdp_actuel)` |
+| Niveau 2 — appareil | une signature | le mot de passe seul | rien à cet instant ; au prochain secret donné, `recover(serrure, secret, mdp_actuel)`, freiné comme la connexion |
 | Niveau 3 — escalade humaine | aucun ancien secret | tout | `reEnroll(mdp, empreinte, passphrase)` : archive (§3.5) |
 
-`recover()` déballe la clé, régénère `wrap_pwd` — et `wrap_phrase` si une passphrase neuve est donnée — et écrit le tout en une seule fois, à condition que le coffre porte toujours le même `user_salt`. Une requête qui tiendrait un coffre remplacé entre-temps échoue au lieu de l'écraser. Appelée seule, la méthode est un oracle Argon2id sans frein : c'est l'acceptation de SelfRecover, avec ses compteurs, qui la précède.
+`recover()` déballe la clé, régénère `wrap_pwd` — et `wrap_phrase` si une passphrase neuve est donnée — et écrit le tout en une seule fois, à condition que le coffre porte toujours le même `user_salt`. Une requête qui tiendrait un coffre remplacé entre-temps échoue au lieu de l'écraser. Appelée seule, la méthode est un oracle Argon2id sans frein : c'est l'acceptation de SelfRecover, avec ses compteurs, qui la précède — et, pour le rattrapage après un niveau 2 par appareil, le frein de la connexion.
 
 ### 3.5 Niveau 3 : l'archive, pas la destruction
 
@@ -236,7 +236,7 @@ Au niveau 3, l'utilisateur n'a plus aucun ancien secret, et le coffre ne peut pa
 
 `reEnroll()` met donc le coffre vivant de côté, **sans rien déchiffrer** — enveloppes, champs privés, séquestre —, et crée un coffre neuf pour le même compte, dans la même transaction. Les AAD ne liant que l'identifiant du compte, les anciennes enveloppes restent valides telles quelles.
 
-- **Rouvrir** : `openArchive()` exige une ancienne serrure **et** une session sur le coffre actuel. Les anciens secrets sont précisément ceux qui ont pu fuir avant le niveau 3 : seuls, ils n'atteignent pas les anciennes données. La dérivation suit le profil Argon2id enregistré dans l'archive, parce qu'une archive ne se re-scelle pas quand le profil change.
+- **Rouvrir** : `openArchive()` exige une ancienne serrure **et** une session sur le coffre actuel. Les anciens secrets sont précisément ceux qui ont pu fuir avant le niveau 3 : seuls, ils n'atteignent pas les anciennes données par le service — avec un dump, si (§6.1). La dérivation suit le profil Argon2id enregistré dans l'archive, parce qu'une archive ne se re-scelle pas quand le profil change.
 - **Restaurer** : `readArchive()` rend les champs, que l'application réécrit dans le coffre neuf. Les index aveugles ne sont pas archivés — ils répondraient encore à des recherches d'égalité sur des données qui ne sont plus vivantes —, mais chaque champ garde la trace de son indexation.
 - **Le séquestre** part avec l'archive. L'administrateur le rouvre comme celui d'un coffre vivant, par la même clé : rien de plus n'est exposé.
 - **Détruire** : sur décision explicite seulement. Supprimer le compte ne supprime pas ses archives, sinon un niveau 3 frauduleux suivi d'une suppression effacerait celles du titulaire légitime.
@@ -348,8 +348,8 @@ Pour qu'un déploiement SelfDataGuard apporte effectivement les garanties listé
 4. **Sessions courtes** : `data_master_key` purgée de la session après inactivité (15 min recommandé pour Hybrid, 5 min pour Full)
 5. **Pas de logging sensible** : `password_key`, `recov_key`, `phrase_key`, `data_master_key` ne doivent jamais apparaître dans les logs (même en niveau debug)
 6. **Audit des accès admin** : en mode Hybrid, chaque accès aux champs opérationnels par l'admin doit être logué (sans la donnée elle-même)
-7. **Mise à jour régulière** : suivre les recommandations Argon2id pour ajuster `m` et `t` à mesure que le hardware progresse (`p` est fixé à 1, cf. §5). Un coffre vivant se re-scelle sous le nouveau profil ; une archive garde le sien
-8. **Re-scellement à chaque récupération** : `recover()` aux niveaux 1 et 2, **après** l'acceptation de SelfRecover et jamais avant ; `reEnroll()` au niveau 3 ; `openArchive()` freiné par l'intégrateur comme sa connexion
+7. **Mise à jour régulière** : suivre les recommandations Argon2id pour ajuster `m` et `t` à mesure que le hardware progresse (`p` est fixé à 1, cf. §5). Le profil n'est pas rangé dans un coffre vivant : le changer exige de re-sceller chaque coffre vivant d'abord, et la bibliothèque n'en fournit pas l'outil. Une archive enregistre le profil en vigueur à son archivage, et se rouvre avec lui
+8. **Re-scellement à chaque récupération** : `recover()` aux niveaux 1 et 2, **après** l'acceptation de SelfRecover et jamais avant ; le rattrapage après un niveau 2 par appareil et `openArchive()` freinés par l'intégrateur comme sa connexion ; `reEnroll()` au niveau 3
 
 Le non-respect d'une de ces règles dégrade significativement les garanties. La bibliothèque de référence applique la règle 1, et la règle 5 pour ses propres traces d'exception (`#[\SensitiveParameter]`) ; les autres relèvent de l'intégrateur et de la configuration de déploiement.
 
@@ -388,4 +388,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Édition du 1er octobre 2026, alignée sur SelfDataGuard v0.5.0 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.5.0 (300 contrôles, 10 suites). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*
+*Édition du 1er octobre 2026, alignée sur SelfDataGuard v0.5.0 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.5.0 (314 contrôles, 10 suites). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*

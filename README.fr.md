@@ -24,7 +24,7 @@ ce qu'il fait, comment l'installer, et ce qu'il ne protège pas.
 |---|---|---|
 | [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | **v0.8.0** — bibliothèque + implémentation déployée |
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.6.0** — documenté, clé en hexadécimal |
-| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.5.0** — disponible, 300 contrôles, trois serrures et l'archive au niveau 3 |
+| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.5.0** — disponible, 314 contrôles, trois serrures et l'archive au niveau 3 |
 | [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.4.2 bêta** — logement, famille, administration et jurisprudence administrative |
 | [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.3** — en ligne, plus de 1 800 ressources officielles |
 | [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.4.0** — votants liés, convalescence, motif de vote, ban gradué tracé au journal ; 1 mécanisme pas encore codé |
@@ -75,7 +75,7 @@ Compromettre l'un n'ouvre pas les autres, avec deux exceptions qu'il faut dire :
 SelfRecover et SelfDataGuard peuvent partager le mot mémorisé (L2) et la passphrase
 (L1), et c'est la dérivation qui les sépare. Aucune des deux bibliothèques n'importe
 l'autre : c'est l'intégrateur qui les apparie, et `demo/selfdataguard/` en montre une
-façon. Une empreinte volée d'un côté n'ouvre pas l'autre. Le mot lui-même, s'il est
+façon. Un hachage volé dans la base d'un côté n'ouvre pas l'autre. Le mot lui-même, s'il est
 volé, ouvre seul le coffre SelfDataGuard — côté SelfRecover, il lui faut encore le
 *recovery code*. La passphrase volée, elle, ouvre les deux, jusqu'à sa première
 utilisation légitime, qui la remplace.

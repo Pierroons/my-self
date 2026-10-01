@@ -43,7 +43,7 @@ Before deploying SelfRecover in production, read the [deployment checklist](docs
 Two operations destroy data by construction, and nothing in the library stops them:
 
 - **Rotating the deployment salt** (`$selDeploiement`, the secret the integrator stores as its server secret). Paper codes are found by `HMAC(code, salt)` and stored nowhere in the clear: a new salt makes every issued code unfindable, with no possible reindexing. The only procedure is to change the salt, then have every holder reissue their sheet — level 2 by code is closed in between.
-- **Pairing with SelfDataGuard without re-sealing.** Levels 1 and 2 replace the password; a vault registered with neither `$memorized` nor `$passphrase` is sealed on that password alone and becomes unreadable, and so does any vault the integrator does not pass through `recover()` once the recovery is accepted. At level 3, `reEnroll()` archives the old vault instead of deleting it. See SelfDataGuard's README, « Coupling with SelfRecover ».
+- **Pairing with SelfDataGuard without re-sealing.** Levels 1 and 2 replace the password; a vault registered with neither `$memorized` nor `$passphrase` is sealed on that password alone and becomes unreadable. A vault the integrator does not re-seal through `recover()` once the recovery is accepted stays sealed on the old password, open only through its other locks, until it is. At level 3, `reEnroll()` archives the old vault instead of deleting it. See SelfDataGuard's README, « Coupling with SelfRecover ».
 
 ## Responsible disclosure
 

@@ -7,9 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [v0.5.0] — 2026-10-01
 
-A vault paired with SelfRecover now survives every recovery path. Level 1 only gives the
-server the passphrase, which opened no envelope; level 3 leaves no old secret at all,
-and the only way out was to delete the vault.
+A vault paired with SelfRecover can now survive every recovery path, provided the integrator
+re-seals it (`recover()`) or re-enrols it (`reEnroll()`). Level 1 only gives the server the
+passphrase, which opened no envelope; level 3 leaves no old secret at all, and the only way
+out was to delete the vault.
 
 ### Added — a third lock: the SelfRecover passphrase
 
@@ -34,8 +35,9 @@ and the only way out was to delete the vault.
 with whatever secret the server holds, re-seals the password — and the passphrase if a new
 one is given — in one conditional write. Level 1: the old passphrase. Level 2 by code: the
 memorized-word digest. Level 2 by device, where the server holds nothing that opens the
-vault: at the next secret the user gives, with the current password. Call it only after
-SelfRecover accepted the recovery: on its own it is an Argon2id oracle with no rate limit.
+vault: at the next secret the user gives, with the current password. On its own it is an
+Argon2id oracle with no rate limit: call it right after SelfRecover accepted a recovery,
+behind its counters, and rate-limit the device catch-up like the login.
 
 ### Added — a replaced vault is archived, not destroyed
 
@@ -44,7 +46,9 @@ SelfRecover accepted the recovery: on its own it is an Argon2id oracle with no r
   (`StorageInterface::replaceWithArchive()`). A failure anywhere changes nothing.
 - An archive keeps the envelopes, private fields and escrow exactly as stored — nothing is
   decrypted — plus the Argon2id profile in force and a format version: it cannot be
-  re-sealed after a profile change, nobody holds its key in between. Blind indexes are
+  re-sealed after a profile change, nobody holds its key in between. That profile is the
+  code's, since live vaults do not store theirs: change it only after re-sealing every live
+  vault. Blind indexes are
   not archived; each field keeps `was_indexed` for a restore to index the same ones.
 - `openArchive(current session, archiveId, Lock, oldSecret)` needs a session on the
   **current** vault and an old lock: old secrets are what may have leaked before a level-3
@@ -58,13 +62,18 @@ SelfRecover accepted the recovery: on its own it is an Argon2id oracle with no r
 
 - `UnlockedVault` carries the `user_salt` of the vault it was opened on, a required
   constructor parameter. Every façade read and write, and every `UserVault::change*()`,
-  refuses a session from another vault of the same userId (`StaleVaultException`).
+  refuses a session from another vault of the same userId (`StaleVaultException`) — for
+  writes, inside the write's own transaction: `saveFields()`, `saveEscrow()`,
+  `saveEscrowFields()` and `deleteArchive()` take the expected `user_salt`, and the façade
+  passes it.
 - `StorageInterface` gains `replaceWithArchive()`, `listArchives()`, `loadArchive()`,
   `deleteArchive()`, `purgeArchives()`. An implementation without them fails at load
   time. It must also persist `wrap_phrase`: the façade reads it back after every write
   and throws if it was dropped.
-- `updateVault()` writes only where `user_salt` still matches the record's, and never
-  rewrites it: a record read before a re-enrolment cannot overwrite the new vault.
+- `updateVault()` writes only where `user_salt` and `revision` still match the record's,
+  never rewrites the salt, and bumps the revision: a record read before a re-enrolment
+  cannot overwrite the new vault, and of two requests that read the same vault, the second
+  to write gets `StaleVaultException` instead of silently undoing the first.
 - `delete()` / `deleteVault()` leave archives. Erasing an account calls `purgeArchives()`
   too — a separate decision, so that a fraudulent level 3 followed by an account deletion
   cannot erase the legitimate holder's archives.
@@ -74,10 +83,13 @@ SelfRecover accepted the recovery: on its own it is an Argon2id oracle with no r
 
 ### Changed — stored format (schema)
 
-- `selfdataguard_vaults.wrap_phrase`, as the **last** column. A 0.4.0 database is migrated
-  in place on first opening: `PRAGMA table_info`, then `ALTER TABLE … ADD COLUMN`, checked
-  again under `BEGIN IMMEDIATE` so that two processes opening the same old database do not
-  both add it. Inside a caller's transaction, a savepoint.
+- `selfdataguard_vaults.wrap_phrase` and `revision`, as the **last** columns, in that
+  order. A 0.4.0 database is migrated in place on first opening: `PRAGMA table_info`, then
+  `ALTER TABLE … ADD COLUMN`, checked again under `BEGIN IMMEDIATE` so that two processes
+  opening the same old database do not both add it. Inside a caller's transaction, a
+  savepoint — and if the caller rolls back, the migration goes with it: build a new
+  adapter.
+- `archived_at` is stored in UTC, so that the order of archives survives a DST change.
 - New table `selfdataguard_archives`, created like the 0.2.0 escrow tables were.
 
 ### Migration risk — rolling back to 0.4.0
@@ -85,13 +97,21 @@ SelfRecover accepted the recovery: on its own it is an Argon2id oracle with no r
 - 0.4.0 does not see the archives, and its `deleteVault()` does not remove them.
 - 0.4.0 rewrites vaults without naming `wrap_phrase`, which keeps its value: once
   SelfRecover replaces the passphrase, the consumed one keeps opening the vault.
-  Roll back only a database without passphrase lock nor archive, or remove both first.
+  Roll back only a database with neither a passphrase lock nor an archive, or remove both
+  first.
 
 ### Removed
 
 - `Primitives::aesGcmEncrypt()` and `aesGcmDecrypt()`, deprecated in 0.4.0. Reading blobs
-  written before 0.4.0 does not go through them and stays — and cannot go while an
-  archive may hold such a blob.
+  written before 0.4.0 does not use them and is kept: it cannot be removed while an archive
+  may hold such a blob.
+
+### Security
+
+- `#[\SensitiveParameter]` on the admin secret key (`getEscrowFieldsAsAdmin()`,
+  `getArchiveEscrowFieldsAsAdmin()`, `EscrowVault::unlockAsAdmin()`): with
+  `zend.exception_ignore_args=0`, PHP's built-in default, it appeared in plain in
+  `getTrace()`.
 
 ### Fixed — concurrent audit appends broke the chain
 
@@ -102,12 +122,28 @@ at its second entry, on every run. The read and the append now happen under one
 exclusive lock. `tests/sanity_audit.php` gains the four-writer case. No format change:
 existing logs verify as before.
 
-### Fixed — the storage left a transaction open, and could not write inside one
+### Fixed — the storage left a transaction open, could not write inside one, and failed under a concurrent writer
 
 `saveFields()` raised a `RuntimeException` inside a transaction that only a `PDOException`
 closed: the next `beginTransaction()` on the connection threw. And no write could happen
 inside a caller's transaction. Writes now go through one helper that rolls back on any
 `Throwable` and, inside a foreign transaction, uses a savepoint named after the instance.
+
+That helper opens its own transactions with `BEGIN IMMEDIATE`. PDO's deferred `BEGIN` read
+first and wrote second, and SQLite refuses that upgrade while another connection writes:
+« database is locked » at once, the busy timeout ignored. Measured on a re-enrolment
+during another write; it now waits for the lock.
+
+### Fixed — two updates of the same vault lost one
+
+`updateVault()` rewrote the whole row: a password change landing after a passphrase
+removal put the revoked passphrase back. The `revision` column makes the second writer
+fail instead (see « Changed — BREAKING »).
+
+### Fixed — a whitespace-only passphrase
+
+It reached the derivation and failed as « Memorized secret must not be empty ». It is now
+refused as an empty passphrase, under its own name.
 
 ### Documentation
 

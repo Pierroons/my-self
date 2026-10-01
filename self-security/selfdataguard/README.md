@@ -6,7 +6,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.5.0 available](https://img.shields.io/badge/status-v0.5.0%20available-brightgreen.svg)](#status)
-[![Tests: 300 passing](https://img.shields.io/badge/tests-300%20passing-brightgreen.svg)](#testing)
+[![Tests: 314 passing](https://img.shields.io/badge/tests-314%20passing-brightgreen.svg)](#testing)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -85,19 +85,19 @@ Every SelfRecover recovery replaces secrets. The vault follows if the integrator
 |---|---|---|
 | Level 1 — passphrase | the old passphrase | `recover($user, Lock::Passphrase, $old, $newPassword, $newPassphrase)` |
 | Level 2 — code + memorized word | the word's digest | `recover($user, Lock::Memorized, $digest, $newPassword, $newPassphrase)` |
-| Level 2 — enrolled device | a signature, nothing that opens the vault | at the next secret given: `recover($user, $lock, $secret, $currentPassword)` |
+| Level 2 — enrolled device | a signature, nothing that opens the vault | at the next secret given: `recover($user, $lock, $secret, $currentPassword)`, rate-limited like the login |
 | Level 3 — human escalation | no old secret | `reEnroll($user, $password, $digest, $passphrase)`: the old vault is **archived** |
 
-`recover()` opens and re-seals in a single conditional write. The same call catches up a vault whose password wrap has fallen behind. On its own it is an Argon2id oracle with no rate limit: call it only once SelfRecover has accepted the recovery.
+`recover()` opens and re-seals in a single conditional write. The same call catches up a vault whose password wrap has fallen behind. Called on its own, it is an Argon2id oracle with no rate limit: call it right after a recovery SelfRecover has accepted, behind its counters, and rate-limit the level-2 device catch-up like the login.
 
-**At level 3, nothing is lost.** `reEnroll()` sets the old vault aside, sealed under its old locks, with no expiry, and creates a new one. If the user later finds an old lock again, `openArchive($session, $id, Lock::Passphrase, $old)` then `readArchive()` give the data back. The session must be one on the current vault: an old lock alone opens nothing, because those secrets are precisely the ones that may have leaked. An archive is destroyed only by `deleteArchive()` or `purgeArchives()`; `delete()` leaves it.
+**At level 3, the old vault is archived.** `reEnroll()` sets it aside, sealed under its old locks, with no expiry, and creates a new one. If the user later finds an old lock again, `openArchive($session, $id, Lock::Passphrase, $old)` then `readArchive()` give the data back. The session must be one on the current vault: through the service, an old lock alone opens nothing, because those secrets are precisely the ones that may have leaked. Given a database dump, it opens the archive offline. An archive is destroyed only by `deleteArchive()` or `purgeArchives()`; `delete()` leaves it.
 
 > ⚠️ **A password-only vault does not survive a SelfRecover recovery.** Levels 1 and 2 replace the account password (`Recovery::parPassphrase()`, `Recovery::parCode()`). A vault registered as `register($user, $password)` alone has a single envelope, sealed on the old password: after the recovery it can no longer be opened, by anyone, and nothing in either library says so. When the two modules share an account:
 > - pass `$memorized` and `$passphrase` to `register()`;
 > - after every accepted recovery, call `recover()` as in the table above;
 > - at level 3, call `reEnroll()`. The archive's memorized lock depends on the SelfRecover salt of that time, which level 3 replaces: keep it — as a field of the new vault, say — if that lock is to stay usable.
 
-Without SelfRecover, SelfDataGuard still works, with whatever locks the application gives it. But the natural pairing is: **SelfRecover protects authentication, SelfDataGuard protects data, and the same secrets serve in both.**
+Without SelfRecover, SelfDataGuard still works, with whatever locks the application gives it.
 
 ---
 
@@ -133,9 +133,9 @@ One admin path does exist, outside this table: the **escrow** (`src/Escrow/`), a
 
 **v0.5.0 — a third lock, and archiving instead of destruction**, 1 October 2026.
 
-Whitepaper complete (specification + threat model). PHP reference library implemented (3 537 lines across 25 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **300 checks across 10 suites**, all passing. A clickable HTML demo is included to inspect the encrypted database in real time.
+Whitepaper complete (specification + threat model). PHP reference library implemented (3 601 lines across 25 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **314 checks across 10 suites**, all passing. A clickable HTML demo is included to inspect the encrypted database in real time.
 
-A database created by 0.4.0 migrates in place the first time 0.5.0 opens it (`wrap_phrase` column). Rolling back to 0.4.0 hides the archives, and leaves in place a passphrase lock that SelfRecover may have replaced since: see the [CHANGELOG](./CHANGELOG.md). Blobs written by 0.3.0 stay readable, through OpenSSL (`ext-openssl`) where libsodium refuses AES.
+A database created by 0.4.0 migrates in place the first time 0.5.0 opens it (`wrap_phrase` and `revision` columns). Rolling back to 0.4.0 hides the archives, and leaves in place a passphrase lock that SelfRecover may have replaced since: see the [CHANGELOG](./CHANGELOG.md). Blobs written by 0.3.0 stay readable, through OpenSSL (`ext-openssl`) where libsodium refuses AES.
 
 The module runs on real deployments. It has **not been audited by an external cryptographer**: its design is verified today by its author and by the readers of this repository, and by no one else.
 
@@ -189,7 +189,7 @@ $session = $dg->recover('alice', Lock::Passphrase, $oldPassphrase, $newPassword,
 $userId = $dg->findUserByField('email', 'a@b.c');  // 'alice' or null
 ```
 
-Three primary classes exposed: `SelfDataGuard` (façade), `SqliteAdapter` (storage; implement `StorageInterface` for MariaDB / Postgres), `Primitives` (raw crypto if you need to build something on top). Errors tell themselves apart by type: `WrongSecretException`, `MissingEnvelopeException`, `VaultNotFoundException`, `StaleVaultException` (a session opened on a vault that has since been replaced).
+Three primary classes exposed: `SelfDataGuard` (façade), `SqliteAdapter` (storage; implement `StorageInterface` for MariaDB / Postgres), `Primitives` (raw crypto if you need to build something on top). Each failure has its own exception type: `WrongSecretException`, `MissingEnvelopeException`, `VaultNotFoundException`, `StaleVaultException` (a session opened on a vault that has since been replaced).
 
 ---
 
@@ -199,16 +199,16 @@ Ten sanity test suites, runnable directly with `php` (no PHPUnit required):
 
 ```bash
 php tests/sanity_primitives.php   # 46 tests — Argon2id, HMAC, XChaCha20-Poly1305 + IETF vector, legacy AES-GCM, randomness
-php tests/sanity_vault.php        # 50 tests — three locks, rotation, context separation, AAD binding, vault generation
+php tests/sanity_vault.php        # 51 tests — three locks, rotation, context separation, AAD binding, vault generation
 php tests/sanity_fields.php       # 26 tests — field encrypt/decrypt + blind index
-php tests/sanity_storage.php      # 49 tests — SQLite adapter, nested transactions, conditional write, "DB dump = soup" test
-php tests/sanity_migration.php    #  9 tests — 0.4.0 database migrated in place, two concurrent migrators
-php tests/sanity_archive.php      # 22 tests — archive: content, isolation, all-or-nothing
-php tests/sanity_facade.php       # 55 tests — full API end-to-end, recover(), level 3
+php tests/sanity_storage.php      # 55 tests — SQLite adapter, nested transactions, conditional write (generation, revision), "DB dump = soup" test
+php tests/sanity_migration.php    # 10 tests — 0.4.0 database migrated in place, two concurrent migrators
+php tests/sanity_archive.php      # 26 tests — archive: content, isolation, all-or-nothing, concurrent writer waited for
+php tests/sanity_facade.php       # 57 tests — full API end-to-end, recover(), level 3, write race
 php tests/sanity_audit.php        # 12 tests — audit log
 php tests/sanity_ceremony.php     # 14 tests — key ceremony
 php tests/sanity_escrow.php       # 17 tests — escrow compartment
-# Total: 300 tests, 0 failures — counted by running them, 2026-10-01
+# Total: 314 tests, 0 failures — counted by running them, 2026-10-01
 ```
 
 The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file and verifies that no plaintext personal data appears anywhere in the binary blob. On the SelfRecover side, `bi-self/selfrecover/tests/sanity_parcours_dataguard.php` takes a vault through every recovery, on the real paths of both libraries.
