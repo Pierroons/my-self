@@ -11,8 +11,11 @@ use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
+use Pierroons\SelfDataGuard\Vault\Lock;
+use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use RuntimeException;
 
 /**
@@ -23,12 +26,16 @@ use RuntimeException;
  *     $dg = new SelfDataGuard($storage, $blindKey);
  *
  *     // New user. Passwords are refused below UserVault::PASSWORD_MIN_LEN.
- *     $session = $dg->register('user-1', 'a-long-generated-password', 'memorized-secret');
+ *     $session = $dg->register('user-1', 'a-long-generated-password', 'memorized-secret', 'six word passphrase');
  *     $dg->setFields($session, ['email' => 'a@b.c'], indexed: ['email']);
  *
  *     // Returning user
  *     $session = $dg->loginWithPassword('user-1', 'password');
  *     $fields  = $dg->getFields($session);
+ *
+ *     // After a SelfRecover recovery: open with the secret the server holds,
+ *     // re-seal with the secrets SelfRecover just issued — one write.
+ *     $session = $dg->recover('user-1', Lock::Passphrase, $old, $newPassword, $newPassphrase);
  *
  *     // Find a user by an indexed field (no plaintext lookup needed)
  *     $userId = $dg->findUserByField('email', 'a@b.c');
@@ -59,26 +66,29 @@ final class SelfDataGuard
      * Create a new user vault and persist it. Returns the UnlockedVault for
      * immediate field encryption (e.g. setting initial profile data).
      *
-     * ⚠️ Without `$memorized`, the vault has one envelope and dies with the
-     * password: see `UserVault::register()`.
+     * ⚠️ Without `$memorized` and `$passphrase`, the vault has one envelope and
+     * dies with the password: see `UserVault::register()`.
      */
     public function register(
         string $userId,
         #[\SensitiveParameter] string $password,
-        #[\SensitiveParameter] ?string $memorized = null
+        #[\SensitiveParameter] ?string $memorized = null,
+        #[\SensitiveParameter] ?string $passphrase = null
     ): UnlockedVault {
         if ($this->storage->vaultExists($userId)) {
             throw new RuntimeException("User '{$userId}' already exists");
         }
-        $result = $this->vault->register($userId, $password, $memorized);
+        $result = $this->vault->register($userId, $password, $memorized, $passphrase);
         $this->storage->saveVault($result['record']);
+        $this->assertPassphrasePersisted($result['record']);
         return $result['unlocked'];
     }
 
     /**
      * Authenticate by password. Returns an UnlockedVault for the session.
      *
-     * @throws RuntimeException on wrong password or missing user.
+     * @throws Vault\WrongSecretException     on wrong password
+     * @throws Vault\VaultNotFoundException   on missing user
      */
     public function loginWithPassword(string $userId, #[\SensitiveParameter] string $password): UnlockedVault
     {
@@ -89,12 +99,49 @@ final class SelfDataGuard
     /**
      * Authenticate by memorized secret (recovery flow).
      *
-     * @throws RuntimeException on wrong secret, missing user, or vault without recovery wrap.
+     * @throws Vault\WrongSecretException     on wrong secret
+     * @throws Vault\MissingEnvelopeException on a vault without recovery wrap
+     * @throws Vault\VaultNotFoundException   on missing user
      */
     public function loginWithMemorized(string $userId, #[\SensitiveParameter] string $memorized): UnlockedVault
     {
         $record = $this->storage->loadVault($userId);
         return $this->vault->unlockWithMemorized($record, $memorized);
+    }
+
+    /**
+     * Open the vault with whichever secret the server holds, and re-seal it
+     * with the password — and passphrase, if given — that replace the old
+     * ones. One conditional write: a concurrent re-enrolment makes it fail
+     * (StaleVaultException) instead of overwriting the new vault.
+     *
+     * Serves every SelfRecover path that keeps the data:
+     *   - level 1      : Lock::Passphrase, the old passphrase; new password and passphrase
+     *   - level 2/code : Lock::Memorized, the browser-side digest; new password and passphrase
+     *   - level 2/device, or a vault whose password wrap fell behind: any lock
+     *                    the user can give, the current password, $newPassphrase null
+     *
+     * Call it only after SelfRecover has accepted the recovery: on its own it
+     * is an Argon2id oracle with no rate limit.
+     *
+     * $newPassphrase null keeps the passphrase wrap as it is.
+     */
+    public function recover(
+        string $userId,
+        Lock $lock,
+        #[\SensitiveParameter] string $secret,
+        #[\SensitiveParameter] string $newPassword,
+        #[\SensitiveParameter] ?string $newPassphrase = null
+    ): UnlockedVault {
+        $record  = $this->storage->loadVault($userId);
+        $session = $this->vault->unlock($record, $lock, $secret);
+        $record  = $this->vault->changePassword($record, $session, $newPassword);
+        if ($newPassphrase !== null) {
+            $record = $this->vault->changePassphrase($record, $session, $newPassphrase);
+        }
+        $this->storage->updateVault($record);
+        $this->assertPassphrasePersisted($record);
+        return $session;
     }
 
     /**
@@ -110,6 +157,7 @@ final class SelfDataGuard
         if ($fields === []) {
             return;
         }
+        $this->currentRecord($session);
         $indexed = array_flip($indexed);
         $payload = [];
         foreach ($fields as $name => $value) {
@@ -132,6 +180,7 @@ final class SelfDataGuard
      */
     public function getFields(UnlockedVault $session, array $fieldNames = []): array
     {
+        $this->currentRecord($session);
         $cipher = $this->storage->loadFields($session->userId, $fieldNames);
         return FieldCrypter::decryptBatch($session, $cipher);
     }
@@ -153,8 +202,7 @@ final class SelfDataGuard
      */
     public function changePassword(UnlockedVault $session, #[\SensitiveParameter] string $newPassword): void
     {
-        $record = $this->storage->loadVault($session->userId);
-        $rotated = $this->vault->changePassword($record, $session, $newPassword);
+        $rotated = $this->vault->changePassword($this->currentRecord($session), $session, $newPassword);
         $this->storage->updateVault($rotated);
     }
 
@@ -163,9 +211,26 @@ final class SelfDataGuard
      */
     public function changeMemorized(UnlockedVault $session, #[\SensitiveParameter] ?string $newMemorized): void
     {
-        $record = $this->storage->loadVault($session->userId);
-        $rotated = $this->vault->changeMemorized($record, $session, $newMemorized);
+        $rotated = $this->vault->changeMemorized($this->currentRecord($session), $session, $newMemorized);
         $this->storage->updateVault($rotated);
+    }
+
+    /**
+     * Seal the passphrase wrap with a new passphrase — after SelfRecover issued
+     * one, or to add the lock to an existing vault.
+     */
+    public function changePassphrase(UnlockedVault $session, #[\SensitiveParameter] string $newPassphrase): void
+    {
+        $rotated = $this->vault->changePassphrase($this->currentRecord($session), $session, $newPassphrase);
+        $this->storage->updateVault($rotated);
+        $this->assertPassphrasePersisted($rotated);
+    }
+
+    public function removePassphrase(UnlockedVault $session): void
+    {
+        $rotated = $this->vault->removePassphrase($this->currentRecord($session), $session);
+        $this->storage->updateVault($rotated);
+        $this->assertPassphrasePersisted($rotated);
     }
 
     /**
@@ -227,6 +292,7 @@ final class SelfDataGuard
         if ($fields === []) {
             return;
         }
+        $this->currentRecord($session);
 
         $record = $this->storage->loadEscrow($session->userId);
         if ($record === null) {
@@ -251,6 +317,7 @@ final class SelfDataGuard
      */
     public function getEscrowFieldsAsUser(UnlockedVault $session, array $fieldNames = []): array
     {
+        $this->currentRecord($session);
         $record = $this->storage->loadEscrow($session->userId);
         if ($record === null) {
             return [];
@@ -288,5 +355,43 @@ final class SelfDataGuard
         $plain       = EscrowFieldCrypter::decryptBatch($unlocked, $ciphertexts);
         $unlocked->lock();
         return $plain;
+    }
+
+    // -------------------------------------------------------------------------
+
+    /**
+     * The live vault this session was opened on — or StaleVaultException if
+     * the userId has since been given another vault.
+     *
+     * Every read and write goes through it. A session from a replaced vault
+     * would otherwise store fields the new key cannot read, create an escrow
+     * under the old master key, or fail on read with an authentication error
+     * that looks like corruption.
+     */
+    private function currentRecord(UnlockedVault $session): VaultRecord
+    {
+        $record = $this->storage->loadVault($session->userId);
+        if (!hash_equals($record->userSalt, $session->vaultSalt)) {
+            throw new StaleVaultException(
+                'This session was opened on a vault that has since been replaced — unlock the current one'
+            );
+        }
+        return $record;
+    }
+
+    /**
+     * A StorageInterface written before 0.5.0 compiles fine and silently drops
+     * wrap_phrase. The passphrase SelfRecover just consumed would then keep
+     * opening the vault — or the new one would not. Read it back once.
+     */
+    private function assertPassphrasePersisted(VaultRecord $written): void
+    {
+        $stored = $this->storage->loadVault($written->userId)->wrapPhrase;
+        if ($stored?->toBase64() !== $written->wrapPhrase?->toBase64()) {
+            throw new RuntimeException(
+                'The storage did not persist wrap_phrase as written — '
+                . 'does this StorageInterface implementation predate SelfDataGuard 0.5.0?'
+            );
+        }
     }
 }
