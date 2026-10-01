@@ -27,12 +27,15 @@ interface StorageInterface
 
     /**
      * Update the wraps of an existing vault (e.g. after changePassword /
-     * changeMemorized). Throws if the userId does not exist.
+     * changeMemorized). user_salt is never rewritten: it identifies the
+     * vault, and the write applies only where it still matches the record's.
+     * Throws StaleVaultException if the userId now holds a different vault,
+     * VaultNotFoundException if it holds none.
      */
     public function updateVault(VaultRecord $record): void;
 
     /**
-     * Load a vault. Throws RuntimeException if not found.
+     * Load a vault. Throws VaultNotFoundException if not found.
      */
     public function loadVault(string $userId): VaultRecord;
 

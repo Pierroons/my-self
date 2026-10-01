@@ -9,8 +9,11 @@ use PDO;
 use PDOException;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
+use Pierroons\SelfDataGuard\Vault\StaleVaultException;
+use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use RuntimeException;
+use Throwable;
 
 /**
  * SQLite-backed storage adapter using PDO.
@@ -40,6 +43,9 @@ use RuntimeException;
 final class SqliteAdapter implements StorageInterface
 {
     private PDO $pdo;
+
+    /** Savepoints this instance has open inside a caller's transaction. */
+    private int $depth = 0;
 
     public function __construct(string|PDO $dsnOrPdo)
     {
@@ -71,20 +77,31 @@ final class SqliteAdapter implements StorageInterface
         }
     }
 
+    /**
+     * Writes only over the vault the record was read from. The WHERE carries
+     * its user_salt, which a re-enrolment replaces: a record read before an
+     * archive cannot overwrite the vault created after it. Without this, a
+     * request still holding the old record would seal the old master key into
+     * the new vault, and every field written there since would be lost.
+     */
     public function updateVault(VaultRecord $record): void
     {
         $stmt = $this->pdo->prepare(
             'UPDATE selfdataguard_vaults
-             SET user_salt = :salt,
-                 wrap_pwd  = :wp,
+             SET wrap_pwd  = :wp,
                  wrap_recov = :wr,
                  wrap_admin = :wa,
                  updated_at = :ua
-             WHERE user_id = :uid'
+             WHERE user_id = :uid AND user_salt = :salt'
         );
         $stmt->execute($this->vaultToParamsForUpdate($record));
         if ($stmt->rowCount() === 0) {
-            throw new RuntimeException("Vault not found for userId '{$record->userId}'");
+            if ($this->vaultExists($record->userId)) {
+                throw new StaleVaultException(
+                    "Vault for userId '{$record->userId}' was replaced since this record was read"
+                );
+            }
+            throw new VaultNotFoundException("Vault not found for userId '{$record->userId}'");
         }
     }
 
@@ -92,7 +109,7 @@ final class SqliteAdapter implements StorageInterface
     {
         $row = $this->fetchVaultRow($userId);
         if ($row === null) {
-            throw new RuntimeException("Vault not found for userId '{$userId}'");
+            throw new VaultNotFoundException("Vault not found for userId '{$userId}'");
         }
         return $this->rowToVault($row);
     }
@@ -114,9 +131,9 @@ final class SqliteAdapter implements StorageInterface
 
     public function deleteVault(string $userId): void
     {
-        $this->pdo->beginTransaction();
-        try {
-            // FK cascade handles the fields, but we delete explicitly for clarity
+        // Explicit deletes, not the FK cascade: `PRAGMA foreign_keys` is a no-op
+        // on a connection the caller handed over with a transaction open.
+        $this->atomic(function () use ($userId): void {
             $this->pdo->prepare('DELETE FROM selfdataguard_fields WHERE user_id = :uid')
                 ->execute([':uid' => $userId]);
             $this->pdo->prepare('DELETE FROM selfdataguard_escrow_fields WHERE user_id = :uid')
@@ -125,11 +142,7 @@ final class SqliteAdapter implements StorageInterface
                 ->execute([':uid' => $userId]);
             $this->pdo->prepare('DELETE FROM selfdataguard_vaults WHERE user_id = :uid')
                 ->execute([':uid' => $userId]);
-            $this->pdo->commit();
-        } catch (PDOException $e) {
-            $this->pdo->rollBack();
-            throw $e;
-        }
+        });
     }
 
     public function saveFields(string $userId, array $fields): void
@@ -147,8 +160,7 @@ final class SqliteAdapter implements StorageInterface
                updated_at  = excluded.updated_at'
         );
 
-        $this->pdo->beginTransaction();
-        try {
+        $this->atomic(function () use ($stmt, $userId, $fields, $now): void {
             foreach ($fields as $fieldName => $data) {
                 if (!isset($data['ciphertext'])) {
                     throw new RuntimeException("Missing ciphertext for field '{$fieldName}'");
@@ -161,11 +173,7 @@ final class SqliteAdapter implements StorageInterface
                     ':ua'  => $now,
                 ]);
             }
-            $this->pdo->commit();
-        } catch (PDOException $e) {
-            $this->pdo->rollBack();
-            throw $e;
-        }
+        });
     }
 
     public function loadFields(string $userId, array $fieldNames = []): array
@@ -260,8 +268,7 @@ final class SqliteAdapter implements StorageInterface
                ciphertext = excluded.ciphertext,
                updated_at = excluded.updated_at'
         );
-        $this->pdo->beginTransaction();
-        try {
+        $this->atomic(function () use ($stmt, $userId, $fields, $now): void {
             foreach ($fields as $fieldName => $ciphertext) {
                 $stmt->execute([
                     ':uid' => $userId,
@@ -270,11 +277,7 @@ final class SqliteAdapter implements StorageInterface
                     ':ua'  => $now,
                 ]);
             }
-            $this->pdo->commit();
-        } catch (PDOException $e) {
-            $this->pdo->rollBack();
-            throw $e;
-        }
+        });
     }
 
     public function loadEscrowFields(string $userId, array $fieldNames = []): array
@@ -300,6 +303,55 @@ final class SqliteAdapter implements StorageInterface
     }
 
     // -------------------------------------------------------------------------
+
+    /**
+     * Runs $work atomically — inside the caller's transaction if one is open.
+     *
+     * PDO cannot nest: a second beginTransaction() throws, and committing
+     * "whatever is open" would commit the caller's half-done work. Inside a
+     * foreign transaction this uses a SAVEPOINT, so a failure rolls back our
+     * writes only and the outcome stays the caller's decision. Any Throwable
+     * rolls back, not only PDOException: a validation error raised midway
+     * must not leave a transaction open on the connection. The point name
+     * carries the instance, so two adapters sharing a connection never
+     * release each other's points.
+     *
+     * @template T
+     * @param callable(): T $work
+     * @return T
+     */
+    private function atomic(callable $work): mixed
+    {
+        if (!$this->pdo->inTransaction()) {
+            $this->pdo->beginTransaction();
+            try {
+                $result = $work();
+                $this->pdo->commit();
+                return $result;
+            } catch (Throwable $e) {
+                if ($this->pdo->inTransaction()) {
+                    $this->pdo->rollBack();
+                }
+                throw $e;
+            }
+        }
+
+        $point = 'selfdataguard_' . spl_object_id($this) . '_' . ++$this->depth;
+        $this->pdo->exec('SAVEPOINT ' . $point);
+        try {
+            $result = $work();
+            $this->pdo->exec('RELEASE SAVEPOINT ' . $point);
+            return $result;
+        } catch (Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->exec('ROLLBACK TO SAVEPOINT ' . $point);
+                $this->pdo->exec('RELEASE SAVEPOINT ' . $point);
+            }
+            throw $e;
+        } finally {
+            $this->depth--;
+        }
+    }
 
     private function ensureSchema(): void
     {

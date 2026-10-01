@@ -20,7 +20,9 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 
 $failures = 0;
 $passes = 0;
@@ -269,6 +271,95 @@ section('Edge — empty fields batch is no-op');
 
 $storage->saveFields('user-bob', []);
 ok('saveFields([]) does not throw');
+
+// -----------------------------------------------------------------------------
+
+section('Atomicity — an error midway leaves nothing written and no transaction open');
+
+$pdo = new PDO('sqlite::memory:');
+$own = new SqliteAdapter($pdo);
+$own->saveVault((new UserVault())->register('user-tx', 'tx-password-0001')['record']);
+
+$thrown = false;
+try {
+    $own->saveFields('user-tx', ['first' => ['ciphertext' => 'c1'], 'second' => []]);
+} catch (RuntimeException) {
+    $thrown = true;
+}
+$thrown ? ok('saveFields rejects a field without ciphertext') : ko('malformed batch accepted');
+!$pdo->inTransaction()
+    ? ok('no transaction left open on the connection')
+    : ko('transaction left open', 'the next write on this connection would throw');
+$own->loadFields('user-tx') === []
+    ? ok('the field written before the error is rolled back')
+    : ko('partial batch persisted');
+
+// -----------------------------------------------------------------------------
+
+section('Nesting — inside the caller\'s transaction, the caller decides');
+
+$pdo->beginTransaction();
+$own->saveFields('user-tx', ['kept' => ['ciphertext' => 'k1']]);
+$thrown = false;
+try {
+    $own->saveFields('user-tx', ['bad' => []]);
+} catch (RuntimeException) {
+    $thrown = true;
+}
+$thrown ? ok('the failing batch throws inside the caller\'s transaction') : ko('failing batch did not throw');
+$pdo->inTransaction()
+    ? ok('the caller\'s transaction is still open')
+    : ko('the library closed the caller\'s transaction');
+$pdo->commit();
+array_keys($own->loadFields('user-tx')) === ['kept']
+    ? ok('the caller commits: the earlier batch is kept, the failed one is not')
+    : ko('unexpected fields after commit', implode(',', array_keys($own->loadFields('user-tx'))));
+
+$pdo->beginTransaction();
+$own->saveFields('user-tx', ['rolled' => ['ciphertext' => 'r1']]);
+$pdo->rollBack();
+!array_key_exists('rolled', $own->loadFields('user-tx'))
+    ? ok('the caller rolls back: our write goes with it')
+    : ko('write survived the caller\'s rollback');
+
+// -----------------------------------------------------------------------------
+
+section('updateVault — a record read from a replaced vault cannot overwrite the new one');
+
+$uv = new UserVault();
+$first = $uv->register('user-cas', 'cas-password-0001');
+$own->saveVault($first['record']);
+$stale = $own->loadVault('user-cas');
+$own->deleteVault('user-cas');
+$second = $uv->register('user-cas', 'cas-password-0002');
+$own->saveVault($second['record']);
+
+$thrown = null;
+try {
+    $own->updateVault($uv->changePassword($stale, $first['unlocked'], 'cas-password-0003'));
+} catch (StaleVaultException $e) {
+    $thrown = $e;
+}
+$thrown !== null ? ok('StaleVaultException on a record from the replaced vault') : ko('stale record written');
+$own->loadVault('user-cas')->wrapPwd->toBase64() === $second['record']->wrapPwd->toBase64()
+    ? ok('the new vault is untouched')
+    : ko('the new vault was overwritten by the old one');
+try {
+    $uv->unlockWithPassword($own->loadVault('user-cas'), 'cas-password-0002');
+    ok('the new vault still opens with its own password');
+} catch (RuntimeException $e) {
+    ko('the new vault no longer opens', $e->getMessage());
+}
+
+$thrown = null;
+try {
+    $own->updateVault($second['record']->withWrapPwd($second['record']->wrapPwd, new DateTimeImmutable()));
+    $own->deleteVault('user-cas');
+    $own->updateVault($second['record']);
+} catch (VaultNotFoundException $e) {
+    $thrown = $e;
+}
+$thrown !== null ? ok('VaultNotFoundException once the vault is gone') : ko('update of a missing vault did not throw');
 
 // -----------------------------------------------------------------------------
 
