@@ -8,7 +8,10 @@ use DateTimeImmutable;
 use PDO;
 use PDOException;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
+use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
+use Pierroons\SelfDataGuard\Vault\ArchivedVault;
+use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\VaultNotFoundException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
@@ -47,9 +50,22 @@ use Throwable;
  *     wrap_admin  escrow_key sealed to the admin public key (base64 sealed box)
  *
  *   selfdataguard_escrow_fields   — escrow fields encrypted with escrow_key
+ *
+ *   selfdataguard_archives        — vaults set aside by a re-enrolment
+ *     archive_id  TEXT PRIMARY KEY (random — a counter would tell how many
+ *                 re-enrolments the service has seen)
+ *     user_id     TEXT NOT NULL    (no foreign key: the archive outlives the
+ *                 live vault it was taken from)
+ *     archived_at TEXT NOT NULL
+ *     locks       TEXT NOT NULL    (the locks that still open it, comma-separated)
+ *     package     TEXT NOT NULL    (JSON: the vault row, escrow, fields — all
+ *                 still encrypted —, the Argon2id profile, a format version)
  */
 final class SqliteAdapter implements StorageInterface
 {
+    /** Version of the archive package; a reader refuses a newer one. */
+    private const ARCHIVE_FORMAT = 1;
+
     private PDO $pdo;
 
     /** Savepoints this instance has open inside a caller's transaction. */
@@ -140,18 +156,7 @@ final class SqliteAdapter implements StorageInterface
 
     public function deleteVault(string $userId): void
     {
-        // Explicit deletes, not the FK cascade: `PRAGMA foreign_keys` is a no-op
-        // on a connection the caller handed over with a transaction open.
-        $this->atomic(function () use ($userId): void {
-            $this->pdo->prepare('DELETE FROM selfdataguard_fields WHERE user_id = :uid')
-                ->execute([':uid' => $userId]);
-            $this->pdo->prepare('DELETE FROM selfdataguard_escrow_fields WHERE user_id = :uid')
-                ->execute([':uid' => $userId]);
-            $this->pdo->prepare('DELETE FROM selfdataguard_escrow WHERE user_id = :uid')
-                ->execute([':uid' => $userId]);
-            $this->pdo->prepare('DELETE FROM selfdataguard_vaults WHERE user_id = :uid')
-                ->execute([':uid' => $userId]);
-        });
+        $this->atomic(fn () => $this->purgeLive($userId));
     }
 
     public function saveFields(string $userId, array $fields): void
@@ -248,20 +253,7 @@ final class SqliteAdapter implements StorageInterface
         );
         $stmt->execute([':uid' => $userId]);
         $row = $stmt->fetch();
-        if ($row === false) {
-            return null;
-        }
-        $wrapAdmin = base64_decode((string) $row['wrap_admin'], true);
-        if ($wrapAdmin === false) {
-            throw new RuntimeException('Corrupted wrap_admin in DB (invalid base64)');
-        }
-        return new EscrowRecord(
-            userId:    (string) $row['user_id'],
-            wrapUser:  EncryptedBlob::fromBase64((string) $row['wrap_user']),
-            wrapAdmin: $wrapAdmin,
-            createdAt: new DateTimeImmutable((string) $row['created_at']),
-            updatedAt: new DateTimeImmutable((string) $row['updated_at']),
-        );
+        return $row === false ? null : $this->rowToEscrow($row);
     }
 
     public function saveEscrowFields(string $userId, array $fields): void
@@ -311,7 +303,171 @@ final class SqliteAdapter implements StorageInterface
         return $out;
     }
 
+    // -- Archives ---------------------------------------------------------------
+
+    public function replaceWithArchive(VaultRecord $new): ?string
+    {
+        return $this->atomic(function () use ($new): ?string {
+            $archiveId = null;
+            $live = $this->fetchVaultRow($new->userId);
+            if ($live !== null) {
+                $archiveId = bin2hex(random_bytes(16));
+                $this->pdo->prepare(
+                    'INSERT INTO selfdataguard_archives (archive_id, user_id, archived_at, locks, package)
+                     VALUES (:id, :uid, :at, :locks, :pkg)'
+                )->execute([
+                    ':id'    => $archiveId,
+                    ':uid'   => $new->userId,
+                    ':at'    => (new DateTimeImmutable())->format('c'),
+                    ':locks' => implode(',', array_map(static fn (Lock $l) => $l->value, $this->locksOf($live))),
+                    ':pkg'   => $this->archivePackage($live),
+                ]);
+                $this->purgeLive($new->userId);
+            }
+            $this->saveVault($new);
+            return $archiveId;
+        });
+    }
+
+    public function listArchives(string $userId): array
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT archive_id, archived_at, locks FROM selfdataguard_archives
+             WHERE user_id = :uid ORDER BY archived_at, rowid'
+        );
+        $stmt->execute([':uid' => $userId]);
+        $out = [];
+        while ($row = $stmt->fetch()) {
+            $out[] = [
+                'id'         => (string) $row['archive_id'],
+                'archivedAt' => new DateTimeImmutable((string) $row['archived_at']),
+                'locks'      => array_map(static fn (string $l) => Lock::from($l), explode(',', (string) $row['locks'])),
+            ];
+        }
+        return $out;
+    }
+
+    public function loadArchive(string $userId, string $archiveId): ?ArchivedVault
+    {
+        $stmt = $this->pdo->prepare(
+            'SELECT archive_id, archived_at, package FROM selfdataguard_archives
+             WHERE user_id = :uid AND archive_id = :id'
+        );
+        $stmt->execute([':uid' => $userId, ':id' => $archiveId]);
+        $row = $stmt->fetch();
+        if ($row === false) {
+            return null;
+        }
+        $package = json_decode((string) $row['package'], true, flags: JSON_THROW_ON_ERROR);
+        $format = $package['format'] ?? null;
+        if ($format !== self::ARCHIVE_FORMAT) {
+            throw new RuntimeException(is_int($format) && $format > self::ARCHIVE_FORMAT
+                ? "Archive {$archiveId} was written by a newer SelfDataGuard (format {$format}) — upgrade to read it"
+                : "Archive {$archiveId} has no readable format version");
+        }
+
+        $private = [];
+        foreach ($package['fields']['private'] as $name => $field) {
+            $private[(string) $name] = ['ciphertext' => (string) $field['ciphertext'], 'wasIndexed' => (bool) $field['was_indexed']];
+        }
+        return new ArchivedVault(
+            archiveId:     (string) $row['archive_id'],
+            archivedAt:    new DateTimeImmutable((string) $row['archived_at']),
+            record:        $this->rowToVault(['user_id' => $userId] + $package['vault']),
+            kdfOpslimit:   (int) $package['kdf']['opslimit'],
+            kdfMemlimit:   (int) $package['kdf']['memlimit'],
+            escrow:        $package['escrow'] === null ? null : $this->rowToEscrow(['user_id' => $userId] + $package['escrow']),
+            privateFields: $private,
+            escrowFields:  array_map('strval', $package['fields']['escrow']),
+        );
+    }
+
+    public function deleteArchive(string $userId, string $archiveId): bool
+    {
+        $stmt = $this->pdo->prepare(
+            'DELETE FROM selfdataguard_archives WHERE user_id = :uid AND archive_id = :id'
+        );
+        $stmt->execute([':uid' => $userId, ':id' => $archiveId]);
+        return $stmt->rowCount() > 0;
+    }
+
+    public function purgeArchives(string $userId): int
+    {
+        $stmt = $this->pdo->prepare('DELETE FROM selfdataguard_archives WHERE user_id = :uid');
+        $stmt->execute([':uid' => $userId]);
+        return $stmt->rowCount();
+    }
+
     // -------------------------------------------------------------------------
+
+    /**
+     * The live vault of $userId, its fields and its escrow — gone.
+     *
+     * Explicit deletes, not the FK cascade: `PRAGMA foreign_keys` is a no-op
+     * on a connection the caller handed over with a transaction open. Callers
+     * run it inside atomic().
+     */
+    private function purgeLive(string $userId): void
+    {
+        foreach (['selfdataguard_fields', 'selfdataguard_escrow_fields', 'selfdataguard_escrow', 'selfdataguard_vaults'] as $table) {
+            $this->pdo->prepare("DELETE FROM {$table} WHERE user_id = :uid")->execute([':uid' => $userId]);
+        }
+    }
+
+    /**
+     * Everything an archive must keep, as stored — nothing is decrypted. The
+     * blind indexes stay behind: they would keep answering equality lookups
+     * for data the user no longer has live. `was_indexed` lets a restore
+     * index the same fields again.
+     *
+     * @param array<string, mixed> $vault the live vault row
+     */
+    private function archivePackage(array $vault): string
+    {
+        $uid = [':uid' => $vault['user_id']];
+
+        $stmt = $this->pdo->prepare(
+            'SELECT wrap_user, wrap_admin, created_at, updated_at FROM selfdataguard_escrow WHERE user_id = :uid'
+        );
+        $stmt->execute($uid);
+        $escrow = $stmt->fetch() ?: null;
+
+        $private = [];
+        $stmt = $this->pdo->prepare('SELECT field_name, ciphertext, blind_index FROM selfdataguard_fields WHERE user_id = :uid');
+        $stmt->execute($uid);
+        while ($f = $stmt->fetch()) {
+            $private[(string) $f['field_name']] = ['ciphertext' => $f['ciphertext'], 'was_indexed' => $f['blind_index'] !== null];
+        }
+
+        $escrowFields = [];
+        $stmt = $this->pdo->prepare('SELECT field_name, ciphertext FROM selfdataguard_escrow_fields WHERE user_id = :uid');
+        $stmt->execute($uid);
+        while ($f = $stmt->fetch()) {
+            $escrowFields[(string) $f['field_name']] = $f['ciphertext'];
+        }
+
+        unset($vault['user_id']);
+        return json_encode([
+            'format' => self::ARCHIVE_FORMAT,
+            'kdf'    => ['opslimit' => Primitives::ARGON2_OPSLIMIT, 'memlimit' => Primitives::ARGON2_MEMLIMIT],
+            'vault'  => $vault,
+            'escrow' => $escrow,
+            'fields' => ['private' => (object) $private, 'escrow' => (object) $escrowFields],
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * @param array<string, mixed> $vault
+     * @return list<Lock>
+     */
+    private function locksOf(array $vault): array
+    {
+        return array_values(array_filter([
+            Lock::Password,
+            $vault['wrap_recov'] !== null ? Lock::Memorized : null,
+            $vault['wrap_phrase'] !== null ? Lock::Passphrase : null,
+        ]));
+    }
 
     /**
      * Runs $work atomically — inside the caller's transaction if one is open.
@@ -377,6 +533,19 @@ final class SqliteAdapter implements StorageInterface
             )'
         );
         $this->addMissingVaultColumn('wrap_phrase');
+        $this->pdo->exec(
+            'CREATE TABLE IF NOT EXISTS selfdataguard_archives (
+                archive_id  TEXT PRIMARY KEY,
+                user_id     TEXT NOT NULL,
+                archived_at TEXT NOT NULL,
+                locks       TEXT NOT NULL,
+                package     TEXT NOT NULL
+            )'
+        );
+        $this->pdo->exec(
+            'CREATE INDEX IF NOT EXISTS selfdataguard_archives_user
+             ON selfdataguard_archives(user_id)'
+        );
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_fields (
                 user_id     TEXT NOT NULL,
@@ -513,6 +682,24 @@ final class SqliteAdapter implements StorageInterface
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
             wrapPhrase: $row['wrap_phrase'] !== null ? EncryptedBlob::fromBase64((string) $row['wrap_phrase']) : null,
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function rowToEscrow(array $row): EscrowRecord
+    {
+        $wrapAdmin = base64_decode((string) $row['wrap_admin'], true);
+        if ($wrapAdmin === false) {
+            throw new RuntimeException('Corrupted wrap_admin in DB (invalid base64)');
+        }
+        return new EscrowRecord(
+            userId:    (string) $row['user_id'],
+            wrapUser:  EncryptedBlob::fromBase64((string) $row['wrap_user']),
+            wrapAdmin: $wrapAdmin,
+            createdAt: new DateTimeImmutable((string) $row['created_at']),
+            updatedAt: new DateTimeImmutable((string) $row['updated_at']),
         );
     }
 

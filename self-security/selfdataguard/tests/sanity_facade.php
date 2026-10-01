@@ -19,6 +19,7 @@ use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
+use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
@@ -365,6 +366,11 @@ final class ForgetfulStorage implements StorageInterface
     public function loadEscrow(string $u): ?EscrowRecord { return $this->inner->loadEscrow($u); }
     public function saveEscrowFields(string $u, array $f): void { $this->inner->saveEscrowFields($u, $f); }
     public function loadEscrowFields(string $u, array $n = []): array { return $this->inner->loadEscrowFields($u, $n); }
+    public function replaceWithArchive(VaultRecord $r): ?string { return $this->inner->replaceWithArchive($r->withWrapPhrase(null, $r->updatedAt)); }
+    public function listArchives(string $u): array { return $this->inner->listArchives($u); }
+    public function loadArchive(string $u, string $id): ?ArchivedVault { return $this->inner->loadArchive($u, $id); }
+    public function deleteArchive(string $u, string $id): bool { return $this->inner->deleteArchive($u, $id); }
+    public function purgeArchives(string $u): int { return $this->inner->purgeArchives($u); }
 }
 
 $forgetful = new SelfDataGuard(new ForgetfulStorage($storage), $blindKey);
