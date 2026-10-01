@@ -6,7 +6,8 @@ Télécharge les textes depuis leurs sources officielles et les stocke dans
 conventionnalite.sqlite avec la même structure que legi_selfjustice.sqlite.
 
 Sources :
-  - EUR-Lex (CELEX) pour Charte UE, TUE, TFUE, règlements
+  - CELLAR (Office des publications de l'UE) pour Charte UE, TUE, TFUE,
+    règlements ; le lien cité reste celui d'EUR-Lex
   - echr.coe.int pour la CEDH et ses protocoles
 
 Usage :
@@ -87,28 +88,49 @@ TEMOINS = {
     ("CEDH", "8"): "vie privée",
 }
 
+# 🔑 **Les textes de l'Union se téléchargent par CELLAR, pas par EUR-Lex.**
+# EUR-Lex oppose un défi anti-robot (HTTP 202, `x-amzn-waf-action: challenge`,
+# corps vide) que seul un navigateur résout : le 01/10/2026, la Charte et le TUE
+# n'ont pas été rafraîchis ; le soir même, le TFUE le rendait aussi.
+# CELLAR est l'accès machine de l'Office des publications, qui sert les mêmes
+# textes. `url` reste le lien EUR-Lex : c'est lui qu'on cite à un lecteur.
+#
+# ⚠️ Pour les traités, la ressource `celex` de CELLAR ne rend que le sommaire. Le
+# numéro du Journal officiel qui les publie les porte tous, en une seule pièce :
+# chaque traité s'y découpe entre son titre et le titre suivant (`tranche`).
+CELLAR = "http://publications.europa.eu/resource/"
+JO_TRAITES_2016 = "oj/JOC_2016_202_R"
+
 SOURCES = {
     "CHARTE_UE": {
         "celex": "12016P/TXT",
         "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/HTML/?uri=CELEX:12016P/TXT",
+        "cellar": JO_TRAITES_2016,
+        "tranche": (r"CHARTE DES DROITS FONDAMENTAUX", r"AVIS AU LECTEUR"),
         "titre": "Charte des droits fondamentaux de l'Union européenne (version consolidée 2016)",
         "date_debut": "2009-12-01",
     },
     "TUE": {
         "celex": "12016M/TXT",
         "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/HTML/?uri=CELEX:12016M/TXT",
+        "cellar": JO_TRAITES_2016,
+        "tranche": (r"TRAITÉ SUR L['’]UNION EUROPÉENNE \(VERSION CONSOLIDÉE\)",
+                    r"TRAITÉ SUR LE FONCTIONNEMENT"),
         "titre": "Traité sur l'Union européenne (version consolidée)",
         "date_debut": "2009-12-01",
     },
     "TFUE": {
         "celex": "12016E/TXT",
         "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/HTML/?uri=CELEX:12016E/TXT",
+        "cellar": JO_TRAITES_2016,
+        "tranche": (r"TRAITÉ SUR LE FONCTIONNEMENT", r"PROTOCOLES?\b"),
         "titre": "Traité sur le fonctionnement de l'Union européenne (version consolidée)",
         "date_debut": "2009-12-01",
     },
     "RGPD": {
         "celex": "32016R0679",
         "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/HTML/?uri=CELEX:32016R0679",
+        "cellar": "celex/32016R0679",
         "titre": "Règlement général sur la protection des données (RGPD)",
         "date_debut": "2018-05-25",
     },
@@ -125,6 +147,7 @@ SOURCES = {
     "AI_ACT": {
         "celex": "32024R1689",
         "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/HTML/?uri=CELEX:32024R1689",
+        "cellar": "celex/32024R1689",
         "titre": "Règlement (UE) 2024/1689 établissant des règles harmonisées concernant l'intelligence artificielle",
         "date_debut": "2024-08-01",
     },
@@ -137,23 +160,41 @@ HTTP_HEADERS = {
     "Accept-Language": "fr-FR,fr;q=0.9",
 }
 
+# CELLAR choisit la forme et la langue d'après ces deux en-têtes, et répond par
+# une redirection 303 vers la pièce, que `urlopen` suit.
+CELLAR_HEADERS = {
+    **HTTP_HEADERS,
+    "Accept": "application/xhtml+xml;q=1, text/html;q=0.9",
+    "Accept-Language": "fra",
+}
 
-def fetch_url(url: str, timeout: int = 60, max_retries: int = 10) -> bytes:
+
+def fetch_url(url: str, timeout: int = 60, max_retries: int = 10,
+              headers: dict | None = None) -> bytes:
     """Télécharger une URL avec headers appropriés et retry sur HTTP 202.
 
-    EUR-Lex renvoie souvent HTTP 202 (Accepted) pendant la génération
-    de la page. Il faut attendre et réessayer.
+    Un 202 peut signifier « page en génération » : il faut attendre et
+    réessayer. Sauf s'il porte un défi anti-robot, qui ne se lève pas en
+    insistant.
     """
     import time
 
     for attempt in range(max_retries):
-        req = Request(url, headers=HTTP_HEADERS)
+        req = Request(url, headers=headers or HTTP_HEADERS)
         try:
             with urlopen(req, timeout=timeout) as resp:
                 status = resp.status
                 data = resp.read()
                 if status == 200 and data:
                     return data
+                # 🔑 Le défi d'AWS WAF répond 202 lui aussi, corps vide : dix
+                # attentes croissantes ne servaient qu'à perdre près de deux
+                # minutes par source, puis à conclure « échec après 10
+                # tentatives » là où il fallait lire « accès bloqué ».
+                if status == 202 and resp.headers.get("x-amzn-waf-action"):
+                    print("  HTTP 202 — défi anti-robot (AWS WAF). "
+                          "Réessayer n'y changerait rien.", file=sys.stderr)
+                    return b""
                 if status == 202 or not data:
                     wait = 2 * (attempt + 1)
                     print(f"  HTTP {status} — attente {wait}s puis retry ({attempt+1}/{max_retries})...")
@@ -525,10 +566,80 @@ def copie_locale(source: str) -> bytes:
     return data
 
 
+# Pièces CELLAR déjà téléchargées au cours de cette exécution : les trois traités
+# viennent du même numéro du Journal officiel, qui pèse près de 2 Mo.
+PIECES_CELLAR = {}
+
+# Ce qui, dans le Journal officiel, n'appartient à aucun article : les
+# intertitres (« TITRE II LIBERTÉS ») et les en-têtes de page. Gardés, ils se
+# collent à la fin de l'article qui les précède.
+HORS_ARTICLE = re.compile(r"^(ti-section|ti-grseq|hd-|doc-end|separator)")
+# La formule de signature clôt un traité : ce qui la suit n'est plus son texte.
+FORMULE_FINALE = re.compile(r"\s*EN FOI DE QUOI\b")
+
+
+def tranche_jo(xhtml, debut: str, fin: str) -> str:
+    """Isoler un traité dans un numéro du Journal officiel.
+
+    Garde les paragraphes entre le titre `doc-ti` qui correspond à `debut` et le
+    suivant qui correspond à `fin`, sans intertitres, sans en-têtes de page, et
+    rien après la formule de signature. Rend "" si le titre de début manque :
+    la source échoue alors et ses données précédentes restent en place.
+    """
+    from lxml import html as lhtml
+
+    if isinstance(xhtml, bytes):
+        xhtml = xhtml.decode("utf-8", errors="replace")
+    xhtml = re.sub(r"^\s*<\?xml[^>]*\?>\s*", "", xhtml)
+    try:
+        tree = lhtml.fromstring(xhtml)
+    except Exception as e:
+        print(f"  ERREUR parsing du Journal officiel : {e}", file=sys.stderr)
+        return ""
+
+    def texte(e) -> str:
+        return re.sub(r"\s+", " ", e.text_content()).strip()
+
+    elements = [e for e in tree.iter() if isinstance(e.tag, str)]
+    titres = [i for i, e in enumerate(elements) if "doc-ti" in (e.get("class") or "")]
+    a = next((i for i in titres if re.match(debut, texte(elements[i]))), None)
+    if a is None:
+        print(f"  titre introuvable dans le Journal officiel : « {debut} »", file=sys.stderr)
+        return ""
+    z = next((i for i in titres if i > a and re.match(fin, texte(elements[i]))), len(elements))
+
+    gardes = []
+    for e in elements[a:z]:
+        if e.tag != "p":
+            continue
+        if any(HORS_ARTICLE.match(c) for c in (e.get("class") or "").split()):
+            continue
+        if FORMULE_FINALE.match(texte(e)):
+            break
+        gardes.append(lhtml.tostring(e, encoding="unicode"))
+    return "<html><body>" + "".join(gardes) + "</body></html>"
+
+
+def telecharger(source: str, info: dict) -> bytes:
+    """Le texte d'une source : par CELLAR quand elle en a une ressource, sinon par son URL."""
+    ressource = info.get("cellar")
+    if not ressource:
+        print(f"[{source}] Téléchargement : {info['url']}")
+        return fetch_url(info["url"])
+
+    url = CELLAR + ressource
+    print(f"[{source}] Téléchargement CELLAR : {url}")
+    if url not in PIECES_CELLAR:
+        PIECES_CELLAR[url] = fetch_url(url, headers=CELLAR_HEADERS)
+    piece = PIECES_CELLAR[url]
+    if piece and info.get("tranche"):
+        return tranche_jo(piece, *info["tranche"]).encode("utf-8")
+    return piece
+
+
 def process_source(conn: sqlite3.Connection, source: str, info: dict) -> int:
     """Télécharger et parser une source, retourne le nombre d'articles insérés."""
-    print(f"[{source}] Téléchargement : {info['url']}")
-    raw = fetch_url(info["url"])
+    raw = telecharger(source, info)
 
     # 🔑 Le repli ne se substitue jamais à un téléchargement réussi : il n'est
     # tenté qu'après son échec, et il s'annonce. Une copie servie en silence

@@ -472,6 +472,12 @@ jobs:
       - name: Garde-fou — le scraper refuse une source tronquée
         run: bash self-right/selfact/tests/test_garde_catalogue.sh
 
+      # lxml à la version de l'instance : c'est son analyseur qui découpe les traités.
+      - name: Garde-fou — un traité se découpe juste dans le Journal officiel
+        run: |
+          pip install --quiet 'lxml==6.1.1'
+          python3 self-right/selfjustice/tests/test_tranche_jo.py
+
       - name: Garde-fou — la sonde amont de la vérification de référence
         run: bash self-right/selfjustice/tests/test_sonde_amont.sh
 
