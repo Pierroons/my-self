@@ -139,7 +139,7 @@ final class UserVault
     }
 
     /**
-     * Unwrap data_master_key with any of the three secrets.
+     * Unwrap data_master_key with the secret of the given lock.
      *
      * The Argon2id profile defaults to the current one. An archive passes the
      * profile it was sealed under: it cannot be re-sealed when the profile
@@ -157,7 +157,7 @@ final class UserVault
         int $opslimit = Primitives::ARGON2_OPSLIMIT,
         int $memlimit = Primitives::ARGON2_MEMLIMIT
     ): UnlockedVault {
-        if ($secret === '') {
+        if ($secret === '' || ($lock === Lock::Passphrase && self::normalizePassphrase($secret) === '')) {
             throw new InvalidArgumentException(self::secretName($lock) . ' must not be empty');
         }
         $wrap = self::wrapOf($record, $lock);

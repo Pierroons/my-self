@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Pierroons\SelfDataGuard\Storage;
 
 use DateTimeImmutable;
+use DateTimeZone;
 use PDO;
 use PDOException;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
@@ -29,10 +30,11 @@ use Throwable;
  *     user_salt   TEXT NOT NULL    (base64)
  *     wrap_pwd    TEXT NOT NULL    (base64 of EncryptedBlob)
  *     wrap_recov  TEXT             (base64, nullable)
- *     wrap_admin  TEXT             (base64, nullable, reserved, never written)
+ *     wrap_admin  TEXT             (base64, nullable, reserved, always NULL)
  *     created_at  TEXT NOT NULL    (ISO 8601)
  *     updated_at  TEXT NOT NULL    (ISO 8601)
  *     wrap_phrase TEXT             (base64, nullable — added in 0.5.0, hence last)
+ *     revision    INTEGER NOT NULL DEFAULT 0  (bumped by every update; added in 0.5.0)
  *
  *   selfdataguard_fields
  *     user_id     TEXT NOT NULL
@@ -56,7 +58,7 @@ use Throwable;
  *                 re-enrolments the service has seen)
  *     user_id     TEXT NOT NULL    (no foreign key: the archive outlives the
  *                 live vault it was taken from)
- *     archived_at TEXT NOT NULL
+ *     archived_at TEXT NOT NULL    (ISO 8601, UTC, so that the order survives a DST change)
  *     locks       TEXT NOT NULL    (the locks that still open it, comma-separated)
  *     package     TEXT NOT NULL    (JSON: the vault row, escrow, fields — all
  *                 still encrypted —, the Argon2id profile, a format version)
@@ -71,6 +73,11 @@ final class SqliteAdapter implements StorageInterface
     /** Savepoints this instance has open inside a caller's transaction. */
     private int $depth = 0;
 
+    /**
+     * Opening a database created by an older version migrates it in place.
+     * Constructed inside a transaction that the caller then rolls back, the
+     * migration rolls back with it: build a new adapter after such a rollback.
+     */
     public function __construct(string|PDO $dsnOrPdo)
     {
         if ($dsnOrPdo instanceof PDO) {
@@ -88,8 +95,8 @@ final class SqliteAdapter implements StorageInterface
     {
         $stmt = $this->pdo->prepare(
             'INSERT INTO selfdataguard_vaults
-             (user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase)
-             VALUES (:uid, :salt, :wp, :wr, :wa, :ca, :ua, :wph)'
+             (user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase, revision)
+             VALUES (:uid, :salt, :wp, :wr, :wa, :ca, :ua, :wph, :rev)'
         );
         try {
             $stmt->execute($this->vaultToParamsForInsert($record));
@@ -102,11 +109,15 @@ final class SqliteAdapter implements StorageInterface
     }
 
     /**
-     * Writes only over the vault the record was read from. The WHERE carries
-     * its user_salt, which a re-enrolment replaces: a record read before an
-     * archive cannot overwrite the vault created after it. Without this, a
-     * request still holding the old record would seal the old master key into
-     * the new vault, and every field written there since would be lost.
+     * Writes only over the exact state the record was read from.
+     *
+     * - user_salt: a re-enrolment replaces it. Without it in the WHERE, a
+     *   request still holding the old record would seal the old master key
+     *   into the new vault, and every field written there since would be lost.
+     * - revision: every update bumps it. Two requests that read the same
+     *   vault and rewrite it would otherwise lose one update silently — a
+     *   password change landing after a passphrase removal puts the revoked
+     *   passphrase back.
      */
     public function updateVault(VaultRecord $record): void
     {
@@ -116,14 +127,15 @@ final class SqliteAdapter implements StorageInterface
                  wrap_recov = :wr,
                  wrap_admin = :wa,
                  updated_at = :ua,
-                 wrap_phrase = :wph
-             WHERE user_id = :uid AND user_salt = :salt'
+                 wrap_phrase = :wph,
+                 revision = revision + 1
+             WHERE user_id = :uid AND user_salt = :salt AND revision = :rev'
         );
         $stmt->execute($this->vaultToParamsForUpdate($record));
         if ($stmt->rowCount() === 0) {
             if ($this->vaultExists($record->userId)) {
                 throw new StaleVaultException(
-                    "Vault for userId '{$record->userId}' was replaced since this record was read"
+                    "Vault for userId '{$record->userId}' changed or was replaced since this record was read — reload it"
                 );
             }
             throw new VaultNotFoundException("Vault not found for userId '{$record->userId}'");
@@ -159,7 +171,7 @@ final class SqliteAdapter implements StorageInterface
         $this->atomic(fn () => $this->purgeLive($userId));
     }
 
-    public function saveFields(string $userId, array $fields): void
+    public function saveFields(string $userId, array $fields, ?string $vaultSalt = null): void
     {
         if ($fields === []) {
             return;
@@ -174,7 +186,8 @@ final class SqliteAdapter implements StorageInterface
                updated_at  = excluded.updated_at'
         );
 
-        $this->atomic(function () use ($stmt, $userId, $fields, $now): void {
+        $this->atomic(function () use ($stmt, $userId, $fields, $now, $vaultSalt): void {
+            $this->assertGeneration($userId, $vaultSalt);
             foreach ($fields as $fieldName => $data) {
                 if (!isset($data['ciphertext'])) {
                     throw new RuntimeException("Missing ciphertext for field '{$fieldName}'");
@@ -226,7 +239,7 @@ final class SqliteAdapter implements StorageInterface
 
     // -- Escrow compartment ---------------------------------------------------
 
-    public function saveEscrow(EscrowRecord $record): void
+    public function saveEscrow(EscrowRecord $record, ?string $vaultSalt = null): void
     {
         $stmt = $this->pdo->prepare(
             'INSERT INTO selfdataguard_escrow (user_id, wrap_user, wrap_admin, created_at, updated_at)
@@ -236,13 +249,16 @@ final class SqliteAdapter implements StorageInterface
                wrap_admin = excluded.wrap_admin,
                updated_at = excluded.updated_at'
         );
-        $stmt->execute([
-            ':uid' => $record->userId,
-            ':wu'  => $record->wrapUser->toBase64(),
-            ':wa'  => base64_encode($record->wrapAdmin),
-            ':ca'  => $record->createdAt->format('c'),
-            ':ua'  => $record->updatedAt->format('c'),
-        ]);
+        $this->atomic(function () use ($stmt, $record, $vaultSalt): void {
+            $this->assertGeneration($record->userId, $vaultSalt);
+            $stmt->execute([
+                ':uid' => $record->userId,
+                ':wu'  => $record->wrapUser->toBase64(),
+                ':wa'  => base64_encode($record->wrapAdmin),
+                ':ca'  => $record->createdAt->format('c'),
+                ':ua'  => $record->updatedAt->format('c'),
+            ]);
+        });
     }
 
     public function loadEscrow(string $userId): ?EscrowRecord
@@ -256,7 +272,7 @@ final class SqliteAdapter implements StorageInterface
         return $row === false ? null : $this->rowToEscrow($row);
     }
 
-    public function saveEscrowFields(string $userId, array $fields): void
+    public function saveEscrowFields(string $userId, array $fields, ?string $vaultSalt = null): void
     {
         if ($fields === []) {
             return;
@@ -269,7 +285,8 @@ final class SqliteAdapter implements StorageInterface
                ciphertext = excluded.ciphertext,
                updated_at = excluded.updated_at'
         );
-        $this->atomic(function () use ($stmt, $userId, $fields, $now): void {
+        $this->atomic(function () use ($stmt, $userId, $fields, $now, $vaultSalt): void {
+            $this->assertGeneration($userId, $vaultSalt);
             foreach ($fields as $fieldName => $ciphertext) {
                 $stmt->execute([
                     ':uid' => $userId,
@@ -318,7 +335,7 @@ final class SqliteAdapter implements StorageInterface
                 )->execute([
                     ':id'    => $archiveId,
                     ':uid'   => $new->userId,
-                    ':at'    => (new DateTimeImmutable())->format('c'),
+                    ':at'    => (new DateTimeImmutable('now', new DateTimeZone('UTC')))->format('c'),
                     ':locks' => implode(',', array_map(static fn (Lock $l) => $l->value, $this->locksOf($live))),
                     ':pkg'   => $this->archivePackage($live),
                 ]);
@@ -382,13 +399,16 @@ final class SqliteAdapter implements StorageInterface
         );
     }
 
-    public function deleteArchive(string $userId, string $archiveId): bool
+    public function deleteArchive(string $userId, string $archiveId, ?string $vaultSalt = null): bool
     {
-        $stmt = $this->pdo->prepare(
-            'DELETE FROM selfdataguard_archives WHERE user_id = :uid AND archive_id = :id'
-        );
-        $stmt->execute([':uid' => $userId, ':id' => $archiveId]);
-        return $stmt->rowCount() > 0;
+        return $this->atomic(function () use ($userId, $archiveId, $vaultSalt): bool {
+            $this->assertGeneration($userId, $vaultSalt);
+            $stmt = $this->pdo->prepare(
+                'DELETE FROM selfdataguard_archives WHERE user_id = :uid AND archive_id = :id'
+            );
+            $stmt->execute([':uid' => $userId, ':id' => $archiveId]);
+            return $stmt->rowCount() > 0;
+        });
     }
 
     public function purgeArchives(string $userId): int
@@ -399,6 +419,28 @@ final class SqliteAdapter implements StorageInterface
     }
 
     // -------------------------------------------------------------------------
+
+    /**
+     * Inside the write's own transaction, the live vault must still be the one
+     * $vaultSalt identifies. Checked beforehand only, a re-enrolment committed
+     * in between would let an old session write under the old master key into
+     * the new vault. Null skips the check (callers without a session).
+     */
+    private function assertGeneration(string $userId, ?string $vaultSalt): void
+    {
+        if ($vaultSalt === null) {
+            return;
+        }
+        $stmt = $this->pdo->prepare(
+            'SELECT 1 FROM selfdataguard_vaults WHERE user_id = :uid AND user_salt = :salt'
+        );
+        $stmt->execute([':uid' => $userId, ':salt' => base64_encode($vaultSalt)]);
+        if ($stmt->fetchColumn() === false) {
+            throw new StaleVaultException(
+                "The live vault of '{$userId}' is not the one this session was opened on — unlock the current one"
+            );
+        }
+    }
 
     /**
      * The live vault of $userId, its fields and its escrow — gone.
@@ -472,6 +514,12 @@ final class SqliteAdapter implements StorageInterface
     /**
      * Runs $work atomically — inside the caller's transaction if one is open.
      *
+     * Its own transaction starts with BEGIN IMMEDIATE, not PDO's deferred
+     * BEGIN: every transaction here reads, then writes, and SQLite refuses
+     * to turn a read into a write while another connection writes —
+     * "database is locked" at once, the busy timeout ignored. IMMEDIATE takes
+     * the write lock up front, so a concurrent writer is waited for instead.
+     *
      * PDO cannot nest: a second beginTransaction() throws, and committing
      * "whatever is open" would commit the caller's half-done work. Inside a
      * foreign transaction this uses a SAVEPOINT, so a failure rolls back our
@@ -488,7 +536,7 @@ final class SqliteAdapter implements StorageInterface
     private function atomic(callable $work): mixed
     {
         if (!$this->pdo->inTransaction()) {
-            $this->pdo->beginTransaction();
+            $this->pdo->exec('BEGIN IMMEDIATE');
             try {
                 $result = $work();
                 $this->pdo->commit();
@@ -529,10 +577,12 @@ final class SqliteAdapter implements StorageInterface
                 wrap_admin  TEXT,
                 created_at  TEXT NOT NULL,
                 updated_at  TEXT NOT NULL,
-                wrap_phrase TEXT
+                wrap_phrase TEXT,
+                revision    INTEGER NOT NULL DEFAULT 0
             )'
         );
-        $this->addMissingVaultColumn('wrap_phrase');
+        $this->addMissingVaultColumn('wrap_phrase', 'TEXT');
+        $this->addMissingVaultColumn('revision', 'INTEGER NOT NULL DEFAULT 0');
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_archives (
                 archive_id  TEXT PRIMARY KEY,
@@ -588,34 +638,22 @@ final class SqliteAdapter implements StorageInterface
      * `CREATE TABLE IF NOT EXISTS` leaves it as it is, and every query naming
      * the new column would then fail with "no such column".
      *
-     * The check is repeated under BEGIN IMMEDIATE: two processes opening the
-     * same old database both see the column missing, and the second ALTER
-     * would otherwise fail on "duplicate column name". The write lock makes the
-     * second one wait, then find the column there. Inside a caller's
-     * transaction the lock is already the caller's; a savepoint suffices.
+     * The check is repeated inside the write transaction: two processes
+     * opening the same old database both see the column missing, and the
+     * second ALTER would otherwise fail on "duplicate column name". The write
+     * lock (BEGIN IMMEDIATE, see atomic()) makes the second one wait, then
+     * find the column there. Columns are added in the order of the CREATE.
      */
-    private function addMissingVaultColumn(string $column): void
+    private function addMissingVaultColumn(string $column, string $definition): void
     {
         if ($this->vaultsHaveColumn($column)) {
             return;
         }
-        $add = function () use ($column): void {
+        $this->atomic(function () use ($column, $definition): void {
             if (!$this->vaultsHaveColumn($column)) {
-                $this->pdo->exec("ALTER TABLE selfdataguard_vaults ADD COLUMN {$column} TEXT");
+                $this->pdo->exec("ALTER TABLE selfdataguard_vaults ADD COLUMN {$column} {$definition}");
             }
-        };
-        if ($this->pdo->inTransaction()) {
-            $this->atomic($add);
-            return;
-        }
-        $this->pdo->exec('BEGIN IMMEDIATE');
-        try {
-            $add();
-            $this->pdo->exec('COMMIT');
-        } catch (Throwable $e) {
-            $this->pdo->exec('ROLLBACK');
-            throw $e;
-        }
+        });
     }
 
     private function vaultsHaveColumn(string $column): bool
@@ -642,6 +680,7 @@ final class SqliteAdapter implements StorageInterface
             ':ca'   => $record->createdAt->format('c'),
             ':ua'   => $record->updatedAt->format('c'),
             ':wph'  => $record->wrapPhrase?->toBase64(),
+            ':rev'  => $record->revision,
         ];
     }
 
@@ -661,6 +700,7 @@ final class SqliteAdapter implements StorageInterface
             ':wa'   => $record->wrapAdmin?->toBase64(),
             ':ua'   => $record->updatedAt->format('c'),
             ':wph'  => $record->wrapPhrase?->toBase64(),
+            ':rev'  => $record->revision,
         ];
     }
 
@@ -682,6 +722,7 @@ final class SqliteAdapter implements StorageInterface
             createdAt: new DateTimeImmutable((string) $row['created_at']),
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
             wrapPhrase: $row['wrap_phrase'] !== null ? EncryptedBlob::fromBase64((string) $row['wrap_phrase']) : null,
+            revision:   (int) ($row['revision'] ?? 0),
         );
     }
 
@@ -709,7 +750,7 @@ final class SqliteAdapter implements StorageInterface
     private function fetchVaultRow(string $userId): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase
+            'SELECT user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase, revision
              FROM selfdataguard_vaults WHERE user_id = :uid'
         );
         $stmt->execute([':uid' => $userId]);

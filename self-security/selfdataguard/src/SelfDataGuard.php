@@ -85,7 +85,7 @@ final class SelfDataGuard
         }
         $result = $this->vault->register($userId, $password, $memorized, $passphrase);
         $this->storage->saveVault($result['record']);
-        $this->assertPassphrasePersisted($result['record']);
+        $this->assertPassphrasePersisted($result['record'], 0);
         return $result['unlocked'];
     }
 
@@ -126,8 +126,10 @@ final class SelfDataGuard
      *   - level 2/device, or a vault whose password wrap fell behind: any lock
      *                    the user can give, the current password, $newPassphrase null
      *
-     * Call it only after SelfRecover has accepted the recovery: on its own it
-     * is an Argon2id oracle with no rate limit.
+     * On its own it is an Argon2id oracle with no rate limit. Call it right
+     * after SelfRecover has accepted a recovery, behind SelfRecover's own
+     * counters — or, for the catch-up after a device recovery, rate-limit it
+     * as the login is.
      *
      * $newPassphrase null keeps the passphrase wrap as it is.
      */
@@ -145,7 +147,7 @@ final class SelfDataGuard
             $record = $this->vault->changePassphrase($record, $session, $newPassphrase);
         }
         $this->storage->updateVault($record);
-        $this->assertPassphrasePersisted($record);
+        $this->assertPassphrasePersisted($record, $record->revision + 1);
         return $session;
     }
 
@@ -173,7 +175,7 @@ final class SelfDataGuard
                     : null,
             ];
         }
-        $this->storage->saveFields($session->userId, $payload);
+        $this->storage->saveFields($session->userId, $payload, $session->vaultSalt);
     }
 
     /**
@@ -228,14 +230,14 @@ final class SelfDataGuard
     {
         $rotated = $this->vault->changePassphrase($this->currentRecord($session), $session, $newPassphrase);
         $this->storage->updateVault($rotated);
-        $this->assertPassphrasePersisted($rotated);
+        $this->assertPassphrasePersisted($rotated, $rotated->revision + 1);
     }
 
     public function removePassphrase(UnlockedVault $session): void
     {
         $rotated = $this->vault->removePassphrase($this->currentRecord($session), $session);
         $this->storage->updateVault($rotated);
-        $this->assertPassphrasePersisted($rotated);
+        $this->assertPassphrasePersisted($rotated, $rotated->revision + 1);
     }
 
     // -- Re-enrolment and archives ---------------------------------------------
@@ -260,7 +262,7 @@ final class SelfDataGuard
     ): array {
         $result    = $this->vault->register($userId, $newPassword, $newMemorized, $newPassphrase);
         $archiveId = $this->storage->replaceWithArchive($result['record']);
-        $this->assertPassphrasePersisted($result['record']);
+        $this->assertPassphrasePersisted($result['record'], 0);
         return ['unlocked' => $result['unlocked'], 'archiveId' => $archiveId];
     }
 
@@ -338,7 +340,7 @@ final class SelfDataGuard
     public function deleteArchive(UnlockedVault $current, string $archiveId): bool
     {
         $this->currentRecord($current);
-        return $this->storage->deleteArchive($current->userId, $archiveId);
+        return $this->storage->deleteArchive($current->userId, $archiveId, $current->vaultSalt);
     }
 
     /**
@@ -421,13 +423,13 @@ final class SelfDataGuard
             $created  = $this->escrow->create($session, $adminPublicKey);
             $record   = $created['record'];
             $unlocked = $created['unlocked'];
-            $this->storage->saveEscrow($record);
+            $this->storage->saveEscrow($record, $session->vaultSalt);
         } else {
             $unlocked = $this->escrow->unlockAsUser($record, $session);
         }
 
         $ciphertexts = EscrowFieldCrypter::encryptBatch($unlocked, $fields);
-        $this->storage->saveEscrowFields($session->userId, $ciphertexts);
+        $this->storage->saveEscrowFields($session->userId, $ciphertexts, $session->vaultSalt);
         $unlocked->lock();
     }
 
@@ -464,7 +466,7 @@ final class SelfDataGuard
      */
     public function getEscrowFieldsAsAdmin(
         string $userId,
-        string $adminSecretKey,
+        #[\SensitiveParameter] string $adminSecretKey,
         string $adminPublicKey,
         array $fieldNames = []
     ): array {
@@ -490,7 +492,7 @@ final class SelfDataGuard
     public function getArchiveEscrowFieldsAsAdmin(
         string $userId,
         string $archiveId,
-        string $adminSecretKey,
+        #[\SensitiveParameter] string $adminSecretKey,
         string $adminPublicKey,
         array $fieldNames = []
     ): array {
@@ -531,17 +533,22 @@ final class SelfDataGuard
     }
 
     /**
-     * A StorageInterface written before 0.5.0 compiles fine and silently drops
-     * wrap_phrase. The passphrase SelfRecover just consumed would then keep
-     * opening the vault — or the new one would not. Read it back once.
+     * A StorageInterface implementation can drop wrap_phrase without a word —
+     * an update that does not name the column, say. The passphrase SelfRecover
+     * just consumed would then keep opening the vault, or the new one would
+     * not. Read it back once. A higher revision than $expectedRevision means a
+     * later write landed in between: then there is nothing left to compare.
      */
-    private function assertPassphrasePersisted(VaultRecord $written): void
+    private function assertPassphrasePersisted(VaultRecord $written, int $expectedRevision): void
     {
-        $stored = $this->storage->loadVault($written->userId)->wrapPhrase;
-        if ($stored?->toBase64() !== $written->wrapPhrase?->toBase64()) {
+        $stored = $this->storage->loadVault($written->userId);
+        if ($stored->revision > $expectedRevision) {
+            return;
+        }
+        if ($stored->wrapPhrase?->toBase64() !== $written->wrapPhrase?->toBase64()) {
             throw new RuntimeException(
                 'The storage did not persist wrap_phrase as written — '
-                . 'does this StorageInterface implementation predate SelfDataGuard 0.5.0?'
+                . 'does its saveVault(), updateVault() and replaceWithArchive() write that column?'
             );
         }
     }

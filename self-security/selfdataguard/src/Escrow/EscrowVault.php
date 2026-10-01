@@ -112,7 +112,7 @@ final class EscrowVault
      * @param string $adminSecretKey raw 32-byte secret key (from AdminKey::unseal)
      * @throws RuntimeException if the sealed box fails to open (wrong key).
      */
-    public function unlockAsAdmin(EscrowRecord $record, string $adminSecretKey, string $adminPublicKeyB64): UnlockedEscrow
+    public function unlockAsAdmin(EscrowRecord $record, #[\SensitiveParameter] string $adminSecretKey, string $adminPublicKeyB64): UnlockedEscrow
     {
         $adminPublicKey = self::decodePublicKey($adminPublicKeyB64);
         if (strlen($adminSecretKey) !== SODIUM_CRYPTO_BOX_SECRETKEYBYTES) {

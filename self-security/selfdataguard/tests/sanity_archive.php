@@ -162,6 +162,51 @@ $storage->replaceWithArchive($uv->register('user-fresh', 'fresh-password-01')['r
 
 // -----------------------------------------------------------------------------
 
+section('A concurrent writer is waited for, not failed on');
+
+// This process holds the write lock, as another request writing would. A
+// child process re-enrols meanwhile: it must wait for the lock and succeed —
+// not fail at once on "database is locked", as a transaction that reads
+// before it writes does under SQLite.
+$wfile = sys_get_temp_dir() . '/selfdataguard-wait-' . bin2hex(random_bytes(4)) . '.sqlite';
+register_shutdown_function(static fn () => @unlink($wfile));
+$wdg = new SelfDataGuard(new SqliteAdapter("sqlite:{$wfile}"), $blindKey);
+$wdg->register('user-wait', 'wait-password-0001', 'wait-memorized');
+$holder = new PDO("sqlite:{$wfile}");
+$holder->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$holder->exec('BEGIN IMMEDIATE');
+$holder->exec("UPDATE selfdataguard_vaults SET updated_at = updated_at WHERE user_id = 'user-wait'");
+$child = proc_open([PHP_BINARY, '-r', sprintf(
+    'require %s; $t = microtime(true);'
+    . ' try { $s = new Pierroons\SelfDataGuard\Storage\SqliteAdapter(%s);'
+    . ' $s->replaceWithArchive((new Pierroons\SelfDataGuard\Vault\UserVault())->register("user-wait", "wait-password-0002")["record"]);'
+    . ' printf("ok %%d", (microtime(true) - $t) * 1000); }'
+    . ' catch (Throwable $e) { echo $e->getMessage(); exit(1); }',
+    var_export(__DIR__ . '/../src/autoload.php', true),
+    var_export("sqlite:{$wfile}", true)
+)], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+usleep(1_500_000);
+$holder->exec('COMMIT');
+$out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+$rc = proc_close($child);
+$waited = preg_match('/^ok (\d+)$/', $out, $m) === 1 ? (int) $m[1] : -1;
+$rc === 0 && $waited >= 0
+    ? ok("the re-enrolment waited for the other writer and succeeded ({$waited} ms)")
+    : ko('the re-enrolment failed while another writer held the lock', $out);
+$waited >= 300
+    ? ok('it did wait — the lock was really contended')
+    : ko('the child never waited: the race was not exercised', $out);
+count($wdg->listArchives('user-wait')) === 1
+    ? ok('the archive is there')
+    : ko('no archive after the contended re-enrolment');
+
+$at = (string) $pdo->query("SELECT archived_at FROM selfdataguard_archives LIMIT 1")->fetchColumn();
+str_ends_with($at, '+00:00')
+    ? ok('archived_at is stored in UTC, so the order survives a DST change')
+    : ko('archived_at carries a local offset', $at);
+
+// -----------------------------------------------------------------------------
+
 section('All or nothing — a failure while inserting the new vault changes nothing');
 
 $boomOld = $dg->register('user-boom', 'boom-password-001', 'boom-memorized');

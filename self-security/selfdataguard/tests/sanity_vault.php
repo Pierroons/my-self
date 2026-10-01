@@ -353,6 +353,15 @@ try {
     ok('no passphrase wrap raises MissingEnvelopeException, not a wrong-secret error');
 }
 
+try {
+    $vault->unlockWithPassphrase($rec3, "  \t ");
+    ko('a passphrase made of whitespace reached the derivation');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'passphrase must not be empty')
+        ? ok('a passphrase made of whitespace is refused as empty, under its own name')
+        : ko('wrong message for a whitespace passphrase', $e->getMessage());
+}
+
 Lock::from('passphrase') === Lock::Passphrase && hash_equals(
     $three['unlocked']->getMasterKey(),
     $vault->unlock($rec3, Lock::from('memorized'), 'sunset-river-marble')->getMasterKey()

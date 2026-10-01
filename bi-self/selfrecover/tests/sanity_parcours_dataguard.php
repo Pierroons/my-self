@@ -43,7 +43,11 @@ function verifier(string $intitule, bool $condition, string $detail = ''): void
     echo ($condition ? "  \u{2705} " : "  \u{274C} ") . $intitule . ($detail !== '' ? " — {$detail}" : '') . "\n";
 }
 
-/** Le secret ouvre-t-il encore le coffre par cette serrure ? */
+/**
+ * Le secret ouvre-t-il encore le coffre par cette serrure ? Passe par recover(),
+ * qui re-scelle le mot de passe sur celui donné : on lui passe toujours le mot
+ * de passe courant, pour que la question n'écrive rien d'autre.
+ */
 function ouvre(SelfDataGuard $dg, Lock $serrure, string $secret, string $motDePasse): bool
 {
     try {
@@ -172,7 +176,7 @@ verifier('… alors qu\'elle n\'ouvre plus le compte',
 
 // ─────────────────────────────────────────────────────────────────────────
 echo "\n" . str_repeat('=', 63) . "\n";
-printf("OK — %d/%d\n", $passes, $passes + $echecs);
+printf("%s — %d/%d\n", $echecs === 0 ? 'OK' : 'ÉCHEC', $passes, $passes + $echecs);
 echo str_repeat('=', 63) . "\n\n";
 
 exit($echecs === 0 ? 0 : 1);

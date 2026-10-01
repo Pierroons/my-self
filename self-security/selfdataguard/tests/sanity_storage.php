@@ -378,6 +378,65 @@ $thrown !== null ? ok('VaultNotFoundException once the vault is gone') : ko('upd
 
 // -----------------------------------------------------------------------------
 
+section('revision — two requests that read the same vault cannot lose one update');
+
+$rv = (new UserVault())->register('user-rev', 'rev-password-0001', null, 'cheval agrafe batterie correct moulin ivoire');
+$own->saveVault($rv['record']);
+$readA = $own->loadVault('user-rev');
+$readB = $own->loadVault('user-rev');
+$own->updateVault((new UserVault())->changePassword($readA, $rv['unlocked'], 'rev-password-0002'));
+$own->loadVault('user-rev')->revision === 1
+    ? ok('an update bumps the revision')
+    : ko('revision not bumped', (string) $own->loadVault('user-rev')->revision);
+$thrown = null;
+try {
+    $own->updateVault((new UserVault())->removePassphrase($readB, $rv['unlocked']));
+} catch (StaleVaultException $e) {
+    $thrown = $e;
+}
+$thrown !== null ? ok('the second writer, holding the older revision, gets StaleVaultException') : ko('a stale revision was written');
+$after = $own->loadVault('user-rev');
+try {
+    (new UserVault())->unlockWithPassword($after, 'rev-password-0002');
+    $after->hasPassphrase()
+        ? ok('both states survive: the new password stands, the passphrase was not silently dropped')
+        : ko('the passphrase removal overwrote the password change\'s write');
+} catch (RuntimeException $e) {
+    ko('the password change was lost', $e->getMessage());
+}
+
+// -----------------------------------------------------------------------------
+
+section('Generation — checked inside the write, not only before it');
+
+$gen = (new UserVault())->register('user-genw', 'genw-password-001');
+$own->saveVault($gen['record']);
+$otherSalt = random_bytes(16);
+$refused = [];
+foreach ([
+    'saveFields'       => static fn () => $own->saveFields('user-genw', ['f' => ['ciphertext' => 'c']], $otherSalt),
+    'saveEscrowFields' => static fn () => $own->saveEscrowFields('user-genw', ['e' => 'c'], $otherSalt),
+    'deleteArchive'    => static fn () => $own->deleteArchive('user-genw', 'no-such-archive', $otherSalt),
+] as $name => $call) {
+    try {
+        $call();
+    } catch (StaleVaultException) {
+        $refused[] = $name;
+    }
+}
+count($refused) === 3
+    ? ok('a write naming another vault\'s salt is refused: ' . implode(', ', $refused))
+    : ko('a write went through with the wrong salt', implode(', ', $refused));
+$own->loadFields('user-genw') === [] && $own->loadEscrowFields('user-genw') === [] && !$pdo->inTransaction()
+    ? ok('nothing was written, no transaction left open')
+    : ko('a refused write left data or a transaction behind');
+$own->saveFields('user-genw', ['f' => ['ciphertext' => 'c']], $gen['record']->userSalt);
+array_keys($own->loadFields('user-genw')) === ['f']
+    ? ok('the right salt writes')
+    : ko('the right salt was refused');
+
+// -----------------------------------------------------------------------------
+
 echo "\n";
 echo "═══════════════════════════════════════════════════════════════\n";
 echo "  Phase 4 Sanity — {$passes} passed, {$failures} failed\n";

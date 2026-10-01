@@ -16,6 +16,11 @@ use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
  * force when the archive was made, carried here, because a live vault can
  * be re-sealed after a profile change and an archive cannot — nobody holds
  * its key in between.
+ *
+ * ⚠️ That is the profile of the code at archiving time, not one read from the
+ * vault, which stores none. A vault still sealed under an earlier profile at
+ * that moment would not open with it: whoever changes the profile re-seals
+ * every live vault first.
  */
 final class ArchivedVault
 {

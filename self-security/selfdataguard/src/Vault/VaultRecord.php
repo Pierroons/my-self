@@ -23,6 +23,8 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
  *   - created_at / updated_at: bookkeeping
  *   - wrap_phrase : data_master_key wrapped by phrase_key (null if no
  *                   passphrase was set)
+ *   - revision    : bumped by every stored update; a write applies only over
+ *                   the revision it was read at
  *
  * user_salt is also the vault's identity: it is never rotated, and a
  * re-created vault gets a new one. Sessions and conditional writes compare it.
@@ -39,7 +41,8 @@ final class VaultRecord
         public readonly ?EncryptedBlob $wrapAdmin,
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,
-        public readonly ?EncryptedBlob $wrapPhrase = null
+        public readonly ?EncryptedBlob $wrapPhrase = null,
+        public readonly int $revision = 0
     ) {
         if ($userId === '') {
             throw new InvalidArgumentException('userId must not be empty');
@@ -61,7 +64,8 @@ final class VaultRecord
             wrapAdmin: $this->wrapAdmin,
             createdAt: $this->createdAt,
             updatedAt: $now,
-            wrapPhrase: $this->wrapPhrase
+            wrapPhrase: $this->wrapPhrase,
+            revision:  $this->revision
         );
     }
 
@@ -75,7 +79,8 @@ final class VaultRecord
             wrapAdmin: $this->wrapAdmin,
             createdAt: $this->createdAt,
             updatedAt: $now,
-            wrapPhrase: $this->wrapPhrase
+            wrapPhrase: $this->wrapPhrase,
+            revision:  $this->revision
         );
     }
 
@@ -89,7 +94,8 @@ final class VaultRecord
             wrapAdmin: $this->wrapAdmin,
             createdAt: $this->createdAt,
             updatedAt: $now,
-            wrapPhrase: $newWrapPhrase
+            wrapPhrase: $newWrapPhrase,
+            revision:  $this->revision
         );
     }
 

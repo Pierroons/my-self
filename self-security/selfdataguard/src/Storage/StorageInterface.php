@@ -33,9 +33,10 @@ interface StorageInterface
     /**
      * Update the wraps of an existing vault (e.g. after changePassword /
      * changeMemorized). user_salt is never rewritten: it identifies the
-     * vault, and the write applies only where it still matches the record's.
-     * Throws StaleVaultException if the userId now holds a different vault,
-     * VaultNotFoundException if it holds none.
+     * vault. The write applies only where user_salt AND revision still match
+     * the record's, and bumps the revision. Throws StaleVaultException if the
+     * vault was replaced or updated since the record was read,
+     * VaultNotFoundException if the userId holds none.
      */
     public function updateVault(VaultRecord $record): void;
 
@@ -68,8 +69,12 @@ interface StorageInterface
      * @param string                                       $userId
      * @param array<string, array{ciphertext: string, blindIndex?: ?string}> $fields
      *        Map field_name => ['ciphertext' => base64, 'blindIndex' => ?base64]
+     * @param string|null $vaultSalt If given, the write happens only if the live
+     *        vault still has this user_salt, checked inside the write's own
+     *        transaction (StaleVaultException otherwise). The same parameter
+     *        guards saveEscrow(), saveEscrowFields() and deleteArchive().
      */
-    public function saveFields(string $userId, array $fields): void;
+    public function saveFields(string $userId, array $fields, ?string $vaultSalt = null): void;
 
     /**
      * Load encrypted fields for a user.
@@ -91,7 +96,7 @@ interface StorageInterface
     /**
      * Insert or replace the escrow envelope (wrap_user + wrap_admin) for a user.
      */
-    public function saveEscrow(EscrowRecord $record): void;
+    public function saveEscrow(EscrowRecord $record, ?string $vaultSalt = null): void;
 
     /**
      * Load the escrow envelope for a user, or null if none.
@@ -103,7 +108,7 @@ interface StorageInterface
      *
      * @param array<string, string> $fields field_name => ciphertext (base64)
      */
-    public function saveEscrowFields(string $userId, array $fields): void;
+    public function saveEscrowFields(string $userId, array $fields, ?string $vaultSalt = null): void;
 
     /**
      * Load escrow field ciphertexts for a user.
@@ -139,7 +144,7 @@ interface StorageInterface
     /**
      * Delete one archive. False if it does not exist or belongs to another userId.
      */
-    public function deleteArchive(string $userId, string $archiveId): bool;
+    public function deleteArchive(string $userId, string $archiveId, ?string $vaultSalt = null): bool;
 
     /**
      * Delete every archive of $userId. Returns how many were deleted.

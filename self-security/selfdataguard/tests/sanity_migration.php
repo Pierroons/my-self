@@ -198,18 +198,23 @@ $holder->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 $holder->exec(SCHEMA_040[0]);
 $holder->exec('BEGIN IMMEDIATE');
 $child = proc_open([PHP_BINARY, '-r', sprintf(
-    'require %s; try { new Pierroons\SelfDataGuard\Storage\SqliteAdapter(%s); echo "opened"; }'
+    'require %s; $t = microtime(true); try { new Pierroons\SelfDataGuard\Storage\SqliteAdapter(%s);'
+    . ' printf("opened %%d", (microtime(true) - $t) * 1000); }'
     . ' catch (Throwable $e) { echo $e->getMessage(); exit(1); }',
     var_export(__DIR__ . '/../src/autoload.php', true),
     var_export("sqlite:{$file}", true)
 )], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-usleep(600000);
+usleep(1_500_000);
 $holder->exec('ALTER TABLE selfdataguard_vaults ADD COLUMN wrap_phrase TEXT');
 $holder->exec('COMMIT');
 $childOut = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
-proc_close($child) === 0 && $childOut === 'opened'
+$childWaited = preg_match('/^opened (\d+)$/', $childOut, $mm) === 1 ? (int) $mm[1] : -1;
+proc_close($child) === 0 && $childWaited >= 0
     ? ok('the second migrator waits for the lock, then finds the column already added')
     : ko('the second migrator failed', $childOut);
+$childWaited >= 300
+    ? ok("it did wait ({$childWaited} ms) — the second check under the lock was exercised")
+    : ko('the second migrator never waited: the race was not exercised', $childOut);
 
 // -----------------------------------------------------------------------------
 

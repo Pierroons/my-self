@@ -447,28 +447,36 @@ $dg->purgeArchives('user-l3') === 1 && $dg->listArchives('user-l3') === []
 
 section('A storage that drops wrap_phrase is caught, not trusted');
 
-/** A StorageInterface implementation that predates 0.5.0: wrap_phrase is not written. */
-final class ForgetfulStorage implements StorageInterface
+/** Delegates everything to a real storage; the fakes below override one or two methods. */
+abstract class DelegatingStorage implements StorageInterface
 {
-    public function __construct(private readonly StorageInterface $inner) {}
-    public function saveVault(VaultRecord $r): void { $this->inner->saveVault($r->withWrapPhrase(null, $r->updatedAt)); }
-    public function updateVault(VaultRecord $r): void { $this->inner->updateVault($r->withWrapPhrase(null, $r->updatedAt)); }
+    public function __construct(protected readonly StorageInterface $inner) {}
+    public function saveVault(VaultRecord $r): void { $this->inner->saveVault($r); }
+    public function updateVault(VaultRecord $r): void { $this->inner->updateVault($r); }
     public function loadVault(string $u): VaultRecord { return $this->inner->loadVault($u); }
     public function findVault(string $u): ?VaultRecord { return $this->inner->findVault($u); }
     public function vaultExists(string $u): bool { return $this->inner->vaultExists($u); }
     public function deleteVault(string $u): void { $this->inner->deleteVault($u); }
-    public function saveFields(string $u, array $f): void { $this->inner->saveFields($u, $f); }
+    public function saveFields(string $u, array $f, ?string $s = null): void { $this->inner->saveFields($u, $f, $s); }
     public function loadFields(string $u, array $n = []): array { return $this->inner->loadFields($u, $n); }
     public function findUserIdByBlindIndex(string $f, string $b): ?string { return $this->inner->findUserIdByBlindIndex($f, $b); }
-    public function saveEscrow(EscrowRecord $r): void { $this->inner->saveEscrow($r); }
+    public function saveEscrow(EscrowRecord $r, ?string $s = null): void { $this->inner->saveEscrow($r, $s); }
     public function loadEscrow(string $u): ?EscrowRecord { return $this->inner->loadEscrow($u); }
-    public function saveEscrowFields(string $u, array $f): void { $this->inner->saveEscrowFields($u, $f); }
+    public function saveEscrowFields(string $u, array $f, ?string $s = null): void { $this->inner->saveEscrowFields($u, $f, $s); }
     public function loadEscrowFields(string $u, array $n = []): array { return $this->inner->loadEscrowFields($u, $n); }
-    public function replaceWithArchive(VaultRecord $r): ?string { return $this->inner->replaceWithArchive($r->withWrapPhrase(null, $r->updatedAt)); }
+    public function replaceWithArchive(VaultRecord $r): ?string { return $this->inner->replaceWithArchive($r); }
     public function listArchives(string $u): array { return $this->inner->listArchives($u); }
     public function loadArchive(string $u, string $id): ?ArchivedVault { return $this->inner->loadArchive($u, $id); }
-    public function deleteArchive(string $u, string $id): bool { return $this->inner->deleteArchive($u, $id); }
+    public function deleteArchive(string $u, string $id, ?string $s = null): bool { return $this->inner->deleteArchive($u, $id, $s); }
     public function purgeArchives(string $u): int { return $this->inner->purgeArchives($u); }
+}
+
+/** A StorageInterface implementation that drops wrap_phrase on every write. */
+final class ForgetfulStorage extends DelegatingStorage
+{
+    public function saveVault(VaultRecord $r): void { $this->inner->saveVault($r->withWrapPhrase(null, $r->updatedAt)); }
+    public function updateVault(VaultRecord $r): void { $this->inner->updateVault($r->withWrapPhrase(null, $r->updatedAt)); }
+    public function replaceWithArchive(VaultRecord $r): ?string { return $this->inner->replaceWithArchive($r->withWrapPhrase(null, $r->updatedAt)); }
 }
 
 $forgetful = new SelfDataGuard(new ForgetfulStorage($storage), $blindKey);
@@ -479,6 +487,45 @@ try {
     str_contains($e->getMessage(), 'did not persist wrap_phrase')
         ? ok('register(): the missing wrap_phrase is detected on read-back')
         : ko('wrong failure', $e->getMessage());
+}
+
+// -----------------------------------------------------------------------------
+
+section('A re-enrolment landing between the check and the write');
+
+/** Runs one re-enrolment of the userId right before the next field write reaches the storage. */
+final class RacingStorage extends DelegatingStorage
+{
+    public ?Closure $before = null;
+    public function saveFields(string $u, array $f, ?string $s = null): void
+    {
+        if ($this->before !== null) {
+            ($this->before)();
+            $this->before = null;
+        }
+        $this->inner->saveFields($u, $f, $s);
+    }
+}
+
+$racing = new RacingStorage($storage);
+$dgRace = new SelfDataGuard($racing, $blindKey);
+$oldSession = $dgRace->register('user-race', 'race-password-0001', 'race-memorized');
+$newSession = null;
+$racing->before = static function () use ($dgRace, &$newSession): void {
+    $newSession = $dgRace->reEnroll('user-race', 'race-password-0002', 'race-memorized-2')['unlocked'];
+};
+try {
+    $dgRace->setFields($oldSession, ['note' => 'written with the old key']);
+    ko('a field encrypted under the old key was written into the new vault');
+} catch (StaleVaultException) {
+    ok('the write itself refuses the old session once the vault was replaced in between');
+}
+try {
+    $dgRace->getFields($newSession) === []
+        ? ok('the new vault stays readable and empty')
+        : ko('the new vault holds a field it did not write');
+} catch (RuntimeException $e) {
+    ko('the new vault is corrupted', $e->getMessage());
 }
 
 // -----------------------------------------------------------------------------
