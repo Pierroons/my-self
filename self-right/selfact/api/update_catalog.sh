@@ -73,12 +73,13 @@ if [ "$CODE" != "0" ]; then
         mv "$CATALOG.bak" "$CATALOG"
         echo "[$(date -Iseconds)] catalog.json restauré depuis la sauvegarde"
     fi
-    # Le code 3 est le refus d'écrire du scraper : il a trouvé nettement moins
-    # d'entrées qu'en base et a préféré ne rien remplacer. Le garde-fou a bien
-    # fonctionné, mais c'est le signe que la source a changé — donc ça se dit.
+    # Le code 3 est le refus d'écrire du scraper : une source au moins a perdu
+    # nettement plus d'entrées qu'un retrait ordinaire, et il a préféré ne rien
+    # remplacer. Le garde-fou a bien fonctionné, mais c'est le signe que la
+    # source a changé — donc ça se dit.
     if [ "$CODE" = "3" ]; then
         alerter "SelfAct — catalogue tronque, ecriture refusee" \
-                "Le scraper a trouve nettement moins d entrees qu en base. Catalogue precedent conserve. Verifier si service-public.gouv.fr a change sa structure HTML."
+                "Au moins une source du catalogue est tronquee (detail par source dans le log). Catalogue precedent conserve. Verifier si service-public.gouv.fr a change sa structure HTML."
     else
         alerter "SelfAct — scraper en echec (code $CODE)" \
                 "Le catalogue precedent reste servi. Detail dans le log."

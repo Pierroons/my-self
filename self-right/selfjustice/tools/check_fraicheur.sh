@@ -249,6 +249,14 @@ for nom, courant in etat_courant.items():
     else:
         lignes.append(f"  ✓ {nom:20} {d.isoformat()}  (vue le {vu_le.isoformat()})")
 
+# 🔑 **Une baisse n'est un défaut que pour une base qui ne fait que croître.**
+# Le catalogue SelfAct recopie service-public, qui retire des démarches : son
+# volume baisse sans que rien ne soit cassé (1 924 → 1 907 le 01/10/2026, sur
+# une collecte complète). La troncature d'une source, elle, est refusée là où
+# l'on connaît l'ancien volume — `selfact/api/garde_catalogue.php` — et le
+# catalogue précédent reste servi. Ici, sa baisse se lit sans se crier.
+SUIT_UN_SITE = {"catalogue SelfAct"}
+
 for nom, courant in etat_courant.items():
     veille = etat_precedent.get(nom)
     if not veille or courant["volume"] is None or veille.get("volume") is None:
@@ -291,6 +299,10 @@ for nom, courant in etat_courant.items():
                 f"({courant['volume']} inchangé) — synchronisation en trompe-l'œil"
             )
             lignes.append(f"  ✗ {nom:20} date +1 · volume figé à {courant['volume']}")
+    elif courant["volume"] < veille["volume"] and nom in SUIT_UN_SITE:
+        lignes.append(
+            f"  · {nom:20} volume {veille['volume']} → {courant['volume']} — retraits à la source"
+        )
     elif courant["volume"] < veille["volume"]:
         retards.append(
             f"{nom} : volume en BAISSE, {veille['volume']} → {courant['volume']}"

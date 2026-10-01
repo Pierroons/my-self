@@ -193,6 +193,7 @@ function parseCatalogPage(string $html): array {
 // de duplication où la copie la plus pauvre finit par gagner en silence.
 require_once __DIR__ . '/classify.php';
 require_once __DIR__ . '/chemins.php';
+require_once __DIR__ . '/garde_catalogue.php';
 
 /**
  * Scraper principal : itère sur les pages du catalogue.
@@ -322,16 +323,13 @@ $outPath = selfact_chemin_catalogue();
 // poignée d'entrées sans erreur — et le catalogue servi rétrécit en silence.
 // Le wrapper restaure certes sa sauvegarde en cas de code de retour non nul,
 // mais un scraping partiellement réussi sort en 0. Le contrôle appartient donc
-// ici, où l'on connaît l'ancien volume.
+// ici, où l'on connaît l'ancien volume — source par source (garde_catalogue.php).
 if (is_file($outPath)) {
     $ancien = json_decode((string) @file_get_contents($outPath), true);
-    $ancienTotal = is_array($ancien) ? count($ancien['models'] ?? []) : 0;
-    if ($ancienTotal > 0 && count($models) < $ancienTotal * 0.8) {
-        fwrite(STDERR, sprintf(
-            "Refus d'écrire : %d entrées trouvées contre %d en base (-%.0f%%). "
-            . "Catalogue existant conservé.\n",
-            count($models), $ancienTotal, 100 - (count($models) / $ancienTotal * 100)
-        ));
+    $tronquees = selfact_sources_tronquees(is_array($ancien) ? ($ancien['models'] ?? []) : [], $byType);
+    if ($tronquees !== []) {
+        fwrite(STDERR, "Refus d'écrire : source(s) tronquée(s) — " . implode(', ', $tronquees)
+            . ". Catalogue existant conservé.\n");
         exit(3);
     }
 }

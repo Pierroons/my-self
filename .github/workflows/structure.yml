@@ -469,6 +469,9 @@ jobs:
       - name: Garde-fou — quel catalogue SelfAct est servi
         run: bash self-right/selfact/tests/test_chemin_catalogue.sh
 
+      - name: Garde-fou — le scraper refuse une source tronquée
+        run: bash self-right/selfact/tests/test_garde_catalogue.sh
+
       - name: Garde-fou — la sonde amont de la vérification de référence
         run: bash self-right/selfjustice/tests/test_sonde_amont.sh
 

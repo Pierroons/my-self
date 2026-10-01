@@ -246,6 +246,16 @@ else
     nok "une baisse de volume n'est pas signalée : ${sortie//$'\n'/ }"
 fi
 
+# Le catalogue recopie service-public, qui retire des démarches : sa baisse se
+# lit sans se crier — le cas du 01/10/2026. Le cas ci-dessus, sur LEGI, est son
+# contre-témoin : une exemption trop large le ferait taire aussi.
+sortie=$(jouer "$ATTENDU" 525441 "$APRES" 1873 "$(etat "$ATTENDU" 525441 "$ATTENDU" "$ATTENDU" 1890)")
+if ! grep -q "^RETARD" <<<"$sortie" && grep -q "1890 → 1873 — retraits à la source" <<<"$sortie"; then
+    ok "catalogue en baisse, date avancée → lu, pas crié"
+else
+    nok "la baisse du catalogue : ${sortie//$'\n'/ }"
+fi
+
 # 🔑 Le cas mesuré le 21/08/2026 : le catalogue a été resynchronisé et a rendu
 # 1 895 modèles — exactement le compte de la copie du 3 août qu'il remplaçait,
 # alors que douze de ses seize catégories avaient changé. La règle du
