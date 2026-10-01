@@ -1105,6 +1105,32 @@ jobs:
             || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
           echo "✓ la sonde rougit quand les normalisations divergent"
 
+      # Un coffre SelfDataGuard traverse chaque récupération de SelfRecover, sur les
+      # vrais chemins des deux bibliothèques. Le canari fait oublier à recover() le
+      # re-scellement de la passphrase : la passphrase consommée ouvrirait encore.
+      - name: Garde-fou — un coffre survit à chaque récupération SelfRecover
+        run: |
+          sortie=$(php bi-self/selfrecover/tests/sanity_parcours_dataguard.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^OK — 18/18$' \
+            || { echo "::error::le parcours n'a pas joué ses 18 cas"; exit 1; }
+          F=self-security/selfdataguard/src/SelfDataGuard.php
+          cp "$F" /tmp/SelfDataGuard.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
+          sed -i '/\$record = \$this->vault->changePassphrase(\$record, \$session, \$newPassphrase);/d' "$F"
+          ! grep -q 'record = $this->vault->changePassphrase($record, $session, $newPassphrase);' "$F" \
+            || { echo "::error::canari non planté — motif introuvable"; exit 1; }
+          if sortie=$(php bi-self/selfrecover/tests/sanity_parcours_dataguard.php 2>&1); then
+            cp /tmp/SelfDataGuard.intact "$F"
+            echo "::error::le parcours reste VERT quand recover() oublie la passphrase"; exit 1
+          fi
+          cp /tmp/SelfDataGuard.intact "$F"
+          echo "$sortie" | grep -q "❌ la passphrase consommée n'ouvre plus le coffre" \
+            || { echo "$sortie"; echo "::error::le rouge ne vient pas de la passphrase"; exit 1; }
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ la sonde rougit quand la passphrase n'est pas re-scellée"
+
       # La taille du sel de compte vit à quatre endroits qui ne peuvent pas se lire :
       # sr-derive.js, sr-kdf.js, Recovery::SEL_OCTETS, le CHECK du schéma duo.
       - name: Garde-fou — une seule taille de sel de compte, du navigateur à la base
