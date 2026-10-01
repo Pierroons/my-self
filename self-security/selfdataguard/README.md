@@ -5,8 +5,8 @@
 **Application-layer data-at-rest protection that survives a database exfiltration.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.4.0 in service](https://img.shields.io/badge/status-v0.4.0%20in%20service-brightgreen.svg)](#status)
-[![Tests: 219 passing](https://img.shields.io/badge/tests-219%20passing-brightgreen.svg)](#testing)
+[![Status: v0.5.0 available](https://img.shields.io/badge/status-v0.5.0%20available-brightgreen.svg)](#status)
+[![Tests: 300 passing](https://img.shields.io/badge/tests-300%20passing-brightgreen.svg)](#testing)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -27,73 +27,91 @@ Current tools either skip data-at-rest encryption entirely or implement it in a 
 
 ## Core principle: per-user envelope encryption
 
-SelfDataGuard implements **two-factor key wrapping** inspired by Bitwarden, 1Password, and ProtonMail vault designs, adapted for application-layer per-user encryption:
+SelfDataGuard implements **multi-lock key wrapping** inspired by Bitwarden, 1Password, and ProtonMail vault designs, adapted for application-layer per-user encryption. The same data key is sealed under each of the user's secrets, and any one of them opens it:
 
 ```
-        ┌─────────────────────────────────────┐
-        │      Per-user data_master_key       │  ← random 256 bits
-        │      (never stored in plain)        │  ← in memory only when user is logged in
-        └────────────┬────────────┬───────────┘
-                     │            │
-              wrap with       wrap with
-                     │            │
-        ┌────────────▼─┐      ┌──▼─────────────┐
-        │ password_key │      │   recov_key    │
-        │ Argon2id(    │      │ Argon2id(      │
-        │   password,  │      │  memorized,    │
-        │   user_salt) │      │  SHA-256(      │
-        │              │      │   user_salt +  │
-        │              │      │  "/dataguard"))│
-        └──────────────┘      └────────────────┘
+                 ┌─────────────────────────────────────┐
+                 │      Per-user data_master_key       │  ← random 256 bits
+                 │      (never stored in plain)        │  ← in memory only when user is logged in
+                 └──────┬─────────────┬─────────────┬──┘
+                        │             │             │
+                              wrapped with each of
+                        │             │             │
+        ┌───────────────▼┐  ┌─────────▼──────┐  ┌───▼──────────────────┐
+        │  password_key  │  │   recov_key    │  │      phrase_key      │
+        │ Argon2id(      │  │ Argon2id(      │  │ Argon2id(            │
+        │   password,    │  │  memorized,    │  │  passphrase,         │
+        │   user_salt)   │  │  SHA-256(      │  │  SHA-256(user_salt + │
+        │                │  │   user_salt +  │  │   "/dataguard/       │
+        │                │  │  "/dataguard"))│  │    passphrase"))     │
+        └────────────────┘  └────────────────┘  └──────────────────────┘
 ```
 
-Argon2id takes a 16-byte salt: the first 16 bytes of this SHA-256. Both wrap keys cost the same: two wraps are only as strong as the cheaper one.
+Argon2id takes a 16-byte salt: the first 16 bytes of this SHA-256. The two contexts differ: the same string set as memorized word and as passphrase yields two unrelated keys. The three wrap keys cost the same, on purpose: wraps are only as strong as the cheapest one.
 
 Each user has:
 
 - A unique random `user_salt` stored in plain (identifier-grade)
 - A `data_master_key_pwd_wrap`: XChaCha20-Poly1305 ciphertext of the master key, encrypted with the password-derived key
-- A `data_master_key_recov_wrap`: XChaCha20-Poly1305 ciphertext of the master key, encrypted with the recovery-word-derived key
+- A `data_master_key_recov_wrap`: the same, with the memorized-word-derived key (optional)
+- A `data_master_key_phrase_wrap`: the same, with the passphrase-derived key (optional)
 - Personal data fields encrypted field-by-field with `data_master_key`
 
-**Database dump → cryptographic soup.** No combination of plain-text values in the dump yields the master key. The attacker would need either the user's password (Argon2id-hardened, salt-isolated) or the user's recovery word (never transmitted in plain) to decrypt anything.
+**Database dump → cryptographic soup.** No combination of plain-text values in the dump yields the master key. The attacker would need one of the user's secrets — password, memorized word or passphrase, each Argon2id-hardened and salt-isolated — to decrypt anything.
 
 ---
 
 ## Coupling with SelfRecover
 
-SelfDataGuard reuses the SelfRecover memorized-recovery-word as one of its two unwrap factors, with **two distinct derivations** — different functions, different salts — to prevent crossover:
+SelfDataGuard seals the data key on the secrets SelfRecover already gives the user: the memorized word and the level-1 passphrase. **Nothing more to remember.**
+
+The memorized word never leaves the browser: the browser computes a digest of it, and the server receives that digest. The integrator hands it to SelfDataGuard as the "memorized" secret. It costs as much to attack as the word itself — HMAC, then Argon2id —, and the two derivations stay isolated:
 
 ```
-recovery_word (user secret, never transmitted in plain)
+memorized_word (in the browser only)
     │
-    ├─ HMAC-SHA256(key = secret, msg = material + "|v2" + user_salt)  →  recover_key  (SelfRecover auth)
-    │
-    └─ Argon2id(secret, SHA-256(user_salt + "/dataguard")[:16])       →  data_key     (SelfDataGuard wrap)
+    └─ HMAC-SHA256(key = word, msg = material + "|v2" + account salt)   →  digest (received by the server)
+           │
+           ├─ Argon2id(digest), random salt from password_hash()           →  SelfRecover verification
+           │
+           └─ Argon2id(digest, SHA-256(user_salt + "/dataguard")[:16])     →  recov_key (SelfDataGuard)
 ```
 
-Practical consequence: a user who forgets their password keeps a way into each of their two halves. Their memorized word opens the SelfDataGuard vault **on its own**. For account access they also need what SelfRecover requires — their paper *recovery code* at level 2, or their diceware passphrase at level 1: the memorized word is **one factor out of two** there. One word to remember, two derived purposes, mathematically isolated.
+The passphrase reaches the server in plain at level 1. SelfDataGuard normalises it exactly as SelfRecover does: edges trimmed, whitespace runs reduced to one space.
 
-Without SelfRecover, SelfDataGuard still works — it falls back to a password-only wrap (single-factor recovery, weaker UX). But the natural pairing is: **SelfRecover protects authentication, SelfDataGuard protects data, and the same memorized word serves in both** — alone to open the vault, alongside the *recovery code* to reopen the account.
+Every SelfRecover recovery replaces secrets. The vault follows if the integrator re-seals it **after** SelfRecover has accepted the recovery, with the secret the server holds at that moment:
 
-> ⚠️ **A password-only vault does not survive a SelfRecover recovery.** Levels 1 and 2 of SelfRecover replace the account password (`Recovery::parPassphrase()`, `Recovery::parCode()`). A vault registered as `register($user, $password)` — `$memorized` omitted — has a single envelope, sealed on the old password: after the recovery it can no longer be opened, by anyone, and nothing in either library says so. When the two modules share an account:
-> - pass `$memorized` to `register()`, so the vault has its second envelope;
-> - after a level-1 or level-2 recovery, re-seal as soon as the application holds the memorized secret again: `loginWithMemorized($user, $memorized)`, then `changePassword($session, $newPassword)`. Until then the vault stays sealed on the old password, but still opens with the memorized word;
-> - level 3 is reached when the memorized word may be lost as well: without an escrow envelope, the vault does not survive it.
+| SelfRecover recovery | The server holds | SelfDataGuard call |
+|---|---|---|
+| Level 1 — passphrase | the old passphrase | `recover($user, Lock::Passphrase, $old, $newPassword, $newPassphrase)` |
+| Level 2 — code + memorized word | the word's digest | `recover($user, Lock::Memorized, $digest, $newPassword, $newPassphrase)` |
+| Level 2 — enrolled device | a signature, nothing that opens the vault | at the next secret given: `recover($user, $lock, $secret, $currentPassword)` |
+| Level 3 — human escalation | no old secret | `reEnroll($user, $password, $digest, $passphrase)`: the old vault is **archived** |
+
+`recover()` opens and re-seals in a single conditional write. The same call catches up a vault whose password wrap has fallen behind. On its own it is an Argon2id oracle with no rate limit: call it only once SelfRecover has accepted the recovery.
+
+**At level 3, nothing is lost.** `reEnroll()` sets the old vault aside, sealed under its old locks, with no expiry, and creates a new one. If the user later finds an old lock again, `openArchive($session, $id, Lock::Passphrase, $old)` then `readArchive()` give the data back. The session must be one on the current vault: an old lock alone opens nothing, because those secrets are precisely the ones that may have leaked. An archive is destroyed only by `deleteArchive()` or `purgeArchives()`; `delete()` leaves it.
+
+> ⚠️ **A password-only vault does not survive a SelfRecover recovery.** Levels 1 and 2 replace the account password (`Recovery::parPassphrase()`, `Recovery::parCode()`). A vault registered as `register($user, $password)` alone has a single envelope, sealed on the old password: after the recovery it can no longer be opened, by anyone, and nothing in either library says so. When the two modules share an account:
+> - pass `$memorized` and `$passphrase` to `register()`;
+> - after every accepted recovery, call `recover()` as in the table above;
+> - at level 3, call `reEnroll()`. The archive's memorized lock depends on the SelfRecover salt of that time, which level 3 replaces: keep it — as a field of the new vault, say — if that lock is to stay usable.
+
+Without SelfRecover, SelfDataGuard still works, with whatever locks the application gives it. But the natural pairing is: **SelfRecover protects authentication, SelfDataGuard protects data, and the same secrets serve in both.**
 
 ---
 
-## Operational modes — v0.4.0 implements one of them
+## Operational modes — v0.5.0 implements one of them
 
 | Mode | Server access to data | Trade-off | In the code |
 |------|----------------------|-----------|-------------|
 | **Lite** *(transparent for legacy stacks)* | Server decrypts during user sessions only | Server compromise during an active session = limited fan-out (one user at a time) | ✅ this is what the library does |
-| **Hybrid** *(targeted at e-commerce)* | Operational fields (`email`, `shipping_address`) wrapped with admin operational key. Sensitive fields (`tel`, `KYC_doc`) require user session | Admin can fulfill orders; sensitive data remains zero-knowledge | ❌ specified, not written — the vault's `wrap_admin` is `null` (`src/Vault/UserVault.php:95`) |
+| **Hybrid** *(targeted at e-commerce)* | Operational fields (`email`, `shipping_address`) wrapped with admin operational key. Sensitive fields (`tel`, `KYC_doc`) require user session | Admin can fulfill orders; sensitive data remains zero-knowledge | ❌ specified, not written — the vault's `wrap_admin` is `null` (`UserVault::register()`) |
 | **Full** *(zero-knowledge for high-assurance services)* | Server NEVER decrypts. All crypto runs in the browser, through libsodium compiled to WebAssembly — WebCrypto offers neither Argon2id nor XChaCha20-Poly1305 | Some workflows redesigned (no async transactional emails, push notifications instead) | ❌ specified, not written — the module carries no client-side code |
 
-A deployment installing v0.4.0 therefore runs in **Lite**, whatever mode it aims for: the other two are described in the whitepaper (§4.2, §4.3) as a target, and no API parameter selects them.
+A deployment installing v0.5.0 therefore runs in **Lite**, whatever mode it aims for: the other two are described in the whitepaper (§4.2, §4.3) as a target, and no API parameter selects them.
 
-One admin path does exist, outside this table: the **escrow** (`src/Escrow/`), a compartment with its own key that an administrator reopens under ceremony — open dispute, escrow passphrase, signed log. It yields that compartment only, never the private vault, and it is not Hybrid mode: nothing there is decrypted as a matter of routine.
+One admin path does exist, outside this table: the **escrow** (`src/Escrow/`), a compartment with its own key that an administrator reopens under ceremony — open dispute, escrow passphrase, signed log. It yields that compartment only, never the private vault, and it is not Hybrid mode: nothing there is decrypted as a matter of routine. The escrow of an archived vault goes with the archive, and the administrator reopens it the same way (`getArchiveEscrowFieldsAsAdmin()`).
 
 ---
 
@@ -103,20 +121,21 @@ One admin path does exist, outside this table: the **escrow** (`src/Escrow/`), a
 |-----------|----------------------|---------------------|
 | SQL injection / IDOR / DB dump | Plain-text PII exposed | Encrypted soup |
 | Backup tape stolen | Plain-text PII exposed | Encrypted soup |
-| Insider DBA | Reads everything | Encrypted (cannot unwrap without user password or recovery word) |
+| Insider DBA | Reads everything | Encrypted (cannot unwrap without one of a user's secrets) |
 | Application root compromise (RCE) | Reads everything | Reads currently active sessions — that is Lite, the only mode in service |
 | Compromised user endpoint (keylogger) | User credentials harvested | User credentials harvested → that user's data only (no fan-out) |
-| Coercion of admin to decrypt | All data at admin's discretion | In Lite there is no standing admin key: they would need every user's password or memorized word. The escrow opens under ceremony and yields its compartment only |
+| Stolen passphrase paper | Account access through level 1 | The same, plus that user's data — offline too, given a dump. The passphrase is consumed at its first legitimate use, which replaces it |
+| Coercion of admin to decrypt | All data at admin's discretion | In Lite there is no standing admin key: they would need a secret of every user. The escrow opens under ceremony and yields its compartment only |
 
 ---
 
 ## Status
 
-**v0.4.0 — XChaCha20-Poly1305 on every CPU, versioned blob format**, 26 September 2026.
+**v0.5.0 — a third lock, and archiving instead of destruction**, 1 October 2026.
 
-Whitepaper complete (specification + threat model). PHP reference library implemented (2 607 lines across 18 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **219 checks across 8 suites**, all passing. A clickable HTML demo is included to inspect the encrypted database in real time.
+Whitepaper complete (specification + threat model). PHP reference library implemented (3 537 lines across 25 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **300 checks across 10 suites**, all passing. A clickable HTML demo is included to inspect the encrypted database in real time.
 
-Blobs written by 0.3.0 stay readable, through OpenSSL (`ext-openssl`) where libsodium refuses AES. A blob written by 0.4.0 cannot be read by 0.3.0, which refuses it as invalid base64: roll back only a database that 0.4.0 has not written to. Why AES-256-GCM was dropped, and on which CPUs it failed: see the [CHANGELOG](./CHANGELOG.md).
+A database created by 0.4.0 migrates in place the first time 0.5.0 opens it (`wrap_phrase` column). Rolling back to 0.4.0 hides the archives, and leaves in place a passphrase lock that SelfRecover may have replaced since: see the [CHANGELOG](./CHANGELOG.md). Blobs written by 0.3.0 stay readable, through OpenSSL (`ext-openssl`) where libsodium refuses AES.
 
 The module runs on real deployments. It has **not been audited by an external cryptographer**: its design is verified today by its author and by the readers of this repository, and by no one else.
 
@@ -143,6 +162,7 @@ The demo lets you register a user, log in, rotate password, and inspect the raw 
 ```php
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+use Pierroons\SelfDataGuard\Vault\Lock;
 
 require 'vendor/autoload.php';
 
@@ -151,43 +171,47 @@ $dg = new SelfDataGuard(
     blindKey: file_get_contents('/path/to/server-secret.bin')  // ≥32 bytes
 );
 
-// New user
-$session = $dg->register('alice', 'correct horse battery staple', 'sunset-river-marble');
+// New user: password, memorized word (its digest), passphrase
+$session = $dg->register('alice', 'correct horse battery staple', $digest, $passphrase);
 $dg->setFields($session, ['email' => 'a@b.c', 'iban' => 'FR76...'], indexed: ['email']);
 
 // Returning user
 $session = $dg->loginWithPassword('alice', 'correct horse battery staple');
 $fields  = $dg->getFields($session);  // ['email' => 'a@b.c', 'iban' => 'FR76...']
 
-// Recovery flow (forgot password, remembers memorized secret)
-$session = $dg->loginWithMemorized('alice', 'sunset-river-marble');
-$dg->changePassword($session, 'a-fresh-passphrase-here');
+// After an accepted SelfRecover level-1 recovery
+$session = $dg->recover('alice', Lock::Passphrase, $oldPassphrase, $newPassword, $newPassphrase);
+
+// Level 3: the old vault is archived, a new one created
+['unlocked' => $session, 'archiveId' => $id] = $dg->reEnroll('alice', $password, $digest, $passphrase);
 
 // Indexed lookup, no plaintext required
 $userId = $dg->findUserByField('email', 'a@b.c');  // 'alice' or null
 ```
 
-Three primary classes exposed: `SelfDataGuard` (façade), `SqliteAdapter` (storage; implement `StorageInterface` for MariaDB / Postgres), `Primitives` (raw crypto if you need to build something on top).
+Three primary classes exposed: `SelfDataGuard` (façade), `SqliteAdapter` (storage; implement `StorageInterface` for MariaDB / Postgres), `Primitives` (raw crypto if you need to build something on top). Errors tell themselves apart by type: `WrongSecretException`, `MissingEnvelopeException`, `VaultNotFoundException`, `StaleVaultException` (a session opened on a vault that has since been replaced).
 
 ---
 
 ## Testing
 
-Eight sanity test suites, runnable directly with `php` (no PHPUnit required):
+Ten sanity test suites, runnable directly with `php` (no PHPUnit required):
 
 ```bash
-php tests/sanity_primitives.php   # 45 tests — Argon2id, HMAC, XChaCha20-Poly1305 + IETF vector, legacy AES-GCM, randomness
-php tests/sanity_vault.php        # 36 tests — register, unlock, rotation, AAD binding, legacy wraps
+php tests/sanity_primitives.php   # 46 tests — Argon2id, HMAC, XChaCha20-Poly1305 + IETF vector, legacy AES-GCM, randomness
+php tests/sanity_vault.php        # 50 tests — three locks, rotation, context separation, AAD binding, vault generation
 php tests/sanity_fields.php       # 26 tests — field encrypt/decrypt + blind index
-php tests/sanity_storage.php      # 36 tests — SQLite adapter, "DB dump = soup" test
-php tests/sanity_facade.php       # 34 tests — full API end-to-end
-php tests/sanity_audit.php        # 11 tests — audit log
+php tests/sanity_storage.php      # 49 tests — SQLite adapter, nested transactions, conditional write, "DB dump = soup" test
+php tests/sanity_migration.php    #  9 tests — 0.4.0 database migrated in place, two concurrent migrators
+php tests/sanity_archive.php      # 22 tests — archive: content, isolation, all-or-nothing
+php tests/sanity_facade.php       # 55 tests — full API end-to-end, recover(), level 3
+php tests/sanity_audit.php        # 12 tests — audit log
 php tests/sanity_ceremony.php     # 14 tests — key ceremony
 php tests/sanity_escrow.php       # 17 tests — escrow compartment
-# Total: 219 tests, 0 failures — counted by running them, 2026-09-26
+# Total: 300 tests, 0 failures — counted by running them, 2026-10-01
 ```
 
-The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file and verifies that no plaintext personal data appears anywhere in the binary blob.
+The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file and verifies that no plaintext personal data appears anywhere in the binary blob. On the SelfRecover side, `bi-self/selfrecover/tests/sanity_parcours_dataguard.php` takes a vault through every recovery, on the real paths of both libraries.
 
 ---
 

@@ -10,6 +10,37 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfDataGuard v0.5.0 — une troisième serrure, et l'archive au lieu de la destruction — 1er octobre 2026
+
+Un coffre couplé à SelfRecover ne survivait pas à toutes les récupérations. Au niveau 1, le
+serveur ne tient que la passphrase, et aucune enveloppe ne s'ouvrait avec. Au niveau 3, il ne
+reste aucun ancien secret, et la seule issue était de supprimer le coffre.
+
+- **Une troisième enveloppe, ouverte par la passphrase SelfRecover.** Aucun secret de plus pour
+  l'utilisateur. Contexte de dérivation distinct de celui du mot mémorisé, normalisation
+  identique à celle de SelfRecover, tenue par le banc de couplage.
+- **`recover()` re-scelle le coffre à chaque récupération acceptée**, en une seule écriture
+  conditionnelle : par l'ancienne passphrase au niveau 1, par l'empreinte du mot au niveau 2, et
+  au prochain secret donné après un niveau 2 par appareil, où le serveur ne tient rien qui
+  ouvre le coffre.
+- **Au niveau 3, `reEnroll()` archive l'ancien coffre**, scellé sous ses anciennes serrures,
+  sans péremption, et en crée un neuf dans la même transaction. Une ancienne serrure retrouvée
+  le rouvre, depuis une session sur le coffre actuel seulement. Une archive ne se détruit que
+  sur décision explicite : la suppression d'un compte ne l'emporte plus d'office.
+- **Une session ouverte sur un coffre remplacé ne peut plus écrire dans le neuf**, et une
+  écriture conditionnée au sel du coffre empêche une requête en vol d'écraser le neuf.
+- Une base 0.4.0 se migre en place à sa première ouverture, y compris quand deux processus
+  l'ouvrent en même temps. ⚠️ Un retour à la 0.4.0 ne voit pas les archives, et laisse en place
+  une serrure passphrase que SelfRecover a pu remplacer depuis.
+- `aesGcmEncrypt()` et `aesGcmDecrypt()`, dépréciés en 0.4.0, sont retirés.
+
+SelfRecover : la normalisation de la passphrase devient `Recovery::normaliserPassphrase()`, sans
+changement de comportement, pour que le banc de couplage la compare à celle de SelfDataGuard. Un
+banc de parcours fait traverser à un coffre chaque récupération, sur les vrais chemins des deux
+bibliothèques (18 cas, en CI).
+
+Bancs SelfDataGuard : 300 contrôles sur 10 suites. Détail dans le CHANGELOG du module.
+
 ### SelfModerate v0.4.0 — le ban automatique revient, tracé de bout en bout — 29 septembre 2026
 
 `R10-LAB-01` avait retiré le ban automatique à réputation zéro : un ban prononcé sur une érosion

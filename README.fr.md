@@ -24,7 +24,7 @@ ce qu'il fait, comment l'installer, et ce qu'il ne protège pas.
 |---|---|---|
 | [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | **v0.8.0** — bibliothèque + implémentation déployée |
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.6.0** — documenté, clé en hexadécimal |
-| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.4.0** — en service, 219 contrôles, XChaCha20-Poly1305 sur tout processeur |
+| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.5.0** — disponible, 300 contrôles, trois serrures et l'archive au niveau 3 |
 | [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.4.2 bêta** — logement, famille, administration et jurisprudence administrative |
 | [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.3** — en ligne, plus de 1 800 ressources officielles |
 | [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.4.0** — votants liés, convalescence, motif de vote, ban gradué tracé au journal ; 1 mécanisme pas encore codé |
@@ -69,15 +69,16 @@ l'arrêter, et le prix d'une tentative est tout ce qui reste.
 | SelfRecover | passphrase diceware (L1) | par compte | sel interne Argon2id |
 | SelfRecover | mot mémorisé (L2) | par compte | nom d'hôte ou étiquette + sel du compte |
 | SelfRecover-LUKS | passphrase diceware | par machine | étiquette `disk` |
-| SelfDataGuard | mot de passe + mot mémorisé | par utilisateur | contexte `/dataguard` |
+| SelfDataGuard | mot de passe + mot mémorisé + passphrase | par utilisateur | contextes `/dataguard` et `/dataguard/passphrase` |
 
-Compromettre l'un n'ouvre pas les autres, avec une exception qu'il faut dire :
-SelfRecover (L2) et SelfDataGuard peuvent partager le mot mémorisé, et c'est la
-dérivation qui les sépare. Aucune des deux bibliothèques n'importe l'autre : c'est
-l'intégrateur qui les apparie, et `demo/selfdataguard/` en montre une façon. Une
-empreinte volée d'un côté n'ouvre pas l'autre ; le mot lui-même, s'il est volé,
-ouvre seul le coffre SelfDataGuard — côté SelfRecover, il lui faut encore le
-*recovery code*.
+Compromettre l'un n'ouvre pas les autres, avec deux exceptions qu'il faut dire :
+SelfRecover et SelfDataGuard peuvent partager le mot mémorisé (L2) et la passphrase
+(L1), et c'est la dérivation qui les sépare. Aucune des deux bibliothèques n'importe
+l'autre : c'est l'intégrateur qui les apparie, et `demo/selfdataguard/` en montre une
+façon. Une empreinte volée d'un côté n'ouvre pas l'autre. Le mot lui-même, s'il est
+volé, ouvre seul le coffre SelfDataGuard — côté SelfRecover, il lui faut encore le
+*recovery code*. La passphrase volée, elle, ouvre les deux, jusqu'à sa première
+utilisation légitime, qui la remplace.
 Un coffre scellé par le seul mot de passe ne survit pas à une récupération
 SelfRecover : voir [l'avertissement dans le README de SelfDataGuard](./self-security/selfdataguard/README.fr.md#couplage-avec-selfrecover).
 Le détail de chaque dérivation est dans le README du module concerné.

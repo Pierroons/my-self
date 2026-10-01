@@ -5,6 +5,94 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [v0.5.0] — 2026-10-01
+
+A vault paired with SelfRecover now survives every recovery path. Level 1 only gives the
+server the passphrase, which opened no envelope; level 3 leaves no old secret at all,
+and the only way out was to delete the vault.
+
+### Added — a third lock: the SelfRecover passphrase
+
+- `wrap_phrase` ← XChaCha20-Poly1305(master key, Argon2id(normalised passphrase,
+  sha256(user_salt ‖ "/dataguard/passphrase")[:16])), AAD = userId like the other two.
+  The context differs from the memorized word's: the same string set on both locks gives
+  two unrelated keys.
+- The passphrase is normalised exactly as SelfRecover's `Recovery::normaliserPassphrase()`
+  does — edges trimmed, whitespace runs reduced to one space, no `/u` modifier (with it,
+  U+00A0 and U+2003 would fold on one side only). `bi-self/selfrecover/tests/
+  sanity_couplage_dataguard.php` holds the two together.
+- `PASSWORD_MIN_LEN` applies when sealing a passphrase, never when unlocking.
+- `UserVault`: `register(…, ?passphrase)`, `unlock(record, Lock, secret)`,
+  `unlockWithPassphrase()`, `changePassphrase()`, `removePassphrase()` — removal is its own
+  method, so that a recovery result without a new passphrase cannot drop the lock.
+  `VaultRecord::$wrapPhrase` is the last constructor parameter, default `null`.
+- Enum `Lock`: `password`, `memorized`, `passphrase`.
+
+### Added — `recover()`: one call per SelfRecover recovery
+
+`SelfDataGuard::recover(userId, Lock, secret, newPassword, ?newPassphrase)` opens the vault
+with whatever secret the server holds, re-seals the password — and the passphrase if a new
+one is given — in one conditional write. Level 1: the old passphrase. Level 2 by code: the
+memorized-word digest. Level 2 by device, where the server holds nothing that opens the
+vault: at the next secret the user gives, with the current password. Call it only after
+SelfRecover accepted the recovery: on its own it is an Argon2id oracle with no rate limit.
+
+### Added — a replaced vault is archived, not destroyed
+
+- `reEnroll(userId, password, ?memorized, ?passphrase)` — level 3. Every Argon2id runs
+  first, then one transaction sets the live vault aside and inserts the new one
+  (`StorageInterface::replaceWithArchive()`). A failure anywhere changes nothing.
+- An archive keeps the envelopes, private fields and escrow exactly as stored — nothing is
+  decrypted — plus the Argon2id profile in force and a format version: it cannot be
+  re-sealed after a profile change, nobody holds its key in between. Blind indexes are
+  not archived; each field keeps `was_indexed` for a restore to index the same ones.
+- `openArchive(current session, archiveId, Lock, oldSecret)` needs a session on the
+  **current** vault and an old lock: old secrets are what may have leaked before a level-3
+  recovery. `readArchive()` returns private fields, escrow fields, and the indexed names.
+- `getArchiveEscrowFieldsAsAdmin()` mirrors `getEscrowFieldsAsAdmin()` for an archive.
+- `listArchives()`, `deleteArchive(current session, id)`, `purgeArchives(userId)`. Any
+  number of archives per account: a second level 3 does not destroy the first. Archive
+  ids are random (128 bits).
+
+### Changed — BREAKING (API and storage contract)
+
+- `UnlockedVault` carries the `user_salt` of the vault it was opened on, a required
+  constructor parameter. Every façade read and write, and every `UserVault::change*()`,
+  refuses a session from another vault of the same userId (`StaleVaultException`).
+- `StorageInterface` gains `replaceWithArchive()`, `listArchives()`, `loadArchive()`,
+  `deleteArchive()`, `purgeArchives()`. An implementation without them fails at load
+  time. It must also persist `wrap_phrase`: the façade reads it back after every write
+  and throws if it was dropped.
+- `updateVault()` writes only where `user_salt` still matches the record's, and never
+  rewrites it: a record read before a re-enrolment cannot overwrite the new vault.
+- `delete()` / `deleteVault()` leave archives. Erasing an account calls `purgeArchives()`
+  too — a separate decision, so that a fraudulent level 3 followed by an account deletion
+  cannot erase the legitimate holder's archives.
+- Typed exceptions, all `RuntimeException` subclasses, so existing catches still work:
+  `WrongSecretException`, `MissingEnvelopeException`, `VaultNotFoundException`,
+  `StaleVaultException`.
+
+### Changed — stored format (schema)
+
+- `selfdataguard_vaults.wrap_phrase`, as the **last** column. A 0.4.0 database is migrated
+  in place on first opening: `PRAGMA table_info`, then `ALTER TABLE … ADD COLUMN`, checked
+  again under `BEGIN IMMEDIATE` so that two processes opening the same old database do not
+  both add it. Inside a caller's transaction, a savepoint.
+- New table `selfdataguard_archives`, created like the 0.2.0 escrow tables were.
+
+### Migration risk — rolling back to 0.4.0
+
+- 0.4.0 does not see the archives, and its `deleteVault()` does not remove them.
+- 0.4.0 rewrites vaults without naming `wrap_phrase`, which keeps its value: once
+  SelfRecover replaces the passphrase, the consumed one keeps opening the vault.
+  Roll back only a database without passphrase lock nor archive, or remove both first.
+
+### Removed
+
+- `Primitives::aesGcmEncrypt()` and `aesGcmDecrypt()`, deprecated in 0.4.0. Reading blobs
+  written before 0.4.0 does not go through them and stays — and cannot go while an
+  archive may hold such a blob.
+
 ### Fixed — concurrent audit appends broke the chain
 
 `AuditLog::append()` read the chain outside the lock that guarded its write. Two
@@ -14,17 +102,26 @@ at its second entry, on every run. The read and the append now happen under one
 exclusive lock. `tests/sanity_audit.php` gains the four-writer case. No format change:
 existing logs verify as before.
 
-### Documentation — two ways to lose a vault that nothing announced
+### Fixed — the storage left a transaction open, and could not write inside one
 
-- **A password-only vault does not survive a SelfRecover recovery.** `register()` without
-  `$memorized` seals the data key under the password alone; SelfRecover levels 1 and 2
-  replace that password. The contract of `register()` (both `UserVault` and the facade) and
-  the README « Coupling with SelfRecover » now say so, with the re-seal sequence
-  (`loginWithMemorized`, then `changePassword`). Reported by an integrator running both
+`saveFields()` raised a `RuntimeException` inside a transaction that only a `PDOException`
+closed: the next `beginTransaction()` on the connection threw. And no write could happen
+inside a caller's transaction. Writes now go through one helper that rolls back on any
+`Throwable` and, inside a foreign transaction, uses a savepoint named after the instance.
+
+### Documentation
+
+- **A password-only vault does not survive a SelfRecover recovery.** `register()` with the
+  password alone seals the data key under that password; SelfRecover levels 1 and 2 replace
+  it. The contract of `register()` and the README « Coupling with SelfRecover » say so, with
+  `recover()` per path and `reEnroll()` at level 3. Reported by an integrator running both
   modules together; no vault was lost.
-- **The Argon2id profile is not stored in the vaults.** Changing `ARGON2_OPSLIMIT` or
+- **The Argon2id profile is not stored in live vaults.** Changing `ARGON2_OPSLIMIT` or
   `ARGON2_MEMLIMIT` makes every existing envelope fail as a wrong password would. Stated on
-  the constants.
+  the constants; archives store theirs.
+- The README said the memorized word is « never transmitted in plain »: true of SelfRecover,
+  not of SelfDataGuard, which receives its secrets server-side. It now says what the server
+  receives on each path.
 
 ## [v0.4.0] — 2026-09-26
 
@@ -288,7 +385,8 @@ First runnable release. Whitepaper-driven implementation of the SelfDataGuard en
 - Initial README EN + FR
 - Repository structure under `self-security/selfdataguard/`
 
-[Unreleased]: https://github.com/Pierroons/my-self/compare/selfdataguard-v0.4.0...dev
+[Unreleased]: https://github.com/Pierroons/my-self/compare/selfdataguard-v0.5.0...dev
+[v0.5.0]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.5.0
 [v0.4.0]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.4.0
 [v0.3.0]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.3.0
 [v0.2.0]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.2.0

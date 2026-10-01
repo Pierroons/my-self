@@ -1,6 +1,6 @@
 {
     "name": "pierroons/selfdataguard",
-    "description": "Application-side at-rest data protection that survives database exfiltration. Per-user envelope encryption with two-factor key wrapping (password and memorized word, both through Argon2id at the same cost).",
+    "description": "Application-side at-rest data protection that survives database exfiltration. Per-user envelope encryption with multi-lock key wrapping (password, memorized word, passphrase, each through Argon2id at the same cost); a replaced vault is archived, not destroyed.",
     "type": "library",
     "keywords": ["security", "encryption", "envelope-encryption", "key-wrapping", "at-rest", "argon2id", "xchacha20-poly1305", "self-security", "myself", "agpl"],
     "license": "AGPL-3.0-or-later",
@@ -52,7 +52,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-main": "0.4.x-dev"
+            "dev-main": "0.5.x-dev"
         }
     }
 }

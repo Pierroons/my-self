@@ -3,7 +3,7 @@
 **Protection des données personnelles au repos côté application**
 *Dump ma base — et tu obtiens du bruit chiffré.*
 
-*Édition du 26 septembre 2026 — décrit SelfDataGuard v0.4.0*
+*Édition du 1er octobre 2026 — décrit SelfDataGuard v0.5.0*
 
 ---
 
@@ -49,7 +49,7 @@ SelfDataGuard porte cette architecture du **vault personnel** vers la **base uti
 
 ### 2.1 Principe fondamental
 
-> *Pour chaque utilisateur, la base contient ses données chiffrées par une clé qui n'est jamais stockée en clair. Cette clé est encapsulée par deux facteurs distincts, dérivés respectivement de son mot de passe et de son mot mémorisé. Au moment d'une session active, le serveur déballe la clé en RAM et l'utilise pour servir les requêtes ; à la déconnexion, la clé est purgée.*
+> *Pour chaque utilisateur, la base contient ses données chiffrées par une clé qui n'est jamais stockée en clair. Cette clé est encapsulée sous chacun de ses secrets : son mot de passe et, s'ils sont fournis, son mot mémorisé et sa passphrase SelfRecover. N'importe lequel la déballe. Au moment d'une session active, le serveur déballe la clé en RAM et l'utilise pour servir les requêtes ; à la déconnexion, la clé est purgée.*
 
 Conséquences directes :
 
@@ -68,16 +68,18 @@ Conséquences directes :
 Étape 2 — Génération du sel utilisateur (identifiant cryptographique) :
     user_salt        ← random(128 bits)        # stocké en clair dans la base
 
-Étape 3 — Dérivation des deux clés d'encapsulage :
+Étape 3 — Dérivation des clés d'encapsulage (la deuxième et la troisième sont facultatives) :
     password_key     ← Argon2id(password, user_salt, m=65536, t=3, p=1)
     recov_key        ← Argon2id(mot_memorise, sha256(user_salt || "/dataguard")[0:16], m=65536, t=3, p=1)
+    phrase_key       ← Argon2id(normalise(passphrase), sha256(user_salt || "/dataguard/passphrase")[0:16], m=65536, t=3, p=1)
 
-Étape 4 — Encapsulage de la clé maîtresse par chacune des deux clés :
+Étape 4 — Encapsulage de la clé maîtresse par chacune de ces clés :
     wrap_pwd         ← XChaCha20-Poly1305-encrypt(data_master_key, key=password_key, nonce=random_192)
     wrap_recov       ← XChaCha20-Poly1305-encrypt(data_master_key, key=recov_key,    nonce=random_192)
+    wrap_phrase      ← XChaCha20-Poly1305-encrypt(data_master_key, key=phrase_key,   nonce=random_192)
 
 Étape 5 — Stockage en base (toutes les valeurs en clair listées ci-dessous) :
-    user_id, user_salt, wrap_pwd, wrap_recov, [optional] wrap_admin
+    user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin (réservé, jamais écrit), wrap_phrase
 
 Étape 6 — Chiffrement champ par champ des données personnelles :
     email_encrypted        ← XChaCha20-Poly1305-encrypt(email,    key=data_master_key, nonce=random_192)
@@ -85,7 +87,7 @@ Conséquences directes :
     phone_encrypted        ← XChaCha20-Poly1305-encrypt(phone,    key=data_master_key, nonce=random_192)
     [...]
 
-Étape 7 — Purge de data_master_key et password_key et recov_key de la mémoire serveur.
+Étape 7 — Purge de data_master_key et des clés d'encapsulage de la mémoire serveur.
 ```
 
 À la connexion par mot de passe (cas standard, ~99 % du temps) :
@@ -111,6 +113,19 @@ Conséquences directes :
 6. Régénération du wrap_pwd avec la nouvelle password_key (sans re-chiffrer les données)
 ```
 
+Couplé à SelfRecover, ce « mot mémorisé » est l'empreinte que le navigateur calcule, jamais le mot lui-même (§3.1).
+
+À la récupération par passphrase (niveau 1 de SelfRecover, une fois la passphrase acceptée) :
+
+```
+1. SelfRecover émet un nouveau mot de passe et une nouvelle passphrase ; l'ancienne est consommée
+2. phrase_key      ← Argon2id(normalise(ancienne_passphrase), sha256(user_salt || "/dataguard/passphrase")[0:16])
+3. data_master_key ← XChaCha20-Poly1305-decrypt(wrap_phrase, key=phrase_key)
+4. wrap_pwd et wrap_phrase régénérés sur les nouveaux secrets, en une seule écriture, conditionnée à user_salt
+```
+
+`normalise` retire les espaces de bord et réduit toute suite d'espaces à un seul, exactement comme SelfRecover avant de comparer : la chaîne que SelfRecover accepte est celle qui ouvre le coffre.
+
 ### 2.3 Pourquoi cette architecture résiste à un dump
 
 Un attaquant qui exfiltre la table utilisateurs obtient :
@@ -119,9 +134,10 @@ Un attaquant qui exfiltre la table utilisateurs obtient :
 - `user_salt` (en clair, équivalent à un identifiant)
 - `wrap_pwd` (chiffré par `password_key`, qu'il ne connaît pas)
 - `wrap_recov` (chiffré par `recov_key`, qu'il ne connaît pas)
+- `wrap_phrase` (chiffré par `phrase_key`, qu'il ne connaît pas)
 - `email_encrypted, address_encrypted, ...` (chiffrés par `data_master_key`, qu'il ne connaît pas)
 
-Pour déchiffrer, il a deux voies :
+Pour déchiffrer, il a trois voies :
 
 1. **Bruteforcer le mot de passe** d'un utilisateur ciblé → coût Argon2id par tentative (~250 ms avec les paramètres recommandés ; 213,7 ms mesurées sur une machine de déploiement, cf. la note du point 2). Pour un mot de passe à 8 caractères aléatoires : ~10^14 tentatives × 0,25 s ≈ 8·10^5 années, un essai à la fois ; l'attaquant divise ce temps par le nombre d'essais qu'il mène en parallèle, chacun demandant 64 Mio de mémoire. Pour un mot de passe faible (`123456` ou similaire), ça reste faisable. **Appliqué depuis 0.3.0** : `UserVault::register()` refuse les mots de passe de moins de 12 octets (`PASSWORD_MIN_LEN`). ⚠️ La longueur n'est pas de l'entropie — douze lettres identiques franchissent cette barre. C'est un plancher contre le pire, pas une mesure. **Aucune blocklist n'est embarquée** : une version antérieure de ce paragraphe annonçait un refus par listes de breach qu'aucune ligne de code n'appliquait, et une promesse sans mécanisme derrière est pire que pas de promesse.
 
@@ -149,33 +165,43 @@ Pour déchiffrer, il a deux voies :
    vaut que 12,9 bits. Un plancher, le jour où il serait posé, devrait donc se prouver à la source
    et non se mesurer à l'arrivée.
 
+3. **Bruteforcer la passphrase** → même coût Argon2id par tentative. Ici, l'entropie est connue, parce que SelfRecover la tire au sort : six mots d'une liste de 7 776, soit environ 77,5 bits. C'est la porte la plus solide par le calcul. Sa faiblesse est ailleurs : elle est écrite sur papier (§6.1).
+
 Une fuite ne donne donc **rien d'exploitable directement**. Le coût de bruteforce est par utilisateur (impossible de bruteforcer la base entière en parallèle puisque chaque user a son propre `user_salt`).
 
 ---
 
 ## 3. Couplage avec SelfRecover
 
-### 3.1 Le mot mémorisé partagé, deux dérivations isolées
+### 3.1 Les secrets partagés, des dérivations isolées
 
-SelfRecover et SelfDataGuard utilisent **le même mot mémorisé** côté utilisateur, mais le dérivent vers deux clés cryptographiques **strictement disjointes**, par deux dérivations distinctes :
+SelfRecover et SelfDataGuard utilisent **les mêmes secrets** côté utilisateur — le mot mémorisé et la passphrase du niveau 1 —, mais les dérivent vers des clés cryptographiques **strictement disjointes**.
+
+Le mot mémorisé ne quitte jamais le navigateur. Celui-ci en calcule une empreinte, que le serveur reçoit, et c'est elle que l'intégrateur passe à SelfDataGuard :
 
 ```
-secret_brut = mot_memorise_utilisateur
-              (jamais transmis en clair, jamais stocké)
+mot_memorise (dans le navigateur seulement, jamais stocké)
+    │
+    └─ HMAC-SHA256(mot, domaine + "|v2" + sel du compte)            →  empreinte (reçue par le serveur)
+           │
+           ├─ Argon2id(empreinte), sel aléatoire de password_hash()     →  vérification SelfRecover
+           └─ Argon2id(empreinte, sha256(user_salt+"/dataguard")[:16])  →  recov_key (SelfDataGuard)
 
-         ┌──────────────────────────────────────────────────────┐
-         │     HMAC-SHA256(secret_brut, domaine + "|v2" + sel) │  →  recover_key  (SelfRecover)
-         ├──────────────────────────────────────────────────────┤
-         │     Argon2id(secret_brut, sha256(salt+"/dataguard")) │  →  data_key    (SelfDataGuard)
-         └──────────────────────────────────────────────────────┘
+passphrase (tirée au sort par SelfRecover, reçue en clair au niveau 1)
+    │
+    ├─ Argon2id(normalise(passphrase)), sel aléatoire                   →  vérification SelfRecover
+    └─ Argon2id(normalise(passphrase), sha256(user_salt+"/dataguard/passphrase")[:16])  →  phrase_key
 ```
+
+Passer l'empreinte plutôt que le mot ne coûte rien en sécurité : un attaquant qui devine le mot doit calculer le HMAC, puis l'Argon2id. C'est l'entropie du mot et le coût d'Argon2id qui protègent, pas la forme de la chaîne.
 
 Propriétés cryptographiques :
 
-- **Indépendance** : la connaissance de `recover_key` ne donne aucune information sur `data_key`, et inversement — les deux dérivations partent du même secret mais avec des fonctions et des sels distincts, et aucune des deux sorties ne permet de retrouver l'entrée.
-- ⚠️ **Les deux chemins ne portent pas le même risque et ne se durcissent pas pareil.** `recover_key` contrôle un ACCÈS : un serveur compte les essais, et SelfRecover exige en plus un recovery code — deux facteurs. `data_key` déchiffre des DONNÉES : elle s'attaque hors ligne sur un dump, à un seul facteur, sans compteur. Le même mot mémorisé ne peut donc pas être soumis aux mêmes exigences des deux côtés.
-- **Pas de crossover** : une fuite côté SelfRecover (par exemple compromission du store des hashes Argon2id) n'expose pas SelfDataGuard, et inversement
-- **UX simplifiée** : l'utilisateur mémorise un seul secret, en dérive deux usages
+- **Pas de crossover entre les stores** : la base de SelfRecover garde un Argon2id de l'empreinte sous un sel aléatoire, le coffre en garde un autre sous un sel dérivé de `user_salt`. Aucun des deux ne se déduit de l'autre : une fuite d'un côté n'ouvre pas l'autre, et chacun s'attaque à son propre coût Argon2id.
+- ⚠️ **L'empreinte, elle, vaut un mot de passe pour le coffre.** Qui la tient ouvre `wrap_recov` : le serveur, au moment d'un niveau 2 par code, qui la reçoit. C'est le cas de tout secret reçu côté serveur en mode Lite (§4.1), mot de passe compris — un serveur compromis en service les voit tous passer.
+- ⚠️ **Les deux chemins ne portent pas le même risque et ne se durcissent pas pareil.** La vérification SelfRecover contrôle un ACCÈS : un serveur compte les essais, et SelfRecover exige en plus un recovery code — deux facteurs. `recov_key` déchiffre des DONNÉES : elle s'attaque hors ligne sur un dump, à un seul facteur, sans compteur. Le même mot mémorisé ne peut donc pas être soumis aux mêmes exigences des deux côtés.
+- **UX simplifiée** : aucun secret de plus à retenir ; chacun sert aux deux modules
+- ⚠️ **La passphrase volée ouvre les deux** — le compte par le niveau 1, le coffre par `wrap_phrase` —, jusqu'à sa première utilisation légitime, qui la remplace des deux côtés
 
 ### 3.2 Le mot peut être régénéré indépendamment
 
@@ -187,9 +213,34 @@ Scénario : un utilisateur a perdu son mot de passe.
 
 - **Sans SelfDataGuard** : SelfRecover lui permet de redéfinir un mot de passe. Mais il aurait pu, avec ses données personnelles en clair dans la base, perdre l'accès à ces données ? Non : la base était en clair, donc l'admin pouvait toujours les lui re-fournir.
 - **Avec SelfDataGuard seul** (sans SelfRecover) : impossible, ses données sont chiffrées par sa `password_key` qu'il ne se rappelle plus.
-- **Avec les deux ensemble** : il présente son *recovery code* papier **et** son mot mémorisé. SelfRecover vérifie les deux — le code localise le compte et porte la possession, le mot dérivé porte la connaissance — puis l'authentifie. SelfDataGuard, lui, n'a besoin que du mot : il dérive `data_key`, déballe `wrap_recov` et restaure `data_master_key`. L'utilisateur retrouve l'accès à son compte et la lisibilité de ses données dans le même passage.
+- **Avec les deux ensemble** : il présente son *recovery code* papier **et** son mot mémorisé. SelfRecover vérifie les deux — le code localise le compte et porte la possession, le mot dérivé porte la connaissance — puis l'authentifie. SelfDataGuard, lui, n'a besoin que de l'empreinte du mot, que le serveur vient de recevoir : il déballe `wrap_recov`, puis re-scelle le coffre sur le mot de passe et la passphrase que SelfRecover vient d'émettre. L'utilisateur retrouve l'accès à son compte et la lisibilité de ses données dans le même passage.
 
 C'est le principe des phrases de récupération des services chiffrés de bout en bout : un secret gardé hors ligne rend l'accès aux données quand le mot de passe est perdu.
+
+### 3.4 Chaque récupération, et ce qu'en fait le coffre
+
+Les récupérations SelfRecover remplacent des secrets ; aucune des deux bibliothèques n'appelle l'autre. C'est l'intégrateur qui re-scelle le coffre, **après** l'acceptation de la récupération, avec le secret que le serveur tient à ce moment-là :
+
+| Récupération | Le serveur tient | SelfRecover remplace | SelfDataGuard |
+|---|---|---|---|
+| Niveau 1 — passphrase | l'ancienne passphrase | mot de passe et passphrase | `recover(Lock::Passphrase, ancienne, nouveau_mdp, nouvelle_passphrase)` |
+| Niveau 2 — code + mot | l'empreinte du mot | mot de passe et passphrase | `recover(Lock::Memorized, empreinte, nouveau_mdp, nouvelle_passphrase)` |
+| Niveau 2 — appareil | une signature | le mot de passe seul | rien à cet instant ; au prochain secret donné, `recover(serrure, secret, mdp_actuel)` |
+| Niveau 3 — escalade humaine | aucun ancien secret | tout | `reEnroll(mdp, empreinte, passphrase)` : archive (§3.5) |
+
+`recover()` déballe la clé, régénère `wrap_pwd` — et `wrap_phrase` si une passphrase neuve est donnée — et écrit le tout en une seule fois, à condition que le coffre porte toujours le même `user_salt`. Une requête qui tiendrait un coffre remplacé entre-temps échoue au lieu de l'écraser. Appelée seule, la méthode est un oracle Argon2id sans frein : c'est l'acceptation de SelfRecover, avec ses compteurs, qui la précède.
+
+### 3.5 Niveau 3 : l'archive, pas la destruction
+
+Au niveau 3, l'utilisateur n'a plus aucun ancien secret, et le coffre ne peut pas être re-scellé. Jusqu'à la 0.4.0, la seule issue était de le supprimer ; or un utilisateur peut retrouver plus tard un ancien papier ou un ancien mot.
+
+`reEnroll()` met donc le coffre vivant de côté, **sans rien déchiffrer** — enveloppes, champs privés, séquestre —, et crée un coffre neuf pour le même compte, dans la même transaction. Les AAD ne liant que l'identifiant du compte, les anciennes enveloppes restent valides telles quelles.
+
+- **Rouvrir** : `openArchive()` exige une ancienne serrure **et** une session sur le coffre actuel. Les anciens secrets sont précisément ceux qui ont pu fuir avant le niveau 3 : seuls, ils n'atteignent pas les anciennes données. La dérivation suit le profil Argon2id enregistré dans l'archive, parce qu'une archive ne se re-scelle pas quand le profil change.
+- **Restaurer** : `readArchive()` rend les champs, que l'application réécrit dans le coffre neuf. Les index aveugles ne sont pas archivés — ils répondraient encore à des recherches d'égalité sur des données qui ne sont plus vivantes —, mais chaque champ garde la trace de son indexation.
+- **Le séquestre** part avec l'archive. L'administrateur le rouvre comme celui d'un coffre vivant, par la même clé : rien de plus n'est exposé.
+- **Détruire** : sur décision explicite seulement. Supprimer le compte ne supprime pas ses archives, sinon un niveau 3 frauduleux suivi d'une suppression effacerait celles du titulaire légitime.
+- ⚠️ La serrure « mot mémorisé » d'une archive dépend du sel SelfRecover de l'époque, que le niveau 3 remplace. L'intégrateur le conserve — dans le coffre neuf, par exemple — si cette serrure doit rester utilisable. Les serrures mot de passe et passphrase n'en ont pas besoin.
 
 ---
 
@@ -244,7 +295,8 @@ La majorité des sites e-commerce devraient choisir **Hybrid**. Les services à 
 | Usage | Primitive | Rationale |
 |-------|-----------|-----------|
 | Dérivation depuis mot de passe | **Argon2id** (m=65536 KiB, t=3, p=1) | Memory-hard, résistant aux GPU et ASICs. Standard moderne (RFC 9106). ⚠️ `p=1` et non `p=4` : `sodium_crypto_pwhash` **n'expose pas** de paramètre de parallélisme — signature `length, password, salt, opslimit, memlimit, algo`. Les versions antérieures de ce tableau annonçaient un paramètre que l'API choisie ne peut pas porter |
-| Dérivation depuis mot mémorisé | **Argon2id** (mêmes paramètres) | Même coût que la voie mot de passe, parce que les deux ouvrent la même clé de données et que la paire ne vaut que sa porte la moins chère. Cf. §2.3 pour la mesure qui a motivé le changement |
+| Dérivation depuis mot mémorisé | **Argon2id** (mêmes paramètres) | Même coût que la voie mot de passe, parce que les deux ouvrent la même clé de données et que l'ensemble ne vaut que sa porte la moins chère. Cf. §2.3 pour la mesure qui a motivé le changement |
+| Dérivation depuis passphrase | **Argon2id** (mêmes paramètres), contexte `/dataguard/passphrase` | Même coût, pour la même raison. Entrée normalisée comme SelfRecover le fait avant de comparer |
 | Chiffrement par enveloppe | **XChaCha20-Poly1305** | Chiffrement authentifié : ChaCha20-Poly1305 (RFC 8439) étendu à un nonce de 192 bits (draft-irtf-cfrg-xchacha). Calculé en logiciel, en temps constant, sur tout processeur. Les blobs écrits avant la 0.4.0 sont en AES-256-GCM et restent lisibles |
 | Chiffrement de champs | **XChaCha20-Poly1305** avec nonce aléatoire 192 bits par champ | Idem. À 192 bits, un nonce tiré au hasard ne demande aucun compteur |
 | Indexation de recherche | **HMAC-SHA256(field, server_blind_key)** | Permet `WHERE field_hash = HMAC(query)` sans déchiffrer. Trade-off : recherche par égalité uniquement, pas full-text |
@@ -266,6 +318,8 @@ La majorité des sites e-commerce devraient choisir **Hybrid**. Les services à 
 | Insider DBA | Accès lecture à la base, pas au serveur applicatif | Idem, soupe chiffrée |
 | Attaquant avec RCE sur le serveur | Lecture de la mémoire et du disque applicatif | Mode Lite : sessions actives exposées. Mode Hybrid : champs opérationnels exposés. Mode Full : rien |
 | Compromission d'un compte utilisateur (phishing endpoint) | Capture du password de cet utilisateur | Données de ce seul utilisateur exposées. Pas de fan-out |
+| Vol du papier de passphrase | La passphrase de niveau 1 d'un utilisateur | Le compte et les données de cet utilisateur, hors ligne aussi avec un dump, jusqu'à la première utilisation légitime de la passphrase, qui la remplace des deux côtés |
+| Fuite d'un ancien secret avant un niveau 3 | Une serrure de l'archive | Rien par le service : l'archive ne s'ouvre que depuis une session sur le coffre actuel. Avec un dump, l'archive s'ouvre hors ligne par cette serrure |
 | Coercition d'un admin | Force l'admin à fournir ses clés | Mode Lite : aucune clé permanente côté admin, donc rien. Mode Hybrid : champs opérationnels seulement. Mode Full : rien (l'admin n'a pas de clé) |
 
 ### 6.2 Adversaires hors-périmètre
@@ -292,9 +346,10 @@ Pour qu'un déploiement SelfDataGuard apporte effectivement les garanties listé
    secret. Cf. §2.3, question ouverte
 3. **TLS obligatoire** : aucune dégradation HTTP autorisée (HSTS strict)
 4. **Sessions courtes** : `data_master_key` purgée de la session après inactivité (15 min recommandé pour Hybrid, 5 min pour Full)
-5. **Pas de logging sensible** : `password_key`, `recov_key`, `data_master_key` ne doivent jamais apparaître dans les logs (même en niveau debug)
+5. **Pas de logging sensible** : `password_key`, `recov_key`, `phrase_key`, `data_master_key` ne doivent jamais apparaître dans les logs (même en niveau debug)
 6. **Audit des accès admin** : en mode Hybrid, chaque accès aux champs opérationnels par l'admin doit être logué (sans la donnée elle-même)
-7. **Mise à jour régulière** : suivre les recommandations Argon2id pour ajuster `m` et `t` à mesure que le hardware progresse (`p` est fixé à 1, cf. §5)
+7. **Mise à jour régulière** : suivre les recommandations Argon2id pour ajuster `m` et `t` à mesure que le hardware progresse (`p` est fixé à 1, cf. §5). Un coffre vivant se re-scelle sous le nouveau profil ; une archive garde le sien
+8. **Re-scellement à chaque récupération** : `recover()` aux niveaux 1 et 2, **après** l'acceptation de SelfRecover et jamais avant ; `reEnroll()` au niveau 3 ; `openArchive()` freiné par l'intégrateur comme sa connexion
 
 Le non-respect d'une de ces règles dégrade significativement les garanties. La bibliothèque de référence applique la règle 1, et la règle 5 pour ses propres traces d'exception (`#[\SensitiveParameter]`) ; les autres relèvent de l'intégrateur et de la configuration de déploiement.
 
@@ -315,7 +370,8 @@ Le non-respect d'une de ces règles dégrade significativement les garanties. La
 - **v0.2.0** (livrée le 21/08/2026, Q3) : compartiment escrow, cérémonie de clés, journal d'audit
 - **v0.3.0** (livrée le 07/09/2026) : dérivation Argon2id du secret mémorisé, plancher de longueur du mot de passe appliqué en code
 - **v0.4.0** (livrée le 26/09/2026) : XChaCha20-Poly1305 pour toute écriture, format de blob versionné (`SDG2.`), relecture des blobs AES-256-GCM par libsodium ou OpenSSL
-- **v0.5.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
+- **v0.5.0** (01/10/2026) : troisième serrure (passphrase SelfRecover), `recover()` pour chaque chemin de récupération, archive au niveau 3, migration de schéma en place
+- **v0.6.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
 - **v1.0.0** (2027) : audit cryptographique communautaire formel, soumission ANSSI Visa de sécurité (industries@ssi.gouv.fr), publication d'un test vector pack
 
 ---
@@ -332,4 +388,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Édition du 26 septembre 2026, alignée sur SelfDataGuard v0.4.0 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.4.0 (219 contrôles, 8 suites). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*
+*Édition du 1er octobre 2026, alignée sur SelfDataGuard v0.5.0 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.5.0 (300 contrôles, 10 suites). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*

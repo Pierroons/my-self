@@ -7,7 +7,7 @@
 > *Dump my database — and get encrypted noise.*
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfDataGuard: v0.4.0](https://img.shields.io/badge/SelfDataGuard-v0.4.0-brightgreen.svg)](./selfdataguard/)
+[![SelfDataGuard: v0.5.0](https://img.shields.io/badge/SelfDataGuard-v0.5.0-brightgreen.svg)](./selfdataguard/)
 [![SelfRecover-LUKS: v0.6.0](https://img.shields.io/badge/SelfRecover--LUKS-v0.6.0-green.svg)](./selfrecover-luks/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -36,13 +36,13 @@ Self-Security takes the two surfaces apart: **data is encrypted before it reache
 | Secret | Held by | Derived with | Opens | Module |
 |---|---|---|---|---|
 | a diceware passphrase | the machine's administrator | Argon2id, label `disk` | a LUKS2 slot | SelfRecover-LUKS |
-| a password and a memorized word | each user | Argon2id, the user's salt | that user's data | SelfDataGuard |
+| a password, a memorized word, a passphrase | each user | Argon2id, the user's salt | that user's data | SelfDataGuard |
 
 ---
 
 ## What each one does when something goes wrong
 
-- **Database dumped and published** → fields encrypted by SelfDataGuard stay noise. Each user's master key is wrapped twice — once by a key derived from their password, once by a key derived from their memorized word, both through Argon2id at the same cost, since two wraps are only as strong as the cheaper one — and neither derivation input is in the dump.
+- **Database dumped and published** → fields encrypted by SelfDataGuard stay noise. Each user's master key is wrapped under each of their secrets — password, memorized word, passphrase —, always through Argon2id at the same cost, since wraps are only as strong as the cheapest one, and none of these inputs is in the dump.
 - **Machine off, drive seized or resold** → the LUKS2 volume is closed. Secondary volumes open from a key-file kept *inside* the encrypted root, so a stolen drive stays unreadable on its own.
 - **Server rebooted remotely** → a dropbear SSH server embedded in the initramfs takes the passphrase; the root volume opens, then the secondary volumes cascade without a second entry.
 - **Keyscript fails** → every volume keeps a native LUKS slot with a classic passphrase, never removed. A broken keyscript costs a manual unlock, not the data.
@@ -53,14 +53,14 @@ Self-Security takes the two surfaces apart: **data is encrypted before it reache
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.4.0** — in service, 219 checks across 8 suites |
+| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.5.0** — available, 300 checks across 10 suites |
 | [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.6.0** — reproducible install; earlier releases validated on a Debian 13 LNMP server, a laptop and an encrypted-LVM root |
 
 ---
 
 ## Status
 
-Both modules run. SelfDataGuard is deployed and its eight suites pass; SelfRecover-LUKS was validated over full reboot cycles — root volume plus cascading secondary volumes — and its install is documented step by step in [INSTALL.md](./selfrecover-luks/INSTALL.md).
+Both modules run. SelfDataGuard is deployed and its ten suites pass; SelfRecover-LUKS was validated over full reboot cycles — root volume plus cascading secondary volumes — and its install is documented step by step in [INSTALL.md](./selfrecover-luks/INSTALL.md).
 
 One research path is deliberately left off: unlocking a volume through a **quorum of household witnesses** (Shamir shares, with a SelfRecover fallback when the quorum is unreachable). Its code sits under [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) and was validated on throwaway images, but it is **not enabled**: the module unlocks by keyscript and keyfile instead.
 
