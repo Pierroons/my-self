@@ -133,6 +133,16 @@ try:
         volumes[nom] = volume(bloc)
         empreintes[nom] = empreinte(bloc)
         provenances[nom] = bloc.get("provenance") or {}
+    # 🔑 **JADE se suit à part.** La date de la jurisprudence est celle de
+    # Judilibre, qui avance : le fonds administratif est resté figé au 10/09/2026
+    # trois semaines durant sans qu'elle bouge d'un jour. Sa date est celle du
+    # dernier incrément appliqué. Sans volume : les incréments de la DILA se
+    # recouvrent, et un soir qui ne rapporte que des décisions déjà connues
+    # passerait pour un trompe-l'œil.
+    jade = ((st.get("jurisprudence") or {}).get("jade") or {}).get("dernier_increment")
+    if jade:
+        m = re.match(r"JADE_(\d{4})(\d{2})(\d{2})", jade)
+        sources["JADE"] = "-".join(m.groups()) if m else jade
 except Exception as e:
     aveugle.append(f"/status injoignable ({type(e).__name__})")
 

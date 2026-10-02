@@ -114,14 +114,18 @@ nok() { echo "  ✗ $1" >&2; echecs=$((echecs + 1)); }
 # pour une raison étrangère à ce qu'il éprouve.
 #
 # jouer <date LEGI> <volume LEGI> <date catalogue> <volume catalogue> <état JSON>
+# JADE_INCR, s'il est posé, ajoute le dernier incrément JADE au bloc jurisprudence.
 jouer() {
-    python3 - "$1" "$2" "$ATTENDU" <<'PY' > "$BAC/status.json"
-import json, sys
+    JADE_INCR="${JADE_INCR:-}" python3 - "$1" "$2" "$ATTENDU" <<'PY' > "$BAC/status.json"
+import json, os, sys
 d, v, sain = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+juris = {"decisions": 1191177, "last_update": sain}
+if os.environ["JADE_INCR"]:
+    juris["jade"] = {"dernier_increment": os.environ["JADE_INCR"]}
 print(json.dumps({
     "legi": {"articles": v, "last_update": d},
     "eu": {"articles": 793, "last_update": sain},
-    "jurisprudence": {"decisions": 1191177, "last_update": sain},
+    "jurisprudence": juris,
 }))
 PY
     python3 - "$3" "$4" <<'PY' > "$BAC/catalog.json"
@@ -254,6 +258,49 @@ if ! grep -q "^RETARD" <<<"$sortie" && grep -q "1890 → 1873 — retraits à la
     ok "catalogue en baisse, date avancée → lu, pas crié"
 else
     nok "la baisse du catalogue : ${sortie//$'\n'/ }"
+fi
+
+echo
+echo "▸ Le fonds JADE se suit à part"
+# 🔑 La date de la jurisprudence est celle de Judilibre : JADE est resté figé
+# trois semaines sans qu'elle bouge. Il a donc sa propre ligne, datée par son
+# dernier incrément — et seulement quand l'API l'expose.
+jade_nom() { printf 'JADE_%s-213000.tar.gz' "${1//-/}"; }
+etat_jade() { # etat_jade <date JADE> <vu_le JADE>
+    python3 - "$1" "$2" "$ATTENDU" <<'PY'
+import json, sys
+dj, vu, sain = sys.argv[1:4]
+print(json.dumps({
+    "LEGI": {"date": sain, "volume": 525441, "vu_le": sain},
+    "catalogue SelfAct": {"date": sain, "volume": 1890, "vu_le": sain},
+    "conventionnalité": {"date": sain, "volume": 793, "vu_le": sain},
+    "jurisprudence": {"date": sain, "volume": 1191177, "vu_le": sain},
+    "JADE": {"date": dj, "volume": None, "vu_le": vu},
+}))
+PY
+}
+
+# Le timer mort : le même incrément, vu avant l'échéance et inchangé depuis.
+sortie=$(JADE_INCR="$(jade_nom "$AVANT")" jouer "$ATTENDU" 525441 "$ATTENDU" 1890 "$(etat_jade "$AVANT" "$AVANT")")
+if grep -q "^RETARD.*JADE : figée au $AVANT" <<<"$sortie"; then
+    ok "JADE inchangé depuis avant l'échéance → FIGÉ signalé"
+else
+    nok "un fonds JADE figé passe inaperçu : ${sortie//$'\n'/ }"
+fi
+
+sortie=$(JADE_INCR="$(jade_nom "$ATTENDU")" jouer "$ATTENDU" 525441 "$ATTENDU" 1890 "$(etat_jade "$AVANT" "$AVANT")")
+if ! grep -q "^RETARD" <<<"$sortie" && grep -q "✓ JADE" <<<"$sortie"; then
+    ok "JADE avance → lu, silence"
+else
+    nok "un fonds JADE qui avance : ${sortie//$'\n'/ }"
+fi
+
+# Contre-témoin : une instance sans JADE n'a pas de ligne JADE, ni de retard.
+sortie=$(jouer "$ATTENDU" 525441 "$ATTENDU" 1890 "$(etat "$ATTENDU" 525441 "$ATTENDU" "$ATTENDU" 1890)")
+if ! grep -q "JADE" <<<"$sortie" && ! grep -q "^RETARD" <<<"$sortie"; then
+    ok "API sans bloc jade → aucune ligne JADE"
+else
+    nok "JADE lu là où l'API ne l'expose pas : ${sortie//$'\n'/ }"
 fi
 
 # 🔑 Le cas mesuré le 21/08/2026 : le catalogue a été resynchronisé et a rendu

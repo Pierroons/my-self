@@ -73,6 +73,11 @@ CHAMPS = ("ID", "NUMERO", "DATE_DEC", "JURIDICTION", "FORMATION",
           "PUBLI_RECUEIL", "TYPE_REC", "SOLUTION", "NUMERO_AFFAIRE")
 NOM_DIFF = re.compile(r"^JADE_(\d{8})-\d{6}\.tar\.gz$")
 
+# Code de sortie quand la DILA ne répond pas : rien n'a été écrit, et le passage
+# suivant reprendra. Distinct de 1 pour que le pilote ne sonne pas à chaque
+# panne d'un soir (`update_jade.sh`).
+DILA_INJOIGNABLE = 4
+
 
 def journal(message: str) -> None:
     print("[%s] %s" % (datetime.datetime.now().strftime("%H:%M:%S"), message),
@@ -421,12 +426,33 @@ def main():
             journal("aucun état : passer --global avant --depuis auto")
             conn.close()
             sys.exit("Rien à reprendre — le fonds global n'a pas été absorbé.")
-        disponibles = diffs_disponibles()
+        try:
+            disponibles = diffs_disponibles()
+        except OSError as e:
+            journal("DILA injoignable : %s" % e)
+            conn.close()
+            sys.exit(DILA_INJOIGNABLE)
         manquants = [n for n in disponibles if n > dernier]
         journal("%d incrément(s) publié(s), %d à appliquer depuis %s"
                 % (len(disponibles), len(manquants), dernier))
-        for nom in manquants:
-            a_traiter.append(telecharger(nom, a.cache))
+        # 🔑 **La fenêtre doit rejoindre la base.** La DILA ne garde qu'une
+        # fenêtre d'incréments, de profondeur non annoncée. Si le plus ancien
+        # qu'elle publie est postérieur au dernier appliqué, ce qui les séparait
+        # a pu disparaître : appliquer le reste ferait avancer `dernier_diff`
+        # par-dessus le trou, qui deviendrait invisible pour toujours.
+        if manquants and disponibles[0] > dernier:
+            journal("trou possible : la fenêtre publiée commence à %s, après %s"
+                    % (disponibles[0], dernier))
+            conn.close()
+            sys.exit("Trou possible dans les incréments JADE : rejouer le fonds "
+                     "global avant de reprendre. Rien n'a été écrit.")
+        try:
+            for nom in manquants:
+                a_traiter.append(telecharger(nom, a.cache))
+        except OSError as e:
+            journal("DILA injoignable pendant le téléchargement : %s" % e)
+            conn.close()
+            sys.exit(DILA_INJOIGNABLE)
 
     for chemin in a_traiter:
         nom = os.path.basename(chemin)

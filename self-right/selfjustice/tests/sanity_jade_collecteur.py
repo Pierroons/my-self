@@ -15,6 +15,8 @@ une page d'erreur déguisée en archive).
     python3 tests/sanity_jade_collecteur.py
 """
 
+import functools
+import http.server
 import os
 import pathlib
 import shutil
@@ -23,6 +25,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 
 RACINE = pathlib.Path(__file__).resolve().parent.parent
 COLLECTEUR = RACINE / "tools" / "build_jade_db.py"
@@ -40,9 +43,11 @@ DECISION = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 echecs = []
+controles = []
 
 
 def verdict(ok, libelle):
+    controles.append(libelle)
     print("  %s %s" % ("✓" if ok else "✗", libelle))
     if not ok:
         echecs.append(libelle)
@@ -60,10 +65,26 @@ def archive(chemin, decisions):
     return chemin
 
 
-def lancer(db, *args):
+def lancer(db, *args, dila=None):
+    env = dict(os.environ, SELFJUSTICE_JADE_BASE=dila) if dila else None
     r = subprocess.run([sys.executable, str(COLLECTEUR), "--db", str(db)] + list(args),
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, env=env)
     return r.returncode, r.stdout + r.stderr
+
+
+def dila_locale(repertoire):
+    """Sert `repertoire` comme la DILA sert ses incréments : un index, des tarballs."""
+    gestion = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(repertoire))
+    gestion.log_message = lambda *a: None
+    serveur = http.server.HTTPServer(("127.0.0.1", 0), gestion)
+    threading.Thread(target=serveur.serve_forever, daemon=True).start()
+    return serveur
+
+
+def une_decision(ident):
+    return [(ident, DECISION.format(
+        id=ident, juri="Conseil d'Etat", date="2026-02-01", num=ident[-6:],
+        formation="Section", publi="B", contenu="Texte."))]
 
 
 def main():
@@ -189,11 +210,66 @@ def main():
                 "le message nomme la cause au lieu d'une trace Python")
         verdict("Traceback" not in sortie, "aucune trace Python n'est montrée")
 
+        # 🔑 La reprise automatique, contre une DILA locale. La DILA ne garde
+        # qu'une fenêtre d'incréments : une fenêtre qui commence après le dernier
+        # appliqué doit arrêter la collecte, sans rien écrire — sinon
+        # `dernier_diff` sauterait par-dessus le trou, qui deviendrait invisible.
+        print("\n▸ La reprise automatique (--depuis auto)")
+        base = tmp / "reprise.sqlite"
+        cache = tmp / "cache"
+        cache.mkdir()
+        continue_ = tmp / "dila-continue"
+        trouee = tmp / "dila-trouee"
+        continue_.mkdir()
+        trouee.mkdir()
+        depart = archive(tmp / "JADE_20260201-213000.tar.gz", une_decision("CETATEXT100201"))
+        code, sortie = lancer(base, "--diff", str(depart))
+        verdict(code == 0, "un premier incrément fixe le point de reprise (code %d)" % code)
+        for jour in ("20260201", "20260202", "20260203"):
+            archive(continue_ / ("JADE_%s-213000.tar.gz" % jour), une_decision("CETATEXT10" + jour[4:]))
+        for jour in ("20260210", "20260211"):
+            archive(trouee / ("JADE_%s-213000.tar.gz" % jour), une_decision("CETATEXT10" + jour[4:]))
+
+        def etat_reprise():
+            c = sqlite3.connect(base)
+            d = c.execute("SELECT valeur FROM jade_etat WHERE cle='dernier_diff'").fetchone()[0]
+            n = c.execute("SELECT COUNT(*) FROM decisions WHERE source='jade'").fetchone()[0]
+            c.close()
+            return d, n
+
+        serveur = dila_locale(continue_)
+        code, sortie = lancer(base, "--depuis", "auto", "--cache", str(cache),
+                              dila="http://127.0.0.1:%d" % serveur.server_port)
+        serveur.shutdown()
+        dernier, n = etat_reprise()
+        verdict(code == 0 and dernier == "JADE_20260203-213000.tar.gz" and n == 3,
+                "fenêtre continue → les deux incréments manquants appliqués (%s, %d décisions, code %d)"
+                % (dernier, n, code))
+
+        serveur = dila_locale(trouee)
+        code, sortie = lancer(base, "--depuis", "auto", "--cache", str(cache),
+                              dila="http://127.0.0.1:%d" % serveur.server_port)
+        serveur.shutdown()
+        dernier, n = etat_reprise()
+        verdict(code != 0 and "trou possible" in sortie.lower(),
+                "fenêtre qui commence après le dernier appliqué → arrêt nommé (code %d)" % code)
+        verdict(dernier == "JADE_20260203-213000.tar.gz" and n == 3,
+                "et rien n'est écrit : %s, %d décisions" % (dernier, n))
+
+        serveur = dila_locale(continue_)
+        port_ferme = serveur.server_port
+        serveur.shutdown()
+        serveur.server_close()
+        code, sortie = lancer(base, "--depuis", "auto", "--cache", str(cache),
+                              dila="http://127.0.0.1:%d" % port_ferme)
+        verdict(code == 4 and "Traceback" not in sortie,
+                "DILA injoignable → code 4, sans trace Python (code %d)" % code)
+
         print()
         if echecs:
             print("✗ %d contrôle(s) en échec." % len(echecs))
             return 1
-        print("✓ Le collecteur JADE écrit, refuse et le dit — 19 contrôles.")
+        print("✓ Le collecteur JADE écrit, refuse et le dit — %d contrôles." % len(controles))
         return 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

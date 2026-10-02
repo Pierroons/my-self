@@ -1,0 +1,35 @@
+[Unit]
+# Collecte du fonds JADE — la jurisprudence administrative.
+#
+# Un service ponctuel piloté par jade-update.timer, sur le modèle de
+# judilibre-update : systemd garde l'état de la dernière exécution, et le
+# pilote alerte lui-même quand le fonds décroche.
+Description=SelfJustice — collecte quotidienne du fonds JADE
+Documentation=file:/opt/selfjustice/bin/update_jade.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+
+# L'adresse d'alerte et le chemin du jeton, s'ils diffèrent des défauts du
+# pilote. Le jeton lui-même n'entre ni dans l'unité ni sur la ligne de commande.
+EnvironmentFile=-/etc/selfjustice/jade.env
+ExecStart=/opt/selfjustice/bin/update_jade.sh
+
+# Un soir ordinaire applique un incrément en quelques secondes ; un rattrapage
+# de plusieurs semaines, quelques minutes. La borne évite qu'un blocage réseau
+# laisse le service en cours jusqu'au passage suivant.
+TimeoutStartSec=2h
+
+# Le service écrit dans la base servie, son cache et son journal : tout le
+# reste est en lecture seule pour lui.
+ProtectSystem=strict
+ReadWritePaths=/var/lib/selfjustice /opt/selfjustice
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

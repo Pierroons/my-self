@@ -1,0 +1,17 @@
+[Unit]
+Description=SelfJustice — cadence quotidienne du fonds JADE
+Documentation=file:/opt/selfjustice/deploy/jade-update.service
+
+[Timer]
+# Chaque soir : la DILA publie un incrément par jour ouvré, vers 21 h–22 h.
+# Loin de judilibre-update (06:00), qui écrit dans la même base et peut durer
+# plusieurs heures.
+OnCalendar=*-*-* 23:30:00
+
+# Une machine éteinte à l'heure dite rattrape au démarrage.
+Persistent=true
+
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target
