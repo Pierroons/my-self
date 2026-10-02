@@ -339,6 +339,46 @@ $own->updateVault((new UserVault())->removePassphrase($loaded, $withPhrase['unlo
 
 // -----------------------------------------------------------------------------
 
+section('A caller transaction opened in plain SQL — PDO before 8.4 does not see it');
+
+$pdo->exec('BEGIN');
+$thrown = null;
+try {
+    $own->saveFields('user-tx', ['raw' => ['ciphertext' => 'r1']]);
+} catch (Throwable $e) {
+    $thrown = $e;
+}
+$thrown === null ? ok('a write inside it nests instead of opening a second transaction') : ko('the write failed inside a plain-SQL transaction', $thrown->getMessage());
+try {
+    $pdo->exec('ROLLBACK');
+    ok('the caller\'s transaction is still open, and still the caller\'s to end');
+} catch (PDOException $e) {
+    ko('the caller\'s transaction was closed by the library', $e->getMessage());
+}
+!array_key_exists('raw', $own->loadFields('user-tx'))
+    ? ok('rolled back by the caller, the write is gone')
+    : ko('the write survived the caller\'s rollback');
+
+// -----------------------------------------------------------------------------
+
+section('Committed, and the write lock released, for every connection');
+
+$storage->saveFields('user-bob', ['seen' => ['ciphertext' => 's1']]);
+$second = new PDO("sqlite:{$dbPath}");
+$second->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$second->setAttribute(PDO::ATTR_TIMEOUT, 1);
+$seen = $second->query("SELECT COUNT(*) FROM selfdataguard_fields WHERE user_id = 'user-bob' AND field_name = 'seen'")->fetchColumn();
+(int) $seen === 1 ? ok('another connection reads the field: it was committed') : ko('the field is not visible to another connection');
+try {
+    $second->exec('BEGIN IMMEDIATE');
+    $second->exec('ROLLBACK');
+    ok('another connection takes the write lock: no transaction was left open');
+} catch (PDOException $e) {
+    ko('the write lock is still held after the write', $e->getMessage());
+}
+
+// -----------------------------------------------------------------------------
+
 section('updateVault — a record read from a replaced vault cannot overwrite the new one');
 
 $uv = new UserVault();

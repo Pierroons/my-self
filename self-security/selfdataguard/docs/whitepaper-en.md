@@ -3,7 +3,7 @@
 **Application-layer data-at-rest protection that survives a database exfiltration**
 *Dump my database — and get encrypted noise.*
 
-*Edition of 1 October 2026 — describes SelfDataGuard v0.5.0. The French edition is authoritative where the two differ.*
+*Edition of 2 October 2026 — describes SelfDataGuard v0.5.1. The French edition is authoritative where the two differ.*
 
 ---
 
@@ -366,4 +366,4 @@ Technical feedback, community audits, and cryptographic critiques are welcome, e
 
 ---
 
-*First edition May 2026; this edition 1 October 2026, aligned on SelfDataGuard v0.5.0. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026; §2, §3, §5, §6, §7 and §8.2 were rewritten alongside the French edition on 1 October 2026 for v0.5.0. The specification described here is implemented and tested from v0.1.0 to v0.5.0 (314 checks, 10 suites).*
+*First edition May 2026; this edition 2 October 2026, aligned on SelfDataGuard v0.5.1. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026; §2, §3, §5, §6, §7 and §8.2 were rewritten alongside the French edition on 1 October 2026 for v0.5.0. The specification described here is implemented and tested from v0.1.0 to v0.5.1 (319 checks, 10 suites, on PHP 8.1, 8.2 and 8.4).*

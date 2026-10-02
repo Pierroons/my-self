@@ -5,6 +5,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [v0.5.1] — 2026-10-02
+
+### Fixed — PHP 8.1 and 8.2: the storage left its transaction open
+
+0.5.0 opened its transactions with `exec('BEGIN IMMEDIATE')` and closed them with
+`PDO::commit()`. Before PHP 8.4, PDO does not see a transaction opened by `exec()`:
+`commit()` threw « There is no active transaction », and the transaction stayed open —
+the write neither committed nor rolled back, and the next write on that connection met an
+inconsistent state. Reported by an integrator on Debian 12 (PHP 8.2): the first escrow
+deposit failed. The CI ran PHP 8.4 only and could not see it.
+
+The storage now closes in SQL what it opens in SQL (`COMMIT`, `ROLLBACK`) and tracks its own
+transaction itself instead of asking PDO. A caller's transaction opened in plain SQL, which
+PDO before 8.4 does not report either, is recognised by SQLite's refusal of a second
+`BEGIN`, and the write nests in it through a savepoint. `sanity_storage` gains both cases:
+a plain-SQL caller transaction, and a second connection that must read the committed write
+and take the write lock.
+
+### Added — the suites run on PHP 8.1 and 8.2 in CI
+
+`composer.json` declares PHP 8.1 or later. A CI job now runs the ten SelfDataGuard suites,
+the SelfRecover coupling check and the cross-module recovery walk on PHP 8.1 and 8.2, next to
+the main job on 8.4.
+
 ## [v0.5.0] — 2026-10-01
 
 A vault paired with SelfRecover can now survive every recovery path, provided the integrator
@@ -421,7 +445,8 @@ First runnable release. Whitepaper-driven implementation of the SelfDataGuard en
 - Initial README EN + FR
 - Repository structure under `self-security/selfdataguard/`
 
-[Unreleased]: https://github.com/Pierroons/my-self/compare/selfdataguard-v0.5.0...dev
+[Unreleased]: https://github.com/Pierroons/my-self/compare/selfdataguard-v0.5.1...dev
+[v0.5.1]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.5.1
 [v0.5.0]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.5.0
 [v0.4.0]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.4.0
 [v0.3.0]: https://github.com/Pierroons/my-self/releases/tag/selfdataguard-v0.3.0

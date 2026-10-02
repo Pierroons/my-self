@@ -3,7 +3,7 @@
 **Protection des données personnelles au repos côté application**
 *Dump ma base — et tu obtiens du bruit chiffré.*
 
-*Édition du 1er octobre 2026 — décrit SelfDataGuard v0.5.0*
+*Édition du 2 octobre 2026 — décrit SelfDataGuard v0.5.1*
 
 ---
 
@@ -388,4 +388,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Édition du 1er octobre 2026, alignée sur SelfDataGuard v0.5.0 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.5.0 (314 contrôles, 10 suites). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*
+*Édition du 2 octobre 2026, alignée sur SelfDataGuard v0.5.1 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.5.1 (319 contrôles, 10 suites, sous PHP 8.1, 8.2 et 8.4). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*

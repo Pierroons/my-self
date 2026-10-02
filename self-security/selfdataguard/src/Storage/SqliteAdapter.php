@@ -70,8 +70,11 @@ final class SqliteAdapter implements StorageInterface
 
     private PDO $pdo;
 
-    /** Savepoints this instance has open inside a caller's transaction. */
+    /** Savepoints this instance has open inside a transaction. */
     private int $depth = 0;
+
+    /** True while a transaction this instance opened itself is running. */
+    private bool $ownTransaction = false;
 
     /**
      * Opening a database created by an older version migrates it in place.
@@ -520,6 +523,13 @@ final class SqliteAdapter implements StorageInterface
      * "database is locked" at once, the busy timeout ignored. IMMEDIATE takes
      * the write lock up front, so a concurrent writer is waited for instead.
      *
+     * Opened in SQL, it is closed in SQL, and its state is tracked here, not
+     * asked of PDO: before PHP 8.4, PDO does not see a transaction opened by
+     * exec() — inTransaction() answers false and commit() throws "There is no
+     * active transaction", leaving the transaction open. For the same reason
+     * a caller's transaction opened in plain SQL is detected by SQLite's own
+     * refusal of a second BEGIN.
+     *
      * PDO cannot nest: a second beginTransaction() throws, and committing
      * "whatever is open" would commit the caller's half-done work. Inside a
      * foreign transaction this uses a SAVEPOINT, so a failure rolls back our
@@ -535,17 +545,17 @@ final class SqliteAdapter implements StorageInterface
      */
     private function atomic(callable $work): mixed
     {
-        if (!$this->pdo->inTransaction()) {
-            $this->pdo->exec('BEGIN IMMEDIATE');
+        if (!$this->ownTransaction && !$this->pdo->inTransaction() && $this->beginImmediate()) {
+            $this->ownTransaction = true;
             try {
                 $result = $work();
-                $this->pdo->commit();
+                $this->pdo->exec('COMMIT');
                 return $result;
             } catch (Throwable $e) {
-                if ($this->pdo->inTransaction()) {
-                    $this->pdo->rollBack();
-                }
+                $this->undo('ROLLBACK');
                 throw $e;
+            } finally {
+                $this->ownTransaction = false;
             }
         }
 
@@ -556,13 +566,42 @@ final class SqliteAdapter implements StorageInterface
             $this->pdo->exec('RELEASE SAVEPOINT ' . $point);
             return $result;
         } catch (Throwable $e) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->exec('ROLLBACK TO SAVEPOINT ' . $point);
-                $this->pdo->exec('RELEASE SAVEPOINT ' . $point);
-            }
+            $this->undo('ROLLBACK TO SAVEPOINT ' . $point);
+            $this->undo('RELEASE SAVEPOINT ' . $point);
             throw $e;
         } finally {
             $this->depth--;
+        }
+    }
+
+    /**
+     * BEGIN IMMEDIATE, or false when SQLite answers that a transaction is
+     * already open: the caller's, opened in plain SQL, which PDO before 8.4
+     * does not report through inTransaction().
+     */
+    private function beginImmediate(): bool
+    {
+        try {
+            $this->pdo->exec('BEGIN IMMEDIATE');
+            return true;
+        } catch (PDOException $e) {
+            if (str_contains($e->getMessage(), 'within a transaction')) {
+                return false;
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * An undo on an error path. SQLite may have rolled the transaction back by
+     * itself already (some I/O and disk-full errors do): the undo then fails,
+     * and the original error is the one worth reporting.
+     */
+    private function undo(string $sql): void
+    {
+        try {
+            $this->pdo->exec($sql);
+        } catch (PDOException) {
         }
     }
 

@@ -5,8 +5,8 @@
 **Application-layer data-at-rest protection that survives a database exfiltration.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.5.0 available](https://img.shields.io/badge/status-v0.5.0%20available-brightgreen.svg)](#status)
-[![Tests: 314 passing](https://img.shields.io/badge/tests-314%20passing-brightgreen.svg)](#testing)
+[![Status: v0.5.1 available](https://img.shields.io/badge/status-v0.5.1%20available-brightgreen.svg)](#status)
+[![Tests: 319 passing](https://img.shields.io/badge/tests-319%20passing-brightgreen.svg)](#testing)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -131,9 +131,9 @@ One admin path does exist, outside this table: the **escrow** (`src/Escrow/`), a
 
 ## Status
 
-**v0.5.0 — a third lock, and archiving instead of destruction**, 1 October 2026.
+**v0.5.1 — 0.5.0 (a third lock, and archiving instead of destruction) also runs on PHP 8.1 and 8.2**, 2 October 2026.
 
-Whitepaper complete (specification + threat model). PHP reference library implemented (3 601 lines across 25 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **314 checks across 10 suites**, all passing. A clickable HTML demo is included to inspect the encrypted database in real time.
+Whitepaper complete (specification + threat model). PHP reference library implemented (3 601 lines across 25 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **319 checks across 10 suites**, run on PHP 8.1, 8.2 and 8.4, all passing. A clickable HTML demo is included to inspect the encrypted database in real time.
 
 A database created by 0.4.0 migrates in place the first time 0.5.0 opens it (`wrap_phrase` and `revision` columns). Rolling back to 0.4.0 hides the archives, and leaves in place a passphrase lock that SelfRecover may have replaced since: see the [CHANGELOG](./CHANGELOG.md). Blobs written by 0.3.0 stay readable, through OpenSSL (`ext-openssl`) where libsodium refuses AES.
 
@@ -201,14 +201,14 @@ Ten sanity test suites, runnable directly with `php` (no PHPUnit required):
 php tests/sanity_primitives.php   # 46 tests — Argon2id, HMAC, XChaCha20-Poly1305 + IETF vector, legacy AES-GCM, randomness
 php tests/sanity_vault.php        # 51 tests — three locks, rotation, context separation, AAD binding, vault generation
 php tests/sanity_fields.php       # 26 tests — field encrypt/decrypt + blind index
-php tests/sanity_storage.php      # 55 tests — SQLite adapter, nested transactions, conditional write (generation, revision), "DB dump = soup" test
+php tests/sanity_storage.php      # 60 tests — SQLite adapter, nested transactions, conditional write (generation, revision), "DB dump = soup" test
 php tests/sanity_migration.php    # 10 tests — 0.4.0 database migrated in place, two concurrent migrators
 php tests/sanity_archive.php      # 26 tests — archive: content, isolation, all-or-nothing, concurrent writer waited for
 php tests/sanity_facade.php       # 57 tests — full API end-to-end, recover(), level 3, write race
 php tests/sanity_audit.php        # 12 tests — audit log
 php tests/sanity_ceremony.php     # 14 tests — key ceremony
 php tests/sanity_escrow.php       # 17 tests — escrow compartment
-# Total: 314 tests, 0 failures — counted by running them, 2026-10-01
+# Total: 319 tests, 0 failures — counted by running them, 2026-10-02
 ```
 
 The `sanity_storage.php` suite includes a "BIG TEST" that dumps the SQLite file and verifies that no plaintext personal data appears anywhere in the binary blob. On the SelfRecover side, `bi-self/selfrecover/tests/sanity_parcours_dataguard.php` takes a vault through every recovery, on the real paths of both libraries.

@@ -10,6 +10,14 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfDataGuard v0.5.1 — la 0.5.0 tourne aussi sous PHP 8.1 et 8.2 — 2 octobre 2026
+
+En PHP 8.2, la 0.5.0 laissait sa transaction ouverte : elle l'ouvrait en SQL et la refermait
+par PDO, qui avant la 8.4 ne voit pas une transaction ouverte ainsi. Le premier dépôt de
+séquestre échouait chez un intégrateur sous Debian 12. Le stockage referme désormais en SQL ce
+qu'il ouvre en SQL, et tient lui-même l'état de sa transaction. Les bancs de SelfDataGuard,
+le couplage et le parcours tournent maintenant aussi sous PHP 8.1 et 8.2 en CI.
+
 ### SelfDataGuard v0.5.0 — une troisième serrure, et l'archive au lieu de la destruction — 1er octobre 2026
 
 Un coffre couplé à SelfRecover ne survivait pas à toutes les récupérations. Au niveau 1, le

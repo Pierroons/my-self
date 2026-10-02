@@ -24,6 +24,37 @@ permissions:
   contents: read
 
 jobs:
+  # SelfDataGuard se déclare compatible PHP 8.1 et plus (composer.json), et ses intégrateurs le
+  # font tourner sur ce que leur distribution fournit — Debian 12 livre la 8.2. Le job principal
+  # tourne en 8.4 : un écart de comportement de PDO entre versions y passait inaperçu (la 0.5.0
+  # ouvrait une transaction en SQL que PDO 8.2 ne voit pas).
+  selfdataguard-php-anciens:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.1', '8.2']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - name: Installer PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2 au 19/08/2026
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: sodium, pdo_sqlite, mbstring, json
+          coverage: none
+      - name: SelfDataGuard, couplage et parcours sous PHP ${{ matrix.php }}
+        run: |
+          set -e
+          php -v | head -1
+          for t in self-security/selfdataguard/tests/sanity_*.php; do
+            echo "→ $(basename "$t")"
+            php "$t"
+          done
+          php bi-self/selfrecover/tests/sanity_couplage_dataguard.php | grep -qE '^OK — 8/8 ' \
+            || { echo "::error::couplage hors 8/8 sous PHP ${{ matrix.php }}"; exit 1; }
+          php bi-self/selfrecover/tests/sanity_parcours_dataguard.php | grep -qE '^OK — 18/18$' \
+            || { echo "::error::parcours hors 18/18 sous PHP ${{ matrix.php }}"; exit 1; }
+
   structure:
     runs-on: ubuntu-latest
     steps:
