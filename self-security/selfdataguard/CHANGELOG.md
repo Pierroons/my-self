@@ -23,11 +23,21 @@ PDO before 8.4 does not report either, is recognised by SQLite's refusal of a se
 a plain-SQL caller transaction, and a second connection that must read the committed write
 and take the write lock.
 
+### Fixed — PHP 8.1 and 8.2: the audit log named the wrong cause
+
+`AuditLog::readAll()` refused, as it must, to read an unreachable log as « no events », but
+before PHP 8.4 it named the wrong cause: a log written by the same process stayed in PHP's
+stat cache after its directory was closed, `is_file()` answered « present », and the error
+said « present but unreadable » instead of « not traversable ». The guarantee held, the
+diagnosis did not. The cache entry for the log is now cleared before the check. Found by the
+PHP 8.1/8.2 CI job below on its first run.
+
 ### Added — the suites run on PHP 8.1 and 8.2 in CI
 
 `composer.json` declares PHP 8.1 or later. A CI job now runs the ten SelfDataGuard suites,
 the SelfRecover coupling check and the cross-module recovery walk on PHP 8.1 and 8.2, next to
-the main job on 8.4.
+the main job on 8.4. Every suite runs even after a failure, so that one red suite does not
+leave the next ones unproven on that version.
 
 ## [v0.5.0] — 2026-10-01
 

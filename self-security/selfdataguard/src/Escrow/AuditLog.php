@@ -149,6 +149,11 @@ final class AuditLog
      */
     public function readAll(): array
     {
+        // PHP caches stat results (and resolved paths) for the life of the
+        // process: a log this process wrote, whose directory was closed since,
+        // would still look present — before PHP 8.4, is_file() then answers
+        // from the cache, and the traversability cause is never named.
+        clearstatcache(true, $this->path);
         if (!is_file($this->path)) {
             $dir = dirname($this->path);
             if (!is_dir($dir) || !is_readable($dir) || !is_executable($dir)) {

@@ -44,16 +44,19 @@ jobs:
           coverage: none
       - name: SelfDataGuard, couplage et parcours sous PHP ${{ matrix.php }}
         run: |
-          set -e
           php -v | head -1
+          rc=0
+          # Toutes les suites jouent, même après un échec : un arrêt au premier rouge laisse les
+          # suivantes non éprouvées sur cette version, sans que rien ne le dise.
           for t in self-security/selfdataguard/tests/sanity_*.php; do
             echo "→ $(basename "$t")"
-            php "$t"
+            php "$t" || { echo "::error::$(basename "$t") rouge sous PHP ${{ matrix.php }}"; rc=1; }
           done
           php bi-self/selfrecover/tests/sanity_couplage_dataguard.php | grep -qE '^OK — 8/8 ' \
-            || { echo "::error::couplage hors 8/8 sous PHP ${{ matrix.php }}"; exit 1; }
+            || { echo "::error::couplage hors 8/8 sous PHP ${{ matrix.php }}"; rc=1; }
           php bi-self/selfrecover/tests/sanity_parcours_dataguard.php | grep -qE '^OK — 18/18$' \
-            || { echo "::error::parcours hors 18/18 sous PHP ${{ matrix.php }}"; exit 1; }
+            || { echo "::error::parcours hors 18/18 sous PHP ${{ matrix.php }}"; rc=1; }
+          exit $rc
 
   structure:
     runs-on: ubuntu-latest
