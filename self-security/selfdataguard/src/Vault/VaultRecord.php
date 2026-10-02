@@ -18,9 +18,16 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
  *   - wrap_pwd    : data_master_key wrapped by password_key
  *   - wrap_recov  : data_master_key wrapped by recov_key (null if memorized
  *                   secret not configured — degrades to single-factor recovery)
- *   - wrap_admin  : data_master_key wrapped by admin_op_key (Hybrid mode only,
- *                   reserved for v0.2.0+; null for now)
+ *   - wrap_admin  : reserved, always null — the escrow compartment covers the
+ *                   administrator's access instead
  *   - created_at / updated_at: bookkeeping
+ *   - wrap_phrase : data_master_key wrapped by phrase_key (null if no
+ *                   passphrase was set)
+ *   - revision    : bumped by every stored update; a write applies only over
+ *                   the revision it was read at
+ *
+ * user_salt is also the vault's identity: it is never rotated, and a
+ * re-created vault gets a new one. Sessions and conditional writes compare it.
  *
  * Immutable. Update operations return a new VaultRecord.
  */
@@ -33,7 +40,9 @@ final class VaultRecord
         public readonly ?EncryptedBlob $wrapRecov,
         public readonly ?EncryptedBlob $wrapAdmin,
         public readonly DateTimeImmutable $createdAt,
-        public readonly DateTimeImmutable $updatedAt
+        public readonly DateTimeImmutable $updatedAt,
+        public readonly ?EncryptedBlob $wrapPhrase = null,
+        public readonly int $revision = 0
     ) {
         if ($userId === '') {
             throw new InvalidArgumentException('userId must not be empty');
@@ -54,7 +63,9 @@ final class VaultRecord
             wrapRecov: $this->wrapRecov,
             wrapAdmin: $this->wrapAdmin,
             createdAt: $this->createdAt,
-            updatedAt: $now
+            updatedAt: $now,
+            wrapPhrase: $this->wrapPhrase,
+            revision:  $this->revision
         );
     }
 
@@ -67,12 +78,34 @@ final class VaultRecord
             wrapRecov: $newWrapRecov,
             wrapAdmin: $this->wrapAdmin,
             createdAt: $this->createdAt,
-            updatedAt: $now
+            updatedAt: $now,
+            wrapPhrase: $this->wrapPhrase,
+            revision:  $this->revision
+        );
+    }
+
+    public function withWrapPhrase(?EncryptedBlob $newWrapPhrase, DateTimeImmutable $now): self
+    {
+        return new self(
+            userId:    $this->userId,
+            userSalt:  $this->userSalt,
+            wrapPwd:   $this->wrapPwd,
+            wrapRecov: $this->wrapRecov,
+            wrapAdmin: $this->wrapAdmin,
+            createdAt: $this->createdAt,
+            updatedAt: $now,
+            wrapPhrase: $newWrapPhrase,
+            revision:  $this->revision
         );
     }
 
     public function hasMemorizedRecovery(): bool
     {
         return $this->wrapRecov !== null;
+    }
+
+    public function hasPassphrase(): bool
+    {
+        return $this->wrapPhrase !== null;
     }
 }

@@ -14,9 +14,13 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 
+use Pierroons\SelfDataGuard\Vault\Lock;
+use Pierroons\SelfDataGuard\Vault\MissingEnvelopeException;
+use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UserVault;
 use Pierroons\SelfDataGuard\Vault\VaultRecord;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
+use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 
@@ -307,6 +311,129 @@ if (!function_exists('openssl_encrypt')) {
     } catch (RuntimeException $e) {
         ko('a vault written before 0.4.0 no longer unlocks', $e->getMessage());
     }
+}
+
+// -----------------------------------------------------------------------------
+
+section('Passphrase — a third envelope, opened by the SelfRecover passphrase');
+
+$PHRASE = 'cheval agrafe batterie correct moulin ivoire';
+$three  = $vault->register(
+    userId: 'user-phrase',
+    password: 'phrase-password-0001',
+    memorized: 'sunset-river-marble',
+    passphrase: $PHRASE
+);
+$rec3 = $three['record'];
+$rec3->hasPassphrase() ? ok('register(…, passphrase) seals wrap_phrase') : ko('no wrap_phrase after register');
+
+$byPhrase = $vault->unlockWithPassphrase($rec3, $PHRASE);
+hash_equals($three['unlocked']->getMasterKey(), $byPhrase->getMasterKey())
+    ? ok('the passphrase opens the same master key as the password')
+    : ko('the passphrase opened a different key');
+
+try {
+    $vault->unlockWithPassphrase($rec3, "  cheval\tagrafe  batterie\ncorrect moulin   ivoire ");
+    ok('whitespace variants of the passphrase open it (same normalisation as SelfRecover)');
+} catch (RuntimeException $e) {
+    ko('a copied passphrase with extra spaces is refused', $e->getMessage());
+}
+
+try {
+    $vault->unlockWithPassphrase($rec3, 'cheval agrafe batterie correct moulin ivoiree');
+    ko('a wrong passphrase opened the vault');
+} catch (WrongSecretException) {
+    ok('a wrong passphrase raises WrongSecretException');
+}
+
+try {
+    $vault->unlockWithPassphrase($result['record'], $PHRASE);
+    ko('a vault without passphrase wrap opened by passphrase');
+} catch (MissingEnvelopeException) {
+    ok('no passphrase wrap raises MissingEnvelopeException, not a wrong-secret error');
+}
+
+try {
+    $vault->unlockWithPassphrase($rec3, "  \t ");
+    ko('a passphrase made of whitespace reached the derivation');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'passphrase must not be empty')
+        ? ok('a passphrase made of whitespace is refused as empty, under its own name')
+        : ko('wrong message for a whitespace passphrase', $e->getMessage());
+}
+
+Lock::from('passphrase') === Lock::Passphrase && hash_equals(
+    $three['unlocked']->getMasterKey(),
+    $vault->unlock($rec3, Lock::from('memorized'), 'sunset-river-marble')->getMasterKey()
+)
+    ? ok('unlock(record, Lock, secret) dispatches on the lock name')
+    : ko('unlock() by Lock did not open the vault');
+
+// -----------------------------------------------------------------------------
+
+section('Passphrase — domain separation from the memorized secret');
+
+// The memorized envelope moved into the passphrase slot, opened with the same
+// string: the derivations differ, so it must not open.
+$swapped = $rec3->withWrapPhrase($rec3->wrapRecov, new DateTimeImmutable());
+try {
+    $vault->unlockWithPassphrase($swapped, 'sunset-river-marble');
+    ko('the memorized envelope opens as a passphrase — the two derivations coincide');
+} catch (WrongSecretException) {
+    ok('the same string sealed as memorized does not open as passphrase');
+}
+
+// -----------------------------------------------------------------------------
+
+section('Passphrase — rotation, removal, and the other wraps keep it');
+
+$afterPwd = $vault->changePassword($rec3, $byPhrase, 'phrase-password-0002');
+$afterMem = $vault->changeMemorized($afterPwd, $byPhrase, 'dawn-lake-copper');
+$afterMem->wrapPhrase?->toBase64() === $rec3->wrapPhrase->toBase64()
+    ? ok('changePassword() and changeMemorized() keep wrap_phrase')
+    : ko('a rotation of another wrap dropped or altered wrap_phrase');
+
+$NEW_PHRASE = 'tapis girafe lundi orage piment velours';
+$rotated = $vault->changePassphrase($afterMem, $byPhrase, $NEW_PHRASE);
+try {
+    $vault->unlockWithPassphrase($rotated, $PHRASE);
+    ko('the consumed passphrase still opens the vault');
+} catch (WrongSecretException) {
+    ok('after changePassphrase(), the old passphrase no longer opens');
+}
+hash_equals($three['unlocked']->getMasterKey(), $vault->unlockWithPassphrase($rotated, $NEW_PHRASE)->getMasterKey())
+    ? ok('the new passphrase opens the same master key')
+    : ko('the new passphrase opened a different key');
+
+$removed = $vault->removePassphrase($rotated, $byPhrase);
+!$removed->hasPassphrase() && $removed->wrapRecov !== null
+    ? ok('removePassphrase() drops wrap_phrase only')
+    : ko('removePassphrase() touched another wrap');
+
+try {
+    $vault->changePassphrase($rotated, $byPhrase, ' trop  court ');
+    ko('a passphrase under the floor was sealed');
+} catch (InvalidArgumentException) {
+    ok('sealing a passphrase under PASSWORD_MIN_LEN (after normalisation) is refused');
+}
+
+// -----------------------------------------------------------------------------
+
+section('Generation — a session from a replaced vault cannot write into the new one');
+
+$old = $vault->register('user-gen', 'gen-password-0001', 'old-memorized');
+$new = $vault->register('user-gen', 'gen-password-0002', 'new-memorized');
+try {
+    $vault->changePassword($new['record'], $old['unlocked'], 'gen-password-0003');
+    ko('a session from the old vault re-sealed the new one');
+} catch (StaleVaultException) {
+    ok('changePassword() with a session from another vault of the same userId raises StaleVaultException');
+}
+try {
+    $vault->changePassphrase($new['record'], $old['unlocked'], $NEW_PHRASE);
+    ko('a session from the old vault sealed a passphrase on the new one');
+} catch (StaleVaultException) {
+    ok('changePassphrase() is guarded the same way');
 }
 
 // -----------------------------------------------------------------------------

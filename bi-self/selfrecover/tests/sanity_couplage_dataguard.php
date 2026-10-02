@@ -17,11 +17,38 @@ require __DIR__ . '/../../../self-security/selfdataguard/src/autoload.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfRecover\Diceware\Wordlist;
 use Pierroons\SelfRecover\Recovery\Escalade;
+use Pierroons\SelfRecover\Recovery\Recovery;
 
 // Le profil d'écriture de `sr-kdf.js` se dit « celui de SelfDataGuard ».
 $js = (string) file_get_contents(__DIR__ . '/../client/sr-kdf.js');
 preg_match('/const PROFIL = Object\.freeze\(\{[^}]*\bt: (\d+), m: (\d+), p: (\d+), dkLen: (\d+)/', $js, $p);
+
+// La passphrase que SelfRecover accepte doit être celle qui ouvre le coffre :
+// SelfDataGuard scelle sa serrure « passphrase » sur la chaîne normalisée.
+// Les entrées visent ce qu'un copier-coller apporte — espace insécable,
+// cadratin, NEL sur un octet — et ce qu'un client mal formé enverrait.
+$entrees = [
+    '  cheval   agrafe batterie  correct ',
+    "cheval\tagrafe\nbatterie\r\ncorrect",
+    "cheval\vagrafe\fbatterie",
+    "cheval\0agrafe",
+    "cheval\u{00A0}agrafe",
+    "cheval\u{2003}agrafe",
+    "cheval\x85agrafe",
+    "\xff\xfe cheval agrafe",
+    '',
+    ' ',
+];
+$accords = count(array_filter($entrees, static fn (string $e): bool =>
+    UserVault::normalizePassphrase($e) === Recovery::normaliserPassphrase($e)));
+$stables = count(array_filter($entrees, static fn (string $e): bool =>
+    UserVault::normalizePassphrase(UserVault::normalizePassphrase($e)) === UserVault::normalizePassphrase($e)));
+$engendrees = array_map(static fn (): string => Recovery::engendrerPassphrase(), range(1, 20));
+$normales = count(array_filter($engendrees, static fn (string $p): bool => UserVault::normalizePassphrase($p) === $p));
+$plusCourte = Recovery::MOTS_PASSPHRASE * min(array_map('strlen', Wordlist::load('en')))
+    + Recovery::MOTS_PASSPHRASE - 1;
 
 $controles = [
     'minimum du mot de passe : Escalade (caractères) = UserVault (octets)'
@@ -32,6 +59,14 @@ $controles = [
         => [(int) ($p[2] ?? -1), intdiv(Primitives::ARGON2_MEMLIMIT, 1024)],
     'sr-kdf.js dkLen = Primitives::KEY_LEN'
         => [(int) ($p[4] ?? -1), Primitives::KEY_LEN],
+    'normalisation de la passphrase : entrées où SelfDataGuard = SelfRecover'
+        => [$accords, count($entrees)],
+    'normalisation de SelfDataGuard idempotente : entrées stables'
+        => [$stables, count($entrees)],
+    'passphrases engendrées par SelfRecover déjà normalisées'
+        => [$normales, count($engendrees)],
+    'plus courte passphrase engendrable ≥ plancher de scellement (1 = oui)'
+        => [(int) ($plusCourte >= UserVault::PASSWORD_MIN_LEN), 1],
 ];
 
 $echecs = 0;

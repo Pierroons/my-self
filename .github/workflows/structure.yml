@@ -1078,15 +1078,16 @@ jobs:
             php "$t"
           done
 
-      # SelfRecover et SelfDataGuard déclarent chacun leur minimum de mot de passe,
-      # sans dépendre l'un de l'autre : ce banc les tient d'accord. Le canari
-      # désaccorde l'un des deux et exige le rouge.
+      # SelfRecover et SelfDataGuard déclarent chacun leur minimum de mot de passe
+      # et leur normalisation de la passphrase, sans dépendre l'un de l'autre : ce
+      # banc les tient d'accord. Chaque canari désaccorde l'un des deux et exige le
+      # rouge.
       - name: Garde-fou — les valeurs que SelfRecover partage avec SelfDataGuard
         run: |
           sortie=$(php bi-self/selfrecover/tests/sanity_couplage_dataguard.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^OK — 4/4 ' \
-            || { echo "::error::le banc du couplage n'a pas jugé ses 4 valeurs"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 8/8 ' \
+            || { echo "::error::le banc du couplage n'a pas jugé ses 8 valeurs"; exit 1; }
           F=self-security/selfdataguard/src/Vault/UserVault.php
           cp "$F" /tmp/UserVault.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
@@ -1100,6 +1101,44 @@ jobs:
           [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
             || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
           echo "✓ la sonde rougit quand les minimums divergent"
+          sed -i 's/return trim((string) preg_replace(/return ((string) preg_replace(/' "$F"
+          grep -q 'return ((string) preg_replace(' "$F" || { echo "::error::canari non planté — motif introuvable"; exit 1; }
+          if sortie=$(php bi-self/selfrecover/tests/sanity_couplage_dataguard.php); then
+            cp /tmp/UserVault.intact "$F"
+            echo "::error::les normalisations désaccordées rendent encore vert"; exit 1
+          fi
+          cp /tmp/UserVault.intact "$F"
+          echo "$sortie" | grep -q '✗ normalisation de la passphrase' \
+            || { echo "$sortie"; echo "::error::le rouge ne vient pas de la normalisation"; exit 1; }
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ la sonde rougit quand les normalisations divergent"
+
+      # Un coffre SelfDataGuard traverse chaque récupération de SelfRecover, sur les
+      # vrais chemins des deux bibliothèques. Le canari fait oublier à recover() le
+      # re-scellement de la passphrase : la passphrase consommée ouvrirait encore.
+      - name: Garde-fou — un coffre survit à chaque récupération SelfRecover
+        run: |
+          sortie=$(php bi-self/selfrecover/tests/sanity_parcours_dataguard.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^OK — 18/18$' \
+            || { echo "::error::le parcours n'a pas joué ses 18 cas"; exit 1; }
+          F=self-security/selfdataguard/src/SelfDataGuard.php
+          cp "$F" /tmp/SelfDataGuard.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
+          sed -i '/\$record = \$this->vault->changePassphrase(\$record, \$session, \$newPassphrase);/d' "$F"
+          ! grep -q 'record = $this->vault->changePassphrase($record, $session, $newPassphrase);' "$F" \
+            || { echo "::error::canari non planté — motif introuvable"; exit 1; }
+          if sortie=$(php bi-self/selfrecover/tests/sanity_parcours_dataguard.php 2>&1); then
+            cp /tmp/SelfDataGuard.intact "$F"
+            echo "::error::le parcours reste VERT quand recover() oublie la passphrase"; exit 1
+          fi
+          cp /tmp/SelfDataGuard.intact "$F"
+          echo "$sortie" | grep -q "❌ la passphrase consommée n'ouvre plus le coffre" \
+            || { echo "$sortie"; echo "::error::le rouge ne vient pas de la passphrase"; exit 1; }
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ la sonde rougit quand la passphrase n'est pas re-scellée"
 
       # La taille du sel de compte vit à quatre endroits qui ne peuvent pas se lire :
       # sr-derive.js, sr-kdf.js, Recovery::SEL_OCTETS, le CHECK du schéma duo.
