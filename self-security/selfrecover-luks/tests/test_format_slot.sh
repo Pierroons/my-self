@@ -10,6 +10,11 @@
 # format ne soit inscrit, keyscript en place, format réel inconnu. Deviner y est le
 # seul geste interdit.
 #
+# Le second invariant : la borne keyfile-size de la crypttab est la longueur de la clé
+# que le keyscript présente, ou elle est absente. cryptsetup lit exactement la borne ;
+# une borne raw sous un keyscript hex tronque la clé. La table des longueurs de
+# `format-slot.sh taille` est rejouée contre cryptsetup lui-même, pas recopiée.
+#
 # Ne demande PAS root : conteneurs LUKS2 de 32 Mo sur fichier, aucune activation
 # device-mapper. Même forme que test_sauvegardes.sh.
 #
@@ -123,6 +128,89 @@ verdict "keyscript à poser sans --format" REFUSE "ne dit pas" -- verifier "$RAC
 printf 'pas un volume' > "$BANC/faux.img"
 verdict "volume qui n'est pas LUKS" REFUSE "pas un volume LUKS" -- verifier "$BANC/faux.img" "$KS_DEPOT" "$SKG"
 verdict "inscrire un format inconnu" REFUSE "format inconnu" -- inscrire "$RACINE" base64 "$SKG"
+
+echo
+echo "▸ La borne keyfile-size — cryptsetup lit exactement ce qu'elle dit"
+# Mesuré le 23/08/2026 sur un poste équipé en raw, rejoué ici sur de vrais conteneurs.
+# Une clé par conteneur : une ouverture ne peut pas venir du slot de l'autre format.
+head -c 32 /dev/urandom > "$BANC/raw.key"
+od -An -tx1 "$BANC/raw.key" | tr -d ' \n' > "$BANC/hex.key"
+volume_cle() {
+  truncate -s 32M "$1"
+  cryptsetup luksFormat --type luks2 --pbkdf pbkdf2 --pbkdf-force-iterations 1000 -q "$1" "$2" \
+    >/dev/null 2>&1 || { echo "❌ luksFormat $1"; exit 1; }
+}
+volume_cle "$BANC/vol-raw.img" "$BANC/raw.key"
+volume_cle "$BANC/vol-hex.img" "$BANC/hex.key"
+T_HEX="$(bash "$FMT" taille "$KS_DEPOT")"
+T_RAW="$(bash "$FMT" taille "$KS_RAW")"
+
+ouverture() {  # ouverture <libellé> <OUVRE|ECHOUE> <volume> <clé> [borne]
+  local obtenu
+  total=$((total + 1))
+  # Par stdin, comme le keyscript au démarrage.
+  if cryptsetup open --test-passphrase --key-file=- ${5:+--keyfile-size "$5"} "$3" < "$4" >/dev/null 2>&1
+  then obtenu=OUVRE; else obtenu=ECHOUE; fi
+  if [ "$obtenu" = "$2" ]; then printf '  ✅ %-58s %s\n' "$1" "$obtenu"
+  else printf '  ❌ %-58s %s (attendu %s)\n' "$1" "$obtenu" "$2"; echec=1; fi
+}
+ouverture "clé hex, borne que format-slot.sh donne au hex ($T_HEX)" OUVRE "$BANC/vol-hex.img" "$BANC/hex.key" "$T_HEX"
+ouverture "clé raw, borne que format-slot.sh donne au raw ($T_RAW)" OUVRE "$BANC/vol-raw.img" "$BANC/raw.key" "$T_RAW"
+ouverture "clé hex sous la borne du raw : tronquée" ECHOUE "$BANC/vol-hex.img" "$BANC/hex.key" "$T_RAW"
+ouverture "clé raw sous la borne du hex : octets manquants" ECHOUE "$BANC/vol-raw.img" "$BANC/raw.key" "$T_HEX"
+ouverture "clé raw sans borne (racine équipée avant la borne)" OUVRE "$BANC/vol-raw.img" "$BANC/raw.key"
+ouverture "clé hex sans borne" OUVRE "$BANC/vol-hex.img" "$BANC/hex.key"
+
+echo
+echo "▸ format-slot.sh borne — une ligne de crypttab, et elle seule"
+code_rendu() {  # code_rendu <libellé> <code attendu> <motif|--> -- <arguments de format-slot.sh...>
+  local libelle="$1" attendu="$2" motif="$3" texte code; shift 4
+  total=$((total + 1))
+  texte="$(bash "$FMT" "$@" 2>&1)"; code=$?
+  if [ "$code" != "$attendu" ]; then
+    printf '  ❌ %-58s code %s (attendu %s)\n' "$libelle" "$code" "$attendu"
+    printf '%s\n' "$texte" | sed 's/^/        /' | head -4; echec=1; return
+  fi
+  if [ "$motif" != "--" ] && ! printf '%s' "$texte" | grep -qi -- "$motif"; then
+    printf '  ❌ %-58s code %s mais sans dire « %s »\n' "$libelle" "$code" "$motif"; echec=1; return
+  fi
+  printf '  ✅ %-58s code %s\n' "$libelle" "$code"
+}
+constat() {  # constat <libellé> <commande...>
+  local libelle="$1"; shift
+  total=$((total + 1))
+  if "$@"; then printf '  ✅ %-58s vrai\n' "$libelle"
+  else printf '  ❌ %-58s faux\n' "$libelle"; echec=1; fi
+}
+borne_racine() { grep '^racine_crypt ' "$CT" | grep -o 'keyfile-size=[0-9]*'; }
+
+CT="$BANC/crypttab"
+cat > "$CT" <<'EOF'
+# volume racine
+racine_crypt UUID=00000000-0000-0000-0000-000000000001 none luks,discard,x-initrd.attach,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh
+donnees UUID=00000000-0000-0000-0000-000000000002 /etc/keys/data.key luks,keyfile-size=4096,nofail
+swap /dev/zram0 none
+EOF
+cp "$CT" "$BANC/crypttab.ref"
+
+code_rendu "borne absente : signalée, sans écrire" 3 "aucune borne" -- borne racine_crypt "$KS_DEPOT" "$CT"
+constat "… la crypttab est intacte" cmp -s "$CT" "$BANC/crypttab.ref"
+code_rendu "--ecrire pose la borne du hex" 0 "absente" -- borne racine_crypt "$KS_DEPOT" "$CT" --ecrire
+constat "la racine porte keyfile-size=$T_HEX, une seule fois" test "$(borne_racine)" = "keyfile-size=$T_HEX"
+constat "les autres lignes n'ont pas bougé" \
+  diff -q <(grep -v '^racine_crypt ' "$BANC/crypttab.ref") <(grep -v '^racine_crypt ' "$CT")
+constat "la crypttab d'avant est copiée à côté" cmp -s "$BANC/crypttab.ref" "$(ls "$CT".avant-borne.* | head -1)"
+code_rendu "borne conforme" 0 "keyfile-size=$T_HEX" -- borne racine_crypt "$KS_DEPOT" "$CT"
+
+sed -i "s|^racine_crypt .*|racine_crypt UUID=00000000-0000-0000-0000-000000000001 none luks,keyfile-size=$T_RAW,discard,x-initrd.attach,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh|" "$CT"
+code_rendu "borne du raw sous un keyscript hex : refus" 1 "tronquée" -- borne racine_crypt "$KS_DEPOT" "$CT"
+code_rendu "--ecrire la corrige" 0 "$T_RAW → $T_HEX" -- borne racine_crypt "$KS_DEPOT" "$CT" --ecrire
+constat "corrigée à sa place, sans doublon" \
+  grep -q "^racine_crypt .* luks,keyfile-size=$T_HEX,discard,x-initrd.attach,keyscript=[^,]*\$" "$CT"
+code_rendu "borne du hex sous un keyscript raw : refus" 1 "tronquée" -- borne racine_crypt "$KS_RAW" "$CT"
+code_rendu "nom absent de la crypttab : refus" 1 "aucune ligne" -- borne inconnu "$KS_DEPOT" "$CT"
+code_rendu "ligne sans options : refus" 1 "pas de colonne" -- borne swap "$KS_DEPOT" "$CT" --ecrire
+code_rendu "taille d'un keyscript sans --format : refus" 1 "ne dit pas" -- taille "$KS_SANS"
 
 echo
 if [ "$echec" -eq 0 ]; then
