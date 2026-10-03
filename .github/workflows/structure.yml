@@ -160,6 +160,37 @@ jobs:
             || { echo "::error::le contrôle a modifié un bloc sans --ecrire"; exit 1; }
           echo "✓ le contrôle rougit sur une version voisine et sur un module retiré, sans rien modifier"
 
+      # ── Vitrine ────────────────────────────────────────────────────────────
+      # Les deux pages servies par my-self.fr, contre les préréglages recommended et
+      # a11y de html-validate (.htmlvalidate.json). Version épinglée : une version
+      # flottante changerait les règles sans qu'aucun commit le dise.
+      - name: Vitrine — les pages de my-self.fr sont du HTML valide et accessible
+        run: npx --yes html-validate@9.7.1 --config .htmlvalidate.json web/my-self.fr/index.html web/my-self.fr/pentest.html
+
+      - name: Canari — le validateur rougit sur un style en ligne, un id en double, un titre sauté
+        run: |
+          F=web/my-self.fr/index.html
+          cp "$F" /tmp/VX.intact
+          for cas in style id titre; do
+            cp /tmp/VX.intact "$F"
+            case $cas in
+              style) sed -i 's#<h1 class="visually-hidden">#<h1 class="visually-hidden" style="color:red">#' "$F" ;;
+              id)    sed -i 's#<section class="support">#<section class="support" id="descartes-pixel">#' "$F" ;;
+              titre) sed -i 's#<h2>Reprendre la main</h2>#<h4>Reprendre la main</h4>#' "$F" ;;
+            esac
+            if cmp -s /tmp/VX.intact "$F"; then
+              echo "::error::cas « $cas » : la plantation n'a pas pris — le canari ne prouve rien"; exit 1
+            fi
+            if npx --yes html-validate@9.7.1 --config .htmlvalidate.json "$F" >/dev/null 2>&1; then
+              cp /tmp/VX.intact "$F"
+              echo "::error::cas « $cas » : le validateur reste VERT"; exit 1
+            fi
+          done
+          cp /tmp/VX.intact "$F"
+          cmp -s /tmp/VX.intact "$F" \
+            || { echo "::error::$F n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le validateur rougit sur un style en ligne, un id en double et un titre sauté, et la page est restaurée"
+
       # ── Garde-fous ─────────────────────────────────────────────────────────
       # Priorité sur le reste : ce sont eux qui échouent en silence.
       - name: Garde-fou — socle SelfRecover (profil de hachage, encodage, diceware)

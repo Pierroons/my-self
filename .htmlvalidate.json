@@ -1,0 +1,7 @@
+{
+  "root": true,
+  "extends": ["html-validate:recommended", "html-validate:a11y"],
+  "rules": {
+    "heading-level": "error"
+  }
+}
