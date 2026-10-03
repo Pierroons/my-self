@@ -243,6 +243,9 @@
       width: 100%;
       aspect-ratio: 16/10;
     }
+    .stage-clip { position: absolute; inset: 0; overflow: hidden; }
+    .stage-canvas { position: absolute; left: 0; top: 0; width: 50%; height: 100%; }
+    .stage-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
     .pixelated-canvas {
       image-rendering: pixelated;
       image-rendering: -moz-crisp-edges;
@@ -372,6 +375,10 @@
       flex-wrap: wrap;
       margin-top: 1.5rem;
     }
+    .note { margin-top: 1.2rem; font-size: 0.85rem; }
+    .support { margin-top: 3rem; text-align: center; }
+    .support-intro { font-size: 0.95rem; color: var(--text-muted); max-width: 560px; margin: 0 auto 1rem; }
+    .support-note { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.7rem; }
     .soutien {
       display: inline-block;
       padding: 0.7rem 1.6rem;
@@ -399,14 +406,13 @@
   <div class="hero-descartes" role="img" aria-label="Portrait de René Descartes pixelisé en duotone bleu, aspiré symétriquement vers un cercle blanc central — le Pacte humain–IA — face à une grille machine violette en train de se reformer.">
     <div class="stage">
       <!-- Couche 1 : Descartes pixel art runtime (canvas 400×500 pixelisé en duotone bleu) -->
-      <div style="position: absolute; inset: 0; overflow: hidden;">
+      <div class="stage-clip">
         <canvas id="descartes-pixel" width="400" height="500"
-                class="pixelated-canvas"
-                style="position: absolute; left: 0; top: 0; width: 50%; height: 100%;"></canvas>
+                class="pixelated-canvas stage-canvas"></canvas>
       </div>
 
       <!-- Couche 2 : Convergence symétrique vers le cercle (le Pacte) -->
-      <svg viewBox="0 0 800 500" style="position: absolute; inset: 0; width: 100%; height: 100%;" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <svg viewBox="0 0 800 500" class="stage-svg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <defs>
           <linearGradient id="suckLeftHero" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0" stop-color="#7ab7ff" stop-opacity="1"/>
@@ -714,7 +720,7 @@
       <a class="btn btn-primary" href="https://farm.example.org"><span aria-hidden="true">🌻</span> Essayer la démo</a>
       <a class="btn" href="https://github.com/Pierroons/selffarm-lite" target="_blank" rel="noopener">Code sur GitHub</a>
     </div>
-    <p class="muted" style="margin-top: 1.2rem; font-size: 0.85rem;">
+    <p class="muted note">
       La démo utilise un JA fictif (Marie DUPONT, maraîchage bio + PPAM en Dordogne). Aucune donnée réelle.
     </p>
   </div>
@@ -760,7 +766,7 @@
       <a class="btn btn-primary" href="https://ctf.example.org"><span aria-hidden="true">🎯</span> Visiter la démo</a>
       <a class="btn" href="https://ctf.example.org/redteam.php"><span aria-hidden="true">🛡️</span> Tester la sécurité</a>
     </div>
-    <p class="muted" style="margin-top: 1.2rem; font-size: 0.85rem;">
+    <p class="muted note">
       Forum de démonstration à contenu fictif. Aucune donnée réelle.
     </p>
   </div>
@@ -789,9 +795,9 @@
   </div>
 </section>
 
-<section class="support" style="margin-top: 3rem; text-align: center;">
+<section class="support">
   <h2 class="visually-hidden">Soutenir le projet</h2>
-  <p style="font-size: 0.95rem; color: var(--text-muted); max-width: 560px; margin: 0 auto 1rem;">
+  <p class="support-intro">
     MySelf est auto-hébergé sur matériel grand public, sans publicité, sans tracker,
     sans sponsor commercial. Si le projet te sert ou te parle, un geste direct
     aide à le maintenir en vie.
@@ -799,7 +805,7 @@
   <a class="soutien" href="https://pay.vivawallet.com/pierroons" target="_blank" rel="noopener">
     <span aria-hidden="true">🙏</span> Soutenir le projet
   </a>
-  <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.7rem;">
+  <p class="support-note">
     Via Viva Wallet — CB, Apple Pay, Google Pay, PayPal.
   </p>
 </section>
