@@ -77,7 +77,7 @@ final class Redteam
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM redteam_reports WHERE ip_hash = ? AND created_at >= ?');
         $stmt->execute([$ipHash, $since]);
         if ((int) $stmt->fetchColumn() >= self::RL_MAX) {
-            return ['ok' => false, 'message' => 'Trop de soumissions récentes. Réessaie dans une heure.'];
+            return ['ok' => false, 'message' => tc('Trop de soumissions récentes. Réessaie dans une heure.')];
         }
 
         // Stocké TEL QUEL. Aucun rechiffrement : le passer par DataGuard
