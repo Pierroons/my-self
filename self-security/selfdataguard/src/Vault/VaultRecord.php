@@ -25,6 +25,9 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
  *                   passphrase was set)
  *   - revision    : bumped by every stored update; a write applies only over
  *                   the revision it was read at
+ *   - kdf_opslimit / kdf_memlimit : the Argon2id profile of every envelope,
+ *                   fixed at creation (a vault stored before 0.6.0 carries the
+ *                   legacy profile, Primitives::LEGACY_*)
  *
  * user_salt is also the vault's identity: it is never rotated, and a
  * re-created vault gets a new one. Sessions and conditional writes compare it.
@@ -42,7 +45,11 @@ final class VaultRecord
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,
         public readonly ?EncryptedBlob $wrapPhrase = null,
-        public readonly int $revision = 0
+        public readonly int $revision = 0,
+        // Every envelope of a vault is sealed under this one profile, chosen when
+        // the vault is created; re-seals keep it.
+        public readonly int $kdfOpslimit = Primitives::ARGON2_OPSLIMIT,
+        public readonly int $kdfMemlimit = Primitives::ARGON2_MEMLIMIT
     ) {
         if ($userId === '') {
             throw new InvalidArgumentException('userId must not be empty');
@@ -65,7 +72,9 @@ final class VaultRecord
             createdAt: $this->createdAt,
             updatedAt: $now,
             wrapPhrase: $this->wrapPhrase,
-            revision:  $this->revision
+            revision:  $this->revision,
+            kdfOpslimit: $this->kdfOpslimit,
+            kdfMemlimit: $this->kdfMemlimit
         );
     }
 
@@ -80,7 +89,9 @@ final class VaultRecord
             createdAt: $this->createdAt,
             updatedAt: $now,
             wrapPhrase: $this->wrapPhrase,
-            revision:  $this->revision
+            revision:  $this->revision,
+            kdfOpslimit: $this->kdfOpslimit,
+            kdfMemlimit: $this->kdfMemlimit
         );
     }
 
@@ -95,7 +106,9 @@ final class VaultRecord
             createdAt: $this->createdAt,
             updatedAt: $now,
             wrapPhrase: $newWrapPhrase,
-            revision:  $this->revision
+            revision:  $this->revision,
+            kdfOpslimit: $this->kdfOpslimit,
+            kdfMemlimit: $this->kdfMemlimit
         );
     }
 

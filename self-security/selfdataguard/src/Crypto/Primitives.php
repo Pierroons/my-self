@@ -53,6 +53,14 @@ final class Primitives
      */
     public const ARGON2_OPSLIMIT = 3;
     public const ARGON2_MEMLIMIT = 65536 * 1024;
+
+    /**
+     * The profile of every vault and admin key sealed before 0.6.0, which did not
+     * record theirs. Frozen: it describes data already written, so it must not
+     * follow ARGON2_* when they change.
+     */
+    public const LEGACY_OPSLIMIT = 3;
+    public const LEGACY_MEMLIMIT = 65536 * 1024;
     public const SALT_LEN        = 16;
     public const KEY_LEN         = 32;
     public const NONCE_LEN       = EncryptedBlob::NONCE_LEN_V2;
