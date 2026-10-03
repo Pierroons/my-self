@@ -173,7 +173,10 @@ install -m 0755 "$HERE/selfrecover-keyscript.sh"   "$SKG/selfrecover-keyscript.s
 # régénère l'image : le hook ne peut embarquer que ce qui est déjà sur le disque.
 install -m 0755 "$HERE/selfrecover-secours.sh"     "$SKG/selfrecover-secours.sh"
 install -m 0755 "$HERE/initramfs-hook-selfrecover" /etc/initramfs-tools/hooks/selfrecover
-ok "keyscript + secours + hook (avec fix libgcc) déployés"
+# Le garde-fou post-update (étape 8) le relit pour juger la borne keyfile-size de
+# chaque image produite.
+install -m 0755 "$HERE/format-slot.sh"             "$SKG/format-slot.sh"
+ok "keyscript + secours + hook (avec fix libgcc) + format-slot déployés"
 
 # ---------- 3 bis. Les deux secrets irréversibles sont-ils hors de cette machine ? ----------
 say "3 bis. Sauvegardes des secrets irréversibles — contrôle bloquant"
@@ -231,32 +234,34 @@ fi
 # ---------- 5. crypttab racine : keyscript ----------
 say "5. Volume racine : keyscript dans /etc/crypttab"
 cp -a /etc/crypttab "/etc/crypttab.bak.$(date +%s)"
-# keyfile-size=64 va avec le keyscript, et n'a de sens qu'avec lui : c'est la taille
-# de la clé hex qu'il produit. cryptsetup honore l'option pour un keyfile, «-» compris,
-# et ne l'ignore que pour du plain dm-crypt. Elle borne la lecture, donc un \n final
-# glissé un jour dans le keyscript ne changerait plus la clé présentée — sans dispenser
-# du printf '%s'. Mesure : docs/cryptsetup-lecture-cle.md
 if grep -q "^${ROOT_NAME}.*keyscript=" /etc/crypttab; then
   ok "keyscript déjà présent sur $ROOT_NAME"
-  if grep -q "^${ROOT_NAME}.*keyfile-size=" /etc/crypttab; then
-    ok "keyfile-size déjà présent sur $ROOT_NAME"
-  else
-    # ⚠️ Un simple avertissement laissait la borne absente sur toute machine déjà
-    # équipée — précisément le public de la migration du §15, celui qui vient de
-    # changer le format de sa clé. La ceinture n'était posée que sur les
-    # installations neuves, c'est-à-dire là où elle sert le moins.
-    # La question est posée comme partout ailleurs dans ce script : une ligne de
-    # /etc/crypttab ne se modifie pas sans accord. La sauvegarde datée est déjà
-    # prise plus haut, et le script se relance sans dommage.
-    confirm "Ajouter keyfile-size=64 à la ligne $ROOT_NAME (borne la lecture de la clé) ?"
-    sed -i "/^${ROOT_NAME}[[:space:]]/s|\$|,keyfile-size=64|" /etc/crypttab
-    ok "keyfile-size=64 ajouté"
-  fi
 else
-  confirm "Ajouter keyscript= et keyfile-size=64 à la ligne $ROOT_NAME ?"
-  sed -i "/^${ROOT_NAME}[[:space:]]/s|\$|,keyscript=$SKG/selfrecover-keyscript.sh,keyfile-size=64|" /etc/crypttab
+  confirm "Ajouter keyscript= à la ligne $ROOT_NAME ?"
+  sed -i "/^${ROOT_NAME}[[:space:]]/s|\$|,keyscript=$SKG/selfrecover-keyscript.sh|" /etc/crypttab
   ok "keyscript ajouté"
 fi
+
+# keyfile-size borne la lecture de la clé : un \n final glissé un jour dans le
+# keyscript ne changerait plus la clé présentée — sans dispenser du printf '%s'.
+# cryptsetup lit EXACTEMENT la borne, donc elle vaut la longueur de la clé du
+# keyscript posé, que format-slot.sh tient. Une borne déjà là n'est pas crue sur
+# parole : une machine qui vient de migrer de raw à hex (§15) garde sa borne raw, qui
+# tronquerait la clé. Mesure : docs/cryptsetup-lecture-cle.md §6.
+RC_BORNE=0
+bash "$HERE/format-slot.sh" borne "$ROOT_NAME" "$SKG/selfrecover-keyscript.sh" /etc/crypttab || RC_BORNE=$?
+case "$RC_BORNE" in
+  0) ;;
+  1|3)
+    # 3 : borne absente ; 1 : borne différente, ou ligne introuvable — format-slot.sh
+    # vient de dire lequel. Une ligne de /etc/crypttab ne se modifie pas sans accord.
+    TAILLE_CLE="$(bash "$HERE/format-slot.sh" taille "$SKG/selfrecover-keyscript.sh")"
+    confirm "Mettre keyfile-size=$TAILLE_CLE sur la ligne $ROOT_NAME (longueur de la clé du keyscript) ?"
+    bash "$HERE/format-slot.sh" borne "$ROOT_NAME" "$SKG/selfrecover-keyscript.sh" /etc/crypttab --ecrire \
+      || die "borne non posée sur $ROOT_NAME : voir ci-dessus."
+    ;;
+  *) die "borne de $ROOT_NAME illisible : voir ci-dessus." ;;
+esac
 grep "^${ROOT_NAME}" /etc/crypttab | sed 's/^/    /'
 
 # ---------- 6. dropbear + rootdelay (parcours serveur) ----------
