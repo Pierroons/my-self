@@ -132,6 +132,21 @@ sortie du dérivateur + \n final, --keyfile-size 64    OUVRE
 `keyfile-size` ne remplace pas `printf '%s'` : il rattrape un `\n`
 accidentel, il ne garantit pas que le keyscript produise la bonne clé.
 
+**La borne se lit exactement.** cryptsetup prend autant d'octets que la borne en
+demande, ni plus ni moins : plus courte que la clé, il la tronque ; plus longue, il
+échoue faute d'octets. Mesuré le 23/08/2026 sur un poste équipé en raw, et rejoué par
+`tests/test_format_slot.sh` sur des conteneurs LUKS de fichier :
+
+| clé présentée | `keyfile-size 64` | `keyfile-size 32` | sans borne |
+|---|---|---|---|
+| hex, 64 caractères | OUVRE | ÉCHOUE | OUVRE |
+| brute, 32 octets | ÉCHOUE | OUVRE | OUVRE |
+
+La borne appartient donc au keyscript, pas à la machine : passer de brut à hex sans
+la changer rend le slot inouvrable au démarrage. `format-slot.sh taille` donne la
+valeur d'un keyscript, et le garde-fou post-update la confronte à la crypttab que
+l'image embarque.
+
 ## 7. Ce que cela change pour SelfRecover-LUKS
 
 **Une clé brute est sûre au démarrage sous Debian.** Le risque à 11,8 % ne se

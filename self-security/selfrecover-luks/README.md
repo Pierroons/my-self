@@ -61,13 +61,13 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | `selfrecover-keyscript.sh` | root-volume keyscript (derives the recovery passphrase) |
 | `initramfs-hook-selfrecover` | embeds binary + libargon2 + **libgcc** + salt + keyscript in the initrd |
 | `setup-add-selfrecover-slot.sh` | adds a recovery slot to a LUKS volume (authorized by an existing key) |
-| `format-slot.sh` | records the enrolled key format per volume, and refuses to install a keyscript of another format |
+| `format-slot.sh` | records the enrolled key format per volume, refuses to install a keyscript of another format, and holds the `keyfile-size` bound that goes with a keyscript |
 | `selfrecover-unlock.sh` | standalone emergency unlock (userspace) |
 | `selfrecover-secours.sh` | `command=` of the boot SSH key: offers the recovery passphrase **or** the native passphrase, **never a shell** |
 | `verifie-initramfs.sh` | compares the images in `/boot` with the fingerprint recorded on the encrypted volume — makes an image modified off-machine visible |
 | `verifie-sauvegardes.sh` | checks that the LUKS header and the salt have a copy **off the volume** and **current** with its slots |
 | `genere-passphrase.py` | draws a diceware passphrase, printing both forms and their lengths |
-| `initramfs-post-update-verifie-selfrecover` | guard: checks the six pieces, **the salt**, and **the image the bootloader actually loads** after every initramfs build |
+| `initramfs-post-update-verifie-selfrecover` | guard: checks the pieces, **the salt**, **the `keyfile-size` bound** and **the image the bootloader actually loads** after every initramfs build |
 | [`tests/test_lecture_keyfile.sh`](./tests/test_lecture_keyfile.sh) | guard: the four read paths, and the trailing `\n` that breaks the key |
 | [`tests/test_secours_sans_shell.sh`](./tests/test_secours_sans_shell.sh) | bench: the boot rescue offers both paths and refuses any shell |
 | [`tests/test_sauvegardes.sh`](./tests/test_sauvegardes.sh) | bench: `verifie-sauvegardes.sh` refuses a copy on the encrypted volume or a stale one |

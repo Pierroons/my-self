@@ -61,14 +61,14 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | `selfrecover-keyscript.sh` | keyscript du volume racine (dérive la passphrase recover) |
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript dans l'initrd |
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS (autorisé par une clé existante) |
-| `format-slot.sh` | inscrit le format de clé enrôlé par volume, et refuse de poser un keyscript d'un autre format |
+| `format-slot.sh` | inscrit le format de clé enrôlé par volume, refuse de poser un keyscript d'un autre format, et tient la borne `keyfile-size` qui va avec un keyscript |
 | `selfrecover-unlock.sh` | déverrouillage de secours autonome (userspace) |
 | `selfrecover-secours.sh` | `command=` de la clé du SSH d'amorçage : propose la passphrase recover **ou** la passphrase native, **jamais un shell** |
 | `verifie-initramfs.sh` | compare les images de `/boot` à l'empreinte consignée sur le volume chiffré — rend visible une image modifiée hors de la machine |
 | `verifie-sauvegardes.sh` | vérifie que l'en-tête LUKS et le sel ont une copie **hors du volume** et **à jour** de ses slots |
 | `install.sh` | installateur semi-automatique (cf. INSTALL.md) |
 | `genere-passphrase.py` | tire une passphrase diceware, affiche les deux formes et leur longueur |
-| `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces, **le sel**, et **l'image que l'amorceur charge** après chaque génération d'initramfs |
+| `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les pièces, **le sel**, **la borne `keyfile-size`** et **l'image que l'amorceur charge** après chaque génération d'initramfs |
 | [`tests/test_lecture_keyfile.sh`](./tests/test_lecture_keyfile.sh) | garde-fou : les quatre lectures, et le `\n` final qui casse la clé |
 | [`tests/test_secours_sans_shell.sh`](./tests/test_secours_sans_shell.sh) | banc : le secours d'amorçage rend les deux voies et refuse tout shell |
 | [`tests/test_sauvegardes.sh`](./tests/test_sauvegardes.sh) | banc : `verifie-sauvegardes.sh` refuse une copie sur le volume chiffré ou périmée |

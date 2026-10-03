@@ -25,6 +25,7 @@ cohérent et auto-hébergé.
 ```bash
 # --- À ADAPTER À TA MACHINE ---
 ROOT_DEV=/dev/nvme0n1p3        # volume LUKS racine (/)
+ROOT_NAME=nvme0n1p3_crypt      # son nom dans /etc/crypttab (première colonne)
 DATA_DEV=/dev/nvme0n1p4        # volume LUKS secondaire (optionnel, ex. /data)
 NET_MODULE=r8169               # module noyau de ta carte réseau (lspci -k | grep -A2 Ethernet)
 SKG=/etc/selfkeyguard          # répertoire d'installation
@@ -107,11 +108,13 @@ chmod 0400 "$SKG/selfrecover_salt"
 
 ## 3. Déployer le keyscript et le hook initramfs
 
-Copie `selfrecover-keyscript.sh` et `initramfs-hook-selfrecover` (fournis dans ce dépôt) :
+Copie `selfrecover-keyscript.sh` et `initramfs-hook-selfrecover` (fournis dans ce dépôt),
+et `format-slot.sh`, que le garde-fou du §11 relit pour juger la borne de chaque image :
 
 ```bash
 install -m 0755 selfrecover-keyscript.sh        "$SKG/selfrecover-keyscript.sh"
 install -m 0755 initramfs-hook-selfrecover      /etc/initramfs-tools/hooks/selfrecover
+install -m 0755 format-slot.sh                  "$SKG/format-slot.sh"
 ```
 
 > **Piège n°1 — `libgcc_s.so.1`.** Argon2id est multi-thread → le binaire a besoin de
@@ -354,7 +357,22 @@ pour un keyfile — `-` compris — et ignorée seulement pour du plain dm-crypt
 ([`crypttab(5)`](https://manpages.debian.org/crypttab.5), et la mesure dans
 [`docs/cryptsetup-lecture-cle.md`](docs/cryptsetup-lecture-cle.md)).
 
-> Si tu restes en `--format raw`, la valeur est **32**, pas 64.
+⚠️ **cryptsetup lit exactement la borne, ni plus ni moins.** Elle vaut la longueur de la
+clé que présente le keyscript, et rien d'autre :
+
+| clé du keyscript | `keyfile-size=64` | `keyfile-size=32` | sans borne |
+|---|---|---|---|
+| hex, 64 caractères | **OUVRE** | ÉCHOUE — clé tronquée | OUVRE |
+| raw, 32 octets | ÉCHOUE — octets manquants | **OUVRE** | OUVRE |
+
+Une borne posée pour un format ne survit donc pas à un changement de format (§15).
+`format-slot.sh taille` rend la valeur qui va avec un keyscript, et `format-slot.sh borne`
+la compare à la ligne de crypttab ou la corrige ; `install.sh` passe par lui.
+
+```bash
+bash format-slot.sh borne "$ROOT_NAME" "$SKG/selfrecover-keyscript.sh" /etc/crypttab          # compare
+bash format-slot.sh borne "$ROOT_NAME" "$SKG/selfrecover-keyscript.sh" /etc/crypttab --ecrire # corrige
+```
 
 ### 8b. Accès SSH au démarrage (dropbear) — **parcours SERVEUR uniquement**
 
@@ -617,12 +635,21 @@ est déclenché par une mise à jour de noyau, mais aussi par `cryptsetup-initra
 chemins — et c'est justement une mise à jour de `cryptsetup-initramfs` qui casserait
 ce module sans qu'aucun noyau ne change.
 
-Il vérifie les six pièces (binaire, sel, keyscript, `libargon2`, `libgcc_s`,
-`cryptsetup`) **et compare le sel embarqué à celui du disque** : un sel présent mais
-périmé dérive une autre clé, et un contrôle de simple présence afficherait
+Il vérifie les pièces (binaire, sel, keyscript, script de secours, `libargon2`,
+`libgcc_s`, `cryptsetup`) **et compare le sel embarqué à celui du disque** : un sel
+présent mais périmé dérive une autre clé, et un contrôle de simple présence afficherait
 « complet » sur une machine qui ne redémarrera pas. Il **échoue bruyamment avec la
 marche à suivre**, et reste inerte tant que `keyscript=` n'est pas dans
 `/etc/crypttab` : tu peux l'installer avant même d'avoir branché le module.
+
+🔑 **Il juge aussi la borne `keyfile-size` — dans l'image, pas sur le disque.** L'image
+embarque sa propre copie de la crypttab (`cryptroot/crypttab`) ; c'est elle que
+l'amorçage lit, et `/etc/crypttab` n'y entre qu'à la régénération. Le garde-fou y prend
+la ligne à keyscript SelfRecover, retrouve dans l'image le keyscript qu'elle désigne,
+et demande à `$SKG/format-slot.sh` si la borne est la longueur de sa clé (§8a). Une
+borne raw sous un keyscript hex le fait échouer, avec la commande de correction. Sans
+`format-slot.sh` dans `$SKG`, il dit « BORNE NON VERIFIEE » au lieu d'annoncer
+« complet ».
 
 🔑 **Et il vérifie l'image que l'amorceur CHARGE, pas seulement celle qu'il vient de
 produire.** Sur x86+GRUB les deux coïncident, et le contrôle n'a jamais pu se tromper.
@@ -641,7 +668,7 @@ rassure.*
 rien :
 
 ```bash
-/etc/kernel/postinst.d/zz-verifie-selfrecover "$(uname -r)"   # doit rendre 0 et une ligne verte
+/etc/initramfs/post-update.d/zz-verifie-selfrecover "$(uname -r)" "/boot/initrd.img-$(uname -r)"   # 0 et une ligne verte
 ```
 
 Puis recommence sur un initrd volontairement incomplet : il doit rendre 1 et lister
@@ -792,8 +819,11 @@ inouvrable, quel que soit le motif du changement de format.
 (`<UUID LUKS> <hex|raw>`). `setup-add-selfrecover-slot.sh` l'inscrit une fois le slot
 prouvé ouvrant, et `install.sh` le relit avant de poser le keyscript : il refuse un
 format différent, et il refuse aussi un keyscript déjà en place sans marqueur pour la
-racine — le cas d'une machine installée avant ce marqueur. Le contrôle est
-`format-slot.sh` ; `tests/test_format_slot.sh` l'éprouve.
+racine — le cas d'une machine installée avant ce marqueur, que l'étape 0 bis traite. Le
+contrôle est `format-slot.sh` ; `tests/test_format_slot.sh` l'éprouve.
+
+`install.sh` ne fait pas cette migration : il ajoute un slot, et refuse de poser un
+keyscript hex sur une racine enrôlée en raw. Elle se fait à la main, dans cet ordre.
 
 ### La migration, dans cet ordre
 
@@ -806,6 +836,20 @@ Le slot natif reste ouvrable pendant toute l'opération : c'est lui le filet.
 cryptsetup luksDump "$ROOT_DEV" | grep -E "^\s+[0-9]+: luks2"
 cryptsetup luksHeaderBackup "$ROOT_DEV" --header-backup-file entete-avant-migration.img
 
+# 0 bis. Machine équipée avant le marqueur — format-slot.sh dit alors que le format
+#    enrôlé « n'est écrit nulle part ». Établis celui qui OUVRE la racine aujourd'hui,
+#    par le chemin du boot, puis inscris-le. --test-passphrase n'écrit rien.
+read -rs -p "Passphrase recover : " P; echo
+for F in raw hex; do
+  printf '%s' "$P" \
+    | "$SKG/selfrecover_derive_c" --salt-file "$SKG/selfrecover_salt" --label disk --format "$F" \
+    | cryptsetup open --test-passphrase --key-file=- "$ROOT_DEV" && echo "✅ $F OUVRE"
+done
+unset P
+#    Un seul doit ouvrir — raw, sur une machine de cette époque. Inscris celui-là :
+bash format-slot.sh inscrire "$ROOT_DEV" raw "$SKG"
+#    Si les deux ouvrent, un slot hex existe déjà : inscris hex et reprends à l'étape 2.
+
 # 1. Ajouter un SECOND slot recover, en hexadécimal, sans toucher à l'ancien.
 #    Une fois le slot prouvé, le script inscrit « <UUID> hex » dans $SKG/format-slot.
 SELFRECOVER_SALT="$(cat $SKG/selfrecover_salt)" ./setup-add-selfrecover-slot.sh "$ROOT_DEV"
@@ -817,11 +861,19 @@ printf '%s' "$P" \
   | cryptsetup open --test-passphrase --key-file=- "$ROOT_DEV" \
   && echo "✅ le slot hex ouvre le volume par stdin"
 
-# 3. Seulement alors : déployer le nouveau keyscript et régénérer. Le contrôle
-#    refuse si le format enrôlé pour la racine n'est pas celui du keyscript.
+# 3. Seulement alors : poser le nouveau keyscript, aligner la borne de crypttab sur
+#    sa clé, poser le garde-fou du §11, régénérer — d'une seule chaîne. Le contrôle
+#    refuse si le format enrôlé pour la racine n'est pas celui du keyscript, et rien
+#    d'autre ne se fait alors.
 bash format-slot.sh verifier "$ROOT_DEV" selfrecover-keyscript.sh "$SKG" \
-  && install -m 0755 selfrecover-keyscript.sh "$SKG/selfrecover-keyscript.sh"
-update-initramfs -u
+  && install -m 0755 selfrecover-keyscript.sh "$SKG/selfrecover-keyscript.sh" \
+  && install -m 0755 format-slot.sh "$SKG/format-slot.sh" \
+  && install -m 0755 initramfs-post-update-verifie-selfrecover \
+       /etc/initramfs/post-update.d/zz-verifie-selfrecover \
+  && bash format-slot.sh borne "$ROOT_NAME" "$SKG/selfrecover-keyscript.sh" /etc/crypttab --ecrire \
+  && update-initramfs -u
+#    Le garde-fou juge l'image produite : un keyscript et une borne qui ne vont pas
+#    ensemble le font échouer ICI, avant le redémarrage.
 
 # 4. REDÉMARRER et vérifier que le déverrouillage fonctionne. Ne passe pas à
 #    l'étape 5 avant d'avoir redémarré avec succès.
@@ -831,6 +883,15 @@ cryptsetup luksDump "$ROOT_DEV" | grep -E "^\s+[0-9]+: luks2"   # repère son nu
 cryptsetup luksKillSlot "$ROOT_DEV" <numéro-de-l-ancien-slot>
 unset P
 ```
+
+**L'étape 3 est une seule chaîne parce que la borne change de valeur.** Une borne raw
+(32) sous le keyscript hex tronque la clé ; la borne hex (64) sous l'ancien keyscript
+raw la laisse incomplète (§8a). L'image d'amorçage embarque sa propre copie de la
+crypttab — écrite à la génération (`$DESTDIR/cryptroot/crypttab`, dans
+`/usr/lib/cryptsetup/functions`), lue au démarrage (`/cryptroot/crypttab`) : modifier
+`/etc/crypttab` ne touche pas l'image en service. Keyscript et borne doivent donc
+changer dans la **même** image, et rien ne doit en régénérer une entre les deux. Les
+images du filet (§10), elles, gardent l'ancienne paire, cohérente.
 
 **L'étape 4 n'est pas facultative.** Retirer l'ancien slot avant d'avoir redémarré,
 c'est supprimer le filet avant de savoir si le nouveau tient.
@@ -848,9 +909,9 @@ ressusciterait l'ancien slot brut si on la restaurait (§4).
 | `selfrecover-keyscript.sh` | keyscript du volume racine (dérive la recover) |
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript |
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS, et inscrit son format |
-| `format-slot.sh` | inscrit le format enrôlé par volume, et refuse de poser un keyscript d'un autre format |
+| `format-slot.sh` | inscrit le format enrôlé par volume, refuse de poser un keyscript d'un autre format, et tient la borne `keyfile-size` qui va avec un keyscript ; posé dans `$SKG` pour le garde-fou |
 | `selfrecover_derive.py` | implémentation de référence (Python) pour usage userspace |
 | `genere-passphrase.py` | tire une passphrase diceware et affiche les deux formes avec leur longueur (§5) |
-| `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les six pièces, **le sel**, et **l'image que l'amorceur charge** après chaque génération d'initramfs (§11) |
+| `initramfs-post-update-verifie-selfrecover` | garde-fou : vérifie les pièces, **le sel**, **la borne `keyfile-size`** et **l'image que l'amorceur charge** après chaque génération d'initramfs (§11) |
 
 *SelfRecover-LUKS — MySelf / Self-Security — AGPL-3.0-or-later.*

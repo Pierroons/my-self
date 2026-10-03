@@ -1,8 +1,9 @@
 #!/bin/sh
 # SelfRecover keyscript — déverrouillage de / au boot par la Passphrase Recover-LUKS.
 #
-# Dérive la passphrase (Argon2id, label=disk) avec selfrecover_derive_c et écrit la CLÉ
-# BRUTE (32 o) sur stdout — ce que cryptsetup attend. Appelé par crypttab (keyscript=).
+# Dérive la passphrase (Argon2id, label=disk) avec selfrecover_derive_c et écrit la clé
+# en hexadécimal (64 caractères) sur stdout, lue par cryptsetup comme un keyfile.
+# Appelé par crypttab (keyscript=), dont la borne keyfile-size vaut 64 ou est absente.
 #
 # NB cascade : /data n'utilise PAS ce keyscript — systemd-cryptsetup gère les volumes
 # non-root et IGNORE le champ keyscript. /data s'ouvre via un keyfile (/etc/keys/data.key)
