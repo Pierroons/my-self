@@ -635,8 +635,8 @@ jobs:
           # `N/N` suffirait à dire que les cas joués ont réussi, jamais qu'aucun
           # n'a disparu. Ajouter un cas au banc demande donc de le monter ici —
           # cette friction est le contrôle.
-          echo "$sortie" | grep -qE '^✅ 24/24 ' \
-            || { echo "::error::le banc du garde-fou n'a pas joué ses 24 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 26/26 ' \
+            || { echo "::error::le banc du garde-fou n'a pas joué ses 26 cas"; exit 1; }
 
       - name: Canari — le banc du garde-fou rougit quand le correctif disparaît
         run: |

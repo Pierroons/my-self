@@ -83,7 +83,7 @@ PIECE_SECOURS="selfkeyguard/selfrecover-secours:script de secours (command= de d
 # inventaires recopies divergeraient a la premiere piece ajoutee.
 inventorier() {
   _img="$1"; ABSENTES=""; TROUVEES=""; _liste=$PIECES
-  if lsinitramfs "$_img" 2>/dev/null | grep -q 'sbin/dropbear'; then
+  if [ -n "$EXIGE_SECOURS" ]; then
     _liste="$_liste
 $PIECE_SECOURS"
   fi
@@ -101,6 +101,11 @@ $PIECE_SECOURS"
   IFS=$_oldifs
 }
 
+# L'exigence se fixe une fois, d'apres l'image generee : l'image chargee (Raspberry
+# Pi) doit porter les memes pieces, et une copie parasite sans dropbear promue en
+# cible rendrait un serveur injoignable.
+EXIGE_SECOURS=""
+if lsinitramfs "$INITRD" 2>/dev/null | grep -q 'sbin/dropbear'; then EXIGE_SECOURS=oui; fi
 inventorier "$INITRD"
 MANQUE="$ABSENTES"
 PRESENTES="$TROUVEES"
@@ -264,8 +269,9 @@ MSG
   done
   cat >&2 <<MSG
 
-  Le keyscript est actif dans /etc/crypttab : au prochain demarrage,
-  le volume racine ne pourra pas etre deverrouille.
+  Le keyscript est actif dans /etc/crypttab : au prochain demarrage, cette
+  image ne deverrouillera pas la racine par la passphrase Recover — ou, s'il
+  ne manque que le script de secours, ne repondra pas a distance.
 
   A FAIRE AVANT DE REDEMARRER :
     1. verifier /etc/initramfs-tools/hooks/selfrecover et $SKG/

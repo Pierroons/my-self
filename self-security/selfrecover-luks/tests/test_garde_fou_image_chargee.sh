@@ -81,6 +81,16 @@ case "$1" in
     echo "usr/lib/x86_64-linux-gnu/libgcc_s.so.1"
     echo "usr/sbin/cryptsetup"
     ;;
+  *serveur*)        # serveur : dropbear et le script qu'il lance
+    echo "usr/sbin/dropbear"
+    echo "etc/selfkeyguard/selfrecover-secours.sh"
+    echo "etc/selfkeyguard/selfrecover_derive_c"
+    echo "etc/selfkeyguard/selfrecover_salt"
+    echo "etc/selfkeyguard/selfrecover-keyscript"
+    echo "usr/lib/x86_64-linux-gnu/libargon2.so.1"
+    echo "usr/lib/x86_64-linux-gnu/libgcc_s.so.1"
+    echo "usr/sbin/cryptsetup"
+    ;;
   *poste*)          # poste au clavier : ni dropbear ni script de secours
     echo "etc/selfkeyguard/selfrecover_derive_c"
     echo "etc/selfkeyguard/selfrecover_salt"
@@ -169,6 +179,21 @@ cp "$POSTE" "$BANC/firmware/initrd.img-$VER.poste"
 printf 'initramfs initrd.img-%s.poste\n' "$VER" > "$BANC/firmware/config.txt"
 verdict "poste sans dropbear ni script de secours" VERT "--" \
   lancer "$POSTE"
+
+# 4 quater. Un serveur complet : dropbear ET le script de secours.
+SERVEUR="$BANC/boot/initrd.img-$VER.serveur"
+: > "$SERVEUR"
+cp "$SERVEUR" "$BANC/firmware/initrd.img-$VER.serveur"
+printf 'initramfs initrd.img-%s.serveur\n' "$VER" > "$BANC/firmware/config.txt"
+verdict "serveur avec dropbear et script de secours" VERT "--" \
+  lancer "$SERVEUR"
+
+# 4 quinquies. Image générée de serveur, image CHARGÉE sans dropbear ni secours :
+#              l'exigence vient de la générée, la chargée doit la tenir.
+cp "$POSTE" "$BANC/firmware/initrd.img-$VER.poste"
+printf 'initramfs initrd.img-%s.poste\n' "$VER" > "$BANC/firmware/config.txt"
+verdict "générée serveur, CHARGÉE sans script de secours" ROUGE "absentes de l'image CHARGEE" \
+  lancer "$SERVEUR"
 
 # 5. La copie vers la partition d'amorçage n'a pas eu lieu : image chargée
 #    complète mais plus ancienne que celle qui vient d'être générée.
