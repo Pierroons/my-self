@@ -157,6 +157,8 @@ serveur      → compte        = lookup(HMAC-SHA256(SERVER_SECRET, recovery_code
 
 Le réseau ne transporte jamais le mot de récupération. Le serveur ne le stocke jamais. Même une fuite complète de la base de données + du code source ne l'expose pas — seulement des hachages Argon2id de clés dérivées par site.
 
+> ⚠️ **La route du sel est publique, et elle ne doit pas devenir un oracle.** Au niveau 2, le navigateur dérive avant que le compte soit identifié : c'est le code qui l'identifie, il lui faut donc le sel d'abord, sans authentification. Si la route répondait pour un code valide et refusait un code inconnu, on testerait les codes au prix d'une requête, sans payer un seul Argon2id. Elle rend donc **toujours** un sel : celui du compte pour un code connu, sinon un faux, tiré d'un secret serveur. La bibliothèque n'expose aucune route, donc pas celle-ci : c'est à ton service de l'écrire. Le détail, et les deux démonstrations du dépôt qui l'implémentent, sont dans le [modèle de menace](docs/threat-model.md), section « Bot-driven account enumeration ».
+
 ### Pourquoi HMAC-SHA256 (et pas PBKDF2 / Argon2)
 
 HMAC est volontairement **rapide** côté client car l'objectif est la liaison au service, pas la résistance au brute-force. La résistance au brute-force est assurée côté serveur par **Argon2id** (memory-hard, 64 Mio par tentative) sur la clé dérivée. Séparer les rôles garde l'UX instantanée sur mobile tout en imposant un coût memory-hard par tentative de vérification côté serveur.

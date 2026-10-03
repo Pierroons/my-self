@@ -157,6 +157,8 @@ server       → account       = lookup(HMAC-SHA256(SERVER_SECRET, recovery_code
 
 The wire never carries the recovery word. The server never stores the recovery word. Even a full database dump + source code leak does not expose it — only Argon2id hashes of per-site-derived keys.
 
+> ⚠️ **The salt route is public, and it must not become an oracle.** At level 2 the browser derives before the account is identified: the code is what identifies it, so it needs the salt first, without authentication. Were the route to answer a valid code and refuse an unknown one, codes could be tested for the price of a request, without paying a single Argon2id. So it **always** returns a salt: the account's for a known code, otherwise a fake one, drawn from a server secret. The library exposes no route, so not this one: your service writes it. The details, and the two demonstrations in this repository that implement it, are in the [threat model](docs/threat-model.md), section "Bot-driven account enumeration".
+
 ### Why HMAC-SHA256 (and not PBKDF2 / Argon2)
 
 HMAC is intentionally **fast** client-side because the goal is service binding, not brute-force resistance. The brute-force resistance is provided server-side by **Argon2id** (memory-hard, 64 MiB per attempt) on the derived key. Splitting the roles keeps the UX instant on mobile while still imposing a memory-hard cost per server-side verification attempt.
