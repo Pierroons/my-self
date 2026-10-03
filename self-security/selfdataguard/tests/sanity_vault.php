@@ -438,6 +438,62 @@ try {
 
 // -----------------------------------------------------------------------------
 
+section('Profile — a vault opens under the Argon2id profile its record carries');
+
+// A profile other than the current constants: what a vault sealed before a
+// future change of ARGON2_* looks like.
+$OPS = 2;
+$MEM = 32 * 1024 * 1024;
+($OPS !== Primitives::ARGON2_OPSLIMIT || $MEM !== Primitives::ARGON2_MEMLIMIT)
+    ? ok('fixture: the other profile differs from the current constants')
+    : ko('fixture: the other profile equals the current constants — the section proves nothing');
+
+$base = $vault->register('user-profile', 'profile-password-01', 'profile-memorized');
+$mk   = $base['unlocked']->getMasterKey();
+$seal = new ReflectionMethod(UserVault::class, 'seal');
+$sous = static fn (Lock $l, string $s) => $seal->invoke(
+    null, $l, $s, $base['record']->userSalt, 'user-profile', $mk, $OPS, $MEM);
+$autre = new VaultRecord(
+    userId: 'user-profile', userSalt: $base['record']->userSalt,
+    wrapPwd: $sous(Lock::Password, 'profile-password-01'),
+    wrapRecov: $sous(Lock::Memorized, 'profile-memorized'),
+    wrapAdmin: null, createdAt: $base['record']->createdAt, updatedAt: $base['record']->updatedAt,
+    kdfOpslimit: $OPS, kdfMemlimit: $MEM
+);
+
+try {
+    $vault->unlockWithPassword($autre, 'profile-password-01')->getMasterKey() === $mk
+        && $vault->unlockWithMemorized($autre, 'profile-memorized')->getMasterKey() === $mk
+        ? ok('both locks open under the profile of the record, not the current constants')
+        : ko('the record opened to another master key');
+} catch (Throwable $e) {
+    ko('a vault sealed under another profile no longer opens', $e->getMessage());
+}
+
+$menteur = new VaultRecord(
+    userId: $autre->userId, userSalt: $autre->userSalt, wrapPwd: $autre->wrapPwd, wrapRecov: $autre->wrapRecov,
+    wrapAdmin: null, createdAt: $autre->createdAt, updatedAt: $autre->updatedAt
+);
+try {
+    $vault->unlockWithPassword($menteur, 'profile-password-01');
+    ko('the profile is not read: a record claiming the current constants opened too');
+} catch (WrongSecretException) {
+    ok('the same envelopes under the current constants do not open — the profile is what decides');
+}
+
+try {
+    $rot = $vault->changePassword($autre, $vault->unlockWithPassword($autre, 'profile-password-01'), 'profile-password-02');
+    $rot->kdfOpslimit === $OPS && $rot->kdfMemlimit === $MEM
+        && $vault->unlockWithPassword($rot, 'profile-password-02')->getMasterKey() === $mk
+        && $vault->unlockWithMemorized($rot, 'profile-memorized')->getMasterKey() === $mk
+        ? ok('a re-seal keeps the vault\'s profile: the new password and the old memorized wrap both open')
+        : ko('the re-seal changed the profile or broke a lock');
+} catch (Throwable $e) {
+    ko('re-sealing a vault under another profile failed', $e->getMessage());
+}
+
+// -----------------------------------------------------------------------------
+
 echo "\n";
 echo "═══════════════════════════════════════════════════════════════\n";
 echo "  Phase 2 Sanity — {$passes} passed, {$failures} failed\n";

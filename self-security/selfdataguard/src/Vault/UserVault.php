@@ -111,14 +111,16 @@ final class UserVault
 
         $userSalt      = Primitives::randomBytes(Primitives::SALT_LEN);
         $dataMasterKey = Primitives::randomBytes(Primitives::KEY_LEN);
+        $ops           = Primitives::ARGON2_OPSLIMIT;
+        $mem           = Primitives::ARGON2_MEMLIMIT;
 
-        $wrapPwd    = self::seal(Lock::Password, $password, $userSalt, $userId, $dataMasterKey);
+        $wrapPwd    = self::seal(Lock::Password, $password, $userSalt, $userId, $dataMasterKey, $ops, $mem);
         $wrapRecov  = $memorized === null
             ? null
-            : self::seal(Lock::Memorized, $memorized, $userSalt, $userId, $dataMasterKey);
+            : self::seal(Lock::Memorized, $memorized, $userSalt, $userId, $dataMasterKey, $ops, $mem);
         $wrapPhrase = $passphrase === null
             ? null
-            : self::seal(Lock::Passphrase, $passphrase, $userSalt, $userId, $dataMasterKey);
+            : self::seal(Lock::Passphrase, $passphrase, $userSalt, $userId, $dataMasterKey, $ops, $mem);
 
         $now = $this->now();
         $record = new VaultRecord(
@@ -129,7 +131,9 @@ final class UserVault
             wrapAdmin:  null,
             createdAt:  $now,
             updatedAt:  $now,
-            wrapPhrase: $wrapPhrase
+            wrapPhrase: $wrapPhrase,
+            kdfOpslimit: $ops,
+            kdfMemlimit: $mem
         );
 
         $unlocked = new UnlockedVault(userId: $userId, masterKey: $dataMasterKey, vaultSalt: $userSalt);
@@ -354,9 +358,9 @@ final class UserVault
     }
 
     /**
-     * A new vault is sealed under the current profile; a re-seal passes the vault's
-     * own (resealIn), never the current constants: a vault keeps one profile
-     * across all its envelopes.
+     * register() passes the current profile; a re-seal passes the vault's own
+     * (resealIn), never the current constants: a vault keeps one profile across
+     * all its envelopes.
      */
     private static function seal(
         Lock $lock,
@@ -364,8 +368,8 @@ final class UserVault
         string $userSalt,
         string $userId,
         #[\SensitiveParameter] string $masterKey,
-        int $opslimit = Primitives::ARGON2_OPSLIMIT,
-        int $memlimit = Primitives::ARGON2_MEMLIMIT
+        int $opslimit,
+        int $memlimit
     ): EncryptedBlob {
         $key = self::deriveKey($lock, $secret, $userSalt, $opslimit, $memlimit);
         try {

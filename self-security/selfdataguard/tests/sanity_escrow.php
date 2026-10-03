@@ -74,7 +74,8 @@ $admin = SelfDataGuard::generateAdminRecoveryKey(ADMIN_PASS);
 isset($admin['publicKey'], $admin['sealedSecret']) ? ok('generate returns publicKey + sealedSecret') : ko('missing keys');
 strlen(base64_decode($admin['publicKey'], true) ?: '') === SODIUM_CRYPTO_BOX_PUBLICKEYBYTES
     ? ok('public key is a valid 32-byte box public key') : ko('public key wrong length');
-str_contains($admin['sealedSecret'], ':') ? ok('sealed secret has salt:blob layout') : ko('sealed secret malformed');
+str_starts_with($admin['sealedSecret'], sprintf('%s:%d:%d:', AdminKey::FORMAT_V2, Primitives::ARGON2_OPSLIMIT, Primitives::ARGON2_MEMLIMIT))
+    ? ok('sealed secret records its Argon2id profile (v2:ops:mem:salt:blob)') : ko('sealed secret malformed', $admin['sealedSecret']);
 
 $sk = SelfDataGuard::unsealAdminRecoveryKey($admin['sealedSecret'], ADMIN_PASS);
 strlen($sk) === SODIUM_CRYPTO_BOX_SECRETKEYBYTES ? ok('unseal returns 32-byte secret key') : ko('unseal wrong length');
@@ -200,6 +201,52 @@ $scelleCourt = base64_encode($selCourt) . ':'
 AdminKey::unseal($scelleCourt, $court) === $skCourt
     ? ok('a key sealed earlier under a short passphrase still unseals')
     : ko('the floor locked out a key sealed earlier');
+
+section('The sealed admin key carries its Argon2id profile');
+
+// The format before 0.6.0, "salt:blob", opens under the frozen legacy profile.
+$selAncien = Primitives::randomBytes(Primitives::SALT_LEN);
+$skAncien  = sodium_crypto_box_secretkey(sodium_crypto_box_keypair());
+$scelleAncien = base64_encode($selAncien) . ':' . Primitives::encrypt(
+    $skAncien,
+    Primitives::deriveFromPassword(ADMIN_PASS, $selAncien, Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT),
+    aad: AdminKey::SEAL_AAD
+)->toBase64();
+AdminKey::unseal($scelleAncien, ADMIN_PASS) === $skAncien
+    ? ok('a key sealed before 0.6.0 (salt:blob) still unseals')
+    : ko('the pre-0.6.0 format no longer unseals');
+
+// A key sealed under another profile opens by the profile it records.
+$OPS = 2;
+$MEM = 32 * 1024 * 1024;
+($OPS !== Primitives::ARGON2_OPSLIMIT || $MEM !== Primitives::ARGON2_MEMLIMIT)
+    ? ok('fixture: the other profile differs from the current constants')
+    : ko('fixture: the other profile equals the current constants — the next check proves nothing');
+$selAutre = Primitives::randomBytes(Primitives::SALT_LEN);
+$skAutre  = sodium_crypto_box_secretkey(sodium_crypto_box_keypair());
+$scelleAutre = implode(':', [AdminKey::FORMAT_V2, $OPS, $MEM, base64_encode($selAutre), Primitives::encrypt(
+    $skAutre, Primitives::deriveFromPassword(ADMIN_PASS, $selAutre, $OPS, $MEM), aad: AdminKey::SEAL_AAD
+)->toBase64()]);
+try {
+    AdminKey::unseal($scelleAutre, ADMIN_PASS) === $skAutre
+        ? ok('a v2 key sealed under another profile unseals by the profile it records')
+        : ko('the v2 key opened to another secret key');
+} catch (Throwable $e) {
+    ko('a v2 key sealed under another profile no longer unseals', $e->getMessage());
+}
+
+foreach ([
+    'v9:3:67108864:' . base64_encode($selAutre) . ':SDG2.x' => 'a newer format version',
+    'v2:trois:67108864:' . base64_encode($selAutre) . ':SDG2.x' => 'a v2 key with a non-numeric profile',
+    'v2:3:' . base64_encode($selAutre) . ':SDG2.x' => 'a v2 key missing a field',
+] as $scelle => $cas) {
+    try {
+        AdminKey::unseal($scelle, ADMIN_PASS);
+        ko("{$cas} was read");
+    } catch (InvalidArgumentException $e) {
+        ok("{$cas} is refused before any derivation");
+    }
+}
 
 section('Delete cascade removes escrow');
 

@@ -85,7 +85,7 @@ final class SelfDataGuard
         }
         $result = $this->vault->register($userId, $password, $memorized, $passphrase);
         $this->storage->saveVault($result['record']);
-        $this->assertPassphrasePersisted($result['record'], 0);
+        $this->assertVaultPersisted($result['record'], 0);
         return $result['unlocked'];
     }
 
@@ -147,7 +147,7 @@ final class SelfDataGuard
             $record = $this->vault->changePassphrase($record, $session, $newPassphrase);
         }
         $this->storage->updateVault($record);
-        $this->assertPassphrasePersisted($record, $record->revision + 1);
+        $this->assertVaultPersisted($record, $record->revision + 1);
         return $session;
     }
 
@@ -230,14 +230,14 @@ final class SelfDataGuard
     {
         $rotated = $this->vault->changePassphrase($this->currentRecord($session), $session, $newPassphrase);
         $this->storage->updateVault($rotated);
-        $this->assertPassphrasePersisted($rotated, $rotated->revision + 1);
+        $this->assertVaultPersisted($rotated, $rotated->revision + 1);
     }
 
     public function removePassphrase(UnlockedVault $session): void
     {
         $rotated = $this->vault->removePassphrase($this->currentRecord($session), $session);
         $this->storage->updateVault($rotated);
-        $this->assertPassphrasePersisted($rotated, $rotated->revision + 1);
+        $this->assertVaultPersisted($rotated, $rotated->revision + 1);
     }
 
     // -- Re-enrolment and archives ---------------------------------------------
@@ -262,7 +262,7 @@ final class SelfDataGuard
     ): array {
         $result    = $this->vault->register($userId, $newPassword, $newMemorized, $newPassphrase);
         $archiveId = $this->storage->replaceWithArchive($result['record']);
-        $this->assertPassphrasePersisted($result['record'], 0);
+        $this->assertVaultPersisted($result['record'], 0);
         return ['unlocked' => $result['unlocked'], 'archiveId' => $archiveId];
     }
 
@@ -533,13 +533,15 @@ final class SelfDataGuard
     }
 
     /**
-     * A StorageInterface implementation can drop wrap_phrase without a word —
-     * an update that does not name the column, say. The passphrase SelfRecover
-     * just consumed would then keep opening the vault, or the new one would
-     * not. Read it back once. A higher revision than $expectedRevision means a
-     * later write landed in between: then there is nothing left to compare.
+     * A StorageInterface implementation can drop a column without a word — an
+     * update that does not name it, say. Without wrap_phrase, the passphrase
+     * SelfRecover just consumed would keep opening the vault, or the new one
+     * would not; without the Argon2id profile, the vault would be read under the
+     * current constants and stop opening the day they change. Read it back once.
+     * A higher revision than $expectedRevision means a later write landed in
+     * between: then there is nothing left to compare.
      */
-    private function assertPassphrasePersisted(VaultRecord $written, int $expectedRevision): void
+    private function assertVaultPersisted(VaultRecord $written, int $expectedRevision): void
     {
         $stored = $this->storage->loadVault($written->userId);
         if ($stored->revision > $expectedRevision) {
@@ -549,6 +551,12 @@ final class SelfDataGuard
             throw new RuntimeException(
                 'The storage did not persist wrap_phrase as written — '
                 . 'does its saveVault(), updateVault() and replaceWithArchive() write that column?'
+            );
+        }
+        if ($stored->kdfOpslimit !== $written->kdfOpslimit || $stored->kdfMemlimit !== $written->kdfMemlimit) {
+            throw new RuntimeException(
+                'The storage did not persist the Argon2id profile as written — '
+                . 'do its saveVault() and replaceWithArchive() write kdf_opslimit and kdf_memlimit?'
             );
         }
     }

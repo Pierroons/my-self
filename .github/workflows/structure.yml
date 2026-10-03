@@ -1310,6 +1310,13 @@ jobs:
           canari $D/src/Vault/UserVault.php "public const HMAC_CONTEXT_SUFFIX = '/dataguard';" \
             "public const HMAC_CONTEXT_SUFFIX = '/dataguarD';" \
             $D/tests/sanity_vecteurs.php 'Memorized: key differs from the second implementation'
+          canari $D/src/Vault/UserVault.php '$opslimit ?? $record->kdfOpslimit,' '$opslimit ?? Primitives::ARGON2_OPSLIMIT,' \
+            $D/tests/sanity_vault.php 'a vault sealed under another profile no longer opens'
+          canari $D/src/Escrow/AdminKey.php '$sealKey   = Primitives::deriveFromPassword($passphrase, $salt, $ops, $mem);' \
+            '$sealKey   = Primitives::deriveFromPassword($passphrase, $salt);' \
+            $D/tests/sanity_escrow.php 'a v2 key sealed under another profile no longer unseals'
+          canari $D/src/SelfDataGuard.php 'if ($stored->kdfOpslimit !== $written->kdfOpslimit' 'if (false && $stored->kdfOpslimit !== $written->kdfOpslimit' \
+            $D/tests/sanity_facade.php 'a vault read back under another Argon2id profile was reported as stored'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce

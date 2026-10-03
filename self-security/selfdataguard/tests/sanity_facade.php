@@ -489,6 +489,31 @@ try {
         : ko('wrong failure', $e->getMessage());
 }
 
+/** A StorageInterface implementation that reads every vault back under another Argon2id profile. */
+final class ProfileLosingStorage extends DelegatingStorage
+{
+    public function loadVault(string $u): VaultRecord
+    {
+        $r = $this->inner->loadVault($u);
+        return new VaultRecord(
+            userId: $r->userId, userSalt: $r->userSalt, wrapPwd: $r->wrapPwd, wrapRecov: $r->wrapRecov,
+            wrapAdmin: $r->wrapAdmin, createdAt: $r->createdAt, updatedAt: $r->updatedAt,
+            wrapPhrase: $r->wrapPhrase, revision: $r->revision,
+            kdfOpslimit: $r->kdfOpslimit + 1, kdfMemlimit: $r->kdfMemlimit
+        );
+    }
+}
+
+try {
+    (new SelfDataGuard(new ProfileLosingStorage($storage), $blindKey))
+        ->register('user-profile-lost', 'profile-password-01', null, $PH1);
+    ko('a vault read back under another Argon2id profile was reported as stored');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'did not persist the Argon2id profile')
+        ? ok('register(): a profile the storage did not keep is detected on read-back')
+        : ko('wrong failure', $e->getMessage());
+}
+
 // -----------------------------------------------------------------------------
 
 section('A re-enrolment landing between the check and the write');
