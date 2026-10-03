@@ -197,17 +197,40 @@ cat > "$BANC/bin/unmkinitramfs" <<'STUB'
 #!/bin/sh
 # Reproduit les deux dispositions réelles de l'outil, choisies par le nom de
 # l'image : « microcode » donne early/ + main/, sinon tout est à la racine.
+# L'image porte aussi sa crypttab et le keyscript qu'elle désigne : hex sous
+# keyfile-size=64 par défaut ; « raw » donne un keyscript raw sous 32, « borne32 »
+# une borne 32, « sansborne » aucune borne.
 case "$1" in
   *microcode*) racine="$2/main"; mkdir -p "$2/early" ;;
   *)           racine="$2" ;;
 esac
-mkdir -p "$racine/etc/selfkeyguard"
+mkdir -p "$racine/etc/selfkeyguard" "$racine/cryptroot"
 case "$1" in
   *selperime*) printf 'sel-etranger\n' ;;
   *)           printf 'sel-de-banc\n' ;;
 esac > "$racine/etc/selfkeyguard/selfrecover_salt"
+case "$1" in
+  *raw*) source_ks="$BANC_KS_RAW" ;;
+  *)     source_ks="$BANC_KS_HEX" ;;
+esac
+cp "$source_ks" "$racine/etc/selfkeyguard/selfrecover-keyscript.sh"
+case "$1" in
+  *borne32*)   borne=",keyfile-size=32" ;;
+  *sansborne*) borne="" ;;
+  *raw*)       borne=",keyfile-size=32" ;;
+  *)           borne=",keyfile-size=64" ;;
+esac
+printf 'cryptroot UUID=banc none luks,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh%s\n' \
+  "$borne" > "$racine/cryptroot/crypttab"
 STUB
 chmod 0755 "$BANC/bin/unmkinitramfs"
+
+# La longueur de clé de chaque format vient de format-slot.sh, posé par install.sh
+# dans le répertoire du module ; surchargeable pour le canari.
+cp "${FORMAT_SLOT:-$MODULE/format-slot.sh}" "$BANC/skg/format-slot.sh"
+export BANC_KS_HEX="$MODULE/selfrecover-keyscript.sh"
+export BANC_KS_RAW="$BANC/keyscript-raw.sh"
+sed '$ s/--format hex/--format raw/' "$BANC_KS_HEX" > "$BANC_KS_RAW"
 
 # 9. Image d'un seul tenant, sel concordant — le cas qui marchait déjà.
 GEN_PLAT="$BANC/boot/initrd.img-$VER.complete.plat"
@@ -233,6 +256,51 @@ GEN_PLAT_KO="$BANC/boot/initrd.img-$VER.complete.plat.selperime"
 : > "$GEN_PLAT_KO"
 verdict "image plate, SEL PÉRIMÉ (non-régression)" ROUGE "sel embarque DIFFERE" \
   lancer "$GEN_PLAT_KO"
+
+# ---------------------------------------------------------------------------
+echo
+echo "▸ La borne keyfile-size de l'image — celle que l'amorçage lit"
+#
+# Une machine passée de raw à hex garde sa borne raw si personne ne la corrige :
+# l'image porte alors un keyscript hex sous keyfile-size=32, cryptsetup lit 32 des
+# 64 caractères, et le volume ne s'ouvre plus au démarrage.
+
+# 13. Keyscript raw sous sa borne 32 : l'état d'une machine équipée en raw.
+GEN_RAW="$BANC/boot/initrd.img-$VER.complete.raw"
+: > "$GEN_RAW"
+verdict "keyscript raw sous keyfile-size=32" VERT "complet" \
+  lancer "$GEN_RAW"
+
+# 14. Pas de borne : cryptsetup lit tout le flux, la clé ouvre.
+GEN_SANS="$BANC/boot/initrd.img-$VER.complete.sansborne"
+: > "$GEN_SANS"
+verdict "keyscript hex sans borne" VERT "complet" \
+  lancer "$GEN_SANS"
+
+# 15. LE CAS DE LA MIGRATION : keyscript hex sous la borne raw.
+GEN_B32="$BANC/boot/initrd.img-$VER.complete.borne32"
+: > "$GEN_B32"
+verdict "keyscript hex sous keyfile-size=32" ROUGE "BORNE keyfile-size" \
+  lancer "$GEN_B32"
+
+# 16. Le même dans une image à microcode : la crypttab vit sous main/.
+GEN_B32_UCODE="$BANC/boot/initrd.img-$VER.complete.microcode.borne32"
+: > "$GEN_B32_UCODE"
+verdict "image à microcode, keyscript hex sous 32" ROUGE "BORNE keyfile-size" \
+  lancer "$GEN_B32_UCODE"
+
+# 17. Sans format-slot.sh, la borne n'est pas jugée — et le contrôle le dit au
+#     lieu d'annoncer « complet ».
+mv "$BANC/skg/format-slot.sh" "$BANC/skg/format-slot.sh.retire"
+verdict "format-slot.sh absent : borne NON vérifiée, dit" VERT "BORNE NON VERIFIEE" \
+  lancer "$GEN_B32"
+total=$((total + 1))
+if printf '%s' "$SORTIE" | grep -q 'complet'; then
+  printf '  ❌ %-52s %s\n' "… sans annoncer « complet »" "il l'annonce"; echec=1
+else
+  printf '  ✅ %-52s %s\n' "… sans annoncer « complet »" "VERT"
+fi
+mv "$BANC/skg/format-slot.sh.retire" "$BANC/skg/format-slot.sh"
 
 echo
 if [ "$echec" -eq 0 ]; then

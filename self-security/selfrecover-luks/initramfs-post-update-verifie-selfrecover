@@ -2,9 +2,11 @@
 # /etc/initramfs/post-update.d/zz-verifie-selfrecover
 #
 # S'execute apres CHAQUE generation d'initramfs. Verifie que les pieces
-# SelfRecover y sont, et que le sel embarque est bien celui du disque. Sans ce
-# controle, une regression du hook produit un initramfs muet : l'echec
-# n'apparait qu'au redemarrage, sur une machine devenue non amorcable.
+# SelfRecover y sont, que le sel embarque est bien celui du disque, et que la
+# borne keyfile-size de la crypttab embarquee est la longueur de la cle que
+# presente le keyscript embarque. Sans ce controle, une regression du hook
+# produit un initramfs muet : l'echec n'apparait qu'au redemarrage, sur une
+# machine devenue non amorcable.
 #
 # post-update.d et non kernel/postinst.d : update-initramfs est declenche par une
 # mise a jour de noyau, mais aussi par cryptsetup-initramfs, busybox,
@@ -131,19 +133,28 @@ fi
 # le faux vert que ce hook existe pour fermer, loge dans le hook. Trois etats
 # sont donc distingues — concorde, differe, pas verifiable — et le mot "complet"
 # est reserve au premier.
+#
+# La borne keyfile-size se juge au meme endroit, et sur les memes copies : celles
+# de l'IMAGE. L'amorcage lit la crypttab que l'image embarque (cryptroot/crypttab),
+# pas /etc/crypttab, et cryptsetup y lit EXACTEMENT la borne — une borne raw sous
+# un keyscript hex tronque la cle. Comparer les fichiers du disque dirait vrai
+# pendant que l'image en service, ou celle qu'on vient de produire, dit autre chose.
 SEL_ECART=""
 SEL_SAUTE=""
-if [ ! -r "$SKG/selfrecover_salt" ]; then
-  SEL_SAUTE="$SKG/selfrecover_salt illisible"
-elif ! command -v unmkinitramfs >/dev/null 2>&1; then
+BORNE_ECART=""
+BORNE_SAUTE=""
+if ! command -v unmkinitramfs >/dev/null 2>&1; then
   SEL_SAUTE="unmkinitramfs absent (paquet initramfs-tools-bin)"
+  BORNE_SAUTE="$SEL_SAUTE"
 else
   TMP=$(mktemp -d) || TMP=""
   if [ -z "$TMP" ]; then
     SEL_SAUTE="repertoire temporaire indisponible"
+    BORNE_SAUTE="$SEL_SAUTE"
   else
     if ! unmkinitramfs "$INITRD" "$TMP" >/dev/null 2>&1; then
       SEL_SAUTE="extraction de l'image impossible"
+      BORNE_SAUTE="$SEL_SAUTE"
     else
       # 🔑 `unmkinitramfs` n'extrait pas toujours a la racine. Une image portant
       # un segment de microcode — le cas de toute machine Intel ou AMD — est
@@ -158,7 +169,9 @@ else
       # pour fermer, loge dans le hook — la seconde fois au meme endroit.
       SEL_IMAGE=$(find "$TMP" -path '*/etc/selfkeyguard/selfrecover_salt' \
                     -type f 2>/dev/null | head -1)
-      if [ -z "$SEL_IMAGE" ]; then
+      if [ ! -r "$SKG/selfrecover_salt" ]; then
+        SEL_SAUTE="$SKG/selfrecover_salt illisible"
+      elif [ -z "$SEL_IMAGE" ]; then
         # La presence du sel est deja couverte par PIECES. Arriver ici veut dire
         # que l'image extraite ne montre pas ce que lsinitramfs annonce : a
         # signaler, pas a taire.
@@ -168,12 +181,40 @@ else
         B=$(sha256sum < "$SEL_IMAGE" | cut -d' ' -f1)
         [ "$A" = "$B" ] || SEL_ECART="oui"
       fi
+
+      # Le keyscript juge est celui que la crypttab de l'image designe : c'est
+      # lui qui tournera. format-slot.sh tient la longueur de cle de chaque format.
+      CT_IMAGE=$(find "$TMP" -path '*/cryptroot/crypttab' -type f 2>/dev/null | head -1)
+      NOM_RACINE=""; KS_CHEMIN=""; KS_IMAGE=""
+      if [ -n "$CT_IMAGE" ]; then
+        NOM_RACINE=$(awk '$4 ~ /keyscript=[^,]*selfrecover/ { print $1; exit }' "$CT_IMAGE")
+        KS_CHEMIN=$(awk '$4 ~ /keyscript=[^,]*selfrecover/ {
+                       m = split($4, o, ",")
+                       for (i = 1; i <= m; i++) if (o[i] ~ /^keyscript=/) print substr(o[i], 11)
+                       exit }' "$CT_IMAGE")
+        [ -n "$KS_CHEMIN" ] && KS_IMAGE=$(find "$TMP" -path "*$KS_CHEMIN" -type f 2>/dev/null | head -1)
+      fi
+      if [ ! -r "$SKG/format-slot.sh" ]; then
+        BORNE_SAUTE="$SKG/format-slot.sh absent"
+      elif [ -z "$NOM_RACINE" ]; then
+        BORNE_SAUTE="aucune ligne a keyscript SelfRecover dans la crypttab de l'image"
+      elif [ -z "$KS_IMAGE" ]; then
+        BORNE_SAUTE="keyscript $KS_CHEMIN absent de l'image extraite"
+      else
+        _RC=0
+        BORNE_DIT=$(bash "$SKG/format-slot.sh" borne "$NOM_RACINE" "$KS_IMAGE" "$CT_IMAGE" 2>&1) || _RC=$?
+        case "$_RC" in
+          0|3) ;;
+          1) BORNE_ECART=$(printf '%s\n' "$BORNE_DIT" | head -n 1) ;;
+          *) BORNE_SAUTE="format-slot.sh a rendu $_RC" ;;
+        esac
+      fi
     fi
     rm -rf "$TMP"
   fi
 fi
 
-if [ -n "$MANQUE" ] || [ -n "$SEL_ECART" ] || [ -n "$ALERTE_CHARGEE" ]; then
+if [ -n "$MANQUE" ] || [ -n "$SEL_ECART" ] || [ -n "$ALERTE_CHARGEE" ] || [ -n "$BORNE_ECART" ]; then
   cat >&2 <<MSG
 
   ############################################################
@@ -186,6 +227,8 @@ MSG
   [ -n "$MANQUE" ] && printf '\n  Pieces absentes :%s\n' "$MANQUE" >&2
   [ -n "$ALERTE_CHARGEE" ] && printf '\n  IMAGE D AMORCAGE : %s\n' "$ALERTE_CHARGEE" >&2
   [ -n "$SEL_ECART" ] && printf '\n  Le sel embarque DIFFERE de %s/selfrecover_salt.\n  La derivation ne reproduira pas la cle du slot.\n' "$SKG" >&2
+  [ -n "$BORNE_ECART" ] && printf '\n  BORNE keyfile-size de la crypttab embarquee :\n  %s\n  Corriger : bash %s/format-slot.sh borne %s %s/selfrecover-keyscript.sh %s --ecrire\n' \
+    "$BORNE_ECART" "$SKG" "$NOM_RACINE" "$SKG" "$CRYPTTAB" >&2
   cat >&2 <<MSG
 
   Le keyscript est actif dans /etc/crypttab : au prochain demarrage,
@@ -221,15 +264,17 @@ else
   CIBLE="image chargee par l amorceur verifiee et concordante : $CHARGEE"
 fi
 
-if [ -n "$SEL_SAUTE" ]; then
+if [ -n "$SEL_SAUTE" ] || [ -n "$BORNE_SAUTE" ]; then
   # Pas d'exit 1 : une capacite manquante n'est pas une image cassee, et faire
   # echouer update-initramfs pousserait a desinstaller le hook. Mais la sortie
   # part sur stderr et ne dit pas "complet" — elle nomme ce qui reste a etablir.
   printf 'SelfRecover-LUKS : initramfs %s — pieces presentes (%s).\n' \
          "$VER" "${PRESENTES#, }" >&2
   printf '  %s\n' "$CIBLE" >&2
-  printf '  SEL NON VERIFIE : %s. La concordance du sel embarque reste a etablir.\n' \
+  [ -n "$SEL_SAUTE" ] && printf '  SEL NON VERIFIE : %s. La concordance du sel embarque reste a etablir.\n' \
          "$SEL_SAUTE" >&2
+  [ -n "$BORNE_SAUTE" ] && printf '  BORNE NON VERIFIEE : %s. L accord de la borne keyfile-size et du keyscript reste a etablir.\n' \
+         "$BORNE_SAUTE" >&2
 else
   echo "SelfRecover-LUKS : initramfs $VER complet (${PRESENTES#, })."
   echo "  $CIBLE"

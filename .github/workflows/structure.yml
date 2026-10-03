@@ -635,8 +635,8 @@ jobs:
           # `N/N` suffirait à dire que les cas joués ont réussi, jamais qu'aucun
           # n'a disparu. Ajouter un cas au banc demande donc de le monter ici —
           # cette friction est le contrôle.
-          echo "$sortie" | grep -qE '^✅ 13/13 ' \
-            || { echo "::error::le banc du garde-fou n'a pas joué ses 13 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 19/19 ' \
+            || { echo "::error::le banc du garde-fou n'a pas joué ses 19 cas"; exit 1; }
 
       - name: Canari — le banc du garde-fou rougit quand le correctif disparaît
         run: |
@@ -668,6 +668,27 @@ jobs:
                  echo "::error::le banc a échoué, mais PAS sur le cas du 13/09 — ce canari ne prouve rien"
                  exit 1; }
           echo "✓ le banc rougit, et il rougit SUR LE CAS DU 13/09 — pas sur un contretemps"
+
+      - name: Canari — le garde-fou rougit sur une borne raw sous un keyscript hex
+        run: |
+          # L'image d'une machine migrée de raw à hex sans correction de la borne :
+          # cryptsetup tronquerait la clé au démarrage. On retire l'alerte de borne,
+          # et le banc doit rougir sur ce cas-là.
+          G=self-security/selfrecover-luks/initramfs-post-update-verifie-selfrecover
+          sed 's/^          1) BORNE_ECART=.*/          1) ;;/' "$G" > /tmp/garde-borne
+          chmod 0755 /tmp/garde-borne
+          grep -q '^          1) ;;' /tmp/garde-borne \
+            || { echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          if sortie=$(GARDE=/tmp/garde-borne \
+             bash self-security/selfrecover-luks/tests/test_garde_fou_image_chargee.sh 2>&1); then
+            echo "$sortie"
+            echo "::error::le banc reste VERT sans l'alerte de borne"
+            exit 1
+          fi
+          echo "$sortie" | grep -q 'keyscript hex sous keyfile-size=32.*VERT (attendu ROUGE)' \
+            || { echo "$sortie"
+                 echo "::error::rouge, mais pas sur la borne raw sous un keyscript hex"
+                 exit 1; }
 
       # L'enrôlement, le démarrage et le secours dérivent la clé du slot sous un label.
       # Changé d'un seul côté, la machine ne s'ouvre plus au boot — et la preuve de
