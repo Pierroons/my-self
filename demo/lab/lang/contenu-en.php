@@ -269,4 +269,10 @@ return [
     'Le rapport doit être chiffré. Recharge la page et réessaie.'
         => 'Reports must be encrypted. Reload the page and try again.',
     'Rapport trop volumineux.' => 'Report too large.',
+    'Premier sang. Personne n\'avait sorti celui-là avant toi.' => 'First blood. Nobody had pulled that one before you.',
+    'Drapeau valide.' => 'Valid flag.',
+    'Ce n\'est pas un drapeau du challenge.' => 'That is not a challenge flag.',
+    'Soumission vide ou trop longue.' => 'Empty or oversized submission.',
+    'Pseudo invalide.' => 'Invalid handle.',
+    'Numero ou jeton de suivi invalide.' => 'Invalid number or tracking token.',
 ];
