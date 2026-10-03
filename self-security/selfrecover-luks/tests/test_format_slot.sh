@@ -218,10 +218,11 @@ printf 'r\\040c UUID=00000000-0000-0000-0000-000000000003 none luks,keyscript=/k
 code_rendu "nom à échappement octal (r\\040c) : lu tel quel" 0 "conforme\|keyfile-size=$T_HEX" -- \
   borne 'r\040c' "$KS_DEPOT" "$CT"
 
-# --format=hex : la même chose écrite autrement.
+# --format=raw : la ligne exécutée l'écrit avec un égal, et les commentaires du
+# keyscript citent « --format hex » plus haut — c'est la ligne exécutée qui compte.
 KS_EGAL="$BANC/keyscript-egal.sh"
-sed '$ s/--format hex/--format=hex/' "$KS_DEPOT" > "$KS_EGAL"
-code_rendu "keyscript en --format=hex : taille $T_HEX" 0 "^$T_HEX\$" -- taille "$KS_EGAL"
+sed '$ s/--format hex/--format=raw/' "$KS_DEPOT" > "$KS_EGAL"
+code_rendu "ligne exécutée en --format=raw : taille $T_RAW" 0 "^$T_RAW\$" -- taille "$KS_EGAL"
 
 # Deux bornes sur la ligne : cryptsetup lit la dernière, --ecrire les corrige toutes.
 sed -i "s|^racine_crypt .*|racine_crypt UUID=00000000-0000-0000-0000-000000000001 none luks,keyfile-size=$T_HEX,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh,keyfile-size=$T_RAW|" "$CT"

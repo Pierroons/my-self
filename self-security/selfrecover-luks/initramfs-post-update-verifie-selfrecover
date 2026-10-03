@@ -148,7 +148,7 @@ SEL_SAUTE=""
 BORNE_ECART=""
 BORNE_SAUTE=""
 NOMS_ECART=""
-CT_ECART=""""
+CT_ECART=""
 if ! command -v unmkinitramfs >/dev/null 2>&1; then
   SEL_SAUTE="unmkinitramfs absent (paquet initramfs-tools-bin)"
   BORNE_SAUTE="$SEL_SAUTE"
@@ -248,10 +248,10 @@ MSG
   [ -n "$MANQUE" ] && printf '\n  Pieces absentes :%s\n' "$MANQUE" >&2
   [ -n "$ALERTE_CHARGEE" ] && printf '\n  IMAGE D AMORCAGE : %s\n' "$ALERTE_CHARGEE" >&2
   [ -n "$SEL_ECART" ] && printf '\n  Le sel embarque DIFFERE de %s/selfrecover_salt.\n  La derivation ne reproduira pas la cle du slot.\n' "$SKG" >&2
-  [ -n "$CT_ECART" ] && printf '\n  La crypttab embarquee ne porte AUCUNE ligne a keyscript SelfRecover.\n  cryptsetup-initramfs ecarte une entree a option invalide : relire la ligne\n  de %s (keyfile-size, keyscript executable).\n' "$CRYPTTAB" >&2
+  [ -n "$CT_ECART" ] && printf '\n  La crypttab embarquee ne porte AUCUNE ligne a keyscript SelfRecover, alors que\n  %s en porte une. cryptsetup-initramfs ecarte une entree a option invalide :\n  relire cette ligne (keyfile-size, keyscript executable). Le module ne prend en\n  charge le keyscript que sur la racine.\n' "$CRYPTTAB" >&2
   [ -n "$BORNE_ECART" ] && printf '\n  BORNE keyfile-size de la crypttab embarquee :%s\n' "$BORNE_ECART" >&2
   for _nom in $NOMS_ECART; do
-    printf '  Corriger : bash %s/format-slot.sh borne %s %s/selfrecover-keyscript.sh %s --ecrire\n' \
+    printf "  Corriger : bash '%s/format-slot.sh' borne '%s' '%s/selfrecover-keyscript.sh' '%s' --ecrire\n" \
       "$SKG" "$_nom" "$SKG" "$CRYPTTAB" >&2
   done
   cat >&2 <<MSG
@@ -263,9 +263,9 @@ MSG
     1. verifier /etc/initramfs-tools/hooks/selfrecover et $SKG/
     2. relancer : update-initramfs -u -k $VER
     3. relancer ce controle
-  Repli : demarrer sur un initrd .pre-selfrecover, ou retirer keyscript=
-          de /etc/crypttab depuis un systeme de secours (le slot natif
-          ouvre toujours le volume).
+  Repli : depuis un systeme de secours, remettre une image de
+          /root/selfrecover-filets/ ou retirer keyscript= de /etc/crypttab
+          (le slot natif ouvre toujours le volume).
 
   ############################################################
 

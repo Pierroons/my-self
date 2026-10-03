@@ -557,7 +557,8 @@ cryptsetup luksAddKey "$DATA_DEV" /etc/keys/<data>.key
 
 ```bash
 install -d -m 0700 /root/selfrecover-filets                            # hors du chemin de l'amorceur
-cp -a /boot/initrd.img-$(uname -r) /root/selfrecover-filets/           # FILET : retour arrière
+cp -a "/boot/initrd.img-$(uname -r)" \
+      "/root/selfrecover-filets/initrd.img-$(uname -r).bak.$(date +%s)"  # FILET daté : un second passage ne l'écrase pas
 update-initramfs -u
 
 # vérifie que tout est embarqué :
@@ -649,11 +650,12 @@ marche à suivre**, et reste inerte tant que `keyscript=` n'est pas dans
 `/etc/crypttab`.** L'image
 embarque sa propre copie de la crypttab (`cryptroot/crypttab`) ; c'est elle que
 l'amorçage lit, et `/etc/crypttab` n'y entre qu'à la régénération. Le garde-fou y prend
-la ligne à keyscript SelfRecover, retrouve dans l'image le keyscript qu'elle désigne,
-et demande à `$SKG/format-slot.sh` si la borne est la longueur de sa clé (§8a). Une
-borne raw sous un keyscript hex le fait échouer, avec la commande de correction. Sans
-`format-slot.sh` dans `$SKG`, il dit « BORNE NON VERIFIEE » au lieu d'annoncer
-« complet ».
+chaque ligne à keyscript SelfRecover, retrouve dans l'image le keyscript qu'elle
+désigne, et demande à `$SKG/format-slot.sh` si la borne est la longueur de sa clé
+(§8a). Une borne raw sous un keyscript hex le fait échouer, avec la commande de
+correction ; une image qui n'a plus aucune de ces lignes aussi — `cryptsetup-initramfs`
+écarte une entrée dont une option est invalide. Sans `format-slot.sh` dans `$SKG`, il
+dit « BORNE NON VERIFIEE » au lieu d'annoncer « complet ».
 
 🔑 **Et il vérifie l'image que l'amorceur CHARGE, pas seulement celle qu'il vient de
 produire.** Sur x86+GRUB les deux coïncident, et le contrôle n'a jamais pu se tromper.
@@ -852,7 +854,8 @@ done
 unset P
 #    Ce qui a ouvert décide de la suite, et c'est lui que tu inscris :
 #      raw seul      → inscris raw, puis étape 1 ;
-#      hex seul      → la racine est déjà en hex : inscris hex, cette migration est faite ;
+#      hex seul      → la racine est déjà en hex : inscris hex, puis étape 3, qui pose
+#                      le garde-fou et aligne la borne ;
 #      les deux      → un slot hex existe déjà : inscris hex, puis étape 2 ;
 #      aucun         → arrête-toi : ni la passphrase ni le sel ne dérivent le slot.
 bash format-slot.sh inscrire "$ROOT_DEV" <raw|hex> "$SKG"
@@ -868,14 +871,19 @@ printf '%s' "$P" \
   | cryptsetup open --test-passphrase --key-file=- "$ROOT_DEV" \
   && echo "✅ le slot hex ouvre le volume par stdin"
 
-# 3. Seulement alors, d'une seule chaîne : le contrôle de format, un filet de l'image
-#    en service (§10), le garde-fou du §11 et format-slot.sh — AVANT le keyscript, pour
-#    qu'une régénération tombée entre deux gestes soit déjà jugée —, puis le keyscript,
-#    la borne de crypttab alignée sur sa clé, et la régénération. Le moindre refus
-#    arrête tout ce qui suit.
+# 3. Seulement alors, d'une seule chaîne : le contrôle de format, la ligne $ROOT_NAME
+#    jugée sans rien écrire (elle existe, sa borne se lit), un filet daté de l'image
+#    en service (§10), le garde-fou du §11 et format-slot.sh — tout ce qui peut échouer
+#    passe AVANT le keyscript —, puis le keyscript, la borne alignée sur sa clé, et la
+#    régénération. Le moindre refus arrête tout ce qui suit. Sur une racine équipée en
+#    raw, le premier jugement de la borne affiche un ❌ : c'est l'écart que la chaîne
+#    corrige plus bas.
 bash format-slot.sh verifier "$ROOT_DEV" selfrecover-keyscript.sh "$SKG" \
+  && { bash format-slot.sh borne "$ROOT_NAME" selfrecover-keyscript.sh /etc/crypttab
+       case $? in 0|1|3) ;; *) false ;; esac; } \
   && install -d -m 0700 /root/selfrecover-filets \
-  && cp -a "/boot/initrd.img-$(uname -r)" /root/selfrecover-filets/ \
+  && cp -a "/boot/initrd.img-$(uname -r)" \
+       "/root/selfrecover-filets/initrd.img-$(uname -r).avant-migration.$(date +%s)" \
   && install -m 0755 format-slot.sh "$SKG/format-slot.sh" \
   && install -d -m 0755 /etc/initramfs/post-update.d \
   && install -m 0755 initramfs-post-update-verifie-selfrecover \

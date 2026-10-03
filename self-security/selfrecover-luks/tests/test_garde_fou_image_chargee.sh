@@ -200,7 +200,7 @@ cat > "$BANC/bin/unmkinitramfs" <<'STUB'
 # L'image porte aussi sa crypttab et le keyscript qu'elle désigne : hex sous
 # keyfile-size=64 par défaut ; « raw » donne un keyscript raw sous 32, « borne32 »
 # une borne 32, « sansborne » aucune borne, « deuxlignes » une seconde ligne sous 32,
-# « sansligne » aucune ligne à keyscript.
+# « sansligne » aucune ligne à keyscript, « sanscrypttab » pas de crypttab du tout.
 case "$1" in
   *microcode*) racine="$2/main"; mkdir -p "$2/early" ;;
   *)           racine="$2" ;;
@@ -221,6 +221,7 @@ case "$1" in
   *raw*)       borne=",keyfile-size=32" ;;
   *)           borne=",keyfile-size=64" ;;
 esac
+[ -z "${1##*sanscrypttab*}" ] && exit 0
 case "$1" in
   *sansligne*)
     printf 'cryptroot UUID=banc none luks\n' ;;
@@ -322,6 +323,22 @@ GEN_SANS_LIGNE="$BANC/boot/initrd.img-$VER.complete.sansligne"
 : > "$GEN_SANS_LIGNE"
 verdict "aucune ligne à keyscript dans l'image" ROUGE "AUCUNE ligne" \
   lancer "$GEN_SANS_LIGNE"
+
+# 20. Le sel est extrait mais l'image n'a pas de crypttab : même verdict, ce n'est pas
+#     une extraction ratée.
+GEN_SANS_CT="$BANC/boot/initrd.img-$VER.complete.sanscrypttab"
+: > "$GEN_SANS_CT"
+verdict "sel extrait, image sans crypttab" ROUGE "AUCUNE ligne" \
+  lancer "$GEN_SANS_CT"
+
+# 21. Une ligne à keyscript COMMENTÉE dans /etc/crypttab n'active pas le module : le
+#     contrôle de la crypttab embarquée ne doit pas exiger de ligne.
+cp "$BANC/crypttab" "$BANC/crypttab.actif"
+printf '# cryptroot UUID=banc none luks,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh\n' \
+  > "$BANC/crypttab"
+verdict "ligne à keyscript commentée : module inactif" VERT "--" \
+  lancer "$GEN_SANS_LIGNE"
+mv "$BANC/crypttab.actif" "$BANC/crypttab"
 
 echo
 if [ "$echec" -eq 0 ]; then
