@@ -639,8 +639,8 @@ est déclenché par une mise à jour de noyau, mais aussi par `cryptsetup-initra
 chemins — et c'est justement une mise à jour de `cryptsetup-initramfs` qui casserait
 ce module sans qu'aucun noyau ne change.
 
-Il vérifie les pièces (binaire, sel, keyscript, script de secours, `libargon2`,
-`libgcc_s`, `cryptsetup`) **et compare le sel embarqué à celui du disque** : un sel
+Il vérifie les pièces (binaire, sel, keyscript, `libargon2`, `libgcc_s`, `cryptsetup`,
+et le script de secours quand l'image embarque dropbear) **et compare le sel embarqué à celui du disque** : un sel
 présent mais périmé dérive une autre clé, et un contrôle de simple présence afficherait
 « complet » sur une machine qui ne redémarrera pas. Il **échoue bruyamment avec la
 marche à suivre**, et reste inerte tant que `keyscript=` n'est pas dans
@@ -754,19 +754,22 @@ machine dont tu peux voir l'écran avant de t'y fier sur un serveur.
 ### Filet anti-verrouillage — les deux parcours
 
 Si le keyscript échoue, ouvre la racine au slot **natif** sans passer par lui : au
-clavier sur un poste, dans le shell dropbear sur un serveur.
+clavier sur un poste, par le choix « passphrase native » de `selfrecover-secours.sh` sur
+un serveur (§8b). C'est le seul repli **avant** déverrouillage : la passphrase Recover ne
+passe que par le keyscript.
 
 ```bash
-cryptsetup open "$ROOT_DEV" <root_name>   # -> passphrase native -> exit -> le boot continue
+cryptsetup open "$ROOT_DEV" <root_name>   # shell de l'initramfs -> passphrase native -> exit -> le boot continue
 ```
 
-En dernier recours : remets une image du filet (`/root/selfrecover-filets/`) depuis un
-live/secours.
+Les filets de `/root/selfrecover-filets/` vivent sur le volume chiffré : ils réparent une
+fois la racine ouverte, ou depuis un live. Ils ne font pas démarrer.
 
-> **Prépare ce filet avant d'en avoir besoin.** Sur un poste, une entrée de secours
-> dans le chargeur d'amorçage, pointant sur une image du filet, évite d'aller chercher
-> une clé USB live à froid. Elle fige en revanche une version de noyau : à retirer
-> après la première mise à jour, sinon elle devient trompeuse plutôt qu'utile.
+> **Prépare ce repli avant d'en avoir besoin.** Une entrée de secours dans le chargeur
+> d'amorçage doit désigner une image lisible avant le déverrouillage, donc posée dans
+> `/boot` — sur x86, pas sur un Raspberry Pi, où `raspi-firmware` la promouvrait en image
+> d'amorçage (§10). Elle fige une version de noyau : à retirer après la première mise à
+> jour, sinon elle devient trompeuse plutôt qu'utile.
 
 ## 13. Récupération après catastrophe — secrets HORS-SITE
 
@@ -872,31 +875,41 @@ printf '%s' "$P" \
   && echo "✅ le slot hex ouvre le volume par stdin"
 
 # 3. Seulement alors, d'une seule chaîne : le contrôle de format, la ligne $ROOT_NAME
-#    jugée sans rien écrire (elle existe, sa borne se lit), un filet daté de l'image
-#    en service (§10), le garde-fou du §11 et format-slot.sh — tout ce qui peut échouer
-#    passe AVANT le keyscript —, puis le keyscript, la borne alignée sur sa clé, et la
-#    régénération. Le moindre refus arrête tout ce qui suit. Sur une racine équipée en
-#    raw, le premier jugement de la borne affiche un ❌ : c'est l'écart que la chaîne
-#    corrige plus bas.
+#    jugée sans rien écrire (elle existe, sa borne se lit), un filet daté de CHAQUE
+#    image de /boot (§10), puis les pièces du module dans leur version courante —
+#    format-slot.sh, garde-fou du §11, script de secours, hook — : tout ce qui peut
+#    échouer passe AVANT le keyscript. Viennent ensuite le keyscript, la borne alignée
+#    sur sa clé, et la régénération de TOUS les noyaux. Le moindre refus arrête tout ce
+#    qui suit. Sur une racine équipée en raw, le premier jugement de la borne affiche un
+#    ❌ : c'est l'écart que la chaîne corrige plus bas.
 bash format-slot.sh verifier "$ROOT_DEV" selfrecover-keyscript.sh "$SKG" \
   && { bash format-slot.sh borne "$ROOT_NAME" selfrecover-keyscript.sh /etc/crypttab
        case $? in 0|1|3) ;; *) false ;; esac; } \
-  && install -d -m 0700 /root/selfrecover-filets \
-  && cp -a "/boot/initrd.img-$(uname -r)" \
-       "/root/selfrecover-filets/initrd.img-$(uname -r).avant-migration.$(date +%s)" \
+  && FILETS="/root/selfrecover-filets/avant-migration.$(date +%s)" \
+  && install -d -m 0700 "$FILETS" \
+  && cp -a /boot/initrd.img-* "$FILETS"/ \
   && install -m 0755 format-slot.sh "$SKG/format-slot.sh" \
   && install -d -m 0755 /etc/initramfs/post-update.d \
   && install -m 0755 initramfs-post-update-verifie-selfrecover \
        /etc/initramfs/post-update.d/zz-verifie-selfrecover \
+  && install -m 0755 selfrecover-secours.sh "$SKG/selfrecover-secours.sh" \
+  && install -m 0755 initramfs-hook-selfrecover /etc/initramfs-tools/hooks/selfrecover \
   && install -m 0755 selfrecover-keyscript.sh "$SKG/selfrecover-keyscript.sh" \
   && bash format-slot.sh borne "$ROOT_NAME" "$SKG/selfrecover-keyscript.sh" /etc/crypttab --ecrire \
-  && update-initramfs -u
-#    Le garde-fou juge l'image produite : un keyscript et une borne qui ne vont pas
-#    ensemble le font échouer ICI, avant le redémarrage. Si la chaîne casse après le
-#    keyscript, relance la borne puis update-initramfs : le garde-fou est déjà là.
+  && update-initramfs -u -k all
+#    Le garde-fou juge chaque image produite : un keyscript et une borne qui ne vont pas
+#    ensemble, ou une pièce qui manque, le font échouer ICI, avant le redémarrage. Si la
+#    chaîne casse après le keyscript, relance la borne puis `update-initramfs -u -k all` :
+#    le garde-fou est déjà là. Tous les noyaux, parce qu'une entrée de démarrage d'un
+#    noyau plus ancien garderait sinon le keyscript raw — un piège dès l'étape 5.
 
 # 4. REDÉMARRER et vérifier que le déverrouillage fonctionne. Ne passe pas à
 #    l'étape 5 avant d'avoir redémarré avec succès.
+#    Si la passphrase Recover n'ouvre pas : au shell de l'initramfs, ouvre la racine
+#    par la passphrase NATIVE — `cryptsetup open "$ROOT_DEV" "$ROOT_NAME"`, puis `exit`
+#    (§12). La passphrase Recover ne passe que par le keyscript. Les filets de
+#    /root/selfrecover-filets vivent sur le volume chiffré : ils ne servent qu'une fois
+#    celui-ci ouvert, ou depuis un live.
 
 # 5. Une fois le redémarrage réussi : retirer l'ancien slot brut
 cryptsetup luksDump "$ROOT_DEV" | grep -E "^\s+[0-9]+: luks2"   # repère son numéro
@@ -910,8 +923,8 @@ raw la laisse incomplète (§8a). L'image d'amorçage embarque sa propre copie d
 crypttab — écrite à la génération (`$DESTDIR/cryptroot/crypttab`, dans
 `/usr/lib/cryptsetup/functions`), lue au démarrage (`/cryptroot/crypttab`) : modifier
 `/etc/crypttab` ne touche pas l'image en service. Keyscript et borne doivent donc
-changer dans la **même** image. Le filet pris en tête de l'étape 3 garde l'ancienne
-paire, cohérente ; il vit sur le volume chiffré, et se remet depuis un live (§12).
+changer dans la **même** image. Les filets pris en tête de l'étape 3 gardent l'ancienne
+paire, cohérente ; ils vivent sur le volume chiffré, et se remettent depuis un live (§12).
 
 **L'étape 4 n'est pas facultative.** Retirer l'ancien slot avant d'avoir redémarré,
 c'est supprimer le filet avant de savoir si le nouveau tient.
