@@ -131,17 +131,18 @@ printf '%s' "$SEL" > sel
 printf '%s' "$MOT" | "${DERIVE[@]}" --salt-file sel --label disk --format hex > derive.hex || exit 1
 
 taille="$(wc -c < derive.hex)"
-# La taille attendue est celle qu'install.sh écrit dans crypttab (keyfile-size) :
-# la figer ici laisserait les deux diverger sans que rien ne rougisse.
-attendue="$(grep -oE 'keyfile-size=[0-9]+' "$MODULE/install.sh" | head -1 | cut -d= -f2)"
+# La taille attendue est la borne keyfile-size que format-slot.sh tient pour le
+# keyscript du module, celle qu'install.sh écrit dans crypttab : la figer ici
+# laisserait les deux diverger sans que rien ne rougisse.
+attendue="$(bash "$MODULE/format-slot.sh" taille "$MODULE/selfrecover-keyscript.sh" 2>/dev/null)"
 total=$((total + 1))
 if [ -z "$attendue" ]; then
-  printf '  ❌ %-50s\n' "keyfile-size introuvable dans install.sh"
+  printf '  ❌ %-50s\n' "format-slot.sh taille ne rend aucune borne"
   echec=1
 elif [ "$taille" = "$attendue" ]; then
   printf '  ✅ %-50s %s\n' "sortie du dérivateur : $attendue o (keyfile-size), aucun \\n final" "$taille"
 else
-  printf '  ❌ %-50s %s (keyfile-size d install.sh : %s)\n' "sortie du dérivateur" "$taille" "$attendue"
+  printf '  ❌ %-50s %s (borne de format-slot.sh : %s)\n' "sortie du dérivateur" "$taille" "$attendue"
   echec=1
 fi
 
@@ -149,7 +150,7 @@ fi
 { cat derive.hex; printf '\n'; } > derive_nl.hex
 verdict "clé dérivée par tube"                   OUVRE  par_tube derive.hex
 verdict "clé dérivée + \\n final"                 ECHOUE par_tube derive_nl.hex
-verdict "clé dérivée + \\n, --keyfile-size 64"    OUVRE  par_tube derive_nl.hex --keyfile-size 64
+verdict "clé dérivée + \\n, --keyfile-size $attendue"    OUVRE  par_tube derive_nl.hex --keyfile-size "$attendue"
 
 echo
 if [ "$echec" = 0 ]; then
