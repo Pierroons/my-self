@@ -59,9 +59,9 @@ Passphrase recover (saisie une fois, à distance via SSH d'amorçage)
 | `selfrecover_derive.c` | dérivation Argon2id (clone C autonome pour l'initramfs ; stdin → clé hex) |
 | `selfrecover_derive.py` | implémentation de référence (Python, usage userspace) |
 | `selfrecover-keyscript.sh` | keyscript du volume racine (dérive la passphrase recover) |
-| `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript dans l'initrd |
+| `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript + script de secours dans l'initrd |
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS (autorisé par une clé existante) |
-| `format-slot.sh` | inscrit le format de clé enrôlé par volume, refuse de poser un keyscript d'un autre format, et tient la borne `keyfile-size` qui va avec un keyscript |
+| `format-slot.sh` | inscrit le format de clé enrôlé par volume, refuse de poser un keyscript d'un autre format, et donne la borne `keyfile-size` d'un keyscript, qu'il vérifie ou corrige dans crypttab |
 | `selfrecover-unlock.sh` | déverrouillage de secours autonome (userspace) |
 | `selfrecover-secours.sh` | `command=` de la clé du SSH d'amorçage : propose la passphrase recover **ou** la passphrase native, **jamais un shell** |
 | `verifie-initramfs.sh` | compare les images de `/boot` à l'empreinte consignée sur le volume chiffré — rend visible une image modifiée hors de la machine |
@@ -121,7 +121,7 @@ ouvre les secondaires — pas un gain de résistance. L'unification s'arrête à
   sert à ouvrir, ou dont le nombre de slots ne correspond plus au disque.
 - **Le slot se prouve avant qu'on en dépende** : `--test-passphrase` entre l'ajout du slot et le
   branchement du keyscript. Ce qui n'a pas été vérifié se découvre au redémarrage.
-- **Garde-fou après mise à jour de noyau** : le coût réel du module n'est pas cryptographique,
+- **Garde-fou après chaque régénération d'initramfs** : le coût réel du module n'est pas cryptographique,
   c'est le nombre de pièces dans le chemin d'amorçage. Chacune peut manquer après une
   régénération d'initramfs, et le manque ne se voit qu'au démarrage suivant.
 - **Récupération catastrophe** : conserver hors-site (gestionnaire de mots de passe) la passphrase,

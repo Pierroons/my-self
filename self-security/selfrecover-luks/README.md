@@ -59,9 +59,9 @@ Recovery passphrase (entered once, remotely via boot SSH)
 | `selfrecover_derive.c` | Argon2id derivation (self-contained C clone for the initramfs; stdin → hex key) |
 | `selfrecover_derive.py` | reference implementation (Python, userspace) |
 | `selfrecover-keyscript.sh` | root-volume keyscript (derives the recovery passphrase) |
-| `initramfs-hook-selfrecover` | embeds binary + libargon2 + **libgcc** + salt + keyscript in the initrd |
+| `initramfs-hook-selfrecover` | embeds binary + libargon2 + **libgcc** + salt + keyscript + rescue script in the initrd |
 | `setup-add-selfrecover-slot.sh` | adds a recovery slot to a LUKS volume (authorized by an existing key) |
-| `format-slot.sh` | records the enrolled key format per volume, refuses to install a keyscript of another format, and holds the `keyfile-size` bound that goes with a keyscript |
+| `format-slot.sh` | records the enrolled key format per volume, refuses to install a keyscript of another format, and gives the `keyfile-size` bound a keyscript needs, which it checks or fixes in crypttab |
 | `selfrecover-unlock.sh` | standalone emergency unlock (userspace) |
 | `selfrecover-secours.sh` | `command=` of the boot SSH key: offers the recovery passphrase **or** the native passphrase, **never a shell** |
 | `verifie-initramfs.sh` | compares the images in `/boot` with the fingerprint recorded on the encrypted volume — makes an image modified off-machine visible |
