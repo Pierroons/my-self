@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Sanity test — a database created by SelfDataGuard 0.4.0, opened by 0.5.0.
+ * Sanity test — databases created by SelfDataGuard 0.4.0 and 0.5.x, opened by the current version.
  *
  * Run:  php tests/sanity_migration.php
  * Exit: 0 on success, non-zero if any check failed.
@@ -86,6 +86,26 @@ const SCHEMA_040 = [
     )',
 ];
 
+/**
+ * A vault as a version before 0.6.0 sealed it: under the legacy profile, whatever
+ * the current constants are. register() would seal under the current ones, and the
+ * fixtures would then prove only that both profiles are still equal.
+ */
+function scelleAvant060(string $userId, string $password, ?string $memorized = null, ?string $phrase = null): VaultRecord
+{
+    $base = (new UserVault())->register($userId, $password)['record'];
+    $mk   = random_bytes(Primitives::KEY_LEN);
+    $seal = new ReflectionMethod(UserVault::class, 'seal');
+    $sous = static fn (Lock $l, ?string $s) => $s === null ? null : $seal->invoke(
+        null, $l, $s, $base->userSalt, $userId, $mk, Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT);
+    return new VaultRecord(
+        userId: $userId, userSalt: $base->userSalt,
+        wrapPwd: $sous(Lock::Password, $password), wrapRecov: $sous(Lock::Memorized, $memorized), wrapAdmin: null,
+        createdAt: $base->createdAt, updatedAt: $base->updatedAt, wrapPhrase: $sous(Lock::Passphrase, $phrase),
+        kdfOpslimit: Primitives::LEGACY_OPSLIMIT, kdfMemlimit: Primitives::LEGACY_MEMLIMIT
+    );
+}
+
 /** A 0.4.0 database holding one vault, written with the 0.4.0 column list. */
 function oldDatabase(string $userId, string $password, string $memorized): PDO
 {
@@ -94,7 +114,7 @@ function oldDatabase(string $userId, string $password, string $memorized): PDO
     foreach (SCHEMA_040 as $sql) {
         $pdo->exec($sql);
     }
-    $r = (new UserVault())->register($userId, $password, $memorized)['record'];
+    $r = scelleAvant060($userId, $password, $memorized);
     $pdo->prepare(
         'INSERT INTO selfdataguard_vaults
          (user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at)
@@ -126,7 +146,7 @@ $PHRASE = 'cheval agrafe batterie correct moulin ivoire';
 
 // -----------------------------------------------------------------------------
 
-section('A 0.4.0 database gains wrap_phrase when 0.5.0 opens it');
+section('A 0.4.0 database gains wrap_phrase and the profile columns when it is opened');
 
 $old = oldDatabase('user-old', 'old-password-0001', 'old-memorized');
 in_array('wrap_phrase', array_map(static fn ($l) => explode('|', $l)[0], vaultColumns($old)), true)
@@ -181,7 +201,7 @@ function database05x(string $userId, string $password, string $memorized, string
     }
     $pdo->exec('ALTER TABLE selfdataguard_vaults ADD COLUMN wrap_phrase TEXT');
     $pdo->exec('ALTER TABLE selfdataguard_vaults ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');
-    $r = (new UserVault())->register($userId, $password, $memorized, $phrase)['record'];
+    $r = scelleAvant060($userId, $password, $memorized, $phrase);
     $pdo->prepare(
         'INSERT INTO selfdataguard_vaults
          (user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase, revision)

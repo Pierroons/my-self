@@ -53,7 +53,7 @@ Self-Security takes the two surfaces apart: **data is encrypted before it reache
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.6.0** — available, 362 checks across 11 suites |
+| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.6.0** — available, 373 checks across 11 suites |
 | [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.6.2** — reproducible install; earlier releases validated on a Debian 13 LNMP server, a laptop and an encrypted-LVM root |
 
 ---

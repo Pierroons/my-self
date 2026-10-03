@@ -298,11 +298,21 @@ $ev->unlockAsAdmin($storage->loadEscrow('carol'), $skLien, $admin['publicKey'])-
     ? ok('a pre-0.6.0 wrap_admin still opens')
     : ko('a pre-0.6.0 wrap_admin opened to another key');
 
-$dg->setEscrowFields($carol, $admin['publicKey'], ['contact_secours' => 'carol-secours@example.org']);
-EscrowVault::isAccountBound($storage->loadEscrow('carol'))
+$autreAdmin = SelfDataGuard::generateAdminRecoveryKey('une autre passphrase admin assez longue');
+$dg->setEscrowFields($carol, $autreAdmin['publicKey'], ['contact_secours' => 'carol-secours@example.org']);
+!EscrowVault::isAccountBound($storage->loadEscrow('carol'))
     && $dg->getEscrowFieldsAsAdmin('carol', $skLien, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
-    ? ok("the holder's next escrow write re-seals wrap_admin with the account, and the admin still reads it")
-    : ko('the pre-0.6.0 wrap_admin was not re-sealed on write, or no longer opens');
+    ? ok('an escrow write leaves an existing wrap_admin as it is, whatever public key it is given')
+    : ko('an escrow write re-sealed or lost the existing wrap_admin');
+$dg->rebindEscrowAdmin($carol, $admin['publicKey'])
+    && EscrowVault::isAccountBound($storage->loadEscrow('carol'))
+    && $dg->getEscrowFieldsAsAdmin('carol', $skLien, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+    ? ok('rebindEscrowAdmin() re-seals a pre-0.6.0 wrap_admin with its account, and the admin still reads it')
+    : ko('rebindEscrowAdmin() did not re-seal the pre-0.6.0 wrap_admin, or it no longer opens');
+!$dg->rebindEscrowAdmin($carol, $autreAdmin['publicKey'])
+    && $dg->getEscrowFieldsAsAdmin('carol', $skLien, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+    ? ok('rebindEscrowAdmin() leaves a bound wrap_admin alone')
+    : ko('rebindEscrowAdmin() re-sealed a wrap_admin that was already bound');
 sodium_memzero($skLien);
 
 section('Delete cascade removes escrow');

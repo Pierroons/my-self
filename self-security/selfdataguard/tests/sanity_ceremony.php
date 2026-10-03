@@ -110,6 +110,16 @@ $r = run(['verify-log', '--ancre', '999:' . str_repeat('0', 64)], '', $env);
 $r['code'] === 1 && str_contains($r['err'], 'TRONQUÉ')
     ? ok('verify-log --ancre refuses an anchor beyond the end (truncation)')
     : ko('verify-log --ancre missed a truncation', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+$r = run(['verify-log', '--ancre=999:' . str_repeat('0', 64)], '', $env);
+$r['code'] === 1 && str_contains($r['err'], 'TRONQUÉ')
+    ? ok('verify-log --ancre=… is read the same way')
+    : ko('verify-log --ancre=… was not read as an anchor', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+foreach ([['--anchor', '999:' . str_repeat('0', 64)], ['--ancre'], ['--ancre', 'x', 'y']] as $mal) {
+    $r = run(array_merge(['verify-log'], $mal), '', $env);
+    $r['code'] === 2
+        ? ok('verify-log ' . implode(' ', $mal) . ' → exit 2, not a silent check without anchor')
+        : ko('verify-log ' . implode(' ', $mal) . ' was accepted', $r['code'] . ' ' . trim($r['out'] . $r['err']));
+}
 
 // -----------------------------------------------------------------------------
 
@@ -141,6 +151,17 @@ $r['code'] === 2 ? ok('wrong passphrase → exit 2') : ko('should refuse wrong p
 $badEntries = (new AuditLog($auditLog, $auditSecret))->readAll();
 $deny = end($badEntries);
 $deny['event']['reason'] === 'bad-passphrase' ? ok('bad-passphrase attempt logged') : ko('bad-passphrase not logged', json_encode($deny));
+
+// A sealed-key file with an out-of-range profile is a broken file, not a wrong passphrase.
+$sealIntact = file_get_contents($sealFile);
+file_put_contents($sealFile, preg_replace('/^v2:\d+:/', 'v2:0:', $sealIntact));
+$r = run(['unlock', 'alice', 'L3-open'], ADMIN_PASS . "\n", $env);
+file_put_contents($sealFile, $sealIntact);
+$brokenEntries = (new AuditLog($auditLog, $auditSecret))->readAll();
+$deny = end($brokenEntries);
+$r['code'] === 2 && $deny['event']['reason'] === 'sealed-key-unreadable'
+    ? ok('an out-of-range profile in the sealed file is logged as sealed-key-unreadable')
+    : ko('a broken sealed file was logged as something else', json_encode($deny['event']));
 
 // -----------------------------------------------------------------------------
 

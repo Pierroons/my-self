@@ -1312,16 +1312,23 @@ jobs:
             $D/tests/sanity_vecteurs.php 'Memorized: key differs from the second implementation'
           canari $D/src/Vault/UserVault.php '$opslimit ?? $record->kdfOpslimit,' '$opslimit ?? Primitives::ARGON2_OPSLIMIT,' \
             $D/tests/sanity_vault.php 'a vault sealed under another profile no longer opens'
-          canari $D/src/Escrow/AdminKey.php '$sealKey   = Primitives::deriveFromPassword($passphrase, $salt, $ops, $mem);' \
-            '$sealKey   = Primitives::deriveFromPassword($passphrase, $salt);' \
+          canari $D/src/Escrow/AdminKey.php '            $sealKey = Primitives::deriveFromPassword($passphrase, $salt, $ops, $mem);' \
+            '            $sealKey = Primitives::deriveFromPassword($passphrase, $salt);' \
             $D/tests/sanity_escrow.php 'a v2 key sealed under another profile no longer unseals'
           canari $D/src/SelfDataGuard.php 'if ($stored->kdfOpslimit !== $written->kdfOpslimit' 'if (false && $stored->kdfOpslimit !== $written->kdfOpslimit' \
             $D/tests/sanity_facade.php 'a vault read back under another Argon2id profile was reported as stored'
           canari $D/src/Escrow/EscrowVault.php '$head = self::adminHead($record->userId);' \
             '$head = substr($plain, 0, strlen($plain) - Primitives::KEY_LEN);' \
             $D/tests/sanity_escrow.php "alice's wrap_admin, moved into bob's record, opened as bob's"
-          canari $D/src/SelfDataGuard.php 'if (!EscrowVault::isAccountBound($record)) {' 'if (false) {' \
-            $D/tests/sanity_escrow.php 'the pre-0.6.0 wrap_admin was not re-sealed on write, or no longer opens'
+          canari $D/src/SelfDataGuard.php 'if ($record === null || EscrowVault::isAccountBound($record)) {' 'if (true) {' \
+            $D/tests/sanity_escrow.php 'rebindEscrowAdmin() did not re-seal the pre-0.6.0 wrap_admin, or it no longer opens'
+          canari $D/src/Vault/VaultRecord.php 'if ($kdfOpslimit === null || $kdfMemlimit === null) {' \
+            '$kdfOpslimit ??= Primitives::ARGON2_OPSLIMIT; $kdfMemlimit ??= Primitives::ARGON2_MEMLIMIT; if (false) {' \
+            $D/tests/sanity_facade.php 'a storage that never reads the profile back was trusted'
+          canari $D/src/SelfDataGuard.php 'unset($cipher[EscrowVault::WRAP_AAD_TAG]);' '' \
+            $D/tests/sanity_facade.php 'getFields() refused the whole account for one reserved row'
+          canari $D/bin/escrow-ceremony.php 'fwrite(STDERR, "❌ option inconnue : "' 'return; fwrite(STDERR, "❌ option inconnue : "' \
+            $D/tests/sanity_ceremony.php 'was accepted'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce

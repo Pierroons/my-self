@@ -6,7 +6,7 @@
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
 [![Statut : v0.6.0 disponible](https://img.shields.io/badge/statut-v0.6.0%20disponible-brightgreen.svg)](#statut)
-[![Tests : 362 passants](https://img.shields.io/badge/tests-362%20passants-brightgreen.svg)](#tests)
+[![Tests : 373 passants](https://img.shields.io/badge/tests-373%20passants-brightgreen.svg)](#tests)
 [![Pilier : Self-Security](https://img.shields.io/badge/pilier-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -47,7 +47,7 @@ SelfDataGuard implémente un **encapsulage de clé à plusieurs serrures** inspi
         └────────────────┘  └────────────────┘  └──────────────────────┘
 ```
 
-Argon2id prend un sel de 16 octets : les 16 premiers octets de ce SHA-256. Les deux contextes diffèrent : la même chaîne posée comme mot mémorisé et comme passphrase donne deux clés sans rapport. Les trois clés d'encapsulage coûtent autant, et c'est voulu : des enveloppes ne valent que la moins chère à ouvrir. Le profil Argon2id (3 passes, 64 Mio) est enregistré avec chaque coffre : un coffre garde le sien à chaque rescellement, un coffre neuf prend le profil courant, et changer les constantes ne ferme plus les coffres existants.
+Argon2id prend un sel de 16 octets : les 16 premiers octets de ce SHA-256. Les deux contextes diffèrent : la même chaîne posée comme mot mémorisé et comme passphrase donne deux clés sans rapport. Les trois clés d'encapsulage coûtent autant, et c'est voulu : des enveloppes ne valent que la moins chère à ouvrir. Le profil Argon2id (3 passes, 64 Mio) est enregistré avec chaque coffre : un coffre garde le sien à chaque rescellement, un coffre neuf prend le profil courant, et changer les constantes ne ferme plus aucun coffre existant. Ce que tu dérives toi-même par `Primitives` n'enregistre pas de profil.
 
 Chaque utilisateur dispose de :
 
@@ -118,10 +118,10 @@ Un déploiement qui installe la v0.6.0 est donc en **Lite**, quel que soit le mo
 Une voie administrateur existe pourtant, hors de ce tableau : le **séquestre** (`src/Escrow/`), compartiment à clé propre qu'un administrateur rouvre sous cérémonie — dossier ouvert, passphrase de séquestre, journal signé. Il ne rend que ce compartiment, jamais le coffre privé, et il n'est pas le mode Hybrid : rien n'y est déchiffré au fil de l'eau. Le séquestre d'un coffre archivé part avec l'archive, et l'administrateur le rouvre de la même façon (`getArchiveEscrowFieldsAsAdmin()`).
 
 Ce que le séquestre tient depuis la 0.6.0 :
-- **le scellé administrateur nomme son compte** : recopié dans la ligne d'un autre compte, il est refusé. Un scellé d'avant la 0.6.0 s'ouvre encore, et se rescelle à la prochaine écriture de séquestre de son titulaire ;
+- **le scellé administrateur nomme son compte** : recopié dans la ligne d'un autre compte, il est refusé. Il n'authentifie pas pour autant le contenu du séquestre : qui écrit en base peut, avec la clé publique, sceller et remplir un compartiment neuf. Un scellé d'avant la 0.6.0 s'ouvre encore ; `rebindEscrowAdmin($session, $clePublique)` le rescelle, vers la clé que tu lui passes — passe celle avec laquelle le séquestre a été créé, rien ne peut le vérifier sans la clé secrète ;
 - **la passphrase admin compte au moins 12 octets** au scellement (`UserVault::PASSWORD_MIN_LEN`) ; une clé scellée plus tôt sous une passphrase plus courte s'ouvre encore. La clé scellée porte son profil Argon2id (`v2:…`) ;
 - **le journal de la cérémonie peut s'ancrer hors de la machine** : `bin/escrow-ceremony.php verify-log` affiche sa tête `seq:hmac`, que tu notes ailleurs, et `verify-log --ancre seq:hmac` refuse ensuite un journal tronqué ou réécrit. Sans ancre, la vérification ne voit pas qu'on a coupé la fin du journal ;
-- **le nom de champ `escrow` est réservé** : c'est le contexte de l'enveloppe du séquestre, et `setFields()` comme `getFields()` le refusent.
+- **le nom de champ `escrow` est réservé** : c'est le contexte de l'enveloppe du séquestre. `setFields()` le refuse ; `getFields()` le refuse quand on le demande par son nom, et le laisse de côté, sans le déchiffrer, dans une lecture de tous les champs.
 
 ---
 
@@ -144,7 +144,7 @@ Ce que le séquestre tient depuis la 0.6.0 :
 
 **v0.6.0 — le profil Argon2id enregistré, un séquestre lié à son compte, un journal ancrable**, 3 octobre 2026.
 
-Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (3 883 lignes réparties sur 25 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **362 contrôles répartis sur 11 suites**, joués sous PHP 8.1, 8.2 et 8.4, tous passants. Les clés des trois serrures sont vérifiées contre des vecteurs figés, recalculés en CI par une seconde implémentation (argon2-cffi). Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
+Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (3 927 lignes réparties sur 25 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **373 contrôles répartis sur 11 suites**, joués sous PHP 8.1, 8.2 et 8.4, tous passants. Les clés des trois serrures sont vérifiées contre des vecteurs figés, recalculés en CI par une seconde implémentation (argon2-cffi). Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
 
 Une base 0.5.x se migre en place à sa première ouverture par la 0.6.0 (colonnes `kdf_opslimit` et `kdf_memlimit`, au profil d'avant), une base 0.4.0 aussi, en une fois. ⚠️ Un retour à la 0.5.x garde l'accès aux coffres et au séquestre côté titulaire, mais l'administrateur n'ouvre plus un séquestre que la 0.6.0 a créé ou rescellé, et la 0.5.x ne descelle pas une clé admin générée par la 0.6.0 : [CHANGELOG](./CHANGELOG.md). Les blobs écrits par la 0.3.0 restent lisibles, par OpenSSL (`ext-openssl`) là où libsodium refuse AES.
 
@@ -215,12 +215,12 @@ php tests/sanity_fields.php       # 26 tests — chiffrement de champs + blind i
 php tests/sanity_storage.php      # 60 tests — adaptateur SQLite, transactions imbriquées, écriture conditionnelle (génération, révision), test "soupe DB"
 php tests/sanity_migration.php    # 15 tests — bases 0.4.0 et 0.5.x migrées en place, deux migrateurs simultanés
 php tests/sanity_archive.php      # 26 tests — archive : contenu, cloisonnement, tout-ou-rien, écrivain concurrent attendu
-php tests/sanity_facade.php       # 60 tests — API complète bout en bout, recover(), niveau 3, course à l'écriture, stockage qui perd une colonne
+php tests/sanity_facade.php       # 63 tests — API complète bout en bout, recover(), niveau 3, course à l'écriture, stockage qui perd ou ignore le profil, nom réservé
 php tests/sanity_audit.php        # 18 tests — journal d'audit, ancre contre la troncature
-php tests/sanity_ceremony.php     # 17 tests — cérémonie de clés
-php tests/sanity_escrow.php       # 30 tests — compartiment escrow, clé admin v2, scellé lié au compte
+php tests/sanity_ceremony.php     # 22 tests — cérémonie de clés, options de verify-log, fichier scellé illisible
+php tests/sanity_escrow.php       # 33 tests — compartiment escrow, clé admin v2, scellé lié au compte, rescellement explicite
 php tests/sanity_vecteurs.php     # 9 tests — clés des trois serrures face aux vecteurs figés
-# Total : 362 tests, 0 échec — relevé par exécution le 03/10/2026
+# Total : 373 tests, 0 échec — relevé par exécution le 03/10/2026
 python3 tests/vecteurs_argon2.py  # recalcule les vecteurs par argon2-cffi, seconde implémentation
 ```
 

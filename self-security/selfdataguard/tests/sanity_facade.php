@@ -514,6 +514,30 @@ try {
         : ko('wrong failure', $e->getMessage());
 }
 
+/** A StorageInterface implementation written before 0.6.0: it rebuilds records without the profile columns. */
+final class ProfileBlindStorage extends DelegatingStorage
+{
+    public function loadVault(string $u): VaultRecord
+    {
+        $r = $this->inner->loadVault($u);
+        return new VaultRecord(
+            userId: $r->userId, userSalt: $r->userSalt, wrapPwd: $r->wrapPwd, wrapRecov: $r->wrapRecov,
+            wrapAdmin: $r->wrapAdmin, createdAt: $r->createdAt, updatedAt: $r->updatedAt,
+            wrapPhrase: $r->wrapPhrase, revision: $r->revision
+        );
+    }
+}
+
+try {
+    (new SelfDataGuard(new ProfileBlindStorage($storage), $blindKey))
+        ->register('user-profile-blind', 'profile-password-02', null, $PH1);
+    ko('a storage that never reads the profile back was trusted: its vaults would open under the current constants');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'kdfOpslimit and kdfMemlimit are required')
+        ? ok('a storage that never reads the profile back fails at its first read')
+        : ko('wrong failure', $e->getMessage());
+}
+
 // -----------------------------------------------------------------------------
 
 section('A re-enrolment landing between the check and the write');
@@ -579,10 +603,28 @@ $planted = Primitives::encrypt(
      VALUES (?, ?, ?, NULL, ?)'
 )->execute(['reserved-name', 'escrow', $planted, gmdate('c')]);
 try {
-    $leaked = $dg->getFields($reserve);
+    $leaked = $dg->getFields($reserve, ['escrow']);
     ko('a planted "escrow" row was decrypted and returned', 'fields: ' . implode(',', array_keys($leaked)));
 } catch (InvalidArgumentException) {
-    ok('a planted "escrow" row is refused on read, not decrypted');
+    ok('a planted "escrow" row asked for by name is refused, not decrypted');
+}
+$dg->setFields($reserve, ['note' => 'une note']);
+try {
+    $tous = $dg->getFields($reserve);
+    $tous === ['note' => 'une note']
+        ? ok('a read of every field leaves the reserved row out, undecrypted, and returns the others')
+        : ko('a read of every field returned the reserved row', implode(',', array_keys($tous)));
+} catch (InvalidArgumentException $e) {
+    ko('getFields() refused the whole account for one reserved row', $e->getMessage());
+}
+try {
+    ['unlocked' => $neuf, 'archiveId' => $idReserve] = $dg->reEnroll('reserved-name', 'mot de passe réservé 2');
+    $lu = $dg->readArchive($dg->openArchive($neuf, $idReserve, Lock::Password, 'mot de passe réservé'));
+    $lu['private'] === ['note' => 'une note']
+        ? ok('an archive holding the reserved row still restores the other fields')
+        : ko('the archive returned the reserved row', implode(',', array_keys($lu['private'])));
+} catch (Throwable $e) {
+    ko('one reserved row blocks the restore of the whole archive', $e->getMessage());
 }
 
 // -----------------------------------------------------------------------------

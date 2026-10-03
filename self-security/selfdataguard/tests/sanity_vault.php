@@ -152,7 +152,9 @@ $bobFake = new VaultRecord(
     wrapRecov: null,
     wrapAdmin: null,
     createdAt: $alice['record']->createdAt,
-    updatedAt: $alice['record']->updatedAt
+    updatedAt: $alice['record']->updatedAt,
+    kdfOpslimit: $alice['record']->kdfOpslimit,
+    kdfMemlimit: $alice['record']->kdfMemlimit
 );
 
 try {
@@ -472,7 +474,8 @@ try {
 
 $menteur = new VaultRecord(
     userId: $autre->userId, userSalt: $autre->userSalt, wrapPwd: $autre->wrapPwd, wrapRecov: $autre->wrapRecov,
-    wrapAdmin: null, createdAt: $autre->createdAt, updatedAt: $autre->updatedAt
+    wrapAdmin: null, createdAt: $autre->createdAt, updatedAt: $autre->updatedAt,
+    kdfOpslimit: Primitives::ARGON2_OPSLIMIT, kdfMemlimit: Primitives::ARGON2_MEMLIMIT
 );
 try {
     $vault->unlockWithPassword($menteur, 'profile-password-01');

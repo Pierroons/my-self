@@ -36,6 +36,9 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
  */
 final class VaultRecord
 {
+    public readonly int $kdfOpslimit;
+    public readonly int $kdfMemlimit;
+
     public function __construct(
         public readonly string $userId,
         public readonly string $userSalt,
@@ -46,11 +49,19 @@ final class VaultRecord
         public readonly DateTimeImmutable $updatedAt,
         public readonly ?EncryptedBlob $wrapPhrase = null,
         public readonly int $revision = 0,
-        // Defaults to the current constants: a storage that does not read these
-        // columns back opens its vaults under them, not under their own profile.
-        public readonly int $kdfOpslimit = Primitives::ARGON2_OPSLIMIT,
-        public readonly int $kdfMemlimit = Primitives::ARGON2_MEMLIMIT
+        // Required, though placed after optional parameters: a default would be
+        // the current constants, and a storage that does not read these columns
+        // back would open every vault under them instead of its own profile.
+        ?int $kdfOpslimit = null,
+        ?int $kdfMemlimit = null
     ) {
+        if ($kdfOpslimit === null || $kdfMemlimit === null) {
+            throw new InvalidArgumentException(
+                'kdfOpslimit and kdfMemlimit are required: the Argon2id profile the envelopes were sealed under'
+            );
+        }
+        $this->kdfOpslimit = $kdfOpslimit;
+        $this->kdfMemlimit = $kdfMemlimit;
         if ($userId === '') {
             throw new InvalidArgumentException('userId must not be empty');
         }

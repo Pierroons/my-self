@@ -103,11 +103,16 @@ final class AdminKey
             throw new InvalidArgumentException('Malformed sealed secret (invalid salt)');
         }
 
-        $sealKey   = Primitives::deriveFromPassword($passphrase, $salt, $ops, $mem);
-        $secretKey = Primitives::decrypt(EncryptedBlob::fromBase64($blobB64), $sealKey, aad: self::SEAL_AAD);
-        Primitives::zeroize($sealKey);
-
-        return $secretKey;
+        try {
+            $sealKey = Primitives::deriveFromPassword($passphrase, $salt, $ops, $mem);
+        } catch (\SodiumException $e) {
+            throw new InvalidArgumentException('Malformed sealed secret (Argon2id profile out of range)', previous: $e);
+        }
+        try {
+            return Primitives::decrypt(EncryptedBlob::fromBase64($blobB64), $sealKey, aad: self::SEAL_AAD);
+        } finally {
+            Primitives::zeroize($sealKey);
+        }
     }
 
     /**

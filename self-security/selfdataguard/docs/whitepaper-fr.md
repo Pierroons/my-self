@@ -322,7 +322,7 @@ La majorité des sites e-commerce devraient choisir **Hybrid**. Les services à 
 | Vol du papier de passphrase | La passphrase de niveau 1 d'un utilisateur | Le compte et les données de cet utilisateur, hors ligne aussi avec un dump, jusqu'à la première utilisation légitime de la passphrase, qui la remplace des deux côtés |
 | Fuite d'un ancien secret avant un niveau 3 | Une serrure de l'archive | Rien par le service : l'archive ne s'ouvre que depuis une session sur le coffre actuel. Avec un dump, l'archive s'ouvre hors ligne par cette serrure |
 | Coercition d'un admin | Force l'admin à fournir ses clés | Mode Lite : aucune clé permanente côté admin, donc rien. Mode Hybrid : champs opérationnels seulement. Mode Full : rien (l'admin n'a pas de clé) |
-| Écriture en base | Modifier, recopier ou remettre des lignes | Un scellé administrateur recopié dans la ligne d'un autre compte est refusé à l'ouverture (depuis la 0.6.0). Une ligne de coffre remise depuis une révision antérieure rouvre avec les secrets qu'elle portait, passphrase consommée comprise : limite, §8.1 |
+| Écriture en base | Modifier, recopier ou remettre des lignes | Le contenu du séquestre n'est pas authentifié contre lui : avec la clé publique admin, stockée en clair, il scelle un compartiment neuf pour un compte et le remplit, et la cérémonie montre ce qu'il a écrit. Le scellé administrateur nommant son compte (0.6.0) n'arrête que la recopie à l'identique d'un compte vers un autre. Une ligne de coffre remise depuis une révision antérieure rouvre avec les secrets qu'elle portait, passphrase consommée comprise : limite, §8.1 |
 
 ### 6.2 Adversaires hors-périmètre
 
@@ -350,7 +350,7 @@ Pour qu'un déploiement SelfDataGuard apporte effectivement les garanties listé
 4. **Sessions courtes** : `data_master_key` purgée de la session après inactivité (15 min recommandé pour Hybrid, 5 min pour Full)
 5. **Pas de logging sensible** : `password_key`, `recov_key`, `phrase_key`, `data_master_key` ne doivent jamais apparaître dans les logs (même en niveau debug)
 6. **Audit des accès admin** : en mode Hybrid, chaque accès aux champs opérationnels par l'admin doit être logué (sans la donnée elle-même)
-7. **Mise à jour régulière** : suivre les recommandations Argon2id pour ajuster `m` et `t` à mesure que le hardware progresse (`p` est fixé à 1, cf. §5). Depuis la 0.6.0, le profil est enregistré avec chaque coffre, avec chaque archive et avec la clé admin scellée : changer les constantes ne ferme rien d'existant, un coffre garde son profil à chaque re-scellement, et un coffre neuf prend le profil courant. Relever le profil d'un coffre existant demande ses secrets ; la bibliothèque n'en fournit pas l'outil
+7. **Mise à jour régulière** : suivre les recommandations Argon2id pour ajuster `m` et `t` à mesure que le hardware progresse (`p` est fixé à 1, cf. §5). Depuis la 0.6.0, le profil est enregistré avec chaque coffre, avec chaque archive et avec la clé admin scellée : changer les constantes ne ferme aucun coffre, aucune archive ni aucune clé admin, un coffre garde son profil à chaque re-scellement, et un coffre neuf prend le profil courant. Relever le profil d'un coffre existant demande ses secrets ; la bibliothèque n'en fournit pas l'outil. Ce qu'un intégrateur dérive lui-même par `Primitives::deriveFromPassword()` ou `deriveFromMemorized()` n'enregistre pas de profil, et cesse de s'ouvrir quand les constantes changent
 8. **Re-scellement à chaque changement de secret** : `recover()` aux niveaux 1 et 2, **après** l'acceptation de SelfRecover et jamais avant ; le rattrapage après un niveau 2 par appareil et `openArchive()` freinés par l'intégrateur comme sa connexion ; `reEnroll()` au niveau 3 ; `changePassword()` et `changeMemorized()` quand le service change le mot de passe ou renouvelle le mot mémorisé hors récupération
 9. **Un compte, une graphie** : `userId` est comparé octet pour octet — il entre dans l'AAD de chaque enveloppe et sert de clé en base. Un service dont les comptes ignorent la casse ramène le nom à celui du compte avant chaque appel, sinon un coffre créé sous une graphie échappe aux re-scellements appelés sous l'autre
 10. **Ancre du journal de séquestre** : noter hors de la machine la tête `seq:hmac` qu'affiche `verify-log`, et vérifier avec `--ancre`. Sans ancre, une troncature de la fin du journal passe la vérification
@@ -376,7 +376,8 @@ Le non-respect d'une de ces règles dégrade significativement les garanties. La
 - **v0.3.0** (livrée le 07/09/2026) : dérivation Argon2id du secret mémorisé, plancher de longueur du mot de passe appliqué en code
 - **v0.4.0** (livrée le 26/09/2026) : XChaCha20-Poly1305 pour toute écriture, format de blob versionné (`SDG2.`), relecture des blobs AES-256-GCM par libsodium ou OpenSSL
 - **v0.5.0** (01/10/2026) : troisième serrure (passphrase SelfRecover), `recover()` pour chaque chemin de récupération, archive au niveau 3, migration de schéma en place
-- **v0.6.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
+- **v0.6.0** (03/10/2026) : profil Argon2id enregistré avec chaque coffre et la clé admin scellée, scellé administrateur lié à son compte, journal de séquestre ancrable, nom de champ `escrow` réservé, vecteurs Argon2id figés
+- **v0.7.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
 - **v1.0.0** (2027) : audit cryptographique communautaire formel, soumission ANSSI Visa de sécurité (industries@ssi.gouv.fr), publication d'un test vector pack
 
 ---
@@ -393,4 +394,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Édition du 3 octobre 2026, alignée sur SelfDataGuard v0.6.0 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.6.0 (362 contrôles, 11 suites, sous PHP 8.1, 8.2 et 8.4). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*
+*Édition du 3 octobre 2026, alignée sur SelfDataGuard v0.6.0 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.6.0 (373 contrôles, 11 suites, sous PHP 8.1, 8.2 et 8.4). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*

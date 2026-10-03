@@ -6,7 +6,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.6.0 available](https://img.shields.io/badge/status-v0.6.0%20available-brightgreen.svg)](#status)
-[![Tests: 362 passing](https://img.shields.io/badge/tests-362%20passing-brightgreen.svg)](#testing)
+[![Tests: 373 passing](https://img.shields.io/badge/tests-373%20passing-brightgreen.svg)](#testing)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -47,7 +47,7 @@ SelfDataGuard implements **multi-lock key wrapping** inspired by Bitwarden, 1Pas
         └────────────────┘  └────────────────┘  └──────────────────────┘
 ```
 
-Argon2id takes a 16-byte salt: the first 16 bytes of this SHA-256. The two contexts differ: the same string set as memorized word and as passphrase yields two unrelated keys. The three wrap keys cost the same, on purpose: wraps are only as strong as the cheapest one. The Argon2id profile (3 passes, 64 MiB) is stored with each vault: a vault keeps its own at every re-seal, a new vault takes the current profile, and changing the constants no longer locks existing vaults out.
+Argon2id takes a 16-byte salt: the first 16 bytes of this SHA-256. The two contexts differ: the same string set as memorized word and as passphrase yields two unrelated keys. The three wrap keys cost the same, on purpose: wraps are only as strong as the cheapest one. The Argon2id profile (3 passes, 64 MiB) is stored with each vault: a vault keeps its own at every re-seal, a new vault takes the current profile, and changing the constants no longer locks out any existing vault. What you derive yourself through `Primitives` records no profile.
 
 Each user has:
 
@@ -118,10 +118,10 @@ A deployment installing v0.6.0 therefore runs in **Lite**, whatever mode it aims
 One admin path does exist, outside this table: the **escrow** (`src/Escrow/`), a compartment with its own key that an administrator reopens under ceremony — open dispute, escrow passphrase, signed log. It yields that compartment only, never the private vault, and it is not Hybrid mode: nothing there is decrypted as a matter of routine. The escrow of an archived vault goes with the archive, and the administrator reopens it the same way (`getArchiveEscrowFieldsAsAdmin()`).
 
 What the escrow guarantees as of 0.6.0:
-- **the admin seal names its account**: copied into another account's row, it is refused. A seal from before 0.6.0 still opens, and is re-sealed at its holder's next escrow write;
+- **the admin seal names its account**: copied into another account's row, it is refused. It does not authenticate the escrow content: whoever writes to the database can, with the public key, seal and fill a new compartment. A seal from before 0.6.0 still opens; `rebindEscrowAdmin($session, $publicKey)` re-seals it, to the key you pass — pass the one the escrow was created with, nothing can check it without the secret key;
 - **the admin passphrase is at least 12 bytes** when sealing (`UserVault::PASSWORD_MIN_LEN`); a key sealed earlier under a shorter passphrase still opens. The sealed key carries its Argon2id profile (`v2:…`);
 - **the ceremony log can be anchored off the machine**: `bin/escrow-ceremony.php verify-log` prints its head `seq:hmac`, which you write down elsewhere, and `verify-log --ancre seq:hmac` then refuses a truncated or rewritten log. Without an anchor, verification cannot see that the end of the log was cut off;
-- **the field name `escrow` is reserved**: it is the context of the escrow envelope, and both `setFields()` and `getFields()` refuse it.
+- **the field name `escrow` is reserved**: it is the context of the escrow envelope. `setFields()` refuses it; `getFields()` refuses it when asked for by name, and leaves it out, undecrypted, of a read of every field.
 
 ---
 
@@ -144,7 +144,7 @@ What the escrow guarantees as of 0.6.0:
 
 **v0.6.0 — the Argon2id profile stored, an escrow bound to its account, an anchorable log**, 3 October 2026.
 
-Whitepaper complete (specification + threat model). PHP reference library implemented (3 883 lines across 25 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **362 checks across 11 suites**, run on PHP 8.1, 8.2 and 8.4, all passing. The keys of the three locks are checked against frozen test vectors, recomputed in CI by a second implementation (argon2-cffi). A clickable HTML demo is included to inspect the encrypted database in real time.
+Whitepaper complete (specification + threat model). PHP reference library implemented (3 927 lines across 25 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **373 checks across 11 suites**, run on PHP 8.1, 8.2 and 8.4, all passing. The keys of the three locks are checked against frozen test vectors, recomputed in CI by a second implementation (argon2-cffi). A clickable HTML demo is included to inspect the encrypted database in real time.
 
 A 0.5.x database migrates in place the first time 0.6.0 opens it (`kdf_opslimit` and `kdf_memlimit` columns, at the former profile), and so does a 0.4.0 one, in one go. ⚠️ Rolling back to 0.5.x keeps access to the vaults and to the escrow on the holder's side, but the administrator can no longer open an escrow that 0.6.0 created or re-sealed, and 0.5.x cannot unseal an admin key generated by 0.6.0: see the [CHANGELOG](./CHANGELOG.md). Blobs written by 0.3.0 stay readable, through OpenSSL (`ext-openssl`) where libsodium refuses AES.
 
@@ -215,12 +215,12 @@ php tests/sanity_fields.php       # 26 tests — field encrypt/decrypt + blind i
 php tests/sanity_storage.php      # 60 tests — SQLite adapter, nested transactions, conditional write (generation, revision), "DB dump = soup" test
 php tests/sanity_migration.php    # 15 tests — 0.4.0 and 0.5.x databases migrated in place, two concurrent migrators
 php tests/sanity_archive.php      # 26 tests — archive: content, isolation, all-or-nothing, concurrent writer waited for
-php tests/sanity_facade.php       # 60 tests — full API end-to-end, recover(), level 3, write race, storage that drops a column
+php tests/sanity_facade.php       # 63 tests — full API end-to-end, recover(), level 3, write race, storage that loses or ignores the profile, reserved name
 php tests/sanity_audit.php        # 18 tests — audit log, anchor against truncation
-php tests/sanity_ceremony.php     # 17 tests — key ceremony
-php tests/sanity_escrow.php       # 30 tests — escrow compartment, v2 admin key, seal bound to its account
+php tests/sanity_ceremony.php     # 22 tests — key ceremony, verify-log options, unreadable sealed file
+php tests/sanity_escrow.php       # 33 tests — escrow compartment, v2 admin key, seal bound to its account, explicit re-seal
 php tests/sanity_vecteurs.php     # 9 tests — keys of the three locks against frozen vectors
-# Total: 362 tests, 0 failures — counted by running them, 2026-10-03
+# Total: 373 tests, 0 failures — counted by running them, 2026-10-03
 python3 tests/vecteurs_argon2.py  # recomputes the vectors with argon2-cffi, a second implementation
 ```
 

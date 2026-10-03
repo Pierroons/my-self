@@ -25,7 +25,7 @@ use RuntimeException;
  * A sealed box has no AAD: the account goes inside it, and unlockAsAdmin()
  * refuses a wrap_admin that names another account than its record. A wrap_admin
  * sealed before 0.6.0 holds the bare 32-byte key and names no account; it is
- * still opened, and re-sealed in the new form at its holder's next escrow write.
+ * still opened, and SelfDataGuard::rebindEscrowAdmin() re-seals it in the new form.
  *
  * The user opens wrap_user with the master key they already hold. The admin
  * opens wrap_admin with the recovery secret key (itself passphrase-sealed, see

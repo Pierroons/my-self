@@ -53,7 +53,7 @@ Self-Security sépare les deux surfaces : **la donnée est chiffrée avant d'att
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, qui survit au dump de la base | **v0.6.0** — disponible, 362 contrôles sur 11 suites |
+| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, qui survit au dump de la base | **v0.6.0** — disponible, 373 contrôles sur 11 suites |
 | [SelfRecover-LUKS](./selfrecover-luks/) | Racine LUKS2 **et** volumes de données ouverts par une seule phrase de récupération | **v0.6.2** — installation reproductible ; versions antérieures validées sur un serveur Debian 13 LNMP, un poste portable et une racine en LVM chiffré |
 
 ---

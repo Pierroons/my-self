@@ -104,8 +104,17 @@ if ($cmd === 'verify-log') {
     // L'ancre est la tête notée lors d'une vérification précédente, hors de cette
     // machine : sans elle, un journal tronqué ou supprimé reste une chaîne valide.
     $ancre = null;
-    if (($argv[2] ?? null) === '--ancre') {
-        $ancre = $argv[3] ?? '';
+    $options = array_slice($argv, 2);
+    if ($options !== []) {
+        if ($options[0] === '--ancre' && count($options) === 2) {
+            $ancre = $options[1];
+        } elseif (str_starts_with($options[0], '--ancre=') && count($options) === 1) {
+            $ancre = substr($options[0], strlen('--ancre='));
+        } else {
+            // Une option mal écrite ne doit pas rendre « intègre » sans ancre.
+            fwrite(STDERR, "❌ option inconnue : " . implode(' ', $options) . " — usage : verify-log [--ancre seq:hmac]\n");
+            exit(2);
+        }
     }
     try {
         $r = $auditLog->verify($ancre);
@@ -167,6 +176,9 @@ try {
 } catch (LegacyCipherUnavailableException $e) {
     sodium_memzero($passphrase);
     denyAndExit($auditLog, $ctx, 'legacy-cipher-unavailable', $e->getMessage());
+} catch (InvalidArgumentException $e) {
+    sodium_memzero($passphrase);
+    denyAndExit($auditLog, $ctx, 'sealed-key-unreadable', "fichier de clé scellée illisible : {$e->getMessage()}");
 } catch (\Throwable) {
     sodium_memzero($passphrase);
     denyAndExit($auditLog, $ctx, 'bad-passphrase', 'passphrase admin invalide.');
