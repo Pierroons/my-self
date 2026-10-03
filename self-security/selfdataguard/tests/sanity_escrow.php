@@ -192,10 +192,10 @@ try {
 } catch (InvalidArgumentException) {
     ok('sealing under a passphrase below the floor is refused');
 }
-// A key sealed before the floor existed, under a short passphrase, still opens.
+// A key sealed in the pre-0.6.0 format under a short passphrase still opens.
 $court = 'court';
 $selCourt = Primitives::randomBytes(Primitives::SALT_LEN);
-$cleCourt = Primitives::deriveFromPassword($court, $selCourt);
+$cleCourt = Primitives::deriveFromPassword($court, $selCourt, Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT);
 $skCourt = sodium_crypto_box_secretkey(sodium_crypto_box_keypair());
 $scelleCourt = base64_encode($selCourt) . ':'
     . Primitives::encrypt($skCourt, $cleCourt, aad: AdminKey::SEAL_AAD)->toBase64();
@@ -247,6 +247,14 @@ foreach ([
     } catch (InvalidArgumentException $e) {
         ok("{$cas} is refused before any derivation");
     }
+}
+try {
+    AdminKey::unseal('v3:' . base64_encode($selAutre), ADMIN_PASS);
+    ko('a two-field v3 key was read');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'newer')
+        ? ok('a two-field newer version is named as such, not read as a salt')
+        : ko('a two-field newer version was read as a salt', $e->getMessage());
 }
 
 section('wrap_admin names its account');

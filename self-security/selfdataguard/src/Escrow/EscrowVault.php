@@ -46,7 +46,7 @@ final class EscrowVault
     public const WRAP_AAD_TAG = 'escrow';
     public const WRAP_AAD_SUFFIX = '|' . self::WRAP_AAD_TAG;
 
-    /** Opens the plaintext of a wrap_admin that names its account. */
+    /** Prefixes the plaintext of a wrap_admin that names its account. */
     private const ADMIN_WRAP_TAG = "selfdataguard/escrow-admin/v1\0";
 
     public function __construct(

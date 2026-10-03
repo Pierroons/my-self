@@ -46,8 +46,8 @@ final class VaultRecord
         public readonly DateTimeImmutable $updatedAt,
         public readonly ?EncryptedBlob $wrapPhrase = null,
         public readonly int $revision = 0,
-        // Every envelope of a vault is sealed under this one profile, chosen when
-        // the vault is created; re-seals keep it.
+        // Defaults to the current constants: a storage that does not read these
+        // columns back opens its vaults under them, not under their own profile.
         public readonly int $kdfOpslimit = Primitives::ARGON2_OPSLIMIT,
         public readonly int $kdfMemlimit = Primitives::ARGON2_MEMLIMIT
     ) {

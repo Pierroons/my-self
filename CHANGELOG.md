@@ -10,10 +10,11 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### SelfDataGuard v0.6.0 — le profil Argon2id enregistré, un séquestre lié à son compte, un journal ancré — 3 octobre 2026
+### SelfDataGuard v0.6.0 — le profil Argon2id enregistré, un séquestre lié à son compte, un journal ancrable — 3 octobre 2026
 
-Une relecture de l'architecture a relevé sept limites dans SelfDataGuard. Six sont fermées ici ;
-la septième, le rejeu d'une révision antérieure du coffre, est écrite comme une limite.
+Une relecture de l'architecture a relevé sept constats sur SelfDataGuard. Six sont fermés ici ;
+le septième, le rejeu d'une révision antérieure du coffre, est documenté comme une limite
+(whitepaper §8.1).
 
 - **Le profil Argon2id est enregistré** avec chaque coffre et avec la clé admin scellée
   (`v2:…`). Changer les constantes ne ferme plus rien d'existant ; un coffre garde son profil
@@ -21,11 +22,11 @@ la septième, le rejeu d'une révision antérieure du coffre, est écrite comme 
 - **Le scellé administrateur du séquestre nomme son compte** : recopié dans la ligne d'un
   autre compte, il est refusé. Un scellé d'avant s'ouvre encore, et se rescelle à la
   prochaine écriture de séquestre de son titulaire.
-- **Le journal de la cérémonie s'ancre hors de la machine** : `verify-log` affiche sa tête
+- **Le journal de la cérémonie peut s'ancrer hors de la machine** : `verify-log` affiche sa tête
   `seq:hmac`, et `--ancre` refuse ensuite un journal tronqué ou réécrit.
 - **La passphrase admin compte au moins 12 octets** au scellement ; **le nom de champ
   `escrow` est réservé**.
-- **Des vecteurs Argon2id figés**, calculés par une seconde implémentation, tiennent les clés
+- **Des vecteurs Argon2id figés**, calculés par une seconde implémentation, vérifient les clés
   des trois serrures.
 - Les textes disent que `userId` est comparé octet pour octet, et que `changePassword()` et
   `changeMemorized()` sont aussi des chemins de rescellement.

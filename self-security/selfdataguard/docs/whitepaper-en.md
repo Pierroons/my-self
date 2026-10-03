@@ -333,7 +333,7 @@ For a SelfDataGuard deployment to actually deliver the listed guarantees, it mus
 9. **One account, one spelling**: `userId` is compared byte for byte — it enters the AAD of every envelope and keys the database row. A service whose accounts ignore case maps the name to the account's own before every call, otherwise a vault created under one spelling escapes the re-seals called under the other
 10. **Escrow log anchor**: write down off the machine the head `seq:hmac` that `verify-log` prints, and verify with `--ancre`. Without an anchor, a log whose end was cut off passes verification
 
-Failure to respect any of these rules significantly degrades the guarantees. The reference library enforces rule 1, rule 5 for its own exception traces (`#[\SensitiveParameter]`), and rule 7 for the profile it stores; the others are up to the integrator and the deployment configuration.
+Failure to respect any of these rules significantly degrades the guarantees. The reference library enforces rule 1, and rule 5 for its own exception traces (`#[\SensitiveParameter]`); for rule 7 it stores each vault's profile, but choosing and raising it is the integrator's. The other rules are up to the integrator and the deployment configuration.
 
 ---
 
@@ -344,7 +344,7 @@ Failure to respect any of these rules significantly degrades the guarantees. The
 - **Full-text search** on encrypted fields: impossible without advanced techniques (partial homomorphic encryption, secure indexes like CipherSweet)
 - **Asynchronous transactional notifications**: require admin_op_key (Hybrid mode) or redesign toward push (Full mode)
 - **Schema migration**: if an encrypted field is added to an existing account, it must be populated during an active user session
-- **Replay of an earlier revision**: whoever can write to the database can put back an old vault row, with its old envelopes. It opens with the secrets it carried, including a passphrase SelfRecover has consumed since. The vault's revision guards against concurrent writes, not against a restored row. Binding the envelopes to the revision would take the three secrets at every write, and a password change does not hold the memorized word; a MAC over the set of envelopes does not withstand someone who restores the whole row from an old backup. The defence lies outside the vault: the integrity of the database and its backups
+- **Replay of an earlier revision**: whoever can write to the database can put back an old vault row, with its old envelopes. It opens with the secrets it carried, including a passphrase SelfRecover has consumed since. The vault's revision guards against concurrent writes, not against a restored row. Binding the envelopes to the revision would take the three secrets at every write, and a password change does not have the memorized word at hand; a MAC over the set of envelopes does not withstand someone who restores the whole row from an old backup. The defence lies outside the vault: the integrity of the database and its backups
 - **Performance**: the overhead of each encrypted field has not been measured yet. For queries listing many accounts, it compounds: to evaluate case by case.
 
 ### 8.2 Roadmap

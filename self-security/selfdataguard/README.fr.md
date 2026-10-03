@@ -120,7 +120,7 @@ Une voie administrateur existe pourtant, hors de ce tableau : le **séquestre** 
 Ce que le séquestre tient depuis la 0.6.0 :
 - **le scellé administrateur nomme son compte** : recopié dans la ligne d'un autre compte, il est refusé. Un scellé d'avant la 0.6.0 s'ouvre encore, et se rescelle à la prochaine écriture de séquestre de son titulaire ;
 - **la passphrase admin compte au moins 12 octets** au scellement (`UserVault::PASSWORD_MIN_LEN`) ; une clé scellée plus tôt sous une passphrase plus courte s'ouvre encore. La clé scellée porte son profil Argon2id (`v2:…`) ;
-- **le journal de la cérémonie s'ancre hors de la machine** : `bin/escrow-ceremony.php verify-log` affiche sa tête `seq:hmac`, que tu notes ailleurs, et `verify-log --ancre seq:hmac` refuse ensuite un journal tronqué ou réécrit. Sans ancre, la vérification ne voit pas qu'on a coupé la fin du journal ;
+- **le journal de la cérémonie peut s'ancrer hors de la machine** : `bin/escrow-ceremony.php verify-log` affiche sa tête `seq:hmac`, que tu notes ailleurs, et `verify-log --ancre seq:hmac` refuse ensuite un journal tronqué ou réécrit. Sans ancre, la vérification ne voit pas qu'on a coupé la fin du journal ;
 - **le nom de champ `escrow` est réservé** : c'est le contexte de l'enveloppe du séquestre, et `setFields()` comme `getFields()` le refusent.
 
 ---
@@ -142,9 +142,9 @@ Ce que le séquestre tient depuis la 0.6.0 :
 
 ## Statut
 
-**v0.6.0 — le profil Argon2id enregistré, un séquestre lié à son compte, un journal ancré**, 3 octobre 2026.
+**v0.6.0 — le profil Argon2id enregistré, un séquestre lié à son compte, un journal ancrable**, 3 octobre 2026.
 
-Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (3 883 lignes réparties sur 25 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **362 contrôles répartis sur 11 suites**, joués sous PHP 8.1, 8.2 et 8.4, tous passants. Les clés des trois serrures sont tenues par des vecteurs figés, recalculés en CI par une seconde implémentation (argon2-cffi). Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
+Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (3 883 lignes réparties sur 25 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **362 contrôles répartis sur 11 suites**, joués sous PHP 8.1, 8.2 et 8.4, tous passants. Les clés des trois serrures sont vérifiées contre des vecteurs figés, recalculés en CI par une seconde implémentation (argon2-cffi). Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
 
 Une base 0.5.x se migre en place à sa première ouverture par la 0.6.0 (colonnes `kdf_opslimit` et `kdf_memlimit`, au profil d'avant), une base 0.4.0 aussi, en une fois. ⚠️ Un retour à la 0.5.x garde l'accès aux coffres et au séquestre côté titulaire, mais l'administrateur n'ouvre plus un séquestre que la 0.6.0 a créé ou rescellé, et la 0.5.x ne descelle pas une clé admin générée par la 0.6.0 : [CHANGELOG](./CHANGELOG.md). Les blobs écrits par la 0.3.0 restent lisibles, par OpenSSL (`ext-openssl`) là où libsodium refuse AES.
 

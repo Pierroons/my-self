@@ -355,7 +355,7 @@ Pour qu'un déploiement SelfDataGuard apporte effectivement les garanties listé
 9. **Un compte, une graphie** : `userId` est comparé octet pour octet — il entre dans l'AAD de chaque enveloppe et sert de clé en base. Un service dont les comptes ignorent la casse ramène le nom à celui du compte avant chaque appel, sinon un coffre créé sous une graphie échappe aux re-scellements appelés sous l'autre
 10. **Ancre du journal de séquestre** : noter hors de la machine la tête `seq:hmac` qu'affiche `verify-log`, et vérifier avec `--ancre`. Sans ancre, une troncature de la fin du journal passe la vérification
 
-Le non-respect d'une de ces règles dégrade significativement les garanties. La bibliothèque de référence applique la règle 1, la règle 5 pour ses propres traces d'exception (`#[\SensitiveParameter]`), et la règle 7 pour le profil qu'elle enregistre ; les autres relèvent de l'intégrateur et de la configuration de déploiement.
+Le non-respect d'une de ces règles dégrade significativement les garanties. La bibliothèque de référence applique la règle 1, et la règle 5 pour ses propres traces d'exception (`#[\SensitiveParameter]`) ; pour la règle 7, elle enregistre le profil de chaque coffre, mais le choisir et le relever reste à l'intégrateur. Les autres règles relèvent de l'intégrateur et de la configuration de déploiement.
 
 ---
 
@@ -366,7 +366,7 @@ Le non-respect d'une de ces règles dégrade significativement les garanties. La
 - **Recherche full-text** sur les champs chiffrés : impossible sans techniques avancées (chiffrement homomorphe partiel, secure indexes type CipherSweet)
 - **Notifications transactionnelles asynchrones** : nécessitent l'admin_op_key (mode Hybrid) ou un re-design vers push (mode Full)
 - **Migration de schéma** : si on ajoute un champ chiffré à un compte existant, il faut le populer pendant une session active de l'utilisateur
-- **Rejeu d'une révision antérieure** : qui peut écrire en base peut remettre une ancienne ligne de coffre, avec ses anciennes enveloppes. Elle rouvre avec les secrets qu'elle portait, y compris une passphrase que SelfRecover a consommée depuis. La révision du coffre protège contre les écritures concurrentes, pas contre une ligne restaurée. Lier les enveloppes à la révision demanderait les trois secrets à chaque écriture, et un changement de mot de passe ne tient pas le mot mémorisé ; un MAC sur le jeu d'enveloppes ne résiste pas à qui restaure la ligne entière depuis une ancienne sauvegarde. La parade est hors du coffre : l'intégrité de la base et de ses sauvegardes
+- **Rejeu d'une révision antérieure** : qui peut écrire en base peut remettre une ancienne ligne de coffre, avec ses anciennes enveloppes. Elle rouvre avec les secrets qu'elle portait, y compris une passphrase que SelfRecover a consommée depuis. La révision du coffre protège contre les écritures concurrentes, pas contre une ligne restaurée. Lier les enveloppes à la révision demanderait les trois secrets à chaque écriture, et un changement de mot de passe n'a pas le mot mémorisé sous la main ; un MAC sur le jeu d'enveloppes ne résiste pas à qui restaure la ligne entière depuis une ancienne sauvegarde. La parade est hors du coffre : l'intégrité de la base et de ses sauvegardes
 - **Performance** : le surcoût de chaque champ chiffré n'est pas mesuré à ce jour. Pour les requêtes qui listent beaucoup de comptes, il se cumule : à évaluer cas par cas.
 
 ### 8.2 Roadmap

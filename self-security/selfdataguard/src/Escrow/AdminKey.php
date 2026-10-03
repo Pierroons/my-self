@@ -112,21 +112,26 @@ final class AdminKey
 
     /**
      * Split a sealed secret into its Argon2id profile, salt and blob. A base64 salt
-     * never equals a version tag, so the first field tells the formats apart; a
-     * version this code does not know is refused rather than read as a salt.
+     * never reads as a version tag (v<digits>), so the first field tells the formats
+     * apart; a version this code does not know is refused rather than read as a salt.
      *
      * @return array{0: int, 1: int, 2: string, 3: string}
      */
     private static function parse(string $sealedSecret): array
     {
         $parts = explode(':', $sealedSecret);
-        if (count($parts) === 2) {
+        if (preg_match('/^v\d+\z/', $parts[0]) !== 1) {
+            if (count($parts) !== 2) {
+                throw new InvalidArgumentException(
+                    'Malformed sealed secret (expected "salt:blob" or "v2:ops:mem:salt:blob")'
+                );
+            }
             return [Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT, $parts[0], $parts[1]];
         }
         if ($parts[0] !== self::FORMAT_V2) {
-            throw new InvalidArgumentException(preg_match('/^v\d+$/', $parts[0]) === 1
-                ? sprintf('Sealed secret format %s is newer than this version of SelfDataGuard', $parts[0])
-                : 'Malformed sealed secret (expected "salt:blob" or "v2:ops:mem:salt:blob")');
+            throw new InvalidArgumentException(
+                sprintf('Sealed secret format %s is newer than this version of SelfDataGuard', $parts[0])
+            );
         }
         if (count($parts) !== 5 || preg_match('/^\d+:\d+\z/', $parts[1] . ':' . $parts[2]) !== 1) {
             throw new InvalidArgumentException('Malformed sealed secret (expected "v2:ops:mem:salt:blob")');

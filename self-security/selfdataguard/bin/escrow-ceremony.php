@@ -21,7 +21,7 @@ declare(strict_types=1);
  * Config (env) :
  *   DATAGUARD_DB                base sqlite (vaults + escrow + litiges)
  *   DATAGUARD_ADMIN_PUBKEY_FILE fichier clé publique admin (base64)
- *   DATAGUARD_ADMIN_SEALED_FILE fichier clé privée SCELLÉE (salt:blob)
+ *   DATAGUARD_ADMIN_SEALED_FILE fichier clé privée SCELLÉE (v2:ops:mem:salt:blob ; salt:blob avant 0.6.0)
  *   DATAGUARD_AUDIT_LOG         chemin du journal d'audit
  *   DATAGUARD_AUDIT_SECRET      secret HMAC de signature du journal
  *   DATAGUARD_BLINDKEY_FILE     (optionnel) blindKey — non utilisé côté escrow
