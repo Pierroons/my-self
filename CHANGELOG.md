@@ -10,6 +10,24 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover-LUKS v0.6.2 — la migration du §15 passe sur une machine équipée en août — 3 octobre 2026
+
+Premier passage réel de `INSTALL.md` §15 v0.6.1, sur un poste équipé en raw : la migration a
+tenu, prouvée par un redémarrage, mais la chaîne de l'étape 3 s'est arrêtée sur le garde-fou.
+Elle ne posait ni le script de secours ni le hook, qu'une machine de cette époque n'avait pas
+dans leur version courante.
+
+- **L'étape 3 pose toutes les pièces du module avant le keyscript**, script de secours et hook
+  compris, prend un filet de chaque image de `/boot`, et régénère tous les noyaux : un noyau
+  plus ancien gardait sinon le keyscript raw, et son entrée de démarrage devenait un piège
+  après le retrait du slot raw.
+- **Le garde-fou n'exige le script de secours que d'une image qui embarque dropbear**, comme
+  le hook ne l'embarque que s'il est posé. Un poste sans dropbear ne rougit plus pour une pièce
+  qui n'a rien à y faire.
+- **Le repli avant déverrouillage est écrit** : la passphrase native, au shell de l'initramfs
+  ou par le script de secours. Les filets de `/root` vivent sur le volume chiffré et ne font
+  pas démarrer.
+
 ### SelfRecover-LUKS v0.6.1 — la borne de lecture suit la clé — 3 octobre 2026
 
 cryptsetup lit exactement autant d'octets que la borne `keyfile-size` de la crypttab en

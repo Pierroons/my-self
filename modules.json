@@ -77,7 +77,7 @@
       "id": "selfrecover-luks",
       "nom": "SelfRecover-LUKS",
       "dossier": "self-security/selfrecover-luks",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "resume": {
         "fr": "ouverture d'un disque chiffré LUKS par une passphrase dérivée en Argon2id",
         "en": "unlocking a LUKS-encrypted disk with an Argon2id-derived passphrase"
