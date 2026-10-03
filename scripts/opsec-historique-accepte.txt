@@ -11,6 +11,9 @@
 # venir — ce que fait une exclusion par chemin dans opsec-allowlist.txt.
 # Empreinte d'une version : git rev-parse <commit>:<chemin>
 #
+# Un message de commit s'accepte de même : l'empreinte du commit, et
+# « (message) » à la place du chemin.
+#
 # Mêmes règles que l'allowlist : la raison nomme la nature de ce qui a été
 # publié, jamais le texte, et l'audit relit ce fichier.
 
@@ -24,3 +27,123 @@ d9ea7722081974b177841f4f6a661f9d1ab7f8cd	scripts/opsec-allowlist.txt	version du 
 a0f433c5ddadd6e4d2cdc877c5c604212d7ffe00	scripts/opsec-allowlist.txt	version du 23/08/2026 : ses raisons citaient les motifs qu'elles écartaient — historique non réécrit, décision du 03/10/2026
 90c9eace5172ab126f6b43c18630a2466aa8b549	scripts/opsec-allowlist.txt	version du 24/08/2026 : ses raisons citaient les motifs qu'elles écartaient — historique non réécrit, décision du 03/10/2026
 2be1cda16d9130088bd574ded14c477fb99eff44	scripts/opsec-allowlist.txt	version du 11/09/2026 : ses raisons citaient les motifs qu'elles écartaient — historique non réécrit, décision du 03/10/2026
+081ddb3e99cc48b45c0e509c2924129d429088e1	(message)	message du 21/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+f2e9654ff5e63f1162f2f82e41f980bfc6102f6d	(message)	message du 21/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+d678d0955aa5b576366ce77b8a3421a904f42b9f	(message)	message du 21/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+af557931e1d011a7b89526512af68b6751e923c6	(message)	message du 21/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+18b1fc44a75a964758d4f3f39009f63c71443a83	(message)	message du 21/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+fbd548427e8ef53ef27b71d1a033a8673a92e505	(message)	message du 22/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+33b0d05e9c425f6af4e305523137067ee03734d7	(message)	message du 22/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+32c0e35f82548619d2d36e6b7da785246d35aaf5	(message)	message du 22/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+b76f9d1f0bfb89ceb6f9a41698631acfc9f7b113	(message)	message du 22/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+d604855cb3aec3d3d72842ada44d3bcb671d02f5	(message)	message du 22/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+5a3feb766016097f62f0b03f6ccc31155aac788b	(message)	message du 22/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+8c6d6bc9e3d3f0fdece5f9610cc5ee0450e298e2	(message)	message du 22/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+414b84f7b46f5a3ada33e8172263dfea3515992a	(message)	message du 22/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+e9685925f6b8878d6d0199ddb75417b4d036e893	(message)	message du 23/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+fc7acccff8629877f262f7e879965a0c1a8ba297	(message)	message du 23/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+1f43cab09a46b5695c8a5ed55b09f9a1207d047b	(message)	message du 23/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+11efa998536f7ef072b6bec4eb059543784e31b0	(message)	message du 23/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+c6b1f86494272a60de2002d87a531cc3255a108c	(message)	message du 24/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+80c87f708cf38e4386a379d1f70d47062b5314ef	(message)	message du 24/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+d11dc9ab907845f21c4ef388cd5977f64b88abab	(message)	message du 26/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+a950c7b4928d5f17121f3653f778f9f30decaf84	(message)	message du 27/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+1ab81be0a3f24fbabaa649bc7c80c368ec0c1c4c	(message)	message du 27/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+02c34afd3c2b6cad838889c612207d7a487c379b	(message)	message du 27/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+78da142ffaae6e74195c4a8ad240b245427012e4	(message)	message du 27/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+75b0d684adf9f8f3d23e1adc301cffc4ec791263	(message)	message du 27/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+9de8a8f26036c2d62e4e6bc643713436da179d6b	(message)	message du 27/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+a47292f6dbabff6dd1c0944a2596c99029a16cb5	(message)	message du 27/08/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+da11b042a56a970e1f7727d39c87a71dcbe8ee37	(message)	message du 01/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+1264136836a78075fea9d55c00c3542bc41df4a5	(message)	message du 02/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+de1ef782795f50d8dfe9b172177e0276903c8626	(message)	message du 02/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+c2130d047c998ad37379e7b5b9a5d4834f51dfb9	(message)	message du 02/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+171a8641861f72217f5f0e4286dfb42a7825e3a6	(message)	message du 02/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+2bb07b3a9b692cacf7cfaa4ae52a494f42cecdc9	(message)	message du 02/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+9a6a626e105ac3b17f003e039b27eaaaee084a39	(message)	message du 02/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+b3b80f78e4ea1e65f2dbec2901c02b570fa35e73	(message)	message du 02/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+355dac35e06e429cf17aadad053e862dab0e2780	(message)	message du 02/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+1b9caf0f1b2e7e6db47d29d37faa71496359b3ad	(message)	message du 03/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+14567793fd72198849a18f37c3acae33f40f8d16	(message)	message du 03/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+4a7a376af1fa679299a64d25e67b5b9654495e95	(message)	message du 03/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+dca8fd418b5af31577c40181f35cfe4836d80310	(message)	message du 03/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+185ff9c7857df816291a12d9eaca0ad6f6b0737d	(message)	message du 04/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+63ab1dfb69ce641fda05c11164b475ba356ec9df	(message)	message du 04/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+da3bf6ca18077c3e8310fe855effe6ce65bebd9b	(message)	message du 05/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+ce67690424b58a619f8fbc59849e394fd59f5a41	(message)	message du 05/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+e0a8926ff06f9f4ee311e39e0318a36122a9cced	(message)	message du 05/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+c2902e17e0a318dd1b4a0d855726d894f3c0e9fe	(message)	message du 05/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+0718ab057a577e35e83285dad24710ab173940cc	(message)	message du 05/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+1b33e2c4e27d5cf4519b0e2bfa4dd283f4aad7d6	(message)	message du 05/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+410201d21a7e9d4f5e2311f005e4790da9764b69	(message)	message du 05/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+c527293bd284848195f77f820f628783f488c307	(message)	message du 06/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+248ca3d7ff8cc36a6e5a37d2dcbdcf22cc0ca2d4	(message)	message du 06/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+af3abe96dcf8a3c92c72806cd7d2fde2df0efc42	(message)	message du 06/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+5848b9923183946aefc889558f5e3bbc3a1aeb05	(message)	message du 06/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+32f0bbc9b0d860d5f5dc14c4d74404ff669ad624	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+75aba4145ecefea7718278f55fe3d29fbcb96dda	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+1db58a0839bb0f166f322f376df344741f2ff712	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+95a12fe9a22b49a1476d283b31284e436ddc103b	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+6a023bc4bc0b427d43b92d0e45fb3f1341a642c2	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+1e7c7281145b20818ba119007916056c9851405a	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+80cc68ea2429f02257c3f92f2bef87f786e64eea	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+3f35c87192e43678abfaf8e2c6e66ed2bb0f359d	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+c6c72dd0f1861d7c4eac8141d1e35ca1ff6f259d	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+c3f7ed7bf4e1e9d429b67af6271714eb70ca3c70	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+26e5d6a0af61b8d25f88a19904d8ca1f4ff06ff6	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+6e4c1408d9117cc2e9bfbebf866da2d397767456	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+c9532f18a03622a6d7616ba7e9d3deeecf4bc977	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+e3612edb91f7b14a6d226a99fce9697f37055b0c	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+8b7f70f52f55d9fc2700adb5e34aa52d94eeb9c0	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+d7fe630cd54a0c8a521b2b02c6039c3dab207b85	(message)	message du 08/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+5d7f3333ba0686654e8d1079724a3143eef042ac	(message)	message du 09/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+cca7b18088fc09e04f66bfdbb8846aef34c9cb10	(message)	message du 09/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+48afb63b339bfdfd66c8a69db2d685ad5e0c233f	(message)	message du 09/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+18a79eeaa5f13d8a6bdbb3b03319d2492384f9b7	(message)	message du 09/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+e76f102a33684ea8be548307f763f44d458ef1b1	(message)	message du 09/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+6e257000d4d8d0e829d9490c0693c68acc7c7424	(message)	message du 09/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+e541fb066ac161f302e9a1dd30c9076a85187a7c	(message)	message du 09/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+8caaf4698ecfca43cde0107b920a3ff4ddb19b39	(message)	message du 09/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+5ce9f684bad8c264a0a40f869657c3d027930ea9	(message)	message du 09/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+276bf6691c8a37b81858ae311956c7d2ed932f27	(message)	message du 10/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+2bacae2fe71aea61c0e575a8cb4188cc4eff78d1	(message)	message du 10/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+f9ec3849fd7d68f0ea66938a533d78efbc31ba9a	(message)	message du 10/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+18142f3a661ac42d199c97748a88a7b1a9cc835b	(message)	message du 10/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+bd83388c67d2c67f8538aae947c42b0ed73bcef0	(message)	message du 10/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+ffe0179da9783dd2dc22e1da86036592037a0a46	(message)	message du 10/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+21d241fca9bbe1f8e0dc757aee73d10beb963374	(message)	message du 10/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+0dcbdd328d722776f5f78113644f883d12171b22	(message)	message du 10/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+df7a227db15b18b3c6798b3dbff33b404782f016	(message)	message du 10/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+a8dfd3e811993a6ced28742a2cbd2b0413310530	(message)	message du 04/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+aa29ea1150be19913f43e540ee4f36e17bcff645	(message)	message du 10/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+e74ea05aa5990df64ead3bfc506981c1f29bb4b1	(message)	message du 10/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+449933854b829b802c832edf0cc54f4b122544d5	(message)	message du 11/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+0b9f4b709043f41af3b21b7318d2e12a57e02b49	(message)	message du 11/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+f3f4fde18c8bd26057654bae60cadf7d15c8dc55	(message)	message du 11/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+3bc0fb49788b80a08303ace26b644aa8391a47ad	(message)	message du 11/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+55856009527c2c89e78085a4f17ee63101af099c	(message)	message du 11/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+84c8c13e9033caf4dd3db7449ff1d3b7661484e9	(message)	message du 11/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+5d2fecbf3c37403518e9cc2cc7416f279425257a	(message)	message du 12/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+9b7c895ecbf573e0ea56bd018a1a75b723076b26	(message)	message du 13/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+c1876b20c43ad492e25f16a334d6bba87c77511d	(message)	message du 13/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+cc5a9cac3bcf9433dc187da338c54e69cc31eeed	(message)	message du 13/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+480cff87c1e8c7f5d7e887cc564ccfd8a9079f93	(message)	message du 14/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+c8fd29840f50bfb23b5f299faa514378f8a99b6e	(message)	message du 15/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+8e9a1cc0f93e35eefa518ef79674d7de21ba5372	(message)	message du 15/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+77aa09efe0e39141fa1baa1a8c275bce6a36472d	(message)	message du 15/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+54cfbccc9bbebd33a6d2d5d30e63446a572bfe7c	(message)	message du 16/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+be647bbaf2758e3191e2d44f04f8946a9ca91853	(message)	message du 16/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+602280687a06f6687ce62cc380a0a11ec703fd80	(message)	message du 16/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+d1b319350b743e84b7d6f5cbe6113ddecc67f27c	(message)	message du 18/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+974892a3698959673633268feb3f559230a599e3	(message)	message du 19/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+6a17107f957603bb14c792b04bc99a3dbe5681ef	(message)	message du 21/09/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+3702c2f364f5ed1bc36108e04b6f4681e1dbd9e1	(message)	message du 03/10/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+46ff822cdbd35f43904b79d05dbcae3a0663d337	(message)	message du 03/10/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+7a49535554dc898bce13419ad13e6ca04cd7325b	(message)	message du 03/10/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+66eac589da14b6f3701e457e86beb5e82c832740	(message)	message du 03/10/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+2952b9c26b80ec8f1f76324db79934ab029bfc5b	(message)	message du 03/10/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+e0971caffee2d81aa3c08957f1652ba72b64e820	(message)	message du 03/10/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+84b7ad92cb026ab47df12f1139816317587d7cbf	(message)	message du 03/10/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+461197ffd9cf89d08ff949b54157e2b8abaca8a9	(message)	message du 03/10/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+fb5fa56404dd9b8ba09ddf2759138af71a46a55a	(message)	message du 03/10/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
+3a8da605127568c35090c87e1b16997929c0aba2	(message)	message du 03/10/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026

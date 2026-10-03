@@ -260,6 +260,16 @@ hors_historique_accepte() {
     [ -n "${ACCEPTES["${objet%% *} ${ligne#*:}"]:-}" ] || printf '%s\n' "$ligne"
   done < <(printf '%s\n' "${lignes[@]}" | git -C "$ROOT" cat-file --batch-check='%(objectname)')
 }
+# Lit des messages séparés par NUL, chacun précédé de son commit en première
+# ligne ; rend sujet et corps de ceux qui ne sont pas acceptés. L'empreinte
+# d'un commit couvre son message : le reformuler produit un autre commit.
+messages_hors_acceptes() {
+  local rec
+  while IFS= read -r -d '' rec || [ -n "$rec" ]; do
+    [ -n "${ACCEPTES["${rec%%$'\n'*} (message)"]:-}" ] && continue
+    printf '%s\n' "${rec#*$'\n'}"
+  done
+}
 
 # Ces deux fichiers parlent du bruit des AUTRES fichiers : une suite de cinq
 # chiffres dans un commentaire ou une raison y cite ce qui a été trouvé. Un
@@ -567,10 +577,10 @@ if [ "$PAR_CIBLES" = "0" ]; then
   echo
   if [ -n "$RANGE" ]; then
     echo "4. Messages de commit à publier ($RANGE_AFF)"
-    MESSAGES=$(git -C "$ROOT" log "${PLAGE[@]}" --format='%s%n%b')
+    MESSAGES=$(git -C "$ROOT" log "${PLAGE[@]}" -z --format='%H%n%s%n%b' | messages_hors_acceptes)
   else
     echo "4. Messages de commit (sujets et corps)"
-    MESSAGES=$(git -C "$ROOT" log --all --format='%s%n%b')
+    MESSAGES=$(git -C "$ROOT" log --all -z --format='%H%n%s%n%b' | messages_hors_acceptes)
   fi
   C4=0
   for m in "${MOTIFS[@]}"; do
@@ -806,7 +816,7 @@ else
   echo "  au HEAD : il faut réécrire l'historique (git-filter-repo), re-signer"
   echo "  les tags et demander à GitHub de collecter les objets orphelins."
   echo "  Si la décision est de ne pas le réécrire, ajoute l'empreinte de chaque"
-  echo "  version publiée à scripts/opsec-historique-accepte.txt."
+  echo "  version publiée — ou de chaque commit — à scripts/opsec-historique-accepte.txt."
 fi
 echo "  Si c'est un faux positif, ajoute-le à scripts/opsec-allowlist.txt"
 echo "  AVEC sa raison — une exclusion sans justification est une dette."
