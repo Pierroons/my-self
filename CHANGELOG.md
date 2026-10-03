@@ -601,7 +601,7 @@ l'égalité, avec son canari en CI. Comportement inchangé.
 soit. Le vérificateur post-`update-initramfs` cherche aussi `selfrecover-secours.sh`, que le hook
 embarque et sans lequel une clé d'amorçage portant son `command=` ne rend plus rien (banc
 12 → 13 cas). `test_lecture_keyfile.sh` lit `keyfile-size` dans `install.sh` au lieu de figer 64.
-Aucune machine n'est touchée : le `.92` garde son keyscript `raw` et son marqueur.
+Aucune machine n'est touchée : la machine de production garde son marqueur.
 
 ---
 
