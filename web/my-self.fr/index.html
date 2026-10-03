@@ -337,10 +337,12 @@
       border: 2px solid var(--accent-dim);
       border-radius: 50%;
     }
-    .floor-card h3 {
+    .floor-card h2 {
       font-size: 1.4rem;
       color: var(--accent);
       margin-bottom: 0.3rem;
+      padding-bottom: 0;
+      border-bottom: 0;
       display: flex;
       align-items: center;
       gap: 0.5rem;
@@ -530,7 +532,7 @@
     <span class="accent-mark">MYSELF · my-self.fr</span>
   </div>
 
-  <p class="tagline">Be yourself, for yourself.</p>
+  <p class="tagline" lang="en">Be yourself, for yourself.</p>
 </section>
 
 <section>
@@ -639,7 +641,7 @@
     <span>↓ ce qui se construit sur ces piliers ↓</span>
   </div>
   <div class="floor-card">
-    <h3>🌻 SelfFarm-Lite</h3>
+    <h2><span aria-hidden="true">🌻</span> SelfFarm-Lite</h2>
     <div class="sub">L'étage applicatif — première preuve que les piliers tiennent</div>
     <p class="tagline">
       « Quand l'identité, le droit et la sécurité sont en place, l'individu peut construire. »
@@ -709,7 +711,7 @@
     </div>
     <!-- ecosysteme:selffarm-lite:fin -->
     <div class="floor-cta">
-      <a class="btn btn-primary" href="https://farm.example.org">🌻 Essayer la démo</a>
+      <a class="btn btn-primary" href="https://farm.example.org"><span aria-hidden="true">🌻</span> Essayer la démo</a>
       <a class="btn" href="https://github.com/Pierroons/selffarm-lite" target="_blank" rel="noopener">Code sur GitHub</a>
     </div>
     <p class="muted" style="margin-top: 1.2rem; font-size: 0.85rem;">
@@ -723,7 +725,7 @@
     <span>↓ et la preuve qu'ils tiennent sous attaque ↓</span>
   </div>
   <div class="floor-card">
-    <h3>🎯 MySelf-Lab</h3>
+    <h2><span aria-hidden="true">🎯</span> MySelf-Lab</h2>
     <div class="sub">Le 2e étage — la preuve par l'attaque</div>
     <p class="tagline">
       « Quand les piliers tiennent, on peut inviter le monde à les casser. »
@@ -755,8 +757,8 @@
       </a>
     </div>
     <div class="floor-cta">
-      <a class="btn btn-primary" href="https://ctf.example.org">🎯 Visiter la démo</a>
-      <a class="btn" href="https://ctf.example.org/redteam.php">🛡️ Tester la sécurité</a>
+      <a class="btn btn-primary" href="https://ctf.example.org"><span aria-hidden="true">🎯</span> Visiter la démo</a>
+      <a class="btn" href="https://ctf.example.org/redteam.php"><span aria-hidden="true">🛡️</span> Tester la sécurité</a>
     </div>
     <p class="muted" style="margin-top: 1.2rem; font-size: 0.85rem;">
       Forum de démonstration à contenu fictif. Aucune donnée réelle.
@@ -788,13 +790,14 @@
 </section>
 
 <section class="support" style="margin-top: 3rem; text-align: center;">
+  <h2 class="visually-hidden">Soutenir le projet</h2>
   <p style="font-size: 0.95rem; color: var(--text-muted); max-width: 560px; margin: 0 auto 1rem;">
     MySelf est auto-hébergé sur matériel grand public, sans publicité, sans tracker,
     sans sponsor commercial. Si le projet te sert ou te parle, un geste direct
     aide à le maintenir en vie.
   </p>
   <a class="soutien" href="https://pay.vivawallet.com/pierroons" target="_blank" rel="noopener">
-    🙏 Soutenir le projet
+    <span aria-hidden="true">🙏</span> Soutenir le projet
   </a>
   <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.7rem;">
     Via Viva Wallet — CB, Apple Pay, Google Pay, PayPal.
