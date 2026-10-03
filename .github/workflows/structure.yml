@@ -128,6 +128,21 @@ jobs:
           cmp -s /tmp/SM.intact "$F" \
             || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
           echo "✓ le contrôle rougit sur un porteur décalé, et le fichier est restauré"
+          # Le texte alternatif d'un badge qui ne nomme pas son module, dans le README de ce module.
+          F=bi-self/selfrecover/README.md
+          cp "$F" /tmp/SR.intact
+          sed -i -E 's#^\[!\[Status: v[0-9]+\.[0-9]+\.[0-9]+\]#[![Status: v0.0.0]#' "$F"
+          grep -q '^\[!\[Status: v0.0.0\]' "$F" \
+            || { cp /tmp/SR.intact "$F"; echo "::error::la plantation du texte alternatif n'a pas pris"; exit 1; }
+          if bash scripts/check-versions.sh >/dev/null 2>&1; then
+            cp /tmp/SR.intact "$F"
+            echo "::error::le contrôle reste VERT avec un texte alternatif de badge décalé"
+            exit 1
+          fi
+          cp /tmp/SR.intact "$F"
+          cmp -s /tmp/SR.intact "$F" \
+            || { echo "::error::le README de SelfRecover n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le contrôle rougit sur le texte alternatif d'un badge, et le fichier est restauré"
           # Mode --tags : une version qu'aucun tag ne porte, avec un délai nul, doit rougir.
           cp modules.json /tmp/MJ.intact
           python3 -c "import json;d=json.load(open('modules.json'));[m.update(version='9.9.9') for m in d['modules'] if m['id']=='selfmoderate'];json.dump(d,open('modules.json','w'),ensure_ascii=False,indent=2)"
