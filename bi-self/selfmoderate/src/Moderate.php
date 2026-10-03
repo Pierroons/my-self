@@ -1024,7 +1024,11 @@ class Moderate
         return $v === false ? null : (int) $v;
     }
 
-    /** Liste des votes bloqués (pour la page modération). */
+    /**
+     * Liste des votes bloqués. Rend le votant ET sa cible : vue d'arbitrage, et
+     * le contraire de ce que reasonsFor() protège juste en dessous. Un appelant
+     * qui la sert sans contrôle d'accès publie qui a voté contre qui.
+     */
     public static function blockedVotes(PDO $pdo, int $limit = 30): array
     {
         $stmt = $pdo->prepare('

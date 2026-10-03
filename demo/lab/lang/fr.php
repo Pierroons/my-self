@@ -295,6 +295,7 @@ return [
     'mod.detect.login' => 'La détection tourne à chaque vote négatif ; son déclenchement manuel est réservé aux administrateurs.',
     'mod.blocked.h2'  => 'Votes neutralisés (%d)',
     'mod.blocked.none' => 'Aucun vote bloqué pour l\'instant.',
+    'mod.blocked.anonyme' => 'Les motifs se lisent, pas leurs auteurs : savoir qui a voté contre qui n\'appartient qu\'aux arbitres.',
     'mod.col.date'    => 'Date',
     'mod.col.voter'   => 'Votant',
     'mod.col.target'  => 'Cible',

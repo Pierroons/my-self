@@ -295,6 +295,7 @@ return [
     'mod.detect.login' => 'Detection runs on every downvote; triggering it by hand is reserved to administrators.',
     'mod.blocked.h2'  => 'Neutralised votes (%d)',
     'mod.blocked.none' => 'No blocked vote yet.',
+    'mod.blocked.anonyme' => 'Reasons are public, their authors are not: who voted against whom is for moderators only.',
     'mod.col.date'    => 'Date',
     'mod.col.voter'   => 'Voter',
     'mod.col.target'  => 'Target',

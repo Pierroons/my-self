@@ -10,7 +10,19 @@ use Pierroons\MySelfLab\Auth;
 
 $pdo = Db::pdo();
 $account = Auth::currentAccount($pdo);
+$estArbitre = $account && !empty($account['is_admin']);
 $blocked = Moderate::blockedVotes($pdo, 30);
+
+// Le protocole veut qu'on voie les motifs sans voir qui a voté : Moderate::reasonsFor()
+// arrondit même la date au jour pour qu'un recoupement ne désigne pas l'auteur. Les
+// noms sont donc retirés ici, et non masqués à l'affichage — ce qui n'est pas chargé
+// ne peut pas être réaffiché par mégarde.
+if (!$estArbitre) {
+    $blocked = array_map(
+        static fn (array $v): array => ['blocked_reason' => $v['blocked_reason']],
+        $blocked
+    );
+}
 
 render_header(t('mod.title'), $account);
 ?>
@@ -58,6 +70,20 @@ document.getElementById('btn-detecter').addEventListener('click', detecter);
   <h2><?= h(t('mod.blocked.h2', count($blocked))) ?></h2>
   <?php if (!$blocked): ?>
     <p class="muted"><?= h(t('mod.blocked.none')) ?></p>
+  <?php elseif (!$estArbitre): ?>
+    <p class="muted"><?= h(t('mod.blocked.anonyme')) ?></p>
+    <?php
+    $parMotif = [];
+    foreach ($blocked as $v) {
+        $parMotif[$v['blocked_reason']] = ($parMotif[$v['blocked_reason']] ?? 0) + 1;
+    }
+    arsort($parMotif);
+    ?>
+    <ul style="color:var(--txt2);font-size:13px;line-height:1.7;margin:0;padding-left:18px">
+      <?php foreach ($parMotif as $motif => $combien): ?>
+        <li><span style="color:var(--danger)"><?= h((string) $motif) ?></span> — <?= (int) $combien ?></li>
+      <?php endforeach; ?>
+    </ul>
   <?php else: ?>
     <table style="width:100%;border-collapse:collapse;font-size:12.5px">
       <thead><tr style="text-align:left;color:var(--muted)"><th style="padding:6px 8px"><?= h(t('mod.col.date')) ?></th><th><?= h(t('mod.col.voter')) ?></th><th><?= h(t('mod.col.target')) ?></th><th><?= h(t('mod.col.type')) ?></th><th><?= h(t('mod.col.reason')) ?></th></tr></thead>
