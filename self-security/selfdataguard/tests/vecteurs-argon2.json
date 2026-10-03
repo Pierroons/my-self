@@ -1,0 +1,30 @@
+{
+  "profil": {
+    "opslimit": 3,
+    "memlimit": 67108864
+  },
+  "cas": [
+    {
+      "nom": "ascii",
+      "sel_compte_hex": "00112233445566778899aabbccddeeff",
+      "mot_de_passe": "correct horse battery",
+      "mot_memorise": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "phrase": "cheval agrafe batterie correct moulin ivoire",
+      "attendu_mot_de_passe": "01072a0349c8f22c395c6963b557c3280ad3c272443b1fc2ee8bbffa1c04f1a4",
+      "attendu_mot_memorise": "35365169f380da072756484c751c25028efada1fb5a11e325b0a19d21d87585d",
+      "phrase_normalisee": "cheval agrafe batterie correct moulin ivoire",
+      "attendu_phrase": "e93484fa9a8329c488400c1abb77db5900a55e03ff8016bd718952b2fa76332a"
+    },
+    {
+      "nom": "accents et blancs irréguliers",
+      "sel_compte_hex": "f0e1d2c3b4a5968778695a4b3c2d1e0f",
+      "mot_de_passe": "mot de passe — été 2026",
+      "mot_memorise": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "phrase": "  cheval\tagrafe   batterie\ncorrect  moulin ivoire \n",
+      "attendu_mot_de_passe": "2b2f57407844c6ac75573f21224f9d4f58fd0ea03c18e9464b45b834e842ea7f",
+      "attendu_mot_memorise": "061ae56c421c1fbb9d14452ab30aa01ffe8b9125742085999605c1508cfb94ac",
+      "phrase_normalisee": "cheval agrafe batterie correct moulin ivoire",
+      "attendu_phrase": "07cdc0bd20f42db6c8a1564d9b32c4acb60fe4f48db73cf4b640349fdce991b8"
+    }
+  ]
+}

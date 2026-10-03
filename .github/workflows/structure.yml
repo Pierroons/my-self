@@ -1307,6 +1307,16 @@ jobs:
             $D/tests/sanity_escrow.php 'an admin key was sealed under a passphrase below the floor'
           canari $D/src/Escrow/AuditLog.php 'if ($anchorAt !== null) {' 'if (false) {' \
             $D/tests/sanity_audit.php 'a truncated log passed its anchor'
+          canari $D/src/Vault/UserVault.php "public const HMAC_CONTEXT_SUFFIX = '/dataguard';" \
+            "public const HMAC_CONTEXT_SUFFIX = '/dataguarD';" \
+            $D/tests/sanity_vecteurs.php 'Memorized: key differs from the second implementation'
+
+      # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
+      # implémentation (argon2-cffi, la construction écrite à la main) : sans ce
+      # contrôle, un fichier de vecteurs régénéré par la bibliothèque elle-même ne
+      # prouverait plus rien.
+      - name: Garde-fou — les vecteurs Argon2id de SelfDataGuard viennent d'une seconde implémentation
+        run: python3 self-security/selfdataguard/tests/vecteurs_argon2.py
 
       # La taille du sel de compte vit à quatre endroits qui ne peuvent pas se lire :
       # sr-derive.js, sr-kdf.js, Recovery::SEL_OCTETS, le CHECK du schéma duo.
