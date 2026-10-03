@@ -27,7 +27,7 @@ what it does, how to install it, and what it does not protect.
 | [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.5.1** — available, 319 checks, three locks and archiving at level 3 |
 | [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.4.2 beta** — housing, family, administrative law and administrative case law |
 | [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.3** — live, over 1,800 official resources |
-| [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.4.0** — linked voters, recovery, vote reason, graduated ban traced to a journal; 1 mechanism not yet coded |
+| [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.4.0** — linked voters, recovery, vote reason, graduated ban traced to a journal; 2 mechanisms not yet coded |
 
 Those carrying security code document their own threat model. SelfJustice and
 SelfAct have none: they are law databases kept up to date, not protection

@@ -137,9 +137,9 @@ La 0.4.0 fait revenir le ban automatique, tenu : gradué, fini, écrit au journa
 bout en bout, levable par un arbitre sous plancher, et levé seul quand une meute
 est reconnue. Les seuils ont une seule source, `Config`. **Rupture** par rapport à
 la 0.3.0 : les constantes de seuil du moteur sont retirées (lire `Moderate::config()`),
-et `adminBan()` / `adminPardon()` prennent l'arbitre et le motif. **Un mécanisme
-reste à écrire** — le cross-voting — plus trois tenus à moitié, tous marqués dans
-les listes ci-dessus.
+et `adminBan()` / `adminPardon()` prennent l'arbitre et le motif. **Deux mécanismes
+restent à écrire** — le cross-voting, et la remise à zéro des strikes après trois mois
+sans incident — plus deux tenus à moitié, tous marqués dans les listes ci-dessus.
 
 Contrôles : [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
 — quarante-cinq, joués par la CI, chacun vu rougir : le mécanisme est
