@@ -1,0 +1,26 @@
+# Versions passées que l'audit OPSEC complet ne signale plus.
+#
+# Format :   <empreinte du blob>  <TAB>  <chemin>  <TAB>  <raison>
+#
+# L'audit complet relit chaque commit : corriger un fichier ne retire pas ses
+# versions antérieures de l'historique publié. Quand la décision est de ne pas
+# le réécrire, ces versions-là sortent du compte, et elles seules.
+#
+# L'empreinte désigne un CONTENU, pas un chemin : toute modification en produit
+# une autre, que l'audit relit. Une entrée ici ne masque donc aucune fuite à
+# venir — ce que fait une exclusion par chemin dans opsec-allowlist.txt.
+# Empreinte d'une version : git rev-parse <commit>:<chemin>
+#
+# Mêmes règles que l'allowlist : la raison nomme la nature de ce qui a été
+# publié, jamais le texte, et l'audit relit ce fichier.
+
+a3a9c5a66b003c86e4480405128029bf651cc013	.gitleaks.toml	version du 28/06/2026 : une règle et un commentaire citaient un motif — historique non réécrit, décision du 03/10/2026
+b7b1cc30bd71af1c7036f70b2690daa67917bc91	.gitleaks.toml	version du 28/06/2026 : une règle et un commentaire citaient un motif — historique non réécrit, décision du 03/10/2026
+d52ab8d6be6ee296dc92e131a5987164234d1600	scripts/opsec-allowlist.txt	version du 28/07/2026 : ses raisons citaient les motifs qu'elles écartaient — historique non réécrit, décision du 03/10/2026
+42ba2409c68cc8d0289a4b189f5fb304705d65da	scripts/opsec-allowlist.txt	version du 28/07/2026 : ses raisons citaient les motifs qu'elles écartaient — historique non réécrit, décision du 03/10/2026
+74c3f0b579771d441c370f3c6d8b1731f11a6498	scripts/opsec-allowlist.txt	version du 02/08/2026 : ses raisons citaient les motifs qu'elles écartaient — historique non réécrit, décision du 03/10/2026
+bfbf3450fbaaf0def25a42684560faa79e087d2a	scripts/opsec-allowlist.txt	version du 18/08/2026 : ses raisons citaient les motifs qu'elles écartaient — historique non réécrit, décision du 03/10/2026
+d9ea7722081974b177841f4f6a661f9d1ab7f8cd	scripts/opsec-allowlist.txt	version du 20/08/2026 : ses raisons citaient les motifs qu'elles écartaient — historique non réécrit, décision du 03/10/2026
+a0f433c5ddadd6e4d2cdc877c5c604212d7ffe00	scripts/opsec-allowlist.txt	version du 23/08/2026 : ses raisons citaient les motifs qu'elles écartaient — historique non réécrit, décision du 03/10/2026
+90c9eace5172ab126f6b43c18630a2466aa8b549	scripts/opsec-allowlist.txt	version du 24/08/2026 : ses raisons citaient les motifs qu'elles écartaient — historique non réécrit, décision du 03/10/2026
+2be1cda16d9130088bd574ded14c477fb99eff44	scripts/opsec-allowlist.txt	version du 11/09/2026 : ses raisons citaient les motifs qu'elles écartaient — historique non réécrit, décision du 03/10/2026

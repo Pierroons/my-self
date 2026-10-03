@@ -65,6 +65,7 @@ set -uo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 PATTERNS="${SELFOPSEC_PATTERNS:-$HOME/.config/selfopsec/patterns.txt}"
 ALLOWLIST="$ROOT/scripts/opsec-allowlist.txt"
+HISTORIQUE="$ROOT/scripts/opsec-historique-accepte.txt"
 
 MODE="full"
 MSGFILE=""
@@ -186,8 +187,7 @@ ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 warn() { printf '  \033[31m✗\033[0m %s\n' "$1"; FOUND=1; }
 # Ni vert ni rouge : ce qui doit se voir sans faire échouer. Un audit sans objet
 # n'est pas une fuite, mais il ne mérite pas la coche d'une passe complète — et
-# le signaler en ✗ interdirait de commiter les fichiers que l'allowlist écarte,
-# à commencer par ce script.
+# le signaler en ✗ interdirait de commiter les fichiers que l'allowlist écarte.
 note() { printf '  \033[33m•\033[0m %s\n' "$1"; }
 
 # grep rend 0 s'il trouve, 1 s'il ne trouve pas, et 2 ou plus si le motif est
@@ -234,6 +234,39 @@ exclu() {
   done
   return 1
 }
+
+# ── Versions historiques acceptées ──────────────────────────────────────────
+# Clé « <blob> <chemin> » : une version précise d'un fichier précis. Une
+# exclusion par chemin écarte aussi ce qu'on y écrira demain ; une empreinte
+# ne couvre que le contenu déjà publié.
+declare -A ACCEPTES=()
+if [ -f "$HISTORIQUE" ]; then
+  while IFS=$'\t' read -r blob chemin _raison; do
+    [ -z "${blob:-}" ] && continue
+    case "$blob" in \#*) continue ;; esac
+    ACCEPTES["$blob $chemin"]=1
+  done < <(grep -vE '^\s*(#|$)' "$HISTORIQUE")
+fi
+# Lit des lignes « <commit>:<chemin> », rend celles dont le contenu n'est pas
+# une version acceptée. Une ligne que git ne résout pas est rendue : elle n'a
+# pas été vérifiée.
+hors_historique_accepte() {
+  local -a lignes
+  local ligne objet i=0
+  mapfile -t lignes
+  [ "${#lignes[@]}" = "0" ] && return 0
+  while IFS= read -r objet; do
+    ligne="${lignes[$i]}"; i=$((i + 1))
+    [ -n "${ACCEPTES["${objet%% *} ${ligne#*:}"]:-}" ] || printf '%s\n' "$ligne"
+  done < <(printf '%s\n' "${lignes[@]}" | git -C "$ROOT" cat-file --batch-check='%(objectname)')
+}
+
+# Ces deux fichiers parlent du bruit des AUTRES fichiers : une suite de cinq
+# chiffres dans un commentaire ou une raison y cite ce qui a été trouvé. Un
+# motif à bornes ne voit pas un code postal noyé dans un nombre plus long ;
+# ce contrôle-ci, si. Le premier champ — chemin, empreinte — n'est pas lu.
+FICHIERS_AUDIT=(scripts/opsec-allowlist.txt scripts/opsec-historique-accepte.txt)
+CHIFFRES=$'(^[[:space:]]*#|\t).*[0-9]{5}'
 
 # Une valeur qui porte un chemin absolu ou des coordonnées est une fuite quoi
 # qu'il arrive, même si aucun motif connu n'y figure.
@@ -374,6 +407,10 @@ if [ "$PAR_CIBLES" = "1" ]; then
       continue
     fi
     EXAMINES=$((EXAMINES + 1))
+    if [[ " ${FICHIERS_AUDIT[*]} " == *" $f "* ]]; then
+      l=$(contenu "$f" | grep -nE -e "$CHIFFRES" | cut -d: -f1 | paste -sd, -)
+      [ -n "$l" ] && { warn "$f — suite de cinq chiffres citée, ligne(s) $l"; C2=1; }
+    fi
     for m in "${MOTIFS[@]}"; do
       if contenu "$f" | cherche "$m"; then
         warn "$f — contient « $m »"
@@ -434,9 +471,9 @@ else
   for m in "${MOTIFS[@]}"; do
     [ "${#REVS[@]}" = "0" ] && break
     if [ "${#CHEMINS[@]}" != "0" ]; then
-      hits=$(git -C "$ROOT" grep -Iil -e "$m" "${REVS[@]}" -- "${CHEMINS[@]}" | cut -d: -f2- | sort -u)
+      hits=$(git -C "$ROOT" grep -Iil -e "$m" "${REVS[@]}" -- "${CHEMINS[@]}" | hors_historique_accepte | cut -d: -f2- | sort -u)
     else
-      hits=$(git -C "$ROOT" grep -Iil -e "$m" "${REVS[@]}" | cut -d: -f2- | sort -u)
+      hits=$(git -C "$ROOT" grep -Iil -e "$m" "${REVS[@]}" | hors_historique_accepte | cut -d: -f2- | sort -u)
     fi
     rc=${PIPESTATUS[0]}
     if [ "$rc" -gt 1 ]; then
@@ -454,6 +491,12 @@ else
     n=$(printf '%s' "$reste" | grep -c . || true)
     [ "${n:-0}" != "0" ] && { warn "« $m » — $n fichier(s)"; C2=1; }
   done
+  if [ "${#REVS[@]}" != "0" ]; then
+    hits=$(git -C "$ROOT" grep -Il -E -e "$CHIFFRES" "${REVS[@]}" -- "${FICHIERS_AUDIT[@]}" | hors_historique_accepte | cut -d: -f2- | sort -u)
+    while IFS= read -r f; do
+      [ -n "$f" ] && { warn "$f — suite de cinq chiffres citée dans une version du périmètre"; C2=1; }
+    done <<< "$hits"
+  fi
   # Muet si la plage est vide : le « rien n'a été lu » plus haut suffit, et
   # deux verts de suite dont l'un affirme plus que l'autre finissent mal lus.
   [ "$C2" = "0" ] && [ "${#REVS[@]}" != "0" ] && ok "aucun motif dans le contenu"
@@ -762,6 +805,8 @@ else
   echo "  Un motif trouvé dans le CONTENU ou les MESSAGES ne se corrige pas"
   echo "  au HEAD : il faut réécrire l'historique (git-filter-repo), re-signer"
   echo "  les tags et demander à GitHub de collecter les objets orphelins."
+  echo "  Si la décision est de ne pas le réécrire, ajoute l'empreinte de chaque"
+  echo "  version publiée à scripts/opsec-historique-accepte.txt."
 fi
 echo "  Si c'est un faux positif, ajoute-le à scripts/opsec-allowlist.txt"
 echo "  AVEC sa raison — une exclusion sans justification est une dette."
