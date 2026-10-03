@@ -560,7 +560,7 @@ Les trois scripts passent dans `site/selfjustice.js`. Le formulaire déclare `me
 action : un JavaScript défaillant ne met plus le commentaire dans l'URL. Le compteur d'en-tête garde
 la valeur rendue par le serveur ; le script réactivé y aurait écrit un autre chiffre sous le même mot
 « consultations ». La requête copiée renvoyait à `/directives.html`, qui répond 404 : elle dit
-désormais « Analyse <domaine> », la formule que la page enseigne.
+désormais « Analyse `<domaine>` », la formule que la page enseigne.
 
 `tests/sanity_csp_compatible.py` lit les quatre pages que sert ce vhost et échoue sur un script
 inline, un gestionnaire `on*=`, une URL `javascript:` ou un script hors du site ; il échoue aussi si
