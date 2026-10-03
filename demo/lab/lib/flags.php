@@ -7,6 +7,7 @@ namespace Pierroons\MySelfLab;
 use PDO;
 
 require_once __DIR__ . '/dataguard.php';
+require_once __DIR__ . '/secret_instance.php';
 
 /**
  * Les drapeaux du challenge : valider une soumission sur-le-champ, et retenir
@@ -39,9 +40,30 @@ final class Flags
     /** Ce que vaut une capture au classement, à côté des rapports. */
     public const POINTS_DRAPEAU = 150;
 
+    /**
+     * L'empreinte qui sert a reconnaitre un drapeau.
+     *
+     * 🔑 HMAC direct sur le secret d'instance, et NON la derivation Argon2id de
+     * DataGuard::hmac(). Deux raisons, l'une de fond et l'autre de duree :
+     *
+     * Un drapeau est tire au hasard sur 32 octets : il n'a rien d'un mot
+     * memorise, donc rien a gagner d'une KDF memoire-dure. Le cout proteje une
+     * faible entropie ; ici il n'y en a pas.
+     *
+     * Surtout, DataGuard derive sa cle sous les constantes Argon2id courantes
+     * sans enregistrer de profil (releve par l'audit de SelfDataGuard 0.6.0,
+     * demo/lab/lib/dataguard.php:47). Le jour ou ces constantes changeront,
+     * toutes les empreintes posees deviendraient muettes d'un coup : plus aucun
+     * drapeau reconnu, sans message d'erreur, et personne pour s'en apercevoir
+     * avant qu'un chercheur ne se plaigne. Le vrai drapeau serait refuse.
+     */
     private static function empreinte(string $drapeau): string
     {
-        return DataGuard::hmac(trim($drapeau), 'flag');
+        return hash_hmac(
+            'sha256',
+            trim($drapeau),
+            'flag|' . SecretInstance::lire('.serversecret', 48, SecretInstance::PLANCHER)
+        );
     }
 
     /**

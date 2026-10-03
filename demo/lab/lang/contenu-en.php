@@ -275,4 +275,5 @@ return [
     'Soumission vide ou trop longue.' => 'Empty or oversized submission.',
     'Pseudo invalide.' => 'Invalid handle.',
     'Numero ou jeton de suivi invalide.' => 'Invalid number or tracking token.',
+    'Trop de soumissions récentes. Réessaie dans une heure.' => 'Too many recent submissions. Try again in an hour.',
 ];
