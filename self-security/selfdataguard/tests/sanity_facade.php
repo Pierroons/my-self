@@ -530,6 +530,38 @@ try {
 
 // -----------------------------------------------------------------------------
 
+section('The escrow wrap context is not a field name');
+
+// Private fields and the escrow user-wrap are both sealed under the master key;
+// a field named after the wrap's tag would share its AAD.
+$reserve = $dg->register('reserved-name', 'mot de passe réservé', str_repeat('e1', 32));
+try {
+    $dg->setFields($reserve, ['escrow' => 'anything']);
+    ko('a field named "escrow" was written');
+} catch (InvalidArgumentException) {
+    ok('writing a field named "escrow" is refused');
+}
+
+// What someone with write access to the database would plant: a ciphertext
+// sealed under the master key in the escrow wrap's context, as a field row.
+$planted = Primitives::encrypt(
+    'escrow key bytes',
+    $reserve->getMasterKey(),
+    aad: 'reserved-name' . \Pierroons\SelfDataGuard\Escrow\EscrowVault::WRAP_AAD_SUFFIX
+)->toBase64();
+(new PDO("sqlite:{$dbPath}"))->prepare(
+    'INSERT OR REPLACE INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at)
+     VALUES (?, ?, ?, NULL, ?)'
+)->execute(['reserved-name', 'escrow', $planted, gmdate('c')]);
+try {
+    $leaked = $dg->getFields($reserve);
+    ko('a planted "escrow" row was decrypted and returned', 'fields: ' . implode(',', array_keys($leaked)));
+} catch (InvalidArgumentException) {
+    ok('a planted "escrow" row is refused on read, not decrypted');
+}
+
+// -----------------------------------------------------------------------------
+
 echo "\n";
 echo "═══════════════════════════════════════════════════════════════\n";
 echo "  Phase 5 Sanity — {$passes} passed, {$failures} failed\n";

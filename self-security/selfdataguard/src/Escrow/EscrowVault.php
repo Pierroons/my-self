@@ -32,8 +32,14 @@ use RuntimeException;
  */
 final class EscrowVault
 {
-    /** AAD binding the user-wrap to its owner and purpose. */
-    public const WRAP_AAD_SUFFIX = '|escrow';
+    /**
+     * AAD binding the user-wrap to its owner and purpose. The user-wrap is sealed
+     * under the data_master_key, like private fields, whose AAD is "userId|name":
+     * a field named after this tag would share its context, so FieldCrypter
+     * refuses the name.
+     */
+    public const WRAP_AAD_TAG = 'escrow';
+    public const WRAP_AAD_SUFFIX = '|' . self::WRAP_AAD_TAG;
 
     public function __construct(
         private readonly ?DateTimeImmutable $clock = null

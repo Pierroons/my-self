@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Pierroons\SelfDataGuard\Fields;
 
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
+use InvalidArgumentException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 
 /**
@@ -104,6 +106,15 @@ final class FieldCrypter
      */
     private static function buildAad(string $userId, string $fieldName): string
     {
+        // Refused on read as well as on write: a row planted in storage under this
+        // name would otherwise decrypt the escrow user-wrap and hand its key to the
+        // application.
+        if ($fieldName === EscrowVault::WRAP_AAD_TAG) {
+            throw new InvalidArgumentException(sprintf(
+                'Field name "%s" is reserved: it is the context of the escrow user-wrap.',
+                $fieldName
+            ));
+        }
         return $userId . '|' . $fieldName;
     }
 }

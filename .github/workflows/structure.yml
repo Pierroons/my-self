@@ -1283,6 +1283,27 @@ jobs:
             || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
           echo "✓ la sonde rougit quand la passphrase n'est pas re-scellée"
 
+      # Chaque correctif de SelfDataGuard a son cas dans un banc. Chaque canari
+      # retire le correctif et exige que le banc rougisse sur ce cas-là.
+      - name: Canaris — les correctifs de SelfDataGuard rougissent quand on les retire
+        run: |
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans le correctif"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          canari $D/src/Fields/FieldCrypter.php 'if ($fieldName === EscrowVault::WRAP_AAD_TAG) {' 'if (false) {' \
+            $D/tests/sanity_facade.php 'a planted "escrow" row was decrypted'
+
       # La taille du sel de compte vit à quatre endroits qui ne peuvent pas se lire :
       # sr-derive.js, sr-kdf.js, Recovery::SEL_OCTETS, le CHECK du schéma duo.
       - name: Garde-fou — une seule taille de sel de compte, du navigateur à la base
