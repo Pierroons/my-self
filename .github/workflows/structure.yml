@@ -1317,6 +1317,11 @@ jobs:
             $D/tests/sanity_escrow.php 'a v2 key sealed under another profile no longer unseals'
           canari $D/src/SelfDataGuard.php 'if ($stored->kdfOpslimit !== $written->kdfOpslimit' 'if (false && $stored->kdfOpslimit !== $written->kdfOpslimit' \
             $D/tests/sanity_facade.php 'a vault read back under another Argon2id profile was reported as stored'
+          canari $D/src/Escrow/EscrowVault.php '$head = self::adminHead($record->userId);' \
+            '$head = substr($plain, 0, strlen($plain) - Primitives::KEY_LEN);' \
+            $D/tests/sanity_escrow.php "alice's wrap_admin, moved into bob's record, opened as bob's"
+          canari $D/src/SelfDataGuard.php 'if (!EscrowVault::isAccountBound($record)) {' 'if (false) {' \
+            $D/tests/sanity_escrow.php 'the pre-0.6.0 wrap_admin was not re-sealed on write, or no longer opens'
 
       # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
       # implémentation (argon2-cffi, la construction écrite à la main) : sans ce

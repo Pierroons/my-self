@@ -404,7 +404,9 @@ final class SelfDataGuard
 
     /**
      * Encrypt and persist escrow fields for the active user. Creates the escrow
-     * compartment on first use (sealed to $adminPublicKey); reuses it after.
+     * compartment on first use (sealed to $adminPublicKey); reuses it after. A
+     * compartment whose wrap_admin predates 0.6.0 and names no account is
+     * re-sealed to $adminPublicKey in the form that does.
      *
      * These fields are the CONSENTED, admin-recoverable subset (e.g.
      * contact_secours) — kept in a sub-key distinct from the private zone.
@@ -426,6 +428,12 @@ final class SelfDataGuard
             $this->storage->saveEscrow($record, $session->vaultSalt);
         } else {
             $unlocked = $this->escrow->unlockAsUser($record, $session);
+            if (!EscrowVault::isAccountBound($record)) {
+                $this->storage->saveEscrow(
+                    $this->escrow->rebindAdmin($record, $unlocked, $adminPublicKey),
+                    $session->vaultSalt
+                );
+            }
         }
 
         $ciphertexts = EscrowFieldCrypter::encryptBatch($unlocked, $fields);

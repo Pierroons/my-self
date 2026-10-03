@@ -20,7 +20,12 @@ use RuntimeException;
  *     escrow_key   ←  random(256 bits)
  *
  *     wrap_user    ←  XChaCha20-Poly1305(escrow_key, data_master_key) (AAD userId|escrow)
- *     wrap_admin   ←  crypto_box_seal(escrow_key, admin_public_key)   (anonymous sealed box)
+ *     wrap_admin   ←  crypto_box_seal(tag ‖ len(userId) ‖ userId ‖ escrow_key, admin_public_key)
+ *
+ * A sealed box has no AAD: the account goes inside it, and unlockAsAdmin()
+ * refuses a wrap_admin that names another account than its record. A wrap_admin
+ * sealed before 0.6.0 holds the bare 32-byte key and names no account; it is
+ * still opened, and re-sealed in the new form at its holder's next escrow write.
  *
  * The user opens wrap_user with the master key they already hold. The admin
  * opens wrap_admin with the recovery secret key (itself passphrase-sealed, see
@@ -40,6 +45,9 @@ final class EscrowVault
      */
     public const WRAP_AAD_TAG = 'escrow';
     public const WRAP_AAD_SUFFIX = '|' . self::WRAP_AAD_TAG;
+
+    /** Opens the plaintext of a wrap_admin that names its account. */
+    private const ADMIN_WRAP_TAG = "selfdataguard/escrow-admin/v1\0";
 
     public function __construct(
         private readonly ?DateTimeImmutable $clock = null
@@ -64,7 +72,7 @@ final class EscrowVault
             $session->getMasterKey(),
             aad: $session->userId . self::WRAP_AAD_SUFFIX
         );
-        $wrapAdmin = sodium_crypto_box_seal($escrowKey, $adminPublicKey);
+        $wrapAdmin = self::sealForAdmin($session->userId, $escrowKey, $adminPublicKey);
 
         $now = $this->now();
         $record = new EscrowRecord(
@@ -125,17 +133,77 @@ final class EscrowVault
             throw new InvalidArgumentException('adminSecretKey must be a raw box secret key');
         }
 
-        $keypair   = sodium_crypto_box_keypair_from_secretkey_and_publickey($adminSecretKey, $adminPublicKey);
-        $escrowKey = sodium_crypto_box_seal_open($record->wrapAdmin, $keypair);
+        $keypair = sodium_crypto_box_keypair_from_secretkey_and_publickey($adminSecretKey, $adminPublicKey);
+        $plain   = sodium_crypto_box_seal_open($record->wrapAdmin, $keypair);
         sodium_memzero($keypair);
 
-        if ($escrowKey === false) {
+        if ($plain === false) {
             throw new RuntimeException('Escrow sealed box failed to open — wrong admin key');
+        }
+
+        if (strlen($plain) === Primitives::KEY_LEN) {
+            $escrowKey = $plain;   // sealed before 0.6.0: names no account
+        } else {
+            $head = self::adminHead($record->userId);
+            if (strlen($plain) !== strlen($head) + Primitives::KEY_LEN
+                || !hash_equals($head, substr($plain, 0, strlen($head)))) {
+                Primitives::zeroize($plain);
+                throw new RuntimeException(
+                    'Escrow admin wrap was sealed for another account than its record — refused'
+                );
+            }
+            $escrowKey = substr($plain, strlen($head));
+            Primitives::zeroize($plain);
         }
 
         $unlocked = new UnlockedEscrow(userId: $record->userId, escrowKey: $escrowKey);
         Primitives::zeroize($escrowKey);
         return $unlocked;
+    }
+
+    /**
+     * Whether this wrap_admin names its account. Told by length alone, without
+     * the admin key: a pre-0.6.0 one seals the bare key.
+     */
+    public static function isAccountBound(EscrowRecord $record): bool
+    {
+        return strlen($record->wrapAdmin) !== Primitives::KEY_LEN + SODIUM_CRYPTO_BOX_SEALBYTES;
+    }
+
+    /**
+     * Re-seal wrap_admin in the form that names the account, from the user's
+     * side: the escrow key is in hand, the admin public key is all it takes.
+     */
+    public function rebindAdmin(EscrowRecord $record, UnlockedEscrow $unlocked, string $adminPublicKeyB64): EscrowRecord
+    {
+        if ($unlocked->userId !== $record->userId) {
+            throw new InvalidArgumentException('Unlocked escrow userId does not match escrow record');
+        }
+
+        return new EscrowRecord(
+            userId:    $record->userId,
+            wrapUser:  $record->wrapUser,
+            wrapAdmin: self::sealForAdmin(
+                $record->userId,
+                $unlocked->getEscrowKey(),
+                self::decodePublicKey($adminPublicKeyB64)
+            ),
+            createdAt: $record->createdAt,
+            updatedAt: $this->now()
+        );
+    }
+
+    private static function sealForAdmin(string $userId, #[\SensitiveParameter] string $escrowKey, string $adminPublicKey): string
+    {
+        $plain  = self::adminHead($userId) . $escrowKey;
+        $sealed = sodium_crypto_box_seal($plain, $adminPublicKey);
+        Primitives::zeroize($plain);
+        return $sealed;
+    }
+
+    private static function adminHead(string $userId): string
+    {
+        return self::ADMIN_WRAP_TAG . pack('N', strlen($userId)) . $userId;
     }
 
     private static function decodePublicKey(string $b64): string

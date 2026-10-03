@@ -18,6 +18,7 @@ require __DIR__ . '/../src/autoload.php';
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
+use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
@@ -247,6 +248,54 @@ foreach ([
         ok("{$cas} is refused before any derivation");
     }
 }
+
+section('wrap_admin names its account');
+
+$skLien = SelfDataGuard::unsealAdminRecoveryKey($admin['sealedSecret'], ADMIN_PASS);
+$ev = new EscrowVault();
+EscrowVault::isAccountBound($storage->loadEscrow('alice'))
+    ? ok('a new escrow seals wrap_admin with its account')
+    : ko('a new escrow still seals the bare key');
+
+$bob = $dg->register('bob', 'motdepasse-bob-01', 'bob-memorized');
+$dg->setEscrowFields($bob, $admin['publicKey'], ['contact_secours' => 'bob-secours@example.org']);
+$recAlice = $storage->loadEscrow('alice');
+$recBob   = $storage->loadEscrow('bob');
+$echange  = new EscrowRecord(
+    userId: 'bob', wrapUser: $recBob->wrapUser, wrapAdmin: $recAlice->wrapAdmin,
+    createdAt: $recBob->createdAt, updatedAt: $recBob->updatedAt
+);
+try {
+    $ev->unlockAsAdmin($echange, $skLien, $admin['publicKey']);
+    ko("alice's wrap_admin, moved into bob's record, opened as bob's");
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'another account')
+        ? ok("alice's wrap_admin moved into bob's record is refused, named as such")
+        : ko('refused for another reason', $e->getMessage());
+}
+
+// An escrow sealed before 0.6.0: wrap_admin holds the bare key.
+$carol   = $dg->register('carol', 'motdepasse-carol-01', 'carol-memorized');
+$neuf    = $ev->create($carol, $admin['publicKey']);
+$ancien  = new EscrowRecord(
+    userId: 'carol', wrapUser: $neuf['record']->wrapUser,
+    wrapAdmin: sodium_crypto_box_seal($neuf['unlocked']->getEscrowKey(), base64_decode($admin['publicKey'])),
+    createdAt: $neuf['record']->createdAt, updatedAt: $neuf['record']->updatedAt
+);
+$storage->saveEscrow($ancien, $carol->vaultSalt);
+!EscrowVault::isAccountBound($storage->loadEscrow('carol'))
+    ? ok('fixture: a pre-0.6.0 wrap_admin is told apart by its length')
+    : ko('fixture: the pre-0.6.0 wrap_admin reads as bound');
+$ev->unlockAsAdmin($storage->loadEscrow('carol'), $skLien, $admin['publicKey'])->getEscrowKey() === $neuf['unlocked']->getEscrowKey()
+    ? ok('a pre-0.6.0 wrap_admin still opens')
+    : ko('a pre-0.6.0 wrap_admin opened to another key');
+
+$dg->setEscrowFields($carol, $admin['publicKey'], ['contact_secours' => 'carol-secours@example.org']);
+EscrowVault::isAccountBound($storage->loadEscrow('carol'))
+    && $dg->getEscrowFieldsAsAdmin('carol', $skLien, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+    ? ok("the holder's next escrow write re-seals wrap_admin with the account, and the admin still reads it")
+    : ko('the pre-0.6.0 wrap_admin was not re-sealed on write, or no longer opens');
+sodium_memzero($skLien);
 
 section('Delete cascade removes escrow');
 
