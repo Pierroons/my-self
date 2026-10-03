@@ -99,6 +99,17 @@ section('verify-log passes on the intact chain');
 
 $r = run(['verify-log'], '', $env);
 $r['code'] === 0 && str_contains($r['out'], 'intègre') ? ok('verify-log → exit 0, chain intact') : ko('verify-log failed', trim($r['out'] . $r['err']));
+preg_match('/tête : (\d+:[0-9a-f]{64})/', $r['out'], $tete)
+    ? ok('verify-log prints the head to note off the machine')
+    : ko('verify-log printed no head', trim($r['out']));
+$r = run(['verify-log', '--ancre', $tete[1] ?? ''], '', $env);
+$r['code'] === 0 && str_contains($r['out'], 'ancre retrouvée')
+    ? ok('verify-log --ancre accepts the head it printed')
+    : ko('verify-log --ancre refused its own head', trim($r['out'] . $r['err']));
+$r = run(['verify-log', '--ancre', '999:' . str_repeat('0', 64)], '', $env);
+$r['code'] === 1 && str_contains($r['err'], 'TRONQUÉ')
+    ? ok('verify-log --ancre refuses an anchor beyond the end (truncation)')
+    : ko('verify-log --ancre missed a truncation', $r['code'] . ' ' . trim($r['out'] . $r['err']));
 
 // -----------------------------------------------------------------------------
 

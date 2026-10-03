@@ -16,7 +16,7 @@ declare(strict_types=1);
  *
  * Usage :
  *   php bin/escrow-ceremony.php unlock <user> <litige_id> [champ...]
- *   php bin/escrow-ceremony.php verify-log
+ *   php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]
  *
  * Config (env) :
  *   DATAGUARD_DB                base sqlite (vaults + escrow + litiges)
@@ -101,17 +101,41 @@ $cmd = $argv[1] ?? '';
 $auditLog = new AuditLog(envOrDie('DATAGUARD_AUDIT_LOG'), envOrDie('DATAGUARD_AUDIT_SECRET'));
 
 if ($cmd === 'verify-log') {
-    $r = $auditLog->verify();
+    // L'ancre est la tête notée lors d'une vérification précédente, hors de cette
+    // machine : sans elle, un journal tronqué ou supprimé reste une chaîne valide.
+    $ancre = null;
+    if (($argv[2] ?? null) === '--ancre') {
+        $ancre = $argv[3] ?? '';
+    }
+    try {
+        $r = $auditLog->verify($ancre);
+    } catch (InvalidArgumentException $e) {
+        fwrite(STDERR, "❌ ancre illisible : {$e->getMessage()}\n");
+        exit(2);
+    }
     if ($r['ok']) {
-        echo "✅ journal d'audit intègre — {$r['count']} entrée(s), chaîne + signatures valides\n";
+        echo "✅ journal d'audit intègre — {$r['count']} entrée(s), chaîne + signatures valides"
+            . ($ancre !== null ? ", ancre retrouvée" : '') . "\n";
+        if ($r['head'] !== null) {
+            echo "   tête : {$r['head']['seq']}:{$r['head']['hmac']}\n"
+                . "   Note-la hors de cette machine, et passe-la en --ancre à la prochaine vérification.\n";
+        }
+        if ($ancre === null) {
+            echo "   ⚠️ sans --ancre, une troncature de la fin du journal ne se voit pas.\n";
+        }
         exit(0);
     }
-    fwrite(STDERR, "❌ journal d'audit ROMPU à l'entrée #{$r['brokenAt']} (sur {$r['count']})\n");
+    $raison = match ($r['reason']) {
+        'truncated' => "TRONQUÉ : l'entrée #{$r['brokenAt']} de l'ancre a disparu",
+        'rewritten' => "RÉÉCRIT : l'entrée #{$r['brokenAt']} n'a plus le hmac de l'ancre",
+        default     => "ROMPU à l'entrée #{$r['brokenAt']}",
+    };
+    fwrite(STDERR, "❌ journal d'audit {$raison} (sur {$r['count']})\n");
     exit(1);
 }
 
 if ($cmd !== 'unlock' || !isset($argv[2], $argv[3])) {
-    fwrite(STDERR, "Usage:\n  php bin/escrow-ceremony.php unlock <user> <litige_id> [champ...]\n  php bin/escrow-ceremony.php verify-log\n");
+    fwrite(STDERR, "Usage:\n  php bin/escrow-ceremony.php unlock <user> <litige_id> [champ...]\n  php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]\n");
     exit(3);
 }
 
