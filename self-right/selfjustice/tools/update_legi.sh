@@ -46,8 +46,10 @@ LAST_UPDATE_FILE="/var/lib/selfjustice/legi_last_update.txt"
 # août 2026, sept exécutions se sont arrêtées sur un `ModuleNotFoundError` : le
 # `set -e` faisait son travail, le code de sortie était non nul, et rien ne le
 # lisait. Le cron ne remonte rien par défaut.
+# Le jeton est celui des services systemd de SelfJustice, au seul endroit qu'ils
+# peuvent lire (`update_judilibre.sh`).
 NTFY_URL="${SELFJUSTICE_NTFY_URL:-}"
-NTFY_TOKEN_FILE="${SELFJUSTICE_NTFY_TOKEN_FILE:-/root/.config/selfjustice-ntfy-token}"
+NTFY_TOKEN_FILE="${SELFJUSTICE_NTFY_TOKEN_FILE:-/etc/selfjustice/ntfy.token}"
 
 alerter() {
     local titre="$1" message="$2"

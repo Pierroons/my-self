@@ -37,8 +37,13 @@ SAUVEGARDE="$JUDILIBRE_DB.bak"
 #
 # Sept exécutions de la sync LEGI ont échoué proprement de mai à août 2026
 # sans que personne ne l'entende.
+#
+# 🔑 Le jeton vit dans /etc, comme la clé PISTE, et pour la même raison :
+# `ProtectHome=true` rend /root invisible au service. Cherché sous /root, il
+# était illisible — mesuré le 03/10/2026 dans le bac à sable de l'unité : aucune
+# alerte Judilibre n'avait jamais pu partir, et leur absence ne prouvait rien.
 NTFY_URL="${SELFJUSTICE_NTFY_URL:-}"
-NTFY_TOKEN_FILE="${SELFJUSTICE_NTFY_TOKEN_FILE:-/root/.config/selfjustice-ntfy-token}"
+NTFY_TOKEN_FILE="${SELFJUSTICE_NTFY_TOKEN_FILE:-/etc/selfjustice/ntfy.token}"
 
 journal() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"; }
 

@@ -35,9 +35,11 @@ PEREMPTION_JOURS="${SELFACT_PEREMPTION_JOURS:-20}"
 
 # --- Alerte ---------------------------------------------------------------
 # Vides par défaut : renseignées par l'exploitant de l'instance, dans son
-# environnement (le cron de SelfJustice exporte déjà SELFJUSTICE_NTFY_URL).
+# environnement (le cron de SelfJustice exporte déjà SELFJUSTICE_NTFY_URL). Le
+# jeton est celui des services de SelfJustice, au seul endroit que leurs unités
+# systemd peuvent lire.
 NTFY_URL="${SELFJUSTICE_NTFY_URL:-}"
-NTFY_TOKEN_FILE="${SELFJUSTICE_NTFY_TOKEN_FILE:-/root/.config/selfjustice-ntfy-token}"
+NTFY_TOKEN_FILE="${SELFJUSTICE_NTFY_TOKEN_FILE:-/etc/selfjustice/ntfy.token}"
 
 alerter() {
     local titre="$1" message="$2"
