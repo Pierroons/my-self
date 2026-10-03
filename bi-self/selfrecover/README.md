@@ -27,13 +27,16 @@ SelfRecover protects **authentication**. SelfDataGuard protects **data at rest**
 
 ## Two adoption modes — Full and Lite (v0.1.1)
 
-SelfRecover ships in two flavors so legacy systems can adopt it progressively
-without an all-or-nothing rewrite of their authentication stack.
+SelfRecover is designed in two flavors so legacy systems can adopt it progressively
+without an all-or-nothing rewrite of their authentication stack. **Only Full is implemented
+in the current library.** Lite was published in v0.1.1 as a demonstration (signed tag
+`v0.1.1`); that demonstration was removed on 2026-08-18, and the current version has no
+Lite code.
 
 | Mode | Email channel | Crypto added | When to pick it |
 |------|---------------|--------------|-----------------|
 | **Full** | None at all | Diceware EFF passphrase + HMAC-per-service | Greenfield projects, high-assurance threat models |
-| **Lite** 🆕 | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want a recovery secret that never travels in clear, and migrate to Full later |
+| **Lite** (specified, not implemented) | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want a recovery secret that never travels in clear, and migrate to Full later |
 
 **Try it:** see [Trying SelfRecover](#trying-selfrecover). The method comparison (8 adversaries × 3 models) is a standalone page: `tools/comparison.html`.
 

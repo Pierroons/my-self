@@ -27,13 +27,16 @@ SelfRecover protège l'**authentification**. SelfDataGuard protège les **donné
 
 ## Deux modes d'adoption — Full et Lite (v0.1.1)
 
-SelfRecover existe en deux variantes pour permettre une adoption progressive
-sans réécriture totale de la pile d'authentification existante.
+SelfRecover est conçu en deux variantes pour permettre une adoption progressive
+sans réécriture totale de la pile d'authentification existante. **Seul Full est implémenté
+dans la bibliothèque actuelle.** Lite a été publié en v0.1.1 sous forme de démonstration
+(tag signé `v0.1.1`) ; cette démonstration a été retirée le 18/08/2026, et la version
+actuelle ne contient aucun code Lite.
 
 | Mode | Canal email | Crypto ajoutée | Quand le choisir |
 |------|-------------|----------------|------------------|
 | **Full** | Aucun | Passphrase diceware EFF + HMAC par service | Projets greenfield, modèles de menace exigeants |
-| **Lite** 🆕 | Conservé (lien reset SMTP) | Un mot mémorisé par l'utilisateur, dérivé HMAC côté client, jamais envoyé en clair | Stack legacy qui veut un secret de secours qui ne circule jamais en clair, migration vers Full plus tard |
+| **Lite** (spécifié, non implémenté) | Conservé (lien reset SMTP) | Un mot mémorisé par l'utilisateur, dérivé HMAC côté client, jamais envoyé en clair | Stack legacy qui veut un secret de secours qui ne circule jamais en clair, migration vers Full plus tard |
 
 **Essayer :** voir [Essayer SelfRecover](#essayer-selfrecover). Le comparatif des méthodes (8 adversaires × 3 modèles) est une page autonome : `tools/comparison.html`.
 

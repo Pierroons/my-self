@@ -390,7 +390,7 @@
     <li>Le mot mémorisé sert de <strong>clé</strong> HMAC et ne quitte jamais le navigateur — le serveur ne range qu'un <code>Argon2id</code> de l'empreinte.</li>
     <li>Le nom d'hôte entre dans le message, et le navigateur le lit lui-même : une page qui imite le service dérive une empreinte inutilisable ici, et la base d'un autre site n'en donne aucune.</li>
     <li>Le sel accompagne le nom d'hôte : un par compte, engendré par le navigateur, non secret — il évite que deux mots identiques donnent la même empreinte.</li>
-    <li>Mode <strong>Full</strong> : zéro email. Mode <strong>Lite</strong> : email conservé + mot mémorisé HMACé en plus du token reset.</li>
+    <li>Mode <strong>Full</strong>, le seul implémenté : zéro e-mail. La variante <strong>Lite</strong> (e-mail conservé + mot mémorisé HMACé en plus du token reset) est spécifiée, pas implémentée.</li>
   </ul>
 </div>
 
@@ -431,23 +431,21 @@
 
 <div class="synergy" style="margin-top: 0; margin-bottom: 2rem;">
   <p>
-    <strong><a href="/recover">SelfRecover</a></strong> existe en deux variantes selon ton infrastructure.
-    Le <strong>Full</strong> retire totalement l'email du protocole : récupération par passphrase
-    diceware EFF + dérivation HMAC liée au nom d'hôte que le navigateur lit, donc zéro SMTP,
-    zéro token reset à exfiltrer.
-    Le <strong>Lite</strong> conserve l'email habituel et ajoute un mot mémorisé HMACé côté client :
-    intégration plus douce sur un legacy existant, et même un attaquant qui contrôle la boîte mail
-    ne peut pas reset le compte sans connaître ce mot. <em>Adoption progressive : Lite d'abord, Full ensuite.</em>
+    <strong><a href="/recover">SelfRecover</a></strong> est conçu en deux variantes selon ton infrastructure.
+    Le <strong>Full</strong>, celui qu'implémente la bibliothèque, retire totalement l'email du protocole :
+    récupération par passphrase diceware EFF + dérivation HMAC liée au nom d'hôte que le navigateur
+    lit, donc zéro SMTP, zéro token reset à exfiltrer.
+    Le <strong>Lite</strong> conserverait l'email habituel en y ajoutant un mot mémorisé HMACé côté
+    client : même un attaquant qui contrôle la boîte mail ne pourrait pas reset le compte sans
+    connaître ce mot. Il est spécifié, mais n'est pas implémenté dans cette version.
   </p>
 </div>
 
 <section>
   <h2>Le binôme</h2>
   <p>
-    <strong>SelfRecover</strong> règle l'identité — disponible en deux modes :
-    le <strong>Full</strong> (sans aucun email) ou le <strong>Lite</strong>
-    (compatible avec votre infrastructure email actuelle, durci par un mot
-    mémorisé). <strong>SelfModerate</strong> règle la gouvernance : la
+    <strong>SelfRecover</strong> règle l'identité, sans aucun email (mode
+    <strong>Full</strong>). <strong>SelfModerate</strong> règle la gouvernance : la
     communauté vote sur les comportements, les sanctions émergent de l'usage,
     et personne — pas même le fondateur — ne peut imposer sa volonté.
   </p>
@@ -461,16 +459,13 @@
   <div class="modules">
 
     <div class="module">
-      <h3>SelfRecover<span class="status">v0.8.0 · 2 modes</span></h3>
+      <h3>SelfRecover<span class="status">v0.8.0 · mode Full</span></h3>
       <p>
-        Récupération de compte avec deux niveaux d'adoption.
-        <strong>Mode Full</strong> : zéro email, le mot de récupération choisi par
-        l'utilisateur sert de clé HMAC-SHA256, avec le nom d'hôte lu par le
-        navigateur (anti-hameçonnage).
-        <strong>Mode Lite</strong> : conserve le mail (compatibilité legacy)
-        mais ajoute un mot mémorisé HMAC — un email intercepté seul ne suffit
-        plus à compromettre le compte. Palier idéal pour tout service
-        à fort enjeu de sécurité.
+        Récupération de compte sans e-mail (<strong>mode Full</strong>) : le mot
+        de récupération choisi par l'utilisateur sert de clé HMAC-SHA256, avec le
+        nom d'hôte lu par le navigateur (anti-hameçonnage).
+        Une variante <strong>Lite</strong>, qui garde l'e-mail et lui ajoute ce
+        mot, est spécifiée mais n'est pas implémentée dans cette version.
       </p>
       <div class="actions">
         <a href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover" target="_blank" rel="noopener">Code &amp; README</a>
