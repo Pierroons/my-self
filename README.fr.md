@@ -37,7 +37,7 @@ Chaque ligne mène à du code lisible et exécutable. Pas de lien vers une démo
 hébergée : tout s'auto-héberge depuis ce dépôt.
 
 <!-- ecosysteme:selffarm-lite:debut — produit par scripts/check-ecosysteme.sh --ecrire -->
-**SelfFarm-Lite**, l'étage applicatif agricole de l'écosystème, vit dans son propre dépôt : [Pierroons/selffarm-lite](https://github.com/Pierroons/selffarm-lite) — **v0.4.8**, publiée.
+**SelfFarm-Lite**, l'étage applicatif agricole de l'écosystème, vit dans son propre dépôt : [Pierroons/selffarm-lite](https://github.com/Pierroons/selffarm-lite) — **v0.4.9**, publiée.
 <!-- ecosysteme:selffarm-lite:fin -->
 
 ---
