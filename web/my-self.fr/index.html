@@ -9,6 +9,7 @@
   <meta property="og:description" content="Écosystème open source pour reprendre la main sur son droit, son identité, sa sécurité et son économie.">
   <meta property="og:url" content="https://my-self.fr">
   <meta property="og:type" content="website">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo/myself-mark-C-mono.svg">
   <style>
     :root {
       --bg: #0f1419;
@@ -35,36 +36,22 @@
     a:hover { text-decoration: underline; }
 
     .hero { text-align: center; padding: 2rem 0 3.5rem; }
-    .hero h1 {
-      font-size: clamp(3rem, 8vw, 4.5rem);
-      font-weight: 700;
-      letter-spacing: -1px;
-      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin: 0;
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
     .hero .tagline {
       font-size: 1.3rem;
       color: var(--text-muted);
       margin-top: 0.5rem;
       font-style: italic;
-    }
-    .hero .pact {
-      margin-top: 1.5rem;
-      font-size: 1rem;
-      color: var(--text-muted);
-      max-width: 580px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-    .hero .cta-row {
-      margin-top: 2rem;
-      display: flex;
-      gap: 0.8rem;
-      justify-content: center;
-      flex-wrap: wrap;
     }
     .btn {
       display: inline-block;
@@ -121,7 +108,7 @@
 
     .pillars {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
       gap: 1.2rem;
       margin-top: 1.5rem;
     }
@@ -234,13 +221,6 @@
       text-align: center;
       color: var(--text-muted);
       font-size: 0.9rem;
-    }
-    footer code {
-      background: var(--bg-card);
-      padding: 0.1rem 0.5rem;
-      border-radius: 4px;
-      border: 1px solid var(--border);
-      font-size: 0.85rem;
     }
 
     @media (max-width: 500px) {
@@ -534,7 +514,7 @@
     </div>
   </div>
 
-  <h1 class="visually-hidden" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;">MySelf</h1>
+  <h1 class="visually-hidden">MySelf</h1>
 
   <p class="hero-quote">Je pense, donc j'héberge.</p>
 
@@ -589,11 +569,11 @@
         acteur, y compris le fondateur.
       </p>
       <div class="modules">
-        <a class="mod" href="https://bi-self.example.org/" rel="noopener">
+        <a class="mod" href="https://bi-self.example.org/">
           <span class="name">SelfRecover<span class="status live">v0.8.0 · démo live</span></span>
           <span class="role">Récupération sans email — démo interactive : tuto guidé et bac à sable, récupération aux niveaux 1 et 2, simulation de hameçonnage.</span>
         </a>
-        <a class="mod" href="https://bi-self.example.org/moderate" rel="noopener">
+        <a class="mod" href="https://bi-self.example.org/moderate">
           <span class="name">SelfModerate<span class="status live">v0.4.0 · démo simplifiée</span></span>
           <span class="role">Modération communautaire par raisonnement social — démo interactive sur un moteur simplifié ; le module lui-même tourne dans MySelf-Lab, plus bas.</span>
         </a>
@@ -635,7 +615,7 @@
         à distance depuis le démarrage.
       </p>
       <div class="modules">
-        <a class="mod" href="https://dataguard.example.org/" rel="noopener">
+        <a class="mod" href="https://dataguard.example.org/">
           <span class="name">SelfDataGuard<span class="status live">v0.5.1 · disponible</span></span>
           <span class="role">Chiffrement at-rest robuste à l'exfiltration de DB — bibliothèque PHP + démo interactive.</span>
         </a>
@@ -738,16 +718,16 @@
   </div>
   <div class="floor-card">
     <h3>🎯 MySelf-Lab</h3>
-    <div class="sub">Le 2ème étage — la preuve par l'attaque</div>
+    <div class="sub">Le 2e étage — la preuve par l'attaque</div>
     <p class="tagline">
       « Quand les piliers tiennent, on peut inviter le monde à les casser. »
     </p>
     <p>
       <strong>MySelf-Lab</strong> est un <strong>forum de démonstration</strong> où les trois piliers
       tournent ensemble en conditions réelles — et qui est <strong>volontairement exposé à l'attaque</strong>.
-      Inscription sans email (<a href="https://ctf.example.org/register.php" rel="noopener">SelfRecover</a>),
-      messages privés et profils chiffrés (<a href="https://ctf.example.org/security.php" rel="noopener">SelfDataGuard</a>),
-      réputation et modération anti-Sybil (<a href="https://ctf.example.org/moderation.php" rel="noopener">SelfModerate</a>). Un <strong>simulateur d'attaque</strong> intégré
+      Inscription sans email (<a href="https://ctf.example.org/register.php">SelfRecover</a>),
+      messages privés et profils chiffrés (<a href="https://ctf.example.org/security.php">SelfDataGuard</a>),
+      réputation et modération anti-Sybil (<a href="https://ctf.example.org/moderation.php">SelfModerate</a>). Un <strong>simulateur d'attaque</strong> intégré
       montre, en direct, ce que l'écosystème protège.
     </p>
     <p class="muted">
@@ -755,15 +735,15 @@
       bout en bout reste illisible même pour l'administrateur — c'est le défi posé à toute red team.
     </p>
     <div class="floor-modules">
-      <a class="mod" href="https://ctf.example.org/" rel="noopener">
+      <a class="mod" href="https://ctf.example.org/">
         <span class="name">Forum de démo<span class="status live">live</span></span>
         <span class="role">SelfRecover + SelfDataGuard + SelfModerate en action.</span>
       </a>
-      <a class="mod" href="https://ctf.example.org/attacks.php" rel="noopener">
+      <a class="mod" href="https://ctf.example.org/attacks.php">
         <span class="name">Attack Simulator<span class="status live">live</span></span>
         <span class="role">4 attaques rejouées en direct sur base isolée — ce qui tient, et pourquoi.</span>
       </a>
-      <a class="mod" href="https://ctf.example.org/redteam.php" rel="noopener">
+      <a class="mod" href="https://ctf.example.org/redteam.php">
         <span class="name">Règles red team<span class="status live">ouvert</span></span>
         <span class="role">Périmètre, objectifs (mappés MITRE ATT&amp;CK), safe harbor, hall of fame.</span>
       </a>
