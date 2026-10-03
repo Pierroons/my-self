@@ -10,6 +10,23 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover-LUKS v0.6.1 — la borne de lecture suit la clé — 3 octobre 2026
+
+cryptsetup lit exactement la borne `keyfile-size` de la crypttab : 64 pour une clé hex, 32
+pour une clé brute, et une borne de l'autre format rend le slot inouvrable au démarrage.
+`install.sh` posait 64 en dur et acceptait une borne déjà présente sans la comparer. Une
+machine passée de brut à hex par le §15 gardait donc sa borne 32, et ne redémarrait plus
+par la passphrase Recover.
+
+- **`format-slot.sh` tient la longueur de clé** de chaque keyscript (`taille`), et compare
+  ou corrige la borne d'une ligne de crypttab (`borne`). `install.sh` passe par lui, et le
+  banc rejoue la matrice de lecture sur de vrais conteneurs LUKS.
+- **Le garde-fou post-update juge la borne dans l'image produite** : la crypttab que
+  l'image embarque, face au keyscript qu'elle désigne. Une borne raw sous un keyscript hex
+  le fait échouer avant le redémarrage.
+- **Le §15 couvre une machine équipée avant le marqueur de format** (étape 0 bis), et pose
+  keyscript, borne et image d'amorçage d'une seule chaîne.
+
 ### SelfDataGuard v0.5.1 — la 0.5.0 tourne aussi sous PHP 8.1 et 8.2 — 2 octobre 2026
 
 En PHP 8.2, la 0.5.0 laissait sa transaction ouverte : elle l'ouvrait en SQL et la refermait

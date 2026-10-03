@@ -3,7 +3,7 @@
 > 🇬🇧 **[Read in English →](./README.md)**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.6.0](https://img.shields.io/badge/statut-v0.6.0-green.svg)](./INSTALL.md)
+[![Statut : v0.6.1](https://img.shields.io/badge/statut-v0.6.1-green.svg)](./INSTALL.md)
 [![Fait partie de : Self-Security](https://img.shields.io/badge/fait%20partie%20de-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon de : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)

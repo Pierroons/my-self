@@ -3,7 +3,7 @@
 > 🇫🇷 **[Lire en français →](./README.fr.md)**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.6.0](https://img.shields.io/badge/status-v0.6.0-green.svg)](./INSTALL.md)
+[![Status: v0.6.1](https://img.shields.io/badge/status-v0.6.1-green.svg)](./INSTALL.md)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
