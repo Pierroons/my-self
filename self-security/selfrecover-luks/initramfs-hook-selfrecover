@@ -40,11 +40,10 @@ fi
 copy_exec /etc/selfkeyguard/selfrecover-keyscript.sh
 
 # script de secours appelé par dropbear comme `command=` de la clé d'amorçage.
-# Il remplace le shell root busybox : sans lui dans l'image, une clé portant ce
-# `command=` ne rendrait plus rien du tout — la machine deviendrait injoignable
-# au boot alors que tout le reste fonctionne. Absent du disque, on n'écrit pas
-# une image à moitié : l'installateur le pose avant de régénérer, et son absence
-# ici est donc une régression du hook, pas une configuration.
+# Il remplace le shell root busybox : sans lui dans une image qui embarque
+# dropbear, une clé portant ce `command=` ne rendrait plus rien — la machine
+# deviendrait injoignable au boot alors que tout le reste fonctionne. Embarqué
+# s'il est posé ; le garde-fou post-update l'exige de toute image avec dropbear.
 if [ -x /etc/selfkeyguard/selfrecover-secours.sh ]; then
   copy_exec /etc/selfkeyguard/selfrecover-secours.sh
 fi

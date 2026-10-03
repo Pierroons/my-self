@@ -109,14 +109,19 @@ chmod 0400 "$SKG/selfrecover_salt"
 ## 3. Déployer le keyscript et le hook initramfs
 
 Copie `selfrecover-keyscript.sh` et `initramfs-hook-selfrecover` (fournis dans ce dépôt),
-et `format-slot.sh`, que le garde-fou du §11 appelle pour juger la borne `keyfile-size`
+`selfrecover-secours.sh`, que le hook embarque et que la clé dropbear lance (§8b), et
+`format-slot.sh`, que le garde-fou du §11 appelle pour juger la borne `keyfile-size`
 (§8a) de chaque image :
 
 ```bash
 install -m 0755 selfrecover-keyscript.sh        "$SKG/selfrecover-keyscript.sh"
+install -m 0755 selfrecover-secours.sh          "$SKG/selfrecover-secours.sh"
 install -m 0755 initramfs-hook-selfrecover      /etc/initramfs-tools/hooks/selfrecover
 install -m 0755 format-slot.sh                  "$SKG/format-slot.sh"
 ```
+
+Les deux parcours le posent : dès que `dropbear-initramfs` est installé, l'image embarque
+dropbear, et le garde-fou exige alors le script de secours.
 
 > **Piège n°1 — `libgcc_s.so.1`.** Argon2id est multi-thread → le binaire a besoin de
 > `libgcc_s.so.1` au démarrage. Cette bibliothèque est chargée **dynamiquement** et reste
@@ -703,8 +708,8 @@ surveiller.
 reboot
 # Depuis un autre poste, dès que le port 2222 répond :
 ssh -p 2222 root@<IP-DU-SERVEUR>
-cryptroot-unlock        # -> saisis la PASSPHRASE RECOVER
-# La racine s'ouvre, la connexion se ferme, le boot continue.
+# selfrecover-secours.sh répond (§8b) : choix 1, puis saisis la PASSPHRASE RECOVER.
+# Aucun shell n'est rendu. La racine s'ouvre, la connexion se ferme, le boot continue.
 # Le(s) volume(s) secondaire(s) s'ouvre(nt) automatiquement via le fichier-clé.
 ```
 
@@ -759,7 +764,7 @@ un serveur (§8b). C'est le seul repli **avant** déverrouillage : la passphrase
 passe que par le keyscript.
 
 ```bash
-cryptsetup open "$ROOT_DEV" <root_name>   # shell de l'initramfs -> passphrase native -> exit -> le boot continue
+cryptsetup open /dev/<volume-racine> <root_name>   # shell de l'initramfs -> passphrase native -> exit
 ```
 
 Les filets de `/root/selfrecover-filets/` vivent sur le volume chiffré : ils réparent une
@@ -896,8 +901,13 @@ bash format-slot.sh verifier "$ROOT_DEV" selfrecover-keyscript.sh "$SKG" \
   && install -m 0755 initramfs-hook-selfrecover /etc/initramfs-tools/hooks/selfrecover \
   && install -m 0755 selfrecover-keyscript.sh "$SKG/selfrecover-keyscript.sh" \
   && bash format-slot.sh borne "$ROOT_NAME" "$SKG/selfrecover-keyscript.sh" /etc/crypttab --ecrire \
-  && update-initramfs -u -k all
-#    Le garde-fou juge chaque image produite : un keyscript et une borne qui ne vont pas
+  && update-initramfs -u -k all \
+  && { [ -z "$(find /boot -maxdepth 1 -name 'initrd.img-*' ! -name '*bak*' \
+                 ! -name '*.old-dkms' ! -newer "$FILETS")" ] \
+       || { echo "❌ des images n'ont pas été régénérées : /boot en lecture seule, ou update_initramfs=no ?"; false; }; }
+#    update-initramfs sort en 0 sans rien produire quand /boot est en lecture seule ou
+#    que update_initramfs=no : la dernière ligne vérifie que chaque image est plus
+#    récente que les filets. Le garde-fou juge chaque image produite : un keyscript et une borne qui ne vont pas
 #    ensemble, ou une pièce qui manque, le font échouer ICI, avant le redémarrage. Si la
 #    chaîne casse après le keyscript, relance la borne puis `update-initramfs -u -k all` :
 #    le garde-fou est déjà là. Tous les noyaux, parce qu'une entrée de démarrage d'un
@@ -905,9 +915,11 @@ bash format-slot.sh verifier "$ROOT_DEV" selfrecover-keyscript.sh "$SKG" \
 
 # 4. REDÉMARRER et vérifier que le déverrouillage fonctionne. Ne passe pas à
 #    l'étape 5 avant d'avoir redémarré avec succès.
-#    Si la passphrase Recover n'ouvre pas : au shell de l'initramfs, ouvre la racine
-#    par la passphrase NATIVE — `cryptsetup open "$ROOT_DEV" "$ROOT_NAME"`, puis `exit`
-#    (§12). La passphrase Recover ne passe que par le keyscript. Les filets de
+#    Note AVANT de redémarrer les valeurs de $ROOT_DEV et $ROOT_NAME : au prompt
+#    (initramfs), ces variables n'existent pas. Si la passphrase Recover n'ouvre pas,
+#    ouvre la racine par la passphrase NATIVE — `cryptsetup open /dev/<volume> <nom>`,
+#    puis `exit` ; à distance, choix 2 du script de secours (§12). La passphrase
+#    Recover ne passe que par le keyscript. Les filets de
 #    /root/selfrecover-filets vivent sur le volume chiffré : ils ne servent qu'une fois
 #    celui-ci ouvert, ou depuis un live.
 
@@ -941,6 +953,7 @@ ressusciterait l'ancien slot brut si on la restaurait (§4).
 | `selfrecover_derive.c` | dérivation Argon2id (clone C, stdin → clé hex) |
 | `selfrecover-keyscript.sh` | keyscript du volume racine (dérive la recover) |
 | `initramfs-hook-selfrecover` | embarque binaire + libargon2 + **libgcc** + sel + keyscript + script de secours |
+| `selfrecover-secours.sh` | `command=` de la clé dropbear : propose la passphrase recover **ou** la native, **jamais un shell** (§8b) |
 | `setup-add-selfrecover-slot.sh` | ajoute un slot recover à un volume LUKS, et inscrit son format |
 | `format-slot.sh` | inscrit le format enrôlé par volume, refuse de poser un keyscript d'un autre format, et donne la borne `keyfile-size` d'un keyscript, qu'il vérifie ou corrige dans crypttab ; posé dans `$SKG` pour le garde-fou |
 | `selfrecover_derive.py` | implémentation de référence (Python) pour usage userspace |

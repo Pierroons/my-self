@@ -545,8 +545,8 @@ if [ "$DROPBEAR" = oui ]; then
 cat <<EOF
   1) TESTER par redémarrage AVANT de te fier au système :
        reboot ; puis depuis un autre poste, dès que le port $DROPBEAR_PORT répond :
-       ssh -p $DROPBEAR_PORT root@<IP> ; cryptroot-unlock ; (passphrase RECOVER)
-     Filet si pépin : dans dropbear, 'cryptsetup open $ROOT_DEV $ROOT_NAME' (slot NATIF).
+       ssh -p $DROPBEAR_PORT root@<IP> ; choix 1 du script de secours (passphrase RECOVER)
+     Filet si pépin : même connexion, choix 2 (passphrase NATIVE). Aucun shell n'est rendu.
 EOF
 else
 cat <<EOF

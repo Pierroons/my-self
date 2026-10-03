@@ -18,15 +18,18 @@ Elle ne posait ni le script de secours ni le hook, qu'une machine de cette époq
 dans leur version courante.
 
 - **L'étape 3 pose toutes les pièces du module avant le keyscript**, script de secours et hook
-  compris, prend un filet de chaque image de `/boot`, et régénère tous les noyaux : un noyau
-  plus ancien gardait sinon le keyscript raw, et son entrée de démarrage devenait un piège
-  après le retrait du slot raw.
+  compris, prend un filet de chaque image de `/boot`, régénère tous les noyaux, et vérifie que
+  chaque image l'a bien été : un noyau plus ancien gardait sinon le keyscript raw, et son
+  entrée de démarrage devenait un piège après le retrait du slot raw.
+- **Le §3 pose le script de secours**, que le guide n'a jamais posé alors que la clé dropbear
+  du §8b le lance. Sans lui, un serveur installé à la main restait injoignable au démarrage.
 - **Le garde-fou n'exige le script de secours que d'une image qui embarque dropbear**, comme
-  le hook ne l'embarque que s'il est posé. Un poste sans dropbear ne rougit plus pour une pièce
-  qui n'a rien à y faire.
+  le hook ne l'embarque que s'il est posé, et il l'exige aussi de l'image que charge un
+  Raspberry Pi. Un poste sans dropbear ne rougit plus pour une pièce qui n'a rien à y faire.
 - **Le repli avant déverrouillage est écrit** : la passphrase native, au shell de l'initramfs
-  ou par le script de secours. Les filets de `/root` vivent sur le volume chiffré et ne font
-  pas démarrer.
+  ou par le choix 2 du script de secours. Les filets de `/root` vivent sur le volume chiffré et
+  ne font pas démarrer. Le parcours serveur ne décrit plus de shell dropbear : la clé
+  d'amorçage n'en rend plus depuis la v0.5.0.
 
 ### SelfRecover-LUKS v0.6.1 — la borne de lecture suit la clé — 3 octobre 2026
 
