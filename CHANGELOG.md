@@ -10,126 +10,6 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### SelfRecover-LUKS v0.6.2 — la migration du §15 passe sur une machine équipée en août — 3 octobre 2026
-
-Premier passage réel de `INSTALL.md` §15 v0.6.1, sur un poste équipé en raw : la migration a
-tenu, prouvée par un redémarrage, mais la chaîne de l'étape 3 s'est arrêtée sur le garde-fou.
-Elle ne posait ni le script de secours ni le hook, qu'une machine de cette époque n'avait pas
-dans leur version courante.
-
-- **L'étape 3 pose toutes les pièces du module avant le keyscript**, script de secours et hook
-  compris, prend un filet de chaque image de `/boot`, régénère tous les noyaux, et vérifie que
-  chaque image l'a bien été : un noyau plus ancien gardait sinon le keyscript raw, et son
-  entrée de démarrage devenait un piège après le retrait du slot raw.
-- **Le §3 pose le script de secours**, que le guide n'a jamais posé alors que la clé dropbear
-  du §8b le lance. Sans lui, un serveur installé à la main restait injoignable au démarrage.
-- **Le garde-fou n'exige le script de secours que d'une image qui embarque dropbear**, comme
-  le hook ne l'embarque que s'il est posé, et il l'exige aussi de l'image que charge un
-  Raspberry Pi. Un poste sans dropbear ne rougit plus pour une pièce qui n'a rien à y faire.
-- **Le repli avant déverrouillage est écrit** : la passphrase native, au shell de l'initramfs
-  ou par le choix 2 du script de secours. Les filets de `/root` vivent sur le volume chiffré et
-  ne font pas démarrer. Le parcours serveur ne décrit plus de shell dropbear : la clé
-  d'amorçage n'en rend plus depuis la v0.5.0.
-
-### SelfRecover-LUKS v0.6.1 — la borne de lecture suit la clé — 3 octobre 2026
-
-cryptsetup lit exactement autant d'octets que la borne `keyfile-size` de la crypttab en
-demande. Elle doit valoir 64 pour une clé hex, 32 pour une clé brute : une borne de l'autre
-format rend le slot inouvrable au démarrage. `install.sh` posait 64 en dur et acceptait une
-borne déjà présente sans la comparer. Une machine passée de brut à hex par `INSTALL.md` §15
-gardait donc sa borne 32, et ne redémarrait plus par la passphrase Recover.
-
-- **`format-slot.sh` tient la longueur de clé** de chaque keyscript (`taille`), et compare
-  ou corrige la borne d'une ligne de crypttab (`borne`). `install.sh` passe par lui, et le
-  banc rejoue la matrice de lecture sur de vrais conteneurs LUKS.
-- **Le garde-fou post-update juge la borne dans l'image produite** : chaque ligne à
-  keyscript de la crypttab que l'image embarque, face au keyscript qu'elle désigne. Une
-  borne raw sous un keyscript hex, ou une image qui a perdu la ligne, le fait échouer avant
-  le redémarrage. `install.sh` le pose désormais avant le keyscript.
-- **`INSTALL.md` §15 couvre une machine équipée avant le marqueur de format** (étape 0 bis),
-  et pose filet, garde-fou, keyscript, borne et image d'amorçage d'une seule chaîne.
-
-### SelfDataGuard v0.5.1 — la 0.5.0 tourne aussi sous PHP 8.1 et 8.2 — 2 octobre 2026
-
-En PHP 8.2, la 0.5.0 laissait sa transaction ouverte : elle l'ouvrait en SQL et la refermait
-par PDO, qui avant la 8.4 ne voit pas une transaction ouverte ainsi. Le premier dépôt de
-séquestre échouait chez un intégrateur sous Debian 12. Le stockage referme désormais en SQL ce
-qu'il ouvre en SQL, et tient lui-même l'état de sa transaction. Les bancs de SelfDataGuard,
-le couplage et le parcours tournent maintenant aussi sous PHP 8.1 et 8.2 en CI.
-
-### SelfDataGuard v0.5.0 — une troisième serrure, et l'archive au lieu de la destruction — 1er octobre 2026
-
-Un coffre couplé à SelfRecover ne survivait pas à toutes les récupérations. Au niveau 1, le
-serveur ne tient que la passphrase, et aucune enveloppe ne s'ouvrait avec. Au niveau 3, il ne
-reste aucun ancien secret, et la seule issue était de supprimer le coffre.
-
-- **Une troisième enveloppe, ouverte par la passphrase SelfRecover.** Aucun secret de plus pour
-  l'utilisateur. Contexte de dérivation distinct de celui du mot mémorisé, normalisation
-  identique à celle de SelfRecover, tenue par le banc de couplage.
-- **`recover()` re-scelle le coffre à chaque récupération acceptée**, en une seule écriture
-  conditionnelle : par l'ancienne passphrase au niveau 1, par l'empreinte du mot au niveau 2, et
-  au prochain secret donné après un niveau 2 par appareil, où le serveur ne tient rien qui
-  ouvre le coffre.
-- **Au niveau 3, `reEnroll()` archive l'ancien coffre**, scellé sous ses anciennes serrures,
-  sans péremption, et en crée un neuf dans la même transaction. Une ancienne serrure retrouvée
-  le rouvre, depuis une session sur le coffre actuel seulement. Une archive ne se détruit que
-  sur décision explicite : la suppression d'un compte ne l'emporte plus d'office.
-- **Une session ouverte sur un coffre remplacé ne peut plus écrire dans le neuf**, et une
-  écriture conditionnée au sel du coffre empêche une requête en vol d'écraser le neuf.
-- Une base 0.4.0 se migre en place à sa première ouverture, y compris quand deux processus
-  l'ouvrent en même temps. ⚠️ Un retour à la 0.4.0 ne voit pas les archives, et laisse en place
-  une serrure passphrase que SelfRecover a pu remplacer depuis.
-- **Deux requêtes qui se chevauchent ne corrompent rien** : écritures sous verrou immédiat, génération
-  du coffre vérifiée dans l'écriture même, révision du coffre contre les mises à jour perdues.
-- `aesGcmEncrypt()` et `aesGcmDecrypt()`, dépréciés en 0.4.0, sont retirés.
-
-SelfRecover : la normalisation de la passphrase devient `Recovery::normaliserPassphrase()`, sans
-changement de comportement, pour que le banc de couplage la compare à celle de SelfDataGuard. Un
-banc de parcours fait traverser à un coffre chaque récupération, sur les vrais chemins des deux
-bibliothèques (18 cas, en CI).
-
-Bancs SelfDataGuard : 314 contrôles sur 10 suites. Le détail des changements est dans le CHANGELOG du module.
-
-### SelfModerate v0.4.0 — le ban automatique revient, tracé de bout en bout — 29 septembre 2026
-
-`R10-LAB-01` avait retiré le ban automatique à réputation zéro : un ban prononcé sur une érosion
-étalée devenait une arme d'escalade à la portée de qui n'a aucun droit d'administration. Le
-signalement qui l'a remplacé ne protège toutefois personne tant que l'arbitre n'est pas devant. Le
-ban revient, avec les bornes qui lui manquaient.
-
-- **Gradué et fini.** 24 h → 7 j → 30 j en service, 2 → 10 → 30 min en démonstration ; le dernier
-  palier se reconduit, la machine ne prononce jamais d'exclusion définitive. Une peine en cours ne se
-  rallonge pas. À la fin, la réputation revient au point de départ et les strikes restent : le ban
-  suivant sera plus long.
-- **Écrit au journal, ou pas du tout.** Le ban automatique ne s'arme que si l'hôte branche un
-  journal (`setJournal()`) ; sans lui, une réputation à zéro reste un signalement. Début, fin,
-  levée, maintien, grâce : cinq actes, toujours écrits avant la base, avec l'origine (automatique
-  ou arbitre), le motif et le nom de l'arbitre.
-- **Gestes d'arbitre sous plancher.** Bannir exige un motif. Avant un tiers de la peine en cours,
-  une levée exige un motif écrit et s'inscrit comme levée anticipée. Une meute détectée lève seule
-  le ban automatique qu'elle avait provoqué, sans plancher, et jamais un ban d'arbitre.
-- **Une seule source pour les seuils.** Dix-neuf seuils existaient en constante du moteur et en
-  propriété de `Config` ; le moteur lisait surtout les constantes, et `Config::prod()` ne changeait
-  que les durées de ban. `Config` est désormais la seule source, pour le moteur comme pour les pages.
-- **Nouveaux appels** : `estBanni()`, `bansEnCours()`, `adminMaintenir()`, `journal()`,
-  `dureeEnClair()`, `Config::plancherDe()`.
-
-⚠️ **Ruptures par rapport à la 0.3.0** : les constantes de seuil du moteur sont retirées (lire
-`Moderate::config()`) ; `adminBan()` et `adminPardon()` prennent l'arbitre et le motif, et rendent
-`['ok', 'message']`. Le schéma gagne trois colonnes dans `member_moderation` (`ban_debut`,
-`ban_origine`, `ban_motif`) ; la migration du lab les ajoute à la première requête.
-
-**Dans le lab** : le ban s'arme avec un journal de modération à part, chaîné et signé, dont le site
-tient seul la clé — pas le journal du super-utilisateur, où le site pourrait forger une nomination
-d'admin. Un compte banni ne vote plus et ne publie plus ; la connexion et les messages privés restent
-ouverts. L'admin voit les bans en cours, leur plancher et l'état du journal. Les heures affichées
-sont celles de Paris.
-
-**SelfDataGuard** : deux ajouts simultanés au journal d'audit cassaient sa chaîne ; la lecture et
-l'ajout tiennent maintenant sous un seul verrou (voir son CHANGELOG).
-
-`sanity_moderate.php` passe de 24 à 45 contrôles et entre dans la CI, avec un canari.
-
 ### La base du lab naît partageable entre le site et la console — 29 septembre 2026
 
 Le site et `selfrecover-su` écrivent la même base, sous deux identités. Créée sous le masque par
@@ -160,38 +40,6 @@ tiers : sa CSP se décide dans `selffarm-lite`.
 Les deux CSP ont été éprouvées dans un navigateur sans interface, contre les pages servies : aucune
 violation, et une version plus stricte y déclenche bien les blocages attendus.
 
-### SelfRecover-LUKS v0.6.0 — ce qui rendrait une machine muette se garde — 28 septembre 2026
-
-Mineure, pas corrective : trois changements depuis la v0.5.0 obligent à relire avant de mettre à
-jour une machine en service.
-
-⚠️ **Migration.**
-- **Le format enrôlé est inscrit, et `install.sh` le relit** (26/09) : il refuse de poser un
-  keyscript d'un autre format que le slot, et refuse aussi de remplacer un keyscript en place
-  sans marqueur `format-slot`. Une machine installée avant doit d'abord faire inscrire le format
-  de son slot (`INSTALL.md` §15) — c'est le geste qu'a demandé le premier serveur migré.
-- **`SKG` n'accepte plus que `/etc/selfkeyguard`**, le seul chemin que l'amorçage lit.
-- **Le vérificateur d'image réclame `selfrecover-secours.sh`** : une image générée sans lui
-  déclenche l'alerte.
-
-La preuve du slot, elle, passe par le dérivateur de l'amorçage quand il est présent (28/09), sans
-geste à faire.
-
-Trois scripts dérivent la clé du slot — l'enrôlement (`setup-add-selfrecover-slot.sh`), le
-démarrage (`selfrecover-keyscript.sh`), le secours (`selfrecover-unlock.sh`) — et chacun écrivait
-le label `disk` en dur. Changé d'un seul côté, le slot s'enrôle sous un label et se dérive sous
-l'autre : la machine ne démarre plus, et la preuve de `setup-add`, qui relit son propre label, ne
-le voit pas. Chaque script déclare maintenant `LABEL_DERIVATION` une fois (le keyscript tourne
-dans l'initramfs et ne peut rien sourcer du dépôt), et `tests/test_label_derivation.sh` exige
-l'égalité, avec son canari en CI. Comportement inchangé.
-
-`install.sh` rendait `SKG` réglable alors que le keyscript et le hook initramfs lisent
-`/etc/selfkeyguard` en dur : il refuse désormais tout autre chemin, avant d'écrire quoi que ce
-soit. Le vérificateur post-`update-initramfs` cherche aussi `selfrecover-secours.sh`, que le hook
-embarque et sans lequel une clé d'amorçage portant son `command=` ne rend plus rien (banc
-12 → 13 cas). `test_lecture_keyfile.sh` lit `keyfile-size` dans `install.sh` au lieu de figer 64.
-Aucune machine n'est touchée : le `.92` garde son keyscript `raw` et son marqueur.
-
 ### La console SU exige sept mots de la liste EFF — 28 septembre 2026
 
 La passphrase du super-utilisateur chiffre les sauvegardes du journal : elle s'attaque hors ligne,
@@ -207,126 +55,6 @@ scellées se restaurent sous leur passphrase d'origine, que rien ne contrôle à
 
 Le banc SU passe de 23 à 26 cas : six mots, quarante caractères sans mot, sept mots dont un hors de
 la liste, tous refusés sans poser de secret. L'ancienne règle remise, les trois rougissent.
-
-### SelfRecover v0.8.0 — reprendre un compte le referme vraiment, et un accord rendu a une fin — 28 septembre 2026
-
-Deux chemins laissaient une personne devant une porte qu'aucun geste ne pouvait ouvrir ou
-fermer. Ils se corrigent ensemble parce qu'ils vivent au même endroit : la reprise de compte
-au niveau 3.
-
-**Les appareils enrôlés survivaient à tout.** Aucune méthode du contrat de stockage ne savait
-en retirer un. `reposerSecrets()` réécrit les empreintes et le sel ; les appareils restaient,
-et `Device::cloreDefi()` ouvre le compte sur une **signature seule** — il ne vérifie pas le mot
-mémorisé. L'appareil de qui détenait le compte avant signait donc encore et recevait encore un
-mot de passe neuf, pendant que le titulaire croyait avoir refermé sa porte.
-
-On atteint le niveau 3 après avoir tout perdu, et « tout perdu » veut souvent dire « quelqu'un
-d'autre l'a ». C'est le seul niveau où ce qui existait avant doit être tenu pour suspect : les
-niveaux 1 et 2 ne révoquent rien, et un contre-témoin du banc de récupération garde cette
-frontière. Qui présente un papier, ou un code **et** son mot mémorisé, a prouvé quelque chose.
-
-**Un accord rendu n'avait pas de fin.** Un litige accepté ne périmait jamais, `ouvrir()` refuse
-tant qu'un litige est actif, et la seule clôture passait par `reEnroler()`, qui exige le sésame.
-Qui perdait son sésame entre l'accord et son retour voyait le niveau 3 se fermer définitivement,
-avec un message lui demandant précisément ce qu'il n'avait plus. La sortie était un `UPDATE` en
-base.
-
-Deux réponses, et il fallait les deux. `Escalade::abandonner()` rend la main tout de suite à qui
-le demande : un arbitre clôt le litige, la place se libère, l'arbitrage est à refaire — il ne
-décide pas à la place de celui qui tranchera. Et `ttlAccepte`, sept jours par défaut, sert de
-filet quand personne ne demande rien. Le délai seul aurait laissé quelqu'un dehors une semaine ;
-l'abandon seul aurait laissé la place prise pour toujours si personne n'y pensait.
-
-⚠️ **Migration.** Le contrat de stockage passe de 41 à 42 méthodes : `revoquerAppareils(int
-$compteId): int`. Un adaptateur tiers ne s'instancie plus sans elle. Les implémentations d'un
-déploiement sans facteur « cet appareil » rendent 0 plutôt que de lever — cette méthode est
-appelée dans la transaction de reprise, et lever y ferait échouer une récupération pour une
-fonction que le déploiement n'offre pas. Les défis en vol se retirent **avant** les appareils :
-ils désignent un `credential_id` et non un compte.
-
-Trois messages disent maintenant ce qu'ils taisaient : l'acceptation annonce son délai, le refus
-« une procédure est déjà en cours » dit quoi faire quand le sésame est perdu, et la reprise
-annonce le nombre d'appareils retirés. `appareils_retires` est rendu à l'application.
-
-**La passphrase du niveau 1 passe de quatre à six mots**, soit de ≈ 51,7 à ≈ 77,5 bits : le
-minimum que l'entropy-lab et le guide diceware recommandent déjà. Seule la génération change. La
-vérification compare une empreinte et ne compte pas les mots : une passphrase de quatre mots déjà
-délivrée reste valide, et la prochaine récupération la remplace par six mots. Les trois démos qui
-écrivaient `4` en dur lisent maintenant `Recovery::MOTS_PASSPHRASE`. Un intégrateur qui affiche
-ou valide un nombre de mots fixe doit le relire.
-
-**Une seule fabrique de codes de secours.** La démo bi-self-duo fabriquait les siens (boucle,
-`random_bytes(5)`, `10` en dur) et le lab gardait son propre `10` : un changement de nombre ou de
-format dans la bibliothèque ne leur parvenait pas. Les deux passent par `Recovery::emettreCodes()`
-et `Recovery::CODES_PAR_LOT`. `Recovery::estFormeCode()` porte seule la forme `xxxxx-xxxxx` ; les
-trois copies de l'expression dans les démos l'appellent.
-
-**Ce que la documentation taisait aux intégrateurs.** Le tableau des niveaux disait « Nouveau
-mot de passe » pour L1 et L2 : les deux rendent aussi une nouvelle passphrase et effacent
-l'ancienne, et une application qui ne l'affiche pas fait perdre le niveau 1 à son utilisateur.
-`emettreCodes()` efface le lot en place avant d'écrire le suivant. Changer le sel du déploiement
-rend tous les codes émis introuvables, sans réindexation possible : la seule procédure (changer,
-puis faire réémettre chaque feuille) est écrite dans le README et `SECURITY.md`. Un coffre
-SelfDataGuard créé sans mot mémorisé ne survit pas à une récupération de niveau 1 ou 2 : le
-README de SelfDataGuard, le contrat de `register()` et `SECURITY.md` le disent, avec la séquence
-de re-scellement. Signalés par une intégration qui fait tourner les deux modules ; aucune donnée
-perdue. L'enrôlement d'un appareil dit maintenant où vit sa clé.
-
-**Les messages disent le délai réglé, pas un délai recopié.** « Réessaie dans 15 minutes » était
-écrit en dur six fois dans `Recovery` et `Device`, alors que la fenêtre est un paramètre du
-constructeur ; le lab la règle. Le refus des freins vient maintenant d'une seule méthode par
-classe, et `Duree::enClair()` dit la fenêtre en clair — le texte reste identique entre le frein par
-compte et le frein par origine. `Escalade` fait de même pour l'accord, le gel et le dépôt trop
-rapproché (qui dit maintenant combien de temps attendre) ; le gel dit qu'un administrateur peut le
-lever, et le refus `deja_ouvert` donne la date où la procédure en cours tombe d'elle-même.
-`Escalade::reglesDuGel()` rend seuil, fenêtre et durée aux écrans d'arbitrage, qui les recopiaient.
-Le lab transmet sa fenêtre de connexion au module et ses textes lisent ses constantes.
-
-**SelfDataGuard : la démo lit la bibliothèque au lieu de la recopier.** Ses API écrivaient
-`strlen(…) < 12` à côté de `UserVault::PASSWORD_MIN_LEN`, et un refus d'entrée de la bibliothèque
-(`InvalidArgumentException`) n'était pas attrapé : il sortait en 500 sans JSON. Elles lisent la
-constante et répondent 400. `check-plancher-secret.sh` n'acceptait qu'un chiffre en troisième
-argument de `SecretInstance::lire()` — il poussait à écrire `32` en dur ; il accepte maintenant
-`SecretInstance::PLANCHER`, que le lab emploie. `sanity_couplage_dataguard.php` tient d'accord le
-minimum de mot de passe d'`Escalade` et celui de `UserVault` (l'un compte des caractères, l'autre
-des octets : c'est dit, pas unifié), avec son canari en CI.
-
-**Les démos cessent de recopier la bibliothèque.** Le lab et la démo duo embarquaient chacun une
-copie entière de `Wordlist` (identique au module, au namespace près) : une correction du module ne
-leur parvenait pas. Les deux copies sont supprimées, leurs appelants et la console SU lisent la
-classe du module. `Device::LONGUEUR_MOT_DE_PASSE` nomme la longueur du mot de passe engendré, que
-cinq appels écrivaient `16` ; `Hashing::profilEnClair()` dit le profil Argon2id que les journaux et
-les pages recopiaient (« m=64 Mo, t=4, p=2 ») ; la forme d'une clé dérivée passe par
-`Device::estCleDerivee()` dans les trois routes du duo qui la testaient à la main ; les durées de
-cookie lisent la durée de session ; `recover.html` affiche `SR_DERIVE_VERSION` au lieu de `|v2`, et
-`sr-kdf.js` dérive la forme du sel de `SEL_OCTETS`.
-
-**Une sonde par copie entre langages.** La taille du sel de compte vivait à quatre endroits qui
-ne peuvent pas se lire — `sr-derive.js`, `sr-kdf.js`, le serveur, le `CHECK` du schéma duo — et
-deux faux sels anti-oracle en dépendaient : si elle changeait d'un seul côté, les faux sels se
-distingueraient des vrais. `Recovery::SEL_OCTETS` et `Recovery::estSelCompte()` en sont la source
-PHP (lue par `Escalade`, le lab et le duo), `sr-derive.js` déclare la sienne, et
-`sanity_forme_sel.php` tient les quatre d'accord. `sanity_couplage_dataguard.php` compare aussi le
-profil de `sr-kdf.js` à celui de SelfDataGuard, qu'il disait partager sans que rien ne le
-vérifie. `derive_cli.php`, qui recopie `srDerive()` pour les scripts sans navigateur, entre dans
-les vecteurs figés (`sanity_derive_cli.php`), et la simulation d'attaque l'appelle au lieu d'en
-recopier la formule. Chaque sonde a son canari en CI.
-
-**Les nombres magiques qui touchent aux comptes ont un nom.** Les bornes de l'identifiant (3 à
-20 caractères) étaient écrites dans six routes de la démo duo et dans le lab, avec leurs messages ;
-le jeton de session (24 octets, 48 hexadécimaux) dans quatre fichiers du lab et trois du duo ; la
-longueur minimale du mot mémorisé dans le JavaScript et le texte du lab ; la longueur maximale d'un
-message de litige deux fois dans `Escalade`. Chacun a maintenant une constante, lue par ses
-contrôles et par ses textes (`Auth::IDENTIFIANT_MIN/MAX`, `Auth::estJeton()`,
-`RecoverHelper::estIdentifiant()`, `RecoverHelper::estJeton()`, `Escalade::MESSAGE_MAXIMUM`).
-L'entropie par mot de `Wordlist` se calcule depuis la taille de la liste au lieu d'être recopiée.
-La démo duo garde deux règles d'identifiant — `[a-z0-9]` en récupération, `[a-z0-9_]` en
-modération — : c'est noté, et tranché avec SelfModerate.
-
-Le banc de l'escalade passe de 107 à 124 cas, celui de la récupération de 58 à 61. Le contrôle
-qui affirmait qu'un accord reste actif « bien après son TTL » n'a pas été réparé mais **scindé** :
-la propriété qu'il défendait tient sur la fenêtre où elle vaut, l'échéance la borne au-delà.
-Trois canaris : révocation neutralisée, échéance retirée, abandon qui ne clôt plus.
 
 ### L'image Docker de SelfRecover est retirée, et ce qu'on publie hors du dépôt entre sous contrôle — 28 septembre 2026
 
@@ -682,6 +410,142 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfRecover-LUKS v0.6.2] — 3 octobre 2026
+
+### SelfRecover-LUKS v0.6.2 — la migration du §15 passe sur une machine équipée en août — 3 octobre 2026
+
+Premier passage réel de `INSTALL.md` §15 v0.6.1, sur un poste équipé en raw : la migration a
+tenu, prouvée par un redémarrage, mais la chaîne de l'étape 3 s'est arrêtée sur le garde-fou.
+Elle ne posait ni le script de secours ni le hook, qu'une machine de cette époque n'avait pas
+dans leur version courante.
+
+- **L'étape 3 pose toutes les pièces du module avant le keyscript**, script de secours et hook
+  compris, prend un filet de chaque image de `/boot`, régénère tous les noyaux, et vérifie que
+  chaque image l'a bien été : un noyau plus ancien gardait sinon le keyscript raw, et son
+  entrée de démarrage devenait un piège après le retrait du slot raw.
+- **Le §3 pose le script de secours**, que le guide n'a jamais posé alors que la clé dropbear
+  du §8b le lance. Sans lui, un serveur installé à la main restait injoignable au démarrage.
+- **Le garde-fou n'exige le script de secours que d'une image qui embarque dropbear**, comme
+  le hook ne l'embarque que s'il est posé, et il l'exige aussi de l'image que charge un
+  Raspberry Pi. Un poste sans dropbear ne rougit plus pour une pièce qui n'a rien à y faire.
+- **Le repli avant déverrouillage est écrit** : la passphrase native, au shell de l'initramfs
+  ou par le choix 2 du script de secours. Les filets de `/root` vivent sur le volume chiffré et
+  ne font pas démarrer. Le parcours serveur ne décrit plus de shell dropbear : la clé
+  d'amorçage n'en rend plus depuis la v0.5.0.
+
+### SelfRecover-LUKS v0.6.1 — la borne de lecture suit la clé — 3 octobre 2026
+
+cryptsetup lit exactement autant d'octets que la borne `keyfile-size` de la crypttab en
+demande. Elle doit valoir 64 pour une clé hex, 32 pour une clé brute : une borne de l'autre
+format rend le slot inouvrable au démarrage. `install.sh` posait 64 en dur et acceptait une
+borne déjà présente sans la comparer. Une machine passée de brut à hex par `INSTALL.md` §15
+gardait donc sa borne 32, et ne redémarrait plus par la passphrase Recover.
+
+- **`format-slot.sh` tient la longueur de clé** de chaque keyscript (`taille`), et compare
+  ou corrige la borne d'une ligne de crypttab (`borne`). `install.sh` passe par lui, et le
+  banc rejoue la matrice de lecture sur de vrais conteneurs LUKS.
+- **Le garde-fou post-update juge la borne dans l'image produite** : chaque ligne à
+  keyscript de la crypttab que l'image embarque, face au keyscript qu'elle désigne. Une
+  borne raw sous un keyscript hex, ou une image qui a perdu la ligne, le fait échouer avant
+  le redémarrage. `install.sh` le pose désormais avant le keyscript.
+- **`INSTALL.md` §15 couvre une machine équipée avant le marqueur de format** (étape 0 bis),
+  et pose filet, garde-fou, keyscript, borne et image d'amorçage d'une seule chaîne.
+
+---
+
+## [SelfDataGuard v0.5.1] — 2 octobre 2026
+
+### SelfDataGuard v0.5.1 — la 0.5.0 tourne aussi sous PHP 8.1 et 8.2 — 2 octobre 2026
+
+En PHP 8.2, la 0.5.0 laissait sa transaction ouverte : elle l'ouvrait en SQL et la refermait
+par PDO, qui avant la 8.4 ne voit pas une transaction ouverte ainsi. Le premier dépôt de
+séquestre échouait chez un intégrateur sous Debian 12. Le stockage referme désormais en SQL ce
+qu'il ouvre en SQL, et tient lui-même l'état de sa transaction. Les bancs de SelfDataGuard,
+le couplage et le parcours tournent maintenant aussi sous PHP 8.1 et 8.2 en CI.
+
+---
+
+## [SelfDataGuard v0.5.0] — 1er octobre 2026
+
+### SelfDataGuard v0.5.0 — une troisième serrure, et l'archive au lieu de la destruction — 1er octobre 2026
+
+Un coffre couplé à SelfRecover ne survivait pas à toutes les récupérations. Au niveau 1, le
+serveur ne tient que la passphrase, et aucune enveloppe ne s'ouvrait avec. Au niveau 3, il ne
+reste aucun ancien secret, et la seule issue était de supprimer le coffre.
+
+- **Une troisième enveloppe, ouverte par la passphrase SelfRecover.** Aucun secret de plus pour
+  l'utilisateur. Contexte de dérivation distinct de celui du mot mémorisé, normalisation
+  identique à celle de SelfRecover, tenue par le banc de couplage.
+- **`recover()` re-scelle le coffre à chaque récupération acceptée**, en une seule écriture
+  conditionnelle : par l'ancienne passphrase au niveau 1, par l'empreinte du mot au niveau 2, et
+  au prochain secret donné après un niveau 2 par appareil, où le serveur ne tient rien qui
+  ouvre le coffre.
+- **Au niveau 3, `reEnroll()` archive l'ancien coffre**, scellé sous ses anciennes serrures,
+  sans péremption, et en crée un neuf dans la même transaction. Une ancienne serrure retrouvée
+  le rouvre, depuis une session sur le coffre actuel seulement. Une archive ne se détruit que
+  sur décision explicite : la suppression d'un compte ne l'emporte plus d'office.
+- **Une session ouverte sur un coffre remplacé ne peut plus écrire dans le neuf**, et une
+  écriture conditionnée au sel du coffre empêche une requête en vol d'écraser le neuf.
+- Une base 0.4.0 se migre en place à sa première ouverture, y compris quand deux processus
+  l'ouvrent en même temps. ⚠️ Un retour à la 0.4.0 ne voit pas les archives, et laisse en place
+  une serrure passphrase que SelfRecover a pu remplacer depuis.
+- **Deux requêtes qui se chevauchent ne corrompent rien** : écritures sous verrou immédiat, génération
+  du coffre vérifiée dans l'écriture même, révision du coffre contre les mises à jour perdues.
+- `aesGcmEncrypt()` et `aesGcmDecrypt()`, dépréciés en 0.4.0, sont retirés.
+
+SelfRecover : la normalisation de la passphrase devient `Recovery::normaliserPassphrase()`, sans
+changement de comportement, pour que le banc de couplage la compare à celle de SelfDataGuard. Un
+banc de parcours fait traverser à un coffre chaque récupération, sur les vrais chemins des deux
+bibliothèques (18 cas, en CI).
+
+Bancs SelfDataGuard : 314 contrôles sur 10 suites. Le détail des changements est dans le CHANGELOG du module.
+
+---
+
+## [SelfModerate v0.4.0] — 29 septembre 2026
+
+### SelfModerate v0.4.0 — le ban automatique revient, tracé de bout en bout — 29 septembre 2026
+
+`R10-LAB-01` avait retiré le ban automatique à réputation zéro : un ban prononcé sur une érosion
+étalée devenait une arme d'escalade à la portée de qui n'a aucun droit d'administration. Le
+signalement qui l'a remplacé ne protège toutefois personne tant que l'arbitre n'est pas devant. Le
+ban revient, avec les bornes qui lui manquaient.
+
+- **Gradué et fini.** 24 h → 7 j → 30 j en service, 2 → 10 → 30 min en démonstration ; le dernier
+  palier se reconduit, la machine ne prononce jamais d'exclusion définitive. Une peine en cours ne se
+  rallonge pas. À la fin, la réputation revient au point de départ et les strikes restent : le ban
+  suivant sera plus long.
+- **Écrit au journal, ou pas du tout.** Le ban automatique ne s'arme que si l'hôte branche un
+  journal (`setJournal()`) ; sans lui, une réputation à zéro reste un signalement. Début, fin,
+  levée, maintien, grâce : cinq actes, toujours écrits avant la base, avec l'origine (automatique
+  ou arbitre), le motif et le nom de l'arbitre.
+- **Gestes d'arbitre sous plancher.** Bannir exige un motif. Avant un tiers de la peine en cours,
+  une levée exige un motif écrit et s'inscrit comme levée anticipée. Une meute détectée lève seule
+  le ban automatique qu'elle avait provoqué, sans plancher, et jamais un ban d'arbitre.
+- **Une seule source pour les seuils.** Dix-neuf seuils existaient en constante du moteur et en
+  propriété de `Config` ; le moteur lisait surtout les constantes, et `Config::prod()` ne changeait
+  que les durées de ban. `Config` est désormais la seule source, pour le moteur comme pour les pages.
+- **Nouveaux appels** : `estBanni()`, `bansEnCours()`, `adminMaintenir()`, `journal()`,
+  `dureeEnClair()`, `Config::plancherDe()`.
+
+⚠️ **Ruptures par rapport à la 0.3.0** : les constantes de seuil du moteur sont retirées (lire
+`Moderate::config()`) ; `adminBan()` et `adminPardon()` prennent l'arbitre et le motif, et rendent
+`['ok', 'message']`. Le schéma gagne trois colonnes dans `member_moderation` (`ban_debut`,
+`ban_origine`, `ban_motif`) ; la migration du lab les ajoute à la première requête.
+
+**Dans le lab** : le ban s'arme avec un journal de modération à part, chaîné et signé, dont le site
+tient seul la clé — pas le journal du super-utilisateur, où le site pourrait forger une nomination
+d'admin. Un compte banni ne vote plus et ne publie plus ; la connexion et les messages privés restent
+ouverts. L'admin voit les bans en cours, leur plancher et l'état du journal. Les heures affichées
+sont celles de Paris.
+
+**SelfDataGuard** : deux ajouts simultanés au journal d'audit cassaient sa chaîne ; la lecture et
+l'ajout tiennent maintenant sous un seul verrou (voir son CHANGELOG).
+
+`sanity_moderate.php` passe de 24 à 45 contrôles et entre dans la CI, avec un canari.
+
+---
+
 ## [SelfJustice v0.4.2] — 29 septembre 2026
 
 ### SelfJustice v0.4.2 — l'accueil fonctionne sous la CSP du site — 29 septembre 2026
@@ -702,6 +566,166 @@ désormais « Analyse <domaine> », la formule que la page enseigne.
 inline, un gestionnaire `on*=`, une URL `javascript:` ou un script hors du site ; il échoue aussi si
 une page manque. Il tourne dans `structure.yml`. Mesuré en production le 29 septembre, dans Chromium :
 aucune violation de CSP sur l'accueil, copie, grille et formulaire fonctionnels.
+
+---
+
+## [SelfRecover-LUKS v0.6.0] — 28 septembre 2026
+
+### SelfRecover-LUKS v0.6.0 — ce qui rendrait une machine muette se garde — 28 septembre 2026
+
+Mineure, pas corrective : trois changements depuis la v0.5.0 obligent à relire avant de mettre à
+jour une machine en service.
+
+⚠️ **Migration.**
+- **Le format enrôlé est inscrit, et `install.sh` le relit** (26/09) : il refuse de poser un
+  keyscript d'un autre format que le slot, et refuse aussi de remplacer un keyscript en place
+  sans marqueur `format-slot`. Une machine installée avant doit d'abord faire inscrire le format
+  de son slot (`INSTALL.md` §15) — c'est le geste qu'a demandé le premier serveur migré.
+- **`SKG` n'accepte plus que `/etc/selfkeyguard`**, le seul chemin que l'amorçage lit.
+- **Le vérificateur d'image réclame `selfrecover-secours.sh`** : une image générée sans lui
+  déclenche l'alerte.
+
+La preuve du slot, elle, passe par le dérivateur de l'amorçage quand il est présent (28/09), sans
+geste à faire.
+
+Trois scripts dérivent la clé du slot — l'enrôlement (`setup-add-selfrecover-slot.sh`), le
+démarrage (`selfrecover-keyscript.sh`), le secours (`selfrecover-unlock.sh`) — et chacun écrivait
+le label `disk` en dur. Changé d'un seul côté, le slot s'enrôle sous un label et se dérive sous
+l'autre : la machine ne démarre plus, et la preuve de `setup-add`, qui relit son propre label, ne
+le voit pas. Chaque script déclare maintenant `LABEL_DERIVATION` une fois (le keyscript tourne
+dans l'initramfs et ne peut rien sourcer du dépôt), et `tests/test_label_derivation.sh` exige
+l'égalité, avec son canari en CI. Comportement inchangé.
+
+`install.sh` rendait `SKG` réglable alors que le keyscript et le hook initramfs lisent
+`/etc/selfkeyguard` en dur : il refuse désormais tout autre chemin, avant d'écrire quoi que ce
+soit. Le vérificateur post-`update-initramfs` cherche aussi `selfrecover-secours.sh`, que le hook
+embarque et sans lequel une clé d'amorçage portant son `command=` ne rend plus rien (banc
+12 → 13 cas). `test_lecture_keyfile.sh` lit `keyfile-size` dans `install.sh` au lieu de figer 64.
+Aucune machine n'est touchée : le `.92` garde son keyscript `raw` et son marqueur.
+
+---
+
+## [SelfRecover v0.8.0] — 28 septembre 2026
+
+### SelfRecover v0.8.0 — reprendre un compte le referme vraiment, et un accord rendu a une fin — 28 septembre 2026
+
+Deux chemins laissaient une personne devant une porte qu'aucun geste ne pouvait ouvrir ou
+fermer. Ils se corrigent ensemble parce qu'ils vivent au même endroit : la reprise de compte
+au niveau 3.
+
+**Les appareils enrôlés survivaient à tout.** Aucune méthode du contrat de stockage ne savait
+en retirer un. `reposerSecrets()` réécrit les empreintes et le sel ; les appareils restaient,
+et `Device::cloreDefi()` ouvre le compte sur une **signature seule** — il ne vérifie pas le mot
+mémorisé. L'appareil de qui détenait le compte avant signait donc encore et recevait encore un
+mot de passe neuf, pendant que le titulaire croyait avoir refermé sa porte.
+
+On atteint le niveau 3 après avoir tout perdu, et « tout perdu » veut souvent dire « quelqu'un
+d'autre l'a ». C'est le seul niveau où ce qui existait avant doit être tenu pour suspect : les
+niveaux 1 et 2 ne révoquent rien, et un contre-témoin du banc de récupération garde cette
+frontière. Qui présente un papier, ou un code **et** son mot mémorisé, a prouvé quelque chose.
+
+**Un accord rendu n'avait pas de fin.** Un litige accepté ne périmait jamais, `ouvrir()` refuse
+tant qu'un litige est actif, et la seule clôture passait par `reEnroler()`, qui exige le sésame.
+Qui perdait son sésame entre l'accord et son retour voyait le niveau 3 se fermer définitivement,
+avec un message lui demandant précisément ce qu'il n'avait plus. La sortie était un `UPDATE` en
+base.
+
+Deux réponses, et il fallait les deux. `Escalade::abandonner()` rend la main tout de suite à qui
+le demande : un arbitre clôt le litige, la place se libère, l'arbitrage est à refaire — il ne
+décide pas à la place de celui qui tranchera. Et `ttlAccepte`, sept jours par défaut, sert de
+filet quand personne ne demande rien. Le délai seul aurait laissé quelqu'un dehors une semaine ;
+l'abandon seul aurait laissé la place prise pour toujours si personne n'y pensait.
+
+⚠️ **Migration.** Le contrat de stockage passe de 41 à 42 méthodes : `revoquerAppareils(int
+$compteId): int`. Un adaptateur tiers ne s'instancie plus sans elle. Les implémentations d'un
+déploiement sans facteur « cet appareil » rendent 0 plutôt que de lever — cette méthode est
+appelée dans la transaction de reprise, et lever y ferait échouer une récupération pour une
+fonction que le déploiement n'offre pas. Les défis en vol se retirent **avant** les appareils :
+ils désignent un `credential_id` et non un compte.
+
+Trois messages disent maintenant ce qu'ils taisaient : l'acceptation annonce son délai, le refus
+« une procédure est déjà en cours » dit quoi faire quand le sésame est perdu, et la reprise
+annonce le nombre d'appareils retirés. `appareils_retires` est rendu à l'application.
+
+**La passphrase du niveau 1 passe de quatre à six mots**, soit de ≈ 51,7 à ≈ 77,5 bits : le
+minimum que l'entropy-lab et le guide diceware recommandent déjà. Seule la génération change. La
+vérification compare une empreinte et ne compte pas les mots : une passphrase de quatre mots déjà
+délivrée reste valide, et la prochaine récupération la remplace par six mots. Les trois démos qui
+écrivaient `4` en dur lisent maintenant `Recovery::MOTS_PASSPHRASE`. Un intégrateur qui affiche
+ou valide un nombre de mots fixe doit le relire.
+
+**Une seule fabrique de codes de secours.** La démo bi-self-duo fabriquait les siens (boucle,
+`random_bytes(5)`, `10` en dur) et le lab gardait son propre `10` : un changement de nombre ou de
+format dans la bibliothèque ne leur parvenait pas. Les deux passent par `Recovery::emettreCodes()`
+et `Recovery::CODES_PAR_LOT`. `Recovery::estFormeCode()` porte seule la forme `xxxxx-xxxxx` ; les
+trois copies de l'expression dans les démos l'appellent.
+
+**Ce que la documentation taisait aux intégrateurs.** Le tableau des niveaux disait « Nouveau
+mot de passe » pour L1 et L2 : les deux rendent aussi une nouvelle passphrase et effacent
+l'ancienne, et une application qui ne l'affiche pas fait perdre le niveau 1 à son utilisateur.
+`emettreCodes()` efface le lot en place avant d'écrire le suivant. Changer le sel du déploiement
+rend tous les codes émis introuvables, sans réindexation possible : la seule procédure (changer,
+puis faire réémettre chaque feuille) est écrite dans le README et `SECURITY.md`. Un coffre
+SelfDataGuard créé sans mot mémorisé ne survit pas à une récupération de niveau 1 ou 2 : le
+README de SelfDataGuard, le contrat de `register()` et `SECURITY.md` le disent, avec la séquence
+de re-scellement. Signalés par une intégration qui fait tourner les deux modules ; aucune donnée
+perdue. L'enrôlement d'un appareil dit maintenant où vit sa clé.
+
+**Les messages disent le délai réglé, pas un délai recopié.** « Réessaie dans 15 minutes » était
+écrit en dur six fois dans `Recovery` et `Device`, alors que la fenêtre est un paramètre du
+constructeur ; le lab la règle. Le refus des freins vient maintenant d'une seule méthode par
+classe, et `Duree::enClair()` dit la fenêtre en clair — le texte reste identique entre le frein par
+compte et le frein par origine. `Escalade` fait de même pour l'accord, le gel et le dépôt trop
+rapproché (qui dit maintenant combien de temps attendre) ; le gel dit qu'un administrateur peut le
+lever, et le refus `deja_ouvert` donne la date où la procédure en cours tombe d'elle-même.
+`Escalade::reglesDuGel()` rend seuil, fenêtre et durée aux écrans d'arbitrage, qui les recopiaient.
+Le lab transmet sa fenêtre de connexion au module et ses textes lisent ses constantes.
+
+**SelfDataGuard : la démo lit la bibliothèque au lieu de la recopier.** Ses API écrivaient
+`strlen(…) < 12` à côté de `UserVault::PASSWORD_MIN_LEN`, et un refus d'entrée de la bibliothèque
+(`InvalidArgumentException`) n'était pas attrapé : il sortait en 500 sans JSON. Elles lisent la
+constante et répondent 400. `check-plancher-secret.sh` n'acceptait qu'un chiffre en troisième
+argument de `SecretInstance::lire()` — il poussait à écrire `32` en dur ; il accepte maintenant
+`SecretInstance::PLANCHER`, que le lab emploie. `sanity_couplage_dataguard.php` tient d'accord le
+minimum de mot de passe d'`Escalade` et celui de `UserVault` (l'un compte des caractères, l'autre
+des octets : c'est dit, pas unifié), avec son canari en CI.
+
+**Les démos cessent de recopier la bibliothèque.** Le lab et la démo duo embarquaient chacun une
+copie entière de `Wordlist` (identique au module, au namespace près) : une correction du module ne
+leur parvenait pas. Les deux copies sont supprimées, leurs appelants et la console SU lisent la
+classe du module. `Device::LONGUEUR_MOT_DE_PASSE` nomme la longueur du mot de passe engendré, que
+cinq appels écrivaient `16` ; `Hashing::profilEnClair()` dit le profil Argon2id que les journaux et
+les pages recopiaient (« m=64 Mo, t=4, p=2 ») ; la forme d'une clé dérivée passe par
+`Device::estCleDerivee()` dans les trois routes du duo qui la testaient à la main ; les durées de
+cookie lisent la durée de session ; `recover.html` affiche `SR_DERIVE_VERSION` au lieu de `|v2`, et
+`sr-kdf.js` dérive la forme du sel de `SEL_OCTETS`.
+
+**Une sonde par copie entre langages.** La taille du sel de compte vivait à quatre endroits qui
+ne peuvent pas se lire — `sr-derive.js`, `sr-kdf.js`, le serveur, le `CHECK` du schéma duo — et
+deux faux sels anti-oracle en dépendaient : si elle changeait d'un seul côté, les faux sels se
+distingueraient des vrais. `Recovery::SEL_OCTETS` et `Recovery::estSelCompte()` en sont la source
+PHP (lue par `Escalade`, le lab et le duo), `sr-derive.js` déclare la sienne, et
+`sanity_forme_sel.php` tient les quatre d'accord. `sanity_couplage_dataguard.php` compare aussi le
+profil de `sr-kdf.js` à celui de SelfDataGuard, qu'il disait partager sans que rien ne le
+vérifie. `derive_cli.php`, qui recopie `srDerive()` pour les scripts sans navigateur, entre dans
+les vecteurs figés (`sanity_derive_cli.php`), et la simulation d'attaque l'appelle au lieu d'en
+recopier la formule. Chaque sonde a son canari en CI.
+
+**Les nombres magiques qui touchent aux comptes ont un nom.** Les bornes de l'identifiant (3 à
+20 caractères) étaient écrites dans six routes de la démo duo et dans le lab, avec leurs messages ;
+le jeton de session (24 octets, 48 hexadécimaux) dans quatre fichiers du lab et trois du duo ; la
+longueur minimale du mot mémorisé dans le JavaScript et le texte du lab ; la longueur maximale d'un
+message de litige deux fois dans `Escalade`. Chacun a maintenant une constante, lue par ses
+contrôles et par ses textes (`Auth::IDENTIFIANT_MIN/MAX`, `Auth::estJeton()`,
+`RecoverHelper::estIdentifiant()`, `RecoverHelper::estJeton()`, `Escalade::MESSAGE_MAXIMUM`).
+L'entropie par mot de `Wordlist` se calcule depuis la taille de la liste au lieu d'être recopiée.
+La démo duo garde deux règles d'identifiant — `[a-z0-9]` en récupération, `[a-z0-9_]` en
+modération — : c'est noté, et tranché avec SelfModerate.
+
+Le banc de l'escalade passe de 107 à 124 cas, celui de la récupération de 58 à 61. Le contrôle
+qui affirmait qu'un accord reste actif « bien après son TTL » n'a pas été réparé mais **scindé** :
+la propriété qu'il défendait tient sur la fenêtre où elle vaut, l'échéance la borne au-delà.
+Trois canaris : révocation neutralisée, échéance retirée, abandon qui ne clôt plus.
 
 ---
 
