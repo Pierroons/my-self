@@ -346,8 +346,7 @@ else
 
   if [ "$REP" = ferme ]; then
     # Chaque clé du fichier est préfixée, pas seulement la première : un fichier
-    # à deux clés dont une seule est bornée ne ferme rien, et c'est exactement la
-    # forme qu'avait le `.48` (208 octets = deux clés nues, pas une clé bornée).
+    # à deux clés dont une seule est bornée ne ferme rien.
     # ⚠️ PAS de no-pty : `command=` suffit à interdire le shell (dropbear exécute
     # cette commande et ignore ce que le client demande), tandis que sans PTY,
     # `stty -echo` ne coupe rien et la passphrase native s'afficherait EN CLAIR

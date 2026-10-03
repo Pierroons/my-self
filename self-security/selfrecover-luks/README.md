@@ -13,8 +13,10 @@
 > self-hosted FDE layer of the **MySelf** ecosystem (Self-Security pillar).
 
 **Status: validated on a LNMP Debian 13 Trixie server (2026-06-07), on an encrypted
-laptop (2026-08-22), and on an encrypted-LVM root — the layout the Debian installer
-proposes in guided mode (2026-09-13) — v0.5.0.**
+laptop (2026-08-22), on an encrypted-LVM root — the layout the Debian installer
+proposes in guided mode (2026-09-13) — and on arm64 (2026-09-13).
+Moving a slot from raw to hexadecimal (`INSTALL.md` §15) has been proven by a reboot
+since 2026-10-03 (v0.6.1).**
 Root (`/`) unlocked at boot (Argon2id keyscript + boot SSH) and automatic cascade of secondary
 volumes (key-file), reproducible reboots. Documented, reproducible install →
 **[INSTALL.md](./INSTALL.md)**.

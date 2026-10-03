@@ -21,7 +21,7 @@ Two assumptions hold up most application security, and both give way on the same
 1. **"The database will not leave."** It does — a forgotten backup, a provider's dump, an SQL injection, a resold drive. Full-disk encryption protects nothing here: the machine is running, the volume is mounted, the rows read in plain.
 2. **"The disk is encrypted, so the machine is protected."** Cold, yes — as long as the passphrase that opens it holds against an offline attack. A passphrase chosen to be remembered is usually short, and a stolen disk can be tried at leisure.
 
-Self-Security takes the two surfaces apart: **data is encrypted before it reaches the database**, and **the volume opens with a diceware passphrase drawn for that machine**, derived by Argon2id, whose strength comes from the dice rather than from memory.
+Self-Security takes the two surfaces apart: **data is encrypted before it reaches the database**, and **the volume opens with a diceware passphrase drawn for that machine**, derived by Argon2id, whose strength comes from the random draw rather than from memory.
 
 ---
 

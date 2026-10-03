@@ -21,7 +21,7 @@ Deux croyances tiennent la sécurité de la plupart des applications, et elles c
 1. **« La base ne sortira pas. »** Elle sort : une sauvegarde oubliée, le dump d'un prestataire, une injection SQL, un disque revendu. Le chiffrement de disque n'y change rien — la machine tourne, le volume est monté, les lignes se lisent en clair.
 2. **« Le disque est chiffré, donc le poste est protégé. »** À froid seulement — et tant que la phrase qui l'ouvre résiste à une attaque hors ligne. Une phrase choisie pour être retenue est presque toujours courte, et un disque volé s'essaie à loisir.
 
-Self-Security sépare les deux surfaces : **la donnée est chiffrée avant d'atteindre la base**, et **le volume s'ouvre avec une passphrase diceware tirée pour cette machine**, dérivée en Argon2id, dont la force vient des dés et non de la mémoire.
+Self-Security sépare les deux surfaces : **la donnée est chiffrée avant d'atteindre la base**, et **le volume s'ouvre avec une passphrase diceware tirée pour cette machine**, dérivée en Argon2id, dont la force vient du tirage au hasard et non de la mémoire.
 
 ---
 
