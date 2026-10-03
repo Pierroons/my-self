@@ -69,16 +69,16 @@ DEBUT = "<!-- ecosysteme:selffarm-lite:debut — produit par scripts/check-ecosy
 FIN = "<!-- ecosysteme:selffarm-lite:fin -->"
 
 def carte(m):
-    # Un `dossier` peut désigner un fichier (une route du webapp) : GitHub le montre par `blob`.
-    genre = "blob" if "." in m["dossier"].rsplit("/", 1)[-1] else "tree"
+    # Sans lien : une carte cliquable se lit comme une démo, et ces modules n'en ont pas. Le dépôt
+    # s'atteint par le bouton « Code sur GitHub » qui suit le bloc.
     statut = m["statut"]["fr"]
     classe = "live" if statut == "disponible" else "draft" if statut == "en préparation" else "alpha"
     resume = m["resume"]["fr"]
     return "\n".join([
-        f'      <a class="mod" href="{DEPOT_WEB}/{genre}/main/{html.escape(m["dossier"])}" target="_blank" rel="noopener">',
+        '      <div class="mod">',
         f'        <span class="name">{html.escape(m["nom"])}<span class="status {classe}">{html.escape(statut)}</span></span>',
         f'        <span class="role">{html.escape(resume[:1].upper() + resume[1:])}.</span>',
-        "      </a>",
+        "      </div>",
     ])
 
 accueil = "\n".join(

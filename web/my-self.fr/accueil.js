@@ -7,14 +7,8 @@
   if (!canvas || !canvas.getContext) return;
   var img = new Image();
   img.onerror = function () {
-    // Fallback debug visible : signale dans la console + affiche un placeholder
     try { console.warn('[MySelf hero] image source introuvable :', img.src); } catch (e) {}
-    var ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#1a2028';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#7ab7ff';
-    ctx.font = '14px system-ui, sans-serif';
-    ctx.fillText('image source introuvable', 20, 30);
+    canvas.style.display = 'none';
   };
   img.onload = function () {
     var ctx = canvas.getContext('2d');
@@ -85,7 +79,7 @@
 
 // Environnement dev (hostname en "dev.<domaine>") : réécrit les liens
 // <sous-domaine>.<domaine> vers dev-<sous-domaine>.<domaine> pour rester
-// dans l'env dev (Basic Auth, branche develop, prod intacte).
+// dans l'env dev (Basic Auth, branche dev, prod intacte).
 // Convention DNS niveau 2 = tiret. Domaine dérivé du hostname, aucun effet en prod.
 (function rewriteDevLinks() {
   var m = location.hostname.match(/^dev\.(.+)$/i);

@@ -9,6 +9,12 @@
   <meta property="og:description" content="Écosystème open source pour reprendre la main sur son droit, son identité, sa sécurité et son économie.">
   <meta property="og:url" content="https://my-self.fr">
   <meta property="og:type" content="website">
+  <meta property="og:image" content="https://my-self.fr/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Portrait de Descartes en pixel art face à un point lumineux et à une grille violette — « Je pense, donc j'héberge. »">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" type="image/svg+xml" href="/assets/logo/myself-mark-C-mono.svg">
   <style>
     :root {
       --bg: #0f1419;
@@ -35,36 +41,22 @@
     a:hover { text-decoration: underline; }
 
     .hero { text-align: center; padding: 2rem 0 3.5rem; }
-    .hero h1 {
-      font-size: clamp(3rem, 8vw, 4.5rem);
-      font-weight: 700;
-      letter-spacing: -1px;
-      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin: 0;
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
     .hero .tagline {
       font-size: 1.3rem;
       color: var(--text-muted);
       margin-top: 0.5rem;
       font-style: italic;
-    }
-    .hero .pact {
-      margin-top: 1.5rem;
-      font-size: 1rem;
-      color: var(--text-muted);
-      max-width: 580px;
-      margin-left: auto;
-      margin-right: auto;
-    }
-    .hero .cta-row {
-      margin-top: 2rem;
-      display: flex;
-      gap: 0.8rem;
-      justify-content: center;
-      flex-wrap: wrap;
     }
     .btn {
       display: inline-block;
@@ -121,7 +113,7 @@
 
     .pillars {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
       gap: 1.2rem;
       margin-top: 1.5rem;
     }
@@ -179,7 +171,7 @@
       font-size: 0.9rem;
       transition: border-color 0.15s, background 0.15s;
     }
-    .mod:hover {
+    a.mod:hover {
       border-color: var(--accent);
       text-decoration: none;
       background: var(--bg-card-hover);
@@ -235,13 +227,6 @@
       color: var(--text-muted);
       font-size: 0.9rem;
     }
-    footer code {
-      background: var(--bg-card);
-      padding: 0.1rem 0.5rem;
-      border-radius: 4px;
-      border: 1px solid var(--border);
-      font-size: 0.85rem;
-    }
 
     @media (max-width: 500px) {
       .pillar .modules { grid-template-columns: 1fr; }
@@ -258,6 +243,9 @@
       width: 100%;
       aspect-ratio: 16/10;
     }
+    .stage-clip { position: absolute; inset: 0; overflow: hidden; }
+    .stage-canvas { position: absolute; left: 0; top: 0; width: 50%; height: 100%; }
+    .stage-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
     .pixelated-canvas {
       image-rendering: pixelated;
       image-rendering: -moz-crisp-edges;
@@ -352,10 +340,12 @@
       border: 2px solid var(--accent-dim);
       border-radius: 50%;
     }
-    .floor-card h3 {
+    .floor-card h2 {
       font-size: 1.4rem;
       color: var(--accent);
       margin-bottom: 0.3rem;
+      padding-bottom: 0;
+      border-bottom: 0;
       display: flex;
       align-items: center;
       gap: 0.5rem;
@@ -385,6 +375,10 @@
       flex-wrap: wrap;
       margin-top: 1.5rem;
     }
+    .note { margin-top: 1.2rem; font-size: 0.85rem; }
+    .support { margin-top: 3rem; text-align: center; }
+    .support-intro { font-size: 0.95rem; color: var(--text-muted); max-width: 560px; margin: 0 auto 1rem; }
+    .support-note { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.7rem; }
     .soutien {
       display: inline-block;
       padding: 0.7rem 1.6rem;
@@ -412,14 +406,13 @@
   <div class="hero-descartes" role="img" aria-label="Portrait de René Descartes pixelisé en duotone bleu, aspiré symétriquement vers un cercle blanc central — le Pacte humain–IA — face à une grille machine violette en train de se reformer.">
     <div class="stage">
       <!-- Couche 1 : Descartes pixel art runtime (canvas 400×500 pixelisé en duotone bleu) -->
-      <div style="position: absolute; inset: 0; overflow: hidden;">
+      <div class="stage-clip">
         <canvas id="descartes-pixel" width="400" height="500"
-                class="pixelated-canvas"
-                style="position: absolute; left: 0; top: 0; width: 50%; height: 100%;"></canvas>
+                class="pixelated-canvas stage-canvas"></canvas>
       </div>
 
       <!-- Couche 2 : Convergence symétrique vers le cercle (le Pacte) -->
-      <svg viewBox="0 0 800 500" style="position: absolute; inset: 0; width: 100%; height: 100%;" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <svg viewBox="0 0 800 500" class="stage-svg" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <defs>
           <linearGradient id="suckLeftHero" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0" stop-color="#7ab7ff" stop-opacity="1"/>
@@ -534,7 +527,7 @@
     </div>
   </div>
 
-  <h1 class="visually-hidden" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;">MySelf</h1>
+  <h1 class="visually-hidden">MySelf</h1>
 
   <p class="hero-quote">Je pense, donc j'héberge.</p>
 
@@ -545,7 +538,7 @@
     <span class="accent-mark">MYSELF · my-self.fr</span>
   </div>
 
-  <p class="tagline">Be yourself, for yourself.</p>
+  <p class="tagline" lang="en">Be yourself, for yourself.</p>
 </section>
 
 <section>
@@ -562,8 +555,8 @@
     </p>
     <p>
       Chaque module résout un problème concret de la vie quotidienne —
-      analyser un conflit juridique, récupérer un mot de passe sans email,
-      protéger ses clés physiques — en rendant à l'individu la
+      consulter le droit et préparer ses démarches, récupérer un mot de passe sans email,
+      garder ses données illisibles si elles fuient — en rendant à l'individu la
       <strong>souveraineté</strong> sur son identité, son droit et ses données.
     </p>
   </div>
@@ -589,12 +582,12 @@
         acteur, y compris le fondateur.
       </p>
       <div class="modules">
-        <a class="mod" href="https://bi-self.example.org/" rel="noopener">
+        <a class="mod" href="https://bi-self.example.org/recover">
           <span class="name">SelfRecover<span class="status live">v0.8.0 · démo live</span></span>
           <span class="role">Récupération sans email — démo interactive : tuto guidé et bac à sable, récupération aux niveaux 1 et 2, simulation de hameçonnage.</span>
         </a>
-        <a class="mod" href="https://bi-self.example.org/moderate" rel="noopener">
-          <span class="name">SelfModerate<span class="status live">v0.4.0 · démo simplifiée</span></span>
+        <a class="mod" href="https://bi-self.example.org/moderate">
+          <span class="name">SelfModerate<span class="status draft">v0.4.0 · démo simplifiée</span></span>
           <span class="role">Modération communautaire par raisonnement social — démo interactive sur un moteur simplifié ; le module lui-même tourne dans MySelf-Lab, plus bas.</span>
         </a>
       </div>
@@ -606,18 +599,18 @@
       <p class="muted">
         <em>« Connais tes droits, fais-les valoir. »</em>
         Comprendre le droit ne suffit pas si on ne sait pas l'activer. Le bloc
-        couvre les deux temps : la pré-analyse impartiale (SelfJustice), puis les
+        couvre les deux temps : la consultation du droit français et européen (SelfJustice), puis les
         ressources officielles pour agir (SelfAct) — le bon formulaire, le délai,
         un modèle de lettre à trous. Les faits, c'est toi qui les écris.
       </p>
       <div class="modules">
         <a class="mod" href="https://justice.example.org">
           <span class="name">SelfJustice<span class="status live">bêta v0.4.2 · live</span></span>
-          <span class="role">Pré-analyse juridique impartiale assistée par IA.</span>
+          <span class="role">Consultation du droit français et européen par une API publique.</span>
         </a>
         <a class="mod" href="https://justice.example.org/act">
           <span class="name">SelfAct<span class="status live">bêta v0.1.3 · live</span></span>
-          <span class="role">Index des modèles de lettres, formulaires et téléservices officiels service-public.fr.</span>
+          <span class="role">Index des modèles de lettres, formulaires et téléservices officiels service-public.gouv.fr.</span>
         </a>
       </div>
     </div>
@@ -631,11 +624,11 @@
         disque revendu. SelfDataGuard chiffre la donnée avant qu'elle atteigne la
         base, si bien qu'une exfiltration ne rend rien de lisible. SelfRecover-LUKS
         couvre l'autre état : la racine chiffrée du serveur et ses volumes de données
-        s'ouvrent avec une phrase de récupération tirée aux dés pour cette machine,
+        s'ouvrent avec une phrase de récupération tirée au hasard sur une liste diceware pour cette machine,
         à distance depuis le démarrage.
       </p>
       <div class="modules">
-        <a class="mod" href="https://dataguard.example.org/" rel="noopener">
+        <a class="mod" href="https://dataguard.example.org/">
           <span class="name">SelfDataGuard<span class="status live">v0.5.1 · disponible</span></span>
           <span class="role">Chiffrement at-rest robuste à l'exfiltration de DB — bibliothèque PHP + démo interactive.</span>
         </a>
@@ -654,7 +647,7 @@
     <span>↓ ce qui se construit sur ces piliers ↓</span>
   </div>
   <div class="floor-card">
-    <h3>🌻 SelfFarm-Lite</h3>
+    <h2><span aria-hidden="true">🌻</span> SelfFarm-Lite</h2>
     <div class="sub">L'étage applicatif — première preuve que les piliers tiennent</div>
     <p class="tagline">
       « Quand l'identité, le droit et la sécurité sont en place, l'individu peut construire. »
@@ -663,70 +656,71 @@
       <strong>SelfFarm-Lite</strong> est la première application concrète de MySelf —
       un outil de gestion agricole pour les néo-installé·e·s et les petites exploitations
       qui refusent les SaaS agri et les ERP lourds. Compta, factures Factur-X, prévisionnel
-      DNJA, import de relevés bancaires, cartographie parcellaire, caisse de marché et
+      DNJA, lecture des relevés bancaires (en préparation), cartographie parcellaire, caisse de marché et
       sauvegarde souveraine multi-support (disque, mobile, NAS chiffré).
       <strong>Zéro cloud, SQLite local, AGPL-3.0.</strong>
     </p>
     <p class="muted">
-      Elle repose sur les 3 piliers : identité fiable (Bi-Self) pour signer les documents
-      légaux, droit activable (Self-Right) pour décrypter les aides et les réglementations
-      agricoles, sécurité physique (Self-Security) pour protéger les données bancaires
-      et comptables sensibles.
+      Elle est conçue pour s'appuyer sur les trois piliers — intégrations à des stades
+      divers, pas toutes câblées à ce jour : identité fiable (Bi-Self) pour signer les
+      documents légaux, droit consultable (Self-Right) pour retrouver les aides et les
+      réglementations agricoles, chiffrement (Self-Security) pour protéger les données
+      bancaires et comptables sensibles.
     </p>
     <!-- ecosysteme:selffarm-lite:debut — produit par scripts/check-ecosysteme.sh --ecrire -->
     <p class="muted">Version publiée : <strong>v0.4.9</strong> — ses modules, tels que son propre manifeste les décrit :</p>
     <div class="floor-modules">
-      <a class="mod" href="https://github.com/Pierroons/selffarm-lite/tree/main/modules/self_agri_book" target="_blank" rel="noopener">
+      <div class="mod">
         <span class="name">self-agri-book<span class="status live">disponible</span></span>
         <span class="role">Hub compta central — journal, bilan, compte de résultat, export FEC.</span>
-      </a>
-      <a class="mod" href="https://github.com/Pierroons/selffarm-lite/blob/main/webapp/routes/invoice.py" target="_blank" rel="noopener">
+      </div>
+      <div class="mod">
         <span class="name">self-invoice<span class="status live">disponible</span></span>
         <span class="role">Factures Factur-X pour trois régimes : franchise, micro-BA, réel.</span>
-      </a>
-      <a class="mod" href="https://github.com/Pierroons/selffarm-lite/tree/main/modules/self_pos" target="_blank" rel="noopener">
+      </div>
+      <div class="mod">
         <span class="name">self-pos<span class="status live">disponible</span></span>
         <span class="role">Caisse de marché sur PC et mobile hors ligne, à l&#x27;unité ou au poids, reportée au hub compta.</span>
-      </a>
-      <a class="mod" href="https://github.com/Pierroons/selffarm-lite/tree/main/modules/self_pa" target="_blank" rel="noopener">
+      </div>
+      <div class="mod">
         <span class="name">self-pa<span class="status live">disponible</span></span>
         <span class="role">Factures fournisseurs reçues par plateforme agréée, contrôlées, imputées après validation.</span>
-      </a>
-      <a class="mod" href="https://github.com/Pierroons/selffarm-lite/tree/main/modules/self_dnja" target="_blank" rel="noopener">
+      </div>
+      <div class="mod">
         <span class="name">self-dnja<span class="status live">disponible</span></span>
         <span class="role">Prévisionnel DNJA sur quatre ans et dossier PDF pour la CDOA.</span>
-      </a>
-      <a class="mod" href="https://github.com/Pierroons/selffarm-lite/tree/main/modules/self_aid" target="_blank" rel="noopener">
+      </div>
+      <div class="mod">
         <span class="name">self-aid<span class="status live">disponible</span></span>
         <span class="role">Catalogue des aides publiques, tiré de sources officielles.</span>
-      </a>
-      <a class="mod" href="https://github.com/Pierroons/selffarm-lite/tree/main/modules/self_banking" target="_blank" rel="noopener">
+      </div>
+      <div class="mod">
         <span class="name">self-banking<span class="status draft">en préparation</span></span>
         <span class="role">Lecture des relevés bancaires PDF, en vue du rapprochement.</span>
-      </a>
-      <a class="mod" href="https://github.com/Pierroons/selffarm-lite/tree/main/modules/self_culture" target="_blank" rel="noopener">
+      </div>
+      <div class="mod">
         <span class="name">self-culture<span class="status live">disponible</span></span>
         <span class="role">Parcellaire et cultures, cartographie IGN.</span>
-      </a>
-      <a class="mod" href="https://github.com/Pierroons/selffarm-lite/tree/main/modules/self_elevage" target="_blank" rel="noopener">
+      </div>
+      <div class="mod">
         <span class="name">self-elevage<span class="status live">disponible</span></span>
         <span class="role">Élevage : ponte, bandes et mouvements, lots d&#x27;œufs, aliment, registre d&#x27;élevage.</span>
-      </a>
-      <a class="mod" href="https://github.com/Pierroons/selffarm-lite/tree/main/modules/self_backup" target="_blank" rel="noopener">
+      </div>
+      <div class="mod">
         <span class="name">self-backup<span class="status live">disponible</span></span>
         <span class="role">Sauvegarde et restauration, 100 % locales.</span>
-      </a>
-      <a class="mod" href="https://github.com/Pierroons/selffarm-lite/tree/main/modules/self_factur_x_agri" target="_blank" rel="noopener">
+      </div>
+      <div class="mod">
         <span class="name">self-factur-x-agri<span class="status alpha">à fusionner dans self-invoice</span></span>
         <span class="role">TVA agricole et unités HAR/TNE pour Factur-X.</span>
-      </a>
+      </div>
     </div>
     <!-- ecosysteme:selffarm-lite:fin -->
     <div class="floor-cta">
-      <a class="btn btn-primary" href="https://farm.example.org">🌻 Essayer la démo</a>
+      <a class="btn btn-primary" href="https://farm.example.org"><span aria-hidden="true">🌻</span> Essayer la démo</a>
       <a class="btn" href="https://github.com/Pierroons/selffarm-lite" target="_blank" rel="noopener">Code sur GitHub</a>
     </div>
-    <p class="muted" style="margin-top: 1.2rem; font-size: 0.85rem;">
+    <p class="muted note">
       La démo utilise un JA fictif (Marie DUPONT, maraîchage bio + PPAM en Dordogne). Aucune donnée réelle.
     </p>
   </div>
@@ -737,42 +731,42 @@
     <span>↓ et la preuve qu'ils tiennent sous attaque ↓</span>
   </div>
   <div class="floor-card">
-    <h3>🎯 MySelf-Lab</h3>
-    <div class="sub">Le 2ème étage — la preuve par l'attaque</div>
+    <h2><span aria-hidden="true">🎯</span> MySelf-Lab</h2>
+    <div class="sub">Le 2e étage — la preuve par l'attaque</div>
     <p class="tagline">
       « Quand les piliers tiennent, on peut inviter le monde à les casser. »
     </p>
     <p>
-      <strong>MySelf-Lab</strong> est un <strong>forum de démonstration</strong> où les trois piliers
-      tournent ensemble en conditions réelles — et qui est <strong>volontairement exposé à l'attaque</strong>.
-      Inscription sans email (<a href="https://ctf.example.org/register.php" rel="noopener">SelfRecover</a>),
-      messages privés et profils chiffrés (<a href="https://ctf.example.org/security.php" rel="noopener">SelfDataGuard</a>),
-      réputation et modération anti-Sybil (<a href="https://ctf.example.org/moderation.php" rel="noopener">SelfModerate</a>). Un <strong>simulateur d'attaque</strong> intégré
+      <strong>MySelf-Lab</strong> est un <strong>forum de démonstration</strong> où deux piliers, Bi-Self
+      et Self-Security, tournent ensemble en conditions réelles — et qui est <strong>volontairement exposé à l'attaque</strong>.
+      Inscription sans email (<a href="https://ctf.example.org/register.php">SelfRecover</a>),
+      messages privés et profils chiffrés (<a href="https://ctf.example.org/security.php">SelfDataGuard</a>),
+      réputation et modération anti-Sybil (<a href="https://ctf.example.org/moderation.php">SelfModerate</a>). Un <strong>simulateur d'attaque</strong> intégré
       montre, en direct, ce que l'écosystème protège.
     </p>
     <p class="muted">
-      La promesse : <strong>attaquez-le, vos données survivent.</strong> Un mémo personnel chiffré de
+      La promesse : <strong>attaque-le, tes données survivent.</strong> Un mémo personnel chiffré de
       bout en bout reste illisible même pour l'administrateur — c'est le défi posé à toute red team.
     </p>
     <div class="floor-modules">
-      <a class="mod" href="https://ctf.example.org/" rel="noopener">
+      <a class="mod" href="https://ctf.example.org/">
         <span class="name">Forum de démo<span class="status live">live</span></span>
         <span class="role">SelfRecover + SelfDataGuard + SelfModerate en action.</span>
       </a>
-      <a class="mod" href="https://ctf.example.org/attacks.php" rel="noopener">
+      <a class="mod" href="https://ctf.example.org/attacks.php">
         <span class="name">Attack Simulator<span class="status live">live</span></span>
         <span class="role">4 attaques rejouées en direct sur base isolée — ce qui tient, et pourquoi.</span>
       </a>
-      <a class="mod" href="https://ctf.example.org/redteam.php" rel="noopener">
+      <a class="mod" href="https://ctf.example.org/redteam.php">
         <span class="name">Règles red team<span class="status live">ouvert</span></span>
         <span class="role">Périmètre, objectifs (mappés MITRE ATT&amp;CK), safe harbor, hall of fame.</span>
       </a>
     </div>
     <div class="floor-cta">
-      <a class="btn btn-primary" href="https://ctf.example.org">🎯 Visiter la démo</a>
-      <a class="btn" href="https://ctf.example.org/redteam.php">🛡️ Tester la sécurité</a>
+      <a class="btn btn-primary" href="https://ctf.example.org"><span aria-hidden="true">🎯</span> Visiter la démo</a>
+      <a class="btn" href="https://ctf.example.org/redteam.php"><span aria-hidden="true">🛡️</span> Tester la sécurité</a>
     </div>
-    <p class="muted" style="margin-top: 1.2rem; font-size: 0.85rem;">
+    <p class="muted note">
       Forum de démonstration à contenu fictif. Aucune donnée réelle.
     </p>
   </div>
@@ -788,7 +782,7 @@
       <strong>Ce projet n'a pas été écrit seul.</strong> Chaque module, chaque
       ligne, chaque whitepaper est le fruit d'un coworking continu avec
       <strong>Claude</strong> (Anthropic) — la version employée est nommée dans
-      chaque commit, elle change plus vite que cette page. Le produit est une vraie
+      chaque commit depuis le 17 septembre 2026, elle change plus vite que cette page. Le produit est une vraie
       collaboration humain–IA : l'humain apporte l'entropie (le vécu, la
       direction, le bon sens pratique), la machine apporte la rigueur
       (la structure, la relecture, la cohérence technique).
@@ -801,16 +795,17 @@
   </div>
 </section>
 
-<section class="support" style="margin-top: 3rem; text-align: center;">
-  <p style="font-size: 0.95rem; color: var(--text-muted); max-width: 560px; margin: 0 auto 1rem;">
+<section class="support">
+  <h2 class="visually-hidden">Soutenir le projet</h2>
+  <p class="support-intro">
     MySelf est auto-hébergé sur matériel grand public, sans publicité, sans tracker,
     sans sponsor commercial. Si le projet te sert ou te parle, un geste direct
     aide à le maintenir en vie.
   </p>
   <a class="soutien" href="https://pay.vivawallet.com/pierroons" target="_blank" rel="noopener">
-    🙏 Soutenir le projet
+    <span aria-hidden="true">🙏</span> Soutenir le projet
   </a>
-  <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.7rem;">
+  <p class="support-note">
     Via Viva Wallet — CB, Apple Pay, Google Pay, PayPal.
   </p>
 </section>
