@@ -38,13 +38,16 @@
 #       l'amorçage qu'à la régénération suivante, avec le keyscript du même moment.
 #
 # Sortie : 0 si accepté, inscrit ou conforme ; 1 si refusé ou borne différente (avec la
-# raison) ; 2 si mal appelé ; 3 si la borne est absente (lecture seule).
+# raison) ; 2 si mal appelé ; 3 si la borne est absente (lecture seule) ; 4 si la borne
+# ne peut pas être jugée — ligne introuvable ou sans options, keyscript muet sur son format.
+# Un garde-fou distingue ainsi une borne fausse d'une borne qu'il n'a pas pu lire.
 set -uo pipefail
 
 # cryptsetup vit dans /sbin, absent du PATH d'un shell non interactif.
 export PATH="/usr/sbin:/sbin:$PATH"
 
 refus() { printf '❌ %s\n' "$*" >&2; exit 1; }
+injugeable() { printf '❔ %s\n' "$*" >&2; exit 4; }
 usage() {
   echo "usage : $0 inscrire <volume> <hex|raw> [répertoire-selfkeyguard]" >&2
   echo "        $0 verifier <volume-racine> <keyscript-à-poser> [répertoire-selfkeyguard]" >&2
@@ -63,7 +66,7 @@ uuid_de() {
 # Le dernier `--format` du fichier est celui de la ligne exécutée : les
 # commentaires le citent avant elle.
 format_de() {
-  grep -oE -- '--format (hex|raw)' "$1" | tail -n1 | cut -d' ' -f2
+  grep -oE -- '--format[= ](hex|raw)' "$1" | tail -n1 | sed -E 's/^--format[= ]//'
 }
 
 # 32 octets : la longueur par défaut de selfrecover_derive.c, que le keyscript ne
@@ -76,11 +79,13 @@ taille_de() {
   esac
 }
 
-# La valeur de keyfile-size= sur la ligne <nom>, vide si elle n'en porte pas.
-# Sortie 1 si la ligne manque, 4 si elle n'a pas de colonne d'options.
+# La valeur de keyfile-size= sur la ligne <nom>, vide si elle n'en porte pas ; la
+# dernière occurrence, comme la lit cryptsetup. Sortie 1 si la ligne manque, 4 si elle
+# n'a pas de colonne d'options. Le nom passe par l'environnement et non par -v, qui
+# décoderait un nom à échappement octal (`r\040c`) que crypttab garde tel quel.
 lire_borne() {
-  awk -v n="$1" '
-    $1 == n { trouve = 1
+  n="$1" awk '
+    $1 == ENVIRON["n"] { trouve = 1
               if (NF < 4) { sans = 1; exit }
               m = split($4, o, ",")
               for (i = 1; i <= m; i++) if (o[i] ~ /^keyfile-size=/) v = substr(o[i], 14)
@@ -156,16 +161,16 @@ case "$VERBE" in
     for a in "$@"; do
       case "$a" in --ecrire) ECRIRE=oui ;; *) CRYPTTAB="$a" ;; esac
     done
-    [ -r "$CRYPTTAB" ] || refus "crypttab illisible : $CRYPTTAB"
-    [ -r "$KEYSCRIPT" ] || refus "keyscript introuvable : $KEYSCRIPT"
+    [ -r "$CRYPTTAB" ] || injugeable "crypttab illisible : $CRYPTTAB"
+    [ -r "$KEYSCRIPT" ] || injugeable "keyscript introuvable : $KEYSCRIPT"
     FORMAT="$(format_de "$KEYSCRIPT")"
     TAILLE="$(taille_de "$FORMAT")" \
-      || refus "le keyscript $KEYSCRIPT ne dit pas quel format il produit (aucun --format hex|raw)."
+      || injugeable "le keyscript $KEYSCRIPT ne dit pas quel format il produit (aucun --format hex|raw)."
     ACTUELLE="$(lire_borne "$NOM" "$CRYPTTAB")"
     case $? in
       0) ;;
-      4) refus "la ligne $NOM de $CRYPTTAB n'a pas de colonne d'options : keyscript= n'y est pas." ;;
-      *) refus "aucune ligne $NOM dans $CRYPTTAB." ;;
+      4) injugeable "la ligne $NOM de $CRYPTTAB n'a pas de colonne d'options : keyscript= n'y est pas." ;;
+      *) injugeable "aucune ligne $NOM dans $CRYPTTAB." ;;
     esac
 
     if [ "$ACTUELLE" = "$TAILLE" ]; then
@@ -185,18 +190,23 @@ case "$VERBE" in
     # Une copie datée d'abord, sous un nom à elle et propre à cet appel : install.sh
     # prend la sienne dans la même seconde, et deux appels rapprochés aussi ; un nom
     # partagé écraserait la crypttab d'avant les changements.
-    cp -p "$CRYPTTAB" "$CRYPTTAB.avant-borne.$(date +%s).$$" || refus "copie de $CRYPTTAB impossible."
+    SAUVEGARDE="$CRYPTTAB.avant-borne.$(date +%s).$$"
+    cp -p "$CRYPTTAB" "$SAUVEGARDE" || refus "copie de $CRYPTTAB impossible."
     NOUVEAU="$CRYPTTAB.borne.nouveau"
-    awk -v n="$NOM" -v t="$TAILLE" '
-      $1 == n && !fait {
-        if ($4 ~ /(^|,)keyfile-size=/) sub(/keyfile-size=[^, \t]*/, "keyfile-size=" t)
+    # Toutes les occurrences : cryptsetup lit la dernière, une seule corrigée laisserait
+    # l'autre décider.
+    n="$NOM" awk -v t="$TAILLE" '
+      $1 == ENVIRON["n"] && !fait {
+        if ($4 ~ /(^|,)keyfile-size=/) gsub(/keyfile-size=[^, \t]*/, "keyfile-size=" t)
         else sub(/[ \t]*$/, ",keyfile-size=" t)
         fait = 1 }
       { print }' "$CRYPTTAB" > "$NOUVEAU" || { rm -f "$NOUVEAU"; refus "écriture impossible à côté de $CRYPTTAB."; }
+    [ "$(awk 'END { print NR }' "$NOUVEAU")" = "$(awk 'END { print NR }' "$CRYPTTAB")" ] \
+      || { rm -f "$NOUVEAU"; refus "écriture incomplète de $NOUVEAU : $CRYPTTAB n'a pas été touchée."; }
     chmod --reference="$CRYPTTAB" "$NOUVEAU" 2>/dev/null || chmod 0644 "$NOUVEAU"
     mv "$NOUVEAU" "$CRYPTTAB" || refus "renommage impossible de $NOUVEAU."
     [ "$(lire_borne "$NOM" "$CRYPTTAB")" = "$TAILLE" ] \
-      || refus "$NOM : la borne relue après écriture n'est pas $TAILLE — vérifie $CRYPTTAB."
+      || refus "$NOM : la borne relue après écriture n'est pas $TAILLE — vérifie $CRYPTTAB ; la crypttab d'avant est $SAUVEGARDE."
     echo "✅ $NOM : keyfile-size ${ACTUELLE:-absente} → $TAILLE (clé $FORMAT). Prend effet à la prochaine régénération de l'initramfs."
     ;;
 

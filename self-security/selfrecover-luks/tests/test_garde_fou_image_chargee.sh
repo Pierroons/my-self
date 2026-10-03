@@ -199,7 +199,8 @@ cat > "$BANC/bin/unmkinitramfs" <<'STUB'
 # l'image : « microcode » donne early/ + main/, sinon tout est à la racine.
 # L'image porte aussi sa crypttab et le keyscript qu'elle désigne : hex sous
 # keyfile-size=64 par défaut ; « raw » donne un keyscript raw sous 32, « borne32 »
-# une borne 32, « sansborne » aucune borne.
+# une borne 32, « sansborne » aucune borne, « deuxlignes » une seconde ligne sous 32,
+# « sansligne » aucune ligne à keyscript.
 case "$1" in
   *microcode*) racine="$2/main"; mkdir -p "$2/early" ;;
   *)           racine="$2" ;;
@@ -220,14 +221,20 @@ case "$1" in
   *raw*)       borne=",keyfile-size=32" ;;
   *)           borne=",keyfile-size=64" ;;
 esac
-printf 'cryptroot UUID=banc none luks,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh%s\n' \
-  "$borne" > "$racine/cryptroot/crypttab"
+case "$1" in
+  *sansligne*)
+    printf 'cryptroot UUID=banc none luks\n' ;;
+  *deuxlignes*)
+    printf 'cryptroot UUID=banc none luks,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh%s\n' "$borne"
+    printf 'reprise UUID=banc2 none luks,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh,keyfile-size=32\n' ;;
+  *)
+    printf 'cryptroot UUID=banc none luks,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh%s\n' "$borne" ;;
+esac > "$racine/cryptroot/crypttab"
 STUB
 chmod 0755 "$BANC/bin/unmkinitramfs"
 
-# La longueur de clé de chaque format vient de format-slot.sh, posé par install.sh
-# dans le répertoire du module ; surchargeable pour le canari.
-cp "${FORMAT_SLOT:-$MODULE/format-slot.sh}" "$BANC/skg/format-slot.sh"
+# Le garde-fou lit format-slot.sh dans $SKG, où install.sh le pose.
+cp "$MODULE/format-slot.sh" "$BANC/skg/format-slot.sh"
 export BANC_KS_HEX="$MODULE/selfrecover-keyscript.sh"
 export BANC_KS_RAW="$BANC/keyscript-raw.sh"
 sed '$ s/--format hex/--format raw/' "$BANC_KS_HEX" > "$BANC_KS_RAW"
@@ -301,6 +308,20 @@ else
   printf '  ✅ %-52s %s\n' "… sans annoncer « complet »" "VERT"
 fi
 mv "$BANC/skg/format-slot.sh.retire" "$BANC/skg/format-slot.sh"
+
+# 18. Une seconde ligne à keyscript dans l'image, sous la borne raw : elle aussi
+#     tournera, elle aussi est jugée.
+GEN_DEUX="$BANC/boot/initrd.img-$VER.complete.deuxlignes"
+: > "$GEN_DEUX"
+verdict "seconde ligne de l'image sous keyfile-size=32" ROUGE "reprise" \
+  lancer "$GEN_DEUX"
+
+# 19. L'image ne porte plus la ligne : cryptsetup-initramfs l'a écartée (option
+#     invalide). Le volume ne s'ouvrira pas, et ce n'est pas un « non vérifié ».
+GEN_SANS_LIGNE="$BANC/boot/initrd.img-$VER.complete.sansligne"
+: > "$GEN_SANS_LIGNE"
+verdict "aucune ligne à keyscript dans l'image" ROUGE "AUCUNE ligne" \
+  lancer "$GEN_SANS_LIGNE"
 
 echo
 if [ "$echec" -eq 0 ]; then

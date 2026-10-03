@@ -27,7 +27,10 @@ CRYPTTAB="${CRYPTTAB:-/etc/crypttab}"
 FW="${FW:-/boot/firmware}"
 
 [ -f "$INITRD" ] || exit 0
-grep -q "keyscript=.*selfrecover" "$CRYPTTAB" 2>/dev/null || exit 0   # module non actif
+# Une ligne active, pas un commentaire : le controle de la crypttab embarquee
+# ci-dessous exige que l'image en porte une des qu'ici il y en a une.
+grep -q '^[[:space:]]*[^#[:space:]].*keyscript=[^,]*selfrecover' "$CRYPTTAB" 2>/dev/null \
+  || exit 0   # module non actif
 
 # --- QUELLE image l'amorceur charge-t-il vraiment ? ---
 #
@@ -135,14 +138,17 @@ fi
 # est reserve au premier.
 #
 # La borne keyfile-size se juge au meme endroit, et sur les memes copies : celles
-# de l'IMAGE. L'amorcage lit la crypttab que l'image embarque (cryptroot/crypttab),
-# pas /etc/crypttab, et cryptsetup y lit EXACTEMENT la borne — une borne raw sous
-# un keyscript hex tronque la cle. Comparer les fichiers du disque dirait vrai
-# pendant que l'image en service, ou celle qu'on vient de produire, dit autre chose.
+# de l'IMAGE PRODUITE. L'amorcage lit la crypttab que l'image embarque
+# (cryptroot/crypttab), pas /etc/crypttab, et cryptsetup y lit EXACTEMENT la borne
+# — une borne raw sous un keyscript hex tronque la cle. Comparer les fichiers du
+# disque dirait vrai pendant que l'image dit autre chose. L'image chargee par
+# l'amorceur (Raspberry Pi), elle, n'est inventoriee que pour ses pieces.
 SEL_ECART=""
 SEL_SAUTE=""
 BORNE_ECART=""
 BORNE_SAUTE=""
+NOMS_ECART=""
+CT_ECART=""""
 if ! command -v unmkinitramfs >/dev/null 2>&1; then
   SEL_SAUTE="unmkinitramfs absent (paquet initramfs-tools-bin)"
   BORNE_SAUTE="$SEL_SAUTE"
@@ -182,39 +188,54 @@ else
         [ "$A" = "$B" ] || SEL_ECART="oui"
       fi
 
-      # Le keyscript juge est celui que la crypttab de l'image designe : c'est
-      # lui qui tournera. format-slot.sh tient la longueur de cle de chaque format.
+      # Chaque ligne a keyscript SelfRecover de l'image, jugee avec le keyscript
+      # qu'elle designe : c'est lui qui tournera. format-slot.sh tient la longueur
+      # de cle de chaque format.
       CT_IMAGE=$(find "$TMP" -path '*/cryptroot/crypttab' -type f 2>/dev/null | head -1)
-      NOM_RACINE=""; KS_CHEMIN=""; KS_IMAGE=""
-      if [ -n "$CT_IMAGE" ]; then
-        NOM_RACINE=$(awk '$4 ~ /keyscript=[^,]*selfrecover/ { print $1; exit }' "$CT_IMAGE")
-        KS_CHEMIN=$(awk '$4 ~ /keyscript=[^,]*selfrecover/ {
-                       m = split($4, o, ",")
-                       for (i = 1; i <= m; i++) if (o[i] ~ /^keyscript=/) print substr(o[i], 11)
-                       exit }' "$CT_IMAGE")
-        [ -n "$KS_CHEMIN" ] && KS_IMAGE=$(find "$TMP" -path "*$KS_CHEMIN" -type f 2>/dev/null | head -1)
-      fi
-      if [ ! -r "$SKG/format-slot.sh" ]; then
+      LIGNES=""
+      [ -n "$CT_IMAGE" ] && LIGNES=$(awk '$1 !~ /^#/ && $4 ~ /keyscript=[^,]*selfrecover/ {
+                     k = ""; m = split($4, o, ",")
+                     for (i = 1; i <= m; i++) if (o[i] ~ /^keyscript=/) k = substr(o[i], 11)
+                     print $1, k }' "$CT_IMAGE")
+      if [ -z "$CT_IMAGE" ] && [ -z "$SEL_IMAGE" ]; then
+        # Ni crypttab ni sel : l'extraction n'a rien rendu de lisible.
+        BORNE_SAUTE="crypttab absente de l'image extraite"
+      elif [ -z "$LIGNES" ]; then
+        # /etc/crypttab en porte une : l'image qui n'en a aucune n'ouvrira pas ce
+        # volume. cryptsetup-initramfs ecarte en effet une entree dont une option est
+        # invalide — keyfile-size=0 ou vide, keyscript non executable.
+        CT_ECART="oui"
+      elif [ ! -r "$SKG/format-slot.sh" ]; then
         BORNE_SAUTE="$SKG/format-slot.sh absent"
-      elif [ -z "$NOM_RACINE" ]; then
-        BORNE_SAUTE="aucune ligne a keyscript SelfRecover dans la crypttab de l'image"
-      elif [ -z "$KS_IMAGE" ]; then
-        BORNE_SAUTE="keyscript $KS_CHEMIN absent de l'image extraite"
       else
-        _RC=0
-        BORNE_DIT=$(bash "$SKG/format-slot.sh" borne "$NOM_RACINE" "$KS_IMAGE" "$CT_IMAGE" 2>&1) || _RC=$?
-        case "$_RC" in
-          0|3) ;;
-          1) BORNE_ECART=$(printf '%s\n' "$BORNE_DIT" | head -n 1) ;;
-          *) BORNE_SAUTE="format-slot.sh a rendu $_RC" ;;
-        esac
+        _IFS=$IFS; IFS='
+'
+        for _l in $LIGNES; do
+          _nom=${_l%% *}; _ks=${_l#* }
+          KS_IMAGE=$(find "$TMP" -path "*$_ks" -type f 2>/dev/null | head -1)
+          if [ -z "$KS_IMAGE" ]; then
+            BORNE_SAUTE="keyscript $_ks absent de l'image extraite"
+            continue
+          fi
+          _RC=0
+          BORNE_DIT=$(bash "$SKG/format-slot.sh" borne "$_nom" "$KS_IMAGE" "$CT_IMAGE" 2>&1) || _RC=$?
+          case "$_RC" in
+            0|3) ;;
+            1) BORNE_ECART="$BORNE_ECART
+  $(printf '%s\n' "$BORNE_DIT" | head -n 1)"
+               NOMS_ECART="$NOMS_ECART $_nom" ;;
+            *) BORNE_SAUTE="$_nom : format-slot.sh a rendu $_RC" ;;
+          esac
+        done
+        IFS=$_IFS
       fi
     fi
     rm -rf "$TMP"
   fi
 fi
 
-if [ -n "$MANQUE" ] || [ -n "$SEL_ECART" ] || [ -n "$ALERTE_CHARGEE" ] || [ -n "$BORNE_ECART" ]; then
+if [ -n "$MANQUE" ] || [ -n "$SEL_ECART" ] || [ -n "$ALERTE_CHARGEE" ] || [ -n "$BORNE_ECART" ] \
+   || [ -n "$CT_ECART" ]; then
   cat >&2 <<MSG
 
   ############################################################
@@ -227,8 +248,12 @@ MSG
   [ -n "$MANQUE" ] && printf '\n  Pieces absentes :%s\n' "$MANQUE" >&2
   [ -n "$ALERTE_CHARGEE" ] && printf '\n  IMAGE D AMORCAGE : %s\n' "$ALERTE_CHARGEE" >&2
   [ -n "$SEL_ECART" ] && printf '\n  Le sel embarque DIFFERE de %s/selfrecover_salt.\n  La derivation ne reproduira pas la cle du slot.\n' "$SKG" >&2
-  [ -n "$BORNE_ECART" ] && printf '\n  BORNE keyfile-size de la crypttab embarquee :\n  %s\n  Corriger : bash %s/format-slot.sh borne %s %s/selfrecover-keyscript.sh %s --ecrire\n' \
-    "$BORNE_ECART" "$SKG" "$NOM_RACINE" "$SKG" "$CRYPTTAB" >&2
+  [ -n "$CT_ECART" ] && printf '\n  La crypttab embarquee ne porte AUCUNE ligne a keyscript SelfRecover.\n  cryptsetup-initramfs ecarte une entree a option invalide : relire la ligne\n  de %s (keyfile-size, keyscript executable).\n' "$CRYPTTAB" >&2
+  [ -n "$BORNE_ECART" ] && printf '\n  BORNE keyfile-size de la crypttab embarquee :%s\n' "$BORNE_ECART" >&2
+  for _nom in $NOMS_ECART; do
+    printf '  Corriger : bash %s/format-slot.sh borne %s %s/selfrecover-keyscript.sh %s --ecrire\n' \
+      "$SKG" "$_nom" "$SKG" "$CRYPTTAB" >&2
+  done
   cat >&2 <<MSG
 
   Le keyscript est actif dans /etc/crypttab : au prochain demarrage,

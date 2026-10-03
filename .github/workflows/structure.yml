@@ -635,8 +635,8 @@ jobs:
           # `N/N` suffirait à dire que les cas joués ont réussi, jamais qu'aucun
           # n'a disparu. Ajouter un cas au banc demande donc de le monter ici —
           # cette friction est le contrôle.
-          echo "$sortie" | grep -qE '^✅ 19/19 ' \
-            || { echo "::error::le banc du garde-fou n'a pas joué ses 19 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 21/21 ' \
+            || { echo "::error::le banc du garde-fou n'a pas joué ses 21 cas"; exit 1; }
 
       - name: Canari — le banc du garde-fou rougit quand le correctif disparaît
         run: |
@@ -672,12 +672,12 @@ jobs:
       - name: Canari — le garde-fou rougit sur une borne raw sous un keyscript hex
         run: |
           # L'image d'une machine migrée de raw à hex sans correction de la borne :
-          # cryptsetup tronquerait la clé au démarrage. On retire l'alerte de borne,
-          # et le banc doit rougir sur ce cas-là.
+          # cryptsetup tronquerait la clé au démarrage. On range une borne différente
+          # avec les bornes conformes, et le banc doit rougir sur ce cas-là.
           G=self-security/selfrecover-luks/initramfs-post-update-verifie-selfrecover
-          sed 's/^          1) BORNE_ECART=.*/          1) ;;/' "$G" > /tmp/garde-borne
+          sed 's/^            0|3) ;;/            0|1|3) ;;/' "$G" > /tmp/garde-borne
           chmod 0755 /tmp/garde-borne
-          grep -q '^          1) ;;' /tmp/garde-borne \
+          grep -q '^            0|1|3) ;;' /tmp/garde-borne \
             || { echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
           if sortie=$(GARDE=/tmp/garde-borne \
              bash self-security/selfrecover-luks/tests/test_garde_fou_image_chargee.sh 2>&1); then
@@ -763,8 +763,8 @@ jobs:
           # conteneurs LUKS de 32 Mo, ni root ni device-mapper.
           sortie=$(bash self-security/selfrecover-luks/tests/test_format_slot.sh)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^✅ 34/34 ' \
-            || { echo "::error::le banc du format de slot n'a pas joué ses 34 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 40/40 ' \
+            || { echo "::error::le banc du format de slot n'a pas joué ses 40 cas"; exit 1; }
 
       - name: Canari — le contrôle du format rougit quand il ne compare plus
         run: |

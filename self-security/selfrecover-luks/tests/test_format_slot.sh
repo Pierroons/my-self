@@ -131,7 +131,7 @@ verdict "inscrire un format inconnu" REFUSE "format inconnu" -- inscrire "$RACIN
 
 echo
 echo "▸ La borne keyfile-size — cryptsetup lit exactement ce qu'elle dit"
-# Mesuré le 23/08/2026 sur un poste équipé en raw, rejoué ici sur de vrais conteneurs.
+# La matrice de docs/cryptsetup-lecture-cle.md §6, rejouée sur de vrais conteneurs.
 # Une clé par conteneur : une ouverture ne peut pas venir du slot de l'autre format.
 head -c 32 /dev/urandom > "$BANC/raw.key"
 od -An -tx1 "$BANC/raw.key" | tr -d ' \n' > "$BANC/hex.key"
@@ -208,9 +208,27 @@ code_rendu "--ecrire la corrige" 0 "$T_RAW → $T_HEX" -- borne racine_crypt "$K
 constat "corrigée à sa place, sans doublon" \
   grep -q "^racine_crypt .* luks,keyfile-size=$T_HEX,discard,x-initrd.attach,keyscript=[^,]*\$" "$CT"
 code_rendu "borne du hex sous un keyscript raw : refus" 1 "tronquée" -- borne racine_crypt "$KS_RAW" "$CT"
-code_rendu "nom absent de la crypttab : refus" 1 "aucune ligne" -- borne inconnu "$KS_DEPOT" "$CT"
-code_rendu "ligne sans options : refus" 1 "pas de colonne" -- borne swap "$KS_DEPOT" "$CT" --ecrire
+code_rendu "nom absent de la crypttab : non jugeable" 4 "aucune ligne" -- borne inconnu "$KS_DEPOT" "$CT"
+code_rendu "ligne sans options : non jugeable" 4 "pas de colonne" -- borne swap "$KS_DEPOT" "$CT" --ecrire
+code_rendu "keyscript sans --format : non jugeable" 4 "ne dit pas" -- borne racine_crypt "$KS_SANS" "$CT"
 code_rendu "taille d'un keyscript sans --format : refus" 1 "ne dit pas" -- taille "$KS_SANS"
+
+# Un nom à échappement octal, que crypttab et l'image gardent tels quels.
+printf 'r\\040c UUID=00000000-0000-0000-0000-000000000003 none luks,keyscript=/k,keyfile-size=%s\n' "$T_HEX" >> "$CT"
+code_rendu "nom à échappement octal (r\\040c) : lu tel quel" 0 "conforme\|keyfile-size=$T_HEX" -- \
+  borne 'r\040c' "$KS_DEPOT" "$CT"
+
+# --format=hex : la même chose écrite autrement.
+KS_EGAL="$BANC/keyscript-egal.sh"
+sed '$ s/--format hex/--format=hex/' "$KS_DEPOT" > "$KS_EGAL"
+code_rendu "keyscript en --format=hex : taille $T_HEX" 0 "^$T_HEX\$" -- taille "$KS_EGAL"
+
+# Deux bornes sur la ligne : cryptsetup lit la dernière, --ecrire les corrige toutes.
+sed -i "s|^racine_crypt .*|racine_crypt UUID=00000000-0000-0000-0000-000000000001 none luks,keyfile-size=$T_HEX,keyscript=/etc/selfkeyguard/selfrecover-keyscript.sh,keyfile-size=$T_RAW|" "$CT"
+code_rendu "deux bornes, la dernière raw : refus" 1 "tronquée" -- borne racine_crypt "$KS_DEPOT" "$CT"
+code_rendu "--ecrire corrige les deux" 0 "→ $T_HEX" -- borne racine_crypt "$KS_DEPOT" "$CT" --ecrire
+constat "plus aucune borne raw sur la ligne" \
+  test "$(grep '^racine_crypt ' "$CT" | grep -o 'keyfile-size=[0-9]*' | sort -u)" = "keyfile-size=$T_HEX"
 
 echo
 if [ "$echec" -eq 0 ]; then

@@ -44,6 +44,7 @@ ok()   { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 confirm() { read -rp "  → $* [o/N] " r; [ "$r" = o ] || [ "$r" = O ] || die "Annulé."; }
+demander() { read -rp "  → $* [o/N] " r; [ "$r" = o ] || [ "$r" = O ]; }
 
 # ⚠️ Le keyscript et le hook initramfs lisent /etc/selfkeyguard en dur : ils
 # tournent à l'amorçage, sans cette variable. Un autre SKG poserait les pièces là
@@ -168,15 +169,20 @@ say "3. Keyscript + hook initramfs"
 # hors d'une vraie machine par tests/test_format_slot.sh.
 bash "$HERE/format-slot.sh" verifier "$ROOT_DEV" "$HERE/selfrecover-keyscript.sh" "$SKG" \
   || die "keyscript non posé : voir ci-dessus. Rien d'irréversible n'a été fait."
+# Le garde-fou et format-slot.sh AVANT le keyscript : toute image régénérée à partir
+# d'ici — par cette installation, ou par une mise à jour de noyau tombée entre deux
+# étapes — est jugée, borne keyfile-size comprise. post-update.d et non
+# kernel/postinst.d : update-initramfs y passe à CHAQUE régénération. Le répertoire
+# n'existe pas sur toute Debian.
+install -m 0755 "$HERE/format-slot.sh"             "$SKG/format-slot.sh"
+install -d -m 0755 /etc/initramfs/post-update.d
+install -m 0755 "$HERE/initramfs-post-update-verifie-selfrecover" /etc/initramfs/post-update.d/zz-verifie-selfrecover
 install -m 0755 "$HERE/selfrecover-keyscript.sh"   "$SKG/selfrecover-keyscript.sh"
 # Posé ICI, avant l'étape 6 qui décide de s'en servir, et avant l'étape 7 qui
 # régénère l'image : le hook ne peut embarquer que ce qui est déjà sur le disque.
 install -m 0755 "$HERE/selfrecover-secours.sh"     "$SKG/selfrecover-secours.sh"
 install -m 0755 "$HERE/initramfs-hook-selfrecover" /etc/initramfs-tools/hooks/selfrecover
-# Le garde-fou post-update (étape 8) le relit pour juger la borne keyfile-size de
-# chaque image produite.
-install -m 0755 "$HERE/format-slot.sh"             "$SKG/format-slot.sh"
-ok "keyscript + secours + hook (avec fix libgcc) + format-slot déployés"
+ok "garde-fou + format-slot + keyscript + secours + hook (avec fix libgcc) déployés"
 
 # ---------- 3 bis. Les deux secrets irréversibles sont-ils hors de cette machine ? ----------
 say "3 bis. Sauvegardes des secrets irréversibles — contrôle bloquant"
@@ -250,17 +256,29 @@ fi
 # tronquerait la clé. Mesure : docs/cryptsetup-lecture-cle.md §6.
 RC_BORNE=0
 bash "$HERE/format-slot.sh" borne "$ROOT_NAME" "$SKG/selfrecover-keyscript.sh" /etc/crypttab || RC_BORNE=$?
+# Une ligne de /etc/crypttab ne se modifie pas sans accord.
+TAILLE_CLE="$(bash "$HERE/format-slot.sh" taille "$SKG/selfrecover-keyscript.sh")"
+CORRIGER="bash '$HERE/format-slot.sh' borne $ROOT_NAME $SKG/selfrecover-keyscript.sh /etc/crypttab --ecrire"
+corriger_borne() { bash "$HERE/format-slot.sh" borne "$ROOT_NAME" "$SKG/selfrecover-keyscript.sh" /etc/crypttab --ecrire; }
 case "$RC_BORNE" in
   0) ;;
-  1|3)
-    # 3 : borne absente ; 1 : borne différente, ou ligne introuvable — format-slot.sh
-    # vient de dire lequel. Une ligne de /etc/crypttab ne se modifie pas sans accord.
-    TAILLE_CLE="$(bash "$HERE/format-slot.sh" taille "$SKG/selfrecover-keyscript.sh")"
-    confirm "Mettre keyfile-size=$TAILLE_CLE sur la ligne $ROOT_NAME (longueur de la clé du keyscript) ?"
-    bash "$HERE/format-slot.sh" borne "$ROOT_NAME" "$SKG/selfrecover-keyscript.sh" /etc/crypttab --ecrire \
-      || die "borne non posée sur $ROOT_NAME : voir ci-dessus."
+  3)
+    # Absente : la clé ouvre, il ne manque que la ceinture contre un \n final.
+    if demander "Ajouter keyfile-size=$TAILLE_CLE sur la ligne $ROOT_NAME (longueur de la clé du keyscript) ?"; then
+      corriger_borne || die "borne non posée sur $ROOT_NAME : voir ci-dessus."
+    else
+      warn "borne absente laissée sur $ROOT_NAME : la clé ouvre, sans la ceinture contre un \\n final."
+    fi
     ;;
-  *) die "borne de $ROOT_NAME illisible : voir ci-dessus." ;;
+  1)
+    # Différente : le keyscript est déjà posé, et la prochaine image tronquerait sa clé.
+    demander "Corriger keyfile-size en $TAILLE_CLE sur la ligne $ROOT_NAME (longueur de la clé du keyscript) ?" \
+      || die "Borne NON alignée sur $ROOT_NAME, keyscript déjà posé : la prochaine image n'ouvrira
+     pas la racine par la passphrase Recover, et le garde-fou refusera chaque image tant
+     que la borne reste fausse. Correction : $CORRIGER"
+    corriger_borne || die "borne non posée sur $ROOT_NAME : voir ci-dessus."
+    ;;
+  *) die "borne de $ROOT_NAME non jugeable : voir ci-dessus. Corrige la ligne, puis relance." ;;
 esac
 grep "^${ROOT_NAME}" /etc/crypttab | sed 's/^/    /'
 
@@ -478,12 +496,9 @@ fi
 
 # ---------- 8. Garde-fou de régénération ----------
 say "8. Garde-fou : contrôle des pièces de l'initramfs"
-# post-update.d et non kernel/postinst.d : update-initramfs y passe à CHAQUE
-# régénération, pas seulement lors d'une installation de noyau.
-# Posé avant l'étape 9 : la première image générée est déjà sous contrôle.
-install -d -m 0755 /etc/initramfs/post-update.d
-install -m 0755 "$HERE/initramfs-post-update-verifie-selfrecover" /etc/initramfs/post-update.d/zz-verifie-selfrecover
-ok "garde-fou -> /etc/initramfs/post-update.d/zz-verifie-selfrecover"
+[ -x /etc/initramfs/post-update.d/zz-verifie-selfrecover ] \
+  || die "garde-fou absent de /etc/initramfs/post-update.d : il est posé à l'étape 3."
+ok "garde-fou -> /etc/initramfs/post-update.d/zz-verifie-selfrecover (posé à l'étape 3)"
 
 # ---------- 9. Régénérer l'initramfs (avec filet) ----------
 say "9. Régénération de l'image d'amorçage"
