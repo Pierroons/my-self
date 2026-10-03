@@ -10,6 +10,33 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfDataGuard v0.6.0 — le profil Argon2id enregistré, un séquestre lié à son compte, un journal ancré — 3 octobre 2026
+
+Une relecture de l'architecture a relevé sept limites dans SelfDataGuard. Six sont fermées ici ;
+la septième, le rejeu d'une révision antérieure du coffre, est écrite comme une limite.
+
+- **Le profil Argon2id est enregistré** avec chaque coffre et avec la clé admin scellée
+  (`v2:…`). Changer les constantes ne ferme plus rien d'existant ; un coffre garde son profil
+  à chaque rescellement. Une base 0.5.x se migre en place, au profil d'avant.
+- **Le scellé administrateur du séquestre nomme son compte** : recopié dans la ligne d'un
+  autre compte, il est refusé. Un scellé d'avant s'ouvre encore, et se rescelle à la
+  prochaine écriture de séquestre de son titulaire.
+- **Le journal de la cérémonie s'ancre hors de la machine** : `verify-log` affiche sa tête
+  `seq:hmac`, et `--ancre` refuse ensuite un journal tronqué ou réécrit.
+- **La passphrase admin compte au moins 12 octets** au scellement ; **le nom de champ
+  `escrow` est réservé**.
+- **Des vecteurs Argon2id figés**, calculés par une seconde implémentation, tiennent les clés
+  des trois serrures.
+- Les textes disent que `userId` est comparé octet pour octet, et que `changePassword()` et
+  `changeMemorized()` sont aussi des chemins de rescellement.
+
+⚠️ Un retour à la 0.5.x garde l'accès aux coffres, mais l'administrateur n'ouvre plus un
+séquestre que la 0.6.0 a créé ou rescellé, et la 0.5.x ne descelle pas une clé admin
+générée par la 0.6.0 (mesuré).
+
+Bancs SelfDataGuard : 362 contrôles sur 11 suites, neuf canaris de plus en CI. Le détail est
+dans le CHANGELOG du module.
+
 ### La base du lab naît partageable entre le site et la console — 29 septembre 2026
 
 Le site et `selfrecover-su` écrivent la même base, sous deux identités. Créée sous le masque par

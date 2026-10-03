@@ -125,7 +125,7 @@
       "id": "selfdataguard",
       "nom": "SelfDataGuard",
       "dossier": "self-security/selfdataguard",
-      "version": "0.5.1",
+      "version": "0.6.0",
       "resume": {
         "fr": "chiffrement des données au repos côté application",
         "en": "application-layer encryption of data at rest"

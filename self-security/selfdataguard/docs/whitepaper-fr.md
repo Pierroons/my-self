@@ -3,7 +3,7 @@
 **Protection des données personnelles au repos côté application**
 *Dump ma base — et tu obtiens du bruit chiffré.*
 
-*Édition du 2 octobre 2026 — décrit SelfDataGuard v0.5.1*
+*Édition du 3 octobre 2026 — décrit SelfDataGuard v0.6.0*
 
 ---
 
@@ -79,7 +79,8 @@ Conséquences directes :
     wrap_phrase      ← XChaCha20-Poly1305-encrypt(data_master_key, key=phrase_key,   nonce=random_192)
 
 Étape 5 — Stockage en base (toutes les valeurs en clair listées ci-dessous) :
-    user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin (réservé, jamais écrit), wrap_phrase
+    user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin (réservé, jamais écrit), wrap_phrase,
+    kdf_opslimit, kdf_memlimit     # le profil Argon2id des enveloppes, enregistré depuis la 0.6.0
 
 Étape 6 — Chiffrement champ par champ des données personnelles :
     email_encrypted        ← XChaCha20-Poly1305-encrypt(email,    key=data_master_key, nonce=random_192)
@@ -321,6 +322,7 @@ La majorité des sites e-commerce devraient choisir **Hybrid**. Les services à 
 | Vol du papier de passphrase | La passphrase de niveau 1 d'un utilisateur | Le compte et les données de cet utilisateur, hors ligne aussi avec un dump, jusqu'à la première utilisation légitime de la passphrase, qui la remplace des deux côtés |
 | Fuite d'un ancien secret avant un niveau 3 | Une serrure de l'archive | Rien par le service : l'archive ne s'ouvre que depuis une session sur le coffre actuel. Avec un dump, l'archive s'ouvre hors ligne par cette serrure |
 | Coercition d'un admin | Force l'admin à fournir ses clés | Mode Lite : aucune clé permanente côté admin, donc rien. Mode Hybrid : champs opérationnels seulement. Mode Full : rien (l'admin n'a pas de clé) |
+| Écriture en base | Modifier, recopier ou remettre des lignes | Un scellé administrateur recopié dans la ligne d'un autre compte est refusé à l'ouverture (depuis la 0.6.0). Une ligne de coffre remise depuis une révision antérieure rouvre avec les secrets qu'elle portait, passphrase consommée comprise : limite, §8.1 |
 
 ### 6.2 Adversaires hors-périmètre
 
@@ -348,10 +350,12 @@ Pour qu'un déploiement SelfDataGuard apporte effectivement les garanties listé
 4. **Sessions courtes** : `data_master_key` purgée de la session après inactivité (15 min recommandé pour Hybrid, 5 min pour Full)
 5. **Pas de logging sensible** : `password_key`, `recov_key`, `phrase_key`, `data_master_key` ne doivent jamais apparaître dans les logs (même en niveau debug)
 6. **Audit des accès admin** : en mode Hybrid, chaque accès aux champs opérationnels par l'admin doit être logué (sans la donnée elle-même)
-7. **Mise à jour régulière** : suivre les recommandations Argon2id pour ajuster `m` et `t` à mesure que le hardware progresse (`p` est fixé à 1, cf. §5). Le profil n'est pas rangé dans un coffre vivant : le changer exige de re-sceller chaque coffre vivant d'abord, et la bibliothèque n'en fournit pas l'outil. Une archive enregistre le profil en vigueur à son archivage, et se rouvre avec lui
-8. **Re-scellement à chaque récupération** : `recover()` aux niveaux 1 et 2, **après** l'acceptation de SelfRecover et jamais avant ; le rattrapage après un niveau 2 par appareil et `openArchive()` freinés par l'intégrateur comme sa connexion ; `reEnroll()` au niveau 3
+7. **Mise à jour régulière** : suivre les recommandations Argon2id pour ajuster `m` et `t` à mesure que le hardware progresse (`p` est fixé à 1, cf. §5). Depuis la 0.6.0, le profil est enregistré avec chaque coffre, avec chaque archive et avec la clé admin scellée : changer les constantes ne ferme rien d'existant, un coffre garde son profil à chaque re-scellement, et un coffre neuf prend le profil courant. Relever le profil d'un coffre existant demande ses secrets ; la bibliothèque n'en fournit pas l'outil
+8. **Re-scellement à chaque changement de secret** : `recover()` aux niveaux 1 et 2, **après** l'acceptation de SelfRecover et jamais avant ; le rattrapage après un niveau 2 par appareil et `openArchive()` freinés par l'intégrateur comme sa connexion ; `reEnroll()` au niveau 3 ; `changePassword()` et `changeMemorized()` quand le service change le mot de passe ou renouvelle le mot mémorisé hors récupération
+9. **Un compte, une graphie** : `userId` est comparé octet pour octet — il entre dans l'AAD de chaque enveloppe et sert de clé en base. Un service dont les comptes ignorent la casse ramène le nom à celui du compte avant chaque appel, sinon un coffre créé sous une graphie échappe aux re-scellements appelés sous l'autre
+10. **Ancre du journal de séquestre** : noter hors de la machine la tête `seq:hmac` qu'affiche `verify-log`, et vérifier avec `--ancre`. Sans ancre, une troncature de la fin du journal passe la vérification
 
-Le non-respect d'une de ces règles dégrade significativement les garanties. La bibliothèque de référence applique la règle 1, et la règle 5 pour ses propres traces d'exception (`#[\SensitiveParameter]`) ; les autres relèvent de l'intégrateur et de la configuration de déploiement.
+Le non-respect d'une de ces règles dégrade significativement les garanties. La bibliothèque de référence applique la règle 1, la règle 5 pour ses propres traces d'exception (`#[\SensitiveParameter]`), et la règle 7 pour le profil qu'elle enregistre ; les autres relèvent de l'intégrateur et de la configuration de déploiement.
 
 ---
 
@@ -362,6 +366,7 @@ Le non-respect d'une de ces règles dégrade significativement les garanties. La
 - **Recherche full-text** sur les champs chiffrés : impossible sans techniques avancées (chiffrement homomorphe partiel, secure indexes type CipherSweet)
 - **Notifications transactionnelles asynchrones** : nécessitent l'admin_op_key (mode Hybrid) ou un re-design vers push (mode Full)
 - **Migration de schéma** : si on ajoute un champ chiffré à un compte existant, il faut le populer pendant une session active de l'utilisateur
+- **Rejeu d'une révision antérieure** : qui peut écrire en base peut remettre une ancienne ligne de coffre, avec ses anciennes enveloppes. Elle rouvre avec les secrets qu'elle portait, y compris une passphrase que SelfRecover a consommée depuis. La révision du coffre protège contre les écritures concurrentes, pas contre une ligne restaurée. Lier les enveloppes à la révision demanderait les trois secrets à chaque écriture, et un changement de mot de passe ne tient pas le mot mémorisé ; un MAC sur le jeu d'enveloppes ne résiste pas à qui restaure la ligne entière depuis une ancienne sauvegarde. La parade est hors du coffre : l'intégrité de la base et de ses sauvegardes
 - **Performance** : le surcoût de chaque champ chiffré n'est pas mesuré à ce jour. Pour les requêtes qui listent beaucoup de comptes, il se cumule : à évaluer cas par cas.
 
 ### 8.2 Roadmap
@@ -388,4 +393,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Édition du 2 octobre 2026, alignée sur SelfDataGuard v0.5.1 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.5.1 (319 contrôles, 10 suites, sous PHP 8.1, 8.2 et 8.4). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*
+*Édition du 3 octobre 2026, alignée sur SelfDataGuard v0.6.0 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.6.0 (362 contrôles, 11 suites, sous PHP 8.1, 8.2 et 8.4). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*
