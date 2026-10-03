@@ -20,8 +20,10 @@ final class Profile
     private const CHAMPS = ['bio', 'localisation', 'lien'];
     /** Limites par champ. */
     private const LIMITES = ['bio' => 500, 'localisation' => 500, 'lien' => 500];
-    /** Champs jamais exposés dans la vue publique d'un membre.
-     *  (Le mémo perso a migré vers le coffre E2E client — voir MemoVault.) */
+    /** Champs jamais exposés dans la vue publique d'un membre. Vide depuis que le
+     *  mémo perso a migré vers le coffre E2E client (voir MemoVault) : les trois
+     *  champs de CHAMPS sont publics par choix, et tout champ qu'on y ajoutera le
+     *  sera aussi tant qu'il n'est pas repris ici. */
     private const PRIVES = [];
 
     /** Retourne le profil déchiffré, ou des champs vides. */

@@ -6,7 +6,6 @@ require_once __DIR__ . '/../../lib/moderate.php';
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\Admin;
-use Pierroons\MySelfLab\Dispute;
 use Pierroons\MySelfLab\Moderate;
 
 require_method('POST');
