@@ -69,19 +69,27 @@ fi
 PIECES="selfkeyguard/selfrecover_derive_c:binaire de derivation
 selfkeyguard/selfrecover_salt:sel de deploiement
 selfkeyguard/selfrecover-keyscript:keyscript
-selfkeyguard/selfrecover-secours:script de secours (command= de dropbear)
 libargon2:libargon2
 libgcc_s:libgcc_s
 usr/sbin/cryptsetup:cryptsetup"
+# Le script de secours n'a de sens que comme command= de la cle dropbear : il n'est
+# exige que d'une image qui embarque dropbear, comme le hook ne l'embarque que s'il
+# est pose. Sans lui, cette cle ne rendrait plus rien et la machine serait
+# injoignable au demarrage.
+PIECE_SECOURS="selfkeyguard/selfrecover-secours:script de secours (command= de dropbear)"
 
 # Renseigne ABSENTES et TROUVEES pour l'image passee en argument. Une fonction
 # et non deux boucles : elle sert a l'image generee ET a l'image chargee, et deux
 # inventaires recopies divergeraient a la premiere piece ajoutee.
 inventorier() {
-  _img="$1"; ABSENTES=""; TROUVEES=""
+  _img="$1"; ABSENTES=""; TROUVEES=""; _liste=$PIECES
+  if lsinitramfs "$_img" 2>/dev/null | grep -q 'sbin/dropbear'; then
+    _liste="$_liste
+$PIECE_SECOURS"
+  fi
   _oldifs=$IFS; IFS='
 '
-  for _p in $PIECES; do
+  for _p in $_liste; do
     _motif="${_p%%:*}"; _nom="${_p#*:}"
     if lsinitramfs "$_img" 2>/dev/null | grep -q "$_motif"; then
       TROUVEES="$TROUVEES, $_nom"

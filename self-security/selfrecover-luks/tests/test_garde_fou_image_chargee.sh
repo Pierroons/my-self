@@ -72,7 +72,16 @@ mkdir -p "$BANC/bin"
 cat > "$BANC/bin/lsinitramfs" <<'STUB'
 #!/bin/sh
 case "$1" in
-  *sans-secours*)   # complète, sauf le script que dropbear lance au boot
+  *sans-secours*)   # dropbear embarqué, mais pas le script qu'il lance au boot
+    echo "usr/sbin/dropbear"
+    echo "etc/selfkeyguard/selfrecover_derive_c"
+    echo "etc/selfkeyguard/selfrecover_salt"
+    echo "etc/selfkeyguard/selfrecover-keyscript"
+    echo "usr/lib/x86_64-linux-gnu/libargon2.so.1"
+    echo "usr/lib/x86_64-linux-gnu/libgcc_s.so.1"
+    echo "usr/sbin/cryptsetup"
+    ;;
+  *poste*)          # poste au clavier : ni dropbear ni script de secours
     echo "etc/selfkeyguard/selfrecover_derive_c"
     echo "etc/selfkeyguard/selfrecover_salt"
     echo "etc/selfkeyguard/selfrecover-keyscript"
@@ -149,8 +158,17 @@ SANS="$BANC/boot/initrd.img-$VER.sans-secours"
 : > "$SANS"
 cp "$SANS" "$BANC/firmware/initrd.img-$VER.sans-secours"
 printf 'initramfs initrd.img-%s.sans-secours\n' "$VER" > "$BANC/firmware/config.txt"
-verdict "image sans le script de secours" ROUGE "script de secours" \
+verdict "dropbear embarqué sans le script de secours" ROUGE "script de secours" \
   lancer "$SANS"
+
+# 4 ter. Sans dropbear, le script de secours n'a rien à faire dans l'image : le hook
+#        ne l'embarque que s'il est posé, le garde-fou ne l'exige pas.
+POSTE="$BANC/boot/initrd.img-$VER.poste"
+: > "$POSTE"
+cp "$POSTE" "$BANC/firmware/initrd.img-$VER.poste"
+printf 'initramfs initrd.img-%s.poste\n' "$VER" > "$BANC/firmware/config.txt"
+verdict "poste sans dropbear ni script de secours" VERT "--" \
+  lancer "$POSTE"
 
 # 5. La copie vers la partition d'amorçage n'a pas eu lieu : image chargée
 #    complète mais plus ancienne que celle qui vient d'être générée.
