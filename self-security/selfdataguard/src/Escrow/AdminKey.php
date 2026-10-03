@@ -7,6 +7,7 @@ namespace Pierroons\SelfDataGuard\Escrow;
 use InvalidArgumentException;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Vault\UserVault;
 
 /**
  * Admin recovery keypair for the escrow compartment (whitepaper §4.2, revised).
@@ -47,8 +48,15 @@ final class AdminKey
      */
     public static function generate(#[\SensitiveParameter] string $passphrase): array
     {
-        if ($passphrase === '') {
-            throw new InvalidArgumentException('Admin passphrase must not be empty');
+        // This passphrase guards the escrow of every account: it gets at least the
+        // vault's floor. Applied when sealing only — unseal() must still open a key
+        // sealed under a shorter passphrase.
+        if (strlen($passphrase) < UserVault::PASSWORD_MIN_LEN) {
+            throw new InvalidArgumentException(sprintf(
+                'Admin passphrase must be at least %d bytes; got %d.',
+                UserVault::PASSWORD_MIN_LEN,
+                strlen($passphrase)
+            ));
         }
 
         $keypair   = sodium_crypto_box_keypair();

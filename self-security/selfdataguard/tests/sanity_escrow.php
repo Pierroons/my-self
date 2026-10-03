@@ -17,9 +17,11 @@ require __DIR__ . '/../src/autoload.php';
 
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Escrow\AdminKey;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+use Pierroons\SelfDataGuard\Vault\UserVault;
 
 $failures = 0;
 $passes = 0;
@@ -179,6 +181,25 @@ $leaked === []
     : ko('escrow plaintext leaked at rest', implode(', ', array_unique($leaked)));
 
 // -----------------------------------------------------------------------------
+
+section('The admin passphrase has a floor when sealing, not when unsealing');
+
+try {
+    SelfDataGuard::generateAdminRecoveryKey(str_repeat('a', UserVault::PASSWORD_MIN_LEN - 1));
+    ko('an admin key was sealed under a passphrase below the floor');
+} catch (InvalidArgumentException) {
+    ok('sealing under a passphrase below the floor is refused');
+}
+// A key sealed before the floor existed, under a short passphrase, still opens.
+$court = 'court';
+$selCourt = Primitives::randomBytes(Primitives::SALT_LEN);
+$cleCourt = Primitives::deriveFromPassword($court, $selCourt);
+$skCourt = sodium_crypto_box_secretkey(sodium_crypto_box_keypair());
+$scelleCourt = base64_encode($selCourt) . ':'
+    . Primitives::encrypt($skCourt, $cleCourt, aad: AdminKey::SEAL_AAD)->toBase64();
+AdminKey::unseal($scelleCourt, $court) === $skCourt
+    ? ok('a key sealed earlier under a short passphrase still unseals')
+    : ko('the floor locked out a key sealed earlier');
 
 section('Delete cascade removes escrow');
 

@@ -1303,6 +1303,8 @@ jobs:
           D=self-security/selfdataguard
           canari $D/src/Fields/FieldCrypter.php 'if ($fieldName === EscrowVault::WRAP_AAD_TAG) {' 'if (false) {' \
             $D/tests/sanity_facade.php 'a planted "escrow" row was decrypted'
+          canari $D/src/Escrow/AdminKey.php 'if (strlen($passphrase) < UserVault::PASSWORD_MIN_LEN) {' 'if (false) {' \
+            $D/tests/sanity_escrow.php 'an admin key was sealed under a passphrase below the floor'
 
       # La taille du sel de compte vit à quatre endroits qui ne peuvent pas se lire :
       # sr-derive.js, sr-kdf.js, Recovery::SEL_OCTETS, le CHECK du schéma duo.
