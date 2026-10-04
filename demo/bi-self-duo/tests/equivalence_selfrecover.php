@@ -15,6 +15,7 @@ declare(strict_types=1);
 require __DIR__ . '/../lib/StockageSelfRecover.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\Diceware\Wordlist;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 
@@ -70,6 +71,13 @@ verifier('le code est consommé', (int) $db->querySingle('SELECT COUNT(*) FROM r
 verifier('neuf codes restent', ($r2['codes_restants'] ?? -1) === 9);
 verifier('la passphrase est renouvelée aussi', isset($r2['passphrase']));
 verifier('un code ne resert pas', $recovery->parCode($codes[0], $MOT, null, $now)['ok'] === false);
+$apportee = implode(' ', array_slice(Wordlist::load('en'), 5000, Recovery::MOTS_PASSPHRASE));
+$r3 = $recovery->parCode($codes[1], $MOT, null, $now, nouvellePassphrase: $apportee);
+$r4 = $recovery->parCode($codes[2], $MOT, null, $now, nouvellePassphrase: $apportee);
+verifier('une passphrase apportée est rangée, puis refusée au tour suivant : l\'ancienne ne revient pas',
+    ($r3['ok'] ?? false) === true
+    && Hashing::verify($apportee, (string) $db->querySingle("SELECT pass_hash FROM accounts WHERE id = {$compteId}"))
+    && ($r4['error'] ?? '') === 'passphrase_deja_servie');
 
 echo "\n→ Le frein par compte du niveau 2, sur cette table-ci\n";
 // Cette démo ne trace pas l'origine : son `compterEchecsIp()` lève. Le frein par

@@ -576,8 +576,8 @@ jobs:
           # à distinguer « tout est vert » de « rien n'a tourné », et il vit
           # dehors parce que celui du banc se contourne depuis l'intérieur.
           passes=$(echo "$sortie" | sed -nE 's/^✅ ([0-9]+) contrôle\(s\) passé\(s\).*/\1/p')
-          if [ -z "$passes" ] || [ "$passes" -lt 140 ]; then
-            echo "::error::le banc n'a rendu que « ${passes:-aucun} » contrôle(s) — il en faut au moins 140"
+          if [ -z "$passes" ] || [ "$passes" -lt 150 ]; then
+            echo "::error::le banc n'a rendu que « ${passes:-aucun} » contrôle(s) — il en faut au moins 150"
             exit 1
           fi
 
