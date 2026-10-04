@@ -259,7 +259,14 @@ while read -r g; do
     du_depot=$(printf '%s\n' "$avertis" | grep -E '/(gabarit\.conf|snippets/[^ :]+):[0-9]+$' || true)
     if ! printf '%s' "$sortie" | grep -q "test is successful"; then
         echo "  ✗ ${g}"
-        printf '%s\n' "$sortie" | grep -E "emerg|error|warn" | head -3 | sed 's/^/       /'
+        # Un échec hors nginx ne porte aucun de ces mots : refus SSH, hôte muet,
+        # recette interrompue. Filtrer seulement sur eux rend alors un ✗ sans
+        # motif, qu'on lit comme un gabarit invalide — et on cherche le défaut
+        # dans le gabarit. D'où le repli sur la sortie brute.
+        detail=$(printf '%s\n' "$sortie" | grep -E "emerg|error|warn" | head -3)
+        [ -n "$detail" ] || detail=$(printf '%s\n' "$sortie" | grep -v '^[[:space:]]*$' | head -3)
+        [ -n "$detail" ] || detail="(sortie vide — l'hôte de test a-t-il répondu ?)"
+        printf '%s\n' "$detail" | sed 's/^/       /'
         echec=1
     elif [ -n "$du_depot" ]; then
         echo "  ✗ ${g} — accepté par nginx, mais avec un avertissement"
