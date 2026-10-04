@@ -4,7 +4,7 @@
 > *Un déverrouillage qui ne dépend d'aucun tiers — pas de cloud, pas de serveur de clés réseau.*
 > *Architecture, sécurité et déploiement*
 
-Écosystème MySelf — pilier Self-Security · Version 0.5.0 · 22 septembre 2026 · AGPL-3.0-or-later
+Écosystème MySelf — pilier Self-Security · Version 0.6.2 · 4 octobre 2026 · AGPL-3.0-or-later
 📥 Aussi disponible en DOCX (impression / diffusion) : [SelfRecover-LUKS_Whitepaper.docx](./SelfRecover-LUKS_Whitepaper.docx)
 
 ---
@@ -54,7 +54,7 @@ La dérivation emploie **Argon2id** (memory-hard ; paramètres `t=3`, `m=64 MiB`
 
 ## 5. Déverrouillage du volume racine au démarrage
 
-Le volume racine est référencé dans la table de chiffrement avec un keyscript. Au démarrage, ce keyscript demande la passphrase de récupération, la dérive (étiquette « disk ») et fournit la clé à l'outil de déverrouillage, encodée en hexadécimal. L'encodage n'ajoute aucun secret : il est retenu pour la portabilité, parce qu'une clé hexadécimale s'ouvre aussi bien lue comme fichier-clé que lue comme passphrase, là où une clé en octets bruts échoue sur le second chemin. Pour l'accès distant, un serveur SSH minimal est embarqué dans l'image d'amorçage : l'administrateur s'y connecte et saisit sa passphrase à distance.
+Le volume racine est référencé dans la table de chiffrement avec un keyscript. Au démarrage, ce keyscript demande la passphrase de récupération, la dérive (étiquette « disk ») et fournit la clé à l'outil de déverrouillage, encodée en hexadécimal. L'encodage n'ajoute aucun secret : il est retenu pour la portabilité, parce qu'une clé hexadécimale s'ouvre aussi bien lue comme fichier-clé que lue comme passphrase, là où une clé en octets bruts échoue sur le second chemin. Pour l'accès distant, un serveur SSH minimal est embarqué dans l'image d'amorçage : l'administrateur s'y connecte et saisit sa passphrase à distance. Sa clé peut être restreinte à un script de secours, qui propose la passphrase de récupération ou la passphrase native, sans ouvrir de shell.
 
 Deux points d'attention de déploiement, souvent sous-estimés :
 
@@ -83,6 +83,18 @@ Une fois la racine déverrouillée, le système monte automatiquement les volume
 ## 8. Filets anti-verrouillage
 
 Chaque volume conserve un slot « natif » (passphrase classique), indépendant du mécanisme de récupération. En cas de défaillance du keyscript, l'administrateur ouvre le volume manuellement via ce slot, puis poursuit l'amorçage. Des sauvegardes de l'image d'amorçage et de la configuration autorisent un retour arrière immédiat. Principe directeur : aucun point de défaillance unique du côté du déverrouillage.
+
+L'outillage garde aussi ce qui rendrait une machine muette au démarrage :
+
+- **Format du slot inscrit —** l'installation refuse de poser un keyscript d'un autre format que
+  le slot enrôlé (hexadécimal ou octets bruts), et refuse de remplacer un keyscript en place sans
+  ce marqueur ;
+- **Borne de lecture accordée à la clé —** la longueur que la table de chiffrement fait lire
+  correspond au format : 64 caractères en hexadécimal, 32 octets en brut ;
+- **Preuve par le dérivateur de l'amorçage —** quand il est présent, c'est le binaire que lira le
+  keyscript qui rouvre le slot enrôlé, avant que le keyscript ne soit branché ;
+- **Image vérifiée après chaque régénération —** keyscript, script de secours quand l'image
+  embarque le serveur SSH, borne de lecture.
 
 ## 9. Récupération après catastrophe
 
