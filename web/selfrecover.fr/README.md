@@ -34,6 +34,11 @@ Le seul état gardé dans le navigateur est l'interrupteur des coulisses (`sr_co
 
 ## Les coulisses
 
+Une console en bas de l'écran, sur toute la largeur. La page garde sous elle une marge de sa hauteur, et
+`scroll-padding` dit au navigateur que ce bas est occupé : un champ amené à l'écran se pose au-dessus. Elle se
+replie en une ligne qui montre la dernière étape ; sur téléphone, toucher un champ la replie (le clavier prend
+la place), et valider un formulaire la déplie.
+
 Chaque étape porte son étage : `nav>` le navigateur, `wire>` le réseau, `srv>` le serveur, `db>` la base,
 `vault>` le coffre SelfDataGuard. Une étape simulée porte la marque `maquette`. La phrase se lit sans jargon ;
 le détail technique s'ouvre au clic. La vue « dump volé » montre la ligne du compte telle qu'un voleur de la

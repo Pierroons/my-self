@@ -10,7 +10,8 @@
   var racine = document.documentElement;
   var reduit = window.matchMedia('(prefers-reduced-motion: reduce)');
   var bouton = document.querySelector('.jack');
-  var panneau, journal, dump, boutonDump, nonVus = 0;
+  var mobile = window.matchMedia('(max-width: 899px)');
+  var panneau, journal, dump, boutonDump, dernier, plier, nonVus = 0;
 
   function lire() { try { return window.localStorage.getItem(CLE) === '1'; } catch (e) { return false; } }
   function ecrire(v) { try { window.localStorage.setItem(CLE, v ? '1' : '0'); } catch (e) { /* stockage refusé : l'état ne survit pas à la page */ } }
@@ -46,6 +47,8 @@
     panneau.setAttribute('aria-label', 'Coulisses');
     var tete = el('div', 'coul-tete');
     tete.appendChild(el('span', 'direct', 'coulisses · direct'));
+    dernier = el('span', 'coul-dernier', 'coulisses · en attente');
+    tete.appendChild(dernier);
     var outils = el('div', 'coul-outils');
     boutonDump = el('button', null, 'dump volé');
     boutonDump.type = 'button';
@@ -57,6 +60,9 @@
     fermer.type = 'button';
     outils.appendChild(boutonDump); outils.appendChild(effacer); outils.appendChild(fermer);
     tete.appendChild(outils);
+    plier = el('button', 'coul-plier', '▾ replier');
+    plier.type = 'button';
+    tete.appendChild(plier);
     journal = el('ol', 'journal');
     journal.setAttribute('aria-live', 'polite');
     dump = el('div', 'dump');
@@ -69,6 +75,13 @@
       panneau.classList.toggle('vue-dump', actif);
     });
     effacer.addEventListener('click', function () { journal.textContent = ''; vide(); });
+    plier.addEventListener('click', function () { replier(!racine.classList.contains('coul-replie')); });
+    // Sur téléphone, le clavier prend la moitié de l'écran : toucher un champ replie la console.
+    // Valider un formulaire la déplie, pour montrer ce qui vient de se passer.
+    document.addEventListener('focusin', function (e) {
+      if (mobile.matches && ouvert() && !panneau.contains(e.target) && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) replier(true);
+    });
+    document.addEventListener('submit', function () { if (ouvert()) replier(false); });
     fermer.addEventListener('click', function () { basculer(false); bouton.focus(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && ouvert()) { basculer(false); bouton.focus(); } });
     vide();
@@ -78,6 +91,11 @@
   function vide() {
     if (journal.children.length) return;
     journal.appendChild(el('li', 'vide', 'En attente. Tape un mot dans l\'essai, ou inscris-toi sur le forum : chaque étape s\'affichera ici.'));
+  }
+
+  function replier(etat) {
+    racine.classList.toggle('coul-replie', etat);
+    plier.textContent = etat ? '▴ déplier' : '▾ replier';
   }
 
   function compter() {
@@ -111,6 +129,10 @@
     prefixe.title = NOM[couche] || '';
     tete.appendChild(prefixe);
     tete.appendChild(document.createTextNode(' ' + phrase));
+    dernier.textContent = (PREFIXE[couche] || couche + '>') + ' ' + phrase;
+    dernier.classList.remove('neuf');
+    void dernier.offsetWidth;
+    dernier.classList.add('neuf');
     if (opts && opts.maquette) tete.appendChild(el('span', 'maq', 'maquette'));
     if (details && details.length) {
       var dl = el('dl');

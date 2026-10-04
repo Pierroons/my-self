@@ -6,10 +6,10 @@
   --ink:#e8eaed; --muted:#9aa0a6; --dim:#717f8d;
   --glow:0 0 24px rgba(122,183,255,.35);
   --mono:ui-monospace,"Cascadia Code","JetBrains Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
-  --nav:58px; --coul:420px;
+  --nav:58px; --dock:38svh; --replie:50px;
 }
 *{box-sizing:border-box}
-html{scroll-behavior:smooth}
+html{scroll-behavior:smooth; scroll-padding-top:var(--nav)}
 body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--mono); line-height:1.65;
   -webkit-font-smoothing:antialiased; overflow-x:hidden}
 a{color:inherit; text-decoration:none}
@@ -84,7 +84,7 @@ h1 em, h2 em{font-style:normal; color:var(--accent); text-shadow:0 0 22px rgba(1
 /* ── SECTIONS ────────────────────────────────────────────────────────── */
 .below{position:relative; z-index:2; background:linear-gradient(180deg, transparent, var(--bg) 60px)}
 .below::before{content:""; position:absolute; inset:0; background:rgba(15,20,25,.90); z-index:-1}
-.wrap{max-width:1040px; margin:0 auto; padding:0 22px}
+.wrap{max-width:1040px; margin:0 auto; padding:0 22px; container-type:inline-size}
 section{padding:72px 0; scroll-margin-top:var(--nav)}
 .repere{font-size:12px; letter-spacing:.28em; text-transform:uppercase; color:var(--accent); margin:0 0 12px;
   text-shadow:0 0 14px rgba(122,183,255,.4)}
@@ -160,7 +160,10 @@ input[type=text]:focus, input[type=password]:focus{outline:none; border-color:va
 
 /* ── FORUM (maquette) ────────────────────────────────────────────────── */
 .forum{display:grid; grid-template-columns:200px minmax(0,1fr) 340px; gap:22px; align-items:start; margin-top:26px}
-@media(max-width:1020px){.forum{grid-template-columns:minmax(0,1fr)} .forum .compte{order:-1}}
+/* La grille suit la largeur de son conteneur, pas celle de l'écran. */
+@container (max-width:960px){.forum{grid-template-columns:minmax(0,1fr) 320px} .forum > nav{grid-column:1 / -1}
+  .cats{flex-direction:row; flex-wrap:wrap} .cats .n{float:none; margin-left:4px}}
+@container (max-width:700px){.forum{grid-template-columns:minmax(0,1fr)} .forum .compte{order:-1}}
 .cats{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; font-size:13.5px}
 .cats a{display:block; padding:7px 10px; border-left:2px solid transparent; color:var(--muted)}
 .cats a:hover, .cats a[aria-current="true"]{border-left-color:var(--teal); color:var(--ink); background:rgba(63,185,140,.06)}
@@ -191,19 +194,36 @@ input[type=text]:focus, input[type=password]:focus{outline:none; border-color:va
 .codes span{display:block}
 
 /* ── COULISSES ───────────────────────────────────────────────────────── */
-.coulisses{position:fixed; z-index:28; top:var(--nav); right:0; bottom:0; width:min(var(--coul),100%);
-  display:flex; flex-direction:column; background:rgba(5,9,13,.95); border-left:1px solid rgba(63,185,140,.45);
-  box-shadow:-12px 0 40px rgba(0,0,0,.5); transform:translateX(102%); transition:transform .28s ease}
+/* Une console en bas de l'écran, sur toute la largeur. La page garde sous elle la marge de sa hauteur :
+   rien n'est jamais caché, tout se fait défiler au-dessus. */
+.coulisses{position:fixed; z-index:28; left:0; right:0; bottom:0; height:var(--dock);
+  display:flex; flex-direction:column; background:rgba(5,9,13,.985); border-top:1px solid rgba(63,185,140,.5);
+  box-shadow:0 -12px 40px rgba(0,0,0,.5); transform:translateY(102%); transition:transform .28s ease, height .2s ease}
 .coulisses::after{content:""; position:absolute; inset:0; pointer-events:none;
   background:repeating-linear-gradient(0deg, rgba(95,212,208,.035) 0 1px, transparent 1px 3px)}
 html.coulisses-on .coulisses{transform:none}
-@media(min-width:1180px){html.coulisses-on body{padding-right:var(--coul)}}
-@media(max-width:720px){.coulisses{top:auto; left:0; width:auto; height:46svh; border-left:0;
-  border-top:1px solid rgba(63,185,140,.45); transform:translateY(102%)}}
-.coul-tete{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:12px 16px;
+html.coulisses-on body{padding-bottom:var(--dock)}
+/* Le navigateur doit savoir que la console occupe le bas : un champ amené à l'écran se pose au-dessus. */
+html.coulisses-on{scroll-padding-bottom:var(--dock)}
+html.coulisses-on.coul-replie{scroll-padding-bottom:var(--replie)}
+html.coulisses-on.coul-replie body{padding-bottom:var(--replie)}
+html.coul-replie .coulisses{height:var(--replie)}
+html.coul-replie .coulisses .journal, html.coul-replie .coulisses .dump,
+html.coul-replie .coulisses .coul-outils, html.coul-replie .coulisses .direct{display:none}
+html:not(.coul-replie) .coul-dernier{display:none}
+@media(max-width:899px){:root{--dock:46svh}}
+.coul-dernier{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-transform:none;
+  letter-spacing:0; font-size:12.5px; color:var(--ink)}
+.coul-dernier.neuf{animation:neuf .9s ease}
+@keyframes neuf{from{color:var(--teal); text-shadow:0 0 10px rgba(63,185,140,.8)}}
+.coul-plier{font-family:var(--mono); font-size:11px; color:var(--muted); background:none; border:1px solid var(--line2);
+  border-radius:6px; padding:4px 8px; cursor:pointer; white-space:nowrap}
+.coul-plier:hover{color:var(--ink); border-color:var(--teal)}
+@media(min-width:900px){.coulisses .journal, .coulisses .dump{max-width:1040px; width:100%; margin:0 auto}}
+.coul-tete{display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:12px 16px;
   border-bottom:1px solid var(--line); font-size:11.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--teal)}
 .coul-tete .direct::before{content:"●"; margin-right:6px; color:var(--teal); animation:curseur 1.4s steps(1) infinite}
-.coul-outils{display:flex; gap:6px}
+.coul-outils{display:flex; gap:6px; margin-left:auto}
 .coul-outils button{font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--muted); background:none;
   border:1px solid var(--line2); border-radius:6px; padding:4px 8px; cursor:pointer; white-space:nowrap}
 .coul-outils button:hover{color:var(--ink); border-color:var(--accent)}
@@ -243,4 +263,5 @@ footer{position:relative; z-index:2; background:var(--bg2); border-top:1px solid
   .btn, .btn:hover{transition:none; transform:none}
   .repere::after, .coul-tete .direct::before{animation:none}
   .coulisses{transition:none}
+  .coul-dernier.neuf{animation:none}
 }
