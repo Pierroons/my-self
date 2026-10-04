@@ -333,7 +333,7 @@ version qui le ferme ; le détail est dans le CHANGELOG racine.
 ### 9.5 Documentation et code qui divergent
 
 17. `bi-self/selfrecover/SECURITY.md` annonce 0.6.x comme version prise en charge ; le module est
-    en 0.8.0.
+    en 0.9.0.
 18. `bi-self/selfrecover/docs/architecture.md` décrit un signal passif au niveau 3 que le code n'a
     pas.
 19. Le whitepaper de SelfRecover-LUKS est en 0.5.0, alors que le module est en 0.6.2. La ligne de
@@ -364,12 +364,12 @@ version qui le ferme ; le détail est dans le CHANGELOG racine.
 | Invariant proposé | État actuel | Où |
 |---|---|---|
 | 1. Aucun privilège implicite | **non** : les bibliothèques partagent le processus de l'intégrateur | §1, §2 |
-| 2. Capacité limitée à un contexte et une ressource | **en partie** : contextes de dérivation et AAD par utilisateur, mais AAD sans révision et un nom de champ qui rejoint le séquestre | §3, constats 1 à 3 |
+| 2. Capacité limitée à un contexte et une ressource | **en partie** : contextes de dérivation et AAD par utilisateur, mais AAD sans révision (le nom de champ qui rejoignait le séquestre est fermé en 0.6.0) | §3, constats 1 à 3 |
 | 3. Les secrets restent chez leur propriétaire | **en partie** : la clé maîtresse ne vit que pendant la requête, mais dans la mémoire de l'intégrateur, et SelfDataGuard reçoit le mot de passe en clair pour dériver côté serveur | §6 (point 2) |
 | 4. Compromettre un module ne livre pas les secrets d'un autre | **non** dans un même processus ; **oui** entre LUKS et le web, qui n'ont aucun couplage cryptographique | §7 |
-| 5. Primitive remplaçable sans réécrire les applications | **en partie** : les empreintes, les blobs client et les archives portent leur profil ; le coffre vivant et la clé admin non | constat 4 |
+| 5. Primitive remplaçable sans réécrire les applications | **en partie** : les empreintes, les blobs client, les archives, le coffre vivant et la clé admin scellée portent leur profil (ces deux derniers depuis la 0.6.0) ; ce qu'un intégrateur dérive lui-même par `Primitives` non | constat 4 |
 | 6. Une erreur de politique ne devient pas une autorisation | **en partie** : refus en cas de doute dans LUKS et dans les écritures conditionnelles ; le verrou de litige est contrôlé par la base ; certaines expositions ne tiennent qu'à la configuration de l'instance | §6 (point 4) |
-| 7. Audit sans contenu sensible | **en partie** : les journaux chaînés n'écrivent pas de secret, mais une trace porte un nom de compte, et le journal du séquestre n'est pas ancré | constats 9, 12 |
+| 7. Audit sans contenu sensible | **en partie** : les journaux chaînés n'écrivent pas de secret, mais une trace porte un nom de compte ; le journal du séquestre s'ancre depuis la 0.6.0, par un geste de l'opérateur | constats 9, 12 |
 | 8. Aucune logique métier dans le noyau | sans objet : il n'y a pas de noyau | — |
 | 9. Chaque augmentation du TCB est justifiée | non formalisé | — |
 | 10. Une abstraction n'est pas une frontière | **non** : les frontières entre modules sont des API, dans un même processus | §1 |
