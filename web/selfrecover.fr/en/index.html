@@ -63,9 +63,8 @@
     <span class="wm" aria-hidden="true"><span class="self">Self</span><span class="rec">Rec</span><svg class="oarc" viewBox="0 0 100 100" fill="none"><path d="M50 8 A42 42 0 0 1 50 92" stroke="#7ab7ff" stroke-width="13" stroke-linecap="round"/><path d="M50 92 A42 42 0 0 1 50 8" stroke="#3f74b8" stroke-width="13" stroke-linecap="round"/></svg><span class="rec">ver</span></span>
   </div>
   <h1>Recover your account. <em>No email, no SMS.</em></h1>
-  <p class="sub">An open-source account recovery protocol. You keep a single word in your head: it never
-    leaves your browser, only a site-bound fingerprint reaches the server. No email provider and no
-    phone carrier in the loop.</p>
+  <p class="sub">An open-source account recovery protocol. You keep one word in your head: it never leaves
+    your browser, only a site-bound fingerprint reaches the server.</p>
   <div class="cta">
     <a class="btn btn-p" href="https://bi-self.example.org/recover">Try the demo →</a>
     <a class="btn btn-g" href="#how">How it works</a>
@@ -85,7 +84,6 @@
   <section id="how"><div class="wrap">
     <p class="eyebrow">How it works</p>
     <h2>What you know becomes your key.</h2>
-    <p class="lead">Three ideas, all readable in the code.</p>
     <div class="grid3">
       <div class="card">
         <div class="ic" aria-hidden="true">◐</div>
@@ -100,13 +98,13 @@
         <p>In hostname mode, the fingerprint depends on the address your browser reads: a copy of the page
           served elsewhere derives a fingerprint that is <em class="tl">worthless</em> here. The price:
           changing the address costs existing accounts their level&nbsp;2. A service can pick a fixed label
-          instead, which survives an address change but no longer protects against phishing.</p>
+          instead, which survives an address change but no longer protects against passive phishing.</p>
       </div>
       <div class="card">
         <div class="ic" aria-hidden="true">∅</div>
         <h3>What the server sees</h3>
         <p>Your word, never: it only receives its fingerprint. The passphrase and the password do pass
-          through it when they are used. In its database it keeps only
+          through it when they are used. Your secrets are stored only as
           <em class="tl">Argon2id hashes</em>.</p>
       </div>
     </div>
@@ -137,7 +135,8 @@
         <h3>The human</h3>
         <p>Lost everything? You present a bundle of facts, and a human administrator decides.
           <em class="tl">Never</em> a score or an automatic reset, and a refusal never touches the account.
-          If approved, you set your secrets again yourself.</p>
+          If approved, you set your password and your word again yourself; a new passphrase and new codes
+          are issued to you.</p>
         <span class="ghost" aria-hidden="true">L3</span>
       </div>
     </div>
@@ -148,7 +147,8 @@
       <p class="eyebrow">Try it</p>
       <h2>A demo is running online.</h2>
       <p class="lead">Sign up <b>without email</b>, lose your access on purpose, recover it at levels&nbsp;1
-        and&nbsp;2, then watch a fake login page fail. It is the library's real code, in a sandbox that
+        and&nbsp;2, then watch, in a simulation, a copy of the page served elsewhere produce a rejected
+        fingerprint. It is the library's real code, in a sandbox that
         expires after 30&nbsp;minutes.</p>
       <a class="btn btn-p" href="https://bi-self.example.org/recover">Open the demo →</a>
     </div>
@@ -157,11 +157,14 @@
   <section id="limits" class="limits"><div class="wrap">
     <p class="eyebrow">Limits</p>
     <h2>What SelfRecover does not cover.</h2>
-    <p class="lead">A security protocol is also judged by what it declares out of its reach.</p>
+    <p class="lead">These are the limits SelfRecover's threat model declares; its README details them.</p>
     <ul class="ticks">
       <li>Root access to the server bypasses the whole protocol.</li>
-      <li>A rigged page that captures your word as you type it stays out of reach, as for any protocol that
-        lives in the browser.</li>
+      <li>Like any protocol that lives in the browser, SelfRecover protects neither against a rigged page
+        that captures your word as you type it (active phishing), nor against a device compromised by a
+        keylogger.</li>
+      <li>A stolen passphrase opens the account once, and the thief receives the new one: nothing warns
+        you. You find out when your password stops working.</li>
       <li>Reusing your word on a malicious site hands it over: per-site derivation prevents cross-matching
         databases, not that leak. A word unique to each service remains safer.</li>
       <li>A weak word remains attackable: rate limits and the human level&nbsp;3 slow it down, the derivation
@@ -175,16 +178,16 @@
     <div class="os">
       <div>
         <p class="eyebrow">Open down to the code</p>
-        <h2>Nothing to trust. Everything to verify.</h2>
-        <p class="lead">SelfRecover is <b>free software</b>: self-host it, audit it, integrate it into your
+        <h2>The code is public. Check it.</h2>
+        <p class="lead">SelfRecover is <b>open source</b>: self-host it, audit it, integrate it into your
           service. A PHP library that needs only standard extensions, the browser deriver shipped with it,
-          and a ready-to-use database schema.</p>
+          and a database schema ready to use with SQLite.</p>
         <p class="lead">It installs with Composer from the repository; it is not yet published on Packagist
           or npm. The <a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/README.md">README</a>
           describes the protocol, its threat model and how to integrate it.</p>
         <div class="badges">
           <span class="pill"><b>AGPL-3.0</b>-or-later</span>
-          <span class="pill">Zero <b>third party</b></span>
+          <span class="pill">No <b>third party</b></span>
           <span class="pill"><b>MySelf</b> module</span>
         </div>
         <div class="cta cta-start">
@@ -196,9 +199,7 @@
         <h3>What it changes for you</h3>
         <ul class="ticks">
           <li>No more reset link sitting in an inbox.</li>
-          <li>No more phone number handed to the service.</li>
-          <li>In hostname mode, a copy of the site gets only a fingerprint that is useless on the real one.</li>
-          <li>If everything is lost, a human decides, not an algorithm.</li>
+          <li>No need to hand over your phone number to recover your account.</li>
         </ul>
       </div>
     </div>
@@ -214,19 +215,20 @@
       <div class="card">
         <div class="ic ic-teal" aria-hidden="true">▨</div>
         <h3>Encrypted at rest</h3>
-        <p>Fields handed to SelfDataGuard leave a dump <em class="tl">encrypted</em>: one of your secrets is
-          needed to reopen them. During an open session, the server holds the key in memory.</p>
+        <p>In a database dump, fields handed to SelfDataGuard stay <em class="tl">encrypted</em>: one of your
+          secrets is needed to reopen them, except an admin escrow if one is used. During an open session, the server holds the key in memory.</p>
       </div>
       <div class="card">
         <div class="ic ic-teal" aria-hidden="true">⧉</div>
         <h3>Several locks</h3>
-        <p>Your data key is sealed under each of your secrets: password, memorized word, passphrase. Each one
-          opens it alone: when the service seals them all, forgetting one does not cost you your data.</p>
+        <p>Your data key can be sealed under each of your secrets: password, memorized word, passphrase. Each
+          one opens it alone: if the service seals all of them, forgetting one does not cost you your data.
+          The flip side: with a database dump, a single stolen secret is enough to open it.</p>
       </div>
       <div class="card">
         <div class="ic ic-teal" aria-hidden="true">⚷</div>
         <h3>The same idea for your disk</h3>
-        <p>SelfRecover-LUKS unlocks a LUKS2 encrypted volume with a recovery passphrase unique to each
+        <p><a class="lnk" href="https://github.com/Pierroons/my-self/tree/main/self-security/selfrecover-luks">SelfRecover-LUKS</a> unlocks a LUKS2 encrypted volume with a recovery passphrase unique to each
           machine, separate from your word: neither one opens the other.</p>
       </div>
     </div>
@@ -241,7 +243,10 @@
       <h2>MySelf-Lab, the demonstration forum.</h2>
       <p class="lead">A forum whose accounts rest on SelfRecover, level&nbsp;3 and enrolled device included.
         Its content is fictional, and it is open to red teams: try to break it.</p>
-      <a class="btn btn-g" href="https://ctf.example.org">Enter the lab →</a>
+      <div class="cta">
+        <a class="btn btn-g" href="https://ctf.example.org">Enter the lab →</a>
+        <a class="btn btn-g" href="https://ctf.example.org/redteam.php">Red team rules →</a>
+      </div>
     </div>
   </div></section>
 </main>

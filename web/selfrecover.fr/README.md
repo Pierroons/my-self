@@ -34,7 +34,7 @@ dossier publierait donc des liens vers `example.org`.
 ## Ce que le texte affirme
 
 Chaque phrase sur le protocole s'appuie sur le README de SelfRecover et sur son modèle de menace
-(`bi-self/selfrecover/`). Quand la bibliothèque change, c'est là qu'on relit avant de toucher au
+(`bi-self/selfrecover/`). Quand la bibliothèque change, c'est là que tu relis avant de toucher au
 texte d'ici. La section « Limites » reprend ce que le modèle de menace déclare hors de sa portée.
 
 ## Version
