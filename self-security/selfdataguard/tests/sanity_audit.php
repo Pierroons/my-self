@@ -181,6 +181,46 @@ $childFailures === 0 && $r['ok'] && $r['count'] === $writers * $each
 
 // -----------------------------------------------------------------------------
 
+section('The anchor sees what the chain cannot: a cut tail, a deleted log');
+
+$anchored = tempnam(sys_get_temp_dir(), 'dg_audit_anchor_');
+$alog = new AuditLog($anchored, $secret);
+foreach (['un', 'deux', 'trois'] as $n) {
+    $alog->append(['action' => 'escrow-unlock', 'target' => $n]);
+}
+$head = $alog->verify()['head'];
+$head !== null && $head['seq'] === 2 ? ok('verify() returns the head of the chain') : ko('no head returned', json_encode($head));
+$anchor = $head['seq'] . ':' . $head['hmac'];
+
+$alog->verify($anchor)['ok'] ? ok('an intact log matches its anchor') : ko('intact log refused by its own anchor');
+
+// Cut the last entry: the remaining two still form a valid chain.
+$lines = file($anchored, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+file_put_contents($anchored, implode("\n", array_slice($lines, 0, 2)) . "\n");
+$r = $alog->verify();
+$r['ok'] && $r['count'] === 2
+    ? ok('without the anchor, a cut tail still verifies (the limit the anchor closes)')
+    : ko('the chain was expected to verify once cut', json_encode($r));
+$r = $alog->verify($anchor);
+!$r['ok'] && $r['reason'] === 'truncated'
+    ? ok('with the anchor, the cut tail is refused as truncated')
+    : ko('a truncated log passed its anchor', json_encode($r));
+
+unlink($anchored);
+$r = $alog->verify($anchor);
+!$r['ok'] && $r['reason'] === 'truncated'
+    ? ok('with the anchor, a deleted log is refused, not read as empty')
+    : ko('a deleted log passed its anchor', json_encode($r));
+
+try {
+    $alog->verify('2:not-a-hmac');
+    ko('a malformed anchor was accepted');
+} catch (InvalidArgumentException) {
+    ok('a malformed anchor is refused');
+}
+
+// -----------------------------------------------------------------------------
+
 echo "\n";
 echo "═══════════════════════════════════════════════════════════════\n";
 echo "  AuditLog Sanity — {$passes} passed, {$failures} failed\n";

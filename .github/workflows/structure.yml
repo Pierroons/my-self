@@ -128,6 +128,21 @@ jobs:
           cmp -s /tmp/SM.intact "$F" \
             || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
           echo "✓ le contrôle rougit sur un porteur décalé, et le fichier est restauré"
+          # Le texte alternatif d'un badge qui ne nomme pas son module, dans le README de ce module.
+          F=bi-self/selfrecover/README.md
+          cp "$F" /tmp/SR.intact
+          sed -i -E 's#^\[!\[Status: v[0-9]+\.[0-9]+\.[0-9]+\]#[![Status: v0.0.0]#' "$F"
+          grep -q '^\[!\[Status: v0.0.0\]' "$F" \
+            || { cp /tmp/SR.intact "$F"; echo "::error::la plantation du texte alternatif n'a pas pris"; exit 1; }
+          if bash scripts/check-versions.sh >/dev/null 2>&1; then
+            cp /tmp/SR.intact "$F"
+            echo "::error::le contrôle reste VERT avec un texte alternatif de badge décalé"
+            exit 1
+          fi
+          cp /tmp/SR.intact "$F"
+          cmp -s /tmp/SR.intact "$F" \
+            || { echo "::error::le README de SelfRecover n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le contrôle rougit sur le texte alternatif d'un badge, et le fichier est restauré"
           # Mode --tags : une version qu'aucun tag ne porte, avec un délai nul, doit rougir.
           cp modules.json /tmp/MJ.intact
           python3 -c "import json;d=json.load(open('modules.json'));[m.update(version='9.9.9') for m in d['modules'] if m['id']=='selfmoderate'];json.dump(d,open('modules.json','w'),ensure_ascii=False,indent=2)"
@@ -326,6 +341,30 @@ jobs:
             echo "$sortie" | grep -qE '^OK — 61/61$' \
               || { echo "::error::le banc de récupération n'a pas joué ses 61 cas sous $profil"; exit 1; }
           done
+
+      # La route du sel du niveau 2 est publique : elle doit rendre un sel pour tout
+      # code. Le canari la fait répondre « rien » à un code inconnu, l'oracle que la
+      # garde ferme ; le banc doit rougir sur ce cas-là.
+      - name: Garde-fou — la route du sel rend toujours un sel
+        run: |
+          sortie=$(php bi-self/selfrecover/tests/sanity_sel_derivation.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc de la route du sel a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 10/10$' \
+            || { echo "::error::le banc de la route du sel n'a pas joué ses 10 cas"; exit 1; }
+          F=bi-self/selfrecover/src/Recovery/Recovery.php
+          cp "$F" /tmp/recovery.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+          python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' \
+            "$F" "return \$vrai !== null && \$vrai !== '' ? \$vrai : \$faux;" "return \$vrai ?? '';" \
+            || { echo "::error::canari non planté"; exit 1; }
+          if canari=$(php bi-self/selfrecover/tests/sanity_sel_derivation.php 2>&1); then
+            cp /tmp/recovery.intact "$F"; echo "::error::le banc reste VERT quand la route répond rien"; exit 1
+          fi
+          cp /tmp/recovery.intact "$F"
+          echo "$canari" | grep -q "❌ .*un code inconnu reçoit un sel de la forme d'un vrai" \
+            || { echo "$canari"; echo "::error::rouge, mais pas sur le code inconnu"; exit 1; }
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+          echo "✓ le banc rougit quand la route du sel cesse de mentir sur un code inconnu"
 
       # Un frein qu'on n'a jamais fait céder ne se distingue pas d'un frein qui
       # n'est relié à rien : les deux laissent le banc vert. Ce canari mesure que
@@ -536,6 +575,24 @@ jobs:
 
       - name: Garde-fou — le scraper refuse une source tronquée
         run: bash self-right/selfact/tests/test_garde_catalogue.sh
+
+      - name: Garde-fou — servis, les outils de ligne de commande de SelfAct ne font rien
+        run: bash self-right/selfact/tests/test_garde_cli.sh
+
+      - name: Garde-fou — les copies du journal du panneau de veille
+        run: bash self-right/selfjustice/tests/test_admin_feed.sh
+
+      - name: Garde-fou — le stockage des retours a un plafond
+        run: php self-right/selfjustice/tests/test_quota_feedback.php
+
+      # L'en-tête Host est choisi par le client : une URL composée avec lui part
+      # dans des réponses mises en cache. SERVER_NAME, fixé par nginx, le remplace.
+      - name: Garde-fou — Self-Right ne compose aucune URL avec l'en-tête Host
+        run: |
+          if git grep -n 'HTTP_HOST' -- 'self-right/*.php' ':!self-right/*/tests/*'; then
+            echo "::error::HTTP_HOST lu par Self-Right"; exit 1
+          fi
+          echo "aucun HTTP_HOST dans Self-Right"
 
       # lxml à la version de l'instance : c'est son analyseur qui découpe les traités.
       - name: Garde-fou — un traité se découpe juste dans le Journal officiel
@@ -1206,6 +1263,32 @@ jobs:
             php "$t"
           done
 
+      # La démo publique de SelfDataGuard donne à chaque visiteur sa propre base. Les
+      # canaris : la base commune remise, une lecture qui crée une base, un cookie qui
+      # perd Secure par défaut, un quota par adresse levé — le banc doit rougir sur chacun.
+      - name: Garde-fou — la démo SelfDataGuard isole chaque visiteur
+        run: |
+          php demo/selfdataguard/tests/sanity_sessions.php
+          F=demo/selfdataguard/api/_bootstrap.php
+          canari() {  # canari <avant> <après> <ligne rouge attendue>
+            cp "$F" /tmp/boot.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$1" "$2" \
+              || { echo "::error::canari non planté"; exit 1; }
+            if sortie=$(php demo/selfdataguard/tests/sanity_sessions.php 2>&1); then
+              cp /tmp/boot.intact "$F"; echo "::error::le banc reste VERT sans le correctif"; exit 1
+            fi
+            cp /tmp/boot.intact "$F"
+            echo "$sortie" | grep -qF "$3" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $3 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ le banc rougit sur « $3 »"
+          }
+          canari "\$baseVisiteur = \$repertoireBases . '/' . \$idVisiteur . '.sqlite';" \
+            "\$baseVisiteur = \$repertoireBases . '/commune.sqlite';" 'le second visiteur voit le coffre du premier'
+          canari "new SqliteAdapter(\$baseExiste ? 'sqlite:' . DEMO_DB_PATH : 'sqlite::memory:')" \
+            "new SqliteAdapter('sqlite:' . DEMO_DB_PATH)" 'une lecture a créé une base'
+          canari "=== '1';" "!== '0';" 'attributs du cookie'
+          canari 'if (count($creations) >= DEMO_BASES_PAR_ADRESSE) {' 'if (false) {' 'quota par adresse'
+
       # SelfRecover et SelfDataGuard déclarent chacun leur minimum de mot de passe
       # et leur normalisation de la passphrase, sans dépendre l'un de l'autre : ce
       # banc les tient d'accord. Chaque canari désaccorde l'un des deux et exige le
@@ -1267,6 +1350,60 @@ jobs:
           [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
             || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
           echo "✓ la sonde rougit quand la passphrase n'est pas re-scellée"
+
+      # Chaque correctif de SelfDataGuard a son cas dans un banc. Chaque canari
+      # retire le correctif et exige que le banc rougisse sur ce cas-là.
+      - name: Canaris — les correctifs de SelfDataGuard rougissent quand on les retire
+        run: |
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans le correctif"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          canari $D/src/Fields/FieldCrypter.php 'if ($fieldName === EscrowVault::WRAP_AAD_TAG) {' 'if (false) {' \
+            $D/tests/sanity_facade.php 'a planted "escrow" row was decrypted'
+          canari $D/src/Escrow/AdminKey.php 'if (strlen($passphrase) < UserVault::PASSWORD_MIN_LEN) {' 'if (false) {' \
+            $D/tests/sanity_escrow.php 'an admin key was sealed under a passphrase below the floor'
+          canari $D/src/Escrow/AuditLog.php 'if ($anchorAt !== null) {' 'if (false) {' \
+            $D/tests/sanity_audit.php 'a truncated log passed its anchor'
+          canari $D/src/Vault/UserVault.php "public const HMAC_CONTEXT_SUFFIX = '/dataguard';" \
+            "public const HMAC_CONTEXT_SUFFIX = '/dataguarD';" \
+            $D/tests/sanity_vecteurs.php 'Memorized: key differs from the second implementation'
+          canari $D/src/Vault/UserVault.php '$opslimit ?? $record->kdfOpslimit,' '$opslimit ?? Primitives::ARGON2_OPSLIMIT,' \
+            $D/tests/sanity_vault.php 'a vault sealed under another profile no longer opens'
+          canari $D/src/Escrow/AdminKey.php '            $sealKey = Primitives::deriveFromPassword($passphrase, $salt, $ops, $mem);' \
+            '            $sealKey = Primitives::deriveFromPassword($passphrase, $salt);' \
+            $D/tests/sanity_escrow.php 'a v2 key sealed under another profile no longer unseals'
+          canari $D/src/SelfDataGuard.php 'if ($stored->kdfOpslimit !== $written->kdfOpslimit' 'if (false && $stored->kdfOpslimit !== $written->kdfOpslimit' \
+            $D/tests/sanity_facade.php 'a vault read back under another Argon2id profile was reported as stored'
+          canari $D/src/Escrow/EscrowVault.php '$head = self::adminHead($record->userId);' \
+            '$head = substr($plain, 0, strlen($plain) - Primitives::KEY_LEN);' \
+            $D/tests/sanity_escrow.php "alice's wrap_admin, moved into bob's record, opened as bob's"
+          canari $D/src/SelfDataGuard.php 'if ($record === null || EscrowVault::isAccountBound($record)) {' 'if (true) {' \
+            $D/tests/sanity_escrow.php 'rebindEscrowAdmin() did not re-seal the pre-0.6.0 wrap_admin, or it no longer opens'
+          canari $D/src/Vault/VaultRecord.php 'if ($kdfOpslimit === null || $kdfMemlimit === null) {' \
+            '$kdfOpslimit ??= Primitives::ARGON2_OPSLIMIT; $kdfMemlimit ??= Primitives::ARGON2_MEMLIMIT; if (false) {' \
+            $D/tests/sanity_facade.php 'a storage that never reads the profile back was trusted'
+          canari $D/src/SelfDataGuard.php 'unset($cipher[EscrowVault::WRAP_AAD_TAG]);' '' \
+            $D/tests/sanity_facade.php 'getFields() refused the whole account for one reserved row'
+          canari $D/bin/escrow-ceremony.php 'fwrite(STDERR, "❌ option inconnue : "' 'return; fwrite(STDERR, "❌ option inconnue : "' \
+            $D/tests/sanity_ceremony.php 'was accepted'
+
+      # Les vecteurs que rejoue sanity_vecteurs.php sont recalculés ici par une seconde
+      # implémentation (argon2-cffi, la construction écrite à la main) : sans ce
+      # contrôle, un fichier de vecteurs régénéré par la bibliothèque elle-même ne
+      # prouverait plus rien.
+      - name: Garde-fou — les vecteurs Argon2id de SelfDataGuard viennent d'une seconde implémentation
+        run: python3 self-security/selfdataguard/tests/vecteurs_argon2.py
 
       # La taille du sel de compte vit à quatre endroits qui ne peuvent pas se lire :
       # sr-derive.js, sr-kdf.js, Recovery::SEL_OCTETS, le CHECK du schéma duo.

@@ -1272,7 +1272,8 @@ if ($segments[0] === 'legi') {
                         'etat'    => $alt_row['etat'] ?? '',
                         'date_fin' => $alt_row['date_fin'] ?? null,
                         'apercu'  => $alt_row['apercu'] ?? '',
-                        'url'     => (getenv('SELFJUSTICE_BASE_URL') ?: 'https://' . ($_SERVER['HTTP_HOST'] ?? 'your-instance.example')) . "/api/legi/article/$ref?code=$cid",
+                        // SERVER_NAME, que nginx fixe, jamais l'en-tête Host, que le client choisit : cette URL part dans une réponse mise en cache.
+                        'url'     => (getenv('SELFJUSTICE_BASE_URL') ?: 'https://' . ($_SERVER['SERVER_NAME'] ?? 'your-instance.example')) . "/api/legi/article/$ref?code=$cid",
                     ];
                 }
                 json_response([

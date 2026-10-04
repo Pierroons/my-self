@@ -17,9 +17,12 @@ require __DIR__ . '/../src/autoload.php';
 
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Escrow\AdminKey;
+use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+use Pierroons\SelfDataGuard\Vault\UserVault;
 
 $failures = 0;
 $passes = 0;
@@ -72,7 +75,8 @@ $admin = SelfDataGuard::generateAdminRecoveryKey(ADMIN_PASS);
 isset($admin['publicKey'], $admin['sealedSecret']) ? ok('generate returns publicKey + sealedSecret') : ko('missing keys');
 strlen(base64_decode($admin['publicKey'], true) ?: '') === SODIUM_CRYPTO_BOX_PUBLICKEYBYTES
     ? ok('public key is a valid 32-byte box public key') : ko('public key wrong length');
-str_contains($admin['sealedSecret'], ':') ? ok('sealed secret has salt:blob layout') : ko('sealed secret malformed');
+str_starts_with($admin['sealedSecret'], sprintf('%s:%d:%d:', AdminKey::FORMAT_V2, Primitives::ARGON2_OPSLIMIT, Primitives::ARGON2_MEMLIMIT))
+    ? ok('sealed secret records its Argon2id profile (v2:ops:mem:salt:blob)') : ko('sealed secret malformed', $admin['sealedSecret']);
 
 $sk = SelfDataGuard::unsealAdminRecoveryKey($admin['sealedSecret'], ADMIN_PASS);
 strlen($sk) === SODIUM_CRYPTO_BOX_SECRETKEYBYTES ? ok('unseal returns 32-byte secret key') : ko('unseal wrong length');
@@ -179,6 +183,137 @@ $leaked === []
     : ko('escrow plaintext leaked at rest', implode(', ', array_unique($leaked)));
 
 // -----------------------------------------------------------------------------
+
+section('The admin passphrase has a floor when sealing, not when unsealing');
+
+try {
+    SelfDataGuard::generateAdminRecoveryKey(str_repeat('a', UserVault::PASSWORD_MIN_LEN - 1));
+    ko('an admin key was sealed under a passphrase below the floor');
+} catch (InvalidArgumentException) {
+    ok('sealing under a passphrase below the floor is refused');
+}
+// A key sealed in the pre-0.6.0 format under a short passphrase still opens.
+$court = 'court';
+$selCourt = Primitives::randomBytes(Primitives::SALT_LEN);
+$cleCourt = Primitives::deriveFromPassword($court, $selCourt, Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT);
+$skCourt = sodium_crypto_box_secretkey(sodium_crypto_box_keypair());
+$scelleCourt = base64_encode($selCourt) . ':'
+    . Primitives::encrypt($skCourt, $cleCourt, aad: AdminKey::SEAL_AAD)->toBase64();
+AdminKey::unseal($scelleCourt, $court) === $skCourt
+    ? ok('a key sealed earlier under a short passphrase still unseals')
+    : ko('the floor locked out a key sealed earlier');
+
+section('The sealed admin key carries its Argon2id profile');
+
+// The format before 0.6.0, "salt:blob", opens under the frozen legacy profile.
+$selAncien = Primitives::randomBytes(Primitives::SALT_LEN);
+$skAncien  = sodium_crypto_box_secretkey(sodium_crypto_box_keypair());
+$scelleAncien = base64_encode($selAncien) . ':' . Primitives::encrypt(
+    $skAncien,
+    Primitives::deriveFromPassword(ADMIN_PASS, $selAncien, Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT),
+    aad: AdminKey::SEAL_AAD
+)->toBase64();
+AdminKey::unseal($scelleAncien, ADMIN_PASS) === $skAncien
+    ? ok('a key sealed before 0.6.0 (salt:blob) still unseals')
+    : ko('the pre-0.6.0 format no longer unseals');
+
+// A key sealed under another profile opens by the profile it records.
+$OPS = 2;
+$MEM = 32 * 1024 * 1024;
+($OPS !== Primitives::ARGON2_OPSLIMIT || $MEM !== Primitives::ARGON2_MEMLIMIT)
+    ? ok('fixture: the other profile differs from the current constants')
+    : ko('fixture: the other profile equals the current constants — the next check proves nothing');
+$selAutre = Primitives::randomBytes(Primitives::SALT_LEN);
+$skAutre  = sodium_crypto_box_secretkey(sodium_crypto_box_keypair());
+$scelleAutre = implode(':', [AdminKey::FORMAT_V2, $OPS, $MEM, base64_encode($selAutre), Primitives::encrypt(
+    $skAutre, Primitives::deriveFromPassword(ADMIN_PASS, $selAutre, $OPS, $MEM), aad: AdminKey::SEAL_AAD
+)->toBase64()]);
+try {
+    AdminKey::unseal($scelleAutre, ADMIN_PASS) === $skAutre
+        ? ok('a v2 key sealed under another profile unseals by the profile it records')
+        : ko('the v2 key opened to another secret key');
+} catch (Throwable $e) {
+    ko('a v2 key sealed under another profile no longer unseals', $e->getMessage());
+}
+
+foreach ([
+    'v9:3:67108864:' . base64_encode($selAutre) . ':SDG2.x' => 'a newer format version',
+    'v2:trois:67108864:' . base64_encode($selAutre) . ':SDG2.x' => 'a v2 key with a non-numeric profile',
+    'v2:3:' . base64_encode($selAutre) . ':SDG2.x' => 'a v2 key missing a field',
+] as $scelle => $cas) {
+    try {
+        AdminKey::unseal($scelle, ADMIN_PASS);
+        ko("{$cas} was read");
+    } catch (InvalidArgumentException $e) {
+        ok("{$cas} is refused before any derivation");
+    }
+}
+try {
+    AdminKey::unseal('v3:' . base64_encode($selAutre), ADMIN_PASS);
+    ko('a two-field v3 key was read');
+} catch (InvalidArgumentException $e) {
+    str_contains($e->getMessage(), 'newer')
+        ? ok('a two-field newer version is named as such, not read as a salt')
+        : ko('a two-field newer version was read as a salt', $e->getMessage());
+}
+
+section('wrap_admin names its account');
+
+$skLien = SelfDataGuard::unsealAdminRecoveryKey($admin['sealedSecret'], ADMIN_PASS);
+$ev = new EscrowVault();
+EscrowVault::isAccountBound($storage->loadEscrow('alice'))
+    ? ok('a new escrow seals wrap_admin with its account')
+    : ko('a new escrow still seals the bare key');
+
+$bob = $dg->register('bob', 'motdepasse-bob-01', 'bob-memorized');
+$dg->setEscrowFields($bob, $admin['publicKey'], ['contact_secours' => 'bob-secours@example.org']);
+$recAlice = $storage->loadEscrow('alice');
+$recBob   = $storage->loadEscrow('bob');
+$echange  = new EscrowRecord(
+    userId: 'bob', wrapUser: $recBob->wrapUser, wrapAdmin: $recAlice->wrapAdmin,
+    createdAt: $recBob->createdAt, updatedAt: $recBob->updatedAt
+);
+try {
+    $ev->unlockAsAdmin($echange, $skLien, $admin['publicKey']);
+    ko("alice's wrap_admin, moved into bob's record, opened as bob's");
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'another account')
+        ? ok("alice's wrap_admin moved into bob's record is refused, named as such")
+        : ko('refused for another reason', $e->getMessage());
+}
+
+// An escrow sealed before 0.6.0: wrap_admin holds the bare key.
+$carol   = $dg->register('carol', 'motdepasse-carol-01', 'carol-memorized');
+$neuf    = $ev->create($carol, $admin['publicKey']);
+$ancien  = new EscrowRecord(
+    userId: 'carol', wrapUser: $neuf['record']->wrapUser,
+    wrapAdmin: sodium_crypto_box_seal($neuf['unlocked']->getEscrowKey(), base64_decode($admin['publicKey'])),
+    createdAt: $neuf['record']->createdAt, updatedAt: $neuf['record']->updatedAt
+);
+$storage->saveEscrow($ancien, $carol->vaultSalt);
+!EscrowVault::isAccountBound($storage->loadEscrow('carol'))
+    ? ok('fixture: a pre-0.6.0 wrap_admin is told apart by its length')
+    : ko('fixture: the pre-0.6.0 wrap_admin reads as bound');
+$ev->unlockAsAdmin($storage->loadEscrow('carol'), $skLien, $admin['publicKey'])->getEscrowKey() === $neuf['unlocked']->getEscrowKey()
+    ? ok('a pre-0.6.0 wrap_admin still opens')
+    : ko('a pre-0.6.0 wrap_admin opened to another key');
+
+$autreAdmin = SelfDataGuard::generateAdminRecoveryKey('une autre passphrase admin assez longue');
+$dg->setEscrowFields($carol, $autreAdmin['publicKey'], ['contact_secours' => 'carol-secours@example.org']);
+!EscrowVault::isAccountBound($storage->loadEscrow('carol'))
+    && $dg->getEscrowFieldsAsAdmin('carol', $skLien, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+    ? ok('an escrow write leaves an existing wrap_admin as it is, whatever public key it is given')
+    : ko('an escrow write re-sealed or lost the existing wrap_admin');
+$dg->rebindEscrowAdmin($carol, $admin['publicKey'])
+    && EscrowVault::isAccountBound($storage->loadEscrow('carol'))
+    && $dg->getEscrowFieldsAsAdmin('carol', $skLien, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+    ? ok('rebindEscrowAdmin() re-seals a pre-0.6.0 wrap_admin with its account, and the admin still reads it')
+    : ko('rebindEscrowAdmin() did not re-seal the pre-0.6.0 wrap_admin, or it no longer opens');
+!$dg->rebindEscrowAdmin($carol, $autreAdmin['publicKey'])
+    && $dg->getEscrowFieldsAsAdmin('carol', $skLien, $admin['publicKey']) === ['contact_secours' => 'carol-secours@example.org']
+    ? ok('rebindEscrowAdmin() leaves a bound wrap_admin alone')
+    : ko('rebindEscrowAdmin() re-sealed a wrap_admin that was already bound');
+sodium_memzero($skLien);
 
 section('Delete cascade removes escrow');
 

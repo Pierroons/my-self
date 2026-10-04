@@ -10,7 +10,9 @@ use Pierroons\SelfRecover\Diceware\Wordlist;
 use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\ProfilDeploiement;
+use LogicException;
 use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
+use Pierroons\SelfRecover\Storage\SelParCodeInterface;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -345,6 +347,46 @@ final class Recovery
     public static function estSelCompte(string $sel): bool
     {
         return strlen($sel) === 2 * self::SEL_OCTETS && ctype_xdigit($sel) && strtolower($sel) === $sel;
+    }
+
+    /**
+     * Le sel de dérivation à rendre au navigateur qui présente ce code.
+     *
+     * Au niveau 2, le navigateur dérive avant que le compte soit identifié : c'est
+     * le code qui l'identifie. La route qui sert ce sel est donc publique et sans
+     * authentification, et c'est à l'intégrateur de l'écrire ; cette méthode en
+     * est la garde.
+     *
+     * 🔑 **Toujours un sel.** Répondre pour un code valide et refuser un code
+     * inconnu permettrait d'éprouver les codes au prix d'une requête, sans payer
+     * un seul Argon2id. Pour un code inconnu, le sel est fabriqué : un HMAC du code
+     * sous le sel du déploiement, de la forme d'un vrai, stable si le code est
+     * retenté, et calculé dans tous les cas pour que les deux chemins coûtent
+     * pareil. La normalisation est celle de `parCode()` : sinon un code en
+     * majuscules recevrait un faux sel ici et serait accepté là-bas.
+     *
+     * ⚠️ La route publie ainsi l'empreinte `sel-absent:<chaîne>` de toute chaîne,
+     * sous le sel du déploiement. Un autre faux sel fabriqué sous la même clé
+     * prend un autre préfixe, sinon un code choisi le rejoue.
+     *
+     * @throws LogicException si le stockage n'implémente pas SelParCodeInterface
+     */
+    public function selDeDerivation(string $code): string
+    {
+        if (!$this->stockage instanceof SelParCodeInterface) {
+            throw new LogicException(
+                'selDeDerivation() : le stockage doit implémenter SelParCodeInterface, '
+                . 'qui retrouve le sel du compte par l\'index du code.'
+            );
+        }
+        $code = strtolower(trim($code));
+        $faux = substr(Etiquette::empreinte('sel-absent:' . $code, $this->selDeploiement), 0, 2 * self::SEL_OCTETS);
+        if (!self::estFormeCode($code)) {
+            return $faux;
+        }
+        $vrai = $this->stockage->selDuCompteParIndexCode($this->indexRecherche($code));
+
+        return $vrai !== null && $vrai !== '' ? $vrai : $faux;
     }
 
     /**

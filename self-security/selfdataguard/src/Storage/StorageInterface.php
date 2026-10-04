@@ -14,7 +14,8 @@ use Pierroons\SelfDataGuard\Vault\VaultRecord;
  *
  * Stored entities:
  *
- *   - vaults   : per-user envelope (salt + wraps), one live vault per user
+ *   - vaults   : per-user envelope (salt + wraps + Argon2id profile), one live
+ *                vault per user
  *   - fields   : per-field encrypted blob + optional blind index, many per user
  *   - escrow   : the consented, admin-recoverable compartment and its fields
  *   - archives : vaults set aside by a re-enrolment, still encrypted, any
@@ -26,7 +27,9 @@ use Pierroons\SelfDataGuard\Vault\VaultRecord;
 interface StorageInterface
 {
     /**
-     * Insert a brand-new vault. Throws if the userId already exists.
+     * Insert a brand-new vault, Argon2id profile included (kdfOpslimit,
+     * kdfMemlimit): its envelopes open under that profile only. Throws if the
+     * userId already exists.
      */
     public function saveVault(VaultRecord $record): void;
 

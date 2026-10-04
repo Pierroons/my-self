@@ -16,10 +16,10 @@
 
 set -uo pipefail
 
-INSTALL_DIR="${SELFJUSTICE_DIR:-/opt/selfjustice}"
 DB="${JUDILIBRE_DB:-${SELFJUSTICE_DB_DIR:-/var/lib/selfjustice/db}/judilibre_index.sqlite}"
 CACHE="${SELFJUSTICE_JADE_CACHE:-/var/lib/selfjustice/jade-cache}"
-LOG_FILE="${SELFJUSTICE_JADE_LOG:-$INSTALL_DIR/update_jade.log}"
+# Hors de /opt : le service n'écrit pas là où vit son code (`LogsDirectory=`).
+LOG_FILE="${SELFJUSTICE_JADE_LOG:-/var/log/selfjustice/update_jade.log}"
 # Cherché à côté de ce script : tools/ dans le dépôt, bin/ sur le serveur.
 SCRIPT="$(dirname "$(readlink -f "$0")")/build_jade_db.py"
 

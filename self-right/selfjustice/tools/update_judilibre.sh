@@ -15,7 +15,6 @@
 
 set -e
 
-INSTALL_DIR="${SELFJUSTICE_DIR:-/opt/selfjustice}"
 DB_DIR="${SELFJUSTICE_DB_DIR:-/var/lib/selfjustice/db}"
 
 export JUDILIBRE_DB="${JUDILIBRE_DB:-$DB_DIR/judilibre_index.sqlite}"
@@ -30,7 +29,8 @@ export JUDILIBRE_KEY_FILE="${JUDILIBRE_KEY_FILE:-/etc/selfjustice/judilibre.key}
 # dépôt le range dans tools/, l'installation serveur dans bin/, et coder l'un
 # des deux casserait l'autre.
 SCRIPT="$(dirname "$(readlink -f "$0")")/build_judilibre_index.py"
-LOG_FILE="${SELFJUSTICE_LOG:-$INSTALL_DIR/update_judilibre.log}"
+# Hors de /opt : le service n'écrit pas là où vit son code (`LogsDirectory=`).
+LOG_FILE="${SELFJUSTICE_LOG:-/var/log/selfjustice/update_judilibre.log}"
 SAUVEGARDE="$JUDILIBRE_DB.bak"
 
 # --- Alerte sur échec -------------------------------------------------------

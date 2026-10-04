@@ -56,6 +56,26 @@ a real account, and tells it without paying the two Argon2id a wrong word costs.
 a code is needed first — but a partly illegible code is completed at that price. The short-window brake
 carries no such cost: it returns the per-address wording and pays the same delay.
 
+**The L2 salt route answers every code, and it has to.** At L2 the browser derives before the account
+is known — the code is what identifies it — so it asks for the account's salt by code first, and that
+route is public and unauthenticated by necessity. Answering a valid code and refusing an unknown one
+would let anyone test codes for the price of a request, without paying a single Argon2id: the cost the
+whole level rests on would be bypassed. The route therefore always returns a salt — the account's for a
+known code, otherwise a fabricated one: deterministic, of the same length, stable when the code is
+retried, and keyed by a server secret, so that it cannot be recomputed from outside and told apart from a
+real one. Two details keep it closed. The code is normalised exactly as the recovery normalises it,
+or a code in upper case would get a fake salt here and be accepted there. And the lookup does not
+filter consumed codes, or the route would say "this account has just been recovered".
+
+The library has no routes, but since 0.9.0 it ships the guard: `Recovery::selDeDerivation()`, for a
+storage that implements `SelParCodeInterface` (`StockagePdo` does); the integrator writes the route
+around it. The bi-self-duo demonstration uses it, with a fake salt keyed by a value the visitor can
+recompute — there the guard is shown, not effective, and the file says so. The lab still carries its
+own copy (`demo/lab/lib/auth.php`, `Auth::selDeDerivation`). Measured in service on the lab
+on 2026-10-03: two valid codes of one account returned its salt, two unknown codes two different fake
+salts, with comparable response times. The guard is only as good as the routes around it: one that
+answers "name taken" at sign-up settles the question this one refuses to.
+
 What opposes enumeration at L3 is cost, not silence:
 
 - two brakes in `Escalade::ouvrir()` — per address and a service-wide ceiling — both applied

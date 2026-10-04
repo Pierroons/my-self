@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.7.0](https://img.shields.io/badge/status-v0.8.0-green.svg)](#statut)
+[![Status: v0.9.0](https://img.shields.io/badge/status-v0.9.0-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -27,13 +27,16 @@ SelfRecover protège l'**authentification**. SelfDataGuard protège les **donné
 
 ## Deux modes d'adoption — Full et Lite (v0.1.1)
 
-SelfRecover existe en deux variantes pour permettre une adoption progressive
-sans réécriture totale de la pile d'authentification existante.
+SelfRecover est conçu en deux variantes pour permettre une adoption progressive
+sans réécriture totale de la pile d'authentification existante. **Seul Full est implémenté
+dans la bibliothèque actuelle.** Lite a été publié en v0.1.1 sous forme de démonstration
+(tag signé `v0.1.1`) ; cette démonstration a été retirée le 18/08/2026, et la version
+actuelle ne contient aucun code Lite.
 
 | Mode | Canal email | Crypto ajoutée | Quand le choisir |
 |------|-------------|----------------|------------------|
 | **Full** | Aucun | Passphrase diceware EFF + HMAC par service | Projets greenfield, modèles de menace exigeants |
-| **Lite** 🆕 | Conservé (lien reset SMTP) | Un mot mémorisé par l'utilisateur, dérivé HMAC côté client, jamais envoyé en clair | Stack legacy qui veut un secret de secours qui ne circule jamais en clair, migration vers Full plus tard |
+| **Lite** (spécifié, non implémenté) | Conservé (lien reset SMTP) | Un mot mémorisé par l'utilisateur, dérivé HMAC côté client, jamais envoyé en clair | Stack legacy qui veut un secret de secours qui ne circule jamais en clair, migration vers Full plus tard |
 
 **Essayer :** voir [Essayer SelfRecover](#essayer-selfrecover). Le comparatif des méthodes (8 adversaires × 3 modèles) est une page autonome : `tools/comparison.html`.
 
@@ -153,6 +156,8 @@ serveur      → compte        = lookup(HMAC-SHA256(SERVER_SECRET, recovery_code
 ```
 
 Le réseau ne transporte jamais le mot de récupération. Le serveur ne le stocke jamais. Même une fuite complète de la base de données + du code source ne l'expose pas — seulement des hachages Argon2id de clés dérivées par site.
+
+> ⚠️ **La route du sel est publique, et elle ne doit pas devenir un oracle.** Au niveau 2, le navigateur dérive avant que le compte soit identifié : c'est le code qui l'identifie, il lui faut donc le sel d'abord, sans authentification. Si la route répondait pour un code valide et refusait un code inconnu, on testerait les codes au prix d'une requête, sans payer un seul Argon2id. Elle rend donc **toujours** un sel : celui du compte pour un code connu, sinon un faux, tiré d'un secret serveur. La bibliothèque n'expose aucune route, mais elle fournit la garde : ta route appelle `Recovery::selDeDerivation($code)`, avec un stockage qui implémente `SelParCodeInterface` (`StockagePdo` le fait). Le détail, et la façon dont les deux démonstrations du dépôt servent la route, sont dans le [modèle de menace](docs/threat-model.md), section « Bot-driven account enumeration ».
 
 ### Pourquoi HMAC-SHA256 (et pas PBKDF2 / Argon2)
 
@@ -287,9 +292,10 @@ Le mot de récupération brut ne quitte jamais le navigateur.
 
 ### Le stockage : un contrat, et une implémentation fournie
 
-La bibliothèque ne sait rien de ta base. Elle pose **41 questions** définies par
+La bibliothèque ne sait rien de ta base. Elle pose **une quarantaine de questions** définies par
 `src/Storage/StorageInterface.php` — « donne-moi l'empreinte du mot mémorisé du compte 42 »
-— sans savoir dans quelle table ni dans quelle colonne tu la ranges.
+— sans savoir dans quelle table ni dans quelle colonne tu la ranges. La route du sel en pose
+une de plus, dans `src/Storage/SelParCodeInterface.php`, que seul son appel exige.
 
 Tu as donc deux chemins, et le contrat existe pour que le premier reste possible :
 

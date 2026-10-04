@@ -40,7 +40,8 @@ import sqlite3
 import sys
 from datetime import date, datetime
 from pathlib import Path
-from urllib.request import Request, urlopen
+from urllib.parse import urlsplit, urlunsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 from urllib.error import HTTPError, URLError
 
 # Copies déposées à la main, servies quand la source publique est inatteignable.
@@ -98,7 +99,34 @@ TEMOINS = {
 # ⚠️ Pour les traités, la ressource `celex` de CELLAR ne rend que le sommaire. Le
 # numéro du Journal officiel qui les publie les porte tous, en une seule pièce :
 # chaque traité s'y découpe entre son titre et le titre suivant (`tranche`).
-CELLAR = "http://publications.europa.eu/resource/"
+CELLAR_HOTE = "publications.europa.eu"
+CELLAR = f"https://{CELLAR_HOTE}/resource/"
+
+
+class RedirectionRefusee(Exception):
+    """Une redirection qui ferait retomber le téléchargement en HTTP."""
+
+
+class RedirectionHttps(HTTPRedirectHandler):
+    """Garde le téléchargement en HTTPS d'un bout à l'autre.
+
+    🔑 CELLAR répond en HTTPS par une redirection 303 vers une adresse en HTTP,
+    alors que la pièce se sert aussi en HTTPS. Suivie telle quelle, elle livrait
+    le texte des traités en clair, modifiable par quiconque se tient sur le
+    chemin. Une redirection de l'Office des publications remonte en HTTPS ; une
+    redirection vers HTTP ailleurs est refusée.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        u = urlsplit(newurl)
+        if u.scheme == "http":
+            if u.hostname != CELLAR_HOTE:
+                raise RedirectionRefusee(newurl)
+            newurl = urlunsplit(("https",) + tuple(u)[1:])
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+OUVREUR_CELLAR = build_opener(RedirectionHttps)
 JO_TRAITES_2016 = "oj/JOC_2016_202_R"
 
 SOURCES = {
@@ -169,7 +197,7 @@ CELLAR_HEADERS = {
 }
 
 
-def fetch_url(url: str, timeout: int = 60, max_retries: int = 10,
+def fetch_url(url: str, timeout: int = 60, max_retries: int = 10, opener=None,
               headers: dict | None = None) -> bytes:
     """Télécharger une URL avec headers appropriés et retry sur HTTP 202.
 
@@ -182,7 +210,7 @@ def fetch_url(url: str, timeout: int = 60, max_retries: int = 10,
     for attempt in range(max_retries):
         req = Request(url, headers=headers or HTTP_HEADERS)
         try:
-            with urlopen(req, timeout=timeout) as resp:
+            with (opener.open if opener else urlopen)(req, timeout=timeout) as resp:
                 status = resp.status
                 data = resp.read()
                 if status == 200 and data:
@@ -630,7 +658,11 @@ def telecharger(source: str, info: dict) -> bytes:
     url = CELLAR + ressource
     print(f"[{source}] Téléchargement CELLAR : {url}")
     if url not in PIECES_CELLAR:
-        PIECES_CELLAR[url] = fetch_url(url, headers=CELLAR_HEADERS)
+        try:
+            PIECES_CELLAR[url] = fetch_url(url, headers=CELLAR_HEADERS, opener=OUVREUR_CELLAR)
+        except RedirectionRefusee as e:
+            print(f"  redirection vers HTTP refusée : {e}", file=sys.stderr)
+            PIECES_CELLAR[url] = b""
     piece = PIECES_CELLAR[url]
     if piece and info.get("tranche"):
         return tranche_jo(piece, *info["tranche"]).encode("utf-8")

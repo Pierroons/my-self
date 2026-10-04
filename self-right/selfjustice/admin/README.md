@@ -4,76 +4,47 @@ Endpoint privé de surveillance des accès `justice.my-self.fr`. Lecture seule, 
 
 ## Installation
 
-### 1. Déployer le code
+Le code (`admin/watch.php`) est posé avec l'arbre, comme le reste du module. Trois gestes restent propres à l'instance.
+
+### 1. Le répertoire d'état
 
 ```bash
-sudo cp admin/watch.php /var/www/selfjustice/admin/watch.php
-sudo chown www-data:www-data /var/www/selfjustice/admin/watch.php
-sudo chmod 644 /var/www/selfjustice/admin/watch.php
-
-sudo mkdir -p /var/lib/selfjustice/admin
-sudo chown deploy:www-data /var/lib/selfjustice/admin
-sudo chmod 775 /var/lib/selfjustice/admin
+sudo install -d -o www-data -g www-data -m 775 /var/lib/selfjustice/admin
 ```
 
-### 2. Générer et stocker le token
+### 2. Le jeton
+
+Écrit par `www-data` lui-même, en `0600` dès sa création :
 
 ```bash
-TOKEN=$(openssl rand -hex 16)
-echo "$TOKEN" | sudo tee /var/lib/selfjustice/admin/token.txt > /dev/null
-sudo chown www-data:www-data /var/lib/selfjustice/admin/token.txt
-sudo chmod 600 /var/lib/selfjustice/admin/token.txt
-echo "URL d'accès : https://justice.my-self.fr/w-$TOKEN/"
+sudo -u www-data sh -c 'umask 077; openssl rand -hex 16 > /var/lib/selfjustice/admin/token.txt'
+echo "https://justice.my-self.fr/w-$(sudo cat /var/lib/selfjustice/admin/token.txt)/"
 ```
 
-Le token doit être conservé en lieu sûr (gestionnaire de mots de passe, Proton Pass, etc.). Pour le régénérer, relancer cette commande — l'ancien token est invalidé.
+L'adresse se garde dans un gestionnaire de mots de passe.
 
-### 3. Configurer nginx
+### 3. Le bloc nginx
 
-Aucun gabarit versionné ne porte ce bloc : c'est le vhost servi qui fait autorité. S'il n'y est pas encore :
-
-```nginx
-limit_req_zone $binary_remote_addr zone=selfjustice_admin:10m rate=10r/m;
-
-server {
-    # ... existant ...
-
-    location ~ "^/w-([a-f0-9]{32})/?$" {
-        limit_req zone=selfjustice_admin burst=5 nodelay;
-        set $sj_token $1;
-        include fastcgi.conf;
-        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
-        fastcgi_param SCRIPT_FILENAME /var/www/selfjustice/admin/watch.php;
-        fastcgi_param SCRIPT_NAME /admin/watch.php;
-        fastcgi_param SJ_PROVIDED_TOKEN $sj_token;
-    }
-}
-```
-
-**Important** : ne pas utiliser `snippets/fastcgi-php.conf` qui contient un `try_files` basé sur l'URI — l'URI `/w-<token>/` n'existe pas comme fichier et la requête serait 404 avant d'atteindre PHP. Le vhost utilise `fastcgi.conf` directement avec un `SCRIPT_FILENAME` absolu.
-
-```bash
-sudo nginx -t && sudo systemctl reload nginx
-```
+Il vit dans le gabarit du vhost, `deploy/selfjustice/nginx.conf` : la zone `selfjustice_admin` et le bloc « Panneau de veille ». Le routage passe par `fastcgi.conf` et un `SCRIPT_FILENAME` absolu, pas par `snippets/fastcgi-php.conf` : son `try_files` cherche un fichier `/w-<jeton>/`, qui n'existe pas, et rend 404 avant d'atteindre PHP.
 
 ### 4. Alimenter les logs (cron)
 
-PHP-FPM a `open_basedir` qui ne couvre pas `/var/log/nginx/`. Le script `admin_feed.sh` duplique les logs dans `/var/lib/selfjustice/admin/access.log` (path autorisé). À installer via cron :
+PHP-FPM a `open_basedir` qui ne couvre pas `/var/log/nginx/`. Le script `self-right/selfjustice/tools/admin_feed.sh` recopie le journal dans `/var/lib/selfjustice/admin/`, sans les lignes qui portent le jeton. Une ligne dans `/etc/cron.d/` :
 
-```bash
-cp tools/admin_feed.sh /home/deploy/legi/admin_feed.sh
-chmod +x /home/deploy/legi/admin_feed.sh
-(crontab -l 2>/dev/null; echo "*/2 * * * * /home/deploy/legi/admin_feed.sh") | crontab -
+```
+*/2 * * * * www-data /opt/selfjustice/bin/admin_feed.sh
 ```
 
-Le dashboard est désormais à jour dans un délai max de 2 minutes.
+Sous `www-data`, jamais root : la copie s'écrit dans un répertoire que PHP peut modifier, et root y suivrait un lien symbolique vers n'importe quel fichier de la machine. Le script refuse de tourner sous root.
+
+Le dashboard est à jour dans un délai max de 2 minutes.
 
 ## Sécurité
 
 - Token stocké en `0600` chez `www-data` — seul PHP-FPM peut le lire.
 - `hash_equals()` pour la comparaison (timing-attack safe).
 - Rate limit 10 req/min, burst 5 — une attaque brute force sur le token (2^128 valeurs) est irréaliste.
-- CrowdSec (déjà en place sur le serveur) observe les 404 sur `/w-*` et peut bannir une IP qui teste trop de tokens.
+- Les requêtes vers `/w-…` n'entrent pas dans le journal d'accès (`access_log off`), et les copies que lit le panneau, en `0640`, n'en gardent aucune ligne. CrowdSec, qui lit ce journal, ne voit donc pas les essais de jeton : la limitation de débit est leur seule borne.
 - Page servie avec `X-Robots-Tag: noindex, nofollow` et `Cache-Control: no-store` — rien n'est indexé ni cachée.
 - Zéro log métier côté serveur : le dashboard est calculé à la volée à chaque requête, pas stocké.
 
@@ -92,12 +63,4 @@ Rafraîchi à chaque chargement de la page.
 
 ## Révocation / rotation du token
 
-Si le token est compromis, régénérer :
-
-```bash
-TOKEN=$(openssl rand -hex 16)
-echo "$TOKEN" | sudo tee /var/lib/selfjustice/admin/token.txt > /dev/null
-echo "Nouvelle URL : https://justice.my-self.fr/w-$TOKEN/"
-```
-
-L'ancien token est immédiatement invalidé (404 à la prochaine requête).
+Relancer les deux commandes du § 2. L'ancien jeton est invalidé immédiatement : 404 à la requête suivante.
