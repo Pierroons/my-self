@@ -10,6 +10,25 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### SelfRecover : l'accroche laisse le choix, et les textes rattrapent la 0.9.0 — 4 octobre 2026
+
+La relecture du site de SelfRecover et la cartographie de l'architecture ont relevé des textes que le
+code avait dépassés. Aucun comportement de la bibliothèque ne change.
+
+- **L'accroche** devient « Ton mot. Tes sites. » : un seul mot pour tous les sites ou un par site,
+  au choix de qui l'emploie, avec ce qu'un site malveillant pourrait garder.
+- **Les whitepapers passent en v1.2** et décrivent la 0.9.0. Le jeton JWT, le score du niveau 3,
+  les codes d'erreur `SR-…` et la fenêtre « c'était moi ? », que rien n'implémente, en sortent. La
+  route du sel, la suspension du niveau 2, le faisceau du niveau 3 et ce qu'exige l'intégration y
+  entrent. Le whitepaper de SelfRecover-LUKS passe en 0.6.2. Les trois sont désormais porteurs de
+  version : `scripts/check-versions.sh` rougit s'ils dérivent.
+- **L'aléa** : la bibliothèque tire la passphrase par `random_int`. Les dés expliquent la liste ;
+  ils ne sont pas un mode de la bibliothèque.
+- **Serveur compromis** : README, SECURITY et whitepapers disent qu'il sert le dériveur, donc qu'il
+  pourrait servir une autre page.
+- **Installation** : par un dépôt Composer de type `path`, depuis un clone ; `composer.json` suggère
+  `ext-pdo_sqlite` pour le stockage fourni. `SECURITY.md` ne porte plus de numéro de version.
+
 ### La démo SelfDataGuard donne à chaque visiteur sa propre base — 4 octobre 2026
 
 La démo publique n'avait qu'une base : chacun y voyait les coffres des autres, testait leurs index
