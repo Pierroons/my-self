@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SelfRecover — account recovery without email or SMS</title>
+<meta name="description" content="SelfRecover, an open-source account recovery protocol without email or SMS: one word kept in your head, a site-bound fingerprint, three recovery levels, the last one decided by a human.">
+<link rel="canonical" href="https://selfrecover.fr/en/">
+<link rel="alternate" hreflang="fr" href="https://selfrecover.fr/">
+<link rel="alternate" hreflang="en" href="https://selfrecover.fr/en/">
+<link rel="alternate" hreflang="x-default" href="https://selfrecover.fr/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://selfrecover.fr/en/">
+<meta property="og:title" content="SelfRecover — account recovery without email or SMS">
+<meta property="og:description" content="One word kept in your head, a site-bound fingerprint, three recovery levels. Open source, under AGPL-3.0-or-later.">
+<meta property="og:image" content="https://selfrecover.fr/en/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="SelfRecover — Recover your account. No email, no SMS.">
+<meta property="og:locale" content="en_GB">
+<meta property="og:locale:alternate" content="fr_FR">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/selfrecover.css">
+<script src="/selfrecover.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#contenu">Skip to content</a>
+<canvas id="rain" aria-hidden="true"></canvas>
+<div class="veil" aria-hidden="true"></div>
+
+<nav aria-label="Main navigation">
+  <a class="brand" href="#top">
+    <svg class="cle" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+      <path d="M53.2 15.2 A20 20 0 1 0 66.8 15.2" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+      <path d="M69.4 8.4 L60.6 12.4 L64.4 21.6 Z" fill="#7ab7ff" stroke="#7ab7ff" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M60 54 L60 104" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+      <path d="M60 84 h13" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/>
+      <path d="M60 97 h8" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/>
+    </svg>
+    <span><span class="self">Self</span><span class="rec">Recover</span></span>
+  </a>
+  <div class="navlinks">
+    <a href="#how">How it works</a>
+    <a href="#levels">3 levels</a>
+    <a href="#demo">Demo</a>
+    <a href="#limits">Limits</a>
+    <a href="#os">Code</a>
+    <a class="lang" href="/" hreflang="fr" lang="fr">Français</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="lock">
+    <svg class="cle" viewBox="0 0 120 120" fill="none" role="img" aria-label="SelfRecover">
+      <path d="M53.2 15.2 A20 20 0 1 0 66.8 15.2" stroke="#7ab7ff" stroke-width="8" stroke-linecap="round"/>
+      <path d="M69.4 8.4 L60.6 12.4 L64.4 21.6 Z" fill="#7ab7ff" stroke="#7ab7ff" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M60 54 L60 104" stroke="#7ab7ff" stroke-width="8" stroke-linecap="round"/>
+      <path d="M60 82 h14" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+      <path d="M60 93 h10" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+      <path d="M60 104 h6" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+    </svg>
+    <span class="wm" aria-hidden="true"><span class="self">Self</span><span class="rec">Rec</span><svg class="oarc" viewBox="0 0 100 100" fill="none"><path d="M50 8 A42 42 0 0 1 50 92" stroke="#7ab7ff" stroke-width="13" stroke-linecap="round"/><path d="M50 92 A42 42 0 0 1 50 8" stroke="#3f74b8" stroke-width="13" stroke-linecap="round"/></svg><span class="rec">ver</span></span>
+  </div>
+  <h1>Recover your account. <em>No email, no SMS.</em></h1>
+  <p class="sub">An open-source account recovery protocol. You keep a single word in your head: it never
+    leaves your browser, only a site-bound fingerprint reaches the server. No email provider and no
+    phone carrier in the loop.</p>
+  <div class="cta">
+    <a class="btn btn-p" href="https://bi-self.example.org/recover">Try the demo →</a>
+    <a class="btn btn-g" href="#how">How it works</a>
+  </div>
+  <div class="scroll" aria-hidden="true">↓ scroll</div>
+</header>
+
+<main class="below" id="contenu">
+  <section id="why"><div class="wrap">
+    <p class="eyebrow">The problem</p>
+    <h2>"Forgot your password?" → we email you a link.</h2>
+    <p class="lead">Except email is a <em class="tl">third party</em>. If your inbox goes down, gets hacked,
+      or the provider shuts down or bans you, you lose access to every account that depends on it. SMS has
+      the same flaw, with SIM swapping on top. SelfRecover takes email and phone out of recovery.</p>
+  </div></section>
+
+  <section id="how"><div class="wrap">
+    <p class="eyebrow">How it works</p>
+    <h2>What you know becomes your key.</h2>
+    <p class="lead">Three ideas, all readable in the code.</p>
+    <div class="grid3">
+      <div class="card">
+        <div class="ic" aria-hidden="true">◐</div>
+        <h3>Split knowledge</h3>
+        <p>The word alone proves nothing. Neither does the algorithm. Brought together in your browser, they
+          yield an HMAC-SHA256 <em class="tl">fingerprint</em> the server can check: one of the two factors
+          of level&nbsp;2.</p>
+      </div>
+      <div class="card">
+        <div class="ic" aria-hidden="true">⑃</div>
+        <h3>Site-bound</h3>
+        <p>In hostname mode, the fingerprint depends on the address your browser reads: a copy of the page
+          served elsewhere derives a fingerprint that is <em class="tl">worthless</em> here. The price:
+          changing the address costs existing accounts their level&nbsp;2. A service can pick a fixed label
+          instead, which survives an address change but no longer protects against phishing.</p>
+      </div>
+      <div class="card">
+        <div class="ic" aria-hidden="true">∅</div>
+        <h3>What the server sees</h3>
+        <p>Your word, never: it only receives its fingerprint. The passphrase and the password do pass
+          through it when they are used. In its database it keeps only
+          <em class="tl">Argon2id hashes</em>.</p>
+      </div>
+    </div>
+  </div></section>
+
+  <section id="levels"><div class="wrap">
+    <p class="eyebrow">Three recovery levels</p>
+    <h2>Three distinct ways to prove it's you.</h2>
+    <p class="lead">Moving to the next level is your choice, never an automatic escalation: each level asks
+      for something else, and only you know what you have left.</p>
+    <div class="levels">
+      <div class="lvl">
+        <span class="tag">Level 1</span>
+        <h3>Passphrase</h3>
+        <p>Your username and a six-word passphrase, drawn by the server from the EFF diceware list
+          (≈&nbsp;77.5&nbsp;bits). It is kept on paper and works only once: each use gives you a new one.</p>
+        <span class="ghost" aria-hidden="true">L1</span>
+      </div>
+      <div class="lvl">
+        <span class="tag">Level 2</span>
+        <h3>Word + code</h3>
+        <p>Your memorized word and one of your ten single-use paper codes. No username to type: the code
+          finds the account. Optionally, the device you enrolled replaces the code, never the word.</p>
+        <span class="ghost" aria-hidden="true">L2</span>
+      </div>
+      <div class="lvl">
+        <span class="tag">Level 3</span>
+        <h3>The human</h3>
+        <p>Lost everything? You present a bundle of facts, and a human administrator decides.
+          <em class="tl">Never</em> a score or an automatic reset, and a refusal never touches the account.
+          If approved, you set your secrets again yourself.</p>
+        <span class="ghost" aria-hidden="true">L3</span>
+      </div>
+    </div>
+  </div></section>
+
+  <section id="demo"><div class="wrap">
+    <div class="demo">
+      <p class="eyebrow">Try it</p>
+      <h2>A demo is running online.</h2>
+      <p class="lead">Sign up <b>without email</b>, lose your access on purpose, recover it at levels&nbsp;1
+        and&nbsp;2, then watch a fake login page fail. It is the library's real code, in a sandbox that
+        expires after 30&nbsp;minutes.</p>
+      <a class="btn btn-p" href="https://bi-self.example.org/recover">Open the demo →</a>
+    </div>
+  </div></section>
+
+  <section id="limits" class="limits"><div class="wrap">
+    <p class="eyebrow">Limits</p>
+    <h2>What SelfRecover does not cover.</h2>
+    <p class="lead">A security protocol is also judged by what it declares out of its reach.</p>
+    <ul class="ticks">
+      <li>Root access to the server bypasses the whole protocol.</li>
+      <li>A rigged page that captures your word as you type it stays out of reach, as for any protocol that
+        lives in the browser.</li>
+      <li>Reusing your word on a malicious site hands it over: per-site derivation prevents cross-matching
+        databases, not that leak. A word unique to each service remains safer.</li>
+      <li>A weak word remains attackable: rate limits and the human level&nbsp;3 slow it down, the derivation
+        does not protect it.</li>
+      <li>No external security audit to date. An internal adversarial audit was carried out; red team
+        feedback is welcome.</li>
+    </ul>
+  </div></section>
+
+  <section id="os"><div class="wrap">
+    <div class="os">
+      <div>
+        <p class="eyebrow">Open down to the code</p>
+        <h2>Nothing to trust. Everything to verify.</h2>
+        <p class="lead">SelfRecover is <b>free software</b>: self-host it, audit it, integrate it into your
+          service. A PHP library that needs only standard extensions, the browser deriver shipped with it,
+          and a ready-to-use database schema.</p>
+        <p class="lead">It installs with Composer from the repository; it is not yet published on Packagist
+          or npm. The <a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/README.md">README</a>
+          describes the protocol, its threat model and how to integrate it.</p>
+        <div class="badges">
+          <span class="pill"><b>AGPL-3.0</b>-or-later</span>
+          <span class="pill">Zero <b>third party</b></span>
+          <span class="pill"><b>MySelf</b> module</span>
+        </div>
+        <div class="cta cta-start">
+          <a class="btn btn-g" href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover">View the code →</a>
+        </div>
+      </div>
+      <div class="card card-start">
+        <div class="ic ic-teal" aria-hidden="true">✓</div>
+        <h3>What it changes for you</h3>
+        <ul class="ticks">
+          <li>No more reset link sitting in an inbox.</li>
+          <li>No more phone number handed to the service.</li>
+          <li>In hostname mode, a copy of the site gets only a fingerprint that is useless on the real one.</li>
+          <li>If everything is lost, a human decides, not an algorithm.</li>
+        </ul>
+      </div>
+    </div>
+  </div></section>
+
+  <section id="duo"><div class="wrap">
+    <p class="eyebrow">The MySelf ecosystem</p>
+    <h2>Your key opens the door. <em>SelfDataGuard guards what's behind it.</em></h2>
+    <p class="lead">SelfRecover gives you back <b>access</b>. SelfDataGuard encrypts at rest the <b>data</b>
+      the service hands to it. The two libraries do not call each other: the service passes the same secrets
+      to both.</p>
+    <div class="grid3">
+      <div class="card">
+        <div class="ic ic-teal" aria-hidden="true">▨</div>
+        <h3>Encrypted at rest</h3>
+        <p>Fields handed to SelfDataGuard leave a dump <em class="tl">encrypted</em>: one of your secrets is
+          needed to reopen them. During an open session, the server holds the key in memory.</p>
+      </div>
+      <div class="card">
+        <div class="ic ic-teal" aria-hidden="true">⧉</div>
+        <h3>Several locks</h3>
+        <p>Your data key is sealed under each of your secrets: password, memorized word, passphrase. Each one
+          opens it alone: when the service seals them all, forgetting one does not cost you your data.</p>
+      </div>
+      <div class="card">
+        <div class="ic ic-teal" aria-hidden="true">⚷</div>
+        <h3>The same idea for your disk</h3>
+        <p>SelfRecover-LUKS unlocks a LUKS2 encrypted volume with a recovery passphrase unique to each
+          machine, separate from your word: neither one opens the other.</p>
+      </div>
+    </div>
+    <div class="cta cta-start">
+      <a class="btn btn-g" href="https://dataguard.example.org">Discover SelfDataGuard →</a>
+    </div>
+  </div></section>
+
+  <section id="lab"><div class="wrap">
+    <div class="lab">
+      <span class="live">Live</span>
+      <h2>MySelf-Lab, the demonstration forum.</h2>
+      <p class="lead">A forum whose accounts rest on SelfRecover, level&nbsp;3 and enrolled device included.
+        Its content is fictional, and it is open to red teams: try to break it.</p>
+      <a class="btn btn-g" href="https://ctf.example.org">Enter the lab →</a>
+    </div>
+  </div></section>
+</main>
+
+<footer>
+  <div class="foot">
+    <span><span class="self">Self</span><span class="rec">Recover</span>
+      <span class="dot">·</span> a module of the <a href="https://my-self.fr">MySelf</a> ecosystem</span>
+    <span>
+      <a href="https://github.com/Pierroons/my-self">GitHub</a>
+      <span class="dot">·</span> AGPL-3.0-or-later
+      <span class="dot">·</span> <span class="ver">site v0.1.0</span>
+    </span>
+  </div>
+</footer>
+</body>
+</html>

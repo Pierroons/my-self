@@ -1,25 +1,50 @@
-# selfrecover-site — maquettes de travail
+# selfrecover.fr
 
-Prototypes pour le site **`selfrecover.fr`** (module SelfRecover, écosystème MySelf).
-Positionnement « playground » : thème terminal Matrix aux **couleurs MySelf** (slate + bleu),
-distinct de `my-self.fr` qui reste sobre/institutionnel.
+Le site de **SelfRecover**, le protocole de récupération de compte sans email ni SMS de
+l'écosystème MySelf. Thème « terminal » aux couleurs MySelf, distinct de `my-self.fr`, qui reste
+sobre.
 
 ## Fichiers
-- **`logo-maquette.html`** — pistes de logo SelfRecover (① deux arcs · ② S-flèche · ③ clé-cycle)
-  + direction retenue : **clé (③) + arcs (①) formant le O de rec​O​ver**. Pluie Matrix des modules Self*.
-- **`landing.html`** — prototype de la home : hero, pitch « récupération sans email », 3 principes,
-  niveaux L1/L2/L3, démo, open source, teaser forum.
 
-## Charte
-Fond `#0f1419` · accent bleu `#7ab7ff` · teal signature `#3fb98c` · texte `#e8eaed`. Type monospace
-(esprit terminal). Motion « Matrix » qui épelle les modules — signature réutilisable. Respecte
-`prefers-reduced-motion`.
+| Fichier | Rôle |
+|---|---|
+| `index.html` | la page en français, servie à `/` |
+| `en/index.html` | la même page en anglais, servie à `/en/` |
+| `selfrecover.css` | la feuille commune aux deux pages |
+| `selfrecover.js` | la pluie des modules Self* derrière le hero, et rien d'autre |
+| `favicon.svg` | la clé du logo, sur fond sombre |
+| `og-image.png`, `en/og-image.png` | les aperçus de partage, 1200×630, tirés du hero de chaque page |
+
+Les deux pages ont le même squelette. Une phrase qui change dans l'une change dans l'autre.
+
+## Ce que les pages s'interdisent
+
+Elles sont servies sous la CSP de la vitrine (`deploy/my-self/snippets/csp-accueil.conf`) :
+**aucun script en ligne, aucun attribut `on*`, aucune ressource hors de l'origine**. Un script
+ajouté va dans `selfrecover.js` ; un style va dans `selfrecover.css`, en classe. Le validateur
+de la CI (`html-validate`, configuration `.htmlvalidate.json`) refuse aussi l'attribut `style`.
+
+## Les liens vers les autres services
+
+Les adresses de la démo, de SelfDataGuard et du lab s'écrivent avec leur gabarit
+(`bi-self.example.org`, `dataguard.example.org`, `ctf.example.org`). Le déploiement
+(`deploy/my-self/deploy.sh assembler`) les remplace par les vrais domaines. Une copie brute de ce
+dossier publierait donc des liens vers `example.org`.
+
+## Ce que le texte affirme
+
+Chaque phrase sur le protocole s'appuie sur le README de SelfRecover et sur son modèle de menace
+(`bi-self/selfrecover/`). Quand la bibliothèque change, c'est là qu'on relit avant de toucher au
+texte d'ici. La section « Limites » reprend ce que le modèle de menace déclare hors de sa portée.
 
 ## Version
-`v0.0.2` — affichée dans le footer de la landing (+ commentaire en tête du HTML).
-Convention : patch `0.0.X` libre · minor/major = accord Pierroons.
 
-## Statut
-Maquettes validées en direction (21/07/2026), **pas encore le site final**.
-Reste : figer le logo (exports), cadrer l'archi (landing + forum), hébergement, DNS + HTTPS.
-Un brief logo détaillé (charte, déclinaisons, do/don't) accompagne ces maquettes hors dépôt.
+`site v0.1.0`, affichée dans le pied de page des deux pages. C'est la version du **site**, pas
+celle du protocole : celle-ci vit dans `modules.json`. Patch `0.0.X` libre, mineure et majeure
+sur accord de Pierroons.
+
+## Les aperçus de partage
+
+Ils sont tirés du hero réel : une capture à 1200×630, sans la navigation ni les boutons, puis
+quantifiée en 256 couleurs (octree, sans tramage). Le vert des dents de la clé est une couleur
+rare dans l'image ; une quantification par coupe médiane le perd.

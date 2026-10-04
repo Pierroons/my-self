@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SelfRecover — récupérer un compte sans email ni SMS</title>
+<meta name="description" content="SelfRecover, protocole libre de récupération de compte sans email ni SMS : un mot retenu de tête, une empreinte liée au site, trois niveaux de récupération dont le dernier est tranché par un humain.">
+<link rel="canonical" href="https://selfrecover.fr/">
+<link rel="alternate" hreflang="fr" href="https://selfrecover.fr/">
+<link rel="alternate" hreflang="en" href="https://selfrecover.fr/en/">
+<link rel="alternate" hreflang="x-default" href="https://selfrecover.fr/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://selfrecover.fr/">
+<meta property="og:title" content="SelfRecover — récupérer un compte sans email ni SMS">
+<meta property="og:description" content="Un mot retenu de tête, une empreinte liée au site, trois niveaux de récupération. Libre, sous AGPL-3.0-or-later.">
+<meta property="og:image" content="https://selfrecover.fr/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="SelfRecover — Récupère ton compte. Sans email, sans SMS.">
+<meta property="og:locale" content="fr_FR">
+<meta property="og:locale:alternate" content="en_GB">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/selfrecover.css">
+<script src="/selfrecover.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#contenu">Aller au contenu</a>
+<canvas id="rain" aria-hidden="true"></canvas>
+<div class="veil" aria-hidden="true"></div>
+
+<nav aria-label="Navigation principale">
+  <a class="brand" href="#top">
+    <svg class="cle" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+      <path d="M53.2 15.2 A20 20 0 1 0 66.8 15.2" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+      <path d="M69.4 8.4 L60.6 12.4 L64.4 21.6 Z" fill="#7ab7ff" stroke="#7ab7ff" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M60 54 L60 104" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+      <path d="M60 84 h13" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/>
+      <path d="M60 97 h8" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/>
+    </svg>
+    <span><span class="self">Self</span><span class="rec">Recover</span></span>
+  </a>
+  <div class="navlinks">
+    <a href="#how">Comment ça marche</a>
+    <a href="#levels">3 niveaux</a>
+    <a href="#demo">Démo</a>
+    <a href="#limits">Limites</a>
+    <a href="#os">Code</a>
+    <a class="lang" href="/en/" hreflang="en" lang="en">English</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="lock">
+    <svg class="cle" viewBox="0 0 120 120" fill="none" role="img" aria-label="SelfRecover">
+      <path d="M53.2 15.2 A20 20 0 1 0 66.8 15.2" stroke="#7ab7ff" stroke-width="8" stroke-linecap="round"/>
+      <path d="M69.4 8.4 L60.6 12.4 L64.4 21.6 Z" fill="#7ab7ff" stroke="#7ab7ff" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M60 54 L60 104" stroke="#7ab7ff" stroke-width="8" stroke-linecap="round"/>
+      <path d="M60 82 h14" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+      <path d="M60 93 h10" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+      <path d="M60 104 h6" stroke="#3fb98c" stroke-width="7" stroke-linecap="round"/>
+    </svg>
+    <span class="wm" aria-hidden="true"><span class="self">Self</span><span class="rec">Rec</span><svg class="oarc" viewBox="0 0 100 100" fill="none"><path d="M50 8 A42 42 0 0 1 50 92" stroke="#7ab7ff" stroke-width="13" stroke-linecap="round"/><path d="M50 92 A42 42 0 0 1 50 8" stroke="#3f74b8" stroke-width="13" stroke-linecap="round"/></svg><span class="rec">ver</span></span>
+  </div>
+  <h1>Récupère ton compte. <em>Sans email, sans SMS.</em></h1>
+  <p class="sub">Un protocole libre de récupération de compte. Tu ne retiens qu'un mot&nbsp;: il ne quitte
+    jamais ton navigateur, seule une empreinte liée au site part au serveur. Aucun fournisseur d'email
+    ni opérateur téléphonique dans la boucle.</p>
+  <div class="cta">
+    <a class="btn btn-p" href="https://bi-self.example.org/recover">Essayer la démo →</a>
+    <a class="btn btn-g" href="#how">Comment ça marche</a>
+  </div>
+  <div class="scroll" aria-hidden="true">↓ défile</div>
+</header>
+
+<main class="below" id="contenu">
+  <section id="why"><div class="wrap">
+    <p class="eyebrow">Le problème</p>
+    <h2>« Mot de passe oublié&nbsp;? » → on t'envoie un email.</h2>
+    <p class="lead">Sauf que l'email est un <em class="tl">tiers</em>. Si ta boîte tombe, si on te la pirate,
+      si le service ferme ou te bannit, tu perds l'accès à chaque compte qui dépend d'elle. Le SMS porte le
+      même défaut, avec le détournement de carte SIM en prime. SelfRecover retire l'email et le téléphone
+      de la récupération.</p>
+  </div></section>
+
+  <section id="how"><div class="wrap">
+    <p class="eyebrow">Comment ça marche</p>
+    <h2>Ce que tu sais devient ta clé.</h2>
+    <p class="lead">Trois idées, toutes lisibles dans le code.</p>
+    <div class="grid3">
+      <div class="card">
+        <div class="ic" aria-hidden="true">◐</div>
+        <h3>Connaissance partagée</h3>
+        <p>Le mot seul ne prouve rien. L'algorithme seul non plus. Réunis dans ton navigateur, ils donnent
+          une <em class="tl">empreinte</em> HMAC-SHA256 que le serveur sait vérifier&nbsp;: l'un des deux
+          facteurs du niveau&nbsp;2.</p>
+      </div>
+      <div class="card">
+        <div class="ic" aria-hidden="true">⑃</div>
+        <h3>Lié au site</h3>
+        <p>En mode nom d'hôte, l'empreinte dépend de l'adresse que lit ton navigateur&nbsp;: une copie de la
+          page servie ailleurs dérive une empreinte <em class="tl">sans valeur</em> ici. Le prix&nbsp;: changer
+          d'adresse fait perdre le niveau&nbsp;2 aux comptes existants. Le service peut choisir une étiquette
+          fixe à la place, qui survit au changement d'adresse mais ne protège plus du hameçonnage.</p>
+      </div>
+      <div class="card">
+        <div class="ic" aria-hidden="true">∅</div>
+        <h3>Ce que voit le serveur</h3>
+        <p>Ton mot, jamais&nbsp;: il ne reçoit que son empreinte. La passphrase et le mot de passe, eux,
+          passent par lui quand ils servent. En base, il ne garde que des
+          <em class="tl">hachages Argon2id</em>.</p>
+      </div>
+    </div>
+  </div></section>
+
+  <section id="levels"><div class="wrap">
+    <p class="eyebrow">Trois niveaux de récupération</p>
+    <h2>Trois façons distinctes de prouver que c'est toi.</h2>
+    <p class="lead">Passer au niveau suivant est ton choix, jamais une escalade automatique&nbsp;: chaque
+      niveau demande autre chose, et toi seul sais ce qu'il te reste.</p>
+    <div class="levels">
+      <div class="lvl">
+        <span class="tag">Niveau 1</span>
+        <h3>Passphrase</h3>
+        <p>Ton identifiant et une passphrase de six mots, tirée par le serveur dans la liste diceware de
+          l'EFF (≈&nbsp;77,5&nbsp;bits). Elle se garde sur papier et ne sert qu'une fois&nbsp;: chaque usage
+          t'en rend une neuve.</p>
+        <span class="ghost" aria-hidden="true">L1</span>
+      </div>
+      <div class="lvl">
+        <span class="tag">Niveau 2</span>
+        <h3>Mot + code</h3>
+        <p>Ton mot mémorisé et l'un de tes dix codes papier à usage unique. Aucun identifiant à
+          saisir&nbsp;: le code retrouve le compte. En option, l'appareil que tu as enrôlé remplace le code,
+          jamais le mot.</p>
+        <span class="ghost" aria-hidden="true">L2</span>
+      </div>
+      <div class="lvl">
+        <span class="tag">Niveau 3</span>
+        <h3>L'humain</h3>
+        <p>Tout perdu&nbsp;? Tu présentes un faisceau de faits, un administrateur humain tranche.
+          <em class="tl">Jamais</em> de score ni de réinitialisation automatique, et un refus ne touche
+          jamais au compte. En cas d'accord, c'est toi qui redéfinis tes secrets.</p>
+        <span class="ghost" aria-hidden="true">L3</span>
+      </div>
+    </div>
+  </div></section>
+
+  <section id="demo"><div class="wrap">
+    <div class="demo">
+      <p class="eyebrow">Teste-le</p>
+      <h2>Une démo tourne en ligne.</h2>
+      <p class="lead">Inscris-toi <b>sans email</b>, perds volontairement ton accès, récupère-le aux
+        niveaux&nbsp;1 et&nbsp;2, puis regarde une fausse page de connexion échouer. C'est le vrai code de la
+        bibliothèque, dans un bac à sable qui expire au bout de 30&nbsp;minutes.</p>
+      <a class="btn btn-p" href="https://bi-self.example.org/recover">Ouvrir la démo →</a>
+    </div>
+  </div></section>
+
+  <section id="limits" class="limits"><div class="wrap">
+    <p class="eyebrow">Limites</p>
+    <h2>Ce que SelfRecover ne couvre pas.</h2>
+    <p class="lead">Un protocole de sécurité se juge aussi à ce qu'il déclare hors de sa portée.</p>
+    <ul class="ticks">
+      <li>Un accès root au serveur contourne tout le protocole.</li>
+      <li>Une page piégée qui capte ton mot au moment où tu le tapes reste hors d'atteinte, comme pour tout
+        protocole qui vit dans le navigateur.</li>
+      <li>Réutiliser ton mot sur un site malveillant le lui livre&nbsp;: la dérivation par site empêche de
+        croiser les bases, pas cette fuite-là. Un mot propre à chaque service reste plus sûr.</li>
+      <li>Un mot faible reste attaquable&nbsp;: les freins de débit et le niveau&nbsp;3 humain le ralentissent,
+        la dérivation ne le protège pas.</li>
+      <li>Aucun audit de sécurité externe à ce jour. Un audit adverse interne a été mené&nbsp;; les retours
+        de red team sont bienvenus.</li>
+    </ul>
+  </div></section>
+
+  <section id="os"><div class="wrap">
+    <div class="os">
+      <div>
+        <p class="eyebrow">Libre jusqu'au code</p>
+        <h2>Rien à croire. Tout à vérifier.</h2>
+        <p class="lead">SelfRecover est un logiciel <b>libre</b>&nbsp;: auto-héberge-le, audite-le,
+          intègre-le à ton service. Une bibliothèque PHP qui ne demande que des extensions standard, le
+          dériveur navigateur livré avec, et un schéma de base prêt à l'emploi.</p>
+        <p class="lead">Elle s'installe par Composer depuis le dépôt&nbsp;; elle n'est pas encore publiée sur
+          Packagist ni sur npm. Le <a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/README.fr.md">README</a>
+          décrit le protocole, son modèle de menace et son intégration.</p>
+        <div class="badges">
+          <span class="pill"><b>AGPL-3.0</b>-or-later</span>
+          <span class="pill">Zéro <b>tiers</b></span>
+          <span class="pill">Module <b>MySelf</b></span>
+        </div>
+        <div class="cta cta-start">
+          <a class="btn btn-g" href="https://github.com/Pierroons/my-self/tree/main/bi-self/selfrecover">Voir le code →</a>
+        </div>
+      </div>
+      <div class="card card-start">
+        <div class="ic ic-teal" aria-hidden="true">✓</div>
+        <h3>Ce que ça change pour toi</h3>
+        <ul class="ticks">
+          <li>Plus de lien de réinitialisation qui dort dans une boîte mail.</li>
+          <li>Plus de numéro de téléphone confié au service.</li>
+          <li>En mode nom d'hôte, une copie du site n'obtient qu'une empreinte inutilisable chez le vrai.</li>
+          <li>Si tout est perdu, un humain tranche, pas un algorithme.</li>
+        </ul>
+      </div>
+    </div>
+  </div></section>
+
+  <section id="duo"><div class="wrap">
+    <p class="eyebrow">L'écosystème MySelf</p>
+    <h2>Ta clé ouvre la porte. <em>SelfDataGuard garde ce qu'il y a derrière.</em></h2>
+    <p class="lead">SelfRecover te rend l'<b>accès</b>. SelfDataGuard chiffre au repos les <b>données</b>
+      que le service lui confie. Les deux bibliothèques ne s'appellent pas&nbsp;: c'est le service qui leur
+      passe les mêmes secrets.</p>
+    <div class="grid3">
+      <div class="card">
+        <div class="ic ic-teal" aria-hidden="true">▨</div>
+        <h3>Chiffré au repos</h3>
+        <p>Les champs confiés à SelfDataGuard sortent d'un dump <em class="tl">chiffrés</em>&nbsp;: il faut
+          l'un de tes secrets pour les rouvrir. Pendant une session ouverte, le serveur tient la clé en
+          mémoire.</p>
+      </div>
+      <div class="card">
+        <div class="ic ic-teal" aria-hidden="true">⧉</div>
+        <h3>Plusieurs serrures</h3>
+        <p>Ta clé de données est scellée sous chacun de tes secrets&nbsp;: mot de passe, mot mémorisé,
+          passphrase. Chacun l'ouvre seul&nbsp;: quand le service les scelle tous, en oublier un ne te fait
+          pas perdre tes données.</p>
+      </div>
+      <div class="card">
+        <div class="ic ic-teal" aria-hidden="true">⚷</div>
+        <h3>Le même principe pour ton disque</h3>
+        <p>SelfRecover-LUKS déverrouille un volume chiffré LUKS2 avec une passphrase de récupération propre
+          à chaque machine, distincte de ton mot&nbsp;: aucun des deux n'ouvre l'autre.</p>
+      </div>
+    </div>
+    <div class="cta cta-start">
+      <a class="btn btn-g" href="https://dataguard.example.org">Découvrir SelfDataGuard →</a>
+    </div>
+  </div></section>
+
+  <section id="lab"><div class="wrap">
+    <div class="lab">
+      <span class="live">En ligne</span>
+      <h2>MySelf-Lab, le forum de démonstration.</h2>
+      <p class="lead">Un forum dont les comptes reposent sur SelfRecover, niveau&nbsp;3 et appareil enrôlé
+        compris. Son contenu est fictif, et il est ouvert à la red team&nbsp;: essaie de le casser.</p>
+      <a class="btn btn-g" href="https://ctf.example.org">Entrer dans le lab →</a>
+    </div>
+  </div></section>
+</main>
+
+<footer>
+  <div class="foot">
+    <span><span class="self">Self</span><span class="rec">Recover</span>
+      <span class="dot">·</span> un module de l'écosystème <a href="https://my-self.fr">MySelf</a></span>
+    <span>
+      <a href="https://github.com/Pierroons/my-self">GitHub</a>
+      <span class="dot">·</span> AGPL-3.0-or-later
+      <span class="dot">·</span> <span class="ver">site v0.1.0</span>
+    </span>
+  </div>
+</footer>
+</body>
+</html>
