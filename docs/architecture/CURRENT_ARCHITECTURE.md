@@ -1,7 +1,8 @@
 # MySelf — architecture actuelle (phase 0)
 
 *3 octobre 2026 — 19:48 · état du dépôt au commit `1b91edf` ; SelfDataGuard, SelfRecover, leurs démos et
-les constats 20 et 23 revus le 4 octobre 2026 au commit `4149238` ; Self-Right relu par son mainteneur au même commit*
+les constats 20 et 23 revus le 4 octobre 2026 au commit `4149238` ; Self-Right, la CI, le déploiement et l'intégration relus par leurs
+mainteneurs au même commit*
 
 > **Statut : brouillon.** Le mainteneur de chaque module relit, dans toutes les sections, ce
 > qui touche son module avant que ce document entre dans `main`.
@@ -27,7 +28,8 @@ module :
 - Les chemins sont relatifs à la racine du dépôt.
 
 **Hors champ :**
-- l'instance servie (vhosts réels, crons, environnements, droits sur disque) ;
+- l'instance servie : vhosts réels, environnements, droits sur disque, horaires et réglages des
+  tâches planifiées (les tâches elles-mêmes, versionnées, sont cartographiées) ;
 - `vendor/` et les binaires ;
 - le dépôt voisin `selffarm-lite`.
 
@@ -42,10 +44,10 @@ en cours.
 
 | Module | Version | Nature | Langage | S'exécute dans | Porte des secrets d'utilisateur |
 |---|---|---|---|---|---|
-| SelfRecover | 0.9.0 | bibliothèque + client JS | PHP 8.1+, JS (WebCrypto) | PHP-FPM de l'intégrateur ; navigateur | oui |
-| SelfDataGuard | 0.6.0 | bibliothèque | PHP 8.1+, libsodium | PHP-FPM de l'intégrateur ; CLI admin (séquestre) | oui |
+| SelfRecover | 0.9.0 | bibliothèque + client JS | PHP 8.1+, JS (WebCrypto) | processus PHP de l'intégrateur ; navigateur | oui |
+| SelfDataGuard | 0.6.0 | bibliothèque | PHP 8.1+, libsodium | processus PHP de l'intégrateur ; CLI admin (séquestre) | oui |
 | SelfRecover-LUKS | 0.6.2 | outillage système | sh, bash, C, Python | **initramfs, avant l'ouverture du disque** ; root | oui (passphrase de disque) |
-| SelfModerate | 0.4.0 | bibliothèque | PHP 8.1+ | PHP-FPM | non |
+| SelfModerate | 0.4.0 | bibliothèque | PHP 8.1+ | processus PHP de l'intégrateur | non |
 | SelfJustice | 0.4.2 | service web + outils de collecte | PHP (API), Python, bash | PHP-FPM ; tâches planifiées | non (secrets d'exploitation seulement) |
 | selfright-mcp | 0.4.6 | serveur MCP (stdio), client HTTP des API | Python | **poste de l'utilisateur** | non |
 | SelfAct | 0.1.3 | service web + collecte | PHP, bash | PHP-FPM ; tâches planifiées | non |
@@ -71,8 +73,8 @@ un même processus.
 ```
 Navigateur ─────────── sr-derive.js (HMAC), sr-kdf.js (Argon2id + AES-GCM), clés d'appareil ECDSA
    │ HTTPS
-PHP-FPM de l'intégrateur ── SelfRecover (Argon2id des empreintes) ── SelfDataGuard (coffre)
-   │                                         └─ même processus, même base SQLite possible
+Processus PHP de l'intégrateur ── SelfRecover (Argon2id des empreintes) ── SelfDataGuard (coffre)
+   │                                               └─ même processus, même base SQLite possible
 CLI admin ─────────── escrow-ceremony.php (séquestre)
 
 Démarrage machine ─── initramfs : keyscript → selfrecover_derive_c (C) → cryptsetup
@@ -98,7 +100,7 @@ Poste utilisateur ─── selfright-mcp (stdio) → API SelfJustice / SelfAct 
 | SelfRecover | facteur « cet appareil » | signature ECDSA (P-256 côté client ; la courbe n'est pas imposée côté serveur), défi de 32 o, 300 s, usage unique | — | `bi-self/selfrecover/src/Device/Device.php:112-120, 192-264` |
 | SelfRecover | codes de niveau 2 | `random_bytes(5)` : 40 bits par code ✔ | — | `bi-self/selfrecover/src/Recovery/Recovery.php:378` |
 | SelfRecover | passphrase de niveau 1 | 6 mots EFF (≈ 77,5 bits) ✔ ; normalisée avant hachage, comme dans SelfDataGuard | — | `bi-self/selfrecover/src/Recovery/Recovery.php:90, 117` |
-| SelfRecover (client) | chiffrement local (`sr-kdf.js`) | Argon2id t=3, m=64 Mio, p=1 (implémentation JS propre au projet, `client/argon2id.js`) → AES-256-GCM | blob versionné `{v:1, kdf}` portant son profil ; plancher contrôlé à la relecture | `bi-self/selfrecover/client/sr-kdf.js:211-235, 270-285` |
+| SelfRecover (client) | chiffrement local (`sr-kdf.js`) | Argon2id t=3, m=64 Mio, p=1 (implémentation JS propre au projet, `bi-self/selfrecover/client/argon2id.js`) → AES-256-GCM | blob versionné `{v:1, kdf}` portant son profil ; plancher contrôlé à la relecture | `bi-self/selfrecover/client/sr-kdf.js:211-235, 270-285` |
 | SelfDataGuard | trois serrures du coffre | Argon2id t=3, m=64 Mio (libsodium, p=1), 32 o ✔ ; profil enregistré avec chaque coffre (`kdf_opslimit`, `kdf_memlimit`) depuis la 0.6.0 | sels : `user_salt` ; `sha256(user_salt‖"/dataguard")[:16]` ; `…"/dataguard/passphrase"` ✔ | `self-security/selfdataguard/src/Crypto/Primitives.php:53-63` ; `self-security/selfdataguard/src/Vault/VaultRecord.php` ; `self-security/selfdataguard/src/Vault/UserVault.php` |
 | SelfDataGuard | enveloppes et champs | XChaCha20-Poly1305 ; AAD enveloppes = `userId` ✔ ; AAD champs = `userId\|nom` ✔ ; format `SDG2.` + base64(nonce‖chiffré‖tag) | — | `self-security/selfdataguard/src/Vault/UserVault.php:360` ; `self-security/selfdataguard/src/Fields/FieldCrypter.php:105-108` |
 | SelfDataGuard | séquestre | `wrap_user` : XChaCha20 sous la clé maîtresse, AAD `userId\|escrow` ✔ ; `wrap_admin` : `crypto_box_seal(étiquette ‖ longueur ‖ userId ‖ clé)` vers la clé publique admin, lié à son compte depuis la 0.6.0 ✔ | — | `self-security/selfdataguard/src/Escrow/EscrowVault.php:50, 129-160, 196-207` |
@@ -193,8 +195,8 @@ Sources publiques ──(tâches planifiées)──> bases SQLite, catalogue JSO
 4. **Utilisateur → admin (séquestre).**
    - La clé du séquestre n'ouvre que le compartiment séquestre de l'utilisateur, jamais son
      coffre privé.
-   - Le verrou « litige ouvert » vit dans la même base que les données : qui écrit en base le
-     contrôle.
+   - Le verrou « litige ouvert » n'est pas dans la bibliothèque : l'intégrateur le tient, en
+     général dans une base que le même processus écrit. Qui écrit en base le contrôle.
 5. **Intégrateur ↔ bibliothèque.** Restent à la charge de l'intégrateur :
    - le rôle d'arbitre du niveau 3 ;
    - l'authentification avant l'enrôlement d'un appareil ;
@@ -243,17 +245,31 @@ SelfJustice, et se replie sur ses chemins.
   - clé de slot LUKS, rejouée en C et en Python par
     `self-security/selfrecover-luks/tests/test_preuve_binaire_boot.sh`.
 - Argon2id des trois serrures de SelfDataGuard : `self-security/selfdataguard/tests/vecteurs-argon2.json`,
-  recalculés en CI par une seconde implémentation (`tests/vecteurs_argon2.py`, argon2-cffi). Pas de
+  recalculés en CI par une seconde implémentation
+  (`self-security/selfdataguard/tests/vecteurs_argon2.py`, argon2-cffi). Pas de
   coffre `SDG2.` figé.
-- **CI** (`.github/workflows/structure.yml`) :
+- **CI, à chaque envoi** (`.github/workflows/structure.yml`) :
   - les bancs de SelfRecover, SelfDataGuard et SelfRecover-LUKS doivent afficher leur nombre
     exact de contrôles passés ;
   - une partie d'entre eux est doublée d'un canari : la CI plante un défaut connu et exige que le
     banc échoue ;
   - les bancs de Self-Right tournent sur leur code de sortie ;
-  - SelfDataGuard tourne aussi sous PHP 8.1 et 8.2.
-- **Hors CI :** les sondes qui demandent l'instance (fraîcheur, surface servie, écart
-  dépôt/instance ; le code de la sonde de fraîcheur est, lui, éprouvé en CI), une vraie construction d'initramfs, et l'installateur LUKS de bout en bout.
+  - SelfDataGuard tourne aussi sous PHP 8.1 et 8.2 ;
+  - des contrôles structurels bloquent l'envoi comme les bancs : chemins cités
+    (`scripts/check-paths.sh`), profil de hachage défini une seule fois
+    (`scripts/check-profil-unique.sh`), gabarits de vhost (`scripts/check-vhost.sh`, sur un nginx
+    installé par le job), liens vers les bibliothèques (`scripts/check-liens-bibliotheque.sh`),
+    plancher des secrets de déploiement (`scripts/check-plancher-secret.sh`), porteurs de version
+    (`scripts/check-versions.sh`).
+- **Autres workflows :** `.github/workflows/gitleaks.yml` et `.github/workflows/trivy.yml` à chaque
+  envoi ; `.github/workflows/suivi.yml` aux envois sur `main` et `dev`, et chaque jour : versions
+  annoncées et leurs tags, publications, version du dépôt voisin citée par les README.
+- **Hors CI :**
+  - l'audit OPSEC complet, dont les motifs vivent hors dépôt, et l'écart dépôt/instance tournent
+    chaque semaine sur une tâche planifiée, contre la branche publiée ;
+  - les autres sondes qui demandent l'instance (fraîcheur, surface servie) ; le code de la sonde de
+    fraîcheur est, lui, éprouvé en CI ;
+  - une vraie construction d'initramfs, et l'installateur LUKS de bout en bout.
 
 ---
 
@@ -328,12 +344,14 @@ version qui le ferme ; le détail est dans le CHANGELOG racine.
 
 ### 9.4 Chaîne d'approvisionnement
 
-15. ✔ **Les binaires gitleaks et trivy sont téléchargés en CI sans vérification de somme.**
+15. ✔ **Les binaires gitleaks et trivy sont téléchargés en CI sans vérification de somme.** Leurs
+    versions sont épinglées (`.github/workflows/gitleaks.yml:53`, `.github/workflows/trivy.yml:43`) :
+    le risque est la substitution de l'archive, pas la dérive de version.
 16. **Les dépendances ne sont pas verrouillées pour l'utilisateur.**
     - Les bibliothèques PHP n'ont aucune dépendance tierce à l'exécution : rien à verrouiller de
       ce côté.
     - Le serveur MCP déclare `mcp` et `httpx` en planchers, alors que la CI les épingle.
-    - `openpgp.min.mjs` (vendorisé) et `client/argon2id.js` échappent à trivy.
+    - `openpgp.min.mjs` (vendorisé) et `bi-self/selfrecover/client/argon2id.js` échappent à trivy.
 
 ### 9.5 Documentation et code qui divergent
 
@@ -351,9 +369,10 @@ version qui le ferme ; le détail est dans le CHANGELOG racine.
 
 ### 9.6 Doublons
 
-22. La dérivation `srDerive` est réécrite en PHP dans `demo/lab/lib/derive_cli.php`. Un banc et
-    son canari la tiennent d'accord, mais le contrôle des réimplémentations
-    (`scripts/check-liens-bibliotheque.sh`) ne reconnaît que l'idiome WebCrypto.
+22. La dérivation `srDerive` est réécrite en PHP dans `demo/lab/lib/derive_cli.php`, dont
+    l'en-tête avertit qu'elle doit suivre `sr-derive.js`. Le banc `demo/lab/tests/sanity_derive_cli.php`
+    lui fait rejouer les vecteurs figés de la bibliothèque, et un canari le tient, mais le contrôle
+    des réimplémentations (`scripts/check-liens-bibliotheque.sh`) ne reconnaît que l'idiome WebCrypto.
 23. 🟢 Le faux sel anti-oracle était écrit deux fois, avec deux formules (duo et lab). Depuis
     SelfRecover 0.9.0, la bibliothèque le fournit (`Recovery::selDeDerivation`) et la démo duo
     l'emploie pour le chemin « code ». Le lab garde sa copie, de même formule, jusqu'à la fin de la
@@ -374,7 +393,7 @@ version qui le ferme ; le détail est dans le CHANGELOG racine.
 | 3. Les secrets restent chez leur propriétaire | **en partie** : la clé maîtresse ne vit que pendant la requête, mais dans la mémoire de l'intégrateur, et SelfDataGuard reçoit le mot de passe en clair pour dériver côté serveur | §6 (point 2) |
 | 4. Compromettre un module ne livre pas les secrets d'un autre | **non** dans un même processus ; **oui** entre LUKS et le web, qui n'ont aucun couplage cryptographique | §7 |
 | 5. Primitive remplaçable sans réécrire les applications | **en partie** : les empreintes, les blobs client, les archives, le coffre vivant et la clé admin scellée portent leur profil (ces deux derniers depuis la 0.6.0) ; ce qu'un intégrateur dérive lui-même par `Primitives` non | constat 4 |
-| 6. Une erreur de politique ne devient pas une autorisation | **en partie** : refus en cas de doute dans LUKS et dans les écritures conditionnelles ; le verrou de litige est contrôlé par la base ; certaines expositions ne tiennent qu'à la configuration de l'instance | §6 (point 4) |
+| 6. Une erreur de politique ne devient pas une autorisation | **en partie** : refus en cas de doute dans LUKS et dans les écritures conditionnelles ; le verrou de litige est tenu par l'intégrateur, hors de la bibliothèque ; certaines expositions ne tiennent qu'à la configuration de l'instance | §6 (point 4) |
 | 7. Audit sans contenu sensible | **en partie** : les journaux chaînés n'écrivent pas de secret, mais une trace porte un nom de compte ; le journal du séquestre s'ancre depuis la 0.6.0, par un geste de l'opérateur | constats 9, 12 |
 | 8. Aucune logique métier dans le noyau | sans objet : il n'y a pas de noyau | — |
 | 9. Chaque augmentation du TCB est justifiée | non formalisé | — |
