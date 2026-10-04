@@ -26,6 +26,11 @@ SCRIPT="$(dirname "$(readlink -f "$0")")/build_jade_db.py"
 # Une panne de la DILA d'un soir ne sonne pas ; un fonds qui n'a rien reçu
 # depuis une semaine, si — la DILA publie chaque jour ouvré.
 AGE_ALERTE=7
+# 🔑 Source injoignable au-delà de ce délai : l'alerte part, et le pilote sort en
+# 75 (EX_TEMPFAIL), que l'unité accepte. Sortir en 1 laissait le service
+# « failed » chaque soir d'une panne qui dure, et `systemctl --failed` cessait
+# d'être lu. Le 1 reste aux vraies pannes du pilote ou du collecteur.
+SOURCE_INDISPONIBLE=75
 # Les incréments déjà appliqués se re-téléchargent : le cache ne garde que le mois.
 AGE_CACHE=30
 
@@ -73,10 +78,15 @@ case "$rc" in
         journal "Collecte faite — dernier incrément appliqué il y a ${age:-?} jour(s)."
         ;;
     4)
-        if [ -z "$age" ] || [ "$age" -gt "$AGE_ALERTE" ]; then
-            alerter "SelfJustice — DILA injoignable, JADE en retard" \
-                    "Dernier increment JADE applique il y a ${age:-?} jours. Voir $LOG_FILE."
+        if [ -z "$age" ]; then
+            alerter "SelfJustice — DILA injoignable, fonds JADE illisible" \
+                    "La base ne dit pas son dernier increment. Voir $LOG_FILE."
             exit 1
+        fi
+        if [ "$age" -gt "$AGE_ALERTE" ]; then
+            alerter "SelfJustice — DILA injoignable, JADE en retard" \
+                    "Dernier increment JADE applique il y a $age jours. Voir $LOG_FILE."
+            exit "$SOURCE_INDISPONIBLE"
         fi
         journal "DILA injoignable — dernier incrément il y a $age jour(s), alerte au-delà de $AGE_ALERTE."
         ;;

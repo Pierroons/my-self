@@ -6,6 +6,10 @@
 # à chaque panne d'un soir de la DILA, et l'alerte cesse d'être lue — le jour où
 # elle compte, son rouge ressemble à celui de la veille.
 #
+# Troisième défaut : une panne de la source qui dure laisse l'unité `failed`
+# chaque soir, et `systemctl --failed` cesse d'être lu. Le pilote sort alors en un
+# code que l'unité accepte — le banc vérifie qu'elle le déclare bien.
+#
 # Le collecteur est remplacé par un faux qui rend le code voulu : ses propres
 # comportements sont éprouvés par sanity_jade_collecteur.py. Ici, seule la
 # décision du pilote est sous examen.
@@ -17,6 +21,7 @@ set -uo pipefail
 
 ICI="$(cd "$(dirname "$0")" && pwd)"
 PILOTE="$ICI/../tools/update_jade.sh"
+UNITE="$ICI/../../../deploy/selfjustice/jade-update.service"
 [ -r "$PILOTE" ] || { echo "pilote introuvable : $PILOTE" >&2; exit 1; }
 
 BAC=$(mktemp -d)
@@ -101,17 +106,36 @@ fi
 echo
 echo "▸ Ce qui doit sonner"
 jouer 4 8; code=$?
-if [ "$code" -ne 0 ] && grep -q "DILA injoignable, JADE en retard" "$BAC/ntfy.log"; then
-    ok "DILA injoignable, dernier incrément il y a 8 jours → alerte, code $code"
+if [ "$code" -eq 75 ] && grep -q "DILA injoignable, JADE en retard" "$BAC/ntfy.log"; then
+    ok "DILA injoignable, dernier incrément il y a 8 jours → alerte, code 75"
 else
-    nok "un fonds en retard d'une semaine ne sonne pas (code $code)"
+    nok "un fonds en retard d'une semaine : code $code (attendu 75), alertes : $(paste -sd'|' "$BAC/ntfy.log")"
+fi
+# Le code de la source indisponible n'a de sens que si l'unité l'accepte.
+if grep -q -E '^SuccessExitStatus=([0-9 ]* )?75( |$)' "$UNITE"; then
+    ok "l'unité accepte 75 (SuccessExitStatus)"
+else
+    nok "l'unité ne déclare pas 75 : le service resterait « failed » à chaque panne de la DILA"
 fi
 
 jouer 1 0; code=$?
-if [ "$code" -ne 0 ] && grep -q "collecte JADE en echec" "$BAC/ntfy.log"; then
-    ok "collecte en échec → alerte, code $code"
+if [ "$code" -eq 1 ] && grep -q "collecte JADE en echec" "$BAC/ntfy.log"; then
+    ok "collecte en échec → alerte, code 1 (une vraie panne reste « failed »)"
 else
-    nok "un échec du collecteur ne sonne pas (code $code)"
+    nok "un échec du collecteur : code $code (attendu 1), alertes : $(paste -sd'|' "$BAC/ntfy.log")"
+fi
+
+# Une base qui ne dit pas son dernier incrément : la panne de la source
+# n'explique pas tout, ce n'est pas le cas « source indisponible ».
+: > "$BAC/ntfy.log"
+FAUX_RC=4 JUDILIBRE_DB="$BAC/vide.sqlite" SELFJUSTICE_JADE_CACHE="$BAC/cache" \
+SELFJUSTICE_JADE_LOG="$BAC/jade.log" SELFJUSTICE_NTFY_URL="http://127.0.0.1:$PORT/" \
+SELFJUSTICE_NTFY_TOKEN_FILE="$BAC/token" \
+    bash "$BAC/bin/update_jade.sh"; code=$?
+if [ "$code" -eq 1 ] && grep -q "fonds JADE illisible" "$BAC/ntfy.log"; then
+    ok "DILA injoignable et base illisible → alerte, code 1"
+else
+    nok "base illisible : code $code (attendu 1), alertes : $(paste -sd'|' "$BAC/ntfy.log")"
 fi
 
 echo
