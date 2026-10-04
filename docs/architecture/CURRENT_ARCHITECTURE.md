@@ -1,8 +1,8 @@
 # MySelf — architecture actuelle (phase 0)
 
 *3 octobre 2026 — 19:48 · état du dépôt au commit `1b91edf` ; SelfDataGuard, SelfRecover, leurs démos et
-les constats 20 et 23 revus le 4 octobre 2026 au commit `4149238` ; Self-Right, la CI, le déploiement et l'intégration relus par leurs
-mainteneurs au même commit*
+les constats 20 et 23 revus le 4 octobre 2026 au commit `4149238` ; Self-Right, la CI, le déploiement, l'intégration et SelfFarm Lite relus
+par leurs mainteneurs au même commit*
 
 > **Statut : brouillon.** Le mainteneur de chaque module relit, dans toutes les sections, ce
 > qui touche son module avant que ce document entre dans `main`.
@@ -31,7 +31,7 @@ module :
 - l'instance servie : vhosts réels, environnements, droits sur disque, horaires et réglages des
   tâches planifiées (les tâches elles-mêmes, versionnées, sont cartographiées) ;
 - `vendor/` et les binaires ;
-- le dépôt voisin `selffarm-lite`.
+- le dépôt voisin `selffarm-lite`, qui n'a aucun couplage de code avec celui-ci.
 
 Les faiblesses propres aux instances en service ne sont pas publiées ici : elles suivent la
 divulgation coordonnée de `SECURITY.md`, et rejoindront ce document une fois corrigées. Pour la
