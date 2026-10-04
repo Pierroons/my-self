@@ -41,8 +41,8 @@ en cours.
 
 | Module | Version | Nature | Langage | S'exécute dans | Porte des secrets d'utilisateur |
 |---|---|---|---|---|---|
-| SelfRecover | 0.8.0 | bibliothèque + client JS | PHP 8.1+, JS (WebCrypto) | PHP-FPM de l'intégrateur ; navigateur | oui |
-| SelfDataGuard | 0.5.1 | bibliothèque | PHP 8.1+, libsodium | PHP-FPM de l'intégrateur ; CLI admin (séquestre) | oui |
+| SelfRecover | 0.9.0 | bibliothèque + client JS | PHP 8.1+, JS (WebCrypto) | PHP-FPM de l'intégrateur ; navigateur | oui |
+| SelfDataGuard | 0.6.0 | bibliothèque | PHP 8.1+, libsodium | PHP-FPM de l'intégrateur ; CLI admin (séquestre) | oui |
 | SelfRecover-LUKS | 0.6.2 | outillage système | sh, bash, C, Python | **initramfs, avant l'ouverture du disque** ; root | oui (passphrase de disque) |
 | SelfModerate | 0.4.0 | bibliothèque | PHP 8.1+ | PHP-FPM | non |
 | SelfJustice | 0.4.2 | service web + outils de collecte | PHP (API), Python, bash | PHP-FPM ; tâches planifiées | non (secrets d'exploitation seulement) |
@@ -98,11 +98,11 @@ Poste utilisateur ─── selfright-mcp (stdio) → API SelfJustice / SelfAct 
 | SelfRecover | codes de niveau 2 | `random_bytes(5)` : 40 bits par code ✔ | — | `bi-self/selfrecover/src/Recovery/Recovery.php:378` |
 | SelfRecover | passphrase de niveau 1 | 6 mots EFF (≈ 77,5 bits) ✔ ; normalisée avant hachage, comme dans SelfDataGuard | — | `bi-self/selfrecover/src/Recovery/Recovery.php:90, 117` |
 | SelfRecover (client) | chiffrement local (`sr-kdf.js`) | Argon2id t=3, m=64 Mio, p=1 (implémentation JS propre au projet, `client/argon2id.js`) → AES-256-GCM | blob versionné `{v:1, kdf}` portant son profil ; plancher contrôlé à la relecture | `bi-self/selfrecover/client/sr-kdf.js:211-235, 270-285` |
-| SelfDataGuard | trois serrures du coffre | Argon2id t=3, m=64 Mio (libsodium, p=1), 32 o ✔ | sels : `user_salt` ; `sha256(user_salt‖"/dataguard")[:16]` ; `…"/dataguard/passphrase"` ✔ | `self-security/selfdataguard/src/Crypto/Primitives.php:54-55` ; `self-security/selfdataguard/src/Vault/UserVault.php:23-24, 36, 43` |
+| SelfDataGuard | trois serrures du coffre | Argon2id t=3, m=64 Mio (libsodium, p=1), 32 o ✔ ; profil enregistré avec chaque coffre (`kdf_opslimit`, `kdf_memlimit`) depuis la 0.6.0 | sels : `user_salt` ; `sha256(user_salt‖"/dataguard")[:16]` ; `…"/dataguard/passphrase"` ✔ | `self-security/selfdataguard/src/Crypto/Primitives.php:53-63` ; `self-security/selfdataguard/src/Vault/VaultRecord.php` ; `self-security/selfdataguard/src/Vault/UserVault.php` |
 | SelfDataGuard | enveloppes et champs | XChaCha20-Poly1305 ; AAD enveloppes = `userId` ✔ ; AAD champs = `userId\|nom` ✔ ; format `SDG2.` + base64(nonce‖chiffré‖tag) | — | `self-security/selfdataguard/src/Vault/UserVault.php:360` ; `self-security/selfdataguard/src/Fields/FieldCrypter.php:105-108` |
-| SelfDataGuard | séquestre | `wrap_user` : XChaCha20 sous la clé maîtresse, AAD `userId\|escrow` ✔ ; `wrap_admin` : `crypto_box_seal` vers la clé publique admin ✔ | — | `self-security/selfdataguard/src/Escrow/EscrowVault.php:22-23, 36, 59-61` |
+| SelfDataGuard | séquestre | `wrap_user` : XChaCha20 sous la clé maîtresse, AAD `userId\|escrow` ✔ ; `wrap_admin` : `crypto_box_seal(étiquette ‖ longueur ‖ userId ‖ clé)` vers la clé publique admin, lié à son compte depuis la 0.6.0 ✔ | — | `self-security/selfdataguard/src/Escrow/EscrowVault.php:50, 129-160, 196-207` |
 | SelfDataGuard | index aveugle | HMAC-SHA256 à deux étages sous la `blindKey` | par nom de champ | `self-security/selfdataguard/src/Fields/BlindIndex.php:54-73` |
-| SelfDataGuard | journal d'audit du séquestre | chaîne HMAC-SHA256 (symétrique) | — | `self-security/selfdataguard/src/Escrow/AuditLog.php` |
+| SelfDataGuard | journal d'audit du séquestre | chaîne HMAC-SHA256 (symétrique) ; ancre `seq:hmac` facultative depuis la 0.6.0 | — | `self-security/selfdataguard/src/Escrow/AuditLog.php:112` |
 | SelfRecover-LUKS | clé de slot | Argon2id t=3, m=64 Mio, **p=4**, 32 o, sortie hex ✔ | sel = `sha256("<sel>:<label>")[:16]`, label `disk` ✔ | `self-security/selfrecover-luks/selfrecover_derive.c:95, 122-128` |
 | SelfRecover-LUKS | volumes secondaires | fichier-clé de 4096 o d'urandom | — | `self-security/selfrecover-luks/install.sh:475-481` |
 | SelfJustice, SelfAct, MCP | — | aucune primitive ; TLS client avec vérification par défaut (curl, httpx) | — | `self-right/selfjustice/api/api.php:864-869` |
@@ -131,7 +131,7 @@ Poste utilisateur ─── selfright-mcp (stdio) → API SelfJustice / SelfAct 
 | Clé maîtresse du coffre | **serveur**, qui la tire et la matérialise le temps d'une requête ; l'utilisateur détient les secrets qui la déballent | jamais en clair ; trois enveloppes en base | AEAD sous Argon2id | SelfDataGuard |
 | `blindKey` | serveur | au choix de l'intégrateur (fichier, environnement) | — | SelfDataGuard |
 | Clé du séquestre | utilisateur et admin | `wrap_user`, `wrap_admin` | AEAD ; boîte scellée | SelfDataGuard |
-| Clé secrète admin | admin | fichier scellé par Argon2id d'une passphrase | **aucun plancher sur la passphrase** ✔ | SelfDataGuard |
+| Clé secrète admin | admin | fichier scellé par Argon2id d'une passphrase, format `v2:` qui porte son profil | plancher de 12 octets au scellement depuis la 0.6.0 ✔ | SelfDataGuard |
 | Secret du journal d'audit | opérateur | variable d'environnement | longueur minimale | SelfDataGuard |
 | Passphrase Recover-LUKS | opérateur de la machine | papier, gestionnaire | Argon2id puis KDF LUKS | SelfRecover-LUKS |
 | Sel de déploiement LUKS | public mais irremplaçable | `/etc/selfkeyguard/selfrecover_salt`, **copié dans l'initrd sur `/boot` en clair** | aucune (non secret) ; copie hors site exigée | SelfRecover-LUKS |
@@ -239,7 +239,9 @@ SelfJustice, et se replie sur ses chemins.
   - XChaCha20, vecteur IETF : `self-security/selfdataguard/tests/sanity_primitives.php` ;
   - clé de slot LUKS, rejouée en C et en Python par
     `self-security/selfrecover-luks/tests/test_preuve_binaire_boot.sh`.
-- **Pas de vecteur Argon2id figé pour les dérivations de SelfDataGuard**, ni de coffre `SDG2.` figé.
+- Argon2id des trois serrures de SelfDataGuard : `self-security/selfdataguard/tests/vecteurs-argon2.json`,
+  recalculés en CI par une seconde implémentation (`tests/vecteurs_argon2.py`, argon2-cffi). Pas de
+  coffre `SDG2.` figé.
 - **CI** (`.github/workflows/structure.yml`) :
   - les bancs de SelfRecover, SelfDataGuard et SelfRecover-LUKS doivent afficher leur nombre
     exact de contrôles passés ;
@@ -256,30 +258,28 @@ SelfJustice, et se replie sur ses chemins.
 
 Ce sont des limites de conception et des écarts de documentation. Les exploiter suppose un accès
 en écriture à la base, un accès local, ou rien du tout quand il s'agit de documentation. **✔** :
-revérifié à la ligne. Aucun n'est corrigé par ce document.
+revérifié à la ligne. Aucun n'est corrigé par ce document. **🟢 corrigé** : fermé depuis, avec la
+version qui le ferme ; le détail est dans le CHANGELOG racine.
 
 ### 9.1 Séparation des domaines et cryptographie
 
-1. ✔ **SelfDataGuard — un nom de champ peut rejoindre le contexte du séquestre.** Les champs
-   privés ont l'AAD `userId|nom`, sous la clé maîtresse. L'enveloppe utilisateur du séquestre a
-   l'AAD `userId|escrow`, sous la même clé. `setFields()` ne filtre pas les noms
-   (`self-security/selfdataguard/src/SelfDataGuard.php:162-179`). Qui écrit en base peut copier
-   `wrap_user` en champ `escrow`, et `getFields()` rend alors la clé du séquestre à l'application.
-   L'impact est faible, puisque le titulaire peut déjà dériver cette clé, mais la séparation n'est
-   pas tenue.
-2. ✔ **SelfDataGuard — `wrap_admin` n'est lié à aucun utilisateur** : c'est une boîte scellée
-   anonyme (`self-security/selfdataguard/src/Escrow/EscrowVault.php:61`). Un échange entre comptes
-   passe le descellement. L'échec vient ensuite de la mauvaise clé, ou de l'AAD si les champs ont
-   suivi.
+1. 🟢 **SelfDataGuard — un nom de champ pouvait rejoindre le contexte du séquestre.** Corrigé en
+   0.6.0 : le nom `escrow` est réservé ; `setFields()` le refuse, et `getFields()` le refuse par son
+   nom ou le laisse de côté sans le déchiffrer
+   (`self-security/selfdataguard/src/Fields/FieldCrypter.php:112`).
+2. 🟢 **SelfDataGuard — `wrap_admin` n'était lié à aucun utilisateur.** Corrigé en 0.6.0 : il nomme
+   son compte, et un échange entre comptes est refusé à l'ouverture. Un `wrap_admin` d'avant reste
+   lu ; `rebindEscrowAdmin()` le rescelle. Le contenu du séquestre n'est pas authentifié pour autant
+   contre qui écrit en base.
 3. **SelfDataGuard — les AAD ne lient pas la révision.** Qui écrit en base peut remettre une
    enveloppe antérieure de la même génération. Exemple : le titulaire change un mot de passe qui
    a fui ; l'ancien `wrap_pwd`, remis en place, rouvre le coffre avec le mot de passe compromis.
-   Même chose pour une serrure retirée.
-4. ✔ **SelfDataGuard — ni le coffre vivant ni la clé admin scellée n'enregistrent leur profil
-   Argon2id** (`self-security/selfdataguard/src/Crypto/Primitives.php:47-53`). Changer ce profil
-   rendrait tous les coffres illisibles, avec l'erreur « mauvais mot de passe ». Le précédent existe
-   pourtant dans le projet : les archives de SelfDataGuard, les empreintes `password_hash` et les
-   blobs `sr-kdf.js` portent leur profil.
+   Même chose pour une serrure retirée. **Documenté comme limite en 0.6.0** (whitepaper §8.1) : la
+   parade est l'intégrité de la base, pas le coffre.
+4. 🟢 **SelfDataGuard — ni le coffre vivant ni la clé admin scellée n'enregistraient leur profil
+   Argon2id.** Corrigé en 0.6.0 : chaque coffre et la clé admin scellée (`v2:`) portent le leur, et
+   `VaultRecord` l'exige. Ce qu'un intégrateur dérive lui-même par `Primitives` n'en enregistre
+   toujours pas.
 5. **Quatre jeux de paramètres Argon2id coexistent** (§3). Trois sont tenus par un contrôle ; le
    profil MODERATE de la sauvegarde super-utilisateur ne l'est pas.
 6. **SelfRecover-LUKS — l'enrôlement et le démarrage ne lisent pas la passphrase de la même
@@ -289,19 +289,19 @@ revérifié à la ligne. Aucun n'est corrigé par ce document.
    passphrase saisie avec une espace finale donne deux clés différentes : le slot Recover refuse,
    et seul le repli sur la passphrase native reste. Les modules web, eux, normalisent tous deux à
    l'identique.
-7. **SelfDataGuard — pas de vecteur Argon2id figé.** Une modification de la construction des sels
-   ne serait détectée par aucun test.
+7. 🟢 **SelfDataGuard — pas de vecteur Argon2id figé.** Corrigé en 0.6.0 : vecteurs figés pour les
+   trois serrures, recalculés en CI par une seconde implémentation.
 
 ### 9.2 Secrets et journaux
 
-8. ✔ **La passphrase admin du séquestre n'a pas de plancher**
-   (`self-security/selfdataguard/src/Escrow/AdminKey.php:50-52`). Elle garde pourtant le séquestre
-   de tous les comptes : un serveur saisi avec une passphrase faible les livre tous. Ailleurs, le
-   dépôt impose 12 caractères pour un mot de passe et 32 pour un secret de déploiement.
-9. ✔ **Le journal d'audit du séquestre n'est pas ancré.** Un journal absent se vérifie comme un
-   journal vide (`self-security/selfdataguard/src/Escrow/AuditLog.php:155-168`), si bien qu'une
-   troncature de queue ou une suppression complète passe inaperçue. Le HMAC est symétrique : le
-   détenteur du secret peut forger une entrée.
+8. 🟢 **La passphrase admin du séquestre n'avait pas de plancher.** Corrigé en 0.6.0 : 12 octets au
+   scellement (`self-security/selfdataguard/src/Escrow/AdminKey.php:61`) ; une clé scellée plus tôt
+   s'ouvre encore.
+9. 🟢 **Le journal d'audit du séquestre n'était pas ancré.** Corrigé en 0.6.0 : `verify-log` affiche
+   la tête `seq:hmac`, et `--ancre` refuse ensuite un journal tronqué, réécrit ou supprimé
+   (`self-security/selfdataguard/src/Escrow/AuditLog.php:112`). L'ancrage reste un geste de
+   l'opérateur, et le HMAC reste symétrique : le détenteur du secret forge au-delà de la dernière
+   ancre.
 10. **Les secrets d'exploitation de Self-Right se chargent selon plusieurs conventions** : trois
     pour le jeton ntfy, et deux emplacements pour la clé PISTE.
 
@@ -315,7 +315,8 @@ revérifié à la ligne. Aucun n'est corrigé par ce document.
     (`bi-self/selfrecover/src/Recovery/Escalade.php:383`). Elle n'est écrite qu'après un sésame
     valide et rien ne la relit. Le niveau 1 écrit déjà le nom en clair dans la même table.
 13. **SelfDataGuard — aucun chemin de déverrouillage n'a de frein**, connexion comprise. Chaque
-    appel est un essai Argon2id, à freiner par l'intégrateur (c'est documenté).
+    appel est un essai Argon2id, à freiner par l'intégrateur (c'est documenté). La démo publique, elle,
+    donne depuis le 04/10/2026 une base à chaque visiteur et passe derrière un frein nginx.
 14. **Deux voies d'injection d'instructions vers des IA tierces** : la page de directives de
     SelfJustice, et le texte des sources relayé par le MCP.
 
