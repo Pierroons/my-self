@@ -1,9 +1,9 @@
-# SelfRecover — Whitepaper v1.2
+# SelfRecover — Whitepaper v1.3
 
 **Zero-Email Account Recovery Protocol**
 *Your word. Your sites. No email.*
 
-*Edition of 4 October 2026 — v1.2 — describes SelfRecover 0.9.0*
+*Edition of 4 October 2026 — v1.3 — describes SelfRecover 0.10.0*
 
 ---
 
@@ -53,7 +53,7 @@ SelfRecover is a split-knowledge recovery system. The user remembers one word. T
 
 **What the user remembers:** a single word, written down nowhere.
 
-**What the user keeps on paper:** their recovery codes (level 2) and their diceware passphrase (level 1). They are drawn at random; nobody has to remember them.
+**What the user keeps on paper:** their recovery codes (level 2) and their diceware passphrase (level 1). They are drawn at random — by the server, or with dice by the user for the passphrase (§5.5); nobody has to remember them.
 
 The word alone reopens no account: level 2 also requires a recovery code or the enrolled device (§5.4).
 
@@ -74,7 +74,7 @@ derived_key = HMAC-SHA256(key = recovery_word, message = material + "|v2" + acco
 The server receives and stores:
 
 - `Argon2id(password)` — the login password
-- `Argon2id(passphrase)` — a diceware passphrase generated server-side (6 words, ≈ 77.5 bits of entropy; a shorter passphrase issued before the move to six words stays valid until used)
+- `Argon2id(passphrase)` — a diceware passphrase, generated server-side or brought by the user, rolled with dice (§5.5) (6 words or more, ≈ 77.5 bits for six uniformly drawn words; a shorter passphrase issued before the move to six words stays valid until used)
 - `Argon2id(derived_key)` — the HMAC-derived recovery key
 - `account_salt` — the account salt: 16 random bytes rendered as 32 lowercase hex characters, one per account, browser-generated, not a secret
 - the first batch of 10 recovery codes, each stored in two forms (§5.4)
@@ -219,6 +219,29 @@ L2 always combines **knowledge** (the memorized word) and **possession**. Two po
 - ⚠️ **Enrolling a device does not add a factor: at that moment, the memorized word is enough.** Whoever knows it can enroll **their own** key, then authenticate with it — the path goes through neither a recovery code nor the passphrase. Enrollment therefore belongs to an **already-open session**, and it is up to the application to take the account name from that session rather than from the request body. The protocol requires the application to **assert** this explicitly (`Titulaire::AUTHENTIFIE`), and rate-limits the path per account and per address (5 and 12 failures per 15 minutes, defaults); it cannot verify the session itself — **this is an assertion, not a proof**. An already-enrolled device does remain two real factors: its encrypted blob and the word.
 - A level-3 reset removes every enrolled device; levels 1 and 2 do not.
 
+### 5.5 A passphrase the user brings — the user's choice
+
+Wherever a passphrase is issued — at registration, and at the level 1, 2 and 3 renewals —, the user
+may bring their own, rolled with dice, instead of receiving one drawn by the server. Nothing brought:
+the server draws, as before.
+
+- **The check** (`Recovery::validerPassphraseApportee()`): six words or more, each from the EFF English
+  list or from Arthur Pons's French list, none repeated, a byte ceiling. The passphrase is stored in a
+  single form: lowercase, one space between words. That form is the one hashed, returned and written
+  down, because verification does not lowercase.
+- **A refusal** gives a word's position, never the word. It is judged before any brake, with no trace
+  and no delay: it depends only on the input, not on the account, and tracing it would let anyone
+  charge someone else's brake. It consumes neither the level-2 code nor the level-3 case.
+- **The old passphrase does not come back**: at every level, a brought passphrase equal to the one it
+  replaces is refused. At level 3 it also cannot equal the chosen password.
+- **What the check does not measure: randomness.** Six words picked by hand pass, and are worth less
+  than six rolled words. The same passphrase seals the "passphrase" lock of the SelfDataGuard vault,
+  which is attacked offline: a guessable passphrase becomes the cheapest way in.
+
+At registration, which belongs to the application, it passes the input to the check and hashes the
+returned form. At renewals, it passes it as `nouvellePassphrase` to `parPassphrase()`, `parCode()`
+or `Escalade::reEnroler()`.
+
 ---
 
 ## 6. Dispute System & Admin Interface
@@ -238,7 +261,7 @@ When the admin reviews a dispute, two paths exist:
 
 - Admin verifies identity via the chat exchange
 - The dispute moves to `accepted`. **The server neither generates nor transmits any password**: no secret travels through the chat
-- The user **re-defines their own** password and memorized word from their recovery page (re-enrollment model). The password is 12 to 4,096 characters; it is submitted in the clear, and the server files it without issuing it. The browser generates a new salt and derives the memorized word, which never arrives in the clear. The server generates a passphrase and 10 codes, shown once, drops open sessions and removes every enrolled device — the holder re-enrolls the one they use. The dispute moves to `closed` and the tracking code's hash is erased
+- The user **re-defines their own** password and memorized word from their recovery page (re-enrollment model). The password is 12 to 4,096 characters; it is submitted in the clear, and the server files it without issuing it. The browser generates a new salt and derives the memorized word, which never arrives in the clear. The server generates 10 codes, and a passphrase unless the holder brings their own (§5.5), shown once, drops open sessions and removes every enrolled device — the holder re-enrolls the one they use. The dispute moves to `closed` and the tracking code's hash is erased
 
 **Option 2 — Refuse recovery:**
 
@@ -382,6 +405,7 @@ SelfRecover assumes:
 ### 10.4 Other limitations (by design)
 
 - If the user forgot their memorized word and lost their passphrase, only level 3 is left: a human arbitrator. If the arbitrator refuses there is no other recourse; a new dispute stays possible until the 7-day freeze, on the 3rd refusal in 30 days
+- A passphrase the user brings is only as random as its dice, which the library cannot check (§5.5)
 
 These are by design. A system with infinite fallbacks has infinite attack surface.
 
@@ -429,6 +453,7 @@ SelfRecover cannot protect accounts if the server hosting it is insecure. The fo
 - [ ] Call `purger()` from a scheduled task: the library has no clock
 - [ ] Put a proof of work in front of the level-3 opening route
 - [ ] With the shipped adapter, build `StockagePdo` with the derivation host
+- [ ] A passphrase the user brings: pass the input to `Recovery::validerPassphraseApportee()`, hash and show the returned form, set `autocapitalize="none"` on passphrase fields
 
 A deployment that skips this checklist is not a SelfRecover deployment — it is a liability.
 
@@ -473,7 +498,7 @@ SelfRecover is not a replacement for WebAuthn. It is a complement, especially fo
 
 ## 14. Roadmap
 
-- [x] Protocol specification (v1.2)
+- [x] Protocol specification (v1.3)
 - [x] Reference implementation (this repo)
 - [x] Whitepapers EN + FR
 - [x] Served demo (`demo/bi-self-duo/`) and lab (`demo/lab/`) — the standalone demo was removed on 18 August 2026
@@ -484,6 +509,7 @@ SelfRecover is not a replacement for WebAuthn. It is a complement, especially fo
 - [x] Mandatory deployment profile, per-account brakes, level-2 suspension
 - [x] Devices removed on a level-3 reset, grant expiry
 - [x] Salt route guard (`Recovery::selDeDerivation`)
+- [x] A passphrase the user brings, rolled with dice (`Recovery::validerPassphraseApportee`)
 - [ ] External security audit (community welcome)
 - [ ] Published on Packagist (`composer require pierroons/selfrecover`)
 - [ ] JS package (`npm install selfrecover`) — the deriver ships as `client/sr-derive.js`, it is not packaged

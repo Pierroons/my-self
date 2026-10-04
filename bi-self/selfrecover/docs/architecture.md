@@ -20,11 +20,13 @@
      │                              │  POST /register             │
      │                              │  { derived_key, user_salt,  │
      │                              │    username, identifier,    │
-     │                              │    password }               │
+     │                              │    password, passphrase? }  │
      │                              │────────────────────────────>│
      │                              │                             │
      │                              │                Argon2id(derived_key)
-     │                              │                generate diceware passphrase
+     │                              │                passphrase brought? validate it
+     │                              │                (6 listed words, lowercased),
+     │                              │                else generate one (diceware)
      │                              │                Argon2id(passphrase)
      │                              │                INSERT users
      │                              │                             │

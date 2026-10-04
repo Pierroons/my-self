@@ -152,6 +152,19 @@ an old recovery automatically would require telling a known context from an unkn
 a hidden service there is no context at all: every request shares one address. The library would
 turn away a legitimate holder on a signal that does not exist.
 
+### ✗ A passphrase the user brings is only as random as its dice
+
+The user may bring their level-1 passphrase, rolled with dice, instead of receiving one drawn by
+the server (`Recovery::validerPassphraseApportee()`). The library checks its **form**: six words or
+more, each from the EFF English list or the French list, none repeated. It **cannot check the
+randomness**: six words picked by hand pass, and are worth far less than six rolled words.
+
+That weakness reaches further than level 1. SelfDataGuard seals its "passphrase" lock on the same
+string, and a lock is attacked offline, with no attempt counter: a guessable passphrase becomes the
+cheapest way into the vault. What the library can do, it does — refuse short or off-list phrases,
+repeated words, the passphrase that was just used, and at level 3 a passphrase equal to the chosen
+password. What it cannot do is tell dice from a person.
+
 ### ✗ User negligence
 - Writing the recovery word on a sticky note visible on the monitor
 - Sharing it in a chat or email "for convenience"

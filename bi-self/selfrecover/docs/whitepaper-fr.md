@@ -1,9 +1,9 @@
-# SelfRecover — Whitepaper v1.2
+# SelfRecover — Whitepaper v1.3
 
 **Protocole de récupération de compte sans email**
 *Ton mot. Tes sites. Sans email.*
 
-*Édition du 4 octobre 2026 — v1.2 — décrit SelfRecover 0.9.0*
+*Édition du 4 octobre 2026 — v1.3 — décrit SelfRecover 0.10.0*
 
 ---
 
@@ -53,7 +53,7 @@ SelfRecover est un système de récupération à connaissance partagée (split k
 
 **Ce que l'utilisateur retient :** un seul mot, qui ne s'écrit nulle part.
 
-**Ce que l'utilisateur garde sur papier :** ses recovery codes (niveau 2) et sa passphrase diceware (niveau 1). Ils sont tirés au hasard ; personne n'a à les retenir.
+**Ce que l'utilisateur garde sur papier :** ses recovery codes (niveau 2) et sa passphrase diceware (niveau 1). Ils sont tirés au hasard — par le serveur, ou aux dés par l'utilisateur pour la passphrase (§5.5) ; personne n'a à les retenir.
 
 Le mot seul ne rouvre aucun compte : au niveau 2, il faut aussi un recovery code ou l'appareil enrôlé (§5.4).
 
@@ -74,7 +74,7 @@ Le `matériel` dépend d'un mode de dérivation obligatoire, décrit en §4. La 
 Le serveur reçoit et stocke :
 
 - `Argon2id(mot_de_passe)` — le mot de passe de connexion
-- `Argon2id(passphrase)` — une passphrase diceware engendrée côté serveur (6 mots, ≈ 77,5 bits d'entropie ; une passphrase plus courte, émise avant le passage à six mots, reste valide jusqu'à son usage)
+- `Argon2id(passphrase)` — une passphrase diceware, engendrée côté serveur ou apportée par l'utilisateur, tirée aux dés (§5.5) (6 mots au moins, ≈ 77,5 bits pour six mots tirés uniformément ; une passphrase plus courte, émise avant le passage à six mots, reste valide jusqu'à son usage)
 - `Argon2id(clé_dérivée)` — la clé de récupération dérivée par HMAC
 - `sel_compte` — le sel du compte : 16 octets aléatoires rendus en 32 hexadécimaux minuscules, un par compte, engendré par le navigateur, pas un secret
 - les 10 codes de récupération du premier lot, chacun sous deux formes (§5.4)
@@ -219,6 +219,29 @@ Le L2 combine toujours **connaissance** (le mot mémorisé) et **possession**. D
 - ⚠️ **Enrôler un appareil n'ajoute pas un facteur : à cet instant, le mot suffit.** Qui connaît le mot mémorisé peut enrôler **sa propre** clé, puis s'authentifier avec elle — le chemin ne passe ni par un recovery code, ni par la passphrase. L'enrôlement appartient donc à une **session déjà ouverte**, et il revient à l'application d'en tirer le nom du compte plutôt que du corps de la requête. Le protocole exige de l'application qu'elle l'**affirme** explicitement (`Titulaire::AUTHENTIFIE`), et freine ce chemin par compte et par adresse (5 et 12 échecs sur 15 minutes, valeurs par défaut) ; il ne peut pas vérifier la session lui-même — **c'est une affirmation, pas une preuve**. Un appareil déjà enrôlé, lui, reste deux facteurs réels : son blob chiffré et le mot.
 - La reprise au niveau 3 retire tous les appareils enrôlés ; les niveaux 1 et 2 ne les retirent pas.
 
+### 5.5 La passphrase apportée — le choix de l'utilisateur
+
+Partout où une passphrase est émise — l'inscription, et les renouvellements des niveaux 1, 2 et 3 —,
+l'utilisateur peut apporter la sienne, tirée aux dés, au lieu d'en recevoir une tirée par le serveur.
+Rien d'apporté : le serveur tire, comme avant.
+
+- **Le contrôle** (`Recovery::validerPassphraseApportee()`) : six mots au moins, chacun dans la liste
+  anglaise de l'EFF ou dans la liste française d'Arthur Pons, aucun répété, un plafond d'octets. La
+  passphrase est rangée sous une forme unique : minuscules, une espace entre les mots. C'est cette
+  forme qu'on hache, qu'on rend et qu'on fait noter, parce que la vérification ne passe pas en minuscules.
+- **Le refus** dit la position d'un mot, jamais le mot. Il est jugé avant tout frein, sans trace ni
+  délai : il ne dépend que de la saisie, pas du compte, et le tracer laisserait n'importe qui charger
+  le frein d'un autre. Il ne consomme ni le code du niveau 2, ni le dossier du niveau 3.
+- **L'ancienne passphrase ne revient pas** : à chaque niveau, une passphrase apportée égale à celle
+  qu'elle remplace est refusée. Au niveau 3, elle ne peut pas non plus égaler le mot de passe choisi.
+- **Ce que le contrôle ne mesure pas : le hasard.** Six mots choisis de tête passent, et ne valent pas
+  six mots tirés. La même passphrase scelle la serrure « passphrase » du coffre SelfDataGuard, qu'on
+  attaque hors ligne : une passphrase devinable y devient la porte la moins chère.
+
+À l'inscription, qui appartient à l'application, celle-ci passe la saisie au contrôle et hache la
+forme rendue. Aux renouvellements, elle la passe en `nouvellePassphrase` à `parPassphrase()`,
+`parCode()` ou `Escalade::reEnroler()`.
+
 ---
 
 ## 6. Système de litiges et interface admin
@@ -238,7 +261,7 @@ Quand l'admin examine un litige, deux options existent :
 
 - L'admin vérifie l'identité via l'échange chat
 - Le litige passe en `accepted`. **Le serveur ne génère ni ne transmet aucun mot de passe** : aucun secret ne circule dans le chat
-- L'utilisateur **re-définit lui-même** son mot de passe et son mot mémorisé depuis sa page de récupération (modèle de ré-enrôlement). Le mot de passe fait entre 12 et 4 096 caractères ; il est soumis en clair, et le serveur le range sans l'émettre. Le navigateur engendre un nouveau sel et dérive le mot mémorisé, qui n'arrive jamais en clair. Le serveur engendre une passphrase et 10 codes neufs, affichés une fois, coupe les sessions et retire tous les appareils enrôlés — le titulaire réenrôle celui qu'il utilise. Le dossier passe en `closed` et l'empreinte du code de suivi est effacée
+- L'utilisateur **re-définit lui-même** son mot de passe et son mot mémorisé depuis sa page de récupération (modèle de ré-enrôlement). Le mot de passe fait entre 12 et 4 096 caractères ; il est soumis en clair, et le serveur le range sans l'émettre. Le navigateur engendre un nouveau sel et dérive le mot mémorisé, qui n'arrive jamais en clair. Le serveur engendre 10 codes neufs, et une passphrase si le titulaire n'apporte pas la sienne (§5.5), affichés une fois, coupe les sessions et retire tous les appareils enrôlés — le titulaire réenrôle celui qu'il utilise. Le dossier passe en `closed` et l'empreinte du code de suivi est effacée
 
 **Option 2 — Refuser la récupération :**
 
@@ -383,6 +406,7 @@ SelfRecover part du principe que :
 ### 10.4 Autres limites (par conception)
 
 - Si l'utilisateur a oublié son mot mémorisé et perdu sa passphrase, il ne reste que le niveau 3 : un arbitre humain. S'il refuse, il n'y a pas d'autre recours ; un nouveau dossier reste possible jusqu'au gel de 7 jours, au 3ᵉ refus en 30 jours
+- Une passphrase apportée ne vaut que le hasard de ses dés, que la bibliothèque ne peut pas vérifier (§5.5)
 
 Ces limites sont voulues. Un système avec des recours infinis a une surface d'attaque infinie.
 
@@ -430,6 +454,7 @@ SelfRecover ne peut pas protéger les comptes si le serveur qui l'héberge est m
 - [ ] Appeler `purger()` depuis une tâche planifiée : la bibliothèque n'a pas d'horloge
 - [ ] Poser une preuve de travail devant la route d'ouverture du niveau 3
 - [ ] Avec l'adaptateur fourni, construire `StockagePdo` avec l'hôte de dérivation
+- [ ] Passphrase apportée : passer la saisie à `Recovery::validerPassphraseApportee()`, hacher et afficher la forme rendue, poser `autocapitalize="none"` sur les champs passphrase
 
 Un déploiement qui ignore cette checklist n'est pas un déploiement SelfRecover — c'est une passoire.
 
@@ -474,7 +499,7 @@ SelfRecover n'est pas un remplacement pour WebAuthn. C'est un complément, surto
 
 ## 14. Feuille de route
 
-- [x] Spécification du protocole (v1.2)
+- [x] Spécification du protocole (v1.3)
 - [x] Implémentation de référence (ce dépôt)
 - [x] Livres blancs EN + FR
 - [x] Démo servie (`demo/bi-self-duo/`) et laboratoire (`demo/lab/`) — la démo autonome a été retirée le 18 août 2026
@@ -485,6 +510,7 @@ SelfRecover n'est pas un remplacement pour WebAuthn. C'est un complément, surto
 - [x] Profil de déploiement obligatoire, freins par compte, suspension du niveau 2
 - [x] Retrait des appareils à la reprise du niveau 3, échéance de l'accord
 - [x] Garde de la route du sel (`Recovery::selDeDerivation`)
+- [x] Passphrase apportée par l'utilisateur, tirée aux dés (`Recovery::validerPassphraseApportee`)
 - [ ] Audit de sécurité externe (communauté bienvenue)
 - [ ] Publication sur Packagist (`composer require pierroons/selfrecover`)
 - [ ] Paquet JS (`npm install selfrecover`) — le dériveur est livré comme `client/sr-derive.js`, il n'est pas paqueté

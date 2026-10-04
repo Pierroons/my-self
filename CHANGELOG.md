@@ -22,8 +22,8 @@ code avait dépassés. Aucun comportement de la bibliothèque ne change.
   route du sel, la suspension du niveau 2, le faisceau du niveau 3 et ce qu'exige l'intégration y
   entrent. Le whitepaper de SelfRecover-LUKS passe en 0.6.2. Les trois sont désormais porteurs de
   version : `scripts/check-versions.sh` rougit s'ils dérivent.
-- **L'aléa** : la bibliothèque tire la passphrase par `random_int`. Les dés expliquent la liste ;
-  ils ne sont pas un mode de la bibliothèque.
+- **L'aléa** : la bibliothèque tire la passphrase par `random_int`, et les dés expliquent la
+  liste. Depuis la v0.10.0, l'utilisateur peut aussi apporter une passphrase tirée aux dés.
 - **Serveur compromis** : README, SECURITY et whitepapers disent qu'il sert le dériveur, donc qu'il
   pourrait servir une autre page.
 - **Installation** : par un dépôt Composer de type `path`, depuis un clone ; `composer.json` suggère
@@ -443,6 +443,42 @@ Le garde-fou de CI vérifie deux compteurs plutôt que le seul code de sortie : 
 sections ne s'éprouvent pas sous root, le banc les saute **en le disant** et sort quand
 même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le même vert en
 ayant renoncé aux contrôles qui touchent au système.
+
+---
+
+## [SelfRecover v0.10.0] — 4 octobre 2026
+
+### SelfRecover v0.10.0 — la passphrase apportée, tirée aux dés — 4 octobre 2026
+
+Jusqu'ici, la passphrase du niveau 1 était toujours tirée par le serveur, à l'inscription comme à
+chaque récupération. L'utilisateur peut désormais apporter la sienne, tirée aux dés dans la liste
+anglaise de l'EFF ou dans la liste française d'Arthur Pons : le choix lui revient, pas à la machine.
+Rien d'apporté, le serveur tire comme avant ; aucun adaptateur de stockage ne change.
+
+- **`Recovery::validerPassphraseApportee()`** : six mots au moins, chacun dans l'une des deux listes,
+  aucun répété, un plafond d'octets contrôlé avant tout calcul. Forme rangée unique, en minuscules,
+  une espace entre les mots : c'est elle qu'on hache et qu'on rend. Le refus dit la position d'un
+  mot, jamais le mot. L'intégrateur l'appelle à l'inscription.
+- **`parPassphrase()`, `parCode()`, `Escalade::reEnroler()`** : paramètre facultatif
+  `nouvellePassphrase`. Jugée avant les freins, sans trace ni délai : son refus ne dépend que de la
+  saisie. L'ancienne passphrase ne revient pas ; au niveau 3, la passphrase ne peut pas non plus
+  égaler le mot de passe choisi. Un refus ne consomme ni le code du niveau 2 ni le dossier du
+  niveau 3. Le retour garde la clé `passphrase`, sous la forme rangée : le re-scellement de
+  SelfDataGuard ne change pas.
+- **`Wordlist::inAnyList()`** ; **`Wordlist::validateUserPassphrase()` est retirée** : elle n'était
+  appelée ni testée nulle part, acceptait quatre mots et citait le mot fautif dans son exception.
+- **Ce que la bibliothèque ne peut pas faire** : mesurer le hasard. Six mots choisis de tête passent
+  le contrôle et ne valent pas six mots tirés ; la même passphrase scelle une serrure du coffre
+  SelfDataGuard, attaquable hors ligne. Le modèle de menace le dit.
+- **Outillage** : le tutoriel des dés renvoie aux deux listes d'origine, avec leurs codes ; le
+  vérificateur hors ligne accepte les mots à trait d'union et échappe ce qu'il affiche. Licence de
+  la liste française corrigée : MIT, pas CC-BY 3.0.
+- **Démo bi-self-duo** : le choix « le serveur tire / j'apporte la mienne » à l'inscription, au
+  niveau 1 et au niveau 2.
+
+Bancs : `sanity_passphrase_apportee.php` (37 cas, deux profils), couplage avec SelfDataGuard 10/10,
+parcours 21/21, quatre canaris en CI. Whitepapers en v1.3 ; les fiches diceware sont régénérées
+pour la version.
 
 ---
 
