@@ -2,10 +2,10 @@
 
 *3 octobre 2026 — 19:48 · état du dépôt au commit `1b91edf` ; SelfDataGuard, SelfRecover, leurs démos et
 les constats 20 et 23 revus le 4 octobre 2026 au commit `4149238` ; Self-Right, la CI, le déploiement, l'intégration et SelfFarm Lite relus
-par leurs mainteneurs au même commit*
+par leurs mainteneurs au même commit ; constats 17, 18, 19 et 21 revus au commit `e97460e`*
 
-> **Statut : brouillon.** Le mainteneur de chaque module relit, dans toutes les sections, ce
-> qui touche son module avant que ce document entre dans `main`.
+> **Statut : relu.** Le 4 octobre 2026, le mainteneur de chaque module a relu, dans toutes les
+> sections, ce qui touche son module. Un constat corrigé depuis porte 🟢.
 
 ## 0. Objet et méthode
 
