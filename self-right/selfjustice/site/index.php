@@ -45,10 +45,10 @@ function chiffre(array $corpus, string $cle): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SelfJustice — Pré-analyse juridique impartiale</title>
-  <meta name="description" content="SelfJustice : directives juridiques open source pour une pré-analyse impartiale de conflits assistée par IA. Droit français.">
+  <title>SelfJustice — le droit lisible par ton IA</title>
+  <meta name="description" content="SelfJustice : le droit français et européen par une API publique, et des directives open source pour que ton IA le lise sans l'inventer.">
   <meta name="author" content="Pierroons — MySelf Project">
-  <meta property="og:title" content="SelfJustice — Pré-analyse juridique impartiale">
+  <meta property="og:title" content="SelfJustice — le droit lisible par ton IA">
   <meta property="og:description" content="Accès au droit impartial assisté par IA. L'humain apporte l'entropie, la machine apporte l'impartialité.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://justice.example.org">
