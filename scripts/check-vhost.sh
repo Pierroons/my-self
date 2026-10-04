@@ -124,7 +124,13 @@ done
 mkdir -p "$D/snippets"
 printf '%s' "$SNIPPETS_B64" | base64 -d | while read -r nom contenu; do
     [ -n "$nom" ] || continue
-    printf '%s' "$contenu" | base64 -d > "$D/snippets/$nom"
+    # Même substitution de chemin que pour le gabarit, et pour la même raison :
+    # un snippet qui ouvre un journal porte un chemin absolu sous /var/log, que
+    # ce test — qui tourne sans privilège, c'est tout son intérêt — ne peut pas
+    # écrire. Sans elle, le gabarit rougit pour une permission, pas pour sa
+    # syntaxe. Trouvé le 04/10/2026 sur le premier snippet qui journalise.
+    printf '%s' "$contenu" | base64 -d \
+        | sed -E "s#/var/log/nginx/#$D/logs/#g" > "$D/snippets/$nom"
 done
 # `nginx.conf` du système n'a rien à faire ici : c'est le nôtre qui pilote.
 rm -f "$D/nginx.conf" 
