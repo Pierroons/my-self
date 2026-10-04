@@ -390,7 +390,10 @@ d'instance corrigées.
 
 Relevées sur les instances en service, tenues privées tant qu'elles étaient ouvertes, puis
 corrigées et mesurées sur l'instance le 4 octobre 2026. Celles qui tenaient au code versionné
-valent pour toute instance installée depuis un `main` antérieur : la mettre à jour les ferme.
+valent pour toute instance installée depuis un `main` antérieur : la mettre à jour les ferme, avec
+des gestes que le déploiement ne fait pas : poser le vhost et les unités systemd d'après leurs
+gabarits versionnés (`deploy/selfdataguard/`, `deploy/selfjustice/`) et, pour SelfJustice, la
+ligne cron du recopieur de journaux (`self-right/selfjustice/admin/README.md`).
 
 26. 🟢 **La démo SelfDataGuard n'avait qu'une base pour tous ses visiteurs.** Chacun voyait les
     coffres des autres, testait leurs index aveugles et essayait leurs mots de passe, sans frein,
@@ -399,13 +402,13 @@ valent pour toute instance installée depuis un `main` antérieur : la mettre à
     limite de débit nginx devant la démo (`demo/selfdataguard/`, `deploy/selfdataguard/`).
 27. 🟢 **Le jeton du panneau de veille de SelfJustice circulait dans l'URL**, donc dans les journaux
     d'accès, qu'un outil recopiait là où d'autres comptes de la machine pouvaient les lire. Le
-    panneau n'écrit plus de journal d'accès, les copies ne sont lisibles que par le service, et le
-    jeton a été changé (`deploy/selfjustice/nginx.conf`, `self-right/selfjustice/tools/admin_feed.sh`).
+    panneau n'écrit plus de journal d'accès, les copies n'en gardent plus aucune ligne et ne sont
+    lisibles que par le service, et le jeton a été changé (`deploy/selfjustice/nginx.conf`, `self-right/selfjustice/tools/admin_feed.sh`).
 28. 🟢 **Un fichier de débogage du même panneau, lisible par tous les comptes de la machine,
     portait un jeton en clair.** Supprimé ; le jeton a été changé.
-29. 🟢 **Le dépôt anonyme de retours de SelfJustice n'avait ni limite de débit ni quota.** Une
-    limite nginx le freine, et un quota de stockage le borne : au-delà, le dépôt est refusé sans
-    rien écrire (`self-right/selfjustice/api/quota_feedback.php`).
+29. 🟢 **Le dépôt anonyme de retours de SelfJustice n'avait pas de quota, et partageait la limite
+    de débit de l'API, faite pour des lectures.** Une limite propre le freine, et un quota de
+    stockage le borne : au-delà, le dépôt est refusé sans rien écrire (`self-right/selfjustice/api/quota_feedback.php`).
 30. 🟢 **L'en-tête `Host` du client était reflété dans des réponses mises en cache** par SelfJustice
     et SelfAct. Les URL rendues partent de `SELFJUSTICE_BASE_URL`, sinon du nom que nginx fixe
     (`self-right/selfjustice/api/api.php`, `self-right/selfact/api/find.php`). L'exploitation
@@ -416,7 +419,7 @@ valent pour toute instance installée depuis un `main` antérieur : la mettre à
 32. 🟢 **La collecte du corpus européen contactait CELLAR en HTTP**, et deux services de collecte
     pouvaient écrire dans le répertoire de leur propre code. CELLAR passe en HTTPS
     (`self-right/selfjustice/tools/build_eu_db.py`) ; ces services n'écrivent plus que dans leur
-    répertoire de données, et la sonde de fraîcheur est durcie comme eux (`deploy/selfjustice/`).
+    répertoire de données et leur journal, et la sonde de fraîcheur est durcie comme eux (`deploy/selfjustice/`).
 33. 🟢 **Les routes d'administration et de SelfAct ne vivaient que dans le vhost de l'instance** :
     le gabarit versionné ne décrivait pas ce qui était servi. Il le décrit, au domaine près
     (`deploy/selfjustice/nginx.conf` ; voir aussi le constat 20).
