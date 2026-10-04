@@ -479,7 +479,7 @@
       (livrable non officiel, cas B ou C).</li>
   </ol>
   <p>
-    <strong>La redirection vers l'URL service-public.fr n'est pas le réflexe par défaut.</strong>
+    <strong>La redirection vers l'URL service-public.gouv.fr n'est pas le réflexe par défaut.</strong>
     Elle est citée dans le document comme référence de vérification, mais SelfAct produit
     le document complet pour que l'utilisateur n'ait pas à retélécharger et re-remplir ailleurs.
     La redirection s'impose uniquement si l'utilisateur demande explicitement à remplir lui-même,
@@ -623,22 +623,22 @@ Sur les faits :
     <tbody>
       <tr>
         <td>Impayé commercial ou loyer en retard</td>
-        <td>Mise en demeure LRAR puis <a href="https://www.service-public.fr/particuliers/vosdroits/F1736" target="_blank" rel="noopener">saisine conciliateur</a></td>
+        <td>Mise en demeure LRAR puis <a href="https://www.service-public.gouv.fr/particuliers/vosdroits/F1736" target="_blank" rel="noopener">saisine conciliateur</a></td>
         <td>Tous montants, obligatoire &lt; 5 000 €</td>
       </tr>
       <tr>
         <td>Conflit de voisinage (nuisances, empiètement)</td>
-        <td>Mise en demeure LRAR puis <a href="https://www.service-public.fr/particuliers/vosdroits/F1736" target="_blank" rel="noopener">saisine conciliateur</a></td>
+        <td>Mise en demeure LRAR puis <a href="https://www.service-public.gouv.fr/particuliers/vosdroits/F1736" target="_blank" rel="noopener">saisine conciliateur</a></td>
         <td>Obligatoire conciliateur avant tribunal</td>
       </tr>
       <tr>
         <td>Produit non conforme, service mal exécuté</td>
-        <td>Mise en demeure LRAR + <a href="https://www.service-public.fr/particuliers/vosdroits/R24052" target="_blank" rel="noopener">signalement DGCCRF (R24052)</a></td>
+        <td>Mise en demeure LRAR + <a href="https://www.service-public.gouv.fr/particuliers/vosdroits/R24052" target="_blank" rel="noopener">signalement DGCCRF (R24052)</a></td>
         <td>Délai de rétractation 14 j (art. L. 112-1 C. conso.)</td>
       </tr>
       <tr>
         <td>Vol, escroquerie, dégradation, menaces</td>
-        <td><a href="https://www.service-public.fr/particuliers/vosdroits/R11469" target="_blank" rel="noopener">Plainte simple (R11469)</a></td>
+        <td><a href="https://www.service-public.gouv.fr/particuliers/vosdroits/R11469" target="_blank" rel="noopener">Plainte simple (R11469)</a></td>
         <td>Prescription : 1 an (contrav.) / 6 ans (délit)</td>
       </tr>
       <tr>
@@ -731,7 +731,7 @@ Sur les faits :
 
   <p>
     SelfAct expose une API JSON accessible à toute IA ou application tierce pour
-    indexer le catalogue service-public.fr et produire des brouillons d'aide à la rédaction.
+    indexer le catalogue service-public.gouv.fr et produire des brouillons d'aide à la rédaction.
     L'API est stateless (aucun stockage côté serveur), rate-limitée, et publique.
   </p>
 
@@ -743,7 +743,7 @@ Sur les faits :
 Response :
 {
   "ok": true,
-  "meta": { "version": "2026.04", "source": "service-public.fr (Etalab 2.0)" },
+  "meta": { "version": "2026.04", "source": "service-public.gouv.fr (Etalab 2.0)" },
   "situations": [
     { "slug": "impaye_commercial_loyer", "label": "Impayé commercial ou loyer en retard", "acts_count": 2 },
     { "slug": "voisinage_nuisances", "label": "Conflit de voisinage", "acts_count": 2 },
@@ -780,7 +780,7 @@ Response :
   <details>
     <summary><code>GET /act/api/draft</code> — produit un brouillon HTML</summary>
     <p>
-      Dernier recours seulement : quand aucun modèle officiel service-public.fr ne convient,
+      Dernier recours seulement : quand aucun modèle officiel service-public.gouv.fr ne convient,
       cet endpoint renvoie une page HTML prête à imprimer en PDF (Ctrl+P → Enregistrer
       au format PDF). Sur un document de <strong>cas C</strong>, la mention
       <strong>NON OFFICIEL</strong> est répétée en tête et au milieu ; sur tous, le rappel
@@ -810,7 +810,7 @@ jamais la machine de celui qui les écrit.</pre>
     SelfJustice.</p>
     <p>Une vingtaine de situations — le compte exact est servi par
     <code>/act/api/find?list=1</code>. Sources :
-    service-public.fr (Etalab 2.0), defenseurdesdroits.fr, internet-signalement.gouv.fr,
+    service-public.gouv.fr (Etalab 2.0), defenseurdesdroits.fr, internet-signalement.gouv.fr,
     3018 (e-Enfance), 119 (SNATED).</p>
   </details>
 </section>

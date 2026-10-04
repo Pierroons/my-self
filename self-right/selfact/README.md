@@ -5,7 +5,7 @@
 **From "I know my rights" to the step itself: the official form, the deadline, a letter template to complete.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.1.3 running](https://img.shields.io/badge/status-v0.1.3%20running-brightgreen.svg)](#status)
+[![Status: v0.1.3 beta](https://img.shields.io/badge/status-v0.1.3%20beta-green.svg)](#status)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.md)
 [![Companion of: SelfJustice](https://img.shields.io/badge/companion-SelfJustice-green.svg)](../selfjustice/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -69,12 +69,15 @@ rejected with `405`, body unread).
 
 ## Status
 
-**v0.1.3 — running at `justice.my-self.fr/act`.**
+**v0.1.3 — beta, served at `justice.my-self.fr/act`.**
 
 Everything is here: [`api/`](api/) the service and its data, [`site/`](site/) the
 pages, [`tests/`](tests/) the guards, [`docs/`](docs/) the whitepaper. SelfAct is
 served from the same domain as SelfJustice — `justice.my-self.fr/act` — and
 exchanges no calls with it: SelfJustice states the law, SelfAct points to the step.
+It is not independent of it, though: on an instance it reads SelfJustice's
+statistics, borrows its alert token, and falls back on its state directory when
+its own does not exist.
 
 - [x] Concept paper
 - [x] Resource catalogue — over 1,800 official resources in 16 categories, harvested from service-public.gouv.fr, refreshed on the 1st and 15th (exact count: `/act/api/catalog.php?stats=1`)

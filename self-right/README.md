@@ -76,7 +76,7 @@ SelfAct **runs as well**, and its folder shows it: [`selfact/`](./selfact/) hold
 | Deadline computation | [`selfact/api/deadline.php`](./selfact/api/deadline.php) | The one piece that computes rather than retrieves, with calendar export. |
 | Letter drafting | [`selfact/api/draft.php`](./selfact/api/draft.php) | Formal notice, saisine (conciliateur, Défenseur des droits), recours gracieux, termination, complaint — each carrying a "NON OFFICIEL" notice in the body when it imitates the form of a legal act, and a footer reminder in every case, plus the matching official resources. |
 
-Four of the twelve SelfRight MCP tools are SelfAct's. Both modules are served from the same domain — `justice.my-self.fr/act` — and exchange no calls: SelfJustice states the law, SelfAct points to the step.
+Four of the twelve SelfRight MCP tools are SelfAct's. Both modules are served from the same domain — `justice.my-self.fr/act` — and exchange no calls: SelfJustice states the law, SelfAct points to the step. They do share the instance: SelfAct reads SelfJustice's statistics and alert token, and falls back on its state directory when its own does not exist.
 
 ---
 

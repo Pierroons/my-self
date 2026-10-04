@@ -76,7 +76,7 @@ SelfAct **tourne aussi**, et son dossier le montre : [`selfact/`](./selfact/) po
 | Calcul de délai | [`selfact/api/deadline.php`](./selfact/api/deadline.php) | Le seul endroit qui calcule au lieu de restituer, avec export agenda. |
 | Gabarit de courrier | [`selfact/api/draft.php`](./selfact/api/draft.php) | Mise en demeure, saisine (conciliateur, Défenseur des droits), recours gracieux, résiliation, plainte — chacun portant la mention « NON OFFICIEL » dans le corps quand il imite la forme d'un acte, et le rappel en pied dans tous les cas, et les ressources officielles correspondantes. |
 
-Quatre des douze outils MCP SelfRight sont ceux de SelfAct. Les deux modules sont servis par le même domaine — `justice.my-self.fr/act` — et n'échangent aucun appel : SelfJustice dit le droit, SelfAct pointe la démarche.
+Quatre des douze outils MCP SelfRight sont ceux de SelfAct. Les deux modules sont servis par le même domaine — `justice.my-self.fr/act` — et n'échangent aucun appel : SelfJustice dit le droit, SelfAct pointe la démarche. Ils partagent en revanche l'instance : SelfAct lit les statistiques et le jeton d'alerte de SelfJustice, et se replie sur son répertoire d'état quand le sien n'existe pas.
 
 ---
 

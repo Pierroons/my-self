@@ -5,7 +5,7 @@
 **De « je connais mes droits » à la démarche : le formulaire officiel, le délai, un modèle de lettre à compléter.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.1.3 en service](https://img.shields.io/badge/statut-v0.1.3%20en%20service-brightgreen.svg)](#statut)
+[![Statut : v0.1.3 bêta](https://img.shields.io/badge/statut-v0.1.3%20b%C3%AAta-green.svg)](#statut)
 [![Part of: Self-Right](https://img.shields.io/badge/part%20of-Self--Right-blue.svg)](../README.fr.md)
 [![Companion of: SelfJustice](https://img.shields.io/badge/companion-SelfJustice-green.svg)](../selfjustice/)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -70,13 +70,15 @@ Ce que tu écris dans un modèle ne quitte pas ton navigateur : le serveur refus
 
 ## Statut
 
-**v0.1.3 — en service sur `justice.my-self.fr/act`.**
+**v0.1.3 — bêta, servie sur `justice.my-self.fr/act`.**
 
 Tout est ici : [`api/`](api/) le service et ses données, [`site/`](site/) les
 pages, [`tests/`](tests/) les garde-fous, [`docs/`](docs/) le whitepaper. SelfAct
 est servi par le même domaine que SelfJustice — `justice.my-self.fr/act` — et
 n'échange aucun appel avec lui : SelfJustice dit le droit, SelfAct pointe
-la démarche.
+la démarche. Il n'en est pas indépendant pour autant : sur une instance, il lit
+les statistiques de SelfJustice, emprunte son jeton d'alerte, et se replie sur
+son répertoire d'état quand le sien n'existe pas.
 
 - [x] Note de conception
 - [x] Catalogue de ressources — plus de 1 800 ressources officielles en 16 catégories, moissonnées sur service-public.gouv.fr, rafraîchies les 1er et 15 (compte exact : `/act/api/catalog.php?stats=1`)

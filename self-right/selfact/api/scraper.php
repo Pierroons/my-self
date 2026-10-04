@@ -60,7 +60,7 @@ const SOURCES = [
 
 const PAGE_SIZE = 20;
 const REQUEST_DELAY_MS = 400;  // Politesse : 400ms entre deux requêtes
-// WAF service-public.fr filtre les UA contenant "bot", "scraper", "crawler".
+// WAF service-public.gouv.fr filtre les UA contenant "bot", "scraper", "crawler".
 // UA navigateur neutre = accès normal. Politesse assurée par REQUEST_DELAY_MS = 400ms
 // + appels bimensuels seulement (pas de charge).
 const USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64; rv:124.0) Gecko/20100101 Firefox/124.0';
@@ -148,7 +148,7 @@ function fetchUrlStream(string $url, bool $verbose): ?string {
 }
 
 /**
- * Parse une page de résultats service-public.fr pour extraire les modèles.
+ * Parse une page de résultats service-public.gouv.fr pour extraire les modèles.
  * Format HTML observé (avril 2026) :
  *   <li id="result_serviceEnLigne_N">
  *     <div class="sp-link fr-mb-1w">

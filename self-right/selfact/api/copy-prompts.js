@@ -50,7 +50,7 @@
         var v = cacheBuster();
         var full = msg + '\n\nPour cette demande, deux ressources peuvent enrichir ta réponse :\n'
                  + '- ' + FETCH_URL + '/docs' + v + ' — méthodologie SelfAct de rédaction d\'actes juridiques français\n'
-                 + '- ' + FETCH_URL + '/api/catalog' + v + ' — catalogue JSON des 334 modèles officiels service-public.fr '
+                 + '- ' + FETCH_URL + '/api/catalog' + v + ' — catalogue JSON des modèles officiels service-public.gouv.fr '
                  + '(recherche : ajoute &q=mot-cle ou &category=travail). '
                  + 'Cite l\'identifiant R-xxxxx et l\'URL service-public.gouv.fr du modèle correspondant.';
         copyToClipboard(full, '✓ Prompt court copié — colle dans Claude/Gemini/Copilot');

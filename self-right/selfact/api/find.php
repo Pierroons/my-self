@@ -4,7 +4,7 @@
  *
  * GET /act/api/find?situation=<slug>
  *   → Renvoie les actes recommandés pour une situation donnée, avec priorité
- *     absolue aux modèles officiels service-public.fr. Si plusieurs options,
+ *     absolue aux modèles officiels service-public.gouv.fr. Si plusieurs options,
  *     elles sont classées par pertinence (officiel > simulateur > info_only).
  *
  * GET /act/api/find?list=1

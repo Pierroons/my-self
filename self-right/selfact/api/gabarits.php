@@ -6,7 +6,7 @@
  * catalogue qui couvrent la même démarche.
  *
  * 🔑 **Pourquoi cette route existe.** Le pied de chaque gabarit disait « pour un
- * acte officiel, utilise le modèle service-public.fr correspondant » — sans
+ * acte officiel, utilise le modèle service-public.gouv.fr correspondant » — sans
  * jamais dire lequel, alors que le module en indexe plus de 1 800. Il envoyait chercher
  * ce qu'il avait sous la main.
  *
