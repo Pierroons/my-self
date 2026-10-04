@@ -321,7 +321,7 @@ jobs:
       # a11y de html-validate (.htmlvalidate.json). Version épinglée : une version
       # flottante changerait les règles sans qu'aucun commit le dise.
       - name: Vitrines — les pages de my-self.fr et de selfrecover.fr sont du HTML valide et accessible
-        run: npx --yes html-validate@9.7.1 --config .htmlvalidate.json web/my-self.fr/index.html web/my-self.fr/pentest.html web/selfrecover.fr/index.html web/selfrecover.fr/en/index.html
+        run: npx --yes html-validate@9.7.1 --config .htmlvalidate.json web/my-self.fr/index.html web/my-self.fr/pentest.html web/selfrecover.fr/index.html web/selfrecover.fr/forum/index.html web/selfrecover.fr/en/index.html
 
       - name: Canari — le validateur rougit sur un style en ligne, un id en double, un titre sauté
         run: |

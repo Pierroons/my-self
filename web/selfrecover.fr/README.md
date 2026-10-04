@@ -1,50 +1,55 @@
 # selfrecover.fr
 
-Le site de **SelfRecover**, le protocole de récupération de compte sans email ni SMS de
-l'écosystème MySelf. Thème « terminal » aux couleurs MySelf, distinct de `my-self.fr`, qui reste
-sobre.
+Le site de **SelfRecover** pour le grand public : on y **essaie** le protocole dans son navigateur, on y
+**vit** sur un forum dont les comptes reposent sur SelfRecover et SelfDataGuard, et les **coulisses** montrent
+chaque étape en direct. Les développeurs, eux, vont sur my-self.fr et sur le dépôt.
+
+> **Maquette.** Le forum est une façade : ce que ferait le serveur est simulé dans la page, aux formats du code,
+> et rien n'est envoyé. Le backend viendra quand sa place dans le dépôt sera décidée.
 
 ## Fichiers
 
 | Fichier | Rôle |
 |---|---|
-| `index.html` | la page en français, servie à `/` |
-| `en/index.html` | la même page en anglais, servie à `/en/` |
-| `selfrecover.css` | la feuille commune aux deux pages |
-| `selfrecover.js` | la pluie des modules Self* derrière le hero, et rien d'autre |
-| `favicon.svg` | la clé du logo, sur fond sombre |
-| `og-image.png`, `en/og-image.png` | les aperçus de partage, 1200×630, tirés du hero de chaque page |
-
-Les deux pages ont le même squelette. Une phrase qui change dans l'une change dans l'autre.
+| `index.html` | l'accueil : le problème, l'essai, le fonctionnement, les trois niveaux, SelfDataGuard, les limites |
+| `forum/index.html` | le forum : fils, et le panneau compte (rejoindre, connexion, accès perdu aux trois niveaux) |
+| `en/index.html` | une page d'attente, jusqu'à ce que la version française soit arrêtée |
+| `css/site.css` | la feuille commune |
+| `js/pluie.js` | la pluie des modules Self* derrière le hero |
+| `js/coulisses.js` | l'interrupteur, le panneau et son journal ; les pages y versent leurs étapes par `Coulisses.emit()` |
+| `js/essai.js` | l'essai de l'accueil : le même mot dérivé ici et sur une copie piégée |
+| `js/forum.js` | les parcours du forum, et leur simulation du serveur |
+| `js/sr-derive.js`, `data/eff_en.json` | **des liens** vers le dériveur et la liste diceware de la bibliothèque, pas des copies |
+| `.well-known/security.txt` | où signaler une faille (RFC 9116) ; son champ `Expires` est à repousser avant le 1er octobre 2027 |
+| `favicon.svg`, `og-image.png` | la clé du logo, et l'aperçu de partage tiré du hero |
 
 ## Ce que les pages s'interdisent
 
-Elles sont servies sous la CSP de la vitrine (`deploy/my-self/snippets/csp-accueil.conf`) :
-**aucun script en ligne, aucun attribut `on*`, aucune ressource hors de l'origine**. Un script
-ajouté va dans `selfrecover.js` ; un style va dans `selfrecover.css`, en classe. Le validateur
-de la CI (`html-validate`, configuration `.htmlvalidate.json`) refuse aussi l'attribut `style`.
+Elles sont servies sous la CSP de la vitrine (`deploy/my-self/snippets/csp-accueil.conf`) : **aucun script en
+ligne, aucun attribut `on*`, aucune ressource hors de l'origine**. Le validateur de la CI (`html-validate`,
+`.htmlvalidate.json`) refuse aussi l'attribut `style`.
 
-## Les liens vers les autres services
+Le mot que tape le visiteur ne sort pas de la fonction qui le dérive : ni réseau, ni stockage, ni coulisses.
+Le seul état gardé dans le navigateur est l'interrupteur des coulisses (`sr_coulisses`).
 
-Les adresses de la démo, de SelfDataGuard et du lab s'écrivent avec leur gabarit
-(`bi-self.example.org`, `dataguard.example.org`, `ctf.example.org`). Le déploiement
-(`deploy/my-self/deploy.sh assembler`) les remplace par les vrais domaines. Une copie brute de ce
-dossier publierait donc des liens vers `example.org`.
+## Les coulisses
+
+Chaque étape porte son étage : `nav>` le navigateur, `wire>` le réseau, `srv>` le serveur, `db>` la base,
+`vault>` le coffre SelfDataGuard. Une étape simulée porte la marque `maquette`. La phrase se lit sans jargon ;
+le détail technique s'ouvre au clic. La vue « dump volé » montre la ligne du compte telle qu'un voleur de la
+base la lirait.
 
 ## Ce que le texte affirme
 
-Chaque phrase sur le protocole s'appuie sur le README de SelfRecover et sur son modèle de menace
-(`bi-self/selfrecover/`). Quand la bibliothèque change, c'est là que tu relis avant de toucher au
-texte d'ici. La section « Limites » reprend ce que le modèle de menace déclare hors de sa portée.
+Chaque phrase sur le protocole s'appuie sur le README de SelfRecover, son modèle de menace et son code
+(`bi-self/selfrecover/`). Quand la bibliothèque change, c'est là que tu relis avant de toucher au texte d'ici.
+La conv qui porte le module a relu les affirmations le 4 octobre 2026.
+
+## Les liens vers la bibliothèque
+
+`js/sr-derive.js` et `data/eff_en.json` sont des liens symboliques. Le déploiement de `main` les résout dans
+l'arbre posé ; une copie vers un autre serveur doit les suivre (`rsync -L`), sinon elle pose des liens morts.
 
 ## Version
 
-`site v0.1.0`, affichée dans le pied de page des deux pages. C'est la version du **site**, pas
-celle du protocole : celle-ci vit dans `modules.json`. Patch `0.0.X` libre, mineure et majeure
-sur accord de Pierroons.
-
-## Les aperçus de partage
-
-Ils sont tirés du hero réel : une capture à 1200×630, sans la navigation ni les boutons, puis
-quantifiée en 256 couleurs (octree, sans tramage). Le vert des dents de la clé est une couleur
-rare dans l'image ; une quantification par coupe médiane le perd.
+`maquette` tant que le site n'est pas arrêté. Patch `0.0.X` libre, mineure et majeure sur accord de Pierroons.
