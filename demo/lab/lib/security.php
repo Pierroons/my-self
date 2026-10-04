@@ -79,15 +79,38 @@ final class Security
      * secret pour signer et pour chiffrer mélange deux contextes, et rien
      * n'obligeait à le faire.
      */
+    /** Longueur du jeton CSRF et de son masque, en octets (SHA-256 brut). */
+    private const CSRF_OCTETS = 32;
+
     private static function csrfSecret(): string
     {
         return 'csrf|' . SecretInstance::lire('.serversecret', 48, SecretInstance::PLANCHER);
     }
 
     /** Token CSRF déterministe lié au token de session (pas de stockage requis). */
+    /**
+     * Jeton CSRF, MASQUE a chaque rendu.
+     *
+     * 🔑 Le jeton sous-jacent reste deterministe — derive de la session, donc
+     * rien a stocker. Mais il sort masque par un alea different a chaque appel :
+     * deux rendus de la meme page ne portent jamais les memes octets.
+     *
+     * Pourquoi : la compression HTTP est active, et une page qui porte un secret
+     * ET reflete une entree choisie par un tiers laisse fuir ce secret par la
+     * TAILLE des reponses compressees (BREACH, CVE-2013-3587). L'attaque a besoin
+     * que le secret soit identique d'une requete a l'autre pour que les tailles
+     * se correlent. Un masque par rendu supprime cette condition — sans toucher a
+     * gzip, sans allonger les pages, et sans que le navigateur ait rien a faire.
+     *
+     * Le masque voyage avec le jeton : c'est sa raison d'etre, il n'est pas
+     * secret. Ce qu'il protege, c'est la CORRELATION entre deux rendus.
+     */
     public static function csrfToken(string $sessionToken): string
     {
-        return hash_hmac('sha256', $sessionToken, self::csrfSecret());
+        $jeton  = hash_hmac('sha256', $sessionToken, self::csrfSecret(), true);
+        $masque = random_bytes(self::CSRF_OCTETS);
+
+        return rtrim(strtr(base64_encode($masque . ($masque ^ $jeton)), '+/', '-_'), '=');
     }
 
     /**
@@ -104,7 +127,16 @@ final class Security
         if (!is_string($provided) || $provided === '') {
             return false;
         }
-        $expected = self::csrfToken($sessionToken);
-        return hash_equals($expected, $provided);
+        // Le jeton arrive masque : <masque><jeton xor masque>, en base64url.
+        // Un format inattendu se refuse sans rien dire de plus — un message
+        // distinct par cause renseignerait qui tatonne.
+        $brut = base64_decode(strtr($provided, '-_', '+/'), true);
+        if ($brut === false || strlen($brut) !== 2 * self::CSRF_OCTETS) {
+            return false;
+        }
+        $masque   = substr($brut, 0, self::CSRF_OCTETS);
+        $demasque = $masque ^ substr($brut, self::CSRF_OCTETS);
+
+        return hash_equals(hash_hmac('sha256', $sessionToken, self::csrfSecret(), true), $demasque);
     }
 }
