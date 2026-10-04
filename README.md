@@ -24,14 +24,14 @@ what it does, how to install it, and what it does not protect.
 |---|---|---|
 | [SelfRecover](./bi-self/selfrecover/) | Who are you? | **v0.9.0** — library + deployed implementation |
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | What if the disk is stolen? | **v0.6.2** — documented, hex key |
-| [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.6.0** — available, 373 checks, three locks, archiving at level 3, an escrow bound to its account |
-| [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.4.2 beta** — housing, family, administrative law and administrative case law |
-| [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.3** — live, over 1,800 official resources |
+| [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.6.0** — available, three locks, archiving at level 3, an escrow bound to its account |
+| [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.4.2 beta** — French law in force (LEGI), EU/ECHR texts, administrative case law |
+| [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.3 beta** — over 1,800 official resources |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.4.0** — linked voters, recovery, vote reason, graduated ban traced to a journal; 2 mechanisms not yet coded |
 
-Those carrying security code document their own threat model. SelfJustice and
-SelfAct have none: they are law databases kept up to date, not protection
-mechanisms.
+Those carrying security code document their own threat model; SelfModerate's is
+still to be written. SelfJustice and SelfAct hold no user secret and have no
+threat model yet.
 
 Every line links to code you can read and run. No link to a hosted demo:
 everything self-hosts from this repository.
@@ -45,7 +45,7 @@ everything self-hosts from this repository.
 ## What makes it a set
 
 Not one master secret that opens everything — that would be the opposite of the
-point. What the modules share is the discipline: a domain separator in the salt,
+point. What the modules share is the discipline: distinct inputs for each use,
 and two primitives, each kept to a role it is never asked to leave.
 
 **HMAC-SHA256 binds and masks.** The memorized word proves you know it without
@@ -53,11 +53,11 @@ ever being sent: what travels is
 `HMAC(word, material | version + account salt)`, where the integrator picks the
 material. With the hostname, read in the page and never received from the
 network, the same word yields a different fingerprint on every service, and a
-cloned page served elsewhere produces nothing usable. With a fixed label, chosen
-so that accounts survive a change of address, that protection is gone. The fingerprint is 64 characters whether the word has four
-letters or forty, and its output is indistinguishable from random: two services
-comparing their databases would recognize neither the same word nor the same
-person.
+page copied as-is and served elsewhere produces nothing usable. With a fixed
+label, chosen so that accounts survive a change of address, that protection is
+gone. Neither choice stops a page modified to read the word: it reads it. The
+fingerprint is 64 characters whether the word has four letters or forty, and two
+services comparing their databases would have to guess the word to recognize it.
 
 **Argon2id at 64 MiB slows things down.** That is the one thing HMAC does not
 do: it costs nothing to compute. Wherever an attacker works offline — a stolen
@@ -73,12 +73,13 @@ and the price of one guess is all that is left.
 
 Compromising one does not open the others, with two exceptions worth stating:
 SelfRecover and SelfDataGuard may share the memorized word (L2) and the passphrase
-(L1), and the derivation is what separates them. Neither library imports the other:
-pairing them is the integrator's job, and `demo/selfdataguard/` shows one way. A
+(L1): the derivation keeps their hashes apart, not the secrets themselves. Neither
+library imports the other: pairing them is the integrator's job, described in the
+SelfDataGuard README, and no demo in this repository wires it yet. A
 hash stolen from one side's database does not open the other. The word itself, if stolen, opens
 the SelfDataGuard vault on its own — on the SelfRecover side it still needs the
-*recovery code*. A stolen passphrase opens both, until its first legitimate use,
-which replaces it.
+*recovery code*. A stolen passphrase opens both, until its first use — yours or
+the thief's —, which replaces it.
 A vault sealed by the password alone does not survive a SelfRecover recovery:
 see [the warning in the SelfDataGuard README](./self-security/selfdataguard/README.md#coupling-with-selfrecover).
 The detail of each derivation is in the README of the module concerned.
@@ -113,7 +114,7 @@ everybody.
 ## Try it
 
 Everything runs locally, with no account to create. You need PHP 8.1 or later,
-with `sodium`, `pdo_sqlite` and `mbstring`.
+with `sodium`, `pdo_sqlite`, `mbstring` and `openssl`, and Composer for the forum.
 
 **Watch the encrypted database live** — split screen: the application on one
 side, the raw database content on the other.
@@ -125,7 +126,9 @@ cd my-self/demo/selfdataguard
 ```
 
 **Watch the modules work together** — a forum where sign-up goes through
-SelfRecover and private messages are encrypted by SelfDataGuard.
+SelfRecover and private messages are encrypted at rest with SelfDataGuard's
+primitives, under a server key. In a second terminal, from the directory you
+cloned into:
 
 ```bash
 cd my-self/demo/lab
@@ -152,7 +155,7 @@ SelfRecover has its own on top. Translations welcome, forks encouraged.
 self-host it. If you build a service on top of it and offer it to others, you
 publish your modifications too.
 
-Before 19 April 2026, MySelf was licensed under MIT: releases published up to
+Before 19 April 2026, MySelf was licensed under MIT: releases published before
 that date remain available under their original terms. Details in
 [COPYRIGHT](./COPYRIGHT).
 

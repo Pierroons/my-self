@@ -27,11 +27,11 @@ Self-Security takes the two surfaces apart: **data is encrypted before it reache
 
 ## Why the two modules reinforce each other
 
-**SelfDataGuard alone** keeps application data unreadable even if the whole database is exfiltrated — the key is derived from a secret only the user knows, so a dump on its own yields nothing. But it runs on a machine, and that machine has a disk.
+**SelfDataGuard alone** keeps application data encrypted even if the whole database is exfiltrated: each user's data key is wrapped under secrets only that user knows, and none of them is in the dump. What a dump allows is an offline attack, one Argon2id per guess, against the weakest of those secrets. But it runs on a machine, and that machine has a disk.
 
 **SelfRecover-LUKS alone** keeps that disk unreadable while the machine is off. But the moment it boots, the volumes are mounted and the database reads in plain.
 
-**Together**, both states are covered — cold by LUKS2, warm by application-layer encryption. They share no secret:
+**Together**, both states are covered — cold by LUKS2, warm by application-layer encryption — with one case neither closes: a server compromised while it runs reads the sessions open at that moment. They share no secret:
 
 | Secret | Held by | Derived with | Opens | Module |
 |---|---|---|---|---|
@@ -42,9 +42,9 @@ Self-Security takes the two surfaces apart: **data is encrypted before it reache
 
 ## What each one does when something goes wrong
 
-- **Database dumped and published** → fields encrypted by SelfDataGuard stay noise. Each user's master key is wrapped under each of their secrets — password, memorized word, passphrase —, always through Argon2id at the same cost, since wraps are only as strong as the cheapest one, and none of these inputs is in the dump.
+- **Database dumped and published** → fields encrypted by SelfDataGuard stay noise. Each user's master key is wrapped under each of their secrets — password, memorized word, passphrase —, always through Argon2id at the same cost, since wraps are only as strong as the cheapest one, and none of these inputs is in the dump: they can only be guessed offline, one Argon2id per try.
 - **Machine off, drive seized or resold** → the LUKS2 volume is closed. Secondary volumes open from a key-file kept *inside* the encrypted root, so a stolen drive stays unreadable on its own.
-- **Server rebooted remotely** → a dropbear SSH server embedded in the initramfs takes the passphrase; the root volume opens, then the secondary volumes cascade without a second entry.
+- **Server rebooted remotely** → a dropbear SSH server embedded in the initramfs takes the passphrase; the root volume opens, then the secondary volumes cascade without a second entry. The installer offers to close the boot-time root shell and advises it: left open, that shell lets whoever holds its key plant a modified initrd.
 - **Keyscript fails** → every volume keeps a native LUKS slot with a classic passphrase, never removed. A broken keyscript costs a manual unlock, not the data.
 
 ---
@@ -53,14 +53,14 @@ Self-Security takes the two surfaces apart: **data is encrypted before it reache
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.6.0** — available, 373 checks across 11 suites |
-| [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.6.2** — reproducible install; earlier releases validated on a Debian 13 LNMP server, a laptop and an encrypted-LVM root |
+| [SelfDataGuard](./selfdataguard/) | Application-layer data-at-rest encryption surviving a database dump | **v0.6.0** — available, test suites listed in its README |
+| [SelfRecover-LUKS](./selfrecover-luks/) | LUKS2 root **and** data volumes unlocked by one recovery passphrase | **v0.6.2** — reproducible install; earlier releases validated on a Debian 13 LNMP server, a laptop, an encrypted-LVM root and arm64 |
 
 ---
 
 ## Status
 
-Both modules run. SelfDataGuard serves its public demo, and its eleven suites pass; SelfRecover-LUKS was validated over full reboot cycles — root volume plus cascading secondary volumes — and its install is documented step by step in [INSTALL.md](./selfrecover-luks/INSTALL.md).
+Both modules run. SelfDataGuard serves its public demo, and its test suites run in CI; SelfRecover-LUKS was validated over full reboot cycles — root volume plus cascading secondary volumes — and its install is documented step by step in [INSTALL.md](./selfrecover-luks/INSTALL.md).
 
 One research path is deliberately left off: unlocking a volume through a **quorum of household witnesses** (Shamir shares, with a SelfRecover fallback when the quorum is unreachable). Its code sits under [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) and was validated on throwaway images, but it is **not enabled**: the module unlocks by keyscript and keyfile instead.
 
@@ -72,4 +72,4 @@ Neither module has been audited by an external cryptographer. Their design is ve
 
 **Pierroons** — [github.com/Pierroons/my-self](https://github.com/Pierroons/my-self)
 
-*Self-Security — two secrets, two states, readable in neither.*
+*Self-Security — two secrets, two states.*

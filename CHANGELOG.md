@@ -10,6 +10,30 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### La vitrine et les piliers disent ce que le code fait — 4 octobre 2026
+
+Les README racine, ceux des trois piliers et l'accueil de my-self.fr ont été relus contre le code. Les
+phrases qu'il ne tient pas sont corrigées à leur place ; le découpage, les sections et la disposition
+attendent la discussion d'architecture en cours.
+
+- **Bi-Self** : SelfRecover permet de s'inscrire sans email, il ne garantit pas qu'une personne ne tient
+  qu'un compte. Ce qui freine les comptes multiples est dans SelfModerate : délai avant le premier vote,
+  votes de comptes liés annulés, rafale en revue humaine. Les modérateurs restent, comme arbitres dont
+  chaque geste est journalisé ; les seuils viennent de l'hébergeur, aucun vote ne les change ; le niveau 3
+  passe par un admin humain ; le whitepaper de SelfModerate est rédigé, pas publié.
+- **Self-Right** : SelfAct est dit « bêta » partout. SelfJustice sert la base LEGI, les textes UE/CEDH et
+  la jurisprudence — administrative en texte intégral, judiciaire en index — à toute IA qui lit une URL ou
+  passe par le MCP. L'adresse `?stats=1`, que `catalog.php` ne lit pas, est retirée.
+- **Self-Security** : un dump permet une attaque hors ligne contre le plus faible des secrets d'un
+  utilisateur, un Argon2id par essai ; un serveur compromis pendant qu'il tourne lit les sessions
+  ouvertes ; l'installeur de LUKS propose de fermer le shell d'amorçage.
+- **README racine** : une page copiée telle quelle ne produit rien, une page modifiée lit le mot ; aucune
+  démo du dépôt n'apparie SelfRecover et le coffre SelfDataGuard ; les messages privés du lab sont
+  chiffrés sous une clé du serveur ; `openssl` et Composer rejoignent les prérequis.
+- **Accueil** : SelfFarm-Lite n'a aucune intégration câblée aux piliers ; le lien d'audit dit qu'il mène à
+  un auto-audit de juin 2026 ; le défi du lab renvoie à ses limites publiées.
+- Le nombre de contrôles de SelfDataGuard n'est plus recopié hors de son README.
+
 ### SelfRecover : l'accroche laisse le choix, et les textes rattrapent la 0.9.0 — 4 octobre 2026
 
 La relecture du site de SelfRecover et la cartographie de l'architecture ont relevé des textes que le

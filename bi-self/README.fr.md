@@ -29,24 +29,21 @@ Bi-Self traite les deux en même temps. Il donne aux communautés les **deux pri
 
 **SelfRecover sans SelfModerate** est un joli tour de passe-passe de récupération de compte, mais pas une communauté. On peut prouver qui on est, mais il n'y a pas de tissu pour la vie collective.
 
-**SelfModerate sans SelfRecover** est de la modération par vote construite sur du sable. N'importe qui peut créer dix comptes et faire basculer n'importe quel vote. La « démocratie » communautaire devient théâtre Sybil.
+**SelfModerate, avec ou sans SelfRecover**, reste de la modération par vote, et un vote ne vaut que ce que coûte un compte de plus. SelfRecover n'augmente pas ce coût : retirer l'email enlève une barrière faible, il ne prouve pas qu'une personne ne tient qu'un compte. Les freins sont dans SelfModerate : un compte neuf ne vote qu'après 24 heures ou un premier message, des comptes liés entre eux qui votent contre la même cible voient leurs votes annulés, et une rafale de votes sans lien part en revue humaine.
 
-**Ensemble**, la dynamique bascule :
+**Ensemble** :
 
-- L'identité fiable (SelfRecover) donne du sens à chaque vote.
-- Le vote collectif (SelfModerate) crée un tissu qui survit à n'importe quel mauvais acteur, y compris le fondateur.
-- La classe des modérateurs disparaît. Les règles émergent de la communauté elle-même, applicables et révisables par la communauté elle-même.
-
-Un plus un égale une communauté auto-gouvernée. Pas trois — une chose qualitativement différente.
+- Un compte survit à la perte de son mot de passe (SelfRecover) : sa réputation et son historique aussi, au lieu de repartir de zéro sous un autre nom.
+- Le vote collectif (SelfModerate) répartit la modération entre les membres.
+- Les modérateurs restent, comme arbitres de ce que les votes ne tranchent pas : chaque ban, levée ou maintien porte leur nom au journal. Les seuils, c'est l'hébergeur qui les fixe.
 
 ---
 
 ## Workflows croisés
 
-- **Nouveau membre arrive** → crée un compte avec un mot de récupération (SelfRecover). Zéro email. Les 24 premières heures de son activité sont surveillées par SelfModerate (période d'échauffement anti-spam).
-- **Comportement toxique signalé** → la communauté vote (SelfModerate). L'identité des votants est garantie unique (SelfRecover). Le résultat est contraignant.
-- **Mot de passe perdu** → n'importe quel membre récupère son compte via l'escalade L1/L2/L3 (SelfRecover). Pas d'email, pas de demande à un admin.
-- **Changement de règle collective** → la communauté propose un nouveau seuil de modération, vote. Le seuil se met à jour sans intervention d'admin.
+- **Nouveau membre arrive** → crée un compte avec un mot de récupération (SelfRecover). Zéro email. Pendant ses 24 premières heures, SelfModerate ne le laisse voter que s'il a publié (période d'échauffement anti-Sybil).
+- **Comportement toxique signalé** → les membres votent (SelfModerate). Rien ne prouve qu'un votant ne tient qu'un compte : des comptes liés qui votent ensemble sont annulés, une rafale de votes sans lien part en revue humaine. Une réputation tombée à zéro bannit automatiquement si l'hébergeur a branché un journal ; sinon elle lève un drapeau et un arbitre décide.
+- **Mot de passe perdu** → le membre récupère son compte au niveau 1 ou 2 (SelfRecover), sans email et sans rien demander à personne. Le niveau 3 passe par un admin humain, qui lit le dossier.
 
 ---
 
@@ -61,9 +58,9 @@ Un plus un égale une communauté auto-gouvernée. Pas trois — une chose quali
 
 ## Statut
 
-SelfRecover existe en implémentation de référence et **tourne en production** — comme backend d'authentification d'un service de messagerie, qui réutilise tel quel son stockage de comptes. Sa démo est auto-auditée ; aucun audit externe n'a été mené. SelfModerate dispose d'un whitepaper complet définissant le protocole ; l'implémentation de référence vit dans [`selfmoderate/src/`](./selfmoderate/src/) et le lab s'en sert. Deux mécanismes du protocole restent à écrire, marqués dans son README.
+SelfRecover existe en implémentation de référence et **tourne en production** — comme backend d'authentification d'un service de messagerie, qui réutilise tel quel son stockage de comptes et épingle sa propre version. Sa démo est auto-auditée ; aucun audit externe n'a été mené. Le protocole de SelfModerate est exposé dans un whitepaper rédigé, pas encore publié ; l'implémentation de référence vit dans [`selfmoderate/src/`](./selfmoderate/src/) et le lab s'en sert. Deux mécanismes du protocole restent à écrire, marqués dans son README. Les membres ne votent pas encore les seuils : c'est l'hébergeur qui les fixe (`Config`).
 
-Les deux modules sont conçus pour s'imbriquer — une fois les deux en ligne, une communauté peut se bootstraper et se gouverner elle-même sans aucun service central.
+Les deux modules sont conçus pour s'imbriquer, mais aucun n'importe l'autre : les brancher ensemble revient à l'intégrateur. Le lab fait tourner les deux.
 
 ---
 

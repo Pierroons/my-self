@@ -24,14 +24,14 @@ ce qu'il fait, comment l'installer, et ce qu'il ne protège pas.
 |---|---|---|
 | [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | **v0.9.0** — bibliothèque + implémentation déployée |
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.6.2** — documenté, clé en hexadécimal |
-| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.6.0** — disponible, 373 contrôles, trois serrures, l'archive au niveau 3, un séquestre lié à son compte |
-| [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.4.2 bêta** — logement, famille, administration et jurisprudence administrative |
-| [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.3** — en ligne, plus de 1 800 ressources officielles |
+| [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.6.0** — disponible, trois serrures, l'archive au niveau 3, un séquestre lié à son compte |
+| [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.4.2 bêta** — droit français en vigueur (LEGI), textes UE/CEDH, jurisprudence administrative |
+| [SelfAct](./self-right/selfact/) | Comment agir ? | **v0.1.3 bêta** — plus de 1 800 ressources officielles |
 | [SelfModerate](./bi-self/selfmoderate/) | Comment se comporte-t-on ? | **v0.4.0** — votants liés, convalescence, motif de vote, ban gradué tracé au journal ; 2 mécanismes pas encore codés |
 
-Ceux qui portent du code de sécurité documentent leur propre modèle de menace.
-SelfJustice et SelfAct n'en ont pas : ce sont des bases de droit tenues à jour,
-pas des dispositifs de protection.
+Ceux qui portent du code de sécurité documentent leur propre modèle de menace ;
+celui de SelfModerate reste à écrire. SelfJustice et SelfAct ne détiennent aucun
+secret d'utilisateur et n'ont pas encore de modèle de menace.
 
 Chaque ligne mène à du code lisible et exécutable. Pas de lien vers une démo
 hébergée : tout s'auto-héberge depuis ce dépôt.
@@ -45,19 +45,20 @@ hébergée : tout s'auto-héberge depuis ce dépôt.
 ## Ce qui en fait un ensemble
 
 Pas un secret unique qui ouvrirait tout — ce serait le contraire du but. Ce que
-les modules partagent, c'est la discipline : un séparateur de domaine dans le
-sel, et deux primitives dont chacune tient un rôle qu'on ne lui fait pas quitter.
+les modules partagent, c'est la discipline : des entrées distinctes pour
+chaque usage, et deux primitives dont chacune tient un rôle qu'on ne lui fait pas quitter.
 
 **HMAC-SHA256 lie et masque.** Le mot mémorisé sert à prouver qu'on le connaît
 sans jamais l'envoyer : ce qui transite vaut
 `HMAC(mot, matériau | version + sel du compte)`, où l'intégrateur choisit le
 matériau. Avec le nom d'hôte, lu dans la page et jamais reçu du réseau, le même
-mot donne une empreinte différente sur chaque service, et une page clonée servie
-ailleurs ne produit rien d'utilisable. Avec une étiquette fixe, choisie pour que
-les comptes survivent à un changement d'adresse, cette protection disparaît.
-L'empreinte fait 64 caractères que le mot en compte quatre ou quarante, et sa
-sortie est indistinguable d'un aléa : deux services qui compareraient leurs bases
-n'y reconnaîtraient ni le même mot, ni la même personne.
+mot donne une empreinte différente sur chaque service, et une page copiée telle
+quelle et servie ailleurs ne produit rien d'utilisable. Avec une étiquette fixe,
+choisie pour que les comptes survivent à un changement d'adresse, cette
+protection disparaît. Aucun des deux choix n'arrête une page modifiée pour lire
+le mot : elle le lit. L'empreinte fait 64 caractères que le mot en compte quatre
+ou quarante, et deux services qui compareraient leurs bases devraient deviner le
+mot pour l'y reconnaître.
 
 **Argon2id à 64 Mio ralentit.** C'est la seule chose que HMAC ne fait pas : il ne
 coûte rien à calculer. Partout où un attaquant travaille hors ligne — un disque
@@ -73,12 +74,12 @@ l'arrêter, et le prix d'une tentative est tout ce qui reste.
 
 Compromettre l'un n'ouvre pas les autres, avec deux exceptions qu'il faut dire :
 SelfRecover et SelfDataGuard peuvent partager le mot mémorisé (L2) et la passphrase
-(L1), et c'est la dérivation qui les sépare. Aucune des deux bibliothèques n'importe
-l'autre : c'est l'intégrateur qui les apparie, et `demo/selfdataguard/` en montre une
-façon. Un hachage volé dans la base d'un côté n'ouvre pas l'autre. Le mot lui-même, s'il est
+(L1) : la dérivation sépare leurs hachages, pas les secrets eux-mêmes. Aucune des
+deux bibliothèques n'importe l'autre : c'est l'intégrateur qui les apparie, comme le
+décrit le README de SelfDataGuard, et aucune démo de ce dépôt ne le fait encore. Un hachage volé dans la base d'un côté n'ouvre pas l'autre. Le mot lui-même, s'il est
 volé, ouvre seul le coffre SelfDataGuard — côté SelfRecover, il lui faut encore le
 *recovery code*. La passphrase volée, elle, ouvre les deux, jusqu'à sa première
-utilisation légitime, qui la remplace.
+utilisation — la tienne ou celle du voleur —, qui la remplace.
 Un coffre scellé par le seul mot de passe ne survit pas à une récupération
 SelfRecover : voir [l'avertissement dans le README de SelfDataGuard](./self-security/selfdataguard/README.fr.md#couplage-avec-selfrecover).
 Le détail de chaque dérivation est dans le README du module concerné.
@@ -111,7 +112,7 @@ chaque essai cher, et le sel qui empêche d'en faire un seul pour tout le monde.
 ## Essayer
 
 Tout tourne en local, sans compte à créer. Il te faut PHP 8.1 ou plus récent,
-avec `sodium`, `pdo_sqlite` et `mbstring`.
+avec `sodium`, `pdo_sqlite`, `mbstring` et `openssl`, et Composer pour le forum.
 
 **Voir la base chiffrée en direct** — écran partagé : l'application d'un côté, le
 contenu brut de la base de l'autre.
@@ -123,7 +124,9 @@ cd my-self/demo/selfdataguard
 ```
 
 **Voir les modules travailler ensemble** — un forum où l'inscription passe par
-SelfRecover et où les messages privés sont chiffrés par SelfDataGuard.
+SelfRecover et où les messages privés sont chiffrés au repos avec les primitives
+de SelfDataGuard, sous une clé du serveur. Dans un second terminal, depuis le
+répertoire où tu as cloné :
 
 ```bash
 cd my-self/demo/lab
@@ -151,7 +154,7 @@ l'héberger. Si tu bâtis un service dessus et que tu l'ouvres à d'autres, tu
 publies tes modifications aussi.
 
 Avant le 19 avril 2026, MySelf était sous licence MIT : les versions publiées
-à cette date restent disponibles sous leurs termes d'origine. Détail dans
+avant cette date restent disponibles sous leurs termes d'origine. Détail dans
 [COPYRIGHT](./COPYRIGHT).
 
 ---

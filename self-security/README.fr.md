@@ -27,11 +27,11 @@ Self-Security sépare les deux surfaces : **la donnée est chiffrée avant d'att
 
 ## Pourquoi les deux modules se renforcent
 
-**SelfDataGuard seul** garde la donnée applicative illisible même si la base entière est exfiltrée : la clé se dérive d'un secret que seul l'utilisateur connaît, un dump seul ne donne rien. Mais il tourne sur une machine, et cette machine a un disque.
+**SelfDataGuard seul** garde la donnée applicative chiffrée même si la base entière est exfiltrée : la clé de données de chaque utilisateur est emballée sous des secrets que lui seul connaît, et aucun ne figure dans le dump. Ce qu'un dump permet, c'est une attaque hors ligne, un Argon2id par essai, contre le plus faible de ces secrets. Mais il tourne sur une machine, et cette machine a un disque.
 
 **SelfRecover-LUKS seul** garde ce disque illisible tant que la machine est éteinte. Mais dès qu'elle démarre, les volumes sont montés et la base se lit en clair.
 
-**Ensemble**, les deux états sont couverts — à froid par LUKS2, à chaud par le chiffrement applicatif. Ils ne partagent aucun secret :
+**Ensemble**, les deux états sont couverts — à froid par LUKS2, à chaud par le chiffrement applicatif — avec un cas qu'aucun ne ferme : un serveur compromis pendant qu'il tourne lit les sessions ouvertes à ce moment-là. Ils ne partagent aucun secret :
 
 | Secret | Détenu par | Dérivé par | Ouvre | Module |
 |---|---|---|---|---|
@@ -42,9 +42,9 @@ Self-Security sépare les deux surfaces : **la donnée est chiffrée avant d'att
 
 ## Ce que chacun fait le jour où ça tourne mal
 
-- **Base dumpée et publiée** → les champs chiffrés par SelfDataGuard restent du bruit. La clé maîtresse de chaque utilisateur est emballée sous chacun de ses secrets — mot de passe, mot mémorisé, passphrase —, toujours par Argon2id au même coût, puisque des enveloppes ne valent que la moins chère à ouvrir, et aucune de ces entrées ne figure dans le dump.
+- **Base dumpée et publiée** → les champs chiffrés par SelfDataGuard restent du bruit. La clé maîtresse de chaque utilisateur est emballée sous chacun de ses secrets — mot de passe, mot mémorisé, passphrase —, toujours par Argon2id au même coût, puisque des enveloppes ne valent que la moins chère à ouvrir, et aucune de ces entrées ne figure dans le dump : elles ne se devinent qu'hors ligne, un Argon2id par essai.
 - **Machine éteinte, disque saisi ou revendu** → le volume LUKS2 est fermé. Les volumes secondaires s'ouvrent depuis un fichier-clé rangé *à l'intérieur* de la racine chiffrée : un disque volé seul reste illisible.
-- **Redémarrage à distance** → un serveur SSH dropbear embarqué dans l'initramfs reçoit la phrase ; la racine s'ouvre, puis les volumes secondaires suivent en cascade, sans seconde saisie.
+- **Redémarrage à distance** → un serveur SSH dropbear embarqué dans l'initramfs reçoit la phrase ; la racine s'ouvre, puis les volumes secondaires suivent en cascade, sans seconde saisie. L'installeur propose de fermer le shell root d'amorçage et le conseille : laissé ouvert, ce shell permet à qui détient sa clé de déposer un initrd modifié.
 - **Le keyscript casse** → chaque volume conserve un slot LUKS natif à phrase classique, jamais retiré. Un keyscript cassé coûte un déverrouillage à la main, pas les données.
 
 ---
@@ -53,14 +53,14 @@ Self-Security sépare les deux surfaces : **la donnée est chiffrée avant d'att
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, qui survit au dump de la base | **v0.6.0** — disponible, 373 contrôles sur 11 suites |
-| [SelfRecover-LUKS](./selfrecover-luks/) | Racine LUKS2 **et** volumes de données ouverts par une seule phrase de récupération | **v0.6.2** — installation reproductible ; versions antérieures validées sur un serveur Debian 13 LNMP, un poste portable et une racine en LVM chiffré |
+| [SelfDataGuard](./selfdataguard/) | Chiffrement applicatif des données au repos, qui survit au dump de la base | **v0.6.0** — disponible, suites de tests listées dans son README |
+| [SelfRecover-LUKS](./selfrecover-luks/) | Racine LUKS2 **et** volumes de données ouverts par une seule phrase de récupération | **v0.6.2** — installation reproductible ; versions antérieures validées sur un serveur Debian 13 LNMP, un poste portable, une racine en LVM chiffré et arm64 |
 
 ---
 
 ## Statut
 
-Les deux modules tournent. SelfDataGuard sert sa démo publique, et ses onze suites passent ; SelfRecover-LUKS a été validé sur des cycles de redémarrage complets — racine puis volumes secondaires en cascade — et son installation est documentée pas à pas dans [INSTALL.md](./selfrecover-luks/INSTALL.md).
+Les deux modules tournent. SelfDataGuard sert sa démo publique, et ses suites de tests tournent en CI ; SelfRecover-LUKS a été validé sur des cycles de redémarrage complets — racine puis volumes secondaires en cascade — et son installation est documentée pas à pas dans [INSTALL.md](./selfrecover-luks/INSTALL.md).
 
 Une piste de recherche est volontairement laissée de côté : ouvrir un volume par un **quorum de témoins du foyer** (parts de Shamir, avec secours SelfRecover quand le quorum est injoignable). Son code est rangé sous [`selfrecover-luks/quorum-rnd/`](./selfrecover-luks/quorum-rnd/) et a été validé sur images jetables, mais il n'est **pas activé** : le module ouvre par keyscript et fichier-clé.
 
@@ -72,4 +72,4 @@ Aucun des deux modules n'a été audité par un cryptographe extérieur. Leur co
 
 **Pierroons** — [github.com/Pierroons/my-self](https://github.com/Pierroons/my-self)
 
-*Self-Security — deux secrets, deux états, lisible dans aucun des deux.*
+*Self-Security — deux secrets, deux états.*
