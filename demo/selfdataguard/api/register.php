@@ -20,6 +20,11 @@ if (strlen($password) < UserVault::PASSWORD_MIN_LEN) {
     fail('Password must be ≥' . UserVault::PASSWORD_MIN_LEN . ' characters (whitepaper §7)');
 }
 
+$baseNeuve = !$baseExiste;
+if ($baseNeuve) {
+    $dataGuard = demo_base_neuve();
+}
+
 try {
     $session = $dataGuard->register($userId, $password, $memorized === '' ? null : $memorized);
     if ($fields !== []) {
@@ -34,7 +39,9 @@ try {
 } catch (InvalidArgumentException $e) {
     // Un refus de la bibliothèque sur une entrée, pas un conflit : sans ce
     // catch, il sortait en 500 sans JSON.
+    $baseNeuve && demo_effacer_base_neuve();
     fail($e->getMessage(), 400);
 } catch (RuntimeException $e) {
+    $baseNeuve && demo_effacer_base_neuve();
     fail($e->getMessage(), 409);
 }

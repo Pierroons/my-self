@@ -342,6 +342,30 @@ jobs:
               || { echo "::error::le banc de récupération n'a pas joué ses 61 cas sous $profil"; exit 1; }
           done
 
+      # La route du sel du niveau 2 est publique : elle doit rendre un sel pour tout
+      # code. Le canari la fait répondre « rien » à un code inconnu, l'oracle que la
+      # garde ferme ; le banc doit rougir sur ce cas-là.
+      - name: Garde-fou — la route du sel rend toujours un sel
+        run: |
+          sortie=$(php bi-self/selfrecover/tests/sanity_sel_derivation.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc de la route du sel a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 10/10$' \
+            || { echo "::error::le banc de la route du sel n'a pas joué ses 10 cas"; exit 1; }
+          F=bi-self/selfrecover/src/Recovery/Recovery.php
+          cp "$F" /tmp/recovery.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+          python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' \
+            "$F" "return \$vrai !== null && \$vrai !== '' ? \$vrai : \$faux;" "return \$vrai ?? '';" \
+            || { echo "::error::canari non planté"; exit 1; }
+          if canari=$(php bi-self/selfrecover/tests/sanity_sel_derivation.php 2>&1); then
+            cp /tmp/recovery.intact "$F"; echo "::error::le banc reste VERT quand la route répond rien"; exit 1
+          fi
+          cp /tmp/recovery.intact "$F"
+          echo "$canari" | grep -q "❌ .*un code inconnu reçoit un sel de la forme d'un vrai" \
+            || { echo "$canari"; echo "::error::rouge, mais pas sur le code inconnu"; exit 1; }
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+          echo "✓ le banc rougit quand la route du sel cesse de mentir sur un code inconnu"
+
       # Un frein qu'on n'a jamais fait céder ne se distingue pas d'un frein qui
       # n'est relié à rien : les deux laissent le banc vert. Ce canari mesure que
       # celui du niveau 2 est branché, pas seulement écrit.
@@ -1238,6 +1262,32 @@ jobs:
             echo "→ $(basename "$t")"
             php "$t"
           done
+
+      # La démo publique de SelfDataGuard donne à chaque visiteur sa propre base. Les
+      # canaris : la base commune remise, une lecture qui crée une base, un cookie qui
+      # perd Secure par défaut, un quota par adresse levé — le banc doit rougir sur chacun.
+      - name: Garde-fou — la démo SelfDataGuard isole chaque visiteur
+        run: |
+          php demo/selfdataguard/tests/sanity_sessions.php
+          F=demo/selfdataguard/api/_bootstrap.php
+          canari() {  # canari <avant> <après> <ligne rouge attendue>
+            cp "$F" /tmp/boot.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$1" "$2" \
+              || { echo "::error::canari non planté"; exit 1; }
+            if sortie=$(php demo/selfdataguard/tests/sanity_sessions.php 2>&1); then
+              cp /tmp/boot.intact "$F"; echo "::error::le banc reste VERT sans le correctif"; exit 1
+            fi
+            cp /tmp/boot.intact "$F"
+            echo "$sortie" | grep -qF "$3" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $3 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ le banc rougit sur « $3 »"
+          }
+          canari "\$baseVisiteur = \$repertoireBases . '/' . \$idVisiteur . '.sqlite';" \
+            "\$baseVisiteur = \$repertoireBases . '/commune.sqlite';" 'le second visiteur voit le coffre du premier'
+          canari "new SqliteAdapter(\$baseExiste ? 'sqlite:' . DEMO_DB_PATH : 'sqlite::memory:')" \
+            "new SqliteAdapter('sqlite:' . DEMO_DB_PATH)" 'une lecture a créé une base'
+          canari "=== '1';" "!== '0';" 'attributs du cookie'
+          canari 'if (count($creations) >= DEMO_BASES_PAR_ADRESSE) {' 'if (false) {' 'quota par adresse'
 
       # SelfRecover et SelfDataGuard déclarent chacun leur minimum de mot de passe
       # et leur normalisation de la passphrase, sans dépendre l'un de l'autre : ce

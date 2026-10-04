@@ -67,10 +67,11 @@ real one. Two details keep it closed. The code is normalised exactly as the reco
 or a code in upper case would get a fake salt here and be accepted there. And the lookup does not
 filter consumed codes, or the route would say "this account has just been recovered".
 
-The library has no routes, so it does not ship this one: the integrator writes it. Two demonstrations in
-this repository do — `demo/lab/lib/auth.php` (`Auth::selDeDerivation`) and
-`demo/bi-self-duo/lib/recover_helper.php`, where the fake salt is keyed by a value the visitor can
-recompute: there the guard is shown, not effective, and the file says so. Measured in service on the lab
+The library has no routes, but since 0.9.0 it ships the guard: `Recovery::selDeDerivation()`, for a
+storage that implements `SelParCodeInterface` (`StockagePdo` does); the integrator writes the route
+around it. The bi-self-duo demonstration uses it, with a fake salt keyed by a value the visitor can
+recompute — there the guard is shown, not effective, and the file says so. The lab still carries its
+own copy (`demo/lab/lib/auth.php`, `Auth::selDeDerivation`). Measured in service on the lab
 on 2026-10-03: two valid codes of one account returned its salt, two unknown codes two different fake
 salts, with comparable response times. The guard is only as good as the routes around it: one that
 answers "name taken" at sign-up settles the question this one refuses to.

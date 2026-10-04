@@ -14,3 +14,5 @@ storage/blindkey.*
 storage/.env
 # Clés de recouvrement admin (publique + privée scellée par passphrase = SECRET)
 storage/admin-recovery.*
+# Une base par visiteur (api/_bootstrap.php), effacée 30 minutes après sa dernière action.
+storage/sessions/

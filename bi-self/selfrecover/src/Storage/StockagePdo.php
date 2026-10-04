@@ -37,7 +37,7 @@ use RuntimeException;
  * ces valeurs à la construction. Les paramètres qui ne passent pas par un objet
  * de valeur traversent cet adaptateur sans être vérifiés.
  */
-final class StockagePdo implements StorageInterface
+final class StockagePdo implements StorageInterface, SelParCodeInterface
 {
     /**
      * @param string $hoteDerivation L'adresse sous laquelle le navigateur dérive le
@@ -300,6 +300,20 @@ final class StockagePdo implements StorageInterface
             'nom_compte'     => (string) $ligne['username'],
             'empreinte_mot'  => (string) $ligne['recovery_hash'],
         ];
+    }
+
+    public function selDuCompteParIndexCode(string $indexRecherche): ?string
+    {
+        $st = $this->pdo->prepare(
+            'SELECT a.recovery_salt
+               FROM recovery_codes c
+               JOIN accounts a ON a.id = c.account_id
+              WHERE c.code_lookup = ?'
+        );
+        $st->execute([$indexRecherche]);
+        $sel = $st->fetchColumn();
+
+        return $sel === false || $sel === null ? null : (string) $sel;
     }
 
     public function consommerCode(int $codeId, int $quand): void

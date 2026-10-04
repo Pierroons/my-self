@@ -15,7 +15,9 @@ cat <<EOF
 SelfDataGuard demo starting at http://${HOST}:${PORT}
   - Open the URL in a browser
   - Press Ctrl+C to stop
-  - Reset the demo with: rm -f storage/demo.sqlite storage/blindkey.bin
+  - Reset the demo with: rm -rf storage/sessions storage/blindkey.bin
 EOF
 
+# En clair sur la boucle locale : le cookie de la démo perd Secure et __Host-.
+export DATAGUARD_DEMO_HTTP=1
 exec php -S "${HOST}:${PORT}" -t .

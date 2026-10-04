@@ -62,7 +62,7 @@ $journal = [];
 const PLANCHER = [
     'contrat'       => 4,
     'schéma'        => 19,
-    'niveaux 1-2'   => 10,
+    'niveaux 1-2'   => 13,
     'appareil'      => 11,
     'niveau 3'      => 21,
     'propriétés'    => 62,
@@ -245,6 +245,15 @@ verifier('code + mot mémorisé rendent l\'accès, sans identifiant', ($r2['ok']
 verifier('le code consommé ne ressert pas',
     ($recovery->parCode($codes[0], $MOT, null, $T0)['ok'] ?? true) === false);
 verifier('il en reste quatre en base', $stockage->compterCodesRestants($compteId) === 4);
+
+// La route du sel lit le sel par l'index du code, consommé compris : sinon elle
+// dirait « ce compte vient d'être récupéré ».
+$selAlice = (string) $pdo->query("SELECT recovery_salt FROM accounts WHERE id = {$compteId}")->fetchColumn();
+verifier('la route du sel rend celui du compte pour un code libre', $recovery->selDeDerivation($codes[1]) === $selAlice);
+verifier('elle le rend aussi pour le code consommé', $recovery->selDeDerivation($codes[0]) === $selAlice);
+$fauxSel = $recovery->selDeDerivation('00000-00000');
+verifier('un code inconnu reçoit un autre sel, de la même forme',
+    $fauxSel !== $selAlice && Recovery::estSelCompte($fauxSel), $fauxSel);
 
 // ═══════════════════════════════════════════════════════════════════════════
 section('appareil');

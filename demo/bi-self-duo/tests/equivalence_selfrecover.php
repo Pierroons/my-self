@@ -211,6 +211,12 @@ try {
     $c2 = RecoverHelper::selDeDerivation($sess, 'aaaaa-bbbbb');
     verifier('idem par un code inventé', strlen($c1) === 32 && $c1 === $c2);
     verifier('un code inventé et un compte inconnu ne rendent pas le même sel', $c1 !== $faux1);
+    // Le faux sel d'un code est un HMAC de « sel-absent: » suivi de N'IMPORTE
+    // QUELLE chaîne : celui d'un identifiant doit sortir d'un autre préfixe,
+    // sinon le code « |personne » rejoue le faux sel de « personne » et la
+    // comparaison des deux réponses dit si le compte existe.
+    verifier('aucun code ne rejoue le faux sel d\'un identifiant',
+        RecoverHelper::selDeDerivation($sess, '|personne') !== $faux1);
 
     // Le contre-témoin de cette série, c'est « un compte connu rend SON sel »
     // plus haut : une méthode qui rendrait toujours un faux sel y échouerait la

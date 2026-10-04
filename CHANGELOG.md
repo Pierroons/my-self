@@ -10,38 +10,43 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### SelfDataGuard v0.6.0 — le profil Argon2id enregistré, un séquestre lié à son compte, un journal ancrable — 3 octobre 2026
+### SelfRecover v0.9.0 — la garde de la route du sel entre dans la bibliothèque — 4 octobre 2026
 
-Une relecture de l'architecture a relevé sept constats sur SelfDataGuard. Six sont fermés ici ;
-le septième, le rejeu d'une révision antérieure du coffre, est documenté comme une limite
-(whitepaper §8.1).
+Au niveau 2, le navigateur demande le sel du compte par le code, sur une route publique : elle ne
+doit pas devenir un oracle. Sa garde existait en deux copies, dans les démonstrations, et chaque
+intégrateur devait écrire la sienne.
 
-- **Le profil Argon2id est enregistré** avec chaque coffre et avec la clé admin scellée
-  (`v2:…`). Changer les constantes ne ferme plus aucun coffre ni aucune clé admin ; un coffre
-  garde son profil à chaque rescellement. Une base 0.5.x se migre en place, au profil d'avant.
-  ⚠️ **Rupture** : `VaultRecord` exige le profil ; un stockage écrit par un intégrateur doit
-  lire les deux colonnes neuves, sinon il échoue à sa première lecture.
-- **Le scellé administrateur du séquestre nomme son compte** : recopié dans la ligne d'un
-  autre compte, il est refusé. Un scellé d'avant s'ouvre encore, et `rebindEscrowAdmin()` le
-  rescelle vers la clé publique qu'on lui passe. Le contenu du séquestre n'est pas authentifié
-  pour autant contre qui écrit en base.
-- **Le journal de la cérémonie peut s'ancrer hors de la machine** : `verify-log` affiche sa tête
-  `seq:hmac`, et `--ancre` refuse ensuite un journal tronqué ou réécrit ; une option mal
-  écrite sort en erreur au lieu de vérifier sans ancre.
-- **La passphrase admin compte au moins 12 octets** au scellement ; **le nom de champ
-  `escrow` est réservé**.
-- **Des vecteurs Argon2id figés**, calculés par une seconde implémentation, vérifient les clés
-  des trois serrures.
-- Les textes disent que `userId` est comparé octet pour octet, et que `changePassword()` et
-  `changeMemorized()` sont aussi des chemins de rescellement.
+- **`Recovery::selDeDerivation($code)`** rend toujours un sel : celui du compte pour un code connu,
+  consommé ou non, quelle que soit sa casse ; sinon un faux, tiré du sel du déploiement : même forme
+  qu'un vrai, stable d'un essai à l'autre, et calculé dans tous les cas pour que les deux chemins
+  coûtent pareil.
+- **`SelParCodeInterface`**, facultative : `selDuCompteParIndexCode()`. `StockagePdo` l'implémente.
+  Sur un stockage qui ne l'implémente pas, `selDeDerivation()` lève une `LogicException` ; aucun
+  adaptateur existant n'a à changer.
+- La démo duo passe par la bibliothèque pour le chemin « code ». Le lab garde sa copie jusqu'à la fin
+  de la saison du CTF.
+- Le modèle de menace et les README disent que la bibliothèque fournit la garde, la route restant à
+  l'intégrateur.
 
-⚠️ Un retour à la 0.5.x garde l'accès aux coffres, mais l'administrateur n'ouvre plus un
-séquestre que la 0.6.0 a créé ou rescellé, et la 0.5.x ne descelle pas une clé admin
-générée par la 0.6.0 (mesuré). Avant de mettre à jour : aucun champ privé ne doit s'appeler
-`escrow`, la 0.6.0 ne le lit plus (requête dans le CHANGELOG du module).
+Bancs : `sanity_sel_derivation.php` (10 cas) et trois cas dans le banc du stockage PDO, avec un canari
+en CI. Les fiches diceware sont régénérées pour la version.
 
-Bancs SelfDataGuard : 373 contrôles sur 11 suites, douze canaris de plus en CI. Le détail est
-dans le CHANGELOG du module.
+### La démo SelfDataGuard donne à chaque visiteur sa propre base — 4 octobre 2026
+
+La démo publique n'avait qu'une base : chacun y voyait les coffres des autres, testait leurs index
+aveugles et essayait leurs mots de passe, sans frein, alors que chaque essai coûte un Argon2id
+mémoire-dur au serveur.
+
+- **Une base par visiteur**, désignée par un cookie `__Host-` (Secure, HttpOnly, SameSite=Strict),
+  créée par une inscription valide seulement et effacée une demi-heure après la dernière action, par
+  la première requête venue, de n'importe quel visiteur, et par un minuteur de l'instance
+  (`deploy/selfdataguard/demo-sessions-purge.timer`). Plafond de 1 000 bases, et 5 par adresse et
+  par demi-heure, comptées sous un HMAC de l'adresse. Sans base, une action sur un coffre répond 404
+  « inscris-toi », plus un faux « mauvais mot de passe ».
+- **Un frein nginx** sur les scripts PHP de la démo (20 requêtes par minute et par adresse, 10
+  d'avance), dans le gabarit et sur l'instance.
+
+Banc `demo/selfdataguard/tests/sanity_sessions.php` (28 cas, joué contre `php -S`), quatre canaris en CI.
 
 ### La base du lab naît partageable entre le site et la console — 29 septembre 2026
 
@@ -442,6 +447,41 @@ même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le mê
 ayant renoncé aux contrôles qui touchent au système.
 
 ---
+
+## [SelfDataGuard v0.6.0] — 3 octobre 2026
+
+### SelfDataGuard v0.6.0 — le profil Argon2id enregistré, un séquestre lié à son compte, un journal ancrable — 3 octobre 2026
+
+Une relecture de l'architecture a relevé sept constats sur SelfDataGuard. Six sont fermés ici ;
+le septième, le rejeu d'une révision antérieure du coffre, est documenté comme une limite
+(whitepaper §8.1).
+
+- **Le profil Argon2id est enregistré** avec chaque coffre et avec la clé admin scellée
+  (`v2:…`). Changer les constantes ne ferme plus aucun coffre ni aucune clé admin ; un coffre
+  garde son profil à chaque rescellement. Une base 0.5.x se migre en place, au profil d'avant.
+  ⚠️ **Rupture** : `VaultRecord` exige le profil ; un stockage écrit par un intégrateur doit
+  lire les deux colonnes neuves, sinon il échoue à sa première lecture.
+- **Le scellé administrateur du séquestre nomme son compte** : recopié dans la ligne d'un
+  autre compte, il est refusé. Un scellé d'avant s'ouvre encore, et `rebindEscrowAdmin()` le
+  rescelle vers la clé publique qu'on lui passe. Le contenu du séquestre n'est pas authentifié
+  pour autant contre qui écrit en base.
+- **Le journal de la cérémonie peut s'ancrer hors de la machine** : `verify-log` affiche sa tête
+  `seq:hmac`, et `--ancre` refuse ensuite un journal tronqué ou réécrit ; une option mal
+  écrite sort en erreur au lieu de vérifier sans ancre.
+- **La passphrase admin compte au moins 12 octets** au scellement ; **le nom de champ
+  `escrow` est réservé**.
+- **Des vecteurs Argon2id figés**, calculés par une seconde implémentation, vérifient les clés
+  des trois serrures.
+- Les textes disent que `userId` est comparé octet pour octet, et que `changePassword()` et
+  `changeMemorized()` sont aussi des chemins de rescellement.
+
+⚠️ Un retour à la 0.5.x garde l'accès aux coffres, mais l'administrateur n'ouvre plus un
+séquestre que la 0.6.0 a créé ou rescellé, et la 0.5.x ne descelle pas une clé admin
+générée par la 0.6.0 (mesuré). Avant de mettre à jour : aucun champ privé ne doit s'appeler
+`escrow`, la 0.6.0 ne le lit plus (requête dans le CHANGELOG du module).
+
+Bancs SelfDataGuard : 373 contrôles sur 11 suites, douze canaris de plus en CI. Le détail est
+dans le CHANGELOG du module.
 
 ## [SelfRecover-LUKS v0.6.2] — 3 octobre 2026
 

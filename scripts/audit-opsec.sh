@@ -260,6 +260,44 @@ hors_historique_accepte() {
     [ -n "${ACCEPTES["${objet%% *} ${ligne#*:}"]:-}" ] || printf '%s\n' "$ligne"
   done < <(printf '%s\n' "${lignes[@]}" | git -C "$ROOT" cat-file --batch-check='%(objectname)')
 }
+# Sur une plage, rend les lignes « <commit>:<chemin> » dont la version est
+# INTRODUITE par ce commit : différente, à ce chemin, de celle de chacun de ses
+# parents. Une version reprise telle quelle d'un parent ne compte pas ici : ce
+# parent est dans la plage, et sa propre ligne la compte, ou il est déjà publié.
+# Un revert, un cherry-pick, une résolution de conflit introduisent leur version :
+# elle compte, même si le distant l'a portée un jour — sauf si elle est acceptée,
+# et c'est alors la lecture du sommet qui la voit revenir. Hors plage, tout est
+# rendu.
+hors_herite() {
+  local ligne c p objet par herite
+  local -a famille
+  if [ -z "$RANGE" ]; then cat; return 0; fi
+  while IFS= read -r ligne; do
+    [ -z "$ligne" ] && continue
+    c="${ligne%%:*}"; p="${ligne#*:}"
+    objet=$(git -C "$ROOT" rev-parse -q --verify "$c:$p") || { printf '%s\n' "$ligne"; continue; }
+    herite=0
+    read -r -a famille <<< "$(git -C "$ROOT" rev-list --parents -n1 "$c")"
+    for par in "${famille[@]:1}"; do
+      [ "$(git -C "$ROOT" rev-parse -q --verify "$par:$p")" = "$objet" ] && { herite=1; break; }
+    done
+    [ "$herite" = "1" ] || printf '%s\n' "$ligne"
+  done
+}
+# Rend les lignes « <rev>:<chemin> » dont la version n'est pas celle que porte
+# aujourd'hui origin/dev au même chemin : celle-là, l'envoi ne la change pas sur
+# dev. origin/main n'en dispense pas : main suit dev avec retard, et une version
+# que main porte encore quand dev l'a remplacée est un nettoyage défait.
+hors_courant() {
+  local ligne p objet b
+  while IFS= read -r ligne; do
+    [ -z "$ligne" ] && continue
+    p="${ligne#*:}"
+    objet=$(git -C "$ROOT" rev-parse -q --verify "$ligne") || { printf '%s\n' "$ligne"; continue; }
+    b=$(git -C "$ROOT" rev-parse -q --verify "refs/remotes/origin/dev:$p") && [ "$b" = "$objet" ] && continue
+    printf '%s\n' "$ligne"
+  done
+}
 # Lit des messages séparés par NUL, chacun précédé de son commit en première
 # ligne ; rend sujet et corps de ceux qui ne sont pas acceptés. L'empreinte
 # d'un commit couvre son message : le reformuler produit un autre commit.
@@ -457,6 +495,9 @@ else
   # toujours attrapé. Ce qui disparaît, c'est seulement l'héritage qu'on ne
   # publie pas. L'audit complet, lui, lit tout, sans restriction de chemin.
   CHEMINS=()
+  POINTE=""
+  BASE=""
+  CHEMINS_SOMMET=()
   if [ -n "$RANGE" ]; then
     echo "2. Données personnelles — contenu des commits à publier ($RANGE_AFF)"
     mapfile -t REVS < <(git -C "$ROOT" rev-list "${PLAGE[@]}")
@@ -467,6 +508,33 @@ else
     # motif introduit par une résolution de conflit y serait passé invisible.
     mapfile -t CHEMINS < <(git -C "$ROOT" log "${PLAGE[@]}" --diff-merges=first-parent \
                              --name-only --format='' | sort -u | grep . || true)
+    # 🔑 Borner les chemins ne suffit pas : on ne compte que les versions qu'un
+    # commit de la plage INTRODUIT (hors_herite). Une fusion de `dev` met dans
+    # CHEMINS un fichier que `dev` vient de nettoyer, et l'arbre des commits non
+    # publiés, partis d'avant le nettoyage, porte encore l'ancienne version, qu'ils
+    # n'ont pas écrite. Mesuré le 04/10/2026 : deux envois bloqués ainsi. Écarter
+    # plutôt « ce que le distant a déjà vu » laissait passer un revert qui
+    # ressuscite une fuite nettoyée : c'est l'introduction qui compte, pas la
+    # nouveauté de la version.
+    #
+    # 🔑 Le SOMMET de la plage est lu en plus, sans acceptation ni hors_herite,
+    # sur ce que l'envoi change à sa cible : les chemins qui diffèrent entre la
+    # base de la plage (la pointe que la forge donne au pre-push) et son sommet.
+    # Une version peut revenir à la pointe sans qu'aucun commit de la plage ne
+    # l'introduise : fusion qui garde l'ancienne version d'une branche publiée
+    # avant le nettoyage, dans un sens ou dans l'autre, version acceptée remise
+    # en place. Elle y est lue, sauf si origin/dev la porte déjà au même chemin
+    # (hors_courant). Le cas du 04/10 n'y rougit pas : la pointe porte la version
+    # nettoyée.
+    POINTE=$(git -C "$ROOT" rev-parse -q --verify "${RANGE##*..}^{commit}" || true)
+    [ -z "${RANGE##*..}" ] && POINTE=$(git -C "$ROOT" rev-parse -q --verify HEAD || true)
+    case "$RANGE" in *..*) BASE=$(git -C "$ROOT" rev-parse -q --verify "${RANGE%%..*}^{commit}" || true) ;; esac
+    if [ -n "$POINTE" ] && [ -n "$BASE" ]; then
+      mapfile -t CHEMINS_SOMMET < <(git -C "$ROOT" -c core.quotepath=false diff --name-only \
+                                      "$BASE" "$POINTE" | grep . || true)
+    else
+      CHEMINS_SOMMET=("${CHEMINS[@]}")
+    fi
   else
     echo "2. Données personnelles — contenu de l'historique complet"
     mapfile -t REVS < <(git -C "$ROOT" rev-list --all)
@@ -481,7 +549,7 @@ else
   for m in "${MOTIFS[@]}"; do
     [ "${#REVS[@]}" = "0" ] && break
     if [ "${#CHEMINS[@]}" != "0" ]; then
-      hits=$(git -C "$ROOT" grep -Iil -e "$m" "${REVS[@]}" -- "${CHEMINS[@]}" | hors_historique_accepte | cut -d: -f2- | sort -u)
+      hits=$(git -C "$ROOT" grep -Iil -e "$m" "${REVS[@]}" -- "${CHEMINS[@]}" | hors_historique_accepte | hors_herite | cut -d: -f2- | sort -u)
     else
       hits=$(git -C "$ROOT" grep -Iil -e "$m" "${REVS[@]}" | hors_historique_accepte | cut -d: -f2- | sort -u)
     fi
@@ -491,6 +559,10 @@ else
       red "✗ Motif inutilisable : « $m » — git grep sort en $rc."
       echo "  Un motif que git grep refuse ne protège rien. Corrige $PATTERNS." >&2
       exit 2
+    fi
+    if [ -n "$POINTE" ] && [ "${#CHEMINS_SOMMET[@]}" != "0" ]; then
+      sommet=$(git -C "$ROOT" grep -Iil -e "$m" "$POINTE" -- "${CHEMINS_SOMMET[@]}" | hors_courant | cut -d: -f2-)
+      hits=$(printf '%s\n%s\n' "$hits" "$sommet" | grep . | sort -u || true)
     fi
     [ -z "$hits" ] && continue
     reste=""
@@ -502,7 +574,13 @@ else
     [ "${n:-0}" != "0" ] && { warn "« $m » — $n fichier(s)"; C2=1; }
   done
   if [ "${#REVS[@]}" != "0" ]; then
-    hits=$(git -C "$ROOT" grep -Il -E -e "$CHIFFRES" "${REVS[@]}" -- "${FICHIERS_AUDIT[@]}" | hors_historique_accepte | cut -d: -f2- | sort -u)
+    hits=$(git -C "$ROOT" grep -Il -E -e "$CHIFFRES" "${REVS[@]}" -- "${FICHIERS_AUDIT[@]}" | hors_historique_accepte | hors_herite | cut -d: -f2- | sort -u)
+    # Même lecture du sommet que pour les motifs, sur ceux de ces deux fichiers que l'envoi change.
+    if [ -n "$POINTE" ] && [ "${#CHEMINS_SOMMET[@]}" != "0" ]; then
+      sommet=$(git -C "$ROOT" grep -Il -E -e "$CHIFFRES" "$POINTE" -- "${FICHIERS_AUDIT[@]}" | hors_courant | cut -d: -f2- \
+                 | grep -Fx -f <(printf '%s\n' "${CHEMINS_SOMMET[@]}") || true)
+      hits=$(printf '%s\n%s\n' "$hits" "$sommet" | grep . | sort -u || true)
+    fi
     while IFS= read -r f; do
       [ -n "$f" ] && { warn "$f — suite de cinq chiffres citée dans une version du périmètre"; C2=1; }
     done <<< "$hits"
@@ -811,6 +889,14 @@ if [ "$MODE" = "worktree" ]; then
 elif [ "$MODE" = "staged" ]; then
   echo "  Rien n'est encore commité : corrige le fichier et refais git add."
   echo "  ⚠ --staged lit l'index : après correction, refais git add."
+elif [ -n "$RANGE" ] && { [ "${C2:-0}" = "1" ] || [ "${C4:-0}" = "1" ]; }; then
+  echo "  Introduit par un commit de l'envoi (revert et cherry-pick compris) :"
+  echo "  corrige-le dans ce commit (git commit --amend, ou un rebase), puis renvoie."
+  echo "  Rien n'est encore publié, pas besoin de git-filter-repo."
+  echo "  Présent au sommet d'un fichier que l'envoi change : corrige-le au sommet —"
+  echo "  l'acceptation n'y vaut pas, une version acceptée qui revient compte."
+  echo "  Si la ligne vient de l'historique déjà publié, ses versions passées y"
+  echo "  restent : à accepter dans scripts/opsec-historique-accepte.txt, ou à réécrire."
 else
   echo "  Un motif trouvé dans le CONTENU ou les MESSAGES ne se corrige pas"
   echo "  au HEAD : il faut réécrire l'historique (git-filter-repo), re-signer"

@@ -7,6 +7,7 @@ require_once __DIR__ . '/../../../bi-self/selfrecover/src/autoload.php';
 use Pierroons\SelfRecover\Device\Appareil;
 use Pierroons\SelfRecover\Recovery\Litige;
 use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
+use Pierroons\SelfRecover\Storage\SelParCodeInterface;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -21,7 +22,7 @@ use Pierroons\SelfRecover\Storage\StorageInterface;
  * au lab. C'est précisément ce qu'une interface de stockage permet : deux
  * consommateurs, deux façons d'atteindre la base, un seul protocole.
  */
-final class StockageSelfRecover implements StorageInterface
+final class StockageSelfRecover implements StorageInterface, SelParCodeInterface
 {
     public function __construct(private readonly SQLite3 $db)
     {
@@ -180,6 +181,17 @@ final class StockageSelfRecover implements StorageInterface
             'nom_compte'     => (string) $l['username'],
             'empreinte_mot'  => (string) $l['recovery_hash'],
         ];
+    }
+
+    public function selDuCompteParIndexCode(string $indexRecherche): ?string
+    {
+        $l = $this->un(
+            'SELECT a.recovery_salt FROM recovery_codes rc JOIN accounts a ON a.id = rc.account_id
+              WHERE rc.code_lookup = :l',
+            [':l' => $indexRecherche],
+        );
+
+        return $l === null ? null : (string) $l['recovery_salt'];
     }
 
     public function consommerCode(int $codeId, int $quand): void
