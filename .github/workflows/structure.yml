@@ -1221,6 +1221,26 @@ jobs:
             php "$t"
           done
 
+      # La démo publique de SelfDataGuard donne à chaque visiteur sa propre base. Le
+      # canari remet la base commune : le second visiteur doit alors voir le coffre
+      # du premier, et le banc rougir sur ce cas-là.
+      - name: Garde-fou — la démo SelfDataGuard isole chaque visiteur
+        run: |
+          php demo/selfdataguard/tests/sanity_sessions.php
+          F=demo/selfdataguard/api/_bootstrap.php
+          cp "$F" /tmp/boot.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+          sed -i "s|^define('DEMO_DB_PATH', \$baseVisiteur);|define('DEMO_DB_PATH', \$repertoireInstance . '/demo.sqlite');|" "$F"
+          grep -q "repertoireInstance . '/demo.sqlite'" "$F" \
+            || { cp /tmp/boot.intact "$F"; echo "::error::canari non planté — motif introuvable"; exit 1; }
+          if sortie=$(php demo/selfdataguard/tests/sanity_sessions.php 2>&1); then
+            cp /tmp/boot.intact "$F"; echo "::error::le banc reste VERT quand les visiteurs partagent une base"; exit 1
+          fi
+          cp /tmp/boot.intact "$F"
+          echo "$sortie" | grep -qF "le second visiteur voit le coffre du premier" \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur l'isolation"; exit 1; }
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+          echo "✓ le banc rougit quand les visiteurs partagent une base"
+
       # SelfRecover et SelfDataGuard déclarent chacun leur minimum de mot de passe
       # et leur normalisation de la passphrase, sans dépendre l'un de l'autre : ce
       # banc les tient d'accord. Chaque canari désaccorde l'un des deux et exige le

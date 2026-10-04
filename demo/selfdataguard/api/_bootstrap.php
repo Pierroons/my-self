@@ -20,12 +20,62 @@ use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
-// DB SQLite : chemin surchargeable HORS webroot via DATAGUARD_DB_PATH (fallback local).
-// define() (et pas const) pour pouvoir lire l'env ; reste une constante utilisable
-// par tous les endpoints (inspect_db, etc.).
-define('DEMO_DB_PATH', getenv('DATAGUARD_DB_PATH')
+// Une base par visiteur, désignée par un cookie. La démo est publique : une base
+// commune montrait à chacun les coffres des autres (inspect_db), laissait tester
+// leurs index aveugles (find_user) et essayer leurs mots de passe. Les bases vivent
+// à côté de DATAGUARD_DB_PATH, hors webroot, et s'effacent 30 minutes après la
+// dernière action de leur visiteur.
+const DEMO_COOKIE       = 'sdg_demo';
+const DEMO_TTL_SECONDES = 30 * 60;
+const DEMO_BASES_MAX    = 200;
+
+$repertoireInstance = dirname(getenv('DATAGUARD_DB_PATH')
     ?: ($_SERVER['DATAGUARD_DB_PATH'] ?? '')
     ?: (__DIR__ . '/../storage/demo.sqlite'));
+$repertoireBases = $repertoireInstance . '/sessions';
+if (!is_dir($repertoireBases) && !@mkdir($repertoireBases, 0700, true) && !is_dir($repertoireBases)) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Failed to create the demo sessions directory']);
+    exit;
+}
+
+$maintenant = time();
+$bases = glob($repertoireBases . '/*.sqlite') ?: [];
+foreach ($bases as $i => $base) {
+    if (@filemtime($base) < $maintenant - DEMO_TTL_SECONDES) {
+        foreach (['', '-journal', '-wal', '-shm'] as $suffixe) {
+            @unlink($base . $suffixe);
+        }
+        unset($bases[$i]);
+    }
+}
+
+$idVisiteur = (string) ($_COOKIE[DEMO_COOKIE] ?? '');
+if (preg_match('/^[a-f0-9]{32}\z/', $idVisiteur) !== 1) {
+    $idVisiteur = bin2hex(random_bytes(16));
+}
+$baseVisiteur = $repertoireBases . '/' . $idVisiteur . '.sqlite';
+if (!is_file($baseVisiteur) && count($bases) >= DEMO_BASES_MAX) {
+    http_response_code(503);
+    echo json_encode(['error' => 'The demo is full — come back in a few minutes']);
+    exit;
+}
+setcookie(DEMO_COOKIE, $idVisiteur, [
+    'expires'  => $maintenant + DEMO_TTL_SECONDES,
+    'path'     => '/',
+    'secure'   => ($_SERVER['HTTPS'] ?? '') !== '' && ($_SERVER['HTTPS'] ?? '') !== 'off',
+    'httponly' => true,
+    'samesite' => 'Strict',
+]);
+if (is_file($baseVisiteur)) {
+    // Une lecture compte comme une action : sans elle, la base expirerait 30
+    // minutes après la dernière écriture, au milieu d'une visite qui inspecte.
+    @touch($baseVisiteur);
+}
+
+// define() (et pas const) : la valeur se calcule ; reste une constante utilisable
+// par tous les endpoints (inspect_db, etc.).
+define('DEMO_DB_PATH', $baseVisiteur);
 
 // blindKey (index aveugle) : chemin surchargeable HORS webroot via l'env
 // DATAGUARD_BLINDKEY_PATH ; fallback local pour la démo/dev. En prod, la clé

@@ -40,10 +40,12 @@ To use a different port: `PORT=9000 ./run.sh`.
   consent text: accessible to an admin **only** during a recovery litige.
 - The escrow is sealed to a demo admin recovery key generated on first run
   (`storage/admin-recovery.pub` + `.sealed`, demo passphrase
-  `demo-admin-recovery-passphrase-2026`). Recover it from the CLI:
+  `demo-admin-recovery-passphrase-2026`). Recover it from the CLI, on your own
+  database — each visitor has one, `storage/sessions/<id>.sqlite`, where `<id>` is the
+  value of your `sdg_demo` cookie:
 
   ```bash
-  DATAGUARD_DB=storage/demo.sqlite \
+  DATAGUARD_DB=storage/sessions/<id>.sqlite \
   DATAGUARD_ADMIN_PUBKEY_FILE=storage/admin-recovery.pub \
   DATAGUARD_ADMIN_SEALED_FILE=storage/admin-recovery.sealed \
   DATAGUARD_AUDIT_LOG=storage/escrow-audit.log \
@@ -85,11 +87,15 @@ The proof: type your email in the register form, watch it disappear into a base6
 
 ## Reset the demo
 
+Each visitor gets their own database, named after their `sdg_demo` cookie and erased 30
+minutes after their last action: nobody sees, searches or opens another visitor's vaults.
+At most 200 live databases; past that, a new visitor gets 503 until one expires.
+
 ```bash
-rm -f storage/demo.sqlite storage/blindkey.bin   # from demo/selfdataguard/
+rm -rf storage/sessions storage/blindkey.bin   # from demo/selfdataguard/
 ```
 
-Reload the page — you'll get a clean DB and a fresh server-side blind key. The blind key is auto-generated on first run and stored in `demo/selfdataguard/storage/blindkey.bin` (mode 0600), gitignored. **In production**, this key would live in a secret manager / Vault / HSM, not on disk next to the DB.
+Reload the page — you'll get a clean database and a fresh server-side blind key. The blind key is auto-generated on first run and stored in `demo/selfdataguard/storage/blindkey.bin` (mode 0600), gitignored. **In production**, this key would live in a secret manager / Vault / HSM, not on disk next to the DB.
 
 ## What this demo doesn't do (production gaps)
 
