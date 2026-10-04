@@ -10,6 +10,12 @@
 
 declare(strict_types=1);
 
+// Outil de ligne de commande : servi par erreur, il ne fait rien et ne dit rien.
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
+
 $dryRun = in_array('--dry-run', $argv, true);
 
 /**

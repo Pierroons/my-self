@@ -552,6 +552,24 @@ jobs:
       - name: Garde-fou — le scraper refuse une source tronquée
         run: bash self-right/selfact/tests/test_garde_catalogue.sh
 
+      - name: Garde-fou — servis, les outils de ligne de commande de SelfAct ne font rien
+        run: bash self-right/selfact/tests/test_garde_cli.sh
+
+      - name: Garde-fou — les copies du journal du panneau de veille
+        run: bash self-right/selfjustice/tests/test_admin_feed.sh
+
+      - name: Garde-fou — le stockage des retours a un plafond
+        run: php self-right/selfjustice/tests/test_quota_feedback.php
+
+      # L'en-tête Host est choisi par le client : une URL composée avec lui part
+      # dans des réponses mises en cache. SERVER_NAME, fixé par nginx, le remplace.
+      - name: Garde-fou — Self-Right ne compose aucune URL avec l'en-tête Host
+        run: |
+          if git grep -n 'HTTP_HOST' -- 'self-right/*.php' ':!self-right/*/tests/*'; then
+            echo "::error::HTTP_HOST lu par Self-Right"; exit 1
+          fi
+          echo "aucun HTTP_HOST dans Self-Right"
+
       # lxml à la version de l'instance : c'est son analyseur qui découpe les traités.
       - name: Garde-fou — un traité se découpe juste dans le Journal officiel
         run: |

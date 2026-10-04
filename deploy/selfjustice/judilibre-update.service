@@ -26,7 +26,10 @@ TimeoutStartSec=45min
 # Le service écrit dans la base servie et dans /var/lib : tout le reste est
 # en lecture seule pour lui.
 ProtectSystem=strict
-ReadWritePaths=/var/lib/selfjustice /opt/selfjustice
+ReadWritePaths=/var/lib/selfjustice
+# Le journal va dans /var/log/selfjustice ; /opt/selfjustice, où vit le code,
+# reste en lecture seule pour le service.
+LogsDirectory=selfjustice
 ProtectHome=true
 PrivateTmp=true
 NoNewPrivileges=true

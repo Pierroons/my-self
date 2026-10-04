@@ -19,6 +19,7 @@ import http.server
 import sys
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
@@ -110,11 +111,26 @@ def main():
     verdict(Defi.appels == 1 and duree < 2,
             f"une seule requête, sans attente ({Defi.appels} requête(s), {duree:.1f} s)")
 
+    print("\n▸ CELLAR reste en HTTPS d'un bout à l'autre")
+    verdict(b.CELLAR.startswith("https://"), "CELLAR interrogé en HTTPS")
+    h = b.RedirectionHttps()
+    depart = urllib.request.Request("https://publications.europa.eu/resource/celex/32016R0679")
+    suite = h.redirect_request(depart, None, 303, "See Other", {},
+                               "http://publications.europa.eu/resource/cellar/abc.0002.01/DOC_1")
+    verdict(suite is not None and suite.full_url.startswith("https://publications.europa.eu/"),
+            "sa redirection vers HTTP remonte en HTTPS")
+    try:
+        h.redirect_request(depart, None, 303, "See Other", {}, "http://ailleurs.example/piece")
+        refusee = False
+    except b.RedirectionRefusee:
+        refusee = True
+    verdict(refusee, "une redirection vers HTTP ailleurs est refusée")
+
     print()
     if echecs:
         print("✗ %d contrôle(s) en échec." % len(echecs))
         return 1
-    print("✓ Le découpage du Journal officiel tient, et le défi anti-robot se dit.")
+    print("✓ Le découpage du Journal officiel tient, le défi anti-robot se dit, et CELLAR reste en HTTPS.")
     return 0
 
 

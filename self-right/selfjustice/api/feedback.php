@@ -95,6 +95,10 @@ if (!is_dir($base_dir)) {
 if (!is_writable($base_dir)) {
     reject(500, 'Stockage indisponible');
 }
+require_once __DIR__ . '/quota_feedback.php';
+if (!feedback_place_restante($base_dir, (int) $file['size'])) {
+    reject(507, 'Stockage des retours plein — réessaie plus tard');
+}
 
 $slot = date('Ymd-His') . '-' . bin2hex(random_bytes(3));
 $slot_dir = $base_dir . '/' . $slot;

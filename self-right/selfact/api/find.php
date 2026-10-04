@@ -221,6 +221,7 @@ respond(200, [
     'meta'        => $meta + ['catalogue' => selfact_meta_catalogue()],
     'fallback'    => [
         'if_no_official_match' => 'Use /act/api/draft to produce an HTML draft; it carries a "NON OFFICIEL" notice in the body when the template imitates a legal act, and a footer reminder in every case. Print to PDF from the browser.',
-        'draft_url'            => (getenv('SELFJUSTICE_BASE_URL') ?: 'https://' . ($_SERVER['HTTP_HOST'] ?? 'your-instance.example')) . '/act/api/draft',
+        // SERVER_NAME, que nginx fixe, jamais l'en-tête Host, que le client choisit : cette URL part dans une réponse mise en cache.
+        'draft_url'            => (getenv('SELFJUSTICE_BASE_URL') ?: 'https://' . ($_SERVER['SERVER_NAME'] ?? 'your-instance.example')) . '/act/api/draft',
     ],
 ]);
