@@ -48,7 +48,7 @@ sur toute convention générale.
 | shell | `bash -n <fichier>` **et** `shellcheck` |
 | SelfJustice, API ou index | `python3 self-right/selfjustice/tests/test_jurisprudence.py <url>` |
 | tout commit | le hook `pre-commit` lance gitleaks — ne pas le contourner |
-| la version d'un module | `modules.json` d'abord, puis `bash scripts/check-versions.sh`, qui liste chaque porteur à suivre ; la version annoncée demande son tag à Pierroons |
+| la version ou le statut d'un module | `modules.json` d'abord, puis `bash scripts/check-versions.sh`, qui liste chaque porteur à suivre ; la version annoncée demande son tag à Pierroons |
 
 Si une validation ne peut pas être lancée, l'écrire : la commande, la raison,
 et le risque qui subsiste.
@@ -109,7 +109,7 @@ tiennent en intégration continue.
 
 | script | ce qu'il mesure |
 |---|---|
-| `scripts/check-paths.sh` | un chemin cité quelque part a-t-il encore sa cible — liens Markdown, règles d'exclusion, chemins de workflow |
+| `scripts/check-paths.sh` | un chemin cité quelque part a-t-il encore sa cible — liens Markdown, code inline, blocs de code, règles d'exclusion, chemins de workflow |
 | `scripts/check-profil-unique.sh` | le profil de hachage est-il défini à un seul endroit ; ⚠️ son périmètre est l'index git, pas le disque |
 | `scripts/ecart-instance.sh` | ce qui est versionné et ce qui est servi disent-ils la même chose, sur chaque destination |
 | `self-right/selfjustice/tools/check_fraicheur.sh` | les bases consultées sont-elles à jour, et leur volume progresse-t-il — c'est la copie que l'instance exécute, et celle que la CI éprouve |
@@ -119,7 +119,7 @@ tiennent en intégration continue.
 | `scripts/check-patch-legi.sh` | un hôte porte-t-il encore les correctifs locaux sur `legi.py`, à l'identique du patch versionné |
 | `scripts/check-liens-bibliotheque.sh` | une démo pointe-t-elle vers la bibliothèque, ou en a-t-elle recopié une version qui divergera |
 | `scripts/check-plancher-secret.sh` | un secret de déploiement atteint-il le plancher de longueur que le code exige |
-| `scripts/check-versions.sh` | chaque porteur d'une version dit-il celle de `modules.json`, la source unique ; avec `--tags`, chaque version annoncée a-t-elle son tag ; avec `--publications`, sa release, et ce qui est déclaré retiré ne sert-il plus |
+| `scripts/check-versions.sh` | chaque porteur d'une version dit-il celle de `modules.json`, la source unique, et le statut que le module y déclare (bêta) ; avec `--tags`, chaque version annoncée a-t-elle son tag ; avec `--publications`, sa release, et ce qui est déclaré retiré ne sert-il plus |
 | `scripts/check-ecosysteme.sh` | ce que nos README disent de `selffarm-lite` correspond-il à ce qu'il publie ; `--ecrire` remet le bloc à jour |
 
 **Six d'entre eux tournent en intégration continue** (`structure.yml`) : les

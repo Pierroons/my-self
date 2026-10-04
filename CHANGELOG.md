@@ -10,6 +10,21 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Le statut d'un module et les chemins des blocs de code entrent sous contrôle — 4 octobre 2026
+
+Deux familles de textes vieillissaient sans que rien ne rougisse.
+
+- **Le statut** : `modules.json` peut déclarer un `statut` (`{"fr": "bêta", "en": "beta"}`, aujourd'hui
+  SelfJustice et SelfAct). `scripts/check-versions.sh` exige ce mot sur chaque ligne déclarée du module
+  — dans le texte alternatif d'un badge comme dans son image — et refuse un mot du vocabulaire sur la
+  ligne d'un module qui ne le déclare pas. SelfAct était dit « en ligne » à six endroits.
+- **Les blocs de code** : `scripts/check-paths.sh` y lit désormais les chemins relatifs du dépôt, que
+  les deux contrôles précédents effaçaient avant de chercher. Un chemin absolu, une variable ou une
+  remontée désignent la machine cible et restent hors de sa lecture.
+
+Canaris en CI (`structure.yml`) : un module bêta dit sans son statut, un module dit « bêta » sans le
+déclarer, un `cd` vers un dossier disparu.
+
 ### Les guides de contribution, de déploiement et d'installation suivent le dépôt — 4 octobre 2026
 
 - **`CONTRIBUTING.md`** : gitleaks s'installe par son binaire officiel, comme le dit
