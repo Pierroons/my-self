@@ -86,15 +86,18 @@ Chaque volume conserve un slot « natif » (passphrase classique), indépendant 
 
 L'outillage garde aussi ce qui rendrait une machine muette au démarrage :
 
-- **Format du slot inscrit —** l'installation refuse de poser un keyscript d'un autre format que
-  le slot enrôlé (hexadécimal ou octets bruts), et refuse de remplacer un keyscript en place sans
-  ce marqueur ;
+- **Format du slot inscrit —** l'enrôlement inscrit le format du slot (hexadécimal ou octets
+  bruts) ; l'installation refuse de poser un keyscript d'un autre format, et refuse de remplacer un
+  keyscript en place tant que ce format n'est pas inscrit ;
 - **Borne de lecture accordée à la clé —** la longueur que la table de chiffrement fait lire
   correspond au format : 64 caractères en hexadécimal, 32 octets en brut ;
-- **Preuve par le dérivateur de l'amorçage —** quand il est présent, c'est le binaire que lira le
-  keyscript qui rouvre le slot enrôlé, avant que le keyscript ne soit branché ;
+- **Preuve par le dérivateur de l'amorçage —** c'est le binaire que lira le keyscript qui rouvre
+  le slot enrôlé, avant que le keyscript ne soit branché ; s'il est introuvable, l'ajout du slot est
+  refusé, sauf désarmement explicite (`J_ACCEPTE_PREUVE_SANS_BINAIRE_BOOT=oui`) ;
 - **Image vérifiée après chaque régénération —** keyscript, script de secours quand l'image
-  embarque le serveur SSH, borne de lecture.
+  embarque le serveur SSH ; la borne de lecture et le sel quand l'image s'extrait
+  (`unmkinitramfs`). Sinon le contrôle le dit sur la sortie d'erreur, sans faire échouer la
+  régénération.
 
 ## 9. Récupération après catastrophe
 

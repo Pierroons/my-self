@@ -35,7 +35,7 @@ Depuis vingt ans, la réponse de l'industrie est toujours la même : **envoyer u
 - Le lien de reset doit être cliqué dans un délai (15 à 60 minutes)
 - Le modèle de sécurité est externalisé vers un tiers (Gmail, Outlook, ProtonMail)
 
-**La vraie question que personne ne pose :** pourquoi un site web a-t-il besoin de ton email pour prouver que tu es toi ?
+**Pourquoi un site web a-t-il besoin d'un email pour établir qu'on est soi ?**
 
 SelfRecover propose une autre réponse : la confiance reste entre l'utilisateur et le site. Pas d'intermédiaire. Pas d'email. Pas de tiers.
 
@@ -79,7 +79,7 @@ Le serveur reçoit et stocke :
 - `sel_compte` — le sel du compte : 16 octets aléatoires rendus en 32 hexadécimaux minuscules, un par compte, engendré par le navigateur, pas un secret
 - les 10 codes de récupération du premier lot, chacun sous deux formes (§5.4)
 
-Tous les hachages serveur suivent un seul profil Argon2id : 64 Mio, 4 itérations, 2 fils (`Hashing::ARGON2`).
+Toutes les empreintes Argon2id du serveur (`Hashing::hash`) suivent un seul profil : 64 Mio, 4 itérations, 2 fils (`Hashing::ARGON2`). Les codes portent en plus un index HMAC sous le sel du déploiement (§5.4), et le code de suivi du niveau 3 une empreinte SHA-256.
 
 L'utilisateur reçoit la passphrase et ses codes une seule fois, et les conserve sur papier, hors ligne.
 
@@ -180,7 +180,7 @@ La bibliothèque n'expose pas de route ; elle fournit la garde, `Recovery::selDe
 Le L2 est un **vrai 2FA** — possession **et** connaissance — **sans identifiant à retenir** :
 
 - **Possession** : un *recovery code* (parmi les 10 remis à l'inscription). Il **localise** le compte via un lookup HMAC (plus d'énumération) et sert de facteur de possession.
-- **Connaissance** : le *mot mémorisé*, dérivé HMAC côté client (le mot brut ne quitte jamais le navigateur).
+- **Connaissance** : le *mot mémorisé*, dérivé HMAC côté client (avec le dériveur livré, le mot brut ne quitte pas le navigateur).
 
 Le serveur vérifie les **deux** (Argon2id) et renvoie une **erreur générique** ne révélant jamais lequel a échoué. En cas de succès, le code est consommé ; le serveur engendre un mot de passe et une passphrase neufs, rendus une seule fois, et les sessions ouvertes tombent. Il rend aussi le nom du compte et le nombre de codes restants. Une variante optionnelle — le **facteur « cet appareil »** — offre une seconde voie de L2 (voir §5.4).
 
@@ -189,7 +189,7 @@ Aucune bascule automatique vers L3. Le niveau 2 ne demande aucun identifiant, ma
 ### 5.3 Niveau 3 — Accès totalement perdu
 
 - Entrée : lien discret `"J'ai perdu tous mes accès"` sur la page de login
-- L'utilisateur fournit le nom de son compte (celui du niveau 1) ; son navigateur génère un **code de suivi** (sésame) dont seule l'empreinte (SHA-256) est envoyée au serveur (anti-timing : délai forcé)
+- L'utilisateur fournit le nom de son compte (celui du niveau 1) ; son navigateur génère un **code de suivi** (sésame). À l'ouverture, seule son empreinte (SHA-256) part, et c'est tout ce que le serveur range ; aux étapes suivantes, le code lui-même se présente et le serveur le hache à chaque fois — un journal des corps de requête le capterait donc (anti-timing : délai forcé)
 - Un litige au numéro **non devinable** (`LIT-` suivi de 16 hexadécimaux) est ouvert. Si un litige est déjà ouvert pour ce compte, le numéro n'est **pas redivulgué** et la tentative concurrente est signalée à l'admin (« multi-demandeur »)
 - L'utilisateur répond à quelques **questions de contexte** (année de création du compte, période de dernière connexion, fréquence d'usage) — **aucun secret n'est demandé**
 - Le serveur assemble un **faisceau de faits bruts** présenté à l'administrateur :
@@ -197,7 +197,7 @@ Aucune bascule automatique vers L3. Le niveau 2 ne demande aucun identifiant, ma
   - **Déclaratif** : chaque réponse confrontée au réel, marquée `concorde`, `diverge` ou `indisponible` — ce dernier quand le serveur ne tient pas la donnée, ce qui n'est pas une divergence
   - **Avertissement** : il rappelle à l'arbitre que ces réponses sont devinables ; elles orientent la conversation, elles ne prouvent rien
   - Le faisceau ne porte **aucun signal passif** : ni adresse, ni empreinte de navigateur
-- **Aucun score chiffré n'est calculé.** Ce sont des **faits bruts** : ils n'ouvrent **jamais** le compte automatiquement, ils aident seulement un **administrateur humain** à trancher dans le chat
+- **Aucun score chiffré n'est calculé.** Ces faits n'ouvrent **jamais** le compte automatiquement, ils aident seulement un **administrateur humain** à trancher dans le chat
 - Cooldown : 1 heure entre chaque soumission
 - Ouverture freinée avant toute recherche du compte : 10 par adresse et 20 pour tout le service, par heure (valeurs par défaut). Pas de frein par compte, exprès : un tiers pourrait sinon fermer le niveau 3 au titulaire sans que rien n'apparaisse à l'arbitre. Le harcèlement d'un compte se voit autrement : la tentative concurrente se compte et se montre
 - Le code de suivi se présente à chaque étape — dépôt des réponses, fil de discussion, état, reprise. Le dossier expire au bout de 24 h tant que personne n'a tranché. Un accord court 7 jours à partir de la décision ; passé ce délai, il tombe et l'arbitrage est à refaire. La reprise clôt le dossier et efface l'empreinte du code de suivi. Si le titulaire a perdu son code de suivi, un arbitre peut abandonner le dossier en cours : cela ne rend aucun accès, cela libère la place pour un dossier neuf
@@ -287,9 +287,9 @@ blocage bâtie dessus.
 
 ## 8. Ce que rend la bibliothèque
 
-Chaque méthode rend `ok`, un `message` destiné à la personne, et pour certains refus un `error` stable que l'application peut journaliser ou traduire : `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `compte_inconnu`, `gele`, `deja_ouvert`, `sesame_invalide`, `expire`, `accord_perime`, entre autres.
+Chaque méthode rend `ok`. Tout refus porte un `message` destiné à la personne, la plupart des succès aussi (pas `etat()`, `fil()` ni `ouvrirDefi()`), et certains refus un `error` stable que l'application peut journaliser ou traduire : `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `compte_inconnu`, `gele`, `deja_ouvert`, `sesame_invalide`, `expire`, `accord_perime`, entre autres.
 
-La bibliothèque ne remonte rien elle-même ; elle enregistre seulement les tentatives dont ses freins ont besoin. Ce qu'un rapport de diagnostic contient relève de l'application, qui n'y met jamais le mot de récupération (brut ou dérivé), la passphrase, le mot de passe ni les codes.
+La bibliothèque ne remonte rien elle-même ; elle enregistre seulement les tentatives dont ses freins ont besoin. Ce qu'un rapport de diagnostic contient relève de l'application ; elle ne doit y mettre ni le mot de récupération (brut ou dérivé), ni la passphrase, ni le mot de passe, ni les codes.
 
 ---
 
@@ -334,7 +334,7 @@ SelfRecover protège les données de récupération par dérivation HMAC, hachag
 
 **La vulnérabilité :**
 
-- Certains environnements Linux accordent un sudo sans mot de passe par défaut (`NOPASSWD: ALL` dans sudoers). Cas notables : **Raspberry Pi OS** (user `pi`) et les **images cloud** (AMIs Ubuntu AWS/DigitalOcean/GCP pour le user `ubuntu`, Amazon Linux pour `ec2-user`, etc.). La plupart des installations desktop/serveur (Debian, Ubuntu iso, Fedora, Arch) n'ont **pas** ce problème par défaut — mais vérifie toujours ton `/etc/sudoers.d/` à l'installation.
+- Certains environnements Linux accordent un sudo sans mot de passe par défaut (`NOPASSWD: ALL` dans sudoers). Cas notables : **Raspberry Pi OS** (user `pi`) et les **images cloud** (AMIs Ubuntu AWS/DigitalOcean/GCP pour le user `ubuntu`, Amazon Linux pour `ec2-user`, etc.). La plupart des installations desktop/serveur (Debian, Ubuntu iso, Fedora, Arch) n'ont **pas** ce problème par défaut — mais `/etc/sudoers.d/` se vérifie toujours à l'installation.
 - Si un attaquant compromet le compte utilisateur (fuite de clé SSH, vulnérabilité web, etc.), il passe root sans aucune friction
 - Avec root : accès direct à la base de données, remplacement des hash de mot de passe, modification du code — y compris du dériveur servi au navigateur, qui pourrait alors capter le mot mémorisé —, extraction des clés — SelfRecover devient décoratif
 
@@ -352,7 +352,7 @@ Ce n'est pas un risque théorique. C'est le point de défaillance unique qui con
 
 ```bash
 # 1. Changer le mot de passe de l'utilisateur pour une passphrase diceware forte
-echo "user:ta-passphrase-diceware" | sudo chpasswd
+echo "user:<passphrase-diceware>" | sudo chpasswd
 
 # 2. Modifier sudoers : remplacer "user ALL=(ALL) NOPASSWD: ALL" par "user ALL=(ALL) ALL"
 sudo visudo -f /etc/sudoers.d/010_user-nopasswd
@@ -440,7 +440,7 @@ Un déploiement qui ignore cette checklist n'est pas un déploiement SelfRecover
 ### 12.1 Pré-requis
 
 - PHP 8.1+ avec `ext-json`, `ext-mbstring` et `ext-openssl` — les contraintes que porte `composer.json` —, et un PHP qui fournit `PASSWORD_ARGON2ID`, ce que `composer.json` ne peut pas exiger. L'implémentation de référence est en PHP ; il n'en existe pas d'autre côté serveur
-- Une base SQL. Le schéma et l'adaptateur fournis ciblent SQLite (`ext-pdo_sqlite`) ; ailleurs, les types de colonnes et trois requêtes se réécrivent (l'en-tête de `schema.sql` les nomme), ou l'intégrateur écrit son propre adaptateur de `StorageInterface`
+- Une base SQL. Le schéma et l'adaptateur fournis ciblent SQLite (`ext-pdo_sqlite`) ; ailleurs, les types de colonnes et trois constructions de l'adaptateur (quatre requêtes) se réécrivent — l'en-tête de `schema.sql` les nomme, ou l'intégrateur écrit son propre adaptateur de `StorageInterface`
 - Navigateur moderne avec JavaScript et Web Crypto API : `client/sr-derive.js` y dérive le mot mémorisé par `crypto.subtle`. Le facteur « cet appareil » ajoute `client/argon2id.js` puis `client/sr-kdf.js`, Web Crypto n'offrant pas Argon2id
 - HTTPS obligatoire sur le web ordinaire (§11.3)
 
@@ -506,4 +506,4 @@ SelfRecover est open source sous licence AGPL-3.0-or-later (bascule depuis MIT l
 
 ---
 
-*SelfRecover — parce que ton identité ne devrait pas dépendre d'une boîte mail.*
+*SelfRecover — parce qu'une identité ne devrait pas dépendre d'une boîte mail.*

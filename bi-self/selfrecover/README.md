@@ -289,7 +289,7 @@ The standalone PHP demo that lived under `demo/` has been removed: its recovery 
        │                          │
 ```
 
-The raw recovery word never leaves the browser.
+With the shipped deriver, the raw recovery word does not leave the browser.
 
 ---
 
@@ -306,8 +306,8 @@ So you have two paths, and the contract exists so the first one stays open:
 |---|---|
 | you already have tables | you write your adapter, **you migrate nothing** |
 | you start from scratch | you load `schema.sql` and wire `StockagePdo` — **no adapter to write** |
-Both target SQLite. On MariaDB or PostgreSQL, the column types and three queries need
-rewriting — `schema.sql` names them in its header.
+Both target SQLite. On MariaDB or PostgreSQL, the column types and three adapter constructs
+(four queries) need rewriting — `schema.sql` names them in its header.
 
 `StockagePdo` also serves the "this device" factor and requires the **derivation host**:
 it refuses to reset secrets without one, rather than writing an empty marker onto an
@@ -329,7 +329,7 @@ indistinguishable from one that writes, until you go look at the table.
 
 | Property | How it's achieved |
 |----------|------------------|
-| **The recovery word never leaves the browser** | Only its per-site HMAC fingerprint is transmitted, and the database keeps nothing but an Argon2id hash of it: a compromise reveals no recovery word. The password and the passphrase, both server-generated, pass through the server when they are used. |
+| **The recovery word does not leave the browser** | The shipped deriver only transmits its per-site HMAC fingerprint, and the database keeps nothing but an Argon2id hash of it: a database leak reveals no word in the clear, and each guess against one costs an Argon2id. The password and the passphrase, both server-generated, pass through the server when they are used. |
 | **Passive-phishing resistance** | **In `'hostname'` mode only.** The material is read in the browser, so a clone that copies the page derives from its own hostname and produces a key the real server does not hold. In `'label'` mode there is none — the copy carries the same label. An active phishing site that controls its own page is out of scope either way (true for any in-browser protocol). |
 | **Replay resistance** | Every secret serves once: an L2 code is consumed by the `UPDATE` that marks it, a device challenge is consumed before the signature check, and taking the account back closes the L3 dispute, which retires its sesame. Rate limits slow things down; they do not close replay. |
 | **Leak resistance** | Each account has its own salt; the server stores only Argon2id hashes of per-service-derived keys. Leaked client code alone is useless. |
@@ -403,7 +403,7 @@ SelfRecover is honest about what it protects and what it does not. Every cryptog
 | Passive phishing / cloned page | ✅ in `'hostname'` mode — a clone derives from its own hostname; ❌ nothing in `'label'` mode (active phishing controlling its own page is out of scope either way) |
 | Network sniffer / MITM | ✅ TLS in transit + only HMAC derivation transmitted |
 | Database leak | ✅ Argon2id hashes (memory-hard, GPU-resistant) |
-| Online brute-force | ✅ Per-account rate limits, and per-address ones when the integrator passes the address, then the L2 suspension past a threshold of failures |
+| Online brute-force | ✅ Per-account rate limits, and per-address ones under the `clearweb` profile, then the L2 suspension past a threshold of failures |
 
 ### Adversaries OUT OF SCOPE — explicitly assumed
 

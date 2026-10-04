@@ -35,7 +35,7 @@ For the past twenty years, the industry's answer has been: **send an email**. Th
 - The reset link must be clicked within a time window (15-60 minutes)
 - The security model is externalized to a third party (Gmail, Outlook, ProtonMail)
 
-**The real question nobody asks:** why does a website need your email to prove you are you?
+**Why does a website need an email address to establish who someone is?**
 
 SelfRecover proposes a different answer: trust stays between the user and the site. No intermediary. No email. No third party.
 
@@ -79,7 +79,7 @@ The server receives and stores:
 - `account_salt` — the account salt: 16 random bytes rendered as 32 lowercase hex characters, one per account, browser-generated, not a secret
 - the first batch of 10 recovery codes, each stored in two forms (§5.4)
 
-Every server-side hash uses one Argon2id profile: 64 MiB, 4 iterations, 2 threads (`Hashing::ARGON2`).
+Every server-side Argon2id hash (`Hashing::hash`) uses one profile: 64 MiB, 4 iterations, 2 threads (`Hashing::ARGON2`). Codes also carry an HMAC lookup keyed by the deployment salt (§5.4), and the level-3 tracking code a SHA-256 fingerprint.
 
 The user receives the passphrase and the codes once, and keeps them on paper, offline.
 
@@ -180,7 +180,7 @@ The library exposes no route; it ships the guard, `Recovery::selDeDerivation($co
 L2 is a **real 2FA** — possession **and** knowledge — **with no identifier to remember**:
 
 - **Possession**: a *recovery code* (one of the 10 issued at registration). It **locates** the account via an HMAC lookup (no more enumeration) and acts as the possession factor.
-- **Knowledge**: the *memorized word*, HMAC-derived client-side (the raw word never leaves the browser).
+- **Knowledge**: the *memorized word*, HMAC-derived client-side (with the shipped deriver, the raw word does not leave the browser).
 
 The server verifies **both** (Argon2id) and returns a **generic error** that never reveals which one failed. On success, the code is consumed; the server generates a new password and a new passphrase, shown once, and open sessions are dropped. It also returns the account name and the number of codes left. An optional variant — the **"this device" factor** — provides a second L2 path (see §5.4).
 
@@ -189,7 +189,7 @@ There is no automatic escalation to L3. Level 2 asks for no identifier, but the 
 ### 5.3 Level 3 — All Access Lost
 
 - Entry: discreet "Lost all access" link on the login page
-- User provides their account name (the level-1 one); their browser generates a **tracking code** (claim) whose fingerprint (SHA-256) alone is sent to the server (anti-timing: forced delay)
+- User provides their account name (the level-1 one); their browser generates a **tracking code** (claim). At opening only its fingerprint (SHA-256) is sent, and that is all the server stores; at the following steps the code itself is presented and the server hashes it each time — so a log of request bodies would capture it (anti-timing: forced delay)
 - A dispute with a **non-guessable** number (`LIT-` followed by 16 hex characters) is opened. If a dispute is already open for that account, the number is **not re-disclosed** and the concurrent attempt is flagged to the admin ("multi-requester")
 - The user answers a few **context questions** (account creation year, last-login period, usage frequency) — **no secret is requested**
 - The server assembles a **bundle of raw facts** presented to the administrator:
@@ -197,7 +197,7 @@ There is no automatic escalation to L3. Level 2 asks for no identifier, but the 
   - **Declarative**: each answer checked against reality, marked `concorde` (match), `diverge` (mismatch) or `indisponible` (unavailable) — the last when the server keeps no such data, which is not a mismatch
   - **Warning**: it reminds the arbitrator that these answers are guessable; they guide the conversation, they prove nothing
   - The bundle carries **no passive signal**: no address, no browser fingerprint
-- **No numeric score is computed.** These are **raw facts**: they **never** unlock the account automatically, they only help a **human administrator** decide in the chat
+- **No numeric score is computed.** These facts **never** unlock the account automatically, they only help a **human administrator** decide in the chat
 - Cooldown: 1 hour between submissions
 - Opening is braked before any account lookup: 10 per address and 20 service-wide per hour (defaults). There is deliberately no per-account brake: a third party could otherwise wall the owner out of level 3 with nothing shown to the arbitrator. Harassing an account shows up another way: the concurrent attempt is counted and displayed
 - The tracking code is presented at every step — filing the answers, the chat thread, the status, the reset. The case expires after 24h while undecided. A grant runs 7 days from the decision; past that it lapses and arbitration must be redone. The reset closes the case and erases the tracking code's hash. If the holder lost their tracking code, an arbitrator can abandon the current case: that grants no access, it frees the slot for a new case
@@ -286,9 +286,9 @@ notification or blocking policy built on top.
 
 ## 8. What the Library Returns
 
-Each method returns `ok`, a human-facing `message`, and for some refusals a stable `error` the application can log or translate: `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `compte_inconnu`, `gele`, `deja_ouvert`, `sesame_invalide`, `expire`, `accord_perime`, among others.
+Each method returns `ok`. Every refusal carries a human-facing `message`, most successes too (not `etat()`, `fil()` or `ouvrirDefi()`), and some refusals a stable `error` the application can log or translate: `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `compte_inconnu`, `gele`, `deja_ouvert`, `sesame_invalide`, `expire`, `accord_perime`, among others.
 
-The library reports nothing itself; it only records the attempts its brakes need. What a diagnostic report contains is the application's call, and it never includes the recovery word (raw or derived), the passphrase, the password or the codes.
+The library reports nothing itself; it only records the attempts its brakes need. What a diagnostic report contains is the application's call; it must not include the recovery word (raw or derived), the passphrase, the password or the codes.
 
 ---
 
@@ -333,7 +333,7 @@ SelfRecover protects recovery data through HMAC derivation, Argon2id hashing, an
 
 **The vulnerability:**
 
-- Some Linux environments grant passwordless sudo by default (`NOPASSWD: ALL` in sudoers). Notable cases: **Raspberry Pi OS** (user `pi`) and **cloud images** (AWS, DigitalOcean, GCP Ubuntu AMIs for the default `ubuntu` user, Amazon Linux for `ec2-user`, etc.). Most desktop/server installs (Debian, Ubuntu iso, Fedora, Arch) do **not** have this issue by default — but always verify your `/etc/sudoers.d/` on installation.
+- Some Linux environments grant passwordless sudo by default (`NOPASSWD: ALL` in sudoers). Notable cases: **Raspberry Pi OS** (user `pi`) and **cloud images** (AWS, DigitalOcean, GCP Ubuntu AMIs for the default `ubuntu` user, Amazon Linux for `ec2-user`, etc.). Most desktop/server installs (Debian, Ubuntu iso, Fedora, Arch) do **not** have this issue by default — but `/etc/sudoers.d/` should always be checked on installation.
 - If an attacker compromises the user account (SSH key leak, web vulnerability, etc.), they escalate to root with zero friction
 - With root: direct database access, password hash replacement, code modification — including the deriver served to the browser, which could then capture the memorized word —, key extraction — SelfRecover becomes decorative
 
@@ -351,7 +351,7 @@ This is not a theoretical risk. It is the single point of failure that bypasses 
 
 ```bash
 # 1. Change user password to a strong diceware passphrase
-echo "user:your-diceware-passphrase" | sudo chpasswd
+echo "user:<diceware-passphrase>" | sudo chpasswd
 
 # 2. Edit sudoers: replace "user ALL=(ALL) NOPASSWD: ALL" with "user ALL=(ALL) ALL"
 sudo visudo -f /etc/sudoers.d/010_user-nopasswd
@@ -381,7 +381,7 @@ SelfRecover assumes:
 
 ### 10.4 Other limitations (by design)
 
-- If the user forgot their memorized word and lost their passphrase, only level 3 is left: a human arbitrator. If they refuse there is no other recourse; a new dispute stays possible until the 7-day freeze, on the 3rd refusal in 30 days
+- If the user forgot their memorized word and lost their passphrase, only level 3 is left: a human arbitrator. If the arbitrator refuses there is no other recourse; a new dispute stays possible until the 7-day freeze, on the 3rd refusal in 30 days
 
 These are by design. A system with infinite fallbacks has infinite attack surface.
 
@@ -439,7 +439,7 @@ A deployment that skips this checklist is not a SelfRecover deployment — it is
 ### 12.1 Requirements
 
 - PHP 8.1+ with `ext-json`, `ext-mbstring` and `ext-openssl` — the constraints `composer.json` carries —, and a PHP build that provides `PASSWORD_ARGON2ID`, which `composer.json` cannot require. The reference implementation is PHP; there is no other server-side one
-- An SQL database. The shipped schema and adapter target SQLite (`ext-pdo_sqlite`); elsewhere, the column types and three queries are rewritten (the header of `schema.sql` names them), or the integrator writes their own `StorageInterface` adapter
+- An SQL database. The shipped schema and adapter target SQLite (`ext-pdo_sqlite`); elsewhere, the column types and three adapter constructs (four queries) are rewritten — the header of `schema.sql` names them, or the integrator writes their own `StorageInterface` adapter
 - Modern browser with JavaScript and Web Crypto API: `client/sr-derive.js` derives the memorized word there, through `crypto.subtle`. The "this device" factor adds `client/argon2id.js` then `client/sr-kdf.js`, Web Crypto offering no Argon2id
 - HTTPS mandatory on the ordinary web (§11.3)
 
@@ -505,4 +505,4 @@ SelfRecover is open source under the AGPL-3.0-or-later license (switched from MI
 
 ---
 
-*SelfRecover — because your identity shouldn't depend on an inbox.*
+*SelfRecover — because an identity shouldn't depend on an inbox.*

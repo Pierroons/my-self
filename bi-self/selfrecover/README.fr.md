@@ -289,7 +289,7 @@ La démo PHP autonome qui vivait sous `demo/` a été retirée : son code de ré
        │                          │
 ```
 
-Le mot de récupération brut ne quitte jamais le navigateur.
+Avec le dériveur livré, le mot de récupération brut ne quitte pas le navigateur.
 
 ---
 
@@ -307,7 +307,7 @@ Tu as donc deux chemins, et le contrat existe pour que le premier reste possible
 | tu as déjà tes tables | tu écris ton adaptateur, **tu ne migres rien** |
 | tu pars de zéro | tu charges `schema.sql`, tu branches `StockagePdo` — **aucun adaptateur à écrire** |
 Les deux ciblent SQLite. Sur MariaDB ou PostgreSQL, les types de colonnes et trois
-requêtes se réécrivent — l'en-tête de `schema.sql` les nomme.
+constructions de l'adaptateur (quatre requêtes) se réécrivent — l'en-tête de `schema.sql` les nomme.
 
 `StockagePdo` sert aussi le facteur « cet appareil » et exige l'**hôte de dérivation** :
 il refuse de reposer des secrets sans lui, plutôt que d'écrire un marqueur vide sur un
@@ -329,7 +329,7 @@ méthode qui écrit, tant qu'on ne va pas voir la table.
 
 | Propriété | Comment c'est obtenu |
 |----------|------------------|
-| **Le mot de récupération ne quitte jamais le navigateur** | Seule son empreinte HMAC par site est transmise, et la base n'en garde qu'un hachage Argon2id : une compromission ne révèle aucun mot de récupération. Le mot de passe et la passphrase, engendrés par le serveur, passent par lui au moment où ils servent. |
+| **Le mot de récupération ne quitte pas le navigateur** | Le dériveur livré n'en transmet que l'empreinte HMAC par site, et la base n'en garde qu'un hachage Argon2id : une fuite de base ne révèle aucun mot en clair, et chaque essai sur l'un d'eux coûte un Argon2id. Le mot de passe et la passphrase, engendrés par le serveur, passent par lui au moment où ils servent. |
 | **Résistance au phishing passif** | **En mode `'hostname'` seulement.** Le matériel est lu dans le navigateur : un clone qui copie la page dérive de sa propre adresse et produit une clé que le vrai serveur ne détient pas. En mode `'label'`, il n'y en a aucune — la copie porte le même label. Un site de phishing actif qui contrôle sa propre page reste hors périmètre dans les deux cas (vrai pour tout protocole in-browser). |
 | **Résistance au rejeu** | Chaque secret ne sert qu'une fois : un code L2 est consommé par l'`UPDATE` qui le marque, un défi d'appareil est consommé avant la vérification de signature, et la reprise du compte clôt le dossier L3, ce qui périme son sésame. Les freins de débit ralentissent, ils ne ferment pas le rejeu. |
 | **Résistance à la fuite** | Chaque compte a son propre sel ; le serveur ne stocke que des hachages Argon2id de clés dérivées par service. Une fuite du code client seul est inutile. |
@@ -403,7 +403,7 @@ SelfRecover est honnête sur ce qu'il protège et ce qu'il ne protège pas. Tout
 | Phishing passif / page clonée | ✅ en mode `'hostname'` — un clone dérive de sa propre adresse ; ❌ rien en mode `'label'` (un phishing actif contrôlant sa page est hors périmètre dans les deux cas) |
 | Sniffeur réseau / MITM | ✅ TLS en transit + seule la dérivation HMAC est transmise |
 | Fuite de base de données | ✅ Hashes Argon2id (memory-hard, GPU-resistant) |
-| Brute-force online | ✅ Freins par compte, et par adresse si l'intégrateur la transmet, puis suspension du niveau 2 au-delà d'un seuil d'échecs |
+| Brute-force online | ✅ Freins par compte, et par adresse sous le profil `clearweb`, puis suspension du niveau 2 au-delà d'un seuil d'échecs |
 
 ### Adversaires HORS PÉRIMÈTRE — assumés explicitement
 
