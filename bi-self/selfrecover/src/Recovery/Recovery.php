@@ -367,8 +367,8 @@ final class Recovery
      *
      * Exigé : `MOTS_PASSPHRASE` mots au moins, chacun dans l'une des deux listes,
      * aucun deux fois. La répétition coûte une relance de dé, rarement ; elle
-     * écarte les saisies les plus pauvres. **Rien ici ne mesure le hasard** : six
-     * mots choisis de tête passent, et ne valent pas six mots tirés.
+     * écarte les saisies les plus pauvres. **Rien ici ne mesure le hasard** : des
+     * mots choisis de tête passent, et ne valent pas des mots tirés.
      *
      * 🔑 Le refus dit des positions, jamais un mot : le message part dans des
      * journaux, et un mot cité est un morceau du secret.

@@ -49,7 +49,7 @@ $now = 1_700_000_000;
 $MOT = str_repeat('a1', 32);
 $SEL = 'sel-de-deploiement-pour-la-sonde';
 
-/** Six mots distincts d'au moins six lettres, à partir d'un rang : un mot cité se voit. */
+/** `$combien` mots distincts d'au moins six lettres, à partir d'un rang : un mot cité se voit. */
 function phrase(array $liste, int $depuis, int $combien = Recovery::MOTS_PASSPHRASE): string
 {
     $mots = [];
