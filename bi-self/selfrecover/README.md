@@ -11,7 +11,9 @@
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#trying-selfrecover)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
-> **One word. Every site. No email required.**
+> **Your word. Your sites. No email required.**
+>
+> One for all, or one per site: your call. Each site only gets a fingerprint bound to its name; a malicious site you typed it into could keep the word itself.
 
 ---
 
@@ -100,22 +102,23 @@ The material must be **read** in the browser, never received from the network. M
 
 ### Where the randomness comes from
 
-Five dice, a list of 7776 words — exactly 6⁵.
+A list of 7776 words — exactly 6⁵: five dice point to one word.
 
 | Passphrase | Entropy |
 |---|---|
-| 1 word (5 dice) | 12.9 bits |
+| 1 word | 12.9 bits |
 | 4 words | 51.7 bits |
 | 6 words | 77.5 bits |
 
-Measurable, and not reproducible. A software generator produces a sequence
-computable from its internal state; dice have no state.
+The library draws the passphrase itself: six words from the English list, through
+`random_int`, PHP's cryptographic generator (`src/Diceware/Wordlist.php`).
+These figures assume a uniform draw; a phrase picked by hand does not reach them.
 
 The English list is the EFF one. The French list is a community list, Arthur
 Pons's (CC-BY 3.0), built on the EFF method: there is no official list in French,
 this one settled in through use. Both hold
 7776 entries, so the figures above hold in either language.
-[The paper method is documented step by step](./tools/entropy-lab/docs/diceware-method-en.pdf).
+[The dice method, where these figures come from, is documented step by step](./tools/entropy-lab/docs/diceware-method-en.pdf).
 
 ### Storage model
 
@@ -383,7 +386,7 @@ This repository contains:
 **Real deployment:** the implementation runs in real conditions — notably as the **authentication backend of a messaging service**, reusing the SelfRecover account store as-is (Argon2id).
 
 **What this repo is NOT (yet):**
-- A **published** package: the library installs through a Composer `path` or VCS repository — which is what `demo/lab/` does — but not yet through `composer require` from Packagist, nor through `npm install`
+- A **published** package: the library installs from a clone of the repository, through a Composer `path` repository — which is what `demo/lab/` does. A Composer VCS repository does not find it: its `composer.json` is not at the repository root. No `composer require` from Packagist yet, nor `npm install`
 - A product with an **external** security audit (an internal adversarial audit has been run; external red-team feedback is welcome)
 
 ---
@@ -396,11 +399,11 @@ SelfRecover is honest about what it protects and what it does not. Every cryptog
 
 | Adversary | Coverage |
 |---|---|
-| Compromised SelfRecover server | ⚠️ The recovery word stays out of reach (HMAC in the browser); the passphrase and the password do not — the server generates them and sees them again when they are used |
+| Compromised SelfRecover server | ⚠️ The shipped deriver only sends the recovery word's fingerprint (HMAC in the browser); but the server serves that JavaScript, and a compromised server can serve a different page. The passphrase and the password: it generates them and sees them again when they are used |
 | Passive phishing / cloned page | ✅ in `'hostname'` mode — a clone derives from its own hostname; ❌ nothing in `'label'` mode (active phishing controlling its own page is out of scope either way) |
 | Network sniffer / MITM | ✅ TLS in transit + only HMAC derivation transmitted |
 | Database leak | ✅ Argon2id hashes (memory-hard, GPU-resistant) |
-| Online brute-force | ✅ Per-username rate-limit + L2/L3 progressive escalation |
+| Online brute-force | ✅ Per-account rate limits, and per-address ones when the integrator passes the address, then the L2 suspension past a threshold of failures |
 
 ### Adversaries OUT OF SCOPE — explicitly assumed
 

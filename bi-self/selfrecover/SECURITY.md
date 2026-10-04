@@ -15,15 +15,15 @@ Please include:
 
 ## Supported versions
 
-Current status: **v0.6.0 — reference library, deployed in real conditions, self-audited.** An internal adversarial audit has been run; no external audit yet, and external red-team feedback is welcome.
+Current status: **reference library, deployed in real conditions, self-audited.** The current version is the latest `selfrecover-v*` tag; the root [CHANGELOG](../../CHANGELOG.md) lists them. An internal adversarial audit has been run; no external audit yet, and external red-team feedback is welcome.
 
 Security fixes land on `main` and ship in the next release. Only the latest release line is supported: upgrade rather than wait for a backport.
 
 | Version | Supported |
 |---------|-----------|
 | `main`  | ✓ |
-| 0.6.x   | ✓ |
-| < 0.6   | ✗ |
+| latest minor release line | ✓ |
+| older lines | ✗ |
 
 ## Threat model
 
@@ -31,7 +31,7 @@ See the [whitepaper threat model](docs/whitepaper-en.md#10-threat-model--limitat
 
 - **Protected against:** passive phishing **when the derivation runs in `'hostname'` mode** (the material is read in the browser, so a clone derives from its own hostname — in `'label'` mode there is no phishing resistance at all), email account takeover (no email at all), SMTP interception, rate limiting bypass
 - **NOT protected against:** compromised server root access (see the "CRITICAL — Server Root Access" section), social engineering of the recovery word, user negligence, active phishing (a page the attacker controls)
-- **Offline attack on a database dump:** only Argon2id hashes are stored — a dump yields no recovery word, no passphrase, no password. The recovery word is the one the server never sees at all; the passphrase and the password are server-generated and pass through it in the clear each time they are used.
+- **Offline attack on a database dump:** the account's secrets are stored only as Argon2id hashes — a dump yields none of them in the clear, and each guess costs one Argon2id. The recovery word never reaches the server with the shipped deriver, only its fingerprint does (a compromised server could serve a different page: see the root access section); the passphrase and the password are server-generated and pass through it in the clear each time they are used.
 - **By design:** recovery requires either the passphrase (L1) OR a paper recovery code + the memorized word — or a "this device" proof — (L2). Lose both, and a human-reviewed L3 is the only fallback.
 
 ## Deployment security checklist

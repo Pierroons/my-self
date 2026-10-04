@@ -11,7 +11,9 @@
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
-> **Un mot. Chaque site. Pas d'email requis.**
+> **Ton mot. Tes sites. Pas d'email requis.**
+>
+> Un seul pour tous, ou un par site : c'est toi qui choisis. Chaque site n'en reçoit qu'une empreinte à son nom ; un site malveillant où tu le taperais pourrait garder le mot lui-même.
 
 ---
 
@@ -100,22 +102,23 @@ Le matériel doit être **lu** dans le navigateur, jamais reçu du réseau. Un m
 
 ### D'où vient l'aléa
 
-Cinq dés, une liste de 7776 mots — soit exactement 6⁵.
+Une liste de 7776 mots — soit exactement 6⁵ : cinq dés désignent un mot.
 
 | Passphrase | Entropie |
 |---|---|
-| 1 mot (5 dés) | 12,9 bits |
+| 1 mot | 12,9 bits |
 | 4 mots | 51,7 bits |
 | 6 mots | 77,5 bits |
 
-C'est mesurable et non reproductible. Un générateur logiciel produit une suite
-calculable à partir de son état interne ; les dés n'ont pas d'état.
+La bibliothèque tire la passphrase elle-même : six mots de la liste anglaise, par
+`random_int`, le générateur cryptographique de PHP (`src/Diceware/Wordlist.php`).
+Ces chiffres supposent un tirage uniforme ; une phrase choisie à la main ne les atteint pas.
 
 La liste anglaise est celle de l'EFF. La liste française est une liste
 communautaire, celle d'Arthur Pons (CC-BY 3.0), construite sur la méthode de l'EFF :
 il n'existe pas de liste officielle en français, celle-ci s'est imposée par l'usage. Les deux comptent 7776 entrées, donc les chiffres ci-dessus
 valent dans les deux langues.
-[La méthode papier est documentée pas à pas](./tools/entropy-lab/docs/diceware-method-fr.pdf).
+[La méthode aux dés, d'où viennent ces chiffres, est documentée pas à pas](./tools/entropy-lab/docs/diceware-method-fr.pdf).
 
 ### Modèle de stockage
 
@@ -383,7 +386,7 @@ Ce dépôt contient :
 **Déploiement réel :** l'implémentation tourne en conditions réelles — notamment comme **backend d'authentification d'un service de messagerie**, qui réutilise tel quel le stockage de comptes SelfRecover (Argon2id).
 
 **Ce que ce dépôt n'est PAS (encore) :**
-- Un paquet **publié** : la bibliothèque s'installe par dépôt Composer `path` ou VCS — c'est ce que fait `demo/lab/` — mais pas encore par `composer require` depuis Packagist, ni par `npm install`
+- Un paquet **publié** : la bibliothèque s'installe depuis un clone du dépôt, par un dépôt Composer de type `path` — c'est ce que fait `demo/lab/`. Un dépôt Composer de type VCS ne la trouve pas : le `composer.json` n'est pas à la racine du dépôt. Pas encore de `composer require` depuis Packagist, ni de `npm install`
 - Un produit avec audit de sécurité **externe** (un audit adverse interne a été mené ; les retours red-team externes sont bienvenus)
 
 ---
@@ -396,11 +399,11 @@ SelfRecover est honnête sur ce qu'il protège et ce qu'il ne protège pas. Tout
 
 | Adversaire | Couverture |
 |---|---|
-| Serveur SelfRecover compromis | ⚠️ Le mot de récupération reste hors d'atteinte (HMAC dans le navigateur) ; la passphrase et le mot de passe, non — le serveur les engendre et les revoit à l'usage |
+| Serveur SelfRecover compromis | ⚠️ Le dériveur livré n'envoie que l'empreinte du mot de récupération (HMAC dans le navigateur) ; mais c'est le serveur qui sert ce JavaScript, et un serveur compromis peut servir une autre page. La passphrase et le mot de passe, il les engendre et les revoit à l'usage |
 | Phishing passif / page clonée | ✅ en mode `'hostname'` — un clone dérive de sa propre adresse ; ❌ rien en mode `'label'` (un phishing actif contrôlant sa page est hors périmètre dans les deux cas) |
 | Sniffeur réseau / MITM | ✅ TLS en transit + seule la dérivation HMAC est transmise |
 | Fuite de base de données | ✅ Hashes Argon2id (memory-hard, GPU-resistant) |
-| Brute-force online | ✅ Rate-limit par username + escalade L2/L3 progressive |
+| Brute-force online | ✅ Freins par compte, et par adresse si l'intégrateur la transmet, puis suspension du niveau 2 au-delà d'un seuil d'échecs |
 
 ### Adversaires HORS PÉRIMÈTRE — assumés explicitement
 

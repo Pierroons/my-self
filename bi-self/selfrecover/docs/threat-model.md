@@ -119,10 +119,10 @@ A SelfRecover deployment without hardened sudo is a lock on a door with no wall.
 
 ### ✗ The recovery word is a master key
 
-**If the recovery word is compromised** (social engineering, written down, shoulder surfing, malware), and the attacker also knows the public identifier (which is often published, like an in-game ID), they can recover the account via L2.
+**If the recovery word is compromised** (social engineering, written down, shoulder surfing, malware), and the attacker also holds one of the paper recovery codes, or an enrolled device, they can recover the account via L2. The code finds the account: no identifier is needed.
 
 - The per-service derivation prevents correlation of *stored hashes* across services — but a known raw word that you reuse stays reusable elsewhere (the service label is public). Derivation does not save a reused secret.
-- Rate limiting and L2→L3 escalation slow down brute-force
+- Online, per-account rate limits (and per-address ones when the integrator passes the address), then the L2 suspension past a threshold of failures, bound the guessing; offline (stolen database, an enrolled device's blob), only the Argon2id cost does
 - **But fundamentally:** no system can protect against a stolen secret. A leaked SSH private key gives server access. A leaked seed phrase empties a wallet. A leaked recovery word opens the account. The security model is identical.
 
 **A protected secret stays safe; a neglected one is exposed.** This is not a flaw — it is the fundamental contract of any secret-based security system.
