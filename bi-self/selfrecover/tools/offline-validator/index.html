@@ -149,7 +149,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 <body>
 <div class="container">
   <h1>SelfRecover -- Validateur diceware offline</h1>
-  <p class="subtitle">Outil autonome, zero requête réseau. Valide une passphrase diceware contre la liste EFF officielle 7776 mots.</p>
+  <p class="subtitle">Outil autonome, zero requête réseau. Valide une passphrase diceware contre l'une des deux listes de 7776 mots : celle de l'EFF (anglais) ou celle d'Arthur Pons (français).</p>
 
   <div class="airgap-banner" id="netStatus">
     <strong>Air-gap recommandé.</strong>
@@ -169,14 +169,14 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 
   <div class="panel">
     <h2>Validation d'une passphrase diceware</h2>
-    <p class="desc">Tape ou colle ta passphrase. Chaque mot est vérifié comme appartenant à la liste EFF officielle. <strong>Aucune transmission, aucun storage</strong> -- tout reste dans la mémoire de cette page.</p>
+    <p class="desc">Tape ou colle ta passphrase. Chaque mot est vérifié comme appartenant à la liste choisie. <strong>Aucune transmission, aucun storage</strong> -- tout reste dans la mémoire de cette page.</p>
 
     <div class="row">
       <div>
         <label>Langue de la wordlist</label>
         <select id="lang">
           <option value="en">EN -- EFF Large Wordlist</option>
-          <option value="fr">FR -- Liste équivalente 7776 mots</option>
+          <option value="fr">FR -- Liste d'Arthur Pons, 7776 mots</option>
         </select>
       </div>
       <div>
@@ -244,11 +244,17 @@ function uniformInt(max) {
   return v % max;
 }
 
+// Les espaces d'abord : quatre mots de la liste anglaise portent un trait
+// d'union (t-shirt, yo-yo…), et couper sur le tiret les déclarerait invalides.
 function detectSep(s) {
-  if (s.includes('-')) return '-';
-  if (s.includes(' ')) return ' ';
+  if (/\s/.test(s)) return ' ';
   if (s.includes('.')) return '.';
+  if (s.includes('-')) return '-';
   return ' ';
+}
+
+function echapper(t) {
+  return t.replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
 }
 
 function validateInput() {
@@ -263,28 +269,28 @@ function validateInput() {
     return;
   }
 
-  const words = phrase.split(sep).map(w => w.trim().toLowerCase()).filter(Boolean);
+  const words = (sep === ' ' ? phrase.split(/\s+/) : phrase.split(sep)).map(w => w.trim().toLowerCase()).filter(Boolean);
   const set = SET[lang];
   const n = words.length;
   const matches = words.filter(w => set.has(w));
   const allOk = matches.length === n;
 
   let html = '<div class="result ' + (allOk ? 'ok' : 'bad') + '">';
-  html += '<strong>' + (allOk ? 'Conforme EFF' : 'Non conforme EFF') + ' -- ' + matches.length + '/' + n + ' mots dans la liste officielle</strong>';
+  const nomListe = lang === 'fr' ? 'la liste française' : 'la liste de l\'EFF';
+  html += '<strong>' + (allOk ? 'Conforme' : 'Non conforme') + ' -- ' + matches.length + '/' + n + ' mots dans ' + nomListe + '</strong>';
   html += '<div style="margin-top:8px;">';
   for (const w of words) {
     const ok = set.has(w);
-    html += '<span class="word-item ' + (ok ? 'ok' : 'bad') + '">' + (ok ? '✓ ' : '✗ ') + w + '</span>';
+    html += '<span class="word-item ' + (ok ? 'ok' : 'bad') + '">' + (ok ? '✓ ' : '✗ ') + echapper(w) + '</span>';
   }
   html += '</div>';
 
   if (allOk) {
     const bits = (n * BITS_PER_WORD).toFixed(1);
-    const rec = n < 4 ? 'Trop court -- ajoute des mots'
-              : n < 6 ? 'Acceptable pour comptes peu sensibles'
-              : n < 7 ? 'Recommandation par défaut'
-              : n < 10 ? 'Niveau secret sensible (admin, sudo)'
-              : 'Niveau master / root server';
+    const repete = new Set(words).size !== n;
+    const rec = n < 6 ? 'Trop court : SelfRecover en exige au moins 6.'
+              : repete ? 'Un mot revient : SelfRecover le refuse. Relance les dés pour celui-là.'
+              : 'Assez long pour SelfRecover.';
     const widthPct = Math.min(100, (parseFloat(bits) / 128) * 100);
     const color = bits < 50 ? 'var(--danger)' : bits < 70 ? 'var(--accent)' : bits < 100 ? 'var(--success)' : '#a380ff';
     html += '<div style="margin-top:14px;">';
@@ -292,9 +298,9 @@ function validateInput() {
     html += '<div class="entropy-bar-track"><div class="entropy-bar-fill" style="width:' + widthPct + '%;background:' + color + ';"></div></div>';
     html += '<div style="margin-top:6px;color:var(--muted);font-size:0.8rem;">' + rec + '</div>';
     html += '</div>';
-    html += '<div style="margin-top:10px;font-size:0.8rem;color:var(--muted);font-style:italic;">Note : cette entropie suppose que tu as bien tiré chaque mot avec des dés physiques. Si tu as choisi tes mots dans la liste EFF de tête, l\'entropie réelle peut être très inférieure (biais cognitifs).</div>';
+    html += '<div style="margin-top:10px;font-size:0.8rem;color:var(--muted);font-style:italic;">Note : cette entropie suppose que tu as bien tiré chaque mot avec des dés physiques. Si tu as choisi tes mots dans la liste de tête, l\'entropie réelle peut être très inférieure (biais cognitifs).</div>';
   } else {
-    html += '<div style="margin-top:10px;color:var(--muted);font-size:0.85rem;">Les mots marqués ✗ ne sont pas dans la liste EFF -- vérifie l\'orthographe ou le séparateur. Si tu les as bien lus dans la table EFF, recommence le tirage.</div>';
+    html += '<div style="margin-top:10px;color:var(--muted);font-size:0.85rem;">Les mots marqués ✗ ne sont pas dans la liste choisie -- vérifie l\'orthographe, la langue ou le séparateur. Si tu les as bien lus dans la liste, recommence le tirage.</div>';
   }
   html += '</div>';
   out.innerHTML = html;
@@ -320,7 +326,7 @@ function generateSample() {
     '<div class="result ok">' +
     '<strong>Passphrase générée :</strong>' +
     '<div style="font-family:monospace;font-size:1.05rem;margin:8px 0;color:var(--accent);word-break:break-all;">' + phrase + '</div>' +
-    '<div style="color:var(--muted);font-size:0.85rem;">' + count + ' mots EFF · ' + bits + ' bits d\'entropie · cassage estimé : effectivement infini contre 10¹² essais/sec</div>' +
+    '<div style="color:var(--muted);font-size:0.85rem;">' + count + ' mots · ' + bits + ' bits d\'entropie, tirés par ce navigateur</div>' +
     '<button class="btn btn-secondary" style="margin-top:10px;" onclick="copyPhrase(\'' + phrase.replace(/\\/g, '\\\\') + '\')">Copier (clipboard)</button>' +
     '</div>';
 }

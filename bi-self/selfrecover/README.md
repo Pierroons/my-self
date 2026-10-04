@@ -115,7 +115,7 @@ The library draws the passphrase itself: six words from the English list, throug
 These figures assume a uniform draw; a phrase picked by hand does not reach them.
 
 The English list is the EFF one. The French list is a community list, Arthur
-Pons's (CC-BY 3.0), built on the EFF method: there is no official list in French,
+Pons's (MIT licence), built on the EFF method: there is no official list in French,
 this one settled in through use. Both hold
 7776 entries, so the figures above hold in either language.
 [The dice method, where these figures come from, is documented step by step](./tools/entropy-lab/docs/diceware-method-en.pdf).

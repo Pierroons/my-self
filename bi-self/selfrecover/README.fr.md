@@ -115,7 +115,7 @@ La bibliothèque tire la passphrase elle-même : six mots de la liste anglaise, 
 Ces chiffres supposent un tirage uniforme ; une phrase choisie à la main ne les atteint pas.
 
 La liste anglaise est celle de l'EFF. La liste française est une liste
-communautaire, celle d'Arthur Pons (CC-BY 3.0), construite sur la méthode de l'EFF :
+communautaire, celle d'Arthur Pons (licence MIT), construite sur la méthode de l'EFF :
 il n'existe pas de liste officielle en français, celle-ci s'est imposée par l'usage. Les deux comptent 7776 entrées, donc les chiffres ci-dessus
 valent dans les deux langues.
 [La méthode aux dés, d'où viennent ces chiffres, est documentée pas à pas](./tools/entropy-lab/docs/diceware-method-fr.pdf).

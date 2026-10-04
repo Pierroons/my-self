@@ -92,18 +92,20 @@
             <h2>Diceware aux dés (méthode officielle)</h2>
             <p class="desc">
                 Page autonome : elle ne charge rien, n'envoie rien, et fonctionne
-                hors ligne. Convention SelfRecover : wordlist officielle 7 776 mots,
-                CC-BY 3.0 (EN = EFF Large Wordlist ; FR = équivalent ArthurPons) —
-                jamais de mini-version « pour la démo ».
+                hors ligne. Deux listes de 7 776 mots : la « large wordlist » de l'EFF
+                pour l'anglais (licence CC BY), et la liste française d'Arthur Pons,
+                bâtie sur la même méthode (licence MIT).
             </p>
 
             <div id="mode-reinhold">
                 <h3 style="margin-bottom:8px;color:var(--accent);">Méthode officielle Reinhold (1995) — recommandée</h3>
                 <p class="desc">
-                    La méthode originelle du diceware. Les dés physiques produisent une
-                    entropie cryptographique <strong>au moins équivalente</strong> à celle
-                    d'un RNG logiciel — et <strong>supérieure en modèle de confiance</strong>,
-                    car elle ne dépend d'aucun ordinateur.
+                    La méthode originelle du diceware : cinq dés désignent un mot, et
+                    personne ne choisit à ta place. SelfRecover accepte une passphrase
+                    tirée ainsi, à l'inscription comme à chaque récupération, au lieu
+                    d'en tirer une pour toi. Une fois saisie, elle passe par le serveur
+                    comme une passphrase qu'il aurait tirée : il la hache. Les dés
+                    décident du tirage ; ils ne te protègent pas d'un serveur compromis.
                 </p>
 
                 <div style="margin-top:16px;padding:14px;background:var(--bg);border-radius:6px;border:1px solid var(--border);">
@@ -118,9 +120,12 @@
                     <div class="reinhold-step">
                         <div class="reinhold-step-num">2</div>
                         <div class="reinhold-step-content">
-                            Télécharge la <strong>table diceware</strong> (PDF, 7776 mots
-                            avec leurs codes 5 dés <code>11111</code> à <code>66666</code>) —
-                            EFF pour l'EN, ArthurPons pour le FR. Imprime-la si possible.
+                            Prends la <strong>liste</strong> : 7 776 mots, chacun avec son
+                            code de 5 dés, de <code>11111</code> à <code>66666</code>. En
+                            anglais, la <a href="https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt" target="_blank" rel="noopener noreferrer">liste de l'EFF</a> ;
+                            en français, la <a href="https://github.com/ArthurPons/diceware-fr-alt" target="_blank" rel="noopener noreferrer">liste d'Arthur Pons</a>.
+                            Les deux fiches PDF ci-dessous portent les mêmes listes, prêtes à
+                            imprimer.
                         </div>
                     </div>
                     <div class="reinhold-step">
@@ -128,22 +133,25 @@
                         <div class="reinhold-step-content">
                             <strong>Lance les 5 dés.</strong> Lis les chiffres dans l'ordre des dés
                             (gauche → droite). Tu obtiens un nombre du type <code>32145</code>.
-                            Cherche-le dans la table → tu trouves UN mot précis (ex: <code>32145 → horseshoe</code>).
+                            Cherche-le dans la liste → tu trouves UN mot précis (dans la liste de l'EFF, <code>32145 → gently</code>).
                         </div>
                     </div>
                     <div class="reinhold-step">
                         <div class="reinhold-step-num">4</div>
                         <div class="reinhold-step-content">
-                            Recommence pour chaque mot suivant. <strong>Recommandation officielle :</strong>
-                            6 mots minimum (77,5 bits), 7+ pour secrets sensibles, 8+ pour root server.
+                            Recommence pour chaque mot suivant. <strong>Six mots au moins</strong> :
+                            c'est ce que SelfRecover exige, et ce que conseille l'EFF. Six mots
+                            tirés aux dés valent ≈ 77,5 bits ; six mots choisis de tête, bien
+                            moins. Si un mot revient, relance les dés pour celui-là.
                         </div>
                     </div>
                     <div class="reinhold-step">
                         <div class="reinhold-step-num">5</div>
                         <div class="reinhold-step-content">
-                            <strong>Note la passphrase sur papier</strong>, range-la dans un endroit sûr
-                            (coffre, deuxième domicile de confiance). Ne la tape JAMAIS dans une
-                            application web pour vérifier — utilise l'outil offline ci-dessous.
+                            <strong>Note la passphrase sur papier</strong>, en minuscules, une
+                            espace entre les mots, et range-la dans un endroit sûr. Tu la saisis
+                            dans le service qui l'enregistre, et nulle part ailleurs : pour la
+                            relire avant, utilise l'outil hors ligne ci-dessous.
                         </div>
                     </div>
                 </div>
@@ -156,10 +164,8 @@
             </div>
 
             <p class="desc" style="margin-top:24px;font-size:0.75rem;">
-                Hypothèse de l'attaquant pour le temps de cassage : 10¹² essais/seconde
-                (cluster GPU haut de gamme, hash hors ligne). Sources :
-                <a href="https://www.eff.org/dice" target="_blank" rel="noopener">EFF Diceware</a>,
-                <a href="https://github.com/dropbox/zxcvbn" target="_blank" rel="noopener">zxcvbn</a>.
+                Source de la méthode :
+                <a href="https://www.eff.org/dice" target="_blank" rel="noopener noreferrer">EFF, Dice-Generated Passphrases</a>.
             </p>
         </div>
     </div>

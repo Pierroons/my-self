@@ -7,8 +7,8 @@ Design : PRINT-FRIENDLY (fond blanc, texte noir) avec un branding MySelf leger
 (sigil M', filets accent fins, titres) - negligeable a l'impression, on ne vide
 pas les cartouches couleur. Liens cliquables (outil offline + projet SelfRecover).
 
-- EN : EFF Large Wordlist (CC-BY 3.0, eff.org/dice) = liste officielle EFF.
-- FR : liste ArthurPons (CC-BY 3.0). L'EFF ne publie QUE l'anglais ; cette liste FR
+- EN : EFF Large Wordlist (CC BY, eff.org/dice) = liste officielle EFF.
+- FR : liste ArthurPons (licence MIT). L'EFF ne publie QUE l'anglais ; cette liste FR
   en est l'equivalent communautaire. AUCUN claim "EFF FR" (qui n'existe pas).
 
 Regenere docs/diceware-method-{en,fr}.pdf depuis assets/eff_{en,fr}.json.
@@ -38,7 +38,7 @@ DOC_VERSION = version_du_module()
 
 # Aucune URL : ce document est imprimé, et une instance auto-hébergée n'a pas
 # d'adresse commune. On donne le chemin dans le dépôt, qui ne bouge qu'avec lui.
-DISP_TOOL = "tools/entropy-lab/index.html"
+DISP_TOOL = "tools/offline-validator/index.html"
 DISP_SELF = "SelfRecover — MySelf"
 
 # --- Charte MySelf (RGB) : usage LEGER sur fond blanc ---
@@ -59,7 +59,7 @@ LANGS = {
         "note_title": "About the source",
         "note": (
             "The EFF Large Wordlist is the official English diceware list published by the "
-            "Electronic Frontier Foundation (2016). 7776 words, one per 5-dice roll (CC-BY 3.0)."
+            "Electronic Frontier Foundation (2016). 7776 words, one per 5-dice roll (CC BY)."
         ),
         "blurb": (
             "SelfRecover is sovereign account recovery - no email, no SMS (free software, "
@@ -101,7 +101,7 @@ LANGS = {
         "note": (
             "L'EFF Large Wordlist n'existe QU'EN ANGLAIS : l'EFF ne publie pas de liste "
             "francaise. Cette liste FR en est l'equivalent communautaire (liste ArthurPons, "
-            "CC-BY 3.0), aux memes proprietes : 7776 mots, une par tirage de 5 des."
+            "licence MIT), aux memes proprietes : 7776 mots, une par tirage de 5 des."
         ),
         "blurb": (
             "SelfRecover, c'est la recuperation de compte souveraine - sans email ni SMS "
@@ -145,7 +145,7 @@ ACCENTS_FR = {
     "note": (
         "L'EFF Large Wordlist n'existe QU'EN ANGLAIS : l'EFF ne publie pas de liste "
         "française. Cette liste FR en est l'équivalent communautaire (liste ArthurPons, "
-        "CC-BY 3.0), aux mêmes propriétés : 7776 mots, une par tirage de 5 dés."
+        "licence MIT), aux mêmes propriétés : 7776 mots, une par tirage de 5 dés."
     ),
     "blurb": (
         "SelfRecover, c'est la récupération de compte souveraine — sans email ni SMS "
