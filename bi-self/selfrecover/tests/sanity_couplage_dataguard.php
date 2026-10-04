@@ -50,6 +50,27 @@ $normales = count(array_filter($engendrees, static fn (string $p): bool => UserV
 $plusCourte = Recovery::MOTS_PASSPHRASE * min(array_map('strlen', Wordlist::load('en')))
     + Recovery::MOTS_PASSPHRASE - 1;
 
+// La passphrase apportée vient des deux listes, et la française a des mots de
+// deux lettres : la plus courte qu'on accepte est mesurée en la soumettant au
+// validateur, pas calculée de côté. Candidats : le mot le plus court répété, et
+// les plus courts distincts.
+$union = array_values(array_unique(array_merge(Wordlist::load('en'), Wordlist::load('fr'))));
+usort($union, static fn (string $a, string $b): int => strlen($a) <=> strlen($b) ?: strcmp($a, $b));
+$candidates = [
+    implode(' ', array_fill(0, Recovery::MOTS_PASSPHRASE, $union[0])),
+    implode(' ', array_slice($union, 0, Recovery::MOTS_PASSPHRASE)),
+];
+$acceptees = array_filter(array_map(static fn (string $c): ?string
+    => Recovery::validerPassphraseApportee($c)['canonique'] ?? null, $candidates));
+$plusCourteApportee = $acceptees === [] ? -1 : min(array_map('strlen', $acceptees));
+$desordres = array_map(static fn (string $c): string => "  " . strtoupper(str_replace(' ', "\t \r\n", $c)) . " ",
+    [implode(' ', array_slice($union, 100, Recovery::MOTS_PASSPHRASE)),
+     implode(' ', array_slice($union, 9000, Recovery::MOTS_PASSPHRASE))]);
+$canoniques = array_filter(array_map(static fn (string $d): ?string
+    => Recovery::validerPassphraseApportee($d)['canonique'] ?? null, $desordres));
+$canoniquesNormales = count(array_filter($canoniques, static fn (string $c): bool
+    => UserVault::normalizePassphrase($c) === $c));
+
 $controles = [
     'minimum du mot de passe : Escalade (caractères) = UserVault (octets)'
         => [Escalade::MOT_DE_PASSE_MINIMUM, UserVault::PASSWORD_MIN_LEN],
@@ -67,6 +88,10 @@ $controles = [
         => [$normales, count($engendrees)],
     'plus courte passphrase engendrable ≥ plancher de scellement (1 = oui)'
         => [(int) ($plusCourte >= UserVault::PASSWORD_MIN_LEN), 1],
+    'plus courte passphrase apportable ≥ plancher de scellement (1 = oui)'
+        => [(int) ($plusCourteApportee >= UserVault::PASSWORD_MIN_LEN), 1],
+    'formes rangées des passphrases apportées déjà normalisées pour SelfDataGuard'
+        => [$canoniquesNormales, count($desordres)],
 ];
 
 $echecs = 0;

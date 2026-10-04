@@ -591,10 +591,13 @@ final class Escalade
      *
      * 🔑 **Aucun mot de passe n'est rendu**, contrairement aux niveaux 1 et 2.
      * C'est la propriété distinctive du niveau : le serveur n'émet rien, il
-     * range ce que le titulaire a choisi. La passphrase et les codes, eux, sont
-     * engendrés — ils ne peuvent pas venir du client.
+     * range ce que le titulaire a choisi. Les codes, eux, sont engendrés : ils
+     * ne viennent jamais du client. La passphrase est engendrée, ou apportée par
+     * le titulaire (`$nouvellePassphrase`, jugée par
+     * `Recovery::validerPassphraseApportee()`) ; elle est rendue sous la forme
+     * rangée, celle qu'il doit noter.
      *
-     * @return array{ok: bool, message: string, passphrase?: string, codes?: array, error?: string}
+     * @return array{ok: bool, message: string, passphrase?: string, codes?: array, error?: string, motif?: string}
      */
     public function reEnroler(
         string $numero,
@@ -603,6 +606,7 @@ final class Escalade
         string $motDerive,
         string $sel,
         ?int $maintenant = null,
+        #[\SensitiveParameter] ?string $nouvellePassphrase = null,
     ): array {
         $maintenant = $maintenant ?? time();
 
@@ -627,8 +631,27 @@ final class Escalade
             return ['ok' => false, 'error' => 'sel_invalide',
                     'message' => 'Le sel du compte est absent ou malformé.'];
         }
+        $apport = null;
+        if ($nouvellePassphrase !== null) {
+            $jugee = Recovery::validerPassphraseApportee($nouvellePassphrase);
+            if (!$jugee['ok']) {
+                return $jugee;
+            }
+            // Deux serrures identiques n'en font qu'une, pour SelfDataGuard comme
+            // pour qui les trouverait écrites ensemble.
+            if ($jugee['canonique'] === strtolower(Recovery::normaliserPassphrase($motDePasse))) {
+                return ['ok' => false, 'error' => 'passphrase_egale_mot_de_passe',
+                        'message' => 'La passphrase doit différer du mot de passe.'];
+            }
+            $ancienne = $this->stockage->trouverComptePourPassphrase($litige->nomCompte);
+            if ($ancienne !== null && Hashing::verify($jugee['canonique'], (string) $ancienne['empreinte_passphrase'])) {
+                return ['ok' => false, 'error' => 'passphrase_deja_servie',
+                        'message' => 'La nouvelle passphrase doit différer de celle qu\'elle remplace.'];
+            }
+            $apport = $jugee['canonique'];
+        }
 
-        $passphrase = $this->recovery->engendrerPassphrase();
+        $passphrase = $apport ?? $this->recovery->engendrerPassphrase();
 
         // 🔑 Tout ou rien : les trois empreintes et le sel ne sont pas quatre
         // informations mais une seule, et l'émission des codes purge le lot

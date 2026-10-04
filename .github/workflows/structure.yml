@@ -52,10 +52,10 @@ jobs:
             echo "→ $(basename "$t")"
             php "$t" || { echo "::error::$(basename "$t") rouge sous PHP ${{ matrix.php }}"; rc=1; }
           done
-          php bi-self/selfrecover/tests/sanity_couplage_dataguard.php | grep -qE '^OK — 8/8 ' \
-            || { echo "::error::couplage hors 8/8 sous PHP ${{ matrix.php }}"; rc=1; }
-          php bi-self/selfrecover/tests/sanity_parcours_dataguard.php | grep -qE '^OK — 18/18$' \
-            || { echo "::error::parcours hors 18/18 sous PHP ${{ matrix.php }}"; rc=1; }
+          php bi-self/selfrecover/tests/sanity_couplage_dataguard.php | grep -qE '^OK — 10/10 ' \
+            || { echo "::error::couplage hors 10/10 sous PHP ${{ matrix.php }}"; rc=1; }
+          php bi-self/selfrecover/tests/sanity_parcours_dataguard.php | grep -qE '^OK — 21/21$' \
+            || { echo "::error::parcours hors 21/21 sous PHP ${{ matrix.php }}"; rc=1; }
           exit $rc
 
   structure:
@@ -365,6 +365,47 @@ jobs:
             || { echo "$canari"; echo "::error::rouge, mais pas sur le code inconnu"; exit 1; }
           [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
           echo "✓ le banc rougit quand la route du sel cesse de mentir sur un code inconnu"
+
+      # La passphrase qu'un utilisateur apporte, tirée aux dés, au lieu d'en recevoir
+      # une du serveur. Le banc se joue sous les deux profils et compte ses cas. Chaque
+      # canari retire une garde et exige le rouge sur son cas : le contrôle de liste,
+      # le refus sans trace du niveau 1 (sinon n'importe qui chargerait le frein d'un
+      # autre), le refus de l'ancienne passphrase au niveau 2. Le dernier raccourcit
+      # le protocole : la plus courte passphrase apportable passerait alors sous le
+      # plancher de scellement de SelfDataGuard, et le couplage doit le voir.
+      - name: Garde-fou — la passphrase apportée par l'utilisateur
+        run: |
+          for profil in clearweb tor-onion; do
+            sortie=$(php bi-self/selfrecover/tests/sanity_passphrase_apportee.php --profil="$profil" 2>&1) && rc=0 || rc=$?
+            echo "$sortie"
+            [ "$rc" = 0 ] || { echo "::error::le banc de la passphrase apportée a échoué sous $profil"; exit 1; }
+            echo "$sortie" | grep -qE '^OK — 37/37$' \
+              || { echo "::error::le banc de la passphrase apportée n'a pas joué ses 37 cas sous $profil"; exit 1; }
+          done
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          R=bi-self/selfrecover/src/Recovery/Recovery.php
+          B=bi-self/selfrecover/tests/sanity_passphrase_apportee.php
+          canari $R 'if (!Wordlist::inAnyList($mot)) {' 'if (false) {' \
+            $B '❌ un mot hors des deux listes est refusé'
+          canari $R '        // 🔑 La passphrase apportée est jugée avant les freins, sans trace ni' \
+            '        $this->stockage->tracerTentative($nomCompte, false, $ip, $maintenant);' \
+            $B '❌ un refus de la passphrase apportée ne charge pas le frein'
+          canari $R 'if ($ok && $apport !== null) {' 'if (false) {' \
+            $B '❌ niveau 2 : la passphrase remplacée ne peut pas revenir'
+          canari $R 'public const MOTS_PASSPHRASE = 6;' 'public const MOTS_PASSPHRASE = 4;' \
+            bi-self/selfrecover/tests/sanity_couplage_dataguard.php '✗ plus courte passphrase apportable'
 
       # Un frein qu'on n'a jamais fait céder ne se distingue pas d'un frein qui
       # n'est relié à rien : les deux laissent le banc vert. Ce canari mesure que
@@ -1297,8 +1338,8 @@ jobs:
         run: |
           sortie=$(php bi-self/selfrecover/tests/sanity_couplage_dataguard.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^OK — 8/8 ' \
-            || { echo "::error::le banc du couplage n'a pas jugé ses 8 valeurs"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 10/10 ' \
+            || { echo "::error::le banc du couplage n'a pas jugé ses 10 valeurs"; exit 1; }
           F=self-security/selfdataguard/src/Vault/UserVault.php
           cp "$F" /tmp/UserVault.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
@@ -1332,8 +1373,8 @@ jobs:
         run: |
           sortie=$(php bi-self/selfrecover/tests/sanity_parcours_dataguard.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^OK — 18/18$' \
-            || { echo "::error::le parcours n'a pas joué ses 18 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 21/21$' \
+            || { echo "::error::le parcours n'a pas joué ses 21 cas"; exit 1; }
           F=self-security/selfdataguard/src/SelfDataGuard.php
           cp "$F" /tmp/SelfDataGuard.intact
           avant=$(md5sum "$F" | cut -d" " -f1)

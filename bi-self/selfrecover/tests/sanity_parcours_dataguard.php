@@ -28,6 +28,7 @@ use Pierroons\SelfDataGuard\Vault\WrongSecretException;
 use Pierroons\SelfRecover\Crypto\Encoding;
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device;
+use Pierroons\SelfRecover\Diceware\Wordlist;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Escalade;
 use Pierroons\SelfRecover\Recovery\Recovery;
@@ -126,6 +127,39 @@ $r = $rec->parCode($neufs[1], $MOT, null, $now + 61);
 $dg->recover('alice', Lock::Memorized, $MOT, $r['mot_de_passe'], $r['passphrase']);
 verifier('l\'empreinte du mot n\'a pas changé : elle ouvre toujours le coffre',
     note($dg, $r['mot_de_passe']) === $NOTE);
+[$MDP, $PHR] = [$r['mot_de_passe'], $r['passphrase']];
+
+// ── Passphrase apportée ───────────────────────────────────────────────────
+echo "\n→ Passphrase apportée — c'est la forme rangée qui scelle le coffre\n";
+
+$fr       = Wordlist::load('fr');
+$apportee = implode(' ', array_slice($fr, 3000, Recovery::MOTS_PASSPHRASE));
+$desordre = '  ' . strtoupper(str_replace(' ', "\t ", $apportee)) . ' ';
+$r = $rec->parPassphrase('alice', $PHR, null, $now + 70, nouvellePassphrase: $desordre);
+$rescelle = ($r['ok'] ?? false) === true;
+try {
+    $dg->recover('alice', Lock::Passphrase, $PHR, $r['mot_de_passe'], $r['passphrase']);
+} catch (\Throwable) {
+    $rescelle = false;
+}
+verifier('niveau 1 : une passphrase apportée en désordre re-scelle le coffre sans lever', $rescelle);
+[$MDP, $PHR] = [$r['mot_de_passe'], $r['passphrase']];
+verifier('la forme rendue ouvre le coffre et le compte',
+    $PHR === $apportee && ouvre($dg, Lock::Passphrase, $PHR, $MDP));
+
+$union = array_values(array_unique(array_merge(Wordlist::load('en'), $fr)));
+usort($union, static fn (string $a, string $b): int => strlen($a) <=> strlen($b) ?: strcmp($a, $b));
+$courte = implode(' ', array_slice($union, 0, Recovery::MOTS_PASSPHRASE));
+$lot    = $rec->emettreCodes(1, 1, $now + 80);
+$r = $rec->parCode($lot[0], $MOT, null, $now + 80, nouvellePassphrase: $courte);
+$rescelle = ($r['ok'] ?? false) === true;
+try {
+    $dg->recover('alice', Lock::Memorized, $MOT, $r['mot_de_passe'], $r['passphrase']);
+} catch (\Throwable) {
+    $rescelle = false;
+}
+verifier('niveau 2 : la plus courte passphrase apportable re-scelle le coffre',
+    $rescelle && ouvre($dg, Lock::Passphrase, $r['passphrase'], $r['mot_de_passe']));
 [$MDP, $PHR] = [$r['mot_de_passe'], $r['passphrase']];
 
 // ── Niveau 2 par appareil ─────────────────────────────────────────────────

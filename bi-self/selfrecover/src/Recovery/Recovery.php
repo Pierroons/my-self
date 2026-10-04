@@ -19,9 +19,11 @@ use Pierroons\SelfRecover\Storage\StorageInterface;
  * Les deux premiers niveaux de l'escalade de récupération.
  *
  *   Niveau 1 — la passphrase diceware. Un seul facteur, mais à forte entropie
- *              (≈77,5 bits pour six mots de la liste EFF) et jamais saisi
- *              ailleurs. `MOTS_PASSPHRASE` fixe la longueur, à un seul
- *              endroit : les démos le lisent au lieu d'écrire leur nombre.
+ *              (≈77,5 bits pour six mots tirés uniformément) et jamais saisi
+ *              ailleurs. Le serveur la tire, ou l'utilisateur l'apporte, tirée
+ *              aux dés : `validerPassphraseApportee()`. `MOTS_PASSPHRASE` fixe
+ *              la longueur, à un seul endroit : les démos le lisent au lieu
+ *              d'écrire leur nombre.
  *   Niveau 2 — un code de récupération ET le mot mémorisé. Deux facteurs de
  *              nature différente : une possession imprimable, une connaissance.
  *
@@ -83,13 +85,20 @@ final class Recovery
     public const CODES_PAR_LOT = 10;
 
     /**
-     * Mots tirés pour une passphrase de niveau 1 — six valent ≈77,5 bits.
+     * Mots d'une passphrase de niveau 1 — six tirés uniformément valent ≈77,5 bits.
      *
-     * Ne vaut que pour les passphrases engendrées : la vérification compare
-     * une empreinte et ne compte pas les mots, donc une passphrase plus courte
-     * délivrée avant un changement de cette valeur reste valide.
+     * Longueur d'une passphrase engendrée, et minimum d'une passphrase apportée.
+     * La vérification compare une empreinte et ne compte pas les mots : une
+     * passphrase plus courte délivrée avant un changement de cette valeur reste
+     * valide.
      */
     public const MOTS_PASSPHRASE = 6;
+
+    /**
+     * Plafond d'une passphrase apportée, contrôlé avant toute expression
+     * régulière : elle est validée avant les freins, son coût doit être borné.
+     */
+    public const OCTETS_PASSPHRASE_MAXIMUM = 1024;
 
     /**
      * Niveau 1 — récupération par passphrase diceware.
@@ -99,18 +108,39 @@ final class Recovery
      * **Elle informe, elle ne refuse jamais** — le contrat de
      * `trouverComptePourPassphrase()` dit pourquoi.
      *
-     * @return array{ok: bool, message: string, mot_de_passe?: string, passphrase?: string, age_jours?: int|null}
+     * `$nouvellePassphrase` : la passphrase que l'utilisateur apporte pour
+     * remplacer celle qui sert, au lieu d'en recevoir une tirée par le serveur
+     * (`validerPassphraseApportee()`). `null` : le serveur tire.
+     *
+     * @return array{ok: bool, message: string, error?: string, motif?: string, mot_de_passe?: string, passphrase?: string, age_jours?: int|null}
      */
     public function parPassphrase(
         string $nomCompte,
         string $passphrase,
         ?string $ip = null,
         ?int $maintenant = null,
+        #[\SensitiveParameter] ?string $nouvellePassphrase = null,
     ): array {
         $this->profil->verifierOrigine($ip);
         $maintenant = $maintenant ?? time();
         $nomCompte  = strtolower(trim($nomCompte));
         $refus      = ['ok' => false, 'message' => 'Identifiant ou passphrase incorrect.'];
+
+        // 🔑 La passphrase apportée est jugée avant les freins, sans trace ni
+        // délai : son refus ne dépend que de ce qu'envoie l'appelant, jamais du
+        // compte. La tracer laisserait n'importe qui charger le frein d'un autre.
+        $apport = null;
+        if ($nouvellePassphrase !== null) {
+            $jugee = self::validerPassphraseApportee($nouvellePassphrase);
+            if (!$jugee['ok']) {
+                return $jugee;
+            }
+            if ($jugee['canonique'] === strtolower(self::normaliserPassphrase($passphrase))) {
+                return ['ok' => false, 'error' => 'passphrase_deja_servie',
+                        'message' => 'La nouvelle passphrase doit différer de celle qu\'elle remplace.'];
+            }
+            $apport = $jugee['canonique'];
+        }
 
         if ($frein = $this->freiner($nomCompte, $ip, $maintenant)) {
             return $frein;
@@ -137,7 +167,7 @@ final class Recovery
         // La laisser valable ferait d'un papier volé une porte permanente, et
         // l'utilisateur croirait son accès rendu alors qu'il resterait partagé.
         $motDePasse     = Device::engendrerMotDePasse();
-        $nouvellePhrase = self::engendrerPassphrase();
+        $nouvellePhrase = $apport ?? self::engendrerPassphrase();
 
         $this->stockage->commencerTransaction();
         try {
@@ -179,13 +209,17 @@ final class Recovery
      * index de recherche, donc il n'existe aucun champ où éprouver l'existence
      * d'un compte : l'énumération n'a plus de porte.
      *
-     * @return array{ok: bool, error?: string, message: string, mot_de_passe?: string, passphrase?: string, compte?: string, codes_restants?: int}
+     * `$nouvellePassphrase` : comme au niveau 1, la passphrase apportée qui
+     * remplace l'ancienne. Un refus la concernant ne consomme pas le code.
+     *
+     * @return array{ok: bool, error?: string, motif?: string, message: string, mot_de_passe?: string, passphrase?: string, compte?: string, codes_restants?: int}
      */
     public function parCode(
         string $code,
         string $motDerive,
         ?string $ip = null,
         ?int $maintenant = null,
+        #[\SensitiveParameter] ?string $nouvellePassphrase = null,
     ): array {
         $this->profil->verifierOrigine($ip);
         $maintenant = $maintenant ?? time();
@@ -195,6 +229,15 @@ final class Recovery
         if (!Device::estCleDerivee($motDerive)) {
             return ['ok' => false, 'error' => 'invalid_derived_key',
                     'message' => 'Mot mémorisé invalide : la dérivation doit se faire dans le navigateur.'];
+        }
+        // Avant tout frein, comme au niveau 1 : la forme ne dit rien du compte.
+        $apport = null;
+        if ($nouvellePassphrase !== null) {
+            $jugee = self::validerPassphraseApportee($nouvellePassphrase);
+            if (!$jugee['ok']) {
+                return $jugee;
+            }
+            $apport = $jugee['canonique'];
         }
         if ($ip !== null
             && $this->stockage->compterEchecsIp($ip, $maintenant - $this->fenetreEchecs) >= $this->maxEchecsIp) {
@@ -234,6 +277,18 @@ final class Recovery
         $motOk  = Hashing::verify($motDerive, $trouve['empreinte_mot'] ?? Hashing::dummyHash());
         $ok     = $trouve !== null && !$trouve['deja_utilise'] && $codeOk && $motOk;
 
+        // L'ancienne passphrase ne revient pas. Jugé seulement quand les deux
+        // facteurs sont bons : l'Argon2id de plus ne se paie que sur un chemin déjà
+        // authentifié, et le refus ne touche ni au code ni au compteur. Qui le
+        // rejoue sans fin détient déjà de quoi reprendre le compte.
+        if ($ok && $apport !== null) {
+            $ancienne = $this->stockage->trouverComptePourPassphrase((string) $trouve['nom_compte']);
+            if ($ancienne !== null && Hashing::verify($apport, (string) $ancienne['empreinte_passphrase'])) {
+                return ['ok' => false, 'error' => 'passphrase_deja_servie',
+                        'message' => 'La nouvelle passphrase doit différer de celle qu\'elle remplace.'];
+            }
+        }
+
         // 🔑 Un code introuvable n'est rattaché à AUCUN compte. La ligne garde en
         // revanche son adresse : le frein par origine continue de la voir.
         $this->stockage->tracerTentative($etiquette, $ok, $ip, $maintenant);
@@ -253,7 +308,7 @@ final class Recovery
         // l'ancienne passphrase valable garderait ouverte une porte dont on
         // ignore si elle est connue.
             $motDePasse     = Device::engendrerMotDePasse();
-            $nouvellePhrase = self::engendrerPassphrase();
+            $nouvellePhrase = $apport ?? self::engendrerPassphrase();
             $this->stockage->remplacerEmpreintes(
                 (int) $trouve['compte_id'],
                 Hashing::hash($motDePasse),
@@ -288,17 +343,8 @@ final class Recovery
     }
 
     /**
-     * Émet un lot de codes et rend les codes en clair — la seule fois.
-     *
-     * Quarante bits par code. C'est peu contre une attaque hors ligne, mais un
-     * code ne vit jamais seul : le mot mémorisé est exigé avec lui, et le
-     * rate-limit s'applique. Sa fonction est d'être imprimable, pas d'être un
-     * secret maximal.
-     *
-     * @return list<string>
-     */
-    /**
-     * Une passphrase neuve, de la longueur du protocole.
+     * Une passphrase neuve, de la longueur du protocole, quand l'utilisateur n'en
+     * apporte pas.
      *
      * ⚠️ Définie ICI et nulle part ailleurs. Elle était engendrée à deux
      * endroits de ce fichier et à un troisième dans le niveau 3 : trois copies
@@ -308,6 +354,70 @@ final class Recovery
     public static function engendrerPassphrase(): string
     {
         return implode(' ', Wordlist::generate(self::MOTS_PASSPHRASE, 'en')['words']);
+    }
+
+    /**
+     * La passphrase qu'un utilisateur apporte — tirée aux dés dans la liste de
+     * l'EFF ou dans la liste française — mise sous la forme qu'on range.
+     *
+     * Forme canonique : minuscules, mots séparés par une espace. C'est elle qu'on
+     * hache, qu'on rend et qu'on fait noter : la vérification ne passe pas en
+     * minuscules, donc une autre graphie ne rouvrirait rien. Le trait d'union
+     * reste dans le mot (`t-shirt` est un mot de la liste anglaise).
+     *
+     * Exigé : `MOTS_PASSPHRASE` mots au moins, chacun dans l'une des deux listes,
+     * aucun deux fois. La répétition coûte une relance de dé, rarement ; elle
+     * écarte les saisies les plus pauvres. **Rien ici ne mesure le hasard** : six
+     * mots choisis de tête passent, et ne valent pas six mots tirés.
+     *
+     * 🔑 Le refus dit des positions, jamais un mot : le message part dans des
+     * journaux, et un mot cité est un morceau du secret.
+     *
+     * 🔑 Clé `canonique`, pas `passphrase` : ce retour n'annonce pas un secret
+     * neuf à noter, il dit si celui de l'utilisateur est acceptable.
+     *
+     * @return array{ok: true, canonique: string}|array{ok: false, error: string, motif: string, message: string}
+     */
+    public static function validerPassphraseApportee(#[\SensitiveParameter] string $saisie): array
+    {
+        $refus = static fn (string $motif, string $message): array
+            => ['ok' => false, 'error' => 'passphrase_invalide', 'motif' => $motif, 'message' => $message];
+
+        if (strlen($saisie) > self::OCTETS_PASSPHRASE_MAXIMUM) {
+            return $refus('trop_longue', 'La passphrase apportée est trop longue.');
+        }
+        $canonique = self::normaliserPassphrase(strtolower($saisie));
+        $mots      = $canonique === '' ? [] : explode(' ', $canonique);
+        if (count($mots) < self::MOTS_PASSPHRASE) {
+            return $refus('trop_courte', 'Il faut au moins ' . self::MOTS_PASSPHRASE . ' mots, séparés par des espaces.');
+        }
+
+        $hors = [];
+        foreach ($mots as $i => $mot) {
+            if (!Wordlist::inAnyList($mot)) {
+                $hors[] = $i + 1;
+            }
+        }
+        if ($hors !== []) {
+            return $refus('hors_liste', (count($hors) === 1
+                ? 'Le mot n° ' . $hors[0] . ' n\'est'
+                : 'Les mots n° ' . implode(', ', $hors) . ' ne sont')
+                . ' dans aucune des deux listes, anglaise et française : vérifie l\'orthographe, sans accent.');
+        }
+
+        $vus     = [];
+        $repetes = [];
+        foreach ($mots as $i => $mot) {
+            if (isset($vus[$mot])) {
+                $repetes[] = $i + 1;
+            }
+            $vus[$mot] = true;
+        }
+        if ($repetes !== []) {
+            return $refus('mot_repete', 'Un mot revient (n° ' . implode(', ', $repetes) . ') : relance les dés pour celui-là.');
+        }
+
+        return ['ok' => true, 'canonique' => $canonique];
     }
 
     /**
@@ -402,6 +512,11 @@ final class Recovery
 
     /**
      * Émet un lot de codes neufs et les rend en clair, cette fois seulement.
+     *
+     * Quarante bits par code. C'est peu contre une attaque hors ligne, mais un
+     * code ne vit jamais seul : le mot mémorisé est exigé avec lui, et le
+     * rate-limit s'applique. Sa fonction est d'être imprimable, pas d'être un
+     * secret maximal.
      *
      * ⚠️ **Efface d'abord le lot en place** : la feuille que le titulaire a
      * imprimée cesse de valoir à cet appel, et rien dans le retour ne le

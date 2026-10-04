@@ -2,9 +2,9 @@
 /**
  * SelfRecover — Diceware wordlist loader.
  *
- * Utilise les listes officielles EFF large wordlist (7776 mots, CC-BY 3.0) :
- *   - EN : EFF 2016 officielle
- *   - FR : version FR par ArthurPons (même méthodologie, CC-BY 3.0)
+ * Deux listes de 7776 mots, une par langue :
+ *   - EN : la « large wordlist » de l'EFF (2016), sous licence CC BY ;
+ *   - FR : diceware-fr-alt d'Arthur Pons, bâtie sur la méthode de l'EFF, sous licence MIT.
  *
  * Entropie :
  *   - 1 mot  = log2(7776)  = 12.92 bits
@@ -25,6 +25,9 @@ final class Wordlist {
 
     /** @var array<string, string[]> */
     private static array $cache = [];
+
+    /** @var array<string, true>|null Les deux listes réunies, indexées par mot. */
+    private static ?array $union = null;
 
     /**
      * @return string[]
@@ -81,29 +84,15 @@ final class Wordlist {
     }
 
     /**
-     * Valide une passphrase saisie par l'utilisateur (mode avancé).
-     * Retourne la liste normalisée des mots valides, ou throw si invalide.
+     * Le mot appartient-il à l'une des deux listes, tel quel ?
      *
-     * @param string[] $userWords
-     * @return array{words: string[], entropy_bits: float, lang: string}
+     * Aucune normalisation ici : l'appelant compare la forme qu'il va ranger.
+     * Recherche par clé, parce qu'une passphrase apportée est contrôlée avant
+     * tout frein : son coût ne doit pas grandir avec ce qu'on lui envoie.
      */
-    public static function validateUserPassphrase(array $userWords, string $lang = 'en'): array {
-        $count = count($userWords);
-        if ($count < 4) {
-            throw new InvalidArgumentException("Minimum 4 mots requis");
-        }
-        $normalized = [];
-        foreach ($userWords as $w) {
-            $w = strtolower(trim($w));
-            if (!self::contains($w, $lang)) {
-                throw new InvalidArgumentException("Mot hors liste officielle EFF: $w");
-            }
-            $normalized[] = $w;
-        }
-        return [
-            'words'        => $normalized,
-            'entropy_bits' => round($count * log(self::LIST_SIZE, 2), 2),
-            'lang'         => $lang,
-        ];
+    public static function inAnyList(string $word): bool {
+        self::$union ??= array_fill_keys(array_merge(self::load('en'), self::load('fr')), true);
+
+        return isset(self::$union[$word]);
     }
 }
