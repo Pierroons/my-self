@@ -718,9 +718,9 @@
     <p>
       <strong>MySelf-Lab</strong> est un <strong>forum de démonstration</strong> où deux piliers, Bi-Self
       et Self-Security, tournent ensemble en conditions réelles — et qui est <strong>volontairement exposé à l'attaque</strong>.
-      Inscription sans email (<a href="https://ctf.example.org/register.php">SelfRecover</a>),
-      messages privés et profils chiffrés (<a href="https://ctf.example.org/security.php">SelfDataGuard</a>),
-      réputation et modération anti-Sybil (<a href="https://ctf.example.org/moderation.php">SelfModerate</a>). Un <strong>simulateur d'attaque</strong> intégré
+      Inscription sans email (SelfRecover),
+      messages privés et profils chiffrés (SelfDataGuard),
+      réputation et modération anti-Sybil (SelfModerate). Un <strong>simulateur d'attaque</strong> intégré
       montre, en direct, ce que l'écosystème protège.
     </p>
     <p class="muted">
@@ -728,22 +728,23 @@
       bout en bout reste illisible même pour l'administrateur — c'est le défi posé à toute red team.
     </p>
     <div class="floor-modules">
-      <a class="mod" href="https://ctf.example.org/">
+      <div class="mod">
         <span class="name">Forum de démo<span class="status live">live</span></span>
         <span class="role">SelfRecover + SelfDataGuard + SelfModerate en action.</span>
-      </a>
-      <a class="mod" href="https://ctf.example.org/attacks.php">
+      </div>
+      <div class="mod">
         <span class="name">Attack Simulator<span class="status live">live</span></span>
         <span class="role">4 attaques rejouées en direct sur base isolée — ce qui tient, et pourquoi.</span>
-      </a>
-      <a class="mod" href="https://ctf.example.org/redteam.php">
+      </div>
+      <div class="mod">
         <span class="name">Règles red team<span class="status live">ouvert</span></span>
         <span class="role">Périmètre, objectifs (mappés MITRE ATT&amp;CK), safe harbor, hall of fame.</span>
-      </a>
+      </div>
     </div>
     <div class="floor-cta">
-      <a class="btn btn-primary" href="https://ctf.example.org"><span aria-hidden="true">🎯</span> Visiter la démo</a>
-      <a class="btn" href="https://ctf.example.org/redteam.php"><span aria-hidden="true">🛡️</span> Tester la sécurité</a>
+      <a class="btn btn-primary" href="https://ctf.example.org"><span aria-hidden="true">🎯</span> Essayer la démo</a>
+      <a class="btn" href="https://ctf.example.org/redteam.php">Règles red team</a>
+      <a class="btn" href="/pentest.html">Lire l'audit</a>
     </div>
     <p class="muted note">
       Forum de démonstration à contenu fictif. Aucune donnée réelle.
@@ -793,7 +794,7 @@
   <p>
     Code source : <a href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">github.com/Pierroons/my-self</a>
     · Licence <a href="https://github.com/Pierroons/my-self/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0-or-later</a>
-    · <a href="/pentest.html">🛡️ Audit de sécurité</a>
+    · <a href="/pentest.html"><span aria-hidden="true">🛡️</span> Audit de sécurité</a>
     · Auto-hébergé sur matériel grand public
   </p>
 </footer>
