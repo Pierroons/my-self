@@ -65,7 +65,7 @@ Neither module analyses your case in your place: legal advice is reserved to leg
 
 ## Status
 
-SelfJustice is **deployed in production** and serves any AI that can read a URL, or that goes through the MCP server, with the French codes and laws in force (LEGI base from DILA), the EU/ECHR texts and case law — administrative in full text, judicial as an index — through an open HTTP API. Anyone can query it; anyone can self-host it from the reference configuration in `deploy/selfjustice/`. Live counts: [`/api/status`](https://justice.my-self.fr/api/status).
+SelfJustice is **deployed in production**. Through an open HTTP API, it serves the French codes and laws in force (LEGI base from DILA), the EU/ECHR texts and case law — administrative in full text, judicial as an index — to any AI that can read a URL or that goes through the MCP server. Anyone can query it; anyone can self-host it from the reference configuration in `deploy/selfjustice/`. Live counts: [`/api/status`](https://justice.my-self.fr/api/status).
 
 SelfAct **runs as well**, in beta, and its folder shows it: [`selfact/`](./selfact/) holds its code, its data, its guards, its deployment, its whitepaper and its licence.
 

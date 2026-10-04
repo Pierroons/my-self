@@ -534,7 +534,7 @@
     <p>
       Chaque module résout un problème concret de la vie quotidienne —
       consulter le droit et préparer ses démarches, récupérer un mot de passe sans email,
-      garder ses données illisibles si elles fuient — en rendant à l'individu la
+      garder ses données chiffrées si elles fuient — en rendant à l'individu la
       <strong>souveraineté</strong> sur son identité, son droit et ses données.
     </p>
   </div>
@@ -556,8 +556,9 @@
       <p class="muted">
         <em>« Si une communauté peut se construire, elle peut se gouverner. »</em>
         Un compte qui se récupère sans email garde sa réputation. Le vote
-        collectif répartit la modération entre les membres ; les arbitres qui
-        restent signent chacun de leurs gestes au journal.
+        collectif répartit la modération entre les membres ; des arbitres tranchent
+        ce que les votes ne règlent pas, et chacun de leurs gestes s'inscrit à leur nom au journal
+        si l'hébergeur en branche un.
       </p>
       <div class="modules">
         <a class="mod" href="https://bi-self.example.org/recover">
@@ -639,7 +640,7 @@
       <strong>Zéro cloud, SQLite local, AGPL-3.0-or-later.</strong>
     </p>
     <p class="muted">
-      Elle est conçue pour s'adosser aux trois piliers, et aucune intégration n'est
+      Elle est conçue pour s'adosser aux trois piliers, mais aucune intégration n'est
       câblée à ce jour : récupération de compte sans email (Bi-Self), droit consultable
       (Self-Right) pour retrouver les aides et les réglementations agricoles, chiffrement
       (Self-Security) pour protéger les données bancaires et comptables sensibles.
@@ -722,7 +723,8 @@
       montre, en direct, ce que l'écosystème protège.
     </p>
     <p class="muted">
-      Le défi : un <strong>mémo personnel chiffré de bout en bout</strong> — le serveur ne voit jamais sa clé.
+      Le défi : lire un <strong>mémo personnel chiffré de bout en bout</strong>, dont le serveur ne reçoit jamais la clé — tant qu'il sert le code publié : un serveur pris pourrait
+      servir une page qui la lit.
       Ses limites connues, dont l'attaque hors ligne d'un mot de passe faible, sont publiées dans les
       règles red team : une limite documentée n'est pas un finding, la dépasser en est un.
     </p>

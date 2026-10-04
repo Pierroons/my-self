@@ -27,22 +27,22 @@ Bi-Self addresses both at once. It gives communities the **two minimum primitive
 
 ## Why the two modules reinforce each other
 
-**SelfRecover without SelfModerate** is a nice recovery trick, but not a community. You can prove who you are, but there's no fabric for collective life.
+**SelfRecover without SelfModerate** is a nice recovery trick, but not a community. You can get your account back without email, but there's no fabric for collective life.
 
-**SelfModerate, with or without SelfRecover**, is vote-based moderation, and a vote is only worth what an extra account costs. SelfRecover does not raise that cost: dropping email removes a weak barrier, it proves nothing about one person holding one account. The brakes live in SelfModerate: a new account votes only after 24 hours or a first post, accounts linked to each other that vote against the same target have their votes cancelled, and a burst of unlinked votes goes to human review.
+**SelfModerate, with or without SelfRecover**, is vote-based moderation, and a vote is only worth what an extra account costs. SelfRecover does not raise that cost: it drops email, a weak barrier, and proves nothing about one person holding one account. The brakes live in SelfModerate: a new account votes only after a delay — 24 h with `Config::prod()`, 2 min by default — or a first post, accounts linked to each other that vote against the same target have their votes cancelled, and a burst of unlinked votes goes to human review.
 
 **Together**:
 
 - An account survives a lost password (SelfRecover), so its reputation and its history survive too, instead of starting over under a new name.
 - Collective voting (SelfModerate) spreads moderation across the members.
-- Moderators remain, as arbiters for what the votes do not settle: each ban, lift and maintain carries their name in the journal. The thresholds are set by the host.
+- Moderators remain, as arbiters of what the votes do not settle: every ban they impose, lift or uphold carries their name in the journal, when the host plugs one in; without a journal, nothing records them.
 
 ---
 
 ## Cross-module workflows
 
-- **New member joins** → creates an account with a recovery word (SelfRecover). Zero email. For its first 24 h, SelfModerate lets the account vote only if it has posted (anti-Sybil warm-up).
-- **Toxic behavior reported** → members vote (SelfModerate). Nothing proves that a voter holds a single account: linked accounts voting together are cancelled, a burst of unlinked votes goes to human review. A reputation that reaches zero bans automatically if the host has plugged in a journal; otherwise it raises a flag and an arbiter decides.
+- **New member joins** → creates an account with a recovery word (SelfRecover). Zero email. During that delay, SelfModerate lets the account vote only if it has posted (anti-Sybil warm-up).
+- **Toxic behavior reported** → members vote (SelfModerate), under the anti-Sybil brakes described above. A reputation that reaches zero bans automatically if the host has plugged in a journal; otherwise it raises a flag and an arbiter decides.
 - **Lost password** → the member recovers their account at level 1 or 2 (SelfRecover), with no email and no one to ask. Level 3 goes to a human admin, who reads the case.
 
 ---

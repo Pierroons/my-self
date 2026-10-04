@@ -19,7 +19,7 @@ Deux familles de textes vieillissaient sans que rien ne rougisse.
   — dans le texte alternatif d'un badge comme dans son image — et refuse un mot du vocabulaire sur la
   ligne d'un module qui ne le déclare pas. SelfAct était dit « en ligne » à six endroits.
 - **Les blocs de code** : `scripts/check-paths.sh` y lit désormais les chemins relatifs du dépôt, que
-  les deux contrôles précédents effaçaient avant de chercher. Un chemin absolu, une variable ou une
+  les contrôles des liens et du code inline effaçaient avant de chercher. Un chemin absolu, une variable ou une
   remontée désignent la machine cible et restent hors de sa lecture.
 
 Canaris en CI (`structure.yml`) : un module bêta dit sans son statut, un module dit « bêta » sans le
@@ -48,14 +48,14 @@ attendent la discussion d'architecture en cours.
 - **Bi-Self** : SelfRecover permet de s'inscrire sans email, il ne garantit pas qu'une personne ne tient
   qu'un compte. Ce qui freine les comptes multiples est dans SelfModerate : délai avant le premier vote,
   votes de comptes liés annulés, rafale en revue humaine. Les modérateurs restent, comme arbitres dont
-  chaque geste est journalisé ; les seuils viennent de l'hébergeur, aucun vote ne les change ; le niveau 3
+  chaque geste s'inscrit au journal quand l'hébergeur en branche un ; les seuils viennent de l'hébergeur, aucun vote ne les change ; le niveau 3
   passe par un admin humain ; le whitepaper de SelfModerate est rédigé, pas publié.
 - **Self-Right** : SelfAct est dit « bêta » partout. SelfJustice sert la base LEGI, les textes UE/CEDH et
   la jurisprudence — administrative en texte intégral, judiciaire en index — à toute IA qui lit une URL ou
   passe par le MCP. L'adresse `?stats=1`, que `catalog.php` ne lit pas, est retirée.
 - **Self-Security** : un dump permet une attaque hors ligne contre le plus faible des secrets d'un
   utilisateur, un Argon2id par essai ; un serveur compromis pendant qu'il tourne lit les sessions
-  ouvertes ; l'installeur de LUKS propose de fermer le shell d'amorçage.
+  et les secrets qu'on lui soumet ; l'installeur de LUKS propose de fermer le shell d'amorçage.
 - **README racine** : une page copiée telle quelle ne produit rien, une page modifiée lit le mot ; aucune
   démo du dépôt n'apparie SelfRecover et le coffre SelfDataGuard ; les messages privés du lab sont
   chiffrés sous une clé du serveur ; `openssl` et Composer rejoignent les prérequis.

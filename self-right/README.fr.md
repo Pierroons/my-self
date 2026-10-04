@@ -65,7 +65,7 @@ Aucun des deux modules n'analyse ton cas à ta place : la consultation juridique
 
 ## Statut
 
-SelfJustice est **déployé en production** et sert toute IA capable de lire une URL, ou passant par le serveur MCP, avec les codes et lois en vigueur (base LEGI de la DILA), les textes UE/CEDH et la jurisprudence — administrative en texte intégral, judiciaire en index — via une API HTTP ouverte. N'importe qui peut l'interroger ; n'importe qui peut l'auto-héberger à partir de la configuration de référence de `deploy/selfjustice/`. Compteurs en direct : [`/api/status`](https://justice.my-self.fr/api/status).
+SelfJustice est **déployé en production**. Par une API HTTP ouverte, il sert les codes et lois en vigueur (base LEGI de la DILA), les textes UE/CEDH et la jurisprudence — administrative en texte intégral, judiciaire en index — à toute IA capable de lire une URL ou passant par le serveur MCP. N'importe qui peut l'interroger ; n'importe qui peut l'auto-héberger à partir de la configuration de référence de `deploy/selfjustice/`. Compteurs en direct : [`/api/status`](https://justice.my-self.fr/api/status).
 
 SelfAct **tourne aussi**, en bêta, et son dossier le montre : [`selfact/`](./selfact/) porte son code, ses données, ses garde-fous, son déploiement, son whitepaper et sa licence.
 

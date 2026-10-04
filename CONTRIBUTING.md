@@ -71,15 +71,13 @@ Décris **ce que tu as fait**, jamais **ce que tu as retiré**.
 
 ## 🛡️ Protection automatique (obligatoire)
 
-Le dépôt est protégé par [gitleaks](https://github.com/gitleaks/gitleaks) :
+Le dépôt est protégé par [gitleaks](https://github.com/gitleaks/gitleaks). Installe-le par son
+**binaire officiel** ([releases](https://github.com/gitleaks/gitleaks/releases)), pas par le paquet
+apt : figé sur une version ancienne, il n'interprète pas les allowlists comme la CI. Puis :
 
 ```bash
 ./scripts/install-hooks.sh     # active les trois hooks, une fois après clonage
 ```
-
-Installe gitleaks par son **binaire officiel**
-([releases](https://github.com/gitleaks/gitleaks/releases)), pas par le paquet apt : figé sur
-une version ancienne, il n'interprète pas les allowlists comme la CI.
 
 - Trois **hooks** bloquent localement, du moins cher au plus cher : `pre-commit` (les
   fichiers indexés), `commit-msg` (le message), `pre-push` (l'historique, les orphelins, les

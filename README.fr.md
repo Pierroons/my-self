@@ -45,18 +45,18 @@ hébergée : tout s'auto-héberge depuis ce dépôt.
 ## Ce qui en fait un ensemble
 
 Pas un secret unique qui ouvrirait tout — ce serait le contraire du but. Ce que
-les modules partagent, c'est la discipline : des entrées distinctes pour
-chaque usage, et deux primitives dont chacune tient un rôle qu'on ne lui fait pas quitter.
+les modules partagent, c'est la discipline : des entrées de dérivation
+distinctes pour chaque usage, et deux primitives dont chacune tient un rôle qu'on ne lui fait pas quitter.
 
 **HMAC-SHA256 lie et masque.** Le mot mémorisé sert à prouver qu'on le connaît
 sans jamais l'envoyer : ce qui transite vaut
 `HMAC(mot, matériau | version + sel du compte)`, où l'intégrateur choisit le
 matériau. Avec le nom d'hôte, lu dans la page et jamais reçu du réseau, le même
 mot donne une empreinte différente sur chaque service, et une page copiée telle
-quelle et servie ailleurs ne produit rien d'utilisable. Avec une étiquette fixe,
+quelle et servie ailleurs ne tire du mot rien d'utilisable. Avec une étiquette fixe,
 choisie pour que les comptes survivent à un changement d'adresse, cette
-protection disparaît. Aucun des deux choix n'arrête une page modifiée pour lire
-le mot : elle le lit. L'empreinte fait 64 caractères que le mot en compte quatre
+protection disparaît. Une page modifiée, elle, lit le mot quel que soit le
+choix. L'empreinte fait 64 caractères que le mot en compte quatre
 ou quarante, et deux services qui compareraient leurs bases devraient deviner le
 mot pour l'y reconnaître.
 
@@ -79,7 +79,8 @@ deux bibliothèques n'importe l'autre : c'est l'intégrateur qui les apparie, co
 décrit le README de SelfDataGuard, et aucune démo de ce dépôt ne le fait encore. Un hachage volé dans la base d'un côté n'ouvre pas l'autre. Le mot lui-même, s'il est
 volé, ouvre seul le coffre SelfDataGuard — côté SelfRecover, il lui faut encore le
 *recovery code*. La passphrase volée, elle, ouvre les deux, jusqu'à sa première
-utilisation — la tienne ou celle du voleur —, qui la remplace.
+utilisation — la tienne ou celle du voleur —, qui la remplace ; une copie de la base prise
+avant reste ouverte à l'ancienne.
 Un coffre scellé par le seul mot de passe ne survit pas à une récupération
 SelfRecover : voir [l'avertissement dans le README de SelfDataGuard](./self-security/selfdataguard/README.fr.md#couplage-avec-selfrecover).
 Le détail de chaque dérivation est dans le README du module concerné.

@@ -45,7 +45,7 @@ everything self-hosts from this repository.
 ## What makes it a set
 
 Not one master secret that opens everything — that would be the opposite of the
-point. What the modules share is the discipline: distinct inputs for each use,
+point. What the modules share is the discipline: distinct derivation inputs for each use,
 and two primitives, each kept to a role it is never asked to leave.
 
 **HMAC-SHA256 binds and masks.** The memorized word proves you know it without
@@ -53,9 +53,9 @@ ever being sent: what travels is
 `HMAC(word, material | version + account salt)`, where the integrator picks the
 material. With the hostname, read in the page and never received from the
 network, the same word yields a different fingerprint on every service, and a
-page copied as-is and served elsewhere produces nothing usable. With a fixed
+page copied as-is and served elsewhere gets nothing usable out of the word. With a fixed
 label, chosen so that accounts survive a change of address, that protection is
-gone. Neither choice stops a page modified to read the word: it reads it. The
+gone. A modified page, though, reads the word whichever choice is made. The
 fingerprint is 64 characters whether the word has four letters or forty, and two
 services comparing their databases would have to guess the word to recognize it.
 
@@ -79,7 +79,7 @@ SelfDataGuard README, and no demo in this repository wires it yet. A
 hash stolen from one side's database does not open the other. The word itself, if stolen, opens
 the SelfDataGuard vault on its own — on the SelfRecover side it still needs the
 *recovery code*. A stolen passphrase opens both, until its first use — yours or
-the thief's —, which replaces it.
+the thief's —, which replaces it; a copy of the database taken before still opens with the old one.
 A vault sealed by the password alone does not survive a SelfRecover recovery:
 see [the warning in the SelfDataGuard README](./self-security/selfdataguard/README.md#coupling-with-selfrecover).
 The detail of each derivation is in the README of the module concerned.
@@ -127,8 +127,8 @@ cd my-self/demo/selfdataguard
 
 **Watch the modules work together** — a forum where sign-up goes through
 SelfRecover and private messages are encrypted at rest with SelfDataGuard's
-primitives, under a server key. In a second terminal, from the directory you
-cloned into:
+primitives, under a server key. In a second terminal, from the directory where
+you ran `git clone`:
 
 ```bash
 cd my-self/demo/lab
