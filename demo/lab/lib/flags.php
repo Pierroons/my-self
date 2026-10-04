@@ -8,6 +8,7 @@ use PDO;
 
 require_once __DIR__ . '/dataguard.php';
 require_once __DIR__ . '/secret_instance.php';
+require_once __DIR__ . '/notify.php';
 
 /**
  * Les drapeaux du challenge : valider une soumission sur-le-champ, et retenir
@@ -135,6 +136,10 @@ final class Flags
         $pdo->prepare(
             'INSERT INTO flag_captures (code, handle, ip_hash, captured_at) VALUES (?, ?, ?, ?)'
         )->execute([$trouve, $handle !== '' ? $handle : null, $ipHash, time()]);
+
+        // Apres l'ecriture et sans condition de succes : un canal muet ne doit pas
+        // faire perdre une capture. Meme regle que pour les rapports.
+        Notify::drapeauValide($trouve, $rang, $handle);
 
         return [
             'ok'      => true,

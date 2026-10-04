@@ -78,4 +78,47 @@ final class Notify
         curl_exec($ch);
         curl_close($ch);
     }
+
+    /**
+     * Un drapeau vient d'etre valide.
+     *
+     * Jusqu'ici personne ne savait qu'un chercheur avait reussi : il rédigeait un
+     * rapport chiffre et attendait une reponse humaine. L'information la plus
+     * interessante du lab arrivait donc avec des heures de retard, et seulement
+     * si le chercheur prenait la peine d'ecrire.
+     *
+     * ⚠️ La VALEUR du drapeau n'est jamais envoyee — seulement son nom, le rang et
+     * le pseudo choisi. Un canal de notification n'est pas un endroit ou l'on met
+     * un secret : il traverse un serveur, un telephone, et les deux gardent.
+     */
+    public static function drapeauValide(string $code, int $rang, string $handle): void
+    {
+        $conf = self::config();
+        if ($conf === null) {
+            return; // canal non configuré : silence, pas d'erreur
+        }
+        [$url, $auth] = $conf;
+
+        $qui = $handle !== '' ? $handle : 'un anonyme';
+        $corps = $rang === 1
+            ? sprintf('PREMIER SANG sur %s — %s vient de le sortir.', $code, $qui)
+            : sprintf('%s sorti par %s (%de a le faire).', $code, $qui, $rang);
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $corps,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => self::TIMEOUT,
+            CURLOPT_CONNECTTIMEOUT => self::TIMEOUT,
+            CURLOPT_USERPWD        => $auth,
+            CURLOPT_HTTPHEADER     => [
+                'Title: ' . ($rang === 1 ? 'Premier sang' : 'Drapeau sorti'),
+                'Priority: ' . ($rang === 1 ? 'high' : 'default'),
+                'Tags: triangular_flag_on_post',
+            ],
+        ]);
+        curl_exec($ch);
+        curl_close($ch);
+    }
 }
