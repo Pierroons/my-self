@@ -88,22 +88,23 @@ The proof: type your email in the register form, watch it disappear into a base6
 ## Reset the demo
 
 Each visitor gets their own database, named after their demo cookie: nobody sees, searches
-or opens another visitor's vaults. A database is created at registration only, and erased about
-30 minutes after its visitor's last action — by the next request, and on the public instance by a
-five-minute timer (`deploy/selfdataguard/demo-sessions-purge.timer`). At most 1 000 live databases;
-past that, a new registration gets 503 until one expires.
+or opens another visitor's vaults. A database is created by a valid registration only, and erased
+about 30 minutes after its visitor's last action — by the first request from any visitor, and on the
+public instance by a five-minute timer (`deploy/selfdataguard/demo-sessions-purge.timer`). At most
+1 000 live databases, and 5 per address every 30 minutes; past that, a registration gets 503 or 429.
+Without a database, an action on a vault gets 404 and a message to register first.
 
 ```bash
 rm -rf storage/sessions storage/blindkey.bin   # from demo/selfdataguard/
 ```
 
-Reload the page — you'll get a clean database and a fresh server-side blind key. The blind key is auto-generated on first run and stored in `demo/selfdataguard/storage/blindkey.bin` (mode 0600), gitignored. **In production**, this key would live in a secret manager / Vault / HSM, not on disk next to the DB.
+Reload the page: your next registration starts a clean database, under a fresh server-side blind key. The blind key is auto-generated on first run and stored in `demo/selfdataguard/storage/blindkey.bin` (mode 0600), gitignored. **In production**, this key would live in a secret manager / Vault / HSM, not on disk next to the DB.
 
 ## What this demo doesn't do (production gaps)
 
-- **No session management**: each request reaches the server with the full credentials. A real app would use a short-lived session token + memory-only master key. The demo is intentionally simple to make the cryptography obvious.
+- **No session management**: each request reaches the server with the full credentials (the demo cookie only picks the visitor's database). A real app would use a short-lived session token + memory-only master key. The demo is intentionally simple to make the cryptography obvious.
 - **No password policy enforcement** beyond ≥12 chars. Production deployments must add HaveIBeenPwned checks, common-password blocklists, and zxcvbn entropy on the memorized secret (whitepaper §7).
-- **No rate limiting**: the demo accepts unlimited authentication attempts. Production needs Argon2id-based rate limits per user, anti-bruteforce on memorized secrets, IP throttling.
+- **No rate limiting in the code**: the demo accepts unlimited authentication attempts. The public instance throttles its PHP in nginx (20 requests a minute per address); `run.sh` does not. Production needs Argon2id-based rate limits per user, anti-bruteforce on memorized secrets, IP throttling.
 - **No TLS**: the demo runs on plain HTTP localhost. Production REQUIRES HTTPS with HSTS strict.
 - **No admin operational key**: only Lite mode is wired (master key in memory during session only). Hybrid mode (admin can read operational fields offline) is whitepaper §4.2 and is still not wired: `wrapAdmin` stays null, and a sanity check fails if it ever stops being null. The escrow compartment shipped in v0.2.0 solves the recovery case with a dedicated key instead.
 - **No 2FA**: the demo only authenticates via password OR memorized secret. Production would layer SelfRecover on top for multi-factor account recovery.

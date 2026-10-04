@@ -17,10 +17,12 @@ doit pas devenir un oracle. Sa garde existait en deux copies, dans les démonstr
 intégrateur devait écrire la sienne.
 
 - **`Recovery::selDeDerivation($code)`** rend toujours un sel : celui du compte pour un code connu,
-  consommé ou non, quelle que soit sa casse ; sinon un faux, tiré du sel du déploiement, de la forme
-  d'un vrai et stable, calculé dans tous les cas pour que les deux chemins coûtent pareil.
+  consommé ou non, quelle que soit sa casse ; sinon un faux, tiré du sel du déploiement : même forme
+  qu'un vrai, stable d'un essai à l'autre, et calculé dans tous les cas pour que les deux chemins
+  coûtent pareil.
 - **`SelParCodeInterface`**, facultative : `selDuCompteParIndexCode()`. `StockagePdo` l'implémente.
-  Un stockage sans elle lève une `LogicException` à l'appel ; aucun adaptateur existant n'a à changer.
+  Sur un stockage qui ne l'implémente pas, `selDeDerivation()` lève une `LogicException` ; aucun
+  adaptateur existant n'a à changer.
 - La démo duo passe par la bibliothèque pour le chemin « code ». Le lab garde sa copie jusqu'à la fin
   de la saison du CTF.
 - Le modèle de menace et les README disent que la bibliothèque fournit la garde, la route restant à
@@ -32,16 +34,19 @@ en CI. Les fiches diceware sont régénérées pour la version.
 ### La démo SelfDataGuard donne à chaque visiteur sa propre base — 4 octobre 2026
 
 La démo publique n'avait qu'une base : chacun y voyait les coffres des autres, testait leurs index
-aveugles et essayait leurs mots de passe, sans frein, sur le pool PHP que partage toute la production.
+aveugles et essayait leurs mots de passe, sans frein, alors que chaque essai coûte un Argon2id
+mémoire-dur au serveur.
 
 - **Une base par visiteur**, désignée par un cookie `__Host-` (Secure, HttpOnly, SameSite=Strict),
-  créée à l'inscription seulement et effacée une demi-heure après la dernière action, par la requête
-  suivante et par un minuteur de l'instance (`deploy/selfdataguard/demo-sessions-purge.timer`).
-  Plafond de 1 000 bases, que seules les inscriptions consomment.
+  créée par une inscription valide seulement et effacée une demi-heure après la dernière action, par
+  la première requête venue, de n'importe quel visiteur, et par un minuteur de l'instance
+  (`deploy/selfdataguard/demo-sessions-purge.timer`). Plafond de 1 000 bases, et 5 par adresse et
+  par demi-heure, comptées sous un HMAC de l'adresse. Sans base, une action sur un coffre répond 404
+  « inscris-toi », plus un faux « mauvais mot de passe ».
 - **Un frein nginx** sur les scripts PHP de la démo (20 requêtes par minute et par adresse, 10
   d'avance), dans le gabarit et sur l'instance.
 
-Banc `demo/selfdataguard/tests/sanity_sessions.php` (22 cas, joué contre `php -S`), trois canaris en CI.
+Banc `demo/selfdataguard/tests/sanity_sessions.php` (28 cas, joué contre `php -S`), quatre canaris en CI.
 
 ### La base du lab naît partageable entre le site et la console — 29 septembre 2026
 

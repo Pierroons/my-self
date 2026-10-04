@@ -1245,9 +1245,9 @@ jobs:
             php "$t"
           done
 
-      # La démo publique de SelfDataGuard donne à chaque visiteur sa propre base. Trois
+      # La démo publique de SelfDataGuard donne à chaque visiteur sa propre base. Les
       # canaris : la base commune remise, une lecture qui crée une base, un cookie qui
-      # perd Secure par défaut — le banc doit rougir sur chacun.
+      # perd Secure par défaut, un quota par adresse levé — le banc doit rougir sur chacun.
       - name: Garde-fou — la démo SelfDataGuard isole chaque visiteur
         run: |
           php demo/selfdataguard/tests/sanity_sessions.php
@@ -1264,10 +1264,12 @@ jobs:
             [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
             echo "✓ le banc rougit sur « $3 »"
           }
-          canari "define('DEMO_DB_PATH', \$baseVisiteur);" "define('DEMO_DB_PATH', \$repertoireInstance . '/demo.sqlite');" \
-            'le second visiteur voit le coffre du premier'
-          canari "=== 'register.php';" "!== '';" 'une lecture a créé une base'
+          canari "\$baseVisiteur = \$repertoireBases . '/' . \$idVisiteur . '.sqlite';" \
+            "\$baseVisiteur = \$repertoireBases . '/commune.sqlite';" 'le second visiteur voit le coffre du premier'
+          canari "new SqliteAdapter(\$baseExiste ? 'sqlite:' . DEMO_DB_PATH : 'sqlite::memory:')" \
+            "new SqliteAdapter('sqlite:' . DEMO_DB_PATH)" 'une lecture a créé une base'
           canari "=== '1';" "!== '0';" 'attributs du cookie'
+          canari 'if (count($creations) >= DEMO_BASES_PAR_ADRESSE) {' 'if (false) {' 'quota par adresse'
 
       # SelfRecover et SelfDataGuard déclarent chacun leur minimum de mot de passe
       # et leur normalisation de la passphrase, sans dépendre l'un de l'autre : ce

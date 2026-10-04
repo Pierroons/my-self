@@ -22,11 +22,13 @@ header('Cache-Control: no-store');
 
 // Une base par visiteur, désignée par un cookie : personne ne voit, ne cherche ni
 // n'ouvre les coffres d'un autre. Les bases vivent dans `sessions/`, à côté de
-// DATAGUARD_DB_PATH. Une base naît à l'inscription seulement ; sans action depuis
-// DEMO_TTL_SECONDES, elle est effacée par la première requête venue et par le
-// minuteur de l'instance (deploy/selfdataguard/demo-sessions-purge.timer).
-const DEMO_TTL_SECONDES = 30 * 60;
-const DEMO_BASES_MAX    = 1000;
+// DATAGUARD_DB_PATH. Une base naît d'une inscription valide seulement
+// (demo_base_neuve()) ; tout ce que contient `sessions/` s'efface après
+// DEMO_TTL_SECONDES sans action, par la première requête venue et par le minuteur
+// de l'instance (deploy/selfdataguard/demo-sessions-purge.service, qui porte la durée).
+const DEMO_TTL_SECONDES       = 30 * 60;
+const DEMO_BASES_MAX          = 1000;
+const DEMO_BASES_PAR_ADRESSE  = 5;
 
 // ⚠️ Secure par défaut : une détection de HTTPS se trompe derrière un frontal et
 // retirerait l'attribut sans que personne le voie. DATAGUARD_DEMO_HTTP=1 ne sert
@@ -46,13 +48,9 @@ if (!is_dir($repertoireBases) && !@mkdir($repertoireBases, 0700, true) && !is_di
 }
 
 $maintenant = time();
-$bases = glob($repertoireBases . '/*.sqlite') ?: [];
-foreach ($bases as $i => $base) {
-    if (@filemtime($base) < $maintenant - DEMO_TTL_SECONDES) {
-        foreach (['', '-journal', '-wal', '-shm'] as $suffixe) {
-            @unlink($base . $suffixe);
-        }
-        unset($bases[$i]);
+foreach (glob($repertoireBases . '/*') ?: [] as $fichier) {
+    if (is_file($fichier) && @filemtime($fichier) < $maintenant - DEMO_TTL_SECONDES) {
+        @unlink($fichier);
     }
 }
 
@@ -62,14 +60,6 @@ if (!is_string($idVisiteur) || preg_match('/^[a-f0-9]{32}\z/', $idVisiteur) !== 
 }
 $baseVisiteur = $repertoireBases . '/' . $idVisiteur . '.sqlite';
 $baseExiste   = is_file($baseVisiteur);
-// Seule l'inscription crée une base : une lecture sans base répond « vide » sans
-// rien écrire, sinon chaque page vue occuperait une place jusqu'à son expiration.
-$creeLaBase = !$baseExiste && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === 'register.php';
-if ($creeLaBase && count($bases) >= DEMO_BASES_MAX) {
-    http_response_code(503);
-    echo json_encode(['error' => 'The demo is full — come back in a few minutes']);
-    exit;
-}
 setcookie($nomCookie, $idVisiteur, [
     'expires'  => $maintenant + DEMO_TTL_SECONDES,
     'path'     => '/',
@@ -105,8 +95,55 @@ if ($blindKey === false || strlen($blindKey) < 32) {
     exit;
 }
 
-$storage     = new SqliteAdapter($baseExiste || $creeLaBase ? 'sqlite:' . DEMO_DB_PATH : 'sqlite::memory:');
+// Sans base, une lecture passe par une base vide en mémoire : rien n'est écrit, et
+// chaque page vue n'occupe pas une place jusqu'à son expiration.
+$storage     = new SqliteAdapter($baseExiste ? 'sqlite:' . DEMO_DB_PATH : 'sqlite::memory:');
 $dataGuard   = new SelfDataGuard($storage, $blindKey);
+
+// Une action sur un coffre suppose une base : sans elle, le dire, plutôt qu'un
+// « mauvais mot de passe » qui enverrait chercher une faute de frappe.
+if (!$baseExiste && in_array(basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')),
+        ['login.php', 'coffre_open.php', 'escrow_set.php', 'change_password.php', 'delete.php'], true)) {
+    http_response_code(404);
+    echo json_encode(['error' => sprintf(
+        'No demo database for you yet — register first. It is erased after %d minutes without action.',
+        intdiv(DEMO_TTL_SECONDES, 60)
+    )]);
+    exit;
+}
+
+/**
+ * Ouvre la base du visiteur pour une inscription déjà validée, et la crée. Refuse
+ * au plafond global (503) et au quota par adresse (429), compté sous un HMAC de
+ * l'adresse pour ne pas l'écrire en clair.
+ */
+function demo_base_neuve(): SelfDataGuard
+{
+    global $repertoireBases, $baseVisiteur, $blindKey, $maintenant;
+    if (count(glob($repertoireBases . '/*.sqlite') ?: []) >= DEMO_BASES_MAX) {
+        fail('The demo is full — come back in a few minutes', 503);
+    }
+    $quota = $repertoireBases . '/adresse-' . substr(hash_hmac('sha256', (string) ($_SERVER['REMOTE_ADDR'] ?? ''), $blindKey), 0, 32);
+    $creations = array_filter(
+        array_map('intval', is_file($quota) ? (file($quota, FILE_IGNORE_NEW_LINES) ?: []) : []),
+        static fn (int $quand): bool => $quand > $maintenant - DEMO_TTL_SECONDES
+    );
+    if (count($creations) >= DEMO_BASES_PAR_ADRESSE) {
+        fail('Too many demo databases from your address — come back later', 429);
+    }
+    file_put_contents($quota, implode("\n", [...$creations, $maintenant]) . "\n", LOCK_EX);
+    $GLOBALS['storage'] = new SqliteAdapter('sqlite:' . $baseVisiteur);
+    return new SelfDataGuard($GLOBALS['storage'], $blindKey);
+}
+
+/** Efface la base qu'une inscription refusée vient de créer. */
+function demo_effacer_base_neuve(): void
+{
+    global $baseVisiteur;
+    foreach (['', '-journal', '-wal', '-shm'] as $suffixe) {
+        @unlink($baseVisiteur . $suffixe);
+    }
+}
 
 // Clé de récupération ADMIN pour le compartiment escrow (démo). La clé PUBLIQUE
 // scelle l'escrow au dépôt ; la clé privée SCELLÉE par passphrase ne sert qu'à
