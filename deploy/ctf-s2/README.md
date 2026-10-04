@@ -9,25 +9,25 @@ réécrire tout cela de mémoire.
 | fichier | destination sur l'hôte |
 |---|---|
 | `nginx-ctf.conf` | `/etc/nginx/sites-available/lab` (lien dans `sites-enabled/`) |
-| `conf.d/lab-journaux.conf` | `/etc/nginx/conf.d/` |
-| `conf.d/lab-ratelimit.conf` | `/etc/nginx/conf.d/` |
 | `snippets/lab-deny-backups.conf` | `/etc/nginx/snippets/` |
 | `snippets/lab-entetes-statiques.conf` | `/etc/nginx/snippets/` |
 
-L'ordre compte : les deux fichiers de `conf.d/` déclarent une `map`, un
-`log_format` et une zone `limit_req`, qui vivent dans le contexte `http` — le
-vhost les référence et ne démarrerait pas sans eux.
+🔑 **Le gabarit déclare lui-même son contexte `http`** — la `map`, le
+`log_format` et la zone `limit_req`, en tête de fichier, comme les gabarits de
+`bi-self` et de `selfjustice`. Sortis dans un `conf.d/` à part, ils rendaient le
+vhost intestable (`unknown log format`, mesuré en intégration le 04/10) et le
+feraient refuser de démarrer sur une machine qui ne les porte pas déjà.
 
 ## Ce que chacun règle
 
-- **`nginx-ctf.conf`** — le vhost. Racine, routage PHP, lissage des points
-  d'entrée coûteux, et l'inclusion des deux snippets.
-- **`lab-journaux.conf`** — tronque l'adresse source (`/24` et `/48`) avant de
-  l'écrire. Ce serveur est fait pour être attaqué : ses journaux sont ce que
-  quelqu'un lira s'il obtient un accès, et ils ne doivent désigner personne.
-- **`lab-ratelimit.conf`** — 10 req/s sur l'authentification, et un `429` au
-  lieu du `503` par défaut, qu'un chercheur rapporterait comme un déni de
-  service qu'il aurait provoqué.
+- **`nginx-ctf.conf`** — tout le vhost, contexte `http` compris :
+  - la `map` qui **tronque l'adresse source** (`/24` et `/48`) avant de l'écrire.
+    Ce serveur est fait pour être attaqué : ses journaux sont ce que quelqu'un
+    lira s'il obtient un accès, et ils ne doivent désigner personne ;
+  - la zone de lissage — 10 req/s sur l'authentification, et un `429` au lieu du
+    `503` par défaut, qu'un chercheur rapporterait comme un déni de service
+    qu'il aurait provoqué ;
+  - puis la racine, le routage PHP et l'inclusion des deux snippets.
 - **`lab-deny-backups.conf`** — 46 extensions qui ne doivent jamais être
   servies. ⚠️ Ni `txt` ni `asc` : `security.txt` et la clé PGP du canal de
   signalement passent par là. Les refus sont journalisés à part, parce que ce
