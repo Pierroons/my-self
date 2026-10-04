@@ -266,7 +266,19 @@ while read -r g; do
         detail=$(printf '%s\n' "$sortie" | grep -E "emerg|error|warn" | head -3)
         [ -n "$detail" ] || detail=$(printf '%s\n' "$sortie" | grep -v '^[[:space:]]*$' | head -3)
         [ -n "$detail" ] || detail="(sortie vide — l'hôte de test a-t-il répondu ?)"
-        printf '%s\n' "$detail" | sed 's/^/       /'
+        # La sortie brute d'un refus SSH cite la cible, donc une adresse
+        # d'infrastructure. Qui l'a lancée sait laquelle ; un lecteur de log
+        # d'intégration ou de corps de PR n'a pas à l'apprendre ici.
+        # Les DEUX formes se masquent : ssh ne rend souvent que l'hôte, sans le
+        # compte — masquer la seule chaîne complète ne masquait donc rien.
+        # ⚠️ Un motif vide fait réutiliser à sed sa dernière regex : les deux
+        # replis valent `$^`, qui ne peut rien rencontrer, et non la chaîne vide.
+        cible=${VHOST_TEST_HOST:-}
+        hote=${cible#*@}
+        printf '%s\n' "$detail" \
+            | sed -e "s#${cible:-\$^}#<hôte de test>#g" \
+                  -e "s#${hote:-\$^}#<hôte de test>#g" \
+                  -e 's/^/       /'
         echec=1
     elif [ -n "$du_depot" ]; then
         echo "  ✗ ${g} — accepté par nginx, mais avec un avertissement"
