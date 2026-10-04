@@ -69,23 +69,32 @@ Browser (/recover)                 nginx                       PHP-FPM
 ## 3. Directory layout
 
 ```
-bi-self/demo-backend/
+demo/bi-self-duo/
 ├── README.md                     ← you are here
+├── CONTRIBUTING.md
+├── frontend/                     ← pages servies (root du vhost)
 ├── lib/                          ← classes réutilisables
 │   ├── redactor.php              ← censure secrets avant envoi au client
 │   ├── logger.php                ← écrit JSONL dans log.jsonl
 │   ├── rate_limit.php            ← quotas, bans, bypass LAN+cookie
-│   └── session_manager.php       ← cycle de vie d'une session
+│   ├── session_manager.php       ← cycle de vie d'une session
+│   ├── recover_helper.php        ← SelfRecover côté démo
+│   ├── StockageSelfRecover.php   ← stockage de la bibliothèque sur la base de session
+│   └── moderate_helper.php       ← moteur simplifié de la démo de modération
 ├── api/                          ← endpoints HTTP (mappés par nginx)
 │   ├── session.php               ← POST create / GET read
 │   ├── events.php                ← GET SSE stream
-│   └── bypass.php                ← GET /bypass/<token>
+│   ├── bypass.php                ← GET /bypass/<token>
+│   └── recover/, moderate/, duo/ ← une route par action
 ├── schemas/                      ← init SQLite par module
 │   ├── selfrecover.sql
 │   └── selfmoderate.sql
+├── tests/                        ← integration.sh, contrôles PHP
 └── tools/
     └── cleanup_demo_sessions.sh  ← cron toutes les 5 min
 ```
+
+Le vhost vit hors de ce dossier, dans `deploy/bi-self/nginx-bi-self.conf`.
 
 Sur le serveur en prod :
 
@@ -130,19 +139,11 @@ Déployer la bibliothèque **avant ou en même temps** que les pages, jamais apr
 
 ### 4.1 Déployer le code
 
-Depuis ton poste de dev :
-
-```bash
-cd bi-self/demo-backend
-tar cf /tmp/backend.tar lib api schemas
-scp /tmp/backend.tar <utilisateur>@<hôte>:/tmp/
-ssh <hôte> '
-  sudo mkdir -p /var/www/bi-self/{lib,api,schemas}
-  sudo tar xf /tmp/backend.tar -C /var/www/bi-self/
-  sudo chown -R www-data:www-data /var/www/bi-self
-  sudo chmod 644 /var/www/bi-self/lib/*.php /var/www/bi-self/api/*.php
-'
-```
+La démo part avec le reste de l'arbre, par le déployeur du dépôt,
+`deploy/my-self/deploy.sh` : `assembler` sur ton poste produit l'arbre filtré, `poser`
+l'installe sur le serveur en gardant l'arborescence décrite au §3. Son en-tête donne
+les étapes. Copier `lib/`, `api/` et `schemas/` à plat casserait le lien de
+`frontend/js/sr-derive.js`.
 
 ### 4.2 Créer l'état runtime
 

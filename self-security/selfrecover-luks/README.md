@@ -88,6 +88,24 @@ deploy keyscript + hook, generate the salt, add recovery slots, configure the ro
 
 Architecture document (the *why*): **[SelfRecover-LUKS_Whitepaper](./docs/SelfRecover-LUKS_Whitepaper.md)** — also as [DOCX download](https://github.com/Pierroons/my-self/raw/main/self-security/selfrecover-luks/docs/SelfRecover-LUKS_Whitepaper.docx).
 
+## What this module does NOT provide
+
+It replaces one passphrase with another, derived one. The gain is **ergonomics and
+unification** — one secret for the volumes of a single machine, whose cascade opens the
+secondary ones — not resistance. Unification stops at the machine:
+`genere-passphrase.py` draws one per machine, and two machines share nothing.
+
+- **A volume is only as strong as its weakest slot.** The native slot stays, on purpose:
+  it is the safety net. An attacker goes for the weaker of the two, never the stronger.
+- **Argon2id does not make up for a short secret.** The KDF slows each attempt; it creates
+  no entropy. Seven diceware words, not three.
+- **Nothing is protected against someone who has the machine on and unlocked.**
+  Encryption at rest says nothing about the running machine.
+- **The salt is not a secret.** It lives in clear in the initramfs, on an unencrypted
+  `/boot` partition. It separates the derived keys, it does not protect them.
+- **The real cost is elsewhere**: every piece added to the boot path is a piece that can go
+  missing after an update. That is why the module ships a safeguard rather than a promise.
+
 ## Safeguards
 
 - **Strong** recovery passphrase (diceware) — the KDF slows attacks, it does not offset a weak secret.
@@ -96,10 +114,20 @@ Architecture document (the *why*): **[SelfRecover-LUKS_Whitepaper](./docs/SelfRe
   recovery passphrase or the native passphrase, nothing else. A shell at that point bypasses the
   encryption — `/boot` is in clear, a modified initrd can be dropped there to capture the next
   entry. `install.sh` asks (`SHELL_AMORCAGE`) and records a refusal in `renoncements.log`.
-- **LUKS header backed up before any slot change**, and `verifie-sauvegardes.sh` refuses a copy
-  stored on the volume it opens, or one whose slot count no longer matches the disk.
+- **LUKS header backed up before any slot change.** The initramfs and `crypttab` backups cover
+  booting, not header corruption — with the header lost, no slot opens anything.
+  `verifie-sauvegardes.sh` refuses a copy stored on the volume it opens, or one whose slot
+  count no longer matches the disk.
+- **The slot proves itself before you depend on it**: `--test-passphrase` between adding the
+  slot and wiring the keyscript. What has not been checked is discovered at the next reboot.
+- **Safeguard after every initramfs rebuild**: the module's real cost is not cryptographic, it
+  is the number of pieces in the boot path. Each can go missing after an initramfs rebuild,
+  and the gap only shows at the next boot.
 - **Disaster recovery**: keep off-site (password manager) the passphrase, the **deployment
   salt** and the backup secrets — without the salt, no re-derivation on new hardware.
+- **The salt exists in three copies, on purpose**: in `/etc/selfkeyguard/`, in the initramfs,
+  and off-site. The first two disappear with the disk; only the third survives a fire. A lost
+  salt makes the passphrase useless — it no longer derives anything.
 - No automatic destruction: slot addition is explicit, keys live in tmpfs.
 
 AGPL-3.0-or-later · part of the [MySelf](https://my-self.fr) ecosystem

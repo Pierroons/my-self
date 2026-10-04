@@ -12,13 +12,13 @@ Instructions pour les agents de code travaillant sur MySelf. Lire aussi
 | `self-security/` | SelfDataGuard (chiffrement enveloppé), SelfRecover-LUKS |
 | `demo/` | ce qui se lance pour montrer : `bi-self-duo/`, `selfdataguard/`, `lab/` |
 | `web/` | ce qui est servi statiquement, un dossier par domaine |
-| `deploy/` | nginx et systemd, un dossier par cible |
+| `deploy/` | nginx, systemd et scripts de déploiement, un dossier par cible |
 | `tools/`, `scripts/` | outillage transverse |
 
 Quatre règles décident où va un fichier. Un **module** porte la spécification,
 la documentation et le code de référence — rien qui se lance. `demo/` porte ce
 qui se lance, et **consomme** un module au lieu de le réimplémenter. `web/`
-porte ce qui est servi. `deploy/` porte la configuration de service.
+porte ce qui est servi. `deploy/` porte la configuration de service et son déploiement.
 
 Une cinquième les complète, et elle ne parle pas de rangement : **le dépôt et
 l'instance disent la même chose, dans les deux sens** — rien de servi hors du
@@ -119,16 +119,16 @@ tiennent en intégration continue.
 | `scripts/check-patch-legi.sh` | un hôte porte-t-il encore les correctifs locaux sur `legi.py`, à l'identique du patch versionné |
 | `scripts/check-liens-bibliotheque.sh` | une démo pointe-t-elle vers la bibliothèque, ou en a-t-elle recopié une version qui divergera |
 | `scripts/check-plancher-secret.sh` | un secret de déploiement atteint-il le plancher de longueur que le code exige |
-| `scripts/check-versions.sh` | chaque porteur d'une version dit-il celle de `modules.json`, la source unique ; avec `--tags`, chaque version annoncée a-t-elle son tag |
+| `scripts/check-versions.sh` | chaque porteur d'une version dit-il celle de `modules.json`, la source unique ; avec `--tags`, chaque version annoncée a-t-elle son tag ; avec `--publications`, sa release, et ce qui est déclaré retiré ne sert-il plus |
 | `scripts/check-ecosysteme.sh` | ce que nos README disent de `selffarm-lite` correspond-il à ce qu'il publie ; `--ecrire` remet le bloc à jour |
 
 **Six d'entre eux tournent en intégration continue** (`structure.yml`) : les
 chemins cités, l'unicité du profil de hachage, les gabarits de vhost — ce
 dernier parce que le job installe nginx pour lui —, les liens de bibliothèque,
-le plancher de secret et les porteurs de version. **Deux autres tournent aussi
-chaque matin** (`suivi.yml`), parce que ce qui les fait rougir n'arrive pas par
-un envoi ici : le tag qu'une version annoncée attend, et le dépôt voisin. Ils
-signalent sans bloquer `main`. Les autres ne le peuvent pas,
+le plancher de secret et les porteurs de version. **Chaque matin, `suivi.yml`
+lance trois contrôles de plus**, parce que ce qui les fait rougir n'arrive pas
+par un envoi ici : le tag qu'une version annoncée attend, sa release publiée, et
+le dépôt voisin. Ils signalent sans bloquer `main`. Les autres ne le peuvent pas,
 et ce n'est pas un oubli — l'écart d'instance, la surface servie et les
 correctifs de `legi.py` ont besoin d'un accès à la machine, la fraîcheur des
 bases a besoin de ses API, et l'audit OPSEC a besoin de motifs qui vivent hors
@@ -151,9 +151,10 @@ Chacun a répondu exactement à la question posée.
 
 ## Conventions
 
-- Langue : suivre celle du module. `self-security/` est en anglais — code crypto
-  destiné à l'audit externe. Les autres modules sont en français. README
-  bilingues, whitepapers descriptifs et impersonnels.
+- Langue : suivre celle du module. `self-security/selfdataguard/` est en anglais —
+  code crypto destiné à l'audit externe. Les autres modules, `selfrecover-luks/`
+  compris, sont en français. README bilingues, whitepapers
+  descriptifs et impersonnels.
 - Les chiffres qui évoluent ne vont pas dans un commentaire : renvoyer vers ce
   qui fait autorité (`/api/status`), donner une borne, ou dater la mesure.
 - Un commentaire décrit le code tel qu'il est. L'histoire d'un correctif va dans
@@ -181,8 +182,9 @@ solide. Une KDF coûteuse sur un chemin ne protège rien si un second chemin mè
 
 ## Déployer
 
-Le script de déploiement vit hors dépôt : ses correctifs n'apparaissent dans
-aucun commit, et ces règles sont le seul endroit où elles se lisent.
+Le déploiement passe par les scripts versionnés sous `deploy/` — pour ce dépôt,
+`deploy/my-self/deploy.sh` : `assembler` sur le poste, `poser` sur le serveur,
+`verifier` partout. Son en-tête dit le détail.
 
 **Un transfert en échec fait échouer le déploiement** depuis le 19/08 : le code
 de sortie était auparavant celui du verrouillage final, qui réussit toujours, et

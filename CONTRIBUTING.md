@@ -74,11 +74,18 @@ Décris **ce que tu as fait**, jamais **ce que tu as retiré**.
 Le dépôt est protégé par [gitleaks](https://github.com/gitleaks/gitleaks) :
 
 ```bash
-sudo apt install gitleaks      # une fois
-./scripts/install-hooks.sh     # active le hook pre-commit
+./scripts/install-hooks.sh     # active les trois hooks, une fois après clonage
 ```
 
-- Un **hook pre-commit** bloque localement tout commit contenant une donnée sensible.
+Installe gitleaks par son **binaire officiel**
+([releases](https://github.com/gitleaks/gitleaks/releases)), pas par le paquet apt : figé sur
+une version ancienne, il n'interprète pas les allowlists comme la CI.
+
+- Trois **hooks** bloquent localement, du moins cher au plus cher : `pre-commit` (les
+  fichiers indexés), `commit-msg` (le message), `pre-push` (l'historique, les orphelins, les
+  métadonnées).
+- Sans **liste de motifs**, qui vit hors du dépôt, les hooks ne cherchent que des secrets,
+  pas les données personnelles : `install-hooks.sh` dit où la créer.
 - Une **CI GitHub Actions** (`.github/workflows/gitleaks.yml`) re-scanne chaque push/PR et
   **refuse le merge** en cas de fuite — la barrière s'applique à tout le monde.
 - Règles dans `.gitleaks.toml` ; faux positifs connus dans `.gitleaksignore`.
@@ -86,7 +93,7 @@ sudo apt install gitleaks      # une fois
 ## 🚀 Déploiement
 
 Le déploiement en production est réservé au mainteneur (audit OPSEC intégré).
-intégré). Les contributions passent par **Pull Request** sur `main`.
+Les contributions passent par **Pull Request** sur `main`.
 
 ## Commits
 

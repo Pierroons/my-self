@@ -28,7 +28,9 @@ ROOT_DEV=/dev/nvme0n1p3        # volume LUKS racine (/)
 ROOT_NAME=nvme0n1p3_crypt      # son nom dans /etc/crypttab (première colonne)
 DATA_DEV=/dev/nvme0n1p4        # volume LUKS secondaire (optionnel, ex. /data)
 NET_MODULE=r8169               # module noyau de ta carte réseau (lspci -k | grep -A2 Ethernet)
-SKG=/etc/selfkeyguard          # répertoire d'installation
+
+# --- IMPOSÉ, NE PAS CHANGER ---
+SKG=/etc/selfkeyguard          # le keyscript et le hook initramfs lisent ce chemin en dur
 ```
 
 ## Prérequis

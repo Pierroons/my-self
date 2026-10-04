@@ -18,7 +18,7 @@ Short guide for anyone wanting to contribute to the live interactive demos.
 - Single-file PHP scripts for endpoints (no routing framework).
 - JS vanilla, no build step. `fetch` + `EventSource` + Web Crypto API are the allowed primitives.
 
-## Repo layout (demo-backend/)
+## Repo layout (`demo/bi-self-duo/`)
 
 ```
 lib/              Class-based libraries, reused across modules
@@ -32,9 +32,10 @@ api/              HTTP endpoints (one PHP file per route)
 frontend/         Static HTML pages (one per demo)
 schemas/          SQLite init scripts per module
 tools/            Bash scripts (cron cleanup, etc.)
-tests/            integration.sh end-to-end tests
-deploy/           nginx vhost config
+tests/            integration.sh end-to-end, plus PHP checks
 ```
+
+The nginx vhost lives outside this folder, in `deploy/bi-self/nginx-bi-self.conf`.
 
 ## Adding a new demo module
 
@@ -54,20 +55,16 @@ deploy/           nginx vhost config
 
 ## Local testing
 
-From LAN (`votre plage LAN privée`, auto-bypass) or with `sj_bypass` cookie :
+From your private LAN range (auto-bypass) or with `sj_bypass` cookie :
 
 ```bash
-cd bi-self/demo-backend
+cd demo/bi-self-duo
 ./tests/integration.sh                    # against prod bi-self.my-self.fr
 ```
 
-To iterate locally:
-
-```bash
-# After edits, redeploy to le serveur
-scp -i $SSH_KEY <file> <utilisateur>@<hôte>:/tmp/
-ssh <hôte> 'sudo cp /tmp/<file> /var/www/bi-self/<path> && sudo chown www-data:www-data /var/www/bi-self/<path>'
-```
+To redeploy after edits, use the repository's deployer, `deploy/my-self/deploy.sh`:
+`assembler` on your machine, then `poser` on the server, which keeps the tree under the
+served root. Its header gives the steps.
 
 No hot-reload — PHP-FPM picks up file changes on the next request.
 

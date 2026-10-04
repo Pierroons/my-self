@@ -10,6 +10,20 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Les guides de contribution, de déploiement et d'installation suivent le dépôt — 4 octobre 2026
+
+- **`CONTRIBUTING.md`** : gitleaks s'installe par son binaire officiel, comme le dit
+  `install-hooks.sh`, et non par apt ; les trois hooks et la liste de motifs hors dépôt sont nommés.
+- **`AGENTS.md`** : le déploiement passe par les scripts versionnés sous `deploy/` ; `suivi.yml` lance
+  trois contrôles ; `selfrecover-luks/` est en français.
+- **Démo duo** : son arborescence et son déploiement suivent le dépôt (`demo/bi-self-duo/`, déployeur de
+  `deploy/my-self/`) ; le dossier `bi-self/demo-backend/` qu'ils décrivaient n'existe plus.
+- **SelfRecover-LUKS** : `INSTALL.md` range `SKG` parmi les valeurs imposées — le démarrage ne lit que
+  `/etc/selfkeyguard` ; le README anglais reçoit la section « What this module does NOT provide » et les
+  garde-fous qui n'existaient qu'en français.
+- **`web/my-self.fr/README.md`** nomme `site.css` et `og-image.png` ; le CHANGELOG décrit le versionnement
+  par `modules.json`.
+
 ### La vitrine et les piliers disent ce que le code fait — 4 octobre 2026
 
 Les README racine, ceux des trois piliers et l'accueil de my-self.fr ont été relus contre le code. Les
@@ -1982,17 +1996,15 @@ Pas de version publique.
 - **vX.Y.0** : feature release (nouveau module ou refonte significative)
 - **vX.Y.Z** : patch (fix, enrichissement mineur)
 
-Chaque module individuel a son propre versionnement sémantique (voir
-leurs README respectifs). Ce changelog racine agrège uniquement les
-jalons transversaux de l'écosystème.
+Chaque module a son propre versionnement sémantique, dont `modules.json` est
+la source unique ; le dépôt lui-même n'a pas de version. Ce changelog racine
+recense les changements de tous les modules, un titre par changement.
 
 ---
 
 ## Auteur
 
 [Pierroons](https://github.com/Pierroons) — mainteneur.
-Outils libres pour l'agriculture, pour que les données ne poussent pas dans le cloud.
 Contact : contact@my-self.fr
 
-Co-écrit avec **Claude** (Anthropic) dans le cadre du « Self pact » humain–IA
-décrit dans le [README](./README.md).
+Co-écrit avec **Claude** (Anthropic), dans le cadre du Pacte humain–IA de MySelf.
