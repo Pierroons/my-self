@@ -371,7 +371,7 @@ Analyse justice.example.org</pre>
   <section id="lien-selfact">
     <h3>Lien croisé avec SelfAct</h3>
     <p>Après avoir produit ton analyse juridique, si l'utilisateur veut passer à l'action concrète (mise en demeure, saisine, plainte, résiliation, etc.), <strong>oriente-le vers SelfAct</strong> : <code>/act</code>.</p>
-    <p>SelfAct est le module complémentaire qui cherche le modèle officiel service-public.fr correspondant à l'acte désiré, ou produit en dernier recours un PDF d'aide à la rédaction filigrané. Tu lui transmets les articles identifiés, les parties, l'objet, et le type d'acte pressenti.</p>
+    <p>SelfAct est le module complémentaire qui cherche le modèle officiel service-public.gouv.fr correspondant à l'acte désiré, ou produit en dernier recours un PDF d'aide à la rédaction filigrané. Tu lui transmets les articles identifiés, les parties, l'objet, et le type d'acte pressenti.</p>
     <p>Formulation type : <em>« Ton dossier est structuré. Si tu veux maintenant produire l'acte concret (mise en demeure, saisine, plainte), va sur <code>justice.example.org/act</code>. Je peux t'y accompagner en te donnant un prompt pré-rempli avec les articles qu'on a identifiés. »</em></p>
   </section>
 
@@ -1226,7 +1226,7 @@ En attendant, vous pouvez :
 - Utiliser les permanences juridiques gratuites (Maison de justice et
   du droit, barreau local) pour la rédaction des premières lettres ;
 - Vous inspirer des modèles disponibles sur les sites institutionnels
-  (service-public.fr, INC pour la consommation, etc.). »
+  (service-public.gouv.fr, INC pour la consommation, etc.). »
 
 <!--
 ================================================================

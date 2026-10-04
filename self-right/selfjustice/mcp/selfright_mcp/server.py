@@ -2095,7 +2095,7 @@ async def catalogue_actes(
             f"{bandeau}\n\nAucune ressource officielle ne correspond"
             + (f" à « {recherche} »" if recherche else "")
             + ".\n\nNe propose pas de modèle de ton cru : oriente vers "
-            "service-public.fr ou demande à l'utilisateur de préciser."
+            "service-public.gouv.fr ou demande à l'utilisateur de préciser."
         )
 
     lignes = "\n".join(
