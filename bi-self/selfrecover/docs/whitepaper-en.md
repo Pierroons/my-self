@@ -219,7 +219,7 @@ L2 always combines **knowledge** (the memorized word) and **possession**. Two po
 - ⚠️ **Enrolling a device does not add a factor: at that moment, the memorized word is enough.** Whoever knows it can enroll **their own** key, then authenticate with it — the path goes through neither a recovery code nor the passphrase. Enrollment therefore belongs to an **already-open session**, and it is up to the application to take the account name from that session rather than from the request body. The protocol requires the application to **assert** this explicitly (`Titulaire::AUTHENTIFIE`), and rate-limits the path per account and per address (5 and 12 failures per 15 minutes, defaults); it cannot verify the session itself — **this is an assertion, not a proof**. An already-enrolled device does remain two real factors: its encrypted blob and the word.
 - A level-3 reset removes every enrolled device; levels 1 and 2 do not.
 
-### 5.5 A passphrase the user brings — the user's choice
+### 5.5 A passphrase the user brings
 
 Wherever a passphrase is issued — at registration, and at the level 1, 2 and 3 renewals —, the user
 may bring their own, rolled with dice, instead of receiving one drawn by the server. Nothing brought:

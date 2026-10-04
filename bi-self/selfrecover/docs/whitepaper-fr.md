@@ -219,7 +219,7 @@ Le L2 combine toujours **connaissance** (le mot mémorisé) et **possession**. D
 - ⚠️ **Enrôler un appareil n'ajoute pas un facteur : à cet instant, le mot suffit.** Qui connaît le mot mémorisé peut enrôler **sa propre** clé, puis s'authentifier avec elle — le chemin ne passe ni par un recovery code, ni par la passphrase. L'enrôlement appartient donc à une **session déjà ouverte**, et il revient à l'application d'en tirer le nom du compte plutôt que du corps de la requête. Le protocole exige de l'application qu'elle l'**affirme** explicitement (`Titulaire::AUTHENTIFIE`), et freine ce chemin par compte et par adresse (5 et 12 échecs sur 15 minutes, valeurs par défaut) ; il ne peut pas vérifier la session lui-même — **c'est une affirmation, pas une preuve**. Un appareil déjà enrôlé, lui, reste deux facteurs réels : son blob chiffré et le mot.
 - La reprise au niveau 3 retire tous les appareils enrôlés ; les niveaux 1 et 2 ne les retirent pas.
 
-### 5.5 La passphrase apportée — le choix de l'utilisateur
+### 5.5 La passphrase apportée par l'utilisateur
 
 Partout où une passphrase est émise — l'inscription, et les renouvellements des niveaux 1, 2 et 3 —,
 l'utilisateur peut apporter la sienne, tirée aux dés, au lieu d'en recevoir une tirée par le serveur.
@@ -228,7 +228,7 @@ Rien d'apporté : le serveur tire, comme avant.
 - **Le contrôle** (`Recovery::validerPassphraseApportee()`) : six mots au moins, chacun dans la liste
   anglaise de l'EFF ou dans la liste française d'Arthur Pons, aucun répété, un plafond d'octets. La
   passphrase est rangée sous une forme unique : minuscules, une espace entre les mots. C'est cette
-  forme qu'on hache, qu'on rend et qu'on fait noter, parce que la vérification ne passe pas en minuscules.
+  forme qu'on hache, qu'on rend et qu'on fait noter, parce que la vérification ne convertit pas la saisie en minuscules.
 - **Le refus** dit la position d'un mot, jamais le mot. Il est jugé avant tout frein, sans trace ni
   délai : il ne dépend que de la saisie, pas du compte, et le tracer laisserait n'importe qui charger
   le frein d'un autre. Il ne consomme ni le code du niveau 2, ni le dossier du niveau 3.

@@ -452,7 +452,7 @@ ayant renoncé aux contrôles qui touchent au système.
 
 Jusqu'ici, la passphrase du niveau 1 était toujours tirée par le serveur, à l'inscription comme à
 chaque récupération. L'utilisateur peut désormais apporter la sienne, tirée aux dés dans la liste
-anglaise de l'EFF ou dans la liste française d'Arthur Pons : le choix lui revient, pas à la machine.
+anglaise de l'EFF ou dans la liste française d'Arthur Pons.
 Rien d'apporté, le serveur tire comme avant ; aucun adaptateur de stockage ne change.
 
 - **`Recovery::validerPassphraseApportee()`** : six mots au moins, chacun dans l'une des deux listes,
