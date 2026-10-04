@@ -22,6 +22,9 @@
         "ext-mbstring": "*",
         "ext-openssl": "*"
     },
+    "suggest": {
+        "ext-pdo_sqlite": "Required by the bundled storage (schema.sql + StockagePdo); not needed with your own StorageInterface"
+    },
     "autoload": {
         "psr-4": {
             "Pierroons\\SelfRecover\\": "src/"

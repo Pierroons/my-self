@@ -23,7 +23,7 @@ use Pierroons\SelfRecover\Storage\StorageInterface;
  * voler un compte pourrait le faire effacer en accumulant des refus — l'échec
  * deviendrait une arme.
  *
- * Ce qui se durcit est la PROCÉDURE : au-delà de `$gelSeuil` refus dans la
+ * Ce qui se durcit est la PROCÉDURE : à `$gelSeuil` refus dans la
  * fenêtre glissante, l'ouverture de nouveaux dossiers gèle. Le compte reste
  * entier, connectable, non banni. Un arbitre dégèle.
  *

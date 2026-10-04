@@ -11,7 +11,9 @@
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
-> **Un mot. Chaque site. Pas d'email requis.**
+> **Ton mot. Tes sites. Pas d'email requis.**
+>
+> Un seul pour tous, ou un par site : c'est toi qui choisis. Chaque site n'en reçoit qu'une empreinte à son nom ; un site malveillant où tu le taperais pourrait garder le mot lui-même.
 
 ---
 
@@ -46,9 +48,9 @@ actuelle ne contient aucun code Lite.
 
 Toute application web fait face à la même question : *que se passe-t-il quand un utilisateur oublie son mot de passe ?*
 
-Depuis vingt ans, la réponse de l'industrie est : **envoyer un email**. Mais cela crée une chaîne de dépendances — fournisseurs SMTP, problèmes de délivrabilité, dossiers spam, boîtes mail tierces, tokens qui expirent — et cela externalise le modèle de sécurité à un service que vous ne contrôlez pas.
+Depuis vingt ans, la réponse de l'industrie est : **envoyer un email**. Mais cela crée une chaîne de dépendances — fournisseurs SMTP, problèmes de délivrabilité, dossiers spam, boîtes mail tierces, tokens qui expirent — et cela externalise le modèle de sécurité à un service que tu ne contrôles pas.
 
-**Pourquoi un site web a-t-il besoin de votre email pour prouver que vous êtes vous ?**
+**Pourquoi un site web a-t-il besoin de ton email pour prouver que tu es toi ?**
 
 ---
 
@@ -100,22 +102,23 @@ Le matériel doit être **lu** dans le navigateur, jamais reçu du réseau. Un m
 
 ### D'où vient l'aléa
 
-Cinq dés, une liste de 7776 mots — soit exactement 6⁵.
+Une liste de 7776 mots — soit exactement 6⁵ : cinq dés désignent un mot.
 
 | Passphrase | Entropie |
 |---|---|
-| 1 mot (5 dés) | 12,9 bits |
+| 1 mot | 12,9 bits |
 | 4 mots | 51,7 bits |
 | 6 mots | 77,5 bits |
 
-C'est mesurable et non reproductible. Un générateur logiciel produit une suite
-calculable à partir de son état interne ; les dés n'ont pas d'état.
+La bibliothèque tire la passphrase elle-même : six mots de la liste anglaise, par
+`random_int`, le générateur cryptographique de PHP (`src/Diceware/Wordlist.php`).
+Ces chiffres supposent un tirage uniforme ; une phrase choisie à la main ne les atteint pas.
 
 La liste anglaise est celle de l'EFF. La liste française est une liste
 communautaire, celle d'Arthur Pons (CC-BY 3.0), construite sur la méthode de l'EFF :
 il n'existe pas de liste officielle en français, celle-ci s'est imposée par l'usage. Les deux comptent 7776 entrées, donc les chiffres ci-dessus
 valent dans les deux langues.
-[La méthode papier est documentée pas à pas](./tools/entropy-lab/docs/diceware-method-fr.pdf).
+[La méthode aux dés, d'où viennent ces chiffres, est documentée pas à pas](./tools/entropy-lab/docs/diceware-method-fr.pdf).
 
 ### Modèle de stockage
 
@@ -150,7 +153,7 @@ saisie user  → recovery_code + recovery_word
 réseau       → sel du compte, demandé par le code   // toujours un sel : un faux, stable, pour un code inconnu
 client       → derived_key  = HMAC-SHA256(clé = recovery_word, message = matériel + "|v2" + user_salt)
 réseau       → POST /recover { recovery_code, derived_key }
-serveur      → compte        = lookup(HMAC-SHA256(SERVER_SECRET, recovery_code))  // le code localise le compte
+serveur      → compte        = lookup(HMAC-SHA256(sel_deploiement, recovery_code))  // le code localise le compte
                verify        = password_verify(recovery_code, code_hash)
                              ET password_verify(derived_key, stored_recovery_hash)  // Argon2id, les deux toujours calculés
 ```
@@ -198,7 +201,7 @@ Chaque code est stocké **deux fois**, jamais en clair :
 
 | Colonne | Rôle |
 |---|---|
-| `code_lookup` = `HMAC-SHA256(SERVER_SECRET, code)` | recherche **O(1) sans identifiant** (le code localise le compte) + rôle de *pepper* non réversible |
+| `code_lookup` = `HMAC-SHA256(sel_deploiement, code)` | recherche **O(1) sans identifiant** (le code localise le compte) + rôle de *pepper* non réversible |
 | `code_hash` = `Argon2id(code)` | vérification + résistance à une fuite de base |
 
 - **Usage unique** (marqué `used` après un reset réussi).
@@ -286,7 +289,7 @@ La démo PHP autonome qui vivait sous `demo/` a été retirée : son code de ré
        │                          │
 ```
 
-Le mot de récupération brut ne quitte jamais le navigateur.
+Avec le dériveur livré, le mot de récupération brut ne quitte pas le navigateur.
 
 ---
 
@@ -304,7 +307,7 @@ Tu as donc deux chemins, et le contrat existe pour que le premier reste possible
 | tu as déjà tes tables | tu écris ton adaptateur, **tu ne migres rien** |
 | tu pars de zéro | tu charges `schema.sql`, tu branches `StockagePdo` — **aucun adaptateur à écrire** |
 Les deux ciblent SQLite. Sur MariaDB ou PostgreSQL, les types de colonnes et trois
-requêtes se réécrivent — l'en-tête de `schema.sql` les nomme.
+constructions de l'adaptateur (quatre requêtes) se réécrivent — l'en-tête de `schema.sql` les nomme.
 
 `StockagePdo` sert aussi le facteur « cet appareil » et exige l'**hôte de dérivation** :
 il refuse de reposer des secrets sans lui, plutôt que d'écrire un marqueur vide sur un
@@ -326,7 +329,7 @@ méthode qui écrit, tant qu'on ne va pas voir la table.
 
 | Propriété | Comment c'est obtenu |
 |----------|------------------|
-| **Le mot de récupération ne quitte jamais le navigateur** | Seule son empreinte HMAC par site est transmise, et la base n'en garde qu'un hachage Argon2id : une compromission ne révèle aucun mot de récupération. Le mot de passe et la passphrase, engendrés par le serveur, passent par lui au moment où ils servent. |
+| **Le mot de récupération ne quitte pas le navigateur** | Le dériveur livré n'en transmet que l'empreinte HMAC par site, et la base n'en garde qu'un hachage Argon2id : une fuite de base ne révèle aucun mot en clair, et chaque essai sur l'un d'eux coûte un Argon2id. Le mot de passe et la passphrase, engendrés par le serveur, passent par lui au moment où ils servent. |
 | **Résistance au phishing passif** | **En mode `'hostname'` seulement.** Le matériel est lu dans le navigateur : un clone qui copie la page dérive de sa propre adresse et produit une clé que le vrai serveur ne détient pas. En mode `'label'`, il n'y en a aucune — la copie porte le même label. Un site de phishing actif qui contrôle sa propre page reste hors périmètre dans les deux cas (vrai pour tout protocole in-browser). |
 | **Résistance au rejeu** | Chaque secret ne sert qu'une fois : un code L2 est consommé par l'`UPDATE` qui le marque, un défi d'appareil est consommé avant la vérification de signature, et la reprise du compte clôt le dossier L3, ce qui périme son sésame. Les freins de débit ralentissent, ils ne ferment pas le rejeu. |
 | **Résistance à la fuite** | Chaque compte a son propre sel ; le serveur ne stocke que des hachages Argon2id de clés dérivées par service. Une fuite du code client seul est inutile. |
@@ -344,8 +347,8 @@ méthode qui écrit, tant qu'on ne va pas voir la table.
 - Brute force de compte (coût memory-hard Argon2id + rate limits + L3 revu par un humain)
 
 **Ne prétend pas protéger contre :**
-- Code client malveillant / phishing actif (si l'attaquant contrôle la page que votre navigateur charge, le protocole ne peut rien — vrai pour n'importe quel protocole in-browser)
-- Mots de récupération faibles (`password`, `123`) — mitigé par le rate-limiting et l'escalade vers un L3 revu par un humain, pas par la dérivation elle-même
+- Code client malveillant / phishing actif (si l'attaquant contrôle la page que ton navigateur charge, le protocole ne peut rien — vrai pour n'importe quel protocole in-browser)
+- Mots de récupération faibles (`password`, `123`) — le niveau 2 demande aussi un code ou l'appareil enrôlé ; en ligne, les freins de débit et la suspension du niveau 2 bornent les essais ; hors ligne (base volée, blob d'un appareil), seul le coût d'Argon2id les freine — pas la dérivation elle-même
 - Coercition physique de l'utilisateur (voir SelfGuard dans cet écosystème pour un stockage conscient de la contrainte)
 - Malware ciblé avec keylogging
 
@@ -375,7 +378,7 @@ C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecove
 **Bibliothèque de référence + implémentation déployée, auto-auditée**
 
 Ce dépôt contient :
-- La **spécification du protocole** (whitepapers v1.1)
+- La **spécification du protocole** (whitepapers v1.2)
 - Une **bibliothèque PHP** — `src/`, PSR-4 `Pierroons\SelfRecover\` : récupération de niveaux 1 et 2, recovery codes, facteur « cet appareil », profil Argon2id, wordlist diceware, et l'interface de stockage que l'intégrateur implémente pour sa propre base — ou, s'il part de zéro, son implémentation fournie (`schema.sql` + `StockagePdo`)
 - Le **dériveur navigateur** — `client/sr-derive.js`, livré plutôt que décrit : c'est lui qui porte la propriété anti-hameçonnage, et les intégrateurs qui l'écrivaient eux-mêmes en produisaient des variantes qui ne l'avaient pas ; et `client/sr-kdf.js`, qui chiffre un secret local en Argon2id avec sa version et ses paramètres dans le blob
 - **Les trois niveaux**, depuis le 07/09/2026 : l'escalade de niveau 3 est remontée dans `src/Recovery/Escalade.php` — dossier, sésame à usage unique, faisceau de faits bruts, arbitrage et gel de procédure. Elle ne vérifie pas *qui* a le droit de trancher : les rôles et les sessions appartiennent à l'application. Le super-utilisateur, lui, vit toujours dans [`demo/lab/`](../../demo/lab/)
@@ -383,7 +386,7 @@ Ce dépôt contient :
 **Déploiement réel :** l'implémentation tourne en conditions réelles — notamment comme **backend d'authentification d'un service de messagerie**, qui réutilise tel quel le stockage de comptes SelfRecover (Argon2id).
 
 **Ce que ce dépôt n'est PAS (encore) :**
-- Un paquet **publié** : la bibliothèque s'installe par dépôt Composer `path` ou VCS — c'est ce que fait `demo/lab/` — mais pas encore par `composer require` depuis Packagist, ni par `npm install`
+- Un paquet **publié** : la bibliothèque s'installe depuis un clone du dépôt, par un dépôt Composer de type `path` — c'est ce que fait `demo/lab/`. Un dépôt Composer de type VCS ne la trouve pas : le `composer.json` n'est pas à la racine du dépôt. Pas encore de `composer require` depuis Packagist, ni de `npm install`
 - Un produit avec audit de sécurité **externe** (un audit adverse interne a été mené ; les retours red-team externes sont bienvenus)
 
 ---
@@ -396,11 +399,11 @@ SelfRecover est honnête sur ce qu'il protège et ce qu'il ne protège pas. Tout
 
 | Adversaire | Couverture |
 |---|---|
-| Serveur SelfRecover compromis | ⚠️ Le mot de récupération reste hors d'atteinte (HMAC dans le navigateur) ; la passphrase et le mot de passe, non — le serveur les engendre et les revoit à l'usage |
+| Serveur SelfRecover compromis | ⚠️ Le dériveur livré n'envoie que l'empreinte du mot de récupération (HMAC dans le navigateur) ; mais c'est le serveur qui sert ce JavaScript, et un serveur compromis peut servir une autre page. La passphrase et le mot de passe, il les engendre et les revoit à l'usage |
 | Phishing passif / page clonée | ✅ en mode `'hostname'` — un clone dérive de sa propre adresse ; ❌ rien en mode `'label'` (un phishing actif contrôlant sa page est hors périmètre dans les deux cas) |
 | Sniffeur réseau / MITM | ✅ TLS en transit + seule la dérivation HMAC est transmise |
 | Fuite de base de données | ✅ Hashes Argon2id (memory-hard, GPU-resistant) |
-| Brute-force online | ✅ Rate-limit par username + escalade L2/L3 progressive |
+| Brute-force online | ✅ Freins par compte, et par adresse sous le profil `clearweb`, puis suspension du niveau 2 au-delà d'un seuil d'échecs |
 
 ### Adversaires HORS PÉRIMÈTRE — assumés explicitement
 
@@ -495,4 +498,4 @@ Divulgations de sécurité : voir [SECURITY.md](SECURITY.md).
 
 **Pierroons** — auteur du projet.
 
-*SelfRecover — parce que votre identité ne devrait pas dépendre d'une boîte mail.*
+*SelfRecover — parce que ton identité ne devrait pas dépendre d'une boîte mail.*

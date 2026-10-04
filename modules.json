@@ -70,6 +70,14 @@
         [
           "bi-self/selfrecover/tools/entropy-lab/docs/diceware-method-fr.pdf",
           "/Keywords (SelfRecover-v"
+        ],
+        [
+          "bi-self/selfrecover/docs/whitepaper-fr.md",
+          "décrit SelfRecover "
+        ],
+        [
+          "bi-self/selfrecover/docs/whitepaper-en.md",
+          "describes SelfRecover "
         ]
       ]
     },
@@ -86,6 +94,10 @@
         [
           "self-security/selfrecover-luks/README.md",
           "badge/status-v"
+        ],
+        [
+          "self-security/selfrecover-luks/docs/SelfRecover-LUKS_Whitepaper.md",
+          "pilier Self-Security · Version "
         ],
         [
           "self-security/selfrecover-luks/README.fr.md",
