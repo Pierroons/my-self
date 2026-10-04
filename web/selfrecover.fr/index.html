@@ -85,26 +85,22 @@
 
   <section id="essai"><div class="wrap">
     <p class="repere">02 — essaie, rien ne part</p>
-    <h2>Tape un mot. Regarde ce qu'en fait ton navigateur.</h2>
-    <p class="lead">C'est le dériveur de la bibliothèque SelfRecover qui calcule, ici, dans ta page. Rien n'est
-      envoyé&nbsp;: coupe ton réseau, ça marche encore.</p>
+    <h2>Même mot, deux sites, deux empreintes.</h2>
+    <p class="lead">Tape un mot&nbsp;: ton navigateur calcule l'empreinte que ce site recevrait, et celle qu'obtiendrait
+      une copie piégée. Rien n'est envoyé&nbsp;: coupe ton réseau, ça marche encore.</p>
     <div class="essai">
-      <div class="saisie">
-        <div class="champ">
-          <label for="essai-mot">Ton mot (il reste ici)</label>
-          <input type="text" id="essai-mot" autocomplete="off" spellcheck="false" autocapitalize="off">
-        </div>
-        <button type="button" class="btn btn-g btn-s" id="essai-resel">Nouveau sel</button>
+      <div class="champ">
+        <label for="essai-mot">Ton mot (il reste ici)</label>
+        <input type="text" id="essai-mot" autocomplete="off" spellcheck="false" autocapitalize="off">
       </div>
       <div class="term" aria-live="polite">
-        <p class="term-titre">dérivation locale</p>
-        <div class="ligne"><span class="cle-l">sel du compte d'essai</span><span class="val" id="essai-sel"></span></div>
-        <div class="ligne"><span class="cle-l">empreinte · <span id="essai-hote"></span></span><span class="val" id="essai-ici"></span></div>
+        <div class="ligne"><span class="cle-l">ce site · <span id="essai-hote"></span></span><span class="val" id="essai-ici"></span></div>
         <div class="ligne"><span class="cle-l">copie piégée · <span id="essai-hote-piege"></span></span><span class="val piege" id="essai-piege"></span></div>
         <p class="verdict vide" id="essai-verdict">Les deux empreintes apparaîtront ici.</p>
       </div>
-      <p class="note">La copie piégée calcule exactement ce que calculerait cette page servie à une autre adresse.
-        Mais si elle te fait taper ton mot dans son propre formulaire, elle le lit&nbsp;: voir <a class="lnk" href="#limites">Limites</a>.</p>
+      <p class="note">Si la copie te fait taper ton mot dans son propre formulaire, elle le lit&nbsp;: voir
+        <a class="lnk" href="#limites">Limites</a>. Le calcul lui-même, maillon par maillon&nbsp;:
+        <a class="lnk" href="/comprendre/#derivation">Comprendre</a>.</p>
     </div>
   </div></section>
 

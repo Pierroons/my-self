@@ -7,12 +7,12 @@
   var PIEGE = 'selfrec0ver.fr';
   var hote = window.location.hostname.toLowerCase();
   var sortie = {
-    sel: document.getElementById('essai-sel'),
     ici: document.getElementById('essai-ici'),
     piege: document.getElementById('essai-piege'),
     verdict: document.getElementById('essai-verdict')
   };
   var C = window.Coulisses;
+  // Un sel de compte d'essai, propre à cette visite : il n'est pas affiché ici, les coulisses le montrent.
   var sel = window.srEngendrerSel(), tour = 0, minuteur = 0, minuteurJournal = 0;
 
   document.getElementById('essai-hote').textContent = hote;
@@ -22,8 +22,6 @@
     cible.classList.toggle('attente', !!attente);
     if (C && !attente) C.decrypter(cible, valeur); else cible.textContent = valeur;
   }
-
-  function afficherSel() { poser(sortie.sel, sel); }
 
   function attendre() {
     poser(sortie.ici, '— tape un mot —', true);
@@ -65,13 +63,5 @@
     window.clearTimeout(minuteur);
     minuteur = window.setTimeout(calculer, 120);
   });
-  document.getElementById('essai-resel').addEventListener('click', function () {
-    sel = window.srEngendrerSel();
-    afficherSel();
-    if (C) C.emit('nav', 'Nouveau sel : même mot, autre empreinte. Le sel empêche qu\'une table précalculée serve pour tout le monde.', [['sel', sel, true]]);
-    calculer();
-  });
-
-  afficherSel();
   attendre();
 })();
