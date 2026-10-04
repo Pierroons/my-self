@@ -183,3 +183,4 @@ bd2dd2407b2e645a937f798a98f5449b38c9b996	my-self-lab/docs/PENTEST-MISSION-ctf.md
 12a9bcf318e4a1a5004f1ae5739e341824fbf3ac	(message)	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
 e61ae4923f40609a971cf0230a4ed44c8718726e	(message)	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
 1039a7a1d22440d24dec5ac27d619018926c2aaf	(message)	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
+da74a373535e15c3b21fb9e7930e86d398bf4b0b	self-security/selfrecover-luks/install.sh	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
