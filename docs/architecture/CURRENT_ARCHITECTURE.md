@@ -2,7 +2,8 @@
 
 *3 octobre 2026 — 19:48 · état du dépôt au commit `1b91edf` ; SelfDataGuard, SelfRecover, leurs démos et
 les constats 20 et 23 revus le 4 octobre 2026 au commit `4149238` ; Self-Right, la CI, le déploiement, l'intégration et SelfFarm Lite relus
-par leurs mainteneurs au même commit ; constats 17, 18, 19 et 21 revus au commit `e97460e`*
+par leurs mainteneurs au même commit ; constats 17, 18, 19 et 21 revus au commit `e97460e` ;
+§9.7, faiblesses d'instance corrigées, ajouté le 4 octobre 2026*
 
 > **Statut : relu.** Le 4 octobre 2026, le mainteneur de chaque module a relu, dans toutes les
 > sections, ce qui touche son module. Un constat corrigé depuis porte 🟢.
@@ -33,8 +34,9 @@ module :
 - `vendor/` et les binaires ;
 - le dépôt voisin `selffarm-lite`, qui n'a aucun couplage de code avec celui-ci.
 
-Les faiblesses propres aux instances en service ne sont pas publiées ici : elles suivent la
-divulgation coordonnée de `SECURITY.md`, et rejoindront ce document une fois corrigées. Pour la
+Les faiblesses propres aux instances en service ne sont pas publiées ici tant qu'elles sont
+ouvertes : elles suivent la divulgation coordonnée de `SECURITY.md`. Corrigées et mesurées sur
+l'instance, elles rejoignent le §9.7. Pour la
 même raison, ce document ne détaille pas les faiblesses du lab, qui est une cible de red team
 en cours.
 
@@ -278,7 +280,8 @@ SelfJustice, et se replie sur ses chemins.
 Ce sont des limites de conception et des écarts de documentation. Les exploiter suppose un accès
 en écriture à la base, un accès local, ou rien du tout quand il s'agit de documentation. **✔** :
 revérifié à la ligne. Aucun n'est corrigé par ce document. **🟢 corrigé** : fermé depuis, avec la
-version qui le ferme ; le détail est dans le CHANGELOG racine.
+version qui le ferme ; le détail est dans le CHANGELOG racine. Le §9.7 range à part les faiblesses
+d'instance corrigées.
 
 ### 9.1 Séparation des domaines et cryptographie
 
@@ -382,6 +385,41 @@ version qui le ferme ; le détail est dans le CHANGELOG racine.
 25. `alerter()` existe en trois copies dans les outils de SelfJustice, plus une dans SelfAct. La
     substitution de domaine vit dans les trois `deploy/*/deploy.sh`. Les motifs User-Agent des IA
     sont écrits quatre fois.
+
+### 9.7 Faiblesses d'instance corrigées
+
+Relevées sur les instances en service, tenues privées tant qu'elles étaient ouvertes, puis
+corrigées et mesurées sur l'instance le 4 octobre 2026. Celles qui tenaient au code versionné
+valent pour toute instance installée depuis un `main` antérieur : la mettre à jour les ferme.
+
+26. 🟢 **La démo SelfDataGuard n'avait qu'une base pour tous ses visiteurs.** Chacun voyait les
+    coffres des autres, testait leurs index aveugles et essayait leurs mots de passe, sans frein,
+    alors que chaque essai coûte un Argon2id mémoire-dur. Désormais : une base par visiteur, créée
+    par une inscription valide seulement et effacée 30 minutes après sa dernière action, et une
+    limite de débit nginx devant la démo (`demo/selfdataguard/`, `deploy/selfdataguard/`).
+27. 🟢 **Le jeton du panneau de veille de SelfJustice circulait dans l'URL**, donc dans les journaux
+    d'accès, qu'un outil recopiait là où d'autres comptes de la machine pouvaient les lire. Le
+    panneau n'écrit plus de journal d'accès, les copies ne sont lisibles que par le service, et le
+    jeton a été changé (`deploy/selfjustice/nginx.conf`, `self-right/selfjustice/tools/admin_feed.sh`).
+28. 🟢 **Un fichier de débogage du même panneau, lisible par tous les comptes de la machine,
+    portait un jeton en clair.** Supprimé ; le jeton a été changé.
+29. 🟢 **Le dépôt anonyme de retours de SelfJustice n'avait ni limite de débit ni quota.** Une
+    limite nginx le freine, et un quota de stockage le borne : au-delà, le dépôt est refusé sans
+    rien écrire (`self-right/selfjustice/api/quota_feedback.php`).
+30. 🟢 **L'en-tête `Host` du client était reflété dans des réponses mises en cache** par SelfJustice
+    et SelfAct. Les URL rendues partent de `SELFJUSTICE_BASE_URL`, sinon du nom que nginx fixe
+    (`self-right/selfjustice/api/api.php`, `self-right/selfact/api/find.php`). L'exploitation
+    supposait un cache partagé qui n'aurait pas mis `Host` dans sa clé.
+31. 🟢 **Deux scripts de collecte de SelfAct, sans garde, vivaient dans le répertoire de l'API
+    servie.** Le vhost ne les joignait pas ; ils refusent désormais de tourner hors de la ligne de
+    commande (`self-right/selfact/api/scraper.php`, `self-right/selfact/api/reclassify.php`).
+32. 🟢 **La collecte du corpus européen contactait CELLAR en HTTP**, et deux services de collecte
+    pouvaient écrire dans le répertoire de leur propre code. CELLAR passe en HTTPS
+    (`self-right/selfjustice/tools/build_eu_db.py`) ; ces services n'écrivent plus que dans leur
+    répertoire de données, et la sonde de fraîcheur est durcie comme eux (`deploy/selfjustice/`).
+33. 🟢 **Les routes d'administration et de SelfAct ne vivaient que dans le vhost de l'instance** :
+    le gabarit versionné ne décrivait pas ce qui était servi. Il le décrit, au domaine près
+    (`deploy/selfjustice/nginx.conf` ; voir aussi le constat 20).
 
 ---
 
