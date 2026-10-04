@@ -1,9 +1,9 @@
-# SelfRecover — "Whitepaper" v1.1
+# SelfRecover — Whitepaper v1.2
 
 **Protocole de récupération de compte sans email**
-*Un mot. Tous les sites. Pour toujours.*
+*Ton mot. Tes sites. Sans email.*
 
-*Édition du 23 juillet 2026 — v1.1*
+*Édition du 4 octobre 2026 — v1.2 — décrit SelfRecover 0.9.0*
 
 ---
 
@@ -11,7 +11,7 @@
 
 Le schéma qui coûte le plus cher est connu, et il se répète : une faille d'autorisation triviale — changer un identifiant dans une requête d'API suffit à lire le compte d'un autre — sur un service dont la récupération de compte passe par un canal email. L'ampleur ne tient alors qu'au nombre de lignes de la table.
 
-La question est structurelle : pourquoi un service doit-il indexer une boîte mail pour établir qu'on est soi ? Tant qu'une boîte tierce est dans la chaîne de récupération, sa compromission devient l'angle d'attaque dominant. SelfRecover propose une réponse technique : rendre le canal email optionnel (mode **Lite** v0.1.1) ou le supprimer complètement (mode **Full**). Publié sous AGPL-3.0-or-later en avril 2026 (v0.1.0).
+La question est structurelle : pourquoi un service doit-il indexer une boîte mail pour établir qu'on est soi ? Tant qu'une boîte tierce est dans la chaîne de récupération, sa compromission devient l'angle d'attaque dominant. SelfRecover propose une réponse technique : supprimer le canal email (mode **Full**, le seul implémenté). Un mode **Lite**, qui le gardait en option, a été montré en démonstration en v0.1.1 ; cette démonstration a été retirée le 18 août 2026. Publié en avril 2026 (v0.1.0), sous AGPL-3.0-or-later depuis le 19 avril 2026.
 
 Ce whitepaper décrit le protocole. Il ne vise aucun acteur en particulier — c'est une proposition open-source que les opérateurs publics et privés peuvent auditer, intégrer ou contester librement.
 
@@ -19,7 +19,7 @@ Ce whitepaper décrit le protocole. Il ne vise aucun acteur en particulier — c
 
 ## Résumé
 
-SelfRecover est un protocole de récupération de compte à connaissance partagée qui élimine la dépendance à l'email pour la réinitialisation de mot de passe. Il repose sur une dérivation HMAC-SHA256 effectuée côté client, clavée par le mot de récupération lui-même, dont le message porte le matériel de dérivation, la version du format et le sel du compte : le mot de récupération brut ne quitte jamais le navigateur, et le serveur ne stocke que des hachages Argon2id de clés dérivées par service (ce qui empêche la corrélation des empreintes entre services). Ce document décrit le protocole, son escalade en trois niveaux, son modèle de menaces, et les règles de déploiement obligatoires.
+SelfRecover est un protocole de récupération de compte à connaissance partagée qui élimine la dépendance à l'email pour la réinitialisation de mot de passe. Il repose sur une dérivation HMAC-SHA256 effectuée côté client, clavée par le mot de récupération lui-même, dont le message porte le matériel de dérivation, la version du format et le sel du compte : le dériveur livré ne fait sortir du navigateur que l'empreinte du mot de récupération, et le serveur n'en range qu'un hachage Argon2id, propre au service et au compte (ce qui empêche la corrélation des empreintes entre services). Le mot de passe et la passphrase, eux, sont engendrés par le serveur et passent par lui. Ce document décrit le protocole, son escalade en trois niveaux, son modèle de menaces, et les règles de déploiement obligatoires.
 
 ---
 
@@ -35,7 +35,7 @@ Depuis vingt ans, la réponse de l'industrie est toujours la même : **envoyer u
 - Le lien de reset doit être cliqué dans un délai (15 à 60 minutes)
 - Le modèle de sécurité est externalisé vers un tiers (Gmail, Outlook, ProtonMail)
 
-**La vraie question que personne ne pose :** pourquoi un site web a-t-il besoin de votre email pour prouver que vous êtes vous ?
+**La vraie question que personne ne pose :** pourquoi un site web a-t-il besoin de ton email pour prouver que tu es toi ?
 
 SelfRecover propose une autre réponse : la confiance reste entre l'utilisateur et le site. Pas d'intermédiaire. Pas d'email. Pas de tiers.
 
@@ -63,7 +63,7 @@ Le mot seul ne rouvre aucun compte : au niveau 2, il faut aussi un recovery code
 
 ### 3.1 Inscription
 
-Quand un nouveau compte est créé, le mot de récupération est immédiatement traité par dérivation HMAC-SHA256. Le mot brut n'atteint jamais le serveur.
+Quand un nouveau compte est créé, le mot de récupération est immédiatement traité par dérivation HMAC-SHA256, dans le navigateur. Avec le dériveur livré, le mot brut n'atteint pas le serveur.
 
 ```
 clé_dérivée = HMAC-SHA256(clé = mot_récupération, message = matériel + "|v2" + sel_compte)
@@ -73,16 +73,19 @@ Le `matériel` dépend d'un mode de dérivation obligatoire, décrit en §4. La 
 
 Le serveur reçoit et stocke :
 
-- `Argon2id(mot_de_passe)` — hash classique du mot de passe
-- `Argon2id(passphrase)` — une passphrase diceware générée côté serveur (6 mots, ~77,5 bits d'entropie)
+- `Argon2id(mot_de_passe)` — le mot de passe de connexion
+- `Argon2id(passphrase)` — une passphrase diceware engendrée côté serveur (6 mots, ≈ 77,5 bits d'entropie ; une passphrase plus courte, émise avant le passage à six mots, reste valide jusqu'à son usage)
 - `Argon2id(clé_dérivée)` — la clé de récupération dérivée par HMAC
 - `sel_compte` — le sel du compte : 16 octets aléatoires rendus en 32 hexadécimaux minuscules, un par compte, engendré par le navigateur, pas un secret
+- les 10 codes de récupération du premier lot, chacun sous deux formes (§5.4)
 
-L'utilisateur reçoit la passphrase une seule fois et doit la conserver hors ligne.
+Tous les hachages serveur suivent un seul profil Argon2id : 64 Mio, 4 itérations, 2 fils (`Hashing::ARGON2`).
+
+L'utilisateur reçoit la passphrase et ses codes une seule fois, et les conserve sur papier, hors ligne.
 
 ### 3.2 Authentification
 
-La connexion utilise le flow classique `username + mot de passe` → token JWT. Le token est lié à une empreinte navigateur et s'invalide au changement d'appareil.
+La connexion ordinaire appartient à l'application : la bibliothèque n'en fournit pas. Elle exige seulement de pouvoir révoquer les sessions d'un compte (`revoquerSessions()`), ce que fait chaque récupération réussie.
 
 ### 3.3 Récupération
 
@@ -90,9 +93,10 @@ Trois niveaux, chacun avec ses propres garanties et modes d'échec :
 
 | Niveau | Entrée | Résultat en cas de succès |
 |--------|--------|---------------------------|
-| **L1** | Username + passphrase diceware | Nouveau mot de passe |
-| **L2** | Code de récupération + mot de récupération (dérivé HMAC) | Nouveau mot de passe |
-| **L3** | Identifiant public + signaux contextuels | Faits bruts pour un admin humain → ré-enrôlement par l'utilisateur en cas d'accord |
+| **L1** | Nom du compte + passphrase diceware | Nouveau mot de passe et nouvelle passphrase |
+| **L2** | Code de récupération + mot de récupération (dérivé HMAC) | Nouveau mot de passe et nouvelle passphrase |
+| **L2, voie appareil** | Appareil enrôlé + mot de récupération | Nouveau mot de passe ; passphrase et codes inchangés |
+| **L3** | Nom du compte + réponses de contexte | Faits bruts pour un arbitre humain ; en cas d'accord, l'utilisateur choisit son mot de passe et son mot mémorisé, le serveur émet une passphrase et 10 codes neufs et retire les appareils enrôlés |
 
 ---
 
@@ -103,13 +107,13 @@ C'est l'innovation centrale de SelfRecover.
 Quand l'utilisateur tape son mot de récupération, le navigateur calcule une clé dérivée spécifique au service **avant que quoi que ce soit ne quitte le client**. Le composant livré qui porte ce calcul est `client/sr-derive.js` ; les vecteurs figés que toute réimplémentation doit retrouver vivent dans `tests/vecteurs-derivation.json`.
 
 ```javascript
-// Forme livrée par client/sr-derive.js. Le mot mémorisé va en CLÉ, jamais en message.
+// Forme abrégée de client/sr-derive.js. Le mot mémorisé va en CLÉ, jamais en message.
 const VERSION = 'v2';
 
 function matériel(mode, label) {
     // Lu dans le navigateur, jamais reçu du réseau.
     if (mode === 'hostname') return location.hostname.toLowerCase();
-    if (mode === 'label')    return label;            // pris tel quel
+    if (mode === 'label' && label) return label;      // pris tel quel ; vide, il lève
     throw new Error("mode obligatoire : 'hostname' ou 'label' — il n'y a pas de défaut");
 }
 
@@ -132,9 +136,9 @@ async function srDerive(mot, sel, { mode, label }) {
 
 **Propriétés clés :**
 
-- Le même input produit un output différent sur chaque service
-- Le mot brut ne quitte **jamais** le navigateur
-- Le serveur ne voit jamais le mot — uniquement la clé dérivée
+- Le même mot donne une empreinte différente pour chaque compte (le sel) et pour chaque matériel : chaque nom d'hôte en mode `'hostname'`, chaque label en mode `'label'`
+- Avec le dériveur livré, le mot brut ne quitte pas le navigateur
+- Le serveur ne reçoit que la clé dérivée. C'est lui qui sert le dériveur : un serveur compromis pourrait servir une autre page (§10.2)
 - Le résultat fait toujours 256 bits, quelle que soit la longueur de l'input
 - Fonctionne sur tous les appareils — mêmes maths, même résultat
 - La version vit **dans le message** : pendant une bascule, un service peut dériver sous deux versions et accepter les deux
@@ -153,16 +157,22 @@ Le matériel doit être **lu** dans le navigateur, jamais reçu du réseau : un 
 
 **Résistance au phishing passif — en mode `'hostname'` seulement.** Le clone recopie la page, donc recopie la bibliothèque, qui lit alors l'adresse du clone : la clé obtenue ne vaut rien contre le vrai serveur, et le clone n'a rien fait de mal pour cela. En mode `'label'` cette résistance n'existe pas — le label voyage avec la copie. La limite honnête, valable dans les deux modes : un site de phishing actif qui contrôle sa propre page récolte le mot brut et dérive ensuite ce qu'il veut (hors périmètre, comme tout protocole in-browser) ; et un mot brut réutilisé ailleurs reste réutilisable — la dérivation ne sauve pas un secret connu et réutilisé.
 
+### 4.2 La route du sel — elle répond toujours
+
+Au niveau 2, le navigateur dérive avant que le compte soit identifié : c'est le code qui l'identifie. Il lui faut donc d'abord le sel du compte, qu'il demande en présentant le code, sur une route publique et sans authentification. Elle répond **toujours** un sel : celui du compte pour un code connu, consommé ou non ; sinon un faux, de même forme, stable d'un essai à l'autre, tiré du sel du déploiement et calculé dans les deux cas. Une route qui refuserait un code inconnu permettrait d'éprouver les codes au prix d'une requête, sans payer un seul Argon2id.
+
+La bibliothèque n'expose pas de route ; elle fournit la garde, `Recovery::selDeDerivation($code)`, et l'interface facultative `SelParCodeInterface`, que seul le stockage qui sert cette route doit implémenter.
+
 ---
 
 ## 5. Escalade de récupération en 3 niveaux
 
 ### 5.1 Niveau 1 — Mot de passe oublié
 
-- L'utilisateur fournit : `username` + `passphrase diceware` (correspondance exacte)
-- En cas de succès : nouveau mot de passe généré, masqué par défaut, affiché une seule fois
-- Le mot de passe reste à l'écran jusqu'à confirmation `"J'ai noté"`
-- Rate limit : 5 échecs / 15 minutes par username et 12 par adresse (valeurs par défaut, réglées par l'intégrateur)
+- L'utilisateur fournit : le nom du compte + la passphrase diceware (exacte, aux espaces près ; le nom est mis en minuscules)
+- En cas de succès : un mot de passe **et** une passphrase neufs, rendus une seule fois ; l'ancienne passphrase ne vaut plus rien et les sessions ouvertes tombent. Le mot mémorisé et les appareils enrôlés ne changent pas. L'âge de la passphrase qui vient de servir est rendu : il informe, il ne refuse jamais
+- L'affichage (masqué par défaut, confirmation `"J'ai noté"`) relève de la page
+- Rate limit : 5 échecs / 15 minutes par compte et 12 par adresse (valeurs par défaut, réglées par l'intégrateur). Le frein par adresse n'existe que sous le profil de déploiement `clearweb` ; derrière un service caché, le profil `tor-onion` ne garde que le frein par compte. Le profil est obligatoire, sans défaut
 - Anti-bot : hors de portée de la bibliothèque — le champ honeypot et le contrôle de timing vivent sur la page
 
 ### 5.2 Niveau 2 — Passphrase perdue (2FA sans identifiant)
@@ -172,45 +182,50 @@ Le L2 est un **vrai 2FA** — possession **et** connaissance — **sans identifi
 - **Possession** : un *recovery code* (parmi les 10 remis à l'inscription). Il **localise** le compte via un lookup HMAC (plus d'énumération) et sert de facteur de possession.
 - **Connaissance** : le *mot mémorisé*, dérivé HMAC côté client (le mot brut ne quitte jamais le navigateur).
 
-Le serveur vérifie les **deux** (Argon2id) et renvoie une **erreur générique** ne révélant jamais lequel a échoué. En cas de succès, l'utilisateur choisit son nouveau mot de passe et le code est marqué comme utilisé. Une variante optionnelle — le **facteur « cet appareil »** — offre une seconde voie de L2 (voir §5.4).
+Le serveur vérifie les **deux** (Argon2id) et renvoie une **erreur générique** ne révélant jamais lequel a échoué. En cas de succès, le code est consommé ; le serveur engendre un mot de passe et une passphrase neufs, rendus une seule fois, et les sessions ouvertes tombent. Il rend aussi le nom du compte et le nombre de codes restants. Une variante optionnelle — le **facteur « cet appareil »** — offre une seconde voie de L2 (voir §5.4).
 
-Aucune bascule automatique vers L3 : le niveau 2 ne demande aucun identifiant, mais le code qu'il reçoit nomme son compte, et c'est ce que compte son frein par compte — une fenêtre courte, puis la suspension du niveau pour ce compte. Le compteur par adresse s'y ajoute, là où une adresse veut dire quelque chose. C'est la personne qui décide d'ouvrir un dossier.
+Aucune bascule automatique vers L3. Le niveau 2 ne demande aucun identifiant, mais le code qu'il reçoit nomme son compte, et c'est ce que compte son frein par compte : une fenêtre courte (5 échecs en 15 minutes par défaut), puis, après 20 échecs depuis le dernier réarmement, la suspension de la récupération par code pour ce compte. Elle se lève par un lot de codes neuf — le niveau 3 en émet un —, par une récupération par code réussie, ou par une récupération par passphrase réussie. Ce refus-là nomme son état, sinon le titulaire ne saurait pas quoi faire ; il apprend donc à qui détient déjà un code de ce compte que ce code vise un compte réel. Le compteur par adresse s'y ajoute sous le profil `clearweb`. C'est la personne qui décide d'ouvrir un dossier.
 
 ### 5.3 Niveau 3 — Accès totalement perdu
 
 - Entrée : lien discret `"J'ai perdu tous mes accès"` sur la page de login
-- L'utilisateur fournit son identifiant public ; son navigateur génère un **code de suivi** (sésame) dont seule l'empreinte (SHA-256) est envoyée au serveur (anti-timing : délai forcé)
-- Un litige au numéro **non devinable** (`LIT-<aléatoire>`) est ouvert. Si un litige est déjà ouvert pour ce compte, le numéro n'est **pas redivulgué** et la tentative concurrente est signalée à l'admin (« multi-demandeur »)
+- L'utilisateur fournit le nom de son compte (celui du niveau 1) ; son navigateur génère un **code de suivi** (sésame) dont seule l'empreinte (SHA-256) est envoyée au serveur (anti-timing : délai forcé)
+- Un litige au numéro **non devinable** (`LIT-` suivi de 16 hexadécimaux) est ouvert. Si un litige est déjà ouvert pour ce compte, le numéro n'est **pas redivulgué** et la tentative concurrente est signalée à l'admin (« multi-demandeur »)
 - L'utilisateur répond à quelques **questions de contexte** (année de création du compte, période de dernière connexion, fréquence d'usage) — **aucun secret n'est demandé**
-- Le serveur assemble un **faisceau de signaux** présenté à l'administrateur :
-  - Le faisceau ne porte **aucun signal passif** : ni adresse, ni empreinte de navigateur. Il est entièrement déclaratif, confronté à ce que le serveur enregistre déjà, et il le dit à l'arbitre plutôt que de le laisser supposer
-  - **Signaux déclaratifs** (ce que l'utilisateur affirme, comparé au réel) : année de création, mois de dernière connexion, fréquence d'usage
-- **Aucun score chiffré n'est calculé.** Les signaux sont des **faits bruts** : ils n'ouvrent **jamais** le compte automatiquement, ils aident seulement un **administrateur humain** à trancher dans le chat
+- Le serveur assemble un **faisceau de faits bruts** présenté à l'administrateur :
+  - **Contexte** : ce que le serveur tient déjà — création du compte, dernière connexion, nombre de connexions, codes restants, refus récents, et ce que l'adaptateur du déploiement ajoute, que la bibliothèque n'interprète pas
+  - **Déclaratif** : chaque réponse confrontée au réel, marquée `concorde`, `diverge` ou `indisponible` — ce dernier quand le serveur ne tient pas la donnée, ce qui n'est pas une divergence
+  - **Avertissement** : il rappelle à l'arbitre que ces réponses sont devinables ; elles orientent la conversation, elles ne prouvent rien
+  - Le faisceau ne porte **aucun signal passif** : ni adresse, ni empreinte de navigateur
+- **Aucun score chiffré n'est calculé.** Ce sont des **faits bruts** : ils n'ouvrent **jamais** le compte automatiquement, ils aident seulement un **administrateur humain** à trancher dans le chat
 - Cooldown : 1 heure entre chaque soumission
-- Le code de suivi conditionne l'accès au fil de discussion et au rétablissement, et n'est utilisable qu'une fois. Il expire avec le dossier au bout de 24 h — **sauf si le dossier a été accepté** : à partir de l'accord, l'horloge s'arrête, pour qu'elle n'annule pas le travail de l'arbitre avant que le titulaire revienne
+- Ouverture freinée avant toute recherche du compte : 10 par adresse et 20 pour tout le service, par heure (valeurs par défaut). Pas de frein par compte, exprès : un tiers pourrait sinon fermer le niveau 3 au titulaire sans que rien n'apparaisse à l'arbitre. Le harcèlement d'un compte se voit autrement : la tentative concurrente se compte et se montre
+- Le code de suivi se présente à chaque étape — dépôt des réponses, fil de discussion, état, reprise. Le dossier expire au bout de 24 h tant que personne n'a tranché. Un accord court 7 jours à partir de la décision ; passé ce délai, il tombe et l'arbitrage est à refaire. La reprise clôt le dossier et efface l'empreinte du code de suivi. Si le titulaire a perdu son code de suivi, un arbitre peut abandonner le dossier en cours : cela ne rend aucun accès, cela libère la place pour un dossier neuf
 
 ### 5.4 Les foyers de possession de L2 — recovery codes & facteur appareil
 
 Le L2 combine toujours **connaissance** (le mot mémorisé) et **possession**. Deux foyers de possession sont proposés ; l'utilisateur en dispose d'au moins un.
 
 **Recovery codes — le foyer papier universel.**
-- Un lot de **10 codes** est généré à l'inscription et affiché **une seule fois** (format `xxxxx-xxxxx`, ~40 bits chacun).
-- Stockage double, jamais en clair : `code_lookup = HMAC-SHA256(SERVER_SECRET, code)` (recherche O(1) sans identifiant, rôle de *pepper*) **et** `code_hash = Argon2id(code)` (vérification + résistance à une fuite de base).
-- **Usage unique**, régénérables à la demande (le nouveau lot remplace l'ancien). Universels : papier, gestionnaire de mots de passe ou second appareil, au choix.
+- Un lot de **10 codes** est généré à l'inscription et affiché **une seule fois** (format `xxxxx-xxxxx` : 10 hexadécimaux minuscules, 40 bits chacun).
+- Stockage double, jamais en clair : `code_lookup = HMAC-SHA256(clé = sel du déploiement, code)` (recherche sans identifiant) **et** `code_hash = Argon2id(code)` (vérification + résistance à une fuite de base). Le sel du déploiement se garde comme un secret de service, hors racine web, et ne tourne pas sans réémettre toutes les feuilles : le changer rend introuvables tous les codes émis.
+- **Usage unique**, régénérables à la demande (le nouveau lot remplace l'ancien). Ils se gardent sur papier, rangés hors ligne.
 
 **Facteur « cet appareil » — le foyer cryptographique, optionnel.**
-- Une paire **ECDSA P-256** est générée dans le navigateur. La clé privée est **chiffrée au repos** par une clé AES-256-GCM dérivée du **mot mémorisé** via **Argon2id** en JavaScript, écrit dans la bibliothèque et confronté aux vecteurs de libsodium — aucun binaire embarqué. Le blob obtenu porte sa version et ses paramètres de dérivation. Le lieu de rangement relève de l'intégration : l'implémentation de référence emploie `localStorage`, IndexedDB restant préférable et à faire.
+- Une paire **ECDSA P-256** est générée dans le navigateur. La clé privée est **chiffrée au repos** par une clé AES-256-GCM dérivée du **mot mémorisé** via **Argon2id** en JavaScript (t=3, m=64 Mio, p=1, sous un sel propre au blob), écrit dans la bibliothèque et confronté aux vecteurs de libsodium — aucun binaire embarqué. Le blob obtenu porte sa version et ses paramètres de dérivation ; un blob qui annonce des paramètres sous ce plancher est refusé. Le lieu de rangement relève de l'intégration : l'implémentation de référence emploie `localStorage`, IndexedDB restant préférable et à faire.
 - Le serveur ne détient **que la clé publique**. La récupération consiste à **signer un défi** (32 octets, TTL 5 min, usage unique) : le navigateur déchiffre la clé privée avec le mot, signe, le serveur vérifie.
+- Sur cette voie, le serveur ne vérifie pas le mot : il vérifie une signature. Le mot n'y est tenu que par le chiffrement du blob — un blob volé se travaille hors ligne, sans compteur d'essais, au seul coût d'Argon2id. En cas de succès, un mot de passe neuf est rendu ; la passphrase et les codes ne changent pas.
 - C'est un 2FA cryptographique **appareil + connaissance**, sans TPM ni matériel. Protection **logicielle** (assumée), device-bound. **À désactiver en profil Tor/onion**, où le stockage local ne survit pas à la session — c'est un choix d'intégration, non un automatisme à ce jour. Le recovery code papier reste le plancher.
-- ⚠️ **Enrôler un appareil n'ajoute pas un facteur : à cet instant, le mot suffit.** Qui connaît le mot mémorisé peut enrôler **sa propre** clé, puis s'authentifier avec elle — le chemin ne passe ni par un recovery code, ni par la passphrase. L'enrôlement appartient donc à une **session déjà ouverte**, et il revient à l'application d'en tirer le nom du compte plutôt que du corps de la requête. Le protocole exige de l'application qu'elle l'**affirme** explicitement, et freine ce chemin par compte ; il ne peut pas vérifier la session lui-même — **c'est une affirmation, pas une preuve**. Un appareil déjà enrôlé, lui, reste deux facteurs réels : son blob chiffré et le mot.
+- ⚠️ **Enrôler un appareil n'ajoute pas un facteur : à cet instant, le mot suffit.** Qui connaît le mot mémorisé peut enrôler **sa propre** clé, puis s'authentifier avec elle — le chemin ne passe ni par un recovery code, ni par la passphrase. L'enrôlement appartient donc à une **session déjà ouverte**, et il revient à l'application d'en tirer le nom du compte plutôt que du corps de la requête. Le protocole exige de l'application qu'elle l'**affirme** explicitement (`Titulaire::AUTHENTIFIE`), et freine ce chemin par compte et par adresse (5 et 12 échecs sur 15 minutes, valeurs par défaut) ; il ne peut pas vérifier la session lui-même — **c'est une affirmation, pas une preuve**. Un appareil déjà enrôlé, lui, reste deux facteurs réels : son blob chiffré et le mot.
+- La reprise au niveau 3 retire tous les appareils enrôlés ; les niveaux 1 et 2 ne les retirent pas.
 
 ---
 
 ## 6. Système de litiges et interface admin
 
-Un dossier (`LIT-XXXX`) s'ouvre quand la personne le demande, jamais automatiquement, et devient visible dans la console d'arbitrage dès qu'elle y a déposé ses réponses.
+Un dossier (`LIT-` suivi de 16 hexadécimaux) s'ouvre quand la personne le demande, jamais automatiquement. Avec l'adaptateur fourni, il apparaît dans la console d'arbitrage dès son ouverture ; son faisceau, dès le dépôt des réponses (`awaiting_admin`).
 
-- Chaque litige a un numéro **non devinable**, le faisceau de signaux (faits bruts, jamais un score), des compteurs de tentatives et de refus, un compteur de tentatives concurrentes (« multi-demandeur »), et un statut (`open`, `awaiting_admin`, `accepted`, `refused`, `closed`)
+- Chaque litige a un numéro **non devinable**, le faisceau de faits (bruts, jamais un score), des compteurs de tentatives et de refus, un compteur de tentatives concurrentes (« multi-demandeur »), et un statut (`open`, `awaiting_admin`, `accepted`, `refused`, `closed`)
 - L'admin retrouve les litiges ouverts dans son tableau de bord
 - Un chat bidirectionnel est disponible entre l'admin et l'utilisateur, dont l'accès est conditionné par le code de suivi (polling, pas de WebSocket temps réel pour rester simple)
 - `purger()` efface les dossiers périmés — ni les refusés, sur lesquels se compte le gel, ni les acceptés, qu'un titulaire peut encore venir consommer. ⚠️ La bibliothèque expose la méthode ; **elle n'a pas d'horloge**. C'est au déploiement de l'appeler, par une tâche planifiée.
@@ -222,21 +237,23 @@ Quand l'admin examine un litige, deux options existent :
 **Option 1 — Accorder la récupération (débloquer) :**
 
 - L'admin vérifie l'identité via l'échange chat
-- Le litige passe en `granted`. **Le serveur ne génère ni ne transmet aucun mot de passe** : aucun secret ne circule dans le chat
-- L'utilisateur **re-définit lui-même** son mot de passe et son mot mémorisé depuis sa page de récupération (modèle de ré-enrôlement) : le mot mémorisé est dérivé dans le navigateur et n'arrive jamais en clair, le mot de passe est soumis en clair — le serveur ne l'émet pas, il le range. La passphrase et les codes, eux, sont engendrés par le serveur et affichés une fois. Le code de suivi est alors consommé (usage unique) et le litige passe en `resolved`
+- Le litige passe en `accepted`. **Le serveur ne génère ni ne transmet aucun mot de passe** : aucun secret ne circule dans le chat
+- L'utilisateur **re-définit lui-même** son mot de passe et son mot mémorisé depuis sa page de récupération (modèle de ré-enrôlement). Le mot de passe fait entre 12 et 4 096 caractères ; il est soumis en clair, et le serveur le range sans l'émettre. Le navigateur engendre un nouveau sel et dérive le mot mémorisé, qui n'arrive jamais en clair. Le serveur engendre une passphrase et 10 codes neufs, affichés une fois, coupe les sessions et retire tous les appareils enrôlés — le titulaire réenrôle celui qu'il utilise. Le dossier passe en `closed` et l'empreinte du code de suivi est effacée
 
 **Option 2 — Refuser la récupération :**
 
 - L'admin ne considère pas la preuve d'identité suffisante
 - Le dossier passe en `refused`, avec la date et le nom de qui a tranché
 - **Le compte n'est pas touché** : ni supprimé, ni banni, ni vidé de ses codes. Il reste connectable
-- Au-delà de **3 refus dans une fenêtre glissante de 30 jours**, l'**ouverture** de nouveaux dossiers gèle 7 jours sur ce compte. Un administrateur peut lever le gel, et la trace du dégel est conservée
+- Au **3ᵉ refus dans une fenêtre glissante de 30 jours**, l'**ouverture** de nouveaux dossiers gèle 7 jours sur ce compte. Un administrateur peut lever le gel, et la trace du dégel est conservée
 
 🔑 **Ce qui se durcit est la procédure, jamais le compte.** Une version antérieure de ce document annonçait un ban de 24 h et la suppression définitive au 3ᵉ refus ; l'implémentation qui s'en approchait le plus supprimait le compte dès le **premier**. Les deux étaient fautives pour la même raison : un refus dit « ce demandeur ne m'a pas convaincu », pas « ce compte est illégitime ». Si le demandeur était un imposteur, supprimer détruit le compte de sa victime ; s'il était le titulaire mal jugé, cela punit un innocent. Et un attaquant incapable de voler un compte pouvait le faire effacer en accumulant des refus — **l'échec devenait une arme**.
 
 **Raisonnement :** le gel coûte à qui insiste sans convaincre, sans rien coûter au titulaire, qui continue de se connecter normalement pendant ce temps. Le comptage porte sur les **dossiers refusés**, pas sur les dépôts : trois soumissions dans un même dossier restent un seul refus, sinon l'insistance d'un titulaire honnête déclencherait le gel aussi vite qu'une campagne hostile.
 
 ### 6.2 Super-utilisateur (SU) — gouvernance des administrateurs
+
+Le super-utilisateur n'est pas dans la bibliothèque : le laboratoire l'implémente (`demo/lab/selfrecover-su`, console en ligne de commande). Ce qui suit décrit ce modèle de référence.
 
 SelfRecover gouverne **un seul droit** : celui de trancher les litiges de niveau 3. Deux rôles le portent — l'**administrateur** tranche, le **super-utilisateur** gouverne les administrateurs eux-mêmes.
 
@@ -256,9 +273,9 @@ SelfRecover gouverne **un seul droit** : celui de trancher les litiges de niveau
 
 **Ce que la bibliothèque applique**
 
-- **Compteurs** : par username et par adresse au niveau 1, par adresse et par service au niveau 3
+- **Compteurs** : par compte et par adresse aux niveaux 1 et 2 et à l'enrôlement d'un appareil, avec la suspension du niveau 2 après 20 échecs ; par adresse et pour tout le service à l'ouverture d'un dossier de niveau 3. Le frein par adresse n'existe que sous le profil `clearweb`
 - **Délai forcé** sur chaque refus qui tait un état
-- **Message de refus unique**, pour que rien ne trie les comptes qui existent
+- **Message de refus unique**, pour que rien ne trie les comptes qui existent — sauf deux exceptions assumées : la suspension du niveau 2, qui doit se dire, et l'ouverture d'un dossier de niveau 3 (§10.1)
 
 **Ce qui appartient à l'intégrateur**, parce qu'il faut des routes, des pages ou
 un navigateur que la bibliothèque n'a pas : le champ honeypot, le contrôle de
@@ -268,31 +285,17 @@ blocage bâtie dessus.
 
 ---
 
-## 8. Diagnostic et remontée de bugs (sans données perso)
+## 8. Ce que rend la bibliothèque
 
-Chaque échec génère un code d'erreur structuré :
+Chaque méthode rend `ok`, un `message` destiné à la personne, et pour certains refus un `error` stable que l'application peut journaliser ou traduire : `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `compte_inconnu`, `gele`, `deja_ouvert`, `sesame_invalide`, `expire`, `accord_perime`, entre autres.
 
-```
-SR-L1-PASS-001   Niveau 1, passphrase incorrecte, tentative 1
-SR-L2-HMAC-003   Niveau 2, validation HMAC échouée, tentative 3
-SR-L3-SIGN-OK    Niveau 3, faisceau de signaux transmis à l'admin
-SR-L3-FING-BLK   Niveau 3, empreinte bloquée
-SR-SYS-SALT-ERR  Erreur système, récupération du sel échouée
-```
-
-**Ce qui EST inclus dans les rapports de diagnostic :**
-
-- Code d'erreur, version de la librairie, navigateur/OS, niveau atteint, nombre de tentatives
-- Identifiant d'installation (ne révèle aucun secret)
-
-**Ce qui n'est JAMAIS inclus :**
-
-- Mot de récupération (brut ou dérivé), username, identifiant, IP, empreinte
-- Passphrase, mot de passe, aucune donnée personnelle
+La bibliothèque ne remonte rien elle-même ; elle enregistre seulement les tentatives dont ses freins ont besoin. Ce qu'un rapport de diagnostic contient relève de l'application, qui n'y met jamais le mot de récupération (brut ou dérivé), la passphrase, le mot de passe ni les codes.
 
 ---
 
 ## 9. Protection contre les attaques actives
+
+Ce qui suit est un motif d'intégration, que ni la bibliothèque ni les démos ne fournissent : il faut des sessions, des rôles et un canal de notification que la bibliothèque n'a pas.
 
 Si un utilisateur légitime se connecte normalement et que le serveur détecte une activité suspecte (tentatives L1 échouées, dossiers d'arbitrage ouverts), un modal s'affiche :
 
@@ -301,14 +304,11 @@ Si un utilisateur légitime se connecte normalement et que le serveur détecte u
 > *As-tu essayé de récupérer ton compte récemment ?*
 > `[ Oui, c'était moi ]`  `[ Non, ce n'était pas moi ]`
 
-- **Oui** → nettoyage silencieux des tentatives échouées et des litiges, l'utilisateur continue normalement
+- **Oui** → les tentatives échouées sont effacées, l'utilisateur continue normalement ; les dossiers refusés restent comptés pour le gel (§6.1)
 - **Non** → protection renforcée activée en arrière-plan :
   - Nouveau mot de passe généré et affiché à l'utilisateur
   - Sessions révoquées : qui tenait le compte est éjecté
   - Admin notifié
-
-Ce qui suit relève de l'application et non du protocole, parce qu'il faut des
-sessions, des rôles et un canal de notification que la bibliothèque n'a pas.
 
 L'utilisateur voit un message rassurant `"Ton compte est maintenant sécurisé"` — pas un log technique. L'admin gère l'investigation en arrière-plan.
 
@@ -322,9 +322,9 @@ L'utilisateur voit un message rassurant `"Ton compte est maintenant sécurisé"`
 - **Piratage de l'email** — il n'y a aucun email dans le protocole
 - **Panne du fournisseur SMTP** — pas de dépendance SMTP
 - **Confiance tiers** — seuls le site et l'utilisateur sont impliqués
-- **Brute force limité par rate** — limites par username + escalade L2/L3
-- **Énumération par bot** — *partiellement*. Fermée aux niveaux 1 et 2 : refus unique au premier, aucun identifiant demandé au second. Ouverte au niveau 3, où la réponse utile EST la distinction — un succès rend un numéro de dossier, un nom inconnu ne peut pas en rendre. Ce qui s'y oppose est le coût : deux freins avant la recherche du compte (par adresse, par service), un délai sur chaque refus qui tait un état, et une preuve de travail devant la route — que la bibliothèque ne peut pas imposer puisqu'elle n'a pas de route
-- **Blanchiment de réputation sociale** — l'identifiant public est verrouillé après inscription, impossible à modifier par l'utilisateur
+- **Force brute freinée** — par compte et par adresse aux niveaux 1 et 2 et à l'enrôlement, suspension du niveau 2 après 20 échecs, coût Argon2id par essai côté serveur
+- **Énumération par bot** — *partiellement*. Fermée aux niveaux 1 et 2 et à l'enrôlement : refus unique au premier, aucun identifiant demandé au second, compteur tiré du nom soumis au troisième. La route du sel répond toujours un sel, vrai ou faux (§4.2). Un refus du niveau 2 nomme pourtant un état : la suspension, qui apprend à qui détient déjà un code que ce code vise un compte réel. Ouverte au niveau 3, où la réponse utile EST la distinction — un succès rend un numéro de dossier, un nom inconnu ne peut pas en rendre. Ce qui s'y oppose est le coût : deux freins avant la recherche du compte (par adresse, par service), un délai sur chaque refus qui tait un état, et une preuve de travail devant la route — que la bibliothèque ne peut pas imposer puisqu'elle n'a pas de route
+- **Blanchiment de réputation sociale** — la bibliothèque n'offre aucun renommage de compte ; verrouiller le nom après l'inscription revient à l'application
 
 ### 10.2 CRITIQUE — Accès root serveur (sudo)
 
@@ -336,7 +336,7 @@ SelfRecover protège les données de récupération par dérivation HMAC, hachag
 
 - Certains environnements Linux accordent un sudo sans mot de passe par défaut (`NOPASSWD: ALL` dans sudoers). Cas notables : **Raspberry Pi OS** (user `pi`) et les **images cloud** (AMIs Ubuntu AWS/DigitalOcean/GCP pour le user `ubuntu`, Amazon Linux pour `ec2-user`, etc.). La plupart des installations desktop/serveur (Debian, Ubuntu iso, Fedora, Arch) n'ont **pas** ce problème par défaut — mais vérifie toujours ton `/etc/sudoers.d/` à l'installation.
 - Si un attaquant compromet le compte utilisateur (fuite de clé SSH, vulnérabilité web, etc.), il passe root sans aucune friction
-- Avec root : accès direct à la base de données, remplacement des hash de mot de passe, modification du code, extraction des clés — SelfRecover devient décoratif
+- Avec root : accès direct à la base de données, remplacement des hash de mot de passe, modification du code — y compris du dériveur servi au navigateur, qui pourrait alors capter le mot mémorisé —, extraction des clés — SelfRecover devient décoratif
 
 Ce n'est pas un risque théorique. C'est le point de défaillance unique qui contourne l'intégralité du protocole.
 
@@ -352,7 +352,7 @@ Ce n'est pas un risque théorique. C'est le point de défaillance unique qui con
 
 ```bash
 # 1. Changer le mot de passe de l'utilisateur pour une passphrase diceware forte
-echo "user:votre-passphrase-diceware" | sudo chpasswd
+echo "user:ta-passphrase-diceware" | sudo chpasswd
 
 # 2. Modifier sudoers : remplacer "user ALL=(ALL) NOPASSWD: ALL" par "user ALL=(ALL) ALL"
 sudo visudo -f /etc/sudoers.d/010_user-nopasswd
@@ -367,21 +367,22 @@ Un déploiement SelfRecover sans sudo durci, c'est un verrou sur une porte sans 
 
 Le L2 exige **deux** facteurs : un recovery code (possession) **et** le mot mémorisé (connaissance). Le mot mémorisé seul compromis (ingénierie sociale, regard par-dessus l'épaule, note négligemment écrite) ne suffit pas — il manque encore un recovery code. Le risque réel est la compromission **simultanée** des deux facteurs (le mot **et** un recovery code, ou le mot **et** l'appareil enrôlé). C'est le modèle 2FA standard : il ne peut pas être corrigé sans canal de communication externe — ce que SelfRecover rejette explicitement.
 
+Sur la voie de l'appareil, le serveur ne vérifie pas le mot : un blob volé se travaille hors ligne, sans compteur, au seul coût d'Argon2id. Cette voie demande un mot robuste.
+
 Aucun système ne protège contre le vol simultané de tous ses facteurs. Une clé privée SSH qui fuite donne l'accès au serveur. Une seed phrase qui fuite vide un portefeuille. Un recovery code **et** le mot mémorisé volés ensemble ouvrent le compte. Le modèle de sécurité est identique.
 
 SelfRecover part du principe que :
 
 - L'utilisateur traite son mot de récupération comme une clé de maison — pas sur un post-it, pas partagée dans un chat
 - En mode `'hostname'`, la dérivation limite les dégâts au seul nom d'hôte concerné (l'empreinte est inutilisable ailleurs) ; en mode `'label'`, elle ne les limite qu'aux services qui ne partagent pas le même label
-- Le rate limiting et l'escalade L2→L3 freinent les tentatives de force brute
+- Les freins par compte et par adresse, et la suspension du niveau 2, ralentissent la force brute en ligne ; hors ligne, seul le coût d'Argon2id la freine
 - Le serveur ne peut pas compenser la négligence humaine — aucun système ne le peut
 
 **Un secret protégé reste sûr ; un secret négligé est exposé.** Ce n'est pas une faille — c'est le contrat fondamental de tout système de sécurité basé sur un secret.
 
 ### 10.4 Autres limites (par conception)
 
-- Si l'utilisateur oublie à la fois son mot de récupération et sa passphrase et échoue au scoring L3 : l'admin est le seul recours
-- Les utilisateurs changeant fréquemment d'appareil perdent les bonus passifs de fingerprint
+- Si l'utilisateur a oublié son mot mémorisé et perdu sa passphrase, il ne reste que le niveau 3 : un arbitre humain. S'il refuse, il n'y a pas d'autre recours ; un nouveau dossier reste possible jusqu'au gel de 7 jours, au 3ᵉ refus en 30 jours
 
 Ces limites sont voulues. Un système avec des recours infinis a une surface d'attaque infinie.
 
@@ -407,7 +408,7 @@ SelfRecover ne peut pas protéger les comptes si le serveur qui l'héberge est m
 
 ### 11.3 Application
 
-- [ ] HTTPS obligatoire — en mode `'hostname'` la dérivation lit le nom d'hôte, et sans TLS rien ne garantit que la page servie vient bien de ce service
+- [ ] HTTPS obligatoire sur le web ordinaire — en mode `'hostname'` la dérivation lit le nom d'hôte, et sans TLS rien ne garantit que la page servie vient bien de ce service ; sur un service caché v3, l'adresse est la clé publique du service (§4.1)
 - [ ] Rate limiting sur tous les endpoints de recovery (nginx `limit_req` ou applicatif)
 - [ ] Headers de sécurité : CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
 - [ ] PHP : `disable_functions`, `open_basedir`, `expose_php off`
@@ -419,6 +420,17 @@ SelfRecover ne peut pas protéger les comptes si le serveur qui l'héberge est m
 - [ ] Alerter sur les échecs répétés L2/L3 pour un même compte
 - [ ] Vérification automatisée des backups (test de restauration périodique)
 
+### 11.5 Intégration de la bibliothèque
+
+- [ ] Déclarer le profil de déploiement, `clearweb` ou `tor-onion` : il est obligatoire, sans défaut
+- [ ] Garder le sel du déploiement hors racine web, et ne jamais le tourner sans réémettre toutes les feuilles de codes
+- [ ] Servir la route du sel par `Recovery::selDeDerivation()`, et la freiner
+- [ ] Enrôlement d'un appareil : tirer le nom du compte de la session, jamais du corps de la requête, et passer `Titulaire::AUTHENTIFIE`
+- [ ] Vérifier la qualité d'arbitre avant `trancher()`, `degeler()` et `abandonner()` : la bibliothèque ne la vérifie pas
+- [ ] Appeler `purger()` depuis une tâche planifiée : la bibliothèque n'a pas d'horloge
+- [ ] Poser une preuve de travail devant la route d'ouverture du niveau 3
+- [ ] Avec l'adaptateur fourni, construire `StockagePdo` avec l'hôte de dérivation
+
 Un déploiement qui ignore cette checklist n'est pas un déploiement SelfRecover — c'est une passoire.
 
 ---
@@ -427,10 +439,10 @@ Un déploiement qui ignore cette checklist n'est pas un déploiement SelfRecover
 
 ### 12.1 Pré-requis
 
-- PHP 8.1+ avec `ext-json`, `ext-mbstring` et `ext-openssl` — les contraintes que porte `composer.json`. L'implémentation de référence est en PHP ; il n'en existe pas d'autre côté serveur
-- Base de données SQL (MySQL, MariaDB, PostgreSQL, SQLite)
-- Navigateur moderne avec JavaScript et Web Crypto API : `client/sr-derive.js` y dérive le mot mémorisé par `crypto.subtle`
-- HTTPS obligatoire en production
+- PHP 8.1+ avec `ext-json`, `ext-mbstring` et `ext-openssl` — les contraintes que porte `composer.json` —, et un PHP qui fournit `PASSWORD_ARGON2ID`, ce que `composer.json` ne peut pas exiger. L'implémentation de référence est en PHP ; il n'en existe pas d'autre côté serveur
+- Une base SQL. Le schéma et l'adaptateur fournis ciblent SQLite (`ext-pdo_sqlite`) ; ailleurs, les types de colonnes et trois requêtes se réécrivent (l'en-tête de `schema.sql` les nomme), ou l'intégrateur écrit son propre adaptateur de `StorageInterface`
+- Navigateur moderne avec JavaScript et Web Crypto API : `client/sr-derive.js` y dérive le mot mémorisé par `crypto.subtle`. Le facteur « cet appareil » ajoute `client/argon2id.js` puis `client/sr-kdf.js`, Web Crypto n'offrant pas Argon2id
+- HTTPS obligatoire sur le web ordinaire (§11.3)
 
 ### 12.2 Distribution prévue
 
@@ -439,7 +451,7 @@ composer require pierroons/selfrecover   # future lib PHP
 npm install selfrecover                  # future lib JS
 ```
 
-Pas encore publiées. Voir [MySelf-Lab](../../../demo/lab/) pour une implémentation de référence à étudier, et [les outils autonomes](../tools/) pour les pages qui ne dépendent d'aucun serveur.
+Pas encore publiées : la bibliothèque s'installe depuis un clone du dépôt, par un dépôt Composer de type `path`. Pour la voir à l'œuvre : la démo servie ([`demo/bi-self-duo/`](../../../demo/bi-self-duo/)), le laboratoire ([MySelf-Lab](../../../demo/lab/)), et [les outils autonomes](../tools/) pour les pages qui ne dépendent d'aucun serveur.
 
 ---
 
@@ -462,12 +474,18 @@ SelfRecover n'est pas un remplacement pour WebAuthn. C'est un complément, surto
 
 ## 14. Feuille de route
 
-- [x] Spécification du protocole (v1.1)
+- [x] Spécification du protocole (v1.2)
 - [x] Implémentation de référence (ce dépôt)
 - [x] Livres blancs EN + FR
-- [x] Démo standalone (L1 + L2)
-- [ ] Audit de sécurité (communauté bienvenue)
+- [x] Démo servie (`demo/bi-self-duo/`) et laboratoire (`demo/lab/`) — la démo autonome a été retirée le 18 août 2026
 - [x] Bibliothèque PHP extraite — PSR-4, son propre `composer.json`, consommée par un dépôt `path`
+- [x] Les trois niveaux dans la bibliothèque, niveau 3 compris (`Escalade`)
+- [x] Facteur « cet appareil », et son chiffrement local en Argon2id (`client/sr-kdf.js`)
+- [x] Implémentation fournie du stockage (`schema.sql` + `StockagePdo`)
+- [x] Profil de déploiement obligatoire, freins par compte, suspension du niveau 2
+- [x] Retrait des appareils à la reprise du niveau 3, échéance de l'accord
+- [x] Garde de la route du sel (`Recovery::selDeDerivation`)
+- [ ] Audit de sécurité externe (communauté bienvenue)
 - [ ] Publication sur Packagist (`composer require pierroons/selfrecover`)
 - [ ] Paquet JS (`npm install selfrecover`) — le dériveur est livré comme `client/sr-derive.js`, il n'est pas paqueté
 - [ ] Plugin WordPress
@@ -488,4 +506,4 @@ SelfRecover est open source sous licence AGPL-3.0-or-later (bascule depuis MIT l
 
 ---
 
-*SelfRecover — parce que votre identité ne devrait pas dépendre d'une boîte mail.*
+*SelfRecover — parce que ton identité ne devrait pas dépendre d'une boîte mail.*

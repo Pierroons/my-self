@@ -153,7 +153,7 @@ user input   → recovery_code + recovery_word
 wire         → account salt, requested by the code   // always a salt: a fake, stable one for an unknown code
 client       → derived_key  = HMAC-SHA256(key = recovery_word, message = material + "|v2" + user_salt)
 wire         → POST /recover { recovery_code, derived_key }
-server       → account       = lookup(HMAC-SHA256(SERVER_SECRET, recovery_code))  // the code locates the account
+server       → account       = lookup(HMAC-SHA256(deployment_salt, recovery_code))  // the code locates the account
                verify        = password_verify(recovery_code, code_hash)
                              AND password_verify(derived_key, stored_recovery_hash)  // Argon2id, both always computed
 ```
@@ -201,7 +201,7 @@ Each code is stored **twice**, never in clear:
 
 | Column | Role |
 |---|---|
-| `code_lookup` = `HMAC-SHA256(SERVER_SECRET, code)` | **O(1) lookup with no identifier** (the code locates the account) + non-reversible *pepper* role |
+| `code_lookup` = `HMAC-SHA256(deployment_salt, code)` | **O(1) lookup with no identifier** (the code locates the account) + non-reversible *pepper* role |
 | `code_hash` = `Argon2id(code)` | verification + resistance to a database leak |
 
 - **Single-use** (marked `used` after a successful reset).
@@ -348,7 +348,7 @@ indistinguishable from one that writes, until you go look at the table.
 
 **Not claimed to protect against:**
 - Malicious client code / active phishing (if the attacker controls the page your browser loads, the protocol can't help — true for any in-browser protocol)
-- Weak recovery words (`password`, `123`) — mitigated by rate-limiting and escalation to a human-reviewed L3, not by the derivation itself
+- Weak recovery words (`password`, `123`) — level 2 also needs a code or the enrolled device; online, rate limits and the L2 suspension brake guessing; offline (stolen database, a device's blob), only the Argon2id cost does — not the derivation itself
 - Physical coercion of the user (see SelfGuard in this ecosystem for duress-aware storage)
 - Targeted malware with keylogging
 
@@ -378,7 +378,7 @@ This is a companion module, **[`selfrecover-luks`](../../self-security/selfrecov
 **Reference library + deployed implementation, self-audited**
 
 This repository contains:
-- The **protocol specification** (whitepapers v1.1)
+- The **protocol specification** (whitepapers v1.2)
 - A **PHP library** — `src/`, PSR-4 `Pierroons\SelfRecover\`: level 1 and level 2 recovery, recovery codes, the "this device" factor, the Argon2id profile, the diceware wordlist, and the storage interface an integrator implements against their own database — or, starting from scratch, its shipped implementation (`schema.sql` + `StockagePdo`)
 - The **browser deriver** — `client/sr-derive.js`, shipped rather than described: it is what carries the anti-phishing property, and the integrators who wrote it themselves produced variants that did not have it; and `client/sr-kdf.js`, which encrypts a local secret with Argon2id, version and parameters inside the blob
 - **All three levels**, since 2026-09-07: level 3 escalation now lives in `src/Recovery/Escalade.php` — case file, single-use claim secret, bundle of raw facts, arbitration and procedure freeze. It does not check *who* may decide: roles and sessions belong to the application. The super-user still lives in [`demo/lab/`](../../demo/lab/)

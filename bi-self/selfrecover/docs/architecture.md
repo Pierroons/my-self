@@ -51,13 +51,13 @@ Browser computes HMAC-SHA256(key = word, message = material + "|v2" + user_salt)
 POST /recover-l2 { recovery_code, recovery_key (derived) }
               │
               ▼
-Server: code_lookup = HMAC-SHA256(SERVER_SECRET, recovery_code) → locate account
+Server: code_lookup = HMAC-SHA256(deployment salt, recovery_code) → locate account
               │
               ▼
 Server: Argon2id-verify(recovery_code) AND Argon2id-verify(recovery_key)
               │   (generic error — never reveals which factor failed)
-              ├── OK ──> Generate new password, mark code used, update account
-              │          Return new password to browser
+              ├── OK ──> Generate new password and passphrase, consume the code,
+              │          revoke sessions; return both to the browser, once
               │
               └── FAIL ─> Increment L2 attempts counter
                          The person chooses to open a dispute

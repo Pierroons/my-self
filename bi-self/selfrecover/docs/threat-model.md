@@ -23,8 +23,9 @@ No SMTP at all. No SendGrid, no Mailgun, no Gmail deliverability rules, no spam 
 You don't need to trust Google, Microsoft, or anyone else for account recovery. You only trust the site you're registering on.
 
 ### ✓ Rate-limited brute force
-Per-account rate limits on every path that reaches an account — the three levels and device
-enrolment — plus per-address limits where an address means anything, plus L2/L3 escalation.
+Per-account rate limits on levels 1 and 2 and on device enrolment, plus per-address limits under
+the `clearweb` profile, plus the suspension of code recovery past a threshold of failures. Opening a
+level-3 case is braked per address and service-wide — deliberately not per account (see below).
 
 ⚠️ Enrolling a device reaches the account with the memorized word alone: measured on the wire on
 13 August 2026, in three requests, with the attacker's own key. The library cannot verify a session, so
@@ -176,7 +177,7 @@ If a user forgets their password AND their passphrase AND their recovery word, t
 | Email account takeover | ✓ | No email used |
 | SMTP failures | ✓ | No SMTP |
 | Third-party trust | ✓ | Local only |
-| Brute force recovery word | ✓ | Rate limits + L2/L3 escalation |
+| Brute force recovery word | ✓ online | Rate limits + L2 suspension; offline, only the Argon2id cost |
 | Bot enumeration | ~ | Closed at L1/L2; at L3 it is a cost, not a silence — see above |
 | Stolen L1 passphrase | ✗ until used | Never expires, deliberately; single use bounds it, no notification exists |
 | Server root compromise | ✗ | Mandatory sudo hardening |

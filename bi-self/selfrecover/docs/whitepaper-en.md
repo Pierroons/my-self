@@ -1,15 +1,17 @@
-# SelfRecover — Whitepaper v1.1
+# SelfRecover — Whitepaper v1.2
 
 **Zero-Email Account Recovery Protocol**
-*One word. Every site. Forever.*
+*Your word. Your sites. No email.*
+
+*Edition of 4 October 2026 — v1.2 — describes SelfRecover 0.9.0*
 
 ---
 
-## Context (May 2026)
+## Context
 
 The costliest pattern is a familiar one, and it keeps recurring: a trivial authorization flaw — changing an identifier in an API request is enough to read someone else's account — on a service whose account recovery runs through an email channel. The scale then comes down to nothing more than the number of rows in the table.
 
-The question is structural: why does a service need to index a mailbox to establish that you are you? As long as a third-party mailbox is in the recovery chain, its compromise becomes the dominant attack vector. SelfRecover offers a technical answer: make the email channel optional (**Lite** mode, v0.1.1) or remove it entirely (**Full** mode). Published under AGPL-3.0-or-later in April 2026 (v0.1.0).
+The question is structural: why does a service need to index a mailbox to establish that you are you? As long as a third-party mailbox is in the recovery chain, its compromise becomes the dominant attack vector. SelfRecover offers a technical answer: remove the email channel (**Full** mode, the only one implemented). A **Lite** mode that kept it optional was shown as a demonstration in v0.1.1; that demonstration was removed on 18 August 2026. Published in April 2026 (v0.1.0), under AGPL-3.0-or-later since 19 April 2026.
 
 This whitepaper describes the protocol. It targets no actor in particular — it is an open-source proposal that public and private operators may audit, integrate, or contest freely.
 
@@ -17,7 +19,7 @@ This whitepaper describes the protocol. It targets no actor in particular — it
 
 ## Abstract
 
-SelfRecover is a split-knowledge account recovery protocol that eliminates the dependency on email for password recovery. It relies on a HMAC-SHA256 derivation performed client-side, keyed by the recovery word itself, with the derivation material, the format version and the account salt carried in the message: the raw recovery word never leaves the browser, and the server stores only Argon2id hashes of per-service derived keys, which prevents correlating stored fingerprints across services. This document describes the protocol, its three-level escalation, the threat model, and mandatory deployment rules.
+SelfRecover is a split-knowledge account recovery protocol that eliminates the dependency on email for password recovery. It relies on a HMAC-SHA256 derivation performed client-side, keyed by the recovery word itself, with the derivation material, the format version and the account salt carried in the message: the shipped deriver lets only the recovery word's fingerprint out of the browser, and the server stores only an Argon2id hash of it, specific to the service and the account, which prevents correlating stored fingerprints across services. The password and the passphrase are server-generated and do pass through the server. This document describes the protocol, its three-level escalation, the threat model, and mandatory deployment rules.
 
 ---
 
@@ -61,7 +63,7 @@ The word alone reopens no account: level 2 also requires a recovery code or the 
 
 ### 3.1 Registration
 
-When a new account is created, the recovery word is immediately processed through HMAC-SHA256 derivation. The raw word never reaches the server.
+When a new account is created, the recovery word is immediately processed through HMAC-SHA256 derivation, in the browser. With the shipped deriver, the raw word does not reach the server.
 
 ```
 derived_key = HMAC-SHA256(key = recovery_word, message = material + "|v2" + account_salt)
@@ -71,16 +73,19 @@ derived_key = HMAC-SHA256(key = recovery_word, message = material + "|v2" + acco
 
 The server receives and stores:
 
-- `Argon2id(password)` — classic password hash
-- `Argon2id(passphrase)` — a diceware passphrase generated server-side (6 words, ~77.5 bits of entropy)
+- `Argon2id(password)` — the login password
+- `Argon2id(passphrase)` — a diceware passphrase generated server-side (6 words, ≈ 77.5 bits of entropy; a shorter passphrase issued before the move to six words stays valid until used)
 - `Argon2id(derived_key)` — the HMAC-derived recovery key
 - `account_salt` — the account salt: 16 random bytes rendered as 32 lowercase hex characters, one per account, browser-generated, not a secret
+- the first batch of 10 recovery codes, each stored in two forms (§5.4)
 
-The user receives the passphrase once and is asked to save it offline.
+Every server-side hash uses one Argon2id profile: 64 MiB, 4 iterations, 2 threads (`Hashing::ARGON2`).
+
+The user receives the passphrase and the codes once, and keeps them on paper, offline.
 
 ### 3.2 Authentication
 
-Login uses the classic `username + password` → JWT token flow. Token is bound to a browser fingerprint so it invalidates when the session changes device.
+Ordinary login belongs to the application: the library provides none. It only requires a way to revoke an account's sessions (`revoquerSessions()`), which every successful recovery does.
 
 ### 3.3 Recovery
 
@@ -88,9 +93,10 @@ Three levels, each with its own guarantees and failure modes:
 
 | Level | Input | Outcome on success |
 |-------|-------|---------------------|
-| **L1** | Username + diceware passphrase | New password |
-| **L2** | Recovery code + recovery word (HMAC-derived) | New password |
-| **L3** | Public identifier + context signals | Raw facts for a human admin → self-re-enrollment on grant |
+| **L1** | Account name + diceware passphrase | New password and new passphrase |
+| **L2** | Recovery code + recovery word (HMAC-derived) | New password and new passphrase |
+| **L2, device path** | Enrolled device + recovery word | New password; passphrase and codes unchanged |
+| **L3** | Account name + context answers | Raw facts for a human arbitrator; on grant, the user sets their password and memorized word, the server issues a fresh passphrase and 10 codes and removes enrolled devices |
 
 ---
 
@@ -101,13 +107,13 @@ This is the core innovation of SelfRecover.
 When the user types their recovery word, the browser computes a service-specific derived key **before anything leaves the client**. The shipped component that performs this computation is `client/sr-derive.js`; the frozen vectors any reimplementation must reproduce live in `tests/vecteurs-derivation.json`.
 
 ```javascript
-// The form shipped by client/sr-derive.js. The memorized word is the KEY, never the message.
+// Abridged form of client/sr-derive.js. The memorized word is the KEY, never the message.
 const VERSION = 'v2';
 
 function material(mode, label) {
     // Read in the browser, never received from the network.
     if (mode === 'hostname') return location.hostname.toLowerCase();
-    if (mode === 'label')    return label;            // taken verbatim
+    if (mode === 'label' && label) return label;      // taken verbatim; empty, it throws
     throw new Error("mode is mandatory: 'hostname' or 'label' — there is no default");
 }
 
@@ -130,9 +136,9 @@ async function srDerive(word, salt, { mode, label }) {
 
 **Key properties:**
 
-- The same input produces a different output on every service
-- The raw word **never** leaves the browser
-- The server never sees the word — only the derived key
+- The same word yields a different fingerprint per account (the salt) and per material: each hostname in `'hostname'` mode, each label in `'label'` mode
+- With the shipped deriver, the raw word does not leave the browser
+- The server only receives the derived key. It is also the server that serves the deriver: a compromised server could serve a different page (§10.2)
 - Output is always 256 bits regardless of input length
 - Works on any device — same math, same result
 - The version lives **inside the message**: during a migration a service can derive under two versions and accept both
@@ -151,16 +157,22 @@ The material must be **read** in the browser, never received from the network: m
 
 **Passive-phishing resistance — in `'hostname'` mode only.** The clone copies the page, therefore copies the library, which then reads the clone's own address: the resulting key is worthless against the real server, and the clone had to do nothing wrong for that to happen. In `'label'` mode this resistance does not exist — the label travels with the copy. The honest limit, in both modes: an active phishing site controlling its own page harvests the raw word and derives whatever it wants afterwards (out of scope, as for any in-browser protocol), and a raw word reused elsewhere stays reusable — the derivation does not save a known, reused secret.
 
+### 4.2 The salt route — it always answers
+
+At level 2 the browser derives before the account is identified: the code is what identifies it. So it first needs the account salt, which it asks for by presenting the code, on a public, unauthenticated route. The route **always** returns a salt: the account's for a known code, consumed or not; otherwise a fake one, of the same shape, stable from one try to the next, keyed by the deployment salt and computed on both paths. A route that refused an unknown code would let anyone test codes for the price of a request, without paying a single Argon2id.
+
+The library exposes no route; it ships the guard, `Recovery::selDeDerivation($code)`, and the optional `SelParCodeInterface`, which only the storage serving that route has to implement.
+
 ---
 
 ## 5. Three-Level Recovery Escalation
 
 ### 5.1 Level 1 — Forgotten Password
 
-- User provides: `username` + `diceware passphrase` (exact match)
-- On success: new password generated, masked by default, shown once
-- Password stays on screen until the user confirms "I've saved it"
-- Rate limit: 5 failures / 15 minutes per username and 12 per address (defaults, set by the integrator)
+- User provides: the account name + the diceware passphrase (exact, up to whitespace; the name is lowercased)
+- On success: a new password **and** a new passphrase, shown once; the old passphrase is void and open sessions are dropped. The memorized word and enrolled devices are unchanged. The age of the passphrase just used is returned: it informs, it never refuses
+- Display (masked by default, "I've saved it" confirmation) belongs to the page
+- Rate limit: 5 failures / 15 minutes per account and 12 per address (defaults, set by the integrator). The per-address brake only exists under the `clearweb` deployment profile; behind a hidden service, the `tor-onion` profile keeps only the per-account brake. The profile is mandatory, with no default
 - Anti-bot: out of the library's reach — a honeypot field and a form-timing check live on the page
 
 ### 5.2 Level 2 — Lost Passphrase (identifier-less 2FA)
@@ -170,45 +182,50 @@ L2 is a **real 2FA** — possession **and** knowledge — **with no identifier t
 - **Possession**: a *recovery code* (one of the 10 issued at registration). It **locates** the account via an HMAC lookup (no more enumeration) and acts as the possession factor.
 - **Knowledge**: the *memorized word*, HMAC-derived client-side (the raw word never leaves the browser).
 
-The server verifies **both** (Argon2id) and returns a **generic error** that never reveals which one failed. On success, the user picks their new password and the code is marked used. An optional variant — the **"this device" factor** — provides a second L2 path (see §5.4).
+The server verifies **both** (Argon2id) and returns a **generic error** that never reveals which one failed. On success, the code is consumed; the server generates a new password and a new passphrase, shown once, and open sessions are dropped. It also returns the account name and the number of codes left. An optional variant — the **"this device" factor** — provides a second L2 path (see §5.4).
 
-There is no automatic escalation to L3: level 2 asks for no identifier, but the code it receives names its account, which is what its per-account brake counts — a short window, then suspension of the level for that account. The per-address counter applies on top, when an address means anything. Opening a dispute is the person's own decision.
+There is no automatic escalation to L3. Level 2 asks for no identifier, but the code it receives names its account, which is what its per-account brake counts: a short window (5 failures per 15 minutes by default), then, after 20 failures since the last rearm, suspension of code recovery for that account. It is lifted by a fresh batch of codes — level 3 issues one —, by a successful code recovery, or by a successful passphrase recovery. That refusal names its state, otherwise the owner would not know what to do; so it tells whoever already holds one of the account's codes that the code names a real account. The per-address counter applies on top under the `clearweb` profile. Opening a dispute is the person's own decision.
 
 ### 5.3 Level 3 — All Access Lost
 
 - Entry: discreet "Lost all access" link on the login page
-- User provides their public identifier; their browser generates a **tracking code** (claim) whose fingerprint (SHA-256) alone is sent to the server (anti-timing: forced delay)
-- A dispute with a **non-guessable** number (`LIT-<random>`) is opened. If a dispute is already open for that account, the number is **not re-disclosed** and the concurrent attempt is flagged to the admin ("multi-requester")
+- User provides their account name (the level-1 one); their browser generates a **tracking code** (claim) whose fingerprint (SHA-256) alone is sent to the server (anti-timing: forced delay)
+- A dispute with a **non-guessable** number (`LIT-` followed by 16 hex characters) is opened. If a dispute is already open for that account, the number is **not re-disclosed** and the concurrent attempt is flagged to the admin ("multi-requester")
 - The user answers a few **context questions** (account creation year, last-login period, usage frequency) — **no secret is requested**
-- The server assembles a **bundle of signals** presented to the administrator:
-  - The bundle carries **no passive signal**: no address, no browser fingerprint. It is entirely declarative, checked against what the server already records, and it says so to the arbitrator rather than letting them assume otherwise
-  - **Declarative signals** (what the user claims, compared against reality): creation year, last-login month, usage frequency
-- **No numeric score is computed.** The signals are **raw facts**: they **never** unlock the account automatically, they only help a **human administrator** decide in the chat
+- The server assembles a **bundle of raw facts** presented to the administrator:
+  - **Context**: what the server already holds — account creation, last login, login count, codes left, recent refusals, and whatever the deployment's adapter adds, which the library does not interpret
+  - **Declarative**: each answer checked against reality, marked `concorde` (match), `diverge` (mismatch) or `indisponible` (unavailable) — the last when the server keeps no such data, which is not a mismatch
+  - **Warning**: it reminds the arbitrator that these answers are guessable; they guide the conversation, they prove nothing
+  - The bundle carries **no passive signal**: no address, no browser fingerprint
+- **No numeric score is computed.** These are **raw facts**: they **never** unlock the account automatically, they only help a **human administrator** decide in the chat
 - Cooldown: 1 hour between submissions
-- The tracking code gates access to the chat thread and to the reset, and is single-use. It expires with the dispute after 24h — **unless the dispute has been accepted**: from the arbitrator's decision onwards the clock stops, so that it cannot undo their work before the holder comes back
+- Opening is braked before any account lookup: 10 per address and 20 service-wide per hour (defaults). There is deliberately no per-account brake: a third party could otherwise wall the owner out of level 3 with nothing shown to the arbitrator. Harassing an account shows up another way: the concurrent attempt is counted and displayed
+- The tracking code is presented at every step — filing the answers, the chat thread, the status, the reset. The case expires after 24h while undecided. A grant runs 7 days from the decision; past that it lapses and arbitration must be redone. The reset closes the case and erases the tracking code's hash. If the holder lost their tracking code, an arbitrator can abandon the current case: that grants no access, it frees the slot for a new case
 
 ### 5.4 L2 possession factors — recovery codes & the "this device" factor
 
 L2 always combines **knowledge** (the memorized word) and **possession**. Two possession factors are offered; the user holds at least one.
 
 **Recovery codes — the universal paper factor.**
-- A batch of **10 codes** is generated at registration and shown **only once** (format `xxxxx-xxxxx`, ~40 bits each).
-- Stored twice, never in clear: `code_lookup = HMAC-SHA256(SERVER_SECRET, code)` (O(1) lookup with no identifier, *pepper* role) **and** `code_hash = Argon2id(code)` (verification + resistance to a database leak).
-- **Single-use**, regenerable on demand (the new batch replaces the old one). Universal: paper, password manager, or a second device — the user's choice.
+- A batch of **10 codes** is generated at registration and shown **only once** (format `xxxxx-xxxxx`: 10 lowercase hex characters, 40 bits each).
+- Stored twice, never in clear: `code_lookup = HMAC-SHA256(key = deployment salt, code)` (lookup with no identifier) **and** `code_hash = Argon2id(code)` (verification + resistance to a database leak). The deployment salt is kept like a service secret, outside the webroot, and is never rotated without reissuing every sheet: changing it makes every issued code unfindable.
+- **Single-use**, regenerable on demand (the new batch replaces the old one). They are kept on paper, offline.
 
 **"This device" factor — the cryptographic factor, optional.**
-- An **ECDSA P-256** keypair is generated in the browser. The private key is **encrypted at rest** by an AES-256-GCM key derived from the **memorized word** via **Argon2id** in JavaScript, written in the library and checked against libsodium's vectors — no vendored binary. The resulting blob carries its version and derivation parameters. Where it is stored is an integration choice: the reference implementation uses `localStorage`, IndexedDB being preferable and still to be done.
+- An **ECDSA P-256** keypair is generated in the browser. The private key is **encrypted at rest** by an AES-256-GCM key derived from the **memorized word** via **Argon2id** in JavaScript (t=3, m=64 MiB, p=1, under a per-blob salt), written in the library and checked against libsodium's vectors — no vendored binary. The resulting blob carries its version and derivation parameters; a blob declaring parameters below this floor is refused. Where it is stored is an integration choice: the reference implementation uses `localStorage`, IndexedDB being preferable and still to be done.
 - The server holds **only the public key**. Recovery means **signing a challenge** (32 bytes, 5-min TTL, single-use): the browser decrypts the private key with the word, signs, the server verifies.
+- On this path the server does not check the word, it checks a signature. The word is held only by the blob's encryption — a stolen blob can be attacked offline, with no attempt counter, at Argon2id's cost alone. On success a new password is returned; the passphrase and the codes do not change.
 - It is a cryptographic **device + knowledge** 2FA, with no TPM or hardware. **Software** protection (assumed), device-bound. **Should be disabled on Tor/onion profiles**, where local storage does not survive the session — an integration choice, not an automatic behaviour. The paper recovery code remains the floor.
-- ⚠️ **Enrolling a device does not add a factor: at that moment, the memorized word is enough.** Whoever knows it can enroll **their own** key, then authenticate with it — the path goes through neither a recovery code nor the passphrase. Enrollment therefore belongs to an **already-open session**, and it is up to the application to take the account name from that session rather than from the request body. The protocol requires the application to **assert** this explicitly, and rate-limits the path per account; it cannot verify the session itself — **this is an assertion, not a proof**. An already-enrolled device does remain two real factors: its encrypted blob and the word.
+- ⚠️ **Enrolling a device does not add a factor: at that moment, the memorized word is enough.** Whoever knows it can enroll **their own** key, then authenticate with it — the path goes through neither a recovery code nor the passphrase. Enrollment therefore belongs to an **already-open session**, and it is up to the application to take the account name from that session rather than from the request body. The protocol requires the application to **assert** this explicitly (`Titulaire::AUTHENTIFIE`), and rate-limits the path per account and per address (5 and 12 failures per 15 minutes, defaults); it cannot verify the session itself — **this is an assertion, not a proof**. An already-enrolled device does remain two real factors: its encrypted blob and the word.
+- A level-3 reset removes every enrolled device; levels 1 and 2 do not.
 
 ---
 
 ## 6. Dispute System & Admin Interface
 
-A dispute (`LIT-XXXX`) opens when the person asks for one, never automatically, and becomes visible in the arbitration console once they have filed their answers.
+A dispute (`LIT-` followed by 16 hex characters) opens when the person asks for one, never automatically. With the shipped adapter it appears in the arbitration console as soon as it is opened; its bundle, once the answers are filed (`awaiting_admin`).
 
-- Each dispute has a **non-guessable** number, the bundle of signals (raw facts, never a score), attempt and refusal counters, a concurrent-attempt counter ("multi-requester"), and a status (`open`, `awaiting_admin`, `accepted`, `refused`, `closed`)
+- Each dispute has a **non-guessable** number, the bundle of facts (raw, never a score), attempt and refusal counters, a concurrent-attempt counter ("multi-requester"), and a status (`open`, `awaiting_admin`, `accepted`, `refused`, `closed`)
 - The admin finds open disputes in their dashboard
 - A bidirectional chat channel is available between admin and user, with access gated by the tracking code (polling, not real-time WebSocket to keep it simple)
 - `purger()` erases expired disputes — neither the refused ones, on which the freeze is counted, nor the accepted ones, which a holder may still come back to consume. ⚠️ The library exposes the method; **it has no clock**. Calling it is the deployment's job, from a scheduled task.
@@ -220,21 +237,23 @@ When the admin reviews a dispute, two paths exist:
 **Option 1 — Grant recovery (unblock):**
 
 - Admin verifies identity via the chat exchange
-- The dispute moves to `granted`. **The server neither generates nor transmits any password**: no secret travels through the chat
-- The user **re-defines their own** password and memorized word from their recovery page (re-enrollment model): the memorized word is derived in the browser and never arrives in the clear, the password is submitted in the clear — the server does not issue it, it files it. The passphrase and the codes are server-generated and displayed once. The tracking code is then consumed (single-use) and the dispute moves to `resolved`
+- The dispute moves to `accepted`. **The server neither generates nor transmits any password**: no secret travels through the chat
+- The user **re-defines their own** password and memorized word from their recovery page (re-enrollment model). The password is 12 to 4,096 characters; it is submitted in the clear, and the server files it without issuing it. The browser generates a new salt and derives the memorized word, which never arrives in the clear. The server generates a passphrase and 10 codes, shown once, drops open sessions and removes every enrolled device — the holder re-enrolls the one they use. The dispute moves to `closed` and the tracking code's hash is erased
 
 **Option 2 — Refuse recovery:**
 
-- Admin doesn't believe the requester is legitimate
+- The admin does not find the proof of identity sufficient
 - The case moves to `refused`, carrying the date and the name of whoever decided
 - **The account is not touched**: not deleted, not banned, not stripped of its codes. It stays usable
-- Past **3 refusals within a rolling 30-day window**, *opening* new cases freezes for 7 days on that account. An administrator can lift the freeze, and the record of who lifted it is kept
+- On the **3rd refusal within a rolling 30-day window**, *opening* new cases freezes for 7 days on that account. An administrator can lift the freeze, and the record of who lifted it is kept
 
 🔑 **What hardens is the procedure, never the account.** An earlier edition of this document announced a 24h ban and permanent deletion at the 3rd refusal; the implementation closest to it deleted the account on the **first**. Both were wrong for the same reason: a refusal says "this requester did not convince me", not "this account is illegitimate". If the requester was an impostor, deleting destroys the victim's account; if they were the mis-judged owner, it punishes an innocent. And an attacker unable to steal an account could get it erased by piling up refusals — **failure became a weapon**.
 
 **Rationale:** the freeze costs whoever insists without convincing, and costs the owner nothing — they keep signing in normally throughout. Counting is on **refused cases**, not submissions: three submissions within one case remain one refusal, otherwise an honest owner's persistence would trip the freeze as fast as a hostile campaign.
 
 ### 6.2 Super-user (SU) — governing the administrators
+
+The super-user is not part of the library: the lab implements it (`demo/lab/selfrecover-su`, a command-line console). What follows describes that reference model.
 
 SelfRecover governs **a single right**: settling level-3 disputes. Two roles carry it — the **administrator** decides, the **super-user** governs the administrators themselves.
 
@@ -254,9 +273,9 @@ SelfRecover governs **a single right**: settling level-3 disputes. Two roles car
 
 **What the library enforces**
 
-- **Counters**: per username and per address at L1, per address and per service at L3
+- **Counters**: per account and per address at levels 1 and 2 and at device enrollment, with level-2 suspension after 20 failures; per address and service-wide when opening a level-3 dispute. The per-address brake only exists under the `clearweb` profile
 - **Forced delay** on every refusal that hides a state
-- **Single refusal message**, so nothing sorts the accounts that exist
+- **Single refusal message**, so nothing sorts the accounts that exist — except two deliberate exceptions: level-2 suspension, which must be stated, and opening a level-3 dispute (§10.1)
 
 **What the integrator owns**, because it needs routes, pages or a browser the
 library does not have: a honeypot field, a form-timing check, a proof of work in
@@ -265,31 +284,17 @@ notification or blocking policy built on top.
 
 ---
 
-## 8. Diagnostic & Bug Reporting (Privacy-Safe)
+## 8. What the Library Returns
 
-Every failure generates a structured error code:
+Each method returns `ok`, a human-facing `message`, and for some refusals a stable `error` the application can log or translate: `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `compte_inconnu`, `gele`, `deja_ouvert`, `sesame_invalide`, `expire`, `accord_perime`, among others.
 
-```
-SR-L1-PASS-001   Level 1, passphrase mismatch, attempt 1
-SR-L2-HMAC-003   Level 2, HMAC validation failed, attempt 3
-SR-L3-SIGN-OK    Level 3, signal bundle forwarded to admin
-SR-L3-FING-BLK   Level 3, fingerprint blocked
-SR-SYS-SALT-ERR  System error, salt retrieval failed
-```
-
-**What IS included in diagnostic reports:**
-
-- Error code, library version, browser/OS, level reached, attempt count
-- Installation identifier (reveals no secret)
-
-**What is NEVER included:**
-
-- Recovery word (raw or derived), username, identifier, IP, fingerprint
-- Passphrase, password, any personal data
+The library reports nothing itself; it only records the attempts its brakes need. What a diagnostic report contains is the application's call, and it never includes the recovery word (raw or derived), the passphrase, the password or the codes.
 
 ---
 
 ## 9. Protection Against Active Attacks
+
+What follows is an integration pattern that neither the library nor the demos provide: it needs sessions, roles and a notification channel the library does not have.
 
 If a legitimate user logs in normally and the server detects suspicious activity (failed L1 attempts, open disputes), a modal is shown:
 
@@ -298,14 +303,11 @@ If a legitimate user logs in normally and the server detects suspicious activity
 > *Did you try to recover your account recently?*
 > `[ Yes, it was me ]`  `[ No, it wasn't me ]`
 
-- **Yes** → silent cleanup of failed attempts and disputes, user continues normally
+- **Yes** → failed attempts are cleared, the user continues normally; refused disputes still count toward the freeze (§6.1)
 - **No** → enhanced protection activated behind the scenes:
   - New password generated and shown to user
   - Sessions revoked: whoever held the account is ejected
   - Admin notified
-
-What follows belongs to the application rather than the protocol, because it
-needs sessions, roles and a notification channel the library does not have.
 
 The user sees a reassuring "Your account is now secured" message — not a technical log. The admin handles the investigation behind the scenes.
 
@@ -319,9 +321,9 @@ The user sees a reassuring "Your account is now secured" message — not a techn
 - **Email account takeover** — there's no email involved, anywhere
 - **SMTP provider failures** — no SMTP dependency
 - **Third-party trust** — only the site and the user are involved
-- **Rate-limited brute force** — per-username limits + L2/L3 escalation
-- **Bot enumeration** — *partly*. Closed at levels 1 and 2: a single generic refusal at the first, no identifier asked at the second. Open at level 3, where the useful answer IS the distinction — a success returns a dispute number, an unknown name cannot. What opposes it is cost: two brakes applied before the account lookup (per address, per service), a delay on every refusal that hides a state, and a proof of work in front of the route — which the library cannot impose, having no routes
-- **Social reputation laundering** — public identifier locked after registration, cannot be changed by the user
+- **Braked brute force** — per account and per address at levels 1 and 2 and at enrollment, level-2 suspension after 20 failures, an Argon2id cost per server-side attempt
+- **Bot enumeration** — *partly*. Closed at levels 1 and 2 and at device enrollment: a single generic refusal at the first, no identifier asked at the second, a counter keyed by the submitted name at the third. The salt route always returns a salt, real or fake (§4.2). One level-2 refusal does name a state: suspension, which tells whoever already holds a code that it names a real account. Open at level 3, where the useful answer IS the distinction — a success returns a dispute number, an unknown name cannot. What opposes it is cost: two brakes applied before the account lookup (per address, per service), a delay on every refusal that hides a state, and a proof of work in front of the route — which the library cannot impose, having no routes
+- **Social reputation laundering** — the library offers no account rename; locking the name after registration is the application's to enforce
 
 ### 10.2 CRITICAL — Server Root Access (sudo)
 
@@ -333,7 +335,7 @@ SelfRecover protects recovery data through HMAC derivation, Argon2id hashing, an
 
 - Some Linux environments grant passwordless sudo by default (`NOPASSWD: ALL` in sudoers). Notable cases: **Raspberry Pi OS** (user `pi`) and **cloud images** (AWS, DigitalOcean, GCP Ubuntu AMIs for the default `ubuntu` user, Amazon Linux for `ec2-user`, etc.). Most desktop/server installs (Debian, Ubuntu iso, Fedora, Arch) do **not** have this issue by default — but always verify your `/etc/sudoers.d/` on installation.
 - If an attacker compromises the user account (SSH key leak, web vulnerability, etc.), they escalate to root with zero friction
-- With root: direct database access, password hash replacement, code modification, key extraction — SelfRecover becomes decorative
+- With root: direct database access, password hash replacement, code modification — including the deriver served to the browser, which could then capture the memorized word —, key extraction — SelfRecover becomes decorative
 
 This is not a theoretical risk. It is the single point of failure that bypasses the entire protocol.
 
@@ -364,21 +366,22 @@ A SelfRecover deployment without hardened sudo is a lock on a door with no wall.
 
 L2 requires **two** factors: a recovery code (possession) **and** the memorized word (knowledge). A compromised memorized word alone (social engineering, shoulder surfing, written down carelessly) is not enough — a recovery code is still missing. The real risk is the **simultaneous** compromise of both factors (the word **and** a recovery code, or the word **and** the enrolled device). This is the standard 2FA model: it cannot be mitigated without an external communication channel — which SelfRecover explicitly rejects.
 
+On the device path the server does not check the word: a stolen blob can be attacked offline, with no counter, at Argon2id's cost alone. This path needs a strong word.
+
 No system can protect against the simultaneous theft of all its factors. A leaked SSH private key gives server access. A leaked seed phrase empties a wallet. A recovery code **and** the memorized word stolen together open the account. The security model is identical.
 
 SelfRecover assumes:
 
 - The user treats the recovery word like a house key — not written on a sticky note, not shared in a chat
 - In `'hostname'` mode, the derivation limits damage to the single hostname involved (the fingerprint is useless elsewhere); in `'label'` mode it only limits damage to services that do not share the same label
-- Rate limiting and L2→L3 escalation slow down brute-force attempts
+- Per-account and per-address brakes, and level-2 suspension, slow online brute force down; offline, only the Argon2id cost does
 - The server cannot compensate for human carelessness — no system can
 
 **A protected secret stays safe; a neglected one is exposed.** This is not a flaw — it is the fundamental contract of any secret-based security system.
 
 ### 10.4 Other limitations (by design)
 
-- If the user forgets both the recovery word and the passphrase and fails L3 scoring, the admin is the only fallback
-- Users who change devices frequently lose fingerprint-based passive bonuses
+- If the user forgot their memorized word and lost their passphrase, only level 3 is left: a human arbitrator. If they refuse there is no other recourse; a new dispute stays possible until the 7-day freeze, on the 3rd refusal in 30 days
 
 These are by design. A system with infinite fallbacks has infinite attack surface.
 
@@ -404,7 +407,7 @@ SelfRecover cannot protect accounts if the server hosting it is insecure. The fo
 
 ### 11.3 Application
 
-- [ ] HTTPS mandatory — in `'hostname'` mode the derivation reads the hostname, and without TLS nothing guarantees the page served actually comes from that service
+- [ ] HTTPS mandatory on the ordinary web — in `'hostname'` mode the derivation reads the hostname, and without TLS nothing guarantees the page served actually comes from that service; on a v3 hidden service the address is the service's public key (§4.1)
 - [ ] Rate limiting on all recovery endpoints (nginx `limit_req` or application-level)
 - [ ] Security headers: CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
 - [ ] PHP: `disable_functions`, `open_basedir`, `expose_php off`
@@ -416,6 +419,17 @@ SelfRecover cannot protect accounts if the server hosting it is insecure. The fo
 - [ ] Alert on repeated L2/L3 failures for the same account
 - [ ] Automated backup verification (test restore periodically)
 
+### 11.5 Integrating the library
+
+- [ ] Declare the deployment profile, `clearweb` or `tor-onion`: it is mandatory, with no default
+- [ ] Keep the deployment salt outside the webroot, and never rotate it without reissuing every code sheet
+- [ ] Serve the salt route through `Recovery::selDeDerivation()`, and brake it
+- [ ] Device enrollment: take the account name from the session, never from the request body, and pass `Titulaire::AUTHENTIFIE`
+- [ ] Check the arbitrator role before `trancher()`, `degeler()` and `abandonner()`: the library does not check it
+- [ ] Call `purger()` from a scheduled task: the library has no clock
+- [ ] Put a proof of work in front of the level-3 opening route
+- [ ] With the shipped adapter, build `StockagePdo` with the derivation host
+
 A deployment that skips this checklist is not a SelfRecover deployment — it is a liability.
 
 ---
@@ -424,10 +438,10 @@ A deployment that skips this checklist is not a SelfRecover deployment — it is
 
 ### 12.1 Requirements
 
-- PHP 8.1+ with `ext-json`, `ext-mbstring` and `ext-openssl` — the constraints `composer.json` carries. The reference implementation is PHP; there is no other server-side one
-- Any SQL database (MySQL, MariaDB, PostgreSQL, SQLite)
-- Modern browser with JavaScript and Web Crypto API: `client/sr-derive.js` derives the memorized word there, through `crypto.subtle`
-- HTTPS mandatory in production
+- PHP 8.1+ with `ext-json`, `ext-mbstring` and `ext-openssl` — the constraints `composer.json` carries —, and a PHP build that provides `PASSWORD_ARGON2ID`, which `composer.json` cannot require. The reference implementation is PHP; there is no other server-side one
+- An SQL database. The shipped schema and adapter target SQLite (`ext-pdo_sqlite`); elsewhere, the column types and three queries are rewritten (the header of `schema.sql` names them), or the integrator writes their own `StorageInterface` adapter
+- Modern browser with JavaScript and Web Crypto API: `client/sr-derive.js` derives the memorized word there, through `crypto.subtle`. The "this device" factor adds `client/argon2id.js` then `client/sr-kdf.js`, Web Crypto offering no Argon2id
+- HTTPS mandatory on the ordinary web (§11.3)
 
 ### 12.2 Planned distribution
 
@@ -436,7 +450,7 @@ composer require pierroons/selfrecover   # future PHP lib
 npm install selfrecover                  # future JS lib
 ```
 
-Not yet published. See the [MySelf-Lab](../../../demo/lab/) for a working standalone implementation to study.
+Not yet published: the library installs from a clone of the repository, through a Composer `path` repository. To see it at work: the served demo ([`demo/bi-self-duo/`](../../../demo/bi-self-duo/)), the lab ([MySelf-Lab](../../../demo/lab/)), and [the standalone tools](../tools/) for the pages that depend on no server.
 
 ---
 
@@ -459,12 +473,18 @@ SelfRecover is not a replacement for WebAuthn. It is a complement, especially fo
 
 ## 14. Roadmap
 
-- [x] Protocol specification (v1.1)
+- [x] Protocol specification (v1.2)
 - [x] Reference implementation (this repo)
 - [x] Whitepapers EN + FR
-- [x] Standalone demo (L1 + L2)
-- [ ] Security audit (community welcome)
+- [x] Served demo (`demo/bi-self-duo/`) and lab (`demo/lab/`) — the standalone demo was removed on 18 August 2026
 - [x] PHP library extracted — PSR-4 with its own `composer.json`, consumed through a `path` repository
+- [x] All three levels in the library, level 3 included (`Escalade`)
+- [x] "This device" factor, and its local Argon2id encryption (`client/sr-kdf.js`)
+- [x] Shipped storage implementation (`schema.sql` + `StockagePdo`)
+- [x] Mandatory deployment profile, per-account brakes, level-2 suspension
+- [x] Devices removed on a level-3 reset, grant expiry
+- [x] Salt route guard (`Recovery::selDeDerivation`)
+- [ ] External security audit (community welcome)
 - [ ] Published on Packagist (`composer require pierroons/selfrecover`)
 - [ ] JS package (`npm install selfrecover`) — the deriver ships as `client/sr-derive.js`, it is not packaged
 - [ ] WordPress plugin

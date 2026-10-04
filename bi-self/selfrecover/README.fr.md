@@ -48,9 +48,9 @@ actuelle ne contient aucun code Lite.
 
 Toute application web fait face à la même question : *que se passe-t-il quand un utilisateur oublie son mot de passe ?*
 
-Depuis vingt ans, la réponse de l'industrie est : **envoyer un email**. Mais cela crée une chaîne de dépendances — fournisseurs SMTP, problèmes de délivrabilité, dossiers spam, boîtes mail tierces, tokens qui expirent — et cela externalise le modèle de sécurité à un service que vous ne contrôlez pas.
+Depuis vingt ans, la réponse de l'industrie est : **envoyer un email**. Mais cela crée une chaîne de dépendances — fournisseurs SMTP, problèmes de délivrabilité, dossiers spam, boîtes mail tierces, tokens qui expirent — et cela externalise le modèle de sécurité à un service que tu ne contrôles pas.
 
-**Pourquoi un site web a-t-il besoin de votre email pour prouver que vous êtes vous ?**
+**Pourquoi un site web a-t-il besoin de ton email pour prouver que tu es toi ?**
 
 ---
 
@@ -153,7 +153,7 @@ saisie user  → recovery_code + recovery_word
 réseau       → sel du compte, demandé par le code   // toujours un sel : un faux, stable, pour un code inconnu
 client       → derived_key  = HMAC-SHA256(clé = recovery_word, message = matériel + "|v2" + user_salt)
 réseau       → POST /recover { recovery_code, derived_key }
-serveur      → compte        = lookup(HMAC-SHA256(SERVER_SECRET, recovery_code))  // le code localise le compte
+serveur      → compte        = lookup(HMAC-SHA256(sel_deploiement, recovery_code))  // le code localise le compte
                verify        = password_verify(recovery_code, code_hash)
                              ET password_verify(derived_key, stored_recovery_hash)  // Argon2id, les deux toujours calculés
 ```
@@ -201,7 +201,7 @@ Chaque code est stocké **deux fois**, jamais en clair :
 
 | Colonne | Rôle |
 |---|---|
-| `code_lookup` = `HMAC-SHA256(SERVER_SECRET, code)` | recherche **O(1) sans identifiant** (le code localise le compte) + rôle de *pepper* non réversible |
+| `code_lookup` = `HMAC-SHA256(sel_deploiement, code)` | recherche **O(1) sans identifiant** (le code localise le compte) + rôle de *pepper* non réversible |
 | `code_hash` = `Argon2id(code)` | vérification + résistance à une fuite de base |
 
 - **Usage unique** (marqué `used` après un reset réussi).
@@ -347,8 +347,8 @@ méthode qui écrit, tant qu'on ne va pas voir la table.
 - Brute force de compte (coût memory-hard Argon2id + rate limits + L3 revu par un humain)
 
 **Ne prétend pas protéger contre :**
-- Code client malveillant / phishing actif (si l'attaquant contrôle la page que votre navigateur charge, le protocole ne peut rien — vrai pour n'importe quel protocole in-browser)
-- Mots de récupération faibles (`password`, `123`) — mitigé par le rate-limiting et l'escalade vers un L3 revu par un humain, pas par la dérivation elle-même
+- Code client malveillant / phishing actif (si l'attaquant contrôle la page que ton navigateur charge, le protocole ne peut rien — vrai pour n'importe quel protocole in-browser)
+- Mots de récupération faibles (`password`, `123`) — le niveau 2 demande aussi un code ou l'appareil enrôlé ; en ligne, les freins de débit et la suspension du niveau 2 bornent les essais ; hors ligne (base volée, blob d'un appareil), seul le coût d'Argon2id les freine — pas la dérivation elle-même
 - Coercition physique de l'utilisateur (voir SelfGuard dans cet écosystème pour un stockage conscient de la contrainte)
 - Malware ciblé avec keylogging
 
@@ -378,7 +378,7 @@ C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecove
 **Bibliothèque de référence + implémentation déployée, auto-auditée**
 
 Ce dépôt contient :
-- La **spécification du protocole** (whitepapers v1.1)
+- La **spécification du protocole** (whitepapers v1.2)
 - Une **bibliothèque PHP** — `src/`, PSR-4 `Pierroons\SelfRecover\` : récupération de niveaux 1 et 2, recovery codes, facteur « cet appareil », profil Argon2id, wordlist diceware, et l'interface de stockage que l'intégrateur implémente pour sa propre base — ou, s'il part de zéro, son implémentation fournie (`schema.sql` + `StockagePdo`)
 - Le **dériveur navigateur** — `client/sr-derive.js`, livré plutôt que décrit : c'est lui qui porte la propriété anti-hameçonnage, et les intégrateurs qui l'écrivaient eux-mêmes en produisaient des variantes qui ne l'avaient pas ; et `client/sr-kdf.js`, qui chiffre un secret local en Argon2id avec sa version et ses paramètres dans le blob
 - **Les trois niveaux**, depuis le 07/09/2026 : l'escalade de niveau 3 est remontée dans `src/Recovery/Escalade.php` — dossier, sésame à usage unique, faisceau de faits bruts, arbitrage et gel de procédure. Elle ne vérifie pas *qui* a le droit de trancher : les rôles et les sessions appartiennent à l'application. Le super-utilisateur, lui, vit toujours dans [`demo/lab/`](../../demo/lab/)
@@ -498,4 +498,4 @@ Divulgations de sécurité : voir [SECURITY.md](SECURITY.md).
 
 **Pierroons** — auteur du projet.
 
-*SelfRecover — parce que votre identité ne devrait pas dépendre d'une boîte mail.*
+*SelfRecover — parce que ton identité ne devrait pas dépendre d'une boîte mail.*
