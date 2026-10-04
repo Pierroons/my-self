@@ -1,7 +1,7 @@
 # MySelf — architecture actuelle (phase 0)
 
 *3 octobre 2026 — 19:48 · état du dépôt au commit `1b91edf` ; SelfDataGuard, SelfRecover, leurs démos et
-les constats 20 et 23 revus le 4 octobre 2026 au commit `4149238`*
+les constats 20 et 23 revus le 4 octobre 2026 au commit `4149238` ; Self-Right relu par son mainteneur au même commit*
 
 > **Statut : brouillon.** Le mainteneur de chaque module relit, dans toutes les sections, ce
 > qui touche son module avant que ce document entre dans `main`.
@@ -80,8 +80,8 @@ Démarrage machine ─── initramfs : keyscript → selfrecover_derive_c (C) 
                       fermé le shell d'amorçage, sinon shell root busybox
 Après update-initramfs ─ garde-fou post-update (root)
 
-Public anonyme ────── API SelfJustice (lecture seule, CORS ouvert) et SelfAct (lecture seule)
-Tâches planifiées ─── collecte DILA, EUR-Lex/CELLAR, Judilibre, service-public.gouv.fr
+Public anonyme ────── API SelfJustice (lecture seule hors dépôt de retours, CORS ouvert) et SelfAct (lecture seule)
+Tâches planifiées ─── collecte DILA, CELLAR, Conseil de l'Europe, Judilibre, service-public.gouv.fr
 Poste utilisateur ─── selfright-mcp (stdio) → API SelfJustice / SelfAct d'une instance choisie
 ```
 
@@ -106,7 +106,7 @@ Poste utilisateur ─── selfright-mcp (stdio) → API SelfJustice / SelfAct 
 | SelfDataGuard | journal d'audit du séquestre | chaîne HMAC-SHA256 (symétrique) ; ancre `seq:hmac` facultative depuis la 0.6.0 | — | `self-security/selfdataguard/src/Escrow/AuditLog.php:112` |
 | SelfRecover-LUKS | clé de slot | Argon2id t=3, m=64 Mio, **p=4**, 32 o, sortie hex ✔ | sel = `sha256("<sel>:<label>")[:16]`, label `disk` ✔ | `self-security/selfrecover-luks/selfrecover_derive.c:95, 122-128` |
 | SelfRecover-LUKS | volumes secondaires | fichier-clé de 4096 o d'urandom | — | `self-security/selfrecover-luks/install.sh:475-481` |
-| SelfJustice, SelfAct, MCP | — | aucune primitive ; TLS client avec vérification par défaut (curl, httpx) | — | `self-right/selfjustice/api/api.php:864-869` |
+| SelfJustice, SelfAct, MCP | — | aucune primitive de sécurité (SHA-256 n'y sert que d'identifiant) ; TLS client avec vérification par défaut (curl, urllib, httpx) | — | `self-right/selfjustice/api/api.php:864-869` |
 
 **Les profils Argon2id coexistants : quatre jeux de paramètres**
 
@@ -137,7 +137,8 @@ Poste utilisateur ─── selfright-mcp (stdio) → API SelfJustice / SelfAct 
 | Passphrase Recover-LUKS | opérateur de la machine | papier, gestionnaire | Argon2id puis KDF LUKS | SelfRecover-LUKS |
 | Sel de déploiement LUKS | public mais irremplaçable | `/etc/selfkeyguard/selfrecover_salt`, **copié dans l'initrd sur `/boot` en clair** | aucune (non secret) ; copie hors site exigée | SelfRecover-LUKS |
 | Clé d'hôte dropbear | machine | initrd sur `/boot` en clair | aucune | SelfRecover-LUKS (comportement Debian) |
-| Secrets d'exploitation (clé PISTE, jeton ntfy) | exploitant | fichiers et environnement de l'instance | permissions | SelfJustice, SelfAct, MCP |
+| Secrets d'exploitation (clé PISTE, jeton ntfy, jeton du panneau de veille) | exploitant | fichiers et environnement de l'instance | permissions | SelfJustice, SelfAct |
+| Jeton ntfy du MCP (facultatif) | utilisateur du MCP | environnement de son poste | — | MCP |
 | Secrets d'instance des démos | serveur de la démo | fichiers de la démo | permissions | démos |
 
 ---
@@ -169,7 +170,7 @@ Repli : passphrase native (clavier, ou choix 2 de selfrecover-secours.sh par dro
 
 **SelfJustice, SelfAct, MCP.**
 ```
-Sources publiques ──(tâches planifiées)──> bases SQLite ──> API en lecture seule ──> public, IA, MCP
+Sources publiques ──(tâches planifiées)──> bases SQLite, catalogue JSON ──> API en lecture seule ──> public, IA, MCP
                                                            └─> Judilibre en relais (clé serveur)
 ```
 
@@ -206,11 +207,12 @@ Sources publiques ──(tâches planifiées)──> bases SQLite ──> API en
    - L'« evil maid » est déclarée hors périmètre.
    - **Le shell d'amorçage n'est fermé que si l'opérateur l'accepte** (`self-security/selfrecover-luks/install.sh:328-342`).
      Laissé ouvert, il donne un shell root avant le déverrouillage.
-7. **Public → API Self-Right.** Lecture seule pour l'essentiel ; l'API SelfJustice est en CORS ouvert.
+7. **Public → API Self-Right.** Lecture seule, sauf le dépôt anonyme de retours (`/api/feedback`), qui conserve un
+   fichier côté serveur ; l'API SelfJustice est en CORS ouvert.
 8. **Tâches planifiées → réseau.** Les sources publiques sont téléchargées et intégrées par des
    tâches planifiées de l'instance.
 9. **API → modèle de langage (MCP, page de directives).** Du texte venu de sources tierces est
-   relayé à des IA, sans filtrage.
+   relayé à des IA, par l'API à toute IA qui la lit comme par le MCP, sans filtrage.
 
 ---
 
@@ -251,7 +253,7 @@ SelfJustice, et se replie sur ses chemins.
   - les bancs de Self-Right tournent sur leur code de sortie ;
   - SelfDataGuard tourne aussi sous PHP 8.1 et 8.2.
 - **Hors CI :** les sondes qui demandent l'instance (fraîcheur, surface servie, écart
-  dépôt/instance), une vraie construction d'initramfs, et l'installateur LUKS de bout en bout.
+  dépôt/instance ; le code de la sonde de fraîcheur est, lui, éprouvé en CI), une vraie construction d'initramfs, et l'installateur LUKS de bout en bout.
 
 ---
 
@@ -303,8 +305,11 @@ version qui le ferme ; le détail est dans le CHANGELOG racine.
    (`self-security/selfdataguard/src/Escrow/AuditLog.php:112`). L'ancrage reste un geste de
    l'opérateur, et le HMAC reste symétrique : le détenteur du secret forge au-delà de la dernière
    ancre.
-10. **Les secrets d'exploitation de Self-Right se chargent selon plusieurs conventions** : trois
-    pour le jeton ntfy, et deux emplacements pour la clé PISTE.
+10. **Les secrets d'exploitation de Self-Right se chargent selon plusieurs conventions.**
+    - Le jeton ntfy en a trois : un fichier pour les quatre pilotes de collecte, une variable
+      d'environnement pour la sonde de fraîcheur, une autre pour le MCP, côté poste.
+    - La clé PISTE a trois emplacements : une variable d'environnement côté API, et un fichier
+      côté collecte dont le défaut diffère entre le script et son pilote.
 
 ### 9.3 Points d'entrée
 
@@ -319,7 +324,7 @@ version qui le ferme ; le détail est dans le CHANGELOG racine.
     appel est un essai Argon2id, à freiner par l'intégrateur (c'est documenté). La démo publique, elle,
     donne depuis le 04/10/2026 une base à chaque visiteur et passe derrière un frein nginx.
 14. **Deux voies d'injection d'instructions vers des IA tierces** : la page de directives de
-    SelfJustice, et le texte des sources relayé par le MCP.
+    SelfJustice, et le texte des sources, relayé par l'API à toute IA qui la lit comme par le MCP.
 
 ### 9.4 Chaîne d'approvisionnement
 
@@ -339,7 +344,8 @@ version qui le ferme ; le détail est dans le CHANGELOG racine.
 19. Le whitepaper de SelfRecover-LUKS est en 0.5.0, alors que le module est en 0.6.2. La ligne de
     statut de ses README date une validation : celle-là peut être voulue.
 20. 🟢 Les deux gabarits nginx de SelfJustice divergeaient (version de PHP, TLS). Le second,
-    `nginx-api-patch.conf`, est retiré : il ne reste que `deploy/selfjustice/nginx.conf`.
+    `nginx-api-patch.conf`, est retiré : il ne reste que `deploy/selfjustice/nginx.conf`, qui décrit
+    le vhost servi au domaine près.
 21. Les README de Self-Right ne mentionnent pas le couplage de SelfAct à SelfJustice par état
     partagé (§7).
 
