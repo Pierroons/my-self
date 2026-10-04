@@ -17,6 +17,9 @@ User=root
 # pilote. Le jeton lui-même n'entre ni dans l'unité ni sur la ligne de commande.
 EnvironmentFile=-/etc/selfjustice/jade.env
 ExecStart=/opt/selfjustice/bin/update_jade.sh
+# 75 : la DILA est injoignable et le fonds en retard. Le pilote a déjà alerté ;
+# ce n'est pas une panne du service, qui garde `failed` pour les vraies.
+SuccessExitStatus=75
 
 # Un soir ordinaire applique un incrément en quelques secondes ; un rattrapage
 # de plusieurs semaines, quelques minutes. La borne évite qu'un blocage réseau
