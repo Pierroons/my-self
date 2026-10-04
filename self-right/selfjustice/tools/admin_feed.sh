@@ -7,7 +7,7 @@
 #
 # Ce script duplique les logs vers /var/lib/selfjustice/admin/access.log
 # où PHP peut les lire. À exécuter via cron toutes les 2 minutes :
-#   */2 * * * * <install-dir>/admin_feed.sh
+#   */2 * * * * www-data <install-dir>/admin_feed.sh   (ligne de /etc/cron.d)
 
 set -u
 # Les copies naissent fermées : le `chmod` plus bas ne laisse alors aucune fenêtre.
@@ -19,24 +19,25 @@ DST_DIR="${SELFJUSTICE_ADMIN_DIR:-/var/lib/selfjustice/admin}"
 DST_CUR="$DST_DIR/access.log"
 DST_OLD="$DST_DIR/access.log.1"
 
-# Lancé par root (cron) : il lit le journal de nginx et pose des copies que seul
-# PHP-FPM (groupe www-data) peut lire.
-GROUPE_LECTEUR="${SELFJUSTICE_ADMIN_GROUPE:-www-data}"
+# 🔑 Sous l'utilisateur de PHP-FPM, jamais root. La copie s'écrit dans un
+# répertoire que PHP peut modifier : root y suivrait un lien symbolique posé à la
+# place d'une copie, et écrirait le journal dans n'importe quel fichier de la
+# machine. Le journal de nginx appartient à www-data, qui le lit sans privilège.
+if [ "$(id -u)" -eq 0 ]; then
+    echo "admin_feed.sh : à lancer sous l'utilisateur de PHP-FPM, pas root" >&2
+    exit 1
+fi
 
 # 🔑 Une copie ne sort ni le jeton d'administration ni l'accès de quiconque. Le
 # panneau s'ouvre par une URL qui porte son jeton (`/w-<jeton>`), et une copie
 # lisible par tous le donnait à n'importe quel compte de la machine. Les lignes
 # qui le citent — chemin demandé ou Referer — sont retirées, et la copie est en
-# 640 : le journal de nginx, lui, reste réservé au groupe adm.
+# 640, comme le journal de nginx.
 copier() { # copier <journal de nginx> <copie>
     [ -r "$1" ] || return 0
     grep -v -E '/w-[0-9a-f]{32}' "$1" > "$2.tmp"
     [ "$?" -le 1 ] || { rm -f "$2.tmp"; return 1; }
     chmod 640 "$2.tmp" || { rm -f "$2.tmp"; return 1; }
-    # Hors root (un banc), la copie reste à son auteur seul : 640 suffit.
-    if ! chown "root:$GROUPE_LECTEUR" "$2.tmp" 2>/dev/null && [ "$(id -u)" -eq 0 ]; then
-        rm -f "$2.tmp"; return 1
-    fi
     mv -f "$2.tmp" "$2"
 }
 

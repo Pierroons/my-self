@@ -4,7 +4,9 @@
 # 🔑 Le panneau s'ouvre par une URL qui porte son jeton. Une copie du journal
 # lisible par tous le donnait à n'importe quel compte de la machine. Le cas
 # vérifie les deux protections, parce qu'elles ne se valent pas : retirer les
-# lignes empêche la fuite, fermer la copie la borne si une ligne passait.
+# lignes empêche la fuite, fermer la copie la borne si une ligne passait. Un
+# troisième vérifie que le script refuse root, qui écrirait à travers un lien
+# symbolique posé par PHP dans le répertoire des copies.
 #
 # Usage : bash tests/test_admin_feed.sh
 # Sortie : 0 si les cas se comportent comme attendu.
@@ -59,6 +61,20 @@ if [ "$code" -eq 0 ] && [ ! -e "$BAC/admin/access.log.1" ]; then
     ok "pas de journal tourné → code 0, rien d'inventé"
 else
     nok "journal tourné absent → code $code"
+fi
+
+echo
+echo "▸ Sous root, il refuse au lieu d'écrire"
+# Un faux `id` en tête du PATH : le banc ne tourne pas en root.
+mkdir -p "$BAC/faux"
+printf '#!/bin/sh\necho 0\n' > "$BAC/faux/id"
+chmod +x "$BAC/faux/id"
+rm -f "$BAC/admin/access.log"
+PATH="$BAC/faux:$PATH" lancer 2>/dev/null; code=$?
+if [ "$code" -ne 0 ] && [ ! -e "$BAC/admin/access.log" ]; then
+    ok "uid 0 → code $code, aucune copie écrite"
+else
+    nok "uid 0 → code $code, copie $( [ -e "$BAC/admin/access.log" ] && echo écrite || echo absente)"
 fi
 
 echo
