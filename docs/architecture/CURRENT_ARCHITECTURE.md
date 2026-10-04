@@ -355,17 +355,18 @@ version qui le ferme ; le détail est dans le CHANGELOG racine.
 
 ### 9.5 Documentation et code qui divergent
 
-17. `bi-self/selfrecover/SECURITY.md` annonce 0.6.x comme version prise en charge ; le module est
-    en 0.9.0.
-18. `bi-self/selfrecover/docs/architecture.md` décrit un signal passif au niveau 3 que le code n'a
-    pas.
-19. Le whitepaper de SelfRecover-LUKS est en 0.5.0, alors que le module est en 0.6.2. La ligne de
-    statut de ses README date une validation : celle-là peut être voulue.
+17. 🟢 `bi-self/selfrecover/SECURITY.md` annonçait 0.6.x comme version prise en charge. Il ne porte
+    plus de numéro de version : la ligne publiée prise en charge est la dernière mineure.
+18. 🟢 `bi-self/selfrecover/docs/architecture.md` décrivait un signal passif au niveau 3 que le code
+    n'a pas. Le schéma montre le faisceau tel que l'assemble `Escalade`.
+19. 🟢 Le whitepaper de SelfRecover-LUKS était en 0.5.0 quand le module était en 0.6.2. Il suit
+    le module, et `scripts/check-versions.sh` le compte désormais parmi les porteurs de version,
+    comme les deux whitepapers de SelfRecover.
 20. 🟢 Les deux gabarits nginx de SelfJustice divergeaient (version de PHP, TLS). Le second,
     `nginx-api-patch.conf`, est retiré : il ne reste que `deploy/selfjustice/nginx.conf`, qui décrit
     le vhost servi au domaine près.
-21. Les README de Self-Right ne mentionnent pas le couplage de SelfAct à SelfJustice par état
-    partagé (§7).
+21. 🟢 Les README de Self-Right ne mentionnaient pas le couplage de SelfAct à SelfJustice par état
+    partagé (§7). Ils le décrivent.
 
 ### 9.6 Doublons
 
