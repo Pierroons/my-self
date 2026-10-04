@@ -1,6 +1,7 @@
 # MySelf — architecture actuelle (phase 0)
 
-*3 octobre 2026 — 19:48 · état du dépôt au commit `1b91edf`*
+*3 octobre 2026 — 19:48 · état du dépôt au commit `1b91edf` ; SelfDataGuard, SelfRecover, leurs démos et
+les constats 20 et 23 revus le 4 octobre 2026 au commit `4149238`*
 
 > **Statut : brouillon.** Le mainteneur de chaque module relit, dans toutes les sections, ce
 > qui touche son module avant que ce document entre dans `main`.
@@ -337,7 +338,8 @@ version qui le ferme ; le détail est dans le CHANGELOG racine.
     pas.
 19. Le whitepaper de SelfRecover-LUKS est en 0.5.0, alors que le module est en 0.6.2. La ligne de
     statut de ses README date une validation : celle-là peut être voulue.
-20. Les deux gabarits nginx de SelfJustice divergent (version de PHP, TLS).
+20. 🟢 Les deux gabarits nginx de SelfJustice divergeaient (version de PHP, TLS). Le second,
+    `nginx-api-patch.conf`, est retiré : il ne reste que `deploy/selfjustice/nginx.conf`.
 21. Les README de Self-Right ne mentionnent pas le couplage de SelfAct à SelfJustice par état
     partagé (§7).
 
@@ -346,8 +348,10 @@ version qui le ferme ; le détail est dans le CHANGELOG racine.
 22. La dérivation `srDerive` est réécrite en PHP dans `demo/lab/lib/derive_cli.php`. Un banc et
     son canari la tiennent d'accord, mais le contrôle des réimplémentations
     (`scripts/check-liens-bibliotheque.sh`) ne reconnaît que l'idiome WebCrypto.
-23. Le faux sel anti-oracle est écrit deux fois, avec deux formules (duo et lab). La bibliothèque
-    n'en fournit pas.
+23. 🟢 Le faux sel anti-oracle était écrit deux fois, avec deux formules (duo et lab). Depuis
+    SelfRecover 0.9.0, la bibliothèque le fournit (`Recovery::selDeDerivation`) et la démo duo
+    l'emploie pour le chemin « code ». Le lab garde sa copie, de même formule, jusqu'à la fin de la
+    saison du CTF.
 24. La démo `bi-self-duo` réimplémente la modération sans consommer SelfModerate. C'est déclaré.
 25. `alerter()` existe en trois copies dans les outils de SelfJustice, plus une dans SelfAct. La
     substitution de domaine vit dans les trois `deploy/*/deploy.sh`. Les motifs User-Agent des IA
