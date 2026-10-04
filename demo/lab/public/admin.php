@@ -13,8 +13,12 @@ use Pierroons\MySelfLab\Moderate;
 $pdo = Db::pdo();
 $account = Auth::currentAccount($pdo);
 
-// Garde : réservé aux admins. Pas d'indice d'existence pour les non-admins.
+// Garde : réservé aux admins. Pas d'indice d'existence pour les non-admins —
+// ce qui suppose que le code HTTP dise la même chose que la page. Un corps
+// « 404 » rendu avec un statut 200 se distingue d'une page réellement absente
+// par le statut comme par la taille, et apprend donc que le fichier existe.
 if (!$account || empty($account['is_admin'])) {
+    http_response_code(404);
     render_header('Espace', $account);
     echo '<div class="card"><h1>404</h1><p class="muted">Page introuvable.</p></div>';
     render_footer();

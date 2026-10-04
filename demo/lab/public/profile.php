@@ -39,14 +39,22 @@ if ($voirUsername !== null) {
         $repColor = $repScore >= 25 ? '#3fb98c' : ($repScore >= 15 ? '#9aa9b6' : ($repScore >= 5 ? '#d4a056' : '#d96459'));
         $mine = $account ? Moderate::userVote($pdo, (int) $account['id'], 'member', $memberId) : null;
         $isSelf = $account && (int) $account['id'] === $memberId;
+        // La réputation est publique — elle sert à décider de faire confiance,
+        // c'est l'objet d'une modération communautaire. L'état de sanction ne
+        // l'est pas : « banni jusqu'au <date et heure> », la perte du droit de
+        // vote et la convalescence disent ce qu'un tiers a fait et quand il en
+        // sortira. L'intéressé le voit sur son propre profil, un admin partout.
+        $voitLesSanctions = $isSelf || ($account && !empty($account['is_admin']));
         [$canVote, $whyNot] = $account ? Moderate::canVote($pdo, (int) $account['id']) : [false, ''];
         ?>
         <h1>@<?= h($vue['username']) ?></h1>
         <div class="card">
           <p style="margin-top:0"><strong><?= h(t('prf.rep')) ?></strong> · <span style="color:<?= $repColor ?>;font-weight:700">★ <?= $repScore ?>/<?= Moderate::config()->reputationMax ?></span>
-            <?php if ($rep['banned']): ?><span style="color:#d96459"> · <?= h(sprintf(t('prf.banned.until'), date('d/m/Y H:i', $rep['banned_until']))) ?></span><?php endif; ?>
-            <?php if (!$rep['voting_rights']): ?><span style="color:#d4a056"> · <?= h(t('prf.novote')) ?></span><?php endif; ?>
-            <?php if ($rep['convalescent']): ?><span style="color:#d4a056"> · <?= h(t('prf.convalescent')) ?></span><?php endif; ?>
+            <?php if ($voitLesSanctions): ?>
+              <?php if ($rep['banned']): ?><span style="color:#d96459"> · <?= h(sprintf(t('prf.banned.until'), date('d/m/Y H:i', $rep['banned_until']))) ?></span><?php endif; ?>
+              <?php if (!$rep['voting_rights']): ?><span style="color:#d4a056"> · <?= h(t('prf.novote')) ?></span><?php endif; ?>
+              <?php if ($rep['convalescent']): ?><span style="color:#d4a056"> · <?= h(t('prf.convalescent')) ?></span><?php endif; ?>
+            <?php endif; ?>
           </p>
           <div style="height:8px;background:var(--elev);border-radius:4px;overflow:hidden;margin-bottom:14px">
             <div style="height:100%;width:<?= $repPct ?>%;background:<?= $repColor ?>"></div>
