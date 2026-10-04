@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comprendre — SelfRecover</title>
+<meta name="description" content="Comment SelfRecover et SelfDataGuard tiennent, mécanisme par mécanisme : la dérivation dans ton navigateur, Argon2id côté serveur, les trois niveaux, les freins, le coffre à trois serrures, et ce qui n'est pas couvert. En clair, ou avec les formules.">
+<link rel="canonical" href="https://selfrecover.fr/comprendre/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/css/site.css">
+<script src="/js/niveau.js"></script>
+<script src="/js/pluie.js" defer></script>
+<script src="/js/coulisses.js" defer></script>
+<script src="/js/sr-derive.js" defer></script>
+<script src="/js/derivation.js" defer></script>
+<script src="/js/mesure.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#contenu">Aller au contenu</a>
+<canvas id="rain" aria-hidden="true"></canvas>
+<div class="veil" aria-hidden="true"></div>
+
+<nav class="barre" aria-label="Navigation principale">
+  <a class="brand" href="/">
+    <svg class="cle" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+      <path d="M53.2 15.2 A20 20 0 1 0 66.8 15.2" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+      <path d="M69.4 8.4 L60.6 12.4 L64.4 21.6 Z" fill="#7ab7ff" stroke="#7ab7ff" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M60 54 L60 104" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+      <path d="M60 84 h13" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/>
+      <path d="M60 97 h8" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/>
+    </svg>
+    <span><span class="self">Self</span><span class="rec">Recover</span></span>
+  </a>
+  <div class="navlinks">
+    <a href="/#essai">Essayer</a>
+    <a href="/comprendre/" aria-current="page">Comprendre</a>
+    <a href="/#niveaux">3 niveaux</a>
+    <a href="/#limites">Limites</a>
+    <a class="garde" href="/forum/">Forum</a>
+    <button type="button" class="jack" aria-label="Coulisses" aria-pressed="false" aria-controls="coulisses" hidden><span class="mot">COULISSES </span><span class="etat">░ OFF</span><span class="compte"></span></button>
+    <a class="lang" href="/en/" hreflang="en" lang="en">EN</a>
+  </div>
+</nav>
+
+<header class="hero hero-court">
+  <p class="invite">comprendre</p>
+  <h1>Comment ça tient. <em>Sans boîte noire.</em></h1>
+  <p class="sub">Chaque mécanisme de SelfRecover et de SelfDataGuard, expliqué. Le mode dev ajoute, sous chaque
+    explication, les formules, les paramètres et le code.</p>
+  <div class="niveau" role="group" aria-label="Niveau de lecture" hidden>
+    <button type="button" data-choix-niveau="public" aria-pressed="true">Public</button>
+    <button type="button" data-choix-niveau="dev" aria-pressed="false">Dev</button>
+  </div>
+  <ul class="sommaire">
+    <li><a href="#derivation">La dérivation</a></li>
+    <li><a href="#serveur">Le serveur</a></li>
+    <li><a href="#niveau1">Niveau 1</a></li>
+    <li><a href="#niveau2">Niveau 2</a></li>
+    <li><a href="#appareil">L'appareil</a></li>
+    <li><a href="#niveau3">Niveau 3</a></li>
+    <li><a href="#freins">Les freins</a></li>
+    <li><a href="#coffre">SelfDataGuard</a></li>
+    <li><a href="#menace">Couvert, pas couvert</a></li>
+    <li><a href="#comparer">Email, SMS, SelfRecover</a></li>
+    <li><a href="#lire">Aller plus loin</a></li>
+  </ul>
+</header>
+
+<main class="below" id="contenu">
+  <section id="derivation"><div class="wrap">
+    <p class="repere">01 — la dérivation</p>
+    <h2>Ton mot devient une empreinte, dans ton navigateur.</h2>
+    <p class="lead">Ton mot entre comme <em class="tl">clé</em> dans un calcul HMAC-SHA256. Le message de ce calcul
+      mêle l'adresse du site et un sel propre à ton compte. Il en sort une empreinte de 64 caractères&nbsp;: c'est
+      elle, et elle seule, qui part au serveur. Essaie&nbsp;: rien n'est envoyé.</p>
+    <div class="essai">
+      <div class="champ">
+        <label for="d-mot">Ton mot (il reste ici)</label>
+        <input type="text" id="d-mot" autocomplete="off" spellcheck="false" autocapitalize="off">
+      </div>
+      <div class="chaine">
+        <div class="maillon"><p class="t">1 · la clé</p><p class="v">ton mot, tel que tu le tapes&nbsp;: majuscules, accents et espaces comptent</p></div>
+        <div class="maillon"><p class="t">2 · le message</p><p class="v hash" id="d-message"></p></div>
+        <div class="maillon"><p class="t">3 · le calcul</p><p class="v">HMAC-SHA256, par le dériveur livré avec la bibliothèque</p></div>
+        <div class="maillon final"><p class="t">4 · l'empreinte</p><p class="v hash" id="d-empreinte"></p></div>
+      </div>
+      <div class="reglages">
+        <span>matériel&nbsp;:</span>
+        <label><input type="radio" name="d-mode" id="d-mode-hote" checked> nom d'hôte (<span id="d-hote"></span>)</label>
+        <label><input type="radio" name="d-mode" id="d-mode-label"> étiquette</label>
+        <input type="text" id="d-label" value="selfrecover" disabled aria-label="Étiquette">
+        <button type="button" class="btn btn-g btn-s" id="d-resel">Nouveau sel</button>
+      </div>
+      <p class="note">Matériel utilisé&nbsp;: <span id="d-materiel"></span> · sel du compte d'essai&nbsp;: <span id="d-sel"></span></p>
+    </div>
+    <p class="lead">Il y a deux modes, et aucun n'est choisi par défaut&nbsp;: sans mode, le dériveur refuse de
+      calculer. En mode <b>nom d'hôte</b>, l'adresse est lue par ton navigateur&nbsp;: une copie de la page servie
+      ailleurs obtient une empreinte sans valeur ici. En mode <b>étiquette</b>, l'empreinte survit à un changement
+      d'adresse, mais une copie qui reprend l'étiquette obtient la même&nbsp;: essaie-le ci-dessus.</p>
+    <p class="lead">Le sel est tiré au hasard par ton navigateur à l'inscription. Il n'est pas secret&nbsp;: il empêche
+      que deux personnes ayant choisi le même mot obtiennent la même empreinte. Une limite à garder en tête&nbsp;: c'est
+      le serveur qui envoie ce JavaScript, et un serveur compromis pourrait en envoyer un autre.</p>
+    <div class="dev">
+      <p><code>empreinte = HMAC-SHA256(clé = UTF-8(mot), message = UTF-8(matériel + "|v2" + sel))</code>, rendue en
+        64 hexadécimaux minuscules. Le secret va en clé parce que c'est le contrat d'usage de HMAC, pas pour une
+        question d'extension de longueur. La version <code>v2</code> vit dans le message&nbsp;: un service peut
+        dériver sous deux versions pendant une bascule.</p>
+      <p>Mode <code>hostname</code>&nbsp;: <code>location.hostname.toLowerCase()</code>, jamais reçu du réseau&nbsp;;
+        le schéma et le port sont ignorés. Mode <code>label</code>&nbsp;: chaîne non vide, prise telle quelle. Sel&nbsp;:
+        16 octets de <code>crypto.getRandomValues</code>, forme <code>^[0-9a-f]{32}$</code> exigée. Aucune
+        normalisation du mot&nbsp;: <code>TextEncoder</code> sur le mot brut. Côté serveur,
+        <code>Device::estCleDerivee()</code> refuse tout ce qui n'a pas la forme <code>^[0-9a-f]{64}$</code>.</p>
+      <pre class="code"><span class="cm">// client/sr-derive.js</span>
+const message = materiel(opts.mode, opts.label) + '|' + VERSION + sel;
+const cle = await crypto.subtle.importKey(
+  'raw', new TextEncoder().encode(mot),
+  { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(message)));</pre>
+      <p class="source">Sources&nbsp;: <code>client/sr-derive.js</code>, vecteurs figés <code>tests/vecteurs-derivation.json</code>
+        (7 valides, 4 refus), whitepaper v1.2.</p>
+    </div>
+  </div></section>
+
+  <section id="serveur"><div class="wrap">
+    <p class="repere">02 — le serveur</p>
+    <h2>Le serveur paie cher chaque vérification. Un attaquant aussi.</h2>
+    <p class="lead">Le serveur ne range ni ton mot de passe, ni ta passphrase, ni l'empreinte de ton mot en clair&nbsp;:
+      il les passe dans <em class="tl">Argon2id</em>, un calcul volontairement lent et gourmand en mémoire. Ton
+      navigateur calcule vite (HMAC)&nbsp;; le serveur lentement. Le coût est payé là où un attaquant doit passer&nbsp;:
+      pour chaque mot qu'il essaie contre une base volée, il paie un Argon2id.</p>
+    <div class="hud">
+      <h3>Mesure-le sur ton appareil</h3>
+      <p>Ton navigateur va calculer un Argon2id au profil que la bibliothèque emploie dans le navigateur. Le calcul
+        tourne à part&nbsp;: la page ne se fige pas.</p>
+      <div class="cta cta-start"><button type="button" class="btn btn-p btn-s" id="m-lancer" hidden>Mesurer sur mon appareil</button></div>
+      <p class="retour" id="m-sortie" role="status"></p>
+      <p class="note">Un attaquant n'utilisera pas ce JavaScript, mais du code natif ou une carte graphique, plus
+        rapides. Ce qui lui coûte, c'est la mémoire&nbsp;: la même par essai, quelle que soit sa machine. Un mot faible
+        reste attaquable.</p>
+    </div>
+    <p class="lead">Le mot de passe et la passphrase, eux, passent par le serveur&nbsp;: il les engendre, puis les revoit
+      quand tu les soumets. Trois choses sont rangées autrement&nbsp;: le sel du compte, en clair&nbsp;; les codes papier,
+      avec en plus un index HMAC&nbsp;; le code de suivi du niveau 3, en SHA-256.</p>
+    <div class="dev">
+      <p>Profil serveur unique&nbsp;: <code>Hashing::ARGON2</code> = <code>memory_cost 65536</code> (Kio),
+        <code>time_cost 4</code>, <code>threads 2</code>, appliqué par <code>password_hash(PASSWORD_ARGON2ID)</code>.
+        Le profil du navigateur (blob de l'appareil) est <code>t=3, m=65536, p=1</code>, défini dans
+        <code>client/sr-kdf.js</code>&nbsp;: c'est lui que mesure le bouton ci-dessus.</p>
+      <p>Hachés en Argon2id&nbsp;: <code>pw_hash</code>, <code>passphrase_hash</code>, <code>recovery_hash</code>
+        (l'empreinte du mot), <code>code_hash</code>. Pas en Argon2id&nbsp;: <code>recovery_salt</code> et
+        <code>derivation_host</code> en clair&nbsp;; <code>code_lookup = HMAC-SHA256(sel du déploiement, lower(trim(code)))</code>&nbsp;;
+        <code>claim_hash</code> = SHA-256 du sésame&nbsp;; <code>sessions.token</code>, en clair dans le schéma
+        fourni&nbsp;; la clé publique de l'appareil&nbsp;; le faisceau du niveau 3 en JSON.</p>
+      <p>Un hachage factice au même profil est vérifié quand le compte ou le code est inconnu, et au niveau 2 les
+        deux Argon2id sont toujours calculés&nbsp;: le temps de réponse ne dit pas lequel a échoué.</p>
+      <p class="source">Sources&nbsp;: <code>src/Crypto/Hashing.php</code>, <code>schema.sql</code>, <code>src/Recovery/Recovery.php</code>,
+        README §&nbsp;« Pourquoi HMAC-SHA256 (et pas PBKDF2 / Argon2) ».</p>
+    </div>
+  </div></section>
+
+  <section id="niveau1"><div class="wrap">
+    <p class="repere">03 — niveau 1</p>
+    <h2>La passphrase papier&nbsp;: un seul usage, jamais d'échéance.</h2>
+    <p class="lead">Six mots tirés au hasard par le serveur, dans une liste de 7&nbsp;776 mots&nbsp;: cinq dés désignent un
+      mot, et six mots font ≈&nbsp;77,5&nbsp;bits. Tu la gardes sur papier, avec ton identifiant. Elle ne sert qu'une
+      fois&nbsp;: tu reçois aussitôt une passphrase et un mot de passe neufs.</p>
+    <p class="lead">Elle n'expire jamais, et c'est voulu&nbsp;: elle sert quand tout le reste est perdu, parfois des
+      années après, et aucun email ne pourrait te prévenir d'une échéance. Le revers&nbsp;: un papier volé ouvre le
+      compte une fois, et tu t'en aperçois quand ton mot de passe ne marche plus.</p>
+    <div class="dev">
+      <p><code>engendrerPassphrase()</code> = <code>Wordlist::generate(6, 'en')</code>, tirage par
+        <code>random_int(0, 7775)</code> dans la liste EFF anglaise (77,55 bits). Vérification par
+        <code>parPassphrase()</code>&nbsp;: identifiant en <code>strtolower(trim)</code>, espaces réduits, casse
+        conservée, hachage factice si le compte est inconnu. Succès&nbsp;: mot de passe et passphrase neufs, empreintes
+        remplacées et sessions révoquées dans une même transaction&nbsp;; l'âge de la passphrase est rendu
+        (<code>age_jours</code>), jamais un motif de refus.</p>
+      <p class="source">Sources&nbsp;: <code>src/Recovery/Recovery.php</code>, <code>src/Diceware/Wordlist.php</code>, modèle de menace.</p>
+    </div>
+  </div></section>
+
+  <section id="niveau2"><div class="wrap">
+    <p class="repere">04 — niveau 2</p>
+    <h2>Un code papier et ton mot&nbsp;: deux facteurs, sans identifiant.</h2>
+    <p class="lead">Tu reçois dix codes <code>xxxxx-xxxxx</code> à usage unique, affichés une seule fois. Un code
+      retrouve ton compte sans que tu donnes ton nom, et prouve que tu possèdes la feuille. Il ne suffit pas&nbsp;: il
+      faut aussi ton mot. Les codes ne sont jamais rangés en clair, et un nouveau lot efface l'ancien.</p>
+    <p class="lead">Avant de calculer ton empreinte, ton navigateur demande le sel de ton compte en présentant le code.
+      Cette route répond <em class="tl">toujours</em>, même pour un code inventé ou déjà utilisé&nbsp;: elle rend alors
+      un faux sel, de même forme, qui ne change pas si tu réessaies. Si elle refusait les codes inconnus, n'importe
+      qui pourrait tester des codes gratuitement.</p>
+    <div class="dev">
+      <p>Code&nbsp;: <code>bin2hex(random_bytes(5))</code> découpé en 5&nbsp;+&nbsp;5 (40 bits — « peu contre une attaque
+        hors ligne, mais un code ne vit jamais seul »). Double stockage&nbsp;: <code>code_lookup</code> (index HMAC) et
+        <code>code_hash</code> (Argon2id). Usage unique par <code>UPDATE … SET used=1 WHERE id=? AND used=0</code>.
+        Changer le sel du déploiement rend tous les codes introuvables&nbsp;: il faut réimprimer chaque feuille.</p>
+      <p>Route du sel (0.9.0)&nbsp;: <code>Recovery::selDeDerivation(string $code): string</code>. Le faux sel est
+        calculé avant toute bifurcation&nbsp;: les 32 premiers caractères de
+        <code>HMAC-SHA256(sel du déploiement, lower(trim("sel-absent:" + code)))</code>. Le stockage doit implémenter
+        <code>SelParCodeInterface</code>, sinon <code>LogicException</code>. La bibliothèque fournit la garde&nbsp;;
+        la route reste à l'intégrateur.</p>
+      <p class="source">Sources&nbsp;: <code>src/Recovery/Recovery.php</code>, <code>src/Storage/SelParCodeInterface.php</code>, whitepaper v1.2.</p>
+    </div>
+  </div></section>
+
+  <section id="appareil"><div class="wrap">
+    <p class="repere">05 — l'appareil enrôlé</p>
+    <h2>En option, ton appareil remplace le code. Jamais ton mot.</h2>
+    <p class="lead">Ton navigateur crée une paire de clés&nbsp;; le serveur n'en garde que la moitié publique. La clé
+      privée reste chez toi, chiffrée par ton mot. Pour récupérer ton compte, ton navigateur signe un défi aléatoire,
+      valable 5 minutes et une seule fois. Enrôler un appareil demande une session déjà ouverte.</p>
+    <p class="lead">Sur ce chemin, le serveur ne vérifie pas ton mot&nbsp;: il vérifie une signature. Qui vole le fichier
+      chiffré peut essayer des mots chez lui, sans limite, au seul coût du calcul&nbsp;: cette voie demande un mot
+      robuste. Derrière Tor, elle est à désactiver, car le stockage local n'y survit pas.</p>
+    <div class="dev">
+      <p>ECDSA P-256 (WebCrypto), clé publique en SPKI, signature SHA-256 au format P1363 convertie en DER puis
+        <code>openssl_verify</code>. Clé privée PKCS#8 chiffrée par <code>srKdfChiffrer</code>&nbsp;: Argon2id
+        (<code>t=3, m=65536, p=1</code>, sel de 16 octets propre au blob) puis AES-GCM, IV de 12 octets. Défi&nbsp;:
+        <code>random_bytes(32)</code>, <code>DEFI_TTL = 300</code>, supprimé avant la vérification. Succès&nbsp;: un mot
+        de passe neuf de 16 caractères, sessions révoquées&nbsp;; la passphrase et les codes ne changent pas.</p>
+      <p class="source">Sources&nbsp;: <code>src/Device/Device.php</code>, <code>client/sr-kdf.js</code>, <code>client/argon2id.js</code> (vérifié sur 7 vecteurs libsodium).</p>
+    </div>
+  </div></section>
+
+  <section id="niveau3"><div class="wrap">
+    <p class="repere">06 — niveau 3</p>
+    <h2>Tout perdu&nbsp;? Un humain tranche, sur des faits bruts.</h2>
+    <p class="lead">Un lien discret, « J'ai perdu tous mes accès », puis ton nom de compte. Ton navigateur crée un code
+      de suivi secret, dont seule l'empreinte part&nbsp;: garde-le, sans lui personne ne reprend ce dossier, toi compris.
+      On te pose trois questions de contexte, sans aucun secret demandé. Un administrateur lit les faits bruts et
+      tranche&nbsp;: aucun score n'est calculé.</p>
+    <p class="lead">En cas de refus, ton compte n'est pas touché. En cas d'accord, tu choisis toi-même ton nouveau mot de
+      passe et ton nouveau mot&nbsp;; le serveur te remet une passphrase et dix codes neufs, et retire les appareils.</p>
+    <div class="dev">
+      <p>Dossier <code>"LIT-" + strtoupper(bin2hex(random_bytes(8)))</code>&nbsp;; le sésame n'est rangé que sous
+        forme d'empreinte SHA-256 (<code>claim_hash</code>), comparée par <code>hash_equals</code>. Questions&nbsp;:
+        <code>annee_creation</code>, <code>mois_connexion</code>, <code>frequence</code>. Le faisceau ne porte aucun
+        signal passif et ne redescend jamais au demandeur. Par défaut&nbsp;: dossier 24&nbsp;h, accord valable 7&nbsp;jours,
+        1&nbsp;h entre deux dépôts, gel de 7&nbsp;jours au 3<sup>e</sup> refus en 30&nbsp;jours. Ré-enrôlement&nbsp;: mot de passe
+        de 12 à 4&nbsp;096 caractères, trois Argon2id, dix codes, sessions et appareils retirés, en une transaction. La
+        bibliothèque ne vérifie pas qui a le droit de trancher&nbsp;: c'est l'application.</p>
+      <p class="source">Sources&nbsp;: <code>src/Recovery/Escalade.php</code>, whitepaper v1.2.</p>
+    </div>
+  </div></section>
+
+  <section id="freins"><div class="wrap">
+    <p class="repere">07 — les freins</p>
+    <h2>Deviner coûte cher, et finit par bloquer.</h2>
+    <p class="lead">Aux niveaux 1 et 2&nbsp;: 5 échecs par compte en 15 minutes, et 12 par adresse sur le web ordinaire.
+      Au niveau 2, après 20 échecs, la récupération par code est suspendue pour ce compte. Au niveau 3&nbsp;: 10
+      ouvertures par adresse et 20 pour tout le service, par heure. Derrière Tor, tout le monde arrive de la même
+      adresse&nbsp;: seul le frein par compte tient.</p>
+    <p class="lead">Un refus ne dit pas quel facteur était faux, et il prend un délai. Deux refus nomment leur état, et
+      c'est assumé&nbsp;: la suspension du niveau 2, et l'ouverture d'un dossier de niveau 3, qui dit si un compte
+      existe.</p>
+    <div class="dev">
+      <p>Paramètres du constructeur de <code>Recovery</code>&nbsp;: <code>fenetreEchecs 900</code>,
+        <code>maxEchecsCompte 5</code>, <code>maxEchecsIp 12</code>, <code>delaiRefusUs 300000</code>,
+        <code>maxEchecsL2AvantSuspension 20</code> — ce sont des paramètres, pas des constantes. Profil de
+        déploiement obligatoire&nbsp;: <code>CLEARWEB</code> ou <code>TOR_ONION</code>. Messages génériques&nbsp;:
+        « Code ou mot mémorisé incorrect. », « Identifiant ou passphrase incorrect. ».</p>
+      <p class="source">Sources&nbsp;: <code>src/Recovery/Recovery.php</code>, <code>src/ProfilDeploiement.php</code>, whitepaper v1.2.</p>
+    </div>
+  </div></section>
+
+  <section id="coffre"><div class="wrap">
+    <p class="repere">08 — selfdataguard</p>
+    <h2>Une clé pour tes données, trois serrures pour la garder.</h2>
+    <p class="lead">Tes données personnelles sont chiffrées par une clé propre à ton compte, jamais rangée en clair.
+      Cette clé est enfermée sous trois serrures&nbsp;: n'importe laquelle la rouvre.</p>
+    <div class="enveloppe">
+      <div class="cle-donnees">clé de tes données · 256 bits tirés au hasard</div>
+      <div class="serrure"><b>mot de passe</b>Argon2id</div>
+      <div class="serrure"><b>mot mémorisé</b>Argon2id</div>
+      <div class="serrure"><b>passphrase</b>Argon2id</div>
+    </div>
+    <p class="lead">Les trois serrures coûtent autant à forcer, et c'est voulu&nbsp;: un coffre ne vaut que sa serrure la
+      moins chère. Seul le mode « Lite » existe&nbsp;: pendant ta session, le serveur tient la clé en mémoire, puis
+      l'efface. Un serveur piraté pendant ta session voit tes données, pas celles des autres. Un séquestre, s'il est
+      employé, est un petit compartiment à part, rouvert sous cérémonie, qui ne donne jamais accès au coffre privé.</p>
+    <div class="dev">
+      <p><code>data_master_key = random_bytes(32)</code>, sel du coffre <code>random_bytes(16)</code> en clair.
+        Clés d'encapsulage&nbsp;: <code>Argon2id(mot de passe, sel)</code>,
+        <code>Argon2id(empreinte, SHA-256(sel ‖ "/dataguard")[0:16])</code>,
+        <code>Argon2id(passphrase, SHA-256(sel ‖ "/dataguard/passphrase")[0:16])</code> — libsodium
+        <code>opslimit 3</code>, <code>memlimit 64 Mio</code>. Enveloppes et champs en XChaCha20-Poly1305 (nonce de
+        24 octets), AAD <code>userId</code> ou <code>userId|champ</code>.</p>
+      <p>Pourquoi le coût égal&nbsp;: jusqu'à la 0.3.0, la serrure du mot était un simple HMAC. Mesuré par le module&nbsp;:
+        213,7&nbsp;ms par essai Argon2id contre 0,0027&nbsp;ms par essai HMAC, un facteur de 78&nbsp;100. Les index aveugles
+        retrouvent une valeur sans rien déchiffrer, mais révèlent quand deux comptes ont la même.</p>
+      <p class="source">Sources&nbsp;: <code>self-security/selfdataguard/</code> (README, whitepaper, <code>src/</code>).</p>
+    </div>
+  </div></section>
+
+  <section id="menace"><div class="wrap">
+    <p class="repere">09 — couvert, pas couvert</p>
+    <h2>Ce que SelfRecover protège, et ce qu'il déclare hors de portée.</h2>
+    <div class="menace">
+      <div class="hud couvert">
+        <h3>Couvert</h3>
+        <ul>
+          <li>Ta boîte mail piratée, ta ligne détournée (SIM swap)&nbsp;: ni email ni SMS dans la boucle.</li>
+          <li>Un service d'envoi en panne ou compromis&nbsp;: il n'y en a pas.</li>
+          <li>Une copie passive du site, en mode nom d'hôte.</li>
+          <li>Deviner en ligne&nbsp;: freins par compte et suspension.</li>
+          <li>Écouter le réseau&nbsp;: tout passe sous TLS, et ton mot n'y passe même pas.</li>
+        </ul>
+      </div>
+      <div class="hud partiel">
+        <h3>En partie</h3>
+        <ul>
+          <li>Une fuite de la base&nbsp;: des hachages Argon2id, coûteux un par un&nbsp;; un mot faible reste attaquable.</li>
+          <li>Découvrir si un compte existe&nbsp;: fermé aux niveaux 1 et 2, ouvert au niveau 3, où seul le coût s'y oppose.</li>
+          <li>Tout perdu&nbsp;: reste le niveau 3, un humain, sans garantie.</li>
+        </ul>
+      </div>
+      <div class="hud horsp">
+        <h3>Hors de portée</h3>
+        <ul>
+          <li>Un accès root au serveur&nbsp;: il contourne tout, jusqu'au JavaScript servi.</li>
+          <li>Une page piégée qui lit ce que tu tapes&nbsp;; un poste ou un navigateur compromis.</li>
+          <li>Ton mot volé avec un code ou ton appareil&nbsp;; ta passphrase volée, jusqu'à son usage.</li>
+          <li>Un mot noté en évidence, ou réutilisé ailleurs.</li>
+          <li>La contrainte physique.</li>
+        </ul>
+      </div>
+    </div>
+    <p class="source dev">Source&nbsp;: <code>docs/threat-model.md</code>, README §&nbsp;« Modèle de menace ».</p>
+  </div></section>
+
+  <section id="comparer"><div class="wrap">
+    <p class="repere">10 — email, sms, selfrecover</p>
+    <h2>Face aux attaques, attaque par attaque.</h2>
+    <p class="lead">Quatre verdicts&nbsp;: <b class="v-ok">protégé</b>, <b class="v-part">en partie</b>,
+      <b class="v-ko">exposé</b>, <b class="v-na">non concerné</b>. L'email et le SMS ont aussi leurs points
+      forts&nbsp;: ils sont dans le tableau.</p>
+    <div class="cartes">
+      <article class="carte hud">
+        <h3>Ta boîte mail est piratée</h3>
+        <dl class="verdicts">
+          <div><dt>Email</dt><dd class="v-ko">Exposé — qui lit ta boîte réinitialise tes comptes</dd></div>
+          <div><dt>SMS</dt><dd class="v-na">Non concerné</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ok">Protégé — aucun email dans la boucle</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : email takeover.</p>
+      </article>
+      <article class="carte hud">
+        <h3>Ta ligne est détournée (SIM swap)</h3>
+        <dl class="verdicts">
+          <div><dt>Email</dt><dd class="v-na">Non concerné</dd></div>
+          <div><dt>SMS</dt><dd class="v-ko">Exposé — le code arrive sur la ligne détournée</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ok">Protégé — aucun SMS dans la boucle</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : SIM swapping ; README §&nbsp;Modèle de menace.</p>
+      </article>
+      <article class="carte hud">
+        <h3>Le service d'envoi est compromis ou en panne</h3>
+        <dl class="verdicts">
+          <div><dt>Email</dt><dd class="v-ko">Exposé — liens interceptés, ou jamais reçus</dd></div>
+          <div><dt>SMS</dt><dd class="v-ko">Exposé — codes interceptés, ou jamais reçus</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ok">Protégé — il n'y a pas d'envoi</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : SMTP outage.</p>
+      </article>
+      <article class="carte hud">
+        <h3>Une copie du site te piège (passive)</h3>
+        <dl class="verdicts">
+          <div><dt>Email</dt><dd class="v-ko">Exposé — le faux site garde ce que tu tapes</dd></div>
+          <div><dt>SMS</dt><dd class="v-ko">Exposé — le faux site garde ce que tu tapes</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-part">En partie — en mode nom d'hôte, l'empreinte de ton mot ne vaut rien chez le vrai&nbsp;; un mot de passe ou une passphrase tapés sur la copie sont perdus</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : passive phishing, hostname only ; README §&nbsp;stockage.</p>
+      </article>
+      <article class="carte hud">
+        <h3>Une page piégée lit ce que tu tapes (active)</h3>
+        <dl class="verdicts">
+          <div><dt>Email</dt><dd class="v-ko">Exposé</dd></div>
+          <div><dt>SMS</dt><dd class="v-ko">Exposé</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — vrai pour tout protocole qui vit dans le navigateur</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: README : phishing actif hors périmètre.</p>
+      </article>
+      <article class="carte hud">
+        <h3>La base du site fuite</h3>
+        <dl class="verdicts">
+          <div><dt>Email</dt><dd class="v-part">En partie — selon que les jetons sont hachés</dd></div>
+          <div><dt>SMS</dt><dd class="v-part">En partie — selon l'implémentation</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-part">En partie — des hachages Argon2id, coûteux un par un&nbsp;; un mot faible reste attaquable</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : database breaches, partially protected.</p>
+      </article>
+      <article class="carte hud">
+        <h3>Le serveur du site est piraté</h3>
+        <dl class="verdicts">
+          <div><dt>Email</dt><dd class="v-ko">Exposé</dd></div>
+          <div><dt>SMS</dt><dd class="v-ko">Exposé</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — il peut même servir un autre dériveur</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : root access, la limite principale.</p>
+      </article>
+      <article class="carte hud">
+        <h3>On trouve ta feuille de passphrase</h3>
+        <dl class="verdicts">
+          <div><dt>Email</dt><dd class="v-na">Non concerné</dd></div>
+          <div><dt>SMS</dt><dd class="v-na">Non concerné</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — une fois, et c'est le voleur qui reçoit la neuve, sans alerte</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : stolen L1 passphrase.</p>
+      </article>
+      <article class="carte hud">
+        <h3>Tu as tapé ton mot sur un site malveillant</h3>
+        <dl class="verdicts">
+          <div><dt>Email</dt><dd class="v-na">Non concerné</dd></div>
+          <div><dt>SMS</dt><dd class="v-na">Non concerné</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-part">En partie — ton mot est perdu&nbsp;; il faut encore un code papier ou ton appareil</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : user negligence.</p>
+      </article>
+      <article class="carte hud">
+        <h3>Un proche connaît ton mot et prend tes codes ou ton appareil</h3>
+        <dl class="verdicts">
+          <div><dt>Email</dt><dd class="v-na">Non concerné</dd></div>
+          <div><dt>SMS</dt><dd class="v-na">Non concerné</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — les deux facteurs sont réunis&nbsp;; un fichier d'appareil volé se teste hors ligne</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : word + code or device ; whitepaper v1.2.</p>
+      </article>
+      <article class="carte hud">
+        <h3>Un enregistreur de frappe sur ton poste</h3>
+        <dl class="verdicts">
+          <div><dt>Email</dt><dd class="v-ko">Exposé</dd></div>
+          <div><dt>SMS</dt><dd class="v-ko">Exposé</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — hors périmètre</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: README : poste compromis.</p>
+      </article>
+      <article class="carte hud">
+        <h3>Tu as tout perdu</h3>
+        <dl class="verdicts">
+          <div><dt>Email</dt><dd class="v-ok">Protégé — si tu as encore ta boîte</dd></div>
+          <div><dt>SMS</dt><dd class="v-ok">Protégé — si tu as encore ton numéro</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-part">En partie — reste le niveau 3&nbsp;: un humain tranche, sans garantie</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : total loss.</p>
+      </article>
+      <article class="carte hud">
+        <h3>Le service change d'adresse</h3>
+        <dl class="verdicts">
+          <div><dt>Email</dt><dd class="v-na">Non concerné</dd></div>
+          <div><dt>SMS</dt><dd class="v-na">Non concerné</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-part">En partie — en mode nom d'hôte, les comptes existants perdent le niveau 2</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: README : matériel de dérivation.</p>
+      </article>
+    </div>
+  </div></section>
+
+  <section id="lire"><div class="wrap">
+    <p class="repere">11 — aller plus loin</p>
+    <h2>Les textes de référence.</h2>
+    <ul class="liste-docs">
+      <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-fr.md">Whitepaper SelfRecover (FR)</a> · <a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-en.md">EN</a> — v1.2, décrit la version 0.9.0.</li>
+      <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/threat-model.md">Modèle de menace</a> (en anglais) — ce qui est couvert, en partie, ou hors de portée.</li>
+      <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/architecture.md">Architecture</a> — les flux, étape par étape.</li>
+      <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/README.fr.md">README de SelfRecover</a> — le protocole, son intégration, ses limites.</li>
+      <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/self-security/selfdataguard/README.fr.md">README de SelfDataGuard</a> — le coffre et ses serrures.</li>
+    </ul>
+  </div></section>
+</main>
+
+<footer>
+  <div class="foot">
+    <span><span class="self">Self</span><span class="rec">Recover</span>
+      <span class="dot">·</span> un module de l'écosystème <a href="https://my-self.fr">MySelf</a></span>
+    <span>
+      <a href="https://github.com/Pierroons/my-self">Code source</a>
+      <span class="dot">·</span> <a href="https://github.com/Pierroons/my-self/security/advisories/new">Signaler une faille</a>
+      <span class="dot">·</span> AGPL-3.0-or-later
+      <span class="dot">·</span> <span class="ver">maquette</span>
+    </span>
+  </div>
+</footer>
+</body>
+</html>

@@ -12,14 +12,20 @@ chaque étape en direct. Les développeurs, eux, vont sur my-self.fr et sur le d
 | Fichier | Rôle |
 |---|---|
 | `index.html` | l'accueil : le problème, l'essai, le fonctionnement, les trois niveaux, SelfDataGuard, les limites |
+| `comprendre/index.html` | toute la crypto, mécanisme par mécanisme ; l'interrupteur public/dev ajoute formules, paramètres et code |
 | `forum/index.html` | le forum : fils, et le panneau compte (rejoindre, connexion, accès perdu aux trois niveaux) |
+| `forum/fil/index.html` | un fil : répondre, signaler |
 | `en/index.html` | une page d'attente, jusqu'à ce que la version française soit arrêtée |
 | `css/site.css` | la feuille commune |
 | `js/pluie.js` | la pluie des modules Self* derrière le hero |
 | `js/coulisses.js` | l'interrupteur, le panneau et son journal ; les pages y versent leurs étapes par `Coulisses.emit()` |
 | `js/essai.js` | l'essai de l'accueil : le même mot dérivé ici et sur une copie piégée |
 | `js/forum.js` | les parcours du forum, et leur simulation du serveur |
-| `js/sr-derive.js`, `data/eff_en.json` | **des liens** vers le dériveur et la liste diceware de la bibliothèque, pas des copies |
+| `js/fil.js` | répondre et signaler dans un fil |
+| `js/niveau.js` | le niveau de lecture de « Comprendre », chargé en tête pour être posé avant le rendu |
+| `js/derivation.js` | la dérivation pas à pas de « Comprendre » |
+| `js/mesure.js`, `js/mesure-travail.js` | un Argon2id mesuré sur l'appareil du visiteur, dans un worker ; le profil affiché est lu dans `SR_KDF_PROFIL` |
+| `js/sr-derive.js`, `js/argon2id.js`, `js/sr-kdf.js`, `data/eff_en.json` | **des liens** vers les fichiers de la bibliothèque, pas des copies |
 | `.well-known/security.txt` | où signaler une faille (RFC 9116) ; son champ `Expires` est à repousser avant le 1er octobre 2027 |
 | `favicon.svg`, `og-image.png` | la clé du logo, et l'aperçu de partage tiré du hero |
 
@@ -52,7 +58,7 @@ La conv qui porte le module a relu les affirmations le 4 octobre 2026.
 
 ## Les liens vers la bibliothèque
 
-`js/sr-derive.js` et `data/eff_en.json` sont des liens symboliques. Le déploiement de `main` les résout dans
+`js/sr-derive.js`, `js/argon2id.js`, `js/sr-kdf.js` et `data/eff_en.json` sont des liens symboliques. Le déploiement de `main` les résout dans
 l'arbre posé ; une copie vers un autre serveur doit les suivre (`rsync -L`), sinon elle pose des liens morts.
 
 ## Version

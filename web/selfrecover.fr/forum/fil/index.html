@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pourquoi le forum me donne un mot de passe ? — Forum SelfRecover</title>
+<meta name="description" content="Un fil du forum SelfRecover (maquette) : pourquoi le mot de passe est tiré au hasard par le serveur.">
+<link rel="canonical" href="https://selfrecover.fr/forum/fil/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/css/site.css">
+<script src="/js/pluie.js" defer></script>
+<script src="/js/coulisses.js" defer></script>
+<script src="/js/fil.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#contenu">Aller au contenu</a>
+<canvas id="rain" aria-hidden="true"></canvas>
+<div class="veil" aria-hidden="true"></div>
+
+<nav class="barre" aria-label="Navigation principale">
+  <a class="brand" href="/">
+    <svg class="cle" viewBox="0 0 120 120" fill="none" aria-hidden="true">
+      <path d="M53.2 15.2 A20 20 0 1 0 66.8 15.2" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+      <path d="M69.4 8.4 L60.6 12.4 L64.4 21.6 Z" fill="#7ab7ff" stroke="#7ab7ff" stroke-width="2" stroke-linejoin="round"/>
+      <path d="M60 54 L60 104" stroke="#7ab7ff" stroke-width="9" stroke-linecap="round"/>
+      <path d="M60 84 h13" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/>
+      <path d="M60 97 h8" stroke="#3fb98c" stroke-width="8" stroke-linecap="round"/>
+    </svg>
+    <span><span class="self">Self</span><span class="rec">Recover</span></span>
+  </a>
+  <div class="navlinks">
+    <a href="/#essai">Essayer</a>
+    <a href="/comprendre/">Comprendre</a>
+    <a href="/#limites">Limites</a>
+    <a class="garde" href="/forum/" aria-current="page">Forum</a>
+    <button type="button" class="jack" aria-label="Coulisses" aria-pressed="false" aria-controls="coulisses" hidden><span class="mot">COULISSES </span><span class="etat">░ OFF</span><span class="compte"></span></button>
+    <a class="lang" href="/en/" hreflang="en" lang="en">EN</a>
+  </div>
+</nav>
+
+<header class="hero hero-court">
+  <p class="invite"><a href="/forum/">forum</a> · premiers pas</p>
+  <h1>Pourquoi le forum me donne un mot de passe au lieu de me laisser le choisir&nbsp;?</h1>
+  <p class="ruban">Maquette&nbsp;: fil et membres fictifs. Ce que ferait le serveur est simulé dans la page.</p>
+</header>
+
+<main class="below" id="contenu">
+  <div class="wrap">
+    <ol class="fil" id="messages">
+      <li class="post hud">
+        <p class="auteur"><b>kestrel</b> · il y a 3 jours</p>
+        <p>Je viens de m'inscrire et le forum m'a affiché un mot de passe de 16 caractères, que je ne peux pas
+          choisir. Partout ailleurs on me laisse mettre le mien. Pourquoi ici&nbsp;?</p>
+        <button type="button" class="signaler">signaler</button>
+      </li>
+      <li class="post hud hud-teal">
+        <p class="auteur"><b>equipe</b> · il y a 3 jours</p>
+        <p>Il est tiré au hasard par le serveur&nbsp;: 16 caractères aléatoires, bien plus durs à deviner qu'un mot
+          de passe choisi par un humain. Garde-le dans un gestionnaire de mots de passe.</p>
+        <p>Le seul secret que tu choisis, c'est ton mot de récupération. Lui ne quitte pas ton navigateur&nbsp;: le
+          serveur n'en reçoit qu'une empreinte. Tu peux le voir faire dans les coulisses, en haut à droite.</p>
+        <button type="button" class="signaler">signaler</button>
+      </li>
+      <li class="post hud">
+        <p class="auteur"><b>basalte</b> · il y a 2 jours</p>
+        <p>Et si je perds ce mot de passe&nbsp;? Pas d'email pour le réinitialiser…</p>
+        <button type="button" class="signaler">signaler</button>
+      </li>
+      <li class="post hud hud-teal">
+        <p class="auteur"><b>equipe</b> · il y a 2 jours</p>
+        <p>C'est le rôle des trois niveaux&nbsp;: ta passphrase papier, ou un code papier avec ton mot, ou un humain
+          en dernier recours. Chaque récupération te rend un mot de passe et une passphrase neufs. Tout est expliqué
+          sur la page <a class="lnk" href="/comprendre/">Comprendre</a>.</p>
+        <button type="button" class="signaler">signaler</button>
+      </li>
+    </ol>
+
+    <form class="form reponse hud" id="f-reponse">
+      <p class="repere">répondre</p>
+      <div class="champ">
+        <label for="r-texte">Ton message</label>
+        <textarea id="r-texte" rows="4" maxlength="2000"></textarea>
+      </div>
+      <p class="note">Un message public n'est pas chiffré&nbsp;: tout le monde peut le lire. Les messages privés,
+        eux, passent par SelfDataGuard.</p>
+      <button type="submit" class="btn btn-p btn-s">Publier</button>
+      <p class="retour" id="r-retour" role="status"></p>
+    </form>
+  </div>
+</main>
+
+<footer>
+  <div class="foot">
+    <span><span class="self">Self</span><span class="rec">Recover</span>
+      <span class="dot">·</span> un module de l'écosystème <a href="https://my-self.fr">MySelf</a></span>
+    <span>
+      <a href="https://github.com/Pierroons/my-self">Code source</a>
+      <span class="dot">·</span> <a href="https://github.com/Pierroons/my-self/security/advisories/new">Signaler une faille</a>
+      <span class="dot">·</span> AGPL-3.0-or-later
+      <span class="dot">·</span> <span class="ver">maquette</span>
+    </span>
+  </div>
+</footer>
+</body>
+</html>
