@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.8.0](https://img.shields.io/badge/status-v0.8.0-green.svg)](#statut)
+[![Status: v0.9.0](https://img.shields.io/badge/status-v0.9.0-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -157,7 +157,7 @@ serveur      → compte        = lookup(HMAC-SHA256(SERVER_SECRET, recovery_code
 
 Le réseau ne transporte jamais le mot de récupération. Le serveur ne le stocke jamais. Même une fuite complète de la base de données + du code source ne l'expose pas — seulement des hachages Argon2id de clés dérivées par site.
 
-> ⚠️ **La route du sel est publique, et elle ne doit pas devenir un oracle.** Au niveau 2, le navigateur dérive avant que le compte soit identifié : c'est le code qui l'identifie, il lui faut donc le sel d'abord, sans authentification. Si la route répondait pour un code valide et refusait un code inconnu, on testerait les codes au prix d'une requête, sans payer un seul Argon2id. Elle rend donc **toujours** un sel : celui du compte pour un code connu, sinon un faux, tiré d'un secret serveur. La bibliothèque n'expose aucune route, donc pas celle-ci : c'est à ton service de l'écrire. Le détail, et les deux démonstrations du dépôt qui l'implémentent, sont dans le [modèle de menace](docs/threat-model.md), section « Bot-driven account enumeration ».
+> ⚠️ **La route du sel est publique, et elle ne doit pas devenir un oracle.** Au niveau 2, le navigateur dérive avant que le compte soit identifié : c'est le code qui l'identifie, il lui faut donc le sel d'abord, sans authentification. Si la route répondait pour un code valide et refusait un code inconnu, on testerait les codes au prix d'une requête, sans payer un seul Argon2id. Elle rend donc **toujours** un sel : celui du compte pour un code connu, sinon un faux, tiré d'un secret serveur. La bibliothèque n'expose aucune route, mais elle fournit la garde : ta route appelle `Recovery::selDeDerivation($code)`, avec un stockage qui implémente `SelParCodeInterface` (`StockagePdo` le fait). Le détail, et la façon dont les deux démonstrations du dépôt servent la route, sont dans le [modèle de menace](docs/threat-model.md), section « Bot-driven account enumeration ».
 
 ### Pourquoi HMAC-SHA256 (et pas PBKDF2 / Argon2)
 

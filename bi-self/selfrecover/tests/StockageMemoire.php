@@ -7,6 +7,7 @@ namespace Pierroons\SelfRecover\Tests;
 use Pierroons\SelfRecover\Device\Appareil;
 use Pierroons\SelfRecover\Recovery\Litige;
 use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
+use Pierroons\SelfRecover\Storage\SelParCodeInterface;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -17,7 +18,7 @@ use Pierroons\SelfRecover\Storage\StorageInterface;
  */
 // Non `final` : les sondes en dérivent pour simuler une panne au milieu d'une
 // écriture, ce qui est le seul moyen de vérifier qu'une transaction annule.
-class StockageMemoire implements StorageInterface
+class StockageMemoire implements StorageInterface, SelParCodeInterface
 {
     /** @var array<string, array{id: int, empreinte_mot: string}> */
     public array $comptes = [];
@@ -202,6 +203,17 @@ class StockageMemoire implements StorageInterface
             'utilise'    => false,
             'emis_le'    => $quand,
         ];
+    }
+
+    public function selDuCompteParIndexCode(string $indexRecherche): ?string
+    {
+        foreach ($this->codes as $c) {
+            if (hash_equals($c['index'], $indexRecherche)) {
+                return $this->sels[$c['compte_id']] ?? null;
+            }
+        }
+
+        return null;
     }
 
     public function trouverCodeParIndex(string $indexRecherche): ?array

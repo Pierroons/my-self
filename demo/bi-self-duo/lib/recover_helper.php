@@ -94,34 +94,12 @@ final class RecoverHelper {
     }
 
     /**
-     * L'index de recherche d'un code de secours.
-     *
-     * 🔑 Délégué à la bibliothèque, qui normalise avant de hacher. Cette démo
-     * calculait le même HMAC à la main, sans la normalisation : les deux
-     * concordaient parce que les codes sont engendrés en minuscules, donc par
-     * accident. Le jour où un code arrive autrement, l'index posé et l'index
-     * cherché cessent de se répondre, et la récupération échoue sans qu'aucune
-     * erreur ne le dise.
-     */
-    public static function indexCode(DemoSession $session, string $code): string {
-        return self::protocole($session)->indexRecherche($code);
-    }
-
-    /**
      * Le sel de dérivation d'un compte, trouvé par l'un de ses codes de secours.
      *
-     * 🔑 **NE DOIT PAS DEVENIR UN ORACLE.** Répondre pour un code valide et
-     * refuser pour un code inconnu permettrait d'énumérer les codes sans payer
-     * un seul Argon2id — donc de contourner le coût sur lequel repose tout le
-     * niveau 2. On rend **TOUJOURS** un sel : pour un code inconnu, un sel
-     * fabriqué, déterministe, de même longueur, et stable si le code est
-     * retenté.
-     *
-     * Deux raffinements repris des deux implémentations qui ont écrit ce patron
-     * en premier : la normalisation est celle de la vérification — sinon un code
-     * en majuscules obtiendrait un faux sel ici et serait accepté là-bas — et
-     * le `WHERE` ne filtre pas les codes consommés, sans quoi la route dirait
-     * « ce compte vient d'être récupéré ».
+     * 🔑 **NE DOIT PAS DEVENIR UN ORACLE.** Pour un code, la garde est celle de
+     * la bibliothèque, `Recovery::selDeDerivation()` : toujours un sel, un faux
+     * pour un code inconnu. Le chemin « par identifiant », propre à cette démo,
+     * suit la même règle.
      *
      * ⚠️ **Dans CETTE démo, la garde est démonstrative, pas effective**, et il
      * faut le dire à qui copierait ce code. Le faux sel repose sur
@@ -143,35 +121,23 @@ final class RecoverHelper {
      * même compte. Un garde-fou branché ne vaut que par ce qui l'entoure.
      */
     public static function selDeDerivation(DemoSession $session, string $code, string $username = ''): string {
-        $code     = strtolower(trim($code));
         $username = strtolower(trim($username));
 
         // Par identifiant : l'étape qui démontre la dérivation en désigne un, et
         // n'a pas de code sous la main. Même garde — un identifiant inconnu rend
         // un sel fabriqué, jamais une erreur, sinon cette route dirait qui existe.
-        if ($code === '' && self::estIdentifiant($username)) {
+        if (trim($code) === '' && self::estIdentifiant($username)) {
             $stmt = $session->db()->prepare('SELECT recovery_salt FROM accounts WHERE username = :u');
             $stmt->bindValue(':u', $username);
             $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
             if (is_array($row) && ($row['recovery_salt'] ?? '') !== '') {
                 return (string) $row['recovery_salt'];
             }
+
+            return substr(hash_hmac('sha256', 'sel-absent:|' . $username, self::siteSalt($session)), 0, 2 * Recovery::SEL_OCTETS);
         }
 
-        if (Recovery::estFormeCode($code)) {
-            $stmt = $session->db()->prepare(
-                'SELECT a.recovery_salt FROM recovery_codes c
-                   JOIN accounts a ON a.id = c.account_id
-                  WHERE c.code_lookup = :l'
-            );
-            $stmt->bindValue(':l', self::indexCode($session, $code));
-            $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
-            if (is_array($row) && ($row['recovery_salt'] ?? '') !== '') {
-                return (string) $row['recovery_salt'];
-            }
-        }
-
-        return substr(hash_hmac('sha256', 'sel-absent:' . $code . '|' . $username, self::siteSalt($session)), 0, 2 * Recovery::SEL_OCTETS);
+        return self::protocole($session)->selDeDerivation($code);
     }
 
     /** Le protocole monté sur la base de cette session de démo. */
