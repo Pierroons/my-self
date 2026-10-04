@@ -60,8 +60,7 @@
     <li><a href="#niveau3">Niveau 3</a></li>
     <li><a href="#freins">Les freins</a></li>
     <li><a href="#coffre">SelfDataGuard</a></li>
-    <li><a href="#menace">Couvert, pas couvert</a></li>
-    <li><a href="#comparer">Email, SMS, SelfRecover</a></li>
+    <li><a href="#attaques">Face aux attaques</a></li>
     <li><a href="#lire">Aller plus loin</a></li>
   </ul>
 </header>
@@ -291,171 +290,164 @@ return hex(await crypto.subtle.sign('HMAC', cle, new TextEncoder().encode(messag
     </div>
   </div></section>
 
-  <section id="menace"><div class="wrap">
-    <p class="repere">09 — couvert, pas couvert</p>
+  <section id="attaques"><div class="wrap">
+    <p class="repere">09 — face aux attaques</p>
     <h2>Ce que SelfRecover protège, et ce qu'il déclare hors de portée.</h2>
-    <div class="menace">
-      <div class="hud couvert">
-        <h3>Couvert</h3>
-        <ul>
-          <li>Ta boîte mail piratée, ta ligne détournée (SIM swap)&nbsp;: ni email ni SMS dans la boucle.</li>
-          <li>Un service d'envoi en panne ou compromis&nbsp;: il n'y en a pas.</li>
-          <li>Une copie passive du site, en mode nom d'hôte.</li>
-          <li>Deviner en ligne&nbsp;: freins par compte et suspension.</li>
-          <li>Écouter le réseau&nbsp;: tout passe sous TLS, et ton mot n'y passe même pas.</li>
-        </ul>
-      </div>
-      <div class="hud partiel">
-        <h3>En partie</h3>
-        <ul>
-          <li>Une fuite de la base&nbsp;: des hachages Argon2id, coûteux un par un&nbsp;; un mot faible reste attaquable.</li>
-          <li>Découvrir si un compte existe&nbsp;: fermé aux niveaux 1 et 2, ouvert au niveau 3, où seul le coût s'y oppose.</li>
-          <li>Tout perdu&nbsp;: reste le niveau 3, un humain, sans garantie.</li>
-        </ul>
-      </div>
-      <div class="hud horsp">
-        <h3>Hors de portée</h3>
-        <ul>
-          <li>Un accès root au serveur&nbsp;: il contourne tout, jusqu'au JavaScript servi.</li>
-          <li>Une page piégée qui lit ce que tu tapes&nbsp;; un poste ou un navigateur compromis.</li>
-          <li>Ton mot volé avec un code ou ton appareil&nbsp;; ta passphrase volée, jusqu'à son usage.</li>
-          <li>Un mot noté en évidence, ou réutilisé ailleurs.</li>
-          <li>La contrainte physique.</li>
-        </ul>
-      </div>
-    </div>
-    <p class="source dev">Source&nbsp;: <code>docs/threat-model.md</code>, README §&nbsp;« Modèle de menace ».</p>
-  </div></section>
-
-  <section id="comparer"><div class="wrap">
-    <p class="repere">10 — email, sms, selfrecover</p>
-    <h2>Face aux attaques, attaque par attaque.</h2>
-    <p class="lead">Quatre verdicts&nbsp;: <b class="v-ok">protégé</b>, <b class="v-part">en partie</b>,
-      <b class="v-ko">exposé</b>, <b class="v-na">non concerné</b>. L'email et le SMS ont aussi leurs points
-      forts&nbsp;: ils sont dans le tableau.</p>
+    <p class="lead">Attaque par attaque, le verdict de SelfRecover, puis celui de l'email et du SMS&nbsp;: ils ont aussi
+      leurs points forts. Quatre verdicts&nbsp;: <b class="v-ok">protégé</b>, <b class="v-part">en partie</b>,
+      <b class="v-ko">exposé</b>, <b class="v-na">non concerné</b>.</p>
+    <h3 class="groupe">Ce que SelfRecover protège</h3>
     <div class="cartes">
       <article class="carte hud">
-        <h3>Ta boîte mail est piratée</h3>
+        <h4>Ta boîte mail est piratée</h4>
         <dl class="verdicts">
+          <div><dt>SelfRecover</dt><dd class="v-ok">Protégé — aucun email dans la boucle</dd></div>
           <div><dt>Email</dt><dd class="v-ko">Exposé — qui lit ta boîte réinitialise tes comptes</dd></div>
           <div><dt>SMS</dt><dd class="v-na">Non concerné</dd></div>
-          <div><dt>SelfRecover</dt><dd class="v-ok">Protégé — aucun email dans la boucle</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: threat-model : email takeover.</p>
       </article>
       <article class="carte hud">
-        <h3>Ta ligne est détournée (SIM swap)</h3>
+        <h4>Ta ligne est détournée (SIM swap)</h4>
         <dl class="verdicts">
-          <div><dt>Email</dt><dd class="v-na">Non concerné</dd></div>
-          <div><dt>SMS</dt><dd class="v-ko">Exposé — le code arrive sur la ligne détournée</dd></div>
           <div><dt>SelfRecover</dt><dd class="v-ok">Protégé — aucun SMS dans la boucle</dd></div>
+          <div><dt>SMS</dt><dd class="v-ko">Exposé — le code arrive sur la ligne détournée</dd></div>
+          <div><dt>Email</dt><dd class="v-na">Non concerné</dd></div>
         </dl>
-        <p class="source dev">Source&nbsp;: threat-model : SIM swapping ; README §&nbsp;Modèle de menace.</p>
+        <p class="source dev">Source&nbsp;: threat-model : SIM swapping.</p>
       </article>
       <article class="carte hud">
-        <h3>Le service d'envoi est compromis ou en panne</h3>
+        <h4>Le service d'envoi est compromis ou en panne</h4>
         <dl class="verdicts">
-          <div><dt>Email</dt><dd class="v-ko">Exposé — liens interceptés, ou jamais reçus</dd></div>
-          <div><dt>SMS</dt><dd class="v-ko">Exposé — codes interceptés, ou jamais reçus</dd></div>
           <div><dt>SelfRecover</dt><dd class="v-ok">Protégé — il n'y a pas d'envoi</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-ko">Exposés — liens ou codes interceptés, ou jamais reçus</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: threat-model : SMTP outage.</p>
       </article>
       <article class="carte hud">
-        <h3>Une copie du site te piège (passive)</h3>
+        <h4>Quelqu'un essaie de deviner en ligne</h4>
         <dl class="verdicts">
-          <div><dt>Email</dt><dd class="v-ko">Exposé — le faux site garde ce que tu tapes</dd></div>
-          <div><dt>SMS</dt><dd class="v-ko">Exposé — le faux site garde ce que tu tapes</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-ok">Protégé — 5 échecs par compte en 15 minutes, puis suspension du niveau 2 après 20</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-na">Selon le service</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: whitepaper v1.2 ; Recovery.php.</p>
+      </article>
+      <article class="carte hud">
+        <h4>Quelqu'un écoute le réseau</h4>
+        <dl class="verdicts">
+          <div><dt>SelfRecover</dt><dd class="v-ok">Protégé — tout passe sous TLS, et ton mot n'y passe même pas</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-na">Selon le service</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: README, modèle de menace.</p>
+      </article>
+    </div>
+    <h3 class="groupe">Ce qu'il protège en partie</h3>
+    <div class="cartes">
+      <article class="carte hud">
+        <h4>Une copie du site te piège (passive)</h4>
+        <dl class="verdicts">
           <div><dt>SelfRecover</dt><dd class="v-part">En partie — en mode nom d'hôte, l'empreinte de ton mot ne vaut rien chez le vrai&nbsp;; un mot de passe ou une passphrase tapés sur la copie sont perdus</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-ko">Exposés — le faux site garde ce que tu tapes</dd></div>
         </dl>
-        <p class="source dev">Source&nbsp;: threat-model : passive phishing, hostname only ; README §&nbsp;stockage.</p>
+        <p class="source dev">Source&nbsp;: threat-model : passive phishing, hostname only.</p>
       </article>
       <article class="carte hud">
-        <h3>Une page piégée lit ce que tu tapes (active)</h3>
+        <h4>La base du site fuite</h4>
         <dl class="verdicts">
-          <div><dt>Email</dt><dd class="v-ko">Exposé</dd></div>
-          <div><dt>SMS</dt><dd class="v-ko">Exposé</dd></div>
-          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — vrai pour tout protocole qui vit dans le navigateur</dd></div>
-        </dl>
-        <p class="source dev">Source&nbsp;: README : phishing actif hors périmètre.</p>
-      </article>
-      <article class="carte hud">
-        <h3>La base du site fuite</h3>
-        <dl class="verdicts">
-          <div><dt>Email</dt><dd class="v-part">En partie — selon que les jetons sont hachés</dd></div>
-          <div><dt>SMS</dt><dd class="v-part">En partie — selon l'implémentation</dd></div>
           <div><dt>SelfRecover</dt><dd class="v-part">En partie — des hachages Argon2id, coûteux un par un&nbsp;; un mot faible reste attaquable</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-part">En partie — selon que le service hache ses jetons</dd></div>
         </dl>
-        <p class="source dev">Source&nbsp;: threat-model : database breaches, partially protected.</p>
+        <p class="source dev">Source&nbsp;: threat-model : database breaches.</p>
       </article>
       <article class="carte hud">
-        <h3>Le serveur du site est piraté</h3>
+        <h4>Tu as tapé ton mot sur un site malveillant</h4>
         <dl class="verdicts">
-          <div><dt>Email</dt><dd class="v-ko">Exposé</dd></div>
-          <div><dt>SMS</dt><dd class="v-ko">Exposé</dd></div>
-          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — il peut même servir un autre dériveur</dd></div>
-        </dl>
-        <p class="source dev">Source&nbsp;: threat-model : root access, la limite principale.</p>
-      </article>
-      <article class="carte hud">
-        <h3>On trouve ta feuille de passphrase</h3>
-        <dl class="verdicts">
-          <div><dt>Email</dt><dd class="v-na">Non concerné</dd></div>
-          <div><dt>SMS</dt><dd class="v-na">Non concerné</dd></div>
-          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — une fois, et c'est le voleur qui reçoit la neuve, sans alerte</dd></div>
-        </dl>
-        <p class="source dev">Source&nbsp;: threat-model : stolen L1 passphrase.</p>
-      </article>
-      <article class="carte hud">
-        <h3>Tu as tapé ton mot sur un site malveillant</h3>
-        <dl class="verdicts">
-          <div><dt>Email</dt><dd class="v-na">Non concerné</dd></div>
-          <div><dt>SMS</dt><dd class="v-na">Non concerné</dd></div>
           <div><dt>SelfRecover</dt><dd class="v-part">En partie — ton mot est perdu&nbsp;; il faut encore un code papier ou ton appareil</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-na">Non concernés</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: threat-model : user negligence.</p>
       </article>
       <article class="carte hud">
-        <h3>Un proche connaît ton mot et prend tes codes ou ton appareil</h3>
+        <h4>Quelqu'un cherche si ton compte existe</h4>
         <dl class="verdicts">
-          <div><dt>Email</dt><dd class="v-na">Non concerné</dd></div>
-          <div><dt>SMS</dt><dd class="v-na">Non concerné</dd></div>
-          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — les deux facteurs sont réunis&nbsp;; un fichier d'appareil volé se teste hors ligne</dd></div>
+          <div><dt>SelfRecover</dt><dd class="v-part">En partie — fermé aux niveaux 1 et 2&nbsp;; ouvert au niveau 3, où seul le coût s'y oppose</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-na">Selon le service</dd></div>
         </dl>
-        <p class="source dev">Source&nbsp;: threat-model : word + code or device ; whitepaper v1.2.</p>
+        <p class="source dev">Source&nbsp;: threat-model : enumeration.</p>
       </article>
       <article class="carte hud">
-        <h3>Un enregistreur de frappe sur ton poste</h3>
+        <h4>Tu as tout perdu</h4>
         <dl class="verdicts">
-          <div><dt>Email</dt><dd class="v-ko">Exposé</dd></div>
-          <div><dt>SMS</dt><dd class="v-ko">Exposé</dd></div>
-          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — hors périmètre</dd></div>
-        </dl>
-        <p class="source dev">Source&nbsp;: README : poste compromis.</p>
-      </article>
-      <article class="carte hud">
-        <h3>Tu as tout perdu</h3>
-        <dl class="verdicts">
+          <div><dt>SelfRecover</dt><dd class="v-part">En partie — reste le niveau 3&nbsp;: un humain tranche, sans garantie</dd></div>
           <div><dt>Email</dt><dd class="v-ok">Protégé — si tu as encore ta boîte</dd></div>
           <div><dt>SMS</dt><dd class="v-ok">Protégé — si tu as encore ton numéro</dd></div>
-          <div><dt>SelfRecover</dt><dd class="v-part">En partie — reste le niveau 3&nbsp;: un humain tranche, sans garantie</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: threat-model : total loss.</p>
       </article>
       <article class="carte hud">
-        <h3>Le service change d'adresse</h3>
+        <h4>Le service change d'adresse</h4>
         <dl class="verdicts">
-          <div><dt>Email</dt><dd class="v-na">Non concerné</dd></div>
-          <div><dt>SMS</dt><dd class="v-na">Non concerné</dd></div>
           <div><dt>SelfRecover</dt><dd class="v-part">En partie — en mode nom d'hôte, les comptes existants perdent le niveau 2</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-na">Non concernés</dd></div>
         </dl>
         <p class="source dev">Source&nbsp;: README : matériel de dérivation.</p>
+      </article>
+    </div>
+    <h3 class="groupe">Ce qui reste hors de sa portée</h3>
+    <div class="cartes">
+      <article class="carte hud">
+        <h4>Le serveur du site est piraté</h4>
+        <dl class="verdicts">
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — il peut même servir un autre dériveur</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-ko">Exposés</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : root access, la limite principale.</p>
+      </article>
+      <article class="carte hud">
+        <h4>Une page piégée lit ce que tu tapes (active)</h4>
+        <dl class="verdicts">
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — vrai pour tout protocole qui vit dans le navigateur</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-ko">Exposés</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: README : phishing actif hors périmètre.</p>
+      </article>
+      <article class="carte hud">
+        <h4>Ton poste ou ton navigateur est compromis</h4>
+        <dl class="verdicts">
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-ko">Exposés</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: README : poste compromis.</p>
+      </article>
+      <article class="carte hud">
+        <h4>On trouve ta feuille de passphrase</h4>
+        <dl class="verdicts">
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — une fois, et c'est le voleur qui reçoit la neuve, sans alerte</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-na">Non concernés</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : stolen L1 passphrase.</p>
+      </article>
+      <article class="carte hud">
+        <h4>Un proche connaît ton mot et prend tes codes ou ton appareil</h4>
+        <dl class="verdicts">
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — les deux facteurs sont réunis&nbsp;; un fichier d'appareil volé se teste hors ligne</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-na">Non concernés</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: threat-model : word + code or device.</p>
+      </article>
+      <article class="carte hud">
+        <h4>On te contraint physiquement</h4>
+        <dl class="verdicts">
+          <div><dt>SelfRecover</dt><dd class="v-ko">Exposé — aucun protocole n'y résiste</dd></div>
+          <div><dt>Email, SMS</dt><dd class="v-ko">Exposés</dd></div>
+        </dl>
+        <p class="source dev">Source&nbsp;: README : coercition hors périmètre.</p>
       </article>
     </div>
   </div></section>
 
   <section id="lire"><div class="wrap">
-    <p class="repere">11 — aller plus loin</p>
+    <p class="repere">10 — aller plus loin</p>
     <h2>Les textes de référence.</h2>
     <ul class="liste-docs">
       <li><a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-fr.md">Whitepaper SelfRecover (FR)</a> · <a class="lnk" href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/whitepaper-en.md">EN</a> — v1.2, décrit la version 0.9.0.</li>

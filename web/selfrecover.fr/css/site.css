@@ -297,13 +297,6 @@ pre.code .cm{color:var(--dim)}
 .reglages label{display:inline-flex; gap:6px; align-items:center; cursor:pointer}
 .reglages input[type=text]{padding:7px 10px; font-size:13px; width:12em}
 
-/* Le modèle de menace : trois colonnes, du couvert au hors périmètre. */
-.menace{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-top:28px}
-@container (max-width:760px){.menace{grid-template-columns:minmax(0,1fr)}}
-.menace .hud ul{margin:8px 0 0; padding-left:18px; font-size:13.5px; color:var(--muted)}
-.menace .hud li{margin-bottom:6px}
-.couvert h3{color:var(--teal)} .partiel h3{color:var(--ambre)} .horsp h3{color:var(--alerte)}
-
 /* L'enveloppe de SelfDataGuard : une clé, trois serrures. */
 .enveloppe{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:22px; text-align:center}
 @container (max-width:620px){.enveloppe{grid-template-columns:minmax(0,1fr)}}
@@ -313,7 +306,10 @@ pre.code .cm{color:var(--dim)}
 
 /* Le comparatif : une carte par attaque, trois verdicts en mots (pas seulement en couleur). */
 .cartes{display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr)); gap:16px; margin-top:28px}
-.carte h3{font-size:15px}
+.groupe{margin:38px 0 0; font-size:18px; color:var(--ink)}
+.groupe + .cartes{margin-top:16px}
+.carte h4{margin:0 0 4px; font-size:15px; color:var(--ink)}
+.carte h4::before{content:"▸ "; color:var(--teal)}
 .verdicts{margin:10px 0 0; display:flex; flex-direction:column; gap:6px; font-size:13px}
 .verdicts div{display:grid; grid-template-columns:7.5em minmax(0,1fr); gap:8px}
 .verdicts dt{color:var(--dim)}
