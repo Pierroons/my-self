@@ -39,7 +39,7 @@ SelfAct is driven by a situation, not by a document:
 GET /act/api/find?situation=impaye_commercial_loyer
 ```
 
-The answer carries the acts that situation calls for, official service-public.fr
+The answer carries the acts that situation calls for, official service-public.gouv.fr
 models first:
 
 ```json
@@ -126,7 +126,7 @@ SelfAct is served at `justice.my-self.fr/act`, as a sub-path of SelfJustice. Onl
 
 # 6. Roadmap
 
-**Served today** — the curated situations, the letter templates, the deadline engine and its `.ics` output, and the official catalogue harvested from service-public.fr. The counts move with each harvest; `/act/api/catalog.php?stats=1` and `/act/api/gabarits` carry the current ones.
+**Served today** — the curated situations, the letter templates, the deadline engine and its `.ics` output, and the official catalogue harvested from service-public.gouv.fr. The counts move with each harvest; `/act/api/catalog.php?stats=1` and `/act/api/gabarits` carry the current ones.
 
 **Next** — wider situation coverage, and templates for the domains that have none yet.
 

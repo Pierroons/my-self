@@ -170,8 +170,8 @@ SOURCES = {
     },
     # Applicable depuis le 2 août 2026 pour l'essentiel de ses dispositions,
     # dont l'article 50 (transparence : divulguer qu'un contenu est généré par
-    # une IA). Un texte qu'une pré-analyse juridique doit pouvoir citer aussi
-    # bien que le RGPD — d'autant qu'il régit l'outil même qui la produit.
+    # une IA). Un texte qu'une IA qui lit le droit doit pouvoir citer aussi
+    # bien que le RGPD — d'autant qu'il la régit elle-même.
     "AI_ACT": {
         "celex": "32024R1689",
         "url": "https://eur-lex.europa.eu/legal-content/FR/TXT/HTML/?uri=CELEX:32024R1689",

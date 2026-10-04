@@ -51,13 +51,13 @@ Browser computes HMAC-SHA256(key = word, message = material + "|v2" + user_salt)
 POST /recover-l2 { recovery_code, recovery_key (derived) }
               │
               ▼
-Server: code_lookup = HMAC-SHA256(SERVER_SECRET, recovery_code) → locate account
+Server: code_lookup = HMAC-SHA256(deployment salt, recovery_code) → locate account
               │
               ▼
 Server: Argon2id-verify(recovery_code) AND Argon2id-verify(recovery_key)
               │   (generic error — never reveals which factor failed)
-              ├── OK ──> Generate new password, mark code used, update account
-              │          Return new password to browser
+              ├── OK ──> Generate new password and passphrase, consume the code,
+              │          revoke sessions; return both to the browser, once
               │
               └── FAIL ─> Increment L2 attempts counter
                          The person chooses to open a dispute
@@ -90,9 +90,11 @@ Server opens case LIT-XXXX (24h TTL), returns 3 contextual questions
 POST /recover-l3 { dispute_number, claim, answers }
               │
               ▼
-Server assembles a BUNDLE OF SIGNALS — never a numeric score:
-   PASSIVE      has this IP connected successfully before?  (unforgeable)
-   DECLARATIVE  stated vs actual                            (guessable)
+Server assembles a BUNDLE OF RAW FACTS — never a numeric score:
+   CONTEXT      account created, last login, login count, L2 codes left,
+                recent refusals, the deployment's own facts (uninterpreted)
+   DECLARATIVE  stated vs actual: match · differs · unavailable  (guessable)
+   WARNING      the answers guide the conversation, they prove nothing
               │
               ▼
 status = awaiting_admin        attempt logged as a FAILURE
@@ -101,11 +103,12 @@ status = awaiting_admin        attempt logged as a FAILURE
 A human administrator reads the facts and confirms identity in the case chat
               │
               ▼
-POST /l3-reset  → the OWNER sets a new password and memorized word,
-                  plus a fresh batch of recovery codes.
+POST /l3-reset  → the OWNER sets a new password and memorized word;
+                  the server issues a fresh passphrase and a fresh batch of
+                  recovery codes, and revokes sessions and enrolled devices.
                   The tracking code is consumed (one-shot).
 
-   ⚠ The server never generates nor transmits a password at any point.
+   ⚠ At this level the server never generates the password: the owner sets it.
      Wiring an automatic reset to the administrator's "accept" button would
      rebuild the very automatic path this level exists to avoid.
 ```

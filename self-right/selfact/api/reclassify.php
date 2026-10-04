@@ -4,7 +4,7 @@
  *
  * Usage : php reclassify.php [--dry-run]
  *
- * Ne re-fetche PAS service-public.fr. Relit le catalogue en place, applique la
+ * Ne re-fetche PAS service-public.gouv.fr. Relit le catalogue en place, applique la
  * nouvelle classification, réécrit le fichier.
  */
 

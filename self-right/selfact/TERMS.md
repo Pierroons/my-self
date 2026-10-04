@@ -1,14 +1,14 @@
 # SelfAct — Conditions d'utilisation
 
-Version **v0.1.3** — en vigueur depuis le 18 avril 2026, révisée le 27 septembre 2026 · Licence AGPL-3.0-or-later (code, depuis le 19/04/2026) · Données sous licence Etalab 2.0 (modèles service-public.fr)
+Version **v0.1.3** — en vigueur depuis le 18 avril 2026, révisée le 4 octobre 2026 · Licence AGPL-3.0-or-later (code, depuis le 19/04/2026) · Données sous licence Etalab 2.0 (modèles service-public.gouv.fr)
 
 ## 1. Nature du service
 
-SelfAct est un **outil d'indexation** du catalogue des modèles de lettres officiels publiés par l'administration française (service-public.fr), couplé à un **générateur de brouillons d'aide à la rédaction** clairement identifiés comme non officiels.
+SelfAct est un **outil d'indexation** du catalogue des modèles de lettres officiels publiés par l'administration française (service-public.gouv.fr), couplé à un **générateur de brouillons d'aide à la rédaction** clairement identifiés comme non officiels.
 
 **Ce que SelfAct EST :**
-- Un **index sémantique** consultable via API des modèles de lettres officiels publiés par service-public.fr sous licence Etalab 2.0 — le nombre exact varie à chaque moisson bimensuelle et est servi par `/act/api/catalog.php?stats=1`
-- Un **outil de redirection** vers les URLs officielles service-public.fr
+- Un **index sémantique** consultable via API des modèles de lettres officiels publiés par service-public.gouv.fr sous licence Etalab 2.0 — le nombre exact varie à chaque moisson bimensuelle et est servi par `/act/api/catalog.php?stats=1`
+- Un **outil de redirection** vers les URLs officielles service-public.gouv.fr
 - Un **générateur de brouillons HTML** portant la mention « NON OFFICIEL » dans le corps quand le document imite la forme d'un acte, et le rappel en pied dans tous les cas, pour aider à la rédaction quand aucun modèle officiel ne convient
 
 **Ce que SelfAct N'EST PAS :**
@@ -26,9 +26,9 @@ Code source AGPL-3.0-or-later, déployable par toute personne, hébergement au c
 
 ## 3. Modèles officiels redirigés
 
-SelfAct indexe les modèles de lettres publiés par **service-public.fr** (gouvernement français) sous **licence Etalab 2.0** (réutilisation libre avec attribution). L'attribution est réalisée dans la réponse API via le champ `meta.source` et dans chaque redirection par le champ `url`.
+SelfAct indexe les modèles de lettres publiés par **service-public.gouv.fr** (gouvernement français) sous **licence Etalab 2.0** (réutilisation libre avec attribution). L'attribution est réalisée dans la réponse API via le champ `meta.source` et dans chaque redirection par le champ `url`.
 
-L'utilisateur qui accède à un modèle officiel via SelfAct est redirigé vers le site officiel service-public.fr et utilise ce dernier sous ses conditions propres.
+L'utilisateur qui accède à un modèle officiel via SelfAct est redirigé vers le site officiel service-public.gouv.fr et utilise ce dernier sous ses conditions propres.
 
 ## 4. Brouillon d'aide à la rédaction — dernier recours uniquement
 
@@ -42,7 +42,7 @@ Quand aucun modèle officiel ne couvre précisément la situation, SelfAct produ
 
 ## 5. Responsabilité
 
-L'utilisateur utilise SelfAct **sous sa seule responsabilité**. SelfAct ne garantit ni l'exactitude, ni l'actualité, ni l'exhaustivité des modèles redirigés (cette responsabilité relève de service-public.fr), et n'offre aucune garantie quant à l'issue d'une démarche entreprise à partir d'un modèle consulté via SelfAct.
+L'utilisateur utilise SelfAct **sous sa seule responsabilité**. SelfAct ne garantit ni l'exactitude, ni l'actualité, ni l'exhaustivité des modèles redirigés (cette responsabilité relève de service-public.gouv.fr), et n'offre aucune garantie quant à l'issue d'une démarche entreprise à partir d'un modèle consulté via SelfAct.
 
 **En cas de doute ou de situation complexe**, l'utilisateur consulte un avocat, une permanence gratuite de la Maison de Justice et du Droit, ou les ressources de point-justice.gouv.fr.
 
@@ -60,9 +60,9 @@ SelfAct **ne reçoit rien de ce que tu écris**, et ne garde de toi que ce que t
 
 ## 7. Disponibilité et mise à jour
 
-Le catalogue (`/act/api/catalog`) est mis à jour de façon **bimensuelle** (1<sup>er</sup> et 15 de chaque mois) depuis service-public.fr, via un scraper open-source auto-hébergé.
+Le catalogue (`/act/api/catalog`) est mis à jour de façon **bimensuelle** (1<sup>er</sup> et 15 de chaque mois) depuis service-public.gouv.fr, via un scraper open-source auto-hébergé.
 
-Aucune garantie de disponibilité (99.x%) n'est offerte. Le service est fourni en l'état, auto-hébergé sur une infrastructure modeste. En cas d'indisponibilité, l'utilisateur peut accéder directement aux modèles via service-public.fr.
+Aucune garantie de disponibilité (99.x%) n'est offerte. Le service est fourni en l'état, auto-hébergé sur une infrastructure modeste. En cas d'indisponibilité, l'utilisateur peut accéder directement aux modèles via service-public.gouv.fr.
 
 ## 8. Licence du code SelfAct
 

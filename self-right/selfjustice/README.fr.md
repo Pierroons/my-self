@@ -2,7 +2,7 @@
 
 > 🇬🇧 **[Read in English →](./README.md)**
 
-**Pré-analyse juridique impartiale par directives lisibles par IA — servie via une API publique gratuite.**
+**Le droit français et européen, lisible par ton IA : une API publique gratuite pour les textes, une page de directives pour la méthode.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
 [![Statut : v0.4.2 bêta](https://img.shields.io/badge/statut-v0.4.2%20b%C3%AAta-green.svg)](#statut)
@@ -29,12 +29,12 @@ Pendant ce temps, chaque assistant IA (Claude, ChatGPT, Mistral, Gemini, Perplex
 
 ## La solution
 
-SelfJustice est une **page unique de directives** (HTML) plus une **API HTTP publique** que n'importe quelle IA peut interroger pour produire des pré-analyses juridiques rigoureuses et impartiales.
+SelfJustice est une **page unique de directives** (HTML) plus une **API HTTP publique** que n'importe quelle IA peut interroger. L'analyse de ton cas, c'est ton IA qui la produit ; SelfJustice lui donne le droit exact et la méthode pour qu'elle reste sourcée et impartiale.
 
 - La page de directives dit à l'IA **comment raisonner** : impartialité, hiérarchie des normes, base légale obligatoire pour chaque affirmation, glossaire pour non-juristes, disclaimer légal obligatoire.
 - L'API dit à l'IA **ce que dit réellement le droit** : tout le corpus juridique français indexé (dump LEGI de la DILA, plus de 500 000 articles) et les textes UE/CEDH (Charte des droits fondamentaux, TFUE, TUE, RGPD, règlement IA 2024/1689, Convention européenne des droits de l'homme). Compteurs en direct : [`/api/status`](https://justice.my-self.fr/api/status).
 
-N'importe quelle IA. N'importe quel citoyen. N'importe quel conflit. Une pré-analyse cohérente, sourcée, impartiale.
+N'importe quelle IA. N'importe quel citoyen. Le même droit, sourcé, daté, cité à l'article.
 
 ---
 
@@ -87,7 +87,7 @@ N'importe quelle IA. N'importe quel citoyen. N'importe quel conflit. Une pré-an
 
 Directives machine-readable disant à l'IA comment raisonner :
 
-- **Rôle** : pré-analyste, pas avocat. La frontière de la loi n° 71-1130 du 31 décembre 1971 strictement respectée.
+- **Rôle assigné à l'IA** : pré-analyste, pas avocat. La frontière de la loi n° 71-1130 du 31 décembre 1971 strictement respectée.
 - **Principes** : impartialité (les deux parties analysées), base légale obligatoire, pas de conseil stratégique, disclaimer en entrée et sortie, détection explicite du hors-scope.
 - **Procédure** : analyse en 7 étapes (qualification, faits, articles par partie, forces/faiblesses, voies de recours, délais, sortie).
 - **Template de sortie** : 11 sections incluant un glossaire obligatoire pour non-juristes.
@@ -139,7 +139,7 @@ Toutes les endpoints retournent du JSON, toutes sont rate-limitées, toutes ont 
 1. Ouvrir [claude.ai](https://claude.ai), Mistral Le Chat, ChatGPT, Gemini, Perplexity
 2. Décrire son conflit en langage courant
 3. Ajouter : `analyse justice.my-self.fr`
-4. Recevoir une pré-analyse structurée avec citations d'articles officiels
+4. Ton IA rend une pré-analyse structurée, avec citations d'articles officiels
 
 ### Depuis la ligne de commande
 

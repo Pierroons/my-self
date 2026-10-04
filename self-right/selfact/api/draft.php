@@ -589,7 +589,7 @@ header('X-Content-Type-Options: nosniff');
     un outil open-source de formatage d'aide à la rédaction. Ce document n'est PAS OFFICIEL.
     Il ne constitue pas un acte juridique recevable en l'état. Il ne saurait remplacer un
     conseil juridique au sens de la loi 71-1130 du 31 décembre 1971. Pour un acte officiel,
-    utilise le modèle service-public.fr correspondant ou consulte un avocat.
+    utilise le modèle service-public.gouv.fr correspondant ou consulte un avocat.
     <br><br>
     <strong>SelfAct est indépendant et n'est affilié à aucun organisme public ou
     gouvernemental.</strong> Les formulaires, modèles de lettres et démarches officiels

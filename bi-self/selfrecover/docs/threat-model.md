@@ -23,8 +23,9 @@ No SMTP at all. No SendGrid, no Mailgun, no Gmail deliverability rules, no spam 
 You don't need to trust Google, Microsoft, or anyone else for account recovery. You only trust the site you're registering on.
 
 ### ✓ Rate-limited brute force
-Per-account rate limits on every path that reaches an account — the three levels and device
-enrolment — plus per-address limits where an address means anything, plus L2/L3 escalation.
+Per-account rate limits on levels 1 and 2 and on device enrolment, plus per-address limits under
+the `clearweb` profile, plus the suspension of code recovery past a threshold of failures. Opening a
+level-3 case is braked per address and service-wide — deliberately not per account (see below).
 
 ⚠️ Enrolling a device reaches the account with the memorized word alone: measured on the wire on
 13 August 2026, in three requests, with the attacker's own key. The library cannot verify a session, so
@@ -119,10 +120,10 @@ A SelfRecover deployment without hardened sudo is a lock on a door with no wall.
 
 ### ✗ The recovery word is a master key
 
-**If the recovery word is compromised** (social engineering, written down, shoulder surfing, malware), and the attacker also knows the public identifier (which is often published, like an in-game ID), they can recover the account via L2.
+**If the recovery word is compromised** (social engineering, written down, shoulder surfing, malware), and the attacker also holds one of the paper recovery codes, or an enrolled device, they can recover the account via L2. The code finds the account: no identifier is needed.
 
 - The per-service derivation prevents correlation of *stored hashes* across services — but a known raw word that you reuse stays reusable elsewhere (the service label is public). Derivation does not save a reused secret.
-- Rate limiting and L2→L3 escalation slow down brute-force
+- Online, per-account rate limits (and per-address ones under the `clearweb` profile), then the L2 suspension past a threshold of failures, bound the guessing; offline (stolen database, an enrolled device's blob), only the Argon2id cost does
 - **But fundamentally:** no system can protect against a stolen secret. A leaked SSH private key gives server access. A leaked seed phrase empties a wallet. A leaked recovery word opens the account. The security model is identical.
 
 **A protected secret stays safe; a neglected one is exposed.** This is not a flaw — it is the fundamental contract of any secret-based security system.
@@ -176,7 +177,7 @@ If a user forgets their password AND their passphrase AND their recovery word, t
 | Email account takeover | ✓ | No email used |
 | SMTP failures | ✓ | No SMTP |
 | Third-party trust | ✓ | Local only |
-| Brute force recovery word | ✓ | Rate limits + L2/L3 escalation |
+| Brute force recovery word | ✓ online | Rate limits + L2 suspension; offline, only the Argon2id cost |
 | Bot enumeration | ~ | Closed at L1/L2; at L3 it is a cost, not a silence — see above |
 | Stolen L1 passphrase | ✗ until used | Never expires, deliberately; single use bounds it, no notification exists |
 | Server root compromise | ✗ | Mandatory sudo hardening |

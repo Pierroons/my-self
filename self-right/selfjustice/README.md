@@ -2,7 +2,7 @@
 
 > 🇫🇷 **[Lire en français →](./README.fr.md)**
 
-**Impartial legal pre-analysis powered by AI-readable directives — served over a free public API.**
+**French and EU law, readable by your AI: a free public API for the texts, a directives page for the method.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
 [![Status: v0.4.2 beta](https://img.shields.io/badge/status-v0.4.2%20beta-green.svg)](#status)
@@ -29,12 +29,12 @@ Meanwhile, every AI assistant (Claude, ChatGPT, Mistral, Gemini, Perplexity) is 
 
 ## The solution
 
-SelfJustice is a **single authoritative directives page** (HTML) plus a **public HTTP API** that any AI can fetch to produce rigorous, impartial legal pre-analyses.
+SelfJustice is a **single authoritative directives page** (HTML) plus a **public HTTP API** that any AI can fetch. The analysis of your case is produced by your AI; SelfJustice gives it the exact law and the method to keep it sourced and impartial.
 
 - The directives page tells the AI **how to reason**: impartiality, hierarchy of norms, mandatory legal basis for every claim, glossary for non-lawyers, mandatory legal disclaimer.
 - The API tells the AI **what the law actually says**: the whole indexed French legal corpus (LEGI dump from DILA, over 500,000 articles) plus the EU/ECHR texts (Charter of Fundamental Rights, TFEU, TEU, GDPR, AI Act 2024/1689, European Convention on Human Rights). Live counts: [`/api/status`](https://justice.my-self.fr/api/status).
 
-Any AI. Any citizen. Any conflict. One consistent, sourced, impartial pre-analysis.
+Any AI. Any citizen. The same law, sourced, dated, cited down to the article.
 
 ---
 
@@ -86,7 +86,7 @@ Any AI. Any citizen. Any conflict. One consistent, sourced, impartial pre-analys
 
 Machine-readable directives telling the AI how to reason:
 
-- **Role**: pre-analyst, not lawyer. Loi n° 71-1130 du 31 décembre 1971 boundary strictly respected.
+- **Role assigned to the AI**: pre-analyst, not lawyer. Loi n° 71-1130 du 31 décembre 1971 boundary strictly respected.
 - **Principles**: impartiality (both parties analyzed), legal basis mandatory, no strategic advice, disclaimer in entry and exit, explicit hors-scope detection.
 - **Procedure**: 7-step analysis (qualification, facts, articles per party, strengths/weaknesses, remedies, deadlines, output).
 - **Output template**: 11 sections including mandatory glossary for non-lawyers.
@@ -138,7 +138,7 @@ All endpoints return JSON, all are rate-limited, all are CORS-open.
 1. Open [claude.ai](https://claude.ai), Mistral Le Chat, ChatGPT, Gemini, Perplexity
 2. Describe your conflict in plain language
 3. Add: `analyse justice.my-self.fr`
-4. Receive a structured pre-analysis with official article citations
+4. Your AI returns a structured pre-analysis with official article citations
 
 ### From the command line
 

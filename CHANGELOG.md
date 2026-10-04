@@ -10,26 +10,24 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### SelfRecover v0.9.0 — la garde de la route du sel entre dans la bibliothèque — 4 octobre 2026
+### SelfRecover : l'accroche laisse le choix, et les textes rattrapent la 0.9.0 — 4 octobre 2026
 
-Au niveau 2, le navigateur demande le sel du compte par le code, sur une route publique : elle ne
-doit pas devenir un oracle. Sa garde existait en deux copies, dans les démonstrations, et chaque
-intégrateur devait écrire la sienne.
+La relecture du site de SelfRecover et la cartographie de l'architecture ont relevé des textes que le
+code avait dépassés. Aucun comportement de la bibliothèque ne change.
 
-- **`Recovery::selDeDerivation($code)`** rend toujours un sel : celui du compte pour un code connu,
-  consommé ou non, quelle que soit sa casse ; sinon un faux, tiré du sel du déploiement : même forme
-  qu'un vrai, stable d'un essai à l'autre, et calculé dans tous les cas pour que les deux chemins
-  coûtent pareil.
-- **`SelParCodeInterface`**, facultative : `selDuCompteParIndexCode()`. `StockagePdo` l'implémente.
-  Sur un stockage qui ne l'implémente pas, `selDeDerivation()` lève une `LogicException` ; aucun
-  adaptateur existant n'a à changer.
-- La démo duo passe par la bibliothèque pour le chemin « code ». Le lab garde sa copie jusqu'à la fin
-  de la saison du CTF.
-- Le modèle de menace et les README disent que la bibliothèque fournit la garde, la route restant à
-  l'intégrateur.
-
-Bancs : `sanity_sel_derivation.php` (10 cas) et trois cas dans le banc du stockage PDO, avec un canari
-en CI. Les fiches diceware sont régénérées pour la version.
+- **L'accroche** devient « Ton mot. Tes sites. » : un seul mot pour tous les sites ou un par site,
+  au choix de qui l'emploie, avec ce qu'un site malveillant pourrait garder.
+- **Les whitepapers passent en v1.2** et décrivent la 0.9.0. Le jeton JWT, le score du niveau 3,
+  les codes d'erreur `SR-…` et la fenêtre « c'était moi ? », que rien n'implémente, en sortent. La
+  route du sel, la suspension du niveau 2, le faisceau du niveau 3 et ce qu'exige l'intégration y
+  entrent. Le whitepaper de SelfRecover-LUKS passe en 0.6.2. Les trois sont désormais porteurs de
+  version : `scripts/check-versions.sh` rougit s'ils dérivent.
+- **L'aléa** : la bibliothèque tire la passphrase par `random_int`. Les dés expliquent la liste ;
+  ils ne sont pas un mode de la bibliothèque.
+- **Serveur compromis** : README, SECURITY et whitepapers disent qu'il sert le dériveur, donc qu'il
+  pourrait servir une autre page.
+- **Installation** : par un dépôt Composer de type `path`, depuis un clone ; `composer.json` suggère
+  `ext-pdo_sqlite` pour le stockage fourni. `SECURITY.md` ne porte plus de numéro de version.
 
 ### La démo SelfDataGuard donne à chaque visiteur sa propre base — 4 octobre 2026
 
@@ -445,6 +443,31 @@ Le garde-fou de CI vérifie deux compteurs plutôt que le seul code de sortie : 
 sections ne s'éprouvent pas sous root, le banc les saute **en le disant** et sort quand
 même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le même vert en
 ayant renoncé aux contrôles qui touchent au système.
+
+---
+
+## [SelfRecover v0.9.0] — 4 octobre 2026
+
+### SelfRecover v0.9.0 — la garde de la route du sel entre dans la bibliothèque — 4 octobre 2026
+
+Au niveau 2, le navigateur demande le sel du compte par le code, sur une route publique : elle ne
+doit pas devenir un oracle. Sa garde existait en deux copies, dans les démonstrations, et chaque
+intégrateur devait écrire la sienne.
+
+- **`Recovery::selDeDerivation($code)`** rend toujours un sel : celui du compte pour un code connu,
+  consommé ou non, quelle que soit sa casse ; sinon un faux, tiré du sel du déploiement : même forme
+  qu'un vrai, stable d'un essai à l'autre, et calculé dans tous les cas pour que les deux chemins
+  coûtent pareil.
+- **`SelParCodeInterface`**, facultative : `selDuCompteParIndexCode()`. `StockagePdo` l'implémente.
+  Sur un stockage qui ne l'implémente pas, `selDeDerivation()` lève une `LogicException` ; aucun
+  adaptateur existant n'a à changer.
+- La démo duo passe par la bibliothèque pour le chemin « code ». Le lab garde sa copie jusqu'à la fin
+  de la saison du CTF.
+- Le modèle de menace et les README disent que la bibliothèque fournit la garde, la route restant à
+  l'intégrateur.
+
+Bancs : `sanity_sel_derivation.php` (10 cas) et trois cas dans le banc du stockage PDO, avec un canari
+en CI. Les fiches diceware sont régénérées pour la version.
 
 ---
 

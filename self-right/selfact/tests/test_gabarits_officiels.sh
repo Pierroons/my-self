@@ -2,7 +2,7 @@
 # Garde-fou — le pont entre un gabarit maison et les ressources officielles.
 #
 # 🔑 Le pied de chaque gabarit disait « pour un acte officiel, utilise le modèle
-# service-public.fr correspondant » sans jamais dire lequel, alors que le module
+# service-public.gouv.fr correspondant » sans jamais dire lequel, alors que le module
 # en indexe plus de 1 800. Le rapprochement est désormais curé dans data/gabarits.json.
 #
 # ⚠️ Curé, donc faillible autrement : un identifiant que le catalogue ne connaît
