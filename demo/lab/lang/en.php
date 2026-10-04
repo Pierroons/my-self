@@ -168,7 +168,13 @@ return [
         . '<p>A <strong>429</strong> response signals this rate limiting — or the account\'s anti-brute-force lockout. <strong>It is not a denial of service you caused</strong>, and there is no need to report it as one.</p>'
         . '<p>Reasoned fuzzing is unaffected: only massively parallel requests are. No ban is applied — on this server, scanning is part of the game.</p>',
 
-    'rt.conduct.h2'   => '🧭 Responsible conduct',
+    'rt.limites.h2'    => '📐 Known and accepted limits',
+    'rt.limites.intro' => '<p>What follows is already established, and published so you don\'t spend time on it: <strong>a documented limit is not a finding</strong>. Going past it is one — if you turn any of these boundaries into a concrete foothold, that is precisely what we are looking for.</p>',
+    'rt.limites.body'  => '<li><strong>The memo vault has two locks.</strong> Its key is drawn at random, then sealed twice: under the account password, and under the recovery passphrase. Anyone who obtains the blobs attacks the cheaper of the two <strong>offline</strong>, with no attempt counter; the cost per attempt is one Argon2id <code>t=3, m=64 MiB, p=1</code>. "End-to-end" says the server never sees the key — not that the memo withstands a weak password.</li>'
+        . '<li><strong>The recovery passphrase is generated with 6 words, but accepted from 4 when typed</strong> — that is <strong>51.70 bits</strong> on the diceware list in use. An accepted lower bound, left to the person; the interface recommends six words or more.</li>'
+        . '<li><strong>The enrolled-device path requires a single factor.</strong> A valid challenge signature is enough to obtain a fresh password: possession alone, where the L2 recovery-code level requires possession <em>and</em> knowledge.</li>',
+
+    'rt.conduct.h2'   =>'🧭 Responsible conduct',
     'rt.conduct.body' => '<li>On a <strong>critical</strong> finding: stop exploiting, secure <em>minimal</em> proof, report without delay.</li>'
         . '<li>Proof means a minimal extract — a screenshot, one decrypted record — not a full dump.</li>'
         . '<li><strong>Coordinated disclosure</strong>: no publication before a fix and mutual agreement. Reference window: <strong>90 days</strong>.</li>',

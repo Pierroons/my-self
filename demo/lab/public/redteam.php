@@ -121,6 +121,12 @@ render_header(t('title.redteam'), $account);
 </div>
 
 <div class="card rt-sec">
+  <h2><?= t('rt.limites.h2') ?></h2>
+  <?= t('rt.limites.intro') ?>
+  <ul style="margin:0;padding-left:18px;line-height:1.8"><?= t('rt.limites.body') ?></ul>
+</div>
+
+<div class="card rt-sec">
   <h2><?= t('rt.conduct.h2') ?></h2>
   <ul style="margin:0;padding-left:18px;line-height:1.8"><?= t('rt.conduct.body') ?></ul>
 </div>

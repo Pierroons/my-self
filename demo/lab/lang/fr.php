@@ -166,6 +166,12 @@ return [
         . '<p>Un code <strong>429</strong> signale ce lissage — ou le verrouillage anti-brute-force du compte. <strong>Ce n\'est pas un déni de service que tu aurais provoqué</strong>, et il est inutile de le rapporter comme tel.</p>'
         . '<p>Un fuzzing raisonné n\'est pas affecté : seules les requêtes massivement parallèles le sont. Aucun bannissement n\'est appliqué — sur ce serveur, scanner fait partie du jeu.</p>',
 
+    'rt.limites.h2'    => '📐 Limites connues et assumées',
+    'rt.limites.intro' => '<p>Ce qui suit est déjà établi, et publié pour que tu n\'y perdes pas ton temps : <strong>une limite documentée n\'est pas un finding</strong>. La dépasser en est un — si tu transformes une de ces bornes en prise concrète, c\'est précisément ce qu\'on cherche.</p>',
+    'rt.limites.body'  => '<li><strong>Le coffre mémo a deux serrures.</strong> Sa clé est tirée au hasard, puis scellée deux fois : sous le mot de passe du compte, et sous la passphrase de secours. Qui obtient les blobs attaque <strong>hors ligne</strong> la moins chère des deux, sans compteur d\'essais ; le coût par essai est un Argon2id <code>t=3, m=64 Mio, p=1</code>. « De bout en bout » dit que le serveur ne voit jamais la clé — pas que le mémo résiste à un mot de passe faible.</li>'
+        . '<li><strong>La passphrase de secours est engendrée sur 6 mots, mais acceptée dès 4 à la saisie</strong> — soit <strong>51,70 bits</strong> sur la liste diceware employée. Borne basse assumée, laissée au choix de la personne ; l\'interface recommande six mots ou plus.</li>'
+        . '<li><strong>Le chemin par appareil enrôlé n\'exige qu\'un facteur.</strong> Une signature valide du défi suffit à obtenir un mot de passe neuf : possession seule, là où le niveau L2 par code de récupération exige possession <em>et</em> connaissance.</li>',
+
     'rt.conduct.h2'   => '🧭 Conduite responsable',
     'rt.conduct.body' => '<li>Sur une faille <strong>critique</strong> : stopper l\'exploitation, sécuriser une preuve <em>minimale</em>, signaler sans délai.</li>'
         . '<li>Une preuve = un extrait minimal (une capture, un enregistrement déchiffré) — pas un dump complet.</li>'
