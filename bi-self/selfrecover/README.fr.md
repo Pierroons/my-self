@@ -292,9 +292,10 @@ Le mot de récupération brut ne quitte jamais le navigateur.
 
 ### Le stockage : un contrat, et une implémentation fournie
 
-La bibliothèque ne sait rien de ta base. Elle pose **41 questions** définies par
+La bibliothèque ne sait rien de ta base. Elle pose **une quarantaine de questions** définies par
 `src/Storage/StorageInterface.php` — « donne-moi l'empreinte du mot mémorisé du compte 42 »
-— sans savoir dans quelle table ni dans quelle colonne tu la ranges.
+— sans savoir dans quelle table ni dans quelle colonne tu la ranges. La route du sel en pose
+une de plus, dans `src/Storage/SelParCodeInterface.php`, que seul son appel exige.
 
 Tu as donc deux chemins, et le contrat existe pour que le premier reste possible :
 

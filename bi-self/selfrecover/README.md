@@ -292,9 +292,10 @@ The raw recovery word never leaves the browser.
 
 ### Storage: a contract, and one implementation provided
 
-The library knows nothing about your database. It asks **41 questions** defined in
+The library knows nothing about your database. It asks **some forty questions** defined in
 `src/Storage/StorageInterface.php` — "give me the memorized word's digest for account 42" —
-without knowing which table or column you keep it in.
+without knowing which table or column you keep it in. The salt route asks one more, in
+`src/Storage/SelParCodeInterface.php`, required only when it is called.
 
 So you have two paths, and the contract exists so the first one stays open:
 

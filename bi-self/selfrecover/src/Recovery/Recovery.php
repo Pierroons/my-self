@@ -365,6 +365,10 @@ final class Recovery
      * pareil. La normalisation est celle de `parCode()` : sinon un code en
      * majuscules recevrait un faux sel ici et serait accepté là-bas.
      *
+     * ⚠️ La route publie ainsi l'empreinte `sel-absent:<chaîne>` de toute chaîne,
+     * sous le sel du déploiement. Un autre faux sel fabriqué sous la même clé
+     * prend un autre préfixe, sinon un code choisi le rejoue.
+     *
      * @throws LogicException si le stockage n'implémente pas SelParCodeInterface
      */
     public function selDeDerivation(string $code): string

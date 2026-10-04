@@ -126,6 +126,8 @@ final class RecoverHelper {
         // Par identifiant : l'étape qui démontre la dérivation en désigne un, et
         // n'a pas de code sous la main. Même garde — un identifiant inconnu rend
         // un sel fabriqué, jamais une erreur, sinon cette route dirait qui existe.
+        // Son préfixe n'est pas « sel-absent: », que la bibliothèque suit de
+        // n'importe quel code : un code pourrait rejouer ce faux sel.
         if (trim($code) === '' && self::estIdentifiant($username)) {
             $stmt = $session->db()->prepare('SELECT recovery_salt FROM accounts WHERE username = :u');
             $stmt->bindValue(':u', $username);
@@ -134,7 +136,7 @@ final class RecoverHelper {
                 return (string) $row['recovery_salt'];
             }
 
-            return substr(hash_hmac('sha256', 'sel-absent:|' . $username, self::siteSalt($session)), 0, 2 * Recovery::SEL_OCTETS);
+            return substr(hash_hmac('sha256', 'sel-absent-identifiant:' . $username, self::siteSalt($session)), 0, 2 * Recovery::SEL_OCTETS);
         }
 
         return self::protocole($session)->selDeDerivation($code);

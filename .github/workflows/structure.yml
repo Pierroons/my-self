@@ -361,7 +361,7 @@ jobs:
             cp /tmp/recovery.intact "$F"; echo "::error::le banc reste VERT quand la route répond rien"; exit 1
           fi
           cp /tmp/recovery.intact "$F"
-          echo "$canari" | grep -qF "un code inconnu reçoit un sel de la forme d'un vrai" \
+          echo "$canari" | grep -q "❌ .*un code inconnu reçoit un sel de la forme d'un vrai" \
             || { echo "$canari"; echo "::error::rouge, mais pas sur le code inconnu"; exit 1; }
           [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
           echo "✓ le banc rougit quand la route du sel cesse de mentir sur un code inconnu"
