@@ -3,8 +3,9 @@
  * SelfRecover demo — Inscription.
  *
  * POST /demo/api/recover/register
- *   body: { "username": "alice", "recovery_derived_key": "<64 hex>", "recovery_salt": "<32 hex>" }
- *   → génère password random + passphrase diceware
+ *   body: { "username": "alice", "recovery_derived_key": "<64 hex>", "recovery_salt": "<32 hex>",
+ *           "passphrase": "<six mots tirés aux dés>" (facultatif) }
+ *   → génère password random ; passphrase apportée (jugée par la bibliothèque) ou tirée ici
  *   → Argon2id triplet (password, passphrase, derived_key)
  *   → INSERT accounts
  *   → retourne les credentials en clair pour que l'user les copie
@@ -69,6 +70,27 @@ if (!\Pierroons\SelfRecover\Recovery\Recovery::estSelCompte($recoverySalt)) {
     exit;
 }
 
+// La passphrase apportée, tirée aux dés par l'utilisateur. Absente : elle est
+// tirée plus bas. Présente, même vide, elle est jugée par la bibliothèque — une
+// interface qui enverrait "" en croyant apporter recevrait sinon une passphrase
+// qu'elle n'afficherait pas.
+$apportee = is_array($body) && isset($body['passphrase']) ? $body['passphrase'] : null;
+$jugee    = null;
+if ($apportee !== null) {
+    $jugee = is_string($apportee)
+        ? \Pierroons\SelfRecover\Recovery\Recovery::validerPassphraseApportee($apportee)
+        : ['ok' => false, 'error' => 'passphrase_invalide', 'motif' => 'trop_courte',
+           'message' => 'La passphrase apportée doit être un texte.'];
+    if (!$jugee['ok']) {
+        // Le motif seulement : le message dit des positions, jamais un mot.
+        $s->logger()->error('register', 'Passphrase apportée refusée', ['motif' => $jugee['motif']]);
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'error' => $jugee['error'], 'motif' => $jugee['motif'],
+                          'message' => $jugee['message']], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
 $log = $s->logger();
 $log->info('register', "POST /demo/api/recover/register");
 $log->info('register', "Body parsed", ['username' => $username]);
@@ -88,13 +110,22 @@ if ($stmt->execute()->fetchArray()) {
 $password = RecoverHelper::generatePassword();
 $log->info('register', 'Password généré côté serveur (' . strlen($password) . ' caractères, alphanum sans ambigus)');
 
-$diceware = \Pierroons\SelfRecover\Diceware\Wordlist::generate(\Pierroons\SelfRecover\Recovery\Recovery::MOTS_PASSPHRASE, 'en');
-$passphrase = implode(' ', $diceware['words']);
-$log->info('register', 'Passphrase diceware générée depuis la liste officielle EFF (7776 mots, CC-BY 3.0)', [
-    'words_count'  => count($diceware['words']),
-    'entropy_bits' => $diceware['entropy_bits'],
-    'wordlist'     => 'EFF large wordlist (2016)',
-]);
+if ($jugee !== null) {
+    $passphrase = $jugee['canonique'];
+    $log->info('register', "Passphrase apportée par l'utilisateur, jugée par la bibliothèque", [
+        'words_count' => count(explode(' ', $passphrase)),
+        'forme'       => 'rangée en minuscules, une espace entre les mots',
+        'note'        => "Le serveur ne peut pas savoir si les dés ont été jetés : six mots choisis de tête passent aussi.",
+    ]);
+} else {
+    $passphrase = \Pierroons\SelfRecover\Recovery\Recovery::engendrerPassphrase();
+    $mots       = count(explode(' ', $passphrase));
+    $log->info('register', "Passphrase tirée côté serveur, dans la liste de l'EFF (7776 mots)", [
+        'words_count'  => $mots,
+        'entropy_bits' => round($mots * log(7776, 2), 2),
+        'wordlist'     => 'EFF large wordlist (2016)',
+    ]);
+}
 
 $log->crypto('register', 'Le mot mémorisé est arrivé DÉJÀ dérivé', [
     'derived_key' => $derivedKey,       // sera tronqué par le Redactor
