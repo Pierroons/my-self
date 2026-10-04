@@ -5,7 +5,7 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per service, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.7.0](https://img.shields.io/badge/status-v0.8.0-green.svg)](#status)
+[![Status: v0.8.0](https://img.shields.io/badge/status-v0.8.0-green.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#trying-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#trying-selfrecover)
@@ -27,13 +27,16 @@ SelfRecover protects **authentication**. SelfDataGuard protects **data at rest**
 
 ## Two adoption modes — Full and Lite (v0.1.1)
 
-SelfRecover ships in two flavors so legacy systems can adopt it progressively
-without an all-or-nothing rewrite of their authentication stack.
+SelfRecover is designed in two flavors so legacy systems can adopt it progressively
+without an all-or-nothing rewrite of their authentication stack. **Only Full is implemented
+in the current library.** Lite was published in v0.1.1 as a demonstration (signed tag
+`v0.1.1`); that demonstration was removed on 2026-08-18, and the current version has no
+Lite code.
 
 | Mode | Email channel | Crypto added | When to pick it |
 |------|---------------|--------------|-----------------|
 | **Full** | None at all | Diceware EFF passphrase + HMAC-per-service | Greenfield projects, high-assurance threat models |
-| **Lite** 🆕 | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want a recovery secret that never travels in clear, and migrate to Full later |
+| **Lite** (specified, not implemented) | Kept (SMTP reset link) | A user-memorized word HMAC-derived client-side, never sent raw | Existing email-based stacks that want a recovery secret that never travels in clear, and migrate to Full later |
 
 **Try it:** see [Trying SelfRecover](#trying-selfrecover). The method comparison (8 adversaries × 3 models) is a standalone page: `tools/comparison.html`.
 
@@ -153,6 +156,8 @@ server       → account       = lookup(HMAC-SHA256(SERVER_SECRET, recovery_code
 ```
 
 The wire never carries the recovery word. The server never stores the recovery word. Even a full database dump + source code leak does not expose it — only Argon2id hashes of per-site-derived keys.
+
+> ⚠️ **The salt route is public, and it must not become an oracle.** At level 2 the browser derives before the account is identified: the code is what identifies it, so it needs the salt first, without authentication. Were the route to answer a valid code and refuse an unknown one, codes could be tested for the price of a request, without paying a single Argon2id. So it **always** returns a salt: the account's for a known code, otherwise a fake one, drawn from a server secret. The library exposes no route, so not this one: your service writes it. The details, and the two demonstrations in this repository that implement it, are in the [threat model](docs/threat-model.md), section "Bot-driven account enumeration".
 
 ### Why HMAC-SHA256 (and not PBKDF2 / Argon2)
 

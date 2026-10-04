@@ -16,12 +16,12 @@ declare(strict_types=1);
  *
  * Usage :
  *   php bin/escrow-ceremony.php unlock <user> <litige_id> [champ...]
- *   php bin/escrow-ceremony.php verify-log
+ *   php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]
  *
  * Config (env) :
  *   DATAGUARD_DB                base sqlite (vaults + escrow + litiges)
  *   DATAGUARD_ADMIN_PUBKEY_FILE fichier clé publique admin (base64)
- *   DATAGUARD_ADMIN_SEALED_FILE fichier clé privée SCELLÉE (salt:blob)
+ *   DATAGUARD_ADMIN_SEALED_FILE fichier clé privée SCELLÉE (v2:ops:mem:salt:blob ; salt:blob avant 0.6.0)
  *   DATAGUARD_AUDIT_LOG         chemin du journal d'audit
  *   DATAGUARD_AUDIT_SECRET      secret HMAC de signature du journal
  *   DATAGUARD_BLINDKEY_FILE     (optionnel) blindKey — non utilisé côté escrow
@@ -101,17 +101,50 @@ $cmd = $argv[1] ?? '';
 $auditLog = new AuditLog(envOrDie('DATAGUARD_AUDIT_LOG'), envOrDie('DATAGUARD_AUDIT_SECRET'));
 
 if ($cmd === 'verify-log') {
-    $r = $auditLog->verify();
+    // L'ancre est la tête notée lors d'une vérification précédente, hors de cette
+    // machine : sans elle, un journal tronqué ou supprimé reste une chaîne valide.
+    $ancre = null;
+    $options = array_slice($argv, 2);
+    if ($options !== []) {
+        if ($options[0] === '--ancre' && count($options) === 2) {
+            $ancre = $options[1];
+        } elseif (str_starts_with($options[0], '--ancre=') && count($options) === 1) {
+            $ancre = substr($options[0], strlen('--ancre='));
+        } else {
+            // Une option mal écrite ne doit pas rendre « intègre » sans ancre.
+            fwrite(STDERR, "❌ option inconnue : " . implode(' ', $options) . " — usage : verify-log [--ancre seq:hmac]\n");
+            exit(2);
+        }
+    }
+    try {
+        $r = $auditLog->verify($ancre);
+    } catch (InvalidArgumentException $e) {
+        fwrite(STDERR, "❌ ancre illisible : {$e->getMessage()}\n");
+        exit(2);
+    }
     if ($r['ok']) {
-        echo "✅ journal d'audit intègre — {$r['count']} entrée(s), chaîne + signatures valides\n";
+        echo "✅ journal d'audit intègre — {$r['count']} entrée(s), chaîne + signatures valides"
+            . ($ancre !== null ? ", ancre retrouvée" : '') . "\n";
+        if ($r['head'] !== null) {
+            echo "   tête : {$r['head']['seq']}:{$r['head']['hmac']}\n"
+                . "   Note-la hors de cette machine, et passe-la en --ancre à la prochaine vérification.\n";
+        }
+        if ($ancre === null) {
+            echo "   ⚠️ sans --ancre, une troncature de la fin du journal ne se voit pas.\n";
+        }
         exit(0);
     }
-    fwrite(STDERR, "❌ journal d'audit ROMPU à l'entrée #{$r['brokenAt']} (sur {$r['count']})\n");
+    $raison = match ($r['reason']) {
+        'truncated' => "TRONQUÉ : l'entrée #{$r['brokenAt']} de l'ancre a disparu",
+        'rewritten' => "RÉÉCRIT : l'entrée #{$r['brokenAt']} n'a plus le hmac de l'ancre",
+        default     => "ROMPU à l'entrée #{$r['brokenAt']}",
+    };
+    fwrite(STDERR, "❌ journal d'audit {$raison} (sur {$r['count']})\n");
     exit(1);
 }
 
 if ($cmd !== 'unlock' || !isset($argv[2], $argv[3])) {
-    fwrite(STDERR, "Usage:\n  php bin/escrow-ceremony.php unlock <user> <litige_id> [champ...]\n  php bin/escrow-ceremony.php verify-log\n");
+    fwrite(STDERR, "Usage:\n  php bin/escrow-ceremony.php unlock <user> <litige_id> [champ...]\n  php bin/escrow-ceremony.php verify-log [--ancre <seq:hmac>]\n");
     exit(3);
 }
 
@@ -143,6 +176,9 @@ try {
 } catch (LegacyCipherUnavailableException $e) {
     sodium_memzero($passphrase);
     denyAndExit($auditLog, $ctx, 'legacy-cipher-unavailable', $e->getMessage());
+} catch (InvalidArgumentException $e) {
+    sodium_memzero($passphrase);
+    denyAndExit($auditLog, $ctx, 'sealed-key-unreadable', "fichier de clé scellée illisible : {$e->getMessage()}");
 } catch (\Throwable) {
     sodium_memzero($passphrase);
     denyAndExit($auditLog, $ctx, 'bad-passphrase', 'passphrase admin invalide.');

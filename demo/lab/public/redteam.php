@@ -11,6 +11,8 @@ use Pierroons\MySelfLab\Redteam;
 $pdo = Db::pdo();
 $account = Auth::currentAccount($pdo);
 $hof = Redteam::hallOfFame($pdo);
+require_once __DIR__ . '/../lib/flags.php';
+$drapeaux = \Pierroons\MySelfLab\Flags::tableau($pdo);
 
 $sevColor = [
     'info' => '#9aa9b6', 'faible' => '#6cb6ff', 'moyen' => '#d4a056',
@@ -162,6 +164,46 @@ render_header(t('title.redteam'), $account);
 </div>
 
 <div class="card rt-sec">
+  <h2><?= t('rt.flag.h2') ?></h2>
+  <p class="muted"><?= t('rt.flag.intro') ?></p>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px">
+    <?php foreach ($drapeaux as $d): ?>
+      <tr style="border-top:1px solid var(--border)">
+        <td style="padding:6px 8px"><code><?= h($d['code']) ?></code></td>
+        <td style="padding:6px 8px">
+          <?php if ($d['premier'] === null): ?>
+            <span style="color:var(--danger)"><?= h(t('rt.flag.intact')) ?></span>
+          <?php else: ?>
+            🩸 <?= h($d['premier']['handle'] ?? t('rt.flag.anonyme')) ?>
+            <span class="muted">— <?= date('d/m/Y', $d['premier']['quand']) ?></span>
+          <?php endif; ?>
+        </td>
+        <td style="padding:6px 8px;text-align:right" class="muted">
+          <?= h(t('rt.flag.captures', (int) $d['captures'])) ?>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+  </table>
+  <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+    <input id="fl-flag" class="inp" style="flex:2;min-width:220px" placeholder="FLAG-..." autocomplete="off">
+    <input id="fl-handle" class="inp" style="flex:1;min-width:140px" placeholder="<?= h(t('rt.flag.pseudo')) ?>" autocomplete="off">
+    <button class="btn" id="btn-flag"><?= h(t('rt.flag.btn')) ?></button>
+  </div>
+  <div id="flmsg"></div>
+</div>
+
+<div class="card rt-sec">
+  <h2><?= t('rt.suivi.h2') ?></h2>
+  <p class="muted"><?= t('rt.suivi.intro') ?></p>
+  <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+    <input id="sv-id" class="inp" style="flex:1;min-width:110px" placeholder="<?= h(t('rt.suivi.num')) ?>" autocomplete="off">
+    <input id="sv-tok" class="inp" style="flex:2;min-width:220px" placeholder="<?= h(t('rt.suivi.jeton')) ?>" autocomplete="off">
+    <button class="btn" id="btn-suivi"><?= h(t('rt.suivi.btn')) ?></button>
+  </div>
+  <div id="svmsg"></div>
+</div>
+
+<div class="card rt-sec">
   <h2><?= t('rt.hof.h2') ?></h2>
   <?php if (!$hof): ?>
     <p class="muted"><?= t('rt.hof.empty') ?></p>
@@ -171,6 +213,7 @@ render_header(t('title.redteam'), $account);
         <span class="badge"><?= h($c['handle']) ?>
           <span class="sev" style="color:<?= $sevColor[$c['sev']] ?? '#9aa9b6' ?>">● <?= h($c['sev']) ?></span>
           <?php if ($c['nb'] > 1): ?><span class="muted">×<?= (int) $c['nb'] ?></span><?php endif; ?>
+          <span class="muted" style="font-weight:600"><?= (int) ($c['points'] ?? 0) ?> pts</span>
         </span>
       <?php endforeach; ?>
     </div>
@@ -180,7 +223,7 @@ render_header(t('title.redteam'), $account);
 <script nonce="<?= nonce() ?>">
 // Messages traduits côté serveur : le JS ne connaît pas la langue courante.
 const RT_I18N = <?= json_encode(['ok' => t('rt.js.ok'), 'err' => t('rt.js.err'), 'neterr' => t('rt.js.neterr'),
-     'encrypting' => t('rt.js.encrypting'), 'cryptoerr' => t('rt.js.cryptoerr')], JSON_UNESCAPED_UNICODE) ?>;
+     'encrypting' => t('rt.js.encrypting'), 'cryptoerr' => t('rt.js.cryptoerr'), 'statut' => t('rt.js.statut')], JSON_UNESCAPED_UNICODE) ?>;
 async function envoyerRapport(){
   const box=document.getElementById('rtmsg');
   const btn=document.getElementById('btn-rtsend');
@@ -223,5 +266,46 @@ async function envoyerRapport(){
     }).catch(e=>{btn.disabled=false;box.innerHTML='<div class="toast err">'+RT_I18N.neterr+e.message+'</div>';});
 }
 document.getElementById('btn-rtsend').addEventListener('click', envoyerRapport);
+
+// Echappement : ces messages viennent du serveur, mais un pseudo y transite.
+function flEsc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+
+function poster(url, corps){
+  return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(corps)})
+    .then(r=>r.json());
+}
+
+function soumettreDrapeau(){
+  const box=document.getElementById('flmsg'), btn=document.getElementById('btn-flag');
+  const flag=document.getElementById('fl-flag').value.trim();
+  if(!flag){return;}
+  btn.disabled=true; box.innerHTML='';
+  poster('/api/flag_submit.php',{flag:flag,handle:document.getElementById('fl-handle').value.trim()})
+    .then(d=>{
+      btn.disabled=false;
+      box.innerHTML='<div class="toast '+(d.ok?'ok':'err')+'">'+(d.premier?'🩸 ':'')+flEsc(d.message||'')+'</div>';
+      // Le tableau du premier sang vient du serveur : on le relit plutot que de
+      // le reconstruire ici, sinon deux verites coexisteraient a l'ecran.
+      if(d.ok){setTimeout(()=>location.reload(),2200);}
+    })
+    .catch(e=>{btn.disabled=false;box.innerHTML='<div class="toast err">'+RT_I18N.neterr+flEsc(e.message)+'</div>';});
+}
+document.getElementById('btn-flag').addEventListener('click', soumettreDrapeau);
+document.getElementById('fl-flag').addEventListener('keydown', e=>{if(e.key==='Enter'){soumettreDrapeau();}});
+
+function consulterSuivi(){
+  const box=document.getElementById('svmsg'), btn=document.getElementById('btn-suivi');
+  btn.disabled=true; box.innerHTML='';
+  poster('/api/report_status.php',{id:parseInt(document.getElementById('sv-id').value,10)||0,
+                                   suivi:document.getElementById('sv-tok').value.trim()})
+    .then(d=>{
+      btn.disabled=false;
+      box.innerHTML = d.ok
+        ? '<div class="toast ok">'+flEsc(RT_I18N.statut)+' <strong>'+flEsc(d.statut)+'</strong> — '+flEsc(d.severite)+'</div>'
+        : '<div class="toast err">'+flEsc(d.message||RT_I18N.err)+'</div>';
+    })
+    .catch(e=>{btn.disabled=false;box.innerHTML='<div class="toast err">'+RT_I18N.neterr+flEsc(e.message)+'</div>';});
+}
+document.getElementById('btn-suivi').addEventListener('click', consulterSuivi);
 </script>
 <?php render_footer(); ?>

@@ -45,14 +45,21 @@ use SodiumException;
 final class Primitives
 {
     /**
-     * ⚠️ Not stored in the vaults: every unwrap derives with the values in force
-     * at that moment. Change them and every existing envelope stops opening, with
-     * the same error as a wrong password. Changing them needs a record format that
-     * carries its profile, or a re-seal of every vault while the old values still
-     * open it.
+     * The profile a new vault, archive or admin key is sealed under; each one
+     * records it, and opens under its own. A direct caller of deriveFromPassword()
+     * or deriveFromMemorized() records nothing: what it sealed under these values
+     * stops opening when they change, with the same error as a wrong secret.
      */
     public const ARGON2_OPSLIMIT = 3;
     public const ARGON2_MEMLIMIT = 65536 * 1024;
+
+    /**
+     * The profile of every vault and admin key sealed before 0.6.0, which did not
+     * record theirs. Frozen: it describes data already written, so it must not
+     * follow ARGON2_* when they change.
+     */
+    public const LEGACY_OPSLIMIT = 3;
+    public const LEGACY_MEMLIMIT = 65536 * 1024;
     public const SALT_LEN        = 16;
     public const KEY_LEN         = 32;
     public const NONCE_LEN       = EncryptedBlob::NONCE_LEN_V2;

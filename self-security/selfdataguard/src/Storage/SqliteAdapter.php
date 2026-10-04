@@ -35,6 +35,8 @@ use Throwable;
  *     updated_at  TEXT NOT NULL    (ISO 8601)
  *     wrap_phrase TEXT             (base64, nullable — added in 0.5.0, hence last)
  *     revision    INTEGER NOT NULL DEFAULT 0  (bumped by every update; added in 0.5.0)
+ *     kdf_opslimit / kdf_memlimit  INTEGER NOT NULL  (the vault's Argon2id profile;
+ *                 added in 0.6.0, defaulting to the legacy profile of older rows)
  *
  *   selfdataguard_fields
  *     user_id     TEXT NOT NULL
@@ -98,8 +100,9 @@ final class SqliteAdapter implements StorageInterface
     {
         $stmt = $this->pdo->prepare(
             'INSERT INTO selfdataguard_vaults
-             (user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase, revision)
-             VALUES (:uid, :salt, :wp, :wr, :wa, :ca, :ua, :wph, :rev)'
+             (user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase, revision,
+              kdf_opslimit, kdf_memlimit)
+             VALUES (:uid, :salt, :wp, :wr, :wa, :ca, :ua, :wph, :rev, :ops, :mem)'
         );
         try {
             $stmt->execute($this->vaultToParamsForInsert($record));
@@ -494,7 +497,7 @@ final class SqliteAdapter implements StorageInterface
         unset($vault['user_id']);
         return json_encode([
             'format' => self::ARCHIVE_FORMAT,
-            'kdf'    => ['opslimit' => Primitives::ARGON2_OPSLIMIT, 'memlimit' => Primitives::ARGON2_MEMLIMIT],
+            'kdf'    => ['opslimit' => (int) $vault['kdf_opslimit'], 'memlimit' => (int) $vault['kdf_memlimit']],
             'vault'  => $vault,
             'escrow' => $escrow,
             'fields' => ['private' => (object) $private, 'escrow' => (object) $escrowFields],
@@ -617,11 +620,17 @@ final class SqliteAdapter implements StorageInterface
                 created_at  TEXT NOT NULL,
                 updated_at  TEXT NOT NULL,
                 wrap_phrase TEXT,
-                revision    INTEGER NOT NULL DEFAULT 0
+                revision    INTEGER NOT NULL DEFAULT 0,
+                kdf_opslimit INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_OPSLIMIT . ',
+                kdf_memlimit INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_MEMLIMIT . '
             )'
         );
         $this->addMissingVaultColumn('wrap_phrase', 'TEXT');
         $this->addMissingVaultColumn('revision', 'INTEGER NOT NULL DEFAULT 0');
+        // A row stored before 0.6.0 was sealed under the legacy profile: that is
+        // what the default must say, whatever the current constants become.
+        $this->addMissingVaultColumn('kdf_opslimit', 'INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_OPSLIMIT);
+        $this->addMissingVaultColumn('kdf_memlimit', 'INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_MEMLIMIT);
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_archives (
                 archive_id  TEXT PRIMARY KEY,
@@ -720,6 +729,8 @@ final class SqliteAdapter implements StorageInterface
             ':ua'   => $record->updatedAt->format('c'),
             ':wph'  => $record->wrapPhrase?->toBase64(),
             ':rev'  => $record->revision,
+            ':ops'  => $record->kdfOpslimit,
+            ':mem'  => $record->kdfMemlimit,
         ];
     }
 
@@ -762,6 +773,9 @@ final class SqliteAdapter implements StorageInterface
             updatedAt: new DateTimeImmutable((string) $row['updated_at']),
             wrapPhrase: $row['wrap_phrase'] !== null ? EncryptedBlob::fromBase64((string) $row['wrap_phrase']) : null,
             revision:   (int) ($row['revision'] ?? 0),
+            // An archive package written before 0.6.0 carries no profile columns.
+            kdfOpslimit: (int) ($row['kdf_opslimit'] ?? Primitives::LEGACY_OPSLIMIT),
+            kdfMemlimit: (int) ($row['kdf_memlimit'] ?? Primitives::LEGACY_MEMLIMIT),
         );
     }
 
@@ -789,7 +803,8 @@ final class SqliteAdapter implements StorageInterface
     private function fetchVaultRow(string $userId): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase, revision
+            'SELECT user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase, revision,
+                    kdf_opslimit, kdf_memlimit
              FROM selfdataguard_vaults WHERE user_id = :uid'
         );
         $stmt->execute([':uid' => $userId]);

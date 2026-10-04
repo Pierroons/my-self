@@ -85,7 +85,7 @@ final class SelfDataGuard
         }
         $result = $this->vault->register($userId, $password, $memorized, $passphrase);
         $this->storage->saveVault($result['record']);
-        $this->assertPassphrasePersisted($result['record'], 0);
+        $this->assertVaultPersisted($result['record'], 0);
         return $result['unlocked'];
     }
 
@@ -147,7 +147,7 @@ final class SelfDataGuard
             $record = $this->vault->changePassphrase($record, $session, $newPassphrase);
         }
         $this->storage->updateVault($record);
-        $this->assertPassphrasePersisted($record, $record->revision + 1);
+        $this->assertVaultPersisted($record, $record->revision + 1);
         return $session;
     }
 
@@ -189,6 +189,12 @@ final class SelfDataGuard
     {
         $this->currentRecord($session);
         $cipher = $this->storage->loadFields($session->userId, $fieldNames);
+        if ($fieldNames === []) {
+            // A row under the reserved name is never decrypted. Read with every
+            // other field, it is left out instead of refusing the whole account;
+            // asked for by name, FieldCrypter refuses it.
+            unset($cipher[EscrowVault::WRAP_AAD_TAG]);
+        }
         return FieldCrypter::decryptBatch($session, $cipher);
     }
 
@@ -230,14 +236,14 @@ final class SelfDataGuard
     {
         $rotated = $this->vault->changePassphrase($this->currentRecord($session), $session, $newPassphrase);
         $this->storage->updateVault($rotated);
-        $this->assertPassphrasePersisted($rotated, $rotated->revision + 1);
+        $this->assertVaultPersisted($rotated, $rotated->revision + 1);
     }
 
     public function removePassphrase(UnlockedVault $session): void
     {
         $rotated = $this->vault->removePassphrase($this->currentRecord($session), $session);
         $this->storage->updateVault($rotated);
-        $this->assertPassphrasePersisted($rotated, $rotated->revision + 1);
+        $this->assertVaultPersisted($rotated, $rotated->revision + 1);
     }
 
     // -- Re-enrolment and archives ---------------------------------------------
@@ -262,7 +268,7 @@ final class SelfDataGuard
     ): array {
         $result    = $this->vault->register($userId, $newPassword, $newMemorized, $newPassphrase);
         $archiveId = $this->storage->replaceWithArchive($result['record']);
-        $this->assertPassphrasePersisted($result['record'], 0);
+        $this->assertVaultPersisted($result['record'], 0);
         return ['unlocked' => $result['unlocked'], 'archiveId' => $archiveId];
     }
 
@@ -317,9 +323,10 @@ final class SelfDataGuard
     public function readArchive(UnlockedArchive $opened): array
     {
         $archive = $opened->archive;
+        $fields  = array_diff_key($archive->privateFields, [EscrowVault::WRAP_AAD_TAG => true]);
         $private = FieldCrypter::decryptBatch(
             $opened->session(),
-            array_map(static fn (array $f): string => $f['ciphertext'], $archive->privateFields)
+            array_map(static fn (array $f): string => $f['ciphertext'], $fields)
         );
         $escrow = [];
         if ($archive->escrow !== null) {
@@ -330,7 +337,7 @@ final class SelfDataGuard
         return [
             'private' => $private,
             'escrow'  => $escrow,
-            'indexed' => array_keys(array_filter($archive->privateFields, static fn (array $f): bool => $f['wasIndexed'])),
+            'indexed' => array_keys(array_filter($fields, static fn (array $f): bool => $f['wasIndexed'])),
         ];
     }
 
@@ -404,7 +411,9 @@ final class SelfDataGuard
 
     /**
      * Encrypt and persist escrow fields for the active user. Creates the escrow
-     * compartment on first use (sealed to $adminPublicKey); reuses it after.
+     * compartment on first use (sealed to $adminPublicKey); reuses it after, and
+     * then ignores $adminPublicKey — rebindEscrowAdmin() is the one call that
+     * re-seals an existing compartment.
      *
      * These fields are the CONSENTED, admin-recoverable subset (e.g.
      * contact_secours) — kept in a sub-key distinct from the private zone.
@@ -431,6 +440,29 @@ final class SelfDataGuard
         $ciphertexts = EscrowFieldCrypter::encryptBatch($unlocked, $fields);
         $this->storage->saveEscrowFields($session->userId, $ciphertexts, $session->vaultSalt);
         $unlocked->lock();
+    }
+
+    /**
+     * Re-seal a wrap_admin sealed before 0.6.0, which names no account, in the form
+     * that does. Returns false when there is no escrow, or when it is already bound.
+     *
+     * ⚠️ The wrap is re-sealed to $adminPublicKey. Nothing can tell, without the
+     * admin secret key, which key the old wrap was sealed to: pass the key the
+     * escrow was created with, or the administrator who held the old one loses
+     * access to this compartment.
+     */
+    public function rebindEscrowAdmin(UnlockedVault $session, string $adminPublicKey): bool
+    {
+        $this->currentRecord($session);
+        $record = $this->storage->loadEscrow($session->userId);
+        if ($record === null || EscrowVault::isAccountBound($record)) {
+            return false;
+        }
+        $unlocked = $this->escrow->unlockAsUser($record, $session);
+        $rebound  = $this->escrow->rebindAdmin($record, $unlocked, $adminPublicKey);
+        $unlocked->lock();
+        $this->storage->saveEscrow($rebound, $session->vaultSalt);
+        return true;
     }
 
     /**
@@ -533,13 +565,15 @@ final class SelfDataGuard
     }
 
     /**
-     * A StorageInterface implementation can drop wrap_phrase without a word —
-     * an update that does not name the column, say. The passphrase SelfRecover
-     * just consumed would then keep opening the vault, or the new one would
-     * not. Read it back once. A higher revision than $expectedRevision means a
-     * later write landed in between: then there is nothing left to compare.
+     * A StorageInterface implementation can drop a column without a word — an
+     * update that does not name it, say. Without wrap_phrase, the passphrase
+     * SelfRecover just consumed would keep opening the vault, or the new one
+     * would not; without the Argon2id profile, the vault would be read under the
+     * current constants and stop opening the day they change. Read it back once.
+     * A higher revision than $expectedRevision means a later write landed in
+     * between: then there is nothing left to compare.
      */
-    private function assertPassphrasePersisted(VaultRecord $written, int $expectedRevision): void
+    private function assertVaultPersisted(VaultRecord $written, int $expectedRevision): void
     {
         $stored = $this->storage->loadVault($written->userId);
         if ($stored->revision > $expectedRevision) {
@@ -549,6 +583,12 @@ final class SelfDataGuard
             throw new RuntimeException(
                 'The storage did not persist wrap_phrase as written — '
                 . 'does its saveVault(), updateVault() and replaceWithArchive() write that column?'
+            );
+        }
+        if ($stored->kdfOpslimit !== $written->kdfOpslimit || $stored->kdfMemlimit !== $written->kdfMemlimit) {
+            throw new RuntimeException(
+                'The storage did not persist the Argon2id profile as written — '
+                . 'do its saveVault() and replaceWithArchive() write kdf_opslimit and kdf_memlimit?'
             );
         }
     }

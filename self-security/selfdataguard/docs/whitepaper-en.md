@@ -3,7 +3,7 @@
 **Application-layer data-at-rest protection that survives a database exfiltration**
 *Dump my database — and get encrypted noise.*
 
-*Edition of 2 October 2026 — describes SelfDataGuard v0.5.1. The French edition is authoritative where the two differ.*
+*Edition of 3 October 2026 — describes SelfDataGuard v0.6.0. The French edition is authoritative where the two differ.*
 
 ---
 
@@ -79,7 +79,8 @@ Step 4 — Wrap the master key with each of these keys:
     wrap_phrase      ← XChaCha20-Poly1305-encrypt(data_master_key, key=phrase_key,   nonce=random_192)
 
 Step 5 — Database storage (all values listed below stored in plain):
-    user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin (reserved, never written), wrap_phrase
+    user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin (reserved, never written), wrap_phrase,
+    kdf_opslimit, kdf_memlimit     # the Argon2id profile of the envelopes, stored since 0.6.0
 
 Step 6 — Field-by-field encryption of personal data:
     email_encrypted        ← XChaCha20-Poly1305-encrypt(email,    key=data_master_key, nonce=random_192)
@@ -303,6 +304,7 @@ Most e-commerce sites should pick **Hybrid**. High-assurance services (health, b
 | Stolen passphrase paper | A user's level-1 passphrase | That user's account and data, offline too given a dump, until the passphrase's first legitimate use, which replaces it on both sides |
 | Leak of an old secret before a level 3 | One lock of the archive | Nothing through the service: the archive opens only from a session on the current vault. Given a dump, the archive opens offline with that lock |
 | Coercion of an admin | Forces admin to provide their keys | Lite mode: no permanent admin key, so nothing. Hybrid mode: operational fields only. Full mode: nothing (admin has no key) |
+| Database write | Change, copy or put back rows | The escrow content is not authenticated against it: with the admin public key, stored in the clear, it seals a new compartment for an account and fills it, and the ceremony shows what it wrote. The admin seal naming its account (0.6.0) stops only a verbatim copy from one account to another. A vault row put back from an earlier revision opens with the secrets it carried, a consumed passphrase included: a limit, §8.1 |
 
 ### 6.2 Out-of-scope adversaries
 
@@ -326,10 +328,12 @@ For a SelfDataGuard deployment to actually deliver the listed guarantees, it mus
 4. **Short sessions**: `data_master_key` purged from session after inactivity (15 min recommended for Hybrid, 5 min for Full)
 5. **No sensitive logging**: `password_key`, `recov_key`, `phrase_key`, `data_master_key` must never appear in logs (even at debug level)
 6. **Admin access auditing**: in Hybrid mode, every admin access to operational fields must be logged (without the data itself)
-7. **Regular updates**: track Argon2id recommendations to adjust `m` and `t` as hardware progresses (`p` is fixed at 1, see §5). The profile is not stored in a live vault: changing it requires re-sealing every live vault first, and the library provides no tool for it. An archive records the profile in force when it was archived, and opens with it
-8. **Re-sealing at every recovery**: `recover()` at levels 1 and 2, **after** SelfRecover's acceptance and never before; the catch-up after a level-2 device recovery and `openArchive()` rate-limited by the integrator like its login; `reEnroll()` at level 3
+7. **Regular updates**: track Argon2id recommendations to adjust `m` and `t` as hardware progresses (`p` is fixed at 1, see §5). Since 0.6.0 the profile is stored with each vault, each archive and the sealed admin key: changing the constants locks out no vault, no archive and no admin key, a vault keeps its profile at every re-seal, and a new vault takes the current profile. Raising the profile of an existing vault takes its secrets; the library provides no tool for it. What an integrator derives itself through `Primitives::deriveFromPassword()` or `deriveFromMemorized()` records no profile, and stops opening when the constants change
+8. **Re-sealing at every change of secret**: `recover()` at levels 1 and 2, **after** SelfRecover's acceptance and never before; the catch-up after a level-2 device recovery and `openArchive()` rate-limited by the integrator like its login; `reEnroll()` at level 3; `changePassword()` and `changeMemorized()` when the service changes the password or renews the memorized word outside a recovery
+9. **One account, one spelling**: `userId` is compared byte for byte — it enters the AAD of every envelope and keys the database row. A service whose accounts ignore case maps the name to the account's own before every call, otherwise a vault created under one spelling escapes the re-seals called under the other
+10. **Escrow log anchor**: write down off the machine the head `seq:hmac` that `verify-log` prints, and verify with `--ancre`. Without an anchor, a log whose end was cut off passes verification
 
-Failure to respect any of these rules significantly degrades the guarantees. The reference library enforces rule 1, and rule 5 for its own exception traces (`#[\SensitiveParameter]`); the others are up to the integrator and the deployment configuration.
+Failure to respect any of these rules significantly degrades the guarantees. The reference library enforces rule 1, and rule 5 for its own exception traces (`#[\SensitiveParameter]`); for rule 7 it stores each vault's profile, but choosing and raising it is the integrator's. The other rules are up to the integrator and the deployment configuration.
 
 ---
 
@@ -340,6 +344,7 @@ Failure to respect any of these rules significantly degrades the guarantees. The
 - **Full-text search** on encrypted fields: impossible without advanced techniques (partial homomorphic encryption, secure indexes like CipherSweet)
 - **Asynchronous transactional notifications**: require admin_op_key (Hybrid mode) or redesign toward push (Full mode)
 - **Schema migration**: if an encrypted field is added to an existing account, it must be populated during an active user session
+- **Replay of an earlier revision**: whoever can write to the database can put back an old vault row, with its old envelopes. It opens with the secrets it carried, including a passphrase SelfRecover has consumed since. The vault's revision guards against concurrent writes, not against a restored row. Binding the envelopes to the revision would take the three secrets at every write, and a password change does not have the memorized word at hand; a MAC over the set of envelopes does not withstand someone who restores the whole row from an old backup. The defence lies outside the vault: the integrity of the database and its backups
 - **Performance**: the overhead of each encrypted field has not been measured yet. For queries listing many accounts, it compounds: to evaluate case by case.
 
 ### 8.2 Roadmap
@@ -349,7 +354,8 @@ Failure to respect any of these rules significantly degrades the guarantees. The
 - **v0.3.0** (shipped 2026-09-07): Argon2id derivation of the memorized secret, password length floor enforced in code
 - **v0.4.0** (shipped 2026-09-26): XChaCha20-Poly1305 for every write, versioned blob format (`SDG2.`), AES-256-GCM blobs read by libsodium or OpenSSL
 - **v0.5.0** (2026-10-01): third lock (SelfRecover passphrase), `recover()` for every recovery path, archiving at level 3, in-place schema migration
-- **v0.6.0** (upcoming): advanced blind index extension for searchable encryption, multi-tenant support
+- **v0.6.0** (2026-10-03): Argon2id profile stored with each vault and the sealed admin key, admin seal bound to its account, anchorable escrow log, reserved field name `escrow`, frozen Argon2id vectors
+- **v0.7.0** (upcoming): advanced blind index extension for searchable encryption, multi-tenant support
 - **v1.0.0** (2027): formal community cryptographic audit, ANSSI Visa de sécurité submission (industries@ssi.gouv.fr), test vector pack publication
 
 ---
@@ -366,4 +372,4 @@ Technical feedback, community audits, and cryptographic critiques are welcome, e
 
 ---
 
-*First edition May 2026; this edition 2 October 2026, aligned on SelfDataGuard v0.5.1. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026; §2, §3, §5, §6, §7 and §8.2 were rewritten alongside the French edition on 1 October 2026 for v0.5.0. The specification described here is implemented and tested from v0.1.0 to v0.5.1 (319 checks, 10 suites, on PHP 8.1, 8.2 and 8.4).*
+*First edition May 2026; this edition 3 October 2026, aligned on SelfDataGuard v0.6.0. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026; §2, §3, §5, §6, §7 and §8.2 were rewritten alongside the French edition on 1 October 2026 for v0.5.0; §2.2, §6.1, §7 and §8.1 on 3 October 2026 for v0.6.0. The specification described here is implemented and tested from v0.1.0 to v0.6.0 (373 checks, 11 suites, on PHP 8.1, 8.2 and 8.4).*

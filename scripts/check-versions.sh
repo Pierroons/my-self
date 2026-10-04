@@ -107,17 +107,21 @@ if os.environ["MODE"] == "porteurs":
     # doit donc être déclarée, et chacune de ses versions doit être celle d'un des modules qu'elle
     # nomme : le texte alternatif d'un badge précède sa marque, et une ligne de tableau non déclarée
     # n'est lue par personne. Les noms sont bornés, pour que SelfRecover ne se lise pas dans
-    # SelfRecover-LUKS.
+    # SelfRecover-LUKS. Dans un fichier qui ne porte qu'un module, un badge qui n'en nomme aucun
+    # est le sien : c'est le badge « Status » d'un README de module.
     par_nom = {m["nom"]: m for m in versionnes}
     nom_de_module = re.compile(r"(?<![-\w])(?:" + "|".join(
         re.escape(nom) for nom in sorted(par_nom, key=len, reverse=True)) + r")(?![-\w])")
     signalees = {e.split(" — ")[0] for e in ecarts}
     for fichier in sorted({f for m in versionnes for f, _ in m["porteurs"] if os.path.isfile(f)}):
         marques = [marque for m in versionnes for f, marque in m["porteurs"] if f == fichier]
+        proprietaires = sorted({m["nom"] for m in versionnes for f, _ in m["porteurs"] if f == fichier})
         for n, l in enumerate(open(fichier, encoding="utf-8", errors="replace"), 1):
             if not (l.lstrip().startswith("|") or "img.shields.io/badge" in l):
                 continue
             nommes = sorted(set(nom_de_module.findall(l)))
+            if not nommes and len(proprietaires) == 1 and "img.shields.io/badge" in l:
+                nommes = proprietaires
             versions = re.findall(r"(?<![\d.])\d+\.\d+\.\d+(?![\d.])", l)
             if not nommes or not versions or f"{fichier}:{n}" in signalees:
                 continue

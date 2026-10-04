@@ -325,3 +325,27 @@ CREATE TABLE IF NOT EXISTS admin_requests (
     decided_at         INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_admin_requests_status ON admin_requests(status);
+
+-- Drapeaux du challenge : validation immédiate et premier sang.
+-- 🔑 La valeur d'un drapeau ne vit JAMAIS ici, seulement son empreinte HMAC-SHA256
+-- clée par le secret d'instance. Un dump de cette table ne rend donc pas les
+-- drapeaux et ne permet pas de les retrouver hors ligne, contrairement à un
+-- SHA-256 nu qui tomberait au dictionnaire dès que le format est connu.
+CREATE TABLE IF NOT EXISTS flag_digests (
+    code     TEXT PRIMARY KEY,          -- FLAG-DM | FLAG-E2E
+    digest   TEXT NOT NULL,             -- HMAC-SHA256(drapeau, secret d'instance)
+    pose_le  INTEGER NOT NULL
+);
+
+-- Une capture par ligne. Le pseudo est libre : on peut gagner sans se nommer.
+-- Le premier sang se lit d'un MIN(captured_at), il ne se stocke pas — un drapeau
+-- re-posé ne doit pas laisser deux « premiers ».
+CREATE TABLE IF NOT EXISTS flag_captures (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    code        TEXT NOT NULL,
+    handle      TEXT,                   -- pseudo public, peut être vide
+    ip_hash     TEXT,                   -- HMAC-SHA256 de l'IP (frein), jamais l'IP en clair
+    captured_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_flag_captures_code ON flag_captures(code, captured_at);
+CREATE INDEX IF NOT EXISTS idx_flag_captures_iphash ON flag_captures(ip_hash, captured_at);

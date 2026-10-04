@@ -137,9 +137,9 @@ it imports SelfRecover and SelfDataGuard.
 end to end, liftable by an arbiter under a floor, and lifted on its own when a pack
 is recognised. The thresholds have a single source, `Config`. **Breaking** since
 0.3.0: the engine's threshold constants are removed (read `Moderate::config()`),
-and `adminBan()` / `adminPardon()` take the arbiter and the reason. **One mechanism
-remains to be written** — cross-voting — plus three half-kept, all marked in the
-lists above.
+and `adminBan()` / `adminPardon()` take the arbiter and the reason. **Two mechanisms
+remain to be written** — cross-voting, and the strikes reset after three months
+without incident — plus two half-kept, all marked in the lists above.
 
 Checks: [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
 — forty-five, run by CI, each seen failing first: the mechanism is disabled,

@@ -55,7 +55,7 @@ Un plus un égale une communauté auto-gouvernée. Pas trois — une chose quali
 | Module | Rôle | Statut |
 |--------|------|--------|
 | [SelfRecover](./selfrecover/) | Identité & récupération sans email | **v0.8.0** — bibliothèque PSR-4 + dériveur navigateur, implémentation déployée et auto-auditée |
-| [SelfModerate](./selfmoderate/) | Modération communautaire par raisonnement collectif | v0.4.0 — moteur installable, ban automatique tracé au journal, 45 contrôles en CI ; 1 mécanisme du protocole manque |
+| [SelfModerate](./selfmoderate/) | Modération communautaire par raisonnement collectif | v0.4.0 — moteur installable, ban automatique tracé au journal, 45 contrôles en CI ; 2 mécanismes du protocole manquent |
 
 ---
 

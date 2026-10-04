@@ -111,14 +111,16 @@ final class UserVault
 
         $userSalt      = Primitives::randomBytes(Primitives::SALT_LEN);
         $dataMasterKey = Primitives::randomBytes(Primitives::KEY_LEN);
+        $ops           = Primitives::ARGON2_OPSLIMIT;
+        $mem           = Primitives::ARGON2_MEMLIMIT;
 
-        $wrapPwd    = self::seal(Lock::Password, $password, $userSalt, $dataMasterKey, $userId);
+        $wrapPwd    = self::seal(Lock::Password, $password, $userSalt, $userId, $dataMasterKey, $ops, $mem);
         $wrapRecov  = $memorized === null
             ? null
-            : self::seal(Lock::Memorized, $memorized, $userSalt, $dataMasterKey, $userId);
+            : self::seal(Lock::Memorized, $memorized, $userSalt, $userId, $dataMasterKey, $ops, $mem);
         $wrapPhrase = $passphrase === null
             ? null
-            : self::seal(Lock::Passphrase, $passphrase, $userSalt, $dataMasterKey, $userId);
+            : self::seal(Lock::Passphrase, $passphrase, $userSalt, $userId, $dataMasterKey, $ops, $mem);
 
         $now = $this->now();
         $record = new VaultRecord(
@@ -129,7 +131,9 @@ final class UserVault
             wrapAdmin:  null,
             createdAt:  $now,
             updatedAt:  $now,
-            wrapPhrase: $wrapPhrase
+            wrapPhrase: $wrapPhrase,
+            kdfOpslimit: $ops,
+            kdfMemlimit: $mem
         );
 
         $unlocked = new UnlockedVault(userId: $userId, masterKey: $dataMasterKey, vaultSalt: $userSalt);
@@ -141,9 +145,8 @@ final class UserVault
     /**
      * Unwrap data_master_key with the secret of the given lock.
      *
-     * The Argon2id profile defaults to the current one. An archive passes the
-     * profile it was sealed under: it cannot be re-sealed when the profile
-     * changes, so it must be opened with its own.
+     * The Argon2id profile is the record's own. An archive passes the profile its
+     * package recorded.
      *
      * @throws MissingEnvelopeException if the vault was never sealed for $lock
      * @throws WrongSecretException     if the secret does not open the envelope
@@ -154,8 +157,8 @@ final class UserVault
         VaultRecord $record,
         Lock $lock,
         #[\SensitiveParameter] string $secret,
-        int $opslimit = Primitives::ARGON2_OPSLIMIT,
-        int $memlimit = Primitives::ARGON2_MEMLIMIT
+        ?int $opslimit = null,
+        ?int $memlimit = null
     ): UnlockedVault {
         if ($secret === '' || ($lock === Lock::Passphrase && self::normalizePassphrase($secret) === '')) {
             throw new InvalidArgumentException(self::secretName($lock) . ' must not be empty');
@@ -169,7 +172,13 @@ final class UserVault
             });
         }
 
-        $key = self::deriveKey($lock, $secret, $record->userSalt, $opslimit, $memlimit);
+        $key = self::deriveKey(
+            $lock,
+            $secret,
+            $record->userSalt,
+            $opslimit ?? $record->kdfOpslimit,
+            $memlimit ?? $record->kdfMemlimit
+        );
         try {
             $masterKey = Primitives::decrypt($wrap, $key, aad: $record->userId);
         } catch (LegacyCipherUnavailableException $e) {
@@ -251,7 +260,7 @@ final class UserVault
         self::assertPasswordLength($newPassword, 'newPassword');
         self::assertSameVault($record, $unlocked);
 
-        $newWrap = self::seal(Lock::Password, $newPassword, $record->userSalt, $unlocked->getMasterKey(), $record->userId);
+        $newWrap = self::resealIn($record, Lock::Password, $newPassword, $unlocked);
         return $record->withWrapPwd($newWrap, $this->now());
     }
 
@@ -273,7 +282,7 @@ final class UserVault
             return $record->withWrapRecov(null, $this->now());
         }
 
-        $newWrap = self::seal(Lock::Memorized, $newMemorized, $record->userSalt, $unlocked->getMasterKey(), $record->userId);
+        $newWrap = self::resealIn($record, Lock::Memorized, $newMemorized, $unlocked);
         return $record->withWrapRecov($newWrap, $this->now());
     }
 
@@ -290,7 +299,7 @@ final class UserVault
         self::assertPassphraseLength($newPassphrase, 'newPassphrase');
         self::assertSameVault($record, $unlocked);
 
-        $newWrap = self::seal(Lock::Passphrase, $newPassphrase, $record->userSalt, $unlocked->getMasterKey(), $record->userId);
+        $newWrap = self::resealIn($record, Lock::Passphrase, $newPassphrase, $unlocked);
         return $record->withWrapPhrase($newWrap, $this->now());
     }
 
@@ -348,19 +357,43 @@ final class UserVault
         };
     }
 
+    /**
+     * register() passes the current profile; a re-seal passes the vault's own
+     * (resealIn), never the current constants: a vault keeps one profile across
+     * all its envelopes.
+     */
     private static function seal(
         Lock $lock,
         #[\SensitiveParameter] string $secret,
         string $userSalt,
+        string $userId,
         #[\SensitiveParameter] string $masterKey,
-        string $userId
+        int $opslimit,
+        int $memlimit
     ): EncryptedBlob {
-        $key = self::deriveKey($lock, $secret, $userSalt);
+        $key = self::deriveKey($lock, $secret, $userSalt, $opslimit, $memlimit);
         try {
             return Primitives::encrypt($masterKey, $key, aad: $userId);
         } finally {
             Primitives::zeroize($key);
         }
+    }
+
+    private static function resealIn(
+        VaultRecord $vault,
+        Lock $lock,
+        #[\SensitiveParameter] string $secret,
+        UnlockedVault $unlocked
+    ): EncryptedBlob {
+        return self::seal(
+            $lock,
+            $secret,
+            $vault->userSalt,
+            $vault->userId,
+            $unlocked->getMasterKey(),
+            $vault->kdfOpslimit,
+            $vault->kdfMemlimit
+        );
     }
 
     private static function wrapOf(VaultRecord $record, Lock $lock): ?EncryptedBlob

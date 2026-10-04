@@ -101,10 +101,24 @@ final class AuditLog
     /**
      * Verify the whole chain: each entry's HMAC and its linkage to the previous.
      *
-     * @return array{ok: bool, count: int, brokenAt: ?int}
+     * The chain alone cannot see its own end cut off: a log truncated after entry
+     * N, or deleted outright, is a valid chain of N entries, or of none. The anchor
+     * closes that: a head recorded earlier, outside this machine, as "seq:hmac".
+     * The entry `seq` must still be there with that HMAC.
+     *
+     * @return array{ok: bool, count: int, brokenAt: ?int, reason: ?string,
+     *               head: ?array{seq: int, hmac: string}}
      */
-    public function verify(): array
+    public function verify(?string $anchor = null): array
     {
+        $anchorAt = null;
+        if ($anchor !== null) {
+            if (!preg_match('/^(\d+):([0-9a-f]{64})$/', $anchor, $m)) {
+                throw new InvalidArgumentException('Malformed audit anchor (expected "seq:hmac", hmac in hex)');
+            }
+            $anchorAt = ['seq' => (int) $m[1], 'hmac' => $m[2]];
+        }
+
         $entries = $this->readAll();
         $prev = '';
         foreach ($entries as $i => $rec) {
@@ -118,11 +132,24 @@ final class AuditLog
             $hmacOk   = isset($rec['hmac']) && hash_equals($expected, (string) $rec['hmac']);
             $linkOk   = ($rec['prev'] ?? null) === $prev && ($rec['seq'] ?? null) === $i;
             if (!$hmacOk || !$linkOk) {
-                return ['ok' => false, 'count' => count($entries), 'brokenAt' => $i];
+                return ['ok' => false, 'count' => count($entries), 'brokenAt' => $i,
+                        'reason' => 'chain', 'head' => null];
             }
             $prev = (string) $rec['hmac'];
         }
-        return ['ok' => true, 'count' => count($entries), 'brokenAt' => null];
+
+        $head = $entries === []
+            ? null
+            : ['seq' => count($entries) - 1, 'hmac' => (string) end($entries)['hmac']];
+
+        if ($anchorAt !== null) {
+            $kept = $entries[$anchorAt['seq']]['hmac'] ?? null;
+            if ($kept === null || !hash_equals($anchorAt['hmac'], (string) $kept)) {
+                return ['ok' => false, 'count' => count($entries), 'brokenAt' => $anchorAt['seq'],
+                        'reason' => $kept === null ? 'truncated' : 'rewritten', 'head' => $head];
+            }
+        }
+        return ['ok' => true, 'count' => count($entries), 'brokenAt' => null, 'reason' => null, 'head' => $head];
     }
 
     /**

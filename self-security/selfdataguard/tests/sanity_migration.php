@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 /**
- * Sanity test — a database created by SelfDataGuard 0.4.0, opened by 0.5.0.
+ * Sanity test — databases created by SelfDataGuard 0.4.0 and 0.5.x, opened by the current version.
  *
  * Run:  php tests/sanity_migration.php
  * Exit: 0 on success, non-zero if any check failed.
@@ -15,8 +15,11 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 
+use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Vault\VaultRecord;
 
 $failures = 0;
 $passes = 0;
@@ -83,6 +86,26 @@ const SCHEMA_040 = [
     )',
 ];
 
+/**
+ * A vault as a version before 0.6.0 sealed it: under the legacy profile, whatever
+ * the current constants are. register() would seal under the current ones, and the
+ * fixtures would then prove only that both profiles are still equal.
+ */
+function scelleAvant060(string $userId, string $password, ?string $memorized = null, ?string $phrase = null): VaultRecord
+{
+    $base = (new UserVault())->register($userId, $password)['record'];
+    $mk   = random_bytes(Primitives::KEY_LEN);
+    $seal = new ReflectionMethod(UserVault::class, 'seal');
+    $sous = static fn (Lock $l, ?string $s) => $s === null ? null : $seal->invoke(
+        null, $l, $s, $base->userSalt, $userId, $mk, Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT);
+    return new VaultRecord(
+        userId: $userId, userSalt: $base->userSalt,
+        wrapPwd: $sous(Lock::Password, $password), wrapRecov: $sous(Lock::Memorized, $memorized), wrapAdmin: null,
+        createdAt: $base->createdAt, updatedAt: $base->updatedAt, wrapPhrase: $sous(Lock::Passphrase, $phrase),
+        kdfOpslimit: Primitives::LEGACY_OPSLIMIT, kdfMemlimit: Primitives::LEGACY_MEMLIMIT
+    );
+}
+
 /** A 0.4.0 database holding one vault, written with the 0.4.0 column list. */
 function oldDatabase(string $userId, string $password, string $memorized): PDO
 {
@@ -91,7 +114,7 @@ function oldDatabase(string $userId, string $password, string $memorized): PDO
     foreach (SCHEMA_040 as $sql) {
         $pdo->exec($sql);
     }
-    $r = (new UserVault())->register($userId, $password, $memorized)['record'];
+    $r = scelleAvant060($userId, $password, $memorized);
     $pdo->prepare(
         'INSERT INTO selfdataguard_vaults
          (user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at)
@@ -123,7 +146,7 @@ $PHRASE = 'cheval agrafe batterie correct moulin ivoire';
 
 // -----------------------------------------------------------------------------
 
-section('A 0.4.0 database gains wrap_phrase when 0.5.0 opens it');
+section('A 0.4.0 database gains wrap_phrase and the profile columns when it is opened');
 
 $old = oldDatabase('user-old', 'old-password-0001', 'old-memorized');
 in_array('wrap_phrase', array_map(static fn ($l) => explode('|', $l)[0], vaultColumns($old)), true)
@@ -162,6 +185,85 @@ try {
     ok('a second opening is idempotent (no duplicate-column error)');
 } catch (Throwable $e) {
     ko('reopening a migrated database fails', $e->getMessage());
+}
+
+// -----------------------------------------------------------------------------
+
+section('A 0.5.x database gains the Argon2id profile when 0.6.0 opens it');
+
+/** A 0.5.x database: the 0.4.0 tables plus the two columns 0.5.0 added, holding one vault with a passphrase. */
+function database05x(string $userId, string $password, string $memorized, string $phrase): PDO
+{
+    $pdo = new PDO('sqlite::memory:');
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    foreach (SCHEMA_040 as $sql) {
+        $pdo->exec($sql);
+    }
+    $pdo->exec('ALTER TABLE selfdataguard_vaults ADD COLUMN wrap_phrase TEXT');
+    $pdo->exec('ALTER TABLE selfdataguard_vaults ADD COLUMN revision INTEGER NOT NULL DEFAULT 0');
+    $r = scelleAvant060($userId, $password, $memorized, $phrase);
+    $pdo->prepare(
+        'INSERT INTO selfdataguard_vaults
+         (user_id, user_salt, wrap_pwd, wrap_recov, wrap_admin, created_at, updated_at, wrap_phrase, revision)
+         VALUES (:uid, :salt, :wp, :wr, NULL, :ca, :ua, :ph, 0)'
+    )->execute([
+        ':uid'  => $r->userId,
+        ':salt' => base64_encode($r->userSalt),
+        ':wp'   => $r->wrapPwd->toBase64(),
+        ':wr'   => $r->wrapRecov?->toBase64(),
+        ':ca'   => $r->createdAt->format('c'),
+        ':ua'   => $r->updatedAt->format('c'),
+        ':ph'   => $r->wrapPhrase?->toBase64(),
+    ]);
+    return $pdo;
+}
+
+$v05 = database05x('user-05x', 'v05-password-0001', 'v05-memorized', $PHRASE);
+$noms05 = array_map(static fn ($l) => explode('|', $l)[0], vaultColumns($v05));
+in_array('revision', $noms05, true) && !in_array('kdf_opslimit', $noms05, true)
+    ? ok('fixture: the 0.5.x table has revision and no profile column')
+    : ko('the 0.5.x fixture is not a 0.5.x schema', implode(',', $noms05));
+
+$storage05 = new SqliteAdapter($v05);
+$fresh05 = new PDO('sqlite::memory:');
+new SqliteAdapter($fresh05);
+vaultColumns($v05) === vaultColumns($fresh05)
+    ? ok('migrated table == freshly created table (same columns, defaults and order)')
+    : ko('migrated and fresh schemas differ', implode(' / ', array_diff(vaultColumns($fresh05), vaultColumns($v05))));
+
+$r05 = $storage05->loadVault('user-05x');
+$r05->kdfOpslimit === Primitives::LEGACY_OPSLIMIT && $r05->kdfMemlimit === Primitives::LEGACY_MEMLIMIT
+    ? ok('a row stored before 0.6.0 reads back under the legacy profile')
+    : ko('a pre-0.6.0 row reads back under another profile', "{$r05->kdfOpslimit}/{$r05->kdfMemlimit}");
+try {
+    $uv->unlockWithPassword($r05, 'v05-password-0001');
+    $uv->unlockWithMemorized($r05, 'v05-memorized');
+    $uv->unlockWithPassphrase($r05, $PHRASE);
+    ok('the 0.5.x vault opens by its three locks after the migration');
+} catch (Throwable $e) {
+    ko('the 0.5.x vault no longer opens', $e->getMessage());
+}
+
+// The profile goes through the table and back: a vault sealed under another one.
+$OPS = 2;
+$MEM = 32 * 1024 * 1024;
+$base = $uv->register('user-profile', 'profile-password-01');
+$mk   = $base['unlocked']->getMasterKey();
+$wrap = (new ReflectionMethod(UserVault::class, 'seal'))->invoke(
+    null, Lock::Password, 'profile-password-01', $base['record']->userSalt, 'user-profile', $mk, $OPS, $MEM);
+$storage05->saveVault(new VaultRecord(
+    userId: 'user-profile', userSalt: $base['record']->userSalt, wrapPwd: $wrap, wrapRecov: null,
+    wrapAdmin: null, createdAt: $base['record']->createdAt, updatedAt: $base['record']->updatedAt,
+    kdfOpslimit: $OPS, kdfMemlimit: $MEM
+));
+$relu = $storage05->loadVault('user-profile');
+try {
+    $relu->kdfOpslimit === $OPS && $relu->kdfMemlimit === $MEM
+        && $uv->unlockWithPassword($relu, 'profile-password-01')->getMasterKey() === $mk
+        ? ok('a vault saved under another profile reads back with it, and opens')
+        : ko('the profile did not survive the table', "{$relu->kdfOpslimit}/{$relu->kdfMemlimit}");
+} catch (Throwable $e) {
+    ko('a vault saved under another profile no longer opens', $e->getMessage());
 }
 
 // -----------------------------------------------------------------------------

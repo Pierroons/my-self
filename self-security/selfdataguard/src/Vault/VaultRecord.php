@@ -25,6 +25,9 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
  *                   passphrase was set)
  *   - revision    : bumped by every stored update; a write applies only over
  *                   the revision it was read at
+ *   - kdf_opslimit / kdf_memlimit : the Argon2id profile of every envelope,
+ *                   fixed at creation (a vault stored before 0.6.0 carries the
+ *                   legacy profile, Primitives::LEGACY_*)
  *
  * user_salt is also the vault's identity: it is never rotated, and a
  * re-created vault gets a new one. Sessions and conditional writes compare it.
@@ -33,6 +36,9 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
  */
 final class VaultRecord
 {
+    public readonly int $kdfOpslimit;
+    public readonly int $kdfMemlimit;
+
     public function __construct(
         public readonly string $userId,
         public readonly string $userSalt,
@@ -42,8 +48,20 @@ final class VaultRecord
         public readonly DateTimeImmutable $createdAt,
         public readonly DateTimeImmutable $updatedAt,
         public readonly ?EncryptedBlob $wrapPhrase = null,
-        public readonly int $revision = 0
+        public readonly int $revision = 0,
+        // Required, though placed after optional parameters: a default would be
+        // the current constants, and a storage that does not read these columns
+        // back would open every vault under them instead of its own profile.
+        ?int $kdfOpslimit = null,
+        ?int $kdfMemlimit = null
     ) {
+        if ($kdfOpslimit === null || $kdfMemlimit === null) {
+            throw new InvalidArgumentException(
+                'kdfOpslimit and kdfMemlimit are required: the Argon2id profile the envelopes were sealed under'
+            );
+        }
+        $this->kdfOpslimit = $kdfOpslimit;
+        $this->kdfMemlimit = $kdfMemlimit;
         if ($userId === '') {
             throw new InvalidArgumentException('userId must not be empty');
         }
@@ -65,7 +83,9 @@ final class VaultRecord
             createdAt: $this->createdAt,
             updatedAt: $now,
             wrapPhrase: $this->wrapPhrase,
-            revision:  $this->revision
+            revision:  $this->revision,
+            kdfOpslimit: $this->kdfOpslimit,
+            kdfMemlimit: $this->kdfMemlimit
         );
     }
 
@@ -80,7 +100,9 @@ final class VaultRecord
             createdAt: $this->createdAt,
             updatedAt: $now,
             wrapPhrase: $this->wrapPhrase,
-            revision:  $this->revision
+            revision:  $this->revision,
+            kdfOpslimit: $this->kdfOpslimit,
+            kdfMemlimit: $this->kdfMemlimit
         );
     }
 
@@ -95,7 +117,9 @@ final class VaultRecord
             createdAt: $this->createdAt,
             updatedAt: $now,
             wrapPhrase: $newWrapPhrase,
-            revision:  $this->revision
+            revision:  $this->revision,
+            kdfOpslimit: $this->kdfOpslimit,
+            kdfMemlimit: $this->kdfMemlimit
         );
     }
 
