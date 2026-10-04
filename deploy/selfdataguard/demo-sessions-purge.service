@@ -1,0 +1,10 @@
+[Unit]
+Description=Démo SelfDataGuard — efface les bases de visiteurs sans action depuis 30 minutes
+Documentation=file:/var/www/myself/demo/selfdataguard/README.md
+
+[Service]
+Type=oneshot
+User=www-data
+# 30 minutes = DEMO_TTL_SECONDES de demo/selfdataguard/api/_bootstrap.php, qui purge
+# aussi à chaque requête : ce minuteur tient la promesse quand personne ne vient.
+ExecStart=/usr/bin/find /var/lib/selfdataguard/sessions -maxdepth 1 -type f -name *.sqlite* -mmin +30 -delete

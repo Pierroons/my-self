@@ -42,7 +42,7 @@ To use a different port: `PORT=9000 ./run.sh`.
   (`storage/admin-recovery.pub` + `.sealed`, demo passphrase
   `demo-admin-recovery-passphrase-2026`). Recover it from the CLI, on your own
   database — each visitor has one, `storage/sessions/<id>.sqlite`, where `<id>` is the
-  value of your `sdg_demo` cookie:
+  value of your demo cookie (`__Host-sdg_demo` in HTTPS, `sdg_demo` with `run.sh`):
 
   ```bash
   DATAGUARD_DB=storage/sessions/<id>.sqlite \
@@ -87,9 +87,11 @@ The proof: type your email in the register form, watch it disappear into a base6
 
 ## Reset the demo
 
-Each visitor gets their own database, named after their `sdg_demo` cookie and erased 30
-minutes after their last action: nobody sees, searches or opens another visitor's vaults.
-At most 200 live databases; past that, a new visitor gets 503 until one expires.
+Each visitor gets their own database, named after their demo cookie: nobody sees, searches
+or opens another visitor's vaults. A database is created at registration only, and erased about
+30 minutes after its visitor's last action — by the next request, and on the public instance by a
+five-minute timer (`deploy/selfdataguard/demo-sessions-purge.timer`). At most 1 000 live databases;
+past that, a new registration gets 503 until one expires.
 
 ```bash
 rm -rf storage/sessions storage/blindkey.bin   # from demo/selfdataguard/

@@ -1,0 +1,9 @@
+[Unit]
+Description=Démo SelfDataGuard — purge des bases de visiteurs, toutes les cinq minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

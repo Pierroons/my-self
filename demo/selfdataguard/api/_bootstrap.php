@@ -20,14 +20,20 @@ use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 
-// Une base par visiteur, désignée par un cookie. La démo est publique : une base
-// commune montrait à chacun les coffres des autres (inspect_db), laissait tester
-// leurs index aveugles (find_user) et essayer leurs mots de passe. Les bases vivent
-// à côté de DATAGUARD_DB_PATH, hors webroot, et s'effacent 30 minutes après la
-// dernière action de leur visiteur.
-const DEMO_COOKIE       = 'sdg_demo';
+// Une base par visiteur, désignée par un cookie : personne ne voit, ne cherche ni
+// n'ouvre les coffres d'un autre. Les bases vivent dans `sessions/`, à côté de
+// DATAGUARD_DB_PATH. Une base naît à l'inscription seulement ; sans action depuis
+// DEMO_TTL_SECONDES, elle est effacée par la première requête venue et par le
+// minuteur de l'instance (deploy/selfdataguard/demo-sessions-purge.timer).
 const DEMO_TTL_SECONDES = 30 * 60;
-const DEMO_BASES_MAX    = 200;
+const DEMO_BASES_MAX    = 1000;
+
+// ⚠️ Secure par défaut : une détection de HTTPS se trompe derrière un frontal et
+// retirerait l'attribut sans que personne le voie. DATAGUARD_DEMO_HTTP=1 ne sert
+// qu'aux essais locaux en clair. En HTTPS, le préfixe __Host- interdit à un
+// sous-domaine voisin d'imposer son cookie à la démo.
+$enClair   = (getenv('DATAGUARD_DEMO_HTTP') ?: ($_SERVER['DATAGUARD_DEMO_HTTP'] ?? '')) === '1';
+$nomCookie = $enClair ? 'sdg_demo' : '__Host-sdg_demo';
 
 $repertoireInstance = dirname(getenv('DATAGUARD_DB_PATH')
     ?: ($_SERVER['DATAGUARD_DB_PATH'] ?? '')
@@ -50,26 +56,30 @@ foreach ($bases as $i => $base) {
     }
 }
 
-$idVisiteur = (string) ($_COOKIE[DEMO_COOKIE] ?? '');
-if (preg_match('/^[a-f0-9]{32}\z/', $idVisiteur) !== 1) {
+$idVisiteur = $_COOKIE[$nomCookie] ?? '';
+if (!is_string($idVisiteur) || preg_match('/^[a-f0-9]{32}\z/', $idVisiteur) !== 1) {
     $idVisiteur = bin2hex(random_bytes(16));
 }
 $baseVisiteur = $repertoireBases . '/' . $idVisiteur . '.sqlite';
-if (!is_file($baseVisiteur) && count($bases) >= DEMO_BASES_MAX) {
+$baseExiste   = is_file($baseVisiteur);
+// Seule l'inscription crée une base : une lecture sans base répond « vide » sans
+// rien écrire, sinon chaque page vue occuperait une place jusqu'à son expiration.
+$creeLaBase = !$baseExiste && basename((string) ($_SERVER['SCRIPT_FILENAME'] ?? '')) === 'register.php';
+if ($creeLaBase && count($bases) >= DEMO_BASES_MAX) {
     http_response_code(503);
     echo json_encode(['error' => 'The demo is full — come back in a few minutes']);
     exit;
 }
-setcookie(DEMO_COOKIE, $idVisiteur, [
+setcookie($nomCookie, $idVisiteur, [
     'expires'  => $maintenant + DEMO_TTL_SECONDES,
     'path'     => '/',
-    'secure'   => ($_SERVER['HTTPS'] ?? '') !== '' && ($_SERVER['HTTPS'] ?? '') !== 'off',
+    'secure'   => !$enClair,
     'httponly' => true,
     'samesite' => 'Strict',
 ]);
-if (is_file($baseVisiteur)) {
-    // Une lecture compte comme une action : sans elle, la base expirerait 30
-    // minutes après la dernière écriture, au milieu d'une visite qui inspecte.
+if ($baseExiste) {
+    // Une lecture compte comme une action : sans elle, la base expirerait après la
+    // dernière écriture, au milieu d'une visite qui inspecte.
     @touch($baseVisiteur);
 }
 
@@ -95,7 +105,7 @@ if ($blindKey === false || strlen($blindKey) < 32) {
     exit;
 }
 
-$storage     = new SqliteAdapter('sqlite:' . DEMO_DB_PATH);
+$storage     = new SqliteAdapter($baseExiste || $creeLaBase ? 'sqlite:' . DEMO_DB_PATH : 'sqlite::memory:');
 $dataGuard   = new SelfDataGuard($storage, $blindKey);
 
 // Clé de récupération ADMIN pour le compartiment escrow (démo). La clé PUBLIQUE
