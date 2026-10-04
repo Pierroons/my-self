@@ -15,30 +15,9 @@
   <meta property="og:image:alt" content="Portrait de Descartes en pixel art face à un point lumineux et à une grille violette — « Je pense, donc j'héberge. »">
   <meta name="twitter:card" content="summary_large_image">
   <link rel="icon" type="image/svg+xml" href="/assets/logo/myself-mark-C-mono.svg">
+  <link rel="stylesheet" href="/site.css">
   <style>
-    :root {
-      --bg: #0f1419;
-      --bg-card: #1a2028;
-      --bg-card-hover: #222a34;
-      --text: #e8eaed;
-      --text-muted: #9aa0a6;
-      --accent: #7ab7ff;
-      --accent-dim: #5a97df;
-      --border: #2a3038;
-      --success: #7cc47c;
-      --warning: #d4c058;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.7;
-    }
-    body { padding: 2.5rem 1.5rem; }
     main { max-width: 920px; margin: 0 auto; }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
 
     .hero { text-align: center; padding: 2rem 0 3.5rem; }
     .visually-hidden {
@@ -400,7 +379,6 @@
 
   <div class="hero-descartes-meta" aria-hidden="true">
     <span class="left">MySelf — le Pacte humain–IA</span>
-    <span>my-self.fr</span>
   </div>
 
   <div class="hero-descartes" role="img" aria-label="Portrait de René Descartes pixelisé en duotone bleu, aspiré symétriquement vers un cercle blanc central — le Pacte humain–IA — face à une grille machine violette en train de se reformer.">
@@ -739,9 +717,9 @@
     <p>
       <strong>MySelf-Lab</strong> est un <strong>forum de démonstration</strong> où deux piliers, Bi-Self
       et Self-Security, tournent ensemble en conditions réelles — et qui est <strong>volontairement exposé à l'attaque</strong>.
-      Inscription sans email (<a href="https://ctf.example.org/register.php">SelfRecover</a>),
-      messages privés et profils chiffrés (<a href="https://ctf.example.org/security.php">SelfDataGuard</a>),
-      réputation et modération anti-Sybil (<a href="https://ctf.example.org/moderation.php">SelfModerate</a>). Un <strong>simulateur d'attaque</strong> intégré
+      Inscription sans email (SelfRecover),
+      messages privés et profils chiffrés (SelfDataGuard),
+      réputation et modération anti-Sybil (SelfModerate). Un <strong>simulateur d'attaque</strong> intégré
       montre, en direct, ce que l'écosystème protège.
     </p>
     <p class="muted">
@@ -749,22 +727,23 @@
       bout en bout reste illisible même pour l'administrateur — c'est le défi posé à toute red team.
     </p>
     <div class="floor-modules">
-      <a class="mod" href="https://ctf.example.org/">
+      <div class="mod">
         <span class="name">Forum de démo<span class="status live">live</span></span>
         <span class="role">SelfRecover + SelfDataGuard + SelfModerate en action.</span>
-      </a>
-      <a class="mod" href="https://ctf.example.org/attacks.php">
+      </div>
+      <div class="mod">
         <span class="name">Attack Simulator<span class="status live">live</span></span>
         <span class="role">4 attaques rejouées en direct sur base isolée — ce qui tient, et pourquoi.</span>
-      </a>
-      <a class="mod" href="https://ctf.example.org/redteam.php">
+      </div>
+      <div class="mod">
         <span class="name">Règles red team<span class="status live">ouvert</span></span>
         <span class="role">Périmètre, objectifs (mappés MITRE ATT&amp;CK), safe harbor, hall of fame.</span>
-      </a>
+      </div>
     </div>
     <div class="floor-cta">
-      <a class="btn btn-primary" href="https://ctf.example.org"><span aria-hidden="true">🎯</span> Visiter la démo</a>
-      <a class="btn" href="https://ctf.example.org/redteam.php"><span aria-hidden="true">🛡️</span> Tester la sécurité</a>
+      <a class="btn btn-primary" href="https://ctf.example.org"><span aria-hidden="true">🎯</span> Essayer la démo</a>
+      <a class="btn" href="https://ctf.example.org/redteam.php">Règles red team</a>
+      <a class="btn" href="/pentest.html">Lire l'audit</a>
     </div>
     <p class="muted note">
       Forum de démonstration à contenu fictif. Aucune donnée réelle.
@@ -784,11 +763,11 @@
       <strong>Claude</strong> (Anthropic) — la version employée est nommée dans
       chaque commit depuis le 17 septembre 2026, elle change plus vite que cette page. Le produit est une vraie
       collaboration humain–IA : l'humain apporte l'entropie (le vécu, la
-      direction, le bon sens pratique), la machine apporte la rigueur
-      (la structure, la relecture, la cohérence technique).
+      direction, le bon sens pratique), la machine apporte l'impartialité
+      (la relecture sans parti pris, la structure, la cohérence technique).
     </p>
     <p>
-      Le « Self pact » dont parle MySelf n'est pas théorique — c'est la méthode
+      Le Pacte humain–IA dont parle MySelf n'est pas théorique — c'est la méthode
       d'écriture de l'écosystème. Ce que tu lis ici, tu pourrais le co-écrire
       demain avec l'IA de ton choix, sur un sujet qui te tient à cœur.
     </p>
@@ -814,7 +793,7 @@
   <p>
     Code source : <a href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">github.com/Pierroons/my-self</a>
     · Licence <a href="https://github.com/Pierroons/my-self/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0-or-later</a>
-    · <a href="/pentest.html">🛡️ Audit de sécurité</a>
+    · <a href="/pentest.html"><span aria-hidden="true">🛡️</span> Audit de sécurité</a>
     · Auto-hébergé sur matériel grand public
   </p>
 </footer>

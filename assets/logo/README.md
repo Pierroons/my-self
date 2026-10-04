@@ -85,4 +85,4 @@ rsvg-convert -w 32  -h 32  myself-mark-A.svg > favicon-32.png
 
 ---
 
-Co-écrit avec Claude (Anthropic) dans le cadre du Self pact humain–IA · AGPL-3.0-or-later
+Co-écrit avec Claude (Anthropic) dans le cadre du Pacte humain–IA · AGPL-3.0-or-later
