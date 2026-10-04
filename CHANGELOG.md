@@ -10,27 +10,6 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
-### SelfRecover v0.9.0 — la garde de la route du sel entre dans la bibliothèque — 4 octobre 2026
-
-Au niveau 2, le navigateur demande le sel du compte par le code, sur une route publique : elle ne
-doit pas devenir un oracle. Sa garde existait en deux copies, dans les démonstrations, et chaque
-intégrateur devait écrire la sienne.
-
-- **`Recovery::selDeDerivation($code)`** rend toujours un sel : celui du compte pour un code connu,
-  consommé ou non, quelle que soit sa casse ; sinon un faux, tiré du sel du déploiement : même forme
-  qu'un vrai, stable d'un essai à l'autre, et calculé dans tous les cas pour que les deux chemins
-  coûtent pareil.
-- **`SelParCodeInterface`**, facultative : `selDuCompteParIndexCode()`. `StockagePdo` l'implémente.
-  Sur un stockage qui ne l'implémente pas, `selDeDerivation()` lève une `LogicException` ; aucun
-  adaptateur existant n'a à changer.
-- La démo duo passe par la bibliothèque pour le chemin « code ». Le lab garde sa copie jusqu'à la fin
-  de la saison du CTF.
-- Le modèle de menace et les README disent que la bibliothèque fournit la garde, la route restant à
-  l'intégrateur.
-
-Bancs : `sanity_sel_derivation.php` (10 cas) et trois cas dans le banc du stockage PDO, avec un canari
-en CI. Les fiches diceware sont régénérées pour la version.
-
 ### La démo SelfDataGuard donne à chaque visiteur sa propre base — 4 octobre 2026
 
 La démo publique n'avait qu'une base : chacun y voyait les coffres des autres, testait leurs index
@@ -445,6 +424,31 @@ Le garde-fou de CI vérifie deux compteurs plutôt que le seul code de sortie : 
 sections ne s'éprouvent pas sous root, le banc les saute **en le disant** et sort quand
 même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le même vert en
 ayant renoncé aux contrôles qui touchent au système.
+
+---
+
+## [SelfRecover v0.9.0] — 4 octobre 2026
+
+### SelfRecover v0.9.0 — la garde de la route du sel entre dans la bibliothèque — 4 octobre 2026
+
+Au niveau 2, le navigateur demande le sel du compte par le code, sur une route publique : elle ne
+doit pas devenir un oracle. Sa garde existait en deux copies, dans les démonstrations, et chaque
+intégrateur devait écrire la sienne.
+
+- **`Recovery::selDeDerivation($code)`** rend toujours un sel : celui du compte pour un code connu,
+  consommé ou non, quelle que soit sa casse ; sinon un faux, tiré du sel du déploiement : même forme
+  qu'un vrai, stable d'un essai à l'autre, et calculé dans tous les cas pour que les deux chemins
+  coûtent pareil.
+- **`SelParCodeInterface`**, facultative : `selDuCompteParIndexCode()`. `StockagePdo` l'implémente.
+  Sur un stockage qui ne l'implémente pas, `selDeDerivation()` lève une `LogicException` ; aucun
+  adaptateur existant n'a à changer.
+- La démo duo passe par la bibliothèque pour le chemin « code ». Le lab garde sa copie jusqu'à la fin
+  de la saison du CTF.
+- Le modèle de menace et les README disent que la bibliothèque fournit la garde, la route restant à
+  l'intégrateur.
+
+Bancs : `sanity_sel_derivation.php` (10 cas) et trois cas dans le banc du stockage PDO, avec un canari
+en CI. Les fiches diceware sont régénérées pour la version.
 
 ---
 
