@@ -162,8 +162,8 @@ return [
     'Dump SQL brut (ce que voit l\'attaquant)' => 'Raw SQL dump (what the attacker sees)',
     'Alice connectée (ce que conserve le propriétaire)' => 'Alice logged in (what the owner still holds)',
     'neutralisé' => 'neutralised',
-    'SelfDataGuard (chiffrement enveloppé XChaCha20-Poly1305, clé hors base)'
-        => 'SelfDataGuard (envelope encryption, XChaCha20-Poly1305, key held outside the database)',
+    'SelfDataGuard (XChaCha20-Poly1305, clé dérivée d\'un secret serveur hors base)'
+        => 'SelfDataGuard (XChaCha20-Poly1305, key derived from a server secret held outside the database)',
 
     // ── Attack simulator: Sybil and pack voting ───────────────────────────
     'Sybil + pack-voting (enterrement coordonné)' => 'Sybil and pack voting (coordinated burial)',
