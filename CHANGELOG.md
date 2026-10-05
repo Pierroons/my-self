@@ -446,9 +446,9 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
-## [SelfRecover v0.10.0] — 4 octobre 2026
+## [SelfRecover v0.10.0] — 5 octobre 2026
 
-### SelfRecover v0.10.0 — la passphrase apportée, tirée aux dés — 4 octobre 2026
+### SelfRecover v0.10.0 — la passphrase apportée, tirée aux dés — 5 octobre 2026
 
 Jusqu'ici, la passphrase du niveau 1 était toujours tirée par le serveur, à l'inscription comme à
 chaque récupération. L'utilisateur peut désormais apporter la sienne, tirée aux dés dans la liste
@@ -460,24 +460,37 @@ Rien d'apporté, le serveur tire comme avant ; aucun adaptateur de stockage ne c
   une espace entre les mots : c'est elle qu'on hache et qu'on rend. Le refus dit la position d'un
   mot, jamais le mot. L'intégrateur l'appelle à l'inscription.
 - **`parPassphrase()`, `parCode()`, `Escalade::reEnroler()`** : paramètre facultatif
-  `nouvellePassphrase`. Jugée avant les freins, sans trace ni délai : son refus ne dépend que de la
-  saisie. L'ancienne passphrase ne revient pas ; au niveau 3, la passphrase ne peut pas non plus
-  égaler le mot de passe choisi. Un refus ne consomme ni le code du niveau 2 ni le dossier du
-  niveau 3. Le retour garde la clé `passphrase`, sous la forme rangée : le re-scellement de
+  `nouvellePassphrase`. Sa forme est jugée avant les freins, sans trace ni délai : ce refus ne
+  dépend que de la saisie. L'ancienne passphrase ne revient pas — au niveau 1 ni telle quelle ni
+  dans un autre ordre, aux niveaux 2 et 3 telle quelle, une fois les facteurs vérifiés ; sans
+  historique, une passphrase plus ancienne n'est pas reconnue. Au niveau 3, elle ne peut pas non
+  plus égaler le mot de passe choisi. Aucun refus de passphrase ne consomme le code du niveau 2 ni
+  le dossier du niveau 3. Le retour garde la clé `passphrase`, sous la forme rangée : le re-scellement de
   SelfDataGuard ne change pas.
+- **Niveau 3 — un refus unique à l'ouverture.** `Escalade::ouvrir()` rend `ouverture_refusee`, au
+  même délai, pour un nom inconnu, un dossier déjà ouvert et une procédure gelée : un tiers n'y lit
+  plus qu'un dossier existe, ni qu'il est gelé. ⚠️ Rupture de contrat : `compte_inconnu`,
+  `deja_ouvert` et `gele` ne sortent plus de l'ouverture. La tentative concurrente reste comptée et
+  montrée à l'arbitre ; `compte_inconnu` reste aux autres méthodes.
+- **`#[\SensitiveParameter]`** sur les secrets de `parPassphrase()`, `parCode()`,
+  `Escalade::reEnroler()` et `Hashing` : une trace d'exception PHP ne les imprime plus.
 - **`Wordlist::inAnyList()`** ; **`Wordlist::validateUserPassphrase()` est retirée** : elle n'était
   appelée ni testée nulle part, acceptait quatre mots et citait le mot fautif dans son exception.
 - **Ce que la bibliothèque ne peut pas faire** : mesurer le hasard. Six mots choisis de tête passent
   le contrôle et ne valent pas six mots tirés ; la même passphrase scelle une serrure du coffre
   SelfDataGuard, attaquable hors ligne. Le modèle de menace le dit.
 - **Outillage** : le tutoriel des dés renvoie aux deux listes d'origine, avec leurs codes ; le
-  vérificateur hors ligne accepte les mots à trait d'union et échappe ce qu'il affiche. Licence de
-  la liste française corrigée : MIT, pas CC-BY 3.0.
+  vérificateur hors ligne accepte les mots à trait d'union, échappe ce qu'il affiche, signale un
+  séparateur tiret ou point et juge l'anglais, le français ou les deux. Les fiches diceware marquent
+  six mots comme le minimum de SelfRecover. Licence de la liste française corrigée : MIT, pas
+  CC-BY 3.0.
 - **Démo bi-self-duo** : le choix « le serveur tire / j'apporte la mienne » à l'inscription, au
   niveau 1 et au niveau 2.
+- **Textes** : `CONTRIBUTING` et `SECURITY` à jour, ce dernier renvoyant au canal de signalement
+  du dépôt ; la comparaison des flux décrit le code ; les mentions de MySelf-Live sont retirées.
 
-Bancs : `sanity_passphrase_apportee.php` (37 cas, deux profils), couplage avec SelfDataGuard 10/10,
-parcours 21/21, quatre canaris en CI. Whitepapers en v1.3 ; les fiches diceware sont régénérées
+Bancs : `sanity_passphrase_apportee.php` (39 cas, deux profils), `sanity_escalade` 125, couplage
+avec SelfDataGuard 10/10, parcours 21/21, neuf canaris en CI. Whitepapers en v1.3 ; les fiches diceware sont régénérées
 pour la version.
 
 ---

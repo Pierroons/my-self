@@ -2,16 +2,7 @@
 
 ## Reporting a vulnerability
 
-If you find a security vulnerability in SelfRecover, **please do NOT open a public issue**. Contact the author privately instead:
-
-- **Email**: contact@my-self.fr (with "[SelfRecover] Security" in the subject)
-- **Expected response time**: within 7 days
-
-Please include:
-- A clear description of the issue
-- Steps to reproduce (if applicable)
-- Your assessment of the impact
-- Any suggested fix
+If you find a security vulnerability in SelfRecover, **please do NOT open a public issue**. SelfRecover shares the coordinated disclosure channel of the whole repository — policy, submission form, email and PGP key — described in the root [SECURITY.md](../../SECURITY.md). Name SelfRecover and the version or commit in your report.
 
 ## Supported versions
 

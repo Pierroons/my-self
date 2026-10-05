@@ -1,6 +1,6 @@
 # Threat model
 
-> Extracted from the v1.1 whitepaper. Read the [full version](whitepaper-en.md) for context.
+> Extracted from the v1.3 whitepaper. Read the [full version](whitepaper-en.md) for context.
 
 ## Threats SelfRecover protects against
 
@@ -50,6 +50,9 @@ generic refusal, L2 by asking for no identifier at all, enrolment by counting fa
 derived from the *submitted* name: the brake bites whether that account exists or not, so its refusal
 tells nothing apart. Deriving the label from the account found would have opened the gap in six requests,
 which is how it was measured before being closed. L3 cannot, because there the distinction *is* the useful answer.
+It says nothing more: an unknown name, a dispute already open and a frozen procedure get the same
+refusal, at the same delay — naming either of the last two would tell anyone that a third party is
+recovering that account, or has had requests refused.
 
 **One L2 refusal does name a state, and it has to.** A suspended level cannot be described to its owner
 without saying so. That refusal tells whoever already holds one of the account's codes that the code names
@@ -162,8 +165,10 @@ randomness**: six words picked by hand pass, and are worth far less than six rol
 That weakness reaches further than level 1. SelfDataGuard seals its "passphrase" lock on the same
 string, and a lock is attacked offline, with no attempt counter: a guessable passphrase becomes the
 cheapest way into the vault. What the library can do, it does — refuse short or off-list phrases,
-repeated words, the passphrase that was just used, and at level 3 a passphrase equal to the chosen
-password. What it cannot do is tell dice from a person.
+repeated words, the passphrase being replaced (at level 1 even in another word order, at levels 2
+and 3 when identical), and at level 3 a passphrase equal to the chosen password. What it cannot do
+is tell dice from a person, or recognise a passphrase older than the last one: it keeps no history,
+so a user who alternates two sheets of paper brings an old door back.
 
 ### ✗ User negligence
 - Writing the recovery word on a sticky note visible on the monitor
@@ -173,7 +178,7 @@ password. What it cannot do is tell dice from a person.
 The per-service derivation does **not** save you from reusing a secret on a rogue site — only unique secrets do. It does prevent cross-service correlation of stored hashes.
 
 ### ✗ Database breaches — partially protected
-- Raw database leak → attacker only gets Argon2id hashes, which resist cracking
+- Raw database leak → the account's secrets are Argon2id hashes, each guess costing one Argon2id; codes also carry an HMAC lookup keyed by the deployment salt, which must not leak with the dump
 - BUT: if the attacker has root (see above), the protocol is already moot
 - Recommendation: encrypt database backups at rest
 

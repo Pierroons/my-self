@@ -214,7 +214,7 @@ Each code is stored **twice**, never in clear:
 | `code_hash` = `Argon2id(code)` | verification + resistance to a database leak |
 
 - **Single-use** (marked `used` after a successful reset).
-- **Regenerable** on demand (auth = username + memorized word) — the new batch replaces the old one. ⚠️ `emettreCodes()` **erases** the current batch before writing the next: the printed sheet stops being valid at that moment. Call it only on the holder's request, and tell them.
+- **Regenerable** on demand, within an open session: authentication belongs to the application, as for enrolling a device — a public name and the word are not enough, or they alone would yield a new batch, hence level 2. The new batch replaces the old one. ⚠️ `emettreCodes()` **erases** the current batch before writing the next: the printed sheet stops being valid at that moment. Call it only on the holder's request, and tell them.
 - **The deployment salt does not rotate without reissuing.** `code_lookup` is an HMAC of the code under that salt, and the code is stored nowhere: changing the salt makes **every** issued code unfindable, with no possible reindexing. The only procedure: change the salt, then have every sheet reissued. In between, level 2 by code is closed; level 1 and the device stay open.
 - `parCode()` returns `codes_restants` on every use. The threshold at which to warn belongs to the application: the library gives the count, it does not decide when the count becomes worrying.
 
@@ -294,7 +294,8 @@ The standalone PHP demo that lived under `demo/` has been removed: its recovery 
        │        [Argon2id verify] │
        │                          │
        │<─────────────────────────│
-       │   new password           │
+       │  new password and        │
+       │  new passphrase          │
        │                          │
 ```
 
@@ -339,8 +340,10 @@ they typed to `Recovery::validerPassphraseApportee()`; once accepted it returns 
 Hash that form, never the input, and show it to the user as is: it is the one that will
 reopen level 1. At renewals, pass the input as `nouvellePassphrase:` to `parPassphrase()`,
 `parCode()` or `Escalade::reEnroler()`. A refusal is stated (`error` starts with
-`passphrase_`): it depends only on the input, charges no brake and consumes neither code
-nor case. SelfDataGuard seals its "passphrase" lock on `$r['passphrase']`, the returned form.
+`passphrase_`); none charges a brake or consumes a code or a case. A refusal of form depends
+only on the input. The old passphrase is refused: at level 1, even its words in another order;
+at levels 2 and 3, when identical, once the factors are verified. The library keeps no history:
+a passphrase older than the last one is not recognised. SelfDataGuard seals its "passphrase" lock on `$r['passphrase']`, the returned form.
 
 ---
 
@@ -351,7 +354,7 @@ nor case. SelfDataGuard seals its "passphrase" lock on `$r['passphrase']`, the r
 | **The recovery word does not leave the browser** | The shipped deriver only transmits its per-site HMAC fingerprint, and the database keeps nothing but an Argon2id hash of it: a database leak reveals no word in the clear, and each guess against one costs an Argon2id. The password, server-generated, and the passphrase, generated or brought, pass through the server when they are used. |
 | **Passive-phishing resistance** | **In `'hostname'` mode only.** The material is read in the browser, so a clone that copies the page derives from its own hostname and produces a key the real server does not hold. In `'label'` mode there is none — the copy carries the same label. An active phishing site that controls its own page is out of scope either way (true for any in-browser protocol). |
 | **Replay resistance** | Every secret serves once: an L2 code is consumed by the `UPDATE` that marks it, a device challenge is consumed before the signature check, and taking the account back closes the L3 dispute, which retires its sesame. Rate limits slow things down; they do not close replay. |
-| **Leak resistance** | Each account has its own salt; the server stores only Argon2id hashes of per-service-derived keys. Leaked client code alone is useless. |
+| **Leak resistance** | Each account has its own salt; the server stores the account's secrets only as Argon2id hashes, and codes also carry an HMAC lookup keyed by the deployment salt. Leaked client code alone is useless. |
 | **No central dependency** | Each deployment is autonomous: no vendor lock-in, no operator who can revoke accounts across the ecosystem. Inside one deployment, the server remains a single point of failure — root access there bypasses the whole protocol, as the "server root access" section states. |
 | **Human-memorable secret** | One word of the user's choice: not a 24-word seed, not a QR code. It is the only secret to remember. What is kept on paper — the level-1 passphrase, the level-2 codes — is drawn at random, by the server or with dice, and nobody has to memorize it. |
 
@@ -420,7 +423,7 @@ SelfRecover is honest about what it protects and what it does not. Every cryptog
 |---|---|
 | Compromised SelfRecover server | ⚠️ The shipped deriver only sends the recovery word's fingerprint (HMAC in the browser); but the server serves that JavaScript, and a compromised server can serve a different page. The passphrase, generated or brought, and the password: it sees them again when they are used |
 | Passive phishing / cloned page | ✅ in `'hostname'` mode — a clone derives from its own hostname; ❌ nothing in `'label'` mode (active phishing controlling its own page is out of scope either way) |
-| Network sniffer / MITM | ✅ TLS in transit + only HMAC derivation transmitted |
+| Network sniffer / MITM | ✅ TLS in transit; of the memorized word, only the HMAC fingerprint leaves — the passphrase and the password travel in the clear under TLS |
 | Database leak | ✅ Argon2id hashes (memory-hard, GPU-resistant) |
 | Online brute-force | ✅ Per-account rate limits, and per-address ones under the `clearweb` profile, then the L2 suspension past a threshold of failures |
 
@@ -428,7 +431,7 @@ SelfRecover is honest about what it protects and what it does not. Every cryptog
 
 | Adversary | Mitigation |
 |---|---|
-| **Compromised host** (keylogger, info-stealer, RAT) | Out of scope. Use **Tails Live USB**, **Qubes OS**, or **MySelf-Live** (in progress) for root secret ceremonies. See [Roadmap](#roadmap). |
+| **Compromised host** (keylogger, info-stealer, RAT) | Out of scope. Use **Tails Live USB** or **Qubes OS** for root secret ceremonies. |
 | Compromised browser (extension, 0-day) | Out of scope. Same mitigation. |
 | Coercion (physical / rubber-hose) | Out of scope. No plausible deniability provided. |
 | Theoretical break of SHA-256 / Argon2id | Out of scope. Migration follows ANSSI/NIST guidance. |
@@ -440,7 +443,7 @@ Two kinds of secrets, two rules:
 - **The memorized word is written down nowhere** — no paper, no password manager, no file. It exists only in the user's head. Written on the same sheet as the recovery codes, it would merge L2's two factors into one; written next to the device, it would hand over the key of the "this device" factor.
 - **The diceware passphrase (L1) and the recovery codes (L2) are kept on paper**, stored offline. They are drawn at random — by the server, or with dice for the passphrase: nobody has to remember them.
 
-None of them is typed for "verification" or "validation". The word is typed at registration, when regenerating codes, when enrolling a device, and at L2 recovery. The passphrase is typed only at L1 recovery, which consumes it: a fresh passphrase replaces it, drawn by the server or brought.
+None of them is typed for "verification" or "validation". The word is typed at registration, when regenerating codes, when enrolling a device, and at L2 recovery. The passphrase is typed at L1 recovery, which consumes it: a fresh passphrase replaces it, drawn by the server or brought — and, when the user brings their own, at registration and at every renewal.
 
 If verification of a freshly-rolled passphrase is desired, use the **standalone offline HTML tool** (`tools/offline-validator/index.html`) on an air-gapped machine.
 
@@ -466,26 +469,9 @@ The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library ou
 - [x] **Argon2id written in the library** — `client/sr-kdf.js`, versioned blob, checked against seven libsodium vectors (v0.6.0)
 - [x] **Schema and contract implementation** — `schema.sql` + `StockagePdo`, shipped, never imposed (v0.6.0)
 
-### MySelf-Live — in progress
-
-A minimal, signed, verifiable Linux distribution for SelfRecover ceremonies:
-
-- Debian/Alpine-based Live USB, RAM-only, no persistence
-- UEFI Secure Boot with MySelf-signed kernel
-- Reproducible builds (anyone can verify image hash)
-- GPG offline signing (root key on smartcard / YubiKey)
-- Multi-channel distribution (HTTPS + IPFS + torrent + GitHub releases)
-- Pre-installed: SelfRecover daemon (localhost), Tor, Firefox ESR hardened, EFF PDF embedded
-- Network: disabled by default (air-gap mode at boot)
-- Target image size: ~500 MB
-- Inspired by Tails / Qubes OS / Whonix, focused on cryptographic ceremonies
-
-Build skeleton: see [`tools/build-myself-live/`](../../tools/build-myself-live/) (in progress).
-
 ### Next
 
 - [ ] Community security audit
-- [ ] Reproducible build pipeline finalized
 - [ ] Anti-Evil-Maid (Heads / TPM measurements) optional
 - [ ] Localizations EN / FR / DE / ES
 

@@ -1,6 +1,6 @@
 # Contributing to SelfRecover
 
-Thanks for your interest! SelfRecover is at **concept stage** — the protocol is defined, with a reference implementation and a self-audited demo, but it hasn't been audited by the external security community yet.
+Thanks for your interest! SelfRecover is a **reference library, deployed in real conditions and self-audited** — but it hasn't been audited by the external security community yet.
 
 ## What we need most
 
@@ -12,8 +12,8 @@ Thanks for your interest! SelfRecover is at **concept stage** — the protocol i
 ## What we're NOT ready for yet
 
 - **Feature creep** — we want to stabilize the core protocol before adding fancy stuff
-- **UI frameworks** — the demo is intentionally framework-free HTML/CSS/JS to stay minimal
-- **Database abstractions** — SQLite for the demo, PHP PDO for the reference impl, both intentional
+- **UI frameworks** — the demos in [`demo/`](../../demo/) are intentionally framework-free HTML/CSS/JS to stay minimal
+- **More database abstractions** — storage goes through `StorageInterface`, and `StockagePdo` is the shipped adapter; a new backend is an adapter in your project, not a change to the library
 
 ## How to contribute
 

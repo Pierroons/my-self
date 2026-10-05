@@ -3,7 +3,7 @@
 **Zero-Email Account Recovery Protocol**
 *Your word. Your sites. No email.*
 
-*Edition of 4 October 2026 — v1.3 — describes SelfRecover 0.10.0*
+*Edition of 5 October 2026 — v1.3 — describes SelfRecover 0.10.0*
 
 ---
 
@@ -96,7 +96,7 @@ Three levels, each with its own guarantees and failure modes:
 | **L1** | Account name + diceware passphrase | New password and new passphrase |
 | **L2** | Recovery code + recovery word (HMAC-derived) | New password and new passphrase |
 | **L2, device path** | Enrolled device + recovery word | New password; passphrase and codes unchanged |
-| **L3** | Account name + context answers | Raw facts for a human arbitrator; on grant, the user sets their password and memorized word, the server issues a fresh passphrase and 10 codes and removes enrolled devices |
+| **L3** | Account name + context answers | Raw facts for a human arbitrator; on grant, the user sets their password and memorized word, the server issues 10 fresh codes and a fresh passphrase, drawn or brought, and removes enrolled devices |
 
 ---
 
@@ -182,7 +182,7 @@ L2 is a **real 2FA** — possession **and** knowledge — **with no identifier t
 - **Possession**: a *recovery code* (one of the 10 issued at registration). It **locates** the account via an HMAC lookup (no more enumeration) and acts as the possession factor.
 - **Knowledge**: the *memorized word*, HMAC-derived client-side (with the shipped deriver, the raw word does not leave the browser).
 
-The server verifies **both** (Argon2id) and returns a **generic error** that never reveals which one failed. On success, the code is consumed; the server generates a new password and a new passphrase, shown once, and open sessions are dropped. It also returns the account name and the number of codes left. An optional variant — the **"this device" factor** — provides a second L2 path (see §5.4).
+The server verifies **both** (Argon2id) and returns a **generic error** that never reveals which one failed. On success, the code is consumed; the server generates a new password, and a new passphrase unless the user brings their own (§5.5); both are shown once, and open sessions are dropped. It also returns the account name and the number of codes left. An optional variant — the **"this device" factor** — provides a second L2 path (see §5.4).
 
 There is no automatic escalation to L3. Level 2 asks for no identifier, but the code it receives names its account, which is what its per-account brake counts: a short window (5 failures per 15 minutes by default), then, after 20 failures since the last rearm, suspension of code recovery for that account. It is lifted by a fresh batch of codes — level 3 issues one —, by a successful code recovery, or by a successful passphrase recovery. That refusal names its state, otherwise the owner would not know what to do; so it tells whoever already holds one of the account's codes that the code names a real account. The per-address counter applies on top under the `clearweb` profile. Opening a dispute is the person's own decision.
 
@@ -190,7 +190,7 @@ There is no automatic escalation to L3. Level 2 asks for no identifier, but the 
 
 - Entry: discreet "Lost all access" link on the login page
 - User provides their account name (the level-1 one); their browser generates a **tracking code** (claim). At opening only its fingerprint (SHA-256) is sent, and that is all the server stores; at the following steps the code itself is presented and the server hashes it each time — so a log of request bodies would capture it (anti-timing: forced delay)
-- A dispute with a **non-guessable** number (`LIT-` followed by 16 hex characters) is opened. If a dispute is already open for that account, the number is **not re-disclosed** and the concurrent attempt is flagged to the admin ("multi-requester")
+- A dispute with a **non-guessable** number (`LIT-` followed by 16 hex characters) is opened. If a dispute is already open for that account, or if opening is frozen there (§6.1), the requester gets the refusal of an unknown name, with the same delay (`ouverture_refusee`): the number is **not re-disclosed**, and nothing tells a third party that a case exists. The concurrent attempt is flagged to the admin ("multi-requester")
 - The user answers a few **context questions** (account creation year, last-login period, usage frequency) — **no secret is requested**
 - The server assembles a **bundle of raw facts** presented to the administrator:
   - **Context**: what the server already holds — account creation, last login, login count, codes left, recent refusals, and whatever the deployment's adapter adds, which the library does not interpret
@@ -229,11 +229,13 @@ the server draws, as before.
   list or from Arthur Pons's French list, none repeated, a byte ceiling. The passphrase is stored in a
   single form: lowercase, one space between words. That form is the one hashed, returned and written
   down, because verification does not lowercase.
-- **A refusal** gives a word's position, never the word. It is judged before any brake, with no trace
-  and no delay: it depends only on the input, not on the account, and tracing it would let anyone
-  charge someone else's brake. It consumes neither the level-2 code nor the level-3 case.
-- **The old passphrase does not come back**: at every level, a brought passphrase equal to the one it
-  replaces is refused. At level 3 it also cannot equal the chosen password.
+- **A refusal of form** gives a word's position, never the word. It is judged before any brake, with
+  no trace and no delay: it depends only on the input, not on the account, and tracing it would let
+  anyone charge someone else's brake. No passphrase refusal consumes the level-2 code or the level-3
+  case.
+- **The old passphrase does not come back**: at level 1, neither as is nor its words in another order;
+  at levels 2 and 3, as is, once the factors are verified. At level 3 it also cannot equal the chosen
+  password. The library keeps no history: a passphrase older than the last one is not recognised.
 - **What the check does not measure: randomness.** Six words picked by hand pass, and are worth less
   than six rolled words. The same passphrase seals the "passphrase" lock of the SelfDataGuard vault,
   which is attacked offline: a guessable passphrase becomes the cheapest way in.
@@ -268,7 +270,7 @@ When the admin reviews a dispute, two paths exist:
 - The admin does not find the proof of identity sufficient
 - The case moves to `refused`, carrying the date and the name of whoever decided
 - **The account is not touched**: not deleted, not banned, not stripped of its codes. It stays usable
-- On the **3rd refusal within a rolling 30-day window**, *opening* new cases freezes for 7 days on that account. An administrator can lift the freeze, and the record of who lifted it is kept
+- On the **3rd refusal within a rolling 30-day window**, *opening* new cases freezes for 7 days on that account. An administrator can lift the freeze, and the record of who lifted it is kept. During the freeze, a request to open gets the refusal of an unknown name (§5.3): the freeze cannot be read from outside
 
 🔑 **What hardens is the procedure, never the account.** An earlier edition of this document announced a 24h ban and permanent deletion at the 3rd refusal; the implementation closest to it deleted the account on the **first**. Both were wrong for the same reason: a refusal says "this requester did not convince me", not "this account is illegitimate". If the requester was an impostor, deleting destroys the victim's account; if they were the mis-judged owner, it punishes an innocent. And an attacker unable to steal an account could get it erased by piling up refusals — **failure became a weapon**.
 
@@ -309,7 +311,7 @@ notification or blocking policy built on top.
 
 ## 8. What the Library Returns
 
-Each method returns `ok`. Every refusal carries a human-facing `message`, most successes too (not `etat()`, `fil()` or `ouvrirDefi()`), and some refusals a stable `error` the application can log or translate: `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `compte_inconnu`, `gele`, `deja_ouvert`, `sesame_invalide`, `expire`, `accord_perime`, among others.
+Each method returns `ok`. Every refusal carries a human-facing `message`, most successes too (not `etat()`, `fil()` or `ouvrirDefi()`), and some refusals a stable `error` the application can log or translate: `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `ouverture_refusee`, `compte_inconnu` (outside opening), `sesame_invalide`, `expire`, `accord_perime`, `passphrase_invalide`, `passphrase_deja_servie`, among others.
 
 The library reports nothing itself; it only records the attempts its brakes need. What a diagnostic report contains is the application's call; it must not include the recovery word (raw or derived), the passphrase, the password or the codes.
 
@@ -345,7 +347,7 @@ The user sees a reassuring "Your account is now secured" message — not a techn
 - **SMTP provider failures** — no SMTP dependency
 - **Third-party trust** — only the site and the user are involved
 - **Braked brute force** — per account and per address at levels 1 and 2 and at enrollment, level-2 suspension after 20 failures, an Argon2id cost per server-side attempt
-- **Bot enumeration** — *partly*. Closed at levels 1 and 2 and at device enrollment: a single generic refusal at the first, no identifier asked at the second, a counter keyed by the submitted name at the third. The salt route always returns a salt, real or fake (§4.2). One level-2 refusal does name a state: suspension, which tells whoever already holds a code that it names a real account. Open at level 3, where the useful answer IS the distinction — a success returns a dispute number, an unknown name cannot. What opposes it is cost: two brakes applied before the account lookup (per address, per service), a delay on every refusal that hides a state, and a proof of work in front of the route — which the library cannot impose, having no routes
+- **Bot enumeration** — *partly*. Closed at levels 1 and 2 and at device enrollment: a single generic refusal at the first, no identifier asked at the second, a counter keyed by the submitted name at the third. The salt route always returns a salt, real or fake (§4.2). One level-2 refusal does name a state: suspension, which tells whoever already holds a code that it names a real account. Open at level 3, where the useful answer IS the distinction — a success returns a dispute number, an unknown name cannot. The refusals, for their part, cannot be told apart: unknown name, case already open and frozen procedure return the same `ouverture_refusee`, with the same delay. What opposes it is cost: two brakes applied before the account lookup (per address, per service), that delay on every refusal, and a proof of work in front of the route — which the library cannot impose, having no routes
 - **Social reputation laundering** — the library offers no account rename; locking the name after registration is the application's to enforce
 
 ### 10.2 CRITICAL — Server Root Access (sudo)

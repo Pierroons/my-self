@@ -113,13 +113,12 @@ final class RecoverL3
     {
         $r = self::escalade($pdo)->ouvrir($username, strtolower(trim($claimHash)), $ip);
         if (($r['ok'] ?? false) !== true) {
-            // Cette route est publique et sans authentification. La bibliothèque
-            // distingue `compte_inconnu` (404) de `deja_ouvert` (409) — utile à
-            // un appelant de confiance, révélateur ici : le second apprend qu'un
-            // TIERS a une récupération en cours. `Escalade::ouvrir()` freine
-            // avant la recherche pour que l'existence ne se lise pas au
-            // chronomètre ; sans cette égalisation, la phrase rendue annule cette
-            // précaution. Les deux cas sortent donc sous une réponse unique.
+            // Cette route est publique et sans authentification. Un nom inconnu,
+            // un dossier déjà ouvert et une procédure gelée sortent sous une
+            // réponse unique : distinguer les deux derniers apprendrait qu'un
+            // TIERS a une récupération en cours. La bibliothèque les rend déjà
+            // sous `ouverture_refusee` ; les deux autres codes ne servent qu'à
+            // une bibliothèque antérieure à la 0.10.0.
             if (in_array($r['error'] ?? '', ['ouverture_refusee', 'compte_inconnu', 'deja_ouvert'], true)) {
                 return [
                     'ok'      => false,

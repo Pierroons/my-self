@@ -214,7 +214,7 @@ Chaque code est stocké **deux fois**, jamais en clair :
 | `code_hash` = `Argon2id(code)` | vérification + résistance à une fuite de base |
 
 - **Usage unique** (marqué `used` après un reset réussi).
-- **Régénérables** à la demande (auth = username + mot mémorisé) — le nouveau lot remplace l'ancien. ⚠️ `emettreCodes()` **efface** le lot en place avant d'écrire le suivant : la feuille imprimée cesse de valoir à cet instant. Ne l'appelle que sur une demande du titulaire, et dis-le-lui.
+- **Régénérables** à la demande, dans une session ouverte : l'authentification revient à l'application, comme pour l'enrôlement d'un appareil — un nom public et le mot ne suffisent pas, sinon ils donneraient seuls un lot neuf, donc le niveau 2. Le nouveau lot remplace l'ancien. ⚠️ `emettreCodes()` **efface** le lot en place avant d'écrire le suivant : la feuille imprimée cesse de valoir à cet instant. Ne l'appelle que sur une demande du titulaire, et dis-le-lui.
 - **Le sel du déploiement ne tourne pas sans réémission.** `code_lookup` est un HMAC du code sous ce sel, et le code n'est stocké nulle part : changer le sel rend **tous** les codes émis introuvables, sans réindexation possible. Seule procédure : changer le sel, puis faire réémettre chaque feuille. Entre les deux, le niveau 2 par code est fermé ; le niveau 1 et l'appareil restent ouverts.
 - `parCode()` rend `codes_restants` à chaque usage. Le seuil à partir duquel on alerte appartient à l'application : la bibliothèque donne le nombre, elle ne décide pas quand il devient inquiétant.
 
@@ -294,7 +294,8 @@ La démo PHP autonome qui vivait sous `demo/` a été retirée : son code de ré
        │      [verif. Argon2id]   │
        │                          │
        │<─────────────────────────│
-       │   nouveau mot de passe   │
+       │  mot de passe et         │
+       │  passphrase neufs        │
        │                          │
 ```
 
@@ -339,8 +340,11 @@ passe sa saisie à `Recovery::validerPassphraseApportee()` ; acceptée, elle ren
 Hache cette forme, jamais la saisie, et montre-la à l'utilisateur telle quelle : c'est elle
 qui rouvrira le niveau 1. Aux renouvellements, passe la saisie en `nouvellePassphrase:` à
 `parPassphrase()`, `parCode()` ou `Escalade::reEnroler()`. Un refus se dit (`error` commence
-par `passphrase_`) : il ne dépend que de la saisie, ne charge aucun frein et ne consomme ni
-code ni dossier. SelfDataGuard scelle sa serrure « passphrase » sur `$r['passphrase']`, la
+par `passphrase_`) ; aucun ne charge de frein ni ne consomme de code ou de dossier. Un refus de
+forme ne dépend que de la saisie. L'ancienne passphrase est refusée : au niveau 1, même ses mots
+dans un autre ordre ; aux niveaux 2 et 3, à l'identique, une fois les facteurs vérifiés. La
+bibliothèque ne garde pas d'historique : une passphrase plus ancienne que la dernière n'est pas
+reconnue. SelfDataGuard scelle sa serrure « passphrase » sur `$r['passphrase']`, la
 forme rendue.
 
 ---
@@ -352,7 +356,7 @@ forme rendue.
 | **Le mot de récupération ne quitte pas le navigateur** | Le dériveur livré n'en transmet que l'empreinte HMAC par site, et la base n'en garde qu'un hachage Argon2id : une fuite de base ne révèle aucun mot en clair, et chaque essai sur l'un d'eux coûte un Argon2id. Le mot de passe, engendré par le serveur, et la passphrase, engendrée ou apportée, passent par lui au moment où ils servent. |
 | **Résistance au phishing passif** | **En mode `'hostname'` seulement.** Le matériel est lu dans le navigateur : un clone qui copie la page dérive de sa propre adresse et produit une clé que le vrai serveur ne détient pas. En mode `'label'`, il n'y en a aucune — la copie porte le même label. Un site de phishing actif qui contrôle sa propre page reste hors périmètre dans les deux cas (vrai pour tout protocole in-browser). |
 | **Résistance au rejeu** | Chaque secret ne sert qu'une fois : un code L2 est consommé par l'`UPDATE` qui le marque, un défi d'appareil est consommé avant la vérification de signature, et la reprise du compte clôt le dossier L3, ce qui périme son sésame. Les freins de débit ralentissent, ils ne ferment pas le rejeu. |
-| **Résistance à la fuite** | Chaque compte a son propre sel ; le serveur ne stocke que des hachages Argon2id de clés dérivées par service. Une fuite du code client seul est inutile. |
+| **Résistance à la fuite** | Chaque compte a son propre sel ; le serveur ne range les secrets du compte qu'en Argon2id, et les codes portent en plus un index HMAC sous le sel du déploiement. Une fuite du code client seul est inutile. |
 | **Pas de dépendance centrale** | Chaque déploiement est autonome : pas de vendor lock-in, pas d'opérateur qui peut révoquer des comptes à travers l'écosystème. À l'intérieur d'un déploiement, le serveur reste un point unique de défaillance — un accès root y contourne tout le protocole, ce que dit la section « accès root ». |
 | **Secret mémorisable** | Un mot au choix de l'utilisateur : pas une seed de 24 mots, pas un QR code. C'est le seul secret à retenir. Ce qui se garde sur papier — passphrase du niveau 1, codes du niveau 2 — est tiré au hasard, par le serveur ou aux dés, et personne n'a à le mémoriser. |
 
@@ -421,7 +425,7 @@ SelfRecover est honnête sur ce qu'il protège et ce qu'il ne protège pas. Tout
 |---|---|
 | Serveur SelfRecover compromis | ⚠️ Le dériveur livré n'envoie que l'empreinte du mot de récupération (HMAC dans le navigateur) ; mais c'est le serveur qui sert ce JavaScript, et un serveur compromis peut servir une autre page. La passphrase, qu'il l'engendre ou qu'elle soit apportée, et le mot de passe, il les revoit à l'usage |
 | Phishing passif / page clonée | ✅ en mode `'hostname'` — un clone dérive de sa propre adresse ; ❌ rien en mode `'label'` (un phishing actif contrôlant sa page est hors périmètre dans les deux cas) |
-| Sniffeur réseau / MITM | ✅ TLS en transit + seule la dérivation HMAC est transmise |
+| Sniffeur réseau / MITM | ✅ TLS en transit ; du mot mémorisé, seule l'empreinte HMAC part — la passphrase et le mot de passe passent en clair sous TLS |
 | Fuite de base de données | ✅ Hashes Argon2id (memory-hard, GPU-resistant) |
 | Brute-force online | ✅ Freins par compte, et par adresse sous le profil `clearweb`, puis suspension du niveau 2 au-delà d'un seuil d'échecs |
 
@@ -429,7 +433,7 @@ SelfRecover est honnête sur ce qu'il protège et ce qu'il ne protège pas. Tout
 
 | Adversaire | Mitigation |
 |---|---|
-| **Poste utilisateur compromis** (keylogger, info-stealer, RAT) | Hors périmètre. Utiliser **Tails Live USB**, **Qubes OS**, ou **MySelf-Live** (en cours) pour les cérémonies de secrets racine. Voir [Roadmap](#roadmap). |
+| **Poste utilisateur compromis** (keylogger, info-stealer, RAT) | Hors périmètre. Utiliser **Tails Live USB** ou **Qubes OS** pour les cérémonies de secrets racine. |
 | Navigateur compromis (extension, 0-day) | Hors périmètre. Même mitigation. |
 | Coercition (physique / rubber-hose) | Hors périmètre. Pas de plausible deniability fournie. |
 | Cryptanalyse théorique de SHA-256 / Argon2id | Hors périmètre. Migration suit les recommandations ANSSI/NIST. |
@@ -441,7 +445,7 @@ Deux sortes de secrets, deux règles :
 - **Le mot mémorisé ne s'écrit nulle part** — ni papier, ni gestionnaire, ni fichier. Il n'existe que dans la tête de l'utilisateur. Écrit sur le même papier que les recovery codes, il réunirait les deux facteurs de L2 en un seul ; écrit près de l'appareil, il livrerait la clé du facteur « cet appareil ».
 - **La passphrase diceware (L1) et les recovery codes (L2) se gardent sur papier**, rangés hors ligne. Ils sont tirés au hasard — par le serveur, ou aux dés pour la passphrase : personne n'a à les retenir.
 
-Aucun ne se saisit pour « vérification » ou « validation ». Le mot se saisit à l'inscription, à la régénération des codes, à l'enrôlement d'un appareil et à la récupération L2. La passphrase se saisit à la seule récupération L1, qui la consomme : une passphrase neuve la remplace, tirée par le serveur ou apportée.
+Aucun ne se saisit pour « vérification » ou « validation ». Le mot se saisit à l'inscription, à la régénération des codes, à l'enrôlement d'un appareil et à la récupération L2. La passphrase se saisit à la récupération L1, qui la consomme : une passphrase neuve la remplace, tirée par le serveur ou apportée — et, quand l'utilisateur apporte la sienne, à l'inscription et à chaque renouvellement.
 
 Si la vérification d'une passphrase fraîchement tirée est souhaitée, utiliser **l'outil HTML autonome offline** (`tools/offline-validator/index.html`) sur une machine déconnectée.
 
@@ -467,26 +471,9 @@ Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bib
 - [x] **Argon2id écrit dans la bibliothèque** — `client/sr-kdf.js`, blob versionné, vérifié contre sept vecteurs libsodium (v0.6.0)
 - [x] **Schéma et implémentation du contrat** — `schema.sql` + `StockagePdo`, fournis sans être imposés (v0.6.0)
 
-### MySelf-Live — en cours
-
-Distribution Linux minimale, signée et vérifiable, dédiée aux cérémonies SelfRecover :
-
-- Debian/Alpine Live USB, RAM-only, sans persistance
-- UEFI Secure Boot avec kernel signé MySelf
-- Reproducible builds (n'importe qui peut vérifier le hash de l'image)
-- Signature GPG offline (clé root sur smartcard / YubiKey)
-- Distribution multi-canal (HTTPS + IPFS + torrent + GitHub releases)
-- Pré-installé : daemon SelfRecover (localhost), Tor, Firefox ESR durci, PDF EFF embarqué
-- Réseau : désactivé par défaut (mode air-gap au boot)
-- Taille cible de l'image : ~500 MB
-- Inspirée de Tails / Qubes OS / Whonix, ciblée sur les cérémonies cryptographiques
-
-Squelette de build : voir [`tools/build-myself-live/`](../../tools/build-myself-live/) (en cours).
-
 ### Ensuite
 
 - [ ] Audit de sécurité communautaire
-- [ ] Pipeline reproducible build finalisé
 - [ ] Anti-Evil-Maid (Heads / TPM measurements) optionnel
 - [ ] Localisations EN / FR / DE / ES
 

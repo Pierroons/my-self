@@ -718,7 +718,7 @@ final class Escalade
      * fermerait l'ouverture à un titulaire dès qu'un tiers a assez sollicité son
      * compte, sans qu'aucun dossier n'existe — donc sans que rien n'apparaisse à
      * l'arbitre. Le harcèlement d'un compte est déjà borné autrement : le
-     * premier dossier tient `$ttl`, le suivant reçoit `deja_ouvert`, et cette
+     * premier dossier tient `$ttl`, le suivant reçoit le refus unique, et cette
      * collision-là **se compte et se montre** (`compterDemandeurConcurrent`).
      * Un frein silencieux aurait remplacé un fait visible par un mur muet.
      *

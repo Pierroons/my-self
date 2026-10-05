@@ -3,7 +3,7 @@
 **Protocole de récupération de compte sans email**
 *Ton mot. Tes sites. Sans email.*
 
-*Édition du 4 octobre 2026 — v1.3 — décrit SelfRecover 0.10.0*
+*Édition du 5 octobre 2026 — v1.3 — décrit SelfRecover 0.10.0*
 
 ---
 
@@ -96,7 +96,7 @@ Trois niveaux, chacun avec ses propres garanties et modes d'échec :
 | **L1** | Nom du compte + passphrase diceware | Nouveau mot de passe et nouvelle passphrase |
 | **L2** | Code de récupération + mot de récupération (dérivé HMAC) | Nouveau mot de passe et nouvelle passphrase |
 | **L2, voie appareil** | Appareil enrôlé + mot de récupération | Nouveau mot de passe ; passphrase et codes inchangés |
-| **L3** | Nom du compte + réponses de contexte | Faits bruts pour un arbitre humain ; en cas d'accord, l'utilisateur choisit son mot de passe et son mot mémorisé, le serveur émet une passphrase et 10 codes neufs et retire les appareils enrôlés |
+| **L3** | Nom du compte + réponses de contexte | Faits bruts pour un arbitre humain ; en cas d'accord, l'utilisateur choisit son mot de passe et son mot mémorisé, le serveur émet 10 codes neufs et une passphrase neuve, tirée ou apportée, et retire les appareils enrôlés |
 
 ---
 
@@ -182,7 +182,7 @@ Le L2 est un **vrai 2FA** — possession **et** connaissance — **sans identifi
 - **Possession** : un *recovery code* (parmi les 10 remis à l'inscription). Il **localise** le compte via un lookup HMAC (plus d'énumération) et sert de facteur de possession.
 - **Connaissance** : le *mot mémorisé*, dérivé HMAC côté client (avec le dériveur livré, le mot brut ne quitte pas le navigateur).
 
-Le serveur vérifie les **deux** (Argon2id) et renvoie une **erreur générique** ne révélant jamais lequel a échoué. En cas de succès, le code est consommé ; le serveur engendre un mot de passe et une passphrase neufs, rendus une seule fois, et les sessions ouvertes tombent. Il rend aussi le nom du compte et le nombre de codes restants. Une variante optionnelle — le **facteur « cet appareil »** — offre une seconde voie de L2 (voir §5.4).
+Le serveur vérifie les **deux** (Argon2id) et renvoie une **erreur générique** ne révélant jamais lequel a échoué. En cas de succès, le code est consommé ; le serveur engendre un mot de passe neuf, et une passphrase neuve si l'utilisateur n'apporte pas la sienne (§5.5) ; les deux sont rendus une seule fois, et les sessions ouvertes tombent. Il rend aussi le nom du compte et le nombre de codes restants. Une variante optionnelle — le **facteur « cet appareil »** — offre une seconde voie de L2 (voir §5.4).
 
 Aucune bascule automatique vers L3. Le niveau 2 ne demande aucun identifiant, mais le code qu'il reçoit nomme son compte, et c'est ce que compte son frein par compte : une fenêtre courte (5 échecs en 15 minutes par défaut), puis, après 20 échecs depuis le dernier réarmement, la suspension de la récupération par code pour ce compte. Elle se lève par un lot de codes neuf — le niveau 3 en émet un —, par une récupération par code réussie, ou par une récupération par passphrase réussie. Ce refus-là nomme son état, sinon le titulaire ne saurait pas quoi faire ; il apprend donc à qui détient déjà un code de ce compte que ce code vise un compte réel. Le compteur par adresse s'y ajoute sous le profil `clearweb`. C'est la personne qui décide d'ouvrir un dossier.
 
@@ -190,7 +190,7 @@ Aucune bascule automatique vers L3. Le niveau 2 ne demande aucun identifiant, ma
 
 - Entrée : lien discret `"J'ai perdu tous mes accès"` sur la page de login
 - L'utilisateur fournit le nom de son compte (celui du niveau 1) ; son navigateur génère un **code de suivi** (sésame). À l'ouverture, seule son empreinte (SHA-256) part, et c'est tout ce que le serveur range ; aux étapes suivantes, le code lui-même se présente et le serveur le hache à chaque fois — un journal des corps de requête le capterait donc (anti-timing : délai forcé)
-- Un litige au numéro **non devinable** (`LIT-` suivi de 16 hexadécimaux) est ouvert. Si un litige est déjà ouvert pour ce compte, le numéro n'est **pas redivulgué** et la tentative concurrente est signalée à l'admin (« multi-demandeur »)
+- Un litige au numéro **non devinable** (`LIT-` suivi de 16 hexadécimaux) est ouvert. Si un litige est déjà ouvert pour ce compte, ou si l'ouverture y est gelée (§6.1), le demandeur reçoit le refus d'un nom inconnu, au même délai (`ouverture_refusee`) : le numéro n'est **pas redivulgué**, et rien n'apprend à un tiers qu'un dossier existe. La tentative concurrente est signalée à l'admin (« multi-demandeur »)
 - L'utilisateur répond à quelques **questions de contexte** (année de création du compte, période de dernière connexion, fréquence d'usage) — **aucun secret n'est demandé**
 - Le serveur assemble un **faisceau de faits bruts** présenté à l'administrateur :
   - **Contexte** : ce que le serveur tient déjà — création du compte, dernière connexion, nombre de connexions, codes restants, refus récents, et ce que l'adaptateur du déploiement ajoute, que la bibliothèque n'interprète pas
@@ -229,11 +229,14 @@ Rien d'apporté : le serveur tire, comme avant.
   anglaise de l'EFF ou dans la liste française d'Arthur Pons, aucun répété, un plafond d'octets. La
   passphrase est rangée sous une forme unique : minuscules, une espace entre les mots. C'est cette
   forme qu'on hache, qu'on rend et qu'on fait noter, parce que la vérification ne convertit pas la saisie en minuscules.
-- **Le refus** dit la position d'un mot, jamais le mot. Il est jugé avant tout frein, sans trace ni
-  délai : il ne dépend que de la saisie, pas du compte, et le tracer laisserait n'importe qui charger
-  le frein d'un autre. Il ne consomme ni le code du niveau 2, ni le dossier du niveau 3.
-- **L'ancienne passphrase ne revient pas** : à chaque niveau, une passphrase apportée égale à celle
-  qu'elle remplace est refusée. Au niveau 3, elle ne peut pas non plus égaler le mot de passe choisi.
+- **Le refus de forme** dit la position d'un mot, jamais le mot. Il est jugé avant tout frein, sans
+  trace ni délai : il ne dépend que de la saisie, pas du compte, et le tracer laisserait n'importe qui
+  charger le frein d'un autre. Aucun refus de passphrase ne consomme le code du niveau 2 ni le dossier
+  du niveau 3.
+- **L'ancienne passphrase ne revient pas** : au niveau 1, ni telle quelle ni ses mots dans un autre
+  ordre ; aux niveaux 2 et 3, telle quelle, une fois les facteurs vérifiés. Au niveau 3, elle ne peut
+  pas non plus égaler le mot de passe choisi. La bibliothèque ne garde pas d'historique : une
+  passphrase plus ancienne que la dernière n'est pas reconnue.
 - **Ce que le contrôle ne mesure pas : le hasard.** Six mots choisis de tête passent, et ne valent pas
   six mots tirés. La même passphrase scelle la serrure « passphrase » du coffre SelfDataGuard, qu'on
   attaque hors ligne : une passphrase devinable y devient la porte la moins chère.
@@ -268,7 +271,7 @@ Quand l'admin examine un litige, deux options existent :
 - L'admin ne considère pas la preuve d'identité suffisante
 - Le dossier passe en `refused`, avec la date et le nom de qui a tranché
 - **Le compte n'est pas touché** : ni supprimé, ni banni, ni vidé de ses codes. Il reste connectable
-- Au **3ᵉ refus dans une fenêtre glissante de 30 jours**, l'**ouverture** de nouveaux dossiers gèle 7 jours sur ce compte. Un administrateur peut lever le gel, et la trace du dégel est conservée
+- Au **3ᵉ refus dans une fenêtre glissante de 30 jours**, l'**ouverture** de nouveaux dossiers gèle 7 jours sur ce compte. Un administrateur peut lever le gel, et la trace du dégel est conservée. Pendant le gel, une demande d'ouverture reçoit le refus d'un nom inconnu (§5.3) : le gel ne se lit pas du dehors
 
 🔑 **Ce qui se durcit est la procédure, jamais le compte.** Une version antérieure de ce document annonçait un ban de 24 h et la suppression définitive au 3ᵉ refus ; l'implémentation qui s'en approchait le plus supprimait le compte dès le **premier**. Les deux étaient fautives pour la même raison : un refus dit « ce demandeur ne m'a pas convaincu », pas « ce compte est illégitime ». Si le demandeur était un imposteur, supprimer détruit le compte de sa victime ; s'il était le titulaire mal jugé, cela punit un innocent. Et un attaquant incapable de voler un compte pouvait le faire effacer en accumulant des refus — **l'échec devenait une arme**.
 
@@ -310,7 +313,7 @@ blocage bâtie dessus.
 
 ## 8. Ce que rend la bibliothèque
 
-Chaque méthode rend `ok`. Tout refus porte un `message` destiné à la personne, la plupart des succès aussi (pas `etat()`, `fil()` ni `ouvrirDefi()`), et certains refus un `error` stable que l'application peut journaliser ou traduire : `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `compte_inconnu`, `gele`, `deja_ouvert`, `sesame_invalide`, `expire`, `accord_perime`, entre autres.
+Chaque méthode rend `ok`. Tout refus porte un `message` destiné à la personne, la plupart des succès aussi (pas `etat()`, `fil()` ni `ouvrirDefi()`), et certains refus un `error` stable que l'application peut journaliser ou traduire : `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `ouverture_refusee`, `compte_inconnu` (hors ouverture), `sesame_invalide`, `expire`, `accord_perime`, `passphrase_invalide`, `passphrase_deja_servie`, entre autres.
 
 La bibliothèque ne remonte rien elle-même ; elle enregistre seulement les tentatives dont ses freins ont besoin. Ce qu'un rapport de diagnostic contient relève de l'application ; elle ne doit y mettre ni le mot de récupération (brut ou dérivé), ni la passphrase, ni le mot de passe, ni les codes.
 
@@ -346,7 +349,7 @@ L'utilisateur voit un message rassurant `"Ton compte est maintenant sécurisé"`
 - **Panne du fournisseur SMTP** — pas de dépendance SMTP
 - **Confiance tiers** — seuls le site et l'utilisateur sont impliqués
 - **Force brute freinée** — par compte et par adresse aux niveaux 1 et 2 et à l'enrôlement, suspension du niveau 2 après 20 échecs, coût Argon2id par essai côté serveur
-- **Énumération par bot** — *partiellement*. Fermée aux niveaux 1 et 2 et à l'enrôlement : refus unique au premier, aucun identifiant demandé au second, compteur tiré du nom soumis au troisième. La route du sel répond toujours un sel, vrai ou faux (§4.2). Un refus du niveau 2 nomme pourtant un état : la suspension, qui apprend à qui détient déjà un code que ce code vise un compte réel. Ouverte au niveau 3, où la réponse utile EST la distinction — un succès rend un numéro de dossier, un nom inconnu ne peut pas en rendre. Ce qui s'y oppose est le coût : deux freins avant la recherche du compte (par adresse, par service), un délai sur chaque refus qui tait un état, et une preuve de travail devant la route — que la bibliothèque ne peut pas imposer puisqu'elle n'a pas de route
+- **Énumération par bot** — *partiellement*. Fermée aux niveaux 1 et 2 et à l'enrôlement : refus unique au premier, aucun identifiant demandé au second, compteur tiré du nom soumis au troisième. La route du sel répond toujours un sel, vrai ou faux (§4.2). Un refus du niveau 2 nomme pourtant un état : la suspension, qui apprend à qui détient déjà un code que ce code vise un compte réel. Ouverte au niveau 3, où la réponse utile EST la distinction — un succès rend un numéro de dossier, un nom inconnu ne peut pas en rendre. Les refus, eux, ne se distinguent pas : nom inconnu, dossier déjà ouvert et procédure gelée rendent le même `ouverture_refusee`, au même délai. Ce qui s'y oppose est le coût : deux freins avant la recherche du compte (par adresse, par service), ce délai sur chaque refus, et une preuve de travail devant la route — que la bibliothèque ne peut pas imposer puisqu'elle n'a pas de route
 - **Blanchiment de réputation sociale** — la bibliothèque n'offre aucun renommage de compte ; verrouiller le nom après l'inscription revient à l'application
 
 ### 10.2 CRITIQUE — Accès root serveur (sudo)

@@ -166,7 +166,7 @@ Pour déchiffrer, il a trois voies :
    vaut que 12,9 bits. Un plancher, le jour où il serait posé, devrait donc se prouver à la source
    et non se mesurer à l'arrivée.
 
-3. **Bruteforcer la passphrase** → même coût Argon2id par tentative. Quand SelfRecover la tire au sort, l'entropie est connue : six mots d'une liste de 7 776, soit environ 77,5 bits — la porte la plus solide par le calcul. Quand l'utilisateur l'apporte, tirée aux dés, elle ne vaut que le hasard de ces dés, que rien ne vérifie : six mots choisis de tête en feraient la porte la moins chère. Sa faiblesse est ailleurs : elle est écrite sur papier (§6.1).
+3. **Bruteforcer la passphrase** → même coût Argon2id par tentative. Quand SelfRecover la tire au sort, l'entropie est connue : six mots d'une liste de 7 776, soit environ 77,5 bits — la porte la plus solide par le calcul, dont la faiblesse est ailleurs : elle est écrite sur papier (§6.1). Quand l'utilisateur l'apporte, tirée aux dés, elle ne vaut que le hasard de ces dés, que rien ne vérifie : six mots choisis de tête en feraient la porte la moins chère.
 
 Une fuite ne donne donc **rien d'exploitable directement**. Le coût de bruteforce est par utilisateur (impossible de bruteforcer la base entière en parallèle puisque chaque user a son propre `user_salt`).
 

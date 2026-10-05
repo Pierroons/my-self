@@ -19,20 +19,23 @@
      │                              │                             │
      │                              │  POST /register             │
      │                              │  { derived_key, user_salt,  │
-     │                              │    username, identifier,    │
-     │                              │    password, passphrase? }  │
+     │                              │    username, passphrase? }  │
      │                              │────────────────────────────>│
      │                              │                             │
+     │                              │                generate password
+     │                              │                Argon2id(password)
      │                              │                Argon2id(derived_key)
      │                              │                passphrase brought? validate it
      │                              │                (6 listed words, lowercased),
      │                              │                else generate one (diceware)
      │                              │                Argon2id(passphrase)
-     │                              │                INSERT users
+     │                              │                INSERT account
+     │                              │                emit 10 recovery codes
      │                              │                             │
      │                              │<────────────────────────────│
-     │                              │  { passphrase: "..." }      │
-     │  Display passphrase once     │                             │
+     │                              │  { password, passphrase,    │
+     │                              │    recovery_codes }         │
+     │  Display them once           │                             │
      │<─────────────────────────────│                             │
      │                              │                             │
 ```
@@ -43,14 +46,14 @@
 User enters a recovery code + the memorized word
               │
               ▼
-Browser: GET /user-salt?code=…   (the recovery code locates the account;
-              │                    decoy salt if unknown — no enumeration)
+Browser: POST /user-salt { recovery_code }   (the code locates the account; decoy
+              │     salt if unknown — no enumeration; POST, so the code stays out of URLs and logs)
               ▼
 Browser computes HMAC-SHA256(key = word, message = material + "|v2" + user_salt)
               (material comes from the mandatory derivation mode — see below)
               │
               ▼
-POST /recover-l2 { recovery_code, recovery_key (derived) }
+POST /recover-l2 { recovery_code, recovery_key (derived), new_passphrase? }
               │
               ▼
 Server: code_lookup = HMAC-SHA256(deployment salt, recovery_code) → locate account
@@ -58,8 +61,9 @@ Server: code_lookup = HMAC-SHA256(deployment salt, recovery_code) → locate acc
               ▼
 Server: Argon2id-verify(recovery_code) AND Argon2id-verify(recovery_key)
               │   (generic error — never reveals which factor failed)
-              ├── OK ──> Generate new password and passphrase, consume the code,
-              │          revoke sessions; return both to the browser, once
+              ├── OK ──> Generate a new password; new passphrase drawn, or the one
+              │          brought (validated, and not the one it replaces); consume
+              │          the code, revoke sessions; return both to the browser, once
               │
               └── FAIL ─> Increment L2 attempts counter
                          The person chooses to open a dispute
@@ -71,19 +75,20 @@ No secret is requested here — by definition the user has none left. What is
 collected is a bundle of raw facts for a human to read, never a score.
 
 ```
-User types their public identifier only
+User types their account name only
               │
               ▼
 Browser generates a tracking code, sends SHA-256(code) as the claim
               │            └── the code itself stays with the user: an L3
               │                applicant has no session, so this claim is
               ▼                what protects the case thread
-POST /recover-l3-init { identifier, claim_hash }
+POST /recover-l3-init { username, claim_hash }
               │
-              ├── case already open ──> number NOT disclosed to the caller
-              │                         (the claim must not be derivable from a
-              │                          semi-public identifier)
-              │                         → recorded as a multi-requester signal
+              ├── unknown name, case already open, or procedure frozen
+              │     ──> one and the same refusal, same delay: nothing tells
+              │         the caller which (an open case is a third party's
+              │         recovery in progress); the number is never disclosed
+              │         → a concurrent request is recorded for the arbitrator
               ▼
 Server opens case LIT-XXXX (24h TTL), returns 3 contextual questions
    creation year · last-login month · usage frequency
@@ -106,8 +111,9 @@ A human administrator reads the facts and confirms identity in the case chat
               │
               ▼
 POST /l3-reset  → the OWNER sets a new password and memorized word;
-                  the server issues a fresh passphrase and a fresh batch of
-                  recovery codes, and revokes sessions and enrolled devices.
+                  the server issues a fresh passphrase (or validates the one the
+                  owner brings) and a fresh batch of recovery codes, and revokes
+                  sessions and enrolled devices.
                   The tracking code is consumed (one-shot).
 
    ⚠ At this level the server never generates the password: the owner sets it.

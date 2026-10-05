@@ -64,8 +64,8 @@ final class Recovery
         private readonly int $delaiRefusUs = 300000,
         /**
          * Échecs du niveau 2 au-delà desquels il est suspendu pour ce compte,
-         * jusqu'au prochain réarmement — l'émission d'un lot de codes, ou une
-         * récupération par code réussie.
+         * jusqu'au prochain réarmement — l'émission d'un lot de codes, une
+         * récupération par code ou par passphrase réussie.
          *
          * Il borne ce qu'ouvre une feuille volée : `maxEchecsCompte` seul fait
          * attendre, il ne plafonne pas. Le titulaire lève la suspension par sa

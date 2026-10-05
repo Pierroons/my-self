@@ -148,7 +148,7 @@ To decrypt, the attacker has three paths:
    >
    > **No entropy floor is enforced.** Argon2id buys a multiplier, not entropy: a weak word remains ~13 bits of guessing plus ~13 bits of cost. A floor high enough to matter (77.5 bits) would end the sharing of the memorized word between SelfRecover and the vault (§3.1) — a design decision, not a setting. It is stated here as an open question rather than answered silently in either direction.
 
-3. **Bruteforce the passphrase** → the same Argon2id cost per attempt. When SelfRecover draws it at random, the entropy is known: six words from a 7,776-word list, about 77.5 bits — the strongest door by computation. When the user brings it, rolled with dice, it is only as random as those dice, which nothing checks: six words picked by hand would make it the cheapest door. Its weakness lies elsewhere: it is written on paper (§6.1).
+3. **Bruteforce the passphrase** → the same Argon2id cost per attempt. When SelfRecover draws it at random, the entropy is known: six words from a 7,776-word list, about 77.5 bits — the strongest door by computation, whose weakness lies elsewhere: it is written on paper (§6.1). When the user brings it, rolled with dice, it is only as random as those dice, which nothing checks: six words picked by hand would make it the cheapest door.
 
 A leak therefore yields **nothing immediately exploitable**. Bruteforce cost is per-user (impossible to bruteforce the whole database in parallel because each user has their own `user_salt`).
 
