@@ -74,6 +74,17 @@ final class Redteam
 
         $ipHash = DataGuard::hmac($ip ?? 'unknown', 'redteam-ip');
         $since = time() - self::RL_WINDOW;
+
+        // 🔑 L'empreinte ne sert qu'au frein, donc qu'une fenêtre. Au-delà elle
+        // est un passif : un HMAC d'adresse IPv4 ne résiste pas à qui détient la
+        // clé, et la clé d'instance se lit avec les mêmes droits que cette base.
+        // Quatre milliards d'essais se parcourent en minutes. Les chercheurs à
+        // qui l'on promet un cadre n'ont pas à laisser une adresse récupérable
+        // par le chercheur suivant. Contrepartie assumée : passé la fenêtre, on
+        // ne peut plus rapprocher deux rapports par leur origine.
+        $pdo->prepare('UPDATE redteam_reports SET ip_hash = NULL WHERE created_at < ? AND ip_hash IS NOT NULL')
+            ->execute([$since]);
+
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM redteam_reports WHERE ip_hash = ? AND created_at >= ?');
         $stmt->execute([$ipHash, $since]);
         if ((int) $stmt->fetchColumn() >= self::RL_MAX) {

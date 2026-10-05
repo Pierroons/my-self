@@ -12,6 +12,8 @@ $account = Auth::currentAccount($pdo);
 
 // Garde : réservé aux admins. Pas d'indice d'existence pour les non-admins.
 if (!$account || empty($account['is_admin'])) {
+    // Le statut doit dire ce que la page affiche : voir `admin.php`, même garde.
+    http_response_code(404);
     render_header('Espace', $account);
     echo '<div class="card"><h1>404</h1><p class="muted">Page introuvable.</p></div>';
     render_footer();
