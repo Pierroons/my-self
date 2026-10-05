@@ -578,6 +578,13 @@ return [
     'dsp.js.admin'      => 'Administrator',
     'dsp.js.empty'      => 'No messages yet.',
     'dsp.js.reset_done' => 'Account recovered. You can log in with your new secrets.',
+    'dsp.done.h3'       => 'Account recovered — write these down now',
+    'dsp.done.copy'     => 'They will not be shown again. Your password is the one you just chose; '
+                         . 'the passphrase and codes below are new, and they replace the previous '
+                         . 'ones, which are now worthless.',
+    'dsp.done.pp'       => 'Recovery passphrase (level 1)',
+    'dsp.done.codes'    => 'Recovery codes, single use each (level 2)',
+    'dsp.done.login'    => 'Go to login',
 
     'reg.weak_word' => 'The recovery word must be at least %d characters long.',
     'reg.codes'  => 'Backup codes — %d, single use (L2 recovery with your memorized word)',

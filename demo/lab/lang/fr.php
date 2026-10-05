@@ -577,6 +577,13 @@ return [
     'dsp.js.admin'      => 'Administrateur',
     'dsp.js.empty'      => 'Aucun message pour l\'instant.',
     'dsp.js.reset_done' => 'Compte repris. Tu peux te connecter avec tes nouveaux secrets.',
+    'dsp.done.h3'       => 'Compte repris — note ces secrets maintenant',
+    'dsp.done.copy'     => 'Ils ne seront pas réaffichés. Ton mot de passe est celui que tu viens '
+                         . 'de choisir ; la passphrase et les codes ci-dessous sont neufs, et ils '
+                         . 'remplacent les précédents, qui ne valent plus rien.',
+    'dsp.done.pp'       => 'Passphrase de récupération (niveau 1)',
+    'dsp.done.codes'    => 'Codes de récupération, un seul usage chacun (niveau 2)',
+    'dsp.done.login'    => 'Aller à la connexion',
 
     'reg.weak_word' => 'Le mot de récupération doit faire au moins %d caractères.',
     'reg.codes'  => 'Codes de secours — %d, usage unique (récupération L2 avec ton mot mémorisé)',
