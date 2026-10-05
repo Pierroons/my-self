@@ -379,8 +379,8 @@ jobs:
             sortie=$(php bi-self/selfrecover/tests/sanity_passphrase_apportee.php --profil="$profil" 2>&1) && rc=0 || rc=$?
             echo "$sortie"
             [ "$rc" = 0 ] || { echo "::error::le banc de la passphrase apportée a échoué sous $profil"; exit 1; }
-            echo "$sortie" | grep -qE '^OK — 37/37$' \
-              || { echo "::error::le banc de la passphrase apportée n'a pas joué ses 37 cas sous $profil"; exit 1; }
+            echo "$sortie" | grep -qE '^OK — 39/39$' \
+              || { echo "::error::le banc de la passphrase apportée n'a pas joué ses 39 cas sous $profil"; exit 1; }
           done
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
             F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
@@ -406,6 +406,20 @@ jobs:
             $B '❌ niveau 2 : la passphrase remplacée ne peut pas revenir'
           canari $R 'public const MOTS_PASSPHRASE = 6;' 'public const MOTS_PASSPHRASE = 4;' \
             bi-self/selfrecover/tests/sanity_couplage_dataguard.php '✗ plus courte passphrase apportable'
+          canari $R 'if ($neuve === $ancienne) {' 'if (false) {' \
+            $B '❌ apporter celle qui sert est refusé'
+          canari $R 'if (strlen($saisie) > self::OCTETS_PASSPHRASE_MAXIMUM) {' 'if (false) {' \
+            $B "❌ au-delà du plafond d'octets, la saisie est refusée comme trop longue"
+          E=bi-self/selfrecover/src/Recovery/Escalade.php
+          canari $E "if (\$ancienne !== null && Hashing::verify(\$jugee['canonique'], (string) \$ancienne['empreinte_passphrase'])) {" 'if (false) {' \
+            $B "❌ apporter l'ancienne est refusé"
+          canari $E "if (\$jugee['canonique'] === strtolower(Recovery::normaliserPassphrase(\$motDePasse))) {" 'if (false) {' \
+            $B '❌ une passphrase égale au mot de passe choisi est refusée'
+          # Le refus d'ouverture du niveau 3 est unique : un dossier déjà ouvert qui
+          # se nommerait apprendrait à n'importe qui qu'un tiers récupère son compte.
+          canari $E '            $this->stockage->compterDemandeurConcurrent($existant->id);' \
+            "            return ['ok' => false, 'error' => 'deja_ouvert', 'message' => 'ouvert'];" \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ nom inconnu, dossier déjà ouvert, procédure gelée : une seule réponse'
 
       # Un frein qu'on n'a jamais fait céder ne se distingue pas d'un frein qui
       # n'est relié à rien : les deux laissent le banc vert. Ce canari mesure que
@@ -487,8 +501,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 124 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 124 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 125 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 125 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les

@@ -120,7 +120,7 @@ final class RecoverL3
             // avant la recherche pour que l'existence ne se lise pas au
             // chronomètre ; sans cette égalisation, la phrase rendue annule cette
             // précaution. Les deux cas sortent donc sous une réponse unique.
-            if (in_array($r['error'] ?? '', ['compte_inconnu', 'deja_ouvert'], true)) {
+            if (in_array($r['error'] ?? '', ['ouverture_refusee', 'compte_inconnu', 'deja_ouvert'], true)) {
                 return [
                     'ok'      => false,
                     'error'   => 'refuse',

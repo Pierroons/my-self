@@ -191,7 +191,7 @@ final class Escalade
     }
 
     /** L'empreinte que le serveur range, à partir du sésame que le client garde. */
-    public static function empreinteSesame(string $sesame): string
+    public static function empreinteSesame(#[\SensitiveParameter] string $sesame): string
     {
         return hash('sha256', $sesame);
     }
@@ -209,6 +209,11 @@ final class Escalade
      * Ce qui s'oppose à l'énumération n'est donc pas le silence mais le COÛT :
      * les freins ci-dessous, et une preuve de travail que l'intégrateur pose
      * devant la route.
+     *
+     * 🔑 **Elle ne dit rien de plus.** Un nom inconnu, un dossier déjà ouvert, une
+     * procédure gelée reçoivent le même refus, au même délai : la route est
+     * publique, et nommer l'un d'eux apprendrait à n'importe qui qu'un tiers a une
+     * récupération en cours, ou en a eu de refusées.
      *
      * 🔑 `$ip` vaut `null` quand l'adresse ne dit rien de l'appelant — derrière
      * un service caché, où tout arrive de la même adresse, la passer ferait d'un
@@ -257,24 +262,23 @@ final class Escalade
             $this->stockage->tracerTentative($this->etiquette('@' . $ip), false, null, $maintenant);
         }
 
+        $refus = ['ok' => false, 'error' => 'ouverture_refusee',
+                  'message' => 'Aucune procédure n\'a pu être ouverte pour ce nom. Si c\'est ton compte et '
+                             . 'qu\'une procédure y est déjà en cours ou suspendue, un administrateur peut la '
+                             . 'clore ou lever la suspension.'];
+
         $compte = $this->stockage->trouverCompte($nomCompte);
         if ($compte === null) {
             usleep($this->delaiRefusUs);
 
-            return ['ok' => false, 'error' => 'compte_inconnu', 'message' => 'Aucun compte à ce nom.'];
+            return $refus;
         }
         $compteId = (int) $compte['id'];
 
-        $gel = $this->stockage->gelJusqua($compteId, $maintenant);
-        if ($gel > 0) {
-            // Même délai que le compte inconnu : sans lui, l'existence se lirait
-            // au chronomètre.
+        if ($this->stockage->gelJusqua($compteId, $maintenant) > 0) {
             usleep($this->delaiRefusUs);
 
-            return ['ok' => false, 'error' => 'gele',
-                    'message' => 'Trop de demandes refusées récemment sur ce compte. La procédure rouvrira le '
-                               . gmdate('d/m/Y', $gel) . '. Le compte, lui, fonctionne normalement. '
-                               . 'Si c\'est une erreur, un administrateur peut lever ce gel.'];
+            return $refus;
         }
 
         // 🔑 Un dossier déjà ouvert ne redonne PAS son numéro. Le nom de compte
@@ -294,18 +298,8 @@ final class Escalade
         if ($existant !== null) {
             $this->stockage->compterDemandeurConcurrent($existant->id);
             usleep($this->delaiRefusUs);
-            // Un accord court `ttlAccepte` après la décision ; tout autre dossier
-            // actif, jusqu'à son `expireLe` — la règle de `litigeActifDuCompte()`.
-            $libre = $existant->statut === Litige::ACCEPTE && $existant->trancheLe !== null
-                ? $existant->trancheLe + $this->ttlAccepte
-                : $existant->expireLe;
 
-            return ['ok' => false, 'error' => 'deja_ouvert',
-                    'message' => 'Une procédure est déjà en cours sur ce compte. '
-                               . 'Si c\'est la tienne, reprends-la avec son numéro et ton sésame. '
-                               . 'Si tu les as perdus, demande à un administrateur de la clore, '
-                               . 'ou attends le ' . gmdate('d/m/Y', $libre) . ' : sans suite, elle tombe '
-                               . 'd\'elle-même, et tu pourras en ouvrir une nouvelle.'];
+            return $refus;
         }
 
         $numero   = self::engendrerNumero();
@@ -601,9 +595,9 @@ final class Escalade
      */
     public function reEnroler(
         string $numero,
-        string $sesame,
-        string $motDePasse,
-        string $motDerive,
+        #[\SensitiveParameter] string $sesame,
+        #[\SensitiveParameter] string $motDePasse,
+        #[\SensitiveParameter] string $motDerive,
         string $sel,
         ?int $maintenant = null,
         #[\SensitiveParameter] ?string $nouvellePassphrase = null,

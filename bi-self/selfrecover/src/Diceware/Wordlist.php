@@ -90,7 +90,7 @@ final class Wordlist {
      * Recherche par clé, parce qu'une passphrase apportée est contrôlée avant
      * tout frein : son coût ne doit pas grandir avec ce qu'on lui envoie.
      */
-    public static function inAnyList(string $word): bool {
+    public static function inAnyList(#[\SensitiveParameter] string $word): bool {
         self::$union ??= array_fill_keys(array_merge(self::load('en'), self::load('fr')), true);
 
         return isset(self::$union[$word]);

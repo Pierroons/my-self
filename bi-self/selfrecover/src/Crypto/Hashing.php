@@ -57,13 +57,13 @@ final class Hashing
         );
     }
 
-    public static function hash(string $secret): string
+    public static function hash(#[\SensitiveParameter] string $secret): string
     {
         return password_hash($secret, PASSWORD_ARGON2ID, self::ARGON2);
     }
 
     /** Vérifie un secret contre son empreinte. */
-    public static function verify(string $secret, string $hash): bool
+    public static function verify(#[\SensitiveParameter] string $secret, string $hash): bool
     {
         return password_verify($secret, $hash);
     }

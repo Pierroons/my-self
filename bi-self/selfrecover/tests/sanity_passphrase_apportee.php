@@ -114,9 +114,16 @@ verifier('une espace insécable ne sépare pas deux mots',
     (Recovery::validerPassphraseApportee(str_replace(' ', "\u{00A0}", $pEn) . ' ' . $pEn)['motif'] ?? '') === 'hors_liste');
 verifier('les tirets ne séparent pas les mots : il faut des espaces',
     (Recovery::validerPassphraseApportee(str_replace(' ', '-', $pEn))['motif'] ?? '') === 'trop_courte');
-$vNul = Recovery::validerPassphraseApportee(substr($pEn, 0, 3) . "\0" . substr($pEn, 3) . " \xC3\x28 suite");
-verifier('un octet nul ou un UTF-8 cassé se refusent sans bruit', ($vNul['ok'] ?? true) === false);
-verifier('au-delà du plafond d\'octets, le refus vient avant tout calcul',
+$bruit = [];
+set_error_handler(static function (int $n, string $m) use (&$bruit): bool { $bruit[] = $m; return true; });
+$vNul    = Recovery::validerPassphraseApportee($pEn . " zz\0zz");
+$vCasse  = Recovery::validerPassphraseApportee($pEn . " zz\xC3\x28zz");
+restore_error_handler();
+verifier('un octet nul dans un mot le met hors liste, sans avertissement',
+    ($vNul['motif'] ?? '') === 'hors_liste' && $bruit === [], implode(' | ', $bruit));
+verifier('un UTF-8 cassé dans un mot le met hors liste, sans avertissement',
+    ($vCasse['motif'] ?? '') === 'hors_liste' && $bruit === [], implode(' | ', $bruit));
+verifier('au-delà du plafond d\'octets, la saisie est refusée comme trop longue',
     (Recovery::validerPassphraseApportee(str_repeat($pEn . ' ', 200))['motif'] ?? '') === 'trop_longue');
 $repete = implode(' ', array_merge(array_slice(explode(' ', $pEn), 0, 5), [explode(' ', $pEn)[1]]));
 verifier('un mot qui revient est refusé : on relance le dé', (Recovery::validerPassphraseApportee($repete)['motif'] ?? '') === 'mot_repete');
@@ -169,6 +176,10 @@ $rDeja = $rec->parPassphrase('alice', $ancienne, $IP, $now, nouvellePassphrase: 
 verifier('apporter celle qui sert est refusé, sans trace, rien de consommé',
     ($rDeja['error'] ?? '') === 'passphrase_deja_servie' && $st->tentatives === []
     && Hashing::verify($ancienne, $st->passphrases['alice']['empreinte_passphrase']));
+$permutee = implode(' ', array_reverse(explode(' ', $ancienne)));
+$rPerm    = $rec->parPassphrase('alice', $ancienne, $IP, $now, nouvellePassphrase: $permutee);
+verifier('ses mots dans un autre ordre sont refusés aussi : c\'est le même papier',
+    ($rPerm['error'] ?? '') === 'passphrase_deja_servie');
 
 // ── C. Niveau 2 ────────────────────────────────────────────────────────────
 echo "\n→ Niveau 2 — code et mot mémorisé, passphrase apportée\n";

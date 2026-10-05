@@ -136,7 +136,7 @@ for ($i = 0; $i < 4; $i++) {
     $passes3[] = $escIp->ouvrir("n$i", Escalade::empreinteSesame("s$i"), '10.0.0.1', $now + $i);
 }
 verifier('contre-témoin : les trois premières passent le frein — le seuil annoncé est le seuil réel',
-    array_slice(array_column($passes3, 'error'), 0, 3) === ['compte_inconnu', 'compte_inconnu', 'compte_inconnu']);
+    array_slice(array_column($passes3, 'error'), 0, 3) === ['ouverture_refusee', 'ouverture_refusee', 'ouverture_refusee']);
 verifier('⭐ la 4e est freinée', ($passes3[3]['error'] ?? '') === 'trop_de_demandes');
 
 // ⭐ Ouvrir un dossier ne doit consommer le quota d'AUCUNE autre voie. Toutes
@@ -171,7 +171,7 @@ for ($i = 0; $i < 11; $i++) {
     $suiteD[] = $escD->ouvrir("d$i", Escalade::empreinteSesame("x$i"), '10.0.0.5', $now + $i);
 }
 verifier('⭐ par défaut, dix ouvertures par adresse passent',
-    array_column(array_slice($suiteD, 0, 10), 'error') === array_fill(0, 10, 'compte_inconnu'));
+    array_column(array_slice($suiteD, 0, 10), 'error') === array_fill(0, 10, 'ouverture_refusee'));
 verifier('⭐ et la onzième est freinée — le chiffre publié est le chiffre livré',
     ($suiteD[10]['error'] ?? '') === 'trop_de_demandes');
 
@@ -183,8 +183,8 @@ $escServ = new Escalade($stS, new Recovery($stS, 'sel', ProfilDeploiement::TOR_O
 $e1 = $escServ->ouvrir('inconnu1', Escalade::empreinteSesame('a'), maintenant: $now);
 $e2 = $escServ->ouvrir('inconnu2', Escalade::empreinteSesame('b'), maintenant: $now + 1);
 $e3 = $escServ->ouvrir('inconnu3', Escalade::empreinteSesame('c'), maintenant: $now + 2);
-verifier('contre-témoin : les deux premiers noms rendent bien « inconnu »',
-    ($e1['error'] ?? '') === 'compte_inconnu' && ($e2['error'] ?? '') === 'compte_inconnu');
+verifier('contre-témoin : les deux premiers noms rendent bien le refus, pas le frein',
+    ($e1['error'] ?? '') === 'ouverture_refusee' && ($e2['error'] ?? '') === 'ouverture_refusee');
 verifier('⭐ le plafond de service arrête l\'énumération, que les noms n\'existent pas n\'y change rien',
     ($e3['error'] ?? '') === 'trop_de_demandes');
 
@@ -212,7 +212,7 @@ $escV = new Escalade($stV, new Recovery($stV, 'sel', ProfilDeploiement::TOR_ONIO
 $escV->ouvrir('v1', Escalade::empreinteSesame('a'), '', $now);
 $vide2 = $escV->ouvrir('v2', Escalade::empreinteSesame('b'), '   ', $now + 1);
 verifier('⭐ une adresse vide ou blanche vaut « pas d\'adresse »',
-    ($vide2['error'] ?? '') === 'compte_inconnu', (string) ($vide2['error'] ?? ''));
+    ($vide2['error'] ?? '') === 'ouverture_refusee', (string) ($vide2['error'] ?? ''));
 
 // ⭐ Aucun frein par compte : un tiers ne doit pas pouvoir fermer l'ouverture au
 // titulaire. Ce qui borne le harcèlement est le dossier lui-même, et la
@@ -222,8 +222,8 @@ for ($i = 0; $i < 8; $i++) {
     $escH->ouvrir('alice', Escalade::empreinteSesame("mallory$i"), '10.0.0.9', $now + $i);
 }
 $victime = $escH->ouvrir('alice', Escalade::empreinteSesame('la vraie'), '10.0.0.2', $now + 20);
-verifier('⭐ huit sollicitations d\'un tiers ne murent pas le titulaire',
-    ($victime['error'] ?? '') === 'deja_ouvert');
+verifier('⭐ huit sollicitations d\'un tiers ne murent pas le titulaire : refus du dossier ouvert, pas frein',
+    ($victime['error'] ?? '') === 'ouverture_refusee');
 verifier('et la collision reste visible à l\'arbitre',
     ($stH->litiges[0]['demandeurs_concurrents'] ?? 0) === 8);
 
@@ -393,9 +393,12 @@ echo "\n→ Ce qui gèle, c'est la procédure\n";
 
 $gel = $esc3->ouvrir('alice', Escalade::empreinteSesame('encore un'), maintenant: $now + 3 * $JOUR);
 verifier('au 3ᵉ refus, l\'ouverture d\'un nouveau dossier est gelée', ($gel['ok'] ?? true) === false);
-verifier('et le refus le dit', ($gel['error'] ?? '') === 'gele');
-verifier('le message précise que le compte fonctionne',
-    str_contains((string) ($gel['message'] ?? ''), 'fonctionne normalement'));
+verifier('et le refus est celui d\'un nom inconnu : la suspension ne se lit pas de dehors',
+    ($gel['error'] ?? '') === 'ouverture_refusee');
+verifier('⭐ nom inconnu, dossier déjà ouvert, procédure gelée : une seule réponse, mot pour mot',
+    json_encode($e1) === json_encode($victime) && json_encode($victime) === json_encode($gel));
+verifier('le refus ne nomme ni le gel ni la date où il tombe',
+    !str_contains((string) ($gel['message'] ?? ''), 'gel') && !preg_match('#\d{2}/\d{2}/\d{4}#', (string) ($gel['message'] ?? '')));
 
 // Contre-témoin : deux refus ne gèlent pas. Sans lui, un gel permanent rendrait
 // les trois contrôles ci-dessus verts.
@@ -496,7 +499,7 @@ verifier('contre-témoin : le dossier est bien accepté et non consommé',
 
 $tiers = $escA->ouvrir('alice', Escalade::empreinteSesame('un tiers'), maintenant: $now + 3 * $JOUR);
 verifier('⭐ un accord reste actif bien après le TTL d\'instruction',
-    ($tiers['error'] ?? '') === 'deja_ouvert', (string) ($tiers['error'] ?? ''));
+    ($tiers['error'] ?? '') === 'ouverture_refusee', (string) ($tiers['error'] ?? ''));
 verifier('et la collision est comptée pour l\'arbitre',
     ($stA->litiges[0]['demandeurs_concurrents'] ?? 0) === 1);
 
@@ -516,7 +519,7 @@ $oB = $escB->ouvrir('alice', Escalade::empreinteSesame($sB), maintenant: $now);
 $escB->soumettre((string) $oB['numero'], $sB, ['annee_creation' => '2022'], $now + 60);
 $escB->trancher((string) $oB['numero'], 'accepte', 'arbitre', $now + 120);
 verifier('contre-témoin : sans abandon, la place reste prise',
-    ($escB->ouvrir('alice', Escalade::empreinteSesame('x'), maintenant: $now + 200)['error'] ?? '') === 'deja_ouvert');
+    ($escB->ouvrir('alice', Escalade::empreinteSesame('x'), maintenant: $now + 200)['error'] ?? '') === 'ouverture_refusee');
 $ab = $escB->abandonner('alice', 'arbitre', $now + 300);
 verifier('⭐ un arbitre abandonne le litige en cours', ($ab['ok'] ?? false) === true,
     (string) ($ab['error'] ?? ''));

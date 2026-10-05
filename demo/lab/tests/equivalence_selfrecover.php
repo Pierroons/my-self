@@ -336,7 +336,7 @@ verifier('banned_until n\'a PAS été posé — c\'est la procédure qui gèle, 
     (int) ($pdo3->query('SELECT COALESCE(banned_until, 0) FROM accounts WHERE id = 1')->fetchColumn()) === 0);
 
 $gele3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('encore'), maintenant: $now3 + 400 + 2 * 86400);
-verifier('et l\'ouverture est bien refusée pendant le gel', ($gele3['error'] ?? '') === 'gele');
+verifier('et l\'ouverture est bien refusée pendant le gel, sous le refus unique', ($gele3['error'] ?? '') === 'ouverture_refusee');
 
 echo "\n→ ⭐ La date d'émission de la passphrase, sur le schéma réel\n";
 

@@ -116,7 +116,7 @@ final class Recovery
      */
     public function parPassphrase(
         string $nomCompte,
-        string $passphrase,
+        #[\SensitiveParameter] string $passphrase,
         ?string $ip = null,
         ?int $maintenant = null,
         #[\SensitiveParameter] ?string $nouvellePassphrase = null,
@@ -127,15 +127,21 @@ final class Recovery
         $refus      = ['ok' => false, 'message' => 'Identifiant ou passphrase incorrect.'];
 
         // 🔑 La passphrase apportée est jugée avant les freins, sans trace ni
-        // délai : son refus ne dépend que de ce qu'envoie l'appelant, jamais du
-        // compte. La tracer laisserait n'importe qui charger le frein d'un autre.
+        // délai : rien n'a encore été vérifié, et son refus ne dit rien du
+        // compte. Ce n'est pas un essai manqué ; il n'y a rien à compter.
         $apport = null;
         if ($nouvellePassphrase !== null) {
             $jugee = self::validerPassphraseApportee($nouvellePassphrase);
             if (!$jugee['ok']) {
                 return $jugee;
             }
-            if ($jugee['canonique'] === strtolower(self::normaliserPassphrase($passphrase))) {
+            // Les mêmes mots dans un autre ordre sont la même passphrase pour qui
+            // a le papier : six mots n'ont que 720 ordres.
+            $neuve    = array_unique(explode(' ', $jugee['canonique']));
+            $ancienne = array_unique(explode(' ', strtolower(self::normaliserPassphrase($passphrase))));
+            sort($neuve);
+            sort($ancienne);
+            if ($neuve === $ancienne) {
                 return ['ok' => false, 'error' => 'passphrase_deja_servie',
                         'message' => 'La nouvelle passphrase doit différer de celle qu\'elle remplace.'];
             }
@@ -215,8 +221,8 @@ final class Recovery
      * @return array{ok: bool, error?: string, motif?: string, message: string, mot_de_passe?: string, passphrase?: string, compte?: string, codes_restants?: int}
      */
     public function parCode(
-        string $code,
-        string $motDerive,
+        #[\SensitiveParameter] string $code,
+        #[\SensitiveParameter] string $motDerive,
         ?string $ip = null,
         ?int $maintenant = null,
         #[\SensitiveParameter] ?string $nouvellePassphrase = null,
