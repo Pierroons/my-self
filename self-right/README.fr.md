@@ -8,7 +8,7 @@
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../LICENSE)
 [![SelfJustice : v0.4.2 bêta](https://img.shields.io/badge/SelfJustice-v0.4.2%20b%C3%AAta-green.svg)](./selfjustice/)
-[![SelfAct : v0.1.3](https://img.shields.io/badge/SelfAct-v0.1.3-brightgreen.svg)](./selfact/)
+[![SelfAct : v0.1.3 bêta](https://img.shields.io/badge/SelfAct-v0.1.3%20b%C3%AAta-green.svg)](./selfact/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
 
@@ -24,7 +24,7 @@ L'accès au droit en France est formellement égal. En pratique, il demande :
 - De remplir le bon formulaire dans le bon délai
 - De payer un avocat, ou de te représenter toi-même
 
-Chacune de ces étapes est un filtre. La plupart des gens abandonnent aux deux premières. Connaître ses droits ne sert à rien si on ne sait pas les faire valoir. **Le droit n'est accessible qu'à ceux qui ont déjà une littératie juridique** — une inégalité auto-entretenue.
+Chacune de ces étapes est un filtre. Connaître ses droits ne sert à rien si on ne sait pas les faire valoir. **Le droit n'est accessible qu'à ceux qui ont déjà une littératie juridique** — une inégalité auto-entretenue.
 
 Self-Right s'attaque à deux de ces filtres : **lire le texte (SelfJustice), puis trouver la démarche et son délai (SelfAct)**.
 
@@ -59,19 +59,19 @@ Aucun des deux modules n'analyse ton cas à ta place : la consultation juridique
 | Module | Rôle | Statut |
 |--------|------|--------|
 | [SelfJustice](./selfjustice/) | Directives juridiques lisibles par machine + API ouverte du droit | **v0.4.2 bêta** — en ligne sur [justice.my-self.fr](https://justice.my-self.fr) |
-| [SelfAct](./selfact/) | Ressources officielles, délais et modèles de lettres pour la démarche | **v0.1.3** — API, catalogue et pages en service |
+| [SelfAct](./selfact/) | Ressources officielles, délais et modèles de lettres pour la démarche | **v0.1.3 bêta** — API, catalogue et pages en service |
 
 ---
 
 ## Statut
 
-SelfJustice est **déployé en production** et sert n'importe quel agent IA (Claude, ChatGPT, Mistral, Gemini, Perplexity) avec tout le corpus juridique français indexé et les textes UE/CEDH, via une API HTTP ouverte. N'importe qui peut l'interroger, n'importe qui peut l'auto-héberger. Compteurs en direct : [`/api/status`](https://justice.my-self.fr/api/status).
+SelfJustice est **déployé en production**. Par une API HTTP ouverte, il sert les codes et lois en vigueur (base LEGI de la DILA), les textes UE/CEDH et la jurisprudence — administrative en texte intégral, judiciaire en index — à toute IA capable de lire une URL ou passant par le serveur MCP. N'importe qui peut l'interroger ; n'importe qui peut l'auto-héberger à partir de la configuration de référence de `deploy/selfjustice/`. Compteurs en direct : [`/api/status`](https://justice.my-self.fr/api/status).
 
-SelfAct **tourne aussi**, et son dossier le montre : [`selfact/`](./selfact/) porte son code, ses données, ses garde-fous, son déploiement, son whitepaper et sa licence.
+SelfAct **tourne aussi**, en bêta, et son dossier le montre : [`selfact/`](./selfact/) porte son code, ses données, ses garde-fous, son déploiement, son whitepaper et sa licence.
 
 | Brique | Où | Ce qu'elle fait |
 |---|---|---|
-| Catalogue | [`selfact/api/`](./selfact/api/) | plus de 1 800 ressources officielles moissonnées sur service-public.gouv.fr, rangées en 16 catégories — le compte exact et la ventilation par type sont servis en direct par `/act/api/catalog.php?stats=1`. Rafraîchi les 1er et 15. |
+| Catalogue | [`selfact/api/`](./selfact/api/) | plus de 1 800 ressources officielles moissonnées sur service-public.gouv.fr, rangées en 16 catégories — le compte exact et la ventilation par type sont dans le catalogue lui-même (`meta`), servi par `/act/api/catalog.php`. Rafraîchi les 1er et 15. |
 | Aiguillage | [`selfact/api/find.php`](./selfact/api/find.php) | une vingtaine de situations curées à la main : « je me fais licencier » → l'acte, l'article, le formulaire. |
 | Calcul de délai | [`selfact/api/deadline.php`](./selfact/api/deadline.php) | Le seul endroit qui calcule au lieu de restituer, avec export agenda. |
 | Gabarit de courrier | [`selfact/api/draft.php`](./selfact/api/draft.php) | Mise en demeure, saisine (conciliateur, Défenseur des droits), recours gracieux, résiliation, plainte — chacun portant la mention « NON OFFICIEL » dans le corps quand il imite la forme d'un acte, et le rappel en pied dans tous les cas, et les ressources officielles correspondantes. |

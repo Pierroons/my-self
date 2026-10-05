@@ -534,7 +534,7 @@
     <p>
       Chaque module résout un problème concret de la vie quotidienne —
       consulter le droit et préparer ses démarches, récupérer un mot de passe sans email,
-      garder ses données illisibles si elles fuient — en rendant à l'individu la
+      garder ses données chiffrées si elles fuient — en rendant à l'individu la
       <strong>souveraineté</strong> sur son identité, son droit et ses données.
     </p>
   </div>
@@ -555,9 +555,10 @@
       <div class="sub">Identité sociale</div>
       <p class="muted">
         <em>« Si une communauté peut se construire, elle peut se gouverner. »</em>
-        Une identité fiable rend la modération par vote résistante aux attaques
-        Sybil. Le vote collectif crée un tissu qui survit à n'importe quel mauvais
-        acteur, y compris le fondateur.
+        Un compte qui se récupère sans email garde sa réputation. Le vote
+        collectif répartit la modération entre les membres ; des arbitres tranchent
+        ce que les votes ne règlent pas, et chacun de leurs gestes s'inscrit à leur nom au journal
+        si l'hébergeur en branche un.
       </p>
       <div class="modules">
         <a class="mod" href="https://bi-self.example.org/recover">
@@ -600,7 +601,7 @@
         <em>« Prends ma base — tu auras du bruit. »</em>
         Une base sort toujours un jour : sauvegarde oubliée, dump d'un prestataire,
         disque revendu. SelfDataGuard chiffre la donnée avant qu'elle atteigne la
-        base, si bien qu'une exfiltration ne rend rien de lisible. SelfRecover-LUKS
+        base : une exfiltration ne rend rien de lisible sans deviner, hors ligne, le secret d'un utilisateur. SelfRecover-LUKS
         couvre l'autre état : la racine chiffrée du serveur et ses volumes de données
         s'ouvrent avec une phrase de récupération tirée au hasard sur une liste diceware pour cette machine,
         à distance depuis le démarrage.
@@ -626,7 +627,7 @@
   </div>
   <div class="floor-card">
     <h2><span aria-hidden="true">🌻</span> SelfFarm-Lite</h2>
-    <div class="sub">L'étage applicatif — première preuve que les piliers tiennent</div>
+    <div class="sub">L'étage applicatif, dans son propre dépôt</div>
     <p class="tagline">
       « Quand l'identité, le droit et la sécurité sont en place, l'individu peut construire. »
     </p>
@@ -636,14 +637,13 @@
       qui refusent les SaaS agri et les ERP lourds. Compta, factures Factur-X, prévisionnel
       DNJA, lecture des relevés bancaires (en préparation), cartographie parcellaire, caisse de marché et
       sauvegarde souveraine multi-support (disque, mobile, NAS chiffré).
-      <strong>Zéro cloud, SQLite local, AGPL-3.0.</strong>
+      <strong>Zéro cloud, SQLite local, AGPL-3.0-or-later.</strong>
     </p>
     <p class="muted">
-      Elle est conçue pour s'appuyer sur les trois piliers — intégrations à des stades
-      divers, pas toutes câblées à ce jour : identité fiable (Bi-Self) pour signer les
-      documents légaux, droit consultable (Self-Right) pour retrouver les aides et les
-      réglementations agricoles, chiffrement (Self-Security) pour protéger les données
-      bancaires et comptables sensibles.
+      Elle est conçue pour s'adosser aux trois piliers, mais aucune intégration n'est
+      câblée à ce jour : récupération de compte sans email (Bi-Self), droit consultable
+      (Self-Right) pour retrouver les aides et les réglementations agricoles, chiffrement
+      (Self-Security) pour protéger les données bancaires et comptables sensibles.
     </p>
     <!-- ecosysteme:selffarm-lite:debut — produit par scripts/check-ecosysteme.sh --ecrire -->
     <p class="muted">Version publiée : <strong>v0.4.11</strong> — ses modules, tels que son propre manifeste les décrit :</p>
@@ -718,13 +718,15 @@
       <strong>MySelf-Lab</strong> est un <strong>forum de démonstration</strong> où deux piliers, Bi-Self
       et Self-Security, tournent ensemble en conditions réelles — et qui est <strong>volontairement exposé à l'attaque</strong>.
       Inscription sans email (SelfRecover),
-      messages privés et profils chiffrés (SelfDataGuard),
-      réputation et modération anti-Sybil (SelfModerate). Un <strong>simulateur d'attaque</strong> intégré
+      messages privés et profils chiffrés au repos sous une clé du serveur (primitives SelfDataGuard),
+      réputation et modération par vote (SelfModerate). Un <strong>simulateur d'attaque</strong> intégré
       montre, en direct, ce que l'écosystème protège.
     </p>
     <p class="muted">
-      La promesse : <strong>attaque-le, tes données survivent.</strong> Un mémo personnel chiffré de
-      bout en bout reste illisible même pour l'administrateur — c'est le défi posé à toute red team.
+      Le défi : lire un <strong>mémo personnel chiffré de bout en bout</strong>, dont le serveur ne reçoit jamais la clé — tant qu'il sert le code publié : un serveur pris pourrait
+      servir une page qui la lit.
+      Ses limites connues, dont l'attaque hors ligne d'un mot de passe faible, sont publiées dans les
+      règles red team : une limite documentée n'est pas un finding, la dépasser en est un.
     </p>
     <div class="floor-modules">
       <div class="mod">
@@ -743,7 +745,7 @@
     <div class="floor-cta">
       <a class="btn btn-primary" href="https://ctf.example.org"><span aria-hidden="true">🎯</span> Essayer la démo</a>
       <a class="btn" href="https://ctf.example.org/redteam.php">Règles red team</a>
-      <a class="btn" href="/pentest.html">Lire l'audit</a>
+      <a class="btn" href="/pentest.html">Lire l'auto-audit (juin 2026)</a>
     </div>
     <p class="muted note">
       Forum de démonstration à contenu fictif. Aucune donnée réelle.
@@ -793,7 +795,7 @@
   <p>
     Code source : <a href="https://github.com/Pierroons/my-self" target="_blank" rel="noopener">github.com/Pierroons/my-self</a>
     · Licence <a href="https://github.com/Pierroons/my-self/blob/main/LICENSE" target="_blank" rel="noopener">AGPL-3.0-or-later</a>
-    · <a href="/pentest.html"><span aria-hidden="true">🛡️</span> Audit de sécurité</a>
+    · <a href="/pentest.html"><span aria-hidden="true">🛡️</span> Auto-audit interne (juin 2026)</a>
     · Auto-hébergé sur matériel grand public
   </p>
 </footer>

@@ -97,7 +97,7 @@ several groups would get first-time offenders punished.
   more penalty, decided by no one
 
 ### Anti-manipulation
-- **Anti-Sybil**: SelfRecover integration (optional) + a delay on new accounts, unless they have already posted: **24 hours** in service, matching the warm-up period described by [Bi-Self](../README.md), **2 minutes** in demonstration. The refusal states the remaining wait
+- **Anti-Sybil**: a delay on new accounts, unless they have already posted: **24 hours** in service, matching the warm-up period described by [Bi-Self](../README.md), **2 minutes** in demonstration. The refusal states the remaining wait
 - **Pack**: two voters **linked to each other** hitting the same target within 30 days → their votes are cancelled, the reputation restored, and the voters enter the escalation described above. Linkage propagates transitively — A–B and B–C linked form a pack of three, because a pack has a ringleader
 - What links two accounts depends on the platform. On a forum: a **private message in each direction**, the closest equivalent to an accepted invitation. Requiring reciprocity stops a spammer from becoming invulnerable by writing to everyone. Message contents are **never read** — only who wrote to whom
 - **Fast burst**: several voters with **no link at all** within a short window (5 min in service, 1 min in demonstration). That is not a pack, it is most often the same reaction to the same post: nothing is cancelled, the target goes to human review. Cancelling here would protect a post all the better for shocking more people at once

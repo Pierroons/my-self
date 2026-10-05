@@ -27,26 +27,23 @@ Bi-Self addresses both at once. It gives communities the **two minimum primitive
 
 ## Why the two modules reinforce each other
 
-**SelfRecover without SelfModerate** is a nice recovery trick, but not a community. You can prove who you are, but there's no fabric for collective life.
+**SelfRecover without SelfModerate** is a nice recovery trick, but not a community. You can get your account back without email, but there's no fabric for collective life.
 
-**SelfModerate without SelfRecover** is vote-based moderation built on sand. Anyone can create ten accounts and swing any vote. Community "democracy" becomes Sybil theatre.
+**SelfModerate, with or without SelfRecover**, is vote-based moderation, and a vote is only worth what an extra account costs. SelfRecover does not raise that cost: it drops email, a weak barrier, and proves nothing about one person holding one account. The brakes live in SelfModerate: a new account votes only after a delay — 24 h with `Config::prod()`, 2 min by default — or a first post, accounts linked to each other that vote against the same target have their votes cancelled, and a burst of unlinked votes goes to human review.
 
-**Together**, the dynamic flips:
+**Together**:
 
-- Reliable identity (SelfRecover) makes each vote meaningful.
-- Collective voting (SelfModerate) creates a fabric that survives any single bad actor, including the founder.
-- The moderator class disappears. The rules emerge from the community itself, enforceable and revisable by the community itself.
-
-One plus one equals a self-governing community. Not three — a qualitatively different thing.
+- An account survives a lost password (SelfRecover), so its reputation and its history survive too, instead of starting over under a new name.
+- Collective voting (SelfModerate) spreads moderation across the members.
+- Moderators remain, as arbiters of what the votes do not settle: every ban they impose, lift or uphold carries their name in the journal, when the host plugs one in; without a journal, nothing records them.
 
 ---
 
 ## Cross-module workflows
 
-- **New member joins** → creates an account with a recovery word (SelfRecover). Zero email. The first 24 h of their activity are monitored by SelfModerate (anti-spam warm-up).
-- **Toxic behavior reported** → community votes (SelfModerate). Identity of voters is guaranteed unique (SelfRecover). Outcome is binding.
-- **Lost password** → any member recovers their account via L1/L2/L3 escalation (SelfRecover). No email, no admin request.
-- **Collective rule change** → community proposes a new moderation threshold, votes. Threshold updates without admin intervention.
+- **New member joins** → creates an account with a recovery word (SelfRecover). Zero email. During that delay, SelfModerate lets the account vote only if it has posted (anti-Sybil warm-up).
+- **Toxic behavior reported** → members vote (SelfModerate), under the anti-Sybil brakes described above. A reputation that reaches zero bans automatically if the host has plugged in a journal; otherwise it raises a flag and an arbiter decides.
+- **Lost password** → the member recovers their account at level 1 or 2 (SelfRecover), with no email and no one to ask. Level 3 goes to a human admin, who reads the case.
 
 ---
 
@@ -61,9 +58,9 @@ One plus one equals a self-governing community. Not three — a qualitatively di
 
 ## Status
 
-SelfRecover ships as a reference implementation and **runs in production** — as the authentication backend of a messaging service, which reuses the SelfRecover account store as-is. Its demo is self-audited; no external audit has been run. SelfModerate has a complete whitepaper defining the protocol; the reference implementation lives in [`selfmoderate/src/`](./selfmoderate/src/) and the lab uses it. Two protocol mechanisms remain to be written, marked in its README.
+SelfRecover ships as a reference implementation and **runs in production** — as the authentication backend of a messaging service, which reuses the SelfRecover account store as-is and pins its own version. Its demo is self-audited; no external audit has been run. SelfModerate's protocol is set out in a whitepaper that is written but not yet published; the reference implementation lives in [`selfmoderate/src/`](./selfmoderate/src/) and the lab uses it. Two protocol mechanisms remain to be written, marked in its README. Members cannot vote on the thresholds yet: the host sets them (`Config`).
 
-The two modules are designed to interlock — when both are live, a community can bootstrap itself and govern itself without any central service.
+The two modules are designed to interlock, yet neither imports the other: wiring them together is the integrator's job. The lab runs both.
 
 ---
 

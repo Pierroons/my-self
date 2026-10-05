@@ -157,6 +157,49 @@ if morts:
 print(f"  ✓ les {lus} chemins du dépôt cités en code inline résolvent")
 PY
 
+echo "▸ Chemins cités — blocs de code"
+# 🔑 **Une commande à recopier est le chemin qu'on suit le plus aveuglément.** Les deux
+# contrôles au-dessus effacent les blocs ``` avant de chercher : un `cd` vers un dossier
+# disparu y passait vert, et la démo duo a fait déployer pendant deux mois depuis
+# `bi-self/demo-backend/`, qui n'existait plus. Même règle que pour le code inline — ne
+# compte qu'un chemin relatif dont le premier segment est connu du dépôt ou du dossier du
+# fichier ; un chemin absolu (`/var/www/…`), une variable (`$SKG/…`) ou une remontée
+# (`../…`) désignent la machine cible, pas le dépôt, et ne sont pas lus.
+python3 - <<'PY' || echec=1
+import re, pathlib, subprocess, sys
+suivis = subprocess.run(["git", "ls-files"], capture_output=True, text=True).stdout.split()
+tete = {p.split("/")[0] for p in suivis}
+def ignore(chemin):
+    return subprocess.run(["git", "check-ignore", "-q", "--no-index", str(chemin)]).returncode == 0
+morts, lus = [], 0
+for f in subprocess.run(["git", "ls-files", "*.md"], capture_output=True, text=True).stdout.split():
+    if re.search(r"(^|/)CHANGELOG\.md$", f): continue
+    p = pathlib.Path(f)
+    dans_bloc = False
+    for n, ligne in enumerate(p.read_text(errors="ignore").splitlines(), 1):
+        if ligne.lstrip().startswith("```"):
+            dans_bloc = not dans_bloc
+            continue
+        if not dans_bloc:
+            continue
+        for m in re.finditer(r"(?<![\w/.$~-])([A-Za-z0-9_][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_.-]+)+/?)", ligne):
+            t = m.group(1).rstrip(".,;:")
+            if t.split("/")[0] not in tete and not (p.parent / t.split("/")[0]).exists(): continue
+            lus += 1
+            candidats = [p.parent / t, pathlib.Path(t)]
+            # Une règle `dossier/` ne reconnaît un chemin absent que s'il finit par une barre.
+            if any(c.exists() or ignore(c) or ignore(f"{c}/") for c in candidats): continue
+            morts.append(f"{f}:{n} → {t}")
+if lus == 0:
+    print("  ✗ aucun chemin lu dans les blocs de code — le contrôle ne mesure rien")
+    sys.exit(1)
+if morts:
+    print(f"  ✗ {len(morts)} chemin(s) mort(s) sur {lus} cité(s) dans les blocs de code")
+    for x in morts: print("     " + x)
+    sys.exit(1)
+print(f"  ✓ les {lus} chemins du dépôt cités dans les blocs de code résolvent")
+PY
+
 echo "▸ Chemins cités — règles .gitignore"
 # Une règle peut légitimement viser ce qui n'existe pas encore (/vendor/, /tmp/).
 # Le signal n'est donc pas « la cible manque » mais « la cible manque ET un

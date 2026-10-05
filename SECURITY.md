@@ -26,13 +26,17 @@ against production deployments is not.
 
 ## Supported versions
 
-Only the `main` branch receives security fixes. `dev` is a working branch and
-carries no such guarantee.
+Security fixes land on `main` and ship in the next release of the module
+concerned. For each module, only its latest release line is supported: upgrade
+rather than wait for a backport. `dev` is a working branch and carries no such
+guarantee.
 
-| Branch | Supported |
-|--------|-----------|
-| main   | ✓ |
-| dev    | ✗ (work in progress) |
+| Version | Supported |
+|---------|-----------|
+| `main` | ✓ |
+| latest minor release line of each module (`<module>-vX.Y.Z` tags) | ✓ |
+| older lines | ✗ |
+| `dev` | ✗ (work in progress) |
 
 ## Public tracking
 

@@ -8,7 +8,8 @@
 # est désormais la source unique : ce script vérifie que chaque porteur qu'il déclare la répète, et que
 # la version annoncée a été publiée.
 #
-# Usage : bash scripts/check-versions.sh                        les porteurs disent la version de modules.json
+# Usage : bash scripts/check-versions.sh                        les porteurs disent la version de modules.json,
+#                                                               et le statut quand le module en déclare un
 #         bash scripts/check-versions.sh --tags                 chaque version a son tag <id>-v<version>
 #         bash scripts/check-versions.sh --publications         chaque version est publiée, et ce qui est
 #                                                               déclaré retiré ne sert plus (aucun secret dédié)
@@ -46,6 +47,10 @@ def lire_manifeste(texte):
         v = m.get("version")
         if v is not None and not re.fullmatch(r"\d+\.\d+\.\d+", v):
             raise ValueError(f"{m['id']} : version « {v} » hors du format X.Y.Z")
+        s = m.get("statut")
+        if s is not None and not (isinstance(s, dict) and set(s) == {"fr", "en"}
+                                  and all(isinstance(x, str) and x.strip() for x in s.values())):
+            raise ValueError(f"{m['id']} : statut attendu sous la forme {{\"fr\": …, \"en\": …}}")
     return modules
 
 try:
@@ -133,12 +138,44 @@ if os.environ["MODE"] == "porteurs":
             if not any(marque in l for marque in marques):
                 ecarts.append(f"{fichier}:{n} — {', '.join(nommes)} y porte une version, mais la ligne "
                               "n'est déclarée sous aucune marque de modules.json")
+    # Le statut se lit sur les mêmes lignes que la version. Un module qui en déclare un (« bêta ») le
+    # porte sur chacune ; un module qui n'en déclare pas ne porte aucun mot du vocabulaire. Sans ce
+    # second sens, un module sorti de bêta le resterait partout sans que rien ne rougisse. Les badges
+    # encodent leurs espaces et leurs accents (`%20b%C3%AAta`) : la ligne est décodée avant lecture. Un
+    # badge se lit en deux morceaux, parce que son texte alternatif et son image se rédigent
+    # séparément : le mot qui manque à l'un ne se voit pas, ou ne s'entend pas, même si l'autre le porte.
+    vocabulaire = {mot.lower() for m in versionnes for mot in (m.get("statut") or {}).values()}
+    statues = 0
+    for m in versionnes:
+        attendus = {mot.lower() for mot in (m.get("statut") or {}).values()}
+        for fichier, marque in m["porteurs"]:
+            if not os.path.isfile(fichier):
+                continue
+            for n, l in enumerate(open(fichier, encoding="utf-8", errors="replace"), 1):
+                if marque not in l:
+                    continue
+                lue = urllib.parse.unquote(l).lower()
+                def dit(texte):
+                    return {mot for mot in vocabulaire if re.search(rf"(?<!\w){re.escape(mot)}(?!\w)", texte)}
+                portes = dit(lue)
+                lectures = [portes] + [dit(urllib.parse.unquote(u).lower().replace("-", " "))
+                                       for u in re.findall(r"img\.shields\.io/badge/([^)\s]+)", l)]
+                lectures += [dit(alt) for alt in re.findall(r"!\[([^\]]*)\]\(https://img\.shields\.io/badge/", lue)]
+                if attendus:
+                    statues += 1
+                if attendus and not all(p & attendus for p in lectures):
+                    ecarts.append(f"{fichier}:{n} — {m['nom']} n'y est pas dit « {' / '.join(sorted(attendus))} », "
+                                  "le statut que déclare modules.json")
+                elif portes - attendus:
+                    ecarts.append(f"{fichier}:{n} — {m['nom']} y est dit « {', '.join(sorted(portes - attendus))} », "
+                                  "un statut que modules.json ne lui déclare pas")
     if ecarts:
         print(f"  ✗ {len(ecarts)} écart(s)")
         for e in ecarts:
             print("     " + e)
         sys.exit(1)
     print(f"  ✓ {lus} porteur(s) de {len(versionnes)} module(s) disent la version de modules.json")
+    print(f"  ✓ {statues} porteur(s) disent le statut déclaré, et aucun autre n'en dit un")
     sys.exit(0)
 
 

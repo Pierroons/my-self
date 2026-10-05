@@ -10,6 +10,61 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Le statut d'un module et les chemins des blocs de code entrent sous contrôle — 4 octobre 2026
+
+Deux familles de textes vieillissaient sans que rien ne rougisse.
+
+- **Le statut** : `modules.json` peut déclarer un `statut` (`{"fr": "bêta", "en": "beta"}`, aujourd'hui
+  SelfJustice et SelfAct). `scripts/check-versions.sh` exige ce mot sur chaque ligne déclarée du module
+  — dans le texte alternatif d'un badge comme dans son image — et refuse un mot du vocabulaire sur la
+  ligne d'un module qui ne le déclare pas. SelfAct était dit « en ligne » à six endroits.
+- **Les blocs de code** : `scripts/check-paths.sh` y lit désormais les chemins relatifs du dépôt, que
+  les contrôles des liens et du code inline effaçaient avant de chercher. Un chemin absolu, une variable ou une
+  remontée désignent la machine cible et restent hors de sa lecture.
+
+Canaris en CI (`structure.yml`) : un module bêta dit sans son statut, un module dit « bêta » sans le
+déclarer, un `cd` vers un dossier disparu.
+
+### Les guides de contribution, de déploiement et d'installation suivent le dépôt — 4 octobre 2026
+
+- **`CONTRIBUTING.md`** : gitleaks s'installe par son binaire officiel, comme le dit
+  `install-hooks.sh`, et non par apt ; les trois hooks et la liste de motifs hors dépôt sont nommés.
+- **`AGENTS.md`** : le déploiement passe par les scripts versionnés sous `deploy/` ; `suivi.yml` lance
+  trois contrôles ; `selfrecover-luks/` est en français.
+- **Démo duo** : son arborescence et son déploiement suivent le dépôt (`demo/bi-self-duo/`, déployeur de
+  `deploy/my-self/`) ; le dossier `bi-self/demo-backend/` qu'ils décrivaient n'existe plus.
+- **SelfRecover-LUKS** : `INSTALL.md` range `SKG` parmi les valeurs imposées — le démarrage ne lit que
+  `/etc/selfkeyguard` ; le README anglais reçoit la section « What this module does NOT provide » et les
+  garde-fous qui n'existaient qu'en français.
+- **`web/my-self.fr/README.md`** nomme `site.css` et `og-image.png` ; le CHANGELOG décrit le versionnement
+  par `modules.json`.
+- **`SECURITY.md`** prend en charge, en plus de `main`, la dernière ligne de version publiée de chaque
+  module, comme la politique de SelfRecover.
+
+### La vitrine et les piliers disent ce que le code fait — 4 octobre 2026
+
+Les README racine, ceux des trois piliers et l'accueil de my-self.fr ont été relus contre le code. Les
+phrases qu'il ne tient pas sont corrigées à leur place ; le découpage, les sections et la disposition
+attendent la discussion d'architecture en cours.
+
+- **Bi-Self** : SelfRecover permet de s'inscrire sans email, il ne garantit pas qu'une personne ne tient
+  qu'un compte. Ce qui freine les comptes multiples est dans SelfModerate : délai avant le premier vote,
+  votes de comptes liés annulés, rafale en revue humaine. Les modérateurs restent, comme arbitres dont
+  chaque geste s'inscrit au journal quand l'hébergeur en branche un ; les seuils viennent de l'hébergeur, aucun vote ne les change ; le niveau 3
+  passe par un admin humain ; le whitepaper de SelfModerate est rédigé, pas publié.
+- **Self-Right** : SelfAct est dit « bêta » partout. SelfJustice sert la base LEGI, les textes UE/CEDH et
+  la jurisprudence — administrative en texte intégral, judiciaire en index — à toute IA qui lit une URL ou
+  passe par le MCP. L'adresse `?stats=1`, que `catalog.php` ne lit pas, est retirée.
+- **Self-Security** : un dump permet une attaque hors ligne contre le plus faible des secrets d'un
+  utilisateur, un Argon2id par essai ; un serveur compromis pendant qu'il tourne lit les sessions
+  et les secrets qu'on lui soumet ; l'installeur de LUKS propose de fermer le shell d'amorçage.
+- **README racine** : une page copiée telle quelle ne produit rien, une page modifiée lit le mot ; aucune
+  démo du dépôt n'apparie SelfRecover et le coffre SelfDataGuard ; les messages privés du lab sont
+  chiffrés sous une clé du serveur ; `openssl` et Composer rejoignent les prérequis.
+- **Accueil** : SelfFarm-Lite n'a aucune intégration câblée aux piliers ; le lien d'audit dit qu'il mène à
+  un auto-audit de juin 2026 ; le défi du lab renvoie à ses limites publiées.
+- Le nombre de contrôles de SelfDataGuard n'est plus recopié hors de son README.
+
 ### SelfRecover : l'accroche laisse le choix, et les textes rattrapent la 0.9.0 — 4 octobre 2026
 
 La relecture du site de SelfRecover et la cartographie de l'architecture ont relevé des textes que le
@@ -1958,17 +2013,15 @@ Pas de version publique.
 - **vX.Y.0** : feature release (nouveau module ou refonte significative)
 - **vX.Y.Z** : patch (fix, enrichissement mineur)
 
-Chaque module individuel a son propre versionnement sémantique (voir
-leurs README respectifs). Ce changelog racine agrège uniquement les
-jalons transversaux de l'écosystème.
+Chaque module a son propre versionnement sémantique, dont `modules.json` est
+la source unique ; le dépôt lui-même n'a pas de version. Ce changelog racine
+recense les changements de tous les modules, un titre par changement.
 
 ---
 
 ## Auteur
 
 [Pierroons](https://github.com/Pierroons) — mainteneur.
-Outils libres pour l'agriculture, pour que les données ne poussent pas dans le cloud.
 Contact : contact@my-self.fr
 
-Co-écrit avec **Claude** (Anthropic) dans le cadre du « Self pact » humain–IA
-décrit dans le [README](./README.md).
+Co-écrit avec **Claude** (Anthropic), dans le cadre du Pacte humain–IA de MySelf.
