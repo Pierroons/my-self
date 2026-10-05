@@ -114,17 +114,16 @@ final class RecoverL3
         $r = self::escalade($pdo)->ouvrir($username, strtolower(trim($claimHash)), $ip);
         if (($r['ok'] ?? false) !== true) {
             // Cette route est publique et sans authentification. Un nom inconnu,
-            // un dossier déjà ouvert et une procédure gelée sortent sous une
-            // réponse unique : distinguer les deux derniers apprendrait qu'un
-            // TIERS a une récupération en cours. La bibliothèque les rend déjà
-            // sous `ouverture_refusee` ; les deux autres codes ne servent qu'à
-            // une bibliothèque antérieure à la 0.10.0.
-            if (in_array($r['error'] ?? '', ['ouverture_refusee', 'compte_inconnu', 'deja_ouvert'], true)) {
+            // un dossier déjà ouvert et une procédure gelée y reçoivent un seul
+            // refus, `ouverture_refusee` : distinguer les deux derniers
+            // apprendrait qu'un TIERS a une récupération en cours. Son message,
+            // le même pour les trois, dit au titulaire où est son recours.
+            if (($r['error'] ?? '') === 'ouverture_refusee') {
                 return [
                     'ok'      => false,
                     'error'   => 'refuse',
                     'code'    => 409,
-                    'message' => 'Impossible d\'ouvrir un dossier pour ce nom.',
+                    'message' => (string) $r['message'],
                 ];
             }
             return self::http($r);
@@ -241,8 +240,8 @@ final class RecoverL3
      * Le titulaire repose lui-même ses secrets.
      *
      * 🔑 Aucun mot de passe n'est rendu : il vient du navigateur, il n'y retourne
-     * pas. La passphrase et les codes, eux, sont engendrés — ils ne peuvent pas
-     * venir du client.
+     * pas. La passphrase et les codes, eux, sont engendrés : le lab ne propose
+     * pas d'apporter la passphrase.
      */
     public static function reset(
         PDO $pdo,

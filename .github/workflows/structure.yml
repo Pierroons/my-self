@@ -405,17 +405,19 @@ jobs:
       # une du serveur. Le banc se joue sous les deux profils et compte ses cas. Chaque
       # canari retire une garde et exige le rouge sur son cas : le contrôle de liste,
       # le refus sans trace du niveau 1 (sinon n'importe qui chargerait le frein d'un
-      # autre), le refus de l'ancienne passphrase au niveau 2. Le dernier raccourcit
-      # le protocole : la plus courte passphrase apportable passerait alors sous le
-      # plancher de scellement de SelfDataGuard, et le couplage doit le voir.
+      # autre), le refus de l'ancienne passphrase à chaque niveau, le plafond d'octets,
+      # l'égalité avec le mot de passe au niveau 3, le refus unique de l'ouverture et sa
+      # durée, un secret absent des traces d'exception. Celui qui raccourcit le protocole fait passer la plus courte passphrase
+      # apportable sous le plancher de scellement de SelfDataGuard, et le couplage doit
+      # le voir.
       - name: Garde-fou — la passphrase apportée par l'utilisateur
         run: |
           for profil in clearweb tor-onion; do
             sortie=$(php bi-self/selfrecover/tests/sanity_passphrase_apportee.php --profil="$profil" 2>&1) && rc=0 || rc=$?
             echo "$sortie"
             [ "$rc" = 0 ] || { echo "::error::le banc de la passphrase apportée a échoué sous $profil"; exit 1; }
-            echo "$sortie" | grep -qE '^OK — 39/39$' \
-              || { echo "::error::le banc de la passphrase apportée n'a pas joué ses 39 cas sous $profil"; exit 1; }
+            echo "$sortie" | grep -qE '^OK — 42/42$' \
+              || { echo "::error::le banc de la passphrase apportée n'a pas joué ses 42 cas sous $profil"; exit 1; }
           done
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
             F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
@@ -437,8 +439,8 @@ jobs:
           canari $R '        // 🔑 La passphrase apportée est jugée avant les freins, sans trace ni' \
             '        $this->stockage->tracerTentative($nomCompte, false, $ip, $maintenant);' \
             $B '❌ un refus de la passphrase apportée ne charge pas le frein'
-          canari $R 'if ($ok && $apport !== null) {' 'if (false) {' \
-            $B '❌ niveau 2 : la passphrase remplacée ne peut pas revenir'
+          canari $R "if (\$ancienne !== null && Hashing::verify(\$apport, (string) \$ancienne['empreinte_passphrase'])) {" 'if (false) {' \
+            $B '❌ niveau 2 : la passphrase remplacée ne revient pas telle quelle'
           canari $R 'public const MOTS_PASSPHRASE = 6;' 'public const MOTS_PASSPHRASE = 4;' \
             bi-self/selfrecover/tests/sanity_couplage_dataguard.php '✗ plus courte passphrase apportable'
           canari $R 'if ($neuve === $ancienne) {' 'if (false) {' \
@@ -455,6 +457,15 @@ jobs:
           canari $E '            $this->stockage->compterDemandeurConcurrent($existant->id);' \
             "            return ['ok' => false, 'error' => 'deja_ouvert', 'message' => 'ouvert'];" \
             bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ nom inconnu, dossier déjà ouvert, procédure gelée : une seule réponse'
+          # Et il prend le même temps : un délai ajouté APRÈS le travail du refus en
+          # garderait l'écart, et le chronomètre dirait ce que le message tait.
+          canari $E '$reste = $this->delaiRefusUs - intdiv(hrtime(true) - $debut, 1000);' '$reste = $this->delaiRefusUs;' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ nom inconnu, procédure gelée, dossier ouvert : la même durée'
+          # Un secret marqué à l'entrée et pas sur le chemin qu'il emprunte ressort
+          # en clair un cadre plus bas, dans la trace d'une exception du stockage.
+          canari $E 'private function recevable(string $numero, #[\SensitiveParameter] string $sesame,' \
+            'private function recevable(string $numero, string $sesame,' \
+            $B '❌ niveau 3 : la trace porte le numéro, ni le sésame'
 
       # Un frein qu'on n'a jamais fait céder ne se distingue pas d'un frein qui
       # n'est relié à rien : les deux laissent le banc vert. Ce canari mesure que
@@ -536,8 +547,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 125 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 125 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 129 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 129 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les

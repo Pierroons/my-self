@@ -109,7 +109,7 @@ Without SelfRecover, SelfDataGuard still works, with whatever locks the applicat
 
 | Mode | Server access to data | Trade-off | In the code |
 |------|----------------------|-----------|-------------|
-| **Lite** *(transparent for legacy stacks)* | Server decrypts during user sessions only | Server compromise during an active session = limited fan-out (one user at a time) | ✅ this is what the library does |
+| **Lite** *(transparent for legacy stacks)* | Server decrypts during user sessions only | Server compromise = the vaults of sessions open while it is compromised, and of whoever logs in; not those of accounts that do not log in | ✅ this is what the library does |
 | **Hybrid** *(targeted at e-commerce)* | Operational fields (`email`, `shipping_address`) wrapped with admin operational key. Sensitive fields (`tel`, `KYC_doc`) require user session | Admin can fulfill orders; sensitive data remains zero-knowledge | ❌ specified, not written — the vault's `wrap_admin` is `null` (`UserVault::register()`) |
 | **Full** *(zero-knowledge for high-assurance services)* | Server NEVER decrypts. All crypto runs in the browser, through libsodium compiled to WebAssembly — WebCrypto offers neither Argon2id nor XChaCha20-Poly1305 | Some workflows redesigned (no async transactional emails, push notifications instead) | ❌ specified, not written — the module carries no client-side code |
 

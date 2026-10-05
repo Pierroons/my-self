@@ -19,7 +19,7 @@ Ce whitepaper décrit le protocole. Il ne vise aucun acteur en particulier — c
 
 ## Résumé
 
-SelfRecover est un protocole de récupération de compte à connaissance partagée qui élimine la dépendance à l'email pour la réinitialisation de mot de passe. Il repose sur une dérivation HMAC-SHA256 effectuée côté client, clavée par le mot de récupération lui-même, dont le message porte le matériel de dérivation, la version du format et le sel du compte : le dériveur livré ne fait sortir du navigateur que l'empreinte du mot de récupération, et le serveur n'en range qu'un hachage Argon2id, propre au service et au compte (ce qui empêche la corrélation des empreintes entre services). Le mot de passe et la passphrase, eux, sont engendrés par le serveur et passent par lui. Ce document décrit le protocole, son escalade en trois niveaux, son modèle de menaces, et les règles de déploiement obligatoires.
+SelfRecover est un protocole de récupération de compte à connaissance partagée qui élimine la dépendance à l'email pour la réinitialisation de mot de passe. Il repose sur une dérivation HMAC-SHA256 effectuée côté client, clavée par le mot de récupération lui-même, dont le message porte le matériel de dérivation, la version du format et le sel du compte : le dériveur livré ne fait sortir du navigateur que l'empreinte du mot de récupération, et le serveur n'en range qu'un hachage Argon2id, propre au service et au compte (ce qui empêche la corrélation des empreintes entre services). Le mot de passe et la passphrase, eux, passent par le serveur : il engendre le mot de passe, sauf au niveau 3 où l'utilisateur le choisit, et la passphrase quand l'utilisateur n'apporte pas la sienne. Ce document décrit le protocole, son escalade en trois niveaux, son modèle de menaces, et les règles de déploiement obligatoires.
 
 ---
 
@@ -233,8 +233,8 @@ Rien d'apporté : le serveur tire, comme avant.
   trace ni délai : il ne dépend que de la saisie, pas du compte, et le tracer laisserait n'importe qui
   charger le frein d'un autre. Aucun refus de passphrase ne consomme le code du niveau 2 ni le dossier
   du niveau 3.
-- **L'ancienne passphrase ne revient pas** : au niveau 1, ni telle quelle ni ses mots dans un autre
-  ordre ; aux niveaux 2 et 3, telle quelle, une fois les facteurs vérifiés. Au niveau 3, elle ne peut
+- **L'ancienne passphrase ne revient pas**, jugé une fois les facteurs vérifiés : au niveau 1, ni
+  telle quelle ni ses mots dans un autre ordre ; aux niveaux 2 et 3, telle quelle. Au niveau 3, elle ne peut
   pas non plus égaler le mot de passe choisi. La bibliothèque ne garde pas d'historique : une
   passphrase plus ancienne que la dernière n'est pas reconnue.
 - **Ce que le contrôle ne mesure pas : le hasard.** Six mots choisis de tête passent, et ne valent pas
@@ -313,7 +313,7 @@ blocage bâtie dessus.
 
 ## 8. Ce que rend la bibliothèque
 
-Chaque méthode rend `ok`. Tout refus porte un `message` destiné à la personne, la plupart des succès aussi (pas `etat()`, `fil()` ni `ouvrirDefi()`), et certains refus un `error` stable que l'application peut journaliser ou traduire : `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `ouverture_refusee`, `compte_inconnu` (hors ouverture), `sesame_invalide`, `expire`, `accord_perime`, `passphrase_invalide`, `passphrase_deja_servie`, entre autres.
+Chaque méthode rend `ok`. Tout refus porte un `message` destiné à la personne, la plupart des succès aussi (pas `etat()`, `fil()` ni `ouvrirDefi()`), et certains refus un `error` stable que l'application peut journaliser ou traduire : `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `ouverture_refusee`, `compte_inconnu` (hors ouverture), `sesame_invalide`, `expire`, `accord_perime`, `passphrase_invalide`, `passphrase_deja_servie`, `passphrase_egale_mot_de_passe`, entre autres.
 
 La bibliothèque ne remonte rien elle-même ; elle enregistre seulement les tentatives dont ses freins ont besoin. Ce qu'un rapport de diagnostic contient relève de l'application ; elle ne doit y mettre ni le mot de récupération (brut ou dérivé), ni la passphrase, ni le mot de passe, ni les codes.
 

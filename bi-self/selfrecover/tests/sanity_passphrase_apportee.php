@@ -180,6 +180,10 @@ $permutee = implode(' ', array_reverse(explode(' ', $ancienne)));
 $rPerm    = $rec->parPassphrase('alice', $ancienne, $IP, $now, nouvellePassphrase: $permutee);
 verifier('ses mots dans un autre ordre sont refusés aussi : c\'est le même papier',
     ($rPerm['error'] ?? '') === 'passphrase_deja_servie');
+$mauvaise = phrase($EN, 6000);
+$rMauv    = $rec->parPassphrase('alice', $mauvaise, $IP, $now, nouvellePassphrase: implode(' ', array_reverse(explode(' ', $mauvaise))));
+verifier('avec une mauvaise passphrase, l\'égalité n\'est pas jugée : refus ordinaire',
+    !isset($rMauv['error']) && ($rMauv['ok'] ?? true) === false, json_encode($rMauv));
 
 // ── C. Niveau 2 ────────────────────────────────────────────────────────────
 echo "\n→ Niveau 2 — code et mot mémorisé, passphrase apportée\n";
@@ -208,7 +212,7 @@ verifier('le refus de forme est le même pour un code inconnu, un mauvais mot, l
 $codes = $rec->emettreCodes(1, 3, $now);
 $cD    = $rec->parCode($codes[0], $MOT, $IP, $now, nouvellePassphrase: $ancienne);
 $cOk   = $rec->parCode($codes[0], $MOT, $IP, $now + 1, nouvellePassphrase: $neuve);
-verifier('niveau 2 : la passphrase remplacée ne peut pas revenir',
+verifier('niveau 2 : la passphrase remplacée ne revient pas telle quelle',
     ($cD['error'] ?? '') === 'passphrase_deja_servie' && ($cOk['ok'] ?? false) === true,
     (string) ($cD['error'] ?? 'accepté'));
 $cMauvais = $rec->parCode($codes[1], str_repeat('f0', 32), $IP, $now + 2, nouvellePassphrase: $neuve);
@@ -260,6 +264,46 @@ verifier('après ces refus, une apportée valide passe', ($eOk['ok'] ?? false) =
 $eS = $esc->reEnroler($n, 'pas le sésame', $MDP, $MOT, $SEL_C, $now + 200, nouvellePassphrase: $cinq);
 verifier('derrière le sésame : un mauvais sésame est refusé avant la passphrase',
     ($eS['error'] ?? '') === 'sesame_invalide', (string) ($eS['error'] ?? ''));
+
+// ── E. Traces d'exception ───────────────────────────────────────────────────
+echo "\n→ Une trace d'exception ne porte pas les secrets\n";
+// PHP ne garde les arguments dans une trace que si on le lui laisse : on l'y
+// force, et un argument non secret sert de témoin qu'ils y sont bien.
+ini_set('zend.exception_ignore_args', '0');
+ini_set('zend.exception_string_param_max_len', '1000');
+function traceDe(callable $appel): string
+{
+    try {
+        $appel();
+    } catch (\RuntimeException $e) {
+        return $e->getTraceAsString();
+    }
+
+    return '';
+}
+$panne = new class () extends StockageMemoire {
+    public function trouverLitigeParNumero(string $numero): ?\Pierroons\SelfRecover\Recovery\Litige
+    {
+        throw new \RuntimeException('stockage indisponible');
+    }
+
+    public function selDuCompteParIndexCode(string $indexRecherche): ?string
+    {
+        throw new \RuntimeException('stockage indisponible');
+    }
+};
+$recP   = new Recovery($panne, 'sel-de-la-sonde', $PROFIL, delaiRefusUs: 0);
+$escP   = new Escalade($panne, $recP, delaiRefusUs: 0);
+$SESAME = 'sesame-temoin-' . bin2hex(random_bytes(8));
+$tL3    = traceDe(fn () => $escP->reEnroler('LIT-TEMOIN0000000000', $SESAME, $MDP, $MOT, $SEL_C, $now));
+verifier('niveau 3 : la trace porte le numéro, ni le sésame, ni le mot de passe, ni le mot dérivé',
+    str_contains($tL3, 'LIT-TEMOIN') && !str_contains($tL3, $SESAME) && !str_contains($tL3, $MDP)
+    && !str_contains($tL3, $MOT), $tL3);
+$CODE = 'a1b2c-3d4e5';
+$tL2  = traceDe(fn () => $recP->selDeDerivation($CODE));
+verifier('niveau 2 : la trace de la route du sel porte l\'index, ni le code, ni le sel du déploiement',
+    str_contains($tL2, $recP->indexRecherche($CODE)) && !str_contains($tL2, $CODE)
+    && !str_contains($tL2, 'sel-de-la-sonde'), $tL2);
 
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Passphrase apportée — %d passés, %d échoués\n", $passes, $echecs);

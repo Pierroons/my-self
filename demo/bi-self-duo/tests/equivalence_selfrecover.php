@@ -74,7 +74,7 @@ verifier('un code ne resert pas', $recovery->parCode($codes[0], $MOT, null, $now
 $apportee = implode(' ', array_slice(Wordlist::load('en'), 5000, Recovery::MOTS_PASSPHRASE));
 $r3 = $recovery->parCode($codes[1], $MOT, null, $now, nouvellePassphrase: $apportee);
 $r4 = $recovery->parCode($codes[2], $MOT, null, $now, nouvellePassphrase: $apportee);
-verifier('une passphrase apportée est rangée, puis refusée au tour suivant : l\'ancienne ne revient pas',
+verifier('une passphrase apportée est rangée, puis refusée au tour suivant : l\'ancienne ne revient pas telle quelle',
     ($r3['ok'] ?? false) === true
     && Hashing::verify($apportee, (string) $db->querySingle("SELECT pass_hash FROM accounts WHERE id = {$compteId}"))
     && ($r4['error'] ?? '') === 'passphrase_deja_servie');

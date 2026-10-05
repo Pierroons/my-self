@@ -399,12 +399,12 @@
   <a class="demo-tile" href="/recover">
     <div class="demo-tile-mock">
       <div><span class="accent">$</span> recover --mode=full</div>
-      <div>passphrase: <span class="ok">[6 mots EFF]</span></div>
+      <div>passphrase: <span class="ok">[6 mots ou plus]</span></div>
       <div>HMAC <span class="accent">→</span> serveur</div>
       <div><span class="ok">✓</span> auth OK · pas d'email</div>
     </div>
     <div class="demo-tile-name">SelfRecover · Full</div>
-    <div class="demo-tile-desc">Récupération sans aucun email. Diceware EFF + HMAC lié au nom d'hôte.</div>
+    <div class="demo-tile-desc">Récupération sans aucun email. Diceware + HMAC lié au nom d'hôte.</div>
     <div class="demo-tile-cta">Lancer la démo</div>
   </a>
   <a class="demo-tile" href="/duo">
@@ -433,7 +433,7 @@
   <p>
     <strong><a href="/recover">SelfRecover</a></strong> est conçu en deux variantes selon ton infrastructure.
     Le <strong>Full</strong>, celui qu'implémente la bibliothèque, retire totalement l'email du protocole :
-    récupération par passphrase diceware EFF + dérivation HMAC liée au nom d'hôte que le navigateur
+    récupération par passphrase diceware + dérivation HMAC liée au nom d'hôte que le navigateur
     lit, donc zéro SMTP, zéro token reset à exfiltrer.
     Le <strong>Lite</strong> conserverait l'email habituel en y ajoutant un mot mémorisé HMACé côté
     client : même un attaquant qui contrôle la boîte mail ne pourrait pas reset le compte sans

@@ -250,13 +250,16 @@ function uniformInt(max) {
 // mode Unicode. Une espace insécable ne sépare donc pas deux mots, et le trait
 // d'union reste dans le mot : quatre mots de la liste anglaise en portent un.
 const BLANCS = /[ \t\r\n\f\v]+/;
+// trim() et toLowerCase() de JavaScript suivent Unicode ; le serveur, l'ASCII.
+const BORDS = /^[ \t\r\n\f\v]+|[ \t\r\n\f\v]+$/g;
+const minusculesAscii = t => t.replace(/[A-Z]/g, c => c.toLowerCase());
 
 function echapper(t) {
   return t.replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
 }
 
 function validateInput() {
-  const phrase = document.getElementById('passphrase').value.trim();
+  const phrase = document.getElementById('passphrase').value.replace(BORDS, '');
   const lang = document.getElementById('lang').value;
   const sep = document.getElementById('sep').value;
 
@@ -266,7 +269,7 @@ function validateInput() {
     return;
   }
 
-  const words = (sep === 'auto' || sep === ' ' ? phrase.split(BLANCS) : phrase.split(sep)).map(w => w.toLowerCase()).filter(Boolean);
+  const words = (sep === 'auto' || sep === ' ' ? phrase.split(BLANCS) : phrase.split(sep)).map(minusculesAscii).filter(Boolean);
   const set = SET[lang];
   const n = words.length;
   const matches = words.filter(w => set.has(w));
@@ -313,11 +316,11 @@ function clearInput() {
 
 function generateSample() {
   const lang = document.getElementById('gen-lang').value;
-  const count = Math.max(3, Math.min(15, parseInt(document.getElementById('gen-count').value, 10) || 6));
+  const count = Math.max(6, Math.min(15, parseInt(document.getElementById('gen-count').value, 10) || 6));
   const list = WORDS[lang];
   const picked = [];
   for (let i = 0; i < count; i++) picked.push(list[uniformInt(7776)]);
-  const phrase = picked.join('-');
+  const phrase = picked.join(' ');
   const bits = (count * BITS_PER_WORD).toFixed(1);
   const out = document.getElementById('gen-result');
   out.innerHTML =

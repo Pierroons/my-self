@@ -516,19 +516,20 @@ Rien d'apporté, le serveur tire comme avant ; aucun adaptateur de stockage ne c
   mot, jamais le mot. L'intégrateur l'appelle à l'inscription.
 - **`parPassphrase()`, `parCode()`, `Escalade::reEnroler()`** : paramètre facultatif
   `nouvellePassphrase`. Sa forme est jugée avant les freins, sans trace ni délai : ce refus ne
-  dépend que de la saisie. L'ancienne passphrase ne revient pas — au niveau 1 ni telle quelle ni
-  dans un autre ordre, aux niveaux 2 et 3 telle quelle, une fois les facteurs vérifiés ; sans
-  historique, une passphrase plus ancienne n'est pas reconnue. Au niveau 3, elle ne peut pas non
+  dépend que de la saisie. L'ancienne passphrase ne revient pas, jugé une fois les facteurs
+  vérifiés — au niveau 1 ni telle quelle ni dans un autre ordre, aux niveaux 2 et 3 telle quelle ;
+  sans historique, une passphrase plus ancienne n'est pas reconnue. Au niveau 3, elle ne peut pas non
   plus égaler le mot de passe choisi. Aucun refus de passphrase ne consomme le code du niveau 2 ni
   le dossier du niveau 3. Le retour garde la clé `passphrase`, sous la forme rangée : le re-scellement de
   SelfDataGuard ne change pas.
-- **Niveau 3 — un refus unique à l'ouverture.** `Escalade::ouvrir()` rend `ouverture_refusee`, au
-  même délai, pour un nom inconnu, un dossier déjà ouvert et une procédure gelée : un tiers n'y lit
+- **Niveau 3 — un refus unique à l'ouverture.** `Escalade::ouvrir()` rend `ouverture_refusee`, dans
+  le même temps — une échéance commune, pas un délai ajouté après un travail inégal —, pour un nom inconnu, un dossier déjà ouvert et une procédure gelée : un tiers n'y lit
   plus qu'un dossier existe, ni qu'il est gelé. ⚠️ Rupture de contrat : `compte_inconnu`,
   `deja_ouvert` et `gele` ne sortent plus de l'ouverture. La tentative concurrente reste comptée et
   montrée à l'arbitre ; `compte_inconnu` reste aux autres méthodes.
-- **`#[\SensitiveParameter]`** sur les secrets de `parPassphrase()`, `parCode()`,
-  `Escalade::reEnroler()` et `Hashing` : une trace d'exception PHP ne les imprime plus.
+- **`#[\SensitiveParameter]`** sur chaque paramètre qui porte un secret, méthodes internes et
+  `Etiquette` comprises : sous PHP 8.2 et plus, une trace d'exception ne les imprime plus, ce qu'un
+  banc vérifie. PHP 8.1 ignore l'attribut.
 - **`Wordlist::inAnyList()`** ; **`Wordlist::validateUserPassphrase()` est retirée** : elle n'était
   appelée ni testée nulle part, acceptait quatre mots et citait le mot fautif dans son exception.
 - **Ce que la bibliothèque ne peut pas faire** : mesurer le hasard. Six mots choisis de tête passent
@@ -544,8 +545,8 @@ Rien d'apporté, le serveur tire comme avant ; aucun adaptateur de stockage ne c
 - **Textes** : `CONTRIBUTING` et `SECURITY` à jour, ce dernier renvoyant au canal de signalement
   du dépôt ; la comparaison des flux décrit le code ; les mentions de MySelf-Live sont retirées.
 
-Bancs : `sanity_passphrase_apportee.php` (39 cas, deux profils), `sanity_escalade` 125, couplage
-avec SelfDataGuard 10/10, parcours 21/21, neuf canaris en CI. Whitepapers en v1.3 ; les fiches diceware sont régénérées
+Bancs : `sanity_passphrase_apportee.php` (42 cas, deux profils), `sanity_escalade` 129, couplage
+avec SelfDataGuard 10/10, parcours 21/21, onze canaris en CI. Whitepapers en v1.3 ; les fiches diceware sont régénérées
 pour la version.
 
 ---

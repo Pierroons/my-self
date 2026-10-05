@@ -19,7 +19,7 @@ This whitepaper describes the protocol. It targets no actor in particular — it
 
 ## Abstract
 
-SelfRecover is a split-knowledge account recovery protocol that eliminates the dependency on email for password recovery. It relies on a HMAC-SHA256 derivation performed client-side, keyed by the recovery word itself, with the derivation material, the format version and the account salt carried in the message: the shipped deriver lets only the recovery word's fingerprint out of the browser, and the server stores only an Argon2id hash of it, specific to the service and the account, which prevents correlating stored fingerprints across services. The password and the passphrase are server-generated and do pass through the server. This document describes the protocol, its three-level escalation, the threat model, and mandatory deployment rules.
+SelfRecover is a split-knowledge account recovery protocol that eliminates the dependency on email for password recovery. It relies on a HMAC-SHA256 derivation performed client-side, keyed by the recovery word itself, with the derivation material, the format version and the account salt carried in the message: the shipped deriver lets only the recovery word's fingerprint out of the browser, and the server stores only an Argon2id hash of it, specific to the service and the account, which prevents correlating stored fingerprints across services. The password and the passphrase do pass through the server: it generates the password, except at level 3 where the user chooses it, and the passphrase unless the user brings their own. This document describes the protocol, its three-level escalation, the threat model, and mandatory deployment rules.
 
 ---
 
@@ -233,8 +233,8 @@ the server draws, as before.
   no trace and no delay: it depends only on the input, not on the account, and tracing it would let
   anyone charge someone else's brake. No passphrase refusal consumes the level-2 code or the level-3
   case.
-- **The old passphrase does not come back**: at level 1, neither as is nor its words in another order;
-  at levels 2 and 3, as is, once the factors are verified. At level 3 it also cannot equal the chosen
+- **The old passphrase does not come back**, judged once the factors are verified: at level 1,
+  neither as is nor its words in another order; at levels 2 and 3, as is. At level 3 it also cannot equal the chosen
   password. The library keeps no history: a passphrase older than the last one is not recognised.
 - **What the check does not measure: randomness.** Six words picked by hand pass, and are worth less
   than six rolled words. The same passphrase seals the "passphrase" lock of the SelfDataGuard vault,
@@ -311,7 +311,7 @@ notification or blocking policy built on top.
 
 ## 8. What the Library Returns
 
-Each method returns `ok`. Every refusal carries a human-facing `message`, most successes too (not `etat()`, `fil()` or `ouvrirDefi()`), and some refusals a stable `error` the application can log or translate: `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `ouverture_refusee`, `compte_inconnu` (outside opening), `sesame_invalide`, `expire`, `accord_perime`, `passphrase_invalide`, `passphrase_deja_servie`, among others.
+Each method returns `ok`. Every refusal carries a human-facing `message`, most successes too (not `etat()`, `fil()` or `ouvrirDefi()`), and some refusals a stable `error` the application can log or translate: `invalid_derived_key`, `l2_suspendu`, `trop_de_demandes`, `ouverture_refusee`, `compte_inconnu` (outside opening), `sesame_invalide`, `expire`, `accord_perime`, `passphrase_invalide`, `passphrase_deja_servie`, `passphrase_egale_mot_de_passe`, among others.
 
 The library reports nothing itself; it only records the attempts its brakes need. What a diagnostic report contains is the application's call; it must not include the recovery word (raw or derived), the passphrase, the password or the codes.
 

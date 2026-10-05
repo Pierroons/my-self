@@ -23,7 +23,7 @@ Pour les déploiements e-commerce ou SaaS qui ont également besoin de **protég
 
 ⚠️ **Le couplage est une propriété de conception, pas un appel de code** : aucune des deux bibliothèques n'importe l'autre, et `loginWithMemorized()` n'est appelé que par la démo `demo/selfdataguard/`. C'est l'intégrateur qui passe les mêmes secrets aux deux. Et c'est lui qui re-scelle, après chaque récupération acceptée : `recover()` aux niveaux 1 et 2, `reEnroll()` au niveau 3, qui archive l'ancien coffre au lieu de le détruire. Un coffre SelfDataGuard créé avec le seul mot de passe devient illisible dès que le niveau 1 ou 2 remplace ce mot de passe. Voir [« Couplage avec SelfRecover »](../../self-security/selfdataguard/README.fr.md#couplage-avec-selfrecover).
 
-SelfRecover protège l'**authentification**. SelfDataGuard protège les **données au repos**. Ensemble, ils ferment la boucle sur le cas qui fait le plus de dégâts : un dump où les jetons d'authentification **et** les données personnelles partent en clair, dans la même table.
+SelfRecover protège l'**authentification**. SelfDataGuard protège les **données au repos**. Ensemble, ils ferment la boucle sur le cas qui fait le plus de dégâts : un dump où les secrets d'authentification **et** les données personnelles partent en clair, dans la même table.
 
 ---
 
@@ -37,7 +37,7 @@ actuelle ne contient aucun code Lite.
 
 | Mode | Canal email | Crypto ajoutée | Quand le choisir |
 |------|-------------|----------------|------------------|
-| **Full** | Aucun | Passphrase diceware EFF + HMAC par service | Projets greenfield, modèles de menace exigeants |
+| **Full** | Aucun | Passphrase diceware + HMAC par service | Projets greenfield, modèles de menace exigeants |
 | **Lite** (spécifié, non implémenté) | Conservé (lien reset SMTP) | Un mot mémorisé par l'utilisateur, dérivé HMAC côté client, jamais envoyé en clair | Stack legacy qui veut un secret de secours qui ne circule jamais en clair, migration vers Full plus tard |
 
 **Essayer :** voir [Essayer SelfRecover](#essayer-selfrecover). Le comparatif des méthodes (8 adversaires × 3 modèles) est une page autonome : `tools/comparison.html`.
@@ -97,7 +97,7 @@ Le matériel doit être **lu** dans le navigateur, jamais reçu du réseau. Un m
 | Matériel de dérivation | `'hostname'` ou `'label'` | obligatoire — la bibliothèque n'a pas de défaut et lève si le mode manque |
 | Stockage des secrets côté serveur | Argon2id | mémoire = 64 Mio, time = 4, threads = 2 (memory-hard) |
 | Index de recherche d'un code, étiquettes de compteurs | HMAC-SHA256 | clé = sel du déploiement — retrouve une ligne sans stocker le code, et rend l'étiquette d'un tiers impossible à fabriquer |
-| Passphrase (L1) | EFF Diceware | 6 mots au moins, tirés par la bibliothèque ou apportés par l'utilisateur, tirés aux dés ; ≈ 77,5 bits pour six mots tirés uniformément |
+| Passphrase (L1) | Diceware (EFF anglaise, française) | 6 mots au moins, tirés par la bibliothèque ou apportés par l'utilisateur, tirés aux dés ; ≈ 77,5 bits pour six mots tirés uniformément |
 | Sel du compte | 16 octets aléatoires, rendus en 32 hexadécimaux minuscules | un par compte, engendré par le navigateur à l'inscription (`srEngendrerSel`), stocké en clair (un sel n'est pas un secret) — obligatoire, la bibliothèque refuse toute autre forme |
 
 ### D'où vient l'aléa
@@ -341,8 +341,8 @@ Hache cette forme, jamais la saisie, et montre-la à l'utilisateur telle quelle 
 qui rouvrira le niveau 1. Aux renouvellements, passe la saisie en `nouvellePassphrase:` à
 `parPassphrase()`, `parCode()` ou `Escalade::reEnroler()`. Un refus se dit (`error` commence
 par `passphrase_`) ; aucun ne charge de frein ni ne consomme de code ou de dossier. Un refus de
-forme ne dépend que de la saisie. L'ancienne passphrase est refusée : au niveau 1, même ses mots
-dans un autre ordre ; aux niveaux 2 et 3, à l'identique, une fois les facteurs vérifiés. La
+forme ne dépend que de la saisie. L'ancienne passphrase est refusée, une fois les facteurs
+vérifiés : au niveau 1, même ses mots dans un autre ordre ; aux niveaux 2 et 3, à l'identique. La
 bibliothèque ne garde pas d'historique : une passphrase plus ancienne que la dernière n'est pas
 reconnue. SelfDataGuard scelle sa serrure « passphrase » sur `$r['passphrase']`, la
 forme rendue.
@@ -453,7 +453,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 ## Roadmap
 
-### Livré — v0.1.0 à v0.6.0 (avril → septembre 2026)
+### Livré — v0.1.0 à v0.10.0 (avril → octobre 2026)
 
 Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bibliothèque les a dépassés, tirée par son premier déploiement réel : ses besoins ont fait avancer le protocole plus vite que prévu. Les chantiers qui suivent ne portent donc plus de numéro — ils en recevront un en sortant.
 
@@ -461,7 +461,7 @@ Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bib
 - [x] Spécification du protocole + whitepapers EN + FR
 - [x] Implémentation de référence complète (L1/L2/L3)
 - [x] Validateur offline HTML + laboratoire d'entropie (zéro requête externe, vérifiables par `grep`) — la démo PHP autonome qui les hébergeait a depuis été retirée, cf. « Essayer SelfRecover »
-- [x] Wordlist EFF 7776 mots intégrée (EN + FR) + PDF de référence diceware
+- [x] Deux listes diceware de 7 776 mots intégrées — EFF anglaise et française d'Arthur Pons — + PDF de référence diceware
 - [x] **Recovery codes** — foyer de possession de L2 (10 codes, HMAC lookup + Argon2id, usage unique)
 - [x] **Passphrase L1 sans expiration, par décision** — elle sert quand tout le reste est perdu, parfois des années après ; l'échéance la tuerait au moment précis où elle sert, et il n'y a pas d'email pour prévenir. Ce qui borne un papier volé est l'usage unique. La bibliothèque range une date d'émission si le déploiement en tient une, et `parPassphrase()` rend son âge : elle informe, elle ne refuse jamais
 - [x] **Facteur « cet appareil »** — ECDSA P-256, clé privée sous enveloppe Argon2id, clé publique seule côté serveur
@@ -470,6 +470,10 @@ Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bib
 - [x] **Niveau 3 dans la bibliothèque** — `src/Recovery/Escalade.php` : dossier, sésame à usage unique, arbitrage, gel de procédure (v0.5.0)
 - [x] **Argon2id écrit dans la bibliothèque** — `client/sr-kdf.js`, blob versionné, vérifié contre sept vecteurs libsodium (v0.6.0)
 - [x] **Schéma et implémentation du contrat** — `schema.sql` + `StockagePdo`, fournis sans être imposés (v0.6.0)
+- [x] **Profil de déploiement** — chaque chemin qui mène au compte freine par compte, et le déploiement déclare son profil (v0.7.0)
+- [x] **Reprendre un compte le referme** — les sessions ouvertes tombent, et un accord rendu a une fin (v0.8.0)
+- [x] **Garde de la route du sel dans la bibliothèque** — `Recovery::selDeDerivation` (v0.9.0)
+- [x] **Passphrase apportée par l'utilisateur, tirée aux dés** — `Recovery::validerPassphraseApportee`, à l'inscription et à chaque niveau (v0.10.0)
 
 ### Ensuite
 

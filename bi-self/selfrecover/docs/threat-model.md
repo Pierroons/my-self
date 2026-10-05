@@ -168,7 +168,9 @@ cheapest way into the vault. What the library can do, it does — refuse short o
 repeated words, the passphrase being replaced (at level 1 even in another word order, at levels 2
 and 3 when identical), and at level 3 a passphrase equal to the chosen password. What it cannot do
 is tell dice from a person, or recognise a passphrase older than the last one: it keeps no history,
-so a user who alternates two sheets of paper brings an old door back.
+so a user who alternates two sheets of paper brings an old door back. Nor does it measure how much
+of the old passphrase survives: a new one that keeps five of the old words, or adds one to all six,
+passes — and whoever holds the old paper is then a few tens of thousands of guesses away.
 
 ### ✗ User negligence
 - Writing the recovery word on a sticky note visible on the monitor

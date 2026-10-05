@@ -22,8 +22,8 @@ use Pierroons\SelfRecover\Storage\StorageInterface;
  *              (≈77,5 bits pour six mots tirés uniformément) et jamais saisi
  *              ailleurs. Le serveur la tire, ou l'utilisateur l'apporte, tirée
  *              aux dés : `validerPassphraseApportee()`. `MOTS_PASSPHRASE` fixe
- *              la longueur, à un seul endroit : les démos le lisent au lieu
- *              d'écrire leur nombre.
+ *              la longueur, à un seul endroit : le code des démos le lit au
+ *              lieu d'écrire son nombre ; leurs pages l'écrivent en lettres.
  *   Niveau 2 — un code de récupération ET le mot mémorisé. Deux facteurs de
  *              nature différente : une possession imprimable, une connaissance.
  *
@@ -52,7 +52,7 @@ final class Recovery
          * retrouvés que par `HMAC(code, sel)`. Il se conserve comme un secret
          * de service, hors webroot.
          */
-        private readonly string $selDeploiement,
+        #[\SensitiveParameter] private readonly string $selDeploiement,
         /**
          * **Obligatoire, sans défaut.** Le contrat est dans `ProfilDeploiement` :
          * il ne se devine pas depuis le transport.
@@ -135,16 +135,6 @@ final class Recovery
             if (!$jugee['ok']) {
                 return $jugee;
             }
-            // Les mêmes mots dans un autre ordre sont la même passphrase pour qui
-            // a le papier : six mots n'ont que 720 ordres.
-            $neuve    = array_unique(explode(' ', $jugee['canonique']));
-            $ancienne = array_unique(explode(' ', strtolower(self::normaliserPassphrase($passphrase))));
-            sort($neuve);
-            sort($ancienne);
-            if ($neuve === $ancienne) {
-                return ['ok' => false, 'error' => 'passphrase_deja_servie',
-                        'message' => 'La nouvelle passphrase doit différer de celle qu\'elle remplace.'];
-            }
             $apport = $jugee['canonique'];
         }
 
@@ -160,6 +150,21 @@ final class Recovery
         // réponse trierait les comptes existants, ce que le message refuse.
         $ok = Hashing::verify($passphrase, $compte['empreinte_passphrase'] ?? Hashing::dummyHash())
             && $compte !== null;
+
+        // L'ancienne passphrase ne revient pas, ni ses mots dans un autre ordre :
+        // pour qui a le papier, c'est la même. Jugé seulement quand elle est bonne,
+        // donc bornée par celle qui est rangée, quoi que pèse la saisie ; le refus
+        // ne touche ni au compteur ni à la passphrase.
+        if ($ok && $apport !== null) {
+            $neuve    = array_unique(explode(' ', $apport));
+            $ancienne = array_unique(explode(' ', strtolower($passphrase)));
+            sort($neuve);
+            sort($ancienne);
+            if ($neuve === $ancienne) {
+                return ['ok' => false, 'error' => 'passphrase_deja_servie',
+                        'message' => 'La nouvelle passphrase doit différer de celle qu\'elle remplace.'];
+            }
+        }
 
         $this->stockage->tracerTentative($nomCompte, $ok, $ip, $maintenant);
 
@@ -283,10 +288,10 @@ final class Recovery
         $motOk  = Hashing::verify($motDerive, $trouve['empreinte_mot'] ?? Hashing::dummyHash());
         $ok     = $trouve !== null && !$trouve['deja_utilise'] && $codeOk && $motOk;
 
-        // L'ancienne passphrase ne revient pas. Jugé seulement quand les deux
-        // facteurs sont bons : l'Argon2id de plus ne se paie que sur un chemin déjà
-        // authentifié, et le refus ne touche ni au code ni au compteur. Qui le
-        // rejoue sans fin détient déjà de quoi reprendre le compte.
+        // L'ancienne passphrase ne revient pas telle quelle. Jugé seulement quand
+        // les deux facteurs sont bons : l'Argon2id de plus ne se paie que sur un
+        // chemin déjà authentifié, et le refus ne touche ni au code ni au
+        // compteur. Qui le rejoue sans fin détient déjà de quoi reprendre le compte.
         if ($ok && $apport !== null) {
             $ancienne = $this->stockage->trouverComptePourPassphrase((string) $trouve['nom_compte']);
             if ($ancienne !== null && Hashing::verify($apport, (string) $ancienne['empreinte_passphrase'])) {
@@ -434,7 +439,7 @@ final class Recovery
      * SelfDataGuard scelle la serrure « passphrase » d'un coffre sur la même
      * chaîne : `tests/sanity_couplage_dataguard.php` tient les deux d'accord.
      */
-    public static function normaliserPassphrase(string $passphrase): string
+    public static function normaliserPassphrase(#[\SensitiveParameter] string $passphrase): string
     {
         return trim((string) preg_replace('/\s+/', ' ', $passphrase));
     }
@@ -487,7 +492,7 @@ final class Recovery
      *
      * @throws LogicException si le stockage n'implémente pas SelParCodeInterface
      */
-    public function selDeDerivation(string $code): string
+    public function selDeDerivation(#[\SensitiveParameter] string $code): string
     {
         if (!$this->stockage instanceof SelParCodeInterface) {
             throw new LogicException(
@@ -511,7 +516,7 @@ final class Recovery
      * Les intégrateurs qui filtrent avant d'appeler `parCode()` l'appellent au
      * lieu de recopier l'expression : un format changé ici leur parvient.
      */
-    public static function estFormeCode(string $code): bool
+    public static function estFormeCode(#[\SensitiveParameter] string $code): bool
     {
         return preg_match('/^[a-f0-9]{5}-[a-f0-9]{5}$/', $code) === 1;
     }
@@ -570,7 +575,7 @@ final class Recovery
      * Il permet de retrouver la ligne sans stocker le code, et sans que la base
      * exfiltrée ne rende les codes : reconstituer l'index suppose le sel.
      */
-    public function indexRecherche(string $code): string
+    public function indexRecherche(#[\SensitiveParameter] string $code): string
     {
         return Etiquette::empreinte($code, $this->selDeploiement);
     }

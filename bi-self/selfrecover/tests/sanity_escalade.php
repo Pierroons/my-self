@@ -685,6 +685,32 @@ verifier('le plancher est sous tout instant réel du protocole',
     Litige::PLANCHER_EPOQUE < $now && Litige::PLANCHER_EPOQUE > 9999,
     date('Y-m-d', Litige::PLANCHER_EPOQUE));
 
+echo "\n→ Les trois refus de l'ouverture tiennent la même échéance\n";
+// Un stockage lent là où un seul des trois refus travaille : le dossier déjà
+// ouvert compte son demandeur, donc écrit — un disque qui synchronise.
+$stT = new class () extends StockageMemoire {
+    public function compterDemandeurConcurrent(int $litigeId): void
+    {
+        usleep(40000);
+        parent::compterDemandeurConcurrent($litigeId);
+    }
+};
+$stT->comptes['alice'] = ['id' => 1, 'empreinte_mot' => 'emp'];
+$stT->comptes['bob']   = ['id' => 2, 'empreinte_mot' => 'emp'];
+$stT->gels[2]          = ['jusqua' => $now + 3600];
+$escT = new Escalade($stT, new Recovery($stT, 'sel', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0),
+    delaiRefusUs: 60000);
+$escT->ouvrir('alice', Escalade::empreinteSesame('premier'), maintenant: $now);
+$durees = [];
+foreach (['personne', 'bob', 'alice'] as $nom) {
+    $t0 = hrtime(true);
+    $r  = $escT->ouvrir($nom, Escalade::empreinteSesame('second'), maintenant: $now + 1);
+    $durees[$nom] = intdiv(hrtime(true) - $t0, 1000000);
+    verifier("refus d'ouverture pour « $nom »", ($r['error'] ?? '') === 'ouverture_refusee', (string) ($r['error'] ?? 'accepté'));
+}
+verifier('⭐ nom inconnu, procédure gelée, dossier ouvert : la même durée, à 20 ms près, au moins le délai',
+    min($durees) >= 60 && max($durees) - min($durees) < 20, json_encode($durees));
+
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Escalade SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 echo str_repeat('=', 63) . "\n\n";

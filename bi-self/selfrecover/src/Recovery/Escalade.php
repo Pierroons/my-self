@@ -267,16 +267,20 @@ final class Escalade
                              . 'qu\'une procédure y est déjà en cours ou suspendue, un administrateur peut la '
                              . 'clore ou lever la suspension.'];
 
+        // 🔑 Les trois refus ne font pas le même travail — un dossier déjà ouvert
+        // compte le demandeur, donc écrit. Un délai ajouté après ce travail en
+        // garderait l'écart ; ils tiennent une échéance commune.
+        $debut  = hrtime(true);
         $compte = $this->stockage->trouverCompte($nomCompte);
         if ($compte === null) {
-            usleep($this->delaiRefusUs);
+            $this->attendreEcheance($debut);
 
             return $refus;
         }
         $compteId = (int) $compte['id'];
 
         if ($this->stockage->gelJusqua($compteId, $maintenant) > 0) {
-            usleep($this->delaiRefusUs);
+            $this->attendreEcheance($debut);
 
             return $refus;
         }
@@ -297,7 +301,7 @@ final class Escalade
         }
         if ($existant !== null) {
             $this->stockage->compterDemandeurConcurrent($existant->id);
-            usleep($this->delaiRefusUs);
+            $this->attendreEcheance($debut);
 
             return $refus;
         }
@@ -320,7 +324,7 @@ final class Escalade
      */
     public function soumettre(
         string $numero,
-        string $sesame,
+        #[\SensitiveParameter] string $sesame,
         array $reponses,
         ?int $maintenant = null,
     ): array {
@@ -389,7 +393,7 @@ final class Escalade
      *
      * @return array{ok: bool, message?: string, numero?: string, statut?: string, expire_le?: int, error?: string}
      */
-    public function etat(string $numero, string $sesame, ?int $maintenant = null): array
+    public function etat(string $numero, #[\SensitiveParameter] string $sesame, ?int $maintenant = null): array
     {
         $maintenant = $maintenant ?? time();
 
@@ -409,7 +413,7 @@ final class Escalade
      */
     public function fil(
         string $numero,
-        string $sesame,
+        #[\SensitiveParameter] string $sesame,
         ?string $message = null,
         ?int $maintenant = null,
     ): array {
@@ -711,6 +715,15 @@ final class Escalade
 
     // ── Interne ────────────────────────────────────────────────────────────
 
+    /** Attend que `delaiRefusUs` se soit écoulé depuis `$debut` (`hrtime`). */
+    private function attendreEcheance(int $debut): void
+    {
+        $reste = $this->delaiRefusUs - intdiv(hrtime(true) - $debut, 1000);
+        if ($reste > 0) {
+            usleep($reste);
+        }
+    }
+
     /**
      * Les freins de l'ouverture. Deux compteurs, aucun nom de compte.
      *
@@ -757,7 +770,7 @@ final class Escalade
      *
      * @return Litige|array{ok: false, error: string, message: string}
      */
-    private function recevable(string $numero, string $sesame, int $maintenant): Litige|array
+    private function recevable(string $numero, #[\SensitiveParameter] string $sesame, int $maintenant): Litige|array
     {
         $litige = $this->stockage->trouverLitigeParNumero(strtoupper(trim($numero)));
 
