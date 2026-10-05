@@ -37,7 +37,7 @@ Every line links to code you can read and run. No link to a hosted demo:
 everything self-hosts from this repository.
 
 <!-- ecosysteme:selffarm-lite:debut — produit par scripts/check-ecosysteme.sh --ecrire -->
-**SelfFarm-Lite**, the farm application layer of the ecosystem, lives in its own repository: [Pierroons/selffarm-lite](https://github.com/Pierroons/selffarm-lite) — **v0.4.10**, released.
+**SelfFarm-Lite**, the farm application layer of the ecosystem, lives in its own repository: [Pierroons/selffarm-lite](https://github.com/Pierroons/selffarm-lite) — **v0.4.11**, released.
 <!-- ecosysteme:selffarm-lite:fin -->
 
 ---
