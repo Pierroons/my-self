@@ -70,10 +70,10 @@ if (!\Pierroons\SelfRecover\Recovery\Recovery::estSelCompte($recoverySalt)) {
     exit;
 }
 
-// La passphrase apportée, tirée aux dés par l'utilisateur. Absente : elle est
-// tirée plus bas. Présente, même vide, elle est jugée par la bibliothèque — une
-// interface qui enverrait "" en croyant apporter recevrait sinon une passphrase
-// qu'elle n'afficherait pas.
+// La passphrase apportée, tirée aux dés par l'utilisateur. Absente ou nulle :
+// elle est tirée plus bas. Un texte, même vide, est jugé par la bibliothèque —
+// une interface qui enverrait "" en croyant apporter recevrait sinon une
+// passphrase qu'elle n'afficherait pas.
 $apportee = is_array($body) && isset($body['passphrase']) ? $body['passphrase'] : null;
 $jugee    = null;
 if ($apportee !== null) {

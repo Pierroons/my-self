@@ -27,8 +27,14 @@ if (!RateLimit::checkAndIncrementActions($s->dir)) {
 $body = json_decode((string) file_get_contents('php://input'), true);
 $username   = is_array($body) ? (string) ($body['username'] ?? '') : '';
 $passphrase = is_array($body) ? (string) ($body['passphrase'] ?? '') : '';
-// Absente : la bibliothèque tire la nouvelle. Présente, même vide, elle est jugée.
-$nouvelle   = is_array($body) && isset($body['new_passphrase']) ? (string) $body['new_passphrase'] : null;
+// Absente ou nulle : la bibliothèque tire la nouvelle. Un texte, même vide, est jugé.
+$nouvelle   = is_array($body) ? ($body['new_passphrase'] ?? null) : null;
+if ($nouvelle !== null && !is_string($nouvelle)) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'passphrase_invalide', 'motif' => 'trop_courte',
+                      'message' => 'La passphrase apportée doit être un texte.'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 $log = $s->logger();
 $log->info('recover-l1', 'POST /demo/api/recover/recover-l1');

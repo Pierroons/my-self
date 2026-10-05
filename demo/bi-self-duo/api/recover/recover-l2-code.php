@@ -40,8 +40,14 @@ if (!RateLimit::checkAndIncrementActions($s->dir)) {
 $body = json_decode((string) file_get_contents('php://input'), true);
 $code        = is_array($body) ? strtolower(trim((string) ($body['recovery_code'] ?? ''))) : '';
 $derivedKey  = is_array($body) ? (string) ($body['memorized_derived'] ?? '') : '';
-// Absente : la bibliothèque tire la nouvelle passphrase. Présente, même vide, elle est jugée.
-$nouvelle    = is_array($body) && isset($body['new_passphrase']) ? (string) $body['new_passphrase'] : null;
+// Absente ou nulle : la bibliothèque tire la nouvelle passphrase. Un texte, même vide, est jugé.
+$nouvelle    = is_array($body) ? ($body['new_passphrase'] ?? null) : null;
+if ($nouvelle !== null && !is_string($nouvelle)) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'passphrase_invalide', 'motif' => 'trop_courte',
+                      'message' => 'La passphrase apportée doit être un texte.'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 $log = $s->logger();
 $log->info('recover-l2-code', 'POST /demo/api/recover/recover-l2-code');
