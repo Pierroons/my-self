@@ -110,7 +110,7 @@ final class AttackSimulator
                 ],
             ],
             'verdict' => 'neutralisé',
-            'defense' => 'SelfDataGuard (chiffrement enveloppé XChaCha20-Poly1305, clé hors base)',
+            'defense' => 'SelfDataGuard (XChaCha20-Poly1305, clé dérivée d\'un secret serveur hors base)',
             'message_cle' => "La donnée est intégralement conservée et utilisable par Alice — mais l'attaquant ne récupère que du bruit chiffré.",
         ];
     }
