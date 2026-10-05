@@ -113,6 +113,21 @@ final class RecoverL3
     {
         $r = self::escalade($pdo)->ouvrir($username, strtolower(trim($claimHash)), $ip);
         if (($r['ok'] ?? false) !== true) {
+            // Cette route est publique et sans authentification. La bibliothèque
+            // distingue `compte_inconnu` (404) de `deja_ouvert` (409) — utile à
+            // un appelant de confiance, révélateur ici : le second apprend qu'un
+            // TIERS a une récupération en cours. `Escalade::ouvrir()` freine
+            // avant la recherche pour que l'existence ne se lise pas au
+            // chronomètre ; sans cette égalisation, la phrase rendue annule cette
+            // précaution. Les deux cas sortent donc sous une réponse unique.
+            if (in_array($r['error'] ?? '', ['compte_inconnu', 'deja_ouvert'], true)) {
+                return [
+                    'ok'      => false,
+                    'error'   => 'refuse',
+                    'code'    => 409,
+                    'message' => 'Impossible d\'ouvrir un dossier pour ce nom.',
+                ];
+            }
             return self::http($r);
         }
 

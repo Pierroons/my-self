@@ -100,6 +100,13 @@ final class Flags
         }
 
         $ipHash = DataGuard::hmac($ip ?? 'unknown', 'flag-ip');
+
+        // Même raison que dans `Redteam::deposer()` : l'empreinte ne sert qu'au
+        // frein, et un HMAC d'adresse se renverse pour qui lit la clé d'instance
+        // — ce que permettent les mêmes droits que cette base.
+        $pdo->prepare('UPDATE flag_captures SET ip_hash = NULL WHERE captured_at < ? AND ip_hash IS NOT NULL')
+            ->execute([time() - 3600]);
+
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM flag_captures WHERE ip_hash = ? AND captured_at >= ?');
         $stmt->execute([$ipHash, time() - 3600]);
         if ((int) $stmt->fetchColumn() >= self::PAR_HEURE) {
