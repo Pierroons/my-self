@@ -97,7 +97,7 @@ visée par plusieurs groupes ferait punir des gens dont c'est le premier écart.
   serait une peine de plus, que personne n'a décidée
 
 ### Anti-manipulation
-- **Anti-Sybil** : intégration SelfRecover (optionnel) + délai sur les nouveaux comptes, sauf s'ils ont déjà publié : **24 h** en service, aligné sur la période d'échauffement décrite par [Bi-Self](../README.fr.md), **2 min** en démonstration. Le refus dit l'attente restante
+- **Anti-Sybil** : délai sur les nouveaux comptes, sauf s'ils ont déjà publié : **24 h** en service, aligné sur la période d'échauffement décrite par [Bi-Self](../README.fr.md), **2 min** en démonstration. Le refus dit l'attente restante
 - **Meute** : deux votants **liés entre eux** qui frappent la même cible sur 30 jours → leurs votes sont annulés, la réputation restituée, et les votants entrent dans l'escalade décrite plus haut. Le lien se propage par transitivité — A–B et B–C liés forment une meute de trois, car une meute a un meneur
 - Ce qui lie deux comptes dépend de la plateforme. Sur un forum : un **message privé dans chaque sens**, l'équivalent le plus proche d'une invitation acceptée. Exiger la réciprocité empêche un spammeur de se rendre invulnérable en écrivant à tout le monde. Le contenu des messages n'est **jamais lu** — seulement qui a écrit à qui
 - **Salve rapide** : plusieurs votants **sans aucun lien** dans une fenêtre courte (5 min en service, 1 min en démonstration). Ce n'est pas une meute, c'est le plus souvent la même réaction au même message : rien n'est annulé, la cible part en revue humaine. Annuler ici protégerait un message d'autant mieux qu'il choque plus de monde à la fois

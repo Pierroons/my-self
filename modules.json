@@ -3,7 +3,7 @@
     "nom": "my-self",
     "version": null
   },
-  "lisez_moi": "Source unique des versions des modules de ce dépôt. scripts/check-versions.sh vérifie que chaque porteur déclaré dit la même version, et que chaque version a son tag <id>-v<version>. Les autres dépôts de l'écosystème lisent ce fichier au lieu de recopier nos versions ; my-self n'a pas de version de dépôt, chaque module a la sienne. Il porte aussi ce que ce dépôt a publié hors de lui : « artefacts_retires » nomme ce qu'un registre ne doit plus servir, et le contrôle va le demander là où il vit.",
+  "lisez_moi": "Source unique des versions des modules de ce dépôt. scripts/check-versions.sh vérifie que chaque porteur déclaré dit la même version — et, pour un module qui déclare un « statut » (bêta), qu'il le dit aussi, quand les autres n'en disent aucun —, et que chaque version a son tag <id>-v<version>. Les autres dépôts de l'écosystème lisent ce fichier au lieu de recopier nos versions ; my-self n'a pas de version de dépôt, chaque module a la sienne. Il porte aussi ce que ce dépôt a publié hors de lui : « artefacts_retires » nomme ce qu'un registre ne doit plus servir, et le contrôle va le demander là où il vit.",
   "artefacts_retires": [
     {
       "canal": "ghcr",
@@ -242,6 +242,10 @@
       "nom": "SelfJustice",
       "dossier": "self-right/selfjustice",
       "version": "0.4.2",
+      "statut": {
+        "fr": "bêta",
+        "en": "beta"
+      },
       "resume": {
         "fr": "consultation du droit français et européen par une API publique",
         "en": "French and EU law lookup through a public API"
@@ -290,6 +294,10 @@
       "nom": "SelfAct",
       "dossier": "self-right/selfact",
       "version": "0.1.3",
+      "statut": {
+        "fr": "bêta",
+        "en": "beta"
+      },
       "resume": {
         "fr": "modèles officiels et calcul des délais de procédure",
         "en": "official templates and procedural deadlines"

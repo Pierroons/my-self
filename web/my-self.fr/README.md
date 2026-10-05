@@ -5,7 +5,7 @@ Site statique de présentation de l'écosystème MySelf, déployé sur
 
 ## Contenu
 
-- `index.html` — la page d'accueil, HTML et CSS en ligne, thème sombre :
+- `index.html` — la page d'accueil, thème sombre :
   - hero : portrait de Descartes en pixel art, « Je pense, donc j'héberge. » ;
   - manifeste « Reprendre la main » ;
   - les trois piliers (Bi-Self, Self-Right, Self-Security) et leurs modules ;
@@ -15,7 +15,10 @@ Site statique de présentation de l'écosystème MySelf, déployé sur
 - `accueil.js` — le seul script : il pixelise le portrait au chargement et,
   quand la page est servie sous `dev.<domaine>`, réécrit ses liens vers
   `dev-<sous-domaine>.<domaine>`.
-- `pentest.html` — l'audit de sécurité publié (cycle R9). Chaque ligne corrigée
+- `site.css` — la feuille commune à `index.html` et `pentest.html` ; chaque page
+  garde en ligne ce qui n'appartient qu'à elle.
+- `og-image.png` — l'image de partage (1200 × 630) que citent les deux pages.
+- `pentest.html` — l'auto-audit interne publié (cycle R9, juin 2026). Chaque ligne corrigée
   depuis porte sa date en pied de page.
 - `assets` — lien vers le dossier `assets/` de la racine du dépôt (portrait,
   logos ; le favicon est `logo/myself-mark-C-mono.svg`).
@@ -34,9 +37,9 @@ entre « pas déployé » et « en cache ».
 
 ## Design
 
-- Pas de framework : HTML et CSS en ligne, un seul script, `accueil.js`, servi
-  depuis la même origine — la CSP du site n'admet aucun script en ligne.
-- Thème sombre (`--bg: #0f1419`, `--accent: #7ab7ff`).
+- Pas de framework : HTML, une feuille commune `site.css`, un seul script,
+  `accueil.js`, servis depuis la même origine — la CSP du site n'admet aucun script en ligne.
+- Thème sombre (`--bg: #0f1419`, `--accent: #7ab7ff`, dans `site.css`).
 - Deux points de rupture : `@media (max-width: 640px)` et `(max-width: 500px)`.
 - Polices système (ni Google Fonts ni CDN typographique).
 

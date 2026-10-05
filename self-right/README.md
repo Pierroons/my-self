@@ -8,7 +8,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
 [![SelfJustice: v0.4.2 beta](https://img.shields.io/badge/SelfJustice-v0.4.2%20beta-green.svg)](./selfjustice/)
-[![SelfAct: v0.1.3](https://img.shields.io/badge/SelfAct-v0.1.3-brightgreen.svg)](./selfact/)
+[![SelfAct: v0.1.3 beta](https://img.shields.io/badge/SelfAct-v0.1.3%20beta-green.svg)](./selfact/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
 
@@ -24,7 +24,7 @@ Access to law in France is formally equal. In practice, it requires:
 - Filling the right form within the right deadline
 - Affording a lawyer, or representing yourself
 
-Each of these steps is a filter. Most people give up at the first two. Knowing your rights is useless if you don't know how to enforce them. **The law is accessible only to those who already have legal literacy** — a self-perpetuating inequality.
+Each of these steps is a filter. Knowing your rights is useless if you don't know how to enforce them. **The law is accessible only to those who already have legal literacy** — a self-perpetuating inequality.
 
 Self-Right takes on two of these filters: **reading the text (SelfJustice), then finding the step and its deadline (SelfAct)**.
 
@@ -59,19 +59,19 @@ Neither module analyses your case in your place: legal advice is reserved to leg
 | Module | Role | Status |
 |--------|------|--------|
 | [SelfJustice](./selfjustice/) | Machine-readable legal directives + an open law API | **v0.4.2 beta** — live at [justice.my-self.fr](https://justice.my-self.fr) |
-| [SelfAct](./selfact/) | Official resources, deadlines and letter templates for the step | **v0.1.3** — API, catalogue and pages running |
+| [SelfAct](./selfact/) | Official resources, deadlines and letter templates for the step | **v0.1.3 beta** — API, catalogue and pages running |
 
 ---
 
 ## Status
 
-SelfJustice is **deployed in production** and serves any AI agent (Claude, ChatGPT, Mistral, Gemini, Perplexity) with the full indexed French legal corpus plus the EU/ECHR texts, through an open HTTP API. Anyone can query it, anyone can self-host it. Live counts: [`/api/status`](https://justice.my-self.fr/api/status).
+SelfJustice is **deployed in production**. Through an open HTTP API, it serves the French codes and laws in force (LEGI base from DILA), the EU/ECHR texts and case law — administrative in full text, judicial as an index — to any AI that can read a URL or that goes through the MCP server. Anyone can query it; anyone can self-host it from the reference configuration in `deploy/selfjustice/`. Live counts: [`/api/status`](https://justice.my-self.fr/api/status).
 
-SelfAct **runs as well**, and its folder shows it: [`selfact/`](./selfact/) holds its code, its data, its guards, its deployment, its whitepaper and its licence.
+SelfAct **runs as well**, in beta, and its folder shows it: [`selfact/`](./selfact/) holds its code, its data, its guards, its deployment, its whitepaper and its licence.
 
 | Piece | Where | What it does |
 |---|---|---|
-| Catalogue | [`selfact/api/`](./selfact/api/) | over 1,800 official resources harvested from service-public.gouv.fr, in 16 categories — the exact count and per-type breakdown are served live by `/act/api/catalog.php?stats=1`. Refreshed on the 1st and 15th. |
+| Catalogue | [`selfact/api/`](./selfact/api/) | over 1,800 official resources harvested from service-public.gouv.fr, in 16 categories — the exact count and per-type breakdown are in the catalogue itself (`meta`), served by `/act/api/catalog.php`. Refreshed on the 1st and 15th. |
 | Situation matching | [`selfact/api/find.php`](./selfact/api/find.php) | Around twenty hand-curated situations: "I am being laid off" → the step, the article, the form. |
 | Deadline computation | [`selfact/api/deadline.php`](./selfact/api/deadline.php) | The one piece that computes rather than retrieves, with calendar export. |
 | Letter drafting | [`selfact/api/draft.php`](./selfact/api/draft.php) | Formal notice, saisine (conciliateur, Défenseur des droits), recours gracieux, termination, complaint — each carrying a "NON OFFICIEL" notice in the body when it imitates the form of a legal act, and a footer reminder in every case, plus the matching official resources. |

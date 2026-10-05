@@ -105,6 +105,21 @@ jobs:
             || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
           echo "✓ le contrôle rougit sur un chemin mort en code inline, et le fichier est restauré"
 
+      - name: Canari — les chemins cités dans un bloc de code rougissent quand l'un meurt
+        run: |
+          F=demo/bi-self-duo/CONTRIBUTING.md
+          cp "$F" /tmp/CB.intact
+          printf '\n```bash\ncd bi-self/inexistant-canari\n```\n' >> "$F"
+          if bash scripts/check-paths.sh >/dev/null 2>&1; then
+            cp /tmp/CB.intact "$F"
+            echo "::error::le contrôle reste VERT sur un chemin mort dans un bloc de code"
+            exit 1
+          fi
+          cp /tmp/CB.intact "$F"
+          cmp -s /tmp/CB.intact "$F" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le contrôle rougit sur un chemin mort dans un bloc de code, et le fichier est restauré"
+
       # ── Versions ───────────────────────────────────────────────────────────
       # modules.json est la source unique ; chaque porteur qu'il déclare doit la
       # répéter. Le tag manquant se suit à part, dans suivi.yml : il dépend d'un
@@ -143,6 +158,26 @@ jobs:
           cmp -s /tmp/SR.intact "$F" \
             || { echo "::error::le README de SelfRecover n'a pas été restauré à l'identique"; exit 1; }
           echo "✓ le contrôle rougit sur le texte alternatif d'un badge, et le fichier est restauré"
+          # Le statut, dans les deux sens : un module déclaré bêta dont la ligne ne le dit plus,
+          # un module non déclaré que sa ligne dit bêta.
+          F=README.fr.md
+          cp "$F" /tmp/RF.intact
+          for plantation in \
+            's#(\[SelfAct\]\(\./self-right/selfact/\).*\*\*v[0-9.]+) bêta\*\*#\1**#' \
+            's#(\[SelfRecover\]\(\./bi-self/selfrecover/\).*\*\*v[0-9.]+)\*\*#\1 bêta**#'; do
+            sed -i -E "$plantation" "$F"
+            cmp -s /tmp/RF.intact "$F" \
+              && { echo "::error::la plantation « $plantation » n'a pas pris — le canari ne prouve rien"; exit 1; }
+            if bash scripts/check-versions.sh >/dev/null 2>&1; then
+              cp /tmp/RF.intact "$F"
+              echo "::error::le contrôle reste VERT après « $plantation »"
+              exit 1
+            fi
+            cp /tmp/RF.intact "$F"
+          done
+          cmp -s /tmp/RF.intact "$F" \
+            || { echo "::error::README.fr.md n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le contrôle rougit sur un statut déclaré que la ligne tait, et sur un statut qu'elle invente"
           # Mode --tags : une version qu'aucun tag ne porte, avec un délai nul, doit rougir.
           cp modules.json /tmp/MJ.intact
           python3 -c "import json;d=json.load(open('modules.json'));[m.update(version='9.9.9') for m in d['modules'] if m['id']=='selfmoderate'];json.dump(d,open('modules.json','w'),ensure_ascii=False,indent=2)"
