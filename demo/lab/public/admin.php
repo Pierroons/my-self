@@ -345,7 +345,7 @@ table.adm tr:last-child td{border-bottom:none}
 </div>
 
 <script nonce="<?= nonce() ?>">
-function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function voirProfil(id,btn){
   const box=document.getElementById('prof-'+id);
   labPost('/api/admin.php',{action:'profile',account_id:id}).then(d=>{

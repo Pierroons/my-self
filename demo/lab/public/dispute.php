@@ -86,7 +86,7 @@ const DSP = <?= json_encode([
   'done'     => t('dsp.js.reset_done'),
 ], JSON_UNESCAPED_UNICODE) ?>;
 
-function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function toast(t, ok){ document.getElementById('msg').innerHTML =
   '<div class="toast '+(ok?'ok':'err')+'">'+esc(t)+'</div>'; }
 function montrer(id){
@@ -94,8 +94,14 @@ function montrer(id){
     document.getElementById(s).style.display = (s===id) ? '' : 'none';
   });
 }
+// Le jeton CSRF part s'il existe, c'est-à-dire si un compte est connecté. Un
+// demandeur qui ouvre cette page n'en a pas, et n'en a pas besoin : son sésame
+// l'autorise. Un arbitre qui vient y lire un dossier, lui, est connecté, et
+// `dispute_chat.php` exige le jeton de qui s'autorise par sa session.
 function post(url, corps){
-  return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+  const entetes = {'Content-Type':'application/json'};
+  if (window.LAB_CSRF) entetes['X-CSRF-Token'] = window.LAB_CSRF;
+  return fetch(url,{method:'POST',headers:entetes,
     body:JSON.stringify(corps)}).then(r=>r.json());
 }
 

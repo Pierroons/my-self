@@ -14,6 +14,17 @@ $body = json_in();
 $acc = Auth::currentAccount($pdo);
 $isAdmin = !empty($acc['is_admin']);
 
+// 🔑 L'arbitre écrit ici avec sa session pour seule autorisation : le jeton
+// CSRF lui est donc demandé, comme sur toute autre action d'arbitrage.
+//
+// Le demandeur, lui, n'en a pas besoin et n'en a pas : il s'autorise par son
+// sésame, qu'un site tiers ne connaît pas — forger sa requête demanderait de
+// le détenir, donc d'être lui. D'où la garde conditionnelle : la rendre
+// inconditionnelle fermerait la route à tout demandeur.
+if ($isAdmin) {
+    require_csrf();
+}
+
 $r = RecoverL3::chat(
     $pdo,
     (string) ($body['dispute_number'] ?? ''),

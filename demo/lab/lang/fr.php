@@ -169,6 +169,18 @@ return [
     'rt.limits.h2'    => '📐 Limites connues et assumées',
     'rt.limits.intro' => '<p>Ce qui suit est déjà établi, et publié pour que tu n\'y perdes pas ton temps : <strong>une limite documentée n\'est pas un finding</strong>. La dépasser en est un : une prise concrète sur l\'une de ces bornes, pas l\'argument qu\'elle existe.</p>',
     'rt.limits.body'  => '<li><strong>Le coffre mémo a deux serrures.</strong> Sa clé est tirée au hasard, puis scellée deux fois : sous le mot de passe du compte, et sous une passphrase propre au coffre. Qui obtient les blobs attaque <strong>hors ligne</strong> la moins chère des deux, sans compteur d\'essais ; le coût par essai est une dérivation Argon2id <code>t=3, m=64 Mio, p=1</code>. « De bout en bout » dit que le serveur ne voit jamais la clé — pas que le mémo résiste à un mot de passe faible, ni que le serveur serve toujours le même code : c\'est lui qui livre le script de dérivation, et qui le contrôle peut en livrer un autre.</li>'
+                       . '<li><strong>Le frein de la récupération par passphrase compte sous le nom du compte.</strong> '
+                       . 'Cinq échecs de connexion sur un nom — qu\'il n\'est pas nécessaire de posséder — suspendent '
+                       . 'aussi sa récupération de niveau 1 pendant quinze minutes, et une rafale régulière la tient '
+                       . 'fermée. Les freins des niveaux 2 et 3 et de l\'enrôlement comptent, eux, sous une étiquette '
+                       . 'dérivée d\'un secret serveur, qu\'un tiers ne peut pas fabriquer : le niveau 1 est le seul '
+                       . 'resté en clair. C\'est un déni de service, donc hors périmètre — publié ici parce qu\'il se '
+                       . 'trouve en cinq requêtes.</li>'
+                       . '<li><strong>Un tiers peut faire geler l\'ouverture d\'un dossier de niveau 3.</strong> '
+                       . 'Ouvrir un dossier ne demande rien d\'autre qu\'un nom de compte, et le refus d\'un arbitre '
+                       . 'compte sur le compte visé, pas sur le demandeur : trois dossiers ouverts puis refusés gèlent '
+                       . 'l\'ouverture pendant sept jours. L\'arbitre dispose d\'un abandon, qui clôt un dossier sans '
+                       . 'rien compter, et d\'une levée de gel ; le titulaire, lui, ne peut pas empêcher l\'ouverture.</li>'
         . '<li><strong>Les deux passphrases n\'ont pas le même plancher.</strong> Celle de récupération du <em>compte</em> est engendrée sur 6 mots — <strong>77,55 bits</strong> — et chaque mot saisi est validé contre la liste de 7776 ; la saisie est toutefois acceptée dès 4 mots, soit <strong>51,70 bits</strong>. Celle du <em>coffre mémo</em> passe à 4 mots et 16 caractères, <strong>sans validation de liste et par un contrôle côté navigateur</strong> : quatre mots inventés la scellent.</li>'
         . '<li><strong>C\'est le navigateur qui tient le second facteur de l\'appareil, pas le serveur.</strong> La clé privée d\'un appareil enrôlé vit dans le stockage du navigateur, chiffrée sous une clé dérivée du mot mémorisé — un mot dont le plancher, <strong>quatre caractères</strong>, est lui aussi vérifié par le navigateur. Le serveur ne vérifie qu\'une signature : qui obtient ce blob attaque le mot <strong>hors ligne</strong>, sans compteur d\'essais. L\'appareil reste bien un second facteur ; il n\'est simplement pas gardé là où on l\'attend.</li>',
 
