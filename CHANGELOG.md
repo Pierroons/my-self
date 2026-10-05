@@ -38,6 +38,8 @@ déclarer, un `cd` vers un dossier disparu.
   garde-fous qui n'existaient qu'en français.
 - **`web/my-self.fr/README.md`** nomme `site.css` et `og-image.png` ; le CHANGELOG décrit le versionnement
   par `modules.json`.
+- **`SECURITY.md`** prend en charge, en plus de `main`, la dernière ligne de version publiée de chaque
+  module, comme la politique de SelfRecover.
 
 ### La vitrine et les piliers disent ce que le code fait — 4 octobre 2026
 
