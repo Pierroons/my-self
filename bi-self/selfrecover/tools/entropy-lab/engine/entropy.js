@@ -7,8 +7,8 @@
  *   3. Hybride           : N mots EFF + ajout libre par l'utilisateur
  *
  * Le calcul est purement local — aucune passphrase ne quitte le navigateur
- * pour les modes preview. Le serveur génère la passphrase finale à l'inscription
- * (random_int() côté PHP avec la même wordlist EFF).
+ * pour les modes preview. La passphrase finale est tirée par le serveur
+ * (random_int() côté PHP), ou apportée par l'utilisateur, tirée aux dés.
  */
 
 (function () {

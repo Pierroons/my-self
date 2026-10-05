@@ -164,7 +164,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
     <strong>Limite physique.</strong>
     Cet outil ne peut pas se protéger contre un keylogger, un info-stealer ou un screen recorder déjà
     présent sur ta machine. Pour des secrets racine (master key, root server, identité de cofondation),
-    utilise un OS Live signé (Tails, Qubes, MySelf-Live V0.2 à venir).
+    utilise un OS Live signé (Tails, Qubes).
   </div>
 
   <div class="panel">
@@ -175,6 +175,7 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
       <div>
         <label>Langue de la wordlist</label>
         <select id="lang">
+          <option value="both" selected>EN ou FR -- comme SelfRecover</option>
           <option value="en">EN -- EFF Large Wordlist</option>
           <option value="fr">FR -- Liste d'Arthur Pons, 7776 mots</option>
         </select>
@@ -185,13 +186,13 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
           <option value="-">tiret (a-b-c)</option>
           <option value=" ">espace (a b c)</option>
           <option value=".">point (a.b.c)</option>
-          <option value="auto" selected>auto (détecte)</option>
+          <option value="auto" selected>espaces -- comme SelfRecover</option>
         </select>
       </div>
     </div>
     <div class="form-group">
       <label>Passphrase à valider</label>
-      <input type="text" id="passphrase" placeholder="par exemple : strangle-goliath-gurgle-limes" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+      <input type="text" id="passphrase" placeholder="six mots séparés par des espaces" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
     </div>
     <button class="btn" onclick="validateInput()">Valider</button>
     <button class="btn btn-secondary" onclick="clearInput()">Effacer mémoire</button>
@@ -231,7 +232,8 @@ const WORDS = {
 };
 const SET = {
   en: new Set(WORDS.en),
-  fr: new Set(WORDS.fr)
+  fr: new Set(WORDS.fr),
+  both: new Set([...WORDS.en, ...WORDS.fr])
 };
 const BITS_PER_WORD = Math.log2(7776);
 
@@ -244,14 +246,10 @@ function uniformInt(max) {
   return v % max;
 }
 
-// Les espaces d'abord : quatre mots de la liste anglaise portent un trait
-// d'union (t-shirt, yo-yo…), et couper sur le tiret les déclarerait invalides.
-function detectSep(s) {
-  if (/\s/.test(s)) return ' ';
-  if (s.includes('.')) return '.';
-  if (s.includes('-')) return '-';
-  return ' ';
-}
+// La découpe de SelfRecover : les seuls blancs ASCII, comme le \s de PHP sans
+// mode Unicode. Une espace insécable ne sépare donc pas deux mots, et le trait
+// d'union reste dans le mot : quatre mots de la liste anglaise en portent un.
+const BLANCS = /[ \t\r\n\f\v]+/;
 
 function echapper(t) {
   return t.replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'})[c]);
@@ -260,8 +258,7 @@ function echapper(t) {
 function validateInput() {
   const phrase = document.getElementById('passphrase').value.trim();
   const lang = document.getElementById('lang').value;
-  let sep = document.getElementById('sep').value;
-  if (sep === 'auto') sep = detectSep(phrase);
+  const sep = document.getElementById('sep').value;
 
   const out = document.getElementById('validation-result');
   if (!phrase) {
@@ -269,14 +266,14 @@ function validateInput() {
     return;
   }
 
-  const words = (sep === ' ' ? phrase.split(/\s+/) : phrase.split(sep)).map(w => w.trim().toLowerCase()).filter(Boolean);
+  const words = (sep === 'auto' || sep === ' ' ? phrase.split(BLANCS) : phrase.split(sep)).map(w => w.toLowerCase()).filter(Boolean);
   const set = SET[lang];
   const n = words.length;
   const matches = words.filter(w => set.has(w));
   const allOk = matches.length === n;
 
   let html = '<div class="result ' + (allOk ? 'ok' : 'bad') + '">';
-  const nomListe = lang === 'fr' ? 'la liste française' : 'la liste de l\'EFF';
+  const nomListe = lang === 'both' ? 'l\'une des deux listes' : lang === 'fr' ? 'la liste française' : 'la liste de l\'EFF';
   html += '<strong>' + (allOk ? 'Conforme' : 'Non conforme') + ' -- ' + matches.length + '/' + n + ' mots dans ' + nomListe + '</strong>';
   html += '<div style="margin-top:8px;">';
   for (const w of words) {
@@ -288,8 +285,9 @@ function validateInput() {
   if (allOk) {
     const bits = (n * BITS_PER_WORD).toFixed(1);
     const repete = new Set(words).size !== n;
-    const rec = n < 6 ? 'Trop court : SelfRecover en exige au moins 6.'
-              : repete ? 'Un mot revient : SelfRecover le refuse. Relance les dés pour celui-là.'
+    const rec = (sep === '-' || sep === '.') ? 'SelfRecover attend des espaces entre les mots : avec ce séparateur, il refuserait la saisie.'
+              : n < 6 ? 'Trop court : SelfRecover en exige au moins 6.'
+              : repete ? 'Un mot revient : SelfRecover refuse une passphrase apportée qui en a un. Relance les dés pour celui-là.'
               : 'Assez long pour SelfRecover.';
     const widthPct = Math.min(100, (parseFloat(bits) / 128) * 100);
     const color = bits < 50 ? 'var(--danger)' : bits < 70 ? 'var(--accent)' : bits < 100 ? 'var(--success)' : '#a380ff';

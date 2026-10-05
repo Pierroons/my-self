@@ -1,7 +1,7 @@
 # SelfRecover — outils
 
 Ce dossier rassemble ce qui ne dépend pas du serveur : des pages autonomes, un
-moteur de calcul client, et deux fichiers gardés pour référence. Rien ici n'est
+moteur de calcul client, et un fichier gardé pour référence. Rien ici n'est
 servi en production ; tout s'ouvre depuis un disque.
 
 | dossier | quoi | état |

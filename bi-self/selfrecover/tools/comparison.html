@@ -122,6 +122,8 @@
         maillon faible de l'authentification : un email compromis ou intercepté suffit à prendre le compte,
         sans second facteur. SelfRecover propose <strong>deux paliers d'adoption progressive</strong> pour
         durcir la récupération <em>sans refonte totale</em>.
+        <br><br><strong>Seul le mode Full est implémenté.</strong> La colonne Lite décrit une conception,
+        montrée en démonstration en v0.1.1 ; cette démonstration a été retirée le 18 août 2026.
     </div>
 
     <div class="grid3">
@@ -169,19 +171,21 @@
             <div class="col-header">SelfRecover Full <span class="col-tag">CIBLE</span></div>
             <p style="font-size:0.85rem;color:var(--muted);">Aucun email, aucun tiers. Split knowledge + diceware EFF.</p>
             <h3>Flux</h3>
-<div class="flow">1. User saisit username
+<div class="flow">1. Niveau 1 : nom du compte
    + passphrase diceware
-   (4-7 mots EFF officiels)
-2. Browser dérive HMAC
-   sur le nom d'hôte lu
-3. Serveur vérifie le hash
-   Argon2id stocké
-4. Reset effectué.
-5. Niveaux L2/L3 progressifs
-   pour récup avancée.</div>
+   (6 mots ou plus, tirés par
+   le serveur ou aux dés)
+2. Serveur la vérifie (Argon2id),
+   rend un mot de passe et une
+   passphrase neufs
+3. Niveau 2 : un code papier
+   + le mot mémorisé, dérivé en
+   HMAC dans le navigateur
+4. Niveau 3 : un arbitre humain
+   lit des faits bruts</div>
             <h3>Postulat</h3>
-            <p style="font-size:0.85rem;">Aucune dépendance externe. La récupération est cryptographique pure.</p>
-            <div class="col-summary">→ Zéro fournisseur SMTP. Zéro tiers. Cible idéale long terme.</div>
+            <p style="font-size:0.85rem;">Aucune dépendance externe. La récupération passe par ce que l'utilisateur détient, puis par un arbitre humain.</p>
+            <div class="col-summary">→ Zéro fournisseur SMTP. Zéro tiers. Un accès root au serveur contourne tout le protocole.</div>
         </div>
     </div>
 
@@ -255,7 +259,7 @@
             <tr><td>Dépendance fournisseur SMTP</td><td class="ko">Oui</td><td class="partial">Oui (mais ne suffit plus)</td><td class="ok">Aucune</td></tr>
             <tr><td>Empreinte code (back)</td><td class="ok">Minimale</td><td class="ok">Faible</td><td class="partial">Modérée</td></tr>
             <tr><td>Empreinte code (front)</td><td class="ok">Minimale</td><td class="ok">Faible</td><td class="partial">Modérée</td></tr>
-            <tr><td>Friction utilisateur</td><td class="ok">Minimale (1 click email)</td><td class="partial">Faible (1 mot à retenir)</td><td class="ko">Modérée (passphrase 4+ mots)</td></tr>
+            <tr><td>Friction utilisateur</td><td class="ok">Minimale (1 click email)</td><td class="partial">Faible (1 mot à retenir)</td><td class="ko">Modérée (passphrase de 6 mots, sur papier)</td></tr>
             <tr><td>Audit cryptographique</td><td class="partial">Variable</td><td class="ok">Simple (HMAC + Argon2id)</td><td class="ok">Documenté, AGPL</td></tr>
             <tr><td>Primitives cryptographiques</td><td class="partial">Variable selon l'implémentation</td><td class="ok">Standard (HMAC + Argon2id)</td><td class="ok">Standard (HMAC + Argon2id + diceware EFF)</td></tr>
         </tbody>
