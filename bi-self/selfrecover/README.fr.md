@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.10.0](https://img.shields.io/badge/status-v0.10.0-green.svg)](#statut)
+[![Status: v0.11.0](https://img.shields.io/badge/status-v0.11.0-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -372,7 +372,7 @@ forme rendue.
 
 **Ne prétend pas protéger contre :**
 - Code client malveillant / phishing actif (si l'attaquant contrôle la page que ton navigateur charge, le protocole ne peut rien — vrai pour n'importe quel protocole in-browser)
-- Mots de récupération faibles (`password`, `123`) — le niveau 2 demande aussi un code ou l'appareil enrôlé ; en ligne, les freins de débit et la suspension du niveau 2 bornent les essais ; hors ligne (base volée, blob d'un appareil), seul le coût d'Argon2id les freine — pas la dérivation elle-même
+- Mots de récupération faibles (`password`, `123`) — le niveau 2 demande aussi un code ou l'appareil enrôlé ; en ligne, le frein par adresse et la suspension du niveau 2 bornent les essais ; hors ligne (base volée, blob d'un appareil), seul le coût d'Argon2id les freine — pas la dérivation elle-même
 - Coercition physique de l'utilisateur (voir SelfGuard dans cet écosystème pour un stockage conscient de la contrainte)
 - Malware ciblé avec keylogging
 
@@ -427,7 +427,7 @@ SelfRecover est honnête sur ce qu'il protège et ce qu'il ne protège pas. Tout
 | Phishing passif / page clonée | ✅ en mode `'hostname'` — un clone dérive de sa propre adresse ; ❌ rien en mode `'label'` (un phishing actif contrôlant sa page est hors périmètre dans les deux cas) |
 | Sniffeur réseau / MITM | ✅ TLS en transit ; du mot mémorisé, seule l'empreinte HMAC part — la passphrase et le mot de passe passent en clair sous TLS |
 | Fuite de base de données | ✅ Hashes Argon2id (memory-hard, GPU-resistant) |
-| Brute-force online | ✅ Freins par compte, et par adresse sous le profil `clearweb`, puis suspension du niveau 2 au-delà d'un seuil d'échecs |
+| Brute-force online | ✅ Frein par adresse sous le profil `clearweb`, frein par compte aux niveaux 2 et à l'enrôlement, puis suspension du niveau 2 au-delà d'un seuil d'échecs. ⚠️ Le niveau 1 ne freine plus par compte — n'importe qui remplissait ce compteur sous le nom d'un autre et fermait sa seule voie autonome ; derrière un service caché, rien ne borne ses essais et lisser le débit de la route revient au déploiement |
 
 ### Adversaires HORS PÉRIMÈTRE — assumés explicitement
 
@@ -453,7 +453,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 ## Roadmap
 
-### Livré — v0.1.0 à v0.10.0 (avril → octobre 2026)
+### Livré — v0.1.0 à v0.11.0 (avril → octobre 2026)
 
 Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bibliothèque les a dépassés, tirée par son premier déploiement réel : ses besoins ont fait avancer le protocole plus vite que prévu. Les chantiers qui suivent ne portent donc plus de numéro — ils en recevront un en sortant.
 
@@ -474,6 +474,7 @@ Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bib
 - [x] **Reprendre un compte le referme** — les sessions ouvertes tombent, et un accord rendu a une fin (v0.8.0)
 - [x] **Garde de la route du sel dans la bibliothèque** — `Recovery::selDeDerivation` (v0.9.0)
 - [x] **Passphrase apportée par l'utilisateur, tirée aux dés** — `Recovery::validerPassphraseApportee`, à l'inscription et à chaque niveau (v0.10.0)
+- [x] **Le frein du niveau 1 ne ferme plus la porte du titulaire** — compteurs sous empreinte, classement silencieux des essais dont tous les mots existent (v0.11.0)
 
 ### Ensuite
 

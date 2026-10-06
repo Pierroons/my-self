@@ -1,9 +1,9 @@
-# SelfRecover — Whitepaper v1.3
+# SelfRecover — Whitepaper v1.4
 
 **Protocole de récupération de compte sans email**
 *Ton mot. Tes sites. Sans email.*
 
-*Édition du 5 octobre 2026 — v1.3 — décrit SelfRecover 0.10.0*
+*Édition du 6 octobre 2026 — v1.4 — décrit SelfRecover 0.11.0*
 
 ---
 
@@ -172,7 +172,8 @@ La bibliothèque n'expose pas de route ; elle fournit la garde, `Recovery::selDe
 - L'utilisateur fournit : le nom du compte + la passphrase diceware (exacte, aux espaces près ; le nom est mis en minuscules)
 - En cas de succès : un mot de passe **et** une passphrase neufs, rendus une seule fois ; l'ancienne passphrase ne vaut plus rien et les sessions ouvertes tombent. Le mot mémorisé et les appareils enrôlés ne changent pas. L'âge de la passphrase qui vient de servir est rendu : il informe, il ne refuse jamais
 - L'affichage (masqué par défaut, confirmation `"J'ai noté"`) relève de la page
-- Rate limit : 5 échecs / 15 minutes par compte et 12 par adresse (valeurs par défaut, réglées par l'intégrateur). Le frein par adresse n'existe que sous le profil de déploiement `clearweb` ; derrière un service caché, le profil `tor-onion` ne garde que le frein par compte. Le profil est obligatoire, sans défaut
+- Rate limit : 12 échecs / 15 minutes par adresse (valeurs par défaut, réglées par l'intégrateur), et **aucun frein par compte**. Il y en avait un, et n'importe qui le remplissait : son compteur vit dans une table que l'intégrateur partage avec sa propre page de connexion, donc cinq échecs sous le nom d'un tiers fermaient la seule voie qu'un titulaire puisse emprunter seul. La règle retenue est que **le frein ne refuse jamais le bon secret** ; le compteur subsiste et n'alimente plus qu'un signal. Le frein par adresse n'existe que sous le profil de déploiement `clearweb` : derrière un service caché, rien ne borne le nombre d'essais, et lisser le débit de la route appartient au déploiement (§10). Le profil est obligatoire, sans défaut
+- Classement silencieux : un essai dont **tous les mots existent** dans les listes, devant une porte qui ne s'ouvre pas, est compté à part. Au-delà de 3 essais de cette sorte dans la fenêtre, le refus porte une clé que le déploiement peut lire. Le message, le délai et le nombre d'essais ne changent pas, et les listes étant publiques, cela n'apprend rien à qui attaque. Il informe, il ne décide d'aucun accès
 - Anti-bot : hors de portée de la bibliothèque — le champ honeypot et le contrôle de timing vivent sur la page
 
 ### 5.2 Niveau 2 — Passphrase perdue (2FA sans identifiant)
@@ -299,7 +300,7 @@ SelfRecover gouverne **un seul droit** : celui de trancher les litiges de niveau
 
 **Ce que la bibliothèque applique**
 
-- **Compteurs** : par compte et par adresse aux niveaux 1 et 2 et à l'enrôlement d'un appareil, avec la suspension du niveau 2 après 20 échecs ; par adresse et pour tout le service à l'ouverture d'un dossier de niveau 3. Le frein par adresse n'existe que sous le profil `clearweb`
+- **Compteurs** : par adresse au niveau 1, par compte et par adresse au niveau 2 et à l'enrôlement d'un appareil, avec la suspension du niveau 2 après 20 échecs ; par adresse et pour tout le service à l'ouverture d'un dossier de niveau 3. Le frein par adresse n'existe que sous le profil `clearweb`. Au niveau 1, le compteur par compte ne ferme plus de porte : il classe
 - **Délai forcé** sur chaque refus qui tait un état
 - **Message de refus unique**, pour que rien ne trie les comptes qui existent — sauf deux exceptions assumées : la suspension du niveau 2, qui doit se dire, et l'ouverture d'un dossier de niveau 3 (§10.1)
 
@@ -348,7 +349,7 @@ L'utilisateur voit un message rassurant `"Ton compte est maintenant sécurisé"`
 - **Piratage de l'email** — il n'y a aucun email dans le protocole
 - **Panne du fournisseur SMTP** — pas de dépendance SMTP
 - **Confiance tiers** — seuls le site et l'utilisateur sont impliqués
-- **Force brute freinée** — par compte et par adresse aux niveaux 1 et 2 et à l'enrôlement, suspension du niveau 2 après 20 échecs, coût Argon2id par essai côté serveur
+- **Force brute freinée** — par adresse au niveau 1, par compte et par adresse au niveau 2 et à l'enrôlement, suspension du niveau 2 après 20 échecs, coût Argon2id par essai côté serveur. ⚠️ Au niveau 1 derrière un service caché, aucun frein de la bibliothèque ne s'applique : seuls le coût par essai et l'entropie de la passphrase s'y opposent
 - **Énumération par bot** — *partiellement*. Fermée aux niveaux 1 et 2 et à l'enrôlement : refus unique au premier, aucun identifiant demandé au second, compteur tiré du nom soumis au troisième. La route du sel répond toujours un sel, vrai ou faux (§4.2). Un refus du niveau 2 nomme pourtant un état : la suspension, qui apprend à qui détient déjà un code que ce code vise un compte réel. Ouverte au niveau 3, où la réponse utile EST la distinction — un succès rend un numéro de dossier, un nom inconnu ne peut pas en rendre. Les refus, eux, ne se distinguent pas : nom inconnu, dossier déjà ouvert et procédure gelée rendent le même `ouverture_refusee`, au même délai. Ce qui s'y oppose est le coût : deux freins avant la recherche du compte (par adresse, par service), ce délai sur chaque refus, et une preuve de travail devant la route — que la bibliothèque ne peut pas imposer puisqu'elle n'a pas de route
 - **Blanchiment de réputation sociale** — la bibliothèque n'offre aucun renommage de compte ; verrouiller le nom après l'inscription revient à l'application
 
@@ -502,7 +503,7 @@ SelfRecover n'est pas un remplacement pour WebAuthn. C'est un complément, surto
 
 ## 14. Feuille de route
 
-- [x] Spécification du protocole (v1.3)
+- [x] Spécification du protocole (v1.4)
 - [x] Implémentation de référence (ce dépôt)
 - [x] Livres blancs EN + FR
 - [x] Démo servie (`demo/bi-self-duo/`) et laboratoire (`demo/lab/`) — la démo autonome a été retirée le 18 août 2026

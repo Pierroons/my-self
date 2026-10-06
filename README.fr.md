@@ -22,7 +22,7 @@ ce qu'il fait, comment l'installer, et ce qu'il ne protège pas.
 
 | Module | Question | État |
 |---|---|---|
-| [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | **v0.10.0** — bibliothèque + implémentation déployée |
+| [SelfRecover](./bi-self/selfrecover/) | Qui es-tu ? | **v0.11.0** — bibliothèque + implémentation déployée |
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | Et si on vole le disque ? | **v0.6.2** — documenté, clé en hexadécimal |
 | [SelfDataGuard](./self-security/selfdataguard/) | Comment protéger les données au repos ? | **v0.6.0** — disponible, trois serrures, l'archive au niveau 3, un séquestre lié à son compte |
 | [SelfJustice](./self-right/selfjustice/) | Que dit le droit ? | **v0.4.2 bêta** — droit français en vigueur (LEGI), textes UE/CEDH, jurisprudence administrative |

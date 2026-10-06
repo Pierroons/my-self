@@ -501,6 +501,62 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfRecover v0.11.0] — 6 octobre 2026
+
+### SelfRecover v0.11.0 — le frein du niveau 1 ne ferme plus la porte du titulaire — 6 octobre 2026
+
+Le frein du niveau 1 comptait les échecs sous le nom de compte **en clair**, dans la table où
+atterrissent aussi les tentatives de connexion de l'intégrateur. Cinq échecs sous le nom d'un tiers
+fermaient donc sa récupération par passphrase, depuis une page publique et sans rien savoir de lui —
+et rien ne levait ce blocage. Mesuré au banc avant d'être corrigé : la voie reste ouverte, et le
+compteur ne sert plus qu'à classer. Aucun adaptateur de stockage ne change, aucune signature
+existante ne bouge.
+
+- **`Recovery::etiquetteEchecsL1()`** et **`Recovery::etiquetteSuspicionL1()`**, publiques comme
+  celle du niveau 2 : les compteurs du niveau 1 passent sous empreinte HMAC du sel de déploiement,
+  préfixes `l1:` et `l1-liste:`. Le compteur de la connexion ordinaire de l'intégrateur n'est plus
+  celui du niveau 1 : il garde le sien, en clair, pour sa propre porte. ⚠️ **Rupture de contrat** :
+  le niveau 1 ne rend plus « Trop de tentatives » pour un compteur par compte. Une console qui
+  compte les échecs de connexion doit écarter ces deux préfixes, et les lire par ces accesseurs
+  plutôt que les recopier.
+- **Le frein ne refuse jamais le bon secret.** Au niveau 1 seul le frein par **origine** ferme, et
+  il n'existe que sous le profil `clearweb`. ⚠️ Derrière un service caché, rien dans la bibliothèque
+  ne borne le nombre d'essais : le modèle de menace le dit, et nomme ce qui le borne au-dehors — un
+  lissage de débit sur la route, qui fait attendre sans rien mémoriser, et n'exclut donc aucun
+  compte après coup.
+- **Classement silencieux, deux avertissements avant le signalement.** Un essai dont **tous les
+  mots existent** dans les listes, devant une porte qui ne s'ouvre pas, est compté à part : les
+  listes sont publiques, donc la déduction ne compare rien au secret. Au troisième de la fenêtre, le
+  refus porte une clé `signalement`. Message, délai et nombre d'essais inchangés ; la bibliothèque
+  n'ouvre ni ne ferme rien d'après ce compteur.
+- **Le plafond d'octets s'applique enfin à la passphrase soumise**, et pas seulement à celle qui est
+  apportée : c'est le seul refus qu'une saisie permette sans comparaison, et le seul gratuit.
+- **La suspension du niveau 2 borne enfin ce qu'elle annonçait.** Son réarmement lisait les
+  réussites sous le nom en clair — donc **toute connexion ordinaire** du titulaire la remettait à
+  zéro, et le plafond de 20 échecs sur une feuille volée n'était jamais atteint. Il ne lit plus que
+  les réussites du niveau 1 : les trois gestes que son contrat nomme sont redevenus les trois seuls.
+- **`Escalade::etiquetteDepot()`**, publique : le dépôt d'un faisceau de niveau 3 ne range plus un
+  nom de compte **en clair** dans une table qui n'est purgée nulle part, et ces lignes ne se comptent
+  plus parmi les échecs de connexion d'une console.
+- **Ce que la bibliothèque ne peut pas faire** : juger la forme d'une saisie pour la refuser. Rien ne
+  garantit la forme de ce qui est rangé — l'empreinte vient de `remplacerEmpreintes()`, qu'un
+  intégrateur appelle avec la passphrase de son choix, et la longueur attendue a déjà changé entre
+  deux versions sans invalider les anciennes. Un contrôle de forme qui refuserait enfermerait
+  dehors, en silence, les titulaires dont la passphrase ne ressemble pas à celles qu'elle engendre.
+  Le banc l'a montré avant qu'on le croie.
+- **Migration** : les lignes déjà présentes portent le nom en clair. Elles deviennent orphelines pour
+  le frein du niveau 1 et pour le classement, qui repartent de zéro — une fenêtre, soit quinze
+  minutes par défaut. Rien à migrer, rien à supprimer.
+- **Un seul endroit cherche** : `motsHorsListe()` sert la validation de la passphrase apportée et le
+  classement, qui posaient la même question à deux endroits.
+
+Bancs : `sanity_recovery.php` (74 cas, deux profils, dont le frein par **origine** qu'aucun banc ne
+faisait mordre), `sanity_passphrase_apportee.php` 43, `sanity_escalade` 130, couplage avec
+SelfDataGuard 10/10, parcours 21/21, stockage PDO 150. Quinze canaris en CI, dont quatre neufs : le
+niveau 1 n'en avait aucun, et sa seule garde était l'effet de bord d'un autre.
+
+---
+
 ## [SelfRecover v0.10.0] — 5 octobre 2026
 
 ### SelfRecover v0.10.0 — la passphrase apportée, tirée aux dés — 5 octobre 2026

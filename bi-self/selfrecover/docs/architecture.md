@@ -162,7 +162,20 @@ What the library enforces, with the defaults it ships:
 - Device enrolment — 5 failures per account and 12 per address, over the same window, and a required
   assertion that the holder is already authenticated. Without it the path reaches the account with the
   memorized word alone
-- L1 — 5 failures per username and 12 per address, over a 15-minute window
+- L1 — 12 failures per address, over a 15-minute window, and **no per-account
+  brake**. A per-account counter was reachable by anyone who knew the public
+  username: the counter lives in a table the integrator shares with its own
+  login page, so failures entered there closed the only recovery path a holder
+  can take alone. The counter remains, and now only feeds the signal below —
+  the brake never refuses the right secret. Under `tor-onion`, where no address
+  exists, nothing bounds the number of attempts: smoothing the route's rate
+  belongs to the deployment
+- L1 — a silent classification, which refuses nothing: an attempt whose every
+  word exists in the wordlists, in front of a door that does not open, is
+  counted apart. Past 3 such attempts in the window the refusal carries a
+  `signalement` key the deployment may read. The user-facing message, the delay
+  and the number of attempts are unchanged. The wordlists are public, so this
+  tells an attacker nothing it cannot compute itself
 - L2 — no username is asked, but the code names its account: 5 failures per
   account over the same window, and the level is suspended for that account after
   20 failures since its last rearming — a fresh batch of codes, a successful code
