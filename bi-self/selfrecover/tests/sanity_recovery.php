@@ -154,11 +154,113 @@ $second = $rec->emettreCodes(1, 10, $now);
 verifier('une régénération périme le lot précédent', $st->compterCodesRestants(1) === 10);
 verifier('le nouveau lot fonctionne', $rec->parCode($second[0], $MOT, $IP, $now)['ok'] === true);
 
-echo "\n→ Freins\n";
+echo "\n→ Freins du niveau 1 — ce qu'ils ferment, et ce qu'ils ne ferment plus\n";
+
+// Six mots qui existent tous dans les listes, et qui n'ouvrent rien — la saisie
+// de qui connaît ses mots sans retrouver leur ordre. Et six qui n'existent
+// nulle part : celle de qui tape au hasard. Les deux sont mesurées, pas supposées.
+$PLAUSIBLE = 'maison chien voiture pantoufle garden pencil';
+$INCONNUS  = 'zzqxv wmgptk qjfbhz vxntlr kdwspq bhzmfj';
+
+// ⭐ Le défaut que cette version ferme : le compteur du niveau 1 était écrit
+// sous le nom en clair, dans la table que l'intégrateur partage avec sa page de
+// connexion. Vingt échecs sous le nom d'un tiers fermaient sa seule voie de
+// secours autonome.
 [$st, $rec] = neuf($MOT, $PHR, $SEL);
-for ($i = 0; $i < 5; $i++) { $rec->parPassphrase('alice', 'faux faux faux faux', $IP, $now); }
-verifier('cinq échecs bloquent le compte',
-    str_contains($rec->parPassphrase('alice', $PHR, $IP, $now)['message'], 'Trop de tentatives'));
+for ($i = 0; $i < 20; $i++) { $st->tracerTentative('alice', false, null, $now); }
+verifier('⭐ vingt échecs plantés sous le NOM EN CLAIR ne ferment rien',
+    $rec->parPassphrase('alice', $PHR, $IP, $now)['ok'] === true);
+
+// Et le titulaire ne s'enferme pas lui-même : le frein ne refuse jamais le bon
+// secret. Rien ne levait ce blocage — ni une connexion réussie, ni aucun geste.
+[$st, $rec] = neuf($MOT, $PHR, $SEL);
+for ($i = 0; $i < 10; $i++) { $rec->parPassphrase('alice', $INCONNUS, $IP, $now); }
+verifier('⭐ dix de ses propres échecs lui laissent sa passphrase',
+    $rec->parPassphrase('alice', $PHR, $IP, $now)['ok'] === true);
+
+// 🔑 Le frein par ORIGINE, lui, ferme — et c'est le seul qui reste. Aucun banc
+// ne l'éprouvait : sa branche pouvait disparaître sans qu'un seul cas rougisse.
+if ($PROFIL === ProfilDeploiement::CLEARWEB) {
+    [$st, $rec] = neuf($MOT, $PHR, $SEL);
+    for ($i = 0; $i < 12; $i++) { $rec->parPassphrase('bob', $INCONNUS, $IP, $now); }
+    $ro = $rec->parPassphrase('alice', $PHR, $IP, $now);
+    verifier('⭐ douze échecs depuis la même origine ferment, eux', $ro['ok'] === false
+        && $ro['message'] === 'Trop de tentatives. Réessaie dans 15 minutes.', $ro['message']);
+
+    // Chaque contre-témoin repart d'un stockage neuf : une récupération réussie
+    // remplace la passphrase, donc deux succès ne s'enchaînent pas sur le même
+    // compte. Les douze échecs y sont plantés — le cas ci-dessus a déjà montré
+    // que `parPassphrase()` remplit bien le compteur qu'il relit.
+    foreach ([['depuis une AUTRE origine, le bon mot passe', '192.0.2.8', $now],
+              ['hors de la fenêtre, la même origine passe', $IP, $now + 901]] as [$quoi, $origine, $quand]) {
+        [$st, $rec] = neuf($MOT, $PHR, $SEL);
+        for ($i = 0; $i < 12; $i++) {
+            $st->tracerTentative($rec->etiquetteEchecsL1('bob'), false, $IP, $now);
+        }
+        verifier("contre-témoin : {$quoi}",
+            $rec->parPassphrase('alice', $PHR, $origine, $quand)['ok'] === true);
+    }
+} else {
+    // ⚠️ **La limite assumée du profil, mesurée plutôt que promise.** Derrière un
+    // service caché il n'y a pas d'origine à compter, donc plus rien ne ferme le
+    // niveau 1 : lisser le débit de la route revient au déploiement. Un banc le
+    // dit, sinon personne ne sait que cette limite existe.
+    [$st, $rec] = neuf($MOT, $PHR, $SEL);
+    $rt = null;
+    for ($i = 0; $i < 50; $i++) { $rt = $rec->parPassphrase('alice', $PLAUSIBLE, null, $now); }
+    verifier('⭐ sous tor-onion, cinquante échecs ne ferment rien — rien ne borne ici',
+        $rec->parPassphrase('alice', $PHR, null, $now)['ok'] === true);
+    verifier('🔑 le signalement est alors le seul garde qui reste, et il répond',
+        ($rt['signalement'] ?? null) === 'essais_plausibles');
+    // Une origine glissée dans cette table consommerait le quota que la connexion
+    // ordinaire, le niveau 2 et l'enrôlement se partagent — pour tout le monde à
+    // la fois, puisque le service n'en voit qu'une.
+    verifier('🔑 et aucune ligne tracée ne porte d\'origine',
+        array_filter($st->tentatives, static fn (array $t): bool => $t['ip'] !== null) === []);
+}
+
+echo "\n→ Le classement : des mots qui existent tous, une porte qui ne s'ouvre pas\n";
+[$st, $rec] = neuf($MOT, $PHR, $SEL);
+$r1 = $rec->parPassphrase('alice', $PLAUSIBLE, $IP, $now);
+$r2 = $rec->parPassphrase('alice', $PLAUSIBLE, $IP, $now);
+verifier('🔑 les deux premiers essais plausibles ne réveillent personne',
+    !isset($r1['signalement']) && !isset($r2['signalement']));
+$r3 = $rec->parPassphrase('alice', $PLAUSIBLE, $IP, $now);
+verifier('⭐ le troisième signale', ($r3['signalement'] ?? null) === 'essais_plausibles');
+// 🔑 Le signalement ne change rien de ce que voit l'utilisateur : même message,
+// même issue. Il informe le déploiement, il ne décide d'aucun accès.
+verifier('🔑 et son refus reste celui des autres, au mot près',
+    $r3['ok'] === false && $r3['message'] === 'Identifiant ou passphrase incorrect.', $r3['message']);
+verifier('🔑 un essai signalé ne ferme pas la porte au bon mot',
+    $rec->parPassphrase('alice', $PHR, $IP, $now)['ok'] === true);
+
+// ⭐ Qui tape des mots qui n'existent pas ne déclenche rien : ce n'est pas un
+// essai qu'on puisse confondre avec celui d'un titulaire.
+[$st, $rec] = neuf($MOT, $PHR, $SEL);
+$ri = null;
+for ($i = 0; $i < 6; $i++) { $ri = $rec->parPassphrase('alice', $INCONNUS, $IP, $now); }
+verifier('⭐ six essais aux mots inconnus ne signalent rien', !isset($ri['signalement']));
+// Contre-témoin de la mesure elle-même : le compteur du classement est bien le
+// sien, et il est resté vide pendant que l'autre se remplissait.
+verifier('contre-témoin : rien ne s\'est rangé sous le compteur du classement',
+    $st->compterEchecsCompte($rec->etiquetteSuspicionL1('alice'), $now - 900) === 0);
+
+// Le plafond d'octets, seul refus que la saisie permette sans comparaison : une
+// passphrase rangée n'a aucune forme garantie, sa taille a un plafond public.
+[$st, $rec] = neuf($MOT, $PHR, $SEL);
+$enorme  = str_repeat('chien ', 200_000);
+$debut   = hrtime(true);
+$rg      = $rec->parPassphrase('alice', $enorme, $IP, $now);
+$msEnorme = intdiv(hrtime(true) - $debut, 1_000_000);
+$debut   = hrtime(true);
+$rec->parPassphrase('alice', $INCONNUS, $IP, $now);
+$msNormal = intdiv(hrtime(true) - $debut, 1_000_000);
+verifier('⭐ une saisie au-delà du plafond est refusée', $rg['ok'] === false
+    && $rg['message'] === 'Identifiant ou passphrase incorrect.');
+verifier('⭐ et refusée SANS payer la comparaison lente',
+    $msEnorme < $msNormal, "{$msEnorme} ms contre {$msNormal} ms");
+verifier('🔑 elle n\'entre pas dans le classement non plus',
+    !isset($rg['signalement']));
 
 echo "\n→ Le frein par compte du niveau 2\n";
 

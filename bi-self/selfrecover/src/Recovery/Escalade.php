@@ -107,6 +107,28 @@ final class Escalade
     private const PREFIXE = 'l3:ouvrir:';
 
     /**
+     * Préfixe du dépôt d'un faisceau — nominatif, donc sous HMAC comme le reste.
+     *
+     * Distinct de celui des compteurs d'ouverture : ceux-là comptent sans
+     * attribuer, celui-ci attribue sans compter. Les mêler sous un seul préfixe
+     * rendrait indistinguables une sonde et un fait.
+     */
+    private const PREFIXE_DEPOT = 'l3:depot:';
+
+    /**
+     * L'étiquette sous laquelle le dépôt d'un faisceau est journalisé.
+     *
+     * 🔑 **Publique exprès**, comme celles du niveau 1 et du niveau 2 : une
+     * console qui compte les échecs de connexion doit écarter ces lignes, qui
+     * partagent sa table et n'ont rien d'une tentative d'authentification. Un
+     * préfixe recopié la rendrait muette le jour où il change.
+     */
+    public function etiquetteDepot(string $nomCompte): string
+    {
+        return self::PREFIXE_DEPOT . $this->recovery->indexRecherche($nomCompte);
+    }
+
+    /**
      * L'étiquette d'un compteur d'ouverture — un HMAC sous le sel du déploiement.
      *
      * ⚠️ **Le sel n'est pas là pour cacher, il est là pour EMPÊCHER D'ÉCRIRE.**
@@ -378,7 +400,14 @@ final class Escalade
         // 🔑 Journalisé comme un ÉCHEC. Un niveau 3 ne réussit jamais tout seul :
         // s'il comptait comme une réussite, il effacerait l'ardoise des
         // tentatives et deviendrait la voie la moins surveillée du service.
-        $this->stockage->tracerTentative('l3:' . $faits['nom_compte'], false, null, $maintenant);
+        //
+        // ⚠️ Sous étiquette, comme tout ce qui entre dans cette table : un nom
+        // de compte en clair y attendait indéfiniment, et ces lignes passaient
+        // les filtres d'une console qui écarte le préfixe d'ouverture — chaque
+        // dossier légitime se comptait alors parmi les échecs de connexion.
+        $this->stockage->tracerTentative(
+            $this->etiquetteDepot((string) $faits['nom_compte']), false, null, $maintenant,
+        );
 
         return ['ok' => true, 'statut' => Litige::A_LIRE,
                 'message' => 'Dossier transmis. Un arbitre va le lire et te répondre dans le fil de ce dossier. '
