@@ -363,7 +363,7 @@ jobs:
         run: |
           # Le banc est lancé sans `set -e` sur l'affectation : sinon l'étape meurt
           # avant le contrôle du compte, là où il serait le plus utile — un cas
-          # manquant sur les soixante-quatorze.
+          # manquant sur les soixante-quinze.
           #
           # 🔑 Les DEUX profils, dans la même étape. Le corps du banc est le même :
           # seule l'origine change, absente en tor-onion. Un comportement qui ne
@@ -374,8 +374,8 @@ jobs:
             sortie=$(php bi-self/selfrecover/tests/sanity_recovery.php --profil="$profil" 2>&1) && rc=0 || rc=$?
             echo "$sortie"
             [ "$rc" = 0 ] || { echo "::error::le banc de récupération a échoué sous $profil"; exit 1; }
-            echo "$sortie" | grep -qE '^OK — 74/74$' \
-              || { echo "::error::le banc de récupération n'a pas joué ses 74 cas sous $profil"; exit 1; }
+            echo "$sortie" | grep -qE '^OK — 75/75$' \
+              || { echo "::error::le banc de récupération n'a pas joué ses 75 cas sous $profil"; exit 1; }
           done
 
       # La route du sel du niveau 2 est publique : elle doit rendre un sel pour tout
@@ -478,18 +478,24 @@ jobs:
             $S '❌ ⭐ douze échecs depuis la même origine ferment, eux'
           # Le signal qui remplace la porte fermée : s'il ne se déclenche jamais, on a
           # retiré un frein sans rien mettre à sa place.
-          canari $R 'private const ESSAIS_PLAUSIBLES_AVANT_SIGNALEMENT = 3;' \
-            'private const ESSAIS_PLAUSIBLES_AVANT_SIGNALEMENT = 99;' \
-            $S '❌ ⭐ le troisième signale'
+          canari $R 'public const ESSAIS_PLAUSIBLES_SIGNALES = 3;' \
+            'public const ESSAIS_PLAUSIBLES_SIGNALES = 99;' \
+            $S '❌ ⭐ le troisième atteint le seuil'
           # Et il ne doit pas se déclencher sur n'importe quoi : classer à l'envers
           # réveillerait le vigile pour qui tape à côté, et le tairait pour l'autre.
           canari $R '$etiquette = !$ok && self::motsTousConnus($passphrase)' \
             '$etiquette = !$ok && !self::motsTousConnus($passphrase)' \
-            $S '❌ ⭐ six essais aux mots inconnus ne signalent rien'
+            $S '❌ ⭐ six essais aux mots inconnus ne comptent pas'
           # Le plafond d'octets de la saisie SOUMISE, qui n'était appliqué qu'à la
           # passphrase apportée : sans lui, un envoi énorme se fait comparer.
           canari $R 'if (strlen($passphrase) > self::OCTETS_PASSPHRASE_MAXIMUM) {' 'if (false) {' \
             $S '❌ ⭐ et refusée SANS payer la comparaison lente'
+          # ⭐ Le plancher du classement aligné sur la longueur du JOUR rend le signal
+          # aveugle sur les comptes les plus anciens — donc les plus faibles —, dont
+          # la passphrase plus courte reste valide. C'est le seul signal de ce niveau.
+          canari $R 'public const MOTS_MINIMUM_CLASSEMENT = 4;' \
+            'public const MOTS_MINIMUM_CLASSEMENT = 6;' \
+            $S '❌ ⭐ quatre mots connus comptent pour un essai, pas seulement six'
 
       # Un frein qu'on n'a jamais fait céder ne se distingue pas d'un frein qui
       # n'est relié à rien : les deux laissent le banc vert. Ce canari mesure que
@@ -572,7 +578,7 @@ jobs:
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
           echo "$sortie" | grep -qE '^  Escalade SelfRecover — 130 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 129 cas"; exit 1; }
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 130 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les

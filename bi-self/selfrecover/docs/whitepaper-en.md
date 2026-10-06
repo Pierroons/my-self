@@ -172,8 +172,8 @@ The library exposes no route; it ships the guard, `Recovery::selDeDerivation($co
 - User provides: the account name + the diceware passphrase (exact, up to whitespace; the name is lowercased)
 - On success: a new password **and** a new passphrase, shown once; the old passphrase is void and open sessions are dropped. The memorized word and enrolled devices are unchanged. The age of the passphrase just used is returned: it informs, it never refuses
 - Display (masked by default, "I've saved it" confirmation) belongs to the page
-- Rate limit: 12 failures / 15 minutes per address (defaults, set by the integrator), and **no per-account brake**. There was one, and anyone could fill it: its counter lives in a table the integrator shares with its own login page, so five failures under a third party's name closed the only path a holder can take alone. The rule retained is that **a brake never refuses the right secret**; the counter remains and now feeds a signal only. The per-address brake only exists under the `clearweb` deployment profile: behind a hidden service nothing bounds the number of attempts, and smoothing the route's rate belongs to the deployment (§10). The profile is mandatory, with no default
-- Silent classification: an attempt whose **every word exists** in the wordlists, in front of a door that does not open, is counted apart. Past 3 such attempts in the window, the refusal carries a key the deployment may read. The message, the delay and the number of attempts are unchanged, and since the wordlists are public this tells an attacker nothing. It informs; it decides no access
+- Rate limit: 12 failures / 15 minutes per address (defaults, set by the integrator), and **no per-account brake**. Such a counter would live in a table the integrator shares with its own login page: anyone could fill it under a third party's name and close the only path a holder can take alone. The rule retained is that **a brake never refuses the right secret**; the counter remains and now feeds a signal only. The per-address brake only exists under the `clearweb` deployment profile: behind a hidden service nothing bounds the number of attempts, and smoothing the route's rate belongs to the deployment (§11.3, where it becomes this level's only bound). The profile is mandatory, with no default
+- Silent classification: an attempt whose **every word exists** in the wordlists, in front of a door that does not open, is counted under a label of its own. `essaisPlausiblesL1()` returns that count and `ESSAIS_PLAUSIBLES_SIGNALES` says from how many — 3 — there is something worth waking someone for; the library compares nothing to that threshold and decides no access. The message, the delay and the number of attempts are unchanged. ⚠️ **That count never travels in the reply**: a reply goes out on the network, and whoever knows a public account name would read in it that a third party is right now looking for the word order they hold. The wordlists are public; other people's attempts are not. The counter is also fillable by anyone who knows the name: nothing must depend on it
 - Anti-bot: out of the library's reach — a honeypot field and a form-timing check live on the page
 
 ### 5.2 Level 2 — Lost Passphrase (identifier-less 2FA)
@@ -400,7 +400,7 @@ SelfRecover assumes:
 
 - The user treats the recovery word like a house key — not written on a sticky note, not shared in a chat
 - In `'hostname'` mode, the derivation limits damage to the single hostname involved (the fingerprint is useless elsewhere); in `'label'` mode it only limits damage to services that do not share the same label
-- Per-account and per-address brakes, and level-2 suspension, slow online brute force down; offline, only the Argon2id cost does
+- The per-address brake, the per-account brakes on level 2 and on enrollment, and level-2 suspension, slow online brute force down — at level 1 behind a hidden service none of them applies; offline, only the Argon2id cost does
 - The server cannot compensate for human carelessness — no system can
 
 **A protected secret stays safe; a neglected one is exposed.** This is not a flaw — it is the fundamental contract of any secret-based security system.
@@ -435,7 +435,7 @@ SelfRecover cannot protect accounts if the server hosting it is insecure. The fo
 ### 11.3 Application
 
 - [ ] HTTPS mandatory on the ordinary web — in `'hostname'` mode the derivation reads the hostname, and without TLS nothing guarantees the page served actually comes from that service; on a v3 hidden service the address is the service's public key (§4.1)
-- [ ] Rate limiting on all recovery endpoints (nginx `limit_req` or application-level)
+- [ ] Rate limiting on all recovery endpoints (nginx `limit_req` or application-level). ⚠️ Under the `tor-onion` profile this is the **only** bound on level 1: the library brakes there neither per account nor per address, and every attempt that reaches the comparison pays an Argon2id. A queue that makes callers wait without remembering anything excludes no account; a service-wide cap, by contrast, is emptied by one third party
 - [ ] Security headers: CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy
 - [ ] PHP: `disable_functions`, `open_basedir`, `expose_php off`
 - [ ] Init and migration scripts blocked in production (deny all or remove)
@@ -509,7 +509,7 @@ SelfRecover is not a replacement for WebAuthn. It is a complement, especially fo
 - [x] All three levels in the library, level 3 included (`Escalade`)
 - [x] "This device" factor, and its local Argon2id encryption (`client/sr-kdf.js`)
 - [x] Shipped storage implementation (`schema.sql` + `StockagePdo`)
-- [x] Mandatory deployment profile, per-account brakes, level-2 suspension
+- [x] Mandatory deployment profile, per-account brakes on level 2 and on enrollment, level-2 suspension
 - [x] Devices removed on a level-3 reset, grant expiry
 - [x] Salt route guard (`Recovery::selDeDerivation`)
 - [x] A passphrase the user brings, rolled with dice (`Recovery::validerPassphraseApportee`)

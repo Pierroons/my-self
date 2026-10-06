@@ -118,10 +118,10 @@ final class Escalade
     /**
      * L'étiquette sous laquelle le dépôt d'un faisceau est journalisé.
      *
-     * 🔑 **Publique exprès**, comme celles du niveau 1 et du niveau 2 : une
-     * console qui compte les échecs de connexion doit écarter ces lignes, qui
-     * partagent sa table et n'ont rien d'une tentative d'authentification. Un
-     * préfixe recopié la rendrait muette le jour où il change.
+     * 🔑 **Publique exprès**, pour la raison dite par
+     * `Recovery::etiquetteEchecsL2()` : une console qui compte les échecs de
+     * connexion doit écarter ces lignes, qui partagent sa table et n'ont rien
+     * d'une tentative d'authentification.
      */
     public function etiquetteDepot(string $nomCompte): string
     {
@@ -401,10 +401,11 @@ final class Escalade
         // s'il comptait comme une réussite, il effacerait l'ardoise des
         // tentatives et deviendrait la voie la moins surveillée du service.
         //
-        // ⚠️ Sous étiquette, comme tout ce qui entre dans cette table : un nom
-        // de compte en clair y attendait indéfiniment, et ces lignes passaient
-        // les filtres d'une console qui écarte le préfixe d'ouverture — chaque
-        // dossier légitime se comptait alors parmi les échecs de connexion.
+        // ⚠️ Sous étiquette, comme tout ce qui entre dans cette table : aucune
+        // purge ne la vide, donc un nom de compte en clair y attend
+        // indéfiniment. Et une console qui n'écarte que le préfixe d'ouverture
+        // ne voit pas ces lignes : chaque dossier légitime se compterait parmi
+        // ses échecs de connexion.
         $this->stockage->tracerTentative(
             $this->etiquetteDepot((string) $faits['nom_compte']), false, null, $maintenant,
         );

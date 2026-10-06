@@ -43,10 +43,10 @@ if (!RecoverHelper::estIdentifiant($username) || $password === '') {
 
 $db = $s->db();
 
-// Check lockout (5 échecs en 5 min). Ce compteur est celui de CETTE porte, sous
-// le nom en clair : la bibliothèque écrit les siens sous empreinte et ne les
-// partage plus. C'est ce qui rend le conseil du refus exact — la récupération
-// par passphrase reste ouverte quand cette porte-ci est fermée.
+// Check lockout. Ce compteur est celui de CETTE porte, sous le nom en clair :
+// la bibliothèque écrit les siens sous empreinte et ne les partage pas. C'est ce
+// qui rend le conseil du refus exact — la récupération par passphrase reste
+// ouverte quand cette porte-ci est fermée.
 $stmt = $db->prepare('
     SELECT COUNT(*) as c FROM login_attempts
     WHERE username = :u AND success = 0 AND attempted_at >= :since

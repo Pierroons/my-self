@@ -427,7 +427,7 @@ SelfRecover est honnête sur ce qu'il protège et ce qu'il ne protège pas. Tout
 | Phishing passif / page clonée | ✅ en mode `'hostname'` — un clone dérive de sa propre adresse ; ❌ rien en mode `'label'` (un phishing actif contrôlant sa page est hors périmètre dans les deux cas) |
 | Sniffeur réseau / MITM | ✅ TLS en transit ; du mot mémorisé, seule l'empreinte HMAC part — la passphrase et le mot de passe passent en clair sous TLS |
 | Fuite de base de données | ✅ Hashes Argon2id (memory-hard, GPU-resistant) |
-| Brute-force online | ✅ Frein par adresse sous le profil `clearweb`, frein par compte aux niveaux 2 et à l'enrôlement, puis suspension du niveau 2 au-delà d'un seuil d'échecs. ⚠️ Le niveau 1 ne freine plus par compte — n'importe qui remplissait ce compteur sous le nom d'un autre et fermait sa seule voie autonome ; derrière un service caché, rien ne borne ses essais et lisser le débit de la route revient au déploiement |
+| Brute-force online | ⚠️ Frein par adresse sous le profil `clearweb`, frein par compte aux niveaux 2 et à l'enrôlement, puis suspension du niveau 2 au-delà d'un seuil d'échecs. ⚠️ Le niveau 1 ne freine plus par compte — n'importe qui remplissait ce compteur sous le nom d'un autre et fermait sa seule voie autonome ; derrière un service caché, rien ne borne ses essais et lisser le débit de la route revient au déploiement |
 
 ### Adversaires HORS PÉRIMÈTRE — assumés explicitement
 

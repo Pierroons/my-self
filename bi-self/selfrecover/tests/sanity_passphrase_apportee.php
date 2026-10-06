@@ -170,10 +170,10 @@ for ($i = 0; $i < 10; $i++) {
 $apres = $rec->parPassphrase('alice', $ancienne, $IP, $now + 20, nouvellePassphrase: $neuve);
 verifier('un refus de la passphrase apportée ne charge pas le frein', ($apres['ok'] ?? false) === true,
     (string) ($apres['message'] ?? ''));
-// 🔑 Depuis que le frein par compte ne ferme plus, « ne charge pas le frein » ne
-// se mesure plus sur une porte restée ouverte : elle l'est toujours. Ce qui se
-// mesure, c'est le compteur que l'arbitrage relit — dix refus de forme n'y
-// rangent rien, parce qu'aucun d'eux n'était un essai.
+// 🔑 L'assertion précédente ne discrimine plus rien : le frein par compte ne
+// ferme pas, donc cette porte est ouverte quoi qu'on compte. Ce qui se mesure
+// ici, c'est le compteur que l'arbitrage relit — des refus de forme n'y rangent
+// rien, parce qu'aucun d'eux n'était un essai.
 verifier('🔑 et il ne charge pas le classement non plus',
     $st->compterEchecsCompte($rec->etiquetteSuspicionL1('alice'), $now - 900) === 0);
 

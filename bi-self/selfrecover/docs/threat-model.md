@@ -1,6 +1,6 @@
 # Threat model
 
-> Extracted from the v1.3 whitepaper. Read the [full version](whitepaper-en.md) for context.
+> Extracted from the v1.4 whitepaper. Read the [full version](whitepaper-en.md) for context.
 
 ## Threats SelfRecover protects against
 
@@ -27,13 +27,16 @@ Per-account rate limits on level 2 and on device enrolment, plus per-address lim
 the `clearweb` profile, plus the suspension of code recovery past a threshold of failures. Opening a
 level-3 case is braked per address and service-wide — deliberately not per account (see below).
 
-⚠️ **Level 1 has no per-account brake, and that is the fix, not the gap.** It had one, and anyone
+⚠️ **Level 1 has no per-account brake, and that is a decision rather than an omission.** It had one, and anyone
 who knew the public username could fill it: the counter lives in a table the integrator shares with
 its own login page, so five failures entered there closed the holder's only self-service recovery
 path — level 2 needs the paper codes, level 3 needs a human. Nothing lifted it either. The counter
 now feeds a signal instead of a door, on the rule that **a brake never refuses the right secret**.
-What bounds guessing at level 1: the per-address brake under `clearweb`, the Argon2id cost of every
-server-side attempt, and the ~77.5 bits of six words drawn by dice.
+What bounds guessing at level 1: the per-address brake under `clearweb`, and the Argon2id cost of
+every server-side attempt. ⚠️ A third term is often assumed and is **not** guaranteed — the entropy
+of the passphrase. Six words drawn by dice are worth ≈77.5 bits, but `validerPassphraseApportee()`
+measures no randomness: six words picked from memory pass it. With no per-account brake, that
+entropy is the only per-account bound left at this level, and the library cannot verify it.
 
 ⚠️ Enrolling a device reaches the account with the memorized word alone: measured on the wire on
 13 August 2026, in three requests, with the attacker's own key. The library cannot verify a session, so
@@ -47,6 +50,14 @@ where the brake is supposed to bite. At L2 the per-account brake is the only one
 has two steps: a short window, then suspension of the level for that account until it is rearmed.
 That brake is safe to keep because its counter cannot be filled from outside: charging it requires
 one of the account's codes, and its label is not forgeable without the deployment salt.
+
+⚠️ **The level-1 classification counter has no such protection**, and that is why nothing may depend
+on it. Its label is not forgeable either, but the level-1 route itself fills it: three requests under
+a public account name put that account over the threshold for the whole window, the holder's own
+attempts included. It informs a human; it must never gate an access, a freeze, or a per-account
+notification a third party could trigger in series. Nor is the count ever returned to the caller —
+`essaisPlausiblesL1()` is how a deployment reads it, because a reply travels, and whoever knows a
+public name would read in it that someone is looking for that account's word order right now.
 
 ### ⚠️ Load on the level-1 path behind a hidden service — named, not promised
 Under `tor-onion` there is no per-caller address, by design: the service sees one origin for
@@ -221,7 +232,7 @@ If a user forgets their password AND their passphrase AND their recovery word, t
 | Email account takeover | ✓ | No email used |
 | SMTP failures | ✓ | No SMTP |
 | Third-party trust | ✓ | Local only |
-| Brute force recovery word | ✓ online | Rate limits + L2 suspension; offline, only the Argon2id cost |
+| Brute force recovery word | ✓ online, except level 1 behind a hidden service | Per-address brake + L2 suspension; offline, only the Argon2id cost |
 | Bot enumeration | ~ | Closed at L1/L2; at L3 it is a cost, not a silence — see above |
 | Stolen L1 passphrase | ✗ until used | Never expires, deliberately; single use bounds it, no notification exists |
 | Server root compromise | ✗ | Mandatory sudo hardening |

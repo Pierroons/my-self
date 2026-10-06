@@ -425,7 +425,7 @@ SelfRecover is honest about what it protects and what it does not. Every cryptog
 | Passive phishing / cloned page | ✅ in `'hostname'` mode — a clone derives from its own hostname; ❌ nothing in `'label'` mode (active phishing controlling its own page is out of scope either way) |
 | Network sniffer / MITM | ✅ TLS in transit; of the memorized word, only the HMAC fingerprint leaves — the passphrase and the password travel in the clear under TLS |
 | Database leak | ✅ Argon2id hashes (memory-hard, GPU-resistant) |
-| Online brute-force | ✅ Per-address brake under the `clearweb` profile, per-account brakes on L2 and on enrolment, then the L2 suspension past a threshold of failures. ⚠️ Level 1 no longer brakes per account — anyone could fill that counter under someone else's name and close their only self-service path; behind a hidden service nothing bounds its attempts, and smoothing the route's rate belongs to the deployment |
+| Online brute-force | ⚠️ Per-address brake under the `clearweb` profile, per-account brakes on L2 and on enrolment, then the L2 suspension past a threshold of failures. ⚠️ Level 1 no longer brakes per account — anyone could fill that counter under someone else's name and close their only self-service path; behind a hidden service nothing bounds its attempts, and smoothing the route's rate belongs to the deployment |
 
 ### Adversaries OUT OF SCOPE — explicitly assumed
 

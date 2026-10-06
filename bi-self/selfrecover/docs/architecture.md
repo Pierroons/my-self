@@ -172,10 +172,14 @@ What the library enforces, with the defaults it ships:
   belongs to the deployment
 - L1 — a silent classification, which refuses nothing: an attempt whose every
   word exists in the wordlists, in front of a door that does not open, is
-  counted apart. Past 3 such attempts in the window the refusal carries a
-  `signalement` key the deployment may read. The user-facing message, the delay
-  and the number of attempts are unchanged. The wordlists are public, so this
-  tells an attacker nothing it cannot compute itself
+  counted apart, under a label of its own. `essaisPlausiblesL1()` returns that
+  count and `ESSAIS_PLAUSIBLES_SIGNALES` says from how many — 3 — there is
+  something worth waking someone for; the library compares nothing to it and
+  decides no access. ⚠️ **The count never travels in the reply**: a reply goes
+  out on the network, and whoever knows a public account name would read in it
+  that a third party is right now looking for the word order they hold. The
+  wordlists are public; other people's attempts are not. The counter is also
+  fillable by anyone who knows the name, so nothing must depend on it
 - L2 — no username is asked, but the code names its account: 5 failures per
   account over the same window, and the level is suspended for that account after
   20 failures since its last rearming — a fresh batch of codes, a successful code

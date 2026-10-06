@@ -89,28 +89,29 @@ final class Recovery
     private const PREFIXE_L2 = 'l2:';
 
     /**
-     * Préfixes du niveau 1 : les essais dont la saisie n'avait pas la forme
-     * d'une passphrase, et ceux dont elle l'avait.
+     * Préfixes du niveau 1 : `etiquetteEchecsL1()` et `etiquetteSuspicionL1()`
+     * disent ce que chacun range.
      *
      * ⚠️ **Sans eux, le compteur du niveau 1 se remplit depuis la page de
-     * connexion.** Il comptait sous le nom de compte en clair, dans une table
-     * que l'intégrateur partage avec sa propre porte — cinq échecs de connexion
-     * sous le nom d'un tiers fermaient sa récupération par passphrase. Mesuré
-     * avant d'être corrigé. `Etiquette` dit pourquoi le sel empêche d'écrire.
+     * connexion** : la table est partagée avec la porte de l'intégrateur, qui y
+     * écrit le nom soumis tel quel. `Etiquette` dit pourquoi le sel empêche
+     * d'écrire.
      */
     private const PREFIXE_L1        = 'l1:';
     private const PREFIXE_SUSPICION = 'l1-liste:';
 
     /**
-     * Essais dont la saisie avait la forme d'une passphrase, et qui n'ont rien
-     * ouvert, avant que le refus cesse d'être silencieux.
+     * Nombre d'essais plausibles dans la fenêtre **à partir duquel** il y a de
+     * quoi réveiller quelqu'un. Trois : les deux premiers sont silencieux.
      *
-     * 🔑 **Deux essais plausibles ne réveillent personne.** Qui range plusieurs
-     * passphrases en essaie une, puis une autre, avant la bonne : le troisième
-     * coup est le premier qui mérite un signal. En deçà, la bibliothèque compte
-     * sans rien dire.
+     * 🔑 **Les premiers essais plausibles ne réveillent personne.** Qui range
+     * plusieurs passphrases les essaie l'une après l'autre avant la bonne.
+     *
+     * ⚠️ **Une recommandation, pas une décision.** La bibliothèque ne compare
+     * rien à ce seuil : `essaisPlausiblesL1()` rend le compte, et le déploiement
+     * choisit. Le mettre ici serait décider à sa place de qui on réveille.
      */
-    private const ESSAIS_PLAUSIBLES_AVANT_SIGNALEMENT = 3;
+    public const ESSAIS_PLAUSIBLES_SIGNALES = 3;
 
     /** Longueur du lot émis à l'inscription. */
     public const CODES_PAR_LOT = 10;
@@ -124,6 +125,22 @@ final class Recovery
      * valide.
      */
     public const MOTS_PASSPHRASE = 6;
+
+    /**
+     * Plancher du classement d'un essai : en deçà, la saisie n'est pas comparée
+     * aux listes.
+     *
+     * ⚠️ **Il ne suit PAS `MOTS_PASSPHRASE`, et c'est le point.** Celui-ci décrit
+     * ce que la bibliothèque émet aujourd'hui ; il est passé de quatre à six, et
+     * les passphrases plus courtes émises avant restent valides — le banc
+     * d'équivalence en éprouve une. Aligner le plancher sur la longueur du jour
+     * rendrait le classement **aveugle sur les comptes les plus anciens**, donc
+     * les plus faibles : leurs essais ne seraient jamais comptés, et c'est le
+     * seul signal qui reste à ce niveau. Cette valeur est la plus petite longueur
+     * jamais émise ; elle ne descend pas, pour qu'un mot isolé de la liste ne
+     * compte pas pour un essai.
+     */
+    public const MOTS_MINIMUM_CLASSEMENT = 4;
 
     /**
      * Plafond d'une passphrase apportée, contrôlé avant toute expression
@@ -173,22 +190,29 @@ final class Recovery
             return $frein;
         }
 
-        $passphrase = self::normaliserPassphrase($passphrase);
-
-        // 🔑 **Le seul refus qu'on puisse opposer sans comparer.** La taille est
-        // bornée par un plafond public ; rien d'autre de la saisie ne l'est. Ce
-        // qui est rangé en base n'a pas de forme garantie — un intégrateur y
-        // pose l'empreinte qu'il veut —, donc juger la forme de la saisie
-        // enfermerait dehors un titulaire dont la passphrase ne ressemble pas à
-        // celles que cette bibliothèque engendre.
+        // 🔑 **Le seul refus qu'on puisse opposer sans comparer**, et il se dit.
+        // Avant la normalisation, qui copierait tout le corps de la requête :
+        // `OCTETS_PASSPHRASE_MAXIMUM` dit pourquoi son contrôle précède toute
+        // expression régulière.
+        //
+        // ⚠️ **Il nomme son motif, parce qu'il peut refuser un bon secret.**
+        // L'inscription appartient à l'application (`remplacerEmpreintes()`), qui
+        // a pu ranger l'empreinte d'une passphrase plus longue que ce plafond :
+        // la taire derrière le refus générique enfermerait son titulaire dehors
+        // sans lui dire quoi faire. Ce motif ne dépend que de la saisie et ne
+        // trie aucun compte.
         if (strlen($passphrase) > self::OCTETS_PASSPHRASE_MAXIMUM) {
             $this->stockage->tracerTentative(
                 $this->etiquetteEchecsL1($nomCompte), false, $ip, $maintenant,
             );
             usleep($this->delaiRefusUs);
 
-            return $refus;
+            return ['ok' => false, 'error' => 'passphrase_trop_longue',
+                    'message' => 'La passphrase soumise dépasse ' . self::OCTETS_PASSPHRASE_MAXIMUM
+                               . ' octets. Vérifie ce qui a été collé.'];
         }
+
+        $passphrase = self::normaliserPassphrase($passphrase);
 
         $compte = $this->stockage->trouverComptePourPassphrase($nomCompte);
 
@@ -212,30 +236,17 @@ final class Recovery
             }
         }
 
-        // Un échec dont tous les mots existaient se range sous l'étiquette que
-        // l'arbitrage relit ; tout le reste sous celle du niveau 1, que le
-        // réarmement du niveau 2 cherche. Les deux portent l'origine, qui seule
-        // freine ici.
+        // L'étiquette du niveau 1 est celle où `freinerNiveau2()` cherche la
+        // dernière réussite. Les deux portent l'origine, qui seule freine ici.
         $etiquette = !$ok && self::motsTousConnus($passphrase)
             ? $this->etiquetteSuspicionL1($nomCompte)
             : $this->etiquetteEchecsL1($nomCompte);
         $this->stockage->tracerTentative($etiquette, $ok, $ip, $maintenant);
 
         if (!$ok) {
-            // 🔑 **Les mots existent tous et rien ne s'ouvre : c'est déductible
-            // sans comparer au secret.** Le classement ne change ni le message,
-            // ni le délai, ni le nombre d'essais — il n'ouvre et ne ferme rien.
-            // Il dit seulement à qui veut l'entendre que ces essais-là ne sont
-            // pas ceux de quelqu'un qui tape à côté.
-            $plausibles = $this->stockage->compterEchecsCompte(
-                $this->etiquetteSuspicionL1($nomCompte),
-                $maintenant - $this->fenetreEchecs,
-            );
             usleep($this->delaiRefusUs);
 
-            return $plausibles >= self::ESSAIS_PLAUSIBLES_AVANT_SIGNALEMENT
-                ? $refus + ['signalement' => 'essais_plausibles']
-                : $refus;
+            return $refus;
         }
 
         // 🔑 La passphrase est consommée par son usage : on en émet une neuve.
@@ -658,13 +669,14 @@ final class Recovery
     }
 
     /**
-     * L'étiquette des essais du niveau 1 dont la saisie n'avait pas la forme
-     * d'une passphrase, et des récupérations réussies.
+     * L'étiquette des essais du niveau 1 que le classement n'a pas retenus, **et
+     * des récupérations réussies** — `freinerNiveau2()` y cherche la dernière
+     * pour réarmer la suspension du niveau 2. Ranger les succès ailleurs
+     * désarmerait ce réarmement sans faire rougir un banc.
      *
-     * 🔑 **Publique exprès**, comme celle du niveau 2. Et ici elle l'est deux
-     * fois : une console qui compte les échecs de connexion doit pouvoir écarter
-     * ces lignes, qui partagent sa table. Un préfixe recopié la rendrait muette
-     * le jour où il change, sans qu'aucune erreur ne le dise.
+     * 🔑 **Publique exprès**, pour la raison dite par `etiquetteEchecsL2()`, et
+     * pour une seconde : une console qui compte les échecs de connexion doit
+     * pouvoir écarter ces lignes, qui partagent sa table.
      */
     public function etiquetteEchecsL1(string $nomCompte): string
     {
@@ -675,14 +687,43 @@ final class Recovery
      * L'étiquette des essais du niveau 1 dont tous les mots existaient et qui
      * n'ont rien ouvert.
      *
-     * 🔑 **Publique exprès** : c'est le compteur qu'un déploiement interroge
-     * pour décider qui réveiller, et celui qu'une console doit écarter de ses
-     * échecs de connexion. Ce qu'il en fait ne regarde pas le protocole — la
-     * bibliothèque n'ouvre ni ne ferme rien d'après lui.
+     * 🔑 **Publique exprès** (voir `etiquetteEchecsL2()`) : c'est le compteur
+     * qu'un déploiement interroge pour décider qui réveiller, et celui qu'une
+     * console doit écarter de ses échecs de connexion. Ce qu'il en fait ne
+     * regarde pas le protocole — la bibliothèque n'ouvre ni ne ferme rien
+     * d'après lui.
      */
     public function etiquetteSuspicionL1(string $nomCompte): string
     {
         return Etiquette::sous(self::PREFIXE_SUSPICION, $nomCompte, $this->selDeploiement);
+    }
+
+    /**
+     * Combien d'essais du niveau 1, dans la fenêtre, avaient tous leurs mots dans
+     * les listes sans rien ouvrir. `ESSAIS_PLAUSIBLES_SIGNALES` dit à partir de
+     * combien il y a de quoi réveiller quelqu'un.
+     *
+     * 🔑 **Le déploiement vient le chercher ; il ne lui est pas rendu.** Ce
+     * compte ne voyage pas dans la réponse d'une récupération, et c'est une
+     * décision : la réponse part sur le réseau, souvent telle quelle. Qui connaît
+     * le nom public d'un compte y lirait qu'un tiers cherche en ce moment l'ordre
+     * de mots qu'il possède — donc que ce compte est en train d'être perdu. Les
+     * listes sont publiques, le nombre d'essais des autres ne l'est pas.
+     *
+     * ⚠️ **Remplissable par qui connaît le nom**, comme tout compteur de ce
+     * niveau : trois requêtes sous un nom public suffisent à le charger. Il
+     * informe, et rien de plus ne doit en dépendre — pas un gel, pas un refus,
+     * pas une notification qu'un tiers pourrait déclencher en série. Le niveau 2
+     * peut s'en permettre un, lui : charger le sien exige un de ses codes.
+     */
+    public function essaisPlausiblesL1(string $nomCompte, ?int $maintenant = null): int
+    {
+        $maintenant = $maintenant ?? time();
+
+        return $this->stockage->compterEchecsCompte(
+            $this->etiquetteSuspicionL1($nomCompte),
+            $maintenant - $this->fenetreEchecs,
+        );
     }
 
     /**
@@ -696,11 +737,11 @@ final class Recovery
      *
      * ⚠️ **Et c'est pour cela qu'il ne peut pas refuser.** Rien ne garantit la
      * forme de ce qui est rangé : l'empreinte vient de `remplacerEmpreintes()`,
-     * qu'un intégrateur appelle avec la passphrase de son choix, et la longueur
-     * attendue elle-même a changé entre deux versions sans invalider les
-     * anciennes. Un contrôle de forme qui refuserait enfermerait dehors, en
-     * silence, les titulaires dont la passphrase ne ressemble pas à celles que
-     * cette bibliothèque engendre.
+     * qu'un intégrateur appelle avec la passphrase de son choix, et
+     * `MOTS_PASSPHRASE` dit qu'une passphrase plus courte reste valide. Un
+     * contrôle de forme qui refuserait enfermerait dehors, en silence, les
+     * titulaires dont la passphrase ne ressemble pas à celles que cette
+     * bibliothèque engendre.
      *
      * ⚠️ **Délibérément plus permissif que la comparaison** : la casse est
      * abaissée ici alors que la vérification ne l'abaisse pas, pour qu'un
@@ -708,22 +749,21 @@ final class Recovery
      */
     private static function motsTousConnus(#[\SensitiveParameter] string $saisie): bool
     {
-        $mots = $saisie === '' ? [] : explode(' ', $saisie);
+        $mots = $saisie === '' ? [] : explode(' ', self::normaliserPassphrase($saisie));
 
-        return count($mots) >= self::MOTS_PASSPHRASE && self::motsHorsListe($mots) === [];
+        return count($mots) >= self::MOTS_MINIMUM_CLASSEMENT && self::motsHorsListe($mots) === [];
     }
 
     /**
      * Les positions, à partir de 1, des mots qui ne sont dans aucune des deux
      * listes.
      *
-     * 🔑 **Un seul endroit cherche.** Deux chemins ont besoin de cette réponse —
-     * juger une passphrase apportée, et classer un essai qui n'ouvre pas. Le
-     * calcul n'a aucune raison de différer : recopié, il divergerait, et l'un
-     * des deux jugerait autrement que l'autre sans que rien ne le dise.
+     * Sert la validation d'une passphrase apportée et le classement d'un essai
+     * qui n'ouvre pas.
      *
-     * La casse est abaissée ici : les listes sont en minuscules, et aucun des
-     * deux appelants ne gagnerait à refuser un mot pour sa majuscule.
+     * ⚠️ La casse est abaissée ici, et `validerPassphraseApportee()` comptait
+     * sur son propre `strtolower` en amont : les listes sont en minuscules, et
+     * aucun des deux appelants ne gagne à refuser un mot pour sa majuscule.
      *
      * @param  list<string> $mots
      * @return list<int>
@@ -824,19 +864,18 @@ final class Recovery
     /**
      * Frein du niveau 1 : par origine seule.
      *
-     * 🔑 **Le frein ne refuse jamais le bon secret.** Un compteur par compte
-     * visé fermait la seule voie qu'un titulaire puisse emprunter seul — le
-     * niveau 2 réclame la feuille de codes, le niveau 3 un humain —, et
-     * n'importe qui le remplissait sous le nom d'un autre. Rien ne le levait non
-     * plus : pas de réarmement, donc aucun geste du titulaire ne rendait sa
-     * porte. Ce qui reste du compteur par compte ne décide plus d'un accès, il
-     * alimente le signalement.
+     * 🔑 **Le frein ne refuse jamais le bon secret, et rien ne se compte par
+     * compte ici.** Un compteur par compte visé ferme la seule voie qu'un
+     * titulaire puisse emprunter seul — le niveau 2 réclame la feuille de codes,
+     * le niveau 3 un humain —, et n'importe qui le remplit sous le nom d'un
+     * autre : la table est partagée avec la porte de l'intégrateur. Le compteur
+     * du classement, lui, ne décide d'aucun accès.
      *
      * ⚠️ **L'origine est donc le seul frein qui ferme ici, et le profil
      * `tor-onion` n'en a pas.** Derrière un service caché, rien ne borne le
-     * nombre d'essais : le refus gratuit d'`estFormeDePassphrase()` écarte les
-     * saisies qui n'ouvriraient rien, et lisser le débit de la route revient au
-     * déploiement — la bibliothèque est appelée quand le coût est déjà engagé,
+     * nombre d'essais, et chacun paie un Argon2id : seul le plafond d'octets de
+     * `parPassphrase()` refuse sans comparer. Lisser le débit de la route revient
+     * au déploiement — la bibliothèque est appelée quand le coût est déjà engagé,
      * et une requête ne voit pas ce que font les autres. Le modèle de menace le
      * dit sans le promettre.
      *
