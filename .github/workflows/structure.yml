@@ -1184,8 +1184,19 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_console_freins.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc des compteurs de la console a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 5/5$' \
-            || { echo "::error::le banc des compteurs de la console n'a pas joué ses 5 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 12/12$' \
+            || { echo "::error::le banc des compteurs de la console n'a pas joué ses 12 cas"; exit 1; }
+
+      # Le filtre des trois consoles écarte des préfixes par leur forme en clair.
+      # Rien ne lançait ce banc : une garde contre la publication d'une clé non
+      # décidée, et aucune étape pour la faire rougir.
+      - name: Garde-fou — un refus ne publie que les clés décidées
+        run: |
+          sortie=$(php demo/lab/tests/sanity_refus_publiable.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc du refus publiable a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 15/15 ' \
+            || { echo "::error::le banc du refus publiable n'a pas joué ses 15 cas"; exit 1; }
 
       - name: Canari — la console reperd les tentatives sans étiquette
         run: |
