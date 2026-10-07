@@ -93,7 +93,7 @@ const REC = <?= json_encode([
     'devNone'     => t('dev.rec.none'),
 ], JSON_UNESCAPED_UNICODE) ?>;
 
-function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
 let niveau = 'l1';
 function basculer(n){

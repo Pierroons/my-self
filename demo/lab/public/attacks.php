@@ -75,7 +75,7 @@ render_header(t('atk.title'), $account);
 
 <script nonce="<?= nonce() ?>">
 const ATK = <?= json_encode(['running'=>t('atk.js.running'),'goal'=>t('atk.js.goal'),'verdict'=>t('atk.js.verdict'),'defense'=>t('atk.js.defense'),'error'=>t('atk.js.error'),'err'=>t('log.error')], JSON_UNESCAPED_UNICODE) ?>;
-function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function lancer(scenario, btn){
   const box=document.getElementById('result');
   box.classList.remove('hidden');

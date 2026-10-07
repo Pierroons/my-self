@@ -68,6 +68,19 @@ render_header(t('dsp.title'), Auth::currentAccount(Db::pdo()));
     <button class="btn" id="btn-reset"><?= h(t('dsp.reset.submit')) ?></button>
   </div>
 
+  <!-- Étape 5 — les secrets rendus. La bibliothèque ne les rend QU'UNE FOIS :
+       `reposerSecrets` écrit des empreintes, et `emettreCodes` purge le lot
+       précédent. Qui ferme cet écran sans les noter n'a plus de voie de
+       secours et devra refaire un niveau 3 entier. -->
+  <div id="step-done" style="display:none">
+    <div class="toast ok"><?= h(t('dsp.done.h3')) ?></div>
+    <p><?= h(t('dsp.done.copy')) ?></p>
+    <div class="field"><label><?= h(t('dsp.done.pp')) ?></label><input id="done-pp" readonly autocomplete="off"></div>
+    <div class="field"><label><?= h(t('dsp.done.codes')) ?></label><textarea id="done-codes" rows="5" readonly></textarea></div>
+    <p class="muted" id="done-note"></p>
+    <a class="btn" href="/login.php"><?= h(t('dsp.done.login')) ?></a>
+  </div>
+
   <p class="muted" style="font-size:12px;margin:14px 0 0"><?= t('dsp.privacy') ?></p>
 </div>
 
@@ -86,16 +99,22 @@ const DSP = <?= json_encode([
   'done'     => t('dsp.js.reset_done'),
 ], JSON_UNESCAPED_UNICODE) ?>;
 
-function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function toast(t, ok){ document.getElementById('msg').innerHTML =
   '<div class="toast '+(ok?'ok':'err')+'">'+esc(t)+'</div>'; }
 function montrer(id){
-  ['step-init','step-questions','step-chat','step-reset'].forEach(function(s){
+  ['step-init','step-questions','step-chat','step-reset','step-done'].forEach(function(s){
     document.getElementById(s).style.display = (s===id) ? '' : 'none';
   });
 }
+// Le jeton CSRF part s'il existe, c'est-à-dire si un compte est connecté. Un
+// demandeur qui ouvre cette page n'en a pas, et n'en a pas besoin : son sésame
+// l'autorise. Un arbitre qui vient y lire un dossier, lui, est connecté, et
+// `dispute_chat.php` exige le jeton de qui s'autorise par sa session.
 function post(url, corps){
-  return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+  const entetes = {'Content-Type':'application/json'};
+  if (window.LAB_CSRF) entetes['X-CSRF-Token'] = window.LAB_CSRF;
+  return fetch(url,{method:'POST',headers:entetes,
     body:JSON.stringify(corps)}).then(r=>r.json());
 }
 
@@ -217,7 +236,14 @@ document.getElementById('btn-reset').addEventListener('click', async function(){
     if(!d.ok){ toast(d.message || DSP.err); return; }
     localStorage.removeItem('l3_case');
     toast(DSP.done, true);
-    montrer('');
+    // 🔑 La passphrase et les codes ne repasseront pas : les afficher est la
+    // seule occasion. Les jeter laissait le titulaire sans voie de secours
+    // juste après l'avoir reconquise.
+    const c = d.credentials || {};
+    document.getElementById('done-pp').value = c.passphrase || '';
+    document.getElementById('done-codes').value = (c.recovery_codes || []).join('\n');
+    document.getElementById('done-note').textContent = d.note || '';
+    montrer('step-done');
   }catch(e){ toast(DSP.neterr); }
   finally{ btn.disabled = false; }
 });

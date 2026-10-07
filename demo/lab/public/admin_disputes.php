@@ -29,7 +29,7 @@ render_header('Litiges L3', $account);
 <script nonce="<?= nonce() ?>">
 var CSRF='<?= h($csrf) ?>';
 var GEL=<?= json_encode(\Pierroons\MySelfLab\RecoverL3::reglesDuGel($pdo), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
-function esc(s){return String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function $(id){return document.getElementById(id);}
 function get(u){return fetch(u,{headers:{'X-CSRF-Token':CSRF}}).then(r=>r.json());}
 function post(u,p){return fetch(u,{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF},body:JSON.stringify(p)}).then(r=>r.json());}
@@ -78,7 +78,7 @@ function render(disputes){
       +facts(d.signals)
       +'<div class="l3-msgs" style="max-height:180px;overflow:auto;border:1px solid #2a2a2a;border-radius:6px;padding:8px;margin:8px 0;font-size:13px"></div>'
       +'<div class="row" style="gap:6px"><input class="l3-in" placeholder="répondre au demandeur…" style="flex:1"><button class="btn l3-send">Envoyer</button></div>'
-      +(d.status==='awaiting_admin'||d.status==='open'?'<div class="row" style="gap:8px;margin-top:8px"><button class="btn l3-grant">Accorder</button><button class="btn l3-refuse" style="border-color:#5a2a2a;color:#d96459">Refuser</button></div>':'')
+      +(d.status==='awaiting_admin'||d.status==='open'?'<div class="row" style="gap:8px;margin-top:8px"><button class="btn l3-grant">Accorder</button><button class="btn l3-refuse" style="border-color:#5a2a2a;color:#d96459">Refuser</button><button class="btn l3-abandon" data-user="'+esc(d.username)+'">Abandonner</button></div>':'')
       +(gele?'<div class="row" style="gap:8px;margin-top:8px"><button class="btn l3-degel" data-user="'+esc(d.username)+'">🧊 Lever le gel</button></div>':'')
       +'</div>';
   }).join('');
@@ -97,9 +97,27 @@ function render(disputes){
     // un geste devenu réversible.
     if(r)r.addEventListener('click',()=>{
       if(confirm('Refuser clôt ce dossier. Le compte n\'est pas touché : il reste connectable.\n'
-                +'Au '+GEL.seuil+'ᵉ refus en '+GEL.fenetre+', l\'ouverture de nouveaux dossiers gèle '+GEL.duree+'. Confirmer ?'))
+                +'Au '+GEL.seuil+'ᵉ refus en '+GEL.fenetre+', l\'ouverture de nouveaux dossiers gèle '+GEL.duree+'.\n\n'
+                +'Si ce dossier a été ouvert par quelqu\'un d\'autre que le titulaire, préfère '
+                +'« Abandonner » : le refus, lui, compte sur le compte visé. Confirmer ?'))
         post('/api/admin_dispute_decide.php',{dispute_number:num,decision:'refuse'}).then(function(d){
           if(d && d.gele) alert(d.message);
+          load();
+        });
+    });
+    // 🔑 Le refus compte sur le compte VISÉ, pas sur le demandeur : c'est ce
+    // que le `confirm()` ci-dessous ne peut pas expliquer sans alourdir, et
+    // c'est toute la raison d'être de ce bouton. Le reste du piège est dit à
+    // l'arbitre au moment du geste, et dans `RecoverL3::adminAbandon`.
+    var ab=card.querySelector('.l3-abandon');
+    if(ab)ab.addEventListener('click',function(){
+      var u=ab.getAttribute('data-user');
+      if(confirm('Abandonner la procédure de « '+u+' » ?\n\n'
+                +'Le dossier est clos sans décision et sans compter de refus. Le titulaire peut en '
+                +'ouvrir un nouveau tout de suite, et l\'arbitrage sera à refaire.\n'
+                +'À préférer au refus quand le demandeur n\'est pas le titulaire.'))
+        post('/api/admin_dispute_abandon.php',{username:u}).then(function(d){
+          if(d && !d.ok) alert(d.message||'La procédure n\'a pas pu être close.');
           load();
         });
     });

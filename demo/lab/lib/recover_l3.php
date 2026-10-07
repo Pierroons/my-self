@@ -54,11 +54,10 @@ final class RecoverL3
         'compte_inconnu'     => 404,
         'introuvable'        => 404,
         'expire'             => 410,
-        'deja_ouvert'        => 409,
         'deja_tranche'       => 409,
         'non_accepte'        => 409,
         'clos'               => 409,
-        'gele'               => 429,
+        'aucun_litige'       => 409,
         'trop_tot'           => 429,
         'trop_de_demandes'   => 429,
     ];
@@ -228,6 +227,26 @@ final class RecoverL3
         return ['ok' => true, 'decision' => $r['statut'], 'message' => $r['message'],
                 'refus_dans_la_fenetre' => $r['refus_dans_la_fenetre'] ?? null,
                 'gele' => $r['gele'] ?? false];
+    }
+
+    /**
+     * Clôt la procédure en cours d'un compte sans la trancher.
+     *
+     * 🔑 C'est la sortie devant un dossier ouvert par quelqu'un d'autre que le
+     * titulaire. Refuser serait l'action naturelle, et c'est le piège : chaque
+     * refus compte sur le compte VISÉ, et le gel de l'ouverture s'arme au seuil
+     * que rend `reglesDuGel()`. Un tiers qui ouvre assez de dossiers fait donc
+     * armer ce gel par l'arbitre lui-même, et le titulaire perd sa dernière
+     * voie de secours sans avoir rien fait.
+     *
+     * L'abandon libère la place sans toucher à ce compteur. Il ne rend aucun
+     * accès : le titulaire rouvre un dossier et l'arbitrage est à refaire.
+     *
+     * Réservé à un arbitre, garde posée par l'endpoint.
+     */
+    public static function adminAbandon(PDO $pdo, string $username, string $par = 'admin'): array
+    {
+        return self::http(self::escalade($pdo)->abandonner(strtolower(trim($username)), $par));
     }
 
     /** Lève un gel de procédure. Réservé à un arbitre, garde posée par l'endpoint. */
