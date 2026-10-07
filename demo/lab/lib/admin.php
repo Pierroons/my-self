@@ -42,10 +42,18 @@ final class Admin
             //
             // 🔑 **Le préfixe seul ne suffit pas à les reconnaître.** Un nom de
             // compte soumis à la page de connexion arrive dans cette colonne tel
-            // quel : quiconque se nomme `l3:ouvrir:…` disparaîtrait de la console
-            // en même temps que ses tentatives. La bibliothèque, elle, écrit ces
-            // lignes SANS adresse. C'est la paire — préfixe et adresse nulle —
-            // qui les identifie, et une route publique ne peut pas la produire.
+            // quel : quiconque se nomme `l3:…` disparaîtrait de la console en même
+            // temps que ses tentatives. La bibliothèque, elle, écrit ces lignes
+            // SANS adresse. C'est la paire — préfixe et adresse nulle — qui les
+            // identifie, et une route publique ne peut pas la produire.
+            //
+            // ⚠️ Le préfixe couvre DEUX familles, et n'en viser qu'une a été le
+            // défaut : le frein d'ouverture écrit `l3:ouvrir:<empreinte>`, mais le
+            // dépôt de faisceau écrit `l3:<nom de compte>` (`Escalade.php:381`).
+            // Un filtre sur `l3:ouvrir:%` laissait donc chaque dépôt légitime
+            // compter pour une attaque repoussée. Relevé par la conv Recover, qui
+            // passe la seconde forme sous étiquette de son côté — `l3:%` couvre
+            // les deux, avant comme après.
             //
             // 🔑 Les échecs du niveau 2, eux, RESTENT comptés — ceux sous étiquette
             // comme ceux qui n'en portent aucune. Un mot mémorisé refusé est un
@@ -57,7 +65,7 @@ final class Admin
             // pas « vrai » sur une ligne sans étiquette, elle rend « inconnu ».
             // Sans ce garde, la comparaison écarte ce qu'elle ne prétend pas
             // écarter, et l'alarme s'éteint en silence. Mesuré.
-            'echecs_login_24h'   => $q("SELECT COUNT(*) FROM login_attempts WHERE success = 0 AND (username IS NULL OR username != '__register__') AND NOT (username LIKE 'l3:ouvrir:%' AND ip IS NULL) AND attempted_at > " . $h24),
+            'echecs_login_24h'   => $q("SELECT COUNT(*) FROM login_attempts WHERE success = 0 AND (username IS NULL OR username != '__register__') AND NOT (username LIKE 'l3:%' AND ip IS NULL) AND attempted_at > " . $h24),
         ];
     }
 
@@ -86,7 +94,7 @@ final class Admin
             "SELECT COALESCE(username, '(code de récupération inconnu)') AS username, ip, attempted_at
                FROM login_attempts
               WHERE success = 0 AND (username IS NULL OR username != '__register__')
-                AND NOT (username LIKE 'l3:ouvrir:%' AND ip IS NULL)
+                AND NOT (username LIKE 'l3:%' AND ip IS NULL)
               ORDER BY attempted_at DESC LIMIT ?"
         );
         $stmt->execute([$limit]);

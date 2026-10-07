@@ -31,6 +31,7 @@ use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 
 require_once __DIR__ . '/StockageSelfRecover.php';
+require_once __DIR__ . '/reponse.php';
 
 final class RecoverL3
 {
@@ -99,7 +100,8 @@ final class RecoverL3
         }
         $r['code'] = self::CODES[$r['error'] ?? ''] ?? 400;
 
-        return $r;
+        // Tout le niveau 3 passe par ici : un seul endroit à tenir.
+        return refus_publiable($r);
     }
 
     /** Les questions de contexte — le front les affiche telles quelles. */

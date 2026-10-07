@@ -24,6 +24,7 @@ use Pierroons\SelfRecover\Recovery\Recovery;
 use PDO;
 
 require_once __DIR__ . '/secret_instance.php';
+require_once __DIR__ . '/reponse.php';
 
 final class Auth
 {
@@ -346,7 +347,7 @@ final class Auth
     {
         $r = self::protocole($pdo)->parCode($code, $recoveryDerivedKey, $ip);
         if (!$r['ok']) {
-            return $r;
+            return refus_publiable($r);
         }
 
         return [
@@ -363,7 +364,7 @@ final class Auth
     {
         $r = self::protocole($pdo)->parPassphrase($username, $passphrase, $ip);
         if (!$r['ok']) {
-            return $r;
+            return refus_publiable($r);
         }
 
         return [
