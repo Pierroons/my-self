@@ -31,6 +31,7 @@ require_once __DIR__ . '/../lib/admin.php';
 require_once __DIR__ . '/../lib/stats.php';
 
 use Pierroons\MySelfLab\Admin;
+use Pierroons\MySelfLab\Auth;
 use Pierroons\MySelfLab\Stats;
 
 $reussites = 0;
@@ -57,6 +58,13 @@ $lignes = [
     ["l'étiquette interne d'inscription",           '__register__',                 '192.0.2.4', false],
     ['un imposteur « l3:ouvrir:… » AVEC adresse',  'l3:ouvrir:x',                  '192.0.2.5', true],
     ['un échec d\'enrôlement, sous son HMAC',       'enroll:' . str_repeat('c', 64), '192.0.2.6', true],
+    // 🔑 La SECONDE famille du niveau 3, et c'est elle qui manquait : le dépôt
+    // de faisceau trace `l3:<nom de compte>` sans adresse (`Escalade.php:381`),
+    // pas `l3:ouvrir:…`. Le filtre ne visait que la première, donc chaque dépôt
+    // légitime comptait pour une attaque repoussée — et ce banc passait au vert
+    // sans l'avoir jamais essayé.
+    ['un dépôt de faisceau (sans adresse)',        'l3:ctf_gamma',                 null,        false],
+    ['un imposteur « l3:… » AVEC adresse',         'l3:ctf_gamma',                 '192.0.2.7', true],
 ];
 $attendus = 0;
 foreach ($lignes as [$quoi, $nom, $ip, $compte]) {
@@ -85,6 +93,28 @@ verifier("et ce libellé n'est pas en base",
 $public = (int) Stats::lab($pdo)['repoussees'];
 verifier('le chiffre public compte les mêmes, plus l\'inscription refusée',
     $public === $attendus + 1, "$public, attendu " . ($attendus + 1));
+
+// ── Ce dont ces filtres DÉPENDENT, et que rien ne disait ─────────────────────
+// 🔑 Écarter `l3:%` n'est sûr que parce qu'aucun compte ne peut porter un tel
+// nom : `Auth::IDENTIFIANT` borne les identifiants à [a-z0-9_], sans deux-points.
+// Si quelqu'un élargit ce jeu un jour — courriels, unicode, tiret —, ces filtres
+// deviennent un trou : un compte nommé `l1:victime` disparaîtrait de la console
+// avec ses échecs, et aucun autre contrôle ne rougirait. Ce cas attache donc la
+// garde à ce qui la rend vraie. Relevé par la conv Recover le 07/10/2026.
+foreach (['l3:x', 'l3:ouvrir:x', 'l1:victime', 'l1-liste:x', 'l2:x', 'enroll:x'] as $interdit) {
+    $r = Auth::register($pdo, $interdit, str_repeat('a', 64), str_repeat('b', 32));
+    verifier("l'inscription refuse « $interdit », dont le filtre dépend",
+        ($r['ok'] ?? false) === false, json_encode($r));
+}
+// Et le symétrique : un nom licite passe, sinon le contrôle ci-dessus se
+// contenterait d'un `register()` cassé pour tout le monde.
+$r = Auth::register($pdo, 'nom_licite_7', str_repeat('a', 64), str_repeat('b', 32));
+// ⚠️ On n'imprime PAS `$r` ici : un succès d'inscription porte mot de passe,
+// passphrase et dix codes de récupération, et la sortie d'un banc part dans les
+// journaux de la CI, qui sont publics. Même factices, ces valeurs n'ont rien à y
+// faire — et un lecteur ne peut pas savoir qu'elles le sont.
+verifier("mais un nom licite s'inscrit", ($r['ok'] ?? false) === true,
+    'error : ' . (string) ($r['error'] ?? '—'));
 
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0 ? "OK — $reussites/$total" : "ÉCHEC — $echecs sur $total") . "\n";

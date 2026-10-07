@@ -43,7 +43,7 @@ final class Stats
         // route publique ne peut pas produire.
         $repoussees = (int) $pdo->query(
             "SELECT COUNT(*) FROM login_attempts
-              WHERE success = 0 AND NOT (username LIKE 'l3:ouvrir:%' AND ip IS NULL)"
+              WHERE success = 0 AND NOT (username LIKE 'l3:%' AND ip IS NULL)"
         )->fetchColumn();
 
         $rapports = (int) $pdo->query('SELECT COUNT(*) FROM redteam_reports')->fetchColumn();
