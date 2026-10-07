@@ -338,8 +338,13 @@ echo "\n→ Un niveau 3 ne réussit jamais tout seul\n";
 // Étiquette exacte : deux étiquettes commencent par « l3: », le dépôt et
 // l'ouverture. Un filtre par préfixe les compterait ensemble et resterait vert
 // même si le dépôt cessait d'être journalisé.
-$l3 = array_values(array_filter($st->tentatives, static fn (array $t): bool => $t['etiquette'] === 'l3:alice'));
+$depot = $esc->etiquetteDepot('alice');
+$l3    = array_values(array_filter($st->tentatives, static fn (array $t): bool => $t['etiquette'] === $depot));
 verifier('le dépôt est journalisé', count($l3) === 1);
+// ⭐ Le nom du compte attendait là en clair, indéfiniment : cette table n'est
+// purgée nulle part. Sous HMAC, la ligne se retrouve sans se lire.
+verifier('⭐ et son étiquette ne contient pas le nom du compte',
+    !str_contains($depot, 'alice'));
 verifier('⭐ il est journalisé comme un ÉCHEC, sinon L3 effacerait l\'ardoise des tentatives',
     ($l3[0]['succes'] ?? true) === false);
 

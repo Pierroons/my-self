@@ -359,22 +359,23 @@ jobs:
       # sortie à zéro dit que les cas joués ont réussi, jamais qu'aucun n'a
       # disparu. Ajouter un cas demande donc de monter ce nombre : cette friction
       # est le contrôle.
-      - name: Garde-fou — récupération niveaux 1 et 2, dont le frein par compte du niveau 2
+      - name: Garde-fou — récupération niveaux 1 et 2, dont le frein par origine du niveau 1
         run: |
           # Le banc est lancé sans `set -e` sur l'affectation : sinon l'étape meurt
           # avant le contrôle du compte, là où il serait le plus utile — un cas
-          # manquant sur les cinquante-huit.
+          # manquant sur les soixante-quinze.
           #
           # 🔑 Les DEUX profils, dans la même étape. Le corps du banc est le même :
           # seule l'origine change, absente en tor-onion. Un comportement qui ne
-          # tiendrait que d'un côté se verrait ici, et le frein par compte est
-          # précisément ce qui doit tenir des deux.
+          # tiendrait que d'un côté se verrait ici. Le niveau 1 ne freine plus que par
+          # origine, que le profil tor-onion n'a pas : chaque profil garde donc une
+          # propriété que l'autre ne peut pas montrer, et les deux comptent pareil.
           for profil in clearweb tor-onion; do
             sortie=$(php bi-self/selfrecover/tests/sanity_recovery.php --profil="$profil" 2>&1) && rc=0 || rc=$?
             echo "$sortie"
             [ "$rc" = 0 ] || { echo "::error::le banc de récupération a échoué sous $profil"; exit 1; }
-            echo "$sortie" | grep -qE '^OK — 61/61$' \
-              || { echo "::error::le banc de récupération n'a pas joué ses 61 cas sous $profil"; exit 1; }
+            echo "$sortie" | grep -qE '^OK — 75/75$' \
+              || { echo "::error::le banc de récupération n'a pas joué ses 75 cas sous $profil"; exit 1; }
           done
 
       # La route du sel du niveau 2 est publique : elle doit rendre un sel pour tout
@@ -416,8 +417,8 @@ jobs:
             sortie=$(php bi-self/selfrecover/tests/sanity_passphrase_apportee.php --profil="$profil" 2>&1) && rc=0 || rc=$?
             echo "$sortie"
             [ "$rc" = 0 ] || { echo "::error::le banc de la passphrase apportée a échoué sous $profil"; exit 1; }
-            echo "$sortie" | grep -qE '^OK — 42/42$' \
-              || { echo "::error::le banc de la passphrase apportée n'a pas joué ses 42 cas sous $profil"; exit 1; }
+            echo "$sortie" | grep -qE '^OK — 43/43$' \
+              || { echo "::error::le banc de la passphrase apportée n'a pas joué ses 43 cas sous $profil"; exit 1; }
           done
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
             F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
@@ -434,11 +435,11 @@ jobs:
           }
           R=bi-self/selfrecover/src/Recovery/Recovery.php
           B=bi-self/selfrecover/tests/sanity_passphrase_apportee.php
-          canari $R 'if (!Wordlist::inAnyList($mot)) {' 'if (false) {' \
+          canari $R 'if (!Wordlist::inAnyList(strtolower($mot))) {' 'if (false) {' \
             $B '❌ un mot hors des deux listes est refusé'
           canari $R '        // 🔑 La passphrase apportée est jugée avant les freins, sans trace ni' \
-            '        $this->stockage->tracerTentative($nomCompte, false, $ip, $maintenant);' \
-            $B '❌ un refus de la passphrase apportée ne charge pas le frein'
+            '        $this->stockage->tracerTentative($this->etiquetteSuspicionL1($nomCompte), false, $ip, $maintenant);' \
+            $B '❌ 🔑 et il ne charge pas le classement non plus'
           canari $R "if (\$ancienne !== null && Hashing::verify(\$apport, (string) \$ancienne['empreinte_passphrase'])) {" 'if (false) {' \
             $B '❌ niveau 2 : la passphrase remplacée ne revient pas telle quelle'
           canari $R 'public const MOTS_PASSPHRASE = 6;' 'public const MOTS_PASSPHRASE = 4;' \
@@ -466,6 +467,35 @@ jobs:
           canari $E 'private function recevable(string $numero, #[\SensitiveParameter] string $sesame,' \
             'private function recevable(string $numero, string $sesame,' \
             $B '❌ niveau 3 : la trace porte le numéro, ni le sésame'
+          # Le niveau 1 n'avait AUCUN canari : sa seule garde était l'effet de bord
+          # d'un autre. Depuis que son frein ne ferme plus par compte, quatre
+          # propriétés le remplacent, et chacune doit pouvoir céder seule.
+          S=bi-self/selfrecover/tests/sanity_recovery.php
+          # Le frein par origine est désormais le seul qui ferme ici — et aucun banc
+          # ne le faisait mordre : sa branche pouvait disparaître en restant verte.
+          canari $R "if (\$ip !== null && \$this->stockage->compterEchecsIp(\$ip, \$depuis) >= \$this->maxEchecsIp) {" \
+            'if (false) {' \
+            $S '❌ ⭐ douze échecs depuis la même origine ferment, eux'
+          # Le signal qui remplace la porte fermée : s'il ne se déclenche jamais, on a
+          # retiré un frein sans rien mettre à sa place.
+          canari $R 'public const ESSAIS_PLAUSIBLES_SIGNALES = 3;' \
+            'public const ESSAIS_PLAUSIBLES_SIGNALES = 99;' \
+            $S '❌ ⭐ le troisième atteint le seuil'
+          # Et il ne doit pas se déclencher sur n'importe quoi : classer à l'envers
+          # réveillerait le vigile pour qui tape à côté, et le tairait pour l'autre.
+          canari $R '$etiquette = !$ok && self::motsTousConnus($passphrase)' \
+            '$etiquette = !$ok && !self::motsTousConnus($passphrase)' \
+            $S '❌ ⭐ six essais aux mots inconnus ne comptent pas'
+          # Le plafond d'octets de la saisie SOUMISE, qui n'était appliqué qu'à la
+          # passphrase apportée : sans lui, un envoi énorme se fait comparer.
+          canari $R 'if (strlen($passphrase) > self::OCTETS_PASSPHRASE_MAXIMUM) {' 'if (false) {' \
+            $S '❌ ⭐ et refusée SANS payer la comparaison lente'
+          # ⭐ Le plancher du classement aligné sur la longueur du JOUR rend le signal
+          # aveugle sur les comptes les plus anciens — donc les plus faibles —, dont
+          # la passphrase plus courte reste valide. C'est le seul signal de ce niveau.
+          canari $R 'public const MOTS_MINIMUM_CLASSEMENT = 4;' \
+            'public const MOTS_MINIMUM_CLASSEMENT = 6;' \
+            $S '❌ ⭐ quatre mots connus comptent pour un essai, pas seulement six'
 
       # Un frein qu'on n'a jamais fait céder ne se distingue pas d'un frein qui
       # n'est relié à rien : les deux laissent le banc vert. Ce canari mesure que
@@ -547,8 +577,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 129 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 129 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 130 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 130 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les
@@ -1157,17 +1187,16 @@ jobs:
           echo "$sortie" | grep -qE '^OK — 12/12$' \
             || { echo "::error::le banc des compteurs de la console n'a pas joué ses 12 cas"; exit 1; }
 
-      # Un refus ne doit publier que des clés décidées. Les enveloppes du lab
-      # rendaient la réponse de la bibliothèque telle quelle, et 25 endpoints la
-      # passent à `json_out()` : une clé ajoutée en amont sortait sans décision,
-      # sur deux routes sans authentification.
-      - name: Garde-fou — un refus ne publie que ce qu'on a décidé
+      # Le filtre des trois consoles écarte des préfixes par leur forme en clair.
+      # Rien ne lançait ce banc : une garde contre la publication d'une clé non
+      # décidée, et aucune étape pour la faire rougir.
+      - name: Garde-fou — un refus ne publie que les clés décidées
         run: |
           sortie=$(php demo/lab/tests/sanity_refus_publiable.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
-          [ "$rc" = 0 ] || { echo "::error::le banc des refus publiables a échoué"; exit 1; }
+          [ "$rc" = 0 ] || { echo "::error::le banc du refus publiable a échoué"; exit 1; }
           echo "$sortie" | grep -qE '^OK — 15/15 ' \
-            || { echo "::error::le banc des refus publiables n'a pas joué ses 15 cas"; exit 1; }
+            || { echo "::error::le banc du refus publiable n'a pas joué ses 15 cas"; exit 1; }
 
       # Refuser un dossier de niveau 3 compte sur le compte VISÉ : un tiers qui en
       # ouvre plusieurs fait geler l'ouverture au titulaire, par la main de
@@ -1190,6 +1219,49 @@ jobs:
           [ "$rc" = 0 ] || { echo "::error::le banc du frein de connexion a échoué"; exit 1; }
           echo "$sortie" | grep -qE '^OK — 9/9 ' \
             || { echo "::error::le banc du frein de connexion n'a pas joué ses 9 cas"; exit 1; }
+
+      # 🔑 Les trois bancs ci-dessus rendent vert ; rien ne disait qu'ils rougissent.
+      # Une garde qu'on n'a jamais fait échouer ne se distingue pas d'une garde
+      # absente — demandé par la conv Recover, qui a trouvé que le premier n'était
+      # lancé par aucune étape.
+      - name: Canaris — les trois gardes du lab rougissent sur le défaut qu'elles visent
+        run: |
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari-lab.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari-lab.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari-lab.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+
+          # 1. La liste blanche débranchée : tout ce que la bibliothèque met dans un
+          #    refus ressort, y compris une clé d'état de compte.
+          canari demo/lab/lib/reponse.php \
+            "    if ((\$r['ok'] ?? false) === true) {" \
+            '    if (true) { // canari' \
+            demo/lab/tests/sanity_refus_publiable.php \
+            'signalement'
+
+          # 2. L'abandon d'un dossier L3 se comporte comme un refus : il charge le
+          #    compteur de gel, et le titulaire perd son recours.
+          canari demo/lab/lib/recover_l3.php \
+            'return self::http(self::escalade($pdo)->abandonner(strtolower(trim($username)), $par));' \
+            "return ['ok' => true, 'message' => 'canari']; // ne clôt rien" \
+            demo/lab/tests/sanity_l3_abandon.php \
+            "n'a pas libéré la place"
+
+          # 3. Le frein de connexion ne regarde plus le compteur par compte.
+          canari demo/lab/lib/auth.php \
+            'if ($fails >= self::LOGIN_MAX_FAILS || $failsIp >= self::LOGIN_MAX_FAILS_PER_IP) {' \
+            'if ($failsIp >= self::LOGIN_MAX_FAILS_PER_IP) { // canari' \
+            demo/lab/tests/sanity_frein_login.php \
+            'au seuil, même le bon mot de passe est refusé'
 
       - name: Canari — la console reperd les tentatives sans étiquette
         run: |

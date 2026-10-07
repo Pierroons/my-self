@@ -63,6 +63,10 @@ $recovery = RecoverHelper::protocole($s);
 //
 // L'origine n'est pas transmise : cette démo freine par session (RateLimit,
 // plus haut), et sa table `login_attempts` ne porte pas de colonne `ip`.
+//
+// ⚠️ Ce frein de session est donc la SEULE borne du niveau 1 ici : sans origine,
+// la bibliothèque n'en a aucune. Le retirer d'au-dessus laisserait la porte sans
+// compteur.
 $log->info('recover-l1', 'Vérification déléguée à Pierroons\SelfRecover\Recovery::parPassphrase');
 
 $t0 = microtime(true);

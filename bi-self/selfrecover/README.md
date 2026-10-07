@@ -5,7 +5,7 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per service, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.10.0](https://img.shields.io/badge/status-v0.10.0-green.svg)](#status)
+[![Status: v0.11.0](https://img.shields.io/badge/status-v0.11.0-green.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#trying-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#trying-selfrecover)
@@ -370,7 +370,7 @@ a passphrase older than the last one is not recognised. SelfDataGuard seals its 
 
 **Not claimed to protect against:**
 - Malicious client code / active phishing (if the attacker controls the page your browser loads, the protocol can't help — true for any in-browser protocol)
-- Weak recovery words (`password`, `123`) — level 2 also needs a code or the enrolled device; online, rate limits and the L2 suspension brake guessing; offline (stolen database, a device's blob), only the Argon2id cost does — not the derivation itself
+- Weak recovery words (`password`, `123`) — level 2 also needs a code or the enrolled device; online, the per-address brake and the L2 suspension brake guessing; offline (stolen database, a device's blob), only the Argon2id cost does — not the derivation itself
 - Physical coercion of the user (see SelfGuard in this ecosystem for duress-aware storage)
 - Targeted malware with keylogging
 
@@ -425,7 +425,7 @@ SelfRecover is honest about what it protects and what it does not. Every cryptog
 | Passive phishing / cloned page | ✅ in `'hostname'` mode — a clone derives from its own hostname; ❌ nothing in `'label'` mode (active phishing controlling its own page is out of scope either way) |
 | Network sniffer / MITM | ✅ TLS in transit; of the memorized word, only the HMAC fingerprint leaves — the passphrase and the password travel in the clear under TLS |
 | Database leak | ✅ Argon2id hashes (memory-hard, GPU-resistant) |
-| Online brute-force | ✅ Per-account rate limits, and per-address ones under the `clearweb` profile, then the L2 suspension past a threshold of failures |
+| Online brute-force | ⚠️ Per-address brake under the `clearweb` profile, per-account brakes on L2 and on enrolment, then the L2 suspension past a threshold of failures. ⚠️ Level 1 no longer brakes per account — anyone could fill that counter under someone else's name and close their only self-service path; behind a hidden service nothing bounds its attempts, and smoothing the route's rate belongs to the deployment |
 
 ### Adversaries OUT OF SCOPE — explicitly assumed
 
@@ -451,7 +451,7 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 
 ## Roadmap
 
-### Shipped — v0.1.0 to v0.10.0 (April → October 2026)
+### Shipped — v0.1.0 to v0.11.0 (April → October 2026)
 
 The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library outran it, pulled by its first real deployment: that deployment's needs moved the protocol faster than planned. The work below therefore carries no version number — each item gets one when it ships.
 
@@ -472,6 +472,7 @@ The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library ou
 - [x] **Taking an account back closes it** — open sessions drop, and a granted case has an end (v0.8.0)
 - [x] **Salt route guard in the library** — `Recovery::selDeDerivation` (v0.9.0)
 - [x] **A passphrase the user brings, rolled with dice** — `Recovery::validerPassphraseApportee`, at registration and at every level (v0.10.0)
+- [x] **The level-1 brake no longer closes the holder's own door** — counters under an HMAC label, silent classification of attempts whose every word exists (v0.11.0)
 
 ### Next
 

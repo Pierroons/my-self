@@ -85,8 +85,10 @@ echo "\n→ Le frein par compte du niveau 2, sur cette table-ci\n";
 // configuration d'un service caché, éprouvée ici sur du SQL réel.
 $FAUX  = str_repeat('c3', 32);
 $neufs = $recovery->emettreCodes($compteId, 10, $now);
-// Le niveau 1 de ce banc a déjà écrit sous le nom brut : c'est son étiquette, et
-// elle ne change pas ici. On mesure donc ce que le niveau 2 AJOUTE.
+// ⚠️ Plus aucun niveau n'écrit sous le nom brut : le niveau 1 range sous `l1:` et
+// le niveau 2 sous `l2:`, tous deux sous empreinte. Ce témoin vaut donc zéro par
+// construction, et c'est ce qu'on veut qu'il vaille : il rougirait si un chemin
+// recommençait à écrire le nom en clair dans la table de la connexion.
 $nomAvant = (int) $db->querySingle("SELECT COUNT(*) FROM login_attempts WHERE username = 'alice' AND success = 0");
 for ($i = 0; $i < 5; $i++) { $recovery->parCode($neufs[0], $FAUX, null, $now); }
 $rF = $recovery->parCode($neufs[0], $MOT, null, $now);
