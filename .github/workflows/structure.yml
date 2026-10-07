@@ -1154,8 +1154,42 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_console_freins.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc des compteurs de la console a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 5/5$' \
-            || { echo "::error::le banc des compteurs de la console n'a pas joué ses 5 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 12/12$' \
+            || { echo "::error::le banc des compteurs de la console n'a pas joué ses 12 cas"; exit 1; }
+
+      # Un refus ne doit publier que des clés décidées. Les enveloppes du lab
+      # rendaient la réponse de la bibliothèque telle quelle, et 25 endpoints la
+      # passent à `json_out()` : une clé ajoutée en amont sortait sans décision,
+      # sur deux routes sans authentification.
+      - name: Garde-fou — un refus ne publie que ce qu'on a décidé
+        run: |
+          sortie=$(php demo/lab/tests/sanity_refus_publiable.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc des refus publiables a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 15/15 ' \
+            || { echo "::error::le banc des refus publiables n'a pas joué ses 15 cas"; exit 1; }
+
+      # Refuser un dossier de niveau 3 compte sur le compte VISÉ : un tiers qui en
+      # ouvre plusieurs fait geler l'ouverture au titulaire, par la main de
+      # l'arbitre. L'abandon est la sortie, et il ne doit rien compter.
+      - name: Garde-fou — l'abandon d'un dossier L3 ne gèle pas le titulaire
+        run: |
+          sortie=$(php demo/lab/tests/sanity_l3_abandon.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc de l'abandon L3 a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 6/6 ' \
+            || { echo "::error::le banc de l'abandon L3 n'a pas joué ses 6 cas"; exit 1; }
+
+      # Le frein de la page de connexion n'était gardé par aucun banc. Il mord sur
+      # deux axes — par compte et par origine — et un frein qui cesse de mordre ne
+      # fait aucun bruit.
+      - name: Garde-fou — le frein de connexion mord sur ses deux axes
+        run: |
+          sortie=$(php demo/lab/tests/sanity_frein_login.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc du frein de connexion a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 9/9 ' \
+            || { echo "::error::le banc du frein de connexion n'a pas joué ses 9 cas"; exit 1; }
 
       - name: Canari — la console reperd les tentatives sans étiquette
         run: |
