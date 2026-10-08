@@ -439,8 +439,11 @@ final class StockageSelfRecover implements StorageInterface
         // à faire dans une console d'arbitrage.
         $st = $this->pdo->prepare(
             'SELECT d.dispute_number, d.status, d.signals_json, d.init_collisions, d.created_at,
-                    d.submitted_at, d.decided_at, d.decided_by, a.username,
+                    d.submitted_at, d.decided_at, d.decided_by,
+                    d.abandonne_par, d.abandonne_le, a.username,
                     (SELECT COUNT(*) FROM dispute_messages m WHERE m.dispute_id = d.id) AS messages,
+                    (SELECT g.gele_par FROM l3_gel g
+                      WHERE g.account_id = a.id AND g.gele_jusqu_a > ?) AS gele_par,
                     (SELECT g.gele_jusqu_a FROM l3_gel g
                       WHERE g.account_id = a.id AND g.gele_jusqu_a > ?) AS gele_jusqu_a
                FROM disputes d JOIN accounts a ON a.id = d.account_id
@@ -450,7 +453,10 @@ final class StockageSelfRecover implements StorageInterface
         // « ouverture gelée jusqu'au <date passée> » sur un compte qui n'est plus
         // gelé — et propose de lever un gel qui n'existe plus. `gelJusqua()`
         // applique déjà la même règle ; les deux lectures doivent dire pareil.
-        $st->execute([time(), $limite]);
+        // Trois liaisons : la borne du gel est demandée deux fois (l'auteur et
+        // l'échéance), puis la limite.
+        $maintenant = time();
+        $st->execute([$maintenant, $maintenant, $limite]);
         $lignes = $st->fetchAll(PDO::FETCH_ASSOC);
         foreach ($lignes as &$l) {
             $l['faisceau'] = $l['signals_json'] === null ? null : json_decode((string) $l['signals_json'], true);
@@ -462,17 +468,16 @@ final class StockageSelfRecover implements StorageInterface
 
     public function purgerLitigesExpires(int $avant): int
     {
-        // ⚠️ Les dossiers REFUSÉS survivent à la purge : le gel se calcule en
-        // comptant les refus d'une fenêtre de trente jours, et un dossier
-        // expire au bout de vingt-quatre heures. Les effacer viderait le
-        // compteur avant qu'il puisse atteindre son seuil, et le gel — seule
-        // protection contre l'acharnement — deviendrait inatteignable sans
-        // qu'aucune sonde ne rougisse.
+        // ⚠️ Les dossiers REFUSÉS survivent à la purge : les refus de la
+        // fenêtre que rend `reglesDuGel()` se comptent sur eux, et un dossier
+        // expire bien avant la fin de cette fenêtre. Les effacer priverait
+        // l'arbitre des refus déjà portés par le compte — et aucune sonde ne
+        // rougirait de leur perte, c'est pourquoi l'exclusion est écrite ici.
         //
         // ⚠️ Les dossiers ACCEPTÉS y survivent aussi, pour la même raison que
         // `litigeActifDuCompte` les exempte du TTL : le titulaire qui revient
-        // après vingt-quatre heures doit encore trouver son accord. Les purger
-        // rendrait la porte définitivement close à qui a déjà tout perdu.
+        // après l'expiration doit encore trouver son accord. Les purger rendrait
+        // la porte définitivement close à qui a déjà tout perdu.
         $st = $this->pdo->prepare(
             "DELETE FROM disputes WHERE expires_at <= ? AND status NOT IN ('refused', 'accepted')"
         );

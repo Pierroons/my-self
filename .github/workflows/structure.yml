@@ -1195,19 +1195,19 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_refus_publiable.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du refus publiable a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 15/15 ' \
-            || { echo "::error::le banc du refus publiable n'a pas joué ses 15 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 18/18 ' \
+            || { echo "::error::le banc du refus publiable n'a pas joué ses 18 cas"; exit 1; }
 
       # Refuser un dossier de niveau 3 compte sur le compte VISÉ : un tiers qui en
       # ouvre plusieurs fait geler l'ouverture au titulaire, par la main de
       # l'arbitre. L'abandon est la sortie, et il ne doit rien compter.
-      - name: Garde-fou — l'abandon d'un dossier L3 ne gèle pas le titulaire
+      - name: Garde-fou — un refus signale le gel sans le poser, l'abandon ne compte rien
         run: |
           sortie=$(php demo/lab/tests/sanity_l3_abandon.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc de l'abandon L3 a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 6/6 ' \
-            || { echo "::error::le banc de l'abandon L3 n'a pas joué ses 6 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 15/15 ' \
+            || { echo "::error::le banc de l'abandon L3 n'a pas joué ses 15 cas"; exit 1; }
 
       # Le frein de la page de connexion n'était gardé par aucun banc. Il mord sur
       # deux axes — par compte et par origine — et un frein qui cesse de mordre ne
@@ -1217,14 +1217,37 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_frein_login.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du frein de connexion a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 9/9 ' \
-            || { echo "::error::le banc du frein de connexion n'a pas joué ses 9 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 13/13 ' \
+            || { echo "::error::le banc du frein de connexion n'a pas joué ses 13 cas"; exit 1; }
 
-      # 🔑 Les trois bancs ci-dessus rendent vert ; rien ne disait qu'ils rougissent.
+      # La bibliothèque rend `cle`/`texte`, la page lit `key`/`label`/`type`/`options` :
+      # les deux côtés avaient divergé sans un mot, et le niveau 3 partait sans aucune
+      # réponse — trois libellés vides, et le faisceau toujours en « diverge ».
+      - name: Garde-fou — les questions L3 portent les noms que la page lit
+        run: |
+          sortie=$(php demo/lab/tests/sanity_questions_l3.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc des questions L3 a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 17/17 ' \
+            || { echo "::error::le banc des questions L3 n'a pas joué ses 17 cas"; exit 1; }
+
+      # `tc()` est indexé par le texte français source : quatre mots du dictionnaire
+      # sont aussi des mots de la liste Diceware, et une passphrase rangée mot à mot
+      # en ressortait réécrite. La liste blanche se mesure dans les deux sens.
+      - name: Garde-fou — la traduction récursive ne touche aucune valeur
+        run: |
+          sortie=$(php demo/lab/tests/sanity_tc_deep.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc de tc_deep a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 26/26 ' \
+            || { echo "::error::le banc de tc_deep n'a pas joué ses 26 cas"; exit 1; }
+
+      # 🔑 Les cinq bancs ci-dessus rendent vert ; rien ne disait qu'ils rougissent.
       # Une garde qu'on n'a jamais fait échouer ne se distingue pas d'une garde
       # absente — demandé par la conv Recover, qui a trouvé que le premier n'était
-      # lancé par aucune étape.
-      - name: Canaris — les trois gardes du lab rougissent sur le défaut qu'elles visent
+      # lancé par aucune étape. Les deux derniers s'y sont ajoutés le 07/10, après
+      # avoir été écrits puis laissés hors de toute étape, exactement comme eux.
+      - name: Canaris — les neuf gardes du lab rougissent sur le défaut qu'elles visent
         run: |
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
             F="$1"; cp "$F" /tmp/canari-lab.intact; avant=$(md5sum "$F" | cut -d" " -f1)
@@ -1251,8 +1274,8 @@ jobs:
           # 2. L'abandon d'un dossier L3 se comporte comme un refus : il charge le
           #    compteur de gel, et le titulaire perd son recours.
           canari demo/lab/lib/recover_l3.php \
-            'return self::http(self::escalade($pdo)->abandonner(strtolower(trim($username)), $par));' \
-            "return ['ok' => true, 'message' => 'canari']; // ne clôt rien" \
+            '$r = self::escalade($pdo)->abandonner(strtolower(trim($username)), $par);' \
+            "\$r = ['ok' => true, 'numero' => 'canari']; // ne clôt rien" \
             demo/lab/tests/sanity_l3_abandon.php \
             "n'a pas libéré la place"
 
@@ -1262,6 +1285,54 @@ jobs:
             'if ($failsIp >= self::LOGIN_MAX_FAILS_PER_IP) { // canari' \
             demo/lab/tests/sanity_frein_login.php \
             'au seuil, même le bon mot de passe est refusé'
+
+          # 4. La page cesse d'honorer le type « month » : le champ redevient libre,
+          #    le titulaire écrit « 03/2024 » et diverge en disant vrai.
+          canari demo/lab/public/dispute.php \
+            "q.type==='month' ? ' type=" \
+            "false ? ' type=" \
+            demo/lab/tests/sanity_questions_l3.php \
+            "aucun type déclaré n'est ignoré par la page"
+
+          # 5. La liste blanche de la traduction reperd les champs d'écran courts :
+          #    six chaînes du simulateur d'attaques repassent en français en silence.
+          canari demo/lab/lib/i18n.php \
+            "    'verdict', 'defense', 'hint', 'resume', 'l'," \
+            "    // canari : liste blanche amputée" \
+            demo/lab/tests/sanity_tc_deep.php \
+            "aucun champ porteur de texte n'est hors de la liste"
+
+          # 6. Le signal du gel ne remonte plus au relais : l'arbitre a perdu le
+          #    gel automatique sans recevoir ce qui le remplace, et rien ne le dit.
+          canari demo/lab/lib/recover_l3.php \
+            "'gel_suggere' => \$r['gel_suggere'] ?? false];" \
+            "'gel_suggere' => false]; // canari" \
+            demo/lab/tests/sanity_l3_abandon.php \
+            "ne remonte pas au seuil"
+
+          # 7. Le geste de l'arbitre rend un succès sans poser de gel : la console
+          #    affiche « gelé », la porte reste ouverte, et aucune erreur ne sort.
+          canari demo/lab/lib/recover_l3.php \
+            '$r   = self::escalade($pdo)->geler($nom, $par);' \
+            "\$r = ['ok' => true, 'jusqua' => 0]; // canari" \
+            demo/lab/tests/sanity_l3_abandon.php \
+            "a pas posé de gel"
+
+          # 8. La console d'arbitrage reperd le nom de la clé du faisceau : elle
+          #    affiche son avertissement au-dessus d'un bloc vide, sans un bruit.
+          canari demo/lab/public/admin_disputes.php \
+            '+facts(d.faisceau)' \
+            '+facts(d.signals)' \
+            demo/lab/tests/sanity_questions_l3.php \
+            "absents : signals"
+
+          # 9. Le gel ne range plus son auteur : une porte fermée sans nom, et un
+          #    re-gel effacerait jusqu'à la trace du dégel qui l'avait contesté.
+          canari demo/lab/lib/recover_l3.php \
+            ')->execute([$par, $nom]);' \
+            '); // canari' \
+            demo/lab/tests/sanity_l3_abandon.php \
+            "une porte fermée sans nom"
 
       - name: Canari — la console reperd les tentatives sans étiquette
         run: |

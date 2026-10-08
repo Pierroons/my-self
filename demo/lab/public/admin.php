@@ -268,9 +268,11 @@ table.adm tr:last-child td{border-bottom:none}
           $sig     = $d['faisceau'] ?? [];
           $ctx     = $sig['contexte'] ?? [];
           $etats   = ['concorde' => '✅', 'diverge' => '❌', 'indisponible' => '—'];
-          $libelle = ['annee_creation' => 'Année de création',
-                      'mois_connexion' => 'Dernière connexion (mois)',
-                      'frequence'      => 'Fréquence d\'usage'];
+          // Les trois libellés étaient au dictionnaire et ne passaient par
+          // personne : l'arbitre anglophone lisait le faisceau en français.
+          $libelle = ['annee_creation' => tc('Année de création'),
+                      'mois_connexion' => tc('Dernière connexion (mois)'),
+                      'frequence'      => tc('Fréquence d\'usage')];
         ?>
         <?php if (!$sig): ?>
           <span class="muted" style="font-size:12px">Faisceau pas encore soumis.</span>

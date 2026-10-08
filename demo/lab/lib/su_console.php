@@ -376,10 +376,19 @@ final class SuConsole
                         ['ok' => false, 'label' => 'IP déjà utilisée par ce compte',
                          'detail' => 'IP jamais vue pour ce compte'],
                     ],
+                    // ⚠️ `dit` et `reel` portent des VALEURS, pas du texte d'écran :
+                    // dans la vraie console elles viennent du faisceau, et un
+                    // traducteur récursif qui les toucherait réécrirait ce que le
+                    // titulaire a déclaré sous les yeux de l'arbitre. Ces deux noms
+                    // ne sont donc pas dans `TC_CLES_TEXTE` ; la démo traduit ses
+                    // propres valeurs ici, là où elles sont écrites.
                     'declaratif' => [
-                        ['ok' => true,  'label' => 'Année de création',         'dit' => '2026',     'reel' => '2026'],
-                        ['ok' => false, 'label' => 'Dernière connexion (mois)', 'dit' => '03/2024',  'reel' => 'jamais connecté'],
-                        ['ok' => false, 'label' => 'Fréquence d\'usage',        'dit' => 'intensif', 'reel' => 'rare (~0 connexions)'],
+                        ['ok' => true,  'label' => 'Année de création',
+                         'dit' => '2026', 'reel' => '2026'],
+                        ['ok' => false, 'label' => 'Dernière connexion (mois)',
+                         'dit' => '03/2024', 'reel' => tc('jamais connecté')],
+                        ['ok' => false, 'label' => 'Fréquence d\'usage',
+                         'dit' => tc('intensif'), 'reel' => tc('rare (~0 connexions)')],
                     ],
                     'resume' => '0/1 passifs · 1/3 déclaratifs concordants',
                 ],

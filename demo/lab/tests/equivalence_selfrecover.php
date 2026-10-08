@@ -330,10 +330,24 @@ $apres3 = $pdo3->query('SELECT pw_hash, pass_hash, recovery_hash FROM accounts W
 verifier('la ligne du compte existe toujours après trois refus',
     (int) $pdo3->query('SELECT COUNT(*) FROM accounts WHERE id = 1')->fetchColumn() === 1);
 verifier('ses trois empreintes sont inchangées', $avant3 === $apres3);
-verifier('le gel est posé dans la table l3_gel, et pas ailleurs',
-    (int) $pdo3->query('SELECT COUNT(*) FROM l3_gel WHERE account_id = 1')->fetchColumn() === 1);
+// ⭐ Le défaut que la 0.11.1 ferme, mesuré sur le schéma réel : ces trois refus
+// ont été déposés sur le compte VISÉ, par un demandeur qui n'a fourni qu'un nom.
+// S'ils gelaient, un tiers fermerait d'ici la dernière porte d'alice.
+verifier('⭐ aucun gel n\'est posé par les refus eux-mêmes',
+    (int) $pdo3->query('SELECT COUNT(*) FROM l3_gel WHERE account_id = 1')->fetchColumn() === 0);
 verifier('banned_until n\'a PAS été posé — c\'est la procédure qui gèle, pas le compte',
     (int) ($pdo3->query('SELECT COALESCE(banned_until, 0) FROM accounts WHERE id = 1')->fetchColumn()) === 0);
+
+// Le gel existe toujours : il est devenu un geste. ⚠️ `adminFreeze()` prend
+// l'heure réelle, comme `adminUnfreeze()` plus bas — l'adaptateur du lab ne
+// transmet pas d'horloge simulée. Le reste du banc vit en 2023, donc ce gel
+// couvre largement les dates qui suivent ; ce qui est éprouvé ici est la pose,
+// pas l'échéance (celle-ci l'est dans `sanity_l3_abandon.php`).
+$gelPose = \Pierroons\MySelfLab\RecoverL3::adminFreeze($pdo3, 'alice', 'arbitre-nommé');
+verifier('⭐ le geste de l\'arbitre, lui, pose le gel — et dans l3_gel, pas ailleurs',
+    ($gelPose['ok'] ?? false) === true
+    && (int) $pdo3->query('SELECT COUNT(*) FROM l3_gel WHERE account_id = 1')->fetchColumn() === 1,
+    (string) ($gelPose['error'] ?? ''));
 
 $gele3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('encore'), maintenant: $now3 + 400 + 2 * 86400);
 verifier('et l\'ouverture est bien refusée pendant le gel, sous le refus unique', ($gele3['error'] ?? '') === 'ouverture_refusee');
@@ -391,9 +405,9 @@ verifier('⭐ et la date quand elle existe — un arbitre voit depuis quand le s
 
 echo "\n→ ⭐ Le dégel est atteignable, et il rend la porte\n";
 
-// Trois textes du module promettent qu'un arbitre lève le gel. Jusqu'ici
-// `degeler()` n'avait aucun appelant : la promesse était vraie dans la
-// bibliothèque et fausse partout où quelqu'un aurait pu s'en servir.
+// Les textes du module promettent qu'un arbitre lève le gel. Une méthode de
+// bibliothèque sans appelant est une promesse non tenue : les deux gestes
+// s'éprouvent donc par l'adaptateur, pas par la bibliothèque seule.
 
 $gelAvant = (int) $pdo3->query('SELECT gele_jusqu_a FROM l3_gel WHERE account_id = 1')->fetchColumn();
 verifier('contre-témoin : le gel court bien avant qu\'on y touche', $gelAvant > $now3);

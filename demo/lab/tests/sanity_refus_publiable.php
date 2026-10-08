@@ -99,6 +99,55 @@ v('un tableau vide ne lève pas',              refus_publiable([]) === []);
 v('« ok » absent est traité comme un refus',  refus_publiable(['error' => 'e', 'z' => 1]) === ['error' => 'e']);
 v('« ok » à 1 (et non true) est un refus',    !array_key_exists('z', refus_publiable(['ok' => 1, 'z' => 1])));
 
+// ── 7. 🔑 Aucun motif de la bibliothèque ne tombe dans le défaut ───────────
+// `RecoverL3::http()` traduit le motif en code HTTP, avec `?? 400` au bout. Un
+// défaut est muet : le jour où la bibliothèque ajoute un motif, il part en 400
+// sans que personne l'apprenne — `accord_perime` l'a fait, et un accord périmé
+// annoncé « requête invalide » envoie le titulaire chercher l'erreur chez lui.
+// Ce cas lit les motifs dans la SOURCE de la bibliothèque plutôt que dans une
+// liste recopiée ici : une liste aurait le même angle mort que la table.
+//
+// ⚠️ Il lit la bibliothèque RÉSOLUE (`vendor/`), pas la copie du dépôt : les
+// deux coïncident en intégration, mais pas dans un arbre de travail qui pointe
+// ailleurs — et lire l'une en exécutant l'autre rend un vert sur une version
+// qui ne tourne pas.
+//
+// ⚠️ Et deux formes d'émission, pas une : un `return [... 'error' => '…']`, et
+// un refus fabriqué par une fermeture (`$refuser('…', …)`). N'en chercher
+// qu'une laissait trois motifs invisibles, dont `accord_perime` — celui-là même
+// qui a motivé ce cas.
+echo "\n7. Les motifs de la bibliothèque ont tous leur code\n";
+$src = __DIR__ . '/../vendor/pierroons/selfrecover/src/Recovery/Escalade.php';
+if (!is_file($src)) {
+    v('la source de la bibliothèque a été trouvée', false, $src);
+} else {
+    $codeBiblio = (string) file_get_contents($src);
+    preg_match_all('/\x27error\x27\s*=>\s*\x27([a-z_]+)\x27/', $codeBiblio, $mm);
+    preg_match_all('/\$refuser\(\s*\x27([a-z_]+)\x27/', $codeBiblio, $mr);
+    $mm[1] = array_merge($mm[1], $mr[1]);
+    $motifs = array_values(array_unique($mm[1]));
+    sort($motifs);
+    v('des motifs ont été extraits', count($motifs) > 10, count($motifs) . ' motif(s)');
+
+    // Les six premiers cas tournent sans la pile, exprès : `reponse.php` doit
+    // se charger seul. Celui-ci lit une constante de classe, donc il lui faut
+    // le relais, qui exige l'autochargeur — d'où ce require tardif, après que
+    // la propriété a été éprouvée.
+    require_once __DIR__ . '/../vendor/autoload.php';
+    require_once __DIR__ . '/../lib/recover_l3.php';
+    $codes = (new ReflectionClass(\Pierroons\MySelfLab\RecoverL3::class))
+        ->getReflectionConstant('CODES')->getValue();
+    $orphelins = array_values(array_diff($motifs, array_keys($codes)));
+    v('chaque motif a son code explicite', $orphelins === [],
+        'tombent en 400 par défaut : ' . implode(', ', $orphelins));
+
+    // Et l'inverse : une entrée pour un motif qui n'existe plus est du code mort
+    // qui laisse croire qu'un cas est couvert. `invalid_derived_key` vient du
+    // relais lui-même, pas de la bibliothèque — d'où l'exception nommée.
+    $inutiles = array_values(array_diff(array_keys($codes), $motifs, ['invalid_derived_key']));
+    v('aucune entrée ne vise un motif disparu', $inutiles === [], implode(', ', $inutiles));
+}
+
 echo "\n" . ($echecs === 0
     ? "OK — $reussites/$reussites contrôles conformes.\n"
     : "ÉCHEC — $echecs sur " . ($echecs + $reussites) . ".\n");

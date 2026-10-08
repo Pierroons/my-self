@@ -151,11 +151,18 @@ function afficherQuestions(questions, note){
   const box = document.getElementById('qfields');
   box.innerHTML = questions.map(function(q){
     if(q.type === 'select'){
+      // Une option vide en tête, sans quoi le navigateur retient la première et
+      // le faisceau porte devant l'arbitre une déclaration que personne n'a
+      // faite — « concorde » ou « diverge » sur une réponse non donnée.
       return '<div class="field"><label>'+esc(q.label)+'</label><select id="q-'+esc(q.key)+'">'+
+        '<option value="" selected>—</option>'+
         (q.options||[]).map(o=>'<option value="'+esc(o)+'">'+esc(o)+'</option>').join('')+'</select></div>';
     }
+    // `month` soumet AAAA-MM, ce que le faisceau compare exactement. Laissé en
+    // saisie libre, le titulaire écrit « 03/2026 » et diverge en disant vrai.
+    var attr = q.type==='month' ? ' type="month"' : (q.type==='year' ? ' inputmode="numeric"' : '');
     return '<div class="field"><label>'+esc(q.label)+'</label><input id="q-'+esc(q.key)+
-      '" autocomplete="off"'+(q.type==='year'?' inputmode="numeric"':'')+'></div>';
+      '" autocomplete="off"'+attr+'></div>';
   }).join('');
   box.dataset.keys = questions.map(q=>q.key).join(',');
   montrer('step-questions');

@@ -147,15 +147,20 @@ final class AttackSimulator
                 'lignes' => $seq,
             ],
             'cote_legitime' => [
-                'label' => 'Utilisateur légitime (bon mot de passe, autre contexte)',
+                'label' => tc('Utilisateur légitime (bon mot de passe, base vierge)'),
                 'lignes' => [
                     'Login avec le vrai mot de passe : ' . ($okLogin['ok'] ? '✓ connecté immédiatement' : 'échec'),
-                    'Le rate-limit ne frappe que les échecs : le légitime n\'est pas gêné.',
+                    tc('Mesuré sur une base vierge. Sur le compte attaqué, le verrou refuse AUSSI le bon mot de passe.'),
                 ],
             ],
             'verdict' => 'neutralisé',
             'defense' => 'Rate-limit applicatif (' . Auth::LOGIN_MAX_FAILS . ' échecs / ' . Duree::enClair(Auth::LOGIN_WINDOW) . ') + Argon2id (' . \Pierroons\SelfRecover\Crypto\Hashing::profilEnClair() . ')',
-            'message_cle' => 'Le bruteforce est bloqué après ' . Auth::LOGIN_MAX_FAILS . " essais, mais l'utilisateur légitime se connecte sans entrave.",
+            'message_cle' => sprintf(
+                tc('Le bruteforce est bloqué après %1$s essais — et le verrou refuse le titulaire avec lui pendant %2$s : '
+                 . 'un tiers ferme donc la connexion d\'un compte en %1$s requêtes. La récupération, elle, reste ouverte.'),
+                Auth::LOGIN_MAX_FAILS,
+                Duree::enClair(Auth::LOGIN_WINDOW),
+            ),
         ];
     }
 

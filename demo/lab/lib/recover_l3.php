@@ -17,9 +17,13 @@ declare(strict_types=1);
  * m'a pas convaincu », pas « ce compte est illégitime ». Si le demandeur était
  * un imposteur, on détruisait le compte de sa victime ; s'il était le titulaire
  * mal jugé, on punissait un innocent. Et un attaquant incapable de voler un
- * compte pouvait le faire effacer en accumulant des refus. Ce qui se durcit
- * désormais est la procédure : trois refus en trente jours gèlent l'ouverture
- * sept jours, et le compte reste entier.
+ * compte pouvait le faire effacer en accumulant des refus. Ce qui peut se
+ * durcir désormais est la procédure, jamais le compte : il reste entier.
+ *
+ * ⚠️ Aucun compteur ne durcit de lui-même : les refus sont comptés et
+ * **signalés** à l'arbitre (`gel_suggere`), qui pose le gel par `adminFreeze()`
+ * et le lève. Pourquoi cette décision ne peut pas revenir au compteur :
+ * cf. `adminFreeze()`.
  */
 
 namespace Pierroons\MySelfLab;
@@ -55,10 +59,18 @@ final class RecoverL3
         'compte_inconnu'     => 404,
         'introuvable'        => 404,
         'expire'             => 410,
+        'accord_perime'      => 410,
         'deja_tranche'       => 409,
+        'fil_plein'          => 429,
+        'trop_rapide'        => 429,
+        'reponse_trop_longue' => 400,
         'non_accepte'        => 409,
         'clos'               => 409,
         'aucun_litige'       => 409,
+        'passphrase_deja_servie' => 409,
+        'passphrase_egale_mot_de_passe' => 400,
+        'mot_de_passe_invalide' => 400,
+        'ouverture_refusee'  => 403,
         'trop_tot'           => 429,
         'trop_de_demandes'   => 429,
     ];
@@ -104,10 +116,45 @@ final class RecoverL3
         return refus_publiable($r);
     }
 
-    /** Les questions de contexte — le front les affiche telles quelles. */
+    /**
+     * La forme de rendu de chaque question, ajoutée par `questions()`.
+     *
+     * ⚠️ Les trois valeurs de fréquence sont celles que le faisceau compare
+     * (`Escalade::faisceau()`) : les changer ici, ou en ajouter une, fait
+     * diverger toute réponse qui l'emploie.
+     */
+    private const FORME = [
+        'annee_creation' => ['type' => 'year'],
+        'mois_connexion' => ['type' => 'month'],
+        'frequence'      => ['type' => 'select', 'options' => ['souvent', 'parfois', 'rare']],
+    ];
+
+    /**
+     * Les questions de contexte, sous les noms que la page attend.
+     *
+     * 🔑 La bibliothèque rend `cle` et `texte` ; `public/dispute.php` lit `key`,
+     * `label`, `type` et `options`. Sans ce renommage, la page affiche des
+     * libellés vides et soumet un formulaire **sans aucune réponse** — et un
+     * faisceau sans réponse arrive en « diverge » devant l'arbitre.
+     *
+     * Le renommage vit ici parce que c'est le rôle de ce relais : `dispute_number`
+     * est déjà un renommage de `numero`. Toucher la bibliothèque obligerait ses
+     * autres intégrateurs à suivre.
+     *
+     * @return list<array{key: string, label: string, type: string, options?: list<string>}>
+     */
     public static function questions(): array
     {
-        return Escalade::questions();
+        $sortie = [];
+        foreach (Escalade::questions() as $q) {
+            $cle = (string) ($q['cle'] ?? '');
+            $sortie[] = array_merge(
+                ['key' => $cle, 'label' => (string) ($q['texte'] ?? ''), 'type' => 'text'],
+                self::FORME[$cle] ?? [],
+            );
+        }
+
+        return $sortie;
     }
 
     public static function init(PDO $pdo, string $username, string $claimHash, ?string $ip = null): array
@@ -136,7 +183,8 @@ final class RecoverL3
         return [
             'ok'             => true,
             'dispute_number' => $r['numero'],
-            'questions'      => $r['questions'],
+            // Sous les noms de la page, pas ceux de la bibliothèque : cf. questions().
+            'questions'      => self::questions(),
             'expires_at'     => $r['expire_le'],
             'message'        => $r['message'],
             'note'           => 'Garde ce numéro ET ton sésame : sans les deux, personne ne peut '
@@ -211,9 +259,13 @@ final class RecoverL3
     /**
      * La décision. Le front envoie `grant` / `refuse` depuis qu'il existe.
      *
-     * ⚠️ Un refus ne supprime plus le compte. La réponse porte `gele` pour que
-     * la console puisse le dire à l'arbitre : trois refus dans la fenêtre gèlent
-     * l'ouverture, et il vaut mieux qu'il l'apprenne au moment où il tranche.
+     * ⚠️ Un refus ne supprime pas le compte et ne gèle rien : il compte. La
+     * réponse porte `gel_suggere`, que la console montre à l'arbitre pour qu'il
+     * décide — le gel se pose par `adminFreeze()`.
+     *
+     * 🔑 La clé `gele` de la bibliothèque vaut toujours `false` : une console
+     * qui s'y fie n'affiche jamais rien, sans erreur pour le dire. Elle n'est
+     * pas relayée ici, et `gel_suggere` la remplace.
      */
     public static function adminDecide(PDO $pdo, string $number, string $decision, string $par = 'admin'): array
     {
@@ -228,7 +280,7 @@ final class RecoverL3
 
         return ['ok' => true, 'decision' => $r['statut'], 'message' => $r['message'],
                 'refus_dans_la_fenetre' => $r['refus_dans_la_fenetre'] ?? null,
-                'gele' => $r['gele'] ?? false];
+                'gel_suggere' => $r['gel_suggere'] ?? false];
     }
 
     /**
@@ -236,25 +288,75 @@ final class RecoverL3
      *
      * 🔑 C'est la sortie devant un dossier ouvert par quelqu'un d'autre que le
      * titulaire. Refuser serait l'action naturelle, et c'est le piège : chaque
-     * refus compte sur le compte VISÉ, et le gel de l'ouverture s'arme au seuil
-     * que rend `reglesDuGel()`. Un tiers qui ouvre assez de dossiers fait donc
-     * armer ce gel par l'arbitre lui-même, et le titulaire perd sa dernière
-     * voie de secours sans avoir rien fait.
+     * refus compte sur le compte VISÉ. Un tiers qui ouvre assez de dossiers
+     * fait donc monter un compteur qui n'est pas le sien, et l'arbitre voit
+     * s'afficher une suggestion de gel contre une victime. Le gel ne s'arme
+     * plus tout seul depuis la 0.11.1, mais le signal, lui, est toujours
+     * remplissable par un tiers : c'est pourquoi la sortie reste l'abandon.
      *
      * L'abandon libère la place sans toucher à ce compteur. Il ne rend aucun
      * accès : le titulaire rouvre un dossier et l'arbitrage est à refaire.
      *
      * Réservé à un arbitre, garde posée par l'endpoint.
+     *
+     * ⚠️ La trace est posée ICI, pas par la bibliothèque : `cloreLitige($litigeId,
+     * $quand)` ne reçoit pas l'auteur de l'abandon. Qui supprime l'`UPDATE`
+     * ci-dessous fait disparaître l'abandon des archives sans un bruit.
      */
     public static function adminAbandon(PDO $pdo, string $username, string $par = 'admin'): array
     {
-        return self::http(self::escalade($pdo)->abandonner(strtolower(trim($username)), $par));
+        $r = self::escalade($pdo)->abandonner(strtolower(trim($username)), $par);
+        if (($r['ok'] ?? false) !== true) {
+            return self::http($r);
+        }
+
+        $pdo->prepare('UPDATE disputes SET abandonne_par = ?, abandonne_le = ? WHERE dispute_number = ?')
+            ->execute([$par, time(), (string) $r['numero']]);
+
+        return $r;
     }
 
     /** Lève un gel de procédure. Réservé à un arbitre, garde posée par l'endpoint. */
     public static function adminUnfreeze(PDO $pdo, string $username, string $par = 'admin'): array
     {
         return self::http(self::escalade($pdo)->degeler(strtolower(trim($username)), $par));
+    }
+
+    /**
+     * Gèle l'ouverture de nouveaux dossiers, sur décision de l'arbitre.
+     *
+     * 🔑 **Le seul chemin qui pose un gel, et il doit le rester.** Le gel ne
+     * peut pas s'armer sur le compteur de refus : les refus se comptent sur le
+     * compte VISÉ, et ouvrir un dossier ne demande qu'un nom affiché — un tiers
+     * remplirait donc ce compteur et ferait fermer, par l'arbitre lui-même, le
+     * dernier recours de sa victime. Le compteur informe (`gel_suggere`), ce
+     * chemin décide.
+     *
+     * ⚠️ Il ferme la PROCÉDURE, pas le compte. Mais au niveau 3 celui qui
+     * arrive n'a plus ni mot de passe, ni passphrase, ni feuille de codes : un
+     * gel laisse donc une personne dehors tant qu'il court. La durée est bornée
+     * et `adminUnfreeze()` le lève immédiatement.
+     *
+     * Réservé à un arbitre, garde posée par l'endpoint.
+     */
+    public static function adminFreeze(PDO $pdo, string $username, string $par = 'admin'): array
+    {
+        $nom = strtolower(trim($username));
+        $r   = self::escalade($pdo)->geler($nom, $par);
+        if (($r['ok'] ?? false) !== true) {
+            return self::http($r);
+        }
+
+        // ⚠️ Même écart que pour l'abandon : `poserGel($compteId, $jusqua, $quand)`
+        // ne reçoit pas l'auteur, là où `leverGel()` le reçoit et l'écrit. Sans
+        // cette ligne, la seule trace d'une porte fermée serait une date — et
+        // l'UPSERT du stockage remet `degele_par` à NULL, donc un re-gel
+        // effacerait jusqu'au souvenir que le gel avait été contesté.
+        $pdo->prepare(
+            'UPDATE l3_gel SET gele_par = ? WHERE account_id = (SELECT id FROM accounts WHERE username = ?)'
+        )->execute([$par, $nom]);
+
+        return $r;
     }
 
     /**
