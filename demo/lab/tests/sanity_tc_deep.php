@@ -192,6 +192,72 @@ v('des champs traduisibles ont bien été trouvés', $examines > 5, "$examines o
 v('aucun champ porteur de texte n\'est hors de la liste', $orphelins === [],
     implode(' · ', array_slice(array_unique($orphelins), 0, 8)));
 
+// ── 8. 🔑 Les paliers du faisceau ne sont pas du texte ─────────────────────
+// La conv Recover a posé la question avant d'écrire sa 0.12.0 : son §5 affirme
+// que `souvent`/`parfois`/`rare` sont des IDENTIFIANTS de palier et que rien ne
+// les traduit — donc qu'aucun mot seul n'entre dans un catalogue, donc qu'une
+// passphrase ne peut pas être corrompue par une traduction.
+//
+// ⚠️ Cette propriété ne vit pas dans sa bibliothèque : elle vit ICI, dans ce
+// qui traverse `tc_deep()`. Une promesse suffit jusqu'au jour où quelqu'un
+// ajoute une clé à la liste blanche. Ces cas la gardent.
+echo "\n8. Les paliers de fréquence survivent à la traduction\n";
+
+$paliers = ['souvent', 'parfois', 'rare'];
+
+v('`options` n\'est pas dans la liste blanche',
+    !in_array('options', TC_CLES_TEXTE, true),
+    'si elle y entrait, les paliers deviendraient du texte');
+
+$apres = tc_deep(['options' => $paliers]);
+v('⭐ sous `options`, les trois paliers sortent intacts',
+    ($apres['options'] ?? []) === $paliers,
+    json_encode($apres['options'] ?? null));
+
+$apres = tc_deep(['frequence' => 'rare', 'declare' => 'rare', 'reel' => 'rare']);
+v('⭐ et partout où le faisceau les porte',
+    ($apres['frequence'] ?? '') === 'rare'
+    && ($apres['declare'] ?? '') === 'rare'
+    && ($apres['reel'] ?? '') === 'rare',
+    json_encode($apres));
+
+// 🔑 LE cas redouté, celui qui a motivé la question : `rare` est à la fois une
+// valeur du faisceau ET un mot de la liste EFF anglaise. Si une traduction le
+// touchait dans un payload de succès, la passphrase rendue une seule fois
+// deviendrait fausse — et le compte irrécupérable, sans erreur pour le dire.
+$mots = ['rare', 'challenge', 'expire', 'status', 'message'];
+$apres = tc_deep(['ok' => true, 'credentials' => ['passphrase' => implode(' ', $mots),
+                                                  'passphrase_mots' => $mots]]);
+v('⭐⭐ une passphrase faite de mots-pièges traverse sans une lettre changée',
+    ($apres['credentials']['passphrase'] ?? '') === implode(' ', $mots)
+    && ($apres['credentials']['passphrase_mots'] ?? []) === $mots,
+    json_encode($apres['credentials'] ?? null));
+
+// ── 9. Rien de la bibliothèque n'entre dans tc_deep ────────────────────────
+// Le §5 ne tient que si aucune réponse de SelfRecover ne traverse la traduction
+// récursive. Ce cas le lit dans le code plutôt que de le croire : il extrait les
+// arguments réels des appelants.
+echo "\n9. Seules les classes du lab traversent la traduction récursive\n";
+
+$autorisees = ['AttackSimulator', 'SuConsole'];
+$appelants = [];
+foreach (glob(__DIR__ . '/../public/api/*.php') ?: [] as $f) {
+    if (preg_match_all('/tc_deep\(\s*\\\\?([A-Za-z\\\\]*?([A-Za-z]+))::/', (string) file_get_contents($f), $m)) {
+        foreach ($m[2] as $classe) {
+            $appelants[] = basename($f) . ' → ' . $classe;
+            if (!in_array($classe, $autorisees, true)) {
+                $appelants[] = '⚠️ ' . $classe;
+            }
+        }
+    }
+}
+$intrus = array_values(array_filter($appelants, static fn (string $a): bool => str_starts_with($a, '⚠️')));
+
+v('des appelants ont été trouvés', count($appelants) > 0, implode(' · ', $appelants));
+v('⭐ aucun n\'y passe une réponse de la bibliothèque', $intrus === [],
+    implode(' · ', $intrus) . ' — une structure de SelfRecover porterait `cle`, '
+    . 'qui EST dans la liste blanche : son identifiant serait réécrit en silence');
+
 echo "\n" . ($echecs === 0
     ? "OK — $reussites/$reussites contrôles conformes.\n"
     : "ÉCHEC — $echecs sur " . ($echecs + $reussites) . ".\n");
