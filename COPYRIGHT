@@ -1,4 +1,4 @@
-MySelf — copyright © 2026 Pierroons <contact@my-self.fr>
+MySelf — copyright © 2026 Pierroons <contact@my-self.fr> and the MySelf contributors
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU Affero General Public License as published by the Free
@@ -17,6 +17,10 @@ Until 2026-04-19, MySelf was licensed under the MIT License. All versions
 distributed from 2026-04-19 onwards are licensed under AGPL-3.0-or-later.
 The MIT-licensed historical releases remain available under their original
 terms.
+
+Each contributor retains copyright in their own contributions; contributing transfers no
+rights. Contributions are certified under the Developer Certificate of Origin 1.1 (see DCO),
+and contributors are listed in AUTHORS.
 
 The full licence text lives in LICENSE, verbatim and unmodified — automated
 licence detectors only recognise it when nothing precedes it.

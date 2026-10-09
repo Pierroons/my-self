@@ -88,6 +88,27 @@ apt : figé sur une version ancienne, il n'interprète pas les allowlists comme 
   **refuse le merge** en cas de fuite — la barrière s'applique à tout le monde.
 - Règles dans `.gitleaks.toml` ; faux positifs connus dans `.gitleaksignore`.
 
+## ✍️ Signer tes commits — le certificat d'origine
+
+Chaque commit porte une ligne de signature. `git commit -s` l'ajoute toute seule :
+
+```
+Signed-off-by: Prénom Nom <adresse@exemple.org>
+```
+
+En la posant, tu attestes que tu as écrit cet apport ou que tu as le droit de le soumettre sous la
+licence du projet. Le texte de référence est le fichier [`DCO`](DCO) à la racine — le *Developer
+Certificate of Origin* 1.1, celui du noyau Linux.
+
+**Tu ne cèdes aucun droit.** Tu restes pleinement titulaire de tes lignes, et ton nom entre dans
+[`AUTHORS`](AUTHORS). La signature atteste la provenance, elle ne transfère rien.
+
+Elle te protège d'ailleurs autant que le projet : si un employeur, présent ou futur, revendiquait un
+jour une contribution, l'attestation tranche la question d'avance, datée et signée.
+
+Pour ne pas exposer ton adresse, utilise ton adresse noreply GitHub dans la signature comme dans
+`user.email` (voir [Commits](#commits)).
+
 ## 🚀 Déploiement
 
 Le déploiement en production est réservé au mainteneur (audit OPSEC intégré).
