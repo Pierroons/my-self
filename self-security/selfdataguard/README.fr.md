@@ -109,7 +109,7 @@ Sans SelfRecover, SelfDataGuard fonctionne quand même, avec les serrures que l'
 
 | Mode | Accès serveur aux données | Compromis | Dans le code |
 |------|---------------------------|-----------|--------------|
-| **Lite** *(transparent pour les piles legacy)* | Le serveur déchiffre uniquement pendant les sessions utilisateur | Compromission serveur pendant une session active = fan-out limité (un utilisateur à la fois) | ✅ c'est ce que fait la bibliothèque |
+| **Lite** *(transparent pour les piles legacy)* | Le serveur déchiffre uniquement pendant les sessions utilisateur | Compromission du serveur = les coffres des sessions ouvertes pendant qu'il est compromis, et de qui s'y connecte ; pas ceux des comptes qui ne se connectent pas | ✅ c'est ce que fait la bibliothèque |
 | **Hybrid** *(visé pour l'e-commerce)* | Champs opérationnels (`email`, `adresse_livraison`) encapsulés avec une clé opérationnelle admin. Champs sensibles (`tel`, `doc_KYC`) nécessitent une session utilisateur | L'admin peut traiter les commandes ; les données sensibles restent zero-knowledge | ❌ spécifié, pas écrit — le `wrap_admin` du coffre vaut `null` (`UserVault::register()`) |
 | **Full** *(zero-knowledge pour services à forte exigence)* | Le serveur ne déchiffre JAMAIS. Toute la crypto tourne dans le navigateur, par libsodium compilé en WebAssembly — WebCrypto n'offre ni Argon2id ni XChaCha20-Poly1305 | Certains workflows à redessiner (pas de mails transactionnels asynchrones, notifications push à la place) | ❌ spécifié, pas écrit — le module ne porte aucun code client |
 

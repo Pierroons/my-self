@@ -3,8 +3,9 @@
  * SelfRecover demo — Recovery L1 (passphrase).
  *
  * POST /demo/api/recover/recover-l1
- *   body: { "username": "alice", "passphrase": "four words here plz" }
- *   → argon2id_verify(passphrase, pass_hash) → génère nouveau password → update
+ *   body: { "username": "alice", "passphrase": "…", "new_passphrase": "…" (facultatif) }
+ *   → argon2id_verify(passphrase, pass_hash) → nouveau password ; nouvelle passphrase
+ *     apportée (tirée aux dés) ou tirée par la bibliothèque → update
  */
 
 declare(strict_types=1);
@@ -26,12 +27,21 @@ if (!RateLimit::checkAndIncrementActions($s->dir)) {
 $body = json_decode((string) file_get_contents('php://input'), true);
 $username   = is_array($body) ? (string) ($body['username'] ?? '') : '';
 $passphrase = is_array($body) ? (string) ($body['passphrase'] ?? '') : '';
+// Absente ou nulle : la bibliothèque tire la nouvelle. Un texte, même vide, est jugé.
+$nouvelle   = is_array($body) ? ($body['new_passphrase'] ?? null) : null;
+if ($nouvelle !== null && !is_string($nouvelle)) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'passphrase_invalide', 'motif' => 'trop_courte',
+                      'message' => 'La passphrase apportée doit être un texte.'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 $log = $s->logger();
 $log->info('recover-l1', 'POST /demo/api/recover/recover-l1');
 $log->info('recover-l1', 'Body parsed', [
     'username'   => $username,
     'passphrase' => '[HIDDEN ' . strlen($passphrase) . ' chars, ' . str_word_count($passphrase) . ' words]',
+    'nouvelle'   => $nouvelle === null ? 'tirée par la bibliothèque' : '[HIDDEN — apportée]',
 ]);
 
 if (!RecoverHelper::estIdentifiant($username) || strlen($passphrase) < 4) {
@@ -53,10 +63,14 @@ $recovery = RecoverHelper::protocole($s);
 //
 // L'origine n'est pas transmise : cette démo freine par session (RateLimit,
 // plus haut), et sa table `login_attempts` ne porte pas de colonne `ip`.
+//
+// ⚠️ Ce frein de session est donc la SEULE borne du niveau 1 ici : sans origine,
+// la bibliothèque n'en a aucune. Le retirer d'au-dessus laisserait la porte sans
+// compteur.
 $log->info('recover-l1', 'Vérification déléguée à Pierroons\SelfRecover\Recovery::parPassphrase');
 
 $t0 = microtime(true);
-$r  = $recovery->parPassphrase($username, $passphrase, null);
+$r  = $recovery->parPassphrase($username, $passphrase, null, nouvellePassphrase: $nouvelle);
 $ms = (int) ((microtime(true) - $t0) * 1000);
 
 $log->crypto('recover-l1', 'argon2id — ' . \Pierroons\SelfRecover\Crypto\Hashing::profilEnClair() . ', exécuté même sur compte inconnu', [
@@ -64,6 +78,15 @@ $log->crypto('recover-l1', 'argon2id — ' . \Pierroons\SelfRecover\Crypto\Hashi
     'note'        => "C'est le coût du hachage qui égalise le temps de réponse, jamais un délai fixe : celui-ci se distinguerait d'un Argon2id, qui varie.",
 ]);
 
+// Un refus de la passphrase apportée se dit : il ne dépend que de ce qu'elle
+// contient, jamais du compte.
+if (!$r['ok'] && str_starts_with((string) ($r['error'] ?? ''), 'passphrase_')) {
+    $log->warning('recover-l1', 'Passphrase apportée refusée', ['erreur' => $r['error'], 'motif' => $r['motif'] ?? null]);
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => $r['error'], 'motif' => $r['motif'] ?? null,
+                      'message' => $r['message']], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 if (!$r['ok']) {
     $log->warning('recover-l1', 'Refus — le message ne dit pas si le compte existe');
     http_response_code(401);

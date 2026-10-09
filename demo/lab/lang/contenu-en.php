@@ -276,4 +276,16 @@ return [
     'Pseudo invalide.' => 'Invalid handle.',
     'Numero ou jeton de suivi invalide.' => 'Invalid number or tracking token.',
     'Trop de soumissions récentes. Réessaie dans une heure.' => 'Too many recent submissions. Try again in an hour.',
+
+    // Scénario 2 du simulateur d'attaques, réécrit le 07/10/2026 : les deux
+    // phrases précédentes affirmaient que le titulaire n'était pas gêné, alors
+    // que le verrou refuse aussi le bon mot de passe.
+    'Utilisateur légitime (bon mot de passe, base vierge)'
+        => 'Legitimate user (correct password, clean database)',
+    'Mesuré sur une base vierge. Sur le compte attaqué, le verrou refuse AUSSI le bon mot de passe.'
+        => 'Measured on a clean database. On the account under attack, the lock refuses the correct password TOO.',
+    'Le bruteforce est bloqué après %1$s essais — et le verrou refuse le titulaire avec lui pendant %2$s : '
+    . 'un tiers ferme donc la connexion d\'un compte en %1$s requêtes. La récupération, elle, reste ouverte.'
+        => 'Brute force is stopped after %1$s attempts — and the lock shuts out the owner along with it for %2$s: '
+         . 'a third party therefore closes an account\'s login in %1$s requests. Recovery stays open.',
 ];

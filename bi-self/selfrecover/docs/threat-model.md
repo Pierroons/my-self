@@ -1,6 +1,6 @@
 # Threat model
 
-> Extracted from the v1.1 whitepaper. Read the [full version](whitepaper-en.md) for context.
+> Extracted from the v1.4 whitepaper. Read the [full version](whitepaper-en.md) for context.
 
 ## Threats SelfRecover protects against
 
@@ -23,9 +23,20 @@ No SMTP at all. No SendGrid, no Mailgun, no Gmail deliverability rules, no spam 
 You don't need to trust Google, Microsoft, or anyone else for account recovery. You only trust the site you're registering on.
 
 ### ✓ Rate-limited brute force
-Per-account rate limits on levels 1 and 2 and on device enrolment, plus per-address limits under
+Per-account rate limits on level 2 and on device enrolment, plus per-address limits under
 the `clearweb` profile, plus the suspension of code recovery past a threshold of failures. Opening a
 level-3 case is braked per address and service-wide — deliberately not per account (see below).
+
+⚠️ **Level 1 has no per-account brake, and that is a decision rather than an omission.** It had one, and anyone
+who knew the public username could fill it: the counter lives in a table the integrator shares with
+its own login page, so five failures entered there closed the holder's only self-service recovery
+path — level 2 needs the paper codes, level 3 needs a human. Nothing lifted it either. The counter
+now feeds a signal instead of a door, on the rule that **a brake never refuses the right secret**.
+What bounds guessing at level 1: the per-address brake under `clearweb`, and the Argon2id cost of
+every server-side attempt. ⚠️ A third term is often assumed and is **not** guaranteed — the entropy
+of the passphrase. Six words drawn by dice are worth ≈77.5 bits, but `validerPassphraseApportee()`
+measures no randomness: six words picked from memory pass it. With no per-account brake, that
+entropy is the only per-account bound left at this level, and the library cannot verify it.
 
 ⚠️ Enrolling a device reaches the account with the memorized word alone: measured on the wire on
 13 August 2026, in three requests, with the attacker's own key. The library cannot verify a session, so
@@ -37,6 +48,30 @@ Which brake applies — per account, per address, or both — is not guessed: th
 profile, and the library refuses an address where none can mean anything, and refuses the absence of one
 where the brake is supposed to bite. At L2 the per-account brake is the only one that works behind a hidden service, and it
 has two steps: a short window, then suspension of the level for that account until it is rearmed.
+That brake is safe to keep because its counter cannot be filled from outside: charging it requires
+one of the account's codes, and its label is not forgeable without the deployment salt.
+
+⚠️ **The level-1 classification counter has no such protection**, and that is why nothing may depend
+on it. Its label is not forgeable either, but the level-1 route itself fills it: three requests under
+a public account name put that account over the threshold for the whole window, the holder's own
+attempts included. It informs a human; it must never gate an access, a freeze, or a per-account
+notification a third party could trigger in series. Nor is the count ever returned to the caller —
+`essaisPlausiblesL1()` is how a deployment reads it, because a reply travels, and whoever knows a
+public name would read in it that someone is looking for that account's word order right now.
+
+### ⚠️ Load on the level-1 path behind a hidden service — named, not promised
+Under `tor-onion` there is no per-caller address, by design: the service sees one origin for
+everyone, so a per-address brake would refuse every visitor together. With no per-account brake
+either, **nothing in the library bounds the number of level-1 attempts**, and each one that reaches
+the comparison costs an Argon2id. Only the byte ceiling on the submitted passphrase is refused for
+free; nothing else about a submission is certain enough to refuse on, because nothing guarantees the
+shape of what is stored.
+
+Smoothing the route's rate belongs to the deployment, in front of PHP: a queue that **makes callers
+wait without remembering anything**, so it excludes no account afterwards — unlike a service-wide
+cap, which one third party empties, closing the door on accounts never targeted. The library cannot
+do this itself: by the time it is called the process cost is already committed, and one request
+cannot see what the others are doing.
 
 Three gestures rearm it — a fresh batch of codes, a successful code recovery, a successful passphrase
 recovery. A deployment that holds none of those dates does not suspend, rather than suspend for good.
@@ -50,6 +85,9 @@ generic refusal, L2 by asking for no identifier at all, enrolment by counting fa
 derived from the *submitted* name: the brake bites whether that account exists or not, so its refusal
 tells nothing apart. Deriving the label from the account found would have opened the gap in six requests,
 which is how it was measured before being closed. L3 cannot, because there the distinction *is* the useful answer.
+It says nothing more: an unknown name, a dispute already open and a frozen procedure get the same
+refusal, at the same delay — naming either of the last two would tell anyone that a third party is
+recovering that account, or has had requests refused.
 
 **One L2 refusal does name a state, and it has to.** A suspended level cannot be described to its owner
 without saying so. That refusal tells whoever already holds one of the account's codes that the code names
@@ -123,7 +161,7 @@ A SelfRecover deployment without hardened sudo is a lock on a door with no wall.
 **If the recovery word is compromised** (social engineering, written down, shoulder surfing, malware), and the attacker also holds one of the paper recovery codes, or an enrolled device, they can recover the account via L2. The code finds the account: no identifier is needed.
 
 - The per-service derivation prevents correlation of *stored hashes* across services — but a known raw word that you reuse stays reusable elsewhere (the service label is public). Derivation does not save a reused secret.
-- Online, per-account rate limits (and per-address ones under the `clearweb` profile), then the L2 suspension past a threshold of failures, bound the guessing; offline (stolen database, an enrolled device's blob), only the Argon2id cost does
+- Online, the per-address brake under `clearweb`, the per-account brake on L2 and on enrolment, then the L2 suspension past a threshold of failures, bound the guessing — at level 1 behind a hidden service, nothing in the library does; offline (stolen database, an enrolled device's blob), only the Argon2id cost does
 - **But fundamentally:** no system can protect against a stolen secret. A leaked SSH private key gives server access. A leaked seed phrase empties a wallet. A leaked recovery word opens the account. The security model is identical.
 
 **A protected secret stays safe; a neglected one is exposed.** This is not a flaw — it is the fundamental contract of any secret-based security system.
@@ -152,6 +190,23 @@ an old recovery automatically would require telling a known context from an unkn
 a hidden service there is no context at all: every request shares one address. The library would
 turn away a legitimate holder on a signal that does not exist.
 
+### ✗ A passphrase the user brings is only as random as its dice
+
+The user may bring their level-1 passphrase, rolled with dice, instead of receiving one drawn by
+the server (`Recovery::validerPassphraseApportee()`). The library checks its **form**: six words or
+more, each from the EFF English list or the French list, none repeated. It **cannot check the
+randomness**: six words picked by hand pass, and are worth far less than six rolled words.
+
+That weakness reaches further than level 1. SelfDataGuard seals its "passphrase" lock on the same
+string, and a lock is attacked offline, with no attempt counter: a guessable passphrase becomes the
+cheapest way into the vault. What the library can do, it does — refuse short or off-list phrases,
+repeated words, the passphrase being replaced (at level 1 even in another word order, at levels 2
+and 3 when identical), and at level 3 a passphrase equal to the chosen password. What it cannot do
+is tell dice from a person, or recognise a passphrase older than the last one: it keeps no history,
+so a user who alternates two sheets of paper brings an old door back. Nor does it measure how much
+of the old passphrase survives: a new one that keeps five of the old words, or adds one to all six,
+passes — and whoever holds the old paper is then a few tens of thousands of guesses away.
+
 ### ✗ User negligence
 - Writing the recovery word on a sticky note visible on the monitor
 - Sharing it in a chat or email "for convenience"
@@ -160,7 +215,7 @@ turn away a legitimate holder on a signal that does not exist.
 The per-service derivation does **not** save you from reusing a secret on a rogue site — only unique secrets do. It does prevent cross-service correlation of stored hashes.
 
 ### ✗ Database breaches — partially protected
-- Raw database leak → attacker only gets Argon2id hashes, which resist cracking
+- Raw database leak → the account's secrets are Argon2id hashes, each guess costing one Argon2id; codes also carry an HMAC lookup keyed by the deployment salt, which must not leak with the dump
 - BUT: if the attacker has root (see above), the protocol is already moot
 - Recommendation: encrypt database backups at rest
 
@@ -177,7 +232,7 @@ If a user forgets their password AND their passphrase AND their recovery word, t
 | Email account takeover | ✓ | No email used |
 | SMTP failures | ✓ | No SMTP |
 | Third-party trust | ✓ | Local only |
-| Brute force recovery word | ✓ online | Rate limits + L2 suspension; offline, only the Argon2id cost |
+| Brute force recovery word | ✓ online, except level 1 behind a hidden service | Per-address brake + L2 suspension; offline, only the Argon2id cost |
 | Bot enumeration | ~ | Closed at L1/L2; at L3 it is a cost, not a silence — see above |
 | Stolen L1 passphrase | ✗ until used | Never expires, deliberately; single use bounds it, no notification exists |
 | Server root compromise | ✗ | Mandatory sudo hardening |

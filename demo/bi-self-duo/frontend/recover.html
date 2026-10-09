@@ -219,6 +219,9 @@
       font-family: inherit; font-size: 0.92rem;
     }
     .field input:focus { outline: none; border-color: var(--accent); }
+    .choix-passphrase fieldset { border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem 0.8rem; margin-bottom: 0.8rem; }
+    .choix-passphrase legend { font-size: 0.85rem; padding: 0 0.3rem; }
+    .choix-passphrase label { display: block; font-size: 0.85rem; margin: 0.2rem 0; }
     .btn {
       display: inline-block;
       padding: 0.55rem 1.1rem;
@@ -469,6 +472,7 @@
         <div class="hint">Choisis-le toi-même. Il ne quittera pas cette page : ton navigateur
         en dérive une empreinte et n'envoie qu'elle.</div>
       </div>
+      <div class="choix-passphrase" data-prefixe="reg" data-titre="Ta passphrase de secours"></div>
       <button class="btn" type="submit">Créer le compte</button>
     </form>
     <div id="reg-result"></div>
@@ -476,7 +480,8 @@
       <strong>Ce qu'il se passe ici :</strong> ton navigateur engendre le sel de ton
       compte et calcule <code>HMAC-SHA256(clé = ton mot, message = nom d'hôte |v2 + sel)</code>.
       Il n'envoie que l'empreinte : <strong>le mot lui-même ne part jamais</strong>. Le serveur,
-      lui, engendre un password et une passphrase diceware, puis hache les trois en Argon2id.
+      lui, engendre un password et une passphrase diceware — à moins que tu n'apportes la tienne,
+      tirée aux dés —, puis hache les trois en Argon2id.
       Regarde la console à droite, chaque étape est tracée — et vois ce qui ne s'y trouve pas.
     </div>
   </div>
@@ -512,9 +517,10 @@
         <input id="r1-username" name="username" placeholder="ex: alice" autocomplete="off">
       </div>
       <div class="field">
-        <label for="r1-passphrase">Passphrase (6 mots générés à l'étape 1)</label>
-        <input id="r1-passphrase" name="passphrase" placeholder="ex: cat river moon drift lamp cedar" autocomplete="off">
+        <label for="r1-passphrase">Passphrase (celle de l'étape 1, ou de ta dernière récupération)</label>
+        <input id="r1-passphrase" name="passphrase" placeholder="ex: cat river moon drift lamp cedar" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false">
       </div>
+      <div class="choix-passphrase" data-prefixe="r1n" data-titre="Ta nouvelle passphrase"></div>
       <button class="btn" type="submit">Récupérer mon compte</button>
     </form>
     <div id="r1-result"></div>
@@ -569,8 +575,7 @@
         <label for="r2c-word">Mot de récupération (le second facteur, jamais transmis)</label>
         <input id="r2c-word" name="word" placeholder="ex: 58c3ab" autocomplete="off" required>
       </div>
-      <div class="field">
-              </div>
+      <div class="choix-passphrase" data-prefixe="r2n" data-titre="Ta nouvelle passphrase"></div>
       <button class="btn" type="submit">Récupérer avec code + mot</button>
     </form>
     <div id="r2c-viz"></div>
@@ -933,6 +938,7 @@ $('form-register').addEventListener('submit', async (e) => {
         username: $('reg-username').value.trim(),
         recovery_derived_key,
         recovery_salt,
+        ...avecPassphrase('passphrase', 'reg'),
       }),
       credentials: 'include',
     });
@@ -1009,6 +1015,7 @@ $('form-recover-l1').addEventListener('submit', async (e) => {
       body: JSON.stringify({
         username: $('r1-username').value.trim(),
         passphrase: $('r1-passphrase').value.trim(),
+        ...avecPassphrase('new_passphrase', 'r1n'),
       }),
       credentials: 'include',
     });
@@ -1020,7 +1027,7 @@ $('form-recover-l1').addEventListener('submit', async (e) => {
       state.credentials.passphrase = d.passphrase;
       renderCreds();
       res.innerHTML = `<div class="inline-result ok">✓ Nouveau password : <code>${html_escape(d.new_password)}</code><br>`
-        + `✓ Nouvelle passphrase : <code>${html_escape(d.passphrase)}</code><br>`
+        + `✓ Nouvelle passphrase, telle qu'enregistrée : <code>${html_escape(d.passphrase)}</code><br>`
         + `L'ancienne vient d'être consommée et ne fonctionnera plus. Les deux sont dans le panneau credentials ; les sessions antérieures ont été déconnectées.</div>`;
       $('step-3').classList.add('done');
       $('log-password').value = d.new_password;
@@ -1148,12 +1155,13 @@ $('form-recover-l2-code').addEventListener('submit', async (e) => {
     const r = await fetch(API.recoverL2Code, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recovery_code: code, memorized_derived: derived }),
+      body: JSON.stringify({ recovery_code: code, memorized_derived: derived, ...avecPassphrase('new_passphrase', 'r2n') }),
       credentials: 'include',
     });
     const d = await r.json();
     if (d.ok) {
-      // Les deux secrets viennent du serveur : le protocole les émet, on ne les choisit pas.
+      // Le mot de passe vient du serveur ; la passphrase aussi, sauf si tu l'as
+      // apportée. Dans les deux cas, c'est la forme enregistrée qu'on garde.
       state.credentials.password   = d.new_password;
       state.credentials.passphrase = d.passphrase;
       // L'identifiant vient du serveur : le niveau 2 a retrouvé le compte sans
@@ -1295,6 +1303,35 @@ function renderCodes() {
     </div>
     <div class="grid">${grille}</div>
   </div>`;
+}
+
+// ── Le choix de la passphrase : tirée par le serveur, ou apportée aux dés ──
+// Un bloc par formulaire, construit ici une fois. Rien d'apporté : la clé n'est
+// pas envoyée, et le serveur tire. Apportée, même vide, elle part et elle est
+// jugée par la bibliothèque, qui dit pourquoi elle la refuse.
+const LIENS_LISTES = '<a href="https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt" target="_blank" rel="noopener noreferrer">liste anglaise de l\'EFF</a>'
+  + ' · <a href="https://github.com/ArthurPons/diceware-fr-alt" target="_blank" rel="noopener noreferrer">liste française d\'Arthur Pons</a>'
+  + ' · <a href="https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/tools/entropy-lab/docs/diceware-method-fr.pdf" target="_blank" rel="noopener noreferrer">la méthode aux dés (PDF)</a>';
+document.querySelectorAll('.choix-passphrase').forEach((bloc) => {
+  const p = bloc.dataset.prefixe;
+  bloc.innerHTML = `<fieldset>
+      <legend>${html_escape(bloc.dataset.titre)}</legend>
+      <label><input type="radio" name="${p}-origine" value="serveur" checked> Le serveur la tire pour moi</label>
+      <label><input type="radio" name="${p}-origine" value="des"> J'apporte la mienne, tirée aux dés</label>
+      <div class="field" id="${p}-apport-bloc" hidden>
+        <input type="text" id="${p}-apport" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="six mots tirés aux dés, séparés par des espaces">
+        <div class="hint">Six mots au moins, pris dans l'une des deux listes, séparés par des espaces,
+        aucun deux fois. Six mots choisis de tête ne valent pas six mots tirés. ${LIENS_LISTES}</div>
+      </div>
+    </fieldset>`;
+  bloc.querySelectorAll(`input[name="${p}-origine"]`).forEach((r) => r.addEventListener('change', () => {
+    $(`${p}-apport-bloc`).hidden = !bloc.querySelector(`input[value="des"]`).checked;
+  }));
+});
+
+function avecPassphrase(cle, p) {
+  const des = document.querySelector(`input[name="${p}-origine"][value="des"]`);
+  return des && des.checked ? { [cle]: $(`${p}-apport`).value } : {};
 }
 
 function renderCreds() {

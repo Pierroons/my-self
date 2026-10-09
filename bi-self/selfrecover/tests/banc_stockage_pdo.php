@@ -26,6 +26,7 @@ declare(strict_types=1);
 require __DIR__ . '/../src/autoload.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\Diceware\Wordlist;
 use Pierroons\SelfRecover\Recovery\Escalade;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
@@ -254,6 +255,17 @@ verifier('elle le rend aussi pour le code consommé', $recovery->selDeDerivation
 $fauxSel = $recovery->selDeDerivation('00000-00000');
 verifier('un code inconnu reçoit un autre sel, de la même forme',
     $fauxSel !== $selAlice && Recovery::estSelCompte($fauxSel), $fauxSel);
+
+// La passphrase apportée par le vrai stockage : l'ancienne est relue par
+// `trouverComptePourPassphrase()`, et c'est la forme rangée qu'on hache.
+$apportee = implode(' ', array_slice(Wordlist::load('fr'), 4000, Recovery::MOTS_PASSPHRASE));
+$rA       = $recovery->parCode($codes[1], $MOT, null, $T0, nouvellePassphrase: strtoupper($apportee));
+$hashA    = (string) $pdo->query("SELECT passphrase_hash FROM accounts WHERE id = {$compteId}")->fetchColumn();
+verifier('niveau 2 : la passphrase apportée est rangée sous sa forme en minuscules',
+    ($rA['ok'] ?? false) === true && Hashing::verify($apportee, $hashA));
+$rB = $recovery->parCode($codes[2], $MOT, null, $T0, nouvellePassphrase: $apportee);
+verifier('l\'ancienne, relue en base, ne revient pas, et le code n\'est pas consommé',
+    ($rB['error'] ?? '') === 'passphrase_deja_servie' && $stockage->compterCodesRestants($compteId) === 3);
 
 // ═══════════════════════════════════════════════════════════════════════════
 section('appareil');

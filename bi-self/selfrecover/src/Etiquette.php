@@ -35,13 +35,13 @@ final class Etiquette
      * Elle permet de retrouver une ligne sans stocker la valeur, et sans que la
      * base exfiltrée ne la rende : reconstituer l'empreinte suppose le sel.
      */
-    public static function empreinte(string $valeur, string $selDeploiement): string
+    public static function empreinte(#[\SensitiveParameter] string $valeur, #[\SensitiveParameter] string $selDeploiement): string
     {
         return hash_hmac('sha256', strtolower(trim($valeur)), $selDeploiement);
     }
 
     /** Une étiquette de compteur : préfixe en clair, valeur sous HMAC. */
-    public static function sous(string $prefixe, string $valeur, string $selDeploiement): string
+    public static function sous(string $prefixe, #[\SensitiveParameter] string $valeur, #[\SensitiveParameter] string $selDeploiement): string
     {
         return $prefixe . self::empreinte($valeur, $selDeploiement);
     }

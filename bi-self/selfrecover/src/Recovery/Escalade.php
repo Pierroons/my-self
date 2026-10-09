@@ -107,6 +107,28 @@ final class Escalade
     private const PREFIXE = 'l3:ouvrir:';
 
     /**
+     * Préfixe du dépôt d'un faisceau — nominatif, donc sous HMAC comme le reste.
+     *
+     * Distinct de celui des compteurs d'ouverture : ceux-là comptent sans
+     * attribuer, celui-ci attribue sans compter. Les mêler sous un seul préfixe
+     * rendrait indistinguables une sonde et un fait.
+     */
+    private const PREFIXE_DEPOT = 'l3:depot:';
+
+    /**
+     * L'étiquette sous laquelle le dépôt d'un faisceau est journalisé.
+     *
+     * 🔑 **Publique exprès**, pour la raison dite par
+     * `Recovery::etiquetteEchecsL2()` : une console qui compte les échecs de
+     * connexion doit écarter ces lignes, qui partagent sa table et n'ont rien
+     * d'une tentative d'authentification.
+     */
+    public function etiquetteDepot(string $nomCompte): string
+    {
+        return self::PREFIXE_DEPOT . $this->recovery->indexRecherche($nomCompte);
+    }
+
+    /**
      * L'étiquette d'un compteur d'ouverture — un HMAC sous le sel du déploiement.
      *
      * ⚠️ **Le sel n'est pas là pour cacher, il est là pour EMPÊCHER D'ÉCRIRE.**
@@ -191,7 +213,7 @@ final class Escalade
     }
 
     /** L'empreinte que le serveur range, à partir du sésame que le client garde. */
-    public static function empreinteSesame(string $sesame): string
+    public static function empreinteSesame(#[\SensitiveParameter] string $sesame): string
     {
         return hash('sha256', $sesame);
     }
@@ -209,6 +231,11 @@ final class Escalade
      * Ce qui s'oppose à l'énumération n'est donc pas le silence mais le COÛT :
      * les freins ci-dessous, et une preuve de travail que l'intégrateur pose
      * devant la route.
+     *
+     * 🔑 **Elle ne dit rien de plus.** Un nom inconnu, un dossier déjà ouvert, une
+     * procédure gelée reçoivent le même refus, au même délai : la route est
+     * publique, et nommer l'un d'eux apprendrait à n'importe qui qu'un tiers a une
+     * récupération en cours, ou en a eu de refusées.
      *
      * 🔑 `$ip` vaut `null` quand l'adresse ne dit rien de l'appelant — derrière
      * un service caché, où tout arrive de la même adresse, la passer ferait d'un
@@ -257,24 +284,27 @@ final class Escalade
             $this->stockage->tracerTentative($this->etiquette('@' . $ip), false, null, $maintenant);
         }
 
+        $refus = ['ok' => false, 'error' => 'ouverture_refusee',
+                  'message' => 'Aucune procédure n\'a pu être ouverte pour ce nom. Si c\'est ton compte et '
+                             . 'qu\'une procédure y est déjà en cours ou suspendue, un administrateur peut la '
+                             . 'clore ou lever la suspension.'];
+
+        // 🔑 Les trois refus ne font pas le même travail — un dossier déjà ouvert
+        // compte le demandeur, donc écrit. Un délai ajouté après ce travail en
+        // garderait l'écart ; ils tiennent une échéance commune.
+        $debut  = hrtime(true);
         $compte = $this->stockage->trouverCompte($nomCompte);
         if ($compte === null) {
-            usleep($this->delaiRefusUs);
+            $this->attendreEcheance($debut);
 
-            return ['ok' => false, 'error' => 'compte_inconnu', 'message' => 'Aucun compte à ce nom.'];
+            return $refus;
         }
         $compteId = (int) $compte['id'];
 
-        $gel = $this->stockage->gelJusqua($compteId, $maintenant);
-        if ($gel > 0) {
-            // Même délai que le compte inconnu : sans lui, l'existence se lirait
-            // au chronomètre.
-            usleep($this->delaiRefusUs);
+        if ($this->stockage->gelJusqua($compteId, $maintenant) > 0) {
+            $this->attendreEcheance($debut);
 
-            return ['ok' => false, 'error' => 'gele',
-                    'message' => 'Trop de demandes refusées récemment sur ce compte. La procédure rouvrira le '
-                               . gmdate('d/m/Y', $gel) . '. Le compte, lui, fonctionne normalement. '
-                               . 'Si c\'est une erreur, un administrateur peut lever ce gel.'];
+            return $refus;
         }
 
         // 🔑 Un dossier déjà ouvert ne redonne PAS son numéro. Le nom de compte
@@ -293,19 +323,9 @@ final class Escalade
         }
         if ($existant !== null) {
             $this->stockage->compterDemandeurConcurrent($existant->id);
-            usleep($this->delaiRefusUs);
-            // Un accord court `ttlAccepte` après la décision ; tout autre dossier
-            // actif, jusqu'à son `expireLe` — la règle de `litigeActifDuCompte()`.
-            $libre = $existant->statut === Litige::ACCEPTE && $existant->trancheLe !== null
-                ? $existant->trancheLe + $this->ttlAccepte
-                : $existant->expireLe;
+            $this->attendreEcheance($debut);
 
-            return ['ok' => false, 'error' => 'deja_ouvert',
-                    'message' => 'Une procédure est déjà en cours sur ce compte. '
-                               . 'Si c\'est la tienne, reprends-la avec son numéro et ton sésame. '
-                               . 'Si tu les as perdus, demande à un administrateur de la clore, '
-                               . 'ou attends le ' . gmdate('d/m/Y', $libre) . ' : sans suite, elle tombe '
-                               . 'd\'elle-même, et tu pourras en ouvrir une nouvelle.'];
+            return $refus;
         }
 
         $numero   = self::engendrerNumero();
@@ -326,7 +346,7 @@ final class Escalade
      */
     public function soumettre(
         string $numero,
-        string $sesame,
+        #[\SensitiveParameter] string $sesame,
         array $reponses,
         ?int $maintenant = null,
     ): array {
@@ -380,7 +400,15 @@ final class Escalade
         // 🔑 Journalisé comme un ÉCHEC. Un niveau 3 ne réussit jamais tout seul :
         // s'il comptait comme une réussite, il effacerait l'ardoise des
         // tentatives et deviendrait la voie la moins surveillée du service.
-        $this->stockage->tracerTentative('l3:' . $faits['nom_compte'], false, null, $maintenant);
+        //
+        // ⚠️ Sous étiquette, comme tout ce qui entre dans cette table : aucune
+        // purge ne la vide, donc un nom de compte en clair y attend
+        // indéfiniment. Et une console qui n'écarte que le préfixe d'ouverture
+        // ne voit pas ces lignes : chaque dossier légitime se compterait parmi
+        // ses échecs de connexion.
+        $this->stockage->tracerTentative(
+            $this->etiquetteDepot((string) $faits['nom_compte']), false, null, $maintenant,
+        );
 
         return ['ok' => true, 'statut' => Litige::A_LIRE,
                 'message' => 'Dossier transmis. Un arbitre va le lire et te répondre dans le fil de ce dossier. '
@@ -395,7 +423,7 @@ final class Escalade
      *
      * @return array{ok: bool, message?: string, numero?: string, statut?: string, expire_le?: int, error?: string}
      */
-    public function etat(string $numero, string $sesame, ?int $maintenant = null): array
+    public function etat(string $numero, #[\SensitiveParameter] string $sesame, ?int $maintenant = null): array
     {
         $maintenant = $maintenant ?? time();
 
@@ -415,7 +443,7 @@ final class Escalade
      */
     public function fil(
         string $numero,
-        string $sesame,
+        #[\SensitiveParameter] string $sesame,
         ?string $message = null,
         ?int $maintenant = null,
     ): array {
@@ -591,18 +619,22 @@ final class Escalade
      *
      * 🔑 **Aucun mot de passe n'est rendu**, contrairement aux niveaux 1 et 2.
      * C'est la propriété distinctive du niveau : le serveur n'émet rien, il
-     * range ce que le titulaire a choisi. La passphrase et les codes, eux, sont
-     * engendrés — ils ne peuvent pas venir du client.
+     * range ce que le titulaire a choisi. Les codes, eux, sont engendrés : ils
+     * ne viennent jamais du client. La passphrase est engendrée, ou apportée par
+     * le titulaire (`$nouvellePassphrase`, jugée par
+     * `Recovery::validerPassphraseApportee()`) ; elle est rendue sous la forme
+     * rangée, celle qu'il doit noter.
      *
-     * @return array{ok: bool, message: string, passphrase?: string, codes?: array, error?: string}
+     * @return array{ok: bool, message: string, passphrase?: string, codes?: array, error?: string, motif?: string}
      */
     public function reEnroler(
         string $numero,
-        string $sesame,
-        string $motDePasse,
-        string $motDerive,
+        #[\SensitiveParameter] string $sesame,
+        #[\SensitiveParameter] string $motDePasse,
+        #[\SensitiveParameter] string $motDerive,
         string $sel,
         ?int $maintenant = null,
+        #[\SensitiveParameter] ?string $nouvellePassphrase = null,
     ): array {
         $maintenant = $maintenant ?? time();
 
@@ -627,8 +659,27 @@ final class Escalade
             return ['ok' => false, 'error' => 'sel_invalide',
                     'message' => 'Le sel du compte est absent ou malformé.'];
         }
+        $apport = null;
+        if ($nouvellePassphrase !== null) {
+            $jugee = Recovery::validerPassphraseApportee($nouvellePassphrase);
+            if (!$jugee['ok']) {
+                return $jugee;
+            }
+            // Deux serrures identiques n'en font qu'une, pour SelfDataGuard comme
+            // pour qui les trouverait écrites ensemble.
+            if ($jugee['canonique'] === strtolower(Recovery::normaliserPassphrase($motDePasse))) {
+                return ['ok' => false, 'error' => 'passphrase_egale_mot_de_passe',
+                        'message' => 'La passphrase doit différer du mot de passe.'];
+            }
+            $ancienne = $this->stockage->trouverComptePourPassphrase($litige->nomCompte);
+            if ($ancienne !== null && Hashing::verify($jugee['canonique'], (string) $ancienne['empreinte_passphrase'])) {
+                return ['ok' => false, 'error' => 'passphrase_deja_servie',
+                        'message' => 'La nouvelle passphrase doit différer de celle qu\'elle remplace.'];
+            }
+            $apport = $jugee['canonique'];
+        }
 
-        $passphrase = $this->recovery->engendrerPassphrase();
+        $passphrase = $apport ?? $this->recovery->engendrerPassphrase();
 
         // 🔑 Tout ou rien : les trois empreintes et le sel ne sont pas quatre
         // informations mais une seule, et l'émission des codes purge le lot
@@ -694,6 +745,15 @@ final class Escalade
 
     // ── Interne ────────────────────────────────────────────────────────────
 
+    /** Attend que `delaiRefusUs` se soit écoulé depuis `$debut` (`hrtime`). */
+    private function attendreEcheance(int $debut): void
+    {
+        $reste = $this->delaiRefusUs - intdiv(hrtime(true) - $debut, 1000);
+        if ($reste > 0) {
+            usleep($reste);
+        }
+    }
+
     /**
      * Les freins de l'ouverture. Deux compteurs, aucun nom de compte.
      *
@@ -701,7 +761,7 @@ final class Escalade
      * fermerait l'ouverture à un titulaire dès qu'un tiers a assez sollicité son
      * compte, sans qu'aucun dossier n'existe — donc sans que rien n'apparaisse à
      * l'arbitre. Le harcèlement d'un compte est déjà borné autrement : le
-     * premier dossier tient `$ttl`, le suivant reçoit `deja_ouvert`, et cette
+     * premier dossier tient `$ttl`, le suivant reçoit le refus unique, et cette
      * collision-là **se compte et se montre** (`compterDemandeurConcurrent`).
      * Un frein silencieux aurait remplacé un fait visible par un mur muet.
      *
@@ -740,7 +800,7 @@ final class Escalade
      *
      * @return Litige|array{ok: false, error: string, message: string}
      */
-    private function recevable(string $numero, string $sesame, int $maintenant): Litige|array
+    private function recevable(string $numero, #[\SensitiveParameter] string $sesame, int $maintenant): Litige|array
     {
         $litige = $this->stockage->trouverLitigeParNumero(strtoupper(trim($numero)));
 

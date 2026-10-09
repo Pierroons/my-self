@@ -91,7 +91,7 @@ table.adm tr:last-child td{border-bottom:none}
 
 <script nonce="<?= nonce() ?>">
 const SU = <?= json_encode(['running'=>t('su.js.running'),'termhead'=>t('su.js.termhead'),'banner1'=>t('su.js.banner1'),'banner2'=>t('su.js.banner2'),'prompt'=>t('su.js.prompt'),'wrongpw'=>t('su.js.wrongpw'),'error'=>t('su.js.error'),'inert'=>t('su.js.inert'),'confirm'=>t('su.js.confirm'),'refuse'=>t('su.js.refuse')], JSON_UNESCAPED_UNICODE) ?>;
-function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function afficher(role){
   const box=document.getElementById('result');
   box.classList.remove('hidden');

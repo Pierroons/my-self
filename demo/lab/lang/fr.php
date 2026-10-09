@@ -169,6 +169,24 @@ return [
     'rt.limits.h2'    => '📐 Limites connues et assumées',
     'rt.limits.intro' => '<p>Ce qui suit est déjà établi, et publié pour que tu n\'y perdes pas ton temps : <strong>une limite documentée n\'est pas un finding</strong>. La dépasser en est un : une prise concrète sur l\'une de ces bornes, pas l\'argument qu\'elle existe.</p>',
     'rt.limits.body'  => '<li><strong>Le coffre mémo a deux serrures.</strong> Sa clé est tirée au hasard, puis scellée deux fois : sous le mot de passe du compte, et sous une passphrase propre au coffre. Qui obtient les blobs attaque <strong>hors ligne</strong> la moins chère des deux, sans compteur d\'essais ; le coût par essai est une dérivation Argon2id <code>t=3, m=64 Mio, p=1</code>. « De bout en bout » dit que le serveur ne voit jamais la clé — pas que le mémo résiste à un mot de passe faible, ni que le serveur serve toujours le même code : c\'est lui qui livre le script de dérivation, et qui le contrôle peut en livrer un autre.</li>'
+                       . '<li><strong>Un tiers ferme la connexion d\'un compte en cinq requêtes.</strong> '
+                       . 'Le compteur d\'échecs de connexion est alimenté par le nom SOUMIS, qu\'il n\'est pas '
+                       . 'nécessaire de posséder : cinq échecs verrouillent la connexion quinze minutes — bon mot de '
+                       . 'passe compris — et une rafale régulière la tient fermée. Ce compteur-là n\'atteint pas la '
+                       . 'récupération : son frein compte ailleurs, et la bonne passphrase ouvre une récupération de '
+                       . 'niveau 1 pendant que la connexion est verrouillée. Les freins de récupération — niveaux 1, 2 '
+                       . 'et 3 — et celui de l\'enrôlement comptent sous une étiquette dérivée d\'un secret serveur, '
+                       . 'qu\'un tiers ne peut pas fabriquer : le compteur de connexion est le seul resté sous le nom '
+                       . 'en clair. ⚠️ Le plafond par ORIGINE, lui, est commun aux deux portes : une adresse saturée '
+                       . 'd\'échecs de connexion voit aussi sa récupération freinée. C\'est un déni de service, donc '
+                       . 'hors périmètre — publié ici parce qu\'il se trouve en cinq requêtes.</li>'
+                       . '<li><strong>Un tiers peut occuper la place du dossier de niveau 3 d\'un compte.</strong> '
+                       . 'Ouvrir un dossier ne demande rien d\'autre qu\'un nom de compte, et un compte n\'a qu\'un '
+                       . 'dossier actif à la fois : qui ouvre le premier tient la place, et le titulaire ne peut pas '
+                       . 'l\'en déloger lui-même. Sa sortie passe par l\'arbitre, qui dispose d\'un abandon — il clôt '
+                       . 'un dossier sans rien compter. Un refus, lui, ne gèle plus rien de lui-même : il est compté et '
+                       . 'signalé à l\'arbitre, et seul un arbitre pose un gel, qu\'il lève. C\'est un déni de service, '
+                       . 'donc hors périmètre — publié ici parce qu\'il ne demande qu\'un nom.</li>'
         . '<li><strong>Les deux passphrases n\'ont pas le même plancher.</strong> Celle de récupération du <em>compte</em> est engendrée sur 6 mots — <strong>77,55 bits</strong> — et chaque mot saisi est validé contre la liste de 7776 ; la saisie est toutefois acceptée dès 4 mots, soit <strong>51,70 bits</strong>. Celle du <em>coffre mémo</em> passe à 4 mots et 16 caractères, <strong>sans validation de liste et par un contrôle côté navigateur</strong> : quatre mots inventés la scellent.</li>'
         . '<li><strong>C\'est le navigateur qui tient le second facteur de l\'appareil, pas le serveur.</strong> La clé privée d\'un appareil enrôlé vit dans le stockage du navigateur, chiffrée sous une clé dérivée du mot mémorisé — un mot dont le plancher, <strong>quatre caractères</strong>, est lui aussi vérifié par le navigateur. Le serveur ne vérifie qu\'une signature : qui obtient ce blob attaque le mot <strong>hors ligne</strong>, sans compteur d\'essais. L\'appareil reste bien un second facteur ; il n\'est simplement pas gardé là où on l\'attend.</li>',
 
@@ -565,6 +583,13 @@ return [
     'dsp.js.admin'      => 'Administrateur',
     'dsp.js.empty'      => 'Aucun message pour l\'instant.',
     'dsp.js.reset_done' => 'Compte repris. Tu peux te connecter avec tes nouveaux secrets.',
+    'dsp.done.h3'       => 'Compte repris — note ces secrets maintenant',
+    'dsp.done.copy'     => 'Ils ne seront pas réaffichés. Ton mot de passe est celui que tu viens '
+                         . 'de choisir ; la passphrase et les codes ci-dessous sont neufs, et ils '
+                         . 'remplacent les précédents, qui ne valent plus rien.',
+    'dsp.done.pp'       => 'Passphrase de récupération (niveau 1)',
+    'dsp.done.codes'    => 'Codes de récupération, un seul usage chacun (niveau 2)',
+    'dsp.done.login'    => 'Aller à la connexion',
 
     'reg.weak_word' => 'Le mot de récupération doit faire au moins %d caractères.',
     'reg.codes'  => 'Codes de secours — %d, usage unique (récupération L2 avec ton mot mémorisé)',

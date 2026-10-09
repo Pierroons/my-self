@@ -219,20 +219,27 @@ CREATE TABLE IF NOT EXISTS disputes (
     submitted_at    INTEGER NOT NULL DEFAULT 0,    -- dernier dépôt de réponses
     decided_at      INTEGER,                       -- quand un arbitre a tranché
     decided_by      TEXT,                          -- et qui
+    -- Toute colonne vit aux DEUX endroits : ici pour les bancs, qui montent
+    -- leur base depuis ce fichier seul, et dans `db.php` pour une base en
+    -- service, qui ne relit pas ce fichier.
+    abandonne_par   TEXT,                          -- qui a clos sans compter
+    abandonne_le    INTEGER,                       -- et quand
     created_at      INTEGER NOT NULL,
     updated_at      INTEGER NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 
--- Gel de PROCÉDURE après des refus répétés. Le compte n'est jamais touché : un
+-- Gel de PROCÉDURE, posé par un arbitre. Il ne touche jamais au compte : un
 -- refus dit « ce demandeur ne m'a pas convaincu », pas « ce compte est
 -- illégitime ». Sans ce partage, un attaquant incapable de voler un compte
 -- pourrait le faire effacer en accumulant des refus.
--- La ligne est gardée après un dégel : qui a dégelé et quand vaut d'être conservé.
+-- La ligne est gardée après un dégel : les deux gestes ferment une porte ou la
+-- rendent, et chacun dit qui l'a fait et quand.
 CREATE TABLE IF NOT EXISTS l3_gel (
     account_id   INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
     gele_jusqu_a INTEGER NOT NULL,
     pose_le      INTEGER NOT NULL,
+    gele_par     TEXT,                          -- qui a fermé la porte
     degele_par   TEXT,
     degele_le    INTEGER
 );

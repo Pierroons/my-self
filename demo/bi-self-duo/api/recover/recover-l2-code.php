@@ -4,7 +4,7 @@
  *
  * POST /demo/api/recover/recover-l2-code
  *   body: { "recovery_code": "a1b2c-3d4e5", "memorized_derived": "4e7a9f…",
- *           "new_password": "…" }
+ *           "new_passphrase": "…" (facultatif : tirée aux dés par l'utilisateur) }
  *
  * 🔑 Aucun identifiant n'est demandé, et c'est le point de tout le mécanisme.
  * Le code de secours LOCALISE le compte — par un HMAC qui sert d'index — et le
@@ -40,12 +40,21 @@ if (!RateLimit::checkAndIncrementActions($s->dir)) {
 $body = json_decode((string) file_get_contents('php://input'), true);
 $code        = is_array($body) ? strtolower(trim((string) ($body['recovery_code'] ?? ''))) : '';
 $derivedKey  = is_array($body) ? (string) ($body['memorized_derived'] ?? '') : '';
+// Absente ou nulle : la bibliothèque tire la nouvelle passphrase. Un texte, même vide, est jugé.
+$nouvelle    = is_array($body) ? ($body['new_passphrase'] ?? null) : null;
+if ($nouvelle !== null && !is_string($nouvelle)) {
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => 'passphrase_invalide', 'motif' => 'trop_courte',
+                      'message' => 'La passphrase apportée doit être un texte.'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 $log = $s->logger();
 $log->info('recover-l2-code', 'POST /demo/api/recover/recover-l2-code');
 $log->info('recover-l2-code', 'Body parsed', [
     'recovery_code'     => $code,
     'memorized_derived' => $derivedKey,
+    'nouvelle_passphrase' => $nouvelle === null ? 'tirée par la bibliothèque' : '[HIDDEN — apportée]',
     'note'              => "Aucun identifiant n'est transmis : le code retrouve le compte à lui seul.",
 ]);
 
@@ -76,7 +85,7 @@ $log->crypto('recover-l2-code', 'HMAC-SHA256(code, sel du service) → index de 
 ]);
 
 $t0 = microtime(true);
-$r  = $recovery->parCode($code, $derivedKey, null);
+$r  = $recovery->parCode($code, $derivedKey, null, nouvellePassphrase: $nouvelle);
 $ms = (int) ((microtime(true) - $t0) * 1000);
 
 $log->crypto('recover-l2-code', 'Vérification des DEUX facteurs — possession et connaissance', [
@@ -84,6 +93,15 @@ $log->crypto('recover-l2-code', 'Vérification des DEUX facteurs — possession 
     'note'        => "Les deux sont vérifiés quoi qu'il arrive : s'arrêter au premier échoué dirait, par le temps, lequel a échoué.",
 ]);
 
+// Un refus de la passphrase apportée se dit, et ne consomme pas le code.
+if (!$r['ok'] && str_starts_with((string) ($r['error'] ?? ''), 'passphrase_')) {
+    $log->warning('recover-l2-code', 'Passphrase apportée refusée — le code n\'est pas consommé',
+        ['erreur' => $r['error'], 'motif' => $r['motif'] ?? null]);
+    http_response_code(400);
+    echo json_encode(['ok' => false, 'error' => $r['error'], 'motif' => $r['motif'] ?? null,
+                      'message' => $r['message']], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 if (!$r['ok']) {
     $log->warning('recover-l2-code', 'Refus — le message ne dit pas lequel des deux facteurs a échoué');
     http_response_code(401);

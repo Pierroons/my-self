@@ -171,6 +171,25 @@ return [
     'rt.limits.h2'    => '📐 Known and accepted limits',
     'rt.limits.intro' => '<p>What follows is already established, and published so you don\'t spend time on it: <strong>a documented limit is not a finding</strong>. Going past one is a finding: a working exploitation of any of these boundaries, not the argument that it exists.</p>',
     'rt.limits.body'  => '<li><strong>The memo vault has two locks.</strong> Its key is drawn at random, then sealed twice: under the account password, and under a passphrase specific to the vault. Anyone who obtains the blobs attacks the cheaper of the two <strong>offline</strong>, with no attempt counter; the cost per attempt is a single Argon2id derivation at <code>t=3, m=64 MiB, p=1</code>. "End-to-end" says the server never sees the key — not that the memo withstands a weak password, nor that the server always ships the same code: it is the server that delivers the derivation script, and whoever controls it can deliver another.</li>'
+                       . '<li><strong>A third party shuts an account\'s login in five requests.</strong> '
+                       . 'The failed-login counter is fed by the SUBMITTED name, which nobody needs to own: five '
+                       . 'failures lock the login for fifteen minutes — the correct password included — and a steady '
+                       . 'burst keeps it shut. That counter does not reach recovery: its throttle counts '
+                       . 'elsewhere, and the correct passphrase opens a level-1 '
+                       . 'recovery while the login is locked. The recovery throttles — levels 1, 2 and 3 — and the '
+                       . 'device-enrolment one count under a label derived from a server secret, which a third party '
+                       . 'cannot forge: the login counter is the only one left under the name in the clear. '
+                       . '⚠️ The per-ORIGIN ceiling, however, is shared by both doors: an address saturated with '
+                       . 'failed logins sees its recovery throttled too. This is denial of service, hence out of '
+                       . 'scope — published here because it takes five requests to find.</li>'
+                       . '<li><strong>A third party can occupy an account\'s only level-3 case slot.</strong> '
+                       . 'Opening a case requires nothing but an account name, and an account has only one active '
+                       . 'case at a time: whoever opens first holds the slot, and the account holder cannot clear it '
+                       . 'themselves. Their way out goes through the arbiter, who has an abandon action — it closes a '
+                       . 'case without counting anything. A refusal no longer freezes anything by itself: it is '
+                       . 'counted and reported to the arbiter, and only an arbiter places a freeze, which they lift. '
+                       . 'This is denial of service, hence out of scope — published here because all it takes is a '
+                       . 'name.</li>'
         . '<li><strong>The two passphrases do not share a floor.</strong> The <em>account</em> recovery passphrase is generated with 6 words — <strong>77.55 bits</strong> — and every typed word is validated against the 7776-word list; typing is nonetheless accepted from 4 words, that is <strong>51.70 bits</strong>. The <em>memo vault</em> passphrase goes through at 4 words and 16 characters, <strong>with no list validation and through a browser-side check</strong>: four made-up words will seal it.</li>'
         . '<li><strong>The browser holds the device\'s second factor, not the server.</strong> An enrolled device\'s private key lives in browser storage, encrypted under a key derived from the memorised word — a word whose floor, <strong>four characters</strong>, is itself checked by the browser. The server only ever verifies a signature: whoever obtains that blob attacks the word <strong>offline</strong>, with no attempt counter. The device really is a second factor; it simply is not guarded where you would expect.</li>',
 
@@ -565,6 +584,13 @@ return [
     'dsp.js.admin'      => 'Administrator',
     'dsp.js.empty'      => 'No messages yet.',
     'dsp.js.reset_done' => 'Account recovered. You can log in with your new secrets.',
+    'dsp.done.h3'       => 'Account recovered — write these down now',
+    'dsp.done.copy'     => 'They will not be shown again. Your password is the one you just chose; '
+                         . 'the passphrase and codes below are new, and they replace the previous '
+                         . 'ones, which are now worthless.',
+    'dsp.done.pp'       => 'Recovery passphrase (level 1)',
+    'dsp.done.codes'    => 'Recovery codes, single use each (level 2)',
+    'dsp.done.login'    => 'Go to login',
 
     'reg.weak_word' => 'The recovery word must be at least %d characters long.',
     'reg.codes'  => 'Backup codes — %d, single use (L2 recovery with your memorized word)',

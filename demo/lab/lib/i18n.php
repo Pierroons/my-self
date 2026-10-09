@@ -162,20 +162,67 @@ function tc(string $texte): string
 }
 
 /**
- * Traduit récursivement toutes les chaînes d'une structure.
+ * Les clés dont la valeur est du texte destiné à l'écran.
  *
- * Évite de parsemer les classes de contenu d'appels à tc() : elles composent
- * leurs tableaux en français, la traduction se fait à la sortie. Les clés ne
- * sont jamais touchées — seules les valeurs affichées le sont.
+ * 🔑 `tc_deep()` ne traduit que sous ces clés, et c'est une mesure de sûreté,
+ * pas de performance. Un dictionnaire indexé par le texte source peut réécrire
+ * **n'importe quelle** chaîne qui matche une de ses clés : une valeur
+ * d'énumération, un identifiant, ou — le cas qui compte — un mot de passphrase.
+ *
+ * Le danger est mesuré. Cinq clés actuelles du dictionnaire sont aussi des mots
+ * de la liste Diceware française (`moyen`, `nouveau`, `intensif`, `jour`,
+ * `minute`), et `rare` l'est dans les DEUX listes. Une passphrase rangée
+ * **mot à mot** dans un tableau — ce que rend `Wordlist::generate()` — en
+ * ressortait avec quatre mots sur six réécrits : le titulaire noterait un secret
+ * qui ne correspond plus à son empreinte, et perdrait ce facteur.
+ *
+ * Ce qui protège aujourd'hui n'est pas une garde : `engendrerPassphrase()`
+ * assemble ses mots en UNE chaîne, qui ne matche aucune clé. C'est un hasard de
+ * style, et il suffirait qu'un payload porte le tableau pour qu'il tombe.
+ *
+ * ⚠️ Oublier une clé ici laisse du texte en français : visible, et sans gravité.
+ * L'inverse réécrirait un identifiant **en silence** — `role` vaut `user` dans
+ * la console SU, et c'est exactement le genre de valeur qu'une liste noire
+ * laisserait passer. D'où une liste blanche, et jamais l'inverse.
+ *
+ * 🔑 Cette liste n'est pas tenue à la main : `tests/sanity_tc_deep.php` la
+ * confronte au code. Il cherche tout `'champ' => 'littéral'` dont le littéral
+ * est une clé du dictionnaire, et exige que le champ soit ici **ou** que la
+ * ligne appelle `tc()` elle-même. La première version de cette liste avait
+ * cessé de traduire `verdict` et `defense` du simulateur d'attaques, six
+ * chaînes déjà traduites — une garde qui protégeait en abîmant.
  */
-function tc_deep(array $donnees): array
+const TC_CLES_TEXTE = [
+    'message', 'note', 'avertissement', 'texte', 'label', 'titre', 'sous_titre',
+    'action', 'resultat', 'lignes', 'cle', 'description', 'detail', 'explication',
+    // Simulateur d'attaques et console SU : du texte d'écran sous des noms courts.
+    'verdict', 'defense', 'hint', 'resume', 'l',
+];
+
+/**
+ * Traduit les chaînes d'affichage d'une structure, et elles seules.
+ *
+ * Traverse tout l'arbre, mais ne traduit qu'une valeur placée sous une clé de
+ * `TC_CLES_TEXTE`. Une liste hérite de la clé de son parent : les phrases de
+ * `['lignes' => ['…', '…']]` sont traduites, celles de `['mots' => [...]]` non.
+ *
+ * Les clés ne sont jamais touchées, seules les valeurs le sont.
+ */
+function tc_deep(array $donnees, ?string $sous = null): array
 {
     foreach ($donnees as $cle => $valeur) {
+        // Dans une liste, la clé est un indice : c'est le nom du parent qui dit
+        // si ce qu'elle contient s'affiche.
+        $nom = is_int($cle) ? $sous : (string) $cle;
+
         if (is_string($valeur)) {
-            $donnees[$cle] = tc($valeur);
+            if ($nom !== null && in_array($nom, TC_CLES_TEXTE, true)) {
+                $donnees[$cle] = tc($valeur);
+            }
         } elseif (is_array($valeur)) {
-            $donnees[$cle] = tc_deep($valeur);
+            $donnees[$cle] = tc_deep($valeur, $nom);
         }
     }
+
     return $donnees;
 }

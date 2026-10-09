@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Genere une passphrase diceware depuis la liste diceware francaise du depot MySelf
-(celle d'Arthur Pons, CC-BY 3.0, construite sur la methode de l'EFF).
+(celle d'Arthur Pons, licence MIT, construite sur la methode de l'EFF).
 
 A LANCER DANS UN VRAI TERMINAL. La passphrase s'affiche a l'ecran : elle ne doit
 jamais transiter par un journal, un historique, ni une conversation.

@@ -64,6 +64,9 @@ final class Redactor {
         return $code;
     }
 
+    /** Les clés dont la valeur est un secret, masquée dans les journaux. */
+    private const CLES_SECRETES = ['passphrase', 'new_passphrase', 'password', 'new_password', 'mot_de_passe'];
+
     /**
      * Pour les valeurs de contexte JSON : tronque les strings longues,
      * masque les potentiels tokens.
@@ -71,6 +74,13 @@ final class Redactor {
     public static function redactCtx(array $ctx): array {
         $out = [];
         foreach ($ctx as $k => $v) {
+            // Une valeur rangée sous un nom de secret est masquée, quelle que soit
+            // sa forme : une passphrase apportée n'a rien d'hexadécimal, et le
+            // tronquer en garderait les premiers mots.
+            if (is_string($v) && in_array($k, self::CLES_SECRETES, true) && !str_starts_with($v, '[HIDDEN')) {
+                $out[$k] = '[masqué]';
+                continue;
+            }
             if (is_string($v)) {
                 // Tronque les chaînes hex longues (hash, HMAC) après 16 chars
                 if (preg_match('/^[a-f0-9]{32,}$/i', $v)) {

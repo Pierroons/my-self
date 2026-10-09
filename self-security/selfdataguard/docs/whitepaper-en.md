@@ -119,7 +119,7 @@ Paired with SelfRecover, this "memorized word" is the digest the browser compute
 On passphrase recovery (SelfRecover level 1, once the passphrase is accepted):
 
 ```
-1. SelfRecover issues a new password and a new passphrase; the old one is consumed
+1. SelfRecover issues a new password and a new passphrase, drawn or brought; the old one is consumed
 2. phrase_key      ← Argon2id(normalise(old_passphrase), SHA-256(user_salt || "/dataguard/passphrase")[:16])
 3. data_master_key ← XChaCha20-Poly1305-decrypt(wrap_phrase, key=phrase_key)
 4. wrap_pwd and wrap_phrase regenerated on the new secrets, in one write, conditional on user_salt
@@ -148,7 +148,7 @@ To decrypt, the attacker has three paths:
    >
    > **No entropy floor is enforced.** Argon2id buys a multiplier, not entropy: a weak word remains ~13 bits of guessing plus ~13 bits of cost. A floor high enough to matter (77.5 bits) would end the sharing of the memorized word between SelfRecover and the vault (§3.1) — a design decision, not a setting. It is stated here as an open question rather than answered silently in either direction.
 
-3. **Bruteforce the passphrase** → the same Argon2id cost per attempt. Here the entropy is known, because SelfRecover draws it at random: six words from a 7,776-word list, about 77.5 bits. It is the strongest door by computation. Its weakness lies elsewhere: it is written on paper (§6.1).
+3. **Bruteforce the passphrase** → the same Argon2id cost per attempt. When SelfRecover draws it at random, the entropy is known: six words from a 7,776-word list, about 77.5 bits — the strongest door by computation, whose weakness lies elsewhere: it is written on paper (§6.1). When the user brings it, rolled with dice, it is only as random as those dice, which nothing checks: six words picked by hand would make it the cheapest door.
 
 A leak therefore yields **nothing immediately exploitable**. Bruteforce cost is per-user (impossible to bruteforce the whole database in parallel because each user has their own `user_salt`).
 
@@ -165,12 +165,12 @@ The memorized word never leaves the browser. The browser computes a digest of it
 ```
 memorized_word (in the browser only, never stored)
     │
-    └─ HMAC-SHA256(word, domain + "|v2" + account salt)               →  digest (received by the server)
+    └─ HMAC-SHA256(word, material + "|v2" + account salt)             →  digest (received by the server)
            │
            ├─ Argon2id(digest), random salt from password_hash()          →  SelfRecover verification
            └─ Argon2id(digest, SHA-256(user_salt+"/dataguard")[:16])      →  recov_key (SelfDataGuard)
 
-passphrase (drawn at random by SelfRecover, received in plain at level 1)
+passphrase (drawn by SelfRecover or brought, rolled with dice; received in plain at level 1)
     │
     ├─ Argon2id(normalise(passphrase)), random salt                        →  SelfRecover verification
     └─ Argon2id(normalise(passphrase), SHA-256(user_salt+"/dataguard/passphrase")[:16])  →  phrase_key
@@ -188,7 +188,7 @@ Cryptographic properties:
 
 ### 3.2 The word can be regenerated independently
 
-If the user changes their memorized word (per SelfRecover rule: maximum 2-3 regenerations via current password), SelfDataGuard must re-wrap `data_master_key` with the new `recov_key`. This does **not** require re-encrypting the personal data — only recomputing a new `wrap_recov`.
+If the service renews the memorized word (SelfRecover provides that path only at level 3; elsewhere it belongs to the application, and neither library limits how often), SelfDataGuard must re-wrap `data_master_key` with the new `recov_key` through `changeMemorized()`, after SelfRecover's write. This does **not** require re-encrypting the personal data — only recomputing a new `wrap_recov`.
 
 ### 3.3 Use case: combined recovery
 
@@ -282,7 +282,7 @@ Most e-commerce sites should pick **Hybrid**. High-assurance services (health, b
 | Passphrase derivation | **Argon2id** (same parameters), context `/dataguard/passphrase` | Same cost, for the same reason. Input normalised as SelfRecover does before comparing |
 | Envelope encryption | **XChaCha20-Poly1305** | AEAD — ChaCha20-Poly1305 (RFC 8439) extended to a 192-bit nonce (draft-irtf-cfrg-xchacha). Computed in software, in constant time, on every CPU. Blobs written before 0.4.0 are AES-256-GCM and remain readable |
 | Field encryption | **XChaCha20-Poly1305** with random 192-bit nonce per field | Idem. At 192 bits, a random nonce needs no counter |
-| Search indexing | **HMAC-SHA256(field, server_blind_key)** | Allows `WHERE field_hash = HMAC(query)` without decrypting. Trade-off: equality search only, not full-text |
+| Search indexing | **HMAC-SHA256(key = HMAC-SHA256(key = server_blind_key, message = field name), message = value)**, Base64-encoded: one key per field, the value indexed as is | Allows `WHERE field_hash = HMAC(query)` without decrypting. Trade-off: strict equality search only, not full-text |
 
 **No PBKDF2**: Argon2id is more robust against GPUs. PBKDF2 remains acceptable for interoperability with very old stacks but is discouraged for new deployments.
 
@@ -325,7 +325,7 @@ For a SelfDataGuard deployment to actually deliver the listed guarantees, it mus
 1. **Password policy**: minimum 12 bytes, **enforced by the library** (`UserVault::PASSWORD_MIN_LEN`). Refusal through breach lists is left to the integrator — the library ships no list and no longer claims to
 2. **Memorized-word policy**: **left to the integrator — the library enforces nothing**. It has hardened the cost per attempt (Argon2id since 0.3.0); it does not measure entropy and does not claim to. An integrator who wires `loginWithMemorized()` to a word chosen by the user must know that `wrap_recov` is then attacked offline, with no counter, on that single secret. See §2.3, open question
 3. **Mandatory TLS**: no HTTP fallback allowed (strict HSTS)
-4. **Short sessions**: `data_master_key` purged from session after inactivity (15 min recommended for Hybrid, 5 min for Full)
+4. **Short sessions**: in Lite, the only mode written, the library keeps `data_master_key` only for the lifetime of the object that opened it (`UnlockedVault` wipes it on destruction and refuses serialization). An application that keeps it from one request to the next sets the duration itself and purges it after inactivity. Target: 15 min for Hybrid, 5 min for Full
 5. **No sensitive logging**: `password_key`, `recov_key`, `phrase_key`, `data_master_key` must never appear in logs (even at debug level)
 6. **Admin access auditing**: in Hybrid mode, every admin access to operational fields must be logged (without the data itself)
 7. **Regular updates**: track Argon2id recommendations to adjust `m` and `t` as hardware progresses (`p` is fixed at 1, see §5). Since 0.6.0 the profile is stored with each vault, each archive and the sealed admin key: changing the constants locks out no vault, no archive and no admin key, a vault keeps its profile at every re-seal, and a new vault takes the current profile. Raising the profile of an existing vault takes its secrets; the library provides no tool for it. What an integrator derives itself through `Primitives::deriveFromPassword()` or `deriveFromMemorized()` records no profile, and stops opening when the constants change

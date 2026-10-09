@@ -163,11 +163,17 @@ final class Db
         // décision et son auteur n'étaient nulle part : un dossier tranché ne
         // disait ni quand ni par qui, et le comptage des refus dans une fenêtre
         // glissante a besoin de la date.
+        // L'abandon est le seul acte d'arbitre qui ne rangeait personne :
+        // `cloreLitige($litigeId, $quand)` ne reçoit pas son auteur, là où
+        // `leverGel()` le reçoit et l'écrit dans `l3_gel.degele_par`. Ces deux
+        // colonnes ferment l'asymétrie du côté du lab, qui tient le schéma.
         $dsp = array_column(self::$pdo->query('PRAGMA table_info(disputes)')->fetchAll(PDO::FETCH_ASSOC), 'name');
         foreach ([
-            'decided_at'   => 'INTEGER',
-            'decided_by'   => 'TEXT',
-            'submitted_at' => 'INTEGER NOT NULL DEFAULT 0',
+            'decided_at'    => 'INTEGER',
+            'decided_by'    => 'TEXT',
+            'submitted_at'  => 'INTEGER NOT NULL DEFAULT 0',
+            'abandonne_par' => 'TEXT',
+            'abandonne_le'  => 'INTEGER',
         ] as $col => $type) {
             if (!in_array($col, $dsp, true)) {
                 self::$pdo->exec("ALTER TABLE disputes ADD COLUMN $col $type");
@@ -182,10 +188,19 @@ final class Db
                 account_id   INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
                 gele_jusqu_a INTEGER NOT NULL,
                 pose_le      INTEGER NOT NULL,
+                gele_par     TEXT,
                 degele_par   TEXT,
                 degele_le    INTEGER
             )'
         );
+
+        // `gele_par` est arrivée avec le gel manuel : une base montée avant lui
+        // a la table sans la colonne, et `CREATE TABLE IF NOT EXISTS` ne la
+        // rattrape pas.
+        $gel = array_column(self::$pdo->query('PRAGMA table_info(l3_gel)')->fetchAll(PDO::FETCH_ASSOC), 'name');
+        if (!in_array('gele_par', $gel, true)) {
+            self::$pdo->exec('ALTER TABLE l3_gel ADD COLUMN gele_par TEXT');
+        }
 
         // recovery_codes a longtemps référencé accounts SANS cascade : toute
         // suppression de compte échouait alors sur la contrainte. SQLite ne sait

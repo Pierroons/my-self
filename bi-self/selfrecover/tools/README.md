@@ -1,7 +1,7 @@
 # SelfRecover — outils
 
 Ce dossier rassemble ce qui ne dépend pas du serveur : des pages autonomes, un
-moteur de calcul client, et deux fichiers gardés pour référence. Rien ici n'est
+moteur de calcul client, et un fichier gardé pour référence. Rien ici n'est
 servi en production ; tout s'ouvre depuis un disque.
 
 | dossier | quoi | état |
@@ -14,8 +14,9 @@ servi en production ; tout s'ouvre depuis un disque.
 ## entropy-lab
 
 Tutoriel de la méthode Reinhold (1995) en cinq étapes, plus les deux tables
-diceware de 7 776 mots au format PDF — EFF pour l'anglais, ArthurPons pour le
-français. La page ne charge rien et n'envoie rien.
+diceware de 7 776 mots au format PDF — EFF pour l'anglais, Arthur Pons pour le
+français —, et les liens vers les deux listes d'origine. La page ne charge rien et
+n'envoie rien.
 
 `entropy-lab/docs/generate_diceware_pdf.py` régénère les tables depuis les wordlists.
 
@@ -26,8 +27,8 @@ via zxcvbn, mode hybride, tirage uniforme par *rejection sampling* sur
 `crypto.getRandomValues`), `zxcvbn.js` et les deux wordlists au format JS.
 
 **Aucun de ces fichiers n'est utilisé par `index.html`.** Les trois modes
-interactifs ont été ajoutés le 04/05/2026 (`20d2b52`) puis retirés du HTML le
-11/07/2026 (`bf67e0a`) ; le JavaScript qui les pilotait est resté dans la page,
+interactifs ont été ajoutés le 04/05/2026 (`93a9e8a`) puis retirés du HTML le
+11/07/2026 (`a3dd060`) ; le JavaScript qui les pilotait est resté dans la page,
 appelant des identifiants qui n'existaient plus. Il a été constaté mort au moment
 de l'extraction : six identifiants ciblés, zéro présent ; quatre fonctions
 définies, zéro appelée depuis le HTML.

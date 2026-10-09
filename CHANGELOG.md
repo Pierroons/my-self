@@ -77,8 +77,8 @@ code avait dépassés. Aucun comportement de la bibliothèque ne change.
   route du sel, la suspension du niveau 2, le faisceau du niveau 3 et ce qu'exige l'intégration y
   entrent. Le whitepaper de SelfRecover-LUKS passe en 0.6.2. Les trois sont désormais porteurs de
   version : `scripts/check-versions.sh` rougit s'ils dérivent.
-- **L'aléa** : la bibliothèque tire la passphrase par `random_int`. Les dés expliquent la liste ;
-  ils ne sont pas un mode de la bibliothèque.
+- **L'aléa** : la bibliothèque tire la passphrase par `random_int`, et les dés expliquent la
+  liste. Depuis la v0.10.0, l'utilisateur peut aussi apporter une passphrase tirée aux dés.
 - **Serveur compromis** : README, SECURITY et whitepapers disent qu'il sert le dériveur, donc qu'il
   pourrait servir une autre page.
 - **Installation** : par un dépôt Composer de type `path`, depuis un clone ; `composer.json` suggère
@@ -498,6 +498,131 @@ Le garde-fou de CI vérifie deux compteurs plutôt que le seul code de sortie : 
 sections ne s'éprouvent pas sous root, le banc les saute **en le disant** et sort quand
 même à zéro. Sans ces compteurs, un runner qui passerait root rendrait le même vert en
 ayant renoncé aux contrôles qui touchent au système.
+
+---
+
+## [SelfRecover v0.11.0] — 6 octobre 2026
+
+### SelfRecover v0.11.0 — le frein du niveau 1 ne ferme plus la porte du titulaire — 6 octobre 2026
+
+Le frein du niveau 1 comptait les échecs sous le nom de compte **en clair**, dans la table où
+atterrissent aussi les tentatives de connexion de l'intégrateur. Cinq échecs sous le nom d'un tiers
+fermaient donc sa récupération par passphrase, depuis une page publique et sans rien savoir de lui —
+et rien ne levait ce blocage. La voie reste ouverte, et le compteur ne sert plus qu'à classer. Aucun adaptateur de stockage ne change, aucune signature
+existante ne bouge.
+
+- **`Recovery::etiquetteEchecsL1()`** et **`Recovery::etiquetteSuspicionL1()`**, publiques comme
+  celle du niveau 2 : les compteurs du niveau 1 passent sous empreinte HMAC du sel de déploiement,
+  préfixes `l1:` et `l1-liste:`. Le compteur de la connexion ordinaire de l'intégrateur n'est plus
+  celui du niveau 1 : il garde le sien, en clair, pour sa propre porte. ⚠️ **Rupture de contrat** :
+  le niveau 1 ne rend plus « Trop de tentatives » pour un compteur par compte. Une console qui
+  compte les échecs de connexion doit écarter ces deux préfixes, et les lire par ces accesseurs
+  plutôt que les recopier.
+- **Le frein ne refuse jamais le bon secret.** Au niveau 1 seul le frein par **origine** ferme, et
+  il n'existe que sous le profil `clearweb`. ⚠️ Derrière un service caché, rien dans la bibliothèque
+  ne borne le nombre d'essais : le modèle de menace le dit, et nomme ce qui le borne au-dehors — un
+  lissage de débit sur la route, qui fait attendre sans rien mémoriser, et n'exclut donc aucun
+  compte après coup.
+- **Classement silencieux, que le déploiement vient chercher.** Un essai dont **tous les mots
+  existent** dans les listes, devant une porte qui ne s'ouvre pas, est compté sous une étiquette à
+  lui : les listes sont publiques, donc la déduction ne compare rien au secret.
+  **`Recovery::essaisPlausiblesL1()`** rend ce compte et `ESSAIS_PLAUSIBLES_SIGNALES` dit à partir de
+  combien il y a de quoi réveiller quelqu'un — la bibliothèque ne compare rien à ce seuil. Message,
+  délai et nombre d'essais inchangés. ⚠️ **Le compte ne part jamais dans la réponse** : une réponse
+  voyage, et qui connaît un nom de compte public y lirait qu'un tiers cherche en ce moment l'ordre de
+  mots qu'il possède. ⚠️ Et ce compteur est **remplissable par qui connaît le nom** — trois requêtes
+  suffisent : rien ne doit en dépendre, ni un gel, ni une notification. Le niveau 2 peut s'en
+  permettre un, lui : charger le sien exige un de ses codes.
+- **`MOTS_MINIMUM_CLASSEMENT`**, le plancher du classement, **ne suit pas `MOTS_PASSPHRASE`.** Celui-ci
+  décrit ce qu'on émet aujourd'hui et il est passé de quatre à six, alors que les passphrases plus
+  courtes émises avant restent valides. Les aligner rendait le classement aveugle sur les comptes les
+  plus anciens, donc les plus faibles — et c'est le seul signal qui reste à ce niveau. Un canari le
+  garde.
+- **Le plafond d'octets s'applique désormais à la passphrase soumise**, et pas seulement à celle qui
+  est apportée : c'est le seul refus qu'une saisie permette sans payer un Argon2id, et il est contrôlé
+  avant la normalisation, qui copierait tout le corps de la requête. ⚠️ Il **nomme son motif**
+  (`passphrase_trop_longue`) parce qu'il peut refuser un bon secret : l'inscription appartient à
+  l'application, qui a pu ranger l'empreinte d'une passphrase plus longue que ce plafond. Le taire
+  derrière le refus générique enfermerait son titulaire dehors sans lui dire quoi faire.
+- **La suspension du niveau 2 borne ce qu'elle annonçait.** Son réarmement lisait les
+  réussites sous le nom en clair — donc **toute connexion ordinaire** du titulaire la remettait à
+  zéro, et le plafond de 20 échecs sur une feuille volée n'était jamais atteint. Il ne lit plus que
+  les réussites du niveau 1 : les trois gestes que son contrat nomme sont redevenus les trois seuls.
+- **`Escalade::etiquetteDepot()`**, publique : le dépôt d'un faisceau de niveau 3 ne range plus un
+  nom de compte **en clair** dans une table qui n'est purgée nulle part. ⚠️ Écarter ces lignes d'un
+  compteur d'échecs de connexion reste le geste du consommateur — la bibliothèque lui donne
+  l'étiquette, elle ne filtre pas sa console. Celle du lab ne le fait pas encore.
+- **Ce que la bibliothèque ne peut pas faire** : juger la forme d'une saisie pour la refuser. Rien ne
+  garantit la forme de ce qui est rangé — l'empreinte vient de `remplacerEmpreintes()`, qu'un
+  intégrateur appelle avec la passphrase de son choix, et la longueur attendue a déjà changé entre
+  deux versions sans invalider les anciennes. Un contrôle de forme qui refuserait enfermerait
+  dehors, en silence, les titulaires dont la passphrase ne ressemble pas à celles qu'elle engendre.
+- **Migration** : les lignes déjà présentes portent le nom en clair. Elles deviennent orphelines pour
+  le frein du niveau 1 et pour le classement, qui repartent de zéro — une fenêtre, soit quinze
+  minutes par défaut. Rien à migrer, rien à supprimer.
+  ⚠️ **Un effet n'est pas borné par la fenêtre** : `dateDerniereReussite()` n'en a pas. Une
+  récupération par passphrase réussie **avant** la montée ne réarme plus la suspension du niveau 2,
+  définitivement. Un compte qui avait beaucoup d'échecs de niveau 2 avant ce réarmement peut donc se
+  retrouver suspendu à l'installation. Son niveau 1 fonctionne et le réarme proprement — c'est la
+  sortie, et c'est celle que le refus annonce.
+- **Un seul endroit cherche** : `motsHorsListe()` sert la validation de la passphrase apportée et le
+  classement, qui posaient la même question à deux endroits.
+
+Bancs : `sanity_recovery.php` (75 cas, deux profils, dont le frein par **origine** qu'aucun banc ne
+faisait mordre, et la limite assumée du profil `tor-onion`), `sanity_passphrase_apportee.php` 43,
+`sanity_escalade` 130, couplage avec SelfDataGuard 10/10, parcours 21/21, stockage PDO 150. Seize
+canaris en CI, dont cinq neufs : le niveau 1 n'en avait aucun, et sa seule garde était l'effet de
+bord d'un autre.
+
+---
+
+## [SelfRecover v0.10.0] — 5 octobre 2026
+
+### SelfRecover v0.10.0 — la passphrase apportée, tirée aux dés — 5 octobre 2026
+
+Jusqu'ici, la passphrase du niveau 1 était toujours tirée par le serveur, à l'inscription comme à
+chaque récupération. L'utilisateur peut désormais apporter la sienne, tirée aux dés dans la liste
+anglaise de l'EFF ou dans la liste française d'Arthur Pons.
+Rien d'apporté, le serveur tire comme avant ; aucun adaptateur de stockage ne change.
+
+- **`Recovery::validerPassphraseApportee()`** : six mots au moins, chacun dans l'une des deux listes,
+  aucun répété, un plafond d'octets contrôlé avant tout calcul. Forme rangée unique, en minuscules,
+  une espace entre les mots : c'est elle qu'on hache et qu'on rend. Le refus dit la position d'un
+  mot, jamais le mot. L'intégrateur l'appelle à l'inscription.
+- **`parPassphrase()`, `parCode()`, `Escalade::reEnroler()`** : paramètre facultatif
+  `nouvellePassphrase`. Sa forme est jugée avant les freins, sans trace ni délai : ce refus ne
+  dépend que de la saisie. L'ancienne passphrase ne revient pas, jugé une fois les facteurs
+  vérifiés — au niveau 1 ni telle quelle ni dans un autre ordre, aux niveaux 2 et 3 telle quelle ;
+  sans historique, une passphrase plus ancienne n'est pas reconnue. Au niveau 3, elle ne peut pas non
+  plus égaler le mot de passe choisi. Aucun refus de passphrase ne consomme le code du niveau 2 ni
+  le dossier du niveau 3. Le retour garde la clé `passphrase`, sous la forme rangée : le re-scellement de
+  SelfDataGuard ne change pas.
+- **Niveau 3 — un refus unique à l'ouverture.** `Escalade::ouvrir()` rend `ouverture_refusee`, dans
+  le même temps — une échéance commune, pas un délai ajouté après un travail inégal —, pour un nom inconnu, un dossier déjà ouvert et une procédure gelée : un tiers n'y lit
+  plus qu'un dossier existe, ni qu'il est gelé. ⚠️ Rupture de contrat : `compte_inconnu`,
+  `deja_ouvert` et `gele` ne sortent plus de l'ouverture. La tentative concurrente reste comptée et
+  montrée à l'arbitre ; `compte_inconnu` reste aux autres méthodes.
+- **`#[\SensitiveParameter]`** sur chaque paramètre qui porte un secret, méthodes internes et
+  `Etiquette` comprises : sous PHP 8.2 et plus, une trace d'exception ne les imprime plus, ce qu'un
+  banc vérifie. PHP 8.1 ignore l'attribut.
+- **`Wordlist::inAnyList()`** ; **`Wordlist::validateUserPassphrase()` est retirée** : elle n'était
+  appelée ni testée nulle part, acceptait quatre mots et citait le mot fautif dans son exception.
+- **Ce que la bibliothèque ne peut pas faire** : mesurer le hasard. Six mots choisis de tête passent
+  le contrôle et ne valent pas six mots tirés ; la même passphrase scelle une serrure du coffre
+  SelfDataGuard, attaquable hors ligne. Le modèle de menace le dit.
+- **Outillage** : le tutoriel des dés renvoie aux deux listes d'origine, avec leurs codes ; le
+  vérificateur hors ligne accepte les mots à trait d'union, échappe ce qu'il affiche, signale un
+  séparateur tiret ou point et juge l'anglais, le français ou les deux. Les fiches diceware marquent
+  six mots comme le minimum de SelfRecover. Licence de la liste française corrigée : MIT, pas
+  CC-BY 3.0.
+- **Démo bi-self-duo** : le choix « le serveur tire / j'apporte la mienne » à l'inscription, au
+  niveau 1 et au niveau 2.
+- **Textes** : `CONTRIBUTING` et `SECURITY` à jour, ce dernier renvoyant au canal de signalement
+  du dépôt ; la comparaison des flux décrit le code ; les mentions de MySelf-Live sont retirées.
+
+Bancs : `sanity_passphrase_apportee.php` (42 cas, deux profils), `sanity_escalade` 129, couplage
+avec SelfDataGuard 10/10, parcours 21/21, onze canaris en CI. Whitepapers en v1.3 ; les fiches diceware sont régénérées
+pour la version.
 
 ---
 

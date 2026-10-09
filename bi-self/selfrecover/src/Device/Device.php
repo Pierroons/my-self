@@ -55,7 +55,7 @@ final class Device
          * Sel du déploiement, celui de `Recovery`. Il ne sert ici qu'à fabriquer
          * l'étiquette du compteur d'échecs, que `Etiquette` explique.
          */
-        private readonly string $selDeploiement,
+        #[\SensitiveParameter] private readonly string $selDeploiement,
         /** Fenêtre de comptage des échecs, par compte comme par IP. */
         private readonly int $fenetreEchecs = 900,
         /** Échecs tolérés sur un même compte dans la fenêtre. */
@@ -76,7 +76,7 @@ final class Device
         string $nomCompte,
         string $credentialId,
         string $clePubliqueB64url,
-        string $motDerive,
+        #[\SensitiveParameter] string $motDerive,
         /**
          * ⚠️ **Obligatoire, sans défaut.** Enrôler ouvre le compte avec le seul mot
          * mémorisé : `Titulaire` dit ce que cela coûte, et ce que l'intégrateur doit
@@ -286,7 +286,7 @@ final class Device
      * antérieure enverrait le mot en clair et le serveur l'accepterait sans que
      * rien ne le signale.
      */
-    public static function estCleDerivee(string $valeur): bool
+    public static function estCleDerivee(#[\SensitiveParameter] string $valeur): bool
     {
         return (bool) preg_match('/^[0-9a-f]{64}$/', $valeur);
     }

@@ -24,7 +24,9 @@ feraient refuser de démarrer sur une machine qui ne les porte pas déjà.
   - la `map` qui **tronque l'adresse source** (`/24` et `/48`) avant de l'écrire.
     Ce serveur est fait pour être attaqué : ses journaux sont ce que quelqu'un
     lira s'il obtient un accès, et ils ne doivent désigner personne ;
-  - la zone de lissage — 10 req/s sur l'authentification, et un `429` au lieu du
+  - les trois zones de lissage — 10 req/s sur l'authentification, et **2 req/s en
+    file** (sans `nodelay`) devant les portes du niveau 3 et les consoles
+    d'arbitrage, qui écrivent en base ; plus un `429` au lieu du
     `503` par défaut, qu'un chercheur rapporterait comme un déni de service
     qu'il aurait provoqué ;
   - puis la racine, le routage PHP et l'inclusion des deux snippets.
