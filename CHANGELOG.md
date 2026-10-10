@@ -501,6 +501,49 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfRecover v0.12.1] — 10 octobre 2026
+
+### Le profil Argon2id s'annonçait en Mo là où il coûte des Mio — 10 octobre 2026
+
+Version corrective. Aucune signature ne bouge ; le seul changement visible d'un intégrateur est le
+libellé rendu par `profilEnClair()`, qui dit « MiB » là où il disait « Mo ».
+
+🟠 **`Hashing::profilEnClair()` sous-annonçait le coût mémoire de 5 %.** `memory_cost` vaut 65536 **Kio**,
+soit **64 Mio** — 67,1 Mo. La chaîne rendue disait `m=64 Mo`, et l'erreur allait dans le sens qui rend
+l'attaque hors ligne **moins chère qu'elle n'est**. Elle dit maintenant `m=64 MiB`, comme la RFC 9106
+écrit les paramètres d'Argon2 : cette chaîne est un libellé technique de journal, pas de la prose
+traduite, et la prose française garde « Mio ».
+
+**Six appels l'affichent, répartis sur quatre pages servies** : les journaux de cryptographie de la démo duo
+(`register.php` à trois endroits, `recover-l1.php`), sa simulation d'attaque Sybil, et le simulateur
+du laboratoire — celui que lisent les chercheurs à qui le lab est ouvert. Le libellé est corrigé là où il
+naît : aucun des six appels ne porte la valeur, tous concatènent le retour de la fonction.
+⚠️ **Mais la page « Architecture de sécurité » du laboratoire refait le calcul sans passer par elle**
+(`demo/lab/public/security.php`, unité collée dans ses fichiers de langue) : elle annonce encore des
+Mo pendant que le simulateur du même laboratoire dit MiB. Ce correctif-là relève de la conv Code,
+à qui `demo/lab/` appartient.
+
+Trois commentaires qui répétaient l'unité en dur suivent (`Hashing`, et la démo duo côté
+`recover_helper` et `sybil-attack`). 🔑 **Constat de la conv Code**, qui l'a vu sur la page servie du
+laboratoire après une bascule — pas dans le dépôt, où il avait vécu sans paraître.
+
+**Au passage, deux docblocks étaient posés au-dessus d'une fonction dont ils ne décrivent rien** —
+PHP et les IDE ne retiennent que le dernier avant une déclaration, donc le premier est du texte mort.
+« Hache un secret destiné à être stocké » est rendu à `hash()`. Et dans `Escalade`, le docblock du
+faisceau — celui qui porte la forme de `$faits` **et** l'interdit « aucune addition, aucune moyenne,
+aucun pourcentage » — était à quarante lignes de `faisceau()`, qui n'en avait aucun : qui étendait
+cette fonction n'avait ni la signature ni la contrainte sous les yeux. Il est rendu à la sienne.
+Un doublon périmé de la démo duo, qui portait « 16 caractères » en dur quand la signature défaut sur
+`Protocole::LONGUEUR_MOT_DE_PASSE`, est retiré.
+
+⚠️ **Aucun paramètre ne change.** `ARGON2` garde les siens — `memory_cost` 65536, `time_cost` 4,
+`threads` 2 — et aucune empreinte déjà posée n'est affectée : seul le mot qui les décrit était faux.
+
+Hors profil, un seul autre correctif voyage dans ce lot : le message d'une porte de CI annonçait
+« 164 cas » là où elle en exige 167.
+
+---
+
 ## [SelfRecover v0.12.0] — 9 octobre 2026
 
 ### SelfRecover v0.12.0 — un refus ne ferme plus de lui-même la dernière porte du titulaire — 9 octobre 2026

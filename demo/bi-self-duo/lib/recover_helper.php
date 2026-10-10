@@ -48,7 +48,7 @@ final class RecoverHelper {
     /**
      * Hache un secret destiné à être stocké.
      *
-     * ⚠️ Le coût mémoire est le paramètre qui compte : 64 Mo à mobiliser par
+     * ⚠️ Le coût mémoire est le paramètre qui compte : 64 Mio à mobiliser par
      * hachage, ce qui rend l'attaque par GPU coûteuse à paralléliser.
      */
     public static function hash(string $secret): string {
@@ -74,9 +74,6 @@ final class RecoverHelper {
         return Hashing::dummyHash();
     }
 
-    /**
-     * Génère un password random (16 caractères, alphabet a-zA-Z2-9 sans les ambigus (l 1 I O 0), aucun symbole).
-     */
     /**
      * Mot de passe temporaire rendu à l'utilisateur après une récupération.
      *

@@ -1935,7 +1935,7 @@ jobs:
           sortie=$(php bi-self/selfrecover/tests/banc_stockage_pdo.php)
           echo "$sortie" | tail -3
           echo "$sortie" | grep -qE '^✅ 167 contrôle\(s\) passé\(s\), 0 échec' \
-            || { echo "::error::le banc de stockage n'a pas joué ses 164 cas"; exit 1; }
+            || { echo "::error::le banc de stockage n'a pas joué ses 167 cas"; exit 1; }
           F=bi-self/selfrecover/src/Storage/StockagePdo.php
           cp "$F" /tmp/stockage.intact
           avant=$(md5sum "$F" | cut -d" " -f1)

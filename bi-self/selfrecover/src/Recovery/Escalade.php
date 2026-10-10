@@ -1078,21 +1078,6 @@ final class Escalade
     }
 
     /**
-     * Le faisceau : des faits bruts, jamais un score.
-     *
-     * 🔑 Trois états, et le troisième est celui qui compte : `concorde`,
-     * `diverge`, et **`indisponible`**. Sans lui, un déploiement qui n'enregistre
-     * pas les connexions fait marquer « ne concorde pas » à une réponse honnête,
-     * et le dossier d'une personne légitime arrive à charge devant l'arbitre.
-     * C'est pourquoi `faitsDuCompte()` rend `null` et jamais zéro.
-     *
-     * ⚠️ Aucune addition, aucune moyenne, aucun pourcentage. Un score inviterait
-     * à décider sans lire, et c'est un humain qui doit décider ici.
-     *
-     * @param array{id: int, nom_compte: string, cree_le: int, derniere_connexion: int|null, nombre_connexions: int|null} $faits
-     * @param array<string, string> $reponses
-     */
-    /**
      * Ce qu'un adaptateur ajoute au faisceau, ramené à ce qui s'encode.
      *
      * ⚠️ **Un fait local illisible ne doit pas fermer la porte.** Ce niveau
@@ -1131,6 +1116,21 @@ final class Escalade
         return $propre;
     }
 
+    /**
+     * Le faisceau : des faits bruts, jamais un score.
+     *
+     * 🔑 Trois états, et le troisième est celui qui compte : `concorde`,
+     * `diverge`, et **`indisponible`**. Sans lui, un déploiement qui n'enregistre
+     * pas les connexions fait marquer « ne concorde pas » à une réponse honnête,
+     * et le dossier d'une personne légitime arrive à charge devant l'arbitre.
+     * C'est pourquoi `faitsDuCompte()` rend `null` et jamais zéro.
+     *
+     * ⚠️ Aucune addition, aucune moyenne, aucun pourcentage. Un score inviterait
+     * à décider sans lire, et c'est un humain qui doit décider ici.
+     *
+     * @param array{id: int, nom_compte: string, cree_le: int, derniere_connexion: int|null, nombre_connexions: int|null} $faits
+     * @param array<string, string> $reponses
+     */
     private function faisceau(array $faits, array $reponses, int $maintenant): array
     {
         $etat = static function (?string $reel, string $declare): array {

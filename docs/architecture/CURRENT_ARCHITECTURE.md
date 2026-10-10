@@ -4,7 +4,7 @@
 les constats 20 et 23 revus le 4 octobre 2026 au commit `4149238` ; Self-Right, la CI, le déploiement, l'intégration et SelfFarm Lite relus
 par leurs mainteneurs au même commit ; constats 17, 18, 19 et 21 revus au commit `e97460e` ;
 §9.7, faiblesses d'instance corrigées, ajouté le 4 octobre 2026 ; version et ancres de SelfRecover
-recalées sur la 0.12.0 le 9 octobre 2026*
+recalées sur la 0.12.0 le 9 octobre 2026, puis sur la 0.12.1 le 10 octobre 2026*
 
 > **Statut : relu.** Le 4 octobre 2026, le mainteneur de chaque module a relu, dans toutes les
 > sections, ce qui touche son module. Un constat corrigé depuis porte 🟢.
@@ -47,7 +47,7 @@ en cours.
 
 | Module | Version | Nature | Langage | S'exécute dans | Porte des secrets d'utilisateur |
 |---|---|---|---|---|---|
-| SelfRecover | 0.12.0 | bibliothèque + client JS | PHP 8.1+, JS (WebCrypto) | processus PHP de l'intégrateur ; navigateur | oui |
+| SelfRecover | 0.12.1 | bibliothèque + client JS | PHP 8.1+, JS (WebCrypto) | processus PHP de l'intégrateur ; navigateur | oui |
 | SelfDataGuard | 0.6.0 | bibliothèque | PHP 8.1+, libsodium | processus PHP de l'intégrateur ; CLI admin (séquestre) | oui |
 | SelfRecover-LUKS | 0.6.2 | outillage système | sh, bash, C, Python | **initramfs, avant l'ouverture du disque** ; root | oui (passphrase de disque) |
 | SelfModerate | 0.4.0 | bibliothèque | PHP 8.1+ | processus PHP de l'intégrateur | non |

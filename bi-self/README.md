@@ -7,7 +7,7 @@
 > *If a community can build itself, it can govern itself.*
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfRecover: v0.12.0](https://img.shields.io/badge/SelfRecover-v0.12.0-green.svg)](./selfrecover/)
+[![SelfRecover: v0.12.1](https://img.shields.io/badge/SelfRecover-v0.12.1-green.svg)](./selfrecover/)
 [![SelfModerate: v0.4.0](https://img.shields.io/badge/SelfModerate-v0.4.0-yellow.svg)](./selfmoderate/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.md)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -51,7 +51,7 @@ Bi-Self addresses both at once. It gives communities the **two minimum primitive
 
 | Module | Role | Status |
 |--------|------|--------|
-| [SelfRecover](./selfrecover/) | Zero-email identity & recovery | **v0.12.0** — PSR-4 library + browser deriver, deployed and self-audited implementation |
+| [SelfRecover](./selfrecover/) | Zero-email identity & recovery | **v0.12.1** — PSR-4 library + browser deriver, deployed and self-audited implementation |
 | [SelfModerate](./selfmoderate/) | Community moderation by collective reasoning | v0.4.0 — installable engine, automatic ban traced to a journal, 45 checks in CI; 2 protocol mechanisms missing |
 
 ---
