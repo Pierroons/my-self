@@ -3,7 +3,7 @@
 **Zero-Email Account Recovery Protocol**
 *Your word. Your sites. No email.*
 
-*Edition of 10 October 2026 — v1.5 — describes SelfRecover 0.12.1*
+*Edition of 10 October 2026 — v1.5 — describes SelfRecover 0.12.2*
 
 ---
 

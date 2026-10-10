@@ -134,6 +134,19 @@ verifier('l\'ancienne passphrase ne resert pas après un niveau 2',
     $rec->parPassphrase('alice', $PHR, $IP, $now)['ok'] === false);
 verifier('la passphrase rendue fonctionne',
     $rec->parPassphrase('alice', $r2['passphrase'], $IP, $now)['ok'] === true);
+
+// ⭐ Ce banc construit sa `Recovery` en `Langue::FR` depuis la 0.12.0, et n'avait
+// jamais regardé dans quelle langue la passphrase sortait. `engendrerPassphrase()`
+// codait 'en' en dur, et `Langue::listeDiceware()` n'avait aucun appelant : la
+// méthode existait, donc elle passait pour servir. Le test discrimine — les deux
+// listes n'ont que 621 mots communs sur 7776, donc un tirage anglais de six mots
+// ne passe pas pour français (mesuré : 0 sur 2000 tirages).
+$listeFr   = \Pierroons\SelfRecover\Diceware\Wordlist::load('fr');
+$horsListe = array_values(array_diff(explode(' ', (string) $r2['passphrase']), $listeFr));
+verifier('⭐ un déploiement déclaré en français rend une passphrase française',
+    $horsListe === [],
+    count($horsListe) . ' mot(s) hors de la liste française : ' . implode(' ', $horsListe)
+        . ' — la langue du déploiement ne décide donc pas de la liste tirée');
 verifier('un code ne resert pas', $rec->parCode($codes[0], $MOT, $IP, $now)['ok'] === false);
 
 [$st, $rec] = neuf($MOT, $PHR, $SEL);

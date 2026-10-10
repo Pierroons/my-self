@@ -807,7 +807,7 @@ final class Escalade
             $apport = $jugee['canonique'];
         }
 
-        $passphrase = $apport ?? $this->recovery->engendrerPassphrase();
+        $passphrase = $apport ?? Recovery::engendrerPassphrase($this->langue());
 
         // 🔑 Tout ou rien : les trois empreintes et le sel ne sont pas quatre
         // informations mais une seule, et l'émission des codes purge le lot

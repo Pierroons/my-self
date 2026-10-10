@@ -443,8 +443,8 @@ jobs:
           # se lirait « la propriété tient des deux côtés ».
           for profil in clearweb tor-onion; do
             case "$profil" in
-              clearweb)  attendu=83 ;;
-              tor-onion) attendu=79 ;;
+              clearweb)  attendu=84 ;;
+              tor-onion) attendu=80 ;;
             esac
             sortie=$(php bi-self/selfrecover/tests/sanity_recovery.php --profil="$profil" 2>&1) && rc=0 || rc=$?
             echo "$sortie"

@@ -501,6 +501,42 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfRecover v0.12.2] — 10 octobre 2026
+
+### La langue du déploiement décide enfin de la liste tirée — 10 octobre 2026
+
+Version corrective. Aucune signature ne bouge : `engendrerPassphrase()` gagne un paramètre
+**facultatif**, donc un appelant qui ne le passe pas obtient exactement ce qu'il obtenait.
+
+🔴 **La 0.12.0 a annoncé que la liste de mots suivait la langue, et elle ne la suivait pas.**
+`Langue::listeDiceware()` existait, **sans aucun appelant dans tout le dépôt**, et
+`Recovery::engendrerPassphrase()` codait `'en'` en dur. Un déploiement déclaré en français tirait
+donc des mots anglais — c'est-à-dire la pièce la plus visible de la 0.12.0 pour l'utilisateur qu'elle
+visait. L'entrée 0.12.0 de ce fichier et le corps de sa release l'affirment tous les deux ; ils étaient
+faux, et **ils restent tels quels** — un CHANGELOG qui se réécrit n'est plus une histoire.
+
+La force ne change pas avec la langue : les deux listes font **7776 mots**, soit 12,92 bits par mot.
+
+⚠️ **Le défaut est son défaut : la méthode qui existe a été prise pour la méthode qui sert.** Quatre
+relectures ont jugé ce lot — elles ont vérifié que la langue arrive aux trois constructeurs, que les
+65 phrases sortent d'une table unique et que les deux langues sont complètes. Aucune n'a demandé
+**qui appelle `listeDiceware()`**. Une recherche d'appelants l'aurait dit en une ligne.
+
+**La garde qui manquait est posée, et elle est éprouvée.** `sanity_recovery.php` construisait déjà sa
+`Recovery` en `Langue::FR` depuis la 0.12.0 et ne regardait pas la langue de ce qu'elle rendait : il
+le regarde (**84 cas sous clearweb, 80 sous tor-onion**). Le cas discrimine — les deux listes n'ont
+que **621 mots communs sur 7776**, donc un tirage anglais de six mots ne passe pas pour français :
+mesuré **0 sur 2000 tirages**. Éprouvé en replantant `'en'` en dur : le banc rougit en nommant les six
+mots fautifs.
+
+⚠️ **Ce qui reste à la charge de l'intégrateur.** La méthode reste **statique** à dessein : on propose
+une passphrase à l'inscription, avant qu'aucune `Recovery` n'existe. Appelée sans langue, elle tire
+donc de la liste anglaise quel que soit le déploiement. Les trois chemins de la bibliothèque passent
+la leur ; un appelant externe doit y penser, et le docblock le dit.
+
+---
+
+
 ## [SelfRecover v0.12.1] — 10 octobre 2026
 
 ### Le profil Argon2id s'annonçait en Mo là où il coûte des Mio — 10 octobre 2026
