@@ -63,17 +63,36 @@ etapes.append(courante)
 
 MOTIF_BANC = r'\$\((php|bash) ([a-z0-9/_.-]+\.(?:php|sh))([^)|]*)'
 MOTIF_PORTE = (
-    r"""grep -qE ['"]([^'"]*?"""
+    r"""grep -q([A-Za-z]*) ['"]([^'"]*?"""
     r"""(?:[0-9]+/[0-9]+|[0-9]+ passés|[0-9]+ contrôle)"""
     r"""[^'"]*?)['"]"""
 )
 
-apparies, ecartees, illisibles = [], 0, 0
+# Une porte existe dès qu'une étape teste la sortie de son banc ; si le motif
+# chiffré ne la reconnaît pas, elle doit quand même se compter.
+MOTIF_PORTE_BRUTE = r"""grep -q[A-Za-z]* ['"]"""
+
+apparies, ecartees, illisibles, canaris, informes = [], 0, 0, 0, 0
 for et in etapes:
     txt = '\n'.join(et)
     bancs = re.findall(MOTIF_BANC, txt)
     portes = re.findall(MOTIF_PORTE, txt)
     if not portes:
+        # 🔑 Une porte dont la FORME n'est pas reconnue se compte aussi. Ce
+        # `continue` était muet : l'étape disparaissait des deux totaux, et le
+        # périmètre annoncé dépassait celui mesuré — le défaut que ce contrôle
+        # nomme dix lignes plus bas. Cas connu : une porte chiffrée dans une
+        # forme que le motif ne lit pas.
+        if bancs and re.search(MOTIF_PORTE_BRUTE, txt):
+            # 🔑 Deux familles, deux gardes. Un canari attend une LIGNE ROUGE,
+            # pas un total : `check-canaris.sh` le lance, donc il est gardé
+            # ailleurs et le dire ici évite d'annoncer un trou qui n'existe pas.
+            # Le reste — total porté par une variable, ligne de sortie nommée —
+            # n'est lu par personne, et c'est ce qu'il faut voir.
+            if re.match(r'\s*- name:\s*Canari', et[0]):
+                canaris += 1
+            else:
+                informes += 1
         continue
     if not bancs:
         # 🔑 Une porte dont le banc n'est pas reconnaissable se COMPTE. Un
@@ -86,18 +105,21 @@ for et in etapes:
     # profil : la porte le gère elle-même, hors périmètre de ce contrôle.
     fichiers = {b[1] for b in bancs}
     if len(fichiers) == 1 and len(portes) == 1 and all('--profil' not in b[2] for b in bancs):
-        apparies.append((bancs[0][0], bancs[0][1], portes[0].replace('\\$', '$')))
+        apparies.append((bancs[0][0], bancs[0][1], portes[0][0],
+                         portes[0][1].replace('\\$', '$')))
     else:
         ecartees += 1
 
-print(f'{ecartees}\t{illisibles}')
-for interprete, banc, motif in apparies:
-    print(interprete + '\t' + banc + '\t' + motif)
+print(f'{ecartees}\t{illisibles}\t{canaris}\t{informes}')
+for interprete, banc, drapeau, motif in apparies:
+    print(interprete + '\t' + banc + '\t' + drapeau + '\t' + motif)
 PY
 ) || { echo "✗ l'extraction des portes a échoué"; exit 1; }
 
 ECARTEES=$(printf '%s\n' "$SORTIE" | head -1 | cut -f1)
 ILLISIBLES=$(printf '%s\n' "$SORTIE" | head -1 | cut -f2)
+CANARIS=$(printf '%s\n' "$SORTIE" | head -1 | cut -f3)
+INFORMES=$(printf '%s\n' "$SORTIE" | head -1 | cut -f4)
 PAIRES=$(printf '%s\n' "$SORTIE" | tail -n +2)
 
 NB=$(printf '%s\n' "$PAIRES" | grep -c . || true)
@@ -109,14 +131,14 @@ if [ "$NB" = 0 ]; then
 fi
 
 # ⚠️ Le périmètre s'annonce en ENTIER, y compris ce qui n'a pas pu être lu : le
-# motif ne reconnaît qu'une porte chiffrée en `grep -qE`, donc ni un total porté
-# par une variable (`$attendu/$attendu`), ni un `grep -qx`.
-echo "▸ $NB porte(s) appariée(s) par étape · $ECARTEES écartée(s) (plusieurs bancs, ou un total par profil) · $ILLISIBLES porte(s) sans banc lisible"
+# motif prend tout drapeau de `grep -q` et rejoue chaque porte avec le sien,
+# mais pas un total porté par une variable (`$attendu/$attendu`).
+echo "▸ $NB porte(s) appariée(s) par étape · $ECARTEES écartée(s) (plusieurs bancs, ou un total par profil) · $ILLISIBLES porte(s) sans banc lisible · $CANARIS canari(s), gardés par check-canaris.sh · $INFORMES à ligne attendue non chiffrée"
 echo
 
 ROUGES=0
 ABSENTS=0
-while IFS=$'\t' read -r interprete banc motif; do
+while IFS=$'\t' read -r interprete banc drapeau motif; do
   [ -n "$banc" ] || continue
   if [ ! -f "$banc" ]; then
     printf '  ✗ %-50s banc introuvable\n' "$banc"
@@ -141,11 +163,14 @@ while IFS=$'\t' read -r interprete banc motif; do
     ABSENTS=$((ABSENTS + 1))
     continue
   fi
-  if printf '%s\n' "$sortie" | grep -qE "$motif"; then
-    printf '  ✓ %-50s %s\n' "$banc" "$motif"
+  # 🔑 Chaque porte se rejoue avec SON drapeau. `-qx` exige la ligne entière là
+  # où `-qE` cherche un motif : tout rejouer en `-qE` rendrait ce contrôle plus
+  # permissif que la CI, et son vert ne dirait plus que la CI passe.
+  if printf '%s\n' "$sortie" | grep -q"$drapeau" -- "$motif"; then
+    printf '  ✓ %-50s -q%-2s %s\n' "$banc" "$drapeau" "$motif"
   else
     rendu=$(printf '%s\n' "$sortie" | grep -oE '(OK|ÉCHEC) — [0-9]+/[0-9]+|✅ [0-9]+/[0-9]+|[0-9]+ passés|✅ [0-9]+ contrôle[^,]*' | tail -1)
-    printf '  ✗ %-50s attend « %s » · rend « %s »\n' "$banc" "$motif" "${rendu:-rien de comptable}"
+    printf '  ✗ %-50s attend -q%s « %s » · rend « %s »\n' "$banc" "$drapeau" "$motif" "${rendu:-rien de comptable}"
     ROUGES=$((ROUGES + 1))
   fi
 done <<< "$PAIRES"
