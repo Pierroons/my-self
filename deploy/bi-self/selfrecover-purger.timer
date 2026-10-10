@@ -1,0 +1,13 @@
+[Unit]
+Description=SelfRecover — purge des dossiers périmés et des échecs anciens, une fois par jour
+
+[Timer]
+# La cadence n'a pas besoin d'être fine : ce qu'on efface est déjà sans effet
+# depuis son échéance, et la rétention des échecs se compte en jours. Une fois par jour suffit, et le décalage évite de tomber
+# en même temps que les autres tâches de minuit.
+OnCalendar=daily
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

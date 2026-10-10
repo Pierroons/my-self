@@ -32,6 +32,7 @@ require __DIR__ . '/StockageMemoire.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Recovery\Escalade;
+use Pierroons\SelfRecover\Langue;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Tests\StockageMemoire;
@@ -188,9 +189,16 @@ for ($tour = 1; $tour <= $tours; $tour++) {
         // celui où aucune n'est exploitable. Déclaré `clearweb`, il levait sur
         // chaque tour — et c'est lui qui l'a signalé.
         ProfilDeploiement::TOR_ONION,
+        Langue::FR,
         delaiRefusUs: 0,
     );
-    $esc      = new Escalade($st, $recovery, delaiRefusUs: 0);
+    // ⚠️ `gelSeuil: 1` n'est pas un réglage de confort : c'est ce qui rend la
+    // sonde du gel ATTEIGNABLE. Au seuil que le constructeur livre, une séquence
+    // de la longueur que ce fuzzer tire n'accumule presque jamais assez de
+    // dossiers refusés sur le même compte : la sonde resterait verte quoi qu'on
+    // casse. À 1, le premier refus suffit, donc un gel posé hors de `geler()`
+    // se voit.
+    $esc      = new Escalade($st, $recovery, delaiRefusUs: 0, gelSeuil: 1);
 
     $avant     = photo($st);
     // ⚠️ Ce drapeau vaut pour UN pas, pas pour la suite. Écrit une fois pour
@@ -377,6 +385,21 @@ for ($tour = 1; $tour <= $tours; $tour++) {
         if ($motDePasseSoumis !== '' && strlen($motDePasseSoumis) > 8 && str_contains($plat, $motDePasseSoumis)) {
             $signaler('⭐ le niveau 3 ne renvoie JAMAIS le mot de passe soumis',
                 $op . ' l\'a fait ressortir : ' . substr($plat, 0, 120));
+        }
+
+        // 🔑 Depuis la 0.12.0, UN SEUL chemin pose un gel : `Escalade::geler()`,
+        // le geste d'un arbitre. Cette boucle ne l'appelle jamais — elle appelle
+        // `degeler()`, pas son contraire. Donc aucune séquence tirée au hasard ne
+        // doit laisser un gel derrière elle. C'est la propriété que le gel
+        // automatique du refus violait : trois refus déclenchés par un tiers, et
+        // la dernière porte du titulaire se fermait. Un chemin qui reposerait un
+        // gel par la bande rougit ici, quel qu'il soit.
+        if ($st->gelJusqua(1, $maintenant) > 0) {
+            $signaler(
+                '⭐ aucun chemin hors `geler()` ne pose un gel',
+                $op . ' a gelé le compte jusqu\'à ' . $st->gelJusqua(1, $maintenant)
+            );
+            break;
         }
 
         $apres = photo($st);

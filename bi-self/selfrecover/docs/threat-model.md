@@ -1,6 +1,6 @@
 # Threat model
 
-> Extracted from the v1.4 whitepaper. Read the [full version](whitepaper-en.md) for context.
+> Extracted from the v1.5 whitepaper. Read the [full version](whitepaper-en.md) for context.
 
 ## Threats SelfRecover protects against
 
@@ -25,7 +25,8 @@ You don't need to trust Google, Microsoft, or anyone else for account recovery. 
 ### ✓ Rate-limited brute force
 Per-account rate limits on level 2 and on device enrolment, plus per-address limits under
 the `clearweb` profile, plus the suspension of code recovery past a threshold of failures. Opening a
-level-3 case is braked per address and service-wide — deliberately not per account (see below).
+level-3 case is braked per address under `clearweb`, and by a service-wide ceiling under
+`tor-onion` where no address discriminates — deliberately not per account (see below).
 
 ⚠️ **Level 1 has no per-account brake, and that is a decision rather than an omission.** It had one, and anyone
 who knew the public username could fill it: the counter lives in a table the integrator shares with
@@ -55,7 +56,11 @@ one of the account's codes, and its label is not forgeable without the deploymen
 on it. Its label is not forgeable either, but the level-1 route itself fills it: three requests under
 a public account name put that account over the threshold for the whole window, the holder's own
 attempts included. It informs a human; it must never gate an access, a freeze, or a per-account
-notification a third party could trigger in series. Nor is the count ever returned to the caller —
+notification a third party could trigger in series. An
+integrator audit found exactly this shape at its own level 3: a high-priority notification naming
+the targeted account, armed by refusals counted under that account rather than under the requester.
+It is the form a deployment reaches naturally when it wants to "warn the operator". The honest
+shape is a counter an aggregating periodic job reads — never a send per request. Nor is the count ever returned to the caller —
 `essaisPlausiblesL1()` is how a deployment reads it, because a reply travels, and whoever knows a
 public name would read in it that someone is looking for that account's word order right now.
 
@@ -75,6 +80,40 @@ cannot see what the others are doing.
 
 Three gestures rearm it — a fresh batch of codes, a successful code recovery, a successful passphrase
 recovery. A deployment that holds none of those dates does not suspend, rather than suspend for good.
+
+### ⚠️ Holding a level-3 slot with nothing but a name — named, not promised
+
+**A dispute is exclusive to its account, and the claim secret is chosen by the caller.** Any
+64-hex string passes, so nobody needs to own an account to take its place: one POST carrying a
+displayed name opens a dispute that holds for `ttl` — a day by default — and one request a day
+keeps the holder out of their last resort indefinitely. The attacker owns that dispute: they
+submit the bundle, they write to the arbitrator, and if the arbitrator grants, **they** are the
+one who re-posts the secrets.
+
+What 0.12.0 changed is the arbitrator's side, and the record they read. Refusing no longer freezes
+the victim, lifting a freeze now holds, a refused requester can no longer write in the thread, and
+the global ceiling stopped closing the service. So the arbitrator finally has a move that works —
+`abandonner()` frees the slot, `geler()` and `degeler()` are theirs to decide.
+
+**The squat itself stays open, and it is open by design of the level.** Level 3 exists for someone
+who has lost every secret, so they can prove no link to the account — and neither can a squatter.
+No automatic check can separate the two, which is exactly why a human arbitrates. Closing it would
+mean refusing the people the level is for.
+
+What 0.12.0 does close is the race that made the arbitrator's evidence unreliable.
+`compterDemandeurConcurrent()` records a collision for them to read, and two simultaneous requests
+used to defeat it: `litigeActifDuCompte()` read, `ouvrirLitige()` wrote, with nothing between them.
+Twelve concurrent processes, fifteen runs: **two ended with two live disputes**, and the collision
+was never counted. No single-process bench can catch that, so the number is a floor. The insert now
+carries its own condition, in one statement the engine cannot interleave, so a second dispute is
+refused and counted instead of silently created. A unique index could not hold that invariant —
+"active" depends on the clock through `expires_at`, and an index condition does not re-evaluate with
+it; an index on statuses alone would have blocked a new dispute behind an expired one, which is
+stricter than the rule.
+
+What bounds the cost meanwhile: the per-address brake under `clearweb`, the service-wide ceiling
+under `tor-onion`, the shared deadline on every refusal, a ceiling per answer and per thread
+message — and rate limiting in front of the route, which the library cannot impose.
 
 ### ~ Bot-driven account enumeration
 
@@ -122,10 +161,26 @@ What opposes enumeration at L3 is cost, not silence:
   exist from the ones that do not. There is deliberately no per-account brake: it would let a
   third party wall the holder out of their own dispute with nothing shown to the arbitrator,
   where the existing collision counter shows it;
-- a forced delay on every refusal that hides a state, so the clock says no more than the message;
+- ⚠️ **the service-wide ceiling is read only where an address discriminates nothing**, that is
+  under `tor-onion`. Until 0.12.0 it applied everywhere, and under `clearweb` — where the profile
+  *requires* an address, so the per-address brake always bites — it bought no protection and added
+  a public, unauthenticated master switch: twenty POSTs an hour carrying names that **do not
+  exist** closed the last resort of **every** account on the service, from two addresses. It
+  refuses, it does not slow down; naming it a ceiling hid that. `ProfilDeploiement::adresseDiscriminante()`
+  now decides, because the profile is what knows whether an address exists;
+- a forced delay on every refusal that hides a state, so the clock says no more than the message.
+  ⚠️ Until 0.12.0, `recevable()` honoured it on one of its three refusals only — and the two
+  silent ones are reached **only when the claim secret is correct**, so the clock said what the
+  single message withholds. All three now share one deadline, taken before the lookup. ⚠️ The price
+  runs the other way and is accepted: two routes that answered at once now hold a worker for the
+  delay, as the third already did. Taking the deadline before the lookup bounds that total instead
+  of adding it to the work, but the cost to the service goes up, not down — closing an oracle that
+  points at an existing dispute is worth it on two rare paths;
 - and, for an exposed deployment, **a proof of work in front of the route**. The library cannot
-  impose it — it has no routes. Deploy without one and the service-wide ceiling is the only brake
-  left, which is a blunt instrument: it slows every visitor at once.
+  impose it — it has no routes. Under `tor-onion`, deploy without one and the service-wide ceiling
+  is the only brake left, which is a blunt instrument: it refuses every visitor at once. Under
+  `clearweb` there is no global ceiling at all, by design: the per-address brake is the one that
+  works, and rate limiting in the reverse proxy is the deployment's part.
 
 Behind a hidden service, where every request shares one address, the caller passes `null` rather
 than that address: it says nothing about who is calling, and passing it would turn a per-client
@@ -234,6 +289,8 @@ If a user forgets their password AND their passphrase AND their recovery word, t
 | Third-party trust | ✓ | Local only |
 | Brute force recovery word | ✓ online, except level 1 behind a hidden service | Per-address brake + L2 suspension; offline, only the Argon2id cost |
 | Bot enumeration | ~ | Closed at L1/L2; at L3 it is a cost, not a silence — see above |
+| Holding an L3 slot with a name alone | ✗ — open, by design of the level | Nobody can prove a link to an account they have lost everything of, so no automatic check can tell squatter from holder. The arbitrator is the answer: `abandonner()` frees the slot, and since 0.12.0 the collision count they read is reliable |
+| A third party freezing the holder's level-3 procedure | ✓ since 0.12.0 | No counter poses a freeze; refusals inform, an administrator decides and can lift it. Taking the slot is the row above |
 | Stolen L1 passphrase | ✗ until used | Never expires, deliberately; single use bounds it, no notification exists |
 | Server root compromise | ✗ | Mandatory sudo hardening |
 | Stolen recovery word | ✗ | User responsibility |

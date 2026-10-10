@@ -230,8 +230,9 @@ final class Db
             self::$pdo->exec('PRAGMA foreign_keys = ON');
         }
 
-        // Une tentative sans compte — un code de récupération introuvable — n'a pas
-        // d'étiquette. SQLite ne sait pas retirer un NOT NULL : la table se
+        // Une tentative sans compte — un code de récupération introuvable — portait
+        // une étiquette nulle jusqu'à SelfRecover 0.12.0, et une base en service
+        // garde ces lignes. SQLite ne sait pas retirer un NOT NULL : la table se
         // reconstruit. La contrainte se lit au PRAGMA, jamais dans le texte du
         // schéma : une réindentation de `schema.sql` sauterait la reprise, et la
         // panne n'arriverait qu'au premier code mal tapé.

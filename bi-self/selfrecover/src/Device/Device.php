@@ -8,6 +8,8 @@ use Pierroons\SelfRecover\Crypto\Encoding;
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\Etiquette;
+use Pierroons\SelfRecover\Langue;
+use Pierroons\SelfRecover\Messages;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Titulaire;
 use Pierroons\SelfRecover\Storage\StorageInterface;
@@ -37,12 +39,6 @@ final class Device
     /** Durée de vie d'un défi. Cinq minutes suffisent à signer, pas à chercher. */
     public const DEFI_TTL = 300;
 
-    /**
-     * Préfixe du compteur d'échecs d'enrôlement. En clair, pour qu'une console
-     * sache le reconnaître ; le HMAC qui suit est ce qui empêche de l'écrire.
-     */
-    private const PREFIXE_ENROLEMENT = 'enroll:';
-
     public function __construct(
         private readonly StorageInterface $stockage,
         /**
@@ -56,6 +52,12 @@ final class Device
          * l'étiquette du compteur d'échecs, que `Etiquette` explique.
          */
         #[\SensitiveParameter] private readonly string $selDeploiement,
+        /**
+         * **Obligatoire, sans défaut.** Le contrat est dans `Langue`. Ce chemin
+         * rend des messages au titulaire comme les autres : lui laisser une
+         * langue à lui ferait répondre deux langues dans une même procédure.
+         */
+        private readonly Langue $langue,
         /** Fenêtre de comptage des échecs, par compte comme par IP. */
         private readonly int $fenetreEchecs = 900,
         /** Échecs tolérés sur un même compte dans la fenêtre. */
@@ -93,7 +95,7 @@ final class Device
         // distinguer « compte inconnu » de « mot incorrect » rendrait l'un des
         // deux facteurs testable seul, et ferait de cet appel un oracle
         // d'existence de comptes.
-        $refus = ['ok' => false, 'message' => 'Compte ou mot mémorisé incorrect.'];
+        $refus = ['ok' => false, 'message' => Messages::dire($this->langue, 'appareil.refus')];
 
         // 🔴 Avant tout calcul : enrôler ouvre le compte avec le seul mot mémorisé.
         // `Titulaire` porte la mesure du 13 août 2026 et ce que l'intégrateur doit
@@ -101,8 +103,7 @@ final class Device
         // ce paramètre le lit dans sa réponse, pas dans une page blanche.
         if ($titulaire !== Titulaire::AUTHENTIFIE) {
             return ['ok' => false, 'error' => 'titulaire_non_authentifie',
-                    'message' => 'Enrôler un appareil demande une session ouverte du titulaire. '
-                               . 'Qui a perdu son accès passe par la récupération.'];
+                    'message' => Messages::dire($this->langue, 'appareil.session_requise')];
         }
 
         $nomCompte    = strtolower(trim($nomCompte));
@@ -110,18 +111,18 @@ final class Device
         $clePublique  = Encoding::b64urlDecode($clePubliqueB64url);
 
         if (!preg_match('/^[A-Za-z0-9_-]{16,64}$/', $credentialId) || strlen($clePublique) < 50) {
-            return ['ok' => false, 'message' => "Données d'enrôlement invalides."];
+            return ['ok' => false, 'message' => Messages::dire($this->langue, 'appareil.donnees_invalides')];
         }
         if (!self::estCleDerivee($motDerive)) {
             return ['ok' => false, 'error' => 'invalid_derived_key',
-                    'message' => 'Mot mémorisé invalide : la dérivation doit se faire dans le navigateur.'];
+                    'message' => Messages::dire($this->langue, 'mot.non_derive')];
         }
         if (openssl_pkey_get_public(Encoding::spkiToPem($clePublique)) === false) {
-            return ['ok' => false, 'message' => 'Clé publique invalide.'];
+            return ['ok' => false, 'message' => Messages::dire($this->langue, 'appareil.cle_invalide')];
         }
 
         if ($ip !== null
-            && $this->stockage->compterEchecsIp($ip, $maintenant - $this->fenetreEchecs) >= $this->maxEchecsIp) {
+            && $this->stockage->compterEchecsIp($ip, $maintenant - $this->fenetreEchecs, Etiquette::PREFIXES) >= $this->maxEchecsIp) {
             usleep($this->delaiRefusUs);
 
             return $this->refusFrein();
@@ -179,9 +180,7 @@ final class Device
             $maintenant,
         );
 
-        return ['ok' => true, 'message' => 'Appareil enrôlé. Sa clé vit dans ce navigateur, chiffrée par ton '
-                                         . 'mot mémorisé : un autre navigateur, ou des données de site effacées, '
-                                         . 'demanderont un nouvel enrôlement.'];
+        return ['ok' => true, 'message' => Messages::dire($this->langue, 'appareil.enrole')];
     }
 
     /**
@@ -219,17 +218,17 @@ final class Device
         $defi         = trim($defi);
 
         if ($credentialId === '' || $defi === '') {
-            return ['ok' => false, 'message' => 'Données incomplètes.'];
+            return ['ok' => false, 'message' => Messages::dire($this->langue, 'appareil.donnees_incompletes')];
         }
         if (!$this->stockage->defiEnCours($defi, $credentialId, $maintenant - self::DEFI_TTL)) {
-            return ['ok' => false, 'message' => 'Challenge invalide ou expiré.'];
+            return ['ok' => false, 'message' => Messages::dire($this->langue, 'appareil.defi_invalide')];
         }
 
         $this->stockage->consommerDefi($defi);
 
         $appareil = $this->stockage->trouverAppareil($credentialId);
         if ($appareil === null) {
-            return ['ok' => false, 'message' => 'Appareil ou mot mémorisé incorrect.'];
+            return ['ok' => false, 'message' => Messages::dire($this->langue, 'appareil.refus_defi')];
         }
 
         $pem = Encoding::spkiToPem(Encoding::b64urlDecode($appareil->clePubliqueB64url));
@@ -238,7 +237,7 @@ final class Device
         // Le navigateur a signé les octets de la chaîne base64url du défi.
         $verdict = $der !== '' ? openssl_verify($defi, $der, $pem, OPENSSL_ALGO_SHA256) : -1;
         if ($verdict !== 1) {
-            return ['ok' => false, 'message' => 'Appareil ou mot mémorisé incorrect.'];
+            return ['ok' => false, 'message' => Messages::dire($this->langue, 'appareil.refus_defi')];
         }
 
         // Le défi a déjà été consommé plus haut, hors transaction : il doit
@@ -257,7 +256,7 @@ final class Device
 
         return [
             'ok'           => true,
-            'message'      => 'Appareil reconnu. Note ton nouveau mot de passe : il ne sera pas réaffiché. Ta passphrase et tes codes papier, eux, ne changent pas.',
+            'message'      => Messages::dire($this->langue, 'appareil.reconnu'),
             'mot_de_passe' => $motDePasse,
             'compte'       => $appareil->nomCompte,
         ];
@@ -273,7 +272,7 @@ final class Device
      */
     public function etiquetteEchecsEnrolement(string $nomCompte): string
     {
-        return Etiquette::sous(self::PREFIXE_ENROLEMENT, $nomCompte, $this->selDeploiement);
+        return Etiquette::sous(Etiquette::PREFIXE_ENROLEMENT, $nomCompte, $this->selDeploiement);
     }
 
     /**
@@ -299,7 +298,11 @@ final class Device
      */
     private function refusFrein(): array
     {
-        return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans ' . Duree::enClair($this->fenetreEchecs) . '.'];
+        return ['ok' => false, 'message' => Messages::dire(
+            $this->langue,
+            'frein.attendre',
+            [Duree::enClair($this->fenetreEchecs, $this->langue)],
+        )];
     }
 
     /** Longueur du mot de passe engendré après une récupération. */

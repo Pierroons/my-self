@@ -16,8 +16,10 @@ require __DIR__ . '/../lib/StockageSelfRecover.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Diceware\Wordlist;
+use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
+use Pierroons\SelfRecover\Langue;
 
 $passes = 0;
 $echecs = 0;
@@ -48,7 +50,7 @@ $st->execute();
 $compteId = (int) $db->lastInsertRowID();
 
 $stockage = new StockageSelfRecover($db);
-$recovery = new Recovery($stockage, 'sel-de-la-demo-pour-la-sonde', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0);
+$recovery = new Recovery($stockage, 'sel-de-la-demo-pour-la-sonde', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0);
 
 echo "\n→ Niveau 1 sur le schéma de la démo\n";
 $r = $recovery->parPassphrase('alice', $PHR, null, $now);
@@ -103,10 +105,23 @@ $sousHmac = (int) $db->querySingle('SELECT COUNT(*) FROM login_attempts WHERE su
 verifier('🔑 les cinq échecs sont écrits sous un HMAC, aucun sous le nom du compte',
     $nomApres === $nomAvant && $sousHmac === 5,
     "sous le nom : $nomAvant puis $nomApres, sous le HMAC : $sousHmac");
-verifier('🔑 un code introuvable n\'écrit aucune étiquette',
-    (int) $db->querySingle('SELECT COUNT(*) FROM login_attempts WHERE username IS NULL') === 0
+// 🔑 Un échec non rattaché à un compte porte une étiquette fixe : sous `NULL`,
+// aucun filtre de préfixe ne le compte, donc le frein par ORIGINE ne voit pas ce
+// chemin — qui paie deux Argon2id par essai — et `purgerEchecs()` n'efface
+// jamais ces lignes.
+$inconnuAvant = (int) $db->querySingle('SELECT COUNT(*) FROM login_attempts WHERE username = \''
+    . \Pierroons\SelfRecover\Etiquette::PREFIXE_L2_INCONNU . "'");
+verifier('🔑 un code introuvable s\'écrit sous une étiquette qui ne désigne aucun compte',
+    $inconnuAvant === 0
     && $recovery->parCode('11111-11111', $MOT, null, $now + 901)['ok'] === false
-    && (int) $db->querySingle('SELECT COUNT(*) FROM login_attempts WHERE username IS NULL') === 1);
+    && (int) $db->querySingle('SELECT COUNT(*) FROM login_attempts WHERE username = \''
+        . \Pierroons\SelfRecover\Etiquette::PREFIXE_L2_INCONNU . "'") === 1);
+// Et elle ne dérive de rien de ce qui a été soumis : deux codes introuvables
+// différents rangent leurs échecs sous la même, qui n'apprend donc rien.
+$recovery->parCode('22222-22222', $MOT, null, $now + 902);
+verifier('🔑 et deux codes introuvables portent la MÊME',
+    (int) $db->querySingle('SELECT COUNT(*) FROM login_attempts WHERE username = \''
+        . \Pierroons\SelfRecover\Etiquette::PREFIXE_L2_INCONNU . "'") === 2);
 
 echo "\n→ Ce que le refus ne dit pas\n";
 $sansMot  = $recovery->parCode($codes[1], str_repeat('b2', 32), null, $now);
@@ -125,7 +140,7 @@ try {
 }
 
 try {
-    $stockage->compterEchecsIp('192.0.2.1', 0);
+    $stockage->compterEchecsIp('192.0.2.1', 0, Etiquette::PREFIXES);
     verifier('le compteur par IP refuse au lieu de rendre 0', false);
 } catch (RuntimeException $e) {
     verifier('le compteur par IP refuse au lieu de rendre 0', str_contains($e->getMessage(), 'RateLimit'));

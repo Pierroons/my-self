@@ -21,6 +21,7 @@ use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Titulaire;
 use Pierroons\SelfRecover\Device\Device;
 use Pierroons\SelfRecover\Tests\StockageMemoire;
+use Pierroons\SelfRecover\Langue;
 
 $passes = 0;
 $echecs = 0;
@@ -64,7 +65,7 @@ $now = 1_700_000_000;
 // ── Scénario 1 : enrôlement légitime, puis récupération ────────────────────
 $st = new StockageMemoire();
 $st->comptes['alice'] = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
-$dev = new Device($st, ProfilDeploiement::CLEARWEB, $SEL, delaiRefusUs: 0);
+$dev = new Device($st, ProfilDeploiement::CLEARWEB, $SEL, Langue::FR, delaiRefusUs: 0);
 [$privee, $publique] = engendrerPaire();
 $credId = 'cred' . str_repeat('A', 20);
 
@@ -86,7 +87,7 @@ verifier('le mot de passe stocké est bien celui rendu',
 echo "\n→ Prise de compte par enrôlement (02/08/2026)\n";
 $st2 = new StockageMemoire();
 $st2->comptes['victime'] = ['id' => 7, 'empreinte_mot' => Hashing::hash('bb' . str_repeat('cd', 31))];
-$dev2 = new Device($st2, ProfilDeploiement::CLEARWEB, $SEL, delaiRefusUs: 0);
+$dev2 = new Device($st2, ProfilDeploiement::CLEARWEB, $SEL, Langue::FR, delaiRefusUs: 0);
 [$priveeAtt, $publiqueAtt] = engendrerPaire();
 
 $att = $dev2->enroler('victime', 'cred' . str_repeat('B', 20), $publiqueAtt, $MOT, Titulaire::AUTHENTIFIE, '192.0.2.9', $now);
@@ -129,7 +130,7 @@ verifier('une chaîne trop courte ne l\'est pas', !Device::estCleDerivee('abcdef
 echo "\n→ L'exigence du titulaire authentifié\n";
 [$stT, $devT] = [new StockageMemoire(), null];
 $stT->comptes['alice'] = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
-$devT = new Device($stT, ProfilDeploiement::CLEARWEB, $SEL, delaiRefusUs: 0);
+$devT = new Device($stT, ProfilDeploiement::CLEARWEB, $SEL, Langue::FR, delaiRefusUs: 0);
 [$privT, $pubT] = engendrerPaire();
 
 $sans = $devT->enroler('alice', 'cred' . str_repeat('E', 20), $pubT, $MOT,
@@ -146,7 +147,7 @@ echo "\n→ Le frein par compte de l'enrôlement\n";
 // frein par adresse qui a refusé à sa place.
 $stF  = new StockageMemoire();
 $stF->comptes['alice'] = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
-$devF = new Device($stF, ProfilDeploiement::TOR_ONION, $SEL, delaiRefusUs: 0);
+$devF = new Device($stF, ProfilDeploiement::TOR_ONION, $SEL, Langue::FR, delaiRefusUs: 0);
 $FAUX = str_repeat('c3', 32);
 for ($i = 0; $i < 5; $i++) {
     $devF->enroler('alice', 'cred' . str_repeat('F', 20), $pubT, $FAUX, Titulaire::AUTHENTIFIE, null, $now);
@@ -171,7 +172,7 @@ verifier('🔑 les échecs sont sous un HMAC, aucun sous le nom du compte',
 // remplit, sans détenir aucun secret du compte visé.
 $stI = new StockageMemoire();
 $stI->comptes['alice'] = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
-$devI = new Device($stI, ProfilDeploiement::TOR_ONION, $SEL, delaiRefusUs: 0);
+$devI = new Device($stI, ProfilDeploiement::TOR_ONION, $SEL, Langue::FR, delaiRefusUs: 0);
 foreach (['enroll:alice', 'alice', 'enroll:' . hash('sha256', 'alice')] as $imitation) {
     for ($i = 0; $i < 6; $i++) { $stI->tracerTentative($imitation, false, null, $now); }
 }
@@ -189,7 +190,7 @@ $refusAuSixieme = static function (bool $existe) use ($MOT, $SEL, $pubT, $now): 
     if ($existe) {
         $st->comptes['cible'] = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
     }
-    $dev  = new Device($st, ProfilDeploiement::TOR_ONION, $SEL, delaiRefusUs: 0);
+    $dev  = new Device($st, ProfilDeploiement::TOR_ONION, $SEL, Langue::FR, delaiRefusUs: 0);
     $faux = str_repeat('c3', 32);
     for ($i = 0; $i < 6; $i++) {
         $r = $dev->enroler('cible', 'cred' . str_repeat('J', 20), $pubT, $faux,
@@ -204,7 +205,7 @@ verifier('🔑 au sixième essai, le refus est le MÊME que le compte existe ou 
 
 // La ligne tracée garde son origine : le frein par adresse continue de la voir.
 $stJ = new StockageMemoire();
-$devJ = new Device($stJ, ProfilDeploiement::CLEARWEB, $SEL, delaiRefusUs: 0);
+$devJ = new Device($stJ, ProfilDeploiement::CLEARWEB, $SEL, Langue::FR, delaiRefusUs: 0);
 $devJ->enroler('nexiste-pas', 'cred' . str_repeat('K', 20), $pubT, $MOT,
     Titulaire::AUTHENTIFIE, '192.0.2.4', $now);
 verifier('un compte introuvable est tracé, avec son origine',
@@ -217,7 +218,7 @@ echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Device SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 // Le compte est écrit ici et repris en intégration continue : un « N passés » dit
 // que les cas joués ont réussi, jamais qu'aucun n'a disparu.
-printf("OK — %d/%d\n", $passes, $passes + $echecs);
+printf("%s — %d/%d\n", $echecs === 0 ? 'OK' : 'ÉCHEC', $passes, $passes + $echecs);
 echo str_repeat('=', 63) . "\n\n";
 
 exit($echecs === 0 ? 0 : 1);

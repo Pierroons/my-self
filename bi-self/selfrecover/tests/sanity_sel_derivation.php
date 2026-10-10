@@ -21,6 +21,7 @@ use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 use Pierroons\SelfRecover\Tests\StockageMemoire;
+use Pierroons\SelfRecover\Langue;
 
 $passes = 0;
 $echecs = 0;
@@ -38,7 +39,7 @@ $SEL_A   = str_repeat('a1', 16);
 $st = new StockageMemoire();
 $st->comptes['alice'] = ['id' => 1, 'empreinte_mot' => Hashing::hash(str_repeat('b2', 32))];
 $st->sels[1] = $SEL_A;
-$rec   = new Recovery($st, $SEL_DEP, ProfilDeploiement::CLEARWEB, delaiRefusUs: 0);
+$rec   = new Recovery($st, $SEL_DEP, ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0);
 $codes = $rec->emettreCodes(1, 3, $now);
 
 echo "\n→ Un code du compte\n";
@@ -56,7 +57,7 @@ verifier('un code inconnu reçoit un sel de la forme d\'un vrai', Recovery::estS
 verifier('ce faux sel n\'est pas celui du compte', $faux1 !== $SEL_A);
 verifier('il est stable quand le code est retenté', $rec->selDeDerivation('00000-00000') === $faux1);
 verifier('deux codes inconnus reçoivent deux sels différents', $faux1 !== $faux2);
-$autre = new Recovery($st, 'un-autre-sel-de-deploiement', ProfilDeploiement::CLEARWEB, delaiRefusUs: 0);
+$autre = new Recovery($st, 'un-autre-sel-de-deploiement', ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0);
 verifier('le faux sel dépend du sel du déploiement : il ne se recalcule pas de dehors',
     $autre->selDeDerivation('00000-00000') !== $faux1);
 $mal = $rec->selDeDerivation('pas-un-code');
@@ -76,7 +77,7 @@ foreach ((new ReflectionClass(StorageInterface::class))->getMethods() as $m) {
         $m->getName(), implode(', ', $params), $m->hasReturnType() ? ': ' . $m->getReturnType() : '');
 }
 eval('final class StockageSansSel implements \\' . StorageInterface::class . ' { ' . implode("\n", $methodes) . ' }');
-$sans = new Recovery(new StockageSansSel(), $SEL_DEP, ProfilDeploiement::CLEARWEB, delaiRefusUs: 0);
+$sans = new Recovery(new StockageSansSel(), $SEL_DEP, ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0);
 try {
     $sans->selDeDerivation($codes[0]);
     verifier('un stockage sans SelParCodeInterface est refusé bruyamment', false, 'aucune erreur');
@@ -87,6 +88,6 @@ try {
 
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Route du sel — %d passés, %d échoués\n", $passes, $echecs);
-printf("OK — %d/%d\n", $passes, $passes + $echecs);
+printf("%s — %d/%d\n", $echecs === 0 ? 'OK' : 'ÉCHEC', $passes, $passes + $echecs);
 echo str_repeat('=', 63) . "\n\n";
 exit($echecs === 0 ? 0 : 1);

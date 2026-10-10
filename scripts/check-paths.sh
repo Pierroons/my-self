@@ -246,24 +246,48 @@ print(f"  ✓ aucune règle orpheline sur {examinees} règle(s) examinée(s)")
 PY
 
 echo "▸ Chemins cités — workflows GitHub"
+# 🔑 **Deux familles, et la seconde était l'angle mort.** Les clés YAML
+# (`context`, `file`…) ne couvrent pas ce qu'un `run:` LANCE : un banc renommé
+# resterait cité par le workflow, et seule l'exécution en intégration continue
+# le dirait — après l'envoi. Mesuré le 10/10/2026 : 94 chemins distincts
+# invoqués par une commande, dont 34 scripts shell, aucun gardé jusqu'ici.
+#
+# ⚠️ Un chemin qui porte une variable est écarté : le job le construit, et ce
+# contrôle lit le fichier sans l'exécuter. Le compte le DIT, plutôt que de
+# laisser croire à une couverture entière.
 python3 - <<'EOF' || echec=1
 import pathlib, re, sys
 morts, examines = [], 0
 rep = pathlib.Path(".github/workflows")
+CLE = re.compile(r"\s*(context|working-directory|dockerfile|file):\s*(\S+)")
+# ⚠️ **Hors de portée, et il faut le dire** : un chemin construit par une
+# variable (`php -l "$F"`) n'a pas d'extension littérale, donc aucun motif ne le
+# reconnaît ici. Mesuré le 10/10/2026 : 3 occurrences, toutes dans des canaris.
+CMD = re.compile(
+    r"(?:^|[\s|(&;])(?:bash|sh|php|python3|node)\s+"
+    r"((?:\./)?[A-Za-z0-9_][A-Za-z0-9_./-]*\.(?:sh|php|py|js))"
+)
 for wf in sorted(list(rep.glob("*.yml")) + list(rep.glob("*.yaml"))):
     for n, line in enumerate(wf.read_text().splitlines(), 1):
-        m = re.match(r"\s*(context|working-directory|dockerfile|file):\s*(\S+)", line)
-        if not m: continue
-        chemin = m.group(2).strip("'\"")
-        if chemin.startswith("$") or chemin == ".": continue
-        examines += 1
-        if not pathlib.Path(chemin).exists():
-            morts.append(f"{wf}:{n}  {m.group(1)}: {chemin}")
+        m = CLE.match(line)
+        if m:
+            chemin = m.group(2).strip("'\"")
+            if not (chemin.startswith("$") or chemin == "."):
+                examines += 1
+                if not pathlib.Path(chemin).exists():
+                    morts.append(f"{wf}:{n}  {m.group(1)}: {chemin}")
+        for cible in CMD.findall(line):
+            if cible.startswith("/"):
+                continue
+            examines += 1
+            if not pathlib.Path(cible).exists():
+                morts.append(f"{wf}:{n}  lancé par run: {cible}")
 if morts:
-    print("  \u2717 " + str(len(morts)) + " chemin(s) mort(s)")
+    print("  ✗ " + str(len(morts)) + " chemin(s) mort(s)")
     for x in morts: print("     " + x)
     sys.exit(1)
-print(f"  \u2713 les {examines} chemin(s) de workflow résolvent")
+print(f"  ✓ les {examines} chemin(s) de workflow résolvent "
+      "(hors ceux qu'une variable construit : illisibles ici)")
 EOF
 
 # ── Copies qui doivent rester identiques ────────────────────────────────────

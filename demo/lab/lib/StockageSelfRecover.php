@@ -25,14 +25,80 @@ final class StockageSelfRecover implements StorageInterface
     {
     }
 
-    public function compterEchecsIp(string $ip, int $depuis): int
+    /**
+     * ⚠️ **Le filtre par préfixe est la raison d'être de cet argument.** Cette
+     * table est celle de la page de connexion du lab : elle y range ses propres
+     * échecs sous le nom du compte. Les compter ici fermerait la récupération de
+     * qui vient justement d'oublier son mot de passe — il l'a tapé faux cinq
+     * fois, il arrive avec la bonne passphrase, et le frein la refuse.
+     */
+    public function compterEchecsIp(string $ip, int $depuis, array $prefixes): int
     {
-        $st = $this->pdo->prepare(
-            'SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND success = 0 AND attempted_at > ?'
+        if ($prefixes === []) {
+            throw new \InvalidArgumentException(
+                'compterEchecsIp() sans préfixe compterait zéro : un frein muet est pire que le défaut qu il corrige.'
+            );
+        }
+
+        $filtre = implode(' OR ', array_fill(0, count($prefixes), 'username LIKE ?'));
+        $st     = $this->pdo->prepare(
+            'SELECT COUNT(*) FROM login_attempts'
+            . ' WHERE ip = ? AND success = 0 AND attempted_at > ?'
+            . ' AND (' . $filtre . ')'
         );
-        $st->execute([$ip, $depuis]);
+        $st->execute([$ip, $depuis, ...array_map(static fn (string $x): string => $x . '%', $prefixes)]);
 
         return (int) $st->fetchColumn();
+    }
+
+    /**
+     * ⚠️ **Les réussites survivent, et c'est la moitié qui compte.** La
+     * suspension du niveau 2 se réarme sur `dateDerniereReussite()`, qui n'a
+     * aucune fenêtre : effacer une réussite vieille de six mois rouvrirait une
+     * suspension que le titulaire avait levée.
+     *
+     * 🔑 Chaque préfixe a un propriétaire, et c'est lui qui le purge : les
+     * échecs de la page de connexion du lab ne sont pas les nôtres à effacer.
+     */
+    public function purgerEchecs(int $avant, array $prefixes): int
+    {
+        [$ou, $parametres] = $this->ouEchecsPurgeables($avant, $prefixes);
+        $st = $this->pdo->prepare('DELETE FROM login_attempts WHERE ' . $ou);
+        $st->execute($parametres);
+
+        return $st->rowCount();
+    }
+
+    public function compterEchecsPurgeables(int $avant, array $prefixes): int
+    {
+        [$ou, $parametres] = $this->ouEchecsPurgeables($avant, $prefixes);
+        $st = $this->pdo->prepare('SELECT COUNT(*) FROM login_attempts WHERE ' . $ou);
+        $st->execute($parametres);
+
+        return (int) $st->fetchColumn();
+    }
+
+    /**
+     * La clause des lignes d'échec purgeables, et ses paramètres — construite à
+     * un seul endroit pour la purge et pour son compte.
+     *
+     * @param  list<string> $prefixes
+     * @return array{0: string, 1: list<int|string>}
+     */
+    private function ouEchecsPurgeables(int $avant, array $prefixes): array
+    {
+        if ($prefixes === []) {
+            throw new \InvalidArgumentException(
+                'purgerEchecs() sans préfixe n effacerait rien en rendant zéro : une purge muette passe pour une purge faite.'
+            );
+        }
+
+        $filtre = implode(' OR ', array_fill(0, count($prefixes), 'username LIKE ?'));
+
+        return [
+            'attempted_at <= ? AND success = 0 AND (' . $filtre . ')',
+            [$avant, ...array_map(static fn (string $x): string => $x . '%', $prefixes)],
+        ];
     }
 
     public function compterEchecsCompte(string $nomCompte, int $depuis): int
@@ -336,11 +402,24 @@ final class StockageSelfRecover implements StorageInterface
         string $empreinteSesame,
         int $quand,
         int $expireLe,
-    ): void {
-        $this->pdo->prepare(
+    ): bool {
+        // La condition reprend mot pour mot celle de `litigeActifDuCompte` : les
+        // deux disent ce qu'est un dossier actif. Elle est DANS l'écriture parce
+        // que lire puis insérer laisse deux requêtes concurrentes passer toutes
+        // les deux — et le compteur de demandeurs concurrents, le fait le plus
+        // utile à l'arbitre, reste alors à zéro.
+        $st = $this->pdo->prepare(
             "INSERT INTO disputes (dispute_number, account_id, status, claim_hash, expires_at, created_at, updated_at)
-             VALUES (?, ?, 'open', ?, ?, ?, ?)"
-        )->execute([$numero, $compteId, $empreinteSesame, $expireLe, $quand, $quand]);
+             SELECT ?, ?, 'open', ?, ?, ?, ?
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM disputes
+                 WHERE account_id = ? AND status IN ('open', 'awaiting_admin', 'accepted')
+                   AND (status = 'accepted' OR expires_at > ?)
+             )"
+        );
+        $st->execute([$numero, $compteId, $empreinteSesame, $expireLe, $quand, $quand, $compteId, $quand]);
+
+        return $st->rowCount() === 1;
     }
 
     public function compterDemandeurConcurrent(int $litigeId): void
@@ -383,15 +462,19 @@ final class StockageSelfRecover implements StorageInterface
         return (int) $st->fetchColumn();
     }
 
-    public function poserGel(int $compteId, int $jusqua, int $quand): void
+    public function poserGel(int $compteId, int $jusqua, int $quand, string $par): void
     {
         $this->pdo->prepare(
-            'INSERT INTO l3_gel (account_id, gele_jusqu_a, pose_le) VALUES (?, ?, ?)
+            // ⚠️ `degele_par` et `degele_le` ne sont PAS remis à NULL, et c'est le
+            // contrat : un arbitre qui regèle effacerait sinon, d'un clic, la
+            // décision de celui qui avait contesté le gel précédent — sans trace
+            // et sans erreur. Le bouton de gel de la console rend ce scénario
+            // atteignable, donc c'est ici qu'il se ferme.
+            'INSERT INTO l3_gel (account_id, gele_jusqu_a, pose_le, gele_par) VALUES (?, ?, ?, ?)
              ON CONFLICT(account_id) DO UPDATE SET gele_jusqu_a = excluded.gele_jusqu_a,
                                                    pose_le      = excluded.pose_le,
-                                                   degele_par   = NULL,
-                                                   degele_le    = NULL'
-        )->execute([$compteId, $jusqua, $quand]);
+                                                   gele_par     = excluded.gele_par'
+        )->execute([$compteId, $jusqua, $quand, $par]);
     }
 
     public function gelJusqua(int $compteId, int $maintenant): int
@@ -466,6 +549,13 @@ final class StockageSelfRecover implements StorageInterface
         return $lignes;
     }
 
+    /**
+     * La clause des dossiers périmés — pour la purge ET pour son compte. Les deux
+     * états exclus le sont pour les raisons écrites juste dessous ; les écrire
+     * deux fois, c'est accepter qu'un jour l'un des deux les oublie.
+     */
+    private const OU_LITIGES_PERIMES = "expires_at <= ? AND status NOT IN ('refused', 'accepted')";
+
     public function purgerLitigesExpires(int $avant): int
     {
         // ⚠️ Les dossiers REFUSÉS survivent à la purge : les refus de la
@@ -478,12 +568,19 @@ final class StockageSelfRecover implements StorageInterface
         // `litigeActifDuCompte` les exempte du TTL : le titulaire qui revient
         // après l'expiration doit encore trouver son accord. Les purger rendrait
         // la porte définitivement close à qui a déjà tout perdu.
-        $st = $this->pdo->prepare(
-            "DELETE FROM disputes WHERE expires_at <= ? AND status NOT IN ('refused', 'accepted')"
-        );
+        $st = $this->pdo->prepare('DELETE FROM disputes WHERE ' . self::OU_LITIGES_PERIMES);
         $st->execute([$avant]);
 
         return $st->rowCount();
+    }
+
+    /** Combien `purgerLitigesExpires()` effacerait — même clause, aucune copie. */
+    public function compterLitigesExpires(int $avant): int
+    {
+        $st = $this->pdo->prepare('SELECT COUNT(*) FROM disputes WHERE ' . self::OU_LITIGES_PERIMES);
+        $st->execute([$avant]);
+
+        return (int) $st->fetchColumn();
     }
 
     public function faitsDuCompte(int $compteId): ?array

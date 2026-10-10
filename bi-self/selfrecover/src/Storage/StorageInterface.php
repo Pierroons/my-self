@@ -43,8 +43,23 @@ use Pierroons\SelfRecover\Recovery\Litige;
  */
 interface StorageInterface
 {
-    /** Échecs récents attribués à cette IP, pour freiner l'énumération. */
-    public function compterEchecsIp(string $ip, int $depuis): int;
+    /**
+     * Échecs récents attribués à cette IP, pour freiner l'énumération.
+     *
+     * ⚠️ **Ne comptez que les lignes dont l'étiquette commence par l'un de
+     * `$prefixes`.** La table ne nous appartient pas : votre page de connexion y
+     * range ses propres échecs, sous l'étiquette que vous avez choisie. Les
+     * compter ici ferme la récupération de qui vient d'oublier son mot de passe
+     * — il l'a tapé faux cinq fois, il arrive avec la bonne passphrase, et le
+     * frein la refuse. Ce n'est pas une attaque, c'est le chemin pour lequel
+     * cette bibliothèque existe.
+     *
+     * `$prefixes` est toujours `Etiquette::PREFIXES`, la liste close de ce que
+     * cette bibliothèque écrit. Les portes y sont pesées **ensemble**, parce que
+     * ce frein borne le coût Argon2id d'une origine : les séparer laisserait
+     * alterner entre elles pour payer deux fois moins.
+     */
+    public function compterEchecsIp(string $ip, int $depuis, array $prefixes): int;
 
     /**
      * Trace une tentative, réussie ou non.
@@ -52,12 +67,18 @@ interface StorageInterface
      * ⚠️ L'étiquette ne doit pas révéler l'existence du compte : quand rien n'a
      * été trouvé, elle ne reprend jamais ce qui a été soumis.
      *
-     * 🔑 **Et elle vaut `null`, jamais un mot littéral, dès qu'un frein la
-     * relit.** Un littéral range tous les échecs du service sous un nom qu'un
-     * compte peut porter, et ce compte hérite alors de leur frein. Un littéral
-     * que rien ne relit reste sans effet — le `enroll:inconnu` du facteur
-     * « cet appareil » est dans ce cas, et le jour où un frein le lira, il
-     * devra suivre la même règle.
+     * 🔑 **Elle porte un préfixe de `Etiquette::PREFIXES` dès qu'un frein la
+     * relit — y compris quand aucun compte n'est en cause.** Une étiquette nulle
+     * échappe au filtre de préfixes du frein par origine : en SQL,
+     * `NULL LIKE 'l2:%'` vaut `NULL`, donc la ligne sort du compte. Pour ce cas,
+     * le préfixe est fixe et sans empreinte : il ne distingue pas deux essais et
+     * ne dit l'existence de rien.
+     *
+     * ⚠️ **En retour, l'implémentation réserve cet espace de noms** : aucun
+     * compte ne doit pouvoir s'appeler comme un préfixe, sinon ses propres
+     * échecs se mêlent à ceux que le frein compte.
+     * `Etiquette::empieteSurUnCompteur()` est là pour ça, à appeler au moment où
+     * un nom est choisi.
      */
     public function tracerTentative(?string $etiquette, bool $succes, ?string $ip, int $quand): void;
 
@@ -219,22 +240,46 @@ interface StorageInterface
     // imposteur, supprimer détruirait le compte de sa victime ; s'il était le
     // titulaire mal jugé, ça punirait un innocent. Et un attaquant incapable de
     // voler un compte pourrait le faire effacer en accumulant des refus —
-    // l'échec deviendrait une arme. Ce qui se durcit est la PROCÉDURE, par le
-    // gel ci-dessous.
+    // l'échec deviendrait une arme. Ce qui peut se durcir est la PROCÉDURE, par
+    // le gel ci-dessous — et c'est un arbitre qui le décide, plus un compteur.
 
     /** Le dossier portant ce numéro, quel que soit son état. */
     public function trouverLitigeParNumero(string $numero): ?Litige;
 
-    /** Le dossier encore recevable de ce compte, s'il en existe un. */
+    /**
+     * Le dossier encore recevable de ce compte, s'il en existe un.
+     *
+     * ⚠️ **Sa condition d'activité et celle d'`ouvrirLitige()` sont la même
+     * règle, écrite deux fois.** L'une lit, l'autre refuse d'insérer ; si elles
+     * divergent, un compte peut porter deux dossiers actifs, ou n'en plus
+     * ouvrir aucun. `sanity_escalade.php` les confronte sur les deux cas qui
+     * les séparent — un dossier courant, et un dossier expiré.
+     */
     public function litigeActifDuCompte(int $compteId, int $maintenant): ?Litige;
 
+    /**
+     * Ouvre un dossier **si le compte n'en a aucun d'actif**, et dit si elle l'a fait.
+     *
+     * 🔑 **Le test et l'écriture sont une seule opération.** Lire puis insérer
+     * laisse deux requêtes concurrentes passer toutes les deux : la lecture
+     * suivante ne garde que le dernier dossier, et le compteur de demandeurs
+     * concurrents — le fait le plus utile à l'arbitre — reste à zéro.
+     *
+     * Un index unique ne peut pas tenir cet invariant à la place : « actif »
+     * dépend de l'instant (`expires_at`), et une condition d'index ne se
+     * réévalue pas avec l'horloge. C'est donc l'insertion qui porte la
+     * condition, en une instruction que le moteur ne peut pas entrelacer.
+     *
+     * @return bool `false` quand un dossier actif occupait déjà la place ; l'appelant
+     *              compte alors la collision et refuse, comme pour un dossier lu.
+     */
     public function ouvrirLitige(
         int $compteId,
         string $numero,
         string $empreinteSesame,
         int $quand,
         int $expireLe,
-    ): void;
+    ): bool;
 
     /** Une tentative d'ouverture pendant qu'un dossier court : un fait pour l'arbitre. */
     public function compterDemandeurConcurrent(int $litigeId): void;
@@ -258,12 +303,32 @@ interface StorageInterface
      *
      * ⚠️ On compte les dossiers, pas les dépôts : trois soumissions sur un même
      * dossier restent un seul refus, sinon l'insistance d'un titulaire honnête
-     * déclencherait le gel aussi vite qu'une campagne hostile.
+     * peserait autant qu'une campagne hostile.
+     *
+     * 🔑 **Ce chiffre informe, il ne décide pas.** Il arrive à l'arbitre dans le
+     * faisceau (`contexte.refus_precedents`) et dans le `gel_suggere` que rend
+     * `Escalade::trancher()`. Il compte sous le compte VISÉ, pas sous le
+     * demandeur : `poserGel()` dit ce que le câbler à un gel rouvrirait. Un
+     * compteur ne sait pas qui insiste ; un arbitre, si.
      */
     public function compterRefusRecents(int $compteId, int $depuis): int;
 
-    /** Gèle l'OUVERTURE de nouveaux dossiers. Le compte reste entier et connectable. */
-    public function poserGel(int $compteId, int $jusqua, int $quand): void;
+    /**
+     * Gèle l'OUVERTURE de nouveaux dossiers. Le compte reste entier et connectable.
+     *
+     * ⚠️ Un seul appelant dans cette bibliothèque : `Escalade::geler()`, le geste
+     * d'un arbitre. Le câbler à un compteur — d'échecs, de refus, de requêtes —
+     * rend le gel déclenchable par qui n'a aucun droit sur le compte, puisque
+     * tous ces compteurs se remplissent avec un nom public.
+     *
+     * ⚠️ **Rangez `$par`, et ne touchez pas à la trace du dégel.** Le geste qui
+     * ferme une porte doit nommer son auteur autant que celui qui l'ouvre —
+     * `leverGel()` le faisait seul. Et un gel reposé n'efface pas `degele_par` :
+     * la décision de l'arbitre qui avait levé le précédent reste lisible, comme
+     * ce contrat l'exige pour `leverGel()`. Ce qui dit si l'ouverture est gelée,
+     * c'est `gelJusqua()`, jamais la présence d'une trace de dégel.
+     */
+    public function poserGel(int $compteId, int $jusqua, int $quand, string $par): void;
 
     /** Jusqu'à quand l'ouverture est gelée, 0 si elle ne l'est pas. */
     public function gelJusqua(int $compteId, int $maintenant): int;
@@ -285,8 +350,86 @@ interface StorageInterface
     /** Les dossiers pour la console d'arbitrage, du plus récent au plus ancien. */
     public function listerLitiges(int $limite): array;
 
-    /** Efface les dossiers périmés. Rend le nombre effacé. */
+    /**
+     * Efface les dossiers périmés. Rend le nombre effacé.
+     *
+     * 🔴 **Appelée par `Escalade::purger()`, que RIEN n'appelle dans cette
+     * bibliothèque.** C'est au déploiement de la lancer périodiquement — unité
+     * `systemd` prête dans `deploy/bi-self/`, outil dans `bi-self/selfrecover/tools/purger.php`,
+     * ou le planificateur de ton choix. Sans ça, les dossiers périmés s'empilent avec leur empreinte de
+     * sésame : l'échéance les rend inactifs, elle n'efface rien.
+     *
+     * ⚠️ Les dossiers acceptés et refusés doivent y SURVIVRE, pour les raisons
+     * que l'implémentation de référence porte en commentaire. Leur rétention
+     * est donc une décision de déploiement, pas un effet de cette méthode.
+     */
     public function purgerLitigesExpires(int $avant): int;
+
+    /**
+     * Combien `purgerLitigesExpires($avant)` effacerait. N'efface rien.
+     *
+     * 🔑 **Elle existe pour qu'un mode d'essai ne détruise pas.** L'outil livré
+     * annonce ce qu'une purge ferait avant de la faire ; sans ce compteur, il ne
+     * peut le savoir qu'en exécutant la suppression puis en l'annulant — et une
+     * transaction annulée ne défait rien sur un moteur qui n'en tient pas, ni ne
+     * rend le verrou d'écriture qu'elle a pris le temps de le faire.
+     *
+     * ⚠️ **La clause est LA MÊME que celle de la purge, pas sa copie.**
+     * L'implémentation doit la partager — une constante, une méthode privée, ce
+     * qu'elle veut —, jamais la réécrire. Deux clauses parallèles divergent au
+     * premier filtre ajouté d'un seul côté, et c'est alors le mode prudent qui
+     * annonce un chiffre faux. Le `banc_stockage_pdo` compare les deux sur la
+     * même base : ce cas est ce qui tient le design.
+     */
+    public function compterLitigesExpires(int $avant): int;
+
+    /**
+     * Efface les lignes d'échec antérieures à `$avant` dont l'étiquette commence
+     * par l'un de `$prefixes`. Rend le nombre effacé.
+     *
+     * 🔑 **Chaque préfixe a un propriétaire, et c'est lui qui le purge.**
+     * `login_attempts` est un espace d'étiquettes partagé : cette bibliothèque y
+     * écrit sous les préfixes d'`Etiquette::PREFIXES`, votre page de connexion
+     * y écrit sous les siens. Une purge qui viderait la table effacerait vos
+     * lignes, et une clé étrangère vers les comptes y est **structurellement
+     * impossible** — la colonne ne porte pas un identifiant de compte.
+     * `$prefixes` est donc
+     * toujours `Etiquette::PREFIXES`, et vos propres lignes restent à vous.
+     *
+     * 🔴 **Rien dans cette bibliothèque ne l'appelle** : elle n'a pas d'horloge.
+     * Sans une tâche planifiée — l'outil `bi-self/selfrecover/tools/purger.php`,
+     * l'unité `systemd` de `deploy/bi-self/`, ou votre planificateur — la table
+     * ne fait que croître sous son index `(username, attempted_at)`. Les freins
+     * ne lisent qu'une fenêtre, donc rien ne rougit en attendant.
+     *
+     * ⚠️ Effacer une ligne d'échec **réarme ce qu'elle freinait**. Les freins ne
+     * lisent qu'une fenêtre — un quart d'heure par défaut : une rétention plus
+     * courte rouvrirait la porte que le frein venait de fermer. Gardez-la
+     * largement au-dessus de `fenetreEchecs`.
+     *
+     * 🔑 **Les RÉUSSITES ne se purgent pas**, et ce n'est pas un oubli : la
+     * suspension du niveau 2 se réarme sur `dateDerniereReussite()`, qui n'a
+     * **aucune fenêtre**. Effacer une réussite vieille de six mois rouvrirait
+     * donc une suspension que le titulaire avait levée, sans qu'aucun frein ne
+     * change de comportement entre-temps. Elles sont rares — une par
+     * récupération réussie — et elles portent un fait qu'aucune autre ligne ne
+     * dit. Filtrez sur l'échec, comme le nom de cette méthode le dit.
+     */
+    public function purgerEchecs(int $avant, array $prefixes): int;
+
+    /**
+     * Combien `purgerEchecs($avant, $prefixes)` effacerait. N'efface rien.
+     *
+     * Même exigence que `compterLitigesExpires()` : la clause se PARTAGE avec la
+     * purge. Ici le filtre dépend du nombre de préfixes reçus, donc il se
+     * construit à un seul endroit et les deux méthodes l'emploient.
+     *
+     * ⚠️ Un appel sans préfixe REFUSE, comme la purge : un comptage muet rendrait
+     * zéro, et l'opérateur en conclurait qu'il n'y a rien à effacer.
+     *
+     * @param list<string> $prefixes
+     */
+    public function compterEchecsPurgeables(int $avant, array $prefixes): int;
 
     /**
      * Ce que le serveur sait du compte, sans que personne l'ait déclaré.

@@ -139,9 +139,8 @@ $g = RecoverL3::adminFreeze($pdo, 'cible_refus', 'arbitre_nomme');
     : nok('`adminFreeze()` n\'a pas posé de gel : le gel automatique est retiré et '
         . 'rien ne le remplace, donc l\'arbitre est désarmé — ' . ($g['message'] ?? '?'));
 
-// La trace de qui a fermé la porte : `poserGel()` ne reçoit pas d'auteur, donc
-// c'est le lab qui la range — et sans contrôle elle repartirait au premier
-// remaniement, comme celle de l'abandon avant elle.
+// La trace de qui a fermé la porte : `poserGel()` reçoit son auteur et l'écrit
+// au moment de la pose, le lab n'a rien à ranger après coup.
 $traceGel = $pdo->prepare(
     'SELECT gele_par FROM l3_gel WHERE account_id = (SELECT id FROM accounts WHERE username = ?)'
 );
@@ -181,6 +180,21 @@ for ($i = 1; $i <= $seuil; $i++) {
 gele($pdo, $epargnee)
     ? nok("après $seuil abandons, l'ouverture est GELÉE : l'abandon charge le compteur de refus")
     : ok("après $seuil abandons, aucun gel — le titulaire garde sa voie de secours");
+
+// 🔑 Le gel ne distinguant plus les deux gestes, l'asymétrie se mesure sur la
+// TRACE : un refus posé après trois abandons ne doit compter QUE lui. Sans ce
+// contrôle, un abandon qui chargerait le compteur passerait inaperçu — plus
+// aucun gel ne viendrait le dire.
+$numTrace = ouvrirParUnTiers($pdo, 'cible_abandon', '198.51.100.201');
+if ($numTrace === null) {
+    nok('la trace ne peut pas être mesurée : plus aucun dossier ne s\'ouvre');
+} else {
+    $apresAbandons = RecoverL3::adminDecide($pdo, $numTrace, 'refuse', 'arbitre');
+    $compte = (int) ($apresAbandons['refus_dans_la_fenetre'] ?? -1);
+    $compte === 1
+        ? ok('et AUCUNE trace : le premier refus qui suit compte 1, pas ' . (1 + $seuil))
+        : nok("les abandons ont chargé le compteur : $compte refus au lieu de 1");
+}
 
 // ── 3. Après abandon, le titulaire peut rouvrir tout de suite ───────────────
 echo "\n3. La place est bien libérée\n";

@@ -15,10 +15,12 @@ require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/StockageMemoire.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Tests\StockageMemoire;
+use Pierroons\SelfRecover\Langue;
 
 $passes = 0;
 $echecs = 0;
@@ -50,7 +52,7 @@ function neuf(string $mot, string $phrase, string $sel): array
     $st->comptes['alice']     = ['id' => 1, 'empreinte_mot' => Hashing::hash($mot)];
     $st->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash($phrase)];
 
-    return [$st, new Recovery($st, $sel, $PROFIL, delaiRefusUs: 0)];
+    return [$st, new Recovery($st, $sel, $PROFIL, Langue::FR, delaiRefusUs: 0)];
 }
 
 // ── Niveau 1 ───────────────────────────────────────────────────────────────
@@ -186,6 +188,15 @@ if ($PROFIL === ProfilDeploiement::CLEARWEB) {
     verifier('⭐ douze échecs depuis la même origine ferment, eux', $ro['ok'] === false
         && $ro['message'] === 'Trop de tentatives. Réessaie dans 15 minutes.', $ro['message']);
 
+    // ⭐ Et le compteur ne pèse QUE les portes de cette bibliothèque. Les lignes
+    // d'une page de connexion portent le nom soumis, pas une de nos étiquettes :
+    // les compter fermerait la récupération de qui vient d'oublier son mot de
+    // passe. Sans ce cas, un filtre qui exclurait tout rendrait vert.
+    [$stC, $recC] = neuf($MOT, $PHR, $SEL);
+    for ($i = 0; $i < 12; $i++) { $stC->tracerTentative('alice', false, $IP, $now); }
+    verifier('⭐ douze échecs de CONNEXION, eux, ne la ferment pas',
+        $recC->parPassphrase('alice', $PHR, $IP, $now)['ok'] === true);
+
     // Chaque contre-témoin repart d'un stockage neuf : une récupération réussie
     // remplace la passphrase, donc deux succès ne s'enchaînent pas sur le même
     // compte. Les douze échecs y sont plantés — le cas ci-dessus a déjà montré
@@ -296,16 +307,23 @@ verifier('contre-témoin : hors de la fenêtre, le bon mot passe',
 // raccourcit ne doit pas lire un « 15 minutes » recopié.
 $st10 = new StockageMemoire();
 $st10->comptes['alice'] = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
-$rec10   = new Recovery($st10, $SEL, $PROFIL, fenetreEchecs: 600, delaiRefusUs: 0);
+$rec10   = new Recovery($st10, $SEL, $PROFIL, Langue::FR, fenetreEchecs: 600, delaiRefusUs: 0);
 $codes10 = $rec10->emettreCodes(1, 10, $now);
 for ($i = 0; $i < 5; $i++) { $rec10->parCode($codes10[0], $FAUX, $IP, $now); }
 $r10 = $rec10->parCode($codes10[0], $MOT, $IP, $now);
 verifier('le refus annonce la fenêtre réglée, pas un délai recopié',
     $r10['message'] === 'Trop de tentatives. Réessaie dans 10 minutes.', $r10['message']);
 verifier('une durée se dit comme un message la dit, arrondie au-dessus',
-    Duree::enClair(900) === '15 minutes' && Duree::enClair(3600) === '1 heure'
-    && Duree::enClair(604800) === '7 jours' && Duree::enClair(90) === '2 minutes'
-    && Duree::enClair(1) === '1 minute');
+    Duree::enClair(900, Langue::FR) === '15 minutes' && Duree::enClair(3600, Langue::FR) === '1 heure'
+    && Duree::enClair(604800, Langue::FR) === '7 jours' && Duree::enClair(90, Langue::FR) === '2 minutes');
+// Un RESTE sous la minute s'annonce en secondes. L'arrondi aux minutes disait
+// « 1 minute » pour une seconde : les messages d'attente entre deux dépôts et
+// entre deux messages du fil en passent couramment.
+verifier('sous la minute, les secondes, et jamais zéro',
+    Duree::enClair(1, Langue::FR) === '1 seconde' && Duree::enClair(10, Langue::FR) === '10 secondes'
+    && Duree::enClair(59, Langue::FR) === '59 secondes' && Duree::enClair(0, Langue::FR) === '1 seconde'
+    && Duree::enClair(60, Langue::FR) === '1 minute' && Duree::enClair(61, Langue::FR) === '2 minutes',
+    Duree::enClair(1, Langue::FR) . ' / ' . Duree::enClair(0, Langue::FR) . ' / ' . Duree::enClair(61, Langue::FR));
 
 // 🔑 Le cas qui justifie le HMAC. La table des tentatives est partagée avec la
 // page de connexion, qui y écrit le nom SAISI. Une étiquette devinable serait un
@@ -320,10 +338,50 @@ verifier('🔑 une étiquette imitée ne remplit pas le compteur du compte',
 
 [$st, $rec] = neuf($MOT, $PHR, $SEL);
 $rec->parCode('00000-00000', $MOT, $IP, $now);
-verifier('🔑 un code introuvable ne porte aucune étiquette de compte',
-    count($st->tentatives) === 1 && $st->tentatives[0]['etiquette'] === null);
-verifier('mais il garde son origine, pour le frein par origine',
-    $st->tentatives[0]['ip'] === $IP);
+$rec->parCode('11111-11111', $MOT, $IP, $now);
+verifier('🔑 un code introuvable ne porte aucune étiquette DE COMPTE',
+    count($st->tentatives) === 2
+    && $st->tentatives[0]['etiquette'] === Etiquette::PREFIXE_L2_INCONNU);
+// La même étiquette pour deux codes différents : elle ne dérive de rien de ce
+// qui a été soumis, donc elle ne dit ni le code ni l'existence d'un compte.
+verifier('🔑 et deux codes introuvables portent la MÊME, qui ne dérive de rien',
+    $st->tentatives[0]['etiquette'] === $st->tentatives[1]['etiquette']
+    && !str_contains((string) $st->tentatives[0]['etiquette'], $rec->indexRecherche('alice')),
+    (string) $st->tentatives[0]['etiquette']);
+verifier('elle garde son origine', $st->tentatives[0]['ip'] === $IP);
+
+// ⭐ Une étiquette que le frein ne sait pas compter laisse ce chemin gratuit —
+// et il paie DEUX Argon2id par essai, sans qu'aucun nom de compte soit
+// nécessaire pour l'atteindre.
+// ⚠️ Sous `tor-onion`, aucune adresse n'est exploitable : il n'y a pas de frein
+// par origine à éprouver. Les cas se sautent, et le banc le DIT — sauter en
+// silence ferait lire « la propriété tient sous les deux profils » à un vert.
+if ($PROFIL === ProfilDeploiement::CLEARWEB) {
+    verifier('⭐ le frein par origine COMPTE ces essais — sinon le chemin est gratuit',
+        $st->compterEchecsIp((string) $IP, $now - 900, Etiquette::PREFIXES) === 2,
+        (string) $st->compterEchecsIp((string) $IP, $now - 900, Etiquette::PREFIXES));
+
+    // ⭐ Et il finit par mordre : au plafond livré, un treizième essai est refusé.
+    [$st2, $rec2] = neuf($MOT, $PHR, $SEL);
+    $freines = 0;
+    for ($i = 0; $i < 16; $i++) {
+        $r = $rec2->parCode(sprintf('%05x-%05x', $i + 1, $i + 1), $MOT, $IP, $now + $i);
+        if (str_contains((string) ($r['message'] ?? ''), Duree::enClair(900, Langue::FR))) {
+            $freines++;
+        }
+    }
+    verifier('⭐ seize essais sur codes introuvables : le frein par origine en refuse quatre',
+        $freines === 4, "freinés : $freines sur 16 (plafond 12)");
+
+    // Contre-témoin : ces lignes sont purgeables, puisqu'elles portent un préfixe.
+    // ⚠️ Mesuré une seule fois : `purgerEchecs()` efface, donc un second appel dans
+    // le message de diagnostic rendrait zéro et ferait mentir le détail.
+    $purgees = $st2->purgerEchecs($now + 100, Etiquette::PREFIXES);
+    verifier('⭐ contre-témoin : et `purgerEchecs` les efface — elles ne s\'accumulent pas sans fin',
+        $purgees === 12, "purgées : $purgees");
+} else {
+    echo "  ↷ frein par origine : sans objet sous tor-onion, aucune adresse n'y est exploitable\n";
+}
 
 echo "\n→ La suspension du niveau 2, et son réarmement\n";
 [$st, $rec] = neuf($MOT, $PHR, $SEL);
@@ -381,7 +439,7 @@ final class StockageSansDates extends StockageMemoire
 $stD = new StockageSansDates();
 $stD->comptes['alice']     = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
 $stD->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash($PHR)];
-$recD  = new Recovery($stD, $SEL, $PROFIL, delaiRefusUs: 0);
+$recD  = new Recovery($stD, $SEL, $PROFIL, Langue::FR, delaiRefusUs: 0);
 $codesD = $recD->emettreCodes(1, 10, $now);
 for ($i = 0; $i < 25; $i++) { $recD->parCode($codesD[0], $FAUX, $IP, $now + $i * 1000); }
 $rD = $recD->parCode($codesD[0], $MOT, $IP, $now + 25 * 1000 + 901);
@@ -405,8 +463,8 @@ echo "\n→ Le profil de déploiement, et ce qu'il refuse\n";
 // tourne, en construisant le profil contraire — sinon ils ne s'éprouveraient
 // qu'une fois sur deux.
 [$stP, $_] = neuf($MOT, $PHR, $SEL);
-$recOnion = new Recovery($stP, $SEL, ProfilDeploiement::TOR_ONION, delaiRefusUs: 0);
-$recClair = new Recovery($stP, $SEL, ProfilDeploiement::CLEARWEB, delaiRefusUs: 0);
+$recOnion = new Recovery($stP, $SEL, ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0);
+$recClair = new Recovery($stP, $SEL, ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0);
 
 $leve = static function (callable $appel): bool {
     try {
@@ -462,7 +520,7 @@ final class StockagePerdLaCourse extends StockageMemoire
 $stC = new StockageQuiCasse();
 $stC->comptes['alice']     = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
 $stC->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash($PHR)];
-$recC  = new Recovery($stC, $SEL, $PROFIL, delaiRefusUs: 0);
+$recC  = new Recovery($stC, $SEL, $PROFIL, Langue::FR, delaiRefusUs: 0);
 $codesC = $recC->emettreCodes(1, 3, $now);
 
 $leve = false;
@@ -506,18 +564,38 @@ verifier('🔑 et un numéro inconnu lève aussi, comme les adaptateurs SQL', $i
 $stR = new StockagePerdLaCourse();
 $stR->comptes['alice']     = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
 $stR->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash($PHR)];
-$recR   = new Recovery($stR, $SEL, $PROFIL, delaiRefusUs: 0);
+$recR   = new Recovery($stR, $SEL, $PROFIL, Langue::FR, delaiRefusUs: 0);
 $codesR = $recR->emettreCodes(1, 3, $now);
 $rCourse = $recR->parCode($codesR[0], $MOT, $IP, $now);
 verifier('🔑 une course sur la consommation devient un refus ordinaire',
     $rCourse['ok'] === false && $rCourse['message'] === 'Code ou mot mémorisé incorrect.',
     $rCourse['message']);
 
+// ── La rétention, côté adaptateur mémoire ───────────────────────────────────
+//
+// 🔑 Les deux adaptateurs disent la même règle dans deux langages — SQL d'un
+// côté, un filtre PHP de l'autre. Le banc PDO éprouve le premier ; sans ces
+// cas, le second pourrait diverger sans qu'on le sache, et c'est lui que tous
+// les autres bancs emploient.
+$stRet = new StockageMemoire();
+$VIEUX = $now - 60 * 86400;
+$stRet->tracerTentative(Etiquette::PREFIXE_L1 . str_repeat('a', 64), false, '192.0.2.1', $VIEUX);
+$stRet->tracerTentative(Etiquette::PREFIXE_L1 . str_repeat('b', 64), true, '192.0.2.1', $VIEUX);
+$stRet->tracerTentative('alice', false, '192.0.2.1', $VIEUX);
+$stRet->tracerTentative(Etiquette::PREFIXE_L2 . str_repeat('c', 64), false, '192.0.2.1', $now);
+
+verifier('⭐ la rétention en mémoire efface le seul échec ancien qui est à nous',
+    $stRet->purgerEchecs($now - 30 * 86400, Etiquette::PREFIXES) === 1);
+verifier('⭐ et elle épargne la réussite, la ligne de connexion et l\'échec récent',
+    count($stRet->tentatives) === 3
+    && count(array_filter($stRet->tentatives, static fn (array $t): bool => $t['succes'])) === 1
+    && count(array_filter($stRet->tentatives, static fn (array $t): bool => $t['etiquette'] === 'alice')) === 1);
+
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Récupération SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 // Le compte est écrit ici et repris en intégration continue : un `N passés` dit
 // que les cas joués ont réussi, jamais qu'aucun n'a disparu.
-printf("OK — %d/%d\n", $passes, $passes + $echecs);
+printf("%s — %d/%d\n", $echecs === 0 ? 'OK' : 'ÉCHEC', $passes, $passes + $echecs);
 echo str_repeat('=', 63) . "\n\n";
 
 exit($echecs === 0 ? 0 : 1);

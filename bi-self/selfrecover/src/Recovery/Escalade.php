@@ -7,6 +7,9 @@ namespace Pierroons\SelfRecover\Recovery;
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device;
 use Pierroons\SelfRecover\Duree;
+use Pierroons\SelfRecover\Etiquette;
+use Pierroons\SelfRecover\Messages;
+use Pierroons\SelfRecover\Langue;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -23,9 +26,15 @@ use Pierroons\SelfRecover\Storage\StorageInterface;
  * voler un compte pourrait le faire effacer en accumulant des refus — l'échec
  * deviendrait une arme.
  *
- * Ce qui se durcit est la PROCÉDURE : à `$gelSeuil` refus dans la
- * fenêtre glissante, l'ouverture de nouveaux dossiers gèle. Le compte reste
- * entier, connectable, non banni. Un arbitre dégèle.
+ * Ce qui peut se durcir est la PROCÉDURE, et c'est un arbitre qui le décide :
+ * `geler()` ferme l'ouverture de nouveaux dossiers, `degeler()` la rouvre. Le
+ * compte reste entier, connectable, non banni.
+ *
+ * ⚠️ **« Le compte n'est pas touché » ne veut pas dire « le titulaire ne perd
+ * rien ».** La phrase est vraie : les secrets sont intacts, la connexion
+ * ordinaire fonctionne. Mais qui arrive ici n'a plus ni mot de passe, ni
+ * passphrase, ni feuille de codes — fermer sa procédure, c'est fermer sa
+ * dernière porte.
  *
  * 🔑 **Rien ici ne rend un secret.** Accepter ouvre la porte ; c'est le
  * titulaire qui repose ses secrets par `reEnroler()`. Câbler une
@@ -84,36 +93,40 @@ final class Escalade
          * service caché, où l'appelant passe `null` faute d'information à
          * compter. Il est grossier par nature : il ralentit tout le monde
          * ensemble, et c'est le prix d'un frein qui tienne sans adresses.
+         *
+         * ⚠️ **Il n'est lu que là où ce prix achète quelque chose**, c'est-à-dire
+         * quand `ProfilDeploiement::adresseDiscriminante()` rend `false`. Sous
+         * `clearweb`, où le profil EXIGE une adresse, le frein par adresse mord
+         * toujours : ce plafond n'ajoutait aucune protection, seulement un
+         * interrupteur général que des requêtes anonymes suffisaient à tirer pour
+         * tous les comptes à la fois.
          */
         private readonly int $maxOuverturesService = 20,
+        /**
+         * Messages qu'un dossier accepte **du demandeur**. L'arbitre n'est pas
+         * borné : son canal est ce dont il a besoin quand le fil se remplit.
+         *
+         * 🔑 La clé est le DOSSIER, jamais le nom du compte. Un plafond par
+         * compte serait une porte qu'un tiers ferme en ouvrant un dossier chez
+         * autrui ; un plafond par dossier ne coûte qu'à qui détient le sésame de
+         * ce dossier-là.
+         */
+        private readonly int $maxMessagesLitige = 100,
+        /** Attente imposée entre deux messages d'un même dossier. */
+        private readonly int $attenteMessage = 10,
     ) {
     }
 
     /**
-     * Étiquette du compteur de service.
+     * La langue de ce déploiement, celle de la `Recovery` composée.
      *
-     * 🔑 Les compteurs d'ouverture vivent sous des étiquettes à eux, et leurs
-     * lignes ne portent AUCUNE adresse. `compterEchecsIp` compte les échecs
-     * d'une adresse sans regarder d'où ils viennent : une ligne d'ouverture qui
-     * porterait l'adresse consommerait le quota de la connexion ordinaire, du
-     * niveau 1, du niveau 2 et de l'enrôlement d'appareil — ouvrir des dossiers
-     * chez autrui lui fermerait toutes ses portes, et l'échec redeviendrait
-     * l'arme que cette classe existe pour désamorcer.
-     *
-     * Aucun nom de compte n'entre dans ces étiquettes non plus : l'ouverture est
-     * comptée, pas attribuée. Le dépôt, lui, est nominatif — c'est un fait, pas
-     * une sonde.
+     * 🔑 Même raison que le profil, lu au même endroit : deux copies du même
+     * choix n'ont aucune raison de rester d'accord.
      */
-    private const PREFIXE = 'l3:ouvrir:';
-
-    /**
-     * Préfixe du dépôt d'un faisceau — nominatif, donc sous HMAC comme le reste.
-     *
-     * Distinct de celui des compteurs d'ouverture : ceux-là comptent sans
-     * attribuer, celui-ci attribue sans compter. Les mêler sous un seul préfixe
-     * rendrait indistinguables une sonde et un fait.
-     */
-    private const PREFIXE_DEPOT = 'l3:depot:';
+    private function langue(): Langue
+    {
+        return $this->recovery->langue();
+    }
 
     /**
      * L'étiquette sous laquelle le dépôt d'un faisceau est journalisé.
@@ -125,7 +138,7 @@ final class Escalade
      */
     public function etiquetteDepot(string $nomCompte): string
     {
-        return self::PREFIXE_DEPOT . $this->recovery->indexRecherche($nomCompte);
+        return Etiquette::PREFIXE_L3_DEPOT . $this->recovery->indexRecherche($nomCompte);
     }
 
     /**
@@ -151,10 +164,19 @@ final class Escalade
      *
      * 🔑 Même raisonnement que `Recovery::indexRecherche()`, et même primitive :
      * retrouver une ligne sans que la connaître permette de la fabriquer.
+     *
+     * 🔑 **Et ces lignes ne portent AUCUNE adresse.** `compterEchecsIp()` pèse
+     * ensemble toutes les portes de cette bibliothèque : une ligne d'ouverture
+     * qui portait l'adresse consommerait le quota du niveau 1, du niveau 2 et de
+     * l'enrôlement d'appareil — ouvrir des dossiers chez autrui lui fermerait
+     * ses propres portes, et l'échec redeviendrait l'arme que cette classe
+     * existe pour désamorcer. Aucun nom de compte n'y entre non plus :
+     * l'ouverture est comptée, pas attribuée. Le dépôt, lui, est nominatif —
+     * c'est un fait, pas une sonde.
      */
     private function etiquette(string $quoi): string
     {
-        return self::PREFIXE . $this->recovery->indexRecherche($quoi);
+        return Etiquette::PREFIXE_L3_OUVRIR . $this->recovery->indexRecherche($quoi);
     }
 
     /**
@@ -177,6 +199,21 @@ final class Escalade
 
     /** Longueur maximale d'un message du fil d'un litige, en caractères. */
     public const MESSAGE_MAXIMUM = 2000;
+
+    /**
+     * Longueur maximale d'une réponse au questionnaire, en caractères.
+     *
+     * ⚠️ Les trois réponses sont **rangées en base** dans le faisceau, sous
+     * `declaratif.*.declare`, et montrées telles quelles à un arbitre. Sans
+     * borne, le fil avait la sienne (`MESSAGE_MAXIMUM`) et le questionnaire
+     * aucune : trois champs suffisaient à ranger plusieurs mégaoctets par
+     * dossier, et à rendre la console illisible.
+     *
+     * La valeur est large exprès — une année, un mois et un mot tiennent en
+     * quelques caractères, et la marge laisse un intégrateur poser ses propres
+     * libellés sans buter dessus.
+     */
+    public const REPONSE_MAXIMUM = 500;
 
     /** Au-delà, on refuse : un Argon2id sur une entrée démesurée se paie en mémoire. */
     public const MOT_DE_PASSE_MAXIMUM = 4096;
@@ -210,6 +247,22 @@ final class Escalade
     public static function engendrerNumero(): string
     {
         return 'LIT-' . strtoupper(bin2hex(random_bytes(8)));
+    }
+
+    /**
+     * Un sésame de dossier — 256 bits d'aléa, rendu une seule fois au demandeur.
+     *
+     * 🔑 **Tire-le ici, ne l'invente pas.** `ouvrir()` ne reçoit que l'empreinte
+     * du sésame : elle contrôle sa FORME, et aucune forme ne distingue un tirage
+     * de 256 bits d'un compteur haché. Un sésame devinable rend le dossier
+     * d'autrui reprenable — déposer son faisceau, écrire à l'arbitre, et, si
+     * l'arbitre accorde, reposer les secrets du compte. C'est la seule pièce du
+     * niveau 3 dont la bibliothèque ne peut pas vérifier la qualité, parce
+     * qu'elle n'en voit jamais le préimage.
+     */
+    public static function engendrerSesame(): string
+    {
+        return bin2hex(random_bytes(32));
     }
 
     /** L'empreinte que le serveur range, à partir du sésame que le client garde. */
@@ -264,9 +317,12 @@ final class Escalade
         // global plus bas que celui du service, qui le masquerait.
         $ip = ($ip === null || trim($ip) === '') ? null : trim($ip);
 
+        // ⚠️ La FORME seule. Elle ne dit rien de l'entropie du préimage, que la
+        // bibliothèque ne voit jamais : `engendrerSesame()` dit pourquoi le
+        // sésame se tire là et ne s'invente pas.
         if (!preg_match('/^[a-f0-9]{64}$/', $empreinteSesame)) {
             return ['ok' => false, 'error' => 'empreinte_invalide',
-                    'message' => 'L\'empreinte du sésame est absente ou malformée.'];
+                    'message' => Messages::dire($this->langue(), 'l3.empreinte_invalide')];
         }
 
         // 🔑 Freiner AVANT de chercher le compte. Après, le frein ne mordrait
@@ -285,9 +341,7 @@ final class Escalade
         }
 
         $refus = ['ok' => false, 'error' => 'ouverture_refusee',
-                  'message' => 'Aucune procédure n\'a pu être ouverte pour ce nom. Si c\'est ton compte et '
-                             . 'qu\'une procédure y est déjà en cours ou suspendue, un administrateur peut la '
-                             . 'clore ou lever la suspension.'];
+                  'message' => Messages::dire($this->langue(), 'l3.ouverture_refusee')];
 
         // 🔑 Les trois refus ne font pas le même travail — un dossier déjà ouvert
         // compte le demandeur, donc écrit. Un délai ajouté après ce travail en
@@ -330,12 +384,25 @@ final class Escalade
 
         $numero   = self::engendrerNumero();
         $expireLe = $maintenant + $this->ttl;
-        $this->stockage->ouvrirLitige($compteId, $numero, $empreinteSesame, $maintenant, $expireLe);
+
+        // 🔑 Le refus d'insérer est le MÊME fait que le dossier lu plus haut, vu
+        // un instant plus tard : une autre demande a pris la place entre les deux.
+        // Sans ce chemin, les deux ouvertures aboutissaient, la lecture suivante
+        // ne gardait que la dernière, et le compteur de demandeurs concurrents —
+        // ce que l'arbitre a de plus utile — restait à zéro.
+        if (!$this->stockage->ouvrirLitige($compteId, $numero, $empreinteSesame, $maintenant, $expireLe)) {
+            $concurrent = $this->stockage->litigeActifDuCompte($compteId, $maintenant);
+            if ($concurrent !== null) {
+                $this->stockage->compterDemandeurConcurrent($concurrent->id);
+            }
+            $this->attendreEcheance($debut);
+
+            return $refus;
+        }
 
         return ['ok' => true, 'numero' => $numero, 'questions' => self::questions(),
                 'expire_le' => $expireLe,
-                'message' => 'Garde ton sésame : sans lui, personne ne peut reprendre ce litige, '
-                           . 'toi compris — et il faudra en ouvrir un nouveau.'];
+                'message' => Messages::dire($this->langue(), 'l3.sesame_garde')];
     }
 
     /**
@@ -357,16 +424,17 @@ final class Escalade
             return $litige;
         }
         if (!$litige->enCours()) {
-            return ['ok' => false, 'error' => 'deja_tranche', 'message' => 'Ce dossier a déjà été tranché.'];
+            return ['ok' => false, 'error' => 'deja_tranche',
+                    'message' => Messages::dire($this->langue(), 'l3.deja_tranche_reponses')];
         }
         if ($litige->deposeLe > 0 && $maintenant - $litige->deposeLe < $this->attenteDepot) {
-            return ['ok' => false, 'error' => 'trop_tot', 'message' => 'Dépôt trop rapproché du précédent. Réessaie dans '
-                    . Duree::enClair($this->attenteDepot - ($maintenant - $litige->deposeLe)) . '.'];
+            return ['ok' => false, 'error' => 'trop_tot', 'message' => Messages::dire($this->langue(), 'l3.depot_trop_tot',
+                        [Duree::enClair($this->attenteDepot - ($maintenant - $litige->deposeLe), $this->langue())])];
         }
 
         $faits = $this->stockage->faitsDuCompte($litige->compteId);
         if ($faits === null) {
-            return ['ok' => false, 'error' => 'compte_inconnu', 'message' => 'Aucun compte à ce nom.'];
+            return ['ok' => false, 'error' => 'compte_inconnu', 'message' => Messages::dire($this->langue(), 'compte.inconnu')];
         }
 
         // ⚠️ Une réponse en UTF-8 invalide fait rendre `false` à `json_encode`,
@@ -378,11 +446,26 @@ final class Escalade
         // On refuse plutôt que de substituer les octets fautifs : ces réponses
         // sont montrées telles quelles à un humain qui décide, et les corriger
         // en silence lui ferait lire autre chose que ce qui a été soumis.
+        //
+        // 🔑 Réduit d'abord aux clés que `questions()` pose. `faisceau()` n'en
+        // lit que trois de toute façon : une clé de plus n'était pas rangée,
+        // mais elle était validée, et la boucle devenait donc un levier de
+        // calcul qu'une requête remplit à volonté. Ce qui est écarté ici
+        // n'aurait rien changé au dossier de l'arbitre.
+        $attendues = array_column(self::questions(), 'cle');
+        $reponses  = array_intersect_key($reponses, array_flip($attendues));
+
         foreach ($reponses as $cle => $valeur) {
             if (!is_string($valeur) || !mb_check_encoding($valeur, 'UTF-8')
                 || !is_string($cle) || !mb_check_encoding($cle, 'UTF-8')) {
                 return ['ok' => false, 'error' => 'reponses_invalides',
-                        'message' => 'Une réponse n\'est pas du texte valide. Réessaie sans caractère exotique.'];
+                        'message' => Messages::dire($this->langue(), 'l3.reponse_invalide')];
+            }
+            // ⚠️ Avant l'assemblage, pas après : le faisceau RANGE ces valeurs
+            // sous `declaratif.*.declare`, et c'est un arbitre qui les lit.
+            if (mb_strlen($valeur) > self::REPONSE_MAXIMUM) {
+                return ['ok' => false, 'error' => 'reponse_trop_longue',
+                        'message' => Messages::dire($this->langue(), 'l3.reponse_trop_longue', [self::REPONSE_MAXIMUM])];
             }
         }
 
@@ -392,7 +475,7 @@ final class Escalade
             // Le garde-fou du garde-fou : si le contrôle ci-dessus laisse passer
             // quelque chose un jour, on refuse encore plutôt que de ranger du vide.
             return ['ok' => false, 'error' => 'faisceau_illisible',
-                    'message' => 'Le dossier n\'a pas pu être assemblé. Réessaie.'];
+                    'message' => Messages::dire($this->langue(), 'l3.faisceau_echec')];
         }
 
         $this->stockage->enregistrerFaisceau($litige->id, $encode, $maintenant);
@@ -401,18 +484,18 @@ final class Escalade
         // s'il comptait comme une réussite, il effacerait l'ardoise des
         // tentatives et deviendrait la voie la moins surveillée du service.
         //
-        // ⚠️ Sous étiquette, comme tout ce qui entre dans cette table : aucune
-        // purge ne la vide, donc un nom de compte en clair y attend
-        // indéfiniment. Et une console qui n'écarte que le préfixe d'ouverture
-        // ne voit pas ces lignes : chaque dossier légitime se compterait parmi
-        // ses échecs de connexion.
+        // ⚠️ Sous étiquette, comme tout ce qui entre dans cette table :
+        // `purgerEchecs()` l'efface sous ce préfixe, à la rétention que le
+        // déploiement règle. Le nom, lui, n'y est pas en clair — c'est ce que
+        // `etiquetteDepot()` tient. Une console qui n'écarte que le préfixe
+        // d'ouverture ne voit pas ces lignes : chaque dossier légitime se
+        // compterait parmi ses échecs de connexion.
         $this->stockage->tracerTentative(
             $this->etiquetteDepot((string) $faits['nom_compte']), false, null, $maintenant,
         );
 
         return ['ok' => true, 'statut' => Litige::A_LIRE,
-                'message' => 'Dossier transmis. Un arbitre va le lire et te répondre dans le fil de ce dossier. '
-                           . 'Reviens avec ton numéro et ton sésame.'];
+                'message' => Messages::dire($this->langue(), 'l3.transmis')];
     }
 
     /**
@@ -476,11 +559,11 @@ final class Escalade
 
         $litige = $this->stockage->trouverLitigeParNumero($numero);
         if ($litige === null) {
-            return ['ok' => false, 'error' => 'introuvable', 'message' => 'Dossier introuvable.'];
+            return ['ok' => false, 'error' => 'introuvable', 'message' => Messages::dire($this->langue(), 'l3.introuvable')];
         }
         $refus = $this->ecrire($litige, 'admin', $message, $maintenant);
 
-        return $refus ?? ['ok' => true, 'message' => 'Message ajouté au fil.'];
+        return $refus ?? ['ok' => true, 'message' => Messages::dire($this->langue(), 'l3.message_ajoute')];
     }
 
     /** Les dossiers pour la console d'arbitrage. */
@@ -493,10 +576,17 @@ final class Escalade
      * La décision humaine. `accepte` ou `refuse`, rien d'autre.
      *
      * 🔑 Aucune des deux branches ne touche au compte. `accepte` ouvre la porte
-     * sans fabriquer de secret ; `refuse` clôt le dossier, compte les refus
-     * récents, et gèle la PROCÉDURE au seuil — jamais le compte.
+     * sans fabriquer de secret ; `refuse` enregistre la décision et compte les
+     * refus récents.
      *
-     * @return array{ok: bool, message: string, statut?: string, refus_dans_la_fenetre?: int, gele?: bool, error?: string}
+     * 🔑 **Un refus ne gèle rien de lui-même.** Le compteur rend un
+     * `gel_suggere` que l'arbitre lit, et c'est `geler()` qui pose le gel.
+     * ⚠️ Le recâbler sur ce compteur rouvrirait la porte qu'il ferme : les refus
+     * se comptent **sous le compte visé**, pas sous le demandeur, et l'empreinte
+     * du sésame est choisie par l'appelant — un tiers qui connaît un nom affiché
+     * le remplit donc à volonté.
+     *
+     * @return array{ok: bool, message: string, statut?: string, refus_dans_la_fenetre?: int, gele?: bool, gel_suggere?: bool, error?: string}
      */
     public function trancher(
         string $numero,
@@ -508,42 +598,37 @@ final class Escalade
 
         if ($decision !== 'accepte' && $decision !== 'refuse') {
             return ['ok' => false, 'error' => 'decision_inconnue',
-                    'message' => 'La décision vaut « accepte » ou « refuse ».'];
+                    'message' => Messages::dire($this->langue(), 'l3.decision_invalide')];
         }
         $litige = $this->stockage->trouverLitigeParNumero($numero);
         if ($litige === null) {
-            return ['ok' => false, 'error' => 'introuvable', 'message' => 'Dossier introuvable.'];
+            return ['ok' => false, 'error' => 'introuvable', 'message' => Messages::dire($this->langue(), 'l3.introuvable')];
         }
         if (!$litige->enCours()) {
-            return ['ok' => false, 'error' => 'deja_tranche', 'message' => 'Ce dossier a déjà été tranché.'];
+            return ['ok' => false, 'error' => 'deja_tranche', 'message' => Messages::dire($this->langue(), 'l3.deja_tranche')];
         }
 
         if ($decision === 'accepte') {
             $this->stockage->trancherLitige($litige->id, Litige::ACCEPTE, $par, $maintenant);
 
             return ['ok' => true, 'statut' => Litige::ACCEPTE,
-                    'message' => sprintf(
-                        'Litige accepté. Le titulaire repose lui-même ses secrets ; aucun secret '
-                        . 'n\'a été fabriqué ici. Il a %s pour revenir avec son sésame ; '
-                        . 'passé ce délai, l\'accord tombe et la procédure est à refaire.',
-                        Duree::enClair($this->ttlAccepte)
-                    )];
+                    'message' => Messages::dire($this->langue(), 'l3.accepte',
+                        [Duree::enClair($this->ttlAccepte, $this->langue())])];
         }
 
         $this->stockage->trancherLitige($litige->id, Litige::REFUSE, $par, $maintenant);
 
         $refus = $this->stockage->compterRefusRecents($litige->compteId, $maintenant - $this->gelFenetre);
-        $gele  = false;
-        if ($refus >= $this->gelSeuil) {
-            $this->stockage->poserGel($litige->compteId, $maintenant + $this->gelDuree, $maintenant);
-            $gele = true;
-        }
 
-        return ['ok' => true, 'statut' => Litige::REFUSE, 'refus_dans_la_fenetre' => $refus, 'gele' => $gele,
-                'message' => $gele
-                    ? 'Dossier refusé. L\'ouverture de nouveaux dossiers est gelée ' . Duree::enClair($this->gelDuree)
-                        . ' sur ce compte. Le compte n\'est pas touché.'
-                    : 'Dossier refusé. Le compte n\'est pas touché.'];
+        // `gele` reste à `false` plutôt que de disparaître : un intégrateur qui
+        // la lit garde une clé qui dit vrai, et le contrat ne casse pas sur un
+        // correctif. Ce qui informe désormais est `gel_suggere`.
+        return ['ok' => true, 'statut' => Litige::REFUSE, 'refus_dans_la_fenetre' => $refus,
+                'gele' => false, 'gel_suggere' => $refus >= $this->gelSeuil,
+                'message' => $refus >= $this->gelSeuil
+                    ? Messages::dire($this->langue(), 'l3.refuse_acharnement',
+                        [$refus, Duree::enClair($this->gelFenetre, $this->langue())])
+                    : Messages::dire($this->langue(), 'l3.refuse')];
     }
 
     /**
@@ -556,7 +641,51 @@ final class Escalade
         return ['seuil' => $this->gelSeuil, 'fenetre' => $this->gelFenetre, 'duree' => $this->gelDuree];
     }
 
-    /** Lève un gel de procédure. La trace du dégel est conservée. */
+    /**
+     * Gèle l'ouverture de nouveaux dossiers, sur décision d'un arbitre.
+     *
+     * 🔑 **Le seul chemin qui pose un gel.** Le contrat de
+     * `StorageInterface::poserGel()` dit pourquoi aucun compteur ne le
+     * déclenche à sa place. Un arbitre se trompe aussi, mais il se trompe en
+     * sachant qu'il décide, et `degeler()` le lève.
+     *
+     * ⚠️ Il ferme la PROCÉDURE, jamais le compte : les secrets ne sont pas
+     * touchés et la connexion ordinaire continue. Ce que ça coûte à un titulaire
+     * authentique mal jugé est réel — il n'a plus de dernier recours pendant
+     * `$gelDuree` —, et c'est pourquoi la durée est bornée et la levée immédiate.
+     *
+     * Comme `degeler()`, ce chemin est réservé à un arbitre et la qualité
+     * d'arbitre se vérifie à l'endpoint : la bibliothèque ne connaît pas les
+     * rôles. Il distingue donc « inconnu » de « gelé » sans frein ni délai.
+     *
+     * @return array{ok: bool, message: string, jusqua?: int, gele_par?: string, error?: string}
+     */
+    public function geler(string $nomCompte, string $par, ?int $maintenant = null): array
+    {
+        $maintenant = $maintenant ?? time();
+        $nomCompte  = strtolower(trim($nomCompte));
+
+        $compte = $this->stockage->trouverCompte($nomCompte);
+        if ($compte === null) {
+            return ['ok' => false, 'error' => 'compte_inconnu', 'message' => Messages::dire($this->langue(), 'compte.inconnu')];
+        }
+
+        $jusqua = $maintenant + $this->gelDuree;
+        $this->stockage->poserGel((int) $compte['id'], $jusqua, $maintenant, $par);
+
+        return ['ok' => true, 'jusqua' => $jusqua, 'gele_par' => $par,
+                'message' => Messages::dire($this->langue(), 'l3.gele',
+                                            [Duree::enClair($this->gelDuree, $this->langue())])];
+    }
+
+    /**
+     * Lève un gel de procédure. La trace du dégel est conservée.
+     *
+     * ⚠️ **L'historique des refus n'est pas remis à zéro, et c'est voulu.** Ce
+     * n'est pas un verrou : c'est un fait que l'arbitre lit dans le faisceau
+     * (`contexte.refus_precedents`) et dans `gel_suggere`. Rien ne repose un gel
+     * sans qu'un humain le demande, donc une levée tient.
+     */
     public function degeler(string $nomCompte, string $par, ?int $maintenant = null): array
     {
         $maintenant = $maintenant ?? time();
@@ -567,11 +696,11 @@ final class Escalade
         // vérifie à l'endpoint — la bibliothèque ne connaît pas les rôles.
         $compte = $this->stockage->trouverCompte($nomCompte);
         if ($compte === null) {
-            return ['ok' => false, 'error' => 'compte_inconnu', 'message' => 'Aucun compte à ce nom.'];
+            return ['ok' => false, 'error' => 'compte_inconnu', 'message' => Messages::dire($this->langue(), 'compte.inconnu')];
         }
         $this->stockage->leverGel((int) $compte['id'], $par, $maintenant);
 
-        return ['ok' => true, 'message' => 'Gel levé. L\'ouverture d\'un dossier est de nouveau possible.'];
+        return ['ok' => true, 'message' => Messages::dire($this->langue(), 'l3.degele')];
     }
 
     /**
@@ -597,21 +726,20 @@ final class Escalade
 
         $compte = $this->stockage->trouverCompte($nomCompte);
         if ($compte === null) {
-            return ['ok' => false, 'error' => 'compte_inconnu', 'message' => 'Aucun compte à ce nom.'];
+            return ['ok' => false, 'error' => 'compte_inconnu', 'message' => Messages::dire($this->langue(), 'compte.inconnu')];
         }
 
         $litige = $this->stockage->litigeActifDuCompte((int) $compte['id'], $maintenant);
         if ($litige === null) {
             return ['ok' => false, 'error' => 'aucun_litige',
-                    'message' => 'Aucune procédure en cours sur ce compte.'];
+                    'message' => Messages::dire($this->langue(), 'l3.aucune_procedure')];
         }
 
         $this->stockage->cloreLitige($litige->id, $maintenant);
 
         return ['ok' => true, 'numero' => $litige->numero, 'statut_precedent' => $litige->statut,
                 'abandonne_par' => $par,
-                'message' => 'Procédure close. Le titulaire peut en ouvrir une nouvelle ; '
-                           . 'l\'arbitrage sera à refaire.'];
+                'message' => Messages::dire($this->langue(), 'l3.close')];
     }
 
     /**
@@ -643,38 +771,38 @@ final class Escalade
             return $litige;
         }
         if ($litige->statut !== Litige::ACCEPTE) {
-            return ['ok' => false, 'error' => 'non_accepte', 'message' => 'Ce dossier n\'a pas été accepté.'];
+            return ['ok' => false, 'error' => 'non_accepte', 'message' => Messages::dire($this->langue(), 'l3.non_accepte')];
         }
         $long = mb_strlen($motDePasse);
         if ($long < self::MOT_DE_PASSE_MINIMUM || $long > self::MOT_DE_PASSE_MAXIMUM) {
             return ['ok' => false, 'error' => 'mot_de_passe_invalide',
-                    'message' => 'Le mot de passe doit faire entre ' . self::MOT_DE_PASSE_MINIMUM
-                               . ' et ' . self::MOT_DE_PASSE_MAXIMUM . ' caractères.'];
+                    'message' => Messages::dire($this->langue(), 'l3.mot_de_passe_taille',
+                                                [self::MOT_DE_PASSE_MINIMUM, self::MOT_DE_PASSE_MAXIMUM])];
         }
         if (!Device::estCleDerivee($motDerive)) {
             return ['ok' => false, 'error' => 'invalid_derived_key',
-                    'message' => 'Mot mémorisé invalide : la dérivation doit se faire dans le navigateur.'];
+                    'message' => Messages::dire($this->langue(), 'mot.non_derive')];
         }
         if (!Recovery::estSelCompte($sel)) {
             return ['ok' => false, 'error' => 'sel_invalide',
-                    'message' => 'Le sel du compte est absent ou malformé.'];
+                    'message' => Messages::dire($this->langue(), 'l3.sel_invalide')];
         }
         $apport = null;
         if ($nouvellePassphrase !== null) {
             $jugee = Recovery::validerPassphraseApportee($nouvellePassphrase);
             if (!$jugee['ok']) {
-                return $jugee;
+                return $this->recovery->direRefusPassphrase($jugee);
             }
             // Deux serrures identiques n'en font qu'une, pour SelfDataGuard comme
             // pour qui les trouverait écrites ensemble.
             if ($jugee['canonique'] === strtolower(Recovery::normaliserPassphrase($motDePasse))) {
                 return ['ok' => false, 'error' => 'passphrase_egale_mot_de_passe',
-                        'message' => 'La passphrase doit différer du mot de passe.'];
+                        'message' => Messages::dire($this->langue(), 'l3.passphrase_egale_mdp')];
             }
             $ancienne = $this->stockage->trouverComptePourPassphrase($litige->nomCompte);
             if ($ancienne !== null && Hashing::verify($jugee['canonique'], (string) $ancienne['empreinte_passphrase'])) {
                 return ['ok' => false, 'error' => 'passphrase_deja_servie',
-                        'message' => 'La nouvelle passphrase doit différer de celle qu\'elle remplace.'];
+                        'message' => Messages::dire($this->langue(), 'passphrase.identique')];
             }
             $apport = $jugee['canonique'];
         }
@@ -712,16 +840,12 @@ final class Escalade
         }
 
         $avis = $appareilsRetires > 0
-            ? sprintf(
-                ' %d appareil(s) enrôlé(s) ont été retirés : réenrôle celui que tu utilises.',
-                $appareilsRetires
-            )
+            ? Messages::dire($this->langue(), 'l3.avis_appareils', [$appareilsRetires])
             : '';
 
         return ['ok' => true, 'passphrase' => $passphrase, 'codes' => $codes,
                 'appareils_retires' => $appareilsRetires,
-                'message' => 'Compte repris. Note ces codes et cette passphrase : ils ne seront pas '
-                           . 'réaffichés.' . $avis];
+                'message' => Messages::dire($this->langue(), 'l3.compte_repris', [$avis])];
     }
 
     /**
@@ -737,7 +861,27 @@ final class Escalade
             && $litige->trancheLe + $this->ttlAccepte <= $maintenant;
     }
 
-    /** Efface les litiges périmés. Rend le nombre effacé. */
+    /**
+     * Efface les litiges périmés. Rend le nombre effacé.
+     *
+     * 🔴 **PERSONNE NE L'APPELLE À TA PLACE. C'est au déploiement de le faire,
+     * périodiquement.** La bibliothèque n'a ni horloge ni planificateur : rien
+     * dans `src/` n'appelle cette méthode. Sans appel périodique, les dossiers
+     * périmés s'empilent avec leur empreinte de sésame — `expires_at` les rend
+     * inactifs, il n'efface rien.
+     *
+     * Une unité `systemd` prête à poser vit dans `deploy/bi-self/`
+     * (`selfrecover-purger.{service,timer}`), et l'outil qu'elle lance est
+     * `bi-self/selfrecover/tools/purger.php` ; un cron ou un planificateur applicatif font le
+     * même travail. La cadence n'a pas
+     * besoin d'être fine : une fois par jour suffit, puisque ce qu'on efface est
+     * déjà sans effet.
+     *
+     * ⚠️ **Elle n'efface pas tout** : deux statuts y survivent exprès, et
+     * `StockagePdo::purgerLitigesExpires()` dit lesquels et pourquoi, à côté de
+     * sa clause. Appeler cette méthode ne borne donc pas la table : la rétention
+     * de ces deux statuts est une décision de déploiement.
+     */
     public function purger(?int $maintenant = null): int
     {
         return $this->stockage->purgerLitigesExpires($maintenant ?? time());
@@ -770,21 +914,31 @@ final class Escalade
      * L'y ajouter tiendrait un exécutant occupé à chaque requête refusée, ce qui
      * est le levier qu'on retire à l'attaquant.
      *
+     * 🔑 **Le plafond de service est conditionné au profil.** Le détail est au
+     * constructeur, avec ce que son absence de condition coûtait ; ici il suffit
+     * de savoir que le frein par adresse et lui ne travaillent jamais ensemble —
+     * l'un sert là où l'autre n'a rien à mesurer.
+     *
      * @return array{ok: bool, error: string, message: string}|null
      */
     private function freinerOuverture(?string $ip, int $maintenant): ?array
     {
         $depuis = $maintenant - $this->fenetreOuvertures;
         $refus  = ['ok' => false, 'error' => 'trop_de_demandes',
-                   'message' => 'Trop de demandes d\'arbitrage récemment. Réessaie plus tard.'];
+                   'message' => Messages::dire($this->langue(), 'l3.trop_de_demandes')];
 
         if ($ip !== null
             && $this->stockage->compterEchecsCompte($this->etiquette('@' . $ip), $depuis)
                >= $this->maxOuverturesIp) {
             return $refus;
         }
-        if ($this->stockage->compterEchecsCompte($this->etiquette('*'), $depuis)
-            >= $this->maxOuverturesService) {
+        // 🔑 Le plafond de service n'est LU que là où l'adresse ne discrimine
+        // rien. Sa ligne, elle, continue de s'écrire dans les deux cas : le
+        // signal reste disponible pour une console, c'est la décision qui s'en
+        // retire.
+        if (!$this->recovery->profil()->adresseDiscriminante()
+            && $this->stockage->compterEchecsCompte($this->etiquette('*'), $depuis)
+               >= $this->maxOuverturesService) {
             return $refus;
         }
 
@@ -798,10 +952,20 @@ final class Escalade
      * `is_object()`. Un refus unique pour « numéro faux » et « sésame faux » :
      * les distinguer dirait à un attaquant qu'un numéro existe.
      *
+     * 🔑 **Les trois refus tiennent une échéance commune.** `expire` et
+     * `accord_perime` ne sont atteintes **que si le sésame est bon** : les
+     * laisser partir sans délai faisait dire au chronomètre ce que le message
+     * unique tait — qu'un numéro existe et que son sésame ouvre.
+     *
+     * ⚠️ **L'échéance est prise AVANT la recherche**, donc le délai borne le
+     * total au lieu de s'ajouter au travail. La déplacer après l'y ajoute, et le
+     * temps de réponse se remet à dépendre de ce que la recherche a trouvé.
+     *
      * @return Litige|array{ok: false, error: string, message: string}
      */
     private function recevable(string $numero, #[\SensitiveParameter] string $sesame, int $maintenant): Litige|array
     {
+        $debut  = hrtime(true);
         $litige = $this->stockage->trouverLitigeParNumero(strtoupper(trim($numero)));
 
         // Les deux vérifications sont menées quoi qu'il arrive : s'arrêter à la
@@ -810,10 +974,18 @@ final class Escalade
         $sesameOk  = hash_equals($litige?->empreinteSesame ?? $factice, self::empreinteSesame($sesame));
         $recevable = $litige !== null && $sesameOk && $sesame !== '';
 
-        if (!$recevable) {
-            usleep($this->delaiRefusUs);
+        // 🔑 UNE seule porte de sortie pour les trois refus, qui prend l'échéance
+        // avec elle. Écrite trois fois, elle s'oubliait deux fois : seule la
+        // première attendait, et les deux autres ne sont atteintes que si le
+        // sésame est bon.
+        $refuser = function (string $motif, string $message) use ($debut): array {
+            $this->attendreEcheance($debut);
 
-            return ['ok' => false, 'error' => 'sesame_invalide', 'message' => 'Numéro ou sésame invalide.'];
+            return ['ok' => false, 'error' => $motif, 'message' => $message];
+        };
+
+        if (!$recevable) {
+            return $refuser('sesame_invalide', 'Numéro ou sésame invalide.');
         }
         // ⚠️ Un dossier ACCEPTÉ ne périme pas. Le délai borne le temps pendant
         // lequel un dossier reste ouvert sans être instruit ; l'appliquer après
@@ -822,15 +994,16 @@ final class Escalade
         // titulaire devrait tout recommencer. C'est le ré-enrôlement qui ferme
         // le dossier, pas l'horloge.
         if ($litige->statut !== Litige::ACCEPTE && $litige->expire($maintenant)) {
-            return ['ok' => false, 'error' => 'expire',
-                    'message' => 'Ce litige a expiré. Il faut en ouvrir un nouveau.'];
+            return $refuser('expire', 'Ce litige a expiré. Il faut en ouvrir un nouveau.');
         }
         // L'accord, lui, tient `ttlAccepte` après la décision — pas le TTL
         // d'instruction, qui ne vaut que tant que personne n'a tranché.
         if ($this->accordPerime($litige, $maintenant)) {
-            return ['ok' => false, 'error' => 'accord_perime',
-                    'message' => 'L\'accord rendu sur ce litige a expiré faute d\'avoir été repris. '
-                               . 'Ouvre un nouveau litige : l\'arbitrage sera à refaire.'];
+            return $refuser(
+                'accord_perime',
+                'L\'accord rendu sur ce litige a expiré faute d\'avoir été repris. '
+                . 'Ouvre un nouveau litige : l\'arbitrage sera à refaire.'
+            );
         }
 
         return $litige;
@@ -841,14 +1014,64 @@ final class Escalade
     {
         $texte = trim($message);
         if ($texte === '') {
-            return ['ok' => false, 'error' => 'vide', 'message' => 'Le message est vide.'];
+            return ['ok' => false, 'error' => 'vide', 'message' => Messages::dire($this->langue(), 'l3.message_vide')];
         }
         if (mb_strlen($texte) > self::MESSAGE_MAXIMUM) {
-            return ['ok' => false, 'error' => 'trop_long', 'message' => 'Le message dépasse ' . self::MESSAGE_MAXIMUM . ' caractères.'];
+            return ['ok' => false, 'error' => 'trop_long', 'message' => Messages::dire($this->langue(), 'l3.message_trop_long', [self::MESSAGE_MAXIMUM])];
         }
+        // Un dossier clos ne reçoit plus rien, de personne : il est terminé.
         if ($litige->statut === Litige::CLOS) {
-            return ['ok' => false, 'error' => 'clos', 'message' => 'Ce dossier est clos.'];
+            return ['ok' => false, 'error' => 'clos', 'message' => Messages::dire($this->langue(), 'l3.clos')];
         }
+        // ⚠️ `REFUSE` ferme le fil au DEMANDEUR, pas à l'arbitre, et les deux
+        // moitiés sont nécessaires. Un dossier refusé n'est jamais clos par
+        // `trancher()`, donc le détenteur du sésame continuait d'écrire à
+        // l'arbitre qui venait de l'éconduire. Mais fermer les deux sens
+        // laissait l'arbitre **refuser sans pouvoir expliquer** — mesuré — et
+        // sur le dernier recours d'une personne qui n'a plus aucun secret, un
+        // refus muet est le pire des deux défauts.
+        //
+        // ⚠️ Un dossier `ACCEPTE` reste ouvert aux deux : le fil est le seul
+        // canal pendant les jours que dure la reprise des secrets.
+        if ($litige->statut === Litige::REFUSE && $auteur === 'demandeur') {
+            return ['ok' => false, 'error' => 'clos',
+                    'message' => Messages::dire($this->langue(), 'l3.tranche_pas_de_message')];
+        }
+
+        // 🔑 Les deux freins ne portent que sur le DEMANDEUR. L'arbitre est
+        // authentifié par l'application ; le détenteur du sésame ne l'est pas,
+        // et c'est lui dont le fil borne le coût.
+        //
+        // ⚠️ **Ce que ces deux freins coûtent, et qui n'est pas borné** : ils
+        // lisent tout le fil du dossier avant de pouvoir refuser, car
+        // `messagesDuLitige()` n'a ni COUNT ni LIMIT. Donc une tentative
+        // refusée pour cadence paie quand même la lecture — au plus
+        // `maxMessagesLitige` messages de `MESSAGE_MAXIMUM` caractères, mais à
+        // la cadence que la route accepte, et cette classe n'a pas de route.
+        // Borner cette cadence appartient au lissage de débit du déploiement —
+        // le modèle de menace le nomme.
+        if ($auteur === 'demandeur') {
+            $siens = array_values(array_filter(
+                $this->stockage->messagesDuLitige($litige->id),
+                static fn (array $m): bool => $m['auteur'] === 'demandeur',
+            ));
+            if (count($siens) >= $this->maxMessagesLitige) {
+                // ⚠️ Ce plafond ne se libère PAS : il compte les messages du
+                // demandeur, et une réponse d'arbitre n'en retire aucun. Ne pas
+                // conseiller d'attendre — ce serait le seul conseil qui ne
+                // marche pas. L'arbitre, lui, écrit encore : le dossier n'est
+                // pas muet, c'est ce côté-ci qui est plein.
+                return ['ok' => false, 'error' => 'fil_plein',
+                        'message' => Messages::dire($this->langue(), 'l3.fil_plein')];
+            }
+            $dernier = $siens === [] ? null : (int) $siens[count($siens) - 1]['ecrit_le'];
+            if ($dernier !== null && $maintenant - $dernier < $this->attenteMessage) {
+                return ['ok' => false, 'error' => 'trop_rapide',
+                        'message' => Messages::dire($this->langue(), 'l3.message_trop_tot',
+                        [Duree::enClair($this->attenteMessage - ($maintenant - $dernier), $this->langue())])];
+            }
+        }
+
         $this->stockage->ajouterMessageLitige($litige->id, $auteur, $texte, $maintenant);
 
         return null;

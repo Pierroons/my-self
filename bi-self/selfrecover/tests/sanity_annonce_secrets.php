@@ -31,8 +31,109 @@ $racine = getenv('SR_SRC') ?: $module . '/src';   // surchargeable : canari
 /** Les clés dont la présence dans un retour signale un secret remis à l'utilisateur. */
 const CLES_SECRETES = ['mot_de_passe', 'passphrase', 'codes'];
 
-/** Ce qui vaut consigne : le message doit dire de noter, ou prévenir de l'unique affichage. */
-const MARQUES_CONSIGNE = ['note', 'noter', 'réaffich', 'reaffich'];
+/**
+ * Ce qui vaut consigne : le message doit dire de noter, ou prévenir de l'unique
+ * affichage. Une marque par langue du catalogue — un texte anglais ne porte pas
+ * « noter », et exiger les marques françaises partout aurait rendu la garde
+ * fausse dès la première traduction.
+ */
+const MARQUES_CONSIGNE = [
+    'fr' => ['note', 'noter', 'réaffich', 'reaffich'],
+    'en' => ['write', 'shown again', 'not be shown'],
+];
+
+/**
+ * 🔑 **La garde suit le texte jusqu'au catalogue.**
+ *
+ * Un retour qui compose son message par `Messages::dire($…, 'cle')` ne porte
+ * plus la consigne dans son source : la chercher là rendrait la garde aveugle
+ * au moment même où le texte devient traduisible. On remonte donc à l'entrée du
+ * catalogue, et on l'exige dans CHAQUE langue — c'est plus que ce que le
+ * littéral français garantissait.
+ */
+function consigneTenue(string $texte): bool
+{
+    if (preg_match_all("/Messages::dire\([^,]+,\s*'([^']+)'/", $texte, $m) === 0) {
+        // Pas de catalogue en jeu : le texte est dans le source, comme avant.
+        foreach (MARQUES_CONSIGNE as $marques) {
+            foreach ($marques as $marque) {
+                if (mb_stripos($texte, $marque) !== false) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // ⚠️ Le catalogue se lit en SOURCE, pas par la classe chargée : ce banc
+    // examine un arbre que `$racine` désigne, et sous canari ce n'est pas celui
+    // de l'autoload. Charger les classes ferait juger un autre code que celui
+    // qu'on lit — et le canari rendrait vert sur le fichier intact.
+    $catalogue = catalogueEnSource();
+
+    foreach (array_keys(MARQUES_CONSIGNE) as $langue) {
+        $porte = false;
+        foreach ($m[1] as $cle) {
+            $brut = $catalogue[$cle][$langue] ?? null;
+            if ($brut === null) {
+                continue;
+            }
+            foreach (MARQUES_CONSIGNE[$langue] as $marque) {
+                if (mb_stripos($brut, $marque) !== false) {
+                    $porte = true;
+                    break 2;
+                }
+            }
+        }
+        if (!$porte) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Le catalogue tel que le source le déclare : `cle => ['fr' => …, 'en' => …]`.
+ *
+ * Les textes s'écrivent sur plusieurs lignes, concaténées par `.` : on réunit
+ * les littéraux d'une même entrée plutôt que de ne lire que le premier, sans
+ * quoi une consigne placée en seconde ligne passerait pour absente.
+ */
+function catalogueEnSource(): array
+{
+    global $racine;
+
+    $source = @file_get_contents(rtrim($racine, '/') . '/Messages.php');
+    if ($source === false) {
+        return [];
+    }
+
+    $entrees = [];
+    if (preg_match_all(
+        "/'([a-z0-9_.]+)'\s*=>\s*\[(.+?)\],\n/s",
+        $source,
+        $blocs,
+        PREG_SET_ORDER,
+    ) === 0) {
+        return [];
+    }
+    foreach ($blocs as $bloc) {
+        foreach (['fr', 'en'] as $langue) {
+            if (preg_match("/'" . $langue . "'\s*=>\s*((?:'(?:[^'\\\\]|\\\\.)*'\s*\.?\s*)+)/s", $bloc[2], $m2) === 1) {
+                $morceaux = [];
+                preg_match_all("/'((?:[^'\\\\]|\\\\.)*)'/", $m2[1], $m3);
+                foreach ($m3[1] as $morceau) {
+                    $morceaux[] = str_replace(["\\'", '\\\\'], ["'", '\\'], $morceau);
+                }
+                $entrees[$bloc[1]][$langue] = implode('', $morceaux);
+            }
+        }
+    }
+
+    return $entrees;
+}
 
 $fichiers = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($racine));
 $aExaminer = [];
@@ -77,14 +178,7 @@ foreach ($aExaminer as $chemin) {
         // Un retour qui ne porte QUE la clé en position de paramètre attendu,
         // sans message, n'est pas un retour d'API : on exige le message.
         $total++;
-        $annonce = false;
-        foreach (MARQUES_CONSIGNE as $marque) {
-            if (mb_stripos($texte, $marque) !== false) {
-                $annonce = true;
-                break;
-            }
-        }
-        if (!$annonce) {
+        if (!consigneTenue($texte)) {
             // Relatif à la racine examinée, et non au module : sous canari la
             // racine est ailleurs, et un chemin absolu nommerait le compte qui
             // lance — une sortie de banc finit parfois collée dans une issue.

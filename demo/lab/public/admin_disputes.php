@@ -125,10 +125,9 @@ function render(disputes){
     card.querySelector('.l3-send').addEventListener('click',function(){var i=card.querySelector('.l3-in');if(!i.value.trim())return;post('/api/dispute_chat.php',{dispute_number:num,message:i.value.trim()}).then(function(d){if(d&&!d.ok){alert(d.message||'Message non enregistré.');return;}i.value='';poll();});});
     var g=card.querySelector('.l3-grant'), r=card.querySelector('.l3-refuse');
     if(g)g.addEventListener('click',()=>{post('/api/admin_dispute_decide.php',{dispute_number:num,decision:'grant'}).then(load);});
-    // ⚠️ Le texte disait « Refuser = clôture + suppression du compte ». C'était
-    // vrai, et c'est précisément ce qui a été retiré : un refus ne touche plus
-    // au compte. Laisser l'ancien avertissement ferait hésiter un arbitre devant
-    // un geste devenu réversible.
+    // ⚠️ Un refus ne touche pas au compte : cette confirmation dit ce que le
+    // geste fait, et n'annonce aucune suppression. Un avertissement plus large
+    // que le geste ferait hésiter l'arbitre devant une décision réversible.
     if(r)r.addEventListener('click',()=>{
       if(confirm('Refuser clôt ce dossier. Les secrets du compte ne sont pas modifiés — mais si ce '
                 +'demandeur est le titulaire, il repart sans secret : son seul chemin est de rouvrir '
@@ -138,7 +137,14 @@ function render(disputes){
                 +'Si ce dossier a été ouvert par quelqu\'un d\'autre que le titulaire, préfère '
                 +'« Abandonner » : l\'abandon, lui, ne compte pas. Confirmer ?'))
         post('/api/admin_dispute_decide.php',{dispute_number:num,decision:'refuse'}).then(function(d){
-          if(d && d.gel_suggere) alert(d.message);
+          // ⚠️ On INFORME, on ne propose pas de geler dans la foulée. Un gel
+          // offert au clic juste après le refus rejouerait le gel automatique
+          // qui a été retiré : c'est le même enchaînement, avec une confirmation
+          // de plus. Le signal se lit ici, le geste se pose au bouton.
+          if(d && d.gel_suggere) alert(d.refus_dans_la_fenetre+' refus sur ce compte en '+GEL.fenetre+'.\n\n'
+                                      +'Un gel de l\'ouverture est suggéré — il n\'est pas posé. '
+                                      +'Avant de le poser, vérifie qui ouvre ces dossiers : si c\'est un tiers, '
+                                      +'geler fermerait la dernière voie de secours du titulaire, pas celle du tiers.');
           load();
         });
     });
@@ -158,20 +164,6 @@ function render(disputes){
           load();
         });
     });
-    // Pose un gel. Cf. RecoverL3::adminFreeze() pour ce qu'il ferme et pourquoi
-    // ce geste ne peut pas revenir à un compteur.
-    var gl=card.querySelector('.l3-gel');
-    if(gl)gl.addEventListener('click',function(){
-      var u=gl.getAttribute('data-user');
-      if(confirm('Geler l\'ouverture de nouveaux dossiers pour « '+u+' » ?\n\n'
-                +'Durée : '+GEL.duree+'. Les secrets du compte ne sont pas modifiés, mais tant que le '
-                +'gel court, un titulaire authentique mal jugé n\'a plus de dernier recours. À réserver '
-                +'à un acharnement visible, et la levée est immédiate.'))
-        post('/api/admin_freeze.php',{username:u}).then(function(d){
-          if(d && !d.ok) alert(d.message||'Le gel n\'a pas pu être posé.');
-          load();
-        });
-    });
     // Le gel porte sur le COMPTE, pas sur ce dossier : c'est l'ouverture de
     // nouveaux dossiers qui est suspendue, et le lever rouvre cette porte à
     // quelqu'un qui n'a plus aucun secret. Qui lève est pris dans la session,
@@ -179,12 +171,34 @@ function render(disputes){
     var dg=card.querySelector('.l3-degel');
     if(dg)dg.addEventListener('click',function(){
       var u=dg.getAttribute('data-user');
+      // ⚠️ Aucun compteur n'arme un gel : une levée tient jusqu'à ce qu'un arbitre
+      // en repose un. Cette confirmation doit le dire, sinon elle fait hésiter
+      // devant un geste qui ne se défait pas tout seul.
       if(confirm('Lever le gel sur « '+u+' » ?\n\n'
                 +'Le gel ne bloquait pas le compte : c\'est l\'ouverture de nouveaux dossiers qui '
                 +'reprend. Ce gel a été posé par un arbitre — le lever ne remet aucun compteur à zéro, '
                 +'et rien ne le repose sans qu\'un arbitre le demande.'))
         post('/api/admin_unfreeze.php',{username:u}).then(function(d){
           if(d && !d.ok) alert(d.message||'Le gel n\'a pas pu être levé.');
+          load();
+        });
+    });
+    // 🔑 Poser un gel retire au titulaire son DERNIER recours — celui de qui n'a
+    // plus ni mot de passe, ni passphrase, ni feuille de codes. Il ne touche pas
+    // au compte, et c'est ce qui le rend trompeur : la connexion ordinaire
+    // continue de marcher pendant que la porte de secours est fermée. Qui gèle
+    // est pris dans la session, côté endpoint, et rangé dans `gele_par`.
+    var gl=card.querySelector('.l3-gel');
+    if(gl)gl.addEventListener('click',function(){
+      var u=gl.getAttribute('data-user');
+      if(confirm('Geler l\'ouverture de nouveaux dossiers pour « '+u+' », pendant '+GEL.duree+' ?\n\n'
+                +'Le compte reste connectable. Ce qui se ferme, c\'est la voie de secours de qui a '
+                +'tout perdu.\n'
+                +'⚠️ Si les dossiers sont ouverts par un TIERS, geler ne le gêne pas : ça ferme la '
+                +'porte du titulaire, qui n\'a rien demandé. Dans ce cas, « Abandonner » suffit.\n\n'
+                +'Ton nom sera inscrit comme auteur du gel. Confirmer ?'))
+        post('/api/admin_freeze.php',{username:u}).then(function(d){
+          if(d && !d.ok) alert(d.message||'Le gel n\'a pas pu être posé.');
           load();
         });
     });

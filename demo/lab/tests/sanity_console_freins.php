@@ -31,6 +31,7 @@ require_once __DIR__ . '/../lib/admin.php';
 require_once __DIR__ . '/../lib/stats.php';
 
 use Pierroons\MySelfLab\Admin;
+use Pierroons\SelfRecover\Etiquette;
 use Pierroons\MySelfLab\Auth;
 use Pierroons\MySelfLab\Stats;
 
@@ -53,7 +54,15 @@ $ins = $pdo->prepare('INSERT INTO login_attempts (username, success, ip, attempt
 $lignes = [
     ['une connexion ratée',                        'alice',                        '192.0.2.1', true],
     ['un échec du niveau 2, sous son HMAC',        'l2:' . str_repeat('a', 64),    '192.0.2.2', true],
-    ['un code de récupération introuvable',        null,                           '192.0.2.3', true],
+    // 🔑 **Les DEUX formes du code introuvable.** Jusqu'à SelfRecover 0.12.0 la
+    // bibliothèque laissait l'étiquette nulle ; depuis, elle écrit
+    // `PREFIXE_L2_INCONNU` — sans quoi le frein par origine, qui filtre sur les
+    // préfixes, ne voit pas ces lignes. ⚠️ Les deux lignes sont nécessaires : un
+    // banc qui n'insère que la forme nue ne mesure plus rien de ce que la
+    // bibliothèque écrit, et la console peut cesser de traduire l'autre sans
+    // qu'il rougisse.
+    ['un code introuvable, étiqueté (0.12.0)',     Etiquette::PREFIXE_L2_INCONNU,  '192.0.2.3', true],
+    ['le même, nu — une base d\'avant 0.12.0',     null,                           '192.0.2.8', true],
     ['une sonde du niveau 3 (sans adresse)',       'l3:ouvrir:' . str_repeat('b', 64), null,    false],
     ["l'étiquette interne d'inscription",           '__register__',                 '192.0.2.4', false],
     ['un imposteur « l3:ouvrir:… » AVEC adresse',  'l3:ouvrir:x',                  '192.0.2.5', true],
@@ -83,8 +92,11 @@ verifier('la liste affichée en montre autant', count($liste) === $attendus, cou
 // 🔑 Le libellé du code introuvable est posé à l'affichage. Stocké, il serait un
 // nom qu'un compte peut porter, donc un compteur que n'importe qui remplit.
 $libelles = array_column($liste, 'username');
-verifier('une tentative sans étiquette est affichée avec un libellé, jamais vide',
-    in_array('(code de récupération inconnu)', $libelles, true), implode(' · ', $libelles));
+$sousLibelle = count(array_filter($libelles, static fn (string $l): bool => $l === '(code de récupération inconnu)'));
+verifier('les DEUX formes du code introuvable portent le même libellé', $sousLibelle === 2,
+    "$sousLibelle ligne(s) libellée(s) sur 2 attendues");
+verifier('⭐ et aucune étiquette interne ne s\'affiche en clair à l\'arbitre',
+    !in_array(Etiquette::PREFIXE_L2_INCONNU, $libelles, true), implode(' · ', $libelles));
 verifier("et ce libellé n'est pas en base",
     (int) $pdo->query("SELECT COUNT(*) FROM login_attempts WHERE username LIKE '(code%'")->fetchColumn() === 0);
 
@@ -100,8 +112,13 @@ verifier('le chiffre public compte les mêmes, plus l\'inscription refusée',
 // Si quelqu'un élargit ce jeu un jour — courriels, unicode, tiret —, ces filtres
 // deviennent un trou : un compte nommé `l1:victime` disparaîtrait de la console
 // avec ses échecs, et aucun autre contrôle ne rougirait. Ce cas attache donc la
-// garde à ce qui la rend vraie. Relevé par la conv Recover le 07/10/2026.
-foreach (['l3:x', 'l3:ouvrir:x', 'l1:victime', 'l1-liste:x', 'l2:x', 'enroll:x'] as $interdit) {
+// garde à ce qui la rend vraie.
+//
+// ⚠️ **La liste se DEMANDE à la bibliothèque.** Recopiée à la main, il lui
+// manquait `l2-inconnu:` et `l3:depot:` — les deux derniers préfixes ajoutés —
+// et le contrôle passait au vert sans les avoir essayés.
+$interdits = array_map(static fn (string $p): string => $p . 'victime', Etiquette::PREFIXES);
+foreach ([...$interdits, 'l3:x'] as $interdit) {
     $r = Auth::register($pdo, $interdit, str_repeat('a', 64), str_repeat('b', 32));
     verifier("l'inscription refuse « $interdit », dont le filtre dépend",
         ($r['ok'] ?? false) === false, json_encode($r));

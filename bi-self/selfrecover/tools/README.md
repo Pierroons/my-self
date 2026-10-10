@@ -1,8 +1,10 @@
 # SelfRecover — outils
 
-Ce dossier rassemble ce qui ne dépend pas du serveur : des pages autonomes, un
-moteur de calcul client, et un fichier gardé pour référence. Rien ici n'est
-servi en production ; tout s'ouvre depuis un disque.
+Ce dossier rassemble des pages autonomes, un moteur de calcul client, un fichier
+gardé pour référence, et un outil de purge. Aucune page n'est servie en
+production : elles s'ouvrent depuis un disque. `purger.php` fait exception — il
+se lance en ligne de commande, exige un DSN PDO vers la base du déploiement et
+efface des lignes.
 
 | dossier | quoi | état |
 |---|---|---|
@@ -10,6 +12,7 @@ servi en production ; tout s'ouvre depuis un disque.
 | `offline-validator/` | vérification d'une passphrase hors ligne | autonome, zéro requête |
 | `comparison.html` | comparatif des méthodes de récupération | page statique |
 | `reference/` | une implémentation conservée pour lecture | non exécuté |
+| `purger.php` | dossiers de niveau 3 périmés, lignes d'échec anciennes | CLI, `SELFRECOVER_DSN` requis, efface |
 
 ## entropy-lab
 

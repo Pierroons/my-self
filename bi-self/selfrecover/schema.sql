@@ -8,13 +8,24 @@
 -- demande. Ce schéma-ci s'adresse à qui n'a pas encore de base : il se charge tel
 -- quel, et `StockagePdo` le branche sans une ligne à écrire.
 --
--- ⚠️ **À migrer sur une base créée avant que `login_attempts.username` devienne
--- facultatif.** Une tentative sur un code de récupération introuvable s'y écrit
--- désormais sans étiquette : sous l'ancien `NOT NULL`, l'insertion est refusée par
--- la base, et la route rend une erreur de serveur là où elle rendait un refus. Ce
--- fichier ne migre rien — il crée ce qui manque. SQLite ne sait pas retirer un
--- `NOT NULL` : la table se reconstruit, et `demo/lab/lib/db.php` porte la reprise
--- qui sert de modèle.
+-- ⚠️ **À migrer sur une base créée avant la 0.12.0 : `l3_gel` prend une colonne
+-- `gele_par TEXT`.** Ce fichier ne migre rien — il crée ce qui manque —, donc le
+-- recharger tel quel ne l'ajoute pas. Sans elle, `poserGel()` échoue à
+-- l'écriture, et c'est le premier clic sur « geler » qui le découvre, en 500 :
+--
+--     ALTER TABLE l3_gel ADD COLUMN gele_par TEXT;
+--
+-- Aucune donnée n'est perdue, et les gels déjà posés restent sans auteur connu.
+-- `demo/lab/lib/db.php` porte la reprise idempotente qui sert de modèle.
+--
+-- ⚠️ **`login_attempts.username` est facultatif**, et ce n'est plus la
+-- bibliothèque qui l'exige : depuis la 0.12.0 elle étiquette tout ce qu'elle
+-- écrit, un échec non rattaché à un compte compris. La colonne reste nullable
+-- parce que rien n'oblige un intégrateur à étiqueter les lignes de SA page de
+-- connexion. Une base sous l'ancien `NOT NULL` n'a donc plus de migration à
+-- faire de ce côté. Si vous voulez quand même rendre la colonne facultative,
+-- SQLite ne sait pas retirer un `NOT NULL` — la table se reconstruit, et
+-- `demo/lab/lib/db.php` porte ce modèle-là aussi.
 --
 -- ── Les empreintes ─────────────────────────────────────────────────────────
 --
@@ -41,11 +52,13 @@
 --   TEXT PRIMARY KEY  (device_challenges) → même refus
 --   CREATE INDEX IF NOT EXISTS         → inconnu de MySQL (MariaDB l'accepte)
 --
--- Dans l'adaptateur, trois constructions :
+-- Dans l'adaptateur, quatre constructions :
 --
 --   INSERT OR REPLACE     (deux fois)  → ON DUPLICATE KEY UPDATE / ON CONFLICT
 --   ON CONFLICT … excluded (poserGel)  → inconnu de MariaDB
 --   LIMIT ?  paramétré    (listerLitiges) → refusé par MySQL en requête préparée
+--   INSERT … SELECT … WHERE NOT EXISTS, sans FROM (ouvrirLitige) → MySQL et
+--     MariaDB exigent un FROM dès qu'un WHERE suit le SELECT
 --
 -- ⚠️ Le `PRAGMA` ci-dessous ne vaut QUE pour la connexion qui exécute ce
 -- fichier — souvent `sqlite3(1)`, jetée aussitôt. Il ne protège donc rien par
@@ -250,6 +263,7 @@ CREATE TABLE IF NOT EXISTS l3_gel (
     account_id   INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
     gele_jusqu_a INTEGER NOT NULL,
     pose_le      INTEGER NOT NULL,
+    gele_par     TEXT,
     degele_par   TEXT,
     degele_le    INTEGER
 );

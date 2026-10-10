@@ -27,11 +27,13 @@ require __DIR__ . '/../src/autoload.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Diceware\Wordlist;
+use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\Recovery\Escalade;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 use Pierroons\SelfRecover\Storage\StockagePdo;
+use Pierroons\SelfRecover\Langue;
 
 /**
  * Le journal des contrôles — la seule source du verdict.
@@ -167,7 +169,7 @@ section('contrat');
 // qu'un `new` porte cette preuve.
 $pdo = baseNeuve();
 $r = abrite(static fn (): object => new StockagePdo($pdo, HOTE));
-verifier('la classe s\'instancie — donc les 42 signatures sont tenues', $r['ok'], $r['message']);
+verifier('la classe s\'instancie — donc les 43 signatures sont tenues', $r['ok'], $r['message']);
 
 $stockage = new StockagePdo($pdo, HOTE);
 verifier('elle est bien un StorageInterface', $stockage instanceof StorageInterface);
@@ -179,7 +181,7 @@ verifier('aucune méthode du contrat ne manque', $manquantes === [], (string) co
 // ⚠️ Compter ne suffit pas : une méthode qui rend toujours `null` compte pareil.
 // Ce décompte sert à faire ROUGIR le banc si le contrat gagne une méthode que
 // l'adaptateur n'a pas suivie — c'est le seul cas où le compte dit quelque chose.
-verifier('le contrat en porte 42, comme annoncé partout ailleurs', count($attendues) === 42,
+verifier('le contrat en porte 45, comme annoncé partout ailleurs', count($attendues) === 45,
     (string) count($attendues));
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -210,7 +212,7 @@ $PHRASE = 'cheval agrafe batterie correct';
 // réécriture plus bas passerait au vert en lisant la valeur initiale.
 $compteId = creerCompte($pdo, 'alice', $MOT, $PHRASE, $T0, $T0, 'ancien.example');
 
-$recovery = new Recovery($stockage, 'sel-de-deploiement-du-banc', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0);
+$recovery = new Recovery($stockage, 'sel-de-deploiement-du-banc', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0);
 
 // Quatre ans avant $T0 : aucune réécriture ne peut rendre cette valeur.
 $SEME_ANCIEN = $T0 - 4 * 365 * 86400;
@@ -418,7 +420,10 @@ $insere = $pdoC->prepare(
 foreach (['open', 'refused', 'accepted', 'closed'] as $i => $st) {
     $insere->execute(["LIT-{$i}", $idC, $st, $T0 - 10, $T0 - 100, $T0 - 100]);
 }
+$annonceLitiges = $stC->compterLitigesExpires($T0);
 $efface = $stC->purgerLitigesExpires($T0);
+verifier('⭐ compterLitigesExpires annonçait exactement ce que la purge a effacé',
+    $annonceLitiges === $efface, "annoncé {$annonceLitiges}, effacé {$efface}");
 $restants = $pdoC->query('SELECT status FROM disputes ORDER BY status')->fetchAll(PDO::FETCH_COLUMN);
 verifier('la purge emporte les dossiers périmés ordinaires', $efface === 2, "{$efface} effacé(s)");
 verifier('elle épargne « refused » — sans quoi le gel devient inatteignable',
@@ -427,7 +432,7 @@ verifier('elle épargne « accepted » — sans quoi la porte se ferme sur qui a
     in_array('accepted', $restants, true));
 
 // 3. Un gel échu n'est pas un gel.
-$stC->poserGel($idC, $T0 + 100, $T0);
+$stC->poserGel($idC, $T0 + 100, $T0, 'arbitre');
 verifier('un gel en cours se lit', $stC->gelJusqua($idC, $T0) === $T0 + 100);
 verifier('un gel ÉCHU rend zéro, pas sa date', $stC->gelJusqua($idC, $T0 + 200) === 0);
 $stC->leverGel($idC, 'arbitre', $T0 + 10);
@@ -450,7 +455,25 @@ $stD->tracerTentative('dave', false, '203.0.113.9', $T0 + 1);
 $stD->tracerTentative('dave', true, '203.0.113.9', $T0 + 2);
 verifier('les échecs par compte se comptent, les succès non',
     $stD->compterEchecsCompte('dave', $T0 - 1) === 2);
-verifier('les échecs par IP aussi', $stD->compterEchecsIp('203.0.113.9', $T0 - 1) === 2);
+// Les trois lignes ci-dessus portent le nom soumis pour étiquette : ce sont
+// celles d'une page de connexion, pas de cette bibliothèque. Le frein par
+// origine ne pèse que ses propres portes.
+verifier('les échecs d\'une page de connexion ne chargent PAS le frein par origine',
+    $stD->compterEchecsIp('203.0.113.9', $T0 - 1, Etiquette::PREFIXES) === 0);
+$stD->tracerTentative(Etiquette::PREFIXE_L1 . str_repeat('a', 64), false, '203.0.113.9', $T0 + 3);
+$stD->tracerTentative(Etiquette::PREFIXE_ENROLEMENT . str_repeat('b', 64), false, '203.0.113.9', $T0 + 4);
+verifier('les siennes, oui — et deux portes différentes se pèsent ensemble',
+    $stD->compterEchecsIp('203.0.113.9', $T0 - 1, Etiquette::PREFIXES) === 2);
+verifier('un appel sans préfixe refuse au lieu de rendre un frein muet',
+    (static function () use ($stD): bool {
+        try {
+            $stD->compterEchecsIp('203.0.113.9', 0, []);
+
+            return false;
+        } catch (\InvalidArgumentException) {
+            return true;
+        }
+    })());
 verifier('la fenêtre borne bien le comptage', $stD->compterEchecsCompte('dave', $T0 + 10) === 0);
 $stD->tracerTentative('erin', false, null, $T0);
 verifier('une tentative sans IP s\'enregistre — service caché, proxy mutualisé',
@@ -544,7 +567,7 @@ $stCasc->enregistrerAppareil($idCasc, 'cred-casc', 'cle', $T0);
 $stCasc->ouvrirLitige($idCasc, 'LIT-CASC', hash('sha256', 's'), $T0, $T0 + 86400);
 $litCasc = $stCasc->trouverLitigeParNumero('LIT-CASC');
 $stCasc->ajouterMessageLitige($litCasc->id, 'user', 'un texte pour l\'arbitre', $T0);
-$stCasc->poserGel($idCasc, $T0 + 100, $T0);
+$stCasc->poserGel($idCasc, $T0 + 100, $T0, 'arbitre');
 
 $relu->exec("DELETE FROM accounts WHERE id = {$idCasc}");
 foreach ([
@@ -566,8 +589,15 @@ $stG = new StockagePdo($pdoG, HOTE);
 $idG = creerCompte($pdoG, 'heidi', $MOT, $PHRASE, $T0, $T0);
 $r = abrite(static fn () => creerCompte($pdoG, 'heidi', $MOT, $PHRASE, $T0, $T0));
 verifier('deux comptes ne peuvent pas porter le même nom', $r['ok'] === false);
-$stG->ouvrirLitige($idG, 'LIT-UNIQUE', hash('sha256', 's'), $T0, $T0 + 86400);
-$r = abrite(static fn () => $stG->ouvrirLitige($idG, 'LIT-UNIQUE', hash('sha256', 's2'), $T0, $T0 + 86400));
+verifier('un dossier s\'ouvre et le dit', $stG->ouvrirLitige($idG, 'LIT-UNIQUE', hash('sha256', 's'), $T0, $T0 + 86400));
+verifier('⭐ un SECOND dossier sur le même compte est refusé, sans exception',
+    $stG->ouvrirLitige($idG, 'LIT-AUTRE', hash('sha256', 's2'), $T0, $T0 + 86400) === false);
+verifier('et la place reste à son premier occupant',
+    $stG->litigeActifDuCompte($idG, $T0)?->numero === 'LIT-UNIQUE');
+// L'unicité du numéro s'éprouve sur DEUX comptes : sur un seul, l'exclusivité
+// du dossier refuse avant que l'index soit atteint.
+$idG2 = creerCompte($pdoG, 'heidi2', $MOT, $PHRASE, $T0, $T0);
+$r = abrite(static fn () => $stG->ouvrirLitige($idG2, 'LIT-UNIQUE', hash('sha256', 's3'), $T0, $T0 + 86400));
 verifier('deux dossiers ne peuvent pas porter le même numéro', $r['ok'] === false);
 $r = abrite(static fn () => $pdoG->exec(
     "INSERT INTO sessions (account_id, token, created_at) VALUES (999999, 'orphelin', {$T0})"));
@@ -652,12 +682,18 @@ verifier('les refus récents se comptent — c\'est eux qui arment le gel',
 verifier('un refus hors fenêtre n\'est plus compté',
     $stG->compterRefusRecents($idG, $T0 + 999_999) === 0);
 
-// 17. Le gel réarmé efface la trace du dégel précédent.
-$stG->poserGel($idG, $T0 + 100, $T0);
+// 17. Les deux gestes du gel nomment leur auteur, et aucun n'efface l'autre.
+$stG->poserGel($idG, $T0 + 100, $T0, 'arbitre-0');
+verifier('le gel range QUI l\'a posé',
+    $pdoG->query("SELECT gele_par FROM l3_gel WHERE account_id = {$idG}")->fetchColumn() === 'arbitre-0');
 $stG->leverGel($idG, 'arbitre-1', $T0 + 10);
-$stG->poserGel($idG, $T0 + 500, $T0 + 20);
-verifier('un gel REPOSÉ n\'affiche plus le dégeleur d\'avant',
-    $pdoG->query("SELECT degele_par FROM l3_gel WHERE account_id = {$idG}")->fetchColumn() === null);
+$stG->poserGel($idG, $T0 + 500, $T0 + 20, 'arbitre-2');
+verifier('un gel REPOSÉ garde la trace du dégeleur d\'avant',
+    $pdoG->query("SELECT degele_par FROM l3_gel WHERE account_id = {$idG}")->fetchColumn() === 'arbitre-1');
+verifier('et il dit qui a reposé',
+    $pdoG->query("SELECT gele_par FROM l3_gel WHERE account_id = {$idG}")->fetchColumn() === 'arbitre-2');
+verifier('ce qui dit si l\'ouverture est gelée reste la DATE, pas la trace',
+    $stG->gelJusqua($idG, $T0 + 30) === $T0 + 500);
 
 // 18. Le fil : ordre et auteurs, que `count()` ne regardait pas.
 $stG->ajouterMessageLitige($litG->id, 'user', 'le premier', $T0);
@@ -673,8 +709,11 @@ $pdoI = baseNeuve();
 $stI = new StockagePdo($pdoI, HOTE);
 $idI = creerCompte($pdoI, 'judy', $MOT, $PHRASE, $T0, $T0);
 $sesameI = bin2hex(random_bytes(16));
-foreach (['LIT-A', 'LIT-B', 'LIT-C'] as $n) {
-    $stI->ouvrirLitige($idI, $n, hash('sha256', $sesameI), $T0, $T0 + 86400);
+// Un compte ne porte qu'un dossier actif : la console en liste plusieurs parce
+// qu'ils viennent de comptes différents.
+foreach (['LIT-A' => $idI, 'LIT-B' => creerCompte($pdoI, 'judy-b', $MOT, $PHRASE, $T0, $T0),
+          'LIT-C' => creerCompte($pdoI, 'judy-c', $MOT, $PHRASE, $T0, $T0)] as $n => $cid) {
+    $stI->ouvrirLitige($cid, $n, hash('sha256', $sesameI), $T0, $T0 + 86400);
 }
 verifier('listerLitiges respecte la limite demandée', count($stI->listerLitiges(2)) === 2);
 $platListe = json_encode($stI->listerLitiges(10), JSON_UNESCAPED_UNICODE) ?: '';
@@ -683,7 +722,7 @@ $platListe = json_encode($stI->listerLitiges(10), JSON_UNESCAPED_UNICODE) ?: '';
 verifier('la console ne publie pas l\'empreinte du sésame',
     !str_contains($platListe, hash('sha256', $sesameI)));
 verifier('ni aucune empreinte Argon2id', !str_contains($platListe, '$argon2'));
-$stI->poserGel($idI, $T0 + 10, $T0);
+$stI->poserGel($idI, $T0 + 10, $T0, 'arbitre');
 $avecGelEchu = $stI->listerLitiges(10);
 verifier('un gel ÉCHU n\'est pas affiché comme actif par la console',
     ($avecGelEchu[0]['gele_jusqu_a'] ?? null) === null);
@@ -693,6 +732,43 @@ $platFaitsI = json_encode($stI->faitsDuCompte($idI), JSON_UNESCAPED_UNICODE) ?: 
 $selI = (string) $pdoI->query("SELECT recovery_salt FROM accounts WHERE id = {$idI}")->fetchColumn();
 verifier('le sel de dérivation ne part pas dans le faisceau',
     $selI !== '' && !str_contains($platFaitsI, $selI));
+
+// 21. La rétention des échecs : ce qu'elle efface, et ce qu'elle doit épargner.
+//
+// 🔑 `login_attempts` ne nous appartient pas : la page de connexion de
+// l'intégrateur y écrit sous ses propres étiquettes, et la suspension du niveau
+// 2 se réarme sur une réussite que rien ne borne dans le temps. Les trois
+// témoins épargnés comptent donc autant que la ligne effacée.
+$pdoP = baseNeuve();
+$stP  = new StockagePdo($pdoP, HOTE);
+$idP  = creerCompte($pdoP, 'peggy', $MOT, $PHRASE, $T0, $T0);
+$VIEUX = $T0 - 60 * 86400;
+
+$stP->tracerTentative(Etiquette::PREFIXE_L1 . str_repeat('a', 64), false, '192.0.2.1', $VIEUX);
+$stP->tracerTentative(Etiquette::PREFIXE_L2 . str_repeat('b', 64), false, '192.0.2.1', $VIEUX);
+$stP->tracerTentative(Etiquette::PREFIXE_L1 . str_repeat('c', 64), true, '192.0.2.1', $VIEUX);
+$stP->tracerTentative('peggy', false, '192.0.2.1', $VIEUX);
+$stP->tracerTentative(Etiquette::PREFIXE_L1 . str_repeat('d', 64), false, '192.0.2.1', $T0);
+
+$restant = static fn (): int => (int) $pdoP->query('SELECT COUNT(*) FROM login_attempts')->fetchColumn();
+verifier('les cinq lignes sont posées', $restant() === 5);
+// 🔑 Le compteur AVANT la purge, et son résultat comparé à ce qu'elle efface :
+// c'est le seul cas qui dirait qu'un filtre a été ajouté d'un seul côté. Les
+// deux méthodes partagent leur clause, elles ne la recopient pas.
+$annonce = $stP->compterEchecsPurgeables($T0 - 30 * 86400, Etiquette::PREFIXES);
+verifier('⭐ le compteur annonce deux lignes, et n\'efface rien',
+    $annonce === 2 && $restant() === 5, "annonce {$annonce}, reste " . $restant());
+verifier('un comptage sans préfixe refuse, comme la purge',
+    abrite(static fn () => $stP->compterEchecsPurgeables($T0, []))['ok'] === false);
+verifier('la purge efface les deux échecs anciens qui sont à nous',
+    $stP->purgerEchecs($T0 - 30 * 86400, Etiquette::PREFIXES) === $annonce);
+verifier('⭐ la RÉUSSITE ancienne survit — la suspension du niveau 2 s\'y réarme',
+    (int) $pdoP->query('SELECT COUNT(*) FROM login_attempts WHERE success = 1')->fetchColumn() === 1);
+verifier('⭐ la ligne de la page de connexion survit — cette table n\'est pas à nous',
+    (int) $pdoP->query("SELECT COUNT(*) FROM login_attempts WHERE username = 'peggy'")->fetchColumn() === 1);
+verifier('l\'échec récent survit : la rétention est une fenêtre', $restant() === 3);
+verifier('une purge sans préfixe refuse au lieu de rendre zéro',
+    abrite(static fn () => $stP->purgerEchecs($T0, []))['ok'] === false);
 
 section('atomicité');
 
