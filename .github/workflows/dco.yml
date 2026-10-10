@@ -34,6 +34,12 @@ jobs:
           # jamais dans un shell.
           BASE: ${{ github.event.pull_request.base.sha }}
           TETE: ${{ github.event.pull_request.head.sha }}
+          # 🔑 Le NOM de la branche de base, pas seulement son empreinte : le
+          # message de réparation doit nommer la base réelle de la demande.
+          # Mesuré sur la PR #6 le 10/10/2026 — il disait `origin/main` en dur
+          # sur une demande visant `dev`, et envoyait donc rebaser sur une base
+          # de treize commits en retard.
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -uo pipefail
 
@@ -60,7 +66,7 @@ jobs:
             echo 'Chaque commit d’une demande de fusion porte une ligne « Signed-off-by: ».'
             echo 'Pour les poser sur ceux qui existent déjà :'
             echo ''
-            echo '    git rebase --signoff origin/main'
+            echo "    git rebase --signoff origin/$BASE_REF"
             echo ''
             echo 'Et pour les suivants, « git commit -s » l’ajoute tout seul. Ce que tu attestes'
             echo 'est écrit dans le fichier DCO à la racine : tu as écrit l’apport, ou tu as le'
