@@ -249,6 +249,35 @@ $liens === 0 && $bloques === 0
     ? ok("trois votants sans lien ($liens échange) gardent leurs votes : réputation {$etat6['reputation']}, cible signalée en revue humaine")
     : nok('la salve rapide a été traitée comme une meute : bloqués=' . $bloques . ' ' . json_encode($etat6));
 
+// ── 5bis. Un identifiant nu ne dit pas si la cible existe ───────────────────
+// 🔑 L'oracle d'énumération, fermé par l'ORDRE des contrôles. Avant, la cible
+// était résolue avant que le motif soit validé : un `target_id` sans motif
+// rendait « Cible introuvable » ou « il manque 40 caractères » selon que
+// l'identifiant existait. Aucun vote inscrit, aucun compteur touché, aucune zone
+// de lissage sur cette route — l'espace des identifiants se balayait
+// gratuitement, y compris les comptes qu'aucune autre route ne montre.
+//
+// Ce cas éprouve la propriété par l'ÉGALITÉ des deux réponses, et non par leur
+// contenu : il reste vrai si le libellé change.
+$existe = membre($pdo, 'cible_existante');
+$msgExiste = message($pdo, $existe, 'fil de la cible existante');
+$sondeur = membre($pdo, 'sondeur');
+$inexistant = 999777;
+
+$rNu  = Moderate::applyVote($pdo, $sondeur, 'member', $existe, -1, null, 'agressif');
+$rVide = Moderate::applyVote($pdo, $sondeur, 'member', $inexistant, -1, null, 'agressif');
+$rNu['ok'] === false && $rVide['ok'] === false && $rNu['message'] === $rVide['message']
+    ? ok('sans motif, une cible existante et une cible absente rendent le MÊME refus')
+    : nok('l\'identifiant fuit encore : existante=' . json_encode($rNu) . ' absente=' . json_encode($rVide));
+
+// Et le témoin : avec un motif valide, la distinction revient — mais elle coûte
+// alors un vote inscrit, tracé, et non répétable (index unique).
+$rMotif = Moderate::applyVote($pdo, $sondeur, 'member', $existe, -1, motif(), 'agressif');
+$rAbsent = Moderate::applyVote($pdo, $sondeur, 'member', $inexistant, -1, motif(), 'agressif');
+$rMotif['ok'] === true && $rAbsent['ok'] === false
+    ? ok('avec un motif valide, sonder une cible existante INSCRIT le vote : la sonde est tracée et non répétable')
+    : nok('le vote motivé ne passe plus : ' . json_encode([$rMotif, $rAbsent]));
+
 // ── 6bis. Une salve n'ÉCRASE pas le motif d'arbitrage déjà posé ─────────────
 // 🔑 Trois comptes ordinaires suffisent à déclencher la branche « salve rapide »,
 // et elle tourne à chaque vote négatif. Sans garde, un tiers remplaçait donc le
@@ -844,6 +873,31 @@ foreach (['fr', 'en'] as $langue) {
 $fautes === []
     ? ok('les textes de modération du lab (fr, en) lisent leurs seuils dans la config')
     : nok('seuil écrit en dur dans un texte : ' . implode(' ; ', $fautes));
+
+// ── Le palier public ne chiffre pas la réputation sous le seuil de sanction ──
+// 🔑 Le ban tombe à `banA` et la perte du droit de vote à
+// `perteDroitDeVoteSous` : une réputation affichée à 0 DISAIT « banni en ce
+// moment », et deux relevés espacés donnaient quand la peine finirait. L'état de
+// sanction est pourtant déclaré non public. Une propriété ne se garde pas sur
+// deux canaux dont l'un calcule l'autre.
+//
+// Ce cas éprouve la frontière des deux côtés — c'est elle qui compte, pas les
+// libellés — et le fait que les quatre paliers n'ont plus qu'une source : leurs
+// seuils étaient recopiés trois fois, avec un 5 en dur dans deux des copies.
+require_once __DIR__ . '/../lib/layout.php';
+$seuil = Moderate::config()->perteDroitDeVoteSous;
+$sous   = palier_reputation($seuil - 1);
+$juste  = palier_reputation($seuil);
+$banni  = palier_reputation(Moderate::config()->banA ?? 0);
+$sous['chiffrable'] === false && $juste['chiffrable'] === true && $banni['chiffrable'] === false
+    ? ok("le palier public ne chiffre pas sous $seuil et chiffre à partir de $seuil")
+    : nok('la frontière du chiffre ne suit pas le seuil de sanction : ' . json_encode([$sous, $juste, $banni]));
+
+// Et la source est bien unique : la couleur comme le libellé en viennent, donc
+// déplacer le seuil dans la configuration déplace les trois d'un coup.
+$sous['libelle'] !== '' && $sous['couleur'] !== '' && $juste['libelle'] !== $sous['libelle']
+    ? ok('le palier rend son libellé et sa couleur depuis la même source que son seuil')
+    : nok('le palier ne porte pas ses trois valeurs : ' . json_encode([$sous, $juste]));
 
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0

@@ -36,7 +36,7 @@ if ($voirUsername !== null) {
         $rep = Moderate::getReputation($pdo, $memberId);
         $repScore = $rep['reputation'];
         $repPct = (int) round($repScore / Moderate::config()->reputationMax * 100);
-        $repColor = $repScore >= 25 ? '#3fb98c' : ($repScore >= 15 ? '#9aa9b6' : ($repScore >= 5 ? '#d4a056' : '#d96459'));
+        $repColor = palier_reputation($repScore)['couleur'];   // même source que le libellé et le seuil
         $mine = $account ? Moderate::userVote($pdo, (int) $account['id'], 'member', $memberId) : null;
         $isSelf = $account && (int) $account['id'] === $memberId;
         // La réputation est publique — elle sert à décider de faire confiance,
@@ -49,7 +49,23 @@ if ($voirUsername !== null) {
         ?>
         <h1>@<?= h($vue['username']) ?></h1>
         <div class="card">
-          <p style="margin-top:0"><strong><?= h(t('prf.rep')) ?></strong> · <span style="color:<?= $repColor ?>;font-weight:700">★ <?= $repScore ?>/<?= Moderate::config()->reputationMax ?></span>
+            <?php
+              // 🔑 Sous le seuil de sanction, le palier remplace le nombre : à 0 la
+              // valeur publique DISAIT « banni en ce moment », et la barre
+              // ci-dessous le montrait sans qu'on lise le chiffre. L'intéressé et
+              // un arbitre gardent la valeur exacte — ils ont déjà le droit de
+              // voir l'état lui-même.
+              // Les paliers et la règle « sous le seuil, pas de chiffre » vivent
+              // dans `palier_reputation()`, source unique des quatre seuils.
+              $palier = palier_reputation($repScore);
+              $montrerLeChiffre = $palier['chiffrable'] || $voitLesSanctions;
+              $repTexte = $montrerLeChiffre
+                  ? '★ ' . $repScore . '/' . Moderate::config()->reputationMax
+                  : h($palier['libelle']);
+              // La barre dirait le nombre que le texte vient de taire.
+              $repLargeur = $montrerLeChiffre ? $repPct : 100;
+            ?>
+          <p style="margin-top:0"><strong><?= h(t('prf.rep')) ?></strong> · <span style="color:<?= $repColor ?>;font-weight:700"><?= $repTexte ?></span>
             <?php if ($voitLesSanctions): ?>
               <?php if ($rep['banned']): ?><span style="color:#d96459"> · <?= h(sprintf(t('prf.banned.until'), date('d/m/Y H:i', $rep['banned_until']))) ?></span><?php endif; ?>
               <?php if (!$rep['voting_rights']): ?><span style="color:#d4a056"> · <?= h(t('prf.novote')) ?></span><?php endif; ?>
@@ -57,7 +73,7 @@ if ($voirUsername !== null) {
             <?php endif; ?>
           </p>
           <div style="height:8px;background:var(--elev);border-radius:4px;overflow:hidden;margin-bottom:14px">
-            <div style="height:100%;width:<?= $repPct ?>%;background:<?= $repColor ?>"></div>
+            <div style="height:100%;width:<?= $repLargeur ?>%;background:<?= $repColor ?>"></div>
           </div>
           <?php if ($account && !$isSelf): ?>
             <div id="vmsg"></div>
@@ -111,8 +127,11 @@ $myId = (int) $account['id'];
 $rep = Moderate::getReputation($pdo, $myId);
 $repScore = $rep['reputation'];
 $repPct = (int) round($repScore / Moderate::config()->reputationMax * 100);
-$repColor = $repScore >= 25 ? '#3fb98c' : ($repScore >= 15 ? '#9aa9b6' : ($repScore >= 5 ? '#d4a056' : '#d96459'));
-$repLabel = $repScore >= 25 ? t('prf.rep.trust') : ($repScore >= 15 ? t('prf.rep.member') : ($repScore >= 5 ? t('prf.rep.frail') : t('prf.rep.watch')));
+$repColor = palier_reputation($repScore)['couleur'];   // même source que le libellé et le seuil
+// Son propre profil : le chiffre reste, il a le droit de le voir. Seul le
+// libellé vient de la source commune, pour que les quatre seuils n'aient qu'un
+// endroit — ils étaient recopiés ici avec un 5 en dur.
+$repLabel = palier_reputation($repScore)['libelle'];
 // Activité
 $cnt = function (string $sql) use ($pdo, $myId): int {
     $s = $pdo->prepare($sql);
