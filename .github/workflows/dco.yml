@@ -1,0 +1,71 @@
+name: dco
+
+# Le certificat d'origine, vérifié là où il a un sens : sur les commits d'une
+# demande de fusion, c'est-à-dire sur les apports extérieurs.
+#
+# 🔑 **Pas de `push:`, volontairement.** Le dépôt porte 917 commits d'un seul
+# auteur, qui est le titulaire des droits : aucune provenance n'y est à
+# attester, et exiger le marqueur sur un push rendrait la règle inapplicable
+# sans réécrire un historique public. La portée du contrôle est celle du texte
+# de CONTRIBUTING.md — si l'un change, l'autre change avec lui.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  # ⚠️ Le nom du job EST le nom du contrôle, comme pour `gitleaks` et
+  # `structure`. L'exiger dans la protection de `main` est un geste à part,
+  # fait sur la forge : tant qu'il n'est pas posé, ce travail informe sans
+  # bloquer.
+  dco:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: chaque commit de la demande porte sa signature
+        env:
+          # 🔑 Par l'environnement et non par interpolation directe dans le
+          # script : une référence contrôlée par l'auteur de la demande n'entre
+          # jamais dans un shell.
+          BASE: ${{ github.event.pull_request.base.sha }}
+          TETE: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -uo pipefail
+
+          manquants=0
+          total=0
+          while read -r sha; do
+            [ -n "$sha" ] || continue
+            total=$((total + 1))
+            if ! git log -1 --format='%(trailers:key=Signed-off-by)' "$sha" | grep -q .; then
+              manquants=$((manquants + 1))
+              printf '  ✗ %s  %s\n' "${sha:0:8}" "$(git log -1 --format='%s' "$sha")"
+            fi
+          done < <(git rev-list "$BASE..$TETE" --no-merges)
+
+          if [ "$total" -eq 0 ]; then
+            echo "Aucun commit à vérifier."
+            exit 0
+          fi
+
+          if [ "$manquants" -gt 0 ]; then
+            echo ''
+            echo 'Les commits ci-dessus n’attestent pas leur origine.'
+            echo ''
+            echo 'Chaque commit d’une demande de fusion porte une ligne « Signed-off-by: ».'
+            echo 'Pour les poser sur ceux qui existent déjà :'
+            echo ''
+            echo '    git rebase --signoff origin/main'
+            echo ''
+            echo 'Et pour les suivants, « git commit -s » l’ajoute tout seul. Ce que tu attestes'
+            echo 'est écrit dans le fichier DCO à la racine : tu as écrit l’apport, ou tu as le'
+            echo 'droit de le soumettre sous la licence du projet. Aucun droit ne change de mains.'
+            exit 1
+          fi
+
+          printf '✓ les %d commit(s) de la demande attestent leur origine\n' "$total"

@@ -88,9 +88,10 @@ apt : figé sur une version ancienne, il n'interprète pas les allowlists comme 
   **refuse le merge** en cas de fuite — la barrière s'applique à tout le monde.
 - Règles dans `.gitleaks.toml` ; faux positifs connus dans `.gitleaksignore`.
 
-## ✍️ Signer tes commits — le certificat d'origine
+## ✍️ Signer tes contributions — le certificat d'origine
 
-Chaque commit porte une ligne de signature. `git commit -s` l'ajoute toute seule :
+**Tu contribues depuis un fork, par demande de fusion.** Chaque commit de ta demande porte une ligne
+de signature ; `git commit -s` l'ajoute toute seule :
 
 ```
 Signed-off-by: Prénom Nom <adresse@exemple.org>
@@ -108,6 +109,31 @@ jour une contribution, l'attestation tranche la question d'avance, datée et sig
 
 Pour ne pas exposer ton adresse, utilise ton adresse noreply GitHub dans la signature comme dans
 `user.email` (voir [Commits](#commits)).
+
+### Ce que la règle couvre, et ce qu'elle ne couvre pas
+
+⚖️ Elle vise les **apports extérieurs**, et le contrôle `dco` la vérifie sur les commits d'une demande
+de fusion — là, et nulle part ailleurs.
+
+L'historique antérieur au 9 octobre 2026 n'en relève pas : il est d'un seul auteur, qui est le
+titulaire des droits. Il n'y a là aucune provenance à attester, et le réécrire pour y poser des
+signatures rétroactives coûterait les empreintes d'un dépôt public sans rien prouver de plus.
+
+🔑 Le texte dit donc « chaque commit **de ta demande de fusion** » et non « chaque commit ». La
+nuance n'est pas cosmétique : une règle plus large que ce qu'on applique fait croire à une garantie
+qui n'existe pas — et 917 commits seraient rétroactivement hors règle le jour où on l'écrit.
+
+### Signer la clé en plus du nom — recommandé
+
+Le certificat d'origine est une **déclaration** ; une signature cryptographique est une **preuve**.
+Les deux se posent d'un seul geste :
+
+```bash
+git commit -s -S
+```
+
+Ce n'est pas exigé, et rien ne le refuse en son absence. Si tu le fais, vérifie que l'identité de ta
+clé est celle que tu veux voir dans un historique public — une adresse noreply convient très bien.
 
 ## 🚀 Déploiement
 
