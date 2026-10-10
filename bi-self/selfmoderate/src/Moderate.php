@@ -447,9 +447,45 @@ class Moderate
             return ['ok' => false, 'message' => $why];
         }
 
+        // 🔑 Le MOTIF se valide AVANT que la cible soit résolue, et c'est une
+        // mesure de sûreté, pas de style.
+        //
+        // Dans l'ordre inverse — celui d'avant —, un `target_id` nu suffisait à
+        // distinguer l'existant de l'inexistant : la cible introuvable rendait
+        // « Cible introuvable », la cible existante rendait « il manque 40
+        // caractères ». Deux réponses, aucun vote inscrit, aucun compteur touché,
+        // aucune zone de lissage sur cette route : **l'espace des identifiants
+        // internes se balayait en boucle, gratuitement**, y compris les comptes
+        // qui n'ont jamais publié et qu'aucune autre route ne montre.
+        //
+        // Les trois autres refus ci-dessous ne divulguent rien sur un tiers — son
+        // propre identifiant, et un vote qu'on sait avoir déposé —, donc ils
+        // gardent leur message : un refus indistinct aurait coûté de
+        // l'intelligibilité sans fermer quoi que ce soit de plus.
+        //
+        // ⚠️ Ce que cet ordre ferme exactement : sonder exige désormais un motif
+        // VALIDE, et un motif valide sur une cible qui existe **inscrit le vote**.
+        // La sonde devient donc tracée dans `mod_votes`, visible de l'arbitre, et
+        // non répétable — l'index unique `(voter_id, target_type, target_id)` l'y
+        // oblige. L'énumération n'est pas rendue impossible, elle est rendue
+        // VISIBLE et coûteuse, ce qui vaut mieux sur un terrain où scanner est le
+        // jeu : un balayage muet n'apprend rien à personne d'autre qu'à son auteur.
+        $reason = $reason !== null ? trim($reason) : null;
+        if ($value === -1 || ($reason !== null && $reason !== '')) {
+            [$motifOk, $pourquoi] = self::validateReason($reason);
+            if (!$motifOk) {
+                return ['ok' => false, 'message' => $pourquoi];
+            }
+        }
+        if ($reasonCode !== null && $reasonCode !== '' && !in_array($reasonCode, self::$reasonCodes, true)) {
+            return ['ok' => false, 'message' => static::t('Motif inconnu de cette plateforme.')];
+        }
+
         $author = self::resolveAuthor($pdo, $targetType, $targetId);
         if ($author === null) {
-            return ['ok' => false, 'message' => 'Cible introuvable.'];
+            // ⚠️ Seule chaîne de ce fichier qui ne passait pas par `static::t()`,
+            // et c'est la seule que le balayage lisait.
+            return ['ok' => false, 'message' => static::t('Cible introuvable.')];
         }
         if ($author === $voterId) {
             return ['ok' => false, 'message' => static::t('Tu ne peux pas voter pour toi-même.')];
@@ -461,17 +497,6 @@ class Moderate
         $stmt->execute([$voterId, $targetType, $targetId]);
         if ($stmt->fetchColumn()) {
             return ['ok' => false, 'message' => static::t('Tu as déjà voté ici.')];
-        }
-
-        $reason = $reason !== null ? trim($reason) : null;
-        if ($value === -1 || ($reason !== null && $reason !== '')) {
-            [$motifOk, $pourquoi] = self::validateReason($reason);
-            if (!$motifOk) {
-                return ['ok' => false, 'message' => $pourquoi];
-            }
-        }
-        if ($reasonCode !== null && $reasonCode !== '' && !in_array($reasonCode, self::$reasonCodes, true)) {
-            return ['ok' => false, 'message' => static::t('Motif inconnu de cette plateforme.')];
         }
 
         // Anti upvote-farming : >3 upvotes voter→author sur 60j
@@ -725,8 +750,37 @@ class Moderate
             if (count($best) < self::config()->salveVotantsMin) {
                 continue;
             }
+            // 🔑 N'écrit QUE sur une case vide, et c'est une mesure de sûreté.
+            //
+            // Trois comptes ordinaires suffisent à déclencher cette branche
+            // (`salveVotantsMin`), et elle tourne à chaque vote négatif. Sans la
+            // clause, un tiers écrasait donc le motif d'arbitrage d'autrui par le
+            // plus bénin de la liste. Deux pertes, dans les deux sens :
+            //
+            //  · BLANCHIMENT — un `meute_recidive`, dont ce fichier dit qu'« une
+            //    récidive de meute ne se rachète pas », devenait « plusieurs
+            //    votants sans lien ». L'arbitre lisait une autre situation que
+            //    celle qui s'était produite ;
+            //  · MARQUE INDÉLÉBILE — les deux chemins qui lèvent un signalement
+            //    tout seuls n'acceptent que `reputation_zero` (`regenerate`,
+            //    `restoreAfterCancel`) ou `ban_auto` (`cloreBanExpire`). Un motif
+            //    écrasé par celui-ci ne se levait donc PLUS jamais sans un geste
+            //    d'arbitre : le titulaire gardait un signalement permanent qu'un
+            //    tiers lui avait posé.
+            //
+            // ⚠️ Le signal perdu quand la case est occupée ne coûte rien : un
+            // compte déjà signalé est déjà sous les yeux de l'arbitre, et ce
+            // libellé-ci est le plus faible des quatre. Ce qui coûtait, c'était
+            // de remplacer une information par une moins précise.
+            //
+            // ⚠️ Et l'asymétrie subsiste pour les trois autres poseurs
+            // (`meute_recidive`, `reputation_zero`, `ban_auto`) : aucun ne regarde
+            // le motif en place. Ils ne sont pas déclenchables par un tiers aussi
+            // directement, mais la propriété « un champ lu par un arbitre n'est
+            // jamais écrasé par un chemin automatique » n'est tenue qu'ici.
             $pdo->prepare(
-                "UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide', updated_at = ? WHERE account_id = ?"
+                "UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide', updated_at = ?
+                  WHERE account_id = ? AND (review_reason IS NULL OR review_reason = 'salve_rapide')"
             )->execute([$maintenant, $author]);
             $salves[] = ['target_author' => $author, 'voters' => array_keys($best)];
         }

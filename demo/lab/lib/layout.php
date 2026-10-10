@@ -157,6 +157,47 @@ if (_logoutLink) _logoutLink.addEventListener('click', function(e){ e.preventDef
  * portent tous deux un bouton de vote négatif, et deux copies du même formulaire
  * divergeraient au premier changement de règle.
  */
+/**
+ * Le palier de réputation d'un membre, et s'il est public de le chiffrer.
+ *
+ * 🔑 **Source unique des quatre paliers.** Ils étaient recopiés trois fois — le
+ * badge d'un fil et les deux affichages du profil —, avec leurs seuils en dur à
+ * chaque endroit. Un seuil déplacé dans la configuration laissait donc deux
+ * copies mentir, et c'est exactement la divergence que
+ * `scripts/check-liens-bibliotheque.sh` surveille ailleurs.
+ *
+ * 🔑 **Et sous le seuil de sanction, le chiffre ne se publie pas.** La réputation
+ * est publique par choix — elle sert à décider de faire confiance. L'état de
+ * sanction est déclaré non public. Mais les deux ne sont pas indépendants : le
+ * ban tombe à `banA` et la perte du droit de vote à `perteDroitDeVoteSous`, si
+ * bien qu'une valeur affichée **à 0** disait « banni en ce moment », et deux
+ * relevés espacés donnaient à peu près quand la peine finirait. Une propriété ne
+ * se garde pas sur deux canaux dont l'un calcule l'autre.
+ *
+ * ⚠️ Ce que cela ne ferme pas : l'absence de chiffre est elle-même un signal. On
+ * passe d'une divulgation exacte à une divulgation grossière (« sous
+ * surveillance »). Fermer complètement supposerait de ne plus distinguer le
+ * palier fragile du palier surveillé, et le forum emploie cette distinction pour
+ * de bon. Le gain est réel, il n'est pas total.
+ *
+ * @return array{libelle: string, couleur: string, chiffrable: bool}
+ */
+function palier_reputation(int $rep, string $prefixe = 'prf'): array
+{
+    $seuil = \Pierroons\MySelfLab\Moderate::config()->perteDroitDeVoteSous;
+    if ($rep >= 25) {
+        return ['libelle' => t($prefixe . '.rep.trust'), 'couleur' => '#3fb98c', 'chiffrable' => true];
+    }
+    if ($rep >= 15) {
+        return ['libelle' => t($prefixe . '.rep.member'), 'couleur' => '#9aa9b6', 'chiffrable' => true];
+    }
+    if ($rep >= $seuil) {
+        return ['libelle' => t($prefixe . '.rep.frail'), 'couleur' => '#d4a056', 'chiffrable' => true];
+    }
+
+    return ['libelle' => t($prefixe . '.rep.watch'), 'couleur' => '#d96459', 'chiffrable' => false];
+}
+
 function render_vote_reason_dialog(): void
 {
     $codes = \Pierroons\MySelfLab\Moderate::reasonCodes();

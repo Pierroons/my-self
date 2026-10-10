@@ -43,22 +43,6 @@ final class Auth
     public const MOT_MEMORISE_MINIMUM = 4;
     /** Octets aléatoires d'un jeton de session, rendus en hexadécimal. */
     private const JETON_OCTETS = 24;         // fenêtre de comptage (15 min)
-    /** Options Argon2id (R9-06, alignées sur le profil OWASP de SelfRecover). */
-    /**
-     * Hash Argon2id factice (R9-06), exécuté quand le compte n'existe pas, pour que
-     * password_verify prenne le même temps qu'avec un vrai compte (anti-énumération
-     * par timing — DOIT être du même algo que les vrais hash). Aucun mot de passe réel.
-     */
-
-    /**
-     * Options Argon2id, exposées pour les modules qui reposent un mot de passe
-     * hors de cette classe (Device notamment).
-     *
-     * 🔑 Une seule source de vérité : un module qui recopierait ces valeurs
-     * finirait par diverger silencieusement le jour où on durcit le profil,
-     * et produirait des hash plus faibles que les autres sans que rien
-     * ne le signale.
-     */
     /**
      * Le hash factice du protocole.
      *

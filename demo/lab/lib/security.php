@@ -35,6 +35,23 @@ final class Security
         // LAB-08 : cloisonnement cross-origin (défense en profondeur ; tout est same-origin ici).
         header('Cross-Origin-Opener-Policy: same-origin');
         header('Cross-Origin-Resource-Policy: same-origin');
+        // 🔑 COEP ferme le dernier côté du cloisonnement : COOP sépare le
+        // contexte de navigation, CORP protège nos ressources d'un emprunt, et
+        // celui-ci refuse de CHARGER une sous-ressource qui ne s'autorise pas
+        // explicitement. Les trois ensemble isolent l'origine, et c'est la page
+        // du mémo qui en a l'usage : son déchiffrement vit dans le navigateur,
+        // donc tout script qu'on y ferait entrer y verrait la clé.
+        //
+        // ⚠️ `require-corp` bloque toute sous-ressource sans CORP ni CORS — y
+        // compris les scripts de dérivation, donc le coffre, donc un drapeau.
+        // Ce qui le rend posable ici : `deploy/ctf-s2/snippets/lab-entetes-statiques.conf`
+        // pose déjà CORP sur chaque fichier que nginx sert, et son commentaire
+        // l'annonçait comme la condition de ce geste. Mesuré en service avant la
+        // pose : les sept scripts servis et le favicon rendent tous CORP, la
+        // seule référence externe des pages est un lien de navigation — que COEP
+        // ne regarde pas —, et le laboratoire n'emploie ni Worker, ni
+        // `importScripts`, ni `SharedArrayBuffer`.
+        header('Cross-Origin-Embedder-Policy: require-corp');
         header('X-Permitted-Cross-Domain-Policies: none');
         // Pages authentifiées : jamais de cache. Sans cela le navigateur peut
         // resservir depuis son historique une page rendue pour une session
@@ -64,6 +81,9 @@ final class Security
         }
     }
 
+    /** Longueur du jeton CSRF et de son masque, en octets (SHA-256 brut). */
+    private const CSRF_OCTETS = 32;
+
     /**
      * Secret serveur pour signer les tokens CSRF.
      *
@@ -79,15 +99,11 @@ final class Security
      * secret pour signer et pour chiffrer mélange deux contextes, et rien
      * n'obligeait à le faire.
      */
-    /** Longueur du jeton CSRF et de son masque, en octets (SHA-256 brut). */
-    private const CSRF_OCTETS = 32;
-
     private static function csrfSecret(): string
     {
         return 'csrf|' . SecretInstance::lire('.serversecret', 48, SecretInstance::PLANCHER);
     }
 
-    /** Token CSRF déterministe lié au token de session (pas de stockage requis). */
     /**
      * Jeton CSRF, MASQUE a chaque rendu.
      *

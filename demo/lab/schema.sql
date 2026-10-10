@@ -266,7 +266,7 @@ CREATE INDEX IF NOT EXISTS idx_dispute_msg ON dispute_messages(dispute_id);
 --   code_lookup = HMAC(code, sel serveur)  → retrouve le compte en O(1) SANS
 --                 identifiant, ce qui retire l'oracle d'énumération
 --   code_hash   = Argon2id(code)           → résiste à une fuite de la base
--- Argon2id seul imposerait de hacher chaque ligne à 64 Mo pour trouver la
+-- Argon2id seul imposerait de hacher chaque ligne à 64 Mio pour trouver la
 -- correspondance ; HMAC seul tomberait à la première attaque hors ligne.
 --
 -- ⚠️ Cette table existait en production sans figurer ici : une réinstallation

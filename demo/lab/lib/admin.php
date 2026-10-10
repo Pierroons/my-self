@@ -173,7 +173,6 @@ final class Admin
         )->fetchAll();
     }
 
-    /** Corps déchiffré d'un rapport. */
     /**
      * Rend un rapport pour lecture — **sans le déchiffrer**.
      *
