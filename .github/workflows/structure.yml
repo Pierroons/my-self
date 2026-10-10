@@ -122,6 +122,17 @@ jobs:
         working-directory: demo/lab
         run: composer install --no-interaction --no-progress
 
+      # 🔑 Le périmètre des canaris se déclare par un `# @plante` en tête de
+      # `run:`, et DEUX scripts s'y fient : celui-ci, pour ranger ce qui est
+      # gardé ailleurs, et `check-canaris.sh`, qui les rejoue. Un périmètre faux
+      # rendrait les deux sorties trompeuses — d'où ce contrôle AVANT eux.
+      #
+      # ⚠️ `--statique` ne lance aucun canari : il lit le YAML. Le volet complet
+      # a besoin des prérequis de chaque banc, donc sa place est avant un envoi,
+      # pas ici — un vert d'ici ne dit rien de ce que les canaris plantent.
+      - name: Garde-fou — le périmètre des canaris est déclaré, pas devin
+        run: bash scripts/check-canaris.sh --statique
+
       # 🔑 Les portes de comptage disent-elles encore le total de leur banc ? Un
       # banc qui gagne des cas laisse derrière lui le littéral qui le garde, et
       # la porte tombe sur un banc VERT.
@@ -154,6 +165,7 @@ jobs:
 
       - name: Canari — les chemins cités en code inline rougissent quand l'un meurt
         run: |
+          # @plante
           F=demo/bi-self-duo/CONTRIBUTING.md
           cp "$F" /tmp/CB.intact
           printf '\nCopier `deploy/bi-self/inexistant-canari.conf`.\n' >> "$F"
@@ -169,6 +181,7 @@ jobs:
 
       - name: Canari — les chemins cités dans un bloc de code rougissent quand l'un meurt
         run: |
+          # @plante
           F=demo/bi-self-duo/CONTRIBUTING.md
           cp "$F" /tmp/CB.intact
           printf '\n```bash\ncd bi-self/inexistant-canari\n```\n' >> "$F"
@@ -191,6 +204,7 @@ jobs:
 
       - name: Canari — le contrôle des versions rougit sur un porteur décalé et sur un tag absent
         run: |
+          # @plante
           F=bi-self/selfmoderate/README.md
           cp "$F" /tmp/SM.intact
           sed -i -E 's#(badge/status-v)[0-9]+\.[0-9]+\.[0-9]+#\10.0.0#' "$F"
@@ -255,6 +269,7 @@ jobs:
 
       - name: Canari — le contrôle d'écosystème rougit quand selffarm-lite avance
         run: |
+          # @plante
           # Deux dérives, à partir du vrai manifeste : une version qui avance, un module
           # qui disparaît. Le code attendu est 1 (dérive), pas 2 (panne) : un manifeste
           # injoignable ferait sinon passer le canari sans rien éprouver.
@@ -281,6 +296,7 @@ jobs:
 
       - name: Canari — le validateur rougit sur un style en ligne, un id en double, un titre sauté
         run: |
+          # @plante
           F=web/my-self.fr/index.html
           cp "$F" /tmp/VX.intact
           for cas in style id titre; do
@@ -318,6 +334,7 @@ jobs:
 
       - name: Canari — le contrôle rougit sur un appel incomplet
         run: |
+          # @plante
           PLANTE=$(mktemp -d)
           mkdir -p "$PLANTE/demo"
           cp demo/bi-self-duo/api/recover/recover-l1.php "$PLANTE/demo/"
@@ -354,6 +371,7 @@ jobs:
 
       - name: Canari — le contrôle rougit si un message tait ce qu'il remplace
         run: |
+          # @plante
           # Le défaut d'origine replanté : un message qui nomme ce qui SURVIT et
           # tait ce qui MEURT.
           # Jamais un chemin fixe : au second passage, cp copierait DANS le dossier
@@ -395,6 +413,7 @@ jobs:
       # frein par compte, donc rien sous un profil où l'adresse ne distingue personne.
       - name: Canari — l'enrôlement n'exige plus le titulaire, et ne freine plus par compte
         run: |
+          # @plante
           F=bi-self/selfrecover/src/Device/Device.php
           cp "$F" /tmp/Device.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
@@ -468,6 +487,7 @@ jobs:
       # garde ferme ; le banc doit rougir sur ce cas-là.
       - name: Garde-fou — la route du sel rend toujours un sel
         run: |
+          # @plante
           sortie=$(php bi-self/selfrecover/tests/sanity_sel_derivation.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc de la route du sel a échoué"; exit 1; }
@@ -498,6 +518,7 @@ jobs:
       # le voir.
       - name: Garde-fou — la passphrase apportée par l'utilisateur
         run: |
+          # @plante
           for profil in clearweb tor-onion; do
             sortie=$(php bi-self/selfrecover/tests/sanity_passphrase_apportee.php --profil="$profil" 2>&1) && rc=0 || rc=$?
             echo "$sortie"
@@ -676,6 +697,7 @@ jobs:
       # celui du niveau 2 est branché, pas seulement écrit.
       - name: Canari — le banc rougit quand le frein du niveau 2 est débranché
         run: |
+          # @plante
           F=bi-self/selfrecover/src/Recovery/Recovery.php
           cp "$F" /tmp/Recovery.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
@@ -712,6 +734,7 @@ jobs:
       # défaut qu'il décrit passerait quand même.
       - name: Canari — le profil de déploiement ne refuse plus rien
         run: |
+          # @plante
           F=bi-self/selfrecover/src/ProfilDeploiement.php
           cp "$F" /tmp/Profil.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
@@ -1036,6 +1059,7 @@ jobs:
 
       - name: Canari — le banc du garde-fou rougit quand le correctif disparaît
         run: |
+          # @plante
           # Un banc qu'on n'a jamais fait échouer ne se distingue pas d'un banc qui
           # ne mesure rien : les deux rendent vert. On neutralise ici la seule
           # instruction qui résout l'image chargée, et on exige que le banc rougisse.
@@ -1067,6 +1091,7 @@ jobs:
 
       - name: Canari — le garde-fou rougit sur une borne raw sous un keyscript hex
         run: |
+          # @plante
           # L'image d'une machine migrée de raw à hex sans correction de la borne :
           # cryptsetup tronquerait la clé au démarrage. On range une borne différente
           # avec les bornes conformes, et le banc doit rougir sur ce cas-là.
@@ -1091,6 +1116,7 @@ jobs:
       # setup-add, qui relit son propre label, ne le verrait pas.
       - name: Garde-fou — un seul label de dérivation pour les trois scripts LUKS
         run: |
+          # @plante
           sortie=$(bash self-security/selfrecover-luks/tests/test_label_derivation.sh)
           echo "$sortie"
           echo "$sortie" | grep -qE '^✅ 3/3 ' \
@@ -1127,6 +1153,7 @@ jobs:
 
       - name: Canari — le contrôle des sauvegardes rougit quand il cesse de mordre
         run: |
+          # @plante
           # Le cas qui compte le plus est la sauvegarde PÉRIMÉE : elle existe, elle se
           # lit, elle appartient au bon volume — et elle ressuscite un slot révoqué.
           # C'est celui-là qu'on neutralise.
@@ -1164,6 +1191,7 @@ jobs:
 
       - name: Canari — le contrôle du format rougit quand il ne compare plus
         run: |
+          # @plante
           # Le cas qui rend une machine muette : slot raw, keyscript hex. On retire la
           # comparaison, et le banc doit rougir sur ce cas-là.
           F=self-security/selfrecover-luks/format-slot.sh
@@ -1185,6 +1213,7 @@ jobs:
 
       - name: Canari — la table des longueurs de clé est tenue par cryptsetup
         run: |
+          # @plante
           # La borne keyfile-size vient de `format-slot.sh taille`. On inverse la
           # table : la borne qu'elle donne au hex doit cesser d'ouvrir une clé hex.
           F=self-security/selfrecover-luks/format-slot.sh
@@ -1204,6 +1233,7 @@ jobs:
 
       - name: Canari — une borne différente se refuse
         run: |
+          # @plante
           # Une borne raw sous un keyscript hex tronque la clé au démarrage. On retire
           # la comparaison : le banc doit rougir sur ce cas-là.
           F=self-security/selfrecover-luks/format-slot.sh
@@ -1239,6 +1269,7 @@ jobs:
 
       - name: Canari — le banc rougit si la preuve repasse par l'enrôleur
         run: |
+          # @plante
           # Le défaut d'origine, replanté : la preuve dérive avec le même outil que
           # l'enrôlement, donc elle s'accorde toujours avec elle-même.
           S=self-security/selfrecover-luks/setup-add-selfrecover-slot.sh
@@ -1276,6 +1307,7 @@ jobs:
 
       - name: Canari — le banc du secours rougit si le shell revient
         run: |
+          # @plante
           # Le cas qui compte est celui qu'on vient de fermer : un secours qui rend
           # un shell. On le replante et on exige que le banc cesse de passer.
           S=self-security/selfrecover-luks/selfrecover-secours.sh
@@ -1304,6 +1336,7 @@ jobs:
 
       - name: Canari — le contrôle des planchers rougit quand l'un d'eux dérive
         run: |
+          # @plante
           # Un plancher trop bas n'échoue jamais : il accepte. Ce contrôle est donc
           # le seul endroit où la divergence se voit — et un contrôle jamais vu
           # rougir ne se distingue pas d'un contrôle qui ne mesure rien.
@@ -1336,6 +1369,7 @@ jobs:
 
       - name: Canari — le contrôle d'attribution rougit sur l'erreur du 10 octobre
         run: |
+          # @plante
           # Le défaut réel, replanté à l'identique : le chiffre juste, la source
           # fausse. ⚠️ Planté sur le DISQUE et non dans l'index — un contrôle qui
           # lirait `git grep` resterait vert ici, et c'est précisément ce qu'on
@@ -1429,6 +1463,7 @@ jobs:
 
       - name: Canari — le banc du simulateur rougit quand un scénario perd sa dépendance
         run: |
+          # @plante
           # Le défaut réel, replanté : le require retiré, deux scénarios sur quatre
           # lèvent. C'est la seule chose qui distingue ce banc d'un banc qui ne
           # mesure rien, puisque les deux rendent vert.
@@ -1487,6 +1522,7 @@ jobs:
       # avoir été écrits puis laissés hors de toute étape, exactement comme eux.
       - name: Canaris — les neuf gardes du lab rougissent sur le défaut qu'elles visent
         run: |
+          # @plante
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
             F="$1"; cp "$F" /tmp/canari-lab.intact; avant=$(md5sum "$F" | cut -d" " -f1)
             python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
@@ -1577,6 +1613,7 @@ jobs:
 
       - name: Canari — la console reperd les tentatives sans étiquette
         run: |
+          # @plante
           F=demo/lab/lib/admin.php
           cp "$F" /tmp/admin.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
@@ -1612,6 +1649,7 @@ jobs:
       # n'observe que la forme qu'elle traduit.
       - name: Canari — la console réaffiche l'étiquette interne en clair
         run: |
+          # @plante
           F=demo/lab/lib/admin.php
           cp "$F" /tmp/admin-libelle.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
@@ -1678,6 +1716,7 @@ jobs:
 
       - name: Canari — la troncature du journal SU se voit encore depuis le dehors
         run: |
+          # @plante
           # La chaîne de hachage ne détecte pas sa propre troncature : le préfixe
           # d'une chaîne valide est une chaîne valide. Seule la marque du témoin, qui
           # vit HORS du journal, rend un journal raccourci visible. On neutralise
@@ -1709,6 +1748,7 @@ jobs:
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
+          # @plante
           # La garde qui empêche un ban en cours de reculer à chaque vote contraire
           # est retirée : le banc doit rougir sur ce cas précis.
           M=bi-self/selfmoderate/src/Moderate.php
@@ -1740,6 +1780,7 @@ jobs:
 
       - name: Canari — le dernier administrateur tombe sans ses deux gardes
         run: |
+          # @plante
           # Deux gardes se recouvrent : la console refuse, et la base refuse derrière
           # elle. On retire les DEUX, et le banc doit rougir sur le dernier admin —
           # en retirer une seule laisse l'autre tenir, ce qui ne prouverait rien.
@@ -1771,6 +1812,7 @@ jobs:
 
       - name: Canari — la rotation re-signe sans vérifier d'abord
         run: |
+          # @plante
           # Sans la vérification sous l'ancienne clé, une entrée forgée sans la clé
           # (chaînage juste, HMAC faux) devient authentique sous la nouvelle.
           C=demo/lab/selfrecover-su
@@ -1827,6 +1869,7 @@ jobs:
       # perd Secure par défaut, un quota par adresse levé — le banc doit rougir sur chacun.
       - name: Garde-fou — la démo SelfDataGuard isole chaque visiteur
         run: |
+          # @plante
           php demo/selfdataguard/tests/sanity_sessions.php
           F=demo/selfdataguard/api/_bootstrap.php
           canari() {  # canari <avant> <après> <ligne rouge attendue>
@@ -1854,6 +1897,7 @@ jobs:
       # rouge.
       - name: Garde-fou — les valeurs que SelfRecover partage avec SelfDataGuard
         run: |
+          # @plante
           sortie=$(php bi-self/selfrecover/tests/sanity_couplage_dataguard.php)
           echo "$sortie"
           echo "$sortie" | grep -qE '^OK — 10/10 ' \
@@ -1889,6 +1933,7 @@ jobs:
       # re-scellement de la passphrase : la passphrase consommée ouvrirait encore.
       - name: Garde-fou — un coffre survit à chaque récupération SelfRecover
         run: |
+          # @plante
           sortie=$(php bi-self/selfrecover/tests/sanity_parcours_dataguard.php)
           echo "$sortie"
           echo "$sortie" | grep -qE '^OK — 21/21$' \
@@ -1914,6 +1959,7 @@ jobs:
       # retire le correctif et exige que le banc rougisse sur ce cas-là.
       - name: Canaris — les correctifs de SelfDataGuard rougissent quand on les retire
         run: |
+          # @plante
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
             F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
             python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
@@ -1973,6 +2019,7 @@ jobs:
       # sans qu'aucun frein change de comportement pour le dire.
       - name: Garde-fou — la purge des échecs épargne ce qui n'est pas à elle
         run: |
+          # @plante
           sortie=$(php bi-self/selfrecover/tests/banc_stockage_pdo.php)
           echo "$sortie" | tail -3
           echo "$sortie" | grep -qE '^✅ 167 contrôle\(s\) passé\(s\), 0 échec' \
@@ -1996,6 +2043,7 @@ jobs:
 
       - name: Garde-fou — la liste des étiquettes est close
         run: |
+          # @plante
           sortie=$(php bi-self/selfrecover/tests/sanity_etiquettes.php)
           echo "$sortie"
           echo "$sortie" | grep -qE '^OK — 12/12$' \
@@ -2019,6 +2067,7 @@ jobs:
       # sr-derive.js, sr-kdf.js, Recovery::SEL_OCTETS, le CHECK du schéma duo.
       - name: Garde-fou — une seule taille de sel de compte, du navigateur à la base
         run: |
+          # @plante
           sortie=$(php bi-self/selfrecover/tests/sanity_forme_sel.php)
           echo "$sortie"
           echo "$sortie" | grep -qE '^OK — 7/7$' \
@@ -2043,6 +2092,7 @@ jobs:
       # implémentations PHP et JS.
       - name: Garde-fou — la dérivation des scripts sans navigateur tient les vecteurs
         run: |
+          # @plante
           sortie=$(php demo/lab/tests/sanity_derive_cli.php)
           echo "$sortie"
           echo "$sortie" | grep -qE '^OK — 5/5 vecteurs$' \

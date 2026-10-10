@@ -89,7 +89,11 @@ for et in etapes:
             # ailleurs et le dire ici évite d'annoncer un trou qui n'existe pas.
             # Le reste — total porté par une variable, ligne de sortie nommée —
             # n'est lu par personne, et c'est ce qu'il faut voir.
-            if re.match(r'\s*- name:\s*Canari', et[0]):
+            # 🔑 Le marqueur, pas le libellé : dix canaris du workflow sont
+            # nommés « Garde-fou », et ce `- name:\s*Canari` les rangeait parmi
+            # les étapes que personne ne garde. Même critère que
+            # `check-canaris.sh`, qui les rejoue — une notion, une source.
+            if any(x.strip() == '# @plante' for x in et):
                 canaris += 1
             else:
                 informes += 1

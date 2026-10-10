@@ -123,9 +123,21 @@ tiennent en intégration continue.
 | `scripts/check-versions.sh` | chaque porteur d'une version dit-il celle de `modules.json`, la source unique, et le statut que le module y déclare (bêta) ; avec `--tags`, chaque version annoncée a-t-elle son tag ; avec `--publications`, sa release, et ce qui est déclaré retiré ne sert-il plus |
 | `scripts/check-ecosysteme.sh` | ce que nos README disent de `selffarm-lite` correspond-il à ce qu'il publie ; `--ecrire` remet le bloc à jour |
 | `scripts/check-portes.sh` | les portes de comptage du workflow disent-elles encore le total de leur banc — chaque paire (banc, porte) rejouée, appariée par étape |
-| `scripts/check-canaris.sh` | les canaris de `structure.yml` plantent-ils encore le défaut qu'ils nomment — il **lance** chaque `run:`, il ne le relit pas. ⚠️ **Geste avant envoi, pas contrôle d'intégration** : ces canaris tournent déjà dans `structure`, et le rejouer en CI serait un doublon. Son intérêt est de rougir **avant** l'envoi, pas après. Arbre propre exigé — il plante des fichiers du dépôt puis les restaure |
+| `scripts/check-canaris.sh` | les canaris de `structure.yml` plantent-ils encore le défaut qu'ils nomment — il **lance** chaque `run:` déclaré `# @plante`, il ne le relit pas. ⚠️ **Geste avant envoi** : ces canaris tournent déjà dans `structure`, et les rejouer en CI serait un doublon. Arbre propre exigé — il plante des fichiers du dépôt puis les restaure. Avec `--statique`, il ne lance rien et ne juge que le périmètre : c'est ce volet-là qui tient en intégration continue |
 
-🔑 **Un canari porte DEUX littéraux** — le motif qu'il plante et la ligne rouge qu'il exige — et les deux vieillissent quand le code avance. Le 10/10/2026, trois des 27 avaient un motif périmé par SelfRecover 0.12.0 : les trois ont refusé de prouver quoi que ce soit plutôt que de rendre vert, et le job est tombé en accusant un contrôle qui faisait son travail. D'où `check-canaris.sh`, à lancer quand un lot touche le code que les bancs éprouvent.
+🔑 **Un canari porte DEUX littéraux** — le motif qu'il plante et la ligne rouge qu'il exige — et les deux vieillissent quand le code avance. Le 10/10/2026, trois canaris avaient un motif périmé par SelfRecover 0.12.0 : les trois ont refusé de prouver quoi que ce soit plutôt que de rendre vert, et le job est tombé en accusant un contrôle qui faisait son travail. D'où `check-canaris.sh`, à lancer quand un lot touche le code que les bancs éprouvent.
+
+🔑 **Le périmètre d'un canari se déclare.** Le même jour, le filtre
+`nom.startswith('Canari')` de `check-canaris.sh` s'est révélé ne voir que 29 des 39
+étapes qui plantaient alors : les dix qu'il ratait sont nommées « Garde-fou »,
+plantent un défaut, et personne ne les rejouait. Quatre heuristiques de contenu essayées pour les
+retrouver ont rendu 12, 28, 33 et 39 — aucune ne décide, et une sonde qui devine
+rend un vert dont personne ne connaît la portée. Chaque canari porte donc
+`# @plante` en tête de son `run:`, et **deux scripts lisent ce seul critère** :
+`check-canaris.sh`, qui les rejoue, et `check-portes.sh`, qui range ce qui est
+gardé ailleurs. Trois sens sont gardés, tous les trois vus rouges : une étape qui
+écrit dans le dépôt sans marqueur, un marqueur sans plantation visible, et une
+plantation glissée dans un `run:` d'une ligne, où le marqueur ne tiendrait pas.
 
 🔑 **Un contrôle de prose se borne, ou il crie.** `check-source-profil.sh` est le
 premier à juger une phrase et non un nombre, et sa première version exigeait de
@@ -136,11 +148,12 @@ une **erreur nommée** qui ne doit pas revenir, et une **liste explicite** de
 porteurs à garder. Une heuristique sur la prose mesure le style ; une liste mesure
 une propriété.
 
-**Huit d'entre eux tournent en intégration continue** (`structure.yml`) : les
+**Neuf d'entre eux tournent en intégration continue** (`structure.yml`) : les
 chemins cités, l'unicité du profil de hachage, les gabarits de vhost — ce
 dernier parce que le job installe nginx pour lui —, les liens de bibliothèque,
-le plancher de secret, la source du profil du navigateur, les porteurs de version
-et les portes de comptage. **Chaque matin, `suivi.yml`
+le plancher de secret, la source du profil du navigateur, les porteurs de version,
+les portes de comptage, et le périmètre déclaré des canaris — ce dernier par son
+volet `--statique`, qui ne lance rien et n'a donc aucun prérequis. **Chaque matin, `suivi.yml`
 lance trois contrôles de plus**, parce que ce qui les fait rougir n'arrive pas
 par un envoi ici : le tag qu'une version annoncée attend, sa release publiée, et
 le dépôt voisin. Ils signalent sans bloquer `main`. Les autres ne le peuvent pas,

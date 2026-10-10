@@ -23,24 +23,41 @@
 # canari interrompu laisse son fichier planté, et `git status` est alors le seul
 # à le dire.
 #
-# Usage : scripts/check-canaris.sh [chemin du workflow]
-# Sortie : 0 si chaque canari plante et rougit comme il l'annonce, 1 sinon.
+# Usage : scripts/check-canaris.sh [--statique] [chemin du workflow]
+# Sortie : 0 si le périmètre est déclaré et si chaque canari plante et rougit
+#          comme il l'annonce, 1 sinon.
+#
+# 🔑 **Deux sens, deux natures.** « Une étape qui plante dans le dépôt est
+# déclarée » se lit sur le YAML, sans prérequis : c'est `--statique`, et c'est
+# pour ça qu'il tient en intégration continue. « Une étape déclarée plante
+# vraiment et rougit » demande de la LANCER, donc les prérequis des bancs : c'est
+# le volet complet, qui s'exécute avant un envoi. Un contrôle statique qui
+# promettrait le second rendrait un vert dont personne ne connaît la portée.
 
 set -uo pipefail
+
+STATIQUE=0
+if [ "${1:-}" = "--statique" ]; then STATIQUE=1; shift; fi
 
 WORKFLOW="${1:-.github/workflows/structure.yml}"
 cd "$(dirname "$0")/.." || exit 1
 
 [ -f "$WORKFLOW" ] || { echo "✗ workflow introuvable : $WORKFLOW"; exit 1; }
 
-echo "▸ canaris de $WORKFLOW"
+if [ "$STATIQUE" = 1 ]; then
+  echo "▸ périmètre des canaris de $WORKFLOW (statique, rien n'est lancé)"
+else
+  echo "▸ canaris de $WORKFLOW"
+fi
 
-python3 - "$WORKFLOW" <<'PY'
+python3 - "$WORKFLOW" "$STATIQUE" <<'PY'
 import os
 import re
 import subprocess
 import sys
 import tempfile
+
+MARQUEUR = '# @plante'
 
 lignes = open(sys.argv[1], encoding='utf-8').read().split('\n')
 
@@ -49,14 +66,18 @@ lignes = open(sys.argv[1], encoding='utf-8').read().split('\n')
 # YAML — moins indentés —, puis les dédentait de la marge du script : le `#`
 # sautait et sept canaris « échouaient » en exécutant les mots de leurs
 # commentaires. La sonde mesurait son propre défaut.
-canaris = []
+# 🔑 **Le périmètre se déclare, il ne se devine pas.** Le filtre a d'abord été
+# `nom.startswith('Canari')` : il ne voyait que 29 des 39 étapes qui plantaient
+# alors, et les dix qu'il ratait — nommées « Garde-fou » — portaient un défaut que
+# personne ne rejouait. Quatre heuristiques de contenu essayées le 10/10/2026 rendaient 12, 28,
+# 33 et 39 : aucune ne décide. Chaque canari porte donc `# @plante` en tête de son
+# `run:`, et c'est cette ligne, pas son libellé, qui le range ici.
+etapes, breves = [], []
 for i, l in enumerate(lignes):
     m = re.match(r'(\s*)- name: (.*)', l)
     if m is None:
         continue
     nom = m.group(2).strip()
-    if not nom.startswith('Canari'):
-        continue
     j = i + 1
     while j < len(lignes) and re.match(r'\s*- name:', lignes[j]) is None:
         mr = re.match(r'(\s*)run: \|\s*$', lignes[j])
@@ -74,15 +95,95 @@ for i, l in enumerate(lignes):
                 k += 1
             while corps and corps[-1] == '':
                 corps.pop()
-            canaris.append((nom, corps))
+            etapes.append((nom, corps))
+            break
+        # ⚠️ Un `run:` d'une seule ligne ne peut pas porter le marqueur en tête
+        # de bloc. Sans cette branche, 59 étapes sortaient du périmètre LU sans
+        # que la sortie le dise — et une plantation s'y cacherait aussi bien.
+        mb = re.match(r'\s*run: (?!\|)(.+)$', lignes[j])
+        if mb is not None:
+            breves.append((nom, mb.group(1)))
             break
         j += 1
+
+canaris = [(nom, corps) for nom, corps in etapes
+           if any(x.strip() == MARQUEUR for x in corps)]
+
+# ── Volet statique : le périmètre déclaré couvre-t-il ce qui plante ? ─────────
+# Le couple sauvegarde→restauration est la signature de ce qui est RISQUÉ : une
+# étape qui écrit dans un fichier du dépôt puis le réécrit. Un canari qui plante
+# dans un `mktemp -d` ne laisse rien derrière lui et n'a pas cette signature —
+# l'implication ne va donc que dans un sens, et c'est voulu : « plante dans le
+# dépôt ⟹ déclaré », jamais l'inverse.
+SAUVE = re.compile(r'cp\s+(?:-a\s+)?\S+\s+/tmp/')
+RESTAU = re.compile(r'cp\s+(?:-a\s+)?/tmp/\S+\s+\S')
+# Large exprès : ce motif ne sert qu'à dire « je ne vois RIEN qui plante ici »,
+# et ce doute se lève à l'œil. Un marqueur orphelin qui passerait coûterait plus
+# qu'un signalement à vérifier.
+# ⚠️ Pas de `sed\s+[^|]*>` ici : cinq canaris emploient `|` comme séparateur de
+# `sed`, et la classe qui l'exclut les rendait tous invisibles. Une redirection
+# vers `/tmp` suffit à dire « quelque chose est fabriqué pour planter ».
+PLANTE = re.compile(r"sed\s+-i|>\s*/tmp/|open\([^)]*['\"]w['\"]"
+                    r"|write_text|json\.dump\(|printf[^|]*>>")
+
+muets, orphelins = [], []
+for nom, corps in etapes:
+    txt = '\n'.join(corps)
+    marque = any(x.strip() == MARQUEUR for x in corps)
+    if bool(SAUVE.search(txt)) and bool(RESTAU.search(txt)) and not marque:
+        muets.append(nom)
+    if marque and not PLANTE.search(txt):
+        orphelins.append(nom)
+
+# Une forme que le marqueur ne peut pas atteindre ne se tait pas : elle se dit,
+# et elle rougit si elle plante.
+breves_qui_plantent = [(nom, r) for nom, r in breves if PLANTE.search(r)]
+
+print(f'▸ {len(etapes)} étape(s) à `run:` en bloc, dont {len(canaris)} déclarée(s) `{MARQUEUR}`'
+      f' · {len(breves)} à `run:` d\'une ligne, lue(s) pour la plantation')
+
+if muets or orphelins or breves_qui_plantent:
+    print()
+    if muets:
+        print(f'✗ {len(muets)} étape(s) écrivent dans un fichier du dépôt sans être déclarée(s) :')
+        for nom in muets:
+            print(f'   • {nom[:72]}')
+        print(f'  Chacune plante un défaut que personne ne rejoue. Ajoute `{MARQUEUR}` en tête')
+        print('  de son `run:`, ou dis pourquoi elle écrit sans planter.')
+    if orphelins:
+        if muets:
+            print()
+        print(f'✗ {len(orphelins)} étape(s) déclarée(s) sans plantation visible :')
+        for nom in orphelins:
+            print(f'   • {nom[:72]}')
+        print('  Un marqueur qui survit à son étape rend vert sans rien éprouver.')
+    if breves_qui_plantent:
+        if muets or orphelins:
+            print()
+        print(f'✗ {len(breves_qui_plantent)} étape(s) plantent depuis un `run:` d\'une ligne :')
+        for nom, r in breves_qui_plantent:
+            print(f'   • {nom[:60]} → {r[:60]}')
+        print(f'  Le marqueur se pose en tête d\'un bloc : passe son `run:` en `run: |`,')
+        print(f'  puis déclare-la avec `{MARQUEUR}`.')
+    print()
+    print('  ⚠️ Le périmètre est partiel : le rejeu ne dirait pas ce qu\'il mesure.')
+    sys.exit(1)
+
+print('✓ périmètre déclaré complet : tout ce qui plante dans le dépôt porte son marqueur.')
+
+if sys.argv[2] == '1':
+    sys.exit(0)
 
 if not canaris:
     # Zéro canari n'est pas un succès : c'est un extracteur qui ne reconnaît plus
     # la forme des étapes, et il rendrait vert sur un fichier entièrement cassé.
+    # ⚠️ Ce garde parle APRÈS le volet statique, et non avant : sans marqueur, ce
+    # qui renseigne est la liste des étapes non déclarées, pas une accusation
+    # portée contre l'extracteur.
     print("  ✗ aucun canari extrait — l'extracteur ne reconnaît plus la forme du workflow")
     sys.exit(1)
+
+print()
 
 print(f'▸ {len(canaris)} canari(s) rejoué(s), chacun comme la CI le lance')
 print()
