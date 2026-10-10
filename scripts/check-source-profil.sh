@@ -105,6 +105,12 @@ PORTEURS=(
     'demo/lab/docs/PENTEST-MISSION-ctf.md'
     'bi-self/selfrecover/docs/whitepaper-fr.md'
     'bi-self/selfrecover/docs/whitepaper-en.md'
+    # Ajoutés par la conv Recover le 10/10 à 14:30, après c3455f6 : leur cellule du
+    # tableau des rôles disait « Argon2id, 64 Mio » sans `t`, sans `p` et sans source,
+    # donc elle attribuait par le contexte ce qu'elle n'affirmait pas. Éprouvé au canari :
+    # l'énoncé d'avant replanté, ce contrôle rend 1.
+    'bi-self/selfrecover/README.fr.md'
+    'bi-self/selfrecover/README.md'
 )
 printf '\n▸ 2. Porteurs déclarés : chaque énoncé nomme-t-il SelfDataGuard ?\n\n'
 
