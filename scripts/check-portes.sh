@@ -193,14 +193,26 @@ fi
 echo
 # Une porte non contrôlée se DIT, dans les deux verdicts : « rendre vert sur un
 # périmètre qu'on ne nomme pas » est le défaut que ce contrôle combat ailleurs.
+#
+# 🔑 Et elle ROUGIT, depuis le 10/10/2026. Ce contrôle tournait alors avant
+# l'autoload du lab : huit de ses bancs ne démarraient pas, il les a nommés —
+# puis il a rendu 0. Personne ne lit la sortie d'une étape verte, et le job est
+# tombé 107 étapes plus loin sur la porte même qu'il gardait. Un périmètre
+# partiel vaut le rouge. Le message dit le prérequis manquant, jamais que le
+# littéral est faux : il n'a pas été mesuré, c'est tout ce qu'on en sait.
 if [ "$ABSENTS" != 0 ]; then
-  echo "• $ABSENTS porte(s) non contrôlée(s) : le banc n'a pas pu démarrer (prérequis absent)."
+  echo "✗ $ABSENTS porte(s) NON CONTRÔLÉE(S) : leur banc n'a pas pu démarrer (prérequis absent)."
+  echo "  Leur littéral n'est pas en cause — il n'a pas été mesuré. Poser le prérequis,"
+  echo "  puis relancer : un vert ici couvre les $NB portes, pas $((NB - ABSENTS))."
 fi
-if [ "$ROUGES" = 0 ]; then
-  echo "✓ les $((NB - ABSENTS)) porte(s) mesurée(s) disent le total de leur banc."
+
+if [ "$ROUGES" = 0 ] && [ "$ABSENTS" = 0 ]; then
+  echo "✓ les $NB porte(s) disent le total de leur banc."
   exit 0
 fi
 
-echo "✗ $ROUGES porte(s) sur $((NB - ABSENTS)) mesurée(s) attendent un total que leur banc ne rend plus."
-echo "  La CI tomberait sur la première, sur un banc vert."
+if [ "$ROUGES" != 0 ]; then
+  echo "✗ $ROUGES porte(s) sur $((NB - ABSENTS)) mesurée(s) attendent un total que leur banc ne rend plus."
+  echo "  La CI tomberait sur la première, sur un banc vert."
+fi
 exit 1

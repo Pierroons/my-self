@@ -112,6 +112,16 @@ jobs:
           cc -O2 -Wall -o self-security/selfrecover-luks/selfrecover_derive \
              self-security/selfrecover-luks/selfrecover_derive.c -l:libargon2.so.1
 
+      # 🔑 L'autoload du lab est un PRÉRÉQUIS du contrôle qui suit, pas une
+      # étape du lab : sans `demo/lab/vendor/`, huit de ses bancs ne démarrent
+      # pas, `check-portes.sh` les classe « non contrôlées » et son vert ne
+      # couvre plus que 28 portes sur 36. Mesuré le 10/10/2026 sur le run
+      # 38074670125 : il était 95 étapes plus bas, et le job est tombé 107
+      # étapes après ce vert sur la porte qu'il devait garder.
+      - name: Préparer l'autoload du lab
+        working-directory: demo/lab
+        run: composer install --no-interaction --no-progress
+
       # 🔑 Les portes de comptage disent-elles encore le total de leur banc ? Un
       # banc qui gagne des cas laisse derrière lui le littéral qui le garde, et
       # la porte tombe sur un banc VERT.
@@ -1348,10 +1358,6 @@ jobs:
       - name: Garde-fou — coût constant du hash factice (bi-self-duo)
         run: php demo/bi-self-duo/tests/sanity_timing.php
 
-      - name: Préparer l'autoload du lab
-        working-directory: demo/lab
-        run: composer install --no-interaction --no-progress
-
       - name: Garde-fou — la bibliothèque sur le schéma réel du lab
         run: php demo/lab/tests/equivalence_selfrecover.php
 
@@ -1471,8 +1477,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_tc_deep.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc de tc_deep a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 34/34 ' \
-            || { echo "::error::le banc de tc_deep n'a pas joué ses 34 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 35/35 ' \
+            || { echo "::error::le banc de tc_deep n'a pas joué ses 35 cas"; exit 1; }
 
       # 🔑 Les cinq bancs ci-dessus rendent vert ; rien ne disait qu'ils rougissent.
       # Une garde qu'on n'a jamais fait échouer ne se distingue pas d'une garde
