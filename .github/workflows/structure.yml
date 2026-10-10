@@ -1315,6 +1315,36 @@ jobs:
             || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
           echo "✓ le contrôle rougit sur un plancher divergent, et le fichier est restauré"
 
+      # Trois profils Argon2id coexistent et deux partagent leur mémoire : rien ne
+      # tenait la phrase qui nomme le propriétaire du troisième. La page security
+      # du laboratoire a annoncé trois jours « 64 Mio, le profil de SelfRecover »
+      # pour une valeur définie par SelfDataGuard, et les bancs sont restés verts :
+      # ils tiennent l'égalité des nombres entre deux langages, pas la vérité de
+      # leur attribution.
+      - name: Garde-fou — le profil Argon2id du navigateur dit d'où il vient
+        run: bash scripts/check-source-profil.sh
+
+      - name: Canari — le contrôle d'attribution rougit sur l'erreur du 10 octobre
+        run: |
+          # Le défaut réel, replanté à l'identique : le chiffre juste, la source
+          # fausse. ⚠️ Planté sur le DISQUE et non dans l'index — un contrôle qui
+          # lirait `git grep` resterait vert ici, et c'est précisément ce qu'on
+          # vérifie.
+          F=demo/lab/lang/fr.php
+          cp "$F" /tmp/fr.intact
+          sed -i 's#(64 Mio, <code>t=3</code>, <code>p=1</code> — profil partagé SelfDataGuard / SelfRecover, défini dans <code>Primitives</code> et tenu égal par un test de conformité)#(64 Mio, le profil de SelfRecover)#' "$F"
+          grep -q 'le profil de SelfRecover' "$F" \
+            || { cp /tmp/fr.intact "$F"; echo "::error::la plantation n'a pas pris — le canari ne prouve rien"; exit 1; }
+          if bash scripts/check-source-profil.sh >/dev/null 2>&1; then
+            cp /tmp/fr.intact "$F"
+            echo "::error::le contrôle reste VERT avec l'attribution fausse — il ne mesure pas ce qu'il annonce"
+            exit 1
+          fi
+          cp /tmp/fr.intact "$F"
+          cmp -s /tmp/fr.intact "$F" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le contrôle rougit sur l'attribution fausse, et le fichier est restauré"
+
       - name: Garde-fou — coût constant du hash factice (bi-self-duo)
         run: php demo/bi-self-duo/tests/sanity_timing.php
 

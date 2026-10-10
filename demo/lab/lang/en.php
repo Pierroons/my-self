@@ -61,13 +61,13 @@ return [
 
     'sec.2.h2' => '2. Data encryption — two models, by sensitivity',
     'sec.2.body' => '<p><strong>a) Server blind-key</strong> (profile: bio, location, link) — XChaCha20-Poly1305, key derived from a server secret held <em>outside the database and outside the webroot</em>. A SQL dump yields nothing but blobs.</p>'
-        . '<p><strong>b) Client-side end-to-end</strong> (personal memo) — encrypted in the <strong>browser</strong> (WebCrypto). <code>Argon2id</code> (64 MiB, the SelfRecover profile) → <code>HKDF</code> per label → a random <code>vault_key</code> encrypts the memo, itself wrapped in two envelopes (password and recovery passphrase). <strong>The server holds no key.</strong></p>'
+        . '<p><strong>b) Client-side end-to-end</strong> (personal memo) — encrypted in the <strong>browser</strong> (WebCrypto). <code>Argon2id</code> (64 MiB, <code>t=3</code>, <code>p=1</code> — profile shared by SelfDataGuard and SelfRecover, defined in <code>Primitives</code> and kept in step by a conformance test) → <code>HKDF</code> per label → a random <code>vault_key</code> encrypts the memo, itself wrapped in two envelopes (password and recovery passphrase). <strong>The server holds no key.</strong></p>'
         . '<div class="mt">'
         . '<div class="ok"><h4>✅ What this protects</h4><ul>'
         . '<li>Blind-key: stolen disk, SQL dump, injection</li>'
         . '<li>E2E: <strong>even</strong> admin or root access on the server leaves the memo unreadable</li>'
         . '</ul></div>'
-        . '<div class="no"><h4>⛔ What it does not (V1, acknowledged)</h4><ul>'
+        . '<div class="no"><h4>⛔ What it does not (acknowledged)</h4><ul>'
         . '<li>Blind-key: an admin, or an RCE that reads the key, can decrypt profiles and private messages</li>'
         . '<li>E2E: a <em>persistently</em> compromised server serving tampered JavaScript that captures the password at unlock — the "served code" problem</li>'
         . '</ul></div>'
@@ -105,15 +105,15 @@ return [
         . '<li>CSRF, clickjacking, passive session theft</li>'
         . '<li>Memo theft, <strong>even with root access</strong> (E2E at rest)</li>'
         . '</ul></div>'
-        . '<div class="no"><h4>⚠️ Known limits (V1)</h4><ul>'
+        . '<div class="no"><h4>⚠️ Known limits</h4><ul>'
         . '<li>Profiles and private messages readable by whoever obtains the server key (<code>.blindkey</code>), for instance through an RCE — not through the admin panel</li>'
         . '<li><em>Persistently</em> compromised server → tampering with the served code</li>'
         . '<li>Metadata is not encrypted (who talks to whom, and when)</li>'
         . '</ul></div>'
         . '</div>',
 
-    'sec.7.h2' => '7. Roadmap (beyond V1)',
-    'sec.7.body' => '<p class="roadmap">E2E extended to private messages and profiles · an <strong>external integrity supervisor</strong> (detecting tampered served code and abnormal behaviour, with reversible automatic containment) · distributed quorum (Shamir) for critical keys.</p>',
+    'sec.7.h2' => '7. Roadmap',
+    'sec.7.body' => '<p class="roadmap">E2E extended to private messages and profiles · an <strong>off-machine integrity supervisor</strong>: tampering with the served code and out-of-scope requests are already detected, but from the monitored machine itself — so persistent root access can silence the witness; an outside witness and reversible automatic containment remain to be built · distributed quorum (Shamir) for critical keys.</p>',
 
     // ── "Rules of engagement" page ────────────────────────────────────────
     'rt.hero.h1' => '🎯 Red team test — rules of engagement',
@@ -170,7 +170,7 @@ return [
 
     'rt.limits.h2'    => '📐 Known and accepted limits',
     'rt.limits.intro' => '<p>What follows is already established, and published so you don\'t spend time on it: <strong>a documented limit is not a finding</strong>. Going past one is a finding: a working exploitation of any of these boundaries, not the argument that it exists.</p>',
-    'rt.limits.body'  => '<li><strong>The memo vault has two locks.</strong> Its key is drawn at random, then sealed twice: under the account password, and under a passphrase specific to the vault. Anyone who obtains the blobs attacks the cheaper of the two <strong>offline</strong>, with no attempt counter; the cost per attempt is a single Argon2id derivation at <code>t=3, m=64 MiB, p=1</code>. "End-to-end" says the server never sees the key — not that the memo withstands a weak password, nor that the server always ships the same code: it is the server that delivers the derivation script, and whoever controls it can deliver another.</li>'
+    'rt.limits.body'  => '<li><strong>The memo vault has two locks.</strong> Its key is drawn at random, then sealed twice: under the account password, and under a passphrase specific to the vault. Anyone who obtains the blobs attacks the cheaper of the two <strong>offline</strong>, with no attempt counter; the cost per attempt is a single Argon2id derivation at <code>t=3, m=64 MiB, p=1</code> (the profile shared with SelfDataGuard). "End-to-end" says the server never sees the key — not that the memo withstands a weak password, nor that the server always ships the same code: it is the server that delivers the derivation script, and whoever controls it can deliver another.</li>'
                        . '<li><strong>A third party shuts an account\'s login in five requests.</strong> '
                        . 'The failed-login counter is fed by the SUBMITTED name, which nobody needs to own: five '
                        . 'failures lock the login for fifteen minutes — the correct password included — and a steady '
