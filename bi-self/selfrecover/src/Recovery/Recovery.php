@@ -244,7 +244,7 @@ final class Recovery
         // La laisser valable ferait d'un papier volé une porte permanente, et
         // l'utilisateur croirait son accès rendu alors qu'il resterait partagé.
         $motDePasse     = Device::engendrerMotDePasse();
-        $nouvellePhrase = $apport ?? self::engendrerPassphrase();
+        $nouvellePhrase = $apport ?? self::engendrerPassphrase($this->langue);
 
         $this->stockage->commencerTransaction();
         try {
@@ -396,7 +396,7 @@ final class Recovery
         // l'ancienne passphrase valable garderait ouverte une porte dont on
         // ignore si elle est connue.
             $motDePasse     = Device::engendrerMotDePasse();
-            $nouvellePhrase = $apport ?? self::engendrerPassphrase();
+            $nouvellePhrase = $apport ?? self::engendrerPassphrase($this->langue);
             $this->stockage->remplacerEmpreintes(
                 (int) $trouve['compte_id'],
                 Hashing::hash($motDePasse),
@@ -431,17 +431,30 @@ final class Recovery
     }
 
     /**
-     * Une passphrase neuve, de la longueur du protocole, quand l'utilisateur n'en
-     * apporte pas.
+     * Une passphrase neuve, de la longueur du protocole et dans la langue du
+     * déploiement, quand l'utilisateur n'en apporte pas.
      *
      * ⚠️ Définie ICI et nulle part ailleurs. Elle était engendrée à deux
      * endroits de ce fichier et à un troisième dans le niveau 3 : trois copies
      * du même choix, qui n'ont aucune raison de rester d'accord. Changer la
      * longueur se fait sur cette ligne, et se répercute partout.
+     *
+     * 🔑 **La langue décide de la liste tirée**, pas seulement de l'habillage des
+     * phrases : `Langue::listeDiceware()` rend le code que `Wordlist` attend, et
+     * les deux listes font 7776 mots, donc la force ne change pas avec la langue.
+     *
+     * ⚠️ **Son défaut est l'anglais, et elle reste statique à dessein** : un
+     * intégrateur propose une passphrase à l'inscription, avant qu'aucune
+     * `Recovery` n'existe. Appelée sans langue, elle tire donc de la liste
+     * anglaise quel que soit le déploiement — les trois chemins de la
+     * bibliothèque passent la leur, un appelant externe doit y penser.
      */
-    public static function engendrerPassphrase(): string
+    public static function engendrerPassphrase(?Langue $langue = null): string
     {
-        return implode(' ', Wordlist::generate(self::MOTS_PASSPHRASE, 'en')['words']);
+        return implode(' ', Wordlist::generate(
+            self::MOTS_PASSPHRASE,
+            ($langue ?? Langue::EN)->listeDiceware(),
+        )['words']);
     }
 
     /**

@@ -12,7 +12,7 @@
  *     bloque pas l'attaque, ça la rend coûteuse à multiplier — le cumul réel
  *     est mesuré pendant la démo et rendu dans `total_argon2_ms`.
  *
- *     🔑 Le frein n'est pas seulement le temps : Argon2id occupe 64 Mo par
+ *     🔑 Le frein n'est pas seulement le temps : Argon2id occupe 64 Mio par
  *     hachage. Créer cent comptes en parallèle demande donc de la mémoire en
  *     proportion — c'est ce qui rend la multiplication coûteuse.
  *   - SelfModerate : les 5 votes coordonnés déclenchent pack-voting

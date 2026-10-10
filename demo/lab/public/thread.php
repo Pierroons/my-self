@@ -16,13 +16,21 @@ $threadId = (int) ($_GET['id'] ?? 0);
 $thread = Forum::getThread($pdo, $threadId);
 
 /** Badge réputation coloré selon le niveau. */
+/**
+ * Le badge de réputation d'un auteur, tel qu'un visiteur sans session le voit.
+ *
+ * Les paliers et la règle « sous le seuil, pas de chiffre » vivent dans
+ * `palier_reputation()` : ce badge ne fait que les rendre.
+ */
 function rep_badge(int $rep): string {
-    if ($rep >= 25) { $c = '#3fb98c'; $lbl = t('thr.rep.trust'); }
-    elseif ($rep >= 15) { $c = '#9aa9b6'; $lbl = t('thr.rep.member'); }
-    elseif ($rep >= Moderate::config()->perteDroitDeVoteSous) { $c = '#d4a056'; $lbl = t('thr.rep.frail'); }
-    else { $c = '#d96459'; $lbl = t('thr.rep.watch'); }
-    return '<span class="rep-badge" style="color:' . $c . ';border-color:' . $c . '" title="' . h(t('thr.rep.title', $rep, $lbl)) . '">★ ' . $rep . '</span>';
+    $p = palier_reputation($rep, 'thr');
+    $corps = $p['chiffrable'] ? '★ ' . $rep : h($p['libelle']);
+    $bulle = $p['chiffrable'] ? t('thr.rep.title', $rep, $p['libelle']) : $p['libelle'];
+
+    return '<span class="rep-badge" style="color:' . $p['couleur'] . ';border-color:' . $p['couleur']
+        . '" title="' . h($bulle) . '">' . $corps . '</span>';
 }
+
 
 if (!$thread) {
     render_header(t('thr.notfound.title'), $account);

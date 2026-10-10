@@ -63,17 +63,36 @@ etapes.append(courante)
 
 MOTIF_BANC = r'\$\((php|bash) ([a-z0-9/_.-]+\.(?:php|sh))([^)|]*)'
 MOTIF_PORTE = (
-    r"""grep -qE ['"]([^'"]*?"""
+    r"""grep -q([A-Za-z]*) ['"]([^'"]*?"""
     r"""(?:[0-9]+/[0-9]+|[0-9]+ passés|[0-9]+ contrôle)"""
     r"""[^'"]*?)['"]"""
 )
 
-apparies, ecartees, illisibles = [], 0, 0
+# Une porte existe dès qu'une étape teste la sortie de son banc ; si le motif
+# chiffré ne la reconnaît pas, elle doit quand même se compter.
+MOTIF_PORTE_BRUTE = r"""grep -q[A-Za-z]* ['"]"""
+
+apparies, ecartees, illisibles, canaris, informes = [], 0, 0, 0, 0
 for et in etapes:
     txt = '\n'.join(et)
     bancs = re.findall(MOTIF_BANC, txt)
     portes = re.findall(MOTIF_PORTE, txt)
     if not portes:
+        # 🔑 Une porte dont la FORME n'est pas reconnue se compte aussi. Ce
+        # `continue` était muet : l'étape disparaissait des deux totaux, et le
+        # périmètre annoncé dépassait celui mesuré — le défaut que ce contrôle
+        # nomme dix lignes plus bas. Cas connu : une porte chiffrée dans une
+        # forme que le motif ne lit pas.
+        if bancs and re.search(MOTIF_PORTE_BRUTE, txt):
+            # 🔑 Deux familles, deux gardes. Un canari attend une LIGNE ROUGE,
+            # pas un total : `check-canaris.sh` le lance, donc il est gardé
+            # ailleurs et le dire ici évite d'annoncer un trou qui n'existe pas.
+            # Le reste — total porté par une variable, ligne de sortie nommée —
+            # n'est lu par personne, et c'est ce qu'il faut voir.
+            if re.match(r'\s*- name:\s*Canari', et[0]):
+                canaris += 1
+            else:
+                informes += 1
         continue
     if not bancs:
         # 🔑 Une porte dont le banc n'est pas reconnaissable se COMPTE. Un
@@ -86,18 +105,21 @@ for et in etapes:
     # profil : la porte le gère elle-même, hors périmètre de ce contrôle.
     fichiers = {b[1] for b in bancs}
     if len(fichiers) == 1 and len(portes) == 1 and all('--profil' not in b[2] for b in bancs):
-        apparies.append((bancs[0][0], bancs[0][1], portes[0].replace('\\$', '$')))
+        apparies.append((bancs[0][0], bancs[0][1], portes[0][0],
+                         portes[0][1].replace('\\$', '$')))
     else:
         ecartees += 1
 
-print(f'{ecartees}\t{illisibles}')
-for interprete, banc, motif in apparies:
-    print(interprete + '\t' + banc + '\t' + motif)
+print(f'{ecartees}\t{illisibles}\t{canaris}\t{informes}')
+for interprete, banc, drapeau, motif in apparies:
+    print(interprete + '\t' + banc + '\t' + drapeau + '\t' + motif)
 PY
 ) || { echo "✗ l'extraction des portes a échoué"; exit 1; }
 
 ECARTEES=$(printf '%s\n' "$SORTIE" | head -1 | cut -f1)
 ILLISIBLES=$(printf '%s\n' "$SORTIE" | head -1 | cut -f2)
+CANARIS=$(printf '%s\n' "$SORTIE" | head -1 | cut -f3)
+INFORMES=$(printf '%s\n' "$SORTIE" | head -1 | cut -f4)
 PAIRES=$(printf '%s\n' "$SORTIE" | tail -n +2)
 
 NB=$(printf '%s\n' "$PAIRES" | grep -c . || true)
@@ -109,14 +131,14 @@ if [ "$NB" = 0 ]; then
 fi
 
 # ⚠️ Le périmètre s'annonce en ENTIER, y compris ce qui n'a pas pu être lu : le
-# motif ne reconnaît qu'une porte chiffrée en `grep -qE`, donc ni un total porté
-# par une variable (`$attendu/$attendu`), ni un `grep -qx`.
-echo "▸ $NB porte(s) appariée(s) par étape · $ECARTEES écartée(s) (plusieurs bancs, ou un total par profil) · $ILLISIBLES porte(s) sans banc lisible"
+# motif prend tout drapeau de `grep -q` et rejoue chaque porte avec le sien,
+# mais pas un total porté par une variable (`$attendu/$attendu`).
+echo "▸ $NB porte(s) appariée(s) par étape · $ECARTEES écartée(s) (plusieurs bancs, ou un total par profil) · $ILLISIBLES porte(s) sans banc lisible · $CANARIS canari(s), gardés par check-canaris.sh · $INFORMES à ligne attendue non chiffrée"
 echo
 
 ROUGES=0
 ABSENTS=0
-while IFS=$'\t' read -r interprete banc motif; do
+while IFS=$'\t' read -r interprete banc drapeau motif; do
   [ -n "$banc" ] || continue
   if [ ! -f "$banc" ]; then
     printf '  ✗ %-50s banc introuvable\n' "$banc"
@@ -141,26 +163,81 @@ while IFS=$'\t' read -r interprete banc motif; do
     ABSENTS=$((ABSENTS + 1))
     continue
   fi
-  if printf '%s\n' "$sortie" | grep -qE "$motif"; then
-    printf '  ✓ %-50s %s\n' "$banc" "$motif"
+  # 🔑 Chaque porte se rejoue avec SON drapeau. `-qx` exige la ligne entière là
+  # où `-qE` cherche un motif : tout rejouer en `-qE` rendrait ce contrôle plus
+  # permissif que la CI, et son vert ne dirait plus que la CI passe.
+  if printf '%s\n' "$sortie" | grep -q"$drapeau" -- "$motif"; then
+    printf '  ✓ %-50s -q%-2s %s\n' "$banc" "$drapeau" "$motif"
   else
     rendu=$(printf '%s\n' "$sortie" | grep -oE '(OK|ÉCHEC) — [0-9]+/[0-9]+|✅ [0-9]+/[0-9]+|[0-9]+ passés|✅ [0-9]+ contrôle[^,]*' | tail -1)
-    printf '  ✗ %-50s attend « %s » · rend « %s »\n' "$banc" "$motif" "${rendu:-rien de comptable}"
+    printf '  ✗ %-50s attend -q%s « %s » · rend « %s »\n' "$banc" "$drapeau" "$motif" "${rendu:-rien de comptable}"
     ROUGES=$((ROUGES + 1))
   fi
 done <<< "$PAIRES"
 
+# ── Un banc que le workflow ne nomme pas ──────────────────────────────────────
+#
+# 🔑 Ce contrôle appariait les portes aux bancs CITÉS. Il ne voyait donc pas un
+# banc que personne ne cite — et celui-là ne rend ni vert ni rouge : il ne tourne
+# pas. Mesuré le 10/10/2026 : un banc neuf écrit l'après-midi même a été commité
+# sans son étape, et rien dans le dispositif ne l'a dit. Le motif est exactement
+# celui que ce banc-là corrigeait dans le simulateur d'attaques — nommer un
+# élément au lieu de parcourir la liste —, un cran au-dessus.
+#
+# ⚠️ Le workflow nomme ses bancs un par un, et c'est délibéré : chaque étape porte
+# sa propre porte de comptage. Ce qui manquait n'est donc pas une boucle là-bas,
+# c'est le contrôle que la liste écrite couvre la liste réelle.
+# ⚠️ Deux conventions coexistent, et un contrôle qui n'en connaît qu'une crie
+# faux. Le laboratoire et SelfRecover NOMMENT chaque banc, pour que chacun porte
+# sa porte de comptage ; SelfDataGuard les PARCOURT (`for t in …/sanity_*.php`).
+# La propriété à mesurer est donc « lancé », pas « cité » — la première version
+# de ce volet signalait les cinq bancs de SelfDataGuard, qui tournent tous.
+GLOBS=$(grep -oE 'for [a-z]+ in [A-Za-z0-9_./*-]+\.php' "$WORKFLOW" \
+        | sed -E 's/^for [a-z]+ in //' | sort -u)
+ORPHELINS=0
+for banc in $(git ls-files 'demo/lab/tests/*.php' 'bi-self/*/tests/sanity_*.php' \
+                           'bi-self/*/tests/banc_*.php' 'self-security/*/tests/sanity_*.php' 2>/dev/null); do
+  grep -qF "$(basename "$banc")" "$WORKFLOW" && continue
+  couvert=0
+  while IFS= read -r motif; do
+    [ -n "$motif" ] || continue
+    # shellcheck disable=SC2254  # le motif EST un glob, c'est son rôle ici
+    case "$banc" in $motif) couvert=1; break ;; esac
+  done <<< "$GLOBS"
+  [ "$couvert" = 1 ] && continue
+  printf '  ✗ %-50s ni nommé, ni couvert par une boucle\n' "$banc"
+  ORPHELINS=$((ORPHELINS + 1))
+done
+if [ "$ORPHELINS" = 0 ]; then
+  echo "  ✓ tout banc du dépôt est appelé par au moins une étape."
+else
+  echo "  ✗ $ORPHELINS banc(s) que rien ne lance : ils ne rendent ni vert ni rouge."
+  ROUGES=$((ROUGES + ORPHELINS))
+fi
+
 echo
 # Une porte non contrôlée se DIT, dans les deux verdicts : « rendre vert sur un
 # périmètre qu'on ne nomme pas » est le défaut que ce contrôle combat ailleurs.
+#
+# 🔑 Et elle ROUGIT, depuis le 10/10/2026. Ce contrôle tournait alors avant
+# l'autoload du lab : huit de ses bancs ne démarraient pas, il les a nommés —
+# puis il a rendu 0. Personne ne lit la sortie d'une étape verte, et le job est
+# tombé 107 étapes plus loin sur la porte même qu'il gardait. Un périmètre
+# partiel vaut le rouge. Le message dit le prérequis manquant, jamais que le
+# littéral est faux : il n'a pas été mesuré, c'est tout ce qu'on en sait.
 if [ "$ABSENTS" != 0 ]; then
-  echo "• $ABSENTS porte(s) non contrôlée(s) : le banc n'a pas pu démarrer (prérequis absent)."
+  echo "✗ $ABSENTS porte(s) NON CONTRÔLÉE(S) : leur banc n'a pas pu démarrer (prérequis absent)."
+  echo "  Leur littéral n'est pas en cause — il n'a pas été mesuré. Poser le prérequis,"
+  echo "  puis relancer : un vert ici couvre les $NB portes, pas $((NB - ABSENTS))."
 fi
-if [ "$ROUGES" = 0 ]; then
-  echo "✓ les $((NB - ABSENTS)) porte(s) mesurée(s) disent le total de leur banc."
+
+if [ "$ROUGES" = 0 ] && [ "$ABSENTS" = 0 ]; then
+  echo "✓ les $NB porte(s) disent le total de leur banc."
   exit 0
 fi
 
-echo "✗ $ROUGES porte(s) sur $((NB - ABSENTS)) mesurée(s) attendent un total que leur banc ne rend plus."
-echo "  La CI tomberait sur la première, sur un banc vert."
+if [ "$ROUGES" != 0 ]; then
+  echo "✗ $ROUGES porte(s) sur $((NB - ABSENTS)) mesurée(s) attendent un total que leur banc ne rend plus."
+  echo "  La CI tomberait sur la première, sur un banc vert."
+fi
 exit 1

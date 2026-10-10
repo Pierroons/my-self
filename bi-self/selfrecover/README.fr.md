@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.12.0](https://img.shields.io/badge/status-v0.12.0-green.svg)](#statut)
+[![Status: v0.12.2](https://img.shields.io/badge/status-v0.12.2-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -180,7 +180,7 @@ HMAC est volontairement **rapide** côté client car l'objectif est la liaison a
 > | Rôle | Fichier | Primitive | Pourquoi |
 > |---|---|---|---|
 > | **Prouver** qu'on connaît le mot | `client/sr-derive.js` | HMAC-SHA256, rapide | le coût est imposé par le serveur, qui range un Argon2id de l'empreinte reçue et compte les tentatives |
-> | **Chiffrer** un secret avec le mot | `client/sr-kdf.js` | Argon2id, 64 Mio | rien ne part au serveur : aucun compteur d'essais ne s'applique, et le coût par essai est **tout** ce qui reste |
+> | **Chiffrer** un secret avec le mot | `client/sr-kdf.js` | Argon2id, 64 Mio, `t=3`, `p=1` — profil partagé avec SelfDataGuard (`Primitives`) | rien ne part au serveur : aucun compteur d'essais ne s'applique, et le coût par essai est **tout** ce qui reste |
 >
 > Un attaquant qui vole le blob du facteur « cet appareil » travaille **hors ligne** : le tag AEAD lui dit gratuitement si son essai est bon. C'est le motif que `AGENTS.md` nomme — le chemin d'authentification durci et le chemin de chiffrement laissé en arrière, à quelques lignes d'écart.
 
@@ -471,7 +471,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 ## Roadmap
 
-### Livré — v0.1.0 à v0.12.0 (avril → octobre 2026)
+### Livré — v0.1.0 à v0.12.2 (avril → octobre 2026)
 
 Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bibliothèque les a dépassés, tirée par son premier déploiement réel : ses besoins ont fait avancer le protocole plus vite que prévu. Les chantiers qui suivent ne portent donc plus de numéro — ils en recevront un en sortant.
 

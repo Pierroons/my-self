@@ -43,22 +43,6 @@ final class Auth
     public const MOT_MEMORISE_MINIMUM = 4;
     /** Octets aléatoires d'un jeton de session, rendus en hexadécimal. */
     private const JETON_OCTETS = 24;         // fenêtre de comptage (15 min)
-    /** Options Argon2id (R9-06, alignées sur le profil OWASP de SelfRecover). */
-    /**
-     * Hash Argon2id factice (R9-06), exécuté quand le compte n'existe pas, pour que
-     * password_verify prenne le même temps qu'avec un vrai compte (anti-énumération
-     * par timing — DOIT être du même algo que les vrais hash). Aucun mot de passe réel.
-     */
-
-    /**
-     * Options Argon2id, exposées pour les modules qui reposent un mot de passe
-     * hors de cette classe (Device notamment).
-     *
-     * 🔑 Une seule source de vérité : un module qui recopierait ces valeurs
-     * finirait par diverger silencieusement le jour où on durcit le profil,
-     * et produirait des hash plus faibles que les autres sans que rien
-     * ne le signale.
-     */
     /**
      * Le hash factice du protocole.
      *
@@ -182,7 +166,21 @@ final class Auth
         }
 
         $password = self::generatePassword();
-        $diceware = Wordlist::generate(Recovery::MOTS_PASSPHRASE, 'en');
+        // 🔑 La liste suit la langue du DÉPLOIEMENT, et ce laboratoire déclare
+        // « celle que le visiteur a demandée » (`langueSelfRecover()`). Le `'en'`
+        // qui était ici proposait des mots anglais à un visiteur francophone —
+        // la pièce la plus visible de la bibliothèque pour celui qu'elle vise.
+        // SelfRecover a corrigé le même défaut chez elle en 0.12.2 ; celui-ci
+        // était resté.
+        //
+        // ⚠️ `Recovery::engendrerPassphrase()` fait désormais ce travail, mais
+        // elle ne rend que la chaîne : l'entropie mesurée part dans la réponse
+        // d'inscription (plus bas), donc l'appel direct reste. La seule chose
+        // qu'il ne doit pas faire est de décider de la langue à sa place.
+        //
+        // 🔑 La force ne change pas avec la langue : les deux listes font
+        // 7776 mots, donc la même entropie par mot.
+        $diceware = Wordlist::generate(Recovery::MOTS_PASSPHRASE, langueSelfRecover()->listeDiceware());
         $passphrase = implode(' ', $diceware['words']);
 
         $derivedKey = $recoveryDerivedKey;   // déjà dérivée côté client

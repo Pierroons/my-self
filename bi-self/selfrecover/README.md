@@ -5,7 +5,7 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per service, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.12.0](https://img.shields.io/badge/status-v0.12.0-green.svg)](#status)
+[![Status: v0.12.2](https://img.shields.io/badge/status-v0.12.2-green.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#trying-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#trying-selfrecover)
@@ -180,7 +180,7 @@ HMAC is intentionally **fast** client-side because the goal is service binding, 
 > | Role | File | Primitive | Why |
 > |---|---|---|---|
 > | **Prove** knowledge of the word | `client/sr-derive.js` | HMAC-SHA256, fast | the cost is imposed by the server, which stores an Argon2id of the received digest and counts attempts |
-> | **Encrypt** a secret with the word | `client/sr-kdf.js` | Argon2id, 64 MiB | nothing reaches the server: no attempt counter applies, and the per-guess cost is **all** that is left |
+> | **Encrypt** a secret with the word | `client/sr-kdf.js` | Argon2id, 64 MiB, `t=3`, `p=1` — profile shared with SelfDataGuard (`Primitives`) | nothing reaches the server: no attempt counter applies, and the per-guess cost is **all** that is left |
 >
 > An attacker who steals the "this device" blob works **offline**: the AEAD tag tells them for free whether a guess is right. This is the pattern `AGENTS.md` names — the authentication path hardened and the encryption path left behind, a few lines apart.
 
@@ -469,7 +469,7 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 
 ## Roadmap
 
-### Shipped — v0.1.0 to v0.12.0 (April → October 2026)
+### Shipped — v0.1.0 to v0.12.2 (April → October 2026)
 
 The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library outran it, pulled by its first real deployment: that deployment's needs moved the protocol faster than planned. The work below therefore carries no version number — each item gets one when it ships.
 

@@ -17,9 +17,9 @@ namespace Pierroons\SelfRecover\Crypto;
 final class Hashing
 {
     /**
-     * Argon2id, profil OWASP 2026 : 64 MiB de mémoire, 4 itérations, 2 fils.
+     * Argon2id, profil OWASP 2026 : 64 Mio de mémoire, 4 itérations, 2 fils.
      *
-     * ⚠️ Le coût mémoire est le paramètre qui compte : 64 Mo à mobiliser par
+     * ⚠️ Le coût mémoire est le paramètre qui compte : 64 Mio à mobiliser par
      * hachage, ce qui rend l'attaque par GPU coûteuse à paralléliser.
      */
     public const ARGON2 = [
@@ -45,18 +45,25 @@ final class Hashing
     private const DUMMY_HASH =
         '$argon2id$v=19$m=65536,t=4,p=2$bmJrdDNvVlNHYlZKaktvOQ$5rrXLA5A2HcsuydGvvacn80ulh5dLCAuqWjd5t3F+Bw';
 
-    /** Hache un secret destiné à être stocké. */
-    /** Le profil dit en clair, pour les journaux et les pages qui l'affichent : « m=64 Mo, t=4, p=2 ». */
+    /**
+     * Le profil dit en clair, pour les journaux et les pages qui l'affichent :
+     * « m=64 MiB, t=4, p=2 ».
+     *
+     * ⚠️ `memory_cost` est en **Kio** : 65536 valent 64 Mio — **67,1 Mo**. Le libellé s'écrit
+     * « MiB », comme la RFC 9106 écrit les paramètres d'Argon2 ; la prose française du dépôt
+     * garde « Mio ». Une page qui annonce des Mo sous-estime le coût de 5 %.
+     */
     public static function profilEnClair(): string
     {
         return sprintf(
-            'm=%d Mo, t=%d, p=%d',
+            'm=%d MiB, t=%d, p=%d',
             intdiv(self::ARGON2['memory_cost'], 1024),
             self::ARGON2['time_cost'],
             self::ARGON2['threads'],
         );
     }
 
+    /** Hache un secret destiné à être stocké. */
     public static function hash(#[\SensitiveParameter] string $secret): string
     {
         return password_hash($secret, PASSWORD_ARGON2ID, self::ARGON2);
