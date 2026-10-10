@@ -81,6 +81,9 @@ final class Security
         }
     }
 
+    /** Longueur du jeton CSRF et de son masque, en octets (SHA-256 brut). */
+    private const CSRF_OCTETS = 32;
+
     /**
      * Secret serveur pour signer les tokens CSRF.
      *
@@ -96,15 +99,11 @@ final class Security
      * secret pour signer et pour chiffrer mélange deux contextes, et rien
      * n'obligeait à le faire.
      */
-    /** Longueur du jeton CSRF et de son masque, en octets (SHA-256 brut). */
-    private const CSRF_OCTETS = 32;
-
     private static function csrfSecret(): string
     {
         return 'csrf|' . SecretInstance::lire('.serversecret', 48, SecretInstance::PLANCHER);
     }
 
-    /** Token CSRF déterministe lié au token de session (pas de stockage requis). */
     /**
      * Jeton CSRF, MASQUE a chaque rendu.
      *
