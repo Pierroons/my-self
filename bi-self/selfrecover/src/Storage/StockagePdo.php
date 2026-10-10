@@ -84,12 +84,21 @@ final class StockagePdo implements StorageInterface, SelParCodeInterface
 
     // ── Freins ─────────────────────────────────────────────────────────────
 
-    public function compterEchecsIp(string $ip, int $depuis): int
+    public function compterEchecsIp(string $ip, int $depuis, array $prefixes): int
     {
-        $st = $this->pdo->prepare(
-            'SELECT COUNT(*) FROM login_attempts WHERE ip = ? AND success = 0 AND attempted_at > ?'
+        if ($prefixes === []) {
+            throw new \InvalidArgumentException(
+                'compterEchecsIp() sans préfixe compterait zéro : un frein muet est pire que le défaut qu il corrige.'
+            );
+        }
+
+        $filtre = implode(' OR ', array_fill(0, count($prefixes), 'username LIKE ?'));
+        $st     = $this->pdo->prepare(
+            'SELECT COUNT(*) FROM login_attempts'
+            . ' WHERE ip = ? AND success = 0 AND attempted_at > ?'
+            . ' AND (' . $filtre . ')'
         );
-        $st->execute([$ip, $depuis]);
+        $st->execute([$ip, $depuis, ...array_map(static fn (string $p): string => $p . '%', $prefixes)]);
 
         return (int) $st->fetchColumn();
     }
@@ -579,11 +588,21 @@ final class StockagePdo implements StorageInterface, SelParCodeInterface
         string $empreinteSesame,
         int $quand,
         int $expireLe,
-    ): void {
-        $this->pdo->prepare(
+    ): bool {
+        // La condition reprend mot pour mot celle de `litigeActifDuCompte` : les
+        // deux disent ce qu'est un dossier actif, et un banc les confronte.
+        $st = $this->pdo->prepare(
             "INSERT INTO disputes (dispute_number, account_id, status, claim_hash, expires_at, created_at, updated_at)
-             VALUES (?, ?, 'open', ?, ?, ?, ?)"
-        )->execute([$numero, $compteId, $empreinteSesame, $expireLe, $quand, $quand]);
+             SELECT ?, ?, 'open', ?, ?, ?, ?
+             WHERE NOT EXISTS (
+                 SELECT 1 FROM disputes
+                 WHERE account_id = ? AND status IN ('open', 'awaiting_admin', 'accepted')
+                   AND (status = 'accepted' OR expires_at > ?)
+             )"
+        );
+        $st->execute([$numero, $compteId, $empreinteSesame, $expireLe, $quand, $quand, $compteId, $quand]);
+
+        return $st->rowCount() === 1;
     }
 
     public function compterDemandeurConcurrent(int $litigeId): void
@@ -626,15 +645,14 @@ final class StockagePdo implements StorageInterface, SelParCodeInterface
         return (int) $st->fetchColumn();
     }
 
-    public function poserGel(int $compteId, int $jusqua, int $quand): void
+    public function poserGel(int $compteId, int $jusqua, int $quand, string $par): void
     {
         $this->pdo->prepare(
-            'INSERT INTO l3_gel (account_id, gele_jusqu_a, pose_le) VALUES (?, ?, ?)
+            'INSERT INTO l3_gel (account_id, gele_jusqu_a, pose_le, gele_par) VALUES (?, ?, ?, ?)
              ON CONFLICT(account_id) DO UPDATE SET gele_jusqu_a = excluded.gele_jusqu_a,
                                                    pose_le      = excluded.pose_le,
-                                                   degele_par   = NULL,
-                                                   degele_le    = NULL'
-        )->execute([$compteId, $jusqua, $quand]);
+                                                   gele_par     = excluded.gele_par'
+        )->execute([$compteId, $jusqua, $quand, $par]);
     }
 
     public function gelJusqua(int $compteId, int $maintenant): int
@@ -709,25 +727,85 @@ final class StockagePdo implements StorageInterface, SelParCodeInterface
         return $lignes;
     }
 
+    /**
+     * La clause des dossiers périmés — pour la purge ET pour son compte.
+     *
+     * ⚠️ Les deux états exclus le sont pour les raisons que `purgerLitigesExpires()`
+     * porte juste dessous. Les écrire deux fois, c'est accepter qu'un jour l'un
+     * des deux les oublie.
+     */
+    private const OU_LITIGES_PERIMES = "expires_at <= ? AND status NOT IN ('refused', 'accepted')";
+
     public function purgerLitigesExpires(int $avant): int
     {
-        // ⚠️ Les dossiers REFUSÉS survivent à la purge : le gel se calcule en comptant
-        // les refus d'une fenêtre glissante, bien plus longue que la durée de vie
-        // d'un dossier (les deux sont réglables au constructeur d'`Escalade`). Les
-        // effacer viderait le compteur avant qu'il atteigne son seuil, et le gel —
-        // seule protection contre l'acharnement — deviendrait inatteignable sans
-        // qu'aucune sonde ne rougisse.
+        // ⚠️ Les dossiers REFUSÉS survivent à la purge : l'arbitre lit combien un
+        // compte en porte sur une fenêtre glissante, bien plus longue que la durée
+        // de vie d'un dossier (les deux sont réglables au constructeur
+        // d'`Escalade`). Les effacer retirerait de son faisceau le seul fait qui
+        // distingue un premier recours d'un acharnement, sans qu'aucune sonde ne
+        // rougisse. Ce compte ne décide rien : c'est pour informer qu'il se garde.
         //
         // ⚠️ Les dossiers ACCEPTÉS y survivent aussi, pour la raison qui fait que
         // `litigeActifDuCompte` les exempte du TTL : le titulaire qui revient après
         // l'expiration doit encore trouver son accord. Les purger fermerait la porte
         // définitivement à qui a déjà tout perdu.
-        $st = $this->pdo->prepare(
-            "DELETE FROM disputes WHERE expires_at <= ? AND status NOT IN ('refused', 'accepted')"
-        );
+        $st = $this->pdo->prepare('DELETE FROM disputes WHERE ' . self::OU_LITIGES_PERIMES);
         $st->execute([$avant]);
 
         return $st->rowCount();
+    }
+
+    public function compterLitigesExpires(int $avant): int
+    {
+        $st = $this->pdo->prepare('SELECT COUNT(*) FROM disputes WHERE ' . self::OU_LITIGES_PERIMES);
+        $st->execute([$avant]);
+
+        return (int) $st->fetchColumn();
+    }
+
+    public function purgerEchecs(int $avant, array $prefixes): int
+    {
+        [$ou, $parametres] = $this->ouEchecsPurgeables($avant, $prefixes);
+        $st = $this->pdo->prepare('DELETE FROM login_attempts WHERE ' . $ou);
+        $st->execute($parametres);
+
+        return $st->rowCount();
+    }
+
+    public function compterEchecsPurgeables(int $avant, array $prefixes): int
+    {
+        [$ou, $parametres] = $this->ouEchecsPurgeables($avant, $prefixes);
+        $st = $this->pdo->prepare('SELECT COUNT(*) FROM login_attempts WHERE ' . $ou);
+        $st->execute($parametres);
+
+        return (int) $st->fetchColumn();
+    }
+
+    /**
+     * La clause des lignes d'échec purgeables, et ses paramètres.
+     *
+     * 🔑 **Un seul endroit construit ce filtre**, pour la purge comme pour son
+     * compte. Recopié, il divergerait au premier préfixe ajouté d'un côté — et
+     * c'est le mode d'essai qui annoncerait alors un chiffre que la purge ne
+     * tient pas.
+     *
+     * @param  list<string> $prefixes
+     * @return array{0: string, 1: list<int|string>}
+     */
+    private function ouEchecsPurgeables(int $avant, array $prefixes): array
+    {
+        if ($prefixes === []) {
+            throw new \InvalidArgumentException(
+                'purgerEchecs() sans préfixe n effacerait rien en rendant zéro : une purge muette passe pour une purge faite.'
+            );
+        }
+
+        $filtre = implode(' OR ', array_fill(0, count($prefixes), 'username LIKE ?'));
+
+        return [
+            'attempted_at <= ? AND success = 0 AND (' . $filtre . ')',
+            [$avant, ...array_map(static fn (string $p): string => $p . '%', $prefixes)],
+        ];
     }
 
     public function faitsDuCompte(int $compteId): ?array

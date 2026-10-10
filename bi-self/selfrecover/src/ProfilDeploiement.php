@@ -46,6 +46,27 @@ enum ProfilDeploiement: string
     case TOR_ONION = 'tor-onion';
 
     /**
+     * Deux appelants différents arrivent-ils sous deux origines différentes ?
+     *
+     * 🔑 C'est la question que l'enum porte, rendue lisible par le code : quand
+     * la réponse est oui, un frein par adresse fait son travail et un plafond
+     * global n'achète rien de plus. Quand elle est non, le plafond global est le
+     * seul frein qui reste, et son coût — ralentir tout le monde ensemble — est
+     * le prix à payer.
+     *
+     * ⚠️ Le niveau 3 s'en sert pour décider si son plafond de service a un
+     * travail. Sous `CLEARWEB` il n'en a aucun : le frein par adresse mord
+     * toujours, et un plafond global n'y ajouterait qu'un interrupteur général —
+     * que des requêtes anonymes portant des noms inexistants suffisent à tirer
+     * pour tous les comptes à la fois. Un frein qui n'ajoute aucune protection et
+     * ajoute une porte n'est pas un compromis.
+     */
+    public function adresseDiscriminante(): bool
+    {
+        return $this === self::CLEARWEB;
+    }
+
+    /**
      * L'origine reçue est-elle cohérente avec le profil ?
      *
      * ⚠️ **Lève plutôt que corriger en silence.** Forcer l'origine à `null`, ou

@@ -33,6 +33,7 @@ use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Escalade;
 use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Tests\StockageMemoire;
+use Pierroons\SelfRecover\Langue;
 
 $passes = 0;
 $echecs = 0;
@@ -83,8 +84,8 @@ $st->empreintes[1]        = Hashing::hash($MDP);
 $st->hotes[1]             = $st->hoteServi;
 $st->faits[1]             = ['cree_le' => $now - 400 * 86400, 'derniere_connexion' => null, 'nombre_connexions' => null];
 
-$rec = new Recovery($st, $SELD, $PROFIL, delaiRefusUs: 0);
-$dev = new Device($st, $PROFIL, $SELD, delaiRefusUs: 0);
+$rec = new Recovery($st, $SELD, $PROFIL, Langue::FR, delaiRefusUs: 0);
+$dev = new Device($st, $PROFIL, $SELD, Langue::FR, delaiRefusUs: 0);
 $esc = new Escalade($st, $rec, delaiRefusUs: 0);
 
 $dg = new SelfDataGuard(new SqliteAdapter('sqlite::memory:'), Primitives::randomBytes(32));

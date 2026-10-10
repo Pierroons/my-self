@@ -4,7 +4,7 @@
 les constats 20 et 23 revus le 4 octobre 2026 au commit `4149238` ; Self-Right, la CI, le déploiement, l'intégration et SelfFarm Lite relus
 par leurs mainteneurs au même commit ; constats 17, 18, 19 et 21 revus au commit `e97460e` ;
 §9.7, faiblesses d'instance corrigées, ajouté le 4 octobre 2026 ; version et ancres de SelfRecover
-recalées sur la 0.11.0 le 6 octobre 2026*
+recalées sur la 0.12.0 le 9 octobre 2026*
 
 > **Statut : relu.** Le 4 octobre 2026, le mainteneur de chaque module a relu, dans toutes les
 > sections, ce qui touche son module. Un constat corrigé depuis porte 🟢.
@@ -47,7 +47,7 @@ en cours.
 
 | Module | Version | Nature | Langage | S'exécute dans | Porte des secrets d'utilisateur |
 |---|---|---|---|---|---|
-| SelfRecover | 0.11.0 | bibliothèque + client JS | PHP 8.1+, JS (WebCrypto) | processus PHP de l'intégrateur ; navigateur | oui |
+| SelfRecover | 0.12.0 | bibliothèque + client JS | PHP 8.1+, JS (WebCrypto) | processus PHP de l'intégrateur ; navigateur | oui |
 | SelfDataGuard | 0.6.0 | bibliothèque | PHP 8.1+, libsodium | processus PHP de l'intégrateur ; CLI admin (séquestre) | oui |
 | SelfRecover-LUKS | 0.6.2 | outillage système | sh, bash, C, Python | **initramfs, avant l'ouverture du disque** ; root | oui (passphrase de disque) |
 | SelfModerate | 0.4.0 | bibliothèque | PHP 8.1+ | processus PHP de l'intégrateur | non |
@@ -98,11 +98,11 @@ Poste utilisateur ─── selfright-mcp (stdio) → API SelfJustice / SelfAct 
 |---|---|---|---|---|
 | SelfRecover | empreintes stockées (mot de passe, passphrase, mot dérivé, codes) | `password_hash` Argon2id, m=64 Mio, t=4, p=2 ✔ | profil unique `Hashing::ARGON2` | `bi-self/selfrecover/src/Crypto/Hashing.php:25-29` |
 | SelfRecover | mot mémorisé, dans le navigateur | HMAC-SHA256, clé = mot, message = matériau + `'\|v2'` + sel de compte | matériau obligatoire : `hostname` ou `label` | `bi-self/selfrecover/client/sr-derive.js:71, 147-154` |
-| SelfRecover | index d'un code de niveau 2 | HMAC-SHA256(code normalisé, sel de déploiement) | aucun préfixe | `bi-self/selfrecover/src/Recovery/Recovery.php:573-576` ; `bi-self/selfrecover/src/Etiquette.php:38-41` |
-| SelfRecover | sésame du niveau 3 | SHA-256 sans sel ✔, adapté à un sésame de 32 o aléatoires ; la bibliothèque n'impose pas cette entropie | — | `bi-self/selfrecover/src/Recovery/Escalade.php:194-197` |
+| SelfRecover | index d'un code de niveau 2 | HMAC-SHA256(code normalisé, sel de déploiement) | aucun préfixe | `bi-self/selfrecover/src/Recovery/Recovery.php:685-688` |
+| SelfRecover | sésame du niveau 3 | SHA-256 sans sel ✔, adapté à un sésame de 32 o aléatoires ; la bibliothèque n'impose pas cette entropie | — | `bi-self/selfrecover/src/Recovery/Escalade.php:269-271` |
 | SelfRecover | facteur « cet appareil » | signature ECDSA (P-256 côté client ; la courbe n'est pas imposée côté serveur), défi de 32 o, 300 s, usage unique | — | `bi-self/selfrecover/src/Device/Device.php:112-120, 192-264` |
-| SelfRecover | codes de niveau 2 | `random_bytes(5)` : 40 bits par code ✔ | — | `bi-self/selfrecover/src/Recovery/Recovery.php:541` |
-| SelfRecover | passphrase de niveau 1 | 6 mots au moins, tirés par le serveur (liste EFF anglaise) ou apportés, tirés aux dés (EFF anglaise ou française d'Arthur Pons) ; ≈ 77,5 bits pour six mots tirés uniformément ✔, la bibliothèque ne peut pas vérifier le hasard d'une passphrase apportée ; normalisée avant hachage, comme dans SelfDataGuard | — | `bi-self/selfrecover/src/Recovery/Recovery.php:95, 360-363, 387, 437-440` |
+| SelfRecover | codes de niveau 2 | `random_bytes(5)` : 40 bits par code ✔ | — | `bi-self/selfrecover/src/Recovery/Recovery.php:620` |
+| SelfRecover | passphrase de niveau 1 | 6 mots au moins, tirés par le serveur (liste EFF anglaise) ou apportés, tirés aux dés (EFF anglaise ou française d'Arthur Pons) ; ≈ 77,5 bits pour six mots tirés uniformément ✔, la bibliothèque ne peut pas vérifier le hasard d'une passphrase apportée ; normalisée avant hachage, comme dans SelfDataGuard | — | `bi-self/selfrecover/src/Recovery/Recovery.php:118, 437-440, 452-477, 512` |
 | SelfRecover (client) | chiffrement local (`sr-kdf.js`) | Argon2id t=3, m=64 Mio, p=1 (implémentation JS propre au projet, `bi-self/selfrecover/client/argon2id.js`) → AES-256-GCM | blob versionné `{v:1, kdf}` portant son profil ; plancher contrôlé à la relecture | `bi-self/selfrecover/client/sr-kdf.js:211-235, 270-285` |
 | SelfDataGuard | trois serrures du coffre | Argon2id t=3, m=64 Mio (libsodium, p=1), 32 o ✔ ; profil enregistré avec chaque coffre (`kdf_opslimit`, `kdf_memlimit`) depuis la 0.6.0 | sels : `user_salt` ; `sha256(user_salt‖"/dataguard")[:16]` ; `…"/dataguard/passphrase"` ✔ | `self-security/selfdataguard/src/Crypto/Primitives.php:53-63` ; `self-security/selfdataguard/src/Vault/VaultRecord.php` ; `self-security/selfdataguard/src/Vault/UserVault.php` |
 | SelfDataGuard | enveloppes et champs | XChaCha20-Poly1305 ; AAD enveloppes = `userId` ✔ ; AAD champs = `userId\|nom` ✔ ; format `SDG2.` + base64(nonce‖chiffré‖tag) | — | `self-security/selfdataguard/src/Vault/UserVault.php:360` ; `self-security/selfdataguard/src/Fields/FieldCrypter.php:105-108` |
@@ -337,9 +337,14 @@ d'instance corrigées.
     (`bi-self/selfrecover/src/Device/Device.php:192-201`). La table grossit pendant 300 s. Les
     méthodes protégées par un sésame ou une signature n'appellent pas `verifierOrigine()`, et c'est
     voulu.
-12. ✔ **SelfRecover — une trace du niveau 3 porte le nom du compte en clair**
-    (`bi-self/selfrecover/src/Recovery/Escalade.php:377`). Elle n'est écrite qu'après un sésame
-    valide et rien ne la relit. Le niveau 1 écrit déjà le nom en clair dans la même table.
+12. 🟢 **SelfRecover — une trace du niveau 3 portait le nom du compte en clair.** Corrigé en
+    0.11.0 : elle passe par `Escalade::etiquetteDepot()`, un HMAC sous le sel du déploiement, et le préfixe
+    `l3:depot:` reste lisible pour qu'une console sache quoi ne pas compter comme un échec de
+    connexion (`bi-self/selfrecover/src/Recovery/Escalade.php:139-142, 493-495`). Le niveau 1 est
+    passé sous étiquette dans le même lot. ⚠️ La purge de cette table n'efface que les lignes
+    d'échec rangées sous les préfixes d'`Etiquette` (`bi-self/selfrecover/tools/purger.php`, posé
+    par `deploy/bi-self/selfrecover-purger.{service,timer}`) ; sa rétention appartient au
+    déploiement.
 13. **SelfDataGuard — aucun chemin de déverrouillage n'a de frein**, connexion comprise. Chaque
     appel est un essai Argon2id, à freiner par l'intégrateur (c'est documenté). La démo publique, elle,
     donne depuis le 04/10/2026 une base à chaque visiteur et passe derrière un frein nginx.

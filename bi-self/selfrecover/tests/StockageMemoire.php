@@ -51,11 +51,22 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
     /** Un adaptateur qui ne rend PAS la case : le cas de l'adaptateur du lab. */
     public bool $sansFaitsLocaux = false;
 
-    public function compterEchecsIp(string $ip, int $depuis): int
+    public function compterEchecsIp(string $ip, int $depuis, array $prefixes): int
     {
         return count(array_filter(
             $this->tentatives,
-            static fn (array $t): bool => $t['ip'] === $ip && !$t['succes'] && $t['quand'] > $depuis,
+            static function (array $t) use ($ip, $depuis, $prefixes): bool {
+                if ($t['ip'] !== $ip || $t['succes'] || $t['quand'] <= $depuis || $t['etiquette'] === null) {
+                    return false;
+                }
+                foreach ($prefixes as $prefixe) {
+                    if (str_starts_with($t['etiquette'], $prefixe)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            },
         ));
     }
 
@@ -295,7 +306,7 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
     public array $litiges = [];
     /** @var list<array{litige_id: int, auteur: string, texte: string, ecrit_le: int}> */
     public array $messages = [];
-    /** @var array<int, array{jusqua: int, degele_par: ?string, degele_le: ?int}> */
+    /** @var array<int, array{jusqua: int, gele_par?: ?string, degele_par: ?string, degele_le: ?int}> */
     public array $gels = [];
     /**
      * Faits de connexion par compte.
@@ -361,7 +372,13 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
         string $empreinteSesame,
         int $quand,
         int $expireLe,
-    ): void {
+    ): bool {
+        // Même règle que `litigeActifDuCompte` ci-dessus : le test et l'écriture
+        // sont un seul geste, comme dans l'implémentation de référence.
+        if ($this->litigeActifDuCompte($compteId, $quand) !== null) {
+            return false;
+        }
+
         $nom = '';
         foreach ($this->comptes as $cle => $c) {
             if ($c['id'] === $compteId) {
@@ -376,6 +393,8 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
             'tranche_le' => null, 'tranche_par' => null, 'demandeurs_concurrents' => 0,
             'faisceau' => null,
         ];
+
+        return true;
     }
 
     /** @param callable(array<string, mixed>): array<string, mixed> $muter */
@@ -444,9 +463,16 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
         ));
     }
 
-    public function poserGel(int $compteId, int $jusqua, int $quand): void
+    public function poserGel(int $compteId, int $jusqua, int $quand, string $par): void
     {
-        $this->gels[$compteId] = ['jusqua' => $jusqua, 'degele_par' => null, 'degele_le' => null];
+        // La trace du dégel précédent survit : seul `gelJusqua()` dit si
+        // l'ouverture est gelée, et la décision qui avait levé le gel d'avant
+        // reste lisible pour l'arbitre suivant.
+        $avant = $this->gels[$compteId] ?? ['degele_par' => null, 'degele_le' => null];
+
+        $this->gels[$compteId] = ['jusqua' => $jusqua, 'gele_par' => $par,
+                                  'degele_par' => $avant['degele_par'],
+                                  'degele_le'  => $avant['degele_le']];
     }
 
     public function gelJusqua(int $compteId, int $maintenant): int
@@ -460,7 +486,8 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
     {
         // La ligne est gardée, pas supprimée : qui a dégelé et quand vaut d'être
         // conservé, y compris pour l'arbitre suivant.
-        $this->gels[$compteId] = ['jusqua' => 0, 'degele_par' => $par, 'degele_le' => $quand];
+        $this->gels[$compteId] = ['jusqua' => 0, 'gele_par' => $this->gels[$compteId]['gele_par'] ?? null,
+                                  'degele_par' => $par, 'degele_le' => $quand];
     }
 
     public function ajouterMessageLitige(int $litigeId, string $auteur, string $texte, int $quand): void
@@ -492,15 +519,78 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
         // atteigne son seuil, et le gel — seule protection contre l'acharnement —
         // deviendrait inatteignable sans qu'aucune sonde ne rougisse. Un dossier
         // ACCEPTÉ survit aussi : il n'expire pas tant qu'il n'est pas consommé.
-        $garde = array_filter($this->litiges, static fn (array $l): bool =>
-            $l['expire_le'] > $avant
-            || in_array($l['statut'], [Litige::REFUSE, Litige::ACCEPTE], true));
+        $garde = array_filter($this->litiges, self::litigeSurvit($avant));
         $n     = count($this->litiges) - count($garde);
         $this->litiges = array_values($garde);
 
         return $n;
     }
 
+    public function compterLitigesExpires(int $avant): int
+    {
+        return count($this->litiges) - count(array_filter($this->litiges, self::litigeSurvit($avant)));
+    }
+
+    /**
+     * Le prédicat de survie d'un dossier — pour la purge ET pour son compte.
+     * Recopié, il divergerait ; le contrat de `compterLitigesExpires()` l'exige
+     * partagé.
+     *
+     * @return callable(array<string, mixed>): bool
+     */
+    private static function litigeSurvit(int $avant): callable
+    {
+        return static fn (array $l): bool => $l['expire_le'] > $avant
+            || in_array($l['statut'], [Litige::REFUSE, Litige::ACCEPTE], true);
+    }
+
+
+    public function purgerEchecs(int $avant, array $prefixes): int
+    {
+        $garde = array_filter($this->tentatives, self::tentativeSurvit($avant, $prefixes));
+        $n     = count($this->tentatives) - count($garde);
+        $this->tentatives = array_values($garde);
+
+        return $n;
+    }
+
+    public function compterEchecsPurgeables(int $avant, array $prefixes): int
+    {
+        return count($this->tentatives)
+            - count(array_filter($this->tentatives, self::tentativeSurvit($avant, $prefixes)));
+    }
+
+    /**
+     * Le prédicat de survie d'une tentative — partagé par la purge et son compte.
+     *
+     * ⚠️ Le refus sur une liste vide vit ICI, donc les deux voies l'appliquent.
+     * Ce double ne refusait pas, là où le contrat et les deux adaptateurs SQL le
+     * font : il gardait tout et rendait zéro, ce qui se lit « rien à purger ».
+     *
+     * @param  list<string> $prefixes
+     * @return callable(array<string, mixed>): bool
+     */
+    private static function tentativeSurvit(int $avant, array $prefixes): callable
+    {
+        if ($prefixes === []) {
+            throw new \InvalidArgumentException(
+                'purgerEchecs() sans préfixe n effacerait rien en rendant zéro : une purge muette passe pour une purge faite.'
+            );
+        }
+
+        return static function (array $t) use ($avant, $prefixes): bool {
+            if ($t['quand'] > $avant || $t['succes'] || $t['etiquette'] === null) {
+                return true;
+            }
+            foreach ($prefixes as $prefixe) {
+                if (str_starts_with($t['etiquette'], $prefixe)) {
+                    return false;
+                }
+            }
+
+            return true;
+        };
+    }
     public function faitsDuCompte(int $compteId): ?array
     {
         $nom = null;

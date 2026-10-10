@@ -185,8 +185,17 @@ What the library enforces, with the defaults it ships:
   20 failures since its last rearming — a fresh batch of codes, a successful code
   recovery, or a successful passphrase recovery. The per-address counter applies on
   top. A deployment that holds none of those three dates does not suspend
-- L3 — 1 hour between two deposits on a dispute; 10 openings per address and 20
-  per service, over an hour
+- L3 — 1 hour between two deposits on a dispute; 10 openings per address, over
+  an hour; a ceiling of 500 characters per answer and 2000 per thread message,
+  with 100 messages and 10 seconds between two for the requester — never for the
+  arbitrator, whose channel is what they need when the thread fills. The
+  service-wide ceiling of 20 openings per hour applies **only under
+  `tor-onion`**: where an address discriminates, it adds no protection and adds
+  a public master switch that closes the last resort of every account at once
+- L3 — no brake and no counter poses a freeze. A refusal is counted and the
+  count handed to the arbitrator (`gel_suggere` past the threshold); `geler()`
+  and `degeler()` are theirs. A counter keyed on the targeted account is
+  fillable by whoever knows a public name
 - A forced delay on every refusal that hides a state. One refusal names its
   state, and must: an account whose level 2 is suspended cannot be told to renew
   otherwise. It tells whoever already holds one of that account's codes that the

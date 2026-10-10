@@ -42,9 +42,16 @@ jobs:
           php-version: ${{ matrix.php }}
           extensions: sodium, pdo_sqlite, mbstring, json
           coverage: none
+          # Les bancs tiennent sous 8 Mio de pic réel (`memory_get_peak_usage(true)`,
+          # mesuré le 09/10/2026). 256M les couvre largement tout en restant assez bas
+          # pour qu'une récursion atteigne la limite et nomme sa ligne, au lieu de
+          # geler le runner jusqu'au timeout.
+          ini-values: memory_limit=256M
       - name: SelfDataGuard, couplage et parcours sous PHP ${{ matrix.php }}
         run: |
           php -v | head -1
+          [ "$(php -r 'echo ini_get("memory_limit");')" = "256M" ] \
+            || { echo "::error::le plafond mémoire a disparu de setup-php"; exit 1; }
           rc=0
           # Toutes les suites jouent, même après un échec : un arrêt au premier rouge laisse les
           # suivantes non éprouvées sur cette version, sans que rien ne le dise.
@@ -69,6 +76,51 @@ jobs:
           php-version: '8.4'
           extensions: sodium, pdo_sqlite, mbstring, json
           coverage: none
+          # Les bancs tiennent sous 8 Mio de pic réel (`memory_get_peak_usage(true)`,
+          # mesuré le 09/10/2026). 256M les couvre largement tout en restant assez bas
+          # pour qu'une récursion atteigne la limite et nomme sa ligne, au lieu de
+          # geler le runner jusqu'au timeout.
+          ini-values: memory_limit=256M
+
+      - name: Le plafond mémoire est en place
+        run: |
+          # Sans lui, une récursion infinie gèle le job jusqu'au timeout sans
+          # jamais nommer sa ligne. Un `ini-values` retiré doit se voir ici.
+          lu=$(php -r 'echo ini_get("memory_limit");')
+          [ "$lu" = "256M" ] || { echo "::error::plafond mémoire à '$lu', attendu 256M"; exit 1; }
+          echo "memory_limit = $lu"
+
+      # ⚠️ **Les outils LUKS s'installent AVANT le contrôle des portes, et c'est
+      # l'ordre qui le rend juste.** Ce contrôle RELANCE chaque banc apparié, dont
+      # six bancs shell de `selfrecover-luks` qui sortent en 1 sans `cryptsetup` —
+      # absent du runner, comme le dit l'étape ci-dessous. Posé avant elle, le
+      # contrôle rendait trois faux rouges et envoyait corriger des littéraux justes :
+      # le défaut même qu'il existe pour attraper, retourné contre lui.
+      # cryptsetup n'est pas sur le runner, et argon2 non plus : les installer coûte
+      # quelques secondes et rend ce banc exécutable ici. Il ne demande pas root — le
+      # conteneur LUKS2 est un fichier, aucune activation device-mapper.
+      - name: Outils du banc SelfRecover-LUKS
+        run: |
+          # `update` non bloquant, `install` bloquant — motif expliqué à l'installation de nginx.
+          sudo apt-get update -qq || echo "::warning::index apt partiel — l'installation reste bloquante"
+          sudo apt-get install -y -qq cryptsetup-bin python3-argon2 libargon2-dev
+          # Le binaire C est celui que le keyscript appelle à l'amorçage. Le banc
+          # choisit UN dérivateur : le C s'il est compilé, sinon le Python. Sans
+          # cette compilation, la CI n'éprouvait que le Python — et le seul chemin
+          # dont l'échec rend une machine non amorçable n'était couvert par aucun
+          # vert.
+          cc -O2 -Wall -o self-security/selfrecover-luks/selfrecover_derive \
+             self-security/selfrecover-luks/selfrecover_derive.c -l:libargon2.so.1
+
+      # 🔑 Les portes de comptage disent-elles encore le total de leur banc ? Un
+      # banc qui gagne des cas laisse derrière lui le littéral qui le garde, et
+      # la porte tombe sur un banc VERT.
+      #
+      # ⚠️ Il relance les bancs appariés, donc il coûte du temps. C'est le prix
+      # du seul défaut qu'aucune mesure de banc ne peut montrer : elle mesure le
+      # banc, pas ce qui le garde.
+      - name: Garde-fou — les portes de comptage disent le total de leur banc
+        run: PLAFOND=256M bash scripts/check-portes.sh
 
       # ── Syntaxe ────────────────────────────────────────────────────────────
       - name: Syntaxe PHP, Python et shell
@@ -369,13 +421,23 @@ jobs:
           # seule l'origine change, absente en tor-onion. Un comportement qui ne
           # tiendrait que d'un côté se verrait ici. Le niveau 1 ne freine plus que par
           # origine, que le profil tor-onion n'a pas : chaque profil garde donc une
-          # propriété que l'autre ne peut pas montrer, et les deux comptent pareil.
+          # propriété que l'autre ne peut pas montrer.
+          #
+          # ⚠️ Les deux ne comptent PAS pareil : les cas du frein par origine n'ont
+          # aucun objet sous tor-onion, qui n'a pas d'adresse exploitable. D'où un
+          # total par profil — un littéral unique pour les deux ne peut pas tenir —,
+          # et le banc dit ce qu'il saute plutôt que de le taire, sans quoi un vert
+          # se lirait « la propriété tient des deux côtés ».
           for profil in clearweb tor-onion; do
+            case "$profil" in
+              clearweb)  attendu=83 ;;
+              tor-onion) attendu=79 ;;
+            esac
             sortie=$(php bi-self/selfrecover/tests/sanity_recovery.php --profil="$profil" 2>&1) && rc=0 || rc=$?
             echo "$sortie"
             [ "$rc" = 0 ] || { echo "::error::le banc de récupération a échoué sous $profil"; exit 1; }
-            echo "$sortie" | grep -qE '^OK — 75/75$' \
-              || { echo "::error::le banc de récupération n'a pas joué ses 75 cas sous $profil"; exit 1; }
+            echo "$sortie" | grep -qE "^OK — $attendu/$attendu\$" \
+              || { echo "::error::le banc de récupération n'a pas joué ses $attendu cas sous $profil"; exit 1; }
           done
 
       # La route du sel du niveau 2 est publique : elle doit rendre un sel pour tout
@@ -417,8 +479,8 @@ jobs:
             sortie=$(php bi-self/selfrecover/tests/sanity_passphrase_apportee.php --profil="$profil" 2>&1) && rc=0 || rc=$?
             echo "$sortie"
             [ "$rc" = 0 ] || { echo "::error::le banc de la passphrase apportée a échoué sous $profil"; exit 1; }
-            echo "$sortie" | grep -qE '^OK — 43/43$' \
-              || { echo "::error::le banc de la passphrase apportée n'a pas joué ses 43 cas sous $profil"; exit 1; }
+            echo "$sortie" | grep -qE '^OK — 46/46$' \
+              || { echo "::error::le banc de la passphrase apportée n'a pas joué ses 46 cas sous $profil"; exit 1; }
           done
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
             F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
@@ -444,6 +506,14 @@ jobs:
             $B '❌ niveau 2 : la passphrase remplacée ne revient pas telle quelle'
           canari $R 'public const MOTS_PASSPHRASE = 6;' 'public const MOTS_PASSPHRASE = 4;' \
             bi-self/selfrecover/tests/sanity_couplage_dataguard.php '✗ plus courte passphrase apportable'
+          # 🔑 Ce que ce canari garde : un échec non rattaché à un compte porte une
+          # étiquette, car `null` échappe à tout `LIKE 'prefixe%'`. Sous `null`, le
+          # frein par origine ne voit plus ce chemin — qui paie DEUX Argon2id par
+          # essai et s'atteint sans connaître un seul nom de compte — et
+          # `purgerEchecs` n'efface jamais ces lignes.
+          canari $R '            : Etiquette::PREFIXE_L2_INCONNU;' '            : null;' \
+            bi-self/selfrecover/tests/sanity_recovery.php \
+            '❌ ⭐ le frein par origine COMPTE ces essais'
           canari $R 'if ($neuve === $ancienne) {' 'if (false) {' \
             $B '❌ apporter celle qui sert est refusé'
           canari $R 'if (strlen($saisie) > self::OCTETS_PASSPHRASE_MAXIMUM) {' 'if (false) {' \
@@ -496,6 +566,85 @@ jobs:
           canari $R 'public const MOTS_MINIMUM_CLASSEMENT = 4;' \
             'public const MOTS_MINIMUM_CLASSEMENT = 6;' \
             $S '❌ ⭐ quatre mots connus comptent pour un essai, pas seulement six'
+          # ── Le niveau 3 : un tiers ne ferme pas la dernière porte du titulaire ──
+          # Le gel automatique du refus comptait sous le compte VISÉ : trois dossiers
+          # ouverts par un tiers avec le seul nom affiché, et la porte se fermait.
+          # Le remettre doit faire rougir la propriété composée, qui est la seule
+          # qu'aucun banc ne gardait avant la 0.12.0.
+          X=bi-self/selfrecover/tests/sanity_escalade.php
+          canari $E "        \$refus = \$this->stockage->compterRefusRecents(\$litige->compteId, \$maintenant - \$this->gelFenetre);" \
+            "        \$refus = \$this->stockage->compterRefusRecents(\$litige->compteId, \$maintenant - \$this->gelFenetre); if (\$refus >= \$this->gelSeuil) { \$this->stockage->poserGel(\$litige->compteId, \$maintenant + \$this->gelDuree, \$maintenant); }" \
+            $X '❌ ⭐ trois refus déclenchés par un tiers, et le titulaire ouvre toujours'
+          # Le geste qui remplace le compteur. Sans effet, tout le bloc du gel
+          # restait vert : l'ouverture suivante était refusée par l'exclusivité du
+          # dossier en cours, pas par le gel. Mesuré, pas supposé.
+          canari $E "        \$this->stockage->poserGel((int) \$compte['id'], \$jusqua, \$maintenant);" \
+            '        // le gel ne se pose plus' \
+            $X "❌ une fois gelée, l'ouverture d'un nouveau dossier est refusée"
+          # Un dossier refusé n'est jamais clos par `trancher()` : la garde ne testait
+          # que CLOS, et le détenteur du sésame écrivait encore à l'arbitre qui
+          # venait de l'éconduire.
+          canari $E 'if ($litige->statut === Litige::REFUSE && $auteur === '"'"'demandeur'"'"') {' \
+            'if (false) {' \
+            $X "❌ ⭐ après un REFUS, l'écriture est refusée et rien n'est rangé"
+          # Et la garde ne doit pas se refermer d'un cran de trop : sur un dossier
+          # ACCEPTÉ, le fil est le seul canal entre le demandeur et l'arbitre
+          # pendant la reprise des secrets. Aucun banc ne l'exerçait.
+          canari $E 'if ($litige->statut === Litige::REFUSE && $auteur === '"'"'demandeur'"'"') {' \
+            'if (!$litige->enCours()) {' \
+            $X '❌ ⭐ après un ACCORD, l'"'"'écriture reste possible'
+          # Et le cran de trop dans l'autre sens : sans le test de l'auteur, l'arbitre
+          # refuse sans pouvoir expliquer — sur le dernier recours de qui n'a plus
+          # aucun secret, un refus muet est pire que le défaut qu'on fermait.
+          canari $E 'if ($litige->statut === Litige::REFUSE && $auteur === '"'"'demandeur'"'"') {' \
+            'if ($litige->statut === Litige::REFUSE) {' \
+            $X '❌ ⭐ après avoir refusé, l'"'"'arbitre peut encore EXPLIQUER son refus'
+          # Les trois réponses sont rangées en base et lues par un humain : le fil
+          # avait sa borne, le questionnaire aucune.
+          canari $E 'if (mb_strlen($valeur) > self::REPONSE_MAXIMUM) {' \
+            'if (mb_strlen($valeur) > 100000) {' \
+            $X '❌ ⭐ une réponse au-delà du plafond est refusée, et nommée'
+          canari $E '$reponses  = array_intersect_key($reponses, array_flip($attendues));' \
+            '// rien n'"'"'est écarté' \
+            $X '❌ ⭐ 50 clés inventées hors-plafond n'"'"'empêchent pas le dépôt'
+          # Le fil : un plafond par DOSSIER, une fenêtre entre deux messages, et
+          # l'arbitre jamais borné — borner son canal le lui retirerait au moment
+          # où il en a besoin.
+          canari $E 'if (count($siens) >= $this->maxMessagesLitige) {' \
+            'if (count($siens) >= 100000) {' \
+            $X '❌ ⭐ le fil se ferme au plafond livré, et le motif le dit'
+          canari $E 'if ($dernier !== null && $maintenant - $dernier < $this->attenteMessage) {' \
+            'if ($dernier !== null && $maintenant - $dernier < 0) {' \
+            $X '❌ ⭐ deux messages collés : le second est freiné'
+          # `expire` et `accord_perime` ne sont atteintes QUE si le sésame est bon, et
+          # partaient sans délai : le chronomètre disait ce que le message unique tait.
+          canari $E '        $refuser = function (string $motif, string $message) use ($debut): array {' \
+            '        $refuser = function (string $motif, string $message) use ($debut): array { if ($motif !== "sesame_invalide") { return ["ok" => false, "error" => $motif, "message" => $message]; }' \
+            $X '❌ ⭐ sésame faux, dossier expiré, accord périmé : la même durée'
+          # Le plafond de service n'achète rien là où l'adresse discrimine, et il y
+          # ajoutait un interrupteur général que vingt requêtes anonymes tiraient.
+          canari $E 'if (!$this->recovery->profil()->adresseDiscriminante()' 'if (!false' \
+            $X '❌ ⭐ sous clearweb, 30 ouvertures depuis 15 adresses ne ferment PLUS le service'
+          # Mais il reste le SEUL frein possible sous un service caché : le désarmer
+          # partout doit rougir aussi.
+          canari $E 'if (!$this->recovery->profil()->adresseDiscriminante()' 'if (false' \
+            $X '❌ ⭐ sous tor-onion, 20 ouvertures sur des noms inconnus ferment le service'
+          # Deux gardes vivantes qu'aucune assertion ne nommait : le cas existant
+          # n'assertait que « ça refuse », ce que le refus d'exclusivité satisfait.
+          canari $E "if (!preg_match('/^[a-f0-9]{64}\$/', \$empreinteSesame)) {" 'if (false) {' \
+            $X '❌ ⭐ une empreinte de sésame malformée est refusée, et nommée'
+          # ⚠️ PAS de canari sur le `deja_tranche` de `soumettre()`, et c'est mesuré :
+          # `if (!$litige->enCours()) {` apparaît deux fois dans le fichier, et cette
+          # fonction exige — à juste titre — un motif unique. Le rendre unique
+          # demanderait de recopier la définition de `enCours()` sur place, soit une
+          # duplication pour la commodité d'un canari. Le banc, lui, assertait
+          # jusqu'ici « ça refuse » sans nommer le motif : il le nomme désormais
+          # (« on ne dépose plus de faisceau sur un dossier tranché »), et ce cas a
+          # été vu rouge hors CI en retirant la garde.
+          # Un reste d'attente sous la minute s'annonçait « 1 minute » : jamais plus
+          # court que le délai réel, mais six fois trop long.
+          canari bi-self/selfrecover/src/Duree.php '        if ($secondes < 60) {' '        if (false) {' \
+            $X '❌ ⭐ deux messages collés : le second est freiné, et le délai est dit en secondes'
 
       # Un frein qu'on n'a jamais fait céder ne se distingue pas d'un frein qui
       # n'est relié à rien : les deux laissent le banc vert. Ce canari mesure que
@@ -577,8 +726,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 130 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 130 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 183 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 183 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les
@@ -670,6 +819,20 @@ jobs:
             echo "::error::le banc n'a rendu que « ${passes:-aucun} » contrôle(s) — il en faut au moins 150"
             exit 1
           fi
+
+      # `tools/purger.php` est le seul chemin du module qui DÉTRUIT des données. La
+      # section « atomicité » du banc de stockage éprouve les primitives de
+      # transaction, pas l'outil qui les appelle.
+      - name: Garde-fou — la purge ne détruit rien quand elle échoue
+        run: |
+          sortie=$(php bi-self/selfrecover/tests/sanity_purger.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          # 9 = le décor n'était pas en place. Un banc qui mesure le vide rend
+          # « rien n'a été détruit » sur une table vide, et c'est vrai.
+          [ "$rc" != 9 ] || { echo "::error::le décor du banc de purge n'était pas en place — il n'a rien mesuré"; exit 1; }
+          [ "$rc" = 0 ] || { echo "::error::le banc de la purge a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 17/17$' \
+            || { echo "::error::le banc de la purge n'a pas joué ses 17 cas"; exit 1; }
 
       - name: Garde-fou — déploiement SelfJustice
         run: bash self-right/selfjustice/tests/test_deploy.sh
@@ -810,22 +973,6 @@ jobs:
 
       - name: Garde-fou — le déploiement d'une instance SelfAct
         run: bash deploy/selfact/tests/test_deploy.sh
-
-      # cryptsetup n'est pas sur le runner, et argon2 non plus : les installer coûte
-      # quelques secondes et rend ce banc exécutable ici. Il ne demande pas root — le
-      # conteneur LUKS2 est un fichier, aucune activation device-mapper.
-      - name: Outils du banc SelfRecover-LUKS
-        run: |
-          # `update` non bloquant, `install` bloquant — motif expliqué à l'installation de nginx.
-          sudo apt-get update -qq || echo "::warning::index apt partiel — l'installation reste bloquante"
-          sudo apt-get install -y -qq cryptsetup-bin python3-argon2 libargon2-dev
-          # Le binaire C est celui que le keyscript appelle à l'amorçage. Le banc
-          # choisit UN dérivateur : le C s'il est compilé, sinon le Python. Sans
-          # cette compilation, la CI n'éprouvait que le Python — et le seul chemin
-          # dont l'échec rend une machine non amorçable n'était couvert par aucun
-          # vert.
-          cc -O2 -Wall -o self-security/selfrecover-luks/selfrecover_derive \
-             self-security/selfrecover-luks/selfrecover_derive.c -l:libargon2.so.1
 
       - name: Garde-fou — comment cryptsetup lit une clé selon le chemin emprunté
         run: |
@@ -1184,8 +1331,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_console_freins.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc des compteurs de la console a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 12/12$' \
-            || { echo "::error::le banc des compteurs de la console n'a pas joué ses 12 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 15/15$' \
+            || { echo "::error::le banc des compteurs de la console n'a pas joué ses 15 cas"; exit 1; }
 
       # Le filtre des trois consoles écarte des préfixes par leur forme en clair.
       # Rien ne lançait ce banc : une garde contre la publication d'une clé non
@@ -1206,8 +1353,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_l3_abandon.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc de l'abandon L3 a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 15/15 ' \
-            || { echo "::error::le banc de l'abandon L3 n'a pas joué ses 15 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 16/16 ' \
+            || { echo "::error::le banc de l'abandon L3 n'a pas joué ses 16 cas"; exit 1; }
 
       # Le frein de la page de connexion n'était gardé par aucun banc. Il mord sur
       # deux axes — par compte et par origine — et un frein qui cesse de mordre ne
@@ -1217,8 +1364,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_frein_login.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du frein de connexion a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 13/13 ' \
-            || { echo "::error::le banc du frein de connexion n'a pas joué ses 13 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 15/15 ' \
+            || { echo "::error::le banc du frein de connexion n'a pas joué ses 15 cas"; exit 1; }
 
       # La bibliothèque rend `cle`/`texte`, la page lit `key`/`label`/`type`/`options` :
       # les deux côtés avaient divergé sans un mot, et le niveau 3 partait sans aucune
@@ -1239,8 +1386,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_tc_deep.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc de tc_deep a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 26/26 ' \
-            || { echo "::error::le banc de tc_deep n'a pas joué ses 26 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 34/34 ' \
+            || { echo "::error::le banc de tc_deep n'a pas joué ses 34 cas"; exit 1; }
 
       # 🔑 Les cinq bancs ci-dessus rendent vert ; rien ne disait qu'ils rougissent.
       # Une garde qu'on n'a jamais fait échouer ne se distingue pas d'une garde
@@ -1364,6 +1511,46 @@ jobs:
           echo "$sortie" | grep -q '❌ .*voit exactement celles-là' \
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du compteur"; exit 1; }
           echo "✓ le banc rougit, et sur le cas du compteur de la console"
+
+      # ⚠️ Le canari ci-dessus garde le COMPTEUR ; celui-ci garde l'AFFICHAGE. Une
+      # console qui ne traduit qu'une des deux formes du code introuvable montre
+      # l'étiquette interne en clair à l'arbitre, et le banc peut rester vert s'il
+      # n'observe que la forme qu'elle traduit.
+      - name: Canari — la console réaffiche l'étiquette interne en clair
+        run: |
+          F=demo/lab/lib/admin.php
+          cp "$F" /tmp/admin-libelle.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
+          # ⚠️ La plantation garde le `?`. Retirer la condition entière laissait
+          # deux paramètres pour un emplacement : le banc rougissait sur un
+          # « column index out of range », donc sur une erreur SQL et non sur
+          # l'affichage. Mesuré avant de poser ce canari.
+          python3 - <<'PY'
+          chemin = 'demo/lab/lib/admin.php'
+          motif  = "WHEN username IS NULL OR username = ?"
+          s = open(chemin, encoding='utf-8').read()
+          assert s.count(motif) == 1, 'motif introuvable — ce canari ne prouve rien'
+          open(chemin, 'w', encoding='utf-8').write(s.replace(motif, "WHEN username IS NULL OR 'jamais' = ?"))
+          PY
+          grep -q "OR 'jamais' = ?" "$F" \
+            || { cp /tmp/admin-libelle.intact "$F"; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          php -l "$F" >/dev/null \
+            || { cp /tmp/admin-libelle.intact "$F"; echo "::error::la version plantée ne compile pas"; exit 1; }
+          if sortie=$(php demo/lab/tests/sanity_console_freins.php 2>&1); then
+            cp /tmp/admin-libelle.intact "$F"
+            echo "$sortie"; echo "::error::le banc reste VERT alors que la console affiche l'étiquette en clair"; exit 1
+          fi
+          cp /tmp/admin-libelle.intact "$F"
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          # 🔑 Un rouge ne vaut que par sa CAUSE : une plantation qui casse le banc
+          # le fait rougir sans rien établir sur la propriété gardée.
+          if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            echo "$sortie"; echo "::error::la plantation casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+          fi
+          echo "$sortie" | grep -q "❌ .*aucune étiquette interne" \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de l'affichage"; exit 1; }
+          echo "✓ le banc rougit, et sur le cas de l'étiquette affichée en clair"
 
       # Le mémo chiffré du lab dérive par srKdfDeriver (Argon2id). Le banc rouvre
       # l'enveloppe produite par le JS avec PHP (libsodium, hash_hkdf, openssl) :
@@ -1682,6 +1869,57 @@ jobs:
       # prouverait plus rien.
       - name: Garde-fou — les vecteurs Argon2id de SelfDataGuard viennent d'une seconde implémentation
         run: python3 self-security/selfdataguard/tests/vecteurs_argon2.py
+
+      # `Etiquette::PREFIXES` est ce que le frein par origine reçoit pour ne peser
+      # que les portes de la bibliothèque. Un préfixe déclaré hors de cette liste
+      # écrit des échecs que plus aucun frein ne relit, sans qu'une erreur le dise.
+      # `login_attempts` est partagée : la page de connexion de l'intégrateur y
+      # écrit, et la suspension du niveau 2 se réarme sur une réussite que rien
+      # ne borne dans le temps. Une purge trop large efface l'une ou l'autre
+      # sans qu'aucun frein change de comportement pour le dire.
+      - name: Garde-fou — la purge des échecs épargne ce qui n'est pas à elle
+        run: |
+          sortie=$(php bi-self/selfrecover/tests/banc_stockage_pdo.php)
+          echo "$sortie" | tail -3
+          echo "$sortie" | grep -qE '^✅ 167 contrôle\(s\) passé\(s\), 0 échec' \
+            || { echo "::error::le banc de stockage n'a pas joué ses 164 cas"; exit 1; }
+          F=bi-self/selfrecover/src/Storage/StockagePdo.php
+          cp "$F" /tmp/stockage.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
+          # Un défaut COHÉRENT : une requête cassée tuerait le banc, et un banc
+          # mort ne dit pas quelle propriété a cédé.
+          sed -i "s/attempted_at <= ? AND success = 0 AND (/attempted_at <= ? AND (/" "$F"
+          grep -q "attempted_at <= ? AND ('" "$F" || { echo "::error::canari non planté"; exit 1; }
+          if canari=$(php bi-self/selfrecover/tests/banc_stockage_pdo.php); then
+            cp /tmp/stockage.intact "$F"; echo "::error::une purge qui efface les réussites rend encore vert"; exit 1
+          fi
+          cp /tmp/stockage.intact "$F"
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$canari" | grep -q 'la RÉUSSITE ancienne survit' \
+            || { echo "$canari"; echo "::error::rouge, mais pas sur l'épargne des réussites"; exit 1; }
+          echo "✓ le banc rougit sur une purge qui emporte les réussites"
+
+      - name: Garde-fou — la liste des étiquettes est close
+        run: |
+          sortie=$(php bi-self/selfrecover/tests/sanity_etiquettes.php)
+          echo "$sortie"
+          echo "$sortie" | grep -qE '^OK — 12/12$' \
+            || { echo "::error::le banc des étiquettes n'a pas joué ses 12 cas"; exit 1; }
+          F=bi-self/selfrecover/src/Etiquette.php
+          cp "$F" /tmp/etiquette.intact
+          avant=$(md5sum "$F" | cut -d" " -f1)
+          sed -i "s|    /\*\* Compteurs d'échec du niveau 2\. \*/|    public const PREFIXE_CANARI = 'canari:';\n\n    /** Compteurs d'échec du niveau 2. */|" "$F"
+          grep -q "PREFIXE_CANARI = 'canari:'" "$F" || { echo "::error::canari non planté"; exit 1; }
+          if canari=$(php bi-self/selfrecover/tests/sanity_etiquettes.php); then
+            cp /tmp/etiquette.intact "$F"; echo "::error::un préfixe hors de PREFIXES rend encore vert"; exit 1
+          fi
+          cp /tmp/etiquette.intact "$F"
+          [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "$canari" | grep -q 'chaque constante PREFIXE_\* figure dans PREFIXES' \
+            || { echo "$canari"; echo "::error::rouge, mais pas sur la liste close"; exit 1; }
+          echo "✓ le banc rougit sur un préfixe absent de PREFIXES"
 
       # La taille du sel de compte vit à quatre endroits qui ne peuvent pas se lire :
       # sr-derive.js, sr-kdf.js, Recovery::SEL_OCTETS, le CHECK du schéma duo.

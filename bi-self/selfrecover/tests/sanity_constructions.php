@@ -42,20 +42,46 @@ const SURVEILLEES = [
 const IGNORES = ['/bi-self/selfrecover/src/', '/deploy/', '/node_modules/', '/vendor/'];
 
 $requis = [];
+$nomsRequis = [];
 foreach (SURVEILLEES as $fqcn) {
     $c = new ReflectionClass($fqcn);
     $ctor = $c->getConstructor();
     $requis[$fqcn] = $ctor ? $ctor->getNumberOfRequiredParameters() : 0;
+    // ⚠️ Les NOMS comptent autant que le nombre : un argument nommé satisfait
+    // son paramètre où qu'il soit, et un paramètre requis sauté par un nommé
+    // n'est pas satisfait du tout. Compter sans distinguer rendait les deux
+    // cas identiques — et le second lève à l'exécution.
+    $nomsRequis[$fqcn] = $ctor
+        ? array_map(
+            static fn (ReflectionParameter $p): string => $p->getName(),
+            array_slice($ctor->getParameters(), 0, $requis[$fqcn]),
+        )
+        : [];
     $court = substr($fqcn, strrpos($fqcn, '\\') + 1);
     $requis[$court] = $requis[$fqcn];
+    $nomsRequis[$court] = $nomsRequis[$fqcn];
 }
 
-/** Compte les arguments d'un appel, en ignorant les virgules imbriquées. */
-function compterArguments(array $jetons, int $depart): ?int
+/**
+ * Les arguments d'un appel : combien de POSITIONNELS, et le nom des nommés.
+ *
+ * 🔑 La distinction est tout l'intérêt : `f($a, $b, nomme: 1)` fournit deux
+ * paramètres positionnels, pas trois, et le troisième requis n'est satisfait
+ * que s'il s'appelle `nomme`.
+ *
+ * @return array{positionnels: int, nommes: list<string>}|null
+ */
+function compterArguments(array $jetons, int $depart): ?array
 {
     $profondeur = 0;
     $args = 0;
-    $vu = false;
+    // ⚠️ On compte les segments NON VIDES, qu'une virgule les ferme ou que la
+    // parenthèse les ferme. Compter les virgules et ajouter un donnerait un
+    // argument FANTÔME à tout appel à virgule finale : `new Recovery($a, $b,
+    // $c,)` compterait quatre positionnels pour trois.
+    $segmentNonVide = false;
+    $nommes = [];
+    $nomEnCours = null;
     for ($i = $depart, $n = count($jetons); $i < $n; $i++) {
         $j = $jetons[$i];
         $texte = is_array($j) ? $j[1] : $j;
@@ -70,14 +96,28 @@ function compterArguments(array $jetons, int $depart): ?int
         } elseif (in_array($texte, [')', ']', '}'], true)) {
             $profondeur--;
             if ($profondeur === 0) {
-                return $vu ? $args + 1 : 0;
+                if ($segmentNonVide) {
+                    $args++;
+                }
+
+                return ['positionnels' => max(0, $args - count($nommes)), 'nommes' => $nommes];
             }
         }
         if ($profondeur === 1) {
             if ($texte === ',') {
-                $args++;
+                if ($segmentNonVide) {
+                    $args++;
+                }
+                $segmentNonVide = false;
+                $nomEnCours = null;
+            } elseif ($texte === ':' && $nomEnCours !== null) {
+                // `nom:` ouvre un argument nommé — un `?:` ou un `::` n'arrive
+                // pas ici, l'un étant un opérateur et l'autre un seul jeton.
+                $nommes[] = $nomEnCours;
+                $nomEnCours = null;
             } else {
-                $vu = true;
+                $segmentNonVide = true;
+                $nomEnCours = (is_array($j) && $j[0] === T_STRING) ? $texte : null;
             }
         }
     }
@@ -85,6 +125,7 @@ function compterArguments(array $jetons, int $depart): ?int
     return null;   // parenthèse jamais refermée : on ne devine pas
 }
 
+$illisibles = [];
 $fichiers = [];
 $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($racine, FilesystemIterator::SKIP_DOTS));
 foreach ($it as $f) {
@@ -105,9 +146,21 @@ $vues = 0;
 $echecs = [];
 
 foreach ($fichiers as $chemin) {
-    $jetons = @token_get_all((string) file_get_contents($chemin));
+    $source = (string) file_get_contents($chemin);
+    $jetons = @token_get_all($source);
     if (!$jetons) {
         continue;
+    }
+    // ⚠️ Les ALIAS d'import comptent : `use …\Device\Device as Protocole;` fait
+    // de `new Protocole(...)` une construction d'appareil. Sans cette table, la
+    // seule construction d'appareil du lab passait inaperçue — et c'est elle qui
+    // levait à la première requête.
+    $alias = [];
+    if (preg_match_all('/^use\s+([\w\\\\]+)\s+as\s+(\w+)\s*;/m', $source, $m, PREG_SET_ORDER)) {
+        foreach ($m as $x) {
+            $pos = strrpos($x[1], '\\');
+            $alias[$x[2]] = $pos !== false ? substr($x[1], $pos + 1) : $x[1];
+        }
     }
     for ($i = 0, $n = count($jetons); $i < $n; $i++) {
         if (!is_array($jetons[$i]) || $jetons[$i][0] !== T_NEW) {
@@ -133,6 +186,7 @@ foreach ($fichiers as $chemin) {
             continue;
         }
         $court = substr($nom, strrpos($nom, '\\') !== false ? strrpos($nom, '\\') + 1 : 0);
+        $court = $alias[$court] ?? $court;
         if (!isset($requis[$court])) {
             continue;
         }
@@ -146,17 +200,32 @@ foreach ($fichiers as $chemin) {
         $vues++;
         $passes = compterArguments($jetons, $j);
         if ($passes === null) {
+            // ⚠️ Un appel qu'on ne sait pas lire n'est PAS conforme : il est NON
+            // VÉRIFIÉ, et sauté en silence il compterait comme satisfait.
+            $illisibles[] = sprintf(
+                '%s:%d — %s',
+                ltrim(str_replace($racine, '', $chemin), '/'),
+                is_array($jetons[$i]) ? $jetons[$i][2] : 0,
+                $court,
+            );
             continue;
         }
-        if ($passes < $requis[$court]) {
+        $manquants = [];
+        foreach ($nomsRequis[$court] as $rang => $nom) {
+            if ($rang >= $passes['positionnels'] && !in_array($nom, $passes['nommes'], true)) {
+                $manquants[] = '$' . $nom;
+            }
+        }
+        if ($manquants !== []) {
             $ligne = is_array($jetons[$i]) ? $jetons[$i][2] : 0;
             $echecs[] = sprintf(
-                '%s:%d — %s reçoit %d argument(s), %d requis',
+                '%s:%d — %s ne reçoit pas %s (%d positionnel(s)%s)',
                 ltrim(str_replace($racine, '', $chemin), '/'),
                 $ligne,
                 $court,
-                $passes,
-                $requis[$court]
+                implode(', ', $manquants),
+                $passes['positionnels'],
+                $passes['nommes'] === [] ? '' : ', nommés : ' . implode(', ', $passes['nommes']),
             );
         }
     }
@@ -170,6 +239,14 @@ echo "▸ constructions trouvées hors de la bibliothèque : $vues\n\n";
 
 if ($vues === 0) {
     echo "❌ aucune construction trouvée — le contrôle ne mesure rien.\n";
+    exit(1);
+}
+
+if ($illisibles !== []) {
+    echo "❌ " . count($illisibles) . " construction(s) illisible(s) — non vérifiées, donc pas conformes :\n";
+    foreach ($illisibles as $i) {
+        echo "   $i\n";
+    }
     exit(1);
 }
 

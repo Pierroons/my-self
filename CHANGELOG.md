@@ -501,6 +501,387 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfRecover v0.12.0] — 9 octobre 2026
+
+### SelfRecover v0.12.0 — un refus ne ferme plus de lui-même la dernière porte du titulaire — 9 octobre 2026
+
+Version mineure, et elle **rompt le contrat de stockage**, qui passe de 42 à 45 méthodes :
+`compterEchecsIp()` prend la liste des préfixes à peser, `ouvrirLitige()` porte sa condition et rend
+un booléen, `poserGel()` prend l'auteur du gel, `purgerEchecs()` est neuve, et la table `l3_gel`
+gagne une colonne. Un adaptateur existant est à recaler sur les quatre, et les migrations sont
+nommées dans leurs sections. Elle rompt aussi **la signature des deux constructeurs publics** :
+`Recovery` et `Device` prennent la langue du déploiement en 4ᵉ paramètre requis, et
+`Duree::enClair()` en 2ᵈ. Côté déploiement, deux gestes s'ajoutent : poser le minuteur de purge
+livré ici, et appeler `geler()` là où la clé `gele` servait à décider. Le niveau 3 répétait au dernier recours ce que le niveau 1 avait
+corrigé deux jours plus tôt — et c'est le niveau de qui n'a plus ni mot de passe, ni passphrase, ni
+feuille de codes.
+
+Le fil conducteur est celui de la 0.11.0 : **retirer la décision du compteur, garder le signal.**
+
+- 🔴 **Le gel automatique disparaît.** `trancher('refuse')` comptait les refus **sous le compte
+  visé**, jamais sous le demandeur — et l'empreinte du sésame est choisie par l'appelant, donc
+  personne n'a besoin de posséder un compte pour ouvrir un dossier dessus. Un tiers qui connaissait
+  un nom affiché ouvrait trois dossiers, se faisait refuser trois fois, et l'ouverture du titulaire
+  gelait sept jours. L'arbitre n'avait alors **aucun coup gagnant** : refuser gelait la victime,
+  abandonner libérait la place pour la requête suivante. Le refus est désormais compté et rendu
+  (`refus_dans_la_fenetre`, et `gel_suggere` au seuil) ; la clé `gele` reste, à `false`, pour ne pas
+  casser un intégrateur qui la lit.
+- **`Escalade::geler()`**, le geste d'un arbitre et le seul chemin qui pose un gel. Aucune méthode
+  d'interface neuve : `StorageInterface::poserGel()` existait déjà.
+- **Le dégel tient.** Il ne tenait pas : les refus restaient dans la fenêtre de trente jours, donc
+  le refus suivant reposait un gel de sept jours **instantanément**, et le message annonçait « sept
+  jours » pour une situation sans fin. Plus aucun gel ne se repose seul. L'historique des refus
+  n'est pas effacé — il informe, il ne verrouille plus.
+- 🔴 **Un dossier tranché contre le demandeur ne reçoit plus d'écriture.** La garde ne testait que
+  `CLOS`, et `trancher()` ne clôt pas un dossier refusé : le détenteur du sésame continuait d'écrire
+  dans le fil de l'arbitre qui venait de l'éconduire. ⚠️ Un dossier **accepté** reste ouvert
+  exprès : le fil est le seul canal entre le demandeur et l'arbitre pendant les jours que dure la
+  reprise des secrets. Aucun banc ne l'exerçait, donc rien n'aurait signalé qu'on ferme un cran de
+  trop.
+- **Les réponses du faisceau sont bornées** (`REPONSE_MAXIMUM`, 500 caractères), et réduites aux
+  clés que `questions()` pose avant d'être validées. Le fil avait sa borne, le questionnaire aucune,
+  alors que ses trois valeurs sont rangées en base et lues par un humain. Les clés surnuméraires
+  n'entraient dans aucun faisceau, mais elles étaient validées : la boucle était un levier de calcul
+  qu'une requête remplissait seule.
+- **Le fil d'un dossier est borné** : 100 messages et 10 secondes entre deux, clé = le **dossier**,
+  jamais le nom. Un plafond par compte serait une porte qu'un tiers ferme en ouvrant un dossier chez
+  autrui. ⚠️ L'arbitre n'est pas borné : lui retirer son canal au moment où le fil se remplit serait
+  le punir de l'abus d'un autre.
+- 🔴 **Les trois refus de `recevable()` tiennent une échéance commune.** Seul `sesame_invalide`
+  attendait ; `expire` et `accord_perime` partaient sans délai **et ne sont atteintes que si le
+  sésame est bon** — le chronomètre disait donc ce que le message unique tait. ⚠️ **Le prix est
+  assumé et va dans l'autre sens** : deux chemins qui répondaient tout de suite retiennent
+  désormais un exécutant le temps du délai, comme le troisième le faisait déjà. L'échéance prise
+  avant la recherche borne ce total au lieu de l'ajouter au travail, mais le coût pour le service
+  augmente. Fermer un oracle qui désigne un dossier existant vaut ce prix sur deux chemins rares.
+- 🔴 **Le plafond de service n'est lu que là où une adresse ne discrimine rien**, par
+  `ProfilDeploiement::adresseDiscriminante()`. Sous `clearweb`, où le profil **exige** une adresse,
+  le frein par adresse mord toujours : ce plafond n'ajoutait aucune protection et ajoutait un
+  interrupteur général, public et sans authentification. Vingt requêtes par heure portant des noms
+  **qui n'existent pas** fermaient le dernier recours de **tous** les comptes du service, depuis deux
+  adresses. Sous `tor-onion` il reste tout ce qu'il y a. La ligne du compteur
+  continue de s'écrire dans les deux cas.
+- **`purger()` reçoit un contrat nommé, et un outil.** Rien dans la bibliothèque ne l'appelait, et
+  deux intégrateurs l'ont découvert par un audit la même semaine, chacun de son côté.
+  `tools/purger.php` et `deploy/bi-self/selfrecover-purger.{service,timer}` sont
+  livrés. 🔑 L'outil ne demande **pas** le sel du déploiement : une purge a besoin d'une connexion,
+  pas d'une identité, et la faire passer par `Escalade` aurait mis un secret de service dans
+  l'environnement d'un cron. ⚠️ Les dossiers acceptés et refusés y survivent par conception : leur
+  rétention reste une décision de déploiement.
+- **Un reste d'attente sous la minute s'annonce en secondes.** `Duree::enClair()` arrondissait aux
+  minutes : « 1 minute » pour une seconde restante — jamais plus court que le délai réel, mais six
+  fois trop long. Les messages d'attente entre deux dépôts et entre deux messages du fil en passent
+  couramment.
+- **Les textes, et les whitepapers passent en v1.5** (`.md` et `.docx`). Douze passages affirmaient
+  une propriété vraie et en tiraient une conclusion
+  fausse : « le compte n'est pas touché » l'est — les secrets sont intacts — mais « il continue de
+  se connecter normalement » décrit quelqu'un qui n'existe pas au niveau 3. Le pire tenait dans les
+  deux whitepapers (« le gel coûte à qui insiste sans convaincre, sans rien coûter au titulaire »),
+  dont **les deux moitiés** étaient fausses. Le modèle de menace reçoit la section qui manquait sur
+  ce que le niveau 3 **ne ferme pas encore** ; la cartographie perd deux ancres périmées et
+  l'affirmation d'un nom de compte en clair, corrigée dès la 0.11.0.
+
+#### Les freins ne comptent plus ce qu'ils n'ont pas fait payer
+
+🔴 **Un titulaire qui avait oublié son mot de passe ne pouvait plus se récupérer.** Il le tapait faux
+douze fois, arrivait sur la récupération avec la bonne passphrase, et le frein par origine la
+refusait. `compterEchecsIp()` comptait toutes les lignes d'échec d'une adresse sans regarder
+laquelle des portes elles visaient — or la table ne nous appartient pas : le déploiement y range les
+échecs de sa page de connexion, sous l'étiquette qu'il a choisie. Aucun attaquant dans ce scénario,
+seulement le chemin pour lequel cette bibliothèque existe.
+
+- **`Etiquette::PREFIXES`** est la liste close de ce que cette bibliothèque écrit, et
+  `compterEchecsIp()` la reçoit : seules ces lignes pèsent. Les sept préfixes y vivent désormais
+  **seuls** — `Recovery`, `Escalade` et `Device` les déclaraient chacun de leur côté.
+- Les portes y sont pesées **ensemble**, à dessein : ce frein borne le coût Argon2id d'une origine,
+  et les séparer laisserait alterner entre elles pour payer deux fois moins.
+- Un appel sans préfixe **refuse** au lieu de rendre zéro : un frein muet est pire que le défaut
+  qu'il corrige, et il rend vert.
+
+#### Le geste qui ferme une porte nomme son auteur
+
+- **`poserGel()` reçoit `$par`** et le range (colonne `gele_par`). `leverGel()` le faisait depuis
+  toujours ; le seul des deux gestes qui **ferme** l'ouverture d'un compte ne le faisait pas, alors
+  que `Escalade::geler()` connaissait l'auteur et le perdait en route.
+- **Un gel reposé n'efface plus la trace du dégel précédent.** Le contrat de `leverGel()` l'exigeait
+  déjà par écrit — « effacer la ligne effacerait la décision » — et `poserGel()` l'effaçait dix
+  lignes plus haut. Sans conséquence tant qu'un compteur posait les gels ; depuis que c'est un
+  bouton d'arbitre, un re-gel effaçait d'un clic la décision qui l'avait contesté. Ce qui dit si
+  l'ouverture est gelée reste `gelJusqua()`, jamais la présence d'une trace.
+
+**Migration** : la table `l3_gel` prend une colonne `gele_par TEXT`. Un déploiement existant
+l'ajoute par `ALTER TABLE l3_gel ADD COLUMN gele_par TEXT;` — sans elle, `poserGel()` échoue à
+l'écriture. Aucune donnée n'est perdue, et les gels déjà posés restent sans auteur connu.
+
+Bancs : `sanity_etiquettes.php` est **neuf** (12 cas) et interroge la classe par réflexion plutôt que
+de recopier sa liste — il refuse un préfixe absent de `PREFIXES`, un doublon, un préfixe qui est le
+début d'un autre, et un joker `LIKE` qui élargirait le filtre d'un adaptateur sans bruit.
+`banc_stockage_pdo.php` passe à **164 cas**, dont le refus sur appel sans préfixe. `sanity_recovery`
+gagne le contre-témoin qui manquait — douze échecs de connexion ne ferment pas la récupération,
+douze échecs de récupération la ferment.
+
+🔑 **Un cas du banc affirmait le défaut.** « Les échecs par IP aussi » comptait des lignes étiquetées
+par un nom en clair, c'est-à-dire celles d'une page de connexion. Le correctif l'a fait rougir, et
+c'est ce rouge qui a montré que la propriété tenue n'était pas celle qu'on croyait.
+
+#### Un compte ne porte plus qu'un dossier, même sous deux demandes simultanées
+
+🔴 **Deux demandes simultanées ouvraient deux dossiers sur le même compte, et la collision ne se
+comptait pas.** `ouvrir()` lisait le dossier actif, puis insérait : entre les deux, une autre requête
+passait. La lecture suivante ne gardant que le dernier dossier, `compterDemandeurConcurrent()`
+n'était jamais appelée et `init_collisions` restait à zéro — le fait le plus utile à l'arbitre,
+perdu au moment précis où il en a besoin. La course est **reproduite** et non déduite : douze
+processus, quinze essais, **deux** finissent à deux dossiers actifs. Aucun banc mono-processus ne
+peut l'attraper, ce qui fait de ce chiffre un plancher.
+
+- **`ouvrirLitige()` porte sa condition et dit ce qu'elle a fait** : elle n'insère que si le compte
+  n'a aucun dossier actif, en **une** instruction que le moteur ne peut pas entrelacer, et rend un
+  booléen. Un refus d'insérer est traité comme un dossier lu — collision comptée, ouverture refusée,
+  même message.
+- 🔑 **Un index unique ne pouvait pas tenir cet invariant**, et c'est la raison de ce choix :
+  « actif » dépend de l'instant (`expires_at`), et une condition d'index ne se réévalue pas avec
+  l'horloge. Un index sur les seuls statuts aurait été **plus strict que la règle** — il aurait
+  bloqué l'ouverture derrière un dossier expiré, alors que le TTL libère la place.
+- ⚠️ **La règle « dossier actif » est désormais écrite deux fois** — la lecture et l'insertion. Le
+  contrat le dit, et `sanity_escalade.php` les confronte sur les deux cas qui les séparent : un
+  dossier courant, un dossier expiré. Si elles divergent, un compte porte deux dossiers ou n'en
+  ouvre plus aucun.
+
+⚠️ **Ce que cette version ne ferme pas, et ne peut pas fermer : le squat.** Prendre la place d'un
+compte avec le seul nom affiché reste possible — une requête par jour suffit. Le niveau 3 s'adresse
+à qui a perdu tous ses secrets : le titulaire ne peut donc prouver aucun lien avec son compte, et un
+squatteur non plus. Aucun contrôle automatique ne sépare les deux, et c'est précisément pourquoi un
+humain arbitre. Ce que ce lot corrige, c'est la **fiabilité de ce que cet humain lit** : la collision
+se compte désormais même quand les deux demandes arrivent ensemble. `abandonner()` reste son geste
+pour libérer la place. Le modèle de menace le dit dans ces termes.
+
+#### Le sésame se tire dans la bibliothèque
+
+**`Escalade::engendrerSesame()`** rend 256 bits d'aléa. `ouvrir()` ne reçoit que l'empreinte du
+sésame : elle en contrôle la forme, et aucune forme ne distingue un tirage d'un compteur haché. Un
+sésame devinable rend le dossier d'autrui reprenable — déposer son faisceau, écrire à l'arbitre, et
+si l'arbitre accorde, reposer les secrets du compte. C'est la seule pièce du niveau 3 dont la
+bibliothèque ne peut pas vérifier la qualité, puisqu'elle n'en voit jamais le préimage ; elle
+fournit donc le tirage au lieu de laisser l'intégrateur l'inventer.
+
+Bancs : `sanity_escalade.php` passe de 176 à **183 cas** sous les deux profils, dont l'accord des
+deux conditions, la collision comptée sur le dossier en place, et le tirage du sésame (200 valeurs
+distinctes, toutes de la bonne forme). `banc_stockage_pdo.php` passe à **164** : l'exclusivité y est
+éprouvée sans exception, et l'unicité du numéro de dossier a dû déménager sur **deux comptes** — sur
+un seul, l'exclusivité refuse avant que l'index soit atteint.
+
+🔑 **Deux cas du banc s'appuyaient sur le défaut.** L'un éprouvait l'unicité du numéro en ouvrant
+deux dossiers sur un même compte ; l'autre en ouvrait trois pour vérifier une limite de pagination.
+Les deux passaient parce que rien n'empêchait un compte d'en porter plusieurs.
+
+#### La table des échecs a enfin une rétention, et elle épargne ce qui n'est pas à elle
+
+🔴 **Rien n'effaçait jamais une ligne de `login_attempts`.** La bibliothèque n'a pas d'horloge, les
+freins ne lisent qu'une fenêtre de quinze minutes, et aucun contrôle ne regarde la taille de la
+table : elle ne faisait que croître sous son index `(username, attempted_at)`, sans qu'aucun signal
+ne change. Un balayage sur la route du niveau 1 la remplit sous `l1-liste:` aussi vite qu'il le veut.
+
+- **`purgerEchecs($avant, $prefixes)`** entre au contrat, et **n'efface que sous les préfixes
+  d'`Etiquette`** : cette table est partagée, la page de connexion de l'intégrateur y écrit sous les
+  siens, et les lui effacer serait prendre une décision qui n'est pas la nôtre. Le motif est celui
+  qu'un intégrateur nous a formulé — *chaque préfixe a un propriétaire, et c'est lui qui le purge
+  dans le geste qui l'écrit*.
+- ⚠️ **Une cascade vers les comptes est impossible ici**, et le CHANGELOG précédent le supposait
+  faisable : `username` ne porte pas un identifiant de compte mais un espace d'étiquettes. La table
+  est la seule des dix sans clé étrangère, et ce n'est pas un oubli.
+- 🔑 **Les RÉUSSITES survivent, et c'est la moitié qui compte.** La suspension du niveau 2 se réarme
+  sur `dateDerniereReussite()`, qui n'a **aucune fenêtre** : effacer une réussite vieille de six mois
+  rouvrirait une suspension que le titulaire avait levée, sans qu'un seul frein se comporte
+  autrement entre-temps. La purge filtre donc sur l'échec, comme son nom le dit.
+- **Un appel sans préfixe refuse** au lieu de rendre zéro : une purge muette passe pour une purge
+  faite.
+
+**Un seul outil, et il est neuf** : `tools/purger.php` fait les deux purges, avec `--jours=N`
+(30 par défaut) et `--a-blanc`. L'unité `systemd` suit
+(`deploy/bi-self/selfrecover-purger.{service,timer}`). Un seul outil parce que le déploiement ne les
+pose pas — l'unité dit pourquoi — : deux scripts feraient deux poses à la main, donc deux occasions
+d'en oublier une, et une purge oubliée ne rougit jamais.
+
+⚠️ **Migration.** Le contrat de stockage passe de 42 à **45 méthodes**. Un adaptateur existant ajoute
+`purgerEchecs(int $avant, array $prefixes): int`, `compterLitigesExpires(int $avant): int` et
+`compterEchecsPurgeables(int $avant, array $prefixes): int` — sans elles, il ne satisfait plus l'interface.
+
+🔑 **Les deux compteurs existent pour qu'un mode d'essai ne détruise pas.** L'outil livré annonce ce
+qu'une purge ferait avant de la faire. Une première version de ce lot le faisait en exécutant les
+suppressions puis en les annulant : le chiffre était exact, mais la destruction devenait
+inconditionnelle et la non-destruction dépendait du moteur — sur un moteur sans transaction réelle,
+« seraient effacés » s'imprimait sur une base déjà vidée. Et même annulée, la transaction prenait le
+verrou d'écriture le temps des deux `DELETE`, donc une estimation pouvait faire échouer une
+récupération en cours.
+
+⚠️ **La contrepartie est écrite dans le contrat : la clause se PARTAGE, elle ne se recopie pas.** Deux
+clauses parallèles divergent au premier filtre ajouté d'un seul côté, et c'est alors le mode prudent
+qui annonce un chiffre faux — ce lot l'a vu arriver sur l'autre purge, dont le filtre de préfixes est
+entré côté suppression seulement. L'implémentation de référence porte donc une constante pour les
+dossiers et une méthode privée pour les échecs, employées par la purge **et** par son compte.
+
+Bancs : `banc_stockage_pdo.php` à **167 cas**, dont les trois témoins épargnés — la réussite, la ligne
+de la page de connexion, l'échec récent — et le refus sur appel sans préfixe. `sanity_recovery` à
+**83 sous clearweb et 79 sous tor-onion** : les deux adaptateurs disent la même règle dans deux
+langages, SQL d'un côté et un filtre PHP de l'autre, et rien ne les reliait. ⚠️ Les deux profils ne
+comptent plus pareil — le frein par origine n'a aucun objet là où aucune adresse n'est exploitable —,
+donc la porte de la CI porte un total **par profil** : un littéral unique pour les deux ne pouvait pas
+tenir.
+
+**`tests/sanity_purger.php` est neuf — 17 cas, et il lance l'OUTIL.** Rien n'éprouvait
+`tools/purger.php`, le seul chemin du module qui détruit des données : ses deux purges ont tourné hors
+transaction, pendant que la section « atomicité » du banc de stockage trouvait les primitives justes.
+Son cas ⭐ compare ce que le mode d'essai annonce à ce que la purge efface, sur la même base ; son
+décor pose trois dossiers périmés dont deux que le contrat épargne, sans quoi une clause recopiée qui
+oublie l'exclusion annonce le même chiffre que la purge — mesuré, le canari restait vert. Et il **sort
+en 9** si son décor n'est pas en place, parce que « rien n'a été détruit » est vrai sur une table vide.
+
+**`scripts/check-portes.sh` entre en CI**, septième contrôle outillé : il rejoue chaque paire
+(banc, porte) appariée par étape et rougit quand une porte attend un total que son banc ne rend plus.
+Six portes étaient restées à leur valeur d'avant un lot. ⚠️ Il relance les bancs, donc les outils
+qu'ils exigent s'installent avant lui — posé plus tôt, il rendait trois faux rouges sur des bancs
+dont `cryptsetup` manquait encore, et envoyait corriger des littéraux justes.
+
+Bancs de l'escalade, dont le total est donné plus haut : la propriété composée qui n'existait
+nulle part — *un tiers ne peut pas fermer la dernière porte du titulaire* —, l'écriture statut par
+statut, le plafond de service **sous les deux profils**, et deux gardes vivantes qu'aucune assertion
+ne nommait (`empreinte_invalide` sur un compte sans dossier actif, `deja_tranche` dans
+`soumettre()`). `fuzz_escalade.php` vérifie qu'**aucun chemin hors `geler()` ne pose un gel** —
+sonde construite avec `gelSeuil: 1`, parce qu'au seuil livré elle restait verte quoi qu'on casse,
+mesuré. **Quinze canaris de plus en CI**, chacun vu rouge sur sa ligne nommée.
+
+🔑 **Deux faux verts trouvés par les canaris, dans ce lot même.** Le bloc du gel passait pour la
+mauvaise raison : l'ouverture d'après était refusée par l'exclusivité du dossier encore ouvert, pas
+par le gel — retirer entièrement `poserGel()` de `geler()` laissait tout vert. Et la première sonde
+du fuzz ne pouvait pas rougir du tout.
+
+### La langue est déclarée au déploiement, et plus composée en français
+
+`Langue` (enum, `fr` / `en`) et `Messages` sont **neufs** : les **65** phrases rendues à l'utilisateur
+sortent d'une table unique, les deux langues complètes — mesuré en confrontant `Messages::cles()` à
+`brut()`, zéro clé manquante de part et d'autre. La langue n'est pas devinée d'une requête : elle est
+**déclarée à la construction**, parce qu'un même dossier lu par le titulaire et par l'arbitre doit
+porter la même phrase.
+
+- `Recovery` et `Device` prennent `Langue $langue` en **4ᵉ paramètre requis**, après le profil.
+- `Duree::enClair()` prend la sienne en **2ᵈ** : elle composait « 15 minutes » en français au cœur de
+  la bibliothèque.
+- 🔑 **`Escalade` n'en reçoit pas**, et c'est délibéré : elle lit celle de la `Recovery` qu'elle
+  compose (`Recovery::langue()`, neuve et publique). Deux copies du même choix n'ont aucune raison de
+  rester d'accord — même raison que le profil, lu au même endroit.
+- `Langue::listeDiceware()` fait suivre la liste de mots : le choix de langue change la passphrase
+  proposée, pas seulement l'habillage des messages.
+
+⚠️ **Migration.** PHP ne compte les arguments qu'à l'exécution : un appelant resté à trois arguments
+passe `php -l` et lève à la **première requête**. `tests/sanity_constructions.php` les énumère — et il
+a fallu lui ouvrir deux yeux dans ce lot pour qu'il les voie.
+
+### Le lab est raccordé au contrat, et une borne publiée a pu être retirée
+
+Le geste d'arbitrage du niveau 3 — `adminFreeze()`, son endpoint, le bouton de la console — **arrive
+par le lot du lab**, pas par celui-ci. Ce lot-ci l'y raccorde :
+
+- l'adaptateur du lab passe aux **quatre méthodes** du contrat, et son `adminFreeze()` **perd un
+  contournement** : il rangeait `gele_par` par un `UPDATE` après l'appel, parce que `poserGel()` ne
+  recevait pas d'auteur. Il le reçoit, et l'adaptateur l'écrit au moment de la pose ;
+- 🔴 **`compterEchecsIp()` y comptait les échecs de la page de connexion.** C'est le défaut que
+  l'argument de préfixes existe pour fermer, et il fermait la récupération de qui vient d'oublier son
+  mot de passe — le chemin pour lequel cette bibliothèque existe ;
+- les trois façades qui portent une décision d'arbitre acceptent **l'horloge** que la bibliothèque
+  acceptait déjà : sans elle, le seuil était **intestable** en temps simulé, les refus d'un banc
+  tombant hors de la fenêtre de trente jours pour un compteur qui rendait 1 au lieu de 3.
+
+🔑 **Une borne annoncée sur la page red team a été retirée, et le banc l'a autorisée.** Le plafond par
+origine comptait toutes les lignes en échec d'une adresse sans distinguer la porte visée : une adresse
+saturée d'échecs de connexion voyait sa récupération freinée, et le lab le publiait comme une faille
+trouvable en cinq requêtes. Elle est fermée. Le cas qui la fixait a été retourné, et il ne vaut que
+par **ses deux moitiés** : des échecs de connexion n'atteignent plus la récupération, et des échecs de
+récupération l'atteignent toujours. Sans la seconde, la première passerait aussi bien si le frein
+avait été supprimé au lieu d'être ciblé — ce qui rouvrirait l'énumération qu'il borne. Le texte
+corrigé garde ce qui reste vrai : saturer une adresse d'échecs de récupération freine encore la
+récupération qui en vient, et il faut partager l'adresse de sa cible pour l'atteindre.
+
+**La langue du lab et celle de la bibliothèque ne pouvaient pas rester deux choses.** Le lab est
+bilingue par visiteur (cookie, `Accept-Language`) ; la bibliothèque reçoit sa langue à la construction.
+En l'état, un visiteur anglophone aurait lu ses pages en anglais et ses messages de récupération en
+français, dans la même réponse. `langueSelfRecover()` est le **seul pont** : le lab devine, puis
+déclare — la bibliothèque, elle, ne devine toujours rien. ⚠️ Et la liste des langues n'a qu'une
+source : `LANGUES` sert de liste blanche à `lang()`, dont le résultat passe à `Langue::from()`, qui
+**lève** sur une valeur inconnue. Une langue ajoutée d'un côté seulement rendrait un 500 sur chaque
+page qui construit une `Recovery`, pas un texte non traduit ; un contrôle refuse l'écart.
+
+Le contrôle des gardes d'endpoint **s'énumère** (`glob` sur `api/admin_*.php`, les trois gardes
+exigées de qui prend un corps de requête) au lieu de nommer deux fichiers : l'endpoint de gel était né
+en dehors de lui, et lui retirer son jeton CSRF ne déclenchait rien. Il couvre **six** endpoints au
+lieu de deux.
+
+Bancs du lab : `equivalence_selfrecover` **93 cas**, `sanity_l3_abandon` **16**, `sanity_frein_login`
+**15**, `sanity_tc_deep` **34** ; `demo/bi-self-duo` à **37**. Canaris vus rouges : le gel automatique remis dans `trancher()`, le
+relais `gel_suggere` retiré, la garde CSRF retirée de l'endpoint, une langue ajoutée à `LANGUES` sans
+l'enum.
+
+### 🔴 Ce lot a d'abord FERMÉ le frein par origine sur le niveau 2
+
+⚠️ **Cet état n'a existé dans aucune version publiée** : la cause et son correctif entrent par le
+même commit, et aucune instance ne l'a jamais servi. Ce qui suit est écrit parce qu'un intégrateur
+qui adopte l'argument de préfixes rencontrera le même piège, et qu'il ne se voit pas — tous les bancs
+restaient verts. Le piège se transmet ; il n'y a rien à chercher sur une instance.
+
+`compterEchecsIp()` filtre désormais `username LIKE 'préfixe%'`. Mais un essai de niveau 2 dont le
+code est **introuvable** n'est rattaché à aucun compte : son échec s'écrivait sous `null`, exprès,
+pour qu'aucune étiquette ne révèle l'existence d'un compte. Et en SQL, `NULL LIKE 'l2:%'` vaut `NULL` :
+la ligne sort du compte. Mesuré, seize codes bien formés et inconnus depuis une seule adresse :
+
+| | avant ce correctif | après |
+|---|---|---|
+| lignes tracées | 16 | 12 |
+| que le frein compte | **0** | 12 |
+| essais refusés (plafond 12) | **0** | 4 |
+| effacées par `purgerEchecs()` | **0** | toutes |
+
+Ce chemin paie **deux** `Hashing::verify` Argon2id par essai, exécutés quoi qu'il arrive pour que le
+temps ne dise pas lequel a échoué. Sans compteur, il devient donc un calcul gratuit,
+atteignable sans soumettre un seul nom de compte. Et ces
+lignes, invisibles au filtre, ne se purgeaient jamais : la croissance non bornée que cette version dit
+fermer restait ouverte pour exactement la classe de lignes qu'un balayage produit le plus vite.
+
+🔑 **La règle qui en sort : avec un filtre de préfixes, tout ce que la bibliothèque trace doit porter
+un préfixe.** `Etiquette::PREFIXE_L2_INCONNU` est donc neuf — fixe, sans empreinte, le même pour tous
+les codes introuvables. Il n'y a pas de nom à saler puisqu'il n'y a pas de compte, et une étiquette
+identique pour tous ne dit ni le code soumis ni l'existence de quoi que ce soit. La garde du frein par
+compte porte maintenant sur le **dossier trouvé**, jamais sur la nullité de l'étiquette.
+
+⚠️ **Un banc affirmait la propriété sans la mesurer.** Celui de `sanity_recovery` disait « mais il
+garde son origine, **pour le frein par origine** » et ne vérifiait que la présence de l'adresse — pas
+que le frein la compte. C'est ce qui a laissé passer la régression. Les cas mesurent désormais les quatre — l'étiquette ne désigne aucun
+compte, deux codes inconnus portent la même, le frein les compte, et il finit par refuser — plus la
+purge en contre-témoin. Un canari de CI remet `null` et doit les faire rougir.
+
+### 🔑 Le contrôle des appelants était aveugle deux fois
+
+`sanity_constructions.php` rendait **56/56** pendant que des constructions levaient à l'exécution.
+Deux angles morts, chacun prouvé par un canari **avant** correction :
+
+- **La virgule finale.** `new Recovery($a, $b, $c,)` comptait quatre positionnels pour trois : le
+  comptage suivait les virgules, pas les arguments. Deux appels identiquement cassés, un seul vu — et
+  le second passait. On compte désormais les segments non vides.
+- **Les alias d'import.** `use …\Device\Device as Protocole` rendait `new Protocole(...)` invisible :
+  le nom court résolu ne figurait pas parmi les classes surveillées. Le contrôle lit maintenant les
+  `use … as …` du fichier et résout l'alias vers sa cible.
+
+Il voit **57** constructions là où il en comptait 56, et il a nommé quatre `Recovery` restées à trois
+arguments : deux dans les bancs, et **les deux routes du lab en service** (`demo/lab/lib/auth.php`,
+`demo/lab/lib/recover_l3.php`). La cinquième — la seule construction d'appareil du lab, écrite sous
+son alias — a été révélée par l'exécution, et c'est la levée des alias qui la met sous surveillance.
+Le commentaire du contrôle disait déjà que le défaut était arrivé aux deux seules routes de
+récupération de la démo publique : il s'y reproduisait sans que rien ne rougisse.
+
+⚠️ **Un garde-fou manque encore** : ce contrôle ne regarde que les **constructeurs**. La rupture de
+`Duree::enClair()`, appel statique, n'a aucune sonde — ses six appels, dans trois fichiers du lab,
+ont été trouvés au grep.
+
+---
+
 ## [SelfRecover v0.11.0] — 6 octobre 2026
 
 ### SelfRecover v0.11.0 — le frein du niveau 1 ne ferme plus la porte du titulaire — 6 octobre 2026
@@ -560,6 +941,14 @@ existante ne bouge.
 - **Migration** : les lignes déjà présentes portent le nom en clair. Elles deviennent orphelines pour
   le frein du niveau 1 et pour le classement, qui repartent de zéro — une fenêtre, soit quinze
   minutes par défaut. Rien à migrer, rien à supprimer.
+  🔴 **Note ajoutée le 8 octobre**, après la mesure d'un intégrateur. Un
+  déploiement qui tient **son propre** frein de niveau 2 et lit `dateDerniereReussite($nomCompte)`
+  sous le nom nu voit son réarmement mourir en silence : une réussite de niveau 1 ne s'écrit plus
+  jamais sous ce nom. Mesuré en temps simulé — `dateDerniereReussite(<nom nu>)` rend `null` quand
+  `dateDerniereReussite(etiquetteEchecsL1($nom))` rend la date. Rien ne rougit chez lui : son banc
+  passe, son frein cesse de se réarmer. Le geste est de lire par
+  `Recovery::etiquetteEchecsL1()`, comme le fait `freinerNiveau2()`. La note ci-dessus annonçait
+  des lignes orphelines ; elle ne disait pas qu'elle cassait du **code** chez le consommateur.
   ⚠️ **Un effet n'est pas borné par la fenêtre** : `dateDerniereReussite()` n'en a pas. Une
   récupération par passphrase réussie **avant** la montée ne réarme plus la suspension du niveau 2,
   définitivement. Un compte qui avait beaucoup d'échecs de niveau 2 avant ce réarmement peut donc se

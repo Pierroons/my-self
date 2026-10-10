@@ -1,9 +1,9 @@
-# SelfRecover — Whitepaper v1.4
+# SelfRecover — Whitepaper v1.5
 
 **Protocole de récupération de compte sans email**
 *Ton mot. Tes sites. Sans email.*
 
-*Édition du 6 octobre 2026 — v1.4 — décrit SelfRecover 0.11.0*
+*Édition du 9 octobre 2026 — v1.5 — décrit SelfRecover 0.12.0*
 
 ---
 
@@ -200,7 +200,7 @@ Aucune bascule automatique vers L3. Le niveau 2 ne demande aucun identifiant, ma
   - Le faisceau ne porte **aucun signal passif** : ni adresse, ni empreinte de navigateur
 - **Aucun score chiffré n'est calculé.** Ces faits n'ouvrent **jamais** le compte automatiquement, ils aident seulement un **administrateur humain** à trancher dans le chat
 - Cooldown : 1 heure entre chaque soumission
-- Ouverture freinée avant toute recherche du compte : 10 par adresse et 20 pour tout le service, par heure (valeurs par défaut). Pas de frein par compte, exprès : un tiers pourrait sinon fermer le niveau 3 au titulaire sans que rien n'apparaisse à l'arbitre. Le harcèlement d'un compte se voit autrement : la tentative concurrente se compte et se montre
+- Ouverture freinée avant toute recherche du compte : 10 par adresse, par heure (valeur par défaut). Un plafond de 20 pour tout le service existe aussi, mais il n'est lu **que sous le profil `tor-onion`**, où aucune adresse ne discrimine : sous `clearweb` le frein par adresse mord toujours, et un plafond global n'y ajouterait qu'un interrupteur général que des requêtes anonymes suffisent à tirer (§6.1). Pas de frein par compte, exprès : un tiers pourrait sinon fermer le niveau 3 au titulaire sans que rien n'apparaisse à l'arbitre. Le harcèlement d'un compte se voit autrement : la tentative concurrente se compte et se montre
 - Le code de suivi se présente à chaque étape — dépôt des réponses, fil de discussion, état, reprise. Le dossier expire au bout de 24 h tant que personne n'a tranché. Un accord court 7 jours à partir de la décision ; passé ce délai, il tombe et l'arbitrage est à refaire. La reprise clôt le dossier et efface l'empreinte du code de suivi. Si le titulaire a perdu son code de suivi, un arbitre peut abandonner le dossier en cours : cela ne rend aucun accès, cela libère la place pour un dossier neuf
 
 ### 5.4 Les foyers de possession de L2 — recovery codes & facteur appareil
@@ -255,7 +255,7 @@ Un dossier (`LIT-` suivi de 16 hexadécimaux) s'ouvre quand la personne le deman
 - Chaque litige a un numéro **non devinable**, le faisceau de faits (bruts, jamais un score), des compteurs de tentatives et de refus, un compteur de tentatives concurrentes (« multi-demandeur »), et un statut (`open`, `awaiting_admin`, `accepted`, `refused`, `closed`)
 - L'admin retrouve les litiges ouverts dans son tableau de bord
 - Un chat bidirectionnel est disponible entre l'admin et l'utilisateur, dont l'accès est conditionné par le code de suivi (polling, pas de WebSocket temps réel pour rester simple)
-- `purger()` efface les dossiers périmés — ni les refusés, sur lesquels se compte le gel, ni les acceptés, qu'un titulaire peut encore venir consommer. ⚠️ La bibliothèque expose la méthode ; **elle n'a pas d'horloge**. C'est au déploiement de l'appeler, par une tâche planifiée.
+- `purger()` efface les dossiers périmés — ni les refusés, dont le compte informe l'arbitre, ni les acceptés, qu'un titulaire peut encore venir consommer. 🔴 **Rien dans la bibliothèque ne l'appelle** : elle n'a pas d'horloge, et aucun de ses chemins n'invoque cette méthode. C'est au déploiement de la lancer périodiquement — une unité `systemd` prête à poser vit dans `deploy/bi-self/`, et l'outil qu'elle lance dans `bi-self/selfrecover/tools/purger.php`.
 
 ### 6.1 Clôture du litige — Décision admin
 
@@ -272,11 +272,17 @@ Quand l'admin examine un litige, deux options existent :
 - L'admin ne considère pas la preuve d'identité suffisante
 - Le dossier passe en `refused`, avec la date et le nom de qui a tranché
 - **Le compte n'est pas touché** : ni supprimé, ni banni, ni vidé de ses codes. Il reste connectable
-- Au **3ᵉ refus dans une fenêtre glissante de 30 jours**, l'**ouverture** de nouveaux dossiers gèle 7 jours sur ce compte. Un administrateur peut lever le gel, et la trace du dégel est conservée. Pendant le gel, une demande d'ouverture reçoit le refus d'un nom inconnu (§5.3) : le gel ne se lit pas du dehors
+- Le refus est **compté**, et ce compte est rendu à l'arbitre : au **3ᵉ dans une fenêtre glissante de 30 jours**, la réponse porte `gel_suggere`. **Aucun gel n'est posé par ce compteur.** C'est un administrateur qui gèle l'ouverture, explicitement, pour 7 jours ; il la rouvre quand il veut, et la trace du dégel est conservée. Pendant le gel, une demande d'ouverture reçoit le refus d'un nom inconnu (§5.3) : le gel ne se lit pas du dehors
 
 🔑 **Ce qui se durcit est la procédure, jamais le compte.** Une version antérieure de ce document annonçait un ban de 24 h et la suppression définitive au 3ᵉ refus ; l'implémentation qui s'en approchait le plus supprimait le compte dès le **premier**. Les deux étaient fautives pour la même raison : un refus dit « ce demandeur ne m'a pas convaincu », pas « ce compte est illégitime ». Si le demandeur était un imposteur, supprimer détruit le compte de sa victime ; s'il était le titulaire mal jugé, cela punit un innocent. Et un attaquant incapable de voler un compte pouvait le faire effacer en accumulant des refus — **l'échec devenait une arme**.
 
-**Raisonnement :** le gel coûte à qui insiste sans convaincre, sans rien coûter au titulaire, qui continue de se connecter normalement pendant ce temps. Le comptage porte sur les **dossiers refusés**, pas sur les dépôts : trois soumissions dans un même dossier restent un seul refus, sinon l'insistance d'un titulaire honnête déclencherait le gel aussi vite qu'une campagne hostile.
+**Raisonnement, corrigé en 0.12.0.** Ce document affirmait que « le gel coûte à qui insiste sans convaincre, sans rien coûter au titulaire, qui continue de se connecter normalement ». Les deux moitiés étaient fausses.
+
+La première : le compteur de refus porte sur le **compte visé**, jamais sur le demandeur. Or l'empreinte du sésame est choisie par l'appelant, et le nom d'un compte est semi-public : un tiers ouvrait trois dossiers sur un nom affiché, se faisait refuser trois fois, et le gel tombait sur le titulaire.
+
+La seconde : « il continue de se connecter normalement » décrit quelqu'un qui n'existe pas à cette étape. Le niveau 3 s'adresse à qui n'a plus ni mot de passe, ni passphrase, ni feuille de codes. La phrase « le compte n'est pas touché » reste vraie — les secrets sont intacts — mais la conclusion qu'on en tirait ne l'est pas : fermer la procédure de cette personne, c'est fermer sa dernière porte.
+
+D'où la forme actuelle : **le compteur informe, l'arbitre décide.** Un compteur ne sait pas qui insiste ; un humain qui lit le faisceau, les dossiers concurrents et le fil, si. Le comptage porte toujours sur les **dossiers refusés** et non sur les dépôts : trois soumissions dans un même dossier restent un seul refus, sinon l'insistance d'un titulaire honnête pèserait autant qu'une campagne hostile.
 
 ### 6.2 Super-utilisateur (SU) — gouvernance des administrateurs
 
@@ -331,7 +337,7 @@ Si un utilisateur légitime se connecte normalement et que le serveur détecte u
 > *As-tu essayé de récupérer ton compte récemment ?*
 > `[ Oui, c'était moi ]`  `[ Non, ce n'était pas moi ]`
 
-- **Oui** → les tentatives échouées sont effacées, l'utilisateur continue normalement ; les dossiers refusés restent comptés pour le gel (§6.1)
+- **Oui** → les tentatives échouées sont effacées, l'utilisateur continue normalement ; les dossiers refusés restent comptés, pour informer un arbitre (§6.1)
 - **Non** → protection renforcée activée en arrière-plan :
   - Nouveau mot de passe généré et affiché à l'utilisateur
   - Sessions révoquées : qui tenait le compte est éjecté
@@ -350,7 +356,7 @@ L'utilisateur voit un message rassurant `"Ton compte est maintenant sécurisé"`
 - **Panne du fournisseur SMTP** — pas de dépendance SMTP
 - **Confiance tiers** — seuls le site et l'utilisateur sont impliqués
 - **Force brute freinée** — par adresse au niveau 1, par compte et par adresse au niveau 2 et à l'enrôlement, suspension du niveau 2 après 20 échecs, coût Argon2id par essai côté serveur. ⚠️ Au niveau 1 derrière un service caché, aucun frein de la bibliothèque ne s'applique : seuls le coût par essai et l'entropie de la passphrase s'y opposent
-- **Énumération par bot** — *partiellement*. Fermée aux niveaux 1 et 2 et à l'enrôlement : refus unique au premier, aucun identifiant demandé au second, compteur tiré du nom soumis au troisième. La route du sel répond toujours un sel, vrai ou faux (§4.2). Un refus du niveau 2 nomme pourtant un état : la suspension, qui apprend à qui détient déjà un code que ce code vise un compte réel. Ouverte au niveau 3, où la réponse utile EST la distinction — un succès rend un numéro de dossier, un nom inconnu ne peut pas en rendre. Les refus, eux, ne se distinguent pas : nom inconnu, dossier déjà ouvert et procédure gelée rendent le même `ouverture_refusee`, au même délai. Ce qui s'y oppose est le coût : deux freins avant la recherche du compte (par adresse, par service), ce délai sur chaque refus, et une preuve de travail devant la route — que la bibliothèque ne peut pas imposer puisqu'elle n'a pas de route
+- **Énumération par bot** — *partiellement*. Fermée aux niveaux 1 et 2 et à l'enrôlement : refus unique au premier, aucun identifiant demandé au second, compteur tiré du nom soumis au troisième. La route du sel répond toujours un sel, vrai ou faux (§4.2). Un refus du niveau 2 nomme pourtant un état : la suspension, qui apprend à qui détient déjà un code que ce code vise un compte réel. Ouverte au niveau 3, où la réponse utile EST la distinction — un succès rend un numéro de dossier, un nom inconnu ne peut pas en rendre. Les refus, eux, ne se distinguent pas : nom inconnu, dossier déjà ouvert et procédure gelée rendent le même `ouverture_refusee`, au même délai. Ce qui s'y oppose est le coût : un frein par adresse avant la recherche du compte, le plafond de service qui le remplace sous `tor-onion` (§5.3), ce délai sur chaque refus, et une preuve de travail devant la route — que la bibliothèque ne peut pas imposer puisqu'elle n'a pas de route
 - **Blanchiment de réputation sociale** — la bibliothèque n'offre aucun renommage de compte ; verrouiller le nom après l'inscription revient à l'application
 
 ### 10.2 CRITIQUE — Accès root serveur (sudo)
@@ -409,7 +415,7 @@ SelfRecover part du principe que :
 
 ### 10.4 Autres limites (par conception)
 
-- Si l'utilisateur a oublié son mot mémorisé et perdu sa passphrase, il ne reste que le niveau 3 : un arbitre humain. S'il refuse, il n'y a pas d'autre recours ; un nouveau dossier reste possible jusqu'au gel de 7 jours, au 3ᵉ refus en 30 jours
+- Si l'utilisateur a oublié son mot mémorisé et perdu sa passphrase, il ne reste que le niveau 3 : un arbitre humain. S'il refuse, il n'y a pas d'autre recours ; un nouveau dossier reste possible — un refus, même répété, ne ferme plus l'ouverture de lui-même. Seul un administrateur peut la geler, et la rouvrir
 - Une passphrase apportée ne vaut que le hasard de ses dés, que la bibliothèque ne peut pas vérifier (§5.5)
 
 Ces limites sont voulues. Un système avec des recours infinis a une surface d'attaque infinie.
@@ -469,7 +475,7 @@ Un déploiement qui ignore cette checklist n'est pas un déploiement SelfRecover
 ### 12.1 Pré-requis
 
 - PHP 8.1+ avec `ext-json`, `ext-mbstring` et `ext-openssl` — les contraintes que porte `composer.json` —, et un PHP qui fournit `PASSWORD_ARGON2ID`, ce que `composer.json` ne peut pas exiger. L'implémentation de référence est en PHP ; il n'en existe pas d'autre côté serveur
-- Une base SQL. Le schéma et l'adaptateur fournis ciblent SQLite (`ext-pdo_sqlite`) ; ailleurs, les types de colonnes et trois constructions de l'adaptateur (quatre requêtes) se réécrivent — l'en-tête de `schema.sql` les nomme, ou l'intégrateur écrit son propre adaptateur de `StorageInterface`
+- Une base SQL. Le schéma et l'adaptateur fournis ciblent SQLite (`ext-pdo_sqlite`) ; ailleurs, les types de colonnes et quatre constructions de l'adaptateur (cinq requêtes) se réécrivent — l'en-tête de `schema.sql` les nomme, ou l'intégrateur écrit son propre adaptateur de `StorageInterface`
 - Navigateur moderne avec JavaScript et Web Crypto API : `client/sr-derive.js` y dérive le mot mémorisé par `crypto.subtle`. Le facteur « cet appareil » ajoute `client/argon2id.js` puis `client/sr-kdf.js`, Web Crypto n'offrant pas Argon2id
 - HTTPS obligatoire sur le web ordinaire (§11.3)
 
@@ -503,7 +509,7 @@ SelfRecover n'est pas un remplacement pour WebAuthn. C'est un complément, surto
 
 ## 14. Feuille de route
 
-- [x] Spécification du protocole (v1.4)
+- [x] Spécification du protocole (v1.5)
 - [x] Implémentation de référence (ce dépôt)
 - [x] Livres blancs EN + FR
 - [x] Démo servie (`demo/bi-self-duo/`) et laboratoire (`demo/lab/`) — la démo autonome a été retirée le 18 août 2026

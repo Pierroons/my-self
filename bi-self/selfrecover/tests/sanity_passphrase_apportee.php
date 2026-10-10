@@ -28,6 +28,8 @@ use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Escalade;
 use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Tests\StockageMemoire;
+use Pierroons\SelfRecover\Langue;
+use Pierroons\SelfRecover\Messages;
 
 $passes = 0;
 $echecs = 0;
@@ -69,7 +71,7 @@ function compte(string $ancienne): array
     $st->comptes['alice']     = ['id' => 1, 'empreinte_mot' => Hashing::hash($MOT)];
     $st->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash($ancienne)];
 
-    return [$st, new Recovery($st, $SEL, $PROFIL, delaiRefusUs: 0)];
+    return [$st, new Recovery($st, $SEL, $PROFIL, Langue::FR, delaiRefusUs: 0)];
 }
 
 // ── A. Le validateur ───────────────────────────────────────────────────────
@@ -107,7 +109,22 @@ foreach (array_merge(explode(' ', $pEn), ['zqxwvkj']) as $mot) {
     $cite = $cite || str_contains($json, $mot);
 }
 verifier('⭐ un refus ne cite aucun mot saisi — il dit des positions', !$cite);
-verifier('il dit où : le septième mot', str_contains((string) ($vH['message'] ?? ''), 'n° 7'));
+// ⚠️ Le validateur est STATIQUE et rend un identifiant, pas un texte : la
+// position vit dans `valeurs`, et le message se compose là où la langue existe.
+// Lire un `message` ici reviendrait à demander une langue à une méthode qui n'en
+// a pas — ce qui casserait tous ses appelants.
+verifier('il dit où : le septième mot', in_array('7', $vH['valeurs'] ?? [], true));
+verifier('et sa clé nomme le cas singulier', ($vH['cle'] ?? '') === 'passphrase.hors_liste_un');
+// ⭐ Le message composé dit la position dans les DEUX langues : sans ce cas, un
+// gabarit qui perdrait son `%s` rendrait un texte sans position, et le titulaire
+// ne saurait pas quel mot reprendre.
+foreach ([Langue::FR, Langue::EN] as $langue) {
+    verifier(
+        '⭐ le message composé porte la position en ' . $langue->value,
+        str_contains(Messages::dire($langue, (string) $vH['cle'], $vH['valeurs']), '7'),
+        Messages::dire($langue, (string) $vH['cle'], $vH['valeurs']),
+    );
+}
 $accent = substr($pFr, 0, (int) strrpos($pFr, ' ')) . ' été';
 verifier('un mot accentué n\'est dans aucune liste', (Recovery::validerPassphraseApportee($accent)['motif'] ?? '') === 'hors_liste');
 verifier('une espace insécable ne sépare pas deux mots',
@@ -237,7 +254,7 @@ function dossier(string $ancienne): array
     $st->empreintes[1]        = Hashing::hash('mot de passe de connexion');
     $st->hotes[1]             = $st->hoteServi;
     $st->faits[1]             = ['cree_le' => $now - 400 * 86400, 'derniere_connexion' => null, 'nombre_connexions' => null];
-    $esc    = new Escalade($st, new Recovery($st, 'sel-de-la-sonde', $PROFIL, delaiRefusUs: 0), delaiRefusUs: 0);
+    $esc    = new Escalade($st, new Recovery($st, 'sel-de-la-sonde', $PROFIL, Langue::FR, delaiRefusUs: 0), delaiRefusUs: 0);
     $sesame = bin2hex(random_bytes(32));
     $numero = (string) $esc->ouvrir('alice', Escalade::empreinteSesame($sesame), $IP, $now)['numero'];
     $esc->trancher($numero, 'accepte', 'arbitre', $now + 100);
@@ -298,7 +315,7 @@ $panne = new class () extends StockageMemoire {
         throw new \RuntimeException('stockage indisponible');
     }
 };
-$recP   = new Recovery($panne, 'sel-de-la-sonde', $PROFIL, delaiRefusUs: 0);
+$recP   = new Recovery($panne, 'sel-de-la-sonde', $PROFIL, Langue::FR, delaiRefusUs: 0);
 $escP   = new Escalade($panne, $recP, delaiRefusUs: 0);
 $SESAME = 'sesame-temoin-' . bin2hex(random_bytes(8));
 $tL3    = traceDe(fn () => $escP->reEnroler('LIT-TEMOIN0000000000', $SESAME, $MDP, $MOT, $SEL_C, $now));
@@ -313,6 +330,6 @@ verifier('niveau 2 : la trace de la route du sel porte l\'index, ni le code, ni 
 
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Passphrase apportée — %d passés, %d échoués\n", $passes, $echecs);
-printf("OK — %d/%d\n", $passes, $passes + $echecs);
+printf("%s — %d/%d\n", $echecs === 0 ? 'OK' : 'ÉCHEC', $passes, $passes + $echecs);
 echo str_repeat('=', 63) . "\n\n";
 exit($echecs === 0 ? 0 : 1);

@@ -121,11 +121,12 @@ tiennent en intégration continue.
 | `scripts/check-plancher-secret.sh` | un secret de déploiement atteint-il le plancher de longueur que le code exige |
 | `scripts/check-versions.sh` | chaque porteur d'une version dit-il celle de `modules.json`, la source unique, et le statut que le module y déclare (bêta) ; avec `--tags`, chaque version annoncée a-t-elle son tag ; avec `--publications`, sa release, et ce qui est déclaré retiré ne sert-il plus |
 | `scripts/check-ecosysteme.sh` | ce que nos README disent de `selffarm-lite` correspond-il à ce qu'il publie ; `--ecrire` remet le bloc à jour |
+| `scripts/check-portes.sh` | les portes de comptage du workflow disent-elles encore le total de leur banc — chaque paire (banc, porte) rejouée, appariée par étape |
 
-**Six d'entre eux tournent en intégration continue** (`structure.yml`) : les
+**Sept d'entre eux tournent en intégration continue** (`structure.yml`) : les
 chemins cités, l'unicité du profil de hachage, les gabarits de vhost — ce
 dernier parce que le job installe nginx pour lui —, les liens de bibliothèque,
-le plancher de secret et les porteurs de version. **Chaque matin, `suivi.yml`
+le plancher de secret, les porteurs de version et les portes de comptage. **Chaque matin, `suivi.yml`
 lance trois contrôles de plus**, parce que ce qui les fait rougir n'arrive pas
 par un envoi ici : le tag qu'une version annoncée attend, sa release publiée, et
 le dépôt voisin. Ils signalent sans bloquer `main`. Les autres ne le peuvent pas,

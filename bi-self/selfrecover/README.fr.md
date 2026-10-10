@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.11.0](https://img.shields.io/badge/status-v0.11.0-green.svg)](#statut)
+[![Status: v0.12.0](https://img.shields.io/badge/status-v0.12.0-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -316,8 +316,8 @@ Tu as donc deux chemins, et le contrat existe pour que le premier reste possible
 |---|---|
 | tu as déjà tes tables | tu écris ton adaptateur, **tu ne migres rien** |
 | tu pars de zéro | tu charges `schema.sql`, tu branches `StockagePdo` — **aucun adaptateur à écrire** |
-Les deux ciblent SQLite. Sur MariaDB ou PostgreSQL, les types de colonnes et trois
-constructions de l'adaptateur (quatre requêtes) se réécrivent — l'en-tête de `schema.sql` les nomme.
+Les deux ciblent SQLite. Sur MariaDB ou PostgreSQL, les types de colonnes et quatre
+constructions de l'adaptateur (cinq requêtes) se réécrivent — l'en-tête de `schema.sql` les nomme.
 
 `StockagePdo` sert aussi le facteur « cet appareil » et exige l'**hôte de dérivation** :
 il refuse de reposer des secrets sans lui, plutôt que d'écrire un marqueur vide sur un
@@ -332,6 +332,24 @@ $stockage = new StockagePdo($pdo, hoteDerivation: 'mon-service.example');
 Éprouvé par `tests/banc_stockage_pdo.php`, qui **relit la base** plutôt que la valeur
 rendue : une méthode d'écriture qui ne fait rien et rend `void` est indiscernable d'une
 méthode qui écrit, tant qu'on ne va pas voir la table.
+
+### La langue du déploiement
+
+Depuis la 0.12.0, la langue des phrases rendues à l'utilisateur est déclarée au déploiement, jamais
+déduite de la requête. `Langue` est une enum à deux cas, `Langue::FR` et `Langue::EN`, et trois
+signatures l'exigent sans défaut : `Recovery::__construct()` et `Device::__construct()` la prennent
+en **4ᵉ paramètre**, `Duree::enClair()` en **2ᵈ**. Un appel resté à l'ancienne signature lève un
+`ArgumentCountError` à la première requête.
+
+```php
+use Pierroons\SelfRecover\Langue;
+
+$recovery = new Recovery($stockage, $selDeploiement, $profil, Langue::FR);
+$device   = new Device($stockage, $profil, $selDeploiement, Langue::FR);
+$fenetre  = Duree::enClair(900, Langue::FR);
+```
+
+`Escalade` n'en reçoit pas : elle lit celle de la `Recovery` qu'elle compose.
 
 ### La passphrase apportée
 
@@ -402,7 +420,7 @@ C'est un module compagnon, **[`selfrecover-luks`](../../self-security/selfrecove
 **Bibliothèque de référence + implémentation déployée, auto-auditée**
 
 Ce dépôt contient :
-- La **spécification du protocole** (whitepapers v1.3)
+- La **spécification du protocole** (whitepapers v1.5)
 - Une **bibliothèque PHP** — `src/`, PSR-4 `Pierroons\SelfRecover\` : récupération de niveaux 1 et 2, recovery codes, facteur « cet appareil », profil Argon2id, wordlist diceware, et l'interface de stockage que l'intégrateur implémente pour sa propre base — ou, s'il part de zéro, son implémentation fournie (`schema.sql` + `StockagePdo`)
 - Le **dériveur navigateur** — `client/sr-derive.js`, livré plutôt que décrit : c'est lui qui porte la propriété anti-hameçonnage, et les intégrateurs qui l'écrivaient eux-mêmes en produisaient des variantes qui ne l'avaient pas ; et `client/sr-kdf.js`, qui chiffre un secret local en Argon2id avec sa version et ses paramètres dans le blob
 - **Les trois niveaux**, depuis le 07/09/2026 : l'escalade de niveau 3 est remontée dans `src/Recovery/Escalade.php` — dossier, sésame à usage unique, faisceau de faits bruts, arbitrage et gel de procédure. Elle ne vérifie pas *qui* a le droit de trancher : les rôles et les sessions appartiennent à l'application. Le super-utilisateur, lui, vit toujours dans [`demo/lab/`](../../demo/lab/)
@@ -453,7 +471,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 ## Roadmap
 
-### Livré — v0.1.0 à v0.11.0 (avril → octobre 2026)
+### Livré — v0.1.0 à v0.12.0 (avril → octobre 2026)
 
 Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bibliothèque les a dépassés, tirée par son premier déploiement réel : ses besoins ont fait avancer le protocole plus vite que prévu. Les chantiers qui suivent ne portent donc plus de numéro — ils en recevront un en sortant.
 
@@ -475,6 +493,7 @@ Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bib
 - [x] **Garde de la route du sel dans la bibliothèque** — `Recovery::selDeDerivation` (v0.9.0)
 - [x] **Passphrase apportée par l'utilisateur, tirée aux dés** — `Recovery::validerPassphraseApportee`, à l'inscription et à chaque niveau (v0.10.0)
 - [x] **Le frein du niveau 1 ne ferme plus la porte du titulaire** — compteurs sous empreinte, classement silencieux des essais dont tous les mots existent (v0.11.0)
+- [x] **Au niveau 3, un refus ne ferme plus de lui-même la dernière porte du titulaire** — le gel n'est plus posé par un compteur mais par l'arbitre, qui le lève aussi, le fil et les réponses sont bornés, les refus de `recevable()` tiennent une échéance commune ; prendre la place avec le seul nom affiché reste possible (v0.12.0)
 
 ### Ensuite
 

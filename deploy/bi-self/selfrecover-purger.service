@@ -1,0 +1,55 @@
+[Unit]
+Description=SelfRecover — efface les dossiers de niveau 3 périmés et les échecs anciens
+Documentation=https://github.com/Pierroons/my-self/blob/main/bi-self/selfrecover/docs/architecture.md
+# La bibliothèque n'a pas d'horloge : ni `Escalade::purger()` ni
+# `purgerEchecs()` n'ont d'appelant dans son code. Sans cette unité, ou
+# l'équivalent chez l'intégrateur, les dossiers périmés s'empilent avec leur
+# empreinte de sésame — l'échéance les rend inactifs, elle n'efface rien — et
+# `login_attempts` ne fait que croître, sans qu'aucun frein change de
+# comportement pour le dire.
+#
+# 🔑 Cette purge ne touche QUE les étiquettes de la bibliothèque, et seulement
+# les échecs : la page de connexion de l'intégrateur partage cette table, et la
+# suspension du niveau 2 se réarme sur une réussite que rien ne borne dans le
+# temps.
+#
+# 🔴 **GABARIT : les deux chemins ci-dessous sont à adapter, et le script n'est
+# PAS déployé par `deploy/my-self/deploy.sh`.** Mesuré : son `EXCLUS` porte
+# `tools`, donc `rsync --dry-run` ne transfère aucune entrée sous `tools/`, et sa
+# racine est `/var/www/myself`. Un `ExecStart` recopié tel quel échouerait sur
+# « Could not open input file ». C'est le piège que `AGENTS.md` nomme : le code
+# servi par le frontal et les outils que le planificateur exécute ne vivent pas
+# au même endroit.
+#
+# ⚠️ **Posez le MODULE, jamais le seul script.** `purger.php` fait
+# `require __DIR__ . '/../src/autoload.php'` : posé seul à la racine ci-dessous,
+# il cherche `/opt/src/autoload.php` et sort en erreur. Ce qu'on pose, c'est
+# `bi-self/selfrecover/` — avec `src/` et `tools/` — hors du webroot, ou bien on
+# l'ajoute aux `GARDES` du déployeur. D'où l'`ExecStart` sous `tools/`.
+#
+# 🔑 La condition porte sur les DEUX pièces que l'`ExecStart` suppose, pas sur la
+# base. Une unité qui n'en teste qu'une passe la condition puis échoue sur
+# l'autre — et `Type=oneshot` sans `OnFailure=` dépose cet échec au journal et
+# nulle part ailleurs : le déploiement croit purger chaque jour. Ce qui manque
+# doit faire TAIRE l'unité, pas la faire échouer en silence.
+#
+# ⚠️ **Les deux sont nécessaires, et l'asymétrie du déployeur est la raison.**
+# `deploy/my-self/deploy.sh` exclut `tools/` de ses poses et garde `src/` : une
+# pose faite avec sa liste dépose donc la bibliothèque sans le script. Tester le
+# seul autoload laisse alors la condition passer sur un `purger.php` absent.
+# `ConditionPathExists=` se répète et se conjugue en ET.
+ConditionPathExists=/opt/selfrecover/src/autoload.php
+ConditionPathExists=/opt/selfrecover/tools/purger.php
+
+[Service]
+Type=oneshot
+User=www-data
+# 🔑 Aucun sel de service ici, et c'est voulu : les deux purges délèguent au
+# stockage, qui n'a besoin que d'une connexion. Passer par `Escalade`
+# obligerait ce cron à porter un secret dont il n'a aucun usage.
+Environment=SELFRECOVER_DSN=sqlite:/var/lib/selfrecover/recover.db
+ExecStart=/usr/bin/php /opt/selfrecover/tools/purger.php
+# ⚠️ Les dossiers ACCEPTÉS et REFUSÉS survivent par conception ;
+# `StockagePdo::purgerLitigesExpires()` dit lesquels et pourquoi, à côté de sa
+# clause. Cette unité ne borne donc pas la table : leur rétention est une
+# décision de déploiement.

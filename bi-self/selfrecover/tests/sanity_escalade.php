@@ -30,11 +30,13 @@ require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/StockageMemoire.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
+use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Escalade;
 use Pierroons\SelfRecover\Recovery\Litige;
 use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Tests\StockageMemoire;
+use Pierroons\SelfRecover\Langue;
 
 // 🔑 Ce banc ne se joue PAS sous un profil unique, contrairement à celui de la
 // récupération : ses cas éprouvent les deux mondes exprès — le quota par adresse
@@ -84,7 +86,7 @@ function banc(
         'derniere_connexion' => $derniereConnexion,
         'nombre_connexions'  => $connexions,
     ];
-    $recovery = new Recovery($st, 'sel-de-la-sonde', $profil, delaiRefusUs: 0);
+    $recovery = new Recovery($st, 'sel-de-la-sonde', $profil, Langue::FR, delaiRefusUs: 0);
     $esc      = new Escalade($st, $recovery, delaiRefusUs: 0);
     // Un lot posé à la main — ce qu'on vérifie est qu'un refus ne le détruit pas,
     // pas la façon dont il est fabriqué. `emettreCodes()` coûterait dix Argon2id.
@@ -128,7 +130,7 @@ echo "\n→ Les freins de l'ouverture\n";
 // ce correctif écrivait DEUX lignes par appel sous l'étiquette comptée : le
 // frein annoncé à 10 mordait au 6e appel, et rien ici ne le voyait.
 [$stI, $_] = banc(ProfilDeploiement::CLEARWEB, $now);
-$escIp = new Escalade($stI, new Recovery($stI, 'sel', ProfilDeploiement::CLEARWEB, delaiRefusUs: 0),
+$escIp = new Escalade($stI, new Recovery($stI, 'sel', ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0),
     delaiRefusUs: 0, maxOuverturesIp: 3);
 
 $passes3 = [];
@@ -146,7 +148,7 @@ $avecIp = array_filter($stI->tentatives, static fn (array $t): bool => $t['ip'] 
 verifier('⭐ aucune ligne d\'ouverture ne porte d\'adresse', $avecIp === [],
     count($avecIp) . ' ligne(s) en portent');
 verifier('⭐ le compteur partagé par adresse est intact — l\'échec n\'est pas une arme',
-    $stI->compterEchecsIp('10.0.0.1', $now - 3600) === 0);
+    $stI->compterEchecsIp('10.0.0.1', $now - 3600, Etiquette::PREFIXES) === 0);
 verifier('et aucun nom de compte n\'est écrit : l\'ouverture est comptée, pas attribuée',
     array_filter($stI->tentatives, static fn (array $t): bool => str_contains($t['etiquette'], 'n0')) === []);
 
@@ -177,7 +179,7 @@ verifier('⭐ et la onzième est freinée — le chiffre publié est le chiffre 
 
 // L'énumération vise des noms différents : seul un plafond de service la voit.
 [$stS, $__] = banc(ProfilDeploiement::TOR_ONION, $now);
-$escServ = new Escalade($stS, new Recovery($stS, 'sel', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0),
+$escServ = new Escalade($stS, new Recovery($stS, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
     delaiRefusUs: 0, maxOuverturesService: 2);
 
 $e1 = $escServ->ouvrir('inconnu1', Escalade::empreinteSesame('a'), maintenant: $now);
@@ -196,7 +198,7 @@ verifier('⭐ une fois le plafond atteint, un compte CONNU et un compte inconnu 
 // seuil par adresse à zéro ne doit rien freiner : c'est le plafond de service
 // qui gouverne seul.
 [$stN, $___] = banc(ProfilDeploiement::TOR_ONION, $now);
-$escNul = new Escalade($stN, new Recovery($stN, 'sel', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0),
+$escNul = new Escalade($stN, new Recovery($stN, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
     delaiRefusUs: 0, maxOuverturesIp: 0);
 $sansIp = $escNul->ouvrir('alice', Escalade::empreinteSesame('e'), null, $now);
 verifier('⭐ sans adresse, le frein par adresse ne freine pas',
@@ -207,7 +209,7 @@ verifier('⭐ sans adresse, le frein par adresse ne freine pas',
 // compteur unique — un plafond global au seuil du client, qui masque celui du
 // service. Les deux formes vides doivent se comporter comme `null`.
 [$stV, $__v] = banc(ProfilDeploiement::TOR_ONION, $now);
-$escV = new Escalade($stV, new Recovery($stV, 'sel', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0),
+$escV = new Escalade($stV, new Recovery($stV, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
     delaiRefusUs: 0, maxOuverturesIp: 1);
 $escV->ouvrir('v1', Escalade::empreinteSesame('a'), '', $now);
 $vide2 = $escV->ouvrir('v2', Escalade::empreinteSesame('b'), '   ', $now + 1);
@@ -394,10 +396,61 @@ verifier('aucune session n\'a été révoquée par un refus', $st3->sessionsRevo
 verifier('⭐ les ' . $codesAvant . ' codes de récupération sont intacts', count($st3->codes) === $codesAvant);
 verifier('contre-témoin : le banc en portait bien avant les refus', $codesAvant === Recovery::CODES_PAR_LOT);
 
-echo "\n→ Ce qui gèle, c'est la procédure\n";
+echo "\n→ 🔑 Un TIERS ne ferme pas la dernière porte du titulaire\n";
 
-$gel = $esc3->ouvrir('alice', Escalade::empreinteSesame('encore un'), maintenant: $now + 3 * $JOUR);
-verifier('au 3ᵉ refus, l\'ouverture d\'un nouveau dossier est gelée', ($gel['ok'] ?? true) === false);
+// LA propriété composée. Les trois refus ci-dessus viennent de dossiers qu'un
+// tiers a ouverts avec le seul nom « alice » — l'empreinte du sésame est
+// choisie par l'appelant, donc personne n'a eu besoin de posséder le compte.
+// C'est ce que ce cas garde : le compteur de refus ne doit pas pouvoir fermer
+// la porte de qui n'a rien fait.
+$apres = $esc3->ouvrir('alice', Escalade::empreinteSesame('encore un'), maintenant: $now + 3 * $JOUR);
+verifier('⭐ trois refus déclenchés par un tiers, et le titulaire ouvre toujours',
+    ($apres['ok'] ?? false) === true, (string) ($apres['error'] ?? ''));
+verifier('aucun gel n\'a été posé par un compteur', $st3->gels === [], json_encode($st3->gels));
+
+// Le signal, lui, est rendu à l'arbitre : c'est ce qui remplace la décision.
+[$st5, $esc5] = banc(ProfilDeploiement::TOR_ONION, $now);
+$suggere  = [];
+$messages = [];
+for ($i = 0; $i < 3; $i++) {
+    $o = $esc5->ouvrir('alice', Escalade::empreinteSesame("t$i"), maintenant: $now + $i * $JOUR);
+    $t = $esc5->trancher((string) $o['numero'], 'refuse', 'arbitre', $now + $i * $JOUR + 100);
+    $suggere[]  = [$t['refus_dans_la_fenetre'] ?? null, $t['gel_suggere'] ?? null, $t['gele'] ?? null];
+    $messages[] = (string) ($t['message'] ?? '');
+}
+verifier('⭐ le refus compte et SUGGÈRE, il ne gèle pas — sous le seuil puis au seuil',
+    $suggere === [[1, false, false], [2, false, false], [3, true, false]], json_encode($suggere));
+verifier('⭐ au seuil, le message dit le compte ET que rien n\'a été posé',
+    str_contains($messages[2], '3 refus') && str_contains($messages[2], 'Aucun gel n\'a été posé'),
+    $messages[2]);
+verifier('et aucun gel n\'est en base après les trois refus', $st5->gels === [], json_encode($st5->gels));
+// Contre-témoin : sous le seuil, le message ne parle pas de gel du tout — sinon
+// l'assertion ci-dessus serait vraie pour un texte qui le dit toujours.
+verifier('contre-témoin : sous le seuil, le message ne mentionne aucun gel',
+    !str_contains($messages[0], 'gel') && !str_contains($messages[0], 'refus sur'),
+    $messages[0]);
+
+echo "\n→ Ce qui gèle, c'est la procédure — et c'est un arbitre qui la gèle\n";
+
+// 🔑 La place se libère AVANT de mesurer le gel. Sans ce geste, le dossier que
+// le titulaire vient d'ouvrir fait refuser l'ouverture suivante par
+// exclusivité, et les assertions du gel passent au vert sans que le gel y soit
+// pour quoi que ce soit. Mesuré : un canari qui retirait `poserGel()` de
+// `geler()` laissait ce bloc entièrement vert.
+$esc3->abandonner('alice', 'arbitre', $now + 3 * $JOUR + 2);
+verifier('témoin : la place libérée, l\'ouverture repasse avant tout gel',
+    ($esc3->ouvrir('alice', Escalade::empreinteSesame('temoin'), maintenant: $now + 3 * $JOUR + 3)['ok'] ?? false) === true);
+$esc3->abandonner('alice', 'arbitre', $now + 3 * $JOUR + 4);
+
+$pose = $esc3->geler('alice', 'arbitre', $now + 3 * $JOUR + 5);
+verifier('un arbitre peut geler', ($pose['ok'] ?? false) === true, (string) ($pose['error'] ?? ''));
+verifier('le gel annoncé est celui du constructeur',
+    ($pose['jusqua'] ?? 0) === $now + 3 * $JOUR + 5 + $esc3->reglesDuGel()['duree']);
+verifier('geler un nom inconnu est refusé, et nommé',
+    ($esc3->geler('personne', 'arbitre', $now)['error'] ?? '') === 'compte_inconnu');
+
+$gel = $esc3->ouvrir('alice', Escalade::empreinteSesame('apres le gel'), maintenant: $now + 3 * $JOUR + 6);
+verifier('une fois gelée, l\'ouverture d\'un nouveau dossier est refusée', ($gel['ok'] ?? true) === false);
 verifier('et le refus est celui d\'un nom inconnu : la suspension ne se lit pas de dehors',
     ($gel['error'] ?? '') === 'ouverture_refusee');
 verifier('⭐ nom inconnu, dossier déjà ouvert, procédure gelée : une seule réponse, mot pour mot',
@@ -405,24 +458,40 @@ verifier('⭐ nom inconnu, dossier déjà ouvert, procédure gelée : une seule 
 verifier('le refus ne nomme ni le gel ni la date où il tombe',
     !str_contains((string) ($gel['message'] ?? ''), 'gel') && !preg_match('#\d{2}/\d{2}/\d{4}#', (string) ($gel['message'] ?? '')));
 
-// Contre-témoin : deux refus ne gèlent pas. Sans lui, un gel permanent rendrait
-// les trois contrôles ci-dessus verts.
-[$st4, $esc4] = banc(ProfilDeploiement::TOR_ONION, $now);
-for ($i = 0; $i < 2; $i++) {
-    $o = $esc4->ouvrir('alice', Escalade::empreinteSesame("s$i"), maintenant: $now + $i * $JOUR);
-    $esc4->trancher((string) $o['numero'], 'refuse', 'arbitre', $now + $i * $JOUR + 100);
-}
-$deux = $esc4->ouvrir('alice', Escalade::empreinteSesame('troisieme'), maintenant: $now + 2 * $JOUR);
-verifier('contre-témoin : deux refus ne gèlent pas', ($deux['ok'] ?? false) === true);
-
-// Contre-témoin : hors de la fenêtre, les refus ne comptent plus.
-$vieux = $esc3->ouvrir('alice', Escalade::empreinteSesame('bien plus tard'), maintenant: $now + 400 * $JOUR);
-verifier('contre-témoin : passé la fenêtre et le gel, l\'ouverture rouvre', ($vieux['ok'] ?? false) === true);
-
 $deg = $esc3->degeler('alice', 'arbitre', $now + 3 * $JOUR + 10);
 verifier('un arbitre peut dégeler', ($deg['ok'] ?? false) === true);
 verifier('la trace du dégel est gardée, pas effacée',
     ($st3->gels[1]['degele_par'] ?? null) === 'arbitre');
+
+// 🔑 Une levée doit tenir : aucun refus ultérieur ne doit reposer un gel.
+// ⚠️ Banc à part, sans dossier en cours : l'exclusivité refuserait l'ouverture
+// avant qu'on ait mesuré le gel.
+[$st6, $esc6] = banc(ProfilDeploiement::TOR_ONION, $now);
+for ($i = 0; $i < 3; $i++) {
+    $o = $esc6->ouvrir('alice', Escalade::empreinteSesame("u$i"), maintenant: $now + $i * $JOUR);
+    $esc6->trancher((string) $o['numero'], 'refuse', 'arbitre', $now + $i * $JOUR + 100);
+}
+$esc6->geler('alice', 'arbitre', $now + 3 * $JOUR);
+verifier('le gel de l\'arbitre ferme bien l\'ouverture',
+    ($esc6->ouvrir('alice', Escalade::empreinteSesame('pendant'), maintenant: $now + 3 * $JOUR + 1)['ok'] ?? true) === false);
+$esc6->degeler('alice', 'arbitre', $now + 3 * $JOUR + 10);
+
+$o4 = $esc6->ouvrir('alice', Escalade::empreinteSesame('quatrieme'), maintenant: $now + 3 * $JOUR + 20);
+verifier('⭐ après un dégel, l\'ouverture marche vraiment', ($o4['ok'] ?? false) === true,
+    (string) ($o4['error'] ?? ''));
+$t4 = $esc6->trancher((string) $o4['numero'], 'refuse', 'arbitre', $now + 3 * $JOUR + 30);
+verifier('⭐ et le 4ᵉ refus ne regèle pas : le dégel tient',
+    ($t4['gele'] ?? true) === false && ($st6->gels[1]['jusqua'] ?? 1) === 0
+    && ($esc6->ouvrir('alice', Escalade::empreinteSesame('cinquieme'), maintenant: $now + 3 * $JOUR + 40)['ok'] ?? false) === true,
+    json_encode($st6->gels[1] ?? null));
+verifier('le signal reste lisible après le dégel', ($t4['gel_suggere'] ?? false) === true);
+
+// Contre-témoin : hors de la fenêtre, les refus ne se comptent plus.
+$loin = $esc3->ouvrir('alice', Escalade::empreinteSesame('bien plus tard'), maintenant: $now + 400 * $JOUR);
+$tLoin = $esc3->trancher((string) $loin['numero'], 'refuse', 'arbitre', $now + 400 * $JOUR + 10);
+verifier('contre-témoin : passé la fenêtre, le compteur retombe et ne suggère plus',
+    ($tLoin['refus_dans_la_fenetre'] ?? -1) === 1 && ($tLoin['gel_suggere'] ?? true) === false,
+    json_encode([$tLoin['refus_dans_la_fenetre'] ?? null, $tLoin['gel_suggere'] ?? null]));
 
 echo "\n→ Accepter ne fabrique aucun secret\n";
 
@@ -680,7 +749,7 @@ verifier('contre-témoin : trancheLe = null reste légitime — personne n\'a tr
 // le monter jusqu'à rejeter des dossiers valides sans qu'une sonde bouge.
 // Un écran d'arbitre annonce les règles du gel : il doit lire celles qu'on a
 // réglées, pas les valeurs par défaut.
-$escGel = new Escalade($stI, new Recovery($stI, 'sel', ProfilDeploiement::CLEARWEB, delaiRefusUs: 0),
+$escGel = new Escalade($stI, new Recovery($stI, 'sel', ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0),
     gelSeuil: 2, gelFenetre: 86400, gelDuree: 3600, delaiRefusUs: 0);
 verifier('les règles du gel rendues sont celles du constructeur',
     $escGel->reglesDuGel() === ['seuil' => 2, 'fenetre' => 86400, 'duree' => 3600],
@@ -703,7 +772,7 @@ $stT = new class () extends StockageMemoire {
 $stT->comptes['alice'] = ['id' => 1, 'empreinte_mot' => 'emp'];
 $stT->comptes['bob']   = ['id' => 2, 'empreinte_mot' => 'emp'];
 $stT->gels[2]          = ['jusqua' => $now + 3600];
-$escT = new Escalade($stT, new Recovery($stT, 'sel', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0),
+$escT = new Escalade($stT, new Recovery($stT, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
     delaiRefusUs: 60000);
 $escT->ouvrir('alice', Escalade::empreinteSesame('premier'), maintenant: $now);
 $durees = [];
@@ -715,6 +784,291 @@ foreach (['personne', 'bob', 'alice'] as $nom) {
 }
 verifier('⭐ nom inconnu, procédure gelée, dossier ouvert : la même durée, à 20 ms près, au moins le délai',
     min($durees) >= 60 && max($durees) - min($durees) < 20, json_encode($durees));
+
+echo "\n→ Le fil n'accepte plus d'écriture sur un dossier tranché contre le demandeur\n";
+// Les quatre statuts, sésame bon partout. Un seul doit refuser l'écriture en
+// plus de CLOS : un dossier ACCEPTÉ reste ouvert exprès, le fil étant le seul
+// canal entre le demandeur et l'arbitre pendant la reprise des secrets.
+$ecritureSous = static function (?string $decision, bool $clore) use ($now, $JOUR): array {
+    [$st, $esc] = banc(ProfilDeploiement::TOR_ONION, $now);
+    $s = 'sesame-du-cas';
+    $o = $esc->ouvrir('alice', Escalade::empreinteSesame($s), maintenant: $now);
+    $esc->soumettre((string) $o['numero'], $s, ['annee_creation' => '2024'], $now + 2 * 3600);
+    if ($decision !== null) {
+        $esc->trancher((string) $o['numero'], $decision, 'arbitre', $now + 2 * 3600 + 10);
+    }
+    if ($clore) {
+        $st->cloreLitige($st->litiges[0]['id'], $now + 2 * 3600 + 20);
+    }
+    $r = $esc->fil((string) $o['numero'], $s, 'je suis encore là', $now + 2 * 3600 + 30);
+
+    return [$st->litiges[0]['statut'], $r['ok'] ?? null, $r['error'] ?? '—', count($st->messages)];
+};
+verifier('témoin : sur un dossier en cours, l\'écriture passe',
+    $ecritureSous(null, false) === [Litige::A_LIRE, true, '—', 1], json_encode($ecritureSous(null, false)));
+verifier('⭐ après un REFUS, l\'écriture est refusée et rien n\'est rangé',
+    $ecritureSous('refuse', false) === [Litige::REFUSE, false, 'clos', 0], json_encode($ecritureSous('refuse', false)));
+verifier('⭐ après un ACCORD, l\'écriture reste possible — le fil est le canal de la reprise',
+    $ecritureSous('accepte', false) === [Litige::ACCEPTE, true, '—', 1], json_encode($ecritureSous('accepte', false)));
+verifier('un dossier clos par la bibliothèque refuse sur le sésame, plus tôt dans la chaîne',
+    $ecritureSous('accepte', true) === [Litige::CLOS, false, 'sesame_invalide', 0], json_encode($ecritureSous('accepte', true)));
+// La forme qu'un intégrateur produit en écrivant `closed` sans vider le sésame.
+[$stC, $escC] = banc(ProfilDeploiement::TOR_ONION, $now);
+$sC = 'sesame-clos-main';
+$oC = $escC->ouvrir('alice', Escalade::empreinteSesame($sC), maintenant: $now);
+$stC->trancherLitige($stC->litiges[0]['id'], Litige::CLOS, 'route-non-standard', $now + 10);
+$rC = $escC->fil((string) $oC['numero'], $sC, 'et moi ?', $now + 20);
+verifier('⭐ clos sans vider le sésame : la lecture reste, l\'écriture non',
+    ($rC['error'] ?? '') === 'clos'
+    && ($escC->fil((string) $oC['numero'], $sC, null, $now + 30)['ok'] ?? false) === true,
+    (string) ($rC['error'] ?? ''));
+
+echo "\n→ Les valeurs LIVRÉES sont celles que les textes annoncent\n";
+// ⚠️ Les cas ci-dessous écrivent les défauts du constructeur **en dur**. Un banc
+// qui lirait `REPONSE_MAXIMUM` ou `reglesDuGel()` suivrait la constante et
+// resterait vert pendant que les textes publiés annonceraient l'ancienne valeur.
+// Ces cas sont donc les gardiens des chiffres publiés — c'est leur rôle, pas un
+// doublon.
+verifier('⭐ les plafonds livrés sont ceux des textes — 500 / 2000 / 100 / 10 s',
+    Escalade::REPONSE_MAXIMUM === 500 && Escalade::MESSAGE_MAXIMUM === 2000
+    && (static function (): array {
+        [, $e] = banc(ProfilDeploiement::TOR_ONION, 1_700_000_000);
+        $r = new ReflectionClass($e);
+        $lire = static function (string $nom) use ($r, $e) {
+            $p = $r->getProperty($nom);
+
+            return $p->getValue($e);
+        };
+
+        return [$lire('maxMessagesLitige'), $lire('attenteMessage'),
+                $lire('maxOuverturesIp'), $lire('maxOuverturesService')];
+    })() === [100, 10, 10, 20],
+    json_encode([Escalade::REPONSE_MAXIMUM, Escalade::MESSAGE_MAXIMUM]));
+verifier('⭐ les règles du gel livrées sont celles des textes — 3 refus / 30 j / 7 j',
+    (static function (): array {
+        [, $e] = banc(ProfilDeploiement::TOR_ONION, 1_700_000_000);
+
+        return $e->reglesDuGel();
+    })() === ['seuil' => 3, 'fenetre' => 2592000, 'duree' => 604800],
+    json_encode((static function (): array {
+        [, $e] = banc(ProfilDeploiement::TOR_ONION, 1_700_000_000);
+
+        return $e->reglesDuGel();
+    })()));
+
+echo "\n→ Les réponses du faisceau sont bornées, comme les messages du fil\n";
+[$stR, $escR] = banc(ProfilDeploiement::TOR_ONION, $now, $now - $JOUR, 40);
+$sR = 'sesame-reponses';
+$oR = $escR->ouvrir('alice', Escalade::empreinteSesame($sR), maintenant: $now);
+$trop = $escR->soumettre((string) $oR['numero'], $sR,
+    ['annee_creation' => str_repeat('9', Escalade::REPONSE_MAXIMUM + 1)], $now + 2 * 3600);
+verifier('⭐ une réponse au-delà du plafond est refusée, et nommée',
+    ($trop['error'] ?? '') === 'reponse_trop_longue', (string) ($trop['error'] ?? 'acceptée'));
+verifier('contre-témoin : au plafond exactement, elle passe',
+    ($escR->soumettre((string) $oR['numero'], $sR,
+        ['annee_creation' => str_repeat('9', Escalade::REPONSE_MAXIMUM)], $now + 2 * 3600)['ok'] ?? false) === true);
+// Les clés hors questionnaire sont écartées AVANT la validation : sans ça, la
+// boucle de contrôle était un levier de calcul qu'une requête remplit seule.
+$bruit = [];
+for ($i = 0; $i < 50; $i++) {
+    $bruit["cle_inventee_$i"] = str_repeat('x', Escalade::REPONSE_MAXIMUM + 1);
+}
+$bruit['annee_creation'] = '2024';
+[$stB, $escB] = banc(ProfilDeploiement::TOR_ONION, $now, $now - $JOUR, 40);
+$sB = 'sesame-bruit';
+$oB = $escB->ouvrir('alice', Escalade::empreinteSesame($sB), maintenant: $now);
+$rB = $escB->soumettre((string) $oB['numero'], $sB, $bruit, $now + 2 * 3600);
+verifier('⭐ 50 clés inventées hors-plafond n\'empêchent pas le dépôt : elles sont écartées avant',
+    ($rB['ok'] ?? false) === true, (string) ($rB['error'] ?? ''));
+verifier('et rien de ce bruit n\'est rangé dans le faisceau de l\'arbitre',
+    !str_contains((string) ($stB->litiges[0]['faisceau'] ?? ''), 'cle_inventee'));
+
+echo "\n→ Le fil d'un dossier est borné, et seul le DEMANDEUR l'est\n";
+[$stF, $escF] = banc(ProfilDeploiement::TOR_ONION, $now);
+$sF = 'sesame-du-fil';
+$oF = $escF->ouvrir('alice', Escalade::empreinteSesame($sF), maintenant: $now);
+$nF = (string) $oF['numero'];
+$premier = $escF->fil($nF, $sF, 'premier message', $now);
+$colle   = $escF->fil($nF, $sF, 'tout de suite après', $now + 1);
+verifier('un premier message passe', ($premier['ok'] ?? false) === true);
+verifier('⭐ deux messages collés : le second est freiné, et le délai est dit en secondes',
+    ($colle['error'] ?? '') === 'trop_rapide' && str_contains((string) ($colle['message'] ?? ''), 'secondes'),
+    (string) ($colle['error'] ?? '') . ' / ' . (string) ($colle['message'] ?? ''));
+verifier('contre-témoin : passé la fenêtre, le message suivant passe',
+    ($escF->fil($nF, $sF, 'plus tard', $now + 120)['ok'] ?? false) === true);
+// Le plafond : on remplit en respectant la fenêtre, donc avec le temps simulé.
+[$stP, $escP] = banc(ProfilDeploiement::TOR_ONION, $now);
+$sP = 'sesame-plafond';
+$oP = $escP->ouvrir('alice', Escalade::empreinteSesame($sP), maintenant: $now);
+$nP = (string) $oP['numero'];
+$dernierOk = null;
+for ($i = 0; $i < 120; $i++) {
+    $r = $escP->fil($nP, $sP, "message $i", $now + $i * 60);
+    if (($r['ok'] ?? false) !== true) {
+        $dernierOk = [$i, $r['error'] ?? '—'];
+        break;
+    }
+}
+verifier('⭐ le fil se ferme au plafond livré, et le motif le dit',
+    $dernierOk === [100, 'fil_plein'], json_encode($dernierOk));
+verifier('⭐ et l\'arbitre, lui, peut toujours répondre : son canal n\'est pas borné',
+    ($escP->repondre($nP, 'je te réponds quand même', $now + 200 * 60)['ok'] ?? false) === true);
+
+// 🔴 Le cran de trop que la garde du REFUS avait : elle ne regardait pas l'auteur,
+// donc l'arbitre refusait sans pouvoir expliquer. Sur le dernier recours de qui
+// n'a plus aucun secret, un refus muet est pire que le défaut qu'on fermait.
+[$stM, $escM] = banc(ProfilDeploiement::TOR_ONION, $now);
+$sM = 'sesame-arbitre';
+$oM = $escM->ouvrir('alice', Escalade::empreinteSesame($sM), maintenant: $now);
+$nM = (string) $oM['numero'];
+$escM->trancher($nM, 'refuse', 'arbitre', $now + 10);
+verifier('⭐ après avoir refusé, l\'arbitre peut encore EXPLIQUER son refus',
+    ($escM->repondre($nM, 'voici pourquoi je refuse', $now + 20)['ok'] ?? false) === true,
+    (string) ($escM->repondre($nM, 'x', $now + 21)['error'] ?? ''));
+verifier('et le demandeur, lui, n\'écrit plus sur ce dossier refusé',
+    ($escM->fil($nM, $sM, 'et moi ?', $now + 30)['error'] ?? '') === 'clos');
+verifier('contre-témoin : sur un dossier CLOS, personne n\'écrit plus — arbitre compris',
+    (static function () use ($now): bool {
+        [$st, $esc] = banc(ProfilDeploiement::TOR_ONION, $now);
+        $o = $esc->ouvrir('alice', Escalade::empreinteSesame('s'), maintenant: $now);
+        $st->trancherLitige($st->litiges[0]['id'], Litige::CLOS, 'route', $now + 10);
+
+        return ($esc->repondre((string) $o['numero'], 'un mot', $now + 20)['error'] ?? '') === 'clos';
+    })());
+
+echo "\n→ Les trois refus de `recevable()` tiennent la même échéance\n";
+// `expire` et `accord_perime` ne sont atteintes QUE si le sésame est bon. Elles
+// partaient sans délai là où `sesame_invalide` attendait : le chronomètre disait
+// donc ce que le message unique tait.
+[$stE] = banc(ProfilDeploiement::TOR_ONION, $now);
+$escE = new Escalade($stE, new Recovery($stE, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
+    delaiRefusUs: 60000);
+$sE = 'sesame-echeance';
+$oE = $escE->ouvrir('alice', Escalade::empreinteSesame($sE), maintenant: $now);
+$nE = (string) $oE['numero'];
+$mesures = [];
+foreach ([
+    'sesame_invalide' => [$nE, 'pas le bon sesame', $now + 10],
+    'expire'          => [$nE, $sE, $now + 2 * $JOUR],
+] as $attendu => [$num, $ses, $quand]) {
+    $t0 = hrtime(true);
+    $r  = $escE->etat($num, $ses, $quand);
+    $mesures[$attendu] = [intdiv(hrtime(true) - $t0, 1000000), $r['error'] ?? '—'];
+}
+// L'accord périmé : accepté, jamais repris, au-delà de `ttlAccepte`.
+$escE->trancher($nE, 'accepte', 'arbitre', $now + 100);
+$t0 = hrtime(true);
+$rA = $escE->etat($nE, $sE, $now + 100 + 8 * $JOUR);
+$mesures['accord_perime'] = [intdiv(hrtime(true) - $t0, 1000000), $rA['error'] ?? '—'];
+
+verifier('les trois motifs sont bien ceux qu\'on voulait mesurer',
+    array_map(static fn (array $m): string => $m[1], $mesures)
+    === ['sesame_invalide' => 'sesame_invalide', 'expire' => 'expire', 'accord_perime' => 'accord_perime'],
+    json_encode($mesures));
+$tps = array_map(static fn (array $m): int => $m[0], $mesures);
+verifier('⭐ sésame faux, dossier expiré, accord périmé : la même durée, à 20 ms près, au moins le délai',
+    min($tps) >= 60 && max($tps) - min($tps) < 20, json_encode($tps));
+
+echo "\n→ Le plafond de service ne travaille que là où l'adresse ne dit rien\n";
+// Sous un service caché, c'est le seul frein : il doit mordre au chiffre livré.
+[$stO, $escO] = banc(ProfilDeploiement::TOR_ONION, $now);
+for ($i = 0; $i < 20; $i++) {
+    $escO->ouvrir("inconnu$i", Escalade::empreinteSesame("s$i"), maintenant: $now + $i);
+}
+$vingtUn = $escO->ouvrir('alice', Escalade::empreinteSesame('la vraie'), maintenant: $now + 21);
+verifier('⭐ sous tor-onion, 20 ouvertures sur des noms inconnus ferment le service — le chiffre livré',
+    ($vingtUn['error'] ?? '') === 'trop_de_demandes', (string) ($vingtUn['error'] ?? 'accepté'));
+verifier('contre-témoin : à 19, le titulaire ouvre encore', (static function () use ($now): bool {
+    [, $e] = banc(ProfilDeploiement::TOR_ONION, $now);
+    for ($i = 0; $i < 19; $i++) {
+        $e->ouvrir("inconnu$i", Escalade::empreinteSesame("s$i"), maintenant: $now + $i);
+    }
+
+    return ($e->ouvrir('alice', Escalade::empreinteSesame('la vraie'), maintenant: $now + 20)['ok'] ?? false) === true;
+})());
+// Sous clearweb, le profil EXIGE une adresse : le frein par adresse mord
+// toujours, et le plafond global n'ajoutait qu'un interrupteur général.
+[$stW, $escW] = banc(ProfilDeploiement::CLEARWEB, $now);
+for ($i = 0; $i < 30; $i++) {
+    $escW->ouvrir("inconnu$i", Escalade::empreinteSesame("s$i"), '198.51.100.' . (10 + intdiv($i, 2)), $now + $i);
+}
+$trenteUn = $escW->ouvrir('alice', Escalade::empreinteSesame('la vraie'), '198.51.100.200', $now + 31);
+verifier('⭐ sous clearweb, 30 ouvertures depuis 15 adresses ne ferment PLUS le service',
+    ($trenteUn['ok'] ?? false) === true, (string) ($trenteUn['error'] ?? ''));
+verifier('contre-témoin : le frein par adresse mord toujours, lui, au chiffre livré',
+    (static function () use ($now): bool {
+        [, $e] = banc(ProfilDeploiement::CLEARWEB, $now);
+        for ($i = 0; $i < 10; $i++) {
+            $e->ouvrir("inconnu$i", Escalade::empreinteSesame("s$i"), '198.51.100.201', $now + $i);
+        }
+
+        return ($e->ouvrir('alice', Escalade::empreinteSesame('la vraie'), '198.51.100.201', $now + 11)['error'] ?? '')
+            === 'trop_de_demandes';
+    })());
+verifier('et le profil décide bien, enum à la main',
+    ProfilDeploiement::CLEARWEB->adresseDiscriminante() === true
+    && ProfilDeploiement::TOR_ONION->adresseDiscriminante() === false);
+
+echo "\n→ Deux gardes qu'aucune assertion ne nommait\n";
+// `empreinte_invalide` : le cas existant n'assertait que « ça refuse », ce que le
+// refus d'exclusivité satisfait aussi. Sur un compte SANS dossier actif, seul
+// le contrôle de forme peut refuser.
+[, $escI] = banc(ProfilDeploiement::TOR_ONION, $now);
+foreach (['pas-une-empreinte', '', str_repeat('g', 64), str_repeat('a', 63), str_repeat('A', 64)] as $mauvaise) {
+    verifier('⭐ une empreinte de sésame malformée est refusée, et nommée — « '
+        . (($mauvaise === '') ? '(vide)' : substr($mauvaise, 0, 18)) . ' »',
+        ($escI->ouvrir('alice', $mauvaise, maintenant: $now)['error'] ?? '') === 'empreinte_invalide');
+}
+verifier('contre-témoin : la même ouverture avec une empreinte bien formée réussit',
+    ($escI->ouvrir('alice', Escalade::empreinteSesame('correcte'), maintenant: $now)['ok'] ?? false) === true);
+
+// `deja_tranche` dans `soumettre()` : garde vivante, aucune assertion.
+[, $escJ] = banc(ProfilDeploiement::TOR_ONION, $now, $now - $JOUR, 40);
+$sJ = 'sesame-deja-tranche';
+$oJ = $escJ->ouvrir('alice', Escalade::empreinteSesame($sJ), maintenant: $now);
+$escJ->trancher((string) $oJ['numero'], 'accepte', 'arbitre', $now + 10);
+verifier('⭐ on ne dépose plus de faisceau sur un dossier tranché, et le motif le dit',
+    ($escJ->soumettre((string) $oJ['numero'], $sJ, ['annee_creation' => '2024'], $now + 2 * 3600)['error'] ?? '')
+    === 'deja_tranche');
+
+// ── La règle « dossier actif », écrite deux fois, doit dire la même chose ───
+//
+// 🔑 `litigeActifDuCompte()` lit et `ouvrirLitige()` refuse d'insérer : deux
+// expressions de la même règle, dans deux requêtes que rien ne relie. Si elles
+// divergent, soit un compte porte deux dossiers actifs, soit il n'en ouvre plus
+// aucun. Ces deux cas sont ceux qui les séparent.
+[$stK] = banc(ProfilDeploiement::TOR_ONION, $now, $now - $JOUR, 40);
+$sK = 'sesame-accord-des-conditions';
+verifier('⭐ sans dossier, la lecture ne rend rien et l\'ouverture passe',
+    $stK->litigeActifDuCompte(1, $now) === null
+    && $stK->ouvrirLitige(1, 'LIT-K1', Escalade::empreinteSesame($sK), $now, $now + 86400) === true);
+verifier('⭐ dossier COURANT : la lecture le rend, l\'ouverture refuse',
+    $stK->litigeActifDuCompte(1, $now) !== null
+    && $stK->ouvrirLitige(1, 'LIT-K2', Escalade::empreinteSesame($sK), $now, $now + 86400) === false);
+verifier('⭐ dossier EXPIRÉ : la lecture ne le rend plus, l\'ouverture passe',
+    $stK->litigeActifDuCompte(1, $now + 86401) === null
+    && $stK->ouvrirLitige(1, 'LIT-K3', Escalade::empreinteSesame($sK), $now + 86401, $now + 172800) === true);
+
+// Et le fait vu par l'arbitre : une ouverture refusée se compte sur le dossier
+// qui occupe la place, par le chemin public autant que par le stockage.
+[$stL, $escL] = banc(ProfilDeploiement::TOR_ONION, $now, $now - $JOUR, 40);
+$oL1 = $escL->ouvrir('alice', Escalade::empreinteSesame('sesame-premier'), maintenant: $now);
+$escL->ouvrir('alice', Escalade::empreinteSesame('sesame-second'), maintenant: $now);
+verifier('⭐ une seconde ouverture compte une collision sur le dossier en place',
+    ($stL->litigeActifDuCompte(1, $now)?->demandeursConcurrents ?? 0) === 1
+    && $stL->litigeActifDuCompte(1, $now)?->numero === $oL1['numero']);
+
+// ── Le sésame que la bibliothèque tire ─────────────────────────────────────
+$tirages = [];
+for ($t = 0; $t < 200; $t++) {
+    $tirages[] = Escalade::engendrerSesame();
+}
+verifier('⭐ un sésame tiré fait 64 caractères hexadécimaux — 256 bits',
+    count(array_filter($tirages, static fn (string $s): bool => preg_match('/^[a-f0-9]{64}$/', $s) === 1)) === 200);
+verifier('⭐ et deux cents tirages donnent deux cents valeurs distinctes',
+    count(array_unique($tirages)) === 200);
+verifier('son empreinte passe le contrôle de forme d\'ouvrir()',
+    preg_match('/^[a-f0-9]{64}$/', Escalade::empreinteSesame($tirages[0])) === 1);
 
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Escalade SelfRecover — %d passés, %d échoués\n", $passes, $echecs);

@@ -764,21 +764,13 @@ fi
 #
 # Dédoublonné par blob : un document présent dans quarante commits s'extrait
 # une fois.
-if [ "$PAR_CIBLES" = "0" ]; then
-  echo
-  echo "6. Texte des documents bureautiques (historique complet)"
-  DOCS=$(git -C "$ROOT" rev-list --objects "${PORTEE[@]}" 2>/dev/null \
-         | awk 'NF>=2 {sha=$1; $1=""; sub(/^ /,""); print sha"\t"$0}' \
-         | grep -iE '\.(docx|odt|pptx|xlsx|pdf)$' | sort -u -t$'\t' -k1,1 || true)
-  DOC_N=$(printf '%s' "$DOCS" | grep -c . || true)
-  C6=0
-  if [ "${DOC_N:-0}" = "0" ]; then
-    ok "aucun document bureautique dans l'historique"
-  else
-    while IFS=$'\t' read -r blob chemin; do
-      [ -z "$blob" ] && continue
-      exclu "$chemin" && continue
-      texte=$(git -C "$ROOT" cat-file blob "$blob" 2>/dev/null | python3 -c '
+# 🔑 **Un document se lit par son TEXTE, dans l'historique ET sur le disque.**
+# Un document modifie non commite echappait a tout : l'etage 2 le saute comme
+# binaire, l'etage 3 ne lit que ses metadonnees, et celui-ci ne tournait qu'en
+# mode complet — donc sur la version COMMITEE. Releve le 10/10/2026 par un
+# audit de publication, sur deux whitepapers edites hors commit.
+texte_document() {
+  python3 -c '
 import sys, zipfile, io, re, subprocess
 brut = sys.stdin.buffer.read()
 try:
@@ -795,17 +787,67 @@ try:
         sys.stdout.write(" ".join(out))
 except Exception:
     pass
-' 2>/dev/null || true)
-      if [ -z "$texte" ]; then
-        warn "$chemin (blob ${blob:0:8}) — texte non extractible, NON contrôlé"
-        C6=1; continue
-      fi
-      for m in "${MOTIFS[@]}"; do
-        if printf '%s' "$texte" | grep -qi -e "$m"; then
-          warn "$chemin — contient « $m » (blob ${blob:0:8})"
-          C6=1; break
-        fi
-      done
+' 2>/dev/null || true
+}
+
+# Un motif trouve dans le texte d'un document : meme verdict dans les deux modes.
+motifs_du_texte() {
+  local quoi="$1" texte="$2" m
+  if [ -z "$texte" ]; then
+    warn "$quoi — texte non extractible, NON controle"
+    return 1
+  fi
+  # `cherche` plutôt que `grep -qi` : l'étage lisait un motif refusé par grep
+  # comme « rien trouvé ». Les deux autres étages de motifs l'employaient déjà.
+  for m in "${MOTIFS[@]}"; do
+    if printf '%s' "$texte" | cherche "$m"; then
+      warn "$quoi — contient « $m »"
+      return 1
+    fi
+  done
+  return 0
+}
+
+echo
+C6=0
+if [ "$PAR_CIBLES" = "1" ]; then
+  echo "6. Texte des documents bureautiques (cibles, sur disque)"
+  mapfile -t DOCS_C < <(printf '%s\n' "${CIBLES[@]:-}" \
+    | grep -iE '\.(docx|odt|pptx|xlsx|pdf)$' || true)
+  DOC_N=0
+  for chemin in "${DOCS_C[@]:-}"; do
+    [ -n "${chemin:-}" ] || continue
+    exclu "$chemin" && continue
+    # Le fichier peut avoir ete supprime dans l'arbre : son absence n'est pas
+    # une fuite, mais elle ne merite pas la coche.
+    if [ ! -f "$ROOT/$chemin" ]; then
+      warn "$chemin — cible absente du disque, NON controlee"
+      C6=1; continue
+    fi
+    DOC_N=$((DOC_N + 1))
+    motifs_du_texte "$chemin" "$(texte_document < "$ROOT/$chemin")" || C6=1
+  done
+  if [ "$DOC_N" = 0 ] && [ "$C6" = 0 ]; then
+    note "aucun document bureautique parmi les cibles"
+  elif [ "$C6" = 0 ]; then
+    ok "$DOC_N document(s) du disque lu(s), aucun ne porte de motif"
+  fi
+else
+  echo "6. Texte des documents bureautiques (historique complet)"
+  # Dedoublonne par blob : un document present dans quarante commits s'extrait
+  # une fois.
+  DOCS=$(git -C "$ROOT" rev-list --objects "${PORTEE[@]}" 2>/dev/null \
+         | awk 'NF>=2 {sha=$1; $1=""; sub(/^ /,""); print sha"\t"$0}' \
+         | grep -iE '\.(docx|odt|pptx|xlsx|pdf)$' | sort -u -t$'\t' -k1,1 || true)
+  DOC_N=$(printf '%s' "$DOCS" | grep -c . || true)
+  if [ "${DOC_N:-0}" = "0" ]; then
+    ok "aucun document bureautique dans l'historique"
+  else
+    while IFS=$'\t' read -r blob chemin; do
+      [ -z "$blob" ] && continue
+      exclu "$chemin" && continue
+      motifs_du_texte "$chemin (blob ${blob:0:8})" \
+        "$(git -C "$ROOT" cat-file blob "$blob" 2>/dev/null | texte_document)" || C6=1
     done <<< "$DOCS"
     [ "$C6" = "0" ] && ok "$DOC_N document(s) lu(s), aucun ne porte de motif"
   fi

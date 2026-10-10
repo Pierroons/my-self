@@ -1,9 +1,9 @@
-# SelfRecover — Whitepaper v1.4
+# SelfRecover — Whitepaper v1.5
 
 **Zero-Email Account Recovery Protocol**
 *Your word. Your sites. No email.*
 
-*Edition of 6 October 2026 — v1.4 — describes SelfRecover 0.11.0*
+*Edition of 9 October 2026 — v1.5 — describes SelfRecover 0.12.0*
 
 ---
 
@@ -200,7 +200,7 @@ There is no automatic escalation to L3. Level 2 asks for no identifier, but the 
   - The bundle carries **no passive signal**: no address, no browser fingerprint
 - **No numeric score is computed.** These facts **never** unlock the account automatically, they only help a **human administrator** decide in the chat
 - Cooldown: 1 hour between submissions
-- Opening is braked before any account lookup: 10 per address and 20 service-wide per hour (defaults). There is deliberately no per-account brake: a third party could otherwise wall the owner out of level 3 with nothing shown to the arbitrator. Harassing an account shows up another way: the concurrent attempt is counted and displayed
+- Opening is braked before any account lookup: 10 per address per hour (default). A service-wide ceiling of 20 also exists, but it is read **only under the `tor-onion` profile**, where no address discriminates: under `clearweb` the per-address brake always bites, and a global ceiling would only add a master switch that anonymous requests suffice to pull (§6.1). There is deliberately no per-account brake: a third party could otherwise wall the owner out of level 3 with nothing shown to the arbitrator. Harassing an account shows up another way: the concurrent attempt is counted and displayed
 - The tracking code is presented at every step — filing the answers, the chat thread, the status, the reset. The case expires after 24h while undecided. A grant runs 7 days from the decision; past that it lapses and arbitration must be redone. The reset closes the case and erases the tracking code's hash. If the holder lost their tracking code, an arbitrator can abandon the current case: that grants no access, it frees the slot for a new case
 
 ### 5.4 L2 possession factors — recovery codes & the "this device" factor
@@ -254,7 +254,7 @@ A dispute (`LIT-` followed by 16 hex characters) opens when the person asks for 
 - Each dispute has a **non-guessable** number, the bundle of facts (raw, never a score), attempt and refusal counters, a concurrent-attempt counter ("multi-requester"), and a status (`open`, `awaiting_admin`, `accepted`, `refused`, `closed`)
 - The admin finds open disputes in their dashboard
 - A bidirectional chat channel is available between admin and user, with access gated by the tracking code (polling, not real-time WebSocket to keep it simple)
-- `purger()` erases expired disputes — neither the refused ones, on which the freeze is counted, nor the accepted ones, which a holder may still come back to consume. ⚠️ The library exposes the method; **it has no clock**. Calling it is the deployment's job, from a scheduled task.
+- `purger()` erases expired disputes — neither the refused ones, whose count informs the arbitrator, nor the accepted ones, which a holder may still come back to consume. 🔴 **Nothing in the library calls it**: it has no clock, and none of its paths invoke the method. Running it periodically is the deployment's job — a ready-to-drop `systemd` unit lives in `deploy/bi-self/`, and the tool it runs in `bi-self/selfrecover/tools/purger.php`.
 
 ### 6.1 Dispute Closure — Admin Decision
 
@@ -271,11 +271,17 @@ When the admin reviews a dispute, two paths exist:
 - The admin does not find the proof of identity sufficient
 - The case moves to `refused`, carrying the date and the name of whoever decided
 - **The account is not touched**: not deleted, not banned, not stripped of its codes. It stays usable
-- On the **3rd refusal within a rolling 30-day window**, *opening* new cases freezes for 7 days on that account. An administrator can lift the freeze, and the record of who lifted it is kept. During the freeze, a request to open gets the refusal of an unknown name (§5.3): the freeze cannot be read from outside
+- The refusal is **counted**, and the count handed to the arbitrator: on the **3rd within a rolling 30-day window**, the response carries `gel_suggere`. **That counter poses no freeze.** An administrator freezes opening explicitly, for 7 days; they lift it whenever they want, and the record of who lifted it is kept. During the freeze, a request to open gets the refusal of an unknown name (§5.3): the freeze cannot be read from outside
 
 🔑 **What hardens is the procedure, never the account.** An earlier edition of this document announced a 24h ban and permanent deletion at the 3rd refusal; the implementation closest to it deleted the account on the **first**. Both were wrong for the same reason: a refusal says "this requester did not convince me", not "this account is illegitimate". If the requester was an impostor, deleting destroys the victim's account; if they were the mis-judged owner, it punishes an innocent. And an attacker unable to steal an account could get it erased by piling up refusals — **failure became a weapon**.
 
-**Rationale:** the freeze costs whoever insists without convincing, and costs the owner nothing — they keep signing in normally throughout. Counting is on **refused cases**, not submissions: three submissions within one case remain one refusal, otherwise an honest owner's persistence would trip the freeze as fast as a hostile campaign.
+**Rationale, corrected in 0.12.0.** This document claimed that "the freeze costs whoever insists without convincing, and costs the owner nothing — they keep signing in normally throughout". Both halves were false.
+
+The first: the refusal counter is keyed on the **targeted account**, never on the requester. The claim hash is chosen by the caller, and an account name is semi-public: a third party opened three cases against a displayed name, was refused three times, and the freeze landed on the owner.
+
+The second: "they keep signing in normally" describes someone who does not exist at this stage. Level 3 addresses whoever has neither password, nor passphrase, nor recovery sheet left. "The account is not touched" remains true — the secrets are intact — but the conclusion drawn from it is not: closing that person's procedure closes their last door.
+
+Hence the current shape: **the counter informs, the arbitrator decides.** A counter cannot tell who is insisting; a human reading the bundle, the concurrent requests and the thread can. Counting is still on **refused cases**, not submissions: three submissions within one case remain one refusal, otherwise an honest owner's persistence would weigh as much as a hostile campaign.
 
 ### 6.2 Super-user (SU) — governing the administrators
 
@@ -299,7 +305,7 @@ SelfRecover governs **a single right**: settling level-3 disputes. Two roles car
 
 **What the library enforces**
 
-- **Counters**: per address at level 1, per account and per address at level 2 and at device enrollment, with level-2 suspension after 20 failures; per address and service-wide when opening a level-3 dispute. The per-address brake only exists under the `clearweb` profile. At level 1 the per-account counter no longer closes a door: it classifies
+- **Counters**: per address at level 1, per account and per address at level 2 and at device enrollment, with level-2 suspension after 20 failures; per address when opening a level-3 dispute, plus a service-wide ceiling read only under `tor-onion`. The per-address brake only exists under the `clearweb` profile. At level 1 the per-account counter no longer closes a door: it classifies
 - **Forced delay** on every refusal that hides a state
 - **Single refusal message**, so nothing sorts the accounts that exist — except two deliberate exceptions: level-2 suspension, which must be stated, and opening a level-3 dispute (§10.1)
 
@@ -329,7 +335,7 @@ If a legitimate user logs in normally and the server detects suspicious activity
 > *Did you try to recover your account recently?*
 > `[ Yes, it was me ]`  `[ No, it wasn't me ]`
 
-- **Yes** → failed attempts are cleared, the user continues normally; refused disputes still count toward the freeze (§6.1)
+- **Yes** → failed attempts are cleared, the user continues normally; refused disputes still count, to inform an arbitrator (§6.1)
 - **No** → enhanced protection activated behind the scenes:
   - New password generated and shown to user
   - Sessions revoked: whoever held the account is ejected
@@ -348,7 +354,7 @@ The user sees a reassuring "Your account is now secured" message — not a techn
 - **SMTP provider failures** — no SMTP dependency
 - **Third-party trust** — only the site and the user are involved
 - **Braked brute force** — per address at level 1, per account and per address at level 2 and at enrollment, level-2 suspension after 20 failures, an Argon2id cost per server-side attempt. ⚠️ At level 1 behind a hidden service, no brake of the library applies: only the per-attempt cost and the passphrase's entropy stand in the way
-- **Bot enumeration** — *partly*. Closed at levels 1 and 2 and at device enrollment: a single generic refusal at the first, no identifier asked at the second, a counter keyed by the submitted name at the third. The salt route always returns a salt, real or fake (§4.2). One level-2 refusal does name a state: suspension, which tells whoever already holds a code that it names a real account. Open at level 3, where the useful answer IS the distinction — a success returns a dispute number, an unknown name cannot. The refusals, for their part, cannot be told apart: unknown name, case already open and frozen procedure return the same `ouverture_refusee`, with the same delay. What opposes it is cost: two brakes applied before the account lookup (per address, per service), that delay on every refusal, and a proof of work in front of the route — which the library cannot impose, having no routes
+- **Bot enumeration** — *partly*. Closed at levels 1 and 2 and at device enrollment: a single generic refusal at the first, no identifier asked at the second, a counter keyed by the submitted name at the third. The salt route always returns a salt, real or fake (§4.2). One level-2 refusal does name a state: suspension, which tells whoever already holds a code that it names a real account. Open at level 3, where the useful answer IS the distinction — a success returns a dispute number, an unknown name cannot. The refusals, for their part, cannot be told apart: unknown name, case already open and frozen procedure return the same `ouverture_refusee`, with the same delay. What opposes it is cost: a per-address brake applied before the account lookup, the service-wide ceiling that replaces it under `tor-onion` (§5.3), that delay on every refusal, and a proof of work in front of the route — which the library cannot impose, having no routes
 - **Social reputation laundering** — the library offers no account rename; locking the name after registration is the application's to enforce
 
 ### 10.2 CRITICAL — Server Root Access (sudo)
@@ -407,7 +413,7 @@ SelfRecover assumes:
 
 ### 10.4 Other limitations (by design)
 
-- If the user forgot their memorized word and lost their passphrase, only level 3 is left: a human arbitrator. If the arbitrator refuses there is no other recourse; a new dispute stays possible until the 7-day freeze, on the 3rd refusal in 30 days
+- If the user forgot their memorized word and lost their passphrase, only level 3 is left: a human arbitrator. If the arbitrator refuses there is no other recourse; a new dispute stays possible — a refusal, however often repeated, no longer closes opening by itself. Only an administrator can freeze it, and reopen it
 - A passphrase the user brings is only as random as its dice, which the library cannot check (§5.5)
 
 These are by design. A system with infinite fallbacks has infinite attack surface.
@@ -467,7 +473,7 @@ A deployment that skips this checklist is not a SelfRecover deployment — it is
 ### 12.1 Requirements
 
 - PHP 8.1+ with `ext-json`, `ext-mbstring` and `ext-openssl` — the constraints `composer.json` carries —, and a PHP build that provides `PASSWORD_ARGON2ID`, which `composer.json` cannot require. The reference implementation is PHP; there is no other server-side one
-- An SQL database. The shipped schema and adapter target SQLite (`ext-pdo_sqlite`); elsewhere, the column types and three adapter constructs (four queries) are rewritten — the header of `schema.sql` names them, or the integrator writes their own `StorageInterface` adapter
+- An SQL database. The shipped schema and adapter target SQLite (`ext-pdo_sqlite`); elsewhere, the column types and four adapter constructs (five queries) are rewritten — the header of `schema.sql` names them, or the integrator writes their own `StorageInterface` adapter
 - Modern browser with JavaScript and Web Crypto API: `client/sr-derive.js` derives the memorized word there, through `crypto.subtle`. The "this device" factor adds `client/argon2id.js` then `client/sr-kdf.js`, Web Crypto offering no Argon2id
 - HTTPS mandatory on the ordinary web (§11.3)
 
@@ -501,7 +507,7 @@ SelfRecover is not a replacement for WebAuthn. It is a complement, especially fo
 
 ## 14. Roadmap
 
-- [x] Protocol specification (v1.4)
+- [x] Protocol specification (v1.5)
 - [x] Reference implementation (this repo)
 - [x] Whitepapers EN + FR
 - [x] Served demo (`demo/bi-self-duo/`) and lab (`demo/lab/`) — the standalone demo was removed on 18 August 2026

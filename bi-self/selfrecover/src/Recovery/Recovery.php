@@ -9,6 +9,8 @@ use Pierroons\SelfRecover\Device\Device;
 use Pierroons\SelfRecover\Diceware\Wordlist;
 use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\Etiquette;
+use Pierroons\SelfRecover\Langue;
+use Pierroons\SelfRecover\Messages;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use LogicException;
 use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
@@ -58,6 +60,13 @@ final class Recovery
          * il ne se devine pas depuis le transport.
          */
         private readonly ProfilDeploiement $profil,
+        /**
+         * **Obligatoire, sans défaut.** Le contrat est dans `Langue` : elle
+         * gouverne ce que le titulaire lit ET la liste dans laquelle sa
+         * passphrase est tirée. Un défaut imposerait sa langue à tout
+         * intégrateur sans le dire.
+         */
+        private readonly Langue $langue,
         private readonly int $fenetreEchecs = 900,
         /**
          * Échecs par compte avant que le **niveau 2** freine ce compte.
@@ -81,24 +90,6 @@ final class Recovery
         private readonly int $maxEchecsL2AvantSuspension = 20,
     ) {
     }
-
-    /**
-     * Préfixe des compteurs d'échec du niveau 2. En clair, pour qu'une console
-     * sache quoi ne pas afficher comme une tentative de connexion.
-     */
-    private const PREFIXE_L2 = 'l2:';
-
-    /**
-     * Préfixes du niveau 1 : `etiquetteEchecsL1()` et `etiquetteSuspicionL1()`
-     * disent ce que chacun range.
-     *
-     * ⚠️ **Sans eux, le compteur du niveau 1 se remplit depuis la page de
-     * connexion** : la table est partagée avec la porte de l'intégrateur, qui y
-     * écrit le nom soumis tel quel. `Etiquette` dit pourquoi le sel empêche
-     * d'écrire.
-     */
-    private const PREFIXE_L1        = 'l1:';
-    private const PREFIXE_SUSPICION = 'l1-liste:';
 
     /**
      * Nombre d'essais plausibles dans la fenêtre **à partir duquel** il y a de
@@ -172,7 +163,7 @@ final class Recovery
         $this->profil->verifierOrigine($ip);
         $maintenant = $maintenant ?? time();
         $nomCompte  = strtolower(trim($nomCompte));
-        $refus      = ['ok' => false, 'message' => 'Identifiant ou passphrase incorrect.'];
+        $refus      = ['ok' => false, 'message' => Messages::dire($this->langue, 'l1.refus')];
 
         // 🔑 La passphrase apportée est jugée avant les freins, sans trace ni
         // délai : rien n'a encore été vérifié, et son refus ne dit rien du
@@ -181,7 +172,7 @@ final class Recovery
         if ($nouvellePassphrase !== null) {
             $jugee = self::validerPassphraseApportee($nouvellePassphrase);
             if (!$jugee['ok']) {
-                return $jugee;
+                return $this->direRefusPassphrase($jugee);
             }
             $apport = $jugee['canonique'];
         }
@@ -208,8 +199,8 @@ final class Recovery
             usleep($this->delaiRefusUs);
 
             return ['ok' => false, 'error' => 'passphrase_trop_longue',
-                    'message' => 'La passphrase soumise dépasse ' . self::OCTETS_PASSPHRASE_MAXIMUM
-                               . ' octets. Vérifie ce qui a été collé.'];
+                    'message' => Messages::dire($this->langue, 'passphrase.trop_longue_soumise',
+                                                [self::OCTETS_PASSPHRASE_MAXIMUM])];
         }
 
         $passphrase = self::normaliserPassphrase($passphrase);
@@ -232,7 +223,7 @@ final class Recovery
             sort($ancienne);
             if ($neuve === $ancienne) {
                 return ['ok' => false, 'error' => 'passphrase_deja_servie',
-                        'message' => 'La nouvelle passphrase doit différer de celle qu\'elle remplace.'];
+                        'message' => Messages::dire($this->langue, 'passphrase.identique')];
             }
         }
 
@@ -281,7 +272,7 @@ final class Recovery
 
         return [
             'ok'           => true,
-            'message'      => 'Accès rendu. Ton mot de passe et ta passphrase ont été remplacés : note-les, les anciens ne valent plus rien et ceux-ci ne seront pas réaffichés. Le mot mémorisé, lui, ne change pas.',
+            'message'      => Messages::dire($this->langue, 'acces.rendu'),
             'mot_de_passe' => $motDePasse,
             'passphrase'   => $nouvellePhrase,
             'age_jours'    => is_int($emiseLe) ? intdiv(max(0, $maintenant - $emiseLe), 86400) : null,
@@ -310,23 +301,23 @@ final class Recovery
         $this->profil->verifierOrigine($ip);
         $maintenant = $maintenant ?? time();
         $code       = strtolower(trim($code));
-        $refus      = ['ok' => false, 'message' => 'Code ou mot mémorisé incorrect.'];
+        $refus      = ['ok' => false, 'message' => Messages::dire($this->langue, 'l2.refus')];
 
         if (!Device::estCleDerivee($motDerive)) {
             return ['ok' => false, 'error' => 'invalid_derived_key',
-                    'message' => 'Mot mémorisé invalide : la dérivation doit se faire dans le navigateur.'];
+                    'message' => Messages::dire($this->langue, 'mot.non_derive')];
         }
         // Avant tout frein, comme au niveau 1 : la forme ne dit rien du compte.
         $apport = null;
         if ($nouvellePassphrase !== null) {
             $jugee = self::validerPassphraseApportee($nouvellePassphrase);
             if (!$jugee['ok']) {
-                return $jugee;
+                return $this->direRefusPassphrase($jugee);
             }
             $apport = $jugee['canonique'];
         }
         if ($ip !== null
-            && $this->stockage->compterEchecsIp($ip, $maintenant - $this->fenetreEchecs) >= $this->maxEchecsIp) {
+            && $this->stockage->compterEchecsIp($ip, $maintenant - $this->fenetreEchecs, Etiquette::PREFIXES) >= $this->maxEchecsIp) {
             return $this->refusFrein();
         }
 
@@ -342,11 +333,17 @@ final class Recovery
 
         // Le frein par compte avant les deux Argon2id, donc avant toute
         // consommation : un essai freiné ne coûte ni code ni place au quota de
-        // l'appelant. Il ne s'applique qu'à un code retrouvé — sans compte, il
-        // n'y a pas de compteur à consulter, et le frein par origine tient seul.
-        $etiquette = $trouve !== null ? $this->etiquetteEchecsL2($trouve['nom_compte']) : null;
-        if ($etiquette !== null) {
-            $frein = $this->freinerNiveau2(
+        // l'appelant.
+        //
+        // 🔴 **Il ne s'applique QU'À un code retrouvé**, et une seule condition
+        // en décide. Appliqué à un code introuvable, il consulterait le compteur
+        // de l'étiquette fixe — la même pour tous — et refuserait alors le niveau
+        // 2 du service entier dès que le plafond est atteint, par n'importe qui.
+        // Sans compte, il n'y a pas de compteur à consulter, et le frein par
+        // origine tient seul. Les cas ⭐ de `sanity_recovery` le font rougir.
+        if ($trouve !== null) {
+            $etiquette = $this->etiquetteEchecsL2((string) $trouve['nom_compte']);
+            $frein     = $this->freinerNiveau2(
                 $etiquette,
                 (string) $trouve['nom_compte'],
                 (int) $trouve['compte_id'],
@@ -355,6 +352,9 @@ final class Recovery
             if ($frein !== null) {
                 return $frein;
             }
+        } else {
+            // Seul le frein par ORIGINE la lit ; son contrat est sur la constante.
+            $etiquette = Etiquette::PREFIXE_L2_INCONNU;
         }
 
         // Les deux vérifications sont menées quoi qu'il arrive : s'arrêter à la
@@ -371,12 +371,14 @@ final class Recovery
             $ancienne = $this->stockage->trouverComptePourPassphrase((string) $trouve['nom_compte']);
             if ($ancienne !== null && Hashing::verify($apport, (string) $ancienne['empreinte_passphrase'])) {
                 return ['ok' => false, 'error' => 'passphrase_deja_servie',
-                        'message' => 'La nouvelle passphrase doit différer de celle qu\'elle remplace.'];
+                        'message' => Messages::dire($this->langue, 'passphrase.identique')];
             }
         }
 
-        // 🔑 Un code introuvable n'est rattaché à AUCUN compte. La ligne garde en
-        // revanche son adresse : le frein par origine continue de la voir.
+        // 🔑 Un code introuvable n'est rattaché à AUCUN compte : sa ligne porte
+        // `PREFIXE_L2_INCONNU`, la même pour tous. Elle garde son adresse, et
+        // c'est ainsi que le frein par origine la voit — sous une étiquette
+        // plutôt que sous `null`, qu'aucun filtre de préfixe ne peut compter.
         $this->stockage->tracerTentative($etiquette, $ok, $ip, $maintenant);
 
         if (!$ok) {
@@ -420,7 +422,7 @@ final class Recovery
 
         return [
             'ok'             => true,
-            'message'        => 'Accès rendu. Ton mot de passe et ta passphrase ont été remplacés : note-les, les anciens ne valent plus rien et ceux-ci ne seront pas réaffichés. Le mot mémorisé, lui, ne change pas.',
+            'message'        => Messages::dire($this->langue, 'acces.rendu'),
             'mot_de_passe'   => $motDePasse,
             'passphrase'     => $nouvellePhrase,
             'compte'         => $trouve['nom_compte'],
@@ -466,24 +468,26 @@ final class Recovery
      */
     public static function validerPassphraseApportee(#[\SensitiveParameter] string $saisie): array
     {
-        $refus = static fn (string $motif, string $message): array
-            => ['ok' => false, 'error' => 'passphrase_invalide', 'motif' => $motif, 'message' => $message];
+        $refus = static fn (string $motif, string $cle, array $valeurs): array
+            => ['ok' => false, 'error' => 'passphrase_invalide', 'motif' => $motif, 'valeurs' => $valeurs,
+                'cle' => 'passphrase.' . $cle];
 
         if (strlen($saisie) > self::OCTETS_PASSPHRASE_MAXIMUM) {
-            return $refus('trop_longue', 'La passphrase apportée est trop longue.');
+            return $refus('trop_longue', 'trop_longue', []);
         }
         $canonique = self::normaliserPassphrase(strtolower($saisie));
         $mots      = $canonique === '' ? [] : explode(' ', $canonique);
         if (count($mots) < self::MOTS_PASSPHRASE) {
-            return $refus('trop_courte', 'Il faut au moins ' . self::MOTS_PASSPHRASE . ' mots, séparés par des espaces.');
+            return $refus('trop_courte', 'trop_courte', [self::MOTS_PASSPHRASE]);
         }
 
         $hors = self::motsHorsListe($mots);
         if ($hors !== []) {
-            return $refus('hors_liste', (count($hors) === 1
-                ? 'Le mot n° ' . $hors[0] . ' n\'est'
-                : 'Les mots n° ' . implode(', ', $hors) . ' ne sont')
-                . ' dans aucune des deux listes, anglaise et française : vérifie l\'orthographe, sans accent.');
+            return $refus(
+                'hors_liste',
+                count($hors) === 1 ? 'hors_liste_un' : 'hors_liste_plusieurs',
+                [count($hors) === 1 ? (string) $hors[0] : implode(', ', $hors)],
+            );
         }
 
         $vus     = [];
@@ -495,7 +499,7 @@ final class Recovery
             $vus[$mot] = true;
         }
         if ($repetes !== []) {
-            return $refus('mot_repete', 'Un mot revient (n° ' . implode(', ', $repetes) . ') : relance les dés pour celui-là.');
+            return $refus('mot_repete', 'mot_repete', [implode(', ', $repetes)]);
         }
 
         return ['ok' => true, 'canonique' => $canonique];
@@ -523,7 +527,11 @@ final class Recovery
      */
     private function refusFrein(): array
     {
-        return ['ok' => false, 'message' => 'Trop de tentatives. Réessaie dans ' . Duree::enClair($this->fenetreEchecs) . '.'];
+        return ['ok' => false, 'message' => Messages::dire(
+            $this->langue,
+            'frein.attendre',
+            [Duree::enClair($this->fenetreEchecs, $this->langue)],
+        )];
     }
 
     /**
@@ -640,6 +648,39 @@ final class Recovery
     }
 
     /**
+     * La langue de ce déploiement.
+     *
+     * 🔑 Même raison que `profil()` : `Escalade` compose une `Recovery` et lit
+     * la langue ici plutôt que de recevoir la sienne. Une `Escalade` anglaise
+     * devant une `Recovery` française rendrait au même titulaire, dans la même
+     * procédure, deux moitiés de phrase dans deux langues.
+     */
+    public function langue(): Langue
+    {
+        return $this->langue;
+    }
+
+    /**
+     * Le refus du validateur de passphrase, habillé du texte de cette langue.
+     *
+     * 🔑 **`validerPassphraseApportee()` est statique et reste sans langue.**
+     * Ses appelants, les bancs compris, ne lisent que son `motif` : lui imposer
+     * la langue les casserait tous pour un texte qu'ils n'affichent pas. Elle
+     * rend donc un identifiant et ses valeurs, et le texte se compose ici, là où
+     * la langue existe. `Escalade` passe par cette méthode pour la même raison
+     * qu'elle lit `langue()`.
+     */
+    public function direRefusPassphrase(array $jugee): array
+    {
+        return [
+            'ok'      => false,
+            'error'   => $jugee['error'],
+            'motif'   => $jugee['motif'],
+            'message' => Messages::dire($this->langue, $jugee['cle'], $jugee['valeurs']),
+        ];
+    }
+
+    /**
      * Index de recherche d'un code — un HMAC, pas un chiffrement.
      *
      * Il permet de retrouver la ligne sans stocker le code, et sans que la base
@@ -665,7 +706,7 @@ final class Recovery
      */
     public function etiquetteEchecsL2(string $nomCompte): string
     {
-        return Etiquette::sous(self::PREFIXE_L2, $nomCompte, $this->selDeploiement);
+        return Etiquette::sous(Etiquette::PREFIXE_L2, $nomCompte, $this->selDeploiement);
     }
 
     /**
@@ -680,7 +721,7 @@ final class Recovery
      */
     public function etiquetteEchecsL1(string $nomCompte): string
     {
-        return Etiquette::sous(self::PREFIXE_L1, $nomCompte, $this->selDeploiement);
+        return Etiquette::sous(Etiquette::PREFIXE_L1, $nomCompte, $this->selDeploiement);
     }
 
     /**
@@ -695,7 +736,7 @@ final class Recovery
      */
     public function etiquetteSuspicionL1(string $nomCompte): string
     {
-        return Etiquette::sous(self::PREFIXE_SUSPICION, $nomCompte, $this->selDeploiement);
+        return Etiquette::sous(Etiquette::PREFIXE_SUSPICION, $nomCompte, $this->selDeploiement);
     }
 
     /**
@@ -842,8 +883,7 @@ final class Recovery
                 usleep($this->delaiRefusUs);
 
                 return ['ok' => false, 'error' => 'l2_suspendu',
-                        'message' => 'Trop d\'essais manqués : la récupération par code est suspendue pour '
-                                   . 'ce compte. Récupère ton accès par ta passphrase.'];
+                        'message' => Messages::dire($this->langue, 'l2.suspendu')];
             }
         }
 
@@ -885,7 +925,7 @@ final class Recovery
     {
         $depuis = $maintenant - $this->fenetreEchecs;
 
-        if ($ip !== null && $this->stockage->compterEchecsIp($ip, $depuis) >= $this->maxEchecsIp) {
+        if ($ip !== null && $this->stockage->compterEchecsIp($ip, $depuis, Etiquette::PREFIXES) >= $this->maxEchecsIp) {
             return $this->refusFrein();
         }
 

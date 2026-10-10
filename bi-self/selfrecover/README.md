@@ -5,7 +5,7 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per service, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.11.0](https://img.shields.io/badge/status-v0.11.0-green.svg)](#status)
+[![Status: v0.12.0](https://img.shields.io/badge/status-v0.12.0-green.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#trying-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#trying-selfrecover)
@@ -316,8 +316,8 @@ So you have two paths, and the contract exists so the first one stays open:
 |---|---|
 | you already have tables | you write your adapter, **you migrate nothing** |
 | you start from scratch | you load `schema.sql` and wire `StockagePdo` — **no adapter to write** |
-Both target SQLite. On MariaDB or PostgreSQL, the column types and three adapter constructs
-(four queries) need rewriting — `schema.sql` names them in its header.
+Both target SQLite. On MariaDB or PostgreSQL, the column types and four adapter constructs
+(five queries) need rewriting — `schema.sql` names them in its header.
 
 `StockagePdo` also serves the "this device" factor and requires the **derivation host**:
 it refuses to reset secrets without one, rather than writing an empty marker onto an
@@ -332,6 +332,24 @@ $stockage = new StockagePdo($pdo, hoteDerivation: 'my-service.example');
 Exercised by `tests/banc_stockage_pdo.php`, which **reads the database back** rather than
 the returned value: a write method that does nothing and returns `void` is
 indistinguishable from one that writes, until you go look at the table.
+
+### The deployment's language
+
+Since 0.12.0 the language of the sentences shown to the user is declared by the deployment, never
+inferred from the request. `Langue` is a two-case enum, `Langue::FR` and `Langue::EN`, and three
+signatures require it with no default: `Recovery::__construct()` and `Device::__construct()` take
+it as their **4th parameter**, `Duree::enClair()` as its **2nd**. A call left on the old signature
+raises an `ArgumentCountError` on the first request.
+
+```php
+use Pierroons\SelfRecover\Langue;
+
+$recovery = new Recovery($stockage, $selDeploiement, $profil, Langue::EN);
+$device   = new Device($stockage, $profil, $selDeploiement, Langue::EN);
+$window   = Duree::enClair(900, Langue::EN);
+```
+
+`Escalade` takes none: it reads the one from the `Recovery` it composes.
 
 ### A passphrase the user brings
 
@@ -400,7 +418,7 @@ This is a companion module, **[`selfrecover-luks`](../../self-security/selfrecov
 **Reference library + deployed implementation, self-audited**
 
 This repository contains:
-- The **protocol specification** (whitepapers v1.3)
+- The **protocol specification** (whitepapers v1.5)
 - A **PHP library** — `src/`, PSR-4 `Pierroons\SelfRecover\`: level 1 and level 2 recovery, recovery codes, the "this device" factor, the Argon2id profile, the diceware wordlist, and the storage interface an integrator implements against their own database — or, starting from scratch, its shipped implementation (`schema.sql` + `StockagePdo`)
 - The **browser deriver** — `client/sr-derive.js`, shipped rather than described: it is what carries the anti-phishing property, and the integrators who wrote it themselves produced variants that did not have it; and `client/sr-kdf.js`, which encrypts a local secret with Argon2id, version and parameters inside the blob
 - **All three levels**, since 2026-09-07: level 3 escalation now lives in `src/Recovery/Escalade.php` — case file, single-use claim secret, bundle of raw facts, arbitration and procedure freeze. It does not check *who* may decide: roles and sessions belong to the application. The super-user still lives in [`demo/lab/`](../../demo/lab/)
@@ -451,7 +469,7 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 
 ## Roadmap
 
-### Shipped — v0.1.0 to v0.11.0 (April → October 2026)
+### Shipped — v0.1.0 to v0.12.0 (April → October 2026)
 
 The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library outran it, pulled by its first real deployment: that deployment's needs moved the protocol faster than planned. The work below therefore carries no version number — each item gets one when it ships.
 
@@ -473,6 +491,7 @@ The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library ou
 - [x] **Salt route guard in the library** — `Recovery::selDeDerivation` (v0.9.0)
 - [x] **A passphrase the user brings, rolled with dice** — `Recovery::validerPassphraseApportee`, at registration and at every level (v0.10.0)
 - [x] **The level-1 brake no longer closes the holder's own door** — counters under an HMAC label, silent classification of attempts whose every word exists (v0.11.0)
+- [x] **At level 3, a refusal no longer closes the holder's last door by itself** — the freeze is no longer posed by a counter but by the arbitrator, who also lifts it, the thread and the answers are bounded, `recevable()`'s refusals share one deadline; holding the slot with nothing but a displayed name stays open (v0.12.0)
 
 ### Next
 
