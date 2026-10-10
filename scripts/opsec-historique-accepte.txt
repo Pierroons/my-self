@@ -16,6 +16,18 @@
 #
 # Mêmes règles que l'allowlist : la raison nomme la nature de ce qui a été
 # publié, jamais le texte, et l'audit relit ce fichier.
+#
+# 🔑 Les entrées « motif d'infrastructure » portaient « à réécrire » depuis
+# l'inventaire du 03/10/2026. La décision est prise le 10/10/2026 : l'historique
+# n'est PAS réécrit, et ces lignes le disent désormais. Ce qui a périé n'est pas
+# un secret mais une désignation interne, et une réécriture changerait tous les
+# condensés postérieurs : les tags signés cesseraient de vérifier, les
+# publications ne pointeraient plus sur rien, et chaque copie déjà clonée
+# garderait de toute façon l'ancienne. Le coût est certain, le gain nul.
+#
+# ⚠️ « À réécrire » dans une raison se lit comme un travail en attente. Une
+# décision qui reste écrite au futur se repose tous les six mois, et finit par
+# être prise à l'envers faute de savoir qu'elle l'avait déjà été.
 
 a3a9c5a66b003c86e4480405128029bf651cc013	.gitleaks.toml	version du 28/06/2026 : une règle et un commentaire citaient un motif — historique non réécrit, décision du 03/10/2026
 b7b1cc30bd71af1c7036f70b2690daa67917bc91	.gitleaks.toml	version du 28/06/2026 : une règle et un commentaire citaient un motif — historique non réécrit, décision du 03/10/2026
@@ -147,41 +159,41 @@ e0971caffee2d81aa3c08957f1652ba72b64e820	(message)	message du 03/10/2026 signé 
 461197ffd9cf89d08ff949b54157e2b8abaca8a9	(message)	message du 03/10/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
 fb5fa56404dd9b8ba09ddf2759138af71a46a55a	(message)	message du 03/10/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
 3a8da605127568c35090c87e1b16997929c0aba2	(message)	message du 03/10/2026 signé d'une URL de session — historique non réécrit, décision du 03/10/2026
-0348aa3b8a74cf4dfa7a06594ab0dfd70f834427	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-01d7d79e286ff098e3c7fb028e251e7aef7f01cd	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-5df9ffcf8d88a88ee41b633d05efe6766e11eeca	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-7d1e953c6d7b5480b5e47261d647a3862709d735	self-security/selfrecover-luks/install.sh	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-8312ab35e6157475a79027fec8037cf667957c03	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-a46b75878a880d0f3d09bb3e6bcb3a78bfa35076	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-52cab53c8cf2118be655a630baa5d7889922a9fc	self-security/selfrecover-luks/install.sh	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-0ad4309de21ea01c69455661e6e10d92714a9d9a	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-d0c8a37c649bcf75fa55c781bd0c3db845ab15c6	self-security/selfrecover-luks/install.sh	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-bc9bc6ec9ba684108ce6cbf5ceca8756e96b890d	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-d98fd7c61722750a64061e4007a37bedb52e91b1	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-0d32dca38cfbcb45811e181e0bba843599ed0fcf	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-812961b1a8760239812dfb25fd9dc880f6a16f03	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-a61679e94c992cf6ebc896b8c35c31af729f99e6	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-624396f4e653b627d6e9478d62e921b612f6a601	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-44118f8afcbba8960aa6cceceb6ea80b8a792ee2	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-bf1b98daa1979ba80a06d57a3f273e6c5bb2ad8e	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-8c0ac41f223361a02de55e4cfcecdf116121f8d1	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-94e860965188b918c061087945a5369e4c7ee9aa	self-security/selfrecover-luks/install.sh	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-483346daecc30ce2af02d6213dc9b726b47d9791	CHANGELOG.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-9cf31eb7c2bd80e7081a2d46a601634e78ec53a6	deploy/my-self/nginx-my-self.conf	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-52780654229ada975141c927c27bcdd24bc1edea	deploy/selfdataguard/nginx-dataguard.conf	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-62ac23d4bbe5db39176b2281423059ea38570e86	deploy/selffarm/nginx-selffarm.conf	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-9258ccf719c9a274f08b522cd556f57bfa664fe4	demo/lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-8136106eb425fa8048f139e9a404df1fb0a3f328	demo/lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-e2276221ecd963314ff15d85b33524e06dafc17f	self-security/selfrecover-luks/install.sh	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-424272e48ea2355f8e2b49bca87e21fd515586a3	demo/lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-81827fc24038d2d2115ffa270d24b053e944904e	demo/lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-bd2dd2407b2e645a937f798a98f5449b38c9b996	demo/lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-bd2dd2407b2e645a937f798a98f5449b38c9b996	my-self-lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-7bec6db71f0d7d4d6d565b57ede4b2bc4f00edfa	my-self-lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-21814e4fc346f230aeb6f8215c1036e154e39bca	(message)	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-29cc071bb154af42590b1055cc7165879b51c893	(message)	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-12a9bcf318e4a1a5004f1ae5739e341824fbf3ac	(message)	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-e61ae4923f40609a971cf0230a4ed44c8718726e	(message)	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-1039a7a1d22440d24dec5ac27d619018926c2aaf	(message)	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-da74a373535e15c3b21fb9e7930e86d398bf4b0b	self-security/selfrecover-luks/install.sh	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
-dc576b58fd529d3d7549f691e48d1b215fc02233	demo/lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — à réécrire, inventaire du 03/10/2026
+0348aa3b8a74cf4dfa7a06594ab0dfd70f834427	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+01d7d79e286ff098e3c7fb028e251e7aef7f01cd	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+5df9ffcf8d88a88ee41b633d05efe6766e11eeca	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+7d1e953c6d7b5480b5e47261d647a3862709d735	self-security/selfrecover-luks/install.sh	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+8312ab35e6157475a79027fec8037cf667957c03	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+a46b75878a880d0f3d09bb3e6bcb3a78bfa35076	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+52cab53c8cf2118be655a630baa5d7889922a9fc	self-security/selfrecover-luks/install.sh	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+0ad4309de21ea01c69455661e6e10d92714a9d9a	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+d0c8a37c649bcf75fa55c781bd0c3db845ab15c6	self-security/selfrecover-luks/install.sh	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+bc9bc6ec9ba684108ce6cbf5ceca8756e96b890d	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+d98fd7c61722750a64061e4007a37bedb52e91b1	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+0d32dca38cfbcb45811e181e0bba843599ed0fcf	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+812961b1a8760239812dfb25fd9dc880f6a16f03	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+a61679e94c992cf6ebc896b8c35c31af729f99e6	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+624396f4e653b627d6e9478d62e921b612f6a601	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+44118f8afcbba8960aa6cceceb6ea80b8a792ee2	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+bf1b98daa1979ba80a06d57a3f273e6c5bb2ad8e	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+8c0ac41f223361a02de55e4cfcecdf116121f8d1	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+94e860965188b918c061087945a5369e4c7ee9aa	self-security/selfrecover-luks/install.sh	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+483346daecc30ce2af02d6213dc9b726b47d9791	CHANGELOG.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+9cf31eb7c2bd80e7081a2d46a601634e78ec53a6	deploy/my-self/nginx-my-self.conf	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+52780654229ada975141c927c27bcdd24bc1edea	deploy/selfdataguard/nginx-dataguard.conf	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+62ac23d4bbe5db39176b2281423059ea38570e86	deploy/selffarm/nginx-selffarm.conf	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+9258ccf719c9a274f08b522cd556f57bfa664fe4	demo/lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+8136106eb425fa8048f139e9a404df1fb0a3f328	demo/lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+e2276221ecd963314ff15d85b33524e06dafc17f	self-security/selfrecover-luks/install.sh	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+424272e48ea2355f8e2b49bca87e21fd515586a3	demo/lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+81827fc24038d2d2115ffa270d24b053e944904e	demo/lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+bd2dd2407b2e645a937f798a98f5449b38c9b996	demo/lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+bd2dd2407b2e645a937f798a98f5449b38c9b996	my-self-lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+7bec6db71f0d7d4d6d565b57ede4b2bc4f00edfa	my-self-lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+21814e4fc346f230aeb6f8215c1036e154e39bca	(message)	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+29cc071bb154af42590b1055cc7165879b51c893	(message)	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+12a9bcf318e4a1a5004f1ae5739e341824fbf3ac	(message)	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+e61ae4923f40609a971cf0230a4ed44c8718726e	(message)	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+1039a7a1d22440d24dec5ac27d619018926c2aaf	(message)	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+da74a373535e15c3b21fb9e7930e86d398bf4b0b	self-security/selfrecover-luks/install.sh	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
+dc576b58fd529d3d7549f691e48d1b215fc02233	demo/lab/docs/PENTEST-MISSION-ctf.md	motif d'infrastructure — historique non réécrit, décision du 10/10/2026
