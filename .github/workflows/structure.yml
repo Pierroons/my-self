@@ -524,7 +524,9 @@ jobs:
           # frein par origine ne voit plus ce chemin — qui paie DEUX Argon2id par
           # essai et s'atteint sans connaître un seul nom de compte — et
           # `purgerEchecs` n'efface jamais ces lignes.
-          canari $R '            : Etiquette::PREFIXE_L2_INCONNU;' '            : null;' \
+          # ⚠️ Le ternaire est devenu un `if/else` : la garde porte sur le dossier
+          # trouvé, pas sur l'étiquette. Le motif suit l'affectation, pas sa forme.
+          canari $R '            $etiquette = Etiquette::PREFIXE_L2_INCONNU;' '            $etiquette = null;' \
             bi-self/selfrecover/tests/sanity_recovery.php \
             '❌ ⭐ le frein par origine COMPTE ces essais'
           canari $R 'if ($neuve === $ancienne) {' 'if (false) {' \
@@ -556,7 +558,7 @@ jobs:
           S=bi-self/selfrecover/tests/sanity_recovery.php
           # Le frein par origine est désormais le seul qui ferme ici — et aucun banc
           # ne le faisait mordre : sa branche pouvait disparaître en restant verte.
-          canari $R "if (\$ip !== null && \$this->stockage->compterEchecsIp(\$ip, \$depuis) >= \$this->maxEchecsIp) {" \
+          canari $R "if (\$ip !== null && \$this->stockage->compterEchecsIp(\$ip, \$depuis, Etiquette::PREFIXES) >= \$this->maxEchecsIp) {" \
             'if (false) {' \
             $S '❌ ⭐ douze échecs depuis la même origine ferment, eux'
           # Le signal qui remplace la porte fermée : s'il ne se déclenche jamais, on a
@@ -586,12 +588,12 @@ jobs:
           # qu'aucun banc ne gardait avant la 0.12.0.
           X=bi-self/selfrecover/tests/sanity_escalade.php
           canari $E "        \$refus = \$this->stockage->compterRefusRecents(\$litige->compteId, \$maintenant - \$this->gelFenetre);" \
-            "        \$refus = \$this->stockage->compterRefusRecents(\$litige->compteId, \$maintenant - \$this->gelFenetre); if (\$refus >= \$this->gelSeuil) { \$this->stockage->poserGel(\$litige->compteId, \$maintenant + \$this->gelDuree, \$maintenant); }" \
+            "        \$refus = \$this->stockage->compterRefusRecents(\$litige->compteId, \$maintenant - \$this->gelFenetre); if (\$refus >= \$this->gelSeuil) { \$this->stockage->poserGel(\$litige->compteId, \$maintenant + \$this->gelDuree, \$maintenant, \$par); }" \
             $X '❌ ⭐ trois refus déclenchés par un tiers, et le titulaire ouvre toujours'
           # Le geste qui remplace le compteur. Sans effet, tout le bloc du gel
           # restait vert : l'ouverture suivante était refusée par l'exclusivité du
           # dossier en cours, pas par le gel. Mesuré, pas supposé.
-          canari $E "        \$this->stockage->poserGel((int) \$compte['id'], \$jusqua, \$maintenant);" \
+          canari $E "        \$this->stockage->poserGel((int) \$compte['id'], \$jusqua, \$maintenant, \$par);" \
             '        // le gel ne se pose plus' \
             $X "❌ une fois gelée, l'ouverture d'un nouveau dossier est refusée"
           # Un dossier refusé n'est jamais clos par `trancher()` : la garde ne testait
