@@ -166,7 +166,21 @@ final class Auth
         }
 
         $password = self::generatePassword();
-        $diceware = Wordlist::generate(Recovery::MOTS_PASSPHRASE, 'en');
+        // 🔑 La liste suit la langue du DÉPLOIEMENT, et ce laboratoire déclare
+        // « celle que le visiteur a demandée » (`langueSelfRecover()`). Le `'en'`
+        // qui était ici proposait des mots anglais à un visiteur francophone —
+        // la pièce la plus visible de la bibliothèque pour celui qu'elle vise.
+        // SelfRecover a corrigé le même défaut chez elle en 0.12.2 ; celui-ci
+        // était resté.
+        //
+        // ⚠️ `Recovery::engendrerPassphrase()` fait désormais ce travail, mais
+        // elle ne rend que la chaîne : l'entropie mesurée part dans la réponse
+        // d'inscription (plus bas), donc l'appel direct reste. La seule chose
+        // qu'il ne doit pas faire est de décider de la langue à sa place.
+        //
+        // 🔑 La force ne change pas avec la langue : les deux listes font
+        // 7776 mots, donc la même entropie par mot.
+        $diceware = Wordlist::generate(Recovery::MOTS_PASSPHRASE, langueSelfRecover()->listeDiceware());
         $passphrase = implode(' ', $diceware['words']);
 
         $derivedKey = $recoveryDerivedKey;   // déjà dérivée côté client

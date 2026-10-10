@@ -279,6 +279,28 @@ v('⭐ `LANGUES` et `Langue::cases()` disent la même liste',
 v('et `langueSelfRecover()` rend bien la langue résolue, pas un défaut',
     langueSelfRecover()->value === lang(), langueSelfRecover()->value . ' vs ' . lang());
 
+// ⭐ Aucun fichier du laboratoire ne décide la langue de la liste Diceware.
+//
+// 🔑 SelfRecover 0.12.2 a corrigé ce défaut chez elle : `engendrerPassphrase()`
+// codait `'en'` en dur, et un déploiement déclaré en français tirait des mots
+// anglais. Le même `'en'` vivait dans `lib/auth.php` — la bibliothèque a cessé
+// de décider, le laboratoire décidait encore. C'est la pièce la plus visible de
+// cette version pour l'utilisateur qu'elle vise : il note six mots qu'il ne
+// comprend pas.
+//
+// La langue vient donc de `langueSelfRecover()`, et ce contrôle refuse qu'un
+// littéral revienne la remplacer.
+$enDur = [];
+foreach ([...(glob(__DIR__ . '/../lib/*.php') ?: []), ...(glob(__DIR__ . '/../public/api/*.php') ?: [])] as $f) {
+    foreach (file($f) ?: [] as $no => $ligne) {
+        if (preg_match('/Wordlist::generate\s*\([^)]*[\'"](fr|en)[\'"]/', $ligne)) {
+            $enDur[] = basename($f) . ':' . ($no + 1);
+        }
+    }
+}
+v('⭐ aucun appel à `Wordlist::generate()` ne code la langue en dur',
+    $enDur === [], implode(' · ', $enDur) ?: '—');
+
 echo "\n" . ($echecs === 0
     ? "OK — $reussites/$reussites contrôles conformes.\n"
     : "ÉCHEC — $echecs sur " . ($echecs + $reussites) . ".\n");
