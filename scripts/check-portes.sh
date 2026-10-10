@@ -150,6 +150,46 @@ while IFS=$'\t' read -r interprete banc motif; do
   fi
 done <<< "$PAIRES"
 
+# ── Un banc que le workflow ne nomme pas ──────────────────────────────────────
+#
+# 🔑 Ce contrôle appariait les portes aux bancs CITÉS. Il ne voyait donc pas un
+# banc que personne ne cite — et celui-là ne rend ni vert ni rouge : il ne tourne
+# pas. Mesuré le 10/10/2026 : un banc neuf écrit l'après-midi même a été commité
+# sans son étape, et rien dans le dispositif ne l'a dit. Le motif est exactement
+# celui que ce banc-là corrigeait dans le simulateur d'attaques — nommer un
+# élément au lieu de parcourir la liste —, un cran au-dessus.
+#
+# ⚠️ Le workflow nomme ses bancs un par un, et c'est délibéré : chaque étape porte
+# sa propre porte de comptage. Ce qui manquait n'est donc pas une boucle là-bas,
+# c'est le contrôle que la liste écrite couvre la liste réelle.
+# ⚠️ Deux conventions coexistent, et un contrôle qui n'en connaît qu'une crie
+# faux. Le laboratoire et SelfRecover NOMMENT chaque banc, pour que chacun porte
+# sa porte de comptage ; SelfDataGuard les PARCOURT (`for t in …/sanity_*.php`).
+# La propriété à mesurer est donc « lancé », pas « cité » — la première version
+# de ce volet signalait les cinq bancs de SelfDataGuard, qui tournent tous.
+GLOBS=$(grep -oE 'for [a-z]+ in [A-Za-z0-9_./*-]+\.php' "$WORKFLOW" \
+        | sed -E 's/^for [a-z]+ in //' | sort -u)
+ORPHELINS=0
+for banc in $(git ls-files 'demo/lab/tests/*.php' 'bi-self/*/tests/sanity_*.php' \
+                           'bi-self/*/tests/banc_*.php' 'self-security/*/tests/sanity_*.php' 2>/dev/null); do
+  grep -qF "$(basename "$banc")" "$WORKFLOW" && continue
+  couvert=0
+  while IFS= read -r motif; do
+    [ -n "$motif" ] || continue
+    # shellcheck disable=SC2254  # le motif EST un glob, c'est son rôle ici
+    case "$banc" in $motif) couvert=1; break ;; esac
+  done <<< "$GLOBS"
+  [ "$couvert" = 1 ] && continue
+  printf '  ✗ %-50s ni nommé, ni couvert par une boucle\n' "$banc"
+  ORPHELINS=$((ORPHELINS + 1))
+done
+if [ "$ORPHELINS" = 0 ]; then
+  echo "  ✓ tout banc du dépôt est appelé par au moins une étape."
+else
+  echo "  ✗ $ORPHELINS banc(s) que rien ne lance : ils ne rendent ni vert ni rouge."
+  ROUGES=$((ROUGES + ORPHELINS))
+fi
+
 echo
 # Une porte non contrôlée se DIT, dans les deux verdicts : « rendre vert sur un
 # périmètre qu'on ne nomme pas » est le défaut que ce contrôle combat ailleurs.

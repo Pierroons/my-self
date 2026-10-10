@@ -1406,6 +1406,41 @@ jobs:
           echo "$sortie" | grep -qE '^OK — 16/16 ' \
             || { echo "::error::le banc de l'abandon L3 n'a pas joué ses 16 cas"; exit 1; }
 
+      # Deux des quatre scénarios du simulateur d'attaques étaient MORTS en
+      # service : ils appelaient des fonctions qu'aucun require n'apportait, et un
+      # clic sur leur bouton rendait « Call to undefined function ». Le seul banc
+      # qui touchait le simulateur nommait `packvoting` — il passait vert pendant
+      # que la moitié tombait. Celui-ci PARCOURT la liste des scénarios, et il
+      # regarde aussi ce que chacun AFFIRME : un verdict « neutralisé » au-dessus
+      # d'une ligne qui dit l'échec est un mensonge qui ne lève aucune erreur.
+      - name: Garde-fou — les quatre scénarios du simulateur tournent et disent le vrai
+        run: |
+          sortie=$(php demo/lab/tests/sanity_simulateur.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc du simulateur d'attaques a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 37/37 ' \
+            || { echo "::error::le banc du simulateur n'a pas joué ses 37 contrôles"; exit 1; }
+
+      - name: Canari — le banc du simulateur rougit quand un scénario perd sa dépendance
+        run: |
+          # Le défaut réel, replanté : le require retiré, deux scénarios sur quatre
+          # lèvent. C'est la seule chose qui distingue ce banc d'un banc qui ne
+          # mesure rien, puisque les deux rendent vert.
+          F=demo/lab/lib/attack_sim.php
+          cp "$F" /tmp/as.intact
+          sed -i "s#^require_once __DIR__ . '/derive_cli.php';#// canari#" "$F"
+          grep -q "^// canari" "$F" \
+            || { cp /tmp/as.intact "$F"; echo "::error::la plantation n'a pas pris — le canari ne prouve rien"; exit 1; }
+          if php demo/lab/tests/sanity_simulateur.php >/dev/null 2>&1; then
+            cp /tmp/as.intact "$F"
+            echo "::error::le banc reste VERT alors que deux scénarios ne peuvent plus tourner"
+            exit 1
+          fi
+          cp /tmp/as.intact "$F"
+          cmp -s /tmp/as.intact "$F" \
+            || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          echo "✓ le banc rougit quand un scénario perd sa dépendance, et le fichier est restauré"
+
       # Le frein de la page de connexion n'était gardé par aucun banc. Il mord sur
       # deux axes — par compte et par origine — et un frein qui cesse de mordre ne
       # fait aucun bruit.
