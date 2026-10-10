@@ -9,6 +9,8 @@ use Pierroons\SelfRecover\Device\Device as Protocole;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Titulaire;
 
+require_once __DIR__ . '/i18n.php';
+
 /**
  * Facteur de possession « cet appareil » — façade du lab sur la bibliothèque.
  *
@@ -35,6 +37,7 @@ final class Device
             // Le sel du lab, celui que la récupération emploie : l'étiquette du
             // compteur d'enrôlement est un HMAC sous ce sel.
             Auth::siteSalt(),
+            langueSelfRecover(),
             // Les freins de la connexion, lus chez `Auth` : les deux chemins
             // comptent dans la même table, un réglage doit valoir pour les deux.
             fenetreEchecs: Auth::LOGIN_WINDOW,

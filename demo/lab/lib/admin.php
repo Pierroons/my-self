@@ -13,6 +13,7 @@ declare(strict_types=1);
 namespace Pierroons\MySelfLab;
 
 use PDO;
+use Pierroons\SelfRecover\Etiquette;
 
 require_once __DIR__ . '/dataguard.php';
 require_once __DIR__ . '/profile.php';
@@ -48,23 +49,22 @@ final class Admin
             // identifie, et une route publique ne peut pas la produire.
             //
             // ⚠️ Le préfixe couvre DEUX familles, et n'en viser qu'une a été le
-            // défaut : le frein d'ouverture écrit `l3:ouvrir:<empreinte>`, mais le
-            // dépôt de faisceau écrit `l3:<nom de compte>` (`Escalade.php:381`).
-            // Un filtre sur `l3:ouvrir:%` laissait donc chaque dépôt légitime
-            // compter pour une attaque repoussée. Relevé par la conv Recover, qui
-            // passe la seconde forme sous étiquette de son côté — `l3:%` couvre
-            // les deux, avant comme après.
+            // défaut : le frein d'ouverture écrit `l3:ouvrir:<empreinte>`, le dépôt
+            // de faisceau `l3:depot:<empreinte>` (`Escalade::etiquetteDepot()`). Un filtre
+            // sur `l3:ouvrir:%` laissait chaque dépôt légitime compter pour une
+            // attaque repoussée ; `l3:%` couvre les deux.
             //
-            // 🔑 Les échecs du niveau 2, eux, RESTENT comptés — ceux sous étiquette
-            // comme ceux qui n'en portent aucune. Un mot mémorisé refusé est un
-            // échec d'authentification, et le code inconnu est le seul chemin
-            // qu'aucun frein par compte ne couvre : l'écarter éteindrait l'alarme
-            // là où elle sert le plus.
+            // 🔑 Les échecs du niveau 2, eux, RESTENT comptés — un mot mémorisé
+            // refusé est un échec d'authentification, et le code introuvable est le
+            // chemin le plus facile à faire monter depuis l'extérieur : l'écarter
+            // éteindrait l'alarme là où elle sert le plus.
             //
             // ⚠️ D'où le `username IS NULL OR` : en SQL, `username != '…'` ne rend
             // pas « vrai » sur une ligne sans étiquette, elle rend « inconnu ».
             // Sans ce garde, la comparaison écarte ce qu'elle ne prétend pas
-            // écarter, et l'alarme s'éteint en silence. Mesuré.
+            // écarter, et l'alarme s'éteint en silence. Mesuré. Ces lignes nues
+            // sont celles d'avant SelfRecover 0.12.0 : la bibliothèque étiquette
+            // désormais le code introuvable, mais une base en service les garde.
             'echecs_login_24h'   => $q("SELECT COUNT(*) FROM login_attempts WHERE success = 0 AND (username IS NULL OR username != '__register__') AND NOT (username LIKE 'l3:%' AND ip IS NULL) AND attempted_at > " . $h24),
         ];
     }
@@ -87,17 +87,30 @@ final class Admin
     /** Derniers échecs de login (signal bruteforce). IP en clair = log admin. */
     public static function failedLogins(PDO $pdo, int $limit = 20): array
     {
+        // Un code de récupération introuvable n'est rattaché à AUCUN compte. Le
+        // libellé est posé à l'affichage, jamais en base : stocké, il serait un
+        // nom qu'un compte peut porter.
+        //
+        // 🔑 **DEUX formes, et une base en service porte les deux.** Jusqu'à
+        // SelfRecover 0.12.0 la bibliothèque laissait l'étiquette nulle ; depuis,
+        // elle écrit `Etiquette::PREFIXE_L2_INCONNU`, sans quoi le frein par
+        // origine ne voit pas ces lignes — nulles, elles échappent à son filtre
+        // de préfixes. Ne traduire qu'une des deux montre l'étiquette interne en
+        // clair à l'arbitre, là où cette requête promet une phrase.
+        //
+        // ⚠️ Le préfixe se demande à la bibliothèque. Recopié ici, il divergerait
+        // au premier changement, et c'est l'affichage qui le dirait — après coup.
         $stmt = $pdo->prepare(
-            // Une tentative sans étiquette est un code de récupération introuvable.
-            // Le libellé est posé à l'affichage, jamais en base : stocké, il serait
-            // un nom qu'un compte peut porter.
-            "SELECT COALESCE(username, '(code de récupération inconnu)') AS username, ip, attempted_at
+            "SELECT CASE WHEN username IS NULL OR username = ?
+                         THEN '(code de récupération inconnu)'
+                         ELSE username
+                    END AS username, ip, attempted_at
                FROM login_attempts
               WHERE success = 0 AND (username IS NULL OR username != '__register__')
                 AND NOT (username LIKE 'l3:%' AND ip IS NULL)
               ORDER BY attempted_at DESC LIMIT ?"
         );
-        $stmt->execute([$limit]);
+        $stmt->execute([Etiquette::PREFIXE_L2_INCONNU, $limit]);
         return $stmt->fetchAll();
     }
 

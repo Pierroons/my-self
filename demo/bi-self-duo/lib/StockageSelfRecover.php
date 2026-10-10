@@ -60,7 +60,7 @@ final class StockageSelfRecover implements StorageInterface, SelParCodeInterface
      * donc : les appelants d'ici passent `null` comme origine, et la
      * bibliothèque ne consulte alors jamais ce compteur.
      */
-    public function compterEchecsIp(string $ip, int $depuis): int
+    public function compterEchecsIp(string $ip, int $depuis, array $prefixes): int
     {
         throw new RuntimeException(
             "Cette démo ne trace pas l'IP (login_attempts n'a pas cette colonne) : "
@@ -322,7 +322,7 @@ final class StockageSelfRecover implements StorageInterface, SelParCodeInterface
         string $empreinteSesame,
         int $quand,
         int $expireLe,
-    ): void {
+    ): bool {
         $this->pasDeNiveau3('ouvrirLitige');
     }
 
@@ -351,7 +351,7 @@ final class StockageSelfRecover implements StorageInterface, SelParCodeInterface
         $this->pasDeNiveau3('compterRefusRecents');
     }
 
-    public function poserGel(int $compteId, int $jusqua, int $quand): void
+    public function poserGel(int $compteId, int $jusqua, int $quand, string $par): void
     {
         $this->pasDeNiveau3('poserGel');
     }
@@ -386,6 +386,20 @@ final class StockageSelfRecover implements StorageInterface, SelParCodeInterface
         $this->pasDeNiveau3('purgerLitigesExpires');
     }
 
+    public function compterLitigesExpires(int $avant): int
+    {
+        $this->pasDeNiveau3('compterLitigesExpires');
+    }
+
+    public function purgerEchecs(int $avant, array $prefixes): int
+    {
+        $this->pasDeNiveau3('purgerEchecs');
+    }
+
+    public function compterEchecsPurgeables(int $avant, array $prefixes): int
+    {
+        $this->pasDeNiveau3('compterEchecsPurgeables');
+    }
     public function faitsDuCompte(int $compteId): ?array
     {
         $this->pasDeNiveau3('faitsDuCompte');

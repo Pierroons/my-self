@@ -32,6 +32,7 @@ require_once __DIR__ . '/../lib/recover_l3.php';
 use Pierroons\MySelfLab\StockageSelfRecover;
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device;
+use Pierroons\SelfRecover\Langue;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Titulaire;
 use Pierroons\SelfRecover\Recovery\Recovery;
@@ -60,8 +61,8 @@ $pdo->prepare(
 $compteId = (int) $pdo->lastInsertId();
 
 $stockage = new StockageSelfRecover($pdo);
-$device   = new Device($stockage, ProfilDeploiement::CLEARWEB, 'sel-du-lab-pour-la-sonde', delaiRefusUs: 0);
-$recovery = new Recovery($stockage, 'sel-du-lab-pour-la-sonde', ProfilDeploiement::CLEARWEB, delaiRefusUs: 0);
+$device   = new Device($stockage, ProfilDeploiement::CLEARWEB, 'sel-du-lab-pour-la-sonde', Langue::FR, delaiRefusUs: 0);
+$recovery = new Recovery($stockage, 'sel-du-lab-pour-la-sonde', ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0);
 
 echo "\n→ Niveau 1 sur le schéma réel\n";
 $r = $recovery->parPassphrase('alice', $PHR, '192.0.2.1', $now);
@@ -87,7 +88,7 @@ $FAUX  = str_repeat('c3', 32);
 // la configuration où il est le seul rempart, et la seule où un vert prouve que
 // ce n'est pas le frein par adresse qui a refusé à sa place.
 $recSansIp = new Recovery($stockage, 'sel-du-lab-pour-la-sonde',
-    ProfilDeploiement::TOR_ONION, delaiRefusUs: 0);
+    ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0);
 $neufs = $recSansIp->emettreCodes($compteId, 10, $now);
 // La colonne accepte l'étiquette absente : la base du lab porte la contrainte
 // relâchée, et c'est ici qu'on le voit, pas dans le schéma lu.
@@ -103,7 +104,19 @@ verifier('🔑 les cinq échecs sont sous un HMAC, aucun sous le nom du compte',
     $compter("username = 'alice'") === $nomAvant
     && $compter("username = '" . $recSansIp->etiquetteEchecsL2('alice') . "'") === 5);
 $recSansIp->parCode('11111-11111', $MOT, null, $now + 901);
-verifier('🔑 un code introuvable s\'écrit sans étiquette, que la colonne accepte',
+// 🔑 Deux propriétés distinctes, mesurées séparément : le comportement du code
+// ici, la nullabilité de la colonne juste après. Un échec non rattaché porte une
+// étiquette fixe — sous `NULL`, aucun filtre de préfixe ne le compte, donc le
+// frein par origine ne voit pas ce chemin et la purge ne l'efface jamais.
+verifier('🔑 un code introuvable s\'écrit sous une étiquette qui ne désigne aucun compte',
+    $compter("username = '" . \Pierroons\SelfRecover\Etiquette::PREFIXE_L2_INCONNU . "'") === 1
+    && $compter("username = '" . $recSansIp->etiquetteEchecsL2('alice') . "'") === 5);
+// La colonne reste nullable, et la bibliothèque ne le prouve pas : un
+// intégrateur peut y écrire NULL, le schéma doit l'accepter. Éprouvé pour
+// lui-même, sinon la garantie disparaît avec le comportement qui la porte.
+$pdo->prepare('INSERT INTO login_attempts (username, success, ip, attempted_at) VALUES (NULL, 0, NULL, ?)')
+    ->execute([$now + 902]);
+verifier('🔑 et la colonne accepte toujours l\'étiquette absente',
     $compter('username IS NULL') === 1);
 // 🔑 La table est partagée avec la page de connexion du lab, qui écrit le nom
 // soumis tel quel (`Auth::login`). C'est ce qui rend une étiquette en clair
@@ -278,7 +291,7 @@ $pdo3->prepare(
 $stock3 = new StockageSelfRecover($pdo3);
 $esc3   = new \Pierroons\SelfRecover\Recovery\Escalade(
     $stock3,
-    new Recovery($stock3, 'sel-du-lab-pour-la-sonde', ProfilDeploiement::TOR_ONION, delaiRefusUs: 0),
+    new Recovery($stock3, 'sel-du-lab-pour-la-sonde', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
     delaiRefusUs: 0,
 );
 
@@ -330,27 +343,59 @@ $apres3 = $pdo3->query('SELECT pw_hash, pass_hash, recovery_hash FROM accounts W
 verifier('la ligne du compte existe toujours après trois refus',
     (int) $pdo3->query('SELECT COUNT(*) FROM accounts WHERE id = 1')->fetchColumn() === 1);
 verifier('ses trois empreintes sont inchangées', $avant3 === $apres3);
-// ⭐ Le défaut que la 0.11.1 ferme, mesuré sur le schéma réel : ces trois refus
-// ont été déposés sur le compte VISÉ, par un demandeur qui n'a fourni qu'un nom.
-// S'ils gelaient, un tiers fermerait d'ici la dernière porte d'alice.
-verifier('⭐ aucun gel n\'est posé par les refus eux-mêmes',
-    (int) $pdo3->query('SELECT COUNT(*) FROM l3_gel WHERE account_id = 1')->fetchColumn() === 0);
 verifier('banned_until n\'a PAS été posé — c\'est la procédure qui gèle, pas le compte',
     (int) ($pdo3->query('SELECT COALESCE(banned_until, 0) FROM accounts WHERE id = 1')->fetchColumn()) === 0);
 
-// Le gel existe toujours : il est devenu un geste. ⚠️ `adminFreeze()` prend
-// l'heure réelle, comme `adminUnfreeze()` plus bas — l'adaptateur du lab ne
-// transmet pas d'horloge simulée. Le reste du banc vit en 2023, donc ce gel
-// couvre largement les dates qui suivent ; ce qui est éprouvé ici est la pose,
-// pas l'échéance (celle-ci l'est dans `sanity_l3_abandon.php`).
-$gelPose = \Pierroons\MySelfLab\RecoverL3::adminFreeze($pdo3, 'alice', 'arbitre-nommé');
-verifier('⭐ le geste de l\'arbitre, lui, pose le gel — et dans l3_gel, pas ailleurs',
-    ($gelPose['ok'] ?? false) === true
-    && (int) $pdo3->query('SELECT COUNT(*) FROM l3_gel WHERE account_id = 1')->fetchColumn() === 1,
-    (string) ($gelPose['error'] ?? ''));
+// 🔑 Ces trois refus sont déposés sur le compte VISÉ par un demandeur qui n'a
+// fourni qu'un nom : s'ils gelaient, un tiers fermerait d'ici la dernière porte
+// d'alice.
+verifier('⭐ trois refus ne posent AUCUN gel — un tiers ne ferme plus la porte du titulaire',
+    (int) $pdo3->query('SELECT COUNT(*) FROM l3_gel WHERE account_id = 1')->fetchColumn() === 0,
+    'lignes de gel : ' . $pdo3->query('SELECT COUNT(*) FROM l3_gel WHERE account_id = 1')->fetchColumn());
 
-$gele3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('encore'), maintenant: $now3 + 400 + 2 * 86400);
-verifier('et l\'ouverture est bien refusée pendant le gel, sous le refus unique', ($gele3['error'] ?? '') === 'ouverture_refusee');
+// Ce qui reste du compteur, c'est un signal — et il doit traverser la façade du
+// lab, sans quoi l'arbitre ne l'apprend jamais.
+$pdo3->exec("UPDATE disputes SET status = 'closed' WHERE status IN ('open','awaiting_admin')");
+$sigS = bin2hex(random_bytes(32));
+$ouvS = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame($sigS),
+    maintenant: $now3 + 350 + 3 * 86400);
+// ⚠️ L'horloge simulée se passe JUSQU'AU BOUT : sans elle la façade retombait
+// sur `time()`, les trois refus d'avant tombaient hors de la fenêtre de trente
+// jours, et `refus_dans_la_fenetre` rendait 1 là où le seuil attend 3.
+$trS = \Pierroons\MySelfLab\RecoverL3::adminDecide($pdo3, (string) $ouvS['numero'], 'refuse', 'arbitre',
+    $now3 + 400 + 3 * 86400);
+verifier('⭐ la façade du lab relaie `gel_suggere` au seuil — sans lui, la console reste muette',
+    ($trS['gel_suggere'] ?? null) === true, var_export($trS['gel_suggere'] ?? null, true));
+// La façade ne relaie pas `gele` : la clé vaut toujours `false` côté
+// bibliothèque, donc une console qui s'y fierait n'afficherait jamais rien, sans
+// une erreur pour le dire. `gel_suggere` la remplace.
+verifier('⭐ et `gele` n\'est pas relayée : une console qui s\'y fierait resterait muette sans erreur',
+    !array_key_exists('gele', $trS), 'clés rendues : ' . implode(', ', array_keys($trS)));
+verifier('le compte des refus dans la fenêtre est rendu, pour que l\'arbitre le lise',
+    is_int($trS['refus_dans_la_fenetre'] ?? null) && $trS['refus_dans_la_fenetre'] >= 3,
+    var_export($trS['refus_dans_la_fenetre'] ?? null, true));
+
+// Contre-témoin : rien ne s'est fermé tout seul, la porte répond encore.
+$libre3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('toujours ouverte'),
+    maintenant: $now3 + 400 + 4 * 86400);
+verifier('⭐ contre-témoin : après quatre refus, l\'ouverture du titulaire repasse',
+    ($libre3['ok'] ?? false) === true, (string) ($libre3['error'] ?? ''));
+
+// Et c'est l'arbitre qui ferme, nommément — le seul chemin qui reste.
+$pdo3->exec("UPDATE disputes SET status = 'closed' WHERE status IN ('open','awaiting_admin')");
+$gelA = \Pierroons\MySelfLab\RecoverL3::adminFreeze($pdo3, 'alice', 'arbitre-nommé',
+    $now3 + 450 + 4 * 86400);
+verifier('⭐ `adminFreeze` pose le gel — le lab a enfin le geste que la bibliothèque offrait',
+    ($gelA['ok'] ?? false) === true, (string) ($gelA['error'] ?? ''));
+$poseA = $pdo3->query('SELECT gele_jusqu_a, gele_par FROM l3_gel WHERE account_id = 1')
+              ->fetch(PDO::FETCH_ASSOC);
+verifier('⭐ et la ligne dit QUI a gelé — pas « admin » pour tout le monde',
+    ($poseA['gele_par'] ?? null) === 'arbitre-nommé', var_export($poseA['gele_par'] ?? null, true));
+
+$gele3 = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empreinteSesame('encore'),
+    maintenant: $now3 + 500 + 4 * 86400);
+verifier('et l\'ouverture est alors refusée, sous le refus unique', ($gele3['error'] ?? '') === 'ouverture_refusee',
+    (string) ($gele3['error'] ?? ''));
 
 echo "\n→ ⭐ La date d'émission de la passphrase, sur le schéma réel\n";
 
@@ -369,7 +414,7 @@ $pdoP->prepare('INSERT INTO accounts (id, username, pw_hash, pass_hash, recovery
                 str_repeat('b', 32), $T0 - $QUATRE_ANS, $T0 - $QUATRE_ANS]);
 
 $stP  = new StockageSelfRecover($pdoP);
-$recP = new Recovery($stP, 'sel-de-la-sonde', ProfilDeploiement::CLEARWEB, delaiRefusUs: 0);
+$recP = new Recovery($stP, 'sel-de-la-sonde', ProfilDeploiement::CLEARWEB, Langue::FR, delaiRefusUs: 0);
 
 $lu = $stP->trouverComptePourPassphrase('alice');
 verifier('la date d\'émission remonte de la base', ($lu['emise_le'] ?? null) === $T0 - $QUATRE_ANS);
@@ -427,6 +472,26 @@ $rouvre = $esc3->ouvrir('alice', \Pierroons\SelfRecover\Recovery\Escalade::empre
 verifier('⭐ la porte est rendue : l\'ouverture repasse', ($rouvre['ok'] ?? false) === true,
     (string) ($rouvre['error'] ?? ''));
 
+echo "\n→ ⭐ Un second gel n'efface pas la décision de celui qui a dégelé\n";
+
+// 🔑 Le scénario que le bouton de gel rend atteignable, et qu'aucun banc ne
+// jouait : l'arbitre A gèle, l'arbitre B conteste et dégèle, A regèle. Si le
+// re-gel remet `degele_par` à NULL, la décision de B disparaît de la base — sans
+// trace, sans erreur, et c'est l'arbitre suivant qui en est privé.
+$pdo3->exec("UPDATE disputes SET status = 'closed' WHERE status IN ('open','awaiting_admin')");
+$regel = \Pierroons\MySelfLab\RecoverL3::adminFreeze($pdo3, 'alice', 'arbitre-A',
+    $now3 + 600 + 4 * 86400);
+verifier('le second gel est bien posé, par un autre arbitre',
+    ($regel['ok'] ?? false) === true, (string) ($regel['error'] ?? ''));
+
+$trace = $pdo3->query('SELECT gele_par, degele_par FROM l3_gel WHERE account_id = 1')
+              ->fetch(PDO::FETCH_ASSOC);
+verifier('⭐ il porte SON nom', ($trace['gele_par'] ?? null) === 'arbitre-A',
+    var_export($trace['gele_par'] ?? null, true));
+verifier('⭐⭐ et la décision de celui qui avait dégelé SURVIT au re-gel',
+    ($trace['degele_par'] ?? null) === 'arbitre-nommé',
+    var_export($trace['degele_par'] ?? null, true));
+
 // ⚠️ Un gel ÉCHU ne doit pas se présenter comme un gel : la console afficherait
 // « gelée jusqu\'au <date passée> » et proposerait de lever ce qui n\'existe plus.
 $pdo3->prepare('UPDATE l3_gel SET gele_jusqu_a = ? WHERE account_id = 1')->execute([time() - 3600]);
@@ -443,9 +508,23 @@ echo "\n→ Les gardes des endpoints d'arbitrage\n";
 
 // Un endpoint d'arbitrage sans garde est une console ouverte. Contrôle
 // structurel : la bibliothèque ne connaît pas les rôles, c'est ici que ça tient.
-foreach (['admin_unfreeze.php' => ['require_method', 'require_admin', 'require_csrf'],
-          'admin_dispute_decide.php' => ['require_method', 'require_admin', 'require_csrf']] as $f => $gardes) {
-    $src = (string) file_get_contents(__DIR__ . '/../public/api/' . $f);
+// 🔑 La liste s'ÉNUMÈRE, elle ne se recopie pas. Deux fichiers étaient nommés à
+// la main, et `admin_freeze.php` est né en dehors de ce contrôle : un endpoint
+// d'arbitrage neuf ne doit pas avoir à être inscrit quelque part pour être gardé.
+$endpoints = glob(__DIR__ . '/../public/api/admin_*.php') ?: [];
+$noms      = array_map('basename', $endpoints);
+verifier('les endpoints d\'arbitrage sont énumérés — un glob vide ne prouverait rien',
+    $endpoints !== [] && in_array('admin_unfreeze.php', $noms, true),
+    implode(', ', $noms));
+foreach ($endpoints as $chemin) {
+    $f   = basename($chemin);
+    $src = (string) file_get_contents($chemin);
+    // Qui prend un corps écrit, et porte les trois gardes ; qui n'en prend pas
+    // lit, et `require_admin` suffit. Le critère est un fait du fichier, pas une
+    // déclaration qu'on lui ferait confirmer.
+    $gardes = str_contains($src, 'json_in(')
+        ? ['require_method', 'require_admin', 'require_csrf']
+        : ['require_admin'];
     foreach ($gardes as $g) {
         verifier("{$f} pose {$g}()", str_contains($src, $g . '('));
     }

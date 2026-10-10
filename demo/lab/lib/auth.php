@@ -23,6 +23,8 @@ use Pierroons\SelfRecover\Recovery\Recovery;
 
 use PDO;
 
+require_once __DIR__ . '/i18n.php';
+
 require_once __DIR__ . '/secret_instance.php';
 require_once __DIR__ . '/reponse.php';
 
@@ -179,7 +181,6 @@ final class Auth
                     'message' => 'Sel de dérivation invalide : 32 caractères hexadécimaux attendus.'];
         }
 
-
         $password = self::generatePassword();
         $diceware = Wordlist::generate(Recovery::MOTS_PASSPHRASE, 'en');
         $passphrase = implode(' ', $diceware['words']);
@@ -273,7 +274,7 @@ final class Auth
         // Déjà bloqué (compte OU IP)
         if ($fails >= self::LOGIN_MAX_FAILS || $failsIp >= self::LOGIN_MAX_FAILS_PER_IP) {
             return ['ok' => false, 'status' => 'locked',
-                    'message' => 'Trop de tentatives. Réessaie dans ' . Duree::enClair(self::LOGIN_WINDOW) . '.'];
+                    'message' => 'Trop de tentatives. Réessaie dans ' . Duree::enClair(self::LOGIN_WINDOW, langueSelfRecover()) . '.'];
         }
 
         $stmt = $pdo->prepare('SELECT id, pw_hash FROM accounts WHERE username = ?');
@@ -389,6 +390,7 @@ final class Auth
             // Ce lab est servi sur le web ordinaire et transmet `client_ip()` à
             // chaque appel : le frein par adresse y compte pour de bon.
             ProfilDeploiement::CLEARWEB,
+            langueSelfRecover(),
             fenetreEchecs: self::LOGIN_WINDOW,
             maxEchecsCompte: self::LOGIN_MAX_FAILS,
             maxEchecsIp: self::LOGIN_MAX_FAILS_PER_IP,

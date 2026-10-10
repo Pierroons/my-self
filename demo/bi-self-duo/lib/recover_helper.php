@@ -16,6 +16,7 @@ require_once __DIR__ . '/StockageSelfRecover.php';
 
 use Pierroons\SelfRecover\Crypto\Hashing;
 use Pierroons\SelfRecover\Device\Device as Protocole;
+use Pierroons\SelfRecover\Langue;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 
@@ -153,6 +154,7 @@ final class RecoverHelper {
             new StockageSelfRecover($session->db()),
             self::siteSalt($session),
             ProfilDeploiement::TOR_ONION,
+            Langue::FR,
         );
     }
 

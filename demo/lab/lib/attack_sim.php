@@ -19,6 +19,8 @@ namespace Pierroons\MySelfLab;
 use PDO;
 use Pierroons\SelfRecover\Duree;
 
+require_once __DIR__ . '/i18n.php';
+
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/dm.php';
 require_once __DIR__ . '/profile.php';
@@ -140,7 +142,7 @@ final class AttackSimulator
             'objectif' => "Deviner le mot de passe d'un compte en testant des milliers de combinaisons.",
             'etapes' => [
                 ['action' => "L'attaquant tente " . (Auth::LOGIN_MAX_FAILS + 1) . ' mots de passe différents', 'resultat' => 'chaque échec est compté'],
-                ['action' => 'Au ' . Auth::LOGIN_MAX_FAILS . 'ᵉ échec', 'resultat' => 'le compte est verrouillé ' . Duree::enClair(Auth::LOGIN_WINDOW)],
+                ['action' => 'Au ' . Auth::LOGIN_MAX_FAILS . 'ᵉ échec', 'resultat' => 'le compte est verrouillé ' . Duree::enClair(Auth::LOGIN_WINDOW, langueSelfRecover())],
             ],
             'cote_attaquant' => [
                 'label' => 'Tentatives de l\'attaquant',
@@ -154,12 +156,12 @@ final class AttackSimulator
                 ],
             ],
             'verdict' => 'neutralisé',
-            'defense' => 'Rate-limit applicatif (' . Auth::LOGIN_MAX_FAILS . ' échecs / ' . Duree::enClair(Auth::LOGIN_WINDOW) . ') + Argon2id (' . \Pierroons\SelfRecover\Crypto\Hashing::profilEnClair() . ')',
+            'defense' => 'Rate-limit applicatif (' . Auth::LOGIN_MAX_FAILS . ' échecs / ' . Duree::enClair(Auth::LOGIN_WINDOW, langueSelfRecover()) . ') + Argon2id (' . \Pierroons\SelfRecover\Crypto\Hashing::profilEnClair() . ')',
             'message_cle' => sprintf(
                 tc('Le bruteforce est bloqué après %1$s essais — et le verrou refuse le titulaire avec lui pendant %2$s : '
                  . 'un tiers ferme donc la connexion d\'un compte en %1$s requêtes. La récupération, elle, reste ouverte.'),
                 Auth::LOGIN_MAX_FAILS,
-                Duree::enClair(Auth::LOGIN_WINDOW),
+                Duree::enClair(Auth::LOGIN_WINDOW, langueSelfRecover()),
             ),
         ];
     }

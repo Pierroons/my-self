@@ -174,20 +174,14 @@ v('la récupération de niveau 1 ouvre malgré le verrou', ($rec['ok'] ?? false)
     . 'remettre la limite publiée');
 
 // ── 7. L'autre moitié de la question : une ORIGINE saturée ──────────────────
-// Le cas 6 fait ses échecs depuis des origines distinctes : il éprouve donc le
-// frein par compte, et lui seul. Le frein par origine, lui, compte toutes les
-// lignes en échec d'une adresse sans distinguer la porte qu'elles visaient
-// (`StockageSelfRecover::compterEchecsIp`) — donc des échecs de connexion
-// chargent le compteur que lit la récupération de niveau 1.
-//
-// 🔑 C'est une borne réelle, et elle est PUBLIÉE sur la page red team : la
-// récupération n'est hors d'atteinte que du compteur par compte. Ce cas la
-// fixe, pour qu'un « le bon secret ouvre toujours » ne s'écrive nulle part sans
-// cette réserve.
-echo "\n7. Une origine saturée atteint aussi la récupération\n";
-// ⚠️ Deux comptes NEUFS, et un par assertion : une récupération réussie
-// remplace la passphrase, donc réutiliser celle du cas 6 ferait passer la
-// première assertion pour la mauvaise raison — un secret périmé, pas l'origine.
+// ⚠️ Ce cas ne vaut que par SES DEUX MOITIÉS. Des échecs de connexion ne doivent
+// plus fermer la récupération — et des échecs de récupération doivent la fermer
+// encore. La première seule passerait aussi bien si le frein par origine avait
+// été supprimé au lieu d'être ciblé, ce qui rouvrirait l'énumération qu'il borne.
+echo "\n7. Une origine saturée d'échecs de CONNEXION laisse la récupération ouverte\n";
+// ⚠️ Un compte NEUF par assertion : une récupération réussie remplace la
+// passphrase, donc réutiliser celle du cas 6 ferait passer une assertion pour
+// la mauvaise raison — un secret périmé, pas l'origine.
 $ciblA = compte($pdo, 'cible_origine_a');
 $ciblB = compte($pdo, 'cible_origine_b');
 
@@ -197,16 +191,45 @@ for ($i = 0; $i < Auth::LOGIN_MAX_FAILS_PER_IP; $i++) {
     Auth::login($pdo, 'passant_' . $i, 'faux', '198.51.100.42');
 }
 $recIp = Auth::recoverByPassphrase($pdo, 'cible_origine_a', $ciblA['passphrase'], '198.51.100.42');
-v('depuis l\'origine saturée, la récupération est freinée elle aussi',
-    ($recIp['ok'] ?? false) === false,
-    'elle a ouvert : la borne publiée sur la page red team est devenue fausse, '
-    . 'et il faut y retirer la réserve sur le frein par origine');
+v('⭐ depuis l\'origine saturée de connexions, la bonne passphrase ouvre quand même',
+    ($recIp['ok'] ?? false) === true,
+    'motif : ' . (string) ($recIp['error'] ?? '—') . ' — les deux portes partagent de nouveau '
+    . 'leur compteur par origine, et douze requêtes referment la récupération d\'un inconnu');
 
-// Contre-témoin : c'est bien l'origine qui ferme, pas le compte ni le secret.
+// Contre-témoin : c'est bien le secret et le compte qui ouvrent, pas une origine
+// devenue sans effet.
 $recAilleurs = Auth::recoverByPassphrase($pdo, 'cible_origine_b', $ciblB['passphrase'], '203.0.113.88');
-v('⭐ et depuis une origine propre, le même secret ouvre',
+v('et depuis une origine propre, le même secret ouvre aussi',
     ($recAilleurs['ok'] ?? false) === true,
     'motif : ' . (string) ($recAilleurs['error'] ?? '—'));
+
+// ── 7 bis. Le frein par origine n'a pas disparu, il a été CIBLÉ ─────────────
+// Les échecs sont répartis sur des comptes distincts, quatre par compte, sous le
+// seuil par compte (5) : ce qui mord ici ne peut donc être que l'origine.
+echo "\n7 bis. La même origine, saturée d'échecs de RÉCUPÉRATION, freine bien\n";
+$porteurs = [];
+foreach (['porteur_a', 'porteur_b', 'porteur_c'] as $nom) {
+    $porteurs[$nom] = compte($pdo, $nom);
+}
+$ciblC = compte($pdo, 'cible_origine_c');
+
+ardoise($pdo);
+foreach (array_keys($porteurs) as $nom) {
+    for ($i = 0; $i < 4; $i++) {
+        Auth::recoverByPassphrase($pdo, $nom, 'cheval agrafe batterie faux', '198.51.100.43');
+    }
+}
+$recSature = Auth::recoverByPassphrase($pdo, 'cible_origine_c', $ciblC['passphrase'], '198.51.100.43');
+v('⭐ douze échecs de récupération ferment bien cette origine — le frein est ciblé, pas retiré',
+    ($recSature['ok'] ?? false) === false,
+    'elle a ouvert : `compterEchecsIp()` ne compte plus RIEN, donc l\'énumération '
+    . 'que ce frein borne est rouverte — vérifier la liste de préfixes passée par la bibliothèque');
+
+// Contre-témoin : la même passphrase, depuis une origine propre, ouvre.
+$recPropre = Auth::recoverByPassphrase($pdo, 'cible_origine_c', $ciblC['passphrase'], '203.0.113.99');
+v('et le même secret ouvre depuis une origine propre — c\'est l\'origine qui fermait',
+    ($recPropre['ok'] ?? false) === true,
+    'motif : ' . (string) ($recPropre['error'] ?? '—'));
 
 echo "\n" . ($echecs === 0
     ? "OK — $reussites/$reussites contrôles conformes.\n"

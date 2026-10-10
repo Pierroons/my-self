@@ -35,6 +35,7 @@ use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 
 require_once __DIR__ . '/StockageSelfRecover.php';
+require_once __DIR__ . '/i18n.php';
 require_once __DIR__ . '/reponse.php';
 
 final class RecoverL3
@@ -85,6 +86,7 @@ final class RecoverL3
                 $stockage,
                 Auth::siteSalt(),
                 ProfilDeploiement::CLEARWEB,
+                langueSelfRecover(),
                 fenetreEchecs: Auth::LOGIN_WINDOW,
                 maxEchecsCompte: Auth::LOGIN_MAX_FAILS,
                 maxEchecsIp: Auth::LOGIN_MAX_FAILS_PER_IP,
@@ -101,7 +103,7 @@ final class RecoverL3
     {
         $r = self::escalade($pdo)->reglesDuGel();
 
-        return ['seuil' => $r['seuil'], 'fenetre' => Duree::enClair($r['fenetre']), 'duree' => Duree::enClair($r['duree'])];
+        return ['seuil' => $r['seuil'], 'fenetre' => Duree::enClair($r['fenetre'], langueSelfRecover()), 'duree' => Duree::enClair($r['duree'], langueSelfRecover())];
     }
 
     /** Ajoute le code HTTP au refus rendu par la bibliothèque. */
@@ -267,12 +269,14 @@ final class RecoverL3
      * qui s'y fie n'affiche jamais rien, sans erreur pour le dire. Elle n'est
      * pas relayée ici, et `gel_suggere` la remplace.
      */
-    public static function adminDecide(PDO $pdo, string $number, string $decision, string $par = 'admin'): array
+    public static function adminDecide(PDO $pdo, string $number, string $decision, string $par = 'admin',
+                                      ?int $maintenant = null): array
     {
         $r = self::escalade($pdo)->trancher(
             $number,
             $decision === 'grant' ? 'accepte' : ($decision === 'refuse' ? 'refuse' : $decision),
             $par,
+            $maintenant,
         );
         if (($r['ok'] ?? false) !== true) {
             return self::http($r);
@@ -291,7 +295,7 @@ final class RecoverL3
      * refus compte sur le compte VISÉ. Un tiers qui ouvre assez de dossiers
      * fait donc monter un compteur qui n'est pas le sien, et l'arbitre voit
      * s'afficher une suggestion de gel contre une victime. Le gel ne s'arme
-     * plus tout seul depuis la 0.11.1, mais le signal, lui, est toujours
+     * plus tout seul depuis la 0.12.0, mais le signal, lui, est toujours
      * remplissable par un tiers : c'est pourquoi la sortie reste l'abandon.
      *
      * L'abandon libère la place sans toucher à ce compteur. Il ne rend aucun
@@ -317,9 +321,10 @@ final class RecoverL3
     }
 
     /** Lève un gel de procédure. Réservé à un arbitre, garde posée par l'endpoint. */
-    public static function adminUnfreeze(PDO $pdo, string $username, string $par = 'admin'): array
+    public static function adminUnfreeze(PDO $pdo, string $username, string $par = 'admin',
+                                        ?int $maintenant = null): array
     {
-        return self::http(self::escalade($pdo)->degeler(strtolower(trim($username)), $par));
+        return self::http(self::escalade($pdo)->degeler(strtolower(trim($username)), $par, $maintenant));
     }
 
     /**
@@ -339,24 +344,12 @@ final class RecoverL3
      *
      * Réservé à un arbitre, garde posée par l'endpoint.
      */
-    public static function adminFreeze(PDO $pdo, string $username, string $par = 'admin'): array
+    public static function adminFreeze(PDO $pdo, string $username, string $par = 'admin',
+                                      ?int $maintenant = null): array
     {
-        $nom = strtolower(trim($username));
-        $r   = self::escalade($pdo)->geler($nom, $par);
-        if (($r['ok'] ?? false) !== true) {
-            return self::http($r);
-        }
-
-        // ⚠️ Même écart que pour l'abandon : `poserGel($compteId, $jusqua, $quand)`
-        // ne reçoit pas l'auteur, là où `leverGel()` le reçoit et l'écrit. Sans
-        // cette ligne, la seule trace d'une porte fermée serait une date — et
-        // l'UPSERT du stockage remet `degele_par` à NULL, donc un re-gel
-        // effacerait jusqu'au souvenir que le gel avait été contesté.
-        $pdo->prepare(
-            'UPDATE l3_gel SET gele_par = ? WHERE account_id = (SELECT id FROM accounts WHERE username = ?)'
-        )->execute([$par, $nom]);
-
-        return $r;
+        // `poserGel()` prend l'auteur du gel et l'adaptateur l'écrit dans
+        // `gele_par` au moment de la pose : rien à ranger après coup.
+        return self::http(self::escalade($pdo)->geler(strtolower(trim($username)), $par, $maintenant));
     }
 
     /**

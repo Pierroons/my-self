@@ -12,9 +12,32 @@
 
 declare(strict_types=1);
 
+// 🔑 La SOURCE de cette liste est l'enum `Langue` de SelfRecover, pas ce
+// fichier : une langue ajoutée ici sans l'être là sort du repli de
+// `langueSelfRecover()` en français, et `sanity_tc_deep.php` refuse l'écart.
 const LANGUES = ['fr', 'en'];
 const LANGUE_DEFAUT = 'fr';
 const LANGUE_COOKIE = 'lab_lang';
+
+/**
+ * La langue de la requête, telle que SelfRecover l'attend.
+ *
+ * 🔑 **Le seul pont entre l'i18n du lab et la bibliothèque.** SelfRecover ne
+ * devine jamais une langue : elle la reçoit à la construction, et c'est au
+ * déploiement de dire laquelle. Ce lab-ci est bilingue par visiteur, donc son
+ * choix de déploiement est « celle que le visiteur a demandée » — sans quoi il
+ * afficherait ses pages en anglais et ses messages de récupération en français,
+ * dans la même réponse.
+ */
+function langueSelfRecover(): \Pierroons\SelfRecover\Langue
+{
+    // ⚠️ `tryFrom`, jamais `from` : une langue présente dans `LANGUES` et absente
+    // de l'enum fermerait sinon toute page qui construit une `Recovery` — dont
+    // celle de récupération, devant quelqu'un qui n'a plus aucun secret. Le
+    // repli rend du français ; l'écart lui-même est attrapé par
+    // `sanity_tc_deep.php`, qui refuse que les deux listes divergent.
+    return \Pierroons\SelfRecover\Langue::tryFrom(lang()) ?? \Pierroons\SelfRecover\Langue::FR;
+}
 
 /**
  * La langue de la requête, résolue une fois puis mémorisée.
