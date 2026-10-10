@@ -26,6 +26,20 @@ require_once __DIR__ . '/dm.php';
 require_once __DIR__ . '/profile.php';
 require_once __DIR__ . '/moderate.php';
 require_once __DIR__ . '/security.php';
+// 🔑 `derive_cli.php` s'interdit aux pages, et sa raison vaut : dans le flux
+// applicatif la dérivation appartient au navigateur, et la refaire côté serveur
+// ferait transiter le mot mémorisé en clair. Ce simulateur n'est pas ce flux —
+// il tourne en `sqlite::memory:`, sur des mots fictifs écrits dans ce fichier,
+// et aucun secret d'utilisateur ne l'atteint. Le charger est le moindre mal :
+// deux de ses quatre scénarios appellent ces fonctions, et les réécrire ici
+// dupliquerait la formule de `sr-derive.js` — exactement la divergence que
+// `scripts/check-liens-bibliotheque.sh` surveille. Une seule source, donc.
+//
+// ⚠️ Sans ce require, `bruteforce` et `csrf` rendaient une erreur fatale depuis
+// les boutons de `/attacks.php`. Personne ne l'a vu parce qu'aucun banc
+// n'appelait ces deux scénarios : `sanity_moderate.php` nommait `packvoting`.
+// Un banc parcourt désormais `SCENARIOS` au lieu d'en citer un.
+require_once __DIR__ . '/derive_cli.php';
 
 final class AttackSimulator
 {
@@ -121,7 +135,14 @@ final class AttackSimulator
     private static function runBruteforce(): array
     {
         $pdo = self::sandbox();
-        $r = Auth::register($pdo, 'victime', 'motrecup2024', sr_sel_aleatoire());
+        // ⚠️ `register` attend la clé DÉRIVÉE en troisième argument, pas le mot :
+        // `Device::estCleDerivee` exige 64 hexadécimaux. Le mot y était passé tel
+        // quel, si bien que l'inscription était refusée sans qu'aucun Argon2id ne
+        // soit calculé — et le panneau annonçait quand même « neutralisé » en
+        // lisant une clé absente du tableau. Le scénario démontrait une défense
+        // qu'il n'avait pas exercée.
+        $sel = sr_sel_aleatoire();
+        $r = Auth::register($pdo, 'victime', sr_derive_like_browser('motrecup2024', $sel), $sel);
         $vraiPassword = $r['credentials']['password'];
 
         $seq = [];
@@ -133,7 +154,8 @@ final class AttackSimulator
         // 🟢 Légitime : la vraie victime avec son bon password — mais elle est aussi bloquée
         // par le rate-limit (5 échecs atteints). On démontre sur une IP/fenêtre propre :
         $pdo2 = self::sandbox();
-        $r2 = Auth::register($pdo2, 'victime', 'motrecup2024', sr_sel_aleatoire());
+        $sel2 = sr_sel_aleatoire();
+        $r2 = Auth::register($pdo2, 'victime', sr_derive_like_browser('motrecup2024', $sel2), $sel2);
         $okLogin = Auth::login($pdo2, 'victime', $r2['credentials']['password'], '1.2.3.4');
 
         return [
