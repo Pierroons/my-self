@@ -1471,8 +1471,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_tc_deep.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc de tc_deep a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 34/34 ' \
-            || { echo "::error::le banc de tc_deep n'a pas joué ses 34 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 35/35 ' \
+            || { echo "::error::le banc de tc_deep n'a pas joué ses 35 cas"; exit 1; }
 
       # 🔑 Les cinq bancs ci-dessus rendent vert ; rien ne disait qu'ils rougissent.
       # Une garde qu'on n'a jamais fait échouer ne se distingue pas d'une garde
@@ -1698,8 +1698,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 45/45 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 45 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 51/51 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 51 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
