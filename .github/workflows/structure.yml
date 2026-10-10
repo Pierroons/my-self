@@ -325,7 +325,14 @@ jobs:
             exit 1
           fi
           echo "$sortie"
-          echo "$sortie" | grep -q 'Recovery reçoit 2 argument(s), 3 requis' \
+          # ⚠️ **Le motif ne porte PAS le compte d'arguments.** Il l'a porté, et il a
+          # vieilli au premier paramètre ajouté au constructeur : le contrôle
+          # rougissait bien, mais sur « ne reçoit pas $profil, $langue » là où ce
+          # canari attendait « reçoit 2 argument(s), 3 requis ». Le job tombait donc
+          # sur un contrôle qui faisait exactement son travail. Ce qu'on établit
+          # ici, c'est que le rouge porte sur CE fichier et CETTE classe — pas
+          # combien d'arguments il manque, nombre qui suit le constructeur.
+          echo "$sortie" | grep -qE 'recover-l1\.php:[0-9]+ — Recovery ne reçoit pas' \
             || { echo "::error::rouge, mais pas sur le cas attendu"; exit 1; }
 
       - name: Garde-fou — un secret rendu s'accompagne de sa consigne
@@ -345,11 +352,17 @@ jobs:
           cp -r bi-self/selfrecover/src "$PLANTE/src"
           PLANTE="$PLANTE" python3 - <<'PY'
           import pathlib, os
-          p = pathlib.Path(os.environ['PLANTE']) / 'src/Recovery/Recovery.php'
+          # ⚠️ **La consigne a quitté `Recovery.php` pour le catalogue.** Le banc
+          # l'y suit depuis la 0.12.0 et l'exige dans CHAQUE langue ; planter le
+          # source laissait donc la plantation sans objet, et ce canari l'a dit
+          # plutôt que de rendre vert. Une seule langue vidée suffit à faire
+          # rougir — c'est ce qui éprouve l'exigence par langue.
+          p = pathlib.Path(os.environ['PLANTE']) / 'src/Messages.php'
           t = p.read_text(encoding='utf-8')
-          m = 'note-les, les anciens ne valent plus rien et ceux-ci ne seront pas réaffichés. '
-          assert t.count(m) == 2, 'la plantation n\'a pas pris — ce canari ne prouve rien'
-          p.write_text(t.replace(m, ''), encoding='utf-8')
+          m = ("            'fr' => 'Accès rendu. Ton mot de passe et ta passphrase ont été remplacés : note-les, '\n"
+               "                  . 'les anciens ne valent plus rien et ceux-ci ne seront pas réaffichés. '\n")
+          assert t.count(m) == 1, 'la plantation n\'a pas pris — ce canari ne prouve rien'
+          p.write_text(t.replace(m, "            'fr' => 'Accès rendu. '\n"), encoding='utf-8')
           PY
           if sortie=$(SR_SRC="$PLANTE/src" php bi-self/selfrecover/tests/sanity_annonce_secrets.php 2>&1); then
             echo "$sortie"
@@ -656,10 +669,15 @@ jobs:
           avant=$(md5sum "$F" | cut -d" " -f1)
           python3 - <<'PY'
           chemin = 'bi-self/selfrecover/src/Recovery/Recovery.php'
-          motif  = '        if ($etiquette !== null) {'
+          # ⚠️ **On débranche le RETOUR du frein, pas la garde qui l'entoure.**
+          # La garde portait sur l'étiquette ; depuis la 0.12.0 elle porte sur le
+          # dossier trouvé, et la plantée ferait aussi basculer l'étiquette dans
+          # la branche du code introuvable — le banc rougirait alors pour deux
+          # raisons mêlées. Ignorer le résultat du frein ne touche que lui.
+          motif  = '            if ($frein !== null) {'
           s = open(chemin, encoding='utf-8').read()
           assert s.count(motif) == 1, 'motif introuvable — ce canari ne prouve rien'
-          open(chemin, 'w', encoding='utf-8').write(s.replace(motif, '        if (false) { // débranché', 1))
+          open(chemin, 'w', encoding='utf-8').write(s.replace(motif, '            if (false) { // débranché', 1))
           PY
           grep -q 'if (false) { // débranché' "$F" \
             || { cp /tmp/Recovery.intact "$F"; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
@@ -1460,8 +1478,8 @@ jobs:
           # 7. Le geste de l'arbitre rend un succès sans poser de gel : la console
           #    affiche « gelé », la porte reste ouverte, et aucune erreur ne sort.
           canari demo/lab/lib/recover_l3.php \
-            '$r   = self::escalade($pdo)->geler($nom, $par);' \
-            "\$r = ['ok' => true, 'jusqua' => 0]; // canari" \
+            'return self::http(self::escalade($pdo)->geler(strtolower(trim($username)), $par, $maintenant));' \
+            "return self::http(['ok' => true, 'jusqua' => 0]); // canari" \
             demo/lab/tests/sanity_l3_abandon.php \
             "a pas posé de gel"
 
@@ -1475,9 +1493,12 @@ jobs:
 
           # 9. Le gel ne range plus son auteur : une porte fermée sans nom, et un
           #    re-gel effacerait jusqu'à la trace du dégel qui l'avait contesté.
-          canari demo/lab/lib/recover_l3.php \
-            ')->execute([$par, $nom]);' \
-            '); // canari' \
+          # ⚠️ L'écriture a changé de fichier : `poserGel()` reçoit l'auteur et
+          # l'écrit lui-même, donc la garde se plante dans l'adaptateur et non
+          # dans l'endpoint, qui ne range plus rien après coup.
+          canari demo/lab/lib/StockageSelfRecover.php \
+            ')->execute([$compteId, $jusqua, $quand, $par]);' \
+            ")->execute([\$compteId, \$jusqua, \$quand, '']); // canari" \
             demo/lab/tests/sanity_l3_abandon.php \
             "une porte fermée sans nom"
 
