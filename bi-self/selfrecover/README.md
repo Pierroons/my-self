@@ -180,7 +180,7 @@ HMAC is intentionally **fast** client-side because the goal is service binding, 
 > | Role | File | Primitive | Why |
 > |---|---|---|---|
 > | **Prove** knowledge of the word | `client/sr-derive.js` | HMAC-SHA256, fast | the cost is imposed by the server, which stores an Argon2id of the received digest and counts attempts |
-> | **Encrypt** a secret with the word | `client/sr-kdf.js` | Argon2id, 64 MiB | nothing reaches the server: no attempt counter applies, and the per-guess cost is **all** that is left |
+> | **Encrypt** a secret with the word | `client/sr-kdf.js` | Argon2id, 64 MiB, `t=3`, `p=1` — profile shared with SelfDataGuard (`Primitives`) | nothing reaches the server: no attempt counter applies, and the per-guess cost is **all** that is left |
 >
 > An attacker who steals the "this device" blob works **offline**: the AEAD tag tells them for free whether a guess is right. This is the pattern `AGENTS.md` names — the authentication path hardened and the encryption path left behind, a few lines apart.
 
