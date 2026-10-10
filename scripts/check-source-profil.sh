@@ -162,6 +162,38 @@ PY
 done
 
 # ---------------------------------------------------------------------------
+# 3. L'unité de la mémoire. `memory_cost` se compte en Kio : 65536 Kio valent
+#    64 Mio, soit 67,1 Mo. Annoncer des Mo sous-estime le coût de 5 %, et `MB`
+#    est doublement faux puisqu'il est décimal.
+#
+# 🔑 Ce volet existe parce qu'AUCUNE recherche ordinaire ne trouve ces lignes.
+#    Dans un catalogue de langue le nombre n'est pas dans le fichier — c'est un
+#    `%3$d` — et l'unité est collée par `&nbsp;`, que `[[:space:]]` ne matche
+#    pas : ni « 64 Mo », ni « 64 », ni un `64.{0,8}(Mo|MB)` tolérant ne les
+#    atteignent. Il faut chercher l'unité SANS le nombre. Constat de la conv
+#    Recover, 10/10/2026 ; deux des quatre lignes étaient servies en production.
+#
+# ⚠️ Et le volet 2 ne peut pas les voir, par construction : il ne retient que
+#    les énoncés en `p=1`, le profil du navigateur, alors que ces lignes portent
+#    le profil serveur. Deux volets, deux propriétés.
+printf '\n▸ 3. Unité de la mémoire : Mio / MiB, jamais Mo / MB\n\n'
+
+# `git grep` lit l'index : ni la récursion d'ugrep (qui honore `.gitignore` et
+# sauterait les arbres assemblés), ni `xargs` (qui ne sait pas lancer un
+# builtin, et rend alors un zéro silencieux — mesuré le 10/10/2026).
+mauvaises=$(git grep -nE '(64|%[0-9$]*d)(&nbsp;| )(Mo|MB)\b' \
+            -- '*.php' '*.md' '*.js' '*.sql' '*.conf' '*.txt' '*.yml' 2>/dev/null \
+            | grep -vE '^(CHANGELOG\.md|scripts/check-source-profil\.sh):' || true)
+if [ -z "$mauvaises" ]; then
+    ok "aucune mention de la mémoire en unité décimale"
+else
+    while IFS= read -r l; do
+        [ -n "$l" ] || continue
+        ko "$(printf '%s' "$l" | cut -d: -f1,2) — mémoire en Mo/MB : $(printf '%s' "$l" | cut -d: -f3- | cut -c1-70)"
+    done <<< "$mauvaises"
+fi
+
+# ---------------------------------------------------------------------------
 printf '\n'
 if [ "$echec" -eq 0 ]; then
     printf '\033[32m✓ aucune attribution fautive, et les %s porteurs déclarés nomment leur source.\033[0m\n\n' "${#PORTEURS[@]}"
