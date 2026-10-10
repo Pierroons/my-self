@@ -249,6 +249,39 @@ $liens === 0 && $bloques === 0
     ? ok("trois votants sans lien ($liens échange) gardent leurs votes : réputation {$etat6['reputation']}, cible signalée en revue humaine")
     : nok('la salve rapide a été traitée comme une meute : bloqués=' . $bloques . ' ' . json_encode($etat6));
 
+// ── 6bis. Une salve n'ÉCRASE pas le motif d'arbitrage déjà posé ─────────────
+// 🔑 Trois comptes ordinaires suffisent à déclencher la branche « salve rapide »,
+// et elle tourne à chaque vote négatif. Sans garde, un tiers remplaçait donc le
+// motif d'un autre par le plus bénin de la liste — et comme les deux chemins qui
+// lèvent un signalement tout seuls n'acceptent que `reputation_zero` ou
+// `ban_auto`, le motif écrasé ne se levait PLUS jamais sans geste d'arbitre.
+//
+// ⚠️ Les DEUX moitiés comptent, et la seconde est le témoin : un cas qui vérifie
+// seulement « le motif grave a survécu » passe aussi bien quand la salve ne s'est
+// pas déclenchée du tout. C'est ce témoin qui a révélé que le premier montage de
+// ce cas ne déclenchait rien.
+$grave = membre($pdo, 'deja_signale');
+poserReputation($pdo, $grave, 20);
+$pdo->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'meute_recidive',
+                   updated_at = ? WHERE account_id = ?")->execute([time(), $grave]);
+foreach (['sv-a', 'sv-b', 'sv-c'] as $n) {
+    Moderate::applyVote($pdo, membre($pdo, $n), 'member', $grave, -1, motif(), 'agressif');
+}
+$etatGrave = Moderate::getReputation($pdo, $grave);
+$etatGrave['reputation'] === 17 && $etatGrave['review_reason'] === 'meute_recidive'
+    ? ok('une salve de trois votants ne remplace pas le motif « meute_recidive » déjà posé')
+    : nok('motif écrasé ou salve non déclenchée : ' . json_encode($etatGrave));
+
+$vierge = membre($pdo, 'pas_signale');
+poserReputation($pdo, $vierge, 20);
+foreach (['vv-a', 'vv-b', 'vv-c'] as $n) {
+    Moderate::applyVote($pdo, membre($pdo, $n), 'member', $vierge, -1, motif(), 'agressif');
+}
+$etatVierge = Moderate::getReputation($pdo, $vierge);
+$etatVierge['needs_review'] && $etatVierge['review_reason'] === 'salve_rapide'
+    ? ok('et sur une case vide, la salve pose bien son signalement — la garde n\'éteint pas le signal')
+    : nok('la garde a éteint le signal au lieu de le préserver : ' . json_encode($etatVierge));
+
 // ── 7. Un downvote ancien ne complète pas une salve ─────────────────────────
 // La salve se mesure sur une fenêtre glissante. Deux votants récents et un vote
 // très antérieur ne font pas trois : sans cela, un vote de camouflage suffirait

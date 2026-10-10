@@ -725,8 +725,37 @@ class Moderate
             if (count($best) < self::config()->salveVotantsMin) {
                 continue;
             }
+            // 🔑 N'écrit QUE sur une case vide, et c'est une mesure de sûreté.
+            //
+            // Trois comptes ordinaires suffisent à déclencher cette branche
+            // (`salveVotantsMin`), et elle tourne à chaque vote négatif. Sans la
+            // clause, un tiers écrasait donc le motif d'arbitrage d'autrui par le
+            // plus bénin de la liste. Deux pertes, dans les deux sens :
+            //
+            //  · BLANCHIMENT — un `meute_recidive`, dont ce fichier dit qu'« une
+            //    récidive de meute ne se rachète pas », devenait « plusieurs
+            //    votants sans lien ». L'arbitre lisait une autre situation que
+            //    celle qui s'était produite ;
+            //  · MARQUE INDÉLÉBILE — les deux chemins qui lèvent un signalement
+            //    tout seuls n'acceptent que `reputation_zero` (`regenerate`,
+            //    `restoreAfterCancel`) ou `ban_auto` (`cloreBanExpire`). Un motif
+            //    écrasé par celui-ci ne se levait donc PLUS jamais sans un geste
+            //    d'arbitre : le titulaire gardait un signalement permanent qu'un
+            //    tiers lui avait posé.
+            //
+            // ⚠️ Le signal perdu quand la case est occupée ne coûte rien : un
+            // compte déjà signalé est déjà sous les yeux de l'arbitre, et ce
+            // libellé-ci est le plus faible des quatre. Ce qui coûtait, c'était
+            // de remplacer une information par une moins précise.
+            //
+            // ⚠️ Et l'asymétrie subsiste pour les trois autres poseurs
+            // (`meute_recidive`, `reputation_zero`, `ban_auto`) : aucun ne regarde
+            // le motif en place. Ils ne sont pas déclenchables par un tiers aussi
+            // directement, mais la propriété « un champ lu par un arbitre n'est
+            // jamais écrasé par un chemin automatique » n'est tenue qu'ici.
             $pdo->prepare(
-                "UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide', updated_at = ? WHERE account_id = ?"
+                "UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide', updated_at = ?
+                  WHERE account_id = ? AND (review_reason IS NULL OR review_reason = 'salve_rapide')"
             )->execute([$maintenant, $author]);
             $salves[] = ['target_author' => $author, 'voters' => array_keys($best)];
         }
