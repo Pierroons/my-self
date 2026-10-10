@@ -59,7 +59,7 @@ return [
 
     'sec.2.h2' => '2. Chiffrement des données — deux modèles selon la sensibilité',
     'sec.2.body' => '<p><strong>a) Blind-key serveur</strong> (profil : bio, localisation, lien) — XChaCha20-Poly1305, clé dérivée d\'un secret serveur stocké <em>hors base et hors webroot</em>. Un dump SQL ne révèle que des blobs.</p>'
-        . '<p><strong>b) Bout-en-bout côté client</strong> (mémo perso) — chiffré dans le <strong>navigateur</strong> (WebCrypto). <code>Argon2id</code> (64 Mio, <code>t=3</code>, <code>p=1</code> — profil partagé SelfDataGuard / SelfRecover, tenu égal par un test de conformité) → <code>HKDF</code> par étiquette → une <code>vault_key</code> aléatoire chiffre le mémo, wrappée dans deux enveloppes (mot de passe + passphrase de secours). <strong>Le serveur ne détient aucune clé.</strong></p>'
+        . '<p><strong>b) Bout-en-bout côté client</strong> (mémo perso) — chiffré dans le <strong>navigateur</strong> (WebCrypto). <code>Argon2id</code> (64 Mio, <code>t=3</code>, <code>p=1</code> — profil partagé SelfDataGuard / SelfRecover, défini dans <code>Primitives</code> et tenu égal par un test de conformité) → <code>HKDF</code> par étiquette → une <code>vault_key</code> aléatoire chiffre le mémo, wrappée dans deux enveloppes (mot de passe + passphrase de secours). <strong>Le serveur ne détient aucune clé.</strong></p>'
         . '<div class="mt">'
         . '<div class="ok"><h4>✅ Ce que ça protège</h4><ul>'
         . '<li>Blind-key : vol de disque, dump SQL, injection</li>'
@@ -111,7 +111,7 @@ return [
         . '</div>',
 
     'sec.7.h2' => '7. Feuille de route',
-    'sec.7.body' => '<p class="roadmap">E2E étendu aux messages privés et au profil · <strong>superviseur d\'intégrité externe</strong> (détection du code servi altéré + comportement anormal, confinement automatique réversible) · quorum distribué (Shamir) pour les clés critiques.</p>',
+    'sec.7.body' => '<p class="roadmap">E2E étendu aux messages privés et au profil · <strong>superviseur d\'intégrité hors machine</strong> : l\'altération du code servi et les requêtes hors périmètre sont déjà détectées, mais depuis la machine surveillée — un accès root persistant peut donc faire taire le témoin ; restent à construire le témoin extérieur et le confinement automatique réversible · quorum distribué (Shamir) pour les clés critiques.</p>',
 
     // ── Page « Règles d'engagement » ──────────────────────────────────────
     'rt.hero.h1' => '🎯 Test red team — règles d\'engagement',
@@ -168,7 +168,7 @@ return [
 
     'rt.limits.h2'    => '📐 Limites connues et assumées',
     'rt.limits.intro' => '<p>Ce qui suit est déjà établi, et publié pour que tu n\'y perdes pas ton temps : <strong>une limite documentée n\'est pas un finding</strong>. La dépasser en est un : une prise concrète sur l\'une de ces bornes, pas l\'argument qu\'elle existe.</p>',
-    'rt.limits.body'  => '<li><strong>Le coffre mémo a deux serrures.</strong> Sa clé est tirée au hasard, puis scellée deux fois : sous le mot de passe du compte, et sous une passphrase propre au coffre. Qui obtient les blobs attaque <strong>hors ligne</strong> la moins chère des deux, sans compteur d\'essais ; le coût par essai est une dérivation Argon2id <code>t=3, m=64 Mio, p=1</code>. « De bout en bout » dit que le serveur ne voit jamais la clé — pas que le mémo résiste à un mot de passe faible, ni que le serveur serve toujours le même code : c\'est lui qui livre le script de dérivation, et qui le contrôle peut en livrer un autre.</li>'
+    'rt.limits.body'  => '<li><strong>Le coffre mémo a deux serrures.</strong> Sa clé est tirée au hasard, puis scellée deux fois : sous le mot de passe du compte, et sous une passphrase propre au coffre. Qui obtient les blobs attaque <strong>hors ligne</strong> la moins chère des deux, sans compteur d\'essais ; le coût par essai est une dérivation Argon2id <code>t=3, m=64 Mio, p=1</code> (le profil partagé avec SelfDataGuard). « De bout en bout » dit que le serveur ne voit jamais la clé — pas que le mémo résiste à un mot de passe faible, ni que le serveur serve toujours le même code : c\'est lui qui livre le script de dérivation, et qui le contrôle peut en livrer un autre.</li>'
                        . '<li><strong>Un tiers ferme la connexion d\'un compte en cinq requêtes.</strong> '
                        . 'Le compteur d\'échecs de connexion est alimenté par le nom SOUMIS, qu\'il n\'est pas '
                        . 'nécessaire de posséder : cinq échecs verrouillent la connexion quinze minutes — bon mot de '

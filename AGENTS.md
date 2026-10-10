@@ -119,6 +119,7 @@ tiennent en intégration continue.
 | `scripts/check-patch-legi.sh` | un hôte porte-t-il encore les correctifs locaux sur `legi.py`, à l'identique du patch versionné |
 | `scripts/check-liens-bibliotheque.sh` | une démo pointe-t-elle vers la bibliothèque, ou en a-t-elle recopié une version qui divergera |
 | `scripts/check-plancher-secret.sh` | un secret de déploiement atteint-il le plancher de longueur que le code exige |
+| `scripts/check-source-profil.sh` | le profil Argon2id du navigateur nomme-t-il sa source — il est défini par SelfDataGuard, SelfRecover le reprend ; deux volets, une attribution fautive nommée et une liste de porteurs déclarés |
 | `scripts/check-versions.sh` | chaque porteur d'une version dit-il celle de `modules.json`, la source unique, et le statut que le module y déclare (bêta) ; avec `--tags`, chaque version annoncée a-t-elle son tag ; avec `--publications`, sa release, et ce qui est déclaré retiré ne sert-il plus |
 | `scripts/check-ecosysteme.sh` | ce que nos README disent de `selffarm-lite` correspond-il à ce qu'il publie ; `--ecrire` remet le bloc à jour |
 | `scripts/check-portes.sh` | les portes de comptage du workflow disent-elles encore le total de leur banc — chaque paire (banc, porte) rejouée, appariée par étape |
@@ -126,10 +127,20 @@ tiennent en intégration continue.
 
 🔑 **Un canari porte DEUX littéraux** — le motif qu'il plante et la ligne rouge qu'il exige — et les deux vieillissent quand le code avance. Le 10/10/2026, trois des 27 avaient un motif périmé par SelfRecover 0.12.0 : les trois ont refusé de prouver quoi que ce soit plutôt que de rendre vert, et le job est tombé en accusant un contrôle qui faisait son travail. D'où `check-canaris.sh`, à lancer quand un lot touche le code que les bancs éprouvent.
 
-**Sept d'entre eux tournent en intégration continue** (`structure.yml`) : les
+🔑 **Un contrôle de prose se borne, ou il crie.** `check-source-profil.sh` est le
+premier à juger une phrase et non un nombre, et sa première version exigeait de
+tout énoncé du profil qu'il nomme sa source : douze signalements, dont neuf faux
+— une section « pourquoi HMAC et pas Argon2 », une règle de lissage nginx, un
+commentaire sur le coût d'une attaque Sybil. La forme qui tient ne généralise pas :
+une **erreur nommée** qui ne doit pas revenir, et une **liste explicite** de
+porteurs à garder. Une heuristique sur la prose mesure le style ; une liste mesure
+une propriété.
+
+**Huit d'entre eux tournent en intégration continue** (`structure.yml`) : les
 chemins cités, l'unicité du profil de hachage, les gabarits de vhost — ce
 dernier parce que le job installe nginx pour lui —, les liens de bibliothèque,
-le plancher de secret, les porteurs de version et les portes de comptage. **Chaque matin, `suivi.yml`
+le plancher de secret, la source du profil du navigateur, les porteurs de version
+et les portes de comptage. **Chaque matin, `suivi.yml`
 lance trois contrôles de plus**, parce que ce qui les fait rougir n'arrive pas
 par un envoi ici : le tag qu'une version annoncée attend, sa release publiée, et
 le dépôt voisin. Ils signalent sans bloquer `main`. Les autres ne le peuvent pas,

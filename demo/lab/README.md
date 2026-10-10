@@ -43,7 +43,7 @@ demo/lab/
 | Dump de la base | Données + DM en clair | DM chiffrés XChaCha20-Poly1305 (clé hors base) |
 | Bruteforce login | Illimité | Rate-limit 5 échecs / 15 min |
 | Phishing reset email | Vecteur classique | Pas d'email — aucun lien de réinitialisation à imiter |
-| Secrets en base | Souvent en clair | Argon2id partout, m=64 Mio — t=4/p=2 pour les empreintes SelfRecover, t=3/p=1 pour la clé des messages et le coffre mémo ; blind key en `0600` hors webroot |
+| Secrets en base | Souvent en clair | Argon2id partout, m=64 Mio — t=4/p=2 pour les empreintes SelfRecover (`Hashing::ARGON2`), t=3/p=1 pour la clé des messages et le coffre mémo (profil de SelfDataGuard, repris par le script de dérivation) ; blind key en `0600` hors webroot |
 
 ## Hors V1
 
