@@ -24,6 +24,7 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../lib/i18n.php';
 
 // La langue doit être l'anglais pour que le dictionnaire soit chargé : sans ça
@@ -257,6 +258,26 @@ v('des appelants ont été trouvés', count($appelants) > 0, implode(' · ', $ap
 v('⭐ aucun n\'y passe une réponse de la bibliothèque', $intrus === [],
     implode(' · ', $intrus) . ' — une structure de SelfRecover porterait `cle`, '
     . 'qui EST dans la liste blanche : son identifiant serait réécrit en silence');
+
+// ── 10. La liste des langues n'a qu'UNE source ─────────────────────────────
+// `LANGUES` sert de liste blanche à `lang()`, et `langueSelfRecover()` en tire
+// la langue de la bibliothèque. Une langue présente d'un seul côté sort en
+// français sans rien dire : ce contrôle est le seul endroit où l'écart se voit,
+// et il se mesure plutôt qu'il ne se surveille à l'œil.
+echo "\n10. La liste des langues de SelfRecover et celle du lab n'en font qu'une\n";
+
+$deLEnum = array_map(
+    static fn (\Pierroons\SelfRecover\Langue $l): string => $l->value,
+    \Pierroons\SelfRecover\Langue::cases(),
+);
+$aGauche = array_diff(LANGUES, $deLEnum);
+$aDroite = array_diff($deLEnum, LANGUES);
+v('⭐ `LANGUES` et `Langue::cases()` disent la même liste',
+    $aGauche === [] && $aDroite === [],
+    'dans LANGUES seulement : ' . (implode(', ', $aGauche) ?: '—')
+    . ' · dans l\'enum seulement : ' . (implode(', ', $aDroite) ?: '—'));
+v('et `langueSelfRecover()` rend bien la langue résolue, pas un défaut',
+    langueSelfRecover()->value === lang(), langueSelfRecover()->value . ' vs ' . lang());
 
 echo "\n" . ($echecs === 0
     ? "OK — $reussites/$reussites contrôles conformes.\n"
