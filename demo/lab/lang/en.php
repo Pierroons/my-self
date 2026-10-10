@@ -61,13 +61,13 @@ return [
 
     'sec.2.h2' => '2. Data encryption — two models, by sensitivity',
     'sec.2.body' => '<p><strong>a) Server blind-key</strong> (profile: bio, location, link) — XChaCha20-Poly1305, key derived from a server secret held <em>outside the database and outside the webroot</em>. A SQL dump yields nothing but blobs.</p>'
-        . '<p><strong>b) Client-side end-to-end</strong> (personal memo) — encrypted in the <strong>browser</strong> (WebCrypto). <code>Argon2id</code> (64 MiB, the SelfRecover profile) → <code>HKDF</code> per label → a random <code>vault_key</code> encrypts the memo, itself wrapped in two envelopes (password and recovery passphrase). <strong>The server holds no key.</strong></p>'
+        . '<p><strong>b) Client-side end-to-end</strong> (personal memo) — encrypted in the <strong>browser</strong> (WebCrypto). <code>Argon2id</code> (64 MiB, <code>t=3</code>, <code>p=1</code> — profile shared by SelfDataGuard and SelfRecover, kept in step by a conformance test) → <code>HKDF</code> per label → a random <code>vault_key</code> encrypts the memo, itself wrapped in two envelopes (password and recovery passphrase). <strong>The server holds no key.</strong></p>'
         . '<div class="mt">'
         . '<div class="ok"><h4>✅ What this protects</h4><ul>'
         . '<li>Blind-key: stolen disk, SQL dump, injection</li>'
         . '<li>E2E: <strong>even</strong> admin or root access on the server leaves the memo unreadable</li>'
         . '</ul></div>'
-        . '<div class="no"><h4>⛔ What it does not (V1, acknowledged)</h4><ul>'
+        . '<div class="no"><h4>⛔ What it does not (acknowledged)</h4><ul>'
         . '<li>Blind-key: an admin, or an RCE that reads the key, can decrypt profiles and private messages</li>'
         . '<li>E2E: a <em>persistently</em> compromised server serving tampered JavaScript that captures the password at unlock — the "served code" problem</li>'
         . '</ul></div>'
@@ -105,14 +105,14 @@ return [
         . '<li>CSRF, clickjacking, passive session theft</li>'
         . '<li>Memo theft, <strong>even with root access</strong> (E2E at rest)</li>'
         . '</ul></div>'
-        . '<div class="no"><h4>⚠️ Known limits (V1)</h4><ul>'
+        . '<div class="no"><h4>⚠️ Known limits</h4><ul>'
         . '<li>Profiles and private messages readable by whoever obtains the server key (<code>.blindkey</code>), for instance through an RCE — not through the admin panel</li>'
         . '<li><em>Persistently</em> compromised server → tampering with the served code</li>'
         . '<li>Metadata is not encrypted (who talks to whom, and when)</li>'
         . '</ul></div>'
         . '</div>',
 
-    'sec.7.h2' => '7. Roadmap (beyond V1)',
+    'sec.7.h2' => '7. Roadmap',
     'sec.7.body' => '<p class="roadmap">E2E extended to private messages and profiles · an <strong>external integrity supervisor</strong> (detecting tampered served code and abnormal behaviour, with reversible automatic containment) · distributed quorum (Shamir) for critical keys.</p>',
 
     // ── "Rules of engagement" page ────────────────────────────────────────

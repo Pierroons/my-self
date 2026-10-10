@@ -59,13 +59,13 @@ return [
 
     'sec.2.h2' => '2. Chiffrement des données — deux modèles selon la sensibilité',
     'sec.2.body' => '<p><strong>a) Blind-key serveur</strong> (profil : bio, localisation, lien) — XChaCha20-Poly1305, clé dérivée d\'un secret serveur stocké <em>hors base et hors webroot</em>. Un dump SQL ne révèle que des blobs.</p>'
-        . '<p><strong>b) Bout-en-bout côté client</strong> (mémo perso) — chiffré dans le <strong>navigateur</strong> (WebCrypto). <code>Argon2id</code> (64 Mio, le profil de SelfRecover) → <code>HKDF</code> par étiquette → une <code>vault_key</code> aléatoire chiffre le mémo, wrappée dans deux enveloppes (mot de passe + passphrase de secours). <strong>Le serveur ne détient aucune clé.</strong></p>'
+        . '<p><strong>b) Bout-en-bout côté client</strong> (mémo perso) — chiffré dans le <strong>navigateur</strong> (WebCrypto). <code>Argon2id</code> (64 Mio, <code>t=3</code>, <code>p=1</code> — profil partagé SelfDataGuard / SelfRecover, tenu égal par un test de conformité) → <code>HKDF</code> par étiquette → une <code>vault_key</code> aléatoire chiffre le mémo, wrappée dans deux enveloppes (mot de passe + passphrase de secours). <strong>Le serveur ne détient aucune clé.</strong></p>'
         . '<div class="mt">'
         . '<div class="ok"><h4>✅ Ce que ça protège</h4><ul>'
         . '<li>Blind-key : vol de disque, dump SQL, injection</li>'
         . '<li>E2E : <strong>même</strong> un accès admin ou root sur le serveur → le mémo reste illisible</li>'
         . '</ul></div>'
-        . '<div class="no"><h4>⛔ Ce que ça ne protège pas (V1, assumé)</h4><ul>'
+        . '<div class="no"><h4>⛔ Ce que ça ne protège pas (assumé)</h4><ul>'
         . '<li>Blind-key : un admin / un RCE qui lit la clé peut déchiffrer le profil &amp; les DM</li>'
         . '<li>E2E : un serveur compromis <em>persistant</em> servant un JS piégé captant le mot de passe au déverrouillage (faille du « code servi »)</li>'
         . '</ul></div>'
@@ -103,14 +103,14 @@ return [
         . '<li>CSRF, clickjacking, vol de session passif</li>'
         . '<li>Vol du mémo, <strong>même avec un accès root</strong> (E2E au repos)</li>'
         . '</ul></div>'
-        . '<div class="no"><h4>⚠️ Limites connues (V1)</h4><ul>'
+        . '<div class="no"><h4>⚠️ Limites connues</h4><ul>'
         . '<li>Profil &amp; DM lisibles par qui obtient la clé serveur (<code>.blindkey</code>), par exemple via un RCE — pas par le panneau admin</li>'
         . '<li>Serveur compromis <em>persistant</em> → altération du code servi (« code servi »)</li>'
         . '<li>Métadonnées non chiffrées (qui parle à qui, quand)</li>'
         . '</ul></div>'
         . '</div>',
 
-    'sec.7.h2' => '7. Feuille de route (hors V1)',
+    'sec.7.h2' => '7. Feuille de route',
     'sec.7.body' => '<p class="roadmap">E2E étendu aux messages privés et au profil · <strong>superviseur d\'intégrité externe</strong> (détection du code servi altéré + comportement anormal, confinement automatique réversible) · quorum distribué (Shamir) pour les clés critiques.</p>',
 
     // ── Page « Règles d'engagement » ──────────────────────────────────────
