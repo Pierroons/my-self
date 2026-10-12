@@ -109,14 +109,23 @@ jobs:
         run: |
           # `update` non bloquant, `install` bloquant — motif expliqué à l'installation de nginx.
           sudo apt-get update -qq || echo "::warning::index apt partiel — l'installation reste bloquante"
-          sudo apt-get install -y -qq cryptsetup-bin python3-argon2 libargon2-dev
+          # 🔑 `libargon2-1` et NON `libargon2-dev` : le source C déclare les prototypes
+          # d'Argon2 à la main (`selfrecover_derive.c:21-23`) pour n'avoir besoin d'aucun
+          # header, et se lie au runtime par `-l:libargon2.so.1`. Le `-dev` ne fournirait
+          # que `argon2.h`, qui n'est pas inclus, et le lien `libargon2.so`, que la
+          # machine cible n'a pas. L'installer rendrait l'épreuve plus facile que le réel.
+          sudo apt-get install -y -qq cryptsetup-bin python3-argon2 libargon2-1
+          # Le runtime nommé, parce que son absence se lit mieux ici qu'en erreur de linker :
+          # sans lui, le keyscript ne pourrait pas dériver à l'amorçage.
+          ls /usr/lib/*/libargon2.so.1 >/dev/null 2>&1 \
+            || { echo "::error::libargon2.so.1 absent : le runtime manque, le keyscript ne pourrait pas dériver"; exit 1; }
           # Le binaire C est celui que le keyscript appelle à l'amorçage. Le banc
           # choisit UN dérivateur : le C s'il est compilé, sinon le Python. Sans
           # cette compilation, la CI n'éprouvait que le Python — et le seul chemin
           # dont l'échec rend une machine non amorçable n'était couvert par aucun
-          # vert.
+          # vert. La forme du lien est celle que le source prescrit, ligne 13.
           cc -O2 -Wall -o self-security/selfrecover-luks/selfrecover_derive \
-             self-security/selfrecover-luks/selfrecover_derive.c -largon2
+             self-security/selfrecover-luks/selfrecover_derive.c -l:libargon2.so.1
 
       # 🔑 L'autoload du lab est un PRÉRÉQUIS du contrôle qui suit, pas une
       # étape du lab : sans `demo/lab/vendor/`, huit de ses bancs ne démarrent
