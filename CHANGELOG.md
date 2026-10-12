@@ -42,6 +42,45 @@ Aucune version ne monte : rien ne change dans ce que le code décide.
 été produite : sa clé de signature était un emplacement réservé, sa liste de signataires était vide.
 Depuis le 5 octobre, plus aucun texte du dépôt ne le citait.
 
+### `selfright-mcp` 0.4.7 — le paquet part sur PyPI, et quatre refus cessent de se faire passer pour des pannes — 12 octobre 2026
+
+Première mise sur index public. Ce que la préparation a trouvé pèse plus que la publication elle-même.
+
+**Un refus de l'amont arrivait vide.** Sur une réponse 404, le client remplaçait le corps de l'API par
+deux clés et jetait son `ok: false`, son `error` et son `hint`. Or SelfAct refuse en 404 : le refus
+écrit dans `actes_pour_situation` ne pouvait donc jamais partir, et son rendu normal annonçait
+« 0 acte(s) » — un modèle en concluait qu'aucune démarche n'existe quand seul le slug était faux. Le
+corps est désormais conservé et `__introuvable__` s'y ajoute. Six outils n'avaient aucune garde sur ce
+chemin.
+
+**Une absence n'est plus annoncée comme une panne.** `texte_decision` routait tout 404 vers le message
+d'API morte : une décision hors de la sélection JADE — qui ne porte que le recueil Lebon et une part
+des inédites — faisait dire « la vérification est indisponible » alors que l'index avait répondu et
+expliqué. Les deux cas se disent maintenant séparément.
+
+**Deux gardes trop sévères.** `calculer_echeance` refusait une `distance` vide, qu'un champ de
+formulaire non rempli produit et que l'API traite déjà comme la métropole. Et quand `SELFRIGHT_ACT_URL`
+ne se déduisait pas — la dérivation exige une racine finissant par `/api` —, le client annonçait
+« `SELFRIGHT_API_URL` n'est pas défini » sur une variable correctement renseignée, envoyant corriger la
+mauvaise.
+
+**Ce que le paquet donne à voir.** `authors` et `[project.urls]`, classifier en `4 - Beta`, et un
+`only-include` pour l'archive source : `hatchling` ne lit pas le `.gitignore` de la racine du dépôt, si
+bien qu'un journal ou une base atterrissant dans le dossier partirait dans une archive qui ne se
+remplace jamais — et, git l'ignorant, sans que `audit-opsec.sh` le voie. Éprouvé en y plantant
+`.env`, `collecte.log`, `base-test.sqlite` et `etat/dernier.json` : aucun ne part.
+
+Le README corrige cinq affirmations que sa publication rendait définitives — dont la portée de
+l'article 50 du règlement (UE) 2024/1689, vérifiée contre la base au 1er octobre 2026 —, nomme les
+chemins de l'auto-hébergement et le prérequis d'une clé Judilibre pour deux outils sur douze.
+
+**Publication sans jeton** : `.github/workflows/pypi.yml` publie par identité éphémère (*trusted
+publishing*), le droit n'étant accordé qu'au job d'envoi, lui-même retenu par un environnement protégé.
+Un garde y compare le tag, `modules.json` et la roue construite. `scripts/check-versions.sh
+--publications` interroge désormais un canal `pypi`, par l'API JSON et non par la page du projet, qui
+rend 200 pour un paquet inexistant ; une version *yanked*, que l'index liste encore mais que `pip`
+n'installe plus, ne compte pas comme servie.
+
 ### Le statut d'un module et les chemins des blocs de code entrent sous contrôle — 4 octobre 2026
 
 Deux familles de textes vieillissaient sans que rien ne rougisse.

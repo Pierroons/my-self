@@ -22,8 +22,13 @@ de juillet 2025 à août 2026, l'API a servi le droit au 13 juillet 2025 sans qu
 personne ne s'en aperçoive — la synchronisation tournait à l'heure, c'est son
 résultat qui était mort.
 
-Chaque réponse de chaque outil porte donc un état de fraîcheur, calculé contre
-la cadence de synchronisation annoncée (1er et 15 du mois). Quand la base est en
+Les dix outils qui lisent une base portent donc un état de fraîcheur dans leur
+réponse — `calculer_echeance` et `gabarit_document` n'en portent pas : ils ne
+servent aucun texte. Cet état se lit sur deux dates distinctes : `last_sync`,
+qui dit si la synchronisation a tenu sa cadence, et `last_update`, qui dit
+jusqu'où va le contenu servi. Le retard se juge sur la première, le contenu se
+dit avec la seconde ; les confondre condamne la date du contenu à ne jamais
+rattraper le calendrier, puisque c'est l'amont qui la fixe. Quand la base est en
 retard, le texte le dit avant de donner l'article, pour que le modèle le
 répercute à son utilisateur.
 
@@ -392,10 +397,24 @@ async def _get(
 ) -> Any:
     racine = API_URL if base is None else base
     if not racine:
+        if base is None:
+            raise ApiIndisponible(
+                "SELFRIGHT_API_URL n'est pas défini : ce serveur ne sait pas quelle "
+                "instance interroger. Renseigne-la dans la configuration du client MCP. "
+                "N'invente aucun texte de loi en attendant."
+            )
+        # 🔑 Deux absences, deux causes, deux messages. `SELFRIGHT_ACT_URL` ne se
+        # déduit de l'API qu'à la condition que sa racine finisse par « /api » ;
+        # une instance servie sous un autre chemin, ou à la racine du domaine,
+        # laisse la dérivation vide. Ce garde annonçait alors
+        # « SELFRIGHT_API_URL n'est pas défini » — envoyant corriger une variable
+        # correctement renseignée, sur la seule piste donnée au lecteur. Les
+        # trois outils de démarches qui passent par cette base le payaient.
         raise ApiIndisponible(
-            "SELFRIGHT_API_URL n'est pas défini : ce serveur ne sait pas quelle "
-            "instance interroger. Renseigne-la dans la configuration du client MCP. "
-            "N'invente aucun texte de loi en attendant."
+            "l'adresse des routes de démarches n'a pas pu être déduite de "
+            "SELFRIGHT_API_URL : la dérivation demande une racine finissant par "
+            "« /api ». Renseigne SELFRIGHT_ACT_URL dans la configuration du "
+            "client MCP. N'invente aucune démarche en attendant."
         )
     url = f"{racine}{chemin}"
     try:
@@ -443,10 +462,27 @@ async def _get(
         if r.status_code == 404 and message.startswith("Endpoint inconnu"):
             raise ApiIndisponible(
                 f"l'API ne connaît pas cette route ({message}) — vérifier "
-                f"SELFRIGHT_API_URL, actuellement {API_URL}"
+                # 🔑 Le nom de la variable suffit au diagnostic ; sa valeur, non.
+                # Ce texte est rendu au modèle, donc recopié dans un rapport de
+                # bug ou un fil de discussion — et c'est l'adresse de l'instance
+                # de celui qui l'exploite qui partirait avec.
+                "SELFRIGHT_API_URL"
             )
+        # 🔑 **Le corps de l'amont est conservé, pas remplacé.** Il porte souvent
+        # un `ok: false`, un `error` nommé et un `hint` que l'outil appelant sait
+        # déjà rendre ; les jeter laissait ce refus inatteignable. Mesuré le
+        # 12/10/2026 : SelfAct répond `situation_not_found` + « Call ?list=1 for
+        # available slugs » en **404**, si bien que le refus écrit dans
+        # `actes_pour_situation` ne se déclenchait jamais et que son rendu normal
+        # annonçait « 0 acte(s) » — un appelant en concluait qu'aucune démarche
+        # n'existe pour la situation, quand seul le slug était faux.
+        # `__introuvable__` s'ajoute donc au corps au lieu de s'y substituer, et
+        # `detail` ne comble que ce que l'amont n'a pas dit lui-même.
         if r.status_code == 404:
-            return {"__introuvable__": True, "detail": message or r.text[:400]}
+            absent = dict(corps) if isinstance(corps, dict) else {}
+            absent["__introuvable__"] = True
+            absent.setdefault("detail", message or r.text[:400])
+            return absent
         raise ApiIndisponible(f"HTTP {r.status_code} — {message or r.text[:200]}")
 
     try:
@@ -1262,7 +1298,7 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
     spécifiques valent mieux qu'une phrase.
 
     Args:
-        requete: mots du sujet cherché (« harcèlement moral », « chanvre »)
+        requete: mots du sujet cherché (« harcèlement moral », « servitude »)
             ou fragment de numéro (« L1152 », « 1240 »).
         limite: nombre maximum de résultats (défaut 20).
     """
@@ -1884,8 +1920,32 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
     except ApiIndisponible as e:
         return _msg_juris_morte(str(e))
 
-    if data.get("__introuvable__") or data.get("etat") == "indeterminee":
-        return _msg_juris_morte(data.get("raison", data.get("detail", "raison non précisée")))
+    # 🔑 **Une absence n'est pas une panne, et les deux ne se disent pas pareil.**
+    # `_get` lève déjà `ApiIndisponible` quand l'API ne connaît pas la route :
+    # ce qui arrive ici est donc une réponse réussie de l'amont, qui a cherché,
+    # n'a pas trouvé, et dit l'étendue de son fonds. Les confondre faisait
+    # répondre « la vérification est indisponible » sur une décision que l'index
+    # venait de déclarer hors de sa sélection — mesuré le 12/10/2026 sur un
+    # `CETATEXT` absent du fonds JADE, qui ne porte que le recueil Lebon et une
+    # part des inédites. Le modèle annonçait une panne de service là où la bonne
+    # réponse était « cette décision n'y figure pas, ce qui ne dit pas qu'elle
+    # n'existe pas ».
+    if data.get("__introuvable__"):
+        bandeau = await _bandeau("jurisprudence")
+        return (
+            f"{bandeau}\n\n"
+            f"La décision « {identifiant} » est absente de l'index "
+            f"({data.get('detail') or 'sans précision de l’index'}).\n\n"
+            "Ce n'est pas une panne : l'index a répondu. Dis-le comme une "
+            "absence, en reprenant ci-dessus ce qu'il déclare porter — une "
+            "absence n'établit pas que la décision n'existe pas. Ne cite AUCUNE "
+            "décision de mémoire et n'en invente pas le texte : renvoie vers "
+            "courdecassation.fr ou judilibre.io pour l'ordre judiciaire, "
+            "legifrance.gouv.fr pour l'ordre administratif."
+        )
+
+    if data.get("etat") == "indeterminee":
+        return _msg_juris_morte(data.get("raison", "raison non précisée"))
 
     bandeau = await _bandeau("jurisprudence")
     # 🔑 Deux fonds, deux formes. L'API relaie Judilibre tel quel pour l'ordre
@@ -2233,10 +2293,15 @@ async def actes_pour_situation(situation: str | None = None) -> str:
     # L'amont répond « situation_not_found » avec un indice : le relayer plutôt
     # que de laisser le modèle inventer un slug voisin.
     if data.get("ok") is False:
+        # Sans bandeau, délibérément : un slug refusé ne dit rien de la fraîcheur
+        # du catalogue, et une réponse d'erreur ne porte pas de `meta` — le
+        # bandeau s'y dégraderait en « date inconnue » et ferait soupçonner un
+        # défaut de synchronisation qui n'existe pas.
         return (
-            f"{bandeau}\n\nLa situation « {situation} » n'est pas couverte "
-            f"({data.get('error', 'inconnue')}).\n\nRappelle l'outil sans argument "
-            "pour obtenir la liste, et n'invente pas de démarche pour combler le trou."
+            f"La situation « {situation} » n'est pas couverte "
+            f"({data.get('detail') or data.get('error') or 'inconnue'}).\n\n"
+            "Rappelle l'outil sans argument pour obtenir la liste des situations "
+            "acceptées, et n'invente pas de démarche pour combler le trou."
         )
 
     # 🔑 `catalog_suggestions` n'est PAS rendu, et c'est un choix. La réponse
@@ -2326,7 +2391,13 @@ async def calculer_echeance(
     # « oui » partait en « 1 » et revenait refusé. Le paramètre documenté ne
     # rendait jamais de résultat.
     lieux = ("metropole", "outremer", "etranger")
-    lieu = str(distance).strip().lower()
+    # 🔑 Une chaîne vide est une valeur ABSENTE, pas une valeur inconnue. Un champ
+    # de formulaire qu'on n'a pas rempli produit exactement cette requête, et
+    # l'index la traite déjà comme la métropole (`test_echeance.sh` : « vide →
+    # 200, la métropole par défaut »). La refuser rendait ce client plus sévère
+    # que l'API qu'il sert, sur le paramètre le plus facile à laisser vide — et
+    # le garde posé pour refuser « lune » attrapait « » au passage.
+    lieu = str(distance).strip().lower() or "metropole"
     if lieu not in lieux:
         return (
             f"« {distance} » n'est pas un lieu connu pour l'article 643.\n\n"
@@ -2367,7 +2438,8 @@ async def calculer_echeance(
     # calcul ; cet outil ne l'affichait nulle part. Le correctif du 21/08/2026 —
     # qui a réparé un lien menant deux mois avant la date annoncée — était donc
     # invisible à qui passe par le serveur MCP. Un essai extérieur l'a vu :
-    # « aucun export .ics dans les treize outils ».
+    # « aucun export .ics dans les treize outils » — treize était son compte, il
+    # y en a douze.
     #
     # Le chemin est relatif à la racine des démarches : on le rend absolu ici,
     # sans quoi il ne mène nulle part chez le lecteur.

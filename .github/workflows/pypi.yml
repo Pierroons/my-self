@@ -1,0 +1,105 @@
+# Publication du paquet `selfright-mcp` sur PyPI.
+#
+# 🔑 **Aucun jeton n'existe.** L'envoi passe par le « trusted publishing » de PyPI : au moment de
+# publier, GitHub présente une identité éphémère que PyPI échange contre le droit de publier ce
+# paquet-là. Il n'y a donc aucun secret à garder, ni ici, ni sur le poste de travail — un jeton
+# d'API dormant sur une machine permettrait, s'il fuitait, de publier une version piégée sous le
+# nom du mainteneur.
+#
+# Le job d'envoi est rattaché à l'environnement `pypi`, protégé par un relecteur requis : le paquet
+# est construit, puis il **attend une approbation humaine**. Un fichier publié sur PyPI ne se
+# remplace pas — il se retire après coup, et les miroirs en ont déjà une copie.
+#
+# ⚠️ **Deux prérequis vivent hors du dépôt**, et sans eux ce workflow ne publie rien : le *trusted
+# publisher* déclaré côté PyPI (ce dépôt, ce fichier, l'environnement `pypi`) et l'environnement
+# protégé créé côté GitHub. Sans le premier, PyPI refuse l'envoi ; sans le second, il partirait sans
+# approbation.
+#
+# Les actions sont épinglées par SHA de commit, comme ailleurs dans ce dépôt : une étiquette de
+# version peut être redirigée vers un autre commit, un SHA non.
+name: pypi
+
+on:
+  push:
+    tags:
+      - 'selfright-mcp-v*'
+  # Pour éprouver la construction sans rien publier : le job d'envoi ne tourne que sur un tag.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  construire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          # Le plancher que le paquet déclare dans requires-python : on construit sur la version la
+          # plus ancienne qu'il accepte, pas sur la plus récente du runner.
+          python-version: '3.11'
+
+      - name: Installer la chaîne de construction
+        run: pip install build==1.6.1 twine==7.0.0
+
+      - name: Construire la roue et l'archive
+        run: python3 -m build --outdir dist self-right/selfjustice/mcp
+
+      # Le tag annonce une version, `modules.json` est la source unique, et le paquet construit
+      # porte la sienne dans le nom de ses fichiers. Les trois doivent concorder : taguer
+      # `selfright-mcp-v0.4.7` et publier une roue 0.4.6 est l'erreur que ce garde ferme.
+      # Sur un `workflow_dispatch` il n'y a pas de tag : les deux autres sont tout de même comparés.
+      - name: Le tag, modules.json et le paquet disent la même version
+        run: |
+          set -euo pipefail
+          declaree=$(python3 -c "import json; print(next(m['version'] for m in json.load(open('modules.json'))['modules'] if m['id'] == 'selfright-mcp'))")
+          echo "modules.json annonce : $declaree"
+          construite=$(ls dist/selfright_mcp-*.whl | sed -E 's|.*/selfright_mcp-([^-]+)-.*|\1|')
+          echo "la roue construite porte : $construite"
+          if [ "$declaree" != "$construite" ]; then
+            echo "::error::modules.json annonce $declaree, la roue porte $construite"
+            exit 1
+          fi
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
+            du_tag="${GITHUB_REF_NAME#selfright-mcp-v}"
+            echo "le tag annonce : $du_tag"
+            if [ "$du_tag" != "$declaree" ]; then
+              echo "::error::le tag $GITHUB_REF_NAME annonce $du_tag, modules.json annonce $declaree"
+              exit 1
+            fi
+          else
+            echo "pas de tag sur cet événement : la concordance tag ↔ version n'est pas établie ici"
+          fi
+
+      # `twine check` lit les métadonnées comme PyPI les lira — c'est lui qui refuse un README que
+      # la page du projet ne saurait pas rendre. Le corps d'une version publiée ne se corrige jamais.
+      - name: Les métadonnées sont celles que PyPI saura rendre
+        run: twine check --strict dist/*
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: paquet
+          path: dist/
+          if-no-files-found: error
+
+  publier:
+    needs: construire
+    # Un `workflow_dispatch` construit et s'arrête là. Seul un tag publie.
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    # L'approbation humaine se joue ici : l'environnement est protégé par un relecteur requis.
+    environment: pypi
+    permissions:
+      contents: read
+      # L'identité éphémère présentée à PyPI. Elle n'est accordée qu'à ce job : la construction,
+      # qui exécute le code du constructeur, n'en a pas besoin et ne l'obtient pas.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: paquet
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2

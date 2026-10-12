@@ -1,4 +1,9 @@
-# Artefacts de construction propres à ce paquet. Les caches Python et les
-# environnements virtuels sont désormais couverts par le .gitignore racine.
+# Artefacts de construction propres à ce paquet.
+#
+# ⚠️ Ce fichier est le seul que `hatchling` lit : il s'arrête au premier
+# `.gitignore` trouvé en remontant depuis la racine de construction, donc les
+# règles de la racine du dépôt (`__pycache__/`, `.venv/`, `.env`) lui sont
+# invisibles. Ce qui part dans l'archive publiée est décidé par le
+# `only-include` de `pyproject.toml`, pas ici. git, lui, applique bien les deux.
 build/
 dist/

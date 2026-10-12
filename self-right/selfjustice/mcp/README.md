@@ -32,22 +32,28 @@ accompagné de la date à laquelle cette base a été synchronisée.
 | `gabarit_document` | Adresse d'un modèle de courrier à trous et champs à compléter ; mention « NON OFFICIEL » quand il imite la forme d'un acte |
 
 Le règlement (UE) 2024/1689 sur l'intelligence artificielle est inclus sous le
-nom `AI_ACT`. Son article 50 porte les obligations de transparence applicables
-aux contenus générés par IA — utile si tu comptes joindre une analyse produite
-par un modèle à une saisine ou la publier.
+nom `AI_ACT`. Son article 50 porte les obligations de transparence : le marquage
+des contenus de synthèse par leurs fournisseurs (§2), et pour les déployeurs le
+signalement des hypertrucages et des textes **publiés dans le but d'informer le
+public sur des questions d'intérêt public** (§4). Ce dernier paragraphe prévoit
+ses propres exemptions, dont l'examen humain avec responsabilité éditoriale
+assumée — demande-lui son texte plutôt que de te fier à ce résumé.
 
 ## Le contrôle de fraîcheur
 
-C'est le point qui distingue ce serveur d'un simple proxy HTTP.
+Un proxy relaierait la base sans rien dire de son âge.
 
 **Une base juridique périmée est plus dangereuse qu'une absence de base.** Elle
 répond, elle a l'air juste, et elle sert du droit abrogé sans que rien ne le
-signale. Ce n'est pas théorique : entre juillet 2025 et août 2026, l'instance
-publique a servi le droit au 13 juillet 2025 pendant treize mois. La
+signale. Ce n'est pas théorique : de juillet 2025 à août 2026, une instance de ce
+projet a servi le droit au 13 juillet 2025 pendant treize mois. La
 synchronisation tournait à l'heure tous les 1er et 15 ; c'est son résultat qui
-était mort, et aucun contrôle portant sur l'exécution ne pouvait le voir.
+était mort, et aucun contrôle portant sur l'exécution ne pouvait le voir. Le
+défaut a été corrigé en août 2026, et ce chapitre existe parce qu'il a eu lieu.
 
-Chaque réponse de chaque outil porte donc un état de fraîcheur, et cet état
+Les dix outils qui lisent une base portent donc un état de fraîcheur dans leur
+réponse. `calculer_echeance` et `gabarit_document` n'en portent pas : ils ne
+servent aucun texte — l'un calcule un délai, l'autre donne une adresse. Cet état
 repose sur **deux dates que l'instance expose séparément** :
 
 - `last_sync` — quand la synchronisation de l'instance a réussi ;
@@ -98,13 +104,21 @@ que ce serveur existe pour empêcher.
 
 ## Installation
 
-Il n'y a pas encore de paquet PyPI — l'installation se fait depuis les sources :
+```bash
+pip install selfright-mcp
+```
+
+Depuis les sources, pour suivre le dépôt ou modifier le serveur :
 
 ```bash
 git clone https://github.com/Pierroons/my-self
 cd my-self/self-right/selfjustice/mcp
 pip install -e .
 ```
+
+Ce paquet installe le serveur, pas l'instance qu'il interroge. Il te faut une
+API SelfJustice, et c'est à toi de l'héberger : voir « Héberger ta propre
+instance » plus bas.
 
 ## Configuration du client
 
@@ -121,8 +135,8 @@ Pour Claude Code (`~/.claude.json`) ou tout autre client MCP :
 }
 ```
 
-Aucune clé d'API, aucun compte : il te faut seulement désigner l'instance à
-interroger.
+Aucune clé d'API, aucun compte côté client : il te faut seulement désigner
+l'instance à interroger.
 
 `SELFRIGHT_API_URL` est **obligatoire et sans valeur par défaut**. Le serveur
 ne suppose aucune instance : coder une adresse en dur ferait porter à celui qui
@@ -138,7 +152,7 @@ variable, le serveur démarre, annonce ses outils, et les refuse tous.
 | `SELFRIGHT_PLAFOND_TEXTE` | Longueur au-delà de laquelle le texte d'une décision est réduit (défaut : 20000). Les moyens annexés sont écartés en priorité ; à défaut, le début et la fin sont conservés |
 | `SELFRIGHT_NTFY_URL` | Topic ntfy prévenu quand la base est en retard |
 | `SELFRIGHT_NTFY_TOKEN` | Jeton du topic |
-| `SELFRIGHT_ACT_URL` | Racine des routes de démarches. Déduite de `SELFRIGHT_API_URL` en remplaçant son dernier segment par `act/api` — à renseigner seulement si ton instance les dispose autrement |
+| `SELFRIGHT_ACT_URL` | Racine des routes de démarches. Déduite de `SELFRIGHT_API_URL` **à la seule condition que son dernier segment soit `api`**, qu'elle remplace alors par `act/api`. Toute autre forme ne se déduit pas : renseigne-la, sinon les outils de démarches refusent de répondre |
 
 Les deux dernières servent à qui exploite une instance et veut être alerté
 quand sa propre base décroche. Elles sont vides par défaut, et le resteront :
@@ -146,13 +160,33 @@ inscrire un jeton dans un dépôt public reviendrait à le publier.
 
 ## Héberger ta propre instance
 
-L'API est un fichier PHP et deux bases SQLite ; le dossier parent contient les
-scripts de construction et de synchronisation. Rien n'oblige à passer par
-l'instance publique — pointe `SELFRIGHT_API_URL` où tu veux.
+Ce paquet ne fournit aucune instance et n'en désigne aucune : tu héberges la
+tienne. Coder une adresse en dur ferait porter à son exploitant le trafic de
+toutes les installations, à son insu.
 
-## Ce que le serveur fait, et ce qu'il laisse à l'utilisateur
+Ce qu'il te faut, et où c'est dans le dépôt :
 
-Il donne des outils à jour ; il ne formule pas d'avis. Il rend un article avec sa
+- l'API — un fichier PHP, `self-right/selfjustice/api/api.php` ;
+- **trois** bases SQLite — le droit français, la conventionnalité, l'index de
+  jurisprudence —, construites par les scripts de
+  `self-right/selfjustice/tools/` depuis les dumps officiels de la DILA et
+  d'EUR-Lex ;
+- la configuration de référence — vhost nginx, unités systemd de
+  synchronisation — dans `deploy/selfjustice/` ;
+- pour la recherche de jurisprudence par thème et le texte intégral des
+  décisions **judiciaires** : une clé Judilibre, obtenue par un compte sur
+  api.piste.gouv.fr, à placer dans `SELFJUSTICE_JUDILIBRE_KEY` côté instance.
+  Sans elle, les dix autres outils fonctionnent, la jurisprudence
+  administrative reste servie par l'index local, et les deux outils concernés
+  le disent au lieu de se taire.
+
+C'est une configuration de référence, pas un guide pas-à-pas. Une fois ton API
+servie, pointe `SELFRIGHT_API_URL` sur sa racine — `https://ton-domaine/api`.
+
+## Ce que le serveur fait, et ce qu'il te laisse
+
+Il donne des outils qui disent l'âge de ce qu'ils servent ; il ne formule pas
+d'avis. Il rend un article avec sa
 date de vigueur, une échéance avec le raisonnement qui y mène, l'adresse d'un
 formulaire officiel — jamais une recommandation sur ce qu'il faut faire.
 
@@ -160,8 +194,10 @@ formulaire officiel — jamais une recommandation sur ce qu'il faut faire.
 document** : il donne l'adresse du gabarit et la liste des champs à compléter.
 Le document s'ouvre dans un navigateur, porte ses avertissements — la mention
 « NON OFFICIEL » dans le corps quand il imite la forme d'un acte, le rappel en
-pied dans tous les cas — et laisse en crochets les faits, montants, dates et noms — ceux
-qui n'appartiennent qu'à la personne concernée et qu'aucun outil ne connaît.
+pied dans tous les cas — et laisse en crochets les faits, montants et noms — ceux
+qui n'appartiennent qu'à la personne concernée et qu'aucun outil ne connaît. La
+date, elle, est pré-remplie au jour de la génération : l'annoncer « à compléter »
+enverrait chercher un trou qui n'existe pas.
 
 Le reste indexe, oriente et calcule. `calculer_echeance` rend sa date
 **avec le raisonnement article par article** qui y mène : une échéance sans ses
