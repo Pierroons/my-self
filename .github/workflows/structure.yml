@@ -2088,6 +2088,18 @@ jobs:
 
       # La taille du sel de compte vit à quatre endroits qui ne peuvent pas se lire :
       # sr-derive.js, sr-kdf.js, Recovery::SEL_OCTETS, le CHECK du schéma duo.
+      # 🔑 La liste des écarts de portabilité de `schema.sql` est de la PROSE, et
+      # elle vieillit quand le schéma gagne une table — sans que rien ne le dise.
+      # Ce banc la confronte au moteur : sous SQLite il exige zéro refus et éprouve
+      # les contraintes posées ; sur un moteur dont l'attendu n'est pas déclaré il
+      # ROUGIT en rendant la liste des refus, au lieu d'un vert sans portée.
+      - name: Garde-fou — le schéma passe sur son moteur, et sa liste d'écarts est exacte
+        run: |
+          set -o pipefail
+          sortie=$(php bi-self/selfrecover/tests/banc_portabilite_schema.php | tee /dev/stderr)
+          echo "$sortie" | grep -qE '^OK — 6/6 contrôles conformes\.$' \
+            || { echo "::error::le banc de portabilité n'a pas joué ses 6 contrôles"; exit 1; }
+
       - name: Garde-fou — une seule taille de sel de compte, du navigateur à la base
         run: |
           # @plante
