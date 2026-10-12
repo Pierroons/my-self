@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   tags:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
@@ -31,7 +31,7 @@ jobs:
         run: bash scripts/check-versions.sh --tags
 
   publications:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
@@ -43,7 +43,7 @@ jobs:
         run: bash scripts/check-versions.sh --publications
 
   ecosysteme:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
       - name: Les README disent la version publiée de selffarm-lite

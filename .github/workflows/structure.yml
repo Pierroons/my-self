@@ -29,7 +29,7 @@ jobs:
   # tourne en 8.4 : un écart de comportement de PDO entre versions y passait inaperçu (la 0.5.0
   # ouvrait une transaction en SQL que PDO 8.2 ne voit pas).
   selfdataguard-php-anciens:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -66,7 +66,7 @@ jobs:
           exit $rc
 
   structure:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
 
@@ -99,6 +99,12 @@ jobs:
       # cryptsetup n'est pas sur le runner, et argon2 non plus : les installer coûte
       # quelques secondes et rend ce banc exécutable ici. Il ne demande pas root — le
       # conteneur LUKS2 est un fichier, aucune activation device-mapper.
+      # 🔑 L'OS du runner est épinglé (`ubuntu-24.04`) depuis le 12/10/2026 : le label
+      # `ubuntu-latest` bascule sur Ubuntu 26 à partir du 19/10, et ce job installe PHP,
+      # nginx, cryptsetup et libargon2 puis COMPILE le dérivateur C. Épingler rend la
+      # migration choisie — elle se fait en mesurant, pas en subissant un lundi matin.
+      # ⚠️ Cela ne protège PAS de la dépréciation de Node 20 pour les actions, qui est
+      # indépendante du runner : `actions/checkout@11d5960` déclare `using: node20`.
       - name: Outils du banc SelfRecover-LUKS
         run: |
           # `update` non bloquant, `install` bloquant — motif expliqué à l'installation de nginx.
@@ -110,7 +116,7 @@ jobs:
           # dont l'échec rend une machine non amorçable n'était couvert par aucun
           # vert.
           cc -O2 -Wall -o self-security/selfrecover-luks/selfrecover_derive \
-             self-security/selfrecover-luks/selfrecover_derive.c -l:libargon2.so.1
+             self-security/selfrecover-luks/selfrecover_derive.c -largon2
 
       # 🔑 L'autoload du lab est un PRÉRÉQUIS du contrôle qui suit, pas une
       # étape du lab : sans `demo/lab/vendor/`, huit de ses bancs ne démarrent
