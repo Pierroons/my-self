@@ -3,12 +3,27 @@ name: dco
 # Le certificat d'origine, vérifié là où il a un sens : sur les commits d'une
 # demande de fusion, c'est-à-dire sur les apports extérieurs.
 #
-# 🔑 **Pas de `push:`, volontairement.** Le dépôt porte 917 commits d'un seul
-# auteur, qui est le titulaire des droits : aucune provenance n'y est à
-# attester, et exiger le marqueur sur un push rendrait la règle inapplicable
-# sans réécrire un historique public. La portée du contrôle est celle du texte
-# de CONTRIBUTING.md — si l'un change, l'autre change avec lui.
+# 🔑 **La vérification ne porte que sur les demandes de fusion.** Le dépôt porte
+# plus de neuf cents commits d'un seul auteur, qui est le titulaire des droits :
+# aucune provenance n'y est à attester, et l'exiger sur un push rendrait la règle
+# inapplicable sans réécrire un historique public. La portée du contrôle est
+# celle du texte de CONTRIBUTING.md — si l'un change, l'autre change avec lui.
+#
+# ⚠️ **Le `push:` ci-dessous ne vérifie rien, et c'est son seul rôle : EXISTER.**
+# Un contrôle exigé par la protection d'une branche doit avoir produit son
+# check-run sur le commit poussé, sinon la forge refuse le push avec « Required
+# status check "dco" is expected » — mesuré le 12/10/2026, `main` s'est retrouvée
+# gelée jusqu'au retrait. Sur un push, le travail sort donc zéro en ÉNONÇANT ce
+# qu'il n'a pas mesuré : un succès muet serait un faux vert, et c'est précisément
+# ce que les autres contrôles de ce dépôt servent à ne pas produire.
+#
+# Les deux branches suffisent, et c'est le cadrage de `suivi.yml` : le commit promu
+# sur `main` est celui de `dev`, donc c'est au push de `dev` que le check-run doit
+# naître. Les branches de conv n'en ont pas besoin, et un vert qui n'a rien mesuré
+# n'a pas à s'y multiplier.
 on:
+  push:
+    branches: [main, dev]
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -23,11 +38,30 @@ jobs:
   dco:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      # L'historique complet ne sert qu'à la vérification : sur un push, rien
+      # n'est lu, donc rien n'est cloné.
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
         with:
           fetch-depth: 0
 
+      - name: sur un push, ce contrôle existe sans rien attester
+        if: github.event_name != 'pull_request'
+        run: |
+          echo '::notice title=dco — portée::Aucune signature vérifiée ici. Ce contrôle ne juge que les demandes de fusion ; sur un push il existe pour que la protection de branche soit satisfiable.'
+          echo 'dco — ce qui vient d’être mesuré : RIEN.'
+          echo ''
+          echo 'Les pushes directs sur ce dépôt sont ceux du titulaire des droits, dont'
+          echo 'aucune provenance n’est à attester : c’est écrit dans CONTRIBUTING.md et'
+          echo 'dans l’en-tête de ce fichier. La vérification porte sur les demandes de'
+          echo 'fusion, et elle y lit chaque commit.'
+          echo ''
+          echo 'Ce travail existe ici pour une seule raison : un contrôle exigé par la'
+          echo 'protection d’une branche doit avoir produit son check-run sur le commit'
+          echo 'poussé. Sans lui, exiger « dco » gèlerait la branche.'
+
       - name: chaque commit de la demande porte sa signature
+        if: github.event_name == 'pull_request'
         env:
           # 🔑 Par l'environnement et non par interpolation directe dans le
           # script : une référence contrôlée par l'auteur de la demande n'entre
