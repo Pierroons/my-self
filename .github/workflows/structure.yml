@@ -119,6 +119,14 @@ jobs:
           # sans lui, le keyscript ne pourrait pas dériver à l'amorçage.
           ls /usr/lib/*/libargon2.so.1 >/dev/null 2>&1 \
             || { echo "::error::libargon2.so.1 absent : le runtime manque, le keyscript ne pourrait pas dériver"; exit 1; }
+          # 🔑 Ce que cette étape ÉPROUVE se consigne, au lieu d'être supposé. `-l:libargon2.so.1`
+          # ne consulte jamais `libargon2.so` — mesuré à l'éditeur de liens —, donc sa présence ne
+          # change pas le résultat ; mais elle décide si la condition jouée ici est celle de la
+          # machine cible, qui n'a pas le paquet -dev. Non bloquant : la composition de l'image du
+          # runner n'est pas un défaut de ce dépôt, et la faire échouer serait un rouge pour rien.
+          ls /usr/lib/*/libargon2.so >/dev/null 2>&1 \
+            && echo "::notice::libargon2.so présent sur l'image — la compilation n'en dépend pas, mais cette étape n'éprouve pas l'absence de headers" \
+            || echo "✓ runtime seul : la condition de la machine cible est celle qui est éprouvée"
           # Le binaire C est celui que le keyscript appelle à l'amorçage. Le banc
           # choisit UN dérivateur : le C s'il est compilé, sinon le Python. Sans
           # cette compilation, la CI n'éprouvait que le Python — et le seul chemin
