@@ -895,17 +895,58 @@ def _nom_juridiction(juridiction: Any, cour: Any) -> str:
     return f"{juri} {liaison}{nom}"
 
 
+def _ou(valeur: Any, defaut: Any) -> Any:
+    """La valeur, ou son défaut si elle est absente ou nulle.
+
+    🔑 `dict.get(cle, defaut)` ne prend son défaut que si la clé MANQUE. Une
+    clé présente à `null` rend `None`, et le texte affiché le recopiait : on
+    lisait « (état : None) » sur un article sans état déclaré, et « base au
+    None » sur une instance qui n'avait pas encore écrit sa date de
+    synchronisation — c'est-à-dire chez quiconque vient de monter la sienne.
+    Un 0 ou une chaîne vide, en revanche, sont des valeurs : ils passent. Un
+    compte de zéro décisions doit s'afficher zéro, pas « ? ».
+    """
+    return defaut if valeur is None else valeur
+
+
 def _fin_reelle(date_fin: Any) -> str | None:
     """Rend la date de fin, ou None quand elle n'en est pas une.
 
-    LEGI note « sans terme prévu » par une date lointaine — 2999-01-01. La
-    reprendre telle quelle donnerait une échéance à un texte qui n'en a pas, et
-    daterait un article en vigueur comme s'il expirait.
+    LEGI note « sans terme prévu » par une date lointaine, et en a deux :
+    `2999-01-01`, et `2222-02-22`, que Légifrance affiche « fin de vigueur :
+    date indéterminée ». Les reprendre telles quelles donnerait une échéance à
+    un texte qui n'en a pas, et daterait un article en vigueur comme s'il
+    expirait. Le test sur l'année les écarte toutes deux sans les énumérer.
     """
     d = _parse_date_fr(str(date_fin or ""))
     if d is None or d.year > dt.date.today().year + 50:
         return None
     return str(date_fin)
+
+
+def _applicabilite(r: dict[str, Any]) -> str:
+    """Ce qu'une version est au jour J, tel que l'API l'a établi.
+
+    🔑 Ce client PRÉSENTE l'applicabilité, il ne la juge pas : l'API la calcule
+    sur la période. Une seule fonction pour l'article, ses alternatives et les
+    résultats de recherche — trois replis écrits séparément finiraient par dire
+    trois choses. Une instance antérieure ne rend pas `applicabilite`, ni toujours
+    `en_vigueur` : le repli retombe alors sur l'état, comme avant, sans rien
+    recalculer ici.
+    """
+    if r.get("applicabilite"):
+        return str(r["applicabilite"])
+    if "en_vigueur" in r:
+        return "en_vigueur" if r["en_vigueur"] else "plus_en_vigueur"
+    return "en_vigueur" if r.get("etat") == "VIGUEUR" else "plus_en_vigueur"
+
+
+_DIT_APPLICABILITE = {
+    "en_vigueur": "en vigueur",
+    "pas_encore": "pas encore en vigueur",
+    "plus_en_vigueur": "plus en vigueur",
+    "sans_etat": "sans état déclaré",
+}
 
 
 def _msg_argument_refuse(detail: str) -> str:
@@ -1121,11 +1162,11 @@ async def statut() -> str:
             return _format_fr(fin) if fin else bloc.get("fin", "?")
 
         bornes = " · ".join(
-            f"{_NOM_JURIDICTION_COURT.get(code, code)} jusqu'au {_borne(bloc)} ({bloc.get('decisions', '?')} décisions)"
+            f"{_NOM_JURIDICTION_COURT.get(code, code)} jusqu'au {_borne(bloc)} ({_ou(bloc.get('decisions'), '?')} décisions)"
             for code, bloc in sorted(juris.get("couverture", {}).items())
         )
         ligne_juris = (
-            f"Jurisprudence : {juris.get('decisions', '?')} décisions — {bornes}.\n"
+            f"Jurisprudence : {_ou(juris.get('decisions'), '?')} décisions — {bornes}.\n"
         )
     else:
         etat_juris = (
@@ -1145,7 +1186,7 @@ async def statut() -> str:
     try:
         meta = (await _get("/catalog", {"limit": 1}, base=ACT_URL)).get("meta") or {}
         ligne_catalogue = await _bandeau_catalogue(meta) + (
-            f"\nRessources officielles au catalogue : {meta.get('total', '?')}."
+            f"\nRessources officielles au catalogue : {_ou(meta.get('total'), '?')}."
         )
     except (ApiIndisponible, RequeteInvalide) as e:
         ligne_catalogue = (
@@ -1156,8 +1197,8 @@ async def statut() -> str:
     return (
         f"{etat_legi}\n{etat_eu}\n{etat_juris}\n{ligne_catalogue}\n\n"
         f"Droit français (LEGI, dumps officiels DILA) : "
-        f"{legi.get('articles', '?')} articles dont {legi.get('vigueur', '?')} en vigueur.\n"
-        f"Conventionnalité : {eu.get('articles', '?')} articles — {sources}.\n"
+        f"{_ou(legi.get('articles'), '?')} articles dont {_ou(legi.get('vigueur'), '?')} en vigueur.\n"
+        f"Conventionnalité : {_ou(eu.get('articles'), '?')} articles — {sources}.\n"
         f"{ligne_juris}\n"
         "Cadence de synchronisation annoncée : le 1er et le 15 de chaque mois. "
         "⚠️ Le rapprochement situation → acte est curé à la main, sans cadence : "
@@ -1217,16 +1258,24 @@ async def article_francais(reference: str, code: str | None = None) -> str:
     # texte. Rendre l'un des deux au hasard serait la pire réponse possible —
     # L1152-1 existe au code du travail et au code de la défense.
     if data.get("ambiguous"):
-        lignes = "\n".join(
-            f"  · code={a.get('code_id')}"
-            + (f" — {a.get('code')}" if a.get("code") else "")
-            # L'état décide souvent du choix : entre deux codes, celui qui est
-            # encore en vigueur n'est pas un détail de présentation.
-            + (f" [{a.get('etat')}" + (f", jusqu'au {a.get('date_fin')}" if a.get("date_fin") else "") + "]"
-               if a.get("etat") else "")
-            + f"\n      « {(a.get('apercu') or '').strip()[:120]}… »"
-            for a in data.get("alternatives", [])
-        )
+        # L'applicabilité décide souvent du choix : entre deux codes, celui qui
+        # s'applique n'est pas un détail de présentation. L'état et les dates
+        # bruts trompaient — « [ABROGE_DIFF, jusqu'au 2029-01-01] » pour une
+        # version en vigueur, « [VIGUEUR, jusqu'au 2999-01-01] » pour une
+        # sentinelle sans terme.
+        def _ligne_alternative(a: dict[str, Any]) -> str:
+            cas = _applicabilite(a)
+            fin = _fin_reelle(a.get("date_fin"))
+            return (
+                f"  · code={a.get('code_id')}"
+                + (f" — {a.get('code')}" if a.get("code") else "")
+                + f" [{_DIT_APPLICABILITE.get(cas, cas)}"
+                + (f", jusqu'au {fin}" if fin else "")
+                + f" — état {_ou(a.get('etat'), 'non déclaré')}]"
+                + f"\n      « {(a.get('apercu') or '').strip()[:120]}… »"
+            )
+
+        lignes = "\n".join(_ligne_alternative(a) for a in data.get("alternatives", []))
         return (
             f"{bandeau}\n\nL'article {reference} existe dans plusieurs codes. "
             "Rappelle `article_francais` avec l'argument `code` : le titre du "
@@ -1241,12 +1290,43 @@ async def article_francais(reference: str, code: str | None = None) -> str:
     # `date_fin` — que l'API rend — était jetée alors qu'elle porte
     # l'information décisive sur un article abrogé : jusqu'à quand il
     # s'appliquait, donc à quels faits il s'applique encore.
+    #
+    # 🔑 Ce client PRÉSENTE l'applicabilité, il ne la juge pas : l'API la
+    # calcule sur la période et rend `applicabilite`. Ce bloc lisait
+    # `en_vigueur`, un booléen qui ne distinguait pas un article qui ne
+    # s'applique plus d'un article qui ne s'applique pas encore, et que l'API
+    # tirait de l'état seul — l'art. 8 du CPP, applicable jusqu'en 2029, sortait
+    # « PLUS EN VIGUEUR ». Une instance antérieure ne rend pas `applicabilite` :
+    # le repli reprend alors son booléen, sans rien recalculer ici.
     debut = data.get("date_debut") or "?"
     fin = _fin_reelle(data.get("date_fin"))
-    if data.get("en_vigueur"):
+    cas = _applicabilite(data)
+    if cas == "en_vigueur":
         vigueur = f"EN VIGUEUR · depuis le {debut}"
+        if fin:
+            # « Jusqu'au », jamais « abrogé le » : 3 074 des 10 004 articles
+            # en abrogation différée applicables au 12/10/2026 seront REMPLACÉS
+            # par une nouvelle version à cette date, pas supprimés.
+            vigueur += (
+                f", applicable jusqu'au {fin}\nCe terme est programmé : ne le présente "
+                "pas comme une abrogation, une nouvelle version peut lui succéder."
+            )
+    elif cas == "pas_encore":
+        vigueur = (
+            f"PAS ENCORE EN VIGUEUR · à compter du {debut}\nNe le présente pas comme "
+            "le droit actuel : il ne s'applique qu'à compter de cette date."
+        )
+    elif cas == "sans_etat":
+        # Une version sans état n'est ni vivante ni morte pour la DILA — c'est
+        # souvent un article qui en modifie d'autres. La dire « plus en
+        # vigueur » affirmait une abrogation que la source n'affirme pas.
+        vigueur = (
+            "SANS ÉTAT DÉCLARÉ\nLa DILA ne déclare aucun état pour cette version. Ne "
+            "la présente ni comme en vigueur ni comme abrogée : renvoie vers "
+            "legifrance.gouv.fr pour savoir ce qui s'applique."
+        )
     else:
-        vigueur = f"⚠️ PLUS EN VIGUEUR (état : {data.get('etat', 'inconnu')})"
+        vigueur = f"⚠️ PLUS EN VIGUEUR (état : {_ou(data.get('etat'), 'inconnu')})"
         vigueur += f" · applicable du {debut} au {fin}" if fin else f" · entré en vigueur le {debut}"
         vigueur += (
             "\nIl reste opposable aux faits de cette période : ne le présente "
@@ -1264,12 +1344,12 @@ async def article_francais(reference: str, code: str | None = None) -> str:
 
     return (
         f"{bandeau}\n\n"
-        f"{data.get('code_titre') or data.get('code_id', '')} — article {data.get('reference', reference)}\n"
+        f"{data.get('code_titre') or _ou(data.get('code_id'), '')} — article {data.get('reference', reference)}\n"
         f"{vigueur}\n\n"
         f"{alerte}"
-        f"{data.get('texte', '(texte absent de la base)')}\n\n"
-        f"Source : {src.get('origine', 'LEGI')} — base au {src.get('last_update', '?')}\n"
-        f"Légifrance : {src.get('legifrance_url', '(lien indisponible)')}"
+        f"{_ou(data.get('texte'), '(texte absent de la base)')}\n\n"
+        f"Source : {_ou(src.get('origine'), 'LEGI')} — base au {_ou(src.get('last_update'), '?')}\n"
+        f"Légifrance : {_ou(src.get('legifrance_url'), '(lien indisponible)')}"
     )
 
 
@@ -1324,12 +1404,15 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
     def _ligne_article(r: dict) -> str:
         # `code` est le titre lisible ; `code_titre` n'est rendu par aucune des
         # routes et faisait retomber l'affichage sur l'identifiant technique.
+        # Le début a ses sentinelles comme la fin : une ligne datée 2999 → 2999
+        # s'affichait « depuis 2999-01-01 », et un état nul « [None, … ] ».
+        debut = _fin_reelle(r.get("date_debut")) or "date non déclarée"
         fin = _fin_reelle(r.get("date_fin"))
-        periode = f"{r.get('date_debut')} → {fin}" if fin else f"depuis {r.get('date_debut')}"
+        periode = f"{debut} → {fin}" if fin else f"depuis {debut}"
         ligne = (
             f"  · {r.get('reference')} — "
             f"{_titre_court(r.get('code') or '') or r.get('code_id')} "
-            f"[{r.get('etat')}, {periode}]"
+            f"[{_ou(r.get('etat'), 'état non déclaré')}, {periode}]"
         )
 
         # 🔑 L'identifiant, pour les textes qui ne sont pas des codes.
@@ -1352,18 +1435,30 @@ async def rechercher_droit_francais(requete: str, limite: int = 20) -> str:
 
     # Les abrogés arrivent en dernier, jamais mêlés au droit applicable : c'est
     # l'ordre qui porte l'avertissement, autant que la mention d'état.
-    en_vigueur = [r for r in resultats if r.get("etat") == "VIGUEUR"]
-    anciens = [r for r in resultats if r.get("etat") != "VIGUEUR"]
-
+    # Un bloc par applicabilité, telle que l'API l'a établie. Deux blocs ne
+    # suffisaient pas : un texte qui ne s'applique qu'en 2027 tombait sous « utiles
+    # pour des faits antérieurs », et une version sans état y était dite morte.
+    # Le premier bloc, celui du droit applicable, ne porte pas de titre.
+    titres = {
+        "en_vigueur": "",
+        "pas_encore": "— Pas encore en vigueur (à compter de la date indiquée ; jamais "
+                      "pour dire le droit d'aujourd'hui) :",
+        "plus_en_vigueur": "— Ne sont plus en vigueur (utiles pour des faits antérieurs, "
+                           "jamais pour dire le droit d'aujourd'hui) :",
+        "sans_etat": "— Sans état déclaré par la DILA (ni en vigueur ni abrogés à "
+                     "coup sûr : vérifier sur legifrance.gouv.fr) :",
+    }
     blocs = []
-    if en_vigueur:
-        blocs.append("\n".join(_ligne_article(r) for r in en_vigueur))
-    if anciens:
-        blocs.append(
-            "— Ne sont plus en vigueur (utiles pour des faits antérieurs, "
-            "jamais pour dire le droit d'aujourd'hui) :\n"
-            + "\n".join(_ligne_article(r) for r in anciens)
-        )
+    for cas, titre in titres.items():
+        lignes_cas = [_ligne_article(r) for r in resultats if _applicabilite(r) == cas]
+        if lignes_cas:
+            blocs.append((titre + "\n" if titre else "") + "\n".join(lignes_cas))
+    # Un cas que l'API ajouterait et que ce client ne nomme pas ne doit pas
+    # disparaître du rendu : il rejoindrait sinon aucun bloc, sans un mot.
+    inconnus = [_ligne_article(r) for r in resultats if _applicabilite(r) not in titres]
+    if inconnus:
+        blocs.append("— Applicabilité que ce client ne sait pas nommer (vérifier sur "
+                     "legifrance.gouv.fr) :\n" + "\n".join(inconnus))
 
     return (
         f"{bandeau}\n\n{data.get('count', len(resultats))} résultat(s) pour « {requete} » :\n"
@@ -1414,7 +1509,7 @@ async def article_europeen(source: str, numero: str) -> str:
         f"{bandeau}\n\n"
         f"{src} — article {data.get('reference', numero)}"
         + (f" : {titre}" if titre else "")
-        + f"\n\n{data.get('texte', '(texte absent de la base)')}"
+        + f"\n\n{_ou(data.get('texte'), '(texte absent de la base)')}"
     )
 
 
@@ -1616,7 +1711,7 @@ async def verifier_jurisprudence(
     # contresens que cet outil doit empêcher.
     if data.get("__introuvable__"):
         return _msg_juris_morte(
-            f"l'index ne connaît pas cette route ({data.get('detail', '')})"
+            f"l'index ne connaît pas cette route ({_ou(data.get('detail'), '')})"
         )
 
     etat = data.get("etat")
@@ -1766,7 +1861,7 @@ async def rechercher_jurisprudence(
     # /verifier et /decision.
     if data.get("__introuvable__"):
         return _msg_juris_morte(
-            f"l'index ne connaît pas cette route ({data.get('detail', '')})"
+            f"l'index ne connaît pas cette route ({_ou(data.get('detail'), '')})"
         )
 
     bandeau = await _bandeau("jurisprudence")
@@ -2028,7 +2123,7 @@ async def texte_decision(identifiant: str, integral: bool = False) -> str:
         provenance = f"Judilibre ({detail})" if detail else "Judilibre"
 
     return (
-        f"{bandeau}\n\n{entete}\n{data.get('ecli', '')}\n\n"
+        f"{bandeau}\n\n{entete}\n{_ou(data.get('ecli'), '')}\n\n"
         + (f"⚠️ {reserve}\n\n" if reserve else "")
         + f"{texte}{coupe}\n\n"
         f"Source : {provenance}, open data. Cite la décision "
@@ -2283,8 +2378,8 @@ async def actes_pour_situation(situation: str | None = None) -> str:
     if not situation or data.get("situations"):
         noms = data.get("situations") or []
         liste = "\n".join(
-            f"  · {s if isinstance(s, str) else s.get('slug', '?')}"
-            + ("" if isinstance(s, str) else f" — {s.get('label', '')}"
+            f"  · {s if isinstance(s, str) else _ou(s.get('slug'), '?')}"
+            + ("" if isinstance(s, str) else f" — {_ou(s.get('label'), '')}"
                + (f" ({s.get('acts_count')} actes)" if s.get("acts_count") else ""))
             for s in noms
         )
@@ -2422,7 +2517,7 @@ async def calculer_echeance(
 
     if data.get("ok") is False:
         return (
-            f"Le calcul a été refusé ({data.get('error', 'raison non précisée')}).\n\n"
+            f"Le calcul a été refusé ({_ou(data.get('error'), 'raison non précisée')}).\n\n"
             "Vérifie le format de la date (AAAA-MM-JJ) et qu'une durée est bien "
             "donnée. N'annonce aucune échéance tant qu'elle n'est pas calculée."
         )
@@ -2430,7 +2525,7 @@ async def calculer_echeance(
     # 🔑 Le raisonnement fait la valeur de cet outil : une date sans ses règles
     # ne se vérifie pas, et un délai de procédure manqué ne se rattrape pas.
     etapes = "\n".join(
-        f"  · {e.get('regle', '?')} — {e.get('detail', '')}"
+        f"  · {_ou(e.get('regle'), '?')} — {_ou(e.get('detail'), '')}"
         for e in (data.get("raisonnement") or [])
         if isinstance(e, dict)
     )

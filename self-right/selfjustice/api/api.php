@@ -190,6 +190,124 @@ function legi_a_nature(SQLite3 $db): bool {
     return $present;
 }
 
+// 🔑 L'état LEGI nomme le dernier événement subi par une version — une
+// abrogation, une péremption, une annulation —, pas son applicabilité. Seuls ces
+// trois-là désignent une position dans le cycle de vie : ce sont les états sans
+// contrepartie dans la table des liens de `legi.py` (TYPELIEN_MAP), et sa règle
+// d'anomalie exempte ABROGE_DIFF nommément. Tout autre état, y compris un état
+// que la DILA ajouterait demain, tombe du côté « non applicable » au lieu de
+// casser une table.
+const LEGI_ETATS_VIVANTS = ['VIGUEUR', 'VIGUEUR_DIFF', 'ABROGE_DIFF'];
+
+/** Le jour auquel l'applicabilité se juge : aujourd'hui, sauf pour un banc.
+ *
+ * `SELFJUSTICE_JOUR` fige la date. Un témoin adossé au jour courant se périme —
+ * l'art. 8 du CPP cesse d'être applicable le 1er janvier 2029 — et un banc
+ * rougirait alors sans qu'aucun défaut soit revenu. Une valeur mal formée est
+ * ignorée plutôt que crue.
+ *
+ * Calculé une fois par requête : appelé à chaque expression, il pouvait changer de
+ * valeur en cours de route, et une requête à cheval sur minuit aurait jugé deux
+ * jours à la fois. `\z` et non `$`, qui accepterait un saut de ligne final. */
+function legi_jour(): string {
+    static $jour = null;
+    if ($jour !== null) return $jour;
+    $fige = getenv('SELFJUSTICE_JOUR') ?: '';
+    return $jour = preg_match('/^\d{4}-\d{2}-\d{2}\z/', $fige) ? $fige : date('Y-m-d');
+}
+
+/** L'expression SQL « cette version s'applique au jour J ».
+ *
+ * 🔑 Une seule définition, pour tout ce qui juge la vigueur : le sélecteur de
+ * version, la recherche par numéro, le détecteur de numéros recyclés, le compte
+ * de /status. Recopiée en quinze endroits du dépôt sous la forme `etat = 'VIGUEUR'`,
+ * elle annonçait morts quelque dix mille articles applicables — mesuré le
+ * 12/10/2026 sur la base servie : 683 080 tenus pour en vigueur, 693 141 qui le
+ * sont réellement.
+ *
+ * La période décide ; la liste des états écarte les versions mortes. Sans elle,
+ * la sentinelle `2999-01-01` d'un article périmé ou annulé se lirait comme une
+ * perpétuité : 583 faux « en vigueur ».
+ *
+ * ⚠️ L'état vide est NULL (241 785 lignes au 12/10/2026), et `etat IN (…)` vaut alors NULL.
+ * Dans un WHERE, ce NULL exclut la ligne — ce qui est juste : une version sans
+ * état n'est pas applicable. Sa NÉGATION, en revanche, vaut NULL aussi et
+ * exclurait la même ligne de « l'ancien droit », qui deviendrait aveugle à 13 %
+ * de la base. D'où deux fonctions, une seule définition : la négation passe
+ * TOUJOURS par `legi_sql_non_applicable()`, jamais par un `NOT` écrit à la main.
+ *
+ * `etat IN (…)` est laissé nu plutôt qu'enveloppé dans `ifnull()` parce qu'il
+ * garde ainsi l'index sur `etat`. Mesuré le 14/10/2026 sur la base servie, pour
+ * le compte de /status : 312 ms ainsi, 501 ms enveloppé, 34 ms pour l'ancien
+ * `etat = 'VIGUEUR'` — qui était rapide parce qu'il était faux.
+ *
+ * La date est interpolée, échappée, après validation de sa forme — comme ce
+ * fichier le fait déjà pour un identifiant. Un paramètre lié par chaque appelant
+ * est un paramètre qu'on finit par oublier de lier, et un `:jour` non lié vaut
+ * NULL : tout tomberait du côté « non applicable », sans une erreur. */
+function legi_sql_applicable(string $alias = ''): string {
+    $a = $alias !== '' ? "$alias." : '';
+    $jour = SQLite3::escapeString(legi_jour());
+    $vivants = implode(',', array_map(
+        fn(string $e): string => "'" . SQLite3::escapeString($e) . "'", LEGI_ETATS_VIVANTS));
+    return "({$a}etat IN ($vivants)"
+         . " AND ifnull({$a}date_debut, '') <= '$jour'"
+         . " AND (ifnull({$a}date_fin, '') = '' OR {$a}date_fin > '$jour'))";
+}
+
+/** L'ordre dans lequel les versions d'un même article se départagent.
+ *
+ * 🔑 Une seule définition, pour le sélecteur de /legi/article, les alternatives de
+ * codes et l'ancien droit de la recherche. Trois ordres y coexistaient le 14/10/2026,
+ * et chacun se trompait différemment : l'un rangeait une version sans état SOUS les
+ * versions mortes — `applicable` y vaut NULL, plus petite valeur de SQLite —, et
+ * servait l'abrogée de 2017 à la place de la version de 2023 ; un autre, trié sur
+ * `date_fin`, faisait passer une sentinelle 2999 devant la version abrogée qu'elle
+ * masquait.
+ *
+ * Ce qui s'applique d'abord. À défaut, ce qui a commencé — le plus récent — plutôt
+ * que ce qui commencera ; et parmi ce qui commencera, le plus proche, si bien que
+ * la sentinelle 2999 → 2999 vient en dernier. `ifnull(…, 0)` met une version sans
+ * état au rang des non applicables, pas sous elles. */
+function legi_sql_ordre_version(string $alias = ''): string {
+    $a = $alias !== '' ? "$alias." : '';
+    $jour = SQLite3::escapeString(legi_jour());
+    $commence = "(ifnull({$a}date_debut, '') <= '$jour')";
+    return "ifnull(" . legi_sql_applicable($alias) . ", 0) DESC, "
+         . "$commence DESC, "
+         . "CASE WHEN $commence THEN {$a}date_debut END DESC, "
+         . "{$a}date_debut ASC";
+}
+
+/** La négation de `legi_sql_applicable()`, sûre face à un état NULL.
+ *
+ * `NOT (NULL)` vaut NULL, et une ligne sans état disparaîtrait de « l'ancien
+ * droit » comme de « l'en vigueur ». `ifnull(…, 0)` ramène ce NULL à faux avant
+ * la négation : la ligne tombe du côté non applicable, où elle doit être. */
+function legi_sql_non_applicable(string $alias = ''): string {
+    return "(NOT ifnull(" . legi_sql_applicable($alias) . ", 0))";
+}
+
+/** Ce qu'une version est au jour J, en un mot que le client sait présenter.
+ *
+ * `en_vigueur` ne distingue pas un article qui ne s'applique plus d'un article
+ * qui ne s'applique pas encore — le second étant le plus récent, donc le plus
+ * consulté. Et un état NULL n'est ni l'un ni l'autre : la DILA n'en a pas
+ * déclaré, ce qui ne dit pas que la version est morte. Le dire « plus en
+ * vigueur » affirmait une abrogation que la source n'affirme pas.
+ *
+ * `$row['applicable']` vient de `legi_sql_applicable()` : cette fonction ne
+ * rejuge pas l'applicabilité, elle ne fait que nommer le cas. */
+function legi_applicabilite(array $row): string {
+    if (!empty($row['applicable'])) return 'en_vigueur';
+    $etat = $row['etat'] ?? null;
+    if ($etat === null || $etat === '') return 'sans_etat';
+    if (in_array($etat, LEGI_ETATS_VIVANTS, true) && ($row['date_debut'] ?? '') > legi_jour()) {
+        return 'pas_encore';
+    }
+    return 'plus_en_vigueur';
+}
+
 /** Cherche des articles par numéro, en trois marches.
  *
  * 🔑 `num LIKE '%q%'` ne peut utiliser aucun index : c'est un balayage de toute
@@ -240,14 +358,23 @@ function legi_par_numero(SQLite3 $db, string $q, int $limit, bool $en_vigueur): 
     // et payait quand même le balayage, deux fois, pour 1,2 s et rien à trouver.
     $marches = ($mots === 1) ? [$q, $q . '%', '%' . $q . '%'] : [$q, $q . '%'];
     $nat   = legi_a_nature($db);
-    $cols  = "num, etat, code_id, code_titre, date_debut, date_fin" . ($nat ? ", nature" : "");
-    $etat  = $en_vigueur ? "etat = 'VIGUEUR'" : "etat <> 'VIGUEUR'";
+    // `applicable` voyage avec chaque ligne : la recherche le rend à
+    // l'appelant au lieu de le laisser déduire « vivant » de l'état.
+    $cols  = "num, etat, code_id, code_titre, date_debut, date_fin, "
+           . legi_sql_applicable() . " AS applicable" . ($nat ? ", nature" : "");
+    // L'ancien droit est la NÉGATION de l'applicable, écrite par sa fonction :
+    // `etat <> 'VIGUEUR'` excluait les versions sans état — 241 785 au 12/10/2026 —, et ce
+    // `<>` écrit à la main excluait de même tout ce que `NULL` touche.
+    $etat  = $en_vigueur ? legi_sql_applicable() : legi_sql_non_applicable();
     // Les codes d'abord. Un numéro peu discriminant est porté par des dizaines
     // de textes — « 100 » vit dans 118 textes en vigueur, dont 3 codes — et
     // `ORDER BY num` seul est une égalité totale : l'ordre rendu était celui du
     // plan de requête, c'est-à-dire aucun.
     $rang  = $nat ? "(nature = 'CODE') DESC, " : "";
-    $ordre = $en_vigueur ? $rang . "num" : $rang . "date_fin DESC, num";
+    // L'ancien droit est ensuite dédoublonné par numéro et code : sa PREMIÈRE
+    // ligne de chaque groupe est celle que l'appelant garde. `date_fin DESC` y
+    // plaçait une sentinelle 2999 devant la version abrogée qu'elle masquait.
+    $ordre = $en_vigueur ? $rang . "num" : $rang . legi_sql_ordre_version() . ", num";
     foreach ($marches as $i => $valeur) {
         $operateur = ($i === 0) ? '=' : 'LIKE';
         $stmt = $db->prepare("SELECT $cols
@@ -689,19 +816,20 @@ function article_renvoi(SQLite3 $db, array $row): ?array {
     // Deux questions selon l'état de l'article rendu, une seule requête : le
     // texte cherché est celui des autres versions du numéro quand l'article
     // rendu est vivant, et le sien propre quand il est mort.
-    $vivant = $row['etat'] === 'VIGUEUR';
+    // « Vivant » au sens du jour : la ligne vient du sélecteur, qui l'a calculé.
+    $vivant = !empty($row['applicable']);
 
     $sql = $vivant
         ? "SELECT anc.date_fin AS bascule, v.num AS ailleurs
              FROM articles anc
-             JOIN articles v ON v.code_id = anc.code_id AND v.etat = 'VIGUEUR'
+             JOIN articles v ON v.code_id = anc.code_id AND " . legi_sql_applicable('v') . "
                             AND v.texte = anc.texte AND v.num <> anc.num
             WHERE anc.num = :ref AND anc.code_id = :code
-              AND anc.etat <> 'VIGUEUR' AND anc.texte <> :texte
+              AND " . legi_sql_non_applicable('anc') . " AND anc.texte <> :texte
             ORDER BY anc.date_fin DESC LIMIT 1"
         : "SELECT :date_fin AS bascule, v.num AS ailleurs
              FROM articles v
-            WHERE v.code_id = :code AND v.etat = 'VIGUEUR'
+            WHERE v.code_id = :code AND " . legi_sql_applicable('v') . "
               AND v.texte = :texte AND v.num <> :ref
             LIMIT 1";
 
@@ -775,14 +903,14 @@ function article_texte_precedent(SQLite3 $db, array $row): ?array {
     $stmt = $db->prepare(
         "SELECT anc.date_fin AS bascule, anc.texte AS avant,
                 (SELECT COUNT(*) FROM articles v2
-                  WHERE v2.etat = 'VIGUEUR' AND v2.code_id = anc.code_id
+                  WHERE " . legi_sql_applicable('v2') . " AND v2.code_id = anc.code_id
                     AND v2.date_debut = anc.date_fin
                     AND EXISTS (SELECT 1 FROM articles x
                                  WHERE x.num = v2.num AND x.code_id = v2.code_id
-                                   AND x.etat <> 'VIGUEUR' AND x.texte <> v2.texte
+                                   AND " . legi_sql_non_applicable('x') . " AND x.texte <> v2.texte
                                    AND x.date_fin = v2.date_debut)) AS ampleur
            FROM articles anc
-          WHERE anc.num = :ref AND anc.code_id = :code AND anc.etat <> 'VIGUEUR'
+          WHERE anc.num = :ref AND anc.code_id = :code AND " . legi_sql_non_applicable('anc') . "
             AND anc.date_fin = :debut AND anc.texte <> :texte
           LIMIT 1"
     );
@@ -959,7 +1087,17 @@ if ($segments[0] === 'status') {
         $db = open_db(LEGI_DB);
         $result['legi'] = [
             'articles' => (int) $db->querySingle('SELECT COUNT(*) FROM articles'),
-            'vigueur'  => (int) $db->querySingle("SELECT COUNT(*) FROM articles WHERE etat='VIGUEUR'"),
+            // Il valait COUNT(etat = 'VIGUEUR') — 683 080 le 12/10/2026, pour
+            // 693 141 articles réellement applicables : sa hausse est une
+            // correction, pas une croissance de la base.
+            //
+            // ⚠️ Il dépend désormais du CALENDRIER : il bouge le jour où une
+            // version entre en vigueur ou cesse de s'appliquer, sans que la base
+            // ait changé d'un octet. Son lecteur est la sonde de fraîcheur
+            // (tools/check_fraicheur.sh), qui l'exclut de l'empreinte par laquelle
+            // elle juge qu'une base a été refaite — sinon un tel jour ferait taire
+            // l'alarme du marqueur qui avance sur une base inchangée.
+            'vigueur'  => (int) $db->querySingle("SELECT COUNT(*) FROM articles WHERE " . legi_sql_applicable()),
         ];
         // Le chemin du marqueur reste ici : une réponse publique renseigne sur
         // l'arborescence du serveur sans rien apporter à celui qui la lit.
@@ -1188,26 +1326,27 @@ if ($segments[0] === 'legi') {
         // texte rend à côté de chaque résultat.
         $aux_codes = ($code_filter || !legi_a_nature($db)) ? '' : " AND nature = 'CODE'";
 
-        // Chercher d'abord la version en VIGUEUR
-        $sql = "SELECT $columns FROM articles WHERE num = :ref AND etat = 'VIGUEUR'";
+        // 🔑 Une seule passe, ordonnée par l'applicabilité. Les deux passes
+        // d'avant cherchaient `etat = 'VIGUEUR'` puis, à défaut, la
+        // `date_debut` la plus récente — qui peut être dans le futur. Mesuré le
+        // 12/10/2026 : l'art. 10 du CPP servait sa version de 2027 en
+        // l'annonçant morte, et l'art. 13 d'un arrêté de 2012 servait sa ligne
+        // sentinelle `2999-01-01` — un article modificateur, « A abrogé les
+        // dispositions suivantes… » — à la place du texte en vigueur que la
+        // base possédait. Sur les codes seuls, 2 303 groupes recevaient ainsi
+        // la mauvaise version ET le mauvais libellé (mesuré le 12/10/2026).
+        //
+        // L'ordre est celui de `legi_sql_ordre_version()`, partagé avec les
+        // alternatives de codes et l'ancien droit de la recherche.
+        $sql = "SELECT $columns, " . legi_sql_applicable() . " AS applicable
+                  FROM articles WHERE num = :ref";
         if ($code_filter) $sql .= " AND code_id = :code";
-        $sql .= $aux_codes . " ORDER BY date_debut DESC LIMIT 1";
+        $sql .= $aux_codes . " ORDER BY " . legi_sql_ordre_version() . " LIMIT 1";
 
         $stmt = $db->prepare($sql);
         $stmt->bindValue(':ref', $ref);
         if ($code_filter) $stmt->bindValue(':code', $code_filter);
         $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
-
-        if (!$row) {
-            // Fallback : toutes les versions
-            $sql2 = "SELECT $columns FROM articles WHERE num = :ref";
-            if ($code_filter) $sql2 .= " AND code_id = :code";
-            $sql2 .= $aux_codes . " ORDER BY date_debut DESC LIMIT 1";
-            $stmt = $db->prepare($sql2);
-            $stmt->bindValue(':ref', $ref);
-            if ($code_filter) $stmt->bindValue(':code', $code_filter);
-            $row = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
-        }
 
         if (!$row) {
             // Introuvable dans les codes ne veut pas dire introuvable. Le dire,
@@ -1257,10 +1396,11 @@ if ($segments[0] === 'legi') {
                     // codes sans savoir lequel est encore applicable n'est pas
                     // un choix.
                     $alt_stmt = $db->prepare(
-                        "SELECT SUBSTR(texte, 1, 150) AS apercu, etat, code_titre, date_fin
+                        "SELECT SUBSTR(texte, 1, 150) AS apercu, etat, code_titre, date_debut, date_fin,
+                                " . legi_sql_applicable() . " AS applicable
                            FROM articles
                           WHERE num = :ref AND code_id = :cid
-                       ORDER BY (etat = 'VIGUEUR') DESC
+                       ORDER BY " . legi_sql_ordre_version() . "
                           LIMIT 1"
                     );
                     $alt_stmt->bindValue(':ref', $ref);
@@ -1270,6 +1410,8 @@ if ($segments[0] === 'legi') {
                         'code_id' => $cid,
                         'code'    => $alt_row['code_titre'] ?? '',
                         'etat'    => $alt_row['etat'] ?? '',
+                        'en_vigueur' => !empty($alt_row['applicable']),
+                        'applicabilite' => legi_applicabilite($alt_row),
                         'date_fin' => $alt_row['date_fin'] ?? null,
                         'apercu'  => $alt_row['apercu'] ?? '',
                         // SERVER_NAME, que nginx fixe, jamais l'en-tête Host, que le client choisit : cette URL part dans une réponse mise en cache.
@@ -1296,7 +1438,10 @@ if ($segments[0] === 'legi') {
             'reference'  => $row['num'],
             'etat'       => $row['etat'],
             'renvoi'     => $has_texte ? article_renvoi($db, $row) : null,
-            'en_vigueur' => $row['etat'] === 'VIGUEUR',
+            // Le SENS de ce champ a changé le 14/10/2026 : il valait
+            // `etat === 'VIGUEUR'`, et disait faux pour ~10 000 articles (mesuré le 12/10/2026).
+            'en_vigueur'    => (bool) $row['applicable'],
+            'applicabilite' => legi_applicabilite($row),
             'date_debut' => $row['date_debut'],
             'date_fin'   => $row['date_fin'],
             'code_id'    => $row['code_id'],
@@ -1379,6 +1524,8 @@ if ($segments[0] === 'legi') {
                 $results[] = [
                     'reference'  => $row['num'],
                     'etat'       => $row['etat'],
+                    'en_vigueur' => !empty($row['applicable']),
+                    'applicabilite' => legi_applicabilite($row),
                     'code_id'    => $row['code_id'],
                     'code'       => $row['code_titre'],
                     'nature'     => $row['nature'] ?? null,
@@ -1395,6 +1542,7 @@ if ($segments[0] === 'legi') {
             $col_nature = legi_a_nature($db) ? ", a.nature" : "";
             $stmt = $db->prepare(
                 "SELECT a.num, a.etat, a.code_id, a.date_debut, a.code_titre$col_nature,
+                        " . legi_sql_applicable('a') . " AS applicable,
                         snippet(articles_fts, 0, '', '', '…', 12) AS extrait
                  FROM articles_fts f
                  JOIN articles a ON a.rowid = f.rowid
@@ -1420,6 +1568,8 @@ if ($segments[0] === 'legi') {
                 $results[] = [
                     'reference'  => $row['num'],
                     'etat'       => $row['etat'],
+                    'en_vigueur' => !empty($row['applicable']),
+                    'applicabilite' => legi_applicabilite($row),
                     'code_id'    => $row['code_id'],
                     'date_debut' => $row['date_debut'],
                     'code'       => $row['code_titre'],
@@ -1460,6 +1610,8 @@ if ($segments[0] === 'legi') {
                 $results[] = [
                     'reference'  => $row['num'],
                     'etat'       => $row['etat'],
+                    'en_vigueur' => !empty($row['applicable']),
+                    'applicabilite' => legi_applicabilite($row),
                     'code_id'    => $row['code_id'],
                     'code'       => $row['code_titre'],
                     'nature'     => $row['nature'] ?? null,

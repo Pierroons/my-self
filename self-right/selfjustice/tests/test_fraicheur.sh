@@ -378,6 +378,42 @@ else
 fi
 
 echo
+echo "▸ Un compteur qui suit le calendrier ne fait pas croire la base refaite"
+# 🔑 Depuis le 14/10/2026, `legi.vigueur` compte les versions applicables AU JOUR :
+# il bouge le jour où une version entre en vigueur ou cesse de s'appliquer, sans
+# que la base ait changé d'un octet — 16 jours de bascule entre le 01/10 et le
+# 31/12/2026, dont le 1er novembre, jour de synchronisation. Pris dans l'empreinte,
+# un tel jour faisait croire la base refaite, et la règle du trompe-l'œil se
+# taisait sur un marqueur avancé à base inchangée : la panne des treize mois.
+#
+# Deux VRAIS passages de la sonde, plutôt qu'un état de la veille écrit ici : le
+# premier mémorise la date et l'empreinte telles que la sonde les calcule, le
+# second compare. Un état fabriqué porterait l'empreinte qu'on suppose, pas celle
+# que la sonde écrit.
+status_avec_vigueur() { # <date LEGI> <articles> <vigueur>
+    python3 - "$1" "$2" "$3" "$ATTENDU" <<'PYS' > "$BAC/status.json"
+import json, sys
+d, a, vig, sain = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
+print(json.dumps({
+    "legi": {"articles": a, "vigueur": vig, "last_update": d},
+    "eu": {"articles": 793, "last_update": sain},
+    "jurisprudence": {"decisions": 1191177, "last_update": sain},
+}))
+PYS
+}
+repartition "$ATTENDU" 1895 213 208
+printf '{}' > "$BAC/etat.json"
+status_avec_vigueur "$ATTENDU" 525441 693100
+lancer >/dev/null
+status_avec_vigueur "$APRES" 525441 693141
+sortie=$(lancer)
+if grep -q "trompe-l" <<<"$sortie"; then
+    ok "date avancée, articles figés, seul « vigueur » a bougé → trompe-l'œil signalé"
+else
+    nok "un compteur du calendrier fait passer une base inchangée pour refaite : ${sortie//$'\n'/ }"
+fi
+
+echo
 echo "▸ D'où vient le texte, et depuis combien de temps"
 
 # 🔑 Le 01/09/2026, la sentinelle a crié « synchronisation en trompe-l'œil » sur

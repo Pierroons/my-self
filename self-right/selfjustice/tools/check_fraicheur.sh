@@ -81,8 +81,23 @@ def volume(bloc):
     return None
 
 
+# Les compteurs qui bougent avec le CALENDRIER, pas avec la base. Depuis le
+# 14/10/2026, `legi.vigueur` compte les versions applicables AU JOUR : il change le
+# jour où une version entre en vigueur ou cesse de s'appliquer, sans que la base ait
+# changé d'un octet — 16 jours de bascule entre le 01/10 et le 31/12/2026, dont le
+# 1er novembre, jour de synchronisation. Dans l'empreinte, un tel jour ferait croire
+# la base refaite et réduirait au silence la règle du trompe-l'œil, celle qui voit
+# une date avancer sur une base inchangée.
+#
+# NOMMÉS, pas devinés : une heuristique sur les noms de clés rendrait un vert dont
+# personne ne connaît la portée. Un compteur ajouté à /status qui dépendrait de la
+# date doit être inscrit ici, et tests/test_fraicheur.sh le fait rougir sinon.
+HORS_EMPREINTE = {"vigueur"}
+
+
 def empreinte(bloc, prefixe=""):
-    """Tous les compteurs entiers du bloc, sous-comptes compris.
+    """Tous les compteurs entiers du bloc, sous-comptes compris — sauf ceux du
+    calendrier (HORS_EMPREINTE), qui bougent sans que la base bouge.
 
     🔑 Le total seul ne suffit pas à dire qu'une base n'a pas bougé. Le
     21/08/2026, le catalogue SelfAct a été resynchronisé et a rendu 1 895
@@ -95,7 +110,7 @@ def empreinte(bloc, prefixe=""):
     plat = {}
     for cle, val in (bloc or {}).items():
         chemin = f"{prefixe}{cle}"
-        if isinstance(val, bool):
+        if isinstance(val, bool) or chemin in HORS_EMPREINTE:
             continue
         if isinstance(val, int):
             plat[chemin] = val

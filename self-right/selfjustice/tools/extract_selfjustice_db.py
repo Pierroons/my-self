@@ -90,10 +90,11 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_articles_nature ON articles(nature)",
 ]
 
-# Index plein texte des articles en vigueur.
+# Index plein texte des versions vivantes — en vigueur, ou en entrée ou en
+# abrogation différée.
 #
 # Sans lui, /api/legi/search ne peut regarder que la colonne `num`, et une
-# recherche par mots — « licenciement », « chanvre » — rend zéro sur des
+# recherche par mots — « licenciement », « servitude » — rend zéro sur des
 # centaines de milliers d'articles. Le client en conclut que le droit est
 # muet ; c'est l'index qui manquait.
 #
@@ -103,8 +104,16 @@ INDEXES = [
 # `remove_diacritics 2` pour que « prenom » trouve « prénom » — personne ne
 # tape les accents dans une barre de recherche.
 #
-# Seuls les articles en vigueur : c'est ce que la recherche rend, et les
-# abrogés restent consultables par leur numéro.
+# Seules les versions vivantes — en vigueur, ou dont l'entrée ou l'abrogation
+# est différée : la recherche rend ce qui s'applique ou s'appliquera, et les
+# abrogés restent consultables par leur numéro. L'index ne fige pas la date de
+# sa construction : il sert jusqu'à la synchronisation suivante, et un article
+# qui entre en vigueur entre deux synchronisations doit déjà y être. C'est la
+# requête qui dit, au jour J, s'il s'applique.
+#
+# 🔑 Il ne retenait jusqu'au 14/10/2026 que l'état VIGUEUR : l'art. 8 du code de
+# procédure pénale, applicable jusqu'en 2029 mais en abrogation différée, était
+# introuvable par son texte — avec quelque vingt mille autres.
 #
 # 🔑 Et seuls ceux qui PORTENT un numéro.
 #
@@ -118,15 +127,27 @@ INDEXES = [
 # qu'elle porte les arrêtés (mesuré le 27/08/2026) : ce sont leurs annexes, dont
 # beaucoup ne font que renvoyer au fac-similé. Le contenu n'est pas perdu, il
 # n'est simplement plus proposé comme une réponse qu'on pourrait citer.
+# Ce qu'une recherche par mot peut trouver. Une seule condition pour l'index et
+# pour le compte qui en rend compte : écrite deux fois, elle divergerait au
+# premier changement, et le compte mentirait sur l'index.
+#
+# ETATS_VIVANTS est la copie Python de `LEGI_ETATS_VIVANTS` (api/api.php) — Python
+# ne peut pas lire une constante PHP. audit_articles.py la reprend d'ici au lieu de
+# la recopier une troisième fois, et tests/test_applicabilite.py exige l'égalité
+# des deux ensembles : un état ajouté d'un seul côté y rougit.
+ETATS_VIVANTS = ("VIGUEUR", "VIGUEUR_DIFF", "ABROGE_DIFF")
+CONDITION_INDEXEE = (f"etat IN ({', '.join(repr(e) for e in ETATS_VIVANTS)}) "
+                     "AND num IS NOT NULL AND num != ''")
+
 FTS = [
     """CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
         texte, code_titre, num,
         content=articles,
         tokenize="unicode61 remove_diacritics 2"
     )""",
-    """INSERT INTO articles_fts(rowid, texte, code_titre, num)
+    f"""INSERT INTO articles_fts(rowid, texte, code_titre, num)
         SELECT rowid, texte, code_titre, num FROM articles
-         WHERE etat = 'VIGUEUR' AND num IS NOT NULL AND num != ''""",
+         WHERE {CONDITION_INDEXEE}""",
 ]
 
 _BALISE = re.compile(r"<[^>]+>")
@@ -252,17 +273,18 @@ def main() -> int:
     # L'index est déclaré `content=articles` : il ne stocke pas les documents,
     # il pointe vers la table. `COUNT(*)` sur une telle table FTS5 interroge
     # donc la SOURCE, et rend le nombre total d'articles — là où l'index n'en
-    # porte que les articles en vigueur. Le message annonçait 525 441 articles
-    # indexés pour 159 602 réels, et 1 820 519 pour 678 853 sur la base élargie.
+    # porte que les versions retenues par CONDITION_INDEXEE. Le message annonçait
+    # 525 441 articles indexés pour 159 602 réels, et 1 820 519 pour 678 853 sur
+    # la base élargie (l'index ne retenait alors que l'état VIGUEUR).
     # Un chiffre de contrôle qui ne mesurait pas ce qu'il nommait.
     #
     # Ce que l'INSERT du FTS a réellement inséré, c'est ceci — une seule source
     # pour les deux usages, ce message et le bilan final.
-    indexes = dst.execute(
-        "SELECT COUNT(*) FROM articles "
-        "WHERE etat = 'VIGUEUR' AND num IS NOT NULL AND num != ''").fetchone()[0]
-    vigueur = dst.execute("SELECT COUNT(*) FROM articles WHERE etat='VIGUEUR'").fetchone()[0]
-    print(f" {indexes} articles indexés ({vigueur} en vigueur)")
+    indexes = dst.execute(f"SELECT COUNT(*) FROM articles WHERE {CONDITION_INDEXEE}").fetchone()[0]
+    # Plus de compte « en vigueur » ici : il comptait `etat = 'VIGUEUR'`, ce qui
+    # était faux, et le dire juste demande la date — c'est l'API qui la porte,
+    # dans /status. Ce message ne dit que ce que la construction a fait.
+    print(f" {indexes} versions vivantes indexées")
     dst.close()
     src.close()
 
@@ -298,7 +320,7 @@ def main() -> int:
             return 1
 
     Path(tmp).replace(args.dest)
-    print(f"Terminé : {n} articles ({vigueur} en vigueur) → {args.dest}")
+    print(f"Terminé : {n} articles, dont {indexes} dans l'index de recherche → {args.dest}")
     return 0
 
 

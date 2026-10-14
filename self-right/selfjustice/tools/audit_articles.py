@@ -16,7 +16,10 @@ import argparse
 import re
 import sqlite3
 import sys
+from datetime import date
 from pathlib import Path
+
+from extract_selfjustice_db import ETATS_VIVANTS
 
 
 def extract_articles_from_html(html_path: str) -> list[dict]:
@@ -76,60 +79,69 @@ def extract_articles_from_html(html_path: str) -> list[dict]:
     return sorted(unique, key=lambda x: (x["type"], x["ref"]))
 
 
-def check_article_in_db(db_path: str, article_ref: str, article_type: str) -> dict:
-    """Vérifier si un article existe dans la base LEGI SQLite (schéma maison)."""
+# 🔑 La même règle que `legi_sql_applicable()` et le même ordre que
+# `legi_sql_ordre_version()` dans api/api.php — recopiés, parce que Python ne peut
+# pas appeler une fonction PHP, et CONFRONTÉS : tests/test_applicabilite.py fait
+# juger les mêmes lignes à l'API et à cet outil, et rougit s'ils divergent. Une
+# règle recopiée diverge en silence tant que rien ne la confronte à sa source.
+#
+# La liste des états, elle, n'est pas recopiée ici : elle vient de l'outil
+# d'extraction, qui en porte l'unique copie Python.
+#
+# L'état LEGI nomme le dernier événement subi par une version, pas son
+# applicabilité : ces trois-là seuls désignent une position dans le cycle de
+# vie. Cet outil les jugeait par une cascade sur l'état — `VIGUEUR`, puis
+# `VIGUEUR_DIFF`, puis la `date_debut` la plus récente —, si bien qu'un article
+# en abrogation différée, applicable, sortait sous son état brut, et qu'une
+# version future pouvait passer avant la version en vigueur.
+
+STATUT_MORT = {"ABROGE": "ABROGÉ", "MODIFIE": "MODIFIÉ", "TRANSFERE": "TRANSFÉRÉ", "PERIME": "PÉRIMÉ"}
+
+
+def check_article_in_db(db_path: str, article_ref: str, article_type: str,
+                        jour: str | None = None) -> dict:
+    """Vérifier si un article existe dans la base LEGI SQLite (schéma maison).
+
+    `jour` fixe la date d'applicabilité — aujourd'hui par défaut. Un banc la
+    fige : un témoin adossé au jour courant se périme à la première échéance.
+    """
+    jour = jour or date.today().isoformat()
+    vivants = ", ".join(f"'{e}'" for e in ETATS_VIVANTS)
+    applicable = (f"(etat IN ({vivants}) AND ifnull(date_debut, '') <= :jour"
+                  f" AND (ifnull(date_fin, '') = '' OR date_fin > :jour))")
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    row = conn.execute(
+        f"""SELECT num, etat, code_id, date_debut, date_fin, {applicable} AS applicable
+              FROM articles WHERE num = :ref
+             ORDER BY ifnull(applicable, 0) DESC,
+                      (ifnull(date_debut, '') <= :jour) DESC,
+                      CASE WHEN ifnull(date_debut, '') <= :jour THEN date_debut END DESC,
+                      date_debut ASC
+             LIMIT 1""",
+        {"ref": article_ref, "jour": jour},
+    ).fetchone()
+    conn.close()
 
     result = {"ref": article_ref, "type": article_type, "status": "INTROUVABLE", "details": ""}
+    if not row:
+        return result
 
-    # Notre schéma : articles(id, num, etat, date_debut, date_fin, code_id, code_titre)
-    # On cherche d'abord la version EN VIGUEUR exacte
-    cursor.execute(
-        "SELECT num, etat, code_id, date_debut FROM articles WHERE num = ? AND etat = 'VIGUEUR' LIMIT 1",
-        (article_ref,),
-    )
-    row = cursor.fetchone()
-    if row:
+    etat = row["etat"]
+    if row["applicable"]:
         result["status"] = "EN VIGUEUR"
         result["details"] = f"{row['num']} (depuis {row['date_debut']}) — {row['code_id']}"
-        conn.close()
-        return result
-
-    # Sinon, chercher version VIGUEUR_DIFF (à venir)
-    cursor.execute(
-        "SELECT num, etat, code_id, date_debut FROM articles WHERE num = ? AND etat = 'VIGUEUR_DIFF' LIMIT 1",
-        (article_ref,),
-    )
-    row = cursor.fetchone()
-    if row:
+    elif not etat:
+        # Ni vivant ni mort : la DILA ne déclare pas d'état. L'annoncer
+        # « INCONNU » ou sous son NULL affirmait plus que la source.
+        result["status"] = "SANS ÉTAT"
+        result["details"] = f"{row['num']} — {row['code_id']}"
+    elif etat in ETATS_VIVANTS and (row["date_debut"] or "") > jour:
         result["status"] = "VIGUEUR DIFFÉRÉE"
         result["details"] = f"{row['num']} (entrée en vigueur : {row['date_debut']}) — {row['code_id']}"
-        conn.close()
-        return result
-
-    # Sinon, chercher version ABROGE/MODIFIE/etc.
-    cursor.execute(
-        "SELECT num, etat, code_id, date_debut, date_fin FROM articles WHERE num = ? ORDER BY date_debut DESC LIMIT 1",
-        (article_ref,),
-    )
-    row = cursor.fetchone()
-    if row:
-        etat = row["etat"]
-        if etat == "ABROGE":
-            result["status"] = "ABROGÉ"
-        elif etat == "MODIFIE":
-            result["status"] = "MODIFIÉ"
-        elif etat == "TRANSFERE":
-            result["status"] = "TRANSFÉRÉ"
-        elif etat == "PERIME":
-            result["status"] = "PÉRIMÉ"
-        else:
-            result["status"] = etat or "INCONNU"
+    else:
+        result["status"] = STATUT_MORT.get(etat, etat)
         result["details"] = f"{row['num']} (du {row['date_debut']} au {row['date_fin']}) — {row['code_id']}"
-
-    conn.close()
     return result
 
 
@@ -168,8 +180,12 @@ def main():
         output.append(f"  {status:<25} : {len(items)}")
     output.append("")
 
-    # Statuts problématiques en premier
-    priority = ["INTROUVABLE", "ABROGÉ", "TRANSFÉRÉ", "PÉRIMÉ", "MODIFIÉ", "VIGUEUR DIFFÉRÉE", "EN VIGUEUR"]
+    # Statuts problématiques en premier, puis tout statut que la liste ne nomme
+    # pas : un état brut (ANNULE…) était compté au résumé et jamais détaillé,
+    # faute d'y figurer.
+    priority = ["INTROUVABLE", "SANS ÉTAT", "ABROGÉ", "TRANSFÉRÉ", "PÉRIMÉ", "MODIFIÉ",
+                "VIGUEUR DIFFÉRÉE", "EN VIGUEUR"]
+    priority += [s for s in results if s not in priority]
     for status in priority:
         if status in results and results[status]:
             output.append(f"--- {status} ({len(results[status])}) ---")

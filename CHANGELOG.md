@@ -42,6 +42,89 @@ Aucune version ne monte : rien ne change dans ce que le code décide.
 été produite : sa clé de signature était un emplacement réservé, sa liste de signataires était vide.
 Depuis le 5 octobre, plus aucun texte du dépôt ne le citait.
 
+### SelfJustice 0.4.3 — un article se dit applicable selon sa période, plus selon son seul état — 14 octobre 2026
+
+**Le chiffre « en vigueur » de `/status` passe de 683 080 à environ 693 141.** C'est une correction, pas une
+croissance de la base : l'ancien compte était faux. Ce compte dépend désormais du calendrier — il bouge le
+jour où une version entre en vigueur, sans que la base change —, et la sonde de fraîcheur, qui le lisait
+pour juger qu'une base avait été refaite, l'écarte de son empreinte (voir plus bas).
+
+L'API ne calculait jamais si un article s'applique. Elle rendait `en_vigueur` égal à `etat === 'VIGUEUR'` :
+les dates étaient servies, jamais comparées. Or l'état LEGI nomme le dernier événement subi par une version,
+pas son applicabilité, et Légifrance ne l'affiche d'ailleurs pas — elle affiche une fenêtre de dates. Mesuré
+sur la base servie le 12 octobre : quelque dix mille articles applicables annoncés « PLUS EN VIGUEUR », dont
+l'article 8 du code de procédure pénale, applicable jusqu'au 1er janvier 2029 ; à l'inverse, des articles qui
+n'entreront en vigueur qu'en 2027 annoncés « EN VIGUEUR depuis ».
+
+**Plus grave que le libellé, le mauvais texte était servi.** À défaut de version `VIGUEUR`, le sélecteur
+prenait la `date_debut` la plus récente — qui peut être dans le futur. L'article 10 du même code servait sa
+version de 2027 ; l'article 13 d'un arrêté de 2012 servait une ligne sentinelle datée 2999, un article qui en
+modifie d'autres, à la place du texte en vigueur que la base possédait. Le sélecteur ne fait plus qu'une
+passe, ordonnée par l'applicabilité.
+
+**Plus caché encore, l'index de recherche.** Il ne retenait que l'état `VIGUEUR` : quelque vingt mille
+versions en abrogation ou en entrée en vigueur différée étaient introuvables par leur texte, l'article 8 du
+CPP en tête. Il porte désormais toutes les versions vivantes, et c'est la requête qui juge, au jour, ce qui
+s'applique — un index figé à sa date de construction perdrait les articles qui entrent en vigueur entre deux
+synchronisations. ⚠️ L'index ne se refait qu'à la synchronisation suivante après la pose.
+
+**La règle était recopiée en quinze endroits** — la recherche par numéro, le détecteur de numéros recyclés,
+le compte de `/status`, le sélecteur, le tri des alternatives, la réponse, l'index, le tri de la recherche dans
+le client MCP, l'outil d'audit. Elle n'a plus qu'une définition, `legi_sql_applicable()` : la période décide,
+et seuls trois états — `VIGUEUR`, `VIGUEUR_DIFF`, `ABROGE_DIFF` — peuvent désigner une version vivante. Sans
+cette liste, la sentinelle `2999-01-01` d'un article périmé ou annulé se lirait comme une perpétuité.
+Écrite pour qu'un état vide ne disparaisse pas de l'ancien droit : la recherche « ancien droit » était
+aveugle aux 241 785 versions sans état (au 12 octobre).
+
+**Zone sensible, route existante** : le *sens* du champ `en_vigueur` de `/api/legi/article` change — il
+disait faux. Un champ `applicabilite` s'y ajoute (`en_vigueur`, `pas_encore`, `plus_en_vigueur`,
+`sans_etat`), et chaque résultat de `/api/legi/search` porte désormais `en_vigueur`. Une version sans état
+déclaré n'est plus annoncée morte : la DILA n'en dit rien, et le dire « plus en vigueur » affirmait une
+abrogation que la source n'affirme pas.
+
+**Côté client MCP** (dans la 0.4.7, non publiée) : il présente ce que l'API a établi au lieu de le déduire
+de l'état, en cinq cas au lieu de deux. Il ne promet jamais une abrogation — 3 074 des 10 004 articles en
+abrogation différée seront *remplacés* à leur terme, pas supprimés. Et il n'écrit plus `None` dans un texte :
+`dict.get(clé, défaut)` ne prend son défaut que si la clé manque, si bien qu'une valeur nulle sortait telle
+quelle — « (état : None) », et « base au None » sur toute instance qui n'a pas encore écrit sa date de
+synchronisation, c'est-à-dire chez quiconque vient de monter la sienne.
+
+`tests/test_applicabilite.py` fait juger les mêmes lignes à l'API, à la recherche, à l'outil d'audit et au
+client : **rouge sur 22 contrôles avant le correctif, vert après**. Son jeu est extrait de la base servie —
+27 lignes réelles — et sa date est figée, parce qu'un témoin adossé au jour courant se périme à la première
+échéance qu'il porte.
+
+**Un audit du lot a trouvé ce que le premier jet cassait, et tout est repris** :
+
+- **Trois ordres de sélection coexistaient**, chacun faux à sa manière : l'un rangeait une version sans état
+  *sous* les versions mortes — l'article 41 d'un texte de 2014 servait son abrogée de 2017 au lieu de sa
+  version de 2023 —, un autre faisait passer une sentinelle 2999 devant la version abrogée qu'elle masquait
+  (l'article 135 d'un texte de 2008, et 80 groupes comme lui). Un seul ordre désormais,
+  `legi_sql_ordre_version()`, pour le sélecteur, les alternatives et l'ancien droit.
+- **La sonde de fraîcheur perdait son alarme.** Son empreinte prenait tous les compteurs du bloc LEGI, donc le
+  compte « en vigueur » — qui bouge 16 jours d'ici fin décembre, dont le 1er novembre, jour de
+  synchronisation. Un marqueur qui avance sur une base inchangée, la panne des treize mois, serait passé en
+  silence. Ce compteur est nommé et sort de l'empreinte.
+- **La recherche ne disait pas ce qu'elle rendait.** Chaque résultat porte maintenant `applicabilite`, et le
+  client MCP range ses résultats en quatre blocs au lieu de deux : un texte qui ne s'applique qu'en 2027 n'est
+  plus présenté « utile pour des faits antérieurs ».
+- **La page que lisent les IA ordonnait encore de juger sur l'état** — « si un article est abrogé, ne pas
+  l'utiliser » —, ce qui écartait l'article 8 du CPP. Elle dit désormais de lire `applicabilite`, ce que permet
+  chacun des quatre cas, et que 2999 et 2222 ne sont pas des échéances.
+- **Les listes d'états sont confrontées pour de bon** : l'outil d'audit reprend celle de l'outil d'extraction
+  au lieu de la recopier, et le banc exige que les deux ensembles, PHP et Python, soient égaux — un état ajouté
+  d'un seul côté y rougit.
+
+⚠️ **La pose sera double.** L'API passe par le déployeur ; les outils planifiés — l'extraction, l'audit, la
+sonde — ne sont posés par aucun script du dépôt, et ceux qui tournent sur l'instance datent du 27 août. Sans
+leur pose, l'index ne gagnera jamais les versions différées.
+
+Restent hors de ce lot : `/status` qui tombe en entier dès qu'une base manque — `open_db()` termine la
+requête au lieu de lever, et le bandeau de chaque réponse du MCP s'éteint avec lui, ce que rencontrera
+quiconque monte son instance base par base —, le titre d'un texte choisi sur l'état seul (429 textes), et
+l'outil d'audit, qui
+cherche un article par son numéro sans son code et ne peut donc départager deux homonymes.
+
 ### `selfright-mcp` 0.4.7 — le paquet part sur PyPI, et quatre refus cessent de se faire passer pour des pannes — 12 octobre 2026
 
 Première mise sur index public. Ce que la préparation a trouvé pèse plus que la publication elle-même.
