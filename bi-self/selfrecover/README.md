@@ -58,9 +58,10 @@ For twenty years, the industry's answer has been: **send an email**. But this cr
 
 SelfRecover is a **split-knowledge** recovery protocol:
 
-- **Recovery word alone** = nothing.
+- **Recovery word alone** = nothing for the **account**.
 - **Algorithm alone** = nothing.
 - **Recovery word + algorithm** = a fingerprint the server can verify — **one factor out of the two** level 2 requires.
+- ⚠️ **With SelfDataGuard, the word also opens the data.** It is an intended fallback lock: it gives the data back to a user who has lost everything but this word. It is as strong as the word, and no other factor is added to it.
 
 The user has only **one word to keep in their head**, and that is all they are asked to memorize. It is not all they need: at level 2, the word only counts together with a paper *recovery code* or the device they enrolled. Level 1 does not use the word: it asks for the identifier and a diceware passphrase kept on paper — a single factor.
 
@@ -167,7 +168,7 @@ server       → account       = lookup(HMAC-SHA256(deployment_salt, recovery_co
                              AND password_verify(derived_key, stored_recovery_hash)  // Argon2id, both always computed
 ```
 
-The wire never carries the recovery word. The server never stores the recovery word. Even a full database dump + source code leak does not expose it — only Argon2id hashes of per-site-derived keys.
+The wire never carries the recovery word. The server never stores the recovery word. A full database dump plus source code leak does not hand it over in clear: it only holds Argon2id hashes of per-site-derived keys, and every guess at the word is paid in Argon2id. ⚠️ With SelfDataGuard, the database also holds the data's fallback envelope, and the word that opens it is guessed the same way: that data is then as strong as the word.
 
 > ⚠️ **The salt route is public, and it must not become an oracle.** At level 2 the browser derives before the account is identified: the code is what identifies it, so it needs the salt first, without authentication. Were the route to answer a valid code and refuse an unknown one, codes could be tested for the price of a request, without paying a single Argon2id. So it **always** returns a salt: the account's for a known code, otherwise a fake one, drawn from a server secret. The library exposes no route, but it ships the guard: your route calls `Recovery::selDeDerivation($code)`, with a storage that implements `SelParCodeInterface` (`StockagePdo` does). The details, and how the two demonstrations in this repository serve the route, are in the [threat model](docs/threat-model.md), section "Bot-driven account enumeration".
 

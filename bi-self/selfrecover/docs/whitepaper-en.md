@@ -45,11 +45,13 @@ SelfRecover proposes a different answer: trust stays between the user and the si
 
 **Core principle:**
 
-> Recovery word alone = nothing.
+> Recovery word alone = nothing for the account.
 > Algorithm alone = nothing.
 > Recovery word + Algorithm = a fingerprint the server can verify — one of level 2's two factors.
 
 SelfRecover is a split-knowledge recovery system. The user remembers one word. The system provides the algorithm. Neither has value without the other.
+
+⚠️ **With SelfDataGuard, the word also opens the data.** It is an intended fallback lock: it gives the data back to a user who has lost everything but this word. It is as strong as the word, and no other factor is added to it.
 
 **What the user remembers:** a single word, written down nowhere.
 

@@ -45,11 +45,13 @@ SelfRecover propose une autre réponse : la confiance reste entre l'utilisateur 
 
 **Principe fondamental :**
 
-> Mot de récupération seul = rien.
+> Mot de récupération seul = rien pour le compte.
 > Algorithme seul = rien.
 > Mot de récupération + Algorithme = une empreinte que le serveur sait vérifier — un des deux facteurs du niveau 2.
 
 SelfRecover est un système de récupération à connaissance partagée (split knowledge). L'utilisateur retient un mot. Le système fournit l'algorithme. Aucun des deux n'a de valeur sans l'autre.
+
+⚠️ **Avec SelfDataGuard, le mot ouvre aussi les données.** C'est une serrure de secours voulue : elle rend ses données à qui a tout perdu sauf ce mot. Elle vaut ce que vaut le mot, et aucun autre facteur ne s'y ajoute.
 
 **Ce que l'utilisateur retient :** un seul mot, qui ne s'écrit nulle part.
 

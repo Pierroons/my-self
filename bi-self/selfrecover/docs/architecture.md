@@ -128,7 +128,7 @@ POST /l3-reset  → the OWNER sets a new password and memorized word;
 3. **Service-specific.** The derivation message carries a per-service material, so the same word yields a different key per service. In `'hostname'` mode that material is read in the browser, so a passive clone that copies the page derives a different key; in `'label'` mode it is not, and the clone derives the same key. (A captured *raw* word reused elsewhere stays reusable in either mode — the material is public; the binding stops hash correlation across services, not secret reuse.)
 4. **Zero SMTP.** No email addresses involved, anywhere.
 5. **Zero third-party.** The user only trusts the site they're registering on.
-6. **Split knowledge.** Recovery word alone = nothing. Algorithm alone = nothing. Only the combination proves identity.
+6. **Split knowledge.** Recovery word alone = nothing for the account. Algorithm alone = nothing. Only the combination yields a fingerprint the server can verify — one of the two factors level 2 requires. With SelfDataGuard the word also unwraps the user's data: an intended fallback lock, as strong as the word.
 
 ## The derivation material — mandatory mode, no default
 
