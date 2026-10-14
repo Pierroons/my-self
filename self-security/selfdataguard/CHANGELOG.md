@@ -18,6 +18,9 @@ A patch release. No signature changes.
   carry `#[\SensitiveParameter]`: an exception raised there no longer copies them into its trace. The
   0.6.0 entry announced the attribute on every parameter that carries a secret; these three were
   missing.
+- ⚠️ The attribute only takes effect from PHP 8.2. On PHP 8.1, which SelfDataGuard supports, it is
+  ignored: a trace there still carries these secrets, and only `zend.exception_ignore_args` strips
+  them. The trace checks say so on 8.1 instead of failing.
 
 ### Tests
 - 386 checks across the eleven suites (was 373). Every new check was seen failing on 0.6.0 first. The

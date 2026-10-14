@@ -601,6 +601,11 @@ Version corrective. Aucune signature ne bouge.
 L'entrée 0.6.0 annonçait l'attribut « sur chaque paramètre qui porte un secret » : ces trois-là
 manquaient. Elle reste telle quelle.
 
+⚠️ **L'attribut n'agit qu'à partir de PHP 8.2.** Sous PHP 8.1, que SelfDataGuard prend en charge, il
+est ignoré : une trace y porte encore ces secrets, et seul `zend.exception_ignore_args` les en retire.
+Les contrôles de trace le disent sous 8.1 au lieu de rougir ; la première CI de cette version l'a
+appris en rougissant sur le job PHP 8.1.
+
 Mesures : `sanity_vault` 58 cas, `sanity_facade` 67, `sanity_audit` 21, `sanity_escrow` 36. Chaque cas
 neuf a été vu rouge sur la 0.6.0. Les contrôles de trace forcent `zend.exception_ignore_args` à 0 et vérifient d'abord
 qu'un argument public figure dans la trace : sans cela, ils passeraient sur une trace vide.

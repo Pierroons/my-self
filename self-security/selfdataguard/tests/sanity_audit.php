@@ -256,6 +256,10 @@ $tooShort = 'short-audit-secret';
 $args = traceArgs(static fn () => new AuditLog($path, $tooShort), '__construct');
 if ($args === null || !in_array($path, $args, true)) {
     ko('precondition: the trace does not show the log path — nothing below would be measured');
+} elseif (PHP_VERSION_ID < 80200) {
+    // #[\SensitiveParameter] only takes effect from PHP 8.2; the library runs on 8.1.
+    echo '  ↷ PHP ' . PHP_VERSION . ': #[\SensitiveParameter] only takes effect from 8.2 — '
+        . "on this runtime the trace still carries auditSecret (declared limit, not counted)\n";
 } else {
     !in_array($tooShort, $args, true)
         ? ok('the AuditLog constructor hides auditSecret from the trace')

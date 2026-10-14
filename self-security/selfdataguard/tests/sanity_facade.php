@@ -657,6 +657,10 @@ $tooShort = 'short-blind-key-in-a-trace';
 $args = traceArgs(static fn () => new SelfDataGuard($storage, $tooShort), '__construct');
 if ($args === null || !in_array($storage, $args, true)) {
     ko('precondition: the trace does not show the public argument — nothing below would be measured');
+} elseif (PHP_VERSION_ID < 80200) {
+    // #[\SensitiveParameter] only takes effect from PHP 8.2; the library runs on 8.1.
+    echo '  ↷ PHP ' . PHP_VERSION . ': #[\SensitiveParameter] only takes effect from 8.2 — '
+        . "on this runtime the trace still carries blindKey (declared limit, not counted)\n";
 } else {
     !in_array($tooShort, $args, true)
         ? ok('the facade constructor hides blindKey from the trace')
@@ -672,6 +676,10 @@ str_contains($dumpedFacade, 'blindKey')
 $args = traceArgs(static fn () => BlindIndex::compute('a value', $tooShort, 'email'), 'compute');
 if ($args === null || !in_array('email', $args, true)) {
     ko('precondition: the trace does not show the field name — nothing below would be measured');
+} elseif (PHP_VERSION_ID < 80200) {
+    // #[\SensitiveParameter] only takes effect from PHP 8.2; the library runs on 8.1.
+    echo '  ↷ PHP ' . PHP_VERSION . ': #[\SensitiveParameter] only takes effect from 8.2 — '
+        . "on this runtime the trace still carries blindKey (declared limit, not counted)\n";
 } else {
     !in_array($tooShort, $args, true)
         ? ok('BlindIndex::compute() hides blindKey from the trace')

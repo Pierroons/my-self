@@ -3,7 +3,7 @@
 **Protection des données personnelles au repos côté application**
 *Dump ma base — et tu obtiens du bruit chiffré.*
 
-*Édition du 3 octobre 2026 — décrit SelfDataGuard v0.6.1*
+*Édition du 14 octobre 2026 — décrit SelfDataGuard v0.6.1*
 
 ---
 
@@ -355,7 +355,7 @@ Pour qu'un déploiement SelfDataGuard apporte effectivement les garanties listé
 9. **Un compte, une graphie** : `userId` est comparé octet pour octet — il entre dans l'AAD de chaque enveloppe et sert de clé en base. Un service dont les comptes ignorent la casse ramène le nom à celui du compte avant chaque appel, sinon un coffre créé sous une graphie échappe aux re-scellements appelés sous l'autre
 10. **Ancre du journal de séquestre** : noter hors de la machine la tête `seq:hmac` qu'affiche `verify-log`, et vérifier avec `--ancre`. Sans ancre, une troncature de la fin du journal passe la vérification
 
-Le non-respect d'une de ces règles dégrade significativement les garanties. La bibliothèque de référence applique la règle 1, et la règle 5 pour ses propres traces d'exception (`#[\SensitiveParameter]`) ; pour la règle 7, elle enregistre le profil de chaque coffre, mais le choisir et le relever reste à l'intégrateur. Les autres règles relèvent de l'intégrateur et de la configuration de déploiement.
+Le non-respect d'une de ces règles dégrade significativement les garanties. La bibliothèque de référence applique la règle 1, et la règle 5 pour ses propres traces d'exception (`#[\SensitiveParameter]`, à partir de PHP 8.2 : sous 8.1, que la bibliothèque prend en charge, l'attribut est ignoré, et seul `zend.exception_ignore_args` retire les arguments des traces) ; pour la règle 7, elle enregistre le profil de chaque coffre, mais le choisir et le relever reste à l'intégrateur. Les autres règles relèvent de l'intégrateur et de la configuration de déploiement.
 
 ---
 
@@ -395,4 +395,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Édition du 3 octobre 2026, alignée sur SelfDataGuard v0.6.1 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.6.1 (386 contrôles, 11 suites, sous PHP 8.1, 8.2 et 8.4). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*
+*Édition du 14 octobre 2026, alignée sur SelfDataGuard v0.6.1 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.6.1 (386 contrôles, 11 suites, sous PHP 8.1, 8.2 et 8.4). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*
