@@ -3,7 +3,7 @@
 **Application-layer data-at-rest protection that survives a database exfiltration**
 *Dump my database — and get encrypted noise.*
 
-*Edition of 3 October 2026 — describes SelfDataGuard v0.6.1. The French edition is authoritative where the two differ.*
+*Edition of 14 October 2026 — describes SelfDataGuard v0.6.1. The French edition is authoritative where the two differ.*
 
 ---
 
@@ -333,7 +333,7 @@ For a SelfDataGuard deployment to actually deliver the listed guarantees, it mus
 9. **One account, one spelling**: `userId` is compared byte for byte — it enters the AAD of every envelope and keys the database row. A service whose accounts ignore case maps the name to the account's own before every call, otherwise a vault created under one spelling escapes the re-seals called under the other
 10. **Escrow log anchor**: write down off the machine the head `seq:hmac` that `verify-log` prints, and verify with `--ancre`. Without an anchor, a log whose end was cut off passes verification
 
-Failure to respect any of these rules significantly degrades the guarantees. The reference library enforces rule 1, and rule 5 for its own exception traces (`#[\SensitiveParameter]`); for rule 7 it stores each vault's profile, but choosing and raising it is the integrator's. The other rules are up to the integrator and the deployment configuration.
+Failure to respect any of these rules significantly degrades the guarantees. The reference library enforces rule 1, and rule 5 for its own exception traces (`#[\SensitiveParameter]`, from PHP 8.2: on 8.1, which the library supports, the attribute is ignored, and only `zend.exception_ignore_args` strips arguments from traces); for rule 7 it stores each vault's profile, but choosing and raising it is the integrator's. The other rules are up to the integrator and the deployment configuration.
 
 ---
 
@@ -373,4 +373,4 @@ Technical feedback, community audits, and cryptographic critiques are welcome, e
 
 ---
 
-*First edition May 2026; this edition 3 October 2026, aligned on SelfDataGuard v0.6.1. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026; §2, §3, §5, §6, §7 and §8.2 were rewritten alongside the French edition on 1 October 2026 for v0.5.0; §2.2, §6.1, §7 and §8.1 on 3 October 2026 for v0.6.0. The specification described here is implemented and tested from v0.1.0 to v0.6.0 (373 checks, 11 suites, on PHP 8.1, 8.2 and 8.4).*
+*First edition May 2026; this edition 14 October 2026, aligned on SelfDataGuard v0.6.1. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026; §2, §3, §5, §6, §7 and §8.2 were rewritten alongside the French edition on 1 October 2026 for v0.5.0; §2.2, §6.1, §7 and §8.1 on 3 October 2026 for v0.6.0. The specification described here is implemented and tested from v0.1.0 to v0.6.0 (373 checks, 11 suites, on PHP 8.1, 8.2 and 8.4).*
