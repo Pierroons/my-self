@@ -1434,15 +1434,18 @@ jobs:
       - name: Garde-fou — la bibliothèque sur le schéma réel du lab
         run: php demo/lab/tests/equivalence_selfrecover.php
 
-      - name: Canari — l'adaptateur du lab efface un dossier déposé, ou reclôt un dossier clos
+      - name: Canari — l'adaptateur du lab efface un dossier déposé, reclôt un dossier clos, ou laisse fuir la sanction
         run: |
           # @plante
           # Les deux défauts que la 0.12.3 a corrigés dans la bibliothèque,
           # replantés dans la recopie du lab, chacun restauré avant le suivant :
           # la clause qui efface tout périmé non refusé doit rougir sur le dossier
           # déposé ; la clôture sans condition d'état, sur le dossier déjà clos.
+          # Et deux défauts de la sanction lue pour l'arbitre : le motif d'un
+          # arbitre de modération qui sort en texte ; la lecture remplacée par
+          # `getReputation()`, qui écrit en base pendant qu'on consulte.
           A=demo/lab/lib/StockageSelfRecover.php
-          for cas in clause cloture; do
+          for cas in clause cloture motif ecriture; do
             cp "$A" /tmp/adaptateur.lab.intact
             CAS="$cas" python3 - "$A" <<'PY'
           import os, sys
@@ -1453,6 +1456,10 @@ jobs:
                           "        AND NOT EXISTS (SELECT 1 FROM dispute_messages m WHERE m.dispute_id = disputes.id)))",
                           "status IN ('closed', 'open', 'awaiting_admin')"),
               'cloture': ("\n             WHERE id = ? AND status IN ('open', 'awaiting_admin', 'accepted')\"", " WHERE id = ?\""),
+              'motif':   ("                    'admin' => 'arbitre',\n", "                    'admin' => $l['ban_motif'],\n"),
+              'ecriture': ("              WHERE a.id = ?'\n        );\n        $st->execute([$compteId]);\n",
+                           "              WHERE a.id = ?'\n        );\n        $st->execute([$compteId]);\n"
+                           "        \\Pierroons\\SelfModerate\\Moderate::getReputation($this->pdo, $compteId);\n"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
@@ -1469,6 +1476,8 @@ jobs:
             case $cas in
               clause)  attendu='❌ ⭐ un dossier déposé survit à son échéance' ;;
               cloture) attendu='❌ ⭐ clore un dossier déjà clos lève LitigeDejaClos' ;;
+              motif)   attendu='❌ ⭐ et le motif de l.arbitre n.en sort pas' ;;
+              ecriture) attendu='❌ lire les faits n.écrit rien en base' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

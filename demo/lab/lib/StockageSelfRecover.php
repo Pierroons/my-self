@@ -614,8 +614,10 @@ final class StockageSelfRecover implements StorageInterface
     public function faitsDuCompte(int $compteId): ?array
     {
         $st = $this->pdo->prepare(
-            'SELECT id, username, created_at, last_login_at, login_count, pass_emise_le
-               FROM accounts WHERE id = ?'
+            'SELECT a.id, a.username, a.created_at, a.last_login_at, a.login_count, a.pass_emise_le,
+                    m.banned_until, m.ban_origine, m.ban_motif, m.vote_muted_until
+               FROM accounts a LEFT JOIN member_moderation m ON m.account_id = a.id
+              WHERE a.id = ?'
         );
         $st->execute([$compteId]);
         $l = $st->fetch(PDO::FETCH_ASSOC);
@@ -644,8 +646,51 @@ final class StockageSelfRecover implements StorageInterface
             'faits_locaux'       => [
                 'passphrase_emise_le' => $l['pass_emise_le'] === null
                     ? null : gmdate('Y-m-d', (int) $l['pass_emise_le']),
-            ],
+            ] + self::sanctionEnCours($l, time()),
         ];
+    }
+
+    /**
+     * La sanction de SelfModerate en cours sur ce compte, pour l'arbitre du
+     * niveau 3. Moderate informe SelfRecover, il ne lui interdit rien : c'est un
+     * fait du faisceau, jamais une condition d'ouverture.
+     *
+     * Trois codes, jamais le motif d'un arbitre de modération : c'est un texte
+     * libre, et l'arbitre de SelfRecover le lirait tel quel. Un motif machine
+     * ne sort que s'il appartient à la liste fermée. Au jour, comme la date
+     * d'émission : à la seconde, recoupée, une date désigne. En cours
+     * seulement : une peine purgée ne dit rien de qui demande le compte.
+     *
+     * Lue dans les colonnes, et non par `Moderate::getReputation()`, qui
+     * constate les fins de peine en base avant de répondre : une consultation
+     * de l'arbitre ne doit pas modifier l'état qu'elle consulte.
+     *
+     * @return array{sanction: ?string, sanction_jusqu_au: ?string, sanction_origine: ?string}
+     */
+    private static function sanctionEnCours(array $l, int $maintenant): array
+    {
+        if ((int) $l['banned_until'] > $maintenant) {
+            return [
+                'sanction'          => 'banni',
+                'sanction_jusqu_au' => gmdate('Y-m-d', (int) $l['banned_until']),
+                'sanction_origine'  => match ($l['ban_origine']) {
+                    'admin' => 'arbitre',
+                    'auto'  => in_array($l['ban_motif'], ['reputation_zero', 'meute_detectee'], true)
+                        ? $l['ban_motif'] : null,
+                    default => null,
+                },
+            ];
+        }
+        // Seule la détection de meute pose une suspension du vote à échéance.
+        if ((int) $l['vote_muted_until'] > $maintenant) {
+            return [
+                'sanction'          => 'vote_suspendu',
+                'sanction_jusqu_au' => gmdate('Y-m-d', (int) $l['vote_muted_until']),
+                'sanction_origine'  => 'meute_detectee',
+            ];
+        }
+
+        return ['sanction' => null, 'sanction_jusqu_au' => null, 'sanction_origine' => null];
     }
 
     public function reposerSecrets(

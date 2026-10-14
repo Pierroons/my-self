@@ -448,6 +448,54 @@ verifier('⭐ et la date quand elle existe — un arbitre voit depuis quand le s
     ($faitsP2['faits_locaux']['passphrase_emise_le'] ?? null) === gmdate('Y-m-d', $T0 - $QUATRE_ANS),
     (string) ($faitsP2['faits_locaux']['passphrase_emise_le'] ?? '—'));
 
+echo "\n→ ⭐ La sanction en cours de SelfModerate, dans les faits que lit l'arbitre du niveau 3\n";
+
+// Moderate informe SelfRecover, il ne lui interdit rien : une sanction est un
+// fait du faisceau, jamais une condition d'ouverture. Trois codes, jamais le
+// motif d'un arbitre de modération — un texte libre, lu tel quel dans une autre
+// console. En cours seulement : une peine purgée ne dit rien de qui demande.
+$sanctionLue = static fn (): array => array_intersect_key(
+    $stP->faitsDuCompte(1)['faits_locaux'] ?? [],
+    array_flip(['sanction', 'sanction_jusqu_au', 'sanction_origine'])
+);
+$aucune = ['sanction' => null, 'sanction_jusqu_au' => null, 'sanction_origine' => null];
+verifier('sans ligne de modération, les trois faits sont là, et vides', $sanctionLue() === $aucune,
+    json_encode($sanctionLue()));
+
+$jusqua = time() + 3 * 86400;
+// OR REPLACE : une ligne posée avant ne doit pas faire planter le décor au lieu de faire rougir le contrôle.
+$pdoP->prepare("INSERT OR REPLACE INTO member_moderation (account_id, banned_until, ban_debut, ban_origine, ban_motif, updated_at)
+                VALUES (1, ?, ?, 'admin', ?, ?)")
+     ->execute([$jusqua, time(), 'Insultes répétées envers trois membres, malgré deux avertissements.', time()]);
+verifier('⭐ un ban d\'arbitre en cours se lit : banni, au jour, origine « arbitre »',
+    $sanctionLue() === ['sanction' => 'banni', 'sanction_jusqu_au' => gmdate('Y-m-d', $jusqua), 'sanction_origine' => 'arbitre'],
+    json_encode($sanctionLue(), JSON_UNESCAPED_UNICODE));
+verifier('⭐ et le motif de l\'arbitre n\'en sort pas, nulle part dans les faits',
+    !str_contains((string) json_encode($stP->faitsDuCompte(1), JSON_UNESCAPED_UNICODE), 'Insultes'));
+
+$pdoP->exec("UPDATE member_moderation SET ban_origine = 'auto', ban_motif = 'reputation_zero' WHERE account_id = 1");
+verifier('un ban automatique porte son code machine', ($sanctionLue()['sanction_origine'] ?? null) === 'reputation_zero');
+$pdoP->exec("UPDATE member_moderation SET ban_motif = 'un texte inattendu' WHERE account_id = 1");
+verifier('un motif automatique hors de la liste fermée ne sort pas : l\'origine reste vide',
+    array_key_exists('sanction_origine', $sanctionLue()) && $sanctionLue()['sanction_origine'] === null);
+
+// 🔑 Lire n'écrit pas, et c'est ici qu'on le mesure : une peine automatique échue
+// d'une minute, que le moteur n'a pas encore constatée. `Moderate::getReputation()`
+// la clôturerait en base avant de répondre ; appelée d'ici, une consultation de
+// l'arbitre modifierait l'état qu'elle consulte. Ailleurs, la mesure serait
+// verte pour rien — rien n'y serait à écrire.
+$pdoP->prepare('UPDATE member_moderation SET banned_until = ? WHERE account_id = 1')->execute([time() - 60]);
+$ecrituresAvant = (int) $pdoP->query('SELECT total_changes()')->fetchColumn();
+$purgee = $sanctionLue();
+$ecrituresApres = (int) $pdoP->query('SELECT total_changes()')->fetchColumn();
+verifier('⭐ une peine purgée ne se lit plus — en cours seulement', $purgee === $aucune, json_encode($purgee));
+verifier('lire les faits n\'écrit rien en base, même sur une peine échue que le moteur constaterait',
+    $ecrituresApres === $ecrituresAvant, ($ecrituresApres - $ecrituresAvant) . ' écriture(s)');
+$pdoP->prepare('UPDATE member_moderation SET vote_muted_until = ? WHERE account_id = 1')->execute([$jusqua]);
+verifier('une suspension de vote en cours se lit, avec l\'origine qui seule la pose',
+    $sanctionLue() === ['sanction' => 'vote_suspendu', 'sanction_jusqu_au' => gmdate('Y-m-d', $jusqua), 'sanction_origine' => 'meute_detectee'],
+    json_encode($sanctionLue()));
+
 echo "\n→ ⭐ Le dégel est atteignable, et il rend la porte\n";
 
 // Les textes du module promettent qu'un arbitre lève le gel. Une méthode de
