@@ -33,7 +33,7 @@ SelfModerate is a moderation engine that lets online communities self-regulate w
 ### Vote system
 - Votes are tied to **accepted invitations** (real interactions, not anonymous reports) — *partial: the lab is a forum and has no invitations*
 - 👍 (+1) or 👎 (-1) with a reason — **mandatory on a downvote, optional on an upvote**: a reason exists so the sanctioned person knows what they are faulted for, and a thumbs-up sanctions nobody
-- The reason must **say something**: 40 characters, 3 distinct words, no word repeated more than twice, at least 12 different characters, no run of one character. Five rules because a single one is worked around — you reach any length by holding a key down
+- The reason must **say something**: 40 characters, 3 distinct words, no word hammered on (twice is always allowed; beyond that a short word such as "of" or "my" stays within a third of the words, a word of four letters or more within a fifth), at least 12 different characters, no run of one character. Five rules because a single one is worked around — you reach any length by holding a key down
 - Voting is a **recommendation, not an obligation** — it helps recognize good teammates or flag problematic behavior
 - Configurable reasons per platform through `setReasonCodes()`; the default set fits a forum (off-topic, aggressive, misinformation, helpful to others, useful contribution, other)
 - Anonymous votes: the target sees their score and reasons, not who voted. Reasons come back **dated to the day**, in a non-chronological order — to the second, cross-referenced with who was online, they would name their author. A limit no ordering lifts: on a single downvote received, the person often guesses who sent it

@@ -63,7 +63,17 @@ class Moderate
     // assez longs mais ne disent rien, et on les atteint en bloquant une touche.
     public const REASON_MIN_CHARS          = 40;
     public const REASON_MIN_WORDS          = 3;
+    // Répétitions : un plancher toujours permis, puis une part du texte, plus
+    // large pour un mot court (« de », « les », « mon ») que pour un mot
+    // porteur, dont la répétition signe le bourrage. Une part et non un plafond
+    // fixe, pour la même raison que le compte des caractères ci-dessous, qui
+    // joue ici dans l'autre sens : une phrase détaillée répète ses mots-outils.
+    // La mesure suit le mot le plus fréquent, pas la rotation — des mots qui se
+    // relaient, chacun sous sa part, passent.
     public const REASON_MAX_WORD_REPEATS   = 2;
+    public const REASON_CARRIER_MIN_LEN    = 4;
+    public const REASON_SHORT_ONE_IN       = 3;
+    public const REASON_CARRIER_ONE_IN     = 5;
     // Un COMPTE, pas un ratio : l'alphabet est fini, donc plus un texte est long
     // plus son ratio de caractères distincts baisse — une mesure relative punit
     // le motif détaillé et laisse passer le bourrage court. Une phrase qui dit
@@ -398,8 +408,15 @@ class Moderate
                 self::REASON_MIN_WORDS
             )];
         }
-        if (max($comptes) > self::REASON_MAX_WORD_REPEATS) {
-            return [false, static::t('Un mot revient trop souvent : dis ce que tu reproches.')];
+        $n = count($mots);
+        foreach ($comptes as $mot => $fois) {
+            // (string) : array_count_values() rend une clé entière pour « 3 ».
+            $unSur = mb_strlen((string) $mot, 'UTF-8') >= self::REASON_CARRIER_MIN_LEN
+                ? self::REASON_CARRIER_ONE_IN
+                : self::REASON_SHORT_ONE_IN;
+            if ($fois > max(self::REASON_MAX_WORD_REPEATS, intdiv($n, $unSur))) {
+                return [false, static::t('Un mot revient trop souvent : dis ce que tu reproches.')];
+            }
         }
 
         return [true, ''];

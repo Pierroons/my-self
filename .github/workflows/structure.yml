@@ -1794,6 +1794,54 @@ jobs:
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de la peine prolongée"; exit 1; }
           echo "✓ le banc rougit, et sur le cas de la peine prolongée"
 
+      - name: Garde-fou — SelfModerate, le motif de vote reçoit une phrase et refuse un remplissage
+        run: |
+          sortie=$(php bi-self/selfmoderate/tests/sanity_motif.php 2>&1) || { echo "$sortie"; exit 1; }
+          echo "$sortie"
+          echo "$sortie" | grep -qx '✅ 4/4 contrôles passés' \
+            || { echo "::error::le banc du motif n'a pas joué ses 4 contrôles"; exit 1; }
+
+      - name: Canari — SelfModerate refuse une phrase détaillée, ou reçoit un mot ressassé
+        run: |
+          # @plante
+          # Trois défauts replantés dans une copie, chacun doit faire rougir le
+          # banc sur SON cas : la règle redevenue plafond fixe refuse les phrases
+          # détaillées ; les mots courts ignorés laissent passer « bof » ×8 ; un
+          # mot porteur traité comme un mot court laisse passer « troll » ×4.
+          for cas in plafond courts porteurs; do
+            PLANTE=$(mktemp -d)
+            cp -r bi-self/selfmoderate/src "$PLANTE/src"
+            CAS="$cas" PLANTE="$PLANTE" python3 - <<'PY'
+          import os, pathlib
+          p = pathlib.Path(os.environ['PLANTE']) / 'src/Moderate.php'
+          t = p.read_text(encoding='utf-8')
+          ancre = "        $n = count($mots);\n        foreach ($comptes as $mot => $fois) {\n"
+          avant, apres = {
+              'plafond':  (ancre, "        if (max($comptes) > self::REASON_MAX_WORD_REPEATS) {\n"
+                                  "            return [false, static::t('Un mot revient trop souvent : dis ce que tu reproches.')];\n"
+                                  "        }\n" + ancre),
+              'courts':   ("                : self::REASON_SHORT_ONE_IN;\n", "                : 1;\n"),
+              'porteurs': ("                ? self::REASON_CARRIER_ONE_IN\n", "                ? self::REASON_SHORT_ONE_IN\n"),
+          }[os.environ['CAS']]
+          assert t.count(avant) == 1, "la plantation n'a pas pris — ce canari ne prouve rien"
+          p.write_text(t.replace(avant, apres), encoding='utf-8')
+          PY
+            if sortie=$(SM_SRC="$PLANTE/src" php bi-self/selfmoderate/tests/sanity_motif.php 2>&1); then
+              echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              plafond)  attendu='⭐ une phrase est refusée' ;;
+              courts)   attendu='un mot court ressassé passe' ;;
+              porteurs) attendu='un mot porteur ressassé passe' ;;
+            esac
+            echo "$sortie" | grep -q "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
       - name: Garde-fou — premier administrateur et dernier administrateur
         run: |
           sortie=$(php demo/lab/tests/sanity_first_admin.php)
