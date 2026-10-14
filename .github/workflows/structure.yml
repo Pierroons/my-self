@@ -1782,8 +1782,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 52/52 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 52 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 56/56 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 56 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -1846,6 +1846,52 @@ jobs:
           echo "$sortie" | grep -q 'le coût d.un downvote croît avec ses votants' \
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du coût par paire"; exit 1; }
           echo "✓ le banc rougit, et sur le cas du coût par paire"
+
+      - name: Canari — SelfModerate balaie le site à chaque vote, jamais, ou perd un vote sur une course
+        run: |
+          # @plante
+          # Trois défauts replantés tour à tour, chacun restauré avant le suivant :
+          # le vote qui rebalaie tout le site doit rougir sur le coût ; le
+          # balayage qui ne se déclenche jamais, sur la meute liée après coup ; le
+          # refus de clé non rattrapé, sur la course perdue.
+          M=bi-self/selfmoderate/src/Moderate.php
+          for cas in global jamais course; do
+            cp "$M" /tmp/moderate.balayage.intact
+            CAS="$cas" python3 - "$M" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          avant, apres = {
+              'global': ("            self::detectPackVoting($pdo, self::balayageDu($pdo) ? null : $author);\n",
+                         "            self::detectPackVoting($pdo);\n"),
+              'jamais': ("        $tranche = intdiv(time(), self::config()->balayagePeriodeSecondes);\n",
+                         "        return false;\n        $tranche = intdiv(time(), self::config()->balayagePeriodeSecondes);\n"),
+              'course': ("        try {\n            $pdo->prepare('INSERT INTO mod_sweeps (slot) VALUES (?)')->execute([$tranche]);\n"
+                         "        } catch (PDOException $e) {\n            if ($e->getCode() === '23000') {\n                return false;\n"
+                         "            }\n            throw $e;\n        }\n",
+                         "        $pdo->prepare('INSERT INTO mod_sweeps (slot) VALUES (?)')->execute([$tranche]);\n"),
+          }[os.environ['CAS']]
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/moderate.balayage.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              cp /tmp/moderate.balayage.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/moderate.balayage.intact "$M"
+            cmp -s /tmp/moderate.balayage.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              global) attendu='le coût d.un downvote suit l.activité du site' ;;
+              jamais) attendu='une meute liée après coup n.est pas rattrapée' ;;
+              course) attendu='la course ou la table absente est mal tenue' ;;
+            esac
+            echo "$sortie" | grep -q "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
 
       - name: Garde-fou — SelfModerate, le motif de vote reçoit une phrase et refuse un remplissage
         run: |

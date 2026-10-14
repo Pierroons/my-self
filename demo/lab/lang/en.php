@@ -331,7 +331,7 @@ return [
     'mod.detect.h2'   => 'Run abuse detection',
     'mod.detect.note' => 'Analyses recent votes: cancels the votes of recognised packs, flags bursts.',
     'mod.detect.btn'  => '🔍 Detect abuse now',
-    'mod.detect.login' => 'Detection runs on every downvote; triggering it by hand is reserved to administrators.',
+    'mod.detect.login' => 'Every downvote has its target re-examined; the first one in each period of %s re-examines the whole site. Triggering it by hand is reserved to administrators.',
     'mod.blocked.h2'  => 'Neutralised votes (%d)',
     'mod.blocked.none' => 'No blocked vote yet.',
     'mod.blocked.anonyme' => 'Reasons are public, their authors are not: who voted against whom is for moderators only.',

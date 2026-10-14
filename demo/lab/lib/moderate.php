@@ -44,6 +44,7 @@ final class Moderate extends Engine
             'farmingJours' => $c->fenetreFarmingJours,
             'perteVote'    => $c->perteDroitDeVoteSous,
             'paliers'      => implode(' → ', array_map([self::class, 'dureeEnClair'], $c->dureesBan)),
+            'balayage'     => self::dureeEnClair($c->balayagePeriodeSecondes),
         ];
     }
 }

@@ -28,6 +28,9 @@ final class Config
      *                                        meute prend son temps.
      * @param int      $meuteVotantsMax       Borne du graphe des votants, dont les paires
      *                                        croissent comme le carré ; une troncature est signalée.
+     * @param int      $balayagePeriodeSecondes Un balayage de tout le site par tranche de
+     *                                        cette durée, payé par le premier downvote qui
+     *                                        y tombe ; les autres ne regardent que leur cible.
      * @param int      $meuteEpisodeCooldown  Un épisode de meute par votant sur ce délai :
      *                                        trois victimes le même soir restent un épisode.
      * @param int      $meuteMute2            Suspension du droit de vote au 2e épisode. Le
@@ -60,6 +63,7 @@ final class Config
         public readonly int $fenetreMeuteJours = 30,
         public readonly int $meuteLiensMin = 2,
         public readonly int $meuteVotantsMax = 30,
+        public readonly int $balayagePeriodeSecondes = 3600,
         public readonly int $meuteEpisodeCooldown = 86400,
         public readonly int $meuteMute2 = 604800,
         public readonly int $meuteMute3 = 2592000,

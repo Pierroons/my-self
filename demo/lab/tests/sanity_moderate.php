@@ -963,12 +963,20 @@ function coutDownvote(PdoCompteur $compteur, PDO $pdo, int $post, string $nom): 
     return ($r['ok'] ?? false) && !($r['blocked'] ?? false) ? $compteur->requetes : null;
 }
 
+/** Inscrit la tranche en cours et la suivante : un vote mesuré ne balaie pas, même si l'heure tourne. */
+function trancheBalayee(PDO $pdo): void
+{
+    $t = intdiv(time(), Moderate::config()->balayagePeriodeSecondes);
+    $pdo->prepare('INSERT OR IGNORE INTO mod_sweeps (slot) VALUES (?), (?)')->execute([$t, $t + 1]);
+}
+
 // ── 39. Le coût d'un downvote ne croît pas avec le carré de ses votants ─────
 // Une cible déjà visée par quatre votants, une autre par seize, tous sans lien
 // entre eux. Les deux sont posées AVANT les deux mesures, pour que le reste de
 // la base soit le même pour chacune : seul le graphe de la cible diffère.
 // Tester chaque paire par une requête rend 10 puis 136 requêtes pour ce seul
 // graphe ; les échanges entre ces votants se lisent en une fois.
+trancheBalayee($pdo);
 $cibleP = membre($pdo, 'cible-39p');
 $postP  = message($pdo, $cibleP, 'fil-39p');
 votesDeFond($pdo, $cibleP, $postP, 4, '39p');
@@ -980,6 +988,105 @@ $dixSept = coutDownvote($compteur, $pdo, $postQ, '39q');
 $cinq !== null && $cinq === $dixSept
     ? ok("un downvote coûte $cinq requêtes, que sa cible compte cinq votants ou dix-sept")
     : nok('le coût d\'un downvote croît avec ses votants : ' . json_encode(['5_votants' => $cinq, '17_votants' => $dixSept]));
+
+// ── 40. Un downvote ne paie pas pour l'activité du reste du site ────────────
+// ⭐ Le coût d'un vote ne doit dépendre que de sa cible. Mesuré avant puis
+// après que vingt autres membres ont été downvotés chacun par deux votants,
+// dans une tranche déjà balayée : si chaque vote rebalaie la communauté, son
+// coût suit l'activité du site, et n'importe quel compte qui vote tient ce levier.
+trancheBalayee($pdo);
+$cibleA = membre($pdo, 'cible-40a');
+$avant = coutDownvote($compteur, $pdo, message($pdo, $cibleA, 'fil-40a'), '40a');
+for ($i = 0; $i < 20; $i++) {
+    $autre = membre($pdo, "autre-40-$i");
+    votesDeFond($pdo, $autre, message($pdo, $autre, "fil-40-$i"), 2, "40-$i");
+}
+$cibleB = membre($pdo, 'cible-40b');
+$apres = coutDownvote($compteur, $pdo, message($pdo, $cibleB, 'fil-40b'), '40b');
+$avant !== null && $avant === $apres
+    ? ok("⭐ un downvote coûte $avant requêtes, que vingt autres membres soient en cours de vote ou non")
+    : nok('⭐ le coût d\'un downvote suit l\'activité du site : ' . json_encode(['avant' => $avant, 'apres_20_cibles' => $apres]));
+
+// ── 41. Le premier downvote d'une tranche balaie le site, et lui seul ───────
+// Le filet a un prix, payé une fois par tranche et par un seul vote : celui
+// qui inscrit la tranche. Le suivant la trouve, et revient au coût d'un vote
+// qui ne regarde que sa cible.
+$pdo->exec('DELETE FROM mod_sweeps');
+$tranche  = intdiv(time(), Moderate::config()->balayagePeriodeSecondes);
+$cible41a = membre($pdo, 'cible-41a');
+$premier  = coutDownvote($compteur, $pdo, message($pdo, $cible41a, 'fil-41a'), '41a');
+$inscrite = $pdo->query("SELECT COUNT(*) FROM mod_sweeps WHERE slot >= $tranche")->fetchColumn() > 0;
+trancheBalayee($pdo);
+$cible41b = membre($pdo, 'cible-41b');
+$second   = coutDownvote($compteur, $pdo, message($pdo, $cible41b, 'fil-41b'), '41b');
+$premier !== null && $inscrite && $premier > $second && $second === $avant
+    ? ok("le premier downvote de la tranche balaie le site ($premier requêtes), le suivant revient à $second")
+    : nok('le balayage ne tombe pas sur le seul premier vote de la tranche : '
+        . json_encode(['premier' => $premier, 'tranche_inscrite' => $inscrite, 'second' => $second, 'cible_seule' => $avant]));
+
+// ── 42. Une meute liée après coup est rattrapée par la tranche suivante ─────
+// ⭐ Ce que le ciblage ne voit pas : deux votants qui s'écrivent APRÈS avoir
+// frappé la même cible, sur laquelle personne ne revote. Dans la tranche en
+// cours, un vote ailleurs ne la rattrape pas — c'est le prix du ciblage, borné
+// à une tranche. Le premier vote de la tranche suivante, si.
+trancheBalayee($pdo);
+$victime = membre($pdo, 'victime-42');
+$postV   = message($pdo, $victime, 'fil-42');
+foreach (['a', 'b'] as $x) {
+    $meute42[$x] = membre($pdo, "meute-42-$x");
+    Moderate::applyVote($pdo, $meute42[$x], 'post', $postV, -1, motif());
+}
+messagePrive($pdo, $meute42['a'], $meute42['b']);
+messagePrive($pdo, $meute42['b'], $meute42['a']);
+$annules42 = static function () use ($pdo, $victime): int {
+    $st = $pdo->prepare("SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND blocked = 1 AND blocked_reason = 'pack_voting'");
+    $st->execute([$victime]);
+    return (int) $st->fetchColumn();
+};
+$avantLien = $annules42();
+$ailleurs = membre($pdo, 'ailleurs-42a');
+coutDownvote($compteur, $pdo, message($pdo, $ailleurs, 'fil-42a'), '42a');
+$memeTranche = $annules42();
+$pdo->exec('DELETE FROM mod_sweeps');
+$ailleurs = membre($pdo, 'ailleurs-42b');
+coutDownvote($compteur, $pdo, message($pdo, $ailleurs, 'fil-42b'), '42b');
+$trancheSuivante = $annules42();
+$avantLien === 0 && $memeTranche === 0 && $trancheSuivante === 2
+    ? ok('⭐ une meute liée après coup est rattrapée par le premier vote de la tranche suivante, et par lui')
+    : nok('⭐ une meute liée après coup n\'est pas rattrapée comme annoncé : '
+        . json_encode(['avant_le_lien' => $avantLien, 'meme_tranche' => $memeTranche, 'tranche_suivante' => $trancheSuivante]));
+
+// ── 43. Une course perdue coûte un balayage, jamais un vote ; une table absente fait du bruit ──
+// Deux premiers votes simultanés insèrent la même tranche : la base refuse le
+// second, et c'est le seul refus que le moteur doit rattraper — celui-là vote
+// quand même, sans balayer : il ne paie que son insertion refusée, une requête
+// de plus qu'un vote ciblé. La course est rejouée ici par un déclencheur
+// temporaire qui insère la tranche juste avant le vote : sa clé est alors prise.
+// Toute autre erreur doit remonter : une table absente qui rendrait « pas de
+// balayage » éteindrait le filet sans que personne le sache.
+$pdo->exec('DELETE FROM mod_sweeps');
+$compteur->exec('CREATE TEMP TRIGGER course_perdue BEFORE INSERT ON mod_sweeps
+                 BEGIN INSERT INTO mod_sweeps (slot) VALUES (NEW.slot); END');
+$cible43a = membre($pdo, 'cible-43a');
+try {
+    $perdant = coutDownvote($compteur, $pdo, message($pdo, $cible43a, 'fil-43a'), '43a');
+} catch (PDOException $e) {
+    $perdant = 'exception : ' . $e->getMessage();
+}
+$compteur->exec('DROP TRIGGER course_perdue');
+trancheBalayee($pdo);
+$pdo->exec('ALTER TABLE mod_sweeps RENAME TO mod_sweeps_cachee');
+$cible43b = membre($pdo, 'cible-43b');
+try {
+    coutDownvote($compteur, $pdo, message($pdo, $cible43b, 'fil-43b'), '43b');
+    $bruit = false;
+} catch (PDOException) {
+    $bruit = true;
+}
+$pdo->exec('ALTER TABLE mod_sweeps_cachee RENAME TO mod_sweeps');
+$perdant === $avant + 1 && $bruit
+    ? ok('une course perdue vote sans balayer, et une table absente fait échouer le vote au lieu d\'éteindre le filet')
+    : nok('la course ou la table absente est mal tenue : ' . json_encode(['perdant' => $perdant, 'cible_seule' => $avant, 'table_absente_bruyante' => $bruit]));
 
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0

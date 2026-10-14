@@ -63,7 +63,7 @@ function detecter(){
 document.getElementById('btn-detecter').addEventListener('click', detecter);
 </script>
 <?php else: ?>
-<div class="card"><p class="muted"><?= t('mod.detect.login') ?></p></div>
+<div class="card"><p class="muted"><?= t('mod.detect.login', h($r['balayage'])) ?></p></div>
 <?php endif; ?>
 
 <div class="card">

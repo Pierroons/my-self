@@ -20,6 +20,7 @@ declare(strict_types=1);
 namespace Pierroons\SelfModerate;
 
 use PDO;
+use PDOException;
 
 class Moderate
 {
@@ -563,10 +564,10 @@ class Moderate
 
         // V8-LAB-02 : détecter un pack AVANT d'appliquer les sanctions de seuil. Si le downvote
         // courant complète un cluster coordonné, la réputation est restaurée d'abord → enforceThresholds
-        // ne pose alors NI ban NI strike injuste. detectPackVoting reste aussi appelé au sweep
-        // (/api/detect_abuse.php) comme filet, où il lève le ban/strikes a posteriori.
+        // ne pose alors NI ban NI strike injuste. Le vote ne regarde que sa cible, sauf le premier
+        // de sa tranche, qui balaie le site (`balayageDu()`) et lève ban et strikes a posteriori.
         if ($value === -1) {
-            self::detectPackVoting($pdo);
+            self::detectPackVoting($pdo, self::balayageDu($pdo) ? null : $author);
             $newRep = self::getReputation($pdo, $author)['reputation']; // après éventuelle restauration
         }
         self::enforceThresholds($pdo, $author, $newRep);
@@ -659,6 +660,42 @@ class Moderate
     }
 
     /**
+     * Ce downvote doit-il balayer tout le site ? Oui pour le premier de sa
+     * tranche de `balayagePeriodeSecondes`, non pour les autres.
+     *
+     * Un vote ne voit que sa cible, et ce qu'il ne voit pas est un lien formé
+     * APRÈS les votes : deux votants qui s'écrivent une fois la cible frappée,
+     * sur laquelle personne ne revote. Seul un balayage le rattrape ; fait à
+     * chaque vote, il rendrait le coût d'un vote proportionnel à l'activité du
+     * site. Une fois par tranche, ce coût est borné, et aucun hôte n'a de
+     * minuteur à poser pour que le filet existe.
+     *
+     * 🔑 La clé primaire de `mod_sweeps` arbitre : deux premiers votes
+     * simultanés insèrent la même tranche, la base en refuse un, un seul
+     * balaie. Seul ce refus-là est rattrapé — une table absente doit faire du
+     * bruit, pas éteindre le filet.
+     */
+    private static function balayageDu(PDO $pdo): bool
+    {
+        $tranche = intdiv(time(), self::config()->balayagePeriodeSecondes);
+        $vue = $pdo->prepare('SELECT 1 FROM mod_sweeps WHERE slot = ?');
+        $vue->execute([$tranche]);
+        if ($vue->fetchColumn() !== false) {
+            return false;
+        }
+        try {
+            $pdo->prepare('INSERT INTO mod_sweeps (slot) VALUES (?)')->execute([$tranche]);
+        } catch (PDOException $e) {
+            if ($e->getCode() === '23000') {
+                return false;
+            }
+            throw $e;
+        }
+        $pdo->prepare('DELETE FROM mod_sweeps WHERE slot < ?')->execute([$tranche]);
+        return true;
+    }
+
+    /**
      * Deux détections, deux conséquences.
      *
      * MEUTE — des votants liés entre eux ont frappé la même cible sur la fenêtre
@@ -674,9 +711,14 @@ class Moderate
      * Ce que ni l'une ni l'autre ne voit : une coordination hors plateforme
      * entre comptes qui ne se sont jamais écrit ici. Elle tombe en salve rapide,
      * donc signalée, jamais annulée.
+     *
+     * `$seulement` borne le passage à une cible : un vote ne peut faire naître
+     * une meute ou une salve que sur la sienne. Sans lui, tout le site.
      */
-    public static function detectPackVoting(PDO $pdo): array
+    public static function detectPackVoting(PDO $pdo, ?int $seulement = null): array
     {
+        $surCible = $seulement === null ? '' : ' AND target_author = ?';
+        $deLaCible = $seulement === null ? [] : [$seulement];
         $maintenant = time();
         $packs = [];
         $salves = [];
@@ -692,10 +734,10 @@ class Moderate
         $minLies = (int) self::config()->meuteLiensMin;
         $stmt = $pdo->prepare("
             SELECT target_author FROM mod_votes
-             WHERE value = -1 AND blocked = 0 AND created_at >= ?
+             WHERE value = -1 AND blocked = 0 AND created_at >= ?$surCible
           GROUP BY target_author HAVING COUNT(DISTINCT voter_id) >= $minLies
         ");
-        $stmt->execute([$sinceMeute]);
+        $stmt->execute(array_merge([$sinceMeute], $deLaCible));
         $auteurs = array_map('intval', array_column($stmt->fetchAll(), 'target_author'));
 
         foreach ($auteurs as $author) {
@@ -750,10 +792,10 @@ class Moderate
         $minVotants = (int) self::config()->salveVotantsMin;
         $stmt = $pdo->prepare("
             SELECT target_author FROM mod_votes
-             WHERE value = -1 AND blocked = 0 AND created_at >= ?
+             WHERE value = -1 AND blocked = 0 AND created_at >= ?$surCible
           GROUP BY target_author HAVING COUNT(DISTINCT voter_id) >= $minVotants
         ");
-        $stmt->execute([$sinceSalve]);
+        $stmt->execute(array_merge([$sinceSalve], $deLaCible));
 
         foreach ($stmt->fetchAll() as $row) {
             $author = (int) $row['target_author'];

@@ -153,6 +153,14 @@ CREATE TABLE IF NOT EXISTS mod_pack_flags (
 );
 CREATE INDEX IF NOT EXISTS idx_packflags_voter ON mod_pack_flags(voter_id, detected_at);
 
+-- SelfModerate — une ligne par tranche de `balayagePeriodeSecondes` déjà balayée.
+-- Le premier downvote d'une tranche l'insère et balaie tout le site ; les autres
+-- la trouvent et ne regardent que leur cible. La clé primaire arbitre deux premiers
+-- votes simultanés : la base en refuse un, un seul balaie.
+CREATE TABLE IF NOT EXISTS mod_sweeps (
+    slot INTEGER PRIMARY KEY   -- intdiv(heure du vote, balayagePeriodeSecondes)
+);
+
 -- Rapports red team — soumis via formulaire public. Le corps du rapport
 -- (titre, description, repro, contact) est chiffré en PGP dans le navigateur :
 -- la base ne révèle qu'un message PGP. handle/severity/target restent en clair (tri + hall of fame).
