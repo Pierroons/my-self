@@ -219,6 +219,49 @@ try {
     ok('a malformed anchor is refused');
 }
 
+section('The audit secret does not ride an exception trace');
+
+/**
+ * The arguments a stack trace keeps for the frame that called `$function`, or
+ * null when the runtime drops them. `zend.exception_ignore_args` is On in a
+ * production php.ini: left alone, the check below would read an empty frame and
+ * pass on nothing, so the setting is forced off and the frame must carry the
+ * public argument before the secret one is looked for.
+ */
+function traceArgs(callable $call, string $function): ?array
+{
+    ini_set('zend.exception_ignore_args', '0');
+    try {
+        $call();
+    } catch (Throwable $e) {
+        foreach ($e->getTrace() as $frame) {
+            if (($frame['function'] ?? '') === $function) {
+                return $frame['args'] ?? null;
+            }
+        }
+    }
+
+    return null;
+}
+
+$dumpedLog = print_r($log, true);
+str_contains($dumpedLog, $path)
+    ? ok('precondition: the AuditLog dump names its file')
+    : ko('precondition: the AuditLog dump does not name its file — the check below would measure nothing');
+!str_contains($dumpedLog, $secret)
+    ? ok('print_r() of an AuditLog does not carry auditSecret')
+    : ko('auditSecret is readable in a dump of the AuditLog');
+
+$tooShort = 'short-audit-secret';
+$args = traceArgs(static fn () => new AuditLog($path, $tooShort), '__construct');
+if ($args === null || !in_array($path, $args, true)) {
+    ko('precondition: the trace does not show the log path — nothing below would be measured');
+} else {
+    !in_array($tooShort, $args, true)
+        ? ok('the AuditLog constructor hides auditSecret from the trace')
+        : ko('auditSecret is readable in the trace of a refused constructor');
+}
+
 // -----------------------------------------------------------------------------
 
 echo "\n";

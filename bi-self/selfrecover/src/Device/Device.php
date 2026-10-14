@@ -320,4 +320,10 @@ final class Device
 
         return $sortie;
     }
+
+    /** Le sel du déploiement hors de `var_dump()` et `print_r()`, comme dans `Recovery`. */
+    public function __debugInfo(): array
+    {
+        return ['profil' => $this->profil, 'langue' => $this->langue, 'selDeploiement' => '[masqué]'];
+    }
 }

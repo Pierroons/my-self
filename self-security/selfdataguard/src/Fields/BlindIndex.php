@@ -48,7 +48,7 @@ final class BlindIndex
      */
     public static function compute(
         #[\SensitiveParameter] string $value,
-        string $blindKey,
+        #[\SensitiveParameter] string $blindKey,
         string $fieldName
     ): string {
         if ($blindKey === '' || strlen($blindKey) < 32) {

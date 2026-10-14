@@ -3,7 +3,7 @@
 **Protocole de récupération de compte sans email**
 *Ton mot. Tes sites. Sans email.*
 
-*Édition du 10 octobre 2026 — v1.5 — décrit SelfRecover 0.12.2*
+*Édition du 14 octobre 2026 — v1.5 — décrit SelfRecover 0.12.3*
 
 ---
 
@@ -255,7 +255,7 @@ Un dossier (`LIT-` suivi de 16 hexadécimaux) s'ouvre quand la personne le deman
 - Chaque litige a un numéro **non devinable**, le faisceau de faits (bruts, jamais un score), des compteurs de tentatives et de refus, un compteur de tentatives concurrentes (« multi-demandeur »), et un statut (`open`, `awaiting_admin`, `accepted`, `refused`, `closed`)
 - L'admin retrouve les litiges ouverts dans son tableau de bord
 - Un chat bidirectionnel est disponible entre l'admin et l'utilisateur, dont l'accès est conditionné par le code de suivi (polling, pas de WebSocket temps réel pour rester simple)
-- `purger()` efface les dossiers périmés — ni les refusés, dont le compte informe l'arbitre, ni les acceptés, qu'un titulaire peut encore venir consommer. 🔴 **Rien dans la bibliothèque ne l'appelle** : elle n'a pas d'horloge, et aucun de ses chemins n'invoque cette méthode. C'est au déploiement de la lancer périodiquement — une unité `systemd` prête à poser vit dans `deploy/bi-self/`, et l'outil qu'elle lance dans `bi-self/selfrecover/tools/purger.php`.
+- `purger()` efface les dossiers périmés — ni les refusés, dont le compte informe l'arbitre, ni les acceptés, qu'un titulaire peut encore venir consommer, ni, pendant trente jours, les dossiers où des réponses ou un message attendaient un arbitre : il les lit à côté du dossier suivant. Un dossier périmé ne se tranche plus, et l'échéance libère la place sur le compte : le titulaire en ouvre un autre. 🔴 **Rien dans la bibliothèque ne l'appelle** : elle n'a pas d'horloge, et aucun de ses chemins n'invoque cette méthode. C'est au déploiement de la lancer périodiquement — une unité `systemd` prête à poser vit dans `deploy/bi-self/`, et l'outil qu'elle lance dans `bi-self/selfrecover/tools/purger.php`.
 
 ### 6.1 Clôture du litige — Décision admin
 
@@ -464,6 +464,8 @@ SelfRecover ne peut pas protéger les comptes si le serveur qui l'héberge est m
 - [ ] Appeler `purger()` depuis une tâche planifiée : la bibliothèque n'a pas d'horloge
 - [ ] Poser une preuve de travail devant la route d'ouverture du niveau 3
 - [ ] Avec l'adaptateur fourni, construire `StockagePdo` avec l'hôte de dérivation
+- [ ] Avec un autre adaptateur que celui fourni : `cloreLitige()` ne clôt qu'un dossier encore actif et lève `LitigeDejaClos` sinon, et `purgerLitigesExpires()` efface dès leur échéance les dossiers clos et ceux qu'on a ouverts sans rien y écrire, les autres dossiers non tranchés `RETENTION_DOSSIER_DEPOSE` après
+- [ ] Après un niveau 1 ou 2, enchaîner sur le compte avec le nom rendu (`compte`), jamais avec la saisie
 - [ ] Passphrase apportée : passer la saisie à `Recovery::validerPassphraseApportee()`, hacher et afficher la forme rendue, poser `autocapitalize="none"` sur les champs passphrase
 
 Un déploiement qui ignore cette checklist n'est pas un déploiement SelfRecover — c'est une passoire.

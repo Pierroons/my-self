@@ -3,7 +3,7 @@
 **Protection des données personnelles au repos côté application**
 *Dump ma base — et tu obtiens du bruit chiffré.*
 
-*Édition du 3 octobre 2026 — décrit SelfDataGuard v0.6.0*
+*Édition du 3 octobre 2026 — décrit SelfDataGuard v0.6.1*
 
 ---
 
@@ -377,6 +377,7 @@ Le non-respect d'une de ces règles dégrade significativement les garanties. La
 - **v0.4.0** (livrée le 26/09/2026) : XChaCha20-Poly1305 pour toute écriture, format de blob versionné (`SDG2.`), relecture des blobs AES-256-GCM par libsodium ou OpenSSL
 - **v0.5.0** (01/10/2026) : troisième serrure (passphrase SelfRecover), `recover()` pour chaque chemin de récupération, archive au niveau 3, migration de schéma en place
 - **v0.6.0** (03/10/2026) : profil Argon2id enregistré avec chaque coffre et la clé admin scellée, scellé administrateur lié à son compte, journal de séquestre ancrable, nom de champ `escrow` réservé, vecteurs Argon2id figés
+- **v0.6.1** (14/10/2026) : les clés déverrouillées et les secrets du serveur masqués dans `var_dump()` et `print_r()`, des objets déverrouillés qui refusent d'être clonés, des paramètres secrets tenus hors des traces d'exception
 - **v0.7.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
 - **v1.0.0** (2027) : audit cryptographique communautaire formel, soumission ANSSI Visa de sécurité (industries@ssi.gouv.fr), publication d'un test vector pack
 
@@ -394,4 +395,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Édition du 3 octobre 2026, alignée sur SelfDataGuard v0.6.0 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.6.0 (373 contrôles, 11 suites, sous PHP 8.1, 8.2 et 8.4). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*
+*Édition du 3 octobre 2026, alignée sur SelfDataGuard v0.6.1 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.6.1 (386 contrôles, 11 suites, sous PHP 8.1, 8.2 et 8.4). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*

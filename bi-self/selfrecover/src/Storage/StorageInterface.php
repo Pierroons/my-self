@@ -44,6 +44,16 @@ use Pierroons\SelfRecover\Recovery\Litige;
 interface StorageInterface
 {
     /**
+     * Combien de temps un dossier déposé et jamais tranché survit à son échéance.
+     *
+     * Il ne se tranche plus (`Escalade::trancher()`), mais l'arbitre le lit à côté
+     * du dossier suivant du même compte. Passé ce délai, la purge l'efface : un
+     * tiers peut en déposer sans qu'aucun arbitre n'agisse, et sans borne la table
+     * grossirait à la cadence des freins d'ouverture.
+     */
+    public const RETENTION_DOSSIER_DEPOSE = 30 * 86400;
+
+    /**
      * Échecs récents attribués à cette IP, pour freiner l'énumération.
      *
      * ⚠️ **Ne comptez que les lignes dont l'étiquette commence par l'un de
@@ -295,6 +305,13 @@ interface StorageInterface
      *
      * ⚠️ Le sésame est à usage unique : un dossier repris après le
      * ré-enrôlement rouvrirait une porte que le titulaire croit refermée.
+     *
+     * ⚠️ **La garde appartient à cette écriture, comme pour `consommerCode()`.**
+     * Deux reprises concurrentes lisent le même accord avant que l'une le clôture ;
+     * un `UPDATE` sans condition sur l'état les laisse réussir toutes les deux, et
+     * la seconde repose ses secrets par-dessus ceux de la première. Ne clôt qu'un
+     * dossier encore actif (`open`, `awaiting_admin`, `accepted`), et **lève**
+     * `LitigeDejaClos` si l'écriture ne porte pas sur exactement une ligne.
      */
     public function cloreLitige(int $litigeId, int $quand): void;
 
@@ -359,9 +376,13 @@ interface StorageInterface
      * ou le planificateur de ton choix. Sans ça, les dossiers périmés s'empilent avec leur empreinte de
      * sésame : l'échéance les rend inactifs, elle n'efface rien.
      *
+     * Partent dès leur échéance les dossiers clos et ceux qu'on a ouverts sans
+     * jamais rien y écrire ; un dossier ouvert ou en attente qui porte des réponses
+     * ou un message part `RETENTION_DOSSIER_DEPOSE` après la sienne.
+     *
      * ⚠️ Les dossiers acceptés et refusés doivent y SURVIVRE, pour les raisons
-     * que l'implémentation de référence porte en commentaire. Leur rétention
-     * est donc une décision de déploiement, pas un effet de cette méthode.
+     * que l'implémentation de référence porte en commentaire. Leur rétention est
+     * une décision de déploiement, pas un effet de cette méthode.
      */
     public function purgerLitigesExpires(int $avant): int;
 

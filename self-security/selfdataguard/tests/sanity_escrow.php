@@ -20,6 +20,7 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
+use Pierroons\SelfDataGuard\Escrow\UnlockedEscrow;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\UserVault;
@@ -320,6 +321,27 @@ section('Delete cascade removes escrow');
 $dg->delete('alice');
 $storage->loadEscrow('alice') === null ? ok('deleteVault() cascades to escrow envelope') : ko('escrow envelope survived delete');
 $storage->loadEscrowFields('alice') === [] ? ok('deleteVault() cascades to escrow fields') : ko('escrow fields survived delete');
+
+echo "\n→ An unlocked escrow does not hand its key to a debug dump or a clone\n";
+
+$leakEscrowKey = random_bytes(Primitives::KEY_LEN);
+$openedEscrow  = new UnlockedEscrow('user-dump', $leakEscrowKey);
+ob_start();
+var_dump($openedEscrow);
+$dumpedEscrow  = (string) ob_get_clean();
+$printedEscrow = print_r($openedEscrow, true);
+str_contains($dumpedEscrow, 'user-dump')
+    ? ok('precondition: the dump still names the escrow it describes')
+    : ko('precondition: the dump does not show the escrow — the checks below would measure nothing');
+!str_contains($dumpedEscrow, $leakEscrowKey) && !str_contains($printedEscrow, $leakEscrowKey)
+    ? ok('var_dump() and print_r() do not carry the escrow key bytes')
+    : ko('the unwrapped escrow key is readable in a debug dump');
+try {
+    $copyEscrow = clone $openedEscrow;
+    ko('a clone was made — it holds a copy of the key that lock() on the original never wipes');
+} catch (RuntimeException) {
+    ok('cloning is refused: a copy would escape lock()');
+}
 
 // -----------------------------------------------------------------------------
 

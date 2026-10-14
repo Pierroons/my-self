@@ -42,7 +42,7 @@ final class AuditLog
 
     public function __construct(
         private readonly string $path,
-        private readonly string $auditSecret
+        #[\SensitiveParameter] private readonly string $auditSecret
     ) {
         if (strlen($auditSecret) < self::PLANCHER_SECRET) {
             throw new InvalidArgumentException(sprintf(
@@ -223,5 +223,11 @@ final class AuditLog
             throw new RuntimeException('Failed to canonicalize audit record');
         }
         return hash_hmac('sha256', $canonical, $this->auditSecret);
+    }
+
+    /** Keep the chain's signing secret out of var_dump() and print_r(). */
+    public function __debugInfo(): array
+    {
+        return ['path' => $this->path, 'auditSecret' => '[redacted]'];
     }
 }

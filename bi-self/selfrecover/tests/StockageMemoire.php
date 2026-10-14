@@ -7,6 +7,7 @@ namespace Pierroons\SelfRecover\Tests;
 use Pierroons\SelfRecover\Device\Appareil;
 use Pierroons\SelfRecover\Recovery\Litige;
 use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
+use Pierroons\SelfRecover\Storage\LitigeDejaClos;
 use Pierroons\SelfRecover\Storage\SelParCodeInterface;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
@@ -387,7 +388,7 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
             }
         }
         $this->litiges[] = [
-            'id' => count($this->litiges) + 1, 'numero' => $numero, 'compte_id' => $compteId,
+            'id' => max([0, ...array_column($this->litiges, 'id')]) + 1, 'numero' => $numero, 'compte_id' => $compteId,
             'nom_compte' => $nom, 'statut' => Litige::OUVERT, 'empreinte_sesame' => $empreinteSesame,
             'cree_le' => $quand, 'expire_le' => $expireLe, 'depose_le' => 0,
             'tranche_le' => null, 'tranche_par' => null, 'demandeurs_concurrents' => 0,
@@ -442,6 +443,13 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
 
     public function cloreLitige(int $litigeId, int $quand): void
     {
+        // La garde de la course, comme dans l'implémentation de référence : seul
+        // un dossier encore actif se clôt.
+        $actif = array_filter($this->litiges, static fn (array $l): bool => $l['id'] === $litigeId
+            && in_array($l['statut'], [Litige::OUVERT, Litige::A_LIRE, Litige::ACCEPTE], true));
+        if ($actif === []) {
+            throw new LitigeDejaClos('aucun dossier actif à ce numéro');
+        }
         $this->majLitige($litigeId, static function (array $l) use ($quand): array {
             $l['statut'] = Litige::CLOS;
             // Le sésame ne rouvre plus rien : l'empreinte cesse de correspondre
@@ -518,17 +526,25 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
         // compte le seuil du gel. Les effacer viderait le compteur avant qu'il
         // atteigne son seuil, et le gel — seule protection contre l'acharnement —
         // deviendrait inatteignable sans qu'aucune sonde ne rougisse. Un dossier
-        // ACCEPTÉ survit aussi : il n'expire pas tant qu'il n'est pas consommé.
-        $garde = array_filter($this->litiges, self::litigeSurvit($avant));
+        // ACCEPTÉ survit aussi : il n'expire pas tant qu'il n'est pas consommé. Et
+        // un dossier DÉPOSÉ, le temps de la rétention : l'arbitre le lit à côté du
+        // suivant.
+        $garde = array_filter($this->litiges, $this->litigeSurvit($avant));
         $n     = count($this->litiges) - count($garde);
         $this->litiges = array_values($garde);
+        // Le fil part avec son dossier, comme le `ON DELETE CASCADE` du schéma.
+        $ids = array_column($this->litiges, 'id');
+        $this->messages = array_values(array_filter(
+            $this->messages,
+            static fn (array $m): bool => in_array($m['litige_id'], $ids, true),
+        ));
 
         return $n;
     }
 
     public function compterLitigesExpires(int $avant): int
     {
-        return count($this->litiges) - count(array_filter($this->litiges, self::litigeSurvit($avant)));
+        return count($this->litiges) - count(array_filter($this->litiges, $this->litigeSurvit($avant)));
     }
 
     /**
@@ -538,10 +554,21 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
      *
      * @return callable(array<string, mixed>): bool
      */
-    private static function litigeSurvit(int $avant): callable
+    private function litigeSurvit(int $avant): callable
     {
-        return static fn (array $l): bool => $l['expire_le'] > $avant
-            || in_array($l['statut'], [Litige::REFUSE, Litige::ACCEPTE], true);
+        // Comme la clause de référence, il nomme ce qui part : dès l'échéance, un
+        // dossier clos ou ouvert sans que rien n'y ait jamais été écrit ; après la
+        // rétention, tout dossier ouvert ou en attente.
+        $ecrits    = array_column($this->messages, 'litige_id');
+        $retention = $avant - self::RETENTION_DOSSIER_DEPOSE;
+
+        return static fn (array $l): bool => !(
+            ($l['expire_le'] <= $avant
+             && ($l['statut'] === Litige::CLOS
+                 || ($l['statut'] === Litige::OUVERT && ($l['depose_le'] ?? 0) === 0
+                     && !in_array($l['id'], $ecrits, true))))
+            || ($l['expire_le'] <= $retention && in_array($l['statut'], [Litige::OUVERT, Litige::A_LIRE], true))
+        );
     }
 
 

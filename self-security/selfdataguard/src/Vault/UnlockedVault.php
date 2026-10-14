@@ -91,4 +91,23 @@ final class UnlockedVault
     {
         throw new RuntimeException('UnlockedVault must not be unserialized');
     }
+
+    /**
+     * Keep the key out of var_dump() and print_r(): a debug page or a log line is
+     * where it would land first. var_export() reads properties directly and is
+     * not covered — the rule above (never log this object) still holds.
+     */
+    public function __debugInfo(): array
+    {
+        return ['userId' => $this->userId, 'locked' => $this->locked, 'masterKey' => '[redacted]'];
+    }
+
+    /**
+     * Forbid cloning: a clone carries its own copy of the key, which lock() on
+     * the original never wipes.
+     */
+    public function __clone()
+    {
+        throw new RuntimeException('UnlockedVault must not be cloned');
+    }
 }

@@ -56,7 +56,7 @@ final class SelfDataGuard
 
     public function __construct(
         private readonly StorageInterface $storage,
-        private readonly string $blindKey
+        #[\SensitiveParameter] private readonly string $blindKey
     ) {
         if (strlen($blindKey) < 32) {
             throw new InvalidArgumentException(
@@ -591,5 +591,11 @@ final class SelfDataGuard
                 . 'do its saveVault() and replaceWithArchive() write kdf_opslimit and kdf_memlimit?'
             );
         }
+    }
+
+    /** Keep the blind-index key out of var_dump() and print_r(). */
+    public function __debugInfo(): array
+    {
+        return ['blindKey' => '[redacted]'];
     }
 }

@@ -5,6 +5,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [v0.6.1] — 2026-10-14
+
+A patch release. No signature changes.
+
+### Security
+- `UnlockedVault` and `UnlockedEscrow` mask their key in `var_dump()` and `print_r()` (`__debugInfo()`)
+  and refuse to be cloned: a copy would carry the key out of `lock()`'s reach. `var_export()` reads
+  properties directly and is not covered; the rule is still never to log these objects.
+- The facade and `AuditLog` mask `blindKey` and `auditSecret` the same way.
+- `blindKey` (facade constructor, `BlindIndex::compute()`) and `auditSecret` (`AuditLog` constructor)
+  carry `#[\SensitiveParameter]`: an exception raised there no longer copies them into its trace. The
+  0.6.0 entry announced the attribute on every parameter that carries a secret; these three were
+  missing.
+
+### Tests
+- 386 checks across the eleven suites (was 373). Every new check was seen failing on 0.6.0 first. The
+  trace checks force `zend.exception_ignore_args` off and first check that a public argument is in the
+  trace; otherwise they would pass on an empty one.
+
 ## [v0.6.0] — 2026-10-03
 
 A review of the project's architecture raised seven findings on SelfDataGuard. Six are

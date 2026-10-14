@@ -5,8 +5,8 @@
 **Protection des données au repos côté application, qui survit à une exfiltration de base de données.**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Statut : v0.6.0 disponible](https://img.shields.io/badge/statut-v0.6.0%20disponible-brightgreen.svg)](#statut)
-[![Tests : 373 passants](https://img.shields.io/badge/tests-373%20passants-brightgreen.svg)](#tests)
+[![Statut : v0.6.1 disponible](https://img.shields.io/badge/statut-v0.6.1%20disponible-brightgreen.svg)](#statut)
+[![Tests : 386 passants](https://img.shields.io/badge/tests-386%20passants-brightgreen.svg)](#tests)
 [![Pilier : Self-Security](https://img.shields.io/badge/pilier-Self--Security-blue.svg)](../README.fr.md)
 [![Compagnon : SelfRecover](https://img.shields.io/badge/compagnon-SelfRecover-green.svg)](../../bi-self/selfrecover/README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -105,7 +105,7 @@ Sans SelfRecover, SelfDataGuard fonctionne quand même, avec les serrures que l'
 
 ---
 
-## Modes opérationnels — la v0.6.0 n'en implémente qu'un
+## Modes opérationnels — la v0.6.1 n'en implémente qu'un
 
 | Mode | Accès serveur aux données | Compromis | Dans le code |
 |------|---------------------------|-----------|--------------|
@@ -113,7 +113,7 @@ Sans SelfRecover, SelfDataGuard fonctionne quand même, avec les serrures que l'
 | **Hybrid** *(visé pour l'e-commerce)* | Champs opérationnels (`email`, `adresse_livraison`) encapsulés avec une clé opérationnelle admin. Champs sensibles (`tel`, `doc_KYC`) nécessitent une session utilisateur | L'admin peut traiter les commandes ; les données sensibles restent zero-knowledge | ❌ spécifié, pas écrit — le `wrap_admin` du coffre vaut `null` (`UserVault::register()`) |
 | **Full** *(zero-knowledge pour services à forte exigence)* | Le serveur ne déchiffre JAMAIS. Toute la crypto tourne dans le navigateur, par libsodium compilé en WebAssembly — WebCrypto n'offre ni Argon2id ni XChaCha20-Poly1305 | Certains workflows à redessiner (pas de mails transactionnels asynchrones, notifications push à la place) | ❌ spécifié, pas écrit — le module ne porte aucun code client |
 
-Un déploiement qui installe la v0.6.0 est donc en **Lite**, quel que soit le mode visé : les deux autres sont décrits au whitepaper (§4.2, §4.3) comme une cible, et aucun paramètre de l'API ne les choisit.
+Un déploiement qui installe la v0.6.1 est donc en **Lite**, quel que soit le mode visé : les deux autres sont décrits au whitepaper (§4.2, §4.3) comme une cible, et aucun paramètre de l'API ne les choisit.
 
 Une voie administrateur existe pourtant, hors de ce tableau : le **séquestre** (`src/Escrow/`), compartiment à clé propre qu'un administrateur rouvre sous cérémonie — dossier ouvert, passphrase de séquestre, journal signé. Il ne rend que ce compartiment, jamais le coffre privé, et il n'est pas le mode Hybrid : rien n'y est déchiffré au fil de l'eau. Le séquestre d'un coffre archivé part avec l'archive, et l'administrateur le rouvre de la même façon (`getArchiveEscrowFieldsAsAdmin()`).
 
@@ -142,7 +142,7 @@ Ce que le séquestre tient depuis la 0.6.0 :
 
 ## Statut
 
-**v0.6.0 — le profil Argon2id enregistré, un séquestre lié à son compte, un journal ancrable**, 3 octobre 2026.
+**v0.6.1 — les clés déverrouillées et les secrets du serveur restent hors des vidages et des traces**, 14 octobre 2026, sur la **v0.6.0 — le profil Argon2id enregistré, un séquestre lié à son compte, un journal ancrable**, 3 octobre 2026.
 
 Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (3 927 lignes réparties sur 25 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **373 contrôles répartis sur 11 suites**, joués sous PHP 8.1, 8.2 et 8.4, tous passants. Les clés des trois serrures sont vérifiées contre des vecteurs figés, recalculés en CI par une seconde implémentation (argon2-cffi). Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
 
@@ -210,17 +210,17 @@ Onze suites de tests sanity, exécutables directement avec `php` (pas besoin de 
 
 ```bash
 php tests/sanity_primitives.php   # 46 tests — Argon2id, HMAC, XChaCha20-Poly1305 + vecteur IETF, AES-GCM historique, aléatoire
-php tests/sanity_vault.php        # 55 tests — trois serrures, rotation, séparation des contextes, liaison AAD, génération et profil du coffre
+php tests/sanity_vault.php        # 58 tests — trois serrures, rotation, séparation des contextes, liaison AAD, génération et profil du coffre
 php tests/sanity_fields.php       # 26 tests — chiffrement de champs + blind index
 php tests/sanity_storage.php      # 60 tests — adaptateur SQLite, transactions imbriquées, écriture conditionnelle (génération, révision), test "soupe DB"
 php tests/sanity_migration.php    # 15 tests — bases 0.4.0 et 0.5.x migrées en place, deux migrateurs simultanés
 php tests/sanity_archive.php      # 26 tests — archive : contenu, cloisonnement, tout-ou-rien, écrivain concurrent attendu
-php tests/sanity_facade.php       # 63 tests — API complète bout en bout, recover(), niveau 3, course à l'écriture, stockage qui perd ou ignore le profil, nom réservé
-php tests/sanity_audit.php        # 18 tests — journal d'audit, ancre contre la troncature
+php tests/sanity_facade.php       # 67 tests — API complète bout en bout, recover(), niveau 3, course à l'écriture, stockage qui perd ou ignore le profil, nom réservé
+php tests/sanity_audit.php        # 21 tests — journal d'audit, ancre contre la troncature
 php tests/sanity_ceremony.php     # 22 tests — cérémonie de clés, options de verify-log, fichier scellé illisible
-php tests/sanity_escrow.php       # 33 tests — compartiment escrow, clé admin v2, scellé lié au compte, rescellement explicite
+php tests/sanity_escrow.php       # 36 tests — compartiment escrow, clé admin v2, scellé lié au compte, rescellement explicite
 php tests/sanity_vecteurs.php     # 9 tests — clés des trois serrures face aux vecteurs figés
-# Total : 373 tests, 0 échec — relevé par exécution le 03/10/2026
+# Total : 386 tests, 0 échec — relevé par exécution le 14/10/2026
 python3 tests/vecteurs_argon2.py  # recalcule les vecteurs par argon2-cffi, seconde implémentation
 ```
 

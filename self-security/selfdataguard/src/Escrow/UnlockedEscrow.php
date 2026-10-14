@@ -71,4 +71,19 @@ final class UnlockedEscrow
     {
         throw new RuntimeException('UnlockedEscrow must not be unserialized');
     }
+
+    /** Keep the key out of var_dump() and print_r(), as UnlockedVault does. */
+    public function __debugInfo(): array
+    {
+        return ['userId' => $this->userId, 'locked' => $this->locked, 'escrowKey' => '[redacted]'];
+    }
+
+    /**
+     * Forbid cloning: a clone carries its own copy of the key, which lock() on
+     * the original never wipes.
+     */
+    public function __clone()
+    {
+        throw new RuntimeException('UnlockedEscrow must not be cloned');
+    }
 }

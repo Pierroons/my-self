@@ -151,7 +151,11 @@ final class Recovery
      * remplacer celle qui sert, au lieu d'en recevoir une tirée par le serveur
      * (`validerPassphraseApportee()`). `null` : le serveur tire.
      *
-     * @return array{ok: bool, message: string, error?: string, motif?: string, mot_de_passe?: string, passphrase?: string, age_jours?: int|null}
+     * `compte` : le nom sous lequel le compte a été trouvé — la saisie normalisée,
+     * pas la saisie. C'est lui que l'application emploie pour enchaîner (session,
+     * clé de SelfDataGuard), comme au niveau 2.
+     *
+     * @return array{ok: bool, message: string, error?: string, motif?: string, mot_de_passe?: string, passphrase?: string, compte?: string, age_jours?: int|null}
      */
     public function parPassphrase(
         string $nomCompte,
@@ -275,6 +279,7 @@ final class Recovery
             'message'      => Messages::dire($this->langue, 'acces.rendu'),
             'mot_de_passe' => $motDePasse,
             'passphrase'   => $nouvellePhrase,
+            'compte'       => $nomCompte,
             'age_jours'    => is_int($emiseLe) ? intdiv(max(0, $maintenant - $emiseLe), 86400) : null,
         ];
     }
@@ -943,5 +948,15 @@ final class Recovery
         }
 
         return null;
+    }
+
+    /**
+     * Le sel du déploiement hors de `var_dump()` et `print_r()` : une page de
+     * débogage ou une ligne de journal sont les premiers endroits où il
+     * atterrirait, et c'est la clé de l'index de tous les codes émis.
+     */
+    public function __debugInfo(): array
+    {
+        return ['profil' => $this->profil, 'langue' => $this->langue, 'selDeploiement' => '[masqué]'];
     }
 }
