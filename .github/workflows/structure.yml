@@ -1434,6 +1434,47 @@ jobs:
       - name: Garde-fou — la bibliothèque sur le schéma réel du lab
         run: php demo/lab/tests/equivalence_selfrecover.php
 
+      - name: Canari — l'adaptateur du lab efface un dossier déposé, ou reclôt un dossier clos
+        run: |
+          # @plante
+          # Les deux défauts que la 0.12.3 a corrigés dans la bibliothèque,
+          # replantés dans la recopie du lab, chacun restauré avant le suivant :
+          # la clause qui efface tout périmé non refusé doit rougir sur le dossier
+          # déposé ; la clôture sans condition d'état, sur le dossier déjà clos.
+          A=demo/lab/lib/StockageSelfRecover.php
+          for cas in clause cloture; do
+            cp "$A" /tmp/adaptateur.lab.intact
+            CAS="$cas" python3 - "$A" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          avant, apres = {
+              'clause':  ("(status = 'closed' OR (status = 'open'\n        AND submitted_at = 0\n"
+                          "        AND NOT EXISTS (SELECT 1 FROM dispute_messages m WHERE m.dispute_id = disputes.id)))",
+                          "status IN ('closed', 'open', 'awaiting_admin')"),
+              'cloture': ("\n             WHERE id = ? AND status IN ('open', 'awaiting_admin', 'accepted')\"", " WHERE id = ?\""),
+          }[os.environ['CAS']]
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/adaptateur.lab.intact "$A"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/equivalence_selfrecover.php 2>&1); then
+              cp /tmp/adaptateur.lab.intact "$A"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/adaptateur.lab.intact "$A"
+            cmp -s /tmp/adaptateur.lab.intact "$A" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              clause)  attendu='❌ ⭐ un dossier déposé survit à son échéance' ;;
+              cloture) attendu='❌ ⭐ clore un dossier déjà clos lève LitigeDejaClos' ;;
+            esac
+            echo "$sortie" | grep -q "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
       - name: Garde-fou — coût constant du hash factice (lab)
         run: php demo/lab/tests/sanity_timing.php
 

@@ -8,6 +8,7 @@ use PDO;
 use Pierroons\SelfRecover\Device\Appareil;
 use Pierroons\SelfRecover\Recovery\Litige;
 use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
+use Pierroons\SelfRecover\Storage\LitigeDejaClos;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -446,10 +447,17 @@ final class StockageSelfRecover implements StorageInterface
     public function cloreLitige(int $litigeId, int $quand): void
     {
         // ⚠️ `claim_hash` passe à NULL : le sésame ne doit plus rien rouvrir, et
-        // le fil, lui, ne regarde pas le statut du dossier.
-        $this->pdo->prepare(
-            "UPDATE disputes SET status = 'closed', claim_hash = NULL, updated_at = ? WHERE id = ?"
-        )->execute([$quand, $litigeId]);
+        // le fil, lui, ne regarde pas le statut du dossier. La condition sur
+        // l'état est la garde de la course : de deux clôtures du même dossier,
+        // la seconde ne trouve plus de ligne active.
+        $st = $this->pdo->prepare(
+            "UPDATE disputes SET status = 'closed', claim_hash = NULL, updated_at = ?
+             WHERE id = ? AND status IN ('open', 'awaiting_admin', 'accepted')"
+        );
+        $st->execute([$quand, $litigeId]);
+        if ($st->rowCount() !== 1) {
+            throw new LitigeDejaClos('aucun dossier actif à ce numéro');
+        }
     }
 
     public function compterRefusRecents(int $compteId, int $depuis): int
@@ -550,11 +558,25 @@ final class StockageSelfRecover implements StorageInterface
     }
 
     /**
-     * La clause des dossiers périmés — pour la purge ET pour son compte. Les deux
-     * états exclus le sont pour les raisons écrites juste dessous ; les écrire
-     * deux fois, c'est accepter qu'un jour l'un des deux les oublie.
+     * La clause des dossiers périmés — pour la purge ET pour son compte. Elle
+     * nomme ce qui part plutôt que ce qui reste : les dossiers épargnés le sont
+     * pour les raisons écrites juste dessous, et les écrire deux fois, c'est
+     * accepter qu'un jour l'un des deux les oublie.
+     *
+     * Recopie de celle de `StockagePdo` : le SQL appartient à chaque adaptateur,
+     * la règle est commune, et `tests/equivalence_selfrecover.php` rejoue les
+     * cas de référence de la bibliothèque pour dire qu'elle est tenue.
      */
-    private const OU_LITIGES_PERIMES = "expires_at <= ? AND status NOT IN ('refused', 'accepted')";
+    private const OU_LITIGES_PERIMES = "(expires_at <= ? AND (status = 'closed' OR (status = 'open'
+        AND submitted_at = 0
+        AND NOT EXISTS (SELECT 1 FROM dispute_messages m WHERE m.dispute_id = disputes.id))))
+        OR (expires_at <= ? AND status IN ('open', 'awaiting_admin'))";
+
+    /** Les deux bornes de la clause : l'échéance, et l'échéance moins la rétention des dossiers déposés. */
+    private static function bornesPerimes(int $avant): array
+    {
+        return [$avant, $avant - self::RETENTION_DOSSIER_DEPOSE];
+    }
 
     public function purgerLitigesExpires(int $avant): int
     {
@@ -568,8 +590,14 @@ final class StockageSelfRecover implements StorageInterface
         // `litigeActifDuCompte` les exempte du TTL : le titulaire qui revient
         // après l'expiration doit encore trouver son accord. Les purger rendrait
         // la porte définitivement close à qui a déjà tout perdu.
+        //
+        // ⚠️ Les dossiers DÉPOSÉS y survivent `RETENTION_DOSSIER_DEPOSE` après
+        // leur échéance : des réponses ou un message attendaient un arbitre, et
+        // l'échéance ne mesure que le temps qu'il a mis à venir. Les effacer
+        // aussitôt emportait le fil avec eux (`ON DELETE CASCADE`). L'échéance
+        // libère quand même la PLACE : `litigeActifDuCompte` ne les rend plus.
         $st = $this->pdo->prepare('DELETE FROM disputes WHERE ' . self::OU_LITIGES_PERIMES);
-        $st->execute([$avant]);
+        $st->execute(self::bornesPerimes($avant));
 
         return $st->rowCount();
     }
@@ -578,7 +606,7 @@ final class StockageSelfRecover implements StorageInterface
     public function compterLitigesExpires(int $avant): int
     {
         $st = $this->pdo->prepare('SELECT COUNT(*) FROM disputes WHERE ' . self::OU_LITIGES_PERIMES);
-        $st->execute([$avant]);
+        $st->execute(self::bornesPerimes($avant));
 
         return (int) $st->fetchColumn();
     }

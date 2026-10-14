@@ -532,6 +532,108 @@ foreach ($endpoints as $chemin) {
         !preg_match('/\$body\[.(par|admin|auteur|username_admin).\]/', $src));
 }
 
+echo "\n→ ⭐ La purge et la clôture tiennent le contrat de la 0.12.3, sur le schéma réel\n";
+
+// Les cas de référence sont ceux de `bi-self/selfrecover/tests/banc_stockage_pdo.php`
+// (la purge, propriété 2 ; la clôture, propriété 22), rejoués contre l'adaptateur
+// du lab. Sa clause est une RECOPIE de celle de la bibliothèque : le SQL appartient
+// à chaque adaptateur, la règle est commune, et c'est ce banc qui dit qu'elle est
+// tenue. Sans lui, le lab est resté sur l'ancienne clause sans qu'un contrôle rougisse.
+$TL = 1_700_000_000;
+$baseLitiges = static function (): PDO {
+    $p = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $p->exec((string) file_get_contents(__DIR__ . '/../schema.sql'));
+    $p->exec("INSERT INTO accounts (id, username, pw_hash, pass_hash, recovery_hash, created_at)
+              VALUES (1, 'carol', 'x', 'x', 'x', 0)");
+    return $p;
+};
+$poserLitige = static function (PDO $p, string $numero, string $statut, int $echeance, int $depose) use ($TL): void {
+    $p->prepare('INSERT INTO disputes (dispute_number, account_id, status, expires_at, submitted_at, created_at, updated_at)
+                 VALUES (?, 1, ?, ?, ?, ?, ?)')->execute([$numero, $statut, $echeance, $depose, $TL - 100, $TL - 100]);
+};
+$numeros = static fn (PDO $p): array => $p->query('SELECT dispute_number FROM disputes ORDER BY dispute_number')
+    ->fetchAll(PDO::FETCH_COLUMN);
+
+// La purge épargne ce qui arme le gel et ce qui rend un accord.
+$pdoL = $baseLitiges();
+$stL  = new StockageSelfRecover($pdoL);
+foreach (['open', 'refused', 'accepted', 'closed'] as $i => $statut) {
+    $poserLitige($pdoL, "LIT-{$i}-{$statut}", $statut, $TL - 10, 0);
+}
+$annonceL = $stL->compterLitigesExpires($TL);
+$effaceL  = $stL->purgerLitigesExpires($TL);
+verifier('la purge emporte les périmés ordinaires, épargne refused et accepted',
+    $effaceL === 2 && $numeros($pdoL) === ['LIT-1-refused', 'LIT-2-accepted'], implode(', ', $numeros($pdoL)));
+verifier('son compte à blanc annonçait exactement ce qu\'elle a effacé', $annonceL === $effaceL,
+    "annoncé {$annonceL}, effacé {$effaceL}");
+
+// Un dossier DÉPOSÉ, ou qui porte un message, survit à son échéance : l'échéance
+// mesure le temps qu'un arbitre a mis à venir, pas ce que le titulaire a écrit.
+$pdoL2 = $baseLitiges();
+$stL2  = new StockageSelfRecover($pdoL2);
+$poserLitige($pdoL2, 'LIT-MUET', 'open', $TL - 10, 0);
+$poserLitige($pdoL2, 'LIT-DEPOSE', 'awaiting_admin', $TL - 10, $TL - 50);
+$poserLitige($pdoL2, 'LIT-ECRIT', 'open', $TL - 10, 0);
+$ecritL = $stL2->trouverLitigeParNumero('LIT-ECRIT');
+$stL2->ajouterMessageLitige($ecritL->id, 'user', 'je suis le titulaire', $TL - 90);
+$annonceL2 = $stL2->compterLitigesExpires($TL);
+$effaceL2  = $stL2->purgerLitigesExpires($TL);
+verifier('⭐ un dossier déposé survit à son échéance — ses réponses attendent l\'arbitre',
+    in_array('LIT-DEPOSE', $numeros($pdoL2), true), implode(', ', $numeros($pdoL2)));
+verifier('⭐ un dossier qui porte un message survit aussi, et son fil avec lui',
+    in_array('LIT-ECRIT', $numeros($pdoL2), true) && count($stL2->messagesDuLitige($ecritL->id)) === 1);
+verifier('le dossier muet part, et le compte à blanc l\'annonçait',
+    $effaceL2 === 1 && $annonceL2 === 1 && !in_array('LIT-MUET', $numeros($pdoL2), true),
+    "annoncé {$annonceL2}, effacé {$effaceL2}");
+verifier('l\'échéance libère quand même la place', $stL2->litigeActifDuCompte(1, $TL) === null);
+// La rétention se lit dans le contrat, hérité par l'adaptateur : aucun chiffre ici.
+$finRetention = $TL - 10 + StockageSelfRecover::RETENTION_DOSSIER_DEPOSE;
+verifier('la veille de la fin de rétention, rien ne part',
+    $stL2->compterLitigesExpires($finRetention - 1) === 0 && $stL2->purgerLitigesExpires($finRetention - 1) === 0);
+$annonceR = $stL2->compterLitigesExpires($finRetention);
+$effaceR  = $stL2->purgerLitigesExpires($finRetention);
+verifier('⭐ la rétention passée, le dossier déposé et celui qui porte un message partent',
+    $effaceR === 2 && $annonceR === 2 && $numeros($pdoL2) === [], "annoncé {$annonceR}, effacé {$effaceR}");
+
+// La clôture CONSOMME le dossier : de deux reprises concurrentes du même accord,
+// seule la première le clôt, et la seconde le sait.
+$pdoK = $baseLitiges();
+$stK  = new StockageSelfRecover($pdoK);
+$stK->ouvrirLitige(1, 'LIT-UNE-FOIS', hash('sha256', 'sesame'), $TL, $TL + 86400);
+$lk = $stK->trouverLitigeParNumero('LIT-UNE-FOIS');
+$stK->cloreLitige($lk->id, $TL + 1);
+$clore = static function (StockageSelfRecover $st, int $id, int $quand): string {
+    try {
+        $st->cloreLitige($id, $quand);
+        return 'rien';
+    } catch (\Pierroons\SelfRecover\Storage\LitigeDejaClos) {
+        return 'LitigeDejaClos';
+    } catch (\Throwable $e) {
+        return get_class($e);
+    }
+};
+$secondeK = $clore($stK, $lk->id, $TL + 2);
+verifier('⭐ clore un dossier déjà clos lève LitigeDejaClos', $secondeK === 'LitigeDejaClos', $secondeK);
+verifier('et ne réécrit rien',
+    (int) $pdoK->query("SELECT updated_at FROM disputes WHERE id = {$lk->id}")->fetchColumn() === $TL + 1);
+$poserLitige($pdoK, 'LIT-REFUSE', 'refused', $TL + 86400, 0);
+$refuseK = $stK->trouverLitigeParNumero('LIT-REFUSE');
+$surRefus = $clore($stK, $refuseK->id, $TL + 3);
+verifier('un dossier refusé ne se clôt pas non plus — il n\'est plus actif', $surRefus === 'LitigeDejaClos', $surRefus);
+verifier('et il reste refusé, compté pour le gel',
+    $pdoK->query("SELECT status FROM disputes WHERE id = {$refuseK->id}")->fetchColumn() === 'refused');
+
+// Un dossier périmé ne se tranche plus, et la console le DIT à l'arbitre : le
+// refus vient de la bibliothèque, il doit traverser la console avec son code et
+// son message, pas se perdre en erreur générique.
+$pdoX = $baseLitiges();
+$stX  = new StockageSelfRecover($pdoX);
+$stX->ouvrirLitige(1, 'LIT-PERIME', hash('sha256', 'sesame'), $TL - 200, $TL - 10);
+$rX = \Pierroons\MySelfLab\RecoverL3::adminDecide($pdoX, 'LIT-PERIME', 'grant', 'arbitre', $TL);
+verifier('⭐ trancher un dossier périmé est refusé, et la console relaie le refus à l\'arbitre',
+    ($rX['ok'] ?? null) === false && ($rX['error'] ?? '') === 'expire' && ($rX['code'] ?? 0) === 410
+    && trim((string) ($rX['message'] ?? '')) !== '', json_encode($rX, JSON_UNESCAPED_UNICODE));
+
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Équivalence lab ⨯ SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 echo str_repeat('=', 63) . "\n\n";
