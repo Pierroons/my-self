@@ -5,7 +5,7 @@
 **Autonomous community moderation engine through social reasoning**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.4.0](https://img.shields.io/badge/status-v0.4.0-yellow.svg)](#status)
+[![Status: v0.5.0](https://img.shields.io/badge/status-v0.5.0-yellow.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#)
@@ -119,7 +119,7 @@ The engine is a static class; the host passes its `PDO` connection on every call
 | `adminBan(PDO, id, arbiter, reason)` · `adminPardon(PDO, id, arbiter, ?reason)` · `adminMaintenir(PDO, id, arbiter, reason)` | the arbiter actions, returning `['ok' => bool, 'message' => string]` |
 | `dureeEnClair(seconds)` | a readable duration, units passed through your translator (`setTranslator()`) |
 
-**Expected schema** — the lab's is the reference ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)): `member_moderation` (reputation, strikes, voting right, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, flag, recovery, vote suspension), `mod_votes`, `mod_pack_flags`, and three host tables read without being written: `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. The engine writes SQLite SQL.
+**Expected schema** — the lab's is the reference ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)): `member_moderation` (reputation, strikes, voting right, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, flag, recovery, vote suspension), `mod_votes`, `mod_pack_flags`, `mod_sweeps` (one row per `balayagePeriodeSecondes` slot already swept; without it every downvote fails instead of letting the safety net go out), and three host tables read without being written: `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. The engine writes SQLite SQL.
 
 Dates in its messages follow the host's time zone (`date_default_timezone_set()`).
 

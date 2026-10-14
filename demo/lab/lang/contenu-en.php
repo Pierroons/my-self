@@ -235,6 +235,9 @@ return [
     'Paramètres de vote invalides.' => 'Invalid vote parameters.',
     'Tu ne peux pas voter pour toi-même.' => 'You cannot vote for yourself.',
     'Tu as déjà voté ici.' => 'You have already voted here.',
+    'Cible introuvable.' => 'Target not found.',
+    'Motif inconnu de cette plateforme.' => 'Reason unknown on this platform.',
+    'Vote pris en compte.' => 'Vote recorded.',
     'Vote enregistré mais neutralisé : trop d\'upvotes répétés vers ce membre (anti-farming).'
         => 'Vote recorded but neutralised: too many repeated upvotes towards this member (anti-farming).',
     'Vote enregistré mais neutralisé : trop de downvotes répétés vers ce membre (anti-farming).'

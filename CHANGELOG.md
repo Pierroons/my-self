@@ -501,6 +501,51 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfModerate v0.5.0] — 14 octobre 2026
+
+### Un vote ne coûte que sa cible, et un motif détaillé n'est plus refusé — 14 octobre 2026
+
+Version mineure : le comportement du vote change, et l'hôte crée une table de plus (`mod_sweeps`).
+
+- **Un downvote ne regarde que sa cible.** `applyVote()` réexaminait toutes les cibles du site à chaque
+  vote négatif : son coût suivait l'activité de la communauté, et n'importe quel compte qui vote tenait
+  ce levier. Mesuré sur la base du banc : de 223 à 239 requêtes par downvote, 22 désormais.
+  `detectPackVoting()` prend une cible facultative ; sans elle, il examine tout le site.
+- **Le filet tient dans le module.** Ce que le ciblage ne voit pas — deux votants qui s'écrivent après
+  avoir frappé la même cible, sur laquelle personne ne revote — est rattrapé par le premier downvote de
+  chaque tranche de `balayagePeriodeSecondes` (une heure par défaut), qui examine tout le site. Aucun
+  minuteur à poser. La tranche s'inscrit dans `mod_sweeps`, dont la clé primaire arbitre deux premiers
+  votes simultanés : un seul balaie, l'autre vote sans balayer. Une table absente fait échouer le vote
+  au lieu d'éteindre le filet en silence.
+- **Le graphe des votants se lit en une requête.** `linkedGroups()` interrogeait la base une fois par
+  paire de votants ; `mutualPairs()` lit leurs échanges d'un coup et ne vérifie qu'en mémoire la
+  réciprocité. `areLinked()` passe par lui : la définition du lien n'existe qu'une fois.
+- **Un motif détaillé n'est plus refusé.** « Aucun mot plus de deux fois » refusait toute phrase qui
+  répète ses mots-outils : neuf des douze phrases honnêtes du banc neuf, dont des reproches de
+  modération ordinaires. Deux occurrences restent toujours permises ; au-delà, un mot court ne dépasse
+  pas le tiers des mots, un mot de quatre lettres ou plus le cinquième. Les remplissages d'un seul mot
+  restent refusés. Limite déclarée : des mots qui se relaient, chacun sous sa part, passent.
+- **Chaque phrase du moteur passe par la traduction.** « Vote pris en compte. » la contournait.
+- **Le module reçoit son premier banc**, `tests/sanity_motif.php`, et un `src/autoload.php` pour tourner
+  sans Composer.
+
+### Dans le lab — 14 octobre 2026
+
+- `mod_sweeps` rejoint `demo/lab/schema.sql`, rejoué à chaque connexion : la table existe avant le
+  premier vote qui la lit.
+- **L'arbitre du niveau 3 de SelfRecover voit la sanction de modération en cours**, dans les faits
+  locaux du compte : trois codes (`banni` ou `vote_suspendu`, l'échéance au jour, l'origine), jamais le
+  motif écrit par un arbitre de modération. En cours seulement. SelfModerate informe SelfRecover, il ne
+  lui interdit rien : une sanction n'empêche pas d'ouvrir un dossier.
+- **L'adaptateur SelfRecover du lab suit la 0.12.3** : un dossier déposé n'est plus effacé à son
+  échéance, une clôture ne prend qu'un dossier actif. Les cas de référence de la bibliothèque y sont
+  rejoués.
+- Trois phrases du moteur sortaient en français sur la page anglaise ; un contrôle exige désormais une
+  traduction pour chacune.
+
+Bancs : `sanity_moderate` passe de 51 à 57 contrôles, `equivalence_selfrecover` de 93 à 114, et
+`sanity_motif` en compte 4 ; chaque propriété neuve est gardée par un canari en CI.
+
 ## [SelfRecover v0.12.3] — 14 octobre 2026
 
 ### Un dossier déposé n'est plus effacé, et une reprise ne se rejoue pas — 14 octobre 2026

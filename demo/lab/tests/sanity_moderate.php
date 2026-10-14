@@ -1088,6 +1088,26 @@ $perdant === $avant + 1 && $bruit
     ? ok('une course perdue vote sans balayer, et une table absente fait échouer le vote au lieu d\'éteindre le filet')
     : nok('la course ou la table absente est mal tenue : ' . json_encode(['perdant' => $perdant, 'cible_seule' => $avant, 'table_absente_bruyante' => $bruit]));
 
+// ── 44. Chaque phrase que le moteur affiche a sa traduction ─────────────────
+// Le lab traduit les phrases du module par leur texte source (`tc()`), avec un
+// repli sur le français quand elles manquent : la page reste lisible, et aucun
+// contrôle ne voyait donc qu'une réponse sortait en français sur la page
+// anglaise. Une phrase qui contourne `static::t()` ne passe même pas par là.
+// ⚠️ L'extraction ne lit que les guillemets simples : une phrase entre
+// guillemets doubles lui échapperait, et le contrôle refuse donc d'en voir une.
+$sourceMoteur = (string) file_get_contents(__DIR__ . '/../../../bi-self/selfmoderate/src/Moderate.php');
+preg_match_all("/static::t\\('((?:[^'\\\\]|\\\\.)*)'\\)/", $sourceMoteur, $phrases);
+$contenuEn = require __DIR__ . '/../lang/contenu-en.php';
+$sansAnglais = array_values(array_filter(array_unique(array_map('stripslashes', $phrases[1])),
+    static fn (string $p): bool => !array_key_exists($p, $contenuEn)));
+preg_match_all("/'message'\\s*=>\\s*'([^']*)'/", $sourceMoteur, $horsT);
+$guillemetsDoubles = substr_count($sourceMoteur, 'static::t("');
+count($phrases[1]) > 0 && $sansAnglais === [] && $horsT[1] === [] && $guillemetsDoubles === 0
+    ? ok(count(array_unique($phrases[1])) . ' phrases du moteur passent par la traduction, et chacune a son anglais')
+    : nok('une phrase du moteur sort en français sur la page anglaise : ' . json_encode([
+        'sans_anglais' => $sansAnglais, 'hors_traduction' => $horsT[1], 'guillemets_doubles' => $guillemetsDoubles,
+    ], JSON_UNESCAPED_UNICODE));
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"

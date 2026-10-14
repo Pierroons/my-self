@@ -5,7 +5,7 @@
 **Moteur de modération communautaire autonome par raisonnement social**
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.4.0](https://img.shields.io/badge/status-v0.4.0-yellow.svg)](#statut)
+[![Status: v0.5.0](https://img.shields.io/badge/status-v0.5.0-yellow.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../selfrecover/)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#)
@@ -119,7 +119,7 @@ Le moteur est une classe statique ; l'hôte fournit la connexion `PDO` à chaque
 | `adminBan(PDO, id, arbitre, motif)` · `adminPardon(PDO, id, arbitre, ?motif)` · `adminMaintenir(PDO, id, arbitre, motif)` | les gestes d'arbitre, qui rendent `['ok' => bool, 'message' => string]` |
 | `dureeEnClair(secondes)` | une durée lisible, unités passées par ton traducteur (`setTranslator()`) |
 
-**Schéma attendu** — celui du lab fait référence ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)) : `member_moderation` (réputation, strikes, droit de vote, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, signalement, convalescence, suspension de vote), `mod_votes`, `mod_pack_flags`, et trois tables de l'hôte lues sans être écrites : `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. Le moteur écrit du SQL SQLite.
+**Schéma attendu** — celui du lab fait référence ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)) : `member_moderation` (réputation, strikes, droit de vote, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, signalement, convalescence, suspension de vote), `mod_votes`, `mod_pack_flags`, `mod_sweeps` (une ligne par tranche de `balayagePeriodeSecondes` déjà balayée ; sans elle, chaque vote négatif échoue au lieu de laisser le filet s'éteindre), et trois tables de l'hôte lues sans être écrites : `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. Le moteur écrit du SQL SQLite.
 
 Les dates de ses messages suivent le fuseau de l'hôte (`date_default_timezone_set()`).
 

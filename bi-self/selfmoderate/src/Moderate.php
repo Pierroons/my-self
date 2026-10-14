@@ -501,8 +501,6 @@ class Moderate
 
         $author = self::resolveAuthor($pdo, $targetType, $targetId);
         if ($author === null) {
-            // ⚠️ Seule chaîne de ce fichier qui ne passait pas par `static::t()`,
-            // et c'est la seule que le balayage lisait.
             return ['ok' => false, 'message' => static::t('Cible introuvable.')];
         }
         if ($author === $voterId) {
@@ -573,7 +571,7 @@ class Moderate
         self::enforceThresholds($pdo, $author, $newRep);
 
         return ['ok' => true, 'blocked' => false, 'new_reputation' => $newRep,
-                'message' => 'Vote pris en compte.'];
+                'message' => static::t('Vote pris en compte.')];
     }
 
     /**
