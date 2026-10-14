@@ -501,6 +501,67 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfRecover v0.12.3] — 14 octobre 2026
+
+### Un dossier déposé n'est plus effacé, et une reprise ne se rejoue pas — 14 octobre 2026
+
+Version corrective, issue d'une relecture croisée de SelfRecover et de SelfDataGuard. Aucune signature
+ne bouge.
+
+- **Un dossier déposé et périmé est archivé, plus effacé.** `purgerLitigesExpires()` effaçait tout
+  dossier périmé hors refusés et acceptés — y compris celui où le demandeur avait déposé ses réponses
+  ou écrit à l'arbitre, et son fil avec lui. Un tel dossier survit désormais trente jours à son
+  échéance (`StorageInterface::RETENTION_DOSSIER_DEPOSE`), le temps que l'arbitre le lise à côté du
+  suivant ; les dossiers clos et ceux qu'on a ouverts sans rien y écrire partent toujours dès leur
+  échéance.
+- **Un dossier périmé ne se tranche plus.** `trancher()` le refuse (`expire`) : l'accepter rouvrirait
+  une place que d'autres dossiers ont pu prendre depuis, le refuser compterait contre le titulaire un
+  dossier que personne n'a lu à temps. L'échéance continue de libérer la place sur le compte, et le
+  titulaire en ouvre un nouveau.
+- **La clôture consomme le dossier.** `cloreLitige()` ne clôt qu'un dossier encore actif et lève
+  `LitigeDejaClos` sinon, comme `consommerCode()` au niveau 2. `reEnroler()` clôt en premier, dans sa
+  transaction : de deux reprises concurrentes du même accord, la seconde est refusée avant d'avoir rien
+  écrit.
+- **Le niveau 1 rend le nom du compte.** `parPassphrase()` rend `compte`, le nom sous lequel le compte a
+  été trouvé, comme `parCode()` au niveau 2 : l'application n'enchaîne plus sur la saisie brute. La
+  démo bi-self-duo s'en sert.
+
+- **Le sel du déploiement reste hors des vidages.** `Recovery` et `Device` le masquent dans `var_dump()`
+  et `print_r()` (`__debugInfo()`) : c'est la clé de l'index de tous les codes émis.
+
+⚠️ **Pour un intégrateur qui a son propre adaptateur** : la purge et la clôture vivent dans le stockage.
+Un adaptateur qui ne suit pas continue de fonctionner, sans ces deux garanties. La checklist
+d'intégration des whitepapers les nomme.
+
+Mesures : `banc_stockage_pdo` 179 cas, `sanity_escalade` 195, `sanity_recovery` 87 sous clearweb et 83
+sous tor-onion, `sanity_device` 29. Chaque cas neuf a été vu rouge sur la 0.12.2 avant le correctif.
+
+---
+
+## [SelfDataGuard v0.6.1] — 14 octobre 2026
+
+### Les clés déverrouillées et les secrets du serveur restent hors des vidages et des traces — 14 octobre 2026
+
+Version corrective. Aucune signature ne bouge.
+
+- `UnlockedVault` et `UnlockedEscrow` masquent leur clé dans `var_dump()` et `print_r()`
+  (`__debugInfo()`), et refusent d'être clonés : une copie porterait la clé hors de portée de `lock()`.
+  `var_export()` lit les propriétés directement et n'est pas couvert ; la règle reste de ne jamais
+  journaliser ces objets.
+- La façade et `AuditLog` masquent de même `blindKey` et `auditSecret`.
+- `blindKey` (constructeur de la façade, `BlindIndex::compute()`) et `auditSecret` (constructeur
+  d'`AuditLog`) portent `#[\SensitiveParameter]` : une exception levée là ne les recopie plus dans sa
+  trace.
+
+L'entrée 0.6.0 annonçait l'attribut « sur chaque paramètre qui porte un secret » : ces trois-là
+manquaient. Elle reste telle quelle.
+
+Mesures : `sanity_vault` 58 cas, `sanity_facade` 67, `sanity_audit` 21, `sanity_escrow` 36. Chaque cas
+neuf a été vu rouge sur la 0.6.0. Les contrôles de trace forcent `zend.exception_ignore_args` à 0 et vérifient d'abord
+qu'un argument public figure dans la trace : sans cela, ils passeraient sur une trace vide.
+
+---
+
 ## [SelfRecover v0.12.2] — 10 octobre 2026
 
 ### La langue du déploiement décide enfin de la liste tirée — 10 octobre 2026

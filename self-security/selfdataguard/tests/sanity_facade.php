@@ -16,6 +16,7 @@ require __DIR__ . '/../src/autoload.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
+use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
@@ -625,6 +626,56 @@ try {
         : ko('the archive returned the reserved row', implode(',', array_keys($lu['private'])));
 } catch (Throwable $e) {
     ko('one reserved row blocks the restore of the whole archive', $e->getMessage());
+}
+
+section('The blind-index key does not ride an exception trace');
+
+/**
+ * The arguments a stack trace keeps for the frame that called `$function`, or
+ * null when the runtime drops them. `zend.exception_ignore_args` is On in a
+ * production php.ini: left alone, the check below would read an empty frame and
+ * pass on nothing, so the setting is forced off and the frame must carry the
+ * public argument before the secret one is looked for.
+ */
+function traceArgs(callable $call, string $function): ?array
+{
+    ini_set('zend.exception_ignore_args', '0');
+    try {
+        $call();
+    } catch (Throwable $e) {
+        foreach ($e->getTrace() as $frame) {
+            if (($frame['function'] ?? '') === $function) {
+                return $frame['args'] ?? null;
+            }
+        }
+    }
+
+    return null;
+}
+
+$tooShort = 'short-blind-key-in-a-trace';
+$args = traceArgs(static fn () => new SelfDataGuard($storage, $tooShort), '__construct');
+if ($args === null || !in_array($storage, $args, true)) {
+    ko('precondition: the trace does not show the public argument — nothing below would be measured');
+} else {
+    !in_array($tooShort, $args, true)
+        ? ok('the facade constructor hides blindKey from the trace')
+        : ko('blindKey is readable in the trace of a refused constructor');
+}
+$dumpedFacade = print_r($dg, true);
+str_contains($dumpedFacade, 'blindKey')
+    ? ok('precondition: the facade dump shows its masked field')
+    : ko('precondition: the facade dump does not show blindKey at all — the check below would measure nothing');
+!str_contains($dumpedFacade, $blindKey)
+    ? ok('print_r() of the facade does not carry blindKey')
+    : ko('blindKey is readable in a dump of the facade');
+$args = traceArgs(static fn () => BlindIndex::compute('a value', $tooShort, 'email'), 'compute');
+if ($args === null || !in_array('email', $args, true)) {
+    ko('precondition: the trace does not show the field name — nothing below would be measured');
+} else {
+    !in_array($tooShort, $args, true)
+        ? ok('BlindIndex::compute() hides blindKey from the trace')
+        : ko('blindKey is readable in the trace of BlindIndex::compute()');
 }
 
 // -----------------------------------------------------------------------------

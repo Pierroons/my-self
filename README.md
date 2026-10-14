@@ -22,9 +22,9 @@ what it does, how to install it, and what it does not protect.
 
 | Module | Question | Status |
 |---|---|---|
-| [SelfRecover](./bi-self/selfrecover/) | Who are you? | **v0.12.2** — library + deployed implementation |
+| [SelfRecover](./bi-self/selfrecover/) | Who are you? | **v0.12.3** — library + deployed implementation |
 | [SelfRecover-LUKS](./self-security/selfrecover-luks/) | What if the disk is stolen? | **v0.6.2** — documented, hex key |
-| [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.6.0** — available, three locks, archiving at level 3, an escrow bound to its account |
+| [SelfDataGuard](./self-security/selfdataguard/) | How do you protect data at rest? | **v0.6.1** — available, three locks, archiving at level 3, an escrow bound to its account |
 | [SelfJustice](./self-right/selfjustice/) | What does the law say? | **v0.4.2 beta** — French law in force (LEGI), EU/ECHR texts, administrative case law |
 | [SelfAct](./self-right/selfact/) | How do you act on it? | **v0.1.3 beta** — over 1,800 official resources |
 | [SelfModerate](./bi-self/selfmoderate/) | How do you behave? | **v0.4.0** — linked voters, recovery, vote reason, graduated ban traced to a journal; 2 mechanisms not yet coded |

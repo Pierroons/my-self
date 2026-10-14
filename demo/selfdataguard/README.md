@@ -113,7 +113,7 @@ Reload the page: your next registration starts a clean database, under a fresh s
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  SelfDataGuard v0.6.0 — Dump my database — and you get encrypted noise       │
+│  SelfDataGuard v0.6.1 — Dump my database — and you get encrypted noise       │
 │  GitHub · Whitepaper EN · Whitepaper FR · AGPL-3.0                           │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ How this demo works (full-width explainer)                                   │

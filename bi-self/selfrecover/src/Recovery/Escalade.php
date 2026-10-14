@@ -10,6 +10,7 @@ use Pierroons\SelfRecover\Duree;
 use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\Messages;
 use Pierroons\SelfRecover\Langue;
+use Pierroons\SelfRecover\Storage\LitigeDejaClos;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -218,6 +219,9 @@ final class Escalade
     /** Au-delà, on refuse : un Argon2id sur une entrée démesurée se paie en mémoire. */
     public const MOT_DE_PASSE_MAXIMUM = 4096;
 
+    /** Le refus d'un numéro ou d'un sésame qui n'ouvre rien — un seul texte, quelle qu'en soit la cause. */
+    private const REFUS_SESAME = 'Numéro ou sésame invalide.';
+
     /**
      * Les trois questions posées au demandeur.
      *
@@ -372,7 +376,11 @@ final class Escalade
         // apprendre demanderait d'élargir le contrat que tout intégrateur
         // implémente. La date de décision qu'il rend déjà suffit.
         if ($existant !== null && $this->accordPerime($existant, $maintenant)) {
-            $this->stockage->cloreLitige($existant->id, $maintenant);
+            try {
+                $this->stockage->cloreLitige($existant->id, $maintenant);
+            } catch (LitigeDejaClos) {
+                // Une autre requête l'a clos depuis la lecture : la place est libre.
+            }
             $existant = null;
         }
         if ($existant !== null) {
@@ -607,6 +615,14 @@ final class Escalade
         if (!$litige->enCours()) {
             return ['ok' => false, 'error' => 'deja_tranche', 'message' => Messages::dire($this->langue(), 'l3.deja_tranche')];
         }
+        // 🔑 L'échéance borne l'instruction. Un dossier déposé et périmé reste en
+        // base, lisible à côté du suivant (`StorageInterface::RETENTION_DOSSIER_DEPOSE`),
+        // mais il ne se tranche plus : l'accepter rouvrirait une place que d'autres
+        // dossiers ont pu prendre depuis, le refuser compterait contre le titulaire
+        // un dossier que personne n'a lu à temps. Le titulaire en ouvre un nouveau.
+        if ($litige->expire($maintenant)) {
+            return ['ok' => false, 'error' => 'expire', 'message' => Messages::dire($this->langue(), 'l3.expire_archive')];
+        }
 
         if ($decision === 'accepte') {
             $this->stockage->trancherLitige($litige->id, Litige::ACCEPTE, $par, $maintenant);
@@ -735,7 +751,14 @@ final class Escalade
                     'message' => Messages::dire($this->langue(), 'l3.aucune_procedure')];
         }
 
-        $this->stockage->cloreLitige($litige->id, $maintenant);
+        try {
+            $this->stockage->cloreLitige($litige->id, $maintenant);
+        } catch (LitigeDejaClos) {
+            // Clos depuis la lecture, par une reprise ou un autre abandon : il n'y a
+            // plus rien à abandonner.
+            return ['ok' => false, 'error' => 'aucun_litige',
+                    'message' => Messages::dire($this->langue(), 'l3.aucune_procedure')];
+        }
 
         return ['ok' => true, 'numero' => $litige->numero, 'statut_precedent' => $litige->statut,
                 'abandonne_par' => $par,
@@ -813,17 +836,26 @@ final class Escalade
         // informations mais une seule, et l'émission des codes purge le lot
         // précédent avant d'écrire le neuf. Une interruption au milieu laisserait
         // un compte que rien ne récupère.
+        // Les trois Argon2id avant la transaction : la clôture qui l'ouvre prend le
+        // verrou d'écriture, et les calculer dessous ferait attendre toute la base.
+        $empreinteMotDePasse = Hashing::hash($motDePasse);
+        $empreintePassphrase = Hashing::hash($passphrase);
+        $empreinteMotDerive  = Hashing::hash($motDerive);
+
         $this->stockage->commencerTransaction();
         try {
+            // 🔑 Consommer d'abord, agir ensuite. Deux reprises concurrentes ont lu
+            // le même accord ; la clôture ne réussit qu'une fois, et la perdante
+            // sort ici, avant d'avoir rien écrit.
+            $this->stockage->cloreLitige($litige->id, $maintenant);
             $this->stockage->reposerSecrets(
                 $litige->compteId,
-                Hashing::hash($motDePasse),
-                Hashing::hash($passphrase),
-                Hashing::hash($motDerive),
+                $empreinteMotDePasse,
+                $empreintePassphrase,
+                $empreinteMotDerive,
                 $sel,
             );
             $codes = $this->recovery->emettreCodes($litige->compteId, Recovery::CODES_PAR_LOT, $maintenant);
-            $this->stockage->cloreLitige($litige->id, $maintenant);
             $this->stockage->revoquerSessions($litige->compteId);
             // 🔑 Et les appareils. On arrive ici après avoir TOUT perdu, et « tout
             // perdu » veut souvent dire « quelqu'un d'autre l'a ». Un appareil
@@ -833,6 +865,13 @@ final class Escalade
             // pendant que le titulaire croit avoir refermé.
             $appareilsRetires = $this->stockage->revoquerAppareils($litige->compteId);
             $this->stockage->validerTransaction();
+        } catch (LitigeDejaClos) {
+            // La perdante reçoit le refus d'un sésame qui n'ouvre plus : c'est ce que
+            // la même requête obtiendrait une seconde plus tard.
+            $this->stockage->annulerTransaction();
+            usleep($this->delaiRefusUs);
+
+            return ['ok' => false, 'error' => 'sesame_invalide', 'message' => self::REFUS_SESAME];
         } catch (\Throwable $e) {
             $this->stockage->annulerTransaction();
 
@@ -877,10 +916,11 @@ final class Escalade
      * besoin d'être fine : une fois par jour suffit, puisque ce qu'on efface est
      * déjà sans effet.
      *
-     * ⚠️ **Elle n'efface pas tout** : deux statuts y survivent exprès, et
-     * `StockagePdo::purgerLitigesExpires()` dit lesquels et pourquoi, à côté de
-     * sa clause. Appeler cette méthode ne borne donc pas la table : la rétention
-     * de ces deux statuts est une décision de déploiement.
+     * ⚠️ **Elle n'efface pas tout** : les dossiers refusés et acceptés y survivent
+     * exprès, et les dossiers déposés le temps de `RETENTION_DOSSIER_DEPOSE` après
+     * leur échéance ; `StockagePdo::purgerLitigesExpires()` dit pourquoi, à côté de
+     * sa clause. Appeler cette méthode ne borne donc pas la table : la rétention des
+     * refusés et des acceptés est une décision de déploiement.
      */
     public function purger(?int $maintenant = null): int
     {
@@ -985,7 +1025,7 @@ final class Escalade
         };
 
         if (!$recevable) {
-            return $refuser('sesame_invalide', 'Numéro ou sésame invalide.');
+            return $refuser('sesame_invalide', self::REFUS_SESAME);
         }
         // ⚠️ Un dossier ACCEPTÉ ne périme pas. Le délai borne le temps pendant
         // lequel un dossier reste ouvert sans être instruit ; l'appliquer après

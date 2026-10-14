@@ -214,6 +214,12 @@ verifier('🔑 et son étiquette ne nomme pas ce qui a été soumis',
     $stJ->tentatives[0]['etiquette'] === $devJ->etiquetteEchecsEnrolement('nexiste-pas')
     && !str_contains((string) $stJ->tentatives[0]['etiquette'], 'nexiste-pas'));
 
+// Le sel du déploiement est la clé de l'index des codes : une page de débogage
+// ou une ligne de journal sont les premiers endroits où il atterrirait.
+$vidage = print_r($devJ, true);
+verifier('contre-témoin : le vidage de l\'objet nomme son profil', str_contains($vidage, 'CLEARWEB'));
+verifier('🔑 et il ne contient pas le sel du déploiement', !str_contains($vidage, $SEL));
+
 echo "\n" . str_repeat('=', 63) . "\n";
 printf("  Device SelfRecover — %d passés, %d échoués\n", $passes, $echecs);
 // Le compte est écrit ici et repris en intégration continue : un « N passés » dit

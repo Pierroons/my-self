@@ -79,6 +79,15 @@ verifier('les sessions sont révoquées', $st->sessionsRevoquees === [1]);
 verifier('les espaces surnuméraires sont tolérés',
     $rec->parPassphrase('alice', '  cheval   agrafe batterie  correct ', $IP, $now)['ok'] === true);
 
+// 🔑 La saisie n'est pas le nom du compte : la bibliothèque la normalise avant de
+// chercher. L'application qui enchaîne sur le compte — ouvrir une session,
+// réenvelopper une clé de SelfDataGuard — doit recevoir le nom sous lequel il a
+// été trouvé, comme au niveau 2, et non ce qui a été tapé.
+[$st, $rec] = neuf($MOT, $PHR, $SEL);
+$rNom = $rec->parPassphrase('  Alice ', $PHR, $IP, $now);
+verifier('⭐ le niveau 1 rend le nom du compte, pas la saisie', ($rNom['compte'] ?? null) === 'alice',
+    var_export($rNom['compte'] ?? null, true));
+
 [$st, $rec] = neuf($MOT, $PHR, $SEL);
 $mauvaise = $rec->parPassphrase('alice', 'mauvaise phrase ici maintenant', $IP, $now);
 $inconnu  = $rec->parPassphrase('personne', 'mauvaise phrase ici maintenant', $IP, $now);
@@ -586,6 +595,13 @@ verifier('🔑 une course sur la consommation devient un refus ordinaire',
 
 // ── La rétention, côté adaptateur mémoire ───────────────────────────────────
 //
+// Le sel du déploiement est la clé de l'index des codes : une page de débogage
+// ou une ligne de journal sont les premiers endroits où il atterrirait.
+[, $recVidage] = neuf($MOT, $PHR, $SEL);
+$vidage = print_r($recVidage, true);
+verifier('contre-témoin : le vidage de l\'objet nomme son profil', str_contains($vidage, $PROFIL->name));
+verifier('🔑 et il ne contient pas le sel du déploiement', !str_contains($vidage, $SEL));
+
 // 🔑 Les deux adaptateurs disent la même règle dans deux langages — SQL d'un
 // côté, un filtre PHP de l'autre. Le banc PDO éprouve le premier ; sans ces
 // cas, le second pourrait diverger sans qu'on le sache, et c'est lui que tous

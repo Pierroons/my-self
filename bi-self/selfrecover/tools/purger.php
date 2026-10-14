@@ -145,5 +145,7 @@ printf("%d ligne(s) d'échec effacée(s) (rétention : %d jours).\n", $echecs, $
 // parce qu'un titulaire en retard doit encore trouver son accord, le second
 // parce que son compte informe l'arbitre. Leur rétention est une décision de
 // déploiement, à prendre avec ce que la loi locale impose : cette purge ne la
-// couvre pas, et le taire laisserait croire qu'elle borne la table.
+// couvre pas, et le taire laisserait croire qu'elle borne la table. Un dossier
+// DÉPOSÉ et jamais tranché, lui, part `RETENTION_DOSSIER_DEPOSE` après son
+// échéance.
 exit(0);

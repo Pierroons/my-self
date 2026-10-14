@@ -101,7 +101,7 @@ $log->success('recover-l1', 'HTTP 200 — nouveaux secrets livrés à l\'user');
 
 echo json_encode([
     'ok'           => true,
-    'username'     => $username,
+    'username'     => $r['compte'],
     'new_password' => $r['mot_de_passe'],
     'passphrase'   => $r['passphrase'],
     'note'         => "Note ton nouveau password ET ta nouvelle passphrase : l'ancienne vient d'être consommée et ne fonctionnera plus. Toutes tes sessions ouvertes ont été déconnectées.",

@@ -5,8 +5,8 @@
 **Application-layer data-at-rest protection that survives a database exfiltration.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.6.0 available](https://img.shields.io/badge/status-v0.6.0%20available-brightgreen.svg)](#status)
-[![Tests: 373 passing](https://img.shields.io/badge/tests-373%20passing-brightgreen.svg)](#testing)
+[![Status: v0.6.1 available](https://img.shields.io/badge/status-v0.6.1%20available-brightgreen.svg)](#status)
+[![Tests: 386 passing](https://img.shields.io/badge/tests-386%20passing-brightgreen.svg)](#testing)
 [![Part of: Self-Security](https://img.shields.io/badge/part%20of-Self--Security-blue.svg)](../README.md)
 [![Companion of: SelfRecover](https://img.shields.io/badge/companion-SelfRecover-green.svg)](../../bi-self/selfrecover/)
 [![Read in French](https://img.shields.io/badge/lang-français-blue.svg)](./README.fr.md)
@@ -105,7 +105,7 @@ Without SelfRecover, SelfDataGuard still works, with whatever locks the applicat
 
 ---
 
-## Operational modes — v0.6.0 implements one of them
+## Operational modes — v0.6.1 implements one of them
 
 | Mode | Server access to data | Trade-off | In the code |
 |------|----------------------|-----------|-------------|
@@ -113,7 +113,7 @@ Without SelfRecover, SelfDataGuard still works, with whatever locks the applicat
 | **Hybrid** *(targeted at e-commerce)* | Operational fields (`email`, `shipping_address`) wrapped with admin operational key. Sensitive fields (`tel`, `KYC_doc`) require user session | Admin can fulfill orders; sensitive data remains zero-knowledge | ❌ specified, not written — the vault's `wrap_admin` is `null` (`UserVault::register()`) |
 | **Full** *(zero-knowledge for high-assurance services)* | Server NEVER decrypts. All crypto runs in the browser, through libsodium compiled to WebAssembly — WebCrypto offers neither Argon2id nor XChaCha20-Poly1305 | Some workflows redesigned (no async transactional emails, push notifications instead) | ❌ specified, not written — the module carries no client-side code |
 
-A deployment installing v0.6.0 therefore runs in **Lite**, whatever mode it aims for: the other two are described in the whitepaper (§4.2, §4.3) as a target, and no API parameter selects them.
+A deployment installing v0.6.1 therefore runs in **Lite**, whatever mode it aims for: the other two are described in the whitepaper (§4.2, §4.3) as a target, and no API parameter selects them.
 
 One admin path does exist, outside this table: the **escrow** (`src/Escrow/`), a compartment with its own key that an administrator reopens under ceremony — open dispute, escrow passphrase, signed log. It yields that compartment only, never the private vault, and it is not Hybrid mode: nothing there is decrypted as a matter of routine. The escrow of an archived vault goes with the archive, and the administrator reopens it the same way (`getArchiveEscrowFieldsAsAdmin()`).
 
@@ -142,7 +142,7 @@ What the escrow guarantees as of 0.6.0:
 
 ## Status
 
-**v0.6.0 — the Argon2id profile stored, an escrow bound to its account, an anchorable log**, 3 October 2026.
+**v0.6.1 — the unlocked keys and the server's secrets stay out of dumps and traces**, 14 October 2026, on top of **v0.6.0 — the Argon2id profile stored, an escrow bound to its account, an anchorable log**, 3 October 2026.
 
 Whitepaper complete (specification + threat model). PHP reference library implemented (3 927 lines across 25 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **373 checks across 11 suites**, run on PHP 8.1, 8.2 and 8.4, all passing. The keys of the three locks are checked against frozen test vectors, recomputed in CI by a second implementation (argon2-cffi). A clickable HTML demo is included to inspect the encrypted database in real time.
 
@@ -210,17 +210,17 @@ Eleven sanity test suites, runnable directly with `php` (no PHPUnit required):
 
 ```bash
 php tests/sanity_primitives.php   # 46 tests — Argon2id, HMAC, XChaCha20-Poly1305 + IETF vector, legacy AES-GCM, randomness
-php tests/sanity_vault.php        # 55 tests — three locks, rotation, context separation, AAD binding, vault generation and profile
+php tests/sanity_vault.php        # 58 tests — three locks, rotation, context separation, AAD binding, vault generation and profile
 php tests/sanity_fields.php       # 26 tests — field encrypt/decrypt + blind index
 php tests/sanity_storage.php      # 60 tests — SQLite adapter, nested transactions, conditional write (generation, revision), "DB dump = soup" test
 php tests/sanity_migration.php    # 15 tests — 0.4.0 and 0.5.x databases migrated in place, two concurrent migrators
 php tests/sanity_archive.php      # 26 tests — archive: content, isolation, all-or-nothing, concurrent writer waited for
-php tests/sanity_facade.php       # 63 tests — full API end-to-end, recover(), level 3, write race, storage that loses or ignores the profile, reserved name
-php tests/sanity_audit.php        # 18 tests — audit log, anchor against truncation
+php tests/sanity_facade.php       # 67 tests — full API end-to-end, recover(), level 3, write race, storage that loses or ignores the profile, reserved name
+php tests/sanity_audit.php        # 21 tests — audit log, anchor against truncation
 php tests/sanity_ceremony.php     # 22 tests — key ceremony, verify-log options, unreadable sealed file
-php tests/sanity_escrow.php       # 33 tests — escrow compartment, v2 admin key, seal bound to its account, explicit re-seal
+php tests/sanity_escrow.php       # 36 tests — escrow compartment, v2 admin key, seal bound to its account, explicit re-seal
 php tests/sanity_vecteurs.php     # 9 tests — keys of the three locks against frozen vectors
-# Total: 373 tests, 0 failures — counted by running them, 2026-10-03
+# Total: 386 tests, 0 failures — counted by running them, 2026-10-14
 python3 tests/vecteurs_argon2.py  # recomputes the vectors with argon2-cffi, a second implementation
 ```
 

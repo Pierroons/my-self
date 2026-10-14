@@ -35,6 +35,7 @@ use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Escalade;
 use Pierroons\SelfRecover\Recovery\Litige;
 use Pierroons\SelfRecover\Recovery\Recovery;
+use Pierroons\SelfRecover\Storage\StorageInterface;
 use Pierroons\SelfRecover\Tests\StockageMemoire;
 use Pierroons\SelfRecover\Langue;
 
@@ -71,8 +72,9 @@ function banc(
     int $now,
     ?int $derniereConnexion = null,
     ?int $connexions = null,
+    ?StockageMemoire $st = null,
 ): array {
-    $st = new StockageMemoire();
+    $st ??= new StockageMemoire();
     $st->comptes['alice']     = ['id' => 1, 'empreinte_mot' => Hashing::hash('mot memorise initial')];
     $st->passphrases['alice'] = ['id' => 1, 'empreinte_passphrase' => Hashing::hash('phrase initiale')];
     // Le mot de passe de CONNEXION, distinct du mot mémorisé : ils ne vivent pas
@@ -1057,6 +1059,69 @@ $escL->ouvrir('alice', Escalade::empreinteSesame('sesame-second'), maintenant: $
 verifier('⭐ une seconde ouverture compte une collision sur le dossier en place',
     ($stL->litigeActifDuCompte(1, $now)?->demandeursConcurrents ?? 0) === 1
     && $stL->litigeActifDuCompte(1, $now)?->numero === $oL1['numero']);
+
+echo "\n→ Un dossier déposé et périmé est archivé : lisible, il ne se tranche plus\n";
+
+// L'arbitre tarde : le dossier déposé passe son échéance. L'accepter rouvrirait
+// une place que d'autres ont pu prendre ; le refuser compterait contre le
+// titulaire un dossier que personne n'a lu à temps.
+[$stM, $escM] = banc(ProfilDeploiement::TOR_ONION, $now);
+$sM1 = bin2hex(random_bytes(32));
+$oM1 = $escM->ouvrir('alice', Escalade::empreinteSesame($sM1), maintenant: $now);
+$nM1 = (string) $oM1['numero'];
+$escM->soumettre($nM1, $sM1, ['annee_creation' => '2022'], $now + 60);
+$lM1 = $stM->trouverLitigeParNumero($nM1);
+$stM->ajouterMessageLitige($lM1->id, 'user', 'mes réponses sont déposées', $now + 70);
+
+$accM = $escM->trancher($nM1, 'accepte', 'arbitre', $now + $JOUR + 100);
+verifier('⭐ un dossier périmé ne s\'accepte plus', ($accM['ok'] ?? true) === false && ($accM['error'] ?? '') === 'expire',
+    (string) ($accM['error'] ?? 'accepté'));
+$refM = $escM->trancher($nM1, 'refuse', 'arbitre', $now + $JOUR + 110);
+verifier('⭐ ni ne se refuse — rien ne compte contre le titulaire', ($refM['ok'] ?? true) === false
+    && $stM->trouverLitigeParNumero($nM1)?->statut === Litige::A_LIRE);
+verifier('le refus dit pourquoi, et quoi faire', str_contains((string) ($accM['message'] ?? ''), 'ouvrir un nouveau'));
+$oM2 = $escM->ouvrir('alice', Escalade::empreinteSesame(bin2hex(random_bytes(32))), maintenant: $now + $JOUR + 120);
+verifier('le titulaire en ouvre un nouveau : la place est libre', ($oM2['ok'] ?? false) === true);
+$escM->purger($now + $JOUR + 200);
+verifier('⭐ la purge garde l\'ancien, et son fil, le temps que l\'arbitre le lise',
+    $stM->trouverLitigeParNumero($nM1) !== null && count($stM->messagesDuLitige($lM1->id)) === 1);
+$escM->purger($now + $JOUR + StorageInterface::RETENTION_DOSSIER_DEPOSE);
+verifier('⭐ puis l\'efface, la rétention passée', $stM->trouverLitigeParNumero($nM1) === null);
+
+echo "\n→ Deux reprises concurrentes : la seconde n'écrit rien\n";
+
+// Les deux requêtes ont lu le dossier ACCEPTÉ avant que l'une le clôture. Le
+// double fige ce qu'elles ont lu : la seconde passe la recevabilité sur une
+// lecture périmée, et c'est la clôture, en tête de la transaction, qui doit
+// trancher.
+$fige = new class extends StockageMemoire {
+    public ?Litige $lu = null;
+
+    public function trouverLitigeParNumero(string $numero): ?Litige
+    {
+        return $this->lu ?? parent::trouverLitigeParNumero($numero);
+    }
+};
+[$stR, $escR] = banc(ProfilDeploiement::TOR_ONION, $now, st: $fige);
+$sR = bin2hex(random_bytes(32));
+$oR = $escR->ouvrir('alice', Escalade::empreinteSesame($sR), maintenant: $now);
+$escR->trancher((string) $oR['numero'], 'accepte', 'arbitre', $now + 100);
+$stR->lu = $stR->trouverLitigeParNumero((string) $oR['numero']);
+$r1 = $escR->reEnroler((string) $oR['numero'], $sR, 'premier mot de passe', $MOT, $SEL, $now + 200);
+$codesApres1 = $stR->codes;
+$r2 = $escR->reEnroler((string) $oR['numero'], $sR, 'second mot de passe',
+                       str_repeat('c3', 32), str_repeat('d4', 16), $now + 201);
+verifier('contre-témoin : la première reprise passe', ($r1['ok'] ?? false) === true, (string) ($r1['error'] ?? ''));
+verifier('⭐ la seconde, qui a lu l\'accord avant la clôture, est refusée', ($r2['ok'] ?? true) === false,
+    (string) ($r2['error'] ?? 'acceptée'));
+verifier('⭐ et elle n\'a rien écrit : le mot de passe rangé est celui de la première',
+    Hashing::verify('premier mot de passe', $stR->empreintes[1] ?? ''));
+verifier('ni le mot mémorisé, ni le sel', Hashing::verify($MOT, $stR->comptes['alice']['empreinte_mot'])
+    && ($stR->sels[1] ?? '') === $SEL);
+// ⚠️ Le lot se compare, il ne se compte pas : un lot neuf remplace l'ancien à
+// nombre égal, et un compte restait vert sur la seconde émission. Mesuré.
+verifier('aucun second lot de codes', $stR->codes === $codesApres1);
+verifier('son refus est celui d\'un sésame qui n\'ouvre plus', ($r2['error'] ?? '') === 'sesame_invalide');
 
 // ── Le sésame que la bibliothèque tire ─────────────────────────────────────
 $tirages = [];

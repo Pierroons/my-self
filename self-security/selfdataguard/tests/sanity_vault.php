@@ -495,6 +495,27 @@ try {
     ko('re-sealing a vault under another profile failed', $e->getMessage());
 }
 
+section('An unlocked vault does not hand its key to a debug dump or a clone');
+
+$leakKey = random_bytes(Primitives::KEY_LEN);
+$opened  = new UnlockedVault('user-dump', $leakKey, random_bytes(Primitives::SALT_LEN));
+ob_start();
+var_dump($opened);
+$dumped  = (string) ob_get_clean();
+$printed = print_r($opened, true);
+str_contains($dumped, 'user-dump')
+    ? ok('precondition: the dump still names the vault it describes')
+    : ko('precondition: the dump does not show the vault — the checks below would measure nothing');
+!str_contains($dumped, $leakKey) && !str_contains($printed, $leakKey)
+    ? ok('var_dump() and print_r() do not carry the key bytes')
+    : ko('the unwrapped key is readable in a debug dump');
+try {
+    $copy = clone $opened;
+    ko('a clone was made — it holds a copy of the key that lock() on the original never wipes');
+} catch (RuntimeException) {
+    ok('cloning is refused: a copy would escape lock()');
+}
+
 // -----------------------------------------------------------------------------
 
 echo "\n";

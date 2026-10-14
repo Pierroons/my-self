@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.12.2](https://img.shields.io/badge/status-v0.12.2-green.svg)](#statut)
+[![Status: v0.12.3](https://img.shields.io/badge/status-v0.12.3-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -58,9 +58,10 @@ Depuis vingt ans, la réponse de l'industrie est : **envoyer un email**. Mais ce
 
 SelfRecover est un protocole de récupération à **connaissance partagée** :
 
-- **Mot de récupération seul** = rien.
+- **Mot de récupération seul** = rien pour le **compte**.
 - **Algorithme seul** = rien.
 - **Mot de récupération + algorithme** = une empreinte que le serveur sait vérifier — **un facteur sur les deux** que le niveau 2 exige.
+- ⚠️ **Avec SelfDataGuard, le mot ouvre aussi les données.** C'est une serrure de secours voulue : elle rend ses données à qui a tout perdu sauf ce mot. Elle vaut ce que vaut le mot, et aucun autre facteur ne s'y ajoute.
 
 L'utilisateur n'a qu'**un mot à retenir de tête**, et c'est là tout ce qu'on lui demande de mémoriser. Ce n'est pas tout ce qu'il lui faut : au niveau 2, le mot ne vaut qu'accompagné d'un *recovery code* papier ou de l'appareil qu'il a enrôlé. Le niveau 1 ne passe pas par le mot : il demande l'identifiant et une passphrase diceware gardée sur papier, soit un seul facteur.
 
@@ -167,7 +168,7 @@ serveur      → compte        = lookup(HMAC-SHA256(sel_deploiement, recovery_co
                              ET password_verify(derived_key, stored_recovery_hash)  // Argon2id, les deux toujours calculés
 ```
 
-Le réseau ne transporte jamais le mot de récupération. Le serveur ne le stocke jamais. Même une fuite complète de la base de données + du code source ne l'expose pas — seulement des hachages Argon2id de clés dérivées par site.
+Le réseau ne transporte jamais le mot de récupération. Le serveur ne le stocke jamais. Une fuite complète de la base de données et du code source ne le livre pas en clair : elle ne contient que des empreintes Argon2id de clés dérivées par site, et chaque essai pour le retrouver se paie en Argon2id. ⚠️ Avec SelfDataGuard, la base contient aussi l'enveloppe de secours des données, et le mot qui l'ouvre se cherche de la même façon : ces données valent alors ce que vaut le mot.
 
 > ⚠️ **La route du sel est publique, et elle ne doit pas devenir un oracle.** Au niveau 2, le navigateur dérive avant que le compte soit identifié : c'est le code qui l'identifie, il lui faut donc le sel d'abord, sans authentification. Si la route répondait pour un code valide et refusait un code inconnu, on testerait les codes au prix d'une requête, sans payer un seul Argon2id. Elle rend donc **toujours** un sel : celui du compte pour un code connu, sinon un faux, tiré d'un secret serveur. La bibliothèque n'expose aucune route, mais elle fournit la garde : ta route appelle `Recovery::selDeDerivation($code)`, avec un stockage qui implémente `SelParCodeInterface` (`StockagePdo` le fait). Le détail, et la façon dont les deux démonstrations du dépôt servent la route, sont dans le [modèle de menace](docs/threat-model.md), section « Bot-driven account enumeration ».
 
@@ -471,7 +472,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 ## Roadmap
 
-### Livré — v0.1.0 à v0.12.2 (avril → octobre 2026)
+### Livré — v0.1.0 à v0.12.3 (avril → octobre 2026)
 
 Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bibliothèque les a dépassés, tirée par son premier déploiement réel : ses besoins ont fait avancer le protocole plus vite que prévu. Les chantiers qui suivent ne portent donc plus de numéro — ils en recevront un en sortant.
 

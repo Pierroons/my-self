@@ -429,8 +429,8 @@ jobs:
           sortie=$(php bi-self/selfrecover/tests/sanity_device.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du facteur « cet appareil » a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 27/27$' \
-            || { echo "::error::le banc du facteur « cet appareil » n'a pas joué ses 27 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 29/29$' \
+            || { echo "::error::le banc du facteur « cet appareil » n'a pas joué ses 29 cas"; exit 1; }
 
       # Enrôler ouvre le compte avec le seul mot mémorisé : ce chemin n'avait aucun
       # frein par compte, donc rien sous un profil où l'adresse ne distingue personne.
@@ -495,8 +495,8 @@ jobs:
           # se lirait « la propriété tient des deux côtés ».
           for profil in clearweb tor-onion; do
             case "$profil" in
-              clearweb)  attendu=84 ;;
-              tor-onion) attendu=80 ;;
+              clearweb)  attendu=87 ;;
+              tor-onion) attendu=83 ;;
             esac
             sortie=$(php bi-self/selfrecover/tests/sanity_recovery.php --profil="$profil" 2>&1) && rc=0 || rc=$?
             echo "$sortie"
@@ -606,6 +606,22 @@ jobs:
           canari $E 'private function recevable(string $numero, #[\SensitiveParameter] string $sesame,' \
             'private function recevable(string $numero, string $sesame,' \
             $B '❌ niveau 3 : la trace porte le numéro, ni le sésame'
+          # La clôture consomme le dossier : sans la condition sur l'état, deux
+          # reprises concurrentes du même accord écrivent toutes les deux.
+          P=bi-self/selfrecover/src/Storage/StockagePdo.php
+          canari $P "             WHERE id = ? AND status IN ('open', 'awaiting_admin', 'accepted')\"" \
+            '             WHERE id = ?"' \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ clore un dossier déjà clos lève LitigeDejaClos'
+          # Un dossier déposé survit à son échéance, archivé : la purge ne l'efface
+          # qu'au bout de la rétention, et il ne se tranche plus entre-temps.
+          canari $P "(expires_at <= ? AND (status = 'closed' OR (status = 'open'" \
+            "(expires_at <= ? AND (status NOT IN ('refused', 'accepted') OR (status = 'open'" \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ un dossier DÉPOSÉ survit à son échéance'
+          canari $P "        OR (expires_at <= ? AND status IN ('open', 'awaiting_admin'))\";" \
+            '        OR (expires_at <= ? AND 1 = 0)";' \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ la rétention passée'
+          canari $E '        if ($litige->expire($maintenant)) {' '        if (false) {' \
+            bi-self/selfrecover/tests/sanity_escalade.php "❌ ⭐ un dossier périmé ne s'accepte plus"
           # Le niveau 1 n'avait AUCUN canari : sa seule garde était l'effet de bord
           # d'un autre. Depuis que son frein ne ferme plus par compte, quatre
           # propriétés le remplacent, et chacune doit pouvoir céder seule.
@@ -802,8 +818,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 183 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 183 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 195 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 195 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les
@@ -1972,6 +1988,36 @@ jobs:
             php "$t"
           done
 
+      # Une clé déverrouillée hors des vidages et des copies : sans `__debugInfo()`,
+      # une page de débogage ou une ligne de journal la porte en clair ; un clone en
+      # garde une copie que `lock()` n'efface jamais.
+      - name: Garde-fou — les clés de SelfDataGuard hors des vidages
+        run: |
+          # @plante
+          canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
+            F="$1"; cp "$F" /tmp/canari.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
+              || { echo "::error::canari non planté dans $F"; exit 1; }
+            if sortie=$(php "$4" 2>&1); then
+              cp /tmp/canari.intact "$F"; echo "$sortie"
+              echo "::error::$4 reste VERT sans la garde"; exit 1
+            fi
+            cp /tmp/canari.intact "$F"
+            echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
+            [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
+            echo "✓ $(basename "$4") rougit sur « $5 »"
+          }
+          D=self-security/selfdataguard
+          canari $D/src/Vault/UnlockedVault.php \
+            "        return ['userId' => \$this->userId, 'locked' => \$this->locked, 'masterKey' => '[redacted]'];" \
+            '        return get_object_vars($this);' \
+            $D/tests/sanity_vault.php '❌ the unwrapped key is readable in a debug dump'
+          canari $D/src/Escrow/UnlockedEscrow.php "        throw new RuntimeException('UnlockedEscrow must not be cloned');" '' \
+            $D/tests/sanity_escrow.php '❌ a clone was made'
+          canari $D/src/Escrow/AuditLog.php '#[\SensitiveParameter] private readonly string $auditSecret' \
+            'private readonly string $auditSecret' \
+            $D/tests/sanity_audit.php '❌ auditSecret is readable in the trace of a refused constructor'
+
       # La démo publique de SelfDataGuard donne à chaque visiteur sa propre base. Les
       # canaris : la base commune remise, une lecture qui crée une base, un cookie qui
       # perd Secure par défaut, un quota par adresse levé — le banc doit rougir sur chacun.
@@ -2130,8 +2176,8 @@ jobs:
           # @plante
           sortie=$(php bi-self/selfrecover/tests/banc_stockage_pdo.php)
           echo "$sortie" | tail -3
-          echo "$sortie" | grep -qE '^✅ 167 contrôle\(s\) passé\(s\), 0 échec' \
-            || { echo "::error::le banc de stockage n'a pas joué ses 167 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 179 contrôle\(s\) passé\(s\), 0 échec' \
+            || { echo "::error::le banc de stockage n'a pas joué ses 179 cas"; exit 1; }
           F=bi-self/selfrecover/src/Storage/StockagePdo.php
           cp "$F" /tmp/stockage.intact
           avant=$(md5sum "$F" | cut -d" " -f1)

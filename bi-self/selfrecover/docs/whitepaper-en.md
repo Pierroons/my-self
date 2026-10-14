@@ -3,7 +3,7 @@
 **Zero-Email Account Recovery Protocol**
 *Your word. Your sites. No email.*
 
-*Edition of 10 October 2026 — v1.5 — describes SelfRecover 0.12.2*
+*Edition of 14 October 2026 — v1.5 — describes SelfRecover 0.12.3*
 
 ---
 
@@ -45,11 +45,13 @@ SelfRecover proposes a different answer: trust stays between the user and the si
 
 **Core principle:**
 
-> Recovery word alone = nothing.
+> Recovery word alone = nothing for the account.
 > Algorithm alone = nothing.
 > Recovery word + Algorithm = a fingerprint the server can verify — one of level 2's two factors.
 
 SelfRecover is a split-knowledge recovery system. The user remembers one word. The system provides the algorithm. Neither has value without the other.
+
+⚠️ **With SelfDataGuard, the word also opens the data.** It is an intended fallback lock: it gives the data back to a user who has lost everything but this word. It is as strong as the word, and no other factor is added to it.
 
 **What the user remembers:** a single word, written down nowhere.
 
@@ -254,7 +256,7 @@ A dispute (`LIT-` followed by 16 hex characters) opens when the person asks for 
 - Each dispute has a **non-guessable** number, the bundle of facts (raw, never a score), attempt and refusal counters, a concurrent-attempt counter ("multi-requester"), and a status (`open`, `awaiting_admin`, `accepted`, `refused`, `closed`)
 - The admin finds open disputes in their dashboard
 - A bidirectional chat channel is available between admin and user, with access gated by the tracking code (polling, not real-time WebSocket to keep it simple)
-- `purger()` erases expired disputes — neither the refused ones, whose count informs the arbitrator, nor the accepted ones, which a holder may still come back to consume. 🔴 **Nothing in the library calls it**: it has no clock, and none of its paths invoke the method. Running it periodically is the deployment's job — a ready-to-drop `systemd` unit lives in `deploy/bi-self/`, and the tool it runs in `bi-self/selfrecover/tools/purger.php`.
+- `purger()` erases expired disputes — neither the refused ones, whose count informs the arbitrator, nor the accepted ones, which a holder may still come back to consume, nor, for thirty days, those where answers or a message were waiting for an arbitrator, who reads them next to the following dispute. An expired dispute can no longer be decided, and expiry frees the slot on the account: the holder opens another one. 🔴 **Nothing in the library calls it**: it has no clock, and none of its paths invoke the method. Running it periodically is the deployment's job — a ready-to-drop `systemd` unit lives in `deploy/bi-self/`, and the tool it runs in `bi-self/selfrecover/tools/purger.php`.
 
 ### 6.1 Dispute Closure — Admin Decision
 
@@ -462,6 +464,8 @@ SelfRecover cannot protect accounts if the server hosting it is insecure. The fo
 - [ ] Call `purger()` from a scheduled task: the library has no clock
 - [ ] Put a proof of work in front of the level-3 opening route
 - [ ] With the shipped adapter, build `StockagePdo` with the derivation host
+- [ ] With an adapter other than the shipped one: `cloreLitige()` closes only a dispute that is still active and throws `LitigeDejaClos` otherwise, and `purgerLitigesExpires()` erases closed disputes and those opened with nothing written in them as soon as they expire, other undecided disputes `RETENTION_DOSSIER_DEPOSE` later
+- [ ] After level 1 or 2, continue on the account with the returned name (`compte`), never with the input
 - [ ] A passphrase the user brings: pass the input to `Recovery::validerPassphraseApportee()`, hash and show the returned form, set `autocapitalize="none"` on passphrase fields
 
 A deployment that skips this checklist is not a SelfRecover deployment — it is a liability.

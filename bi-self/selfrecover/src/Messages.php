@@ -286,6 +286,12 @@ final class Messages
             'fr' => 'Ce dossier a déjà été tranché.',
             'en' => 'This dispute has already been decided.',
         ],
+        'l3.expire_archive' => [
+            'fr' => "Ce dossier a expiré avant d'être tranché. Il reste lisible, mais ne se tranche "
+                  . 'plus : le titulaire peut en ouvrir un nouveau.',
+            'en' => 'This dispute expired before it was decided. It remains readable but can no '
+                  . 'longer be decided: the holder can open a new one.',
+        ],
         'l3.accepte' => [
             'fr' => 'Litige accepté. Le titulaire repose lui-même ses secrets ; aucun secret '
                   . "n'a été fabriqué ici. Il a %s pour revenir avec son sésame ; "

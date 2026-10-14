@@ -31,6 +31,7 @@ use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\Recovery\Escalade;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
+use Pierroons\SelfRecover\Storage\LitigeDejaClos;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 use Pierroons\SelfRecover\Storage\StockagePdo;
 use Pierroons\SelfRecover\Langue;
@@ -431,6 +432,51 @@ verifier('elle épargne « refused » — sans quoi le gel devient inatteignable
 verifier('elle épargne « accepted » — sans quoi la porte se ferme sur qui a tout perdu',
     in_array('accepted', $restants, true));
 
+// 🔑 Un dossier DÉPOSÉ survit à son échéance. L'échéance libère la PLACE — un
+// autre dossier peut s'ouvrir —, elle ne dit rien de ce que le titulaire a
+// écrit. L'effacer perdait ses réponses et son fil avant qu'un arbitre les lise,
+// faute d'avoir été lu à temps. Le décor du cas précédent n'avait aucun dossier
+// déposé : c'est pour ça que rien ne rougissait.
+$pdoC2 = baseNeuve();
+$idC2  = creerCompte($pdoC2, 'carla', $MOT, $PHRASE, $T0, $T0);
+$stC2  = new StockagePdo($pdoC2, HOTE);
+$poserC2 = $pdoC2->prepare(
+    'INSERT INTO disputes (dispute_number, account_id, status, expires_at, submitted_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)'
+);
+$poserC2->execute(['LIT-MUET', $idC2, 'open', $T0 - 10, 0, $T0 - 100, $T0 - 100]);
+$poserC2->execute(['LIT-DEPOSE', $idC2, 'awaiting_admin', $T0 - 10, $T0 - 50, $T0 - 100, $T0 - 50]);
+$poserC2->execute(['LIT-ECRIT', $idC2, 'open', $T0 - 10, 0, $T0 - 100, $T0 - 100]);
+$ecrit = $stC2->trouverLitigeParNumero('LIT-ECRIT');
+$stC2->ajouterMessageLitige($ecrit->id, 'user', 'je suis le titulaire', $T0 - 90);
+$annonceC2  = $stC2->compterLitigesExpires($T0);
+$effaceC2   = $stC2->purgerLitigesExpires($T0);
+$restantsC2 = $pdoC2->query('SELECT dispute_number FROM disputes ORDER BY dispute_number')->fetchAll(PDO::FETCH_COLUMN);
+verifier('⭐ un dossier DÉPOSÉ survit à son échéance — ses réponses attendent l\'arbitre',
+    in_array('LIT-DEPOSE', $restantsC2, true), implode(', ', $restantsC2));
+verifier('⭐ un dossier qui porte un message survit aussi, et son fil avec lui',
+    in_array('LIT-ECRIT', $restantsC2, true) && count($stC2->messagesDuLitige($ecrit->id)) === 1);
+verifier('le dossier muet, lui, part', $effaceC2 === 1 && !in_array('LIT-MUET', $restantsC2, true),
+    "{$effaceC2} effacé(s)");
+verifier('le compte à blanc suit la même clause', $annonceC2 === $effaceC2,
+    "annoncé {$annonceC2}, effacé {$effaceC2}");
+// ⚠️ La survie ne rend pas la place : un dossier déposé et périmé n'occupe plus
+// le compte. Lui rendre la place, ce serait laisser un tiers qui a déposé la
+// tenir jusqu'à ce qu'un humain tranche.
+verifier('⭐ l\'échéance libère quand même la place', $stC2->litigeActifDuCompte($idC2, $T0) === null);
+// La survie a une fin : un tiers peut déposer sans qu'aucun arbitre n'agisse, et
+// sans borne la table grossirait à la cadence des freins d'ouverture.
+$apresRetention = $T0 - 10 + StorageInterface::RETENTION_DOSSIER_DEPOSE;
+$annonceR = $stC2->compterLitigesExpires($apresRetention - 1);
+$effaceR1 = $stC2->purgerLitigesExpires($apresRetention - 1);
+verifier('la veille de la fin de rétention, les dossiers déposés sont encore là', $annonceR === 0 && $effaceR1 === 0,
+    "annoncé {$annonceR}, effacé {$effaceR1}");
+$annonceR = $stC2->compterLitigesExpires($apresRetention);
+$effaceR  = $stC2->purgerLitigesExpires($apresRetention);
+verifier('⭐ la rétention passée, le dossier déposé et celui qui porte un message partent', $effaceR === 2
+    && (int) $pdoC2->query('SELECT COUNT(*) FROM disputes')->fetchColumn() === 0, "{$effaceR} effacé(s)");
+verifier('et le compte à blanc l\'annonçait', $annonceR === $effaceR, "annoncé {$annonceR}");
+
 // 3. Un gel échu n'est pas un gel.
 $stC->poserGel($idC, $T0 + 100, $T0, 'arbitre');
 verifier('un gel en cours se lit', $stC->gelJusqua($idC, $T0) === $T0 + 100);
@@ -769,6 +815,40 @@ verifier('⭐ la ligne de la page de connexion survit — cette table n\'est pas
 verifier('l\'échec récent survit : la rétention est une fenêtre', $restant() === 3);
 verifier('une purge sans préfixe refuse au lieu de rendre zéro',
     abrite(static fn () => $stP->purgerEchecs($T0, []))['ok'] === false);
+
+// 22. La clôture CONSOMME le dossier : elle ne prend qu'un dossier encore actif.
+// Deux reprises concurrentes lisent le même accord ; seule la première doit
+// pouvoir le clore, et la seconde doit le savoir — comme `consommerCode()`.
+$pdoK = baseNeuve();
+$idK  = creerCompte($pdoK, 'kim', $MOT, $PHRASE, $T0, $T0);
+$stK  = new StockagePdo($pdoK, HOTE);
+$stK->ouvrirLitige($idK, 'LIT-UNE-FOIS', hash('sha256', 'sesame'), $T0, $T0 + 86400);
+$lk = $stK->trouverLitigeParNumero('LIT-UNE-FOIS');
+$stK->cloreLitige($lk->id, $T0 + 1);
+$clore = static function (StockagePdo $st, int $id, int $quand): string {
+    try {
+        $st->cloreLitige($id, $quand);
+
+        return 'rien';
+    } catch (LitigeDejaClos) {
+        return 'LitigeDejaClos';
+    } catch (\Throwable $e) {
+        return get_class($e);
+    }
+};
+$second = $clore($stK, $lk->id, $T0 + 2);
+verifier('⭐ clore un dossier déjà clos lève LitigeDejaClos', $second === 'LitigeDejaClos', $second);
+verifier('et ne réécrit rien',
+    (int) $pdoK->query("SELECT updated_at FROM disputes WHERE id = {$lk->id}")->fetchColumn() === $T0 + 1);
+$pdoK->prepare(
+    "INSERT INTO disputes (dispute_number, account_id, status, expires_at, created_at, updated_at)
+     VALUES ('LIT-REFUSE', ?, 'refused', ?, ?, ?)"
+)->execute([$idK, $T0 + 86400, $T0, $T0]);
+$refuse = $stK->trouverLitigeParNumero('LIT-REFUSE');
+$surRefus = $clore($stK, $refuse->id, $T0 + 3);
+verifier('un dossier refusé ne se clôt pas non plus — il n\'est plus actif', $surRefus === 'LitigeDejaClos', $surRefus);
+verifier('et il reste refusé, compté pour le gel',
+    $pdoK->query("SELECT status FROM disputes WHERE id = {$refuse->id}")->fetchColumn() === 'refused');
 
 section('atomicité');
 

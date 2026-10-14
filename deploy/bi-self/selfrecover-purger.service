@@ -49,7 +49,8 @@ User=www-data
 # obligerait ce cron à porter un secret dont il n'a aucun usage.
 Environment=SELFRECOVER_DSN=sqlite:/var/lib/selfrecover/recover.db
 ExecStart=/usr/bin/php /opt/selfrecover/tools/purger.php
-# ⚠️ Les dossiers ACCEPTÉS et REFUSÉS survivent par conception ;
+# ⚠️ Les dossiers ACCEPTÉS et REFUSÉS survivent par conception, et les dossiers
+# déposés et jamais tranchés `RETENTION_DOSSIER_DEPOSE` après leur échéance ;
 # `StockagePdo::purgerLitigesExpires()` dit lesquels et pourquoi, à côté de sa
-# clause. Cette unité ne borne donc pas la table : leur rétention est une
-# décision de déploiement.
+# clause. Cette unité ne borne donc pas la table : la rétention des acceptés et
+# des refusés est une décision de déploiement.
