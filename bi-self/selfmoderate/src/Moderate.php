@@ -586,18 +586,42 @@ class Moderate
      */
     public static function areLinked(PDO $pdo, int $a, int $b): bool
     {
-        if ($a === $b) {
-            return false;
+        return $a !== $b && self::mutualPairs($pdo, [$a, $b]) !== [];
+    }
+
+    /**
+     * Les paires de `$voters` liées au sens d'`areLinked()`, lues en UNE requête.
+     * `areLinked()` passe par ici : la définition du lien n'existe qu'une fois.
+     *
+     * Une requête par paire ferait payer le carré des votants à chaque vote :
+     * les échanges entre eux se lisent d'un coup, seule la réciprocité se
+     * vérifie en mémoire.
+     *
+     * @param int[] $voters
+     * @return array<int, array{int, int}> paires [a, b] avec a < b
+     */
+    private static function mutualPairs(PDO $pdo, array $voters): array
+    {
+        if (count($voters) < 2) {
+            return [];
         }
-        $stmt = $pdo->prepare(
-            'SELECT COUNT(DISTINCT sender_id) FROM dm
-              WHERE created_at >= ?
-                AND ((sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?))'
-        );
-        $stmt->execute([time() - self::config()->fenetreMeuteJours * 86400, $a, $b, $b, $a]);
-        // Deux expéditeurs distincts sur les messages échangés entre eux : chacun
-        // a écrit à l'autre.
-        return (int) $stmt->fetchColumn() === 2;
+        $ph = implode(',', array_fill(0, count($voters), '?'));
+        $stmt = $pdo->prepare("SELECT DISTINCT sender_id, recipient_id FROM dm
+                                WHERE created_at >= ? AND sender_id IN ($ph) AND recipient_id IN ($ph)");
+        $stmt->execute(array_merge([time() - self::config()->fenetreMeuteJours * 86400], $voters, $voters));
+        $aEcrit = [];
+        foreach ($stmt->fetchAll() as $r) {
+            $aEcrit[(int) $r['sender_id']][(int) $r['recipient_id']] = true;
+        }
+        $paires = [];
+        foreach ($aEcrit as $a => $destinataires) {
+            foreach (array_keys($destinataires) as $b) {
+                if ($a < $b && isset($aEcrit[$b][$a])) {
+                    $paires[] = [$a, $b];
+                }
+            }
+        }
+        return $paires;
     }
 
     /**
@@ -622,16 +646,8 @@ class Moderate
             }
             return $x;
         };
-        $n = count($voters);
-        for ($i = 0; $i < $n; $i++) {
-            for ($k = $i + 1; $k < $n; $k++) {
-                if ($find($voters[$i]) === $find($voters[$k])) {
-                    continue;
-                }
-                if (self::areLinked($pdo, $voters[$i], $voters[$k])) {
-                    $parent[$find($voters[$i])] = $find($voters[$k]);
-                }
-            }
+        foreach (self::mutualPairs($pdo, $voters) as [$a, $b]) {
+            $parent[$find($a)] = $find($b);
         }
         $groupes = [];
         foreach ($voters as $v) {

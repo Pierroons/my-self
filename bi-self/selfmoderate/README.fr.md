@@ -142,7 +142,8 @@ restent à écrire** — le cross-voting, et la remise à zéro des strikes apr�
 sans incident — plus deux tenus à moitié, tous marqués dans les listes ci-dessus.
 
 Contrôles : [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
-— quarante-cinq, joués par la CI, chacun vu rougir : le mécanisme est
+pour le moteur à travers le lab, [`tests/sanity_motif.php`](tests/sanity_motif.php) pour le motif
+seul, sans base — joués par la CI, chacun vu rougir : le mécanisme est
 neutralisé, la mesure refaite, le code restauré. L'un d'eux ne mesurait rien à sa première mutation —
 il calculait son attendu depuis la constante qu'il surveillait, et se décalait
 donc avec elle ; il lit maintenant une valeur en clair. Les cinq règles du motif sont éprouvées **séparément**, chaque

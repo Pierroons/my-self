@@ -142,7 +142,8 @@ remain to be written** — cross-voting, and the strikes reset after three month
 without incident — plus two half-kept, all marked in the lists above.
 
 Checks: [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
-— forty-five, run by CI, each seen failing first: the mechanism is disabled,
+for the engine through the lab, [`tests/sanity_motif.php`](tests/sanity_motif.php) for the reason
+rule alone, without a database — run by CI, each seen failing first: the mechanism is disabled,
 the measurement retaken, the code restored. One of them measured nothing at its
 first mutation — it computed its expectation from the very constant it watched,
 and drifted along with it; it now reads a literal value. The five reason rules are exercised **separately**,

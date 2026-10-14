@@ -26,8 +26,8 @@ final class Config
      *                                        la même cible. Le lien seul déclenche
      *                                        l'annulation, sur une fenêtre longue — une
      *                                        meute prend son temps.
-     * @param int      $meuteVotantsMax       Borne du graphe des votants, dont le coût est
-     *                                        quadratique ; une troncature est signalée.
+     * @param int      $meuteVotantsMax       Borne du graphe des votants, dont les paires
+     *                                        croissent comme le carré ; une troncature est signalée.
      * @param int      $meuteEpisodeCooldown  Un épisode de meute par votant sur ce délai :
      *                                        trois victimes le même soir restent un épisode.
      * @param int      $meuteMute2            Suspension du droit de vote au 2e épisode. Le

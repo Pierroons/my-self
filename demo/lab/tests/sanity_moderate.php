@@ -899,6 +899,88 @@ $sous['libelle'] !== '' && $sous['couleur'] !== '' && $juste['libelle'] !== $sou
     ? ok('le palier rend son libellé et sa couleur depuis la même source que son seuil')
     : nok('le palier ne porte pas ses trois valeurs : ' . json_encode([$sous, $juste]));
 
+// ── Le coût d'un vote se compte en requêtes ─────────────────────────────────
+// Un temps dépend de la machine et ne rougit nulle part ; un nombre d'allers-
+// retours avec la base ne dépend que du code. Les trois chemins sont comptés —
+// une requête préparée à chaque exécution, `query()` et `exec()` à l'appel —,
+// pour qu'un chemin nouveau ne passe pas sous le compteur.
+final class PdoCompteur extends PDO
+{
+    public int $requetes = 0;
+
+    public function __construct(string $dsn)
+    {
+        parent::__construct($dsn);
+        $this->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $this->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+        $this->setAttribute(PDO::ATTR_STATEMENT_CLASS, [RequeteComptee::class, [$this]]);
+        parent::exec('PRAGMA foreign_keys = ON');
+    }
+
+    public function exec(string $statement): int|false
+    {
+        $this->requetes++;
+        return parent::exec($statement);
+    }
+
+    public function query(string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs): PDOStatement|false
+    {
+        $this->requetes++;
+        return parent::query($query, $fetchMode, ...$fetchModeArgs);
+    }
+}
+
+final class RequeteComptee extends PDOStatement
+{
+    protected function __construct(private PdoCompteur $connexion) {}
+
+    public function execute(?array $params = null): bool
+    {
+        $this->connexion->requetes++;
+        return parent::execute($params);
+    }
+}
+
+$compteur = new PdoCompteur('sqlite:' . getenv('LAB_DB_PATH'));
+
+/** Downvotes antidatés d'une heure : dans la fenêtre de meute, hors de celle des salves. */
+function votesDeFond(PDO $pdo, int $auteur, int $post, int $combien, string $nom): void
+{
+    for ($j = 0; $j < $combien; $j++) {
+        $pdo->prepare(
+            'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, created_at)
+             VALUES (?, ?, ?, ?, -1, ?, ?)'
+        )->execute([membre($pdo, "fond-$nom-$j"), 'post', $post, $auteur, motif(), time() - 3600]);
+    }
+}
+
+/** Requêtes que coûte un downvote neuf sur ce message ; null si le vote est refusé. */
+function coutDownvote(PdoCompteur $compteur, PDO $pdo, int $post, string $nom): ?int
+{
+    $votant = membre($pdo, "votant-$nom");
+    $compteur->requetes = 0;
+    $r = Moderate::applyVote($compteur, $votant, 'post', $post, -1, motif());
+    return ($r['ok'] ?? false) && !($r['blocked'] ?? false) ? $compteur->requetes : null;
+}
+
+// ── 39. Le coût d'un downvote ne croît pas avec le carré de ses votants ─────
+// Une cible déjà visée par quatre votants, une autre par seize, tous sans lien
+// entre eux. Les deux sont posées AVANT les deux mesures, pour que le reste de
+// la base soit le même pour chacune : seul le graphe de la cible diffère.
+// Tester chaque paire par une requête rend 10 puis 136 requêtes pour ce seul
+// graphe ; les échanges entre ces votants se lisent en une fois.
+$cibleP = membre($pdo, 'cible-39p');
+$postP  = message($pdo, $cibleP, 'fil-39p');
+votesDeFond($pdo, $cibleP, $postP, 4, '39p');
+$cibleQ = membre($pdo, 'cible-39q');
+$postQ  = message($pdo, $cibleQ, 'fil-39q');
+votesDeFond($pdo, $cibleQ, $postQ, 16, '39q');
+$cinq   = coutDownvote($compteur, $pdo, $postP, '39p');
+$dixSept = coutDownvote($compteur, $pdo, $postQ, '39q');
+$cinq !== null && $cinq === $dixSept
+    ? ok("un downvote coûte $cinq requêtes, que sa cible compte cinq votants ou dix-sept")
+    : nok('le coût d\'un downvote croît avec ses votants : ' . json_encode(['5_votants' => $cinq, '17_votants' => $dixSept]));
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"

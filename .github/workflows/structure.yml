@@ -1766,8 +1766,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 51/51 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 51 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 52/52 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 52 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -1793,6 +1793,43 @@ jobs:
           echo "$sortie" | grep -q 'la peine a reculé' \
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de la peine prolongée"; exit 1; }
           echo "✓ le banc rougit, et sur le cas de la peine prolongée"
+
+      - name: Canari — SelfModerate interroge la base une fois par paire de votants
+        run: |
+          # @plante
+          # La lecture des liens en une requête est remplacée par l'ancienne
+          # boucle, qui teste chaque paire par `areLinked()` : le coût d'un vote
+          # redevient le carré de ses votants, et le banc doit rougir sur ce cas.
+          M=bi-self/selfmoderate/src/Moderate.php
+          cp "$M" /tmp/moderate.paires.intact
+          python3 - "$M" <<'PY'
+          import sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          lu = "        foreach (self::mutualPairs($pdo, $voters) as [$a, $b]) {\n            $parent[$find($a)] = $find($b);\n        }\n"
+          boucle = ("        $n = count($voters);\n"
+                    "        for ($i = 0; $i < $n; $i++) {\n"
+                    "            for ($k = $i + 1; $k < $n; $k++) {\n"
+                    "                if ($find($voters[$i]) !== $find($voters[$k]) && self::areLinked($pdo, $voters[$i], $voters[$k])) {\n"
+                    "                    $parent[$find($voters[$i])] = $find($voters[$k]);\n"
+                    "                }\n"
+                    "            }\n"
+                    "        }\n")
+          assert s.count(lu) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(lu, boucle))
+          PY
+          [ $? -eq 0 ] || { cp /tmp/moderate.paires.intact "$M"; echo "::error::la plantation n'a pas pris — ce canari ne prouve rien"; exit 1; }
+          if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+            cp /tmp/moderate.paires.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT quand chaque paire coûte une requête"; exit 1
+          fi
+          cp /tmp/moderate.paires.intact "$M"
+          cmp -s /tmp/moderate.paires.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+          if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+            echo "$sortie"; echo "::error::la plantation casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+          fi
+          echo "$sortie" | grep -q 'le coût d.un downvote croît avec ses votants' \
+            || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas du coût par paire"; exit 1; }
+          echo "✓ le banc rougit, et sur le cas du coût par paire"
 
       - name: Garde-fou — SelfModerate, le motif de vote reçoit une phrase et refuse un remplissage
         run: |
