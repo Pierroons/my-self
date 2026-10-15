@@ -21,7 +21,7 @@ Every encrypted-data-at-rest product today (MySQL TDE, MongoDB CSFLE, AWS RDS en
 
 That model breaks the moment the **application server is compromised**. The attacker dumps the database AND the key — the encryption was a checkbox, not a defense. Recent breaches at scale have shown the same thing every time: personal data exposed in plain text is the dominant cost of the incident, because it cannot be revoked.
 
-Current tools either skip data-at-rest encryption entirely or implement it in a way that adds zero value against a server-side compromise. SelfDataGuard picks a third path: **derive the encryption key from a secret only the user knows**, so a database dump alone yields cryptographic soup.
+Current tools either skip data-at-rest encryption entirely or implement it in a way that adds zero value against a server-side compromise. SelfDataGuard picks a third path: **derive the encryption key from a secret only the user knows**, so a database dump alone yields no value in plain text.
 
 ---
 
@@ -57,7 +57,7 @@ Each user has:
 - A `data_master_key_phrase_wrap`: the same, with the passphrase-derived key (optional)
 - Personal data fields encrypted field-by-field with `data_master_key`
 
-**Database dump → cryptographic soup.** No combination of plain-text values in the dump yields the master key. The attacker would need one of the user's secrets — password, memorized word or passphrase, each Argon2id-hardened and salt-isolated — to decrypt anything.
+**Database dump → encrypted values, no master key.** No combination of plain-text values in the dump yields the master key. The attacker would need one of the user's secrets — password, memorized word or passphrase, each Argon2id-hardened and salt-isolated — to decrypt anything. ⚠️ **What the dump still tells**: the name of each field each account holds and the date that field last changed, the length of each value (a ciphertext carries no padding), and, for an indexed field, which accounts share a value. Give your fields neutral names, and pad to one length the fields that take only a few values.
 
 ---
 
@@ -109,7 +109,7 @@ Without SelfRecover, SelfDataGuard still works, with whatever locks the applicat
 
 | Mode | Server access to data | Trade-off | In the code |
 |------|----------------------|-----------|-------------|
-| **Lite** *(transparent for legacy stacks)* | Server decrypts during user sessions only | Server compromise = the vaults of sessions open while it is compromised, and of whoever logs in; not those of accounts that do not log in | ✅ this is what the library does |
+| **Lite** *(transparent for legacy stacks)* | Server decrypts during user sessions only | Server compromise = the vaults of sessions open while it is compromised, and of whoever logs in; not those of accounts that do not log in. A key read during the compromise stays valid afterwards: neither a password change nor a recovery rotates it | ✅ this is what the library does |
 | **Hybrid** *(targeted at e-commerce)* | Operational fields (`email`, `shipping_address`) wrapped with admin operational key. Sensitive fields (`tel`, `KYC_doc`) require user session | Admin can fulfill orders; sensitive data remains zero-knowledge | ❌ specified, not written — the vault's `wrap_admin` is `null` (`UserVault::register()`) |
 | **Full** *(zero-knowledge for high-assurance services)* | Server NEVER decrypts. All crypto runs in the browser, through libsodium compiled to WebAssembly — WebCrypto offers neither Argon2id nor XChaCha20-Poly1305 | Some workflows redesigned (no async transactional emails, push notifications instead) | ❌ specified, not written — the module carries no client-side code |
 
@@ -120,7 +120,7 @@ One admin path does exist, outside this table: the **escrow** (`src/Escrow/`), a
 What the escrow guarantees as of 0.6.0:
 - **the admin seal names its account**: copied into another account's row, it is refused. It does not authenticate the escrow content: whoever writes to the database can, with the public key, seal and fill a new compartment. A seal from before 0.6.0 still opens; `rebindEscrowAdmin($session, $publicKey)` re-seals it, to the key you pass — pass the one the escrow was created with, nothing can check it without the secret key;
 - **the admin passphrase is at least 12 bytes** when sealing (`UserVault::PASSWORD_MIN_LEN`); a key sealed earlier under a shorter passphrase still opens. The sealed key carries its Argon2id profile (`v2:…`);
-- **the ceremony log can be anchored off the machine**: `bin/escrow-ceremony.php verify-log` prints its head `seq:hmac`, which you write down elsewhere, and `verify-log --ancre seq:hmac` then refuses a truncated or rewritten log. Without an anchor, verification cannot see that the end of the log was cut off;
+- **the ceremony log can be anchored off the machine**: `bin/escrow-ceremony.php verify-log` prints its head `seq:hmac`, which you write down elsewhere, and `verify-log --ancre seq:hmac` then refuses a log truncated before the anchor or rewritten up to it. Without an anchor, verification cannot see that the end of the log was cut off. The log secret lives on the ceremony machine, and whoever holds it can rewrite what follows the last anchor: anchor the log after every ceremony;
 - **the field name `escrow` is reserved**: it is the context of the escrow envelope. `setFields()` refuses it; `getFields()` refuses it when asked for by name, and leaves it out, undecrypted, of a read of every field.
 
 ---
@@ -129,13 +129,13 @@ What the escrow guarantees as of 0.6.0:
 
 | Adversary | Without SelfDataGuard | With SelfDataGuard |
 |-----------|----------------------|---------------------|
-| SQL injection / IDOR / DB dump | Plain-text PII exposed | Encrypted soup |
-| Backup tape stolen | Plain-text PII exposed | Encrypted soup |
-| Insider DBA | Reads everything | Encrypted (cannot unwrap without one of a user's secrets) |
-| Application root compromise (RCE) | Reads everything | Reads currently active sessions — that is Lite, the only mode in service |
+| SQL injection / IDOR / DB dump | Plain-text PII exposed | Encrypted values. Readable: field names, modification dates, lengths, accounts that share an indexed value |
+| Backup tape stolen | Plain-text PII exposed | The same, as long as the backup does not hold the blind-index key (a server-side secret, shared by every account). With it, indexed values that can be enumerated (phone numbers, email addresses) are found by dictionary, for every account |
+| Insider DBA | Reads everything | As for a dump: encrypted values, no unwrapping without one of a user's secrets; field names, modification dates and lengths readable |
+| Application root compromise (RCE) | Reads everything | Lite, the only mode in service: reads the vaults of sessions open during the compromise, and keeps their keys, which do not rotate afterwards. With the blind-index key, finds by dictionary the indexed values that can be enumerated, for every account |
 | Compromised user endpoint (keylogger) | User credentials harvested | User credentials harvested → that user's data only (no fan-out) |
 | Stolen passphrase paper | Account access through level 1 | The same, plus that user's data — offline too, given a dump. The passphrase is consumed at its first legitimate use, which replaces it |
-| Coercion of admin to decrypt | All data at admin's discretion | In Lite there is no standing admin key: they would need a secret of every user. The escrow opens under ceremony and yields its compartment only |
+| Coercion of admin to decrypt | All data at admin's discretion | Private vaults have no admin key: opening them would take a secret from every user. The escrow has one, and it is permanent: whoever coerces the holder of its passphrase obtains, ceremony after ceremony, the escrow compartment of every account with an escrow compartment — never the private vault |
 | Database write: an old vault row put back | — | **Limit.** The restored row opens with the secrets it carried, a passphrase consumed since included. Nothing in the vault tells a restored revision apart: the defence is the integrity of the database and its backups (whitepaper, §8.1) |
 
 ---
@@ -144,7 +144,7 @@ What the escrow guarantees as of 0.6.0:
 
 **v0.6.2 — an escrow log entry is forced to disk**, 15 October 2026, on top of **v0.6.1 — the unlocked keys and the server's secrets stay out of dumps and traces**, 14 October 2026, and **v0.6.0 — the Argon2id profile stored, an escrow bound to its account, an anchorable log**, 3 October 2026.
 
-Whitepaper complete (specification + threat model). PHP reference library implemented (3 978 lines across 25 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **388 checks across 11 suites** on PHP 8.2 and 8.4, and 384 on PHP 8.1, where four trace checks become declared limits, all passing. The keys of the three locks are checked against frozen test vectors, recomputed in CI by a second implementation (argon2-cffi). A clickable HTML demo is included to inspect the encrypted database in real time.
+Whitepaper complete (specification + threat model). PHP reference library implemented (3 986 lines across 25 files, PSR-4, PHP 8.1+, libsodium). Cryptographic primitives (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, and AES-256-GCM to read blobs written before 0.4.0) covered by **388 checks across 11 suites** on PHP 8.2 and 8.4, and 384 on PHP 8.1, where four trace checks become declared limits, all passing. The keys of the three locks are checked against frozen test vectors, recomputed in CI by a second implementation (argon2-cffi). A clickable HTML demo is included to inspect the encrypted database in real time.
 
 A 0.5.x database migrates in place the first time 0.6.0 opens it (`kdf_opslimit` and `kdf_memlimit` columns, at the former profile), and so does a 0.4.0 one, in one go. ⚠️ Rolling back to 0.5.x keeps access to the vaults and to the escrow on the holder's side, but the administrator can no longer open an escrow that 0.6.0 created or re-sealed, and 0.5.x cannot unseal an admin key generated by 0.6.0: see the [CHANGELOG](./CHANGELOG.md). Blobs written by 0.3.0 stay readable, through OpenSSL (`ext-openssl`) where libsodium refuses AES.
 

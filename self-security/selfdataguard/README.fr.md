@@ -21,7 +21,7 @@ Tous les produits actuels de chiffrement des données au repos (MySQL TDE, Mongo
 
 Ce modèle s'effondre dès que **le serveur d'application est compromis**. L'attaquant exfiltre la base de données ET la clé — le chiffrement n'était qu'une case cochée, pas une défense. Les fuites récentes à grande échelle ont montré la même chose à chaque fois : ce sont les données personnelles exposées en clair qui constituent le coût dominant de l'incident, parce qu'elles ne se révoquent pas.
 
-Les outils actuels soit ignorent complètement le chiffrement au repos, soit l'implémentent d'une manière qui n'apporte aucune valeur contre une compromission côté serveur. SelfDataGuard choisit une troisième voie : **dériver la clé de chiffrement d'un secret connu uniquement de l'utilisateur**, de sorte qu'un dump de base ne donne que de la soupe cryptographique.
+Les outils actuels soit ignorent complètement le chiffrement au repos, soit l'implémentent d'une manière qui n'apporte aucune valeur contre une compromission côté serveur. SelfDataGuard choisit une troisième voie : **dériver la clé de chiffrement d'un secret connu uniquement de l'utilisateur**, de sorte qu'un dump de base ne livre aucune valeur en clair.
 
 ---
 
@@ -57,7 +57,7 @@ Chaque utilisateur dispose de :
 - Un `data_master_key_phrase_wrap` : le même, avec la clé dérivée de la passphrase (facultatif)
 - Des champs de données personnelles chiffrés un par un avec `data_master_key`
 
-**Dump de la base → soupe cryptographique.** Aucune combinaison des valeurs en clair présentes dans le dump ne permet d'obtenir la clé maîtresse. L'attaquant aurait besoin d'un des secrets de l'utilisateur — mot de passe, mot mémorisé ou passphrase, chacun durci par Argon2id et isolé par sel — pour déchiffrer quoi que ce soit.
+**Dump de la base → valeurs chiffrées, pas de clé maîtresse.** Aucune combinaison des valeurs en clair présentes dans le dump ne permet d'obtenir la clé maîtresse. L'attaquant aurait besoin d'un des secrets de l'utilisateur — mot de passe, mot mémorisé ou passphrase, chacun durci par Argon2id et isolé par sel — pour déchiffrer quoi que ce soit. ⚠️ **Ce que le dump dit quand même** : le nom de chaque champ que porte chaque compte et la date à laquelle ce champ a changé, la longueur de chaque valeur (un chiffré n'a pas de remplissage), et, pour un champ indexé, les comptes qui partagent une même valeur. Donne à tes champs des noms neutres, et complète à une même longueur les champs qui ne prennent que quelques valeurs.
 
 ---
 
@@ -109,7 +109,7 @@ Sans SelfRecover, SelfDataGuard fonctionne quand même, avec les serrures que l'
 
 | Mode | Accès serveur aux données | Compromis | Dans le code |
 |------|---------------------------|-----------|--------------|
-| **Lite** *(transparent pour les piles legacy)* | Le serveur déchiffre uniquement pendant les sessions utilisateur | Compromission du serveur = les coffres des sessions ouvertes pendant qu'il est compromis, et de qui s'y connecte ; pas ceux des comptes qui ne se connectent pas | ✅ c'est ce que fait la bibliothèque |
+| **Lite** *(transparent pour les piles legacy)* | Le serveur déchiffre uniquement pendant les sessions utilisateur | Compromission du serveur = les coffres des sessions ouvertes pendant qu'il est compromis, et de qui s'y connecte ; pas ceux des comptes qui ne se connectent pas. Une clé lue pendant la compromission reste valable ensuite : ni un changement de mot de passe ni une récupération ne la font tourner | ✅ c'est ce que fait la bibliothèque |
 | **Hybrid** *(visé pour l'e-commerce)* | Champs opérationnels (`email`, `adresse_livraison`) encapsulés avec une clé opérationnelle admin. Champs sensibles (`tel`, `doc_KYC`) nécessitent une session utilisateur | L'admin peut traiter les commandes ; les données sensibles restent zero-knowledge | ❌ spécifié, pas écrit — le `wrap_admin` du coffre vaut `null` (`UserVault::register()`) |
 | **Full** *(zero-knowledge pour services à forte exigence)* | Le serveur ne déchiffre JAMAIS. Toute la crypto tourne dans le navigateur, par libsodium compilé en WebAssembly — WebCrypto n'offre ni Argon2id ni XChaCha20-Poly1305 | Certains workflows à redessiner (pas de mails transactionnels asynchrones, notifications push à la place) | ❌ spécifié, pas écrit — le module ne porte aucun code client |
 
@@ -120,7 +120,7 @@ Une voie administrateur existe pourtant, hors de ce tableau : le **séquestre** 
 Ce que le séquestre tient depuis la 0.6.0 :
 - **le scellé administrateur nomme son compte** : recopié dans la ligne d'un autre compte, il est refusé. Il n'authentifie pas pour autant le contenu du séquestre : qui écrit en base peut, avec la clé publique, sceller et remplir un compartiment neuf. Un scellé d'avant la 0.6.0 s'ouvre encore ; `rebindEscrowAdmin($session, $clePublique)` le rescelle, vers la clé que tu lui passes — passe celle avec laquelle le séquestre a été créé, rien ne peut le vérifier sans la clé secrète ;
 - **la passphrase admin compte au moins 12 octets** au scellement (`UserVault::PASSWORD_MIN_LEN`) ; une clé scellée plus tôt sous une passphrase plus courte s'ouvre encore. La clé scellée porte son profil Argon2id (`v2:…`) ;
-- **le journal de la cérémonie peut s'ancrer hors de la machine** : `bin/escrow-ceremony.php verify-log` affiche sa tête `seq:hmac`, que tu notes ailleurs, et `verify-log --ancre seq:hmac` refuse ensuite un journal tronqué ou réécrit. Sans ancre, la vérification ne voit pas qu'on a coupé la fin du journal ;
+- **le journal de la cérémonie peut s'ancrer hors de la machine** : `bin/escrow-ceremony.php verify-log` affiche sa tête `seq:hmac`, que tu notes ailleurs, et `verify-log --ancre seq:hmac` refuse ensuite un journal tronqué avant l'ancre ou réécrit jusqu'à elle. Sans ancre, la vérification ne voit pas qu'on a coupé la fin du journal. Le secret du journal vit sur la machine de la cérémonie, et qui le détient peut réécrire ce qui suit la dernière ancre : ancre le journal après chaque cérémonie ;
 - **le nom de champ `escrow` est réservé** : c'est le contexte de l'enveloppe du séquestre. `setFields()` le refuse ; `getFields()` le refuse quand on le demande par son nom, et le laisse de côté, sans le déchiffrer, dans une lecture de tous les champs.
 
 ---
@@ -129,13 +129,13 @@ Ce que le séquestre tient depuis la 0.6.0 :
 
 | Adversaire | Sans SelfDataGuard | Avec SelfDataGuard |
 |------------|---------------------|---------------------|
-| SQL injection / IDOR / dump DB | Données personnelles en clair exposées | Soupe chiffrée |
-| Bande de sauvegarde volée | Données personnelles en clair exposées | Soupe chiffrée |
-| DBA malveillant | Lit tout | Chiffré (impossible de déballer sans un des secrets d'un utilisateur) |
-| Compromission root applicative (RCE) | Lit tout | Lit les sessions actives — c'est le mode Lite, le seul en service |
+| SQL injection / IDOR / dump DB | Données personnelles en clair exposées | Valeurs chiffrées. Lisibles : noms des champs, dates de modification, longueurs, comptes qui partagent une valeur indexée |
+| Bande de sauvegarde volée | Données personnelles en clair exposées | Idem, tant que la sauvegarde ne contient pas la clé du blind index (un secret du serveur, commun à tous les comptes). Avec elle, les valeurs indexées qui s'énumèrent (numéros de téléphone, adresses e-mail) se retrouvent par dictionnaire, pour tous les comptes |
+| DBA malveillant | Lit tout | Comme pour un dump : valeurs chiffrées, rien à déballer sans un des secrets d'un utilisateur ; noms des champs, dates de modification et longueurs lisibles |
+| Compromission root applicative (RCE) | Lit tout | En mode Lite, le seul en service : lit les coffres des sessions ouvertes pendant la compromission, et garde leurs clés, qui ne tournent pas ensuite. Avec la clé du blind index, retrouve par dictionnaire les valeurs indexées qui s'énumèrent, pour tous les comptes |
 | Endpoint utilisateur compromis (keylogger) | Identifiants utilisateur capturés | Identifiants capturés → données de cet utilisateur uniquement (pas de fan-out) |
 | Papier de passphrase volé | Accès au compte par le niveau 1 | Le même, plus les données de cet utilisateur — hors ligne aussi, avec un dump. La passphrase est consommée à sa première utilisation légitime, qui la remplace |
-| Coercition d'un admin pour déchiffrer | Toutes les données à la discrétion de l'admin | En Lite, aucune clé admin permanente n'existe : il faudrait un secret de chaque utilisateur. Le séquestre s'ouvre sous cérémonie et ne rend que son compartiment |
+| Coercition d'un admin pour déchiffrer | Toutes les données à la discrétion de l'admin | Les coffres privés n'ont pas de clé admin : il faudrait un secret de chaque utilisateur. Le séquestre en a une, permanente : qui contraint le détenteur de sa passphrase obtient, cérémonie après cérémonie, le compartiment de séquestre de chaque compte qui en a un — jamais le coffre privé |
 | Écriture en base : remise d'une ancienne ligne de coffre | — | **Limite.** La ligne restaurée rouvre avec les secrets qu'elle portait, passphrase consommée depuis comprise. Rien dans le coffre ne distingue une révision restaurée : la parade est l'intégrité de la base et de ses sauvegardes (whitepaper, §8.1) |
 
 ---
@@ -144,7 +144,7 @@ Ce que le séquestre tient depuis la 0.6.0 :
 
 **v0.6.2 — une entrée du journal de séquestre est forcée sur le disque**, 15 octobre 2026, sur la **v0.6.1 — les clés déverrouillées et les secrets du serveur restent hors des vidages et des traces**, 14 octobre 2026, et la **v0.6.0 — le profil Argon2id enregistré, un séquestre lié à son compte, un journal ancrable**, 3 octobre 2026.
 
-Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (3 978 lignes réparties sur 25 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **388 contrôles répartis sur 11 suites** sous PHP 8.2 et 8.4, et 384 sous PHP 8.1, où quatre contrôles de trace deviennent des limites déclarées, tous passants. Les clés des trois serrures sont vérifiées contre des vecteurs figés, recalculés en CI par une seconde implémentation (argon2-cffi). Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
+Whitepaper complet (spécification + modèle de menace). Bibliothèque PHP de référence implémentée (3 986 lignes réparties sur 25 fichiers, PSR-4, PHP 8.1+, libsodium). Primitives cryptographiques (Argon2id, HMAC-SHA256, XChaCha20-Poly1305, et AES-256-GCM pour relire les blobs écrits avant la 0.4.0) couvertes par **388 contrôles répartis sur 11 suites** sous PHP 8.2 et 8.4, et 384 sous PHP 8.1, où quatre contrôles de trace deviennent des limites déclarées, tous passants. Les clés des trois serrures sont vérifiées contre des vecteurs figés, recalculés en CI par une seconde implémentation (argon2-cffi). Une démo HTML cliquable est incluse pour inspecter la base chiffrée en temps réel.
 
 Une base 0.5.x se migre en place à sa première ouverture par la 0.6.0 (colonnes `kdf_opslimit` et `kdf_memlimit`, au profil d'avant), une base 0.4.0 aussi, en une fois. ⚠️ Un retour à la 0.5.x garde l'accès aux coffres et au séquestre côté titulaire, mais l'administrateur n'ouvre plus un séquestre que la 0.6.0 a créé ou rescellé, et la 0.5.x ne descelle pas une clé admin générée par la 0.6.0 : [CHANGELOG](./CHANGELOG.md). Les blobs écrits par la 0.3.0 restent lisibles, par OpenSSL (`ext-openssl`) là où libsodium refuse AES.
 

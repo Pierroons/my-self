@@ -10,7 +10,8 @@ declare(strict_types=1);
  *   1. un LITIGE OUVERT existe pour ce user (garde anti-curieux) ;
  *   2. la PASSPHRASE ADMIN déscelle la clé privée de récupération.
  * Chaque acte (succès OU refus) est écrit dans un LOG D'AUDIT chaîné + signé
- * (inaltérable). L'admin obtient escrow_key — jamais le master_key.
+ * (une réécriture de ce qui précède l'ancre se voit ; qui détient le secret peut
+ * réécrire ce qui la suit). L'admin obtient escrow_key — jamais le master_key.
  *
  * La lib DataGuard ignore litiges et audit : c'est CETTE couche qui les pose.
  *

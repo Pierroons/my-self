@@ -12,14 +12,15 @@ use RuntimeException;
  * Append-only, hash-chained, HMAC-signed audit log for privileged escrow acts
  * (admin recovery unlocks). Same bar as the SelfRecover-SU journal: every entry
  * is chained to the previous one and signed, so any deletion, reordering or
- * edit breaks verification — even by root.
+ * edit made without the secret breaks verification. Whoever holds the secret can
+ * rewrite the chain after the last anchor: `verify($anchor)` covers what precedes it.
  *
  * On-disk format: one JSON object per line, keys in fixed order
  *   {"seq":N,"ts":"ISO8601","event":{...},"prev":"<hmac of entry N-1>","hmac":"<hmac>"}
  * where hmac = HMAC-SHA256( json({seq,ts,event,prev}), auditSecret ).
  *
- * Deployment hardening (ops, not code): set the file `chattr +a` (append-only,
- * inaltérable même en root). The HMAC chain detects tampering regardless.
+ * Deployment hardening (ops, not code): set the file `chattr +a` (append-only):
+ * no process rewrites it while the flag is set, but root can lift the flag.
  */
 final class AuditLog
 {
