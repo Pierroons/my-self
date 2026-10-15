@@ -501,6 +501,56 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfRecover v0.12.4] — 15 octobre 2026
+
+### Une décision ne se défait plus — 15 octobre 2026
+
+Version corrective. Aucune signature ne bouge.
+
+- **La décision consomme l'instruction.** `trancherLitige()` ne tranche qu'un dossier en cours (ouvert
+  ou en attente de lecture) et lève `LitigeDejaTranche` sinon, comme `cloreLitige()` depuis la 0.12.3.
+  De deux décisions envoyées au même instant sur un même dossier, la seconde reçoit `deja_tranche` :
+  elle n'écrase plus la première, et ne rouvre plus un dossier que la reprise a clos. Un refus écrit
+  sur un dossier clos comptait contre le titulaire pour le gel.
+- **Un dépôt de réponses ne défait plus une décision.** `enregistrerFaisceau()` porte la même garde :
+  un dépôt parti avant la décision et écrit après repassait le dossier en attente de lecture. L'accord
+  était perdu, le refus ne comptait plus, un dossier clos reprenait la place. `soumettre()` rend
+  désormais `deja_tranche`.
+- **Un fait local peut avoir été provoqué par un tiers.** Le contrat de `faitsDuCompte()` le dit
+  désormais : l'arbitre pèse ce fait, qui ne prouve rien contre le demandeur et n'interdit jamais
+  l'ouverture d'un dossier.
+
+⚠️ **Pour un intégrateur qui a son propre adaptateur** : les deux gardes vivent dans le stockage. Un
+adaptateur qui ne les suit pas continue de fonctionner, sans elles. La checklist d'intégration des
+whitepapers les nomme.
+
+Mesures : `banc_stockage_pdo` 189 cas, `sanity_escalade` 204. Chaque cas ⭐ neuf a été vu rouge sur la
+0.12.3 avant le correctif. Un contrôle du banc de stockage passait à vide : le dossier qu'il disait voir
+expirer ne s'ouvrait pas, la place étant prise. Il est réordonné, et rougit quand on retire la clause
+d'échéance.
+
+---
+
+## [SelfDataGuard v0.6.2] — 15 octobre 2026
+
+### Une entrée du journal d'escrow est forcée sur le disque — 15 octobre 2026
+
+Version corrective. Aucune signature ne bouge.
+
+- `AuditLog::append()` appelle `fsync()` après `fflush()`. `fflush()` remet la ligne au noyau, pas au
+  disque : une coupure de courant pouvait perdre l'entrée alors que l'acte qu'elle consigne restait
+  fait. Une écriture qui ne peut pas être forcée sur le disque lève une exception, comme une écriture
+  incomplète. Deux limites, nommées dans le docblock : la ligne reste alors dans le fichier, et le
+  répertoire n'est pas synchronisé à la création du journal.
+- La CI exige, sous PHP 8.4, le total exact de chacune des onze suites, et plus seulement leur code de
+  sortie : une suite qui saute un cas, une suite sans total déclaré et un total sans suite la font
+  rougir. Sous PHP 8.1 et 8.2, elle s'en tient au code de sortie.
+
+Mesures : 388 contrôles sur les onze suites sous PHP 8.4, 384 sous PHP 8.1, où quatre contrôles de
+trace deviennent des limites déclarées. Le cas neuf a été vu rouge sur la 0.6.1 avant le correctif.
+
+---
+
 ## [SelfRecover v0.12.3] — 14 octobre 2026
 
 ### Un dossier déposé n'est plus effacé, et une reprise ne se rejoue pas — 14 octobre 2026

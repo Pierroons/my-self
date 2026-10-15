@@ -3,7 +3,7 @@
 **Application-layer data-at-rest protection that survives a database exfiltration**
 *Dump my database — and get encrypted noise.*
 
-*Edition of 14 October 2026 — describes SelfDataGuard v0.6.1. The French edition is authoritative where the two differ.*
+*Edition of 15 October 2026 — describes SelfDataGuard v0.6.2. The French edition is authoritative where the two differ.*
 
 ---
 
@@ -356,6 +356,7 @@ Failure to respect any of these rules significantly degrades the guarantees. The
 - **v0.5.0** (2026-10-01): third lock (SelfRecover passphrase), `recover()` for every recovery path, archiving at level 3, in-place schema migration
 - **v0.6.0** (2026-10-03): Argon2id profile stored with each vault and the sealed admin key, admin seal bound to its account, anchorable escrow log, reserved field name `escrow`, frozen Argon2id vectors
 - **v0.6.1** (2026-10-14): the unlocked keys and the server's secrets masked in `var_dump()` and `print_r()`, unlocked objects that refuse to be cloned, secret parameters kept out of exception traces
+- **v0.6.2** (2026-10-15): an escrow log entry forced to disk (`fsync()`), and each suite's exact total required in CI
 - **v0.7.0** (upcoming): advanced blind index extension for searchable encryption, multi-tenant support
 - **v1.0.0** (2027): formal community cryptographic audit, ANSSI Visa de sécurité submission (industries@ssi.gouv.fr), test vector pack publication
 
@@ -373,4 +374,4 @@ Technical feedback, community audits, and cryptographic critiques are welcome, e
 
 ---
 
-*First edition May 2026; this edition 14 October 2026, aligned on SelfDataGuard v0.6.1. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026; §2, §3, §5, §6, §7 and §8.2 were rewritten alongside the French edition on 1 October 2026 for v0.5.0; §2.2, §6.1, §7 and §8.1 on 3 October 2026 for v0.6.0. The specification described here is implemented and tested from v0.1.0 to v0.6.0 (373 checks, 11 suites, on PHP 8.1, 8.2 and 8.4).*
+*First edition May 2026; this edition 15 October 2026, aligned on SelfDataGuard v0.6.2. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026; §2, §3, §5, §6, §7 and §8.2 were rewritten alongside the French edition on 1 October 2026 for v0.5.0; §2.2, §6.1, §7 and §8.1 on 3 October 2026 for v0.6.0. The specification described here is implemented and tested from v0.1.0 to v0.6.2 (388 checks across 11 suites on PHP 8.2 and 8.4, 384 on PHP 8.1, where four trace checks become declared limits).*

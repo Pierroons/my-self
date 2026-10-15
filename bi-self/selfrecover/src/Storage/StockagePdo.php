@@ -613,17 +613,33 @@ final class StockagePdo implements StorageInterface, SelParCodeInterface
 
     public function enregistrerFaisceau(int $litigeId, string $faisceauJson, int $quand): void
     {
-        $this->pdo->prepare(
+        $st = $this->pdo->prepare(
             "UPDATE disputes SET signals_json = ?, status = 'awaiting_admin', submitted_at = ?, updated_at = ?
-             WHERE id = ?"
-        )->execute([$faisceauJson, $quand, $quand, $litigeId]);
+             WHERE id = ? AND status IN ('open', 'awaiting_admin')"
+        );
+        $st->execute([$faisceauJson, $quand, $quand, $litigeId]);
+        // ⚠️ MySQL compte les lignes CHANGÉES : un second dépôt identique au
+        // premier, dans la même seconde, en change zéro. Seule une relecture
+        // distingue ce cas d'un dossier tranché entre-temps.
+        if ($st->rowCount() !== 1) {
+            $etat = $this->pdo->prepare('SELECT status FROM disputes WHERE id = ?');
+            $etat->execute([$litigeId]);
+            if (!in_array($etat->fetchColumn(), ['open', 'awaiting_admin'], true)) {
+                throw new LitigeDejaTranche('aucun dossier en cours à ce numéro');
+            }
+        }
     }
 
     public function trancherLitige(int $litigeId, string $statut, string $par, int $quand): void
     {
-        $this->pdo->prepare(
-            'UPDATE disputes SET status = ?, decided_at = ?, decided_by = ?, updated_at = ? WHERE id = ?'
-        )->execute([$statut, $quand, $par, $quand, $litigeId]);
+        $st = $this->pdo->prepare(
+            "UPDATE disputes SET status = ?, decided_at = ?, decided_by = ?, updated_at = ?
+             WHERE id = ? AND status IN ('open', 'awaiting_admin')"
+        );
+        $st->execute([$statut, $quand, $par, $quand, $litigeId]);
+        if ($st->rowCount() !== 1) {
+            throw new LitigeDejaTranche('aucun dossier en cours à ce numéro');
+        }
     }
 
     public function cloreLitige(int $litigeId, int $quand): void

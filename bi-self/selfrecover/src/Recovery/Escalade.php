@@ -11,6 +11,7 @@ use Pierroons\SelfRecover\Etiquette;
 use Pierroons\SelfRecover\Messages;
 use Pierroons\SelfRecover\Langue;
 use Pierroons\SelfRecover\Storage\LitigeDejaClos;
+use Pierroons\SelfRecover\Storage\LitigeDejaTranche;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
 /**
@@ -486,7 +487,14 @@ final class Escalade
                     'message' => Messages::dire($this->langue(), 'l3.faisceau_echec')];
         }
 
-        $this->stockage->enregistrerFaisceau($litige->id, $encode, $maintenant);
+        // Même garde que `trancher()` : une décision rendue depuis la lecture ne
+        // se défait pas par un dépôt qui repasserait le dossier en attente.
+        try {
+            $this->stockage->enregistrerFaisceau($litige->id, $encode, $maintenant);
+        } catch (LitigeDejaTranche) {
+            return ['ok' => false, 'error' => 'deja_tranche',
+                    'message' => Messages::dire($this->langue(), 'l3.deja_tranche_reponses')];
+        }
 
         // 🔑 Journalisé comme un ÉCHEC. Un niveau 3 ne réussit jamais tout seul :
         // s'il comptait comme une réussite, il effacerait l'ardoise des
@@ -624,15 +632,21 @@ final class Escalade
             return ['ok' => false, 'error' => 'expire', 'message' => Messages::dire($this->langue(), 'l3.expire_archive')];
         }
 
-        if ($decision === 'accepte') {
-            $this->stockage->trancherLitige($litige->id, Litige::ACCEPTE, $par, $maintenant);
+        // 🔑 `enCours()` porte sur une lecture, et un second arbitre a pu trancher
+        // depuis. L'écriture conditionnelle du stockage décide : le perdant
+        // l'apprend, et sa décision n'écrase rien.
+        try {
+            $this->stockage->trancherLitige($litige->id,
+                $decision === 'accepte' ? Litige::ACCEPTE : Litige::REFUSE, $par, $maintenant);
+        } catch (LitigeDejaTranche) {
+            return ['ok' => false, 'error' => 'deja_tranche', 'message' => Messages::dire($this->langue(), 'l3.deja_tranche')];
+        }
 
+        if ($decision === 'accepte') {
             return ['ok' => true, 'statut' => Litige::ACCEPTE,
                     'message' => Messages::dire($this->langue(), 'l3.accepte',
                         [Duree::enClair($this->ttlAccepte, $this->langue())])];
         }
-
-        $this->stockage->trancherLitige($litige->id, Litige::REFUSE, $par, $maintenant);
 
         $refus = $this->stockage->compterRefusRecents($litige->compteId, $maintenant - $this->gelFenetre);
 

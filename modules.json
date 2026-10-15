@@ -17,7 +17,7 @@
       "id": "selfrecover",
       "nom": "SelfRecover",
       "dossier": "bi-self/selfrecover",
-      "version": "0.12.3",
+      "version": "0.12.4",
       "resume": {
         "fr": "récupération de compte sans email ni SMS",
         "en": "account recovery without email or SMS"
@@ -137,7 +137,7 @@
       "id": "selfdataguard",
       "nom": "SelfDataGuard",
       "dossier": "self-security/selfdataguard",
-      "version": "0.6.1",
+      "version": "0.6.2",
       "resume": {
         "fr": "chiffrement des données au repos côté application",
         "en": "application-layer encryption of data at rest"

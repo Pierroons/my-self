@@ -3,7 +3,7 @@
 **Protocole de récupération de compte sans email**
 *Ton mot. Tes sites. Sans email.*
 
-*Édition du 14 octobre 2026 — v1.5 — décrit SelfRecover 0.12.3*
+*Édition du 15 octobre 2026 — v1.5 — décrit SelfRecover 0.12.4*
 
 ---
 
@@ -466,7 +466,7 @@ SelfRecover ne peut pas protéger les comptes si le serveur qui l'héberge est m
 - [ ] Appeler `purger()` depuis une tâche planifiée : la bibliothèque n'a pas d'horloge
 - [ ] Poser une preuve de travail devant la route d'ouverture du niveau 3
 - [ ] Avec l'adaptateur fourni, construire `StockagePdo` avec l'hôte de dérivation
-- [ ] Avec un autre adaptateur que celui fourni : `cloreLitige()` ne clôt qu'un dossier encore actif et lève `LitigeDejaClos` sinon, et `purgerLitigesExpires()` efface dès leur échéance les dossiers clos et ceux qu'on a ouverts sans rien y écrire, les autres dossiers non tranchés `RETENTION_DOSSIER_DEPOSE` après
+- [ ] Avec un autre adaptateur que celui fourni : `trancherLitige()` et `enregistrerFaisceau()` n'écrivent que sur un dossier en cours et lèvent `LitigeDejaTranche` sinon, `cloreLitige()` ne clôt qu'un dossier encore actif et lève `LitigeDejaClos` sinon, et `purgerLitigesExpires()` efface dès leur échéance les dossiers clos et ceux qu'on a ouverts sans rien y écrire, les autres dossiers non tranchés `RETENTION_DOSSIER_DEPOSE` après
 - [ ] Après un niveau 1 ou 2, enchaîner sur le compte avec le nom rendu (`compte`), jamais avec la saisie
 - [ ] Passphrase apportée : passer la saisie à `Recovery::validerPassphraseApportee()`, hacher et afficher la forme rendue, poser `autocapitalize="none"` sur les champs passphrase
 

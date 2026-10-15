@@ -3,7 +3,7 @@
 **Zero-Email Account Recovery Protocol**
 *Your word. Your sites. No email.*
 
-*Edition of 14 October 2026 — v1.5 — describes SelfRecover 0.12.3*
+*Edition of 15 October 2026 — v1.5 — describes SelfRecover 0.12.4*
 
 ---
 
@@ -464,7 +464,7 @@ SelfRecover cannot protect accounts if the server hosting it is insecure. The fo
 - [ ] Call `purger()` from a scheduled task: the library has no clock
 - [ ] Put a proof of work in front of the level-3 opening route
 - [ ] With the shipped adapter, build `StockagePdo` with the derivation host
-- [ ] With an adapter other than the shipped one: `cloreLitige()` closes only a dispute that is still active and throws `LitigeDejaClos` otherwise, and `purgerLitigesExpires()` erases closed disputes and those opened with nothing written in them as soon as they expire, other undecided disputes `RETENTION_DOSSIER_DEPOSE` later
+- [ ] With an adapter other than the shipped one: `trancherLitige()` and `enregistrerFaisceau()` write only to a dispute still under review and throw `LitigeDejaTranche` otherwise, `cloreLitige()` closes only a dispute that is still active and throws `LitigeDejaClos` otherwise, and `purgerLitigesExpires()` erases closed disputes and those opened with nothing written in them as soon as they expire, other undecided disputes `RETENTION_DOSSIER_DEPOSE` later
 - [ ] After level 1 or 2, continue on the account with the returned name (`compte`), never with the input
 - [ ] A passphrase the user brings: pass the input to `Recovery::validerPassphraseApportee()`, hash and show the returned form, set `autocapitalize="none"` on passphrase fields
 
