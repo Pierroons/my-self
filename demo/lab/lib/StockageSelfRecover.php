@@ -675,7 +675,7 @@ final class StockageSelfRecover implements StorageInterface
                 'sanction_jusqu_au' => gmdate('Y-m-d', (int) $l['banned_until']),
                 'sanction_origine'  => match ($l['ban_origine']) {
                     'admin' => 'arbitre',
-                    'auto'  => in_array($l['ban_motif'], ['reputation_zero', 'meute_detectee'], true)
+                    'auto'  => in_array($l['ban_motif'], ['reputation_zero'], true)
                         ? $l['ban_motif'] : null,
                     default => null,
                 },

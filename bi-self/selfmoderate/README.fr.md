@@ -43,7 +43,7 @@ SelfModerate est un moteur de modération qui permet aux communautés en ligne d
 - Score plafonné à **30** (`Config`) — pas d'accumulation de crédit social
 - Monter est lent, descendre est rapide : un downvote retire un point immédiatement, la remontée passive en rend un par intervalle de calme
 - **Convalescence** : sous 5, l'état est posé et le score remonte tout seul **jusqu'à 20**, son point de départ — jamais au-delà. Le droit de vote revient à 5, l'état se lève à 20
-- L'état est **visible**, sur son propre profil et sur celui que voient les autres : il annonce qu'il y a eu bêtise, et que le score varie par la patience, pas par le mérite
+- L'état est **visible** sur son propre profil et pour l'arbitre : il annonce qu'il y a eu bêtise, et que le score remonte par la patience, pas par le mérite. Les autres membres ne voient qu'un palier de réputation, jamais l'état de sanction ; sous le seuil du vote, ce palier ne porte plus de chiffre
 - C'est un **état**, pas un seuil. Conditionner la remontée à « score < 5 » l'arrête pile au seuil qui rend le droit de vote, et laisse le compte à vie sur le fil du rasoir
 
 ### Boucle auto-régulatrice
@@ -130,7 +130,7 @@ Les dates de ses messages suivent le fuseau de l'hôte (`date_default_timezone_s
 
 ## Statut
 
-🟢 **v0.4.0** — le moteur est ici, dans `src/`, et le lab l'importe comme il
+🟢 **v0.5.0** — le moteur est ici, dans `src/`, et le lab l'importe comme il
 importe SelfRecover et SelfDataGuard.
 
 La 0.4.0 fait revenir le ban automatique, tenu : gradué, fini, écrit au journal de

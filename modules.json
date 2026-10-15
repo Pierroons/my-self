@@ -234,6 +234,14 @@
         [
           "web/my-self.fr/index.html",
           "<span class=\"name\">SelfModerate<"
+        ],
+        [
+          "bi-self/selfmoderate/README.md",
+          "🟢 **v"
+        ],
+        [
+          "bi-self/selfmoderate/README.fr.md",
+          "🟢 **v"
         ]
       ]
     },
