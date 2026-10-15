@@ -294,10 +294,25 @@ interface StorageInterface
     /** Une tentative d'ouverture pendant qu'un dossier court : un fait pour l'arbitre. */
     public function compterDemandeurConcurrent(int $litigeId): void;
 
-    /** Range le faisceau et fait passer le dossier en attente de lecture. */
+    /**
+     * Range le faisceau et fait passer le dossier en attente de lecture.
+     *
+     * ⚠️ **Même garde que `trancherLitige()`.** Un dépôt lu avant une décision et
+     * écrit après la défait : l'accord est perdu, le refus ne compte plus, un
+     * dossier clos reprend la place. N'écrit que sur un dossier en cours (`open`,
+     * `awaiting_admin`), et **lève** `LitigeDejaTranche` sinon.
+     */
     public function enregistrerFaisceau(int $litigeId, string $faisceauJson, int $quand): void;
 
-    /** Écrit la décision, son auteur et sa date. Ne touche pas au compte. */
+    /**
+     * Écrit la décision, son auteur et sa date. Ne touche pas au compte.
+     *
+     * ⚠️ **Un dossier ne se tranche qu'une fois.** Deux arbitres lisent le même
+     * dossier en cours ; sans condition sur l'état, le second écrase la décision du
+     * premier, ou rouvre un dossier que la reprise a déjà clos. Ne tranche qu'un
+     * dossier en cours (`open`, `awaiting_admin`), et **lève** `LitigeDejaTranche`
+     * si l'écriture ne porte pas sur exactement une ligne.
+     */
     public function trancherLitige(int $litigeId, string $statut, string $par, int $quand): void;
 
     /**
@@ -467,6 +482,11 @@ interface StorageInterface
      * bibliothèque ne sait pas ce qu'ils veulent dire. L'hôte de dérivation en
      * est l'exemple : il dit sous quelle adresse le mot mémorisé du compte a été
      * dérivé, ce qui distingue les générations après un changement d'adresse.
+     *
+     * ⚠️ **Un fait local peut avoir été provoqué par un tiers.** Une sanction de
+     * modération, par exemple, est vraie quand elle est transmise, et un tiers a
+     * pu la faire naître. L'arbitre la pèse ; elle ne prouve rien contre le
+     * demandeur, et elle n'interdit jamais l'ouverture d'un dossier.
      *
      * ⚠️ **Jamais un secret, jamais une empreinte.** Ce qui entre ici est montré
      * à un humain qui arbitre. Le niveau 3 rassemble des faits parce qu'il n'a

@@ -8,6 +8,7 @@ use Pierroons\SelfRecover\Device\Appareil;
 use Pierroons\SelfRecover\Recovery\Litige;
 use Pierroons\SelfRecover\Storage\CodeDejaConsomme;
 use Pierroons\SelfRecover\Storage\LitigeDejaClos;
+use Pierroons\SelfRecover\Storage\LitigeDejaTranche;
 use Pierroons\SelfRecover\Storage\SelParCodeInterface;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 
@@ -421,6 +422,7 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
 
     public function enregistrerFaisceau(int $litigeId, string $faisceauJson, int $quand): void
     {
+        $this->exigerEnCours($litigeId);
         $this->majLitige($litigeId, static function (array $l) use ($faisceauJson, $quand): array {
             $l['faisceau']  = $faisceauJson;
             $l['statut']    = Litige::A_LIRE;
@@ -430,8 +432,19 @@ class StockageMemoire implements StorageInterface, SelParCodeInterface
         });
     }
 
+    /** La garde des deux écritures d'instruction, comme dans l'implémentation de référence. */
+    private function exigerEnCours(int $litigeId): void
+    {
+        $enCours = array_filter($this->litiges, static fn (array $l): bool => $l['id'] === $litigeId
+            && in_array($l['statut'], [Litige::OUVERT, Litige::A_LIRE], true));
+        if ($enCours === []) {
+            throw new LitigeDejaTranche('aucun dossier en cours à ce numéro');
+        }
+    }
+
     public function trancherLitige(int $litigeId, string $statut, string $par, int $quand): void
     {
+        $this->exigerEnCours($litigeId);
         $this->majLitige($litigeId, static function (array $l) use ($statut, $par, $quand): array {
             $l['statut']      = $statut;
             $l['tranche_par'] = $par;

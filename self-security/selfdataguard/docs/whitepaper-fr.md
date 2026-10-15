@@ -3,7 +3,7 @@
 **Protection des données personnelles au repos côté application**
 *Dump ma base — et tu obtiens du bruit chiffré.*
 
-*Édition du 14 octobre 2026 — décrit SelfDataGuard v0.6.1*
+*Édition du 15 octobre 2026 — décrit SelfDataGuard v0.6.2*
 
 ---
 
@@ -13,7 +13,7 @@ Le schéma est toujours le même : une faille d'autorisation donne accès aux co
 
 Il y a là une question structurelle, complémentaire à celle qu'adresse SelfRecover : **comment rendre une fuite de base de données techniquement inutile pour l'attaquant**, indépendamment du flux d'authentification ?
 
-SelfRecover protège l'**accès** au compte. SelfDataGuard protège les **données** stockées. Ensemble, les deux modules ferment la boucle : un attaquant qui contourne l'authentification (SelfRecover) trouve une base chiffrée (SelfDataGuard) ; un attaquant qui dump la base (SelfDataGuard) trouve des hashes Argon2id non réversibles (SelfRecover).
+SelfRecover protège l'**accès** au compte. SelfDataGuard protège les **données** stockées. Dans une base volée, les secrets d'authentification sont des empreintes Argon2id (SelfRecover) et les données personnelles des valeurs chiffrées (SelfDataGuard). Ni l'un ni l'autre ne couvre les données que la récupération écrit elle-même — l'adresse des tentatives quand le déploiement en voit une, les réponses et le fil d'un dossier de niveau 3 —, ni ce que le dump dit des valeurs chiffrées (§6.1).
 
 Ce whitepaper décrit le protocole SelfDataGuard. Il ne vise aucun acteur en particulier — c'est une proposition open-source, complémentaire à SelfRecover, que les opérateurs publics et privés peuvent auditer, intégrer ou contester librement.
 
@@ -53,9 +53,9 @@ SelfDataGuard porte cette architecture du **vault personnel** vers la **base uti
 
 Conséquences directes :
 
-- Un dump de base seul → **soupe chiffrée**, aucune donnée personnelle exploitable
+- Un dump de base seul → **valeurs chiffrées** ; restent lisibles le nom des champs de chaque compte, leurs dates de modification, la longueur des valeurs et l'égalité des valeurs indexées (§6.1)
 - Un dump pendant qu'un utilisateur est connecté → exposition limitée à **cet utilisateur uniquement**, pas de fan-out cross-user
-- Une compromission de l'admin → expose les **champs opérationnels** (en mode Hybrid) ou rien du tout (en mode Full)
+- Une compromission de l'admin → expose les **champs opérationnels** (en mode Hybrid) ou rien du tout (en mode Full) ; en Lite, le seul mode en service, la clé admin du séquestre et sa passphrase ouvrent le compartiment de séquestre de chaque compte qui en a un, jamais un coffre privé
 
 ### 2.2 Architecture détaillée
 
@@ -168,7 +168,7 @@ Pour déchiffrer, il a trois voies :
 
 3. **Bruteforcer la passphrase** → même coût Argon2id par tentative. Quand SelfRecover la tire au sort, l'entropie est connue : six mots d'une liste de 7 776, soit environ 77,5 bits — la porte la plus solide par le calcul, dont la faiblesse est ailleurs : elle est écrite sur papier (§6.1). Quand l'utilisateur l'apporte, tirée aux dés, elle ne vaut que le hasard de ces dés, que rien ne vérifie : six mots choisis de tête en feraient la porte la moins chère.
 
-Une fuite ne donne donc **rien d'exploitable directement**. Le coût de bruteforce est par utilisateur (impossible de bruteforcer la base entière en parallèle puisque chaque user a son propre `user_salt`).
+Une fuite ne livre donc **aucune valeur en clair** ; ce qu'elle dit quand même — noms des champs, dates de modification, longueurs, égalité des valeurs indexées — est listé au §6.1. Le coût de bruteforce est par utilisateur (impossible de bruteforcer la base entière en parallèle puisque chaque user a son propre `user_salt`).
 
 ---
 
@@ -315,13 +315,13 @@ La majorité des sites e-commerce devraient choisir **Hybrid**. Les services à 
 | Adversaire | Capacité | Résultat avec SelfDataGuard |
 |------------|----------|------------------------------|
 | Attaquant remote sans accès serveur | Voir le trafic, soumettre requêtes API | Aucun accès aux données (TLS + auth) |
-| Attaquant ayant exfiltré la base (dump SQL, backup volé) | Lire la totalité des tables en clair sur disque | Soupe chiffrée, doit bruteforcer chaque utilisateur individuellement |
-| Insider DBA | Accès lecture à la base, pas au serveur applicatif | Idem, soupe chiffrée |
-| Attaquant avec RCE sur le serveur | Lecture de la mémoire et du disque applicatif | Mode Lite : sessions actives exposées. Mode Hybrid : champs opérationnels exposés. Mode Full : rien |
+| Attaquant ayant exfiltré la base (dump SQL, backup volé) | Lire la totalité des tables en clair sur disque | Valeurs chiffrées, à bruteforcer utilisateur par utilisateur. Lisibles sans clé : noms des champs, dates de modification, longueur des valeurs (aucun remplissage), comptes qui partagent une valeur indexée |
+| Insider DBA | Accès lecture à la base, pas au serveur applicatif | Idem |
+| Attaquant avec RCE sur le serveur | Lecture de la mémoire et du disque applicatif | Mode Lite : les coffres des sessions ouvertes pendant la compromission, dont les clés restent valables ensuite (elles ne tournent pas) ; avec la clé du blind index, les valeurs indexées qui s'énumèrent, pour tous les comptes. Mode Hybrid : champs opérationnels exposés. Mode Full : rien |
 | Compromission d'un compte utilisateur (phishing endpoint) | Capture du password de cet utilisateur | Données de ce seul utilisateur exposées. Pas de fan-out |
 | Vol du papier de passphrase | La passphrase de niveau 1 d'un utilisateur | Le compte et les données de cet utilisateur, hors ligne aussi avec un dump, jusqu'à la première utilisation légitime de la passphrase, qui la remplace des deux côtés |
 | Fuite d'un ancien secret avant un niveau 3 | Une serrure de l'archive | Rien par le service : l'archive ne s'ouvre que depuis une session sur le coffre actuel. Avec un dump, l'archive s'ouvre hors ligne par cette serrure |
-| Coercition d'un admin | Force l'admin à fournir ses clés | Mode Lite : aucune clé permanente côté admin, donc rien. Mode Hybrid : champs opérationnels seulement. Mode Full : rien (l'admin n'a pas de clé) |
+| Coercition d'un admin | Force l'admin à fournir ses clés | Mode Lite : aucune clé admin sur les coffres privés. Le séquestre a une clé admin permanente : qui contraint le détenteur de sa passphrase obtient le compartiment de séquestre de chaque compte qui en a un. Mode Hybrid : champs opérationnels seulement. Mode Full : rien (l'admin n'a pas de clé) |
 | Écriture en base | Modifier, recopier ou remettre des lignes | Le contenu du séquestre n'est pas authentifié contre lui : avec la clé publique admin, stockée en clair, il scelle un compartiment neuf pour un compte et le remplit, et la cérémonie montre ce qu'il a écrit. Le scellé administrateur nommant son compte (0.6.0) n'arrête que la recopie à l'identique d'un compte vers un autre. Une ligne de coffre remise depuis une révision antérieure rouvre avec les secrets qu'elle portait, passphrase consommée comprise : limite, §8.1 |
 
 ### 6.2 Adversaires hors-périmètre
@@ -378,6 +378,7 @@ Le non-respect d'une de ces règles dégrade significativement les garanties. La
 - **v0.5.0** (01/10/2026) : troisième serrure (passphrase SelfRecover), `recover()` pour chaque chemin de récupération, archive au niveau 3, migration de schéma en place
 - **v0.6.0** (03/10/2026) : profil Argon2id enregistré avec chaque coffre et la clé admin scellée, scellé administrateur lié à son compte, journal de séquestre ancrable, nom de champ `escrow` réservé, vecteurs Argon2id figés
 - **v0.6.1** (14/10/2026) : les clés déverrouillées et les secrets du serveur masqués dans `var_dump()` et `print_r()`, des objets déverrouillés qui refusent d'être clonés, des paramètres secrets tenus hors des traces d'exception
+- **v0.6.2** (15/10/2026) : une entrée du journal de séquestre forcée sur le disque (`fsync()`), et le total exact de chaque suite exigé en CI
 - **v0.7.0** (à venir) : extension blind index avancé pour searchable encryption, support multi-locataire (multi-tenant)
 - **v1.0.0** (2027) : audit cryptographique communautaire formel, soumission ANSSI Visa de sécurité (industries@ssi.gouv.fr), publication d'un test vector pack
 
@@ -395,4 +396,4 @@ Les retours techniques, audits communautaires et critiques cryptographiques sont
 
 ---
 
-*Édition du 14 octobre 2026, alignée sur SelfDataGuard v0.6.1 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.6.1 (386 contrôles, 11 suites, sous PHP 8.1, 8.2 et 8.4). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*
+*Édition du 15 octobre 2026, alignée sur SelfDataGuard v0.6.2 : la spécification décrite ici est implémentée et testée de la v0.1.0 à la v0.6.2 (388 contrôles sur 11 suites sous PHP 8.2 et 8.4, 384 sous PHP 8.1, où quatre contrôles de trace deviennent des limites déclarées). Première édition : mai 2026. Les révisions successives se lisent dans l'historique git de ce fichier.*

@@ -5,7 +5,7 @@
 **Zero-email account recovery protocol** — split knowledge, HMAC per service, no SMTP, no third party.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.12.3](https://img.shields.io/badge/status-v0.12.3-green.svg)](#status)
+[![Status: v0.12.4](https://img.shields.io/badge/status-v0.12.4-green.svg)](#status)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#trying-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#trying-selfrecover)
@@ -23,7 +23,7 @@ For e-commerce or SaaS deployments that also need to **protect stored personal d
 
 ⚠️ **The pairing is a design property, not a code call**: neither library imports the other, and `loginWithMemorized()` is called only by the `demo/selfdataguard/` demo. It is the integrator who hands the same secrets to both. And it is the integrator who re-seals, after every accepted recovery: `recover()` at levels 1 and 2, `reEnroll()` at level 3, which archives the old vault instead of destroying it. A SelfDataGuard vault registered with the password alone becomes unreadable as soon as level 1 or 2 replaces that password. See [« Coupling with SelfRecover »](../../self-security/selfdataguard/README.md#coupling-with-selfrecover).
 
-SelfRecover protects **authentication**. SelfDataGuard protects **data at rest**. Together they close the loop on the case that does the most damage: a dump where authentication secrets **and** personal data leave in plain text, from the same table.
+SelfRecover protects **authentication**. SelfDataGuard protects **data at rest**. Without them, a dump hands over authentication secrets **and** personal data in plain text, from the same table; with them, the secrets are Argon2id hashes and the personal data encrypted values. ⚠️ Neither covers the data SelfRecover writes itself during a recovery — the address of each attempt when the deployment sees one, the answers and the thread of a level-3 case: no user key is unlocked when they are written, so they stay in plain text in the database. Nor what the dump tells about the encrypted values (see SelfDataGuard).
 
 ---
 
@@ -443,7 +443,7 @@ SelfRecover is honest about what it protects and what it does not. Every cryptog
 | Compromised SelfRecover server | ⚠️ The shipped deriver only sends the recovery word's fingerprint (HMAC in the browser); but the server serves that JavaScript, and a compromised server can serve a different page. The passphrase, generated or brought, and the password: it sees them again when they are used |
 | Passive phishing / cloned page | ✅ in `'hostname'` mode — a clone derives from its own hostname; ❌ nothing in `'label'` mode (active phishing controlling its own page is out of scope either way) |
 | Network sniffer / MITM | ✅ TLS in transit; of the memorized word, only the HMAC fingerprint leaves — the passphrase and the password travel in the clear under TLS |
-| Database leak | ✅ Argon2id hashes (memory-hard, GPU-resistant) |
+| Database leak | ✅ Secrets as Argon2id hashes (memory-hard, GPU-resistant). ⚠️ Level-3 cases and the address of recent attempts stay in plain text |
 | Online brute-force | ⚠️ Per-address brake under the `clearweb` profile, per-account brakes on L2 and on enrolment, then the L2 suspension past a threshold of failures. ⚠️ Level 1 no longer brakes per account — anyone could fill that counter under someone else's name and close their only self-service path; behind a hidden service nothing bounds its attempts, and smoothing the route's rate belongs to the deployment |
 
 ### Adversaries OUT OF SCOPE — explicitly assumed
@@ -470,7 +470,7 @@ If verification of a freshly-rolled passphrase is desired, use the **standalone 
 
 ## Roadmap
 
-### Shipped — v0.1.0 to v0.12.3 (April → October 2026)
+### Shipped — v0.1.0 to v0.12.4 (April → October 2026)
 
 The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library outran it, pulled by its first real deployment: that deployment's needs moved the protocol faster than planned. The work below therefore carries no version number — each item gets one when it ships.
 
@@ -488,7 +488,7 @@ The original schedule put V0.2 in summer and V0.3 in autumn 2026. The library ou
 - [x] **Argon2id written in the library** — `client/sr-kdf.js`, versioned blob, checked against seven libsodium vectors (v0.6.0)
 - [x] **Schema and contract implementation** — `schema.sql` + `StockagePdo`, shipped, never imposed (v0.6.0)
 - [x] **Deployment profile** — every path to an account brakes per account, and the deployment declares its profile (v0.7.0)
-- [x] **Taking an account back closes it** — open sessions drop, and a granted case has an end (v0.8.0)
+- [x] **Taking an account back closes it** — open sessions drop, and a granted case has an end (v0.8.0). With SelfDataGuard, the data key does not change: a key captured before the account was taken back still opens the data
 - [x] **Salt route guard in the library** — `Recovery::selDeDerivation` (v0.9.0)
 - [x] **A passphrase the user brings, rolled with dice** — `Recovery::validerPassphraseApportee`, at registration and at every level (v0.10.0)
 - [x] **The level-1 brake no longer closes the holder's own door** — counters under an HMAC label, silent classification of attempts whose every word exists (v0.11.0)

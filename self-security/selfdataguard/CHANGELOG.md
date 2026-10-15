@@ -5,6 +5,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [v0.6.2] — 2026-10-15
+
+A patch release. No signature changes.
+
+### Fixed
+- `AuditLog::append()` calls `fsync()` after `fflush()`. `fflush()` hands the line to the kernel, not to
+  the disk: a power cut could lose the entry while the act it records stayed done. An append that
+  cannot be forced to disk now raises, like a short write.
+
+### Tests
+- 388 checks across the eleven suites on PHP 8.2 and 8.4 (was 386), 384 on PHP 8.1. The new check was
+  seen failing on 0.6.1 first. CI now requires each suite's exact total on PHP 8.4, not only its exit
+  code: a suite that skips a check, a suite with no declared total and a total with no suite all fail
+  the build. On PHP 8.1 and 8.2 it still relies on the exit code.
+
 ## [v0.6.1] — 2026-10-14
 
 A patch release. No signature changes.

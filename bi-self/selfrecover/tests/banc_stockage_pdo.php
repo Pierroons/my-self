@@ -32,6 +32,7 @@ use Pierroons\SelfRecover\Recovery\Escalade;
 use Pierroons\SelfRecover\ProfilDeploiement;
 use Pierroons\SelfRecover\Recovery\Recovery;
 use Pierroons\SelfRecover\Storage\LitigeDejaClos;
+use Pierroons\SelfRecover\Storage\LitigeDejaTranche;
 use Pierroons\SelfRecover\Storage\StorageInterface;
 use Pierroons\SelfRecover\Storage\StockagePdo;
 use Pierroons\SelfRecover\Langue;
@@ -715,12 +716,14 @@ verifier('un dossier ACCEPTÉ reste actif bien après son expiration',
     $stG->litigeActifDuCompte($idG, $T0 + 999_999)?->numero === 'LIT-UNIQUE');
 // ⚠️ L'autre borne de la même requête : un dossier OUVERT, lui, expire. Sans ce
 // contrôle, retirer la clause de TTL laissait le banc vert et rouvrait la porte
-// que l'expiration ferme.
-$stG->ouvrirLitige($idG, 'LIT-EXPIRE', hash('sha256', 'x'), $T0, $T0 + 10);
-$stG->trancherLitige($stG->trouverLitigeParNumero('LIT-UNIQUE')->id, 'closed', 'a', $T0 + 21);
+// que l'expiration ferme. L'accord se clôt d'abord : tant qu'il est actif, la
+// place est prise et le second dossier ne s'ouvre pas.
+$stG->cloreLitige($litG->id, $T0 + 21);
+verifier('contre-témoin : le dossier qui doit expirer est bien ouvert',
+    $stG->ouvrirLitige($idG, 'LIT-EXPIRE', hash('sha256', 'x'), $T0 + 22, $T0 + 30));
 verifier('un dossier OUVERT cesse d\'être actif passé son expiration',
     $stG->litigeActifDuCompte($idG, $T0 + 999_999) === null);
-$stG->trancherLitige($litG->id, 'refused', 'arbitre-nommé', $T0 + 30);
+$stG->trancherLitige($stG->trouverLitigeParNumero('LIT-EXPIRE')->id, 'refused', 'arbitre-nommé', $T0 + 30);
 verifier('les refus récents se comptent — c\'est eux qui arment le gel',
     $stG->compterRefusRecents($idG, $T0) === 1);
 // ⚠️ Et la FENÊTRE compte autant que le total : sans elle, un refus vieux de
@@ -849,6 +852,62 @@ $surRefus = $clore($stK, $refuse->id, $T0 + 3);
 verifier('un dossier refusé ne se clôt pas non plus — il n\'est plus actif', $surRefus === 'LitigeDejaClos', $surRefus);
 verifier('et il reste refusé, compté pour le gel',
     $pdoK->query("SELECT status FROM disputes WHERE id = {$refuse->id}")->fetchColumn() === 'refused');
+
+// 23. Trancher CONSOMME l'instruction : un dossier ne se tranche qu'une fois.
+// Deux arbitres ont lu le même dossier en cours ; la décision du second ne doit
+// ni écraser celle du premier, ni rouvrir un dossier clos par la reprise.
+$pdoT = baseNeuve();
+$idT  = creerCompte($pdoT, 'tom', $MOT, $PHRASE, $T0, $T0);
+$stT  = new StockagePdo($pdoT, HOTE);
+$stT->ouvrirLitige($idT, 'LIT-TRANCHE', hash('sha256', 'sesame'), $T0, $T0 + 86400);
+$lt = $stT->trouverLitigeParNumero('LIT-TRANCHE');
+$stT->enregistrerFaisceau($lt->id, '{}', $T0 + 1);
+$trancher = static function (StockagePdo $st, int $id, string $statut, string $par, int $quand): string {
+    try {
+        $st->trancherLitige($id, $statut, $par, $quand);
+
+        return 'rien';
+    } catch (LitigeDejaTranche) {
+        return 'LitigeDejaTranche';
+    } catch (\Throwable $e) {
+        return get_class($e);
+    }
+};
+verifier('contre-témoin : un dossier en attente de lecture se tranche',
+    $trancher($stT, $lt->id, 'accepted', 'arbitre-1', $T0 + 2) === 'rien');
+$secondT = $trancher($stT, $lt->id, 'refused', 'arbitre-2', $T0 + 3);
+verifier('⭐ trancher un dossier déjà tranché lève LitigeDejaTranche', $secondT === 'LitigeDejaTranche', $secondT);
+$apresT = $pdoT->query("SELECT status, decided_by, decided_at FROM disputes WHERE id = {$lt->id}")->fetch(PDO::FETCH_ASSOC);
+verifier('et la première décision reste, avec son auteur et sa date',
+    $apresT === ['status' => 'accepted', 'decided_by' => 'arbitre-1', 'decided_at' => $T0 + 2], json_encode($apresT));
+verifier('contre-témoin : la reprise clôt l\'accord', abrite(static fn () => $stT->cloreLitige($lt->id, $T0 + 4))['ok']);
+$surClos = $trancher($stT, $lt->id, 'refused', 'arbitre-2', $T0 + 5);
+verifier('⭐ un dossier clos par la reprise ne se tranche plus', $surClos === 'LitigeDejaTranche', $surClos);
+verifier('et aucun refus n\'est compté contre le titulaire', $stT->compterRefusRecents($idT, $T0) === 0);
+// Le dépôt des réponses écrit le même statut : un dépôt parti avant la décision
+// ne doit pas la défaire en repassant le dossier en attente de lecture.
+$stT->ouvrirLitige($idT, 'LIT-DEPOT', hash('sha256', 'sesame-depot'), $T0 + 10, $T0 + 86400);
+$ld = $stT->trouverLitigeParNumero('LIT-DEPOT');
+$deposer = static function (StockagePdo $st, int $id, int $quand): string {
+    try {
+        $st->enregistrerFaisceau($id, '{"apres":1}', $quand);
+
+        return 'rien';
+    } catch (LitigeDejaTranche) {
+        return 'LitigeDejaTranche';
+    } catch (\Throwable $e) {
+        return get_class($e);
+    }
+};
+verifier('contre-témoin : un dossier ouvert reçoit un dépôt, puis un second', $deposer($stT, $ld->id, $T0 + 11) === 'rien'
+    && $deposer($stT, $ld->id, $T0 + 12) === 'rien');
+$stT->trancherLitige($ld->id, 'refused', 'arbitre-1', $T0 + 13);
+$surDecide = $deposer($stT, $ld->id, $T0 + 14);
+verifier('⭐ un dépôt sur un dossier tranché lève LitigeDejaTranche', $surDecide === 'LitigeDejaTranche', $surDecide);
+$apresD = $pdoT->query("SELECT status, signals_json FROM disputes WHERE id = {$ld->id}")->fetch(PDO::FETCH_ASSOC);
+verifier('et le refus reste, compté pour le gel, avec le faisceau d\'avant',
+    $apresD === ['status' => 'refused', 'signals_json' => '{"apres":1}'] && $stT->compterRefusRecents($idT, $T0) === 1,
+    json_encode($apresD));
 
 section('atomicité');
 

@@ -1123,6 +1123,82 @@ verifier('ni le mot mémorisé, ni le sel', Hashing::verify($MOT, $stR->comptes[
 verifier('aucun second lot de codes', $stR->codes === $codesApres1);
 verifier('son refus est celui d\'un sésame qui n\'ouvre plus', ($r2['error'] ?? '') === 'sesame_invalide');
 
+echo "\n→ Deux arbitres sur le même dossier : le second ne réécrit rien\n";
+
+// Les deux consoles ont lu le dossier EN COURS. Le double fige cette lecture :
+// le second arbitre passe `enCours()` sur un état périmé, et c'est l'écriture
+// conditionnelle du stockage qui doit trancher.
+$deuxArbitres = static function (string $premier, string $second) use ($now): array {
+    $st = new class extends StockageMemoire {
+        public ?Litige $lu = null;
+        public int $ecrituresDecision = 0;
+
+        public function trouverLitigeParNumero(string $numero): ?Litige
+        {
+            return $this->lu ?? parent::trouverLitigeParNumero($numero);
+        }
+
+        public function trancherLitige(int $litigeId, string $statut, string $par, int $quand): void
+        {
+            $this->ecrituresDecision++;
+            parent::trancherLitige($litigeId, $statut, $par, $quand);
+        }
+    };
+    [$st, $esc] = banc(ProfilDeploiement::TOR_ONION, $now, st: $st);
+    $o = $esc->ouvrir('alice', Escalade::empreinteSesame('sesame-deux-arbitres'), maintenant: $now);
+    $st->lu = $st->trouverLitigeParNumero((string) $o['numero']);
+    $r1 = $esc->trancher((string) $o['numero'], $premier, 'arbitre-1', $now + 100);
+    $r2 = $esc->trancher((string) $o['numero'], $second, 'arbitre-2', $now + 101);
+    $st->lu = null;
+    $l  = $st->trouverLitigeParNumero((string) $o['numero']);
+
+    return [$r1, $r2, $l, $l === null ? -1 : $st->compterRefusRecents($l->compteId, $now), $st->ecrituresDecision];
+};
+[$a1, $a2, $la, $refusA, $ecrituresA] = $deuxArbitres('accepte', 'refuse');
+verifier('contre-témoin : les deux décisions sont allées jusqu\'à l\'écriture du stockage', $ecrituresA === 2,
+    (string) $ecrituresA);
+verifier('contre-témoin : le premier arbitre accepte', ($a1['ok'] ?? false) === true);
+verifier('⭐ le second, qui a lu le dossier avant l\'accord, est refusé', ($a2['error'] ?? '') === 'deja_tranche',
+    (string) ($a2['error'] ?? 'accepté'));
+verifier('⭐ et l\'accord reste, signé du premier', $la?->statut === Litige::ACCEPTE && $la?->tranchePar === 'arbitre-1',
+    (string) $la?->statut . '/' . (string) $la?->tranchePar);
+verifier('aucun refus n\'est compté contre le titulaire', $refusA === 0, (string) $refusA);
+[, $b2, $lb] = $deuxArbitres('refuse', 'accepte');
+verifier('⭐ un refus ne se change pas en accord par une lecture périmée',
+    ($b2['error'] ?? '') === 'deja_tranche' && $lb?->statut === Litige::REFUSE,
+    (string) ($b2['error'] ?? 'accepté') . '/' . (string) $lb?->statut);
+
+// Le demandeur dépose pendant que l'arbitre tranche : son dépôt a lu le dossier
+// en cours, et ne doit pas le repasser en attente de lecture.
+$stD = new class extends StockageMemoire {
+    public ?Litige $lu = null;
+    public int $ecrituresDecision = 0;
+
+    public function trouverLitigeParNumero(string $numero): ?Litige
+    {
+        return $this->lu ?? parent::trouverLitigeParNumero($numero);
+    }
+
+    public function trancherLitige(int $litigeId, string $statut, string $par, int $quand): void
+    {
+        $this->ecrituresDecision++;
+        parent::trancherLitige($litigeId, $statut, $par, $quand);
+    }
+};
+[$stD, $escD] = banc(ProfilDeploiement::TOR_ONION, $now, st: $stD);
+$sD = 'sesame-depot-tardif';
+$oD = $escD->ouvrir('alice', Escalade::empreinteSesame($sD), maintenant: $now);
+$stD->lu = $stD->trouverLitigeParNumero((string) $oD['numero']);
+$escD->trancher((string) $oD['numero'], 'accepte', 'arbitre', $now + 100);
+$dD = $escD->soumettre((string) $oD['numero'], $sD, ['annee_creation' => '2022'], $now + 7200);
+$stD->lu = null;
+$lD = $stD->trouverLitigeParNumero((string) $oD['numero']);
+verifier('⭐ un dépôt qui a lu le dossier avant l\'accord est refusé', ($dD['error'] ?? '') === 'deja_tranche',
+    (string) ($dD['error'] ?? 'accepté'));
+verifier('⭐ et l\'accord reste', $lD?->statut === Litige::ACCEPTE, (string) $lD?->statut);
+verifier('contre-témoin : chaque décision est bien passée par l\'écriture du stockage',
+    $stD->ecrituresDecision === 1, (string) $stD->ecrituresDecision);
+
 // ── Le sésame que la bibliothèque tire ─────────────────────────────────────
 $tirages = [];
 for ($t = 0; $t < 200; $t++) {

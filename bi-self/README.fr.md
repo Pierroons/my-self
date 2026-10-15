@@ -7,7 +7,7 @@
 > *Si une communauté peut se construire, elle peut se gouverner.*
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../LICENSE)
-[![SelfRecover: v0.12.3](https://img.shields.io/badge/SelfRecover-v0.12.3-green.svg)](./selfrecover/)
+[![SelfRecover: v0.12.4](https://img.shields.io/badge/SelfRecover-v0.12.4-green.svg)](./selfrecover/)
 [![SelfModerate: v0.5.0](https://img.shields.io/badge/SelfModerate-v0.5.0-yellow.svg)](./selfmoderate/)
 [![Part of: MySelf](https://img.shields.io/badge/part%20of-MySelf-blue.svg)](../README.fr.md)
 [![Read in English](https://img.shields.io/badge/lang-english-blue.svg)](./README.md)
@@ -51,7 +51,7 @@ Bi-Self traite les deux en même temps. Il donne aux communautés les **deux pri
 
 | Module | Rôle | Statut |
 |--------|------|--------|
-| [SelfRecover](./selfrecover/) | Identité & récupération sans email | **v0.12.3** — bibliothèque PSR-4 + dériveur navigateur, implémentation déployée et auto-auditée |
+| [SelfRecover](./selfrecover/) | Identité & récupération sans email | **v0.12.4** — bibliothèque PSR-4 + dériveur navigateur, implémentation déployée et auto-auditée |
 | [SelfModerate](./selfmoderate/) | Modération communautaire par raisonnement collectif | v0.5.0 — moteur installable, ban automatique tracé au journal, un vote qui ne coûte que sa cible, contrôles en CI ; 2 mécanismes du protocole manquent |
 
 ---

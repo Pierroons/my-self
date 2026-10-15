@@ -3,7 +3,7 @@
 **Application-layer data-at-rest protection that survives a database exfiltration**
 *Dump my database — and get encrypted noise.*
 
-*Edition of 14 October 2026 — describes SelfDataGuard v0.6.1. The French edition is authoritative where the two differ.*
+*Edition of 15 October 2026 — describes SelfDataGuard v0.6.2. The French edition is authoritative where the two differ.*
 
 ---
 
@@ -13,7 +13,7 @@ The pattern is always the same: an authorization flaw grants access to other peo
 
 There is a structural question here, complementary to the one SelfRecover addresses: **how to make a database leak technically useless to the attacker**, independently of the authentication flow?
 
-SelfRecover protects **account access**. SelfDataGuard protects **stored data**. Together, the two modules close the loop: an attacker bypassing authentication (SelfRecover) finds an encrypted database (SelfDataGuard); an attacker dumping the database (SelfDataGuard) finds non-reversible Argon2id hashes (SelfRecover).
+SelfRecover protects **account access**. SelfDataGuard protects **stored data**. In a stolen database, authentication secrets are Argon2id hashes (SelfRecover) and personal data are encrypted values (SelfDataGuard). Neither covers the data the recovery writes itself — the address of attempts when the deployment sees one, the answers and thread of a level-3 case — nor what the dump tells about the encrypted values (§6.1).
 
 This whitepaper describes the SelfDataGuard protocol. It targets no actor in particular — it is an open-source proposal complementary to SelfRecover, that public and private operators may audit, integrate, or contest freely.
 
@@ -53,9 +53,9 @@ SelfDataGuard ports this **personal vault** architecture to the **user database 
 
 Direct consequences:
 
-- A database dump alone → **encrypted soup**, no usable personal data
+- A database dump alone → **encrypted values**; still readable: each account's field names, their modification dates, the length of values and the equality of indexed values (§6.1)
 - A dump while a user is logged in → exposure limited to **that single user**, no cross-user fan-out
-- An admin compromise → exposes **operational fields** (Hybrid mode) or nothing at all (Full mode)
+- An admin compromise → exposes **operational fields** (Hybrid mode) or nothing at all (Full mode); in Lite, the only mode in service, the escrow admin key with its passphrase opens the escrow compartment of every account that has one, never a private vault
 
 ### 2.2 Detailed architecture
 
@@ -150,7 +150,7 @@ To decrypt, the attacker has three paths:
 
 3. **Bruteforce the passphrase** → the same Argon2id cost per attempt. When SelfRecover draws it at random, the entropy is known: six words from a 7,776-word list, about 77.5 bits — the strongest door by computation, whose weakness lies elsewhere: it is written on paper (§6.1). When the user brings it, rolled with dice, it is only as random as those dice, which nothing checks: six words picked by hand would make it the cheapest door.
 
-A leak therefore yields **nothing immediately exploitable**. Bruteforce cost is per-user (impossible to bruteforce the whole database in parallel because each user has their own `user_salt`).
+A leak therefore yields **no value in plain text**; what it does tell — field names, modification dates, lengths, equality of indexed values — is listed in §6.1. Bruteforce cost is per-user (impossible to bruteforce the whole database in parallel because each user has their own `user_salt`).
 
 ---
 
@@ -297,13 +297,13 @@ Most e-commerce sites should pick **Hybrid**. High-assurance services (health, b
 | Adversary | Capability | Result with SelfDataGuard |
 |-----------|------------|----------------------------|
 | Remote attacker without server access | Sees traffic, submits API requests | No access to data (TLS + auth) |
-| Attacker who exfiltrated the database (SQL dump, stolen backup) | Reads all tables in plain on disk | Encrypted soup, must bruteforce each user individually |
-| Insider DBA | Read access to database, not application server | Idem, encrypted soup |
-| Attacker with RCE on server | Memory and disk read of application process | Lite mode: active sessions exposed. Hybrid mode: operational fields exposed. Full mode: nothing |
+| Attacker who exfiltrated the database (SQL dump, stolen backup) | Reads all tables in plain on disk | Encrypted values, to bruteforce user by user. Readable without a key: field names, modification dates, length of values (no padding), accounts sharing an indexed value |
+| Insider DBA | Read access to database, not application server | Idem |
+| Attacker with RCE on server | Memory and disk read of application process | Lite mode: the vaults of sessions open during the compromise, whose keys stay valid afterwards (they do not rotate); with the blind-index key, the indexed values that can be enumerated, for every account. Hybrid mode: operational fields exposed. Full mode: nothing |
 | Compromise of a user account (endpoint phishing) | Captures that user's password | Data of that single user exposed. No fan-out |
 | Stolen passphrase paper | A user's level-1 passphrase | That user's account and data, offline too given a dump, until the passphrase's first legitimate use, which replaces it on both sides |
 | Leak of an old secret before a level 3 | One lock of the archive | Nothing through the service: the archive opens only from a session on the current vault. Given a dump, the archive opens offline with that lock |
-| Coercion of an admin | Forces admin to provide their keys | Lite mode: no permanent admin key, so nothing. Hybrid mode: operational fields only. Full mode: nothing (admin has no key) |
+| Coercion of an admin | Forces admin to provide their keys | Lite mode: no admin key on private vaults. The escrow has a permanent admin key: whoever coerces the holder of its passphrase obtains the escrow compartment of every account that has one. Hybrid mode: operational fields only. Full mode: nothing (admin has no key) |
 | Database write | Change, copy or put back rows | The escrow content is not authenticated against it: with the admin public key, stored in the clear, it seals a new compartment for an account and fills it, and the ceremony shows what it wrote. The admin seal naming its account (0.6.0) stops only a verbatim copy from one account to another. A vault row put back from an earlier revision opens with the secrets it carried, a consumed passphrase included: a limit, §8.1 |
 
 ### 6.2 Out-of-scope adversaries
@@ -356,6 +356,7 @@ Failure to respect any of these rules significantly degrades the guarantees. The
 - **v0.5.0** (2026-10-01): third lock (SelfRecover passphrase), `recover()` for every recovery path, archiving at level 3, in-place schema migration
 - **v0.6.0** (2026-10-03): Argon2id profile stored with each vault and the sealed admin key, admin seal bound to its account, anchorable escrow log, reserved field name `escrow`, frozen Argon2id vectors
 - **v0.6.1** (2026-10-14): the unlocked keys and the server's secrets masked in `var_dump()` and `print_r()`, unlocked objects that refuse to be cloned, secret parameters kept out of exception traces
+- **v0.6.2** (2026-10-15): an escrow log entry forced to disk (`fsync()`), and each suite's exact total required in CI
 - **v0.7.0** (upcoming): advanced blind index extension for searchable encryption, multi-tenant support
 - **v1.0.0** (2027): formal community cryptographic audit, ANSSI Visa de sécurité submission (industries@ssi.gouv.fr), test vector pack publication
 
@@ -373,4 +374,4 @@ Technical feedback, community audits, and cryptographic critiques are welcome, e
 
 ---
 
-*First edition May 2026; this edition 14 October 2026, aligned on SelfDataGuard v0.6.1. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026; §2, §3, §5, §6, §7 and §8.2 were rewritten alongside the French edition on 1 October 2026 for v0.5.0; §2.2, §6.1, §7 and §8.1 on 3 October 2026 for v0.6.0. The specification described here is implemented and tested from v0.1.0 to v0.6.0 (373 checks, 11 suites, on PHP 8.1, 8.2 and 8.4).*
+*First edition May 2026; this edition 15 October 2026, aligned on SelfDataGuard v0.6.2. ⚠️ This English edition trails the French one: the French version was revised on 23 July 2026 and is authoritative where the two differ. Its cryptographic claims were realigned on the code on 7 September 2026, then re-read against the French edition on 26 September 2026 for §2.2, §3.1, §6 and §7 (Argon2id parallelism, SelfRecover formula, deployment rules); the rest of the edition has not been re-read against the French one. The algorithms of §2.2 and §5 were realigned on the code on 26 September 2026; §2, §3, §5, §6, §7 and §8.2 were rewritten alongside the French edition on 1 October 2026 for v0.5.0; §2.2, §6.1, §7 and §8.1 on 3 October 2026 for v0.6.0. The specification described here is implemented and tested from v0.1.0 to v0.6.2 (388 checks across 11 suites on PHP 8.2 and 8.4, 384 on PHP 8.1, where four trace checks become declared limits).*

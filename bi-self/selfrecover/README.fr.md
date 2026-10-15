@@ -5,7 +5,7 @@
 **Protocole de récupération de compte sans email** — connaissance partagée, HMAC par service, pas de SMTP, pas de tiers.
 
 [![Licence : AGPL v3](https://img.shields.io/badge/Licence-AGPL_v3-blue.svg)](../../LICENSE)
-[![Status: v0.12.3](https://img.shields.io/badge/status-v0.12.3-green.svg)](#statut)
+[![Status: v0.12.4](https://img.shields.io/badge/status-v0.12.4-green.svg)](#statut)
 [![Part of: Bi-Self](https://img.shields.io/badge/part%20of-Bi--Self-blue.svg)](../README.fr.md)
 [![Self-hosted](https://img.shields.io/badge/self--hosted-yes-blue.svg)](#essayer-selfrecover)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#essayer-selfrecover)
@@ -23,7 +23,7 @@ Pour les déploiements e-commerce ou SaaS qui ont également besoin de **protég
 
 ⚠️ **Le couplage est une propriété de conception, pas un appel de code** : aucune des deux bibliothèques n'importe l'autre, et `loginWithMemorized()` n'est appelé que par la démo `demo/selfdataguard/`. C'est l'intégrateur qui passe les mêmes secrets aux deux. Et c'est lui qui re-scelle, après chaque récupération acceptée : `recover()` aux niveaux 1 et 2, `reEnroll()` au niveau 3, qui archive l'ancien coffre au lieu de le détruire. Un coffre SelfDataGuard créé avec le seul mot de passe devient illisible dès que le niveau 1 ou 2 remplace ce mot de passe. Voir [« Couplage avec SelfRecover »](../../self-security/selfdataguard/README.fr.md#couplage-avec-selfrecover).
 
-SelfRecover protège l'**authentification**. SelfDataGuard protège les **données au repos**. Ensemble, ils ferment la boucle sur le cas qui fait le plus de dégâts : un dump où les secrets d'authentification **et** les données personnelles partent en clair, dans la même table.
+SelfRecover protège l'**authentification**. SelfDataGuard protège les **données au repos**. Sans eux, un dump livre en clair les secrets d'authentification **et** les données personnelles, dans la même table ; avec eux, les secrets sont des empreintes Argon2id et les données personnelles des valeurs chiffrées. ⚠️ Ni l'un ni l'autre ne couvre les données que SelfRecover écrit lui-même pendant une récupération — l'adresse de chaque tentative quand le déploiement en voit une, les réponses et le fil d'un dossier de niveau 3 : aucune clé d'utilisateur n'est ouverte quand elles s'écrivent, elles restent en clair dans la base. Ni ce que le dump dit des valeurs chiffrées (voir SelfDataGuard).
 
 ---
 
@@ -445,7 +445,7 @@ SelfRecover est honnête sur ce qu'il protège et ce qu'il ne protège pas. Tout
 | Serveur SelfRecover compromis | ⚠️ Le dériveur livré n'envoie que l'empreinte du mot de récupération (HMAC dans le navigateur) ; mais c'est le serveur qui sert ce JavaScript, et un serveur compromis peut servir une autre page. La passphrase, qu'il l'engendre ou qu'elle soit apportée, et le mot de passe, il les revoit à l'usage |
 | Phishing passif / page clonée | ✅ en mode `'hostname'` — un clone dérive de sa propre adresse ; ❌ rien en mode `'label'` (un phishing actif contrôlant sa page est hors périmètre dans les deux cas) |
 | Sniffeur réseau / MITM | ✅ TLS en transit ; du mot mémorisé, seule l'empreinte HMAC part — la passphrase et le mot de passe passent en clair sous TLS |
-| Fuite de base de données | ✅ Hashes Argon2id (memory-hard, GPU-resistant) |
+| Fuite de base de données | ✅ Secrets en Argon2id (memory-hard, GPU-resistant). ⚠️ L'adresse des tentatives récentes et les dossiers du niveau 3 restent en clair |
 | Brute-force online | ⚠️ Frein par adresse sous le profil `clearweb`, frein par compte aux niveaux 2 et à l'enrôlement, puis suspension du niveau 2 au-delà d'un seuil d'échecs. ⚠️ Le niveau 1 ne freine plus par compte — n'importe qui remplissait ce compteur sous le nom d'un autre et fermait sa seule voie autonome ; derrière un service caché, rien ne borne ses essais et lisser le débit de la route revient au déploiement |
 
 ### Adversaires HORS PÉRIMÈTRE — assumés explicitement
@@ -472,7 +472,7 @@ Si la vérification d'une passphrase fraîchement tirée est souhaitée, utilise
 
 ## Roadmap
 
-### Livré — v0.1.0 à v0.12.3 (avril → octobre 2026)
+### Livré — v0.1.0 à v0.12.4 (avril → octobre 2026)
 
 Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bibliothèque les a dépassés, tirée par son premier déploiement réel : ses besoins ont fait avancer le protocole plus vite que prévu. Les chantiers qui suivent ne portent donc plus de numéro — ils en recevront un en sortant.
 
@@ -490,7 +490,7 @@ Le calendrier initial plaçait V0.2 à l'été et V0.3 à l'automne 2026. La bib
 - [x] **Argon2id écrit dans la bibliothèque** — `client/sr-kdf.js`, blob versionné, vérifié contre sept vecteurs libsodium (v0.6.0)
 - [x] **Schéma et implémentation du contrat** — `schema.sql` + `StockagePdo`, fournis sans être imposés (v0.6.0)
 - [x] **Profil de déploiement** — chaque chemin qui mène au compte freine par compte, et le déploiement déclare son profil (v0.7.0)
-- [x] **Reprendre un compte le referme** — les sessions ouvertes tombent, et un accord rendu a une fin (v0.8.0)
+- [x] **Reprendre un compte le referme** — les sessions ouvertes tombent, et un accord rendu a une fin (v0.8.0). Avec SelfDataGuard, la clé des données ne change pas : une clé captée avant la reprise ouvre encore les données
 - [x] **Garde de la route du sel dans la bibliothèque** — `Recovery::selDeDerivation` (v0.9.0)
 - [x] **Passphrase apportée par l'utilisateur, tirée aux dés** — `Recovery::validerPassphraseApportee`, à l'inscription et à chaque niveau (v0.10.0)
 - [x] **Le frein du niveau 1 ne ferme plus la porte du titulaire** — compteurs sous empreinte, classement silencieux des essais dont tous les mots existent (v0.11.0)

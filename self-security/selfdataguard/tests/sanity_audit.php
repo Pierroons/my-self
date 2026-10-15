@@ -219,6 +219,69 @@ try {
     ok('a malformed anchor is refused');
 }
 
+section('An entry that cannot be forced to disk is reported as failed');
+
+/**
+ * A stream over a real file that does everything the log needs except fsync():
+ * PHP refuses fsync() on any userspace stream. An append that never asks for
+ * the disk passes through it unnoticed; one that does fails, and must say so.
+ */
+final class NoSyncStream
+{
+    /** @var resource|null */
+    public $context;
+    /** @var resource */
+    private $h;
+
+    private static function file(string $url): string
+    {
+        return substr($url, strlen('nosync://'));
+    }
+
+    public function stream_open(string $url, string $mode, int $options, ?string &$opened): bool
+    {
+        $h = @fopen(self::file($url), $mode);
+        if ($h === false) {
+            return false;
+        }
+        $this->h = $h;
+
+        return true;
+    }
+
+    public function stream_read(int $n): string|false { return fread($this->h, $n); }
+    public function stream_write(string $d): int { return (int) fwrite($this->h, $d); }
+    public function stream_flush(): bool { return fflush($this->h); }
+    public function stream_eof(): bool { return feof($this->h); }
+    public function stream_lock(int $op): bool { return flock($this->h, $op); }
+    public function stream_stat(): array|false { return fstat($this->h); }
+    public function stream_close(): void { fclose($this->h); }
+
+    public function url_stat(string $url, int $flags): array|false
+    {
+        $f = self::file($url);
+
+        return file_exists($f) ? stat($f) : false;
+    }
+}
+
+stream_wrapper_register('nosync', NoSyncStream::class);
+$durable = tempnam(sys_get_temp_dir(), 'dg_audit_sync_');
+(new AuditLog($durable, $secret))->append(['action' => 'before']);
+$viaStream = new AuditLog('nosync://' . $durable, $secret);
+count($viaStream->readAll()) === 1
+    ? ok('control: the log reads through the stream')
+    : ko('the stream does not read the log — the check below would prove nothing');
+try {
+    $viaStream->append(['action' => 'after']);
+    ko('an append was reported written on a stream that cannot be synced');
+} catch (RuntimeException $e) {
+    str_starts_with($e->getMessage(), 'Cannot sync audit log')
+        ? ok('an append that cannot be forced to disk is reported as failed')
+        : ko('the append failed, but not on the sync', $e->getMessage());
+}
+unlink($durable);
+
 section('The audit secret does not ride an exception trace');
 
 /**

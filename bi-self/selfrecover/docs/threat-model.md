@@ -271,6 +271,7 @@ The per-service derivation does **not** save you from reusing a secret on a rogu
 
 ### ✗ Database breaches — partially protected
 - Raw database leak → the account's secrets are Argon2id hashes, each guess costing one Argon2id; codes also carry an HMAC lookup keyed by the deployment salt, which must not leak with the dump
+- The leak does hand over, in plain text, the address of each recent attempt when the deployment sees one, and the answers and messages of level-3 cases: no user key is unlocked when they are written
 - BUT: if the attacker has root (see above), the protocol is already moot
 - Recommendation: encrypt database backups at rest
 

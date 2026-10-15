@@ -12,14 +12,15 @@ use RuntimeException;
  * Append-only, hash-chained, HMAC-signed audit log for privileged escrow acts
  * (admin recovery unlocks). Same bar as the SelfRecover-SU journal: every entry
  * is chained to the previous one and signed, so any deletion, reordering or
- * edit breaks verification — even by root.
+ * edit made without the secret breaks verification. Whoever holds the secret can
+ * rewrite the chain after the last anchor: `verify($anchor)` covers what precedes it.
  *
  * On-disk format: one JSON object per line, keys in fixed order
  *   {"seq":N,"ts":"ISO8601","event":{...},"prev":"<hmac of entry N-1>","hmac":"<hmac>"}
  * where hmac = HMAC-SHA256( json({seq,ts,event,prev}), auditSecret ).
  *
- * Deployment hardening (ops, not code): set the file `chattr +a` (append-only,
- * inaltérable même en root). The HMAC chain detects tampering regardless.
+ * Deployment hardening (ops, not code): set the file `chattr +a` (append-only):
+ * no process rewrites it while the flag is set, but root can lift the flag.
  */
 final class AuditLog
 {
@@ -56,6 +57,13 @@ final class AuditLog
     /**
      * Append a signed, chained entry. Returns the written record.
      *
+     * The line is forced to disk before this returns. Two limits: when the sync
+     * fails, the exception leaves the line in the file — an entry without its
+     * act, the safe way round for a log written before the act; and the
+     * directory is not synced when the file is created, so a crash can take
+     * the very first entry of a new log with it, which only an anchor taken
+     * after that entry can reveal.
+     *
      * @param array<string, mixed> $event application-defined payload
      * @return array<string, mixed>
      */
@@ -90,6 +98,11 @@ final class AuditLog
             $line .= "\n";
             if (fwrite($handle, $line) !== strlen($line) || !fflush($handle)) {
                 throw new RuntimeException("Cannot append to audit log at {$this->path}");
+            }
+            // fflush() hands the line to the kernel, not to the disk: a power cut
+            // after it loses the entry, while the act it records stays done.
+            if (!@fsync($handle)) {
+                throw new RuntimeException("Cannot sync audit log at {$this->path} to disk");
             }
             return $record;
         } finally {

@@ -612,6 +612,14 @@ jobs:
           canari $P "             WHERE id = ? AND status IN ('open', 'awaiting_admin', 'accepted')\"" \
             '             WHERE id = ?"' \
             bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ clore un dossier déjà clos lève LitigeDejaClos'
+          # Un dossier ne se tranche qu'une fois, et un dépôt ne défait pas une
+          # décision : chaque canari remet l'écriture sans condition sur l'état.
+          canari $P '        $st->execute([$statut, $quand, $par, $quand, $litigeId]);' \
+            "        \$this->pdo->prepare('UPDATE disputes SET status = ?, decided_at = ?, decided_by = ?, updated_at = ? WHERE id = ?')->execute([\$statut, \$quand, \$par, \$quand, \$litigeId]); return;" \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ trancher un dossier déjà tranché lève LitigeDejaTranche'
+          canari $P '        $st->execute([$faisceauJson, $quand, $quand, $litigeId]);' \
+            "        \$this->pdo->prepare(\"UPDATE disputes SET signals_json = ?, status = 'awaiting_admin', submitted_at = ?, updated_at = ? WHERE id = ?\")->execute([\$faisceauJson, \$quand, \$quand, \$litigeId]); return;" \
+            bi-self/selfrecover/tests/banc_stockage_pdo.php '❌ ⭐ un dépôt sur un dossier tranché lève LitigeDejaTranche'
           # Un dossier déposé survit à son échéance, archivé : la purge ne l'efface
           # qu'au bout de la rétention, et il ne se tranche plus entre-temps.
           canari $P "(expires_at <= ? AND (status = 'closed' OR (status = 'open'" \
@@ -818,8 +826,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 195 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 195 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 204 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 204 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les
@@ -2076,13 +2084,27 @@ jobs:
             || { echo "::error::le banc a sauté une section — verdict partiel"; exit 1; }
 
       # ── Suites de module ───────────────────────────────────────────────────
+      # Le total exact de chaque suite, pas seulement son code de sortie : un cas
+      # retiré ou sauté le laisse à 0. Une suite sans total déclaré ici rougit,
+      # comme un total déclaré dont la suite a disparu.
       - name: SelfDataGuard — sanity
         run: |
-          set -e
+          declare -A total=(
+            [sanity_archive]=26 [sanity_audit]=23 [sanity_ceremony]=22 [sanity_escrow]=36
+            [sanity_facade]=67 [sanity_fields]=26 [sanity_migration]=15 [sanity_primitives]=46
+            [sanity_storage]=60 [sanity_vault]=58 [sanity_vecteurs]=9
+          )
+          rc=0
           for t in self-security/selfdataguard/tests/sanity_*.php; do
-            echo "→ $(basename "$t")"
-            php "$t"
+            s=$(basename "$t" .php); echo "→ $s"
+            attendu=${total[$s]:-}; unset "total[$s]"
+            [ -n "$attendu" ] || { echo "::error::$s n'a pas de total déclaré dans cette étape"; rc=1; continue; }
+            sortie=$(php "$t" 2>&1) || { echo "$sortie"; echo "::error::$s rouge"; rc=1; continue; }
+            echo "$sortie" | grep -qE "— $attendu passed, 0 failed$" \
+              || { echo "$sortie" | tail -4; echo "::error::$s n'a pas joué ses $attendu cas"; rc=1; }
           done
+          for s in "${!total[@]}"; do echo "::error::$s a un total déclaré, mais plus de suite"; rc=1; done
+          exit $rc
 
       # Une clé déverrouillée hors des vidages et des copies : sans `__debugInfo()`,
       # une page de débogage ou une ligne de journal la porte en clair ; un clone en
@@ -2230,6 +2252,8 @@ jobs:
             $D/tests/sanity_escrow.php 'an admin key was sealed under a passphrase below the floor'
           canari $D/src/Escrow/AuditLog.php 'if ($anchorAt !== null) {' 'if (false) {' \
             $D/tests/sanity_audit.php 'a truncated log passed its anchor'
+          canari $D/src/Escrow/AuditLog.php 'if (!@fsync($handle)) {' 'if (false) {' \
+            $D/tests/sanity_audit.php 'an append was reported written on a stream that cannot be synced'
           canari $D/src/Vault/UserVault.php "public const HMAC_CONTEXT_SUFFIX = '/dataguard';" \
             "public const HMAC_CONTEXT_SUFFIX = '/dataguarD';" \
             $D/tests/sanity_vecteurs.php 'Memorized: key differs from the second implementation'
@@ -2272,8 +2296,8 @@ jobs:
           # @plante
           sortie=$(php bi-self/selfrecover/tests/banc_stockage_pdo.php)
           echo "$sortie" | tail -3
-          echo "$sortie" | grep -qE '^✅ 179 contrôle\(s\) passé\(s\), 0 échec' \
-            || { echo "::error::le banc de stockage n'a pas joué ses 179 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 189 contrôle\(s\) passé\(s\), 0 échec' \
+            || { echo "::error::le banc de stockage n'a pas joué ses 189 cas"; exit 1; }
           F=bi-self/selfrecover/src/Storage/StockagePdo.php
           cp "$F" /tmp/stockage.intact
           avant=$(md5sum "$F" | cut -d" " -f1)
