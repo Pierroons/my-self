@@ -31,7 +31,7 @@ VOULUES = {
     "texte_decision", "_nom_juridiction", "_nom_chambre", "_sans_annexes",
     "_msg_juris_morte", "ApiIndisponible", "RequeteInvalide",
     "JURIDICTIONS", "COURS_APPEL", "CHAMBRES", "FONDS_JUDILIBRE",
-    "PLAFOND_TEXTE", "_ADMINISTRATIVES", "MARQUEUR_ANNEXES",
+    "PLAFOND_TEXTE", "_ADMINISTRATIVES", "MARQUEUR_ANNEXES", "_ou",
 }
 
 JADE = {

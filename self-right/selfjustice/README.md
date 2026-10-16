@@ -123,7 +123,7 @@ All endpoints return JSON, all are rate-limited, all are CORS-open.
 | Layer | Technology |
 |-------|-----------|
 | Web server | nginx, a CSP that admits only the site's own scripts, rate limiting, security headers |
-| Backend | PHP-FPM 8.2 (read-only) |
+| Backend | PHP-FPM 8.4 (read-only) |
 | Database | SQLite 3 (LEGI dump parsed to `legi_selfjustice.sqlite`) + SQLite (EU/CEDH) |
 | TLS | Let's Encrypt, auto-renewal |
 | Host | self-hosted server (x86 or ARM) |
@@ -184,7 +184,7 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 
 ## Status
 
-**v0.4.2 — live in production at [justice.my-self.fr](https://justice.my-self.fr)**
+**Live in production at [justice.my-self.fr](https://justice.my-self.fr) — v0.4.3 beta**
 
 - [x] System directives (7-step analysis procedure, 5 principles)
 - [x] 8 legal categories (work, housing, family, public administration, neighborhood, consumer, civil, criminal)
@@ -225,8 +225,12 @@ SelfJustice is an **information tool**, not legal advice. It does not constitute
 - **v0.4.1** — Administrative decisions can be checked by their number, and
   `/verifier` no longer denies a decision that sits behind more recent namesakes. Theme search
   says it only covers the judicial order, instead of passing on the upstream error
-- **v0.4.2 (current)** — The home page has no inline script left: the copy button, the feedback
+- **v0.4.2** — The home page has no inline script left: the copy button, the feedback
   form and the per-AI consultation grid work under the site's CSP
+- **v0.4.3** — Whether an article applies is computed from its period of application, no longer
+  from its LEGI state alone: an article whose repeal is scheduled stays applicable until that date,
+  and an article whose entry into force is scheduled is not applicable yet. The article and
+  search routes say so in an `applicabilite` field
 - **v1.0.0** — Directives reviewed by a practicing attorney (SelfAct integration shipped in v0.2.0)
 
 ---

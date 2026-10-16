@@ -124,7 +124,7 @@ Toutes les endpoints retournent du JSON, toutes sont rate-limitées, toutes ont 
 | Couche | Technologie |
 |-------|-----------|
 | Serveur web | nginx, CSP qui n'admet que les scripts du site, rate limiting, headers de sécurité |
-| Backend | PHP-FPM 8.2 (lecture seule) |
+| Backend | PHP-FPM 8.4 (lecture seule) |
 | Base de données | SQLite 3 (dump LEGI parsé en `legi_selfjustice.sqlite`) + SQLite (UE/CEDH) |
 | TLS | Let's Encrypt, auto-renouvellement |
 | Hôte | serveur auto-hébergé (x86 ou ARM) |
@@ -185,7 +185,7 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 
 ## Statut
 
-**v0.4.2 — en production sur [justice.my-self.fr](https://justice.my-self.fr)**
+**En production sur [justice.my-self.fr](https://justice.my-self.fr) — v0.4.3 bêta**
 
 - [x] Directives système (procédure d'analyse en 7 étapes, 5 principes)
 - [x] 8 catégories juridiques (travail, logement, famille, administration, voisinage, consommation, civil, pénal)
@@ -226,8 +226,12 @@ SelfJustice est un **outil d'information**, pas un conseil juridique. Il ne cons
 - **v0.4.1** — Les décisions administratives se vérifient par leur numéro, et
   `/verifier` ne nie plus une décision présente derrière des homonymes plus récents. La recherche
   par thème dit qu'elle ne couvre que l'ordre judiciaire, au lieu de rendre l'erreur de l'amont
-- **v0.4.2 (actuelle)** — L'accueil n'a plus de script inline : le bouton de copie, le formulaire
+- **v0.4.2** — L'accueil n'a plus de script inline : le bouton de copie, le formulaire
   de retours et la grille des consultations par IA fonctionnent sous la CSP du site
+- **v0.4.3** — L'applicabilité d'un article se calcule sur sa période d'application, et non plus
+  sur son seul état LEGI : un article dont l'abrogation est programmée reste applicable jusqu'à
+  cette date, un article dont l'entrée en vigueur est programmée ne l'est pas encore. Les routes
+  d'article et de recherche le disent dans un champ `applicabilite`
 - **v1.0.0** — Directives relues par un avocat praticien (l'intégration SelfAct est livrée depuis la v0.2.0)
 
 ---

@@ -38,7 +38,9 @@ API_DB="$DB_DIR/legi_selfjustice.sqlite"      # base servie par l'API
 EU_DB="$DB_DIR/conventionnalite.sqlite"
 DB_BACKUP="$LEGI_DIR/legi_selfjustice.sqlite.bak"
 LOG_FILE="$LEGI_DIR/update_legi.log"
-LAST_UPDATE_FILE="/var/lib/selfjustice/legi_last_update.txt"
+# État de l'instance — surchargeable, comme dans update_stats.sh, pour tests/test_update_legi.sh.
+VAR_DIR="${SELFJUSTICE_VAR_DIR:-/var/lib/selfjustice}"
+LAST_UPDATE_FILE="$VAR_DIR/legi_last_update.txt"
 
 # --- Alerte sur échec -------------------------------------------------------
 #
@@ -207,16 +209,22 @@ except Exception:
 " 2>/dev/null || echo "")
 
 MOIS=(janvier février mars avril mai juin juillet août septembre octobre novembre décembre)
-if [ -n "$LAST_RAW" ]; then
+# 🔑 Une date qui ne se lit pas ne devient pas la date du jour. Le
+# marqueur garde sa date précédente, et le client verra le contenu
+# s'éloigner de la synchronisation.
+DATE_ISO=""
+# Le format est celui des archives DILA, que legi.py recopie : `AAAAMMJJ-HHMMSS`.
+if [[ "$LAST_RAW" =~ ^[0-9]{8}(-[0-9]{6})?$ ]]; then
     YYYY=${LAST_RAW:0:4}; MM=${LAST_RAW:4:2}; DD=${LAST_RAW:6:2}
     DATE_FR="$((10#$DD)) ${MOIS[$((10#$MM - 1))]} $YYYY"
     DATE_ISO="$YYYY$MM$DD"
+    echo "$DATE_FR" > "$LAST_UPDATE_FILE"
+    journal "Base datée du $DATE_FR"
 else
-    DATE_FR=$(date '+%-d')" ${MOIS[$(( $(date +%-m) - 1 ))]} "$(date +%Y)
-    DATE_ISO=$(date +%Y%m%d)
+    journal "Date du contenu illisible (« $LAST_RAW ») : marqueur inchangé"
+    alerter "SelfJustice — date du contenu LEGI illisible" \
+            "db_meta.last_update ne se lit pas dans la base de travail (« $LAST_RAW »). Le marqueur garde sa date precedente : une date tiree d'autre chose que du contenu est la faute qui a fige la base treize mois."
 fi
-echo "$DATE_FR" > "$LAST_UPDATE_FILE"
-journal "Base datée du $DATE_FR"
 
 # 8. Le contenu est-il en retard sur la dernière échéance ?
 #
@@ -230,7 +238,7 @@ if [ "$JOUR" -ge 15 ]; then
 else
     ECHEANCE=$(date -d "$(date +%Y-%m-01) -1 month +14 days" +%Y%m%d)
 fi
-if [ "$DATE_ISO" -lt "$ECHEANCE" ]; then
+if [ -n "$DATE_ISO" ] && [ "$DATE_ISO" -lt "$ECHEANCE" ]; then
     JOURS=$(( ( $(date +%s) - $(date -d "${DATE_ISO:0:4}-${DATE_ISO:4:2}-${DATE_ISO:6:2}" +%s) ) / 86400 ))
     alerter "SelfJustice — base LEGI perimee" \
             "Contenu date du $DATE_FR, soit $JOURS jours de retard alors que la synchronisation vient de tourner. Verifier que DILA publie encore des diffs."
@@ -242,24 +250,49 @@ fi
 # rafraîchies » — EUR-Lex génère ses pages à la demande et répond parfois 202
 # au-delà de la patience du script. Ce n'est pas une raison d'interrompre la
 # synchronisation LEGI qui vient de réussir, mais ça doit se savoir.
+#
+# 🔑 La construction se fait sur une COPIE, qui ne remplace la base servie
+# qu'une fois ses articles témoins conformes (codes 0 et 2). La copie
+# part de la base en place parce que la construction est incrémentale — une
+# source injoignable y garde ses articles précédents.
 journal "Reconstruction de la base de conventionnalité"
+EU_NOUVELLE="$EU_DB.nouveau"
+# La copie se fait hors de `set -e` : la base LEGI est déjà remplacée, et un
+# échec ici (disque plein) arrêterait le passage avant ses marqueurs, avec une
+# alerte « base servie inchangée » fausse pour LEGI.
 set +e
 trap - ERR
-"$VENV" "$LEGI_DIR/bin/build_eu_db.py" --db "$EU_DB" >> "$LOG_FILE" 2>&1
-EU_CODE=$?
+rm -f "$EU_NOUVELLE"
+EU_COPIE=faite
+if [ -f "$EU_DB" ] && ! sqlite3 "$EU_DB" ".backup '$EU_NOUVELLE'" >> "$LOG_FILE" 2>&1; then
+    EU_COPIE=impossible
+    EU_CODE=1
+else
+    "$VENV" "$LEGI_DIR/bin/build_eu_db.py" --db "$EU_NOUVELLE" >> "$LOG_FILE" 2>&1
+    EU_CODE=$?
+fi
 # shellcheck disable=SC2064  # expansion voulue : on installe la chaîne, dont
 # le contenu est en apostrophes et reste donc différé au déclenchement.
 trap "$PIEGE_ERR" ERR
 set -e
+if [ "$EU_CODE" = "0" ] || [ "$EU_CODE" = "2" ]; then
+    chown www-data:www-data "$EU_NOUVELLE"
+    chmod 644 "$EU_NOUVELLE"
+    mv "$EU_NOUVELLE" "$EU_DB"
+else
+    rm -f "$EU_NOUVELLE"
+fi
 EU_ARTICLES=$(sqlite3 "$EU_DB" "SELECT COUNT(*) FROM articles" 2>/dev/null || echo 0)
-chown www-data:www-data "$EU_DB"
 journal "Conventionnalité : $EU_ARTICLES articles (code $EU_CODE)"
-if [ "$EU_CODE" = "2" ]; then
+if [ "$EU_COPIE" = "impossible" ]; then
+    alerter "SelfJustice — base UE non copiee" \
+            "La base de conventionnalite servie n a pas pu etre copiee avant reconstruction : elle reste en place, non reconstruite. Voir $LOG_FILE."
+elif [ "$EU_CODE" = "2" ]; then
     alerter "SelfJustice — sources UE non rafraichies" \
             "La base de conventionnalite compte $EU_ARTICLES articles et reste utilisable, mais au moins une source n a pas pu etre telechargee. Detail dans $LOG_FILE."
 elif [ "$EU_CODE" != "0" ]; then
     alerter "SelfJustice — echec de la base UE" \
-            "build_eu_db.py a rendu le code $EU_CODE. Voir $LOG_FILE."
+            "build_eu_db.py a rendu le code $EU_CODE : la base servie n a PAS ete remplacee. Voir $LOG_FILE."
 fi
 # Le mois vient du tableau MOIS, comme pour LEGI plus haut, et non de `date
 # '+%B'` traduit depuis l'anglais : sur une instance en locale allemande ou
@@ -267,8 +300,25 @@ fi
 # Le client lirait une date qu'il ne sait pas analyser et annoncerait la
 # fraîcheur « indéterminée » — son avertissement le plus grave — déclenché par
 # une simple variable d'environnement.
-echo "$(date '+%-d') ${MOIS[$(( $(date +%-m) - 1 ))]} $(date +%Y)" \
-    > /var/lib/selfjustice/eu_last_update.txt
+#
+# 🔑 Ce marqueur est la reconstruction la plus récente d'une source relue sur le
+# réseau, lue dans `provenance` : il n'avance que si une source au moins l'a été.
+# Une source servie depuis une copie locale n'a rien relu de sa source. Le code 2
+# couvre aussi le réseau coupé — toutes les sources en échec, des témoins
+# conformes sur les articles d'avant —, et la date du passage dirait alors frais
+# ce que rien n'a relu. La fraîcheur source par source se lit au même endroit, et
+# c'est là que le client la juge.
+if [ "$EU_CODE" = "0" ] || [ "$EU_CODE" = "2" ]; then
+    EU_RELUE=$(sqlite3 "$EU_DB" "SELECT MAX(construite_le) FROM provenance WHERE origine = 'reseau'" 2>/dev/null || echo "")
+    if [[ "$EU_RELUE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        echo "$((10#${EU_RELUE:8:2})) ${MOIS[$((10#${EU_RELUE:5:2} - 1))]} ${EU_RELUE:0:4}" \
+            > "$VAR_DIR/eu_last_update.txt"
+    elif [ -z "$EU_RELUE" ]; then
+        journal "Aucune source UE relue sur le réseau : marqueur de contenu inchangé"
+    else
+        journal "Provenance UE illisible (« $EU_RELUE ») : marqueur de contenu inchangé"
+    fi
+fi
 
 # 10. Propager aux statistiques publiques
 "$LEGI_DIR/bin/update_stats.sh" >> "$LOG_FILE" 2>&1 || true
@@ -296,8 +346,11 @@ DISK=$(du -sh "$TARBALLS_DIR" | cut -f1)
 # Ces marqueurs-ci ne disent qu'une chose : notre synchronisation a réussi ce
 # jour-là. C'est ce qu'il faut pour juger d'un cron mort, et c'est tout ce que
 # le client ne peut pas déduire seul.
-date +%F > /var/lib/selfjustice/legi_last_sync.txt
-date +%F > /var/lib/selfjustice/eu_last_sync.txt
+date +%F > "$VAR_DIR/legi_last_sync.txt"
+# Une base UE non remplacée (code 1) n'a pas été synchronisée ce jour-là.
+if [ "$EU_CODE" = "0" ] || [ "$EU_CODE" = "2" ]; then
+    date +%F > "$VAR_DIR/eu_last_sync.txt"
+fi
 
 journal "Mise à jour réussie : $NB_ARTICLES articles LEGI, $EU_ARTICLES UE, tarballs $DISK"
 journal "=== Fin mise à jour LEGI ==="

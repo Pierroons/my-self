@@ -59,14 +59,22 @@ repose sur **deux dates que l'instance expose séparément** :
 - `last_sync` — quand la synchronisation de l'instance a réussi ;
 - `last_update` — jusqu'où va le contenu qu'elle sert.
 
-Le retard se juge sur la première, le contenu se dit avec la seconde. Les
-confondre a un coût : la date du contenu est fixée par l'amont, pas par
+Le retard se juge sur la première, le contenu se dit avec la seconde, et les
+deux se confrontent. Les confondre a un coût : la date du contenu est fixée par l'amont, pas par
 l'instance. Celle de LEGI est celle du dernier diff publié par la DILA — elle
 précède forcément la synchronisation et n'avance plus jusqu'à la suivante. La
 comparer au calendrier des synchronisations la condamne à ne jamais l'atteindre,
 et le serveur annonce alors un retard permanent sur une base parfaitement à
 jour. Un outil qui crie au loup à chaque réponse cesse d'être lu au moment où il
 a raison.
+
+Le contenu se compare donc à la synchronisation, jamais au calendrier. Quand une
+synchronisation récente sert un contenu de plus d'un mois plus ancien qu'elle,
+elle tourne sans plus rien rapporter de sa source — la panne des treize mois — et
+la réponse l'annonce « contenu figé ».
+
+Quand l'état des bases ne peut pas être lu, la réponse le dit aussi, au lieu de
+servir l'article sans date.
 
 Une instance qui n'annonce pas `last_sync` ne permet pas de distinguer une
 synchronisation morte d'un amont silencieux. Le serveur le dit, plutôt que de
@@ -91,11 +99,14 @@ n'emploie pas les mots de celui qui la cherche.
 
 Ce qui se mesure vraiment, ce sont deux faits : la proportion reprise, et les
 termes qu'**aucune** décision de la liste ne surligne. De ceux-là, l'outil
-demande à l'index s'ils y figurent — et « saxophoner » n'apparaît dans aucune
-décision. Le fait sert dans les deux sens : que « cryptoactifs » n'y figure pas
-non plus est peut-être la réponse que tu cherchais.
+demande à l'index s'ils y figurent, sur le même périmètre que la recherche —
+les sommaires des arrêts publiés par défaut, le texte intégral si tu le
+demandes — et « saxophoner » n'apparaît nulle part. Le fait sert dans les deux
+sens : que « cryptoactifs » n'y figure pas non plus est peut-être la réponse que
+tu cherchais.
 
-Ce contrôle ne coûte des requêtes que lorsqu'il a quelque chose à dire.
+Ce contrôle ne coûte des requêtes que lorsqu'il a quelque chose à dire : au plus
+quatre de plus, sur la clé Judilibre de l'instance.
 
 Quand l'API est injoignable, l'outil ne rend pas une erreur discrète : il
 demande explicitement au modèle de ne rien citer de mémoire et de te renvoyer
@@ -104,11 +115,8 @@ que ce serveur existe pour empêcher.
 
 ## Installation
 
-```bash
-pip install selfright-mcp
-```
-
-Depuis les sources, pour suivre le dépôt ou modifier le serveur :
+Le paquet n'est pas encore publié sur PyPI : l'installation se fait depuis les
+sources.
 
 ```bash
 git clone https://github.com/Pierroons/my-self

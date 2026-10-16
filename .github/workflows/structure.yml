@@ -1380,6 +1380,12 @@ jobs:
       - name: Garde-fou — le pilote JADE sonne quand le fonds décroche, et pas avant
         run: bash self-right/selfjustice/tests/test_update_jade.sh
 
+      # Le vrai script de synchronisation, dans un bac, ses outils bouchonnés : une
+      # date de contenu illisible ne devient pas celle du jour, et une base UE dont
+      # les témoins échouent ne remplace jamais la base servie.
+      - name: Garde-fou — la synchronisation LEGI ne date que ce qu'elle a lu
+        run: bash self-right/selfjustice/tests/test_update_legi.sh
+
       - name: Garde-fou — les deux collecteurs écrivent dans la même table
         run: python3 self-right/selfjustice/tests/sanity_schema_partage.py
 
@@ -1411,6 +1417,17 @@ jobs:
 
       - name: Garde-fou — ce que le MCP rend vraiment d'une fiche de situation
         run: python3 self-right/selfjustice/tests/test_mcp_situation.py
+
+      # L'API, la recherche, /status, l'outil d'audit et le client jugent les mêmes
+      # lignes réelles, à une date figée. Il exige `mcp` pour son volet client, d'où
+      # sa place après les dépendances : sans elles il se déclare non joué, et rougit.
+      - name: Garde-fou — un article se dit applicable selon sa période
+        run: python3 self-right/selfjustice/tests/test_applicabilite.py
+
+      # Les vrais outils du client contre une instance scriptée : une réponse qui n'a
+      # pas pu se faire ne doit jamais se lire comme une réponse vide.
+      - name: Garde-fou — le client ne présente pas un échec comme une absence
+        run: python3 self-right/selfjustice/tests/test_mcp_reponses.py
 
       # Deux modules décrivent le même avertissement : SelfAct le pose sur le
       # document, le MCP l'annonce au modèle. Rien ne les tenait ensemble, et

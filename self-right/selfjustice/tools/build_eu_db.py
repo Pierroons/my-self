@@ -833,17 +833,10 @@ def main():
         print(f"Copies lues dans {SOURCES_LOCALES}. Le texte servi est celui de "
               "la copie, pas celui de la source publique.")
 
-    if echecs:
-        print(f"\nATTENTION : {len(echecs)} source(s) non mise(s) à jour : "
-              f"{', '.join(echecs)}", file=sys.stderr)
-        print("Les données précédentes de ces sources sont conservées.",
-              file=sys.stderr)
-        print(f"Terminé avec réserves : {total} articles insérés dans {args.db}")
-        # Code 2 : la base est utilisable, mais incomplètement rafraîchie.
-        # L'appelant peut distinguer ce cas d'un échec franc (code 1).
-        sys.exit(2)
-
-    # 🔑 Dernier contrôle, sur le contenu et non sur les comptes. Le défaut le
+    # 🔑 Contrôle sur le contenu et non sur les comptes, joué AVANT de rendre le
+    # code 2 : une source en échec laisse ses données précédentes, et le reste
+    # vient d'être réécrit — c'est précisément là qu'un texte peut en remplacer
+    # un autre. Le défaut le
     # plus grave qu'ait connu cette base — les protocoles servis à la place des
     # traités — affichait des chiffres crédibles et une date du jour. Seule la
     # lecture d'un article connu pouvait le révéler.
@@ -876,6 +869,18 @@ def main():
         sys.exit(1)
 
     print(f"\nContrôle du contenu : {len(TEMOINS)} articles témoins conformes.")
+
+    if echecs:
+        print(f"\nATTENTION : {len(echecs)} source(s) non mise(s) à jour : "
+              f"{', '.join(echecs)}", file=sys.stderr)
+        print("Les données précédentes de ces sources sont conservées.",
+              file=sys.stderr)
+        print(f"Terminé avec réserves : {total} articles insérés dans {args.db}")
+        # Code 2 : la base est utilisable — ses témoins sont conformes —, mais
+        # incomplètement rafraîchie. L'appelant distingue ce cas d'un échec franc
+        # (code 1), qui ne doit jamais être servi.
+        sys.exit(2)
+
     print(f"\nTerminé ! {total} articles insérés dans {args.db}")
 
     # 🔑 Une copie locale est un pansement, et un pansement se change. Servie

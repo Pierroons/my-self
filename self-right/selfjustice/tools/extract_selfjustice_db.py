@@ -135,8 +135,15 @@ INDEXES = [
 # ne peut pas lire une constante PHP. audit_articles.py la reprend d'ici au lieu de
 # la recopier une troisième fois, et tests/test_applicabilite.py exige l'égalité
 # des deux ensembles : un état ajouté d'un seul côté y rougit.
+#
+# 🔑 Une version SANS état entre aussi, sauf la ligne sentinelle (`date_debut`
+# au 2999-01-01) : l'API la sert comme version courante quand c'est la seule de
+# sa période, et ce qu'elle sert doit se trouver par ses mots. 286 versions sur
+# la base servie au 15/10/2026 ; les 241 723 sentinelles, qui ne portent que
+# « A modifié… », restent dehors.
 ETATS_VIVANTS = ("VIGUEUR", "VIGUEUR_DIFF", "ABROGE_DIFF")
-CONDITION_INDEXEE = (f"etat IN ({', '.join(repr(e) for e in ETATS_VIVANTS)}) "
+CONDITION_INDEXEE = (f"(etat IN ({', '.join(repr(e) for e in ETATS_VIVANTS)}) "
+                     "OR (etat IS NULL AND date_debut < '2999-01-01')) "
                      "AND num IS NOT NULL AND num != ''")
 
 FTS = [

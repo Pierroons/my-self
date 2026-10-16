@@ -21,7 +21,7 @@ de dates. Trois états seulement désignent une position dans le cycle de vie �
 VIGUEUR, VIGUEUR_DIFF, ABROGE_DIFF — et ce sont les trois qui n'ont pas de
 contrepartie dans la table des liens de `legi.py`.
 
-Le jeu de données est EXTRAIT de la base servie (32 lignes réelles, textes
+Le jeu de données est EXTRAIT de la base servie (lignes réelles, textes
 intégraux), comme celui de `test_renvoi_article.sh` : un cas écrit à la main
 prouverait que le code marche sur ce qu'on a imaginé, pas sur ce que LEGI
 contient.
@@ -104,7 +104,7 @@ CAS = [
 ]
 
 # Les numéros sans homonyme dans le jeu : `audit_articles.py` cherche par numéro
-# SANS code, il ne peut donc départager les trois « 1 ».
+# SANS code, il ne peut donc départager les « 1 » de plusieurs textes.
 NUMEROS_AUDITABLES = {"8", "10", "13", "L229-61-1", "1240", "3", "41", "135"}
 
 ROUGES: list[str] = []
@@ -148,18 +148,14 @@ def port_libre() -> int:
 
 def lancer_api(base: pathlib.Path) -> tuple[subprocess.Popen, str]:
     api = RACINE / "api"
-    # ⚠️ Une base ABSENTE fait tomber /status en entier : `open_db()` appelle
-    # `json_error()`, qui termine la requête, et le `try` de chaque bloc ne
-    # l'attrape donc jamais. Des bases VIDES s'ouvrent, et leurs requêtes lèvent
-    # une vraie exception que ce `try` rattrape : /status rend alors son bloc
-    # LEGI, et le bandeau du client MCP — qui en dépend — est réellement exercé.
-    vides = {}
-    for nom in ("eu", "juris"):
-        chemin = base.parent / f"{nom}-vide.sqlite"
-        sqlite3.connect(chemin).close()
-        vides[nom] = str(chemin)
+    # 🔑 Les bases UE et jurisprudence sont ABSENTES, exprès : c'est l'instance
+    # qu'on monte base par base. Une seule base manquante faisait tomber /status
+    # en entier — `open_db()` termine la requête, le `try` de chaque bloc ne le
+    # voyait jamais —, et le bandeau de chaque réponse du MCP s'éteignait avec
+    # lui. Le volet /status le mesure.
+    absentes = {nom: str(base.parent / f"{nom}-absente.sqlite") for nom in ("eu", "juris")}
     env = {"PATH": "/usr/bin:/bin", "SELFJUSTICE_LEGI_DB": str(base), "SELFJUSTICE_JOUR": JOUR,
-           "SELFJUSTICE_EU_DB": vides["eu"], "SELFJUSTICE_JURIS_DB": vides["juris"]}
+           "SELFJUSTICE_EU_DB": absentes["eu"], "SELFJUSTICE_JURIS_DB": absentes["juris"]}
     for _ in range(3):
         port = port_libre()
         php = subprocess.Popen(["php", "-S", f"127.0.0.1:{port}", "-t", str(api), str(api / "api.php")],
@@ -226,6 +222,25 @@ def volet_recherche(url: str) -> None:
                  bool(trouves) and trouves[0].get("applicabilite") == "en_vigueur",
                  f"rendu : {trouves[:1] or 'introuvable par son texte'}")
 
+    # Une version SANS état, hors sentinelle, que l'API sert comme version courante
+    # de l'art. 41 : « ministérielle » n'est que dans son texte. L'index ne
+    # prenait que les états vivants, et l'article servi était introuvable par ses
+    # propres mots.
+    trouves = [x for x in resultats_de(url, "ministérielle")
+               if x.get("reference") == "41" and x.get("code_id") == "JORFTEXT000028613875"]
+    verifier("« ministérielle » trouve la version sans état que l'API sert pour l'art. 41",
+             bool(trouves) and trouves[0].get("applicabilite") == "sans_etat",
+             f"rendu : {trouves[:1] or 'introuvable par son texte'}")
+
+    # Deux versions d'un même article répondent au même mot, et la morte — trente-six
+    # caractères, « a modifié les dispositions suivantes » — passe devant au score.
+    # L'art. 1 du décret de 1992 doit ressortir sous sa version applicable.
+    trouves = [x for x in resultats_de(url, "dispositions")
+               if x.get("reference") == "1" and x.get("code_id") == "JORFTEXT000000724377"]
+    verifier("« dispositions » rend l'art. 1 de 1992 sous sa version applicable, pas sous la morte",
+             bool(trouves) and trouves[0].get("applicabilite") == "en_vigueur",
+             f"rendu : {trouves[:1] or 'absent'}")
+
     # Par numéro : chaque résultat porte `en_vigueur` ET `applicabilite`. Le
     # booléen seul ne distingue pas un texte qui ne s'applique plus d'un texte qui
     # ne s'applique pas encore, et le client rangeait le second parmi les morts.
@@ -257,22 +272,25 @@ def lignes_du_jeu() -> int:
 # Compté à la main sur les lignes du jeu, au jour figé — jamais tiré de l'API, qui
 # serait alors juge de sa propre copie. S'appliquent au 2026-10-14 : l'art. 8 du
 # CPP, l'art. 10 dans sa version de 2019, l'art. 13 de l'arrêté amiante dans sa
-# version de 2026, et civil 1240. Les art. 41 et 135 n'en ajoutent aucune : le
-# premier n'a en cours qu'une version sans état, le second que du passé et une
-# sentinelle. L'ancienne règle en comptait DEUX — civil 1240 et L229-61-1, qui est
-# VIGUEUR mais ne s'applique qu'en 2027.
-VIGUEUR_ATTENDUE = 4
-VIGUEUR_ANCIENNE_REGLE = 2
+# version de 2026, civil 1240, et l'art. 1 du décret de 1992 dans sa version de
+# 2024. Les art. 41 et 135 n'en ajoutent aucune : le premier n'a en cours qu'une
+# version sans état, le second que du passé et une sentinelle. L'ancienne règle en
+# comptait TROIS — civil 1240, l'art. 1 de 1992 et L229-61-1, qui est VIGUEUR mais
+# ne s'applique qu'en 2027.
+VIGUEUR_ATTENDUE = 5
+VIGUEUR_ANCIENNE_REGLE = 3
 
 
 def volet_status(url: str) -> None:
     print("▸ /status — le compte « en vigueur » suit la règle, et /status répond")
-    # 🔑 /status n'était éprouvé qu'à travers le bandeau du client MCP, qui rend
-    # une chaîne vide quand l'API échoue : un /status cassé passait en silence.
-    # Il est appelé avant chaque réponse du MCP — c'est ici qu'il se mesure.
+    # 🔑 /status n'était éprouvé qu'à travers le bandeau du client MCP, qui rendait
+    # une chaîne vide quand l'API échouait : un /status cassé passait en silence.
+    # Il est appelé avant chaque réponse du MCP — c'est ici qu'il se mesure, sur
+    # une instance dont la base UE manque.
     r = lire(f"{url}/api/status")
     legi = r.get("legi") or {}
-    verifier("/status répond et porte son bloc LEGI", bool(legi), f"rendu : {str(r)[:160]}")
+    verifier("/status répond et porte son bloc LEGI, la base UE absente",
+             bool(legi) and r.get("eu") is None, f"rendu : {str(r)[:160]}")
     n = lignes_du_jeu()
     verifier(f"{legi.get('articles')} versions en base, le jeu en porte {n}",
              legi.get("articles") == n, f"articles = {legi.get('articles')!r}")
@@ -392,6 +410,12 @@ def volet_mcp(url: str) -> None:
                 defauts.append(f"rangé sous {titre or '(le bloc du droit applicable)'!r}")
             verifier(f"recherche « {requete} » rangée sous « {bloc_attendu} »",
                      not defauts, " · ".join(defauts))
+
+        # Une référence qui porte « / » : interpolée telle quelle dans le chemin,
+        # « 8/2 » servait l'article 8 du CPP sous l'en-tête de l'article demandé.
+        texte = await server.article_francais("8/2", code=CPP)
+        verifier("« 8/2 » ne sert pas l'article 8", "révolues" not in texte,
+                 f"rendu : {texte[:160]!r}")
 
         # Les alternatives d'un numéro porté par plusieurs textes : elles
         # affichaient l'état brut et la date de fin brute — sentinelles comprises.
