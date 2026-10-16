@@ -45,12 +45,17 @@ interface Journal
      *   reste      secondes de peine qui restaient             ban_leve
      *   plancher   horodatage du plancher, ou null             ban_leve
      *   reputation réputation avant la grâce                   grace
+     *   rang_efface       rang de meute effacé, 0 s'il n'y en avait pas    ban_leve (grâce), grace
+     *   suspension_levee  une suspension de vote courait encore           ban_leve (grâce), grace
      *
      * Une implémentation peut en ajouter (horodatage, chaînage, signature) ;
      * elle ne doit pas en retirer.
      *
-     * Toute exception levée ici remonte à l'appelant sans être avalée : une
-     * écriture de journal qui échoue en silence vaut l'absence de journal.
+     * Une exception levée ici remonte à l'appelant : une écriture de journal
+     * qui échoue en silence vaut l'absence de journal. Une seule exception à la
+     * règle, et elle n'est pas muette : quand une LECTURE constate une peine
+     * échue, le refus est consigné et signalé à l'arbitre (`journal_en_panne`),
+     * et la peine reste à refermer à la lecture suivante.
      */
     public function inscrire(array $acte): void;
 }

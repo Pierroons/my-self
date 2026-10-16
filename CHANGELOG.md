@@ -501,6 +501,69 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfModerate v0.6.0] — 16 octobre 2026
+
+### Une meute ne pèse pas plus qu'un membre seul, et le moteur ne punit plus sur la foi d'un lien — 16 octobre 2026
+
+Version mineure : le schéma attendu gagne une colonne, et des promesses du README changent. Elle corrige
+les défauts qu'un audit en deux visions de la 0.5.0 a relevés ; tous étaient antérieurs à la 0.5.0.
+
+- **Une meute ne pèse pas plus qu'un membre seul.** La meute se reconnaît à un message privé dans chaque
+  sens entre deux votants. Ce lien ne distingue ni deux amis de bonne foi, ni un lien fabriqué par la
+  cible elle-même (un compte jetable et une seule réponse), d'une coordination : les peines qui
+  reposaient dessus frappaient des honnêtes au choix d'un tiers. Dans un groupe lié qui vise une cible,
+  le premier votant garde désormais ses votes et ceux des autres sont annulés. Plus aucune suspension ni
+  retrait de points automatique : dès le deuxième épisode, le votant est signalé à l'arbitre
+  (`meute_recidive`). L'épisode se compte depuis son début ; une meute qui frappait toutes les 23 heures
+  restait au premier rang pour toujours.
+- **Une meute ne lève que le ban qu'elle a causé.** Chaque vote garde ce qu'il a réellement changé à la
+  réputation (`mod_votes.effet`). L'annulation rend la somme de ces effets, et non plus le nombre de votes
+  annulés : des votes posés au plancher, pendant un ban, rendaient un point chacun. Un ban automatique ne
+  se lève que si des votes annulés, posés avant son début, avaient un effet, et la levée ne retire que le
+  strike de ce ban. Deux comptes liés levaient tout ban automatique en cours et effaçaient l'escalade.
+- **La grâce d'un arbitre lève aussi une suspension de vote et efface le rang de meute.** Aucun geste ne
+  le permettait. Le rang s'efface par une ligne `grace`, qui garde l'historique lisible.
+- **Une salve qui mène au ban reste signalée, et l'arbitre voit la composition de chaque chute.** Le
+  signal d'une salve était écrasé par celui du ban, effacé à sa fin et écarté de la liste « à revoir ».
+  Un signal d'état n'écrase plus jamais un signal de comportement. Pour une coordination espacée, que
+  rien ne reconnaît, `bansEnCours()` rend la composition d'un ban automatique : le nombre de votants qui
+  l'ont causé, l'âge de leurs comptes, le temps entre le premier et le dernier vote.
+- **La borne du graphe garde les votants récents, et une troncature se signale.** Coupé par identifiant
+  croissant, le graphe écartait les comptes les plus récents. La borne passe de 30 à 200 votants
+  (mesuré : 2,9 ms à 200 votants sans meute, 23 ms au premier passage qui en annule) ; au-delà, les plus
+  récents sont gardés, et la cible est signalée (`votants_tronques`).
+- **Un votant ne vise pas tout le forum.** Au-delà de `ciblesParVotantMax` membres distincts (10) sur la
+  fenêtre de farming, ses votes négatifs vers un membre de plus sont neutralisés, et il est signalé
+  (`votant_etendu`).
+- **Un motif a une longueur maximale** : 1000 caractères. Un motif d'un mégaoctet s'affichait en entier
+  sur le profil de la personne visée.
+- **Un vote ne révèle plus la réputation de la cible.** La réponse d'un vote la rendait exacte, alors que
+  le profil la tait sous le seuil de sanction : un vote positif sur un banni répondait 1.
+- **Un journal en panne ne fait plus tomber les pages.** À la clôture d'une peine échue constatée par une
+  lecture, le refus du journal est consigné et signalé à l'arbitre (`journal_en_panne`), et la peine
+  reste à refermer à la lecture suivante. Le planificateur et le début d'un ban font toujours remonter le
+  refus.
+
+**Rupture** par rapport à la 0.5.0 : la colonne `mod_votes.effet` entre au schéma attendu ; `Config` perd
+`meuteMute2`, `meuteMute3` et `meutePenalite3`, et gagne `ciblesParVotantMax` ; `meuteVotantsMax` passe à
+200 ; `applyVote()` ne rend plus `new_reputation` ; `detectPackVoting()` rend `premier` et `rangs` à la
+place de `sanctions`. Une suspension de vote déjà en base reste lue jusqu'à son échéance.
+
+### Dans le lab — 16 octobre 2026
+
+- `demo/lab/schema.sql` porte la colonne `effet`, et la migration l'ajoute à une base existante.
+- La console d'arbitre affiche la composition d'un ban automatique, nomme les suites d'un épisode de meute
+  et les signalements neufs. Les pages décrivent la nouvelle règle de la meute.
+- **Un compte banni ne modifie plus son profil public** : la bio et le lien sont gelés pendant la peine,
+  comme la publication sur le forum.
+- **L'adaptateur SelfRecover suit la 0.12.4** : une décision d'arbitre ne s'écrase plus, et un dépôt ne
+  rouvre plus un dossier tranché. Les cas de référence de la bibliothèque y sont rejoués.
+- **Le journal du super-utilisateur refuse une entrée qu'il n'a pas su écrire** : une entrée que JSON ne
+  sait pas encoder s'écrivait comme une ligne vide, une écriture incomplète passait, et rien ne forçait le
+  disque. La console annule désormais l'acte dans ces trois cas.
+
+---
+
 ## [SelfModerate v0.5.0] — 15 octobre 2026
 
 ### Un vote ne coûte que sa cible, et un motif détaillé n'est plus refusé — 14 octobre 2026
