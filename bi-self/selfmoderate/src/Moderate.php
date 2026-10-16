@@ -236,6 +236,7 @@ class Moderate
                         review_reason = CASE WHEN review_reason = 'ban_auto' THEN NULL ELSE review_reason END
                   WHERE account_id = ?"
             )->execute([self::config()->reputationInitiale, $accountId]);
+            self::effacerEffets($pdo, $accountId);
         } else {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ? AND reputation >= ?')
                 ->execute([$accountId, self::config()->perteDroitDeVoteSous]);
@@ -322,7 +323,19 @@ class Moderate
                 "UPDATE member_moderation SET needs_review = 0, review_reason = NULL
                   WHERE account_id = ? AND review_reason = 'reputation_zero'"
             )->execute([$accountId]);
+            self::effacerEffets($pdo, $accountId);
         }
+    }
+
+    /**
+     * La réputation est revenue au départ : la remise a rendu d'un coup ce que
+     * les votes déjà reçus avaient retiré. Leur effet passe à zéro, pour qu'une
+     * annulation ultérieure ne le rende pas une seconde fois.
+     */
+    private static function effacerEffets(PDO $pdo, int $accountId): void
+    {
+        $pdo->prepare('UPDATE mod_votes SET effet = 0 WHERE target_author = ? AND (effet IS NULL OR effet <> 0)')
+            ->execute([$accountId]);
     }
 
     /** Anti-Sybil + sanctions : ce membre peut-il voter ? Retourne [bool, raison]. */
@@ -523,8 +536,8 @@ class Moderate
             $stmt->execute([$voterId, $author, time() - self::config()->fenetreFarmingJours * 86400]);
             if ((int) $stmt->fetchColumn() >= self::config()->farmingUpvotesMax) {
                 $pdo->prepare(
-                    'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, created_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)'
+                    'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, effet, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)'
                 )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'upvote_farming', time()]);
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'upvote_farming',
                         'message' => static::t('Vote enregistré mais neutralisé : trop d\'upvotes répétés vers ce membre (anti-farming).')];
@@ -541,22 +554,23 @@ class Moderate
             $stmt->execute([$voterId, $author, time() - self::config()->fenetreFarmingJours * 86400]);
             if ((int) $stmt->fetchColumn() >= self::config()->farmingDownvotesMax) {
                 $pdo->prepare(
-                    'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, created_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)'
+                    'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, effet, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)'
                 )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'downvote_farming', time()]);
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'downvote_farming',
                         'message' => static::t('Vote enregistré mais neutralisé : trop de downvotes répétés vers ce membre (anti-farming).')];
             }
         }
 
-        // Insert + maj réputation
-        $pdo->prepare(
-            'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-        )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, time()]);
-
+        // La réputation se lit AVANT l'insertion : le vote garde ce qu'il a
+        // réellement changé. Un vote qui bute sur une borne n'a rien changé, et
+        // l'annuler plus tard ne doit rien rendre.
         $rep = self::getReputation($pdo, $author);
         $newRep = max(self::config()->banA, min(self::config()->reputationMax, $rep['reputation'] + $value));
+        $pdo->prepare(
+            'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, effet, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, $newRep - $rep['reputation'], time()]);
         $pdo->prepare('UPDATE member_moderation SET reputation = ?, updated_at = ? WHERE account_id = ?')
             ->execute([$newRep, time(), $author]);
 
@@ -768,18 +782,15 @@ class Moderate
                 $phv = implode(',', array_fill(0, count($voteIds), '?'));
                 $pdo->prepare("UPDATE mod_votes SET blocked = 1, blocked_reason = 'pack_voting' WHERE id IN ($phv)")
                     ->execute($voteIds);
-                $restore = count($voteIds);
-                $pdo->prepare('UPDATE member_moderation SET reputation = MIN(reputation + ?, ?), updated_at = ? WHERE account_id = ?')
-                    ->execute([$restore, self::config()->reputationMax, $maintenant, $author]);
-                self::restoreAfterCancel($pdo, $author, $restore);
-                $cancelled += $restore;
+                self::restoreAfterCancel($pdo, $author, $voteIds);
+                $cancelled += count($voteIds);
                 // La victime est remise d'aplomb avant qu'on regarde qui a frappé :
                 // sa protection ne dépend d'aucun rang de récidive.
                 $sanctions = self::sanctionnerMeute($pdo, $groupe, $author, $voteIds);
                 $packs[] = [
                     'target_author' => $author,
                     'voters'        => $groupe,
-                    'cancelled'     => $restore,
+                    'cancelled'     => count($voteIds),
                     'sanctions'     => $sanctions,
                 ];
             }
@@ -868,20 +879,41 @@ class Moderate
     }
 
     /**
-     * Après annulation d'une meute : rend ce que la chute injuste avait coûté.
-     * Le nombre de strikes retirés est borné à la taille de l'annulation, biais
-     * assumé en faveur de la personne visée.
+     * Après annulation d'une meute : rend ce que les votes annulés avaient
+     * réellement retiré, et rien de plus. Un vote posé au plancher n'a rien
+     * retiré, un vote dont l'effet a été effacé par une remise au départ non
+     * plus : les rendre ferait des points gratuits.
+     *
+     * Un ban automatique ne se lève que si la meute l'a CAUSÉ : des votes
+     * annulés, posés avant son début, avaient un effet — sans eux, la
+     * réputation ne serait pas tombée à zéro. La levée retire le strike de ce
+     * ban, et lui seul.
+     *
+     * @param int[] $voteIds
      */
-    private static function restoreAfterCancel(PDO $pdo, int $author, int $restore): void
+    private static function restoreAfterCancel(PDO $pdo, int $author, array $voteIds): void
     {
+        $ph = implode(',', array_fill(0, count($voteIds), '?'));
+        $stmt = $pdo->prepare("SELECT COALESCE(effet, value) AS effet, created_at FROM mod_votes WHERE id IN ($ph)");
+        $stmt->execute($voteIds);
+        $annules = $stmt->fetchAll();
+        $rendu = -array_sum(array_map(static fn (array $v): int => min(0, (int) $v['effet']), $annules));
+        if ($rendu > 0) {
+            $pdo->prepare('UPDATE member_moderation SET reputation = MIN(reputation + ?, ?), updated_at = ? WHERE account_id = ?')
+                ->execute([$rendu, self::config()->reputationMax, time(), $author]);
+        }
+
         $rep = self::getReputation($pdo, $author);
         if ($rep['reputation'] >= self::config()->perteDroitDeVoteSous) {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ?')->execute([$author]);
         }
-        // Seul un ban automatique se lève ici : il est venu des votes que la
-        // meute a faussés. Un ban d'arbitre n'en dépend pas. Pas de plancher non
-        // plus : cette levée répare une injustice, elle n'en accorde aucune.
-        if ($rep['reputation'] > self::config()->banA && $rep['banned'] && $rep['ban_origine'] === 'auto') {
+        // Seul un ban automatique se lève ici : il est venu des votes. Un ban
+        // d'arbitre n'en dépend pas. Pas de plancher non plus : cette levée
+        // répare une injustice, elle n'en accorde aucune.
+        $causes = array_filter($annules, static fn (array $v): bool =>
+            (int) $v['effet'] < 0 && (int) $v['created_at'] <= $rep['ban_debut']);
+        if ($rep['banned'] && $rep['ban_origine'] === 'auto' && $causes !== []
+            && $rep['reputation'] > self::config()->banA) {
             self::$journal?->inscrire([
                 'acte'      => 'ban_leve',
                 'compte'    => $author,
@@ -895,11 +927,11 @@ class Moderate
             $pdo->prepare(
                 "UPDATE member_moderation
                     SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
-                        strikes = MAX(0, strikes - ?),
+                        strikes = MAX(0, strikes - 1),
                         needs_review  = CASE WHEN review_reason = 'ban_auto' THEN 0 ELSE needs_review END,
                         review_reason = CASE WHEN review_reason = 'ban_auto' THEN NULL ELSE review_reason END
                   WHERE account_id = ?"
-            )->execute([$restore, $author]);
+            )->execute([$author]);
         }
         // La convalescence avait été ouverte par une chute qui n'aurait pas dû
         // avoir lieu : on la referme, plutôt que d'imposer une guérison au temps
@@ -1312,6 +1344,7 @@ class Moderate
                     convalescent = 0, updated_at = ?
               WHERE account_id = ?'
         )->execute([self::config()->reputationInitiale, $maintenant, $accountId]);
+        self::effacerEffets($pdo, $accountId);
 
         return ['ok' => true, 'anticipee' => $anticipee, 'message' => match (true) {
             $anticipee      => static::t('Ban levé avant son plancher : la levée anticipée et son motif sont au journal.'),

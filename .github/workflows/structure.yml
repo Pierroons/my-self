@@ -1888,8 +1888,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 57/57 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 57 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 61/61 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 61 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -1993,6 +1993,51 @@ jobs:
               global) attendu='le coût d.un downvote suit l.activité du site' ;;
               jamais) attendu='une meute liée après coup n.est pas rattrapée' ;;
               course) attendu='la course ou la table absente est mal tenue' ;;
+            esac
+            echo "$sortie" | grep -q "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — SelfModerate rend à une meute annulée plus qu'elle n'a pris
+        run: |
+          # @plante
+          # Trois gardes de l'annulation retirées tour à tour, chacune restaurée
+          # avant la suivante : sans la causalité, des votes posés après le début
+          # d'un ban le lèvent sans l'avoir causé ; sans la borne d'un strike, la
+          # levée efface l'escalade ; sans la remise des effets à zéro, la fin
+          # d'un ban et l'annulation rendent deux fois les mêmes points.
+          M=bi-self/selfmoderate/src/Moderate.php
+          for cas in causalite strikes remise; do
+            cp "$M" /tmp/moderate.effet.intact
+            CAS="$cas" python3 - "$M" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          avant, apres = {
+              'causalite': ("        if ($rep['banned'] && $rep['ban_origine'] === 'auto' && $causes !== []\n",
+                            "        if ($rep['banned'] && $rep['ban_origine'] === 'auto'\n"),
+              'strikes':   ("                        strikes = MAX(0, strikes - 1),\n",
+                            "                        strikes = 0,\n"),
+              'remise':    ("            )->execute([self::config()->reputationInitiale, $accountId]);\n            self::effacerEffets($pdo, $accountId);\n",
+                            "            )->execute([self::config()->reputationInitiale, $accountId]);\n"),
+          }[os.environ['CAS']]
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/moderate.effet.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              cp /tmp/moderate.effet.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/moderate.effet.intact "$M"
+            cmp -s /tmp/moderate.effet.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              causalite) attendu='✗ ⭐ un ban levé par des votes postérieurs à son début' ;;
+              strikes)   attendu='✗ ⭐ levée sur meute mal bornée' ;;
+              remise)    attendu='✗ ⭐ points rendus deux fois' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

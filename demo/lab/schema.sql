@@ -130,6 +130,8 @@ CREATE TABLE IF NOT EXISTS mod_votes (
     reason_code    TEXT,                     -- code de la liste de la plateforme
     blocked        INTEGER NOT NULL DEFAULT 0,
     blocked_reason TEXT,
+    effet          INTEGER,                  -- ce que le vote a changé à la réputation : 0 s'il a buté sur une
+                                             -- borne, remis à 0 quand la réputation revient au départ
     created_at     INTEGER NOT NULL,
     FOREIGN KEY (voter_id) REFERENCES accounts(id) ON DELETE CASCADE
 );

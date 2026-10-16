@@ -794,6 +794,81 @@ Moderate::estBanni($pdo, $tenu) && Moderate::getReputation($pdo, $tenu)['ban_ori
     ? ok('un ban d\'arbitre survit à l\'annulation d\'une meute : il n\'était pas venu des votes')
     : nok('la meute a levé un ban d\'arbitre : ' . json_encode(etatBan($pdo, $tenu)));
 
+// ── 32bis. ⭐ Une meute ne lève que le ban qu'elle a causé ──────────────────
+// Des votes posés PENDANT un ban butent sur le plancher : ils n'ont rien retiré.
+// Les annuler ne doit ni lever ce ban, ni rendre des points qu'ils n'ont jamais
+// pris — sinon deux comptes liés achètent la fin de n'importe quel ban
+// automatique, et l'effacement de ses strikes, pour deux votes.
+$honni = membre($pdo, 'banni-par-honnetes');
+poserReputation($pdo, $honni, 1);
+Moderate::applyVote($pdo, membre($pdo, 'honnete-1'), 'member', $honni, -1, motif(), 'agressif');
+$avantSocks = Moderate::getReputation($pdo, $honni);
+$s1 = membre($pdo, 'sock-1'); $s2 = membre($pdo, 'sock-2');
+echangePrive($pdo, $s1, $s2);
+Moderate::applyVote($pdo, $s1, 'member', $honni, -1, motif(), 'agressif');
+Moderate::applyVote($pdo, $s2, 'member', $honni, -1, motif(), 'agressif');
+$apresSocks = Moderate::getReputation($pdo, $honni);
+$annulesSocks = (int) $pdo->query(
+    "SELECT COUNT(*) FROM mod_votes WHERE target_author = $honni AND blocked_reason = 'pack_voting'"
+)->fetchColumn();
+$avantSocks['banned'] && $annulesSocks >= 1 && $apresSocks['banned'] && $apresSocks['strikes'] === $avantSocks['strikes']
+    && $apresSocks['reputation'] === 0 && $journal->de($honni, 'ban_leve') === []
+    ? ok('⭐ une meute qui vote pendant un ban ne le lève pas, n\'efface aucun strike et ne rend aucun point')
+    : nok('⭐ des votes posés au plancher ont levé le ban ou rendu des points : '
+        . json_encode([$annulesSocks, $avantSocks, $apresSocks]));
+
+// Le plancher n'est pas la seule garde : des votes positifs reçus PENDANT le
+// ban remontent la réputation, et des votes négatifs posés ensuite ont un
+// effet. Annulés, ils rendent ce qu'ils ont pris, sans lever un ban qu'ils
+// n'ont pas causé. Le ban est reculé d'une minute : ce qui suit vient après lui.
+$remonte = membre($pdo, 'remonte-pendant-ban');
+poserReputation($pdo, $remonte, 1);
+$postR = message($pdo, $remonte, 'fil-remonte');
+Moderate::applyVote($pdo, membre($pdo, 'honnete-2'), 'member', $remonte, -1, motif(), 'agressif');
+vieillirBan($pdo, $remonte, 60);
+Moderate::applyVote($pdo, membre($pdo, 'ami-1'), 'post', $postR, 1);
+Moderate::applyVote($pdo, membre($pdo, 'ami-2'), 'post', $postR, 1);
+$s3 = membre($pdo, 'sock-3'); $s4 = membre($pdo, 'sock-4');
+echangePrive($pdo, $s3, $s4);
+Moderate::applyVote($pdo, $s3, 'post', $postR, -1, motif(), 'agressif');
+Moderate::applyVote($pdo, $s4, 'post', $postR, -1, motif(), 'agressif');
+$apresR = Moderate::getReputation($pdo, $remonte);
+$apresR['banned'] && $apresR['reputation'] === 2 && $journal->de($remonte, 'ban_leve') === []
+    ? ok('⭐ des votes posés après le début du ban rendent ce qu\'ils ont pris, sans lever un ban qu\'ils n\'ont pas causé')
+    : nok('⭐ un ban levé par des votes postérieurs à son début : ' . json_encode($apresR));
+
+// La meute qui a CAUSÉ la chute lève ce ban, et ne rend que ce qu'elle a pris :
+// le strike de ce ban, et non autant de strikes que de votes annulés.
+$chute = membre($pdo, 'chute-par-meute');
+poserReputation($pdo, $chute, 2);
+$pdo->prepare('UPDATE member_moderation SET strikes = 2 WHERE account_id = ?')->execute([$chute]);
+$x1 = membre($pdo, 'lie-apres-1'); $x2 = membre($pdo, 'lie-apres-2');
+Moderate::applyVote($pdo, $x1, 'member', $chute, -1, motif(), 'agressif');
+Moderate::applyVote($pdo, $x2, 'member', $chute, -1, motif(), 'agressif');
+$tombe = Moderate::getReputation($pdo, $chute);
+echangePrive($pdo, $x1, $x2);
+Moderate::detectPackVoting($pdo, $chute);
+$releve = Moderate::getReputation($pdo, $chute);
+$tombe['banned'] && $tombe['strikes'] === 3 && !$releve['banned'] && $releve['strikes'] === 2
+    && $releve['reputation'] === 2 && count($journal->de($chute, 'ban_leve')) === 1
+    ? ok('⭐ la meute qui a causé la chute lève ce ban, rend ses deux points, et ne retire que le strike de ce ban')
+    : nok('⭐ levée sur meute mal bornée : ' . json_encode([$tombe, $releve]));
+
+// Un vote dont l'effet a déjà été effacé par une remise au départ n'est pas
+// rendu une seconde fois quand on l'annule : la fin du ban avait tout rendu.
+$remis = membre($pdo, 'remis-au-depart');
+poserReputation($pdo, $remis, 2);
+$y1 = membre($pdo, 'lie-tard-1'); $y2 = membre($pdo, 'lie-tard-2');
+Moderate::applyVote($pdo, $y1, 'member', $remis, -1, motif(), 'agressif');
+Moderate::applyVote($pdo, $y2, 'member', $remis, -1, motif(), 'agressif');
+vieillirBan($pdo, $remis, 10_000);
+$depart = Moderate::getReputation($pdo, $remis)['reputation'];
+echangePrive($pdo, $y1, $y2);
+Moderate::detectPackVoting($pdo, $remis);
+$depart === Moderate::config()->reputationInitiale && reputation($pdo, $remis) === $depart
+    ? ok('⭐ un vote déjà effacé par la remise au départ n\'est pas rendu une seconde fois')
+    : nok('⭐ points rendus deux fois : départ=' . $depart . ', après annulation=' . reputation($pdo, $remis));
+
 // ── 33. La vue de l'arbitre ─────────────────────────────────────────────────
 $vue = array_values(array_filter(Moderate::bansEnCours($pdo), static fn (array $b): bool => $b['account_id'] === $tenu));
 count($vue) === 1 && $vue[0]['origine'] === 'admin' && $vue[0]['reste'] > 0 && $vue[0]['plancher'] !== null
