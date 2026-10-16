@@ -931,6 +931,44 @@ $depart === Moderate::config()->reputationInitiale && reputation($pdo, $remis) =
     ? ok('⭐ un vote déjà effacé par la remise au départ n\'est pas rendu une seconde fois')
     : nok('⭐ points rendus deux fois : départ=' . $depart . ', après annulation=' . reputation($pdo, $remis));
 
+// ── 32ter. ⭐ Une salve qui mène au ban garde son signal ────────────────────
+// Trois comptes sans lien frappent dans la même minute et la cible tombe à
+// zéro. Le signal de salve était écrasé par celui du ban, effacé à sa fin, et
+// la liste « à revoir » écarte les bans : l'arbitre ne voyait qu'une chute
+// ordinaire.
+$salvee = membre($pdo, 'salvee-puis-bannie');
+poserReputation($pdo, $salvee, 3);
+foreach (['salve-x', 'salve-y', 'salve-z'] as $nom) {
+    Moderate::applyVote($pdo, membre($pdo, $nom), 'member', $salvee, -1, motif(), 'agressif');
+}
+$pendant = Moderate::getReputation($pdo, $salvee);
+vieillirBan($pdo, $salvee, 10_000);
+$apres = Moderate::getReputation($pdo, $salvee);
+$pendant['banned'] && $pendant['review_reason'] === 'salve_rapide'
+    && !$apres['banned'] && $apres['needs_review'] && $apres['review_reason'] === 'salve_rapide'
+    ? ok('⭐ une salve qui fait tomber le ban reste signalée pendant la peine et après elle')
+    : nok('⭐ le ban a écrasé ou effacé la salve : ' . json_encode([$pendant['review_reason'], $apres['review_reason']]));
+
+// Une coordination espacée n'est reconnue par aucune détection : ce que
+// l'arbitre peut en voir, c'est la composition de la chute — qui a voté, l'âge
+// de ces comptes, et en combien de temps. Un soutien qui a voté pour le compte
+// n'a rien retiré : il n'en fait pas partie.
+$espacee = membre($pdo, 'chute-espacee');
+poserReputation($pdo, $espacee, 2);
+Moderate::applyVote($pdo, membre($pdo, 'soutien-ancien'), 'member', $espacee, 1);
+foreach ([['jeune-1', 2], ['jeune-2', 2], ['ancien-1', 30]] as [$nom, $jours]) {
+    $votantE = membre($pdo, $nom);
+    $pdo->prepare('UPDATE accounts SET created_at = ? WHERE id = ?')->execute([time() - $jours * 86400, $votantE]);
+    Moderate::applyVote($pdo, $votantE, 'member', $espacee, -1, motif(), 'agressif');
+    $pdo->prepare('UPDATE mod_votes SET created_at = created_at - 400 WHERE target_author = ?')->execute([$espacee]);
+}
+$vueE = array_values(array_filter(Moderate::bansEnCours($pdo), static fn (array $b): bool => $b['account_id'] === $espacee));
+$chuteE = $vueE[0]['chute'] ?? null;
+count($vueE) === 1 && $vueE[0]['origine'] === 'auto' && $chuteE !== null
+    && $chuteE['votants'] === 3 && $chuteE['ages_jours'] === [2, 2, 30] && $chuteE['etalement'] === 800
+    ? ok('⭐ l\'arbitre voit la composition d\'un ban automatique : 3 votants, comptes de 2, 2 et 30 jours, sur ' . Moderate::dureeEnClair(800))
+    : nok('⭐ composition de la chute absente ou fausse : ' . json_encode($vueE));
+
 // ── 33. La vue de l'arbitre ─────────────────────────────────────────────────
 $vue = array_values(array_filter(Moderate::bansEnCours($pdo), static fn (array $b): bool => $b['account_id'] === $tenu));
 count($vue) === 1 && $vue[0]['origine'] === 'admin' && $vue[0]['reste'] > 0 && $vue[0]['plancher'] !== null

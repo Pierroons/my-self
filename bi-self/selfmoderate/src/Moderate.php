@@ -845,38 +845,12 @@ class Moderate
             if (count($best) < self::config()->salveVotantsMin) {
                 continue;
             }
-            // 🔑 N'écrit QUE sur une case vide, et c'est une mesure de sûreté.
-            //
-            // Trois comptes ordinaires suffisent à déclencher cette branche
-            // (`salveVotantsMin`), et elle tourne à chaque vote négatif. Sans la
-            // clause, un tiers écrasait donc le motif d'arbitrage d'autrui par le
-            // plus bénin de la liste. Deux pertes, dans les deux sens :
-            //
-            //  · BLANCHIMENT — un `meute_recidive`, dont ce fichier dit qu'« une
-            //    récidive de meute ne se rachète pas », devenait « plusieurs
-            //    votants sans lien ». L'arbitre lisait une autre situation que
-            //    celle qui s'était produite ;
-            //  · MARQUE INDÉLÉBILE — les deux chemins qui lèvent un signalement
-            //    tout seuls n'acceptent que `reputation_zero` (`regenerate`,
-            //    `restoreAfterCancel`) ou `ban_auto` (`cloreBanExpire`). Un motif
-            //    écrasé par celui-ci ne se levait donc PLUS jamais sans un geste
-            //    d'arbitre : le titulaire gardait un signalement permanent qu'un
-            //    tiers lui avait posé.
-            //
-            // ⚠️ Le signal perdu quand la case est occupée ne coûte rien : un
-            // compte déjà signalé est déjà sous les yeux de l'arbitre, et ce
-            // libellé-ci est le plus faible des quatre. Ce qui coûtait, c'était
-            // de remplacer une information par une moins précise.
-            //
-            // ⚠️ Et l'asymétrie subsiste pour les trois autres poseurs
-            // (`meute_recidive`, `reputation_zero`, `ban_auto`) : aucun ne regarde
-            // le motif en place. Ils ne sont pas déclenchables par un tiers aussi
-            // directement, mais la propriété « un champ lu par un arbitre n'est
-            // jamais écrasé par un chemin automatique » n'est tenue qu'ici.
-            $pdo->prepare(
-                "UPDATE member_moderation SET needs_review = 1, review_reason = 'salve_rapide', updated_at = ?
-                  WHERE account_id = ? AND (review_reason IS NULL OR review_reason = 'salve_rapide')"
-            )->execute([$maintenant, $author]);
+            // 🔑 Trois comptes ordinaires suffisent à déclencher cette branche
+            // (`salveVotantsMin`), et elle tourne à chaque vote négatif. Écrire
+            // le signal sans regarder celui en place laissait un tiers remplacer
+            // un motif d'arbitrage par le plus bénin de la liste, et le rendre
+            // indélébile. `signaler()` porte la règle pour tous les poseurs.
+            self::signaler($pdo, $author, 'salve_rapide');
             $salves[] = ['target_author' => $author, 'voters' => array_keys($best)];
         }
 
@@ -1102,10 +1076,7 @@ class Moderate
         $maintenant = time();
 
         if (self::$journal === null) {
-            $pdo->prepare(
-                "UPDATE member_moderation SET needs_review = 1, review_reason = 'reputation_zero', updated_at = ?
-                  WHERE account_id = ?"
-            )->execute([$maintenant, $accountId]);
+            self::signaler($pdo, $accountId, 'reputation_zero');
 
             return;
         }
@@ -1143,9 +1114,10 @@ class Moderate
         $pdo->prepare(
             "UPDATE member_moderation
                 SET banned_until = ?, ban_debut = ?, ban_origine = 'auto', ban_motif = 'reputation_zero',
-                    voting_rights = 0, strikes = ?, needs_review = 1, review_reason = 'ban_auto', updated_at = ?
+                    voting_rights = 0, strikes = ?, updated_at = ?
               WHERE account_id = ?"
         )->execute([$jusqua, $maintenant, $episode, $maintenant, $accountId]);
+        self::signaler($pdo, $accountId, 'ban_auto');
     }
 
     /** Score (somme votes non bloqués) d'un post ou d'un membre. */
@@ -1386,10 +1358,12 @@ class Moderate
 
     /**
      * Les bans en cours, avec ce qu'un arbitre doit voir avant de toucher à
-     * l'un d'eux : l'origine, le motif, le temps restant et la date du plancher.
+     * l'un d'eux : l'origine, le motif, le temps restant, la date du plancher,
+     * et pour un ban automatique la composition de sa chute.
      *
      * @return list<array{account_id: int, username: string, origine: ?string, motif: ?string,
-     *                    debut: int, jusqu_a: int, reste: int, plancher: ?int, episode: int, a_revoir: bool}>
+     *                    debut: int, jusqu_a: int, reste: int, plancher: ?int, episode: int, a_revoir: bool,
+     *                    chute: ?array{votants: int, ages_jours: list<int>, etalement: int}}>
      */
     public static function bansEnCours(PDO $pdo, int $limite = 100): array
     {
@@ -1404,9 +1378,10 @@ class Moderate
         $stmt->bindValue(2, $limite, PDO::PARAM_INT);
         $stmt->execute();
 
-        return array_map(static function (array $r) use ($maintenant): array {
+        return array_map(static function (array $r) use ($pdo, $maintenant): array {
             $debut = (int) $r['ban_debut'];
             $fin   = (int) $r['banned_until'];
+            $auto  = $r['ban_origine'] === 'auto';
             return [
                 'account_id' => (int) $r['account_id'],
                 'username'   => (string) $r['username'],
@@ -1418,8 +1393,41 @@ class Moderate
                 'plancher'   => $debut > 0 ? self::config()->plancherDe($debut, $fin) : null,
                 'episode'    => (int) $r['strikes'],
                 'a_revoir'   => (bool) $r['needs_review'],
+                'chute'      => $auto ? self::compositionChute($pdo, (int) $r['account_id'], $debut) : null,
             ];
         }, $stmt->fetchAll());
+    }
+
+    /**
+     * Qui a fait tomber un compte jusqu'au ban : les votants dont le vote a
+     * réellement retiré un point pendant la chute, l'âge de leurs comptes au
+     * début du ban, et le temps entre le premier et le dernier vote. Des faits
+     * bruts, sans seuil ni score. Une coordination espacée entre comptes qui ne
+     * se sont jamais écrit n'est reconnue par aucune détection : c'est ici
+     * qu'un arbitre peut la voir.
+     *
+     * @return array{votants: int, ages_jours: list<int>, etalement: int}
+     */
+    public static function compositionChute(PDO $pdo, int $accountId, int $debut): array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT MIN(v.created_at) AS premier, MAX(v.created_at) AS dernier, a.created_at AS cree_le
+               FROM mod_votes v JOIN accounts a ON a.id = v.voter_id
+              WHERE v.target_author = ? AND v.blocked = 0 AND COALESCE(v.effet, v.value) < 0 AND v.created_at <= ?
+           GROUP BY v.voter_id'
+        );
+        $stmt->execute([$accountId, $debut]);
+        $votants = $stmt->fetchAll();
+        $ages = array_map(static fn (array $v): int => intdiv(max(0, $debut - (int) $v['cree_le']), 86400), $votants);
+        sort($ages);
+
+        return [
+            'votants'    => count($votants),
+            'ages_jours' => $ages,
+            'etalement'  => $votants === []
+                ? 0
+                : max(array_map('intval', array_column($votants, 'dernier'))) - min(array_map('intval', array_column($votants, 'premier'))),
+        ];
     }
 
     /**

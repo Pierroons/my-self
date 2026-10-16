@@ -1888,8 +1888,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 64/64 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 64 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 66/66 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 66 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2083,6 +2083,47 @@ jobs:
               premier) attendu='✗ la meute n.a pas été ramenée à un membre seul' ;;
               episode) attendu='✗ ⭐ l.épisode glisse' ;;
               grace)   attendu='✗ ⭐ la grâce laisse la suspension ou le rang' ;;
+            esac
+            echo "$sortie" | grep -q "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — SelfModerate laisse un ban effacer une salve, ou montre à l'arbitre une chute qui n'est pas la sienne
+        run: |
+          # @plante
+          # Deux gardes retirées tour à tour : la règle des signalements, qui
+          # interdit à un signal d'état d'écraser un signal de comportement ; le
+          # filtre de la composition d'une chute, qui ne compte que les votes qui
+          # ont réellement retiré un point.
+          M=bi-self/selfmoderate/src/Moderate.php
+          for cas in signal composition; do
+            cp "$M" /tmp/moderate.signal.intact
+            CAS="$cas" python3 - "$M" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          avant, apres = {
+              'signal':      ("        $remplacables = in_array($raison, $etats, true) ? $etats : [...$etats, $raison];\n",
+                              "        $remplacables = [...$etats, 'salve_rapide', 'meute_recidive', $raison];\n"),
+              'composition': ("              WHERE v.target_author = ? AND v.blocked = 0 AND COALESCE(v.effet, v.value) < 0 AND v.created_at <= ?\n",
+                              "              WHERE v.target_author = ? AND v.created_at <= ?\n"),
+          }[os.environ['CAS']]
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/moderate.signal.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              cp /tmp/moderate.signal.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/moderate.signal.intact "$M"
+            cmp -s /tmp/moderate.signal.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              signal)      attendu='✗ ⭐ le ban a écrasé ou effacé la salve' ;;
+              composition) attendu='✗ ⭐ composition de la chute absente ou fausse' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

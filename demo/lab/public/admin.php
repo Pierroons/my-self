@@ -153,11 +153,15 @@ table.adm tr:last-child td{border-bottom:none}
     Lever un ban avant son plancher (<?= (int) round(Moderate::config()->plancherFraction * 100) ?> % de la peine) exige un motif, et s'inscrit comme levée anticipée.
   </p>
   <?php if (!$bans): ?><p class="muted">Aucun ban en cours.</p><?php else: ?>
-  <table class="adm"><tr><th>Compte</th><th>Origine</th><th>Motif</th><th>Fin</th><th>Reste</th><th>Plancher</th><th></th></tr>
+  <table class="adm"><tr><th>Compte</th><th>Origine</th><th>Motif</th><th>Chute</th><th>Fin</th><th>Reste</th><th>Plancher</th><th></th></tr>
     <?php foreach ($bans as $b): ?>
       <tr><td>@<?= h($b['username']) ?><?php if ($b['a_revoir']): ?> <span class="tag-sm" style="color:var(--warn);border-color:var(--warn)">à revoir</span><?php endif; ?></td>
           <td><?= $b['origine'] === 'auto' ? 'automatique' : ($b['origine'] === 'admin' ? 'arbitre' : '—') ?> · épisode <?= (int) $b['episode'] ?></td>
           <td><?= h($b['origine'] === 'auto' ? 'réputation à zéro' : (string) $b['motif']) ?></td>
+          <td><?php if ($b['chute'] === null): ?>—<?php else: $ch = $b['chute']; ?>
+            <?= (int) $ch['votants'] ?> votant(s) · comptes de <?= h(implode(', ', array_slice($ch['ages_jours'], 0, 8)) . (count($ch['ages_jours']) > 8 ? '…' : '')) ?> j
+            · en <?= h(Moderate::dureeEnClair($ch['etalement'])) ?>
+          <?php endif; ?></td>
           <td><?= $dt($b['jusqu_a']) ?></td>
           <td><?= h(Moderate::dureeEnClair($b['reste'])) ?></td>
           <td><?= $b['plancher'] === null ? '—' : ($b['plancher'] <= time() ? 'passé' : $dt($b['plancher'])) ?></td>
