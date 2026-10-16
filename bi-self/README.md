@@ -29,7 +29,7 @@ Bi-Self addresses both at once. It gives communities the **two minimum primitive
 
 **SelfRecover without SelfModerate** is a nice recovery trick, but not a community. You can get your account back without email, but there's no fabric for collective life.
 
-**SelfModerate, with or without SelfRecover**, is vote-based moderation, and a vote is only worth what an extra account costs. SelfRecover does not raise that cost: it drops email, a weak barrier, and proves nothing about one person holding one account. The brakes live in SelfModerate: a new account votes only after a delay — 24 h with `Config::prod()`, 2 min by default — or a first post, accounts linked to each other that vote against the same target have their votes cancelled, and a burst of unlinked votes goes to human review.
+**SelfModerate, with or without SelfRecover**, is vote-based moderation, and a vote is only worth what an extra account costs. SelfRecover does not raise that cost: it drops email, a weak barrier, and proves nothing about one person holding one account. The brakes live in SelfModerate: a new account votes only after a delay — 24 h with `Config::prod()`, 2 min by default — or a first post, accounts linked to each other that vote against the same target weigh no more than one, and a burst of unlinked votes goes to human review.
 
 **Together**:
 

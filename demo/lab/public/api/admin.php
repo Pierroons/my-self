@@ -29,7 +29,7 @@ switch ($action) {
         $ok = Admin::setReportStatus($pdo, (int) ($body['id'] ?? 0), (string) ($body['status'] ?? ''));
         json_out(['ok' => $ok], $ok ? 200 : 400);
 
-    case 'moderate': // geste d'arbitre : ban, grâce, maintien — signé du nom de la session
+    case 'moderate': // geste d'arbitre : ban, grâce, maintien, classement — signé du nom de la session
         $id    = (int) ($body['account_id'] ?? 0);
         $op    = (string) ($body['op'] ?? '');
         $motif = (string) ($body['motif'] ?? '');
@@ -38,6 +38,7 @@ switch ($action) {
             'ban'       => Moderate::adminBan($pdo, $id, (string) $moi['username'], $motif),
             'pardon'    => Moderate::adminPardon($pdo, $id, (string) $moi['username'], $motif),
             'maintenir' => Moderate::adminMaintenir($pdo, $id, (string) $moi['username'], $motif),
+            'classer'   => Moderate::adminClasser($pdo, $id, (string) $moi['username'], $motif),
             default     => ['ok' => false, 'message' => 'Opération inconnue.'],
         };
         json_out($r, $r['ok'] ? 200 : 400);

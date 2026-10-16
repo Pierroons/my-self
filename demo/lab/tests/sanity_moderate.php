@@ -147,9 +147,8 @@ function episodeMeute(PDO $pdo, array $votants, string $nom): int
 }
 
 /**
- * Recule tout ce qui retient un votant : ses épisodes sortent du cooldown, et
- * sa suspension expire. Sans ça, un votant suspendu ne peut plus voter — c'est
- * précisément l'effet recherché, mais il empêche d'éprouver le palier suivant.
+ * Recule les épisodes d'un votant : ils sortent du cooldown, et l'épisode
+ * suivant peut monter de rang. Une suspension encore en base expire avec eux.
  */
 function vieillirSanctions(PDO $pdo, array $votants, int $recul): void
 {
@@ -165,8 +164,8 @@ function vieillirSanctions(PDO $pdo, array $votants, int $recul): void
 function voteBrut(PDO $pdo, int $votant, int $post, int $auteur): void
 {
     $pdo->prepare(
-        'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, created_at)
-         VALUES (?, ?, ?, ?, -1, ?, ?, ?)'
+        'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, effet, created_at)
+         VALUES (?, ?, ?, ?, -1, ?, ?, -1, ?)'
     )->execute([$votant, 'post', $post, $auteur, motif(), 'agressif', time()]);
 }
 
@@ -388,8 +387,8 @@ $trio = [membre($pdo, 'trio-a'), membre($pdo, 'trio-b'), membre($pdo, 'trio-c')]
 echangePrive($pdo, $trio[0], $trio[1]);
 echangePrive($pdo, $trio[1], $trio[2]);
 foreach ($trio as $v) {
-    $pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, created_at)
-                   VALUES (?, ?, ?, ?, -1, ?, ?)')
+    $pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, effet, created_at)
+                   VALUES (?, ?, ?, ?, -1, ?, -1, ?)')
         ->execute([$v, 'member', $viseTrio, $viseTrio, motif(), time()]);
 }
 Moderate::detectPackVoting($pdo);
@@ -401,10 +400,10 @@ $bloques11 = (int) $pdo->query(
     : nok('la transitivité n\'a pas joué : bloqués=' . $bloques11 . ' rep=' . reputation($pdo, $viseTrio));
 
 // ── 11bis. ⭐ La troncature garde les votants récents, et elle se dit ───────
-// Le graphe des votants est borné. Coupé par identifiant croissant, il écartait
+// Le graphe des votants est borné. Coupé par identifiant croissant, il écarterait
 // les comptes les plus récents — ceux qu'une meute de comptes neufs ajoute en
-// dernier —, et personne ne lisait la troncature. Borne abaissée à 5 pour que le
-// cas ne dépende pas de la valeur par défaut.
+// dernier —, et une troncature tue se lirait comme une absence de meute. Borne
+// abaissée pour que le cas ne dépende pas de la valeur par défaut.
 Moderate::setConfig(new Config(meuteVotantsMax: 5));
 $foule = membre($pdo, 'cible-tres-votee');
 $pdo->prepare('INSERT INTO threads (account_id, titre, created_at) VALUES (?, ?, ?)')->execute([$foule, 'fil-foule', time()]);
@@ -427,6 +426,42 @@ $modFoule = Moderate::getReputation($pdo, $foule);
 $bloquesFoule === 1 && $modFoule['review_reason'] === 'votants_tronques'
     ? ok('⭐ au-delà de la borne, la meute de comptes récents est vue, et la troncature signalée à l\'arbitre')
     : nok('⭐ la troncature cache la meute ou se tait : bloqués=' . $bloquesFoule . ' ' . json_encode($modFoule['review_reason']));
+
+// ── 11ter. ⭐ Un meneur annulé relie encore sa meute ────────────────────────
+// A–B et B–C liés, A et C non ; ils votent dans cet ordre. B, second, est annulé :
+// s'il sortait du graphe avec son vote, C ne serait plus relié à personne et
+// garderait le sien — la meute pèserait deux membres.
+$viseChaine = membre($pdo, 'vise-par-chaine');
+$chaine = [membre($pdo, 'chaine-a'), membre($pdo, 'chaine-b'), membre($pdo, 'chaine-c')];
+echangePrive($pdo, $chaine[0], $chaine[1]);
+echangePrive($pdo, $chaine[1], $chaine[2]);
+foreach ($chaine as $v) {
+    Moderate::applyVote($pdo, $v, 'member', $viseChaine, -1, motif(), 'agressif');
+}
+$gardesChaine = (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE target_author = $viseChaine AND blocked = 0")->fetchColumn();
+$gardesChaine === 1 && reputation($pdo, $viseChaine) === 19
+    ? ok('⭐ une chaîne A–B–C qui vote dans l\'ordre ne garde que le vote de A, même une fois B annulé')
+    : nok('⭐ le meneur annulé ne relie plus sa meute : votes gardés=' . $gardesChaine . ' rep=' . reputation($pdo, $viseChaine));
+
+// ── 11quater. ⭐ Un vote déjà annulé par un autre passage ne se rend pas deux fois ─
+// Deux balayages peuvent lire les mêmes votes avant que l'un les annule. Seul le
+// passage qui les annule effectivement doit rendre leur effet et inscrire
+// l'épisode ; l'autre ne trouve plus rien.
+$doublon = membre($pdo, 'annule-deux-fois');
+$pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, effet, created_at)
+               VALUES (?, ?, ?, ?, -1, ?, -1, ?)')
+    ->execute([membre($pdo, 'course-annulation'), 'member', $doublon, $doublon, motif(), time()]);
+$idCourse = (int) $pdo->lastInsertId();
+try {
+    $annuler = new ReflectionMethod(Moteur::class, 'annulerVotes');
+    $premierPassage = $annuler->invoke(null, $pdo, [$idCourse]);
+    $secondPassage  = $annuler->invoke(null, $pdo, [$idCourse]);
+    $premierPassage === [$idCourse] && $secondPassage === []
+        ? ok('⭐ un vote déjà annulé par un autre passage n\'est annulé, ni rendu, qu\'une fois')
+        : nok('⭐ le second passage annule encore : ' . json_encode([$premierPassage, $secondPassage]));
+} catch (ReflectionException $ex) {
+    nok('⭐ aucune garde contre une double annulation : ' . $ex->getMessage());
+}
 
 // ── 12. La convalescence rend un point par intervalle, et le droit de vote ──
 $conv = membre($pdo, 'convalescent');
@@ -505,9 +540,9 @@ count($recus) === 3 && !$fuite && in_array('jour', $colonnes, true)
     : nok('fuite dans les motifs rendus : ' . implode(', ', $fuite) . ' — colonnes ' . implode(', ', $colonnes));
 
 // ── 16bis. ⭐ Un vote ne rend pas la réputation de la cible ─────────────────
-// Le profil tait le chiffre sous le seuil de sanction. La réponse d'un vote le
-// rendait exact : un vote positif sur un banni répondait 1, donc 0 avant, donc
-// banni.
+// Le profil tait le chiffre sous le seuil du vote. La réponse d'un vote qui le
+// rendrait exact le trahirait : un vote positif sur un banni répondrait 1, donc
+// 0 avant, donc banni.
 $sondee = membre($pdo, 'sondee-par-vote');
 $rSonde = Moderate::applyVote($pdo, membre($pdo, 'sondeur-16bis'), 'member', $sondee, 1);
 ($rSonde['ok'] ?? false) && !array_key_exists('new_reputation', $rSonde)
@@ -516,8 +551,8 @@ $rSonde = Moderate::applyVote($pdo, membre($pdo, 'sondeur-16bis'), 'member', $so
 
 // ── 16ter. ⭐ Un votant ne vise pas tout le forum ───────────────────────────
 // Le plafond anti-farming borne un votant par cible. Sans borne par votant, un
-// seul compte retirait des points à chaque membre et déposait un motif anonyme
-// sur chaque profil, sans qu'aucune détection le voie.
+// seul compte retirerait des points à chaque membre et déposerait un motif
+// anonyme sur chaque profil, sans qu'aucune détection le voie.
 $etendu = membre($pdo, 'votant-etendu');
 $plafond = Moderate::config()->ciblesParVotantMax;
 $resultats = [];
@@ -636,8 +671,8 @@ count(array_unique($restaurees)) === 1 && $restaurees[0] === Moderate::config()-
 
 // ── 24bis. ⭐ Un troll ne fait pas punir ceux qui le critiquent ensemble ────
 // Un membre publie un message odieux par jour ; deux habitués qui se parlent en
-// privé le downvotent chaque fois. Punir le lien laissait le troll choisir qui
-// récidive : au troisième jour, ses critiques perdaient leur droit de vote.
+// privé le downvotent chaque fois. Une peine fondée sur le lien laisserait le
+// troll choisir qui récidive.
 $troll = membre($pdo, 'troll-quotidien');
 $h1 = membre($pdo, 'habitue-1');
 $h2 = membre($pdo, 'habitue-2');
@@ -690,6 +725,27 @@ for ($k = 1; $k <= 3; $k++) {
 Moderate::rangDe($pdo, $q1) === 2
     ? ok('⭐ trois épisodes à 23 h d\'intervalle : le rang monte 24 h après le début de l\'épisode')
     : nok('⭐ l\'épisode glisse : rang ' . Moderate::rangDe($pdo, $q1) . ' après 46 h de meute');
+
+// ── 24quinquies. ⭐ Un tiers ne fait pas monter le rang de qui n'a rien refait ─
+// A vote une fois ; B, lié à A, vote après lui et tombe. Plus d'un jour après, B
+// revote seul : le vote de A est encore dans la fenêtre, le groupe se reforme.
+// A n'a rien fait depuis son épisode — il ne doit pas en recevoir un second.
+$cibleT = membre($pdo, 'cible-du-tiers');
+$seulA  = membre($pdo, 'premier-seul');
+$tiersB = membre($pdo, 'tiers-qui-revote');
+echangePrive($pdo, $seulA, $tiersB);
+$postT1 = message($pdo, $cibleT, 'fil-tiers-1');
+Moderate::applyVote($pdo, $seulA, 'post', $postT1, -1, motif(), 'agressif');
+Moderate::applyVote($pdo, $tiersB, 'post', $postT1, -1, motif(), 'agressif');
+vieillirSanctions($pdo, [$seulA, $tiersB], 25 * 3600);
+$pdo->prepare('UPDATE mod_votes SET created_at = created_at - ? WHERE voter_id IN (?, ?)')->execute([25 * 3600, $seulA, $tiersB]);
+$postT2 = message($pdo, $cibleT, 'fil-tiers-2');
+Moderate::applyVote($pdo, $tiersB, 'post', $postT2, -1, motif(), 'agressif');
+$modSeulA = Moderate::getReputation($pdo, $seulA);
+Moderate::rangDe($pdo, $seulA) === 1 && $modSeulA['review_reason'] !== 'meute_recidive' && Moderate::rangDe($pdo, $tiersB) === 2
+    ? ok('⭐ un tiers lié qui revote monte de rang seul : le premier votant, qui n\'a rien refait, reste au rang 1')
+    : nok('⭐ un tiers fait monter le rang du premier votant : A=' . Moderate::rangDe($pdo, $seulA) . ' '
+        . json_encode($modSeulA['review_reason']) . ' B=' . Moderate::rangDe($pdo, $tiersB));
 
 // ── 25. La config est la seule source des seuils ────────────────────────────
 // Deux sources pour un seuil, c'est un seuil que la config ne règle qu'à
@@ -864,8 +920,8 @@ $m['ok'] && $e['banned'] && !$e['needs_review'] && count($journal->de($cible, 'b
     : nok('maintien : ' . json_encode([$m, $e]));
 
 // ── 31bis. ⭐ La grâce lève une suspension de vote et efface le rang de meute ─
-// Sans ce geste, l'arbitre ne pouvait rien contre une suspension : la grâce
-// remettait la réputation et les strikes, pas le vote ni le rang.
+// La grâce lève aussi ce que la réputation ne dit pas : une suspension de vote
+// et le rang de meute. L'historique des épisodes reste lisible.
 $gracie = membre($pdo, 'gracie-meute');
 Moderate::ensureRow($pdo, $gracie);
 $pdo->prepare('UPDATE member_moderation SET vote_muted_until = ? WHERE account_id = ?')->execute([time() + 7 * 86400, $gracie]);
@@ -884,6 +940,25 @@ $lignesGrace = (int) $pdo->query("SELECT COUNT(*) FROM mod_pack_flags WHERE vote
     ? ok('⭐ la grâce rend le droit de vote, efface le rang sans effacer l\'historique, et le journal le dit')
     : nok('⭐ la grâce laisse la suspension ou le rang : ' . json_encode([$avantGrace, $grace, $apresGrace,
         Moderate::rangDe($pdo, $gracie), $traceGrace, $lignesGrace]));
+
+// ── 31ter. ⭐ Classer un signalement ne touche rien d'autre ──────────────────
+// La grâce remet la réputation au départ : lever un signalement par elle ferait
+// perdre ses points à un membre que l'arbitre a seulement regardé.
+$classe = membre($pdo, 'signal-a-classer');
+poserReputation($pdo, $classe, 27);
+$pdo->prepare("UPDATE member_moderation SET needs_review = 1, review_reason = 'votant_etendu' WHERE account_id = ?")->execute([$classe]);
+if (!method_exists(Moderate::class, 'adminClasser')) {
+    nok('⭐ aucun geste ne classe un signalement sans gracier le compte');
+} else {
+    $sansMotifC = Moderate::adminClasser($pdo, $classe, 'arbitre-banc', 'vu');
+    $classeOk   = Moderate::adminClasser($pdo, $classe, 'arbitre-banc', motif());
+    $etatC      = Moderate::getReputation($pdo, $classe);
+    $traceC     = $journal->de($classe, 'revue_classee');
+    !$sansMotifC['ok'] && $classeOk['ok'] && !$etatC['needs_review'] && $etatC['reputation'] === 27
+        && count($traceC) === 1 && ($traceC[0]['raison'] ?? null) === 'votant_etendu' && ($traceC[0]['arbitre'] ?? null) === 'arbitre-banc'
+        ? ok('⭐ classer un signalement exige un motif, lève le signal seul, et s\'inscrit au journal avec sa cause')
+        : nok('⭐ classement mal tenu : ' . json_encode([$sansMotifC, $classeOk, $etatC, $traceC]));
+}
 
 // ── 32. La meute détectée lève un ban automatique, jamais un ban d'arbitre ──
 $proie = membre($pdo, 'proie-ban-auto');
@@ -986,11 +1061,32 @@ $depart === Moderate::config()->reputationInitiale && reputation($pdo, $remis) =
     ? ok('⭐ un vote déjà effacé par la remise au départ n\'est pas rendu une seconde fois')
     : nok('⭐ points rendus deux fois : départ=' . $depart . ', après annulation=' . reputation($pdo, $remis));
 
+// Un vote d'avant la colonne `effet` n'a pas d'effet connu : il ne compte ni
+// comme cause d'un ban, ni dans ce qu'une annulation rend. Lu comme sa valeur,
+// il rendrait à deux comptes liés d'avant la migration le pouvoir de lever un ban.
+$migre = membre($pdo, 'base-migree');
+poserReputation($pdo, $migre, 1);
+Moderate::applyVote($pdo, membre($pdo, 'honnete-migre'), 'member', $migre, -1, motif(), 'agressif');
+$avantMigre = Moderate::getReputation($pdo, $migre);
+$anciens = [membre($pdo, 'ancien-lie-1'), membre($pdo, 'ancien-lie-2')];
+foreach ($anciens as $k => $ancien) {
+    $postM = message($pdo, $migre, "fil-migre-$k");
+    $pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, created_at)
+                   VALUES (?, ?, ?, ?, -1, ?, ?)')
+        ->execute([$ancien, 'post', $postM, $migre, motif(), time() - 10 * 86400]);
+}
+echangePrive($pdo, $anciens[0], $anciens[1]);
+Moderate::detectPackVoting($pdo, $migre);
+$apresMigre = Moderate::getReputation($pdo, $migre);
+$avantMigre['banned'] && $apresMigre['banned'] && $apresMigre['strikes'] === $avantMigre['strikes'] && $apresMigre['reputation'] === 0
+    ? ok('⭐ des votes sans effet connu, d\'avant la colonne, ne lèvent pas un ban et ne rendent rien')
+    : nok('⭐ des votes d\'avant la colonne lèvent un ban : ' . json_encode([$avantMigre, $apresMigre]));
+
 // ── 32ter. ⭐ Une salve qui mène au ban garde son signal ────────────────────
 // Trois comptes sans lien frappent dans la même minute et la cible tombe à
-// zéro. Le signal de salve était écrasé par celui du ban, effacé à sa fin, et
-// la liste « à revoir » écarte les bans : l'arbitre ne voyait qu'une chute
-// ordinaire.
+// zéro. Si le signal du ban écrasait celui de la salve et s'effaçait à sa fin,
+// l'arbitre ne verrait qu'une chute ordinaire : la liste « à revoir » écarte les
+// bans.
 $salvee = membre($pdo, 'salvee-puis-bannie');
 poserReputation($pdo, $salvee, 3);
 foreach (['salve-x', 'salve-y', 'salve-z'] as $nom) {
@@ -1007,10 +1103,14 @@ $pendant['banned'] && $pendant['review_reason'] === 'salve_rapide'
 // Une coordination espacée n'est reconnue par aucune détection : ce que
 // l'arbitre peut en voir, c'est la composition de la chute — qui a voté, l'âge
 // de ces comptes, et en combien de temps. Un soutien qui a voté pour le compte
-// n'a rien retiré : il n'en fait pas partie.
+// n'a rien retiré, et un vote d'il y a deux cents jours sort de la fenêtre de
+// meute : ni l'un ni l'autre n'en fait partie.
 $espacee = membre($pdo, 'chute-espacee');
 poserReputation($pdo, $espacee, 2);
 Moderate::applyVote($pdo, membre($pdo, 'soutien-ancien'), 'member', $espacee, 1);
+$pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, effet, created_at)
+               VALUES (?, ?, ?, ?, -1, ?, -1, ?)')
+    ->execute([membre($pdo, 'votant-d-il-y-a-200-jours'), 'member', $espacee, $espacee, motif(), time() - 200 * 86400]);
 foreach ([['jeune-1', 2], ['jeune-2', 2], ['ancien-1', 30]] as [$nom, $jours]) {
     $votantE = membre($pdo, $nom);
     $pdo->prepare('UPDATE accounts SET created_at = ? WHERE id = ?')->execute([time() - $jours * 86400, $votantE]);
@@ -1048,11 +1148,11 @@ $leve !== null && (int) etatBan($pdo, $sansTrace)['banned_until'] === 0
     : nok('ban posé sans trace, ou panne avalée : ' . json_encode([$leve, etatBan($pdo, $sansTrace)]));
 
 // ── 34bis. ⭐ Un journal en panne ne fait pas tomber les pages ──────────────
-// Une peine échue se referme à la lecture, en écrivant d'abord au journal. Un
-// journal en panne faisait remonter son exception jusqu'à toute page qui lit le
-// compte, et la peine restait en base au-delà de son terme. La lecture contient
-// désormais le refus : la peine reste à refermer, l'arbitre est prévenu, et la
-// clôture se fait dès que le journal revient. Le planificateur, lui, échoue.
+// Une peine échue se referme à la lecture, en écrivant d'abord au journal.
+// Journal en panne : la lecture contient le refus et ne tombe pas ; la peine
+// reste en base à refermer, l'arbitre est prévenu (`journal_en_panne`), et la
+// clôture suit le retour du journal. Le planificateur, lui, laisse remonter
+// l'exception.
 Moderate::setJournal($journal);
 $echu = membre($pdo, 'peine-echue-journal-mort');
 poserReputation($pdo, $echu, 1);
@@ -1083,6 +1183,37 @@ $leveLecture === null && $pendantPanne !== null && !$pendantPanne['banned']
     ? ok('⭐ journal en panne : la lecture tient, la peine échue attend sa trace, l\'arbitre est prévenu, et la clôture suit le retour du journal')
     : nok('⭐ un journal en panne fait tomber la lecture ou referme sans trace : '
         . json_encode([$leveLecture, $pendantPanne['review_reason'] ?? null, $enBasePanne, $leveBalayage, etatBan($pdo, $echu)['banned_until']]));
+Moderate::setJournal(null);
+
+// ── 34ter. ⭐ Pendant une panne, un vote passe, et une salve survit à la clôture ─
+// Un compte dont la peine attend sa clôture reste à zéro : un vote négatif qui
+// tenterait de le rebannir ferait tomber la requête. Et un signal de panne tenu
+// pour un comportement empêcherait une salve de s'inscrire, puis l'effacerait
+// avec lui à la clôture.
+Moderate::setJournal($journal);
+$enAttente = membre($pdo, 'cloture-en-attente');
+poserReputation($pdo, $enAttente, 1);
+Moderate::applyVote($pdo, membre($pdo, 'votant-attente'), 'member', $enAttente, -1, motif(), 'agressif');
+vieillirBan($pdo, $enAttente, 10_000);
+Moderate::setJournal(new JournalEnPanne());
+$leveAttente = null;
+$pendantAttente = null;
+try {
+    Moderate::getReputation($pdo, $enAttente);
+    $postAttente = message($pdo, $enAttente, 'fil-attente');
+    foreach (['salve-panne-1', 'salve-panne-2', 'salve-panne-3'] as $nom) {
+        Moderate::applyVote($pdo, membre($pdo, $nom), 'post', $postAttente, -1, motif(), 'agressif');
+    }
+    $pendantAttente = Moderate::getReputation($pdo, $enAttente)['review_reason'];
+} catch (RuntimeException $ex) {
+    $leveAttente = $ex->getMessage();
+}
+Moderate::setJournal($journal);
+$apresAttente = Moderate::getReputation($pdo, $enAttente);
+$leveAttente === null && $pendantAttente === 'salve_rapide' && $apresAttente['review_reason'] === 'salve_rapide'
+    && !$apresAttente['banned'] && count($journal->de($enAttente, 'ban_fin')) === 1
+    ? ok('⭐ journal en panne : les votes passent, une salve se signale, et son signal survit à la clôture')
+    : nok('⭐ panne du journal : ' . json_encode([$leveAttente, $pendantAttente, $apresAttente['review_reason'] ?? null]));
 Moderate::setJournal(null);
 
 // ── 35. Le journal du lab : une chaîne signée, lisible par le groupe ────────
@@ -1124,7 +1255,7 @@ $accepte = Pierroons\MySelfLab\Forum::createThread($pdo, $muet, 'un fil', 'gener
 
 // ── 37bis. ⭐ Pendant un ban, le profil public est gelé ────────────────────
 // La bio et le lien sont publics : un ban qui coupe la parole publique les
-// coupe aussi. Sans cette garde, un banni gardait une tribune par son profil.
+// coupe aussi. Sans cette garde, un banni garderait une tribune par son profil.
 require_once __DIR__ . '/../lib/profile.php';
 $gele = membre($pdo, 'profil-gele');
 Moderate::adminBan($pdo, $gele, 'arbitre-banc', motif());

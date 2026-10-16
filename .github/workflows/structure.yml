@@ -1445,12 +1445,12 @@ jobs:
       - name: Canari — l'adaptateur du lab efface un dossier déposé, reclôt un dossier clos, retranche un dossier tranché, ou laisse fuir la sanction
         run: |
           # @plante
-          # Les deux défauts que la 0.12.3 a corrigés dans la bibliothèque,
-          # replantés dans la recopie du lab, chacun restauré avant le suivant :
+          # Deux défauts que la bibliothèque ferme, replantés dans la recopie du
+          # lab, chacun restauré avant le suivant :
           # la clause qui efface tout périmé non refusé doit rougir sur le dossier
           # déposé ; la clôture sans condition d'état, sur le dossier déjà clos.
-          # Les deux écritures que la 0.12.4 garde, replantées sans leur condition
-          # d'état : la décision doit rougir sur le dossier déjà tranché, le dépôt
+          # Les deux écritures que la bibliothèque garde par une condition d'état,
+          # replantées sans elle : la décision doit rougir sur le dossier déjà tranché, le dépôt
           # sur le dossier tranché qu'il repasserait en attente.
           # Et deux défauts de la sanction lue pour l'arbitre : le motif d'un
           # arbitre de modération qui sort en texte ; la lecture remplacée par
@@ -1849,9 +1849,9 @@ jobs:
         run: |
           # @plante
           # Deux gardes de l'ajout, retirées chacune à son tour et restaurées avant
-          # la suivante : le refus d'une entrée que JSON ne sait pas encoder, qui
-          # s'écrivait comme une ligne vide ; l'échec d'un fsync(), qui laissait
-          # une ligne remise au noyau passer pour écrite.
+          # la suivante : le refus d'une entrée que JSON ne sait pas encoder, sans
+          # lequel elle s'écrirait comme une ligne vide ; l'échec d'un fsync(),
+          # sans lequel une ligne remise au noyau passerait pour écrite.
           F=demo/lab/lib/su_audit.php
           for cas in encodage synchronisation; do
             cp "$F" /tmp/su_audit.intact
@@ -1888,8 +1888,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 71/71 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 71 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 77/77 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 77 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -1902,7 +1902,7 @@ jobs:
           import sys
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
-          garde = "        if ((int) $etat['banned_until'] > $maintenant) {\n            return;\n        }\n\n        $episode"
+          garde = "        if ((int) $etat['banned_until'] > 0) {\n            return;\n        }\n\n        $episode"
           assert s.count(garde) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(garde, "        $episode"))
           PY
@@ -2106,8 +2106,8 @@ jobs:
           avant, apres = {
               'signal':      ("        $remplacables = in_array($raison, $etats, true) ? $etats : [...$etats, $raison];\n",
                               "        $remplacables = [...$etats, 'salve_rapide', 'meute_recidive', $raison];\n"),
-              'composition': ("              WHERE v.target_author = ? AND v.blocked = 0 AND COALESCE(v.effet, v.value) < 0 AND v.created_at <= ?\n",
-                              "              WHERE v.target_author = ? AND v.created_at <= ?\n"),
+              'composition': ("              WHERE v.target_author = ? AND v.blocked = 0 AND COALESCE(v.effet, 0) < 0\n",
+                              "              WHERE v.target_author = ?\n"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
@@ -2143,8 +2143,8 @@ jobs:
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           avant, apres = {
-              'ordre':   ("                               GROUP BY voter_id ORDER BY MAX(created_at) DESC, voter_id DESC');\n",
-                          "                               GROUP BY voter_id ORDER BY voter_id ASC');\n"),
+              'ordre':   ('                               GROUP BY voter_id ORDER BY MAX(created_at) DESC, voter_id DESC");\n',
+                          '                               GROUP BY voter_id ORDER BY voter_id ASC");\n'),
               'silence': ("                self::signaler($pdo, $author, 'votants_tronques');\n", ""),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
@@ -2220,8 +2220,8 @@ jobs:
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           avant, apres = {
-              'lecture': ("        self::cloreBanExpire($pdo, $accountId, contenir: true);\n",
-                          "        self::cloreBanExpire($pdo, $accountId);\n"),
+              'lecture': ("        self::regenerate($pdo, $accountId);\n        self::cloreBanExpire($pdo, $accountId, contenir: true);\n",
+                          "        self::regenerate($pdo, $accountId);\n        self::cloreBanExpire($pdo, $accountId);\n"),
               'profil':  ("        if ($etat['banned']) {\n", "        if (false) {\n"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
@@ -2239,6 +2239,56 @@ jobs:
             case $cas in
               lecture) attendu='✗ ⭐ un journal en panne fait tomber la lecture' ;;
               profil)  attendu='✗ ⭐ profil public pendant un ban' ;;
+            esac
+            echo "$sortie" | grep -q "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — SelfModerate perd un meneur annulé, annule deux fois, fait monter qui n'a pas revoté, ou rouvre un ban pendant une panne
+        run: |
+          # @plante
+          # Les gardes posées après l'audit du lot, retirées tour à tour : le
+          # graphe qui garde les votes déjà annulés pour meute ; l'annulation qui
+          # ne prend qu'un vote encore actif ; l'épisode qui exige un vote neuf ;
+          # l'effet inconnu d'un vote d'avant la colonne ; la panne du journal
+          # tenue pour un signal d'état ; aucun ban avant la clôture du précédent.
+          M=bi-self/selfmoderate/src/Moderate.php
+          for cas in chaine course tiers migration panne attente; do
+            cp "$M" /tmp/moderate.audit.intact
+            CAS="$cas" python3 - "$M" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          avant, apres = {
+              'chaine':    ("        $enJeu = \"value = -1 AND (blocked = 0 OR blocked_reason = 'pack_voting')\";\n",
+                            "        $enJeu = \"value = -1 AND blocked = 0\";\n"),
+              'course':    ("WHERE id = ? AND blocked = 0\");\n", "WHERE id = ?\");\n"),
+              'tiers':     ("            if ($neuf->fetchColumn() === false) {\n", "            if (false) {\n"),
+              'migration': ("SELECT COALESCE(effet, 0) AS effet, created_at FROM mod_votes", "SELECT COALESCE(effet, value) AS effet, created_at FROM mod_votes"),
+              'panne':     ("        $etats = ['reputation_zero', 'ban_auto', 'journal_en_panne'];\n",
+                            "        $etats = ['reputation_zero', 'ban_auto'];\n"),
+              'attente':   ("        if ((int) $etat['banned_until'] > 0) {\n", "        if ((int) $etat['banned_until'] > time()) {\n"),
+          }[os.environ['CAS']]
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/moderate.audit.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              cp /tmp/moderate.audit.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/moderate.audit.intact "$M"
+            cmp -s /tmp/moderate.audit.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              chaine)    attendu='✗ ⭐ le meneur annulé ne relie plus sa meute' ;;
+              course)    attendu='✗ ⭐ le second passage annule encore' ;;
+              tiers)     attendu='✗ ⭐ un tiers fait monter le rang du premier votant' ;;
+              migration) attendu='✗ ⭐ des votes d.avant la colonne lèvent un ban' ;;
+              panne)     attendu='✗ ⭐ panne du journal' ;;
+              attente)   attendu='✗ ⭐ panne du journal' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

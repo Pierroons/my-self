@@ -33,7 +33,7 @@ SelfModerate est un moteur de modération qui permet aux communautés en ligne d
 ### Système de vote
 - Les votes sont liés aux **invitations acceptées** (vraies interactions, pas reports anonymes) — *partiel : le lab est un forum, il n'a pas d'invitations*
 - 👍 (+1) ou 👎 (-1) avec une raison — **obligatoire au downvote, facultative à l'upvote** : une raison existe pour que la personne sanctionnée sache ce qu'on lui reproche, et un pouce en l'air ne sanctionne personne
-- La raison doit **dire quelque chose** : 40 caractères au moins et 1000 au plus, 3 mots distincts, aucun mot ressassé (deux fois sont toujours permises ; au-delà, un mot court comme « de » ou « mon » ne dépasse pas le tiers des mots, un mot de quatre lettres ou plus pas le cinquième), au moins 12 caractères différents, pas de rafale d'un même caractère. Cinq règles parce qu'une seule se contourne — on atteint n'importe quelle longueur en bloquant une touche. La borne haute protège la page de la personne visée, où les motifs s'affichent
+- La raison doit **dire quelque chose** : 40 caractères, 3 mots distincts, aucun mot ressassé (deux fois sont toujours permises ; au-delà, un mot court comme « de » ou « mon » ne dépasse pas le tiers des mots, un mot de quatre lettres ou plus pas le cinquième), au moins 12 caractères différents, pas de rafale d'un même caractère. Cinq règles parce qu'une seule se contourne — on atteint n'importe quelle longueur en bloquant une touche. Elle ne dépasse pas non plus 1000 caractères : cette borne protège la page de la personne visée, où les motifs s'affichent
 - Voter est une **recommandation, pas une obligation** — ça aide à reconnaître les bons coéquipiers ou signaler les comportements problématiques
 - Raisons configurables par plateforme via `setReasonCodes()` ; le jeu par défaut convient à un forum (hors-sujet, agressif, désinformation, entraide, contribution utile, autre)
 - Votes anonymes : la cible voit son score et les raisons, pas qui a voté. Les raisons lui sont rendues **datées au jour**, dans un ordre non chronologique — à la seconde près, recoupées avec les présences, elles désigneraient leur auteur. Limite qu'aucun tri ne lève : sur un unique downvote reçu, la personne devine souvent qui l'a émis
@@ -59,22 +59,22 @@ La punition n'est pas technique — elle est sociale.
 ### Escalade des sanctions
 - Score < 5 → **perte du droit de vote**
 - Score = 0 → **ban temporaire, gradué** : 24 h → 7 j → 30 j en service (`Config::prod()`), 2 → 10 → 30 min en démonstration (`Config::demo()`). Le dernier palier **se reconduit** : la machine ne prononce jamais d'exclusion définitive, au-delà c'est l'arbitre qui décide
-- **Le ban automatique ne tombe que si un journal est branché** (`setJournal()`). Sans journal, une réputation à zéro lève un signalement et un arbitre tranche. Avec lui, chaque début, chaque fin et chaque levée de ban s'écrit au journal, **avant** la base : une panne laisse une trace sans effet, jamais une peine sans trace. Une fin de peine que le journal refuse d'inscrire reste à refermer : la page qui la constate continue, l'arbitre est prévenu (`journal_en_panne`), et la clôture suit le retour du journal
+- **Le ban automatique ne tombe que si un journal est branché** (`setJournal()`). Sans journal, une réputation à zéro lève un signalement et un arbitre tranche. Avec lui, chaque début, chaque fin et chaque levée de ban s'écrit au journal, **avant** la base : une panne laisse une trace sans effet, jamais une peine sans trace. Une fin de peine que le journal refuse d'inscrire reste à refermer : le vote ou la page qui la constate continue, l'arbitre est prévenu (`journal_en_panne`, et la console d'arbitre le dit pour tout le site), et la clôture suit le retour du journal. D'ici là, la personne n'est plus bannie, mais son droit de vote et sa réputation remise au départ attendent la clôture, et aucun nouveau ban ne commence
 - Une peine en cours **ne se rallonge pas** au vote contraire suivant
 - Après un ban automatique purgé : score remis à **20**, strikes préservés — le ban suivant sera plus long
 - Ce qu'un ban bloque au-delà du vote relève de la plateforme (`estBanni()`). Le lab bloque aussi la publication, et laisse ouverts la connexion et les messages privés
 - 3 mois sans incident : remise à zéro des strikes — *pas encore codé*
 
 ### Gestes d'arbitre
-- **Bannir**, **lever**, **maintenir** : chaque geste porte le nom de l'arbitre et s'écrit au journal. Bannir exige un motif, contrôlé comme celui d'un downvote : la personne bannie doit pouvoir lire ce qu'on lui reproche. **Lever** (la grâce) remet tout au départ : le ban, la réputation, les strikes, une suspension de vote encore en cours, et le rang de meute — l'historique des épisodes reste lisible
+- **Bannir**, **lever**, **maintenir** : chaque geste porte le nom de l'arbitre et s'écrit au journal. Bannir exige un motif, contrôlé comme celui d'un downvote : la personne bannie doit pouvoir lire ce qu'on lui reproche. **Lever** (la grâce) remet tout au départ : le ban, la réputation, les strikes, une suspension de vote posée par une version antérieure et encore en cours, et le rang de meute — l'historique des épisodes reste lisible. **Maintenir** clôt la revue du compte, quel qu'en soit le motif. **Classer** clôt un signalement sans rien toucher d'autre, motif exigé
 - **Plancher** : avant un tiers de la peine **en cours** (`Config::$plancherFraction`), une levée exige un motif écrit et s'inscrit comme **levée anticipée**, avec le temps qui restait. Un tiers de la peine en cours, jamais du palier maximal : sinon le plancher d'un premier ban d'un jour durerait dix jours. Le plancher ne ferme pas le favoritisme ; il le rend coûteux, parce qu'il laisse une trace signée
 - **Jamais de plancher sur une meute détectée** : quand le moteur reconnaît que la meute a **causé** le ban — des votes annulés, posés avant son début, avaient retiré un point —, il le lève seul et l'écrit. La levée rend ce que ces votes avaient pris et retire le strike de ce ban, rien de plus. Elle répare une injustice ; elle n'en accorde aucune. Des votes posés pendant le ban ne le lèvent pas, et un ban d'arbitre ne se lève pas ainsi : il n'est pas venu des votes
 
 ### Une meute ne pèse pas plus qu'un membre seul
-Le lien par message privé est le seul indice d'une meute, et il ne distingue ni deux
-amis de bonne foi qui réagissent au même message pénible, ni un lien **fabriqué par la
-cible elle-même** — un compte jetable à qui l'on a répondu une fois —, d'une
-coordination. Une peine bâtie sur lui frapperait des honnêtes au choix d'un tiers : un
+Le lien par message privé est le seul indice d'une meute, et il ne distingue d'une
+coordination ni deux amis de bonne foi qui réagissent au même message pénible, ni un
+lien **fabriqué par la cible elle-même** — un compte jetable à qui l'on a répondu une
+fois. Une peine bâtie sur lui frapperait des membres honnêtes, au choix d'un tiers : un
 membre qui publie un message odieux par jour ferait récidiver ceux qui le critiquent
 ensemble. Le moteur neutralise donc ce que le groupe ajoute, et ne punit personne.
 
@@ -85,11 +85,14 @@ ensemble. Le moteur neutralise donc ce que le groupe ajoute, et ne punit personn
 | 2e et suivants | **Revue humaine** (`meute_recidive`) — aucune suspension, aucun point retiré, aucune exclusion |
 
 - Le rang appartient au **votant**, pas à la cible. Compté sur la cible, un groupe
-  qui change de proie resterait au premier rang indéfiniment
+  qui change de proie resterait au premier rang indéfiniment. Un votant n'entre dans
+  un épisode que s'il a voté contre la cible depuis son dernier épisode sur elle : un
+  tiers lié qui revote ne fait pas monter le rang de qui n'a rien refait
 - Un votant ne monte **qu'un seul rang par 24 heures**, comptées depuis le **début**
   de l'épisode. Sans cette borne, un groupe qui frappe trois personnes dans le même
   passage franchirait trois rangs d'un coup ; comptées depuis la dernière détection,
-  une meute qui frappe un peu plus souvent resterait au premier rang pour toujours.
+  une meute qui frappe à moins de 24 heures d'intervalle resterait au premier rang pour
+  toujours.
   Les cibles supplémentaires sont enregistrées quand même : l'arbitre voit l'ampleur
 - Le rang est visible **sur son propre profil seulement**. Une pastille publique
   serait une peine de plus, que personne n'a décidée
@@ -102,10 +105,10 @@ ensemble. Le moteur neutralise donc ce que le groupe ajoute, et ne punit personn
 
 ### Anti-manipulation
 - **Anti-Sybil** : délai sur les nouveaux comptes, sauf s'ils ont déjà publié : **24 h** en service, aligné sur la période d'échauffement décrite par [Bi-Self](../README.fr.md), **2 min** en démonstration. Le refus dit l'attente restante
-- **Meute** : deux votants **liés entre eux** qui frappent la même cible sur 30 jours → le premier garde ses votes, ceux de l'autre sont annulés et la réputation restituée de ce qu'ils avaient pris. Le lien se propage par transitivité — A–B et B–C liés forment une meute de trois, car une meute a un meneur. Au-delà de 200 votants sur une cible (`meuteVotantsMax`), les plus récents sont examinés et la cible est signalée à l'arbitre
+- **Meute** : deux votants **liés entre eux** qui frappent la même cible sur 30 jours → le premier garde ses votes, ceux de l'autre sont annulés, et la cible récupère ce qu'ils lui avaient pris. Le lien se propage par transitivité — A–B et B–C liés forment une meute de trois, car une meute a un meneur ; un membre dont le vote a déjà été annulé relie encore les autres. Au-delà de 200 votants sur une cible (`meuteVotantsMax`), les plus récents sont examinés et la cible est signalée à l'arbitre
 - Ce qui lie deux comptes dépend de la plateforme. Sur un forum : un **message privé dans chaque sens**, l'équivalent le plus proche d'une invitation acceptée. Exiger la réciprocité empêche un spammeur de se rendre invulnérable en écrivant à tout le monde. Le contenu des messages n'est **jamais lu** — seulement qui a écrit à qui
 - **Salve rapide** : plusieurs votants **sans aucun lien** dans une fenêtre courte (5 min en service, 1 min en démonstration). Ce n'est pas une meute, c'est le plus souvent la même réaction au même message : rien n'est annulé, la cible part en revue humaine. Annuler ici protégerait un message d'autant mieux qu'il choque plus de monde à la fois. Le signal d'une salve n'est jamais écrasé par celui d'un ban
-- **Ce que ni l'une ni l'autre ne voit** : une coordination organisée ailleurs, entre comptes qui ne se sont jamais écrit sur la plateforme, et qui espace ses votes au-delà de la fenêtre de salve. Rien ne la reconnaît. Ce que l'arbitre en voit : la **composition de chaque ban automatique** — combien de votants l'ont causé, l'âge de leurs comptes, en combien de temps
+- **Ce que ni l'une ni l'autre ne voit** : une coordination organisée ailleurs, entre comptes qui ne se sont jamais écrit sur la plateforme, et qui espace ses votes au-delà de la fenêtre de salve. Rien ne la reconnaît. Ce que l'arbitre en voit : la **composition de chaque ban automatique** — combien de votants l'ont causé sur la fenêtre de meute qui le précède, l'âge de leurs comptes, en combien de temps
 - **Farming** : au-delà de 3 votes positifs d'un même votant vers un même membre en 60 jours, les suivants sont neutralisés ; même plafond pour les votes négatifs, contre l'érosion lente d'un votant patient qui vise chaque message. Et un votant ne vise pas plus de 10 membres distincts sur la même fenêtre (`ciblesParVotantMax`) : au-delà, ses votes négatifs vers un membre de plus sont neutralisés, et il est signalé à l'arbitre
 - **Cross-voting** : A vs B et B vs A sur la même invitation → les deux annulés — *pas encore codé*
 - **Protection des victimes** : une meute reconnue lève le ban automatique qu'elle a causé — *partiel : un simple signalement ne suspend pas encore un ban*
@@ -117,14 +120,14 @@ Le moteur est une classe statique ; l'hôte fournit la connexion `PDO` à chaque
 | Appel | Rôle |
 |---|---|
 | `setConfig(Config)` | les seuils : `Config::demo()`, `Config::prod()` ou les tiens. **Seule source** des seuils : le moteur les lit là, et tes pages aussi, par `Moderate::config()` |
-| `setJournal(Journal)` | branche le journal, et avec lui le ban automatique. L'interface [`Journal`](./src/Journal.php) liste les actes et leurs clés ; l'écriture doit être durable et non réécrivable. Un refus remonte toujours, sauf à la clôture d'une peine échue constatée par une lecture : la peine reste alors à refermer et l'arbitre est prévenu |
+| `setJournal(Journal)` | branche le journal, et avec lui le ban automatique. L'interface [`Journal`](./src/Journal.php) liste les actes et leurs clés ; l'écriture doit être durable et non réécrivable. Un refus remonte toujours, sauf quand un vote ou une lecture constate une peine échue : sa clôture attend alors, et l'arbitre est prévenu |
 | `balayerBansEchus(PDO)` | referme les peines échues en une passe, pour un planificateur. Sans lui, une fin se constate à la lecture suivante, et le journal porte l'échéance ET l'instant de la constatation |
-| `applyVote(PDO, votant, type, cible, valeur, ?motif)` | un vote, qui rend `ok`, `blocked` et `message` — jamais la réputation de la cible, que le profil tait sous le seuil de sanction |
+| `applyVote(PDO, votant, type, cible, valeur, ?motif)` | un vote, qui rend `ok`, `blocked` et `message` — jamais la réputation de la cible, que le profil tait sous le seuil du vote |
 | `estBanni(PDO, id)` · `bansEnCours(PDO)` | ce que l'hôte bloque, et ce que l'arbitre doit voir : origine, motif, fin, temps restant, plancher, et pour un ban automatique la composition de sa chute |
-| `adminBan(PDO, id, arbitre, motif)` · `adminPardon(PDO, id, arbitre, ?motif)` · `adminMaintenir(PDO, id, arbitre, motif)` | les gestes d'arbitre, qui rendent `['ok' => bool, 'message' => string]` |
+| `adminBan(PDO, id, arbitre, motif)` · `adminPardon(PDO, id, arbitre, ?motif)` · `adminMaintenir(PDO, id, arbitre, motif)` · `adminClasser(PDO, id, arbitre, motif)` | les gestes d'arbitre, qui rendent `['ok' => bool, 'message' => string]` |
 | `dureeEnClair(secondes)` | une durée lisible, unités passées par ton traducteur (`setTranslator()`) |
 
-**Schéma attendu** — celui du lab fait référence ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)) : `member_moderation` (réputation, strikes, droit de vote, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, signalement, convalescence, suspension de vote), `mod_votes` (dont `effet`, ce que le vote a réellement changé à la réputation ; un vote antérieur à la colonne la laisse à `NULL`), `mod_pack_flags`, `mod_sweeps` (une ligne par tranche de `balayagePeriodeSecondes` déjà balayée ; sans elle, chaque vote négatif échoue au lieu de laisser le filet s'éteindre), et trois tables de l'hôte lues sans être écrites : `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. Le moteur écrit du SQL SQLite.
+**Schéma attendu** — celui du lab fait référence ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)) : `member_moderation` (réputation, strikes, droit de vote, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, signalement, convalescence, suspension de vote), `mod_votes` (dont `effet`, ce que le vote a réellement changé à la réputation ; un vote antérieur à la colonne la laisse à `NULL`, sans effet connu : il ne se rend pas et ne compte comme cause d'aucun ban), `mod_pack_flags`, `mod_sweeps` (une ligne par tranche de `balayagePeriodeSecondes` déjà balayée ; sans elle, chaque vote négatif échoue au lieu de laisser le filet s'éteindre), et trois tables de l'hôte lues sans être écrites : `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. Le moteur écrit du SQL SQLite.
 
 Les dates de ses messages suivent le fuseau de l'hôte (`date_default_timezone_set()`).
 
@@ -138,15 +141,16 @@ Les dates de ses messages suivent le fuseau de l'hôte (`date_default_timezone_s
 🟢 **v0.6.0** — le moteur est ici, dans `src/`, et le lab l'importe comme il
 importe SelfRecover et SelfDataGuard.
 
-La 0.6.0 corrige ce que l'audit en deux visions de la 0.5.0 a relevé. Une meute ne
-pèse plus que ce que pèse un membre seul, et le moteur ne punit plus sur la foi d'un
-lien ; elle ne lève que le ban qu'elle a causé ; une salve qui mène au ban reste
-signalée, et l'arbitre voit la composition de chaque chute ; un votant ne vise plus
-tout le forum ; un journal en panne ne fait plus tomber les pages. **Rupture** par
-rapport à la 0.5.0 : la colonne `mod_votes.effet` entre au schéma attendu ; `Config`
-perd `meuteMute2`, `meuteMute3` et `meutePenalite3`, et gagne `ciblesParVotantMax` ;
-`applyVote()` ne rend plus `new_reputation` ; `detectPackVoting()` rend `rangs` à la
-place de `sanctions`.
+La 0.6.0 corrige les défauts qu'un audit de la 0.5.0 a relevés. Une meute ne pèse plus
+que ce que pèse un membre seul, et le moteur ne punit plus sur la foi d'un lien ; elle
+ne lève que le ban qu'elle a causé ; une salve qui mène au ban reste signalée, et
+l'arbitre voit la composition de chaque chute ; un votant ne vise plus tout le forum ;
+un journal en panne ne fait plus tomber le vote ni la page qui constate la fin d'une
+peine. **Rupture** par rapport à la 0.5.0 : la colonne `mod_votes.effet` entre au
+schéma attendu ; `Config` perd `meuteMute2`, `meuteMute3` et `meutePenalite3`, gagne
+`ciblesParVotantMax`, et `meuteVotantsMax` passe à 200 ; `applyVote()` ne rend plus
+`new_reputation` ; `detectPackVoting()` rend `premier` et `rangs` à la place de
+`sanctions`. Une suspension de vote déjà en base reste lue jusqu'à son échéance.
 
 La 0.4.0 fait revenir le ban automatique, tenu : gradué, fini, écrit au journal de
 bout en bout, levable par un arbitre sous plancher, et levé seul quand une meute

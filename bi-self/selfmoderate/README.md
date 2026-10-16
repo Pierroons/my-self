@@ -33,7 +33,7 @@ SelfModerate is a moderation engine that lets online communities self-regulate w
 ### Vote system
 - Votes are tied to **accepted invitations** (real interactions, not anonymous reports) — *partial: the lab is a forum and has no invitations*
 - 👍 (+1) or 👎 (-1) with a reason — **mandatory on a downvote, optional on an upvote**: a reason exists so the sanctioned person knows what they are faulted for, and a thumbs-up sanctions nobody
-- The reason must **say something**: 40 characters at least and 1000 at most, 3 distinct words, no word hammered on (twice is always allowed; beyond that a short word such as "of" or "my" stays within a third of the words, a word of four letters or more within a fifth), at least 12 different characters, no run of one character. Five rules because a single one is worked around — you reach any length by holding a key down. The upper bound protects the targeted person's page, where reasons are displayed
+- The reason must **say something**: 40 characters, 3 distinct words, no word hammered on (twice is always allowed; beyond that a short word such as "of" or "my" stays within a third of the words, a word of four letters or more within a fifth), at least 12 different characters, no run of one character. Five rules because a single one is worked around — you reach any length by holding a key down. It also stays within 1000 characters: that bound protects the targeted person's page, where reasons are displayed
 - Voting is a **recommendation, not an obligation** — it helps recognize good teammates or flag problematic behavior
 - Configurable reasons per platform through `setReasonCodes()`; the default set fits a forum (off-topic, aggressive, misinformation, helpful to others, useful contribution, other)
 - Anonymous votes: the target sees their score and reasons, not who voted. Reasons come back **dated to the day**, in a non-chronological order — to the second, cross-referenced with who was online, they would name their author. A limit no ordering lifts: on a single downvote received, the person often guesses who sent it
@@ -59,22 +59,22 @@ The punishment isn't technical — it's social.
 ### Sanction escalation
 - Score < 5 → **loss of voting rights**
 - Score = 0 → **temporary ban, graduated**: 24 h → 7 d → 30 d in service (`Config::prod()`), 2 → 10 → 30 min in demonstration (`Config::demo()`). The last tier **repeats**: the machine never pronounces a definitive exclusion; beyond it, the arbiter decides
-- **The automatic ban only falls when a journal is plugged in** (`setJournal()`). Without a journal, a zero reputation raises a flag and an arbiter decides. With one, every start, end and lift of a ban is written to the journal, **before** the database: a failure leaves a trace without effect, never a penalty without trace. A penalty end the journal refuses to record stays to be closed: the page that notices it carries on, the arbiter is told (`journal_en_panne`), and the closing follows once the journal is back
+- **The automatic ban only falls when a journal is plugged in** (`setJournal()`). Without a journal, a zero reputation raises a flag and an arbiter decides. With one, every start, end and lift of a ban is written to the journal, **before** the database: a failure leaves a trace without effect, never a penalty without trace. When the journal refuses to record the end of a penalty, the closing is left pending: the vote or page that noticed it still goes through, the arbiter is told (`journal_en_panne`, and the arbiter console shows it site-wide), and the closing happens once the journal is back. Until then the person is no longer banned, but their voting right and their reputation reset wait for the closing, and no new ban starts
 - A running penalty **is not extended** by the next opposing vote
 - After a served automatic ban: score back to **20**, strikes kept — the next ban will be longer
 - What a ban blocks beyond voting is the platform's call (`estBanni()`). The lab also blocks posting, and leaves login and private messages open
 - 3 months without incident: strikes reset — *not implemented yet*
 
 ### Arbiter actions
-- **Ban**, **lift**, **maintain**: each carries the arbiter's name and is written to the journal. Banning requires a reason, checked like a downvote's: the banned person must be able to read what they are blamed for. **Lifting** (the pardon) resets everything: the ban, the reputation, the strikes, a voting suspension still running, and the pack rank — the history of episodes stays readable
+- **Ban**, **lift**, **maintain**: each carries the arbiter's name and is written to the journal. Banning requires a reason, checked like a downvote's: the banned person must be able to read what they are blamed for. **Lifting** (the pardon) resets everything: the ban, the reputation, the strikes, a voting suspension left by an earlier version and still running, and the pack rank — the history of episodes stays readable. **Maintaining** closes the account's review, whatever its cause. **Closing** a flag touches nothing else, reason required
 - **Floor**: before one third of the **running** penalty (`Config::$plancherFraction`), a lift requires a written reason and is recorded as an **early lift**, with the time that remained. One third of the running penalty, never of the maximum tier: otherwise the floor of a one-day first ban would last ten days. The floor does not close favouritism; it makes it costly, because it leaves a signed trace
 - **Never a floor on a detected pack**: when the engine recognises that the pack **caused** the ban — cancelled votes, cast before it started, had taken a point —, it lifts it on its own and records it. The lift gives back what those votes took and removes that ban's strike, nothing more. It repairs an injustice; it grants none. Votes cast during the ban do not lift it, and an arbiter's ban is not lifted that way: it did not come from the votes
 
 ### A pack weighs no more than a single member
-The private-message link is the only sign of a pack, and it tells apart neither two
-friends reacting in good faith to the same obnoxious post, nor a link **made up by the
-target itself** — a throwaway account someone answered once —, from coordination. A
-penalty built on it would hit honest people at a third party's choice: a member
+The private-message link is the only sign of a pack, and it cannot tell coordination
+apart from two friends reacting in good faith to the same obnoxious post, or from a link
+**made up by the target itself** — a throwaway account someone answered once. A penalty
+built on it would hit honest members, at a third party's choice: a member
 posting one odious message a day would turn the people criticising them together
 into repeat offenders. So the engine neutralises what the group adds, and punishes
 no one.
@@ -86,11 +86,13 @@ no one.
 | 2nd and beyond | **Human review** (`meute_recidive`) — no suspension, no points off, no exclusion |
 
 - The rank belongs to the **voter**, not to the target. Counted on the target, a
-  group switching prey would stay at the first rank forever
+  group switching prey would stay at the first rank forever. A voter only enters an
+  episode if they voted against the target since their last episode on it: a linked
+  third party voting again does not raise the rank of someone who did nothing new
 - A voter climbs **one rank per 24 hours at most**, counted from the **start** of the
   episode. Without that bound, a group hitting three people in the same sweep would
-  cross three ranks at once; counted from the last detection, a pack striking a
-  little more often would stay at the first rank forever. The extra targets are
+  cross three ranks at once; counted from the last detection, a pack striking
+  less than 24 hours apart would stay at the first rank forever. The extra targets are
   still recorded: the arbiter sees the scale
 - The rank is visible **on one's own profile only**. A public badge would be one
   more penalty, decided by no one
@@ -103,10 +105,10 @@ no one.
 
 ### Anti-manipulation
 - **Anti-Sybil**: a delay on new accounts, unless they have already posted: **24 hours** in service, matching the warm-up period described by [Bi-Self](../README.md), **2 minutes** in demonstration. The refusal states the remaining wait
-- **Pack**: two voters **linked to each other** hitting the same target within 30 days → the first keeps their votes, the other's are cancelled and the reputation is given back what they took. Linkage propagates transitively — A–B and B–C linked form a pack of three, because a pack has a ringleader. Beyond 200 voters on a target (`meuteVotantsMax`), the most recent are examined and the target is flagged to the arbiter
+- **Pack**: two voters **linked to each other** hitting the same target within 30 days → the first keeps their votes, the other's are cancelled, and the target gets back what they took. Linkage propagates transitively — A–B and B–C linked form a pack of three, because a pack has a ringleader; a member whose vote was already cancelled still links the others. Beyond 200 voters on a target (`meuteVotantsMax`), the most recent are examined and the target is flagged to the arbiter
 - What links two accounts depends on the platform. On a forum: a **private message in each direction**, the closest equivalent to an accepted invitation. Requiring reciprocity stops a spammer from becoming invulnerable by writing to everyone. Message contents are **never read** — only who wrote to whom
 - **Fast burst**: several voters with **no link at all** within a short window (5 min in service, 1 min in demonstration). That is not a pack, it is most often the same reaction to the same post: nothing is cancelled, the target goes to human review. Cancelling here would protect a post all the better for shocking more people at once. A burst's flag is never overwritten by a ban's
-- **What neither one sees**: coordination organised elsewhere, between accounts that never wrote to each other on the platform, spacing its votes beyond the burst window. Nothing recognises it. What the arbiter sees of it: the **make-up of every automatic ban** — how many voters caused it, how old their accounts are, over how long
+- **What neither one sees**: coordination organised elsewhere, between accounts that never wrote to each other on the platform, spacing its votes beyond the burst window. Nothing recognises it. What the arbiter sees of it: the **make-up of every automatic ban** — how many voters caused it over the pack window before it, how old their accounts are, over how long
 - **Farming**: beyond 3 positive votes from one voter to one member within 60 days, the next ones are neutralised; the same cap applies to negative votes, against the slow erosion of a patient voter who targets every post. And a voter targets no more than 10 distinct members over the same window (`ciblesParVotantMax`): beyond that, their negative votes towards one more member are neutralised, and they are flagged to the arbiter
 - **Cross-voting**: A vs B and B vs A on same invitation → both cancelled — *not implemented yet*
 - **Victim protection**: a recognised pack lifts the automatic ban it caused — *partial: a mere flag does not suspend a ban yet*
@@ -118,14 +120,14 @@ The engine is a static class; the host passes its `PDO` connection on every call
 | Call | Role |
 |---|---|
 | `setConfig(Config)` | the thresholds: `Config::demo()`, `Config::prod()` or your own. **Single source** of the thresholds: the engine reads them there, and so do your pages, through `Moderate::config()` |
-| `setJournal(Journal)` | plugs in the journal, and with it the automatic ban. The [`Journal`](./src/Journal.php) interface lists the acts and their keys; writing must be durable and not rewritable. A refusal always propagates, except when a read notices an expired penalty: the penalty then stays to be closed and the arbiter is told |
+| `setJournal(Journal)` | plugs in the journal, and with it the automatic ban. The [`Journal`](./src/Journal.php) interface lists the acts and their keys; writing must be durable and not rewritable. A refusal always propagates, except when a vote or a read notices an expired penalty: its closing is then left pending and the arbiter is told |
 | `balayerBansEchus(PDO)` | closes expired penalties in one pass, for a scheduler. Without it, an end is noticed at the next read, and the journal carries the due time AND the moment it was noticed |
-| `applyVote(PDO, voter, type, target, value, ?reason)` | a vote, returning `ok`, `blocked` and `message` — never the target's reputation, which the profile keeps quiet below the sanction threshold |
+| `applyVote(PDO, voter, type, target, value, ?reason)` | a vote, returning `ok`, `blocked` and `message` — never the target's reputation, which the profile does not show below the voting threshold |
 | `estBanni(PDO, id)` · `bansEnCours(PDO)` | what the host blocks, and what the arbiter must see: origin, reason, end, time left, floor, and for an automatic ban the make-up of its fall |
-| `adminBan(PDO, id, arbiter, reason)` · `adminPardon(PDO, id, arbiter, ?reason)` · `adminMaintenir(PDO, id, arbiter, reason)` | the arbiter actions, returning `['ok' => bool, 'message' => string]` |
+| `adminBan(PDO, id, arbiter, reason)` · `adminPardon(PDO, id, arbiter, ?reason)` · `adminMaintenir(PDO, id, arbiter, reason)` · `adminClasser(PDO, id, arbiter, reason)` | the arbiter actions, returning `['ok' => bool, 'message' => string]` |
 | `dureeEnClair(seconds)` | a readable duration, units passed through your translator (`setTranslator()`) |
 
-**Expected schema** — the lab's is the reference ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)): `member_moderation` (reputation, strikes, voting right, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, flag, recovery, vote suspension), `mod_votes` (including `effet`, what the vote actually changed to the reputation; a vote older than the column leaves it `NULL`), `mod_pack_flags`, `mod_sweeps` (one row per `balayagePeriodeSecondes` slot already swept; without it every downvote fails instead of letting the safety net go out), and three host tables read without being written: `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. The engine writes SQLite SQL.
+**Expected schema** — the lab's is the reference ([`demo/lab/schema.sql`](../../demo/lab/schema.sql)): `member_moderation` (reputation, strikes, voting right, `banned_until`, `ban_debut`, `ban_origine`, `ban_motif`, flag, recovery, vote suspension), `mod_votes` (including `effet`, what the vote actually changed to the reputation; a vote older than the column leaves it `NULL`, with no known effect: it is not given back and causes no ban), `mod_pack_flags`, `mod_sweeps` (one row per `balayagePeriodeSecondes` slot already swept; without it every downvote fails instead of letting the safety net go out), and three host tables read without being written: `accounts(id, username, created_at)`, `posts(id, account_id)`, `dm(sender_id, recipient_id, created_at)`. The engine writes SQLite SQL.
 
 Dates in its messages follow the host's time zone (`date_default_timezone_set()`).
 
@@ -139,14 +141,16 @@ Dates in its messages follow the host's time zone (`date_default_timezone_set()`
 🟢 **v0.6.0** — the engine is here, under `src/`, and the lab imports it the way
 it imports SelfRecover and SelfDataGuard.
 
-0.6.0 fixes what the two-view audit of 0.5.0 found. A pack weighs no more than a
-single member, and the engine no longer punishes on the strength of a link; it only
-lifts the ban it caused; a burst that leads to a ban stays flagged, and the arbiter
-sees the make-up of every fall; a voter no longer targets the whole forum; a failing
-journal no longer brings pages down. **Breaking** since 0.5.0: the `mod_votes.effet`
-column enters the expected schema; `Config` loses `meuteMute2`, `meuteMute3` and
-`meutePenalite3`, and gains `ciblesParVotantMax`; `applyVote()` no longer returns
-`new_reputation`; `detectPackVoting()` returns `rangs` instead of `sanctions`.
+0.6.0 fixes the defects an audit of 0.5.0 found. A pack weighs no more than a single
+member, and the engine no longer punishes on the strength of a link; it only lifts the
+ban it caused; a burst that leads to a ban stays flagged, and the arbiter sees the
+make-up of every fall; a voter no longer targets the whole forum; a failing journal no
+longer brings down the vote or the page that notices a penalty's end. **Breaking** since
+0.5.0: the `mod_votes.effet` column enters the expected schema; `Config` loses
+`meuteMute2`, `meuteMute3` and `meutePenalite3`, gains `ciblesParVotantMax`, and
+`meuteVotantsMax` goes to 200; `applyVote()` no longer returns `new_reputation`;
+`detectPackVoting()` returns `premier` and `rangs` instead of `sanctions`. A voting
+suspension already in the database is still read until it expires.
 
 0.4.0 brings the automatic ban back, held in check: graduated, finite, journaled
 end to end, liftable by an arbiter under a floor, and lifted on its own when a pack

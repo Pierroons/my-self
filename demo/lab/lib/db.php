@@ -276,7 +276,7 @@ final class Db
         }
 
         // SelfModerate — motif de vote, et ce que le vote a changé à la réputation.
-        // Un vote d'avant cette colonne la garde à NULL : le moteur le lit comme sa valeur.
+        // Un vote d'avant cette colonne la garde à NULL : le moteur le lit sans effet connu.
         $cols = self::$pdo->query('PRAGMA table_info(mod_votes)')->fetchAll(PDO::FETCH_COLUMN, 1);
         foreach (['reason' => 'TEXT', 'reason_code' => 'TEXT', 'effet' => 'INTEGER'] as $col => $type) {
             if (!in_array($col, $cols, true)) {

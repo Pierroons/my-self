@@ -247,6 +247,10 @@ return [
     'jour' => 'day', 'jours' => 'days', 'heure' => 'hour', 'heures' => 'hours',
     'minute' => 'minute', 'minutes' => 'minutes',
     'Compte banni jusqu\'au %s.' => 'Account banned until %s.',
+    'Aucun signalement en cours sur ce compte.'
+        => 'No flag pending on this account.',
+    'Signalement classé.'
+        => 'Flag closed.',
     'Motif trop long : %d caractères au plus, il y en a %d.'
         => 'Reason too long: %d characters at most, this one has %d.',
     'Vote enregistré mais neutralisé : tu as déjà voté contre %d membres différents ces %d derniers jours.'

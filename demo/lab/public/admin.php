@@ -33,6 +33,15 @@ $episodes = Admin::packEpisodes($pdo);
 $reports = Admin::reports($pdo);
 $demandes = Admin::pendingRequests($pdo);
 $disputes = \Pierroons\MySelfLab\RecoverL3::adminList($pdo)['disputes'] ?? [];
+// Les peines échues se referment ici : l'arbitre voit l'état réel, et un journal
+// qui refuse d'écrire se dit au niveau du site, même quand le compte porte déjà
+// un autre signal.
+try {
+    Moderate::balayerBansEchus($pdo);
+    $finsEnPanne = null;
+} catch (\Throwable $e) {
+    $finsEnPanne = $e->getMessage();
+}
 $bans     = Moderate::bansEnCours($pdo);
 $aRevoir  = array_values(array_filter(Moderate::flaggedForReview($pdo), static fn (array $f): bool => $f['review_reason'] !== 'ban_auto'));
 // L'état du journal se lit, il ne se suppose pas : une chaîne rompue ou
@@ -52,6 +61,7 @@ $causes = [
     'votants_tronques' => 'trop de votants pour la détection de meute',
     'votant_etendu'   => 'votant qui vise trop de membres différents',
     'journal_en_panne' => 'fin de peine non inscrite : le journal refuse d\'écrire',
+    'ban_auto'        => 'ban automatique en cours',
 ];
 // Les deux suspensions ne sont plus posées ; une base peut encore en porter.
 $suites = [
@@ -144,6 +154,9 @@ table.adm tr:last-child td{border-bottom:none}
 <div class="card">
   <h2>⛔ Bans en cours <span class="muted" style="font-size:12px">(vote et publication bloqués ; messages privés ouverts)</span></h2>
   <p class="muted" style="margin-top:0;font-size:12.5px">
+    <?php if ($finsEnPanne !== null): ?>
+      <span style="color:var(--danger)">⚠ Des peines échues attendent leur clôture : le journal refuse d'écrire (<?= h($finsEnPanne) ?>).</span><br>
+    <?php endif; ?>
     <?php if ($erreurJournal !== null): ?>
       <span style="color:var(--danger)">⚠ Journal de modération illisible : <?= h($erreurJournal) ?></span>
     <?php elseif ($etatJournal === null): ?>
@@ -183,6 +196,7 @@ table.adm tr:last-child td{border-bottom:none}
           <td><?= h($causes[$f['review_reason']] ?? (string) $f['review_reason']) ?></td>
           <td>★ <?= (int) $f['reputation'] ?></td>
           <td style="white-space:nowrap">
+            <button class="btn btn-ghost mini js-modaction" data-id="<?= (int) $f['account_id'] ?>" data-op="classer">📁 classer</button>
             <button class="btn btn-ghost mini js-modaction" data-id="<?= (int) $f['account_id'] ?>" data-op="ban">🔨 bannir</button>
             <button class="btn mini js-modaction" data-id="<?= (int) $f['account_id'] ?>" data-op="pardon">✅ gracier</button>
           </td></tr>
@@ -402,7 +416,8 @@ function modAction(id,op){
   const invites={
     ban:'Motif du ban — une phrase de 40 caractères au moins, que le membre pourra lire :',
     pardon:'Motif de la grâce — exigé avant le plancher de la peine, facultatif ensuite :',
-    maintenir:'Motif du maintien — pourquoi la peine continue :'
+    maintenir:'Motif du maintien — pourquoi la peine continue :',
+    classer:'Motif du classement — pourquoi ce signalement n\'appelle aucun geste :'
   };
   const motif=prompt(invites[op]||'Motif :','');
   if(motif===null) return;

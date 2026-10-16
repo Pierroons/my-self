@@ -22,7 +22,7 @@
  *
  * Usage  : php tests/sanity_motif.php
  *          SM_SRC=<copie de src> php tests/sanity_motif.php    (canari)
- * Sortie : 0 si les cinq contrôles passent, 1 sinon.
+ * Sortie : 0 si tous les contrôles passent, 1 sinon.
  */
 
 declare(strict_types=1);
@@ -98,19 +98,6 @@ $e === []
     ? ok('un mot court ressassé est refusé, par la règle des répétitions')
     : nok('un mot court ressassé passe : ' . implode(' · ', $e));
 
-// ── 5. Un motif a une longueur maximale, et le refus la dit ─────────────────
-// Sans borne haute, un motif d'un mégaoctet passait, et s'affichait en entier
-// sur le profil de la personne visée. Des mots tous distincts : seules les
-// bornes de longueur jugent ces textes. 1000 en clair, et non la constante :
-// un contrôle qui lit la borne qu'il mesure se décale avec elle.
-$borne = 1000;
-$texteLong = static fn (int $n): string => mb_substr(implode(' ', array_map(static fn (int $k): string => "terme$k", range(1, 400))), 0, $n);
-[$recuMax]                  = Moderate::validateReason($texteLong($borne));
-[$recuTrop, $pourquoiTrop]  = Moderate::validateReason($texteLong($borne + 1));
-$recuMax && !$recuTrop && str_contains($pourquoiTrop, (string) $borne)
-    ? ok("un motif de $borne caractères passe, un de plus est refusé, et le refus dit la borne")
-    : nok('borne haute du motif : ' . json_encode([$recuMax, $recuTrop, $pourquoiTrop ?? null], JSON_UNESCAPED_UNICODE));
-
 // ── 4. Constat : des mots qui se relaient passent ───────────────────────────
 // Écrit à l'envers. Chaque mot reste sous sa part ; c'est leur rotation qui
 // remplit, et la mesure ne la suit pas. Le motif reste lisible pour la
@@ -124,6 +111,19 @@ $e = ecarts($relais, true);
 $e === []
     ? ok('constat : des mots qui se relaient passent — la mesure ne suit pas la rotation')
     : nok('des mots qui se relaient sont refusés — la rotation est mesurée, ou la règle s\'est durcie : réécrire ce constat — ' . implode(' · ', $e));
+
+// ── 5. Un motif a une longueur maximale, et le refus la dit ─────────────────
+// Sans borne haute, un motif d'un mégaoctet passerait et s'afficherait en entier
+// sur le profil de la personne visée. Des mots tous distincts : seules les
+// bornes de longueur jugent ces textes. La borne en clair, et non la constante :
+// un contrôle qui lit la borne qu'il mesure se décale avec elle.
+$borne = 1000;
+$texteLong = static fn (int $n): string => mb_substr(implode(' ', array_map(static fn (int $k): string => "terme$k", range(1, 400))), 0, $n);
+[$recuMax]                  = Moderate::validateReason($texteLong($borne));
+[$recuTrop, $pourquoiTrop]  = Moderate::validateReason($texteLong($borne + 1));
+$recuMax && !$recuTrop && str_contains($pourquoiTrop, (string) $borne)
+    ? ok("un motif de $borne caractères passe, un de plus est refusé, et le refus dit la borne")
+    : nok('borne haute du motif : ' . json_encode([$recuMax, $recuTrop, $pourquoiTrop ?? null], JSON_UNESCAPED_UNICODE));
 
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0

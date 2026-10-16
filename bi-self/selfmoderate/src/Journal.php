@@ -27,7 +27,7 @@ interface Journal
     /**
      * Inscrit un acte. Le moteur passe un tableau dont les clés sont stables :
      *
-     *   acte       `ban_debut` | `ban_fin` | `ban_leve` | `ban_maintenu` | `grace`
+     *   acte       `ban_debut` | `ban_fin` | `ban_leve` | `ban_maintenu` | `grace` | `revue_classee`
      *   compte     identifiant numérique du membre visé
      *   origine    `auto` (réputation à zéro) | `admin` (arbitre) ; null pour un ban
      *              posé avant que l'origine ne soit enregistrée
@@ -47,15 +47,17 @@ interface Journal
      *   reputation réputation avant la grâce                   grace
      *   rang_efface       rang de meute effacé, 0 s'il n'y en avait pas    ban_leve (grâce), grace
      *   suspension_levee  une suspension de vote courait encore           ban_leve (grâce), grace
+     *   raison     cause du signalement classé                 revue_classee
      *
      * Une implémentation peut en ajouter (horodatage, chaînage, signature) ;
      * elle ne doit pas en retirer.
      *
      * Une exception levée ici remonte à l'appelant : une écriture de journal
      * qui échoue en silence vaut l'absence de journal. Une seule exception à la
-     * règle, et elle n'est pas muette : quand une LECTURE constate une peine
-     * échue, le refus est consigné et signalé à l'arbitre (`journal_en_panne`),
-     * et la peine reste à refermer à la lecture suivante.
+     * règle, et elle n'est pas muette : quand un vote ou une lecture constate une
+     * peine échue, le refus est consigné et signalé (`journal_en_panne`), et la
+     * peine reste à refermer au passage suivant. Le planificateur
+     * (`balayerBansEchus()`) et le début d'un ban font remonter le refus.
      */
     public function inscrire(array $acte): void;
 }

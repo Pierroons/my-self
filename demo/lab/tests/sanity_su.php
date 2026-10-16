@@ -439,8 +439,8 @@ putenv('SELFRECOVER_NTFY_SOCKS');
 // ── 11. Ce qui est annoncé écrit l'est, et sur le disque ────────────────────
 // La console écrit le journal avant le COMMIT de la base : une entrée perdue
 // laisse un acte fait sans trace. Deux pertes muettes : une entrée que JSON ne
-// sait pas encoder, qui s'écrivait comme une ligne vide ; une ligne remise au
-// noyau mais pas au disque, qu'une coupure efface après le COMMIT.
+// sait pas encoder, qui s'écrirait comme une ligne vide ; une ligne remise au
+// noyau mais pas au disque, qu'une coupure effacerait après le COMMIT.
 $journal  = SuAudit::logPath();
 $avantRef = (string) file_get_contents($journal);
 try {

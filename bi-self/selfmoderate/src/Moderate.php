@@ -205,13 +205,13 @@ class Moderate
      * `banned_until = 0` est l'état « aucune peine à clore » : c'est lui qui
      * rend l'inscription unique.
      *
-     * ⚠️ **Un journal qui refuse d'écrire laisse la peine à refermer.** Sur une
-     * lecture (`$contenir`), le refus est consigné et signalé à l'arbitre
-     * (`journal_en_panne`), et la lecture continue : une peine échue ne bloque
-     * déjà plus personne, puisque `banned` se calcule sur l'heure, et faire
-     * tomber toute page qui lit le compte n'ajouterait aucune trace. La clôture
-     * se fait à la lecture suivante, le journal revenu. Ailleurs, le refus
-     * remonte.
+     * ⚠️ **Un journal qui refuse d'écrire laisse la peine à refermer.** Avec
+     * `$contenir`, le refus est consigné et signalé (`journal_en_panne`), et
+     * l'appel continue : `banned` se calcule sur l'heure, donc la personne n'est
+     * plus bannie ; le droit de vote et la réputation remise au départ, eux,
+     * attendent la clôture. Faire tomber toute page qui lit le compte
+     * n'ajouterait aucune trace. La clôture se fait au passage suivant, le
+     * journal revenu. Le planificateur, lui, fait remonter le refus.
      */
     private static function cloreBanExpire(PDO $pdo, int $accountId, bool $contenir = false): void
     {
@@ -801,24 +801,28 @@ class Moderate
         // toujours faux. Les colonnes INTEGER convertissent leur paramètre par
         // affinité ; une expression comme COUNT(*) n'a aucune affinité.
         $minLies = (int) self::config()->meuteLiensMin;
+        // Un vote déjà annulé pour meute reste dans le graphe : son auteur relie
+        // encore ceux qui ne se connaissent qu'à travers lui. Sans lui, une
+        // chaîne A–B–C dont B a été annulé laisserait C garder son vote.
+        $enJeu = "value = -1 AND (blocked = 0 OR blocked_reason = 'pack_voting')";
         $stmt = $pdo->prepare("
             SELECT target_author FROM mod_votes
-             WHERE value = -1 AND blocked = 0 AND created_at >= ?$surCible
-          GROUP BY target_author HAVING COUNT(DISTINCT voter_id) >= $minLies
+             WHERE $enJeu AND created_at >= ?$surCible
+          GROUP BY target_author HAVING COUNT(DISTINCT voter_id) >= $minLies AND SUM(blocked = 0) > 0
         ");
         $stmt->execute(array_merge([$sinceMeute], $deLaCible));
         $auteurs = array_map('intval', array_column($stmt->fetchAll(), 'target_author'));
 
         foreach ($auteurs as $author) {
-            $vs = $pdo->prepare('SELECT voter_id FROM mod_votes
-                                  WHERE target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?
-                               GROUP BY voter_id ORDER BY MAX(created_at) DESC, voter_id DESC');
+            $vs = $pdo->prepare("SELECT voter_id FROM mod_votes
+                                  WHERE target_author = ? AND $enJeu AND created_at >= ?
+                               GROUP BY voter_id ORDER BY MAX(created_at) DESC, voter_id DESC");
             $vs->execute([$author, $sinceMeute]);
             $voters = array_map('intval', array_column($vs->fetchAll(), 'voter_id'));
 
             // On borne, en gardant les votants les plus récents : une meute de
             // comptes neufs vote en dernier, et c'est elle qu'une coupe par
-            // ancienneté écartait. Une troncature muette se lirait comme une
+            // ancienneté écarterait. Une troncature muette se lirait comme une
             // absence de meute : la cible est signalée à l'arbitre.
             if (count($voters) > self::config()->meuteVotantsMax) {
                 $tronques[] = ['target_author' => $author, 'voters' => count($voters), 'scanned' => self::config()->meuteVotantsMax];
@@ -831,8 +835,8 @@ class Moderate
                     continue;
                 }
                 $ph = implode(',', array_fill(0, count($groupe), '?'));
-                $ids = $pdo->prepare("SELECT id, voter_id FROM mod_votes
-                                       WHERE target_author = ? AND value = -1 AND blocked = 0
+                $ids = $pdo->prepare("SELECT id, voter_id, blocked FROM mod_votes
+                                       WHERE target_author = ? AND $enJeu
                                          AND created_at >= ? AND voter_id IN ($ph)
                                        ORDER BY created_at ASC, id ASC");
                 $ids->execute(array_merge([$author, $sinceMeute], $groupe));
@@ -843,16 +847,14 @@ class Moderate
                 // Le premier votant garde ses votes : c'est ce qu'un membre seul
                 // aurait obtenu, et le groupe n'obtient rien de plus.
                 $premier = (int) $votes[0]['voter_id'];
-                $voteIds = array_map('intval', array_column(
-                    array_filter($votes, static fn (array $v): bool => (int) $v['voter_id'] !== $premier),
+                $voteIds = self::annulerVotes($pdo, array_map('intval', array_column(
+                    array_filter($votes, static fn (array $v): bool =>
+                        (int) $v['voter_id'] !== $premier && !(int) $v['blocked']),
                     'id'
-                ));
+                )));
                 if (!$voteIds) {
                     continue;
                 }
-                $phv = implode(',', array_fill(0, count($voteIds), '?'));
-                $pdo->prepare("UPDATE mod_votes SET blocked = 1, blocked_reason = 'pack_voting' WHERE id IN ($phv)")
-                    ->execute($voteIds);
                 self::restoreAfterCancel($pdo, $author, $voteIds);
                 $cancelled += count($voteIds);
                 $packs[] = [
@@ -903,9 +905,9 @@ class Moderate
             if (count($best) < self::config()->salveVotantsMin) {
                 continue;
             }
-            // 🔑 Trois comptes ordinaires suffisent à déclencher cette branche
-            // (`salveVotantsMin`), et elle tourne à chaque vote négatif. Écrire
-            // le signal sans regarder celui en place laissait un tiers remplacer
+            // 🔑 Quelques comptes ordinaires suffisent à déclencher cette branche
+            // (`salveVotantsMin`), et elle tourne à chaque vote négatif : écrire
+            // le signal sans regarder celui en place laisserait un tiers remplacer
             // un motif d'arbitrage par le plus bénin de la liste, et le rendre
             // indélébile. `signaler()` porte la règle pour tous les poseurs.
             self::signaler($pdo, $author, 'salve_rapide');
@@ -922,10 +924,33 @@ class Moderate
     }
 
     /**
+     * Annule des votes pour meute, et rend ceux que CE passage a annulés. Deux
+     * balayages concurrents peuvent lire les mêmes votes : la condition sur
+     * l'état est la garde de la course, et seul le passage qui annule rend
+     * l'effet et inscrit l'épisode.
+     *
+     * @param  int[] $ids
+     * @return int[]
+     */
+    private static function annulerVotes(PDO $pdo, array $ids): array
+    {
+        $miens = [];
+        $annuler = $pdo->prepare("UPDATE mod_votes SET blocked = 1, blocked_reason = 'pack_voting' WHERE id = ? AND blocked = 0");
+        foreach ($ids as $id) {
+            $annuler->execute([$id]);
+            if ($annuler->rowCount() === 1) {
+                $miens[] = $id;
+            }
+        }
+        return $miens;
+    }
+
+    /**
      * Après annulation d'une meute : rend ce que les votes annulés avaient
      * réellement retiré, et rien de plus. Un vote posé au plancher n'a rien
      * retiré, un vote dont l'effet a été effacé par une remise au départ non
-     * plus : les rendre ferait des points gratuits.
+     * plus : les rendre ferait des points gratuits. Un vote d'avant la colonne
+     * `effet` n'a pas d'effet connu : il ne rend rien et ne cause aucun ban.
      *
      * Un ban automatique ne se lève que si la meute l'a CAUSÉ : des votes
      * annulés, posés avant son début, avaient un effet — sans eux, la
@@ -937,7 +962,7 @@ class Moderate
     private static function restoreAfterCancel(PDO $pdo, int $author, array $voteIds): void
     {
         $ph = implode(',', array_fill(0, count($voteIds), '?'));
-        $stmt = $pdo->prepare("SELECT COALESCE(effet, value) AS effet, created_at FROM mod_votes WHERE id IN ($ph)");
+        $stmt = $pdo->prepare("SELECT COALESCE(effet, 0) AS effet, created_at FROM mod_votes WHERE id IN ($ph)");
         $stmt->execute($voteIds);
         $annules = $stmt->fetchAll();
         $rendu = -array_sum(array_map(static fn (array $v): int => min(0, (int) $v['effet']), $annules));
@@ -1048,6 +1073,20 @@ class Moderate
             $stmt->execute([$voter, $voter]);
             $courant = $stmt->fetch();
 
+            // Il n'entre dans l'épisode que s'il a voté contre cette cible depuis
+            // son dernier épisode sur elle : sans cette garde, un tiers lié qui
+            // revote ferait monter le rang de qui n'a rien refait.
+            $neuf = $pdo->prepare(
+                'SELECT 1 FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = -1
+                    AND created_at > COALESCE((SELECT MAX(detected_at) FROM mod_pack_flags
+                                                WHERE voter_id = ? AND target_author = ?), -1)
+                  LIMIT 1'
+            );
+            $neuf->execute([$voter, $author, $voter, $author]);
+            if ($neuf->fetchColumn() === false) {
+                continue;
+            }
+
             $memeEpisode = $courant
                 && ($maintenant - (int) $courant['debut']) < self::config()->meuteEpisodeCooldown;
             $rang = $memeEpisode ? (int) $courant['rang'] : ($courant ? (int) $courant['rang'] : 0) + 1;
@@ -1070,17 +1109,16 @@ class Moderate
     /**
      * Signale un compte à l'arbitre, sans écraser un signal plus précis.
      *
-     * Deux familles. Un signal d'ÉTAT (`reputation_zero`, `ban_auto`) se déduit
-     * de la base et se lève seul quand l'état cesse ; `journal_en_panne` se lève
-     * aussi seul, à la clôture qu'il attendait, mais il dit un fait que
-     * l'arbitre doit voir. Un signal de COMPORTEMENT
+     * Deux familles. Un signal d'ÉTAT (`reputation_zero`, `ban_auto`,
+     * `journal_en_panne`) se déduit de la base et se lève seul quand l'état
+     * cesse. Un signal de COMPORTEMENT
      * (une salve, une récidive de meute…) dit ce qui s'est passé, et seul un
      * arbitre le lève. Un comportement remplace un état ; un état ne remplace
      * jamais un comportement, et un comportement n'en remplace pas un autre.
      */
     private static function signaler(PDO $pdo, int $accountId, string $raison): void
     {
-        $etats = ['reputation_zero', 'ban_auto'];
+        $etats = ['reputation_zero', 'ban_auto', 'journal_en_panne'];
         $remplacables = in_array($raison, $etats, true) ? $etats : [...$etats, $raison];
         $ph = implode(',', array_fill(0, count($remplacables), '?'));
         $pdo->prepare(
@@ -1141,7 +1179,7 @@ class Moderate
             return;
         }
 
-        self::cloreBanExpire($pdo, $accountId);
+        self::cloreBanExpire($pdo, $accountId, contenir: true);
         $stmt = $pdo->prepare('SELECT reputation, banned_until, strikes FROM member_moderation WHERE account_id = ?');
         $stmt->execute([$accountId]);
         $etat = $stmt->fetch();
@@ -1151,7 +1189,9 @@ class Moderate
         // Une peine en cours ne se rallonge pas au downvote suivant. Sans cette
         // garde, sa fin reculerait aussi longtemps qu'on vote contre le compte :
         // la peine graduée existe précisément pour que l'escalade ait un terme.
-        if ((int) $etat['banned_until'] > $maintenant) {
+        // Une peine échue que le journal n'a pas encore refermée tient la même
+        // place : aucun ban ne commence avant que la fin du précédent soit écrite.
+        if ((int) $etat['banned_until'] > 0) {
             return;
         }
 
@@ -1381,8 +1421,8 @@ class Moderate
 
     /**
      * Clôt la revue d'un ban sans le lever : l'arbitre a regardé, la peine
-     * court. Le motif est exigé — un maintien sans raison ne se distingue pas
-     * d'un oubli.
+     * court. La revue close est celle du compte, quel qu'en soit le motif. Le
+     * motif est exigé — un maintien sans raison ne se distingue pas d'un oubli.
      *
      * @return array{ok: bool, message: string}
      */
@@ -1408,6 +1448,37 @@ class Moderate
             ->execute([time(), $accountId]);
 
         return ['ok' => true, 'message' => static::t('Ban maintenu ; la revue est close.')];
+    }
+
+    /**
+     * Classe un signalement sans rien toucher d'autre : l'arbitre a regardé, et
+     * le compte n'appelle aucun geste. La grâce remettrait la réputation au
+     * départ, ce qu'un signalement classé ne justifie pas. Le motif est exigé,
+     * comme pour un maintien.
+     *
+     * @return array{ok: bool, message: string}
+     */
+    public static function adminClasser(PDO $pdo, int $accountId, string $arbitre, string $motif): array
+    {
+        [$motifOk, $pourquoi] = self::validateReason($motif);
+        if (!$motifOk) {
+            return ['ok' => false, 'message' => $pourquoi];
+        }
+        $etat = self::getReputation($pdo, $accountId);
+        if (!$etat['needs_review']) {
+            return ['ok' => false, 'message' => static::t('Aucun signalement en cours sur ce compte.')];
+        }
+        self::$journal?->inscrire([
+            'acte'    => 'revue_classee',
+            'compte'  => $accountId,
+            'arbitre' => $arbitre,
+            'motif'   => trim($motif),
+            'raison'  => $etat['review_reason'],
+        ]);
+        $pdo->prepare('UPDATE member_moderation SET needs_review = 0, review_reason = NULL, updated_at = ? WHERE account_id = ?')
+            ->execute([time(), $accountId]);
+
+        return ['ok' => true, 'message' => static::t('Signalement classé.')];
     }
 
     /** Le compte purge-t-il un ban ? Pour l'hôte qui décide ce qu'un ban bloque au-delà du vote. */
@@ -1460,8 +1531,9 @@ class Moderate
 
     /**
      * Qui a fait tomber un compte jusqu'au ban : les votants dont le vote a
-     * réellement retiré un point pendant la chute, l'âge de leurs comptes au
-     * début du ban, et le temps entre le premier et le dernier vote. Des faits
+     * réellement retiré un point sur la fenêtre de meute qui précède le ban,
+     * l'âge de leurs comptes à son début, et le temps entre le premier et le
+     * dernier vote. Des faits
      * bruts, sans seuil ni score. Une coordination espacée entre comptes qui ne
      * se sont jamais écrit n'est reconnue par aucune détection : c'est ici
      * qu'un arbitre peut la voir.
@@ -1473,10 +1545,11 @@ class Moderate
         $stmt = $pdo->prepare(
             'SELECT MIN(v.created_at) AS premier, MAX(v.created_at) AS dernier, a.created_at AS cree_le
                FROM mod_votes v JOIN accounts a ON a.id = v.voter_id
-              WHERE v.target_author = ? AND v.blocked = 0 AND COALESCE(v.effet, v.value) < 0 AND v.created_at <= ?
+              WHERE v.target_author = ? AND v.blocked = 0 AND COALESCE(v.effet, 0) < 0
+                AND v.created_at BETWEEN ? AND ?
            GROUP BY v.voter_id'
         );
-        $stmt->execute([$accountId, $debut]);
+        $stmt->execute([$accountId, $debut - self::config()->fenetreMeuteJours * 86400, $debut]);
         $votants = $stmt->fetchAll();
         $ages = array_map(static fn (array $v): int => intdiv(max(0, $debut - (int) $v['cree_le']), 86400), $votants);
         sort($ages);
@@ -1491,11 +1564,10 @@ class Moderate
     }
 
     /**
-     * Membres à arbitrer par un admin. `review_reason` dit la cause :
-     * `reputation_zero` (érosion jusqu'à zéro, sans journal branché), `ban_auto`
-     * (ban automatique en cours), `salve_rapide` (plusieurs votants sans lien dans
-     * la même fenêtre) ou `meute_recidive` (récidive de meute). Un drapeau sans
-     * sa cause laisserait l'admin appliquer le même geste à des situations opposées.
+     * Membres à arbitrer par un admin. `review_reason` dit la cause ; les valeurs
+     * sont listées dans le schéma de référence, leurs deux familles dans
+     * `signaler()`. Un drapeau sans sa cause laisserait l'admin appliquer le même
+     * geste à des situations opposées.
      */
     public static function flaggedForReview(PDO $pdo, int $limit = 50): array
     {

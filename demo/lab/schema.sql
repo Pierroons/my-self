@@ -142,9 +142,10 @@ CREATE INDEX IF NOT EXISTS idx_modvotes_author ON mod_votes(target_author, creat
 CREATE UNIQUE INDEX IF NOT EXISTS idx_modvotes_unique ON mod_votes(voter_id, target_type, target_id);
 
 -- SelfModerate — épisodes de meute, un enregistrement par votant et par cible.
--- Le rang porte l'escalade : il appartient au VOTANT, pas à la cible. Compté sur
--- la cible, un groupe changeant de proie resterait éternellement au palier 1, et
--- une victime visée par plusieurs groupes ferait punir des primo-délinquants.
+-- Le rang compte les récidives, qui partent en revue humaine : il appartient au
+-- VOTANT, pas à la cible. Compté sur la cible, un groupe changeant de proie
+-- resterait éternellement au rang 1, et une victime visée par plusieurs groupes
+-- ferait signaler des primo-délinquants.
 CREATE TABLE IF NOT EXISTS mod_pack_flags (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     voter_id      INTEGER NOT NULL,

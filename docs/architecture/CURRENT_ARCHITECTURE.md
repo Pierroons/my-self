@@ -50,7 +50,7 @@ en cours.
 | SelfRecover | 0.12.4 | bibliothèque + client JS | PHP 8.1+, JS (WebCrypto) | processus PHP de l'intégrateur ; navigateur | oui |
 | SelfDataGuard | 0.6.2 | bibliothèque | PHP 8.1+, libsodium | processus PHP de l'intégrateur ; CLI admin (séquestre) | oui |
 | SelfRecover-LUKS | 0.6.2 | outillage système | sh, bash, C, Python | **initramfs, avant l'ouverture du disque** ; root | oui (passphrase de disque) |
-| SelfModerate | 0.4.0 | bibliothèque | PHP 8.1+ | processus PHP de l'intégrateur | non |
+| SelfModerate | 0.6.0 | bibliothèque | PHP 8.1+ | processus PHP de l'intégrateur | non |
 | SelfJustice | 0.4.2 | service web + outils de collecte | PHP (API), Python, bash | PHP-FPM ; tâches planifiées | non (secrets d'exploitation seulement) |
 | selfright-mcp | 0.4.6 | serveur MCP (stdio), client HTTP des API | Python | **poste de l'utilisateur** | non |
 | SelfAct | 0.1.3 | service web + collecte | PHP, bash | PHP-FPM ; tâches planifiées | non |

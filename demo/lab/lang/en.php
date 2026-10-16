@@ -92,7 +92,7 @@ return [
     'sec.5.body' => '<ul>'
         . '<li>Per-member reputation (starting at %1$d/%2$d), ±1 votes on posts <em>and</em> on members, a reason required for a downvote.</li>'
         . '<li><strong>Anti-Sybil</strong>: an account under %3$s old with no contribution cannot vote.</li>'
-        . '<li><strong>Pack</strong>: voters linked to each other (private messages both ways) hitting the same target weigh no more than a single member → the first keeps their vote, the others are cancelled, reputation restored. Nobody is punished; a repeat goes to an arbiter. <strong>Burst</strong> of unlinked votes → flagged to an arbiter, nothing cancelled.</li>'
+        . '<li><strong>Pack</strong>: voters linked to each other (private messages both ways) hitting the same target weigh no more than a single member → the first keeps their votes, the others\' are cancelled, and the target gets back what they took. Nobody is punished for a link; a repeat is flagged to an arbiter. <strong>Burst</strong> of unlinked votes → flagged to an arbiter, nothing cancelled.</li>'
         . '<li><strong>Anti-farming</strong>: repeated votes from one member to another are neutralised. Graduated sanctions — loss of voting rights, then a ban of %4$s; the last tier repeats, never permanent, and every ban is written to the moderation journal.</li>'
         . '</ul>',
 
@@ -326,7 +326,7 @@ return [
     'mod.how.body' => '<li><strong>Reputation</strong>: every member starts at %1$d/%2$d. ▲▼ votes on their posts and profile make it move; a ▼ vote requires a reason.</li>'
         . '<li><strong>Anti-Sybil</strong>: an account under %3$s old with no post at all cannot vote.</li>'
         . '<li><strong>Anti-farming</strong>: beyond %4$d votes from one member to another over %5$d days, the next ones are neutralised.</li>'
-        . '<li><strong>Pack</strong>: voters linked to each other (private messages both ways) hitting the same target weigh no more than a single member: the first keeps their vote, the others\' votes are cancelled, and the target\'s reputation is restored. Nobody is punished for a link; a repeat is flagged to an arbiter. <strong>Burst</strong>: several unlinked votes in the same window are not cancelled — the target is flagged to an arbiter.</li>'
+        . '<li><strong>Pack</strong>: voters linked to each other (private messages both ways) hitting the same target weigh no more than a single member: the first keeps their votes, the others\' votes are cancelled, and the target gets back what they took. Nobody is punished for a link; a repeat is flagged to an arbiter. <strong>Burst</strong>: several unlinked votes in the same window are not cancelled — the target is flagged to an arbiter.</li>'
         . '<li><strong>Graduated sanctions</strong>: reputation &lt;%6$d → loss of voting rights; at 0 → a ban of %7$s, the last tier repeats, never permanent. A ban blocks voting and posting; private messages stay open. When the ban ends, reputation goes back to %1$d.</li>',
     'mod.detect.h2'   => 'Run abuse detection',
     'mod.detect.note' => 'Analyses recent votes: cancels what a pack adds to a single member\'s vote, flags bursts.',
@@ -470,7 +470,7 @@ return [
     'prf.mod.conv.h'    => 'Recovering',
     'prf.mod.conv.txt'  => 'Your reputation dropped below the voting threshold. It climbs back one point per quiet day, up to %d. Nothing to prove, just time.',
     'prf.mod.meute.h'   => 'Took part in a pile-on',
-    'prf.mod.meute.warn' => 'Your votes joined those of someone you exchange private messages with, on the same target. A group weighs no more than a single member: the votes beyond the first were cancelled. Nothing is taken from you; if it happens again, an arbiter will look at the situation.',
+    'prf.mod.meute.warn' => 'Your votes joined those of someone you exchange private messages with, on the same target. A group weighs no more than a single member: only the votes of whoever in the group voted first are kept; the others\' were cancelled. Nothing is taken from you; if it happens again, the situation will be flagged to an arbiter.',
     'prf.mod.meute.mute' => 'Your right to vote is suspended until %s. The rest of the forum stays open: you can write, reply and start a topic.',
     'prf.reasons.h2'    => '💬 Reasons you received',
     'prf.reasons.anon'  => 'Without their author\'s name, and dated to the day: that is what the protocol promises the person concerned.',

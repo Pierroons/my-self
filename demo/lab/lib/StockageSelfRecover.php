@@ -700,7 +700,8 @@ final class StockageSelfRecover implements StorageInterface
                 },
             ];
         }
-        // Seule la détection de meute pose une suspension du vote à échéance.
+        // Une suspension du vote ne vient que de la détection de meute ; le moteur
+        // n'en pose plus, mais une base peut encore en porter une en cours.
         if ((int) $l['vote_muted_until'] > $maintenant) {
             return [
                 'sanction'          => 'vote_suspendu',
