@@ -212,8 +212,10 @@ function su_find_account(PDO $db, string $username): ?array
 /**
  * Écrit en base puis au journal, dans une seule transaction. Une garde de la
  * base qui refuse arrête tout avant le journal ; un journal qui refuse ramène
- * la base en arrière. Reste une fenêtre : un COMMIT qui échoue après l'écriture
- * au journal.
+ * la base en arrière. Reste une fenêtre : une ligne écrite au journal dont la
+ * synchronisation, ou le COMMIT qui suit, échoue. Le journal porte alors un acte
+ * que la base n'a pas ; l'inverse n'arrive pas, puisque la ligne est sur le
+ * disque avant le COMMIT.
  */
 function su_ecrire_et_journaliser(PDO $db, string $action, string $cible, array $extra, callable $ecrire): void
 {

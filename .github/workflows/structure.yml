@@ -1817,8 +1817,8 @@ jobs:
           # ⚠️ Le compte est écrit en dur : un `N/N` dirait que les cas joués ont
           # réussi, jamais qu'aucun n'a disparu. Un banc dont le nombre de cas change
           # sans que personne le dise est un banc qu'on ne sait plus lire.
-          echo "$sortie" | grep -qE 'OK — 26/26 ' \
-            || { echo "::error::le banc SU n'a pas joué ses 26 cas"; exit 1; }
+          echo "$sortie" | grep -qE 'OK — 30/30 ' \
+            || { echo "::error::le banc SU n'a pas joué ses 30 cas"; exit 1; }
 
       - name: Canari — la troncature du journal SU se voit encore depuis le dehors
         run: |
@@ -1844,6 +1844,45 @@ jobs:
           echo "$sortie" | grep -q 'journal raccourci sous la marque' \
             || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas de la troncature"; exit 1; }
           echo "✓ le banc rougit, et sur le cas du journal raccourci"
+
+      - name: Canari — le journal SU annonce écrite une entrée qu'il n'a pas su encoder, ou pas forcée sur le disque
+        run: |
+          # @plante
+          # Deux gardes de l'ajout, retirées chacune à son tour et restaurées avant
+          # la suivante : le refus d'une entrée que JSON ne sait pas encoder, qui
+          # s'écrivait comme une ligne vide ; l'échec d'un fsync(), qui laissait
+          # une ligne remise au noyau passer pour écrite.
+          F=demo/lab/lib/su_audit.php
+          for cas in encodage synchronisation; do
+            cp "$F" /tmp/su_audit.intact
+            CAS="$cas" python3 - "$F" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          avant, apres = {
+              'encodage':        ("            if ($line === false) {\n", "            if (false) {\n"),
+              'synchronisation': ("            if (!@fsync($fh)) {\n", "            if (false) {\n"),
+          }[os.environ['CAS']]
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/su_audit.intact "$F"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_su.php 2>&1); then
+              cp /tmp/su_audit.intact "$F"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/su_audit.intact "$F"
+            cmp -s /tmp/su_audit.intact "$F" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              encodage)        attendu='✗ une entrée impossible à encoder a été annoncée écrite' ;;
+              synchronisation) attendu='✗ une entrée a été annoncée écrite sur un flux qui ne peut pas la forcer sur le disque' ;;
+            esac
+            echo "$sortie" | grep -q "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
 
       - name: Garde-fou — SelfModerate, le moteur et son ban tracé
         run: |

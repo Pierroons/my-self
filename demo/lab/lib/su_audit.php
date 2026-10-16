@@ -325,11 +325,19 @@ final class SuAudit
             $core['entry_hash'] = self::entryHash($core, $prevHash);
             $core['hmac']       = hash_hmac('sha256', $core['entry_hash'], self::secret());
 
-            $line = json_encode($core, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n";
-            if (fwrite($fh, $line) === false) {
+            $line = json_encode($core, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if ($line === false) {
+                throw new RuntimeException('su-audit : entrée impossible à encoder — ' . json_last_error_msg());
+            }
+            $line .= "\n";
+            if (fwrite($fh, $line) !== strlen($line) || !fflush($fh)) {
                 throw new RuntimeException("su-audit : écriture impossible dans $path");
             }
-            fflush($fh);
+            // fflush() remet la ligne au noyau, pas au disque : une coupure juste
+            // après la perd, alors que l'acte qu'elle trace reste fait.
+            if (!@fsync($fh)) {
+                throw new RuntimeException("su-audit : synchronisation impossible de $path sur le disque");
+            }
         } finally {
             flock($fh, LOCK_UN);
             fclose($fh);

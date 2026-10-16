@@ -436,6 +436,85 @@ putenv('SELFRECOVER_NTFY_URL');
 putenv('SELFRECOVER_NTFY_TOKEN');
 putenv('SELFRECOVER_NTFY_SOCKS');
 
+// ── 11. Ce qui est annoncé écrit l'est, et sur le disque ────────────────────
+// La console écrit le journal avant le COMMIT de la base : une entrée perdue
+// laisse un acte fait sans trace. Deux pertes muettes : une entrée que JSON ne
+// sait pas encoder, qui s'écrivait comme une ligne vide ; une ligne remise au
+// noyau mais pas au disque, qu'une coupure efface après le COMMIT.
+$journal  = SuAudit::logPath();
+$avantRef = (string) file_get_contents($journal);
+try {
+    SuAudit::append(SuAudit::ACTION_ADD_ADMIN, "bob\xff");
+    nok('une entrée impossible à encoder a été annoncée écrite');
+} catch (RuntimeException $e) {
+    ok('une entrée impossible à encoder est refusée, et le refus le dit');
+}
+(string) file_get_contents($journal) === $avantRef
+    ? ok('et le journal reste octet pour octet ce qu\'il était')
+    : nok('le refus a laissé une trace dans le journal');
+
+/**
+ * Un flux sur un vrai fichier qui fait tout ce que le journal demande, sauf
+ * fsync() : PHP le refuse à tout flux défini en espace utilisateur. Un ajout qui
+ * ne demande jamais le disque le traverse sans bruit ; celui qui le demande
+ * échoue, et doit le dire.
+ */
+final class SansSyncFlux
+{
+    /** @var resource|null */
+    public $context;
+    /** @var resource */
+    private $h;
+
+    private static function fichier(string $url): string
+    {
+        return substr($url, strlen('sanssync://'));
+    }
+
+    public function stream_open(string $url, string $mode, int $options, ?string &$opened): bool
+    {
+        $h = @fopen(self::fichier($url), $mode);
+        if ($h === false) {
+            return false;
+        }
+        $this->h = $h;
+
+        return true;
+    }
+
+    public function stream_read(int $n): string|false { return fread($this->h, $n); }
+    public function stream_write(string $d): int { return (int) fwrite($this->h, $d); }
+    public function stream_flush(): bool { return fflush($this->h); }
+    public function stream_eof(): bool { return feof($this->h); }
+    public function stream_seek(int $o, int $w): bool { return fseek($this->h, $o, $w) === 0; }
+    public function stream_tell(): int { return (int) ftell($this->h); }
+    public function stream_lock(int $op): bool { return flock($this->h, $op); }
+    public function stream_stat(): array|false { return fstat($this->h); }
+    public function stream_close(): void { fclose($this->h); }
+
+    public function url_stat(string $url, int $flags): array|false
+    {
+        $f = self::fichier($url);
+
+        return file_exists($f) ? stat($f) : false;
+    }
+}
+
+stream_wrapper_register('sanssync', SansSyncFlux::class);
+putenv('SELFRECOVER_SU_AUDIT_LOG=sanssync://' . $journal);
+count(SuAudit::read()) === count(SuAudit::decoder(explode("\n", trim($avantRef))))
+    ? ok('témoin : le journal se lit à travers le flux')
+    : nok('le flux ne lit pas le journal — le contrôle suivant ne prouverait rien');
+try {
+    SuAudit::append('banc-sync', 'sans-disque');
+    nok('une entrée a été annoncée écrite sur un flux qui ne peut pas la forcer sur le disque');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'synchronisation impossible')
+        ? ok('une entrée qui ne peut pas être forcée sur le disque est signalée en échec')
+        : nok('l\'ajout a échoué, mais pas sur la synchronisation : ' . $e->getMessage());
+}
+putenv('SELFRECOVER_SU_AUDIT_LOG');
+
 echo "\n";
 $total = $reussites + $echecs;
 if ($echecs === 0) {
