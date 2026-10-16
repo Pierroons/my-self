@@ -51,6 +51,7 @@ $causes = [
     'meute_recidive'  => 'récidive de meute (deuxième épisode ou plus)',
     'votants_tronques' => 'trop de votants pour la détection de meute',
     'votant_etendu'   => 'votant qui vise trop de membres différents',
+    'journal_en_panne' => 'fin de peine non inscrite : le journal refuse d\'écrire',
 ];
 // Les deux suspensions ne sont plus posées ; une base peut encore en porter.
 $suites = [

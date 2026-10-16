@@ -1047,6 +1047,44 @@ $leve !== null && (int) etatBan($pdo, $sansTrace)['banned_until'] === 0
     ? ok('un journal en panne empêche le ban : l\'exception remonte et la base n\'a rien reçu')
     : nok('ban posé sans trace, ou panne avalée : ' . json_encode([$leve, etatBan($pdo, $sansTrace)]));
 
+// ── 34bis. ⭐ Un journal en panne ne fait pas tomber les pages ──────────────
+// Une peine échue se referme à la lecture, en écrivant d'abord au journal. Un
+// journal en panne faisait remonter son exception jusqu'à toute page qui lit le
+// compte, et la peine restait en base au-delà de son terme. La lecture contient
+// désormais le refus : la peine reste à refermer, l'arbitre est prévenu, et la
+// clôture se fait dès que le journal revient. Le planificateur, lui, échoue.
+Moderate::setJournal($journal);
+$echu = membre($pdo, 'peine-echue-journal-mort');
+poserReputation($pdo, $echu, 1);
+Moderate::applyVote($pdo, membre($pdo, 'votant-echu'), 'member', $echu, -1, motif(), 'agressif');
+vieillirBan($pdo, $echu, 10_000);
+Moderate::setJournal(new JournalEnPanne());
+$leveLecture = null;
+$pendantPanne = null;
+try {
+    $pendantPanne = Moderate::getReputation($pdo, $echu);
+    Moderate::canVote($pdo, $echu);
+} catch (RuntimeException $ex) {
+    $leveLecture = $ex->getMessage();
+}
+$enBasePanne = (int) etatBan($pdo, $echu)['banned_until'];
+$leveBalayage = null;
+try {
+    Moderate::balayerBansEchus($pdo);
+} catch (RuntimeException $ex) {
+    $leveBalayage = $ex->getMessage();
+}
+Moderate::setJournal($journal);
+$apresPanne = Moderate::getReputation($pdo, $echu);
+$leveLecture === null && $pendantPanne !== null && !$pendantPanne['banned']
+    && $pendantPanne['review_reason'] === 'journal_en_panne' && $enBasePanne > 0 && $leveBalayage !== null
+    && (int) etatBan($pdo, $echu)['banned_until'] === 0 && count($journal->de($echu, 'ban_fin')) === 1
+    && $apresPanne['review_reason'] !== 'journal_en_panne'
+    ? ok('⭐ journal en panne : la lecture tient, la peine échue attend sa trace, l\'arbitre est prévenu, et la clôture suit le retour du journal')
+    : nok('⭐ un journal en panne fait tomber la lecture ou referme sans trace : '
+        . json_encode([$leveLecture, $pendantPanne['review_reason'] ?? null, $enBasePanne, $leveBalayage, etatBan($pdo, $echu)['banned_until']]));
+Moderate::setJournal(null);
+
 // ── 35. Le journal du lab : une chaîne signée, lisible par le groupe ────────
 require_once __DIR__ . '/../lib/journal_moderation.php';
 require_once __DIR__ . '/../lib/attack_sim.php';
@@ -1083,6 +1121,20 @@ $accepte = Pierroons\MySelfLab\Forum::createThread($pdo, $muet, 'un fil', 'gener
 ($refusFil['error'] ?? '') === 'compte_banni' && ($refusMsg['error'] ?? '') === 'compte_banni' && $accepte['ok']
     ? ok('un compte banni ne publie ni fil ni message, et publie de nouveau une fois le ban levé')
     : nok('publication pendant un ban : ' . json_encode([$refusFil, $refusMsg, $accepte]));
+
+// ── 37bis. ⭐ Pendant un ban, le profil public est gelé ────────────────────
+// La bio et le lien sont publics : un ban qui coupe la parole publique les
+// coupe aussi. Sans cette garde, un banni gardait une tribune par son profil.
+require_once __DIR__ . '/../lib/profile.php';
+$gele = membre($pdo, 'profil-gele');
+Moderate::adminBan($pdo, $gele, 'arbitre-banc', motif());
+$champsProfil = ['bio' => 'une tribune pendant la peine', 'localisation' => '', 'lien' => 'https://exemple.invalid'];
+$refusProfil = Pierroons\MySelfLab\Profile::save($pdo, $gele, $champsProfil);
+Moderate::adminPardon($pdo, $gele, 'arbitre-banc', motif());
+$accepteProfil = Pierroons\MySelfLab\Profile::save($pdo, $gele, $champsProfil);
+($refusProfil['error'] ?? '') === 'compte_banni' && ($accepteProfil['ok'] ?? false)
+    ? ok('⭐ un compte banni ne modifie pas son profil public, et le modifie de nouveau une fois le ban levé')
+    : nok('⭐ profil public pendant un ban : ' . json_encode([$refusProfil, $accepteProfil]));
 
 // ── 38. Les textes du lab ne portent aucun seuil à eux ──────────────────────
 // Les pages annonçaient « 24 h → 7 j → 30 j → définitive » pendant que le

@@ -1888,8 +1888,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 69/69 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 69 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 71/71 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 71 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2197,6 +2197,48 @@ jobs:
             case $cas in
               plafond) attendu='✗ ⭐ un votant érode tout le forum' ;;
               reponse) attendu='✗ ⭐ la réponse d.un vote révèle la réputation' ;;
+            esac
+            echo "$sortie" | grep -q "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — un journal en panne fait tomber la lecture, ou un banni modifie son profil public
+        run: |
+          # @plante
+          # Deux gardes retirées tour à tour, chacune dans son fichier : la lecture
+          # qui contient le refus du journal à la clôture d'une peine échue, et le
+          # gel du profil public pendant un ban.
+          for cas in lecture profil; do
+            case $cas in
+              lecture) F=bi-self/selfmoderate/src/Moderate.php ;;
+              profil)  F=demo/lab/lib/profile.php ;;
+            esac
+            cp "$F" /tmp/garde.intact
+            CAS="$cas" python3 - "$F" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          avant, apres = {
+              'lecture': ("        self::cloreBanExpire($pdo, $accountId, contenir: true);\n",
+                          "        self::cloreBanExpire($pdo, $accountId);\n"),
+              'profil':  ("        if ($etat['banned']) {\n", "        if (false) {\n"),
+          }[os.environ['CAS']]
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/garde.intact "$F"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              cp /tmp/garde.intact "$F"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/garde.intact "$F"
+            cmp -s /tmp/garde.intact "$F" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              lecture) attendu='✗ ⭐ un journal en panne fait tomber la lecture' ;;
+              profil)  attendu='✗ ⭐ profil public pendant un ban' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }

@@ -259,12 +259,14 @@ render_header(t('prf.title'), $account);
 <h2 style="margin-top:24px"><?= t('prf.edit.h2') ?> <span class="cat-pill" style="color:var(--warn);border-color:var(--warn)"><?= h(t('prf.edit.tag')) ?></span></h2>
 <p class="muted" style="background:rgba(212,160,86,.10);border:1px solid rgba(212,160,86,.35);border-radius:8px;padding:10px 13px">
   <?= t('prf.public.warn') ?></p>
+<?php $gele = $rep['banned'] ? ' disabled' : ''; ?>
 <div class="card" style="max-width:560px">
   <div id="msg"></div>
-  <div class="field"><label>Bio</label><textarea id="bio" rows="3"><?= h($p['bio']) ?></textarea></div>
-  <div class="field"><label>Localisation</label><input id="localisation" value="<?= h($p['localisation']) ?>"></div>
-  <div class="field"><label>Lien (site, blog…)</label><input id="lien" value="<?= h($p['lien']) ?>" placeholder="https://…"></div>
-  <button class="btn" id="btn-saveprofil">Enregistrer le profil public</button>
+  <?php if ($rep['banned']): ?><p class="muted" style="margin-top:0;color:#d96459"><?= h(sprintf(t('prf.edit.banni'), date('d/m/Y H:i', $rep['banned_until']))) ?></p><?php endif; ?>
+  <div class="field"><label>Bio</label><textarea id="bio" rows="3"<?= $gele ?>><?= h($p['bio']) ?></textarea></div>
+  <div class="field"><label>Localisation</label><input id="localisation" value="<?= h($p['localisation']) ?>"<?= $gele ?>></div>
+  <div class="field"><label>Lien (site, blog…)</label><input id="lien" value="<?= h($p['lien']) ?>" placeholder="https://…"<?= $gele ?>></div>
+  <button class="btn" id="btn-saveprofil"<?= $gele ?>>Enregistrer le profil public</button>
 </div>
 
 <?php $vaultExiste = \Pierroons\MySelfLab\MemoVault::exists($pdo, $myId); ?>

@@ -48,6 +48,15 @@ final class Profile
     /** Chiffre + persiste le profil. */
     public static function save(PDO $pdo, int $accountId, array $champs): array
     {
+        // La bio et le lien sont publics : un ban qui coupe la parole publique
+        // les coupe aussi, comme un message du forum.
+        $etat = Moderate::getReputation($pdo, $accountId);
+        if ($etat['banned']) {
+            return ['ok' => false, 'error' => 'compte_banni', 'message' => sprintf(
+                'Compte banni jusqu\'au %s : le profil public se modifie de nouveau à la fin de la peine.',
+                date('d/m/Y H:i', $etat['banned_until'])
+            )];
+        }
         $clean = [];
         foreach (self::CHAMPS as $c) {
             $v = trim((string) ($champs[$c] ?? ''));

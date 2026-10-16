@@ -483,6 +483,7 @@ return [
     'prf.act.public' => 'View my public profile →',
     'prf.edit.h2'    => '✏️ Edit my profile',
     'prf.edit.tag'   => '🌐 public',
+    'prf.edit.banni' => 'Your public profile is frozen until %s: a ban cuts public speech, bio and link included. You can edit it again once the ban ends.',
     'prf.public.warn' => '🌐 <strong>Public profile</strong> — bio, location and link are <strong>visible to everyone</strong> (page <code>/profile.php?u=…</code>, even without an account). SelfDataGuard at-rest encryption protects against a <strong>database theft</strong>, not against public display: put <strong>no sensitive data</strong> here. For a private note, use the <strong>E2E memo</strong> below.',
     'prf.memo.h2'    => '🎯 Personal memo — end-to-end encrypted',
     'prf.memo.note'  => '🔒 Encrypted <strong>in your browser</strong> (Argon2id then AES-GCM): the server only ever receives blobs and holds <strong>no key</strong>. Even the administrator cannot read it. This is the <strong>secret to exfiltrate</strong> for the red team — a database dump yields nothing without your password.',

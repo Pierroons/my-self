@@ -482,6 +482,7 @@ return [
     'prf.act.public' => 'Voir mon profil public →',
     'prf.edit.h2'    => '✏️ Modifier mon profil',
     'prf.edit.tag'   => '🌐 public',
+    'prf.edit.banni' => 'Ton profil public est gelé jusqu\'au %s : un ban coupe la parole publique, bio et lien compris. Tu pourras le modifier à la fin de la peine.',
     'prf.public.warn' => '🌐 <strong>Profil public</strong> — bio, localisation et lien sont <strong>visibles de tous</strong> (page <code>/profile.php?u=…</code>, même sans compte). Le chiffrement at-rest SelfDataGuard protège contre un <strong>vol de la base</strong>, pas contre l\'affichage public : n\'y mets <strong>aucune donnée sensible</strong>. Pour une note privée, utilise le <strong>mémo E2E</strong> ci-dessous.',
     'prf.memo.h2'    => '🎯 Mémo perso — chiffré de bout en bout (E2E)',
     'prf.memo.note'  => '🔒 Chiffré <strong>dans ton navigateur</strong> (Argon2id puis AES-GCM) : le serveur ne reçoit que des blobs, il ne détient <strong>aucune clé</strong>. Même l\'administrateur ne peut pas le lire. C\'est le <strong>secret à exfiltrer</strong> pour la red team — un dump de la base ne donne rien sans ton mot de passe.',

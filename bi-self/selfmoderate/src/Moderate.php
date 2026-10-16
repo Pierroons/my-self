@@ -160,7 +160,7 @@ class Moderate
     {
         self::ensureRow($pdo, $accountId);
         self::regenerate($pdo, $accountId);
-        self::cloreBanExpire($pdo, $accountId);
+        self::cloreBanExpire($pdo, $accountId, contenir: true);
         $stmt = $pdo->prepare(
             'SELECT reputation, strikes, voting_rights, banned_until, ban_debut, ban_origine, ban_motif,
                     needs_review, review_reason, convalescent, vote_muted_until
@@ -204,8 +204,16 @@ class Moderate
      *
      * `banned_until = 0` est l'état « aucune peine à clore » : c'est lui qui
      * rend l'inscription unique.
+     *
+     * ⚠️ **Un journal qui refuse d'écrire laisse la peine à refermer.** Sur une
+     * lecture (`$contenir`), le refus est consigné et signalé à l'arbitre
+     * (`journal_en_panne`), et la lecture continue : une peine échue ne bloque
+     * déjà plus personne, puisque `banned` se calcule sur l'heure, et faire
+     * tomber toute page qui lit le compte n'ajouterait aucune trace. La clôture
+     * se fait à la lecture suivante, le journal revenu. Ailleurs, le refus
+     * remonte.
      */
-    private static function cloreBanExpire(PDO $pdo, int $accountId): void
+    private static function cloreBanExpire(PDO $pdo, int $accountId, bool $contenir = false): void
     {
         $maintenant = time();
         $stmt = $pdo->prepare(
@@ -219,17 +227,26 @@ class Moderate
         }
         $origine = $row['ban_origine'] !== null ? (string) $row['ban_origine'] : null;
 
-        self::$journal?->inscrire([
-            'acte'      => 'ban_fin',
-            'compte'    => $accountId,
-            'origine'   => $origine,
-            'episode'   => (int) $row['strikes'],
-            'debut'     => (int) $row['ban_debut'],
-            'jusqu_a'   => (int) $row['banned_until'],
-            'observe_a' => $maintenant,
-            'motif'     => $row['ban_motif'] ?? $row['review_reason'] ?? 'inconnu',
-            'arbitre'   => null,
-        ]);
+        try {
+            self::$journal?->inscrire([
+                'acte'      => 'ban_fin',
+                'compte'    => $accountId,
+                'origine'   => $origine,
+                'episode'   => (int) $row['strikes'],
+                'debut'     => (int) $row['ban_debut'],
+                'jusqu_a'   => (int) $row['banned_until'],
+                'observe_a' => $maintenant,
+                'motif'     => $row['ban_motif'] ?? $row['review_reason'] ?? 'inconnu',
+                'arbitre'   => null,
+            ]);
+        } catch (\Throwable $e) {
+            if (!$contenir) {
+                throw $e;
+            }
+            error_log(sprintf('SelfModerate : fin de peine du compte %d non inscrite au journal — %s', $accountId, $e->getMessage()));
+            self::signaler($pdo, $accountId, 'journal_en_panne');
+            return;
+        }
 
         if ($origine === 'auto') {
             $pdo->prepare(
@@ -245,9 +262,11 @@ class Moderate
                 ->execute([$accountId, self::config()->perteDroitDeVoteSous]);
         }
         $pdo->prepare(
-            'UPDATE member_moderation
-                SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL, updated_at = ?
-              WHERE account_id = ?'
+            "UPDATE member_moderation
+                SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL, updated_at = ?,
+                    needs_review  = CASE WHEN review_reason = 'journal_en_panne' THEN 0 ELSE needs_review END,
+                    review_reason = CASE WHEN review_reason = 'journal_en_panne' THEN NULL ELSE review_reason END
+              WHERE account_id = ?"
         )->execute([$maintenant, $accountId]);
     }
 
@@ -1052,7 +1071,9 @@ class Moderate
      * Signale un compte à l'arbitre, sans écraser un signal plus précis.
      *
      * Deux familles. Un signal d'ÉTAT (`reputation_zero`, `ban_auto`) se déduit
-     * de la base et se lève seul quand l'état cesse. Un signal de COMPORTEMENT
+     * de la base et se lève seul quand l'état cesse ; `journal_en_panne` se lève
+     * aussi seul, à la clôture qu'il attendait, mais il dit un fait que
+     * l'arbitre doit voir. Un signal de COMPORTEMENT
      * (une salve, une récidive de meute…) dit ce qui s'est passé, et seul un
      * arbitre le lève. Un comportement remplace un état ; un état ne remplace
      * jamais un comportement, et un comportement n'en remplace pas un autre.
