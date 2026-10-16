@@ -64,6 +64,52 @@ limitée, présenté comme le total réel.
 > Un outil dont la fonction est de dire ce qui existe annonçait un nombre saturé
 > par sa propre limite d'affichage.
 
+## Ce qui touche un secret, une clé ou une dérivation
+
+Un changement qui crée, transporte, stocke ou dérive un secret répond à ces cinq questions. Une
+réponse ambiguë est un constat.
+
+- **Quel composant possède le secret ?** Le nommer, avec l'endroit où il naît.
+- **Quelle frontière de confiance traverse-t-il ?** Navigateur vers serveur, module vers
+  intégrateur, mémoire vers disque, initramfs vers système.
+- **Que peut obtenir un appelant compromis ?** Ce qu'un intégrateur malveillant, ou un code hôte
+  compromis, retire de l'API publique modifiée.
+- **Que se passe-t-il quand une dépendance ne répond plus ?** Un refus franc, jamais un repli vers
+  un chemin moins protégé.
+- **Que peut-on observer sans exposer le secret ?** Un journal porte l'opération, l'appelant et le
+  résultat ; ni le secret, ni la clé, ni le texte en clair.
+
+Cinq règles en découlent pour le code tel qu'il est.
+
+**1. Une clé ne sort pas du composant qui la détient.** Une méthode publique rend le résultat
+d'une opération — un coffre ouvert, un texte chiffré —, pas une clé maîtresse ou dérivée.
+> Deux méthodes de SelfDataGuard le font : `UnlockedVault::getMasterKey()` et
+> `UnlockedEscrow::getEscrowKey()`. Leurs propres classes s'en servent, et leur documentation
+> demande à l'appelant de ne pas conserver la clé : un garde-fou déclaré que rien n'applique, le
+> motif 1. La cartographie (`docs/architecture/CURRENT_ARCHITECTURE.md`, §6) le relève. C'est une
+> dette connue ; une troisième méthode de ce genre est un constat.
+
+**2. Une dérivation porte un contexte nommé, propre à son usage.** Chaque chaîne de séparation de
+domaine est une constante, et deux usages ne partagent pas une chaîne par coïncidence.
+> `UserVault` dérive la serrure du mot mémorisé sur `HMAC_CONTEXT_SUFFIX` (`/dataguard`) et celle
+> de la passphrase sur `PASSPHRASE_CONTEXT_SUFFIX` (`/dataguard/passphrase`) : deux serrures, deux
+> chaînes.
+
+**3. Le code d'un module n'importe pas celui d'un autre.** Deux modules qui doivent s'accorder
+déclarent chacun leur valeur, et un banc les tient d'accord ; c'est l'intégrateur qui les fait
+travailler ensemble.
+> `bi-self/selfrecover/tests/sanity_couplage_dataguard.php` tient SelfRecover et SelfDataGuard
+> d'accord sur la normalisation de la passphrase et le plancher du mot de passe, sans qu'aucune
+> des deux bibliothèques ne dépende de l'autre. Après une récupération, c'est l'intégrateur qui
+> rouvre le coffre et le scelle sous les nouveaux secrets, en une seule écriture.
+
+**4. Ce qui ne sait pas répond non.** Une dépendance muette, une identité invérifiable, un
+paramètre inconnu : refus, et le refus se dit. Aucune valeur par défaut n'autorise.
+
+**5. Une interface n'est pas une frontière.** Deux classes d'un même processus partagent sa
+mémoire. Une garantie qui repose sur l'encapsulation se présente comme telle, jamais comme une
+isolation.
+
 ## Ce qui mérite une lecture ligne à ligne
 
 - Tout ce qui décide qu'une donnée est **absente** plutôt qu'introuvable : la
