@@ -580,10 +580,11 @@ foreach ($endpoints as $chemin) {
         !preg_match('/\$body\[.(par|admin|auteur|username_admin).\]/', $src));
 }
 
-echo "\n→ ⭐ La purge et la clôture tiennent le contrat de la 0.12.3, sur le schéma réel\n";
+echo "\n→ ⭐ La purge, la clôture et la décision tiennent le contrat de la 0.12.4, sur le schéma réel\n";
 
 // Les cas de référence sont ceux de `bi-self/selfrecover/tests/banc_stockage_pdo.php`
-// (la purge, propriété 2 ; la clôture, propriété 22), rejoués contre l'adaptateur
+// (la purge, propriété 2 ; la clôture, propriété 22 ; la décision, propriété 23),
+// rejoués contre l'adaptateur
 // du lab. Sa clause est une RECOPIE de celle de la bibliothèque : le SQL appartient
 // à chaque adaptateur, la règle est commune, et c'est ce banc qui dit qu'elle est
 // tenue. Sans lui, le lab est resté sur l'ancienne clause sans qu'un contrôle rougisse.
@@ -670,6 +671,55 @@ $surRefus = $clore($stK, $refuseK->id, $TL + 3);
 verifier('un dossier refusé ne se clôt pas non plus — il n\'est plus actif', $surRefus === 'LitigeDejaClos', $surRefus);
 verifier('et il reste refusé, compté pour le gel',
     $pdoK->query("SELECT status FROM disputes WHERE id = {$refuseK->id}")->fetchColumn() === 'refused');
+
+// Trancher CONSOMME l'instruction : deux arbitres ont lu le même dossier en
+// cours, la décision du second ne doit ni écraser celle du premier, ni rouvrir
+// un dossier clos par la reprise. Escalade relit l'état avant d'écrire ; seule
+// la garde de l'adaptateur tient quand les deux lectures précèdent les deux
+// écritures, d'où ces cas au niveau du stockage.
+$attraper = static function (callable $geste): string {
+    try {
+        $geste();
+        return 'rien';
+    } catch (\Pierroons\SelfRecover\Storage\LitigeDejaTranche) {
+        return 'LitigeDejaTranche';
+    } catch (\Throwable $e) {
+        return get_class($e);
+    }
+};
+$pdoT = $baseLitiges();
+$stT  = new StockageSelfRecover($pdoT);
+$stT->ouvrirLitige(1, 'LIT-TRANCHE', hash('sha256', 'sesame'), $TL, $TL + 86400);
+$lt = $stT->trouverLitigeParNumero('LIT-TRANCHE');
+$stT->enregistrerFaisceau($lt->id, '{}', $TL + 1);
+verifier('contre-témoin : un dossier en attente de lecture se tranche',
+    $attraper(static fn () => $stT->trancherLitige($lt->id, 'accepted', 'arbitre-1', $TL + 2)) === 'rien');
+$secondT = $attraper(static fn () => $stT->trancherLitige($lt->id, 'refused', 'arbitre-2', $TL + 3));
+verifier('⭐ trancher un dossier déjà tranché lève LitigeDejaTranche', $secondT === 'LitigeDejaTranche', $secondT);
+$apresT = $pdoT->query("SELECT status, decided_by, decided_at FROM disputes WHERE id = {$lt->id}")->fetch(PDO::FETCH_ASSOC);
+verifier('et la première décision reste, avec son auteur et sa date',
+    $apresT === ['status' => 'accepted', 'decided_by' => 'arbitre-1', 'decided_at' => $TL + 2], json_encode($apresT));
+verifier('contre-témoin : la reprise clôt l\'accord',
+    $attraper(static fn () => $stT->cloreLitige($lt->id, $TL + 4)) === 'rien');
+$surClos = $attraper(static fn () => $stT->trancherLitige($lt->id, 'refused', 'arbitre-2', $TL + 5));
+verifier('⭐ un dossier clos par la reprise ne se tranche plus', $surClos === 'LitigeDejaTranche', $surClos);
+verifier('et aucun refus n\'est compté contre le titulaire', $stT->compterRefusRecents(1, $TL) === 0);
+
+// Le dépôt des réponses écrit le même statut : un dépôt parti avant la décision
+// ne doit pas la défaire en repassant le dossier en attente de lecture.
+$stT->ouvrirLitige(1, 'LIT-DEPOT', hash('sha256', 'sesame-depot'), $TL + 10, $TL + 86400);
+$ld = $stT->trouverLitigeParNumero('LIT-DEPOT');
+$deposer = static fn (int $quand): string =>
+    $attraper(static fn () => $stT->enregistrerFaisceau($ld->id, '{"apres":1}', $quand));
+verifier('contre-témoin : un dossier ouvert reçoit un dépôt, puis un second',
+    $deposer($TL + 11) === 'rien' && $deposer($TL + 12) === 'rien');
+$stT->trancherLitige($ld->id, 'refused', 'arbitre-1', $TL + 13);
+$surDecide = $deposer($TL + 14);
+verifier('⭐ un dépôt sur un dossier tranché lève LitigeDejaTranche', $surDecide === 'LitigeDejaTranche', $surDecide);
+$apresD = $pdoT->query("SELECT status, signals_json FROM disputes WHERE id = {$ld->id}")->fetch(PDO::FETCH_ASSOC);
+verifier('et le refus reste, compté pour le gel, avec le faisceau d\'avant',
+    $apresD === ['status' => 'refused', 'signals_json' => '{"apres":1}'] && $stT->compterRefusRecents(1, $TL) === 1,
+    json_encode($apresD));
 
 // Un dossier périmé ne se tranche plus, et la console le DIT à l'arbitre : le
 // refus vient de la bibliothèque, il doit traverser la console avec son code et
