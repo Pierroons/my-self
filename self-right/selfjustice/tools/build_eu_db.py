@@ -22,8 +22,9 @@ Configuration :
                               CEDH.pdf, CEDH.html… Le format est reconnu à la
                               signature du contenu, pas à l'extension. Chaque
                               copie utilisée est annoncée avec son empreinte
-                              SHA-256 et sa date de dépôt ; au-delà de 180
-                              jours, la construction se termine en code 2.
+                              SHA-256 et sa date de dépôt ; au-delà de
+                              AGE_COPIE_ACCEPTABLE jours, la construction se
+                              termine en code 2.
 
 Codes de sortie :
     0   toutes les sources rafraîchies depuis leur origine publique

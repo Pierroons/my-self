@@ -241,6 +241,22 @@ def volet_recherche(url: str) -> None:
              bool(trouves) and trouves[0].get("applicabilite") == "en_vigueur",
              f"rendu : {trouves[:1] or 'absent'}")
 
+    # Même article, une fenêtre d'un seul résultat : la version applicable n'y
+    # est pas, elle se cherche par son numéro.
+    r = lire(f"{url}/api/legi/search?q={urllib.parse.quote('modifié dispositions suivantes')}&limit=1")
+    tete = (r.get("results") or r.get("resultats") or [{}])[0]
+    verifier("fenêtre d'un résultat : l'art. 1 de 1992 ressort sous sa version applicable",
+             tete.get("reference") == "1" and tete.get("code_id") == "JORFTEXT000000724377"
+             and tete.get("applicabilite") == "en_vigueur", f"rendu : {tete}")
+
+    # Une référence coupée par un « / » non encodé ne sert pas son début.
+    try:
+        urllib.request.urlopen(f"{url}/api/legi/article/8/2?code={CPP}", timeout=5)
+        code = 200
+    except urllib.error.HTTPError as e:
+        code = e.code
+    verifier("« 8/2 » non encodé, à l'API → 400, pas l'article 8", code == 400, f"HTTP {code}")
+
     # Par numéro : chaque résultat porte `en_vigueur` ET `applicabilite`. Le
     # booléen seul ne distingue pas un texte qui ne s'applique plus d'un texte qui
     # ne s'applique pas encore, et le client rangeait le second parmi les morts.

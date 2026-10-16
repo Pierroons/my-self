@@ -50,6 +50,9 @@ CREATE TABLE numeros (number_norm TEXT NOT NULL, decision_id TEXT NOT NULL,
 INSERT INTO decisions VALUES
   ('aaaa000000000001','22/00111','2026-06-10','ca','soc','ca_nimes','f','','casse','ECLI:A','ar','2026-06-11',0),
   ('aaaa000000000002','21-11.222','2026-07-31','cc','soc',NULL,'f','b','rejet','ECLI:B','ar','2026-08-01',0),
+  -- Une date à venir, non marquée suspecte : une erreur de l'amont, qui ne doit
+  -- pas faire la fin de la couverture.
+  ('aaaa0000000000ff','99-99.999','2099-01-01','cc','soc',NULL,'f','b','rejet','ECLI:F','ar','2099-01-02',0),
   -- Deux HOMONYMES de la décision que le faux amont porte au 2026-08-12 : même
   -- numéro normalisé, d'autres cours, d'autres dates. Un rôle général n'est
   -- unique qu'au sein d'une cour, et c'est le cas de terrain — mesuré sur la
@@ -160,7 +163,7 @@ if ($norm === '4444444') {
     exit;
 }
 $d = $connues[$norm . '|' . ($_GET['date_start'] ?? '')] ?? null;
-if ($d && ($_GET['jurisdiction'] ?? $d['jurisdiction']) === $d['jurisdiction']) {
+if ($d && ($_GET['jurisdiction'] ?? 'cc') === $d['jurisdiction']) {
     echo json_encode(['total' => 1, 'results' => [$d]]);
     exit;
 }
@@ -262,9 +265,10 @@ controle "hors plage, l'amont l'a → trouvée, et le retard est nommé" \
     "23%2F03077?jurisdiction=ca&date=2026-08-12" \
     "etat:trouvee" "source:amont Judilibre" \
     "reserve:~c'est l'index qui est en retard"
-controle "hors plage, l'amont ne l'a pas → absence opposable" \
+# L'amont ne diffuse qu'une partie des arrêts d'appel : son silence les borne.
+controle "« ca » hors plage, l'amont ne l'a pas → bornée à ce qu'il diffuse" \
     "23%2F04444?jurisdiction=ca&date=2026-08-12" \
-    "etat:absente" "reserve:~elle est opposable"
+    "etat:absente" "reserve:~ne vaut que dans les limites" "reserve:!opposable"
 
 echo
 echo "▸ Un numéro porté par plusieurs cours"
@@ -393,13 +397,14 @@ controle "« ce », date couverte → la sélection JADE est dite" \
 controle "« ta », date couverte → la même réserve" \
     "0612345?jurisdiction=ta&date=2007-05-15" \
     "etat:absente" "reserve:~Le fonds JADE ne porte qu'une sélection" "reserve:!elle y figurerait"
-# Sans juridiction, l'amont vide ne vaut pas partout la même chose : opposable
-# pour ce que l'index moissonne, borné à ce que l'amont diffuse pour le reste.
+# Sans juridiction, la sonde ne voit que la Cour de cassation : la réserve ne
+# conclut que pour elle, et dit le reste.
 for cas in "77%2F77777?date=2026-03-02|date couverte" "88%2F88888?date=2026-07-15|au-delà de la borne"; do
-    controle "sans juridiction, ${cas#*|}, l'amont ne l'a pas → opposable pour ce que l'index moissonne seulement" \
+    controle "sans juridiction, ${cas#*|}, l'amont ne l'a pas → opposable pour la seule Cour de cassation" \
         "${cas%%|*}" \
-        "etat:absente" "reserve:~ : l'absence est opposable." \
-        "reserve:~Tribunaux judiciaires, tribunaux de commerce, que seule la base amont sert : elle ne vaut que dans les limites" \
+        "etat:absente" "reserve:~pour la Cour de cassation : pour elle, l'absence est opposable." \
+        "reserve:~Cours d'appel : l'index local ne porte que ce que Judilibre en diffuse" \
+        "reserve:~ne les interroge que si la juridiction est précisée" \
         "reserve:~le fonds JADE ne porte qu'une sélection" "reserve:!elle y figurerait"
 done
 
@@ -423,18 +428,25 @@ vers_ta=$(au_journal 2 "ta")
     || nok "sondes amont pour « ta » : $vers_ta (témoin : $temoin)"
 
 echo
-echo "▸ Sans juridiction, l'amont est interrogé dès qu'une date est annoncée"
+echo "▸ Les tribunaux judiciaires se vérifient par leur nom, auprès de l'amont"
 # 🔑 L'index ne moissonne ni les tribunaux judiciaires ni ceux de commerce, que
-# Judilibre sert : sa borne ne dit rien d'eux. Borné par elle, un vrai jugement
-# de TJ daté d'un jour couvert revenait « elle y figurerait ».
-controle "jugement de TJ, sans juridiction, date couverte → retrouvé par l'amont" \
-    "21%2F04567?date=2026-03-05" \
+# Judilibre sert. Nommés, ils étaient refusés en 503 « hors de l'index » ; sans
+# juridiction, la sonde ne voit que la Cour de cassation.
+controle "jugement de TJ, « tj », date couverte → retrouvé par l'amont" \
+    "21%2F04567?jurisdiction=tj&date=2026-03-05" \
     "etat:trouvee" "source:amont Judilibre" "count:1"
-# Date couverte : l'index n'est pas en retard, il ne moissonne pas ce fonds.
+# L'index n'est pas en retard, il ne moissonne pas ce fonds.
 controle "jugement de TJ retrouvé → le périmètre de l'index est nommé, pas un retard" \
-    "21%2F04567?date=2026-03-05" \
+    "21%2F04567?jurisdiction=tj&date=2026-03-05" \
     "reserve:~ne moissonne que" "reserve:!en retard"
-juri=$(curl -s "$BASE/21%2F04567?date=2026-03-05" \
+controle "même jugement, sans juridiction → non retrouvé, et la réserve dit pourquoi" \
+    "21%2F04567?date=2026-03-05" \
+    "etat:absente" "reserve:~ne les interroge que si la juridiction est précisée" \
+    "reserve:!Tribunaux judiciaires, tribunaux de commerce : l'absence"
+controle "« tj » sans date → l'amont n'est pas interrogé, et c'est dit" \
+    "21%2F04567?jurisdiction=tj" \
+    "etat:absente" "reserve:~sans la date de la décision la base amont n'est pas interrogée"
+juri=$(curl -s "$BASE/21%2F04567?jurisdiction=tj&date=2026-03-05" \
     | python3 -c 'import json,sys; d=json.load(sys.stdin)["decisions"]; print(d[0]["juridiction"] if d else "")')
 [ "$juri" = "tj" ] \
     && ok "la décision rendue est le jugement du TJ" \
@@ -447,13 +459,13 @@ couverte=$(au_journal 1 "77/77777")
 # 🔑 La sonde part aussi là où sa réponse ne prouve rien : avant le début de
 # l'index, une absence reste muette quoi que l'amont rende. Et sa panne, à une
 # date couverte, ne se dit pas « postérieure à l'arrêt ».
-controle "sans juridiction, date avant le début de l'index, amont vide → ne prouve rien" \
-    "66%2F66666?date=2024-06-01" \
+controle "sans juridiction, date avant le premier fonds de l'index, amont vide → ne prouve rien" \
+    "66%2F66666?date=1980-06-01" \
     "etat:absente" "reserve:~précède le début de l'index" "reserve:~ne prouve rien" \
     "reserve:!opposable"
 controle "sans juridiction, date couverte, amont en panne → la couverture est dite, la panne aussi" \
     "55%2F55555?date=2026-03-02" \
-    "etat:absente" "reserve:~qui couvre cette date" "reserve:~rien ne se conclut" \
+    "etat:absente" "reserve:~qui couvre cette date" "reserve:~probable sans être établie" \
     "reserve:~HTTP 500" "reserve:!postérieure à l'arrêt"
 
 echo
@@ -461,19 +473,20 @@ echo "▸ À une date couverte, l'index ne conclut pas seul"
 # 🔑 Une moisson n'est pas exhaustive : une décision publiée tard lui échappe.
 # Rien ne correspond localement à la date annoncée → l'amont est interrogé, même
 # pour « cc » ou « ca », même dans la plage.
-controle "« ca », absente, date DANS la plage, l'amont ne l'a pas → opposable" \
+controle "« ca », absente, date DANS la plage, l'amont ne l'a pas → bornée à ce qu'il diffuse" \
     "99%2F99999?jurisdiction=ca&date=2026-06-10" \
-    "etat:absente" "reserve:~elle est opposable" "reserve:!elle y figurerait"
+    "etat:absente" "reserve:~ne vaut que dans les limites" "reserve:!opposable" \
+    "reserve:!elle y figurerait"
 [ "$(au_journal 1 "99/99999")" -gt 0 ] \
     && ok "la sonde est au journal de l'amont" \
     || nok "aucune sonde amont pour 99/99999"
 controle "« ca », date couverte, manquée par la moisson → l'index est en retard" \
     "22%2F05555?jurisdiction=ca&date=2026-03-10" \
     "etat:trouvee" "source:amont Judilibre" "reserve:~c'est l'index qui est en retard"
-controle "même arrêt, sans juridiction → un retard, pas un fonds hors périmètre" \
+controle "même arrêt, sans juridiction → la sonde ne voit que la Cour de cassation, et le dit" \
     "22%2F05555?date=2026-03-10" \
-    "etat:trouvee" "source:amont Judilibre" \
-    "reserve:~c'est l'index qui est en retard" "reserve:!ne moissonne que"
+    "etat:absente" "reserve:~Cours d'appel : l'index local ne porte que ce que Judilibre en diffuse" \
+    "reserve:!Cours d'appel : l'absence est opposable"
 controle "« ca », date couverte, amont en panne → probable, pas établie" \
     "55%2F55555?jurisdiction=ca&date=2026-03-02" \
     "etat:absente" "reserve:~l'absence y est probable sans être établie" \
@@ -486,7 +499,7 @@ controle "l'amont en annonce plus qu'une page n'en rend → rien ne s'établit" 
 controle "sans date ni juridiction → les fonds que seul l'amont sert sont nommés" \
     "99%2F99999" \
     "etat:absente" \
-    "reserve:~tribunaux de commerce ne sont pas dans l'index : avec la date de la décision, la base amont est interrogée"
+    "reserve:~tribunaux de commerce ne sont pas dans l'index : avec la juridiction et la date de la décision, la base amont est interrogée"
 
 echo
 echo "▸ Une date de recherche mal formée ne part pas"
@@ -498,6 +511,20 @@ for option in date_start date_end; do
         && ok "$option « 12/03/2024 » → 400, et le format est nommé" \
         || nok "$option « 12/03/2024 » rend $code : $(head -c 160 "$TMP/recherche.json")"
 done
+# Le format seul ne suffit pas : une date qui n'existe pas est un argument refusé.
+code=$(curl -s -o "$TMP/recherche.json" -w '%{http_code}' "$RECHERCHE?q=licenciement&date_start=2026-02-30")
+[ "$code" = "400" ] \
+    && ok "date_start « 2026-02-30 » → 400 : une date qui n'existe pas" \
+    || nok "date_start « 2026-02-30 » rend $code"
+code=$(curl -s -o "$TMP/verif.json" -w '%{http_code}' "$BASE/21%2F04567?jurisdiction=tj&date=2026-02-30")
+[ "$code" = "400" ] \
+    && ok "verifier, date « 2026-02-30 » → 400" \
+    || nok "verifier, date « 2026-02-30 » rend $code"
+fin_cc=$(curl -s "$BASE/21-11.222?jurisdiction=cc&date=2026-07-31" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["couverture"]["cc"]["fin"])')
+[ "$fin_cc" = "2026-07-31" ] \
+    && ok "une décision datée de 2099 ne fait pas la fin de la couverture" \
+    || nok "fin de couverture « cc » : $fin_cc"
 code=$(curl -s -o "$TMP/recherche.json" -w '%{http_code}' "$RECHERCHE?q=licenciement&date_start=2024-03-12")
 [ "$code" = "200" ] && [ "$(au_journal 3 "2024-03-12")" -gt 0 ] \
     && ok "date_start bien formée → transmise à l'amont" \

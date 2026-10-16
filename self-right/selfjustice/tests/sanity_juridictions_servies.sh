@@ -48,7 +48,7 @@ sonder() {
         $src = file_get_contents($argv[1] . "/api/api.php");
         define("JURIS_DB", $argv[2]);
         const JURIDICTIONS_SANS_INDEX = ["cc", "ca"];
-        foreach (["open_db_ou_null", "open_db", "juris_couverture", "juridictions_servies",
+        foreach (["open_db_ou_null", "open_db", "legi_jour", "juris_couverture", "juridictions_servies",
                   "juridiction_libelle", "juridiction_valide",
                   "administratif_servi", "perimetre_juris",
                   "message_juridiction_inconnue"] as $nom) {

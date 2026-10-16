@@ -463,7 +463,14 @@ async def _get(
         async with httpx.AsyncClient(timeout=TIMEOUT, follow_redirects=True) as client:
             r = await client.get(url, params=params)
     except Exception as e:
-        raise ApiIndisponible(f"{type(e).__name__} : {e}") from e
+        # Le message de transport porte l'adresse, et l'erreur TLS le nom d'hôte :
+        # ce texte est rendu au modèle, l'adresse de l'instance ne part pas avec.
+        variable = "SELFRIGHT_API_URL" if base is None else "SELFRIGHT_ACT_URL"
+        detail = str(e).replace(racine, f"<{variable}>")
+        hote = urllib.parse.urlsplit(racine).hostname
+        if hote:
+            detail = detail.replace(hote, "<instance>")
+        raise ApiIndisponible(f"{type(e).__name__} : {detail}") from e
 
     if r.status_code >= 400:
         # L'API répond en JSON, y compris pour dire « article introuvable ».
@@ -515,7 +522,7 @@ async def _get(
                 # Ce texte est rendu au modèle, donc recopié dans un rapport de
                 # bug ou un fil de discussion — et c'est l'adresse de l'instance
                 # de celui qui l'exploite qui partirait avec.
-                "SELFRIGHT_API_URL"
+                + ("SELFRIGHT_API_URL" if base is None else "SELFRIGHT_ACT_URL")
             )
         # 🔑 **Le corps de l'amont est conservé, pas remplacé.** Il porte souvent
         # un `ok: false`, un `error` nommé et un `hint` que l'outil appelant sait
@@ -1317,6 +1324,11 @@ async def statut() -> str:
             "Index de jurisprudence absent de cette instance : aucun numéro "
             "d'arrêt ne peut être vérifié ici."
         )
+        # Bloc présent mais nul : l'instance le sert d'ordinaire, et il ne se lit
+        # plus — la même panne possible que pour les deux autres bases.
+        if "jurisprudence" in data:
+            await _alerter("SelfJustice — base jurisprudence : absente ou illisible",
+                           etat_juris, "jurisprudence")
         ligne_juris = ""
 
     # 🔑 **Cet outil doit couvrir tout ce qui sera consulté.** Il s'annonce comme
@@ -1830,10 +1842,11 @@ async def verifier_jurisprudence(
             désigner un pourvoi et un RG de cour d'appel.
         date: la date attribuée à la décision, au format « AAAA-MM-JJ », quand
             la référence en porte une. Elle change la réponse en cas d'échec :
-            une date couverte par l'index rend le « introuvable » ferme pour
-            l'ordre judiciaire, là où il reste prudent sans elle. Pour l'ordre
-            administratif il reste prudent toujours : le fonds JADE n'en porte
-            qu'une sélection.
+            elle permet d'interroger la base amont, et rend le « introuvable »
+            ferme pour la Cour de cassation, que l'amont diffuse en entier. Pour
+            les cours d'appel et les tribunaux, l'absence ne vaut que dans les
+            limites de ce qu'il diffuse ; pour l'ordre administratif, elle reste
+            prudente : le fonds JADE n'en porte qu'une sélection.
     """
     chemin = f"/jurisprudence/verifier/{urllib.parse.quote(reference, safe='')}"
     # La date n'est transmise que bien formée : mal formée, l'index la refuse en

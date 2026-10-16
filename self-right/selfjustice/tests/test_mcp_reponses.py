@@ -371,6 +371,36 @@ def main() -> int:
                  "l'instance a rencontré une erreur interne" in texte
                  and "pas à l'adresse" not in texte and adresse not in texte, texte)
 
+    @cas("T5 — une erreur de transport ne rend ni l'adresse ni le nom d'hôte")
+    def _():
+        import httpx
+        hote = urllib.parse.urlsplit(client.API_URL).hostname
+        vrai = httpx.AsyncClient.get
+
+        async def faux(self, url, *args, **kwargs):
+            raise httpx.ConnectError(
+                f"[SSL: CERTIFICATE_VERIFY_FAILED] hostname '{hote}' doesn't match, for {url}")
+
+        httpx.AsyncClient.get = faux
+        try:
+            texte = jouer({}, client.article_francais, "1240", code="civil")
+        finally:
+            httpx.AsyncClient.get = vrai
+        verifier("ni l'URL ni le nom d'hôte, la variable nommée à leur place",
+                 client.API_URL not in texte and hote not in texte and "<instance>" in texte,
+                 texte[:240])
+
+    @cas("Une base de jurisprudence nulle alerte, comme les deux autres")
+    def _():
+        jour = dt.date.today().isoformat()
+        bloc = {"last_update": jour, "last_sync": jour, "articles": 1, "vigueur": 1}
+        texte = jouer({"/api/status": (200, {"legi": bloc, "eu": dict(bloc, sources={}),
+                                             "jurisprudence": None})}, client.statut)
+        verifier("« index absent », et l'alerte « absente ou illisible »",
+                 "Index de jurisprudence absent" in texte
+                 and any("jurisprudence : absente ou illisible" in a for a in alertes),
+                 f"alertes : {alertes}")
+
     instance.shutdown()
     instance.server_close()
 

@@ -61,7 +61,7 @@ au-delà de 31 jours d'écart.
 **Un état qui ne se lit pas.** Quand `/status` échouait, le bandeau de fraîcheur disparaissait sans un mot ;
 il dit désormais que la fraîcheur n'a pas pu être vérifiée. Côté API, une base absente ne fait plus tomber
 `/status` en entier : les autres blocs répondent. `statut` ne lève plus d'exception sur un bloc nul : il dit
-la base absente ou illisible, sans lui chercher de fraîcheur, et alerte l'exploitant — l'API ne distingue pas
+la base absente ou illisible, sans lui chercher de fraîcheur, et alerte l'exploitant, jurisprudence comprise — l'API ne distingue pas
 une base qu'on n'a pas encore construite d'une base de production disparue.
 
 **Une date de contenu qui n'en était pas une.** La base européenne était datée du jour de chaque passage,
@@ -82,23 +82,29 @@ illisible ne devient plus la date du jour : le marqueur garde la précédente, e
 - Sans juridiction, la borne de l'index se prenait sur des fonds arrêtés en 2000 et en 2009, et Judilibre,
   qui ne porte que l'ordre judiciaire, tranchait pour l'ordre administratif : un jugement de tribunal
   administratif ressortait « opposablement introuvable ». Seuls les fonds vivants bornent l'index, et
-  Judilibre n'est plus interrogé pour une juridiction administrative. Il l'est, avec ou sans juridiction
-  judiciaire, dès qu'une date est annoncée et que rien ne lui correspond localement : une moisson n'est pas
-  exhaustive, et l'amont sert les tribunaux judiciaires et de commerce, que l'index local ne porte pas. La
-  réserve dit pour qui l'absence vaut : opposable pour la Cour de cassation et les cours d'appel, bornée à
-  ce que Judilibre diffuse pour les autres tribunaux judiciaires, sans valeur de preuve pour l'ordre
-  administratif. Une date antérieure au début de l'index ne prouve jamais rien, une page de résultats qui
-  n'épuise pas l'amont non plus, et un amont qui ne répond pas laisse l'absence probable, jamais établie.
+  Judilibre n'est plus interrogé pour une juridiction administrative. Il l'est dès qu'une date est annoncée
+  et que rien ne lui correspond localement — une moisson n'est pas exhaustive —, toujours avec un filtre
+  explicite : sans juridiction, il ne cherche que dans la Cour de cassation. La réserve ne conclut que pour
+  la juridiction interrogée : opposable pour la Cour de cassation, que Judilibre diffuse en entier ; bornée à
+  ce qu'il diffuse pour les cours d'appel ; sans valeur de preuve pour l'ordre administratif. Les tribunaux
+  judiciaires et de commerce, que l'index local ne porte pas, se vérifient désormais par leur nom, auprès
+  de l'amont. Une date antérieure au premier fonds de l'index ne prouve jamais rien, une page de résultats
+  qui n'épuise pas l'amont non plus, et un amont qui ne répond pas laisse l'absence probable, jamais
+  établie. ⚠️ Chaque vérification datée sans correspondance locale coûte un appel Judilibre, sur la clé de
+  l'instance.
+- Une date qui n'existe pas (`2026-02-30`) est refusée, comme une date mal formée ; une décision datée dans
+  l'avenir ne fait plus la borne de la couverture.
 - Une juridiction mal écrite est refusée comme un argument (400), au lieu d'être présentée comme une panne ;
   « CA » en capitales vaut « ca ».
 
 **Un autre article que celui demandé.** La référence n'était pas encodée dans le chemin : « 8/2 » servait
-l'article 8. Elle l'est maintenant, et l'API décode aussi les segments d'un article européen.
+l'article 8. Le client l'encode, l'API décode aussi les segments d'un article européen, et refuse une
+référence coupée par un « / » non encodé au lieu d'en servir le début.
 
 **Un article servi, introuvable par ses mots.** L'index plein texte excluait les versions sans état que l'API
 sert comme version courante : 286 sur la base servie au 15 octobre. Il les porte, hors des lignes
 sentinelles. Et quand deux versions d'un même article répondent à la recherche, c'est la version applicable
-qui ressort parmi les résultats rendus, au rang de la mieux classée : une version morte de trente-six caractères passait devant au
+qui ressort, au rang de la mieux classée — cherchée par son numéro si la fenêtre lue ne la contient pas : une version morte de trente-six caractères passait devant au
 score.
 
 **Ce que le dépôt affirmait.**
@@ -110,8 +116,9 @@ score.
   la roue construite dans un environnement neuf pour vérifier que son point d'entrée annonce les douze outils.
 - Les README de SelfJustice disaient 0.4.2 sous un badge 0.4.3, et PHP-FPM 8.2 pour une configuration en
   8.4. Leur ligne de statut entre sous `check-versions.sh`.
-- L'adresse de l'instance ne part plus dans les messages d'erreur rendus au modèle, et `gabarit_document`
-  ne dit plus « injoignable » d'une instance qui répond sans gabarit.
+- L'adresse de l'instance — ni son URL, ni son nom d'hôte dans une erreur TLS — ne part plus dans les
+  messages d'erreur rendus au modèle, et `gabarit_document` ne dit plus « injoignable » d'une instance qui
+  répond sans gabarit.
 - `sanity_texte_decision.py`, que la CI lance, plantait sur une fonction ajoutée au client, et
   `test_applicabilite.py` n'était pas joué par la CI. Le premier passe, le second y entre.
 
