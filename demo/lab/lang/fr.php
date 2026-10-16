@@ -90,7 +90,7 @@ return [
     'sec.5.body' => '<ul>'
         . '<li>Réputation par membre (départ %1$d/%2$d), vote ±1 sur les messages <em>et</em> les membres, motif exigé au vote négatif.</li>'
         . '<li><strong>Anti-Sybil</strong> : un compte de moins de %3$s sans contribution ne peut pas voter.</li>'
-        . '<li><strong>Meute</strong> : des votants liés entre eux (messages privés dans les deux sens) qui frappent la même cible → votes annulés, réputation restaurée. <strong>Salve</strong> de votes sans lien → signalée à un arbitre, rien n\'est annulé.</li>'
+        . '<li><strong>Meute</strong> : des votants liés entre eux (messages privés dans les deux sens) qui frappent la même cible ne pèsent pas plus qu\'un membre seul → le premier garde son vote, les autres sont annulés, réputation restaurée. Personne n\'est puni ; une récidive part chez un arbitre. <strong>Salve</strong> de votes sans lien → signalée à un arbitre, rien n\'est annulé.</li>'
         . '<li><strong>Anti-farming</strong> : votes répétés d\'un membre vers un même autre neutralisés. Sanctions graduées : perte du vote, puis ban de %4$s — le dernier palier se reconduit, jamais définitif, et chaque ban s\'écrit au journal de modération.</li>'
         . '</ul>',
 
@@ -325,10 +325,10 @@ return [
     'mod.how.body' => '<li><strong>Réputation</strong> : chaque membre démarre à %1$d/%2$d. Les votes ▲▼ sur ses posts et son profil la font évoluer ; un vote ▼ exige un motif.</li>'
         . '<li><strong>Anti-Sybil</strong> : un compte de moins de %3$s sans aucun message ne peut pas voter.</li>'
         . '<li><strong>Anti-farming</strong> : au-delà de %4$d votes d\'un même membre vers un même autre sur %5$d jours, les suivants sont neutralisés.</li>'
-        . '<li><strong>Meute</strong> : des votants liés entre eux (messages privés dans les deux sens) qui frappent la même cible voient leurs votes annulés, et la réputation de la cible est restaurée. <strong>Salve</strong> : plusieurs votes sans lien dans la même fenêtre ne sont pas annulés — la cible est signalée à un arbitre.</li>'
+        . '<li><strong>Meute</strong> : des votants liés entre eux (messages privés dans les deux sens) qui frappent la même cible ne pèsent pas plus qu\'un membre seul : le premier garde son vote, ceux des autres sont annulés, et la réputation de la cible est restaurée. Personne n\'est puni pour un lien ; une récidive est signalée à un arbitre. <strong>Salve</strong> : plusieurs votes sans lien dans la même fenêtre ne sont pas annulés — la cible est signalée à un arbitre.</li>'
         . '<li><strong>Sanctions graduées</strong> : réputation &lt;%6$d → perte du droit de vote ; à 0 → ban de %7$s, le dernier palier se reconduit, jamais définitif. Un ban bloque le vote et la publication ; les messages privés restent ouverts. À la fin du ban, la réputation revient à %1$d.</li>',
     'mod.detect.h2'   => 'Lancer la détection d\'abus',
-    'mod.detect.note' => 'Analyse les votes récents : annule les votes des meutes reconnues, signale les salves.',
+    'mod.detect.note' => 'Analyse les votes récents : annule ce qu\'une meute ajoute au vote d\'un membre seul, signale les salves.',
     'mod.detect.btn'  => '🔍 Détecter les abus maintenant',
     'mod.detect.login' => 'Chaque vote négatif fait réexaminer sa cible ; le premier de chaque période de %s réexamine tout le site. Le déclenchement manuel est réservé aux administrateurs.',
     'mod.blocked.h2'  => 'Votes neutralisés (%d)',
@@ -469,7 +469,7 @@ return [
     'prf.mod.conv.h'    => 'En convalescence',
     'prf.mod.conv.txt'  => 'Ta réputation est passée sous le seuil de vote. Elle remonte d\'un point par jour de calme, jusqu\'à %d. Rien à prouver, juste du temps.',
     'prf.mod.meute.h'   => 'Participation à une meute',
-    'prf.mod.meute.warn' => 'Des votes que tu as émis ont été annulés : ils formaient un groupe avec ceux d\'une personne avec qui tu échanges en privé. Rien ne t\'est retiré cette fois. Un prochain épisode suspendrait ton droit de vote une semaine.',
+    'prf.mod.meute.warn' => 'Tes votes ont rejoint ceux d\'une personne avec qui tu échanges en privé, sur la même cible. Un groupe ne pèse pas plus qu\'un membre seul : les votes au-delà du premier ont été annulés. Rien ne t\'est retiré ; si cela se reproduit, un arbitre regardera la situation.',
     'prf.mod.meute.mute' => 'Ton droit de vote est suspendu jusqu\'au %s. Le reste du forum reste ouvert : tu peux écrire, répondre et ouvrir un sujet.',
     'prf.reasons.h2'    => '💬 Les motifs reçus',
     'prf.reasons.anon'  => 'Sans le nom de leur auteur, et datés au jour : c\'est ce que le protocole promet à la personne visée.',

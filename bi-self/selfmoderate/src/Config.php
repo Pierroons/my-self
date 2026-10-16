@@ -31,13 +31,9 @@ final class Config
      * @param int      $balayagePeriodeSecondes Un balayage de tout le site par tranche de
      *                                        cette durée, payé par le premier downvote qui
      *                                        y tombe ; les autres ne regardent que leur cible.
-     * @param int      $meuteEpisodeCooldown  Un épisode de meute par votant sur ce délai :
-     *                                        trois victimes le même soir restent un épisode.
-     * @param int      $meuteMute2            Suspension du droit de vote au 2e épisode. Le
-     *                                        premier ne coûte que ses votes : deux amis de
-     *                                        bonne foi remplissent le critère de meute.
-     * @param int      $meuteMute3            Suspension au 3e épisode et au-delà.
-     * @param int      $meutePenalite3        Points retirés au 3e épisode.
+     * @param int      $meuteEpisodeCooldown  Un épisode de meute par votant sur ce délai,
+     *                                        compté depuis le début de l'épisode : trois
+     *                                        victimes le même soir restent un épisode.
      * @param int      $farmingDownvotesMax   Plafond de downvotes d'un votant vers un même
      *                                        auteur sur la fenêtre : casse l'érosion lente
      *                                        d'un votant patient qui vise chaque message.
@@ -65,9 +61,6 @@ final class Config
         public readonly int $meuteVotantsMax = 30,
         public readonly int $balayagePeriodeSecondes = 3600,
         public readonly int $meuteEpisodeCooldown = 86400,
-        public readonly int $meuteMute2 = 604800,
-        public readonly int $meuteMute3 = 2592000,
-        public readonly int $meutePenalite3 = 5,
         public readonly int $fenetreFarmingJours = 60,
         public readonly int $farmingUpvotesMax = 3,
         public readonly int $farmingDownvotesMax = 3,

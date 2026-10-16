@@ -711,8 +711,10 @@ class Moderate
      * Deux détections, deux conséquences.
      *
      * MEUTE — des votants liés entre eux ont frappé la même cible sur la fenêtre
-     * longue. Le lien est le signal : leurs votes sont annulés, la réputation
-     * restituée, et les sanctions posées pendant la chute sont levées.
+     * longue. Le groupe ne pèse pas plus qu'un membre seul : le premier votant
+     * garde ses votes, ceux des autres sont annulés, la réputation restituée de
+     * ce qu'ils avaient pris. Personne n'est puni : le lien ne distingue ni deux
+     * amis de bonne foi, ni un lien fabriqué par la cible, d'une coordination.
      *
      * SALVE RAPIDE — plusieurs votants sans aucun lien votent dans la même
      * minute. Ce n'est pas une meute, c'est le plus souvent la même réaction au
@@ -771,11 +773,22 @@ class Moderate
                     continue;
                 }
                 $ph = implode(',', array_fill(0, count($groupe), '?'));
-                $ids = $pdo->prepare("SELECT id FROM mod_votes
+                $ids = $pdo->prepare("SELECT id, voter_id FROM mod_votes
                                        WHERE target_author = ? AND value = -1 AND blocked = 0
-                                         AND created_at >= ? AND voter_id IN ($ph)");
+                                         AND created_at >= ? AND voter_id IN ($ph)
+                                       ORDER BY created_at ASC, id ASC");
                 $ids->execute(array_merge([$author, $sinceMeute], $groupe));
-                $voteIds = array_map('intval', array_column($ids->fetchAll(), 'id'));
+                $votes = $ids->fetchAll();
+                if (!$votes) {
+                    continue;
+                }
+                // Le premier votant garde ses votes : c'est ce qu'un membre seul
+                // aurait obtenu, et le groupe n'obtient rien de plus.
+                $premier = (int) $votes[0]['voter_id'];
+                $voteIds = array_map('intval', array_column(
+                    array_filter($votes, static fn (array $v): bool => (int) $v['voter_id'] !== $premier),
+                    'id'
+                ));
                 if (!$voteIds) {
                     continue;
                 }
@@ -784,14 +797,12 @@ class Moderate
                     ->execute($voteIds);
                 self::restoreAfterCancel($pdo, $author, $voteIds);
                 $cancelled += count($voteIds);
-                // La victime est remise d'aplomb avant qu'on regarde qui a frappé :
-                // sa protection ne dépend d'aucun rang de récidive.
-                $sanctions = self::sanctionnerMeute($pdo, $groupe, $author, $voteIds);
                 $packs[] = [
                     'target_author' => $author,
                     'voters'        => $groupe,
+                    'premier'       => $premier,
                     'cancelled'     => count($voteIds),
-                    'sanctions'     => $sanctions,
+                    'rangs'         => self::consignerMeute($pdo, $groupe, $author, $voteIds),
                 ];
             }
         }
@@ -952,125 +963,96 @@ class Moderate
     /**
      * Rang de récidive d'un votant : le nombre d'épisodes de meute qu'il a à son
      * compte. Lu comme un MAX et non comme un COUNT — un épisode laisse une
-     * ligne par cible, et trois victimes le même soir restent un épisode.
+     * ligne par cible, et trois victimes le même soir restent un épisode. Une
+     * grâce d'arbitre l'efface : seules les lignes qui la suivent comptent, et
+     * les précédentes restent lisibles.
      */
     public static function rangDe(PDO $pdo, int $voterId): int
     {
-        $stmt = $pdo->prepare('SELECT MAX(rang) FROM mod_pack_flags WHERE voter_id = ?');
-        $stmt->execute([$voterId]);
+        $stmt = $pdo->prepare(
+            "SELECT COALESCE(MAX(rang), 0) FROM mod_pack_flags
+              WHERE voter_id = ? AND id > (SELECT COALESCE(MAX(id), 0) FROM mod_pack_flags
+                                            WHERE voter_id = ? AND action = 'grace')"
+        );
+        $stmt->execute([$voterId, $voterId]);
         return (int) $stmt->fetchColumn();
     }
 
     /**
-     * Fait payer une meute à ceux qui l'ont formée. L'annulation des votes a
-     * déjà eu lieu et ne dépend pas de ce qui suit : la victime est protégée dès
-     * le premier passage, la peine attend la récidive.
+     * Inscrit l'épisode de meute de chaque votant, sans peine. La neutralisation
+     * des votes a déjà eu lieu ; le rang sert à l'arbitre, qui voit une récidive
+     * et juge sur le fond. Une peine bâtie sur le lien frapperait des honnêtes
+     * au choix d'un tiers : un troll qui poste chaque jour ferait récidiver ses
+     * critiques, un compte jetable choisirait à qui il se lie.
      *
-     * Un votant ne monte d'un rang qu'une fois par `meuteEpisodeCooldown`. Sans
-     * cette borne, la boucle de detectPackVoting — qui traite toutes les cibles
-     * d'un même passage — ferait franchir trois paliers d'un coup à un groupe
-     * qui a frappé trois personnes, et l'avertissement du premier rang ne serait
-     * jamais vu par personne. Les cibles supplémentaires sont enregistrées
-     * quand même : l'admin doit voir l'ampleur, pas seulement le rang.
+     * Un votant ne monte d'un rang qu'une fois par `meuteEpisodeCooldown`,
+     * compté depuis le DÉBUT de l'épisode. Compté depuis la dernière détection,
+     * une meute qui frappe un peu plus souvent que ce délai resterait au premier
+     * rang indéfiniment. Les cibles supplémentaires d'un même épisode sont
+     * inscrites quand même : l'arbitre voit l'ampleur.
      *
      * Le rang appartient au VOTANT. Compté sur la cible, un groupe qui change de
-     * proie resterait au premier palier indéfiniment, et une victime visée par
-     * plusieurs groupes ferait punir des primo-délinquants.
+     * proie resterait au premier rang indéfiniment.
      *
      * @param  int[] $voters
      * @param  int[] $voteIds
      * @return array<int, array{voter: int, rang: int, action: string}>
      */
-    public static function sanctionnerMeute(PDO $pdo, array $voters, int $author, array $voteIds): array
+    private static function consignerMeute(PDO $pdo, array $voters, int $author, array $voteIds): array
     {
         $maintenant = time();
-        $sanctions  = [];
+        $rangs = [];
 
         foreach ($voters as $voter) {
             $voter = (int) $voter;
             self::ensureRow($pdo, $voter);
 
-            $stmt = $pdo->prepare('SELECT rang, detected_at FROM mod_pack_flags
-                                    WHERE voter_id = ? ORDER BY detected_at DESC, id DESC LIMIT 1');
-            $stmt->execute([$voter]);
-            $dernier = $stmt->fetch();
+            $stmt = $pdo->prepare(
+                "SELECT rang, MIN(detected_at) AS debut FROM mod_pack_flags
+                  WHERE voter_id = ? AND id > (SELECT COALESCE(MAX(id), 0) FROM mod_pack_flags
+                                                WHERE voter_id = ? AND action = 'grace')
+               GROUP BY rang ORDER BY rang DESC LIMIT 1"
+            );
+            $stmt->execute([$voter, $voter]);
+            $courant = $stmt->fetch();
 
-            $memeEpisode = $dernier
-                && ($maintenant - (int) $dernier['detected_at']) < self::config()->meuteEpisodeCooldown;
-            $rang = $memeEpisode
-                ? (int) $dernier['rang']
-                : self::rangDe($pdo, $voter) + 1;
-
-            $action = match (true) {
-                $rang <= 1 => 'avertissement',
-                $rang === 2 => 'suspension_7j',
-                $rang === 3 => 'suspension_30j',
-                default     => 'revue_admin',
-            };
+            $memeEpisode = $courant
+                && ($maintenant - (int) $courant['debut']) < self::config()->meuteEpisodeCooldown;
+            $rang = $memeEpisode ? (int) $courant['rang'] : ($courant ? (int) $courant['rang'] : 0) + 1;
+            $action = $rang <= 1 ? 'avertissement' : 'revue_admin';
 
             $pdo->prepare(
                 'INSERT INTO mod_pack_flags (voter_id, target_author, rang, action, vote_ids, detected_at)
                  VALUES (?, ?, ?, ?, ?, ?)'
             )->execute([$voter, $author, $rang, $action, json_encode(array_values($voteIds)), $maintenant]);
 
-            // Une cible de plus dans un épisode déjà puni ne rejoue pas la peine :
-            // la suspension ne se cumule pas avec elle-même.
-            if (!$memeEpisode) {
-                self::appliquerPeine($pdo, $voter, $rang, $maintenant);
+            if (!$memeEpisode && $rang >= 2) {
+                self::signaler($pdo, $voter, 'meute_recidive');
             }
-            $sanctions[] = ['voter' => $voter, 'rang' => $rang, 'action' => $action];
+            $rangs[] = ['voter' => $voter, 'rang' => $rang, 'action' => $action];
         }
 
-        return $sanctions;
+        return $rangs;
     }
 
     /**
-     * La peine attachée à un rang. Le rang ne bannit jamais par lui-même : au
-     * troisième, la perte de points peut mener au ban de la réputation zéro,
-     * comme n'importe quelle autre chute.
+     * Signale un compte à l'arbitre, sans écraser un signal plus précis.
+     *
+     * Deux familles. Un signal d'ÉTAT (`reputation_zero`, `ban_auto`) se déduit
+     * de la base et se lève seul quand l'état cesse. Un signal de COMPORTEMENT
+     * (une salve, une récidive de meute…) dit ce qui s'est passé, et seul un
+     * arbitre le lève. Un comportement remplace un état ; un état ne remplace
+     * jamais un comportement, et un comportement n'en remplace pas un autre.
      */
-    private static function appliquerPeine(PDO $pdo, int $voter, int $rang, int $maintenant): void
+    private static function signaler(PDO $pdo, int $accountId, string $raison): void
     {
-        if ($rang <= 1) {
-            return;   // le premier épisode ne coûte que ses votes
-        }
-
-        // La suspension vaut du deuxième épisode jusqu'au dernier : au-delà du
-        // troisième, le rang ajoute la revue humaine sans rien retirer. Sans ce
-        // report, le quatrième épisode serait moins puni que le troisième — la
-        // peine expirerait pendant que l'admin regarde.
-        $duree = $rang === 2 ? self::config()->meuteMute2 : self::config()->meuteMute3;
-        // MAX : une nouvelle suspension ne raccourcit jamais celle en cours.
+        $etats = ['reputation_zero', 'ban_auto'];
+        $remplacables = in_array($raison, $etats, true) ? $etats : [...$etats, $raison];
+        $ph = implode(',', array_fill(0, count($remplacables), '?'));
         $pdo->prepare(
-            'UPDATE member_moderation SET vote_muted_until = MAX(vote_muted_until, ?), updated_at = ?
-              WHERE account_id = ?'
-        )->execute([$maintenant + $duree, $maintenant, $voter]);
-
-        if ($rang === 3) {
-            // Une peine échue se referme avant la perte de points : refermée
-            // après, elle remettrait la réputation au départ et effacerait la
-            // pénalité qu'on vient de poser.
-            self::cloreBanExpire($pdo, $voter);
-            $pdo->prepare(
-                'UPDATE member_moderation SET reputation = MAX(reputation - ?, 0), updated_at = ?
-                  WHERE account_id = ?'
-            )->execute([self::config()->meutePenalite3, $maintenant, $voter]);
-            $stmt = $pdo->prepare('SELECT reputation FROM member_moderation WHERE account_id = ?');
-            $stmt->execute([$voter]);
-            // La perte de points ouvre la convalescence comme n'importe quelle
-            // autre : la suspension, elle, tiendra sa durée par-dessus.
-            self::enforceThresholds($pdo, $voter, (int) $stmt->fetchColumn());
-        }
-
-        if ($rang >= 4) {
-            // R10-LAB-01 tient aussi ici : au-delà du troisième épisode, la
-            // machine s'arrête et passe la main. Exclure quelqu'un reste un
-            // geste humain, y compris quand il l'a bien cherché.
-            $pdo->prepare(
-                "UPDATE member_moderation SET needs_review = 1, review_reason = 'meute_recidive', updated_at = ?
-                  WHERE account_id = ?"
-            )->execute([$maintenant, $voter]);
-        }
+            "UPDATE member_moderation SET needs_review = 1, review_reason = ?, updated_at = ?
+              WHERE account_id = ? AND (review_reason IS NULL OR review_reason IN ($ph))"
+        )->execute([$raison, time(), $accountId, ...$remplacables]);
     }
 
     private static function enforceThresholds(PDO $pdo, int $accountId, int $reputation): void
@@ -1280,8 +1262,9 @@ class Moderate
 
     /**
      * Grâce d'un arbitre : lève le ban en cours, rend le vote, remet la
-     * réputation au départ et les strikes à zéro. Sans ban en cours, elle ne
-     * fait que remettre la réputation au départ.
+     * réputation au départ et les strikes à zéro, lève une suspension de vote
+     * et efface le rang de meute. Sans ban en cours, elle fait tout cela sauf
+     * lever un ban.
      *
      * 🔑 **Le plancher.** Avant `plancherFraction` de la peine en cours, la grâce
      * exige un motif, et s'inscrit comme levée anticipée avec le temps qui
@@ -1304,6 +1287,7 @@ class Moderate
         $etat       = self::getReputation($pdo, $accountId);
         $maintenant = time();
         $anticipee  = false;
+        $rangEfface = self::rangDe($pdo, $accountId);
 
         if ($etat['banned']) {
             $plancher  = $etat['ban_debut'] > 0
@@ -1326,6 +1310,8 @@ class Moderate
                 'anticipee' => $anticipee,
                 'reste'     => $etat['banned_until'] - $maintenant,
                 'plancher'  => $plancher,
+                'rang_efface'      => $rangEfface,
+                'suspension_levee' => $etat['vote_muted'],
             ]);
         } else {
             self::$journal?->inscrire([
@@ -1334,6 +1320,8 @@ class Moderate
                 'arbitre'    => $arbitre,
                 'motif'      => $motif !== '' ? $motif : null,
                 'reputation' => $etat['reputation'],
+                'rang_efface'      => $rangEfface,
+                'suspension_levee' => $etat['vote_muted'],
             ]);
         }
 
@@ -1341,10 +1329,16 @@ class Moderate
             'UPDATE member_moderation
                 SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
                     voting_rights = 1, reputation = ?, strikes = 0, needs_review = 0, review_reason = NULL,
-                    convalescent = 0, updated_at = ?
+                    convalescent = 0, vote_muted_until = 0, updated_at = ?
               WHERE account_id = ?'
         )->execute([self::config()->reputationInitiale, $maintenant, $accountId]);
         self::effacerEffets($pdo, $accountId);
+        if ($rangEfface > 0) {
+            $pdo->prepare(
+                "INSERT INTO mod_pack_flags (voter_id, target_author, rang, action, vote_ids, detected_at)
+                 VALUES (?, ?, 0, 'grace', NULL, ?)"
+            )->execute([$accountId, $accountId, $maintenant]);
+        }
 
         return ['ok' => true, 'anticipee' => $anticipee, 'message' => match (true) {
             $anticipee      => static::t('Ban levé avant son plancher : la levée anticipée et son motif sont au journal.'),
@@ -1432,7 +1426,7 @@ class Moderate
      * Membres à arbitrer par un admin. `review_reason` dit la cause :
      * `reputation_zero` (érosion jusqu'à zéro, sans journal branché), `ban_auto`
      * (ban automatique en cours), `salve_rapide` (plusieurs votants sans lien dans
-     * la même fenêtre) ou `meute_recidive` (4e épisode de meute). Un drapeau sans
+     * la même fenêtre) ou `meute_recidive` (récidive de meute). Un drapeau sans
      * sa cause laisserait l'admin appliquer le même geste à des situations opposées.
      */
     public static function flaggedForReview(PDO $pdo, int $limit = 50): array

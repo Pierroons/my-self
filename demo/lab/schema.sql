@@ -148,7 +148,8 @@ CREATE TABLE IF NOT EXISTS mod_pack_flags (
     voter_id      INTEGER NOT NULL,
     target_author INTEGER NOT NULL,
     rang          INTEGER NOT NULL,   -- palier atteint par ce votant lors de cet épisode
-    action        TEXT NOT NULL,      -- 'avertissement' | 'suspension_7j' | 'suspension_30j' | 'revue_admin'
+    action        TEXT NOT NULL,      -- 'avertissement' | 'revue_admin' | 'grace' (rang effacé par un arbitre) ;
+                                      -- 'suspension_7j' | 'suspension_30j' ne sont plus posées
     vote_ids      TEXT,               -- JSON des votes annulés, pour que l'admin voie sur quoi on s'appuie
     detected_at   INTEGER NOT NULL,
     FOREIGN KEY (voter_id) REFERENCES accounts(id) ON DELETE CASCADE

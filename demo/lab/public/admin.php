@@ -48,7 +48,15 @@ try {
 $causes = [
     'reputation_zero' => 'réputation à zéro',
     'salve_rapide'    => 'salve de votes sans lien',
-    'meute_recidive'  => 'récidive de meute (4e épisode)',
+    'meute_recidive'  => 'récidive de meute (deuxième épisode ou plus)',
+];
+// Les deux suspensions ne sont plus posées ; une base peut encore en porter.
+$suites = [
+    'avertissement'  => 'avertissement',
+    'revue_admin'    => 'revue par un arbitre',
+    'grace'          => 'rang effacé par une grâce',
+    'suspension_7j'  => 'vote suspendu 7 jours',
+    'suspension_30j' => 'vote suspendu 30 jours',
 ];
 
 $sevColor = ['info' => '#9aa9b6', 'faible' => '#6cb6ff', 'moyen' => '#d4a056', 'eleve' => '#e0824f', 'critique' => '#d96459'];
@@ -121,9 +129,9 @@ table.adm tr:last-child td{border-bottom:none}
   <?php if (!$episodes): ?><p class="muted">Aucun épisode enregistré.</p><?php else: ?>
   <table class="adm"><tr><th>Votant</th><th>Cible</th><th>Rang</th><th>Suite donnée</th><th>Quand</th></tr>
     <?php foreach ($episodes as $e): ?>
-      <tr><td><?= h((string) $e['votant']) ?></td><td><?= h((string) $e['cible']) ?></td>
+      <tr><td><?= h((string) $e['votant']) ?></td><td><?= h($e['action'] === 'grace' ? '—' : (string) $e['cible']) ?></td>
           <td><?= (int) $e['rang'] ?></td>
-          <td><?= h((string) $e['action']) ?></td>
+          <td><?= h($suites[$e['action']] ?? (string) $e['action']) ?></td>
           <td><?= $dt((int) $e['detected_at']) ?></td></tr>
     <?php endforeach; ?>
   </table><?php endif; ?>
