@@ -49,6 +49,7 @@ $causes = [
     'reputation_zero' => 'réputation à zéro',
     'salve_rapide'    => 'salve de votes sans lien',
     'meute_recidive'  => 'récidive de meute (deuxième épisode ou plus)',
+    'votants_tronques' => 'trop de votants pour la détection de meute',
 ];
 // Les deux suspensions ne sont plus posées ; une base peut encore en porter.
 $suites = [

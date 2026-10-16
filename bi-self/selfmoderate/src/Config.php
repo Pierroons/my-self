@@ -26,8 +26,9 @@ final class Config
      *                                        la même cible. Le lien seul déclenche
      *                                        l'annulation, sur une fenêtre longue — une
      *                                        meute prend son temps.
-     * @param int      $meuteVotantsMax       Borne du graphe des votants, dont les paires
-     *                                        croissent comme le carré ; une troncature est signalée.
+     * @param int      $meuteVotantsMax       Borne du graphe des votants d'une cible : au-delà,
+     *                                        les plus récents sont gardés et la cible est
+     *                                        signalée à l'arbitre.
      * @param int      $balayagePeriodeSecondes Un balayage de tout le site par tranche de
      *                                        cette durée, payé par le premier downvote qui
      *                                        y tombe ; les autres ne regardent que leur cible.
@@ -58,7 +59,7 @@ final class Config
         public readonly int $salveVotantsMin = 3,
         public readonly int $fenetreMeuteJours = 30,
         public readonly int $meuteLiensMin = 2,
-        public readonly int $meuteVotantsMax = 30,
+        public readonly int $meuteVotantsMax = 200,
         public readonly int $balayagePeriodeSecondes = 3600,
         public readonly int $meuteEpisodeCooldown = 86400,
         public readonly int $fenetreFarmingJours = 60,

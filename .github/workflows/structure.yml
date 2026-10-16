@@ -1888,8 +1888,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 66/66 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 66 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 67/67 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 67 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2126,6 +2126,40 @@ jobs:
               composition) attendu='✗ ⭐ composition de la chute absente ou fausse' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — SelfModerate coupe les votants récents, ou tait la troncature
+        run: |
+          # @plante
+          # Deux gardes de la borne du graphe, retirées tour à tour : l'ordre qui
+          # garde les votants les plus récents, et le signalement de la troncature.
+          M=bi-self/selfmoderate/src/Moderate.php
+          for cas in ordre silence; do
+            cp "$M" /tmp/moderate.borne.intact
+            CAS="$cas" python3 - "$M" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          avant, apres = {
+              'ordre':   ("                               GROUP BY voter_id ORDER BY MAX(created_at) DESC, voter_id DESC');\n",
+                          "                               GROUP BY voter_id ORDER BY voter_id ASC');\n"),
+              'silence': ("                self::signaler($pdo, $author, 'votants_tronques');\n", ""),
+          }[os.environ['CAS']]
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/moderate.borne.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              cp /tmp/moderate.borne.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/moderate.borne.intact "$M"
+            cmp -s /tmp/moderate.borne.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            echo "$sortie" | grep -q '✗ ⭐ la troncature cache la meute ou se tait' \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done

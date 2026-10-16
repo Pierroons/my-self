@@ -400,6 +400,34 @@ $bloques11 = (int) $pdo->query(
     ? ok('A–B et B–C liés forment un groupe de trois, même si A et C ne se connaissent pas : seul le premier compte')
     : nok('la transitivité n\'a pas joué : bloqués=' . $bloques11 . ' rep=' . reputation($pdo, $viseTrio));
 
+// ── 11bis. ⭐ La troncature garde les votants récents, et elle se dit ───────
+// Le graphe des votants est borné. Coupé par identifiant croissant, il écartait
+// les comptes les plus récents — ceux qu'une meute de comptes neufs ajoute en
+// dernier —, et personne ne lisait la troncature. Borne abaissée à 5 pour que le
+// cas ne dépende pas de la valeur par défaut.
+Moderate::setConfig(new Config(meuteVotantsMax: 5));
+$foule = membre($pdo, 'cible-tres-votee');
+$pdo->prepare('INSERT INTO threads (account_id, titre, created_at) VALUES (?, ?, ?)')->execute([$foule, 'fil-foule', time()]);
+$pdo->prepare('INSERT INTO posts (thread_id, account_id, contenu, created_at) VALUES (?, ?, ?, ?)')
+    ->execute([(int) $pdo->lastInsertId(), $foule, 'contenu', time()]);
+$postFoule = (int) $pdo->lastInsertId();
+for ($k = 0; $k < 6; $k++) {
+    $pdo->prepare('INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, created_at)
+                   VALUES (?, ?, ?, ?, -1, ?, ?)')
+        ->execute([membre($pdo, "foule-ancien-$k"), 'post', $postFoule, $foule, motif(), time() - 3600]);
+}
+$neuf1 = membre($pdo, 'foule-neuf-1');
+$neuf2 = membre($pdo, 'foule-neuf-2');
+echangePrive($pdo, $neuf1, $neuf2);
+Moderate::applyVote($pdo, $neuf1, 'member', $foule, -1, motif(), 'agressif');
+Moderate::applyVote($pdo, $neuf2, 'member', $foule, -1, motif(), 'agressif');
+Moderate::setConfig(null);
+$bloquesFoule = (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE target_author = $foule AND blocked_reason = 'pack_voting'")->fetchColumn();
+$modFoule = Moderate::getReputation($pdo, $foule);
+$bloquesFoule === 1 && $modFoule['review_reason'] === 'votants_tronques'
+    ? ok('⭐ au-delà de la borne, la meute de comptes récents est vue, et la troncature signalée à l\'arbitre')
+    : nok('⭐ la troncature cache la meute ou se tait : bloqués=' . $bloquesFoule . ' ' . json_encode($modFoule['review_reason']));
+
 // ── 12. La convalescence rend un point par intervalle, et le droit de vote ──
 $conv = membre($pdo, 'convalescent');
 poserReputation($pdo, $conv, 2);

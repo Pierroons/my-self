@@ -755,17 +755,20 @@ class Moderate
         $auteurs = array_map('intval', array_column($stmt->fetchAll(), 'target_author'));
 
         foreach ($auteurs as $author) {
-            $vs = $pdo->prepare('SELECT DISTINCT voter_id FROM mod_votes
+            $vs = $pdo->prepare('SELECT voter_id FROM mod_votes
                                   WHERE target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?
-                                  ORDER BY voter_id ASC');
+                               GROUP BY voter_id ORDER BY MAX(created_at) DESC, voter_id DESC');
             $vs->execute([$author, $sinceMeute]);
             $voters = array_map('intval', array_column($vs->fetchAll(), 'voter_id'));
 
-            // Le graphe est quadratique : on borne, et on le DIT. Une troncature
-            // muette se lirait comme une absence de meute.
+            // On borne, en gardant les votants les plus récents : une meute de
+            // comptes neufs vote en dernier, et c'est elle qu'une coupe par
+            // ancienneté écartait. Une troncature muette se lirait comme une
+            // absence de meute : la cible est signalée à l'arbitre.
             if (count($voters) > self::config()->meuteVotantsMax) {
                 $tronques[] = ['target_author' => $author, 'voters' => count($voters), 'scanned' => self::config()->meuteVotantsMax];
                 $voters = array_slice($voters, 0, self::config()->meuteVotantsMax);
+                self::signaler($pdo, $author, 'votants_tronques');
             }
 
             foreach (self::linkedGroups($pdo, $voters) as $groupe) {
