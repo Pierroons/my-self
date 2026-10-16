@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS member_moderation (
     ban_motif      TEXT,                        -- le même au journal, au début et à la fin
     needs_review   INTEGER NOT NULL DEFAULT 0,  -- signalé à un admin
     review_reason  TEXT,                        -- état : 'reputation_zero' | 'ban_auto' ; comportement :
-                                                -- 'salve_rapide' | 'meute_recidive' | 'votants_tronques'
+                                                -- 'salve_rapide' | 'meute_recidive' | 'votants_tronques' | 'votant_etendu'
     convalescent   INTEGER NOT NULL DEFAULT 0,  -- posé sous le seuil du vote, levé au point de départ
     last_regen_at  INTEGER NOT NULL DEFAULT 0,
     vote_muted_until INTEGER NOT NULL DEFAULT 0, -- suspension du droit de vote, à échéance : séparée de

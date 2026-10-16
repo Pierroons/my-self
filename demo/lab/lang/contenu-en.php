@@ -247,6 +247,10 @@ return [
     'jour' => 'day', 'jours' => 'days', 'heure' => 'hour', 'heures' => 'hours',
     'minute' => 'minute', 'minutes' => 'minutes',
     'Compte banni jusqu\'au %s.' => 'Account banned until %s.',
+    'Motif trop long : %d caractères au plus, il y en a %d.'
+        => 'Reason too long: %d characters at most, this one has %d.',
+    'Vote enregistré mais neutralisé : tu as déjà voté contre %d membres différents ces %d derniers jours.'
+        => 'Vote recorded but neutralised: you have already voted against %d different members over the last %d days.',
     'Droit de vote suspendu jusqu\'au %s (participation à une meute).'
         => 'Voting rights suspended until %s (took part in a pack).',
     'Explique en %d caractères au moins : il en manque %d.' => 'Explain in at least %d characters: %d more needed.',

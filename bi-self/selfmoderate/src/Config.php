@@ -38,6 +38,9 @@ final class Config
      * @param int      $farmingDownvotesMax   Plafond de downvotes d'un votant vers un même
      *                                        auteur sur la fenêtre : casse l'érosion lente
      *                                        d'un votant patient qui vise chaque message.
+     * @param int      $ciblesParVotantMax    Membres distincts qu'un votant peut viser sur la
+     *                                        fenêtre de farming : au-delà, ses downvotes vers un
+     *                                        membre de plus sont neutralisés et il est signalé.
      * @param int      $ageMinPourVoterSecondes Anti-Sybil : ancienneté exigée pour voter,
      *                                        sauf si le compte a déjà publié.
      * @param int[]    $dureesBan             Paliers de bannissement automatique, du premier
@@ -65,6 +68,7 @@ final class Config
         public readonly int $fenetreFarmingJours = 60,
         public readonly int $farmingUpvotesMax = 3,
         public readonly int $farmingDownvotesMax = 3,
+        public readonly int $ciblesParVotantMax = 10,
         public readonly int $ageMinPourVoterSecondes = 120,
         public readonly array $dureesBan = [120, 600, 1800],
         public readonly ?int $dureeBanAdminSecondes = null,

@@ -504,6 +504,33 @@ count($recus) === 3 && !$fuite && in_array('jour', $colonnes, true)
     ? ok('les ' . count($recus) . ' motifs reçus sortent sans votant ni horodatage fin (' . implode(', ', $colonnes) . ')')
     : nok('fuite dans les motifs rendus : ' . implode(', ', $fuite) . ' — colonnes ' . implode(', ', $colonnes));
 
+// ── 16bis. ⭐ Un vote ne rend pas la réputation de la cible ─────────────────
+// Le profil tait le chiffre sous le seuil de sanction. La réponse d'un vote le
+// rendait exact : un vote positif sur un banni répondait 1, donc 0 avant, donc
+// banni.
+$sondee = membre($pdo, 'sondee-par-vote');
+$rSonde = Moderate::applyVote($pdo, membre($pdo, 'sondeur-16bis'), 'member', $sondee, 1);
+($rSonde['ok'] ?? false) && !array_key_exists('new_reputation', $rSonde)
+    ? ok('⭐ la réponse d\'un vote ne porte plus la réputation de la cible')
+    : nok('⭐ la réponse d\'un vote révèle la réputation : ' . json_encode($rSonde));
+
+// ── 16ter. ⭐ Un votant ne vise pas tout le forum ───────────────────────────
+// Le plafond anti-farming borne un votant par cible. Sans borne par votant, un
+// seul compte retirait des points à chaque membre et déposait un motif anonyme
+// sur chaque profil, sans qu'aucune détection le voie.
+$etendu = membre($pdo, 'votant-etendu');
+$plafond = Moderate::config()->ciblesParVotantMax;
+$resultats = [];
+for ($k = 0; $k <= $plafond; $k++) {
+    $resultats[] = Moderate::applyVote($pdo, $etendu, 'member', membre($pdo, "visee-large-$k"), -1, motif(), 'agressif');
+}
+$comptes = count(array_filter($resultats, static fn (array $r): bool => ($r['ok'] ?? false) && !($r['blocked'] ?? false)));
+$dernier = end($resultats);
+$modEtendu = Moderate::getReputation($pdo, $etendu);
+$comptes === $plafond && ($dernier['blocked_reason'] ?? '') === 'plafond_votant' && $modEtendu['review_reason'] === 'votant_etendu'
+    ? ok("⭐ $plafond membres distincts visés, le suivant est neutralisé, et le votant est signalé à l'arbitre")
+    : nok('⭐ un votant érode tout le forum : comptés=' . $comptes . ' dernier=' . json_encode($dernier) . ' ' . json_encode($modEtendu['review_reason']));
+
 // ── 17. Premier épisode : le groupe pèse un membre seul, et personne ne paie ─
 // Le lien par message privé ne distingue ni deux amis de bonne foi, ni un lien
 // fabriqué par la cible, d'une coordination. Il neutralise ce que le groupe

@@ -63,6 +63,9 @@ class Moderate
     // remplissage : « lol » est trop court, « aaaaaa… » et « bon bon bon » sont
     // assez longs mais ne disent rien, et on les atteint en bloquant une touche.
     public const REASON_MIN_CHARS          = 40;
+    // Une borne haute aussi : un motif s'affiche sur le profil de la personne
+    // visée, et un texte sans fin rendrait la page illisible.
+    public const REASON_MAX_CHARS          = 1000;
     public const REASON_MIN_WORDS          = 3;
     // Répétitions : un plancher toujours permis, puis une part du texte, plus
     // large pour un mot court (« de », « les », « mon ») que pour un mot
@@ -397,6 +400,13 @@ class Moderate
                 self::REASON_MIN_CHARS - $n
             )];
         }
+        if ($n > self::REASON_MAX_CHARS) {
+            return [false, sprintf(
+                static::t('Motif trop long : %d caractères au plus, il y en a %d.'),
+                self::REASON_MAX_CHARS,
+                $n
+            )];
+        }
 
         $plat = strtr(mb_strtolower($texte, 'UTF-8'), [
             'à' => 'a', 'â' => 'a', 'ä' => 'a', 'é' => 'e', 'è' => 'e', 'ê' => 'e', 'ë' => 'e',
@@ -453,7 +463,9 @@ class Moderate
     }
 
     /**
-     * Applique un vote. Retourne ['ok'=>..., 'blocked'=>..., 'new_reputation'=>..., 'message'=>...].
+     * Applique un vote. Retourne ['ok'=>..., 'blocked'=>..., 'message'=>...] — jamais la
+     * réputation de la cible : la page de profil tait ce chiffre sous le seuil de
+     * sanction, et la réponse d'un vote le rendrait à quiconque vote.
      *
      * Le motif est exigé au downvote et facultatif à l'upvote : il existe pour
      * que la personne sanctionnée sache ce qu'on lui reproche, et un pouce en
@@ -562,6 +574,31 @@ class Moderate
             }
         }
 
+        // Un votant ne vise pas tout le forum : le plafond anti-farming le borne
+        // par cible, celui-ci par nombre de cibles. Au-delà, un downvote vers un
+        // membre de plus est neutralisé, et le votant est signalé à l'arbitre.
+        if ($value === -1) {
+            $stmt = $pdo->prepare(
+                'SELECT COUNT(DISTINCT target_author) AS cibles, MAX(target_author = ?) AS deja
+                   FROM mod_votes WHERE voter_id = ? AND value = -1 AND blocked = 0 AND created_at >= ?'
+            );
+            $stmt->execute([$author, $voterId, time() - self::config()->fenetreFarmingJours * 86400]);
+            $portee = $stmt->fetch();
+            if (!(int) $portee['deja'] && (int) $portee['cibles'] >= self::config()->ciblesParVotantMax) {
+                $pdo->prepare(
+                    'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, effet, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)'
+                )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'plafond_votant', time()]);
+                self::signaler($pdo, $voterId, 'votant_etendu');
+                return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'plafond_votant',
+                        'message' => sprintf(
+                            static::t('Vote enregistré mais neutralisé : tu as déjà voté contre %d membres différents ces %d derniers jours.'),
+                            self::config()->ciblesParVotantMax,
+                            self::config()->fenetreFarmingJours
+                        )];
+            }
+        }
+
         // La réputation se lit AVANT l'insertion : le vote garde ce qu'il a
         // réellement changé. Un vote qui bute sur une borne n'a rien changé, et
         // l'annuler plus tard ne doit rien rendre.
@@ -584,8 +621,7 @@ class Moderate
         }
         self::enforceThresholds($pdo, $author, $newRep);
 
-        return ['ok' => true, 'blocked' => false, 'new_reputation' => $newRep,
-                'message' => static::t('Vote pris en compte.')];
+        return ['ok' => true, 'blocked' => false, 'message' => static::t('Vote pris en compte.')];
     }
 
     /**

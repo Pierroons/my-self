@@ -1888,8 +1888,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 67/67 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 67 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 69/69 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 69 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2164,21 +2164,61 @@ jobs:
             echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
           done
 
+      - name: Canari — SelfModerate laisse un votant viser tout le forum, ou rend la réputation à qui vote
+        run: |
+          # @plante
+          # Deux défauts replantés tour à tour : le plafond par votant retiré, et
+          # la réputation de la cible remise dans la réponse d'un vote.
+          M=bi-self/selfmoderate/src/Moderate.php
+          for cas in plafond reponse; do
+            cp "$M" /tmp/moderate.votant.intact
+            CAS="$cas" python3 - "$M" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          avant, apres = {
+              'plafond': ("            if (!(int) $portee['deja'] && (int) $portee['cibles'] >= self::config()->ciblesParVotantMax) {\n",
+                          "            if (false) {\n"),
+              'reponse': ("        return ['ok' => true, 'blocked' => false, 'message' => static::t('Vote pris en compte.')];\n",
+                          "        return ['ok' => true, 'blocked' => false, 'new_reputation' => $newRep, 'message' => static::t('Vote pris en compte.')];\n"),
+          }[os.environ['CAS']]
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/moderate.votant.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              cp /tmp/moderate.votant.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/moderate.votant.intact "$M"
+            cmp -s /tmp/moderate.votant.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              plafond) attendu='✗ ⭐ un votant érode tout le forum' ;;
+              reponse) attendu='✗ ⭐ la réponse d.un vote révèle la réputation' ;;
+            esac
+            echo "$sortie" | grep -q "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
       - name: Garde-fou — SelfModerate, le motif de vote reçoit une phrase et refuse un remplissage
         run: |
           sortie=$(php bi-self/selfmoderate/tests/sanity_motif.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 4/4 contrôles passés' \
-            || { echo "::error::le banc du motif n'a pas joué ses 4 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 5/5 contrôles passés' \
+            || { echo "::error::le banc du motif n'a pas joué ses 5 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate refuse une phrase détaillée, ou reçoit un mot ressassé
         run: |
           # @plante
-          # Trois défauts replantés dans une copie, chacun doit faire rougir le
+          # Quatre défauts replantés dans une copie, chacun doit faire rougir le
           # banc sur SON cas : la règle redevenue plafond fixe refuse les phrases
           # détaillées ; les mots courts ignorés laissent passer « bof » ×8 ; un
-          # mot porteur traité comme un mot court laisse passer « troll » ×4.
-          for cas in plafond courts porteurs; do
+          # mot porteur traité comme un mot court laisse passer « troll » ×4 ;
+          # sans borne haute, un motif sans fin passe.
+          for cas in plafond courts porteurs longueur; do
             PLANTE=$(mktemp -d)
             cp -r bi-self/selfmoderate/src "$PLANTE/src"
             CAS="$cas" PLANTE="$PLANTE" python3 - <<'PY'
@@ -2192,6 +2232,7 @@ jobs:
                                   "        }\n" + ancre),
               'courts':   ("                : self::REASON_SHORT_ONE_IN;\n", "                : 1;\n"),
               'porteurs': ("                ? self::REASON_CARRIER_ONE_IN\n", "                ? self::REASON_SHORT_ONE_IN\n"),
+              'longueur': ("        if ($n > self::REASON_MAX_CHARS) {\n", "        if (false) {\n"),
           }[os.environ['CAS']]
           assert t.count(avant) == 1, "la plantation n'a pas pris — ce canari ne prouve rien"
           p.write_text(t.replace(avant, apres), encoding='utf-8')
@@ -2206,6 +2247,7 @@ jobs:
               plafond)  attendu='⭐ une phrase est refusée' ;;
               courts)   attendu='un mot court ressassé passe' ;;
               porteurs) attendu='un mot porteur ressassé passe' ;;
+              longueur) attendu='borne haute du motif' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
