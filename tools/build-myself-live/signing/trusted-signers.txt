@@ -1,4 +1,0 @@
-# MySelf-Live cosigners
-# Format : name | email | gpg fingerprint | signed_at
-# (filled as community grows around MySelf)
-# Pierroons (project lead) | <to fill at V0.2 prep> | <fingerprint TBD> | YYYY-MM-DD

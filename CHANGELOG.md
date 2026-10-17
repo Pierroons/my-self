@@ -10,6 +10,12 @@ Ce changelog agrège les jalons transversaux du projet.
 
 ## [Non publié]
 
+### Le squelette de MySelf-Live quitte le dépôt — 16 octobre 2026
+
+`tools/build-myself-live/` décrivait la construction et la signature d'une image ISO qui n'a jamais
+été produite : sa clé de signature était un emplacement réservé, sa liste de signataires était vide.
+Depuis le 5 octobre, plus aucun texte du dépôt ne le citait.
+
 ### Le statut d'un module et les chemins des blocs de code entrent sous contrôle — 4 octobre 2026
 
 Deux familles de textes vieillissaient sans que rien ne rougisse.
