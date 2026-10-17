@@ -3,7 +3,7 @@
 **Protocole de récupération de compte sans email**
 *Ton mot. Tes sites. Sans email.*
 
-*Édition du 15 octobre 2026 — v1.5 — décrit SelfRecover 0.12.4*
+*Édition du 16 octobre 2026 — v1.5 — décrit SelfRecover 0.12.5*
 
 ---
 

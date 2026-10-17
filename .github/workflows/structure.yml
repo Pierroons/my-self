@@ -601,6 +601,10 @@ jobs:
           # garderait l'écart, et le chronomètre dirait ce que le message tait.
           canari $E '$reste = $this->delaiRefusUs - intdiv(hrtime(true) - $debut, 1000);' '$reste = $this->delaiRefusUs;' \
             bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ nom inconnu, procédure gelée, dossier ouvert : la même durée'
+          # Et l'échéance part en tête de route : repartie après les freins et les
+          # traces, elle ajoute leur coût à la durée du refus sur un disque lent.
+          canari $E "        // garderait l'écart ; ils tiennent l'échéance commune posée plus haut." '        $debut = hrtime(true);' \
+            bi-self/selfrecover/tests/sanity_escalade.php '❌ ⭐ un stockage lent avant la recherche'
           # Un secret marqué à l'entrée et pas sur le chemin qu'il emprunte ressort
           # en clair un cadre plus bas, dans la trace d'une exception du stockage.
           canari $E 'private function recevable(string $numero, #[\SensitiveParameter] string $sesame,' \
@@ -826,8 +830,8 @@ jobs:
           # plus fourni des trois.
           sortie=$(php bi-self/selfrecover/tests/sanity_escalade.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 204 passés, 0 échoués$' \
-            || { echo "::error::le banc de l'escalade n'a pas joué ses 204 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^  Escalade SelfRecover — 209 passés, 0 échoués$' \
+            || { echo "::error::le banc de l'escalade n'a pas joué ses 209 cas"; exit 1; }
 
       # La dérivation du mot mémorisé — les deux sondes des vecteurs figés.
       # Elles existaient depuis le 27/08 sans qu'aucun job ne les lance : les

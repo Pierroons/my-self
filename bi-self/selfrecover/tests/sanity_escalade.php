@@ -787,6 +787,33 @@ foreach (['personne', 'bob', 'alice'] as $nom) {
 verifier('⭐ nom inconnu, procédure gelée, dossier ouvert : la même durée, à 20 ms près, au moins le délai',
     min($durees) >= 60 && max($durees) - min($durees) < 20, json_encode($durees));
 
+echo "\n→ Et l'échéance couvre le travail fait avant la recherche du compte\n";
+// Les freins et les traces de l'ouverture lisent et écrivent AVANT la recherche.
+// Sur un disque lent, leur coût change d'une requête à l'autre ; un chronomètre
+// parti après eux l'ajoute tel quel à la durée du refus.
+$stL = new class () extends StockageMemoire {
+    public int $lenteurUs = 0;
+
+    public function tracerTentative(?string $etiquette, bool $succes, ?string $ip, int $quand): void
+    {
+        usleep($this->lenteurUs);
+        parent::tracerTentative($etiquette, $succes, $ip, $quand);
+    }
+};
+$escL = new Escalade($stL, new Recovery($stL, 'sel', ProfilDeploiement::TOR_ONION, Langue::FR, delaiRefusUs: 0),
+    delaiRefusUs: 100000);
+$dureesL = [];
+foreach ([0, 40000, 0, 40000] as $i => $lenteur) {
+    $stL->lenteurUs = $lenteur;
+    $t0 = hrtime(true);
+    $rL = $escL->ouvrir('personne', Escalade::empreinteSesame('lent-' . $i), maintenant: $now + $i);
+    $dureesL[] = intdiv(hrtime(true) - $t0, 1000000);
+    verifier("contre-témoin : refus d'ouverture, stockage " . ($lenteur > 0 ? 'lent' : 'rapide'),
+        ($rL['error'] ?? '') === 'ouverture_refusee', (string) ($rL['error'] ?? 'accepté'));
+}
+verifier('⭐ un stockage lent avant la recherche ne se lit pas dans la durée du refus, à 20 ms près',
+    min($dureesL) >= 100 && max($dureesL) - min($dureesL) < 20, json_encode($dureesL));
+
 echo "\n→ Le fil n'accepte plus d'écriture sur un dossier tranché contre le demandeur\n";
 // Les quatre statuts, sésame bon partout. Un seul doit refuser l'écriture en
 // plus de CLOS : un dossier ACCEPTÉ reste ouvert exprès, le fil étant le seul

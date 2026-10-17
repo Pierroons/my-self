@@ -330,6 +330,12 @@ final class Escalade
                     'message' => Messages::dire($this->langue(), 'l3.empreinte_invalide')];
         }
 
+        // 🔑 L'échéance des trois refus part ici, en tête de route : les freins et
+        // les traces qui suivent lisent et écrivent avant la recherche, et sur un
+        // disque lent leur coût varie d'une requête à l'autre. Parti après eux,
+        // le chronomètre ajoutait ce coût à la durée du refus.
+        $debut = hrtime(true);
+
         // 🔑 Freiner AVANT de chercher le compte. Après, le frein ne mordrait
         // que sur les comptes existants, et être freiné deviendrait à son tour
         // la réponse qu'on refuse de donner.
@@ -350,8 +356,7 @@ final class Escalade
 
         // 🔑 Les trois refus ne font pas le même travail — un dossier déjà ouvert
         // compte le demandeur, donc écrit. Un délai ajouté après ce travail en
-        // garderait l'écart ; ils tiennent une échéance commune.
-        $debut  = hrtime(true);
+        // garderait l'écart ; ils tiennent l'échéance commune posée plus haut.
         $compte = $this->stockage->trouverCompte($nomCompte);
         if ($compte === null) {
             $this->attendreEcheance($debut);

@@ -625,6 +625,27 @@ Bancs : `sanity_moderate` passe de 51 à 57 contrôles, `equivalence_selfrecover
 
 ---
 
+## [SelfRecover v0.12.5] — 16 octobre 2026
+
+### L'échéance des refus d'ouverture part en tête de route — 16 octobre 2026
+
+Version corrective. Aucune signature ne bouge.
+
+- `ouvrir()` lit ses freins et écrit ses traces avant de chercher le compte. Le chronomètre qui donne
+  aux trois refus (nom inconnu, procédure gelée, dossier déjà ouvert) la même durée partait après ce
+  travail : sur un disque lent, dont le coût varie d'une requête à l'autre, cette part s'ajoutait à la
+  durée du refus. Il part désormais en tête de route, et l'échéance la couvre. Ces écritures sont les
+  mêmes pour les trois refus : le message unique ne se lisait pas dans le temps, mais une machine lente
+  rendait la mesure bruyante.
+
+Constaté chez un intégrateur, sur un disque à plateaux où une écriture SQLite coûte une cinquantaine
+de millisecondes.
+
+Mesures : `sanity_escalade` 209 cas. Le cas ⭐ neuf (un stockage lent avant la recherche) a été vu rouge
+sur la 0.12.4 avant le correctif.
+
+---
+
 ## [SelfRecover v0.12.4] — 15 octobre 2026
 
 ### Une décision ne se défait plus — 15 octobre 2026
