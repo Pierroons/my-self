@@ -7,17 +7,15 @@
  * neutralisé, la mesure refaite, puis le code restauré. Un contrôle qu'on n'a
  * jamais fait échouer ne se distingue pas d'un contrôle qui ne mesure rien.
  *
- * 🔑 Le contrôle n° 6 est le plus important, et il ne valide rien : il CONSTATE
- * que trois membres sans le moindre lien entre eux — aucun message privé
- * échangé, aucun fil en commun — sont classés pack coordonné du seul fait
- * qu'ils ont voté dans la même minute. Le README promet un recoupement des
- * votants liés ; il n'existe pas ici, la détection est purement temporelle.
+ * 🔑 Les contrôles 6 et 9 se lisent ensemble : même nombre de votes, même
+ * minute, seul le lien entre les votants change. Trois votants sans aucun lien
+ * forment une salve — signalée à l'arbitre, jamais annulée — et deux votants
+ * qui se sont écrit forment une meute, ramenée au poids d'un membre seul. Si
+ * l'un des deux bascule, c'est la frontière entre les deux détections qui a bougé.
  *
- * Ce contrôle est donc écrit à l'envers des autres : il passe au vert sur le
- * défaut. Le jour où le recoupement sera implémenté, il DOIT basculer — trois
- * votants sans lien ne devront plus déclencher de pack — et c'est en le voyant
- * rougir qu'on saura que la réparation mesure quelque chose. Le réparer sans
- * toucher au moteur reviendrait à effacer la seule trace écrite du trou.
+ * Le banc tourne sans journal branché jusqu'au contrôle 26 : à réputation
+ * nulle, le moteur signale et ne bannit pas. Les contrôles du ban automatique
+ * branchent le leur, et le retirent.
  *
  * Usage : php tests/sanity_moderate.php
  */
@@ -206,7 +204,7 @@ $rep['reputation'] === Moderate::config()->perteDroitDeVoteSous - 1 && !$rep['vo
     ? ok('sous ' . Moderate::config()->perteDroitDeVoteSous . ', le droit de vote est retiré')
     : nok('droit de vote conservé sous le seuil : ' . json_encode($rep));
 
-// ── 5. R10 — le harcèlement d'un seul votant est neutralisé ─────────────────
+// ── 5. Le harcèlement d'un seul votant est neutralisé ───────────────────────
 // Quatre downvotes du même membre vers le même auteur, sur quatre messages
 // différents pour contourner la garde du double vote. Le quatrième dépasse
 // FARMING_MAX_DOWNVOTES et doit être enregistré bloqué, sans effet sur le score.
@@ -328,9 +326,9 @@ $etat7 = Moderate::getReputation($pdo, $isole);
     ? ok('un downvote hors fenêtre ne complète pas une salve : aucun signalement')
     : nok('salve signalée à tort avec un vote hors fenêtre : ' . json_encode($etat7));
 
-// ── 8. R10-LAB-01 — à 0, revue humaine, aucun bannissement automatique ──────
-// L'écart avec le whitepaper est délibéré et commenté dans le moteur : un
-// bannissement automatique serait un vecteur d'escalade sans droits admin.
+// ── 8. Sans journal branché : à 0, revue humaine, aucun bannissement ────────
+// Le ban automatique ne s'arme qu'avec un journal (`setJournal()`). Ici aucun
+// n'est branché : la réputation nulle lève un signalement, et l'arbitre tranche.
 $zero = membre($pdo, 'a-zero');
 $p8   = message($pdo, $zero, 'fil-zero');
 poserReputation($pdo, $zero, 1);
