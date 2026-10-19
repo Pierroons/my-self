@@ -534,6 +534,12 @@ class Moderate
      * que la personne sanctionnée sache ce qu'on lui reproche, et un pouce en
      * l'air ne sanctionne personne. L'upvote reste tenu par son plafond de
      * `farmingUpvotesMax` sur la fenêtre.
+     *
+     * Tout s'inscrit ou rien : le vote, son effet sur la réputation et ce que
+     * la détection en tire tiennent dans une transaction, que le moteur ouvre
+     * si l'hôte n'en a pas, et dont l'hôte reste maître sinon. Le journal
+     * s'écrit hors de la base, avant elle : une validation qui échoue après lui
+     * laisse une entrée sans effet, jamais une peine sans trace.
      */
     public static function applyVote(
         PDO $pdo,
@@ -543,6 +549,48 @@ class Moderate
         int $value,
         ?string $reason = null,
         ?string $reasonCode = null
+    ): array {
+        // `BEGIN IMMEDIATE`, et non `BEGIN` : un vote lit longtemps avant
+        // d'écrire, et SQLite refuse sans attendre à une transaction en lecture
+        // de passer en écriture pendant qu'une autre écrit — deux votes
+        // simultanés rendraient « database is locked ». Le verrou pris d'emblée
+        // fait attendre, dans le délai que PDO accorde. Les trois ordres passent
+        // en SQL, jamais par `commit()` : toutes les versions de PDO ne voient
+        // pas une transaction ouverte en SQL, et l'on ne valide que ce qu'on a
+        // ouvert soi-même.
+        $propre = false;
+        if (!$pdo->inTransaction()) {
+            $pdo->exec('BEGIN IMMEDIATE');
+            $propre = true;
+        }
+        try {
+            $resultat = self::appliquerVote($pdo, $voterId, $targetType, $targetId, $value, $reason, $reasonCode);
+            if ($propre) {
+                $pdo->exec('COMMIT');
+            }
+
+            return $resultat;
+        } catch (\Throwable $e) {
+            if ($propre) {
+                try {
+                    $pdo->exec('ROLLBACK');
+                } catch (\Throwable) {
+                    // La base a déjà défait la transaction : l'exception d'origine est celle qui compte.
+                }
+            }
+            throw $e;
+        }
+    }
+
+    /** Le vote lui-même, sous la transaction qu'`applyVote()` tient. */
+    private static function appliquerVote(
+        PDO $pdo,
+        int $voterId,
+        string $targetType,
+        int $targetId,
+        int $value,
+        ?string $reason,
+        ?string $reasonCode
     ): array {
         if (!in_array($targetType, ['post', 'member'], true) || !in_array($value, [-1, 1], true)) {
             return ['ok' => false, 'message' => static::t('Paramètres de vote invalides.')];
