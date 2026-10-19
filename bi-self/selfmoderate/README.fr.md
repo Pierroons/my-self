@@ -122,7 +122,7 @@ Le moteur est une classe statique ; l'hôte fournit la connexion `PDO` à chaque
 | `setConfig(Config)` | les seuils : `Config::demo()`, `Config::prod()` ou les tiens. **Seule source** des seuils : le moteur les lit là, et tes pages aussi, par `Moderate::config()` |
 | `setJournal(Journal)` | branche le journal, et avec lui le ban automatique. L'interface [`Journal`](./src/Journal.php) liste les actes et leurs clés ; l'écriture doit être durable et non réécrivable. Un refus remonte toujours, sauf quand un vote ou une lecture constate une peine échue : sa clôture attend alors, et l'arbitre est prévenu |
 | `balayerBansEchus(PDO)` | referme les peines échues en une passe, pour un planificateur. Sans lui, une fin se constate à la lecture suivante, et le journal porte l'échéance ET l'instant de la constatation |
-| `applyVote(PDO, votant, type, cible, valeur, ?motif)` | un vote, qui rend `ok`, `blocked` et `message` — jamais la réputation de la cible, que le profil tait sous le seuil du vote. Il s'inscrit tout ou rien : dans une transaction que le moteur ouvre (`BEGIN IMMEDIATE`) quand l'hôte n'en a pas, dans celle de l'hôte sinon, et c'est alors lui qui décide |
+| `applyVote(PDO, votant, type, cible, valeur, ?motif)` | un vote, qui rend `ok`, `blocked` et `message` — jamais la réputation de la cible, que le profil tait sous le seuil du vote. Il s'inscrit tout ou rien : dans une transaction que le moteur ouvre (`BEGIN IMMEDIATE`) quand l'hôte n'en a pas, derrière un point de reprise (`SAVEPOINT`) dans celle de l'hôte sinon, à qui il revient alors de valider ou d'annuler le reste |
 | `estBanni(PDO, id)` · `bansEnCours(PDO)` | ce que l'hôte bloque, et ce que l'arbitre doit voir : origine, motif, fin, temps restant, plancher, et pour un ban automatique la composition de sa chute |
 | `adminBan(PDO, id, arbitre, motif)` · `adminPardon(PDO, id, arbitre, ?motif)` · `adminMaintenir(PDO, id, arbitre, motif)` · `adminClasser(PDO, id, arbitre, motif)` | les gestes d'arbitre, qui rendent `['ok' => bool, 'message' => string]` |
 | `dureeEnClair(secondes)` | une durée lisible, unités passées par ton traducteur (`setTranslator()`) |
@@ -142,10 +142,10 @@ Les dates de ses messages suivent le fuseau de l'hôte (`date_default_timezone_s
 importe SelfRecover et SelfDataGuard.
 
 La 0.6.1 ne change ni promesse ni schéma. Un vote s'inscrit tout ou rien : `applyVote()` tient
-ses écritures dans une transaction, la sienne ou celle de l'hôte, et une coupure ne laisse plus un
-vote inscrit sans son effet. Lire une réputation ne coûte qu'une requête quand l'état n'appelle ni
+ses écritures dans une transaction — la sienne, ou un point de reprise dans celle de l'hôte —, et une
+coupure ne laisse plus un vote inscrit sans son effet. Lire une réputation ne coûte qu'une requête quand l'état n'appelle ni
 convalescence ni clôture de peine : une lecture n'insère plus « si absent », donc ne prend plus de
-verrou d'écriture. Le banc dit ce que ses contrôles mesurent.
+verrou d'écriture.
 
 La 0.6.0 corrige les défauts qu'un audit de la 0.5.0 a relevés. Une meute ne pèse plus
 que ce que pèse un membre seul, et le moteur ne punit plus sur la foi d'un lien ; elle

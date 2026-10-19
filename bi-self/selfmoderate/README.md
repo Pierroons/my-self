@@ -122,7 +122,7 @@ The engine is a static class; the host passes its `PDO` connection on every call
 | `setConfig(Config)` | the thresholds: `Config::demo()`, `Config::prod()` or your own. **Single source** of the thresholds: the engine reads them there, and so do your pages, through `Moderate::config()` |
 | `setJournal(Journal)` | plugs in the journal, and with it the automatic ban. The [`Journal`](./src/Journal.php) interface lists the acts and their keys; writing must be durable and not rewritable. A refusal always propagates, except when a vote or a read notices an expired penalty: its closing is then left pending and the arbiter is told |
 | `balayerBansEchus(PDO)` | closes expired penalties in one pass, for a scheduler. Without it, an end is noticed at the next read, and the journal carries the due time AND the moment it was noticed |
-| `applyVote(PDO, voter, type, target, value, ?reason)` | a vote, returning `ok`, `blocked` and `message` — never the target's reputation, which the profile does not show below the voting threshold. It is written all or nothing: in a transaction the engine opens (`BEGIN IMMEDIATE`) when the host has none, in the host's otherwise, and the host then decides |
+| `applyVote(PDO, voter, type, target, value, ?reason)` | a vote, returning `ok`, `blocked` and `message` — never the target's reputation, which the profile does not show below the voting threshold. It is written all or nothing: in a transaction the engine opens (`BEGIN IMMEDIATE`) when the host has none, behind a savepoint in the host's otherwise, which then commits or rolls back the rest |
 | `estBanni(PDO, id)` · `bansEnCours(PDO)` | what the host blocks, and what the arbiter must see: origin, reason, end, time left, floor, and for an automatic ban the make-up of its fall |
 | `adminBan(PDO, id, arbiter, reason)` · `adminPardon(PDO, id, arbiter, ?reason)` · `adminMaintenir(PDO, id, arbiter, reason)` · `adminClasser(PDO, id, arbiter, reason)` | the arbiter actions, returning `['ok' => bool, 'message' => string]` |
 | `dureeEnClair(seconds)` | a readable duration, units passed through your translator (`setTranslator()`) |
@@ -142,10 +142,9 @@ Dates in its messages follow the host's time zone (`date_default_timezone_set()`
 it imports SelfRecover and SelfDataGuard.
 
 0.6.1 changes neither promise nor schema. A vote is written all or nothing: `applyVote()` holds
-its writes in one transaction, its own or the host's, and a cut no longer leaves a vote written
-without its effect. Reading a reputation costs one query when the state calls for neither recovery
-nor the closing of a penalty: a read no longer inserts "if absent", so it takes no write lock. The
-bench says what its checks measure.
+its writes in one transaction — its own, or a savepoint inside the host's — and a cut no longer
+leaves a vote written without its effect. Reading a reputation costs one query when the state calls for neither recovery
+nor the closing of a penalty: a read no longer inserts "if absent", so it takes no write lock.
 
 0.6.0 fixes the defects an audit of 0.5.0 found. A pack weighs no more than a single
 member, and the engine no longer punishes on the strength of a link; it only lifts the
