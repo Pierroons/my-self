@@ -158,16 +158,29 @@ class Moderate
 
     public static function getReputation(PDO $pdo, int $accountId): array
     {
-        self::ensureRow($pdo, $accountId);
-        self::regenerate($pdo, $accountId);
-        self::cloreBanExpire($pdo, $accountId, contenir: true);
-        $stmt = $pdo->prepare(
-            'SELECT reputation, strikes, voting_rights, banned_until, ban_debut, ban_origine, ban_motif,
-                    needs_review, review_reason, convalescent, vote_muted_until
-               FROM member_moderation WHERE account_id = ?'
-        );
-        $stmt->execute([$accountId]);
-        $row = $stmt->fetch();
+        // Lire d'abord, écrire seulement si l'état le demande : la convalescence
+        // et la clôture d'une peine ne se tentent que si la ligne les appelle,
+        // et `ensureRow()` n'est appelé que sur une ligne absente — une
+        // insertion, même ignorée, prend un verrou d'écriture. Dans le cas
+        // courant, lire une réputation est un `SELECT` et rien d'autre.
+        $row = self::ligne($pdo, $accountId);
+        if ($row === null) {
+            self::ensureRow($pdo, $accountId);
+            $row = self::ligne($pdo, $accountId);
+        }
+        $relire = false;
+        if ((int) $row['convalescent']) {
+            self::regenerate($pdo, $accountId);
+            $relire = true;
+        }
+        $jusqua = (int) $row['banned_until'];
+        if ($jusqua > 0 && $jusqua <= time()) {
+            self::cloreBanExpire($pdo, $accountId, contenir: true);
+            $relire = true;
+        }
+        if ($relire) {
+            $row = self::ligne($pdo, $accountId);
+        }
         return [
             'reputation'    => (int) $row['reputation'],
             'strikes'       => (int) $row['strikes'],
@@ -183,6 +196,20 @@ class Moderate
             'vote_muted'       => ((int) $row['vote_muted_until']) > time(),
             'vote_muted_until' => (int) $row['vote_muted_until'],
         ];
+    }
+
+    /** La ligne de modération d'un compte, ou null s'il n'en a pas encore. */
+    private static function ligne(PDO $pdo, int $accountId): ?array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT reputation, strikes, voting_rights, banned_until, ban_debut, ban_origine, ban_motif,
+                    needs_review, review_reason, convalescent, vote_muted_until
+               FROM member_moderation WHERE account_id = ?'
+        );
+        $stmt->execute([$accountId]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
     }
 
     /**
