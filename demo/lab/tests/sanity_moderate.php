@@ -205,9 +205,10 @@ $rep['reputation'] === Moderate::config()->perteDroitDeVoteSous - 1 && !$rep['vo
     : nok('droit de vote conservé sous le seuil : ' . json_encode($rep));
 
 // ── 5. Le harcèlement d'un seul votant est neutralisé ───────────────────────
-// Quatre downvotes du même membre vers le même auteur, sur quatre messages
-// différents pour contourner la garde du double vote. Le quatrième dépasse
-// FARMING_MAX_DOWNVOTES et doit être enregistré bloqué, sans effet sur le score.
+// Des downvotes du même membre vers le même auteur, sur autant de messages
+// différents pour contourner la garde du double vote. Celui qui dépasse le
+// plafond `farmingDownvotesMax` de la config est enregistré bloqué, sans effet
+// sur le score.
 $harcele = membre($pdo, 'harcele');
 $harceleur = membre($pdo, 'harceleur');
 poserReputation($pdo, $harcele, 20);
@@ -222,10 +223,10 @@ for ($i = 1; $i <= Moderate::config()->farmingDownvotesMax + 1; $i++) {
     : nok('le slow-drip est passé : ' . json_encode($dernier) . ' rep=' . reputation($pdo, $harcele));
 
 // ── 6. 🔑 Trois votants sans lien ne forment PAS une meute ──────────────────
-// Le contrôle historique de ce dépôt : il constatait qu'ils en formaient une, et
-// que leurs votes étaient annulés. C'était le défaut central du moteur — plus un
-// message choquait de monde à la fois, mieux son auteur était protégé.
-// Désormais leurs votes tiennent, et la cible part en revue humaine.
+// Trois membres qui ne se sont jamais écrit votent dans la même minute : une
+// salve, pas une meute. Leurs votes tiennent, et la cible part en revue humaine.
+// Les annuler protégerait un message d'autant mieux qu'il choque plus de monde
+// à la fois : la détection travaillerait pour l'abuseur.
 $fache = membre($pdo, 'fache');
 poserReputation($pdo, $fache, 20);
 $inconnus = [membre($pdo, 'inconnu-a'), membre($pdo, 'inconnu-b'), membre($pdo, 'inconnu-c')];
@@ -1585,6 +1586,46 @@ $cout47 = $compteur->requetes;
 $cout47 === 1 && $lu47['reputation'] === 20 && !$lu47['convalescent'] && !$lu47['banned']
     ? ok('lire la réputation d\'un compte calme coûte une requête')
     : nok("lire un compte calme coûte $cout47 requêtes au lieu d'une : " . json_encode($lu47));
+
+// ── 48. Dans la transaction de l'hôte, un vote qui échoue ne laisse rien ────
+// L'hôte ouvre la sienne, écrit son propre travail, vote ; le vote échoue (le
+// journal refuse le début du ban), l'hôte attrape et valide son travail. Son
+// travail reste, le vote partiel non : ni vote, ni point retiré, ni ban. Sans
+// point de reprise, la cible resterait à zéro, sans ban ni trace.
+$journalAvant48 = Moderate::journal();
+Moderate::setJournal(new class implements \Pierroons\SelfModerate\Journal {
+    public function inscrire(array $acte): void
+    {
+        if ($acte['acte'] === 'ban_debut') {
+            throw new RuntimeException('journal fermé');
+        }
+    }
+});
+$hote48  = membre($pdo, 'hote-48');
+$cible48 = membre($pdo, 'cible-48');
+$post48  = message($pdo, $cible48, 'fil-48');
+poserReputation($pdo, $cible48, 1);
+$pdo->beginTransaction();
+$travail48 = message($pdo, $hote48, 'travail-48');
+$remonte48 = false;
+try {
+    Moderate::applyVote($pdo, $hote48, 'post', $post48, -1, motif(), 'agressif');
+} catch (RuntimeException $e) {
+    $remonte48 = $e->getMessage() === 'journal fermé';
+}
+$encore48 = $pdo->inTransaction();
+if ($encore48) {
+    $pdo->commit();
+}
+Moderate::setJournal($journalAvant48);
+$votes48   = (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE voter_id = $hote48")->fetchColumn();
+$rep48     = (int) $pdo->query("SELECT reputation FROM member_moderation WHERE account_id = $cible48")->fetchColumn();
+$travail48 = (int) $pdo->query("SELECT COUNT(*) FROM posts WHERE id = $travail48")->fetchColumn();
+$remonte48 && $encore48 && $travail48 === 1 && $votes48 === 0 && $rep48 === 1
+    ? ok('dans la transaction de l\'hôte, un vote qui échoue se défait seul : le travail de l\'hôte reste, le vote partiel non')
+    : nok('le vote partiel a survécu dans la transaction de l\'hôte : ' . json_encode([
+        'remonte' => $remonte48, 'encore_ouverte' => $encore48, 'travail' => $travail48, 'votes' => $votes48, 'reputation' => $rep48,
+    ]));
 
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
