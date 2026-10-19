@@ -1892,8 +1892,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 80/80 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 80 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 81/81 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 81 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2023,8 +2023,8 @@ jobs:
                             "        if ($rep['banned'] && $rep['ban_origine'] === 'auto'\n"),
               'strikes':   ("                        strikes = MAX(0, strikes - 1),\n",
                             "                        strikes = 0,\n"),
-              'remise':    ("            )->execute([self::config()->reputationInitiale, $accountId]);\n            self::effacerEffets($pdo, $accountId);\n",
-                            "            )->execute([self::config()->reputationInitiale, $accountId]);\n"),
+              'remise':    ("            )->execute([self::config()->reputationInitiale, 'ban_auto', 'ban_auto', $accountId]);\n            self::effacerEffets($pdo, $accountId);\n",
+                            "            )->execute([self::config()->reputationInitiale, 'ban_auto', 'ban_auto', $accountId]);\n"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
           open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
