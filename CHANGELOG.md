@@ -507,6 +507,29 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfModerate v0.6.1] — 19 octobre 2026
+
+### Un vote s'inscrit tout ou rien, et une lecture ne paie que ce que l'état demande — 19 octobre 2026
+
+Version de correctif : aucune promesse ne change, aucun schéma ne bouge.
+
+- **Un vote s'inscrit tout ou rien.** `applyVote()` tient ses écritures dans une transaction, ouverte par
+  `BEGIN IMMEDIATE` quand l'hôte n'en a pas ; dans la transaction de l'hôte, c'est lui qui décide. Une
+  coupure entre le vote inscrit et son effet laissait un vote dont une annulation ultérieure aurait rendu
+  un point jamais pris. Les écritures d'un downvote ne font plus qu'une transaction : 5,5 ms → 2,1 ms par
+  downvote, mesurés le 19 octobre sur disque réel. Ferme le constat 19 de l'audit de la 0.5.0.
+- **Lire une réputation ne coûte qu'une requête** quand l'état n'appelle ni convalescence ni clôture de
+  peine. Une lecture insérait « si absent » avant de lire : un verrou d'écriture par appel, trois appels par
+  vote, un par message affiché sur une page de fil. Un downvote passe de 23 à 14 requêtes.
+- **Le code dit ce qu'il fait.** Un helper par vote neutralisé et par signal d'état levé ; les étiquettes
+  d'anciens audits sortent des commentaires du moteur et de la route de balayage du lab ; l'en-tête du banc
+  ne dit plus que la détection est purement temporelle, ce qui était faux depuis le 21 août (constat 25).
+
+Banc : 80 contrôles, trois neufs — le vote tout ou rien, la transaction de l'hôte respectée, la lecture
+d'un compte calme en une requête —, chacun vu rougir.
+
+---
+
 ## [SelfModerate v0.6.0] — 16 octobre 2026
 
 ### Une meute ne pèse pas plus qu'un membre seul, et le moteur ne punit plus sur la foi d'un lien — 16 octobre 2026
