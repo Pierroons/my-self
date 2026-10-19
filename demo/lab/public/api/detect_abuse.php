@@ -12,5 +12,5 @@ $pdo = Db::pdo();
 require_admin($pdo);   // le balayage de tout le site est un geste d'arbitre
 
 $result = Moderate::detectPackVoting($pdo);
-$result['flagged_for_review'] = Moderate::flaggedForReview($pdo);   // les comptes à arbitrer, chacun avec la cause de son signalement
+$result['flagged_for_review'] = Moderate::flaggedForReview($pdo);
 json_out(['ok' => true] + $result);
