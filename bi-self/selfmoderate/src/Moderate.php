@@ -250,24 +250,22 @@ class Moderate
 
         if ($origine === 'auto') {
             $pdo->prepare(
-                "UPDATE member_moderation
-                    SET reputation = ?, voting_rights = 1, convalescent = 0, last_regen_at = 0,
-                        needs_review  = CASE WHEN review_reason = 'ban_auto' THEN 0 ELSE needs_review END,
-                        review_reason = CASE WHEN review_reason = 'ban_auto' THEN NULL ELSE review_reason END
-                  WHERE account_id = ?"
+                'UPDATE member_moderation
+                    SET reputation = ?, voting_rights = 1, convalescent = 0, last_regen_at = 0
+                  WHERE account_id = ?'
             )->execute([self::config()->reputationInitiale, $accountId]);
             self::effacerEffets($pdo, $accountId);
+            self::designaler($pdo, $accountId, 'ban_auto');
         } else {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ? AND reputation >= ?')
                 ->execute([$accountId, self::config()->perteDroitDeVoteSous]);
         }
         $pdo->prepare(
-            "UPDATE member_moderation
-                SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL, updated_at = ?,
-                    needs_review  = CASE WHEN review_reason = 'journal_en_panne' THEN 0 ELSE needs_review END,
-                    review_reason = CASE WHEN review_reason = 'journal_en_panne' THEN NULL ELSE review_reason END
-              WHERE account_id = ?"
+            'UPDATE member_moderation
+                SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL, updated_at = ?
+              WHERE account_id = ?'
         )->execute([$maintenant, $accountId]);
+        self::designaler($pdo, $accountId, 'journal_en_panne');
     }
 
     /**
@@ -341,10 +339,7 @@ class Moderate
             // réputation remonte, et l'admin doit encore la trouver.
             $pdo->prepare('UPDATE member_moderation SET convalescent = 0 WHERE account_id = ?')
                 ->execute([$accountId]);
-            $pdo->prepare(
-                "UPDATE member_moderation SET needs_review = 0, review_reason = NULL
-                  WHERE account_id = ? AND review_reason = 'reputation_zero'"
-            )->execute([$accountId]);
+            self::designaler($pdo, $accountId, 'reputation_zero');
             self::effacerEffets($pdo, $accountId);
         }
     }
@@ -482,6 +477,28 @@ class Moderate
     }
 
     /**
+     * Inscrit un vote que le moteur neutralise : il reste visible de l'arbitre
+     * et occupe sa place dans l'index unique, mais n'a aucun effet sur la
+     * réputation.
+     */
+    private static function inscrireVoteNeutralise(
+        PDO $pdo,
+        int $voterId,
+        string $targetType,
+        int $targetId,
+        int $author,
+        int $value,
+        ?string $reason,
+        ?string $reasonCode,
+        string $raison
+    ): void {
+        $pdo->prepare(
+            'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, effet, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)'
+        )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, $raison, time()]);
+    }
+
+    /**
      * Applique un vote. Retourne ['ok'=>..., 'blocked'=>..., 'message'=>...] — jamais la
      * réputation de la cible : la page de profil tait ce chiffre sous le seuil de
      * sanction, et la réponse d'un vote le rendrait à quiconque vote.
@@ -566,28 +583,22 @@ class Moderate
             );
             $stmt->execute([$voterId, $author, time() - self::config()->fenetreFarmingJours * 86400]);
             if ((int) $stmt->fetchColumn() >= self::config()->farmingUpvotesMax) {
-                $pdo->prepare(
-                    'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, effet, created_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)'
-                )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'upvote_farming', time()]);
+                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'upvote_farming');
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'upvote_farming',
                         'message' => static::t('Vote enregistré mais neutralisé : trop d\'upvotes répétés vers ce membre (anti-farming).')];
             }
         }
 
-        // R10-LAB-01 — Anti downvote-farming : limite les downvotes répétés d'un même votant vers le
-        // même auteur (membre + ses posts) sur la fenêtre longue. Casse le « slow-drip » d'un votant
-        // patient qui downvote le membre puis chacun de ses posts pour éroder sa réputation en douce.
+        // Anti downvote-farming : plafonne les downvotes d'un même votant vers le
+        // même auteur (membre et messages) sur la fenêtre longue. Sans lui, un
+        // votant patient érode une réputation message après message.
         if ($value === -1) {
             $stmt = $pdo->prepare(
                 'SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?'
             );
             $stmt->execute([$voterId, $author, time() - self::config()->fenetreFarmingJours * 86400]);
             if ((int) $stmt->fetchColumn() >= self::config()->farmingDownvotesMax) {
-                $pdo->prepare(
-                    'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, effet, created_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)'
-                )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'downvote_farming', time()]);
+                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'downvote_farming');
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'downvote_farming',
                         'message' => static::t('Vote enregistré mais neutralisé : trop de downvotes répétés vers ce membre (anti-farming).')];
             }
@@ -604,10 +615,7 @@ class Moderate
             $stmt->execute([$author, $voterId, time() - self::config()->fenetreFarmingJours * 86400]);
             $portee = $stmt->fetch();
             if (!(int) $portee['deja'] && (int) $portee['cibles'] >= self::config()->ciblesParVotantMax) {
-                $pdo->prepare(
-                    'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, effet, created_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)'
-                )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'plafond_votant', time()]);
+                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'plafond_votant');
                 self::signaler($pdo, $voterId, 'votant_etendu');
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'plafond_votant',
                         'message' => sprintf(
@@ -630,9 +638,9 @@ class Moderate
         $pdo->prepare('UPDATE member_moderation SET reputation = ?, updated_at = ? WHERE account_id = ?')
             ->execute([$newRep, time(), $author]);
 
-        // V8-LAB-02 : détecter un pack AVANT d'appliquer les sanctions de seuil. Si le downvote
-        // courant complète un cluster coordonné, la réputation est restaurée d'abord → enforceThresholds
-        // ne pose alors NI ban NI strike injuste. Le vote ne regarde que sa cible, sauf le premier
+        // La meute se détecte AVANT les seuils : si ce downvote la complète, la
+        // réputation est restituée d'abord, et `enforceThresholds()` ne pose ni
+        // ban ni strike injuste. Le vote ne regarde que sa cible, sauf le premier
         // de sa tranche, qui balaie le site (`balayageDu()`) et lève ban et strikes a posteriori.
         if ($value === -1) {
             self::detectPackVoting($pdo, self::balayageDu($pdo) ? null : $author);
@@ -993,13 +1001,13 @@ class Moderate
                 'reste'     => $rep['banned_until'] - time(),
             ]);
             $pdo->prepare(
-                "UPDATE member_moderation
+                'UPDATE member_moderation
                     SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
                         strikes = MAX(0, strikes - 1),
-                        needs_review  = CASE WHEN review_reason = 'ban_auto' THEN 0 ELSE needs_review END,
-                        review_reason = CASE WHEN review_reason = 'ban_auto' THEN NULL ELSE review_reason END
-                  WHERE account_id = ?"
-            )->execute([$author]);
+                        updated_at = ?
+                  WHERE account_id = ?'
+            )->execute([time(), $author]);
+            self::designaler($pdo, $author, 'ban_auto');
         }
         // La convalescence avait été ouverte par une chute qui n'aurait pas dû
         // avoir lieu : on la referme, plutôt que d'imposer une guérison au temps
@@ -1010,10 +1018,7 @@ class Moderate
             // Seul le signalement que la chute a provoqué s'en va avec elle. Une
             // salve à arbitrer et une récidive de meute portent chacune leur
             // propre motif d'exister : la restauration d'un score n'y répond pas.
-            $pdo->prepare(
-                "UPDATE member_moderation SET needs_review = 0, review_reason = NULL
-                  WHERE account_id = ? AND review_reason = 'reputation_zero'"
-            )->execute([$author]);
+            self::designaler($pdo, $author, 'reputation_zero');
         }
     }
 
@@ -1127,23 +1132,33 @@ class Moderate
         )->execute([$raison, time(), $accountId, ...$remplacables]);
     }
 
+    /**
+     * Lève un signal d'ÉTAT, et lui seul : l'état a cessé. Un signal de
+     * comportement posé entre-temps reste en place, l'arbitre doit encore le
+     * voir. Le pendant de `signaler()`.
+     */
+    private static function designaler(PDO $pdo, int $accountId, string $raison): void
+    {
+        $pdo->prepare(
+            'UPDATE member_moderation SET needs_review = 0, review_reason = NULL
+              WHERE account_id = ? AND review_reason = ?'
+        )->execute([$accountId, $raison]);
+    }
+
     private static function enforceThresholds(PDO $pdo, int $accountId, int $reputation): void
     {
         if ($reputation < self::config()->perteDroitDeVoteSous) {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 0 WHERE account_id = ?')->execute([$accountId]);
         }
-        // Une rep<=0 qui arrive ici vient d'une érosion ÉTALÉE : les salves rapides
-        // sont déjà annulées et la réputation restaurée par detectPackVoting avant
-        // ce point. R10-LAB-01 en concluait qu'aucun ban ne devait tomber seul, un
-        // tel ban étant une arme d'escalade à la portée de qui n'a aucun droit
-        // d'admin. Le signalement qui l'a remplacé ne protège toutefois personne
-        // tant que l'arbitre n'est pas devant.
-        //
-        // Le ban automatique revient donc, tenu par trois bornes que R10-LAB-01
-        // n'avait pas : la peine est graduée et FINIE, elle est visible dès
+        // Une réputation au plancher qui arrive ici vient d'une érosion étalée :
+        // une meute a déjà été neutralisée et la réputation restituée par
+        // `detectPackVoting()`. Un ban prononcé sans humain est une arme
+        // d'escalade à la portée de qui n'a aucun droit d'admin ; un signalement
+        // seul ne protège personne tant que l'arbitre n'est pas devant. D'où un
+        // ban tenu par trois bornes : la peine est graduée et FINIE, visible dès
         // qu'elle tombe (`needs_review` reste levé), et ses deux bouts sont
-        // inscrits au journal. L'escalade reste possible ; elle est désormais
-        // datée, nominative et réversible d'un geste.
+        // inscrits au journal. L'escalade reste possible ; elle est datée,
+        // nominative et réversible d'un geste.
         if ($reputation <= self::config()->banA) {
             self::sanctionnerReputationZero($pdo, $accountId);
         }
