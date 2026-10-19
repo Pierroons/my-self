@@ -1520,6 +1520,72 @@ count($phrases[1]) > 0 && $sansAnglais === [] && $horsT[1] === [] && $guillemets
         'sans_anglais' => $sansAnglais, 'hors_traduction' => $horsT[1], 'guillemets_doubles' => $guillemetsDoubles,
     ], JSON_UNESCAPED_UNICODE));
 
+// ── 45. Un vote s'inscrit tout ou rien ──────────────────────────────────────
+// Le journal refuse d'écrire le début du ban que ce downvote déclenche. Le
+// refus remonte, comme le contrat du journal l'exige ; et rien de ce que le
+// vote avait déjà écrit — le vote lui-même, le point retiré — ne doit rester :
+// une annulation ultérieure rendrait sinon un point jamais pris.
+$journalAvant45 = Moderate::journal();
+Moderate::setJournal(new class implements \Pierroons\SelfModerate\Journal {
+    public function inscrire(array $acte): void
+    {
+        if ($acte['acte'] === 'ban_debut') {
+            throw new RuntimeException('journal fermé');
+        }
+    }
+});
+$fragile45 = membre($pdo, 'fragile-45');
+$post45    = message($pdo, $fragile45, 'fil-45');
+poserReputation($pdo, $fragile45, 1);
+$votant45  = membre($pdo, 'votant-45');
+$remonte45 = false;
+try {
+    Moderate::applyVote($pdo, $votant45, 'post', $post45, -1, motif(), 'agressif');
+} catch (RuntimeException $e) {
+    $remonte45 = $e->getMessage() === 'journal fermé';
+}
+Moderate::setJournal($journalAvant45);
+$votes45 = (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE voter_id = $votant45")->fetchColumn();
+$rep45   = (int) $pdo->query("SELECT reputation FROM member_moderation WHERE account_id = $fragile45")->fetchColumn();
+$remonte45 && $votes45 === 0 && $rep45 === 1 && !$pdo->inTransaction()
+    ? ok('un journal qui refuse le début du ban fait remonter le refus, et le vote n\'a rien laissé : ni vote, ni point retiré')
+    : nok('le vote a laissé une trace malgré le refus du journal : ' . json_encode([
+        'remonte' => $remonte45, 'votes' => $votes45, 'reputation' => $rep45, 'transaction_ouverte' => $pdo->inTransaction(),
+    ]));
+
+// ── 46. Un vote ne décide pas pour la transaction de l'hôte ─────────────────
+// L'hôte ouvre la sienne, vote, puis l'annule : rien ne doit rester, et la
+// transaction doit encore être à lui après le vote. Un moteur qui validerait ce
+// qu'il n'a pas ouvert rendrait durable un travail de l'hôte à moitié fait.
+$hote46  = membre($pdo, 'hote-46');
+$cible46 = membre($pdo, 'cible-46');
+$post46  = message($pdo, $cible46, 'fil-46');
+$pdo->beginTransaction();
+$r46 = Moderate::applyVote($pdo, $hote46, 'post', $post46, -1, motif(), 'agressif');
+$encoreOuverte46 = $pdo->inTransaction();
+if ($encoreOuverte46) {
+    $pdo->rollBack();
+}
+$votes46 = (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE voter_id = $hote46")->fetchColumn();
+($r46['ok'] ?? false) && $encoreOuverte46 && $votes46 === 0 && reputation($pdo, $cible46) === 20
+    ? ok('dans la transaction de l\'hôte, le vote laisse l\'hôte décider : annulée par lui, elle n\'a rien écrit')
+    : nok('le vote a validé ou perdu la transaction de l\'hôte : ' . json_encode([
+        'ok' => $r46['ok'] ?? null, 'encore_ouverte' => $encoreOuverte46, 'votes' => $votes46, 'reputation' => reputation($pdo, $cible46),
+    ]));
+
+// ── 47. Lire un compte calme coûte une requête ──────────────────────────────
+// Ni convalescence ni peine à refermer : la lecture n'a rien à écrire, et ne
+// doit rien tenter. Une insertion « si absent » à chaque lecture prendrait un
+// verrou d'écriture par message affiché sur une page de fil.
+$calme47 = membre($pdo, 'calme-47');
+Moderate::ensureRow($pdo, $calme47);
+$compteur->requetes = 0;
+$lu47 = Moderate::getReputation($compteur, $calme47);
+$cout47 = $compteur->requetes;
+$cout47 === 1 && $lu47['reputation'] === 20 && !$lu47['convalescent'] && !$lu47['banned']
+    ? ok('lire la réputation d\'un compte calme coûte une requête')
+    : nok("lire un compte calme coûte $cout47 requêtes au lieu d'une : " . json_encode($lu47));
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"
