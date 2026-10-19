@@ -193,7 +193,7 @@
       "id": "selfmoderate",
       "nom": "SelfModerate",
       "dossier": "bi-self/selfmoderate",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "resume": {
         "fr": "modération communautaire par raisonnement social",
         "en": "community moderation through social reasoning"
