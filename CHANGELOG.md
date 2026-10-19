@@ -514,16 +514,21 @@ ayant renoncé aux contrôles qui touchent au système.
 Version de correctif : aucune promesse ne change, aucun schéma ne bouge.
 
 - **Un vote s'inscrit tout ou rien.** `applyVote()` tient ses écritures dans une transaction, ouverte par
-  `BEGIN IMMEDIATE` quand l'hôte n'en a pas ; dans la transaction de l'hôte, c'est lui qui décide. Une
-  coupure entre le vote inscrit et son effet laissait un vote dont une annulation ultérieure aurait rendu
-  un point jamais pris. Les écritures d'un downvote ne font plus qu'une transaction : 5,5 ms → 2,1 ms par
-  downvote, mesurés le 19 octobre sur disque réel. Ferme le constat 19 de l'audit de la 0.5.0.
+  `BEGIN IMMEDIATE` quand l'hôte n'en a pas ; dans la transaction de l'hôte, derrière un point de reprise,
+  pour qu'un vote refusé n'y laisse rien et que l'hôte reste maître de la sienne. Ce qui refuse sans rien
+  écrire — paramètres, droit de vote, motif, cible — se décide avant le verrou, et une peine échue du votant
+  ou de la cible se referme avant que la transaction s'ouvre : son entrée au journal n'est pas défaite avec
+  un vote qui échoue. Une coupure entre le vote inscrit et son effet laissait un vote dont une annulation
+  ultérieure aurait rendu un point jamais pris. Les écritures d'un downvote ne font plus qu'une transaction :
+  3,8 ms → 2,1 ms par downvote en régime établi, chaque compte ayant déjà sa ligne, mesurés le 19 octobre
+  sur disque réel. Ferme un défaut relevé par l'audit de la 0.5.0 : le vote n'était pas transactionnel.
 - **Lire une réputation ne coûte qu'une requête** quand l'état n'appelle ni convalescence ni clôture de
   peine. Une lecture insérait « si absent » avant de lire : un verrou d'écriture par appel, trois appels par
-  vote, un par message affiché sur une page de fil. Un downvote passe de 23 à 14 requêtes.
-- **Le code dit ce qu'il fait.** Un helper par vote neutralisé et par signal d'état levé ; les étiquettes
-  d'anciens audits sortent des commentaires du moteur et de la route de balayage du lab ; l'en-tête du banc
-  ne dit plus que la détection est purement temporelle, ce qui était faux depuis le 21 août (constat 25).
+  vote, un par message affiché sur une page de fil. Dans le scénario du contrôle 40 du banc, un downvote
+  passe de 23 à 20 requêtes, les deux ordres de transaction compris.
+- **L'en-tête du banc ne dit plus que la détection est purement temporelle**, ce qui était faux depuis le
+  21 août et que l'audit de la 0.5.0 avait relevé. Les étiquettes d'anciens audits sortent des commentaires
+  du moteur et de la route de balayage du lab ; un helper par vote neutralisé et par signal d'état levé.
 
 Banc : 80 contrôles, trois neufs — le vote tout ou rien, la transaction de l'hôte respectée, la lecture
 d'un compte calme en une requête —, chacun vu rougir.
