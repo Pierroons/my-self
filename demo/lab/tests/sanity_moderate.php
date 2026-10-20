@@ -1627,6 +1627,50 @@ $remonte48 && $encore48 && $travail48 === 1 && $votes48 === 0 && $rep48 === 1
         'remonte' => $remonte48, 'encore_ouverte' => $encore48, 'travail' => $travail48, 'votes' => $votes48, 'reputation' => $rep48,
     ]));
 
+// ── 49. Un lecteur qui ne peut pas prendre le verrou n'écrit rien au journal ─
+// Une peine échue se referme sous le verrou d'écriture, pris d'emblée, et
+// l'état se relit sous lui : un lecteur qui attend puis échoue n'a rien inscrit.
+// Sans cela, chaque lecteur écrit `ban_fin`, puis tous sauf un échouent en
+// voulant promouvoir leur verrou de lecture — N fins pour une peine, et la page
+// qui lit le compte tombe. Deux connexions : A tient le verrou d'écriture, B lit.
+$journalAvant49 = Moderate::journal();
+$journal49 = new class implements \Pierroons\SelfModerate\Journal {
+    public array $actes = [];
+    public function inscrire(array $acte): void
+    {
+        $this->actes[] = $acte['acte'];
+    }
+};
+Moderate::setJournal($journal49);
+$echu49 = membre($pdo, 'echu-49');
+Moderate::ensureRow($pdo, $echu49);
+$pdo->prepare("UPDATE member_moderation
+                  SET reputation = 0, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
+                      ban_origine = 'auto', ban_motif = 'reputation_zero', needs_review = 1, review_reason = 'ban_auto'
+                WHERE account_id = ?")->execute([time() - 10, time() - 130, $echu49]);
+$a49 = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+$a49->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$b49 = new PDO('sqlite:' . getenv('LAB_DB_PATH'), null, null, [PDO::ATTR_TIMEOUT => 1]);
+$b49->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$b49->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$a49->exec('BEGIN IMMEDIATE');
+$a49->exec('UPDATE member_moderation SET updated_at = updated_at WHERE account_id = ' . $echu49);
+$refuse49 = false;
+try {
+    Moderate::getReputation($b49, $echu49);
+} catch (PDOException $e) {
+    $refuse49 = true;
+}
+$pendantLeVerrou49 = count($journal49->actes);
+$a49->exec('ROLLBACK');
+$apres49 = Moderate::getReputation($b49, $echu49);
+Moderate::setJournal($journalAvant49);
+$refuse49 && $pendantLeVerrou49 === 0 && $journal49->actes === ['ban_fin'] && !$apres49['banned'] && $apres49['reputation'] === 20
+    ? ok('un lecteur qui ne peut pas prendre le verrou n\'écrit rien au journal ; le verrou rendu, la peine se referme une fois')
+    : nok('une fin de peine s\'inscrit avant que le verrou soit pris : ' . json_encode([
+        'refuse' => $refuse49, 'pendant_le_verrou' => $pendantLeVerrou49, 'actes' => $journal49->actes, 'apres' => $apres49,
+    ]));
+
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0
     ? "✅ $total/$total contrôles passés\n"
