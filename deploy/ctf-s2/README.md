@@ -45,5 +45,10 @@ export chiffré vers le NAS — suivent la règle d'`AGENTS.md` : le déployeur 
 hors dépôt. Ils sont en revanche **repris dans l'archive quotidienne**, qui part
 chiffrée sur le NAS ; c'est leur seule copie hors machine.
 
-Les secrets d'instance (`data/.blindkey`, `.sitesalt`, `.serversecret`) ne
-quittent jamais le serveur autrement que dans cette archive chiffrée.
+Les secrets d'instance (`data/.blindkey`, `.sitesalt`, `.serversecret`, `.modaudit`) ne
+quittent jamais le serveur autrement que dans cette archive chiffrée. Deux sortes de
+témoins vivent à côté d'eux et voyagent avec eux : `<secret>.existe`, qui empêche un
+secret disparu d'être remplacé en silence, et `.blindkey.scelle`, que la passe
+`tools/migrer-aad.php` pose quand elle a fini. ⚠️ Une restauration qui perdrait
+`.blindkey.scelle` rouvrirait la lecture des blobs sans contexte : l'archive doit
+le reprendre, et sa présence se vérifie après restauration.

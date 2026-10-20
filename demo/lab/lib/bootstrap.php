@@ -30,7 +30,8 @@ if (PHP_SAPI !== 'cli') {
         } catch (\Throwable) {
             $message = 'Service momentanément indisponible.';
         }
-        $api = str_starts_with((string) strtok($_SERVER['REQUEST_URI'] ?? '/', '?'), '/api/');
+        // `/api/` n'importe où dans le chemin : le lab peut être servi sous un préfixe.
+        $api = str_contains((string) strtok($_SERVER['REQUEST_URI'] ?? '/', '?'), '/api/');
         if (!headers_sent()) {
             http_response_code(500);
             header('Content-Type: ' . ($api ? 'application/json' : 'text/html') . '; charset=utf-8');

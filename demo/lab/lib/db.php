@@ -21,8 +21,19 @@ final class Db
     public static function path(): string
     {
         $override = getenv('LAB_DB_PATH');
+        if ($override === false) {
+            return __DIR__ . '/../data/lab.db';
+        }
+        // Posée mais vide n'est pas absente : retomber sur la base par défaut ferait
+        // servir — et interroger, quand un secret manque — une autre base que celle
+        // que l'exploitant a voulu désigner. Le même refus que `SecretInstance::chemin()`.
+        if (trim($override) === '') {
+            throw new \RuntimeException(
+                'LAB_DB_PATH est posée mais vide — chemin indécidable, refus de retomber sur la base par défaut.'
+            );
+        }
 
-        return $override ? $override : __DIR__ . '/../data/lab.db';
+        return $override;
     }
 
     /**
@@ -190,8 +201,33 @@ final class Db
     }
 
     /** Migrations légères pour les bases déjà créées (CREATE IF NOT EXISTS ne modifie pas l'existant). */
+    /**
+     * La forme sous laquelle une session est rangée : l'empreinte du jeton, jamais le jeton.
+     *
+     * 🔑 Rangé en clair, un jeton de session faisait d'une base volée la clé de toutes
+     * les sessions en cours — la lecture des messages privés comprise, que le serveur
+     * déchiffre pour qui est connecté. Le cookie porte le jeton, la base son empreinte :
+     * un SHA-256 suffit, le jeton étant tiré au hasard sur 32 octets, sans rien d'un
+     * mot mémorisé à protéger d'une recherche exhaustive.
+     */
+    public static function empreinteJeton(string $jeton): string
+    {
+        return self::PREFIXE_JETON . hash('sha256', $jeton);
+    }
+
+    private const PREFIXE_JETON = 'sha256:';
+
     private static function migrate(): void
     {
+        // Les sessions ouvertes avant l'empreinte : converties ici, sans déconnecter
+        // personne. Un jeton est hexadécimal, il ne commence jamais par le préfixe.
+        $enClair = self::$pdo->prepare('SELECT id, token FROM app_sessions WHERE substr(token, 1, ?) <> ?');
+        $enClair->execute([strlen(self::PREFIXE_JETON), self::PREFIXE_JETON]);
+        $convertir = self::$pdo->prepare('UPDATE app_sessions SET token = ? WHERE id = ?');
+        foreach ($enClair->fetchAll() as $session) {
+            $convertir->execute([self::empreinteJeton((string) $session['token']), (int) $session['id']]);
+        }
+
         $cols = self::$pdo->query('PRAGMA table_info(accounts)')->fetchAll(PDO::FETCH_COLUMN, 1);
         if (!in_array('is_admin', $cols, true)) {
             self::$pdo->exec('ALTER TABLE accounts ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0');

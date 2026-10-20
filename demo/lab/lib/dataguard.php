@@ -15,6 +15,7 @@ declare(strict_types=1);
 
 namespace Pierroons\MySelfLab;
 
+use Pierroons\SelfDataGuard\Crypto\Aad;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 
@@ -39,7 +40,7 @@ final class DataGuard
         // lui, et les rapports red team, dont le jeton de suivi en dérive
         // (`Redteam::jetonSuivi()`) — une clé neuve les rendrait tous « invalides » sans
         // dire que c'est la clé qui a changé. Les empreintes d'adresse n'y figurent pas :
-        // elles ne servent qu'au frein, et s'effacent au bout d'une heure.
+        // elles ne servent qu'au frein d'une heure, et s'effacent à la soumission suivante.
         return SecretInstance::lire('.blindkey', 48, SecretInstance::PLANCHER, 'LAB_BLINDKEY_PATH', static fn (): ?string => Db::ceQuiDepend([
             'dm'              => 'message(s) privé(s) chiffré(s)',
             'profiles'        => 'profil(s) chiffré(s)',
@@ -95,64 +96,72 @@ final class DataGuard
     }
 
     /**
-     * Le marqueur des blobs liés à un contexte.
-     *
-     * Il est en clair et ne dit rien du contenu : il dit sous quelle règle le blob
-     * a été scellé. Le sort des blobs qui ne le portent pas se lit sur `decrypt()`,
-     * qui en décide.
-     */
-    public const MARQUEUR_CONTEXTE = 'L2.';
-
-    /**
      * Chiffre un texte en le liant au contexte qui a le droit de le relire.
      *
      * Le contexte devient la donnée associée du chiffré : la clé seule ne suffit
      * plus à le déchiffrer, il faut aussi présenter le même contexte. Un blob
      * déplacé — d'une conversation à une autre, d'un profil à un autre, d'une
      * table à une autre — présente alors un contexte différent du sien et le
-     * déchiffrement échoue.
+     * déchiffrement échoue. Le format v3 de SelfDataGuard porte la liaison : c'est
+     * la bibliothèque, et non ce wrapper, qui dit d'un blob qu'il est lié
+     * (`EncryptedBlob::bindsItsContext()`).
      *
-     * 🔑 **Ce n'est pas la confidentialité de la base que cela protège** : une
-     * exfiltration ne rendait déjà que des blobs, la clé vivant hors base. C'est
-     * ce qui doit tenir quand l'ÉCRITURE a cédé. Sans contexte, une injection SQL
-     * rend le clair des messages privés : il suffit de recopier un blob dans une
-     * ligne qu'on a le droit de lire. Avec, elle ne rend que l'écriture.
+     * 🔑 **Ce que cela protège, et ce que cela ne protège pas.** Une exfiltration ne
+     * rendait déjà que des blobs, la clé vivant hors base. Ce qui change, c'est une
+     * écriture qui porte sur les contenus : recopier un blob dans une ligne qu'on a
+     * le droit de lire ne l'ouvre plus. ⚠️ Une écriture SQL générale reste une prise
+     * de compte — elle fabrique une session ou un hachage de mot de passe, et lit
+     * alors comme le destinataire, sans rien déplacer. L'AAD ferme le déplacement,
+     * pas l'usurpation.
      *
      * Le contexte se construit par `contexteDm()` ou `contexteProfil()`, jamais
      * à la main : deux appelants qui l'écriraient différemment produiraient des
      * blobs que l'autre ne sait pas relire.
      */
-    public static function encrypt(string $plaintext, string $contexte): string
+    public static function encrypt(string $plaintext, Aad $contexte): string
     {
-        if ($contexte === '') {
-            throw new \InvalidArgumentException('Un chiffré du lab se lie à un contexte : il ne peut pas être vide.');
+        if (!$contexte->isBound()) {
+            throw new \InvalidArgumentException('Un chiffré du lab se lie à un contexte : Aad::none() est refusé ici.');
         }
 
-        return self::MARQUEUR_CONTEXTE . Primitives::encrypt($plaintext, self::dmKey(), $contexte)->toBase64();
+        return Primitives::encrypt($plaintext, self::dmKey(), $contexte)->toBase64();
     }
 
     /**
      * Déchiffre un blob, en exigeant le contexte sous lequel il a été scellé.
      *
-     * Un blob sans `MARQUEUR_CONTEXTE` précède la liaison au contexte : il se lit
-     * sans donnée associée **tant que la passe de migration n'a pas fini**, et
-     * reste déplaçable jusque-là. Après, il est refusé : voir `temoinScelle()`.
+     * Un blob qui ne porte pas sa liaison (formats v1 et v2, d'avant la 0.7.0 de
+     * SelfDataGuard) se lit sans contexte **tant que la passe de migration n'a pas
+     * fini**, et reste déplaçable jusque-là. Après, il est refusé : voir `temoinScelle()`.
      */
-    public static function decrypt(string $b64, string $contexte): string
+    public static function decrypt(string $b64, Aad $contexte): string
     {
-        if (!str_starts_with($b64, self::MARQUEUR_CONTEXTE)) {
-            if (self::lectureSansContexteFermee()) {
-                throw new \RuntimeException(
-                    'Blob sans contexte refusé : la passe de migration a scellé cette base.'
-                );
-            }
-
-            return self::decryptSansContexte($b64);
+        $blob = EncryptedBlob::fromBase64($b64);
+        if ($blob->bindsItsContext()) {
+            return Primitives::decrypt($blob, self::dmKey(), $contexte);
+        }
+        if (self::lectureSansContexteFermee()) {
+            throw new \RuntimeException(
+                'Blob sans contexte refusé : la passe de migration a scellé cette base.'
+            );
         }
 
-        $nu = substr($b64, strlen(self::MARQUEUR_CONTEXTE));
+        return Primitives::decrypt($blob, self::dmKey(), Aad::legacy(''));
+    }
 
-        return Primitives::decrypt(EncryptedBlob::fromBase64($nu), self::dmKey(), $contexte);
+    /**
+     * Ce blob porte-t-il sa liaison ? Un blob mal formé ne la porte pas.
+     *
+     * La seule question que la passe de migration pose pour savoir quoi relier :
+     * la réponse vient du format, donc de la bibliothèque.
+     */
+    public static function estLie(string $b64): bool
+    {
+        try {
+            return EncryptedBlob::fromBase64($b64)->bindsItsContext();
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
     }
 
     /**
@@ -160,11 +169,12 @@ final class DataGuard
      *
      * Réservé à `tools/migrer-aad.php`, qui doit relire les blobs nus pour les
      * sceller — y compris ceux d'une sauvegarde restaurée après sa première passe,
-     * quand `decrypt()` les refuse déjà.
+     * quand `decrypt()` les refuse déjà. Le lab les écrivait sans donnée associée :
+     * `Aad::legacy('')` reproduit exactement ces octets.
      */
     public static function decryptSansContexte(string $b64): string
     {
-        return Primitives::decrypt(EncryptedBlob::fromBase64($b64), self::dmKey());
+        return Primitives::decrypt(EncryptedBlob::fromBase64($b64), self::dmKey(), Aad::legacy(''));
     }
 
     /**
@@ -212,15 +222,15 @@ final class DataGuard
      * et non triés : un message d'Alice à Bob n'est pas celui de Bob à Alice, et
      * les deux ne doivent pas partager un contexte.
      */
-    public static function contexteDm(int $expediteur, int $destinataire): string
+    public static function contexteDm(int $expediteur, int $destinataire): Aad
     {
-        return 'dm:' . $expediteur . ':' . $destinataire;
+        return Aad::of('dm', (string) $expediteur, (string) $destinataire);
     }
 
     /** Le contexte d'un profil : le compte dont il décrit le titulaire. */
-    public static function contexteProfil(int $compte): string
+    public static function contexteProfil(int $compte): Aad
     {
-        return 'profil:' . $compte;
+        return Aad::of('profil', (string) $compte);
     }
 
     /**

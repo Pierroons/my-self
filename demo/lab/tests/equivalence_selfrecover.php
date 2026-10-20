@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+// La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
+require __DIR__ . '/instance_isolee.php';
+
 /**
  * La bibliothèque tient-elle sur le schéma réel du lab ?
  *
@@ -237,6 +240,15 @@ verifier('aucun compte créé par les quatre refus',
 $ok = \Pierroons\MySelfLab\Auth::register($pdo2, 'carol', $MOT, sr_sel_aleatoire(), null);
 verifier('contre-témoin : un sel valide passe toujours', ($ok['ok'] ?? false) === true);
 
+// La session que l'inscription ouvre : le cookie porte le jeton, la base son
+// empreinte seule — rangé en clair, une base volée ouvrait toutes les sessions.
+$rangesEnClair = $pdo2->prepare('SELECT COUNT(*) FROM app_sessions WHERE token = ?');
+$rangesEnClair->execute([(string) ($ok['token'] ?? '')]);
+$rangesSousEmpreinte = $pdo2->prepare('SELECT COUNT(*) FROM app_sessions WHERE token = ?');
+$rangesSousEmpreinte->execute([\Pierroons\MySelfLab\Db::empreinteJeton((string) ($ok['token'] ?? ''))]);
+verifier('⭐ la session ouverte à l\'inscription n\'est rangée que sous l\'empreinte de son jeton',
+    ($ok['token'] ?? '') !== '' && (int) $rangesEnClair->fetchColumn() === 0 && (int) $rangesSousEmpreinte->fetchColumn() === 1);
+
 echo "\n→ Le sel de site refuse de servir vide\n";
 // 🔑 Ce sel porte deux propriétés : il localise les codes émis et il fabrique
 // le faux sel rendu aux codes inconnus. Vide, les index deviennent calculables
@@ -259,7 +271,7 @@ try {
     verifier('sel de site stable entre deux appels',
         $engendre === \Pierroons\MySelfLab\Auth::siteSalt());
 } finally {
-    putenv('LAB_SITESALT_PATH');
+    putenv('LAB_SITESALT_PATH=' . instance_isolee()['LAB_SITESALT_PATH']);   // rendue à l'isolement, jamais à `data/`
     @unlink($tmp);
 }
 

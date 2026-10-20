@@ -22,6 +22,9 @@
 
 declare(strict_types=1);
 
+// La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
+require __DIR__ . '/instance_isolee.php';
+
 require_once __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../lib/i18n.php';
 require_once __DIR__ . '/../lib/db.php';
@@ -47,6 +50,11 @@ function nok(string $m): void { global $echecs; fwrite(STDERR, "  ✗ $m\n"); $e
 $dir = sys_get_temp_dir() . '/sanity_moderate_' . bin2hex(random_bytes(6));
 mkdir($dir, 0700, true);
 putenv("LAB_DB_PATH=$dir/lab.db");
+// Le banc range de faux messages privés en SQL, avant tout chiffrement : sa clé se
+// pose donc d'abord, sur une base qui n'en porte encore aucun. Après, la garde
+// refuserait à raison de la créer sous des messages qui l'attendent.
+require_once __DIR__ . '/../lib/dataguard.php';
+\Pierroons\MySelfLab\DataGuard::exigerCle();
 
 register_shutdown_function(static function () use ($dir): void {
     foreach (glob("$dir/*") ?: [] as $f) {

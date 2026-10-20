@@ -22,15 +22,16 @@
  * sur **toutes** les lignes, scellées comprises. Deux raisons mesurées, chacune un
  * contournement de la version naïve : le base64 strict de PHP tolère les blancs et
  * les bits de queue non canoniques, si bien qu'une copie retouchée d'un seul
- * caractère décode aux mêmes octets tout en étant une autre chaîne ; et préfixer
- * la ligne **légitime** de `L2.` la sortirait de l'ensemble des nus, laissant la
- * copie seule — donc unique, donc scellée pour qui l'a déplacée.
+ * caractère décode aux mêmes octets tout en étant une autre chaîne ; et donner à
+ * la ligne **légitime** l'en-tête d'un blob lié la sortirait de l'ensemble des nus,
+ * laissant la copie seule — donc unique, donc scellée pour qui l'a déplacée.
  *
  * Un blob *déplacé sans copie* ne laisse aucune trace, et aucun outil ne le
  * retrouvera.
  *
- * Idempotent : il ne touche que les blobs sans `DataGuard::MARQUEUR_CONTEXTE`.
- * Relancé, il ne fait rien et le dit.
+ * Idempotent : il ne touche que les blobs qui ne portent pas leur liaison
+ * (`DataGuard::estLie()`, que la bibliothèque tranche par le format). Relancé, il
+ * ne fait rien et le dit.
  *
  * 🔑 **Finie, elle ferme la lecture sans contexte.** Quand il ne reste aucun blob
  * nu, la passe pose le témoin de `DataGuard` : un blob nu gardé d'avant elle — un
@@ -40,9 +41,16 @@
  * nomme ; une base restaurée d'avant la passe se relit en retirant le témoin, puis
  * en relançant la passe.
  *
+ * ⚠️ **Une ligne qui reste nue bloque la fermeture** : recopiée, illisible ou
+ * apparue après coup, elle n'est jamais scellée, et la passe ne s'annonce pas finie.
+ * `--fermer` pose le témoin malgré elle, après examen : c'est une **décision
+ * humaine**, car ces lignes deviennent illisibles pour de bon — y compris la ligne
+ * légitime d'une paire recopiée.
+ *
  * Usage :
  *   php tools/migrer-aad.php --a-blanc    compte sans écrire
  *   php tools/migrer-aad.php              relie, et dit combien
+ *   php tools/migrer-aad.php --fermer     relie, puis ferme même s'il reste des lignes nues
  */
 
 declare(strict_types=1);
@@ -55,25 +63,8 @@ use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\DataGuard;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 
-/**
- * Le prédicat « ce blob ne porte pas le marqueur », et ses deux paramètres.
- *
- * Comparaison par `substr` sur une longueur liée, et non par motif : `LIKE` ignore
- * la casse sous SQLite là où `DataGuard::decrypt()` compare par `str_starts_with`,
- * et `GLOB`, qui la respecte, traiterait `*`, `?` ou `[` du marqueur comme des
- * métacaractères — un marqueur contenant l'un d'eux ferait diverger le SQL de PHP
- * **en silence**, laissant des lignes nues jamais migrées pendant que le compte
- * final tombe à zéro. Le marqueur ne construit donc plus de SQL : il se lie.
- */
-const NU = 'substr(ciphertext, 1, ?) <> ?';
-
-/** @return list<int|string> les deux paramètres de `NU`, dans l'ordre. */
-function parametresNu(): array
-{
-    return [strlen(DataGuard::MARQUEUR_CONTEXTE), DataGuard::MARQUEUR_CONTEXTE];
-}
-
 $aBlanc = in_array('--a-blanc', $argv, true);
+$forcer = in_array('--fermer', $argv, true) && !$aBlanc;
 
 // `Db::pdo()` crée la base absente et y pose le schéma. Un chemin mal tapé
 // rendrait donc « 0 sans contexte » sur une base neuve et vide, soit un succès
@@ -147,8 +138,8 @@ $pdo->exec($aBlanc ? 'BEGIN' : 'BEGIN IMMEDIATE');
  * Les charges présentes à plus d'un endroit : une copie, donc un déplacement.
  *
  * L'univers est **toutes** les lignes des deux tables, scellées comprises : une
- * ligne scellée dont la charge égale celle d'une ligne nue est le signe qu'un
- * marqueur a été posé à la main pour isoler la copie.
+ * ligne liée dont la charge égale celle d'une ligne nue est le signe qu'un
+ * en-tête a été posé à la main pour isoler la copie.
  */
 $vus = [];
 $toutes = $pdo->query('SELECT ciphertext FROM dm UNION ALL SELECT ciphertext FROM profiles')->fetchAll();
@@ -171,11 +162,15 @@ $deplace = 0;
 $apres   = 0;
 $fermee  = DataGuard::lectureSansContexteFermee();
 
-/** @param callable(array<string,mixed>):string $contexteDe */
-$passe = static function (string $table, string $cle, callable $contexteDe) use ($pdo, $aBlanc, $copies, $empreinte, $fermee, &$relie, &$refus, &$deplace, &$apres): void {
-    $lignes = $pdo->prepare("SELECT * FROM $table WHERE " . NU);
-    $lignes->execute(parametresNu());
-    foreach ($lignes->fetchAll() as $ligne) {
+/** Les lignes d'une table dont le blob ne porte pas sa liaison. */
+$nues = static fn(string $table): array => array_values(array_filter(
+    $pdo->query("SELECT * FROM $table")->fetchAll(),
+    static fn(array $l): bool => !DataGuard::estLie((string) $l['ciphertext'])
+));
+
+/** @param callable(array<string,mixed>):\Pierroons\SelfDataGuard\Crypto\Aad $contexteDe */
+$passe = static function (string $table, string $cle, callable $contexteDe) use ($pdo, $aBlanc, $copies, $empreinte, $fermee, $nues, &$relie, &$refus, &$deplace, &$apres): void {
+    foreach ($nues($table) as $ligne) {
         $id       = (int) $ligne[$cle];
         $blob     = (string) $ligne['ciphertext'];
         $contexte = $contexteDe($ligne);
@@ -219,20 +214,22 @@ $passe = static function (string $table, string $cle, callable $contexteDe) use 
     }
 };
 
-$passe('dm', 'id', static fn(array $l): string => DataGuard::contexteDm((int) $l['sender_id'], (int) $l['recipient_id']));
-$passe('profiles', 'account_id', static fn(array $l): string => DataGuard::contexteProfil((int) $l['account_id']));
+$passe('dm', 'id', static fn(array $l) => DataGuard::contexteDm((int) $l['sender_id'], (int) $l['recipient_id']));
+$passe('profiles', 'account_id', static fn(array $l) => DataGuard::contexteProfil((int) $l['account_id']));
 
-$compte = $pdo->prepare(
-    'SELECT (SELECT COUNT(*) FROM dm WHERE ' . NU . ') + (SELECT COUNT(*) FROM profiles WHERE ' . NU . ')'
-);
-$compte->execute([...parametresNu(), ...parametresNu()]);
-$restants = (int) $compte->fetchColumn();
+$restants = count($nues('dm')) + count($nues('profiles'));
 
 $pdo->exec($aBlanc ? 'ROLLBACK' : 'COMMIT');
 
 $fini = $restants === 0;
-if ($fini && !$aBlanc) {
+if (($fini || $forcer) && !$aBlanc) {
     DataGuard::fermerLectureSansContexte();
+}
+if ($forcer && !$fini) {
+    fwrite(STDERR, sprintf(
+        "--fermer : %d ligne(s) restée(s) nue(s) deviennent illisibles pour de bon.\n",
+        $restants
+    ));
 }
 printf(
     "%s %d blob(s) relié(s) · %d recopié(s) laissé(s) à examiner · %d apparu(s) après la fermeture, à examiner · %d illisible(s) · %d sans contexte après cette passe · lecture sans contexte %s\n",

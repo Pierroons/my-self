@@ -19,6 +19,9 @@
 
 declare(strict_types=1);
 
+// La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
+require __DIR__ . '/instance_isolee.php';
+
 require_once __DIR__ . '/../lib/su_audit.php';
 
 use Pierroons\MySelfLab\SuAudit;

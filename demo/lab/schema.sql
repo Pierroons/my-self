@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE TABLE IF NOT EXISTS app_sessions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     account_id  INTEGER NOT NULL,
-    token       TEXT UNIQUE NOT NULL,
+    token       TEXT UNIQUE NOT NULL,      -- empreinte du jeton (Db::empreinteJeton), jamais le jeton du cookie
     created_at  INTEGER NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );

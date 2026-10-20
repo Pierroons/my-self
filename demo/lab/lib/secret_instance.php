@@ -39,6 +39,9 @@ final class SecretInstance
      */
     public const PLANCHER = 32;
 
+    /** Suffixe du témoin posé à côté d'un secret servi : il a existé ici. */
+    private const A_EXISTE = '.existe';
+
     /**
      * Rend le secret nommé, en le créant à la première demande.
      *
@@ -60,6 +63,12 @@ final class SecretInstance
      * est obligatoire pour la même raison — un secret qui n'a rien à protéger le dit
      * en rendant `null`, il ne le dit pas en se taisant.
      *
+     * ⚠️ La question ne voit que la base du lab (`Db::path()`) : un processus qui
+     * déroute la base sans dérouter le secret interroge une autre base que celle que
+     * le secret sert. D'où un second témoin, qui ne dépend d'aucune base : à côté de
+     * chaque secret servi, `<secret>.existe` dit qu'il a existé ici. Un secret absent
+     * dont le témoin est là a disparu, et ne se remplace pas sans décision humaine.
+     *
      * @throws \RuntimeException à chaque étape qui peut échouer — jamais de valeur de repli.
      */
     public static function lire(string $nom, int $octets, int $minLongueur, ?string $env, callable $dependances): string
@@ -78,6 +87,20 @@ final class SecretInstance
         }
 
         if (!file_exists($f)) {
+            // Le témoin ne se pose qu'après le secret : vu, il dit qu'un secret a été
+            // publié — à l'instant peut-être, par une requête concurrente. Le secret se
+            // relit donc avant de conclure qu'il a disparu (mesuré : sur soixante courses
+            // de seize premières requêtes, une en refusait une, à tort).
+            clearstatcache(true, $f);
+            if (file_exists($f . self::A_EXISTE) && !file_exists($f)) {
+                throw new \RuntimeException(
+                    "Secret d'instance {$nom} absent ({$f}) alors qu'il a existé ici ({$f}" . self::A_EXISTE . ') : '
+                    . 'restaurer le secret. Pour repartir d\'un secret neuf en connaissance de cause, '
+                    . 'retirer aussi le témoin — ce qui en dépendait sera perdu.'
+                );
+            }
+        }
+        if (!file_exists($f)) {
             $enDepend = $dependances();
             if ($enDepend !== null) {
                 throw new \RuntimeException(
@@ -95,6 +118,13 @@ final class SecretInstance
             throw new \RuntimeException(
                 "Secret d'instance {$nom} : vide ou trop court ({$f}) — refus de servir."
             );
+        }
+        // Posé aussi pour un secret d'avant ce témoin : une instance en service le gagne
+        // à sa première lecture, et sa protection avec. ⚠️ Au mieux, jamais bloquant : un
+        // dossier où le témoin ne s'écrit pas est un dossier où un secret absent ne se
+        // recréerait pas non plus — `poser()` y échoue —, donc il n'y a rien à garder.
+        if (!file_exists($f . self::A_EXISTE)) {
+            @touch($f . self::A_EXISTE);
         }
 
         return $valeur;
@@ -141,6 +171,15 @@ final class SecretInstance
      */
     private static function poser(string $nom, string $f, int $octets): void
     {
+        // Sans `link()`, il n'existe pas de publication qui refuse un nom déjà pris :
+        // renommer écraserait le secret qu'un autre processus sert déjà. Refuser avant
+        // d'écrire quoi que ce soit, plutôt que laisser un candidat sur le disque.
+        if (!function_exists('link')) {
+            throw new \RuntimeException(
+                "Secret d'instance {$nom} : link() est désactivée (disable_functions) — aucune "
+                . "publication sûre n'existe sans elle. Poser {$f} à la main, en 0600, ou rendre link() à PHP."
+            );
+        }
         $tmp = $f . '.' . bin2hex(random_bytes(6)) . '.tmp';
 
         if (@file_put_contents($tmp, bin2hex(random_bytes($octets))) === false) {
@@ -158,8 +197,11 @@ final class SecretInstance
         // 🔑 `link()` échoue si le nom est pris, en une seule opération ; tester puis
         // renommer laissait la fenêtre ouverte, et `rename()` écrase — mesuré : seize
         // premières requêtes simultanées tiraient jusqu'à six secrets différents.
-        $publie = @link($tmp, $f);
-        @unlink($tmp);
+        try {
+            $publie = @link($tmp, $f);
+        } finally {
+            @unlink($tmp);
+        }
         if (!$publie && !file_exists($f)) {
             throw new \RuntimeException("Secret d'instance {$nom} : publication impossible vers {$f}.");
         }

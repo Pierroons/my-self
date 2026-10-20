@@ -21,6 +21,9 @@
 
 declare(strict_types=1);
 
+// La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
+require __DIR__ . '/instance_isolee.php';
+
 $dir = sys_get_temp_dir() . '/sanity_dataguard_' . bin2hex(random_bytes(6));
 mkdir($dir, 0700, true);
 register_shutdown_function(static function () use ($dir): void {
@@ -34,6 +37,9 @@ putenv('LAB_STATE_DIR=' . $dir);
 putenv('LAB_BLINDKEY_PATH=' . $dir . '/.blindkey');   // sans quoi le banc lit le secret réel de l'instance locale
 
 require __DIR__ . '/../vendor/autoload.php';
+// Un blob d'avant la 0.7.0, tel que SelfDataGuard l'écrivait : la bibliothèque n'en
+// écrit plus, et sa définition unique vit dans ses propres tests.
+require_once __DIR__ . '/../../../self-security/selfdataguard/tests/blob_v2_fixture.php';
 require_once __DIR__ . '/../lib/db.php';
 require_once __DIR__ . '/../lib/dataguard.php';
 require_once __DIR__ . '/../lib/dm.php';
@@ -45,6 +51,8 @@ use Pierroons\MySelfLab\DataGuard;
 use Pierroons\MySelfLab\Dm;
 use Pierroons\MySelfLab\Profile;
 use Pierroons\MySelfLab\SecretInstance;
+use Pierroons\SelfDataGuard\Crypto\Aad;
+use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 
 $echecs = 0;
@@ -172,31 +180,31 @@ ok(
 );
 
 // ⚠️ Le cas ci-dessus mesure la SIGNATURE, pas la garde : PHP lève avant d'entrer
-// dans le corps, donc il resterait vert si le `if ($contexte === '')` disparaissait.
-// C'est un contexte vide qui éprouve la garde elle-même.
-$contexteVide = clairOuRefus(static fn() => DataGuard::encrypt('texte', ''));
+// dans le corps, donc il resterait vert si la garde disparaissait. C'est un contexte
+// qui ne lie à RIEN — `Aad::none()`, que la bibliothèque accepte — qui l'éprouve.
+$contexteVide = clairOuRefus(static fn() => DataGuard::encrypt('texte', Aad::none()));
 ok(
-    '⭐ et un contexte VIDE est refusé — la garde, pas la signature',
+    '⭐ et un contexte qui ne lie à rien est refusé — la garde, pas la signature',
     $contexteVide === null,
     'a rendu un blob : ' . substr((string) $contexteVide, 0, 24)
 );
 
 echo "\n# Les blobs écrits avant l'AAD restent lisibles — sinon la migration perd des données\n";
 
-// Un blob d'avant la liaison au contexte, fabriqué comme le code d'alors l'écrivait :
-// par réflexion sur la clé, pour que la production n'ait pas à exposer de méthode d'héritage.
+// Un blob d'avant la liaison au contexte, fabriqué comme le code d'alors l'écrivait —
+// format v2, sans donnée associée —, la clé lue par réflexion pour que la production
+// n'ait pas à exposer de méthode d'héritage.
 $cle = (new ReflectionMethod(DataGuard::class, 'cle'));
 $cle->setAccessible(true);
-$ancien = Primitives::encrypt('message d\'avant la migration', $cle->invoke(null, '/my-self-lab/dm'))->toBase64();
+$cleDmBanc = $cle->invoke(null, '/my-self-lab/dm');
+$nuDe = static fn(string $clair): string => blobV2($clair, $cleDmBanc, '')->toBase64();
+$ancien = $nuDe('message d\'avant la migration');
 $pdo->prepare('INSERT INTO dm (id, sender_id, recipient_id, ciphertext, created_at) VALUES (20, 1, 2, ?, ?)')
     ->execute([$ancien, $t]);
 // Un profil nu, de même : `Profile::save()` n'en produit plus, il se pose comme le
 // code d'avant l'écrivait — sans quoi la boucle `profiles` de la passe pourrait être
 // supprimée sans qu'un seul cas rougisse (mesuré : elle l'a été, 15/15 est resté vert).
-$profilNu = Primitives::encrypt(
-    json_encode(['bio' => 'dave avant la migration', 'lien' => ''], JSON_UNESCAPED_UNICODE),
-    $cle->invoke(null, '/my-self-lab/dm')
-)->toBase64();
+$profilNu = $nuDe(json_encode(['bio' => 'dave avant la migration', 'lien' => ''], JSON_UNESCAPED_UNICODE));
 $compte(4, 'dave');
 $pdo->prepare('INSERT INTO profiles (account_id, ciphertext, updated_at) VALUES (4, ?, ?)')->execute([$profilNu, $t]);
 $relu = clairOuRefus(static function () use ($pdo) {
@@ -238,7 +246,7 @@ ok('la migration passe et se dit', $rc === 0 && str_contains($sortie, '2 blob'),
 ok('le blob migré a changé', sha256_blob($pdo, 20) !== $empreinteAvant);
 ok(
     'la passe relie aussi un profil nu',
-    str_starts_with((string) $pdo->query('SELECT ciphertext FROM profiles WHERE account_id = 4')->fetchColumn(), DataGuard::MARQUEUR_CONTEXTE)
+    DataGuard::estLie((string) $pdo->query('SELECT ciphertext FROM profiles WHERE account_id = 4')->fetchColumn())
 );
 ok(
     '⭐ et le profil migré se lit par son titulaire, pas par un autre',
@@ -313,7 +321,7 @@ echo "\n# Ce que la passe ne peut PAS réparer, et qu'elle doit refuser\n";
 // Un blob nu recopié avant la passe : elle le scellerait sous la ligne où il se
 // trouve, donc elle le certifierait lisible par qui l'a déplacé. Elle doit s'en
 // abstenir et le nommer. Trouvé par l'audit du lot, pas par ce banc.
-$nu = Primitives::encrypt('le secret d\'alice pour bob', $cle->invoke(null, '/my-self-lab/dm'))->toBase64();
+$nu = $nuDe('le secret d\'alice pour bob');
 $pdo->prepare('INSERT INTO dm (id, sender_id, recipient_id, ciphertext, created_at) VALUES (30, 1, 2, ?, ?)')
     ->execute([$nu, $t]);
 $pdo->prepare('INSERT INTO dm (id, sender_id, recipient_id, ciphertext, created_at) VALUES (31, 1, 3, ?, ?)')
@@ -342,7 +350,7 @@ echo "\n# Les deux contournements de la détection, trouvés par l'audit du lot\
 // (a) Le base64 strict de PHP tolère les blancs : une copie suivie d'un « \n » est
 //     une autre CHAÎNE qui décode aux MÊMES octets. Comparer les chaînes la laissait
 //     passer, et la passe scellait alors la copie pour qui l'avait déplacée.
-$nu2 = Primitives::encrypt('le second secret d\'alice', $cle->invoke(null, '/my-self-lab/dm'))->toBase64();
+$nu2 = $nuDe('le second secret d\'alice');
 $pdo->prepare('INSERT INTO dm (id, sender_id, recipient_id, ciphertext, created_at) VALUES (40, 1, 2, ?, ?)')
     ->execute([$nu2, $t]);
 $pdo->prepare('INSERT INTO dm (id, sender_id, recipient_id, ciphertext, created_at) VALUES (41, 1, 3, ?, ?)')
@@ -352,24 +360,25 @@ $pdo->prepare('INSERT INTO dm (id, sender_id, recipient_id, ciphertext, created_
 $ligne41 = (string) $pdo->query('SELECT ciphertext FROM dm WHERE id = 41')->fetchColumn();
 ok(
     '⭐ une copie retouchée d\'un seul caractère est reconnue : la charge compte, pas la chaîne',
-    !str_starts_with($ligne41, DataGuard::MARQUEUR_CONTEXTE) && str_contains($sortie, 'dm #41'),
+    !DataGuard::estLie($ligne41) && str_contains($sortie, 'dm #41'),
     'ligne 41 = ' . substr($ligne41, 0, 12) . '… · ' . trim($sortie)
 );
 
-// (b) Préfixer la ligne LÉGITIME de « L2. » à la main la sort de l'ensemble des nus :
-//     la copie s'y retrouve seule, donc unique, donc scellée pour le tiers. La
-//     détection prend donc pour univers TOUTES les lignes, scellées comprises.
-$nu3 = Primitives::encrypt('le troisième secret d\'alice', $cle->invoke(null, '/my-self-lab/dm'))->toBase64();
+// (b) Donner à la ligne LÉGITIME l'en-tête d'un blob lié (`SDG3.` au lieu de `SDG2.`)
+//     la sort de l'ensemble des nus : la copie s'y retrouve seule, donc unique, donc
+//     scellée pour le tiers. La détection prend donc pour univers TOUTES les lignes,
+//     liées comprises.
+$nu3 = $nuDe('le troisième secret d\'alice');
 $pdo->prepare('INSERT INTO dm (id, sender_id, recipient_id, ciphertext, created_at) VALUES (50, 1, 2, ?, ?)')
-    ->execute([DataGuard::MARQUEUR_CONTEXTE . $nu3, $t]);
+    ->execute([EncryptedBlob::PREFIX_V3 . substr($nu3, strlen(EncryptedBlob::PREFIX_V2)), $t]);
 $pdo->prepare('INSERT INTO dm (id, sender_id, recipient_id, ciphertext, created_at) VALUES (51, 1, 3, ?, ?)')
     ->execute([$nu3, $t]);
 
 [$sortie, $rc] = $migrer();
 $ligne51 = (string) $pdo->query('SELECT ciphertext FROM dm WHERE id = 51')->fetchColumn();
 ok(
-    '⭐ un marqueur posé à la main sur la ligne légitime n\'isole pas la copie',
-    !str_starts_with($ligne51, DataGuard::MARQUEUR_CONTEXTE) && str_contains($sortie, 'dm #51'),
+    '⭐ un en-tête de blob lié posé à la main sur la ligne légitime n\'isole pas la copie',
+    !DataGuard::estLie($ligne51) && str_contains($sortie, 'dm #51'),
     'ligne 51 = ' . substr($ligne51, 0, 12) . '… · ' . trim($sortie)
 );
 
@@ -401,7 +410,7 @@ echo "\n# Un profil qu'on ne sait pas lire ne s'écrase pas\n";
 // vides, le titulaire retapait, et `save()` écrasait le seul chiffré existant.
 $pdo->prepare('INSERT INTO profiles (account_id, ciphertext, updated_at) VALUES (2, ?, ?)
                ON CONFLICT(account_id) DO UPDATE SET ciphertext = excluded.ciphertext')
-    ->execute(['L2.SDG2.' . base64_encode(random_bytes(40)), $t]);
+    ->execute([EncryptedBlob::PREFIX_V3 . base64_encode(random_bytes(40)), $t]);
 $avantProfil = (string) $pdo->query('SELECT ciphertext FROM profiles WHERE account_id = 2')->fetchColumn();
 ok(
     'un profil illisible se dit illisible, et non vide',
@@ -510,8 +519,8 @@ $baseAvec = static function (string $nom, string $sql) use ($dir, $t): string {
 
     return $f;
 };
-$seulProfil  = $baseAvec('seul-profil', "INSERT INTO profiles (account_id, ciphertext, updated_at) VALUES (1, 'L2.SDG2.xx', $t)");
-$seulMessage = $baseAvec('seul-message', "INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (1, 2, 'L2.SDG2.xx', $t)");
+$seulProfil  = $baseAvec('seul-profil', "INSERT INTO profiles (account_id, ciphertext, updated_at) VALUES (1, 'SDG3.xx', $t)");
+$seulMessage = $baseAvec('seul-message', "INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (1, 2, 'SDG3.xx', $t)");
 $seulRapport = $baseAvec('seul-rapport', "INSERT INTO redteam_reports (handle, ciphertext, created_at) VALUES ('h', '-----BEGIN PGP-----', $t)");
 foreach ([
     'un profil seul : sa lecture refuse, elle ne rend pas un profil vide'       => [$seulProfil, 'profil'],
@@ -573,20 +582,20 @@ $course = $baseAvec('course', 'SELECT 1');
 $cleCourse = $dir . '/.blindkey-course';
 file_put_contents($cleCourse, bin2hex(random_bytes(48)));
 $cleDm = Primitives::deriveFromMemorized(trim((string) file_get_contents($cleCourse)), '/my-self-lab/dm');
-$nuCourse = Primitives::encrypt('le secret que le copieur veut lire', $cleDm)->toBase64();
+$nuCourse = blobV2('le secret que le copieur veut lire', $cleDm, '')->toBase64();
 $pdoCourse = new PDO('sqlite:' . $course);
 $pdoCourse->beginTransaction();
 $ins = $pdoCourse->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (1, 2, ?, ?)');
 $ins->execute([$nuCourse, $t]);
 for ($i = 0; $i < 1500; $i++) {
-    $ins->execute([Primitives::encrypt('message ' . $i, $cleDm)->toBase64(), $t]);
+    $ins->execute([blobV2('message ' . $i, $cleDm, '')->toBase64(), $t]);
 }
 $pdoCourse->commit();
 $copieur = $dir . '/copieur.php';
 file_put_contents($copieur, '<?php
 $p = new PDO("sqlite:" . $argv[1], null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 120]);
 $fin = microtime(true) + (float) $argv[3];
-while (microtime(true) < $fin && $p->query("SELECT 1 FROM dm WHERE ciphertext LIKE \'L2.%\' LIMIT 1")->fetchColumn() === false) {
+while (microtime(true) < $fin && $p->query("SELECT 1 FROM dm WHERE ciphertext LIKE \'SDG3.%\' LIMIT 1")->fetchColumn() === false) {
     usleep(1000);
 }
 for ($n = 0; microtime(true) < $fin; $n++) {
@@ -599,12 +608,113 @@ $tube = proc_open([PHP_BINARY, $copieur, $course, $nuCourse, '6'], [1 => ['pipe'
 [$sortieCourse] = $migrerSur($course, $cleCourse);
 $copiesEcrites = (int) stream_get_contents($flux[1]);
 proc_close($tube);
-$scellees = (int) $pdoCourse->query("SELECT COUNT(*) FROM profiles WHERE account_id >= 1000 AND ciphertext LIKE 'L2.%'")->fetchColumn();
+$scellees = (int) $pdoCourse->query("SELECT COUNT(*) FROM profiles WHERE account_id >= 1000 AND ciphertext LIKE 'SDG3.%'")->fetchColumn();
 ok(
     '⭐ aucune copie écrite pendant la passe n\'en sort scellée pour qui l\'a faite',
     $copiesEcrites > 0 && $scellees === 0,
     sprintf('%d copie(s) écrite(s), %d scellée(s) · %s', $copiesEcrites, $scellees, substr(trim($sortieCourse), -160))
 );
+
+echo "\n# Une passe qui ne finit pas ne ferme rien ; « --fermer » ferme, sur décision\n";
+
+// Rien ne gardait la condition elle-même : une passe qui posait le témoin malgré des
+// lignes restées nues gardait le banc vert (mesuré par la sixième passe d'audit). Une
+// instance à part, qui n'a jamais passé.
+$inachevee = $baseAvec('inachevee', 'SELECT 1');
+$cleInachevee = $dir . '/.blindkey-inachevee';
+file_put_contents($cleInachevee, bin2hex(random_bytes(48)));
+$nuI = blobV2(
+    'une charge recopiée',
+    Primitives::deriveFromMemorized(trim((string) file_get_contents($cleInachevee)), '/my-self-lab/dm'),
+    ''
+)->toBase64();
+(new PDO('sqlite:' . $inachevee))->prepare(
+    'INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (1, 2, ?, ?), (2, 1, ?, ?)'
+)->execute([$nuI, $t, $nuI, $t]);
+[$sortie, $rc] = $migrerSur($inachevee, $cleInachevee);
+ok(
+    '⭐ des lignes restées nues : la passe ne pose pas le témoin',
+    $rc !== 0 && !is_file($cleInachevee . '.scelle') && str_contains($sortie, 'encore ouverte'),
+    'rc=' . $rc . ' · témoin = ' . var_export(is_file($cleInachevee . '.scelle'), true)
+);
+[$sortie, $rc] = $migrerSur($inachevee, $cleInachevee, '--fermer');
+ok(
+    'et « --fermer » le pose, en nommant ce qui devient illisible',
+    is_file($cleInachevee . '.scelle') && str_contains($sortie, 'deviennent illisibles'),
+    'rc=' . $rc . ' · ' . substr(trim($sortie), -160)
+);
+
+echo "\n# Ce que le visiteur reçoit — par HTTP, comme lui\n";
+
+// Le gestionnaire d'exception et la vue publique d'un profil illisible n'étaient
+// éprouvés par aucun cas. Un vrai serveur, `display_errors` ALLUMÉ : c'est sous lui
+// qu'une trace et ses chemins disque partaient au client.
+$baseHttp = $baseAvec('http', 'SELECT 1');
+$cleHttp  = $dir . '/.blindkey-http';
+file_put_contents($cleHttp, bin2hex(random_bytes(48)));
+(new PDO('sqlite:' . $baseHttp))->prepare('INSERT INTO profiles (account_id, ciphertext, updated_at) VALUES (1, ?, ?)')
+    ->execute([EncryptedBlob::PREFIX_V3 . base64_encode(random_bytes(40)), $t]);
+$port = 9000 + (getmypid() % 900);
+$serveur = proc_open(
+    [PHP_BINARY, '-d', 'display_errors=1', '-S', '127.0.0.1:' . $port, '-t', __DIR__ . '/../public'],
+    [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
+    $tuyaux,
+    null,
+    ['LAB_DB_PATH' => $baseHttp, 'LAB_BLINDKEY_PATH' => $cleHttp] + instance_isolee()
+);
+$debout = false;
+for ($i = 0; $i < 50 && !$debout; $i++) {
+    $c = @fsockopen('127.0.0.1', $port, $e1, $e2, 0.2);
+    if ($c) {
+        fclose($c);
+        $debout = true;
+    } else {
+        usleep(100000);
+    }
+}
+$demander = static function (string $chemin, ?array $json = null) use ($port): array {
+    $ctx = stream_context_create(['http' => [
+        'method'        => $json === null ? 'GET' : 'POST',
+        'header'        => "Accept-Language: fr\r\nContent-Type: application/json\r\n",
+        'content'       => $json === null ? '' : json_encode($json),
+        'ignore_errors' => true,
+        'timeout'       => 10,
+    ]]);
+    $corps = (string) @file_get_contents('http://127.0.0.1:' . $port . $chemin, false, $ctx);
+    $entetes = implode("\n", $http_response_header ?? []);
+
+    return [(int) (explode(' ', $http_response_header[0] ?? 'HTTP/1.1 0')[1] ?? 0), $entetes, $corps];
+};
+if (!$debout) {
+    ok('le serveur du banc démarre', false, 'aucun cas HTTP n\'a été joué');
+} else {
+    [$code, , $corps] = $demander('/profile.php?u=alice');
+    ok(
+        '⭐ la vue publique d\'un profil illisible le dit, au lieu d\'un profil vide',
+        $code === 200 && str_contains($corps, 'ne peut pas être affiché'),
+        'code=' . $code
+    );
+    // Le secret retiré : chaque route qui l'atteint lève, et c'est la réponse qui compte.
+    rename($cleHttp, $cleHttp . '.retire');
+    $fuite = static fn(string $c): bool => str_contains($c, 'Stack trace') || str_contains($c, __DIR__ . '/..')
+        || str_contains($c, '.blindkey') || preg_match('#/[a-z_]+\.php#', $c) === 1;
+    [$code, $entetes, $corps] = $demander('/api/report_status.php', ['id' => 1, 'suivi' => str_repeat('a', 32)]);
+    ok(
+        '⭐ une route d\'API qui lève rend un 500 JSON, sans trace ni chemin',
+        $code === 500 && str_contains($entetes, 'application/json')
+            && (json_decode($corps, true)['error'] ?? '') === 'indisponible' && !$fuite($corps),
+        'code=' . $code . ' · ' . substr($corps, 0, 160)
+    );
+    [$code, $entetes, $corps] = $demander('/profile.php?u=alice');
+    ok(
+        '⭐ une page qui lève rend un 500 HTML, sans trace ni chemin',
+        $code === 500 && str_contains($entetes, 'text/html') && !$fuite($corps),
+        'code=' . $code . ' · ' . substr(strip_tags($corps), 0, 160)
+    );
+    rename($cleHttp . '.retire', $cleHttp);
+}
+proc_terminate($serveur);
+proc_close($serveur);
 
 printf("\n%s %d/%d contrôles conformes\n", $echecs === 0 ? '✅' : '❌', $passes, $passes + $echecs);
 exit($echecs === 0 ? 0 : 1);

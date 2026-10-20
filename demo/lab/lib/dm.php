@@ -9,6 +9,7 @@ declare(strict_types=1);
 namespace Pierroons\MySelfLab;
 
 use PDO;
+use Pierroons\SelfDataGuard\Crypto\Aad;
 
 require_once __DIR__ . '/dataguard.php';
 
@@ -60,7 +61,7 @@ final class DM
      * déplacement enverrait chercher un attaquant là où la donnée est seulement
      * abîmée.
      */
-    private static function clair(string $ciphertext, string $contexte): string
+    private static function clair(string $ciphertext, Aad $contexte): string
     {
         try {
             return DataGuard::decrypt($ciphertext, $contexte);

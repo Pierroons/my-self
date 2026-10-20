@@ -1611,8 +1611,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_dataguard.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du chiffrement du lab a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^✅ 41/41 ' \
-            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 41 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 46/46 ' \
+            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 46 cas"; exit 1; }
 
       # La bibliothèque rend `cle`/`texte`, la page lit `key`/`label`/`type`/`options` :
       # les deux côtés avaient divergé sans un mot, et le niveau 3 partait sans aucune
@@ -1744,8 +1744,8 @@ jobs:
           # rougit, y compris le chemin normal. C'est le contexte qui doit cesser de
           # distinguer, pas une de ses deux faces.
           canari demo/lab/lib/dataguard.php \
-            "return 'dm:' . \$expediteur . ':' . \$destinataire;" \
-            "return 'dm:fixe'; // canari" \
+            "return Aad::of('dm', (string) \$expediteur, (string) \$destinataire);" \
+            "return Aad::of('dm-fixe'); // canari" \
             demo/lab/tests/sanity_dataguard.php \
             "✗ ⭐ le blob d'un message privé entre deux autres comptes"
 

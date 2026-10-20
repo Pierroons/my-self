@@ -222,7 +222,7 @@ final class Auth
         $sessionToken = self::generateSessionToken();
         $pdo->prepare(
             'INSERT INTO app_sessions (account_id, token, created_at) VALUES (?, ?, ?)'
-        )->execute([(int) $accountId, $sessionToken, time()]);
+        )->execute([(int) $accountId, Db::empreinteJeton($sessionToken), time()]);
 
         return [
             'ok' => true,
@@ -318,7 +318,7 @@ final class Auth
         $token = self::generateSessionToken();
         $pdo->prepare(
             'INSERT INTO app_sessions (account_id, token, created_at) VALUES (?, ?, ?)'
-        )->execute([(int) $acc['id'], $token, time()]);
+        )->execute([(int) $acc['id'], Db::empreinteJeton($token), time()]);
 
         return ['ok' => true, 'token' => $token];
     }
@@ -454,7 +454,7 @@ final class Auth
 
     public static function logout(PDO $pdo, string $token): void
     {
-        $pdo->prepare('DELETE FROM app_sessions WHERE token = ?')->execute([$token]);
+        $pdo->prepare('DELETE FROM app_sessions WHERE token = ?')->execute([Db::empreinteJeton($token)]);
     }
 
     /** Compte courant depuis le cookie de session (avec TTL), ou null. */
@@ -470,14 +470,14 @@ final class Auth
                JOIN app_sessions s ON s.account_id = a.id
               WHERE s.token = ?'
         );
-        $stmt->execute([$token]);
+        $stmt->execute([Db::empreinteJeton($token)]);
         $row = $stmt->fetch();
         if (!$row) {
             return null;
         }
         // TTL : session expirée → suppression + null
         if (time() - (int) $row['session_started'] > self::SESSION_TTL) {
-            $pdo->prepare('DELETE FROM app_sessions WHERE token = ?')->execute([$token]);
+            $pdo->prepare('DELETE FROM app_sessions WHERE token = ?')->execute([Db::empreinteJeton($token)]);
             return null;
         }
         return ['id' => $row['id'], 'username' => $row['username'], 'is_admin' => (int) $row['is_admin']];

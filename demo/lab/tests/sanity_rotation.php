@@ -15,6 +15,9 @@
 
 declare(strict_types=1);
 
+// La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
+require __DIR__ . '/instance_isolee.php';
+
 require_once __DIR__ . '/../lib/su_audit.php';
 require_once __DIR__ . '/../../../bi-self/selfrecover/src/autoload.php';
 
@@ -42,6 +45,8 @@ register_shutdown_function(static function () use ($dir): void {
     @rmdir($dir);
 });
 
+// Les secrets de l'instance isolée suivent, sous les prises du banc qui l'emportent :
+// sans eux, le sous-processus retombe sur `data/`.
 $env = [
     'PATH'                         => getenv('PATH') ?: '/usr/bin:/bin',
     'LAB_DB_PATH'                  => $base,
@@ -49,7 +54,7 @@ $env = [
     'SELFRECOVER_SU_AUDIT_SECRET'  => $ancienne,
     'SELFRECOVER_SU_SECRET_INPUT'  => $passphrase,
     'SU_FORENSIC_MINIMAL'          => '1',
-];
+] + instance_isolee();
 foreach ($env as $k => $v) {
     putenv("$k=$v");
 }

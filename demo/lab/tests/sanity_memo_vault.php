@@ -12,6 +12,9 @@
 
 declare(strict_types=1);
 
+// La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
+require __DIR__ . '/instance_isolee.php';
+
 $dir = sys_get_temp_dir() . '/sanity_memo_vault_' . bin2hex(random_bytes(6));
 mkdir($dir, 0700, true);
 $base = "$dir/lab.db";
