@@ -158,16 +158,35 @@ class Moderate
 
     public static function getReputation(PDO $pdo, int $accountId): array
     {
-        self::ensureRow($pdo, $accountId);
-        self::regenerate($pdo, $accountId);
-        self::cloreBanExpire($pdo, $accountId, contenir: true);
-        $stmt = $pdo->prepare(
-            'SELECT reputation, strikes, voting_rights, banned_until, ban_debut, ban_origine, ban_motif,
-                    needs_review, review_reason, convalescent, vote_muted_until
-               FROM member_moderation WHERE account_id = ?'
-        );
-        $stmt->execute([$accountId]);
-        $row = $stmt->fetch();
+        // Lire d'abord, écrire seulement si l'état le demande : la ligne
+        // absente, la convalescence, la clôture d'une peine. Dans le cas
+        // courant, lire une réputation est un `SELECT` et rien d'autre — une
+        // insertion « si absent », même ignorée, prendrait un verrou d'écriture.
+        // Quand il y a à écrire, c'est sous le verrou d'écriture, et l'état se
+        // relit sous lui : sans cela, N lecteurs d'une peine échue l'inscrivent
+        // N fois au journal, et N − 1 d'entre eux échouent en voulant promouvoir
+        // leur verrou de lecture — une lecture ne doit jamais échouer pour un
+        // autre lecteur.
+        $row    = self::ligne($pdo, $accountId);
+        $jusqua = $row === null ? 0 : (int) $row['banned_until'];
+        if ($row === null || (int) $row['convalescent'] || ($jusqua > 0 && $jusqua <= time())) {
+            self::sousVerrou($pdo, static function () use ($pdo, $accountId): void {
+                $row = self::ligne($pdo, $accountId);
+                if ($row === null) {
+                    self::ensureRow($pdo, $accountId);
+
+                    return;
+                }
+                if ((int) $row['convalescent']) {
+                    self::regenerate($pdo, $accountId);
+                }
+                $jusqua = (int) $row['banned_until'];
+                if ($jusqua > 0 && $jusqua <= time()) {
+                    self::cloreBanExpire($pdo, $accountId, contenir: true);
+                }
+            });
+            $row = self::ligne($pdo, $accountId);
+        }
         return [
             'reputation'    => (int) $row['reputation'],
             'strikes'       => (int) $row['strikes'],
@@ -183,6 +202,20 @@ class Moderate
             'vote_muted'       => ((int) $row['vote_muted_until']) > time(),
             'vote_muted_until' => (int) $row['vote_muted_until'],
         ];
+    }
+
+    /** La ligne de modération d'un compte, ou null s'il n'en a pas encore. */
+    private static function ligne(PDO $pdo, int $accountId): ?array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT reputation, strikes, voting_rights, banned_until, ban_debut, ban_origine, ban_motif,
+                    needs_review, review_reason, convalescent, vote_muted_until
+               FROM member_moderation WHERE account_id = ?'
+        );
+        $stmt->execute([$accountId]);
+        $row = $stmt->fetch();
+
+        return $row === false ? null : $row;
     }
 
     /**
@@ -203,7 +236,12 @@ class Moderate
      * d'arbitre n'est pas venu de la réputation, et n'y touche pas en sortant.
      *
      * `banned_until = 0` est l'état « aucune peine à clore » : c'est lui qui
-     * rend l'inscription unique.
+     * rend l'inscription unique, parce que la clôture se décide sous le verrou
+     * d'écriture (`sousVerrou()`) — un seul lecteur la voit à faire. Défaite
+     * avec la transaction qui la porte, elle se refait au passage suivant, et
+     * le journal porte alors deux fins pour une peine, que `debut` et `jusqu_a`
+     * identifient : `applyVote()` referme donc les peines échues du votant et
+     * de la cible avant d'ouvrir la sienne.
      *
      * ⚠️ **Un journal qui refuse d'écrire laisse la peine à refermer.** Avec
      * `$contenir`, le refus est consigné et signalé (`journal_en_panne`), et
@@ -250,24 +288,22 @@ class Moderate
 
         if ($origine === 'auto') {
             $pdo->prepare(
-                "UPDATE member_moderation
+                'UPDATE member_moderation
                     SET reputation = ?, voting_rights = 1, convalescent = 0, last_regen_at = 0,
-                        needs_review  = CASE WHEN review_reason = 'ban_auto' THEN 0 ELSE needs_review END,
-                        review_reason = CASE WHEN review_reason = 'ban_auto' THEN NULL ELSE review_reason END
-                  WHERE account_id = ?"
-            )->execute([self::config()->reputationInitiale, $accountId]);
+                        ' . self::leveSignalSql() . '
+                  WHERE account_id = ?'
+            )->execute([self::config()->reputationInitiale, 'ban_auto', 'ban_auto', $accountId]);
             self::effacerEffets($pdo, $accountId);
         } else {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 1 WHERE account_id = ? AND reputation >= ?')
                 ->execute([$accountId, self::config()->perteDroitDeVoteSous]);
         }
         $pdo->prepare(
-            "UPDATE member_moderation
+            'UPDATE member_moderation
                 SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL, updated_at = ?,
-                    needs_review  = CASE WHEN review_reason = 'journal_en_panne' THEN 0 ELSE needs_review END,
-                    review_reason = CASE WHEN review_reason = 'journal_en_panne' THEN NULL ELSE review_reason END
-              WHERE account_id = ?"
-        )->execute([$maintenant, $accountId]);
+                    ' . self::leveSignalSql() . '
+              WHERE account_id = ?'
+        )->execute([$maintenant, 'journal_en_panne', 'journal_en_panne', $accountId]);
     }
 
     /**
@@ -341,10 +377,7 @@ class Moderate
             // réputation remonte, et l'admin doit encore la trouver.
             $pdo->prepare('UPDATE member_moderation SET convalescent = 0 WHERE account_id = ?')
                 ->execute([$accountId]);
-            $pdo->prepare(
-                "UPDATE member_moderation SET needs_review = 0, review_reason = NULL
-                  WHERE account_id = ? AND review_reason = 'reputation_zero'"
-            )->execute([$accountId]);
+            self::designaler($pdo, $accountId, 'reputation_zero');
             self::effacerEffets($pdo, $accountId);
         }
     }
@@ -482,6 +515,28 @@ class Moderate
     }
 
     /**
+     * Inscrit un vote que le moteur neutralise : il reste visible de l'arbitre
+     * et occupe sa place dans l'index unique, mais n'a aucun effet sur la
+     * réputation.
+     */
+    private static function inscrireVoteNeutralise(
+        PDO $pdo,
+        int $voterId,
+        string $targetType,
+        int $targetId,
+        int $author,
+        int $value,
+        ?string $reason,
+        ?string $reasonCode,
+        string $raison
+    ): void {
+        $pdo->prepare(
+            'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, effet, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)'
+        )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, $raison, time()]);
+    }
+
+    /**
      * Applique un vote. Retourne ['ok'=>..., 'blocked'=>..., 'message'=>...] — jamais la
      * réputation de la cible : la page de profil tait ce chiffre sous le seuil de
      * sanction, et la réponse d'un vote le rendrait à quiconque vote.
@@ -490,6 +545,21 @@ class Moderate
      * que la personne sanctionnée sache ce qu'on lui reproche, et un pouce en
      * l'air ne sanctionne personne. L'upvote reste tenu par son plafond de
      * `farmingUpvotesMax` sur la fenêtre.
+     *
+     * Tout s'inscrit ou rien : le vote, son effet sur la réputation et ce que
+     * la détection en tire tiennent dans une transaction — celle du moteur,
+     * ouverte s'il n'y en a pas, ou un point de reprise dans celle de l'hôte,
+     * qui reste maître de la sienne. Ce qui refuse sans rien écrire se décide
+     * avant : paramètres, droit de vote, motif, cible.
+     *
+     * Le journal s'écrit hors de la base, avant elle : une validation qui
+     * échoue après lui laisse une entrée sans effet, jamais une peine sans
+     * trace. Sous la transaction du vote ne s'écrivent que les entrées que ce
+     * vote cause — le début d'un ban, sa levée par une meute reconnue — et une
+     * entrée défaite avec lui se lit comme une entrée sans effet : l'acte se
+     * réinscrit au passage suivant. Une peine échue du votant ou de la cible
+     * se referme AVANT que la transaction s'ouvre : défaite avec elle, sa
+     * clôture se referait, et le journal porterait deux fins pour une peine.
      */
     public static function applyVote(
         PDO $pdo,
@@ -500,13 +570,129 @@ class Moderate
         ?string $reason = null,
         ?string $reasonCode = null
     ): array {
+        $reason = $reason !== null ? trim($reason) : null;
+        $refus  = null;
+        $author = self::cibleDuVote($pdo, $voterId, $targetType, $targetId, $value, $reason, $reasonCode, $refus);
+        if ($author === null) {
+            return $refus;
+        }
+
+        // `BEGIN IMMEDIATE`, et non `BEGIN` : un vote lit avant d'écrire, et
+        // SQLite refuse sans attendre à une transaction en lecture de passer en
+        // écriture pendant qu'une autre écrit — deux votes simultanés rendraient
+        // « database is locked ». Le verrou pris d'emblée fait attendre, dans le
+        // délai que PDO accorde. Les ordres passent en SQL, jamais par
+        // `commit()` : toutes les versions de PDO ne voient pas une transaction
+        // ouverte en SQL, et l'on ne valide que ce qu'on a ouvert soi-même —
+        // d'où le marqueur `$transactionOuverteSur`. Dans la transaction de
+        // l'hôte, un point de reprise : le vote s'y défait seul, sans décider
+        // pour lui.
+        $propre = !self::enTransaction($pdo);
+        $point  = $propre ? null : 'selfmoderate_vote_' . ++self::$pointsDeReprise;
+        self::ordonner($pdo, $propre ? 'BEGIN IMMEDIATE' : 'SAVEPOINT ' . $point);
+        if ($propre) {
+            self::$transactionOuverteSur = $pdo;
+        }
+        try {
+            $resultat = self::inscrireVote($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode);
+            self::ordonner($pdo, $propre ? 'COMMIT' : 'RELEASE SAVEPOINT ' . $point);
+
+            return $resultat;
+        } catch (\Throwable $e) {
+            foreach ($propre ? ['ROLLBACK'] : ['ROLLBACK TO SAVEPOINT ' . $point, 'RELEASE SAVEPOINT ' . $point] as $ordre) {
+                try {
+                    self::ordonner($pdo, $ordre);
+                } catch (\Throwable) {
+                    // La base a déjà défait la transaction : l'exception d'origine est celle qui compte.
+                }
+            }
+            throw $e;
+        } finally {
+            if ($propre) {
+                self::$transactionOuverteSur = null;
+            }
+        }
+    }
+
+    /** Un nom par point de reprise posé dans la transaction d'un hôte. */
+    private static int $pointsDeReprise = 0;
+
+    /** La connexion sur laquelle ce moteur tient une transaction qu'il a ouverte lui-même. */
+    private static ?PDO $transactionOuverteSur = null;
+
+    /** Une transaction court-elle sur cette connexion, la nôtre ou celle de l'hôte ? */
+    private static function enTransaction(PDO $pdo): bool
+    {
+        return self::$transactionOuverteSur === $pdo || $pdo->inTransaction();
+    }
+
+    /**
+     * Une écriture que décide une lecture, sous le verrou d'écriture : pris
+     * d'emblée (`BEGIN IMMEDIATE`), pour que des lecteurs simultanés attendent
+     * leur tour au lieu d'échouer en voulant promouvoir un verrou de lecture,
+     * et pour que l'état se relise sous lui avant toute écriture au journal.
+     * Dans une transaction déjà ouverte, par le vote ou par l'hôte, l'écriture
+     * passe telle quelle.
+     */
+    private static function sousVerrou(PDO $pdo, callable $ecriture): void
+    {
+        if (self::enTransaction($pdo)) {
+            $ecriture();
+
+            return;
+        }
+        self::ordonner($pdo, 'BEGIN IMMEDIATE');
+        self::$transactionOuverteSur = $pdo;
+        try {
+            $ecriture();
+            self::ordonner($pdo, 'COMMIT');
+        } catch (\Throwable $e) {
+            try {
+                self::ordonner($pdo, 'ROLLBACK');
+            } catch (\Throwable) {
+                // La base a déjà défait la transaction : l'exception d'origine est celle qui compte.
+            }
+            throw $e;
+        } finally {
+            self::$transactionOuverteSur = null;
+        }
+    }
+
+    /** Un ordre de transaction, dont le refus ne passe jamais inaperçu, même sous un PDO silencieux. */
+    private static function ordonner(PDO $pdo, string $ordre): void
+    {
+        if ($pdo->exec($ordre) === false) {
+            throw new \RuntimeException('SelfModerate : l\'ordre « ' . $ordre . ' » a été refusé par la base.');
+        }
+    }
+
+    /**
+     * Ce qui refuse un vote sans rien écrire, et la cible qu'il vise. Rend
+     * l'auteur dont la réputation est en jeu, ou null avec le refus dans
+     * `$refus`. Les peines échues du votant et de la cible se referment ici,
+     * hors de la transaction du vote (voir `applyVote()`).
+     */
+    private static function cibleDuVote(
+        PDO $pdo,
+        int $voterId,
+        string $targetType,
+        int $targetId,
+        int $value,
+        ?string $reason,
+        ?string $reasonCode,
+        ?array &$refus
+    ): ?int {
         if (!in_array($targetType, ['post', 'member'], true) || !in_array($value, [-1, 1], true)) {
-            return ['ok' => false, 'message' => static::t('Paramètres de vote invalides.')];
+            $refus = ['ok' => false, 'message' => static::t('Paramètres de vote invalides.')];
+
+            return null;
         }
 
         [$can, $why] = self::canVote($pdo, $voterId);
         if (!$can) {
-            return ['ok' => false, 'message' => $why];
+            $refus = ['ok' => false, 'message' => $why];
+
+            return null;
         }
 
         // 🔑 Le MOTIF se valide AVANT que la cible soit résolue, et c'est une
@@ -532,26 +718,47 @@ class Moderate
         // oblige. L'énumération n'est pas rendue impossible, elle est rendue
         // VISIBLE et coûteuse, ce qui vaut mieux sur un terrain où scanner est le
         // jeu : un balayage muet n'apprend rien à personne d'autre qu'à son auteur.
-        $reason = $reason !== null ? trim($reason) : null;
         if ($value === -1 || ($reason !== null && $reason !== '')) {
             [$motifOk, $pourquoi] = self::validateReason($reason);
             if (!$motifOk) {
-                return ['ok' => false, 'message' => $pourquoi];
+                $refus = ['ok' => false, 'message' => $pourquoi];
+
+                return null;
             }
         }
         if ($reasonCode !== null && $reasonCode !== '' && !in_array($reasonCode, self::$reasonCodes, true)) {
-            return ['ok' => false, 'message' => static::t('Motif inconnu de cette plateforme.')];
+            $refus = ['ok' => false, 'message' => static::t('Motif inconnu de cette plateforme.')];
+
+            return null;
         }
 
         $author = self::resolveAuthor($pdo, $targetType, $targetId);
         if ($author === null) {
-            return ['ok' => false, 'message' => static::t('Cible introuvable.')];
+            $refus = ['ok' => false, 'message' => static::t('Cible introuvable.')];
+
+            return null;
         }
         if ($author === $voterId) {
-            return ['ok' => false, 'message' => static::t('Tu ne peux pas voter pour toi-même.')];
-        }
-        self::ensureRow($pdo, $author);
+            $refus = ['ok' => false, 'message' => static::t('Tu ne peux pas voter pour toi-même.')];
 
+            return null;
+        }
+        self::getReputation($pdo, $author);
+
+        return $author;
+    }
+
+    /** Le vote lui-même, sous la transaction qu'`applyVote()` tient. */
+    private static function inscrireVote(
+        PDO $pdo,
+        int $voterId,
+        string $targetType,
+        int $targetId,
+        int $author,
+        int $value,
+        ?string $reason,
+        ?string $reasonCode
+    ): array {
         // Double vote ?
         $stmt = $pdo->prepare('SELECT id FROM mod_votes WHERE voter_id = ? AND target_type = ? AND target_id = ?');
         $stmt->execute([$voterId, $targetType, $targetId]);
@@ -566,28 +773,22 @@ class Moderate
             );
             $stmt->execute([$voterId, $author, time() - self::config()->fenetreFarmingJours * 86400]);
             if ((int) $stmt->fetchColumn() >= self::config()->farmingUpvotesMax) {
-                $pdo->prepare(
-                    'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, effet, created_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)'
-                )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'upvote_farming', time()]);
+                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'upvote_farming');
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'upvote_farming',
                         'message' => static::t('Vote enregistré mais neutralisé : trop d\'upvotes répétés vers ce membre (anti-farming).')];
             }
         }
 
-        // R10-LAB-01 — Anti downvote-farming : limite les downvotes répétés d'un même votant vers le
-        // même auteur (membre + ses posts) sur la fenêtre longue. Casse le « slow-drip » d'un votant
-        // patient qui downvote le membre puis chacun de ses posts pour éroder sa réputation en douce.
+        // Anti downvote-farming : plafonne les downvotes d'un même votant vers le
+        // même auteur (membre et messages) sur la fenêtre longue. Sans lui, un
+        // votant patient érode une réputation message après message.
         if ($value === -1) {
             $stmt = $pdo->prepare(
                 'SELECT COUNT(*) FROM mod_votes WHERE voter_id = ? AND target_author = ? AND value = -1 AND blocked = 0 AND created_at >= ?'
             );
             $stmt->execute([$voterId, $author, time() - self::config()->fenetreFarmingJours * 86400]);
             if ((int) $stmt->fetchColumn() >= self::config()->farmingDownvotesMax) {
-                $pdo->prepare(
-                    'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, effet, created_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)'
-                )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'downvote_farming', time()]);
+                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'downvote_farming');
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'downvote_farming',
                         'message' => static::t('Vote enregistré mais neutralisé : trop de downvotes répétés vers ce membre (anti-farming).')];
             }
@@ -604,10 +805,7 @@ class Moderate
             $stmt->execute([$author, $voterId, time() - self::config()->fenetreFarmingJours * 86400]);
             $portee = $stmt->fetch();
             if (!(int) $portee['deja'] && (int) $portee['cibles'] >= self::config()->ciblesParVotantMax) {
-                $pdo->prepare(
-                    'INSERT INTO mod_votes (voter_id, target_type, target_id, target_author, value, reason, reason_code, blocked, blocked_reason, effet, created_at)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, 0, ?)'
-                )->execute([$voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'plafond_votant', time()]);
+                self::inscrireVoteNeutralise($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode, 'plafond_votant');
                 self::signaler($pdo, $voterId, 'votant_etendu');
                 return ['ok' => true, 'blocked' => true, 'blocked_reason' => 'plafond_votant',
                         'message' => sprintf(
@@ -630,9 +828,9 @@ class Moderate
         $pdo->prepare('UPDATE member_moderation SET reputation = ?, updated_at = ? WHERE account_id = ?')
             ->execute([$newRep, time(), $author]);
 
-        // V8-LAB-02 : détecter un pack AVANT d'appliquer les sanctions de seuil. Si le downvote
-        // courant complète un cluster coordonné, la réputation est restaurée d'abord → enforceThresholds
-        // ne pose alors NI ban NI strike injuste. Le vote ne regarde que sa cible, sauf le premier
+        // La meute se détecte AVANT les seuils : si ce downvote la complète, la
+        // réputation est restituée d'abord, et `enforceThresholds()` ne pose ni
+        // ban ni strike injuste. Le vote ne regarde que sa cible, sauf le premier
         // de sa tranche, qui balaie le site (`balayageDu()`) et lève ban et strikes a posteriori.
         if ($value === -1) {
             self::detectPackVoting($pdo, self::balayageDu($pdo) ? null : $author);
@@ -993,13 +1191,12 @@ class Moderate
                 'reste'     => $rep['banned_until'] - time(),
             ]);
             $pdo->prepare(
-                "UPDATE member_moderation
+                'UPDATE member_moderation
                     SET banned_until = 0, ban_debut = 0, ban_origine = NULL, ban_motif = NULL,
                         strikes = MAX(0, strikes - 1),
-                        needs_review  = CASE WHEN review_reason = 'ban_auto' THEN 0 ELSE needs_review END,
-                        review_reason = CASE WHEN review_reason = 'ban_auto' THEN NULL ELSE review_reason END
-                  WHERE account_id = ?"
-            )->execute([$author]);
+                        updated_at = ?, ' . self::leveSignalSql() . '
+                  WHERE account_id = ?'
+            )->execute([time(), 'ban_auto', 'ban_auto', $author]);
         }
         // La convalescence avait été ouverte par une chute qui n'aurait pas dû
         // avoir lieu : on la referme, plutôt que d'imposer une guérison au temps
@@ -1010,10 +1207,7 @@ class Moderate
             // Seul le signalement que la chute a provoqué s'en va avec elle. Une
             // salve à arbitrer et une récidive de meute portent chacune leur
             // propre motif d'exister : la restauration d'un score n'y répond pas.
-            $pdo->prepare(
-                "UPDATE member_moderation SET needs_review = 0, review_reason = NULL
-                  WHERE account_id = ? AND review_reason = 'reputation_zero'"
-            )->execute([$author]);
+            self::designaler($pdo, $author, 'reputation_zero');
         }
     }
 
@@ -1127,23 +1321,38 @@ class Moderate
         )->execute([$raison, time(), $accountId, ...$remplacables]);
     }
 
+    /**
+     * Lève un signal d'ÉTAT, et lui seul : l'état a cessé. Un signal de
+     * comportement posé entre-temps reste en place, l'arbitre doit encore le
+     * voir. Le pendant de `signaler()`. Le fragment prend la raison deux fois ;
+     * il s'inclut dans l'UPDATE qui clôt l'état, pour qu'une coupure ne laisse
+     * pas un signal sans son état.
+     */
+    private static function designaler(PDO $pdo, int $accountId, string $raison): void
+    {
+        $pdo->prepare('UPDATE member_moderation SET ' . self::leveSignalSql() . ' WHERE account_id = ?')
+            ->execute([$raison, $raison, $accountId]);
+    }
+
+    private static function leveSignalSql(): string
+    {
+        return 'needs_review = CASE WHEN review_reason = ? THEN 0 ELSE needs_review END,
+                        review_reason = CASE WHEN review_reason = ? THEN NULL ELSE review_reason END';
+    }
+
     private static function enforceThresholds(PDO $pdo, int $accountId, int $reputation): void
     {
         if ($reputation < self::config()->perteDroitDeVoteSous) {
             $pdo->prepare('UPDATE member_moderation SET voting_rights = 0 WHERE account_id = ?')->execute([$accountId]);
         }
-        // Une rep<=0 qui arrive ici vient d'une érosion ÉTALÉE : les salves rapides
-        // sont déjà annulées et la réputation restaurée par detectPackVoting avant
-        // ce point. R10-LAB-01 en concluait qu'aucun ban ne devait tomber seul, un
-        // tel ban étant une arme d'escalade à la portée de qui n'a aucun droit
-        // d'admin. Le signalement qui l'a remplacé ne protège toutefois personne
-        // tant que l'arbitre n'est pas devant.
-        //
-        // Le ban automatique revient donc, tenu par trois bornes que R10-LAB-01
-        // n'avait pas : la peine est graduée et FINIE, elle est visible dès
+        // Une réputation au plancher qui arrive ici vient d'une érosion étalée :
+        // toute meute a déjà été neutralisée et la réputation restituée par
+        // `detectPackVoting()`. Un ban prononcé sans humain est une arme
+        // d'escalade à la portée de qui n'a aucun droit d'admin ; un signalement
+        // seul ne protège personne tant que l'arbitre n'est pas devant. D'où un
+        // ban tenu par trois bornes : la peine est graduée et FINIE, visible dès
         // qu'elle tombe (`needs_review` reste levé), et ses deux bouts sont
-        // inscrits au journal. L'escalade reste possible ; elle est désormais
-        // datée, nominative et réversible d'un geste.
+        // inscrits au journal.
         if ($reputation <= self::config()->banA) {
             self::sanctionnerReputationZero($pdo, $accountId);
         }
