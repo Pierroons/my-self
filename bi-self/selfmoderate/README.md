@@ -144,7 +144,8 @@ it imports SelfRecover and SelfDataGuard.
 0.6.1 changes neither promise nor schema. A vote is written all or nothing: `applyVote()` holds
 its writes in one transaction — its own, or a savepoint inside the host's — and a cut no longer
 leaves a vote written without its effect. Reading a reputation costs one query when the state calls for neither recovery
-nor the closing of a penalty: a read no longer inserts "if absent", so it takes no write lock.
+nor the closing of a penalty: a read no longer inserts "if absent", so it takes no write lock; when the state calls for a write — missing row, recovery, expired penalty — it
+happens under the write lock, as a vote does, and a single reader writes it.
 
 0.6.0 fixes the defects an audit of 0.5.0 found. A pack weighs no more than a single
 member, and the engine no longer punishes on the strength of a link; it only lifts the

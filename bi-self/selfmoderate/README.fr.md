@@ -145,7 +145,8 @@ La 0.6.1 ne change ni promesse ni schéma. Un vote s'inscrit tout ou rien : `app
 ses écritures dans une transaction — la sienne, ou un point de reprise dans celle de l'hôte —, et une
 coupure ne laisse plus un vote inscrit sans son effet. Lire une réputation ne coûte qu'une requête quand l'état n'appelle ni
 convalescence ni clôture de peine : une lecture n'insère plus « si absent », donc ne prend plus de
-verrou d'écriture.
+verrou d'écriture ; quand l'état appelle une écriture — ligne absente, convalescence, peine échue —, elle se
+fait sous le verrou d'écriture, comme un vote, et un seul lecteur l'inscrit.
 
 La 0.6.0 corrige les défauts qu'un audit de la 0.5.0 a relevés. Une meute ne pèse plus
 que ce que pèse un membre seul, et le moteur ne punit plus sur la foi d'un lien ; elle
