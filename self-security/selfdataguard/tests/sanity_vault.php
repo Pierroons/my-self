@@ -13,6 +13,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require __DIR__ . '/blob_v2_fixture.php';
 
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\MissingEnvelopeException;
@@ -278,10 +279,12 @@ $legacyKey   = Primitives::deriveFromMemorizedLegacyV1(
     $legacyMem,
     $legacyRec->userSalt . UserVault::HMAC_CONTEXT_SUFFIX
 );
-$legacyWrap  = Primitives::encrypt(
+// A wrap under the pre-0.3.0 derivation, in an older format (v2, bare userId).
+// What is checked is the derivation; encrypt() only writes v3.
+$legacyWrap  = blobV2(
     $legacyBuild['unlocked']->getMasterKey(),
     $legacyKey,
-    aad: $legacyRec->userId
+    $legacyRec->userId
 );
 $legacyRec = $legacyRec->withWrapRecov($legacyWrap, new DateTimeImmutable());
 try {
@@ -304,7 +307,10 @@ if (!function_exists('openssl_encrypt')) {
     $aesKey   = Primitives::deriveFromPassword('correct horse battery staple', $aesRec->userSalt);
     $aesNonce = random_bytes(EncryptedBlob::NONCE_LEN_V1);
     $aesCt    = openssl_encrypt($aesMaster, 'aes-256-gcm', $aesKey, OPENSSL_RAW_DATA, $aesNonce, $aesTag, $aesRec->userId, 16);
-    $aesRec   = $aesRec->withWrapPwd(new EncryptedBlob(ciphertext: $aesCt . $aesTag, nonce: $aesNonce), new DateTimeImmutable());
+    $aesRec   = $aesRec->withWrapPwd(
+        new EncryptedBlob(ciphertext: $aesCt . $aesTag, nonce: $aesNonce, format: EncryptedBlob::FORMAT_V1),
+        new DateTimeImmutable()
+    );
     try {
         $reopened = $vault->unlockWithPassword($aesRec, 'correct horse battery staple');
         hash_equals($aesMaster, $reopened->getMasterKey())

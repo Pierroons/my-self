@@ -6,15 +6,17 @@ namespace Pierroons\SelfDataGuard\Escrow;
 
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Crypto\Aad;
 
 /**
  * Encrypt/decrypt escrow fields with the escrow_key (mirror of FieldCrypter,
  * keyed by the escrow sub-key instead of the vault master key).
  *
- * AAD = "userId|escrow|fieldName" — same anti-swap guarantees as the main
- * vault (cross-field and cross-user immunity), plus the "|escrow|" marker keeps
- * escrow ciphertexts non-interchangeable with private-zone ciphertexts even for
- * the same field name.
+ * AAD = aadFor(userId, fieldName), in its own "escrow-field" domain (a v2 blob
+ * is read under the flat "userId|escrow|fieldName") — same anti-swap guarantees
+ * as the main vault (cross-field and cross-user immunity). Escrow and private
+ * ciphertexts are sealed under different keys, so they do not open one another
+ * even for the same field name.
  */
 final class EscrowFieldCrypter
 {
@@ -27,7 +29,7 @@ final class EscrowFieldCrypter
         $blob = Primitives::encrypt(
             plaintext: $plaintext,
             key: $escrow->getEscrowKey(),
-            aad: self::buildAad($escrow->userId, $fieldName)
+            aad: self::aadFor($escrow->userId, $fieldName)
         );
         return $blob->toBase64();
     }
@@ -35,10 +37,11 @@ final class EscrowFieldCrypter
     public static function decrypt(UnlockedEscrow $escrow, string $fieldName, string $serialized): string
     {
         $blob = EncryptedBlob::fromBase64($serialized);
-        return Primitives::decrypt(
+        return Primitives::decryptAcrossFormats(
             $blob,
             $escrow->getEscrowKey(),
-            aad: self::buildAad($escrow->userId, $fieldName)
+            self::aadFor($escrow->userId, $fieldName),
+            self::legacyAad($escrow->userId, $fieldName)
         );
     }
 
@@ -68,7 +71,17 @@ final class EscrowFieldCrypter
         return $out;
     }
 
-    private static function buildAad(string $userId, string $fieldName): string
+    /**
+     * What an escrow field of this account is bound to, since 0.7.0. Public for
+     * the reason FieldCrypter::aadFor() gives.
+     */
+    public static function aadFor(string $userId, string $fieldName): Aad
+    {
+        return Aad::of('escrow-field', $userId, $fieldName);
+    }
+
+    /** The flat AAD used before 0.7.0 — for reading those blobs back. */
+    private static function legacyAad(string $userId, string $fieldName): string
     {
         return $userId . '|escrow|' . $fieldName;
     }

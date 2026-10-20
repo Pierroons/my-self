@@ -7,15 +7,23 @@ namespace Pierroons\SelfDataGuard\Crypto;
 use InvalidArgumentException;
 
 /**
- * Result of an authenticated encryption, in one of two formats:
+ * Result of an authenticated encryption, in one of three formats:
  *
- *   v2  XChaCha20-Poly1305 (IETF), 24-byte nonce. Every write since 0.4.0.
+ *   v3  XChaCha20-Poly1305 (IETF), 24-byte nonce. Every write since 0.7.0.
+ *       Stored as "SDG3." . base64(nonce || ciphertext_with_tag).
+ *       Its AAD is an Aad value — always declared, "bound to nothing" included.
+ *   v2  The same cipher, written from 0.4.0 to 0.6.x, under a flat string AAD
+ *       that could be absent without anything saying so. Read only.
  *       Stored as "SDG2." . base64(nonce || ciphertext_with_tag).
- *   v1  AES-256-GCM, 12-byte nonce. Written up to 0.3.0, now read only.
+ *   v1  AES-256-GCM, 12-byte nonce. Written up to 0.3.0. Read only.
  *       Stored as base64(nonce || ciphertext_with_tag), with no marker.
  *
- * In memory, the nonce length tells the two apart. In storage, "." is not a
- * base64 character, so no v1 string can begin with a v2 prefix.
+ * v2 and v3 share a cipher and a nonce length, so the format is a field here,
+ * not something to deduce. In storage the prefix tells them apart, and "." is
+ * not a base64 character, so no v1 string can begin with one.
+ *
+ * Changing the prefix of a stored blob gains nothing: v3 authenticates a domain
+ * tag its AAD carries, so a v3 read as v2 — or the reverse — fails the tag.
  *
  * The ciphertext field includes the 16-byte authentication tag appended at the
  * end (libsodium convention for AEAD).
@@ -25,19 +33,32 @@ use InvalidArgumentException;
 final class EncryptedBlob
 {
     public const PREFIX_V2    = 'SDG2.';
+    public const PREFIX_V3    = 'SDG3.';
     public const NONCE_LEN_V2 = 24;
     public const NONCE_LEN_V1 = 12;
     public const TAG_LEN      = 16;
 
+    public const FORMAT_V1 = 1;
+    public const FORMAT_V2 = 2;
+    public const FORMAT_V3 = 3;
+
+    /**
+     * @param int $format one of FORMAT_V1, FORMAT_V2, FORMAT_V3 — required, so
+     *                    that no caller writes an older format by omission
+     */
     public function __construct(
         public readonly string $ciphertext,
-        public readonly string $nonce
+        public readonly string $nonce,
+        public readonly int $format
     ) {
+        if (!in_array($format, [self::FORMAT_V1, self::FORMAT_V2, self::FORMAT_V3], true)) {
+            throw new InvalidArgumentException("Unknown blob format: {$format}");
+        }
         $nonceLen = strlen($nonce);
-        if ($nonceLen !== self::NONCE_LEN_V2 && $nonceLen !== self::NONCE_LEN_V1) {
+        $expected = $format === self::FORMAT_V1 ? self::NONCE_LEN_V1 : self::NONCE_LEN_V2;
+        if ($nonceLen !== $expected) {
             throw new InvalidArgumentException(
-                'Nonce must be ' . self::NONCE_LEN_V2 . ' bytes (XChaCha20-Poly1305) or '
-                . self::NONCE_LEN_V1 . ' bytes (legacy AES-256-GCM); got ' . $nonceLen
+                "Format v{$format} takes a {$expected}-byte nonce; got {$nonceLen}"
             );
         }
         if (strlen($ciphertext) < self::TAG_LEN) {
@@ -51,7 +72,16 @@ final class EncryptedBlob
     /** True for a v1 blob: AES-256-GCM, written before 0.4.0. */
     public function isLegacy(): bool
     {
-        return strlen($this->nonce) === self::NONCE_LEN_V1;
+        return $this->format === self::FORMAT_V1;
+    }
+
+    /**
+     * True for a blob whose AAD is an Aad value, so whose binding — or its
+     * declared absence — is part of what the tag authenticates.
+     */
+    public function bindsItsContext(): bool
+    {
+        return $this->format === self::FORMAT_V3;
     }
 
     /**
@@ -62,19 +92,26 @@ final class EncryptedBlob
     {
         $encoded = base64_encode($this->nonce . $this->ciphertext);
 
-        return $this->isLegacy() ? $encoded : self::PREFIX_V2 . $encoded;
+        return match ($this->format) {
+            self::FORMAT_V1 => $encoded,
+            self::FORMAT_V2 => self::PREFIX_V2 . $encoded,
+            self::FORMAT_V3 => self::PREFIX_V3 . $encoded,
+        };
     }
 
     /**
-     * Deserialize a string produced by toBase64(), of either format.
+     * Deserialize a string produced by toBase64(), of any format.
      *
      * @throws InvalidArgumentException on malformed input, or on a "SDG<n>." prefix
      *                                  this version does not know
      */
     public static function fromBase64(string $encoded): self
     {
+        if (str_starts_with($encoded, self::PREFIX_V3)) {
+            return self::split(substr($encoded, strlen(self::PREFIX_V3)), self::FORMAT_V3);
+        }
         if (str_starts_with($encoded, self::PREFIX_V2)) {
-            return self::split(substr($encoded, strlen(self::PREFIX_V2)), self::NONCE_LEN_V2);
+            return self::split(substr($encoded, strlen(self::PREFIX_V2)), self::FORMAT_V2);
         }
         if (preg_match('/^SDG(\d+)\./', $encoded, $m) === 1) {
             throw new InvalidArgumentException(
@@ -83,11 +120,12 @@ final class EncryptedBlob
             );
         }
 
-        return self::split($encoded, self::NONCE_LEN_V1);
+        return self::split($encoded, self::FORMAT_V1);
     }
 
-    private static function split(string $b64, int $nonceLen): self
+    private static function split(string $b64, int $format): self
     {
+        $nonceLen = $format === self::FORMAT_V1 ? self::NONCE_LEN_V1 : self::NONCE_LEN_V2;
         $raw = base64_decode($b64, true);
         if ($raw === false) {
             throw new InvalidArgumentException('Invalid base64 input');
@@ -101,7 +139,8 @@ final class EncryptedBlob
 
         return new self(
             ciphertext: substr($raw, $nonceLen),
-            nonce: substr($raw, 0, $nonceLen)
+            nonce: substr($raw, 0, $nonceLen),
+            format: $format
         );
     }
 }

@@ -10,6 +10,7 @@ use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
 use RuntimeException;
+use Pierroons\SelfDataGuard\Crypto\Aad;
 
 /**
  * Stateless service implementing the escrow (recovery-escrow) envelope.
@@ -19,7 +20,7 @@ use RuntimeException;
  *
  *     escrow_key   ←  random(256 bits)
  *
- *     wrap_user    ←  XChaCha20-Poly1305(escrow_key, data_master_key) (AAD userId|escrow)
+ *     wrap_user    ←  XChaCha20-Poly1305(escrow_key, data_master_key) (AAD wrapAad(userId))
  *     wrap_admin   ←  crypto_box_seal(tag ‖ len(userId) ‖ userId ‖ escrow_key, admin_public_key)
  *
  * A sealed box has no AAD: the account goes inside it, and unlockAsAdmin()
@@ -38,13 +39,23 @@ use RuntimeException;
 final class EscrowVault
 {
     /**
-     * AAD binding the user-wrap to its owner and purpose. The user-wrap is sealed
-     * under the data_master_key, like private fields, whose AAD is "userId|name":
-     * a field named after this tag would share its context, so FieldCrypter
-     * refuses the name.
+     * The flat AAD of a v2 user-wrap: "<userId>" . WRAP_AAD_SUFFIX. A v2 private
+     * field carries "<userId>|<name>" under the same data_master_key, so a field
+     * named after this tag shares its context — FieldCrypter refuses the name.
      */
     public const WRAP_AAD_TAG = 'escrow';
+
     public const WRAP_AAD_SUFFIX = '|' . self::WRAP_AAD_TAG;
+
+    /**
+     * Binding of the escrow key's user-wrap. Its own domain segment keeps it
+     * apart from any field's binding, whatever the field is named. A v2
+     * user-wrap is still read under the flat AAD above.
+     */
+    public static function wrapAad(string $userId): Aad
+    {
+        return Aad::of('escrow-wrap', $userId);
+    }
 
     /** Prefixes the plaintext of a wrap_admin that names its account. */
     private const ADMIN_WRAP_TAG = "selfdataguard/escrow-admin/v1\0";
@@ -70,7 +81,7 @@ final class EscrowVault
         $wrapUser  = Primitives::encrypt(
             $escrowKey,
             $session->getMasterKey(),
-            aad: $session->userId . self::WRAP_AAD_SUFFIX
+            aad: self::wrapAad($session->userId)
         );
         $wrapAdmin = self::sealForAdmin($session->userId, $escrowKey, $adminPublicKey);
 
@@ -101,10 +112,11 @@ final class EscrowVault
         }
 
         try {
-            $escrowKey = Primitives::decrypt(
+            $escrowKey = Primitives::decryptAcrossFormats(
                 $record->wrapUser,
                 $session->getMasterKey(),
-                aad: $record->userId . self::WRAP_AAD_SUFFIX
+                self::wrapAad($record->userId),
+                $record->userId . self::WRAP_AAD_SUFFIX
             );
         } catch (LegacyCipherUnavailableException $e) {
             // A RuntimeException too: without this, the next catch hides a machine limit.
