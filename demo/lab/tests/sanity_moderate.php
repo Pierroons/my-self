@@ -7,17 +7,15 @@
  * neutralisé, la mesure refaite, puis le code restauré. Un contrôle qu'on n'a
  * jamais fait échouer ne se distingue pas d'un contrôle qui ne mesure rien.
  *
- * 🔑 Le contrôle n° 6 est le plus important, et il ne valide rien : il CONSTATE
- * que trois membres sans le moindre lien entre eux — aucun message privé
- * échangé, aucun fil en commun — sont classés pack coordonné du seul fait
- * qu'ils ont voté dans la même minute. Le README promet un recoupement des
- * votants liés ; il n'existe pas ici, la détection est purement temporelle.
+ * 🔑 Les contrôles 6 et 9 se lisent ensemble : même nombre de votes, même
+ * minute, seul le lien entre les votants change. Trois votants sans aucun lien
+ * forment une salve — signalée à l'arbitre, jamais annulée — et deux votants
+ * qui se sont écrit forment une meute, ramenée au poids d'un membre seul. Si
+ * l'un des deux bascule, c'est la frontière entre les deux détections qui a bougé.
  *
- * Ce contrôle est donc écrit à l'envers des autres : il passe au vert sur le
- * défaut. Le jour où le recoupement sera implémenté, il DOIT basculer — trois
- * votants sans lien ne devront plus déclencher de pack — et c'est en le voyant
- * rougir qu'on saura que la réparation mesure quelque chose. Le réparer sans
- * toucher au moteur reviendrait à effacer la seule trace écrite du trou.
+ * Le banc tourne sans journal branché jusqu'au contrôle 26 : à réputation
+ * nulle, le moteur signale et ne bannit pas. Les contrôles du ban automatique
+ * branchent le leur, et le retirent.
  *
  * Usage : php tests/sanity_moderate.php
  */
@@ -206,10 +204,11 @@ $rep['reputation'] === Moderate::config()->perteDroitDeVoteSous - 1 && !$rep['vo
     ? ok('sous ' . Moderate::config()->perteDroitDeVoteSous . ', le droit de vote est retiré')
     : nok('droit de vote conservé sous le seuil : ' . json_encode($rep));
 
-// ── 5. R10 — le harcèlement d'un seul votant est neutralisé ─────────────────
-// Quatre downvotes du même membre vers le même auteur, sur quatre messages
-// différents pour contourner la garde du double vote. Le quatrième dépasse
-// FARMING_MAX_DOWNVOTES et doit être enregistré bloqué, sans effet sur le score.
+// ── 5. Le harcèlement d'un seul votant est neutralisé ───────────────────────
+// Des downvotes du même membre vers le même auteur, sur autant de messages
+// différents pour contourner la garde du double vote. Celui qui dépasse le
+// plafond `farmingDownvotesMax` de la config est enregistré bloqué, sans effet
+// sur le score.
 $harcele = membre($pdo, 'harcele');
 $harceleur = membre($pdo, 'harceleur');
 poserReputation($pdo, $harcele, 20);
@@ -224,10 +223,10 @@ for ($i = 1; $i <= Moderate::config()->farmingDownvotesMax + 1; $i++) {
     : nok('le slow-drip est passé : ' . json_encode($dernier) . ' rep=' . reputation($pdo, $harcele));
 
 // ── 6. 🔑 Trois votants sans lien ne forment PAS une meute ──────────────────
-// Le contrôle historique de ce dépôt : il constatait qu'ils en formaient une, et
-// que leurs votes étaient annulés. C'était le défaut central du moteur — plus un
-// message choquait de monde à la fois, mieux son auteur était protégé.
-// Désormais leurs votes tiennent, et la cible part en revue humaine.
+// Trois membres qui ne se sont jamais écrit votent dans la même minute : une
+// salve, pas une meute. Leurs votes tiennent, et la cible part en revue humaine.
+// Les annuler protégerait un message d'autant mieux qu'il choque plus de monde
+// à la fois : la détection travaillerait pour l'abuseur.
 $fache = membre($pdo, 'fache');
 poserReputation($pdo, $fache, 20);
 $inconnus = [membre($pdo, 'inconnu-a'), membre($pdo, 'inconnu-b'), membre($pdo, 'inconnu-c')];
@@ -328,9 +327,9 @@ $etat7 = Moderate::getReputation($pdo, $isole);
     ? ok('un downvote hors fenêtre ne complète pas une salve : aucun signalement')
     : nok('salve signalée à tort avec un vote hors fenêtre : ' . json_encode($etat7));
 
-// ── 8. R10-LAB-01 — à 0, revue humaine, aucun bannissement automatique ──────
-// L'écart avec le whitepaper est délibéré et commenté dans le moteur : un
-// bannissement automatique serait un vecteur d'escalade sans droits admin.
+// ── 8. Sans journal branché : à 0, revue humaine, aucun bannissement ────────
+// Le ban automatique ne s'arme qu'avec un journal (`setJournal()`). Ici aucun
+// n'est branché : la réputation nulle lève un signalement, et l'arbitre tranche.
 $zero = membre($pdo, 'a-zero');
 $p8   = message($pdo, $zero, 'fil-zero');
 poserReputation($pdo, $zero, 1);
@@ -1521,6 +1520,156 @@ count($phrases[1]) > 0 && $sansAnglais === [] && $horsT[1] === [] && $guillemets
     : nok('une phrase du moteur sort en français sur la page anglaise : ' . json_encode([
         'sans_anglais' => $sansAnglais, 'hors_traduction' => $horsT[1], 'guillemets_doubles' => $guillemetsDoubles,
     ], JSON_UNESCAPED_UNICODE));
+
+// ── 45. Un vote s'inscrit tout ou rien ──────────────────────────────────────
+// Le journal refuse d'écrire le début du ban que ce downvote déclenche. Le
+// refus remonte, comme le contrat du journal l'exige ; et rien de ce que le
+// vote avait déjà écrit — le vote lui-même, le point retiré — ne doit rester :
+// une annulation ultérieure rendrait sinon un point jamais pris.
+$journalAvant45 = Moderate::journal();
+Moderate::setJournal(new class implements \Pierroons\SelfModerate\Journal {
+    public function inscrire(array $acte): void
+    {
+        if ($acte['acte'] === 'ban_debut') {
+            throw new RuntimeException('journal fermé');
+        }
+    }
+});
+$fragile45 = membre($pdo, 'fragile-45');
+$post45    = message($pdo, $fragile45, 'fil-45');
+poserReputation($pdo, $fragile45, 1);
+$votant45  = membre($pdo, 'votant-45');
+$remonte45 = false;
+try {
+    Moderate::applyVote($pdo, $votant45, 'post', $post45, -1, motif(), 'agressif');
+} catch (RuntimeException $e) {
+    $remonte45 = $e->getMessage() === 'journal fermé';
+}
+Moderate::setJournal($journalAvant45);
+$votes45 = (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE voter_id = $votant45")->fetchColumn();
+$rep45   = (int) $pdo->query("SELECT reputation FROM member_moderation WHERE account_id = $fragile45")->fetchColumn();
+$remonte45 && $votes45 === 0 && $rep45 === 1 && !$pdo->inTransaction()
+    ? ok('un journal qui refuse le début du ban fait remonter le refus, et le vote n\'a rien laissé : ni vote, ni point retiré')
+    : nok('le vote a laissé une trace malgré le refus du journal : ' . json_encode([
+        'remonte' => $remonte45, 'votes' => $votes45, 'reputation' => $rep45, 'transaction_ouverte' => $pdo->inTransaction(),
+    ]));
+
+// ── 46. Un vote ne décide pas pour la transaction de l'hôte ─────────────────
+// L'hôte ouvre la sienne, vote, puis l'annule : rien ne doit rester, et la
+// transaction doit encore être à lui après le vote. Un moteur qui validerait ce
+// qu'il n'a pas ouvert rendrait durable un travail de l'hôte à moitié fait.
+$hote46  = membre($pdo, 'hote-46');
+$cible46 = membre($pdo, 'cible-46');
+$post46  = message($pdo, $cible46, 'fil-46');
+$pdo->beginTransaction();
+$r46 = Moderate::applyVote($pdo, $hote46, 'post', $post46, -1, motif(), 'agressif');
+$encoreOuverte46 = $pdo->inTransaction();
+if ($encoreOuverte46) {
+    $pdo->rollBack();
+}
+$votes46 = (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE voter_id = $hote46")->fetchColumn();
+($r46['ok'] ?? false) && $encoreOuverte46 && $votes46 === 0 && reputation($pdo, $cible46) === 20
+    ? ok('dans la transaction de l\'hôte, le vote laisse l\'hôte décider : annulée par lui, elle n\'a rien écrit')
+    : nok('le vote a validé ou perdu la transaction de l\'hôte : ' . json_encode([
+        'ok' => $r46['ok'] ?? null, 'encore_ouverte' => $encoreOuverte46, 'votes' => $votes46, 'reputation' => reputation($pdo, $cible46),
+    ]));
+
+// ── 47. Lire un compte calme coûte une requête ──────────────────────────────
+// Ni convalescence ni peine à refermer : la lecture n'a rien à écrire, et ne
+// doit rien tenter. Une insertion « si absent » à chaque lecture prendrait un
+// verrou d'écriture par message affiché sur une page de fil.
+$calme47 = membre($pdo, 'calme-47');
+Moderate::ensureRow($pdo, $calme47);
+$compteur->requetes = 0;
+$lu47 = Moderate::getReputation($compteur, $calme47);
+$cout47 = $compteur->requetes;
+$cout47 === 1 && $lu47['reputation'] === 20 && !$lu47['convalescent'] && !$lu47['banned']
+    ? ok('lire la réputation d\'un compte calme coûte une requête')
+    : nok("lire un compte calme coûte $cout47 requêtes au lieu d'une : " . json_encode($lu47));
+
+// ── 48. Dans la transaction de l'hôte, un vote qui échoue ne laisse rien ────
+// L'hôte ouvre la sienne, écrit son propre travail, vote ; le vote échoue (le
+// journal refuse le début du ban), l'hôte attrape et valide son travail. Son
+// travail reste, le vote partiel non : ni vote, ni point retiré, ni ban. Sans
+// point de reprise, la cible resterait à zéro, sans ban ni trace.
+$journalAvant48 = Moderate::journal();
+Moderate::setJournal(new class implements \Pierroons\SelfModerate\Journal {
+    public function inscrire(array $acte): void
+    {
+        if ($acte['acte'] === 'ban_debut') {
+            throw new RuntimeException('journal fermé');
+        }
+    }
+});
+$hote48  = membre($pdo, 'hote-48');
+$cible48 = membre($pdo, 'cible-48');
+$post48  = message($pdo, $cible48, 'fil-48');
+poserReputation($pdo, $cible48, 1);
+$pdo->beginTransaction();
+$travail48 = message($pdo, $hote48, 'travail-48');
+$remonte48 = false;
+try {
+    Moderate::applyVote($pdo, $hote48, 'post', $post48, -1, motif(), 'agressif');
+} catch (RuntimeException $e) {
+    $remonte48 = $e->getMessage() === 'journal fermé';
+}
+$encore48 = $pdo->inTransaction();
+if ($encore48) {
+    $pdo->commit();
+}
+Moderate::setJournal($journalAvant48);
+$votes48   = (int) $pdo->query("SELECT COUNT(*) FROM mod_votes WHERE voter_id = $hote48")->fetchColumn();
+$rep48     = (int) $pdo->query("SELECT reputation FROM member_moderation WHERE account_id = $cible48")->fetchColumn();
+$travail48 = (int) $pdo->query("SELECT COUNT(*) FROM posts WHERE id = $travail48")->fetchColumn();
+$remonte48 && $encore48 && $travail48 === 1 && $votes48 === 0 && $rep48 === 1
+    ? ok('dans la transaction de l\'hôte, un vote qui échoue se défait seul : le travail de l\'hôte reste, le vote partiel non')
+    : nok('le vote partiel a survécu dans la transaction de l\'hôte : ' . json_encode([
+        'remonte' => $remonte48, 'encore_ouverte' => $encore48, 'travail' => $travail48, 'votes' => $votes48, 'reputation' => $rep48,
+    ]));
+
+// ── 49. Un lecteur qui ne peut pas prendre le verrou n'écrit rien au journal ─
+// Une peine échue se referme sous le verrou d'écriture, pris d'emblée, et
+// l'état se relit sous lui : un lecteur qui attend puis échoue n'a rien inscrit.
+// Sans cela, chaque lecteur écrit `ban_fin`, puis tous sauf un échouent en
+// voulant promouvoir leur verrou de lecture — N fins pour une peine, et la page
+// qui lit le compte tombe. Deux connexions : A tient le verrou d'écriture, B lit.
+$journalAvant49 = Moderate::journal();
+$journal49 = new class implements \Pierroons\SelfModerate\Journal {
+    public array $actes = [];
+    public function inscrire(array $acte): void
+    {
+        $this->actes[] = $acte['acte'];
+    }
+};
+Moderate::setJournal($journal49);
+$echu49 = membre($pdo, 'echu-49');
+Moderate::ensureRow($pdo, $echu49);
+$pdo->prepare("UPDATE member_moderation
+                  SET reputation = 0, strikes = 1, voting_rights = 0, banned_until = ?, ban_debut = ?,
+                      ban_origine = 'auto', ban_motif = 'reputation_zero', needs_review = 1, review_reason = 'ban_auto'
+                WHERE account_id = ?")->execute([time() - 10, time() - 130, $echu49]);
+$a49 = new PDO('sqlite:' . getenv('LAB_DB_PATH'));
+$a49->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$b49 = new PDO('sqlite:' . getenv('LAB_DB_PATH'), null, null, [PDO::ATTR_TIMEOUT => 1]);
+$b49->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+$b49->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$a49->exec('BEGIN IMMEDIATE');
+$a49->exec('UPDATE member_moderation SET updated_at = updated_at WHERE account_id = ' . $echu49);
+$refuse49 = false;
+try {
+    Moderate::getReputation($b49, $echu49);
+} catch (PDOException $e) {
+    $refuse49 = true;
+}
+$pendantLeVerrou49 = count($journal49->actes);
+$a49->exec('ROLLBACK');
+$apres49 = Moderate::getReputation($b49, $echu49);
+Moderate::setJournal($journalAvant49);
+$refuse49 && $pendantLeVerrou49 === 0 && $journal49->actes === ['ban_fin'] && !$apres49['banned'] && $apres49['reputation'] === 20
+    ? ok('un lecteur qui ne peut pas prendre le verrou n\'écrit rien au journal ; le verrou rendu, la peine se referme une fois')
+    : nok('une fin de peine s\'inscrit avant que le verrou soit pris : ' . json_encode([
+        'refuse' => $refuse49, 'pendant_le_verrou' => $pendantLeVerrou49, 'actes' => $journal49->actes, 'apres' => $apres49,
+    ]));
 
 $total = $reussites + $echecs;
 echo "\n" . ($echecs === 0

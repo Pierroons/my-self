@@ -507,6 +507,38 @@ ayant renoncé aux contrôles qui touchent au système.
 
 ---
 
+## [SelfModerate v0.6.1] — 19 octobre 2026
+
+### Un vote s'inscrit tout ou rien, et une lecture ne paie que ce que l'état demande — 19 octobre 2026
+
+Version de correctif : aucune promesse ne change, aucun schéma ne bouge.
+
+- **Un vote s'inscrit tout ou rien.** `applyVote()` tient ses écritures dans une transaction, ouverte par
+  `BEGIN IMMEDIATE` quand l'hôte n'en a pas ; dans la transaction de l'hôte, derrière un point de reprise,
+  pour qu'un vote refusé n'y laisse rien et que l'hôte reste maître de la sienne. Ce qui refuse sans rien
+  écrire — paramètres, droit de vote, motif, cible — se décide avant le verrou, et une peine échue du votant
+  ou de la cible se referme avant que la transaction s'ouvre : son entrée au journal n'est pas défaite avec
+  un vote qui échoue. Une coupure entre le vote inscrit et son effet laissait un vote dont une annulation
+  ultérieure aurait rendu un point jamais pris. Les écritures d'un downvote ne font plus qu'une transaction :
+  3,8 ms → 2,1 ms par downvote en régime établi, chaque compte ayant déjà sa ligne, mesurés le 19 octobre
+  sur disque réel. Ferme un défaut relevé par l'audit de la 0.5.0 : le vote n'était pas transactionnel.
+- **Lire une réputation ne coûte qu'une requête** quand l'état n'appelle ni convalescence ni clôture de
+  peine. Une lecture insérait « si absent » avant de lire : un verrou d'écriture par appel, trois appels par
+  vote, un par message affiché sur une page de fil. En régime établi, chaque compte ayant sa ligne de
+  modération, un downvote passe de 23 à 14 requêtes (harnais sur disque réel) ; la première lecture d'un compte
+  sans ligne en coûte trois de plus, parce qu'elle prend le verrou d'écriture. Quand l'état appelle une écriture — ligne
+  absente, convalescence, peine échue —, elle se fait sous le verrou d'écriture, état relu sous lui : une peine
+  échue lue par plusieurs à la fois ne s'inscrit plus qu'une fois au journal, et aucun lecteur n'échoue pour
+  un autre.
+- **L'en-tête du banc ne dit plus que la détection est purement temporelle**, ce qui était faux depuis le
+  21 août et que l'audit de la 0.5.0 avait relevé. Les étiquettes d'anciens audits sortent des commentaires
+  du moteur et de la route de balayage du lab ; un helper par vote neutralisé et par signal d'état levé.
+
+Banc : 80 contrôles, trois neufs — le vote tout ou rien, la transaction de l'hôte respectée, la lecture
+d'un compte calme en une requête —, chacun vu rougir.
+
+---
+
 ## [SelfModerate v0.6.0] — 16 octobre 2026
 
 ### Une meute ne pèse pas plus qu'un membre seul, et le moteur ne punit plus sur la foi d'un lien — 16 octobre 2026
