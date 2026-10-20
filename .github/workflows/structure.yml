@@ -1892,8 +1892,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 81/81 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 81 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 82/82 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 82 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2224,8 +2224,8 @@ jobs:
           p = sys.argv[1]
           s = open(p, encoding='utf-8').read()
           avant, apres = {
-              'lecture': ("        if ($jusqua > 0 && $jusqua <= time()) {\n            self::cloreBanExpire($pdo, $accountId, contenir: true);\n",
-                          "        if ($jusqua > 0 && $jusqua <= time()) {\n            self::cloreBanExpire($pdo, $accountId);\n"),
+              'lecture': ("                if ($jusqua > 0 && $jusqua <= time()) {\n                    self::cloreBanExpire($pdo, $accountId, contenir: true);\n",
+                          "                if ($jusqua > 0 && $jusqua <= time()) {\n                    self::cloreBanExpire($pdo, $accountId);\n"),
               'profil':  ("        if ($etat['banned']) {\n", "        if (false) {\n"),
           }[os.environ['CAS']]
           assert s.count(avant) == 1, 'plantation impossible'
