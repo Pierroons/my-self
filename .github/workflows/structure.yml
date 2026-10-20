@@ -1658,13 +1658,17 @@ jobs:
             echo "✓ $(basename "$4") rougit sur « $5 »"
           }
 
+          # 🔑 La ligne rouge porte son `✗` : un banc imprime le libellé d'un cas
+          # qu'il le passe (`✓`) ou l'échoue, et le libellé nu se lit aussi dans un
+          # rouge venu d'un autre cas.
+
           # 1. La liste blanche débranchée : tout ce que la bibliothèque met dans un
           #    refus ressort, y compris une clé d'état de compte.
           canari demo/lab/lib/reponse.php \
             "    if ((\$r['ok'] ?? false) === true) {" \
             '    if (true) { // canari' \
             demo/lab/tests/sanity_refus_publiable.php \
-            'signalement'
+            '✗ « signalement » ne sort pas'
 
           # 2. L'abandon d'un dossier L3 se comporte comme un refus : il charge le
           #    compteur de gel, et le titulaire perd son recours.
@@ -1679,7 +1683,7 @@ jobs:
             'if ($fails >= self::LOGIN_MAX_FAILS || $failsIp >= self::LOGIN_MAX_FAILS_PER_IP) {' \
             'if ($failsIp >= self::LOGIN_MAX_FAILS_PER_IP) { // canari' \
             demo/lab/tests/sanity_frein_login.php \
-            'au seuil, même le bon mot de passe est refusé'
+            '✗ au seuil, même le bon mot de passe est refusé'
 
           # 4. La page cesse d'honorer le type « month » : le champ redevient libre,
           #    le titulaire écrit « 03/2024 » et diverge en disant vrai.
@@ -1687,7 +1691,7 @@ jobs:
             "q.type==='month' ? ' type=" \
             "false ? ' type=" \
             demo/lab/tests/sanity_questions_l3.php \
-            "aucun type déclaré n'est ignoré par la page"
+            "✗ aucun type déclaré n'est ignoré par la page"
 
           # 5. La liste blanche de la traduction reperd les champs d'écran courts :
           #    six chaînes du simulateur d'attaques repassent en français en silence.
@@ -1695,7 +1699,7 @@ jobs:
             "    'verdict', 'defense', 'hint', 'resume', 'l'," \
             "    // canari : liste blanche amputée" \
             demo/lab/tests/sanity_tc_deep.php \
-            "aucun champ porteur de texte n'est hors de la liste"
+            "✗ aucun champ porteur de texte n'est hors de la liste"
 
           # 6. Le signal du gel ne remonte plus au relais : l'arbitre a perdu le
           #    gel automatique sans recevoir ce qui le remplace, et rien ne le dit.
