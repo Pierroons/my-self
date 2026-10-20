@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Vault\UserVault;
+use Pierroons\SelfDataGuard\Crypto\Aad;
 
 /**
  * Admin recovery keypair for the escrow compartment (whitepaper §4.2, revised).
@@ -74,7 +75,7 @@ final class AdminKey
         $mem     = Primitives::ARGON2_MEMLIMIT;
         $salt    = Primitives::randomBytes(Primitives::SALT_LEN);
         $sealKey = Primitives::deriveFromPassword($passphrase, $salt, $ops, $mem);
-        $blob    = Primitives::encrypt($secretKey, $sealKey, aad: self::SEAL_AAD);
+        $blob    = Primitives::encrypt($secretKey, $sealKey, aad: Aad::of(self::SEAL_AAD));
 
         Primitives::zeroize($sealKey);
         sodium_memzero($secretKey);
@@ -109,7 +110,12 @@ final class AdminKey
             throw new InvalidArgumentException('Malformed sealed secret (Argon2id profile out of range)', previous: $e);
         }
         try {
-            return Primitives::decrypt(EncryptedBlob::fromBase64($blobB64), $sealKey, aad: self::SEAL_AAD);
+            return Primitives::decryptAcrossFormats(
+                EncryptedBlob::fromBase64($blobB64),
+                $sealKey,
+                Aad::of(self::SEAL_AAD),
+                self::SEAL_AAD
+            );
         } finally {
             Primitives::zeroize($sealKey);
         }

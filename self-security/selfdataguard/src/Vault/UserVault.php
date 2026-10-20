@@ -10,6 +10,7 @@ use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 use Pierroons\SelfDataGuard\Crypto\LegacyCipherUnavailableException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use RuntimeException;
+use Pierroons\SelfDataGuard\Crypto\Aad;
 
 /**
  * Stateless service implementing the SelfDataGuard envelope-encryption protocol
@@ -180,7 +181,12 @@ final class UserVault
             $memlimit ?? $record->kdfMemlimit
         );
         try {
-            $masterKey = Primitives::decrypt($wrap, $key, aad: $record->userId);
+            $masterKey = Primitives::decryptAcrossFormats(
+                $wrap,
+                $key,
+                self::wrapAad($record->userId),
+                $record->userId
+            );
         } catch (LegacyCipherUnavailableException $e) {
             // A RuntimeException too: without this, the next catch calls it a wrong secret.
             throw $e;
@@ -323,7 +329,12 @@ final class UserVault
             $record->userSalt . self::HMAC_CONTEXT_SUFFIX
         );
         try {
-            $probe = Primitives::decrypt($record->wrapRecov, $legacy, aad: $record->userId);
+            $probe = Primitives::decryptAcrossFormats(
+                $record->wrapRecov,
+                $legacy,
+                self::wrapAad($record->userId),
+                $record->userId
+            );
             Primitives::zeroize($probe);
             return true;
         } catch (RuntimeException) {
@@ -373,10 +384,22 @@ final class UserVault
     ): EncryptedBlob {
         $key = self::deriveKey($lock, $secret, $userSalt, $opslimit, $memlimit);
         try {
-            return Primitives::encrypt($masterKey, $key, aad: $userId);
+            return Primitives::encrypt($masterKey, $key, aad: self::wrapAad($userId));
         } finally {
             Primitives::zeroize($key);
         }
+    }
+
+    /**
+     * Binding of a vault wrap. Its own domain segment keeps it apart from every
+     * other binding of the account. A v2 wrap is still read under the bare
+     * userId, which is not apart: the vault wrap of "alice|escrow" and the escrow
+     * user-wrap of "alice" are both read under "alice|escrow" — under different
+     * keys, so they do not open one another.
+     */
+    private static function wrapAad(string $userId): Aad
+    {
+        return Aad::of('vault-wrap', $userId);
     }
 
     private static function resealIn(

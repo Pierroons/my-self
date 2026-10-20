@@ -14,8 +14,10 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require __DIR__ . '/blob_v2_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
+use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
@@ -135,8 +137,18 @@ $unlockedEscrow = (new EscrowVault())->unlockAsAdmin($escrowRecord, $sk, $admin[
 $escrowKey = $unlockedEscrow->getEscrowKey();
 
 $privCipher = $storage->loadFields('alice', ['mots_de_passe'])['mots_de_passe'];
+// The witness first: the same blob, the same AAD, the right key — it opens. So
+// when the escrow key fails below, the key is the only thing that differs, and
+// the check cannot go green on a wrong AAD.
+FieldCrypter::decrypt($session, 'mots_de_passe', $privCipher) === 'forum:hunter2'
+    ? ok('witness: the private field opens with the master key and its own AAD')
+    : ko('witness failed — the compartment check below would prove nothing');
 try {
-    Primitives::decrypt(EncryptedBlob::fromBase64($privCipher), $escrowKey, aad: 'alice|mots_de_passe');
+    Primitives::decrypt(
+        EncryptedBlob::fromBase64($privCipher),
+        $escrowKey,
+        FieldCrypter::aadFor('alice', 'mots_de_passe')
+    );
     ko('escrow_key decrypted a private field — COMPARTMENTALISATION BROKEN (CRITICAL)');
 } catch (RuntimeException) {
     ok('escrow_key cannot decrypt private field (mots_de_passe) — private zone out of admin reach');
@@ -199,7 +211,7 @@ $selCourt = Primitives::randomBytes(Primitives::SALT_LEN);
 $cleCourt = Primitives::deriveFromPassword($court, $selCourt, Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT);
 $skCourt = sodium_crypto_box_secretkey(sodium_crypto_box_keypair());
 $scelleCourt = base64_encode($selCourt) . ':'
-    . Primitives::encrypt($skCourt, $cleCourt, aad: AdminKey::SEAL_AAD)->toBase64();
+    . blobV2($skCourt, $cleCourt, AdminKey::SEAL_AAD)->toBase64();
 AdminKey::unseal($scelleCourt, $court) === $skCourt
     ? ok('a key sealed earlier under a short passphrase still unseals')
     : ko('the floor locked out a key sealed earlier');
@@ -209,10 +221,10 @@ section('The sealed admin key carries its Argon2id profile');
 // The format before 0.6.0, "salt:blob", opens under the frozen legacy profile.
 $selAncien = Primitives::randomBytes(Primitives::SALT_LEN);
 $skAncien  = sodium_crypto_box_secretkey(sodium_crypto_box_keypair());
-$scelleAncien = base64_encode($selAncien) . ':' . Primitives::encrypt(
+$scelleAncien = base64_encode($selAncien) . ':' . blobV2(
     $skAncien,
     Primitives::deriveFromPassword(ADMIN_PASS, $selAncien, Primitives::LEGACY_OPSLIMIT, Primitives::LEGACY_MEMLIMIT),
-    aad: AdminKey::SEAL_AAD
+    AdminKey::SEAL_AAD
 )->toBase64();
 AdminKey::unseal($scelleAncien, ADMIN_PASS) === $skAncien
     ? ok('a key sealed before 0.6.0 (salt:blob) still unseals')
@@ -226,8 +238,8 @@ $MEM = 32 * 1024 * 1024;
     : ko('fixture: the other profile equals the current constants — the next check proves nothing');
 $selAutre = Primitives::randomBytes(Primitives::SALT_LEN);
 $skAutre  = sodium_crypto_box_secretkey(sodium_crypto_box_keypair());
-$scelleAutre = implode(':', [AdminKey::FORMAT_V2, $OPS, $MEM, base64_encode($selAutre), Primitives::encrypt(
-    $skAutre, Primitives::deriveFromPassword(ADMIN_PASS, $selAutre, $OPS, $MEM), aad: AdminKey::SEAL_AAD
+$scelleAutre = implode(':', [AdminKey::FORMAT_V2, $OPS, $MEM, base64_encode($selAutre), blobV2(
+    $skAutre, Primitives::deriveFromPassword(ADMIN_PASS, $selAutre, $OPS, $MEM), AdminKey::SEAL_AAD
 )->toBase64()]);
 try {
     AdminKey::unseal($scelleAutre, ADMIN_PASS) === $skAutre

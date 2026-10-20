@@ -139,14 +139,18 @@ section('FieldCrypter — tamper detection on stored blob');
 
 // Flip a bit in the stored ciphertext and verify decryption fails. The blob is
 // taken apart by EncryptedBlob: a raw base64_decode would also read the letters
-// of the "SDG2." prefix, and fail for a reason that is not the tag.
+// of the format prefix, and fail for a reason that is not the tag.
 $stored  = EncryptedBlob::fromBase64($emailCipher);
 $flipped = $stored->ciphertext;
 $flipped[0] = chr(ord($flipped[0]) ^ 0x01);
-$tamperedB64 = (new EncryptedBlob(ciphertext: $flipped, nonce: $stored->nonce))->toBase64();
-str_starts_with($tamperedB64, EncryptedBlob::PREFIX_V2)
-    ? ok('stored field is a v2 blob, and so is its tampered copy')
-    : ko('stored field is not a v2 blob', substr($emailCipher, 0, 8));
+$tamperedB64 = (new EncryptedBlob(
+    ciphertext: $flipped,
+    nonce: $stored->nonce,
+    format: $stored->format
+))->toBase64();
+str_starts_with($tamperedB64, EncryptedBlob::PREFIX_V3)
+    ? ok('stored field is a v3 blob, and so is its tampered copy')
+    : ko('stored field is not a v3 blob', substr($emailCipher, 0, 8));
 
 try {
     FieldCrypter::decrypt($unlocked, 'email', $tamperedB64);

@@ -13,6 +13,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/../src/autoload.php';
+require __DIR__ . '/blob_v2_fixture.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
@@ -403,6 +404,34 @@ $dg->findUserByField('email', $EMAIL) === 'user-l3'
     ? ok('restored into the new vault, re-indexed: the old email finds the account again')
     : ko('restoration failed');
 
+// The archive keeps each field's blob as it was, under the same AAD the live
+// vault uses. So the only thing that keeps an archived ciphertext from being
+// replanted as the current value is that reEnroll() draws a NEW master key —
+// a property nothing else guarantees, and that this check pins.
+$pdoL3 = new PDO("sqlite:{$dbPath}");
+$package = json_decode((string) $pdoL3->query(
+    "SELECT package FROM selfdataguard_archives WHERE user_id = 'user-l3'"
+)->fetchColumn(), true);
+$archivedNote = $package['fields']['private']['note']['ciphertext'] ?? null;
+$liveNote = $pdoL3->query(
+    "SELECT ciphertext FROM selfdataguard_fields WHERE user_id = 'user-l3' AND field_name = 'note'"
+)->fetchColumn();
+is_string($archivedNote) && $archivedNote !== $liveNote
+    ? ok('witness: the archive still holds the old ciphertext of "note"')
+    : ko('witness failed — no archived "note" to replant, the next check would prove nothing');
+$pdoL3->prepare(
+    "UPDATE selfdataguard_fields SET ciphertext = ? WHERE user_id = 'user-l3' AND field_name = 'note'"
+)->execute([$archivedNote]);
+try {
+    $dg->getFields($current, ['note']);
+    ko('an archived ciphertext replanted in the live vault was read as the current value');
+} catch (RuntimeException) {
+    ok('an archived ciphertext replanted in the live vault fails: re-enrolment drew a new master key');
+}
+$pdoL3->prepare(
+    "UPDATE selfdataguard_fields SET ciphertext = ? WHERE user_id = 'user-l3' AND field_name = 'note'"
+)->execute([$liveNote]);
+
 // -----------------------------------------------------------------------------
 
 section('The archive opens under the Argon2id profile it was sealed with');
@@ -594,10 +623,12 @@ try {
 
 // What someone with write access to the database would plant: a ciphertext
 // sealed under the master key in the escrow wrap's context, as a field row.
-$planted = Primitives::encrypt(
+// A v2 blob under the flat AAD "<user>|escrow", which a v2 escrow user-wrap
+// still carries: a field row named "escrow" would share it.
+$planted = blobV2(
     'escrow key bytes',
     $reserve->getMasterKey(),
-    aad: 'reserved-name' . \Pierroons\SelfDataGuard\Escrow\EscrowVault::WRAP_AAD_SUFFIX
+    'reserved-name' . \Pierroons\SelfDataGuard\Escrow\EscrowVault::WRAP_AAD_SUFFIX
 )->toBase64();
 (new PDO("sqlite:{$dbPath}"))->prepare(
     'INSERT OR REPLACE INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at)
@@ -608,6 +639,23 @@ try {
     ko('a planted "escrow" row was decrypted and returned', 'fields: ' . implode(',', array_keys($leaked)));
 } catch (InvalidArgumentException) {
     ok('a planted "escrow" row asked for by name is refused, not decrypted');
+}
+// The same plant in the 0.7.0 format, under the wrap's own v3 binding: the name
+// is refused before any AAD is built, so the format of the planted row is moot.
+$plantedV3 = Primitives::encrypt(
+    'escrow key bytes',
+    $reserve->getMasterKey(),
+    \Pierroons\SelfDataGuard\Escrow\EscrowVault::wrapAad('reserved-name')
+)->toBase64();
+(new PDO("sqlite:{$dbPath}"))->prepare(
+    'INSERT OR REPLACE INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at)
+     VALUES (?, ?, ?, NULL, ?)'
+)->execute(['reserved-name', 'escrow', $plantedV3, gmdate('c')]);
+try {
+    $dg->getFields($reserve, ['escrow']);
+    ko('a planted v3 "escrow" row was decrypted and returned');
+} catch (InvalidArgumentException) {
+    ok('a planted v3 "escrow" row asked for by name is refused too');
 }
 $dg->setFields($reserve, ['note' => 'une note']);
 try {

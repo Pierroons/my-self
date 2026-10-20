@@ -179,46 +179,64 @@ final class Primitives
      * which a Raspberry Pi 4 lacks. The 24-byte nonce keeps random nonces safe
      * without a counter.
      *
-     * @param string      $plaintext Raw data to encrypt
-     * @param string      $key       Exactly 32 bytes
-     * @param string|null $aad       Optional additional authenticated data (bound to the ciphertext, not encrypted)
+     * Writes format v3 only. Its AAD is required and has no default: Aad says
+     * what an optional one gets wrong.
+     *
+     * @param string $plaintext Raw data to encrypt
+     * @param string $key       Exactly 32 bytes
+     * @param Aad    $aad       What this ciphertext is bound to — Aad::of(…), or
+     *                          Aad::none() to say it is bound to nothing
+     *
+     * @throws InvalidArgumentException on an Aad::legacy(), which may only decrypt
      */
     public static function encrypt(
         #[\SensitiveParameter] string $plaintext,
         #[\SensitiveParameter] string $key,
-        ?string $aad = null
+        Aad $aad
     ): EncryptedBlob {
         self::assertKeyLength($key);
+        if ($aad->isLegacy()) {
+            throw new InvalidArgumentException(
+                'Aad::legacy() reproduces a pre-0.7.0 binding and may only decrypt. '
+                . 'A new ciphertext takes Aad::of(…) or Aad::none().'
+            );
+        }
         $nonce = random_bytes(EncryptedBlob::NONCE_LEN_V2);
         $ciphertext = sodium_crypto_aead_xchacha20poly1305_ietf_encrypt(
             $plaintext,
-            (string) $aad,
+            $aad->encode(),
             $nonce,
             $key
         );
-        return new EncryptedBlob(ciphertext: $ciphertext, nonce: $nonce);
+        return new EncryptedBlob(
+            ciphertext: $ciphertext,
+            nonce: $nonce,
+            format: EncryptedBlob::FORMAT_V3
+        );
     }
 
     /**
-     * Verify and decrypt a blob of either format.
+     * Verify and decrypt a blob of any format.
      *
      * A v1 blob (AES-256-GCM) is read by libsodium where it serves AES, and by
      * OpenSSL elsewhere: the format is standard GCM, 12-byte nonce, tag appended.
      *
+     * @throws InvalidArgumentException         if the AAD does not match the blob's format
      * @throws LegacyCipherUnavailableException a v1 blob, on a machine with neither route
      * @throws RuntimeException                 if the auth tag fails to verify (tampered ciphertext, wrong key, tampered AAD)
      */
     public static function decrypt(
         EncryptedBlob $blob,
         #[\SensitiveParameter] string $key,
-        ?string $aad = null
+        Aad $aad
     ): string {
         self::assertKeyLength($key);
+        self::assertAadMatchesFormat($blob, $aad);
         if (!$blob->isLegacy()) {
             try {
                 $plaintext = sodium_crypto_aead_xchacha20poly1305_ietf_decrypt(
                     $blob->ciphertext,
-                    (string) $aad,
+                    $aad->encode(),
                     $blob->nonce,
                     $key
                 );
@@ -243,6 +261,28 @@ final class Primitives
     }
 
     /**
+     * Decrypt a stored blob of any format: a v3 blob under $current, an older
+     * one under Aad::legacy($legacyAad), the exact bytes it was sealed with.
+     * Every reader of stored blobs goes through here, so this routing exists
+     * once.
+     *
+     * @param Aad    $current   the binding a new ciphertext would get
+     * @param string $legacyAad the flat AAD string a v1 or v2 blob of this caller carries
+     */
+    public static function decryptAcrossFormats(
+        EncryptedBlob $blob,
+        #[\SensitiveParameter] string $key,
+        Aad $current,
+        string $legacyAad
+    ): string {
+        return self::decrypt(
+            $blob,
+            $key,
+            $blob->bindsItsContext() ? $current : Aad::legacy($legacyAad)
+        );
+    }
+
+    /**
      * v1 decryption through libsodium. Callers go through decrypt(); this is
      * public so the test suite can check each route against the other.
      *
@@ -251,13 +291,13 @@ final class Primitives
     public static function legacyDecryptSodium(
         EncryptedBlob $blob,
         #[\SensitiveParameter] string $key,
-        ?string $aad = null
+        Aad $aad
     ): string {
         self::assertKeyLength($key);
         try {
             $plaintext = sodium_crypto_aead_aes256gcm_decrypt(
                 $blob->ciphertext,
-                (string) $aad,
+                $aad->encode(),
                 $blob->nonce,
                 $key
             );
@@ -276,7 +316,7 @@ final class Primitives
     public static function legacyDecryptOpenssl(
         EncryptedBlob $blob,
         #[\SensitiveParameter] string $key,
-        ?string $aad = null
+        Aad $aad
     ): string {
         self::assertKeyLength($key);
         $tagOffset = strlen($blob->ciphertext) - EncryptedBlob::TAG_LEN;
@@ -287,9 +327,32 @@ final class Primitives
             OPENSSL_RAW_DATA,
             $blob->nonce,
             substr($blob->ciphertext, $tagOffset),
-            (string) $aad
+            $aad->encode()
         );
         return self::authenticated($plaintext);
+    }
+
+    /**
+     * A v3 blob takes an Aad value; a v1 or v2 blob takes the exact bytes it was
+     * sealed under, which only Aad::legacy() produces.
+     *
+     * Mismatching them fails the tag anyway. The point of checking is the
+     * message: "decryption failed" sends the reader hunting for a corrupted
+     * ciphertext or a wrong key, when the blob and the key are both fine.
+     */
+    private static function assertAadMatchesFormat(EncryptedBlob $blob, Aad $aad): void
+    {
+        if ($blob->bindsItsContext() && $aad->isLegacy()) {
+            throw new InvalidArgumentException(
+                'This blob is format v3: pass the Aad it was sealed with, not Aad::legacy().'
+            );
+        }
+        if (!$blob->bindsItsContext() && !$aad->isLegacy()) {
+            throw new InvalidArgumentException(
+                'This blob predates 0.7.0 and was sealed under a flat AAD string: '
+                . 'pass Aad::legacy($theSameString) to read it.'
+            );
+        }
     }
 
     /**

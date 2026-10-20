@@ -9,6 +9,7 @@ use InvalidArgumentException;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
 use Pierroons\SelfDataGuard\Vault\UnlockedVault;
+use Pierroons\SelfDataGuard\Crypto\Aad;
 
 /**
  * Encrypt and decrypt individual database fields with a user's data_master_key.
@@ -20,8 +21,9 @@ use Pierroons\SelfDataGuard\Vault\UnlockedVault;
  * Each field gets its own random nonce. Output is a single ASCII string
  * (EncryptedBlob::toBase64()) suitable for storage in a TEXT/VARCHAR column.
  *
- * The Additional Authenticated Data (AAD) is automatically built as
- * "userId|fieldName" to prevent two classes of attack:
+ * The Additional Authenticated Data (AAD) is built by aadFor() from the userId
+ * and the field name (a v2 blob is read under the flat "userId|fieldName"), to
+ * prevent two classes of attack:
  *
  *   1. Cross-field swap: Alice's encrypted email cannot be silently stored
  *      as her phone (or vice-versa) — the auth tag would fail.
@@ -45,7 +47,7 @@ final class FieldCrypter
         $blob = Primitives::encrypt(
             plaintext: $plaintext,
             key: $vault->getMasterKey(),
-            aad: self::buildAad($vault->userId, $fieldName)
+            aad: self::aadFor($vault->userId, $fieldName)
         );
         return $blob->toBase64();
     }
@@ -62,10 +64,11 @@ final class FieldCrypter
         string $serialized
     ): string {
         $blob = EncryptedBlob::fromBase64($serialized);
-        return Primitives::decrypt(
+        return Primitives::decryptAcrossFormats(
             $blob,
             $vault->getMasterKey(),
-            aad: self::buildAad($vault->userId, $fieldName)
+            self::aadFor($vault->userId, $fieldName),
+            self::legacyAad($vault->userId, $fieldName)
         );
     }
 
@@ -100,21 +103,49 @@ final class FieldCrypter
     }
 
     /**
-     * Construct the AAD string. The pipe separator is safe since neither
-     * userId nor fieldName should contain raw "|" by convention; even if they
-     * did, the AEAD tag still binds the exact bytes.
+     * What a private field of this account is bound to, since 0.7.0.
+     *
+     * Public because it describes, it does not unlock: an AAD is not a secret.
+     * A test that needs it — or an integrator auditing what a stored ciphertext
+     * belongs to — references it here instead of copying the segments, so that
+     * a change of domain cannot leave a copy behind that still looks right.
      */
-    private static function buildAad(string $userId, string $fieldName): string
+    public static function aadFor(string $userId, string $fieldName): Aad
     {
-        // Refused on read as well as on write: a row planted in storage under this
-        // name would otherwise decrypt the escrow user-wrap and hand its key to the
-        // application.
+        self::assertFieldNameAllowed($fieldName);
+
+        return Aad::of('field', $userId, $fieldName);
+    }
+
+    /**
+     * The flat AAD a field was sealed under before 0.7.0 — for reading those
+     * blobs back, and nothing else.
+     *
+     * Its pipe separator is the reason the reserved-name check below still
+     * earns its place: "alice" + "escrow" joined by a pipe is also what the
+     * escrow user-wrap was sealed under, so a field named "escrow" shared its
+     * AAD. Length-prefixed segments close that by construction, but only for
+     * blobs written since 0.7.0.
+     */
+    private static function legacyAad(string $userId, string $fieldName): string
+    {
+        self::assertFieldNameAllowed($fieldName);
+
+        return $userId . '|' . $fieldName;
+    }
+
+    /**
+     * Refused on read as well as on write: a row planted in storage under this
+     * name would otherwise decrypt the escrow user-wrap and hand its key to the
+     * application.
+     */
+    private static function assertFieldNameAllowed(string $fieldName): void
+    {
         if ($fieldName === EscrowVault::WRAP_AAD_TAG) {
             throw new InvalidArgumentException(sprintf(
                 'Field name "%s" is reserved: it is the context of the escrow user-wrap.',
                 $fieldName
             ));
         }
-        return $userId . '|' . $fieldName;
     }
 }
