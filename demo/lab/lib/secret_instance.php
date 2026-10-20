@@ -91,6 +91,19 @@ final class SecretInstance
      * tous les codes déjà émis : c'est le seul repli silencieux qui restait, et il porte
      * sur le chemin plutôt que sur la valeur.
      */
+    /**
+     * Ce secret existe-t-il déjà, sans le créer ?
+     *
+     * 🔑 `lire()` **pose** un secret absent, ce qui est juste à l'installation et
+     * faux sur un chemin de lecture : une base restaurée sans son secret obtiendrait
+     * une clé neuve, et chaque donnée chiffrée se présenterait comme illisible au
+     * lieu de dire que la clé manque. Qui lit demande donc d'abord.
+     */
+    public static function existe(string $nom, ?string $env = null): bool
+    {
+        return is_file(self::chemin($nom, $env));
+    }
+
     private static function chemin(string $nom, ?string $env): string
     {
         if ($env === null) {

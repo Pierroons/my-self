@@ -514,6 +514,8 @@ return [
     'prf.js.decrypted' => 'Decrypted locally. The key stays in this page and is never sent.',
     'prf.js.locked'  => 'Vault locked.',
     'prf.js.saved2'  => 'Memo re-encrypted and saved.',
+    'prf.illisible' => 'Your profile exists but the server cannot read it right now. It is not shown, and it will not be replaced unless you ask.',
+    'prf.illisible.remplacer' => 'Start a fresh profile — the old one will be lost for good',
 
     // ── Access recovery (SelfRecover) ─────────────────────────────────────
     'rec.title'   => 'Access recovery',

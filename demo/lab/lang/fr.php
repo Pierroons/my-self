@@ -513,6 +513,8 @@ return [
     'prf.js.decrypted' => 'Déchiffré localement. La clé reste dans cette page, jamais envoyée.',
     'prf.js.locked'  => 'Coffre verrouillé.',
     'prf.js.saved2'  => 'Mémo re-chiffré et enregistré.',
+    'prf.illisible' => 'Ton profil existe mais le serveur ne sait pas le lire en ce moment. Il n\'est pas affiché, et il ne sera pas remplacé sans que tu le demandes.',
+    'prf.illisible.remplacer' => 'Repartir d\'un profil neuf — l\'ancien sera définitivement perdu',
 
     // ── Récupération d'accès (SelfRecover) ────────────────────────────────
     'rec.title'   => 'Récupération d\'accès',

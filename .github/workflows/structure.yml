@@ -1603,6 +1603,17 @@ jobs:
           echo "$sortie" | grep -qE '^OK — 15/15 ' \
             || { echo "::error::le banc du frein de connexion n'a pas joué ses 15 cas"; exit 1; }
 
+      # Un blob chiffré n'est lisible que là où il a été écrit. Sans contexte, qui
+      # obtient une écriture recopie un blob dans une ligne qu'il a le droit de lire
+      # et l'application le déchiffre : l'écriture rendait le clair.
+      - name: Garde-fou — un blob chiffré ne se lit que sous son propre contexte
+        run: |
+          sortie=$(php demo/lab/tests/sanity_dataguard.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::le banc du chiffrement du lab a échoué"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 31/31 ' \
+            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 31 cas"; exit 1; }
+
       # La bibliothèque rend `cle`/`texte`, la page lit `key`/`label`/`type`/`options` :
       # les deux côtés avaient divergé sans un mot, et le niveau 3 partait sans aucune
       # réponse — trois libellés vides, et le faisceau toujours en « diverge ».
@@ -1630,7 +1641,7 @@ jobs:
       # absente — demandé par la conv Recover, qui a trouvé que le premier n'était
       # lancé par aucune étape. Les deux derniers s'y sont ajoutés le 07/10, après
       # avoir été écrits puis laissés hors de toute étape, exactement comme eux.
-      - name: Canaris — les neuf gardes du lab rougissent sur le défaut qu'elles visent
+      - name: Canaris — les dix gardes du lab rougissent sur le défaut qu'elles visent
         run: |
           # @plante
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
@@ -1720,6 +1731,22 @@ jobs:
             ")->execute([\$compteId, \$jusqua, \$quand, '']); // canari" \
             demo/lab/tests/sanity_l3_abandon.php \
             "une porte fermée sans nom"
+
+          # 10. Tous les messages privés partagent un seul contexte — le défaut tel
+          #     qu'il était : un blob recopié dans une conversation qu'on a le droit de
+          #     lire s'ouvre, et l'écriture rend le clair.
+          # ⚠️ Planter un seul des deux côtés du chiffrement ne reproduit PAS ce
+          # défaut : écrire avec contexte et lire sans fait échouer le tag, donc tout
+          # rougit, y compris le chemin normal. C'est le contexte qui doit cesser de
+          # distinguer, pas une de ses deux faces.
+          # ⚠️ La ligne exigée porte son « ✗ » : un banc imprime le libellé d'un cas
+          # qu'il passe ou qu'il échoue, donc exiger le libellé nu ne distingue pas
+          # les deux — le canari se dirait éprouvé sur un rouge venu d'ailleurs.
+          canari demo/lab/lib/dataguard.php \
+            "return 'dm:' . \$expediteur . ':' . \$destinataire;" \
+            "return 'dm:fixe'; // canari" \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ le blob d'un message privé entre deux autres comptes"
 
       - name: Canari — la console reperd les tentatives sans étiquette
         run: |

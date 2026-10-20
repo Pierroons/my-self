@@ -121,6 +121,7 @@ if (!$account) {
     exit;
 }
 $p = Profile::get($pdo, (int) $account['id']);
+$profilIllisible = Profile::illisible($pdo, (int) $account['id']);
 $myId = (int) $account['id'];
 
 // Mon état de modération
@@ -263,6 +264,10 @@ render_header(t('prf.title'), $account);
 <div class="card" style="max-width:560px">
   <div id="msg"></div>
   <?php if ($rep['banned']): ?><p class="muted" style="margin-top:0;color:#d96459"><?= h(sprintf(t('prf.edit.banni'), date('d/m/Y H:i', $rep['banned_until']))) ?></p><?php endif; ?>
+  <?php if ($profilIllisible): ?>
+    <p style="color:var(--danger)"><?= h(t('prf.illisible')) ?></p>
+    <label class="muted"><input type="checkbox" id="remplacer-illisible"> <?= h(t('prf.illisible.remplacer')) ?></label>
+  <?php endif; ?>
   <div class="field"><label>Bio</label><textarea id="bio" rows="3"<?= $gele ?>><?= h($p['bio']) ?></textarea></div>
   <div class="field"><label>Localisation</label><input id="localisation" value="<?= h($p['localisation']) ?>"<?= $gele ?>></div>
   <div class="field"><label>Lien (site, blog…)</label><input id="lien" value="<?= h($p['lien']) ?>" placeholder="https://…"<?= $gele ?>></div>
@@ -313,10 +318,12 @@ render_header(t('prf.title'), $account);
 // la première à en avoir besoin échouait sur « PRF is not defined ».
 const PRF = <?= $prfJs ?>;
 function enregistrer(){
+  const casseIllisible = document.getElementById('remplacer-illisible');
   labPost('/api/profile_save.php',{
     bio:document.getElementById('bio').value,
     localisation:document.getElementById('localisation').value,
-    lien:document.getElementById('lien').value
+    lien:document.getElementById('lien').value,
+    remplacer_illisible: casseIllisible ? casseIllisible.checked : false
   }).then(d=>{
     document.getElementById('msg').innerHTML = d.ok
       ? '<div class="toast ok">'+PRF.saved+'</div>'

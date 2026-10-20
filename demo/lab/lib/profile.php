@@ -26,27 +26,73 @@ final class Profile
      *  sera aussi tant qu'il n'est pas repris ici. */
     private const PRIVES = [];
 
-    /** Retourne le profil déchiffré, ou des champs vides. */
+    /** Le profil déchiffré, ou des champs vides — qu'il n'y en ait pas, ou qu'il ne s'ouvre pas. */
     public static function get(PDO $pdo, int $accountId): array
+    {
+        $vide = array_fill_keys(self::CHAMPS, '');
+        $clair = self::clair($pdo, $accountId);
+        if ($clair === null) {
+            return $vide;
+        }
+        $data = json_decode($clair, true);
+
+        return is_array($data) ? array_merge($vide, $data) : $vide;
+    }
+
+    /**
+     * Ce compte a-t-il un profil que le serveur ne sait pas ouvrir ?
+     *
+     * 🔑 **L'état se demande à part, il n'habite pas la carte des champs.** Rendu
+     * comme une clé de `get()`, il partageait l'espace de noms des champs : un clair
+     * portant lui-même `illisible` aurait déclaré une panne qui n'existait pas, et
+     * un champ futur du même nom serait entré en collision.
+     *
+     * 🔑 **Un profil absent et un profil illisible ne sont pas le même état.** Les
+     * deux rendent des champs vides, et la page d'édition pré-remplit son formulaire
+     * avec ce qu'elle reçoit : sans cette distinction, le titulaire voyait un profil
+     * effacé, le retapait, et son chiffré d'origine partait — une clé restaurée
+     * ensuite n'aurait plus rien rendu.
+     */
+    public static function illisible(PDO $pdo, int $accountId): bool
+    {
+        $stmt = $pdo->prepare('SELECT 1 FROM profiles WHERE account_id = ?');
+        $stmt->execute([$accountId]);
+
+        return $stmt->fetchColumn() !== false && self::clair($pdo, $accountId) === null;
+    }
+
+    /** Le clair du profil, ou `null` s'il n'y en a pas ou s'il ne s'ouvre pas. */
+    private static function clair(PDO $pdo, int $accountId): ?string
     {
         $stmt = $pdo->prepare('SELECT ciphertext FROM profiles WHERE account_id = ?');
         $stmt->execute([$accountId]);
         $blob = $stmt->fetchColumn();
-        $vide = array_fill_keys(self::CHAMPS, '');
         if ($blob === false) {
-            return $vide;
+            return null;
         }
+        // Un blob est là : la clé qui l'a scellé doit exister, et non être posée
+        // à l'instant par la lecture. Cette ligne est atteignable sans session.
+        DataGuard::exigerCle();
         try {
-            $json = DataGuard::decrypt($blob);
-            $data = json_decode($json, true);
-            return is_array($data) ? array_merge($vide, $data) : $vide;
-        } catch (\Throwable) {
-            return $vide;
+            return DataGuard::decrypt((string) $blob, DataGuard::contexteProfil($accountId));
+        } catch (\Throwable $e) {
+            error_log(sprintf('profil #%d illisible : %s', $accountId, $e->getMessage()));
+
+            return null;
         }
     }
 
-    /** Chiffre + persiste le profil. */
-    public static function save(PDO $pdo, int $accountId, array $champs): array
+    /**
+     * Chiffre et persiste le profil.
+     *
+     * `$remplacerIllisible` est la **décision humaine** que demande un profil
+     * qu'on ne sait plus ouvrir : sans elle, l'enregistrement est refusé pour que
+     * la seule copie d'une donnée ne parte pas par mégarde ; avec elle, le
+     * titulaire acte la perte et repart d'un profil neuf. Refuser dans les deux cas
+     * enfermerait le compte — et un tiers qui obtient une écriture pourrait y mettre
+     * n'importe qui, définitivement.
+     */
+    public static function save(PDO $pdo, int $accountId, array $champs, bool $remplacerIllisible = false): array
     {
         // La bio et le lien sont publics : un ban qui coupe la parole publique
         // les coupe aussi, comme un message du forum.
@@ -71,7 +117,20 @@ final class Profile
             return ['ok' => false, 'error' => 'lien_invalide',
                     'message' => 'Le lien doit commencer par http:// ou https:// (ou rester vide).'];
         }
-        $ciphertext = DataGuard::encrypt(json_encode($clean, JSON_UNESCAPED_UNICODE));
+        if (!$remplacerIllisible && self::illisible($pdo, $accountId)) {
+            return ['ok' => false, 'error' => 'profil_illisible',
+                    'message' => 'Ton profil existe mais le serveur ne sait pas le lire en ce moment. '
+                                 . 'Il n\'est pas remplacé. Préviens un arbitre ; si tu préfères repartir '
+                                 . 'd\'un profil neuf, confirme le remplacement — l\'ancien sera perdu.'];
+        }
+
+        if ($remplacerIllisible && self::illisible($pdo, $accountId)) {
+            // Un acte irréversible du titulaire se trace : sans cette ligne, le seul
+            // chiffré d'un profil partait sans que rien ne dise quand ni par qui.
+            error_log(sprintf('profil #%d illisible remplacé par son titulaire — l\'ancien chiffré est perdu', $accountId));
+        }
+
+        $ciphertext = DataGuard::encrypt(json_encode($clean, JSON_UNESCAPED_UNICODE), DataGuard::contexteProfil($accountId));
         $pdo->prepare(
             'INSERT INTO profiles (account_id, ciphertext, updated_at) VALUES (?, ?, ?)
              ON CONFLICT(account_id) DO UPDATE SET ciphertext = excluded.ciphertext, updated_at = excluded.updated_at'
