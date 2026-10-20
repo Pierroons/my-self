@@ -524,8 +524,12 @@ Version de correctif : aucune promesse ne change, aucun schéma ne bouge.
   sur disque réel. Ferme un défaut relevé par l'audit de la 0.5.0 : le vote n'était pas transactionnel.
 - **Lire une réputation ne coûte qu'une requête** quand l'état n'appelle ni convalescence ni clôture de
   peine. Une lecture insérait « si absent » avant de lire : un verrou d'écriture par appel, trois appels par
-  vote, un par message affiché sur une page de fil. Dans le scénario du contrôle 40 du banc, un downvote
-  passe de 23 à 20 requêtes, les deux ordres de transaction compris.
+  vote, un par message affiché sur une page de fil. En régime établi, chaque compte ayant sa ligne de
+  modération, un downvote passe de 23 à 14 requêtes (harnais sur disque réel) ; la première lecture d'un compte
+  sans ligne en coûte trois de plus, parce qu'elle prend le verrou d'écriture. Quand l'état appelle une écriture — ligne
+  absente, convalescence, peine échue —, elle se fait sous le verrou d'écriture, état relu sous lui : une peine
+  échue lue par plusieurs à la fois ne s'inscrit plus qu'une fois au journal, et aucun lecteur n'échoue pour
+  un autre.
 - **L'en-tête du banc ne dit plus que la détection est purement temporelle**, ce qui était faux depuis le
   21 août et que l'audit de la 0.5.0 avait relevé. Les étiquettes d'anciens audits sortent des commentaires
   du moteur et de la route de balayage du lab ; un helper par vote neutralisé et par signal d'état levé.
