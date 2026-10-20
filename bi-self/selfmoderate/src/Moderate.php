@@ -158,27 +158,33 @@ class Moderate
 
     public static function getReputation(PDO $pdo, int $accountId): array
     {
-        // Lire d'abord, écrire seulement si l'état le demande : la convalescence
-        // et la clôture d'une peine ne se tentent que si la ligne les appelle,
-        // et `ensureRow()` n'est appelé que sur une ligne absente — une
-        // insertion, même ignorée, prend un verrou d'écriture. Dans le cas
-        // courant, lire une réputation est un `SELECT` et rien d'autre.
-        $row = self::ligne($pdo, $accountId);
-        if ($row === null) {
-            self::ensureRow($pdo, $accountId);
-            $row = self::ligne($pdo, $accountId);
-        }
-        $relire = false;
-        if ((int) $row['convalescent']) {
-            self::regenerate($pdo, $accountId);
-            $relire = true;
-        }
-        $jusqua = (int) $row['banned_until'];
-        if ($jusqua > 0 && $jusqua <= time()) {
-            self::cloreBanExpire($pdo, $accountId, contenir: true);
-            $relire = true;
-        }
-        if ($relire) {
+        // Lire d'abord, écrire seulement si l'état le demande : la ligne
+        // absente, la convalescence, la clôture d'une peine. Dans le cas
+        // courant, lire une réputation est un `SELECT` et rien d'autre — une
+        // insertion « si absent », même ignorée, prendrait un verrou d'écriture.
+        // Quand il y a à écrire, c'est sous le verrou d'écriture, et l'état se
+        // relit sous lui : sans cela, N lecteurs d'une peine échue l'inscrivent
+        // N fois au journal, et N − 1 d'entre eux échouent en voulant promouvoir
+        // leur verrou de lecture — une lecture ne doit jamais échouer pour un
+        // autre lecteur.
+        $row    = self::ligne($pdo, $accountId);
+        $jusqua = $row === null ? 0 : (int) $row['banned_until'];
+        if ($row === null || (int) $row['convalescent'] || ($jusqua > 0 && $jusqua <= time())) {
+            self::sousVerrou($pdo, static function () use ($pdo, $accountId): void {
+                $row = self::ligne($pdo, $accountId);
+                if ($row === null) {
+                    self::ensureRow($pdo, $accountId);
+
+                    return;
+                }
+                if ((int) $row['convalescent']) {
+                    self::regenerate($pdo, $accountId);
+                }
+                $jusqua = (int) $row['banned_until'];
+                if ($jusqua > 0 && $jusqua <= time()) {
+                    self::cloreBanExpire($pdo, $accountId, contenir: true);
+                }
+            });
             $row = self::ligne($pdo, $accountId);
         }
         return [
@@ -230,11 +236,12 @@ class Moderate
      * d'arbitre n'est pas venu de la réputation, et n'y touche pas en sortant.
      *
      * `banned_until = 0` est l'état « aucune peine à clore » : c'est lui qui
-     * rend l'inscription unique — tant que la transaction qui porte la clôture
-     * est validée. Défaite, la clôture se refait au passage suivant, et le
-     * journal porte deux fins pour une peine, que `debut` et `jusqu_a`
-     * identifient. `applyVote()` referme donc les peines échues du votant et de
-     * la cible avant d'ouvrir la sienne.
+     * rend l'inscription unique, parce que la clôture se décide sous le verrou
+     * d'écriture (`sousVerrou()`) — un seul lecteur la voit à faire. Défaite
+     * avec la transaction qui la porte, elle se refait au passage suivant, et
+     * le journal porte alors deux fins pour une peine, que `debut` et `jusqu_a`
+     * identifient : `applyVote()` referme donc les peines échues du votant et
+     * de la cible avant d'ouvrir la sienne.
      *
      * ⚠️ **Un journal qui refuse d'écrire laisse la peine à refermer.** Avec
      * `$contenir`, le refus est consigné et signalé (`journal_en_panne`), et
@@ -576,12 +583,16 @@ class Moderate
         // « database is locked ». Le verrou pris d'emblée fait attendre, dans le
         // délai que PDO accorde. Les ordres passent en SQL, jamais par
         // `commit()` : toutes les versions de PDO ne voient pas une transaction
-        // ouverte en SQL, et l'on ne valide que ce qu'on a ouvert soi-même. Dans
-        // la transaction de l'hôte, un point de reprise : le vote s'y défait
-        // seul, sans décider pour lui.
-        $propre = !$pdo->inTransaction();
+        // ouverte en SQL, et l'on ne valide que ce qu'on a ouvert soi-même —
+        // d'où le marqueur `$transactionOuverteSur`. Dans la transaction de
+        // l'hôte, un point de reprise : le vote s'y défait seul, sans décider
+        // pour lui.
+        $propre = !self::enTransaction($pdo);
         $point  = $propre ? null : 'selfmoderate_vote_' . ++self::$pointsDeReprise;
         self::ordonner($pdo, $propre ? 'BEGIN IMMEDIATE' : 'SAVEPOINT ' . $point);
+        if ($propre) {
+            self::$transactionOuverteSur = $pdo;
+        }
         try {
             $resultat = self::inscrireVote($pdo, $voterId, $targetType, $targetId, $author, $value, $reason, $reasonCode);
             self::ordonner($pdo, $propre ? 'COMMIT' : 'RELEASE SAVEPOINT ' . $point);
@@ -596,11 +607,56 @@ class Moderate
                 }
             }
             throw $e;
+        } finally {
+            if ($propre) {
+                self::$transactionOuverteSur = null;
+            }
         }
     }
 
     /** Un nom par point de reprise posé dans la transaction d'un hôte. */
     private static int $pointsDeReprise = 0;
+
+    /** La connexion sur laquelle ce moteur tient une transaction qu'il a ouverte lui-même. */
+    private static ?PDO $transactionOuverteSur = null;
+
+    /** Une transaction court-elle sur cette connexion, la nôtre ou celle de l'hôte ? */
+    private static function enTransaction(PDO $pdo): bool
+    {
+        return self::$transactionOuverteSur === $pdo || $pdo->inTransaction();
+    }
+
+    /**
+     * Une écriture que décide une lecture, sous le verrou d'écriture : pris
+     * d'emblée (`BEGIN IMMEDIATE`), pour que des lecteurs simultanés attendent
+     * leur tour au lieu d'échouer en voulant promouvoir un verrou de lecture,
+     * et pour que l'état se relise sous lui avant toute écriture au journal.
+     * Dans une transaction déjà ouverte, par le vote ou par l'hôte, l'écriture
+     * passe telle quelle.
+     */
+    private static function sousVerrou(PDO $pdo, callable $ecriture): void
+    {
+        if (self::enTransaction($pdo)) {
+            $ecriture();
+
+            return;
+        }
+        self::ordonner($pdo, 'BEGIN IMMEDIATE');
+        self::$transactionOuverteSur = $pdo;
+        try {
+            $ecriture();
+            self::ordonner($pdo, 'COMMIT');
+        } catch (\Throwable $e) {
+            try {
+                self::ordonner($pdo, 'ROLLBACK');
+            } catch (\Throwable) {
+                // La base a déjà défait la transaction : l'exception d'origine est celle qui compte.
+            }
+            throw $e;
+        } finally {
+            self::$transactionOuverteSur = null;
+        }
+    }
 
     /** Un ordre de transaction, dont le refus ne passe jamais inaperçu, même sous un PDO silencieux. */
     private static function ordonner(PDO $pdo, string $ordre): void
