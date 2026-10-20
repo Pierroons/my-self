@@ -26,6 +26,7 @@ use PDO;
 require_once __DIR__ . '/i18n.php';
 
 require_once __DIR__ . '/secret_instance.php';
+require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/reponse.php';
 
 final class Auth
@@ -92,7 +93,9 @@ final class Auth
      */
     public static function siteSalt(): string
     {
-        return SecretInstance::lire('.sitesalt', 32, SecretInstance::PLANCHER, 'LAB_SITESALT_PATH');
+        return SecretInstance::lire('.sitesalt', 32, SecretInstance::PLANCHER, 'LAB_SITESALT_PATH', static fn (): ?string => Db::ceQuiDepend([
+            'recovery_codes' => 'code(s) de récupération, retrouvés par leur empreinte sous ce sel',
+        ]));
     }
 
     /** Mot de passe temporaire rendu après une récupération. */

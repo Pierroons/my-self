@@ -84,6 +84,7 @@ if ($voirUsername !== null) {
           <?php endif; ?>
         </div>
         <div class="card">
+          <?php if ($vue['illisible']): ?><p class="muted" style="margin-top:0"><?= h(t('prf.illisible.vue')) ?></p><?php endif; ?>
           <p style="margin-top:0"><strong>Bio</strong><br><?= h($p['bio']) ?: '<span class="muted">—</span>' ?></p>
           <p><strong>Localisation</strong><br><?= h($p['localisation']) ?: '<span class="muted">—</span>' ?></p>
           <p><strong>Lien</strong><br><?php
@@ -120,8 +121,9 @@ if (!$account) {
     header('Location: /login.php');
     exit;
 }
-$p = Profile::get($pdo, (int) $account['id']);
-$profilIllisible = Profile::illisible($pdo, (int) $account['id']);
+$lu = Profile::lire($pdo, (int) $account['id']);
+$p = $lu['champs'];
+$profilIllisible = $lu['illisible'];
 $myId = (int) $account['id'];
 
 // Mon état de modération

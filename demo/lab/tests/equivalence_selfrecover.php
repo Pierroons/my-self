@@ -26,6 +26,9 @@ require __DIR__ . '/../lib/StockageSelfRecover.php';
 // jetable : celui de l'instance ne doit pas bouger, un remplacement rendrait
 // introuvables tous les codes déjà émis.
 putenv('LAB_SITESALT_PATH=' . sys_get_temp_dir() . '/lab-sonde-sitesalt-' . getmypid());
+// La base qu'un secret absent consulte avant de se poser : celle de ce banc est en
+// mémoire, la règle n'en voit donc aucune — et ne lit pas celle de l'instance locale.
+putenv('LAB_DB_PATH=' . sys_get_temp_dir() . '/lab-sonde-sans-base-' . getmypid() . '.db');
 require_once __DIR__ . '/../lib/auth.php';
 require_once __DIR__ . '/../lib/recover_l3.php';
 

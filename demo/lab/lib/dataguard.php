@@ -33,30 +33,26 @@ final class DataGuard
      */
     private static function blindKey(): string
     {
-        // 🔑 **La garde vit ICI, et elle porte sur « y a-t-il quelque chose à perdre ».**
-        // Tout chemin qui chiffre, déchiffre ou calcule une empreinte passe par ce
-        // point — y compris `hmac()`, appelé par trois routes anonymes (dépôt et suivi
-        // des rapports, soumission de drapeau). `SecretInstance::lire()` POSE un secret
-        // absent : c'est juste sur une instance neuve, et destructeur sur une base qui
-        // porte déjà des chiffrés — la clé neuve les rendrait tous illisibles, et la
-        // case « repartir d'un profil neuf » deviendrait l'outil de leur destruction.
-        //
-        // Posée sur les chemins de lecture seulement, la garde était désarmée par un
-        // POST anonyme sur le chemin de REFUS d'une de ces routes. Posée ici sans
-        // condition, elle empêchait une instance neuve de s'installer. La condition
-        // juste se mesure sans la clé : un secret absent n'est une panne que si des
-        // données chiffrées l'attendent.
-        self::garderSecret();
-
-        return SecretInstance::lire('.blindkey', 48, SecretInstance::PLANCHER, 'LAB_BLINDKEY_PATH');
+        // Tout chemin qui chiffre, déchiffre ou calcule une empreinte passe par ce point,
+        // y compris `hmac()`, qu'appellent trois routes anonymes. Ce qui dépend du secret
+        // se déclare donc ici, une fois pour tous : les messages et profils chiffrés sous
+        // lui, et les rapports red team, dont le jeton de suivi en dérive
+        // (`Redteam::jetonSuivi()`) — une clé neuve les rendrait tous « invalides » sans
+        // dire que c'est la clé qui a changé. Les empreintes d'adresse n'y figurent pas :
+        // elles ne servent qu'au frein, et s'effacent au bout d'une heure.
+        return SecretInstance::lire('.blindkey', 48, SecretInstance::PLANCHER, 'LAB_BLINDKEY_PATH', static fn (): ?string => Db::ceQuiDepend([
+            'dm'              => 'message(s) privé(s) chiffré(s)',
+            'profiles'        => 'profil(s) chiffré(s)',
+            'redteam_reports' => 'rapport(s) red team, dont le jeton de suivi dérive de ce secret',
+        ]));
     }
 
     /**
      * Exige que la clé soit disponible, et laisse remonter si elle ne l'est pas.
      *
      * 🔑 **À appeler par tout chemin qui déchiffre, dès qu'il a un blob en main.**
-     * La garde elle-même vit dans `blindKey()`, et tous les chemins la traversent ;
-     * cet appel sert à la faire tomber AVANT la boucle, hors du `catch` de chaque
+     * La garde elle-même vit dans `SecretInstance::lire()`, que tous les chemins
+     * traversent ; cet appel sert à la faire tomber AVANT la boucle, hors du `catch` de chaque
      * ligne, qui sinon l'avalerait et l'afficherait comme un blob déplacé.
      * Un `catch` par ligne ne peut
      * pas distinguer « ce blob n'est pas à sa place » d'« il n'y a plus de clé » :
@@ -65,7 +61,7 @@ final class DataGuard
      * dérivation étant mémoïsée, l'appel ne coûte qu'au premier.
      *
      * ⚠️ **Deux pannes sur trois.** Le secret absent et le secret trop court sont
-     * refusés par `blindKey()`, donc sur tous les chemins et pas seulement ici. Un
+     * refusés par `SecretInstance::lire()`, donc sur tous les chemins et pas seulement ici. Un
      * secret **remplacé par un autre valide** n'est pas détectable : rien dans le
      * fichier ne dit qu'il n'est pas celui qui a chiffré, et le constater
      * demanderait un témoin que cette classe ne tient pas. Ce cas se reconnaît à ce
@@ -74,33 +70,10 @@ final class DataGuard
      */
     public static function exigerCle(): void
     {
-        self::garderSecret();
+        // `blindKey()` d'abord, et non le seul `dmKey()` : la clé dérivée est mémoïsée,
+        // et un secret retiré pendant la vie du processus ne se verrait plus.
+        self::blindKey();
         self::dmKey();
-    }
-
-    /**
-     * Refuse un secret absent quand des données chiffrées l'attendent.
-     *
-     * Une seule condition, appelée de deux endroits : `blindKey()`, que tout chemin
-     * traverse, et `exigerCle()`, qui doit la faire tomber même quand la clé dérivée
-     * est déjà en mémoire — le cache de `cle()` ne rappelle pas `blindKey()`.
-     */
-    private static function garderSecret(): void
-    {
-        if (!SecretInstance::existe('.blindkey', 'LAB_BLINDKEY_PATH') && self::chiffresEnBase()) {
-            throw new \RuntimeException(
-                "Secret d'instance .blindkey absent alors que la base porte des données chiffrées : "
-                . 'une clé neuve les rendrait toutes illisibles. Refus de servir — restaurer le secret.'
-            );
-        }
-    }
-
-    /** La base porte-t-elle au moins un blob ? Mesurable sans la clé, et c'est le but. */
-    private static function chiffresEnBase(): bool
-    {
-        return (bool) Db::pdo()->query(
-            'SELECT EXISTS (SELECT 1 FROM dm) OR EXISTS (SELECT 1 FROM profiles)'
-        )->fetchColumn();
     }
 
     /** @var array<string, string> clés dérivées, une par contexte, le temps de la requête */
@@ -161,19 +134,75 @@ final class DataGuard
     /**
      * Déchiffre un blob, en exigeant le contexte sous lequel il a été scellé.
      *
-     * Un blob sans `MARQUEUR_CONTEXTE` précède la liaison au contexte : il est
-     * déchiffré sans donnée associée, et reste donc déplaçable jusqu'à ce que
-     * `tools/migrer-aad.php` le réécrive.
+     * Un blob sans `MARQUEUR_CONTEXTE` précède la liaison au contexte : il se lit
+     * sans donnée associée **tant que la passe de migration n'a pas fini**, et
+     * reste déplaçable jusque-là. Après, il est refusé : voir `temoinScelle()`.
      */
     public static function decrypt(string $b64, string $contexte): string
     {
         if (!str_starts_with($b64, self::MARQUEUR_CONTEXTE)) {
-            return Primitives::decrypt(EncryptedBlob::fromBase64($b64), self::dmKey());
+            if (self::lectureSansContexteFermee()) {
+                throw new \RuntimeException(
+                    'Blob sans contexte refusé : la passe de migration a scellé cette base.'
+                );
+            }
+
+            return self::decryptSansContexte($b64);
         }
 
         $nu = substr($b64, strlen(self::MARQUEUR_CONTEXTE));
 
         return Primitives::decrypt(EncryptedBlob::fromBase64($nu), self::dmKey(), $contexte);
+    }
+
+    /**
+     * Déchiffre un blob d'avant la liaison au contexte, sans rien exiger.
+     *
+     * Réservé à `tools/migrer-aad.php`, qui doit relire les blobs nus pour les
+     * sceller — y compris ceux d'une sauvegarde restaurée après sa première passe,
+     * quand `decrypt()` les refuse déjà.
+     */
+    public static function decryptSansContexte(string $b64): string
+    {
+        return Primitives::decrypt(EncryptedBlob::fromBase64($b64), self::dmKey());
+    }
+
+    /**
+     * Le témoin que la passe de migration a scellé tous les blobs nus.
+     *
+     * 🔑 **Tant qu'il manque, un blob nu se lit sans contexte** — c'est ce qui laisse
+     * une base antérieure servir jusqu'à sa passe. Une fois posé, plus aucun : sans
+     * lui, un blob nu gardé d'avant la passe (un dump, une archive de sauvegarde) se
+     * replanterait dans n'importe quelle ligne et rendrait son clair, et la passe
+     * suivante le scellerait là comme s'il y était né.
+     *
+     * Il vit à côté du secret, et non dans la base, pour la raison même du secret :
+     * l'adversaire que l'AAD vise écrit dans la base, et y effacer le témoin
+     * rouvrirait la lecture. Une base restaurée d'avant la passe se relit en
+     * relançant la passe, qui scelle ce qu'elle trouve.
+     */
+    private static function temoinScelle(): string
+    {
+        return SecretInstance::chemin('.blindkey', 'LAB_BLINDKEY_PATH') . '.scelle';
+    }
+
+    public static function lectureSansContexteFermee(): bool
+    {
+        return is_file(self::temoinScelle());
+    }
+
+    /** Pose le témoin. Appelé par la passe de migration quand il ne reste aucun blob nu. */
+    public static function fermerLectureSansContexte(): void
+    {
+        $f = self::temoinScelle();
+        if (is_file($f)) {
+            return;
+        }
+        if (@file_put_contents($f, gmdate('c') . "\n") === false || !@chmod($f, 0600)) {
+            throw new \RuntimeException(
+                "Témoin de scellement non posable ({$f}) : la lecture sans contexte reste ouverte."
+            );
+        }
     }
 
     /**

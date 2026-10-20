@@ -47,10 +47,22 @@ final class SecretInstance
      *                                  porte le double, l'écriture étant hexadécimale
      * @param int         $minLongueur  longueur en dessous de laquelle on refuse de servir
      * @param string|null $env          variable qui déroute le chemin, quand il en existe une
+     * @param callable(): ?string $dependances ce que le déploiement a déjà bâti sur ce
+     *                                  secret, en une phrase qui le nomme — ou `null` s'il
+     *                                  n'y a rien. Interrogé seulement quand le secret manque.
+     *
+     * 🔑 **Un secret absent n'est une panne que si quelque chose en dépend.** Le poser
+     * est juste sur une instance neuve, et destructeur sur une instance qui a déjà
+     * chiffré, signé ou indexé sous lui : un secret neuf rendrait tout cela illisible
+     * ou introuvable, sans un mot. La question est donc posée ici, au seul point par
+     * lequel passent tous les secrets, et non chez chacun de leurs appelants : une
+     * garde posée chez l'appelant laisse toujours un voisin qui ne la pose pas. Elle
+     * est obligatoire pour la même raison — un secret qui n'a rien à protéger le dit
+     * en rendant `null`, il ne le dit pas en se taisant.
      *
      * @throws \RuntimeException à chaque étape qui peut échouer — jamais de valeur de repli.
      */
-    public static function lire(string $nom, int $octets, int $minLongueur, ?string $env = null): string
+    public static function lire(string $nom, int $octets, int $minLongueur, ?string $env, callable $dependances): string
     {
         if ($minLongueur < self::PLANCHER) {
             throw new \RuntimeException(
@@ -66,6 +78,13 @@ final class SecretInstance
         }
 
         if (!file_exists($f)) {
+            $enDepend = $dependances();
+            if ($enDepend !== null) {
+                throw new \RuntimeException(
+                    "Secret d'instance {$nom} absent ({$f}) alors que {$enDepend} en dépend : un secret "
+                    . 'neuf le rendrait inutilisable sans le dire. Refus de servir — restaurer le secret.'
+                );
+            }
             self::poser($nom, $f, $octets);
         }
 
@@ -91,20 +110,7 @@ final class SecretInstance
      * tous les codes déjà émis : c'est le seul repli silencieux qui restait, et il porte
      * sur le chemin plutôt que sur la valeur.
      */
-    /**
-     * Ce secret existe-t-il déjà, sans le créer ?
-     *
-     * 🔑 `lire()` **pose** un secret absent, ce qui est juste à l'installation et
-     * faux sur un chemin de lecture : une base restaurée sans son secret obtiendrait
-     * une clé neuve, et chaque donnée chiffrée se présenterait comme illisible au
-     * lieu de dire que la clé manque. Qui lit demande donc d'abord.
-     */
-    public static function existe(string $nom, ?string $env = null): bool
-    {
-        return is_file(self::chemin($nom, $env));
-    }
-
-    private static function chemin(string $nom, ?string $env): string
+    public static function chemin(string $nom, ?string $env): string
     {
         if ($env === null) {
             return __DIR__ . '/../data/' . $nom;
@@ -125,7 +131,7 @@ final class SecretInstance
     }
 
     /**
-     * Crée le secret : fichier temporaire, droits posés AVANT publication, renommage.
+     * Crée le secret : fichier temporaire, droits posés AVANT publication, lien vers le nom définitif.
      *
      * 🔑 **Le `chmod` vient avant que le fichier porte son nom définitif.** Posé après,
      * il laisse une fenêtre pendant laquelle le secret existe en `0664` — mesuré, c'est
@@ -149,13 +155,12 @@ final class SecretInstance
 
         // Quelqu'un d'autre l'a posé pendant qu'on préparait le nôtre : le sien fait foi.
         // Écraser reviendrait à voler son secret à un processus qui l'a déjà en mémoire.
-        if (file_exists($f)) {
-            @unlink($tmp);
-
-            return;
-        }
-        if (!@rename($tmp, $f)) {
-            @unlink($tmp);
+        // 🔑 `link()` échoue si le nom est pris, en une seule opération ; tester puis
+        // renommer laissait la fenêtre ouverte, et `rename()` écrase — mesuré : seize
+        // premières requêtes simultanées tiraient jusqu'à six secrets différents.
+        $publie = @link($tmp, $f);
+        @unlink($tmp);
+        if (!$publie && !file_exists($f)) {
             throw new \RuntimeException("Secret d'instance {$nom} : publication impossible vers {$f}.");
         }
     }

@@ -32,6 +32,14 @@
  * Idempotent : il ne touche que les blobs sans `DataGuard::MARQUEUR_CONTEXTE`.
  * Relancé, il ne fait rien et le dit.
  *
+ * 🔑 **Finie, elle ferme la lecture sans contexte.** Quand il ne reste aucun blob
+ * nu, la passe pose le témoin de `DataGuard` : un blob nu gardé d'avant elle — un
+ * dump, une archive — ne se relira plus nulle part. Et la passe ne scelle plus
+ * aucun blob nu : après elle, un blob nu ne vient que d'une écriture hostile ou d'une
+ * sauvegarde restaurée, et le sceller le certifierait pour qui l'a planté. Elle les
+ * nomme ; une base restaurée d'avant la passe se relit en retirant le témoin, puis
+ * en relançant la passe.
+ *
  * Usage :
  *   php tools/migrer-aad.php --a-blanc    compte sans écrire
  *   php tools/migrer-aad.php              relie, et dit combien
@@ -45,6 +53,7 @@ require_once __DIR__ . '/../lib/dataguard.php';
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\DataGuard;
+use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
 
 /**
  * Le prédicat « ce blob ne porte pas le marqueur », et ses deux paramètres.
@@ -74,6 +83,17 @@ if (!is_file($base)) {
     fwrite(STDERR, sprintf("Aucune base à %s — rien n'est migré, et rien n'est créé.\n", $base));
     exit(2);
 }
+// Le même défaut sous une autre forme : `Db::pdo()` pose aussi le schéma sur un
+// fichier vide ou sur une base étrangère. Les tables se lisent donc avant.
+$manquantes = array_diff(['dm', 'profiles'], Db::tables());
+if ($manquantes !== []) {
+    fwrite(STDERR, sprintf(
+        "%s n'est pas une base du lab (%s absente) — rien n'est migré, et rien n'est créé.\n",
+        $base,
+        implode(', ', $manquantes)
+    ));
+    exit(2);
+}
 
 $pdo = Db::pdo();
 
@@ -94,12 +114,34 @@ $empreinte = static function (string $blob) {
     // Une charge vide ou trop courte pour porter un nonce et un tag n'ouvrira rien :
     // deux lignes dégénérées se ressemblent sans qu'aucune soit la copie de l'autre,
     // et les accuser de recopie serait une accusation d'intrusion sur un vide.
-    if ($octets === false || strlen($octets) < 28) {
+    if ($octets === false || strlen($octets) < EncryptedBlob::NONCE_LEN_V1 + EncryptedBlob::TAG_LEN) {
         return null;
     }
 
     return 'octets:' . hash('sha256', $octets);
 };
+
+// La clé, mais seulement s'il y a quelque chose à déchiffrer : sans ce test, une
+// base qui n'a jamais rien chiffré ferait lever la passe là où elle n'a rien à
+// faire. Avec un blob en main, en revanche, un secret manquant ferait compter
+// chaque ligne comme illisible et annoncer un diagnostic faux. Elle se dérive AVANT
+// le verrou : un Argon2id de 64 Mio tiendrait sinon toutes les écritures du site.
+$aDechiffrer = static fn(): bool => (bool) $pdo->query(
+    'SELECT EXISTS (SELECT 1 FROM dm) OR EXISTS (SELECT 1 FROM profiles)'
+)->fetchColumn();
+if ($aDechiffrer()) {
+    DataGuard::exigerCle();
+}
+
+// 🔑 **Toute la passe sous un seul verrou d'écriture.** L'inventaire des copies et
+// les lignes qu'il juge doivent être la même base : sans verrou, une copie écrite
+// après l'inventaire n'y figurait pas, et la passe la scellait pour qui l'avait faite
+// — mesuré, 31 à 41 copies sur trois essais, écrites pendant la dérivation de la clé.
+// Les écritures du site attendent la fin de la passe (`busy_timeout`) ; aucune n'est
+// perdue ni défaite. À blanc, une transaction de lecture suffit à figer la base. Une
+// exception en cours de passe termine le script, et SQLite défait à la fermeture de
+// la connexion tout ce qui n'a pas été validé.
+$pdo->exec($aBlanc ? 'BEGIN' : 'BEGIN IMMEDIATE');
 
 /**
  * Les charges présentes à plus d'un endroit : une copie, donc un déplacement.
@@ -118,10 +160,7 @@ foreach ($toutes as $l) {
 }
 $copies = array_filter($vus, static fn(int $n): bool => $n > 1);
 
-// La clé, mais seulement s'il y a quelque chose à déchiffrer : sans ce test, une
-// base qui n'a jamais rien chiffré ferait lever la passe là où elle n'a rien à
-// faire. Avec un blob en main, en revanche, un secret manquant ferait compter
-// chaque ligne comme illisible et annoncer un diagnostic faux.
+// Une ligne arrivée entre le test et le verrou : la clé se dérive alors ici.
 if ($toutes !== []) {
     DataGuard::exigerCle();
 }
@@ -129,9 +168,11 @@ if ($toutes !== []) {
 $relie   = 0;
 $refus   = 0;
 $deplace = 0;
+$apres   = 0;
+$fermee  = DataGuard::lectureSansContexteFermee();
 
 /** @param callable(array<string,mixed>):string $contexteDe */
-$passe = static function (string $table, string $cle, callable $contexteDe) use ($pdo, $aBlanc, $copies, $empreinte, &$relie, &$refus, &$deplace): void {
+$passe = static function (string $table, string $cle, callable $contexteDe) use ($pdo, $aBlanc, $copies, $empreinte, $fermee, &$relie, &$refus, &$deplace, &$apres): void {
     $lignes = $pdo->prepare("SELECT * FROM $table WHERE " . NU);
     $lignes->execute(parametresNu());
     foreach ($lignes->fetchAll() as $ligne) {
@@ -151,8 +192,19 @@ $passe = static function (string $table, string $cle, callable $contexteDe) use 
             continue;
         }
 
+        if ($fermee) {
+            $apres++;
+            fwrite(STDERR, sprintf(
+                "%s #%d : blob nu alors que la lecture sans contexte est fermée — laissé tel quel, à examiner. "
+                . "Si la base vient d'une sauvegarde d'avant la passe : retirer le témoin, puis relancer.\n",
+                $table,
+                $id
+            ));
+            continue;
+        }
+
         try {
-            $clair = DataGuard::decrypt($blob, $contexte);
+            $clair = DataGuard::decryptSansContexte($blob);
         } catch (\Throwable $e) {
             $refus++;
             fwrite(STDERR, sprintf("%s #%d : illisible, laissé tel quel (%s)\n", $table, $id, $e->getMessage()));
@@ -160,14 +212,8 @@ $passe = static function (string $table, string $cle, callable $contexteDe) use 
         }
 
         if (!$aBlanc) {
-            // La valeur relue garde l'écriture : un titulaire qui enregistre son
-            // profil entre la lecture et ici ne doit pas voir son travail défait.
-            $maj = $pdo->prepare("UPDATE $table SET ciphertext = ? WHERE $cle = ? AND ciphertext = ?");
-            $maj->execute([DataGuard::encrypt($clair, $contexte), $id, $blob]);
-            if ($maj->rowCount() === 0) {
-                fwrite(STDERR, sprintf("%s #%d : modifié pendant la passe, laissé à son écriture la plus récente.\n", $table, $id));
-                continue;
-            }
+            $pdo->prepare("UPDATE $table SET ciphertext = ? WHERE $cle = ?")
+                ->execute([DataGuard::encrypt($clair, $contexte), $id]);
         }
         $relie++;
     }
@@ -182,14 +228,21 @@ $compte = $pdo->prepare(
 $compte->execute([...parametresNu(), ...parametresNu()]);
 $restants = (int) $compte->fetchColumn();
 
+$pdo->exec($aBlanc ? 'ROLLBACK' : 'COMMIT');
+
 $fini = $restants === 0;
+if ($fini && !$aBlanc) {
+    DataGuard::fermerLectureSansContexte();
+}
 printf(
-    "%s %d blob(s) relié(s) · %d recopié(s) laissé(s) à examiner · %d illisible(s) · %d sans contexte après cette passe\n",
+    "%s %d blob(s) relié(s) · %d recopié(s) laissé(s) à examiner · %d apparu(s) après la fermeture, à examiner · %d illisible(s) · %d sans contexte après cette passe · lecture sans contexte %s\n",
     $aBlanc ? '[à blanc]' : ($fini ? '✅' : '⚠️'),
     $relie,
     $deplace,
+    $apres,
     $refus,
-    $restants
+    $restants,
+    DataGuard::lectureSansContexteFermee() ? 'fermée' : 'encore ouverte'
 );
 
 if ($aBlanc) {

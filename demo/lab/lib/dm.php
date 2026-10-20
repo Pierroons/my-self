@@ -83,7 +83,8 @@ final class DM
         if ($total >= 2 && $illisibles === $total) {
             error_log(sprintf(
                 'messagerie du compte #%d : %d message(s) sur %d illisibles — un déplacement de blob '
-                . 'ne touche pas tout : vérifier le secret .blindkey.',
+                . 'ne touche pas tout : vérifier le secret .blindkey, ou une base restaurée d\'avant la '
+                . 'passe de migration (relancer tools/migrer-aad.php).',
                 $accountId,
                 $illisibles,
                 $total

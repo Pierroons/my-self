@@ -14,6 +14,7 @@ declare(strict_types=1);
 namespace Pierroons\MySelfLab;
 
 require_once __DIR__ . '/secret_instance.php';
+require_once __DIR__ . '/db.php';
 
 final class Security
 {
@@ -101,7 +102,22 @@ final class Security
      */
     private static function csrfSecret(): string
     {
-        return 'csrf|' . SecretInstance::lire('.serversecret', 48, SecretInstance::PLANCHER);
+        return 'csrf|' . self::secretServeur();
+    }
+
+    /**
+     * Le secret serveur, et le seul endroit qui le lit.
+     *
+     * 🔑 Deux usages le partagent — le jeton CSRF et l'empreinte des drapeaux
+     * (`Flags::empreinte()`) —, mais un secret ne déclare qu'une fois ce qui dépend
+     * de lui : lu de deux endroits, le premier appel venu (ici, n'importe quelle page
+     * anonyme) l'aurait posé sans demander si des drapeaux attendaient l'ancien.
+     */
+    public static function secretServeur(): string
+    {
+        return SecretInstance::lire('.serversecret', 48, SecretInstance::PLANCHER, 'LAB_SERVERSECRET_PATH', static fn (): ?string => Db::ceQuiDepend([
+            'flag_digests' => 'empreinte(s) de drapeau, calculées sous ce secret',
+        ]));
     }
 
     /**

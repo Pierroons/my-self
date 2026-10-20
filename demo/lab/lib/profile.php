@@ -29,14 +29,27 @@ final class Profile
     /** Le profil déchiffré, ou des champs vides — qu'il n'y en ait pas, ou qu'il ne s'ouvre pas. */
     public static function get(PDO $pdo, int $accountId): array
     {
+        return self::lire($pdo, $accountId)['champs'];
+    }
+
+    /**
+     * Les champs et l'état du profil, pour un seul déchiffrement.
+     *
+     * `get()` puis `illisible()` déchiffraient deux fois le même blob, et la page
+     * d'édition appelle les deux.
+     *
+     * @return array{champs: array<string, string>, illisible: bool}
+     */
+    public static function lire(PDO $pdo, int $accountId): array
+    {
         $vide = array_fill_keys(self::CHAMPS, '');
-        $clair = self::clair($pdo, $accountId);
+        [$present, $clair] = self::clair($pdo, $accountId);
         if ($clair === null) {
-            return $vide;
+            return ['champs' => $vide, 'illisible' => $present];
         }
         $data = json_decode($clair, true);
 
-        return is_array($data) ? array_merge($vide, $data) : $vide;
+        return ['champs' => is_array($data) ? array_merge($vide, $data) : $vide, 'illisible' => false];
     }
 
     /**
@@ -55,30 +68,31 @@ final class Profile
      */
     public static function illisible(PDO $pdo, int $accountId): bool
     {
-        $stmt = $pdo->prepare('SELECT 1 FROM profiles WHERE account_id = ?');
-        $stmt->execute([$accountId]);
-
-        return $stmt->fetchColumn() !== false && self::clair($pdo, $accountId) === null;
+        return self::lire($pdo, $accountId)['illisible'];
     }
 
-    /** Le clair du profil, ou `null` s'il n'y en a pas ou s'il ne s'ouvre pas. */
-    private static function clair(PDO $pdo, int $accountId): ?string
+    /**
+     * Le profil existe-t-il, et son clair — `null` s'il n'y en a pas ou s'il ne s'ouvre pas.
+     *
+     * @return array{0: bool, 1: ?string}
+     */
+    private static function clair(PDO $pdo, int $accountId): array
     {
         $stmt = $pdo->prepare('SELECT ciphertext FROM profiles WHERE account_id = ?');
         $stmt->execute([$accountId]);
         $blob = $stmt->fetchColumn();
         if ($blob === false) {
-            return null;
+            return [false, null];
         }
         // Un blob est là : la clé qui l'a scellé doit exister, et non être posée
         // à l'instant par la lecture. Cette ligne est atteignable sans session.
         DataGuard::exigerCle();
         try {
-            return DataGuard::decrypt((string) $blob, DataGuard::contexteProfil($accountId));
+            return [true, DataGuard::decrypt((string) $blob, DataGuard::contexteProfil($accountId))];
         } catch (\Throwable $e) {
             error_log(sprintf('profil #%d illisible : %s', $accountId, $e->getMessage()));
 
-            return null;
+            return [true, null];
         }
     }
 
@@ -117,14 +131,15 @@ final class Profile
             return ['ok' => false, 'error' => 'lien_invalide',
                     'message' => 'Le lien doit commencer par http:// ou https:// (ou rester vide).'];
         }
-        if (!$remplacerIllisible && self::illisible($pdo, $accountId)) {
+        $illisible = self::illisible($pdo, $accountId);
+        if (!$remplacerIllisible && $illisible) {
             return ['ok' => false, 'error' => 'profil_illisible',
                     'message' => 'Ton profil existe mais le serveur ne sait pas le lire en ce moment. '
                                  . 'Il n\'est pas remplacé. Préviens un arbitre ; si tu préfères repartir '
                                  . 'd\'un profil neuf, confirme le remplacement — l\'ancien sera perdu.'];
         }
 
-        if ($remplacerIllisible && self::illisible($pdo, $accountId)) {
+        if ($remplacerIllisible && $illisible) {
             // Un acte irréversible du titulaire se trace : sans cette ligne, le seul
             // chiffré d'un profil partait sans que rien ne dise quand ni par qui.
             error_log(sprintf('profil #%d illisible remplacé par son titulaire — l\'ancien chiffré est perdu', $accountId));
@@ -155,13 +170,17 @@ final class Profile
             return null;
         }
         // La vue publique ne révèle jamais les champs privés (ex. mémo perso).
-        $profil = self::get($pdo, (int) $acc['id']);
+        $lu = self::lire($pdo, (int) $acc['id']);
+        $profil = $lu['champs'];
         foreach (self::PRIVES as $c) {
             unset($profil[$c]);
         }
         return [
-            'username' => $acc['username'],
-            'profil'   => $profil,
+            'username'  => $acc['username'],
+            'profil'    => $profil,
+            // Un profil illisible ne s'affiche pas comme un profil vide : le visiteur
+            // conclurait que le membre n'a rien écrit.
+            'illisible' => $lu['illisible'],
         ];
     }
 }

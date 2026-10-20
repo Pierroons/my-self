@@ -1611,8 +1611,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_dataguard.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du chiffrement du lab a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^✅ 31/31 ' \
-            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 31 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 41/41 ' \
+            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 41 cas"; exit 1; }
 
       # La bibliothèque rend `cle`/`texte`, la page lit `key`/`label`/`type`/`options` :
       # les deux côtés avaient divergé sans un mot, et le niveau 3 partait sans aucune
@@ -1641,7 +1641,7 @@ jobs:
       # absente — demandé par la conv Recover, qui a trouvé que le premier n'était
       # lancé par aucune étape. Les deux derniers s'y sont ajoutés le 07/10, après
       # avoir été écrits puis laissés hors de toute étape, exactement comme eux.
-      - name: Canaris — les dix gardes du lab rougissent sur le défaut qu'elles visent
+      - name: Canaris — les douze gardes du lab rougissent sur le défaut qu'elles visent
         run: |
           # @plante
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
@@ -1743,14 +1743,27 @@ jobs:
           # défaut : écrire avec contexte et lire sans fait échouer le tag, donc tout
           # rougit, y compris le chemin normal. C'est le contexte qui doit cesser de
           # distinguer, pas une de ses deux faces.
-          # ⚠️ La ligne exigée porte son « ✗ » : un banc imprime le libellé d'un cas
-          # qu'il passe ou qu'il échoue, donc exiger le libellé nu ne distingue pas
-          # les deux — le canari se dirait éprouvé sur un rouge venu d'ailleurs.
           canari demo/lab/lib/dataguard.php \
             "return 'dm:' . \$expediteur . ':' . \$destinataire;" \
             "return 'dm:fixe'; // canari" \
             demo/lab/tests/sanity_dataguard.php \
             "✗ ⭐ le blob d'un message privé entre deux autres comptes"
+
+          # 11. La passe finie ne ferme plus la lecture sans contexte : un blob gardé
+          #     d'avant elle, replanté n'importe où, rend de nouveau son clair.
+          canari demo/lab/lib/dataguard.php \
+            'if (self::lectureSansContexteFermee()) {' \
+            'if (false) { // canari' \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ un blob nu gardé d'avant la passe ne se relit plus"
+
+          # 12. Un secret absent se pose sans demander ce qui dépend de lui : une clé,
+          #     un sel ou un secret neuf rend illisible ou introuvable ce qui précède.
+          canari demo/lab/lib/secret_instance.php \
+            '            if ($enDepend !== null) {' \
+            '            if (false) { // canari' \
+            demo/lab/tests/sanity_secrets_instance.php \
+            "❌ ⭐ absent alors que quelque chose en dépend"
 
       - name: Canari — la console reperd les tentatives sans étiquette
         run: |
@@ -2457,11 +2470,10 @@ jobs:
           # 0500 ne lui ferme rien, et le banc les saute EN LE DISANT — mais il sort
           # quand même à zéro, puisque rien n'a échoué. Ces deux lignes sont donc le
           # seul témoin qui distingue « tout a été mesuré » de « la moitié l'a été ».
-          # Le premier compteur dit ce qu'il compte : trois LECTURES DE SOURCE, qui
-          # établissent que les trois fonctions délèguent — pas trois secrets écrits
-          # sur un disque fermé, ce que le banc avoue ne pas faire.
-          echo "$sortie" | grep -qE "▸ délégations contrôlées sur le source : 3$" \
-            || { echo "::error::le banc n'a pas contrôlé les trois délégations"; exit 1; }
+          # Le premier compteur dit ce qu'il compte : quatre LECTURES DE SOURCE, qui
+          # établissent que les quatre porteurs délèguent — un par secret d'instance.
+          echo "$sortie" | grep -qE "▸ délégations contrôlées sur le source : 4$" \
+            || { echo "::error::le banc n'a pas contrôlé les quatre délégations"; exit 1; }
           echo "$sortie" | grep -qE "▸ sections sautées : 0$" \
             || { echo "::error::le banc a sauté une section — verdict partiel"; exit 1; }
 

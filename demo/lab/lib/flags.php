@@ -7,7 +7,7 @@ namespace Pierroons\MySelfLab;
 use PDO;
 
 require_once __DIR__ . '/dataguard.php';
-require_once __DIR__ . '/secret_instance.php';
+require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/notify.php';
 
 /**
@@ -63,7 +63,7 @@ final class Flags
         return hash_hmac(
             'sha256',
             trim($drapeau),
-            'flag|' . SecretInstance::lire('.serversecret', 48, SecretInstance::PLANCHER)
+            'flag|' . Security::secretServeur()
         );
     }
 

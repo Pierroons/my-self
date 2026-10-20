@@ -60,7 +60,8 @@ final class JournalModeration implements Journal
     {
         return $this->log ??= new AuditLog(
             $this->chemin(),
-            SecretInstance::lire('.modaudit', 48, SecretInstance::PLANCHER, 'LAB_MODAUDIT_PATH')
+            SecretInstance::lire('.modaudit', 48, SecretInstance::PLANCHER, 'LAB_MODAUDIT_PATH', fn (): ?string =>
+                @filesize($this->chemin()) > 0 ? 'le journal de modération, chaîné sous cette clé,' : null)
         );
     }
 }

@@ -25,6 +25,9 @@ declare(strict_types=1);
 require __DIR__ . '/../vendor/autoload.php';
 putenv('LAB_SITESALT_PATH=' . sys_get_temp_dir() . '/lab-console-freins-sitesalt-' . getmypid());
 register_shutdown_function(static fn () => @unlink((string) getenv('LAB_SITESALT_PATH')));
+// La base qu'un secret absent consulte avant de se poser : celle de ce banc est en
+// mémoire, la règle n'en voit donc aucune — et ne lit pas celle de l'instance locale.
+putenv('LAB_DB_PATH=' . sys_get_temp_dir() . '/lab-console-freins-sans-base-' . getmypid() . '.db');
 require_once __DIR__ . '/../lib/db.php';
 require_once __DIR__ . '/../lib/auth.php';
 require_once __DIR__ . '/../lib/admin.php';

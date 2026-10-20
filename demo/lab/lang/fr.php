@@ -305,6 +305,7 @@ return [
     'log.noaccount'  => 'Pas de compte ? <a href="/register.php">En créer un</a> (sans email).',
     'log.forgot'     => 'Mot de passe oublié ? <a href="/recover.php">Récupération sans email</a> (mot de récupération).',
     'log.error'      => 'Erreur',
+    'err.indisponible' => 'Le service est momentanément indisponible. Réessaie dans un moment.',
 
     'reg.goto_login' => 'Aller à la connexion →',
 
@@ -515,6 +516,7 @@ return [
     'prf.js.saved2'  => 'Mémo re-chiffré et enregistré.',
     'prf.illisible' => 'Ton profil existe mais le serveur ne sait pas le lire en ce moment. Il n\'est pas affiché, et il ne sera pas remplacé sans que tu le demandes.',
     'prf.illisible.remplacer' => 'Repartir d\'un profil neuf — l\'ancien sera définitivement perdu',
+    'prf.illisible.vue' => 'Le profil de ce membre existe, mais il ne peut pas être affiché pour l\'instant.',
 
     // ── Récupération d'accès (SelfRecover) ────────────────────────────────
     'rec.title'   => 'Récupération d\'accès',

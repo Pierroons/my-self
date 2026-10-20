@@ -16,6 +16,30 @@ date_default_timezone_set('Europe/Paris');
 // le gabarit, et leurs classes appellent tc() — sans cela, une fonction
 // indéfinie et une erreur fatale à chaque appel.
 require_once __DIR__ . '/i18n.php';
+// 🔑 Une exception non rattrapée ne rend ni un corps vide ni sa trace. Sans ce
+// gestionnaire, PHP rendait un 500 sans contenu — et, sous `display_errors`, un 200
+// portant la trace et ses chemins disque : le refus d'une garde (secret absent, base
+// fermée) devenait une fuite là où il devait être une réponse. La cause part au
+// journal du serveur, jamais au client. Les scripts en ligne de commande gardent le
+// comportement de PHP, qui écrit sur la sortie d'erreur et rend un code non nul.
+if (PHP_SAPI !== 'cli') {
+    set_exception_handler(static function (\Throwable $e): void {
+        error_log(sprintf('%s non rattrapée : %s (%s:%d)', $e::class, $e->getMessage(), $e->getFile(), $e->getLine()));
+        try {
+            $message = t('err.indisponible');
+        } catch (\Throwable) {
+            $message = 'Service momentanément indisponible.';
+        }
+        $api = str_starts_with((string) strtok($_SERVER['REQUEST_URI'] ?? '/', '?'), '/api/');
+        if (!headers_sent()) {
+            http_response_code(500);
+            header('Content-Type: ' . ($api ? 'application/json' : 'text/html') . '; charset=utf-8');
+        }
+        echo $api
+            ? json_encode(['ok' => false, 'error' => 'indisponible', 'message' => $message], JSON_UNESCAPED_UNICODE)
+            : '<!doctype html><meta charset="utf-8"><title>500</title><p>' . htmlspecialchars($message) . '</p>';
+    });
+}
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/security.php';

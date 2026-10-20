@@ -27,17 +27,10 @@
  * Conformément à `AGENTS.md`, le jeu de défauts plantés ne vit pas dans le dépôt.
  *
  * ⚠️ **Ce que ce banc ne garde pas.**
- * - Il n'exerce pas `Security::csrfSecret()` ni `DataGuard::blindKey()` sur un vrai
- *   répertoire fermé : ni l'une ni l'autre n'a de prise pour dérouter son chemin, et
- *   les rediriger demanderait de toucher au `data/` de l'instance. Elles sont donc
- *   éprouvées sur deux plans : la mécanique commune, exercée pour de bon à travers
- *   `SecretInstance` et `Auth::siteSalt()`, et leur passage par cette mécanique,
- *   contrôlé sur le source.
  * - Le scan anti-régression (§3) ne reconnaît que `random_bytes`/`randomBytes` comme
  *   source d'aléa. Un secret produit par un autre appel — `generateAdminRecoveryKey`,
  *   par exemple — lui échappe.
- * - Il n'éprouve ni la concurrence à la création, ni le cas où `chmod` échoue faute
- *   d'être propriétaire du fichier.
+ * - Il n'éprouve pas le cas où `chmod` échoue faute d'être propriétaire du fichier.
  */
 
 declare(strict_types=1);
@@ -66,11 +59,22 @@ require_once __DIR__ . '/../lib/auth.php';
 require_once __DIR__ . '/../lib/db.php';
 require_once __DIR__ . '/../lib/security.php';
 require_once __DIR__ . '/../lib/dataguard.php';
+require_once __DIR__ . '/../lib/journal_moderation.php';
 
 use Pierroons\MySelfLab\Auth;
+use Pierroons\MySelfLab\DataGuard;
 use Pierroons\MySelfLab\Db;
+use Pierroons\MySelfLab\JournalModeration;
 use Pierroons\MySelfLab\SecretInstance;
+use Pierroons\MySelfLab\Security;
 use Pierroons\MySelfLab\SuAudit;
+
+// La base que consulte un secret absent avant de se poser. Sans cette prise, le
+// banc la demanderait à la base de l'instance locale, qui n'est pas la sienne.
+putenv('LAB_DB_PATH=' . sys_get_temp_dir() . '/lab-secrets-sans-base-' . getmypid() . '.db');
+
+/** Ce que déclare un secret de banc : rien ne dépend de lui. */
+$rien = static fn (): ?string => null;
 
 $passes = 0;
 $echecs = 0;
@@ -217,7 +221,7 @@ if ($racine) {
     $leve  = false;
     $rendu = null;
     try {
-        $rendu = SecretInstance::lire('.secret-x', 48, 32, 'BANC_SECRET_PATH');
+        $rendu = SecretInstance::lire('.secret-x', 48, 32, 'BANC_SECRET_PATH', $rien);
     } catch (RuntimeException $e) {
         $leve = true;
     }
@@ -248,7 +252,7 @@ foreach (['.tronque' => 'court', '.vide' => ''] as $nom => $contenu) {
     putenv('BANC_SECRET_PATH=' . $bac . '/' . $nom);
     $leve = false;
     try {
-        SecretInstance::lire($nom, 48, 32, 'BANC_SECRET_PATH');
+        SecretInstance::lire($nom, 48, 32, 'BANC_SECRET_PATH', $rien);
     } catch (RuntimeException $e) {
         $leve = true;
     }
@@ -256,9 +260,9 @@ foreach (['.tronque' => 'court', '.vide' => ''] as $nom => $contenu) {
 }
 
 putenv('BANC_SECRET_PATH=' . $bac . '/.neuf');
-$neuf = SecretInstance::lire('.neuf', 48, 32, 'BANC_SECRET_PATH');
+$neuf = SecretInstance::lire('.neuf', 48, 32, 'BANC_SECRET_PATH', $rien);
 verifier('un secret neuf est créé et dépasse la longueur exigée', strlen($neuf) >= 32, strlen($neuf) . ' caractères');
-verifier('le même appel rend la même valeur', SecretInstance::lire('.neuf', 48, 32, 'BANC_SECRET_PATH') === $neuf);
+verifier('le même appel rend la même valeur', SecretInstance::lire('.neuf', 48, 32, 'BANC_SECRET_PATH', $rien) === $neuf);
 verifier('le fichier n\'est lisible que par son propriétaire', (fileperms($bac . '/.neuf') & 0o777) === 0o600);
 verifier('aucun fichier temporaire ne subsiste', glob($bac . '/.neuf.*.tmp') === []);
 
@@ -268,7 +272,7 @@ verifier('aucun fichier temporaire ne subsiste', glob($bac . '/.neuf.*.tmp') ===
 putenv('BANC_SECRET_PATH=');
 $causeVide = '';
 try {
-    SecretInstance::lire('.neuf', 48, 32, 'BANC_SECRET_PATH');
+    SecretInstance::lire('.neuf', 48, 32, 'BANC_SECRET_PATH', $rien);
 } catch (RuntimeException $e) {
     $causeVide = $e->getMessage();
 }
@@ -284,17 +288,20 @@ verifier(
 putenv('BANC_SECRET_PATH');
 
 // ─────────────────────────────────────────────────────────────────────────────
-section('3. Les trois secrets passent par le porteur unique, et ne se mélangent plus');
+section('3. Les quatre secrets passent par le porteur unique, et ne se mélangent plus');
 
-$corpsCsrf  = corpsDe('Pierroons\\MySelfLab\\Security', 'csrfSecret');
-$corpsBlind = corpsDe('Pierroons\\MySelfLab\\DataGuard', 'blindKey');
-$corpsSel   = corpsDe('Pierroons\\MySelfLab\\Auth', 'siteSalt');
-$delegues   = 0;
+$corpsServeur = corpsDe('Pierroons\\MySelfLab\\Security', 'secretServeur');
+$corpsCsrf    = corpsDe('Pierroons\\MySelfLab\\Security', 'csrfSecret');
+$corpsBlind   = corpsDe('Pierroons\\MySelfLab\\DataGuard', 'blindKey');
+$corpsSel     = corpsDe('Pierroons\\MySelfLab\\Auth', 'siteSalt');
+$corpsJournal = corpsDe('Pierroons\\MySelfLab\\JournalModeration', 'log');
+$delegues     = 0;
 
 foreach ([
-    'Security::csrfSecret' => [$corpsCsrf, '.serversecret'],
-    'DataGuard::blindKey'  => [$corpsBlind, '.blindkey'],
-    'Auth::siteSalt'       => [$corpsSel, '.sitesalt'],
+    'Security::secretServeur' => [$corpsServeur, '.serversecret'],
+    'DataGuard::blindKey'     => [$corpsBlind, '.blindkey'],
+    'Auth::siteSalt'          => [$corpsSel, '.sitesalt'],
+    'JournalModeration::log'  => [$corpsJournal, '.modaudit'],
 ] as $nom => [$corps, $fichier]) {
     $passe = str_contains($corps, 'SecretInstance::lire')
         && str_contains($corps, $fichier)
@@ -305,7 +312,28 @@ foreach ([
 
 verifier(
     'le secret CSRF ne partage plus son fichier avec le chiffrement des coffres',
-    str_contains($corpsCsrf, '.serversecret') && !str_contains($corpsCsrf, '.blindkey')
+    str_contains($corpsCsrf, 'self::secretServeur()') && !str_contains($corpsServeur, '.blindkey')
+);
+
+// 🔑 Un secret ne déclare qu'une fois ce qui dépend de lui, donc il n'est lu qu'à un
+// endroit. Lu de deux, le premier appel venu le posait : le jeton CSRF d'une page
+// anonyme créait le secret serveur sans demander si des drapeaux attendaient l'ancien.
+$lectures = [];
+foreach (array_merge(phpSous(__DIR__ . '/../lib'), phpSous(__DIR__ . '/../public'), phpSous(__DIR__ . '/../tools')) as $fichier) {
+    foreach ((array) file($fichier) as $n => $ligne) {
+        if (preg_match('/^\s*(\*|\/\/)/', (string) $ligne) === 1) {
+            continue;
+        }
+        preg_match_all("/SecretInstance::lire\(\s*'([^']+)'/", (string) $ligne, $m);
+        foreach ($m[1] as $nomSecret) {
+            $lectures[$nomSecret][] = basename($fichier) . ':' . ($n + 1);
+        }
+    }
+}
+verifier(
+    '⭐ chaque secret n\'est lu qu\'à un seul endroit, qui déclare ce qui en dépend',
+    count($lectures) === 4 && array_filter($lectures, static fn (array $l): bool => count($l) > 1) === [],
+    json_encode($lectures, JSON_UNESCAPED_SLASHES)
 );
 
 // Le contrôle qui attrape le jumeau suivant, appel par appel plutôt que fichier
@@ -473,6 +501,106 @@ clearstatcache();
 $mode = fileperms($base) & 0777;
 verifier('une base existante garde son mode', $mode === 0640, sprintf('%o', $mode));
 umask($masque);
+putenv('LAB_DB_PATH');
+
+// ─────────────────────────────────────────────────────────────────────────────
+section('8. Un secret absent ne se pose que si rien n\'en dépend');
+
+// 🔑 Le poser est juste sur une instance neuve, et destructeur sur une instance qui a
+// déjà chiffré, signé ou indexé sous lui : rien ne dirait que tout est devenu
+// illisible ou introuvable. Trouvé secret par secret par la cinquième passe d'audit
+// du lot AAD — le sel de site se recréait en silence, et tous les codes émis avec.
+putenv('BANC_SECRET_PATH=' . $bac . '/.attendu');
+$questions = 0;
+$cause = '';
+try {
+    SecretInstance::lire('.attendu', 48, 32, 'BANC_SECRET_PATH', static function () use (&$questions): ?string {
+        $questions++;
+
+        return '3 choses chiffrées';
+    });
+} catch (RuntimeException $e) {
+    $cause = $e->getMessage();
+}
+verifier(
+    '⭐ absent alors que quelque chose en dépend : refus qui le nomme, et rien de posé',
+    str_contains($cause, '3 choses chiffrées') && !is_file($bac . '/.attendu'),
+    $cause === '' ? 'aucune levée' : $cause
+);
+verifier('absent, et rien qui en dépende : il se pose', strlen(SecretInstance::lire('.attendu', 48, 32, 'BANC_SECRET_PATH', $rien)) >= 32);
+$questions = 0;
+SecretInstance::lire('.attendu', 48, 32, 'BANC_SECRET_PATH', static function () use (&$questions): ?string {
+    $questions++;
+
+    return 'x';
+});
+verifier('présent, la question n\'est pas posée', $questions === 0);
+putenv('BANC_SECRET_PATH');
+
+// Chacun des quatre par son vrai porteur, sur une base qui ne porte QUE ce qui
+// dépend de lui. Les tables suffisent nues : la question compte des lignes.
+$baseRegle = $bac . '/regle.db';
+$p = new PDO('sqlite:' . $baseRegle);
+$p->exec('CREATE TABLE recovery_codes (x); CREATE TABLE flag_digests (x); CREATE TABLE redteam_reports (x);
+          CREATE TABLE dm (x); CREATE TABLE profiles (x);
+          INSERT INTO recovery_codes VALUES (1); INSERT INTO flag_digests VALUES (1); INSERT INTO redteam_reports VALUES (1);');
+$p = null;
+$journalPlein = $bac . '/moderation.log';
+file_put_contents($journalPlein, "{}\n");
+putenv('LAB_DB_PATH=' . $baseRegle);
+foreach ([
+    '.sitesalt'     => ['LAB_SITESALT_PATH', static fn () => Auth::siteSalt(), 'code(s) de récupération'],
+    '.serversecret' => ['LAB_SERVERSECRET_PATH', static fn () => Security::secretServeur(), 'empreinte(s) de drapeau'],
+    '.blindkey'     => ['LAB_BLINDKEY_PATH', static fn () => DataGuard::hmac('x', 'banc'), 'rapport(s) red team'],
+    '.modaudit'     => ['LAB_MODAUDIT_PATH', static fn () => (new JournalModeration($journalPlein))->verifier(), 'journal de modération'],
+] as $nom => [$prise, $lire, $attendu]) {
+    $chemin = $bac . '/absent' . $nom;
+    putenv($prise . '=' . $chemin);
+    $cause = '';
+    try {
+        $lire();
+    } catch (RuntimeException $e) {
+        $cause = $e->getMessage();
+    }
+    verifier(
+        "⭐ {$nom} absent, ce qui en dépend présent : refus nommé, rien de posé",
+        str_contains($cause, $attendu) && !is_file($chemin),
+        $cause === '' ? 'aucune levée' : $cause
+    );
+    putenv($prise);
+}
+putenv('LAB_SITESALT_PATH=' . $bacSel);
+
+// La course à la création : seize premières requêtes au même instant. Tester
+// l'existence puis renommer laissait la fenêtre ouverte, et `rename()` écrase —
+// mesuré par l'audit : jusqu'à six secrets différents servis sur un même essai.
+$enfant = $bac . '/course.php';
+file_put_contents($enfant, '<?php
+require ' . var_export(__DIR__ . '/../lib/secret_instance.php', true) . ';
+while (microtime(true) < (float) $argv[1]) {
+}
+echo Pierroons\MySelfLab\SecretInstance::lire(".course", 48, 32, "BANC_SECRET_PATH", static fn (): ?string => null);
+');
+$divergents = 0;
+for ($essai = 0; $essai < 10; $essai++) {
+    $chemin = $bac . '/.course-' . $essai;
+    $depart = sprintf('%.6f', microtime(true) + 0.5);
+    $enCours = [];
+    for ($k = 0; $k < 16; $k++) {
+        $proc = proc_open([PHP_BINARY, $enfant, $depart], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $tubes, null, ['BANC_SECRET_PATH' => $chemin]);
+        $enCours[] = [$proc, $tubes];
+    }
+    $rendus = [];
+    foreach ($enCours as [$proc, $tubes]) {
+        $rendus[] = trim((string) stream_get_contents($tubes[1]));
+        proc_close($proc);
+    }
+    $final = trim((string) @file_get_contents($chemin));
+    if (count(array_unique($rendus)) !== 1 || $rendus[0] !== $final) {
+        $divergents++;
+    }
+}
+verifier('⭐ seize premières requêtes simultanées reçoivent toutes le même secret, dix fois sur dix', $divergents === 0, "{$divergents} essai(s) sur 10 ont servi plusieurs secrets");
 putenv('LAB_DB_PATH');
 
 // ─────────────────────────────────────────────────────────────────────────────

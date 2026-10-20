@@ -26,6 +26,74 @@ final class Db
     }
 
     /**
+     * Combien de lignes porte chaque table, lu sans ouvrir la base pour écrire.
+     *
+     * Sert à la question que pose un secret absent (« quelque chose en dépend-il ? »),
+     * qui ne doit rien changer à ce qu'elle mesure : `pdo()` crée une base absente et y
+     * applique schéma et migrations. Base absente ou table absente comptent zéro. Une
+     * base illisible ou verrouillée lève, et le secret n'est alors pas posé.
+     *
+     * @param list<string> $tables
+     * @return array<string, int>
+     */
+    public static function lignes(array $tables): array
+    {
+        $compte = array_fill_keys($tables, 0);
+        $pdo = self::lecteur();
+        if ($pdo === null) {
+            return $compte;
+        }
+        $presentes = self::tables();
+        foreach ($tables as $table) {
+            if (in_array($table, $presentes, true)) {
+                $compte[$table] = (int) $pdo->query('SELECT COUNT(*) FROM "' . $table . '"')->fetchColumn();
+            }
+        }
+
+        return $compte;
+    }
+
+    /**
+     * Les tables non vides, nommées pour un message — « 3 message(s) privé(s), 1 profil(s) » —,
+     * ou `null` si toutes sont vides : la réponse que `SecretInstance::lire()` attend de qui
+     * déclare ce qui dépend d'un secret.
+     *
+     * @param array<string, string> $libelles table => ce que sont ses lignes
+     */
+    public static function ceQuiDepend(array $libelles): ?string
+    {
+        $morceaux = [];
+        foreach (self::lignes(array_keys($libelles)) as $table => $n) {
+            if ($n > 0) {
+                $morceaux[] = $n . ' ' . $libelles[$table];
+            }
+        }
+
+        return $morceaux === [] ? null : implode(', ', $morceaux);
+    }
+
+    /** @return list<string> les tables de la base, lues sans l'ouvrir pour écrire ; aucune si elle est absente */
+    public static function tables(): array
+    {
+        $pdo = self::lecteur();
+
+        return $pdo === null ? [] : $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table'")->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    private static function lecteur(): ?PDO
+    {
+        $chemin = self::path();
+        if (!is_file($chemin)) {
+            return null;
+        }
+
+        return new PDO('sqlite:' . $chemin, null, null, [
+            PDO::ATTR_ERRMODE           => PDO::ERRMODE_EXCEPTION,
+            PDO::SQLITE_ATTR_OPEN_FLAGS => PDO::SQLITE_OPEN_READONLY,
+        ]);
+    }
+
+    /**
      * SQLite rend « unable to open database file » pour un disque plein comme pour
      * un répertoire où l'utilisateur courant n'écrit pas — et le second cas est la
      * règle dès que la console et le site tournent sous deux identités. La trace
