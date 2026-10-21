@@ -146,8 +146,10 @@ final class Redteam
         $jeton   = trim($jeton);
         $neeLe   = Db::generationNeeLe();
         $courant = hash_equals(self::jetonSuivi($numero), $jeton);
-        // Un rapport deposé avant le numero de base a recu un jeton sans lui : il
-        // reste valable pour CE rapport, et pour aucun de ceux qui suivent.
+        // Un rapport deposé avant le numero de base a recu un jeton sans lui : il reste
+        // valable pour tout rapport d'avant le numero, et pour aucun de ceux qui suivent.
+        // ⚠️ Y compris le rapport de meme numero d'une base passee sous la meme cle : c'est
+        // la collision que le numero ferme pour la suite, et que ce chemin garde pour le passe.
         $ancien  = hash_equals(substr(DataGuard::hmac((string) $numero, 'report-track'), 0, 32), $jeton);
 
         $stmt = $pdo->prepare('SELECT severity, status, created_at FROM redteam_reports WHERE id = ?');

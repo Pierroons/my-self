@@ -160,10 +160,17 @@ final class Db
             $chemin = self::path();
             self::exigerAcces($chemin);
             $neuve = !file_exists($chemin);
+            if ($neuve) {
+                self::exigerCleNeuve($chemin);
+            }
             self::$pdo = new PDO('sqlite:' . $chemin);
             self::$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             self::$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
             self::$pdo->exec('PRAGMA foreign_keys = ON');
+            // Lu avant le schéma, qui crée la table : une base qui l'avait déjà a déjà tiré un numéro.
+            self::$numeroDejaTire = !$neuve && self::$pdo
+                ->query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'lab_generation'")
+                ->fetchColumn() !== false;
             // Schema idempotent (CREATE TABLE/INDEX IF NOT EXISTS) — exécuté à chaque
             // démarrage pour appliquer les nouvelles tables sans migration manuelle.
             self::initSchema();
@@ -179,6 +186,34 @@ final class Db
         }
         return self::$pdo;
     }
+
+    /**
+     * Une base ne naît pas sous une clé qui a déjà servi.
+     *
+     * 🔑 Une base disparue — effacée à la main, déplacée, un chemin changé — se recréait
+     * sans un mot sous la clé de l'ancienne : un forum vide qui renumérote ses comptes
+     * depuis 1 et, pour qui détient une copie de l'ancienne et écrit dans la nouvelle,
+     * ses chiffrés rouverts en y recopiant son numéro (mesuré par la neuvième passe
+     * d'audit). `selfrecover-su reset-db` fige la clé avec la base, et la suivante naît
+     * sous une clé neuve. Aucune route ne lit la clé avant d'ouvrir la base : sur une
+     * instance neuve, la base naît donc toujours la première.
+     */
+    private static function exigerCleNeuve(string $chemin): void
+    {
+        require_once __DIR__ . '/dataguard.php';
+        [$cle, $temoin] = DataGuard::fichiersDeLaCle();
+        if (is_file($cle) || is_file($temoin)) {
+            throw new \RuntimeException(
+                "Base du lab absente ({$chemin}) alors que la clé de ses chiffrés a servi ici ({$cle}) : une base "
+                . 'neuve sous cette clé rouvrirait, à qui y écrit, les chiffrés de l\'ancienne. Restaurer la base ; '
+                . 'pour repartir à vide, `selfrecover-su reset-db`, ou retirer aussi la clé et ses deux témoins '
+                . '— ce qu\'elle a chiffré sera perdu.'
+            );
+        }
+    }
+
+    /** La base ouverte portait-elle déjà la table du numéro, avant que le schéma ne la pose ? */
+    private static bool $numeroDejaTire = false;
 
     public static function initSchema(): void
     {
@@ -196,8 +231,8 @@ final class Db
      * 🔑 Rangé en clair, un jeton de session faisait d'une base volée la clé de toutes
      * les sessions en cours — la lecture des messages privés comprise, que le serveur
      * déchiffre pour qui est connecté. Le cookie porte le jeton, la base son empreinte :
-     * un SHA-256 suffit, le jeton étant tiré au hasard sur 32 octets, sans rien d'un
-     * mot mémorisé à protéger d'une recherche exhaustive.
+     * un SHA-256 suffit, le jeton étant tiré au hasard (`Auth::JETON_OCTETS`), sans rien
+     * d'un mot mémorisé à protéger d'une recherche exhaustive.
      */
     public static function empreinteJeton(string $jeton): string
     {
@@ -220,18 +255,32 @@ final class Db
     public static function generation(): string
     {
         if (self::$generation === null) {
-            $valeur = self::pdo()->query('SELECT valeur FROM lab_generation WHERE id = 1')->fetchColumn();
+            $ligne = self::pdo()->query(
+                "SELECT g.valeur, m.valeur AS empreinte FROM lab_generation g
+                   LEFT JOIN lab_migrations m ON m.nom = 'numero-de-base' WHERE g.id = 1"
+            )->fetch(PDO::FETCH_ASSOC);
+            $valeur = $ligne === false ? false : $ligne['valeur'];
             if ($valeur === false) {
                 throw new \RuntimeException(
                     'Numéro de base absent (table lab_generation) alors qu\'il a déjà servi ici : un numéro neuf '
                     . 'rendrait illisible, sans le dire, ce qui a été scellé sous lui. Restaurer la ligne depuis une '
                     . 'sauvegarde de cette base. Pour repartir d\'un numéro neuf en connaissance de cause : '
-                    . "INSERT INTO lab_generation (id, valeur, nee_le) VALUES (1, lower(hex(randomblob(16))), strftime('%s', 'now'))"
-                    . ' — ce qui était scellé sous l\'ancien sera perdu.'
+                    . self::NUMERO_NEUF . ' — ce qui était scellé sous l\'ancien sera perdu.'
                 );
             }
             if (!is_string($valeur) || strlen($valeur) !== 32) {
                 throw new \RuntimeException('Numéro de base absent ou altéré (table lab_generation) : refus de chiffrer sans lui.');
+            }
+            // Réécrit, il rendait tout illisible, et le journal accusait la clé : le site offrait
+            // même au titulaire de remplacer un profil intact (mesuré par la neuvième passe
+            // d'audit). La trace de son tirage porte son empreinte.
+            if (is_string($ligne['empreinte']) && !hash_equals($ligne['empreinte'], hash('sha256', $valeur))) {
+                throw new \RuntimeException(
+                    'Numéro de base réécrit (table lab_generation) : il ne correspond plus à la trace de son tirage '
+                    . '(lab_migrations, numero-de-base), et ce qui a été scellé sous lui ne s\'ouvrirait plus. Restaurer '
+                    . 'la ligne depuis une sauvegarde de cette base, ou repartir d\'un numéro neuf en connaissance de '
+                    . 'cause : ' . self::NUMERO_NEUF . '.'
+                );
             }
             self::$generation = $valeur;
         }
@@ -240,6 +289,10 @@ final class Db
     }
 
     private static ?string $generation = null;
+
+    /** Le geste qui tire un numéro neuf à la main : la ligne, et la trace de l'ancien retirée. */
+    private const NUMERO_NEUF = "DELETE FROM lab_generation; DELETE FROM lab_migrations WHERE nom = 'numero-de-base'; "
+        . "INSERT INTO lab_generation (id, valeur, nee_le) VALUES (1, lower(hex(randomblob(16))), strftime('%s', 'now'))";
 
     /**
      * Remplace le numéro mémoïsé, et rend celui qu'il remplace.
@@ -267,12 +320,19 @@ final class Db
     /**
      * Un numéro a-t-il déjà servi dans cette base : tiré ici, ou scellé dans un blob ?
      *
-     * La trace du tirage et les blobs liés sont deux témoins indépendants : une base
-     * reconstruite à partir de ses seules tables `dm` et `profiles` n'a plus la trace,
-     * et une ligne `lab_generation` effacée par un script de purge laisse la trace.
+     * Trois témoins indépendants : la table du numéro, présente avant que le schéma la
+     * pose ; la trace du tirage ; les blobs liés. Une ligne effacée par un script de purge
+     * laisse les deux premiers — c'est le cas d'une base qui ne porte que des rapports,
+     * dont les jetons de suivi portent le numéro (mesuré par la neuvième passe d'audit) ;
+     * une base reconstruite à partir de ses seules tables `dm` et `profiles` garde le
+     * troisième. ⚠️ Une base dont la table et la trace ont disparu, et qui ne porte que des
+     * rapports, ne se distingue pas d'une base d'avant le numéro : elle en reçoit un neuf.
      */
     private static function numeroADejaServi(): bool
     {
+        if (self::$numeroDejaTire) {
+            return true;
+        }
         $lie = self::$pdo->prepare(
             "SELECT EXISTS (SELECT 1 FROM lab_migrations WHERE nom = 'numero-de-base')
                  OR EXISTS (SELECT 1 FROM dm WHERE substr(ciphertext, 1, ?) = ?)
@@ -301,12 +361,18 @@ final class Db
         // il rendait illisibles tous les messages et profils sans un mot, et la passe de
         // migration se disait finie (mesuré par la huitième passe d'audit). La ligne reste
         // alors absente, et `generation()` refuse là où le numéro sert.
+        $colonnes = self::$pdo->query('PRAGMA table_info(lab_migrations)')->fetchAll(PDO::FETCH_COLUMN, 1);
+        if (!in_array('valeur', $colonnes, true)) {
+            self::$pdo->exec('ALTER TABLE lab_migrations ADD COLUMN valeur TEXT');
+        }
         if (self::$pdo->query('SELECT 1 FROM lab_generation WHERE id = 1')->fetchColumn() === false
             && !self::numeroADejaServi()) {
             self::$pdo->prepare('INSERT OR IGNORE INTO lab_generation (id, valeur, nee_le) VALUES (1, ?, ?)')
                 ->execute([bin2hex(random_bytes(16)), time()]);
-            self::$pdo->prepare("INSERT OR IGNORE INTO lab_migrations (nom, faite_le) VALUES ('numero-de-base', ?)")
-                ->execute([time()]);
+            // L'empreinte du numéro RANGÉ, relu : celui d'une ouverture concurrente a pu l'emporter.
+            $range = (string) self::$pdo->query('SELECT valeur FROM lab_generation WHERE id = 1')->fetchColumn();
+            self::$pdo->prepare("INSERT OR IGNORE INTO lab_migrations (nom, faite_le, valeur) VALUES ('numero-de-base', ?, ?)")
+                ->execute([time(), hash('sha256', $range)]);
         }
 
         // Les sessions ouvertes avant l'empreinte : converties UNE fois, sans déconnecter

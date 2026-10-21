@@ -184,6 +184,9 @@ if (_logoutLink) _logoutLink.addEventListener('click', function(e){ e.preventDef
  */
 function palier_reputation(int $rep, string $prefixe = 'prf'): array
 {
+    // Chargée ici : une fonction de la mise en page ne dépend pas de ce que la page a
+    // chargé avant elle (`tests/sanity_chargement.php`).
+    require_once __DIR__ . '/moderate.php';
     $seuil = \Pierroons\MySelfLab\Moderate::config()->perteDroitDeVoteSous;
     if ($rep >= 25) {
         return ['libelle' => t($prefixe . '.rep.trust'), 'couleur' => '#3fb98c', 'chiffrable' => true];
@@ -200,6 +203,9 @@ function palier_reputation(int $rep, string $prefixe = 'prf'): array
 
 function render_vote_reason_dialog(): void
 {
+    // Chargée ici : une fonction de la mise en page ne dépend pas de ce que la page a
+    // chargé avant elle (`tests/sanity_chargement.php`).
+    require_once __DIR__ . '/moderate.php';
     $codes = \Pierroons\MySelfLab\Moderate::reasonCodes();
     $min = (int) \Pierroons\MySelfLab\Moderate::REASON_MIN_CHARS;
     ?>

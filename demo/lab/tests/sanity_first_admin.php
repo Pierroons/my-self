@@ -269,10 +269,12 @@ if ($argv[1] === "graine") {
     exit;
 }
 // Le rejeu de la huitième passe d\'audit : la base neuve reçoit sa première requête, puis
-// l\'écriture recopie l\'ancien numéro et l\'ancien blob — et le destinataire n° 2 lit.
+// l\'écriture recopie l\'ancien numéro — avec l\'empreinte de sa trace, que qui écrit
+// partout recalcule — et l\'ancien blob ; et le destinataire n° 2 lit.
 DataGuard::exigerCle();
 $pdo->exec("INSERT OR IGNORE INTO accounts (id, username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (1, \'r1\', \'x\', \'x\', \'x\', 0), (2, \'r2\', \'x\', \'x\', \'x\', 0)");
 $pdo->prepare("UPDATE lab_generation SET valeur = ?")->execute([$argv[2]]);
+$pdo->prepare("UPDATE lab_migrations SET valeur = ? WHERE nom = \'numero-de-base\'")->execute([hash("sha256", $argv[2])]);
 $pdo->prepare("INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (1, 2, ?, 0)")->execute([$argv[3]]);
 Db::fermer();
 echo Dm::inbox(Db::pdo(), 2)[0]["message"] ?? "(rien)";
@@ -293,6 +295,23 @@ function lab(string $base, string $cle, string ...$args): string
 $cle = $env['LAB_BLINDKEY_PATH'];
 [$numeroAncien, $blobAncien] = json_decode(lab($base, $cle, 'graine'), true) ?? [null, null];
 touch("$cle.scelle");   // le témoin d'une passe de migration faite : il part aussi
+
+// 🔑 Le reset ne fige que la clé de CETTE base. Une console qui ne porte pas la prise
+// du site la cherchait ailleurs, ne la trouvait pas, et répondait « rien n'avait été
+// chiffré » : la clé du site restait (mesuré par la neuvième passe d'audit).
+$comptesAvant = (int) base()->query('SELECT COUNT(*) FROM accounts')->fetchColumn();
+mkdir(chemin_isole('ailleurs'), 0700);
+[$c, $o] = su(['reset-db', '--confirm'], ['LAB_BLINDKEY_PATH' => chemin_isole('ailleurs/.blindkey')]);
+$c !== 0 && str_contains($o, 'aucune clé') && is_file($cle) && glob("$base.frozen-*") === []
+    && (int) base()->query('SELECT COUNT(*) FROM accounts')->fetchColumn() === $comptesAvant
+    ? ok('⭐ une console qui ne voit pas la clé du site refuse le reset, et rien ne bouge')
+    : nok("sans la clé du site, reset-db devait refuser sans rien figer (code $c) : " . trim(substr($o, 0, 200)));
+mkdir(chemin_isole('etrangere'), 0700);
+file_put_contents(chemin_isole('etrangere/.blindkey'), bin2hex(random_bytes(48)));
+[$c, $o] = su(['reset-db', '--confirm'], ['LAB_BLINDKEY_PATH' => chemin_isole('etrangere/.blindkey')]);
+$c !== 0 && str_contains($o, "ne s'ouvre sous la clé") && is_file($cle) && glob("$base.frozen-*") === []
+    ? ok('une clé valide mais étrangère à la base : refus aussi, rien de figé')
+    : nok("une clé étrangère devait faire refuser reset-db (code $c) : " . trim(substr($o, 0, 200)));
 
 $avant = count(SuAudit::read());
 [$c] = su(['reset-db']);

@@ -239,6 +239,31 @@ if ($racine) {
 // ─────────────────────────────────────────────────────────────────────────────
 section('2. C\'est la longueur qui qualifie le secret, pas sa présence');
 
+// Un droit de lecture manquant, la cause la plus probable quand le site et la console
+// tournent sous deux identités, se disait « vide ou trop court » : on cherchait alors un
+// fichier tronqué, et on le trouvait plein (mesuré par la neuvième passe d'audit).
+if ($racine) {
+    $sautes++;
+    echo "  ⏭️  secret illisible : non éprouvable sous root — signalé, pas compté\n";
+} else {
+    file_put_contents($bac . '/.ferme-en-lecture', bin2hex(random_bytes(48)));
+    chmod($bac . '/.ferme-en-lecture', 0000);
+    putenv('BANC_SECRET_PATH=' . $bac . '/.ferme-en-lecture');
+    $cause = '';
+    try {
+        SecretInstance::lire('.ferme-en-lecture', 48, 32, 'BANC_SECRET_PATH', static fn (): ?string => null);
+    } catch (RuntimeException $e) {
+        $cause = $e->getMessage();
+    }
+    chmod($bac . '/.ferme-en-lecture', 0600);
+    putenv('BANC_SECRET_PATH');
+    verifier(
+        '⭐ un secret présent mais illisible le dit, il ne se dit pas « trop court »',
+        str_contains($cause, 'illisible pour l\'identité qui sert') && !str_contains($cause, 'trop court'),
+        $cause === '' ? 'aucune levée' : $cause
+    );
+}
+
 foreach (['.tronque' => 'court', '.vide' => ''] as $nom => $contenu) {
     file_put_contents($bac . '/' . $nom, $contenu);
     putenv('BANC_SECRET_PATH=' . $bac . '/' . $nom);
@@ -616,7 +641,9 @@ foreach ([
         str_contains($cause, $attendu) && !is_file($chemin),
         $cause === '' ? 'aucune levée' : $cause
     );
-    putenv($prise);
+    // Rendue à l'isolement, jamais retirée : retirée, la suite du banc lisait le secret
+    // par défaut, celui de `data/`.
+    putenv($prise . '=' . instance_isolee()[$prise]);
 }
 putenv('LAB_SITESALT_PATH=' . $bacSel);
 

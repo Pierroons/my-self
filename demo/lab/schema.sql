@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS lab_generation (
 -- réparent en silence ce qu'un chemin régressé abîmerait de nouveau.
 CREATE TABLE IF NOT EXISTS lab_migrations (
     nom      TEXT PRIMARY KEY,
-    faite_le INTEGER NOT NULL
+    faite_le INTEGER NOT NULL,
+    valeur   TEXT                     -- ce que la migration a fixé, quand il faut pouvoir le vérifier
 );
 
 CREATE TABLE IF NOT EXISTS app_sessions (

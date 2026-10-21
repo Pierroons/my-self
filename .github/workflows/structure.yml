@@ -1571,6 +1571,18 @@ jobs:
           echo "$sortie" | grep -qE '^OK — 38/38 ' \
             || { echo "::error::le banc du simulateur n'a pas joué ses 38 contrôles"; exit 1; }
 
+      # Deux fois, une page est tombée sur une classe que rien ne chargeait — le
+      # simulateur sur `derive_cli.php`, l'enregistrement du profil sur `moderate.php`,
+      # que l'autoload ne trouve pas : son nom ne suit pas la casse de sa classe. Les
+      # bancs ne le voient pas, ils chargent eux-mêmes ce qu'ils appellent.
+      - name: Garde-fou — chaque point d'entrée du lab trouve les classes qu'il appelle
+        run: |
+          sortie=$(php demo/lab/tests/sanity_chargement.php 2>&1) && rc=0 || rc=$?
+          echo "$sortie"
+          [ "$rc" = 0 ] || { echo "::error::un point d'entrée du lab nomme une classe qu'il ne charge pas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 5/5 ' \
+            || { echo "::error::le banc du chargement n'a pas joué ses 5 contrôles"; exit 1; }
+
       - name: Canari — le banc du simulateur rougit quand un scénario perd sa dépendance
         run: |
           # @plante
@@ -1611,8 +1623,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_dataguard.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du chiffrement du lab a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^✅ 64/64 ' \
-            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 64 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 74/74 ' \
+            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 74 cas"; exit 1; }
 
       # La bibliothèque rend `cle`/`texte`, la page lit `key`/`label`/`type`/`options` :
       # les deux côtés avaient divergé sans un mot, et le niveau 3 partait sans aucune
@@ -1641,7 +1653,7 @@ jobs:
       # absente — demandé par la conv Recover, qui a trouvé que le premier n'était
       # lancé par aucune étape. Les deux derniers s'y sont ajoutés le 07/10, après
       # avoir été écrits puis laissés hors de toute étape, exactement comme eux.
-      - name: Canaris — les quatorze gardes du lab rougissent sur le défaut qu'elles visent
+      - name: Canaris — les dix-huit gardes du lab rougissent sur le défaut qu'elles visent
         run: |
           # @plante
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
@@ -1783,7 +1795,38 @@ jobs:
             '            && !self::numeroADejaServi()) {' \
             '            ) { // canari' \
             demo/lab/tests/sanity_dataguard.php \
-            "✗ ⭐ sa trace en base : l'ouverture ne tire pas de numéro neuf"
+            "✗ ⭐ numéro perdu, seul témoin restant — la table du numéro"
+
+          # 15. L'enregistrement du profil ne charge plus la modération qu'il interroge :
+          #     la route rend un 500 à tous, et aucun banc qui charge ses classes ne le voit.
+          canari demo/lab/lib/profile.php \
+            "        require_once __DIR__ . '/moderate.php';" \
+            '        // canari' \
+            demo/lab/tests/sanity_chargement.php \
+            "✗ ⭐ chaque route, outil et console trouve chaque classe du lab qu'il nomme"
+
+          # 16. `reset-db` ne demande plus à la base si la clé qu'il voit est la sienne : une
+          #     console sans la prise du site laisse la clé, et la base suivante la reçoit.
+          canari demo/lab/lib/dataguard.php \
+            '        if (!is_file($cle)) {' \
+            '        if (false) { // canari' \
+            demo/lab/tests/sanity_first_admin.php \
+            "✗ sans la clé du site, reset-db devait refuser sans rien figer"
+
+          # 17. Une base absente se recrée sous une clé qui a déjà servi.
+          canari demo/lab/lib/db.php \
+            '        if (is_file($cle) || is_file($temoin)) {' \
+            '        if (false) { // canari' \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ une base absente sous une clé qui a servi n'est pas recréée"
+
+          # 18. Un numéro réécrit ne se compare plus à l'empreinte de sa trace : tout devient
+          #     illisible, et le journal accuse la clé.
+          canari demo/lab/lib/db.php \
+            '!hash_equals($ligne' \
+            'false && !hash_equals($ligne' \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ un numéro réécrit : la boîte refuse en le nommant"
 
       - name: Canari — la console reperd les tentatives sans étiquette
         run: |
@@ -2418,8 +2461,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_first_admin.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE 'OK — 34/34 ' \
-            || { echo "::error::le banc first-admin n'a pas joué ses 34 cas"; exit 1; }
+          echo "$sortie" | grep -qE 'OK — 36/36 ' \
+            || { echo "::error::le banc first-admin n'a pas joué ses 36 cas"; exit 1; }
 
       - name: Canari — le dernier administrateur tombe sans ses deux gardes
         run: |

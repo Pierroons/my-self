@@ -1052,6 +1052,15 @@ switch ($cmd) {
             'sessions' => (int) $db->query('SELECT COUNT(*) FROM app_sessions')->fetchColumn(),
             'litiges'  => (int) $db->query('SELECT COUNT(*) FROM disputes')->fetchColumn(),
         ];
+        // La clé qu'on va figer doit être celle de cette base : figer une autre clé, ou n'en
+        // trouver aucune, laissait celle du site en place sous la base suivante.
+        require_once __DIR__ . '/vendor/autoload.php';
+        $refus = DataGuard::cleDeCetteBase($db);
+        if ($refus !== null) {
+            su_fail("Reset-db refusé, rien n'a bougé : {$refus}.\n"
+                . "   La console doit porter les prises du site (LAB_DB_PATH, LAB_BLINDKEY_PATH…) : sans elles,\n"
+                . "   elle ne voit ni la même base ni la même clé.");
+        }
         if (!in_array('--confirm', $argv, true)) {
             fwrite(STDOUT, "⚠️  RESET-DB (compromission) — tout ce qui suit est SUPPRIMÉ du service :\n");
             fwrite(STDOUT, "   • {$bilan['comptes']} compte(s), dont {$bilan['admins']} administrateur(s)\n");
@@ -1096,7 +1105,7 @@ switch ($cmd) {
         su_ok("Reset-db : {$bilan['comptes']} compte(s) supprimé(s), base neuve, journal gardé.");
         fwrite(STDOUT, '   Base figée   → ' . ($baseFigee ? basename($baseFigee) : '(aucune)') . "\n");
         fwrite(STDOUT, '   Secret figé  → ' . ($secretFige ? basename($secretFige) : '(aucun fichier)') . "\n");
-        fwrite(STDOUT, '   Clé figée    → ' . ($clesFigees !== [] ? implode(', ', $clesFigees) : '(aucune : rien n\'avait été chiffré)') . "\n");
+        fwrite(STDOUT, '   Clé figée    → ' . ($clesFigees !== [] ? implode(', ', $clesFigees) : '(aucune : rien n\'en dépendait)') . "\n");
         if ($source === 'SELFRECOVER_SU_SECRET') {
             fwrite(STDOUT, "   🚨 Le secret SU vient de l'environnement : aucun fichier ne peut le retirer.\n");
             fwrite(STDOUT, "      Retire SELFRECOVER_SU_SECRET, sinon l'ancienne passphrase vaut toujours.\n");

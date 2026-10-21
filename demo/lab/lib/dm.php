@@ -47,7 +47,7 @@ final class DM
     }
 
     /**
-     * Le clair d'un message, ou un texte de remplacement s'il ne s'ouvre pas ici.
+     * Le clair d'un message, ou `null` s'il ne s'ouvre pas ici.
      *
      * Un blob scellé pour une autre conversation échoue au déchiffrement, et
      * c'est le but. Laisser l'exception remonter ferait tomber la boîte entière
@@ -55,18 +55,23 @@ final class DM
      * la messagerie de n'importe qui. La ligne reste donc affichée, illisible,
      * et les autres messages s'affichent.
      *
+     * 🔑 L'état se rend à part, il n'habite pas le texte : reconnu à son libellé, un
+     * message dont le clair EST ce libellé passait pour illisible, et deux suffisaient à
+     * écrire au journal l'alarme d'une clé remplacée (mesuré par la neuvième passe
+     * d'audit). C'est le défaut que `Profile::lire()` a déjà fermé pour les profils.
+     *
      * ⚠️ **Le texte ne nomme pas de cause.** Un tag qui ne correspond pas, un blob
      * tronqué et un chiffre indisponible sortent tous par ici ; la panne de secret,
      * elle, est écartée en amont par `DataGuard::exigerCle()`. Accuser le
      * déplacement enverrait chercher un attaquant là où la donnée est seulement
      * abîmée.
      */
-    private static function clair(string $ciphertext, Aad $contexte): string
+    private static function clair(string $ciphertext, Aad $contexte): ?string
     {
         try {
             return DataGuard::decrypt($ciphertext, $contexte);
         } catch (\Throwable) {
-            return self::ILLISIBLE;
+            return null;
         }
     }
 
@@ -84,8 +89,9 @@ final class DM
         if ($total >= 2 && $illisibles === $total) {
             error_log(sprintf(
                 'messagerie du compte #%d : %d message(s) sur %d illisibles — un déplacement de blob '
-                . 'ne touche pas tout : vérifier le secret .blindkey, ou une base restaurée d\'avant la '
-                . 'passe de migration (relancer tools/migrer-aad.php).',
+                . 'ne touche pas tout : vérifier le secret .blindkey, le numéro de la base (table '
+                . 'lab_generation), ou une base restaurée d\'avant la passe de migration (relancer '
+                . 'tools/migrer-aad.php).',
                 $accountId,
                 $illisibles,
                 $total
@@ -111,11 +117,12 @@ final class DM
         $illisibles = 0;
         foreach ($lignes as $row) {
             $clair = self::clair($row['ciphertext'], DataGuard::contexteDm((int) $row['sender_id'], $accountId));
-            $illisibles += $clair === self::ILLISIBLE ? 1 : 0;
+            $illisibles += $clair === null ? 1 : 0;
             $out[] = [
                 'id'         => (int) $row['id'],
                 'expediteur' => $row['expediteur'],
-                'message'    => $clair,
+                'message'    => $clair ?? self::ILLISIBLE,
+                'illisible'  => $clair === null,
                 'created_at' => (int) $row['created_at'],
                 'lu'         => (bool) $row['lu'],
             ];
@@ -141,10 +148,12 @@ final class DM
         }
         $out = [];
         foreach ($lignes as $row) {
+            $clair = self::clair($row['ciphertext'], DataGuard::contexteDm($accountId, (int) $row['recipient_id']));
             $out[] = [
                 'id'           => (int) $row['id'],
                 'destinataire' => $row['destinataire'],
-                'message'      => self::clair($row['ciphertext'], DataGuard::contexteDm($accountId, (int) $row['recipient_id'])),
+                'message'      => $clair ?? self::ILLISIBLE,
+                'illisible'    => $clair === null,
                 'created_at'   => (int) $row['created_at'],
             ];
         }

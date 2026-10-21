@@ -50,11 +50,6 @@ function nok(string $m): void { global $echecs; fwrite(STDERR, "  ✗ $m\n"); $e
 $dir = sys_get_temp_dir() . '/sanity_moderate_' . bin2hex(random_bytes(6));
 mkdir($dir, 0700, true);
 putenv("LAB_DB_PATH=$dir/lab.db");
-// Le banc range de faux messages privés en SQL, avant tout chiffrement : sa clé se
-// pose donc d'abord, sur une base qui n'en porte encore aucun. Après, la garde
-// refuserait à raison de la créer sous des messages qui l'attendent.
-require_once __DIR__ . '/../lib/dataguard.php';
-\Pierroons\MySelfLab\DataGuard::exigerCle();
 
 register_shutdown_function(static function () use ($dir): void {
     foreach (glob("$dir/*") ?: [] as $f) {
@@ -63,7 +58,12 @@ register_shutdown_function(static function () use ($dir): void {
     @rmdir($dir);
 });
 
+// La base d'abord, comme sur une instance neuve : une base ne naît pas sous une clé qui
+// a déjà servi. Puis la clé, sur une base qui ne porte encore aucun message — le banc en
+// range ensuite de faux en SQL, et la garde refuserait à raison de la créer sous eux.
 $pdo = Db::pdo();
+require_once __DIR__ . '/../lib/dataguard.php';
+\Pierroons\MySelfLab\DataGuard::exigerCle();
 
 /** Crée un compte assez ancien pour passer l'anti-Sybil. */
 function membre(PDO $pdo, string $nom): int

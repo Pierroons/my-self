@@ -111,8 +111,17 @@ final class SecretInstance
             self::poser($nom, $f, $octets);
         }
 
-        // Un fichier présent mais illisible ou tronqué doit rendre le même refus qu'un
-        // fichier absent : c'est la longueur qui qualifie le secret, pas son existence.
+        // Un fichier présent mais illisible ou tronqué est refusé comme un fichier absent :
+        // c'est la longueur qui qualifie le secret, pas son existence. Mais sous son nom —
+        // un droit de lecture manquant, la cause la plus probable quand le site et la
+        // console tournent sous deux identités, se disait « vide ou trop court » et envoyait
+        // vers un fichier qu'on trouvait plein (mesuré par la neuvième passe d'audit).
+        if (!is_readable($f)) {
+            throw new \RuntimeException(
+                "Secret d'instance {$nom} présent mais illisible pour l'identité qui sert ({$f}) — "
+                . 'des droits à revoir, pas un secret à remplacer : ce qui en dépend serait perdu.'
+            );
+        }
         $valeur = trim((string) @file_get_contents($f));
         if (strlen($valeur) < $minLongueur) {
             throw new \RuntimeException(

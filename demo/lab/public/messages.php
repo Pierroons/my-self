@@ -37,7 +37,7 @@ render_header(t('msg.title'), $account);
 <?php else: foreach ($inbox as $m): ?>
   <div class="post">
     <div class="head"><span class="auteur">@<?= h($m['expediteur']) ?></span><span class="muted"><?= date('d/m/Y H:i', $m['created_at']) ?></span></div>
-    <div class="contenu"><?= h($m['message']) ?></div>
+    <div class="contenu"><?= $m['illisible'] ? '<em>' . h($m['message']) . '</em>' : h($m['message']) ?></div>
   </div>
 <?php endforeach; endif; ?>
 
@@ -46,7 +46,7 @@ render_header(t('msg.title'), $account);
 <?php foreach ($sent as $m): ?>
   <div class="post" style="opacity:.8">
     <div class="head"><?= h(t('msg.to_prefix')) ?> <span class="auteur">@<?= h($m['destinataire']) ?></span><span class="muted"><?= date('d/m/Y H:i', $m['created_at']) ?></span></div>
-    <div class="contenu"><?= h($m['message']) ?></div>
+    <div class="contenu"><?= $m['illisible'] ? '<em>' . h($m['message']) . '</em>' : h($m['message']) ?></div>
   </div>
 <?php endforeach; endif; ?>
 

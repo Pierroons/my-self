@@ -15,6 +15,7 @@ declare(strict_types=1);
 
 namespace Pierroons\MySelfLab;
 
+use PDO;
 use Pierroons\SelfDataGuard\Crypto\Aad;
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
@@ -41,11 +42,85 @@ final class DataGuard
         // (`Redteam::jetonSuivi()`) — une clé neuve les rendrait tous « invalides » sans
         // dire que c'est la clé qui a changé. Les empreintes d'adresse n'y figurent pas :
         // elles ne servent qu'au frein d'une heure, et s'effacent à la soumission suivante.
-        return SecretInstance::lire('.blindkey', 48, SecretInstance::PLANCHER, 'LAB_BLINDKEY_PATH', static fn (): ?string => Db::ceQuiDepend([
+        $nee = !is_file(self::fichiersDeLaCle()[0]);
+        $cle = SecretInstance::lire('.blindkey', 48, SecretInstance::PLANCHER, 'LAB_BLINDKEY_PATH', static fn (): ?string => self::ceQuiDependDeLaCle());
+        if ($nee && !self::lectureSansContexteFermee()) {
+            // Une clé qui naît ici n'a jamais chiffré sans contexte : la bibliothèque n'écrit
+            // plus que des blobs liés. Sans ce geste, une instance née sous la 0.7.0 gardait la
+            // lecture sans contexte ouverte pour toujours — aucune passe n'ayant de blob nu à
+            // relier, aucune ne posait le témoin (mesuré par la neuvième passe d'audit).
+            try {
+                self::fermerLectureSansContexte();
+            } catch (\RuntimeException $e) {
+                error_log($e->getMessage());
+            }
+        }
+
+        return $cle;
+    }
+
+    /** Ce que le déploiement a déjà bâti sur la clé, en une phrase, ou `null`. */
+    private static function ceQuiDependDeLaCle(): ?string
+    {
+        return Db::ceQuiDepend([
             'dm'              => 'message(s) privé(s) chiffré(s)',
             'profiles'        => 'profil(s) chiffré(s)',
             'redteam_reports' => 'rapport(s) red team, dont le jeton de suivi dérive de ce secret',
-        ]));
+        ]);
+    }
+
+    /**
+     * La clé que voit ce processus est-elle celle qui a scellé la base ? `null` si oui, ou si
+     * rien n'en dépend ; sinon la raison, en une phrase.
+     *
+     * 🔑 `reset-db` fige la clé qu'il voit. Une console qui ne portait pas la prise du site
+     * la cherchait ailleurs, ne la trouvait pas, et répondait « rien n'avait été chiffré »
+     * sur une base qui portait des messages : la clé du site restait, et ce qu'elle avait
+     * scellé se rouvrait dans la base suivante (mesuré par la neuvième passe d'audit). La
+     * question se pose donc à la base — ce qui dépend de la clé, et un chiffré qui s'ouvre
+     * sous elle —, pas au chemin. Une base qui ne porte que des rapports n'a aucun chiffré
+     * à ouvrir : la clé y est seulement exigée présente.
+     */
+    public static function cleDeCetteBase(PDO $pdo): ?string
+    {
+        $enDepend = self::ceQuiDependDeLaCle();
+        if ($enDepend === null) {
+            return null;
+        }
+        $cle = self::fichiersDeLaCle()[0];
+        if (!is_file($cle)) {
+            return "la base porte {$enDepend}, et aucune clé n'est à {$cle} (LAB_BLINDKEY_PATH)";
+        }
+        $essais = $pdo->query(
+            'SELECT * FROM (SELECT ciphertext, sender_id, recipient_id, NULL AS account_id FROM dm LIMIT 20)
+             UNION ALL
+             SELECT * FROM (SELECT ciphertext, NULL, NULL, account_id FROM profiles LIMIT 20)'
+        )->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($essais as $ligne) {
+            try {
+                $blob = (string) $ligne['ciphertext'];
+                if (!self::estLie($blob)) {
+                    self::decryptSansContexte($blob);
+                } elseif ($ligne['account_id'] !== null) {
+                    self::decrypt($blob, self::contexteProfil((int) $ligne['account_id']));
+                } else {
+                    self::decrypt($blob, self::contexteDm((int) $ligne['sender_id'], (int) $ligne['recipient_id']));
+                }
+
+                return null;
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return $essais === []
+            ? null
+            : sprintf(
+                'aucun des %d chiffrés essayés de la base ne s\'ouvre sous la clé de %s : ce n\'est pas celle qui l\'a '
+                . 'scellée, ou le numéro de la base a changé',
+                count($essais),
+                $cle
+            );
     }
 
     /**

@@ -125,7 +125,23 @@ ok('alice relit son propre envoi', ($envoyes[0]['message'] ?? null) === $secret)
 
 Profile::save($pdo, 3, ['bio' => 'carol la prudente', 'lien' => 'https://exemple.test']);
 ok('carol enregistre et relit son profil', (Profile::get($pdo, 3)['bio'] ?? '') === 'carol la prudente');
-$blobProfil = (string) $pdo->query('SELECT ciphertext FROM profiles WHERE account_id = 3')->fetchColumn();
+
+// Un message dont le clair EST le libellé d'un illisible : reconnu à son texte, il passait
+// pour illisible, et deux suffisaient à écrire au journal l'alarme d'une clé remplacée
+// (mesuré par la neuvième passe d'audit).
+$journalDuBanc = $dir . '/erreurs.log';
+$journalAvant = ini_set('error_log', $journalDuBanc);
+Dm::send($pdo, 1, 'carol', '(message illisible ici)');
+Dm::send($pdo, 1, 'carol', '(message illisible ici)');
+$forges = Dm::inbox($pdo, 3);
+ini_set('error_log', (string) $journalAvant);
+ok(
+    '⭐ un message au texte d\'un illisible se lit comme un message, et ne fait pas accuser la clé',
+    count($forges) === 2 && array_column($forges, 'illisible') === [false, false]
+        && !str_contains((string) @file_get_contents($journalDuBanc), 'illisibles'),
+    json_encode($forges, JSON_UNESCAPED_UNICODE) . ' · ' . (string) @file_get_contents($journalDuBanc)
+);
+$pdo->exec('DELETE FROM dm WHERE recipient_id = 3');
 
 echo "\n# Un blob déplacé n'est plus lisible — c'est l'objet de ce banc\n";
 
@@ -352,6 +368,13 @@ echo "\n# Les deux contournements de la détection, trouvés par l'audit du lot\
 // ces deux cas gardent est la certification — un blob scellé sous la ligne du
 // tiers ne sera plus jamais revu par aucune passe.
 
+// Sur une instance déjà scellée, la passe laisse tout blob nu en place et le nomme
+// « apparu après la fermeture » : ces deux cas y restaient verts quand la détection
+// cédait (mesuré par la neuvième passe d'audit). Ils se jouent donc fenêtre ouverte, là
+// où une copie manquée serait SCELLÉE, et ils exigent la cause, pas le seul numéro.
+$temoin = DataGuard::fichiersDeLaCle()[2];
+rename($temoin, $temoin . '.de-cote');
+
 // (a) Le base64 strict de PHP tolère les blancs : une copie suivie d'un « \n » est
 //     une autre CHAÎNE qui décode aux MÊMES octets. Comparer les chaînes la laissait
 //     passer, et la passe scellait alors la copie pour qui l'avait déplacée.
@@ -365,7 +388,7 @@ $pdo->prepare('INSERT INTO dm (id, sender_id, recipient_id, ciphertext, created_
 $ligne41 = (string) $pdo->query('SELECT ciphertext FROM dm WHERE id = 41')->fetchColumn();
 ok(
     '⭐ une copie retouchée d\'un seul caractère est reconnue : la charge compte, pas la chaîne',
-    !DataGuard::estLie($ligne41) && str_contains($sortie, 'dm #41'),
+    !DataGuard::estLie($ligne41) && str_contains($sortie, 'dm #41 : cette charge chiffrée est présente à 2 endroits'),
     'ligne 41 = ' . substr($ligne41, 0, 12) . '… · ' . trim($sortie)
 );
 
@@ -383,9 +406,10 @@ $pdo->prepare('INSERT INTO dm (id, sender_id, recipient_id, ciphertext, created_
 $ligne51 = (string) $pdo->query('SELECT ciphertext FROM dm WHERE id = 51')->fetchColumn();
 ok(
     '⭐ un en-tête de blob lié posé à la main sur la ligne légitime n\'isole pas la copie',
-    !DataGuard::estLie($ligne51) && str_contains($sortie, 'dm #51'),
+    !DataGuard::estLie($ligne51) && str_contains($sortie, 'dm #51 : cette charge chiffrée est présente à 2 endroits'),
     'ligne 51 = ' . substr($ligne51, 0, 12) . '… · ' . trim($sortie)
 );
+rename($temoin . '.de-cote', $temoin);
 
 echo "\n# Une clé qui manque se dit, elle ne se déguise pas en donnée abîmée\n";
 
@@ -492,6 +516,7 @@ $neuve = $dir . '/neuve.db';
 $cleNeuve = $dir . '/.blindkey-neuve';
 $pdoNeuve = new PDO('sqlite:' . $neuve);
 $pdoNeuve->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+$pdoNeuve->exec("INSERT INTO lab_generation (id, valeur, nee_le) VALUES (1, '" . bin2hex(random_bytes(16)) . "', $t)");
 $pdoNeuve = null;
 ok(
     'une instance neuve, sans rien de chiffré, ouvre sa messagerie sans secret',
@@ -506,6 +531,14 @@ ok(
     '⭐ et sa première écriture pose le secret : la garde laisse s\'installer ce qui n\'a rien à perdre',
     $jouer($neuve, $cleNeuve, 'chiffrer') === 'OK' && is_file($cleNeuve),
     'secret posé = ' . var_export(is_file($cleNeuve), true)
+);
+// Une clé qui naît ici n'a jamais chiffré sans contexte : sans ce témoin posé à sa
+// naissance, une instance née sous la 0.7.0 gardait la lecture sans contexte ouverte pour
+// toujours, aucune passe n'ayant de blob nu à relier (mesuré par la neuvième passe d'audit).
+ok(
+    '⭐ une clé qui naît ici ferme d\'emblée la lecture sans contexte',
+    is_file($cleNeuve . '.scelle'),
+    'témoin = ' . var_export(is_file($cleNeuve . '.scelle'), true)
 );
 
 // (b) Une base qui porte des chiffrés, un secret perdu, et le chemin d'une route
@@ -587,10 +620,9 @@ ok('⭐ une base étrangère est refusée, et garde ses seules tables', $rc === 
 
 echo "\n# Une copie écrite PENDANT la passe n'est pas scellée pour qui l'a faite\n";
 
-// L'inventaire des copies et les lignes qu'il juge doivent être la même base. Sans
+// (a) L'inventaire des copies et les lignes qu'il juge doivent être la même base. Sans
 // verrou, une copie écrite après l'inventaire n'y figurait pas, et la passe la
-// scellait pour qui l'avait faite — mesuré par la cinquième passe d'audit, 31 à 41
-// copies sur trois essais. La fenêtre se rend mesurable ici : une passe longue sur
+// scellait pour qui l'avait faite — mesuré par la cinquième passe d'audit. La fenêtre se rend mesurable ici : une passe longue sur
 // les messages, pendant laquelle un copieur range le blob d'un message dans des
 // PROFILS, que la passe traite après. ⚠️ Le copieur n'écrit qu'une fois la passe
 // commencée — dès qu'un message scellé est VISIBLE : une copie écrite avant
@@ -634,6 +666,50 @@ ok(
     sprintf('%d copie(s) écrite(s), %d scellée(s) · %s', $copiesEcrites, $scellees, substr(trim($sortieCourse), -160))
 );
 
+// (b) Et c'est un verrou d'ÉCRITURE : sous un `BEGIN` différé, la passe ne certifie rien,
+// elle tombe sur « database is locked » dès que le site écrit en même temps (mesuré par
+// la neuvième passe d'audit) — ce que (a) ne voit pas, son copieur n'écrivant qu'après
+// le `COMMIT`. Ici le copieur écrit sans relâche, dès avant la passe et jusqu'après
+// elle : la passe doit aller au bout, et n'en sceller aucune.
+$course = $baseAvec('course-continue', 'SELECT 1');
+$cleCourse = $dir . '/.blindkey-course-continue';
+file_put_contents($cleCourse, bin2hex(random_bytes(48)));
+$cleDm = Primitives::deriveFromMemorized(trim((string) file_get_contents($cleCourse)), '/my-self-lab/dm');
+$nuCourse = blobV2('le secret que le copieur veut lire', $cleDm, '')->toBase64();
+$pdoCourse = new PDO('sqlite:' . $course);
+$pdoCourse->beginTransaction();
+$ins = $pdoCourse->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (1, 2, ?, ?)');
+$ins->execute([$nuCourse, $t]);
+for ($i = 0; $i < 1500; $i++) {
+    $ins->execute([blobV2('message ' . $i, $cleDm, '')->toBase64(), $t]);
+}
+$pdoCourse->commit();
+$copieur = $dir . '/copieur-continu.php';
+$pret = $dir . '/copieur.pret';
+file_put_contents($copieur, '<?php
+$p = new PDO("sqlite:" . $argv[1], null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_TIMEOUT => 120]);
+$fin = microtime(true) + (float) $argv[3];
+for ($n = 0; microtime(true) < $fin; $n++) {
+    $p->prepare("INSERT INTO profiles (account_id, ciphertext, updated_at) VALUES (?, ?, 0)")->execute([1000 + $n, $argv[2]]);
+    $n === 0 && touch($argv[4]);
+    usleep(2000);
+}
+echo $n;
+');
+$tube = proc_open([PHP_BINARY, $copieur, $course, $nuCourse, '4', $pret], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $flux);
+for ($i = 0; $i < 500 && !is_file($pret); $i++) {
+    usleep(10000);
+}
+[$sortieCourse, $rcCourse] = $migrerSur($course, $cleCourse);
+$copiesEcrites = (int) stream_get_contents($flux[1]);
+proc_close($tube);
+$scellees = (int) $pdoCourse->query("SELECT COUNT(*) FROM profiles WHERE account_id >= 1000 AND ciphertext LIKE 'SDG3.%'")->fetchColumn();
+ok(
+    '⭐ sous un copieur qui écrit pendant toute la passe, la passe va au bout et ne scelle aucune copie',
+    is_file($pret) && $copiesEcrites > 0 && $scellees === 0 && $rcCourse === 1 && str_contains($sortieCourse, 'recopié'),
+    sprintf('%d copie(s) écrite(s), %d scellée(s), rc=%d · %s', $copiesEcrites, $scellees, $rcCourse, substr(trim($sortieCourse), -160))
+);
+
 echo "\n# Un blob d'une base ne s'ouvre pas dans la suivante — même clé, mêmes numéros\n";
 
 // Les identifiants de compte ne sont uniques que dans une base : recréée, elle repart
@@ -645,7 +721,26 @@ $baseB = $dir . '/suivante.db';
 $restauree = $dir . '/restauree.db';
 copy($baseA, $restauree);
 Db::fermer();
+// 🔑 Une base ne naît plus sous une clé qui a déjà servi : effacée à la main, elle se
+// recréait sans un mot sous la clé de l'ancienne (mesuré par la neuvième passe d'audit).
 putenv('LAB_DB_PATH=' . $baseB);
+$refusNeuve = '';
+try {
+    Db::pdo();
+} catch (\RuntimeException $e) {
+    $refusNeuve = $e->getMessage();
+}
+ok(
+    '⭐ une base absente sous une clé qui a servi n\'est pas recréée, et le refus le dit',
+    str_contains($refusNeuve, 'Base du lab absente') && !is_file($baseB),
+    $refusNeuve === '' ? 'base créée' : $refusNeuve
+);
+// La base suivante se bâtit donc à la main, comme la bâtirait qui écrit sur le disque :
+// le numéro reste ce qui l'empêche de rouvrir les blobs de l'ancienne.
+$pb = new PDO('sqlite:' . $baseB);
+$pb->exec(file_get_contents(__DIR__ . '/../schema.sql'));
+$pb->exec("INSERT INTO lab_generation (id, valeur, nee_le) VALUES (1, '" . bin2hex(random_bytes(16)) . "', $t)");
+$pb = null;
 $pdoB = Db::pdo();
 $pdoB->exec("INSERT INTO accounts (id, username, pw_hash, pass_hash, recovery_hash, created_at)
              VALUES (1, 'nouvelle1', 'h', 'h', 'h', $t), (2, 'eve', 'h', 'h', 'h', $t)");
@@ -719,13 +814,52 @@ ok(
 $perdu = $dir . '/perdu.db';
 $memeNumero = null;   // un curseur resté ouvert tiendrait la base du banc en lecture
 Db::fermer();
-copy(getenv('LAB_DB_PATH'), $perdu);
-(new PDO('sqlite:' . $perdu))->exec('DELETE FROM lab_generation');
 $baseDuBanc = getenv('LAB_DB_PATH');
-putenv('LAB_DB_PATH=' . $perdu);
+/** Une copie de la base du banc, modifiée par `$sql` ; rend son chemin. */
+$variante = static function (string $nom, string $sql) use ($dir, $baseDuBanc): string {
+    $f = $dir . '/' . $nom . '.db';
+    copy($baseDuBanc, $f);
+    (new PDO('sqlite:' . $f))->exec($sql);
+
+    return $f;
+};
+/** Ouvre une base comme le site, et rend combien de numéros elle porte ensuite. */
+$numerosApresOuverture = static function (string $f): int {
+    Db::fermer();
+    putenv('LAB_DB_PATH=' . $f);
+    Db::pdo();
+
+    return (int) (new PDO('sqlite:' . $f))->query('SELECT COUNT(*) FROM lab_generation')->fetchColumn();
+};
+$sansTable = 'DROP TABLE lab_generation;';
+$sansTrace = "DELETE FROM lab_migrations WHERE nom = 'numero-de-base';";
+
+// Chaque témoin, seul : sous plusieurs à la fois, un témoin rendu aveugle restait couvert
+// par un autre, et le banc vert (mesuré par la neuvième passe d'audit).
+foreach ([
+    'la table du numéro, présente avant l\'ouverture — une base qui ne porte que des rapports'
+        => 'DELETE FROM lab_generation; ' . $sansTrace . ' DELETE FROM dm; DELETE FROM profiles;',
+    'la trace de son tirage'           => $sansTable . ' DELETE FROM dm; DELETE FROM profiles;',
+    'les messages scellés sous lui'    => $sansTable . $sansTrace . ' DELETE FROM profiles;',
+    'les profils scellés sous lui'     => $sansTable . $sansTrace . ' DELETE FROM dm;',
+] as $temoin => $sql) {
+    $f = $variante('perdu-' . substr(md5($temoin), 0, 6), $sql);
+    ok("⭐ numéro perdu, seul témoin restant — {$temoin} : pas de numéro neuf", $numerosApresOuverture($f) === 0);
+}
+$sansRien = $variante('perdu-sans-temoin', $sansTable . $sansTrace . ' DELETE FROM dm; DELETE FROM profiles;');
+ok(
+    'contre-témoin et limite déclarée : sans table, sans trace et sans blob lié, une base qui ne porte que des rapports reçoit un numéro neuf',
+    $numerosApresOuverture($sansRien) === 1
+);
+
+// Le numéro absent, tout le reste en place : ce qui le lit refuse en le nommant.
+$perdu = $variante('perdu', 'DELETE FROM lab_generation;');
+$numerosApresOuverture($perdu);
 $pdoP = Db::pdo();
-$sansNumero = static fn() => (int) (new PDO('sqlite:' . $perdu))->query('SELECT COUNT(*) FROM lab_generation')->fetchColumn();
-ok('⭐ sa trace en base : l\'ouverture ne tire pas de numéro neuf', $sansNumero() === 0);
+ok(
+    'le préfixe qu\'ouvre la base pour reconnaître un blob lié est celui de la bibliothèque',
+    Db::PREFIXE_BLOB_LIE === EncryptedBlob::PREFIX_V3
+);
 $cause = static function (callable $lecture): string {
     try {
         return 'rendu : ' . json_encode($lecture(), JSON_UNESCAPED_UNICODE);
@@ -747,14 +881,27 @@ ok(
     $rc !== 0 && str_contains($sortie, 'Numéro de base absent') && !str_contains($sortie, '✅'),
     'rc=' . $rc . ' · ' . substr(trim($sortie), 0, 160)
 );
-// Le second témoin : sa trace effacée aussi, il reste les blobs scellés sous lui.
-Db::fermer();
-(new PDO('sqlite:' . $perdu))->exec("DELETE FROM lab_migrations WHERE nom = 'numero-de-base'");
+
+// Réécrit, et non perdu : tout devenait illisible, le journal accusait la clé, et le site
+// offrait de remplacer un profil intact (mesuré par la neuvième passe d'audit).
+$reecrit = $variante('reecrit', "UPDATE lab_generation SET valeur = '" . bin2hex(random_bytes(16)) . "';");
+$numerosApresOuverture($reecrit);
 $pdoP = Db::pdo();
-ok('⭐ sa trace effacée aussi : les blobs liés suffisent à refuser un numéro neuf', $sansNumero() === 0);
-// Un numéro altéré, et non absent : le profil se calculait sous lui dans son `catch`.
+$recuReecrit = $cause(static fn() => Dm::inbox($pdoP, 2));
+ok(
+    '⭐ un numéro réécrit : la boîte refuse en le nommant, elle n\'accuse pas la clé',
+    str_contains($recuReecrit, 'Numéro de base réécrit'),
+    $recuReecrit
+);
+$enregistre = $cause(static fn() => Profile::save($pdoP, 3, ['bio' => 'un profil neuf']));
+ok(
+    'et le titulaire ne se voit pas offrir de remplacer un profil intact',
+    str_contains($enregistre, 'Numéro de base réécrit') && !str_contains($enregistre, 'profil_illisible'),
+    $enregistre
+);
 Db::fermer();
-(new PDO('sqlite:' . $perdu))->exec("INSERT OR REPLACE INTO lab_generation (id, valeur, nee_le) VALUES (1, 'abime', 0)");
+// Un numéro altéré, et non absent : le profil se calculait sous lui dans son `catch`.
+$numerosApresOuverture($variante('abime', "UPDATE lab_generation SET valeur = 'abime';"));
 $pdoP = Db::pdo();
 $profilAbime = $cause(static fn() => Profile::lire($pdoP, 3));
 ok(

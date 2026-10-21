@@ -114,7 +114,11 @@ final class Profile
     public static function save(PDO $pdo, int $accountId, array $champs, bool $remplacerIllisible = false): array
     {
         // La bio et le lien sont publics : un ban qui coupe la parole publique
-        // les coupe aussi, comme un message du forum.
+        // les coupe aussi, comme un message du forum. Le fichier de la modération ne suit
+        // pas la casse de sa classe, l'autoload ne le trouve pas : sans ce chargement, la
+        // route d'enregistrement du profil rendait un 500 à tous (relevé par la neuvième
+        // passe d'audit).
+        require_once __DIR__ . '/moderate.php';
         $etat = Moderate::getReputation($pdo, $accountId);
         if ($etat['banned']) {
             return ['ok' => false, 'error' => 'compte_banni', 'message' => sprintf(

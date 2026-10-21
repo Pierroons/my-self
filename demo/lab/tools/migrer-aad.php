@@ -130,12 +130,13 @@ if ($aDechiffrer()) {
     DataGuard::exigerCle();
 }
 
-// 🔑 **Toute la passe sous un seul verrou d'écriture.** L'inventaire des copies et
-// les lignes qu'il juge doivent être la même base : sans verrou, une copie écrite
-// après l'inventaire n'y figurait pas, et la passe la scellait pour qui l'avait faite
-// — mesuré, 31 à 41 copies sur trois essais, écrites pendant la dérivation de la clé.
-// Les écritures du site attendent la fin de la passe (`busy_timeout`) ; aucune n'est
-// perdue ni défaite. À blanc, une transaction de lecture suffit à figer la base. Une
+// 🔑 **Toute la passe sous un seul verrou d'écriture, pris avant l'inventaire.**
+// L'inventaire des copies et les lignes qu'il juge doivent être la même base : sans
+// verrou, une copie écrite après l'inventaire n'y figurait pas, et la passe la scellait
+// pour qui l'avait faite (mesuré par la cinquième passe d'audit). Et d'écriture, pas de
+// lecture : sous un `BEGIN` différé, la passe tombait sur « database is locked » dès que
+// le site écrivait en même temps (mesuré par la neuvième). Les écritures du site
+// attendent la fin de la passe (`busy_timeout`) ; aucune n'est perdue ni défaite. À blanc, une transaction de lecture suffit à figer la base. Une
 // exception en cours de passe termine le script, et SQLite défait à la fermeture de
 // la connexion tout ce qui n'a pas été validé.
 $pdo->exec($aBlanc ? 'BEGIN' : 'BEGIN IMMEDIATE');
