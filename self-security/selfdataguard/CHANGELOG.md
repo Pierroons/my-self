@@ -5,6 +5,68 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+The AAD becomes a required argument, and a ciphertext bound to nothing says so. This is a hardening
+by construction, not the fix of an exploitable flaw: the uses that shared a flat AAD were sealed under
+different keys, and the only same-key case, a field named `escrow`, was already refused by name.
+
+The façade's signatures do not change. Code that calls `Primitives` or builds an `EncryptedBlob`
+directly does.
+
+### Changed
+
+- **BREAKING** — `Primitives::encrypt(string $plaintext, string $key, Aad $aad)` and
+  `Primitives::decrypt(EncryptedBlob $blob, string $key, Aad $aad)`: the AAD was `?string $aad = null`,
+  and `null` became an empty string. The safe call was the one you had to remember to write, and a
+  ciphertext bound to nothing could not be told from one bound to an empty context.
+  `legacyDecryptSodium()` and `legacyDecryptOpenssl()` take an `Aad` too.
+- **BREAKING** — `EncryptedBlob::__construct()` requires `int $format` (`FORMAT_V1`, `FORMAT_V2`,
+  `FORMAT_V3`). The nonce length no longer tells v2 from v3.
+- `encrypt()` writes format v3 only (`SDG3.`). v1 and v2 blobs are still read, and are rewritten as v3
+  only when the value is written again.
+- Each use binds its own domain: `vault-wrap`, `escrow-wrap`, `field`, `escrow-field`, and the sealed
+  admin key. Each segment is prefixed with its length, so `(alice, escrow|email)` and
+  `(alice, escrow, email)` no longer give the same bytes.
+
+### Added
+
+- `Aad::of(string ...$segments)` binds the ciphertext; it refuses no segment at all. `Aad::none()` says
+  explicitly that nothing binds it, and differs from `Aad::of('')`. `Aad::legacy(string $raw)` rebuilds
+  the flat AAD of a v1 or v2 blob in order to read it; `encrypt()` refuses it.
+- The v3 AAD carries a domain: rewriting a stored blob's prefix to another format makes its tag fail.
+- `decrypt()` refuses an `Aad` that does not match the blob's format, and names the mismatch.
+- `Primitives::decryptAcrossFormats($blob, $key, $current, $legacyAad)` routes a v3 blob to `$current`
+  and an older one to `Aad::legacy($legacyAad)`.
+- `EncryptedBlob::bindsItsContext()`, true for a format v3 blob, whose AAD carries a domain.
+- `FieldCrypter::aadFor()`, `EscrowFieldCrypter::aadFor()` and `EscrowVault::wrapAad()` are public, for
+  tools that read or migrate stored blobs.
+
+### Tests
+
+- 402 checks across the eleven suites on PHP 8.4 (was 388): primitives 46 → 56, escrow 36 → 37,
+  facade 67 → 70. Two properties had no test: a v2 blob written by 0.6.x still reads (a frozen string,
+  also read by 0.6.2's code), and an archived ciphertext planted back into the live vault fails,
+  because `reEnroll()` draws a new master key. Five canaries were seen failing, each on its own case.
+- The libsodium/OpenSSL cross-check in `sanity_primitives` gives each read its own `try`: a regression
+  in the legacy path no longer stops the suite before the checks that follow.
+
+### Migration risk — rolling back to 0.6.2
+
+Measured on four databases, read back by 0.6.2:
+
+- Created by 0.6.2, then opened and read by 0.7.0: 0.6.2 still opens it. Reading writes nothing.
+- One field written by 0.7.0: 0.6.2 still logs in and reads the other fields by name, but a read of
+  every field fails.
+- A vault created by 0.7.0, or re-sealed by it (a password change, or any other re-seal path): 0.6.2
+  can no longer log in.
+
+Each failure is loud (« Blob format SDG3 is unknown to this version of SelfDataGuard »); nothing is
+misread. Do not roll back after a write.
+
+### Before upgrading
+
+- Code that calls `Primitives` directly passes an `Aad::of(...)` for every new write. Data written
+  before 0.7.0 is read with `decryptAcrossFormats()` and the flat string used before.
+
 ## [v0.6.2] — 2026-10-15
 
 A patch release. No signature changes.
