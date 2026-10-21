@@ -118,7 +118,9 @@ final class Redteam
      */
     public static function jetonSuivi(int $id): string
     {
-        return substr(DataGuard::hmac((string) $id, 'report-track'), 0, 32);
+        // Le numéro de la base avec celui du rapport : recréée, la base repart de 1, et
+        // le jeton du rapport n° 1 d'une saison ouvrait le suivi du n° 1 de la suivante.
+        return substr(DataGuard::hmac(Db::generation() . ':' . $id, 'report-track'), 0, 32);
     }
 
     /**
@@ -131,16 +133,19 @@ final class Redteam
      */
     public static function etat(PDO $pdo, int $id, string $jeton): array
     {
-        if ($id <= 0 || !hash_equals(self::jetonSuivi($id), trim($jeton))) {
-            // Un numero inconnu et un jeton faux rendent le meme refus : sinon
-            // la difference dirait combien de rapports ont ete deposes.
-            return ['ok' => false, 'message' => tc('Numero ou jeton de suivi invalide.')];
-        }
-
         $stmt = $pdo->prepare('SELECT severity, status, created_at FROM redteam_reports WHERE id = ?');
-        $stmt->execute([$id]);
+        $stmt->execute([max(0, $id)]);
         $r = $stmt->fetch();
-        if (!$r) {
+        // Un numero inconnu et un jeton faux rendent le meme refus : sinon la
+        // difference dirait combien de rapports ont ete deposes. Le jeton se calcule
+        // dans les deux cas, pour que la duree ne le dise pas non plus.
+        $attendu = self::jetonSuivi(max(1, $id));
+        $valide  = hash_equals($attendu, trim($jeton))
+            // Un rapport deposé avant le numero de base a recu un jeton sans lui : il
+            // reste valable pour CE rapport, et pour aucun de ceux qui suivent.
+            || ($r && (int) $r['created_at'] < Db::generationNeeLe()
+                && hash_equals(substr(DataGuard::hmac((string) $id, 'report-track'), 0, 32), trim($jeton)));
+        if ($id <= 0 || !$r || !$valide) {
             return ['ok' => false, 'message' => tc('Numero ou jeton de suivi invalide.')];
         }
 

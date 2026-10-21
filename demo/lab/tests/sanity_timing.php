@@ -25,7 +25,7 @@
 declare(strict_types=1);
 
 // La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
-require __DIR__ . '/instance_isolee.php';
+require __DIR__ . '/instance_isolee.inc';
 
 // Le profil de hachage vient désormais de la bibliothèque partagée : sans
 // l'autoload, Auth::argon2Options() ne trouve plus rien à déléguer.

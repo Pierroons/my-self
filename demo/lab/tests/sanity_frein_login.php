@@ -20,7 +20,7 @@
 declare(strict_types=1);
 
 // La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
-require __DIR__ . '/instance_isolee.php';
+require __DIR__ . '/instance_isolee.inc';
 
 $dir = sys_get_temp_dir() . '/sanity_frein_login_' . bin2hex(random_bytes(6));
 mkdir($dir, 0700, true);
@@ -233,6 +233,30 @@ $recPropre = Auth::recoverByPassphrase($pdo, 'cible_origine_c', $ciblC['passphra
 v('et le même secret ouvre depuis une origine propre — c\'est l\'origine qui fermait',
     ($recPropre['ok'] ?? false) === true,
     'motif : ' . (string) ($recPropre['error'] ?? '—'));
+
+echo "\n# Une session ne se range, ne se ferme et n'expire que sous l'empreinte de son jeton\n";
+
+// La conversion des sessions d'avant ne joue qu'une fois : un chemin qui rangerait de
+// nouveau un jeton en clair ne serait plus réparé en silence à l'ouverture suivante, et
+// c'est ici, sur la même connexion, qu'il doit rougir.
+$sessions = compte($pdo, 'sessionneur');
+$ouverte  = Auth::login($pdo, 'sessionneur', $sessions['password'], '192.0.2.50');
+$jeton    = (string) ($ouverte['token'] ?? '');
+$enClair  = static function (string $j) use ($pdo): int {
+    $q = $pdo->prepare('SELECT COUNT(*) FROM app_sessions WHERE token = ?');
+    $q->execute([$j]);
+
+    return (int) $q->fetchColumn();
+};
+v('⭐ une connexion range l\'empreinte du jeton, jamais le jeton',
+    $jeton !== '' && $enClair($jeton) === 0 && $enClair(Db::empreinteJeton($jeton)) === 1);
+Auth::logout($pdo, $jeton);
+v('la déconnexion retire la session par son empreinte', $enClair(Db::empreinteJeton($jeton)) === 0);
+$perimee = (string) (Auth::login($pdo, 'sessionneur', $sessions['password'], '192.0.2.50')['token'] ?? '');
+$pdo->prepare('UPDATE app_sessions SET created_at = ? WHERE token = ?')->execute([time() - 200000, Db::empreinteJeton($perimee)]);
+$_COOKIE[(new ReflectionClassConstant(Auth::class, 'COOKIE'))->getValue()] = $perimee;
+v('une session périmée ne s\'ouvre plus, et s\'efface par son empreinte',
+    Auth::currentAccount($pdo) === null && $enClair(Db::empreinteJeton($perimee)) === 0);
 
 echo "\n" . ($echecs === 0
     ? "OK — $reussites/$reussites contrôles conformes.\n"

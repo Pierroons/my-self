@@ -48,7 +48,7 @@
  * légitime d'une paire recopiée.
  *
  * Usage :
- *   php tools/migrer-aad.php --a-blanc    compte sans écrire
+ *   php tools/migrer-aad.php --a-blanc    compte sans écrire (la base s'ouvre en lecture seule)
  *   php tools/migrer-aad.php              relie, et dit combien
  *   php tools/migrer-aad.php --fermer     relie, puis ferme même s'il reste des lignes nues
  */
@@ -86,7 +86,9 @@ if ($manquantes !== []) {
     exit(2);
 }
 
-$pdo = Db::pdo();
+// À blanc, la base s'ouvre en lecture seule : `Db::pdo()` y appliquerait schéma et
+// migrations, et « compte sans écrire » serait faux.
+$pdo = $aBlanc ? Db::lectureSeule() : Db::pdo();
 
 
 /**
@@ -171,9 +173,8 @@ $nues = static fn(string $table): array => array_values(array_filter(
 /** @param callable(array<string,mixed>):\Pierroons\SelfDataGuard\Crypto\Aad $contexteDe */
 $passe = static function (string $table, string $cle, callable $contexteDe) use ($pdo, $aBlanc, $copies, $empreinte, $fermee, $nues, &$relie, &$refus, &$deplace, &$apres): void {
     foreach ($nues($table) as $ligne) {
-        $id       = (int) $ligne[$cle];
-        $blob     = (string) $ligne['ciphertext'];
-        $contexte = $contexteDe($ligne);
+        $id   = (int) $ligne[$cle];
+        $blob = (string) $ligne['ciphertext'];
 
         $e = $empreinte($blob);
         if ($e !== null && isset($copies[$e])) {
@@ -207,8 +208,9 @@ $passe = static function (string $table, string $cle, callable $contexteDe) use 
         }
 
         if (!$aBlanc) {
+            // Le contexte porte le numéro de la base : il ne se lit qu'au moment de sceller.
             $pdo->prepare("UPDATE $table SET ciphertext = ? WHERE $cle = ?")
-                ->execute([DataGuard::encrypt($clair, $contexte), $id]);
+                ->execute([DataGuard::encrypt($clair, $contexteDe($ligne)), $id]);
         }
         $relie++;
     }

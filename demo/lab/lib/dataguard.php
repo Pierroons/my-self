@@ -220,17 +220,18 @@ final class DataGuard
      *
      * Les deux identifiants sont ordonnés par l'expéditeur puis le destinataire,
      * et non triés : un message d'Alice à Bob n'est pas celui de Bob à Alice, et
-     * les deux ne doivent pas partager un contexte.
+     * les deux ne doivent pas partager un contexte. Le numéro de la base les précède :
+     * un identifiant de compte n'est unique que dans une base (`Db::generation()`).
      */
     public static function contexteDm(int $expediteur, int $destinataire): Aad
     {
-        return Aad::of('dm', (string) $expediteur, (string) $destinataire);
+        return Aad::of('dm', Db::generation(), (string) $expediteur, (string) $destinataire);
     }
 
-    /** Le contexte d'un profil : le compte dont il décrit le titulaire. */
+    /** Le contexte d'un profil : le compte dont il décrit le titulaire, dans cette base. */
     public static function contexteProfil(int $compte): Aad
     {
-        return Aad::of('profil', (string) $compte);
+        return Aad::of('profil', Db::generation(), (string) $compte);
     }
 
     /**

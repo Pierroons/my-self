@@ -21,6 +21,8 @@ namespace Pierroons\MySelfLab;
 
 use RuntimeException;
 
+require_once __DIR__ . '/secret_instance.php';
+
 final class SuAudit
 {
     /** L'amorçage : le premier administrateur, une fois par cycle (voir `firstAdminConsomme()`). */
@@ -77,13 +79,13 @@ final class SuAudit
 
     public static function logPath(): string
     {
-        $env = getenv('SELFRECOVER_SU_AUDIT_LOG');
-        if ($env) {
+        $env = SecretInstance::prise('SELFRECOVER_SU_AUDIT_LOG');
+        if ($env !== null) {
             return $env;
         }
-        $dir = getenv('SELFRECOVER_STATE_DIR');
+        $dir = SecretInstance::prise('SELFRECOVER_STATE_DIR');
 
-        return $dir ? rtrim($dir, '/') . '/su-audit.log' : self::stateFallback() . '/su-audit.log';
+        return $dir !== null ? rtrim($dir, '/') . '/su-audit.log' : self::stateFallback() . '/su-audit.log';
     }
 
     /**

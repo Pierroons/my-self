@@ -31,7 +31,7 @@ final class JournalModeration implements Journal
     /** `LAB_MODERATION_LOG` déroute le journal, comme `LAB_DB_PATH` déroute la base. */
     public function chemin(): string
     {
-        return $this->chemin ?? (getenv('LAB_MODERATION_LOG') ?: __DIR__ . '/../data/moderation.log');
+        return $this->chemin ?? SecretInstance::prise('LAB_MODERATION_LOG') ?? __DIR__ . '/../data/moderation.log';
     }
 
     public function inscrire(array $acte): void

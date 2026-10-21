@@ -15,11 +15,11 @@
 declare(strict_types=1);
 
 // La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
-require __DIR__ . '/instance_isolee.php';
+require __DIR__ . '/instance_isolee.inc';
 
 require __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../lib/derive_cli.php';
-putenv('LAB_SITESALT_PATH=' . sys_get_temp_dir() . '/lab-sel-session-sitesalt-' . getmypid());
+putenv('LAB_SITESALT_PATH=' . chemin_isole('.sitesalt-session'));
 register_shutdown_function(static fn () => @unlink((string) getenv('LAB_SITESALT_PATH')));
 require_once __DIR__ . '/../lib/db.php';
 require_once __DIR__ . '/../lib/auth.php';

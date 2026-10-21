@@ -10,7 +10,9 @@
  * Et un banc qui trouvait un secret posé par un autre ne passait que dans cet
  * ordre-là, ce que la CI respectait par hasard.
  *
- * À inclure en tête de banc, avant toute autre prise. Une prise que le banc pose
+ * À inclure en tête de banc, avant toute autre prise. Son extension n'est pas `.php` :
+ * tout `tests/*.php` du lab est un banc que la CI doit lancer (`scripts/check-portes.sh`),
+ * et ceci n'en est pas un. Une prise que le banc pose
  * ensuite l'emporte : celle-ci n'est qu'un défaut sûr.
  *
  * @return array<string, string> les prises posées, pour un sous-processus lancé avec
@@ -57,6 +59,18 @@ function instance_isolee(): array
     });
 
     return $prises;
+}
+
+/**
+ * Un chemin dans le dossier jetable de ce banc, effacé à sa sortie, témoins compris.
+ *
+ * Un secret de banc rangé dans `/tmp` sous le numéro du processus y laissait son témoin
+ * d'existence, et quand ce numéro revenait, le banc suivant refusait à tort (mesuré
+ * par la septième passe d'audit).
+ */
+function chemin_isole(string $nom): string
+{
+    return dirname(instance_isolee()['LAB_DB_PATH']) . '/' . $nom;
 }
 
 /** @return array<string, string> fichier => taille et date, de `data/` tel qu'il est */

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 // La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
-require __DIR__ . '/instance_isolee.php';
+require __DIR__ . '/instance_isolee.inc';
 
 /**
  * La bibliothèque tient-elle sur le schéma réel du lab ?
@@ -28,7 +28,7 @@ require __DIR__ . '/../lib/StockageSelfRecover.php';
 // et non une reconstitution. Son sel de site est détourné vers un fichier
 // jetable : celui de l'instance ne doit pas bouger, un remplacement rendrait
 // introuvables tous les codes déjà émis.
-putenv('LAB_SITESALT_PATH=' . sys_get_temp_dir() . '/lab-sonde-sitesalt-' . getmypid());
+putenv('LAB_SITESALT_PATH=' . chemin_isole('.sitesalt-sonde'));
 // La base qu'un secret absent consulte avant de se poser : celle de ce banc est en
 // mémoire, la règle n'en voit donc aucune — et ne lit pas celle de l'instance locale.
 putenv('LAB_DB_PATH=' . sys_get_temp_dir() . '/lab-sonde-sans-base-' . getmypid() . '.db');
@@ -254,7 +254,7 @@ echo "\n→ Le sel de site refuse de servir vide\n";
 // le faux sel rendu aux codes inconnus. Vide, les index deviennent calculables
 // et l'oracle du sel se rouvre — sans qu'aucune erreur ne survienne. Le
 // répertoire absent suffisait à produire ce cas, observé le 27/08/2026.
-$tmp = sys_get_temp_dir() . '/lab-sitesalt-sonde-' . getmypid();
+$tmp = chemin_isole('.sitesalt-vide');
 putenv('LAB_SITESALT_PATH=' . $tmp);
 try {
     foreach (['vide' => '', 'tronqué' => 'abcd'] as $intitule => $contenu) {

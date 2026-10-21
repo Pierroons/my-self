@@ -120,11 +120,20 @@ final class SecretInstance
             );
         }
         // Posé aussi pour un secret d'avant ce témoin : une instance en service le gagne
-        // à sa première lecture, et sa protection avec. ⚠️ Au mieux, jamais bloquant : un
-        // dossier où le témoin ne s'écrit pas est un dossier où un secret absent ne se
-        // recréerait pas non plus — `poser()` y échoue —, donc il n'y a rien à garder.
-        if (!file_exists($f . self::A_EXISTE)) {
-            @touch($f . self::A_EXISTE);
+        // à sa première lecture, et sa protection avec. Jamais bloquant : un secret qui se
+        // lit se sert, témoin ou pas. ⚠️ Mais ne pas pouvoir le poser n'est pas sans
+        // risque — l'identité qui sert le secret peut ne pas écrire son dossier quand une
+        // autre le peut, et celle-là recréerait le secret sans témoin pour l'arrêter
+        // (mesuré par la septième passe d'audit). Le manque se dit donc au journal, et
+        // le déploiement pose les témoins lui-même (`deploy/ctf-s2/README.md`).
+        if (!file_exists($f . self::A_EXISTE) && @touch($f . self::A_EXISTE) === false) {
+            error_log(sprintf(
+                "Secret d'instance %s : témoin d'existence non posable à côté de %s — un secret disparu "
+                . "pourrait être recréé sans bruit par une identité qui écrit ce dossier. Le poser : touch %s",
+                $nom,
+                $f,
+                $f . self::A_EXISTE
+            ));
         }
 
         return $valeur;
@@ -142,22 +151,32 @@ final class SecretInstance
      */
     public static function chemin(string $nom, ?string $env): string
     {
-        if ($env === null) {
-            return __DIR__ . '/../data/' . $nom;
-        }
+        return ($env === null ? null : self::prise($env)) ?? __DIR__ . '/../data/' . $nom;
+    }
 
-        $surcharge = getenv($env);
-        if ($surcharge === false) {
-            return __DIR__ . '/../data/' . $nom;
+    /**
+     * La valeur d'une prise d'environnement qui déroute un chemin, ou `null` si elle
+     * n'est pas posée.
+     *
+     * 🔑 La règle de toutes les prises du lab, en un seul endroit : posée mais vide
+     * n'est pas absente, et retomber sur le chemin par défaut servirait — ou
+     * interrogerait — autre chose que ce que l'exploitant a voulu désigner. Écrite
+     * prise par prise, elle manquait toujours à la suivante (`LAB_DB_PATH`, puis le
+     * journal de modération et ceux de la console SU, relevés par deux passes d'audit).
+     */
+    public static function prise(string $env): ?string
+    {
+        $valeur = getenv($env);
+        if ($valeur === false) {
+            return null;
         }
-        if (trim($surcharge) === '') {
+        if (trim($valeur) === '') {
             throw new \RuntimeException(
-                "Secret d'instance {$nom} : {$env} est posée mais vide — chemin indécidable,"
-                . ' refus de retomber sur le chemin par défaut.'
+                "{$env} est posée mais vide — chemin indécidable, refus de retomber sur le chemin par défaut."
             );
         }
 
-        return $surcharge;
+        return $valeur;
     }
 
     /**

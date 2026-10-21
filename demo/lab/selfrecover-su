@@ -28,6 +28,7 @@ require __DIR__ . '/lib/db.php';
 require __DIR__ . '/lib/su_audit.php';
 
 use Pierroons\MySelfLab\Db;
+use Pierroons\MySelfLab\SecretInstance;
 use Pierroons\MySelfLab\SuAudit;
 
 const SU_DEMO_SECRET = 'demo-su-secret';
@@ -65,8 +66,8 @@ function su_prompt_hidden(string $label): string
 
 function su_secret_path(): string
 {
-    return getenv('SELFRECOVER_SU_SECRET_FILE')
-        ?: ((getenv('SELFRECOVER_STATE_DIR') ?: SuAudit::stateFallback()) . '/su-secret');
+    return SecretInstance::prise('SELFRECOVER_SU_SECRET_FILE')
+        ?? ((SecretInstance::prise('SELFRECOVER_STATE_DIR') ?? SuAudit::stateFallback()) . '/su-secret');
 }
 
 /** Le fichier prime sur l'environnement : `change-passphrase` écrit le premier, l'install pose le second. */

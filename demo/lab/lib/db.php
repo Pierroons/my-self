@@ -9,6 +9,8 @@ namespace Pierroons\MySelfLab;
 
 use PDO;
 
+require_once __DIR__ . '/secret_instance.php';
+
 final class Db
 {
     private static ?PDO $pdo = null;
@@ -20,20 +22,7 @@ final class Db
      */
     public static function path(): string
     {
-        $override = getenv('LAB_DB_PATH');
-        if ($override === false) {
-            return __DIR__ . '/../data/lab.db';
-        }
-        // Posée mais vide n'est pas absente : retomber sur la base par défaut ferait
-        // servir — et interroger, quand un secret manque — une autre base que celle
-        // que l'exploitant a voulu désigner. Le même refus que `SecretInstance::chemin()`.
-        if (trim($override) === '') {
-            throw new \RuntimeException(
-                'LAB_DB_PATH est posée mais vide — chemin indécidable, refus de retomber sur la base par défaut.'
-            );
-        }
-
-        return $override;
+        return SecretInstance::prise('LAB_DB_PATH') ?? __DIR__ . '/../data/lab.db';
     }
 
     /**
@@ -50,7 +39,7 @@ final class Db
     public static function lignes(array $tables): array
     {
         $compte = array_fill_keys($tables, 0);
-        $pdo = self::lecteur();
+        $pdo = self::lectureSeule();
         if ($pdo === null) {
             return $compte;
         }
@@ -86,12 +75,13 @@ final class Db
     /** @return list<string> les tables de la base, lues sans l'ouvrir pour écrire ; aucune si elle est absente */
     public static function tables(): array
     {
-        $pdo = self::lecteur();
+        $pdo = self::lectureSeule();
 
         return $pdo === null ? [] : $pdo->query("SELECT name FROM sqlite_master WHERE type = 'table'")->fetchAll(PDO::FETCH_COLUMN);
     }
 
-    private static function lecteur(): ?PDO
+    /** La base ouverte en lecture seule — sans la créer, sans schéma ni migration ; `null` si elle est absente. */
+    public static function lectureSeule(): ?PDO
     {
         $chemin = self::path();
         if (!is_file($chemin)) {
@@ -200,7 +190,6 @@ final class Db
         self::migrate();
     }
 
-    /** Migrations légères pour les bases déjà créées (CREATE IF NOT EXISTS ne modifie pas l'existant). */
     /**
      * La forme sous laquelle une session est rangée : l'empreinte du jeton, jamais le jeton.
      *
@@ -217,15 +206,63 @@ final class Db
 
     private const PREFIXE_JETON = 'sha256:';
 
+    /**
+     * Le numéro de cette base, tiré au hasard à sa naissance.
+     *
+     * 🔑 Un identifiant de compte n'est unique que dans UNE base : recréée, elle repart
+     * de 1. Sans ce numéro dans le contexte d'un chiffré, le message d'Alice (n° 1) à
+     * Bob (n° 2) d'une base effacée s'ouvrait pour le nouveau n° 2 de la suivante —
+     * même clé, même contexte (mesuré par la septième passe d'audit du lot AAD, après
+     * un `reset-db`). Tiré au hasard et non compté : un compteur rangé dans la base
+     * repartirait avec elle. Il n'a pas à être secret — le secret, c'est `.blindkey` —,
+     * il a à changer quand la base change, et à voyager avec elle quand on la restaure.
+     */
+    public static function generation(): string
+    {
+        if (self::$generation === null) {
+            $valeur = self::pdo()->query('SELECT valeur FROM lab_generation WHERE id = 1')->fetchColumn();
+            if (!is_string($valeur) || strlen($valeur) !== 32) {
+                throw new \RuntimeException('Numéro de base absent ou altéré (table lab_generation) : refus de chiffrer sans lui.');
+            }
+            self::$generation = $valeur;
+        }
+
+        return self::$generation;
+    }
+
+    private static ?string $generation = null;
+
+    /** L'instant où ce numéro a été tiré : ce qui est plus ancien a été écrit sans lui. */
+    public static function generationNeeLe(): int
+    {
+        return (int) self::pdo()->query('SELECT nee_le FROM lab_generation WHERE id = 1')->fetchColumn();
+    }
+
+    /** Migrations légères pour les bases déjà créées (CREATE IF NOT EXISTS ne modifie pas l'existant). */
     private static function migrate(): void
     {
-        // Les sessions ouvertes avant l'empreinte : converties ici, sans déconnecter
-        // personne. Un jeton est hexadécimal, il ne commence jamais par le préfixe.
-        $enClair = self::$pdo->prepare('SELECT id, token FROM app_sessions WHERE substr(token, 1, ?) <> ?');
-        $enClair->execute([strlen(self::PREFIXE_JETON), self::PREFIXE_JETON]);
-        $convertir = self::$pdo->prepare('UPDATE app_sessions SET token = ? WHERE id = ?');
-        foreach ($enClair->fetchAll() as $session) {
-            $convertir->execute([self::empreinteJeton((string) $session['token']), (int) $session['id']]);
+        // Le numéro de la base, tiré une fois : à sa naissance, ou à la première ouverture
+        // d'une base d'avant. Deux premières ouvertures concurrentes : la première écrite
+        // l'emporte, et chacune relit ensuite celui qui est rangé.
+        if (self::$pdo->query('SELECT 1 FROM lab_generation WHERE id = 1')->fetchColumn() === false) {
+            self::$pdo->prepare('INSERT OR IGNORE INTO lab_generation (id, valeur, nee_le) VALUES (1, ?, ?)')
+                ->execute([bin2hex(random_bytes(16)), time()]);
+        }
+
+        // Les sessions ouvertes avant l'empreinte : converties UNE fois, sans déconnecter
+        // personne, et la conversion se note. Rejouée à chaque ouverture, elle réparait
+        // en silence un chemin qui rangerait de nouveau un jeton en clair — aucun banc ne
+        // rougissait (mesuré par la septième passe d'audit). Un jeton est hexadécimal :
+        // il ne commence jamais par le préfixe.
+        if (self::$pdo->query("SELECT 1 FROM lab_migrations WHERE nom = 'sessions-sous-empreinte'")->fetchColumn() === false) {
+            $enClair = self::$pdo->prepare('SELECT id, token FROM app_sessions WHERE substr(token, 1, ?) <> ?');
+            $enClair->execute([strlen(self::PREFIXE_JETON), self::PREFIXE_JETON]);
+            $convertir = self::$pdo->prepare('UPDATE app_sessions SET token = ? WHERE id = ?');
+            foreach ($enClair->fetchAll() as $session) {
+                $convertir->execute([self::empreinteJeton((string) $session['token']), (int) $session['id']]);
+            }
+            self::$pdo->prepare("INSERT OR IGNORE INTO lab_migrations (nom, faite_le) VALUES ('sessions-sous-empreinte', ?)")
+                ->execute([time()]);
         }
 
         $cols = self::$pdo->query('PRAGMA table_info(accounts)')->fetchAll(PDO::FETCH_COLUMN, 1);
@@ -465,5 +502,6 @@ final class Db
     public static function fermer(): void
     {
         self::$pdo = null;
+        self::$generation = null;
     }
 }

@@ -16,6 +16,9 @@ date_default_timezone_set('Europe/Paris');
 // le gabarit, et leurs classes appellent tc() — sans cela, une fonction
 // indéfinie et une erreur fatale à chaque appel.
 require_once __DIR__ . '/i18n.php';
+// Avant le gestionnaire, qui s'en sert : une exception levée pendant les inclusions qui
+// suivent le trouverait sinon sans `est_route_api()`. Il se charge seul.
+require_once __DIR__ . '/reponse.php';
 // 🔑 Une exception non rattrapée ne rend ni un corps vide ni sa trace. Sans ce
 // gestionnaire, PHP rendait un 500 sans contenu — et, sous `display_errors`, un 200
 // portant la trace et ses chemins disque : le refus d'une garde (secret absent, base
@@ -30,8 +33,7 @@ if (PHP_SAPI !== 'cli') {
         } catch (\Throwable) {
             $message = 'Service momentanément indisponible.';
         }
-        // `/api/` n'importe où dans le chemin : le lab peut être servi sous un préfixe.
-        $api = str_contains((string) strtok($_SERVER['REQUEST_URI'] ?? '/', '?'), '/api/');
+        $api = est_route_api($_SERVER['REQUEST_URI'] ?? '/');
         if (!headers_sent()) {
             http_response_code(500);
             header('Content-Type: ' . ($api ? 'application/json' : 'text/html') . '; charset=utf-8');

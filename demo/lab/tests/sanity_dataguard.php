@@ -22,7 +22,7 @@
 declare(strict_types=1);
 
 // La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
-require __DIR__ . '/instance_isolee.php';
+require __DIR__ . '/instance_isolee.inc';
 
 $dir = sys_get_temp_dir() . '/sanity_dataguard_' . bin2hex(random_bytes(6));
 mkdir($dir, 0700, true);
@@ -45,11 +45,15 @@ require_once __DIR__ . '/../lib/dataguard.php';
 require_once __DIR__ . '/../lib/dm.php';
 require_once __DIR__ . '/../lib/moderate.php';   // `Profile::save` refuse un compte banni
 require_once __DIR__ . '/../lib/profile.php';
+require_once __DIR__ . '/../lib/admin.php';
+require_once __DIR__ . '/../lib/redteam.php';
 
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\DataGuard;
 use Pierroons\MySelfLab\Dm;
 use Pierroons\MySelfLab\Profile;
+use Pierroons\MySelfLab\Admin;
+use Pierroons\MySelfLab\Redteam;
 use Pierroons\MySelfLab\SecretInstance;
 use Pierroons\SelfDataGuard\Crypto\Aad;
 use Pierroons\SelfDataGuard\Crypto\EncryptedBlob;
@@ -432,6 +436,17 @@ ok(
 );
 
 ok(
+    'la console d\'arbitrage dit le profil illisible, au lieu de l\'afficher vide',
+    (Admin::profile($pdo, 2)['profil_illisible'] ?? null) === true
+        && (Admin::profile($pdo, 3)['profil_illisible'] ?? null) === false
+);
+ok(
+    'un blob mal formé ne porte pas sa liaison — il ne fait pas lever la question',
+    !DataGuard::estLie('pas un blob') && !DataGuard::estLie(EncryptedBlob::PREFIX_V3 . '!!')
+        && DataGuard::estLie($avantProfil) && !DataGuard::estLie($ancien)
+);
+
+ok(
     '⭐ et il existe une SORTIE : le titulaire acte la perte explicitement',
     (Profile::save($pdo, 2, ['bio' => 'je repars de zéro', 'lien' => ''], true)['ok'] ?? false) === true
         && Profile::illisible($pdo, 2) === false
@@ -613,6 +628,64 @@ ok(
     '⭐ aucune copie écrite pendant la passe n\'en sort scellée pour qui l\'a faite',
     $copiesEcrites > 0 && $scellees === 0,
     sprintf('%d copie(s) écrite(s), %d scellée(s) · %s', $copiesEcrites, $scellees, substr(trim($sortieCourse), -160))
+);
+
+echo "\n# Un blob d'une base ne s'ouvre pas dans la suivante — même clé, mêmes numéros\n";
+
+// Les identifiants de compte ne sont uniques que dans une base : recréée, elle repart
+// de 1, et la clé, qui vit à côté, reste. Le message d'Alice (1) à Bob (2), gardé dans
+// un dump puis replanté dans la base suivante, s'ouvrait pour son nouveau n° 2 (mesuré
+// par la septième passe d'audit, après un `reset-db`). Le numéro de la base l'empêche.
+$baseA = getenv('LAB_DB_PATH');
+$baseB = $dir . '/suivante.db';
+$restauree = $dir . '/restauree.db';
+copy($baseA, $restauree);
+Db::fermer();
+putenv('LAB_DB_PATH=' . $baseB);
+$pdoB = Db::pdo();
+$pdoB->exec("INSERT INTO accounts (id, username, pw_hash, pass_hash, recovery_hash, created_at)
+             VALUES (1, 'nouvelle1', 'h', 'h', 'h', $t), (2, 'eve', 'h', 'h', 'h', $t)");
+$pdoB->prepare('INSERT INTO dm (id, sender_id, recipient_id, ciphertext, created_at) VALUES (1, 1, 2, ?, ?)')
+    ->execute([$blobDm, $t]);
+$luParEve = clairOuRefus(static fn() => Dm::inbox($pdoB, 2)[0]['message'] ?? '');
+ok(
+    '⭐ le message d\'une base effacée, replanté dans la suivante, ne s\'ouvre pas pour son nouveau n° 2',
+    $luParEve !== null && !str_contains((string) $luParEve, 'Rendez-vous demain'),
+    'eve lit : ' . var_export($luParEve, true)
+);
+$rapportB = (int) $pdoB->query("INSERT INTO redteam_reports (handle, ciphertext, created_at) VALUES ('h', 'x', " . ($t + 1) . ') RETURNING id')->fetchColumn();
+$jetonB = Redteam::jetonSuivi($rapportB);
+Db::fermer();
+putenv('LAB_DB_PATH=' . $restauree);
+$pdoR = Db::pdo();
+ok(
+    'contre-témoin : une sauvegarde restaurée garde son numéro, et ses messages se lisent',
+    array_filter(array_column(Dm::inbox($pdoR, 2), 'message'), static fn(string $m): bool => str_contains($m, 'Rendez-vous demain')) !== []
+);
+Db::fermer();
+putenv('LAB_DB_PATH=' . $baseA);
+$pdo = Db::pdo();
+
+// Le jeton de suivi d'un rapport dérivait du seul numéro du rapport : le même défaut.
+$naissance = Db::generationNeeLe();
+$ancienRapport = (int) $pdo->query("INSERT INTO redteam_reports (handle, ciphertext, created_at) VALUES ('h', 'x', " . ($naissance - 60) . ') RETURNING id')->fetchColumn();
+$neufRapport   = (int) $pdo->query("INSERT INTO redteam_reports (handle, ciphertext, created_at) VALUES ('h', 'x', " . ($naissance + 60) . ') RETURNING id')->fetchColumn();
+$jetonSans = static fn(int $id): string => substr(DataGuard::hmac((string) $id, 'report-track'), 0, 32);
+ok(
+    'un jeton remis avant le numéro de base reste valable pour SON rapport',
+    (Redteam::etat($pdo, $ancienRapport, $jetonSans($ancienRapport))['ok'] ?? false) === true
+);
+ok(
+    '⭐ et pour aucun rapport déposé après — le jeton d\'aujourd\'hui porte le numéro de la base',
+    (Redteam::etat($pdo, $neufRapport, $jetonSans($neufRapport))['ok'] ?? true) === false
+        && (Redteam::etat($pdo, $neufRapport, Redteam::jetonSuivi($neufRapport))['ok'] ?? false) === true
+);
+$memeNumero = $pdo->prepare('SELECT COUNT(*) FROM redteam_reports WHERE id = ?');
+$memeNumero->execute([$rapportB]);
+ok(
+    '⭐ le jeton d\'un rapport de la base suivante n\'ouvre pas le rapport de même numéro ici',
+    (int) $memeNumero->fetchColumn() === 1 && (Redteam::etat($pdo, $rapportB, $jetonB)['ok'] ?? true) === false,
+    'rapport n° ' . $rapportB
 );
 
 echo "\n# Une passe qui ne finit pas ne ferme rien ; « --fermer » ferme, sur décision\n";

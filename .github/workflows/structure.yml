@@ -1542,8 +1542,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_refus_publiable.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du refus publiable a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 18/18 ' \
-            || { echo "::error::le banc du refus publiable n'a pas joué ses 18 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 21/21 ' \
+            || { echo "::error::le banc du refus publiable n'a pas joué ses 21 cas"; exit 1; }
 
       # Refuser un dossier de niveau 3 compte sur le compte VISÉ : un tiers qui en
       # ouvre plusieurs fait geler l'ouverture au titulaire, par la main de
@@ -1600,8 +1600,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_frein_login.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du frein de connexion a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 15/15 ' \
-            || { echo "::error::le banc du frein de connexion n'a pas joué ses 15 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 18/18 ' \
+            || { echo "::error::le banc du frein de connexion n'a pas joué ses 18 cas"; exit 1; }
 
       # Un blob chiffré n'est lisible que là où il a été écrit. Sans contexte, qui
       # obtient une écriture recopie un blob dans une ligne qu'il a le droit de lire
@@ -1611,8 +1611,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_dataguard.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du chiffrement du lab a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^✅ 46/46 ' \
-            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 46 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 53/53 ' \
+            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 53 cas"; exit 1; }
 
       # La bibliothèque rend `cle`/`texte`, la page lit `key`/`label`/`type`/`options` :
       # les deux côtés avaient divergé sans un mot, et le niveau 3 partait sans aucune
@@ -1744,7 +1744,7 @@ jobs:
           # rougit, y compris le chemin normal. C'est le contexte qui doit cesser de
           # distinguer, pas une de ses deux faces.
           canari demo/lab/lib/dataguard.php \
-            "return Aad::of('dm', (string) \$expediteur, (string) \$destinataire);" \
+            "return Aad::of('dm', Db::generation(), (string) \$expediteur, (string) \$destinataire);" \
             "return Aad::of('dm-fixe'); // canari" \
             demo/lab/tests/sanity_dataguard.php \
             "✗ ⭐ le blob d'un message privé entre deux autres comptes"

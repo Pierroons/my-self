@@ -36,7 +36,7 @@
 declare(strict_types=1);
 
 // La base et les quatre secrets de ce banc, à lui seul — jamais ceux de `data/`.
-require __DIR__ . '/instance_isolee.php';
+require __DIR__ . '/instance_isolee.inc';
 
 // Le profil Argon2id vient de la bibliothèque, jamais d'une valeur recopiée ici :
 // `check-profil-unique.sh` refuse un second porteur, et il a raison. L'autoload sans
@@ -56,7 +56,7 @@ require_once __DIR__ . '/../lib/su_audit.php';
 
 // Le sel de l'instance ne doit pas bouger : un remplacement rendrait introuvables
 // tous les codes déjà émis. La prise existe pour cela.
-$bacSel = sys_get_temp_dir() . '/lab-secrets-sitesalt-' . getmypid();
+$bacSel = chemin_isole('.sitesalt-banc');
 putenv('LAB_SITESALT_PATH=' . $bacSel);
 require_once __DIR__ . '/../lib/auth.php';
 require_once __DIR__ . '/../lib/db.php';
@@ -337,9 +337,21 @@ foreach ($sources as $fichier) {
         token_get_all((string) file_get_contents($fichier)),
         static fn ($j): bool => !is_array($j) || !in_array($j[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)
     ));
+    // Les noms sous lesquels la classe se lit dans CE fichier : le sien, et tout alias
+    // qu'un `use … as` lui donne — sans quoi `SI::lire()` passait inaperçu (mesuré par la
+    // septième passe d'audit). ⚠️ Restent invisibles : un `use` groupé avec alias, et un
+    // appel par nom de classe calculé (`$c::lire()`).
+    $noms = ['SecretInstance', 'Pierroons\\MySelfLab\\SecretInstance'];
+    foreach ($jetons as $k => $j) {
+        if (is_array($j) && $j[0] === T_USE && is_array($jetons[$k + 1] ?? null)
+            && str_ends_with($jetons[$k + 1][1], 'SecretInstance')
+            && is_array($jetons[$k + 2] ?? null) && $jetons[$k + 2][0] === T_AS && is_array($jetons[$k + 3] ?? null)) {
+            $noms[] = $jetons[$k + 3][1];
+        }
+    }
     foreach ($jetons as $k => $j) {
         $classe = is_array($j) ? $j[1] : '';
-        if (!in_array(ltrim($classe, '\\'), ['SecretInstance', 'Pierroons\\MySelfLab\\SecretInstance'], true)
+        if (!in_array(ltrim($classe, '\\'), $noms, true)
             || !is_array($jetons[$k + 2] ?? null) || strtolower($jetons[$k + 2][1]) !== 'lire') {
             continue;
         }
@@ -629,11 +641,11 @@ for ($essai = 0; $essai < 30; $essai++) {
         $divergents++;
     }
 }
-// ⚠️ Ce cas attrape la publication par renommage à chaque fois (mesuré). Une course
-// plus étroite — le témoin d'existence lu sans relire le secret, sept courses sur cent
-// au banc de charge — ne rougit ici qu'une fois sur trois (mesuré, trois essais) :
-// ce vert-là est une présomption, pas une preuve.
-verifier('⭐ seize premières requêtes simultanées reçoivent toutes le même secret, trente fois sur trente', $divergents === 0, "{$divergents} essai(s) sur 30 ont servi plusieurs secrets");
+// ⚠️ Ce cas attrape la publication par renommage à chaque fois (mesuré). La course plus
+// étroite — le témoin d'existence lu sans relire le secret — rougit selon la machine :
+// une fois sur trois ici, cinq fois sur cinq chez l'audit (mesurés). Ce vert-là est
+// une présomption, pas une preuve.
+verifier('⭐ seize premières requêtes simultanées reçoivent toutes le même secret, trente fois sur trente', $divergents === 0, "{$divergents} essai(s) sur 30 où les seize n'ont pas reçu le même secret, ou l'une a refusé");
 putenv('LAB_DB_PATH=' . instance_isolee()['LAB_DB_PATH']);   // rendue à l'isolement, jamais à `data/`
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -695,6 +707,27 @@ try {
     $cause = $e->getMessage();
 }
 verifier('⭐ LAB_DB_PATH posée mais vide est refusée, pas ignorée', str_contains($cause, 'posée mais vide'), $cause === '' ? 'aucune levée' : $cause);
+// La même règle chez chacun de ses lecteurs : écrite prise par prise, elle manquait
+// toujours à la suivante.
+foreach ([
+    'LAB_MODERATION_LOG'       => static fn () => (new JournalModeration())->chemin(),
+    'SELFRECOVER_SU_AUDIT_LOG' => static fn () => SuAudit::logPath(),
+    'SELFRECOVER_STATE_DIR'    => static fn () => SuAudit::logPath(),
+] as $prise => $lire) {
+    $avant = getenv($prise);
+    if ($prise === 'SELFRECOVER_STATE_DIR') {
+        putenv('SELFRECOVER_SU_AUDIT_LOG');
+    }
+    putenv($prise . '=');
+    $cause = '';
+    try {
+        $lire();
+    } catch (RuntimeException $e) {
+        $cause = $e->getMessage();
+    }
+    verifier("{$prise} posée mais vide est refusée", str_contains($cause, 'posée mais vide'), $cause === '' ? 'aucune levée' : $cause);
+    putenv($avant === false ? $prise : $prise . '=' . $avant);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 section('10. Une session ne se range que sous l\'empreinte de son jeton');
@@ -710,6 +743,8 @@ $p->exec("INSERT INTO accounts (id, username, pw_hash, pass_hash, recovery_hash,
 $jeton = Auth::generateSessionToken();
 $cookie = (new ReflectionClassConstant(Auth::class, 'COOKIE'))->getValue();
 $p->prepare('INSERT INTO app_sessions (account_id, token, created_at) VALUES (1, ?, ?)')->execute([$jeton, time()]);
+// Une base d'avant ne porte pas la trace de la conversion : on la lui retire.
+$p->exec("DELETE FROM lab_migrations WHERE nom = 'sessions-sous-empreinte'");
 Db::fermer();
 $p = Db::pdo();
 $range = (string) $p->query('SELECT token FROM app_sessions')->fetchColumn();

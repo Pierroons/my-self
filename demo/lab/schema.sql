@@ -33,6 +33,22 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 
 -- Sessions applicatives (token cookie)
+-- Le numéro de cette base, tiré au hasard à sa naissance par `Db::migrate()` : il
+-- entre dans le contexte de chaque chiffré, pour qu'un blob d'une base effacée ne
+-- s'ouvre pas dans la suivante, dont les comptes repartent de 1. Une seule ligne.
+CREATE TABLE IF NOT EXISTS lab_generation (
+    id      INTEGER PRIMARY KEY CHECK (id = 1),
+    valeur  TEXT NOT NULL,
+    nee_le  INTEGER NOT NULL          -- ce qui est plus ancien a été écrit sans ce numéro
+);
+
+-- Les migrations qui ne doivent jouer qu'une fois, et dont la trace évite qu'elles
+-- réparent en silence ce qu'un chemin régressé abîmerait de nouveau.
+CREATE TABLE IF NOT EXISTS lab_migrations (
+    nom      TEXT PRIMARY KEY,
+    faite_le INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS app_sessions (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     account_id  INTEGER NOT NULL,

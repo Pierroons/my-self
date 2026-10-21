@@ -52,3 +52,11 @@ secret disparu d'être remplacé en silence, et `.blindkey.scelle`, que la passe
 `tools/migrer-aad.php` pose quand elle a fini. ⚠️ Une restauration qui perdrait
 `.blindkey.scelle` rouvrirait la lecture des blobs sans contexte : l'archive doit
 le reprendre, et sa présence se vérifie après restauration.
+
+À chaque mise à jour du code, après la bascule : **poser les témoins d'existence**
+pour les secrets présents, avec l'identité qui possède `data/` — celle qui sert le
+site ne l'écrit pas forcément, et un témoin manquant se signale au journal du site :
+
+```
+for s in .blindkey .sitesalt .serversecret .modaudit; do [ -f "data/$s" ] && touch "data/$s.existe"; done
+```
