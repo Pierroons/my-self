@@ -40,7 +40,7 @@ final class SecretInstance
     public const PLANCHER = 32;
 
     /** Suffixe du témoin posé à côté d'un secret servi : il a existé ici. */
-    private const A_EXISTE = '.existe';
+    public const A_EXISTE = '.existe';
 
     /**
      * Rend le secret nommé, en le créant à la première demande.

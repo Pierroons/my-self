@@ -255,6 +255,45 @@ $c === 0 && est_admin('carol')
     : nok("first-admin devait être rouvert par reset-shell (code $c)");
 
 // ── 10. reset-db : kill all, journal gardé ──────────────────────────────────
+// Un message chiffré sous la clé de cette base, avant le reset — dans un autre
+// processus : la clé dérivée se mémoïse, et ce banc doit relire comme une requête neuve.
+$lab = "$dir/lab.php";
+file_put_contents($lab, '<?php
+require ' . var_export(__DIR__ . '/../vendor/autoload.php', true) . ';
+require_once ' . var_export(__DIR__ . '/../lib/dm.php', true) . ';
+use Pierroons\MySelfLab\{Db, DataGuard, Dm};
+$pdo = Db::pdo();
+if ($argv[1] === "graine") {
+    Dm::send($pdo, 1, "bob", "SECRET-DE-LA-BASE-FIGEE");
+    echo json_encode([Db::generation(), $pdo->query("SELECT ciphertext FROM dm ORDER BY id DESC LIMIT 1")->fetchColumn()]);
+    exit;
+}
+// Le rejeu de la huitième passe d\'audit : la base neuve reçoit sa première requête, puis
+// l\'écriture recopie l\'ancien numéro et l\'ancien blob — et le destinataire n° 2 lit.
+DataGuard::exigerCle();
+$pdo->exec("INSERT OR IGNORE INTO accounts (id, username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (1, \'r1\', \'x\', \'x\', \'x\', 0), (2, \'r2\', \'x\', \'x\', \'x\', 0)");
+$pdo->prepare("UPDATE lab_generation SET valeur = ?")->execute([$argv[2]]);
+$pdo->prepare("INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (1, 2, ?, 0)")->execute([$argv[3]]);
+Db::fermer();
+echo Dm::inbox(Db::pdo(), 2)[0]["message"] ?? "(rien)";
+');
+/** Lance l'aide `lab.php` sur une base et une clé ; rend sa sortie. */
+function lab(string $base, string $cle, string ...$args): string
+{
+    global $env, $lab;
+    $p = proc_open(array_merge([PHP_BINARY, $lab], $args), [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $tuyaux, null,
+        ['LAB_DB_PATH' => $base, 'LAB_BLINDKEY_PATH' => $cle] + $env);
+    $out = stream_get_contents($tuyaux[1]) . stream_get_contents($tuyaux[2]);
+    fclose($tuyaux[1]);
+    fclose($tuyaux[2]);
+    proc_close($p);
+
+    return $out;
+}
+$cle = $env['LAB_BLINDKEY_PATH'];
+[$numeroAncien, $blobAncien] = json_decode(lab($base, $cle, 'graine'), true) ?? [null, null];
+touch("$cle.scelle");   // le témoin d'une passe de migration faite : il part aussi
+
 $avant = count(SuAudit::read());
 [$c] = su(['reset-db']);
 $c === 1 && (int) base()->query('SELECT COUNT(*) FROM accounts')->fetchColumn() === $comptes
@@ -272,6 +311,24 @@ count($figees) === 1 && (int) base($figees[0])->query('SELECT COUNT(*) FROM acco
 !is_file("$dir/su-secret") && count(glob("$dir/su-secret.frozen-*") ?: []) === 1
     ? ok('le secret SU est figé')
     : nok('le secret SU devait être mis de côté');
+
+$quand = $figees === [] ? '?' : substr($figees[0], strlen("$base.frozen-"));
+$cleFigee = "$cle.frozen-$quand";
+is_string($blobAncien) && !is_file($cle) && !is_file("$cle.existe") && !is_file("$cle.scelle")
+    && is_file($cleFigee) && is_file("$cle.existe.frozen-$quand") && is_file("$cle.scelle.frozen-$quand")
+    ? ok('la clé des messages est figée avec la base, sous son horodatage, ses deux témoins compris')
+    : nok('la clé et ses témoins devaient partir avec la base : ' . json_encode(array_map('basename', glob(dirname($cle) . '/.blindkey*') ?: [])));
+
+// La base neuve se copie : le rejeu ne doit rien laisser dans celle que la suite emploie.
+copy($base, "$dir/rejeu.db");
+$lu = lab("$dir/rejeu.db", $cle, 'rejeu', (string) $numeroAncien, (string) $blobAncien);
+!str_contains($lu, 'SECRET-DE-LA-BASE-FIGEE') && str_contains($lu, 'illisible')
+    ? ok('⭐ le message de la base figée, replanté avec son numéro dans la base neuve, ne s\'ouvre pas')
+    : nok('après reset-db, l\'ancien blob et l\'ancien numéro replantés devaient rester illisibles : ' . trim($lu));
+copy($base, "$dir/rejeu-temoin.db");
+str_contains(lab("$dir/rejeu-temoin.db", $cleFigee, 'rejeu', (string) $numeroAncien, (string) $blobAncien), 'SECRET-DE-LA-BASE-FIGEE')
+    ? ok('contre-témoin : sous la clé figée, le même rejeu rend le clair — seule la rotation l\'arrête')
+    : nok('contre-témoin : sous la clé figée, le rejeu devait rendre le clair, sinon le cas ne mesure rien');
 
 [$c] = su(['list-admins']);
 $c === 2
@@ -313,6 +370,20 @@ $c === 0 && str_contains($o, 'RESET-DB — tous les comptes supprimés')
 str_contains($o, 'Dernier reset-db')
     ? ok('list-admins rappelle le dernier reset-db')
     : nok('list-admins devait rappeler le dernier reset-db');
+
+// ── 10 bis. Une prise du secret SU posée mais vide est refusée ─────────────
+// Retomber en silence sur le dossier d'état ferait lire un autre secret que celui
+// que l'exploitant a désigné. ⚠️ Par `env` : `proc_open` ne transmet pas une variable
+// vide, et le cas aurait mesuré une variable absente (mesuré).
+$p = proc_open(['env', 'SELFRECOVER_SU_SECRET_FILE=', PHP_BINARY, __DIR__ . '/../selfrecover-su', 'list-admins'],
+    [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $tuyaux, null, $env);
+$o = stream_get_contents($tuyaux[1]) . stream_get_contents($tuyaux[2]);
+fclose($tuyaux[1]);
+fclose($tuyaux[2]);
+$c = proc_close($p);
+$c !== 0 && str_contains($o, 'SELFRECOVER_SU_SECRET_FILE est posée mais vide')
+    ? ok('SELFRECOVER_SU_SECRET_FILE posée mais vide : la console refuse')
+    : nok("SELFRECOVER_SU_SECRET_FILE vide devait être refusée (code $c) : " . trim(substr($o, 0, 200)));
 
 // ── 11. Un octroi d'avant le reset ne vaut plus ─────────────────────────────
 // carol a été nommée dans ce même journal, avant le reset-db : son octroi y est

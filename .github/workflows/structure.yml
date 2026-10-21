@@ -1568,8 +1568,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_simulateur.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du simulateur d'attaques a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^OK — 37/37 ' \
-            || { echo "::error::le banc du simulateur n'a pas joué ses 37 contrôles"; exit 1; }
+          echo "$sortie" | grep -qE '^OK — 38/38 ' \
+            || { echo "::error::le banc du simulateur n'a pas joué ses 38 contrôles"; exit 1; }
 
       - name: Canari — le banc du simulateur rougit quand un scénario perd sa dépendance
         run: |
@@ -1611,8 +1611,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_dataguard.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du chiffrement du lab a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^✅ 53/53 ' \
-            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 53 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 64/64 ' \
+            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 64 cas"; exit 1; }
 
       # La bibliothèque rend `cle`/`texte`, la page lit `key`/`label`/`type`/`options` :
       # les deux côtés avaient divergé sans un mot, et le niveau 3 partait sans aucune
@@ -1641,18 +1641,22 @@ jobs:
       # absente — demandé par la conv Recover, qui a trouvé que le premier n'était
       # lancé par aucune étape. Les deux derniers s'y sont ajoutés le 07/10, après
       # avoir été écrits puis laissés hors de toute étape, exactement comme eux.
-      - name: Canaris — les douze gardes du lab rougissent sur le défaut qu'elles visent
+      - name: Canaris — les quatorze gardes du lab rougissent sur le défaut qu'elles visent
         run: |
           # @plante
           canari() {  # canari <fichier> <avant> <après> <banc> <ligne rouge attendue>
-            F="$1"; cp "$F" /tmp/canari-lab.intact; avant=$(md5sum "$F" | cut -d" " -f1)
+            # La sauvegarde dans un fichier à soi : un chemin fixe de `/tmp` se partage
+            # avec un autre rejeu sur la même machine, qui y range le sien — et la
+            # restauration écrit alors un autre fichier à la place de celui-ci (mesuré
+            # par la conv Recover le 20/10).
+            F="$1"; I=$(mktemp); cp "$F" "$I"; avant=$(md5sum "$F" | cut -d" " -f1)
             python3 -c 'import sys; f,a,b=sys.argv[1:4]; s=open(f).read(); n=s.count(a); sys.exit("motif trouvé %d fois" % n) if n != 1 else open(f,"w").write(s.replace(a,b))' "$F" "$2" "$3" \
-              || { echo "::error::canari non planté dans $F"; exit 1; }
+              || { rm -f "$I"; echo "::error::canari non planté dans $F"; exit 1; }
             if sortie=$(php "$4" 2>&1); then
-              cp /tmp/canari-lab.intact "$F"; echo "$sortie"
+              cp "$I" "$F"; rm -f "$I"; echo "$sortie"
               echo "::error::$4 reste VERT sans la garde"; exit 1
             fi
-            cp /tmp/canari-lab.intact "$F"
+            cp "$I" "$F"; rm -f "$I"
             echo "$sortie" | grep -qF "$5" || { echo "$sortie"; echo "::error::rouge, mais pas sur « $5 »"; exit 1; }
             [ "$(md5sum "$F" | cut -d" " -f1)" = "$avant" ] || { echo "::error::$F non restauré"; exit 1; }
             echo "✓ $(basename "$4") rougit sur « $5 »"
@@ -1764,6 +1768,22 @@ jobs:
             '            if (false) { // canari' \
             demo/lab/tests/sanity_secrets_instance.php \
             "❌ ⭐ absent alors que quelque chose en dépend"
+
+          # 13. `reset-db` ne fait plus tourner la clé : une base neuve sous l'ancienne
+          #     clé rouvre les blobs de l'ancienne à qui y recopie aussi son numéro.
+          canari demo/lab/selfrecover-su \
+            'foreach (DataGuard::fichiersDeLaCle() as $fichier) {' \
+            'foreach ([] as $fichier) { // canari' \
+            demo/lab/tests/sanity_first_admin.php \
+            "✗ après reset-db, l'ancien blob et l'ancien numéro replantés devaient rester illisibles"
+
+          # 14. Un numéro de base perdu se retire à neuf : tout ce qui était scellé sous
+          #     l'ancien devient illisible, sans un mot.
+          canari demo/lab/lib/db.php \
+            '            && !self::numeroADejaServi()) {' \
+            '            ) { // canari' \
+            demo/lab/tests/sanity_dataguard.php \
+            "✗ ⭐ sa trace en base : l'ouverture ne tire pas de numéro neuf"
 
       - name: Canari — la console reperd les tentatives sans étiquette
         run: |
@@ -2398,8 +2418,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_first_admin.php)
           echo "$sortie"
-          echo "$sortie" | grep -qE 'OK — 30/30 ' \
-            || { echo "::error::le banc first-admin n'a pas joué ses 30 cas"; exit 1; }
+          echo "$sortie" | grep -qE 'OK — 34/34 ' \
+            || { echo "::error::le banc first-admin n'a pas joué ses 34 cas"; exit 1; }
 
       - name: Canari — le dernier administrateur tombe sans ses deux gardes
         run: |

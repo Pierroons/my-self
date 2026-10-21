@@ -193,7 +193,26 @@ final class DataGuard
      */
     private static function temoinScelle(): string
     {
-        return SecretInstance::chemin('.blindkey', 'LAB_BLINDKEY_PATH') . '.scelle';
+        return self::fichiersDeLaCle()[2];
+    }
+
+    /**
+     * Les fichiers qui font la clé de cette base : le secret et ses deux témoins.
+     *
+     * `reset-db` les fige avec la base : une clé qui survivait à sa base laissait qui
+     * détient un dump de l'ancienne, et une écriture dans la nouvelle, y recopier le
+     * numéro de l'ancienne avec ses blobs — et les rouvrir (mesuré par la huitième
+     * passe d'audit). Les témoins partent avec elle : ils disent un fait sur cette
+     * clé-là, et `.existe` laissé en place ferait refuser la clé neuve que la base
+     * neuve doit recevoir.
+     *
+     * @return list<string>
+     */
+    public static function fichiersDeLaCle(): array
+    {
+        $cle = SecretInstance::chemin('.blindkey', 'LAB_BLINDKEY_PATH');
+
+        return [$cle, $cle . SecretInstance::A_EXISTE, $cle . '.scelle'];
     }
 
     public static function lectureSansContexteFermee(): bool

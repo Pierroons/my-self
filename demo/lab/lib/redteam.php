@@ -133,19 +133,29 @@ final class Redteam
      */
     public static function etat(PDO $pdo, int $id, string $jeton): array
     {
+        // Un numero inconnu et un jeton faux rendent le meme refus : sinon la
+        // difference dirait combien de rapports ont ete deposes. Tout se calcule donc
+        // AVANT de chercher le rapport, et dans les deux cas, pour que la duree ne le
+        // dise pas non plus. Mesure par la huitieme passe d'audit : une branche qui
+        // n'interrogeait la base que pour un numero connu la faisait durer 4 µs de plus ;
+        // et calculee apres, une lecture restee ouverte sur le rapport trouve epargnait
+        // 2 µs a la requete suivante. ⚠️ Il reste l'ecart d'une recherche qui trouve sa
+        // ligne ou non, une demi-microseconde mesuree : la derivation Argon2id que chaque
+        // requete paie ici varie de plusieurs millisecondes.
+        $numero  = max(1, $id);
+        $jeton   = trim($jeton);
+        $neeLe   = Db::generationNeeLe();
+        $courant = hash_equals(self::jetonSuivi($numero), $jeton);
+        // Un rapport deposé avant le numero de base a recu un jeton sans lui : il
+        // reste valable pour CE rapport, et pour aucun de ceux qui suivent.
+        $ancien  = hash_equals(substr(DataGuard::hmac((string) $numero, 'report-track'), 0, 32), $jeton);
+
         $stmt = $pdo->prepare('SELECT severity, status, created_at FROM redteam_reports WHERE id = ?');
         $stmt->execute([max(0, $id)]);
         $r = $stmt->fetch();
-        // Un numero inconnu et un jeton faux rendent le meme refus : sinon la
-        // difference dirait combien de rapports ont ete deposes. Le jeton se calcule
-        // dans les deux cas, pour que la duree ne le dise pas non plus.
-        $attendu = self::jetonSuivi(max(1, $id));
-        $valide  = hash_equals($attendu, trim($jeton))
-            // Un rapport deposé avant le numero de base a recu un jeton sans lui : il
-            // reste valable pour CE rapport, et pour aucun de ceux qui suivent.
-            || ($r && (int) $r['created_at'] < Db::generationNeeLe()
-                && hash_equals(substr(DataGuard::hmac((string) $id, 'report-track'), 0, 32), trim($jeton)));
-        if ($id <= 0 || !$r || !$valide) {
+        $stmt->closeCursor();
+        $avant = $r !== false && (int) $r['created_at'] < $neeLe;
+        if ($id <= 0 || $r === false || !($courant || ($ancien && $avant))) {
             return ['ok' => false, 'message' => tc('Numero ou jeton de suivi invalide.')];
         }
 

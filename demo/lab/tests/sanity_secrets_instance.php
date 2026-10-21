@@ -184,22 +184,11 @@ function console(string $args, array $env): array
     return ['code' => $code, 'texte' => implode("\n", $sortie)];
 }
 
-$bac = sys_get_temp_dir() . '/lab-secrets-' . bin2hex(random_bytes(6));
+// Dans le dossier de l'instance isolée, qui s'efface à la sortie, fichiers à point
+// compris : rangé à part dans `/tmp`, ce bac y laissait à chaque passage un dossier de
+// soixante-neuf fichiers, dont des secrets de banc (mesuré par la huitième passe d'audit).
+$bac = chemin_isole('bac');
 mkdir($bac, 0700, true);
-register_shutdown_function(static function () use ($bac, $bacSel): void {
-    foreach (['ferme', 'etat', 'su', 'base'] as $sous) {
-        @chmod("$bac/$sous", 0700);
-        foreach (glob("$bac/$sous/*") ?: [] as $f) {
-            @unlink($f);
-        }
-        @rmdir("$bac/$sous");
-    }
-    foreach (glob($bac . '/*') ?: [] as $f) {
-        is_dir($f) ? @rmdir($f) : @unlink($f);
-    }
-    @rmdir($bac);
-    @unlink($bacSel);
-});
 
 echo "\n" . str_repeat('=', 63) . "\n";
 echo "  Secrets d'instance du lab — refuser plutôt que servir\n";
@@ -339,8 +328,9 @@ foreach ($sources as $fichier) {
     ));
     // Les noms sous lesquels la classe se lit dans CE fichier : le sien, et tout alias
     // qu'un `use … as` lui donne — sans quoi `SI::lire()` passait inaperçu (mesuré par la
-    // septième passe d'audit). ⚠️ Restent invisibles : un `use` groupé avec alias, et un
-    // appel par nom de classe calculé (`$c::lire()`).
+    // septième passe d'audit). Un appel par un nom que ce contrôle ne reconnaît pas
+    // (`use` groupé avec alias, `$c::lire()`, `call_user_func`) est attrapé par le
+    // suivant, s'il est écrit dans un autre fichier que celui du lecteur.
     $noms = ['SecretInstance', 'Pierroons\\MySelfLab\\SecretInstance'];
     foreach ($jetons as $k => $j) {
         if (is_array($j) && $j[0] === T_USE && is_array($jetons[$k + 1] ?? null)
@@ -350,8 +340,8 @@ foreach ($sources as $fichier) {
         }
     }
     foreach ($jetons as $k => $j) {
-        $classe = is_array($j) ? $j[1] : '';
-        if (!in_array(ltrim($classe, '\\'), $noms, true)
+        $classe = preg_replace('/^namespace\\\\/i', '', ltrim(is_array($j) ? $j[1] : '', '\\'));
+        if (!in_array($classe, $noms, true)
             || !is_array($jetons[$k + 2] ?? null) || strtolower($jetons[$k + 2][1]) !== 'lire') {
             continue;
         }
@@ -366,6 +356,25 @@ verifier(
     '⭐ chaque secret n\'est lu qu\'à un seul endroit, qui déclare ce qui en dépend',
     count($lectures) === 4 && array_filter($lectures, static fn (array $l): bool => count($l) > 1) === [],
     json_encode($lectures, JSON_UNESCAPED_SLASHES)
+);
+
+// Le même contrôle par l'autre bout : le NOM du secret, en chaîne, ne figure que dans
+// le fichier de son lecteur. Il ne dépend pas de la forme de l'appel — un second
+// lecteur écrit `namespace\SecretInstance::lire()` ou par `call_user_func` passait le
+// précédent (mesuré par la huitième passe d'audit). ⚠️ Reste invisible : un nom
+// composé à l'exécution, ou un second appel dynamique dans le fichier même du lecteur.
+$nomsVus = [];
+foreach ($sources as $fichier) {
+    foreach (token_get_all((string) file_get_contents($fichier)) as $j) {
+        if (is_array($j) && $j[0] === T_CONSTANT_ENCAPSED_STRING && isset($lectures[trim($j[1], "'\"")])) {
+            $nomsVus[trim($j[1], "'\"")][basename($fichier)] = true;
+        }
+    }
+}
+verifier(
+    '⭐ le nom de chaque secret n\'apparaît que dans le fichier de son lecteur',
+    count($nomsVus) === 4 && array_filter($nomsVus, static fn (array $f): bool => count($f) > 1) === [],
+    json_encode(array_map('array_keys', $nomsVus), JSON_UNESCAPED_SLASHES)
 );
 
 // Le contrôle qui attrape le jumeau suivant, appel par appel plutôt que fichier
@@ -675,6 +684,30 @@ verifier('le témoin retiré — la décision humaine —, il se pose de nouveau
 unlink($bac . '/.disparu.existe');
 SecretInstance::lire('.disparu', 48, 32, 'BANC_SECRET_PATH', $rien);
 verifier('un secret d\'avant le témoin le gagne à sa première lecture', is_file($bac . '/.disparu.existe'));
+
+// Un témoin que l'identité qui sert ne peut pas poser : le secret se sert, et le
+// manque se dit au journal — c'est la seule trace qu'un exploitant en aura.
+if ($racine) {
+    $sautes++;
+    echo "  ⏭️  témoin non posable : non éprouvable sous root — signalé, pas compté\n";
+} else {
+    $clos = $bac . '/clos';
+    mkdir($clos, 0700);
+    file_put_contents($clos . '/.servi', bin2hex(random_bytes(48)));
+    chmod($clos, 0500);
+    $journalErreurs = $bac . '/erreurs.log';
+    $avantLog = ini_set('error_log', $journalErreurs);
+    putenv('BANC_SECRET_PATH=' . $clos . '/.servi');
+    $servi = SecretInstance::lire('.servi', 48, 32, 'BANC_SECRET_PATH', $rien);
+    ini_set('error_log', (string) $avantLog);
+    chmod($clos, 0700);
+    verifier(
+        '⭐ un témoin non posable : le secret est servi, et le manque est au journal',
+        strlen($servi) >= 32 && !is_file($clos . '/.servi.existe')
+            && str_contains((string) @file_get_contents($journalErreurs), 'témoin d\'existence non posable'),
+        (string) @file_get_contents($journalErreurs)
+    );
+}
 putenv('BANC_SECRET_PATH');
 
 // `link()` désactivée (ce que conseille un durcissement de PHP) : refus net, et

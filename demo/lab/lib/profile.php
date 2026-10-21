@@ -87,8 +87,13 @@ final class Profile
         // Un blob est là : la clé qui l'a scellé doit exister, et non être posée
         // à l'instant par la lecture. Cette ligne est atteignable sans session.
         DataGuard::exigerCle();
+        // Le contexte aussi, hors du `catch` : un numéro de base absent ou altéré est une
+        // panne de l'instance, pas un profil abîmé. Calculé dedans, il se déguisait en
+        // profil illisible et invitait son titulaire à le remplacer (mesuré par la
+        // huitième passe d'audit).
+        $contexte = DataGuard::contexteProfil($accountId);
         try {
-            return [true, DataGuard::decrypt((string) $blob, DataGuard::contexteProfil($accountId))];
+            return [true, DataGuard::decrypt((string) $blob, $contexte)];
         } catch (\Throwable $e) {
             error_log(sprintf('profil #%d illisible : %s', $accountId, $e->getMessage()));
 

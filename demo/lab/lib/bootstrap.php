@@ -74,8 +74,6 @@ use Pierroons\MySelfLab\Security;
 Security::sendHeaders(true);
 
 /** Réponse JSON + exit. */
-require_once __DIR__ . '/reponse.php';
-
 function json_out(array $data, int $code = 200): never
 {
     http_response_code($code);

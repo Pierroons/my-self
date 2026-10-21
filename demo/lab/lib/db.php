@@ -221,6 +221,15 @@ final class Db
     {
         if (self::$generation === null) {
             $valeur = self::pdo()->query('SELECT valeur FROM lab_generation WHERE id = 1')->fetchColumn();
+            if ($valeur === false) {
+                throw new \RuntimeException(
+                    'Numéro de base absent (table lab_generation) alors qu\'il a déjà servi ici : un numéro neuf '
+                    . 'rendrait illisible, sans le dire, ce qui a été scellé sous lui. Restaurer la ligne depuis une '
+                    . 'sauvegarde de cette base. Pour repartir d\'un numéro neuf en connaissance de cause : '
+                    . "INSERT INTO lab_generation (id, valeur, nee_le) VALUES (1, lower(hex(randomblob(16))), strftime('%s', 'now'))"
+                    . ' — ce qui était scellé sous l\'ancien sera perdu.'
+                );
+            }
             if (!is_string($valeur) || strlen($valeur) !== 32) {
                 throw new \RuntimeException('Numéro de base absent ou altéré (table lab_generation) : refus de chiffrer sans lui.');
             }
@@ -231,6 +240,49 @@ final class Db
     }
 
     private static ?string $generation = null;
+
+    /**
+     * Remplace le numéro mémoïsé, et rend celui qu'il remplace.
+     *
+     * Réservé au simulateur d'attaques : sa base jetable n'est pas celle du site, et
+     * ses blobs ne doivent ni porter le numéro de la vraie base ni l'ouvrir pour le
+     * lire. Il remet l'ancien en sortant, comme il remet le journal de modération.
+     */
+    public static function substituerGeneration(?string $numero): ?string
+    {
+        $avant = self::$generation;
+        self::$generation = $numero;
+
+        return $avant;
+    }
+
+    /**
+     * Le préfixe d'un blob scellé sous son contexte, donc sous un numéro de base.
+     *
+     * Recopié d'`EncryptedBlob::PREFIX_V3` : cette classe s'ouvre aussi sans la
+     * bibliothèque (la console SU), et `tests/sanity_dataguard.php` tient les deux égaux.
+     */
+    public const PREFIXE_BLOB_LIE = 'SDG3.';
+
+    /**
+     * Un numéro a-t-il déjà servi dans cette base : tiré ici, ou scellé dans un blob ?
+     *
+     * La trace du tirage et les blobs liés sont deux témoins indépendants : une base
+     * reconstruite à partir de ses seules tables `dm` et `profiles` n'a plus la trace,
+     * et une ligne `lab_generation` effacée par un script de purge laisse la trace.
+     */
+    private static function numeroADejaServi(): bool
+    {
+        $lie = self::$pdo->prepare(
+            "SELECT EXISTS (SELECT 1 FROM lab_migrations WHERE nom = 'numero-de-base')
+                 OR EXISTS (SELECT 1 FROM dm WHERE substr(ciphertext, 1, ?) = ?)
+                 OR EXISTS (SELECT 1 FROM profiles WHERE substr(ciphertext, 1, ?) = ?)"
+        );
+        $n = strlen(self::PREFIXE_BLOB_LIE);
+        $lie->execute([$n, self::PREFIXE_BLOB_LIE, $n, self::PREFIXE_BLOB_LIE]);
+
+        return (bool) $lie->fetchColumn();
+    }
 
     /** L'instant où ce numéro a été tiré : ce qui est plus ancien a été écrit sans lui. */
     public static function generationNeeLe(): int
@@ -244,9 +296,17 @@ final class Db
         // Le numéro de la base, tiré une fois : à sa naissance, ou à la première ouverture
         // d'une base d'avant. Deux premières ouvertures concurrentes : la première écrite
         // l'emporte, et chacune relit ensuite celui qui est rangé.
-        if (self::$pdo->query('SELECT 1 FROM lab_generation WHERE id = 1')->fetchColumn() === false) {
+        // 🔑 Un numéro perdu ne se remplace pas en silence : comme un secret absent, il
+        // n'est une panne que si quelque chose en dépend. Retiré à chaque ligne manquante,
+        // il rendait illisibles tous les messages et profils sans un mot, et la passe de
+        // migration se disait finie (mesuré par la huitième passe d'audit). La ligne reste
+        // alors absente, et `generation()` refuse là où le numéro sert.
+        if (self::$pdo->query('SELECT 1 FROM lab_generation WHERE id = 1')->fetchColumn() === false
+            && !self::numeroADejaServi()) {
             self::$pdo->prepare('INSERT OR IGNORE INTO lab_generation (id, valeur, nee_le) VALUES (1, ?, ?)')
                 ->execute([bin2hex(random_bytes(16)), time()]);
+            self::$pdo->prepare("INSERT OR IGNORE INTO lab_migrations (nom, faite_le) VALUES ('numero-de-base', ?)")
+                ->execute([time()]);
         }
 
         // Les sessions ouvertes avant l'empreinte : converties UNE fois, sans déconnecter

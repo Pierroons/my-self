@@ -53,6 +53,13 @@ secret disparu d'être remplacé en silence, et `.blindkey.scelle`, que la passe
 `.blindkey.scelle` rouvrirait la lecture des blobs sans contexte : l'archive doit
 le reprendre, et sa présence se vérifie après restauration.
 
+`selfrecover-su reset-db` fige `.blindkey` et ses deux témoins avec la base, sous le
+même horodatage : la base neuve reçoit une clé neuve à sa première requête. Restaurer
+une base figée, c'est restaurer aussi sa clé figée, sous les noms d'origine. Le numéro
+de la base (table `lab_generation`) se restaure avec elle : perdu, il n'est pas remplacé
+tant que des blobs scellés ou la trace de son tirage en dépendent, et le site refuse
+alors de chiffrer et de déchiffrer en nommant la table.
+
 À chaque mise à jour du code, après la bascule : **poser les témoins d'existence**
 pour les secrets présents, avec l'identité qui possède `data/` — celle qui sert le
 site ne l'écrit pas forcément, et un témoin manquant se signale au journal du site :

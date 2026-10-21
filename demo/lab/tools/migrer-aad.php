@@ -89,7 +89,11 @@ if ($manquantes !== []) {
 // À blanc, la base s'ouvre en lecture seule : `Db::pdo()` y appliquerait schéma et
 // migrations, et « compte sans écrire » serait faux.
 $pdo = $aBlanc ? Db::lectureSeule() : Db::pdo();
-
+// La passe scelle sous le numéro de la base : sans lui, elle s'arrête avant d'écrire,
+// au lieu de se dire finie sur une base dont plus rien ne s'ouvre.
+if (!$aBlanc) {
+    Db::generation();
+}
 
 /**
  * L'empreinte de la charge chiffrée, marqueurs retirés et base64 décodé.

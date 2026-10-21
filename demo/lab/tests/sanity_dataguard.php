@@ -125,6 +125,7 @@ ok('alice relit son propre envoi', ($envoyes[0]['message'] ?? null) === $secret)
 
 Profile::save($pdo, 3, ['bio' => 'carol la prudente', 'lien' => 'https://exemple.test']);
 ok('carol enregistre et relit son profil', (Profile::get($pdo, 3)['bio'] ?? '') === 'carol la prudente');
+$blobProfil = (string) $pdo->query('SELECT ciphertext FROM profiles WHERE account_id = 3')->fetchColumn();
 
 echo "\n# Un blob déplacé n'est plus lisible — c'est l'objet de ce banc\n";
 
@@ -530,6 +531,9 @@ $baseAvec = static function (string $nom, string $sql) use ($dir, $t): string {
     $p->exec(file_get_contents(__DIR__ . '/../schema.sql'));
     $p->exec("INSERT INTO accounts (id, username, pw_hash, pass_hash, recovery_hash, created_at)
               VALUES (1, 'alice', 'h', 'h', 'h', $t), (2, 'bob', 'h', 'h', 'h', $t)");
+    // Le numéro qu'une base reçoit à sa naissance : sans lui, un blob lié y désigne
+    // une base qui a perdu le sien, et l'ouverture refuse d'en tirer un.
+    $p->exec("INSERT INTO lab_generation (id, valeur, nee_le) VALUES (1, '" . bin2hex(random_bytes(16)) . "', $t)");
     $p->exec($sql);
 
     return $f;
@@ -653,6 +657,14 @@ ok(
     $luParEve !== null && !str_contains((string) $luParEve, 'Rendez-vous demain'),
     'eve lit : ' . var_export($luParEve, true)
 );
+$pdoB->exec("INSERT INTO accounts (id, username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (3, 'mallory', 'h', 'h', 'h', $t)");
+$pdoB->prepare('INSERT INTO profiles (account_id, ciphertext, updated_at) VALUES (3, ?, ?)')->execute([$blobProfil, $t]);
+$profilB = Profile::lire($pdoB, 3);
+ok(
+    '⭐ le profil d\'une base effacée, replanté dans la suivante, ne s\'ouvre pas pour son nouveau n° 3',
+    $profilB['illisible'] === true && ($profilB['champs']['bio'] ?? '') === '',
+    'mallory lit : ' . json_encode($profilB, JSON_UNESCAPED_UNICODE)
+);
 $rapportB = (int) $pdoB->query("INSERT INTO redteam_reports (handle, ciphertext, created_at) VALUES ('h', 'x', " . ($t + 1) . ') RETURNING id')->fetchColumn();
 $jetonB = Redteam::jetonSuivi($rapportB);
 Db::fermer();
@@ -680,6 +692,13 @@ ok(
     (Redteam::etat($pdo, $neufRapport, $jetonSans($neufRapport))['ok'] ?? true) === false
         && (Redteam::etat($pdo, $neufRapport, Redteam::jetonSuivi($neufRapport))['ok'] ?? false) === true
 );
+// À la seconde même du numéro, la base le portait déjà : le rapport a reçu le jeton
+// d'aujourd'hui, et seul ce qui précède strictement relève de l'ancien.
+$bordRapport = (int) $pdo->query("INSERT INTO redteam_reports (handle, ciphertext, created_at) VALUES ('h', 'x', " . $naissance . ') RETURNING id')->fetchColumn();
+ok(
+    'un rapport déposé à la seconde du numéro n\'accepte pas le jeton sans lui',
+    (Redteam::etat($pdo, $bordRapport, $jetonSans($bordRapport))['ok'] ?? true) === false
+);
 $memeNumero = $pdo->prepare('SELECT COUNT(*) FROM redteam_reports WHERE id = ?');
 $memeNumero->execute([$rapportB]);
 ok(
@@ -687,6 +706,100 @@ ok(
     (int) $memeNumero->fetchColumn() === 1 && (Redteam::etat($pdo, $rapportB, $jetonB)['ok'] ?? true) === false,
     'rapport n° ' . $rapportB
 );
+
+echo "\n# Un numéro de base perdu ne se remplace pas en silence\n";
+
+// Retiré à neuf chaque fois que la ligne manquait, il rendait illisibles tous les
+// messages et profils sans un mot, et la passe se disait finie (mesuré par la huitième
+// passe d'audit). Une copie de la base, dont on efface le numéro.
+ok(
+    'le préfixe qu\'ouvre la base pour reconnaître un blob lié est celui de la bibliothèque',
+    Db::PREFIXE_BLOB_LIE === EncryptedBlob::PREFIX_V3
+);
+$perdu = $dir . '/perdu.db';
+$memeNumero = null;   // un curseur resté ouvert tiendrait la base du banc en lecture
+Db::fermer();
+copy(getenv('LAB_DB_PATH'), $perdu);
+(new PDO('sqlite:' . $perdu))->exec('DELETE FROM lab_generation');
+$baseDuBanc = getenv('LAB_DB_PATH');
+putenv('LAB_DB_PATH=' . $perdu);
+$pdoP = Db::pdo();
+$sansNumero = static fn() => (int) (new PDO('sqlite:' . $perdu))->query('SELECT COUNT(*) FROM lab_generation')->fetchColumn();
+ok('⭐ sa trace en base : l\'ouverture ne tire pas de numéro neuf', $sansNumero() === 0);
+$cause = static function (callable $lecture): string {
+    try {
+        return 'rendu : ' . json_encode($lecture(), JSON_UNESCAPED_UNICODE);
+    } catch (\Throwable $e) {
+        return $e->getMessage();
+    }
+};
+$recuSansNumero = $cause(static fn() => Dm::inbox($pdoP, 2));
+ok(
+    '⭐ la boîte de réception refuse en nommant le numéro, elle ne rend pas des messages illisibles',
+    str_contains($recuSansNumero, 'Numéro de base absent'),
+    $recuSansNumero
+);
+$profilSansNumero = $cause(static fn() => Profile::lire($pdoP, 3));
+ok('le profil aussi : une panne d\'instance, pas un profil abîmé', str_contains($profilSansNumero, 'Numéro de base absent'), $profilSansNumero);
+[$sortie, $rc] = $migrerSur($perdu, (string) getenv('LAB_BLINDKEY_PATH'));
+ok(
+    'la passe de migration s\'arrête sur le numéro, au lieu de se dire finie',
+    $rc !== 0 && str_contains($sortie, 'Numéro de base absent') && !str_contains($sortie, '✅'),
+    'rc=' . $rc . ' · ' . substr(trim($sortie), 0, 160)
+);
+// Le second témoin : sa trace effacée aussi, il reste les blobs scellés sous lui.
+Db::fermer();
+(new PDO('sqlite:' . $perdu))->exec("DELETE FROM lab_migrations WHERE nom = 'numero-de-base'");
+$pdoP = Db::pdo();
+ok('⭐ sa trace effacée aussi : les blobs liés suffisent à refuser un numéro neuf', $sansNumero() === 0);
+// Un numéro altéré, et non absent : le profil se calculait sous lui dans son `catch`.
+Db::fermer();
+(new PDO('sqlite:' . $perdu))->exec("INSERT OR REPLACE INTO lab_generation (id, valeur, nee_le) VALUES (1, 'abime', 0)");
+$pdoP = Db::pdo();
+$profilAbime = $cause(static fn() => Profile::lire($pdoP, 3));
+ok(
+    '⭐ un numéro altéré fait refuser le profil, il ne le déguise pas en profil illisible',
+    str_contains($profilAbime, 'altéré'),
+    $profilAbime
+);
+Db::fermer();
+putenv('LAB_DB_PATH=' . $baseDuBanc);
+$pdo = Db::pdo();
+
+echo "\n# À blanc, une base d'avant le numéro ne bouge pas d'un octet\n";
+
+// `--a-blanc` rouvert par `Db::pdo()` restait vert : sur une base déjà migrée, schéma et
+// migrations ne changent rien. Sur une base d'avant le numéro, ils tirent ce numéro et
+// convertissent ses sessions (mesuré par la huitième passe d'audit).
+$avantNumero = $baseAvec('avant-numero', "INSERT INTO app_sessions (account_id, token, created_at) VALUES (1, '" . bin2hex(random_bytes(32)) . "', $t)");
+$cleAvant = $dir . '/.blindkey-avant-numero';
+file_put_contents($cleAvant, bin2hex(random_bytes(48)));
+$pa = new PDO('sqlite:' . $avantNumero);
+$pa->prepare('INSERT INTO dm (sender_id, recipient_id, ciphertext, created_at) VALUES (1, 2, ?, ?)')->execute([
+    blobV2('un message d\'avant le numéro', Primitives::deriveFromMemorized(trim((string) file_get_contents($cleAvant)), '/my-self-lab/dm'), '')->toBase64(),
+    $t,
+]);
+$pa->exec('DROP TABLE lab_generation; DROP TABLE lab_migrations');
+$pa = null;
+$md5Avant = md5_file($avantNumero);
+[$sortie, $rc] = $migrerSur($avantNumero, $cleAvant, '--a-blanc');
+clearstatcache();
+ok(
+    '⭐ --a-blanc sur une base d\'avant le numéro : identique à l\'octet, ni numéro tiré ni session convertie',
+    $rc === 0 && md5_file($avantNumero) === $md5Avant && str_contains($sortie, '1 blob'),
+    'rc=' . $rc . ' · ' . trim($sortie)
+);
+[$sortie, $rc] = $migrerSur($avantNumero, $cleAvant);
+$pa = new PDO('sqlite:' . $avantNumero);
+ok(
+    'et la passe réelle lui tire son numéro, scelle son message, convertit sa session',
+    $rc === 0
+        && (int) $pa->query('SELECT COUNT(*) FROM lab_generation')->fetchColumn() === 1
+        && str_starts_with((string) $pa->query('SELECT ciphertext FROM dm')->fetchColumn(), EncryptedBlob::PREFIX_V3)
+        && str_starts_with((string) $pa->query('SELECT token FROM app_sessions')->fetchColumn(), 'sha256:'),
+    'rc=' . $rc . ' · ' . trim($sortie)
+);
+$pa = null;
 
 echo "\n# Une passe qui ne finit pas ne ferme rien ; « --fermer » ferme, sur décision\n";
 

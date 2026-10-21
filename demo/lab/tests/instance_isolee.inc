@@ -45,10 +45,7 @@ function instance_isolee(): array
     $data  = __DIR__ . '/../data';
     $avant = etat_data($data);
     register_shutdown_function(static function () use ($data, $avant, $dossier): void {
-        foreach (glob($dossier . '/{,.}[!.]*', GLOB_BRACE) ?: [] as $f) {
-            @unlink($f);
-        }
-        @rmdir($dossier);
+        effacer_arbre($dossier);
         $apres = etat_data($data);
         if ($apres !== $avant) {
             $touches = array_keys(array_diff_assoc($apres, $avant) + array_diff_key($avant, $apres));
@@ -71,6 +68,20 @@ function instance_isolee(): array
 function chemin_isole(string $nom): string
 {
     return dirname(instance_isolee()['LAB_DB_PATH']) . '/' . $nom;
+}
+
+/** Efface un dossier et tout ce qu'il porte, fichiers à point et sous-dossiers fermés compris. */
+function effacer_arbre(string $dossier): void
+{
+    @chmod($dossier, 0700);
+    foreach (scandir($dossier) ?: [] as $nom) {
+        if ($nom === '.' || $nom === '..') {
+            continue;
+        }
+        $f = $dossier . '/' . $nom;
+        is_dir($f) && !is_link($f) ? effacer_arbre($f) : @unlink($f);
+    }
+    @rmdir($dossier);
 }
 
 /** @return array<string, string> fichier => taille et date, de `data/` tel qu'il est */

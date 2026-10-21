@@ -60,9 +60,12 @@ final class AttackSimulator
     public static function run(string $scenario): array
     {
         // La sandbox est jetable : ses bans simulés n'ont pas leur place au
-        // journal de modération du site.
+        // journal de modération du site. Ni ses blobs le numéro de la vraie base : le
+        // lire ouvrait celle-ci, et la créait hors d'une route (mesuré par la huitième
+        // passe d'audit) ; et scellés sous lui, ils valaient dans ses contextes.
         $journal = Moderate::journal();
         Moderate::setJournal(null);
+        $numero = Db::substituerGeneration(bin2hex(random_bytes(16)));
         try {
             return match ($scenario) {
                 'dump'       => self::runDumpBase(),
@@ -73,6 +76,7 @@ final class AttackSimulator
             };
         } finally {
             Moderate::setJournal($journal);
+            Db::substituerGeneration($numero);
         }
     }
 

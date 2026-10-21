@@ -9,6 +9,17 @@ declare(strict_types=1);
 // refus clair.
 
 /**
+ * Ce chemin de requête désigne-t-il une route d'API, qui répond en JSON ?
+ *
+ * `/api/` n'importe où dans le chemin, et non en tête : le lab peut être servi sous
+ * un préfixe. Le gestionnaire d'exception en décide la forme de sa réponse.
+ */
+function est_route_api(string $uri): bool
+{
+    return str_contains((string) strtok($uri, '?'), '/api/');
+}
+
+/**
  * Ce qu'un refus a le droit de publier, et rien d'autre.
  *
  * 🔑 Les enveloppes du lab rendaient la réponse de la bibliothèque **telle
@@ -43,17 +54,6 @@ declare(strict_types=1);
  * @param list<string>         $enPlus clés supplémentaires, décidées par l'appelant
  * @return array<string, mixed>
  */
-/**
- * Ce chemin de requête désigne-t-il une route d'API, qui répond en JSON ?
- *
- * `/api/` n'importe où dans le chemin, et non en tête : le lab peut être servi sous
- * un préfixe. Le gestionnaire d'exception en décide la forme de sa réponse.
- */
-function est_route_api(string $uri): bool
-{
-    return str_contains((string) strtok($uri, '?'), '/api/');
-}
-
 function refus_publiable(array $r, array $enPlus = []): array
 {
     if (($r['ok'] ?? false) === true) {

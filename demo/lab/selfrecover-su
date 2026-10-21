@@ -26,7 +26,9 @@ if (PHP_SAPI !== 'cli') {
 
 require __DIR__ . '/lib/db.php';
 require __DIR__ . '/lib/su_audit.php';
+require __DIR__ . '/lib/dataguard.php';
 
+use Pierroons\MySelfLab\DataGuard;
 use Pierroons\MySelfLab\Db;
 use Pierroons\MySelfLab\SecretInstance;
 use Pierroons\MySelfLab\SuAudit;
@@ -1039,6 +1041,9 @@ switch ($cmd) {
         // à conviction. Renommer plutôt que vider garantit qu'aucune table n'est
         // oubliée, y compris celles qui n'ont pas de clé étrangère vers `accounts`.
         // Le journal, lui, est GARDÉ : le reset s'y lit au milieu de ce qui précède.
+        // La clé des messages et des profils part avec la base (`DataGuard::fichiersDeLaCle()`) :
+        // une base neuve sous l'ancienne clé rouvrait les blobs de l'ancienne à qui y
+        // recopiait aussi son numéro.
         su_authenticate();
         $db    = Db::pdo();
         $bilan = [
@@ -1052,7 +1057,8 @@ switch ($cmd) {
             fwrite(STDOUT, "   • {$bilan['comptes']} compte(s), dont {$bilan['admins']} administrateur(s)\n");
             fwrite(STDOUT, "   • {$bilan['sessions']} session(s), {$bilan['litiges']} litige(s), appareils, codes de secours\n");
             fwrite(STDOUT, "   • le secret SU : il faudra en reposer un, comme à l'installation\n");
-            fwrite(STDOUT, "   La base et le secret sont mis de côté, jamais détruits ; le journal est gardé.\n\n");
+            fwrite(STDOUT, "   • la clé des messages et des profils (.blindkey) : une neuve naît à la première requête\n");
+            fwrite(STDOUT, "   La base, la clé et le secret sont mis de côté, jamais détruits ; le journal est gardé.\n\n");
             fwrite(STDOUT, "   Relance avec --confirm pour exécuter.\n");
             exit(1);
         }
@@ -1061,6 +1067,16 @@ switch ($cmd) {
         $quand  = (new DateTime('now', new DateTimeZone('UTC')))->format('Ymd-His');
         Db::fermer();
         $db = null;
+        // La clé avant la base : entre les deux gestes, une requête trouve l'ancienne base
+        // sans sa clé, et refuse en nommant ce qui en dépend — plutôt que d'y écrire sous
+        // une clé qui s'en va.
+        $clesFigees = [];
+        foreach (DataGuard::fichiersDeLaCle() as $fichier) {
+            $fige = su_figer($fichier, $quand);
+            if ($fige !== null) {
+                $clesFigees[] = basename($fige);
+            }
+        }
         $baseFigee = su_figer(Db::path(), $quand);
         foreach (['-wal', '-shm', '-journal'] as $suffixe) {
             su_figer(Db::path() . $suffixe, $quand);
@@ -1070,6 +1086,7 @@ switch ($cmd) {
         SuAudit::append(SuAudit::ACTION_RESET_DB, 'ALL-ACCOUNTS', $bilan + [
             'base_figee'   => $baseFigee ? basename($baseFigee) : null,
             'secret_fige'  => $secretFige ? basename($secretFige) : null,
+            'cle_figee'    => $clesFigees,
         ]);
         $restants = (int) Db::pdo()->query('SELECT COUNT(*) FROM accounts')->fetchColumn();
         if ($restants !== 0) {
@@ -1079,6 +1096,7 @@ switch ($cmd) {
         su_ok("Reset-db : {$bilan['comptes']} compte(s) supprimé(s), base neuve, journal gardé.");
         fwrite(STDOUT, '   Base figée   → ' . ($baseFigee ? basename($baseFigee) : '(aucune)') . "\n");
         fwrite(STDOUT, '   Secret figé  → ' . ($secretFige ? basename($secretFige) : '(aucun fichier)') . "\n");
+        fwrite(STDOUT, '   Clé figée    → ' . ($clesFigees !== [] ? implode(', ', $clesFigees) : '(aucune : rien n\'avait été chiffré)') . "\n");
         if ($source === 'SELFRECOVER_SU_SECRET') {
             fwrite(STDOUT, "   🚨 Le secret SU vient de l'environnement : aucun fichier ne peut le retirer.\n");
             fwrite(STDOUT, "      Retire SELFRECOVER_SU_SECRET, sinon l'ancienne passphrase vaut toujours.\n");
@@ -1087,6 +1105,7 @@ switch ($cmd) {
         fwrite(STDOUT, "   l'inscription du futur admin, puis `first-admin` — la voie est rouverte.\n");
         fwrite(STDOUT, "   ⚠️  Ce reset ne chasse pas un intrus qui a la main sur le SERVEUR, et ne tourne ni le\n");
         fwrite(STDOUT, "      sel d'instance (.sitesalt) ni les secrets serveur : ces gestes-là sont à part.\n");
+        fwrite(STDOUT, "      Restaurer la base figée, c'est restaurer aussi sa clé figée, sous les mêmes noms.\n");
         break;
 
     default:
