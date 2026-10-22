@@ -2043,8 +2043,8 @@ jobs:
         run: |
           sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 82/82 contrôles passés' \
-            || { echo "::error::le banc de modération n'a pas joué ses 82 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 101/101 contrôles passés' \
+            || { echo "::error::le banc de modération n'a pas joué ses 101 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate prolonge une peine en cours
         run: |
@@ -2444,6 +2444,90 @@ jobs:
               migration) attendu='✗ ⭐ des votes d.avant la colonne lèvent un ban' ;;
               panne)     attendu='✗ ⭐ panne du journal' ;;
               attente)   attendu='✗ ⭐ panne du journal' ;;
+            esac
+            echo "$sortie" | grep -q "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — SelfModerate lit un seuil ailleurs que dans la config
+        run: |
+          # @plante
+          # Chaque seuil, tour à tour : ses lecteurs dans le moteur prennent les
+          # valeurs par défaut au lieu de la config en service. Le banc joue
+          # chaque seuil sous une config différente, et doit rougir sur CE seuil.
+          M=bi-self/selfmoderate/src/Moderate.php
+          for cas in reputationInitiale reputationMax perteDroitDeVoteSous banA fenetreSalveSecondes \
+                     salveVotantsMin fenetreMeuteJours meuteLiensMin meuteVotantsMax balayagePeriodeSecondes \
+                     meuteEpisodeCooldown fenetreFarmingJours farmingUpvotesMax farmingDownvotesMax \
+                     ciblesParVotantMax ageMinPourVoterSecondes intervalleConvalescenceSecondes \
+                     dureesBan dureeBanAdminSecondes plancherFraction; do
+            cp "$M" /tmp/moderate.config.intact
+            CAS="$cas" python3 - "$M" <<'PY'
+          import os, re, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          cas = os.environ['CAS']
+          lecteur = {'dureesBan': 'dureeBanPourEpisode', 'dureeBanAdminSecondes': 'dureeBanAdmin',
+                     'plancherFraction': 'plancherDe'}.get(cas, cas)
+          neuf, n = re.subn(r'self::config\(\)->' + lecteur + r'\b', 'Config::demo()->' + lecteur, s)
+          assert n > 0, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(neuf)
+          PY
+            [ $? -eq 0 ] || { cp /tmp/moderate.config.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              cp /tmp/moderate.config.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/moderate.config.intact "$M"
+            cmp -s /tmp/moderate.config.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              meuteVotantsMax)                 attendu='✗ ⭐ la troncature cache la meute ou se tait' ;;
+              ageMinPourVoterSecondes)         attendu='✗ anti-Sybil sourd à la config' ;;
+              intervalleConvalescenceSecondes) attendu='✗ convalescence sourde à la config' ;;
+              *)                               attendu="✗ seuil sourd à la config ($cas)" ;;
+            esac
+            echo "$sortie" | grep -qF "$attendu" \
+              || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
+            echo "✓ plantation « $cas » : le banc rougit, et sur son cas"
+          done
+
+      - name: Canari — SelfModerate lit le contenu des messages privés, ou date et range mal les motifs reçus
+        run: |
+          # @plante
+          # Trois promesses sans chiffre : la détection lit le contenu des
+          # messages privés ; les motifs sortent dans leur ordre d'arrivée ; ils
+          # sont datés au mois. Chacune retirée tour à tour, le banc doit rougir
+          # sur son cas.
+          M=bi-self/selfmoderate/src/Moderate.php
+          for cas in contenu ordre mois; do
+            cp "$M" /tmp/moderate.promesse.intact
+            CAS="$cas" python3 - "$M" <<'PY'
+          import os, sys
+          p = sys.argv[1]
+          s = open(p, encoding='utf-8').read()
+          avant, apres = {
+              'contenu': ('SELECT DISTINCT sender_id, recipient_id FROM dm', 'SELECT DISTINCT sender_id, recipient_id, ciphertext FROM dm'),
+              'ordre':   ('ORDER BY jour DESC, reason ASC', 'ORDER BY created_at DESC'),
+              'mois':    ("strftime('%Y-%m-%d', created_at, 'unixepoch') AS jour", "strftime('%Y-%m', created_at, 'unixepoch') AS jour"),
+          }[os.environ['CAS']]
+          assert s.count(avant) == 1, 'plantation impossible'
+          open(p, 'w', encoding='utf-8').write(s.replace(avant, apres))
+          PY
+            [ $? -eq 0 ] || { cp /tmp/moderate.promesse.intact "$M"; echo "::error::la plantation « $cas » n'a pas pris — ce canari ne prouve rien"; exit 1; }
+            if sortie=$(php demo/lab/tests/sanity_moderate.php 2>&1); then
+              cp /tmp/moderate.promesse.intact "$M"; echo "$sortie"; echo "::error::le banc reste VERT avec la plantation « $cas »"; exit 1
+            fi
+            cp /tmp/moderate.promesse.intact "$M"
+            cmp -s /tmp/moderate.promesse.intact "$M" || { echo "::error::le fichier n'a pas été restauré à l'identique"; exit 1; }
+            if echo "$sortie" | grep -qE 'Fatal error|Uncaught'; then
+              echo "$sortie"; echo "::error::la plantation « $cas » casse le banc au lieu de le faire rougir — ce canari ne prouve rien"; exit 1
+            fi
+            case $cas in
+              contenu) attendu='✗ la détection lit le contenu des messages privés' ;;
+              *)       attendu='✗ motifs mal datés ou rangés dans leur ordre d.arrivée' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
