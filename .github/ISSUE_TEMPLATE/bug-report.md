@@ -37,4 +37,6 @@ Add any other context about the problem here.
 
 ---
 
-**⚠ Security issue ? Please do NOT open a public issue. See [SECURITY.md](../../SECURITY.md) for responsible disclosure.**
+**⚠ Security issue ? Please do NOT open a public issue. See [SECURITY.md][security] for responsible disclosure.**
+
+[security]: https://github.com/Pierroons/my-self/blob/main/SECURITY.md
