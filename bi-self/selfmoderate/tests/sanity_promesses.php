@@ -11,14 +11,15 @@
  *
  * 🔑 Les porteurs sont une **liste explicite** de phrases, pas une recherche de
  * chiffres dans la prose : une heuristique sur un texte mesure son style. Chaque
- * phrase est ancrée sur le texte qui entoure sa valeur : un qualificatif ajouté
- * (« en service », « en démonstration ») ou une reformulation la fait rougir —
- * on relit alors ce qu'elle promet, et on met la liste à jour. Une phrase
- * NEUVE qui annonce un chiffre n'est lue que lorsqu'elle y est ajoutée.
+ * motif couvre un passage autour de la valeur : une retouche dans ce passage le
+ * fait rougir — on relit alors ce qu'il promet, et on met la liste à jour. Ce
+ * qui s'écrit hors du passage n'est pas lu : un qualificatif placé avant le
+ * début d'un motif qui n'est pas ancré en début de ligne, une phrase neuve qui
+ * annonce un chiffre.
  *
- * Chaque champ de `Config` est soit porté, soit déclaré non promis avec la
- * phrase qui en parle sans chiffre : si elle en reçoit un, elle ne se retrouve
- * plus et le banc rougit. Un champ ajouté sans être classé le fait rougir aussi.
+ * Chaque champ de `Config` est soit porté, soit déclaré non promis avec un
+ * passage qui en parle sans chiffre ; un chiffre ajouté hors de ce passage
+ * n'est pas lu. Un champ ajouté sans être classé fait rougir le banc.
  *
  * Usage  : php tests/sanity_promesses.php
  *          SM_SRC=<copie de src> php tests/sanity_promesses.php    (canari)

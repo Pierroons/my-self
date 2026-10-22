@@ -2542,9 +2542,12 @@ jobs:
           # @plante
           # Des défauts qu'un seuil lu au bon endroit laisse passer : une fenêtre
           # en jours comptée en heures — pour l'échange qui lie une meute, pour
-          # ses votes, pour le farming — et l'horloge de convalescence avancée au
-          # pas de la démonstration plutôt qu'à celui de la config. Le banc vise
-          # chaque fenêtre des deux côtés de sa borne, et doit rougir sur son cas.
+          # ses votes, pour les trois lecteurs du farming plantés ensemble — et
+          # l'horloge de convalescence avancée au pas de la démonstration plutôt
+          # qu'à celui de la config. Le banc vise ces fenêtres des deux côtés de
+          # leur borne, et doit rougir sur son cas. Celle du farming ne l'est que
+          # pour les votes positifs : un seul des deux autres lecteurs en heures
+          # resterait vert.
           M=bi-self/selfmoderate/src/Moderate.php
           for cas in lien votes farming horloge; do
             cp "$M" /tmp/moderate.unite.intact

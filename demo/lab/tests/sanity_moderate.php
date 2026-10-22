@@ -871,7 +871,9 @@ $remonte === 12 && $horlogeRegen === 600
 // réglée — des deux côtés pour une fenêtre de temps, où une unité fausse
 // passerait d'un seul côté. Un moteur dont aucun lecteur ne suit la config
 // garderait la borne par défaut ; un seuil lu à plusieurs endroits est gardé
-// dans son ensemble, pas lecteur par lecteur.
+// dans son ensemble, pas lecteur par lecteur. La fenêtre du farming, par
+// exemple, n'est visée que sur les votes positifs : celle des votes négatifs et
+// celle du plafond de cibles ne le sont pas.
 //
 // Le balayage passe en premier : sa tranche neuve rejuge tout le site sous les
 // autres seuils par défaut, et rejugerait les cas qui suivent.
