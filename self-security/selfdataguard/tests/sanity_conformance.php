@@ -1,0 +1,186 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Sanity test — the storage conformance suite, played against the shipped
+ * adapter and against storages that each break one clause of the contract.
+ *
+ * Run:  php tests/sanity_conformance.php
+ * Exit: 0 on success, non-zero if any check failed.
+ *
+ * A suite that passes the shipped adapter proves nothing on its own. Each
+ * broken storage must make it fail, on the case that names the clause it
+ * breaks — otherwise that case does not measure what it says.
+ */
+
+require_once __DIR__ . '/../src/autoload.php';
+require_once __DIR__ . '/storage_doubles.php';
+
+use Pierroons\SelfDataGuard\Storage\Conformance;
+use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
+
+$failures = 0;
+$passes = 0;
+
+function ok(string $label): void
+{
+    global $passes;
+    $passes++;
+    echo "  ✅ {$label}\n";
+}
+
+function ko(string $label, string $detail = ''): void
+{
+    global $failures;
+    $failures++;
+    echo "  ❌ {$label}";
+    if ($detail !== '') {
+        echo " — {$detail}";
+    }
+    echo "\n";
+}
+
+function section(string $title): void
+{
+    echo "\n→ {$title}\n";
+}
+
+$work = sys_get_temp_dir() . '/selfdataguard-conformance-' . bin2hex(random_bytes(4));
+mkdir($work, 0700);
+register_shutdown_function(static function () use ($work): void {
+    foreach (glob("{$work}/*") ?: [] as $file) {
+        unlink($file);
+    }
+    rmdir($work);
+});
+
+/**
+ * A connection file for $class wrapping a SqliteAdapter on its own database —
+ * what the racing processes require — and the callable it returns.
+ *
+ * @return array{0: callable, 1: string}
+ */
+function connection(string $work, string $class): array
+{
+    $db   = "{$work}/{$class}.sqlite";
+    $file = "{$work}/{$class}.php";
+    $build = $class === SqliteAdapter::class ? 'new SqliteAdapter($pdo)' : "new {$class}(new SqliteAdapter(\$pdo), \$pdo)";
+    file_put_contents($file, sprintf(
+        "<?php\nrequire_once %s;\nrequire_once %s;\nuse Pierroons\\SelfDataGuard\\Storage\\SqliteAdapter;\n"
+        . "return static function () { \$pdo = new PDO(%s); return %s; };\n",
+        var_export(__DIR__ . '/../src/autoload.php', true),
+        var_export(__DIR__ . '/storage_doubles.php', true),
+        var_export("sqlite:{$db}", true),
+        $build
+    ));
+    return [require $file, $file];
+}
+
+/** @return array<string, array{outcome: string, detail: string}> */
+function outcomes(array $results): array
+{
+    $byCase = [];
+    foreach ($results as $r) {
+        $byCase[$r['case']] = ['outcome' => $r['outcome'], 'detail' => $r['detail']];
+    }
+    return $byCase;
+}
+
+// -----------------------------------------------------------------------------
+
+section('The shipped SqliteAdapter passes every case');
+
+[$connect, $file] = connection($work, SqliteAdapter::class);
+$shipped = outcomes(Conformance::run($connect, $file));
+foreach ($shipped as $case => $r) {
+    $r['outcome'] === 'pass'
+        ? ok($case)
+        : ko($case, "{$r['outcome']}: {$r['detail']}");
+}
+$pdo = new PDO("sqlite:{$work}/" . SqliteAdapter::class . '.sqlite');
+$left = (int) $pdo->query(
+    "SELECT (SELECT COUNT(*) FROM selfdataguard_vaults) + (SELECT COUNT(*) FROM selfdataguard_archives)
+          + (SELECT COUNT(*) FROM selfdataguard_fields) + (SELECT COUNT(*) FROM selfdataguard_escrow)"
+)->fetchColumn();
+$left === 0
+    ? ok('every userId the suite created is erased: nothing is left in the database')
+    : ko('the suite left rows behind', "{$left} rows");
+
+// -----------------------------------------------------------------------------
+
+section('Without a connection file, the racing cases are skipped — never reported passed');
+
+$memory = outcomes(Conformance::run(static fn () => new SqliteAdapter('sqlite::memory:')));
+$memory['concurrent-updates']['outcome'] === 'skip' && $memory['concurrent-re-enrolments']['outcome'] === 'skip'
+    ? ok('concurrent-updates and concurrent-re-enrolments: skip')
+    : ko('a racing case ran, or passed, with no process to race', json_encode(array_intersect_key($memory, ['concurrent-updates' => 1, 'concurrent-re-enrolments' => 1])));
+
+// -----------------------------------------------------------------------------
+
+section('Each broken storage fails the suite, on the case that names the clause it breaks');
+
+// The racing cases catch a storage that compares, then writes in a second
+// statement. A storage that ignores the generation or the revision outright is
+// the sequential cases' to catch: under a race its own read happens at the same
+// instant as the others', and the adapter underneath still lets one through.
+
+$broken = [
+    UpsertingStorage::class            => ['vault-insert-never-replaces'],
+    CaseInsensitiveStorage::class      => ['userid-byte-for-byte'],
+    GenerationBlindStorage::class      => ['writes-check-their-generation', 'replace-with-archive'],
+    LastWriterWinsStorage::class       => ['update-compare-and-swap'],
+    CheckThenWriteStorage::class       => ['concurrent-updates'],
+    ArchiveErasingDeleteStorage::class => ['delete-vault'],
+    LiveOnlyEraseStorage::class        => ['erase-account'],
+    ProfileFlatteningStorage::class    => ['vault-round-trip'],
+    BlindIndexNoCaseStorage::class     => ['fields-round-trip'],
+];
+foreach ($broken as $class => $expected) {
+    [$connect, $file] = connection($work, $class);
+    $results = outcomes(Conformance::run($connect, $file));
+    $failed = array_keys(array_filter($results, static fn (array $r): bool => $r['outcome'] === 'fail'));
+    $missed = array_diff($expected, $failed);
+    $missed === []
+        ? ok("{$class}: " . implode(', ', $expected))
+        : ko("{$class} passed a case it breaks", implode(', ', $missed));
+}
+
+$results = outcomes(Conformance::run(...connection($work, CheckThenWriteStorage::class)));
+$results['update-compare-and-swap']['outcome'] === 'pass'
+    ? ok('CheckThenWriteStorage passes the sequential case: only the racing processes catch it')
+    : ko('CheckThenWriteStorage failed the sequential case — the racing case is not what catches it', $results['update-compare-and-swap']['detail']);
+
+// -----------------------------------------------------------------------------
+
+section('bin/storage-conformance.php — the exit code says it');
+
+$bin = __DIR__ . '/../bin/storage-conformance.php';
+$exit = static function (array $args): array {
+    $process = proc_open([PHP_BINARY, ...$args], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    $out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+    return [proc_close($process), $out];
+};
+[, $file] = connection($work, SqliteAdapter::class);
+[$rc, $out] = $exit([$bin, $file]);
+$rc === 0 && str_contains($out, 'Conforme')
+    ? ok('0 on the shipped adapter')
+    : ko('the shipped adapter was not reported conformant', "rc={$rc} {$out}");
+[, $file] = connection($work, UpsertingStorage::class);
+[$rc, $out] = $exit([$bin, $file]);
+$rc === 1 && str_contains($out, '❌ vault-insert-never-replaces')
+    ? ok('1 on a broken storage, naming the case it fails')
+    : ko('a broken storage was not reported', "rc={$rc} {$out}");
+[$rc] = $exit([$bin, "{$work}/missing.php"]);
+$rc === 3
+    ? ok('3 on a missing connection file')
+    : ko('a missing connection file did not exit 3', "rc={$rc}");
+
+// -----------------------------------------------------------------------------
+
+echo "\n";
+echo "═══════════════════════════════════════════════════════════════\n";
+echo "  Conformance Sanity — {$passes} passed, {$failures} failed\n";
+echo "═══════════════════════════════════════════════════════════════\n\n";
+
+exit($failures === 0 ? 0 : 1);

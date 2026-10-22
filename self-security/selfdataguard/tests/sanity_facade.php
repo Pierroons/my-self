@@ -14,14 +14,12 @@ declare(strict_types=1);
 
 require __DIR__ . '/../src/autoload.php';
 require __DIR__ . '/blob_v2_fixture.php';
+require __DIR__ . '/storage_doubles.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
-use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\SelfDataGuard;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
-use Pierroons\SelfDataGuard\Storage\StorageInterface;
-use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
 use Pierroons\SelfDataGuard\Vault\UserVault;
@@ -493,30 +491,6 @@ $dg->eraseAccount('user-l3') === 1 && $storage->listArchives('user-l3') === []
 // -----------------------------------------------------------------------------
 
 section('A storage that drops wrap_phrase is caught, not trusted');
-
-/** Delegates everything to a real storage; the fakes below override one or two methods. */
-abstract class DelegatingStorage implements StorageInterface
-{
-    public function __construct(protected readonly StorageInterface $inner) {}
-    public function saveVault(VaultRecord $r): void { $this->inner->saveVault($r); }
-    public function updateVault(VaultRecord $r): int { return $this->inner->updateVault($r); }
-    public function loadVault(string $u): VaultRecord { return $this->inner->loadVault($u); }
-    public function findVault(string $u): ?VaultRecord { return $this->inner->findVault($u); }
-    public function vaultExists(string $u): bool { return $this->inner->vaultExists($u); }
-    public function deleteVault(VaultGeneration $g): void { $this->inner->deleteVault($g); }
-    public function saveFields(VaultGeneration $g, array $f): void { $this->inner->saveFields($g, $f); }
-    public function loadFields(string $u, array $n = []): array { return $this->inner->loadFields($u, $n); }
-    public function findUserIdByBlindIndex(string $f, string $b): ?string { return $this->inner->findUserIdByBlindIndex($f, $b); }
-    public function saveEscrow(VaultGeneration $g, EscrowRecord $r): void { $this->inner->saveEscrow($g, $r); }
-    public function loadEscrow(string $u): ?EscrowRecord { return $this->inner->loadEscrow($u); }
-    public function saveEscrowFields(VaultGeneration $g, array $f): void { $this->inner->saveEscrowFields($g, $f); }
-    public function loadEscrowFields(string $u, array $n = []): array { return $this->inner->loadEscrowFields($u, $n); }
-    public function replaceWithArchive(VaultGeneration $g, VaultRecord $r): string { return $this->inner->replaceWithArchive($g, $r); }
-    public function listArchives(string $u): array { return $this->inner->listArchives($u); }
-    public function loadArchive(string $u, string $id): ?ArchivedVault { return $this->inner->loadArchive($u, $id); }
-    public function deleteArchive(VaultGeneration $g, string $id): bool { return $this->inner->deleteArchive($g, $id); }
-    public function eraseAccount(string $u): int { return $this->inner->eraseAccount($u); }
-}
 
 /** A StorageInterface implementation that drops wrap_phrase on every write. */
 final class ForgetfulStorage extends DelegatingStorage

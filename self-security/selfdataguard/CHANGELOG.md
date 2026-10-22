@@ -72,6 +72,10 @@ changes.
   route a visitor reaches.
 - `eraseAccount(string $userId): int` erases the live vault and every archive in one transaction, and
   works on a userId left with archives only.
+- `Storage\Conformance` and `bin/storage-conformance.php <connection.php>`: the contract played against
+  an implementation — 14 cases, two of them racing four processes. An implementation that does not
+  pass it is not conformant. It writes under random `conformance-<hex>-…` userIds and erases each of
+  them, so it runs against a database that already holds accounts.
 
 ### Removed
 
@@ -79,8 +83,11 @@ changes.
 
 ### Tests
 
-- 411 checks across the eleven suites on PHP 8.4 (was 388): primitives 46 → 56, escrow 36 → 37,
-  facade 67 → 75, storage 60 → 64. Three storages written wrong on purpose — a case-insensitive
+- 440 checks across twelve suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
+  36 → 37, facade 67 → 75, storage 60 → 64, and `sanity_conformance` (29), which plays the suite
+  against the shipped adapter and against nine storages that each break one clause: each fails on
+  the case that names it. The racing cases catch the one that compares, then writes in a second
+  statement — it passes every sequential case. Three storages written wrong on purpose — a case-insensitive
   `user_id`, an insert overwritten before its read-back, an update reported and never written — are
   each refused by the façade. Two properties had no test: a v2 blob written by 0.6.x still reads (a frozen string,
   also read by 0.6.2's code), and an archived ciphertext planted back into the live vault fails,
@@ -108,7 +115,7 @@ misread. Do not roll back after a write.
 - A `StorageInterface` implementation of your own takes the new signatures, and compares the
   generation inside each write's transaction — throwing `VaultNotFoundException` when the userId has
   no live vault, `StaleVaultException` when it has another. A generation received and not compared
-  breaks nothing visible.
+  breaks nothing visible: run `bin/storage-conformance.php` against it before it serves anyone.
 - Façade calls: `reEnroll($dg->generationOf($id), …)`, `delete($session->generation())`,
   `listArchives($session)`, `hasEscrow($session)`, `deleteArchive($dg->openArchive(…))`,
   `eraseAccount($id)` for `purgeArchives($id)`.

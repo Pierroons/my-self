@@ -34,6 +34,9 @@ use Pierroons\SelfDataGuard\Vault\VaultRecord;
  *
  * Implementations are responsible for SQL safety (prepared statements),
  * transaction atomicity (batch field updates), and schema bootstrapping.
+ *
+ * An implementation is conformant when Conformance passes against it —
+ * `php bin/storage-conformance.php <connection.php>` — and not otherwise.
  */
 interface StorageInterface
 {
