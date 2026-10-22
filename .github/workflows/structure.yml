@@ -1634,8 +1634,8 @@ jobs:
           sortie=$(php demo/lab/tests/sanity_dataguard.php 2>&1) && rc=0 || rc=$?
           echo "$sortie"
           [ "$rc" = 0 ] || { echo "::error::le banc du chiffrement du lab a échoué"; exit 1; }
-          echo "$sortie" | grep -qE '^✅ 83/83 ' \
-            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 83 cas"; exit 1; }
+          echo "$sortie" | grep -qE '^✅ 86/86 ' \
+            || { echo "::error::le banc du chiffrement du lab n'a pas joué ses 86 cas"; exit 1; }
 
       # La bibliothèque rend `cle`/`texte`, la page lit `key`/`label`/`type`/`options` :
       # les deux côtés avaient divergé sans un mot, et le niveau 3 partait sans aucune

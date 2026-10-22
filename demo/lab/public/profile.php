@@ -33,6 +33,7 @@ if ($voirUsername !== null) {
         $stmt = $pdo->prepare('SELECT id FROM accounts WHERE username = ?');
         $stmt->execute([strtolower($vue['username'])]);
         $memberId = (int) $stmt->fetchColumn();
+        $stmt->closeCursor();
         $rep = Moderate::getReputation($pdo, $memberId);
         $repScore = $rep['reputation'];
         $repPct = (int) round($repScore / Moderate::config()->reputationMax * 100);
@@ -159,6 +160,7 @@ $nbVotesRecus = $cnt('SELECT COUNT(*) FROM mod_votes WHERE target_author = ? AND
 $sPass = $pdo->prepare('SELECT pass_emise_le FROM accounts WHERE id = ?');
 $sPass->execute([$myId]);
 $passEmiseLe = $sPass->fetchColumn();
+$sPass->closeCursor();
 $passEmiseLe = ($passEmiseLe === false || $passEmiseLe === null) ? null : (int) $passEmiseLe;
 $passAgeJours = $passEmiseLe === null ? null : intdiv(max(0, time() - $passEmiseLe), 86400);
 

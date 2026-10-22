@@ -668,10 +668,18 @@ final class Db
             if ($enBase === $sql) {
                 continue;
             }
-            self::$pdo->beginTransaction();
-            self::$pdo->exec("DROP TRIGGER IF EXISTS $nom");
-            self::$pdo->exec($sql);
-            self::$pdo->commit();
+            // Le verrou d'écriture d'emblée : différée, la transaction lisait le schéma puis
+            // écrivait, et SQLite la refusait sans attendre dès qu'une autre connexion écrivait
+            // — la première ouverture d'une base à mettre à jour tombait sous un site actif.
+            self::$pdo->exec('BEGIN IMMEDIATE');
+            try {
+                self::$pdo->exec("DROP TRIGGER IF EXISTS $nom");
+                self::$pdo->exec($sql);
+                self::$pdo->exec('COMMIT');
+            } catch (\Throwable $e) {
+                self::$pdo->exec('ROLLBACK');
+                throw $e;
+            }
         }
     }
 

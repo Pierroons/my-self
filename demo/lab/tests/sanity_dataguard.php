@@ -615,6 +615,18 @@ $tablesApres = (int) (new PDO('sqlite:' . $etrangere))->query("SELECT COUNT(*) F
 ok('⭐ une base étrangère est refusée, et garde ses seules tables', $rc === 2 && $tablesApres === 1, 'rc=' . $rc . ' · tables = ' . $tablesApres);
 // Sous une clé qui n'est pas celle de la base, la passe posait le témoin de fermeture à
 // côté de la mauvaise, et annonçait fermée une lecture restée ouverte sur le site.
+// Sans clé au chemin qu'elle voit, sur une base sans chiffré, la passe posait son témoin là et
+// annonçait fermée une lecture qui restait ouverte sous la clé du site.
+$sansChiffre = $dir . '/passe-sans-cle.db';
+copy($neuve, $sansChiffre);
+$aucuneCle = $dir . '/aucune-cle/.blindkey';
+mkdir(dirname($aucuneCle), 0700);
+[$sortie, $rc] = $migrerSur($sansChiffre, $aucuneCle);
+ok(
+    '⭐ la passe sans clé à son chemin refuse, et ne pose aucun témoin',
+    $rc === 2 && str_contains($sortie, 'aucune clé') && !is_file($aucuneCle . '.scelle'),
+    'rc=' . $rc . ' · ' . substr(trim($sortie), 0, 200)
+);
 // Une base qui ne porte qu'un message déjà lié, sans copie : sous la mauvaise clé, rien ne
 // retenait la passe d'aller au bout et de poser son témoin.
 $sousAutreCle = $dir . '/passe-autre-cle.db';
@@ -1176,6 +1188,47 @@ ok(
     $reprise && $suivi === false,
     'rapport #' . var_export($rapportRepreneur, true) . ' · suivi accepté = ' . var_export($suivi, true)
 );
+
+echo "\n# Une base d'avant la graine la reçoit à la mise à jour\n";
+
+// Le chemin de l'instance publique : sa base est d'avant le lot, sans numéro ni graine.
+$avantGraine = $dir . '/avant-graine.db';
+// Le schéma d'avant, tiré du texte : les deux colonnes `graine` retirées, et la table du numéro.
+$schemaAvant = preg_replace('/,\n(?:\s*--[^\n]*\n)*\s*graine\s+TEXT[^\n]*\n/', "\n", (string) file_get_contents(__DIR__ . '/../schema.sql'), -1, $retirees);
+$pG = new PDO('sqlite:' . $avantGraine);
+$pG->exec((string) $schemaAvant);
+$pG->exec('DROP TABLE lab_generation');
+for ($i = 1; $i <= 10; $i++) {
+    $pG->exec("INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES ('ancien$i', 'h', 'h', 'h', $t)");
+}
+$pG->exec("INSERT INTO redteam_reports (handle, ciphertext, created_at) VALUES ('h', 'x', $t)");
+$pG = null;
+$basePrecedente = (string) getenv('LAB_DB_PATH');
+Db::fermer();
+putenv('LAB_DB_PATH=' . $avantGraine);
+$pG = Db::pdo();
+$graines = $pG->query('SELECT graine FROM accounts ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
+$bienFormees = array_filter($graines, static fn ($g): bool => is_string($g) && preg_match('/^[0-9a-f]{32}$/', $g) === 1);
+ok(
+    '⭐ ses dix comptes reçoivent dix graines distinctes',
+    $retirees === 2 && count($graines) === 10 && count($bienFormees) === 10 && count(array_unique($graines)) === 10,
+    'colonnes retirées du schéma : ' . $retirees . ' · ' . json_encode(array_map(static fn ($g) => is_string($g) ? substr($g, 0, 6) : $g, $graines))
+);
+$pG->exec("INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES ('nouveau', 'h', 'h', 'h', $t)");
+$pG->exec("INSERT INTO redteam_reports (handle, ciphertext, created_at) VALUES ('h', 'y', $t)");
+$grainesApres = [
+    $pG->query("SELECT graine FROM accounts WHERE username = 'nouveau'")->fetchColumn(),
+    $pG->query('SELECT graine FROM redteam_reports WHERE id = 1')->fetchColumn(),
+    $pG->query('SELECT graine FROM redteam_reports WHERE id = 2')->fetchColumn(),
+];
+ok(
+    '⭐ et le compte et le rapport qui suivent la reçoivent aussi : la colonne ajoutée n\'a pas de défaut, un déclencheur la pose',
+    count(array_filter($grainesApres, static fn ($g): bool => is_string($g) && preg_match('/^[0-9a-f]{32}$/', $g) === 1)) === 3,
+    json_encode($grainesApres)
+);
+$pG = null;
+Db::fermer();
+putenv('LAB_DB_PATH=' . $basePrecedente);
 
 echo "\n# Ce que le visiteur reçoit — par HTTP, comme lui\n";
 

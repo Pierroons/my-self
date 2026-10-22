@@ -8,12 +8,12 @@ Un forum réaliste sur le thème de la **souveraineté numérique**, qui intègr
 - **Messages privés et profils chiffrés au repos** via [SelfDataGuard](../../self-security/selfdataguard/) — XChaCha20-Poly1305, clé serveur (blind key) hors base. Chaque chiffré est scellé sous le contexte qui a le droit de le relire : la paire d'un message ou le compte d'un profil, et le numéro tiré au hasard de la base qui le porte.
   - **Ce qui est tenu** :
     - une copie de la base ne rend le contenu d'aucun message ni d'aucun profil ;
-    - une écriture dans la base ne fait pas ouvrir un chiffré ailleurs que là où il a été écrit — une autre conversation, un autre compte, une autre table, une autre base, ni pour le compte qui reprend, après la restauration d'une sauvegarde, le numéro d'un compte disparu ;
+    - une écriture limitée aux chiffrés ne fait pas ouvrir l'un d'eux ailleurs que là où il a été écrit — une autre conversation, un autre compte, une autre table, une autre base, ni pour le compte qui reprend, après la restauration d'une sauvegarde, le numéro d'un compte disparu ;
     - le chiffré d'une base remise à zéro (`selfrecover-su reset-db`), perdue ou vidée ne rouvre pas dans la suivante, qui naît sous une clé neuve.
   - **Ce qui ne l'est pas** :
     - ce qui entoure le contenu : qui écrit à qui, quand, si c'est lu, et la longueur de chaque message, que rien ne bourre ;
     - une version plus ancienne d'un chiffré, gardée d'une sauvegarde, qu'une écriture remet dans sa propre ligne, ou un message recopié dans une autre ligne de sa conversation — rien dans la base ne date ni ne numérote un chiffré qu'une écriture ne puisse dater ou numéroter aussi ;
-    - un compte usurpé par qui écrit partout : il fabrique un hachage de mot de passe, et lit comme le titulaire ;
+    - un compte usurpé par qui écrit partout : il fabrique un hachage de mot de passe, et lit comme le titulaire ; après la restauration d'une sauvegarde, il peut aussi recopier dans sa ligne la graine d'un compte disparu — tirée à la création du compte, elle vit dans la base — et lire comme lui ;
     - le serveur, qui détient la clé et lit tout (voir *Hors V1*) ;
     - sur une base antérieure à la liaison, tant que sa passe de migration n'est pas finie : un chiffré ancien s'y lit sans contexte ;
     - un jeton de suivi de rapport remis avant le numéro de la base : il reste valable sans lui et, sous une clé qui a servi à une base passée, il ouvre aussi le suivi du rapport de même numéro.

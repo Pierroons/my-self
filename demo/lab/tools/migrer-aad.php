@@ -133,6 +133,16 @@ if ($aDechiffrer()) {
 // site, à côté d'une ancienne clé au chemin par défaut —, elle posait le témoin de fermeture
 // près de la mauvaise, et annonçait fermée une lecture restée ouverte sur le site. Lecture
 // déjà fermée, la passe ne scelle rien : la question ne se pose pas.
+// Sans clé à son chemin, elle n'a rien à fermer : y poser le témoin, c'était annoncer
+// fermée une lecture qui reste ouverte sous la clé du site, ailleurs.
+if (!$aBlanc && !is_file(DataGuard::fichiersDeLaCle()[0])) {
+    fwrite(STDERR, sprintf(
+        "Passe refusée, rien n'a bougé : aucune clé à %s. Lance-la avec les prises du site (LAB_DB_PATH, "
+        . "LAB_BLINDKEY_PATH…) ; sur une instance neuve, la clé naîtra scellée à la première requête.\n",
+        DataGuard::fichiersDeLaCle()[0]
+    ));
+    exit(2);
+}
 if (!DataGuard::lectureSansContexteFermee()) {
     $cleRefusee = DataGuard::cleDeCetteBase($pdo);
     if ($cleRefusee !== null) {
