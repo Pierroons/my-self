@@ -8,6 +8,7 @@ use InvalidArgumentException;
 use Pierroons\SelfDataGuard\Escrow\AdminKey;
 use Pierroons\SelfDataGuard\Escrow\EscrowFieldCrypter;
 use Pierroons\SelfDataGuard\Escrow\EscrowVault;
+use Pierroons\SelfDataGuard\Fields\AmbiguousLookupException;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\Fields\FieldCrypter;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
@@ -27,7 +28,7 @@ use RuntimeException;
  *
  * Wraps the Vault + Fields + Storage layers behind a minimal API:
  *
- *     $dg = new SelfDataGuard($storage, $blindKey);
+ *     $dg = new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone']);
  *
  *     // New user. Passwords are refused below UserVault::PASSWORD_MIN_LEN.
  *     $session = $dg->register('user-1', 'a-long-generated-password', 'memorized-secret', 'six word passphrase');
@@ -46,7 +47,8 @@ use RuntimeException;
  *     ['unlocked' => $session, 'archiveId' => $id] = $dg->reEnroll($live, $pwd, $memorized, $passphrase);
  *
  *     // Find a user by an indexed field (no plaintext lookup needed)
- *     $userId = $dg->findUserByField('email', 'a@b.c');
+ *     $userId  = $dg->findUserByField('email', 'a@b.c');
+ *     $holders = $dg->findUsersByField('phone', '+33 6 …');   // a shared field: a list
  *
  * The blindKey is a server-side secret used to derive deterministic field
  * indexes (HMAC). Store it in env/Vault/etc., separate from any per-user
@@ -57,14 +59,30 @@ final class SelfDataGuard
     private UserVault $vault;
     private EscrowVault $escrow;
 
+    /** @var array<string, true> */
+    private array $shared = [];
+
+    /**
+     * @param list<string> $sharedIndexes the indexed fields several accounts may
+     *        hold the same value of (a household phone). Every other indexed
+     *        field names one account. Declared here, once: declared per call,
+     *        two calls could write the same field under two rules.
+     */
     public function __construct(
         private readonly StorageInterface $storage,
-        #[\SensitiveParameter] private readonly string $blindKey
+        #[\SensitiveParameter] private readonly string $blindKey,
+        array $sharedIndexes = []
     ) {
         if (strlen($blindKey) < 32) {
             throw new InvalidArgumentException(
                 'blindKey must be ≥32 bytes of server-side secret'
             );
+        }
+        foreach ($sharedIndexes as $fieldName) {
+            if (!is_string($fieldName) || $fieldName === '') {
+                throw new InvalidArgumentException('sharedIndexes lists field names');
+            }
+            $this->shared[$fieldName] = true;
         }
         $this->vault  = new UserVault();
         $this->escrow = new EscrowVault();
@@ -157,6 +175,12 @@ final class SelfDataGuard
      * Encrypt and persist a batch of field values for the user.
      * Optionally compute and store blind indexes for lookup-able fields.
      *
+     * An indexed value names one account, unless its field is declared shared.
+     * If another account holds it, DuplicateIndexException names the fields and
+     * nothing of the batch is written. Index a value once the account has
+     * proven it holds it (a confirmation mail, a code): whoever indexes it
+     * first keeps it.
+     *
      * @param UnlockedVault         $session  Active session
      * @param array<string, string> $fields   field_name => plaintext
      * @param array<string>         $indexed  Subset of $fields names to also index for lookup
@@ -170,11 +194,11 @@ final class SelfDataGuard
         $indexed = array_flip($indexed);
         $payload = [];
         foreach ($fields as $name => $value) {
+            $index = isset($indexed[$name]) ? BlindIndex::compute($value, $this->blindKey, $name) : null;
             $payload[$name] = [
-                'ciphertext' => FieldCrypter::encrypt($session, $name, $value),
-                'blindIndex' => isset($indexed[$name])
-                    ? BlindIndex::compute($value, $this->blindKey, $name)
-                    : null,
+                'ciphertext'  => FieldCrypter::encrypt($session, $name, $value),
+                'blindIndex'  => isset($this->shared[$name]) ? null : $index,
+                'sharedIndex' => isset($this->shared[$name]) ? $index : null,
             ];
         }
         $this->storage->saveFields($session->generation(), $payload);
@@ -201,15 +225,41 @@ final class SelfDataGuard
     }
 
     /**
-     * Lookup a userId by a known field value (e.g. email).
-     * The field must have been registered as indexed via setFields(..., indexed: [...]).
+     * The account a field value names (e.g. email), or null. The field must
+     * have been indexed via setFields(..., indexed: [...]).
      *
-     * @return string|null userId if found, null otherwise.
+     * An index is only a pointer: whoever can write the database can move it.
+     * The account it names still authenticates.
+     *
+     * @throws InvalidArgumentException  on a field declared shared — it names no single account
+     * @throws AmbiguousLookupException  when several accounts hold the value
      */
     public function findUserByField(string $fieldName, #[\SensitiveParameter] string $value): ?string
     {
-        $index = BlindIndex::compute($value, $this->blindKey, $fieldName);
-        return $this->storage->findUserIdByBlindIndex($fieldName, $index);
+        if (isset($this->shared[$fieldName])) {
+            throw new InvalidArgumentException(
+                "'{$fieldName}' is declared shared: it names no single account — use findUsersByField()"
+            );
+        }
+        $userIds = $this->findUsersByField($fieldName, $value);
+        if (count($userIds) > 1) {
+            throw new AmbiguousLookupException(
+                count($userIds) . " accounts hold this value of '{$fieldName}': the lookup names none of them"
+            );
+        }
+        return $userIds[0] ?? null;
+    }
+
+    /**
+     * Every account that holds a field value — the lookup for a shared field.
+     * Each call tells whoever makes it how many accounts hold a value: expose
+     * it behind authentication and a rate limit.
+     *
+     * @return list<string>
+     */
+    public function findUsersByField(string $fieldName, #[\SensitiveParameter] string $value): array
+    {
+        return $this->storage->findUserIdsByIndex($fieldName, BlindIndex::compute($value, $this->blindKey, $fieldName));
     }
 
     /**
@@ -337,10 +387,16 @@ final class SelfDataGuard
     }
 
     /**
-     * Decrypt an opened archive. `indexed` names the fields that had a blind
-     * index: hand it back to setFields() when restoring into the new vault.
+     * Decrypt an opened archive.
      *
-     * @return array{private: array<string, string>, escrow: array<string, string>, indexed: list<string>}
+     * To restore it, write the private fields back with the fields your
+     * application indexes — not a list read from the archive, which whoever
+     * writes the database can extend to a field never meant to be looked up.
+     * A DuplicateIndexException names the values another account took since
+     * the archive was made: restore those fields without their index, and
+     * settle who owns the value.
+     *
+     * @return array{private: array<string, string>, escrow: array<string, string>}
      */
     public function readArchive(UnlockedArchive $opened): array
     {
@@ -356,11 +412,7 @@ final class SelfDataGuard
             $escrow   = EscrowFieldCrypter::decryptBatch($unlocked, $archive->escrowFields);
             $unlocked->lock();
         }
-        return [
-            'private' => $private,
-            'escrow'  => $escrow,
-            'indexed' => array_keys(array_filter($fields, static fn (array $f): bool => $f['wasIndexed'])),
-        ];
+        return ['private' => $private, 'escrow' => $escrow];
     }
 
     /**

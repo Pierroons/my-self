@@ -45,12 +45,14 @@ use Throwable;
  *     user_id     TEXT NOT NULL
  *     field_name  TEXT NOT NULL
  *     ciphertext  TEXT NOT NULL    (base64 of EncryptedBlob)
- *     blind_index TEXT             (base64 HMAC, nullable)
+ *     blind_index TEXT             (base64 HMAC, nullable — unique per field_name)
  *     updated_at  TEXT NOT NULL    (ISO 8601)
+ *     shared_index TEXT            (base64 HMAC, nullable — added in 0.7.0, hence last)
  *     PRIMARY KEY (user_id, field_name)
  *     FOREIGN KEY (user_id) REFERENCES selfdataguard_vaults(user_id) ON DELETE CASCADE
  *
- *   INDEX selfdataguard_fields_blind ON selfdataguard_fields(field_name, blind_index)
+ *   UNIQUE INDEX selfdataguard_fields_blind_unique ON selfdataguard_fields(field_name, blind_index)
+ *   INDEX selfdataguard_fields_shared ON selfdataguard_fields(field_name, shared_index)
  *
  *   selfdataguard_escrow          — one row per user
  *     wrap_user   escrow_key wrapped by the master key (base64 EncryptedBlob)
@@ -191,27 +193,47 @@ final class SqliteAdapter implements StorageInterface
         }
         $now = (new DateTimeImmutable())->format('c');
         $stmt = $this->pdo->prepare(
-            'INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at)
-             VALUES (:uid, :fn, :ct, :bi, :ua)
+            'INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at, shared_index)
+             VALUES (:uid, :fn, :ct, :bi, :ua, :si)
              ON CONFLICT(user_id, field_name) DO UPDATE SET
-               ciphertext  = excluded.ciphertext,
-               blind_index = excluded.blind_index,
-               updated_at  = excluded.updated_at'
+               ciphertext   = excluded.ciphertext,
+               blind_index  = excluded.blind_index,
+               updated_at   = excluded.updated_at,
+               shared_index = excluded.shared_index'
         );
 
         $this->atomic(function () use ($stmt, $generation, $fields, $now): void {
             $this->assertGeneration($generation);
+            $taken = [];
             foreach ($fields as $fieldName => $data) {
                 if (!isset($data['ciphertext'])) {
                     throw new RuntimeException("Missing ciphertext for field '{$fieldName}'");
                 }
-                $stmt->execute([
-                    ':uid' => $generation->userId,
-                    ':fn'  => $fieldName,
-                    ':ct'  => $data['ciphertext'],
-                    ':bi'  => $data['blindIndex'] ?? null,
-                    ':ua'  => $now,
-                ]);
+                if (isset($data['blindIndex'], $data['sharedIndex'])) {
+                    throw new InvalidArgumentException("Field '{$fieldName}' carries both a blind and a shared index");
+                }
+                try {
+                    $stmt->execute([
+                        ':uid' => $generation->userId,
+                        ':fn'  => $fieldName,
+                        ':ct'  => $data['ciphertext'],
+                        ':bi'  => $data['blindIndex'] ?? null,
+                        ':ua'  => $now,
+                        ':si'  => $data['sharedIndex'] ?? null,
+                    ]);
+                } catch (PDOException $e) {
+                    // A constraint failure undoes this statement only: the
+                    // rest of the batch still runs, so that every taken field
+                    // is named. Throwing below rolls the batch back.
+                    if (!str_contains($e->getMessage(), 'selfdataguard_fields.blind_index')) {
+                        throw $e;
+                    }
+                    $stmt->closeCursor();
+                    $taken[] = (string) $fieldName;
+                }
+            }
+            if ($taken !== []) {
+                throw new DuplicateIndexException($taken);
             }
         });
     }
@@ -238,16 +260,15 @@ final class SqliteAdapter implements StorageInterface
         return $out;
     }
 
-    public function findUserIdByBlindIndex(string $fieldName, string $blindIndex): ?string
+    public function findUserIdsByIndex(string $fieldName, string $index): array
     {
         $stmt = $this->pdo->prepare(
             'SELECT user_id FROM selfdataguard_fields
-             WHERE field_name = :fn AND blind_index = :bi
-             LIMIT 1'
+             WHERE field_name = :fn AND (blind_index = :bi OR shared_index = :si)
+             ORDER BY user_id'
         );
-        $stmt->execute([':fn' => $fieldName, ':bi' => $blindIndex]);
-        $userId = $stmt->fetchColumn();
-        return $userId === false ? null : (string) $userId;
+        $stmt->execute([':fn' => $fieldName, ':bi' => $index, ':si' => $index]);
+        return array_map('strval', $stmt->fetchAll(PDO::FETCH_COLUMN));
     }
 
     // -- Escrow compartment ---------------------------------------------------
@@ -478,9 +499,9 @@ final class SqliteAdapter implements StorageInterface
 
     /**
      * Everything an archive must keep, as stored — nothing is decrypted. The
-     * blind indexes stay behind: they would keep answering equality lookups
-     * for data the user no longer has live. `was_indexed` lets a restore
-     * index the same fields again.
+     * indexes stay behind: they would keep answering equality lookups for data
+     * the user no longer has live, and keep the value from its next holder.
+     * `was_indexed` says which fields carried one.
      *
      * @param array<string, mixed> $vault the live vault row
      */
@@ -495,10 +516,15 @@ final class SqliteAdapter implements StorageInterface
         $escrow = $stmt->fetch() ?: null;
 
         $private = [];
-        $stmt = $this->pdo->prepare('SELECT field_name, ciphertext, blind_index FROM selfdataguard_fields WHERE user_id = :uid');
+        $stmt = $this->pdo->prepare(
+            'SELECT field_name, ciphertext, blind_index, shared_index FROM selfdataguard_fields WHERE user_id = :uid'
+        );
         $stmt->execute($uid);
         while ($f = $stmt->fetch()) {
-            $private[(string) $f['field_name']] = ['ciphertext' => $f['ciphertext'], 'was_indexed' => $f['blind_index'] !== null];
+            $private[(string) $f['field_name']] = [
+                'ciphertext'  => $f['ciphertext'],
+                'was_indexed' => $f['blind_index'] !== null || $f['shared_index'] !== null,
+            ];
         }
 
         $escrowFields = [];
@@ -639,12 +665,12 @@ final class SqliteAdapter implements StorageInterface
                 kdf_memlimit INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_MEMLIMIT . '
             )'
         );
-        $this->addMissingVaultColumn('wrap_phrase', 'TEXT');
-        $this->addMissingVaultColumn('revision', 'INTEGER NOT NULL DEFAULT 0');
+        $this->addMissingColumn('selfdataguard_vaults', 'wrap_phrase', 'TEXT');
+        $this->addMissingColumn('selfdataguard_vaults', 'revision', 'INTEGER NOT NULL DEFAULT 0');
         // A row stored before 0.6.0 was sealed under the legacy profile: that is
         // what the default must say, whatever the current constants become.
-        $this->addMissingVaultColumn('kdf_opslimit', 'INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_OPSLIMIT);
-        $this->addMissingVaultColumn('kdf_memlimit', 'INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_MEMLIMIT);
+        $this->addMissingColumn('selfdataguard_vaults', 'kdf_opslimit', 'INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_OPSLIMIT);
+        $this->addMissingColumn('selfdataguard_vaults', 'kdf_memlimit', 'INTEGER NOT NULL DEFAULT ' . Primitives::LEGACY_MEMLIMIT);
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_archives (
                 archive_id  TEXT PRIMARY KEY,
@@ -665,14 +691,17 @@ final class SqliteAdapter implements StorageInterface
                 ciphertext  TEXT NOT NULL,
                 blind_index TEXT,
                 updated_at  TEXT NOT NULL,
+                shared_index TEXT,
                 PRIMARY KEY (user_id, field_name),
                 FOREIGN KEY (user_id) REFERENCES selfdataguard_vaults(user_id) ON DELETE CASCADE
             )'
         );
+        $this->addMissingColumn('selfdataguard_fields', 'shared_index', 'TEXT');
         $this->pdo->exec(
-            'CREATE INDEX IF NOT EXISTS selfdataguard_fields_blind
-             ON selfdataguard_fields(field_name, blind_index)'
+            'CREATE INDEX IF NOT EXISTS selfdataguard_fields_shared
+             ON selfdataguard_fields(field_name, shared_index)'
         );
+        $this->ensureUniqueBlindIndex();
         $this->pdo->exec(
             'CREATE TABLE IF NOT EXISTS selfdataguard_escrow (
                 user_id     TEXT PRIMARY KEY,
@@ -706,26 +735,72 @@ final class SqliteAdapter implements StorageInterface
      * lock (BEGIN IMMEDIATE, see atomic()) makes the second one wait, then
      * find the column there. Columns are added in the order of the CREATE.
      */
-    private function addMissingVaultColumn(string $column, string $definition): void
+    private function addMissingColumn(string $table, string $column, string $definition): void
     {
-        if ($this->vaultsHaveColumn($column)) {
+        if ($this->hasColumn($table, $column)) {
             return;
         }
-        $this->atomic(function () use ($column, $definition): void {
-            if (!$this->vaultsHaveColumn($column)) {
-                $this->pdo->exec("ALTER TABLE selfdataguard_vaults ADD COLUMN {$column} {$definition}");
+        $this->atomic(function () use ($table, $column, $definition): void {
+            if (!$this->hasColumn($table, $column)) {
+                $this->pdo->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
             }
         });
     }
 
-    private function vaultsHaveColumn(string $column): bool
+    private function hasColumn(string $table, string $column): bool
     {
-        foreach ($this->pdo->query('PRAGMA table_info(selfdataguard_vaults)') as $info) {
+        foreach ($this->pdo->query("PRAGMA table_info({$table})") as $info) {
             if ($info['name'] === $column) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * A blind index names one account. A database written before 0.7.0 may hold
+     * a value under several accounts — a lookup then picked whichever row came
+     * first —, and the unique index cannot be built over them. They are named
+     * and refused, not resolved: which account owns a value is not something
+     * the storage can tell.
+     */
+    private function ensureUniqueBlindIndex(): void
+    {
+        if ($this->hasIndex('selfdataguard_fields_blind_unique')) {
+            return;
+        }
+        $this->atomic(function (): void {
+            if ($this->hasIndex('selfdataguard_fields_blind_unique')) {
+                return;
+            }
+            $held = $this->pdo->query(
+                'SELECT field_name, COUNT(*) AS n
+                 FROM (SELECT field_name FROM selfdataguard_fields
+                       WHERE blind_index IS NOT NULL
+                       GROUP BY field_name, blind_index HAVING COUNT(*) > 1)
+                 GROUP BY field_name ORDER BY field_name'
+            )->fetchAll();
+            if ($held !== []) {
+                throw new RuntimeException(
+                    'Blind-index values held by several accounts — '
+                    . implode(', ', array_map(static fn (array $h): string => "{$h['field_name']}: {$h['n']}", $held))
+                    . '. Since 0.7.0 a blind index names one account, and which one owns each value cannot be'
+                    . ' decided here: see "Before upgrading" in the CHANGELOG.'
+                );
+            }
+            $this->pdo->exec(
+                'CREATE UNIQUE INDEX selfdataguard_fields_blind_unique
+                 ON selfdataguard_fields(field_name, blind_index)'
+            );
+            $this->pdo->exec('DROP INDEX IF EXISTS selfdataguard_fields_blind');
+        });
+    }
+
+    private function hasIndex(string $name): bool
+    {
+        $stmt = $this->pdo->prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = :name");
+        $stmt->execute([':name' => $name]);
+        return $stmt->fetchColumn() !== false;
     }
 
     /**

@@ -17,8 +17,10 @@ require __DIR__ . '/blob_v2_fixture.php';
 require __DIR__ . '/storage_doubles.php';
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
+use Pierroons\SelfDataGuard\Fields\AmbiguousLookupException;
 use Pierroons\SelfDataGuard\Fields\BlindIndex;
 use Pierroons\SelfDataGuard\SelfDataGuard;
+use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
 use Pierroons\SelfDataGuard\Storage\SqliteAdapter;
 use Pierroons\SelfDataGuard\Vault\Lock;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
@@ -396,8 +398,8 @@ $opened = $dg->openArchive($current, $archiveId, Lock::Passphrase, $PH1);
 $read = $dg->readArchive($opened);
 ($read['private'] ?? null) == ['email' => $EMAIL, 'note' => 'ancienne note']
     && ($read['escrow'] ?? null) === ['contact' => 'contact de secours']
-    && ($read['indexed'] ?? null) === ['email']
-    ? ok('the old passphrase opens it: private fields, escrow, and which fields were indexed')
+    && !isset($read['indexed'])
+    ? ok('the old passphrase opens it: private fields and escrow — no index list an SQL writer could extend')
     : ko('readArchive() returned something else', json_encode($read));
 
 try {
@@ -407,7 +409,7 @@ try {
     ok('an archive session handed to a write path by hand is refused');
 }
 
-$dg->setFields($current, $read['private'], indexed: $read['indexed']);
+$dg->setFields($current, $read['private'], indexed: ['email']);
 $dg->findUserByField('email', $EMAIL) === 'user-l3'
     && ($dg->getFields($current)['note'] ?? null) === 'ancienne note'
     ? ok('restored into the new vault, re-indexed: the old email finds the account again')
@@ -557,6 +559,66 @@ try {
     str_contains($e->getMessage(), 'kdfOpslimit and kdfMemlimit are required')
         ? ok('a storage that never reads the profile back fails at its first read')
         : ko('wrong failure', $e->getMessage());
+}
+
+// -----------------------------------------------------------------------------
+
+section('An indexed value names one account; a field declared shared names none');
+
+$owner = $dg->register('user-owner', 'owner-password-0001');
+$dg->setFields($owner, ['email' => 'owner@example.org'], indexed: ['email']);
+$squat = $dg->register('user-squat', 'squat-password-0001');
+try {
+    $dg->setFields($squat, ['email' => 'owner@example.org', 'note' => 'n'], indexed: ['email']);
+    ko('a second account indexed a value another account holds');
+} catch (DuplicateIndexException $e) {
+    $e->fields === ['email'] && $dg->getFields($squat) === []
+        ? ok('setFields(): a value another account holds is refused, the field named, nothing of the batch written')
+        : ko('wrong refusal', implode(',', $e->fields));
+}
+$dg->findUserByField('email', 'owner@example.org') === 'user-owner'
+    ? ok('the value still names its holder')
+    : ko('the refused write moved the value');
+
+$dgShared = new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone']);
+$dgShared->setFields($owner, ['phone' => '+33 6 00 00 00 01'], indexed: ['phone']);
+$dgShared->setFields($squat, ['phone' => '+33 6 00 00 00 01'], indexed: ['phone']);
+$holders = $dgShared->findUsersByField('phone', '+33 6 00 00 00 01');
+sort($holders);
+$holders === ['user-owner', 'user-squat']
+    ? ok('a field declared shared takes the same value from two accounts, and findUsersByField() lists both')
+    : ko('the shared field did not list both holders', implode(',', $holders));
+try {
+    $dgShared->findUserByField('phone', '+33 6 00 00 00 01');
+    ko('a field declared shared was used to name one account');
+} catch (InvalidArgumentException) {
+    ok('findUserByField() refuses a field declared shared: it names no single account');
+}
+
+/** A storage holding a value under two accounts, as a database written before 0.7.0 can. */
+final class DoubledIndexStorage extends DelegatingStorage
+{
+    public function findUserIdsByIndex(string $f, string $i): array { return ['user-a', 'user-b']; }
+}
+
+try {
+    (new SelfDataGuard(new DoubledIndexStorage($storage), $blindKey))->findUserByField('email', 'x@example.org');
+    ko('the lookup picked one of two accounts');
+} catch (AmbiguousLookupException) {
+    ok('findUserByField() refuses to pick when two accounts hold the value');
+}
+
+$ownerL3 = $dg->reEnroll($dg->generationOf('user-owner'), 'owner-password-0002');
+$dg->setFields($squat, ['email' => 'owner@example.org'], indexed: ['email']);
+$restored = $dg->readArchive($dg->openArchive($ownerL3['unlocked'], $ownerL3['archiveId'], Lock::Password, 'owner-password-0001'));
+try {
+    $dg->setFields($ownerL3['unlocked'], $restored['private'], indexed: ['email']);
+    ko('a restore re-indexed a value another account took meanwhile');
+} catch (DuplicateIndexException $e) {
+    $dg->setFields($ownerL3['unlocked'], $restored['private'], indexed: array_diff(['email'], $e->fields));
+    ($dg->getFields($ownerL3['unlocked'])['email'] ?? null) === 'owner@example.org'
+        ? ok('a restore whose value was taken during the level 3 names the field, then goes through without that index')
+        : ko('the restore without the taken index lost the field');
 }
 
 // -----------------------------------------------------------------------------

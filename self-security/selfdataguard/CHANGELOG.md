@@ -12,11 +12,12 @@ different keys, and the only same-key case, a field named `escrow`, was already 
 Every write to a live vault now names the vault it is meant for. The check was optional: a storage
 implementation could leave it out, and a write from a replaced vault then landed in the new one, under
 a key that cannot read it. It is now a required parameter of the contract, and the façade reads back
-the salt, the revision and every wrap it wrote.
+the salt, the revision and every wrap it wrote. An indexed value now names one account: a second
+account can no longer take the address of the first, and a lookup no longer picks between them.
 
 Code that calls `Primitives`, builds an `EncryptedBlob`, implements `StorageInterface`, or calls
-`reEnroll()`, `delete()`, `listArchives()`, `deleteArchive()`, `purgeArchives()` or `hasEscrow()`
-changes.
+`reEnroll()`, `delete()`, `listArchives()`, `deleteArchive()`, `purgeArchives()`, `hasEscrow()` or
+`readArchive()` changes; `findUserByField()` and `setFields()` throw where they did not.
 
 ### Changed
 
@@ -50,6 +51,18 @@ changes.
 - **BREAKING** — `deleteArchive(UnlockedArchive $opened)`: the archive must be opened with one of its old
   locks. A session on the current vault was enough, and after a fraudulent level 3 that session is the
   fraudster's.
+- **BREAKING** — a blind index names one account. `StorageInterface::saveFields()` refuses a value
+  another account holds for the same field (`DuplicateIndexException`, naming every such field of the
+  batch; nothing of it is written), and the shipped adapter enforces it with a unique index.
+  A third party who knew the victim's address indexed it on their own account, and after the
+  victim's level 3 the lookup named them. `findUserIdByBlindIndex(): ?string` becomes
+  `findUserIdsByIndex(): list<string>`: the storage no longer picks a row.
+- **BREAKING** — `findUserByField()` throws `AmbiguousLookupException` when several accounts hold the
+  value — a database written before 0.7.0, or a storage without the constraint — and
+  `InvalidArgumentException` on a field declared shared.
+- **BREAKING** — `readArchive()` no longer returns `indexed`. It came from the archive package, which
+  whoever writes the database can extend to a field never meant to be looked up: restore with the
+  fields your application indexes.
 - The façade's read-back compares the salt first, then the revision, then every wrap (`wrap_pwd`,
   `wrap_recov`, `wrap_phrase`) and the Argon2id profile, after every write — `changePassword()` and
   `changeMemorized()` were not read back. A vault returned for another userId than the one asked for
@@ -73,9 +86,16 @@ changes.
 - `eraseAccount(string $userId): int` erases the live vault and every archive in one transaction, and
   works on a userId left with archives only.
 - `Storage\Conformance` and `bin/storage-conformance.php <connection.php>`: the contract played against
-  an implementation — 14 cases, two of them racing four processes. An implementation that does not
+  an implementation — 16 cases, three of them racing four processes. An implementation that does not
   pass it is not conformant. It writes under random `conformance-<hex>-…` userIds and erases each of
   them, so it runs against a database that already holds accounts.
+
+- `new SelfDataGuard($storage, $blindKey, sharedIndexes: ['phone'])`: the indexed fields several
+  accounts may hold the same value of. They are stored as `sharedIndex`, never name one account, and
+  are looked up with `findUsersByField(): list<string>`.
+- `SqliteAdapter` gains `selfdataguard_fields.shared_index` and the unique index
+  `selfdataguard_fields_blind_unique`, in place on opening. A database where one value is held by
+  several accounts is refused, with the fields named: see below.
 
 ### Removed
 
@@ -83,11 +103,11 @@ changes.
 
 ### Tests
 
-- 440 checks across twelve suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
-  36 → 37, facade 67 → 75, storage 60 → 64, and `sanity_conformance` (29), which plays the suite
-  against the shipped adapter and against nine storages that each break one clause: each fails on
-  the case that names it. The racing cases catch the one that compares, then writes in a second
-  statement — it passes every sequential case. Three storages written wrong on purpose — a case-insensitive
+- 457 checks across twelve suites on PHP 8.4 (was 388 across eleven): primitives 46 → 56, escrow
+  36 → 37, facade 67 → 81, storage 60 → 64, migration 15 → 20, and `sanity_conformance` (35), which
+  plays the suite against the shipped adapter and against twelve storages that each break one
+  clause: each fails on the case that names it. The racing cases catch the two that check, then
+  write in a second statement — they pass every sequential case. Three storages written wrong on purpose — a case-insensitive
   `user_id`, an insert overwritten before its read-back, an update reported and never written — are
   each refused by the façade. Two properties had no test: a v2 blob written by 0.6.x still reads (a frozen string,
   also read by 0.6.2's code), and an archived ciphertext planted back into the live vault fails,
@@ -116,6 +136,21 @@ misread. Do not roll back after a write.
   generation inside each write's transaction — throwing `VaultNotFoundException` when the userId has
   no live vault, `StaleVaultException` when it has another. A generation received and not compared
   breaks nothing visible: run `bin/storage-conformance.php` against it before it serves anyone.
+- **Before opening a database with 0.7.0**, find the values several accounts hold — the adapter
+  refuses to open while any is left:
+
+  ```sql
+  SELECT field_name, blind_index, GROUP_CONCAT(user_id) FROM selfdataguard_fields
+  WHERE blind_index IS NOT NULL GROUP BY field_name, blind_index HAVING COUNT(*) > 1;
+  ```
+
+  For each, either leave the value to its holder (`UPDATE selfdataguard_fields SET blind_index = NULL
+  WHERE user_id = :other AND field_name = :field`), or declare the field shared — move every value of
+  it (`UPDATE selfdataguard_fields SET shared_index = blind_index, blind_index = NULL WHERE field_name
+  = :field`) and pass it in `sharedIndexes`. Which account owns a value is not something the library
+  can decide.
+- Index a value once the account has proven it holds it (a confirmation mail, a code): whoever
+  indexes it first keeps it, and `DuplicateIndexException` tells the second one it is taken.
 - Façade calls: `reEnroll($dg->generationOf($id), …)`, `delete($session->generation())`,
   `listArchives($session)`, `hasEscrow($session)`, `deleteArchive($dg->openArchive(…))`,
   `eraseAccount($id)` for `purgeArchives($id)`.

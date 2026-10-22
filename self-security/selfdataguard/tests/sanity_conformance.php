@@ -112,15 +112,16 @@ $left === 0
 section('Without a connection file, the racing cases are skipped — never reported passed');
 
 $memory = outcomes(Conformance::run(static fn () => new SqliteAdapter('sqlite::memory:')));
-$memory['concurrent-updates']['outcome'] === 'skip' && $memory['concurrent-re-enrolments']['outcome'] === 'skip'
-    ? ok('concurrent-updates and concurrent-re-enrolments: skip')
-    : ko('a racing case ran, or passed, with no process to race', json_encode(array_intersect_key($memory, ['concurrent-updates' => 1, 'concurrent-re-enrolments' => 1])));
+$racing = array_filter($memory, static fn (string $case): bool => str_starts_with($case, 'concurrent-'), ARRAY_FILTER_USE_KEY);
+count($racing) === 3 && array_unique(array_column($racing, 'outcome')) === ['skip']
+    ? ok('the three concurrent-* cases: skip')
+    : ko('a racing case ran, or passed, with no process to race', json_encode($racing));
 
 // -----------------------------------------------------------------------------
 
 section('Each broken storage fails the suite, on the case that names the clause it breaks');
 
-// The racing cases catch a storage that compares, then writes in a second
+// The racing cases catch a storage that checks, then writes in a second
 // statement. A storage that ignores the generation or the revision outright is
 // the sequential cases' to catch: under a race its own read happens at the same
 // instant as the others', and the adapter underneath still lets one through.
@@ -135,6 +136,9 @@ $broken = [
     LiveOnlyEraseStorage::class        => ['erase-account'],
     ProfileFlatteningStorage::class    => ['vault-round-trip'],
     BlindIndexNoCaseStorage::class     => ['fields-round-trip'],
+    UniqueIndexDroppedStorage::class   => ['blind-index-unique'],
+    SharedIndexDroppingStorage::class  => ['blind-index-unique'],
+    CheckThenInsertIndexStorage::class => ['concurrent-unique-index'],
 ];
 foreach ($broken as $class => $expected) {
     [$connect, $file] = connection($work, $class);
@@ -146,10 +150,12 @@ foreach ($broken as $class => $expected) {
         : ko("{$class} passed a case it breaks", implode(', ', $missed));
 }
 
-$results = outcomes(Conformance::run(...connection($work, CheckThenWriteStorage::class)));
-$results['update-compare-and-swap']['outcome'] === 'pass'
-    ? ok('CheckThenWriteStorage passes the sequential case: only the racing processes catch it')
-    : ko('CheckThenWriteStorage failed the sequential case — the racing case is not what catches it', $results['update-compare-and-swap']['detail']);
+foreach ([CheckThenWriteStorage::class => 'update-compare-and-swap', CheckThenInsertIndexStorage::class => 'blind-index-unique'] as $class => $sequential) {
+    $results = outcomes(Conformance::run(...connection($work, $class)));
+    $results[$sequential]['outcome'] === 'pass'
+        ? ok("{$class} passes {$sequential}: only the racing processes catch it")
+        : ko("{$class} failed {$sequential} — the racing case is not what catches it", $results[$sequential]['detail']);
+}
 
 // -----------------------------------------------------------------------------
 

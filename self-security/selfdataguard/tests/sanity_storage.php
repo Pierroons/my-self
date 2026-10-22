@@ -217,17 +217,17 @@ $storage->saveFields($bobRecord->generation(), [
 
 // Lookup by blind index
 $lookupNew = BlindIndex::compute('new@example.com', $blindKey, 'email');
-$found = $storage->findUserIdByBlindIndex('email', $lookupNew);
-$found === 'user-cosmo' ? ok('findUserIdByBlindIndex → cosmo by his email index') : ko("got: " . var_export($found, true));
+$found = $storage->findUserIdsByIndex('email', $lookupNew);
+$found === ['user-cosmo'] ? ok('findUserIdsByIndex → cosmo by his email index') : ko("got: " . var_export($found, true));
 
 $lookupBob = BlindIndex::compute('bob@example.com', $blindKey, 'email');
-$foundBob = $storage->findUserIdByBlindIndex('email', $lookupBob);
-$foundBob === 'user-bob' ? ok('findUserIdByBlindIndex → bob by his email index') : ko('bob lookup failed');
+$foundBob = $storage->findUserIdsByIndex('email', $lookupBob);
+$foundBob === ['user-bob'] ? ok('findUserIdsByIndex → bob by his email index') : ko('bob lookup failed');
 
 // Miss
 $missLookup = BlindIndex::compute('nobody@example.com', $blindKey, 'email');
-$miss = $storage->findUserIdByBlindIndex('email', $missLookup);
-$miss === null ? ok('findUserIdByBlindIndex returns null on miss') : ko('false hit on miss');
+$miss = $storage->findUserIdsByIndex('email', $missLookup);
+$miss === [] ? ok('findUserIdsByIndex returns no account on a miss') : ko('false hit on miss');
 
 // -----------------------------------------------------------------------------
 

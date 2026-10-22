@@ -101,6 +101,7 @@ final class Conformance
             'writes-check-their-generation' => 'writesCheckGeneration',
             'rewrites-are-idempotent'       => 'rewritesIdempotent',
             'fields-round-trip'             => 'fieldsRoundTrip',
+            'blind-index-unique'            => 'blindIndexUnique',
             'escrow-round-trip'             => 'escrowRoundTrip',
             'delete-vault'                  => 'deleteVault',
             'replace-with-archive'          => 'replaceWithArchive',
@@ -108,6 +109,7 @@ final class Conformance
             'erase-account'                 => 'eraseAccount',
             'concurrent-updates'            => 'concurrentUpdates',
             'concurrent-re-enrolments'      => 'concurrentReEnrolments',
+            'concurrent-unique-index'       => 'concurrentUniqueIndex',
         ];
     }
 
@@ -261,11 +263,65 @@ final class Conformance
         $this->assert($this->storage->loadFields($alice->userId, ['note']) === ['note' => 'c-note-2'], 'saving a field again did not replace it');
         $this->assert(count($this->storage->loadFields($alice->userId)) === 3, 'saving a field again added a row instead of replacing it');
 
-        $this->assert($this->storage->findUserIdByBlindIndex('email', 'IdxAbC=') === $alice->userId, 'findUserIdByBlindIndex() did not find the account by its index');
-        $this->assert($this->storage->findUserIdByBlindIndex('email', 'IdxBob=') === $bob->userId, 'findUserIdByBlindIndex() returned the wrong account');
-        $this->assert($this->storage->findUserIdByBlindIndex('email', 'idxabc=') === null, 'a blind index matched another case: it is base64, compare it byte for byte');
-        $this->assert($this->storage->findUserIdByBlindIndex('phone', 'IdxAbC=') === null, 'a blind index matched under another field name');
-        $this->assert($this->storage->findUserIdByBlindIndex('email', 'IdxNone=') === null, 'findUserIdByBlindIndex() returned an account on a miss');
+        $this->assert($this->storage->findUserIdsByIndex('email', 'IdxAbC=') === [$alice->userId], 'findUserIdsByIndex() did not find the account by its index');
+        $this->assert($this->storage->findUserIdsByIndex('email', 'IdxBob=') === [$bob->userId], 'findUserIdsByIndex() returned the wrong account');
+        $this->assert($this->storage->findUserIdsByIndex('email', 'idxabc=') === [], 'an index matched another case: it is base64, compare it byte for byte');
+        $this->assert($this->storage->findUserIdsByIndex('phone', 'IdxAbC=') === [], 'an index matched under another field name');
+        $this->assert($this->storage->findUserIdsByIndex('email', 'IdxNone=') === [], 'findUserIdsByIndex() returned an account on a miss');
+        return null;
+    }
+
+    private function blindIndexUnique(): ?string
+    {
+        $alice = $this->newVault('uniq-alice');
+        $bob   = $this->newVault('uniq-bob');
+        $this->storage->saveVault($alice);
+        $this->storage->saveVault($bob);
+        $this->storage->saveFields($alice->generation(), [
+            'email'     => ['ciphertext' => 'c-a', 'blindIndex' => 'IdxTaken='],
+            'alt_email' => ['ciphertext' => 'c-a-alt', 'blindIndex' => 'IdxAlt='],
+        ]);
+
+        try {
+            $this->storage->saveFields($bob->generation(), [
+                'email'     => ['ciphertext' => 'c-b', 'blindIndex' => 'IdxTaken='],
+                'note'      => ['ciphertext' => 'c-b-note'],
+                'alt_email' => ['ciphertext' => 'c-b-alt', 'blindIndex' => 'IdxAlt='],
+            ]);
+            throw new RuntimeException('a second account was given a blind-index value another account holds');
+        } catch (DuplicateIndexException $e) {
+            $this->assert(
+                $e->fields === ['email', 'alt_email'],
+                'DuplicateIndexException names [' . implode(', ', $e->fields) . '], not every taken field of the batch'
+            );
+        }
+        $this->assert($this->storage->loadFields($bob->userId) === [], 'a refused batch was written in part: the field beside the taken one is there');
+        $this->assert(
+            $this->storage->findUserIdsByIndex('email', 'IdxTaken=') === [$alice->userId],
+            'the taken value no longer names its holder alone'
+        );
+
+        $this->storage->saveFields($alice->generation(), ['email' => ['ciphertext' => 'c-a2', 'blindIndex' => 'IdxTaken=']]);
+        $this->storage->saveFields($bob->generation(), [
+            'backup_email' => ['ciphertext' => 'c-b2', 'blindIndex' => 'IdxTaken='],
+            'city'         => ['ciphertext' => 'c-b3'],
+        ]);
+        $this->storage->saveFields($alice->generation(), ['city' => ['ciphertext' => 'c-a3']]);
+
+        $this->storage->saveFields($alice->generation(), ['phone' => ['ciphertext' => 'c-pa', 'sharedIndex' => 'IdxShared=']]);
+        $this->storage->saveFields($bob->generation(), ['phone' => ['ciphertext' => 'c-pb', 'sharedIndex' => 'IdxShared=']]);
+        $holders  = $this->storage->findUserIdsByIndex('phone', 'IdxShared=');
+        $expected = [$alice->userId, $bob->userId];
+        sort($holders);
+        sort($expected);
+        $this->assert($holders === $expected, 'a shared index does not list every account that holds the value');
+
+        $this->storage->replaceWithArchive($alice->generation(), $this->newVault('uniq-alice'));
+        $this->storage->saveFields($bob->generation(), ['email' => ['ciphertext' => 'c-b4', 'blindIndex' => 'IdxTaken=']]);
+        $this->assert(
+            $this->storage->findUserIdsByIndex('email', 'IdxTaken=') === [$bob->userId],
+            'an archived vault still holds its blind-index values'
+        );
         return null;
     }
 
@@ -369,7 +425,7 @@ final class Conformance
                 && $archive->escrowFields === ['contact' => 'c-contact'],
             'the archive did not keep the escrow and its fields'
         );
-        $this->assert($this->storage->findUserIdByBlindIndex('email', $this->indexOf($old->userId)) === null, 'the archived vault still answers blind-index lookups');
+        $this->assert($this->storage->findUserIdsByIndex('email', $this->indexOf($old->userId)) === [], 'the archived vault still answers index lookups');
         $this->assert($this->storage->loadArchive($this->id('arch-other'), $id) === null, 'loadArchive() returned the archive under another userId');
 
         $this->expect(
@@ -478,6 +534,28 @@ final class Conformance
         return null;
     }
 
+    private function concurrentUniqueIndex(): ?string
+    {
+        if ($this->connectFile === null) {
+            return 'needs a connection file: the racers are separate processes';
+        }
+        $base = $this->id('race-index');
+        for ($i = 0; $i < self::RACERS; $i++) {
+            $this->storage->saveVault($this->vaultFor($this->id("race-index-{$i}")));
+        }
+        $outcomes = $this->race(<<<'PHP'
+            $g = $s->loadVault("{$uid}-{$me}")->generation();
+            $ready();
+            $s->saveFields($g, ['email' => ['ciphertext' => 'c', 'blindIndex' => 'IdxRace=']]);
+            PHP, $base);
+        $this->assertOneWinner($outcomes, 'saveFields() of the same blind-index value from different accounts');
+        $this->assert(
+            count($this->storage->findUserIdsByIndex('email', 'IdxRace=')) === 1,
+            'several accounts hold the same blind-index value: the uniqueness is checked before the write, not enforced by it'
+        );
+        return null;
+    }
+
     // -- Racing processes -------------------------------------------------------
 
     /**
@@ -485,7 +563,7 @@ final class Conformance
      * all are ready before it writes, so that every one of them writes over the
      * same state.
      *
-     * @return list<string> one outcome per process: "ok", "stale", or an error
+     * @return list<string> one outcome per process: "ok", "refused", or an error
      */
     private function race(string $body, string $userId): array
     {
@@ -500,7 +578,8 @@ final class Conformance
             . '   while (!is_file("{$dir}/go")) { if (microtime(true) - $t > 20) { throw new RuntimeException("never released"); } usleep(1000); }'
             . ' };'
             . ' try { %s echo "ok"; }'
-            . ' catch (Pierroons\SelfDataGuard\Vault\StaleVaultException) { echo "stale"; }'
+            . ' catch (Pierroons\SelfDataGuard\Vault\StaleVaultException'
+            . ' | Pierroons\SelfDataGuard\Storage\DuplicateIndexException) { echo "refused"; }'
             . ' catch (Throwable $e) { echo get_class($e), ": ", $e->getMessage(); }',
             var_export($this->connectFile, true),
             var_export($userId, true),
@@ -543,8 +622,8 @@ final class Conformance
     {
         $counts = array_count_values($outcomes);
         $this->assert(
-            ($counts['ok'] ?? 0) === 1 && ($counts['stale'] ?? 0) === self::RACERS - 1,
-            sprintf('%d processes ran %s: exactly one must succeed, the others get StaleVaultException — got %s',
+            ($counts['ok'] ?? 0) === 1 && ($counts['refused'] ?? 0) === self::RACERS - 1,
+            sprintf('%d processes ran %s: exactly one must succeed, the others are refused — got %s',
                 self::RACERS, $what, implode(' | ', $outcomes))
         );
     }

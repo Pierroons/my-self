@@ -84,10 +84,19 @@ interface StorageInterface
 
     /**
      * Insert or update a batch of encrypted fields of the vault $generation
-     * names. Optional blindIndex per field for lookup support.
+     * names. A field written again replaces its row, index included. Each
+     * field carries at most one index, for lookups:
      *
-     * @param array<string, array{ciphertext: string, blindIndex?: ?string}> $fields
-     *        Map field_name => ['ciphertext' => base64, 'blindIndex' => ?base64]
+     *   - blindIndex  : held by one account at most, per field_name. Another
+     *                   account holding the same value → DuplicateIndexException
+     *                   naming every such field of the batch, and nothing of the
+     *                   batch is written. Enforced by the storage itself (a
+     *                   unique constraint): a check before the write lets two
+     *                   concurrent writers both through.
+     *   - sharedIndex : any number of accounts may hold the same value.
+     *
+     * @param array<string, array{ciphertext: string, blindIndex?: ?string, sharedIndex?: ?string}> $fields
+     *        Map field_name => ['ciphertext' => base64, 'blindIndex' => ?base64, 'sharedIndex' => ?base64]
      */
     public function saveFields(VaultGeneration $generation, array $fields): void;
 
@@ -101,10 +110,12 @@ interface StorageInterface
     public function loadFields(string $userId, array $fieldNames = []): array;
 
     /**
-     * Lookup a userId by its blind-index value on a given field.
-     * Returns null if no match.
+     * Every userId whose field $fieldName carries $index, as a blindIndex or a
+     * sharedIndex. The index is base64: compared byte for byte, case included.
+     *
+     * @return list<string>
      */
-    public function findUserIdByBlindIndex(string $fieldName, string $blindIndex): ?string;
+    public function findUserIdsByIndex(string $fieldName, string $index): array;
 
     // -- Escrow compartment (recovery-escrow sub-vault) -----------------------
 

@@ -127,7 +127,7 @@ try {
 
 section('What the archive does not keep — the blind index');
 
-$storage->findUserIdByBlindIndex('email', $emailIndex) === null
+$storage->findUserIdsByIndex('email', $emailIndex) === []
     ? ok('the old email no longer finds the account')
     : ko('a lookup still finds data that is only archived');
 $pkg = (string) $pdo->query("SELECT package FROM selfdataguard_archives WHERE archive_id = '{$id1}'")->fetchColumn();

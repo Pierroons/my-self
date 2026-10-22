@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/_bootstrap.php';
 
+use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
 use Pierroons\SelfDataGuard\Vault\UserVault;
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') fail('POST only', 405);
@@ -41,6 +42,12 @@ try {
     // catch, il sortait en 500 sans JSON.
     $baseNeuve && demo_effacer_base_neuve();
     fail($e->getMessage(), 400);
+} catch (DuplicateIndexException $e) {
+    // Le compte est inscrit avant que l'index soit refusé : sans ce retrait,
+    // il resterait, sans ses champs.
+    isset($session) && $dataGuard->delete($session->generation());
+    $baseNeuve && demo_effacer_base_neuve();
+    fail('Already held by another account: ' . implode(', ', $e->fields), 409);
 } catch (RuntimeException $e) {
     $baseNeuve && demo_effacer_base_neuve();
     fail($e->getMessage(), 409);

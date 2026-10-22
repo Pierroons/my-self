@@ -13,6 +13,7 @@ declare(strict_types=1);
 
 use Pierroons\SelfDataGuard\Crypto\Primitives;
 use Pierroons\SelfDataGuard\Escrow\EscrowRecord;
+use Pierroons\SelfDataGuard\Storage\DuplicateIndexException;
 use Pierroons\SelfDataGuard\Storage\StorageInterface;
 use Pierroons\SelfDataGuard\Vault\ArchivedVault;
 use Pierroons\SelfDataGuard\Vault\StaleVaultException;
@@ -31,7 +32,7 @@ abstract class DelegatingStorage implements StorageInterface
     public function deleteVault(VaultGeneration $g): void { $this->inner->deleteVault($g); }
     public function saveFields(VaultGeneration $g, array $f): void { $this->inner->saveFields($g, $f); }
     public function loadFields(string $u, array $n = []): array { return $this->inner->loadFields($u, $n); }
-    public function findUserIdByBlindIndex(string $f, string $b): ?string { return $this->inner->findUserIdByBlindIndex($f, $b); }
+    public function findUserIdsByIndex(string $f, string $i): array { return $this->inner->findUserIdsByIndex($f, $i); }
     public function saveEscrow(VaultGeneration $g, EscrowRecord $r): void { $this->inner->saveEscrow($g, $r); }
     public function loadEscrow(string $u): ?EscrowRecord { return $this->inner->loadEscrow($u); }
     public function saveEscrowFields(VaultGeneration $g, array $f): void { $this->inner->saveEscrowFields($g, $f); }
@@ -181,13 +182,65 @@ final class BlindIndexNoCaseStorage extends DelegatingStorage
         parent::__construct($inner);
     }
 
-    public function findUserIdByBlindIndex(string $f, string $b): ?string
+    public function findUserIdsByIndex(string $f, string $i): array
     {
         $st = $this->pdo->prepare(
-            'SELECT user_id FROM selfdataguard_fields WHERE field_name = ? AND blind_index = ? COLLATE NOCASE LIMIT 1'
+            'SELECT user_id FROM selfdataguard_fields WHERE field_name = ? AND blind_index = ? COLLATE NOCASE'
         );
-        $st->execute([$f, $b]);
-        $found = $st->fetchColumn();
-        return $found === false ? null : (string) $found;
+        $st->execute([$f, $i]);
+        return array_map('strval', $st->fetchAll(PDO::FETCH_COLUMN));
+    }
+}
+
+/** A storage without the unique index: a second account is given a value another holds. */
+final class UniqueIndexDroppedStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, PDO $pdo)
+    {
+        parent::__construct($inner);
+        $pdo->exec('DROP INDEX IF EXISTS selfdataguard_fields_blind_unique');
+    }
+}
+
+/**
+ * Looks for another holder, then writes: right alone, wrong under concurrency,
+ * where every writer finds the value free before any of them takes it.
+ */
+final class CheckThenInsertIndexStorage extends DelegatingStorage
+{
+    public function __construct(StorageInterface $inner, private readonly PDO $pdo)
+    {
+        parent::__construct($inner);
+        $pdo->exec('DROP INDEX IF EXISTS selfdataguard_fields_blind_unique');
+    }
+
+    public function saveFields(VaultGeneration $g, array $f): void
+    {
+        $taken = [];
+        $st = $this->pdo->prepare(
+            'SELECT 1 FROM selfdataguard_fields WHERE field_name = ? AND blind_index = ? AND user_id <> ?'
+        );
+        foreach ($f as $name => $data) {
+            if (isset($data['blindIndex'])) {
+                $st->execute([$name, $data['blindIndex'], $g->userId]);
+                if ($st->fetchColumn() !== false) {
+                    $taken[] = (string) $name;
+                }
+            }
+        }
+        if ($taken !== []) {
+            throw new DuplicateIndexException($taken);
+        }
+        usleep(200_000);
+        $this->inner->saveFields($g, $f);
+    }
+}
+
+/** Drops the shared index it is given: a shared field is never found. */
+final class SharedIndexDroppingStorage extends DelegatingStorage
+{
+    public function saveFields(VaultGeneration $g, array $f): void
+    {
+        $this->inner->saveFields($g, array_map(static fn (array $d): array => array_diff_key($d, ['sharedIndex' => true]), $f));
     }
 }

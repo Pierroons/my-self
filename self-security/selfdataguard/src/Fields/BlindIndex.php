@@ -17,9 +17,10 @@ use Pierroons\SelfDataGuard\Crypto\Primitives;
  *
  *   - The blindKey is a SERVER-SIDE secret, NOT user-derived.
  *   - It must NOT be confused with the per-user data_master_key.
- *   - Two users with the same email will share the same blind index value
- *     (necessary for unique-email constraints, but it leaks duplicate
- *     equality across rows — this is an accepted, documented trade-off).
+ *   - The same value gives the same index for every account. The storage
+ *     builds on it: an indexed value names one account (saveFields() refuses
+ *     a second holder), unless the field is declared shared — then equality
+ *     across the accounts that hold it is visible to whoever reads the table.
  *   - Range queries, sort order, and substring search are NOT supported.
  *     Only equality lookups.
  *

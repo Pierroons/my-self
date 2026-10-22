@@ -348,6 +348,56 @@ $storage->loadVault('user-old')->wrapPhrase?->toBase64() === $before->wrapPhrase
 
 // -----------------------------------------------------------------------------
 
+// -----------------------------------------------------------------------------
+
+section('Blind indexes become unique when a database written before 0.7.0 is opened');
+
+/** @return list<string> the indexes of selfdataguard_fields, by name */
+function fieldIndexes(PDO $pdo): array
+{
+    return $pdo->query(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'selfdataguard_fields'
+         AND name NOT LIKE 'sqlite_%' ORDER BY name"
+    )->fetchAll(PDO::FETCH_COLUMN);
+}
+
+$held = oldDatabase('user-a', 'a-password-0001', 'a-memorized');
+$held->exec(
+    "INSERT INTO selfdataguard_fields (user_id, field_name, ciphertext, blind_index, updated_at) VALUES
+     ('user-a', 'email', 'c1', 'IdxSame=', '2026-01-01'), ('user-b', 'email', 'c2', 'IdxSame=', '2026-01-01'),
+     ('user-a', 'phone', 'c3', 'IdxHome=', '2026-01-01'), ('user-b', 'phone', 'c4', 'IdxHome=', '2026-01-01')"
+);
+try {
+    new SqliteAdapter($held);
+    ko('a database holding one blind-index value under two accounts was opened');
+} catch (RuntimeException $e) {
+    str_contains($e->getMessage(), 'email: 1, phone: 1')
+        ? ok('values held by two accounts: the adapter refuses to open, and names each field and how many values')
+        : ko('wrong refusal', $e->getMessage());
+}
+fieldIndexes($held) === ['selfdataguard_fields_blind', 'selfdataguard_fields_shared']
+    ? ok('nothing half-built: the old index is still there, no unique index')
+    : ko('the refused migration left the indexes changed', implode(',', fieldIndexes($held)));
+
+$held->exec("UPDATE selfdataguard_fields SET blind_index = NULL WHERE user_id = 'user-b' AND field_name = 'email'");
+$held->exec("UPDATE selfdataguard_fields SET shared_index = blind_index, blind_index = NULL WHERE field_name = 'phone'");
+$opened = new SqliteAdapter($held);
+fieldIndexes($held) === ['selfdataguard_fields_blind_unique', 'selfdataguard_fields_shared']
+    ? ok('once each value is settled, the adapter opens: the unique index is built, the old one dropped')
+    : ko('the indexes after migration are not the expected ones', implode(',', fieldIndexes($held)));
+$opened->findUserIdsByIndex('email', 'IdxSame=') === ['user-a'] && $opened->findUserIdsByIndex('phone', 'IdxHome=') === ['user-a', 'user-b']
+    ? ok('the value left to its holder names it alone; the field moved to shared_index lists both holders')
+    : ko('the settled values do not resolve as the CHANGELOG remedies say');
+$freshFields = new PDO('sqlite::memory:');
+new SqliteAdapter($freshFields);
+$columns = static fn (PDO $pdo): array => array_map(
+    static fn (array $c): string => implode('|', [$c['name'], $c['type'], $c['notnull'], (string) $c['dflt_value'], $c['pk']]),
+    $pdo->query('PRAGMA table_info(selfdataguard_fields)')->fetchAll(PDO::FETCH_ASSOC)
+);
+$columns($held) === $columns($freshFields) && fieldIndexes($held) === fieldIndexes($freshFields)
+    ? ok('migrated fields table == freshly created one: same columns, same indexes')
+    : ko('the migrated fields table differs from a fresh one');
+
 echo "\n";
 echo "═══════════════════════════════════════════════════════════════\n";
 echo "  Migration Sanity — {$passes} passed, {$failures} failed\n";
