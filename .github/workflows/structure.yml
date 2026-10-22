@@ -2454,18 +2454,19 @@ jobs:
         run: |
           sortie=$(php bi-self/selfmoderate/tests/sanity_motif.php 2>&1) || { echo "$sortie"; exit 1; }
           echo "$sortie"
-          echo "$sortie" | grep -qx '✅ 5/5 contrôles passés' \
-            || { echo "::error::le banc du motif n'a pas joué ses 5 contrôles"; exit 1; }
+          echo "$sortie" | grep -qx '✅ 6/6 contrôles passés' \
+            || { echo "::error::le banc du motif n'a pas joué ses 6 contrôles"; exit 1; }
 
       - name: Canari — SelfModerate refuse une phrase détaillée, ou reçoit un mot ressassé
         run: |
           # @plante
-          # Quatre défauts replantés dans une copie, chacun doit faire rougir le
+          # Cinq défauts replantés dans une copie, chacun doit faire rougir le
           # banc sur SON cas : la règle redevenue plafond fixe refuse les phrases
           # détaillées ; les mots courts ignorés laissent passer « bof » ×8 ; un
           # mot porteur traité comme un mot court laisse passer « troll » ×4 ;
-          # sans borne haute, un motif sans fin passe.
-          for cas in plafond courts porteurs longueur; do
+          # sans borne haute, un motif sans fin passe ; une borne basse abaissée
+          # d'un caractère laisse passer un motif trop court.
+          for cas in plafond courts porteurs longueur plancher; do
             PLANTE=$(mktemp -d)
             cp -r bi-self/selfmoderate/src "$PLANTE/src"
             CAS="$cas" PLANTE="$PLANTE" python3 - <<'PY'
@@ -2480,6 +2481,7 @@ jobs:
               'courts':   ("                : self::REASON_SHORT_ONE_IN;\n", "                : 1;\n"),
               'porteurs': ("                ? self::REASON_CARRIER_ONE_IN\n", "                ? self::REASON_SHORT_ONE_IN\n"),
               'longueur': ("        if ($n > self::REASON_MAX_CHARS) {\n", "        if (false) {\n"),
+              'plancher': ("    public const REASON_MIN_CHARS          = 40;\n", "    public const REASON_MIN_CHARS          = 39;\n"),
           }[os.environ['CAS']]
           assert t.count(avant) == 1, "la plantation n'a pas pris — ce canari ne prouve rien"
           p.write_text(t.replace(avant, apres), encoding='utf-8')
@@ -2495,6 +2497,7 @@ jobs:
               courts)   attendu='un mot court ressassé passe' ;;
               porteurs) attendu='un mot porteur ressassé passe' ;;
               longueur) attendu='borne haute du motif' ;;
+              plancher) attendu='borne basse du motif' ;;
             esac
             echo "$sortie" | grep -q "$attendu" \
               || { echo "$sortie"; echo "::error::rouge, mais pas sur le cas « $cas »"; exit 1; }
