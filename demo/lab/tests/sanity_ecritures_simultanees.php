@@ -26,8 +26,10 @@ $prises = instance_isolee();
 require __DIR__ . '/../vendor/autoload.php';
 require_once __DIR__ . '/../lib/db.php';
 require_once __DIR__ . '/../lib/dm.php';
+require_once __DIR__ . '/../../../bi-self/selfrecover/src/autoload.php';
 
 use Pierroons\MySelfLab\{Db, DM};
+use Pierroons\SelfRecover\Crypto\Hashing;
 
 $reussites = 0;
 $echecs = 0;
@@ -42,7 +44,7 @@ const MANCHES = 5;
 const MOT_DE_PASSE = 'mot-de-passe-du-banc';
 
 $pdo = Db::pdo();
-$hache = password_hash(MOT_DE_PASSE, PASSWORD_ARGON2ID);
+$hache = password_hash(MOT_DE_PASSE, PASSWORD_ARGON2ID, Hashing::ARGON2);
 $ins = $pdo->prepare('INSERT INTO accounts (username, pw_hash, pass_hash, recovery_hash, created_at) VALUES (?, ?, ?, ?, ?)');
 foreach (['alice', 'bob', 'carol', 'dave'] as $nom) {
     $ins->execute([$nom, $hache, 'x', 'x', time()]);
