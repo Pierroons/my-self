@@ -169,7 +169,8 @@ sans incident — plus deux tenus à moitié, tous marqués dans les listes ci-d
 
 Contrôles : [`demo/lab/tests/sanity_moderate.php`](../../demo/lab/tests/sanity_moderate.php)
 pour le moteur à travers le lab, [`tests/sanity_motif.php`](tests/sanity_motif.php) pour le motif
-seul, sans base — joués par la CI, chacun vu rougir : le mécanisme est
+seul, [`tests/sanity_promesses.php`](tests/sanity_promesses.php) pour les seuils que ce README
+annonce, comparés à ceux que `Config` applique — ces deux-là sans base —, joués par la CI, chacun vu rougir : le mécanisme est
 neutralisé, la mesure refaite, le code restauré. L'un d'eux ne mesurait rien à sa première mutation —
 il calculait son attendu depuis la constante qu'il surveillait, et se décalait
 donc avec elle ; il lit maintenant une valeur en clair. Les cinq règles du motif sont éprouvées **séparément**, chaque
